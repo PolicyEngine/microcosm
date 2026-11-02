@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import functools
 import json
 import math
 import re
@@ -1035,9 +1036,7 @@ def _value_variables(binding: Mapping[str, Any]) -> tuple[str, ...]:
     """The value variables a plain-column binding reads."""
 
     if "value_expression" in binding:
-        return tuple(
-            name for _, name in _expression_terms(str(binding["value_expression"]))
-        )
+        return expression_names(str(binding["value_expression"]))
     return (str(binding["value_variable"]),)
 
 
@@ -1170,17 +1169,163 @@ def _compare(values: np.ndarray, operator: str, expected: object) -> np.ndarray:
 
 
 _EXPRESSION_NAME = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
+_EXPRESSION_TOKEN = re.compile(r"\s*([A-Za-z_][A-Za-z0-9_]*|\d+(?:\.\d+)?|[-+(),*])")
+_EXPRESSION_NUMBER = re.compile(r"\d+(?:\.\d+)?")
+#: The one function the expression grammar admits: ``max(<sum>, 0)``, a sum
+#: floored at zero (the profit after losses brought forward, microcosm#1095).
+_ZERO_FLOOR = "max"
 
 
-def _expression_terms(expression: str) -> tuple[tuple[float, str], ...]:
-    """A value expression's signed terms: names joined by ``+`` or ``-``."""
+def _refuse_expression(expression: str) -> ValueError:
+    return ValueError(f"unsupported value_expression {expression!r}")
 
-    tokens = re.split(r"\s*([+-])\s*", expression.strip())
-    names = tokens[0::2]
-    if not names or any(not _EXPRESSION_NAME.fullmatch(name) for name in names):
-        raise ValueError(f"unsupported value_expression {expression!r}")
-    signs = (1.0, *(1.0 if sign == "+" else -1.0 for sign in tokens[1::2]))
-    return tuple(zip(signs, names, strict=True))
+
+@functools.cache
+def _parsed_expression(expression: str) -> tuple[Any, ...]:
+    """A value expression's tree, from a sum of terms joined by ``+`` or ``-``.
+
+    A term is a name, a positive constant times a name (``0.2 *
+    basic_rate_savings_income``: a statutory rate applied to the base it
+    taxes, which a published tax amount binds, microcosm#1418) or
+    ``max(<sum>, 0)``. Anything else (another product, a bare constant, a
+    leading sign) refuses.
+    """
+
+    text = expression.strip()
+    tokens: list[str] = []
+    position = 0
+    while position < len(text):
+        match = _EXPRESSION_TOKEN.match(text, position)
+        if match is None:
+            raise _refuse_expression(expression)
+        tokens.append(match.group(1))
+        position = match.end()
+
+    def term(at: int) -> tuple[tuple[Any, ...], int]:
+        if at >= len(tokens):
+            raise _refuse_expression(expression)
+        if tokens[at] == _ZERO_FLOOR and tokens[at + 1 : at + 2] == ["("]:
+            inner, at = total(at + 2)
+            close = tokens[at : at + 3]
+            if len(close) != 3 or close[0] != "," or close[2] != ")":
+                raise _refuse_expression(expression)
+            if not re.fullmatch(r"0(?:\.0+)?", close[1]):
+                raise _refuse_expression(expression)
+            return ("max0", inner), at + 3
+        if _EXPRESSION_NUMBER.fullmatch(tokens[at]) and tokens[at + 1 : at + 2] == [
+            "*"
+        ]:
+            coefficient = float(tokens[at])
+            name = tokens[at + 2 : at + 3]
+            if (
+                not coefficient > 0.0
+                or not name
+                or name[0] == _ZERO_FLOOR
+                or not _EXPRESSION_NAME.fullmatch(name[0])
+            ):
+                raise _refuse_expression(expression)
+            return ("scaled", coefficient, ("name", name[0])), at + 3
+        if tokens[at] == _ZERO_FLOOR or not _EXPRESSION_NAME.fullmatch(tokens[at]):
+            raise _refuse_expression(expression)
+        return ("name", tokens[at]), at + 1
+
+    def total(at: int) -> tuple[tuple[Any, ...], int]:
+        terms: list[tuple[float, tuple[Any, ...]]] = []
+        sign = 1.0
+        while True:
+            node, at = term(at)
+            terms.append((sign, node))
+            if at < len(tokens) and tokens[at] in ("+", "-"):
+                sign = 1.0 if tokens[at] == "+" else -1.0
+                at += 1
+                continue
+            return ("sum", tuple(terms)), at
+
+    tree, end = total(0)
+    if end != len(tokens):
+        raise _refuse_expression(expression)
+    return tree
+
+
+def _tree_names(node: tuple[Any, ...]) -> tuple[str, ...]:
+    if node[0] == "name":
+        return (node[1],)
+    if node[0] == "max0":
+        return _tree_names(node[1])
+    if node[0] == "scaled":
+        return _tree_names(node[2])
+    return tuple(name for _, term in node[1] for name in _tree_names(term))
+
+
+def _evaluate_tree(
+    node: tuple[Any, ...], read: Callable[[str], np.ndarray]
+) -> np.ndarray:
+    if node[0] == "name":
+        return read(node[1])
+    if node[0] == "max0":
+        return np.maximum(_evaluate_tree(node[1], read), 0.0)
+    if node[0] == "scaled":
+        return node[1] * _evaluate_tree(node[2], read)
+    (sign, first), *rest = node[1]
+    values = _evaluate_tree(first, read)
+    total = (values if sign > 0 else -values).copy()
+    for sign, term in rest:
+        values = _evaluate_tree(term, read)
+        total = total + (values if sign > 0 else -values)
+    return total
+
+
+def expression_names(expression: str) -> tuple[str, ...]:
+    """Every name a value expression reads, in order, each once."""
+
+    return tuple(dict.fromkeys(_tree_names(_parsed_expression(expression))))
+
+
+def evaluate_expression(
+    expression: str, read: Callable[[str], np.ndarray]
+) -> np.ndarray:
+    """A value expression's values, each name read through ``read``.
+
+    Terms are summed left to right, a subtracted term as its negation, so a
+    sum is the same float operations whatever adapter supplies the names.
+    """
+
+    return _evaluate_tree(_parsed_expression(expression), read)
+
+
+def named_term_leaves(name: str, terms: Mapping[str, str]) -> tuple[str, ...]:
+    """The names a named term reads once the terms it nests are expanded."""
+
+    def leaves(current: str, seen: tuple[str, ...]) -> tuple[str, ...]:
+        if current in seen:
+            raise ValueError(f"named term {current!r} refers to itself")
+        found: list[str] = []
+        for part in expression_names(terms[current]):
+            found.extend(leaves(part, (*seen, current)) if part in terms else (part,))
+        return tuple(dict.fromkeys(found))
+
+    return leaves(name, ())
+
+
+def evaluate_named_term(
+    name: str, terms: Mapping[str, str], read: Callable[[str], np.ndarray]
+) -> np.ndarray:
+    """A named term's values from its leaves (microcosm#1095).
+
+    A named term is a measure declared once as an expression of this grammar
+    (``terms`` maps each name to its expression). A name the expression reads
+    that is itself a term is evaluated from its own expression; any other is
+    read through ``read``, as floats.
+    """
+
+    named_term_leaves(name, terms)
+
+    def value(part: str) -> np.ndarray:
+        if part in terms:
+            return evaluate_expression(terms[part], value)
+        return np.asarray(read(part), dtype=float)
+
+    return evaluate_expression(terms[name], value)
 
 
 def _expression(
@@ -1191,16 +1336,12 @@ def _expression(
     period: int | str | None = None,
     route_stored: bool = False,
 ) -> np.ndarray:
-    total: np.ndarray | None = None
-    for sign, name in _expression_terms(expression):
-        values = _value_column(
+    return evaluate_expression(
+        expression,
+        lambda name: _value_column(
             adapter, entity, name, period=period, route_stored=route_stored
-        )
-        term = values if sign > 0 else -values
-        total = term.copy() if total is None else total + term
-    if total is None:
-        raise ValueError(f"unsupported value_expression {expression!r}")
-    return total
+        ),
+    )
 
 
 def _value_column(

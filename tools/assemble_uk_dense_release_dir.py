@@ -586,8 +586,9 @@ def _area_support_block(solve: Mapping[str, object]) -> dict[str, object]:
 
     The support gate blocks release, so an area of a released file sits below
     a floor only under a reviewed exclusion the gate stood on, and those
-    entries name the areas. The areas' support figures stay in the run
-    directory's area-support table, which no release ships (microcosm#1301).
+    entries name the areas. Their support figures are in the signed gate
+    report's reviewed exclusions (María's ruling of 2026-10-26 dropped their
+    withholding, microcosm#1301).
     """
     from microcosm.build.uk_runtime.battery_bindings import uk_area_support_floors
 
@@ -1103,9 +1104,7 @@ def _stage_and_finalize(
     (release_dir / "sha256sums.txt").write_text(
         "".join(f"{digest}  {name}\n" for name, digest in sorted(sums.items()))
     )
-    # The contract warns, without refusing, on a per-area support figure in a
-    # shipped document (microcosm#1301); each warning is weighed before
-    # publication.
+    # A contract warning never refuses; each is weighed before publication.
     contract_warnings = validate_release_dir(release_dir)
     for contract_warning in contract_warnings:
         print(f"warning: {contract_warning}", file=sys.stderr)

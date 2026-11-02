@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from collections.abc import Iterable, Mapping
+from dataclasses import dataclass, field
 from importlib import metadata
 from pathlib import Path
 
@@ -23,6 +24,12 @@ from microcosm.build.uk_runtime.national_frame import (
     uk_national_frame,
     uk_time_period,
     validate_uk_national_frame,
+)
+from microcosm.build.uk_runtime.receipt_counts import (
+    distinct_count,
+    extreme_count,
+    small_cell_share,
+    support_band,
 )
 from microcosm.build.uk_runtime.take_up_contract import (
     UKTakeUpContract,
@@ -80,7 +87,7 @@ UK_TAKE_UP_DECLARED_SEEDS = {
     for output in (*FRS_TAKE_UP_OUTPUT_COLUMNS, *FRS_TAKE_UP_PERSON_OUTPUT_COLUMNS)
 }
 # Universal Credit is claimable only by a benefit unit whose claimant or
-# partner meets its age conditions: policyengine-uk 2.151.0's ``is_uc_eligible``
+# partner meets its age conditions: policyengine-uk 2.165.1's ``is_uc_eligible``
 # (capital aside) needs a single or joint claimant, taken from
 # ``is_uc_claimant``, who meets UC's minimum age and has not reached Pension
 # Credit qualifying age. The draw's population is therefore the units with a
@@ -170,6 +177,20 @@ UK_TAKE_UP_SIGNAL_OUTPUTS = (
     ),
     ("household", "property_purchased", "property_purchase_rate"),
 )
+
+
+def take_up_signal_outputs(columns: Iterable[str]) -> tuple[tuple[str, str, str], ...]:
+    """The signal gate's flags among a stage's outputs, in the gate's order.
+
+    Each flag is checked again where it is drawn, at the stage's weights before
+    calibration (María's ruling of 2026-10-29, microcosm#1095): ``frs_take_up``
+    draws the childcare flags and the under-2 usage, ``frs_person_draws`` the
+    Marriage Allowance and Scottish Child Payment flags, and
+    ``frs_household_draws`` the TV and property flags.
+    """
+
+    names = set(columns)
+    return tuple(row for row in UK_TAKE_UP_SIGNAL_OUTPUTS if row[1] in names)
 
 
 @dataclass(frozen=True)
@@ -326,6 +347,7 @@ class UKFRSTakeUpStageTransform:
     contract: UKTakeUpContract
     stage: SourceStageSpec
     population_policy: UKTakeUpPopulationPolicy | None = None
+    last_receipt: Mapping[str, object] | None = field(default=None, init=False)
 
     def __call__(self, frame: Frame) -> Frame:
         assert_take_up_stage_population_declaration(self.stage)
@@ -334,11 +356,33 @@ class UKFRSTakeUpStageTransform:
         policy = self.population_policy or uk_take_up_population_policy(
             uk_time_period(frame)
         )
-        return add_frs_take_up(frame, contract=self.contract, population_policy=policy)
+        result = add_frs_take_up(
+            frame, contract=self.contract, population_policy=policy
+        )
+        object.__setattr__(
+            self,
+            "last_receipt",
+            uk_take_up_signal_receipt(
+                result,
+                outputs=take_up_signal_outputs(self.output_columns()),
+                contract=self.contract,
+            ),
+        )
+        return result
 
     @staticmethod
     def output_columns() -> tuple[str, ...]:
         return (*FRS_TAKE_UP_OUTPUT_COLUMNS, *FRS_TAKE_UP_PERSON_OUTPUT_COLUMNS)
+
+    def checkpoint_metadata(self) -> dict[str, object]:
+        if self.last_receipt is None:
+            raise RuntimeError("checkpoint metadata requires a completed stage run.")
+        return {
+            "evidence": {
+                "stage": "frs_take_up",
+                "take_up_signal": dict(self.last_receipt),
+            }
+        }
 
 
 def add_frs_take_up(
@@ -616,66 +660,42 @@ def uk_take_up_signal_gate(
     *,
     contract: UKTakeUpContract | None = None,
     maximum_share_deviation: float = 0.05,
+    under_two_usage_maximum_share_deviation: float | None = None,
 ) -> GateResult:
-    """Require non-constant UK stochastic flags near contract target shares."""
+    """Require non-constant UK stochastic flags near contract target shares.
+
+    The under-2 usage share takes ``under_two_usage_maximum_share_deviation``
+    when it is given, every other flag ``maximum_share_deviation``: the DfE
+    9-to-11-month row binds a thin cell of that draw's children, so the
+    calibrated weights move the share further from its rates than they move
+    any other flag's.
+    """
 
     resolved = contract if contract is not None else load_uk_take_up_contract()
     failures: list[str] = []
     details: dict[str, object] = {}
     for entity, output, key in UK_TAKE_UP_SIGNAL_OUTPUTS:
-        table = frame.table(entity)
-        if output not in table.columns:
-            failures.append(f"{entity}.{output}: missing stochastic column.")
+        measured = _measure_take_up_signal(frame, entity, output, key, resolved)
+        if isinstance(measured, str):
+            failures.append(f"{entity}.{output}: {measured}")
             continue
-        values = np.asarray(table[output], dtype=bool)
-        unique_count = int(pd.Series(values).nunique(dropna=False))
-        weights = np.asarray(frame.resolve_weights(entity).values, dtype=np.float64)
-        population = np.ones(values.shape, dtype=bool)
-        if key == UK_UNDER_TWO_USAGE_SIGNAL_KEY:
-            # The rate is a share of the children under 2 in units that claim
-            # the working-parent hours; every other person keeps 30 hours.
-            benunit_table = frame.table("benunit")
-            population = under_two_children(table) & person_unit_flag(
-                table,
-                benunit_table,
-                benunit_table[UK_EXTENDED_CHILDCARE_OUTPUT].to_numpy(),
-            )
-        if not population.any() or float(weights[population].sum()) <= 0.0:
-            failures.append(
-                f"{entity}.{output}: no unit in the draw's population carries "
-                "weight; the take-up share cannot be measured."
-            )
-            continue
-        share = float(
-            np.average(values[population].astype(float), weights=weights[population])
+        share, target = measured.share, measured.target
+        bound = (
+            under_two_usage_maximum_share_deviation
+            if key == UK_UNDER_TWO_USAGE_SIGNAL_KEY
+            and under_two_usage_maximum_share_deviation is not None
+            else maximum_share_deviation
         )
-        if key == UK_UNDER_TWO_USAGE_SIGNAL_KEY:
-            # Each child's rate is its age's: the target is their weighted mean.
-            target = float(
-                np.average(
-                    under_two_usage_rates(table, resolved)[population],
-                    weights=weights[population],
-                )
-            )
-        else:
-            target = _target_share(table, key, resolved, weights)
         details[f"{entity}.{output}"] = {
             "weighted_share": share,
             "target": target,
             "absolute_deviation": abs(share - target),
-            "unique_count": unique_count,
-            "population_units": int(population.sum()),
+            "maximum_share_deviation": bound,
+            "unique_count": measured.unique_count,
+            "population_units": int(measured.population.sum()),
         }
-        if (
-            output == UK_UNIVERSAL_CHILDCARE_OUTPUT
-            and UK_UNIVERSAL_CHILDCARE_NESTED_UNDER in table.columns
-        ):
-            # Nested draw: P(universal | extended) = 1, so no benefit unit
-            # claims the extended hours without the universal ones.
-            extended = np.asarray(
-                table[UK_UNIVERSAL_CHILDCARE_NESTED_UNDER], dtype=bool
-            )
-            violations = int((extended & ~values).sum())
+        if measured.nested_violations is not None:
+            violations = measured.nested_violations
             details[f"{entity}.{output}"]["extended_without_universal_units"] = (
                 violations
             )
@@ -685,16 +705,15 @@ def uk_take_up_signal_gate(
                     "extended hours without the universal hours; the universal "
                     "flag is nested under would_claim_extended_childcare."
                 )
-        if unique_count < 2:
+        if measured.unique_count < 2:
             failures.append(
                 f"{entity}.{output}: constant column; stochastic take-up "
                 "assignment must not collapse to a universal default."
             )
-        if abs(share - target) > maximum_share_deviation:
+        if abs(share - target) > bound:
             failures.append(
                 f"{entity}.{output}: weighted share {share:.3f} differs from "
-                f"contract target {target:.3f} by more than "
-                f"{maximum_share_deviation:.3f}."
+                f"contract target {target:.3f} by more than {bound:.3f}."
             )
     return GateResult(
         name="take_up_signal",
@@ -702,6 +721,154 @@ def uk_take_up_signal_gate(
         failures=tuple(failures),
         details=details,
     )
+
+
+@dataclass(frozen=True)
+class _TakeUpSignal:
+    """One flag's weighted share over its draw's population."""
+
+    share: float
+    target: float
+    unique_count: int
+    population: np.ndarray
+    weights: np.ndarray
+    nested_violations: int | None
+
+
+def _measure_take_up_signal(
+    frame: Frame,
+    entity: str,
+    output: str,
+    key: str,
+    contract: UKTakeUpContract,
+) -> _TakeUpSignal | str:
+    """One flag's share at the frame's weights, or why it cannot be measured."""
+
+    table = frame.table(entity)
+    if output not in table.columns:
+        return "missing stochastic column."
+    values = np.asarray(table[output], dtype=bool)
+    unique_count = int(pd.Series(values).nunique(dropna=False))
+    weights = np.asarray(frame.resolve_weights(entity).values, dtype=np.float64)
+    population = np.ones(values.shape, dtype=bool)
+    if key == UK_UNDER_TWO_USAGE_SIGNAL_KEY:
+        # The rate is a share of the children under 2 in units that claim
+        # the working-parent hours; every other person keeps 30 hours.
+        benunit_table = frame.table("benunit")
+        population = under_two_children(table) & person_unit_flag(
+            table,
+            benunit_table,
+            benunit_table[UK_EXTENDED_CHILDCARE_OUTPUT].to_numpy(),
+        )
+    if not population.any() or float(weights[population].sum()) <= 0.0:
+        return (
+            "no unit in the draw's population carries weight; the take-up "
+            "share cannot be measured."
+        )
+    share = float(
+        np.average(values[population].astype(float), weights=weights[population])
+    )
+    if key == UK_UNDER_TWO_USAGE_SIGNAL_KEY:
+        # Each child's rate is its age's: the target is their weighted mean.
+        target = float(
+            np.average(
+                under_two_usage_rates(table, contract)[population],
+                weights=weights[population],
+            )
+        )
+    else:
+        target = _target_share(table, key, contract, weights)
+    nested = None
+    if (
+        output == UK_UNIVERSAL_CHILDCARE_OUTPUT
+        and UK_UNIVERSAL_CHILDCARE_NESTED_UNDER in table.columns
+    ):
+        # Nested draw: P(universal | extended) = 1, so no benefit unit
+        # claims the extended hours without the universal ones.
+        extended = np.asarray(table[UK_UNIVERSAL_CHILDCARE_NESTED_UNDER], dtype=bool)
+        nested = int((extended & ~values).sum())
+    return _TakeUpSignal(
+        share=share,
+        target=target,
+        unique_count=unique_count,
+        population=population,
+        weights=weights,
+        nested_violations=nested,
+    )
+
+
+def uk_take_up_signal_receipt(
+    frame: Frame,
+    *,
+    outputs: Iterable[tuple[str, str, str]],
+    contract: UKTakeUpContract,
+) -> dict[str, object]:
+    """The drawn flags' shares at the stage's weights, for its stage gate.
+
+    The terminal ``uk_take_up_signal`` gate measures the same flags at the
+    calibrated weights; a stage gate reads this receipt so that a draw defect
+    fails where it is drawn, apart from calibration's drift (María's ruling of
+    2026-10-29, microcosm#1095). The receipt is aggregate-only (UKDS disclosure
+    control): a share or a target is given only where three or more source
+    households carry the flag's population, whose support is a band.
+    """
+
+    sources: dict[str, np.ndarray] = {}
+    flags: list[dict[str, object]] = []
+    for entity, output, key in outputs:
+        row: dict[str, object] = {"output": f"{entity}.{output}", "rate_key": key}
+        if key == UK_UNDER_TWO_USAGE_SIGNAL_KEY:
+            row["under_two_usage"] = True
+        measured = _measure_take_up_signal(frame, entity, output, key, contract)
+        if isinstance(measured, str):
+            row["unmeasured"] = measured
+            flags.append(row)
+            continue
+        if entity not in sources:
+            sources[entity] = _row_source_households(frame, entity)
+        support = distinct_count(sources[entity], measured.population, measured.weights)
+        row["population_support"] = support_band(support)
+        row["target"] = small_cell_share(measured.target, support)
+        row["weighted_share"] = small_cell_share(measured.share, support)
+        row["distinct_values"] = measured.unique_count
+        if measured.nested_violations is not None:
+            row["extended_without_universal_units"] = extreme_count(
+                measured.nested_violations
+            )
+        flags.append(row)
+    return {
+        "weights": "household weights at the stage, before calibration",
+        "flags": flags,
+    }
+
+
+def _row_source_households(frame: Frame, entity: str) -> np.ndarray:
+    """Each row's source household, the key a receipt counts support by.
+
+    Before the SPI support channel each household row is its own FRS source
+    household, so its id serves until ``household_source_id`` exists.
+    """
+
+    household = frame.table("household")
+    column = (
+        "household_source_id"
+        if "household_source_id" in household.columns
+        else "household_id"
+    )
+    by_household = pd.Series(
+        household[column].to_numpy(), index=household["household_id"].to_numpy()
+    )
+    if entity == "household":
+        return by_household.to_numpy()
+    person = frame.table("person")
+    person_sources = person["person_household_id"].map(by_household)
+    if entity == "person":
+        return person_sources.to_numpy()
+    by_benunit = pd.Series(
+        person_sources.to_numpy(), index=person["person_benunit_id"].to_numpy()
+    )
+    by_benunit = by_benunit[~by_benunit.index.duplicated()]
+    return frame.table("benunit")["benunit_id"].map(by_benunit).to_numpy()
 
 
 def _target_share(

@@ -27,6 +27,7 @@ import numpy as np
 import pandas as pd
 
 from microcosm.build.ledger_artifact import load_ledger_consumer_artifact
+from microcosm.build.uk_runtime import communal_residents
 from microcosm.build.uk_runtime.frs_release import load_uk_frs_release
 from microcosm.build.uk_runtime.full_measure import resolve_uk_full_measures
 from microcosm.build.uk_runtime.high_value_homes import (
@@ -44,6 +45,7 @@ from microcosm.build.uk_runtime.incumbent_surface_evaluation import (
     national_family_status,
     regional_rollup_estimates,
     render_markdown,
+    with_private_household_basis,
 )
 from microcosm.build.uk_runtime.ledger_targets import (
     _uk_local_metric_target_ids,
@@ -419,6 +421,15 @@ def main(argv=None) -> int:
             local["area_type"], local["geography_id"], local["our_metric"], strict=True
         )
     ]
+    # The age rows also against the mid-year estimates less their census
+    # communal residents, which the household frame cannot hold (María's
+    # ruling of 2026-10-25, microcosm#1095).
+    local = with_private_household_basis(
+        local,
+        communal_residents.private_household_shares(
+            communal_residents.communal_cells(artifact.facts)
+        ),
+    )
     if (
         args.incumbent_metrics_csv is not None
         and args.incumbent_weights_csv is not None

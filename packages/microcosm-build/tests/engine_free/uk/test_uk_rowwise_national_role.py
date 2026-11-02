@@ -65,7 +65,6 @@ from test_support.microcosm_build import uk_calibration_run as seam
 from test_support.microcosm_build import uk_rowwise_candidate as candidate
 from test_support.microcosm_build.uk_calibration_run import (  # noqa: F401
     _cgt_projection,
-    _every_seam_row_published,
     _signing_key,
 )
 

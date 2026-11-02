@@ -248,7 +248,8 @@ _ESI_ORIGIN = (
     "etl_national_targets carrying the row), removed at 9f320d2c ('Remove "
     "survey-based national calibration targets', PR #831). The input itself "
     "was imputed by the retired eCPS (MEPS-IC priors over ASEC NOW_* "
-    "policyholder fields, archived 42ed5d45 cps.py L197-271/L1575-1581)."
+    "policyholder fields, archived commit 42ed5d45 datasets/cps/cps.py lines "
+    "197-271 and 1575-1581)."
 )
 
 _ESI_NHE_ORIGIN = (
@@ -377,7 +378,8 @@ _FAMILY_EXCLUSIONS: dict[str, tuple[str, str, str, dict[str, str]]] = {
                 '"BEA personal interest/dividends include imputed interest, '
                 "pension-plan dividends, and trust flows, so those macro totals "
                 "should not directly calibrate tax/CPS interest and dividend "
-                'variables" (loss.py:67-70, added by PR #1059)'
+                'variables" (utils/loss.py:67-70 at '
+                "42ed5d45c56df80d754fbe24cce21cfeb8d05cbe, added by PR #1059)"
             ),
             verdict_basis=(
                 "us-data itself declined it as a direct target (PR #1059): a "

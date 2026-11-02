@@ -272,11 +272,7 @@ def test_unavailable_checkpoint_bytes_are_named_not_linked(tmp_path):
 
 def _brma_problem(n: int = 12, level: str = "brma"):
     """An ordered problem over ``n`` households binding one constituency row on
-    all of them and one Scottish BRMA row on four, its level spelt ``level``.
-
-    Every row with fewer than ten source households is withheld (María's
-    rule of 2026-10-21), so the constituency row needs the twelve to publish.
-    """
+    all of them and one Scottish BRMA row on four, its level spelt ``level``."""
     import numpy as np
     import pandas as pd
 
@@ -331,206 +327,17 @@ def _brma_problem(n: int = 12, level: str = "brma"):
     return frame, decode_problem(payload), payload
 
 
-def _brma_summary():
-    """A two-row result and its summary data: a published row and a thin BRMA row."""
+@pytest.mark.parametrize("level", ["brma", "statistical_scope", "constituency"])
+def test_a_size_summary_keeps_its_all_row_totals_but_no_rows_figure(level):
+    """The size summary keeps the losses over every row, whatever it binds,
+    but not the largest change in one row, which may rest on fewer than ten
+    source households (Vahid's review of #1396, M1)."""
     from types import SimpleNamespace
 
-    import numpy as np
-
-    frame, ordered, _ = _brma_problem()
-
-    def row(name, target, estimate):
-        return SimpleNamespace(
-            name=name,
-            target=target,
-            initial_estimate=estimate,
-            final_estimate=estimate,
-            relative_error=(estimate - target) / target,
-        )
-
-    result = SimpleNamespace(
-        weights=np.ones(12),
-        frame=frame,
-        diagnostics=[
-            row(ordered.problem.names[0], 4.0, 4.0),
-            row(ordered.problem.names[1], 40.0, 4.0),
-        ],
-        target_loss_weights=np.ones(2),
-        target_loss_scales=np.array([4.0, 40.0]),
-        target_loss_cap=10.0,
-        options={"target_loss_cap": 10.0},
-    )
-    data = {
-        "overview": {"final_loss": 0.45},
-        "tables": {
-            "targets": [
-                {
-                    "name": diagnostic.name,
-                    "target": diagnostic.target,
-                    "initial": diagnostic.initial_estimate,
-                    "achieved": diagnostic.final_estimate,
-                    "residual": diagnostic.final_estimate - diagnostic.target,
-                    "relative_error": diagnostic.relative_error,
-                    "within_tolerance": False,
-                }
-                for diagnostic in result.diagnostics
-            ]
-        },
-    }
-    return result, data, ordered
-
-
-def test_the_published_result_summary_withholds_a_thin_brma_row():
-    """microcosm#1262: Orrery publishes no figure a build withholds.
-
-    The BRMA row rests on four source households, so its summary row keeps
-    its target and loses its figures, and the final loss covers the
-    published row (María's rulings of 2026-10-17 and 2026-10-18).
-    """
-    from microcosm.build.uk_runtime.orrery_contract import _withhold_summary_rows
-
-    result, data, ordered = _brma_summary()
-    _withhold_summary_rows(data, result, ordered)
-    published, withheld = data["tables"]["targets"]
-    assert published["achieved"] == 4.0
-    assert withheld["target"] == 40.0 and withheld["model_figures_withheld"] is True
-    assert all(
-        withheld[field] is None
-        for field in ("initial", "achieved", "residual", "relative_error")
-    )
-    assert data["overview"]["final_loss"] == 0.0
-    assert data["overview"]["model_figures_withheld"] == {
-        "targets": 1,
-        "totals_basis": "published_rows",
-    }
-
-
-def _gate_context(names, nodes, predecessors):
-    """A summary context over node ``result``: gate receipts and their payloads.
-
-    ``nodes`` maps a node to the output it recorded (``calibration_evidence``
-    for the national gates, ``calibration_diagnostics`` for the full build's
-    terminal) and the rows it withheld.
-    """
-
-    from types import SimpleNamespace
-
-    from microcosm.build.uk_runtime.graph_national import NATIONAL_EVIDENCE_TYPE
-    from microcosm.build.uk_runtime.graph_terminal import FULL_DIAGNOSTICS_TYPE
-
-    types = {
-        "calibration_evidence": NATIONAL_EVIDENCE_TYPE,
-        "calibration_diagnostics": FULL_DIAGNOSTICS_TYPE,
-    }
-    payloads, receipts = {}, {}
-    for node, (output, withheld) in nodes.items():
-        if output == "calibration_evidence":
-            rows = [{"name": n, "model_figures_withheld": n in withheld} for n in names]
-            payloads[node] = {"diagnostics": rows}
-        else:
-            rows = [
-                {"name": n, "metadata": {"model_figures_withheld": "withheld"}}
-                if n in withheld
-                else {"name": n, "metadata": {}}
-                for n in names
-            ]
-            payloads[node] = {"targets": rows}
-        type_ = types[output]
-        receipts[node] = SimpleNamespace(
-            typed_artifacts={
-                "outputs": {
-                    output: {
-                        "type": {
-                            "name": type_.name,
-                            "schema_version": type_.schema_version,
-                        },
-                        "key": node,
-                    }
-                }
-            },
-            opaque_artifacts={output},
-        )
-    return SimpleNamespace(
-        node_id="result",
-        run=SimpleNamespace(
-            compiled=SimpleNamespace(predecessors={"result": (), **predecessors}),
-            manifest=SimpleNamespace(nodes=receipts),
-        ),
-        store=SimpleNamespace(
-            load_bytes=lambda key: json.dumps(payloads[key]).encode()
-        ),
-    )
-
-
-def test_the_summary_takes_the_rows_a_gate_on_its_result_withheld(monkeypatch):
-    """Vahid's third review of #1383, item 32: a build withholds once.
-
-    A gate that reads the result directly recorded the rows it withheld; the
-    summary takes that set without counting again, and counts again only when
-    the gate did not see every summary row.
-    """
-
-    from microcosm.build.uk_runtime import diagnostics
     from microcosm.build.uk_runtime.orrery_contract import (
-        _recorded_withheld,
-        _withhold_summary_rows,
+        _size_summary,
+        public_summary_findings,
     )
-
-    result, data, ordered = _brma_summary()
-    published, thin = ordered.problem.names
-    names = [published, thin]
-    for output in ("calibration_evidence", "calibration_diagnostics"):
-        context = _gate_context(
-            names, {"gates": (output, {thin})}, {"gates": ("problem", "result")}
-        )
-        assert _recorded_withheld(context) == (frozenset(names), frozenset({thin}))
-
-    def counted_again(*args, **kwargs):
-        raise AssertionError("the summary counted the withholding again")
-
-    with monkeypatch.context() as patch:
-        patch.setattr(diagnostics, "uk_withheld_rows", counted_again)
-        _withhold_summary_rows(data, result, ordered, _recorded_withheld(context))
-    first, second = data["tables"]["targets"]
-    assert first["achieved"] == 4.0
-    assert second["model_figures_withheld"] is True and second["achieved"] is None
-
-    # A gate that saw only the published row is not taken: the summary counts.
-    result, data, ordered = _brma_summary()
-    _withhold_summary_rows(data, result, ordered, (frozenset({published}), frozenset()))
-    assert data["tables"]["targets"][1]["model_figures_withheld"] is True
-
-
-def test_only_a_gate_reading_the_result_directly_records_its_withheld_rows():
-    """A gate on another node, or one that has not run, records nothing here."""
-
-    from microcosm.build.uk_runtime.orrery_contract import _recorded_withheld
-
-    names = ["a", "b"]
-    elsewhere = _gate_context(
-        names, {"gates": ("calibration_evidence", {"a"})}, {"gates": ("other",)}
-    )
-    assert _recorded_withheld(elsewhere) is None
-    not_run = _gate_context(names, {}, {"gates": ("result",)})
-    assert _recorded_withheld(not_run) is None
-    disagreeing = _gate_context(
-        names,
-        {
-            "national": ("calibration_evidence", {"a"}),
-            "terminal": ("calibration_diagnostics", {"b"}),
-        },
-        {"national": ("result",), "terminal": ("result",)},
-    )
-    with pytest.raises(ValueError, match="different withheld rows"):
-        _recorded_withheld(disagreeing)
-
-
-@pytest.mark.parametrize("level", ["brma", "statistical_scope"])
-def test_a_size_summary_over_brma_rows_publishes_no_all_row_total(level):
-    """Either spelling of the level is a BRMA row (the fourth review of #1305)."""
-    from types import SimpleNamespace
-
-    from microcosm.build.uk_runtime.orrery_contract import _size_summary
 
     _, ordered, payload = _brma_problem(level=level)
     receipt = {
@@ -545,51 +352,21 @@ def test_a_size_summary_over_brma_rows_publishes_no_all_row_total(level):
         payload=json.dumps(receipt).encode(),
         input_payload=lambda name: payload,
     )
-    overview = _size_summary(context)["overview"]
+    data = _size_summary(context)
+    overview = data["overview"]
     assert overview["requested_households"] == 4
-    assert all(
-        overview[field] is None
-        for field in ("dense_loss", "compact_loss", "max_target_scaled_change")
-    )
-
-
-def test_a_size_summary_over_any_problem_publishes_no_all_row_total():
-    """Since María's rule of 2026-10-21 any problem may bind a thin row.
-
-    The summary cannot count a row's carriers without the weights, so a
-    problem with no BRMA row withholds its all-row totals too.
-    """
-    from types import SimpleNamespace
-
-    from microcosm.build.uk_runtime.orrery_contract import _size_summary
-
-    _, ordered, payload = _brma_problem(level="constituency")
-    receipt = {
-        "method": "full_pool",
-        "problem_sha256": ordered.sha256,
-        "dense_loss": 0.2,
-        "compact_loss": 0.3,
-        "max_target_scaled_change": 0.4,
-        "requested_households": 4,
-    }
-    context = SimpleNamespace(
-        payload=json.dumps(receipt).encode(),
-        input_payload=lambda name: payload,
-    )
-    overview = _size_summary(context)["overview"]
-    assert all(
-        overview[field] is None
-        for field in ("dense_loss", "compact_loss", "max_target_scaled_change")
-    )
+    assert (overview["dense_loss"], overview["compact_loss"]) == (0.2, 0.3)
+    assert "max_target_scaled_change" not in overview
+    assert public_summary_findings([{"data": data}]) == []
+    overview["max_target_scaled_change"] = 0.4
+    assert public_summary_findings([{"node": "size", "artifact": "size", "data": data}])
 
 
 @pytest.mark.parametrize("level", ["brma", "statistical_scope"])
-def test_the_registered_result_provider_withholds_a_thin_brma_row(level, monkeypatch):
-    """The third review of #1305: through the provider, not the helper alone.
-
-    Deleting the withholding call from the registered provider failed no
-    test, and a row spelt ``statistical_scope`` escaped it.
-    """
+def test_the_registered_result_provider_publishes_no_rows_figures(level, monkeypatch):
+    """The BRMA row rests on four source households. Since María's ruling of
+    2026-10-26 the build no longer marks such rows, so the registered provider
+    projects no row's figures, thin or not (Vahid's review of #1396, M1)."""
     from types import SimpleNamespace
 
     import numpy as np
@@ -644,9 +421,67 @@ def test_the_registered_result_provider_withholds_a_thin_brma_row(level, monkeyp
         (RESULT_TYPE.name, RESULT_TYPE.schema_version)
     ]
     data = provider(context)
-    published, withheld = data["tables"]["targets"]
-    assert published["achieved"] == 4.0
-    assert withheld["model_figures_withheld"] is True
-    assert withheld["achieved"] is None and withheld["relative_error"] is None
-    assert data["overview"]["final_loss"] == 0.0
-    assert data["overview"]["model_figures_withheld"]["targets"] == 1
+    rows = data["tables"]["targets"]
+    assert [row["target"] for row in rows] == [4.0, 40.0]
+    for row in rows:
+        assert not {
+            "initial",
+            "achieved",
+            "residual",
+            "relative_error",
+            "within_tolerance",
+        } & set(row)
+    assert data["overview"]["final_loss"] == 0.45
+    assert "model figures" in data["overview"]["record_scope"]
+    summary = {"node": "uk.full.dense", "artifact": "result", "data": data}
+    assert orrery_contract.public_summary_findings([summary]) == []
+    rows[1]["achieved"] = 4.0
+    assert orrery_contract.public_summary_findings([summary]) == [
+        "uk.full.dense/result carries achieved"
+    ]
+
+
+def test_a_gate_summary_counts_failure_lines_without_carrying_them():
+    """A failure line can state a row's figures or an area's support, so the
+    summary keeps each gate's verdict and the number of its lines (Vahid's
+    review of #1396, M1)."""
+    from types import SimpleNamespace
+
+    from microcosm.build.uk_runtime.orrery_contract import (
+        _gate_report_summary,
+        public_summary_findings,
+    )
+
+    def outcome(gate, status, failures):
+        return {
+            "id": gate,
+            "gate": gate,
+            "phase": "calibrated",
+            "criticality": "release_blocking",
+            "status": status,
+            "reason": None,
+            "failures": failures,
+            "evidence_sha256": "0" * 64,
+        }
+
+    report = {
+        "schema_version": 1,
+        "phase": "calibrated",
+        "gates_manifest_sha256": "1" * 64,
+        "outcomes": [
+            outcome("uk_area_support", "failed", ["E14000001: rows 3 < 10"]),
+            outcome("uk_target_fit", "passed", []),
+        ],
+    }
+    data = _gate_report_summary(SimpleNamespace(payload=json.dumps(report).encode()))
+    support, fit = data["tables"]["gates"]
+    assert (support["status"], support["failure_count"]) == ("failed", 1)
+    assert (fit["status"], fit["failure_count"]) == ("passed", 0)
+    assert "failures" not in support and "E14000001" not in json.dumps(data)
+    assert data["overview"]["status_counts"]["failed"] == 1
+    summary = {"node": "uk.full.gates.calibrated", "artifact": "gate_report"}
+    assert public_summary_findings([{**summary, "data": data}]) == []
+    support["failures"] = ["E14000001: rows 3 < 10"]
+    assert public_summary_findings([{**summary, "data": data}]) == [
+        "uk.full.gates.calibrated/gate_report carries gate failure lines"
+    ]

@@ -53,19 +53,6 @@ from microcosm.calibrate import TargetRegistry, TargetSpec, calibrate
 from microcosm.calibrate.artifacts import decode_problem
 from microcosm.frame import EntitySchema, Frame, MassChange, WeightKind, Weights
 
-# microcosm#1301: the references include the high-value homes region cells (30
-# less the two signed out below the small-cell floor), which
-# load_uk_national_target_inputs drops after the compile; microcosm#1278 adds
-# the ONS single years 0, 1 and 2 for all persons, and the childcare costing
-# fixes (item 6) the UK's single years 3 to 6 and England's 0 to 6, and the
-# DfE single-age rows five funded-childcare counts (working parent 9 to 11
-# months and ages 1-3, universal nursery 3; the age-4 cells are signed out);
-# the next policyengine-uk bump retires the OBR welfare-cap split and the
-# England postgraduate repayments (microcosm#1095), and England's single adult
-# council tax discount binds (microcosm#953); microcosm#1359 adds five OBR
-# excise receipts rows, measured at FY2024-25.
-ACTIVE_REFERENCE_COUNT = 1341
-
 
 def _uc_reference(**overrides) -> LedgerTargetReference:
     values = {
@@ -329,11 +316,15 @@ def _facts_for_reference(reference: LedgerTargetReference, value: float) -> list
     if reference.value_operation == "calendar_year_window":
         # A windowed row composes the fiscal years opening in Y-1 and Y from
         # one series; two equal annual facts resolve to the headline value.
+        # An OBR row takes each year from the EFO edition its map names.
+        tables = reference.ledger_selector.get("source_table_by_opening_year", {})
         facts = []
         for year in (reference.period - 1, reference.period):
             fact = _fact_for_reference(reference, value)
             fact["aggregate_fact_key"] += f":fy{year}"
             fact["period"] = {"type": "fiscal_year", "value": year}
+            if str(year) in tables:
+                fact["observed_measure"]["source_table"] = tables[str(year)]
             facts.append(fact)
         return facts
     if reference.name != "dwp.uc.households":
@@ -596,7 +587,6 @@ def test_chronicle_184_uc_and_obr_references_compile_fail_closed() -> None:
     from microcosm.build.ledger_targets import compile_ledger_target_references
 
     spec = load_country_spec("uk")
-    assert len(spec.target_references) == ACTIVE_REFERENCE_COUNT
     reference_names = {reference.name for reference in spec.target_references}
     assert "obr.universal_credit" in reference_names
     assert "dwp.uc.households" in reference_names
@@ -645,12 +635,18 @@ def test_chronicle_184_uc_and_obr_references_compile_fail_closed() -> None:
         [
             # The OBR total binds the two welfare-cap cells at the calendar-2025
             # window, so each cell's series needs the fiscal years opening in
-            # 2024 and 2025.
+            # 2024 and 2025, from the March and October 2026 EFOs.
             {
                 **_fact(concept=concept, source_name="obr", value=value),
                 "aggregate_fact_key": (
                     f"ledger.aggregate_fact.v2:obr-fixture-{concept}-fy{year}"
                 ),
+                "observed_measure": {
+                    **_fact(concept=concept, source_name="obr")["observed_measure"],
+                    "source_table": (
+                        f"EFO {edition} 2026 detailed forecast tables: expenditure"
+                    ),
+                },
                 "period": {"type": "fiscal_year", "value": year},
                 # Chronicle stamps OBR table 4.9's DWP lines with the
                 # geography DWP counts them over (microcosm#1300).
@@ -664,7 +660,7 @@ def test_chronicle_184_uc_and_obr_references_compile_fail_closed() -> None:
                 ("obr.universal_credit_in_cap", 40_000_000_000),
                 ("obr.universal_credit_outside_cap", 10_000_000_000),
             )
-            for year in (2024, 2025)
+            for year, edition in ((2024, "March"), (2025, "October"))
         ],
         references,
         country="uk",

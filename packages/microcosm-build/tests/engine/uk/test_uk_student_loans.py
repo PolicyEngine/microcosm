@@ -15,16 +15,15 @@ def test_values_match_policyengine_enum_when_available() -> None:
     assert "PLAN_4" not in STUDENT_LOAN_ENUM_DOMAIN
 
 
-def test_the_engine_relabels_course_dated_plans_by_age_at_2025() -> None:
-    """policyengine-uk projects the 2024 dataset to the 2025 calibration year and
-    relabels every holder by a course started at 18 (uprate_student_loan_plans,
-    step 1), while the stage dates a course from the age its borrower left
-    full-time education (microcosm#868, #1299). Where the two dates fall on
-    either side of a plan boundary, or the age rule writes the loan off, the
-    engine's plan is the one the calibration measures at 2025. This pins which,
-    so an engine that starts to keep the stage's dating fails it and the SLC
-    rows are re-measured (microcosm#1095). The engine fix is tracked in
-    PolicyEngine/policyengine-uk#2636, item 4."""
+def test_the_engine_keeps_the_stages_plans_at_2025() -> None:
+    """policyengine-uk projects the 2024 dataset to the 2025 calibration year.
+    Through 2.162.1 it relabelled every holder by a course started at 18
+    (uprate_student_loan_plans), while the stage dates a course from the age
+    its borrower left full-time education (microcosm#868, #1299). From 2.162.2
+    (PolicyEngine/policyengine-uk#2636) it keeps each holder's recorded plan
+    and repayment, so the plan the calibration measures at 2025 is the stage's.
+    This pins that, so an engine that starts to relabel again fails it and the
+    SLC rows are re-measured (microcosm#1095)."""
 
     from policyengine_uk.data import UKSingleYearDataset
     from policyengine_uk.data.economic_assumptions import uprate_student_loan_plans
@@ -80,11 +79,12 @@ def test_the_engine_relabels_course_dated_plans_by_age_at_2025() -> None:
 
     out = uprate_student_loan_plans(projected, base, system.parameters, base_year=2024)
 
-    # The 2014 course becomes a 2010 one, Plan 1, and the 1993 course is
-    # written off; the two the rules agree on keep their plans.
+    # Every holder keeps the stage's plan and repayment, the 2014 course and
+    # the 1993 one included, which the age-18 rule relabelled and wrote off.
     assert out.person["student_loan_plan"].astype(str).tolist() == [
-        "PLAN_1",
+        "PLAN_2",
         "PLAN_2",
         "PLAN_1",
-        "NONE",
+        "PLAN_1",
     ]
+    assert out.person["student_loan_repayments"].tolist() == [500.0] * len(people)

@@ -1,0 +1,943 @@
+"""Resolve declarative reference profiles before activation or compilation.
+
+This layer changes selectors, never Ledger observations. Selection dimensions
+are supplied by the consumer; subsequent transformation kinds can share the
+same effective-document and preparation identities.
+"""
+
+from __future__ import annotations
+
+import hashlib
+import json
+from collections.abc import Mapping
+
+from microcosm.build.country_spec import (
+    _carried_value_keys,
+    _validate_target_references,
+)
+from microcosm.build.ledger_targets import ALLOCATED_RESIDUAL_BY_RATIO
+from microcosm.graph.canonical import canonical_json
+
+REFERENCE_PROFILE_RESOLVER_VERSION = "reference-profiles-v1"
+FACTOR_REFERENCE_PROFILE_RESOLVER_VERSION = "reference-profiles-v2"
+ALLOWED_REFERENCE_PROFILE_RESOLVER_VERSIONS = frozenset(
+    {REFERENCE_PROFILE_RESOLVER_VERSION, FACTOR_REFERENCE_PROFILE_RESOLVER_VERSION}
+)
+SCALE_MONEY_AND_INTERVALS = "scale_money_and_intervals"
+REQUIRES_REFERENCE_PROFILE_RESOLUTION = "requires_reference_profile_resolution"
+REQUIRES_PREREQUISITES = "requires_prerequisites"
+REFERENCE_DOCUMENT_KEYS = frozenset(
+    {"country", "schema_version", "hierarchy", "target_references"}
+)
+
+
+def reference_document_sha256(document: object) -> str:
+    """Hash the actual canonical document, rather than its resource filename."""
+    return hashlib.sha256(canonical_json(document)).hexdigest()
+
+
+def _copy(document: object):
+    return json.loads(canonical_json(document))
+
+
+def _mapping(value: object, context: str) -> dict:
+    if not isinstance(value, Mapping):
+        raise ValueError(f"{context} must be an object.")
+    return dict(value)
+
+
+def _sequence(value: object, context: str) -> list:
+    if not isinstance(value, (list, tuple)):
+        raise ValueError(f"{context} must be a list.")
+    return list(value)
+
+
+def _selection_identity(receipt: Mapping) -> dict:
+    identity = {
+        key: receipt[key]
+        for key in (
+            "resolver_version",
+            "base_references_sha256",
+            "base_intervals_sha256",
+            "selected_declarations_sha256",
+            "selection",
+        )
+    }
+    if receipt.get("resolver_version") == FACTOR_REFERENCE_PROFILE_RESOLVER_VERSION:
+        identity["selected_factor_identities"] = receipt["selected_factor_identities"]
+        identity["factor_companions_sha256"] = receipt["factor_companions_sha256"]
+        identity["transformed_names"] = receipt["transformed_names"]
+        if "interval_tables" in receipt:
+            identity["interval_tables_sha256"] = receipt["interval_tables_sha256"]
+    return identity
+
+
+def validate_reference_factor_evidence(receipt: Mapping) -> dict:
+    """Bind selected declarations and receipts without claiming feed authenticity."""
+    from microcosm.build.reference_factors import validate_factor_context
+
+    if receipt.get("resolver_version") == REFERENCE_PROFILE_RESOLVER_VERSION:
+        if any(
+            key in receipt
+            for key in (
+                "selected_factors",
+                "selected_factor_identities",
+                "factor_companions",
+                "factor_companions_sha256",
+            )
+        ):
+            raise ValueError("Legacy resolution cannot carry factor evidence.")
+        return {}
+    factors = _mapping(receipt.get("selected_factors"), "selected factors")
+    if not factors:
+        raise ValueError("Factor resolution needs selected factor evidence.")
+    validated = validate_factor_context(
+        {"schema_version": 1, "factors": list(factors.values())}, list(factors)
+    )
+    if validated != factors:
+        raise ValueError("Selected factor identities do not match their declarations.")
+    identities = {
+        factor_id: {
+            "declaration_sha256": reference_document_sha256(entry["declaration"]),
+            "receipt_sha256": entry["receipt"]["receipt_sha256"],
+        }
+        for factor_id, entry in sorted(factors.items())
+    }
+    if identities != receipt.get("selected_factor_identities"):
+        raise ValueError("Selected factor evidence identity mismatch.")
+    return validated
+
+
+def _profile_metadata(transform: Mapping) -> dict:
+    metadata = _mapping(transform.get("metadata", {}), "profile metadata")
+    if any(
+        not isinstance(key, str) or not isinstance(value, str) or not value
+        for key, value in metadata.items()
+    ):
+        raise ValueError("Profile metadata requires nonempty strings.")
+    if set(metadata) & {
+        "activation_status",
+        "activation_reason",
+        "parking_reason",
+        "required_reference_profile",
+        "required_measurement_binding",
+        "reference_value_kind",
+        "reference_prerequisites",
+        "reference_prerequisites_remaining",
+        "reference_selection_sha256",
+        "effective_intervals_sha256",
+        "reference_profiles_resolved",
+    }:
+        raise ValueError("A profile cannot override resolution identities.")
+    return metadata
+
+
+def _explicit_names(transform: Mapping, field: str) -> list[str]:
+    names = _sequence(transform.get(field), field)
+    if (
+        not names
+        or any(not isinstance(name, str) or not name for name in names)
+        or len(set(names)) != len(names)
+    ):
+        raise ValueError("A transformation needs unique explicit reference names.")
+    return names
+
+
+def _companion_key(row: Mapping, *, scope: bool = False) -> bytes:
+    selector = _mapping(row.get("ledger_selector"), "companion selector")
+    excluded = {"aggregate_fact_key", "source_record_id"}
+    if not scope:
+        excluded.update({"source_measure_id", "source_concept"})
+    else:
+        excluded.add("dimension_values")
+    payload = {
+        "selector": {
+            key: value for key, value in selector.items() if key not in excluded
+        },
+        "entity": row.get("entity"),
+        "period": row.get("period"),
+        "reference_set": row.get("metadata", {}).get("reference_set"),
+    }
+    if not scope:
+        payload["filter"] = row.get("filter")
+    return canonical_json(payload)
+
+
+def _validate_companions(transform: Mapping, by_name: Mapping) -> tuple[list, list]:
+    money = _explicit_names(transform, "reference_names")
+    counts = _explicit_names(transform, "count_reference_names")
+    if set(money) & set(counts) or len(money) != len(counts):
+        raise ValueError("Money and count rosters need disjoint complete companions.")
+    for kind, names in (("money", money), ("count", counts)):
+        if set(names) - set(by_name):
+            raise ValueError("A profile names missing companion references.")
+        if any(
+            by_name[name].get("metadata", {}).get("reference_value_kind") != kind
+            for name in names
+        ):
+            raise ValueError(
+                "Money and count rosters require matching declared value kinds."
+            )
+        scopes = {_companion_key(by_name[name], scope=True) for name in names}
+        complete = {
+            name
+            for name, row in by_name.items()
+            if isinstance(row.get("ledger_selector"), Mapping)
+            and _companion_key(row, scope=True) in scopes
+        }
+        if complete != set(names):
+            raise ValueError("Money and count rosters are incomplete companions.")
+    money_keys = [_companion_key(by_name[name]) for name in money]
+    count_keys = [_companion_key(by_name[name]) for name in counts]
+    if len(set(money_keys)) != len(money) or set(money_keys) != set(count_keys):
+        raise ValueError("Money and count rosters must match one-to-one companions.")
+    if {_companion_key(by_name[name], scope=True) for name in money} & {
+        _companion_key(by_name[name], scope=True) for name in counts
+    }:
+        raise ValueError("Money and count companions must select distinct measures.")
+    return money, counts
+
+
+def _factor_companions(chosen: Mapping, by_name: Mapping) -> dict:
+    """Capture roster roles and source value semantics before transforming rows."""
+    companions = {}
+    for dimension, choice in chosen.items():
+        for transform in choice["declaration"].get("transformations", []):
+            if transform.get("operation") != SCALE_MONEY_AND_INTERVALS:
+                continue
+            money, counts = _validate_companions(transform, by_name)
+            for role, names in (("money", money), ("count", counts)):
+                for name in names:
+                    if name in companions:
+                        raise ValueError("Duplicate factor companion roster entry.")
+                    row = by_name[name]
+                    companions[name] = {
+                        "role": role,
+                        "factor_id": transform["factor_id"],
+                        "dimension": dimension,
+                        "profile": choice["name"],
+                        "source": _copy(
+                            {
+                                "ledger_selector": row["ledger_selector"],
+                                "period": row.get("period"),
+                                "value_operation": row.get(
+                                    "value_operation", "identity"
+                                ),
+                                "value_operands": row.get("value_operands", []),
+                                "metadata": {
+                                    "reference_value_kind": row["metadata"][
+                                        "reference_value_kind"
+                                    ]
+                                },
+                            }
+                        ),
+                    }
+    return companions
+
+
+def _interval_table_ids(transform: Mapping) -> list[str]:
+    tables = _sequence(transform.get("interval_table_ids"), "interval table ids")
+    if any(not isinstance(table, str) or not table for table in tables) or len(
+        set(tables)
+    ) != len(tables):
+        raise ValueError("Interval table ids must be unique nonempty text.")
+    return tables
+
+
+def _validate_interval_companions(
+    transform: Mapping, tables: Mapping, by_name: Mapping, declaration: Mapping
+) -> None:
+    """Every scaled band names exactly one count/money companion pair."""
+    money, counts = _validate_companions(transform, by_name)
+    band_money, band_counts = [], []
+    for table_id in _interval_table_ids(transform):
+        table = tables[table_id]
+        if (
+            table.declaration["source_period"] != declaration["source_period"]
+            or table.declaration["target_period"] != declaration["target_period"]
+        ):
+            raise ValueError(
+                "Factor and interval table source/target periods are incompatible."
+            )
+        for band in table.declaration["bands"]:
+            if "count_reference" not in band:
+                raise ValueError(
+                    "An interval table without companion references cannot be scaled."
+                )
+            pair = (band["count_reference"], band["amount_reference"])
+            for name in pair:
+                row = by_name.get(name)
+                if (
+                    row is None
+                    or row.get("entity") != table.entity
+                    or row.get("filter") != band["indicator"]
+                ):
+                    raise ValueError(
+                        "Interval companions must filter on their band indicator."
+                    )
+            if _companion_key(by_name[pair[0]]) != _companion_key(by_name[pair[1]]):
+                raise ValueError(
+                    "A band's count and money references are not companions."
+                )
+            band_counts.append(pair[0])
+            band_money.append(pair[1])
+    if (
+        len(set(band_money)) != len(band_money)
+        or len(set(band_counts)) != len(band_counts)
+        or set(band_money) != set(money)
+        or set(band_counts) != set(counts)
+    ):
+        raise ValueError(
+            "Interval band companions must be exactly the money and count rosters."
+        )
+
+
+def _scaled_intervals(
+    chosen: Mapping,
+    intervals: Mapping | None,
+    by_name: Mapping,
+    selected_factors: Mapping,
+) -> tuple[dict | None, dict]:
+    """Scale each named table once with its transformation's selected factor."""
+    requests = {}
+    for dimension, choice in chosen.items():
+        for transform in choice["declaration"].get("transformations", []):
+            if transform.get("operation") != SCALE_MONEY_AND_INTERVALS:
+                continue
+            for table_id in _interval_table_ids(transform):
+                if table_id in requests:
+                    raise ValueError(
+                        f"Interval table {table_id!r} is scaled by more than one "
+                        "transformation."
+                    )
+                requests[table_id] = (dimension, choice["name"], transform)
+    if not requests:
+        return intervals, {}
+    if intervals is None:
+        raise ValueError("Interval scaling needs the declared interval document.")
+    from microcosm.build.reference_intervals import (
+        scale_interval_document,
+        validate_interval_document,
+    )
+
+    tables = validate_interval_document(intervals)
+    if set(requests) - set(tables):
+        raise ValueError("A profile names an undeclared interval table.")
+    scalings, records, checked = {}, {}, set()
+    for table_id, (dimension, profile, transform) in sorted(requests.items()):
+        factor_id = transform["factor_id"]
+        entry = selected_factors[factor_id]
+        if id(transform) not in checked:
+            _validate_interval_companions(
+                transform, tables, by_name, entry["declaration"]
+            )
+            checked.add(id(transform))
+        scalings[table_id] = {
+            "factor": entry["operational_factor"],
+            "factor_id": factor_id,
+            "factor_declaration_sha256": reference_document_sha256(
+                entry["declaration"]
+            ),
+            "factor_receipt_sha256": entry["receipt"]["receipt_sha256"],
+        }
+        records[table_id] = {
+            "dimension": dimension,
+            "profile": profile,
+            "factor_id": factor_id,
+            "operational_factor": _copy(entry["operational_factor"]),
+            "source_table_sha256": reference_document_sha256(
+                tables[table_id].declaration
+            ),
+            "bands": len(tables[table_id].band_ids),
+        }
+    effective = scale_interval_document(intervals, scalings)
+    for raw in effective["tables"]:
+        if raw["id"] in records:
+            records[raw["id"]]["effective_table_sha256"] = reference_document_sha256(
+                raw
+            )
+    return effective, records
+
+
+def _validate_interval_resolution(
+    resolution: Mapping, factors: Mapping, interval_document: Mapping | None
+) -> None:
+    """Bind recorded interval scaling to selected factors and the document."""
+    records = resolution.get("interval_tables")
+    if records is None:
+        if "interval_tables_sha256" in resolution or resolution.get(
+            "effective_intervals_sha256"
+        ) != resolution.get("base_intervals_sha256"):
+            raise ValueError(
+                "Unscaled effective intervals must equal their base document."
+            )
+        return
+    records = _mapping(records, "interval scaling records")
+    if (
+        resolution.get("resolver_version") != FACTOR_REFERENCE_PROFILE_RESOLVER_VERSION
+        or not records
+        or reference_document_sha256(records)
+        != resolution.get("interval_tables_sha256")
+        or resolution.get("effective_intervals_sha256")
+        == resolution.get("base_intervals_sha256")
+    ):
+        raise ValueError("Interval scaling record identity mismatch.")
+    identities = resolution.get("selected_factor_identities", {})
+    for record in records.values():
+        record = _mapping(record, "interval scaling record")
+        factor_id = record.get("factor_id")
+        if (
+            factor_id not in factors
+            or record.get("operational_factor")
+            != factors[factor_id]["operational_factor"]
+            or record.get("profile")
+            != resolution["selection"].get(record.get("dimension"))
+        ):
+            raise ValueError("Interval scaling disagrees with its selected factor.")
+    if interval_document is None:
+        return
+    from microcosm.build.reference_intervals import validate_interval_document
+
+    tables = validate_interval_document(interval_document)
+    scaled = {table_id for table_id, table in tables.items() if table.scaled}
+    if scaled != set(records):
+        raise ValueError("Effective interval tables differ from their scaling records.")
+    for table_id in scaled:
+        record, declaration = records[table_id], tables[table_id].declaration
+        scaling = declaration["scaling"]
+        identity = identities.get(record["factor_id"], {})
+        if (
+            reference_document_sha256(declaration)
+            != record.get("effective_table_sha256")
+            or scaling["source_table_sha256"] != record.get("source_table_sha256")
+            or scaling["factor_id"] != record["factor_id"]
+            or scaling["operational_factor"] != record["operational_factor"]
+            or scaling["factor_receipt_sha256"] != identity.get("receipt_sha256")
+            or scaling["factor_declaration_sha256"]
+            != identity.get("declaration_sha256")
+        ):
+            raise ValueError("Effective interval table scaling identity mismatch.")
+
+
+def _satisfy_factor_prerequisite(row: dict, dimension: str, binding: str) -> list:
+    metadata = row.setdefault("metadata", {})
+    if metadata.get("activation_status") != REQUIRES_PREREQUISITES:
+        raise ValueError(
+            "Money scaling requires the explicit prerequisite parking status."
+        )
+    if (
+        metadata.get("required_reference_profile") != dimension
+        or metadata.get("required_measurement_binding") != binding
+    ):
+        raise ValueError("Money scaling has incompatible reference prerequisites.")
+    try:
+        prerequisites = json.loads(metadata.get("reference_prerequisites", ""))
+    except (TypeError, ValueError) as error:
+        raise ValueError(
+            "Reference prerequisites must be an explicit JSON list."
+        ) from error
+    required = {f"reference_profile:{dimension}", f"measurement:{binding}"}
+    if (
+        not isinstance(prerequisites, list)
+        or any(not isinstance(item, str) or not item for item in prerequisites)
+        or len(set(prerequisites)) != len(prerequisites)
+        or set(prerequisites) != required
+    ):
+        raise ValueError(
+            "Reference prerequisites must name the profile and measurement."
+        )
+    remaining = [
+        item for item in prerequisites if item != f"reference_profile:{dimension}"
+    ]
+    metadata["reference_prerequisites_remaining"] = canonical_json(remaining).decode()
+    return remaining
+
+
+def resolve_reference_profiles(
+    base_reference_document: Mapping,
+    profile_declarations: Mapping,
+    selection: Mapping,
+    interval_document: Mapping | None = None,
+    *,
+    factor_context: Mapping | None = None,
+) -> tuple[dict, dict | None, dict]:
+    """Return effective references, effective intervals and a bound receipt.
+
+    Only selected declarations enter selection identity. An unavailable profile
+    refuses; an explicitly deferred dimension is reported without claiming its
+    transformations ran. Money scaling consumes declared factor evidence;
+    compilation authenticates it against the feed. Named interval tables are
+    scaled by the same selected factor as their money companions; without
+    named tables the interval document passes through unchanged.
+    Resource headers are bound into the base identity; effective references use
+    the compiler's closed document shape.
+    """
+    base = _copy(_mapping(base_reference_document, "base references"))
+    declarations = _copy(_mapping(profile_declarations, "profile declarations"))
+    if _carried_value_keys(declarations):
+        raise ValueError("Reference profile declarations carry observed values.")
+    selected = _mapping(selection, "profile selection")
+    if (
+        type(declarations.get("schema_version")) is not int
+        or declarations["schema_version"] != 1
+    ):
+        raise ValueError("Profile declarations require schema_version 1.")
+    dimensions = _mapping(declarations.get("dimensions"), "profile dimensions")
+    if set(selected) - set(dimensions):
+        raise ValueError("Unknown profile selection dimension.")
+    rows = _sequence(base.get("target_references"), "target references")
+    by_name = {}
+    for row in rows:
+        row = _mapping(row, "reference")
+        name = row.get("name")
+        if not isinstance(name, str) or not name or name in by_name:
+            raise ValueError("Reference names must be nonempty and unique.")
+        metadata = _mapping(row.get("metadata", {}), "reference metadata")
+        if metadata.get("reference_profiles_resolved"):
+            raise ValueError("Reference profiles have already been resolved.")
+        by_name[name] = row
+    intervals = None if interval_document is None else _copy(interval_document)
+    chosen, resolved_selection, deferred = {}, {}, []
+    for dimension, raw_dimension in sorted(dimensions.items()):
+        dimension_row = _mapping(raw_dimension, "profile dimension")
+        profiles = _mapping(dimension_row.get("profiles"), "named profiles")
+        name = selected.get(dimension, dimension_row.get("default"))
+        if not isinstance(name, str) or name not in profiles:
+            raise ValueError(f"Unknown profile {name!r} for {dimension!r}.")
+        profile = _mapping(profiles[name], "selected profile")
+        if type(profile.get("deferred", False)) is not bool:
+            raise ValueError("A profile's deferred status must be boolean.")
+        if profile.get("available", True) is not True:
+            raise ValueError(f"Profile {dimension!r}/{name!r} is unavailable.")
+        transformations = _sequence(
+            profile.get("transformations", []), "profile transformations"
+        )
+        if profile.get("deferred", False):
+            if transformations:
+                raise ValueError("A deferred profile cannot apply transformations.")
+            deferred.append(dimension)
+        chosen[dimension] = {"name": name, "declaration": profile}
+        resolved_selection[dimension] = name
+    factor_ids = set()
+    for choice in chosen.values():
+        for raw_transform in choice["declaration"].get("transformations", []):
+            transform = _mapping(raw_transform, "reference transformation")
+            if transform.get("operation") == SCALE_MONEY_AND_INTERVALS:
+                _interval_table_ids(transform)
+                factor_id = transform.get("factor_id")
+                if not isinstance(factor_id, str) or not factor_id:
+                    raise ValueError("Money scaling needs a declared factor id.")
+                factor_ids.add(factor_id)
+    selected_factors = {}
+    if factor_ids:
+        from microcosm.build.reference_factors import validate_factor_context
+
+        selected_factors = validate_factor_context(factor_context, sorted(factor_ids))
+    base_intervals_hash = (
+        None if intervals is None else reference_document_sha256(intervals)
+    )
+    intervals, interval_records = _scaled_intervals(
+        chosen, intervals, by_name, selected_factors
+    )
+    receipt = {
+        "resolver_version": REFERENCE_PROFILE_RESOLVER_VERSION,
+        "base_references_sha256": reference_document_sha256(base),
+        "base_intervals_sha256": base_intervals_hash,
+        "selected_declarations_sha256": reference_document_sha256(chosen),
+        "selection": resolved_selection,
+    }
+    if selected_factors:
+        companions = _factor_companions(chosen, by_name)
+        receipt.update(
+            resolver_version=FACTOR_REFERENCE_PROFILE_RESOLVER_VERSION,
+            factor_companions=companions,
+            factor_companions_sha256=reference_document_sha256(companions),
+            transformed_names=sorted(
+                name
+                for choice in chosen.values()
+                for transform in choice["declaration"].get("transformations", [])
+                for field in (
+                    ("reference_names", "count_reference_names")
+                    if transform.get("operation") == SCALE_MONEY_AND_INTERVALS
+                    else ("reference_names",)
+                )
+                for name in _explicit_names(transform, field)
+            ),
+            selected_factors=_copy(selected_factors),
+            selected_factor_identities={
+                factor_id: {
+                    "declaration_sha256": reference_document_sha256(
+                        entry["declaration"]
+                    ),
+                    "receipt_sha256": entry["receipt"]["receipt_sha256"],
+                }
+                for factor_id, entry in sorted(selected_factors.items())
+            },
+        )
+        if interval_records:
+            receipt.update(
+                interval_tables=interval_records,
+                interval_tables_sha256=reference_document_sha256(interval_records),
+            )
+    selection_hash = reference_document_sha256(_selection_identity(receipt))
+    interval_hash = None if intervals is None else reference_document_sha256(intervals)
+    transformed, policies = {}, []
+    for dimension, choice in chosen.items():
+        for raw_transform in choice["declaration"].get("transformations", []):
+            transform = _mapping(raw_transform, "reference transformation")
+            operation = transform.get("operation")
+            allowed = {
+                "reference_names",
+                "operation",
+                "value_operands",
+                "metadata",
+                "notes",
+                "target_label",
+            }
+            if operation == SCALE_MONEY_AND_INTERVALS:
+                allowed = {
+                    "reference_names",
+                    "count_reference_names",
+                    "operation",
+                    "factor_id",
+                    "interval_table_ids",
+                    "required_measurement_binding",
+                    "metadata",
+                }
+            if set(transform) - allowed:
+                raise ValueError("Unknown reference transformation fields.")
+            if operation not in {
+                ALLOCATED_RESIDUAL_BY_RATIO,
+                SCALE_MONEY_AND_INTERVALS,
+            }:
+                raise ValueError("Unsupported reference profile transformation.")
+            metadata = _profile_metadata(transform)
+            if _carried_value_keys(transform):
+                raise ValueError("Reference transformations carry observed values.")
+            if operation == SCALE_MONEY_AND_INTERVALS:
+                binding = transform.get("required_measurement_binding")
+                if not isinstance(binding, str) or not binding:
+                    raise ValueError(
+                        "Money scaling needs a required measurement binding."
+                    )
+                money, counts = _validate_companions(transform, by_name)
+                factor_id = transform["factor_id"]
+                factor = selected_factors[factor_id]
+                declaration = factor["declaration"]
+                if declaration["purpose"] != "profile_input":
+                    raise ValueError("A diagnostic factor cannot be a profile input.")
+                rational = factor["operational_factor"]
+                weight = rational["numerator"] / rational["denominator"]
+                for name in [*money, *counts]:
+                    if name in transformed:
+                        raise ValueError(
+                            f"Duplicate or incompatible transformation: {name!r}."
+                        )
+                    row = by_name[name]
+                    if (
+                        row.get("ledger_selector", {}).get("period_value")
+                        != declaration["source_period"]
+                        or row.get("period") != declaration["target_period"]
+                    ):
+                        raise ValueError(
+                            "Factor and reference source/target periods are incompatible."
+                        )
+                    remaining = _satisfy_factor_prerequisite(row, dimension, binding)
+                    if name in money:
+                        if row.get(
+                            "value_operation", "identity"
+                        ) != "identity" or row.get("value_operands", []):
+                            raise ValueError(
+                                "Money scaling requires an untransformed source reference."
+                            )
+                        selector = _mapping(
+                            row.get("ledger_selector"), "money selector"
+                        )
+                        key = selector.get("aggregate_fact_key")
+                        if not isinstance(key, str) or not key:
+                            raise ValueError(
+                                "Money scaling needs a singleton source fact key."
+                            )
+                        row["value_operation"] = "linear_combination"
+                        row["value_operands"] = [
+                            {
+                                "aggregate_fact_key": key,
+                                "expected_member_count": 1,
+                                "weight": weight,
+                            }
+                        ]
+                    row_metadata = row.setdefault("metadata", {})
+                    row_metadata.update(metadata)
+                    row_metadata["reference_selection_sha256"] = selection_hash
+                    row_metadata["reference_profiles_resolved"] = "1"
+                    if interval_hash is not None:
+                        row_metadata["effective_intervals_sha256"] = interval_hash
+                    transformed[name] = {
+                        "dimension": dimension,
+                        "profile": choice["name"],
+                        "operation": "linear_combination"
+                        if name in money
+                        else "identity",
+                        "factor_id": factor_id,
+                        "operational_factor": _copy(rational),
+                        "metadata": metadata,
+                        "operand_selectors": _copy(row.get("value_operands", [])),
+                        "source_period": row.get("ledger_selector", {}).get(
+                            "period_value"
+                        ),
+                        "target_period": row.get("period"),
+                        "unresolved_prerequisites": remaining,
+                    }
+                policies.append(
+                    {"dimension": dimension, "profile": choice["name"], **metadata}
+                )
+                continue
+            names = _sequence(transform.get("reference_names"), "transformed names")
+            if not names or any(not isinstance(name, str) for name in names):
+                raise ValueError("A transformation needs explicit reference names.")
+            operands = _sequence(transform.get("value_operands"), "value operands")
+            for name in names:
+                if name not in by_name:
+                    raise ValueError(f"Profile names missing reference {name!r}.")
+                if name in transformed:
+                    raise ValueError(
+                        f"Duplicate or incompatible transformation: {name!r}."
+                    )
+                row = by_name[name]
+                row["value_operation"] = transform["operation"]
+                row["value_operands"] = _copy(operands)
+                row_metadata = row.setdefault("metadata", {})
+                prerequisite = row_metadata.get("required_reference_profile")
+                if prerequisite and prerequisite != dimension:
+                    raise ValueError(
+                        "Transformation does not satisfy the reference profile prerequisite."
+                    )
+                row_metadata.update(metadata)
+                row_metadata["reference_selection_sha256"] = selection_hash
+                row_metadata["reference_profiles_resolved"] = "1"
+                if interval_hash is not None:
+                    row_metadata["effective_intervals_sha256"] = interval_hash
+                if (
+                    row_metadata.get("activation_status")
+                    == REQUIRES_REFERENCE_PROFILE_RESOLUTION
+                ):
+                    row_metadata["activation_status"] = "active"
+                    row_metadata.pop("activation_reason", None)
+                    row_metadata.pop("parking_reason", None)
+                if "notes" in transform:
+                    if not isinstance(transform["notes"], str):
+                        raise ValueError("Transformation notes must be text.")
+                    row["notes"] = transform["notes"]
+                if "target_label" in transform:
+                    hierarchy = _mapping(row.get("hierarchy"), "reference hierarchy")
+                    hierarchy["target_label"] = transform["target_label"]
+                    row["hierarchy"] = hierarchy
+                transformed[name] = {
+                    "dimension": dimension,
+                    "profile": choice["name"],
+                    "operation": transform["operation"],
+                    "metadata": metadata,
+                    "operand_selectors": _copy(operands),
+                    "source_period": row.get("ledger_selector", {}).get("period_value"),
+                    "target_period": row.get("period"),
+                }
+            policies.append(
+                {"dimension": dimension, "profile": choice["name"], **metadata}
+            )
+    base["target_references"] = [by_name[row["name"]] for row in rows]
+    effective = {
+        key: value for key, value in base.items() if key in REFERENCE_DOCUMENT_KEYS
+    }
+    _validate_target_references(effective, country=effective.get("country"))
+    receipt.update(
+        reference_selection_sha256=selection_hash,
+        effective_references_sha256=reference_document_sha256(effective),
+        effective_intervals_sha256=interval_hash,
+        transformed_names=sorted(transformed),
+        transformations={name: transformed[name] for name in sorted(transformed)},
+        policies=policies,
+        deferred_dimensions=deferred,
+    )
+    receipt["receipt_sha256"] = reference_document_sha256(receipt)
+    return effective, intervals, receipt
+
+
+def _factor_reference_bindings(resolution: Mapping) -> dict:
+    """Validate the compact roster bound into the v2 selection identity."""
+    if resolution["resolver_version"] == REFERENCE_PROFILE_RESOLVER_VERSION:
+        return {}
+    bindings = _mapping(resolution.get("factor_companions"), "factor companions")
+    if reference_document_sha256(bindings) != resolution.get(
+        "factor_companions_sha256"
+    ):
+        raise ValueError("Factor companion source record identity mismatch.")
+    for name, raw_binding in bindings.items():
+        binding = _mapping(raw_binding, "factor companion")
+        source = _mapping(binding.get("source"), "factor companion source")
+        if (
+            not isinstance(name, str)
+            or not name
+            or binding.get("role") not in {"money", "count"}
+            or binding.get("profile")
+            != resolution["selection"].get(binding.get("dimension"))
+            or source.get("metadata", {}).get("reference_value_kind") != binding["role"]
+        ):
+            raise ValueError(
+                "Factor companion roster role or profile identity mismatch."
+            )
+    return bindings
+
+
+def validate_reference_resolution(
+    document: Mapping,
+    receipt: Mapping,
+    *,
+    references_sha256: str | None = None,
+    interval_document: Mapping | None = None,
+) -> dict:
+    """Refuse stale effective documents, receipts or interval companions.
+
+    The checks bind the effective rows to the receipt and the receipt's
+    factor companions to its selection identity. They assume that identity is
+    trusted, as when composition resolves a fresh receipt: a forger who also
+    replaces the selection identity is outside this layer. Selected factors
+    are anchored independently by replay against the authenticated feed.
+    """
+    resolution = _copy(_mapping(receipt, "reference resolution receipt"))
+    if (
+        resolution.get("resolver_version")
+        not in ALLOWED_REFERENCE_PROFILE_RESOLVER_VERSIONS
+    ):
+        raise ValueError("Unknown reference resolver version.")
+    claimed_receipt_hash = resolution.pop("receipt_sha256", None)
+    if claimed_receipt_hash != reference_document_sha256(resolution):
+        raise ValueError("Reference resolution receipt hash mismatch.")
+    resolution["receipt_sha256"] = claimed_receipt_hash
+    factors = validate_reference_factor_evidence(resolution)
+    actual = reference_document_sha256(document)
+    if actual != resolution.get("effective_references_sha256") or (
+        references_sha256 is not None and actual != references_sha256
+    ):
+        raise ValueError("Effective reference document hash mismatch.")
+    try:
+        selection_hash = reference_document_sha256(_selection_identity(resolution))
+    except KeyError as error:
+        raise ValueError("Reference resolution identity is incomplete.") from error
+    if selection_hash != resolution.get("reference_selection_sha256"):
+        raise ValueError("Reference selection identity mismatch.")
+    if interval_document is not None and reference_document_sha256(
+        interval_document
+    ) != resolution.get("effective_intervals_sha256"):
+        raise ValueError("Effective interval document hash mismatch.")
+    _validate_interval_resolution(resolution, factors, interval_document)
+    factor_bindings = _factor_reference_bindings(resolution)
+    transformed_names = resolution.get("transformed_names")
+    if not isinstance(transformed_names, list) or not all(
+        isinstance(name, str) for name in transformed_names
+    ):
+        raise ValueError("Resolution receipt transformed names are malformed.")
+    transformations = _mapping(
+        resolution.get("transformations"), "resolution transformations"
+    )
+    if any(not isinstance(action, Mapping) for action in transformations.values()):
+        raise ValueError("Resolution transformations must map names to objects.")
+    other_names = set(transformed_names) - set(factor_bindings)
+    names, used_factors, seen_names = [], set(), set()
+    for row in document.get("target_references", ()):
+        name = row.get("name")
+        metadata = row.get("metadata", {})
+        resolved = metadata.get("reference_profiles_resolved")
+        if (factors or resolved) and (not isinstance(name, str) or not name):
+            raise ValueError(
+                "Resolved and factor reference names must be nonempty strings."
+            )
+        if factors:
+            if name in seen_names:
+                raise ValueError("Duplicate factor companion reference roster name.")
+            seen_names.add(name)
+        if resolved:
+            names.append(name)
+            if metadata.get("reference_selection_sha256") != selection_hash or (
+                metadata.get("effective_intervals_sha256")
+                != resolution.get("effective_intervals_sha256")
+            ):
+                raise ValueError("Effective reference profile identity mismatch.")
+            action = transformations.get(name, {})
+            binding = factor_bindings.get(name)
+            if factors and binding is None and name not in other_names:
+                raise ValueError(
+                    "Factor action names a row outside its companion roster."
+                )
+            if binding is not None or "factor_id" in action:
+                if binding is None:
+                    raise ValueError(
+                        "Factor action names a row outside its companion roster."
+                    )
+                role = binding["role"]
+                operation = "linear_combination" if role == "money" else "identity"
+                if action.get("operation") != operation or any(
+                    action.get(key) != binding[key]
+                    for key in ("dimension", "profile", "factor_id")
+                ):
+                    raise ValueError(
+                        "Factor action disagrees with its companion roster role."
+                    )
+                source = binding["source"]
+                if (
+                    metadata.get("reference_value_kind") != role
+                    or row.get("ledger_selector") != source.get("ledger_selector")
+                    or row.get("period") != source.get("period")
+                ):
+                    raise ValueError(
+                        "Effective factor companion source semantics changed."
+                    )
+                factor_id = binding["factor_id"]
+                if factor_id not in factors:
+                    raise ValueError(
+                        "A transformed reference has missing factor evidence."
+                    )
+                used_factors.add(factor_id)
+                entry = factors[factor_id]
+                declaration = entry["declaration"]
+                rational = entry["operational_factor"]
+                if (
+                    action.get("operational_factor") != rational
+                    or action.get("source_period") != declaration["source_period"]
+                    or action.get("target_period") != declaration["target_period"]
+                ):
+                    raise ValueError("Effective reference factor identity mismatch.")
+                if role == "money":
+                    expected = [
+                        {
+                            "aggregate_fact_key": source.get("ledger_selector", {}).get(
+                                "aggregate_fact_key"
+                            ),
+                            "expected_member_count": 1,
+                            "weight": rational["numerator"] / rational["denominator"],
+                        }
+                    ]
+                    if (
+                        row.get("value_operation") != "linear_combination"
+                        or row.get("value_operands") != expected
+                        or action.get("operand_selectors") != expected
+                    ):
+                        raise ValueError(
+                            "Effective money factor must be applied exactly once."
+                        )
+                elif (
+                    row.get("value_operation", "identity")
+                    != source.get("value_operation", "identity")
+                    or row.get("value_operands", []) != source.get("value_operands", [])
+                    or action.get("operand_selectors")
+                    != source.get("value_operands", [])
+                ):
+                    raise ValueError(
+                        "Effective count value semantics must remain unchanged."
+                    )
+    if sorted(names) != resolution.get("transformed_names"):
+        raise ValueError("Resolution receipt transformed names mismatch.")
+    if used_factors != set(factors):
+        raise ValueError("Resolution receipt has unused selected factor evidence.")
+    if set(factor_bindings) - set(names):
+        raise ValueError("Resolution receipt is missing factor companion rows.")
+    return resolution

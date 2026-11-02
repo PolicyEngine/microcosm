@@ -64,7 +64,9 @@ __all__ = [
     "CHRONICLE_FEED_RESOURCE",
     "ChronicleFeedPinMismatchError",
     "LedgerConsumerArtifact",
+    "LexicalFloat",
     "add_ledger_artifact_args",
+    "chronicle_feed_identity",
     "load_ledger_consumer_artifact",
     "resolve_ledger_artifact",
     "validate_chronicle_feed_pin",
@@ -78,6 +80,51 @@ CONSUMER_ARTIFACT_SCHEMA_VERSION = MICROCOSM_CONSUMER_ARTIFACT_SCHEMA_VERSION
 ALLOWED_LEDGER_ASSERTIONS = frozenset(("observation", "source_projection"))
 DEFAULT_LEDGER_ASSERTION = "observation"
 CHRONICLE_FEED_RESOURCE = "chronicle_feed.json"
+_FEED_IDENTITY_FIELDS = (
+    "source_commit",
+    "facts_sha256",
+    "manifest_sha256",
+    "artifact_schema_version",
+    "consumer_fact_schema_versions",
+    "consumer_fact_schema_sha256",
+    "fact_row_count",
+)
+
+
+def chronicle_feed_identity(feed_pin: Mapping[str, Any]) -> dict[str, Any]:
+    """Select reviewed source commit and loader-verified fields, excluding prose.
+
+    The source commit is a caller declaration unless the authenticated manifest
+    also carries it; the artifact loader verifies the remaining six fields.
+    """
+    missing = sorted(set(_FEED_IDENTITY_FIELDS) - feed_pin.keys())
+    if missing:
+        raise ValueError(
+            f"Chronicle factor feed identity is missing fields: {missing}."
+        )
+    if not isinstance(feed_pin["source_commit"], str) or not feed_pin["source_commit"]:
+        raise ValueError("Chronicle factor feed identity requires a source commit.")
+    return {field: feed_pin[field] for field in _FEED_IDENTITY_FIELDS}
+
+
+class LexicalFloat(float):
+    """An opt-in float retaining its authenticated JSON numeric token.
+
+    Request ``lexical_floats=True`` when loading operands for exact arithmetic.
+    The default loader returns plain floats, avoiding the instance and token
+    overhead and preserving compatibility with serializers requiring exact
+    float types. Standard JSON serialization retains the same numeric bytes.
+    """
+
+    __slots__ = ("lexical_token",)
+
+    def __new__(cls, token: str):
+        instance = super().__new__(cls, token)
+        instance.lexical_token = token
+        return instance
+
+    def __reduce__(self):
+        return type(self), (self.lexical_token,)
 
 
 class ChronicleFeedPinMismatchError(ValueError):
@@ -250,6 +297,7 @@ def load_ledger_consumer_artifact(
     expected_facts_sha256: str | None = None,
     expected_manifest_sha256: str | None = None,
     feed_pin: Mapping[str, Any] | None = None,
+    lexical_floats: bool = False,
 ) -> LedgerConsumerArtifact:
     """Load a Ledger consumer artifact directory or bare consumer-facts file.
 
@@ -259,6 +307,8 @@ def load_ledger_consumer_artifact(
     reviewed against; any mismatch raises before facts are used. ``feed_pin``
     additionally checks all six reviewed artifact fields, without replacing
     the manifest integrity checks or either optional hash check.
+    ``lexical_floats=True`` retains numeric tokens for factor verification;
+    otherwise JSON decimals load as plain ``float`` instances.
     """
     artifact_path = Path(path)
     if not artifact_path.exists():
@@ -314,7 +364,7 @@ def load_ledger_consumer_artifact(
     if feed_pin is not None:
         artifact = LedgerConsumerArtifact(
             path=artifact_path,
-            facts=_load_fact_rows(facts_path),
+            facts=_load_fact_rows(facts_path, lexical_floats=lexical_floats),
             facts_sha256=facts_sha256,
             manifest=manifest,
             manifest_sha256=manifest_sha256,
@@ -340,7 +390,7 @@ def load_ledger_consumer_artifact(
     if artifact is None:
         artifact = LedgerConsumerArtifact(
             path=artifact_path,
-            facts=_load_fact_rows(facts_path),
+            facts=_load_fact_rows(facts_path, lexical_floats=lexical_floats),
             facts_sha256=facts_sha256,
             manifest=manifest,
             manifest_sha256=manifest_sha256,
@@ -389,7 +439,9 @@ def resolve_ledger_artifact(args: Namespace) -> LedgerConsumerArtifact | None:
     )
 
 
-def _load_fact_rows(path: Path) -> tuple[dict[str, Any], ...]:
+def _load_fact_rows(
+    path: Path, *, lexical_floats: bool = False
+) -> tuple[dict[str, Any], ...]:
     rows: list[dict[str, Any]] = []
     with path.open() as file:
         for line_number, line in enumerate(file, start=1):
@@ -397,7 +449,9 @@ def _load_fact_rows(path: Path) -> tuple[dict[str, Any], ...]:
             if not stripped:
                 continue
             try:
-                row = json.loads(stripped)
+                row = json.loads(
+                    stripped, parse_float=LexicalFloat if lexical_floats else float
+                )
             except json.JSONDecodeError as exc:
                 raise ValueError(
                     f"Invalid Ledger facts JSONL row {line_number}: {exc.msg}"

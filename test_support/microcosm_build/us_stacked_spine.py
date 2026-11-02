@@ -255,26 +255,6 @@ def _finalize_fixture_predictions(
     return predictions, donor
 
 
-def _s_corp_universe_fixture() -> Frame:
-    cloned = _cloned_stacked_fixture()
-    person = cloned.table("person").copy(deep=True)
-    clone_column = support_clone_index_column("person")
-    clone_index = person[clone_column]
-    person["s_corp_income"] = np.where(clone_index.eq(0), np.nan, 0.0)
-    first_clone = person.index[clone_index.eq(1)][0]
-    person.loc[first_clone, clone_column] = 2
-    tables = {entity: cloned.table(entity) for entity in cloned.entities}
-    tables["person"] = person
-    return Frame(
-        tables,
-        cloned.schema,
-        {entity: cloned.weights_for(entity) for entity in cloned.weighted_entities},
-        cloned.strata,
-        mass_log=cloned.mass_log,
-        metadata=cloned.metadata,
-    )
-
-
 def _cloned_acs_earnings_universe_fixture() -> Frame:
     """Apply receipted zeros to multi-child mixed and all-child ACS units."""
 
