@@ -1,8 +1,8 @@
 # microcosm#1074 receipts: Federal Student Aid portfolio targets
 
-Generated 2026-10-23 by `experiments/fit_1074_fsa_calibration.py`, commit `4b6bfce9a240cd44c45210fbf508640d8402343d`, Modal run `20261023T191527Z-4b6bfce9a` (`experiments/modal_1074.py`). Machine-readable copy: `experiments/receipts/1074-fsa-calibration-fit.json`.
+Generated 2026-11-02 by `experiments/fit_1074_fsa_calibration.py`, commit `88d7a950dd6e0019f9ac794b86024a26bc441235`, Modal run `20261102T174003Z-88d7a950d` (`experiments/modal_1074.py`). Machine-readable copy: `experiments/receipts/1074-fsa-calibration-fit.json`.
 
-Host: the published default `populace-us-2024-spm-20260915` (sha256 `6496cc4393d4…`, 57,240 households), with the SCF 2025 education-debt stage run at seed 0. Feed: the pinned `51aa40f` US feed plus the merged chronicle#347 FSA rows (`d8e3d0fd9e21…`, 40,639 rows). Arms: **release** = the published weights; **A** = a dense refit to the `national_state` surface without the FSA family; **B** = the same refit with it. Same epochs (1500), learning rate, 5x weight cap and conserved mass as a release. Not a release: no gate ran and nothing was published.
+Host: the published default `populace-us-2024-spm-20260915` (sha256 `6496cc4393d4…`, 57,240 households), with the SCF 2025 education-debt stage run at seed 0. Feed: the `51aa40f` US feed (the pin before main's cf9ece2 re-pin, whose added B4923C facts bind no target) plus the merged chronicle#347 FSA rows (`d8e3d0fd9e21…`, 40,639 rows). Arms: **release** = the published weights; **A** = a dense refit to the `national_state` surface without the FSA family; **B** = the same refit with it; **+ L2** = A and B with an L2 anchor to the published weights; **B, counts xF** = B (and B + L2) with the balance targets at full loss weight and the borrower-count targets at F of theirs. Same epochs (1500), learning rate, 5x weight cap and conserved mass as a release. Not a release: no gate ran and nothing was published.
 
 ## FSA targets: the reconciled levels
 
@@ -15,7 +15,7 @@ Host: the published default `populace-us-2024-spm-20260915` (sha256 `6496cc4393d
 | Allocation factor | 1.0317 | 1.0456 |
 | In-scope control (every family sums to it) | $1,679.1B | 44.31M |
 
-Reference date: Data as of Mar. 31, 2026 (`2026-03`), the latest quarter all four bound tables publish; unaged at the 2024 build period (`period_alignment = stock_at_source_reference_date`).
+Reference date: Data as of Mar. 31, 2026 (`2026-03`), the latest quarter all four bound tables publish. The targets bind that stock unaged (`period_alignment = stock_at_source_reference_date`), and the build writes the calibrated balances at its period, 2024, since the H5 records one period for every column. policyengine-us#10415 (merged 2026-10-30) holds the balances at their stored value in every year, so a 2024 or a 2026 read returns the March 2026 stock.
 
 ## Fit by FSA family
 
@@ -42,6 +42,28 @@ Mean absolute relative error (share of targets within 5%).
 | Parent PLUS share of the balance | 6.8% | 10.7% | 11.6% | 6.8% | 10.9% | 6.9% |
 | Mean balance per borrower | $37,894 | $40,535 | $41,040 | $37,897 | $39,951 | $39,162 |
 | Households with federal education debt |  | 16.4% | 16.6% | 33.7% | 16.6% | 32.3% |
+
+## Down-weighted borrower counts
+
+Every arm binds the 67 FSA balance targets at full loss weight. The 65 borrower-count targets (state, age band, debt-size band) keep the stated fraction of their weight (1 in B and B + L2), and the vector is renormalized to mean 1. At x0 they only validate. Reference: FSA, except the household share, which is the SCF's.
+
+| | Reference | Release | B, with FSA | B, counts x0.25 | B, counts x0.1 | B, counts x0 | B + L2 | B + L2, counts x0.25 | B + L2, counts x0.1 | B + L2, counts x0 |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| FSA balance targets within 5% (67) |  | 0% | 99% | 96% | 96% | 96% | 94% | 88% | 88% | 87% |
+| FSA borrower-count targets within 5% (65) |  | 0% | 92% | 43% | 31% | 17% | 62% | 17% | 12% | 9% |
+| FSA balance targets: mean error |  | 47.2% | 0.2% | 0.6% | 0.9% | 1.3% | 1.3% | 2.9% | 3.6% | 4.1% |
+| FSA borrower-count targets: mean error |  | 49.5% | 1.3% | 8.6% | 13.1% | 17.7% | 6.1% | 18.2% | 22.1% | 24.5% |
+| Non-FSA capped error |  | 5.30% | 3.62% | 3.50% | 3.47% | 3.45% | 3.85% | 3.84% | 3.85% | 3.84% |
+| Households with federal education debt | 18.2% | 16.4% | 33.7% | 32.7% | 31.7% | 30.2% | 32.3% | 28.2% | 26.7% | 25.7% |
+| Borrowers | 44.31M | 21.18M | 44.26M | 42.98M | 41.71M | 39.75M | 42.67M | 37.27M | 35.38M | 34.11M |
+| Parent PLUS share of the balance | 6.8% | 10.7% | 6.8% | 6.8% | 6.8% | 6.8% | 6.9% | 6.9% | 6.9% | 6.9% |
+| Effective sample size |  | 9,174 | 3,045 | 3,170 | 3,292 | 3,364 | 4,424 | 5,011 | 5,159 | 5,232 |
+| Borrowers age 24 and Younger | 13.8% | 12.2% | 13.9% | 12.7% | 12.1% | 11.6% | 12.9% | 11.6% | 11.3% | 11.0% |
+| Borrowers age 25 to 34 | 31.2% | 31.1% | 31.3% | 32.9% | 33.0% | 33.1% | 32.4% | 32.2% | 32.1% | 32.0% |
+| Borrowers age 35 to 49 | 33.5% | 37.2% | 33.5% | 34.9% | 35.8% | 36.0% | 34.8% | 36.1% | 36.2% | 36.2% |
+| Borrowers age 50 to 61 | 14.3% | 13.7% | 14.3% | 13.4% | 13.0% | 13.2% | 13.4% | 13.6% | 13.9% | 14.1% |
+| Borrowers age 62 and Older | 7.1% | 5.8% | 7.1% | 6.2% | 6.1% | 6.1% | 6.4% | 6.5% | 6.6% | 6.7% |
+| Borrower age profile: distance from FSA (TVD) | | 0.037 | 0.001 | 0.030 | 0.041 | 0.044 | 0.025 | 0.036 | 0.035 | 0.035 |
 
 ## Every other family: does adding FSA cost the rest of the surface?
 
