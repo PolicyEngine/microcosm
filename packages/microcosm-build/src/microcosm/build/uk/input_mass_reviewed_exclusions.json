@@ -16,6 +16,13 @@
     "adjudication": "microcosm#1106 (#1145): part B measured on the A9 candidate at 2025 and on the final-head arm c7 of 2026-10-11; ruling 2026-10-11 in session",
     "approved_on": "2026-10-11",
     "expires_on": "2027-04-11"
+   },
+   "tax_free_savings_income": {
+    "reason": "The candidate no longer ships person.tax_free_savings_income: policyengine-uk derives it as the sum of individual_savings_account_interest_income, which the candidate stores apart from non-ISA interest under the additive ISA income contract, and a persisted copy overrides that sum and is never uprated (microcosm#1360). The enhanced-FRS reference stores it in the legacy gross layout, so the column is present in the reference and absent from the candidate, which this gate otherwise fails whatever the tolerance. Non-ISA savings_interest_income stays compared; it falls below the reference's gross total by the ISA part.",
+    "approved_by": "juaristi22",
+    "adjudication": "microcosm#1360 folded into microcosm#1418's PR B (ruling 2026-10-28 in session)",
+    "approved_on": "2026-10-28",
+    "expires_on": "2027-04-28"
    }
   }
  }

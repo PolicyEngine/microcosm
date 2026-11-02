@@ -78,6 +78,7 @@ from microcosm.build.uk_runtime.frs_take_up import (
 )
 from microcosm.build.uk_runtime.legacy_closure_take_up import (
     LEGACY_CLOSURE_RESOURCE,
+    _reported_by_benunit,
     legacy_benefit_combinations,
     legacy_closure_claim_probabilities,
     load_move_to_uc_claim_rates,
@@ -89,6 +90,8 @@ from microcosm.build.uk_runtime.national_frame import (
     validate_uk_national_frame,
 )
 from microcosm.build.uk_runtime.receipt_counts import (
+    UK_DISCLOSURE_FLOOR,
+    UK_WITHHELD,
     distinct_count,
     extreme_count,
     rounded_count,
@@ -118,6 +121,7 @@ __all__ = [
     "UC_TAKE_UP_ENTITLEMENT_VARIABLES",
     "UC_TAKE_UP_MINIMUM_POOL_SOURCES",
     "UC_TAKE_UP_OPERATION_KIND",
+    "UC_TAKE_UP_POOLING",
     "UC_TAKE_UP_RECORD_SETS",
     "UC_TAKE_UP_RESOURCE",
     "UC_TAKE_UP_STAGE_NAME",
@@ -159,6 +163,17 @@ UC_TAKE_UP_ENTITLEMENT_YEAR_RULE = "calibration_year"
 UC_TAKE_UP_DATASET_YEAR_RULE = "survey_year"
 UC_TAKE_UP_SOLVE_SCOPE = "great_britain"
 _OUTSIDE_SOLVE_REGION = "NORTHERN_IRELAND"
+#: The legacy award a unit keeps off a Universal Credit claim: policyengine-uk
+#: ends a claimant's or partner's income-related ESA once the family claims
+#: Universal Credit (from 2.149.0; pe-uk#2563), so a unit on that award at the
+#: interview claims none (microcosm#1095).
+UC_TAKE_UP_KEPT_ESA_COLUMN = "esa_income_reported"
+UC_TAKE_UP_KEPT_ESA_RULE = (
+    "a unit whose claimant or partner reports income-related ESA "
+    "(esa_income_reported), and that neither reports Universal Credit nor is "
+    "moved off its legacy benefits, claims no Universal Credit, since "
+    "policyengine-uk ends that award once the family claims it"
+)
 #: The calibration measure's family types with DWP's Stat-Xplore labels.
 UC_FAMILY_TYPES: tuple[tuple[str, str], ...] = (
     ("SINGLE", "Single, no children"),
@@ -175,9 +190,20 @@ UC_AWARD_BAND_LABELS: tuple[str, ...] = (
     f"£{100 * _BOUND_BANDS}.01 or over",
 )
 UC_TAKE_UP_MINIMUM_POOL_SOURCES = 30
+UC_TAKE_UP_POOLING = (
+    "adjacent bands within a family type, lowest first, until the drawn units "
+    "rest on minimum_pool_sources distinct household_source_id values; a short "
+    "last pool joins the one before it. Then, lowest first, a pool that cannot "
+    "meet DWP's count (its undrawn entitled units' expected claims exceed the "
+    "count, or the count exceeds them plus the weight of every drawn unit) is "
+    "held at the nearer of those ends and passes its gap to the other pools, "
+    "nearest first, the one with more room first at equal distance and the "
+    "lower on a tie, each taking what its room allows; a gap no pool can take "
+    "leaves the family type unreachable"
+)
 UC_TAKE_UP_RESIDUAL_RATE = (
     "(T - F) / D, clipped to [0, 1]; T DWP's calendar-2025 mean count of the "
-    "pool's bands, D the weight of the pool's drawn units and F the expected "
+    "pool's bands after any gaps passed to or from it, D the weight of the pool's drawn units and F the expected "
     "claims of its other entitled units, over Great Britain at the stage's "
     "household weights; realized by the drawn units claiming in the order of "
     "their uniform until their weight is nearest T - F, and applied at that "
@@ -320,6 +346,78 @@ def _pools(
     return pools
 
 
+def _pass_unmet_gaps(
+    sums: Sequence[tuple[float, float, float]],
+) -> tuple[list[float], list[float]]:
+    """Each pool's count after the unmet pools pass their gaps on.
+
+    ``sums`` gives each pool's DWP count ``T``, the expected claims ``F`` of
+    its undrawn entitled units and the weight ``D`` of its drawn units, lowest
+    band first. A pool realizes between ``F`` and ``F + D`` claims; one whose
+    count lies outside is held at the nearer end, and its gap is the claims it
+    cannot add (a shortfall) or give up (an excess). A shortfall and an excess
+    offset each other in the family type's total, so they cancel first, nearest
+    pools first. What remains goes to the other pools, nearest first, the one
+    with more room first at equal distance and the lower on a tie, each taking
+    what its room allows (``F + D - T`` for a shortfall, ``T - F`` for an
+    excess). Joining an unmet pool to its neighbour applied one rate to both,
+    so the drawn units of an overshooting band started claiming and those of
+    a short band stopped; held at its clip, each band realizes as near its own
+    count as it can, and the family type's total is unchanged wherever its
+    entitled units allow (microcosm#1428 review, finding 7). Returns each
+    pool's count and the part of its gap no pool could take.
+    """
+
+    targets = [float(target) for target, _, _ in sums]
+    lows = [float(undrawn) for _, undrawn, _ in sums]
+    highs = [float(undrawn) + float(drawn) for _, undrawn, drawn in sums]
+    counts = [
+        min(max(t, lo), hi) for t, lo, hi in zip(targets, lows, highs, strict=True)
+    ]
+    gaps = [t - count for t, count in zip(targets, counts, strict=True)]
+    for index, target in enumerate(targets):
+        if abs(gaps[index]) <= 1e-9 * max(1.0, abs(target)):
+            gaps[index] = 0.0
+
+    def nearest(index: int) -> list[int]:
+        return sorted(
+            (other for other in range(len(sums)) if other != index),
+            key=lambda other: (abs(other - index), other),
+        )
+
+    for index in range(len(sums)):
+        for other in nearest(index):
+            if gaps[index] == 0.0:
+                break
+            if gaps[index] * gaps[other] < 0.0:
+                offset = min(abs(gaps[index]), abs(gaps[other]))
+                gaps[index] -= np.sign(gaps[index]) * offset
+                gaps[other] -= np.sign(gaps[other]) * offset
+    for index, gap in enumerate(gaps):
+        if gap == 0.0:
+            continue
+        short = gap > 0.0
+
+        def room(other: int, *, short: bool = short) -> float:
+            return max(
+                highs[other] - counts[other] if short else counts[other] - lows[other],
+                0.0,
+            )
+
+        remaining = abs(gap)
+        for other in sorted(
+            nearest(index),
+            key=lambda other: (abs(other - index), -room(other), other),
+        ):
+            take = min(remaining, room(other))
+            counts[other] += take if short else -take
+            remaining -= take
+            if remaining <= 0.0:
+                break
+        gaps[index] = remaining if short else -remaining
+    return counts, gaps
+
+
 def _realized_rate(
     residual: float, *, need: float, draws: np.ndarray, weights: np.ndarray
 ) -> float:
@@ -440,39 +538,50 @@ def assign_award_band_take_up(
     def sources(mask: np.ndarray) -> int:
         return distinct_count(source_ids, mask, weights)
 
+    def balance(
+        name: str, in_family: np.ndarray, bands: list[int]
+    ) -> tuple[float, float, float]:
+        solve = in_family & np.isin(band, bands) & gb
+        return (
+            float(sum(targets[(name, index)] for index in bands)),
+            float((weights * fixed)[solve & ~drawable].sum()),
+            float(weights[solve & drawable].sum()),
+        )
+
     pools: list[dict[str, object]] = []
     for name, _ in UC_FAMILY_TYPES:
         in_family = family == name
-        for bands in _pools(
+        family_pools = _pools(
             band=band,
             in_family=in_family,
             drawable_gb=drawable & gb,
             source_ids=source_ids,
             weights=weights,
             minimum_sources=minimum_pool_sources,
+        )
+        sums = [balance(name, in_family, bands) for bands in family_pools]
+        counts, unplaced = _pass_unmet_gaps(sums)
+        feasible = not any(unplaced)
+        for bands, (target, undrawn, drawn), count in zip(
+            family_pools, sums, counts, strict=True
         ):
             in_pool = in_family & np.isin(band, bands)
             solve = in_pool & gb
-            target = float(sum(targets[(name, index)] for index in bands))
-            undrawn = float((weights * fixed)[solve & ~drawable].sum())
-            drawn = float(weights[solve & drawable].sum())
-            # Where the undrawn claims reach DWP's count, or the count exceeds
-            # every entitled unit, the clipped rate cannot meet it.
             if drawn > 0.0:
-                residual = (target - undrawn) / drawn
                 rates[in_pool & drawable] = _realized_rate(
-                    residual,
-                    need=target - undrawn,
+                    (count - undrawn) / drawn,
+                    need=count - undrawn,
                     draws=draws[solve & drawable],
                     weights=weights[solve & drawable],
                 )
-            else:
-                residual = 0.0 if undrawn >= target else 1.0
+            # Where the undrawn claims reach DWP's count, or the count exceeds
+            # every entitled unit, the pool cannot meet it alone: it is held
+            # at its clip and its gap passed on.
             unreachable = (
                 "undrawn_claims_reach_target"
-                if residual <= 0.0
+                if target <= undrawn
                 else "target_exceeds_entitled"
-                if residual >= 1.0
+                if target >= undrawn + drawn
                 else None
             )
             pools.append(
@@ -482,6 +591,7 @@ def assign_award_band_take_up(
                     "mask": solve,
                     "target": target,
                     "unreachable": unreachable,
+                    "feasible_family": feasible,
                 }
             )
     would_claim = np.where(drawable, draws < rates, previous | reporter)
@@ -507,14 +617,19 @@ def assign_award_band_take_up(
                     "support": support_band(supported),
                     "drawn_support": support_band(sources(solve & drawable)),
                     # One bit on which side of DWP's count the pool's undrawn
-                    # claims lie, given only where ten or more sources carry
-                    # the pool (UKDS disclosure control).
+                    # claims lie, given only where three or more sources
+                    # carry the pool (UKDS disclosure control).
                     "target_unreachable": (
-                        pool["unreachable"] if supported >= 10 else "<10"
+                        pool["unreachable"]
+                        if supported >= UK_DISCLOSURE_FLOOR
+                        else UK_WITHHELD
                     ),
                 }
             )
-            if pool["unreachable"] is None:
+            # A family type whose gaps every pool could take realizes its
+            # count over all its pools; one whose count exceeds what its
+            # entitled units can realize has no reachable pool.
+            if pool["feasible_family"]:
                 reachable |= solve
                 reachable_target += float(pool["target"])
         supported = sources(basis)
@@ -677,7 +792,21 @@ def redraw_uc_take_up(
         .to_numpy(dtype=bool)
     )
     population = uc_age_eligible_benunits(person, benunit, population_policy)
-    previous = benunit[UK_UC_TAKE_UP_OUTPUT].fillna(False).to_numpy(dtype=bool)
+    stored = benunit[UK_UC_TAKE_UP_OUTPUT].fillna(False).to_numpy(dtype=bool)
+    # policyengine-uk ends a claimant's or partner's income-related ESA once
+    # the family claims Universal Credit (esa_income_report_closed, from
+    # 2.149.0; pe-uk#2563). A unit whose claimant or partner reports the award,
+    # and that neither reports Universal Credit nor is moved off its legacy
+    # benefits, was on that award at the interview, so it claims no Universal
+    # Credit: a reported receipt is a fact (microcosm#1095). The closure draw
+    # reads the flag this stage writes, so the closure probabilities below use
+    # it too.
+    esa_kept = (
+        _reported_by_benunit(person, benunit, UC_TAKE_UP_KEPT_ESA_COLUMN)
+        & ~moved
+        & ~reporter
+    )
+    previous = stored & ~esa_kept
     weights = _household_to_benunit_weights(
         benunit,
         person=person,
@@ -734,12 +863,23 @@ def redraw_uc_take_up(
         minimum_pool_sources=minimum_pool_sources,
         legacy_kept=(combination != "") & ~moved & ~reporter,
     )
+    kept_off = esa_kept & stored & great_britain
+    esa_kept_receipt = {
+        "scope": "great_britain",
+        "column": UC_TAKE_UP_KEPT_ESA_COLUMN,
+        "rule": UC_TAKE_UP_KEPT_ESA_RULE,
+        "units_kept_off_universal_credit": small_cell_share(
+            float(weights[kept_off].sum()),
+            distinct_count(source_ids, kept_off, weights),
+        ),
+        "kept_off_support": support_band(distinct_count(source_ids, kept_off, weights)),
+    }
     working_age_hb = working_age_housing_benefit_receipt(
         person=person,
         benunit=benunit,
         population=population,
         moved=moved,
-        uc_before=previous | reporter,
+        uc_before=stored | reporter,
         uc_after=would_claim | reporter,
         weights=weights,
         great_britain=great_britain,
@@ -762,6 +902,7 @@ def redraw_uc_take_up(
             **receipt,
             "population_state_pension_age": int(population_policy.state_pension_age),
             "working_age_housing_benefit": working_age_hb,
+            "income_related_esa_kept": esa_kept_receipt,
         },
         entitlement_year=entitlement_year,
     )
@@ -789,7 +930,7 @@ def working_age_housing_benefit_receipt(
     engine does not move, and how many of them keep the award before and after
     the redraw, so the stage's effect on working-age Housing Benefit can be set
     beside DWP's 2025 caseload (Vahid's review of #1344, item 7). Weighted
-    figures only where ten or more source households carry them.
+    figures only where three or more source households carry them.
     """
 
     column = "housing_benefit_reported"
@@ -908,12 +1049,7 @@ def uc_take_up_operation_parameters() -> tuple[tuple[str, dict[str, object]], ..
                     "DWP Stat-Xplore Households on Universal Credit by family type "
                     "and monthly award band, mean of April to December 2025"
                 ),
-                "pooling": (
-                    "adjacent bands within a family type, lowest first, until the "
-                    "drawn units rest on minimum_pool_sources distinct "
-                    "household_source_id values; a short last pool joins the one "
-                    "before it"
-                ),
+                "pooling": UC_TAKE_UP_POOLING,
                 "minimum_pool_sources": UC_TAKE_UP_MINIMUM_POOL_SOURCES,
                 "drawn_units": (
                     "entitled, non-reporting units of the population that the "
@@ -925,12 +1061,17 @@ def uc_take_up_operation_parameters() -> tuple[tuple[str, dict[str, object]], ..
                 "undrawn_claims": (
                     "a reporter at 1, a moved unit at the claim probability "
                     "uc_legacy_closure_take_up's rule gives it "
-                    f"({LEGACY_CLOSURE_RESOURCE}), any other at its stored flag"
+                    f"({LEGACY_CLOSURE_RESOURCE}), a unit keeping income-related "
+                    "ESA at 0, any other at its stored flag"
                 ),
+                "kept_legacy_award": UC_TAKE_UP_KEPT_ESA_RULE,
                 "weight_mapping": "household_to_benunit",
                 "residual_rate": UC_TAKE_UP_RESIDUAL_RATE,
                 "solve_scope": UC_TAKE_UP_SOLVE_SCOPE,
-                "not_drawn": "keeps its stored flag",
+                "not_drawn": (
+                    "keeps its stored flag, except a unit keeping income-related "
+                    "ESA, which claims none"
+                ),
             },
         ),
     )

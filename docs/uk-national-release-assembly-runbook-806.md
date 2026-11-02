@@ -222,13 +222,11 @@ in §4. The promotion moves only `latest-national.json`, recording `national` as
 the line and the reviewed cut tag as its `revision`. It never moves the
 repository-global `latest.json`, which remains on the June 2023 release.
 
-The 2025 national entry is registered off the default variant until this
-first promotion: `microcosm.data.load("uk", 2025, variant="national")` follows
-`latest-national.json` as soon as the pointer exists, while
-`microcosm.data.resolve("uk")` stays on the June 2023 line. The default moves
-in a one-line follow-up PR after promotion (the registry entry's `variant`
-becomes the default), with its test; sequencing it this way means a default
-load never chases a pointer that does not exist yet. An explicit
+The 2025 national entry was registered off the default variant until the
+first promotion, so that a default load never chased a pointer that did not
+exist yet. The first certified cut was promoted on 2026-10-26, and the entry
+is now the default variant (microcosm#823): `microcosm.data.load("uk")` and
+`microcosm.data.load("uk", 2025)` follow `latest-national.json`. An explicit
 `microcosm.data.load("uk", 2023)` continues to follow `latest.json`.
 
 With `SLACK_WEBHOOK_POPULACE_UK` configured, successful promotion sends an

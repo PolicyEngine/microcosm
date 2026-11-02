@@ -1123,6 +1123,7 @@ def test_calibration_outputs_are_bound_to_the_materialization(tmp_path) -> None:
         "weights_latest.npz",
         "calibration_summary.json",
         "calibration_diagnostics.json",
+        "county_reliability.json",
         "consumer_export.json",
         "consumer_reviewed_null_fills.json",
         "spine_qa.json",

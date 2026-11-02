@@ -11,7 +11,6 @@ import hashlib
 from collections.abc import Mapping
 from dataclasses import replace
 from datetime import date
-from importlib import metadata
 from typing import TYPE_CHECKING
 
 from microcosm.build.country_spec import CountrySpec, load_country_spec
@@ -158,13 +157,12 @@ def build_uk_country_graph(
             source_year=release.survey_year,
         )
     if engine_identity is None:
+        # The same provenance the spine and full builds hash, so a URL
+        # install's commit keys this graph too.
+        from microcosm.build.uk_runtime.spine_build import _rules_engine_provenance
+
         engine_identity = hashlib.sha256(
-            canonical_json(
-                {
-                    "package": "policyengine-uk",
-                    "version": metadata.version("policyengine-uk"),
-                }
-            )
+            canonical_json(_rules_engine_provenance())
         ).hexdigest()
     review_date = date.today() if review_date is None else review_date
     spine = add_uk_spine_gate_nodes(
