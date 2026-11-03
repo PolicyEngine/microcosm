@@ -42,7 +42,8 @@ def _load_assembler():
 
 
 ASSEMBLER = _load_assembler()
-#: The national line is the UK 2025 default load since microcosm#823.
+#: The national line is the UK 2025 default load since microcosm#1432 (Max's
+#: #823 ruling).
 UK_NATIONAL_SPEC = REGISTRY[("uk", 2025, DEFAULT_VARIANT)]
 
 
@@ -201,7 +202,9 @@ def test_national_manifests_satisfy_the_release_contract(inputs):
     # The release restates the SPI Public Use Tape marker: the flag on the
     # microdata's own entry, the whole marker under licensed_data.
     microdata = artifacts[release_manifest["default_datasets"]["national"]]
-    assert microdata["spi_public_use_tape_dependent"] is inputs["spi_marker"]["dependent"]
+    assert (
+        microdata["spi_public_use_tape_dependent"] is inputs["spi_marker"]["dependent"]
+    )
     assert release_manifest["licensed_data"] == {
         UK_SPI_PUBLIC_USE_TAPE_KEY: inputs["spi_marker"]
     }

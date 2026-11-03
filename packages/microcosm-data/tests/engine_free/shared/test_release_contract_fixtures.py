@@ -30,7 +30,8 @@ from test_support.paths import paths_for
 FIXTURES = paths_for("microcosm-data").tests / "fixtures" / "release_contract" / "v1"
 UK_RELEASE_ID = contract._UK_NATIONAL_RELEASE_ID
 UK_RELEASE_DIR = FIXTURES / "c1" / UK_RELEASE_ID
-#: The national line is the UK 2025 default load since microcosm#823.
+#: The national line is the UK 2025 default load since microcosm#1432 (Max's
+#: #823 ruling).
 UK_NATIONAL_SPEC = REGISTRY[("uk", 2025, DEFAULT_VARIANT)]
 REGENERATE = (
     "regenerate with `uv run python tools/generate_release_contract_fixtures.py` "

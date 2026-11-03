@@ -17,15 +17,15 @@ freezes the staging documents that calibration-diagnostics byte-checks:
 
 Every digest, version, identifier and gate count in the C1 manifests and the
 pointers is synthetic. A digest is the SHA-256 of ``release-contract-fixture:<name>``,
-so none can be mistaken for a real artifact. The SPI Public Use Tape marker names
+so no reader can mistake one for a real artifact. The SPI Public Use Tape marker names
 one synthetic stage; its study number and conditions are the live constants of
 ``microcosm.build.uk_runtime.spi_dependency``, which a dependent release restates.
 ``inventory.json`` and ``registry.json`` carry live values on purpose: they freeze
 the contract's constants and the registry.
 The fixtures deliberately carry no gate-battery report or signed certification:
 those bind the UK gate spec's live digests, which change with most UK pull
-requests, so the certification's shape is frozen as ``inventory.json`` instead and
-its signed validity stays covered by the assembler's tests.
+requests, so ``inventory.json`` freezes the certification's shape instead, and the
+assembler's tests keep covering its signed validity.
 
 Regenerate after a deliberate contract change, in the same pull request that
 updates docs/release-contract.md::

@@ -4,9 +4,10 @@ The UK has one extra release-id axis that the US does not: the licence class
 of the household spine.  It is provenance, not a quality label.  The national
 and dense lines keep one constant id each across cuts.
 
-The minting helpers for the exact-cardinality ``populace-uk-<year>-<tier>-k<N>``
-grammar were retired with no caller left (docs/release-contract.md, retire
-list): new releases take their id from C1's declared identity,
+microcosm#1285 retired the minting helpers for the exact-cardinality
+``populace-uk-<year>-<tier>-k<N>`` grammar, which had no caller
+(docs/release-contract.md, retire list). Version 1 of the release contract,
+planned for M3, derives a new release's id from C1's declared identity,
 ``microcosm-<country>-<vintage>-<line>``.
 """
 

@@ -1,9 +1,10 @@
 """Executable statements of how the release contract keys on id strings today.
 
 docs/release-contract.md (C1, "The id-string keying") describes these gaps, and
-milestone M3 (2026-11-06) replaces them with dispatch on the manifest's declared
-country. Each test pins one of today's behaviours so that the change is
-deliberate: when M3 flips one, update the document and the test together.
+C1 version 1, planned for milestone M3, replaces them with dispatch on the
+manifest's declared country. Each test pins one of today's behaviours so that
+the change is deliberate: when a change flips one, update the document and the
+test together.
 """
 
 from __future__ import annotations
@@ -63,7 +64,8 @@ def test_no_other_country_can_build_a_line_pointer():
 
 
 def test_the_registry_year_is_not_the_uk_national_ids_vintage():
-    # The national line is the UK 2025 default load since microcosm#823.
+    # The national line is the UK 2025 default load since microcosm#1432
+    # (Max's #823 ruling).
     spec = REGISTRY[("uk", 2025, DEFAULT_VARIANT)]
     assert spec.pointer_path == "latest-national.json"
     assert contract._UK_NATIONAL_RELEASE_ID == "microcosm-uk-2024-25-national"

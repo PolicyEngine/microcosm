@@ -400,10 +400,10 @@ def uk_national_release_manifests(
     """Return the national line's build and release manifests.
 
     A pure function of its inputs: the assembler writes exactly these two
-    documents, and the release-contract golden fixtures
-    (``tools/generate_release_contract_fixtures.py``, docs/release-contract.md
-    C1) are written by this same function, so a change to either manifest's
-    shape is a change to those fixtures.
+    documents, and ``tools/generate_release_contract_fixtures.py`` writes the
+    release-contract golden fixtures (docs/release-contract.md, C1) with this
+    same function, so a change to either manifest's shape is a change to those
+    fixtures.
     """
 
     build_manifest = {
