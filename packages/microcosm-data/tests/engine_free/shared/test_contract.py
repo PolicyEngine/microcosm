@@ -2518,6 +2518,22 @@ def test_publishes_to_build_folder_names_only_the_uk_releases(
     assert contract.publishes_to_build_folder(release_id) is publishes
 
 
+def test_the_proposed_us_releases_are_recorded_but_not_used() -> None:
+    """The US stable releases are proposed, not agreed with the US data
+    builder: the contract records them with their roles in one place, and no
+    US release publishes into build folders until they are agreed."""
+    assert contract.PROPOSED_US_RELEASES == {
+        "populace-us-2024-national": "national",
+        "populace-us-2024-acs-local": "local_area",
+    }
+    assert set(contract.PROPOSED_US_RELEASES.values()) <= set(
+        contract.RELEASE_ROLES.values()
+    )
+    for release in contract.PROPOSED_US_RELEASES:
+        assert release.startswith("populace-us-")
+        assert contract.publishes_to_build_folder(release) is False
+
+
 def test_release_roles_record_national_and_local_area() -> None:
     assert contract.RELEASE_ROLES == {
         "national_default": "national",
