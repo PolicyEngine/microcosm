@@ -20,7 +20,7 @@ def test_semantic_hash_has_golden_vector_and_surface_separation(tmp_path) -> Non
     # The ACS local lane's immigration stage (microcosm#1020) moves the
     # immigration stage's attested bytes.
     assert first.spec_sha256 == (
-        "0219261b1dcc8912bc175f29e334ff7768628437884ff718b0d196b6b128bb7f"
+        "2a9514abfea67eb113dd7161283b966e558c187cf4ea2c335323198d06ceddfc"
     )
 
     second_root = _rich_minimal(tmp_path / "xy", note="second", store="local:b")

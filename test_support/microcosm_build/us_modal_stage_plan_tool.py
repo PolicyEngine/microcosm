@@ -36,7 +36,7 @@ def _load():
 plan_lib = _load()
 #: What the image's emitter answers to ``microcosm-emitter version``. Tests
 #: get this answer instead of running a command at the image's emitter path.
-RECORDED_EMITTER_VERSION = {"emitter_version": "0.7.0", "protocol_versions": [1]}
+RECORDED_EMITTER_VERSION = {"emitter_version": "0.11.9", "protocol_versions": [1]}
 
 
 def load_app(monkeypatch):
