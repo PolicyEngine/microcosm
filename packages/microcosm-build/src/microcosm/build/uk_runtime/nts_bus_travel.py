@@ -1215,6 +1215,13 @@ def impute_bus_use_band(
 
     if BAND_COLUMN not in donor:
         raise NTSBusTravelError("the donor carries no interview band to fit.")
+    groups = donor["household_id"].to_numpy() if "household_id" in donor else None
+    if groups is None and gate_calibration != UK_DEFAULT_GATE_CALIBRATION:
+        # Row folds would split a household's members between fold gates.
+        raise NTSBusTravelError(
+            "a cross-fitted gate deals each household to one fold, but the "
+            "donor carries no household_id."
+        )
     donor_encoded, recipient_encoded, predictors = _encode_pair(donor, recipient)
     train = donor_encoded.copy()
     train[BAND_COLUMN] = donor[BAND_COLUMN].to_numpy(dtype=float)
@@ -1227,7 +1234,7 @@ def impute_bus_use_band(
         predictors,
         [BAND_COLUMN],
         weights="weight",
-        groups=donor["household_id"].to_numpy() if "household_id" in donor else None,
+        groups=groups,
     )
     ids = recipient["person_id"].to_numpy()
     quantiles = stable_identity_uniforms(ids, seed=seed, salt=BAND_SALT_QUANTILE)
