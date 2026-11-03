@@ -486,6 +486,24 @@
       "adjudication": "María's ruling of 2026-10-29 on the plan for the next #1095 PR (microcosm#1095, item R4): bind Wales's SLC repayments, and hold Scotland's and Northern Ireland's until their plan thresholds are modelled for their borrowers.",
       "approved_on": "2026-10-29",
       "expires_on": "2027-01-29"
+    },
+    {
+      "name": "hmrc.child_benefit.hicbc_liable_taxpayers",
+      "reason": "Diagnostic by design, not a weight question: HMRC's Table 16 counts the Self Assessment taxpayers liable to the High Income Child Benefit Charge and the charge's revenue, and the model's charge sits well above both. The gap is in who receives Child Benefit at high incomes (the SPI channel's high-income parents, microcosm#1288 item 10), so binding the row would pull weight off high-earning parents against the SPI income-band rows instead of fixing the data. HMRC's figure is also a floor: Self Assessment returns only, provisional for 2024-25, and from 2025-26 the charge can be paid through PAYE. Measured on every evaluation; bind only after the SPI channel's parents are reviewed.",
+      "tracking": "microcosm#1095",
+      "approved_by": "juaristi22",
+      "adjudication": "María's ruling of 2026-11-03 on #1426's Phase B (item B4, microcosm#1288 item 10): add HMRC's HICBC liability count and revenue as measured diagnostics first, using 2024-25's figures for the model's 2025.",
+      "approved_on": "2026-11-03",
+      "expires_on": "2027-02-03"
+    },
+    {
+      "name": "hmrc.child_benefit.hicbc_revenue",
+      "reason": "Diagnostic by design, not a weight question: HMRC's Table 16 counts the Self Assessment taxpayers liable to the High Income Child Benefit Charge and the charge's revenue, and the model's charge sits well above both. The gap is in who receives Child Benefit at high incomes (the SPI channel's high-income parents, microcosm#1288 item 10), so binding the row would pull weight off high-earning parents against the SPI income-band rows instead of fixing the data. HMRC's figure is also a floor: Self Assessment returns only, provisional for 2024-25, and from 2025-26 the charge can be paid through PAYE. Measured on every evaluation; bind only after the SPI channel's parents are reviewed.",
+      "tracking": "microcosm#1095",
+      "approved_by": "juaristi22",
+      "adjudication": "María's ruling of 2026-11-03 on #1426's Phase B (item B4, microcosm#1288 item 10): add HMRC's HICBC liability count and revenue as measured diagnostics first, using 2024-25's figures for the model's 2025.",
+      "approved_on": "2026-11-03",
+      "expires_on": "2027-02-03"
     }
   ]
 }
