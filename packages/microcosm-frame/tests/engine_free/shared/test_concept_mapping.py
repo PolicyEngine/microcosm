@@ -2106,3 +2106,17 @@ class TestCoresidentAdult:
         }
         out = _adult_mapping(18).encode(tables).tables["person"]
         assert out[_ADULT_INPUT].tolist() == [False, True, False]
+
+    def test_a_null_household_id_shares_a_household_with_nobody(self) -> None:
+        tables = {
+            "person": pd.DataFrame(
+                {
+                    "person_id": [1, 2, 3],
+                    "person_household_id": pd.array([pd.NA, pd.NA, 4], dtype="Int64"),
+                    "age": [30.0, 40.0, 50.0],
+                }
+            ),
+            "household": pd.DataFrame({"household_id": [4]}),
+        }
+        out = _adult_mapping(18).encode(tables).tables["person"]
+        assert out[_ADULT_INPUT].tolist() == [False, False, False]
