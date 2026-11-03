@@ -128,15 +128,19 @@ command does (the Hugging Face module only), and send its Hugging Face Hub
 requests through `HF_ENDPOINT` to a loopback stand-in server
 (`test_support/microcosm_build/stand_in_hub.py`), so the job needs no secret.
 With Xet turned off, the stand-in takes the dataset through the LFS upload a
-real Hub requires for it; machines with `hf_xet` upload through Xet, which it
-does not model. A request it has no route for fails the test. The tests check
+real Hub requires for it, with the single-part `basic` transfer. It does not
+model Xet, which machines with `hf_xet` use, or the multipart transfer a real
+Hub can choose for a large object, so the tested path is that of machines
+without `hf_xet`, or with it turned off, for files sent in one part. A request
+it has no route for, or that its handler fails on, fails the test. The tests check
 what builds rely on in the hand-over (one commit per bundle on the head it
 names, `copied_files`, `already_staged`, the recorded error codes and the
 version check), not the emitter's own queue or delivery. The runner warns when
 the package index has a newer release than the pin; raise the pin in a pull
 request then. `tools/installed-emitter/constraints.txt` pins the
-`huggingface_hub` release whose requests the stand-in answers; change it only
-together with the stand-in. Run the job's tests locally with
+`huggingface_hub` release whose requests the stand-in answers; the runner also
+warns when a newer 1.x release, which a new emitter install takes, is
+published. Change the constraint only together with the stand-in. Run the job's tests locally with
 `bash tools/run_installed_emitter_tests.sh <directory for the tool installs>`.
 
 The UK full-build caller sets `close_service_on_finish=False`: reporting an outcome

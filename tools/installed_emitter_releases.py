@@ -7,9 +7,16 @@ the newest release pinned in ``tools/installed-emitter/requirements.txt``, or
 that release once when the two are the same. It refuses a pin that does not
 name exactly one ``X.Y.Z`` release, or names one older than the minimum.
 
-It also asks the package index uv uses for the newest published release, and
-prints a warning, never a failure, when that differs from the pin. When the
-index cannot be asked, it skips that check without a message.
+It also asks the package index uv uses for the newest published releases,
+and never fails for what it learns:
+
+- a warning when the newest ``microcosm-emitter`` is newer than the pin, and
+  a notice when it is older (the pinned release may have been yanked);
+- a warning when the newest ``huggingface-hub`` 1.x release, which a new
+  emitter install takes, is newer than the release
+  ``tools/installed-emitter/constraints.txt`` pins for the stand-in Hub;
+- a notice for each comparison it could not make, so that a change in uv's
+  answer cannot turn the comparison off unseen.
 """
 
 from __future__ import annotations
@@ -24,12 +31,17 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 PIN_FILE = ROOT / "tools" / "installed-emitter" / "requirements.txt"
+CONSTRAINTS_FILE = ROOT / "tools" / "installed-emitter" / "constraints.txt"
 PACKAGE = "microcosm-emitter"
+HUB_PACKAGE = "huggingface-hub"
+#: The huggingface-hub releases the emitter accepts (``<2`` in its metadata).
+HUB_REQUIREMENT = f"{HUB_PACKAGE}<2"
 #: The emitter's lowest supported Python, for resolving its newest release.
 PYTHON_VERSION = "3.13"
 INDEX_TIMEOUT_SECONDS = 60
 _RELEASE = re.compile(r"\d+\.\d+\.\d+")
 _PIN = re.compile(rf"{re.escape(PACKAGE)}==(?P<release>\S+)")
+_PACKAGE_NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]*")
 
 type Run = Callable[..., subprocess.CompletedProcess[str]]
 
@@ -68,12 +80,32 @@ def releases_to_install(minimum: str, pinned: str) -> list[str]:
     return [minimum] if pinned == minimum else [minimum, pinned]
 
 
-def published_release(run: Run = subprocess.run) -> str | None:
-    """The newest release on uv's package index, or None if it cannot say.
+def constrained_release(text: str, package: str) -> str:
+    """The ``X.Y.Z`` release a constraints file pins for ``package``."""
+    found = [
+        line.strip().split("==", 1)[1]
+        for line in text.splitlines()
+        if line.strip().startswith(f"{package}==")
+    ]
+    if len(found) != 1 or not _RELEASE.fullmatch(found[0]):
+        raise SystemExit(
+            "::error::tools/installed-emitter/constraints.txt must pin exactly one "
+            f"release, as {package}==X.Y.Z"
+        )
+    return found[0]
+
+
+def newest_release(requirement: str, run: Run = subprocess.run) -> str | None:
+    """The newest ``X.Y.Z`` release meeting ``requirement`` on uv's package
+    index, or None if it cannot say.
 
     ``uv pip compile`` resolves the package alone, from the index uv is
     configured with, and refreshes its cached answer for it.
     """
+    package = _PACKAGE_NAME.match(requirement)
+    if package is None:
+        raise ValueError(f"not a requirement: {requirement!r}")
+    name = package.group()
     try:
         answer = run(
             [
@@ -88,9 +120,9 @@ def published_release(run: Run = subprocess.run) -> str | None:
                 "--python-version",
                 PYTHON_VERSION,
                 "--refresh-package",
-                PACKAGE,
+                name,
             ],
-            input=f"{PACKAGE}\n",
+            input=f"{requirement}\n",
             capture_output=True,
             text=True,
             timeout=INDEX_TIMEOUT_SECONDS,
@@ -101,22 +133,53 @@ def published_release(run: Run = subprocess.run) -> str | None:
         return None
     if answer.returncode != 0:
         return None
+    pinned = re.compile(rf"{re.escape(name)}==(?P<release>\S+)")
     for line in answer.stdout.splitlines():
-        found = _PIN.fullmatch(line.strip())
+        found = pinned.fullmatch(line.strip())
         if found is not None and _RELEASE.fullmatch(found["release"]):
             return found["release"]
     return None
 
 
-def lag_warning(pinned: str, published: str | None) -> str | None:
-    """A warning when the index's newest release is not the pinned one."""
-    if published is None or published == pinned:
-        return None
+def _not_compared(requirement: str, file_name: str) -> str:
     return (
-        f"::warning::tools/installed-emitter/requirements.txt pins {PACKAGE} "
-        f"{pinned}, but the package index's newest release is {published}; raise "
-        "the pin so that the installed-emitter job tests it."
+        f"::notice::Could not ask the package index for the newest {requirement}; "
+        f"tools/installed-emitter/{file_name} was not compared with it."
     )
+
+
+def index_messages(
+    pinned: str,
+    constrained_hub: str,
+    newest: Callable[[str], str | None],
+) -> list[str]:
+    """What the package index says about the pin and the hub constraint."""
+    messages = []
+    published = newest(PACKAGE)
+    if published is None:
+        messages.append(_not_compared(PACKAGE, "requirements.txt"))
+    elif release_number(published) > release_number(pinned):
+        messages.append(
+            f"::warning::tools/installed-emitter/requirements.txt pins {PACKAGE} "
+            f"{pinned}, but the package index's newest release is {published}; "
+            "raise the pin so that the installed-emitter job tests it."
+        )
+    elif release_number(published) < release_number(pinned):
+        messages.append(
+            f"::notice::The package index's newest {PACKAGE} is {published}, older "
+            f"than the pin {pinned}: the pinned release may have been yanked."
+        )
+    hub = newest(HUB_REQUIREMENT)
+    if hub is None:
+        messages.append(_not_compared(HUB_REQUIREMENT, "constraints.txt"))
+    elif release_number(hub) > release_number(constrained_hub):
+        messages.append(
+            "::warning::tools/installed-emitter/constraints.txt pins "
+            f"{HUB_PACKAGE} {constrained_hub}, but the package index's newest 1.x "
+            f"release is {hub}, which a new emitter install takes. Check the "
+            "stand-in Hub against its requests, then raise the constraint."
+        )
+    return messages
 
 
 def _minimum_emitter_version() -> str:
@@ -131,19 +194,22 @@ def main(argv: Sequence[str] | None = None) -> int:
         "--minimum", help="the minimum release (default: MINIMUM_EMITTER_VERSION)"
     )
     parser.add_argument("--pin-file", type=Path, default=PIN_FILE)
+    parser.add_argument("--constraints-file", type=Path, default=CONSTRAINTS_FILE)
     parser.add_argument(
         "--no-index-check",
         action="store_true",
-        help="do not compare the pin with the package index",
+        help="do not compare the pin and the constraint with the package index",
     )
     args = parser.parse_args(argv)
     minimum = args.minimum or _minimum_emitter_version()
     pinned = pinned_release(args.pin_file.read_text(encoding="utf-8"))
+    constrained_hub = constrained_release(
+        args.constraints_file.read_text(encoding="utf-8"), HUB_PACKAGE
+    )
     releases = releases_to_install(minimum, pinned)
     if not args.no_index_check:
-        warning = lag_warning(pinned, published_release())
-        if warning is not None:
-            print(warning, file=sys.stderr)
+        for message in index_messages(pinned, constrained_hub, newest_release):
+            print(message, file=sys.stderr)
     for release in releases:
         print(release)
     return 0

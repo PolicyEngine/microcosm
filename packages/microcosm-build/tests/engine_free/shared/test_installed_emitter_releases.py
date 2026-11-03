@@ -138,7 +138,7 @@ class _IndexAnswers:
         ("0.11.12", "::warning::", ["pins microcosm-emitter 0.11.11", "is 0.11.12"]),
         ("0.12.0", "::warning::", ["pins microcosm-emitter 0.11.11", "is 0.12.0"]),
         ("0.11.10", "::notice::", ["is 0.11.10, older than the pin", "yanked"]),
-        (None, "::notice::", ["could not ask", "microcosm-emitter"]),
+        (None, "::notice::", ["Could not ask", "microcosm-emitter"]),
     ],
 )
 def test_the_emitter_pin_is_compared_with_the_package_index(
@@ -165,7 +165,7 @@ def test_the_emitter_pin_is_compared_with_the_package_index(
         ("1.34.0", ["::warning::", "huggingface-hub 1.33.0", "1.x release is 1.34.0"]),
         ("1.33.0", None),
         ("1.32.0", None),
-        (None, ["::notice::", "could not ask", "huggingface-hub<2"]),
+        (None, ["::notice::", "Could not ask", "huggingface-hub<2"]),
     ],
 )
 def test_the_hub_constraint_is_compared_with_the_package_index(

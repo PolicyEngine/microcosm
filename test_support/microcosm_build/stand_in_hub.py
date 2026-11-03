@@ -26,12 +26,22 @@ requests that ``huggingface_hub`` 1.33.0 (the release
 A real Hub stores files over 10 MB, and files that match its default
 ``.gitattributes`` (``*.h5`` among them), through LFS or Xet, never inside
 the commit request. The tests turn Xet off (``HF_HUB_DISABLE_XET=1``), so
-``huggingface_hub`` takes the LFS path with its ``basic`` transfer, which the
-server offers as a real Hub does; machines with ``hf_xet`` installed upload
-through Xet instead, which the server does not model. Every other file
-travels inside the commit request (the ``regular`` upload mode). Downloads are
-answered directly, without the redirect a real Hub sends for an LFS file,
-and listings do not describe LFS pointers.
+``huggingface_hub`` takes the LFS path, and the server answers its batch
+request with the ``basic`` transfer: one ``PUT`` of the whole file. Every
+other file travels inside the commit request (the ``regular`` upload mode).
+Two upload paths a real Hub can take are not modelled:
+
+- Xet, which ``huggingface_hub`` uses for every LFS file when ``hf_xet`` is
+  installed and not turned off, as on most build machines;
+- the multipart transfer, which a real Hub can choose for an object by
+  answering the batch request with a part size and numbered part
+  addresses, after which ``huggingface_hub`` sends one ``PUT`` per part and
+  then a completion request.
+
+So the tests' upload path is that of machines without ``hf_xet``, or with it
+turned off, for files the Hub accepts in one part. Downloads are answered
+directly, without the redirect a real Hub sends for an LFS file, and
+listings do not describe LFS pointers.
 
 Repositories follow the emitter's own in-memory Hub
 (``tests/support/fake_hugging_face.py`` in microcosm-emitter): each starts with
@@ -47,11 +57,13 @@ writes, as the Hub does for a read-only token (``refuse_writes``), let
 another writer's commit land just before the next commit request
 (``land_before_next_commit``), and hold one kind of request without
 answering until it calls ``release`` (``stall``). The server records every
-request it answers (``requests``) and every one it has no route for
-(``unmatched_requests``). It refuses every proxy request with HTTP 403 and
-records its target (``proxied_requests``): a test that sets the proxy
-variables to this server's address sees a request meant for another host
-from any client that honours those variables.
+request it answers (``requests``), every one it has no route for
+(``unmatched_requests``), and every one whose handler raised something other
+than ``HubError``, which it answers with HTTP 500 (``handler_failures``). It
+refuses every proxy request with HTTP 403 and records its target
+(``proxied_requests``): a test that sets the proxy variables to this server's
+address sees a request meant for another host from any client that honours
+those variables. ``stray_requests`` names all of these but the answered ones.
 """
 
 from __future__ import annotations
@@ -101,7 +113,8 @@ class _Route:
     kind: str
     pattern: re.Pattern[str]
     #: Whether the request must carry the configured token. The LFS upload
-    #: address carries a one-time key instead, as a signed address would.
+    #: address carries a key instead, as a signed address would: one key per
+    #: object, which stays valid after the upload.
     authenticated: bool = True
 
 
@@ -298,6 +311,7 @@ class StandInHub:
         self._stall_changed = threading.Condition(self._lock)
         self._requests: list[RecordedRequest] = []
         self._unmatched: list[str] = []
+        self._failures: list[str] = []
         self._proxied: list[str] = []
         #: Stored LFS objects by SHA-256, and the key each upload address takes.
         self._lfs_objects: dict[str, bytes] = {}
@@ -418,6 +432,20 @@ class StandInHub:
             return list(self._unmatched)
 
     @property
+    def handler_failures(self) -> list[str]:
+        """``METHOD path: Type: message`` of each request a handler failed on."""
+        with self._lock:
+            return list(self._failures)
+
+    def stray_requests(self) -> list[str]:
+        """Every request not answered as a Hub would answer it: those with no
+        route, those a handler failed on, and proxy requests."""
+        stray = [f"unanswered: {request}" for request in self.unmatched_requests]
+        stray += [f"handler failure: {failure}" for failure in self.handler_failures]
+        stray += [f"proxy request for {target}" for target in self.proxied_requests]
+        return stray
+
+    @property
     def proxied_requests(self) -> list[str]:
         """The target of each request sent to this server as a proxy."""
         with self._lock:
@@ -471,6 +499,17 @@ class StandInHub:
                     error.status,
                     json.dumps({"error": error.message}).encode(),
                     {"Content-Type": "application/json", **error.headers},
+                )
+            except Exception as error:
+                # A fault of the stand-in, never an answer a Hub would give.
+                with self._lock:
+                    self._failures.append(
+                        f"{method} {address.path}: {type(error).__name__}: {error}"
+                    )
+                answer = _Answer(
+                    500,
+                    json.dumps({"error": "the stand-in Hub failed"}).encode(),
+                    {"Content-Type": "application/json"},
                 )
             with self._lock:
                 self._requests.append(
