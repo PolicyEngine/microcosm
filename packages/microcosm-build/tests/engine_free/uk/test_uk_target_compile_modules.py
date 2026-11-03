@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
-import ast
-import importlib
 from pathlib import Path
 
+import pytest
+
+import microcosm.calibrate.geography_constants as geography_constants_module
 from microcosm.build import ledger_artifact
 from microcosm.build import ledger_targets as shared_ledger_targets
 from microcosm.build.uk_runtime import (
@@ -13,65 +14,32 @@ from microcosm.build.uk_runtime import (
     graph_targets,
     hmrc_uprating,
     measure_simulation,
+    target_weights,
 )
 from microcosm.build.uk_runtime.target_compile_modules import (
     EXCLUDED_DIRECT_IMPORTS,
     UK_TARGET_COMPILE_MODULE_NAMES,
     uk_target_compile_modules,
 )
-
-
-def _direct_build_imports(module_name: str) -> set[str]:
-    """Every ``microcosm.build`` module the named module imports, by AST."""
-
-    module = importlib.import_module(module_name)
-    tree = ast.parse(Path(module.__file__).read_text(encoding="utf-8"))
-    package = module_name.rsplit(".", 1)[0]
-    candidates: set[str] = set()
-    for node in ast.walk(tree):
-        if isinstance(node, ast.ImportFrom):
-            if node.level:
-                base = package.rsplit(".", node.level - 1)[0]
-                stem = f"{base}.{node.module}" if node.module else base
-            else:
-                stem = node.module or ""
-            if not stem.startswith("microcosm.build"):
-                continue
-            candidates.add(stem)
-            candidates.update(f"{stem}.{alias.name}" for alias in node.names)
-        elif isinstance(node, ast.Import):
-            candidates.update(
-                alias.name
-                for alias in node.names
-                if alias.name.startswith("microcosm.build")
-            )
-    modules: set[str] = set()
-    for name in candidates:
-        try:
-            imported = importlib.import_module(name)
-        except ImportError:
-            continue
-        source = getattr(imported, "__file__", None)
-        if source is not None and not source.endswith("__init__.py"):
-            modules.add(name)
-    return modules
+from test_support.microcosm_build.first_party_imports import (
+    first_party_imports,
+    uncovered_imports,
+)
 
 
 def test_every_direct_import_of_a_listed_module_is_listed_or_excluded():
-    listed = set(UK_TARGET_COMPILE_MODULE_NAMES)
-    uncovered = {
-        f"{name} -> {imported}"
-        for name in UK_TARGET_COMPILE_MODULE_NAMES
-        for imported in _direct_build_imports(name)
-        if imported not in listed and imported not in EXCLUDED_DIRECT_IMPORTS
-    }
+    """Every first-party import, not only microcosm.build: the target
+    hierarchies take their geography labels from
+    microcosm.calibrate.geography_constants, which a scan of microcosm.build
+    imports never saw (microcosm#1492)."""
+    uncovered = uncovered_imports(
+        UK_TARGET_COMPILE_MODULE_NAMES, frozenset(EXCLUDED_DIRECT_IMPORTS)
+    )
     assert not uncovered, sorted(uncovered)
 
 
 def test_exclusions_are_live_and_never_listed():
-    imported = set().union(
-        *(_direct_build_imports(name) for name in UK_TARGET_COMPILE_MODULE_NAMES)
-    )
+    imported = set().union(*map(first_party_imports, UK_TARGET_COMPILE_MODULE_NAMES))
     assert set(EXCLUDED_DIRECT_IMPORTS) <= imported
     assert not set(EXCLUDED_DIRECT_IMPORTS) & set(UK_TARGET_COMPILE_MODULE_NAMES)
 
@@ -149,3 +117,48 @@ def test_national_target_kernels_hash_the_fact_decoder(monkeypatch):
         graph_national.UKNationalProblemKernel(resolver_factory=None),
     ):
         assert ledger_artifact in _hashed_by(kernel, monkeypatch, graph_national)
+
+
+#: The kernels whose hash includes the UK target compile modules: the full
+#: graph's target, selection, measures and problem kernels and the national
+#: graph's target and problem kernels.
+_TARGET_AND_PROBLEM_KERNELS = (
+    graph_targets.UKFullTargetCompilationKernel(),
+    graph_targets.UKFullTargetSelectionKernel(),
+    graph_targets.UKFullMeasureKernel(),
+    graph_targets.UKFullProblemKernel(),
+    graph_national.UKNationalTargetKernel(),
+    graph_national.UKNationalProblemKernel(resolver_factory=None),
+)
+
+
+@pytest.mark.parametrize(
+    "kernel", _TARGET_AND_PROBLEM_KERNELS, ids=lambda kernel: kernel.ref
+)
+def test_an_edit_to_the_geography_labels_rekeys_the_kernel(
+    tmp_path, monkeypatch, kernel
+):
+    """The shared and UK ledger targets label a target's geography from
+    UK_GEOGRAPHY_ID_TO_LABEL, so an edit there must give these kernels new
+    keys instead of reusing a surface with the old label (microcosm#1492)."""
+    before = kernel.implementation_hash()
+    source = Path(geography_constants_module.__file__)
+    edited = tmp_path / source.name
+    edited.write_bytes(source.read_bytes() + b"\n# an edited geography label\n")
+    monkeypatch.setattr(geography_constants_module, "__file__", str(edited))
+    assert kernel.implementation_hash() != before
+
+
+def test_full_problem_loss_weights_hash_the_uk_wide_geographies(monkeypatch):
+    """target_weights takes UK_WIDE_GEOGRAPHY_IDS from geography_constants for
+    the loss weights the problem binds, so the problem's weight hash covers
+    that module itself, not only through the target compile modules."""
+    calls: list[tuple] = []
+    monkeypatch.setattr(
+        graph_targets,
+        "source_hash",
+        lambda *objects, **_dependencies: calls.append(objects) or "test",
+    )
+    graph_targets.UKFullProblemKernel().implementation_hash()
+    (weights,) = [objects for objects in calls if target_weights in objects]
+    assert geography_constants_module in weights
