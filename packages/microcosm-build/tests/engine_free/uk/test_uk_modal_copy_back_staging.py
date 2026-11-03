@@ -1,12 +1,14 @@
 """Staging a UK build's outputs once they are copied back from a Modal run.
 
-The Modal runner runs every tool with ``HF_HUB_OFFLINE=1``, so a build there
-uploads nothing: it verifies its bundle, writes the sidecars and records the
-bundle as ``local_only``. After ``modal volume get`` copies the run back,
-``tools/stage_uk_rowwise_candidate.py --modal-receipt`` checks every output
-the manifest registers against the run's receipt, then hands the bundle to the
-operator's emitter with the code that re-stages a local build that kept its
-bundle local.
+No UK program is registered with the Modal runner yet. The runner runs every
+tool with ``HF_HUB_OFFLINE=1``, so a UK build run there would upload nothing:
+it would verify its bundle, write the sidecars and record the bundle as
+``local_only``. These tests run such a build locally with that variable set
+and lay it out as ``modal volume get`` copies a run back. Then
+``tools/stage_uk_rowwise_candidate.py --modal-receipt`` checks the build
+manifest and every output it registers against the stage's receipt, and hands
+the bundle to the operator's emitter with the code that re-stages a local
+build that kept its bundle local.
 """
 
 from __future__ import annotations
@@ -35,6 +37,7 @@ from test_support.microcosm_build.uk_full_build_cli import (
 )
 
 PRIVATE_REPOSITORY = "policyengine/populace-uk-private"
+MANIFEST = "rowwise_candidate_manifest.json"
 
 
 def _modal_build(tmp_path, monkeypatch):
@@ -80,6 +83,38 @@ def _staging_argv(copied: Path, receipt: Path, *extra: str) -> list[str]:
 def _manifest(copied: Path) -> dict:
     stager = load_tool("stage_uk_rowwise_candidate")
     return json.loads((copied / stager.MANIFEST_FILENAME).read_text())
+
+
+def _refusal(stager, argv: list[str]) -> str:
+    """The error message the command exits with; fails unless it refuses so."""
+    try:
+        status = stager.main(argv)
+    except SystemExit as stop:
+        assert isinstance(stop.code, str), f"the command exited with {stop.code!r}"
+        return stop.code
+    except Exception as error:
+        raise AssertionError(
+            f"the command raised {error!r} instead of exiting with a message"
+        ) from error
+    raise AssertionError(f"the command did not refuse; it returned {status}")
+
+
+def _completes(stager, argv: list[str]) -> int:
+    """The command's exit status; fails if it refuses."""
+    try:
+        return stager.main(argv)
+    except SystemExit as stop:
+        raise AssertionError(f"the command refused: {stop.code}") from None
+
+
+def _edit_the_build_manifest(copied: Path, change) -> None:
+    """Apply ``change`` to the build manifest, written as the build writes it."""
+    path = copied / MANIFEST
+    manifest = json.loads(path.read_text())
+    change(manifest)
+    path.write_text(
+        json.dumps(manifest, allow_nan=False, indent=2, sort_keys=True) + "\n"
+    )
 
 
 def _files(directory: Path) -> dict[str, bytes]:
@@ -167,6 +202,23 @@ def _edit_after_copy_back(copied, run_root, receipt):
     _edit_an_output(copied)
 
 
+def _receipt_records_other_bytes(copied, run_root, receipt):
+    def change(content):
+        for item in content["outputs"]:
+            if item["path"] == f"out/{STEM}.h5":
+                item["sha256"] = "0" * 64
+
+    rewrite_receipt(receipt, change)
+
+
+def _dataset_never_mirrored(copied, run_root, receipt):
+    (copied / f"{STEM}.h5").unlink()
+    rewrite_receipt(
+        receipt,
+        lambda content: content.update(outputs_not_mirrored=[f"out/{STEM}.h5"]),
+    )
+
+
 def _change_without_the_manifest(copied, run_root, receipt):
     dataset = copied / f"{STEM}.h5"
     dataset.write_bytes(dataset.read_bytes() + b"\0")
@@ -202,8 +254,18 @@ def _another_kind_of_file(copied, run_root, receipt):
     [
         pytest.param(
             _edit_after_copy_back,
-            r"is not the file the Modal stage wrote",
+            rf"out/{MANIFEST} is not the build manifest the Modal stage wrote",
             id="an output edited after the copy-back",
+        ),
+        pytest.param(
+            _receipt_records_other_bytes,
+            rf"out/{STEM}\.h5 is not the file the Modal stage wrote",
+            id="an output the receipt records with other bytes",
+        ),
+        pytest.param(
+            _dataset_never_mirrored,
+            rf"out/{STEM}\.h5 was hashed in the Modal container but never copied",
+            id="an output the stage never copied to the runs volume",
         ),
         pytest.param(
             _change_without_the_manifest,
@@ -236,8 +298,8 @@ def test_a_copied_back_directory_that_does_not_verify_is_refused(
     tmp_path, monkeypatch, change, refusal
 ):
     """Nothing is handed over, no emitter is started and no file changes
-    unless every output the manifest registers is the file the finished
-    stage wrote."""
+    unless the build manifest and every output it registers are the files the
+    finished stage wrote."""
     hub, copied, receipt = _modal_build(tmp_path, monkeypatch)
     change(copied, receipt.parent.parent, receipt)
     before = _files(copied)
@@ -394,8 +456,217 @@ def test_hf_hub_offline_on_the_workstation_stages_nothing(
         None,
     )
     _edit_an_output(copied)
-    with pytest.raises(SystemExit, match="is not the file the Modal stage wrote"):
+    with pytest.raises(
+        SystemExit, match="is not the build manifest the Modal stage wrote"
+    ):
         stager.main(_staging_argv(copied, receipt, "--local-only"))
 
     assert started == []
     assert hub.paths(PRIVATE_REPOSITORY) == []
+
+
+def _change_a_field(manifest, copied):
+    manifest["release_posture"] = "edited after the copy-back"
+
+
+def _register_another_file_the_stage_wrote(manifest, copied):
+    registered = {
+        Path(str(entry["path"])).name for entry in manifest["outputs"].values()
+    }
+    unregistered = sorted(
+        path.name
+        for path in copied.iterdir()
+        if path.is_file()
+        and path.name
+        not in registered | {MANIFEST, "staged_manifest.json", "sha256sums.txt"}
+    )
+    assert unregistered, "the stage wrote no other file in the run directory"
+    content = (copied / unregistered[0]).read_bytes()
+    manifest["outputs"]["another_file"] = {
+        "path": unregistered[0],
+        "sha256": hashlib.sha256(content).hexdigest(),
+        "bytes": len(content),
+    }
+
+
+def _rename_a_role(manifest, copied):
+    key = next(
+        key
+        for key, entry in manifest["outputs"].items()
+        if str(entry["path"]).endswith(".h5")
+    )
+    manifest["outputs"]["renamed_dataset"] = manifest["outputs"].pop(key)
+
+
+@pytest.mark.parametrize(
+    "edit",
+    [
+        pytest.param(_change_a_field, id="a field changed"),
+        pytest.param(
+            _register_another_file_the_stage_wrote,
+            id="another file the stage wrote registered as an output",
+        ),
+        pytest.param(_rename_a_role, id="an output's role renamed"),
+    ],
+)
+def test_a_build_manifest_edited_after_the_copy_back_is_refused(
+    tmp_path, monkeypatch, edit
+):
+    """The build manifest says which files are staged and with which roles,
+    and it is uploaded as the build's record. Until a hand-over rewrites it,
+    it must be the file the stage wrote, even when every output still
+    matches the receipt."""
+    hub, copied, receipt = _modal_build(tmp_path, monkeypatch)
+    _edit_the_build_manifest(copied, lambda manifest: edit(manifest, copied))
+    before = _files(copied)
+    stager = load_tool("stage_uk_rowwise_candidate")
+    started = _workstation_emitters(
+        monkeypatch, stager, hub_files=hub.files, hub_api=hub
+    )
+
+    message = _refusal(stager, _staging_argv(copied, receipt))
+
+    assert f"out/{MANIFEST} is not the build manifest the Modal stage wrote" in message
+    assert started == []
+    assert _files(copied) == before
+    assert hub.paths(PRIVATE_REPOSITORY) == []
+
+
+@pytest.mark.parametrize(
+    "case", ["a stage that did not finish", "a directory outside the state"]
+)
+def test_the_receipt_and_the_directory_are_checked_before_any_output_is_hashed(
+    tmp_path, monkeypatch, case
+):
+    """A UK dataset is about 2.4 GB, so the command refuses a receipt of an
+    unfinished stage, or a directory the receipt does not describe, before it
+    reads any output."""
+    hub, copied, receipt = _modal_build(tmp_path, monkeypatch)
+    run_dir = copied
+    if case == "a stage that did not finish":
+        write_receipt(receipt.parent.parent, status="FAILED")
+        expected = "status is 'FAILED', not 'COMPLETED'"
+    else:
+        run_dir = tmp_path / "elsewhere" / "out"
+        shutil.copytree(copied, run_dir)
+        expected = "is not inside the Modal run's state directory"
+    stager = load_tool("stage_uk_rowwise_candidate")
+    _workstation_emitters(monkeypatch, stager, hub_files=hub.files, hub_api=hub)
+    hashed = []
+    from_manifest = staging_dataset.StagedDatasetBundle.from_manifest
+
+    def recording_from_manifest(*arguments, **options):
+        hashed.append(arguments)
+        return from_manifest(*arguments, **options)
+
+    monkeypatch.setattr(
+        staging_dataset.StagedDatasetBundle,
+        "from_manifest",
+        staticmethod(recording_from_manifest),
+    )
+
+    message = _refusal(stager, _staging_argv(run_dir, receipt))
+
+    assert expected in message
+    assert hashed == []
+
+
+def test_a_state_directory_reached_through_a_symbolic_link_is_the_default_root(
+    tmp_path, monkeypatch
+):
+    """The default state root, ``state/`` beside the receipt's directory, is
+    resolved as ``--modal-state-root`` is, so a ``state`` directory that is a
+    symbolic link to where the files were copied still describes them."""
+    hub, copied, receipt = _modal_build(tmp_path, monkeypatch)
+    run_root = receipt.parent.parent
+    volume_copy = tmp_path / "volume-copy"
+    shutil.move(str(run_root / "state"), str(volume_copy))
+    (run_root / "state").symlink_to(volume_copy, target_is_directory=True)
+    stager = load_tool("stage_uk_rowwise_candidate")
+    _workstation_emitters(monkeypatch, stager, hub_files=hub.files, hub_api=hub)
+
+    assert _completes(stager, _staging_argv(run_root / "state" / "out", receipt)) == 0
+
+    staged = _manifest(volume_copy / "out")["staged_dataset"]
+    assert (staged["status"], staged["revision"]) == ("uploaded", hub.sha)
+
+
+@pytest.mark.parametrize(
+    "route",
+    [
+        "a symbolic link to the run directory",
+        "a path through ..",
+        "a link in the state directory to a copy outside it",
+    ],
+)
+def test_the_run_directory_is_checked_where_it_really_is(tmp_path, monkeypatch, route):
+    """The command compares the run directory's real location with the state
+    directory, so a link to it or a path through ``..`` stages it, and a link
+    placed in the state directory that leads outside it is refused."""
+    hub, copied, receipt = _modal_build(tmp_path, monkeypatch)
+    if route == "a symbolic link to the run directory":
+        named = tmp_path / "link-to-the-run"
+        named.symlink_to(copied, target_is_directory=True)
+    elif route == "a path through ..":
+        named = copied / ".." / copied.name
+    else:
+        outside = tmp_path / "outside" / "out"
+        shutil.copytree(copied, outside)
+        named = copied.parent / "linked-out"
+        named.symlink_to(outside, target_is_directory=True)
+    stager = load_tool("stage_uk_rowwise_candidate")
+    started = _workstation_emitters(
+        monkeypatch, stager, hub_files=hub.files, hub_api=hub
+    )
+
+    if route == "a link in the state directory to a copy outside it":
+        message = _refusal(stager, _staging_argv(named, receipt))
+        assert "is not inside the Modal run's state directory" in message
+        assert started == []
+        return
+    assert _completes(stager, _staging_argv(named, receipt)) == 0
+    manifest = _manifest(copied)
+    assert manifest["staged_dataset"]["status"] == "uploaded"
+    assert manifest["staged_dataset_handover"]["run_dir"] == str(copied.resolve())
+
+
+def test_a_local_only_check_keeps_the_build_manifest_the_stage_wrote(
+    tmp_path, monkeypatch
+):
+    """``--local-only`` writes the build's own ``local_only`` record into the
+    build manifest again, so the manifest keeps the bytes the receipt lists
+    and a later run with the receipt still stages it."""
+    hub, copied, receipt = _modal_build(tmp_path, monkeypatch)
+    manifest_bytes = (copied / MANIFEST).read_bytes()
+    stager = load_tool("stage_uk_rowwise_candidate")
+    started = _workstation_emitters(
+        monkeypatch, stager, hub_files=hub.files, hub_api=hub
+    )
+
+    assert _completes(stager, _staging_argv(copied, receipt, "--local-only")) == 0
+    assert started == []
+    assert (copied / MANIFEST).read_bytes() == manifest_bytes
+    assert _completes(stager, _staging_argv(copied, receipt)) == 0
+
+    assert _manifest(copied)["staged_dataset"]["status"] == "uploaded"
+
+
+@pytest.mark.parametrize(
+    ("content", "says"),
+    [
+        pytest.param("{not json", "is not valid JSON", id="invalid JSON"),
+        pytest.param("[]", "must be a JSON object", id="JSON that is not an object"),
+    ],
+)
+def test_a_malformed_build_manifest_is_an_error_message(tmp_path, content, says):
+    """Every refusal of the build manifest is an error message, as the
+    bundle's own checks of it are, never a traceback."""
+    stager = load_tool("stage_uk_rowwise_candidate")
+    run_dir = tmp_path / "run"
+    run_dir.mkdir()
+    (run_dir / MANIFEST).write_text(content)
+
+    message = _refusal(stager, ["--run-dir", str(run_dir), "--local-only"])
+
+    assert message.startswith("error: ")
+    assert says in message

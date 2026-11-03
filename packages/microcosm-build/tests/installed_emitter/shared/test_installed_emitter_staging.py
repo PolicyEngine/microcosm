@@ -37,7 +37,9 @@ from microcosm.build.staging_dataset import (
     SHA256SUMS_FILENAME,
     STAGED_MANIFEST_FILENAME,
     StagedDatasetBundle,
+    at_build_record,
     handover_record,
+    local_only_staged_dataset,
     resume_hand_over,
     stage_bundle,
     write_access_problem,
@@ -386,11 +388,21 @@ def test_the_installed_emitter_uploads_the_bundle_in_one_commit(
 def test_a_modal_runs_copied_back_outputs_are_staged_by_the_re_stage_command(
     tmp_path: Path, stand_in_hub: StandInHub, installed_emitter: InstalledEmitter
 ) -> None:
-    """After ``modal volume get``, the UK re-stage command checks the outputs
-    against the stage's receipt, starts the installed emitter as it does for a
-    local directory, and records the commit the emitter made of them."""
+    """After ``modal volume get``, the UK re-stage command checks the build
+    manifest and the outputs against the stage's receipt, starts the installed
+    emitter as it does for a local directory, and records the commit the
+    emitter made of them, under the run id the build recorded."""
     stager = load_tool("stage_uk_rowwise_candidate")
     bundle = _write_bundle(tmp_path, manifest_name=stager.MANIFEST_FILENAME)
+    # A build run with HF_HUB_OFFLINE, as on Modal, records its bundle as
+    # local_only under its run id, and the command stages it under that id.
+    manifest_path = bundle.run_dir / stager.MANIFEST_FILENAME
+    manifest = json.loads(manifest_path.read_text())
+    record = local_only_staged_dataset(bundle, prefix="staged")
+    manifest.update(
+        staged_dataset=record, staged_dataset_at_build=at_build_record(record)
+    )
+    manifest_path.write_text(json.dumps(manifest, indent=2))
     copied, receipt = copy_back(bundle.run_dir, tmp_path / "modal-runs")
 
     status = stager.main(
@@ -399,8 +411,6 @@ def test_a_modal_runs_copied_back_outputs_are_staged_by_the_re_stage_command(
             str(copied),
             "--repo-id",
             REPOSITORY,
-            "--run-id",
-            RUN_ID,
             "--modal-receipt",
             str(receipt),
             "--wait-seconds",
@@ -433,6 +443,7 @@ def test_a_modal_runs_copied_back_outputs_are_staged_by_the_re_stage_command(
         PREFIX,
         commit.oid,
     )
+    assert staged["run_id"] == RUN_ID
     assert manifest["staged_dataset_handover"]["run_dir"] == str(copied.resolve())
 
 
