@@ -3,11 +3,13 @@
 ``compose.measurement_proofs`` satisfies ``measurement:<id>`` only when, for
 every calibration node, exactly one node upstream of it declares
 ``params.measurement_id: <id>`` and writes the scaled interval table's income and
-universe columns on that table's entity. Each mutant below breaks one clause
-and must leave the rows parked, with the activation gap naming the
-measurement. Composition checks the same rule against the compiled graph, and
-for a calibration node that a transport extension adds, which no declared row
-names, the compiled graph alone proves the producer.
+universe columns on that table's entity. Each declared mutant below breaks one
+clause and must leave the rows parked, with the activation gap naming the
+measurement. Composition checks the same rule against the compiled graph; those
+tests patch in a proof and read composition's verdict. For a calibration node
+that a transport extension adds, which no declared row names, the compiled
+graph alone proves the producer. Both checks refuse a ``measurement_id`` that
+is neither ``None`` nor a nonempty string.
 ``test_nz_transport_toy_graph.py`` runs that path on the calibration nodes of
 NZ's toy scenarios.
 """
@@ -663,7 +665,7 @@ def test_an_expand_proves_exactly_when_its_cells_avoid_the_measured_columns(cell
 
 
 def _chain(draws):
-    """CREATE, then nodes chained by artifacts, all upstream of calibration.
+    """CREATE, then nodes chained by step columns, all upstream of calibration.
 
     Each draw is (declares the id, writes the income, writes the universe).
     """
@@ -1068,3 +1070,84 @@ def test_an_extension_chain_proves_exactly_when_the_declared_chain_does(draws):
         if missing is not None:
             reason = f"its one declarer {missing[1]} {missing[2]}"
         assert refusal == f"{EXTENSION_PREFIX}{reason}."
+
+
+def _chain_with_another_node(value):
+    """One declarer's chain, plus a node whose ``measurement_id`` is ``value``.
+
+    Calibration reads the extra node's column, so the node sits upstream of
+    calibration in both :func:`_chain`'s rows and :func:`_compiled_chain`'s graph.
+    """
+    from dataclasses import replace
+
+    from microcosm.graph import Graph, Node, Owned, Slice, compile_graph
+
+    draws = [(True, True, True)]
+    document = _chain(draws)
+    document["nodes"].insert(
+        -1,
+        {
+            "id": "toy.other",
+            "kernel": "toy.chain@1",
+            "population": "toy.create",
+            "params": {"measurement_id": value},
+            "outputs": [{"entity": "person", "column": "toy_other", "dtype": "bool"}],
+        },
+    )
+    document["nodes"][-1]["inputs"][0]["columns"].append("toy_other")
+    graph, _ = _compiled_chain(draws)
+    *nodes, calibrate = graph.nodes
+    other = Node(
+        id="toy.other",
+        kernel="toy.chain@1",
+        population="toy.create",
+        params={"measurement_id": value},
+        outputs=(Owned("person", "toy_other", "bool"),),
+    )
+    (read,) = calibrate.inputs
+    calibrate = replace(
+        calibrate, inputs=(Slice("person", (*read.columns, "toy_other")),)
+    )
+    graph = Graph(
+        country=graph.country, sources=graph.sources, nodes=(*nodes, other, calibrate)
+    )
+    return _spec(document), graph, compile_graph(graph)
+
+
+@pytest.mark.parametrize("root", ["extension", "skeleton"])
+@pytest.mark.parametrize("value", [7, "", None], ids=["int", "empty", "null"])
+def test_both_checks_refuse_a_malformed_measurement_id_and_ignore_a_null(value, root):
+    """The declared and compiled checks agree on another node's measurement_id.
+
+    Both refuse ``7`` and ``""`` with the declared check's reason, and both read
+    an explicit ``None`` as no declaration, for a calibration node that an
+    extension adds and for a skeleton one.
+    """
+    spec, graph, compiled = _chain_with_another_node(value)
+    proofs, refusals = measurement_proofs(spec)
+    extension = root == "extension"
+    columns = [f"person.{INCOME_COLUMN}", f"person.{UNIVERSE_COLUMN}"]
+    with pytest.MonkeyPatch.context() as patch:
+        check = _forced_proof(patch, None if extension else "toy.n0", columns)
+        try:
+            check(
+                {},
+                graph,
+                compiled,
+                extension_nodes={"toy.calibrate"} if extension else (),
+            )
+        except ValueError as error:
+            refusal = str(error)
+        else:
+            refusal = None
+    if value is None:
+        assert refusals == {}
+        assert proofs[SUMMED_MEASUREMENT]["producers"] == {"toy.calibrate": "toy.n0"}
+        assert refusal is None
+    else:
+        reason = refusals[SUMMED_MEASUREMENT]
+        assert reason == (
+            "nodes ['toy.other'] declare a measurement_id that is not a string"
+        )
+        assert SUMMED_MEASUREMENT not in proofs
+        assert refusal == f"Composition refuses: {reason}."

@@ -50,7 +50,8 @@ from its binding, including for extension nodes.
 Composition refuses an extension whose nodes change any skeleton node's
 compiled predecessors (for example a new member of a calibration base
 version). Explicit ``package_inputs`` may add extension artifacts to the final
-receipt; every other skeleton predecessor set remains fixed.
+receipt, and explicit ``gate_inputs`` may add extension evidence to a skeleton
+gate battery; every other skeleton predecessor set remains fixed.
 
 Composition reads no donor, no facts and no engine, and writes nothing.
 Activation checks selected resource paths, non-null selected roots and encoding
@@ -733,8 +734,9 @@ def _check_measurement_proofs(
     producer under R2C-1's rule: the one declarer must output each of the
     proof's columns. Either way, the producer must also be the only compiled
     ancestor whose outputs or EXPAND cells hold each of the proof's columns
-    (R2C-15). Composition runs this check on the skeleton and again on the
-    extended graph.
+    (R2C-15). As the declared check does, it refuses a node whose
+    ``measurement_id`` is neither ``None`` nor a nonempty string. Composition
+    runs this check on the skeleton and again on the extended graph.
     """
     proofs, _ = measurement_proofs(spec)
     if not proofs:
@@ -749,6 +751,16 @@ def _check_measurement_proofs(
         for node in graph.nodes
         if isinstance(node.params, Mapping) and MEASUREMENT_PARAM in node.params
     }
+    malformed = sorted(
+        name
+        for name, value in declared.items()
+        if value is not None and not _is_text(value)
+    )
+    if malformed:
+        raise ValueError(
+            f"Composition refuses: nodes {malformed} declare a measurement_id "
+            "that is not a string."
+        )
     by_id = {node.id: node for node in graph.nodes}
     _, expand_cells = _precalibration_expansions(graph)
     for binding, proof in sorted(proofs.items()):
