@@ -117,9 +117,12 @@ later accepts the credential is not visible to the build. For a failure the
 interface reports itself, interface 0.7.0 first prints its own line saying
 the build will continue; the error that follows says that line does not
 apply. Unset or `0`, a build continues without the emitter as above; any
-other value stops it with a `ValueError`. The Modal stage runner sets it to
-`1` for the stage it runs, unless the plan sets `0`, and passes that stage a
-telemetry-only collector token (see
+other value stops it with a `ValueError`. Leaving the requirement off
+(unset or `0`) exists only for the convenience of people outside
+PolicyEngine who run Microcosm without access to the collector;
+PolicyEngine's own builds keep telemetry required. The Modal stage runner
+sets it to `1` for the stage it runs, unless the plan sets `0`, and passes
+that stage a telemetry-only collector token (see
 [the Modal stage runbook](docs/us-modal-stage-runbook.md#how-a-run-works),
 item 6).
 

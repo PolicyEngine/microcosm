@@ -21,6 +21,9 @@ used, so the build stops before doing any work; any value other than ``1``,
 ``0`` or unset raises ``ValueError``. For a startup failure that
 ``EmitterClient.start`` reports itself, the interface first prints that the
 build will continue; the adapter's error says that line does not apply.
+Leaving the requirement off (unset or ``0``) exists only for the
+convenience of people outside PolicyEngine who run Microcosm without access
+to the collector; PolicyEngine's own builds keep telemetry required.
 
 The adapter never starts an emitter older than ``MINIMUM_EMITTER_VERSION``.
 It reads the version from ``microcosm-emitter version`` first, because the
@@ -143,8 +146,11 @@ _RELEASE_NUMBER = re.compile(r"(\d+)\.(\d+)\.(\d+)")
 _MINIMUM_RELEASE = tuple(int(part) for part in MINIMUM_EMITTER_VERSION.split("."))
 
 #: ``1``: this build must send telemetry, so it stops when its emitter cannot
-#: be used. Unset or ``0``: it continues without one. Whoever starts the
-#: build sets it; the adapter reads it each time it starts.
+#: be used. Unset or ``0``: it continues without one, which exists only for
+#: the convenience of people outside PolicyEngine who run Microcosm without
+#: access to the collector; PolicyEngine's own builds keep telemetry
+#: required. Whoever starts the build sets it; the adapter reads it each time
+#: it starts.
 TELEMETRY_REQUIRED_VARIABLE = "MICROCOSM_TELEMETRY_REQUIRED"
 REQUIRED_TELEMETRY_ERROR = (
     "{variable}=1, so this build must send telemetry, but {problem}"
@@ -323,9 +329,10 @@ def _missing_command_refusal(error: EmitterStartupError) -> TelemetryRequiredErr
 def _telemetry_required() -> bool:
     """Whether this build must send telemetry (``MICROCOSM_TELEMETRY_REQUIRED``).
 
-    ``1``: it must. Unset or ``0``: it continues without an emitter. Any other
-    value raises ``ValueError``, so a mistyped setting never turns the
-    requirement off.
+    ``1``: it must. Unset or ``0``: it continues without an emitter, which
+    is only for people outside PolicyEngine without access to the collector;
+    PolicyEngine's own builds keep telemetry required. Any other value raises
+    ``ValueError``, so a mistyped setting never turns the requirement off.
     """
     setting = os.environ.get(TELEMETRY_REQUIRED_VARIABLE)
     if setting is None or setting == "0":
