@@ -321,12 +321,14 @@ def test_stage2_pension_bridge_uses_observed_and_drawn_receipt(
         return result
 
     class CapturingQRF(_FakeQRF):
-        def fit(self, frame, predictors, targets, *, weights):
+        def fit(self, frame, predictors, targets, *, weights, groups=None):
             if "state_pension_reported" in targets:
                 captured["training"] = frame.table("person")[
                     "state_pension_receipt"
                 ].to_numpy()
-            return super().fit(frame, predictors, targets, weights=weights)
+            return super().fit(
+                frame, predictors, targets, weights=weights, groups=groups
+            )
 
     monkeypatch.setattr(_FakeFittedQRF, "predict", predict)
     monkeypatch.setattr(spi_income, "QRF", CapturingQRF)
