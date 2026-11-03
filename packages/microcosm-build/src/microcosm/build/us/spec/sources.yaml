@@ -99,7 +99,7 @@ sources:
 stage_asset:
   id: source_stages
   path: microcosm.build.us/source_stages.json
-  sha256: 710b21a975375195540f6825d6f6b02c05c1a23ab989f83c4f4adeff5ffa72c3
+  sha256: de488b42f372972b3ec65e946c1f3cfce4f2cd6875b59f73fd1931c346a74c8a
 stage_manifest:
   version: 1
   country: us
@@ -1452,35 +1452,42 @@ stages:
     other relative folded in by the public file) is a co-resident child''s own federal_student_loan_balance
     when the household listing (X108-X226) has a child aged 18 or over who could have been in school in
     the year borrowed (16 or older then, at the oldest age of the public file''s age band), unless only
-    a parent could have borrowed it: an undergraduate or certificate loan above the $31,000 aggregate
-    limit on a dependent undergraduate''s own Direct Loans (34 CFR 685.203(e)(1)) borrowed while the child
-    could still have been under 24 and so dependent (20 U.S.C. 1087vv(d)(1)(A)). Graduate loans and loans
-    borrowed after the child turned 24 are never Parent PLUS, which finances only a dependent undergraduate
-    (34 CFR 685.200(c)(2)(i)). Every other code-3 loan is the reference person''s federal_parent_plus_loan_balance:
-    the screener (X7801) leaves out loans of people living elsewhere, so a loan for a child not in the
-    household is the parent''s. Codes 6 (multiple people), 7 (unrelated person) and -7 (other) are the
-    reference person''s own balance, since none can be a Parent PLUS loan for one dependent student. is_income_based_repayment_new_borrower
-    is true when every federal loan the person holds (for the reference person, Parent PLUS too, as 34
-    CFR 685.209(b)(13)(ii) looks at any Direct or FFEL balance) was borrowed in 2014 or later (the item
-    records a year only, so 2014 counts as after July 1, 2014); the share is an upper bound, because paid-off
-    pre-2014 loans are not observed and a consolidated loan is dated by its most recent underlying loan.
-    federal_student_loan_graduate_share is the amount-borrowed-weighted share of the person''s own federal
-    loans that financed a master''s, professional or doctoral program (codes 13-15). One weighted QRF
-    draws the household total from all families; a second, fit on borrower families and conditioning also
-    on the total and the number of adult children, draws the Parent PLUS, adult child''s, reference person''s
-    and spouse''s shares in that order, normalized to sum to one, then the three graduate shares and new-borrower
-    flags. Both condition on the reference person''s age, sex and race, a spouse or partner being present
-    (SCF MARRIED counts partners), the children of the reference person or partner (SCF KIDS), and the
-    wages and income less capital gains of the reference person, spouse or partner and their children
-    (the CPS counterpart of the SCF primary economic unit). The shared interest-dividend and Social Security-pension
-    predictors are left out: the CPS host carries tax-record imputations of both, so at reference ages
-    25-34 42% and 18% of host households report some against 16% and 6% of SCF families, and mapping them
-    to the SCF distribution moves the host''s borrower share most of any predictor (experiments/receipts/1073-predictor-shift-diagnosis.json).
+    a parent could have borrowed it: an associate''s, bachelor''s or professional-certification loan (programs
+    10-12 and 16) above the aggregate limit on a dependent undergraduate''s own loans in its loan year
+    ($31,000 from July 1, 2008, Pub. L. 110-227 and 34 CFR 685.203(e)(1); $23,000 from July 1, 1993, Pub.
+    L. 102-325; $17,250 before; a 2008 or 1993 loan counts as on or after July 1, since most disbursements
+    come in the fall) borrowed while the child could still have been under 24 and so dependent (20 U.S.C.
+    1087vv(d)(1)). That rule leans toward Parent PLUS: a dependent student whose parent cannot get a PLUS
+    loan may borrow up to $57,500 (34 CFR 685.203(c)(1)(iii) and (e)(2)), and some students under 24 are
+    independent (20 U.S.C. 1087vv(d)). Graduate loans and loans borrowed after the child turned 24 are
+    never Parent PLUS, which finances only a dependent undergraduate (34 CFR 685.200(c)(2)(i)); a graduate
+    code-3 loan that no listed child fits is the reference person''s own balance. Every other code-3 loan
+    is the reference person''s federal_parent_plus_loan_balance: the screener (X7801) leaves out loans
+    of people living elsewhere, so a loan for a child not in the household is the parent''s. Codes 6 (multiple
+    people), 7 (unrelated person) and -7 (other) are the reference person''s own balance, since none can
+    be a Parent PLUS loan for one dependent student. is_income_based_repayment_new_borrower is true when
+    every federal loan the person holds (for the reference person, Parent PLUS too, as 34 CFR 685.209(b)(13)(ii)
+    looks at any Direct or FFEL balance) was borrowed in 2014 or later (the item records a year only,
+    so 2014 counts as after July 1, 2014); the share is an upper bound, because paid-off pre-2014 loans
+    are not observed and a consolidated loan is dated by its most recent underlying loan. federal_student_loan_graduate_share
+    is the amount-borrowed-weighted share of the person''s own federal loans that financed a master''s,
+    professional or doctoral program (codes 13-15). One weighted QRF draws the household total from all
+    families; a second, fit on borrower families and conditioning also on the total and the number of
+    adult children, draws the Parent PLUS, adult child''s, reference person''s and spouse''s shares in
+    that order, normalized to sum to one, then the three graduate shares and new-borrower flags. Both
+    condition on the reference person''s age, sex and race, a spouse or partner being present (SCF MARRIED
+    counts partners), the children of the reference person or partner (SCF KIDS), and the wages and income
+    less capital gains of the reference person, spouse or partner and their children (the CPS counterpart
+    of the SCF primary economic unit). The shared interest-dividend and Social Security-pension predictors
+    are left out: the CPS host carries tax-record imputations of both, so at reference ages 25-34 42%
+    and 18% of host households report some against 16% and 6% of SCF families, and mapping them to the
+    SCF distribution moves the host''s borrower share most of any predictor (experiments/receipts/1073-predictor-shift-diagnosis.json).
     The reference person is the CPS householder or, with a spouse or partner present, the man of a mixed-sex
     couple or else the older partner; that person, the member named by its A_SPOUSE (else PECOHAB) pointer,
     and the youngest child of either aged 18 or over (PEPAR1/PEPAR2) receive the balances. Without a spouse
     or partner present the spouse''s draw goes to the reference person, and a child''s draw in a household
-    without an adult child is the reference person''s Parent PLUS loan. Balances are 2025 survey-date
+    without an adult child splits by its graduate share: the graduate part joins the reference person''s
+    own balance and the rest is the reference person''s Parent PLUS loan. Balances are 2025 survey-date
     dollars; the FSA calibration (microcosm#1074) pins totals.'
 - stage: ssi_disability_criteria
   survey: Census SIPP
