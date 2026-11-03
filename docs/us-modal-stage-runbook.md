@@ -51,7 +51,10 @@ release directory onto the runs volume. Publication stays the human step in
    `CREDENTIAL`) is refused even under an allowed prefix. `PYTHONHASHSEED`
    is outside the allowlist, so no plan can set it (see "Route A's base
    stage", Environment). A plan may set `MICROCOSM_TELEMETRY_REQUIRED` only
-   to `0` (see item 6), and none of the collector-token variables
+   to `0` (see item 6), an opt-out that exists only for people outside
+   PolicyEngine who run Microcosm without access to the collector;
+   PolicyEngine's own plans keep telemetry required. A plan may set none
+   of the collector-token variables
    (`MICROCOSM_COLLECTOR_TOKEN`, `MICROCOSM_COLLECTOR_TOKEN_EXPIRES_AT`,
    `MICROCOSM_COLLECTOR_ORIGIN`) or the runner's own names for them
    (`MICROCOSM_MODAL_TELEMETRY_*`). Nor may it set
@@ -253,9 +256,10 @@ release directory onto the runs volume. Publication stays the human step in
      (15 or 30 minutes), less about 106 s, after the token was obtained,
      after a queue or a preemption restart, is refused; launch again for a
      new token. Every refusal, at launch and here, names the
-     `MICROCOSM_TELEMETRY_REQUIRED=0` opt-out; a refusal here names it right
-     after its first clause, so the attempt record's note, which keeps the
-     first 500 characters, always holds it.
+     `MICROCOSM_TELEMETRY_REQUIRED=0` opt-out and says it is only for people
+     outside PolicyEngine without access to the collector; a refusal here
+     names it right after its first clause, so the attempt record's note,
+     which keeps the first 500 characters, always holds it.
    - **An image emitter without a collector origin.** The image installs
      the newest emitter release when Modal builds its install step, and
      Modal reuses that step for a commit while the step's command is the
@@ -280,7 +284,9 @@ release directory onto the runs volume. Publication stays the human step in
      to `0` asks for no token, and its build runs without telemetry: the
      emitter, if one starts, keeps its events in the container, and they
      are lost with it. The plan, and so the setting, is copied into every
-     receipt. Use it, for example, while the collector is unavailable.
+     receipt. The setting exists only for people outside PolicyEngine who
+     run Microcosm without access to the collector. PolicyEngine's own
+     builds keep telemetry required, so PolicyEngine's plans do not set it.
    - **Events left undelivered.** Events the emitter has not sent when the
      build ends are lost with the container. The receipt does not record
      how many there were until the emitter's `status` command and the
@@ -391,8 +397,10 @@ MICROCOSM_MODAL_PLAN=plan.json modal run tools/modal_us_stage.py
 #    whole budget again.
 #    --run first asks this machine's microcosm-emitter (0.11.0 or later, with
 #    a Hugging Face login) for the build's telemetry-only collector token,
-#    and refuses to launch without one; a plan that sets
-#    MICROCOSM_TELEMETRY_REQUIRED=0 skips that (item 6 of "How a run works").
+#    and refuses to launch without one. A plan that sets
+#    MICROCOSM_TELEMETRY_REQUIRED=0 skips that; the setting is only for
+#    people outside PolicyEngine without access to the collector, and
+#    PolicyEngine's own plans never set it (item 6 of "How a run works").
 MICROCOSM_MODAL_PLAN=plan.json modal run --detach tools/modal_us_stage.py --run --spawn
 
 # 5. Fetch the state and verify it against the receipt. A receipt whose

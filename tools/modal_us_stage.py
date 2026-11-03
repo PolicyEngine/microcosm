@@ -34,7 +34,10 @@ this launch, never in the plan, and the stage's build gets it so that its
 emitter can send telemetry; no Hugging Face credential reaches the build.
 The launch refuses, launching nothing, when the token cannot be obtained or
 is shorter than asked for. A plan with ``MICROCOSM_TELEMETRY_REQUIRED=0``
-in its env asks for none, and its build runs without telemetry.
+in its env asks for none, and its build runs without telemetry. That
+opt-out exists only for people outside PolicyEngine who run Microcosm
+without access to the collector; PolicyEngine's own plans keep telemetry
+required.
 
 Set ``MICROCOSM_MODAL_HF_SECRET=<modal secret name>`` only when an input
 lives in a gated or private Hugging Face repo; public releases need no
@@ -1286,7 +1289,9 @@ def main(run: bool = False, spawn: bool = False) -> None:
     if token is None:
         print(
             f"TELEMETRY: the plan sets {plan_lib.TELEMETRY_REQUIRED_ENV}=0, so no "
-            "collector token was requested and the stage runs without telemetry",
+            "collector token was requested and the stage runs without telemetry "
+            "(an opt-out only for people outside PolicyEngine without access to "
+            "the collector)",
             file=sys.stderr,
         )
     else:

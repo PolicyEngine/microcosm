@@ -189,7 +189,9 @@ HASH_SEED = "0"
 #: that starts its emitter stops at once when that emitter cannot be used. A
 #: plan may set ``0`` to run without telemetry; its launch then asks for no
 #: collector token, and the plan, with the setting, is copied into the
-#: receipt.
+#: receipt. That opt-out exists only for people outside PolicyEngine who run
+#: Microcosm without access to the collector; PolicyEngine's own plans keep
+#: telemetry required.
 TELEMETRY_REQUIRED_ENV = "MICROCOSM_TELEMETRY_REQUIRED"
 #: The variables microcosm-emitter 0.11.0 and later read a collector token
 #: from (its ``core.constants``). The token only writes telemetry; the emitter
@@ -1679,7 +1681,8 @@ def _telemetry_setting_refusal(value: str) -> str:
 
     return (
         f"env {TELEMETRY_REQUIRED_ENV} may only be 0, which runs the stage "
-        f"without telemetry; the runner sets 1 itself. Not {value!r}"
+        "without telemetry and is only for people outside PolicyEngine without "
+        f"access to the collector; the runner sets 1 itself. Not {value!r}"
     )
 
 
@@ -1806,9 +1809,12 @@ TELEMETRY_TOKEN_EXIT_MEANINGS = {
 #: Visible ASCII, the only characters a bearer token can carry (as the
 #: emitter itself requires).
 _SENDABLE_TOKEN = re.compile(r"[!-~]+")
+#: The opt-out, as every refusal names it. It exists only for people outside
+#: PolicyEngine who run Microcosm without access to the collector;
+#: PolicyEngine's own builds keep telemetry required.
 _TELEMETRY_OPT_OUT = (
-    f"to run this stage without telemetry, set {TELEMETRY_REQUIRED_ENV}=0 in "
-    "the plan's env"
+    "only outside PolicyEngine, without access to the collector, may a plan's "
+    f"env set {TELEMETRY_REQUIRED_ENV}=0 to run this stage without telemetry"
 )
 
 
@@ -2065,10 +2071,9 @@ def _old_image_emitter() -> str:
     return _container_refusal(
         f"the image's emitter ({IMAGE_EMITTER_COMMAND}) reports no collector "
         "origin, so it predates collector tokens (emitter 0.11.0 and later)",
-        "Modal reuses the image it built for this commit. Set MODAL_FORCE_BUILD=1 "
-        "for one launch to rebuild it: that rebuilds every layer, so other "
-        "commits' images rebuild once at their next launch, and left set it "
-        "rebuilds every layer at every launch.",
+        "Rebuild the image: set MODAL_FORCE_BUILD=1 for one launch only (it "
+        "rebuilds every layer, so other commits' images rebuild once too; "
+        "runbook, item 6).",
     )
 
 
@@ -2200,12 +2205,9 @@ def telemetry_check(
         return record, _container_refusal(
             f"the collector token expires at {expires_at}, before "
             f"{record['token_needed_until']}, the latest the emitter may send it",
-            f"That is the tool's SIGKILL, {STOP_GRACE_SECONDS} s after its SIGTERM "
-            "at the class timeout less the stage's reserve, plus the emitter's "
-            f"{EMITTER_EXIT_NOTICE_SECONDS:g} s, {EMITTER_DRAIN_SECONDS} s drain and "
-            f"{EMITTER_TOKEN_MARGIN_SECONDS} s margin (runbook, item 6). The "
-            "container started too long after its launch; launch again for a new "
-            "token.",
+            "That is the tool's SIGKILL plus the emitter's drain and margin "
+            "(token_needed_until; runbook, item 6). The container started too "
+            "long after its launch; launch again for a new token.",
         )
     return record, None
 
