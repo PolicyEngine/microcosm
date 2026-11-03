@@ -93,13 +93,14 @@ _PERSON_REQUIRED = (
 # Preserve source hours and their universe/allocation evidence when supplied,
 # the citizenship, entry-year, birthplace, coverage, class-of-worker, school
 # and military-service fields the ACS local lane's immigration stage reads
-# (microcosm#1020, acs_local_immigration), and the six disability-difficulty
-# items the local lane maps natively (microcosm#1021,
-# acs_local_work_disability). The employment status (ESR) the immigration
-# stage reads and the weeks worked (WKWN) the local lane maps natively are
-# required above, for the work-experience inputs. Older or minimal source
-# fixtures remain loadable; an absent column stays absent and a Census blank
-# stays missing, never a zero.
+# (microcosm#1020, acs_local_immigration), the six disability-difficulty items
+# the local lane maps natively (microcosm#1021, acs_local_work_disability), and
+# all other income (OIP), the local income pass's child-support predictor
+# (microcosm#1022, acs_local_income). The employment status (ESR) the
+# immigration stage reads and the weeks worked (WKWN) the local lane maps
+# natively are required above, for the work-experience inputs. Older or
+# minimal source fixtures remain loadable; an absent column stays absent and
+# a Census blank stays missing, never a zero.
 _PERSON_OPTIONAL: tuple[str, ...] = (
     "WKHP",
     "WKL",
@@ -121,6 +122,7 @@ _PERSON_OPTIONAL: tuple[str, ...] = (
     "COW",
     "SCHG",
     "MIL",
+    "OIP",
 )
 # ACS source columns whose Census name is already a different CPS ASEC field in
 # the pooled person table. ACS ``MIL`` is military service (veteran status);
