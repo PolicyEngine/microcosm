@@ -15,6 +15,12 @@ explicit selection:
   bytes, so the node's key moves with that one resource only).
 - ``{"prepared": "engine_refs"}`` is the canonical JSON of the prepared
   binding-id -> engine reference map that preparation built.
+- ``{"prepared": "unit_entities"}`` is the canonical JSON of every declared
+  partition entity, read from the declared CREATE with the legacy
+  benefit-unit fallback.
+- ``{"prepared": "support_roster"}`` is the canonical JSON of the support
+  gate's roster: every column the battery and the calibration problem read,
+  classed by its producer in lineage (:func:`_support_roster`).
 - ``{"binding": name, "field": field}`` selects exactly ``engine_ref`` or
   ``period`` from one declared, prepared rules binding.
 
@@ -62,7 +68,7 @@ from __future__ import annotations
 import hashlib
 import json
 import re
-from collections.abc import Iterator, Mapping, Sequence
+from collections.abc import Iterable, Iterator, Mapping, Sequence
 from dataclasses import dataclass, replace
 from importlib.resources import files
 from pathlib import Path
@@ -86,6 +92,7 @@ from microcosm.build.money_normalization import (
 )
 from microcosm.build.reference_profiles import resolve_reference_profiles
 from microcosm.calibrate.ordered_kernels import OUTPUT_TYPES
+from microcosm.frame.concepts import ProvenanceClass, concept_for_column
 from microcosm.frame.kernels import missing_relation_inputs
 from microcosm.frame.materialize import _WEIGHT_COLUMN_SUFFIX
 from microcosm.graph import (
@@ -112,7 +119,21 @@ from microcosm.graph.expansion import (
 )
 
 from .artifact_types import KERNEL_OUTPUTS
+from .codecs import RULESPEC_SOURCE_CODEC
 from .column_kernels import validate_receipt_contract
+from .evidence_contract import (
+    DONOR_RANGES_REF,
+    DONOR_RANGES_TYPE,
+    DONOR_RECEIPT_REF,
+    DONOR_RECEIPT_TYPE,
+    INPUT_CLOSURE_REF,
+    INPUT_CLOSURE_TYPE,
+    SUPPORT_BOUNDS_REF,
+    SUPPORT_BOUNDS_TYPE,
+    WEIGHTS_AUDIT_REF,
+    WEIGHTS_AUDIT_TYPE,
+    binding_relation_inputs,
+)
 from .money_kernels import (
     MONEY_ANNUAL_TRANSFERS_REF,
     MONEY_MINOR_UNITS_REF,
@@ -160,6 +181,7 @@ SKELETON_KERNELS = CREATE_REFS | frozenset(
         "transport.boundary@1",
         "transport.currency@1",
         "transport.quantile_map@1",
+        "transport.quantile_map@2",
         MONEY_NORMALIZE_REF,
         "transport.unit_attributes@1",
         "concepts.encode@1",
@@ -168,6 +190,7 @@ SKELETON_KERNELS = CREATE_REFS | frozenset(
         "simulate.solve_zero@1",  # [BE] Non-structural pre-calibration solves.
         "money.minor_units@1",
         "money.annual_transfers@1",
+        "measure.combine@1",
         "takeup.assign@1",
         "targets.compile@1",
         "calibration.prepare@1",
@@ -180,6 +203,11 @@ SKELETON_KERNELS = CREATE_REFS | frozenset(
         "geography.gate@1",
         "diagnostics.calibration@1",
         "gates.battery@1",
+        DONOR_RECEIPT_REF,
+        INPUT_CLOSURE_REF,
+        WEIGHTS_AUDIT_REF,
+        DONOR_RANGES_REF,
+        SUPPORT_BOUNDS_REF,
         "export.prepare@1",
         "export.readback@1",
         "transport.package@1",
@@ -189,14 +217,15 @@ SKELETON_KERNELS = CREATE_REFS | frozenset(
 MONEY_NORMALIZATION_RESOURCE = "money_normalization"
 #: The only kernels that may produce donor money after CREATE once a spec
 #: declares money normalization.
-_MONEY_PRODUCERS = frozenset({MONEY_NORMALIZE_REF, "transport.quantile_map@1"})
+_QUANTILE_MAPS = frozenset({"transport.quantile_map@1", "transport.quantile_map@2"})
+_MONEY_PRODUCERS = frozenset({MONEY_NORMALIZE_REF}) | _QUANTILE_MAPS
 #: Money bridges own new integer columns in their whole population lineage.
 _MONEY_BRIDGES = frozenset({MONEY_MINOR_UNITS_REF, MONEY_ANNUAL_TRANSFERS_REF})
 #: Conversion changes the basis of an existing donor column; derived money
 #: outputs and cross-population evidence artifacts do not change that basis.
 _MONEY_CONVERSIONS = frozenset({MONEY_NORMALIZE_REF, "transport.currency@1"})
 #: Kernels outside target compilation that replay factors against the feed.
-_FEED_REPLAY_KERNELS = frozenset({MONEY_NORMALIZE_REF})
+_FEED_REPLAY_KERNELS = frozenset({MONEY_NORMALIZE_REF, SUPPORT_BOUNDS_REF})
 _DOCUMENT_FIELDS = frozenset(
     {
         "schema_version",
@@ -231,7 +260,7 @@ _NODE_FIELDS = frozenset(
     }
 )
 _ENCODINGS = frozenset({"value", "json", "sha256"})
-_PREPARED = frozenset({"engine_refs"})
+_PREPARED = frozenset({"engine_refs", "unit_entities", "support_roster"})
 _PRECALIBRATION_SCHEMA_VERSION = 1
 _PRECALIBRATION_PURPOSES = frozenset({"calibration_measure", "classification"})
 _PRECALIBRATION_STAGE_FIELDS = frozenset(
@@ -245,6 +274,11 @@ _OUTPUT_TYPES: Mapping[str, Mapping[str, ArtifactType]] = MappingProxyType(
         "calibrate.ordered_adam@1": OUTPUT_TYPES,
         "geography.support_from_facts@1": {"support": ATOMIC_SUPPORT_TYPE},
         "geography.gate@1": {"validation": ATOMIC_GEOGRAPHY_VALIDATION_TYPE},
+        DONOR_RECEIPT_REF: {"donor_artifact_receipt": DONOR_RECEIPT_TYPE},
+        INPUT_CLOSURE_REF: {"axiom_input_closure": INPUT_CLOSURE_TYPE},
+        WEIGHTS_AUDIT_REF: {"fit_weight_records": WEIGHTS_AUDIT_TYPE},
+        DONOR_RANGES_REF: {"donor_ranges": DONOR_RANGES_TYPE},
+        SUPPORT_BOUNDS_REF: {"donor_support_bounds": SUPPORT_BOUNDS_TYPE},
     }
 )
 
@@ -429,6 +463,319 @@ def _raw_transport_resource(spec: Mapping[str, object], name: str) -> Mapping:
     return _mapping(value, f"{stem}.json")
 
 
+def _measurement_tables(spec: Mapping[str, object]) -> dict[str, list[Mapping]]:
+    """Each money-scaling measurement binding with the interval tables it scales.
+
+    Every declared profile counts, selected or not, so a proof never depends
+    on which profile a scenario selects.
+    """
+    declarations = _raw_transport_resource(spec, "reference_profiles")
+    interval = declarations.get("interval_resource")
+    tables = {}
+    if interval is not None and _has_resource(spec, interval):
+        tables = {
+            table.get("id"): table
+            for table in _raw_transport_resource(spec, interval).get("tables", ())
+            if isinstance(table, Mapping)
+        }
+    found: dict[str, list[Mapping]] = {}
+    dimensions = declarations.get("dimensions", {})
+    for dimension in dimensions.values() if isinstance(dimensions, Mapping) else ():
+        profiles = (
+            dimension.get("profiles", {}) if isinstance(dimension, Mapping) else {}
+        )
+        for profile in profiles.values() if isinstance(profiles, Mapping) else ():
+            for transform in (
+                profile.get("transformations", ())
+                if isinstance(profile, Mapping)
+                else ()
+            ):
+                if (
+                    not isinstance(transform, Mapping)
+                    or transform.get("operation") != "scale_money_and_intervals"
+                ):
+                    continue
+                binding = transform.get("required_measurement_binding")
+                if not isinstance(binding, str) or not binding:
+                    continue
+                listed = found.setdefault(binding, [])
+                for table_id in transform.get("interval_table_ids", ()):
+                    table = tables.get(table_id)
+                    if table is not None and table not in listed:
+                        listed.append(table)
+    return found
+
+
+MEASUREMENT_PARAM = "measurement_id"
+
+
+def _measurement_declaration(row: Mapping) -> object:
+    """The ``measurement_id`` a node declares in its params, or ``None``.
+
+    A producer declares the id as a literal string param, as
+    ``measure.combine@1`` reads ``context.params["measurement_id"]``.
+    """
+    params = row.get("params")
+    return params.get(MEASUREMENT_PARAM) if isinstance(params, Mapping) else None
+
+
+def _declared_calibration_predecessors(
+    rows: Mapping[str, Mapping],
+) -> tuple[dict[str, set[str]], dict[str, set[tuple[str, str, str]]]]:
+    """Declared predecessors and reads, by the S5 ancestry guard's rule.
+
+    A node follows its population version (or, if structural, its base and
+    every member of the base), each artifact producer it names, and each
+    writer :func:`_precalibration_declared_reads` resolves for its reads.
+    """
+    predecessors = {name: set() for name in rows}
+    reads = _precalibration_declared_reads(rows)
+    for name, row in rows.items():
+        base = row.get("base")
+        if isinstance(base, str):
+            predecessors[name].add(base)
+            predecessors[name].update(
+                item["id"] for item in rows.values() if item.get("population") == base
+            )
+        elif isinstance(row.get("population"), str):
+            predecessors[name].add(row["population"])
+        predecessors[name].update(
+            edge["producer"] for edge in row.get("artifact_inputs", ())
+        )
+        predecessors[name].update(producer for _, _, producer in reads[name])
+    return predecessors, reads
+
+
+def _calibration_roots(rows: Mapping[str, Mapping], document: Mapping) -> set[str]:
+    roots = {
+        name
+        for name, row in rows.items()
+        if isinstance(row.get("kernel"), str) and row["kernel"].startswith("calibrate.")
+    }
+    endpoint = (document.get("endpoints") or {}).get("calibration")
+    if isinstance(endpoint, str) and endpoint in rows:
+        roots.add(endpoint)
+    return roots
+
+
+def _measurement_refusal(
+    binding: str,
+    root: str,
+    found: Sequence[str],
+    declared: Sequence[str],
+) -> str:
+    return (
+        f"{len(found)} nodes declaring measurement_id {binding!r} "
+        f"sit upstream of calibration node {root!r} "
+        f"(declared by {list(declared)}); exactly one must"
+    )
+
+
+def _second_writer_refusal(
+    binding: str,
+    root: str,
+    producer: str,
+    writers: Mapping[tuple[str, str], Sequence[str]],
+) -> str | None:
+    """Why a measured column has a writer other than its producer, or ``None``.
+
+    R2C-15: the producer is the only ancestor of each calibration node that
+    writes each measured column, wherever another writer sits and whether
+    or not it rewrites. An EXPAND writes the cells it declares.
+    """
+    for (entity, column), names in sorted(writers.items(), key=str):
+        if list(names) != [producer]:
+            return (
+                f"measurement {binding!r}: calibration node {root!r} has "
+                f"writers {list(names)} of {entity}.{column} upstream; "
+                f"only its producer {producer!r} may write it"
+            )
+    return None
+
+
+def _declared_writer(row: Mapping, entity: object, column: object) -> bool:
+    """Whether a declared node may write a cell, by output or as an EXPAND.
+
+    An EXPAND whose cells only composition can tell writes every column, as
+    :func:`_precalibration_declared_reads` reads it.
+    """
+    cells = _precalibration_cells(row)
+    return (
+        (entity, column) in _owned_columns(row)
+        or cells is None
+        or (entity, column) in cells
+    )
+
+
+def measurement_proofs(
+    spec: Mapping[str, object],
+) -> tuple[dict[str, dict], dict[str, str]]:
+    """Prove each money-scaling measurement's producer from the declaration.
+
+    G8-r2c ruling R2C-1: composition satisfies ``measurement:<id>`` only when,
+    for every calibration node, exactly one node upstream of it declares
+    ``params.measurement_id: <id>`` (a string) and writes the income and
+    universe columns of every interval table the measurement's profiles
+    scale, on that table's entity. R2C-15 adds that the producer is the only
+    node upstream of that calibration node which writes each of those
+    columns. "Upstream" is ancestry in the declared
+    graph under the S5 guard's rule (:func:`_declared_calibration_predecessors`);
+    composition then checks the same producers against the compiled graph's
+    exact predecessors (:func:`_check_measurement_proofs`). Returns the
+    proofs by measurement id and, for each measurement without one, the
+    reason it stays parked.
+    """
+    if not _has_resource(spec, "reference_profiles"):
+        return {}, {}
+    wanted = _measurement_tables(spec)
+    if not wanted:
+        return {}, {}
+    if _has_resource(spec, GRAPH_RESOURCE):
+        document = _raw_transport_resource(spec, GRAPH_RESOURCE)
+        rows = _precalibration_rows(document)
+    else:
+        document, rows = {}, {}
+    roots = _calibration_roots(rows, document)
+    predecessors, _ = _declared_calibration_predecessors(rows)
+    upstream = {root: _ancestor_closure(predecessors, {root}) for root in sorted(roots)}
+    malformed = sorted(
+        name
+        for name, row in rows.items()
+        if _measurement_declaration(row) is not None
+        and not _is_text(_measurement_declaration(row))
+    )
+    proofs: dict[str, dict] = {}
+    refusals: dict[str, str] = {}
+    for binding, tables in sorted(wanted.items()):
+        required = sorted(
+            {
+                (table.get("entity"), table.get(field))
+                for table in tables
+                for field in ("income_column", "universe_column")
+            },
+            key=str,
+        )
+        declared = sorted(
+            name
+            for name, row in rows.items()
+            if _measurement_declaration(row) == binding
+        )
+        producers, reason = {}, None
+        if malformed:
+            reason = f"nodes {malformed} declare a measurement_id that is not a string"
+        elif not tables:
+            reason = "its profiles scale no declared interval table"
+        elif not upstream:
+            reason = "the graph declares no calibration node"
+        for root, closure in upstream.items():
+            if reason is not None:
+                break
+            found = [name for name in declared if name in closure]
+            if len(found) != 1:
+                reason = _measurement_refusal(binding, root, found, declared)
+                break
+            (producer,) = found
+            missing = [
+                f"{entity}.{column}"
+                for entity, column in required
+                if (entity, column) not in _owned_columns(rows[producer])
+            ]
+            if missing:
+                reason = (
+                    f"producer {producer!r} does not write {missing} on the "
+                    "interval table's entity"
+                )
+                break
+            reason = _second_writer_refusal(
+                binding,
+                root,
+                producer,
+                {
+                    (entity, column): sorted(
+                        name
+                        for name in closure
+                        if _declared_writer(rows[name], entity, column)
+                    )
+                    for entity, column in required
+                },
+            )
+            if reason is not None:
+                break
+            producers[root] = producer
+        if reason is None:
+            proofs[binding] = {
+                "measurement_id": binding,
+                "producers": producers,
+                "columns": [f"{entity}.{column}" for entity, column in required],
+            }
+        else:
+            refusals[binding] = reason
+    return proofs, refusals
+
+
+def _check_measurement_proofs(
+    spec: Mapping[str, object], graph: Graph, compiled: CompiledGraph
+) -> None:
+    """Refuse a declared proof the compiled graph's ancestry contradicts.
+
+    For each proved measurement and each calibration node of the composed
+    graph, the compiled ancestors of that node must hold exactly one node
+    whose params declare the measurement, and it must be the proof's
+    producer for that node. That producer must also be the only compiled
+    ancestor whose outputs or EXPAND cells hold each of the proof's columns
+    (R2C-15).
+    """
+    proofs, _ = measurement_proofs(spec)
+    if not proofs:
+        return
+    roots = {node.id for node in graph.nodes if node.kernel.startswith("calibrate.")}
+    endpoint = transport_endpoints(spec).get("calibration")
+    if isinstance(endpoint, str):
+        roots.add(endpoint)
+    declared = {
+        node.id: node.params.get(MEASUREMENT_PARAM)
+        for node in graph.nodes
+        if isinstance(node.params, Mapping) and MEASUREMENT_PARAM in node.params
+    }
+    by_id = {node.id: node for node in graph.nodes}
+    _, expand_cells = _precalibration_expansions(graph)
+    for binding, proof in sorted(proofs.items()):
+        named = sorted(name for name, value in declared.items() if value == binding)
+        for root in sorted(roots):
+            closure = _ancestor_closure(compiled.predecessors, {root})
+            found = [name for name in named if name in closure]
+            if found != [proof["producers"].get(root)]:
+                raise ValueError(
+                    f"Measurement {binding!r}: the compiled graph contradicts "
+                    "the declared proof; "
+                    + _measurement_refusal(binding, root, found, named)
+                    + f", and the declaration proved {proof['producers'].get(root)!r}."
+                )
+            columns = [tuple(name.split(".", 1)) for name in proof["columns"]]
+            refusal = _second_writer_refusal(
+                binding,
+                root,
+                proof["producers"][root],
+                {
+                    (entity, column): sorted(
+                        name
+                        for name in closure
+                        if (entity, column) in expand_cells[name]
+                        or any(
+                            (output.entity, output.column) == (entity, column)
+                            for output in by_id[name].outputs
+                        )
+                    )
+                    for entity, column in columns
+                },
+            )
+            if refusal is not None:
+                raise ValueError(
+                    f"Measurement {binding!r}: the compiled graph contradicts "
+                    f"the declared proof; {refusal}."
+                )
+
+
 def reference_profile_view(
     spec: Mapping[str, object], selection: Mapping | None = None
 ):
@@ -457,6 +804,7 @@ def reference_profile_view(
         factor_context=None
         if factor_context_resource is None
         else _raw_transport_resource(spec, factor_context_resource),
+        measurement_proofs=measurement_proofs(spec)[0],
     )
     if _has_resource(spec, CHRONICLE_FEED_RESOURCE):
         feed_pin = _raw_transport_resource(spec, CHRONICLE_FEED_RESOURCE)
@@ -613,8 +961,10 @@ def _reference_activation_gaps(
     resource: str,
     exempt: Mapping | None = None,
     selected: Mapping[str, Sequence[str]] | None = None,
+    refusals: Mapping[str, str] | None = None,
 ) -> Iterator[str]:
     # The absent-resource path preserves the legacy activation walk and messages.
+    # A row parked on an unproved measurement names it and the proof's reason.
     exemptions = (
         set()
         if exempt is None
@@ -634,7 +984,92 @@ def _reference_activation_gaps(
             reference.get("name") not in exemptions
             and metadata.get("activation_status", "active") != "active"
         ):
-            yield f"placeholder reference {resource}.{reference.get('name', '?')}"
+            gap = f"placeholder reference {resource}.{reference.get('name', '?')}"
+            try:
+                remaining = json.loads(
+                    metadata.get("reference_prerequisites_remaining", "[]")
+                )
+            except (TypeError, ValueError):
+                remaining = []
+            measurements = [
+                item.removeprefix("measurement:")
+                for item in remaining
+                if isinstance(item, str) and item.startswith("measurement:")
+            ]
+            if measurements:
+                gap += "; awaits " + ", ".join(
+                    f"measurement:{item} ({(refusals or {}).get(item, 'no proof')})"
+                    for item in measurements
+                )
+            yield gap
+
+
+_HOLDOUT_REFERENCES = "holdout_references"
+
+
+def _is_holdout(row: object) -> bool:
+    """Whether a ``holdout_references`` row holds out its measure.
+
+    Activation's guard and the stage guard both read holdouts through this.
+    """
+
+    return isinstance(row, Mapping) and _is_text(row.get("measure"))
+
+
+def _holdout_separation_gaps(
+    documents: Iterable[tuple[str, Mapping]],
+) -> Iterator[str]:
+    """Name every non-holdout row that measures a declared holdout's concept.
+
+    A holdout row tests the calibrated model against a fact it never saw, so
+    no other reference document may carry a row with the same ``measure``,
+    whatever its entity. Only rows of ``holdout_references`` count as
+    holdouts; a spec without that document has nothing to guard. A holdout
+    row that is not an object with a text measure is a gap itself, since
+    neither guard can hold it out.
+    """
+
+    documents = tuple(documents)
+    holdouts: dict[str, list[Mapping]] = {}
+    seen = set()
+    for resource, document in documents:
+        if resource != _HOLDOUT_REFERENCES:
+            continue
+        for index, row in enumerate(document.get("target_references", ())):
+            if _is_holdout(row):
+                holdouts.setdefault(row["measure"], []).append(row)
+                continue
+            name = row.get("name", "?") if isinstance(row, Mapping) else "?"
+            gap = (
+                f"holdout separation: {resource}.target_references[{index}] "
+                f"({name}) is not an object with a text measure"
+            )
+            if gap not in seen:
+                seen.add(gap)
+                yield gap
+    if not holdouts:
+        return
+    for resource, document in documents:
+        if resource == _HOLDOUT_REFERENCES:
+            continue
+        for row in document.get("target_references", ()):
+            if (
+                not isinstance(row, Mapping)
+                or not _is_text(row.get("measure"))
+                or row["measure"] not in holdouts
+            ):
+                continue
+            for holdout in holdouts[row["measure"]]:
+                gap = (
+                    f"holdout separation: {resource}.{row.get('name', '?')} "
+                    f"({row.get('entity', '?')}, {row['measure']}) measures "
+                    f"the concept of {_HOLDOUT_REFERENCES}."
+                    f"{holdout.get('name', '?')} "
+                    f"({holdout.get('entity', '?')}, {holdout['measure']})"
+                )
+                if gap not in seen:
+                    seen.add(gap)
+                    yield gap
 
 
 def _reference_selections(spec: Mapping[str, object]) -> dict[str, dict]:
@@ -811,10 +1246,10 @@ def _money_producer_gaps(spec: Mapping[str, object]) -> list[str]:
     and reads nothing. Otherwise every donor money concept a node reads
     after CREATE needs exactly one producer in its population lineage (its
     own version and each base version): ``money.normalize@1`` for a
-    normalized column, ``transport.quantile_map@1`` for a quantile-mapped
-    one. The concept's default transport rule is not consulted. A consumed
-    pending or quantile-mapped column without its producer names what it
-    awaits. New destination money outputs are classified separately.
+    normalized column, ``transport.quantile_map@1`` or ``@2`` for a
+    quantile-mapped one. The concept's default transport rule is not
+    consulted. A consumed pending or quantile-mapped column without its
+    producer names what it awaits. New destination money outputs are classified separately.
     """
     if not _has_resource(spec, MONEY_NORMALIZATION_RESOURCE):
         return []
@@ -851,6 +1286,10 @@ def _money_producer_gaps(spec: Mapping[str, object]) -> list[str]:
     rosters = money_column_rosters(declaration)
     found: dict[str, set[str]] = {}
     for row in rows:
+        if row.get("kernel") == DONOR_RANGES_REF:
+            # The support evidence records the donor's own range before any
+            # producer rewrites it; it consumes no money.
+            continue
         reads = (
             row.get("base")
             if row.get("structural", "none") != "none"
@@ -906,16 +1345,17 @@ def _money_producer_gaps(spec: Mapping[str, object]) -> list[str]:
                     ):
                         continue
                     expected = {
-                        "normalized": MONEY_NORMALIZE_REF,
-                        "quantile_mapped": "transport.quantile_map@1",
-                    }.get(route)
+                        "normalized": frozenset({MONEY_NORMALIZE_REF}),
+                        "quantile_mapped": _QUANTILE_MAPS,
+                    }.get(route, frozenset())
                     if kernel not in _MONEY_PRODUCERS:
                         message = (
                             f"{name} is produced by {kernel} node "
-                            f"{producer.get('id')!r}; only {MONEY_NORMALIZE_REF} or "
-                            "transport.quantile_map@1 may produce it after CREATE"
+                            f"{producer.get('id')!r}; only {MONEY_NORMALIZE_REF}, "
+                            "transport.quantile_map@1 or transport.quantile_map@2 "
+                            "may produce it after CREATE"
                         )
-                    elif kernel != expected:
+                    elif kernel not in expected:
                         message = (
                             f"{name} is declared {route} but produced by {kernel} "
                             f"node {producer.get('id')!r}"
@@ -978,6 +1418,7 @@ def _check_single_money_normalization(
     expected = {
         MONEY_NORMALIZE_REF: "normalized",
         "transport.quantile_map@1": "quantile_mapped",
+        "transport.quantile_map@2": "quantile_mapped",
     }
     by_id = {node.id: node for node in graph.nodes}
     for (_, entity, column), owner in compiled.owners.items():
@@ -1072,11 +1513,14 @@ def validate_transport_activation(spec: Mapping[str, object]) -> None:
     Selections inside parameter lists count; selected resource data is literal.
     Entitlement selections use the factory's instantiated rows, so explicit
     scenario nodes replace their tier templates during preflight too.
+    No row of another reference document, mass included, may share a
+    ``holdout_references`` row's measure on any entity.
     """
 
     missing = []
     # Resolve first so activation never inspects an executable profile's raw rows.
     reference_profile_views(spec)
+    _, measurement_refusals = measurement_proofs(spec)
     reference_selections = _reference_selections(spec)
     selection_closure = (
         _reference_selection_closure(spec)
@@ -1163,11 +1607,13 @@ def validate_transport_activation(spec: Mapping[str, object]) -> None:
     )
     reference_resources.update(reference_selections)
     checked_reference_views = set()
+    separation_views = []
     for resource in sorted(reference_resources):
         if not _has_resource(spec, resource):
             missing.append(f"{resource}.json")
             continue
         document = transport_resource(spec, resource)
+        separation_views.append((resource, document))
         identity = hashlib.sha256(canonical_json(document)).hexdigest()
         checked_reference_views.add((resource, identity))
         missing.extend(
@@ -1176,9 +1622,18 @@ def validate_transport_activation(spec: Mapping[str, object]) -> None:
                 resource,
                 reference_selections.get(resource),
                 selection_closure.get(resource),
+                measurement_refusals,
             )
         )
+    # The mass document is a calibration input even when no node selects it.
+    if "mass_references" not in reference_resources and _has_resource(
+        spec, "mass_references"
+    ):
+        separation_views.append(
+            ("mass_references", transport_resource(spec, "mass_references"))
+        )
     for (resource, identity), document in selected_reference_views.items():
+        separation_views.append((resource, document))
         if (resource, identity) not in checked_reference_views:
             missing.extend(
                 _reference_activation_gaps(
@@ -1186,8 +1641,10 @@ def validate_transport_activation(spec: Mapping[str, object]) -> None:
                     resource,
                     reference_selections.get(resource),
                     selection_closure.get(resource),
+                    measurement_refusals,
                 )
             )
+    missing.extend(_holdout_separation_gaps(separation_views))
     receipt = (
         transport_resource(spec, "receipt_contract")
         if _has_resource(spec, "receipt_contract")
@@ -1501,6 +1958,753 @@ def _embeds_engine_ref(
     )
 
 
+#: The resources the evidence composition checks read.
+_CLOSURE_RESOURCE = "axiom_input_closure"
+_BINDINGS_RESOURCE = "axiom_rules_bindings"
+
+
+def _json_value(value: object) -> object:
+    """A parameter value, with canonical JSON text decoded."""
+
+    if isinstance(value, str) and value[:1] in "[{":
+        try:
+            return json.loads(value)
+        except ValueError:
+            return value
+    return value
+
+
+def _check_donor_receipts(graph: Graph) -> None:
+    """A donor-receipt node authenticates exactly the donor CREATE reads.
+
+    Each ``transport.donor_receipt@1`` node must select the same donor source,
+    ``donor_sha256`` and ``donor_size`` as the graph's CREATE node, and its
+    ``source_stages_sha256`` must be CREATE's ``donor_pin_sha256``, on either
+    CREATE version.
+    """
+
+    receipts = [node for node in graph.nodes if node.kernel == DONOR_RECEIPT_REF]
+    if not receipts:
+        return
+    creates = [node for node in graph.nodes if node.kernel in CREATE_REFS]
+    if len(creates) != 1:
+        raise ValueError("A donor-receipt node needs exactly one CREATE node.")
+    (create,) = creates
+    pairs = (
+        ("donor_source", "donor_source"),
+        ("donor_sha256", "donor_sha256"),
+        ("donor_size", "donor_size"),
+        ("source_stages_sha256", "donor_pin_sha256"),
+    )
+    for node in receipts:
+        differing = [
+            name
+            for name, create_name in pairs
+            if node.params.get(name) != create.params.get(create_name)
+        ]
+        if differing or tuple(node.sources) != (create.params.get("donor_source"),):
+            raise ValueError(
+                f"Donor-receipt node {node.id!r} selects a different donor from "
+                f"CREATE {create.id!r}: {differing or ['sources']}."
+            )
+
+
+def _check_weights_audit_entity(spec: Mapping[str, object], graph: Graph) -> None:
+    """Every declared weight transition is on the audited weight entity.
+
+    ``transport.weights_audit@1`` audits one weight vector; a declared row
+    whose ``weights.entity`` names another entity would persist a second
+    vector the audit never sees.
+    """
+
+    audits = [node for node in graph.nodes if node.kernel == WEIGHTS_AUDIT_REF]
+    if not audits:
+        return
+    entities = {node.params.get("weight_entity") for node in audits}
+    if len(entities) != 1:
+        raise ValueError("Weights-audit nodes must declare one weight_entity.")
+    (entity,) = entities
+    for row in _declared_rows(spec):
+        weights = row.get("weights")
+        if isinstance(weights, Mapping) and weights.get("entity") != entity:
+            raise ValueError(
+                f"Node {row.get('id')!r} declares weights on "
+                f"{weights.get('entity')!r}, but the weights audit reads "
+                f"{entity!r}; a unit may not persist a second weight vector."
+            )
+
+
+#: The support roster's covered classes; a derived row passes only when every
+#: walked source is one of them.
+SUPPORT_COVERED = frozenset(
+    {
+        "copied",
+        "normalized",
+        "quantile_mapped",
+        "currency",
+        "structural",
+        "closure_default",
+    }
+)
+#: Producer kernel -> the support class its owned column takes.
+_SUPPORT_PRODUCERS = MappingProxyType(
+    {
+        MONEY_NORMALIZE_REF: "normalized",
+        "transport.quantile_map@1": "quantile_mapped",
+        "transport.quantile_map@2": "quantile_mapped",
+        "transport.currency@1": "currency",
+    }
+)
+_SUPPORT_ENCODERS = frozenset({"concepts.encode@1", "concepts.encode_groups@1"})
+#: The only kernels that may own a column a support ``structural_columns`` row
+#: excuses: they assign identity or geography, never donor values.
+SUPPORT_STRUCTURAL_OWNERS = frozenset(
+    {"geography.derive@1", "geography.person_location@1", "geography.assign_atomic@1"}
+)
+#: The producer parameters a support row carries, resolved, so the support
+#: producer reads the same bands and rates the producer read.
+_SUPPORT_PRODUCER_PARAMS = (
+    "bands",
+    "interpolation",
+    "aggregate_entity",
+    "component_column",
+    "columns",
+    "rate",
+)
+RANK_ONLY_MESSAGE = (
+    "{entity}.{column}: lineage class 'rank_only' is reserved for the declared "
+    "rank-only input (BE d1902); no producer implements it yet."
+)
+
+
+def support_structural_columns(spec: Mapping[str, object]) -> list[dict]:
+    """The ``structural_columns`` rows of every applicable ``support`` entry."""
+
+    if not _has_resource(spec, "gates"):
+        return []
+    rows = []
+    for entry in transport_resource(spec, "gates").get("gates", ()):
+        if (
+            not isinstance(entry, Mapping)
+            or entry.get("gate") != "support"
+            or entry.get("not_applicable") is not None
+        ):
+            continue
+        declared = (entry.get("parameters") or {}).get("structural_columns", ())
+        for row in _sequence(declared, "support structural_columns"):
+            if (
+                not isinstance(row, Mapping)
+                or set(row) != {"entity", "column", "reason"}
+                or not all(_is_text(row[key]) for key in row)
+            ):
+                raise ValueError(
+                    "A support structural_columns row holds exactly entity, column "
+                    "and a reason."
+                )
+            rows.append(dict(row))
+    keys = [(row["entity"], row["column"]) for row in rows]
+    if len(keys) != len(set(keys)):
+        raise ValueError("Support structural_columns repeats a column.")
+    return rows
+
+
+def _check_structural_columns(spec: Mapping[str, object]) -> None:
+    """Bound what a ``structural_columns`` row may excuse from support.
+
+    Refused: a column a declared row owns, unless its owner assigns
+    geography; a column on a money roster; a column whose concept is
+    ``observed`` (the donor's realized range governs it).
+    """
+
+    rows = support_structural_columns(spec)
+    if not rows:
+        return
+    owners: dict[tuple, set[str]] = {}
+    for row in _declared_rows(spec):
+        if row.get("structural", "none") == "none":
+            for key in _owned_columns(row):
+                owners.setdefault(key, set()).add(str(row.get("kernel")))
+    rosters = {}
+    if _has_resource(spec, MONEY_NORMALIZATION_RESOURCE):
+        rosters = money_column_rosters(
+            validate_money_normalization(
+                _raw_transport_resource(spec, MONEY_NORMALIZATION_RESOURCE)
+            )
+        )
+    problems = []
+    for row in rows:
+        key = (row["entity"], row["column"])
+        label = f"{key[0]}.{key[1]}"
+        foreign = sorted(owners.get(key, set()) - SUPPORT_STRUCTURAL_OWNERS)
+        if foreign:
+            problems.append(f"{label} is owned by {foreign}, which carry values.")
+        if key in rosters:
+            problems.append(f"{label} is a declared money column.")
+        concept = concept_for_column(*key)
+        if concept is not None and concept.provenance is ProvenanceClass.OBSERVED:
+            problems.append(f"{label} is an observed concept with donor support.")
+    if problems:
+        raise ValueError(
+            "Support structural_columns may not excuse these columns: "
+            + " ".join(problems)
+        )
+
+
+def _check_structural_rows_written(spec: Mapping[str, object], graph: Graph) -> None:
+    """Every declared ``structural_columns`` row names a column the graph writes.
+
+    A row excuses a column only when the support roster reaches it (H46), so
+    a row whose column no node in the composed graph owns, and that CREATE
+    does not synthesize, excuses nothing: a misspelled or stale row such as
+    ``household.employment_income``. CREATE's columns are its prepared
+    inventory (its node's outputs) and the schema's id and membership columns.
+    """
+
+    rows = support_structural_columns(spec)
+    if not rows:
+        return
+    written = {
+        (output.entity, output.column)
+        for node in graph.nodes
+        for output in node.outputs
+    }
+    declaration = _versioned_create_units(spec)
+    if declaration is None:
+        declaration = create_unit_declaration(
+            CREATE_V1_REF, transport_resource(spec, "benefit_unit_rule")
+        )
+    schema = declaration.entity_schema()[0]
+    written |= {(entity, schema.entity_id_column(entity)) for entity in schema.entities}
+    written |= {
+        (schema.person_entity, schema.membership_column(group))
+        for group in schema.group_entities
+    }
+    unwritten = sorted(
+        f"{row['entity']}.{row['column']}"
+        for row in rows
+        if (row["entity"], row["column"]) not in written
+    )
+    if unwritten:
+        raise ValueError(
+            "Support structural_columns names columns no node in the composed "
+            f"graph writes and CREATE does not synthesize: {unwritten}."
+        )
+
+
+def _support_producer_params(spec: Mapping[str, object], row: Mapping) -> dict:
+    params = row.get("params") or {}
+    out = {}
+    for name in _SUPPORT_PRODUCER_PARAMS:
+        if name in params:
+            value = _param(spec, params[name], None)
+            out[name] = (
+                json.loads(value)
+                if isinstance(value, str) and value[:1] in "[{"
+                else value
+            )
+    return out
+
+
+#: The codec of the RuleSpec tree the rules kernels read; a node source with
+#: any other codec carries values the support walk cannot cover.
+_RULESPEC_TREE_CODEC = RULESPEC_SOURCE_CODEC
+#: The pseudo-entity a support row names a node source under.
+_SOURCE_ENTITY = "source"
+
+
+def _source_codecs(spec: Mapping[str, object]) -> dict[str, object]:
+    """Source name -> codec, from the graph's top-level ``sources`` list."""
+
+    if not _has_resource(spec, GRAPH_RESOURCE):
+        return {}
+    out = {}
+    for item in transport_graph_document(spec).get("sources", ()) or ():
+        if isinstance(item, Mapping) and isinstance(item.get("name"), str):
+            out[item["name"]] = item.get("codec")
+    return out
+
+
+def _support_roster(spec: Mapping[str, object]) -> dict[str, object]:
+    """Every column the support gate covers, classed by its producer in lineage.
+
+    The roster is the battery slice plus the calibration problem's measures.
+    A column's class follows its owner in the reading node's population
+    lineage: ``normalized``, ``quantile_mapped`` or ``currency`` by producer
+    kernel; ``closure_default`` for a closure default an encode node writes;
+    ``structural`` for a declared ``structural_columns`` row; ``derived`` for
+    any other owner, whose node-level sources the walk reports; and, with no
+    owner after CREATE, ``pending`` for a money route awaiting its producer,
+    ``copied`` for a donor concept, ``uncovered`` otherwise.
+    """
+
+    rows = _declared_rows(spec)
+    structural_rows = {
+        row["id"]: row
+        for row in rows
+        if row.get("structural", "none") != "none" and isinstance(row.get("id"), str)
+    }
+    default = next(iter(structural_rows)) if len(structural_rows) == 1 else None
+
+    def lineage(version: object) -> list[str]:
+        chain: list[str] = []
+        while isinstance(version, str) and version in structural_rows:
+            if version in chain:
+                break
+            chain.append(version)
+            version = structural_rows[version].get("base")
+        return chain
+
+    owners: dict[tuple, list[Mapping]] = {}
+    for row in rows:
+        if row.get("structural", "none") == "none":
+            version = row.get("population") or default
+            for entity, column in _owned_columns(row):
+                owners.setdefault((version, entity, column), []).append(row)
+    excused = {
+        (row["entity"], row["column"]): row["reason"]
+        for row in support_structural_columns(spec)
+    }
+    rosters = {}
+    if _has_resource(spec, MONEY_NORMALIZATION_RESOURCE):
+        rosters = money_column_rosters(
+            validate_money_normalization(
+                _raw_transport_resource(spec, MONEY_NORMALIZATION_RESOURCE)
+            )
+        )
+    defaults: dict[tuple, str] = {}
+    if _has_resource(spec, _CLOSURE_RESOURCE) and _has_resource(
+        spec, _BINDINGS_RESOURCE
+    ):
+        names = transport_resource(spec, _BINDINGS_RESOURCE).get("entity_names", {})
+        to_frame = {engine: frame for frame, engine in names.items()}
+        for entry in transport_resource(spec, _CLOSURE_RESOURCE).get("entries", ()):
+            if isinstance(entry, Mapping) and entry.get("class") == "defaulted":
+                frame_entity = to_frame.get(entry.get("entity"))
+                defaults[(frame_entity, entry.get("input"))] = (
+                    f"{entry.get('rulespec_path')} {entry.get('entity')}."
+                    f"{entry.get('input')}"
+                )
+    reserved = []
+    for row in rows:
+        for item in _sequence(
+            (row.get("params") or {}).get("rank_only", ()), "rank_only"
+        ):
+            if isinstance(item, Mapping):
+                reserved.append(
+                    RANK_ONLY_MESSAGE.format(
+                        **{k: item.get(k) for k in ("entity", "column")}
+                    )
+                )
+    if reserved:
+        raise ValueError(" ".join(reserved))
+
+    codecs = _source_codecs(spec)
+    memo: dict[tuple, dict] = {}
+
+    def classify(version: object, entity: str, column: str, trail=()) -> dict:
+        key = (version, entity, column)
+        if key in memo:
+            return memo[key]
+        if key in trail:
+            return {"class": "uncovered", "reason": "a cycle in the declared lineage"}
+        row: dict[str, object] = {}
+        owner = next(
+            (
+                found[0]
+                for item in lineage(version)
+                for found in [owners.get((item, entity, column))]
+                if found
+            ),
+            None,
+        )
+        if (entity, column) in excused:
+            row = {"class": "structural", "reason": excused[entity, column]}
+        elif owner is not None and owner.get("kernel") in _SUPPORT_PRODUCERS:
+            row = {
+                "class": _SUPPORT_PRODUCERS[owner["kernel"]],
+                "producer_params": _support_producer_params(spec, owner),
+            }
+        elif (
+            owner is not None
+            and owner.get("kernel") in _SUPPORT_ENCODERS
+            and (
+                entity,
+                column,
+            )
+            in defaults
+        ):
+            row = {
+                "class": "closure_default",
+                "closure_entry": defaults[entity, column],
+            }
+        elif owner is not None:
+            sources: dict[tuple, dict] = {}
+            reads = owner.get("population") or default
+            # A node source other than the RuleSpec tree the rules kernels
+            # read carries values no support producer covers (C1). The graph's
+            # top-level sources give each name its codec.
+            for name in _sequence(owner.get("sources", ()), "node sources"):
+                codec = codecs.get(name)
+                if codec == _RULESPEC_TREE_CODEC:
+                    continue
+                sources[(_SOURCE_ENTITY, str(name))] = {
+                    "entity": _SOURCE_ENTITY,
+                    "column": str(name),
+                    "class": "uncovered",
+                    "reason": f"the owner reads source {name!r} (codec "
+                    f"{codec!r}), which no support producer covers",
+                }
+            for item in owner.get("inputs", ()):
+                if not isinstance(item, Mapping):
+                    continue
+                for name in item.get("columns", ()):
+                    found = classify(reads, item.get("entity"), name, (*trail, key))
+                    if found["class"] == "derived":
+                        for source in found["sources"]:
+                            sources[(source["entity"], source["column"])] = source
+                    else:
+                        sources[(item.get("entity"), name)] = {
+                            "entity": item.get("entity"),
+                            "column": name,
+                            "class": found["class"],
+                            **(
+                                {"reason": found["reason"]} if "reason" in found else {}
+                            ),
+                        }
+            row = (
+                {
+                    "class": "derived",
+                    "sources": [sources[k] for k in sorted(sources)],
+                    "reason": "Sources are the owner node's declared inputs and "
+                    "sources, walked per node, so a source the row itself never "
+                    "reads can appear.",
+                }
+                if sources
+                else {
+                    "class": "uncovered",
+                    "reason": "its owner declares no input or source the walk "
+                    "reaches, so nothing covers its values",
+                }
+            )
+        else:
+            route, awaits = rosters.get((entity, column), (None, ()))
+            if route in {"quantile_mapped", "pending", "normalized"}:
+                row = {
+                    "class": "pending",
+                    "reason": f"awaits {', '.join(awaits) or 'its declared producer'}",
+                }
+            elif concept_for_column(entity, column) is not None:
+                row = {"class": "copied"}
+            else:
+                row = {
+                    "class": "uncovered",
+                    "reason": "CREATE synthesizes it and no structural_columns row "
+                    "excuses it",
+                }
+        if owner is not None:
+            row["owner"] = owner.get("id")
+            row["owner_kernel"] = owner.get("kernel")
+        memo[key] = row
+        return row
+
+    readers: dict[tuple, object] = {}
+    for kernel in ("gates.battery@1", "targets.problem@1"):
+        for row in rows:
+            if row.get("kernel") != kernel:
+                continue
+            for item in row.get("inputs", ()):
+                if isinstance(item, Mapping):
+                    for name in item.get("columns", ()):
+                        readers.setdefault(
+                            (item.get("entity"), name), row.get("population") or default
+                        )
+    columns = []
+    for (entity, column), version in sorted(readers.items()):
+        found = classify(version, entity, column)
+        columns.append({"entity": entity, "column": column, **found})
+    return {"columns": columns}
+
+
+def support_roster_slices(
+    spec: Mapping[str, object], classes: frozenset[str] | set[str]
+) -> list[dict[str, object]]:
+    """Entity slices of the support roster's columns in ``classes``, sorted.
+
+    Country generators and test fixtures declare the support producers' inputs
+    from this, so a producer slices exactly the columns its roster names. A
+    ``quantile_mapped`` row's ``component_column`` joins its entity's slice,
+    because the support producer checks each value against its own
+    component's bands.
+    """
+
+    columns: dict[str, list[str]] = {}
+    for row in _support_roster(spec)["columns"]:
+        if row["class"] in classes:
+            columns.setdefault(row["entity"], []).append(row["column"])
+            component = (row.get("producer_params") or {}).get("component_column")
+            if row["class"] == "quantile_mapped" and isinstance(component, str):
+                columns[row["entity"]].append(component)
+    return [
+        {"entity": entity, "columns": sorted(set(names))}
+        for entity, names in sorted(columns.items())
+    ]
+
+
+def _person_entity(spec: Mapping[str, object]) -> str:
+    declaration = _versioned_create_units(spec)
+    if declaration is None:
+        declaration = create_unit_declaration(
+            CREATE_V1_REF, transport_resource(spec, "benefit_unit_rule")
+        )
+    return declaration.entity_schema()[0].person_entity
+
+
+def _check_closure_relation_slices(spec: Mapping[str, object], graph: Graph) -> None:
+    """A closure producer's person slice carries every declared relation column.
+
+    A ``Slice`` delivers only the columns it names, and
+    ``transport.input_closure@1`` reads each relation input's physical
+    ``column`` and declared ``role_column`` on the person entity. A slice that
+    omits one would report a ``gap`` the frame does not have, so composition
+    refuses it by name.
+    """
+
+    nodes = [node for node in graph.nodes if node.kernel == INPUT_CLOSURE_REF]
+    if not nodes:
+        return
+    problems = []
+    person = None
+    for node in nodes:
+        bindings = _json_value(node.params.get("bindings"))
+        if not isinstance(bindings, Mapping):
+            continue
+        rows = bindings.get("bindings")
+        required = sorted(
+            {
+                column
+                for row in (rows if isinstance(rows, list) else ())
+                if isinstance(row, Mapping)
+                for item in binding_relation_inputs(row)
+                for column in (item.column, item.role_column)
+                if column is not None
+            }
+        )
+        if not required:
+            continue
+        person = person or _person_entity(spec)
+        sliced = {
+            column
+            for item in node.inputs
+            if item.entity == person
+            for column in item.columns
+        }
+        missing = [column for column in required if column not in sliced]
+        if missing:
+            problems.append(
+                f"Closure node {node.id!r} reads relation columns {missing} on "
+                f"{person!r}, which its {person!r} slice omits."
+            )
+    if problems:
+        raise ValueError(" ".join(problems))
+
+
+def _binding_modules(spec: Mapping[str, object]) -> dict[str, Mapping]:
+    if not _has_resource(spec, _BINDINGS_RESOURCE):
+        return {}
+    rows = transport_resource(spec, _BINDINGS_RESOURCE).get("bindings", ())
+    return {
+        row["id"]: row
+        for row in _sequence(rows, "rules bindings")
+        if isinstance(row, Mapping) and isinstance(row.get("id"), str)
+    }
+
+
+def _supplies(
+    node: Node,
+    entry: Mapping,
+    refs: Mapping[str, Mapping],
+    entity_names: Mapping[str, str],
+) -> bool:
+    """Whether ``node`` owns, overrides or solves one closure input."""
+
+    module, engine_entity, name = (
+        entry["rulespec_path"],
+        entry["entity"],
+        entry["input"],
+    )
+    if any(
+        output.column == name and entity_names.get(output.entity) == engine_entity
+        for output in node.outputs
+    ):
+        return True
+
+    def matches(binding_ref: object, entity: object, column: object) -> bool:
+        row = refs.get(binding_ref) if isinstance(binding_ref, str) else None
+        return (
+            row is not None
+            and row.get("rulespec_path") == module
+            and column == name
+            and entity_names.get(entity) == engine_entity
+        )
+
+    primary = node.params.get("engine_ref")
+    solve = _json_value(node.params.get("solve_input"))
+    if isinstance(solve, Mapping) and matches(
+        primary, solve.get("entity"), solve.get("column")
+    ):
+        return True
+    requests = [(primary, _json_value(node.params.get("input_overrides")))]
+    components = _json_value(node.params.get("components"))
+    if isinstance(components, list):
+        requests += [
+            (item.get("engine_ref"), _json_value(item.get("input_overrides")))
+            for item in components
+            if isinstance(item, Mapping)
+        ]
+    for binding_ref, overrides in requests:
+        if isinstance(overrides, list) and any(
+            isinstance(item, Mapping)
+            and matches(binding_ref, item.get("entity"), item.get("column"))
+            for item in overrides
+        ):
+            return True
+    return False
+
+
+def _check_graph_node_entries(
+    spec: Mapping[str, object],
+    config: TransportGraphConfig,
+    graph: Graph,
+    *,
+    extended: bool,
+) -> None:
+    """Every ``graph_node`` closure entry names a node that supplies its input.
+
+    The node must exist in the composed graph and own the input's column,
+    override it (at the top level or in ``components[*].input_overrides``,
+    matched to the entry's module through the component's ``engine_ref``),
+    or solve it. On the skeleton-only path an entry whose node the skeleton
+    lacks passes, because an extension may own it.
+    """
+
+    if not _has_resource(spec, _CLOSURE_RESOURCE):
+        return
+    entries = [
+        entry
+        for entry in transport_resource(spec, _CLOSURE_RESOURCE).get("entries", ())
+        if isinstance(entry, Mapping) and entry.get("encoded_by") == "graph_node"
+    ]
+    if not entries:
+        return
+    bindings = transport_resource(spec, _BINDINGS_RESOURCE)
+    entity_names = dict(bindings.get("entity_names", {}))
+    rows = _binding_modules(spec)
+    refs = {
+        config.engine_refs[binding]: row
+        for binding, row in rows.items()
+        if binding in config.engine_refs
+    }
+    nodes = {node.id: node for node in graph.nodes}
+    problems = []
+    for entry in entries:
+        label = f"{entry.get('input')} ({entry.get('entity')}, {entry.get('rulespec_path')})"
+        node = nodes.get(entry.get("node"))
+        if node is None:
+            if extended:
+                problems.append(
+                    f"{label} names graph node {entry.get('node')!r}, which the "
+                    "composed graph does not hold."
+                )
+            continue
+        if not _supplies(node, entry, refs, entity_names):
+            problems.append(
+                f"{label} names graph node {node.id!r}, which neither owns, "
+                "overrides nor solves it."
+            )
+    if problems:
+        raise ValueError("Closure graph_node entries are wrong: " + " ".join(problems))
+
+
+def _selects(ref: object, binding: str, literal: str | None) -> bool:
+    """Whether an ``engine_ref`` selects ``binding``, in either spelling.
+
+    A declaration writes ``{"binding": ...}`` or the prepared engine reference
+    itself; the literal matches in any JSON spelling, and a string too deeply
+    escaped to decode counts as a match, so the check fails closed.
+    """
+
+    if isinstance(ref, Mapping):
+        return ref.get("binding") == binding
+    if literal is None or not isinstance(ref, str):
+        return False
+    embedded = _embedded_engine_refs(ref, {literal})
+    return embedded is None or literal in embedded
+
+
+def _requests(value: object, binding: str, literal: str | None = None) -> list[str]:
+    """Every variable a declaration requests from ``binding``, nested included.
+
+    ``literal`` is the binding's prepared engine reference, so a component
+    that writes it in place of ``{"binding": ...}`` counts too.
+    """
+
+    found: list[str] = []
+    value = _json_value(value)
+    if isinstance(value, Mapping):
+        ref = _json_value(value.get("engine_ref"))
+        if _selects(ref, binding, literal):
+            variables = _json_value(value.get("variables", ()))
+            if isinstance(variables, list | tuple):
+                found += [str(item) for item in variables]
+            if isinstance(value.get("variable"), str):
+                found.append(value["variable"])
+        for item in value.values():
+            found += _requests(item, binding, literal)
+    elif isinstance(value, list | tuple):
+        for item in value:
+            found += _requests(item, binding, literal)
+    return found
+
+
+def _check_unreached_requests(
+    spec: Mapping[str, object], engine_refs: Mapping[str, str] | None = None
+) -> None:
+    """No declared row requests a variable outside a binding's verified outputs.
+
+    A binding's ``unreached_roots`` holds only for the ``outputs`` its review
+    verified; every request through that binding, a nested bridge component
+    included, must stay inside them. ``engine_refs`` holds the prepared
+    references, so a request that spells the reference literally counts too.
+    """
+
+    guarded = {
+        binding: row["unreached_roots"]
+        for binding, row in _binding_modules(spec).items()
+        if isinstance(row.get("unreached_roots"), Mapping)
+    }
+    if not guarded:
+        return
+    problems = []
+    for row in _declared_rows(spec):
+        for binding, declaration in guarded.items():
+            outputs = set(declaration.get("outputs", ()))
+            requested = _requests(
+                row.get("params", {}), binding, (engine_refs or {}).get(binding)
+            )
+            if row.get("rules_binding") == binding:
+                requested += [
+                    str(item) for item in row.get("params", {}).get("variables", ())
+                ]
+            outside = sorted(set(requested) - outputs)
+            if outside:
+                problems.append(
+                    f"{row.get('id')!r} requests {outside} from {binding!r}, whose "
+                    f"unreached_roots were verified for {sorted(outputs)} only."
+                )
+    if problems:
+        raise ValueError(" ".join(problems))
+
+
 def _unit_entities(spec: Mapping[str, object]) -> tuple[object, ...]:
     """Every declared partition, including the legacy benefit-unit alias."""
     declaration = _versioned_create_units(spec)
@@ -1808,7 +3012,15 @@ def _precalibration_stages(spec: Mapping[str, object]) -> dict[str, Mapping]:
         if _has_resource(spec, "holdout_references")
         else ()
     )
-    holdout_columns = {(row["entity"], row["measure"]) for row in holdout}
+    # Activation's guard reports each row this skips.
+    holdout = [row for row in holdout if _is_holdout(row)]
+    holdout_columns = {
+        (row["entity"], row["measure"])
+        for row in holdout
+        if _is_text(row.get("entity"))
+    }
+    # A stage output measures a holdout's concept on any entity.
+    holdout_measures = {row["measure"]: row for row in holdout}
     holdout_modules = {
         row["rulespec_path"]
         for row in bindings.values()
@@ -1912,8 +3124,15 @@ def _precalibration_stages(spec: Mapping[str, object]) -> dict[str, Mapping]:
                     "precalibration_stages outputs must be nonempty and distinct."
                 )
             columns.add(column)
-        if columns & holdout_columns:
-            raise ValueError("precalibration_stages output is a holdout measure.")
+        for entity, column in sorted(columns):
+            if column in holdout_measures:
+                holdout_row = holdout_measures[column]
+                raise ValueError(
+                    "precalibration_stages output is a holdout measure: stage "
+                    f"{identifier!r} output ({entity}, {column}) measures the "
+                    f"concept of holdout_references.{holdout_row.get('name', '?')} "
+                    f"({holdout_row.get('entity', '?')}, {holdout_row['measure']})."
+                )
         if stage["rulespec_path"] in holdout_modules:
             raise ValueError("precalibration_stages module produces a holdout measure.")
         result[name] = stage
@@ -2240,21 +3459,7 @@ def _validate_precalibration_ancestry(
                 "name a node."
             )
         roots.add(endpoints["calibration"])
-    predecessors = {name: set() for name in rows}
-    reads = _precalibration_declared_reads(rows)
-    for name, row in rows.items():
-        base = row.get("base")
-        if isinstance(base, str):
-            predecessors[name].add(base)
-            predecessors[name].update(
-                item["id"] for item in rows.values() if item.get("population") == base
-            )
-        elif isinstance(row.get("population"), str):
-            predecessors[name].add(row["population"])
-        predecessors[name].update(
-            edge["producer"] for edge in row.get("artifact_inputs", ())
-        )
-        predecessors[name].update(producer for _, _, producer in reads[name])
+    predecessors, reads = _declared_calibration_predecessors(rows)
 
     declarations = rows
 
@@ -2800,6 +4005,12 @@ def _param(
             raise ValueError("The whole-spec fingerprint cannot enter node parameters.")
         if value["prepared"] not in _PREPARED:
             raise ValueError(f"Unknown prepared parameter {value['prepared']!r}.")
+        if value["prepared"] == "support_roster":
+            return canonical_json(_support_roster(spec)).decode("utf-8")
+        if value["prepared"] == "unit_entities":
+            return canonical_json(
+                {"unit_entities": [str(entity) for entity in _unit_entities(spec)]}
+            ).decode("utf-8")
         if engine_refs is None:
             raise ValueError("Prepared engine references are not available here.")
         return canonical_json(
@@ -3225,6 +4436,8 @@ def compose_transport_graph(
     if not isinstance(config, TransportGraphConfig):
         raise TypeError("config must be a TransportGraphConfig.")
     validate_transport_activation(spec)
+    _check_unreached_requests(spec, config.engine_refs)
+    _check_structural_columns(spec)
     from .entitlement import transport_extensions
 
     config = replace(config, extensions=transport_extensions(spec, config.extensions))
@@ -3252,6 +4465,7 @@ def compose_transport_graph(
     )
     compiled = compile_graph(skeleton)
     validate_transport_calibration_ancestry(spec, graph=skeleton, config=config)
+    _check_measurement_proofs(spec, skeleton, compiled)
     # Money ownership is checked after each graph pass of the ancestry guard.
     _check_single_money_normalization(spec, skeleton, compiled)
     _check_money_bridge_owners(skeleton, compiled)
@@ -3318,6 +4532,11 @@ def compose_transport_graph(
     ):
         _check_extension_checkpoints(spec, config, skeleton, compiled)
         _check_export_contract(spec, skeleton, compiled)
+        _check_donor_receipts(skeleton)
+        _check_closure_relation_slices(spec, skeleton)
+        _check_structural_rows_written(spec, skeleton)
+        _check_graph_node_entries(spec, config, skeleton, extended=False)
+        _check_weights_audit_entity(spec, skeleton)
         return skeleton
     skeleton_nodes = []
     for node in skeleton.nodes:
@@ -3348,6 +4567,11 @@ def compose_transport_graph(
     _check_single_money_normalization(spec, graph, extended)
     _check_money_bridge_owners(graph, extended)
     _check_export_contract(spec, graph, extended)
+    _check_donor_receipts(graph)
+    _check_closure_relation_slices(spec, graph)
+    _check_structural_rows_written(spec, graph)
+    _check_graph_node_entries(spec, config, graph, extended=True)
+    _check_weights_audit_entity(spec, graph)
     for node in skeleton.nodes:
         expected = (
             set(compiled.predecessors[node.id])

@@ -224,6 +224,7 @@ def test_be_generation_zero_views_still_come_from_the_country_spec_seam() -> Non
         "geography_spine.json",
         "holdout_references.json",
         "precal_references.json",
+        "quantile_surfaces.json",
         "reference_aging.json",
         "reference_intervals.json",
         "reference_inventory.json",

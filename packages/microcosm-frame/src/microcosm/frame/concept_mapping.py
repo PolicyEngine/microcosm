@@ -68,6 +68,7 @@ __all__ = [
     "Allocation",
     "ConceptMappedEngine",
     "ConceptMapping",
+    "CoresidentAdult",
     "CoresidentChildCount",
     "CoverageReport",
     "EncodedGroupInputs",
@@ -376,6 +377,38 @@ class CoresidentChildCount:
 
 
 @dataclass(frozen=True)
+class CoresidentAdult:
+    """A boolean input: another person in this person's household is old enough.
+
+    A person's value is true when at least one other person row with the same
+    household id has an age of at least :attr:`min_age`. The person's own age
+    never counts, and a null age never qualifies.
+
+    Attributes:
+        min_age: The age, in whole years, a co-resident must have reached.
+            The law sets it, so every binding declares it; it has no default.
+    """
+
+    min_age: int
+
+    def __post_init__(self) -> None:
+        if isinstance(self.min_age, bool) or not isinstance(self.min_age, int):
+            raise ValueError(
+                f"A co-resident adult's min_age must be an integer, not "
+                f"{self.min_age!r}."
+            )
+        if self.min_age < 0:
+            raise ValueError(
+                f"A co-resident adult's min_age must not be negative: {self.min_age}."
+            )
+
+    @property
+    def concepts(self) -> tuple[str, ...]:
+        """The concepts the test reads."""
+        return ("fact:person.age",)
+
+
+@dataclass(frozen=True)
 class TakeUpThreshold:
     """A take-up flag: the program's draw falls below its rate.
 
@@ -450,6 +483,7 @@ Transform = (
     | Predicate
     | RelationshipRole
     | CoresidentChildCount
+    | CoresidentAdult
     | TakeUpThreshold
     | UnitComposition
 )
@@ -465,6 +499,7 @@ _TRANSFORM_KINDS: dict[str, type] = {
     "predicate": Predicate,
     "relationship_role": RelationshipRole,
     "coresident_child_count": CoresidentChildCount,
+    "coresident_adult": CoresidentAdult,
     "take_up_threshold": TakeUpThreshold,
     "fraction": Fraction,
     "positive": Positive,
@@ -508,6 +543,8 @@ def transform_to_dict(transform: Transform) -> dict[str, object]:
         out["feature"] = transform.feature.value
     elif isinstance(transform, CoresidentChildCount) and transform.max_age is not None:
         out["max_age"] = transform.max_age
+    elif isinstance(transform, CoresidentAdult):
+        out["min_age"] = transform.min_age
     elif isinstance(transform, TakeUpThreshold):
         out["program"] = transform.program
     return out
@@ -524,6 +561,7 @@ _TRANSFORM_FIELDS: dict[str, frozenset[str]] = {
     "signed_part": frozenset({"sign"}),
     "unit_composition": frozenset({"feature"}),
     "coresident_child_count": frozenset({"max_age"}),
+    "coresident_adult": frozenset({"min_age"}),
     "take_up_threshold": frozenset({"program"}),
 }
 
@@ -615,6 +653,8 @@ def _read_transform(data: object) -> Transform:
         return UnitComposition(feature=UnitFeature(text("feature")))
     if kind == "coresident_child_count":
         return CoresidentChildCount(max_age=optional_age("max_age"))
+    if kind == "coresident_adult":
+        return CoresidentAdult(min_age=required("min_age"))
     if kind == "take_up_threshold":
         return TakeUpThreshold(program=text("program"))
     return _TRANSFORM_KINDS[kind]()
@@ -844,7 +884,8 @@ class InputBinding:
         if isinstance(self.transform, AllocateToReferencePerson):
             return "person"
         if isinstance(
-            self.transform, RelationshipRole | CoresidentChildCount | UnitComposition
+            self.transform,
+            RelationshipRole | CoresidentChildCount | CoresidentAdult | UnitComposition,
         ):
             return "person"
         entities = {concept(concept_id).entity for concept_id in self.concepts}
@@ -996,6 +1037,13 @@ def _check_transform_arity(binding: InputBinding) -> None:
         raise ValueError(
             f"Binding for {name!r}: a child count reads both parents "
             f"(and age when limited): {transform.concepts}."
+        )
+    if isinstance(transform, CoresidentAdult) and (
+        binding.concepts != transform.concepts
+    ):
+        raise ValueError(
+            f"Binding for {name!r}: a co-resident adult test reads age only: "
+            f"{transform.concepts}."
         )
     if isinstance(transform, TakeUpThreshold):
         if binding.concepts != ("fact:person.take_up_seed",):
@@ -2045,6 +2093,9 @@ class _Context:
         self._household_rows = pd.Index(
             _matched_ids(household[_HOUSEHOLD_ID])
         ).get_indexer(_matched_ids(person[_PERSON_HOUSEHOLD_ID]))
+        # A null household id names no household, even where the household
+        # table holds a null id of its own, which get_indexer would match.
+        self._household_rows[person[_PERSON_HOUSEHOLD_ID].isna().to_numpy()] = -1
 
     def has(self, concept_id: str) -> bool:
         item = CONCEPT_BY_ID[concept_id]
@@ -2068,28 +2119,38 @@ class _Context:
         return rows
 
     def household_amount_for_persons(self, concept_id: str) -> np.ndarray:
-        """A household amount on each person's row."""
+        """A household amount on each person's row; NaN with no household."""
         amounts = self.values(concept_id).to_numpy(dtype=np.float64)
-        return amounts[self._household_rows]
+        # Row -1 reads the appended NaN, never the last household's amount.
+        return np.append(amounts, np.nan)[self._household_rows]
 
     def reference_rows(self) -> np.ndarray:
-        """For each person, the row of their household's reference person."""
+        """For each person, the row of their household's reference person.
+
+        -1 for a person with no household, as for a household whose
+        reference person is null or unknown.
+        """
         _require(self, _REFERENCE_PERSON, "Placing values on the reference person")
         by_household = self.person_rows(self.household["reference_person_id"])
-        return by_household[self._household_rows]
+        # Row -1 reads the appended -1, never the last household's reference.
+        return np.append(by_household, -1)[self._household_rows]
 
 
 def _matched_ids(values: pd.Series) -> np.ndarray:
-    """Ids ready for exact matching: null-free integers as int64, else as is.
+    """Ids ready for exact matching, never as floats that could round.
 
     pandas matches against a narrower unsigned index by casting the targets
     down to it (261 onto 5 for uint8), so null-free integer ids are widened
     first; :func:`_require_int64_ids` has already refused any int64 cannot
-    hold.
+    hold. A nullable integer column holding a null converts to float64,
+    where ids beyond 2**53 round together, so this returns its ids as Python
+    ints beside ``pd.NA`` instead.
     """
 
-    if values.dtype.kind in "iu" and not values.hasnans:
-        return values.to_numpy(dtype=np.int64)
+    if values.dtype.kind in "iu":
+        if not values.hasnans:
+            return values.to_numpy(dtype=np.int64)
+        return values.to_numpy(dtype=object, na_value=pd.NA)
     return values.to_numpy()
 
 
@@ -2176,6 +2237,8 @@ def _apply(
         return context.values(concepts[0]).to_numpy(dtype=np.float64) * fraction
     if isinstance(transform, CoresidentChildCount):
         return _child_counts(context, transform.max_age)
+    if isinstance(transform, CoresidentAdult):
+        return _coresident_adult_flags(context, transform.min_age)
     if isinstance(transform, TakeUpThreshold):
         rate = _unit_interval(rates, transform.program, "take-up rate")
         seeds = context.values(concepts[0]).to_numpy(dtype=np.float64)
@@ -2234,6 +2297,34 @@ def _child_counts(context: _Context, max_age: int | None) -> np.ndarray:
         named = parents[counted & (parents >= 0)]
         counts += np.bincount(named, minlength=len(person))
     return counts
+
+
+def _coresident_adult_flags(context: _Context, min_age: int) -> np.ndarray:
+    """Whether another person with the same household id has ``min_age``.
+
+    Persons are grouped on the person table's own household id column,
+    factorized as exact integers (never through a float array), so household
+    ids beyond 2**53 stay distinct. A person whose household id names no
+    household row is grouped with the other persons carrying that id; a
+    person with a null household id shares a household with nobody.
+    """
+
+    _require(context, "fact:person.age", "A co-resident adult test")
+    households, _ = pd.factorize(
+        _matched_ids(context.person[_PERSON_HOUSEHOLD_ID]), use_na_sentinel=True
+    )
+    ages = context.values("fact:person.age").to_numpy(dtype=np.float64, na_value=np.nan)
+    # NaN compares false, so a null age never qualifies.
+    qualifies = ages >= min_age
+    placed = households >= 0
+    per_household = np.bincount(
+        households[placed],
+        weights=qualifies[placed],
+        minlength=int(households.max(initial=-1)) + 1,
+    )
+    others = np.zeros(len(households), dtype=np.float64)
+    others[placed] = per_household[households[placed]] - qualifies[placed]
+    return others > 0
 
 
 def _state_column(column: str) -> tuple[str, str]:
