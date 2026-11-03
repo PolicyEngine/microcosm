@@ -351,7 +351,7 @@ def test_constants_adapter_equals_live_constants_and_stays_out_of_identities(
             # microcosm#1259's recipient-share bound in puf_support moves it again.
             # microcosm#1261's entity split of line 32 moves it too.
             # microcosm#1096's exact softmax cap projection in solve moves it.
-            "spec_sha256": 'e006f91463a79a851a478d487946620494c78482de7243e71d3944adabb00457',
+            "spec_sha256": '874294b24bf70671b3ec78bb1d1a2c3461fd585e2af1388265c27be26c18d0ba',
         },
     }
 

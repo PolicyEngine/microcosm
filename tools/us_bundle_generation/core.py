@@ -101,6 +101,62 @@ _DTYPE = {
     "int": "int64",
     "str": "string",
 }
+# Catalog unit for each unit a numeric pool input's engine class declares, as
+# ``PolicyEngineUSVariableMetadataIndex.variable_unit`` reads it. An entry
+# covers every input that declares its engine unit, so it suits only a unit
+# with one meaning. In policyengine-us 2.2.1, "year" marks both durations, such
+# as ``years_since_us_entry``, and calendar years, such as ``birth_year``; an
+# input that declares it needs its own entry in _REVIEWED_UNIT_BY_INPUT.
+_CATALOG_UNIT_BY_ENGINE_UNIT = {
+    "currency-USD": "usd",
+    "hour": "hours",
+    "week": "weeks",
+}
+# Numeric pool inputs reviewed one at a time: the engine unit the class
+# declared at review (None for none) and the catalog unit the input takes, here
+# the one its label gives: "First home mortgage origination year", "Second home
+# mortgage origination year" and "Count of one's own children in the
+# household". An entry outranks the map while its class declares that unit.
+_REVIEWED_UNIT_BY_INPUT: dict[str, tuple[str | None, str]] = {
+    "first_home_mortgage_origination_year": (None, "calendar_year"),
+    "second_home_mortgage_origination_year": (None, "calendar_year"),
+    "own_children_in_household": (None, "count"),
+}
+
+
+def _engine_unit_phrase(engine_unit: str | None) -> str:
+    return "no engine unit" if engine_unit is None else f"engine unit {engine_unit!r}"
+
+
+def _numeric_catalog_unit(variable: str, engine_unit: str | None) -> str:
+    """Return the catalog unit of a numeric pool input, or fail closed."""
+
+    if variable in _REVIEWED_UNIT_BY_INPUT:
+        reviewed_engine_unit, unit = _REVIEWED_UNIT_BY_INPUT[variable]
+        if engine_unit != reviewed_engine_unit:
+            raise ValueError(
+                f"Numeric pool input {variable!r} now declares "
+                f"{_engine_unit_phrase(engine_unit)}, but its entry in "
+                "_REVIEWED_UNIT_BY_INPUT was reviewed against "
+                f"{_engine_unit_phrase(reviewed_engine_unit)}; review it again."
+            )
+        return unit
+    if engine_unit is None:
+        raise ValueError(
+            f"Numeric pool input {variable!r} declares no engine unit and has "
+            "no reviewed unit; review one into _REVIEWED_UNIT_BY_INPUT."
+        )
+    if engine_unit not in _CATALOG_UNIT_BY_ENGINE_UNIT:
+        raise ValueError(
+            f"Numeric pool input {variable!r} declares engine unit "
+            f"{engine_unit!r}, which maps to no catalog unit. Map it in "
+            "_CATALOG_UNIT_BY_ENGINE_UNIT if it means one thing for every input "
+            "that declares it, or else review this input into "
+            "_REVIEWED_UNIT_BY_INPUT, and add the catalog unit to the unit enum "
+            "in spec_engine/schema/catalogs.schema.json."
+        )
+    return _CATALOG_UNIT_BY_ENGINE_UNIT[engine_unit]
+
 
 # RFC v3 decision D6 (docs/spec-engine.md, approved 2026-08-16).  This is
 # intentionally embedded in the one-shot migration builder: ``specs/us`` is a
@@ -1031,13 +1087,12 @@ def build_catalogs() -> dict[str, Any]:
             ) from error
         if dtype == "bool":
             unit = "boolean"
-            unit_waiver = None
         elif dtype in {"string", "category"}:
             unit = "categorical"
-            unit_waiver = None
         else:
-            unit = "unit_not_declared_by_engine_metadata"
-            unit_waiver = "policyengine_us_unit_unavailable"
+            unit = _numeric_catalog_unit(
+                entry.variable, index.variable_unit(entry.variable)
+            )
         contract = {
             "entity": entry.entity,
             "dtype": dtype,
@@ -1048,8 +1103,6 @@ def build_catalogs() -> dict[str, Any]:
             "domain": entry.family,
             "public_stability": "internal",
         }
-        if unit_waiver is not None:
-            contract["unit_waiver"] = unit_waiver
         columns.append(
             {
                 "key": key,
@@ -1145,23 +1198,9 @@ def build_catalogs() -> dict[str, Any]:
         raise ValueError("Deferred pool inputs are absent from the generated catalog.")
     if len(seen) != 177:
         raise ValueError(f"Closed US catalog must contain 177 keys, got {len(seen)}.")
-    return {
-        "metadata_waivers": [
-            {
-                "id": "policyengine_us_unit_unavailable",
-                "field": "unit",
-                "authority": "PolicyEngineUSVariableMetadataIndex",
-                "public": False,
-                "expires_on": "2026-11-16",
-                "reason": (
-                    "The import-free installed-engine index exposes entity, dtype, "
-                    "and period but no physical unit. Numeric columns remain "
-                    "internal until a reviewed unit authority lands."
-                ),
-            }
-        ],
-        "columns": sorted(columns, key=lambda row: str(row["key"])),
-    }
+    # Every numeric column's unit comes from the engine index or the reviewed
+    # table above, so the catalog declares no metadata waivers.
+    return {"columns": sorted(columns, key=lambda row: str(row["key"]))}
 
 
 def build_core_specs() -> dict[str, dict[str, Any]]:
