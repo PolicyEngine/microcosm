@@ -1010,53 +1010,60 @@ def _l2_penalty(
     raise ValueError(f"l2_basis must be one of {sorted(L2_BASES)}, got {basis!r}.")
 
 
-def _cap_every_record_shift(cap_shift: torch.Tensor) -> float:
-    """The smallest shift that puts every record able to reach its cap at it."""
-    reachable = cap_shift[torch.isfinite(cap_shift)]
-    return float(reachable.max()) if reachable.numel() else 0.0
-
-
 def _sorted_capped_log_shift(
     cap_shift: torch.Tensor,
     caps: torch.Tensor,
-    mass: torch.Tensor,
+    log_weights: torch.Tensor,
     total: float,
     capped: torch.Tensor,
     lower: float,
 ) -> float:
-    """Finish :func:`_capped_log_shift` exactly with one sort.
+    """Finish :func:`_capped_log_shift` exactly with one sort, in log space.
 
     ``capped`` marks records known to be at their caps at the answer and
-    ``lower`` is a lower bound on it. Sort the remaining records by the shift
-    at which each meets its cap. With the first ``k`` of them capped too, the
-    shift that meets ``total`` is ``log(room_k / free_k)``, ``room_k`` being
-    the total less every capped record's cap and ``free_k`` the mass of the
-    records after the ``k``-th. The answer is that shift at the smallest
-    ``k`` where it does not pass the ``k``-th record's own cap shift: the
-    ``k`` records before it reach their caps at a smaller shift, so they are
-    capped, and every record from the ``k``-th on is not.
+    ``lower`` is a lower bound on it. Sort the other records that carry
+    weight by the shift at which each meets its cap. With the first ``k`` of
+    them capped too, the shift that meets ``total`` is
+    ``log(room_k) - log(free_k)``, ``room_k`` being the total less every
+    capped record's cap and ``free_k`` the weight of the records from the
+    ``k``-th on, summed in log space so that a weight below float64's range
+    still counts. The answer is that shift at the smallest ``k`` where it
+    does not pass the ``k``-th record's own cap shift: the ``k`` records
+    before it reach their caps at a smaller shift, so they are capped, and
+    every record from the ``k``-th on is not. A ``room_k`` that is not
+    positive means the caps of those ``k`` records already hold the total;
+    the lower-bound argument in :func:`_capped_log_shift` rules that out
+    beyond rounding, so the answer caps exactly those ``k`` and the rest keep
+    their rounding-sized share. If no ``k`` qualifies, the caps of every
+    record that carries weight hold less than the total, and the answer caps
+    them all.
     """
-    rest = ~capped & (mass > 0.0)
+    rest = ~capped & torch.isfinite(log_weights)
     order = torch.argsort(cap_shift[rest])
     rest_shift = cap_shift[rest][order]
+    if not rest_shift.numel():
+        return lower
     rest_caps = caps[rest][order]
-    rest_mass = mass[rest][order]
     capped_before = torch.cat(
         (rest_caps.new_zeros(1), torch.cumsum(rest_caps, dim=0)[:-1])
     )
     room = (total - float(caps[capped].sum())) - capped_before
-    free = torch.flip(torch.cumsum(torch.flip(rest_mass, (0,)), dim=0), (0,))
-    # Once the capped records' caps reach the total, no shift meets it short
-    # of capping every record (a cap of exactly 1, up to rounding).
+    log_free = torch.flip(
+        torch.logcumsumexp(torch.flip(log_weights[rest][order], (0,)), dim=0), (0,)
+    )
     candidate = torch.where(
         room > 0.0,
-        torch.log(room.clamp_min(torch.finfo(torch.float64).tiny)) - torch.log(free),
-        math.inf,
+        torch.log(room.clamp_min(torch.finfo(torch.float64).tiny)) - log_free,
+        -math.inf,
     )
     meets = candidate <= rest_shift
     if not bool(meets.any()):
-        return max(lower, _cap_every_record_shift(cap_shift))
-    return max(lower, float(candidate[int(meets.to(torch.uint8).argmax())]))
+        return max(lower, float(rest_shift[-1]))
+    k = int(meets.to(torch.uint8).argmax())
+    # Exact arithmetic puts the answer past the (k-1)-th record's cap shift,
+    # since that record failed; the clamp keeps rounding from uncapping it.
+    previous = float(rest_shift[k - 1]) if k else lower
+    return max(lower, previous, float(candidate[k]))
 
 
 def _capped_log_shift(
@@ -1071,7 +1078,7 @@ def _capped_log_shift(
     Float64 tensors; ``log_weights`` sums to ``total`` (``exp`` of it does),
     so ``s >= 0``. The left side is continuous and nondecreasing in ``s``, so
     the shift exists and the projection it defines is unique whenever the caps
-    sum to at least ``total``.
+    of the records that carry weight sum to at least ``total``.
 
     Active-set rounds: with ``C`` the records whose cap shift
     ``log_upper - log_weights`` is at most the current shift, the next shift
@@ -1080,10 +1087,20 @@ def _capped_log_shift(
     contributes ``exp(...)`` where the true sum has the smaller ``min``), so
     every round's shift is a lower bound on the answer and ``C`` only grows.
     When a round adds no record, the bound is attained and the shift is exact.
-    If ``active_set_rounds`` pass without that, :func:`_sorted_capped_log_shift`
+
+    The same bound gives ``total - sum(caps[C]) >= exp(s) * sum(mass[~C])``
+    at every round, so a room that is not positive is float64 rounding: the
+    capped records' caps hold the total, and the records outside ``C`` hold a
+    share below that rounding. The current shift is then the answer, and
+    they keep that share. When the uncapped mass sums below float64's normal
+    range, every uncapped record's weight has underflowed or lost its
+    precision, and the rounds hand over to
+    :func:`_sorted_capped_log_shift`, which sums in log space. So do
+    ``active_set_rounds`` rounds that end without the bound attained; the sort
     finishes from the current capped set and bound. Records with a zero cap
-    are capped at every shift; records with zero mass never reach a positive
-    cap and contribute nothing.
+    are capped at every shift; records with zero weight (a log-weight of
+    ``-inf``) never reach a positive cap and contribute nothing. A record
+    whose finite log-weight underflows float64 still carries weight.
 
     Returns the shift and the rounds taken (``active_set_rounds + 1`` when
     the sort finished it).
@@ -1100,18 +1117,18 @@ def _capped_log_shift(
     capped = cap_shift <= shift
     for rounds in range(1, active_set_rounds + 1):
         room = total - float(torch.where(capped, caps, zero).sum())
+        if room <= 0.0:
+            return shift, rounds
         free = float(torch.where(capped, zero, mass).sum())
-        if room <= 0.0 or free <= 0.0:
-            # The capped records alone hold the total (a cap of exactly 1, up
-            # to rounding): every record that can reach its cap sits at it.
-            return max(shift, _cap_every_record_shift(cap_shift)), rounds
+        if free < torch.finfo(torch.float64).tiny:
+            break
         shift = max(shift, math.log(room) - math.log(free))
         grown = capped | (cap_shift <= shift)
         if int(grown.sum()) == int(capped.sum()):
             return shift, rounds
         capped = grown
     return (
-        _sorted_capped_log_shift(cap_shift, caps, mass, total, capped, shift),
+        _sorted_capped_log_shift(cap_shift, caps, log_weights, total, capped, shift),
         active_set_rounds + 1,
     )
 

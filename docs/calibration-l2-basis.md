@@ -112,18 +112,30 @@ at their caps, the next shift solves
 bound on the answer for every `C`, so `C` only grows, and a round that adds
 no record is exact. If eight rounds pass without that, a sort over the
 remaining records finishes it, which bounds the worst case at `O(n log n)`.
-The shift is computed in float64. The solve records
+Both paths compute the shift in float64. The same bound keeps
+`D - sum(cap * d[C])` at least `exp(s) * sum(exp(log_w)[not C])`, the
+uncapped records' share, so when rounding takes it to zero or below, the
+capped records' caps already hold `D`: the rounds stop at the current shift,
+and the other records keep a share below float64 rounding of `D`. When the
+uncapped weights sum below float64's normal range, the rounds hand over to
+the sort, which sums them in log space, so a weight that underflows float64
+still counts. The solve records
 `options["iterate_selection_receipt"]["softmax_in_loop_max_cap_ratio"]`, the
 largest ratio of a realized in-loop weight to its float64 cap over every
 forward pass and the closing iterate, before the closing projection.
 `test_softmax_cap_projection.py` pins the projection for every drawn input,
-including zero design weights and a cap of exactly 1. It conserves the total,
-respects every cap, is idempotent and invariant to a constant added to the
-log-weights, and moves an input already within its caps by the shift alone.
-It also meets the Kullback-Leibler projection's KKT conditions, equals a
-float64 water-fill written from the definition, and gives the same answer by
-its active-set and sorted paths, including on an input built to need one
-round per record.
+including zero weights and zero caps drawn independently, a cap of exactly
+1, and inputs where some records' caps meet the total while the rest sit
+below float64 rounding of it or below float64's range. It conserves the
+total, respects every cap, is idempotent and invariant to a constant added
+to the log-weights, and moves an input already within its caps by the shift
+alone. It also meets the Kullback-Leibler projection's KKT conditions,
+equals a water-fill written from the definition in 60-digit decimal
+arithmetic, and gives the same answer by its active-set and sorted paths,
+including on an input built to need one round per record. Wherever the cap
+step that the full-scale measurement below ran settles in its active-set
+rounds, the test checks that the current step returns the same shift and
+round count, bit for bit.
 
 **What the projection replaced.** Before, each step renormalized and clamped
 in a loop of at most 32 rounds. On the ACS local release the rounds ran out on

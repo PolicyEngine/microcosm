@@ -382,8 +382,8 @@ EXPECTED_HASHES = {
     # S-corp line-32 shares as separate leaves. microcosm#1096 moves both
     # again: solve's opt-in softmax mass parametrization projects exactly onto
     # the capped simplex; the default projection parametrization is unchanged.
-    "seed_map": '3436d6d69c1943127ddc8ac715aeaf9e234d95636e5498b45551d24f1408786e',
-    "seed_protocol": '07fb7817b59806ee265de464202bc9c25778c25d8e6008d7eda280fe860da3c9',
+    "seed_map": '7ef47df73404e40d20e12292c35bc81ce18620e4608f8a52ce2b8f95ec32f4d1',
+    "seed_protocol": '76c372eefaf7581557d530ec68123802b974860d9b2e581f45b30aa55cedfbf5',
     "source_manifest": "608c3621b1e4a108e57c8f83d16a184acdb3d05e16a81b895f7f72dbf5d0685c",
     "take_up": "9522ce40f7dea569312dd7a7beb474e5a5afadd2f1e10cb5876534c3ef623d35",
     "tail": "071d418bb49976f4682c320d2ad07097c177de3a645d2524f235e1ff33ac83f9",

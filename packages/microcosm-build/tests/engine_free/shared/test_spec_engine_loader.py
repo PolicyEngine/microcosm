@@ -19,7 +19,7 @@ def test_semantic_hash_has_golden_vector_and_surface_separation(tmp_path) -> Non
     # receipt, and its post-transfer step moves acs_transfer's attested bytes.
     # microcosm#1096's exact softmax cap projection in solve moves it too.
     assert first.spec_sha256 == (
-        'a01f085c283573a15ada703b4c1bb27761dd5d579596f1d4b215b521fae42907'
+        'c8ed7c7226089829c36276ed7dec4704a4d4cde38b094189239cef34519c7302'
     )
 
     second_root = _rich_minimal(tmp_path / "xy", note="second", store="local:b")
