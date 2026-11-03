@@ -2215,8 +2215,8 @@ def test_a_forced_hash_seed_is_refused_before_anything_is_staged(
     app = fake_runner(_seed_tool())
     real = plan_lib.tool_environment
 
-    def forced(base, plan_env):
-        env, removed = real(base, plan_env)
+    def forced(base, plan_env, **options):
+        env, removed = real(base, plan_env, **options)
         return {**env, "PYTHONHASHSEED": _PROBE_SEED}, removed
 
     monkeypatch.setattr(plan_lib, "tool_environment", forced)
@@ -2269,8 +2269,8 @@ def test_check_stage_fails_when_the_run_would_refuse(
     monkeypatch.setattr(
         plan_lib,
         "tool_environment",
-        lambda base, plan_env: (
-            {**real(base, plan_env)[0], "PYTHONHASHSEED": _PROBE_SEED},
+        lambda base, plan_env, **options: (
+            {**real(base, plan_env, **options)[0], "PYTHONHASHSEED": _PROBE_SEED},
             [],
         ),
     )
