@@ -940,6 +940,10 @@ def _memoize_immutable_reference_profile_views(monkeypatch):
             }
             if compose._has_resource(spec, compose.CHRONICLE_FEED_RESOURCE):
                 names.add(compose.CHRONICLE_FEED_RESOURCE)
+            # G8-r2c: A's measurement proof reads the graph, so the resolved
+            # view depends on it too.
+            if compose._has_resource(spec, compose.GRAPH_RESOURCE):
+                names.add(compose.GRAPH_RESOURCE)
             documents = {
                 name: compose._raw_transport_resource(spec, name)
                 for name in sorted(names)
@@ -1217,3 +1221,326 @@ def test_pending_outputs_no_longer_name_p1_earnings():
     pending = _spec()["resources"]["transport_graph"]["pending_outputs"]
     assert "Census rent and liquid-assets quantile producers" in pending
     assert not any("P1" in entry or "earnings" in entry for entry in pending)
+
+
+# ---------------------------------------------------------------------------
+# G8-r2c G: the stand-in income measure, its variants, S5 and the gates
+# ---------------------------------------------------------------------------
+
+_TRANSFERS = (
+    "jobseeker_support_annual_gross_transfer_cents",
+    "sole_parent_support_annual_gross_transfer_cents",
+    "supported_living_payment_annual_gross_transfer_cents",
+    "nz_super_annual_gross_transfer_cents",
+)
+_MARKET = (
+    "employment_income_cents",
+    "nonfarm_self_employment_income_cents",
+    "farm_self_employment_income_cents",
+    "interest_income_cents",
+    "dividend_income_cents",
+    "rental_income_cents",
+)
+_PROXY = (
+    "ird_taxable_income_proxy_cents",
+    "ird_taxable_income_proxy_nzd",
+    "ird_taxable_income_proxy_universe_status",
+)
+
+
+def test_the_measure_declarations_are_c_shaped_with_r2c10_floor_and_scale():
+    from microcosm.build.transport.measure_kernels import validate_measure_declaration
+
+    document = _spec()["resources"]["income_measurements"]
+    assert document["measurement_id"] == _MEASUREMENT
+    assert set(document["measures"]) == {"central", "vsi"}
+    for entry in document["measures"].values():
+        declaration = entry["declaration"]
+        assert validate_measure_declaration(declaration) == declaration
+        assert (
+            entry["declaration_sha256"]
+            == sha256(
+                json.dumps(declaration, sort_keys=True, separators=(",", ":")).encode()
+            ).hexdigest()
+        )
+        assert (declaration["entity"], declaration["floor"], declaration["scale"]) == (
+            "person",
+            0,
+            100,
+        )
+        assert declaration["add_backs"] == ["rental_income_cents"]
+        assert declaration["outputs"] == dict(
+            zip(("measure", "unit", "universe_status"), _PROXY, strict=True)
+        )
+        assert all(row["sign"] == 1 for row in declaration["components"])
+    central = [
+        row["column"]
+        for row in document["measures"]["central"]["declaration"]["components"]
+    ]
+    vsi = [
+        row["column"]
+        for row in document["measures"]["vsi"]["declaration"]["components"]
+    ]
+    assert central == [*_MARKET, *_TRANSFERS]
+    # VSI omits exactly the four transfer addends.
+    assert set(central) - set(vsi) == set(_TRANSFERS)
+    assert set(vsi) <= set(central)
+
+
+def test_the_omission_register_gives_no_unsourced_size():
+    register = _spec()["resources"]["income_measurements"]["omission_register"]
+    items = {row["item"]: row for row in register["items"]}
+    assert {
+        "private_pension_income",
+        "veterans_pension",
+        "acc_weekly_compensation",
+    } <= set(items)
+    # Design 80's percentages are the proposal's claims, with no repo source.
+    assert {row["size"] for row in items.values()} == {"unknown"}
+
+
+def test_every_calibration_branch_has_one_standin_between_transfers_and_prepare():
+    spec = _spec()
+    measures = {"VSI": "vsi"}
+    for prefix, rows in _branches(spec):
+        ids = [row["id"] for row in rows]
+        by_id = {row["id"]: row for row in rows}
+        standin = by_id[f"{prefix}.income.standin"]
+        assert (
+            ids.index(f"{prefix}.benefits.annual_transfers")
+            < ids.index(standin["id"])
+            < ids.index(f"{prefix}.targets.prepare")
+        )
+        assert standin["kernel"] == "measure.combine@1"
+        assert standin["params"]["measurement_id"] == _MEASUREMENT
+        variant = prefix.removeprefix("nz.v.") if prefix != "nz" else None
+        measure = measures.get(variant, "central")
+        assert standin["params"]["measure"]["path"] == [
+            "measures",
+            measure,
+            "declaration",
+        ]
+        assert {(o["column"], o["dtype"]) for o in standin["outputs"]} == {
+            (_PROXY[0], "Int64"),
+            (_PROXY[1], "float64"),
+            (_PROXY[2], "string"),
+        }
+        declared = spec["resources"]["income_measurements"]["measures"][measure]
+        (inputs,) = standin["inputs"]
+        assert inputs["columns"] == [
+            row["column"] for row in declared["declaration"]["components"]
+        ]
+        prepare, problem = (
+            by_id[f"{prefix}.targets.prepare"],
+            by_id[f"{prefix}.targets.problem"],
+        )
+        read = {
+            (item["entity"], column)
+            for item in prepare["inputs"]
+            for column in item["columns"]
+        }
+        assert {("person", _PROXY[0]), ("person", _PROXY[2])} <= read
+        read = {
+            (item["entity"], column)
+            for item in problem["inputs"]
+            for column in item["columns"]
+        }
+        assert {
+            ("person", _PROXY[0]),
+            ("person", _PROXY[2]),
+            ("household", "source_household_id"),
+        } <= read
+        annual = json.loads(
+            by_id[f"{prefix}.benefits.annual_transfers"]["params"]["declaration"]
+        )
+        assert annual["exposure"]["central"] == ("0.75" if variant == "VEX" else 1)
+
+
+def test_vsi_vex_and_vpt_change_only_their_own_knob():
+    document = _spec()["resources"]["scenarios"]
+    rows = {row["id"]: row for row in document["scenarios"]}
+    assert rows["VSI"]["knobs"] == {"income_measure": "vsi"}
+    assert rows["VEX"]["knobs"] == {"annual_transfer_exposure": "0.75"}
+    assert rows["VPT"]["knobs"] == {"earnings_tail_anchor": "vpt"}
+    assert {rows[name]["tier"] for name in ("VSI", "VEX", "VPT")} == {"calibration"}
+    central = document["central_knobs"]
+    assert (
+        central["income_measure"],
+        central["annual_transfer_exposure"],
+        central["earnings_tail_anchor"],
+    ) == ("central", "1", "central")
+    domains = document["knob_domains"]
+    assert domains["income_measure"] == ["central", "vsi"]
+    assert domains["earnings_tail_anchor"] == ["central", "vpt"]
+    assert "declared judgment" in domains["annual_transfer_exposure"]
+    assert "declared judgment" in rows["VEX"]["description"]
+
+
+def test_a_proves_nz_income_standin_the_measurements_only_producer():
+    spec = _spec()
+    proofs, refusals = compose.measurement_proofs(spec)
+    assert refusals == {}
+    assert proofs[_MEASUREMENT]["producers"] == {"nz.calibrate": "nz.income.standin"}
+    assert proofs[_MEASUREMENT]["columns"] == [
+        "person.ird_taxable_income_proxy_cents",
+        "person.ird_taxable_income_proxy_universe_status",
+    ]
+
+
+def test_a_refuses_a_second_declared_producer_upstream_of_calibration():
+    spec = _spec()
+    rows = spec["resources"]["transport_graph"]["nodes"]
+    standin = next(row for row in rows if row["id"] == "nz.income.standin")
+    second = copy.deepcopy(standin)
+    second["id"] = "nz.income.second"
+    rows.insert(rows.index(standin) + 1, second)
+    proofs, refusals = compose.measurement_proofs(spec)
+    assert _MEASUREMENT not in proofs
+    assert "2 nodes declaring measurement_id" in refusals[_MEASUREMENT]
+
+
+def test_without_the_standin_the_24_rows_refuse_activation_by_name():
+    spec = _spec()
+    rows = spec["resources"]["transport_graph"]["nodes"]
+    rows[:] = [row for row in rows if row["id"] != "nz.income.standin"]
+    with pytest.raises(ValueError) as error:
+        compose.validate_transport_activation(spec)
+    message = str(error.value)
+    assert (
+        "placeholder reference target_references.ird_taxable_income_standin" in message
+    )
+    assert f"awaits measurement:{_MEASUREMENT}" in message
+
+
+def test_the_nz_super_stage_lists_its_rules_outputs_for_r2c2():
+    spec = _spec()
+    stages = {
+        stage["id"]: stage
+        for stage in spec["resources"]["precalibration_stages"]["stages"]
+    }
+    stage = stages["nz.precal.nz_super"]
+    assert stage["rules_binding"] == "nz_super"
+    assert [(row["column"], row["purpose"]) for row in stage["outputs"]] == [
+        ("entitled_to_new_zealand_superannuation", "classification"),
+        ("nz_super_weekly_amount_before_tax", "calibration_measure"),
+    ]
+    assert [row["column"] for row in stage["derived_outputs"]] == [
+        "nz_super_weekly_amount_before_tax_cents"
+    ]
+    # The stand-in itself stays off S5: no stage lists its columns.
+    listed = json.dumps(stages)
+    assert not any(column in listed for column in _PROXY)
+
+
+def test_the_s5_guard_refuses_an_undeclared_nz_super_derived_output():
+    from microcosm.graph import compile_graph
+
+    spec, config = _nz_composition_spec_and_config()
+    compile_graph(compose.compose_transport_graph(spec, config))
+    stage = next(
+        stage
+        for stage in spec["resources"]["precalibration_stages"]["stages"]
+        if stage["id"] == "nz.precal.nz_super"
+    )
+    stage["derived_outputs"] = []
+    with pytest.raises(ValueError, match="undeclared pre-calibration stage output"):
+        compose.compose_transport_graph(spec, config)
+
+
+def test_measurement_prefit_carries_r2c3s_frozen_numbers_and_six_aliases():
+    from test_support.microcosm_build.reference_intervals import R2C3_PREFIT_THRESHOLDS
+
+    gates = {row["id"]: row for row in _spec()["resources"]["gates"]["gates"]}
+    entry = gates["measurement_prefit"]
+    assert (entry["gate"], entry["phase"], entry["criticality"]) == (
+        "measurement_prefit",
+        "terminal",
+        "release_blocking",
+    )
+    parameters = entry["parameters"]
+    assert parameters["roster_total_bounds"] == [0.75, 1.25]
+    assert parameters["band_bounds"] == [0.5, 2.0]
+    assert parameters["maximum_discrepant_bands"] == 2
+    assert parameters["minimum_source_households"] == 30
+    assert parameters["minimum_kish_ess"] == 30
+    assert {
+        key: value for key, value in parameters.items() if key in R2C3_PREFIT_THRESHOLDS
+    } == R2C3_PREFIT_THRESHOLDS
+    assert parameters["tables"] == ["ird_taxable_income_standin_ty2024"]
+    assert parameters["required_evidence"] == [
+        "native_band_report",
+        "omission_register",
+        "scenario_vsi",
+        "scenario_vex",
+        "scenario_vpt",
+        "identity_receipts",
+    ]
+
+
+def test_the_prefit_table_has_12_bands_each_with_both_companions():
+    (table,) = [
+        row
+        for row in _spec()["resources"]["reference_intervals"]["tables"]
+        if row["id"] == "ird_taxable_income_standin_ty2024"
+    ]
+    assert len(table["bands"]) == 12
+    assert all(
+        band["count_reference"] and band["amount_reference"] for band in table["bands"]
+    )
+    assert table["nil_band"] == "absent"
+    assert table["diagnostics"]["support_household_entity"] == "household"
+
+
+def test_r2c18_wires_no_placeholder_evidence_into_the_terminal_battery():
+    rows = {row["id"]: row for row in _spec()["resources"]["transport_graph"]["nodes"]}
+    names = {edge["name"] for edge in rows["nz.gates.terminal"]["artifact_inputs"]}
+    assert not names & {
+        "native_band_report",
+        "omission_register",
+        "scenario_vsi",
+        "scenario_vex",
+        "scenario_vpt",
+        "identity_receipts",
+    }
+
+
+def test_cell_support_gates_require_the_three_new_variants_and_income_lists_hold():
+    gates = {row["id"]: row for row in _spec()["resources"]["gates"]["gates"]}
+    for name in ("reported_cell_support", "reported_cell_support_target_a"):
+        assert {"VSI", "VEX", "VPT"} <= set(
+            gates[name]["parameters"]["required_scenarios"]
+        )
+    families = [
+        "demography",
+        "household_structure",
+        "housing_tenure",
+        "income",
+        "main_benefits",
+        "superannuation",
+    ]
+    assert gates["calibration_per_family_fit"]["parameters"]["families"] == families
+    assert (
+        gates["national_and_region_admin_aggregates"]["parameters"]["families"]
+        == families
+    )
+    assert (
+        gates["target_profile_coverage"]["parameters"]["required_families"] == families
+    )
+    assert gates["calibration_per_family_fit"]["parameters"]["within"] == 0.05
+
+
+def test_vsi_review_triggers_and_the_wage_earner_count_stay_diagnostic():
+    document = _spec()["resources"]["income_measurements"]
+    triggers = document["review_triggers"]
+    assert triggers["scenario"] == "VSI"
+    assert [
+        row.get("relative_change_above", row.get("share_above"))
+        for row in triggers["triggers"]
+    ] == [
+        "0.10",
+        "0.10",
+        "0.05",
+    ]
+    assert document["diagnostics"]["wage_earner_count"]["ruling"] == "R2C-8"
+    gates = json.dumps(_spec()["resources"]["gates"])
+    assert "wage_earner" not in gates

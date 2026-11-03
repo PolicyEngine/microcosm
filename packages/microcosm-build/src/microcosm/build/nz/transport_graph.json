@@ -581,7 +581,7 @@
           "path": [],
           "encoding": "sha256"
         },
-        "profile_selection": "{\"aging_index\":\"central\",\"area_column\":\"as_area\",\"asset_test\":\"on\",\"beneficiary_assignment\":\"central\",\"census_residual_allocation\":\"mar\",\"donor_money_index\":\"awe\",\"rent_allocation\":\"reference_unit\",\"rent_stock_factor\":1.0,\"superannuitant_treatment\":\"exclude_and_count\"}"
+        "profile_selection": "{\"aging_index\":\"central\",\"annual_transfer_exposure\":\"1\",\"area_column\":\"as_area\",\"asset_test\":\"on\",\"beneficiary_assignment\":\"central\",\"census_residual_allocation\":\"mar\",\"donor_money_index\":\"awe\",\"earnings_tail_anchor\":\"central\",\"income_measure\":\"central\",\"rent_allocation\":\"reference_unit\",\"rent_stock_factor\":1.0,\"superannuitant_treatment\":\"exclude_and_count\"}"
       }
     },
     {
@@ -1710,6 +1710,14 @@
         }
       ],
       "params": {
+        "engine_ref": {
+          "binding": "nz_super",
+          "field": "engine_ref"
+        },
+        "period": {
+          "binding": "nz_super",
+          "field": "period"
+        },
         "declaration": "{\"columns\":[{\"output_column\":\"nz_super_weekly_amount_before_tax_cents\",\"quantum\":\"0.01\",\"rounding\":\"half_even\",\"source_column\":\"nz_super_weekly_amount_before_tax\",\"source_tax_basis\":\"before_tax\"}],\"entity\":\"person\"}"
       }
     },
@@ -1834,6 +1842,66 @@
       }
     },
     {
+      "id": "nz.income.standin",
+      "kernel": "measure.combine@1",
+      "population": "nz.central",
+      "inputs": [
+        {
+          "entity": "person",
+          "columns": [
+            "employment_income_cents",
+            "nonfarm_self_employment_income_cents",
+            "farm_self_employment_income_cents",
+            "interest_income_cents",
+            "dividend_income_cents",
+            "rental_income_cents",
+            "jobseeker_support_annual_gross_transfer_cents",
+            "sole_parent_support_annual_gross_transfer_cents",
+            "supported_living_payment_annual_gross_transfer_cents",
+            "nz_super_annual_gross_transfer_cents"
+          ]
+        }
+      ],
+      "outputs": [
+        {
+          "entity": "person",
+          "column": "ird_taxable_income_proxy_cents",
+          "dtype": "Int64"
+        },
+        {
+          "entity": "person",
+          "column": "ird_taxable_income_proxy_nzd",
+          "dtype": "float64"
+        },
+        {
+          "entity": "person",
+          "column": "ird_taxable_income_proxy_universe_status",
+          "dtype": "string"
+        }
+      ],
+      "params": {
+        "measure": {
+          "resource": "income_measurements",
+          "path": [
+            "measures",
+            "central",
+            "declaration"
+          ],
+          "encoding": "json"
+        },
+        "measure_sha256": {
+          "resource": "income_measurements",
+          "path": [
+            "measures",
+            "central",
+            "declaration_sha256"
+          ],
+          "encoding": "value"
+        },
+        "measurement_id": "ird_taxable_income_ty2027_v1"
+      }
+    },
+    {
       "id": "nz.targets.prepare",
       "kernel": "calibration.prepare@1",
       "population": "nz.central",
@@ -1846,7 +1914,9 @@
             "receives_nz_super",
             "receives_supported_living_payment",
             "receives_sole_parent_support",
-            "receives_jobseeker_support"
+            "receives_jobseeker_support",
+            "ird_taxable_income_proxy_cents",
+            "ird_taxable_income_proxy_universe_status"
           ]
         },
         {
@@ -3125,6 +3195,66 @@
         },
         {
           "entity": "person",
+          "column": "ird_taxable_income_standin_band_b01_indicator",
+          "dtype": "bool"
+        },
+        {
+          "entity": "person",
+          "column": "ird_taxable_income_standin_band_b02_indicator",
+          "dtype": "bool"
+        },
+        {
+          "entity": "person",
+          "column": "ird_taxable_income_standin_band_b03_indicator",
+          "dtype": "bool"
+        },
+        {
+          "entity": "person",
+          "column": "ird_taxable_income_standin_band_b04_indicator",
+          "dtype": "bool"
+        },
+        {
+          "entity": "person",
+          "column": "ird_taxable_income_standin_band_b05_indicator",
+          "dtype": "bool"
+        },
+        {
+          "entity": "person",
+          "column": "ird_taxable_income_standin_band_b06_indicator",
+          "dtype": "bool"
+        },
+        {
+          "entity": "person",
+          "column": "ird_taxable_income_standin_band_b07_indicator",
+          "dtype": "bool"
+        },
+        {
+          "entity": "person",
+          "column": "ird_taxable_income_standin_band_b08_indicator",
+          "dtype": "bool"
+        },
+        {
+          "entity": "person",
+          "column": "ird_taxable_income_standin_band_b09_indicator",
+          "dtype": "bool"
+        },
+        {
+          "entity": "person",
+          "column": "ird_taxable_income_standin_band_b10_indicator",
+          "dtype": "bool"
+        },
+        {
+          "entity": "person",
+          "column": "ird_taxable_income_standin_band_b11_indicator",
+          "dtype": "bool"
+        },
+        {
+          "entity": "person",
+          "column": "ird_taxable_income_standin_band_b12_indicator",
+          "dtype": "bool"
+        },
+        {
+          "entity": "person",
           "column": "age_18_24_indicator",
           "dtype": "bool"
         },
@@ -3261,6 +3391,18 @@
             "population_region_18_age_15_39_indicator",
             "population_region_18_age_40_64_indicator",
             "population_region_18_age_65_plus_indicator",
+            "ird_taxable_income_standin_band_b01_indicator",
+            "ird_taxable_income_standin_band_b02_indicator",
+            "ird_taxable_income_standin_band_b03_indicator",
+            "ird_taxable_income_standin_band_b04_indicator",
+            "ird_taxable_income_standin_band_b05_indicator",
+            "ird_taxable_income_standin_band_b06_indicator",
+            "ird_taxable_income_standin_band_b07_indicator",
+            "ird_taxable_income_standin_band_b08_indicator",
+            "ird_taxable_income_standin_band_b09_indicator",
+            "ird_taxable_income_standin_band_b10_indicator",
+            "ird_taxable_income_standin_band_b11_indicator",
+            "ird_taxable_income_standin_band_b12_indicator",
             "age_18_24_indicator",
             "age_25_39_indicator",
             "age_40_54_indicator",
@@ -3268,7 +3410,9 @@
             "receives_nz_super",
             "receives_supported_living_payment",
             "receives_sole_parent_support",
-            "receives_jobseeker_support"
+            "receives_jobseeker_support",
+            "ird_taxable_income_proxy_cents",
+            "ird_taxable_income_proxy_universe_status"
           ]
         },
         {
@@ -3462,7 +3606,8 @@
             "household_region_99_size_8_indicator",
             "household_region_99_owned_indicator",
             "household_region_99_not_owned_indicator",
-            "household_size"
+            "household_size",
+            "source_household_id"
           ]
         },
         {
@@ -4296,7 +4441,7 @@
           "path": [],
           "encoding": "sha256"
         },
-        "profile_selection": "{\"aging_index\":\"central\",\"area_column\":\"as_area\",\"asset_test\":\"on\",\"beneficiary_assignment\":\"central\",\"census_residual_allocation\":\"mar\",\"donor_money_index\":\"awe\",\"rent_allocation\":\"reference_unit\",\"rent_stock_factor\":1.0,\"superannuitant_treatment\":\"exclude_and_count\"}"
+        "profile_selection": "{\"aging_index\":\"central\",\"annual_transfer_exposure\":\"1\",\"area_column\":\"as_area\",\"asset_test\":\"on\",\"beneficiary_assignment\":\"central\",\"census_residual_allocation\":\"mar\",\"donor_money_index\":\"awe\",\"earnings_tail_anchor\":\"central\",\"income_measure\":\"central\",\"rent_allocation\":\"reference_unit\",\"rent_stock_factor\":1.0,\"superannuitant_treatment\":\"exclude_and_count\"}"
       },
       "artifact_inputs": [
         {
@@ -4832,7 +4977,7 @@
     ]
   },
   "pending_outputs": [
-    "r2c income stand-in and reconciliation",
+    "G8-x income reconciliation evidence: the native-band report, omission-register and identity-receipt artifacts and the VSI, VEX and VPT run evidence that measurement_prefit requires (R2C-18), and the NZS sharing binding (R2C-5)",
     "Census rent and liquid-assets quantile producers"
   ]
 }

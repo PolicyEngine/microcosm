@@ -270,6 +270,18 @@
     {
       "scenario": "VHF",
       "cell": "beneficiary_superannuitant_other/superannuitant"
+    },
+    {
+      "scenario": "VSI",
+      "cell": "beneficiary_superannuitant_other/superannuitant"
+    },
+    {
+      "scenario": "VEX",
+      "cell": "beneficiary_superannuitant_other/superannuitant"
+    },
+    {
+      "scenario": "VPT",
+      "cell": "beneficiary_superannuitant_other/superannuitant"
     }
   ],
   "structural_zero_citation": {

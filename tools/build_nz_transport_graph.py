@@ -444,12 +444,205 @@ def earnings_nodes(population, prefix, profile="central", tail="central"):
     ]
 
 
+MEASUREMENT_ID = "ird_taxable_income_ty2027_v1"
+MEASURE_OUTPUTS = {
+    "measure": "ird_taxable_income_proxy_cents",
+    "unit": "ird_taxable_income_proxy_nzd",
+    "universe_status": "ird_taxable_income_proxy_universe_status",
+}
+#: Design 80, section 3: the stand-in's components, all int64 cents columns.
+MARKET_COMPONENTS = (
+    "employment_income_cents",
+    "nonfarm_self_employment_income_cents",
+    "farm_self_employment_income_cents",
+    "interest_income_cents",
+    "dividend_income_cents",
+    "rental_income_cents",
+)
+TRANSFER_COMPONENTS = (
+    "jobseeker_support_annual_gross_transfer_cents",
+    "sole_parent_support_annual_gross_transfer_cents",
+    "supported_living_payment_annual_gross_transfer_cents",
+    "nz_super_annual_gross_transfer_cents",
+)
+#: R2C-7: VEX's declared annual-transfer exposure, as exact decimal text.
+VEX_EXPOSURE = "0.75"
+
+
+def measure_declaration(components):
+    """C's measure.combine@1 declaration: R2C-10's floor 0 and scale 100."""
+    return {
+        "entity": "person",
+        "components": [{"column": column, "sign": 1} for column in components],
+        "add_backs": ["rental_income_cents"],
+        "floor": 0,
+        "scale": 100,
+        "outputs": dict(MEASURE_OUTPUTS),
+    }
+
+
+def _canonical(value):
+    return json.dumps(value, sort_keys=True, separators=(",", ":"))
+
+
+def income_measurements_document():
+    """The stand-in measure, its VSI sibling and the published omission register."""
+    measures = {}
+    for name, components, description in (
+        (
+            "central",
+            (*MARKET_COMPONENTS, *TRANSFER_COMPONENTS),
+            "Design 80 section 3: P1-mapped wages, signed self-employment, "
+            "interest, dividends, rental profit with losses added back "
+            "(max(0, r)), and the annual gross JS, SPS, SLP and NZS transfers.",
+        ),
+        (
+            "vsi",
+            MARKET_COMPONENTS,
+            "VSI stress test: the central measure without the four transfer "
+            "addends, with the same flags, payments and entitlement rules.",
+        ),
+    ):
+        declaration = measure_declaration(components)
+        measures[name] = {
+            "description": description,
+            "declaration": declaration,
+            "declaration_sha256": hashlib.sha256(
+                _canonical(declaration).encode()
+            ).hexdigest(),
+        }
+    unknown = "unknown"
+    return {
+        "schema_version": 1,
+        "country": "nz",
+        "generator": "tools/build_nz_transport_graph.py",
+        "measurement_id": MEASUREMENT_ID,
+        "description": (
+            "The d1952 stand-in income measure: a person-level, annual, TY2027 "
+            "NZD statistical measure computed by measure.combine@1 in integer "
+            "cents. It is not IRD taxable income. Universe: included at x > 0, "
+            "excluded at x <= 0, unresolved on any null component (R2C-14). The "
+            "unit column is max(0, x)/100 (R2C-10)."
+        ),
+        "measures": measures,
+        "omission_register": {
+            "description": (
+                "Items IRD taxable income contains that the stand-in omits. A size "
+                "appears only where a repo resource or a cited public source gives "
+                "one; design 80's percentages are the proposal's claims and carry "
+                "no source here, so every size reads unknown. Unknown is not zero."
+            ),
+            "items": [
+                {"item": item, "size": unknown, "reason": reason}
+                for item, reason in (
+                    (
+                        "private_pension_income",
+                        "The taxable share of private pensions is unknown.",
+                    ),
+                    ("realized_capital_gains", "NZ taxes few realised gains."),
+                    (
+                        "veterans_pension",
+                        "Receipt is unsupported under H4 (receipt_contract.json); "
+                        "the VP rows stay parked.",
+                    ),
+                    ("youth_and_young_parent_payment", "No program binding."),
+                    ("acc_weekly_compensation", "No ACC producer."),
+                    ("student_allowances", "No student-allowance producer."),
+                    ("paid_parental_leave", "No PPL producer."),
+                    ("trust_income", "No trust producer; may overlap other items."),
+                    ("overseas_income", "No overseas-income producer."),
+                    ("look_through_company_income", "No LTC producer."),
+                    (
+                        "partnership_and_maori_authority_allocations",
+                        "No allocation producer.",
+                    ),
+                    ("taxable_property_disposals", "No disposal producer."),
+                    (
+                        "deductions_and_losses_beyond_those_netted",
+                        "Only self-employment losses and the rental add-back are "
+                        "netted.",
+                    ),
+                )
+            ],
+        },
+        "review_triggers": {
+            "description": (
+                "R2C-3: VSI escalation triggers are review triggers, not gates. When "
+                "one fires the hub writes a ruling before any release claim. No gate "
+                "kind computes them yet, so G8-x reports them."
+            ),
+            "scenario": "VSI",
+            "triggers": [
+                {
+                    "measure": "accommodation_supplement_recipients",
+                    "relative_change_above": "0.10",
+                },
+                {
+                    "measure": "accommodation_supplement_expenditure",
+                    "relative_change_above": "0.10",
+                },
+                {
+                    "measure": "central_weighted_positive_population_crossing_floor",
+                    "share_above": "0.05",
+                },
+            ],
+        },
+        "diagnostics": {
+            "wage_earner_count": {
+                "ruling": "R2C-8",
+                "status": "diagnostic only; G8-x reports it",
+                "comparison": (
+                    "the sum of the 235 IRD P1 wage counts against the model's "
+                    "weighted persons with positive employment_income, before and "
+                    "after the fit"
+                ),
+            }
+        },
+    }
+
+
+def standin_node(population, prefix, measure="central"):
+    """nz.income.standin: C's measure.combine@1, the measurement's only producer."""
+    components = [
+        row["column"]
+        for row in income_measurements_document()["measures"][measure]["declaration"][
+            "components"
+        ]
+    ]
+    return node(
+        f"{prefix}.income.standin",
+        "measure.combine@1",
+        population=population,
+        inputs=[slice_("person", components)],
+        outputs=[
+            owned("person", MEASURE_OUTPUTS["measure"], "Int64"),
+            owned("person", MEASURE_OUTPUTS["unit"], "float64"),
+            owned("person", MEASURE_OUTPUTS["universe_status"], "string"),
+        ],
+        params={
+            "measure": select(
+                "income_measurements", "json", "measures", measure, "declaration"
+            ),
+            "measure_sha256": select(
+                "income_measurements",
+                "value",
+                "measures",
+                measure,
+                "declaration_sha256",
+            ),
+            "measurement_id": MEASUREMENT_ID,
+        },
+    )
+
+
 def calibration_nodes(
     population="nz.central",
     prefix="nz",
     money_resource="money_normalization",
     earnings_profile="central",
     earnings_tail="central",
+    measure="central",
+    exposure=None,
 ):
     """Build one complete money/engine/receipt/calibration branch."""
     resources = read("money_normalization")
@@ -557,7 +750,13 @@ def calibration_nodes(
             artifact_inputs=[edge("surface", "nz.facts.precal")],
         )
     )
-    rows.append(gross[-1])
+    annual = gross[-1]
+    if exposure is not None:
+        declaration = json.loads(annual["params"]["declaration"])
+        declaration["exposure"]["central"] = exposure
+        annual["params"]["declaration"] = _canonical(declaration)
+    rows.append(annual)
+    rows.append(standin_node(population, prefix, measure))
     prep = read("calibration_bindings")
     required = {
         entity: list(names) for entity, names in prep["required_inputs"].items()
@@ -574,6 +773,13 @@ def calibration_nodes(
         )
         for entry in [*prep["columns"], *prep.get("roster_counts", ())]
     ]
+    # Interval outputs read their table's income and universe columns.
+    interval_inputs = [
+        MEASURE_OUTPUTS["measure"],
+        MEASURE_OUTPUTS["universe_status"],
+    ]
+    if any("interval" in entry for entry in prep["columns"]):
+        required["person"].extend(interval_inputs)
     rows.append(
         node(
             f"{prefix}.targets.prepare",
@@ -602,6 +808,11 @@ def calibration_nodes(
     problem_inputs["person"].extend(
         program["output"] for program in receipt["programs"]
     )
+    if any("interval" in entry for entry in prep["columns"]):
+        # The interval diagnostics read the table's columns on the problem
+        # frame, and per-band support groups by source household (hunk D).
+        problem_inputs["person"].extend(interval_inputs)
+        problem_inputs["household"].append(SOURCE_HOUSEHOLD_ID_COLUMN)
     rows.append(
         node(
             f"{prefix}.targets.problem",
@@ -1052,7 +1263,7 @@ def documents():
             "terminal": ["nz.export.prepare", "nz.package"],
         },
         "pending_outputs": [
-            "r2c income stand-in and reconciliation",
+            "G8-x income reconciliation evidence: the native-band report, omission-register and identity-receipt artifacts and the VSI, VEX and VPT run evidence that measurement_prefit requires (R2C-18), and the NZS sharing binding (R2C-5)",
             "Census rent and liquid-assets quantile producers",
         ],
     }
@@ -1082,6 +1293,7 @@ def documents():
         "export_contract.json": export,
         "transport_graph.json": graph,
         "earnings_bands.json": earnings_bands_document(),
+        "income_measurements.json": income_measurements_document(),
     }
 
 

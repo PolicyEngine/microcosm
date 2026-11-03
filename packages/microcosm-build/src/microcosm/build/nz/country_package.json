@@ -113,6 +113,11 @@
       "schema_id": "legacy_json"
     },
     {
+      "path": "income_measurements.json",
+      "kind": "legacy_json",
+      "schema_id": "legacy_json"
+    },
+    {
       "path": "income_diagnostic_references.json",
       "kind": "legacy_json",
       "schema_id": "legacy_json"

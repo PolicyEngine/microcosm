@@ -625,6 +625,8 @@ def documents(nz=NZ):
                     money_resource=resource,
                     earnings_profile=knobs.get("aging_index", "central"),
                     earnings_tail=knobs.get("earnings_tail_anchor", "central"),
+                    measure=knobs.get("income_measure", "central"),
+                    exposure=knobs.get("annual_transfer_exposure"),
                 ),
             ]
             for row in rows:

@@ -405,6 +405,16 @@ def calibration_bindings():
                     ],
                 }
             )
+    # G8-r2c G: the coarse stand-in table's band indicators, prepared from
+    # nz.income.standin's income and universe columns.
+    for band_id, *_ in coarse_band_members():
+        columns.append(
+            {
+                "entity": "person",
+                "name": f"ird_taxable_income_standin_band_{band_id}_indicator",
+                "interval": {"table": IRD_STANDIN_TABLE, "band": band_id},
+            }
+        )
     for code, _, low, high in RECEIPT_AGES:
         columns.append(
             {

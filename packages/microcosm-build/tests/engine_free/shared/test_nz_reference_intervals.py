@@ -387,8 +387,21 @@ def test_resolution_is_not_activation_and_no_active_row_requests_the_proxy():
             if row["metadata"].get("activation_status", "active") == "active":
                 assert row.get("filter") not in indicators
                 assert row.get("measure") not in proxy
-    bindings = json.dumps(_document("calibration_bindings.json"))
-    assert not any(name in bindings for name in proxy | indicators)
+    # G8-r2c G binds exactly the coarse table's 12 indicators, by interval;
+    # no other table's indicator and no proxy column is a binding output.
+    bindings = _document("calibration_bindings.json")
+    coarse = [band for band in _all_tables()[COARSE]["bands"]]
+    assert [entry for entry in bindings["columns"] if "interval" in entry] == [
+        {
+            "entity": "person",
+            "name": band["indicator"],
+            "interval": {"table": COARSE, "band": band["id"]},
+        }
+        for band in coarse
+    ]
+    others = indicators - {band["indicator"] for band in coarse}
+    text = json.dumps(bindings)
+    assert not any(name in text for name in proxy | others)
     precal = _document("precal_references.json")["target_references"]
     wages = [row for row in precal if row["name"].startswith("ird_wage_salary_")]
     assert len(wages) == 235
