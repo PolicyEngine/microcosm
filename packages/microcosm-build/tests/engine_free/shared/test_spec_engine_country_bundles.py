@@ -260,6 +260,7 @@ def test_nz_generation_zero_views_come_from_the_country_spec_seam() -> None:
         "geography_spine.json",
         "holdout_comparator_bindings.json",
         "holdout_references.json",
+        "income_diagnostic_references.json",
         "mass_references.json",
         "money_normalization.json",
         "money_normalization_hold_fixed.json",
