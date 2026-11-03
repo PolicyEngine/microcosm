@@ -527,11 +527,13 @@ class TestImplementationHashes:
         # At base 25c8cc14 the battery's binding identity held 197 modules;
         # w4 adds the leaf and exactly the modules it imports that the
         # bindings did not already reach (the graph package among them).
+        # microcosm#1073 adds us_runtime.scf_education_debt, which the
+        # us_runtime package imports, so the base now holds 198.
         modules = set()
         for name, binding in TRANSPORT_GATE_REGISTRY.items():
             _, digests = binding_identity.describe(binding, path=name)
             modules |= set(digests)
-        assert len(modules) == 197 + len(LEAF_ADDED_MODULES)
+        assert len(modules) == 198 + len(LEAF_ADDED_MODULES)
         assert LEAF_ADDED_MODULES <= modules
         assert LEAF_ADDED_MODULES <= set(
             binding_identity.source_closure([evidence_contract.__name__])
