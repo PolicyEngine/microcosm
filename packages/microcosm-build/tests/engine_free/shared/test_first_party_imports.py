@@ -9,8 +9,10 @@ walk treats a shared list's exclusions.
 
 from __future__ import annotations
 
+import importlib
 import sys
 import uuid
+from types import SimpleNamespace
 
 import pytest
 
@@ -18,6 +20,7 @@ import microcosm.calibrate
 from test_support.microcosm_build.first_party_imports import (
     defining_module,
     first_party_imports,
+    recorded_import_mismatches,
     unhashed_imports,
 )
 
@@ -110,3 +113,44 @@ def test_the_walk_follows_an_exclusion_but_not_its_imports(scratch_package):
         f"{top} -> {middle}"
     }
     assert unhashed_imports({top, middle, leaf}, listed=(), excluded=excluded) == set()
+
+
+class _RecordingKernel:
+    """A stand-in kernel whose hash names ``modules`` through ``owner``."""
+
+    def __init__(self, ref, owner, modules):
+        self.ref, self.owner, self.modules = ref, owner, modules
+
+    def implementation_hash(self):
+        return self.owner.source_hash(*self.modules)
+
+
+def test_a_group_record_does_not_cover_another_group(scratch_package):
+    """Removing a module from one group's hash fails the check even when
+    another group records the same edge (round 2 of #1493)."""
+    middle = scratch_package("group_middle", "VALUE = 1\n")
+    top = scratch_package("group_top", f"from {middle} import VALUE\n")
+    owner = SimpleNamespace(source_hash=lambda *objects, **dependencies: "x")
+    top_module, middle_module = (
+        importlib.import_module(name) for name in (top, middle)
+    )
+    hashes_both = _RecordingKernel("hashes.both@1", owner, (top_module, middle_module))
+    hashes_top = _RecordingKernel("hashes.top@1", owner, (top_module,))
+    recorded = {f"{top} -> {middle}": ("top only",)}
+
+    def mismatches(groups):
+        return recorded_import_mismatches(
+            groups, listed=(), excluded=frozenset(), hash_inputs={}, recorded=recorded
+        )
+
+    assert (
+        mismatches(
+            {"both": ((hashes_both, owner),), "top only": ((hashes_top, owner),)}
+        )
+        == {}
+    )
+    # The first group drops the middle module: the edge is recorded for the
+    # second group alone, so the first group's walk reports it.
+    assert mismatches(
+        {"both": ((hashes_top, owner),), "top only": ((hashes_top, owner),)}
+    ) == {"both: unhashed and not recorded": [f"{top} -> {middle}"]}

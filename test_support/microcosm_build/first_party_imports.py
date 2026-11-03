@@ -30,6 +30,7 @@ from collections.abc import Mapping, Sequence
 from collections.abc import Set as AbstractSet
 from pathlib import Path
 from types import ModuleType
+from typing import NamedTuple
 
 #: Every workspace package imports as ``microcosm.<shard>``.
 FIRST_PARTY_PREFIX = "microcosm."
@@ -236,14 +237,76 @@ def unhashed_imports(
     return uncovered
 
 
-def edges(unclassified: Mapping[str, Sequence[str]]) -> set[str]:
-    """``importer -> imported`` for a mapping of each import to its importers."""
+class HashInput(NamedTuple):
+    """A module a kernel's file imports only to compute the hash itself.
 
-    return {
+    The exemption holds for the named importers alone, so a hashed module
+    that starts calling it at run time is still reported.
+    """
+
+    importers: tuple[str, ...]
+    reason: str
+
+
+def recorded_import_mismatches(
+    kernel_groups: Mapping[str, Sequence[tuple[object, ModuleType]]],
+    *,
+    listed: Sequence[str],
+    excluded: AbstractSet[str],
+    hash_inputs: Mapping[str, HashInput],
+    recorded: Mapping[str, Sequence[str]],
+) -> dict[str, object]:
+    """Where the walk of each kernel group disagrees with the record.
+
+    ``kernel_groups`` maps a group name to its ``(kernel, module)`` pairs;
+    every kernel in a group must reach the same unhashed imports, because
+    the group shares one hash. ``recorded`` maps each ``importer ->
+    imported`` edge to the groups that leave it unhashed, so removing a
+    module from one group's hash fails even when another group records the
+    same edge. Every ``hash_inputs`` edge must be met by some group, and no
+    kernel may hash a hash input. An empty result means the record holds.
+    """
+
+    allowed = {
         f"{importer} -> {imported}"
-        for imported, importers in unclassified.items()
-        for importer in importers
+        for imported, hash_input in hash_inputs.items()
+        for importer in hash_input.importers
     }
+    mismatches: dict[str, object] = {}
+    unknown = {
+        edge: sorted(set(groups) - set(kernel_groups))
+        for edge, groups in recorded.items()
+        if set(groups) - set(kernel_groups)
+    }
+    if unknown:
+        mismatches["recorded for an unknown group"] = unknown
+    allowed_met: set[str] = set()
+    for group, kernels in kernel_groups.items():
+        walks = []
+        for kernel, module in kernels:
+            hashed = hashed_module_names(kernel, module)
+            if set(hash_inputs) & hashed:
+                mismatches[f"{kernel.ref} hashes a hash input"] = sorted(
+                    set(hash_inputs) & hashed
+                )
+            walks.append(unhashed_imports(hashed, listed=listed, excluded=excluded))
+        if any(walk != walks[0] for walk in walks):
+            mismatches[f"{group}: its kernels reach different imports"] = sorted(
+                set().union(*walks) - set.intersection(*walks)
+            )
+        met = set().union(*walks)
+        allowed_met |= met & allowed
+        met -= allowed
+        expected = {edge for edge, groups in recorded.items() if group in groups}
+        if met - expected:
+            mismatches[f"{group}: unhashed and not recorded"] = sorted(met - expected)
+        if expected - met:
+            mismatches[f"{group}: recorded but no longer met (delete them)"] = sorted(
+                expected - met
+            )
+    if allowed - allowed_met:
+        mismatches["hash inputs no importer reaches"] = sorted(allowed - allowed_met)
+    return mismatches
 
 
 def hashed_module_names(kernel: object, module: ModuleType) -> frozenset[str]:

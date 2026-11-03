@@ -15,8 +15,9 @@ Two checks pin the closure:
   listed, or excluded with a reason in ``compile_modules``;
 - each kernel's: the walk from every module the kernel hashes, its own
   module included, meets only modules the kernel hashes, the list's
-  exclusions, or the imports recorded in ``UNCLASSIFIED_IMPORTS``, which no
-  review has classified yet (microcosm#1497). That mapping may only shrink.
+  exclusions, or the imports recorded in ``UNCLASSIFIED_IMPORTS`` for that
+  kernel's group, which no review has classified yet (microcosm#1497). That
+  mapping may only shrink.
 """
 
 from __future__ import annotations
@@ -34,11 +35,11 @@ from microcosm.build.transport import (
     target_kernels,
 )
 from test_support.microcosm_build.first_party_imports import (
+    HashInput,
     assert_an_edit_rekeys,
-    edges,
     first_party_imports,
     hashed_module_names,
-    unhashed_imports,
+    recorded_import_mismatches,
     unlisted_imports,
 )
 
@@ -57,156 +58,516 @@ KERNELS_HASHING_THE_COMPILE_MODULES = (
 )
 _KERNEL_IDS = [kernel.ref for kernel, _ in KERNELS_HASHING_THE_COMPILE_MODULES]
 
-#: Imports the kernels' modules make only to build the hash. They stay
-#: unhashed on purpose, so an edit to the list re-keys only the kernels whose
-#: hashed modules it adds or removes.
-HASH_INPUTS = MappingProxyType(
+#: The kernels grouped by shared hash: the two CREATE versions share one
+#: class body, so one hashed set; every other kernel is its own group.
+COMPILE = "targets.compile@1"
+COMPARE = "takeup.compare@1"
+GAP = "takeup.gap@1"
+CREATE = "transport.create@1 and @2"
+QUANTILE_MAP_1 = "transport.quantile_map@1"
+QUANTILE_MAP_2 = "transport.quantile_map@2"
+KERNEL_GROUPS = MappingProxyType(
     {
-        "microcosm.build.transport.compile_modules": (
-            "names the modules the compile kernels hash; target_kernels reads "
-            "it only to build _COMPILE_MODULES"
+        COMPILE: ((target_kernels.TARGETS_COMPILE, target_kernels),),
+        COMPARE: ((target_kernels.TAKEUP_COMPARE, target_kernels),),
+        GAP: ((takeup_kernels.TAKEUP_GAP, takeup_kernels),),
+        CREATE: (
+            (population_kernels.TRANSPORT_CREATE, population_kernels),
+            (population_kernels.TRANSPORT_CREATE_DECLARED, population_kernels),
+        ),
+        QUANTILE_MAP_1: (
+            (population_kernels.TRANSPORT_QUANTILE_MAP, population_kernels),
+        ),
+        QUANTILE_MAP_2: (
+            (quantile_kernels.TRANSPORT_QUANTILE_MAP_V2, quantile_kernels),
         ),
     }
 )
 
-#: Every first-party module the walk from a compile kernel's hashed modules
-#: meets that the kernel does not hash and no review has classified, with the
-#: hashed (or excluded) modules that import it. Recorded as found when the
+#: Imports a kernel's module makes only to build the hash, and the importers
+#: the reason covers. They stay unhashed on purpose, so an edit to the list
+#: re-keys only the kernels whose hashed modules it adds or removes.
+HASH_INPUTS = MappingProxyType(
+    {
+        "microcosm.build.transport.compile_modules": HashInput(
+            importers=("microcosm.build.transport.target_kernels",),
+            reason=(
+                "names the modules the compile kernels hash; target_kernels "
+                "reads it only to build _COMPILE_MODULES"
+            ),
+        ),
+    }
+)
+
+#: Every ``importer -> imported`` edge the walk from a kernel group's hashed
+#: modules meets that the group does not hash and no review has classified,
+#: with the groups that leave it unhashed. Recorded as found when the
 #: per-kernel check was added; microcosm#1497 classifies them. Hash an entry
 #: in the kernels that run it, move what they run into a module they hash, or
 #: record why they need not hash it, then delete it here. The check fails on
-#: an import missing from this mapping and on an entry the walk no longer
-#: meets, so the mapping can only shrink.
+#: an edge a group meets that is not recorded for it and on an edge recorded
+#: for a group that no longer meets it, so the mapping can only shrink, and
+#: removing a module from one group's hash fails even where another group
+#: records the same edge.
 UNCLASSIFIED_IMPORTS = MappingProxyType(
     {
-        "microcosm.build": ("microcosm.build.trace",),
-        "microcosm.build.calibration_columns": (
-            "microcosm.build.transport.target_kernels",
+        "microcosm.build.trace -> microcosm.build": (
+            COMPILE,
+            COMPARE,
+            GAP,
+            CREATE,
+            QUANTILE_MAP_1,
+            QUANTILE_MAP_2,
         ),
-        "microcosm.build.calibration_predicates": (
-            "microcosm.build.transport.target_kernels",
+        "microcosm.build.transport.target_kernels -> microcosm.build.calibration_columns": (
+            COMPILE,
+            COMPARE,
+            GAP,
+            CREATE,
+            QUANTILE_MAP_1,
+            QUANTILE_MAP_2,
         ),
-        "microcosm.build.observation": ("microcosm.build.plan",),
-        "microcosm.build.reference_intervals": (
-            "microcosm.build.transport.target_kernels",
+        "microcosm.build.transport.target_kernels -> microcosm.build.calibration_predicates": (
+            COMPILE,
+            COMPARE,
+            GAP,
+            CREATE,
+            QUANTILE_MAP_1,
+            QUANTILE_MAP_2,
         ),
-        "microcosm.build.spec_engine.canonical": (
-            "microcosm.build.spec_engine.engine_abi",
-            "microcosm.build.spec_engine.loader",
-            "microcosm.build.spec_engine.take_up_semantics",
+        "microcosm.build.plan -> microcosm.build.observation": (
+            COMPILE,
+            COMPARE,
+            GAP,
+            CREATE,
+            QUANTILE_MAP_1,
+            QUANTILE_MAP_2,
         ),
-        "microcosm.build.spec_engine.engine_abi": (
-            "microcosm.build.spec_engine.loader",
+        "microcosm.build.transport.target_kernels -> microcosm.build.reference_intervals": (
+            COMPILE,
+            COMPARE,
+            GAP,
+            CREATE,
+            QUANTILE_MAP_1,
+            QUANTILE_MAP_2,
         ),
-        "microcosm.build.spec_engine.errors": (
-            "microcosm.build.spec_engine.engine_abi",
-            "microcosm.build.spec_engine.loader",
-            "microcosm.build.spec_engine.schemas",
-            "microcosm.build.spec_engine.take_up_semantics",
-            "microcosm.build.spec_engine.yaml12",
+        "microcosm.build.spec_engine.engine_abi -> microcosm.build.spec_engine.canonical": (
+            COMPILE,
+            COMPARE,
+            GAP,
+            CREATE,
+            QUANTILE_MAP_1,
+            QUANTILE_MAP_2,
         ),
-        "microcosm.build.spec_engine.model": (
-            "microcosm.build.spec_engine.canonical",
-            "microcosm.build.spec_engine.engine_abi",
-            "microcosm.build.spec_engine.loader",
+        "microcosm.build.spec_engine.loader -> microcosm.build.spec_engine.canonical": (
+            COMPILE,
+            COMPARE,
+            GAP,
+            CREATE,
+            QUANTILE_MAP_1,
+            QUANTILE_MAP_2,
         ),
-        "microcosm.build.spec_engine.resolver": ("microcosm.build.spec_engine.loader",),
-        "microcosm.build.spec_engine.schemas": (
-            "microcosm.build.spec_engine.engine_abi",
-            "microcosm.build.spec_engine.loader",
+        "microcosm.build.spec_engine.take_up_semantics -> microcosm.build.spec_engine.canonical": (
+            COMPILE,
+            COMPARE,
+            GAP,
+            CREATE,
+            QUANTILE_MAP_1,
+            QUANTILE_MAP_2,
         ),
-        "microcosm.build.spec_engine.seeds": ("microcosm.build.spec_engine.model",),
-        "microcosm.build.spec_engine.take_up_semantics": (
-            "microcosm.build.spec_engine.engine_abi",
+        "microcosm.build.spec_engine.loader -> microcosm.build.spec_engine.engine_abi": (
+            COMPILE,
+            COMPARE,
+            GAP,
+            CREATE,
+            QUANTILE_MAP_1,
+            QUANTILE_MAP_2,
         ),
-        "microcosm.build.spec_engine.yaml12": ("microcosm.build.spec_engine.loader",),
-        "microcosm.build.transport.column_kernels": (
-            "microcosm.build.transport.target_kernels",
+        "microcosm.build.spec_engine.engine_abi -> microcosm.build.spec_engine.errors": (
+            COMPILE,
+            COMPARE,
+            GAP,
+            CREATE,
+            QUANTILE_MAP_1,
+            QUANTILE_MAP_2,
         ),
-        "microcosm.build.transport.unit_declarations": (
-            "microcosm.build.transport.population_kernels",
-            "microcosm.build.transport.target_kernels",
+        "microcosm.build.spec_engine.loader -> microcosm.build.spec_engine.errors": (
+            COMPILE,
+            COMPARE,
+            GAP,
+            CREATE,
+            QUANTILE_MAP_1,
+            QUANTILE_MAP_2,
         ),
-        "microcosm.build.us_runtime.multispine_pool": (
-            "microcosm.build.spec_engine.engine_abi",
+        "microcosm.build.spec_engine.schemas -> microcosm.build.spec_engine.errors": (
+            COMPILE,
+            COMPARE,
+            GAP,
+            CREATE,
+            QUANTILE_MAP_1,
+            QUANTILE_MAP_2,
         ),
-        "microcosm.calibrate.artifacts": ("microcosm.build.transport.target_kernels",),
-        "microcosm.calibrate.matrix": (
-            "microcosm.build.transport.target_kernels",
-            "microcosm.calibrate.artifacts",
+        "microcosm.build.spec_engine.take_up_semantics -> microcosm.build.spec_engine.errors": (
+            COMPILE,
+            COMPARE,
+            GAP,
+            CREATE,
+            QUANTILE_MAP_1,
+            QUANTILE_MAP_2,
         ),
-        "microcosm.calibrate.monetary_binding": (
-            "microcosm.build.transport.target_kernels",
+        "microcosm.build.spec_engine.yaml12 -> microcosm.build.spec_engine.errors": (
+            COMPILE,
+            COMPARE,
+            GAP,
+            CREATE,
+            QUANTILE_MAP_1,
+            QUANTILE_MAP_2,
         ),
-        "microcosm.calibrate.solve": ("microcosm.calibrate.artifacts",),
-        "microcosm.frame.adapters.policyengine_us": (
-            "microcosm.build.spec_engine.engine_abi",
+        "microcosm.build.spec_engine.canonical -> microcosm.build.spec_engine.model": (
+            COMPILE,
+            COMPARE,
+            GAP,
+            CREATE,
+            QUANTILE_MAP_1,
+            QUANTILE_MAP_2,
         ),
-        "microcosm.frame.adapters.policyengine_us_concepts": (
-            "microcosm.build.transport.population_kernels",
-            "microcosm.frame.transport",
+        "microcosm.build.spec_engine.engine_abi -> microcosm.build.spec_engine.model": (
+            COMPILE,
+            COMPARE,
+            GAP,
+            CREATE,
+            QUANTILE_MAP_1,
+            QUANTILE_MAP_2,
         ),
-        "microcosm.frame.bundle": (
-            "microcosm.build.plan",
-            "microcosm.build.transport.population_kernels",
-            "microcosm.build.transport.target_kernels",
-            "microcosm.calibrate.artifacts",
-            "microcosm.graph.kernel",
+        "microcosm.build.spec_engine.loader -> microcosm.build.spec_engine.model": (
+            COMPILE,
+            COMPARE,
+            GAP,
+            CREATE,
+            QUANTILE_MAP_1,
+            QUANTILE_MAP_2,
         ),
-        "microcosm.frame.concept_mapping": (
-            "microcosm.build.transport.population_kernels",
+        "microcosm.build.spec_engine.loader -> microcosm.build.spec_engine.resolver": (
+            COMPILE,
+            COMPARE,
+            GAP,
+            CREATE,
+            QUANTILE_MAP_1,
+            QUANTILE_MAP_2,
         ),
-        "microcosm.frame.concepts": (
-            "microcosm.build.reference_intervals",
-            "microcosm.build.transport.population_kernels",
-            "microcosm.frame.transport",
+        "microcosm.build.spec_engine.engine_abi -> microcosm.build.spec_engine.schemas": (
+            COMPILE,
+            COMPARE,
+            GAP,
+            CREATE,
+            QUANTILE_MAP_1,
+            QUANTILE_MAP_2,
         ),
-        "microcosm.frame.materialize": (
-            "microcosm.build.transport.population_kernels",
-            "microcosm.frame.transport",
+        "microcosm.build.spec_engine.loader -> microcosm.build.spec_engine.schemas": (
+            COMPILE,
+            COMPARE,
+            GAP,
+            CREATE,
+            QUANTILE_MAP_1,
+            QUANTILE_MAP_2,
         ),
-        "microcosm.frame.scaling": (
-            "microcosm.build.transport.population_kernels",
-            "microcosm.frame.transport",
+        "microcosm.build.spec_engine.model -> microcosm.build.spec_engine.seeds": (
+            COMPILE,
+            COMPARE,
+            GAP,
+            CREATE,
+            QUANTILE_MAP_1,
+            QUANTILE_MAP_2,
         ),
-        "microcosm.frame.schema": (
-            "microcosm.build.transport.population_kernels",
-            "microcosm.build.transport.target_kernels",
-            "microcosm.frame.bundle",
+        "microcosm.build.spec_engine.engine_abi -> microcosm.build.spec_engine.take_up_semantics": (
+            COMPILE,
+            COMPARE,
+            GAP,
+            CREATE,
+            QUANTILE_MAP_1,
+            QUANTILE_MAP_2,
         ),
-        "microcosm.frame.unit_construction": (
-            "microcosm.build.transport.population_kernels",
-            "microcosm.build.transport.target_kernels",
+        "microcosm.build.spec_engine.loader -> microcosm.build.spec_engine.yaml12": (
+            COMPILE,
+            COMPARE,
+            GAP,
+            CREATE,
+            QUANTILE_MAP_1,
+            QUANTILE_MAP_2,
         ),
-        "microcosm.frame.weights": (
-            "microcosm.build.transport.population_kernels",
-            "microcosm.build.transport.target_kernels",
-            "microcosm.calibrate.artifacts",
-            "microcosm.frame.bundle",
-            "microcosm.graph.kernel",
+        "microcosm.build.transport.target_kernels -> microcosm.build.transport.column_kernels": (
+            COMPILE,
+            COMPARE,
+            GAP,
+            CREATE,
+            QUANTILE_MAP_1,
+            QUANTILE_MAP_2,
         ),
-        "microcosm.graph.canonical": (
-            "microcosm.build.reference_intervals",
-            "microcosm.build.transport.quantile_kernels",
-            "microcosm.build.transport.takeup_kernels",
-            "microcosm.build.transport.target_kernels",
-            "microcosm.calibrate.artifacts",
+        "microcosm.build.transport.population_kernels -> microcosm.build.transport.unit_declarations": (
+            QUANTILE_MAP_1,
+            QUANTILE_MAP_2,
         ),
-        "microcosm.graph.decl": (
-            "microcosm.build.transport.population_kernels",
-            "microcosm.build.transport.takeup_kernels",
-            "microcosm.build.transport.target_kernels",
-            "microcosm.calibrate.artifacts",
-            "microcosm.graph.canonical",
-            "microcosm.graph.kernel",
+        "microcosm.build.transport.target_kernels -> microcosm.build.transport.unit_declarations": (
+            COMPILE,
+            COMPARE,
+            GAP,
+            QUANTILE_MAP_1,
+            QUANTILE_MAP_2,
         ),
-        "microcosm.graph.kernel": (
-            "microcosm.build.transport.population_kernels",
-            "microcosm.build.transport.quantile_kernels",
-            "microcosm.build.transport.takeup_kernels",
-            "microcosm.build.transport.target_kernels",
+        "microcosm.build.spec_engine.engine_abi -> microcosm.build.us_runtime.multispine_pool": (
+            COMPILE,
+            COMPARE,
+            GAP,
+            CREATE,
+            QUANTILE_MAP_1,
+            QUANTILE_MAP_2,
         ),
-        "microcosm.graph.population": ("microcosm.build.transport.population_kernels",),
+        "microcosm.build.transport.target_kernels -> microcosm.calibrate.artifacts": (
+            COMPILE,
+            COMPARE,
+            GAP,
+            CREATE,
+            QUANTILE_MAP_1,
+            QUANTILE_MAP_2,
+        ),
+        "microcosm.build.transport.target_kernels -> microcosm.calibrate.matrix": (
+            COMPILE,
+            CREATE,
+            QUANTILE_MAP_1,
+            QUANTILE_MAP_2,
+        ),
+        "microcosm.calibrate.artifacts -> microcosm.calibrate.matrix": (
+            COMPILE,
+            CREATE,
+            QUANTILE_MAP_1,
+            QUANTILE_MAP_2,
+        ),
+        "microcosm.build.transport.target_kernels -> microcosm.calibrate.monetary_binding": (
+            COMPILE,
+            CREATE,
+            QUANTILE_MAP_1,
+            QUANTILE_MAP_2,
+        ),
+        "microcosm.calibrate.artifacts -> microcosm.calibrate.solve": (
+            COMPILE,
+            COMPARE,
+            GAP,
+            CREATE,
+            QUANTILE_MAP_1,
+            QUANTILE_MAP_2,
+        ),
+        "microcosm.build.spec_engine.engine_abi -> microcosm.frame.adapters.policyengine_us": (
+            COMPILE,
+            COMPARE,
+            GAP,
+            CREATE,
+            QUANTILE_MAP_1,
+            QUANTILE_MAP_2,
+        ),
+        "microcosm.build.transport.population_kernels -> microcosm.frame.adapters.policyengine_us_concepts": (
+            QUANTILE_MAP_1,
+            QUANTILE_MAP_2,
+        ),
+        "microcosm.frame.transport -> microcosm.frame.adapters.policyengine_us_concepts": (
+            QUANTILE_MAP_1,
+            QUANTILE_MAP_2,
+        ),
+        "microcosm.build.plan -> microcosm.frame.bundle": (
+            COMPILE,
+            QUANTILE_MAP_1,
+            QUANTILE_MAP_2,
+        ),
+        "microcosm.build.transport.population_kernels -> microcosm.frame.bundle": (
+            QUANTILE_MAP_1,
+            QUANTILE_MAP_2,
+        ),
+        "microcosm.build.transport.target_kernels -> microcosm.frame.bundle": (
+            COMPILE,
+            QUANTILE_MAP_1,
+            QUANTILE_MAP_2,
+        ),
+        "microcosm.calibrate.artifacts -> microcosm.frame.bundle": (
+            COMPILE,
+            QUANTILE_MAP_1,
+            QUANTILE_MAP_2,
+        ),
+        "microcosm.graph.kernel -> microcosm.frame.bundle": (
+            COMPILE,
+            QUANTILE_MAP_1,
+            QUANTILE_MAP_2,
+        ),
+        "microcosm.build.transport.population_kernels -> microcosm.frame.concept_mapping": (
+            QUANTILE_MAP_1,
+            QUANTILE_MAP_2,
+        ),
+        "microcosm.build.reference_intervals -> microcosm.frame.concepts": (
+            COMPILE,
+            COMPARE,
+            GAP,
+            QUANTILE_MAP_1,
+            QUANTILE_MAP_2,
+        ),
+        "microcosm.build.transport.population_kernels -> microcosm.frame.concepts": (
+            QUANTILE_MAP_1,
+            QUANTILE_MAP_2,
+        ),
+        "microcosm.frame.transport -> microcosm.frame.concepts": (
+            QUANTILE_MAP_1,
+            QUANTILE_MAP_2,
+        ),
+        "microcosm.build.transport.population_kernels -> microcosm.frame.materialize": (
+            QUANTILE_MAP_1,
+            QUANTILE_MAP_2,
+        ),
+        "microcosm.frame.transport -> microcosm.frame.materialize": (
+            QUANTILE_MAP_1,
+            QUANTILE_MAP_2,
+        ),
+        "microcosm.build.transport.population_kernels -> microcosm.frame.scaling": (
+            QUANTILE_MAP_1,
+            QUANTILE_MAP_2,
+        ),
+        "microcosm.frame.transport -> microcosm.frame.scaling": (
+            QUANTILE_MAP_1,
+            QUANTILE_MAP_2,
+        ),
+        "microcosm.build.transport.population_kernels -> microcosm.frame.schema": (
+            QUANTILE_MAP_1,
+            QUANTILE_MAP_2,
+        ),
+        "microcosm.build.transport.target_kernels -> microcosm.frame.schema": (
+            COMPILE,
+            QUANTILE_MAP_1,
+            QUANTILE_MAP_2,
+        ),
+        "microcosm.frame.bundle -> microcosm.frame.schema": (
+            COMPILE,
+            QUANTILE_MAP_1,
+            QUANTILE_MAP_2,
+        ),
+        "microcosm.build.transport.population_kernels -> microcosm.frame.unit_construction": (
+            QUANTILE_MAP_1,
+            QUANTILE_MAP_2,
+        ),
+        "microcosm.build.transport.target_kernels -> microcosm.frame.unit_construction": (
+            COMPILE,
+            COMPARE,
+            GAP,
+            QUANTILE_MAP_1,
+            QUANTILE_MAP_2,
+        ),
+        "microcosm.build.transport.population_kernels -> microcosm.frame.weights": (
+            QUANTILE_MAP_1,
+            QUANTILE_MAP_2,
+        ),
+        "microcosm.build.transport.target_kernels -> microcosm.frame.weights": (
+            COMPILE,
+            QUANTILE_MAP_1,
+            QUANTILE_MAP_2,
+        ),
+        "microcosm.calibrate.artifacts -> microcosm.frame.weights": (
+            COMPILE,
+            QUANTILE_MAP_1,
+            QUANTILE_MAP_2,
+        ),
+        "microcosm.frame.bundle -> microcosm.frame.weights": (
+            COMPILE,
+            QUANTILE_MAP_1,
+            QUANTILE_MAP_2,
+        ),
+        "microcosm.graph.kernel -> microcosm.frame.weights": (
+            COMPILE,
+            QUANTILE_MAP_1,
+            QUANTILE_MAP_2,
+        ),
+        "microcosm.build.reference_intervals -> microcosm.graph.canonical": (
+            COMPILE,
+            COMPARE,
+            GAP,
+            CREATE,
+            QUANTILE_MAP_1,
+            QUANTILE_MAP_2,
+        ),
+        "microcosm.build.transport.quantile_kernels -> microcosm.graph.canonical": (
+            QUANTILE_MAP_2,
+        ),
+        "microcosm.build.transport.takeup_kernels -> microcosm.graph.canonical": (GAP,),
+        "microcosm.build.transport.target_kernels -> microcosm.graph.canonical": (
+            COMPILE,
+            COMPARE,
+            GAP,
+            CREATE,
+            QUANTILE_MAP_1,
+            QUANTILE_MAP_2,
+        ),
+        "microcosm.calibrate.artifacts -> microcosm.graph.canonical": (
+            COMPILE,
+            COMPARE,
+            GAP,
+            CREATE,
+            QUANTILE_MAP_1,
+            QUANTILE_MAP_2,
+        ),
+        "microcosm.build.transport.population_kernels -> microcosm.graph.decl": (
+            CREATE,
+            QUANTILE_MAP_1,
+            QUANTILE_MAP_2,
+        ),
+        "microcosm.build.transport.takeup_kernels -> microcosm.graph.decl": (GAP,),
+        "microcosm.build.transport.target_kernels -> microcosm.graph.decl": (
+            COMPILE,
+            COMPARE,
+            GAP,
+            CREATE,
+            QUANTILE_MAP_1,
+            QUANTILE_MAP_2,
+        ),
+        "microcosm.calibrate.artifacts -> microcosm.graph.decl": (
+            COMPILE,
+            COMPARE,
+            GAP,
+            CREATE,
+            QUANTILE_MAP_1,
+            QUANTILE_MAP_2,
+        ),
+        "microcosm.graph.canonical -> microcosm.graph.decl": (
+            COMPILE,
+            COMPARE,
+            GAP,
+            CREATE,
+            QUANTILE_MAP_1,
+            QUANTILE_MAP_2,
+        ),
+        "microcosm.graph.kernel -> microcosm.graph.decl": (
+            COMPILE,
+            COMPARE,
+            GAP,
+            CREATE,
+            QUANTILE_MAP_1,
+            QUANTILE_MAP_2,
+        ),
+        "microcosm.build.transport.population_kernels -> microcosm.graph.kernel": (
+            CREATE,
+            QUANTILE_MAP_1,
+            QUANTILE_MAP_2,
+        ),
+        "microcosm.build.transport.quantile_kernels -> microcosm.graph.kernel": (
+            QUANTILE_MAP_2,
+        ),
+        "microcosm.build.transport.takeup_kernels -> microcosm.graph.kernel": (GAP,),
+        "microcosm.build.transport.target_kernels -> microcosm.graph.kernel": (
+            COMPILE,
+            COMPARE,
+            GAP,
+            CREATE,
+            QUANTILE_MAP_1,
+            QUANTILE_MAP_2,
+        ),
+        "microcosm.build.transport.population_kernels -> microcosm.graph.population": (
+            CREATE,
+            QUANTILE_MAP_1,
+            QUANTILE_MAP_2,
+        ),
     }
 )
 
@@ -254,22 +615,19 @@ def test_compile_exclusions_are_live_and_never_listed():
     assert not excluded & set(listed)
 
 
-def test_every_import_a_compile_kernel_reaches_is_hashed_or_classified():
+def test_every_import_a_compile_kernel_reaches_is_hashed_or_recorded():
     """The walk covers each kernel's own module and every module hashed
-    beside the shared list, not only the list (microcosm#1492 review)."""
+    beside the shared list, not only the list (microcosm#1492 review), and
+    the record is kept per group of kernels sharing one hash."""
     compile_list = _compile_list()
-    met: set[str] = set()
-    for kernel, module in KERNELS_HASHING_THE_COMPILE_MODULES:
-        hashed = hashed_module_names(kernel, module)
-        assert not set(HASH_INPUTS) & hashed, kernel.ref
-        met |= unhashed_imports(
-            hashed,
-            listed=compile_list.TRANSPORT_COMPILE_MODULE_NAMES,
-            excluded=frozenset(compile_list.EXCLUDED_DIRECT_IMPORTS),
-        )
-    met = {edge for edge in met if edge.split(" -> ")[1] not in HASH_INPUTS}
-    recorded = edges(UNCLASSIFIED_IMPORTS)
-    assert met == recorded, {
-        "unhashed and not classified": sorted(met - recorded),
-        "recorded but no longer met (delete them)": sorted(recorded - met),
+    assert {kernel for group in KERNEL_GROUPS.values() for kernel, _ in group} == {
+        kernel for kernel, _ in KERNELS_HASHING_THE_COMPILE_MODULES
     }
+    mismatches = recorded_import_mismatches(
+        KERNEL_GROUPS,
+        listed=compile_list.TRANSPORT_COMPILE_MODULE_NAMES,
+        excluded=frozenset(compile_list.EXCLUDED_DIRECT_IMPORTS),
+        hash_inputs=HASH_INPUTS,
+        recorded=UNCLASSIFIED_IMPORTS,
+    )
+    assert not mismatches, mismatches
