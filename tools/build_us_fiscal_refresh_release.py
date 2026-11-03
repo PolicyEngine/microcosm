@@ -7370,7 +7370,7 @@ def _with_l0_refit_weights(base_frame: Frame, result) -> Frame:
 
 #: The supports ``_main`` derives local-jurisdiction flags on, in build order:
 #: the loaded base (or prepared pool), the frozen support when a selection
-#: source reduces it, and the export support the H5 is written from.
+#: source reduces it, and the export support the release engine writes to H5.
 LOCAL_JURISDICTION_FLAG_SUPPORTS = ("base", "frozen_support", "export")
 
 
@@ -7389,10 +7389,10 @@ def _with_local_jurisdiction_flags(
     rows can make the place-rule flags decidable, as when frozen-support
     selection or the final L0 support keeps only block-anchored donors, so
     ``_main`` derives again after each such step and the written support
-    carries every flag its own geography decides. A carried flag that
-    disagrees with the geography is refused; a support whose flags are
-    already complete comes back unchanged. ``receipts[support]`` records
-    each derivation for the calibration diagnostics.
+    carries every flag its own geography decides. The derivation refuses a
+    carried flag that disagrees with the geography and returns a support
+    whose flags are already complete unchanged. ``receipts[support]``
+    records each derivation for the calibration diagnostics.
     """
 
     if support not in LOCAL_JURISDICTION_FLAG_SUPPORTS:
@@ -12995,8 +12995,9 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
     # A base built before the local-jurisdiction flags existed carries none,
     # and the engine would then default every Yonkers, Wilmington, Denver
     # and Philadelphia resident to False. Derive them from the base's own
-    # geography; a carried flag that disagrees with it is refused. The
-    # frozen-support selection and the export support derive them again.
+    # geography, refusing a carried flag that disagrees with it. _main
+    # derives them again after frozen-support selection and on the export
+    # support.
     local_jurisdiction_flags: dict[str, object] = {}
     base_frame = _with_local_jurisdiction_flags(
         base_frame,

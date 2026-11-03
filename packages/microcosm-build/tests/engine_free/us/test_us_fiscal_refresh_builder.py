@@ -2564,7 +2564,7 @@ def test_builder_derives_flags_after_every_support_reduction() -> None:
     # rows can make the place-rule flags decidable (microcosm#1453 review r2).
     # _main derives on the loaded base, again on the frozen support before
     # anything materializes targets from it, and again on the export support
-    # before any export gate reads it or the H5 is written from it.
+    # before any export gate reads it or the release engine writes it to H5.
     import inspect
 
     builder = _load_builder_module()
@@ -9077,7 +9077,7 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
             ),
         )
         if terminal_mode != "stored_input_refused":
-            # The H5 is written from the frame the export derivation returned.
+            # The release engine writes the frame the export derivation returned.
             assert (
                 captured["written_frame"]
                 is (captured["local_jurisdiction_export_frame"])
@@ -9426,7 +9426,7 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
             "export": local_jurisdiction_receipt,
         },
     }
-    # The flags are derived on the loaded base (or prepared pool) and again
+    # _main derives the flags on the loaded base (or prepared pool) and again
     # on the export support; this harness selects no frozen support.
     assert [type(frame) for frame in captured["local_jurisdiction_frames"]] == [
         FakeFrame,
