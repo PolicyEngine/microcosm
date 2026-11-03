@@ -119,26 +119,79 @@ def test_the_repository_pin_names_one_release_no_older_than_the_minimum() -> Non
     )
 
 
+class _IndexAnswers:
+    """A package-index lookup that answers from ``answers`` and records each
+    requirement it was asked about."""
+
+    def __init__(self, answers: dict[str, str | None]) -> None:
+        self.answers = answers
+        self.asked: list[str] = []
+
+    def __call__(self, requirement: str) -> str | None:
+        self.asked.append(requirement)
+        return self.answers[requirement]
+
+
 @pytest.mark.parametrize(
-    ("pinned", "published", "warned"),
+    ("published", "level", "phrases"),
     [
-        ("0.11.10", "0.11.11", True),
-        ("0.11.11", "0.11.11", False),
-        ("0.11.11", None, False),
+        ("0.11.12", "::warning::", ["pins microcosm-emitter 0.11.11", "is 0.11.12"]),
+        ("0.12.0", "::warning::", ["pins microcosm-emitter 0.11.11", "is 0.12.0"]),
+        ("0.11.10", "::notice::", ["is 0.11.10, older than the pin", "yanked"]),
+        (None, "::notice::", ["could not ask", "microcosm-emitter"]),
     ],
 )
-def test_a_pin_behind_the_package_index_is_reported(
-    pinned: str, published: str | None, warned: bool
+def test_the_emitter_pin_is_compared_with_the_package_index(
+    published: str | None, level: str, phrases: list[str]
 ) -> None:
-    warning = installed_emitter_releases.lag_warning(pinned, published)
+    newest = _IndexAnswers(
+        {"microcosm-emitter": published, "huggingface-hub<2": "1.33.0"}
+    )
 
-    if warned:
-        assert warning is not None
-        assert warning.startswith("::warning::")
-        assert f"pins microcosm-emitter {pinned}" in warning
-        assert f"newest release is {published}" in warning
+    messages = installed_emitter_releases.index_messages("0.11.11", "1.33.0", newest)
+
+    assert len(messages) == 1
+    assert messages[0].startswith(level)
+    for phrase in phrases:
+        assert phrase in messages[0]
+    if level == "::notice::":
+        assert "raise" not in messages[0]
+    assert newest.asked == ["microcosm-emitter", "huggingface-hub<2"]
+
+
+@pytest.mark.parametrize(
+    ("published", "expected"),
+    [
+        ("1.34.0", ["::warning::", "huggingface-hub 1.33.0", "1.x release is 1.34.0"]),
+        ("1.33.0", None),
+        ("1.32.0", None),
+        (None, ["::notice::", "could not ask", "huggingface-hub<2"]),
+    ],
+)
+def test_the_hub_constraint_is_compared_with_the_package_index(
+    published: str | None, expected: list[str] | None
+) -> None:
+    newest = _IndexAnswers(
+        {"microcosm-emitter": "0.11.11", "huggingface-hub<2": published}
+    )
+
+    messages = installed_emitter_releases.index_messages("0.11.11", "1.33.0", newest)
+
+    if expected is None:
+        assert messages == []
     else:
-        assert warning is None
+        assert len(messages) == 1
+        assert messages[0].startswith(expected[0])
+        for phrase in expected[1:]:
+            assert phrase in messages[0]
+
+
+def test_an_up_to_date_pin_and_constraint_print_nothing() -> None:
+    newest = _IndexAnswers(
+        {"microcosm-emitter": "0.11.11", "huggingface-hub<2": "1.33.0"}
+    )
+
+    assert installed_emitter_releases.index_messages("0.11.11", "1.33.0", newest) == []
 
 
 def _answer(returncode: int, stdout: str) -> subprocess.CompletedProcess[str]:
@@ -146,65 +199,121 @@ def _answer(returncode: int, stdout: str) -> subprocess.CompletedProcess[str]:
 
 
 @pytest.mark.parametrize(
-    ("answer", "expected"),
+    ("requirement", "answer", "expected"),
     [
-        (_answer(0, "microcosm-emitter==0.11.11\n"), "0.11.11"),
-        (_answer(2, ""), None),
-        (_answer(0, "something unexpected\n"), None),
-        (OSError("uv not found"), None),
-        (subprocess.TimeoutExpired(["uv"], 60), None),
+        ("microcosm-emitter", _answer(0, "microcosm-emitter==0.11.11\n"), "0.11.11"),
+        ("huggingface-hub<2", _answer(0, "huggingface-hub==1.34.0\n"), "1.34.0"),
+        ("huggingface-hub<2", _answer(0, "huggingface-hub==1.34.0.post1\n"), None),
+        ("microcosm-emitter", _answer(2, ""), None),
+        ("microcosm-emitter", _answer(0, "something unexpected\n"), None),
+        ("microcosm-emitter", OSError("uv not found"), None),
+        ("microcosm-emitter", subprocess.TimeoutExpired(["uv"], 60), None),
     ],
 )
-def test_the_package_index_is_asked_quietly(
-    answer: subprocess.CompletedProcess[str] | Exception, expected: str | None
+def test_the_package_index_is_asked_without_failing(
+    requirement: str,
+    answer: subprocess.CompletedProcess[str] | Exception,
+    expected: str | None,
 ) -> None:
-    calls: list[list[str]] = []
+    calls: list[tuple[list[str], object]] = []
 
     def run(
         arguments: list[str], **options: object
     ) -> subprocess.CompletedProcess[str]:
-        calls.append(arguments)
+        calls.append((arguments, options.get("input")))
         if isinstance(answer, Exception):
             raise answer
         return answer
 
-    assert installed_emitter_releases.published_release(run=run) == expected
-    assert calls[0][:3] == ["uv", "pip", "compile"]
+    assert installed_emitter_releases.newest_release(requirement, run=run) == expected
+    arguments, sent = calls[0]
+    assert arguments[:3] == ["uv", "pip", "compile"]
+    assert sent == f"{requirement}\n"
 
 
-def test_the_command_prints_the_releases_and_warns_about_a_lagging_pin(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
-) -> None:
-    pin_file = tmp_path / "requirements.txt"
-    pin_file.write_text(_pin("0.11.10"), encoding="utf-8")
-    monkeypatch.setattr(
-        installed_emitter_releases, "published_release", lambda: "0.11.11"
+@pytest.mark.parametrize(
+    "text",
+    ["", "httpx==0.28.1\n", "huggingface-hub>=1.33.0\n", "huggingface-hub==1.33\n"],
+)
+def test_a_malformed_hub_constraint_is_refused(text: str) -> None:
+    with pytest.raises(SystemExit) as refusal:
+        installed_emitter_releases.constrained_release(text, "huggingface-hub")
+
+    assert "constraints.txt" in str(refusal.value)
+
+
+def test_the_repository_constraint_names_one_hub_release() -> None:
+    constraint = installed_emitter_releases.constrained_release(
+        installed_emitter_releases.CONSTRAINTS_FILE.read_text(encoding="utf-8"),
+        "huggingface-hub",
     )
 
+    assert installed_emitter_releases.release_number(constraint)
+
+
+def _command_files(tmp_path: Path, *, pinned: str) -> list[str]:
+    pin_file = tmp_path / "requirements.txt"
+    pin_file.write_text(_pin(pinned), encoding="utf-8")
+    constraints_file = tmp_path / "constraints.txt"
+    constraints_file.write_text("huggingface-hub==1.33.0\n", encoding="utf-8")
+    return ["--pin-file", str(pin_file), "--constraints-file", str(constraints_file)]
+
+
+def test_the_command_prints_the_releases_and_warns_about_lagging_pins(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    newest = _IndexAnswers(
+        {"microcosm-emitter": "0.11.11", "huggingface-hub<2": "1.34.0"}
+    )
+    monkeypatch.setattr(installed_emitter_releases, "newest_release", newest)
+
     status = installed_emitter_releases.main(
-        ["--minimum", "0.6.0", "--pin-file", str(pin_file)]
+        ["--minimum", "0.6.0", *_command_files(tmp_path, pinned="0.11.10")]
     )
 
     output = capsys.readouterr()
+    warnings = output.err.splitlines()
     assert status == 0
     assert output.out.splitlines() == ["0.6.0", "0.11.10"]
-    assert "::warning::" in output.err
-    assert "newest release is 0.11.11" in output.err
+    assert len(warnings) == 2
+    assert all(line.startswith("::warning::") for line in warnings)
+    assert "is 0.11.11" in warnings[0]
+    assert "1.x release is 1.34.0" in warnings[1]
+
+
+def test_the_command_notes_a_comparison_it_could_not_make(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    newest = _IndexAnswers({"microcosm-emitter": None, "huggingface-hub<2": None})
+    monkeypatch.setattr(installed_emitter_releases, "newest_release", newest)
+
+    status = installed_emitter_releases.main(
+        ["--minimum", "0.6.0", *_command_files(tmp_path, pinned="0.11.11")]
+    )
+
+    output = capsys.readouterr()
+    notes = output.err.splitlines()
+    assert status == 0
+    assert output.out.splitlines() == ["0.6.0", "0.11.11"]
+    assert len(notes) == 2
+    assert all(line.startswith("::notice::") for line in notes)
 
 
 def test_the_command_can_skip_the_package_index(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    pin_file = tmp_path / "requirements.txt"
-    pin_file.write_text(_pin("0.11.11"), encoding="utf-8")
-
-    def unexpected() -> str:
+    def unexpected(requirement: str) -> str:
         raise AssertionError("the package index was asked")
 
-    monkeypatch.setattr(installed_emitter_releases, "published_release", unexpected)
+    monkeypatch.setattr(installed_emitter_releases, "newest_release", unexpected)
 
     status = installed_emitter_releases.main(
-        ["--minimum", "0.11.11", "--pin-file", str(pin_file), "--no-index-check"]
+        [
+            "--minimum",
+            "0.11.11",
+            *_command_files(tmp_path, pinned="0.11.11"),
+            "--no-index-check",
+        ]
     )
 
     output = capsys.readouterr()

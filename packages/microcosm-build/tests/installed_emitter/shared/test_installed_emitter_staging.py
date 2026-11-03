@@ -233,8 +233,9 @@ def installed_emitter(fake_telemetry_emitters, monkeypatch, tmp_path, stand_in_h
     The workspace's own fixture makes any attempt to start an emitter fail
     the test; this one puts the interface's launcher back, records every
     emitter process it starts, and waits for each to exit afterwards. Then it
-    fails the test if the stand-in saw a request it does not answer, or a
-    proxy request meant for another host.
+    fails the test if the stand-in saw a request it has no route for, a
+    request its handler failed on, or a proxy request meant for another host,
+    naming each (``StandInHub.stray_requests``).
     """
     command = os.environ.get("MICROCOSM_EMITTER_COMMAND", "").strip()
     version = os.environ.get("INSTALLED_EMITTER_VERSION", "").strip()
@@ -280,9 +281,9 @@ def installed_emitter(fake_telemetry_emitters, monkeypatch, tmp_path, stand_in_h
         yield emitter
     finally:
         emitter.stop()
-    stray = [f"unanswered: {request}" for request in stand_in_hub.unmatched_requests]
-    stray += [f"proxy request for {target}" for target in stand_in_hub.proxied_requests]
-    assert stray == [], "the stand-in Hub saw requests it does not answer"
+    assert stand_in_hub.stray_requests() == [], (
+        "the stand-in Hub could not answer every request as a Hub would"
+    )
 
 
 def test_the_build_starts_the_installed_emitter_with_only_its_hub_module(
@@ -398,8 +399,13 @@ def test_a_commit_on_a_moved_head_is_refused_then_made_on_the_new_head(
     ]
     assert bundle_commit.parent == other_commit.oid
     assert bundle_commit.files[other_file] == b"{}\n"
-    # The dataset's LFS object was stored once; the second commit refers to it.
+    # Each commit request was prepared again, but the dataset's LFS object was
+    # uploaded and verified once; the second batch answer offered no upload,
+    # and the second commit refers to the stored object.
+    assert stand_in_hub.statuses("lfs_batch") == [200, 200]
     assert stand_in_hub.statuses("lfs_upload") == [200]
+    assert stand_in_hub.statuses("lfs_verify") == [200]
+    assert bundle_commit.uploaded_as[f"{PREFIX}/{DATASET}"] == "lfs"
     assert handover.delivery["status"] == "uploaded"
     assert handover.delivery["revision"] == bundle_commit.oid
 
@@ -480,6 +486,12 @@ def test_a_rejected_token_is_refused_and_recorded(
     problem = write_access_problem(client, REPOSITORY)
     handover = _stage(bundle, client)
 
+    # This records today's mapping: the emitter reports a token the Hub rejects
+    # (HTTP 401) as an unreachable repository, and records the hand-over as
+    # REPOSITORY_UNAVAILABLE, which it keeps retrying, though no retry can
+    # succeed with the same token. An emitter error code for a rejected
+    # credential is a planned emitter follow-up; when it arrives, this test
+    # fails, and Microcosm's error codes need it.
     assert problem is not None
     assert f"cannot reach {REPOSITORY} (HfHubHTTPError)" in problem
     assert handover.delivery["status"] == "failed"
