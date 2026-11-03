@@ -37,17 +37,29 @@ _MANIFEST_HEADER = {
 }
 
 
+#: Non-unit weights entering calibration. The matrix gives the declared
+#: model values exactly at these weights, and other values at unit weights.
+INITIAL_WEIGHTS = (2.0, 4.0)
+
+
 class _Problem:
-    """The slice of ``OrderedProblem`` the gate reads."""
+    """The slice of ``OrderedProblem`` the gate reads.
+
+    ``estimates`` multiplies a two-column matrix by the weights it receives.
+    Its columns are model/4 and model/8, so A·w₀ equals the model exactly at
+    ``INITIAL_WEIGHTS`` (powers of two divide exactly) and equals 5/12 of it
+    at unit weights.
+    """
 
     def __init__(self, model, reference, report):
         self.target_metadata = tuple({"reference": name} for name in model)
         names = list(model)
-        self._model = np.asarray([model[name] for name in names], dtype=float)
+        values = np.asarray([model[name] for name in names], dtype=float)
+        self._matrix = np.column_stack([values / 4, values / 8])
         self.problem = SimpleNamespace(
-            initial_weights=SimpleNamespace(values=np.ones(1)),
+            initial_weights=SimpleNamespace(values=np.asarray(INITIAL_WEIGHTS)),
             target_vector=np.asarray([reference[name] for name in names], dtype=float),
-            estimates=lambda weights: self._model,
+            estimates=lambda weights: self._matrix @ np.asarray(weights, dtype=float),
         )
         self.bindings = {"interval_diagnostics": report}
 
@@ -109,6 +121,17 @@ def test_a_balanced_well_supported_roster_passes():
     assert result.details["roster_totals"]["count"]["ratio"] == "1"
 
 
+def test_the_model_side_is_the_matrix_at_the_initial_weights():
+    """R2C-3's A·w₀: the gate evaluates the matrix at w₀, not at unit weights."""
+    problem = _case({0: (0.75, 1)})
+    weights = problem.problem.initial_weights.values
+    assert not np.all(weights == 1)
+    assert problem.problem.estimates(np.ones_like(weights))[0] != 750
+    result = _run(problem)
+    assert result.passed, result.failures
+    assert result.details["bands"][0]["count"]["model"] == 750
+
+
 def _uniform(ratio, role):
     return {
         band: (ratio, 1) if role == "count" else (1, ratio) for band in range(BANDS)
@@ -127,17 +150,28 @@ def test_roster_totals_refuse_outside_75_to_125_percent(role, ratio, passes):
         assert any(f"summed {role}" in line for line in result.failures)
 
 
-@pytest.mark.parametrize(("discrepant", "passes"), [(2, True), (3, False)])
+def _on(role, ratio):
+    return (ratio, 1) if role == "count" else (1, ratio)
+
+
+@pytest.mark.parametrize(("discrepant", "passes"), [(2, True), (3, False), (4, False)])
 @pytest.mark.parametrize("low", [True, False])
-def test_three_discrepant_bands_refuse_and_two_pass(discrepant, passes, low):
+@pytest.mark.parametrize("role", ["count", "amount"])
+def test_three_discrepant_bands_refuse_and_two_pass(discrepant, passes, low, role):
     # Pair each discrepant band with an offsetting one so the totals hold.
+    # With role "amount", every discrepant band fails on its amount only.
     ratios = {}
     for band in range(discrepant):
-        ratios[band] = (0.49, 1) if low else (2.01, 1)
-        ratios[BANDS - 1 - band] = (1.51, 1) if low else (0.5, 1)
+        ratios[band] = _on(role, 0.49 if low else 2.01)
+        ratios[BANDS - 1 - band] = _on(role, 1.51 if low else 0.5)
     result = _run(_case(ratios))
     assert len(result.details["discrepant_bands"]) == discrepant
     assert result.passed is passes, result.failures
+    if not passes:
+        assert any(
+            line.startswith(f"concentrated discrepancy: {discrepant} bands")
+            for line in result.failures
+        )
 
 
 @pytest.mark.parametrize(
