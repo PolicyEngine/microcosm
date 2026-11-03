@@ -10,7 +10,10 @@ Hypothesis):
 - derivation is deterministic and commutes with any reordering of household
   or person rows, and each person carries its household's value;
 - a line without a place rung never writes a place-rule flag, and missing or
-  malformed geography raises instead of yielding ``False``.
+  malformed geography raises instead of yielding ``False``;
+- deriving a selection of a derived support equals deriving the selected rows
+  from scratch, and leaves every flag the kept rows' geography decides;
+- deriving a support whose flags are already complete returns it unchanged.
 """
 
 from __future__ import annotations
@@ -22,7 +25,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 import pytest
-from hypothesis import given, settings
+from hypothesis import example, given, settings
 from hypothesis import strategies as st
 
 from microcosm.build.us_runtime.geography_ladder import (
@@ -43,6 +46,7 @@ from microcosm.build.us_runtime.local_jurisdictions import (
     load_us_local_jurisdiction_registry,
     packaged_us_local_jurisdiction_registry,
     rederive_us_local_jurisdiction_flags,
+    us_local_jurisdiction_artifact_receipt,
     us_local_jurisdiction_flag_failures,
     us_local_jurisdiction_flag_values,
     us_local_jurisdiction_rungs_present,
@@ -995,3 +999,213 @@ def test_rederiving_without_a_county_writes_no_flag() -> None:
         rederive_us_local_jurisdiction_flags(
             us_frame([{"state_fips": 36, "in_denver": False}])
         )
+
+
+# --------------------------------------------------------------------------- #
+# Selections of a pooled support, and artifacts a step must keep unchanged
+# --------------------------------------------------------------------------- #
+
+# ACS rows carry a county from the PUMA ladder and no place or block.
+_ACS_COUNTIES = ("08031", "36119", "42101", "10003", "06037")
+_POOLED_ROWS = st.one_of(
+    st.tuples(st.just("block"), st.sampled_from(_NAMES)),
+    st.tuples(st.just("acs"), st.sampled_from(_ACS_COUNTIES)),
+)
+
+
+def _pooled_household(row: tuple[str, str]) -> dict[str, object]:
+    kind, value = row
+    if kind == "block":
+        block = FIXTURE_BLOCK_BY_NAME[value]
+        return {
+            "state_fips": block.state_fips,
+            "county_fips": block.county_fips,
+            "place_fips": "" if block.place_fips == 0 else f"{block.place_fips:05d}",
+            "block_geoid": f"{block.block_geoid:015d}",
+        }
+    return {
+        "state_fips": int(value[:2]),
+        "county_fips": value,
+        "place_fips": None,
+        "block_geoid": None,
+    }
+
+
+def _pooled_frame(rows: list[tuple[str, str]]):
+    return us_frame(
+        [_pooled_household(row) for row in rows],
+        person_inputs=[[{}, {}] for _ in rows],
+        weights=np.arange(1, len(rows) + 1, dtype=np.float64),
+    )
+
+
+def _select_households(frame, positions: list[int]):
+    """Keep the households at ``positions``, as a frozen or L0 support does."""
+
+    kept = frame.table("household")["household_id"].to_numpy()[positions]
+    return frame.select(frame.table("person")["person_household_id"].isin(kept))
+
+
+@st.composite
+def _pool_and_selection(draw) -> tuple[list[tuple[str, str]], list[int]]:
+    rows = draw(st.lists(_POOLED_ROWS, min_size=1, max_size=10))
+    keep = draw(st.sets(st.integers(0, len(rows) - 1), min_size=1))
+    return rows, sorted(keep)
+
+
+def _without_carried(receipt: dict[str, object]) -> dict[str, object]:
+    return {key: value for key, value in receipt.items() if key != "carried_flags"}
+
+
+def _derived_flags(receipt: dict[str, object]) -> list[str]:
+    return sorted(
+        flag
+        for flag, entry in receipt["flags"].items()
+        if entry["status"] == JURISDICTION_FLAG_DERIVED
+    )
+
+
+@settings(max_examples=80, deadline=None)
+@example(case=([("block", "yonkers"), ("acs", "08031")], [0]))
+@given(case=_pool_and_selection())
+def test_rederiving_after_a_selection_equals_deriving_the_kept_rows(case) -> None:
+    # Invariant: for every pooled support and every non-empty selection of its
+    # households, deriving the selection of a derived support gives the same
+    # tables and receipt as deriving the selected rows from scratch, and the
+    # result carries every flag its own geography decides. Selection alone
+    # can break the last property: the rungs belong to the whole table, so
+    # dropping every row without a block makes the place-rule flags decidable.
+    rows, keep = case
+    frame = _pooled_frame(rows)
+    derived, derived_receipt = rederive_us_local_jurisdiction_flags(frame)
+    selected = _select_households(derived, keep)
+
+    rederived, receipt = rederive_us_local_jurisdiction_flags(selected)
+    fresh, fresh_receipt = rederive_us_local_jurisdiction_flags(
+        _select_households(frame, keep)
+    )
+
+    for entity in ("household", "person"):
+        pd.testing.assert_frame_equal(
+            rederived.table(entity), fresh.table(entity), check_like=True
+        )
+    assert _without_carried(receipt) == _without_carried(fresh_receipt)
+    complete = us_local_jurisdiction_artifact_receipt(rederived)
+    assert _without_carried(complete) == _without_carried(receipt)
+    assert complete["carried_flags"] == _derived_flags(receipt)
+    if receipt["rungs"] != derived_receipt["rungs"]:
+        # Only a gain is possible: the selection turned the place rung on.
+        assert derived_receipt["rungs"] == list(PUMA_GEOGRAPHY_RUNGS)
+        assert receipt["rungs"] == list(BLOCK_GEOGRAPHY_RUNGS)
+        with pytest.raises(ValueError, match="in_yonkers: absent"):
+            us_local_jurisdiction_artifact_receipt(selected)
+
+
+@settings(max_examples=60, deadline=None)
+@given(case=_pool_and_selection())
+def test_rederiving_a_complete_support_returns_it_unchanged(case) -> None:
+    # Invariant: re-deriving a support whose flags are already complete
+    # returns the same object with the receipt writing them would give.
+    rows, _keep = case
+    derived, _receipt = rederive_us_local_jurisdiction_flags(_pooled_frame(rows))
+
+    again, again_receipt = rederive_us_local_jurisdiction_flags(derived)
+    written, written_receipt = with_us_local_jurisdiction_flags(
+        derived,
+        rungs=us_local_jurisdiction_rungs_present(derived.table("household")),
+    )
+
+    assert again is derived
+    for entity in ("household", "person"):
+        pd.testing.assert_frame_equal(again.table(entity), written.table(entity))
+    assert _without_carried(again_receipt) == written_receipt
+    assert again_receipt["carried_flags"] == _derived_flags(written_receipt)
+
+
+def test_rederiving_rewrites_a_carried_flag_stored_without_a_boolean_dtype() -> None:
+    assigned = _assigned_block_frame()
+    tables = {entity: assigned.table(entity) for entity in assigned.entities}
+    tables["household"] = tables["household"].assign(
+        in_denver=tables["household"]["in_denver"].astype(object)
+    )
+    carried = type(assigned)(
+        tables, assigned.schema, {"household": assigned.weights_for("household")}
+    )
+
+    rederived, receipt = rederive_us_local_jurisdiction_flags(carried)
+
+    assert rederived is not carried
+    assert rederived.table("household")["in_denver"].dtype == bool
+    assert receipt["carried_flags"] == sorted(EXPECTED_RULES)
+
+
+def test_artifact_receipt_refuses_an_artifact_without_the_flags_it_decides() -> None:
+    assigned = _assigned_block_frame()
+
+    with pytest.raises(ValueError, match="lacks or contradicts") as refused:
+        us_local_jurisdiction_artifact_receipt(_without_flags(assigned))
+
+    for flag in EXPECTED_RULES:
+        assert f"{flag}: absent, but this table's" in str(refused.value)
+
+
+@pytest.mark.parametrize("flag", sorted(EXPECTED_RULES))
+def test_artifact_receipt_refuses_a_flag_that_disagrees(flag: str) -> None:
+    assigned = _assigned_block_frame()
+    tables = {entity: assigned.table(entity) for entity in assigned.entities}
+    entity = "person" if flag in PERSON_FLAGS else "household"
+    tables[entity] = tables[entity].assign(**{flag: ~tables[entity][flag]})
+    corrupt = type(assigned)(
+        tables, assigned.schema, {"household": assigned.weights_for("household")}
+    )
+
+    with pytest.raises(ValueError, match=f"{flag}: [0-9]+/[0-9]+ {entity} row"):
+        us_local_jurisdiction_artifact_receipt(corrupt)
+
+
+def test_artifact_receipt_refuses_a_place_flag_its_rungs_cannot_decide() -> None:
+    # The ACS row stores its missing place and block as empty strings: the
+    # stored in_yonkers agrees with the place rule, but no place rung
+    # decided it for that row.
+    households = [
+        {
+            "state_fips": 36,
+            "county_fips": "36119",
+            "place_fips": "84000",
+            "block_geoid": "361190001001000",
+        },
+        {"state_fips": 36, "county_fips": "36119", "place_fips": "", "block_geoid": ""},
+    ]
+    derived, _receipt = rederive_us_local_jurisdiction_flags(
+        us_frame(households, person_inputs=[[{}], [{}]])
+    )
+    tables = {entity: derived.table(entity) for entity in derived.entities}
+    tables["household"] = tables["household"].assign(in_yonkers=[True, False])
+    carrying = type(derived)(
+        tables, derived.schema, {"household": derived.weights_for("household")}
+    )
+
+    with pytest.raises(
+        ValueError,
+        match=r"in_yonkers: present, but this artifact's rungs \['county'\] do not",
+    ):
+        us_local_jurisdiction_artifact_receipt(carrying)
+    # Re-deriving removes it instead.
+    rederived, receipt = rederive_us_local_jurisdiction_flags(carrying)
+    assert "in_yonkers" not in rederived.table("household")
+    assert receipt["flags"]["in_yonkers"]["status"] == JURISDICTION_FLAG_UNAVAILABLE
+
+
+def test_artifact_receipt_matches_the_rederived_receipt_on_a_complete_artifact() -> (
+    None
+):
+    assigned = _assigned_block_frame()
+
+    receipt = us_local_jurisdiction_artifact_receipt(assigned)
+
+    assert receipt == rederive_us_local_jurisdiction_flags(assigned)[1]
+    assert receipt["carried_flags"] == sorted(EXPECTED_RULES)
+    # An artifact with no county decides no flag, so it carries none.
+    bare = us_local_jurisdiction_artifact_receipt(us_frame([{"state_fips": 36}]))
+    assert bare["rungs"] == []
+    assert bare["carried_flags"] == []

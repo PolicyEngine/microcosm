@@ -66,12 +66,16 @@ household whose county or place it does not know.
 
 A base H5 built before this registry carries no flags. Two steps start from
 an existing artifact rather than a geography line, and both call
-`rederive_us_local_jurisdiction_flags` first:
+`rederive_us_local_jurisdiction_flags`:
 
-- the L0/refit export (`export_us_l0_refit_h5`), which records the receipt as
-  `local_jurisdiction_flags` in its summary; and
-- the fiscal refresh release builder, on the loaded base or prepared pool,
-  which records the receipt under `support_value_repairs` in the calibration
+- the L0/refit export (`export_us_l0_refit_h5`) calls it on the selected
+  support and records the receipt as `local_jurisdiction_flags` in its
+  summary; and
+- the fiscal refresh release builder calls it on the loaded base or prepared
+  pool, again on the frozen support when a selection source reduces it, and
+  again on the export support after the L0 or full-pool weights attach. It
+  records each receipt, keyed `base`, `frozen_support` and `export`, under
+  `support_value_repairs.local_jurisdiction_flags` in the calibration
   diagnostics.
 
 The helper reads the rungs from the artifact's own geography
@@ -81,6 +85,13 @@ a 15-digit `block_geoid`. A pooled artifact whose ACS rows have no block
 therefore gets the county-rule flags only. A flag the artifact already carries
 must agree with its geography (household and person flags both), or the step
 fails.
+
+The rungs belong to the whole table, so removing rows can add one: a frozen
+support or L0 support that keeps only block-anchored donors decides
+`in_yonkers` and `in_wilmington` even though the pooled base did not. That is
+why the builder derives the flags again after each step that removes rows.
+Deriving a support that already carries exactly the flags it decides returns
+the same frame, so these repeat calls copy no tables.
 
 ## Gates
 

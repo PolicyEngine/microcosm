@@ -38,6 +38,15 @@ line calls :func:`rederive_us_local_jurisdiction_flags`. It derives every
 flag the artifact's own geography decides and refuses a carried flag that
 disagrees with that geography. Both ladder gates fail a table that lacks a
 flag its geography decides.
+
+The rungs belong to the whole household table: one row without a block
+withholds the place rung from every row. A step that removes rows (a
+frozen-support or L0 selection) can therefore make a place-rule flag
+decidable, so it derives the flags again on the rows it keeps; deriving a
+support whose flags are already complete returns it unchanged. A step that
+must keep an artifact's columns and bytes, and so cannot write the flags,
+calls :func:`us_local_jurisdiction_artifact_receipt` instead, which refuses
+an artifact that lacks a flag its geography decides.
 """
 
 from __future__ import annotations
@@ -526,12 +535,19 @@ def rederive_us_local_jurisdiction_flags(
     """Derive an existing artifact's flags from the geography it carries.
 
     For a step that exports or recalibrates an artifact rather than running a
-    geography line. A base H5 built before the flags existed carries none,
-    and exporting it as-is would leave the engine default (``False``) on
-    every resident. The rungs come from the artifact's own geography
-    (:func:`us_local_jurisdiction_rungs_present`). A flag the artifact
-    already carries must agree with that geography, or this raises:
-    re-deriving it would hide a corrupt artifact.
+    geography line, and for every step that then removes rows from it. A base
+    H5 built before the flags existed carries none, and exporting it as-is
+    would leave the engine default (``False``) on every resident. The rungs
+    come from the artifact's own geography
+    (:func:`us_local_jurisdiction_rungs_present`), so a selection that drops
+    every row without a block makes the place-rule flags decidable on the
+    rows it keeps. A flag the artifact already carries must agree with that
+    geography, or this raises: re-deriving it would hide a corrupt artifact.
+
+    An artifact that already carries exactly the flags its rungs decide, as
+    boolean columns, comes back as the same object with the same receipt
+    that writing them again would give; writing them would only copy every
+    table.
 
     The receipt adds ``carried_flags``, the flags the artifact already held.
     """
@@ -546,18 +562,91 @@ def rederive_us_local_jurisdiction_flags(
             "The artifact carries local-jurisdiction flags that disagree with "
             "its own geography: " + "; ".join(failures)
         )
-    carried = sorted(
-        item.flag
+    carried = _carried_flags(frame, resolved)
+    rungs = us_local_jurisdiction_rungs_present(household)
+    values = us_local_jurisdiction_flag_values(
+        household, rungs=rungs, registry=resolved
+    )
+    complete = set(carried) == set(values) and all(
+        frame.table(item.entity)[item.flag].dtype == np.dtype(bool)
         for item in resolved.jurisdictions
-        if item.flag in frame.table(item.entity)
+        if item.flag in values
     )
-    derived, receipt = with_us_local_jurisdiction_flags(
-        frame,
-        rungs=us_local_jurisdiction_rungs_present(household),
-        registry=resolved,
-    )
+    if complete:
+        # Every carried flag agrees with the geography (checked above), and
+        # the carried set is the derivable set: writing them changes nothing.
+        derived = frame
+        receipt = us_local_jurisdiction_flag_receipt(
+            values,
+            rungs=rungs,
+            registry=resolved,
+            household_weights=frame.weights_for("household").values,
+        )
+    else:
+        derived, receipt = with_us_local_jurisdiction_flags(
+            frame, rungs=rungs, registry=resolved
+        )
     receipt["carried_flags"] = carried
     return derived, receipt
+
+
+def us_local_jurisdiction_artifact_receipt(
+    frame: Frame,
+    *,
+    registry: UsLocalJurisdictionRegistry | None = None,
+) -> dict[str, Any]:
+    """Require an artifact to carry its flags already, and return its receipt.
+
+    For a step that must keep an artifact's columns and bytes, so it cannot
+    write the flags itself (the annual static-aging lane copies its parent's
+    source year and keeps its columns in every projected year). The artifact
+    must carry every flag its own geography decides
+    (:func:`us_local_jurisdiction_rungs_present`), each agreeing with that
+    geography, and no flag its rungs cannot decide. Otherwise this raises:
+    the engine would default a missing flag to ``False`` on every resident.
+    The receipt has the shape :func:`rederive_us_local_jurisdiction_flags`
+    returns.
+    """
+
+    resolved = registry or packaged_us_local_jurisdiction_registry()
+    household = frame.table("household")
+    rungs = us_local_jurisdiction_rungs_present(household)
+    failures = us_local_jurisdiction_flag_failures(
+        household,
+        person=frame.table("person"),
+        required_rungs=rungs,
+        registry=resolved,
+    )
+    values = us_local_jurisdiction_flag_values(
+        household, rungs=rungs, registry=resolved
+    )
+    carried = _carried_flags(frame, resolved)
+    failures.extend(
+        f"{flag}: present, but this artifact's rungs {list(rungs)} do not decide it"
+        for flag in carried
+        if flag not in values
+    )
+    if failures:
+        raise ValueError(
+            "The artifact lacks or contradicts local-jurisdiction flags its own "
+            "geography decides: " + "; ".join(failures)
+        )
+    receipt = us_local_jurisdiction_flag_receipt(
+        values,
+        rungs=rungs,
+        registry=resolved,
+        household_weights=frame.weights_for("household").values,
+    )
+    receipt["carried_flags"] = carried
+    return receipt
+
+
+def _carried_flags(frame: Frame, registry: UsLocalJurisdictionRegistry) -> list[str]:
+    return sorted(
+        item.flag
+        for item in registry.jurisdictions
+        if item.flag in frame.table(item.entity)
+    )
 
 
 def _person_household_positions(
@@ -792,6 +881,7 @@ __all__ = [
     "load_us_local_jurisdiction_registry",
     "packaged_us_local_jurisdiction_registry",
     "rederive_us_local_jurisdiction_flags",
+    "us_local_jurisdiction_artifact_receipt",
     "us_local_jurisdiction_flag_failures",
     "us_local_jurisdiction_flag_receipt",
     "us_local_jurisdiction_flag_values",
