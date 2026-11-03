@@ -925,6 +925,23 @@ def test_a_release_manifest_naming_another_build_is_rejected(tmp_path: Path) -> 
     assert "name different builds" in text
 
 
+def test_a_dense_release_keeps_the_local_area_package_checks(tmp_path: Path) -> None:
+    """The build details moved to the top level, but the local-area contract
+    still checks only that they are there, as it did inside ``build``: a
+    build run where the engines were not installed, whose versions read
+    ``unavailable``, validates as before."""
+    release_dir = write_dense_bundle(tmp_path)
+    manifest = json.loads((release_dir / "release_manifest.json").read_text())
+    for field in ("built_with_core_package", "built_with_model_package"):
+        manifest[field]["version"] = "unavailable"
+    for field in ("compatible_core_packages", "compatible_model_packages"):
+        manifest[field][0]["specifier"] = "==unavailable"
+    (release_dir / "release_manifest.json").write_text(json.dumps(manifest, indent=1))
+    _refresh_packaging_checksums(release_dir)
+
+    validate_release_dir(release_dir)
+
+
 @pytest.mark.parametrize(
     "field", ["built_at", "built_with_core_package", "built_with_model_package"]
 )
