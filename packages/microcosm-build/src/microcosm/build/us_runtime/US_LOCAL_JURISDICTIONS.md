@@ -78,6 +78,14 @@ an existing artifact rather than a geography line, and both call
   `support_value_repairs.local_jurisdiction_flags` in the calibration
   diagnostics.
 
+A third step, the annual static-aging lane (`us_annual_static_aging`), keeps its
+parent's columns and base-year bytes, so it cannot write the flags. It calls
+`us_local_jurisdiction_artifact_receipt` instead, which refuses a parent that
+lacks a flag its geography decides or carries one that disagrees with it, and
+records the receipt as `base.local_jurisdiction_flags` in the candidate
+manifest. A parent built before the flags existed therefore cannot seed annual
+files until a rebuild adds them.
+
 The helper reads the rungs from the artifact's own geography
 (`us_local_jurisdiction_rungs_present`): the county rung when `county_fips` is
 on every row, and the place rung only when every row also has `place_fips` and

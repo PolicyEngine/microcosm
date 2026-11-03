@@ -41,12 +41,23 @@ fields. Fixed-format inputs, including missing nullable booleans that require
 that storage format, are rejected before building and need a separate certified
 layout contract.
 
+Because the lane adds no column, the parent must already carry every
+local-jurisdiction flag its own geography decides (see
+`packages/microcosm-build/src/microcosm/build/us_runtime/US_LOCAL_JURISDICTIONS.md`):
+`in_denver` and `pa_philadelphia_wage_tax_resident` when every household has a
+county, and also `in_yonkers` and `in_wilmington` when every household has a
+place and a block. The builder reads the parent first and refuses one that lacks
+such a flag, or carries one that disagrees with its geography, before any model
+or output work. Rebuild a parent that predates the flags before it seeds annual
+files.
+
 The output directory must be new. A failed attempt retains its partial files and
 `build_status.json`; rerunning requires another directory. `annual_manifest.json`
 is written last, after all years finish and source/input hashes are rechecked.
 It contains:
 
-- `base`: source dataset, year, parent release claim, path, and SHA256.
+- `base`: source dataset, year, parent release claim, path, SHA256, and the
+  parent's local-jurisdiction flag receipt (`local_jurisdiction_flags`).
 - `inputs`, `model`, and `runtime`: SSA pin, model commit and source hashes, actual
   implementation hashes, and dependency versions.
 - `metadata.dataset_years`: a map from the source dataset to year-keyed annual
