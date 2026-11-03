@@ -304,9 +304,10 @@ def _edge_donor() -> pd.DataFrame:
 
 def test_the_tape_is_banded_on_its_income_moved_to_2023_24() -> None:
     # Banded on its 2022-23 income, A sits in the £12,570 band. Moved to
-    # 2023-24 (dividends x1.1, interest at all bands' 500 over 200), it crosses
-    # the £50,000 edge, the band the consumers will find it in after uprating,
-    # so its migration is counted once (microcosm#1428 review, finding 6).
+    # 2023-24 (dividends x1.1), it crosses the £50,000 edge, the band the
+    # consumers will find it in after uprating, so its migration is counted
+    # once (microcosm#1428 review, finding 6). The £12,570 band then carries
+    # no tape, so the factor over all bands is the £50,000 band's 400 over 200.
     held, held_receipt = rebase_spi_donor_savings(_edge_donor(), INTEREST_ONLY)
     assert held["savings_interest_income"].tolist() == pytest.approx([1.0, 4.0])
     moved, receipt = rebase_spi_donor_savings(
@@ -319,7 +320,7 @@ def test_the_tape_is_banded_on_its_income_moved_to_2023_24() -> None:
     assert receipt["band_by"] == "total_income_moved_to_2023_24"
     assert receipt["columns"]["savings_interest_income"][
         "banding_factor"
-    ] == pytest.approx(2.5)
+    ] == pytest.approx(2.0)
 
 
 def test_savings_move_by_their_factor_over_all_bands_for_the_banding() -> None:
@@ -466,3 +467,77 @@ def test_the_tape_taxpayer_flag_is_validated(tmp_path) -> None:
     ]
     with pytest.raises(ValueError, match="TAXPAYER"):
         spi_income.prepare_spi_donor_table(raw.assign(TAXPAYER=[1, 0, 1, 2]), seed=0)
+
+
+def test_total_income_holds_the_published_total_without_growth() -> None:
+    # SPI's total income holds the leaves net of employment expenses and none
+    # of the gifts: GBP 600k of dividends with GBP 500k of share gifts is a
+    # total of GBP 600k, and GBP 45k of pay less GBP 3k of expenses is GBP
+    # 42k. With every factor at one the realised total is the published one
+    # (Vahid's review of microcosm#1428, item 1).
+    expenses = spi_income.SPI_HMRC_EMPLOYMENT_EXPENSES_COLUMN
+    pay = spi_income.SPI_HMRC_PAY_COLUMN
+    donor = pd.DataFrame(
+        {
+            "total_income": [600_000.0, 42_000.0],
+            "dividend_income": [600_000.0, 0.0],
+            "charitable_investment_gifts": [500_000.0, 0.0],
+            "gift_aid": [0.0, 0.0],
+            pay: [0.0, 45_000.0],
+            expenses: [0.0, 3_000.0],
+        }
+    )
+    held = spi_income._realised_total_income(donor, donor, {})
+    assert held.tolist() == pytest.approx([600_000.0, 42_000.0])
+    # Growth moves the income leaves and the expenses, never the gifts.
+    grown = spi_income._realised_total_income(
+        donor,
+        donor,
+        {
+            "dividend_income": 1.1,
+            "charitable_investment_gifts": 2.0,
+            pay: 1.1,
+            expenses: 1.1,
+        },
+    )
+    assert grown.tolist() == pytest.approx([660_000.0, 46_200.0])
+
+
+def test_rebased_leaves_move_from_the_tapes_own_total() -> None:
+    # The band donors read the rebased tape, whose published total still holds
+    # the tape's own savings: a record's other leaves keep their place and its
+    # rebased interest replaces the interest the total held.
+    donor = pd.DataFrame(
+        {
+            "total_income": [20_000.0],
+            "savings_interest_income": [1_000.0],
+            "employment_income": [19_000.0],
+        }
+    )
+    rebased = donor.assign(savings_interest_income=[3_000.0])
+    realised = spi_income._realised_total_income(donor, rebased, {})
+    assert realised.tolist() == pytest.approx([22_000.0])
+
+
+def test_both_passes_count_the_same_taxpayers() -> None:
+    # B pays no tax although its income is above the Personal Allowance
+    # (TAXPAYER 2): neither the factor over all bands nor the band factors
+    # count its interest (Vahid's review of microcosm#1428, item 5). All
+    # bands: 2,000 over A's and C's 500.
+    donor = pd.DataFrame(
+        {
+            "total_income": [20_000.0, 30_000.0, 60_000.0],
+            "FACT": [1.0, 1.0, 1.0],
+            "savings_interest_income": [200.0, 9_000.0, 300.0],
+            spi_income.SPI_DONOR_TAXPAYER_COLUMN: [True, False, True],
+        }
+    )
+    _, receipt = rebase_spi_donor_savings(
+        donor, {"savings_interest_income": {12_570: 1_000.0, 50_000: 1_000.0}}
+    )
+    interest = receipt["columns"]["savings_interest_income"]
+    assert interest["banding_factor"] == pytest.approx(4.0)
+    assert interest["band_factors"] == {
+        "12570": pytest.approx(5.0),
+        "50000": pytest.approx(1_000.0 / 300.0),
+    }

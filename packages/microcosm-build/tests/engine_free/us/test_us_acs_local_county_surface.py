@@ -659,6 +659,13 @@ def test_county_hooks_materialize_a_fixture_and_preserve_configured_geography(
     monkeypatch.setattr(
         module, "_require_acs_self_employment_identity", lambda *_a: None
     )
+    # microcosm#1019: the ACS take-up stage needs SPM-unit origin tags this
+    # geography fixture does not carry; this test checks county hooks only.
+    monkeypatch.setattr(
+        module,
+        "_with_local_take_up",
+        lambda frame, *, seed: (frame, {"seed": seed, "assigned_sha256": "stub"}),
+    )
     monkeypatch.setattr(
         module.cd_surface,
         "sample_staging_frame",

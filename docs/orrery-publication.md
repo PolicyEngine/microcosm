@@ -15,11 +15,15 @@ the emitter's file roles and the runs service's contract do not admit it yet.
 Its content is already inside `graph.orrery.json`, so registering it discloses
 nothing new.
 
-Microcosm's metadata adapter starts one local emitter service with two independent
-workers: live telemetry and completed graph publication. The `microcosm-emitter` package
-owns sockets, authentication, persistence, retries and resource sampling.
-Microcosm retains graph generation, public-file selection and HF staging.
-Slow uploads cannot delay socket acknowledgement or telemetry delivery.
+Microcosm's build adapter (`microcosm.build.telemetry_emitter`) starts the
+separately installed `microcosm-emitter` command as the build's child process
+through `microcosm-emitter-interface`, with independent telemetry, graph
+publication and Hugging Face hand-over modules. The emitter owns sockets,
+authentication, persistence, retries and resource sampling. Microcosm retains
+graph generation, public-file selection and the staged dataset upload.
+Slow uploads cannot delay socket acknowledgement or telemetry delivery. A
+command that started no emitter of its own starts a short-lived one with only
+the graph module to measure and queue the files.
 
 UK full-build commands explicitly defer process shutdown when recording a completed,
 validation-refused or failed telemetry outcome. Their final cleanup closes the combined
@@ -43,18 +47,20 @@ aggregate summaries can be published publicly.
 
 | Setting | Source and consumer | Provisioning |
 | --- | --- | --- |
-| `HF_TOKEN` / `HUGGINGFACE_TOKEN` | Existing operator credential, exchanged by the service for a short-lived collector session | Existing environment or Hugging Face login; never committed |
-| Collector origin | Tracked `PRODUCTION_COLLECTOR_URL` in the emitter's internal core library | No producer variable or destination override |
+| `HF_TOKEN` / `HUGGINGFACE_TOKEN` | Existing operator credential, read by the emitter from the environment it inherits from the build and exchanged for a short-lived collector session | Existing environment or Hugging Face login; never committed |
+| `MICROCOSM_EMITTER_COMMAND` | Optional path of the `microcosm-emitter` command, read by the interface in the build; without it the interface searches `PATH` | Operator's shell; the Modal image sets it |
+| Collector origin | Built into the installed emitter; the build sends no address unless a caller passes a loopback development address in the module settings | No producer variable or destination override |
 | Runs origin | Tracked `DEFAULT_GRAPH_PUBLICATION_ORIGIN` | No new producer variable |
-| `XDG_CACHE_HOME` | Optional existing cache-location setting | Defaults to the user's cache directory |
+| `XDG_CACHE_HOME` | Optional existing cache-location setting, read by the interface in the build; the build passes the spool path (`microcosm/telemetry/events.sqlite3`) and the hand-over database beside it (`events.handovers.sqlite3`) to the emitter on its standard input | Defaults to the user's cache directory |
 
 The separately deployed runs application retains its Vercel Blob configuration.
 Authenticated production publication also requires
 PolicyEngine/calibration-diagnostics#208 deployed, and the runs application's
 publication API. Producer tests do not contact either hosted service.
 
-No new Microcosm runtime variable or secret is required. Tests isolate ambient
-credentials and caches and use fake HTTP or explicit loopback services.
+No new secret is required. Tests isolate ambient credentials and caches,
+replace the interface's emitter client with an in-memory one, and refuse to
+start the installed command.
 
 A build exports locally without remote submission unless `--publish-orrery`
 enables it (María's ruling of 2026-10-26), whatever its staging:
@@ -95,26 +101,39 @@ microcosm-emitter-publish-graph --publication-id PUBLICATION_ID \
 
 The preserved directory contains `orrery.upload.json` and the exact files.
 Retries update a separate `publication.status.json`, never the original
-HF receipt snapshot. Pending jobs also resume when a subsequent local service
-starts. The retry command comes from the emitter package; Microcosm does not
+HF receipt snapshot. Pending jobs also resume when a subsequent emitter
+starts. The retry command is installed with the emitter; Microcosm does not
 retain a second delivery implementation or a compatibility wrapper.
 
 ## Emitter dependency
 
-`packages/microcosm-build` depends on one exact `microcosm-emitter` release
-from PyPI, which `uv.lock` records with its wheel and source-archive hashes.
-Microcosm has no Git source override for the emitter. Every merge to the
-emitter's `main` publishes a new version automatically. To adopt one, change the
-exact requirement, regenerate `uv.lock`, update `APPROVED_UV_LOCK_SHA256` in
-`microcosm.build.us_runtime.worker_identity` to the new lockfile digest and
-rerun the tests and wheel checks.
+`packages/microcosm-build` depends on `microcosm-emitter-interface`
+(`>=0.7.0,<1`), the dependency-free package of typed calls, which `uv.lock`
+records with its hashes. The emitter itself, `microcosm-emitter`, is not a
+workspace dependency: each machine installs it on its own with
+`uv tool install microcosm-emitter`, and the Modal image installs the newest
+release when it is built for a plan commit. A running build keeps the
+emitter it started; the next build uses whichever release is installed then.
+So an emitter release needs no Microcosm change. The socket protocol carries
+its own version (`PROTOCOL_VERSION`), every emitter release accepts the
+versions interfaces still send, and an emitter that lacks a module the build
+asks for starts without it.
+
+To adopt a new interface release, regenerate `uv.lock`, update
+`APPROVED_UV_LOCK_SHA256` in `microcosm.build.us_runtime.worker_identity` to
+the new lockfile digest and rerun the tests and wheel checks.
 
 ## Migrating an existing workstation
 
-The emitter rejects unversioned databases without modification. Before switching
-an existing workstation, upgrade any old unversioned queue using the preceding
-Microcosm implementation. Versioned telemetry and graph jobs keep their existing
-IDs, eligibility, path and Alembic revision; do not delete a queue to migrate.
-No new runtime variable, credential, hosted service or infrastructure is required
-by this migration. The previously required hosted authorization/API deployments
-remain prerequisites for remote publication.
+Install the emitter once with `uv tool install microcosm-emitter` (0.6.0 or
+later; a build does not start an older emitter, says how to upgrade it and
+continues without it). It keeps using the existing spool database,
+`$XDG_CACHE_HOME/microcosm/telemetry/events.sqlite3`, at the same Alembic
+revision the pinned 0.2.1 release used, so queued telemetry and graph jobs
+keep their IDs and eligibility; do not delete a queue to migrate. The
+Hugging Face module keeps its hand-overs in its own SQLite file beside it,
+`events.handovers.sqlite3`, so emitters of every release can share the spool
+database on one machine. The emitter rejects unversioned databases without
+modification. The emitter's README describes the repair for a machine that
+ran an earlier, unreleased build of the hand-over queue. No new credential,
+hosted service or infrastructure is required by this migration.
