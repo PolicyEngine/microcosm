@@ -43,6 +43,11 @@
       "schema_id": "legacy_json"
     },
     {
+      "path": "local_target_fit_reviewed_exclusions.json",
+      "kind": "legacy_json",
+      "schema_id": "legacy_json"
+    },
+    {
       "path": "efrs_parity_known_gaps.json",
       "kind": "legacy_json",
       "schema_id": "legacy_json"
@@ -93,6 +98,31 @@
       "schema_id": "legacy_json"
     },
     {
+      "path": "hmrc_stamp_tax_facts.json",
+      "kind": "legacy_json",
+      "schema_id": "legacy_json"
+    },
+    {
+      "path": "hmrc_isa_statistics_facts.json",
+      "kind": "legacy_json",
+      "schema_id": "legacy_json"
+    },
+    {
+      "path": "hmrc_benefits_in_kind_facts.json",
+      "kind": "legacy_json",
+      "schema_id": "legacy_json"
+    },
+    {
+      "path": "dwp_move_to_uc_facts.json",
+      "kind": "legacy_json",
+      "schema_id": "legacy_json"
+    },
+    {
+      "path": "dwp_uc_award_band_facts.json",
+      "kind": "legacy_json",
+      "schema_id": "legacy_json"
+    },
+    {
       "path": "obr_hvcts_costing_facts.json",
       "kind": "legacy_json",
       "schema_id": "legacy_json"
@@ -114,6 +144,26 @@
     },
     {
       "path": "salary_sacrifice_anchor.json",
+      "kind": "legacy_json",
+      "schema_id": "legacy_json"
+    },
+    {
+      "path": "bonus_sacrifice_anchor.json",
+      "kind": "legacy_json",
+      "schema_id": "legacy_json"
+    },
+    {
+      "path": "obr_salary_sacrifice_costing_facts.json",
+      "kind": "legacy_json",
+      "schema_id": "legacy_json"
+    },
+    {
+      "path": "obr_savings_income_growth_facts.json",
+      "kind": "legacy_json",
+      "schema_id": "legacy_json"
+    },
+    {
+      "path": "hmrc_spi_table_3_7_savings_rows.json",
       "kind": "legacy_json",
       "schema_id": "legacy_json"
     },
@@ -173,6 +223,11 @@
       "schema_id": "legacy_json"
     },
     {
+      "path": "ons_mid2025_single_year_age_by_sex.json",
+      "kind": "legacy_json",
+      "schema_id": "legacy_json"
+    },
+    {
       "path": "hmrc_child_benefit_statistics.json",
       "kind": "legacy_json",
       "schema_id": "legacy_json"
@@ -214,6 +269,36 @@
     },
     {
       "path": "voa_council_tax_band_mix_lsoa.json",
+      "kind": "legacy_json",
+      "schema_id": "legacy_json"
+    },
+    {
+      "path": "brma_area_layer.json",
+      "kind": "legacy_json",
+      "schema_id": "legacy_json"
+    },
+    {
+      "path": "brma_area_layer.provenance.json",
+      "kind": "legacy_json",
+      "schema_id": "legacy_json"
+    },
+    {
+      "path": "brma_rent_quantiles.json",
+      "kind": "legacy_json",
+      "schema_id": "legacy_json"
+    },
+    {
+      "path": "scotland_brma_la_overlap.json",
+      "kind": "legacy_json",
+      "schema_id": "legacy_json"
+    },
+    {
+      "path": "rfdr_area_layer.json",
+      "kind": "legacy_json",
+      "schema_id": "legacy_json"
+    },
+    {
+      "path": "rfdr_area_layer.provenance.json",
       "kind": "legacy_json",
       "schema_id": "legacy_json"
     },
@@ -448,6 +533,16 @@
       "schema_id": "legacy_json"
     },
     {
+      "path": "excise_facts.json",
+      "kind": "legacy_json",
+      "schema_id": "legacy_json"
+    },
+    {
+      "path": "gambling_participation_facts.json",
+      "kind": "legacy_json",
+      "schema_id": "legacy_json"
+    },
+    {
       "path": "dft_bus_journeys.json",
       "kind": "legacy_json",
       "schema_id": "legacy_json"
@@ -474,6 +569,16 @@
     },
     {
       "path": "ons_spree_tenure_dwellings.json",
+      "kind": "legacy_json",
+      "schema_id": "legacy_json"
+    },
+    {
+      "path": "desnz_local_energy_facts.json",
+      "kind": "legacy_json",
+      "schema_id": "legacy_json"
+    },
+    {
+      "path": "desnz_constituency_energy_facts.json",
       "kind": "legacy_json",
       "schema_id": "legacy_json"
     },

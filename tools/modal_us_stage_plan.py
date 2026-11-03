@@ -42,7 +42,7 @@ import signal
 import subprocess
 import sys
 from collections.abc import Callable, Iterable, Mapping, Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from itertools import zip_longest
 from pathlib import Path, PurePosixPath
 
@@ -70,8 +70,55 @@ IMAGE_VENV = "/opt/venv"
 # too. compare-lineage checks the outputs the local run left (its first two
 # outer stages), not the stages after them.
 IMAGE_PYTHON_VERSION = "3.14"
-IMAGE_UV_VERSION = "0.11.7"
+# uv verifies HTTPS against a CA list compiled into it. 0.13.4 is the first
+# release whose list drops the compromised eMudhra (emSign) roots; earlier
+# releases trust certificates anyone can issue with the disclosed keys
+# (https://emudhra.we-have-a-problem.com).
+IMAGE_UV_VERSION = "0.13.4"
+# Modal's cached debian_slim base carries pip 25.3, whose bundled certifi
+# (2025.10.05) still contains emSign ECC Root CA - G3; on 2 November 2026 it
+# accepted a certificate chained to that root inside a Modal build step.
+# ``--cert`` and ``PIP_CERT`` only add to that trust: pip loads its own
+# certifi into the SSL context the extra bundle joins. The image therefore
+# replaces pip with 26.2.2, whose bundled certifi drops the eMudhra roots,
+# before it downloads any other package. The wheel's sha256 (as PyPI
+# publishes it), not the connection, makes that one download authentic.
+IMAGE_PIP_VERSION = "26.2.2"
+IMAGE_PIP_WHEEL_SHA256 = (
+    "fd7f4dfa8190e014013b9f08f3e973f4e4c26ffd179a204895533a7254813a70"
+)
+IMAGE_PIP_BOOTSTRAP_REQUIREMENTS = "/tmp/pip-bootstrap.txt"
 RUNNER_HF_HUB_VERSION = "1.18.0"
+# The runner's Hub client verifies HTTPS against certifi's CA list, and
+# 2026.10.19 is the first certifi release without the eMudhra roots. Modal
+# reuses a cached layer while its definition is unchanged, so the floor is
+# stated rather than left to whatever certifi PyPI served at the first build.
+RUNNER_CERTIFI_MINIMUM_VERSION = "2026.10.19"
+# A build starts the separately installed microcosm-emitter command as its
+# child process (microcosm-emitter-interface); uv.lock pins only the
+# interface. The image installs the newest emitter release when it is built
+# for a plan commit, outside the synced environment; an image built for one
+# commit keeps the emitter it was built with. A build does not start an
+# emitter older than microcosm.build.telemetry_emitter.MINIMUM_EMITTER_VERSION,
+# 0.11.9; releases before 0.10.0 send telemetry to the collector's Cloud Run
+# address, which changes when the collector moves to another Google Cloud
+# project. This module imports nothing from the workspace, so the floor
+# repeats that release, and a test checks that the two agree in one
+# checkout. At launch the two can differ: the image's install step comes from
+# this module in the checkout that launches the app, and the minimum from the
+# commit the plan pins. The stage's runner records the version.
+IMAGE_EMITTER_REQUIREMENT = "microcosm-emitter>=0.11.9"
+IMAGE_EMITTER_BIN_DIR = "/usr/local/bin"
+IMAGE_EMITTER_COMMAND = f"{IMAGE_EMITTER_BIN_DIR}/microcosm-emitter"
+#: The image's environment variables, which the stage tool inherits.
+IMAGE_ENVIRONMENT = {
+    "UV_PROJECT_ENVIRONMENT": IMAGE_VENV,
+    "UV_PYTHON_DOWNLOADS": "never",
+    "UV_LINK_MODE": "copy",
+    "PYTHONDONTWRITEBYTECODE": "1",
+    # Where the interface finds the emitter command (it also searches PATH).
+    "MICROCOSM_EMITTER_COMMAND": IMAGE_EMITTER_COMMAND,
+}
 WORK_ROOT = "/work"
 
 # Modal list prices for standard (non-sandbox) compute, read from
@@ -888,6 +935,19 @@ US_PUF_SUPPORT_BASE = ToolSpec(
     stage_hash_seed_default=HASH_SEED,
 )
 
+# Keep the historical registration and its local comparison reference pinned to
+# 4b57d15a2. The 2026-10-18 rerun uses main's reviewed NC crosswalk correction
+# (d8d96d926), with the same base command, inputs and resource budget.
+CD_VINTAGE_CROSSWALK_RERUN = TreeFile(
+    path=CD_VINTAGE_CROSSWALK.path,
+    sha256="a347303fff3fea145f758488c43cb94355df5a8cb5e512552b2ee3791d2aa233",
+)
+US_PUF_SUPPORT_BASE_RERUN = replace(
+    US_PUF_SUPPORT_BASE,
+    name="us-puf-support-base-rerun",
+    tree_files={"cd_vintage_crosswalk": CD_VINTAGE_CROSSWALK_RERUN},
+)
+
 # --- The retained ACS local-release staging builder -----------------------
 # The shim delegates to tools/_legacy/build_us_acs_multispine_base.py. It
 # accepts no --stage: "all" is the runner's single stage, not a builder flag.
@@ -1011,6 +1071,7 @@ TOOLS: dict[str, ToolSpec] = {
         US_ACS_LOCAL_RELEASE,
         RUNNER_SMOKE,
         US_PUF_SUPPORT_BASE,
+        US_PUF_SUPPORT_BASE_RERUN,
         US_ACS_MULTISPINE_STAGING,
     )
 }
@@ -1380,12 +1441,34 @@ def plan_digest(data: object) -> str:
 # --------------------------------------------------------------------------- #
 
 
+def image_pip_bootstrap_command(
+    requirements_path: str = IMAGE_PIP_BOOTSTRAP_REQUIREMENTS,
+) -> str:
+    """The shell step that replaces the base's pip before any package download.
+
+    ``--require-hashes`` refuses any file whose sha256 is not
+    ``IMAGE_PIP_WHEEL_SHA256``, so the step installs PyPI's published pip
+    wheel or fails, whatever index or certificate answers the request. The
+    temporary requirements file is removed afterwards.
+    """
+
+    requirement = f"pip=={IMAGE_PIP_VERSION} --hash=sha256:{IMAGE_PIP_WHEEL_SHA256}"
+    path = shlex.quote(requirements_path)
+    return (
+        f"printf '%s\\n' {shlex.quote(requirement)} > {path}"
+        f" && python -m pip install --require-hashes --no-deps -r {path}"
+        f" && rm {path}"
+    )
+
+
 def image_build_commands(plan: Plan, repo_root: str = IMAGE_REPO_ROOT) -> list[str]:
     """Shell steps that pin the image's tree and environment to the plan.
 
     The tree is a shallow clone of the pushed commit (so ``git rev-parse``
     and ``git status`` inside the tools report the real code vintage), and
     the environment is synced from that tree's own uv.lock with --frozen.
+    The emitter command is installed on its own, outside that environment
+    (``IMAGE_EMITTER_REQUIREMENT``), and must run.
     """
 
     root = shlex.quote(repo_root)
@@ -1397,6 +1480,9 @@ def image_build_commands(plan: Plan, repo_root: str = IMAGE_REPO_ROOT) -> list[s
         f"git -C {root} checkout -q -B {shlex.quote(plan.branch)} FETCH_HEAD",
         f'test "$(git -C {root} rev-parse HEAD)" = {commit}',
         f"cd {root} && uv sync --all-packages --extra us --frozen",
+        f"UV_TOOL_BIN_DIR={IMAGE_EMITTER_BIN_DIR} uv tool install "
+        f"{shlex.quote(IMAGE_EMITTER_REQUIREMENT)}",
+        f"{IMAGE_EMITTER_COMMAND} version",
         f'test -z "$(git -C {root} status --porcelain)"',
     ]
 

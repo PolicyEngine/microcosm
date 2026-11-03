@@ -8,6 +8,8 @@ node identity while allowing engine-free graphs to use a pure-Python adapter.
 
 from __future__ import annotations
 
+from collections.abc import Iterable
+
 import numpy as np
 import pandas as pd
 
@@ -24,14 +26,48 @@ from microcosm.graph import (
     KernelBase,
     KernelContext,
     KernelResult,
+    Node,
     Numeric,
     Ownership,
     SeedSource,
+    Slice,
     StructuralDelta,
     source_hash,
 )
 
-__all__ = ["RulesKernel", "SimulateRulesKernel"]
+__all__ = ["RulesKernel", "SimulateRulesKernel", "missing_relation_inputs"]
+
+
+def missing_relation_inputs(
+    dependencies: Iterable[tuple[str, str]],
+    inputs: Iterable[Slice],
+    schema: EntitySchema,
+) -> list[tuple[str, str]]:
+    """The relation dependencies a node's slices do not deliver whole.
+
+    A table always carries its id and memberships, and a slice cannot declare
+    them, so only data columns need a slice. Related rows reach an engine only
+    through these slices, and a row mask can drop a member yet leave every unit
+    populated. No partition check sees that loss, so a mask on any dependency's
+    entity fails.
+    """
+
+    inputs = tuple(inputs)
+    masked = {item.entity for item in inputs if item.rows != ROWS_ALL}
+    declared = {(item.entity, column) for item in inputs for column in item.columns}
+    memberships = {schema.membership_column(group) for group in schema.group_entities}
+
+    def carried(entity: str, column: str) -> bool:
+        return column == schema.entity_id_column(entity) or (
+            entity == schema.person_entity and column in memberships
+        )
+
+    return sorted(
+        (entity, column)
+        for entity, column in set(dependencies)
+        if entity in masked
+        or ((entity, column) not in declared and not carried(entity, column))
+    )
 
 
 class SimulateRulesKernel(KernelBase):
@@ -95,6 +131,28 @@ class SimulateRulesKernel(KernelBase):
         )
 
     @staticmethod
+    def _require_relation_inputs(node: Node, engine: RulesEngine) -> None:
+        """Refuse a node whose slices cannot hold the engine's whole relations."""
+
+        dependencies = getattr(engine, "relation_dependencies", None)
+        if not callable(dependencies):
+            return
+        schema = engine.entity_schema()
+        missing = missing_relation_inputs(
+            {
+                dependency
+                for entity in schema.entities
+                for dependency in dependencies(entity)
+            },
+            node.inputs,
+            schema,
+        )
+        if missing:
+            raise ValueError(
+                f"Node {node.id!r} needs whole-table relation inputs {missing}."
+            )
+
+    @staticmethod
     def _tables(
         context: KernelContext, schema: EntitySchema
     ) -> dict[str, pd.DataFrame]:
@@ -134,6 +192,7 @@ class SimulateRulesKernel(KernelBase):
         """Call ``RulesEngine.materialize`` and index its arrays by entity id."""
 
         engine_ref, variables, period = self._validated_params(context)
+        self._require_relation_inputs(context.node, self._engine)
         schema = self._engine.entity_schema()
 
         tables = self._tables(context, schema)

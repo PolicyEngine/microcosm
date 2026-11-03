@@ -57,6 +57,7 @@ from microcosm.build.uk_runtime.frs_hmrc_source import (
     FRS_HMRC_SRP_REGULAR_CODE5_COLUMN,
     FRS_HMRC_UBISJA_COLUMN,
 )
+from microcosm.build.uk_runtime.receipt_counts import rounded_count
 from microcosm.build.uk_runtime.spi_support import (
     SPI_HMRC_EMPLOYMENT_BENEFITS_COLUMN,
     SPI_HMRC_EMPLOYMENT_EXPENSES_COLUMN,
@@ -69,6 +70,8 @@ from microcosm.build.uk_runtime.spi_support import (
     SPI_HMRC_TAXABLE_TERMINATION_PAY_COLUMN,
     SPI_HMRC_UNEMPLOYMENT_BENEFIT_INCOME_COLUMN,
     SPI_INCOME_QRF_OUTPUT_COLUMNS,
+    SPI_LOSSES_BROUGHT_FORWARD_DRAW_COLUMN,
+    SPI_PROFIT_BEFORE_LOSSES_DRAW_COLUMN,
     SPI_PROPERTY_FINANCE_COSTS_COLUMN,
 )
 
@@ -83,10 +86,12 @@ SPI_TRANSPORT_DRAW = "twin_conditional_quantiles"
 SPI_TRANSPORT_SALT = "spi_stage1"
 #: The identity a recipient's uniforms are keyed on: the FRS person it copies.
 SPI_TRANSPORT_KEY_COLUMN = "person_source_id"
-#: Taxable savings interest on the twin: the FRS gross interest less the
-#: tax-free part, the concept the tape's INCBBS leaf holds.
+#: Taxable savings interest on the twin: the FRS interest outside ISAs
+#: (microcosm#1360), the concept the tape's INCBBS leaf holds.
 TAXABLE_SAVINGS_INTEREST_ANALOGUE = "taxable_savings_interest"
-#: Per-group uniformity is reported only over at least this many rows.
+#: Per-group uniformity is reported only over at least this many rows: a
+#: statistical floor, as a uniformity distance over fewer says nothing, not the
+#: disclosure floor (receipt_counts.UK_DISCLOSURE_FLOOR).
 SPI_TRANSPORT_GROUP_MINIMUM_ROWS = 10
 #: The reference forest is cross-fitted in this many folds keyed on the
 #: predictor cell; a frame with fewer distinct cells uses one fold per cell.
@@ -114,7 +119,12 @@ SPI_STAGE1_ANALOGUE_COLUMNS: Mapping[str, str | None] = {
     "dividend_income": "dividend_income",
     "private_pension_income": "private_pension_income",
     "property_income": "property_income",
-    "other_investment_income": None,
+    # The twin's own other income locates the draw (microcosm#1428): its gilt
+    # interest, so a copy's OTHERINV draw ranks with its twin's holdings
+    # instead of an identity uniform that ignores them. The twin's purchased
+    # annuity and trust payments stay in private_pension_income, whose
+    # analogue they join.
+    "other_investment_income": "other_investment_income",
     "gift_aid": None,
     "charitable_investment_gifts": None,
     SPI_HMRC_PAY_COLUMN: FRS_HMRC_PAY_COLUMN,
@@ -132,6 +142,10 @@ SPI_STAGE1_ANALOGUE_COLUMNS: Mapping[str, str | None] = {
     # Restricted finance costs reach the FRS rows only at property_components,
     # after this stage, so the twin has no analogue to locate (microcosm#1106).
     SPI_PROPERTY_FINANCE_COSTS_COLUMN: None,
+    # The FRS records no losses brought forward, and its twin's profit is the
+    # self_employment_income analogue already located (microcosm#1095).
+    SPI_PROFIT_BEFORE_LOSSES_DRAW_COLUMN: None,
+    SPI_LOSSES_BROUGHT_FORWARD_DRAW_COLUMN: None,
 }
 
 
@@ -180,7 +194,7 @@ def analogue_source_columns() -> tuple[str, ...]:
         for column in SPI_STAGE1_ANALOGUE_COLUMNS.values()
         if column and column != TAXABLE_SAVINGS_INTEREST_ANALOGUE
     }
-    columns |= {"savings_interest_income", "tax_free_savings_income"}
+    columns |= {"savings_interest_income"}
     return tuple(sorted(columns))
 
 
@@ -191,8 +205,8 @@ def observed_analogues(
     """The twin's observed values of every analogue target, named by target.
 
     Rows are FRS persons (the twins, or the SPI copies before the draw, which
-    still carry the twin's values). Taxable savings interest is derived as the
-    gross FRS interest less the tax-free part, floored at zero.
+    still carry the twin's values). Taxable savings interest is the FRS
+    interest outside ISAs, floored at zero.
     """
 
     missing = sorted(set(analogue_source_columns()) - set(person.columns))
@@ -200,9 +214,6 @@ def observed_analogues(
         raise ValueError(f"SPI transport analogues are missing column(s): {missing}.")
     taxable_interest = np.maximum(
         pd.to_numeric(person["savings_interest_income"], errors="coerce").to_numpy(
-            dtype=np.float64, na_value=np.nan
-        )
-        - pd.to_numeric(person["tax_free_savings_income"], errors="coerce").to_numpy(
             dtype=np.float64, na_value=np.nan
         ),
         0.0,
@@ -614,11 +625,10 @@ def _uniformity(
     return {
         "rows": int(len(sign)),
         "sign": _kolmogorov(sign),
-        # A count under the group floor is not reported (CD171 5.2.1), as the
-        # by-group receipt withholds a small group.
-        "positive_rows": (
-            positive_rows if positive_rows >= SPI_TRANSPORT_GROUP_MINIMUM_ROWS else None
-        ),
+        # The count is rounded as every receipt count is (receipt_counts): one
+        # or two rows read "<3" (CD171 5.2.1). The distances need ten rows, a
+        # statistical floor, as the by-group receipt's do.
+        "positive_rows": rounded_count(positive_rows),
         "quantile": _kolmogorov(quantile[rows]) if rows.any() else None,
     }
 

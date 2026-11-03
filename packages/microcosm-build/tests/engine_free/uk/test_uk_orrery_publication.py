@@ -1,18 +1,38 @@
 """UK exports and staging order, independent of the runs application's code."""
 
+import hashlib
 import json
 from argparse import Namespace
+from pathlib import Path
 
 import pytest
 
+import test_support.microcosm_build.uk_full_build_cli as full_build_support
 from microcosm.build.uk_runtime import (
     full_build_cli,
     orrery_publication,
     rowwise_staging,
 )
-from microcosm.build.uk_runtime.orrery_contract import save_uk_graph_schema
-from microcosm.graph import Graph, Node, Owned, SourceRef, StructuralDelta
+from microcosm.build.uk_runtime.orrery_contract import (
+    public_summary_findings,
+    save_uk_graph_schema,
+)
+from microcosm.graph import (
+    ContentStore,
+    Graph,
+    Node,
+    Owned,
+    SourceRef,
+    StructuralDelta,
+    collect_execution_evidence,
+    load_run_evidence,
+)
+from microcosm.graph.execution_overlay import load_execution_overlay
+from microcosm.graph.orrery import orrery_json_from_schema
 from test_support.microcosm_build.telemetry import fake_publication_inventory
+
+#: The execution overlay's file name, which the collector's inputs will name.
+OVERLAY_NAME = "graph.execution.json"
 
 
 def fixture(tmp_path, **options):
@@ -237,16 +257,20 @@ def test_no_emitter_delegates_publication_without_a_run_id(tmp_path, monkeypatch
 @pytest.mark.parametrize(
     "explicit,local,disabled,expected",
     [
-        (None, False, False, True),
+        (None, False, False, False),
         (None, True, False, False),
         (None, False, True, False),
+        (True, False, False, True),
         (True, True, True, True),
         (False, False, False, False),
     ],
 )
-def test_publication_has_explicit_local_only_and_opt_out_controls(
+def test_publication_is_opt_in_whatever_the_staging(
     explicit, local, disabled, expected
 ):
+    """María's ruling of 2026-10-26: a build publishes its graph to the
+    public Orrery only on ``--publish-orrery``, staged or not."""
+
     args = Namespace(
         publish_orrery=explicit, staging_local_only=local, no_staging=disabled
     )
@@ -323,3 +347,195 @@ def test_enqueue_failure_is_recorded_without_replacing_graph_exports(
     assert (args.out / "graph.orrery.json").is_file()
     assert (args.out / "orrery.upload.json").is_file()
     assert (args.out / "orrery.evidence-manifest.json").is_file()
+
+
+def synthetic_build_request(tmp_path, monkeypatch, failure=None, extra=()):
+    """A synthetic dense build request whose run records execution."""
+    pytest.importorskip("tables")
+    full_build_support.patch_certification(monkeypatch)
+    args = full_build_support.arguments(tmp_path, *extra)
+    return args, full_build_support.prepared(tmp_path, failure)
+
+
+def synthetic_full_build(tmp_path, monkeypatch, failure=None, extra=()):
+    """Run a synthetic dense build; return its arguments and exit status."""
+    args, build = synthetic_build_request(tmp_path, monkeypatch, failure, extra)
+    return args, full_build_support.cli.execute_full_build(build, args)
+
+
+def published_summaries(directory: Path) -> list[dict]:
+    """The recorded summaries a preserved publication would submit."""
+    inventory = json.loads((directory / "orrery.upload.json").read_bytes())
+    return [
+        summary
+        for entry in inventory["files"]
+        if entry["role"] == "summaries"
+        for summary in json.loads((directory / entry["name"]).read_bytes())
+    ]
+
+
+def test_a_refused_build_submits_gate_verdicts_without_their_failure_lines(
+    tmp_path, monkeypatch
+):
+    """Vahid's review of #1396, M1: a failure line can state a row's figures
+    or an area's support, so the published summaries count the lines."""
+    args, status = synthetic_full_build(
+        tmp_path,
+        monkeypatch,
+        "uk_local_geography_ladder_post_calibration",
+        extra=("--publish-orrery",),
+    )
+    assert status == 1
+    evidence = json.loads(
+        (args.out / orrery_publication.EVIDENCE_MANIFEST_NAME).read_bytes()
+    )
+    assert evidence["orrery_publication"]["status"] == "pending"
+    preserved = args.attempt_evidence / "orrery-publication"
+    summaries = published_summaries(preserved)
+    gates = [
+        row
+        for summary in summaries
+        for row in summary["data"].get("tables", {}).get("gates", [])
+    ]
+    failed = [row for row in gates if row["status"] == "failed"]
+    assert failed and all(row["failure_count"] > 0 for row in failed)
+    assert not any("failures" in row for row in gates)
+    assert public_summary_findings(summaries) == []
+    document = json.loads((preserved / "graph.orrery.json").read_bytes())
+    assert public_summary_findings(document["metadata"]["execution"]["summaries"]) == []
+
+
+def test_a_summary_with_failure_lines_is_never_preserved_for_publication(
+    tmp_path, monkeypatch, fake_telemetry_emitters
+):
+    """Vahid's review of #1396, M1: the export checks the summaries before it
+    preserves anything, so a provider that regresses leaves no inventory for
+    the build or the emitter's retry to submit."""
+    from microcosm.build.uk_runtime import orrery_contract
+    from microcosm.build.uk_runtime.graph_terminal import FULL_GATE_REPORT_TYPE
+
+    key = (FULL_GATE_REPORT_TYPE.name, FULL_GATE_REPORT_TYPE.schema_version)
+    projected = orrery_contract.UK_SUMMARY_PROVIDERS[key]
+
+    def regressed(context):
+        data = projected(context)
+        for row in data["tables"]["gates"]:
+            row["failures"] = ["a line"]
+        return data
+
+    monkeypatch.setitem(orrery_contract.UK_SUMMARY_PROVIDERS, key, regressed)
+    monkeypatch.setattr(
+        orrery_publication,
+        "publish_graph",
+        lambda *a, **k: pytest.fail("submitted an unpublishable summary"),
+    )
+    args, status = synthetic_full_build(
+        tmp_path, monkeypatch, extra=("--publish-orrery",)
+    )
+    assert status == 0
+    receipt = json.loads((args.out / orrery_publication.RECEIPT_NAME).read_bytes())
+    assert (receipt["status"], receipt["error_code"]) == (
+        "failed",
+        "unpublishable_summary",
+    )
+    preserved = args.attempt_evidence / "orrery-publication"
+    assert not (preserved / orrery_publication.INVENTORY_NAME).exists()
+    assert not (preserved / "graph.orrery.json").exists()
+    assert not any(
+        message.get("action") == "graph_publication"
+        for emitter in fake_telemetry_emitters
+        for message in emitter.messages
+    )
+
+
+def test_execution_overlay_reprojects_to_the_exported_orrery_artifact(
+    tmp_path, monkeypatch
+):
+    args, status = synthetic_full_build(tmp_path, monkeypatch)
+    assert status == 0
+    schema = json.loads((args.out / "graph.schema.json").read_bytes())
+    store = ContentStore(args.out / ".graph-store", create=False)
+    collected = collect_execution_evidence(
+        schema,
+        runs=load_run_evidence(args.out / "execution.evidence.json", store=store),
+        store=store,
+    )
+
+    overlay = load_execution_overlay(args.out / OVERLAY_NAME)
+
+    assert overlay == collected
+    assert (
+        orrery_json_from_schema(schema, execution=overlay).encode()
+        == (args.out / "graph.orrery.json").read_bytes()
+    )
+
+
+def test_execution_overlay_is_registered_but_not_published(tmp_path, monkeypatch):
+    args, status = synthetic_full_build(tmp_path, monkeypatch)
+    assert status == 0
+    overlay_path = args.out / OVERLAY_NAME
+    manifest = json.loads(
+        (args.out / full_build_support.cli.MANIFEST_FILENAME).read_text()
+    )
+    registered = manifest["outputs"][f"orrery/{OVERLAY_NAME}"]
+    assert Path(registered["path"]) == overlay_path
+    assert registered["sha256"] == hashlib.sha256(overlay_path.read_bytes()).hexdigest()
+    assert registered["bytes"] == overlay_path.stat().st_size
+    preserved = args.attempt_evidence / "orrery-publication"
+    inventory = json.loads((preserved / "orrery.upload.json").read_bytes())
+    assert (preserved / "graph.orrery.json").is_file()
+    assert not (preserved / OVERLAY_NAME).exists()
+    assert OVERLAY_NAME not in {entry["name"] for entry in inventory["files"]}
+
+
+def test_refused_build_registers_its_execution_overlay_in_its_evidence_record(
+    tmp_path, monkeypatch
+):
+    args, status = synthetic_full_build(
+        tmp_path, monkeypatch, "uk_local_geography_ladder_post_calibration"
+    )
+    assert status == 1
+    evidence = json.loads(
+        (args.out / orrery_publication.EVIDENCE_MANIFEST_NAME).read_bytes()
+    )
+    overlay_path = args.out / OVERLAY_NAME
+    assert evidence["orrery_publication"]["recorded_execution"] is True
+    assert evidence["outputs"][OVERLAY_NAME]["sha256"] == (
+        hashlib.sha256(overlay_path.read_bytes()).hexdigest()
+    )
+
+
+def test_failed_build_keeps_its_execution_overlay_in_the_failure_bundle(
+    tmp_path, monkeypatch
+):
+    args, build = synthetic_build_request(tmp_path, monkeypatch)
+
+    def refuse_manifest(*arguments, **options):
+        raise RuntimeError("manifest projection failed")
+
+    monkeypatch.setattr(
+        full_build_support.cli, "rowwise_candidate_manifest_from_graph", refuse_manifest
+    )
+    with pytest.raises(RuntimeError, match="manifest projection failed"):
+        full_build_support.cli.execute_full_build(build, args)
+    bundle = args.attempt_evidence / orrery_publication.FAILURE_BUNDLE_DIRECTORY
+    evidence = json.loads(
+        (bundle / orrery_publication.EVIDENCE_MANIFEST_NAME).read_bytes()
+    )
+    assert evidence["orrery_publication"]["recorded_execution"] is True
+    assert Path(evidence["outputs"][OVERLAY_NAME]["path"]) == bundle / OVERLAY_NAME
+    assert load_execution_overlay(bundle / OVERLAY_NAME)["phases"]
+    assert not (args.attempt_evidence / "orrery-publication" / OVERLAY_NAME).exists()
+
+
+def test_build_without_recorded_execution_writes_no_execution_overlay(
+    tmp_path, monkeypatch
+):
+    args = fixture(tmp_path)
+    monkeypatch.setattr(rowwise_staging, "_ACTIVE_EMITTER", None)
+    manifest = {"outputs": {}}
+    result = orrery_publication.finalize_graph(args, manifest=manifest)
+    assert result.receipt["recorded_execution"] is False
+    assert not (args.out / OVERLAY_NAME).exists()
+    assert OVERLAY_NAME not in result.files
+    assert f"orrery/{OVERLAY_NAME}" not in manifest["outputs"]

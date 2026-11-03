@@ -6,7 +6,8 @@
     "nation",
     "region",
     "constituency",
-    "la"
+    "la",
+    "brma"
   ],
   "control_grains": [
     "country",
@@ -56,7 +57,8 @@
         "dwp.uc.households"
       ],
       "lower_side": "contract:dwp.uc.households_by_area",
-      "reason": "The GB Universal Credit caseload controls the households-on-UC cells by constituency and local authority (Northern Ireland is deferred locally). The sides differ in concept until the area series is re-extracted: the caseload counts paid claims and the area cells count every household on UC, nil awards included, so the bridge's factor (0.921 on the 942a1fa feed) is the GB paid share applied to every area alike (microcosm#1198 review, must-fix 1)."
+      "max_factor_shift": 0.02,
+      "reason": "The GB Universal Credit caseload controls the households-on-UC cells by constituency and local authority (Northern Ireland is deferred locally). Both sides count paid claims since the abf0921 re-pin (PolicyEngine/chronicle#339 splits each area-month by Stat-Xplore's Payment Indicator and the area targets bind 'Yes', microcosm#1300), so the factor sits near one, the size of DWP's 'Unknown' area, which carries no area fact, where it was the GB paid share, 0.921, applied to every area alike (microcosm#1198 review, must-fix 1). A factor more than two per cent from one means the sides no longer measure one quantity and is refused. The bound applies to each grain's GB total, the constituencies' and the authorities' sums over Great Britain, read before any group rescales them (on a surface with off-surface cells, on the pass that carries them); it does not bound each nation or English region within a grain, whose authorities the exact-signature group puts on its own constituencies."
     },
     {
       "bridge_id": "national_age_0_9_vs_local_age_0_10",
@@ -154,7 +156,16 @@
         "dwp.uc.households_by_area_children_3plus"
       ],
       "kind": "share_of_parent",
-      "reason": "DWP's constituency UC households by number of children divide each constituency's UC caseload; the published unknown-children category is not bound, so the four bands cover part of the parent and move by its reconciliation factor, keeping their published shares. The local metrics count benefit units on UC, as the parent does. Until the area series counts paid claims, the bands carry all-claims shares, which run richer in childless households than the paid caseload does."
+      "reason": "DWP's constituency UC households by number of children divide each constituency's UC caseload; the published unknown-children category is not bound, so the four bands cover part of the parent and move by its reconciliation factor, keeping their published shares. The local metrics count benefit units on UC, as the parent does. Since the abf0921 re-pin the bands count paid claims, as their parent does (microcosm#1300)."
+    },
+    {
+      "partition_id": "census_gas_connected_share",
+      "parent_target_id": "ons.census.households",
+      "member_target_ids": [
+        "desnz.subnational.gas_connected_households"
+      ],
+      "kind": "share_of_parent",
+      "reason": "Each authority's and constituency's gas-connected households are its census households times its DESNZ gas meters over its electricity meters (a constituency's meters split from its authorities' by DESNZ's small-area figures, microcosm#1095), a share of the parent; they take the census household uprating and then the area's household reconciliation factor, keeping DESNZ's share. The households off the gas network are not bound (microcosm#1207)."
     }
   ],
   "band_bridges": [
@@ -522,6 +533,19 @@
       "max_factor_shift": 0.02,
       "max_index_shift": 0.009,
       "reason": "The SPI Table 3.6 bands, summed over every band of the full compiled register (the measure-excluded £1m-and-over band included), are the UK total the Tables 3.14 and 3.15 area cells divide; the constituency and local-authority cells reconcile to it per grain. Both parts of the factor the cells take are gated, at each grain on its own. Source agreement: the bands' total over the cells' total before either side's uprating index must sit within 2% of one. Index gap: the bands grow band by band and the cells on the all-ranges index, which leaves a gap of 0.3% on this bridge; max_index_shift is that gap plus half a point, so a re-pinned index that widens it is refused."
+    },
+    {
+      "bridge_id": "spi_pension_amount_bands_vs_area",
+      "higher_target_ids": [
+        "hmrc.spi.state_pension.amount_by_total_income_band",
+        "hmrc.spi.private_pension_income.amount_by_total_income_band"
+      ],
+      "lower_target_id": "hmrc.pension_income.amount",
+      "geography_id": "K02000001",
+      "max_factor_shift": 0.037,
+      "min_factor_shift": 0.025,
+      "max_index_shift": 0.02,
+      "reason": "An area's pension income in SPI Tables 3.14 and 3.15 is its taxpayers' private and State Pension together, so the SPI Table 3.6 State Pension and private pension bands, summed over every band of the full compiled register (the measure-excluded GBP 1m-and-over bands included), are the UK total the area cells divide; the constituency and local-authority cells reconcile to it per grain, and both parts of the factor are gated at each grain on its own (microcosm#1418). Source agreement: on SPI 2023-24 the bands sit 3.0% above the constituency cells and 3.2% above the local-authority cells before either side's uprating index, against within 0.5% for employment: the area cells leave out the taxpayers HMRC places in no area (SPI Table 3.11 note 4), and those are more often pensioners (1.8% of the Income Tax payers of State Pension age in ITL Tables 2.1 and 2.2, against 0.8% of all). That explains about 1.8 points if their pension income is in proportion to their number; the other 1.2 to 1.4 points have no measured cause, so max_factor_shift is the larger gap plus half a point, 3.7%, as the index gaps are held (Anthony's review of microcosm#1420). The gap runs one way, so min_factor_shift holds the source factor above the smaller gap less half a point, 2.5%, and the cells the rounded-thousand floor defers (pension income counts under 5,500, local_small_cell_rule.json) still count in each grain's total, as the bands cover them too (the independent review of microcosm#1420). Index gap: the State Pension bands grow by resident State Pension age taxpayers times the new State Pension rate (x1.224, microcosm#1069's index) and the private pension bands band by band (x1.103), together x1.151 against the cells' all-ranges x1.134, a gap of 1.5%; max_index_shift is that gap plus half a point. The 0.1% this bridge first declared was measured on the State Pension index before microcosm#1069, and test_uk_fanout_sum_bridges.py now recomputes every bridge's gap from the committed registers (the independent review of microcosm#1420, finding 1)."
     }
   ],
   "sum_bridges": [
@@ -548,10 +572,57 @@
       "reason": "The ten LFS household-composition rows partition all UK households; the nations' official estimates sum to a different total than the LFS UK figure (about 29.09m against 29.003m), and the nations win, so the national reconciliation scales the composition by one factor onto the nations' sum, keeping its shares."
     }
   ],
+  "household_basis_partitions": [
+    {
+      "partition_id": "council_tax_stock_on_household_controls",
+      "control_target_ids": [
+        "ons.households.english_regions",
+        "welshgov.households.wales",
+        "nrs.households.scotland"
+      ],
+      "parent_target_ids": [
+        "mhclg.council_tax_stock.total",
+        "welshgov.council_tax_stock.total",
+        "scotgov.council_tax_stock.total"
+      ],
+      "member_target_ids": [
+        "mhclg.council_tax_stock.band_a",
+        "mhclg.council_tax_stock.band_b",
+        "mhclg.council_tax_stock.band_c",
+        "mhclg.council_tax_stock.band_d",
+        "mhclg.council_tax_stock.band_e",
+        "mhclg.council_tax_stock.band_f",
+        "mhclg.council_tax_stock.band_g",
+        "mhclg.council_tax_stock.band_h",
+        "welshgov.council_tax_stock.band_a",
+        "welshgov.council_tax_stock.band_b",
+        "welshgov.council_tax_stock.band_c",
+        "welshgov.council_tax_stock.band_d",
+        "welshgov.council_tax_stock.band_e",
+        "welshgov.council_tax_stock.band_f",
+        "welshgov.council_tax_stock.band_g",
+        "welshgov.council_tax_stock.band_h",
+        "welshgov.council_tax_stock.band_i",
+        "scotgov.council_tax_stock.band_a",
+        "scotgov.council_tax_stock.band_b",
+        "scotgov.council_tax_stock.band_c",
+        "scotgov.council_tax_stock.band_d",
+        "scotgov.council_tax_stock.band_e",
+        "scotgov.council_tax_stock.band_f",
+        "scotgov.council_tax_stock.band_g",
+        "scotgov.council_tax_stock.band_h"
+      ],
+      "max_factor_shift": 0.035,
+      "reason": "The council-tax dwelling stock (MHCLG and StatsWales taxbase lines, Scotland's CTAXBASE chargeable dwellings) and each nation's official household estimate bind the same weighted household count of an area at two published levels, so the solve traded one against the other (microcosm#1284). Each English region's, Wales's and Scotland's dwelling total takes its household control and its bands move by the same factor, the area's published households per chargeable dwelling: 0.980 to 1.023 across the eleven areas on the 735820c feed. The signed assumption is that households per chargeable dwelling are the same in every band of an area. They are not exactly: multi-household dwellings concentrate in lower bands, and second homes, where still counted, in particular areas. The bands therefore bind their area's band mix and the level follows the household estimate. The tripwire refuses a factor further than 0.035 from one, the measured 0.023 with a margin. Northern Ireland has no council-tax rows. National register only: the local band cells follow the national rows by signature.",
+      "tracking": "microcosm#1284",
+      "approved_by": "juaristi22",
+      "approved_on": "2026-10-16"
+    }
+  ],
   "local_routes": {
     "ons.rent.private_rent": {
       "route": "no_higher_control",
-      "reason": "ONS PIPR publishes area means, not a national private-rent total the frame binds; the local-authority rows are 12 x mean x reconciled private renters (uk_private_rent_mean_to_total), so they follow the tenure cells' reconciliation. Area-placed rents are PR B (microcosm#1123 item 4)."
+      "reason": "ONS PIPR publishes area means, not a national private-rent total the frame binds; the local-authority rows are 12 x mean x reconciled private renters (uk_private_rent_mean_to_total), so they follow the tenure cells' reconciliation. Placed renters' rents come from their BRMA's rent-officer list of rents, scaled to their region's FRS level on the census renter mix: at design weights a region moves by the gap between that mix and where its renters land, until the tenure rows restore it (microcosm#1262). PIPR shares that evidence base, so the rows stay bound, but their pattern between areas is not independent validation. The rows bind PIPR's level, while the node holds each region at its FRS level, which sits below it; with the tenure rows bound, calibration closes the gap only by moving weight toward higher-rent renters within each area, a level miss declared under María's A3/A4 rulings rather than modelled."
     },
     "ons.equiv_net_income_bhc": {
       "route": "no_higher_control",
@@ -565,17 +636,21 @@
       "route": "no_higher_control",
       "reason": "No pinned fact compiles at any area (the ONS small-area income estimates are MSOA-grain and carry no local-authority rows in the feed), so the target is inactive."
     },
-    "microcosm.high_value_homes.over_1m": {
+    "desnz.subnational.electricity_kwh": {
       "route": "no_higher_control",
-      "reason": "No publisher counts owner-occupied homes over £1m nationally, so no national row binds; the constituency and local-authority cells are Microcosm's derived Land Registry stock (microcosm#1240, fix 2), both grains summed from the same weighted dwellings, so they agree by construction. The OBR costing note's Table 1.1 counts every residential property in scope and is a diagnostic beside the family (uk_high_value_homes_benchmarks), never a control."
+      "reason": "DESNZ's region and country rows are the sums of their authorities, so a region control adds no information, and a gas bridge would put the three authorities DESNZ publishes no gas for (the Isles of Scilly, Orkney and Shetland) in controlled legs. The electricity cells are levelled onto the lcfs stage's level, the kWh ONS household spending buys (microcosm#1418), by their uprating index instead (desnz.energy_trends.gb_domestic_level; microcosm#1207). The constituency cells split each authority's total by DESNZ's small-area figures (microcosm#1095), so under the standing single-winner rule they parent their region's authority cells at a factor of one."
     },
-    "microcosm.high_value_homes.over_1_5m": {
+    "desnz.subnational.gas_kwh": {
       "route": "no_higher_control",
-      "reason": "No publisher counts owner-occupied homes over £1.5m nationally, so no national row binds; the constituency and local-authority cells are Microcosm's derived Land Registry stock (microcosm#1240, fix 2), both grains summed from the same weighted dwellings, so they agree by construction. The OBR costing note's Table 1.1 counts every residential property in scope and is a diagnostic beside the family (uk_high_value_homes_benchmarks), never a control."
+      "reason": "DESNZ's region and country rows are the sums of their authorities, so a region control adds no information, and a gas bridge would put the three authorities DESNZ publishes no gas for (the Isles of Scilly, Orkney and Shetland) in controlled legs. The gas cells are levelled onto the lcfs stage's Energy Trends level by their uprating index instead (desnz.energy_trends.gb_domestic_level; microcosm#1207). The constituency cells split each authority's total by DESNZ's small-area figures (microcosm#1095), so under the standing single-winner rule they parent their region's authority cells at a factor of one."
     },
-    "microcosm.high_value_homes.over_2m": {
+    "ons.rent.private_rent_brma": {
       "route": "no_higher_control",
-      "reason": "No publisher counts owner-occupied homes over £2m nationally, so no national row binds; the constituency and local-authority cells are Microcosm's derived Land Registry stock (microcosm#1240, fix 2), both grains summed from the same weighted dwellings, so they agree by construction. The OBR costing note's Table 1.1 counts every residential property in scope and is a diagnostic beside the family (uk_high_value_homes_benchmarks), never a control."
+      "reason": "ONS PIPR publishes Scotland's rents as means over its 18 Broad Rental Market Areas, which overlap the councils, and no national private-rent total the frame binds. Each row is 12 x the BRMA mean x the BRMA's private renters, derived from the councils' reconciled tenure cells through Census 2022's council shares of each BRMA's renters (uk_private_rent_brma_mean_to_total), so the rows follow the tenure reconciliation and no BRMA cell is a parent or a leg of any other (microcosm#1090, #1262). Placed renters' rents come from their BRMA's rent-officer list of rents, scaled to their region's FRS level on the census renter mix: at design weights a region moves by the gap between that mix and where its renters land, until the tenure rows restore it (microcosm#1262). PIPR shares that evidence base, so the rows stay bound, but their pattern between areas is not independent validation. The rows bind PIPR's level, while the node holds each region at its FRS level, which sits below it; with the tenure rows bound, calibration closes the gap only by moving weight toward higher-rent renters within each area, a level miss declared under María's A3/A4 rulings rather than modelled."
+    },
+    "hmrc.pension_income.count": {
+      "route": "no_higher_control",
+      "reason": "SPI 2023-24 Tables 3.14 and 3.15 count each area's taxpayers with any pension income, State or private. No national row binds that union: the national SPI bands count State Pension and private pension recipients apart, and most taxpayers of State Pension age are both, so the cells bind at HMRC's own area level, grown by ITL Table 2.5's all-ranges taxpayer growth (María's ruling of 2026-10-28, microcosm#1418). The amounts, a sum, reconcile to the bands through their fan-out sum bridge; the tables' region and country rows are the sums of their areas, so a region control adds no information."
     }
   },
   "relations": [
@@ -861,6 +936,16 @@
     },
     {
       "targets": [
+        "hmrc.itl.taxpayers_by_total_income_band",
+        "hmrc.pension_income.count"
+      ],
+      "relation": "subset",
+      "part": "hmrc.pension_income.count",
+      "whole": "hmrc.itl.taxpayers_by_total_income_band",
+      "reason": "Taxpayers with pension income in an area (SPI Tables 3.14 and 3.15) are part of all UK income tax payers, whose projected ITL Table 2.5 bands partition the UK total; parts <= whole. The area cells bind at HMRC's own area level, since no national row counts the union of State Pension and private pension recipients (microcosm#1418)."
+    },
+    {
+      "targets": [
         "hmrc.itl.additional_rate_taxpayers",
         "hmrc.itl.taxpayers_by_total_income_band"
       ],
@@ -878,6 +963,46 @@
       "part": "hmrc.itl.higher_rate_taxpayers",
       "whole": "hmrc.itl.taxpayers_by_total_income_band",
       "reason": "Higher rate taxpayers by region and nation (ITL Table 2.2) are part of all UK income tax payers, whose projected ITL Table 2.5 bands partition the UK total; parts <= whole (microcosm#1123)."
+    },
+    {
+      "targets": [
+        "hmrc.itl.state_pension_age_taxpayers",
+        "hmrc.itl.taxpayers_by_total_income_band"
+      ],
+      "relation": "subset",
+      "part": "hmrc.itl.state_pension_age_taxpayers",
+      "whole": "hmrc.itl.taxpayers_by_total_income_band",
+      "reason": "Income tax payers of State Pension age by English region and nation (ITL Table 2.2) are part of all UK income tax payers, whose projected ITL Table 2.5 bands partition the UK total; parts <= whole (microcosm#1069)."
+    },
+    {
+      "targets": [
+        "hmrc.itl.taxpayers_aged_65_and_over",
+        "hmrc.itl.taxpayers_by_total_income_band"
+      ],
+      "relation": "subset",
+      "part": "hmrc.itl.taxpayers_aged_65_and_over",
+      "whole": "hmrc.itl.taxpayers_by_total_income_band",
+      "reason": "Income tax payers aged 65 and over by English region and nation (ITL Table 2.2) are part of all UK income tax payers, whose projected ITL Table 2.5 bands partition the UK total; parts <= whole (microcosm#1069)."
+    },
+    {
+      "targets": [
+        "mhclg.council_tax_stock.single_adult_discount",
+        "ons.households.english_regions"
+      ],
+      "relation": "subset",
+      "part": "mhclg.council_tax_stock.single_adult_discount",
+      "whole": "ons.households.english_regions",
+      "reason": "England's households with the single adult council tax discount (MHCLG Council Taxbase line 8, all bands) are part of England's households, which the nine English regions' rows cover; parts <= whole (microcosm#953)."
+    },
+    {
+      "targets": [
+        "mhclg.council_tax_stock.by_area.single_adult_discount",
+        "ons.households.english_regions"
+      ],
+      "relation": "subset",
+      "part": "mhclg.council_tax_stock.by_area.single_adult_discount",
+      "whole": "ons.households.english_regions",
+      "reason": "Each English billing authority's households with the single adult council tax discount (MHCLG Council Taxbase line 8, all bands) are part of its region's households, which the nine English regions' rows cover; parts <= whole (microcosm#1095). The cells reconcile onto the national single adult row, whose measurement they share."
     }
   ],
   "signature_incomplete": [
@@ -933,9 +1058,10 @@
     },
     {
       "targets": [
-        "ons.rent.private_rent"
+        "ons.rent.private_rent",
+        "ons.rent.private_rent_brma"
       ],
-      "reason": "The private-renter condition is in the binding; local-only (see local_routes)."
+      "reason": "The private-renter condition is in the binding; local-only (see local_routes). The local-authority and Scottish BRMA rows measure the same quantity over overlapping areas, so neither reconciles the other."
     },
     {
       "targets": [
@@ -945,6 +1071,14 @@
         "slc.borrowers.plan_5_liable"
       ],
       "reason": "National-only (England) borrower stocks defined by the plan and threshold filters in the binding."
+    },
+    {
+      "targets": [
+        "hmrc.spi.employment_income.count_by_self_employment_income_band",
+        "hmrc.spi.self_employment_income.amount_by_self_employment_income_band",
+        "hmrc.spi.self_employment_income.count_by_self_employment_income_band"
+      ],
+      "reason": "Banded by groupby on the person's own self-employment income after loss relief, SPI Table 3.10's range; the band is the fan-out dimension, not a measurement filter, and Table 3.10 counts taxpayers and non-taxpayers alike; its employment-income count adds the year's pay with its company car benefits (employment_income_with_benefits_in_kind_annual) as a filter over the same bands. Bound from GBP 1 to GBP 10,000 only, the bands above stay with Table 3.6's self-employment rows by total income, so the two tables do not pull against each other (microcosm#1418)."
     }
   ]
 }

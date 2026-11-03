@@ -109,10 +109,15 @@
          {
           "enum": [
            "usd",
+           "eur",
+           "nzd",
            "count",
            "ratio",
            "boolean",
-           "categorical"
+           "categorical",
+           "hours",
+           "weeks",
+           "calendar_year"
           ]
          },
        {

@@ -360,6 +360,106 @@ def test_image_pins_the_commit_and_the_lock() -> None:
     assert commands[-1].startswith('test -z "$(git')
 
 
+def test_image_replaces_the_base_pip_before_any_package_download(app) -> None:
+    """The cached base's pip downloads only the hash-pinned pip that replaces it."""
+
+    stub = sys.modules["modal"]
+    image_steps = [
+        name.rsplit(".", 1)[-1]
+        for name, _, _ in stub.mock_calls
+        if name.startswith("Image.debian_slim")
+    ]
+    # The bootstrap follows the CA store upgrade and precedes every pip_install.
+    assert image_steps[:4] == [
+        "debian_slim",
+        "apt_install",
+        "run_commands",
+        "pip_install",
+    ]
+    image = stub.Image.debian_slim.return_value
+    image.apt_install.return_value.pip_install.assert_not_called()
+    (bootstrap_command,) = image.apt_install.return_value.run_commands.call_args.args
+    assert bootstrap_command == plan_lib.image_pip_bootstrap_command()
+    assert bootstrap_command == (
+        "printf '%s\\n' 'pip==26.2.2 --hash=sha256:"
+        "fd7f4dfa8190e014013b9f08f3e973f4e4c26ffd179a204895533a7254813a70'"
+        " > /tmp/pip-bootstrap.txt"
+        " && python -m pip install --require-hashes --no-deps"
+        " -r /tmp/pip-bootstrap.txt"
+        " && rm /tmp/pip-bootstrap.txt"
+    )
+
+
+def test_image_installs_the_emitter_command_on_its_own(app) -> None:
+    """Builds start the separately installed emitter, never the synced one."""
+
+    plan = plan_lib.parse_plan(_plan_data())
+    commands = plan_lib.image_build_commands(plan)
+    sync = next(index for index, command in enumerate(commands) if "uv sync" in command)
+    install = commands.index(
+        "UV_TOOL_BIN_DIR=/usr/local/bin uv tool install 'microcosm-emitter>=0.11.9'"
+    )
+    # Outside the build's environment, after it is synced and before the
+    # clean-tree check. The image does not build unless the command runs.
+    assert sync < install < len(commands) - 1
+    assert commands[install + 1] == "/usr/local/bin/microcosm-emitter version"
+    # The interface in the build finds the command through the image's
+    # environment, which the stage tool inherits.
+    image = sys.modules["modal"].Image.debian_slim.return_value
+    after_pip_bootstrap = image.apt_install.return_value.run_commands.return_value
+    image_env = after_pip_bootstrap.pip_install.return_value.env
+    environment = image_env.call_args.args[0]
+    assert environment["MICROCOSM_EMITTER_COMMAND"] == (
+        "/usr/local/bin/microcosm-emitter"
+    )
+    tool_env, removed = plan_lib.tool_environment(
+        {"PATH": "/usr/local/bin:/usr/bin", **environment}, {}
+    )
+    assert tool_env["MICROCOSM_EMITTER_COMMAND"] == "/usr/local/bin/microcosm-emitter"
+    assert "MICROCOSM_EMITTER_COMMAND" not in removed
+
+
+def test_the_image_installs_no_emitter_older_than_a_build_starts() -> None:
+    """The image's emitter floor is the build adapter's minimum release.
+
+    ``tools/modal_us_stage_plan.py`` imports nothing from the workspace, so it
+    repeats the version. This compares the two values of one checkout only.
+    At launch they can come from two trees: the install step from the
+    checkout that launches the app, and the minimum from the commit the plan
+    pins. So a launch can still combine an older checkout's floor with a
+    newer commit's minimum; that floor has no upper bound, so it resolves to
+    the newest release when the image is built.
+    """
+
+    from microcosm.build.telemetry_emitter import MINIMUM_EMITTER_VERSION
+
+    assert MINIMUM_EMITTER_VERSION == "0.11.9"
+    assert plan_lib.IMAGE_EMITTER_REQUIREMENT == (
+        f"microcosm-emitter>={MINIMUM_EMITTER_VERSION}"
+    )
+
+
+def test_the_app_never_runs_an_emitter_installed_where_the_image_puts_it(
+    app, monkeypatch, tmp_path: Path
+) -> None:
+    """A machine with a command at the image's emitter path never runs it here."""
+
+    ran = tmp_path / "emitter-ran"
+    command = tmp_path / "microcosm-emitter"
+    command.write_text(f"#!/bin/sh\ntouch '{ran}'\necho '{{}}'\n")
+    command.chmod(0o755)
+    monkeypatch.setattr(plan_lib, "IMAGE_EMITTER_COMMAND", str(command))
+    # _runner_identity() also hashes the image clone's uv.lock. The image's
+    # /root/microcosm is unreadable on a CI runner, where Python 3.13's
+    # Path.exists() raises PermissionError, so point it at an empty folder.
+    monkeypatch.setattr(plan_lib, "IMAGE_REPO_ROOT", str(tmp_path / "repo"))
+
+    recorded = {"emitter_version": "0.11.9", "protocol_versions": [1]}
+    assert app._emitter_version() == recorded
+    assert app._runner_identity()["microcosm_emitter"] == recorded
+    assert not ran.exists()
+
+
 # --------------------------------------------------------------------------- #
 # Hashing, mirroring, receipts                                                 #
 # --------------------------------------------------------------------------- #
@@ -1455,6 +1555,38 @@ def test_app_main_exits_nonzero_unless_the_stage_completed(
     else:
         app.main(run=True)
     assert json.loads(capsys.readouterr().out)["stopped_at_budget"] is stopped
+
+
+def test_app_main_spawn_returns_the_call_id_without_waiting(
+    app, monkeypatch, capsys
+) -> None:
+    data = _plan_data(max_wall_seconds=600)
+    plan = plan_lib.parse_plan(data)
+    monkeypatch.setattr(app, "_LOADED", (data, plan))
+    runner = MagicMock()
+    runner.spawn.return_value = MagicMock(object_id="fc-123")
+    monkeypatch.setitem(app.RUNNERS, ("heavy", False), runner)
+    app.main(run=True, spawn=True)
+    runner.spawn.assert_called_once_with(data)
+    runner.remote.assert_not_called()
+    assert json.loads(capsys.readouterr().out) == {
+        "run_id": plan.run_id,
+        "stage": plan.stage,
+        "function_call_id": "fc-123",
+    }
+
+
+def test_app_main_refuses_spawn_without_run(app, monkeypatch) -> None:
+    data = _plan_data(max_wall_seconds=600)
+    monkeypatch.setattr(app, "_LOADED", (data, plan_lib.parse_plan(data)))
+    runner = MagicMock()
+    monkeypatch.setitem(app.RUNNERS, ("heavy", False), runner)
+    check = MagicMock()
+    monkeypatch.setattr(app, "check_stage", check)
+    with pytest.raises(SystemExit, match="--spawn needs --run"):
+        app.main(spawn=True)
+    runner.spawn.assert_not_called()
+    check.remote.assert_not_called()
 
 
 @pytest.mark.parametrize("key", plan_lib.THREAD_ENV_KEYS)

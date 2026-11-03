@@ -423,6 +423,7 @@ class TestBaseBuildWeightsAudit:
         _imputed, weights_audit = builder.impute_and_audit_us_puf_support(
             clone_us_frame_for_puf_support(_minimal_us_puf_support_frame()),
             _support_donor(),
+            tail_bound_diagnostics=[],
             **_SUPPORT_FIT_KWARGS,
         )
 
@@ -439,6 +440,7 @@ class TestBaseBuildWeightsAudit:
         _imputed, weights_audit = builder.impute_and_audit_us_puf_support(
             clone_us_frame_for_puf_support(_minimal_us_puf_support_frame()),
             _support_donor(),
+            tail_bound_diagnostics=[],
             **_SUPPORT_FIT_KWARGS,
         )
         round_tripped = json.loads(json.dumps({"weights_audit": weights_audit}))
@@ -455,6 +457,7 @@ class TestBaseBuildWeightsAudit:
         builder = _load_support_builder_module()
         record = {
             "output": "non_sch_d_capital_gains",
+            "rule": "weighted_positive_donor_quantile",
             "quantile": 0.999,
             "bound_value": 100.0,
             "clipped_row_count": 2,
@@ -1000,6 +1003,7 @@ def test_pooled_source_stage_dual_exports_without_changing_legacy_checkpoints(
         "with_us_energy_subsidy_input",
         "with_us_retirement_contribution_inputs",
         "with_us_retirement_distribution_inputs",
+        "with_us_esi_premium_inputs",
         "with_us_immigration_inputs",
     )
     for name in identity_transforms:
@@ -1013,6 +1017,7 @@ def test_pooled_source_stage_dual_exports_without_changing_legacy_checkpoints(
         "us_eligibility_inputs_signal_gate",
         "us_pregnancy_signal_gate",
         "us_wic_claim_signal_gate",
+        "us_esi_premiums_signal_gate",
     ):
         monkeypatch.setattr(builder, name, lambda _frame: passing_gate)
 
@@ -1180,6 +1185,7 @@ def test_source_and_preclone_stages_round_trip_design_weight_kind(
         "with_us_energy_subsidy_input",
         "with_us_retirement_contribution_inputs",
         "with_us_retirement_distribution_inputs",
+        "with_us_esi_premium_inputs",
         "with_us_immigration_inputs",
     )
     for name in identity_transforms:
@@ -1193,6 +1199,7 @@ def test_source_and_preclone_stages_round_trip_design_weight_kind(
         "us_eligibility_inputs_signal_gate",
         "us_pregnancy_signal_gate",
         "us_wic_claim_signal_gate",
+        "us_esi_premiums_signal_gate",
     ):
         monkeypatch.setattr(builder, name, lambda _frame: passing_gate)
     monkeypatch.setattr(builder, "_sha256", lambda _path: "fixture-sha256")
@@ -1316,19 +1323,35 @@ def test_puf_donor_builder_threads_explicit_source_year_agi(
         captured["processed_tax_unit_weights"] = processed_tax_unit_weights
         return adjusted_gross_income
 
+    schedule_e = {
+        "partnership_income": np.asarray([10.0, 20.0]),
+        "passive_partnership_s_corp_income": np.asarray([1.0, 0.0]),
+    }
+
+    def fake_schedule_e(actual_source_path: Path, actual_arrays, *, receipt):
+        captured["schedule_e_source_path"] = actual_source_path
+        captured["schedule_e_arrays"] = actual_arrays
+        receipt["weighted_line_32"] = 30.0
+        return schedule_e
+
     def fake_donor(
         actual_arrays,
         *,
         adjusted_gross_income,
+        schedule_e_partnership_s_corp,
         donor_build_summary,
     ):
         captured["arrays"] = actual_arrays
         captured["adjusted_gross_income"] = adjusted_gross_income
+        captured["schedule_e"] = schedule_e_partnership_s_corp
         captured["donor_build_summary"] = donor_build_summary
         donor_build_summary["mortgage_field_quarantine"] = {"screened_record_count": 2}
         return "donor"
 
     monkeypatch.setattr(builder, "_source_year_puf_adjusted_gross_income", fake_agi)
+    monkeypatch.setattr(
+        builder, "_source_year_puf_partnership_s_corp_income", fake_schedule_e
+    )
     monkeypatch.setattr(builder, "puf_tax_unit_donor_from_arrays", fake_donor)
 
     donor_build_summary: dict[str, object] = {}
@@ -1345,9 +1368,13 @@ def test_puf_donor_builder_threads_explicit_source_year_agi(
     assert captured["processed_tax_unit_weights"] is arrays["household_weight"]
     assert captured["arrays"] is arrays
     assert captured["adjusted_gross_income"] is adjusted_gross_income
+    assert captured["schedule_e_source_path"] == source_path
+    assert captured["schedule_e_arrays"] is arrays
+    assert captured["schedule_e"] is schedule_e
     assert captured["donor_build_summary"] is donor_build_summary
     assert donor_build_summary == {
-        "mortgage_field_quarantine": {"screened_record_count": 2}
+        "mortgage_field_quarantine": {"screened_record_count": 2},
+        "schedule_e_line_32": {"weighted_line_32": 30.0},
     }
 
 
@@ -2322,6 +2349,7 @@ def test_main_runs_cps_only_inputs_before_clone_and_after_puf_then_fails_gate(
     for gate_name in (
         "us_eligibility_inputs_signal_gate",
         "us_pregnancy_signal_gate",
+        "us_esi_premiums_signal_gate",
     ):
         monkeypatch.setattr(
             builder,
@@ -2330,6 +2358,13 @@ def test_main_runs_cps_only_inputs_before_clone_and_after_puf_then_fails_gate(
                 "Gate", (), {"passed": True, "failures": (), "details": {}}
             )(),
         )
+    esi_premium_calls: list[object] = []
+
+    def fake_esi_premium_inputs(frame, *, seed, time_period):
+        esi_premium_calls.append((frame, seed, time_period))
+        return frame
+
+    monkeypatch.setattr(builder, "with_us_esi_premium_inputs", fake_esi_premium_inputs)
     monkeypatch.setattr(
         builder,
         "us_wic_claim_signal_gate",
@@ -2862,6 +2897,10 @@ def test_main_runs_cps_only_inputs_before_clone_and_after_puf_then_fails_gate(
         if failing_gate == "retirement_distributions"
         else []
     )
+    # microcosm#454: the ESI premium stage runs once, on the ASEC frame right
+    # after the direct retirement-distribution pass and before the clone; the
+    # clone carries its columns unchanged, so it never re-runs on the PUF half.
+    assert esi_premium_calls == [("retirement-distributions-direct", 7, 2024)]
 
 
 def test_resume_retirement_stage_forces_puf_imputation() -> None:
@@ -2888,6 +2927,29 @@ def test_main_summary_records_retirement_distribution_gate() -> None:
     assert '"passed": retirement_distributions_gate.passed' in source
     assert '"failures": list(retirement_distributions_gate.failures)' in source
     assert '"details": dict(retirement_distributions_gate.details)' in source
+
+
+def test_main_summary_records_esi_premium_gates() -> None:
+    """microcosm#454: the base summary carries the stage lineage twice, on the
+    ASEC frame and again on the support-cloned frame, in both build paths."""
+    builder = _load_support_builder_module()
+    source = Path(builder.__file__).read_text(encoding="utf-8")
+
+    assert '"esi_premiums_signal": {' in source
+    assert '"passed": esi_premiums_gate.passed' in source
+    assert '"details": dict(esi_premiums_gate.details)' in source
+    assert '"esi_premiums_post_clone_signal": {' in source
+    assert '"details": dict(esi_premiums_post_clone_gate.details)' in source
+    assert 'signals["esi_premiums_signal"] = _checked_gate_payload(' in source
+    assert (
+        'signals["esi_premiums_post_clone_signal"] = _checked_gate_payload(' in source
+    )
+    for name in ("esi_premiums_signal", "esi_premiums_post_clone_signal"):
+        assert f'        "{name}",' in source  # the staged summary requires it
+    boundaries = dict(builder.STAGE_BOUNDARIES)["pre_clone_enrichment"]
+    assert boundaries.index("with_us_esi_premium_inputs") == (
+        boundaries.index("with_us_retirement_distribution_inputs") + 1
+    )
 
 
 def test_main_summary_records_weeks_unemployed_gate() -> None:

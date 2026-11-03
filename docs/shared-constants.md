@@ -39,6 +39,10 @@ and build packages. It currently defines:
 - `UK_WIDE_GEOGRAPHY_IDS` (the K-prefixed UK-wide aggregates among
   `UK_GEOGRAPHY_ID_TO_LABEL`, which the nation grain of the UK target-weight
   rules splits on; microcosm#1124)
+- `US_STATE_FIPS_TO_NAME` (each state's Census name, "District of Columbia"
+  included: the names Chronicle's state facts carry, so a target Microcosm
+  labels itself gives a state the same label as the ledger targets;
+  microcosm#1335)
 - `US_STATE_FIPS_TO_POSTAL`
 - `US_STATE_NUMERIC_FIPS_TO_POSTAL`
 - `US_STATE_POSTAL_TO_NUMERIC_FIPS`
@@ -51,9 +55,14 @@ from microcosm.calibrate.geography_constants import (
 )
 ```
 
-Do not add another state FIPS/postal mapping to a country runtime or diagnostics
-module. Extend the shared definition and its consistency test when supported
-geographies change.
+Do not add another state FIPS/postal or FIPS/name mapping to a country runtime
+or diagnostics module. Extend the shared definition and its consistency test
+when supported geographies change. The block ladder's `US_STATES` table derives
+its P.L. 94-171 directory names from `US_STATE_FIPS_TO_NAME`. A congressional
+district's label is the Census Bureau's district name, from
+`congressional_district_label` in
+`microcosm.build.us_runtime.congressional_district_vintage`; it spells the
+state with `US_STATE_FIPS_TO_NAME`.
 
 The engine's `local_authority` member names are not a constants table: the 361
 April 2023 authority names are published ONS data, held in the sha-pinned

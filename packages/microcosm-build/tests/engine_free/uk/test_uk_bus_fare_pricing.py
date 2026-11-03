@@ -7,12 +7,18 @@ import pandas as pd
 import pytest
 
 from microcosm.build.country_spec import load_country_spec
+from microcosm.build.ledger_targets import LedgerTargetReference
 from microcosm.build.uk_runtime.bus_fare_pricing import (
     BUS_IN_LONDON,
     OTHER_LOCAL_BUS,
     PRICE_BUS_JOURNEYS_KIND,
+    UK_BUS_JOURNEYS_HOLD,
+    UK_BUS_JOURNEYS_YEAR_INDEX,
     BusFarePricingError,
     bus_fare_prices,
+    england_outside_london_region_shares,
+    english_region_boardings,
+    hold_bus_journeys_at_the_stage_year,
     price_bus_journeys,
     published_fact,
 )
@@ -21,6 +27,9 @@ from microcosm.build.uk_runtime.lcfs_consumption import (
     bus_pricing_operation,
 )
 from microcosm.build.uk_runtime.ledger_fact_vendoring import vendored_rows
+from microcosm.build.uk_runtime.ledger_targets import UK_UPRATING_APPLIERS
+from microcosm.build.uk_runtime.uprating_holds import is_uprating_hold
+from microcosm.calibrate import TargetRegistry, TargetSpec
 
 
 def _declared() -> dict:
@@ -125,7 +134,67 @@ def test_prices_recompute_from_the_vendored_rows() -> None:
             * area.yield_per_fare_paying_boarding
             * area.calendar_price_factor
         )
-    assert ni.receipt["price_index"]["basis"] == "england_index_as_proxy"
+    assert ni.receipt["price_index"]["basis"] == "own_fiscal_yields"
+
+
+def _ni_fiscal_yield(fiscal_start: str) -> float:
+    def total(concept: str) -> float:
+        return sum(
+            float(row["value"])
+            for row in vendored_rows(
+                "devolved_bus_finance.json", concept=concept, fiscal_start=fiscal_start
+            )
+        )
+
+    return total("dfi_ni.translink_bus.passenger_receipts") / (
+        total("dfi_ni.translink_bus.passenger_journeys")
+        - total("dfi_ni.translink_bus.full_fare_concession_passenger_journeys")
+    )
+
+
+def test_northern_ireland_reprices_from_its_own_yields() -> None:
+    """NI has no fares index: three months of 2023-24's yield, nine of 2024-25's (#1207)."""
+
+    prices = bus_fare_prices(_declared(), allowed_resources=UK_LCFS_VENDORED_RESOURCES)
+    ni = prices.other_by_region["NORTHERN_IRELAND"]
+    earlier = _ni_fiscal_yield("2023-04-01")
+    later = _ni_fiscal_yield("2024-04-01")
+    assert ni.yield_per_fare_paying_boarding == pytest.approx(later)
+    assert ni.calendar_price_factor == pytest.approx(
+        (0.25 * earlier + 0.75 * later) / later
+    )
+    years = ni.receipt["price_index"]["fiscal_years"]
+    assert {start: year["weight"] for start, year in years.items()} == {
+        "2023-04-01": 0.25,
+        "2024-04-01": 0.75,
+    }
+    assert all(year["source_record_ids"] for year in years.values())
+
+
+def test_own_fiscal_yields_refuses_extra_keys_and_a_mismatched_year() -> None:
+    from microcosm.build.uk_runtime.bus_fare_pricing import (
+        own_fiscal_yield_price_factor,
+    )
+
+    declared = _declared()
+    ni = next(area for area in declared["areas"] if area["label"] == "northern_ireland")
+    with pytest.raises(BusFarePricingError, match="declares only its basis"):
+        own_fiscal_yield_price_factor(
+            {
+                **ni,
+                "price_index": {"basis": "own_fiscal_yields", "frequency": "annual"},
+            },
+            price_year=2024,
+            fiscal_start="2024-04-01",
+            allowed_resources=UK_LCFS_VENDORED_RESOURCES,
+        )
+    with pytest.raises(BusFarePricingError, match="does not open in 2025"):
+        own_fiscal_yield_price_factor(
+            ni,
+            price_year=2025,
+            fiscal_start="2024-04-01",
+            allowed_resources=UK_LCFS_VENDORED_RESOURCES,
+        )
 
 
 def test_calendar_price_factor_reprices_a_fiscal_year_yield() -> None:
@@ -344,3 +413,207 @@ def test_household_fares_sum_non_eligible_persons_and_keep_wales_raw() -> None:
             household_weights=weights,
             raw_household_fares=raw,
         )
+
+
+def test_bus_engine_parity_marks_each_area_against_the_engine() -> None:
+    """The engine's k and y against the stage's, report only (#1207)."""
+
+    from microcosm.build.uk_runtime.bus_fare_pricing import (
+        UK_ENGINE_BUS_AREA_BY_STAGE_AREA,
+        bus_engine_parity,
+    )
+
+    prices = bus_fare_prices(_declared(), allowed_resources=UK_LCFS_VENDORED_RESOURCES)
+    areas = {
+        prices.london.label: prices.london,
+        **{area.label: area for area in prices.other_by_region.values()},
+    }
+    engine = {
+        "boardings_per_trip": {
+            UK_ENGINE_BUS_AREA_BY_STAGE_AREA[label]: area.boardings_per_trip
+            for label, area in areas.items()
+        },
+        "yield_per_boarding": {
+            UK_ENGINE_BUS_AREA_BY_STAGE_AREA[label]: area.yield_per_fare_paying_boarding
+            for label, area in areas.items()
+        },
+    }
+    parity = bus_engine_parity(prices, engine)
+    assert parity["report_only"] is True and parity["within_tolerance"] is True
+    assert set(parity["areas"]) == set(UK_ENGINE_BUS_AREA_BY_STAGE_AREA)
+
+    engine["yield_per_boarding"]["NORTHERN_IRELAND"] *= 1.01
+    drifted = bus_engine_parity(prices, engine)
+    ni = drifted["areas"]["northern_ireland"]["yield_per_boarding"]
+    assert ni["relative_gap"] == pytest.approx(1 / 1.01 - 1)
+    assert ni["within_tolerance"] is False and drifted["within_tolerance"] is False
+
+
+def test_bus_engine_parity_ties_the_receipts_factor_to_the_engines_index() -> None:
+    """microcosm#1331: the fare receipts move on the engine's index, so they tie."""
+
+    from microcosm.build.uk_runtime.bus_fare_pricing import (
+        UK_ENGINE_BUS_AREA_BY_STAGE_AREA,
+        bus_engine_parity,
+    )
+    from microcosm.build.uk_runtime.ledger_targets import (
+        uk_bus_fare_alignment_factors,
+    )
+
+    prices = bus_fare_prices(_declared(), allowed_resources=UK_LCFS_VENDORED_RESOURCES)
+    areas = {
+        prices.london.label: prices.london,
+        **{area.label: area for area in prices.other_by_region.values()},
+    }
+    factors = uk_bus_fare_alignment_factors(2024, 2025)
+    engine = {
+        "boardings_per_trip": {
+            UK_ENGINE_BUS_AREA_BY_STAGE_AREA[label]: area.boardings_per_trip
+            for label, area in areas.items()
+        },
+        "yield_per_boarding": {
+            UK_ENGINE_BUS_AREA_BY_STAGE_AREA[label]: area.yield_per_fare_paying_boarding
+            for label, area in areas.items()
+        },
+        "benchmark_year": 2024,
+        "local_bus_fares_index_ratio": dict(factors),
+    }
+    parity = bus_engine_parity(prices, engine, alignment_factors=factors)
+    assert set(parity["fares_index_ratio"]) == {"LONDON", "ENGLAND_OUTSIDE_LONDON"}
+    assert parity["within_tolerance"] is True
+    # An engine still on the calendar factor outside London misses by 1.3%.
+    engine["local_bus_fares_index_ratio"]["ENGLAND_OUTSIDE_LONDON"] = 1.112
+    drifted = bus_engine_parity(prices, engine, alignment_factors=factors)
+    check = drifted["fares_index_ratio"]["ENGLAND_OUTSIDE_LONDON"]
+    assert check["within_tolerance"] is False and drifted["within_tolerance"] is False
+    # Without factors, or an engine without the index, there is nothing to tie.
+    assert "fares_index_ratio" not in bus_engine_parity(prices, engine)
+
+
+def _journey_cell(area: str, fact_period: str) -> TargetSpec:
+    return TargetSpec(
+        name=f"dft.bus_journeys.{area}",
+        entity="household",
+        value=1.0e8,
+        measure="other_local_bus_boardings",
+        period=2025,
+        family="dft_bus_journeys",
+        source="test",
+        metadata={
+            "contract_target_id": f"dft.bus_journeys.{area}",
+            "ledger_fact_period": fact_period,
+        },
+    )
+
+
+def _journey_reference(index: str = UK_BUS_JOURNEYS_YEAR_INDEX):
+    return LedgerTargetReference(
+        name="dft.bus_journeys.north_east",
+        ledger_selector={"source_name": "dft"},
+        entity="household",
+        measure="other_local_bus_boardings",
+        period=2025,
+        uprating_index=index,
+    )
+
+
+def test_journey_rows_hold_at_the_year_the_stage_prices_from() -> None:
+    """BUS01a FY2024-25 against the stage's fiscal_start (microcosm#1207 r1)."""
+
+    assert _declared()["fiscal_start"] == "2024-04-01"
+    registry = TargetRegistry([_journey_cell("north_east", "2024")], country="uk")
+
+    (spec,) = hold_bus_journeys_at_the_stage_year(_journey_reference(), registry).specs
+
+    assert spec.value == 1.0e8
+    assert spec.metadata["uprating_factor"] == "1"
+    assert spec.metadata["uprating_hold"] == UK_BUS_JOURNEYS_HOLD
+    assert "2024-04-01" in spec.metadata["uprating_index_basis"]
+    assert is_uprating_hold(spec, 2025)
+    assert UK_UPRATING_APPLIERS[UK_BUS_JOURNEYS_YEAR_INDEX] is (
+        hold_bus_journeys_at_the_stage_year
+    )
+
+
+def test_a_journey_row_from_another_year_is_refused() -> None:
+    """A later BUS01a edition in the feed cannot bind on the stage's FY2024-25 factors."""
+
+    later = TargetRegistry([_journey_cell("north_east", "2025")], country="uk")
+    with pytest.raises(ValueError, match="move the stage's fiscal_start"):
+        hold_bus_journeys_at_the_stage_year(_journey_reference(), later)
+    other = _journey_reference("dft.local_bus_fares_index")
+    assert hold_bus_journeys_at_the_stage_year(other, later) is later
+    with pytest.raises(BusFarePricingError, match="not an April 1st"):
+        hold_bus_journeys_at_the_stage_year(
+            _journey_reference(), later, parameters={"fiscal_start": "2024-01-01"}
+        )
+
+
+def test_the_eight_regions_sum_to_england_outside_london() -> None:
+    declared = _declared()
+    regions = english_region_boardings(
+        declared, allowed_resources=UK_LCFS_VENDORED_RESOURCES
+    )
+    prices = bus_fare_prices(declared, allowed_resources=UK_LCFS_VENDORED_RESOURCES)
+
+    assert sorted(regions) == sorted(
+        region
+        for region in prices.other_by_region
+        if prices.other_by_region[region].label == "england_outside_london"
+        and region != "LONDON"
+    )
+    assert sum(regions.values()) == pytest.approx(
+        prices.other_by_region["NORTH_EAST"].boardings, rel=1e-6
+    )
+
+
+def test_region_shares_set_the_frame_beside_bus01a() -> None:
+    """Shares of the eight regions' trips and journeys, London residents apart."""
+
+    receipt = england_outside_london_region_shares(
+        {"NORTH_EAST": 300.0, "SOUTH_WEST": 100.0},
+        person_region=np.array(["NORTH_EAST", "SOUTH_WEST", "LONDON", "WALES"]),
+        person_weight=np.array([1.0, 2.0, 1.0, 1.0]),
+        other_trips=np.array([20.0, 10.0, 10.0, 99.0]),
+    )
+
+    north_east = receipt["regions"]["NORTH_EAST"]
+    assert north_east["frame_share"] == pytest.approx(0.5)
+    assert north_east["published_share"] == pytest.approx(0.75)
+    assert north_east["frame_over_published_share"] == pytest.approx(0.5 / 0.75)
+    assert receipt["regions"]["SOUTH_WEST"]["frame_share"] == pytest.approx(0.5)
+    # London residents' 10 trips beside the regions' 40.
+    assert receipt["london_residents_share_of_other_local_trips"] == pytest.approx(0.2)
+    assert receipt["report_only"] is True
+
+
+def test_the_stage_receipt_carries_the_region_shares() -> None:
+    prices = bus_fare_prices(_declared(), allowed_resources=UK_LCFS_VENDORED_RESOURCES)
+    household = pd.DataFrame(
+        {"household_id": [1, 2], "region": ["NORTH_EAST", "SOUTH_EAST"]}
+    )
+    person = pd.DataFrame(
+        {
+            "person_id": [11, 21],
+            "person_household_id": [1, 2],
+            "bus_in_london_trips": [0.0, 0.0],
+            "other_local_bus_trips": [30.0, 10.0],
+            "bus_pass_eligible": [False, False],
+        }
+    )
+    _, _, receipt = price_bus_journeys(
+        person,
+        household,
+        prices=prices,
+        trips_columns={
+            BUS_IN_LONDON: "bus_in_london_trips",
+            OTHER_LOCAL_BUS: "other_local_bus_trips",
+        },
+        eligibility_column="bus_pass_eligible",
+        household_weights=np.array([1.0, 1.0]),
+        raw_household_fares=np.array([0.0, 0.0]),
+        region_boardings={"NORTH_EAST": 1.0, "SOUTH_EAST": 3.0},
+    )
+    regions = receipt["england_outside_london_regions"]["regions"]
+    assert regions["NORTH_EAST"]["frame_share"] == pytest.approx(0.75)
+    assert regions["NORTH_EAST"]["published_share"] == pytest.approx(0.25)
