@@ -60,8 +60,9 @@ def index_types(index: pd.Index) -> tuple[list, list[str]]:
 
 
 def exact_total(values: np.ndarray) -> float | None:
-    """The non-NaN values' total, rounded once; None for an infinite value or one past the float range.
+    """The non-NaN values' total, rounded once.
 
+    None for an infinite value or a partial sum past the float range.
     np.nansum rounds every partial sum, so a large pair can absorb a small
     move and leave both totals equal and wrong. math.fsum rounds once, so an
     exact zero total stays 0.0 and any other total stays nonzero.

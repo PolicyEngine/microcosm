@@ -267,9 +267,11 @@ def test_a_zero_total_against_infinite_values_records_its_stop(
     assert any("employer_sponsored" in entry for entry in verdict["problems"])
 
 
-def _two_level(tables, people, names=("person_id", "household_id")):
+def _two_level(
+    tables, people, names=("person_id", "household_id"), households=(1, 1, 2)
+):
     tables["person"].index = pd.MultiIndex.from_arrays(
-        [list(people), [1, 1, 2]], names=list(names)
+        [list(people), list(households)], names=list(names)
     )
     return tables
 
@@ -288,7 +290,7 @@ def _two_level(tables, people, names=("person_id", "household_id")):
                 ),
             },
         ),
-        # The same two changes in one level of a two-level index.
+        # The same changes in either level of a two-level index.
         (
             _two_level(_tables([1.0, 2.0, 3.0]), (1, 2, 3)),
             _two_level(_tables([1.0, 2.0, 3.0]), (1.0, 2.0, 3.0)),
@@ -296,6 +298,10 @@ def _two_level(tables, people, names=("person_id", "household_id")):
         (
             _two_level(_tables([1.0, 2.0, 3.0]), (1, 2, 3)),
             _two_level(_tables([1.0, 2.0, 3.0]), (1, 2, 3), ("person_id", "unit_id")),
+        ),
+        (
+            _two_level(_tables([1.0, 2.0, 3.0]), (1, 2, 3)),
+            _two_level(_tables([1.0, 2.0, 3.0]), (1, 2, 3), households=(1.0, 1.0, 2.0)),
         ),
     ],
 )
@@ -413,7 +419,7 @@ def _exact_rel(a, b):
 )
 # A total that leaves exact zero by one subnormal ulp: a floor on the
 # divisor hides the move.
-@example(base=[1e-307], mirrored=1, steps=[1] + [0] * 23, bumped=None)
+@example(base=[1e-310], mirrored=1, steps=[1] + [0] * 23, bumped=None)
 # A one-ulp move beside a large pair: a running float sum absorbs it.
 @example(base=[1e17, 1.0], mirrored=2, steps=[0, 1] + [0] * 22, bumped=None)
 def test_property_the_check_agrees_with_exact_arithmetic(
