@@ -215,16 +215,18 @@ _ROLE_IDENTIFIER_RE = re.compile(r"^[a-z][a-z0-9_]{0,63}$")
 
 
 #: The stable releases proposed for US builds, with each one's role in
-#: ``releases.json``: the national release (the repository's default) and the
-#: ACS local-area release. They are proposals the US data builder has not
-#: agreed yet, so nothing reads them: :func:`publishes_to_build_folder` names
-#: no US release, and every US release keeps tags and ``latest.json``. Once
-#: they are agreed, that function names them, the US builders write the
+#: ``releases.json``: in the one ``policyengine/populace-us`` repository, the
+#: national release (the repository's default) and the local-area release,
+#: whose builds keep their IDs and the file name
+#: ``populace_us_2024_acs_local.h5``. They are proposals the US data builder
+#: has not agreed yet, so nothing reads them: :func:`publishes_to_build_folder`
+#: names no US release, and every US release keeps tags and ``latest.json``.
+#: Once they are agreed, that function names them, the US builders write the
 #: build-folder manifests under them and the registry's US entries name them.
 PROPOSED_US_RELEASES: Mapping[str, str] = MappingProxyType(
     {
         "populace-us-2024-national": "national",
-        "populace-us-2024-acs-local": "local_area",
+        "populace-us-2024-local": "local_area",
     }
 )
 
