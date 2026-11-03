@@ -1005,3 +1005,24 @@ def test_property_a_positive_standin_above_the_first_cut_lands_in_one_band(
                 assert names[int(np.argmax(hits[:, index]))] == table.indicators[band]
 
     check()
+
+
+def test_without_the_toy_standin_its_six_rows_refuse_activation_by_name(toy):
+    """The drop-the-node mutant, built in the test: A's proof fails closed."""
+    from test_support.microcosm_build.transport_nz_toy import (
+        TOY_MEASUREMENT,
+        TOY_STANDIN_NODE,
+    )
+
+    fixture, _ = toy
+    spec = copy.deepcopy(fixture.spec)
+    nodes = spec["resources"]["transport_graph"]["nodes"]
+    nodes[:] = [row for row in nodes if row["id"] != TOY_STANDIN_NODE]
+    with pytest.raises(ValueError) as refused:
+        validate_transport_activation(spec)
+    message = str(refused.value)
+    _, bands = _standin_bands(fixture)
+    for band, _ in bands:
+        for role in ("count_reference", "amount_reference"):
+            assert f"target_references.{band[role]}; awaits" in message
+    assert f"measurement:{TOY_MEASUREMENT}" in message
