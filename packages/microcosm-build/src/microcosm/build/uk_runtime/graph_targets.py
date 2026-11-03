@@ -223,7 +223,6 @@ class _TargetKernel(KernelBase):
 
     def implementation_hash(self) -> str:
         from . import (
-            calibration_run,
             full_targets,
             high_value_homes,
             measure_simulation,
@@ -255,11 +254,6 @@ class _TargetKernel(KernelBase):
             # directly, not listed: the module also loads the registers only
             # the validation checks read, which no listed module may.
             weighted_integrity,
-            # full_targets writes _ledger_provenance into the surface and runs
-            # _validate_band_edge_registry from here. uk.full.bound_spine@1,
-            # which loads a spine checkpoint ahead of the target nodes,
-            # already hashes it.
-            calibration_run,
             *uk_target_compile_modules(),
         )
         # The solve fingerprint: every packaged resource but the gate-only

@@ -14,10 +14,6 @@ from pathlib import Path
 from typing import Any
 
 from microcosm.build.ledger_artifact import load_ledger_consumer_artifact
-from microcosm.build.uk_runtime.calibration_run import (
-    _ledger_provenance,
-    _validate_band_edge_registry,
-)
 from microcosm.build.uk_runtime.chronicle_feed import (
     load_uk_chronicle_feed,
     require_committed_uk_chronicle_feed_pin,
@@ -27,6 +23,10 @@ from microcosm.build.uk_runtime.derived_facts import (
     uk_derived_fact_rows,
 )
 from microcosm.build.uk_runtime.frs_release import load_uk_frs_release
+from microcosm.build.uk_runtime.ledger_surface import (
+    _ledger_provenance,
+    _validate_band_edge_registry,
+)
 from microcosm.build.uk_runtime.ledger_targets import (
     _uk_contract_targets,
     assert_uk_local_deferrals_in_force,

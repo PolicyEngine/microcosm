@@ -53,6 +53,7 @@ UK_TARGET_COMPILE_MODULE_NAMES: tuple[str, ...] = (
     "microcosm.build.uk_runtime.high_value_homes",
     "microcosm.build.uk_runtime.hmrc_uprating",
     "microcosm.build.uk_runtime.ledger_fact_vendoring",
+    "microcosm.build.uk_runtime.ledger_surface",
     "microcosm.build.uk_runtime.ledger_targets",
     "microcosm.build.uk_runtime.local_target_census",
     "microcosm.build.uk_runtime.local_targets",
