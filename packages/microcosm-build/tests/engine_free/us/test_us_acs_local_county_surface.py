@@ -667,11 +667,12 @@ def test_county_hooks_materialize_a_fixture_and_preserve_configured_geography(
         lambda frame, *, seed: (frame, {"seed": seed, "assigned_sha256": "stub"}),
     )
     # microcosm#1020/#1021/#1022: this fixture's staging summary records no
-    # immigration, work/disability or income-transfer stage; this test checks
-    # county hooks only.
+    # immigration, work/disability, income-transfer or SSI disability-criteria
+    # stage; this test checks county hooks only.
     monkeypatch.setattr(module, "_require_local_immigration", lambda *_a: None)
     monkeypatch.setattr(module, "_require_local_work_disability", lambda *_a: None)
     monkeypatch.setattr(module, "_require_local_income_transfer", lambda *_a: None)
+    monkeypatch.setattr(module, "_require_local_ssi_disability", lambda *_a: None)
     monkeypatch.setattr(
         module.cd_surface,
         "sample_staging_frame",
