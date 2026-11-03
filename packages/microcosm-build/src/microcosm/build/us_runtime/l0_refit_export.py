@@ -77,6 +77,9 @@ from microcosm.build.us_runtime.immigration import (
     US_IMMIGRATION_NONCONSTANT_PERSON_COLUMNS,
 )
 from microcosm.build.us_runtime.input_mass import us_input_mass_totals
+from microcosm.build.us_runtime.local_jurisdictions import (
+    rederive_us_local_jurisdiction_flags,
+)
 from microcosm.build.us_runtime.medicare_take_up import (
     US_MEDICARE_TAKE_UP_NONCONSTANT_PERSON_COLUMNS,
 )
@@ -580,6 +583,11 @@ def export_us_l0_refit_h5(
     shipping. The geography-ladder gate runs on the selected support with
     its calibrated weights (microcosm #275/#34): a release whose spine is
     inconsistent or whose NYC mass collapsed fails by default.
+
+    The local-jurisdiction flags are re-derived from the selected support's
+    own geography before the gate, so a base H5 built before the flags
+    existed exports them instead of leaving the engine default on every
+    resident; the summary records the receipt.
     """
 
     root_attrs_source = (
@@ -592,7 +600,9 @@ def export_us_l0_refit_h5(
         weight_key=weight_key,
         zero_weight_tolerance=zero_weight_tolerance,
     )
-    export_frame = attach_l0_refit_weights(base_frame, solution)
+    export_frame, local_jurisdiction_flags = rederive_us_local_jurisdiction_flags(
+        attach_l0_refit_weights(base_frame, solution)
+    )
     if require_source_columns:
         assert_required_us_release_source_columns(export_frame)
     geography_ladder_gate = us_geography_ladder_gate(
@@ -648,6 +658,7 @@ def export_us_l0_refit_h5(
             US_RELEASE_REQUIRED_HOUSEHOLD_NONCONSTANT_SOURCE_COLUMNS
         ),
         "required_source_columns_checked": bool(require_source_columns),
+        "local_jurisdiction_flags": local_jurisdiction_flags,
         "geography_ladder_gate_enforced": bool(require_geography_ladder),
         "geography_ladder_gate": {
             "passed": geography_ladder_gate.passed,

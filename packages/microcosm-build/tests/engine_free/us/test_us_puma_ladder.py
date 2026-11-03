@@ -428,10 +428,31 @@ def _gated_household() -> tuple[pd.DataFrame, np.ndarray]:
             "congressional_district_geoid": [3612, 3620, 653, 4802],
             "county_fips": ["36061", "36001", "06037", "48001"],
             "county_fips_2023": ["36061", "36001", "06037", "48001"],
+            # The drawn county decides the county-rule flag; no county here is
+            # Denver.
+            "in_denver": [False] * 4,
         }
     )
     weights = np.asarray([2.6, 3.6, 73.8, 20.0])
     return household, weights
+
+
+def test_gate_fails_when_the_county_decided_flag_is_absent() -> None:
+    household, weights = _gated_household()
+
+    result = us_puma_ladder_gate(household.drop(columns=["in_denver"]), weights)
+
+    assert not result.passed
+    assert any(failure.startswith("in_denver: absent") for failure in result.failures)
+
+
+def test_gate_does_not_require_a_place_flag() -> None:
+    household, weights = _gated_household()
+
+    result = us_puma_ladder_gate(household, weights)
+
+    assert "in_yonkers" not in household and "in_wilmington" not in household
+    assert result.passed, result.failures
 
 
 def _minimal_us_frame() -> Frame:

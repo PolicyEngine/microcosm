@@ -350,7 +350,7 @@ EXPECTED_HASHES = {
     "acs_person_predictors": "878c788a6f037d7aca12b3586ea034eff04f3034ffa11935a736493042551f25",
     "authority": "bf681aedc859fd6398ef72da68f584069b7d25b3085c549bf99f82e8324c4eef",
     "early_families": "4aa9f736fd76e83955477ad1667e58f48f264783f05bdc7f0102cd32d61323bd",
-    "full_checkpoint": "69c2e4fcc8ebdf1e6257ccaf4787b736c4822beda5f4ee01a53ffa3945f4936f",
+    "full_checkpoint": '94ed381f17dc9cafb80396b2ea0f02ed8745d9359ec3f4d551a65a5a7f2fc26d',
     "gap_fill_schedule": "1c31f9868f7884347cc19cf1ff65da43f950b9114941a715bab168246db414a7",
     "graph_nodes": "1b208fff4f6d878c522147fee617177544bda8963c940f98a4bfc37507cb955f",
     "geography_assignment": "44e7f5f6cd7ceeef85d532c3d46306d03de4f4ee811376e6d29920742746b65c",
@@ -379,9 +379,12 @@ EXPECTED_HASHES = {
     # gains the passive partnership/S-corp leaf, so the PUF QRF targets change.
     # microcosm#1259's recipient-share bound in puf_support moves both again.
     # microcosm#1261 moves both again: the PUF donor carries partnership and
-    # S-corp line-32 shares as separate leaves.
-    "seed_map": '07fe9086b57a15ab1c2551fce5c30aebfa55175d76a308f7dbb268ac49da747a',
-    "seed_protocol": '4ff992324004d4c09d4165bc8d24ccff15b9d84858836851b12d532c870920f4',
+    # S-corp line-32 shares as separate leaves. microcosm#1444 moves both:
+    # housing_inputs puts each ACS rent draw on its own household's head.
+    # microcosm#1453 moves both again: geography_ladder and puma_ladder write
+    # the local-jurisdiction flags.
+    "seed_map": '19daf13d0415792816c230e775de357c878091a628fd02bbe4184159db356f90',
+    "seed_protocol": 'c1b42729c9b655fc599c39a55a66fdf71d3fd5eba64bc3c1d37cb09a5ff09596',
     "source_manifest": "608c3621b1e4a108e57c8f83d16a184acdb3d05e16a81b895f7f72dbf5d0685c",
     "take_up": "9522ce40f7dea569312dd7a7beb474e5a5afadd2f1e10cb5876534c3ef623d35",
     "tail": "071d418bb49976f4682c320d2ad07097c177de3a645d2524f235e1ff33ac83f9",

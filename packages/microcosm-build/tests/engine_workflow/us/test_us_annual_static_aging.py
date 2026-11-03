@@ -96,6 +96,12 @@ def test_annual_files_preserve_base_shape_values_and_year(inputs, monkeypatch):
     assert manifest["metadata"]["dataset_years"] == {
         "populace_us_2024": {str(y): f"populace_us_{y}" for y in (2024, 2025, 2026)}
     }
+    # The fixture parent has no county, so it decides and carries no local
+    # flag; tests/engine_free/us/test_us_annual_static_aging_parent_flags.py
+    # covers parents whose geography decides them.
+    flags = manifest["base"]["local_jurisdiction_flags"]
+    assert flags["rungs"] == []
+    assert flags["carried_flags"] == []
     for year in (2025, 2026):
         path = output / f"populace_us_{year}.h5"
         import h5py

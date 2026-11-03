@@ -694,6 +694,87 @@ def test_geography_assignment_receipt_rejects_coherent_valid_target_rewrite(
         )
 
 
+def _assembled_frame_the_live_puma_gate_reaches(
+    pool_tool: ModuleType, *, in_denver: bool
+) -> Frame:
+    """An assembled pool with every column the live PUMA-ladder gate reads."""
+
+    stack = pool_tool.assemble_stacked_spine(
+        _many_household_source_frame(count=2),
+        _many_household_source_frame(count=2, measured_offset=1_000.0),
+        sample_fraction=1.0,
+        sample_seed=578,
+    )
+    assigned = _with_fixture_household_geography(stack.frame)
+    household = assigned.table("household")
+    household["state_fips"] = 6
+    household["county_fips_2023"] = household["county_fips"]
+    if in_denver:
+        household["in_denver"] = False
+    return assigned
+
+
+@pytest.mark.parametrize("in_denver", [False, True])
+def test_geography_assignment_receipt_names_the_live_gate_failures(
+    pool_tool: ModuleType, in_denver: bool
+) -> None:
+    # An assembled checkpoint from before the local-jurisdiction flags holds a
+    # passing PUMA-ladder receipt but no in_denver. The live gate fails it, and
+    # the rejection names what the live gate finds, so the operator sees the
+    # missing flag. (The fixture's Alameda-only pool also fails the NYC mass
+    # checks, with or without the flag.)
+    assigned = _assembled_frame_the_live_puma_gate_reaches(
+        pool_tool, in_denver=in_denver
+    )
+    receipt = _fixture_geography_assignment_receipt(pool_tool, assigned)
+
+    with pytest.raises(
+        ValueError,
+        match="PUMA-ladder gate receipt changed from live output; the live gate fails",
+    ) as rejected:
+        pool_tool._validate_stacked_geography_assignment_receipt(
+            assigned,
+            receipt,
+            target_districts=(601,),
+            boundary="fixture pre-flag checkpoint",
+            require_exact_assembled_rows=True,
+        )
+
+    message = str(rejected.value)
+    assert "[us_puma_ladder] New York State carries zero household weight" in message
+    missing_flag = "[us_puma_ladder] in_denver: absent, but this table's county rung"
+    assert (missing_flag in message) is not in_denver
+
+
+def test_geography_assignment_receipt_says_when_a_passing_live_gate_differs(
+    pool_tool: ModuleType, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    assigned = _assembled_frame_the_live_puma_gate_reaches(pool_tool, in_denver=True)
+    receipt = _fixture_geography_assignment_receipt(pool_tool, assigned)
+    monkeypatch.setattr(
+        pool_tool,
+        "us_puma_ladder_gate",
+        lambda *args, **kwargs: GateResult(
+            name="us_puma_ladder", passed=True, details={"fixture": False}
+        ),
+    )
+
+    with pytest.raises(
+        ValueError,
+        match=(
+            "gate receipt changed from live output; the live gate passes, but its "
+            "details differ from the receipt's"
+        ),
+    ):
+        pool_tool._validate_stacked_geography_assignment_receipt(
+            assigned,
+            receipt,
+            target_districts=(601,),
+            boundary="fixture changed gate details",
+            require_exact_assembled_rows=True,
+        )
+
+
 @pytest.mark.parametrize(
     ("route", "stage_receipts"),
     (

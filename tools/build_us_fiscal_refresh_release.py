@@ -271,6 +271,9 @@ from microcosm.build.us_runtime.l0_refit_export import (
     attach_l0_refit_entity_weights,
     load_us_frame,
 )
+from microcosm.build.us_runtime.local_jurisdictions import (
+    rederive_us_local_jurisdiction_flags,
+)
 from microcosm.build.us_runtime.medicare_irmaa_holdout import (
     medicare_irmaa_holdout_from_sim,
     medicare_irmaa_holdout_unavailable,
@@ -7365,6 +7368,56 @@ def _with_l0_refit_weights(base_frame: Frame, result) -> Frame:
     )
 
 
+#: The supports ``_main`` derives local-jurisdiction flags on, in build order:
+#: the loaded base (or prepared pool), the frozen support when a selection
+#: source reduces it, and the export support the release engine writes to H5.
+LOCAL_JURISDICTION_FLAG_SUPPORTS = ("base", "frozen_support", "export")
+
+
+def _with_local_jurisdiction_flags(
+    frame: Frame,
+    *,
+    support: str,
+    receipts: dict[str, object],
+    telemetry: _BuildProgress | None,
+) -> Frame:
+    """Derive the local-jurisdiction flags this support's geography decides.
+
+    The rungs belong to the whole household table
+    (``us_local_jurisdiction_rungs_present``): a pooled base whose ACS rows
+    carry no block decides only the county-rule flags. A step that removes
+    rows can make the place-rule flags decidable, as when frozen-support
+    selection or the final L0 support keeps only block-anchored donors, so
+    ``_main`` derives again after each such step and the written support
+    carries every flag its own geography decides. The derivation refuses a
+    carried flag that disagrees with the geography and returns a support
+    whose flags are already complete unchanged. ``receipts[support]``
+    records each derivation for the calibration diagnostics.
+    """
+
+    if support not in LOCAL_JURISDICTION_FLAG_SUPPORTS:
+        raise ValueError(
+            f"Unknown local-jurisdiction flag support {support!r}; expected one "
+            f"of {LOCAL_JURISDICTION_FLAG_SUPPORTS}."
+        )
+    frame, receipt = rederive_us_local_jurisdiction_flags(frame)
+    receipts[support] = receipt
+    if telemetry is not None:
+        telemetry.stage(
+            f"local_jurisdiction_flags_{support}",
+            message=(
+                f"Derived local-jurisdiction flags from the {support} support's "
+                "geography."
+            ),
+            rungs=receipt["rungs"],
+            carried_flags=receipt["carried_flags"],
+            flag_status={
+                flag: entry["status"] for flag, entry in receipt["flags"].items()
+            },
+        )
+    return frame
+
+
 def _without_calibrated_frames(result, *, export_frame: Frame | None = None):
     """Drop calibrated target tables while keeping weights and diagnostics.
 
@@ -12939,6 +12992,19 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
         base_frame = _load_frame(base_h5, expected_sha256=base_dataset_sha256)
     else:
         base_frame = pool_frame
+    # A base built before the local-jurisdiction flags existed carries none,
+    # and the engine would then default every Yonkers, Wilmington, Denver
+    # and Philadelphia resident to False. Derive them from the base's own
+    # geography, refusing a carried flag that disagrees with it. _main
+    # derives them again after frozen-support selection and on the export
+    # support.
+    local_jurisdiction_flags: dict[str, object] = {}
+    base_frame = _with_local_jurisdiction_flags(
+        base_frame,
+        support="base",
+        receipts=local_jurisdiction_flags,
+        telemetry=telemetry,
+    )
     capital_gains_tail_presence = assert_puf_capital_gains_tail_survives_selection(
         base_frame,
         base_frame,
@@ -13036,6 +13102,15 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
         base_frame, selection_report = select_frozen_support(
             selection_candidate_frame,
             selection_source,
+        )
+        # A frozen support that keeps only block-anchored donors decides the
+        # place-rule flags the pooled base could not; target materialization
+        # and the export both see the flags this support's geography decides.
+        base_frame = _with_local_jurisdiction_flags(
+            base_frame,
+            support="frozen_support",
+            receipts=local_jurisdiction_flags,
+            telemetry=telemetry,
         )
         selection_source_payload = selection_report.as_manifest()
         selection_source_payload["puf_capital_gains_tail_retention"] = (
@@ -15074,6 +15149,14 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
         )
     else:
         export_frame = _with_l0_refit_weights(base_frame, result)
+    # The L0 support can drop every row without a block and so decide the
+    # place-rule flags; every later gate and the written H5 see this frame.
+    export_frame = _with_local_jurisdiction_flags(
+        export_frame,
+        support="export",
+        receipts=local_jurisdiction_flags,
+        telemetry=telemetry,
+    )
     result = _without_calibrated_frames(
         result,
         export_frame=export_frame if ladder_outcome is not None else None,
@@ -15454,6 +15537,7 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
         support_value_repairs={
             "social_security_components": social_security_component_repair,
             "non_sch_d_capital_gains": non_sch_d_cgd_repair,
+            "local_jurisdiction_flags": local_jurisdiction_flags,
         },
         warm_start_calibration=warm_start_calibration,
         selection_source=selection_source_payload,
