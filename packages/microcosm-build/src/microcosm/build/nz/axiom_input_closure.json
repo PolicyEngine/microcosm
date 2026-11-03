@@ -943,7 +943,7 @@
    "input": "nz_super_all_shared_adults_are_exempt_dependent_children_or_temporary_visitors",
    "class": "defaulted",
    "value": false,
-   "reason": "nz_super_living_alone (s 4A) reads this input only when nz_super_shares_residence_with_person_at_least_adult_age is true, and the axiom:nz concept binding now derives that input from household composition: another person in the same household is aged 18 or over. With this input false, every single person who shares a home with an adult gets the s 4A sharing rate (nz_super_single_not_living_alone_weekly_rate_before_tax), including one whose only co-resident adults are exempt dependent children or temporary visitors, whom s 4A counts as living alone; this understates NZS for that group.",
+   "reason": "nz_super_living_alone (s 4A) reads this input only when nz_super_shares_residence_with_person_at_least_adult_age is true, and the axiom:nz concept binding now derives that input from household composition: another person in the same household is aged 18 or over. With this input false, every person who has no partner (nz_super_single) and shares a home with an adult gets the sharing rate, nz_super_single_not_living_alone_weekly_rate_before_tax (Schedule 1 Part 1 clause 1(b)). That includes a person whose only co-resident adults are exempt dependent children or temporary visitors. Section 4A counts that person as living alone, so this default understates NZS for that group. S5's reg 17 superannuitant base rate (as_rate_bridge.json) adds the same weekly amount for a single superannuitant unit, so the default lowers that base rate for the group too.",
    "citation": "New Zealand Superannuation and Retirement Income Act 2001 s 4A (nz_super_living_alone)",
    "new_default": true
   },

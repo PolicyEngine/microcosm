@@ -210,7 +210,7 @@
   "disclosures": [
     {
       "note": "The model understates NZ Super for single people whose only co-resident adults are exempt dependent children or temporary visitors: the shares-residence input reads household composition, but the exempt-adults input defaults false, so they get the sharing rate. This moves their deciles downward.",
-      "evidence": "axiom_input_closure.json#/entries[input=nz_super_shares_residence_with_person_at_least_adult_age]",
+      "evidence": "axiom_input_closure.json#/entries[input=nz_super_shares_residence_with_person_at_least_adult_age]; axiom_input_closure.json#/entries[input=nz_super_all_shared_adults_are_exempt_dependent_children_or_temporary_visitors]",
       "citation": {
         "item": "A1",
         "source": "docs/nz-reporting-classifiers-method.md#a1-income-decile-provisional"

@@ -3235,24 +3235,30 @@ class TestSourceCitations:
                 (_BUILD.repository / file).read_text(encoding="utf-8")
             )
             array, field = "bindings", "canonical_input"
-            expected_key = "nz:statutes/social_security/accommodation_supplement/core#input.accommodation_supplement_relevant_weekly_income"
+            expected_keys = [
+                "nz:statutes/social_security/accommodation_supplement/core#input.accommodation_supplement_relevant_weekly_income"
+            ]
             evidence = reporting["disclosures"][1]["evidence"]
         else:
             file, array, field = "axiom_input_closure.json", "entries", "input"
             original = _load(file)
             if disclosure == "sharing_home":
-                expected_key = (
-                    "nz_super_shares_residence_with_person_at_least_adult_age"
-                )
+                expected_keys = [
+                    "nz_super_shares_residence_with_person_at_least_adult_age",
+                    "nz_super_all_shared_adults_are_exempt_dependent_children_or_temporary_visitors",
+                ]
                 evidence = reporting["disclosures"][0]["evidence"]
             else:
-                expected_key = "accommodation_supplement_non_beneficiary"
+                expected_keys = ["accommodation_supplement_non_beneficiary"]
                 evidence = reporting["as_non_beneficiary_audit"]["evidence"]
-        (expected,) = [row for row in original[array] if row[field] == expected_key]
+        expected = []
+        for key in expected_keys:
+            (row,) = [row for row in original[array] if row[field] == key]
+            expected.append(row)
         original[array].insert(0, {field: "dummy_record"})
         citation_checkout(file, original)
-        (citation,) = json_pointer_citations(evidence)
-        assert resolve_json_pointer(*citation) == expected
+        citations = json_pointer_citations(evidence)
+        assert [resolve_json_pointer(*citation) for citation in citations] == expected
 
     def test_local_file_pins_cannot_hide_absolute_or_parent_path_aliases(self) -> None:
         relative = "packages/microcosm-frame/src/microcosm/frame/concepts.py"
@@ -3415,8 +3421,10 @@ class TestSourceCitations:
 
     def test_reporting_disclosure_cites_the_sharing_home_binding_record(self) -> None:
         disclosure = _load("reporting_classifiers.json")["disclosures"][0]
-        (citation,) = json_pointer_citations(disclosure["evidence"])
-        record = resolve_json_pointer(*citation)
+        record, exempt = (
+            resolve_json_pointer(*citation)
+            for citation in json_pointer_citations(disclosure["evidence"])
+        )
         assert (
             record["input"]
             == "nz_super_shares_residence_with_person_at_least_adult_age"
@@ -3425,15 +3433,14 @@ class TestSourceCitations:
         assert record["class"] == "encoded"
         assert record["encoded_by"] == "concept_binding"
         assert "value" not in record
-        (exempt,) = [
-            row
-            for row in _load("axiom_input_closure.json")["entries"]
-            if row["input"]
+        # The exempt-adults default the note names is the second citation.
+        assert (
+            exempt["input"]
             == "nz_super_all_shared_adults_are_exempt_dependent_children_or_temporary_visitors"
-        ]
+        )
         assert exempt["class"] == "defaulted"
         assert exempt["value"] is False
-        assert "this understates NZS for that group" in exempt["reason"]
+        assert "default understates NZS for that group" in exempt["reason"]
         assert (
             "understates NZ Super for single people whose only co-resident adults"
             in disclosure["note"]

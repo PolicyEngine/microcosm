@@ -63,7 +63,7 @@ weighted share of every fixed cell must be reported for every scenario and
 variant. These fixed memberships preserve comparisons even when variant cells
 are no longer weighted tenths.
 
-The disclosure on New Zealand Superannuation now points the other way. The
+The disclosure on New Zealand Superannuation records an understatement. The
 shared-residence input reads household composition, and the input for exempt
 co-resident adults defaults false, so a single person whose only co-resident
 adults are exempt dependent children or temporary visitors gets the sharing
