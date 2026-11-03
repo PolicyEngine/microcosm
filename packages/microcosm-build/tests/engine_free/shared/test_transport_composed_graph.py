@@ -2799,7 +2799,9 @@ def test_packaged_spec_refuses_with_every_activation_gap_named():
         compose_transport_graph(spec, config)
 
 
-def test_packaged_spec_refuses_before_reading_any_source(tmp_path):
+def test_packaged_spec_refuses_before_reading_any_source(tmp_path, monkeypatch):
+    # Inside the packaged factors' validity, so activation decides the refusal.
+    monkeypatch.setattr(cli_module, "_today", lambda: date(2026, 10, 24))
     missing = tmp_path / "absent"
     with pytest.raises(ValueError, match="not activated"):
         prepare_transport_build(
@@ -3527,7 +3529,11 @@ def test_create_inventory_cache_binds_actual_source_bytes(
     assert calls == ["nz.create", "nz.create"]
 
 
-def test_prepare_does_not_create_inventory_store_before_activation(tmp_path):
+def test_prepare_does_not_create_inventory_store_before_activation(
+    tmp_path, monkeypatch
+):
+    # Inside the packaged factors' validity, so activation decides the refusal.
+    monkeypatch.setattr(cli_module, "_today", lambda: date(2026, 10, 24))
     inventory = tmp_path / "inventory"
     with pytest.raises(ValueError, match="not activated"):
         prepare_transport_build(

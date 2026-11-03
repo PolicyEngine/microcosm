@@ -68,7 +68,7 @@ from __future__ import annotations
 import hashlib
 import json
 import re
-from collections.abc import Iterator, Mapping, Sequence
+from collections.abc import Iterable, Iterator, Mapping, Sequence
 from dataclasses import dataclass, replace
 from importlib.resources import files
 from pathlib import Path
@@ -1004,6 +1004,54 @@ def _reference_activation_gaps(
             yield gap
 
 
+_HOLDOUT_REFERENCES = "holdout_references"
+
+
+def _holdout_separation_gaps(
+    documents: Iterable[tuple[str, Mapping]],
+) -> Iterator[str]:
+    """Name every non-holdout row that measures a declared holdout's concept.
+
+    A holdout row tests the calibrated model against a fact it never saw, so
+    no other reference document may carry a row with the same ``measure``,
+    whatever its entity. Only rows of ``holdout_references`` count as
+    holdouts; a spec without that document has nothing to guard.
+    """
+
+    documents = tuple(documents)
+    holdouts: dict[str, list[Mapping]] = {}
+    for resource, document in documents:
+        if resource != _HOLDOUT_REFERENCES:
+            continue
+        for row in document.get("target_references", ()):
+            if isinstance(row, Mapping) and _is_text(row.get("measure")):
+                holdouts.setdefault(row["measure"], []).append(row)
+    if not holdouts:
+        return
+    seen = set()
+    for resource, document in documents:
+        if resource == _HOLDOUT_REFERENCES:
+            continue
+        for row in document.get("target_references", ()):
+            if (
+                not isinstance(row, Mapping)
+                or not _is_text(row.get("measure"))
+                or row["measure"] not in holdouts
+            ):
+                continue
+            for holdout in holdouts[row["measure"]]:
+                gap = (
+                    f"holdout separation: {resource}.{row.get('name', '?')} "
+                    f"({row.get('entity', '?')}, {row['measure']}) measures "
+                    f"the concept of {_HOLDOUT_REFERENCES}."
+                    f"{holdout.get('name', '?')} "
+                    f"({holdout.get('entity', '?')}, {holdout['measure']})"
+                )
+                if gap not in seen:
+                    seen.add(gap)
+                    yield gap
+
+
 def _reference_selections(spec: Mapping[str, object]) -> dict[str, dict]:
     if not _has_resource(spec, "reference_selection"):
         return {}
@@ -1445,6 +1493,8 @@ def validate_transport_activation(spec: Mapping[str, object]) -> None:
     Selections inside parameter lists count; selected resource data is literal.
     Entitlement selections use the factory's instantiated rows, so explicit
     scenario nodes replace their tier templates during preflight too.
+    No row of another reference document, mass included, may share a
+    ``holdout_references`` row's measure on any entity.
     """
 
     missing = []
@@ -1537,11 +1587,13 @@ def validate_transport_activation(spec: Mapping[str, object]) -> None:
     )
     reference_resources.update(reference_selections)
     checked_reference_views = set()
+    separation_views = []
     for resource in sorted(reference_resources):
         if not _has_resource(spec, resource):
             missing.append(f"{resource}.json")
             continue
         document = transport_resource(spec, resource)
+        separation_views.append((resource, document))
         identity = hashlib.sha256(canonical_json(document)).hexdigest()
         checked_reference_views.add((resource, identity))
         missing.extend(
@@ -1553,7 +1605,15 @@ def validate_transport_activation(spec: Mapping[str, object]) -> None:
                 measurement_refusals,
             )
         )
+    # The mass document is a calibration input even when no node selects it.
+    if "mass_references" not in reference_resources and _has_resource(
+        spec, "mass_references"
+    ):
+        separation_views.append(
+            ("mass_references", transport_resource(spec, "mass_references"))
+        )
     for (resource, identity), document in selected_reference_views.items():
+        separation_views.append((resource, document))
         if (resource, identity) not in checked_reference_views:
             missing.extend(
                 _reference_activation_gaps(
@@ -1564,6 +1624,7 @@ def validate_transport_activation(spec: Mapping[str, object]) -> None:
                     measurement_refusals,
                 )
             )
+    missing.extend(_holdout_separation_gaps(separation_views))
     receipt = (
         transport_resource(spec, "receipt_contract")
         if _has_resource(spec, "receipt_contract")
@@ -2932,6 +2993,8 @@ def _precalibration_stages(spec: Mapping[str, object]) -> dict[str, Mapping]:
         else ()
     )
     holdout_columns = {(row["entity"], row["measure"]) for row in holdout}
+    # A stage output measures a holdout's concept on any entity.
+    holdout_measures = {row["measure"]: row for row in holdout}
     holdout_modules = {
         row["rulespec_path"]
         for row in bindings.values()
@@ -3035,8 +3098,15 @@ def _precalibration_stages(spec: Mapping[str, object]) -> dict[str, Mapping]:
                     "precalibration_stages outputs must be nonempty and distinct."
                 )
             columns.add(column)
-        if columns & holdout_columns:
-            raise ValueError("precalibration_stages output is a holdout measure.")
+        for entity, column in sorted(columns):
+            if column in holdout_measures:
+                holdout_row = holdout_measures[column]
+                raise ValueError(
+                    "precalibration_stages output is a holdout measure: stage "
+                    f"{identifier!r} output ({entity}, {column}) measures the "
+                    f"concept of holdout_references.{holdout_row.get('name', '?')} "
+                    f"({holdout_row['entity']}, {holdout_row['measure']})."
+                )
         if stage["rulespec_path"] in holdout_modules:
             raise ValueError("precalibration_stages module produces a holdout measure.")
         result[name] = stage

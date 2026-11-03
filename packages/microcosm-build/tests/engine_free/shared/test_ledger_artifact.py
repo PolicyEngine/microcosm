@@ -150,6 +150,7 @@ def test_lexical_float_opt_in_is_limited_to_factor_consumers():
     assert opt_ins == {
         "packages/microcosm-build/src/microcosm/build/transport/money_kernels.py",
         "packages/microcosm-build/src/microcosm/build/transport/target_kernels.py",
+        "tools/generate_be_target_references.py",
         "tools/generate_nz_reference_aging.py",
     }
 

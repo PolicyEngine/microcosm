@@ -86,6 +86,9 @@ UNIT_RULE = replace(
 SCENARIOS = ("S0", "S1", "V1", "V3", "VHF")
 SHARED_BRIDGE = "nz.as.bridge"
 FLAGS = ("receives_main", "receives_other", "receives_pension")
+#: The receipt strata calibrate every flag, so the holdout rows measure a
+#: dedicated eligibility column that no other reference document measures.
+HOLDOUT_MEASURE = "toy_main_eligible"
 GROSS = ("toy_main_annual_gross", "toy_other_annual_gross")
 DEMOGRAPHY = tuple(
     (f"toy_demography_{region}_{band}", region, lower, upper)
@@ -921,6 +924,8 @@ def make_nz_toy_fixture(root):
     base = make_entitlement_fixture(root, variants=False)
     spec = copy.deepcopy(base.spec)
     r = spec["resources"]
+    for row in r["holdout_references"]["target_references"]:
+        row["measure"] = HOLDOUT_MEASURE
     population = write_population_sources(
         root / "forty-households",
         mass=120,
@@ -1790,7 +1795,7 @@ def _exemptions(resources):
     selections = {}
     for resource, name, entity, measure in (
         ("target_references", "toy_parked_calibration", "person", "age"),
-        ("holdout_references", "toy_parked_tripwire", "person", "receives_main"),
+        ("holdout_references", "toy_parked_tripwire", "person", HOLDOUT_MEASURE),
     ):
         row = reference_row(
             name, entity=entity, measure=measure, activation_status="pending"
