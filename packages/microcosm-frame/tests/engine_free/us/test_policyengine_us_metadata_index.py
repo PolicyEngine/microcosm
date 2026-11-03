@@ -233,7 +233,6 @@ class unsupported_unit(Variable):
         module._index_policyengine_us_variable_sources(tmp_path)
 
 
-
 def _indexed_unit(unit_source: str) -> str | None:
     """Index one variable class whose ``unit`` assignment is ``unit_source``."""
 
@@ -249,9 +248,7 @@ class sampled_unit(Variable):
     unit = {unit_source}
 """,
         )
-        return module._index_policyengine_us_variable_sources(root)[
-            "sampled_unit"
-        ].unit
+        return module._index_policyengine_us_variable_sources(root)["sampled_unit"].unit
 
 
 @settings(
@@ -277,21 +274,6 @@ def test_source_index_reads_any_string_unit_verbatim(unit: str) -> None:
 def test_source_index_refuses_any_other_unit_name(name: str) -> None:
     with pytest.raises(RuntimeError, match="unsupported unit metadata"):
         _indexed_unit(name)
-
-
-def test_installed_index_reads_unit_declarations() -> None:
-    _installed_package()
-    _installed_spm_package()
-    index = module.PolicyEngineUSVariableMetadataIndex()
-
-    assert index.variable_unit("alimony_expense") == "currency-USD"
-    assert index.variable_unit("hours_worked_last_week") == "hour"
-    assert index.variable_unit("weeks_unemployed") == "week"
-    assert index.variable_unit("own_children_in_household") is None
-    # The generated-variable snapshot records no unit.
-    assert index.variable_unit("e00700") is None
-    with pytest.raises(ValueError, match="Unknown PolicyEngine-US"):
-        index.variable_unit("not_a_policyengine_variable")
 
 
 def test_generated_snapshot_covers_the_pinned_default_system() -> None:

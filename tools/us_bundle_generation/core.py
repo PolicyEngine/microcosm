@@ -102,43 +102,58 @@ _DTYPE = {
     "str": "string",
 }
 # Catalog unit for each unit a numeric pool input's engine class declares, as
-# ``PolicyEngineUSVariableMetadataIndex.variable_unit`` reads it.
+# ``PolicyEngineUSVariableMetadataIndex.variable_unit`` reads it. An entry
+# covers every input that declares its engine unit, so it suits only a unit
+# with one meaning. In policyengine-us 2.2.1, "year" marks both durations, such
+# as ``years_since_us_entry``, and calendar years, such as ``birth_year``; an
+# input that declares it needs its own entry in _REVIEWED_UNIT_BY_INPUT.
 _CATALOG_UNIT_BY_ENGINE_UNIT = {
     "currency-USD": "usd",
     "hour": "hours",
     "week": "weeks",
 }
-# Numeric pool inputs whose engine class declares no unit, with the unit its
-# label gives: "First home mortgage origination year", "Second home mortgage
-# origination year" and "Count of one's own children in the household".
-_REVIEWED_UNIT_BY_UNITLESS_INPUT = {
-    "first_home_mortgage_origination_year": "calendar_year",
-    "second_home_mortgage_origination_year": "calendar_year",
-    "own_children_in_household": "count",
+# Numeric pool inputs reviewed one at a time: the engine unit the class
+# declared at review (None for none) and the catalog unit the input takes, here
+# the one its label gives: "First home mortgage origination year", "Second home
+# mortgage origination year" and "Count of one's own children in the
+# household". An entry outranks the map while its class declares that unit.
+_REVIEWED_UNIT_BY_INPUT: dict[str, tuple[str | None, str]] = {
+    "first_home_mortgage_origination_year": (None, "calendar_year"),
+    "second_home_mortgage_origination_year": (None, "calendar_year"),
+    "own_children_in_household": (None, "count"),
 }
+
+
+def _engine_unit_phrase(engine_unit: str | None) -> str:
+    return "no engine unit" if engine_unit is None else f"engine unit {engine_unit!r}"
 
 
 def _numeric_catalog_unit(variable: str, engine_unit: str | None) -> str:
     """Return the catalog unit of a numeric pool input, or fail closed."""
 
-    if engine_unit is None:
-        if variable not in _REVIEWED_UNIT_BY_UNITLESS_INPUT:
+    if variable in _REVIEWED_UNIT_BY_INPUT:
+        reviewed_engine_unit, unit = _REVIEWED_UNIT_BY_INPUT[variable]
+        if engine_unit != reviewed_engine_unit:
             raise ValueError(
-                f"Numeric pool input {variable!r} declares no engine unit and has "
-                "no reviewed unit; review one into _REVIEWED_UNIT_BY_UNITLESS_INPUT."
+                f"Numeric pool input {variable!r} now declares "
+                f"{_engine_unit_phrase(engine_unit)}, but its entry in "
+                "_REVIEWED_UNIT_BY_INPUT was reviewed against "
+                f"{_engine_unit_phrase(reviewed_engine_unit)}; review it again."
             )
-        return _REVIEWED_UNIT_BY_UNITLESS_INPUT[variable]
-    if variable in _REVIEWED_UNIT_BY_UNITLESS_INPUT:
+        return unit
+    if engine_unit is None:
         raise ValueError(
-            f"Numeric pool input {variable!r} now declares engine unit "
-            f"{engine_unit!r}; remove it from _REVIEWED_UNIT_BY_UNITLESS_INPUT."
+            f"Numeric pool input {variable!r} declares no engine unit and has "
+            "no reviewed unit; review one into _REVIEWED_UNIT_BY_INPUT."
         )
     if engine_unit not in _CATALOG_UNIT_BY_ENGINE_UNIT:
         raise ValueError(
             f"Numeric pool input {variable!r} declares engine unit "
-            f"{engine_unit!r}, which maps to no catalog unit; map it in "
-            "_CATALOG_UNIT_BY_ENGINE_UNIT and add the catalog unit to the unit "
-            "enum in spec_engine/schema/catalogs.schema.json."
+            f"{engine_unit!r}, which maps to no catalog unit. Map it in "
+            "_CATALOG_UNIT_BY_ENGINE_UNIT if it means one thing for every input "
+            "that declares it, or else review this input into "
+            "_REVIEWED_UNIT_BY_INPUT, and add the catalog unit to the unit enum "
+            "in spec_engine/schema/catalogs.schema.json."
         )
     return _CATALOG_UNIT_BY_ENGINE_UNIT[engine_unit]
 
