@@ -228,6 +228,25 @@ def test_local_scorer_reports_per_family_wins_and_the_measured_holdout() -> None
     assert result["incumbent_missing_areas"] == {}
 
 
+@pytest.mark.parametrize("schema_version", [8, 9])
+def test_local_scorer_reads_either_hierarchy_schema(schema_version: int) -> None:
+    # The scorer reads names, metadata and final estimates, which schema 9
+    # keeps on every row; only the hierarchy labels moved to catalogs.
+    scorer = _load_scorer()
+    registry, candidate, weights, metrics = _case()
+    candidate["schema_version"] = schema_version
+
+    result = scorer.score_uk_local_candidate(
+        candidate_diagnostics=candidate,
+        incumbent_weights=weights,
+        incumbent_metrics=metrics,
+        target_registry=registry,
+        expected_reference_count=2,
+    )
+
+    assert result["rows_compared"] == 2
+
+
 def test_local_scorer_refuses_a_non_frozen_surface() -> None:
     scorer = _load_scorer()
     registry, candidate, weights, metrics = _case()

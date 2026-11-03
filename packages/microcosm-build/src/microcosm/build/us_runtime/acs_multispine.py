@@ -32,6 +32,19 @@ from microcosm.build.us_runtime.acs_local_hours import (
     complete_acs_local_under15_hours,
     require_acs_local_hours_fallback_universe,
 )
+from microcosm.build.us_runtime.acs_local_income import (
+    ACS_LOCAL_INCOME_DONOR_CHANNEL,
+    ACS_LOCAL_INCOME_PREDICTOR_EXTENSIONS,
+    acs_local_income_transfer_target_families,
+    map_acs_local_other_income,
+    record_acs_local_income_transfer,
+    require_acs_local_income_donor,
+    without_acs_local_other_income,
+)
+from microcosm.build.us_runtime.acs_local_work_disability import (
+    map_acs_local_work_disability_inputs,
+    record_acs_local_work_disability_transfer,
+)
 from microcosm.build.us_runtime.acs_pums import (
     DEFAULT_CHUNKSIZE,
     AcsPumsSource,
@@ -92,6 +105,8 @@ def build_optional_acs_multispine(
     hours_donor_factory: Callable[[Frame], tuple[Frame, Frame, dict[str, object]]]
     | None = None,
     hours_under15_policy: str | None = None,
+    work_disability_inputs: bool = False,
+    income_transfer: bool = False,
     donor_spine: str = ASEC_PUF_DONOR_SPINE,
     donor_channel: str | None = ACS_DONOR_CHANNEL_AUTO,
     seed: int = 0,
@@ -112,6 +127,17 @@ def build_optional_acs_multispine(
     fallback for usual-hours cells unresolved by the native WKHP mapping.
     Alternatively, ``hours_donor_factory`` qualifies that donor lazily: a
     source-complete ACS spine never needs its raw ASEC fields opened.
+    ``work_disability_inputs`` (the ACS local lane, microcosm#1021) writes
+    native ``is_disabled``/``is_blind``/``weeks_worked`` on every ACS row
+    before any transfer, so the null-only transfer leaves them alone; its
+    receipt is ``provenance["acs_local_work_disability"]``.
+    ``income_transfer`` (the ACS local lane, microcosm#1022) runs a separate
+    ASEC-channel QRF pass for the SNAP-relevant income leaves the shared plan
+    does not carry, with its own local-only plan and two opt-in predictor
+    extensions for that call alone (ACS ``OIP`` for child support, an
+    ACS-aligned ``RETP`` analog for disability and account distributions);
+    the shared transfer and its execution contract are unchanged. Its receipt
+    is ``provenance["acs_local_income_transfer"]``.
 
     Large intermediate frames are released as soon as the next stage has
     materialized its own frame.  This cannot make the final dense pool small,
@@ -148,6 +174,21 @@ def build_optional_acs_multispine(
     native_provenance = _json_ready_mapping(mapped.native_inputs)
     mapped_frame = mapped.frame
     del mapped
+    work_disability = None
+    if work_disability_inputs:
+        # Local lane only: map_acs_native_inputs is shared with the pool and
+        # stays unchanged. Native values must land before the transfers below,
+        # which fill only missing cells (microcosm#1021).
+        local = map_acs_local_work_disability_inputs(mapped_frame)
+        overlap = sorted(set(native_provenance) & set(local.native_inputs))
+        if overlap:
+            raise ValueError(
+                f"ACS local work/disability inputs would overwrite native {overlap}."
+            )
+        native_provenance.update(_json_ready_mapping(local.native_inputs))
+        mapped_frame = local.frame
+        work_disability = local.receipt
+        del local
     modeled_hours = None
     if hours_under15_policy is not None:
         mapped_frame, modeled_hours = complete_acs_local_under15_hours(
@@ -209,6 +250,45 @@ def build_optional_acs_multispine(
         hours_imputed_inputs = tuple(hours_transfer.imputed_inputs)
         hours_donor_channel = hours_transfer.resolved_donor_channel
         del hours_transfer
+    income_fit_records = ()
+    income_imputed_inputs = ()
+    income_receipt = None
+    if income_transfer:
+        # Local lane only (microcosm#1022): measured ASEC amounts, a plan
+        # disjoint from the shared declaration, and the shared null-only merge.
+        # ACS OIP and an ACS-aligned RETP analog enter as opt-in predictor
+        # extensions of this call alone (microcosm#1056 review), so the shared
+        # transfer below keeps its predictors, draws and execution contract.
+        income_donor = require_acs_local_income_donor(base)
+        acs_persons = mapped_frame.n("person")
+        other_income = map_acs_local_other_income(mapped_frame)
+        other_income_coverage = other_income.coverage
+        mapped_frame = other_income.frame
+        del other_income
+        income = transfer_acs_inputs(
+            mapped_frame,
+            base,
+            target_families=acs_local_income_transfer_target_families(),
+            donor_spine=donor_spine,
+            donor_channel=ACS_LOCAL_INCOME_DONOR_CHANNEL,
+            seed=seed,
+            n_estimators=n_estimators,
+            max_targets_per_fit=max_targets_per_fit,
+            person_predictor_extensions=ACS_LOCAL_INCOME_PREDICTOR_EXTENSIONS,
+        )
+        # The mapped OIP is this pass's predictor source only: it never
+        # reaches the shared transfer, the pool or the release.
+        mapped_frame = without_acs_local_other_income(income.frame)
+        income_fit_records = tuple(income.fit_records)
+        income_imputed_inputs = tuple(income.imputed_inputs)
+        income_receipt = record_acs_local_income_transfer(
+            income_donor,
+            _json_ready_sequence(income_imputed_inputs),
+            acs_persons=acs_persons,
+            other_income=other_income_coverage,
+        )
+        income_receipt["resolved_donor_channel"] = income.resolved_donor_channel
+        del income
     transferred = transfer_acs_inputs(
         mapped_frame,
         base,
@@ -221,9 +301,11 @@ def build_optional_acs_multispine(
     )
     del mapped_frame
     adult_care_gate = _require_recipient_adult_care_structure(transferred.frame)
-    fit_records = hours_fit_records + tuple(transferred.fit_records)
+    fit_records = (
+        hours_fit_records + income_fit_records + tuple(transferred.fit_records)
+    )
     imputed_provenance = _json_ready_sequence(
-        hours_imputed_inputs + tuple(transferred.imputed_inputs)
+        hours_imputed_inputs + income_imputed_inputs + tuple(transferred.imputed_inputs)
     )
     deferred_inputs = tuple(transferred.deferred_inputs)
     if puma_ladder is not None:
@@ -279,6 +361,17 @@ def build_optional_acs_multispine(
         provenance["local_hours_source"] = hours_source
     if modeled_hours is not None:
         provenance["hours_modeled_completion"] = modeled_hours
+    if income_receipt is not None:
+        provenance["fit_configuration"]["income_donor_channel"] = income_receipt[
+            "resolved_donor_channel"
+        ]
+        provenance["acs_local_income_transfer"] = _json_ready_mapping(income_receipt)
+    if work_disability is not None:
+        provenance["acs_local_work_disability"] = _json_ready_mapping(
+            record_acs_local_work_disability_transfer(
+                work_disability, imputed_provenance
+            )
+        )
     if puma_ladder is not None:
         geography = us_puma_ladder_assignment_summary(
             pooled.table("household"),

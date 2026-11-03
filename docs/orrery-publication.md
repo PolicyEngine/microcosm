@@ -20,7 +20,8 @@ separately installed `microcosm-emitter` command as the build's child process
 through `microcosm-emitter-interface`, with independent telemetry, graph
 publication and Hugging Face hand-over modules. The emitter owns sockets,
 authentication, persistence, retries and resource sampling. Microcosm retains
-graph generation, public-file selection and the staged dataset upload.
+graph generation and public-file selection; the staged dataset bundle, including
+a failed build's graph evidence, goes to the same emitter's Hugging Face module.
 Slow uploads cannot delay socket acknowledgement or telemetry delivery. A
 command that started no emitter of its own starts a short-lived one with only
 the graph module to measure and queue the files.
@@ -43,6 +44,38 @@ under an existing publication ID. No population H5 or content-store arrays are
 included; only allowlisted graph declarations, execution receipts and reviewed
 aggregate summaries can be published publicly.
 
+## Status
+
+No upload is published today. The runs application accepts an upload only
+after the collector authorizes it, and the collector has no authorization
+endpoint: PolicyEngine/calibration-diagnostics#208, which would have added
+one, was closed unmerged. A build run with `--publish-orrery` still queues an
+upload as described above when it can start the separately installed emitter
+(see [the emitter dependency](#emitter-dependency)). Without the emitter, the
+build preserves the files but writes no `orrery.upload.json`, its receipt
+snapshot records `local_service_unavailable`, and nothing is queued. A build
+run without `--publish-orrery`, the default, queues none. A queued job stays
+pending in the emitter's local queue, its files stay in the preserved
+directory, and no retry can succeed.
+
+The collector will build the Orrery graph files itself instead. Builds will
+submit the graph's inputs to the collector's artifact intake
+(PolicyEngine/microcosm-collector#12): `graph.schema.json`,
+`graph.execution.json`, the `upstream-<sha256>.json` files and the native
+evidence files, which the collector keeps private. They will not submit
+`graph.orrery.json`: the collector's Orrery worker will build it from the
+schema and the execution overlay. The worker keeps the graph of a build that
+used licensed microdata, as UK builds do, private; it becomes public only
+after output clearance. The direct upload to the runs application will then
+be removed.
+
+When a build queues an upload with remote staging enabled, it then stages its
+artifact bundle to Hugging Face under `staged/<run_id>/`. That bundle holds
+every file of the queued upload, plus `graph.execution.json` when execution
+was recorded, so the Orrery graph files can be rebuilt from it later. This does not hold for an interrupted build, a
+build run with `--publish-orrery` while staging is local-only or disabled, or a
+build whose Hugging Face staging failed or did not complete.
+
 ## Configuration
 
 | Setting | Source and consumer | Provisioning |
@@ -55,9 +88,7 @@ aggregate summaries can be published publicly.
 | `MICROCOSM_TELEMETRY_REQUIRED` | Optional, read by the build adapter (`microcosm.build.telemetry_emitter`) each time a build starts its emitter; only builds that start the adapter read it. `1`: the build stops with `TelemetryRequiredError` if the emitter cannot be prepared or is missing, its `version` times out or fails, it is older than `MINIMUM_EMITTER_VERSION`, it lists no protocol version 1, its `hello` fails, it exits or times out before it is ready, or it starts without its telemetry module (for a failure the interface reports, its line saying the build will continue does not apply); unset or `0`: it continues without the emitter; any other value: `ValueError` | Whoever starts the build. The Modal stage runner sets `1` unless the plan sets `0`; workstations: the operator's shell. Not a credential |
 
 The separately deployed runs application retains its Vercel Blob configuration.
-Authenticated production publication also requires
-PolicyEngine/calibration-diagnostics#208 deployed, and the runs application's
-publication API. Producer tests do not contact either hosted service.
+Producer tests do not contact the runs application or the collector.
 
 No new secret is required. Tests isolate ambient credentials and caches,
 replace the interface's emitter client with an in-memory one, and refuse to
@@ -144,7 +175,10 @@ emitter does cost the build:
 - the UK graph step records a failed receipt (`local_service_unavailable`)
   and queues no Orrery job, so the emitter's retry command has nothing to
   deliver later;
-- a UK build given `--staging-read-back` fails at the read-back.
+- a UK build given `--staging-read-back` fails at the read-back;
+- a UK build that asks for remote staging of its dataset bundle, as UK builds
+  do by default, is refused before it starts, and the refusal gives the
+  upgrade command built from the minimum.
 
 The build's warning says so. Raise the minimum and the image's floor
 together, and before raising them while machines still run older emitters,
