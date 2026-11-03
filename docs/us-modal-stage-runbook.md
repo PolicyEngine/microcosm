@@ -73,13 +73,24 @@ release directory onto the runs volume. Publication stays the human step in
    and asserts `HEAD` equals the commit. It then runs
    `uv sync --all-packages --extra us --frozen` against that tree's own
    `uv.lock` into `/opt/venv`, installs the newest `microcosm-emitter`
-   release (0.7.0 or later) on its own with `uv tool install` into
-   `/usr/local/bin`, checks that `microcosm-emitter version` runs, and
-   asserts `git status --porcelain` is empty. The image sets
+   release (0.11.9 or later, the oldest a build starts) on its own with
+   `uv tool install` into `/usr/local/bin`, checks that
+   `microcosm-emitter version` runs, and asserts `git status --porcelain` is
+   empty. Emitter releases from 0.10.0 on send telemetry to the collector's
+   hostname by default, which stays the same when the collector moves to
+   another Google Cloud project. The image sets
    `MICROCOSM_EMITTER_COMMAND` to that command, so a build that starts its
    emitter finds it; the check reports the version and the receipt's runner
    identity records it. An image built for a commit keeps the emitter it was
-   built with. The tool's environment withholds credentials and sets
+   built with. The install step and its `>=0.11.9` floor come from the
+   checkout that launches the app (`image_build_commands`), while the
+   minimum the build enforces comes from the commit the plan pins
+   (`MINIMUM_EMITTER_VERSION`), so a launch can combine an older checkout's
+   floor with a newer commit's minimum, or the reverse. Neither floor has an
+   upper bound, so an image built now installs the newest release, which
+   every commit's minimum so far accepts. The test that requires the floor to
+   equal the minimum compares the two values of one checkout only. The
+   tool's environment withholds credentials and sets
    `HF_HUB_OFFLINE=1`, so an emitter started there keeps its Hub
    hand-overs local; it sends telemetry with the collector token the launch
    passes (item 6).
@@ -232,18 +243,21 @@ release directory onto the runs volume. Publication stays the human step in
      `MICROCOSM_TELEMETRY_REQUIRED=0` opt-out; a refusal here names it right
      after its first clause, so the attempt record's note, which keeps the
      first 500 characters, always holds it.
-   - **An image built before emitter 0.11.0.** The image installs the
-     newest emitter release when Modal builds it, and Modal reuses the image
-     it built for a commit. So a commit whose image was built before 0.11.0
-     (released 2026-10-29) is refused at every launch, with a message that
-     says so, until the image is built again. Set `MODAL_FORCE_BUILD=1` for
-     one launch only (`MODAL_FORCE_BUILD=1 MICROCOSM_MODAL_PLAN=plan.json
-     modal run …`), not exported. It rebuilds every layer, including the
-     layers every commit's image shares, so each other commit's image
-     rebuilds once at its next launch too; left set, it rebuilds every layer
-     at every launch. Or wait for #1455, whose new install command
-     (`microcosm-emitter>=0.11.9`) changes only each commit's own build step,
-     so only that step rebuilds.
+   - **An image emitter without a collector origin.** The image installs
+     the newest emitter release when Modal builds its install step, and
+     Modal reuses that step for a commit while the step's command is the
+     same. Since #1455 (merged 2026-11-03), the command asks for
+     `microcosm-emitter>=0.11.9`, so every image this runner builds has an
+     emitter that reports a collector origin. An image whose install step an
+     older checkout built (with `>=0.7.0`, possibly before 0.11.0) is not
+     reused: the changed command rebuilds that step, for each commit, at its
+     first launch from a checkout with this runner. The refusal stays for an
+     image emitter that still reports no origin; its message says to set
+     `MODAL_FORCE_BUILD=1` for one launch only
+     (`MODAL_FORCE_BUILD=1 MICROCOSM_MODAL_PLAN=plan.json modal run …`), not
+     exported. That rebuilds every layer, including the layers every
+     commit's image shares, so each other commit's image rebuilds once at
+     its next launch too; left set, it rebuilds every layer at every launch.
    - **The check** (without `--run`) asks for no token. It reports the
      collector origin the image's emitter would send to, and the lifetime a
      launch would ask for. It fails when the image's emitter reports no

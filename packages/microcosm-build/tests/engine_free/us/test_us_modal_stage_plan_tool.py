@@ -376,7 +376,7 @@ def test_image_installs_the_emitter_command_on_its_own(app) -> None:
     commands = plan_lib.image_build_commands(plan)
     sync = next(index for index, command in enumerate(commands) if "uv sync" in command)
     install = commands.index(
-        "UV_TOOL_BIN_DIR=/usr/local/bin uv tool install 'microcosm-emitter>=0.7.0'"
+        "UV_TOOL_BIN_DIR=/usr/local/bin uv tool install 'microcosm-emitter>=0.11.9'"
     )
     # Outside the build's environment, after it is synced and before the
     # clean-tree check. The image does not build unless the command runs.
@@ -395,6 +395,26 @@ def test_image_installs_the_emitter_command_on_its_own(app) -> None:
     )
     assert tool_env["MICROCOSM_EMITTER_COMMAND"] == "/usr/local/bin/microcosm-emitter"
     assert "MICROCOSM_EMITTER_COMMAND" not in removed
+
+
+def test_the_image_installs_no_emitter_older_than_a_build_starts() -> None:
+    """The image's emitter floor is the build adapter's minimum release.
+
+    ``tools/modal_us_stage_plan.py`` imports nothing from the workspace, so it
+    repeats the version. This compares the two values of one checkout only.
+    At launch they can come from two trees: the install step from the
+    checkout that launches the app, and the minimum from the commit the plan
+    pins. So a launch can still combine an older checkout's floor with a
+    newer commit's minimum; that floor has no upper bound, so it resolves to
+    the newest release when the image is built.
+    """
+
+    from microcosm.build.telemetry_emitter import MINIMUM_EMITTER_VERSION
+
+    assert MINIMUM_EMITTER_VERSION == "0.11.9"
+    assert plan_lib.IMAGE_EMITTER_REQUIREMENT == (
+        f"microcosm-emitter>={MINIMUM_EMITTER_VERSION}"
+    )
 
 
 def test_the_app_never_runs_an_emitter_installed_where_the_image_puts_it(
