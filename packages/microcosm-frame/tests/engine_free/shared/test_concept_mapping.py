@@ -1871,7 +1871,7 @@ def _adult_mapping(min_age: int) -> ConceptMapping:
 
 
 def _people_table(households, ages, nullable: bool) -> pd.DataFrame:
-    """A person table; ``ages`` holds ints or ``None`` for a null age."""
+    """A person table; ``ages`` holds numbers or ``None`` for a null age."""
 
     if nullable:
         age = pd.array(ages, dtype="Int64")
@@ -2055,6 +2055,9 @@ class TestCoresidentAdult:
         person = _people_table(households, ages, nullable=True)
         assert _adult_flags(person, 18) == [True, True, False, True, True, False]
         assert _adult_flags(person, 19) == [True, False, False, True, True, False]
+        # A fractional age below the line doesn't qualify.
+        person = _people_table([3, 3], [17.5, 12], nullable=False)
+        assert _adult_flags(person, 18) == [False, False]
 
     def test_households_differing_only_beyond_2_53_stay_separate(self) -> None:
         # float64 holds 2**53 and 2**53 + 1 as the same number.
@@ -2097,15 +2100,16 @@ class TestCoresidentAdult:
         tables = {
             "person": pd.DataFrame(
                 {
-                    "person_id": [1, 2, 3],
-                    "person_household_id": [7, 7, 9],
-                    "age": [30.0, 5.0, 40.0],
+                    "person_id": [1, 2, 3, 4],
+                    "person_household_id": [7, 7, 9, 8],
+                    "age": [30.0, 5.0, 40.0, 50.0],
                 }
             ),
             "household": pd.DataFrame({"household_id": [9]}),
         }
         out = _adult_mapping(18).encode(tables).tables["person"]
-        assert out[_ADULT_INPUT].tolist() == [False, True, False]
+        # Ids 7 and 8 both name no household row, and they stay apart.
+        assert out[_ADULT_INPUT].tolist() == [False, True, False, False]
 
     def test_a_null_household_id_shares_a_household_with_nobody(self) -> None:
         tables = {
