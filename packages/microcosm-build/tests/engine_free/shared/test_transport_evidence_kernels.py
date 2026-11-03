@@ -2707,12 +2707,12 @@ class TestSupportRoster:
             "normalized": 10,
             "copied": 3,
             "pending": 1,
+            "quantile_mapped": 1,
             "structural": 6,
         }
         derived = [row for row in roster if row["class"] == "derived"]
         pending = {
             "household.rent",
-            "person.employment_income",
             "person.liquid_financial_assets",
         }
         for row in derived:
