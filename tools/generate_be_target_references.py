@@ -1248,7 +1248,8 @@ def _pension_bands(facts):
     Chronicle bounds each band lower <= amount <= upper in euro cents, and the
     top band below only. Each surface band runs from its lower bound to the
     next band's, which must sit exactly one cent above its upper bound; the
-    printed label must state the same bounds.
+    printed label must state the same bounds. No band may end below its lower
+    bound, so the floors rise strictly and no surface band is empty.
     """
 
     cent = Fraction(1, 100)
@@ -1281,6 +1282,8 @@ def _pension_bands(facts):
     tiled = []
     for index, (lower, last_cent, label, fact) in enumerate(bands):
         following = bands[index + 1][0] if index + 1 < len(bands) else None
+        if last_cent is not None and last_cent < lower:
+            raise ValueError(f"SFPD band {label!r} ends below its lower bound")
         if (following is None) != (last_cent is None) or (
             following is not None and last_cent + cent != following
         ):

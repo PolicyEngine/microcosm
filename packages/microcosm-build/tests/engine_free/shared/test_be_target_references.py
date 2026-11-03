@@ -1550,11 +1550,54 @@ def test_pension_bands_tile_any_cent_ladder_from_one_cent(cuts, order):
         [_pension_fact(100, 12499), _pension_fact(12500, None)],
         # A label that disagrees with its constraints.
         [_pension_fact(1, 12499, "0,01 - 125,99"), _pension_fact(12500, None)],
+        # The review's mutant: a band that ends below its floor, with the next
+        # band starting one cent above that end, so adjacency alone holds.
+        [
+            _pension_fact(1, 24999),
+            _pension_fact(25000, 24999),
+            _pension_fact(25000, None),
+        ],
     ],
 )
 def test_pension_band_gaps_and_label_drift_refuse(facts):
     with pytest.raises(ValueError, match="SFPD"):
         generator._pension_bands(facts)
+
+
+@settings(max_examples=200, deadline=None, suppress_health_check=[HealthCheck.too_slow])
+@given(
+    cuts=st.lists(
+        st.integers(min_value=2, max_value=10**7), min_size=2, max_size=30, unique=True
+    ),
+    data=st.data(),
+)
+def test_pension_bands_accept_only_strictly_rising_floors(cuts, data):
+    """Property: every ladder the reader accepts has non-empty bands.
+
+    Start from a valid ladder. Sometimes end one closed band some cents below
+    its floor, and start the next band one cent above that end, so that pair
+    still looks adjacent. The reader must either refuse, or return bands whose
+    floors rise strictly, each below its upper edge.
+    """
+
+    lowers = [1, *sorted(cuts)]
+    lasts = [following - 1 for following in lowers[1:]] + [None]
+    if data.draw(st.booleans()):
+        index = data.draw(st.integers(min_value=1, max_value=len(lowers) - 2))
+        drop = data.draw(st.integers(min_value=0, max_value=lowers[index] - 2))
+        lasts[index] = lowers[index] - 1 - drop
+        lowers[index + 1] = lasts[index] + 1
+    facts = [
+        _pension_fact(lower, last) for lower, last in zip(lowers, lasts, strict=True)
+    ]
+    try:
+        tiled = generator._pension_bands(facts)
+    except ValueError as error:
+        assert "SFPD" in str(error)
+        return
+    floors = [band[0] for band in tiled]
+    assert floors == sorted(set(floors))
+    assert all(band[1] is None or band[0] < band[1] for band in tiled)
 
 
 @functools.cache
