@@ -6159,13 +6159,20 @@ stages:
     salt: student_loan_plan_2
     realization: identity_uniform_order_walk
     realization_bound: the realised top-up sits within the weight of the lightest person the walk skipped of the shortfall, so the plan's final England count sits within that weight of the stock; a pool lighter than the shortfall is taken whole and receipted as exhausted, and a plan already at or above its stock is left as reported
-    reason: Student-loan plan assignment writes an enum column only; household rows
-      and typed household weights pass through and total household mass is conserved.
+    reason: Student-loan plan assignment writes the plan and re-splits each household's
+      student-loan balance among its members; household rows and typed household
+      weights pass through and total household mass is conserved.
+  - kind: derive
+    output: student_loan_balance
+    formula: each household's student_loan_balance re-split to its members with student_loan_plan
+      != NONE, by student_loan_repayments where any of them repays, else equally; a household
+      with no such member keeps was_wealth's split, and every household's total is unchanged
   outputs:
   - student_loan_plan
   rewrites:
   - student_loan_plan
-  notes: 'Reported borrowers are PAYE repayers, classified without a country gate, and, in England and Wales, adults who report an outstanding loan (FRS SLOS) and are not in full-time education, the borrowers below the repayment threshold (microcosm#868). A course starts three years before its borrower left full-time education (FRS EDUCLEFT), or at 18 without an answer, and its start year sets the plan, except that before 2026 a repayer never takes PLAN_5: nobody repays a Plan 5 loan before April 2026, so SLC counts no Plan 5 borrower above the threshold in academic year 2024/25. England tertiary cohorts are then topped up PLAN_5 first and PLAN_2 second to the pinned liable stocks at the FRS release calibration year. The PLAN_2 walk takes nobody in full-time education, since a student is not yet liable to repay; the PLAN_5 walk keeps the age rule, since its starters have mostly not left education. The stocks are SLC academic year 2024/25, whose reference date falls in calendar 2025, the year the borrower targets bind (ruling of 2026-10-16). PLAN_4 is never imputed, and a Scottish or Northern Irish answer of an outstanding loan assigns no plan.'
+  - student_loan_balance
+  notes: 'Reported borrowers are PAYE repayers, classified without a country gate, and, in England and Wales, adults who report an outstanding loan (FRS SLOS) and are not in full-time education, the borrowers below the repayment threshold (microcosm#868). A course starts three years before its borrower left full-time education (FRS EDUCLEFT), or at 18 without an answer, and its start year sets the plan, except that before 2026 a repayer never takes PLAN_5: nobody repays a Plan 5 loan before April 2026, so SLC counts no Plan 5 borrower above the threshold in academic year 2024/25. England tertiary cohorts are then topped up PLAN_5 first and PLAN_2 second to the pinned liable stocks at the FRS release calibration year. The PLAN_2 walk takes nobody in full-time education, since a student is not yet liable to repay; the PLAN_5 walk keeps the age rule, since its starters have mostly not left education. The stocks are SLC academic year 2024/25, whose reference date falls in calendar 2025, the year the borrower targets bind (ruling of 2026-10-16). PLAN_4 is never imputed, and a Scottish or Northern Irish answer of an outstanding loan assigns no plan. Once the plans are set, each household''s student-loan balance, which was_wealth draws from the WAS and splits before any plan exists, moves to the members who hold a plan, by their repayments where any of them repays and equally otherwise; a household with no borrower keeps was_wealth''s split and no household''s total moves. policyengine-uk caps a borrower''s repayment at a positive balance, so the split decides which repayments the balance can cap (microcosm#1095 B9).'
 - stage: childcare_copy_take_up
   survey: Family Resources Survey 2024-25
   source: The UK take-up contract's childcare rates and extended-hours usage distribution, as frs_take_up draws them, applied to the support and CGT copies on their own benefit units.

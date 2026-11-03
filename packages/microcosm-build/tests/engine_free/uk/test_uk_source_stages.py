@@ -805,6 +805,8 @@ class TestE3ManifestLockstep:
             "assign_student_loan_plan_cohorts",
             "top_up_to_stock",
             "top_up_to_stock",
+            # The balance moves to the borrowers (microcosm#1095 B9).
+            "derive",
         ]
 
     def test_engine_predictor_and_rewrite_constants_match_manifest(self) -> None:
@@ -1122,8 +1124,10 @@ class TestE3ManifestLockstep:
         assert stages["salary_sacrifice"].operations[3].parameters["seed"] == 2024
         assert [
             operation.parameters["seed"]
-            for operation in stages["student_loans"].operations[1:]
+            for operation in stages["student_loans"].operations[1:3]
         ] == [42, 42]
+        # The balance re-split is deterministic (microcosm#1095 B9).
+        assert "seed" not in stages["student_loans"].operations[3].parameters
 
     def test_e9_declared_seed_lockstep(self) -> None:
         from microcosm.build.uk_runtime.uc_deduction_attributes import (

@@ -159,6 +159,10 @@ _READER_ISOLATION_BOUNDARIES = frozenset(
         # open-surface SPI income stage, which would otherwise bind the cells
         # they rewrite (PolicyEngine/uk-autumn-budget-dashboard-2026#316).
         "company_cars",
+        # The student-loan stage moves each household's balance to its
+        # borrowers, rewriting was_wealth's ``student_loan_balance``, which the
+        # open-surface readers before it bind (microcosm#1095 B9).
+        "student_loans",
     }
 )
 # ``age_tail`` needs no isolation entry: it is declared immediately after the
@@ -648,6 +652,9 @@ _STAGE_CONSUMES: Mapping[str, frozenset[tuple[str, str]] | None] = {
             ("person", "age"),
             ("person", "student_loans"),
             ("person", "student_loan_repayments"),
+            # Re-split to the borrowers once the plans are set (microcosm#1095
+            # B9).
+            ("person", "student_loan_balance"),
             ("person", "current_education"),
             ("person", "highest_education"),
             ("person", "reports_outstanding_student_loan"),
@@ -1250,7 +1257,10 @@ _STAGE_CELLS: Mapping[str, tuple[_Cell, ...]] = {
             "salary_sacrifice_pre_conversion_pay",
         ),
     ),
-    "student_loans": (_Cell("person", "student_loan_plan", "string"),),
+    "student_loans": (
+        _Cell("person", "student_loan_plan", "string"),
+        _Cell("person", "student_loan_balance", "float64"),
+    ),
     "private_school_attendance": (_Cell("person", "attends_private_school", "bool"),),
     "isa_subscriptions": _cells(
         "person",
