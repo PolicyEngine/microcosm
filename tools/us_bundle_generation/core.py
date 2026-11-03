@@ -101,6 +101,45 @@ _DTYPE = {
     "int": "int64",
     "str": "string",
 }
+# Catalog unit for each unit a numeric pool input's engine class declares, as
+# ``PolicyEngineUSVariableMetadataIndex.variable_unit`` reads it.
+_CATALOG_UNIT_BY_ENGINE_UNIT = {
+    "currency-USD": "usd",
+    "hour": "hours",
+    "week": "weeks",
+}
+# Numeric pool inputs whose engine class declares no unit, with the unit its
+# label gives: "First home mortgage origination year", "Second home mortgage
+# origination year" and "Count of one's own children in the household".
+_REVIEWED_UNIT_BY_UNITLESS_INPUT = {
+    "first_home_mortgage_origination_year": "calendar_year",
+    "second_home_mortgage_origination_year": "calendar_year",
+    "own_children_in_household": "count",
+}
+
+
+def _numeric_catalog_unit(variable: str, engine_unit: str | None) -> str:
+    """Return the catalog unit of a numeric pool input, or fail closed."""
+
+    if engine_unit is None:
+        if variable not in _REVIEWED_UNIT_BY_UNITLESS_INPUT:
+            raise ValueError(
+                f"Numeric pool input {variable!r} declares no engine unit and has "
+                "no reviewed unit."
+            )
+        return _REVIEWED_UNIT_BY_UNITLESS_INPUT[variable]
+    if variable in _REVIEWED_UNIT_BY_UNITLESS_INPUT:
+        raise ValueError(
+            f"Numeric pool input {variable!r} now declares engine unit "
+            f"{engine_unit!r}; remove its reviewed unit."
+        )
+    if engine_unit not in _CATALOG_UNIT_BY_ENGINE_UNIT:
+        raise ValueError(
+            f"Numeric pool input {variable!r} declares engine unit "
+            f"{engine_unit!r}, which maps to no catalog unit."
+        )
+    return _CATALOG_UNIT_BY_ENGINE_UNIT[engine_unit]
+
 
 # RFC v3 decision D6 (docs/spec-engine.md, approved 2026-08-16).  This is
 # intentionally embedded in the one-shot migration builder: ``specs/us`` is a
@@ -1031,13 +1070,12 @@ def build_catalogs() -> dict[str, Any]:
             ) from error
         if dtype == "bool":
             unit = "boolean"
-            unit_waiver = None
         elif dtype in {"string", "category"}:
             unit = "categorical"
-            unit_waiver = None
         else:
-            unit = "unit_not_declared_by_engine_metadata"
-            unit_waiver = "policyengine_us_unit_unavailable"
+            unit = _numeric_catalog_unit(
+                entry.variable, index.variable_unit(entry.variable)
+            )
         contract = {
             "entity": entry.entity,
             "dtype": dtype,
@@ -1048,8 +1086,6 @@ def build_catalogs() -> dict[str, Any]:
             "domain": entry.family,
             "public_stability": "internal",
         }
-        if unit_waiver is not None:
-            contract["unit_waiver"] = unit_waiver
         columns.append(
             {
                 "key": key,
@@ -1145,23 +1181,9 @@ def build_catalogs() -> dict[str, Any]:
         raise ValueError("Deferred pool inputs are absent from the generated catalog.")
     if len(seen) != 177:
         raise ValueError(f"Closed US catalog must contain 177 keys, got {len(seen)}.")
-    return {
-        "metadata_waivers": [
-            {
-                "id": "policyengine_us_unit_unavailable",
-                "field": "unit",
-                "authority": "PolicyEngineUSVariableMetadataIndex",
-                "public": False,
-                "expires_on": "2026-11-16",
-                "reason": (
-                    "The import-free installed-engine index exposes entity, dtype, "
-                    "and period but no physical unit. Numeric columns remain "
-                    "internal until a reviewed unit authority lands."
-                ),
-            }
-        ],
-        "columns": sorted(columns, key=lambda row: str(row["key"])),
-    }
+    # Every numeric column's unit comes from the engine index or the reviewed
+    # table above, so the catalog declares no metadata waivers.
+    return {"columns": sorted(columns, key=lambda row: str(row["key"]))}
 
 
 def build_core_specs() -> dict[str, dict[str, Any]]:
