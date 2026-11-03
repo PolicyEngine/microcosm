@@ -14,7 +14,7 @@ import copy
 import json
 
 import pytest
-from hypothesis import HealthCheck, given, settings
+from hypothesis import HealthCheck, example, given, settings
 from hypothesis import strategies as st
 
 from microcosm.build.transport.compose import (
@@ -253,9 +253,47 @@ def _universe_rewrite(graph):
     graph["nodes"].insert(position, _rewriter("toy.overwrite", UNIVERSE_COLUMN, "str"))
 
 
+def _expand_writer(graph, cells=None):
+    """An EXPAND version that may write the income, with calibration in it."""
+    nodes = _nodes(graph)
+    graph["nodes"].insert(
+        graph["nodes"].index(nodes["toy.prepare"]),
+        {
+            "id": "toy.expand",
+            "kernel": "transport.boundary@1",
+            "structural": "expand",
+            "base": "toy.create",
+            "params": {
+                "expand_cells": (
+                    [["person", INCOME_COLUMN, "int64"]] if cells is None else cells
+                )
+            },
+        },
+    )
+    for name in ("toy.prepare", "toy.problem", "toy.calibrate"):
+        nodes[name]["population"] = "toy.expand"
+
+
+def _expand_with_resource_cells(graph):
+    """An EXPAND whose cells only composition can tell writes every column."""
+    _expand_writer(graph, {"resource": "toy_cells"})
+
+
 @pytest.mark.parametrize(
     ("mutant", "graph", "entity", "reason"),
     [
+        (
+            "expand_cells",
+            _expand_writer,
+            "person",
+            f"writers ['toy.expand', 'toy.measure'] of person.{INCOME_COLUMN} upstream",
+        ),
+        (
+            "expand_resource_cells",
+            _expand_with_resource_cells,
+            "person",
+            f"writers ['toy.expand', 'toy.measure'] of person.{INCOME_COLUMN} upstream",
+        ),
         (
             "later_version_rewrite",
             _later_version_rewrite,
@@ -360,11 +398,13 @@ def test_proof_result_is_bound_into_the_selection_identity():
     assert parked != proved
 
 
-def _compiled_toy(*, second_producer=False, second_writer=False):
+def _compiled_toy(*, second_producer=False, second_writer=False, expand_cells=None):
     """A compiled graph: CREATE, one or two producers, preparation, calibration.
 
     With ``second_writer``, a ``filter`` version holds an undeclared rewrite
-    of the income column, and preparation and calibration live in it.
+    of the income column, and preparation and calibration live in it. With
+    ``expand_cells``, preparation and calibration live in an EXPAND version
+    that declares those cells.
     """
     from microcosm.graph import (
         Graph,
@@ -417,6 +457,17 @@ def _compiled_toy(*, second_producer=False, second_writer=False):
                 outputs=(Owned("person", INCOME_COLUMN, "int64", rewrite=True),),
             ),
         ]
+    if expand_cells is not None:
+        population = "toy.expand"
+        nodes.append(
+            Node(
+                id="toy.expand",
+                kernel="transport.boundary@1",
+                structural=StructuralDelta.EXPAND,
+                base="toy.create",
+                params={"expand_cells": expand_cells},
+            )
+        )
     nodes += [
         Node(
             id="toy.prepare",
@@ -491,6 +542,19 @@ def test_the_compiled_check_alone_refuses_a_second_writer(monkeypatch):
         f"person.{INCOME_COLUMN} upstream; only its producer 'toy.measure' may "
         "write it."
     )
+
+
+def test_the_compiled_check_alone_counts_an_expand_as_a_writer(monkeypatch):
+    check = _forced_proof(monkeypatch, "toy.measure")
+    graph, compiled = _compiled_toy(expand_cells=(("person", INCOME_COLUMN, "int64"),))
+    with pytest.raises(ValueError, match=r"writers \['toy.expand', 'toy.measure'\]"):
+        check({}, graph, compiled)
+
+
+def test_the_compiled_check_passes_an_expand_of_another_column(monkeypatch):
+    check = _forced_proof(monkeypatch, "toy.measure")
+    graph, compiled = _compiled_toy(expand_cells=(("person", "toy_other", "int64"),))
+    check({}, graph, compiled)
 
 
 def test_a_non_string_measurement_id_param_proves_nothing():
@@ -569,6 +633,26 @@ def test_a_writer_outside_the_calibration_closure_is_not_a_second_writer():
     assert proofs[SUMMED_MEASUREMENT]["producers"] == {"toy.calibrate": "toy.measure"}
 
 
+@given(
+    cells=st.lists(
+        st.sampled_from([INCOME_COLUMN, UNIVERSE_COLUMN, "toy_other"]), unique=True
+    )
+)
+@settings(
+    max_examples=30,
+    database=None,
+    deadline=None,
+    suppress_health_check=[HealthCheck.too_slow],
+)
+def test_an_expand_proves_exactly_when_its_cells_avoid_the_measured_columns(cells):
+    document = _graph()
+    _expand_writer(document, [["person", column, "int64"] for column in cells])
+    proofs, refusals = measurement_proofs(_spec(document))
+    proved = not {INCOME_COLUMN, UNIVERSE_COLUMN} & set(cells)
+    assert (SUMMED_MEASUREMENT in proofs) is proved
+    assert (SUMMED_MEASUREMENT in refusals) is not proved
+
+
 def _chain(draws):
     """CREATE, then nodes chained by artifacts, all upstream of calibration.
 
@@ -628,6 +712,11 @@ def _chain(draws):
     deadline=None,
     suppress_health_check=[HealthCheck.too_slow],
 )
+# Random draws rarely reach these: one declarer alone, then with a second
+# writer after it and before it.
+@example(draws=[(True, True, True)])
+@example(draws=[(True, True, True), (False, True, False)])
+@example(draws=[(False, False, True), (True, True, True)])
 def test_a_chain_proves_exactly_when_one_declarer_is_the_only_writer(draws):
     proofs, refusals = measurement_proofs(_spec(_chain(draws)))
     declarers = [index for index, draw in enumerate(draws) if draw[0]]
@@ -660,7 +749,7 @@ def composed_toy(tmp_path_factory):
     return make_composed_fixture(tmp_path_factory.mktemp("composed"))
 
 
-def _composed_spec(composed_toy, *, overwrite):
+def _composed_spec(composed_toy, *, overwrite, expand=False):
     """The composed toy with summed rows and a producer upstream of calibration.
 
     ``transport.currency@1`` stands in for the producer's kernel, because
@@ -706,6 +795,18 @@ def _composed_spec(composed_toy, *, overwrite):
                 "kernel": "transport.currency@1",
             },
         )
+    if expand:
+        graph["nodes"].insert(
+            graph["nodes"].index(nodes[calibration]),
+            {
+                "id": "toy.expand",
+                "kernel": "transport.boundary@1",
+                "structural": "expand",
+                "base": opened,
+                "params": {"expand_cells": [["person", INCOME_COLUMN, "Int64"]]},
+            },
+        )
+        nodes[calibration]["base"] = "toy.expand"
     nodes[calibration].setdefault("inputs", []).append(
         {"entity": "person", "columns": [INCOME_COLUMN, UNIVERSE_COLUMN]}
     )
@@ -729,4 +830,16 @@ def test_composition_refuses_a_later_version_rewrite_of_a_measured_column(
     assert (
         f"calibration node {calibration!r} has writers ['toy.measure', "
         f"'toy.overwrite'] of person.{INCOME_COLUMN} upstream"
+    ) in message
+
+
+def test_composition_refuses_an_expand_of_a_measured_column(composed_toy):
+    spec, calibration = _composed_spec(composed_toy, overwrite=False, expand=True)
+    with pytest.raises(ValueError) as refused:
+        compose_transport_graph(spec, composed_toy.config)
+    message = str(refused.value)
+    assert message.startswith("Transport spec is not activated:")
+    assert (
+        f"calibration node {calibration!r} has writers ['toy.expand', "
+        f"'toy.measure'] of person.{INCOME_COLUMN} upstream"
     ) in message
