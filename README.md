@@ -117,8 +117,11 @@ later accepts the credential is not visible to the build. For a failure the
 interface reports itself, interface 0.7.0 first prints its own line saying
 the build will continue; the error that follows says that line does not
 apply. Unset or `0`, a build continues without the emitter as above; any
-other value stops it with a `ValueError`. Nothing in Microcosm sets the
-variable yet.
+other value stops it with a `ValueError`. Leaving the requirement off
+(unset or `0`) exists only for the convenience of people outside
+PolicyEngine who run Microcosm without access to the collector;
+PolicyEngine's own builds keep telemetry required. Nothing in Microcosm
+sets the variable yet.
 
 US fiscal refresh builds also write pre-release staging run files **by
 default**. The build hands its progress JSON to the emitter, which commits it
