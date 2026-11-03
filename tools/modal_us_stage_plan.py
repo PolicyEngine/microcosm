@@ -1795,8 +1795,8 @@ class TelemetryRecord(TypedDict):
     collector_token: CollectorTokenRecord | None
     token_needed_until: str | None
     # Not recorded yet: how many events the emitter left undelivered when the
-    # tool ended. How the runner learns that count without reading the
-    # emitter's event queue file waits on a decision (microcosm#1470).
+    # tool ended. The count comes later from the emitter's read-only `status`
+    # command, which the runner will run in the container after the tool.
     undelivered_events: None
 
 
