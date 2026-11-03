@@ -1050,7 +1050,7 @@ def test_legacy_entrypoint_publication_matches_origin_main_golden(
         # immigration family's entry clock re-derives the pool engine
         # contracts and late registry identities; pool_h5 and agreement
         # are still unchanged.
-        "manifest": "bfaa7ffc709b68dbb7d05ee8f4c7e0600612f22ef21f3329784b782a9f59e812",
+        "manifest": "ba39a6940903f464ad9899edcbfee907d0ca8a03d189423f200b5a5de195fd8f",
     }
 
 
