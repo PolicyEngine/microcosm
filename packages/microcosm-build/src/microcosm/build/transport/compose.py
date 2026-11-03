@@ -15,6 +15,12 @@ explicit selection:
   bytes, so the node's key moves with that one resource only).
 - ``{"prepared": "engine_refs"}`` is the canonical JSON of the prepared
   binding-id -> engine reference map that preparation built.
+- ``{"prepared": "unit_entities"}`` is the canonical JSON of every declared
+  partition entity, read from the declared CREATE with the legacy
+  benefit-unit fallback.
+- ``{"prepared": "support_roster"}`` is the canonical JSON of the support
+  gate's roster: every column the battery and the calibration problem read,
+  classed by its producer in lineage (:func:`_support_roster`).
 - ``{"binding": name, "field": field}`` selects exactly ``engine_ref`` or
   ``period`` from one declared, prepared rules binding.
 
@@ -86,6 +92,7 @@ from microcosm.build.money_normalization import (
 )
 from microcosm.build.reference_profiles import resolve_reference_profiles
 from microcosm.calibrate.ordered_kernels import OUTPUT_TYPES
+from microcosm.frame.concepts import ProvenanceClass, concept_for_column
 from microcosm.frame.kernels import missing_relation_inputs
 from microcosm.frame.materialize import _WEIGHT_COLUMN_SUFFIX
 from microcosm.graph import (
@@ -112,7 +119,21 @@ from microcosm.graph.expansion import (
 )
 
 from .artifact_types import KERNEL_OUTPUTS
+from .codecs import RULESPEC_SOURCE_CODEC
 from .column_kernels import validate_receipt_contract
+from .evidence_contract import (
+    DONOR_RANGES_REF,
+    DONOR_RANGES_TYPE,
+    DONOR_RECEIPT_REF,
+    DONOR_RECEIPT_TYPE,
+    INPUT_CLOSURE_REF,
+    INPUT_CLOSURE_TYPE,
+    SUPPORT_BOUNDS_REF,
+    SUPPORT_BOUNDS_TYPE,
+    WEIGHTS_AUDIT_REF,
+    WEIGHTS_AUDIT_TYPE,
+    binding_relation_inputs,
+)
 from .money_kernels import (
     MONEY_ANNUAL_TRANSFERS_REF,
     MONEY_MINOR_UNITS_REF,
@@ -180,6 +201,11 @@ SKELETON_KERNELS = CREATE_REFS | frozenset(
         "geography.gate@1",
         "diagnostics.calibration@1",
         "gates.battery@1",
+        DONOR_RECEIPT_REF,
+        INPUT_CLOSURE_REF,
+        WEIGHTS_AUDIT_REF,
+        DONOR_RANGES_REF,
+        SUPPORT_BOUNDS_REF,
         "export.prepare@1",
         "export.readback@1",
         "transport.package@1",
@@ -196,7 +222,7 @@ _MONEY_BRIDGES = frozenset({MONEY_MINOR_UNITS_REF, MONEY_ANNUAL_TRANSFERS_REF})
 #: outputs and cross-population evidence artifacts do not change that basis.
 _MONEY_CONVERSIONS = frozenset({MONEY_NORMALIZE_REF, "transport.currency@1"})
 #: Kernels outside target compilation that replay factors against the feed.
-_FEED_REPLAY_KERNELS = frozenset({MONEY_NORMALIZE_REF})
+_FEED_REPLAY_KERNELS = frozenset({MONEY_NORMALIZE_REF, SUPPORT_BOUNDS_REF})
 _DOCUMENT_FIELDS = frozenset(
     {
         "schema_version",
@@ -231,7 +257,7 @@ _NODE_FIELDS = frozenset(
     }
 )
 _ENCODINGS = frozenset({"value", "json", "sha256"})
-_PREPARED = frozenset({"engine_refs"})
+_PREPARED = frozenset({"engine_refs", "unit_entities", "support_roster"})
 _PRECALIBRATION_SCHEMA_VERSION = 1
 _PRECALIBRATION_PURPOSES = frozenset({"calibration_measure", "classification"})
 _PRECALIBRATION_STAGE_FIELDS = frozenset(
@@ -245,6 +271,11 @@ _OUTPUT_TYPES: Mapping[str, Mapping[str, ArtifactType]] = MappingProxyType(
         "calibrate.ordered_adam@1": OUTPUT_TYPES,
         "geography.support_from_facts@1": {"support": ATOMIC_SUPPORT_TYPE},
         "geography.gate@1": {"validation": ATOMIC_GEOGRAPHY_VALIDATION_TYPE},
+        DONOR_RECEIPT_REF: {"donor_artifact_receipt": DONOR_RECEIPT_TYPE},
+        INPUT_CLOSURE_REF: {"axiom_input_closure": INPUT_CLOSURE_TYPE},
+        WEIGHTS_AUDIT_REF: {"fit_weight_records": WEIGHTS_AUDIT_TYPE},
+        DONOR_RANGES_REF: {"donor_ranges": DONOR_RANGES_TYPE},
+        SUPPORT_BOUNDS_REF: {"donor_support_bounds": SUPPORT_BOUNDS_TYPE},
     }
 )
 
@@ -851,6 +882,10 @@ def _money_producer_gaps(spec: Mapping[str, object]) -> list[str]:
     rosters = money_column_rosters(declaration)
     found: dict[str, set[str]] = {}
     for row in rows:
+        if row.get("kernel") == DONOR_RANGES_REF:
+            # The support evidence records the donor's own range before any
+            # producer rewrites it; it consumes no money.
+            continue
         reads = (
             row.get("base")
             if row.get("structural", "none") != "none"
@@ -1499,6 +1534,752 @@ def _embeds_engine_ref(
     return decoded != value and _embeds_engine_ref(
         decoded, references, unit_modules, allowed_references
     )
+
+
+#: The resources the evidence composition checks read.
+_CLOSURE_RESOURCE = "axiom_input_closure"
+_BINDINGS_RESOURCE = "axiom_rules_bindings"
+
+
+def _json_value(value: object) -> object:
+    """A parameter value, with canonical JSON text decoded."""
+
+    if isinstance(value, str) and value[:1] in "[{":
+        try:
+            return json.loads(value)
+        except ValueError:
+            return value
+    return value
+
+
+def _check_donor_receipts(graph: Graph) -> None:
+    """A donor-receipt node authenticates exactly the donor CREATE reads.
+
+    Each ``transport.donor_receipt@1`` node must select the same donor source,
+    ``donor_sha256`` and ``donor_size`` as the graph's CREATE node, and its
+    ``source_stages_sha256`` must be CREATE's ``donor_pin_sha256``, on either
+    CREATE version.
+    """
+
+    receipts = [node for node in graph.nodes if node.kernel == DONOR_RECEIPT_REF]
+    if not receipts:
+        return
+    creates = [node for node in graph.nodes if node.kernel in CREATE_REFS]
+    if len(creates) != 1:
+        raise ValueError("A donor-receipt node needs exactly one CREATE node.")
+    (create,) = creates
+    pairs = (
+        ("donor_source", "donor_source"),
+        ("donor_sha256", "donor_sha256"),
+        ("donor_size", "donor_size"),
+        ("source_stages_sha256", "donor_pin_sha256"),
+    )
+    for node in receipts:
+        differing = [
+            name
+            for name, create_name in pairs
+            if node.params.get(name) != create.params.get(create_name)
+        ]
+        if differing or tuple(node.sources) != (create.params.get("donor_source"),):
+            raise ValueError(
+                f"Donor-receipt node {node.id!r} selects a different donor from "
+                f"CREATE {create.id!r}: {differing or ['sources']}."
+            )
+
+
+def _check_weights_audit_entity(spec: Mapping[str, object], graph: Graph) -> None:
+    """Every declared weight transition is on the audited weight entity.
+
+    ``transport.weights_audit@1`` audits one weight vector; a declared row
+    whose ``weights.entity`` names another entity would persist a second
+    vector the audit never sees.
+    """
+
+    audits = [node for node in graph.nodes if node.kernel == WEIGHTS_AUDIT_REF]
+    if not audits:
+        return
+    entities = {node.params.get("weight_entity") for node in audits}
+    if len(entities) != 1:
+        raise ValueError("Weights-audit nodes must declare one weight_entity.")
+    (entity,) = entities
+    for row in _declared_rows(spec):
+        weights = row.get("weights")
+        if isinstance(weights, Mapping) and weights.get("entity") != entity:
+            raise ValueError(
+                f"Node {row.get('id')!r} declares weights on "
+                f"{weights.get('entity')!r}, but the weights audit reads "
+                f"{entity!r}; a unit may not persist a second weight vector."
+            )
+
+
+#: The support roster's covered classes; a derived row passes only when every
+#: walked source is one of them.
+SUPPORT_COVERED = frozenset(
+    {
+        "copied",
+        "normalized",
+        "quantile_mapped",
+        "currency",
+        "structural",
+        "closure_default",
+    }
+)
+#: Producer kernel -> the support class its owned column takes.
+_SUPPORT_PRODUCERS = MappingProxyType(
+    {
+        MONEY_NORMALIZE_REF: "normalized",
+        "transport.quantile_map@1": "quantile_mapped",
+        "transport.currency@1": "currency",
+    }
+)
+_SUPPORT_ENCODERS = frozenset({"concepts.encode@1", "concepts.encode_groups@1"})
+#: The only kernels that may own a column a support ``structural_columns`` row
+#: excuses: they assign identity or geography, never donor values.
+SUPPORT_STRUCTURAL_OWNERS = frozenset(
+    {"geography.derive@1", "geography.person_location@1", "geography.assign_atomic@1"}
+)
+#: The producer parameters a support row carries, resolved, so the support
+#: producer reads the same bands and rates the producer read.
+_SUPPORT_PRODUCER_PARAMS = (
+    "bands",
+    "interpolation",
+    "aggregate_entity",
+    "component_column",
+    "columns",
+    "rate",
+)
+RANK_ONLY_MESSAGE = (
+    "{entity}.{column}: lineage class 'rank_only' is reserved for the declared "
+    "rank-only input (BE d1902); no producer implements it yet."
+)
+
+
+def support_structural_columns(spec: Mapping[str, object]) -> list[dict]:
+    """The ``structural_columns`` rows of every applicable ``support`` entry."""
+
+    if not _has_resource(spec, "gates"):
+        return []
+    rows = []
+    for entry in transport_resource(spec, "gates").get("gates", ()):
+        if (
+            not isinstance(entry, Mapping)
+            or entry.get("gate") != "support"
+            or entry.get("not_applicable") is not None
+        ):
+            continue
+        declared = (entry.get("parameters") or {}).get("structural_columns", ())
+        for row in _sequence(declared, "support structural_columns"):
+            if (
+                not isinstance(row, Mapping)
+                or set(row) != {"entity", "column", "reason"}
+                or not all(_is_text(row[key]) for key in row)
+            ):
+                raise ValueError(
+                    "A support structural_columns row holds exactly entity, column "
+                    "and a reason."
+                )
+            rows.append(dict(row))
+    keys = [(row["entity"], row["column"]) for row in rows]
+    if len(keys) != len(set(keys)):
+        raise ValueError("Support structural_columns repeats a column.")
+    return rows
+
+
+def _check_structural_columns(spec: Mapping[str, object]) -> None:
+    """Bound what a ``structural_columns`` row may excuse from support.
+
+    Refused: a column a declared row owns, unless its owner assigns
+    geography; a column on a money roster; a column whose concept is
+    ``observed`` (the donor's realized range governs it).
+    """
+
+    rows = support_structural_columns(spec)
+    if not rows:
+        return
+    owners: dict[tuple, set[str]] = {}
+    for row in _declared_rows(spec):
+        if row.get("structural", "none") == "none":
+            for key in _owned_columns(row):
+                owners.setdefault(key, set()).add(str(row.get("kernel")))
+    rosters = {}
+    if _has_resource(spec, MONEY_NORMALIZATION_RESOURCE):
+        rosters = money_column_rosters(
+            validate_money_normalization(
+                _raw_transport_resource(spec, MONEY_NORMALIZATION_RESOURCE)
+            )
+        )
+    problems = []
+    for row in rows:
+        key = (row["entity"], row["column"])
+        label = f"{key[0]}.{key[1]}"
+        foreign = sorted(owners.get(key, set()) - SUPPORT_STRUCTURAL_OWNERS)
+        if foreign:
+            problems.append(f"{label} is owned by {foreign}, which carry values.")
+        if key in rosters:
+            problems.append(f"{label} is a declared money column.")
+        concept = concept_for_column(*key)
+        if concept is not None and concept.provenance is ProvenanceClass.OBSERVED:
+            problems.append(f"{label} is an observed concept with donor support.")
+    if problems:
+        raise ValueError(
+            "Support structural_columns may not excuse these columns: "
+            + " ".join(problems)
+        )
+
+
+def _check_structural_rows_written(spec: Mapping[str, object], graph: Graph) -> None:
+    """Every declared ``structural_columns`` row names a column the graph writes.
+
+    A row excuses a column only when the support roster reaches it (H46), so
+    a row whose column no node in the composed graph owns, and that CREATE
+    does not synthesize, excuses nothing: a misspelled or stale row such as
+    ``household.employment_income``. CREATE's columns are its prepared
+    inventory (its node's outputs) and the schema's id and membership columns.
+    """
+
+    rows = support_structural_columns(spec)
+    if not rows:
+        return
+    written = {
+        (output.entity, output.column)
+        for node in graph.nodes
+        for output in node.outputs
+    }
+    declaration = _versioned_create_units(spec)
+    if declaration is None:
+        declaration = create_unit_declaration(
+            CREATE_V1_REF, transport_resource(spec, "benefit_unit_rule")
+        )
+    schema = declaration.entity_schema()[0]
+    written |= {(entity, schema.entity_id_column(entity)) for entity in schema.entities}
+    written |= {
+        (schema.person_entity, schema.membership_column(group))
+        for group in schema.group_entities
+    }
+    unwritten = sorted(
+        f"{row['entity']}.{row['column']}"
+        for row in rows
+        if (row["entity"], row["column"]) not in written
+    )
+    if unwritten:
+        raise ValueError(
+            "Support structural_columns names columns no node in the composed "
+            f"graph writes and CREATE does not synthesize: {unwritten}."
+        )
+
+
+def _support_producer_params(spec: Mapping[str, object], row: Mapping) -> dict:
+    params = row.get("params") or {}
+    out = {}
+    for name in _SUPPORT_PRODUCER_PARAMS:
+        if name in params:
+            value = _param(spec, params[name], None)
+            out[name] = (
+                json.loads(value)
+                if isinstance(value, str) and value[:1] in "[{"
+                else value
+            )
+    return out
+
+
+#: The codec of the RuleSpec tree the rules kernels read; a node source with
+#: any other codec carries values the support walk cannot cover.
+_RULESPEC_TREE_CODEC = RULESPEC_SOURCE_CODEC
+#: The pseudo-entity a support row names a node source under.
+_SOURCE_ENTITY = "source"
+
+
+def _source_codecs(spec: Mapping[str, object]) -> dict[str, object]:
+    """Source name -> codec, from the graph's top-level ``sources`` list."""
+
+    if not _has_resource(spec, GRAPH_RESOURCE):
+        return {}
+    out = {}
+    for item in transport_graph_document(spec).get("sources", ()) or ():
+        if isinstance(item, Mapping) and isinstance(item.get("name"), str):
+            out[item["name"]] = item.get("codec")
+    return out
+
+
+def _support_roster(spec: Mapping[str, object]) -> dict[str, object]:
+    """Every column the support gate covers, classed by its producer in lineage.
+
+    The roster is the battery slice plus the calibration problem's measures.
+    A column's class follows its owner in the reading node's population
+    lineage: ``normalized``, ``quantile_mapped`` or ``currency`` by producer
+    kernel; ``closure_default`` for a closure default an encode node writes;
+    ``structural`` for a declared ``structural_columns`` row; ``derived`` for
+    any other owner, whose node-level sources the walk reports; and, with no
+    owner after CREATE, ``pending`` for a money route awaiting its producer,
+    ``copied`` for a donor concept, ``uncovered`` otherwise.
+    """
+
+    rows = _declared_rows(spec)
+    structural_rows = {
+        row["id"]: row
+        for row in rows
+        if row.get("structural", "none") != "none" and isinstance(row.get("id"), str)
+    }
+    default = next(iter(structural_rows)) if len(structural_rows) == 1 else None
+
+    def lineage(version: object) -> list[str]:
+        chain: list[str] = []
+        while isinstance(version, str) and version in structural_rows:
+            if version in chain:
+                break
+            chain.append(version)
+            version = structural_rows[version].get("base")
+        return chain
+
+    owners: dict[tuple, list[Mapping]] = {}
+    for row in rows:
+        if row.get("structural", "none") == "none":
+            version = row.get("population") or default
+            for entity, column in _owned_columns(row):
+                owners.setdefault((version, entity, column), []).append(row)
+    excused = {
+        (row["entity"], row["column"]): row["reason"]
+        for row in support_structural_columns(spec)
+    }
+    rosters = {}
+    if _has_resource(spec, MONEY_NORMALIZATION_RESOURCE):
+        rosters = money_column_rosters(
+            validate_money_normalization(
+                _raw_transport_resource(spec, MONEY_NORMALIZATION_RESOURCE)
+            )
+        )
+    defaults: dict[tuple, str] = {}
+    if _has_resource(spec, _CLOSURE_RESOURCE) and _has_resource(
+        spec, _BINDINGS_RESOURCE
+    ):
+        names = transport_resource(spec, _BINDINGS_RESOURCE).get("entity_names", {})
+        to_frame = {engine: frame for frame, engine in names.items()}
+        for entry in transport_resource(spec, _CLOSURE_RESOURCE).get("entries", ()):
+            if isinstance(entry, Mapping) and entry.get("class") == "defaulted":
+                frame_entity = to_frame.get(entry.get("entity"))
+                defaults[(frame_entity, entry.get("input"))] = (
+                    f"{entry.get('rulespec_path')} {entry.get('entity')}."
+                    f"{entry.get('input')}"
+                )
+    reserved = []
+    for row in rows:
+        for item in _sequence(
+            (row.get("params") or {}).get("rank_only", ()), "rank_only"
+        ):
+            if isinstance(item, Mapping):
+                reserved.append(
+                    RANK_ONLY_MESSAGE.format(
+                        **{k: item.get(k) for k in ("entity", "column")}
+                    )
+                )
+    if reserved:
+        raise ValueError(" ".join(reserved))
+
+    codecs = _source_codecs(spec)
+    memo: dict[tuple, dict] = {}
+
+    def classify(version: object, entity: str, column: str, trail=()) -> dict:
+        key = (version, entity, column)
+        if key in memo:
+            return memo[key]
+        if key in trail:
+            return {"class": "uncovered", "reason": "a cycle in the declared lineage"}
+        row: dict[str, object] = {}
+        owner = next(
+            (
+                found[0]
+                for item in lineage(version)
+                for found in [owners.get((item, entity, column))]
+                if found
+            ),
+            None,
+        )
+        if (entity, column) in excused:
+            row = {"class": "structural", "reason": excused[entity, column]}
+        elif owner is not None and owner.get("kernel") in _SUPPORT_PRODUCERS:
+            row = {
+                "class": _SUPPORT_PRODUCERS[owner["kernel"]],
+                "producer_params": _support_producer_params(spec, owner),
+            }
+        elif (
+            owner is not None
+            and owner.get("kernel") in _SUPPORT_ENCODERS
+            and (
+                entity,
+                column,
+            )
+            in defaults
+        ):
+            row = {
+                "class": "closure_default",
+                "closure_entry": defaults[entity, column],
+            }
+        elif owner is not None:
+            sources: dict[tuple, dict] = {}
+            reads = owner.get("population") or default
+            # A node source other than the RuleSpec tree the rules kernels
+            # read carries values no support producer covers (C1). The graph's
+            # top-level sources give each name its codec.
+            for name in _sequence(owner.get("sources", ()), "node sources"):
+                codec = codecs.get(name)
+                if codec == _RULESPEC_TREE_CODEC:
+                    continue
+                sources[(_SOURCE_ENTITY, str(name))] = {
+                    "entity": _SOURCE_ENTITY,
+                    "column": str(name),
+                    "class": "uncovered",
+                    "reason": f"the owner reads source {name!r} (codec "
+                    f"{codec!r}), which no support producer covers",
+                }
+            for item in owner.get("inputs", ()):
+                if not isinstance(item, Mapping):
+                    continue
+                for name in item.get("columns", ()):
+                    found = classify(reads, item.get("entity"), name, (*trail, key))
+                    if found["class"] == "derived":
+                        for source in found["sources"]:
+                            sources[(source["entity"], source["column"])] = source
+                    else:
+                        sources[(item.get("entity"), name)] = {
+                            "entity": item.get("entity"),
+                            "column": name,
+                            "class": found["class"],
+                            **(
+                                {"reason": found["reason"]} if "reason" in found else {}
+                            ),
+                        }
+            row = (
+                {
+                    "class": "derived",
+                    "sources": [sources[k] for k in sorted(sources)],
+                    "reason": "Sources are the owner node's declared inputs and "
+                    "sources, walked per node, so a source the row itself never "
+                    "reads can appear.",
+                }
+                if sources
+                else {
+                    "class": "uncovered",
+                    "reason": "its owner declares no input or source the walk "
+                    "reaches, so nothing covers its values",
+                }
+            )
+        else:
+            route, awaits = rosters.get((entity, column), (None, ()))
+            if route in {"quantile_mapped", "pending", "normalized"}:
+                row = {
+                    "class": "pending",
+                    "reason": f"awaits {', '.join(awaits) or 'its declared producer'}",
+                }
+            elif concept_for_column(entity, column) is not None:
+                row = {"class": "copied"}
+            else:
+                row = {
+                    "class": "uncovered",
+                    "reason": "CREATE synthesizes it and no structural_columns row "
+                    "excuses it",
+                }
+        if owner is not None:
+            row["owner"] = owner.get("id")
+            row["owner_kernel"] = owner.get("kernel")
+        memo[key] = row
+        return row
+
+    readers: dict[tuple, object] = {}
+    for kernel in ("gates.battery@1", "targets.problem@1"):
+        for row in rows:
+            if row.get("kernel") != kernel:
+                continue
+            for item in row.get("inputs", ()):
+                if isinstance(item, Mapping):
+                    for name in item.get("columns", ()):
+                        readers.setdefault(
+                            (item.get("entity"), name), row.get("population") or default
+                        )
+    columns = []
+    for (entity, column), version in sorted(readers.items()):
+        found = classify(version, entity, column)
+        columns.append({"entity": entity, "column": column, **found})
+    return {"columns": columns}
+
+
+def support_roster_slices(
+    spec: Mapping[str, object], classes: frozenset[str] | set[str]
+) -> list[dict[str, object]]:
+    """Entity slices of the support roster's columns in ``classes``, sorted.
+
+    Country generators and test fixtures declare the support producers' inputs
+    from this, so a producer slices exactly the columns its roster names. A
+    ``quantile_mapped`` row's ``component_column`` joins its entity's slice,
+    because the support producer checks each value against its own
+    component's bands.
+    """
+
+    columns: dict[str, list[str]] = {}
+    for row in _support_roster(spec)["columns"]:
+        if row["class"] in classes:
+            columns.setdefault(row["entity"], []).append(row["column"])
+            component = (row.get("producer_params") or {}).get("component_column")
+            if row["class"] == "quantile_mapped" and isinstance(component, str):
+                columns[row["entity"]].append(component)
+    return [
+        {"entity": entity, "columns": sorted(set(names))}
+        for entity, names in sorted(columns.items())
+    ]
+
+
+def _person_entity(spec: Mapping[str, object]) -> str:
+    declaration = _versioned_create_units(spec)
+    if declaration is None:
+        declaration = create_unit_declaration(
+            CREATE_V1_REF, transport_resource(spec, "benefit_unit_rule")
+        )
+    return declaration.entity_schema()[0].person_entity
+
+
+def _check_closure_relation_slices(spec: Mapping[str, object], graph: Graph) -> None:
+    """A closure producer's person slice carries every declared relation column.
+
+    A ``Slice`` delivers only the columns it names, and
+    ``transport.input_closure@1`` reads each relation input's physical
+    ``column`` and declared ``role_column`` on the person entity. A slice that
+    omits one would report a ``gap`` the frame does not have, so composition
+    refuses it by name.
+    """
+
+    nodes = [node for node in graph.nodes if node.kernel == INPUT_CLOSURE_REF]
+    if not nodes:
+        return
+    problems = []
+    person = None
+    for node in nodes:
+        bindings = _json_value(node.params.get("bindings"))
+        if not isinstance(bindings, Mapping):
+            continue
+        rows = bindings.get("bindings")
+        required = sorted(
+            {
+                column
+                for row in (rows if isinstance(rows, list) else ())
+                if isinstance(row, Mapping)
+                for item in binding_relation_inputs(row)
+                for column in (item.column, item.role_column)
+                if column is not None
+            }
+        )
+        if not required:
+            continue
+        person = person or _person_entity(spec)
+        sliced = {
+            column
+            for item in node.inputs
+            if item.entity == person
+            for column in item.columns
+        }
+        missing = [column for column in required if column not in sliced]
+        if missing:
+            problems.append(
+                f"Closure node {node.id!r} reads relation columns {missing} on "
+                f"{person!r}, which its {person!r} slice omits."
+            )
+    if problems:
+        raise ValueError(" ".join(problems))
+
+
+def _binding_modules(spec: Mapping[str, object]) -> dict[str, Mapping]:
+    if not _has_resource(spec, _BINDINGS_RESOURCE):
+        return {}
+    rows = transport_resource(spec, _BINDINGS_RESOURCE).get("bindings", ())
+    return {
+        row["id"]: row
+        for row in _sequence(rows, "rules bindings")
+        if isinstance(row, Mapping) and isinstance(row.get("id"), str)
+    }
+
+
+def _supplies(
+    node: Node,
+    entry: Mapping,
+    refs: Mapping[str, Mapping],
+    entity_names: Mapping[str, str],
+) -> bool:
+    """Whether ``node`` owns, overrides or solves one closure input."""
+
+    module, engine_entity, name = (
+        entry["rulespec_path"],
+        entry["entity"],
+        entry["input"],
+    )
+    if any(
+        output.column == name and entity_names.get(output.entity) == engine_entity
+        for output in node.outputs
+    ):
+        return True
+
+    def matches(binding_ref: object, entity: object, column: object) -> bool:
+        row = refs.get(binding_ref) if isinstance(binding_ref, str) else None
+        return (
+            row is not None
+            and row.get("rulespec_path") == module
+            and column == name
+            and entity_names.get(entity) == engine_entity
+        )
+
+    primary = node.params.get("engine_ref")
+    solve = _json_value(node.params.get("solve_input"))
+    if isinstance(solve, Mapping) and matches(
+        primary, solve.get("entity"), solve.get("column")
+    ):
+        return True
+    requests = [(primary, _json_value(node.params.get("input_overrides")))]
+    components = _json_value(node.params.get("components"))
+    if isinstance(components, list):
+        requests += [
+            (item.get("engine_ref"), _json_value(item.get("input_overrides")))
+            for item in components
+            if isinstance(item, Mapping)
+        ]
+    for binding_ref, overrides in requests:
+        if isinstance(overrides, list) and any(
+            isinstance(item, Mapping)
+            and matches(binding_ref, item.get("entity"), item.get("column"))
+            for item in overrides
+        ):
+            return True
+    return False
+
+
+def _check_graph_node_entries(
+    spec: Mapping[str, object],
+    config: TransportGraphConfig,
+    graph: Graph,
+    *,
+    extended: bool,
+) -> None:
+    """Every ``graph_node`` closure entry names a node that supplies its input.
+
+    The node must exist in the composed graph and own the input's column,
+    override it (at the top level or in ``components[*].input_overrides``,
+    matched to the entry's module through the component's ``engine_ref``),
+    or solve it. On the skeleton-only path an entry whose node the skeleton
+    lacks passes, because an extension may own it.
+    """
+
+    if not _has_resource(spec, _CLOSURE_RESOURCE):
+        return
+    entries = [
+        entry
+        for entry in transport_resource(spec, _CLOSURE_RESOURCE).get("entries", ())
+        if isinstance(entry, Mapping) and entry.get("encoded_by") == "graph_node"
+    ]
+    if not entries:
+        return
+    bindings = transport_resource(spec, _BINDINGS_RESOURCE)
+    entity_names = dict(bindings.get("entity_names", {}))
+    rows = _binding_modules(spec)
+    refs = {
+        config.engine_refs[binding]: row
+        for binding, row in rows.items()
+        if binding in config.engine_refs
+    }
+    nodes = {node.id: node for node in graph.nodes}
+    problems = []
+    for entry in entries:
+        label = f"{entry.get('input')} ({entry.get('entity')}, {entry.get('rulespec_path')})"
+        node = nodes.get(entry.get("node"))
+        if node is None:
+            if extended:
+                problems.append(
+                    f"{label} names graph node {entry.get('node')!r}, which the "
+                    "composed graph does not hold."
+                )
+            continue
+        if not _supplies(node, entry, refs, entity_names):
+            problems.append(
+                f"{label} names graph node {node.id!r}, which neither owns, "
+                "overrides nor solves it."
+            )
+    if problems:
+        raise ValueError("Closure graph_node entries are wrong: " + " ".join(problems))
+
+
+def _selects(ref: object, binding: str, literal: str | None) -> bool:
+    """Whether an ``engine_ref`` selects ``binding``, in either spelling.
+
+    A declaration writes ``{"binding": ...}`` or the prepared engine reference
+    itself; the literal matches in any JSON spelling, and a string too deeply
+    escaped to decode counts as a match, so the check fails closed.
+    """
+
+    if isinstance(ref, Mapping):
+        return ref.get("binding") == binding
+    if literal is None or not isinstance(ref, str):
+        return False
+    embedded = _embedded_engine_refs(ref, {literal})
+    return embedded is None or literal in embedded
+
+
+def _requests(value: object, binding: str, literal: str | None = None) -> list[str]:
+    """Every variable a declaration requests from ``binding``, nested included.
+
+    ``literal`` is the binding's prepared engine reference, so a component
+    that writes it in place of ``{"binding": ...}`` counts too.
+    """
+
+    found: list[str] = []
+    value = _json_value(value)
+    if isinstance(value, Mapping):
+        ref = _json_value(value.get("engine_ref"))
+        if _selects(ref, binding, literal):
+            variables = _json_value(value.get("variables", ()))
+            if isinstance(variables, list | tuple):
+                found += [str(item) for item in variables]
+            if isinstance(value.get("variable"), str):
+                found.append(value["variable"])
+        for item in value.values():
+            found += _requests(item, binding, literal)
+    elif isinstance(value, list | tuple):
+        for item in value:
+            found += _requests(item, binding, literal)
+    return found
+
+
+def _check_unreached_requests(
+    spec: Mapping[str, object], engine_refs: Mapping[str, str] | None = None
+) -> None:
+    """No declared row requests a variable outside a binding's verified outputs.
+
+    A binding's ``unreached_roots`` holds only for the ``outputs`` its review
+    verified; every request through that binding, a nested bridge component
+    included, must stay inside them. ``engine_refs`` holds the prepared
+    references, so a request that spells the reference literally counts too.
+    """
+
+    guarded = {
+        binding: row["unreached_roots"]
+        for binding, row in _binding_modules(spec).items()
+        if isinstance(row.get("unreached_roots"), Mapping)
+    }
+    if not guarded:
+        return
+    problems = []
+    for row in _declared_rows(spec):
+        for binding, declaration in guarded.items():
+            outputs = set(declaration.get("outputs", ()))
+            requested = _requests(
+                row.get("params", {}), binding, (engine_refs or {}).get(binding)
+            )
+            if row.get("rules_binding") == binding:
+                requested += [
+                    str(item) for item in row.get("params", {}).get("variables", ())
+                ]
+            outside = sorted(set(requested) - outputs)
+            if outside:
+                problems.append(
+                    f"{row.get('id')!r} requests {outside} from {binding!r}, whose "
+                    f"unreached_roots were verified for {sorted(outputs)} only."
+                )
+    if problems:
+        raise ValueError(" ".join(problems))
 
 
 def _unit_entities(spec: Mapping[str, object]) -> tuple[object, ...]:
@@ -2800,6 +3581,12 @@ def _param(
             raise ValueError("The whole-spec fingerprint cannot enter node parameters.")
         if value["prepared"] not in _PREPARED:
             raise ValueError(f"Unknown prepared parameter {value['prepared']!r}.")
+        if value["prepared"] == "support_roster":
+            return canonical_json(_support_roster(spec)).decode("utf-8")
+        if value["prepared"] == "unit_entities":
+            return canonical_json(
+                {"unit_entities": [str(entity) for entity in _unit_entities(spec)]}
+            ).decode("utf-8")
         if engine_refs is None:
             raise ValueError("Prepared engine references are not available here.")
         return canonical_json(
@@ -3225,6 +4012,8 @@ def compose_transport_graph(
     if not isinstance(config, TransportGraphConfig):
         raise TypeError("config must be a TransportGraphConfig.")
     validate_transport_activation(spec)
+    _check_unreached_requests(spec, config.engine_refs)
+    _check_structural_columns(spec)
     from .entitlement import transport_extensions
 
     config = replace(config, extensions=transport_extensions(spec, config.extensions))
@@ -3318,6 +4107,11 @@ def compose_transport_graph(
     ):
         _check_extension_checkpoints(spec, config, skeleton, compiled)
         _check_export_contract(spec, skeleton, compiled)
+        _check_donor_receipts(skeleton)
+        _check_closure_relation_slices(spec, skeleton)
+        _check_structural_rows_written(spec, skeleton)
+        _check_graph_node_entries(spec, config, skeleton, extended=False)
+        _check_weights_audit_entity(spec, skeleton)
         return skeleton
     skeleton_nodes = []
     for node in skeleton.nodes:
@@ -3348,6 +4142,11 @@ def compose_transport_graph(
     _check_single_money_normalization(spec, graph, extended)
     _check_money_bridge_owners(graph, extended)
     _check_export_contract(spec, graph, extended)
+    _check_donor_receipts(graph)
+    _check_closure_relation_slices(spec, graph)
+    _check_structural_rows_written(spec, graph)
+    _check_graph_node_entries(spec, config, graph, extended=True)
+    _check_weights_audit_entity(spec, graph)
     for node in skeleton.nodes:
         expected = (
             set(compiled.predecessors[node.id])

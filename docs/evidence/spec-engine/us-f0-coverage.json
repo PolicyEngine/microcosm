@@ -1656,13 +1656,13 @@
           "compiler_ir.node_slices"
         ],
         "expected": {
-          "map_sha256": "488846129a3c47e89d54538515e6bdbd7ce849e4081ab8a4ad40c9ce2a1e1391",
-          "protocol_sha256": "87f44e60621c45d2fc1448fda11cd446960d6bab7cb51b346367339e2e751e1f"
+          "map_sha256": "07fe9086b57a15ab1c2551fce5c30aebfa55175d76a308f7dbb268ac49da747a",
+          "protocol_sha256": "4ff992324004d4c09d4165bc8d24ccff15b9d84858836851b12d532c870920f4"
         },
         "failures": [],
         "observed": {
-          "map_sha256": "488846129a3c47e89d54538515e6bdbd7ce849e4081ab8a4ad40c9ce2a1e1391",
-          "protocol_sha256": "87f44e60621c45d2fc1448fda11cd446960d6bab7cb51b346367339e2e751e1f"
+          "map_sha256": "07fe9086b57a15ab1c2551fce5c30aebfa55175d76a308f7dbb268ac49da747a",
+          "protocol_sha256": "4ff992324004d4c09d4165bc8d24ccff15b9d84858836851b12d532c870920f4"
         },
         "status": "covered"
       },
@@ -1677,7 +1677,7 @@
           "compiler_ir.seed_stream_map"
         ],
         "expected": {
-          "implementation_sha256": "87f44e60621c45d2fc1448fda11cd446960d6bab7cb51b346367339e2e751e1f",
+          "implementation_sha256": "4ff992324004d4c09d4165bc8d24ccff15b9d84858836851b12d532c870920f4",
           "protocol": "legacy-v1",
           "streams": [
             "build_model",
@@ -1698,7 +1698,7 @@
         },
         "failures": [],
         "observed": {
-          "implementation_sha256": "87f44e60621c45d2fc1448fda11cd446960d6bab7cb51b346367339e2e751e1f",
+          "implementation_sha256": "4ff992324004d4c09d4165bc8d24ccff15b9d84858836851b12d532c870920f4",
           "protocol": "legacy-v1",
           "streams": [
             "build_model",

@@ -22,8 +22,10 @@ from microcosm.build.ledger_artifact import (
     load_ledger_consumer_artifact,
 )
 from microcosm.build.reference_factors import resolve_reference_factor
+from microcosm.build.transport import compose as compose_module
 from microcosm.build.transport.codecs import FACTS_SOURCE_CODEC
 from microcosm.build.transport.compose import TransportGraphConfig
+from microcosm.build.transport.evidence_contract import binding_relation_inputs
 from microcosm.build.transport.registry import build_transport_registry
 from microcosm.build.transport.takeup_kernels import reporting_cell_declarations
 from microcosm.frame import Frame, VariableMetadata, WeightKind, Weights
@@ -611,11 +613,20 @@ def make_nz_toy_fixture(root):
                 }
         if binding["id"] == "pension":
             program["outputs"]["toy_pension_eligible"]["threshold"] = 65
+        variables = list(program["outputs"])
+        if binding["id"] == "main_benefit":
+            # No request reads it, but the module keeps reading the toy
+            # mapping's bound income input, as its closure entry says.
+            program["outputs"]["toy_income_probe"] = {
+                "input": "input_income",
+                "operation": "linear",
+                "coefficient": 0,
+                "offset": 0,
+                "dtype": "float64",
+            }
         payload = canonical_json(program)
         tree_path.write_bytes(payload)
-        binding.update(
-            sha256=sha256(payload).hexdigest(), variables=list(program["outputs"])
-        )
+        binding.update(sha256=sha256(payload).hexdigest(), variables=variables)
     r["target_references"] = _references(
         [
             reference_row(name, entity="person", measure=name + "_indicator")
@@ -817,6 +828,7 @@ def make_nz_toy_fixture(root):
         r["entitlement_annualisation"][row["name"]] = (
             52 if row["measure"] == "toy_as_weekly" else 1
         )
+    _evidence(spec)
     fixture = NzToyFixture(
         root,
         spec,
@@ -826,8 +838,309 @@ def make_nz_toy_fixture(root):
         base.registry,
         sources,
         base.engines_by_binding,
+    ).reprepare()
+    _close_toy_inputs(fixture)
+    return fixture.reprepare(fixture.spec)
+
+
+#: The toy's identity and assignment columns (the NZ list's counterpart).
+TOY_STRUCTURAL_COLUMNS = (
+    ("family", "family_head_person_id", "CREATE synthesizes the family head pointer."),
+    (
+        "family",
+        "family_household_id",
+        "CREATE synthesizes the family's household pointer.",
+    ),
+    (
+        "family",
+        "family_source_household_id",
+        "CREATE synthesizes the family's donor household lineage.",
+    ),
+    ("household", "donor_support_stratum", "CREATE synthesizes the support stratum."),
+    ("person", "take_up_seed", "CREATE derives the take-up seed from the person id."),
+    (
+        "household",
+        "source_household_id",
+        "The donor supplies the household identifier.",
+    ),
+    ("household", "ta", "geography.derive@1 assigns the territorial authority."),
+    ("household", "region", "geography.derive@1 assigns the region."),
+)
+#: The toy's declared limit on the calibrated person-mass change.
+TOY_MAXIMUM_RELATIVE_MASS_CHANGE = 0.05
+
+
+def closure_slices(resources):
+    """The closure producer's input slices for the toy's resources.
+
+    The closure's concept, state and default entries feed their entities'
+    columns, and the producer reads each declared relation's column and role
+    column on the person entity; a slice delivers only the columns it names.
+    """
+    names = resources["axiom_rules_bindings"]["entity_names"]
+    to_frame = {engine: frame for frame, engine in names.items()}
+    closure = {}
+    for entry in resources["axiom_input_closure"]["entries"]:
+        if entry.get("encoded_by") != "graph_node":
+            closure.setdefault(to_frame[entry["entity"]], []).append(entry["input"])
+    for binding in resources["axiom_rules_bindings"]["bindings"]:
+        for item in binding_relation_inputs(binding):
+            for column in (item.column, item.role_column):
+                if column is not None:
+                    closure.setdefault("person", []).append(column)
+    return [_slice(e, sorted(set(c))) for e, c in sorted(closure.items())]
+
+
+def _evidence(spec):
+    """Wire the five release-evidence producers and their three gates.
+
+    The toy closure's surface engine commit becomes the toy bindings' engine
+    commit, as ruling H36 requires; the donor pin also carries the staged
+    artifact the donor receipt authenticates.
+    """
+    r = spec["resources"]
+    commit = r["axiom_rules_bindings"]["engine"]["commit"]
+    r["axiom_input_closure"]["input_surface"]["engine"]["commit"] = commit
+    pin = r["donor_pin"]
+    pin.update(
+        locator="synthetic_donor.h5",
+        revision="synthetic-forty-households",
+        stages=[
+            {
+                "stage": "load_synthetic_donor",
+                "artifacts": [
+                    {
+                        "locator": "synthetic_donor.h5",
+                        "revision": "synthetic-forty-households",
+                        "sha256": pin["sha256"],
+                        "size_bytes": pin["size"],
+                    }
+                ],
+            }
+        ],
     )
-    return fixture.reprepare()
+    r["gates"]["gates"] += [
+        {
+            "id": "toy_release_input_coverage",
+            "gate": "release_input_coverage",
+            "phase": "terminal",
+            "criticality": "release_blocking",
+            "evidence_absent_blocks": True,
+            "parameters": {"allow_engine_optional": False},
+        },
+        {
+            "id": "toy_donor_support_bounds",
+            "gate": "support",
+            "phase": "terminal",
+            "criticality": "release_blocking",
+            "evidence_absent_blocks": True,
+            "parameters": {
+                "structural_columns": [
+                    {"entity": entity, "column": column, "reason": reason}
+                    for entity, column, reason in TOY_STRUCTURAL_COLUMNS
+                ]
+            },
+        },
+        {
+            "id": "toy_calibration_weights_audit",
+            "gate": "weights_audit",
+            "phase": "terminal",
+            "criticality": "release_blocking",
+            "evidence_absent_blocks": True,
+            "parameters": {
+                "maximum_relative_mass_change": TOY_MAXIMUM_RELATIVE_MASS_CHANGE
+            },
+        },
+    ]
+    rows = r["transport_graph"]["nodes"]
+    ranged = compose_module.support_roster_slices(
+        spec, {"copied", "normalized", "currency"}
+    )
+    bounded = compose_module.support_roster_slices(
+        spec, {"copied", "normalized", "currency", "quantile_mapped"}
+    )
+    money = next(row for row in rows if row["id"] == "nz.central.normalize")
+    roster = {"prepared": "support_roster"}
+    evidence = [
+        _node(
+            "nz.evidence.donor_receipt",
+            "transport.donor_receipt@1",
+            population="nz.open",
+            sources=["donor_pool"],
+            params={
+                "donor_source": "donor_pool",
+                "donor_sha256": _select("donor_pin", "value", "sha256"),
+                "donor_size": _select("donor_pin", "value", "size"),
+                "donor_locator": _select("donor_pin", "value", "locator"),
+                "donor_revision": _select("donor_pin", "value", "revision"),
+                "source_stages": _select("donor_pin", "json"),
+                "source_stages_sha256": _select("donor_pin", "sha256"),
+            },
+        ),
+        _node(
+            "nz.evidence.donor_ranges",
+            "transport.donor_ranges@1",
+            population="nz.open",
+            inputs=ranged,
+            params={"support_roster": roster},
+        ),
+        # The toy's terminal branches from calibration beside nz.as, so the
+        # family module's encoded inputs exist on nz.as only.
+        _node(
+            "nz.evidence.input_closure",
+            "transport.input_closure@1",
+            population="nz.as",
+            inputs=closure_slices(r),
+            params={
+                **_document("closure", "axiom_input_closure"),
+                **_document("mapping", "concept_mapping"),
+                **_document("bindings", "axiom_rules_bindings"),
+                "engine_refs": {"prepared": "engine_refs"},
+            },
+        ),
+        _node(
+            "nz.evidence.weights",
+            "transport.weights_audit@1",
+            population="nz.terminal",
+            inputs=[
+                _slice("person", ["age"]),
+                _slice("household", ["source_household_id"]),
+                _slice("family", ["family_household_id"]),
+            ],
+            params={
+                "weight_entity": "household",
+                "unit_entities": {"prepared": "unit_entities"},
+            },
+            artifact_inputs=[
+                _edge("problem", "nz.targets.problem"),
+                _edge("solution", "nz.calibrate"),
+                _edge("result", "nz.calibrate"),
+            ],
+        ),
+        _node(
+            "nz.evidence.support",
+            "transport.support_bounds@1",
+            population="nz.terminal",
+            sources=list(money["sources"]),
+            inputs=bounded,
+            params={
+                "support_roster": roster,
+                **{
+                    name: money["params"][name]
+                    for name in (
+                        "declaration",
+                        "declaration_sha256",
+                        "factor_context",
+                        "factor_context_sha256",
+                        "profile_selection",
+                        "chronicle_feed_pin",
+                    )
+                    if name in money["params"]
+                },
+            },
+            artifact_inputs=[_edge("donor_ranges", "nz.evidence.donor_ranges")],
+        ),
+    ]
+    battery = next(row for row in rows if row["id"] == "nz.gates.terminal")
+    rows[rows.index(battery) : rows.index(battery)] = evidence
+    battery["artifact_inputs"] = [
+        *battery.get("artifact_inputs", ()),
+        _edge("result", "nz.calibrate"),
+        _edge("donor_artifact_receipt", "nz.evidence.donor_receipt"),
+        _edge("axiom_input_closure", "nz.evidence.input_closure"),
+        _edge("donor_ranges", "nz.evidence.donor_ranges"),
+        _edge("donor_support_bounds", "nz.evidence.support"),
+        _edge("fit_weight_records", "nz.evidence.weights"),
+    ]
+
+
+def _close_toy_inputs(fixture):
+    """Close every bound toy module's live roots, as a country closure does.
+
+    The NZ toy rewrites its rule programs and adds the entitlement and tax
+    modules, so the base toy closure no longer matches them. Each live root
+    keeps its entry, or becomes a concept binding where the toy mapping binds
+    it, or a graph_node entry naming the toy node that owns, overrides or
+    solves it.
+    """
+    from microcosm.build.transport.evidence_kernels import engine_root_inputs
+    from microcosm.frame.concept_mapping import ConceptMapping
+
+    r = fixture.spec["resources"]
+    closure = r["axiom_input_closure"]
+    bindings = r["axiom_rules_bindings"]
+    names = bindings["entity_names"]
+    to_frame = {engine: frame for frame, engine in names.items()}
+    bound = {
+        binding.ref
+        for binding in ConceptMapping.from_dict(r["concept_mapping"]).bindings
+    }
+    rows = compose_module._declared_rows(fixture.spec)
+    owners = {}
+    for row in rows:
+        if row.get("structural", "none") != "none":
+            continue
+        for output in row.get("outputs", ()):
+            owners.setdefault((output["entity"], output["column"]), row["id"])
+        params = row.get("params") or {}
+        solve = params.get("solve_input")
+        if isinstance(solve, str):
+            solve = json.loads(solve)
+        if isinstance(solve, dict):
+            owners.setdefault((solve["entity"], solve["column"]), row["id"])
+        requests = [params]
+        components = params.get("components") or []
+        if isinstance(components, str):
+            components = json.loads(components)
+        requests += [item for item in components if isinstance(item, dict)]
+        for request in requests:
+            overrides = request.get("input_overrides") or []
+            if isinstance(overrides, str):
+                overrides = json.loads(overrides)
+            for item in overrides if isinstance(overrides, list) else ():
+                if isinstance(item, dict) and {"entity", "column"} <= set(item):
+                    owners.setdefault((item["entity"], item["column"]), row["id"])
+    entries = {
+        (entry["rulespec_path"], entry["entity"], entry["input"]): entry
+        for entry in closure["entries"]
+    }
+    closed = []
+    for row in bindings["bindings"]:
+        engine = fixture.registry.engines[fixture.registry.engine_refs[row["id"]]]
+        path = row["rulespec_path"]
+        closure["rulespec_paths"][path] = row["sha256"]
+        for entity, roots in sorted(engine_root_inputs(engine, row, names).items()):
+            for name in roots:
+                key = (path, entity, name)
+                if key in entries:
+                    closed.append(entries[key])
+                    continue
+                if (name, entity, path) in bound:
+                    closed.append(
+                        {
+                            "rulespec_path": path,
+                            "entity": entity,
+                            "input": name,
+                            "class": "encoded",
+                            "encoded_by": "concept_binding",
+                        }
+                    )
+                    continue
+                owner = owners.get((to_frame[entity], name))
+                if owner is None:
+                    raise ValueError(f"No toy node supplies {entity}.{name} ({path}).")
+                closed.append(
+                    {
+                        "rulespec_path": path,
+                        "entity": entity,
+                        "input": name,
+                        "class": "encoded",
+                        "encoded_by": "graph_node",
+                        "node": owner,
+                        "reason": f"The synthetic toy node {owner} writes or solves it.",
+                    }
+                )
+    closure["entries"] = closed
 
 
 def _receipts(resources, facts, rows):

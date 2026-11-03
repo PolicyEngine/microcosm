@@ -9,6 +9,8 @@ Kernel implementation identity binds adapter classes,
 never spec data, so adding a binding of an existing class leaves it unchanged.
 Counterfactual and zero-cutout bridges share the same prepared engine mapping.
 Gap and scenario-band kernels are registered with the other transport kernels.
+The evidence producers share the prepared engine mapping too; their
+implementation hashes exclude the adapters.
 """
 
 from __future__ import annotations
@@ -44,6 +46,7 @@ from microcosm.graph.codecs import SourceCodecRegistry
 
 from .codecs import register_transport_codecs
 from .column_kernels import register_column_kernels
+from .evidence_kernels import register_evidence_kernels
 from .gate_bindings import TRANSPORT_GATE_REGISTRY
 from .gate_kernels import register_gate_kernel
 from .geography_kernels import register_geography_kernels
@@ -521,6 +524,7 @@ def build_transport_registry(
     kernels.register(SimulateSolveZeroKernel(engine_mapping, dependencies))
     register_takeup_kernels(kernels)
     register_reporting_kernels(kernels)
+    register_evidence_kernels(kernels, engine_mapping)
     return TransportRegistry(
         kernels, codecs, engine_mapping, MappingProxyType(refs), schema, nesting
     )
