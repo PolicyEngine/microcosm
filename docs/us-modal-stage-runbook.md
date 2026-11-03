@@ -257,6 +257,10 @@ release directory onto the runs volume. Publication stays the human step in
    - **Events left undelivered.** Events the emitter has not sent when the
      build ends are lost with the container. The receipt does not yet
      record how many there were (see `runner.telemetry` above).
+   - **On Modal:** a paid smoke run on 3 November 2026 verified the launch,
+     the per-launch secret and the check before staging (see "Verified on
+     Modal, 3 November 2026: the telemetry token"); it did not cover a
+     container reaching the collector.
 
 ## Resources and cost
 
@@ -468,6 +472,47 @@ MICROCOSM_MODAL_PLAN=docs/us-modal-stage-example-plan.json modal run tools/modal
 MICROCOSM_MODAL_PLAN=docs/us-modal-stage-example-plan.json \
   modal run --detach tools/modal_us_stage.py --run --spawn
 ```
+
+## Verified on Modal, 3 November 2026: the telemetry token
+
+One paid smoke run of the telemetry token (item 6 of "How a run works"),
+approved by Anthony, from #1473 at `2f12bc0aa`. The main checkout and the
+Hub were not touched.
+
+- **The plan.** A copy of `docs/us-modal-stage-smoke-plan.json` with its
+  `run_id` set to `runner-smoke-telemetry-20261103`.
+- **The launching machine.** `MICROCOSM_EMITTER_COMMAND` named
+  microcosm-emitter 0.11.11, installed in a scratch tool folder, and the
+  operator's Hugging Face login was the one `hf auth login` saved.
+- **The check (without `--run`)** reported OK. Modal built the image with
+  the launching checkout's install step, which installed emitter 0.11.11,
+  and its `version` reported a collector origin. The check reported the
+  build as required to send telemetry and a 5,400 s token lifetime: the
+  check class's 30-minute timeout plus 3,600 s.
+- **The launch** (`modal run --detach tools/modal_us_stage.py --run
+  --spawn`). `telemetry-token` returned a token, and the launch printed only
+  its expiry and origin. The stage was spawned with the per-launch secret,
+  and the spawned call finished after the client had exited under
+  `--detach`.
+- **The attempt** finished with outcome `receipt` in 25.9 s. Fetched from
+  the runs volume, its receipt passed `verify-receipt --strict`: verified,
+  `COMPLETED`, 2 outputs, 0 problems.
+- **The receipt's `runner.telemetry`:**
+  - `required` was true;
+  - it recorded the token's expiry and origin, and the origin matched
+    `image_emitter_collector_origin` (the collector's hostname);
+  - `token_needed_until` was 17 minutes after the launch, well before the
+    expiry;
+  - `undelivered_events` was `null`.
+
+  So the per-launch secret reached the container, the runner read the token
+  from it, and the check before staging accepted it.
+- **No leaks.** No token-like string appears in the receipt or the stage
+  log.
+- **Not covered: a container reaching the collector.** `runner-smoke` does
+  not start the emitter, so nothing sent telemetry. That waits until the
+  registered US programs start the emitter (the design's PR 6). The receipt
+  does not record the undelivered-event count yet (see `runner.telemetry`).
 
 ## Acceptance attempt: 23 September materialize on the state surface
 
