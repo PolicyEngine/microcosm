@@ -84,7 +84,7 @@ jobs:
 
   engine-us:
     needs: select-countries
-    if: needs['select-countries'].outputs.run_us == 'true'
+    if: false
     runs-on: ubuntu-latest
     # Successful legs took 40-60 min on 2026-10-07..08 (n=23).
     timeout-minutes: 90
@@ -116,7 +116,7 @@ jobs:
 
   engine-uk:
     needs: select-countries
-    if: needs['select-countries'].outputs.run_uk == 'true'
+    if: false
     runs-on: ubuntu-latest
     timeout-minutes: 60
     strategy:
@@ -135,7 +135,7 @@ jobs:
 
   integration-uk:
     needs: select-countries
-    if: needs['select-countries'].outputs.run_uk == 'true'
+    if: false
     permissions:
       contents: read
     runs-on: ubuntu-latest

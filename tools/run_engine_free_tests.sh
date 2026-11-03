@@ -9,5 +9,5 @@ while IFS= read -r file; do files+=("$file"); done < <(
 )
 
 /usr/bin/time -v uv run --no-sync pytest "${files[@]}" \
-  -n 2 --dist loadfile -v --tb=short --maxfail=1 \
+  -n 2 --dist loadfile -v --tb=short \
   --durations=25 -p no:cacheprovider
