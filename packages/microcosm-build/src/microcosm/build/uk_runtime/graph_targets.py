@@ -15,7 +15,11 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
+import microcosm.calibrate.artifacts as calibrate_artifacts
 import microcosm.calibrate.geography_constants as geography_constants
+import microcosm.calibrate.matrix as calibrate_matrix
+import microcosm.calibrate.solve as calibrate_solve
+import microcosm.calibrate.target_selection as calibrate_target_selection
 from microcosm.build import cross_grain
 from microcosm.calibrate import CalibrationHierarchy, TargetRegistry, TargetSpec
 from microcosm.calibrate.artifacts import (
@@ -218,7 +222,13 @@ class _TargetKernel(KernelBase):
     )
 
     def implementation_hash(self) -> str:
-        from . import full_targets, high_value_homes, measure_simulation
+        from . import (
+            calibration_run,
+            full_targets,
+            high_value_homes,
+            measure_simulation,
+            weighted_integrity,
+        )
         from .target_compile_modules import uk_target_compile_modules
 
         implementation = source_hash(
@@ -236,6 +246,20 @@ class _TargetKernel(KernelBase):
             # alone must re-key the measures and everything they feed.
             measure_simulation,
             support_floor,
+            # The selection, the constraint matrices and their encoding, as
+            # the transport kernels hash them (microcosm#1492).
+            calibrate_target_selection,
+            calibrate_matrix,
+            calibrate_artifacts,
+            # full_targets takes its exclusion clock from here. Hashed
+            # directly, not listed: the module also loads the registers only
+            # the validation checks read, which no listed module may.
+            weighted_integrity,
+            # full_targets writes _ledger_provenance into the surface and runs
+            # _validate_band_edge_registry from here. uk.full.bound_spine@1,
+            # which loads a spine checkpoint ahead of the target nodes,
+            # already hashes it.
+            calibration_run,
             *uk_target_compile_modules(),
         )
         # The solve fingerprint: every packaged resource but the gate-only
@@ -651,7 +675,11 @@ class UKFullProblemKernel(_TargetKernel):
         # ``target_weights`` and ``national_doctrine`` (microcosm#1124), so an
         # edit there re-keys the problem instead of replaying a stale vector.
         # ``target_weights`` reads the UK-wide geography codes from
-        # ``geography_constants`` (microcosm#1492).
+        # ``geography_constants``, and the loss scales the problem stores from
+        # ``calibrate.solve.default_target_loss_scales`` (microcosm#1492). All
+        # of ``calibrate.solve`` is hashed: ``calibrate.adam@1``, whose hash
+        # every UK solve kernel embeds, already hashes it, so an edit there
+        # re-solves anyway and re-keys only this node besides.
         return hashlib.sha256(
             canonical_json(
                 {
@@ -661,6 +689,7 @@ class UKFullProblemKernel(_TargetKernel):
                         national_doctrine,
                         target_weights,
                         geography_constants,
+                        calibrate_solve,
                     ),
                 }
             )

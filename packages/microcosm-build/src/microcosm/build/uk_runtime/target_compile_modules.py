@@ -19,6 +19,12 @@ of the target hierarchies, nor the ``microcosm.calibrate`` registry and
 hierarchy classes the compiled surface is built from (with
 ``microcosm.calibrate.target``, which the registry imports). The transport
 compile modules already hashed those three.
+
+The exclusions cover only the listed modules' own imports. A second test
+walks every module each target and problem kernel hashes, its own module and
+the modules hashed beside this tuple included, and records the imports no
+review has classified yet (microcosm#1497). This module is not hashed, so an
+edit to a reason re-keys nothing; an edit to the tuple re-keys the kernels.
 """
 
 from __future__ import annotations

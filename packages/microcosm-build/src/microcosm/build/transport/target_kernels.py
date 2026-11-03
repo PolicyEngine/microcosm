@@ -50,15 +50,11 @@ import numpy as np
 
 import microcosm.build.calibration_columns as calibration_columns_module
 import microcosm.build.calibration_predicates as calibration_predicates_module
-import microcosm.build.chronicle_epoch as chronicle_epoch_module
-import microcosm.build.country_spec as country_spec_module
 import microcosm.build.ledger_artifact as ledger_artifact_module
-import microcosm.build.ledger_targets as ledger_targets_module
 import microcosm.build.reference_factors as reference_factors_module
 import microcosm.build.reference_intervals as reference_intervals_module
 import microcosm.build.reference_profiles as reference_profiles_module
 import microcosm.calibrate.artifacts as calibrate_artifacts_module
-import microcosm.calibrate.geography_constants as geography_constants_module
 import microcosm.calibrate.hierarchy as hierarchy_module
 import microcosm.calibrate.matrix as matrix_module
 import microcosm.calibrate.monetary_binding as monetary_binding_module
@@ -106,6 +102,7 @@ from .artifact_types import (
     COMPARISON_TYPE,
     TARGET_SURFACE_TYPE,
 )
+from .compile_modules import transport_compile_modules
 from .graph_inputs import (
     canonical_document_param,
     context_frame,
@@ -566,25 +563,9 @@ def _optional_float(value: float) -> float | None:
     return value if math.isfinite(value) else None
 
 
-#: The modules target compilation reads. ``source_hash`` does not follow
-#: imports, so a module a listed one imports is listed too, or excluded with a
-#: reason in ``test_transport_compile_modules``. ``ledger_targets`` labels a
-#: target's geography from ``geography_constants`` (microcosm#1492).
-_COMPILE_MODULES = (
-    graph_inputs,
-    artifact_types,
-    country_spec_module,
-    ledger_targets_module,
-    ledger_artifact_module,
-    chronicle_epoch_module,
-    reference_factors_module,
-    reference_profiles_module,
-    registry_module,
-    target_module,
-    hierarchy_module,
-    geography_constants_module,
-    reference_selection_module,
-)
+#: The modules target compilation reads, named in ``compile_modules``, which
+#: no kernel hashes, so an edit to the list re-keys only what it changes.
+_COMPILE_MODULES = transport_compile_modules()
 _MATRIX_MODULES = (
     matrix_module,
     monetary_binding_module,

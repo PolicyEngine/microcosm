@@ -472,6 +472,11 @@ class _NationalKernel(KernelBase):
     )
 
     def implementation_hash(self) -> str:
+        import microcosm.calibrate.artifacts as calibrate_artifacts
+        import microcosm.calibrate.matrix as calibrate_matrix
+        import microcosm.calibrate.solve as calibrate_solve
+
+        from . import weighted_integrity
         from .target_compile_modules import uk_target_compile_modules
 
         implementation = source_hash(
@@ -489,6 +494,18 @@ class _NationalKernel(KernelBase):
             national_calibration,
             national_doctrine,
             support_floor_rules,
+            # The constraint matrices and their encoding, and the problem's
+            # effective sample size, as the dense kernels hash them
+            # (microcosm#1492). calibrate.adam@1, whose hash the UK calibration
+            # kernels of this graph embed, already hashes calibrate.solve.
+            calibrate_matrix,
+            calibrate_artifacts,
+            calibrate_solve,
+            # full_targets takes its exclusion clock from weighted_integrity,
+            # and its surface provenance and band-edge check from
+            # calibration_run; hashed directly, as the dense target kernels do.
+            weighted_integrity,
+            calibration_run,
             *uk_target_compile_modules(),
         )
         return hashlib.sha256(
