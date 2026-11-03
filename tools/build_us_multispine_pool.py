@@ -1822,7 +1822,7 @@ def _validate_stacked_geography_assignment_receipt(
     ):
         raise ValueError(f"{boundary}: PUMA-ladder gate receipt did not pass.")
     if require_exact_assembled_rows:
-        live_gate = GateReport(
+        live_report = GateReport(
             (
                 us_puma_ladder_gate(
                     household,
@@ -1830,10 +1830,18 @@ def _validate_stacked_geography_assignment_receipt(
                     assign_tract=False,
                 ),
             )
-        ).to_manifest()
-        if gate_receipt != live_gate:
+        )
+        if gate_receipt != live_report.to_manifest():
+            # Name what the live gate finds, so an operator holding an older
+            # checkpoint sees the repair it needs (a missing in_denver, say).
+            drift = (
+                "the live gate passes, but its details differ from the receipt's"
+                if live_report.passed
+                else "the live gate fails: " + "; ".join(live_report.failures)
+            )
             raise ValueError(
-                f"{boundary}: PUMA-ladder gate receipt changed from live output."
+                f"{boundary}: PUMA-ladder gate receipt changed from live output; "
+                f"{drift}."
             )
 
     provenance_columns = (
