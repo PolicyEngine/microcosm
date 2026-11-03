@@ -47,7 +47,7 @@ class _Problem:
 
     ``estimates`` multiplies a two-column matrix by the weights it receives.
     Its columns are model/4 and model/8, so A·w₀ equals the model exactly at
-    ``INITIAL_WEIGHTS`` (powers of two divide exactly) and equals 5/12 of it
+    ``INITIAL_WEIGHTS`` (powers of two divide exactly) and equals 3/8 of it
     at unit weights.
     """
 
