@@ -14,7 +14,7 @@ import copy
 import json
 
 import pytest
-from hypothesis import HealthCheck, given, settings
+from hypothesis import HealthCheck, example, given, settings
 from hypothesis import strategies as st
 
 from microcosm.build.transport.compose import (
@@ -712,6 +712,11 @@ def _chain(draws):
     deadline=None,
     suppress_health_check=[HealthCheck.too_slow],
 )
+# Random draws rarely reach these: one declarer alone, then with a second
+# writer after it and before it.
+@example(draws=[(True, True, True)])
+@example(draws=[(True, True, True), (False, True, False)])
+@example(draws=[(False, False, True), (True, True, True)])
 def test_a_chain_proves_exactly_when_one_declarer_is_the_only_writer(draws):
     proofs, refusals = measurement_proofs(_spec(_chain(draws)))
     declarers = [index for index, draw in enumerate(draws) if draw[0]]
