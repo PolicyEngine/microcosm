@@ -2365,6 +2365,65 @@ def test_a_plan_that_opts_out_runs_its_tool_without_a_collector_token() -> None:
     assert not set(COLLECTOR_TOKEN_NAMES) & set(env)
 
 
+#: The variables a build program reads for its telemetry run
+#: (``microcosm.build.program_telemetry``); the runner and the programs set
+#: them, a plan never does.
+TELEMETRY_RUN_NAMES = ("MICROCOSM_TELEMETRY_RUN_ID", "MICROCOSM_TELEMETRY_PARENT_PID")
+
+
+def test_each_stage_reports_under_the_plan_s_run_and_its_stage() -> None:
+    from microcosm.build import program_telemetry
+
+    assert plan_lib.TELEMETRY_RUN_ID_ENV == program_telemetry.TELEMETRY_RUN_ID_VARIABLE
+    assert (
+        plan_lib.TELEMETRY_PARENT_PID_ENV
+        == program_telemetry.TELEMETRY_PARENT_PID_VARIABLE
+    )
+    plan = plan_lib.parse_plan(_plan_data(stage="calibrate"))
+    run_id = plan_lib.telemetry_run_id(plan)
+    assert run_id == "acs-local-20260923.calibrate"
+    # The program names the plan's run as the telemetry run's candidate.
+    assert program_telemetry.telemetry_run_identity(
+        "us_acs_local_release", environ={"MICROCOSM_TELEMETRY_RUN_ID": run_id}
+    ) == (run_id, "acs-local-20260923")
+    # Only from the runner: a value anywhere else in the container is removed.
+    env, removed = plan_lib.tool_environment(
+        {"PATH": "/usr/bin", "MICROCOSM_TELEMETRY_RUN_ID": "elsewhere.run"},
+        {},
+        telemetry_run_id=run_id,
+    )
+    assert env["MICROCOSM_TELEMETRY_RUN_ID"] == run_id
+    assert removed == ["MICROCOSM_TELEMETRY_RUN_ID"]
+
+
+def test_every_registered_stage_s_telemetry_run_id_is_one_the_collector_accepts() -> (
+    None
+):
+    from microcosm.build import program_telemetry
+
+    longest_run_id = "r" * 80
+    for tool in plan_lib.TOOLS.values():
+        for stage in tool.stages:
+            assert "." not in stage, (tool.name, stage)
+            data = _plan_data(stage="materialize", run_id=longest_run_id)
+            plan = dataclasses.replace(
+                plan_lib.parse_plan(data), tool=tool, stage=stage
+            )
+            run_id = plan_lib.telemetry_run_id(plan)
+            assert program_telemetry.telemetry_run_identity(
+                "pipeline", environ={"MICROCOSM_TELEMETRY_RUN_ID": run_id}
+            ) == (run_id, longest_run_id)
+
+
+@pytest.mark.parametrize("key", TELEMETRY_RUN_NAMES)
+def test_a_plan_may_not_choose_the_stage_s_telemetry_run(key: str) -> None:
+    with pytest.raises(plan_lib.PlanError, match="the runner and the build") as refused:
+        plan_lib.parse_plan(_plan_data(env={key: "chosen-by-the-plan"}))
+    assert key in str(refused.value)
+    with pytest.raises(plan_lib.PlanError, match="may not be passed"):
+        plan_lib.tool_environment({}, {key: "chosen-by-the-plan"})
+
+
 def test_the_image_emitter_s_version_runs_without_credentials_or_the_token(
     monkeypatch, tmp_path: Path
 ) -> None:
@@ -2844,6 +2903,44 @@ def test_a_stage_passes_its_token_to_the_tool_and_records_only_its_expiry_and_or
     run_dir = tmp_path / "runs" / "runs" / "fake-run"
     for path in [*run_dir.rglob("*.json"), *run_dir.rglob("*.log")]:
         assert DUMMY_COLLECTOR_TOKEN not in path.read_text(), path
+
+
+# A stand-in tool that records the telemetry run its environment names.
+_TELEMETRY_RUN_TOOL = """\
+import json, os, pathlib, sys
+state = pathlib.Path(sys.argv[1])
+(state / "out").mkdir(parents=True, exist_ok=True)
+(state / "out" / "telemetry-run.json").write_text(json.dumps({
+    name: os.environ.get(name)
+    for name in ("MICROCOSM_TELEMETRY_RUN_ID", "MICROCOSM_TELEMETRY_REQUIRED")
+}))
+"""
+
+
+@pytest.mark.parametrize("env", [{}, {"MICROCOSM_TELEMETRY_REQUIRED": "0"}])
+def test_a_stage_gives_its_tool_the_plan_s_run_and_stage_as_its_telemetry_run(
+    fake_runner, tmp_path: Path, env: dict
+) -> None:
+    app = fake_runner(
+        dataclasses.replace(
+            _fake_tool(),
+            argv_builder=lambda plan, paths, state: [
+                "-c",
+                _TELEMETRY_RUN_TOOL,
+                state,
+            ],
+        )
+    )
+    receipt = app._run_stage(_fake_plan(max_wall_seconds=600, env=env))
+    assert receipt["status"] == "COMPLETED"
+    state = tmp_path / "runs" / "runs" / "fake-run" / "state"
+    seen = json.loads((state / "out" / "telemetry-run.json").read_text())
+    # A plan that opts out still names the run: its build's emitter, if one
+    # starts, keeps its events under it in the container.
+    assert seen == {
+        "MICROCOSM_TELEMETRY_RUN_ID": "fake-run.run",
+        "MICROCOSM_TELEMETRY_REQUIRED": env.get("MICROCOSM_TELEMETRY_REQUIRED", "1"),
+    }
 
 
 @pytest.mark.parametrize("problem", ["missing", "expires-too-soon", "other-origin"])
