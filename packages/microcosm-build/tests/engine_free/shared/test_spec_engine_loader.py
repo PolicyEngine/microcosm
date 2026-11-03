@@ -21,8 +21,10 @@ def test_semantic_hash_has_golden_vector_and_surface_separation(tmp_path) -> Non
     # immigration stage's attested bytes.
     # The ACS local income pass's predictor extensions (microcosm#1022) move
     # acs_transfer's attested bytes again.
+    # The ACS SSI disability-criteria stage (microcosm#1022) moves
+    # ssi_disability_criteria's attested bytes.
     assert first.spec_sha256 == (
-        "1ea149bb16a89cf5c199e8acd12b98305f5bcab64e643567f605448aea8a11e7"
+        "d70bdd210e711df24650e496ef1100b1e1f05b4571fc2252abec32baaee3058a"
     )
 
     second_root = _rich_minimal(tmp_path / "xy", note="second", store="local:b")
