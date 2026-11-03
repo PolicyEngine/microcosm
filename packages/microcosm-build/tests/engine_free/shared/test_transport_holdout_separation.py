@@ -251,6 +251,39 @@ def test_packaged_activation_outcome_is_unchanged(country, monkeypatch):
     assert _separation_gaps(guarded) == []
 
 
+@pytest.mark.parametrize("country", PACKAGED_COUNTRIES)
+def test_packaged_precalibration_stages_pass_the_stage_guard(country):
+    """Each country's real stages pass the measure-keyed stage guard.
+
+    Activation refuses every packaged spec today, so composition never
+    reaches ``_precalibration_stages`` with real stages; this calls it
+    directly. NZ is the one packaged spec with both stages and holdouts.
+    """
+
+    stages = compose_module._precalibration_stages(load_transport_spec(country))
+    expected = {"income_tax_schedule_1", "main_benefits_rates"}
+    assert set(stages) == (expected if country == "nz" else set())
+
+
+def test_nz_stage_output_on_a_holdout_measure_refuses_across_entities():
+    """The control: an NZ ``person`` stage output against a ``family`` holdout.
+
+    An entity-keyed stage guard lets this input through.
+    """
+
+    spec = copy.deepcopy(load_transport_spec("nz"))
+    holdout = _rows(spec, "holdout_references")[0]
+    assert holdout["entity"] == "family"
+    holdout["measure"] = "jobseeker_support_annual_gross"
+    with pytest.raises(ValueError) as refused:
+        compose_module._precalibration_stages(spec)
+    assert str(refused.value).startswith(
+        "precalibration_stages output is a holdout measure: "
+    )
+    assert "(person, jobseeker_support_annual_gross)" in str(refused.value)
+    assert f"holdout_references.{holdout['name']} (family, " in str(refused.value)
+
+
 @pytest.mark.parametrize("measure", [["receives_main"], {"a": 1}], ids=["list", "dict"])
 @pytest.mark.parametrize(
     "resource", ["target_references", "precal_references", "holdout_references"]
