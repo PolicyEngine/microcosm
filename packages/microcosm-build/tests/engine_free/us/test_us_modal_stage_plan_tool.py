@@ -2310,8 +2310,9 @@ def test_a_plan_may_set_the_telemetry_requirement_only_to_0(value: str) -> None:
     # runner had staged the inputs.
     with pytest.raises(
         plan_lib.PlanError, match="MICROCOSM_TELEMETRY_REQUIRED may only be 0"
-    ):
+    ) as refused:
         plan_lib.parse_plan(_plan_data(env={"MICROCOSM_TELEMETRY_REQUIRED": value}))
+    assert "outside PolicyEngine" in str(refused.value)
     with pytest.raises(plan_lib.PlanError, match="may only be 0"):
         plan_lib.tool_environment({}, {"MICROCOSM_TELEMETRY_REQUIRED": value})
     env = {"MICROCOSM_TELEMETRY_REQUIRED": "0"}
@@ -2495,6 +2496,7 @@ def test_the_launch_refuses_on_every_failing_exit_code(
     message = str(refused.value)
     assert meaning in message
     assert "MICROCOSM_TELEMETRY_REQUIRED=0" in message
+    assert "outside PolicyEngine" in message
     assert LAUNCH_TOKEN not in message
 
 
@@ -2545,6 +2547,7 @@ def test_the_launch_refuses_an_unusable_token_answer(
         plan_lib.request_telemetry_token(plan, os.environ)
     assert LAUNCH_TOKEN not in str(refused.value)
     assert "MICROCOSM_TELEMETRY_REQUIRED=0" in str(refused.value)
+    assert "outside PolicyEngine" in str(refused.value)
 
 
 def test_the_launch_needs_the_emitter_installed_on_this_machine(
@@ -2640,7 +2643,7 @@ def test_a_launch_that_cannot_get_a_token_launches_nothing(
 
 
 def test_an_opted_out_launch_and_a_check_ask_for_no_token(
-    app, monkeypatch, tmp_path: Path
+    app, monkeypatch, tmp_path: Path, capsys
 ) -> None:
     arguments = _install_workstation_emitter(
         monkeypatch, tmp_path / "bin", _token_answer(9000)
@@ -2650,6 +2653,7 @@ def test_an_opted_out_launch_and_a_check_ask_for_no_token(
     runner = _launch(app, monkeypatch, data)
     runner.with_options.assert_not_called()
     runner.spawn.assert_called_once_with(data)
+    assert "outside PolicyEngine" in capsys.readouterr().err
 
     check = MagicMock(name="check_stage")
     check.remote.return_value = {"ok": True, "problems": []}
@@ -3028,6 +3032,7 @@ def test_the_launch_refuses_when_the_emitter_hangs_or_cannot_run(
         plan_lib.request_telemetry_token(plan, os.environ, run=run)
     assert refusal in str(refused.value)
     assert "MICROCOSM_TELEMETRY_REQUIRED=0" in str(refused.value)
+    assert "outside PolicyEngine" in str(refused.value)
     assert "not permitted" not in str(refused.value)
 
 
@@ -3103,3 +3108,5 @@ def test_every_container_refusal_names_the_opt_out_within_the_note_s_limit() -> 
         assert problem is not None, case
         assert len(problem) <= plan_lib.ATTEMPT_NOTE_MAX_CHARS, (case, len(problem))
         assert "MICROCOSM_TELEMETRY_REQUIRED=0" in problem, case
+        # The opt-out is only for people outside PolicyEngine.
+        assert "outside PolicyEngine" in problem, case
