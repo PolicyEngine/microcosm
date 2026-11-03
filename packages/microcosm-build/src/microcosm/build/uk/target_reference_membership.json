@@ -1,12 +1,12 @@
 {
   "source_fact_feed": "chronicle-uk-08962f1-consumer-facts",
   "target_period": 2025,
-  "candidate_count": 1439,
-  "contract_target_count": 396,
-  "active_reference_count": 1409,
+  "candidate_count": 1455,
+  "contract_target_count": 398,
+  "active_reference_count": 1418,
   "status_counts": {
-    "active": 1409,
-    "signed_excluded": 30
+    "active": 1418,
+    "signed_excluded": 37
   },
   "geography_pins": {
     "obr.income_tax": {
@@ -158,6 +158,10 @@
       "geography_id": "K02000001"
     },
     "hmrc.spi.self_employment_income.amount_by_self_employment_income_band": {
+      "geography_level": "country",
+      "geography_id": "K02000001"
+    },
+    "hmrc.spi.employment_income.count_by_self_employment_income_band": {
       "geography_level": "country",
       "geography_id": "K02000001"
     },
@@ -4491,6 +4495,10 @@
       "geography_level": "country",
       "geography_id": "K03000001"
     },
+    "dwp.jsa.amount_income_based": {
+      "geography_level": "country",
+      "geography_id": "K03000001"
+    },
     "microcosm.high_value_homes.over_1m_by_region": {
       "geography_fanout": [
         {
@@ -5407,6 +5415,70 @@
       "index": "hmrc.itl_2026.taxpayer_count_growth_all_bands_times_obr_per_capita_mixed_income",
       "factor": "1.11152010143825",
       "value_before_uprating": "3470000000.0"
+    },
+    {
+      "name": "hmrc.spi.employment_income.count_by_self_employment_income_band.band_1_500",
+      "from": "2023",
+      "to": "2025",
+      "index": "hmrc.itl_2026.taxpayer_count_growth_all_bands",
+      "factor": "1.07629427792916",
+      "value_before_uprating": "67000.0"
+    },
+    {
+      "name": "hmrc.spi.employment_income.count_by_self_employment_income_band.band_1000_2000",
+      "from": "2023",
+      "to": "2025",
+      "index": "hmrc.itl_2026.taxpayer_count_growth_all_bands",
+      "factor": "1.07629427792916",
+      "value_before_uprating": "127000.0"
+    },
+    {
+      "name": "hmrc.spi.employment_income.count_by_self_employment_income_band.band_2000_3000",
+      "from": "2023",
+      "to": "2025",
+      "index": "hmrc.itl_2026.taxpayer_count_growth_all_bands",
+      "factor": "1.07629427792916",
+      "value_before_uprating": "103000.0"
+    },
+    {
+      "name": "hmrc.spi.employment_income.count_by_self_employment_income_band.band_3000_4000",
+      "from": "2023",
+      "to": "2025",
+      "index": "hmrc.itl_2026.taxpayer_count_growth_all_bands",
+      "factor": "1.07629427792916",
+      "value_before_uprating": "90000.0"
+    },
+    {
+      "name": "hmrc.spi.employment_income.count_by_self_employment_income_band.band_4000_5000",
+      "from": "2023",
+      "to": "2025",
+      "index": "hmrc.itl_2026.taxpayer_count_growth_all_bands",
+      "factor": "1.07629427792916",
+      "value_before_uprating": "77000.0"
+    },
+    {
+      "name": "hmrc.spi.employment_income.count_by_self_employment_income_band.band_500_1000",
+      "from": "2023",
+      "to": "2025",
+      "index": "hmrc.itl_2026.taxpayer_count_growth_all_bands",
+      "factor": "1.07629427792916",
+      "value_before_uprating": "64000.0"
+    },
+    {
+      "name": "hmrc.spi.employment_income.count_by_self_employment_income_band.band_5000_7500",
+      "from": "2023",
+      "to": "2025",
+      "index": "hmrc.itl_2026.taxpayer_count_growth_all_bands",
+      "factor": "1.07629427792916",
+      "value_before_uprating": "148000.0"
+    },
+    {
+      "name": "hmrc.spi.employment_income.count_by_self_employment_income_band.band_7500_10000",
+      "from": "2023",
+      "to": "2025",
+      "index": "hmrc.itl_2026.taxpayer_count_growth_all_bands",
+      "factor": "1.07629427792916",
+      "value_before_uprating": "113000.0"
     },
     {
       "name": "hmrc/dividend_income_income_band_100_000_to_150_000",
@@ -13012,6 +13084,208 @@
             "index": "hmrc.itl_2026.taxpayer_count_growth_all_bands_times_obr_per_capita_mixed_income",
             "factor": "1.11152010143825",
             "value_before_uprating": "3470000000.0"
+          }
+        }
+      ]
+    },
+    "hmrc.spi.employment_income.count_by_self_employment_income_band": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "hmrc.spi.employment_income.count_by_self_employment_income_band.band_0_1",
+          "status": "signed_excluded",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "signed_row": {
+            "dimension": "self_employment_income_lower_bound",
+            "value": 0
+          },
+          "signed_rationale": "SPI 2023-24 Table 3.10's zero band counts people with a self-employment source and no profit after loss relief. The binding bands people on their self-employment income alone, so a band from 0 to 1 would count every employee without self-employment income. It also lies outside the GBP 1 to GBP 10,000 range Mar\u00eda's ruling of 2026-10-29 binds, which her choice of 2026-10-30 extends to Table 3.10's employment-income counts. Signed out of the band fan-out; the eight bands from GBP 1 stay bound."
+        },
+        {
+          "name": "hmrc.spi.employment_income.count_by_self_employment_income_band.band_1_500",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "resolved_period": 2025,
+          "resolved_value": 72111.7166212534,
+          "resolved_fact_period": "2023",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_a8a50ebacc90efdf051f460b",
+          "uprating": {
+            "index": "hmrc.itl_2026.taxpayer_count_growth_all_bands",
+            "factor": "1.07629427792916",
+            "value_before_uprating": "67000.0"
+          }
+        },
+        {
+          "name": "hmrc.spi.employment_income.count_by_self_employment_income_band.band_1000_2000",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "resolved_period": 2025,
+          "resolved_value": 136689.37329700272,
+          "resolved_fact_period": "2023",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_e07428dae7ed2be1a4b3d793",
+          "uprating": {
+            "index": "hmrc.itl_2026.taxpayer_count_growth_all_bands",
+            "factor": "1.07629427792916",
+            "value_before_uprating": "127000.0"
+          }
+        },
+        {
+          "name": "hmrc.spi.employment_income.count_by_self_employment_income_band.band_10000_15000",
+          "status": "signed_excluded",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "signed_row": {
+            "dimension": "self_employment_income_lower_bound",
+            "value": 10000
+          },
+          "signed_rationale": "SPI 2023-24 Table 3.10's self-employment bands from GBP 10,000 stay with Table 3.6's rows by total income, so the two tables do not pull against each other: Mar\u00eda's ruling of 2026-10-29 binds Table 3.10 from GBP 1 to GBP 10,000, the small-profit end of the Budget's trading allowance measures (Table 6.1 line 15), and her choice of 2026-10-30 adds its employment-income counts over the same bands. Signed out of the band fan-out; the eight bands from GBP 1 stay bound."
+        },
+        {
+          "name": "hmrc.spi.employment_income.count_by_self_employment_income_band.band_100000_plus",
+          "status": "signed_excluded",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "signed_row": {
+            "dimension": "self_employment_income_lower_bound",
+            "value": 100000
+          },
+          "signed_rationale": "SPI 2023-24 Table 3.10's self-employment bands from GBP 10,000 stay with Table 3.6's rows by total income, so the two tables do not pull against each other: Mar\u00eda's ruling of 2026-10-29 binds Table 3.10 from GBP 1 to GBP 10,000, the small-profit end of the Budget's trading allowance measures (Table 6.1 line 15), and her choice of 2026-10-30 adds its employment-income counts over the same bands. Signed out of the band fan-out; the eight bands from GBP 1 stay bound."
+        },
+        {
+          "name": "hmrc.spi.employment_income.count_by_self_employment_income_band.band_15000_20000",
+          "status": "signed_excluded",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "signed_row": {
+            "dimension": "self_employment_income_lower_bound",
+            "value": 15000
+          },
+          "signed_rationale": "SPI 2023-24 Table 3.10's self-employment bands from GBP 10,000 stay with Table 3.6's rows by total income, so the two tables do not pull against each other: Mar\u00eda's ruling of 2026-10-29 binds Table 3.10 from GBP 1 to GBP 10,000, the small-profit end of the Budget's trading allowance measures (Table 6.1 line 15), and her choice of 2026-10-30 adds its employment-income counts over the same bands. Signed out of the band fan-out; the eight bands from GBP 1 stay bound."
+        },
+        {
+          "name": "hmrc.spi.employment_income.count_by_self_employment_income_band.band_2000_3000",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "resolved_period": 2025,
+          "resolved_value": 110858.310626703,
+          "resolved_fact_period": "2023",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_8f608695430804bf74928876",
+          "uprating": {
+            "index": "hmrc.itl_2026.taxpayer_count_growth_all_bands",
+            "factor": "1.07629427792916",
+            "value_before_uprating": "103000.0"
+          }
+        },
+        {
+          "name": "hmrc.spi.employment_income.count_by_self_employment_income_band.band_20000_30000",
+          "status": "signed_excluded",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "signed_row": {
+            "dimension": "self_employment_income_lower_bound",
+            "value": 20000
+          },
+          "signed_rationale": "SPI 2023-24 Table 3.10's self-employment bands from GBP 10,000 stay with Table 3.6's rows by total income, so the two tables do not pull against each other: Mar\u00eda's ruling of 2026-10-29 binds Table 3.10 from GBP 1 to GBP 10,000, the small-profit end of the Budget's trading allowance measures (Table 6.1 line 15), and her choice of 2026-10-30 adds its employment-income counts over the same bands. Signed out of the band fan-out; the eight bands from GBP 1 stay bound."
+        },
+        {
+          "name": "hmrc.spi.employment_income.count_by_self_employment_income_band.band_3000_4000",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "resolved_period": 2025,
+          "resolved_value": 96866.48501362398,
+          "resolved_fact_period": "2023",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_0814147e65171246cce164c0",
+          "uprating": {
+            "index": "hmrc.itl_2026.taxpayer_count_growth_all_bands",
+            "factor": "1.07629427792916",
+            "value_before_uprating": "90000.0"
+          }
+        },
+        {
+          "name": "hmrc.spi.employment_income.count_by_self_employment_income_band.band_30000_50000",
+          "status": "signed_excluded",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "signed_row": {
+            "dimension": "self_employment_income_lower_bound",
+            "value": 30000
+          },
+          "signed_rationale": "SPI 2023-24 Table 3.10's self-employment bands from GBP 10,000 stay with Table 3.6's rows by total income, so the two tables do not pull against each other: Mar\u00eda's ruling of 2026-10-29 binds Table 3.10 from GBP 1 to GBP 10,000, the small-profit end of the Budget's trading allowance measures (Table 6.1 line 15), and her choice of 2026-10-30 adds its employment-income counts over the same bands. Signed out of the band fan-out; the eight bands from GBP 1 stay bound."
+        },
+        {
+          "name": "hmrc.spi.employment_income.count_by_self_employment_income_band.band_4000_5000",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "resolved_period": 2025,
+          "resolved_value": 82874.65940054496,
+          "resolved_fact_period": "2023",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_5e447c3f14dc230f46520c1e",
+          "uprating": {
+            "index": "hmrc.itl_2026.taxpayer_count_growth_all_bands",
+            "factor": "1.07629427792916",
+            "value_before_uprating": "77000.0"
+          }
+        },
+        {
+          "name": "hmrc.spi.employment_income.count_by_self_employment_income_band.band_500_1000",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "resolved_period": 2025,
+          "resolved_value": 68882.83378746595,
+          "resolved_fact_period": "2023",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_1f44d42f7a3ba77a7f872437",
+          "uprating": {
+            "index": "hmrc.itl_2026.taxpayer_count_growth_all_bands",
+            "factor": "1.07629427792916",
+            "value_before_uprating": "64000.0"
+          }
+        },
+        {
+          "name": "hmrc.spi.employment_income.count_by_self_employment_income_band.band_5000_7500",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "resolved_period": 2025,
+          "resolved_value": 159291.553133515,
+          "resolved_fact_period": "2023",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_535bdfcf3c4c862eee078139",
+          "uprating": {
+            "index": "hmrc.itl_2026.taxpayer_count_growth_all_bands",
+            "factor": "1.07629427792916",
+            "value_before_uprating": "148000.0"
+          }
+        },
+        {
+          "name": "hmrc.spi.employment_income.count_by_self_employment_income_band.band_50000_100000",
+          "status": "signed_excluded",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "signed_row": {
+            "dimension": "self_employment_income_lower_bound",
+            "value": 50000
+          },
+          "signed_rationale": "SPI 2023-24 Table 3.10's self-employment bands from GBP 10,000 stay with Table 3.6's rows by total income, so the two tables do not pull against each other: Mar\u00eda's ruling of 2026-10-29 binds Table 3.10 from GBP 1 to GBP 10,000, the small-profit end of the Budget's trading allowance measures (Table 6.1 line 15), and her choice of 2026-10-30 adds its employment-income counts over the same bands. Signed out of the band fan-out; the eight bands from GBP 1 stay bound."
+        },
+        {
+          "name": "hmrc.spi.employment_income.count_by_self_employment_income_band.band_7500_10000",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "resolved_period": 2025,
+          "resolved_value": 121621.25340599455,
+          "resolved_fact_period": "2023",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_52b23e53122bfddd68b77ca8",
+          "uprating": {
+            "index": "hmrc.itl_2026.taxpayer_count_growth_all_bands",
+            "factor": "1.07629427792916",
+            "value_before_uprating": "113000.0"
           }
         }
       ]
@@ -31645,6 +31919,21 @@
         }
       ]
     },
+    "dwp.jsa.amount_income_based": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "dwp.jsa.amount_income_based",
+          "status": "active",
+          "matched_fact_count_overall": 2,
+          "matched_fact_count_at_or_before_period": 2,
+          "resolved_period": 2025,
+          "resolved_value": 23377178.788788605,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_6d0a1e9a4006a42d57b637a2"
+        }
+      ]
+    },
     "microcosm.high_value_homes.over_1m_by_region": {
       "status": "active",
       "candidates": [
@@ -32113,7 +32402,7 @@
     {
       "family": "hmrc_spi",
       "status": "active_strict_band_pins",
-      "active_reference_count": 211,
+      "active_reference_count": 219,
       "signed_rationale": "SPI income-band targets fan out by strict total-income-band dimension pins, and SPI Table 3.10's by self-employment band, its bands outside GBP 1 to GBP 10,000 signed out row by row (microcosm#1418). The 13 property-income amount rows bind the SPI Table 3.7 net concept unscaled: landlords' profit after allowable expenses and before residential finance costs, which is what policyengine-uk's property_income means. The incumbent's x1.9 scaling (uk-data#311, uk-data#230) set the Property Rental Income Statistics' receipts before expenses against this net amount, so it is retired; the receipts are constructed on property_rental_income by the property_components stage and PRIS stays a diagnostic (microcosm#1106, Mar\u00eda's rulings of 2026-10-05 and 2026-10-08)."
     },
     {

@@ -15,14 +15,14 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, TypedDict
 
-from microcosm_emitter.orrery.client import publication_inventory, publish_graph
-from microcosm_emitter.orrery.contracts import (
+from microcosm_emitter_interface.orrery import (
     PublicationFileRole,
     PublicationReceipt,
 )
 
 from microcosm.build.artifact_files import file_artifact, materialize_bytes
 from microcosm.build.staging_dataset import StagedDatasetDelivery
+from microcosm.build.telemetry_emitter import publication_inventory, publish_graph
 from microcosm.graph import ContentStore
 from microcosm.graph.canonical import canonical_json
 from microcosm.graph.evidence import collect_execution_evidence, load_run_evidence
