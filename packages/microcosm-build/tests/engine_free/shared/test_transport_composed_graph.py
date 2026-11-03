@@ -2408,7 +2408,7 @@ def test_composition_refuses_a_supplied_interval_document_from_another_profile()
         _prepare_node(spec, row, {"index": "low"}, interval_knobs=None)
 
 
-def test_declared_scenarios_scale_national_cuts_with_their_own_factor():
+def test_declared_scenarios_scale_the_standin_cuts_with_their_own_factor():
     from fractions import Fraction
 
     spec = load_transport_spec("nz")
