@@ -1557,6 +1557,8 @@ def test_pension_bands_tile_any_cent_ladder_from_one_cent(cuts, order):
             _pension_fact(25000, 24999),
             _pension_fact(25000, None),
         ],
+        # The same mutant on the first band, which ends at cent 0.
+        [_pension_fact(1, 0), _pension_fact(1, None)],
     ],
 )
 def test_pension_band_gaps_and_label_drift_refuse(facts):
@@ -1583,8 +1585,8 @@ def test_pension_bands_accept_only_strictly_rising_floors(cuts, data):
     lowers = [1, *sorted(cuts)]
     lasts = [following - 1 for following in lowers[1:]] + [None]
     if data.draw(st.booleans()):
-        index = data.draw(st.integers(min_value=1, max_value=len(lowers) - 2))
-        drop = data.draw(st.integers(min_value=0, max_value=lowers[index] - 2))
+        index = data.draw(st.integers(min_value=0, max_value=len(lowers) - 2))
+        drop = data.draw(st.integers(min_value=0, max_value=lowers[index] - 1))
         lasts[index] = lowers[index] - 1 - drop
         lowers[index + 1] = lasts[index] + 1
     facts = [
