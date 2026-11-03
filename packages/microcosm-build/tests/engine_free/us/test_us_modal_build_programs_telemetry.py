@@ -15,6 +15,7 @@ from __future__ import annotations
 import functools
 import importlib.util
 import os
+import signal
 from collections.abc import Callable
 from pathlib import Path
 from types import ModuleType, SimpleNamespace
@@ -183,14 +184,22 @@ def test_each_program_that_must_send_telemetry_stops_before_any_work_without_an_
     assert not (tmp_path / "checkpoints").exists()
 
 
+@pytest.mark.parametrize("required", ["0", None], ids=["opted-out", "unset"])
 @pytest.mark.parametrize("pipeline", PROGRAMS)
 def test_each_program_whose_plan_opts_out_runs_its_work_without_an_emitter(
-    monkeypatch, capfd, tmp_path, pipeline: str
+    monkeypatch, capfd, tmp_path, pipeline: str, required: str | None
 ) -> None:
+    # "0" is a plan's opt-out; unset is a workstation's default.
     run, ran = PROGRAMS[pipeline](monkeypatch, tmp_path)
     _arrange_unusable_emitter(monkeypatch, tmp_path)
-    monkeypatch.setenv("MICROCOSM_TELEMETRY_REQUIRED", "0")
-    run()
+    if required is None:
+        monkeypatch.delenv("MICROCOSM_TELEMETRY_REQUIRED", raising=False)
+    else:
+        monkeypatch.setenv("MICROCOSM_TELEMETRY_REQUIRED", required)
+    try:
+        run()
+    except TelemetryRequiredError as error:
+        pytest.fail(f"the program stopped without an emitter: {error}")
     assert ran
     assert "command_not_found" in capfd.readouterr().err
 
@@ -240,6 +249,43 @@ def test_the_acs_local_release_records_the_stage_that_failed(
     ]
     assert emitter.events[-1]["details"]["error_type"] == "RuntimeError"
     # The memory samples are still written when a stage fails.
+    assert (tmp_path / "checkpoints" / "rss_samples.json").is_file()
+
+
+class UnhandledSigtermError(Exception):
+    """The test's own SIGTERM handler ran: nothing in the program took the signal."""
+
+
+def test_the_acs_local_release_records_a_budget_stop_as_a_termination(
+    monkeypatch, tmp_path, fake_telemetry_emitters
+) -> None:
+    module = _acs_release()
+    run, ran = _run_acs_release(monkeypatch, tmp_path)
+
+    def stopped_at_the_budget(parsed) -> None:
+        # The runner's budget sends SIGTERM to the tool's process group.
+        os.kill(os.getpid(), signal.SIGTERM)
+
+    def reached_the_default(signum, frame) -> None:
+        raise UnhandledSigtermError()
+
+    monkeypatch.setattr(module, "do_calibrate", stopped_at_the_budget)
+    previous = signal.signal(signal.SIGTERM, reached_the_default)
+    try:
+        with pytest.raises(BaseException) as raised:
+            run()
+    finally:
+        signal.signal(signal.SIGTERM, previous)
+    assert isinstance(raised.value, SystemExit), repr(raised.value)
+    assert raised.value.code == 128 + signal.SIGTERM
+    assert ran == ["materialize"]
+    [emitter] = fake_telemetry_emitters
+    failure = emitter.events[-1]["details"]
+    assert (failure["failed_during"], failure["failure_class"]) == (
+        "calibrate",
+        "terminated",
+    )
+    # The memory samples are still written.
     assert (tmp_path / "checkpoints" / "rss_samples.json").is_file()
 
 

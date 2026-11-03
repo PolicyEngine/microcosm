@@ -7,6 +7,7 @@ test runs a real emitter.
 """
 
 import os
+import signal
 from datetime import UTC, datetime
 
 import pytest
@@ -177,6 +178,70 @@ def test_a_program_that_raises_records_the_failure_and_re_raises(
     assert failure["error_type"] == type(error).__name__
     assert failure["failed_during"] == "calibrate"
     assert not started.available
+
+
+class UnhandledSigtermError(Exception):
+    """The test's own SIGTERM handler ran: nothing in the program took the signal."""
+
+
+@pytest.fixture
+def sigterm_guard():
+    """A SIGTERM handler that raises, so a SIGTERM the program misses fails the test.
+
+    Without it, a SIGTERM the program does not handle would end the test
+    process itself.
+    """
+
+    def reached_the_default(signum, frame) -> None:
+        raise UnhandledSigtermError()
+
+    previous = signal.signal(signal.SIGTERM, reached_the_default)
+    try:
+        yield
+    finally:
+        signal.signal(signal.SIGTERM, previous)
+
+
+def test_a_sigterm_is_recorded_as_a_termination_in_the_stage_it_stopped(
+    fake_telemetry_emitters, sigterm_guard
+) -> None:
+    # The Modal runner's budget, a supervisor or kill: the program records
+    # the termination in the stage that was running, then exits 143, as the
+    # UK builds do.
+    outcome: BaseException | None = None
+    try:
+        with program_telemetry.program_telemetry(
+            pipeline="us_acs_local_release"
+        ) as emitter:
+            emitter.transition_stage("materialize")
+            emitter.transition_stage("calibrate")
+            os.kill(os.getpid(), signal.SIGTERM)
+    except BaseException as raised:  # noqa: BLE001 - the test inspects it
+        outcome = raised
+    assert isinstance(outcome, SystemExit), repr(outcome)
+    assert outcome.code == 128 + signal.SIGTERM
+    [started] = fake_telemetry_emitters
+    assert _event_summary(started)[-2:] == [
+        ("stage", "calibrate", "failed"),
+        ("run", "failed", "failed"),
+    ]
+    failure = started.events[-1]["details"]
+    assert (failure["failed_during"], failure["failure_class"]) == (
+        "calibrate",
+        "terminated",
+    )
+    assert failure["error_code"] == "TERMINATED"
+    assert not started.available
+
+
+def test_a_program_leaves_the_sigterm_handler_as_it_found_it(
+    fake_telemetry_emitters, sigterm_guard
+) -> None:
+    before = signal.getsignal(signal.SIGTERM)
+    with program_telemetry.program_telemetry(pipeline="us_acs_local_release"):
+        inside = signal.getsignal(signal.SIGTERM)
+    assert inside is not before
+    assert signal.getsignal(signal.SIGTERM) is before
 
 
 def test_a_program_that_must_send_telemetry_stops_before_its_body_without_an_emitter(

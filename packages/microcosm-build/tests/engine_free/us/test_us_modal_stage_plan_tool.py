@@ -2167,6 +2167,73 @@ def test_a_stopped_stage_pushes_its_whole_state_first_paths_first(
     assert receipt["outputs"] == plan_lib.hash_tree(volume_state)
 
 
+# A stand-in tool that finishes at once but leaves a process holding its
+# output open for a few seconds. With ``own_session`` that process is outside
+# the tool's process group, like the emitter a build starts (the interface
+# starts it with ``start_new_session=True`` and no ``stderr=``, so it holds
+# the tool's output while it delivers its last events). Without it, the
+# process stays in the tool's group, like a child stage its parent left.
+_HOLDER_TOOL = """\
+import pathlib, subprocess, sys
+state = pathlib.Path(sys.argv[1])
+(state / "out").mkdir(parents=True, exist_ok=True)
+(state / "out" / "result.txt").write_text("done\\n")
+hold = "import sys, time; time.sleep(float(sys.argv[1]))"
+subprocess.Popen(
+    [sys.executable, "-c", hold, sys.argv[2]],
+    start_new_session=sys.argv[3] == "own_session",
+)
+print("tool done", flush=True)
+"""
+
+
+def _holder_tool(hold_seconds: float, placement: str) -> plan_lib.ToolSpec:
+    return dataclasses.replace(
+        _fake_tool(timeout_s=8, overhead=5),
+        argv_builder=lambda plan, paths, state: [
+            "-c",
+            _HOLDER_TOOL,
+            state,
+            str(hold_seconds),
+            placement,
+        ],
+    )
+
+
+def test_a_tool_that_exits_before_its_budget_is_not_stopped_while_its_emitter_holds_its_output(
+    fake_runner, tmp_path: Path, monkeypatch, capsys
+) -> None:
+    # The tool exits 0 at once; a process in its own session (the emitter's
+    # place) holds the output past the tool's budget of about 3 s. The runner
+    # waits for the output to end, so the emitter can deliver, but the stage
+    # finished before its budget and is not recorded as stopped at it.
+    monkeypatch.setattr(plan_lib, "MIN_ATTEMPT_SECONDS", 1)
+    app = fake_runner(_holder_tool(5, "own_session"))
+    started = time.monotonic()
+    receipt = app._run_stage(_fake_plan())
+    assert time.monotonic() - started >= 4.5
+    assert receipt["runner"]["tool_budget"]["seconds"] <= 3
+    assert (receipt["status"], receipt["stopped_at_budget"], receipt["returncode"]) == (
+        "COMPLETED",
+        False,
+        0,
+    )
+    assert "BUDGET: stopping the tool" not in capsys.readouterr().out
+
+
+def test_a_tool_that_exits_but_leaves_its_group_running_is_still_stopped_at_its_budget(
+    fake_runner, tmp_path: Path, monkeypatch
+) -> None:
+    # A process left in the tool's group (a child stage whose parent died)
+    # would hold the output until it finished: the budget still stops it.
+    monkeypatch.setattr(plan_lib, "MIN_ATTEMPT_SECONDS", 1)
+    app = fake_runner(_holder_tool(60, "tool_group"))
+    started = time.monotonic()
+    receipt = app._run_stage(_fake_plan())
+    assert time.monotonic() - started < 8
+    assert (receipt["status"], receipt["stopped_at_budget"]) == ("FAILED", True)
+
+
 # --------------------------------------------------------------------------- #
 # The hash seed and the disk floor, through the app                           #
 # --------------------------------------------------------------------------- #
@@ -2413,6 +2480,42 @@ def test_every_registered_stage_s_telemetry_run_id_is_one_the_collector_accepts(
             assert program_telemetry.telemetry_run_identity(
                 "pipeline", environ={"MICROCOSM_TELEMETRY_RUN_ID": run_id}
             ) == (run_id, longest_run_id)
+
+
+def test_the_runner_removes_the_telemetry_run_variables_from_the_container() -> None:
+    base = {
+        "PATH": "/usr/bin",
+        "MICROCOSM_TELEMETRY_RUN_ID": "elsewhere.run",
+        "MICROCOSM_TELEMETRY_PARENT_PID": "1",
+    }
+    env, removed = plan_lib.tool_environment(base, {})
+    # Without a run ID from the runner the tool makes its own; a parent ID
+    # from the container would make a build program start no emitter.
+    assert not set(TELEMETRY_RUN_NAMES) & set(env)
+    assert removed == sorted(TELEMETRY_RUN_NAMES)
+    env, removed = plan_lib.tool_environment(base, {}, telemetry_run_id="plan.run")
+    assert env["MICROCOSM_TELEMETRY_RUN_ID"] == "plan.run"
+    assert "MICROCOSM_TELEMETRY_PARENT_PID" not in env
+    assert removed == sorted(TELEMETRY_RUN_NAMES)
+
+
+def test_the_check_probes_the_tool_in_the_environment_with_its_telemetry_run(
+    fake_runner, monkeypatch
+) -> None:
+    app = fake_runner(_seed_tool())
+    clone = app._git_state(None)
+    monkeypatch.setattr(app, "_git_state", lambda plan: {**clone, "tree_files": []})
+    real = plan_lib.tool_environment
+    seen: list[str | None] = []
+
+    def spy(base, plan_env, **options):
+        env, removed = real(base, plan_env, **options)
+        seen.append(env.get("MICROCOSM_TELEMETRY_RUN_ID"))
+        return env, removed
+
+    monkeypatch.setattr(plan_lib, "tool_environment", spy)
+    app.check_stage(_fake_plan())
+    assert seen == ["fake-run.run"]
 
 
 @pytest.mark.parametrize("key", TELEMETRY_RUN_NAMES)
