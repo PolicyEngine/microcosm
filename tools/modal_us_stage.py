@@ -464,6 +464,13 @@ class _BudgetWatch(threading.Thread):
     The tool runs in its own process group (``process_group=0``), and the
     whole group is stopped: a tool that runs stages as child interpreters
     must not leave one running behind the hashing and mirroring.
+
+    The runner reads the tool's output to its end before it sets ``done``,
+    and the emitter a build starts (in its own session, so outside the
+    group) holds that output while it delivers its last events, for up to
+    about EMITTER_DRAIN_SECONDS after the build exits. A tool that has
+    exited and left nothing in its group finished before its budget: the
+    watch stops nothing and does not mark the stage stopped at the budget.
     """
 
     def __init__(
@@ -481,6 +488,12 @@ class _BudgetWatch(threading.Thread):
 
     def run(self) -> None:
         if self.max_wall_seconds is None or self.done.wait(self.max_wall_seconds):
+            return
+        # poll() reaps the tool first, so the group check below does not
+        # count the tool itself.
+        if self.proc.poll() is not None and not plan_lib.process_group_alive(
+            self.proc.pid
+        ):
             return
         self.fired = True
         print(f"BUDGET: stopping the tool after {self.max_wall_seconds}s", flush=True)

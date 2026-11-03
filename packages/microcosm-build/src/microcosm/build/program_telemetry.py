@@ -5,7 +5,11 @@ A build program (the registered US Modal programs, for one) opens
 emitter starts before the program does any work. Inside it the program
 records a stage change before each of its stages. Leaving it records the
 outcome: completion when the body returns or exits with status 0, and
-failure, with the error, when it raises anything else. Starting the emitter
+failure, with the error, when it raises anything else. A SIGTERM inside the
+body (the Modal runner's budget, a supervisor, ``kill``) is turned into
+``BuildTerminatedError`` (``microcosm.build.termination``), recorded as a
+termination in the stage that was running, and the program then exits 143,
+as the UK builds do. Starting the emitter
 follows ``microcosm.build.telemetry_emitter``: with
 ``MICROCOSM_TELEMETRY_REQUIRED=1`` an emitter that cannot be used stops the
 program before its first stage; unset or ``0``, the program runs without it.
@@ -37,7 +41,9 @@ from collections.abc import Iterator, Mapping
 from contextlib import contextmanager
 from datetime import UTC, datetime
 
+from microcosm.build.run_outcome import classify_failure
 from microcosm.build.telemetry_emitter import LocalTelemetryEmitter
+from microcosm.build.termination import BuildTerminatedError, raise_on_sigterm
 
 __all__ = [
     "TELEMETRY_PARENT_PID_VARIABLE",
@@ -122,7 +128,9 @@ def program_telemetry(
     Yields the adapter, unavailable when the emitter could not be used and
     telemetry is not required; every call on it is then a no-op.
     ``TelemetryRequiredError`` from the adapter, and ``ValueError`` for a
-    run ID the collector would refuse, propagate before the body runs.
+    run ID the collector would refuse, propagate before the body runs. A
+    SIGTERM in the body ends it with ``SystemExit(143)`` after the
+    termination is recorded.
     """
 
     run_id, candidate_id = telemetry_run_identity(pipeline, environ=environ)
@@ -134,7 +142,16 @@ def program_telemetry(
         run_kind=run_kind,
     )
     try:
-        yield emitter
+        with raise_on_sigterm():
+            yield emitter
+    except BuildTerminatedError as terminated:
+        classified = classify_failure(terminated)
+        emitter.fail(
+            terminated,
+            failure_class=classified.failure_class or "terminated",
+            error_code=classified.error_code,
+        )
+        raise SystemExit(terminated.exit_code) from terminated
     except BaseException as error:
         if _exited_cleanly(error):
             emitter.complete()

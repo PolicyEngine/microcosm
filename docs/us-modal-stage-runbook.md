@@ -248,22 +248,36 @@ release directory onto the runs volume. Publication stays the human step in
      record a stage change before each stage (the ACS release's stages, the
      base's outer stages, the staging builder's main phases) and then
      completion, or failure with the error; a validation refusal is
-     recorded as a failure. In the base, only the `--stage all` parent
+     recorded as a failure. A SIGTERM, such as the runner's stop at the
+     budget, is recorded as a termination in the stage that was running,
+     and the program then exits 143, as the UK builds do. In the base, only the `--stage all` parent
      starts the emitter: it records each child interpreter's stage and,
      from the child's exit code, its outcome, and the children start none.
      `runner-smoke`, an inline script, starts no emitter. A plan pinned to a
      commit from before these programs started the emitter (#1502) runs
      tool code that starts none, so its stage sends nothing, though the
      runner still passes the token.
+   - **After the build exits.** The emitter runs in its own session and
+     holds the tool's output (it inherits the tool's standard error) while
+     it delivers its last events, for up to about 15 s. The runner reads
+     that output to its end before it hashes and mirrors the state, so the
+     container waits for that delivery. A tool that exited before its budget
+     and left nothing in its process group is not stopped or recorded as
+     stopped at the budget while the emitter still holds the output; a
+     process the tool left in its group still is.
    - **The telemetry run.** The tool's environment gets
      `MICROCOSM_TELEMETRY_RUN_ID=<plan run_id>.<stage>`, also when the plan
      opts out, so each stage is its own telemetry run. The program names the
-     plan's `run_id` as the run's candidate ID, so the collector groups a
-     run's stages. A later attempt of the same stage, after a preemption
+     plan's `run_id` as the run's candidate ID, which the collector stores
+     with the run. A later attempt of the same stage, after a preemption
      restart or a relaunch, reports under the same run, which the collector
      shows as a restart of it. The collector accepts that only from the same
      Hugging Face account: a stage relaunched by another operator's login
      is refused by the collector, and its build continues without sending.
+     Give each plan `run_id` to one tool only: the ID does not name the
+     tool, so another tool's plan with the same `run_id` and stage name
+     registers the same telemetry run with another pipeline, the collector
+     refuses it (409), and that stage's telemetry stays in its container.
      Started by hand, without the variable, a program makes its own attempt
      ID, `<pipeline>-<UTC time>-<8 hex digits>`, as the US fiscal refresh
      does.

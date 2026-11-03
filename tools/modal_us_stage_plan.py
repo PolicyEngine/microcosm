@@ -2327,6 +2327,18 @@ def stop_process_group(
     return sent
 
 
+def process_group_alive(process_group: int) -> bool:
+    """Whether any process is left in ``process_group`` (signal 0 checks only)."""
+
+    try:
+        os.killpg(process_group, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    return True
+
+
 def tree_file_rows(tool: ToolSpec, repo_root: Path | str) -> list[dict[str, object]]:
     """Hash each of the tool's pinned tree files in the clone at ``repo_root``."""
 
