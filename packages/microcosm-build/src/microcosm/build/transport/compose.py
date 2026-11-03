@@ -571,6 +571,28 @@ def _measurement_refusal(
     )
 
 
+def _second_writer_refusal(
+    binding: str,
+    root: str,
+    producer: str,
+    writers: Mapping[tuple[str, str], Sequence[str]],
+) -> str | None:
+    """Why a measured column has a writer other than its producer, or ``None``.
+
+    R2C-15: the producer is the only ancestor of each calibration node that
+    writes each measured column, wherever another writer sits and whether
+    or not it rewrites.
+    """
+    for (entity, column), names in sorted(writers.items(), key=str):
+        if list(names) != [producer]:
+            return (
+                f"measurement {binding!r}: calibration node {root!r} has "
+                f"writers {list(names)} of {entity}.{column} upstream; "
+                f"only its producer {producer!r} may write it"
+            )
+    return None
+
+
 def measurement_proofs(
     spec: Mapping[str, object],
 ) -> tuple[dict[str, dict], dict[str, str]]:
@@ -580,7 +602,9 @@ def measurement_proofs(
     for every calibration node, exactly one node upstream of it declares
     ``params.measurement_id: <id>`` (a string) and writes the income and
     universe columns of every interval table the measurement's profiles
-    scale, on that table's entity. "Upstream" is ancestry in the declared
+    scale, on that table's entity. R2C-15 adds that the producer is the only
+    node upstream of that calibration node which writes each of those
+    columns. "Upstream" is ancestry in the declared
     graph under the S5 guard's rule (:func:`_declared_calibration_predecessors`);
     composition then checks the same producers against the compiled graph's
     exact predecessors (:func:`_check_measurement_proofs`). Returns the
@@ -648,6 +672,21 @@ def measurement_proofs(
                     "interval table's entity"
                 )
                 break
+            reason = _second_writer_refusal(
+                binding,
+                root,
+                producer,
+                {
+                    (entity, column): sorted(
+                        name
+                        for name in closure
+                        if (entity, column) in _owned_columns(rows[name])
+                    )
+                    for entity, column in required
+                },
+            )
+            if reason is not None:
+                break
             producers[root] = producer
         if reason is None:
             proofs[binding] = {
@@ -668,7 +707,8 @@ def _check_measurement_proofs(
     For each proved measurement and each calibration node of the composed
     graph, the compiled ancestors of that node must hold exactly one node
     whose params declare the measurement, and it must be the proof's
-    producer for that node.
+    producer for that node. That producer must also be the only compiled
+    ancestor whose outputs hold each of the proof's columns (R2C-15).
     """
     proofs, _ = measurement_proofs(spec)
     if not proofs:
@@ -682,6 +722,7 @@ def _check_measurement_proofs(
         for node in graph.nodes
         if isinstance(node.params, Mapping) and MEASUREMENT_PARAM in node.params
     }
+    by_id = {node.id: node for node in graph.nodes}
     for binding, proof in sorted(proofs.items()):
         named = sorted(name for name, value in declared.items() if value == binding)
         for root in sorted(roots):
@@ -693,6 +734,28 @@ def _check_measurement_proofs(
                     "the declared proof; "
                     + _measurement_refusal(binding, root, found, named)
                     + f", and the declaration proved {proof['producers'].get(root)!r}."
+                )
+            columns = [tuple(name.split(".", 1)) for name in proof["columns"]]
+            refusal = _second_writer_refusal(
+                binding,
+                root,
+                proof["producers"][root],
+                {
+                    (entity, column): sorted(
+                        name
+                        for name in closure
+                        if any(
+                            (output.entity, output.column) == (entity, column)
+                            for output in by_id[name].outputs
+                        )
+                    )
+                    for entity, column in columns
+                },
+            )
+            if refusal is not None:
+                raise ValueError(
+                    f"Measurement {binding!r}: the compiled graph contradicts "
+                    f"the declared proof; {refusal}."
                 )
 
 

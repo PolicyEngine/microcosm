@@ -14,9 +14,12 @@ import copy
 import json
 
 import pytest
+from hypothesis import HealthCheck, given, settings
+from hypothesis import strategies as st
 
 from microcosm.build.transport.compose import (
     _reference_activation_gaps,
+    compose_transport_graph,
     measurement_proofs,
     reference_profile_view,
 )
@@ -185,9 +188,94 @@ def _income_without_universe(graph):
     )
 
 
+def _filtered(graph):
+    """Open a ``filter`` version on CREATE and move calibration into it."""
+    nodes = _nodes(graph)
+    position = graph["nodes"].index(nodes["toy.prepare"])
+    graph["nodes"].insert(
+        position,
+        {
+            "id": "toy.filter",
+            "kernel": "transport.boundary@1",
+            "structural": "filter",
+            "base": "toy.create",
+        },
+    )
+    for name in ("toy.prepare", "toy.problem", "toy.calibrate"):
+        nodes[name]["population"] = "toy.filter"
+    return position + 1
+
+
+def _rewriter(name, column, dtype, *, population="toy.filter", rewrite=True):
+    output = {"entity": "person", "column": column, "dtype": dtype}
+    if rewrite:
+        output["rewrite"] = True
+    return {
+        "id": name,
+        "kernel": "toy.rewrite@1",
+        "population": population,
+        "inputs": [{"entity": "person", "columns": [column]}],
+        "outputs": [output],
+    }
+
+
+def _later_version_rewrite(graph):
+    """The review's item 2c: an undeclared later-version rewrite of the income."""
+    position = _filtered(graph)
+    graph["nodes"].insert(position, _rewriter("toy.overwrite", INCOME_COLUMN, "int64"))
+
+
+def _writer_before_the_producer(graph):
+    """An undeclared CREATE-version writer; the producer rewrites it later."""
+    _filtered(graph)
+    nodes = _nodes(graph)
+    nodes["toy.measure"]["population"] = "toy.filter"
+    nodes["toy.measure"]["outputs"][0]["rewrite"] = True
+    graph["nodes"].remove(nodes["toy.measure"])
+    graph["nodes"].insert(
+        graph["nodes"].index(nodes["toy.prepare"]), nodes["toy.measure"]
+    )
+    graph["nodes"].insert(
+        1,
+        _rewriter(
+            "toy.early",
+            INCOME_COLUMN,
+            "int64",
+            population="toy.create",
+            rewrite=False,
+        ),
+    )
+    graph["nodes"][1]["inputs"] = [{"entity": "person", "columns": ["toy_wages"]}]
+
+
+def _universe_rewrite(graph):
+    position = _filtered(graph)
+    graph["nodes"].insert(position, _rewriter("toy.overwrite", UNIVERSE_COLUMN, "str"))
+
+
 @pytest.mark.parametrize(
     ("mutant", "graph", "entity", "reason"),
     [
+        (
+            "later_version_rewrite",
+            _later_version_rewrite,
+            "person",
+            "writers ['toy.measure', 'toy.overwrite'] of person."
+            f"{INCOME_COLUMN} upstream",
+        ),
+        (
+            "writer_before_the_producer",
+            _writer_before_the_producer,
+            "person",
+            f"writers ['toy.early', 'toy.measure'] of person.{INCOME_COLUMN} upstream",
+        ),
+        (
+            "universe_rewrite",
+            _universe_rewrite,
+            "person",
+            "writers ['toy.measure', 'toy.overwrite'] of person."
+            f"{UNIVERSE_COLUMN} upstream",
+        ),
         ("no_producer", _no_producer, "person", "0 nodes declaring"),
         ("after_calibration", _after_calibration, "person", "0 nodes declaring"),
         ("two_producers", _two_producers, "person", "2 nodes declaring"),
@@ -272,8 +360,12 @@ def test_proof_result_is_bound_into_the_selection_identity():
     assert parked != proved
 
 
-def _compiled_toy(*, second_producer=False):
-    """A compiled graph: CREATE, one or two producers, preparation, calibration."""
+def _compiled_toy(*, second_producer=False, second_writer=False):
+    """A compiled graph: CREATE, one or two producers, preparation, calibration.
+
+    With ``second_writer``, a ``filter`` version holds an undeclared rewrite
+    of the income column, and preparation and calibration live in it.
+    """
     from microcosm.graph import (
         Graph,
         Node,
@@ -307,18 +399,36 @@ def _compiled_toy(*, second_producer=False):
     if second_producer:
         nodes.append(producer("toy.measure.again", "toy_other_cents"))
         read.append("toy_other_cents")
+    population = "toy.create"
+    if second_writer:
+        population = "toy.filter"
+        nodes += [
+            Node(
+                id="toy.filter",
+                kernel="transport.boundary@1",
+                structural=StructuralDelta.FILTER,
+                base="toy.create",
+            ),
+            Node(
+                id="toy.overwrite",
+                kernel="toy.rewrite@1",
+                population="toy.filter",
+                inputs=(Slice("person", (INCOME_COLUMN,)),),
+                outputs=(Owned("person", INCOME_COLUMN, "int64", rewrite=True),),
+            ),
+        ]
     nodes += [
         Node(
             id="toy.prepare",
             kernel="calibration.prepare@1",
-            population="toy.create",
+            population=population,
             inputs=(Slice("person", tuple(read)),),
             outputs=(Owned("person", "toy_income_band_b0", "bool"),),
         ),
         Node(
             id="toy.calibrate",
             kernel="calibrate.ordered_adam@1",
-            population="toy.create",
+            population=population,
             inputs=(Slice("person", ("toy_income_band_b0",)),),
         ),
     ]
@@ -330,14 +440,14 @@ def _compiled_toy(*, second_producer=False):
     return graph, compile_graph(graph)
 
 
-def _forced_proof(monkeypatch, producer):
+def _forced_proof(monkeypatch, producer, columns=(f"person.{INCOME_COLUMN}",)):
     from microcosm.build.transport import compose as compose_module
 
     proof = {
         SUMMED_MEASUREMENT: {
             "measurement_id": SUMMED_MEASUREMENT,
             "producers": {"toy.calibrate": producer},
-            "columns": [],
+            "columns": list(columns),
         }
     }
     monkeypatch.setattr(compose_module, "measurement_proofs", lambda spec: (proof, {}))
@@ -368,6 +478,21 @@ def test_composition_refuses_a_proof_the_compiled_graph_contradicts(
         check({}, graph, compiled)
 
 
+def test_the_compiled_check_alone_refuses_a_second_writer(monkeypatch):
+    """The declared check never sees this graph: a forced proof drives it."""
+    check = _forced_proof(monkeypatch, "toy.measure")
+    graph, compiled = _compiled_toy(second_writer=True)
+    with pytest.raises(ValueError) as refused:
+        check({}, graph, compiled)
+    assert str(refused.value) == (
+        f"Measurement {SUMMED_MEASUREMENT!r}: the compiled graph contradicts the "
+        f"declared proof; measurement {SUMMED_MEASUREMENT!r}: calibration node "
+        "'toy.calibrate' has writers ['toy.measure', 'toy.overwrite'] of "
+        f"person.{INCOME_COLUMN} upstream; only its producer 'toy.measure' may "
+        "write it."
+    )
+
+
 def test_a_non_string_measurement_id_param_proves_nothing():
     document = _graph()
     _nodes(document)["toy.measure"]["params"] = {
@@ -376,3 +501,232 @@ def test_a_non_string_measurement_id_param_proves_nothing():
     proofs, refusals = measurement_proofs(_spec(document))
     assert proofs == {}
     assert "not a string" in refusals[SUMMED_MEASUREMENT]
+
+
+# ---------------------------------------------------------------------------
+# R2C-15: a measurement has one writer
+# ---------------------------------------------------------------------------
+
+
+def test_a_later_version_rewrite_names_the_measurement_node_column_and_writers():
+    """The review's item 2c refuses in the declared check, naming every fact."""
+    document = _graph()
+    _later_version_rewrite(document)
+    proofs, refusals = measurement_proofs(_spec(document))
+    assert proofs == {}
+    assert refusals == {
+        SUMMED_MEASUREMENT: (
+            f"measurement {SUMMED_MEASUREMENT!r}: calibration node "
+            "'toy.calibrate' has writers ['toy.measure', 'toy.overwrite'] of "
+            f"person.{INCOME_COLUMN} upstream; only its producer 'toy.measure' "
+            "may write it"
+        )
+    }
+
+
+def test_a_second_writer_refuses_without_rewrite():
+    """A later writer refuses whether or not its output says ``rewrite``."""
+    document = _graph()
+    position = _filtered(document)
+    document["nodes"].insert(
+        position, _rewriter("toy.overwrite", INCOME_COLUMN, "int64", rewrite=False)
+    )
+    proofs, refusals = measurement_proofs(_spec(document))
+    assert proofs == {}
+    assert "['toy.measure', 'toy.overwrite']" in refusals[SUMMED_MEASUREMENT]
+
+
+def test_a_same_named_column_on_another_entity_is_not_a_second_writer():
+    document = _graph()
+    position = _filtered(document)
+    other = _rewriter("toy.household", INCOME_COLUMN, "int64", rewrite=False)
+    other["inputs"] = [{"entity": "person", "columns": ["toy_wages"]}]
+    other["outputs"][0]["entity"] = "household"
+    document["nodes"].insert(position, other)
+    _nodes(document)["toy.prepare"]["inputs"].append(
+        {"entity": "household", "columns": [INCOME_COLUMN]}
+    )
+    proofs, refusals = measurement_proofs(_spec(document))
+    assert refusals == {}
+    assert proofs[SUMMED_MEASUREMENT]["producers"] == {"toy.calibrate": "toy.measure"}
+
+
+def test_a_writer_outside_the_calibration_closure_is_not_a_second_writer():
+    """A later version that reads the fit rewrites the column after calibration."""
+    document = _graph()
+    document["nodes"] += [
+        {
+            "id": "toy.after",
+            "kernel": "transport.boundary@1",
+            "structural": "filter",
+            "base": "toy.create",
+            "artifact_inputs": [{"name": "fit", "producer": "toy.calibrate"}],
+        },
+        _rewriter("toy.overwrite", INCOME_COLUMN, "int64", population="toy.after"),
+    ]
+    proofs, refusals = measurement_proofs(_spec(document))
+    assert refusals == {}
+    assert proofs[SUMMED_MEASUREMENT]["producers"] == {"toy.calibrate": "toy.measure"}
+
+
+def _chain(draws):
+    """CREATE, then nodes chained by artifacts, all upstream of calibration.
+
+    Each draw is (declares the id, writes the income, writes the universe).
+    """
+    nodes = [
+        {"id": "toy.create", "kernel": "transport.create@1", "structural": "create"}
+    ]
+    previous = None
+    for index, (declares, income, universe) in enumerate(draws):
+        row = {
+            "id": f"toy.n{index}",
+            "kernel": "toy.chain@1",
+            "population": "toy.create",
+            "outputs": [
+                {"entity": "person", "column": column, "dtype": dtype}
+                for column, dtype, wanted in (
+                    (INCOME_COLUMN, "int64", income),
+                    (UNIVERSE_COLUMN, "str", universe),
+                    (f"toy_step_{index}", "bool", True),
+                )
+                if wanted
+            ],
+        }
+        if declares:
+            row["params"] = {"measurement_id": SUMMED_MEASUREMENT}
+        if previous is not None:
+            row["inputs"] = [{"entity": "person", "columns": [previous]}]
+        previous = f"toy_step_{index}"
+        nodes.append(row)
+    nodes.append(
+        {
+            "id": "toy.calibrate",
+            "kernel": "calibrate.ordered_adam@1",
+            "population": "toy.create",
+            "inputs": [{"entity": "person", "columns": [previous]}],
+        }
+    )
+    return {
+        "schema_version": 1,
+        "country": "toy",
+        "nodes": nodes,
+        "endpoints": {"calibration": "toy.calibrate"},
+    }
+
+
+@given(
+    draws=st.lists(
+        st.tuples(st.booleans(), st.booleans(), st.booleans()),
+        min_size=1,
+        max_size=4,
+    )
+)
+@settings(
+    max_examples=60,
+    database=None,
+    deadline=None,
+    suppress_health_check=[HealthCheck.too_slow],
+)
+def test_a_chain_proves_exactly_when_one_declarer_is_the_only_writer(draws):
+    proofs, refusals = measurement_proofs(_spec(_chain(draws)))
+    declarers = [index for index, draw in enumerate(draws) if draw[0]]
+    income = [index for index, draw in enumerate(draws) if draw[1]]
+    universe = [index for index, draw in enumerate(draws) if draw[2]]
+    proved = len(declarers) == 1 and income == universe == declarers
+    assert (SUMMED_MEASUREMENT in proofs) is proved
+    assert (SUMMED_MEASUREMENT in refusals) is not proved
+    if proved:
+        assert proofs[SUMMED_MEASUREMENT]["producers"] == {
+            "toy.calibrate": f"toy.n{declarers[0]}"
+        }
+
+
+def test_a_calibration_endpoint_without_a_calibrate_kernel_is_a_root():
+    """Only the endpoint clause of the roots finds this calibration node."""
+    document = _graph()
+    _nodes(document)["toy.calibrate"]["kernel"] = "toy.fit@1"
+    proofs, refusals = measurement_proofs(_spec(document))
+    assert refusals == {}
+    assert proofs[SUMMED_MEASUREMENT]["producers"] == {"toy.calibrate": "toy.measure"}
+
+
+@pytest.fixture(scope="module")
+def composed_toy(tmp_path_factory):
+    from test_support.microcosm_build.transport_composed import (
+        make_composed_fixture,
+    )
+
+    return make_composed_fixture(tmp_path_factory.mktemp("composed"))
+
+
+def _composed_spec(composed_toy, *, overwrite):
+    """The composed toy with summed rows and a producer upstream of calibration.
+
+    ``transport.currency@1`` stands in for the producer's kernel, because
+    composition checks the skeleton vocabulary and runs no kernel.
+    """
+    spec = copy.deepcopy(composed_toy.spec)
+    base, profiles, context, intervals = summed_profile_fixture(GROUPS)
+    references = spec["resources"]["target_references"]
+    references["target_references"] += base["target_references"]
+    for key, value in base["hierarchy"].items():
+        references["hierarchy"].setdefault(key, {}).update(value)
+    spec["resources"].update(
+        reference_profiles=profiles,
+        factor_context=context,
+        profile_intervals=intervals,
+    )
+    graph = spec["resources"]["transport_graph"]
+    nodes = _nodes(graph)
+    calibration = graph["endpoints"]["calibration"]
+    (create,) = (
+        row["id"] for row in graph["nodes"] if row.get("structural") == "create"
+    )
+    opened = nodes[calibration]["base"]
+    graph["nodes"].insert(
+        1,
+        {
+            "id": "toy.measure",
+            "kernel": "transport.currency@1",
+            "population": create,
+            "inputs": [{"entity": "person", "columns": ["age"]}],
+            "outputs": [
+                {"entity": "person", "column": INCOME_COLUMN, "dtype": "Int64"},
+                {"entity": "person", "column": UNIVERSE_COLUMN, "dtype": "string"},
+            ],
+            "params": {"measurement_id": SUMMED_MEASUREMENT},
+        },
+    )
+    if overwrite:
+        graph["nodes"].insert(
+            graph["nodes"].index(nodes[opened]) + 1,
+            {
+                **_rewriter("toy.overwrite", INCOME_COLUMN, "Int64", population=opened),
+                "kernel": "transport.currency@1",
+            },
+        )
+    nodes[calibration].setdefault("inputs", []).append(
+        {"entity": "person", "columns": [INCOME_COLUMN, UNIVERSE_COLUMN]}
+    )
+    return spec, calibration
+
+
+def test_composition_refuses_a_later_version_rewrite_of_a_measured_column(
+    composed_toy,
+):
+    spec, calibration = _composed_spec(composed_toy, overwrite=False)
+    assert measurement_proofs(spec)[0][SUMMED_MEASUREMENT]["producers"] == {
+        calibration: "toy.measure"
+    }
+    compose_transport_graph(spec, composed_toy.config)
+    spec, calibration = _composed_spec(composed_toy, overwrite=True)
+    with pytest.raises(ValueError) as refused:
+        compose_transport_graph(spec, composed_toy.config)
+    message = str(refused.value)
+    assert message.startswith("Transport spec is not activated:")
+    assert f"awaits measurement:{SUMMED_MEASUREMENT}" in message
+    assert (
+        f"calibration node {calibration!r} has writers ['toy.measure', "
+        f"'toy.overwrite'] of person.{INCOME_COLUMN} upstream"
+    ) in message
