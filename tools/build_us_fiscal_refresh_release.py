@@ -8015,12 +8015,14 @@ def _qrf_tail_concentration_gate(
     The surface also measures every numeric output, dense and thin ones
     included, with :func:`microcosm.build.gates.single_record_concentration`:
     the largest single record's share of the column's weighted absolute mass
-    and that record's weight, next to the top-k share. These measurements
-    never change the gate's verdict. The gate never weighs a dense output, so
-    when resolving a dense output's entity weights raises ``ValueError``, the
-    surface lists the output under ``unmeasured`` with the error's type and
-    text, and the run goes on. A sparse output's weights resolve as they
-    always did, and their error still raises.
+    and that record's weight, next to the top-k share. The measurements cannot
+    change the gate's inputs, its verdict or the errors it raises: the loop
+    resolves weights only for sparse outputs, and the gate runs before any
+    measurement. A misaligned sparse output therefore still fails with the
+    gate's own message, which names the column.
+    :func:`_qrf_single_record_measurements` runs after the gate and turns
+    every ``Exception`` into an ``unmeasured`` entry, so it cannot fail a run
+    the gate would pass.
     """
     qrf_outputs = sorted(_qrf_imputed_source_outputs())
     values: dict[str, np.ndarray] = {}
@@ -8030,10 +8032,8 @@ def _qrf_tail_concentration_gate(
     non_numeric: list[str] = []
     nonzero_shares: dict[str, float] = {}
     nonzero_records: dict[str, int] = {}
-    single_record: dict[str, dict[str, float | int | None]] = {}
-    unmeasured: dict[str, str] = {}
     entity_weights: dict[str, np.ndarray] = {}
-    weight_errors: dict[str, str] = {}
+    dense_values: dict[str, tuple[str, np.ndarray]] = {}
     for column in qrf_outputs:
         try:
             entity = export_frame.column_entity(column)
@@ -8051,22 +8051,7 @@ def _qrf_tail_concentration_gate(
         nonzero_records[column] = int((np.isfinite(array) & (array != 0.0)).sum())
         if nonzero_share > US_QRF_SPARSE_NONZERO_SHARE_MAX:
             dense.append(column)
-            if entity not in entity_weights and entity not in weight_errors:
-                try:
-                    entity_weights[entity] = np.asarray(
-                        export_frame.resolve_weights(entity).values,
-                        dtype=np.float64,
-                    )
-                except ValueError as error:
-                    weight_errors[entity] = f"{type(error).__name__}: {error}"
-            if entity in weight_errors:
-                unmeasured[column] = weight_errors[entity]
-            else:
-                single_record[column] = single_record_concentration(
-                    array,
-                    entity_weights[entity],
-                    top_k=US_QRF_TAIL_CONCENTRATION_TOP_K,
-                )
+            dense_values[column] = (entity, array)
             continue
         if entity not in entity_weights:
             entity_weights[entity] = np.asarray(
@@ -8074,11 +8059,6 @@ def _qrf_tail_concentration_gate(
             )
         values[column] = array
         weights[column] = entity_weights[entity]
-        single_record[column] = single_record_concentration(
-            array,
-            entity_weights[entity],
-            top_k=US_QRF_TAIL_CONCENTRATION_TOP_K,
-        )
     gate = tail_concentration_gate(
         values,
         weights,
@@ -8086,6 +8066,14 @@ def _qrf_tail_concentration_gate(
         max_top_share=US_QRF_TAIL_CONCENTRATION_MAX_TOP_SHARE,
         min_nonzero_records=US_QRF_TAIL_CONCENTRATION_MIN_NONZERO_RECORDS,
         reviewed_exclusions=reviewed_exclusions,
+    )
+    single_record, unmeasured = _qrf_single_record_measurements(
+        export_frame,
+        qrf_outputs,
+        sparse_values=values,
+        sparse_weights=weights,
+        dense_values=dense_values,
+        entity_weights=entity_weights,
     )
     surface: dict[str, object] = {
         "qrf_imputed_outputs": len(qrf_outputs),
@@ -8103,6 +8091,53 @@ def _qrf_tail_concentration_gate(
         },
     }
     return gate, surface
+
+
+def _qrf_single_record_measurements(
+    export_frame: Frame,
+    qrf_outputs: Sequence[str],
+    *,
+    sparse_values: Mapping[str, np.ndarray],
+    sparse_weights: Mapping[str, np.ndarray],
+    dense_values: Mapping[str, tuple[str, np.ndarray]],
+    entity_weights: Mapping[str, np.ndarray],
+) -> tuple[dict[str, dict[str, float | int | None]], dict[str, str]]:
+    """Each numeric QRF output's single-record measurements, after the gate.
+
+    A sparse output reuses the values and weights the gate checked. A dense
+    output resolves its entity's weights here, since the gate never weighs
+    one, and reuses weights that a sparse output of the same entity already
+    resolved. Any ``Exception``, from resolving weights or from measuring,
+    lists the output under ``unmeasured`` with the error's type and text, so
+    this never fails the run. Both mappings keep the order of
+    ``qrf_outputs``.
+    """
+    resolved = dict(entity_weights)
+    columns: dict[str, dict[str, float | int | None]] = {}
+    unmeasured: dict[str, str] = {}
+    for column in qrf_outputs:
+        if column not in sparse_values and column not in dense_values:
+            continue
+        try:
+            if column in sparse_values:
+                column_values = sparse_values[column]
+                column_weights = sparse_weights[column]
+            else:
+                entity, column_values = dense_values[column]
+                if entity not in resolved:
+                    resolved[entity] = np.asarray(
+                        export_frame.resolve_weights(entity).values,
+                        dtype=np.float64,
+                    )
+                column_weights = resolved[entity]
+            columns[column] = single_record_concentration(
+                column_values,
+                column_weights,
+                top_k=US_QRF_TAIL_CONCENTRATION_TOP_K,
+            )
+        except Exception as error:
+            unmeasured[column] = f"{type(error).__name__}: {error}"
+    return columns, unmeasured
 
 
 #: Failure-line prefix for a per-run QRF tail-concentration register that does

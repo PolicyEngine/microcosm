@@ -21,10 +21,10 @@ reach. "Exactly" means in float64, with no tolerance.
    ``top_k_share`` by more than float rounding. It can lower it by a
    rounding step, because each ``top_k`` sums its own partition:
    ``[0.5, 1, 2**53, 0.5, 0.5]`` gives 1.0 at ``top_k = 3`` and
-   0.9999999999999998 at ``top_k = 4`` on macOS arm64. The measurement
-   accepts that drop to keep ``top_k_share`` the gate's own number
-   (invariant 6). With at most ``top_k`` carriers, ``top_k_share`` is
-   exactly 1.
+   0.9999999999999998 at ``top_k = 4`` on macOS arm64. That one-step drop
+   is an intended violation of exact monotonicity: it keeps ``top_k_share``
+   the gate's own number, bit for bit (invariant 6). With at most ``top_k``
+   carriers, ``top_k_share`` is exactly 1.
 5. **Pigeonhole floor.** The largest of ``n`` positive masses is at least
    their mean, so ``top_1_share >= 1 / carriers``, and
    ``top_k_share >= min(top_k, carriers) / carriers``, to float rounding.

@@ -445,8 +445,10 @@ weights, while the top 100 of its 16,001 carriers carried 45.1%.
 output, dense and thin ones included, the largest single record's share of
 the weighted absolute mass and that record's weight, beside the top-100 share
 (`surface.single_record_concentration`). These numbers never change the
-gate's verdict. A column with no mass reports no share. The dry run reports
-the same two numbers at base weights.
+gate's verdict: the release tool measures after the gate runs and lists an
+output it cannot measure under `unmeasured` with the reason. A column with no
+mass reports no share. The dry run reports the same two numbers at base weights,
+and the post-export probe compares the block, unmeasured reasons included.
 
 A US release may not store a column that looks like a policyengine-us variable
 (lowercase snake_case) unless the engine it is certified against defines that

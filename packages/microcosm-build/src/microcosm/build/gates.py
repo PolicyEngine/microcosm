@@ -3535,7 +3535,8 @@ def single_record_concentration(
         ``top_k = 1`` the two shares are the same number. Raising ``top_k``
         never lowers ``top_k_share`` by more than float rounding; each
         ``top_k`` sums its own partition, so near a share of 1 it can fall by
-        a rounding step. Scaling every weight by one positive factor scales
+        a rounding step, an intended drop that keeps ``top_k_share`` the
+        gate's own number. Scaling every weight by one positive factor scales
         ``top_1_weight`` by it and leaves both shares unchanged, up to float
         rounding.
 

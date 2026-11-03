@@ -1365,8 +1365,9 @@ def compare_qrf_tail(
     ``qrf_tail_concentration.json`` (same frame columns and weights, so the
     shares must agree to rounding).
 
-    It compares the single-record measurements when the release recorded
-    them, and none against a release built before its surface carried them."""
+    It compares the single-record measurements, and the reason behind each
+    unmeasured output, when the release recorded them, and none against a
+    release built before its surface carried them."""
     differences: list[str] = []
     tail = reference["tail_concentration"]
     if bool(tail["passed"]) != bool(result["passed"]):
@@ -1390,11 +1391,12 @@ def compare_qrf_tail(
             continue
         if not math.isclose(float(left), float(right), rel_tol=1e-9, abs_tol=1e-12):
             differences.append(f"{column}: top share {left!r} vs {right!r}")
-    measured = _single_record_columns(result["surface"])
-    recorded = _single_record_columns(reference["surface"])
-    if recorded is None or measured is None:
-        measured, recorded = {}, {}
-    elif sorted(measured) != sorted(recorded):
+    block = _single_record_block(result["surface"])
+    reference_block = _single_record_block(reference["surface"])
+    if block is None or reference_block is None:
+        block = reference_block = {"columns": {}, "unmeasured": {}}
+    measured, recorded = block["columns"], reference_block["columns"]
+    if sorted(measured) != sorted(recorded):
         differences.append(
             "single-record columns differ: only probe "
             f"{sorted(set(measured) - set(recorded))}, only release "
@@ -1410,6 +1412,19 @@ def compare_qrf_tail(
                 continue
             if not math.isclose(float(left), float(right), rel_tol=1e-9, abs_tol=1e-12):
                 differences.append(f"{column}: {field} {left!r} vs {right!r}")
+    skipped, recorded_skipped = block["unmeasured"], reference_block["unmeasured"]
+    if sorted(skipped) != sorted(recorded_skipped):
+        differences.append(
+            "unmeasured columns differ: only probe "
+            f"{sorted(set(skipped) - set(recorded_skipped))}, only release "
+            f"{sorted(set(recorded_skipped) - set(skipped))}"
+        )
+    for column in sorted(set(skipped) & set(recorded_skipped)):
+        if skipped[column] != recorded_skipped[column]:
+            differences.append(
+                f"{column}: unmeasured as {skipped[column]!r} vs "
+                f"{recorded_skipped[column]!r}"
+            )
     return {
         "differences": differences,
         "columns_compared": len(shares),
@@ -1417,12 +1432,10 @@ def compare_qrf_tail(
     }
 
 
-def _single_record_columns(
-    surface: Mapping[str, Any],
-) -> Mapping[str, Mapping[str, Any]] | None:
-    """A tail surface's per-column single-record measurements, if it has them."""
-    block = surface.get("single_record_concentration")
-    return None if block is None else block["columns"]
+def _single_record_block(surface: Mapping[str, Any]) -> Mapping[str, Any] | None:
+    """A tail surface's single-record block (``columns`` and ``unmeasured``),
+    if it has one."""
+    return surface.get("single_record_concentration")
 
 
 def compare_post_export_plans(

@@ -836,13 +836,13 @@ def test_the_report_names_the_commit_the_probe_loaded_from(
     }
 
 
-def _tail_result(single_record=None, *, passed=True, share=0.4):
+def _tail_result(single_record=None, *, passed=True, share=0.4, unmeasured=None):
     surface = {"checked_sparse_columns": ["partnership_income"]}
     if single_record is not None:
         surface["single_record_concentration"] = {
             "top_k": 100,
             "columns": single_record,
-            "unmeasured": {},
+            "unmeasured": unmeasured or {},
         }
     return {
         "passed": passed,
@@ -915,6 +915,46 @@ def test_the_probe_compares_single_record_measurements(probe_tool) -> None:
         "single-record columns differ: only probe [], only release ['estate_income']"
     ]
     assert narrower["single_record_columns_compared"] == 1
+
+
+def test_the_probe_compares_unmeasured_reasons(probe_tool) -> None:
+    """Review N8: an output unmeasured in both runs for different reasons is a
+    difference, and so is an output unmeasured in one run only."""
+    measured = {"partnership_income": _LINE_32}
+    unmeasured = {
+        "taxable_interest_income": "ValueError: Cannot resolve person-level weights"
+    }
+
+    same = probe_tool.compare_qrf_tail(
+        _tail_result(measured, unmeasured=unmeasured),
+        _tail_reference(measured, unmeasured=unmeasured),
+    )
+
+    assert same["differences"] == []
+
+    another_reason = probe_tool.compare_qrf_tail(
+        _tail_result(
+            measured,
+            unmeasured={
+                "taxable_interest_income": "RuntimeError: weight store offline"
+            },
+        ),
+        _tail_reference(measured, unmeasured=unmeasured),
+    )
+
+    assert another_reason["differences"] == [
+        "taxable_interest_income: unmeasured as 'RuntimeError: weight store "
+        "offline' vs 'ValueError: Cannot resolve person-level weights'"
+    ]
+
+    only_release = probe_tool.compare_qrf_tail(
+        _tail_result(measured), _tail_reference(measured, unmeasured=unmeasured)
+    )
+
+    assert only_release["differences"] == [
+        "unmeasured columns differ: only probe [], only release "
+        "['taxable_interest_income']"
+    ]
 
 
 def test_a_release_without_single_record_measurements_compares_none(

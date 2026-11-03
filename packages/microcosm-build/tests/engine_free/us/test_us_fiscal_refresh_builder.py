@@ -15725,6 +15725,140 @@ def test_a_dense_output_with_unresolvable_weights_is_unmeasured_not_fatal() -> N
         builder._qrf_tail_concentration_gate(broken)
 
 
+class _WeightResolutionSpy:
+    """An export frame that records each entity whose weights it resolves.
+
+    For ``entity`` it raises ``error``, or returns ``values`` as the weights,
+    in place of the frame's own; every other attribute is the frame's.
+    """
+
+    def __init__(
+        self,
+        frame: Frame,
+        entity: str | None = None,
+        *,
+        error: Exception | None = None,
+        values: np.ndarray | None = None,
+    ) -> None:
+        self._frame = frame
+        self._entity = entity
+        self._error = error
+        self._values = values
+        self.resolved: list[str] = []
+
+    def __getattr__(self, name: str):
+        return getattr(self._frame, name)
+
+    def resolve_weights(self, entity: str):
+        self.resolved.append(entity)
+        if entity == self._entity and self._error is not None:
+            raise self._error
+        if entity == self._entity and self._values is not None:
+            return SimpleNamespace(values=self._values)
+        return self._frame.resolve_weights(entity)
+
+
+@pytest.mark.parametrize(
+    ("failure", "reason"),
+    [
+        (
+            {"error": RuntimeError("weight store offline")},
+            "RuntimeError: weight store offline",
+        ),
+        (
+            {"values": np.array([object()] * 12_000, dtype=object)},
+            "TypeError: ",
+        ),
+        (
+            {"values": np.ones(11_999)},
+            "ValueError: values and weights must align, got 12000 values vs "
+            "11999 weights.",
+        ),
+    ],
+    ids=["resolution-raises", "weights-not-numbers", "weights-misaligned"],
+)
+def test_any_error_measuring_a_dense_output_lands_under_unmeasured(
+    failure, reason
+) -> None:
+    """Review N1: the gate never weighs a dense output, so no error from
+    measuring one may fail the run, whatever its type or its source."""
+    builder = _load_builder_module()
+    n = 12_000
+    interest = np.zeros(n)
+    interest[: n // 2] = 1_000.0
+    auto_loans = np.zeros(n)
+    auto_loans[:500] = 4_000.0
+    frame = _WeightResolutionSpy(
+        _qrf_person_frame(
+            builder,
+            {"taxable_interest_income": interest},
+            np.ones(n),
+            household_columns={"auto_loan_balance": auto_loans},
+        ),
+        "person",
+        **failure,
+    )
+
+    gate, surface = builder._qrf_tail_concentration_gate(frame)
+
+    assert gate.passed
+    assert surface["dense_columns"] == ["taxable_interest_income"]
+    assert surface["checked_sparse_columns"] == ["auto_loan_balance"]
+    block = surface["single_record_concentration"]
+    assert set(block["columns"]) == {"auto_loan_balance"}
+    assert set(block["unmeasured"]) == {"taxable_interest_income"}
+    assert block["unmeasured"]["taxable_interest_income"].startswith(reason)
+
+
+def test_a_misaligned_sparse_output_fails_with_the_gates_own_message() -> None:
+    """Review N2: misaligned weights on a sparse output raise the gate's error,
+    which names the column, because no measurement runs before the gate."""
+    builder = _load_builder_module()
+    n = 12_000
+    casualty = np.zeros(n)
+    casualty[:500] = 2_979.0
+    frame = _WeightResolutionSpy(
+        _qrf_person_frame(builder, {"casualty_loss": casualty}, np.ones(n)),
+        "person",
+        values=np.ones(n - 1),
+    )
+
+    with pytest.raises(ValueError) as raised:
+        builder._qrf_tail_concentration_gate(frame)
+
+    assert str(raised.value) == (
+        "casualty_loss: values and weights must align, got 12000 values vs "
+        "11999 weights."
+    )
+
+
+def test_a_dense_output_before_a_sparse_one_leaves_the_gate_to_raise() -> None:
+    """Review N4: a dense output sorts before a sparse output of the same
+    entity, and that entity's weights do not resolve. The sparse output's
+    error still fails the run, and the frame resolves the entity's weights
+    once, for the sparse output: the dense output's measurement waits until
+    after the gate, so it never runs."""
+    builder = _load_builder_module()
+    n = 12_000
+    dense = np.zeros(n)
+    dense[: n // 2] = 500.0
+    sparse = np.zeros(n)
+    sparse[:500] = 2_979.0
+    frame = _WeightResolutionSpy(
+        _qrf_person_frame(
+            builder,
+            {"casualty_loss": dense, "taxable_interest_income": sparse},
+            np.ones(n),
+            tax_unit_weights=np.ones(n),
+        )
+    )
+
+    with pytest.raises(ValueError, match="Cannot resolve person-level weights"):
+        builder._qrf_tail_concentration_gate(frame)
+
+    assert frame.resolved == ["person"]
+
+
 def test_qrf_tail_single_record_measurement_never_moves_the_gate() -> None:
     """For any column geometry the strategies reach: the gate's details equal
     the shared gate run on the sparse columns alone; the surface measures
