@@ -577,6 +577,345 @@ def _earnings_map_v2(resources, rows, facts):
     )
 
 
+# ---------------------------------------------------------------------------
+# The toy income stand-in (G8-r2c G at toy scale)
+# ---------------------------------------------------------------------------
+
+#: The toy's counterpart of NZ's ird_taxable_income_ty2027_v1.
+TOY_MEASUREMENT = "toy_income_standin_v1"
+TOY_STANDIN_NODE = "nz.income.standin"
+TOY_STANDIN_TABLE = "toy_income_standin"
+TOY_STANDIN_OUTPUTS = {
+    "measure": "toy_income_proxy_cents",
+    "unit": "toy_income_proxy_nzd",
+    "universe_status": "toy_income_proxy_universe_status",
+}
+#: Signed components, as N/income_measurements.json lists NZ's: wages, signed
+#: farm income, interest, rental (the one add-back) and the three annual
+#: transfers the toy's annual-transfers node writes.
+TOY_STANDIN_COMPONENTS = (
+    "employment_income_cents",
+    "farm_self_employment_income_cents",
+    "interest_income_cents",
+    "rental_income_cents",
+    "toy_main_transfer_cents",
+    "toy_other_transfer_cents",
+    "toy_pension_transfer_cents",
+)
+#: The coarse table's source-period cuts in cents; the last band is open.
+#: There is no nil band, and the first cut sits above zero, as NZ's does.
+TOY_STANDIN_FIRST_CUT = 15_000
+TOY_STANDIN_CUTS = (40_000, 60_000)
+#: Native member labels of each coarse band, in band order. A coarse row
+#: sums its members' facts, as F's 24 rows sum IRD's native rows.
+TOY_STANDIN_MEMBERS = (
+    ("n01", "n02", "n03"),
+    ("n04", "n05"),
+    ("n06", "n07", "n08", "n09"),
+)
+#: Invented native facts: (count, amount in currency units) per member,
+#: chosen near the toy's pre-fit weighted totals so R2C-3's ratio bounds hold.
+TOY_STANDIN_FACTS = {
+    "n01": (17.0, 5_000.0),
+    "n02": (19.0, 5_000.0),
+    "n03": (18.0, 5_100.0),
+    "n04": (20.0, 9_300.0),
+    "n05": (19.0, 9_200.0),
+    "n06": (6.0, 9_000.0),
+    "n07": (6.0, 8_000.0),
+    "n08": (5.0, 7_000.0),
+    "n09": (5.0, 6_700.0),
+}
+#: The toy's own ageing dimension; its factors come from the shared fixture.
+TOY_AGING_DIMENSION = "toy_aging_index"
+#: Support thresholds suited to forty households; R2C-3's ratio bounds stand.
+TOY_PREFIT_SUPPORT = {"minimum_source_households": 3, "minimum_kish_ess": 2}
+
+
+def toy_standin_declaration():
+    """The toy counterpart of income_measurements.json's ``measures.central``."""
+    return {
+        "entity": "person",
+        "components": [
+            {"column": column, "sign": 1} for column in TOY_STANDIN_COMPONENTS
+        ],
+        "add_backs": ["rental_income_cents"],
+        "floor": 0,
+        "scale": 100,
+        "outputs": dict(TOY_STANDIN_OUTPUTS),
+    }
+
+
+def toy_standin_table():
+    """The toy counterpart of ird_taxable_income_standin_ty2024."""
+    from test_support.microcosm_build.reference_intervals import (
+        interval_table_fixture,
+    )
+
+    table = interval_table_fixture(
+        table_id=TOY_STANDIN_TABLE,
+        cuts=TOY_STANDIN_CUTS,
+        nil=False,
+        first=TOY_STANDIN_FIRST_CUT,
+        companions=True,
+        indicator_prefix="toy_income_standin_band",
+    )
+    table.update(
+        income_column=TOY_STANDIN_OUTPUTS["measure"],
+        universe_column=TOY_STANDIN_OUTPUTS["universe_status"],
+    )
+    table["diagnostics"]["support_household_entity"] = "household"
+    for band in table["bands"]:
+        band["indicator"] += "_indicator"
+        band.update(
+            count_reference=f"toy_income_standin_count__{band['id']}",
+            amount_reference=f"toy_income_standin_amount__{band['id']}",
+        )
+    return table
+
+
+def toy_standin_member_facts():
+    """One count and one amount fact per native member, NZ-geography."""
+    from test_support.microcosm_build.reference_intervals import band_fact
+
+    rows = []
+    for label, (count, amount) in TOY_STANDIN_FACTS.items():
+        for kind, value in (("count", count), ("money", amount)):
+            fact = band_fact(kind, label, value, record_set="toy.standin.bands")
+            fact["geography"].update(id="NZ", name="Synthetic destination")
+            rows.append(fact)
+    return rows
+
+
+def toy_standin_references(table):
+    """F's multi-member rows at toy scale: ``sum`` counts, ``identity`` amounts."""
+    from test_support.microcosm_build.reference_intervals import summed_row
+
+    rows = []
+    for band, members in zip(table["bands"], TOY_STANDIN_MEMBERS, strict=True):
+        for kind, name in (
+            ("count", band["count_reference"]),
+            ("money", band["amount_reference"]),
+        ):
+            row = summed_row(kind, name, members, indicator=band["indicator"])
+            row.update(
+                family="income",
+                measure="toy_people"
+                if kind == "count"
+                else TOY_STANDIN_OUTPUTS["unit"],
+            )
+            row["metadata"].update(
+                required_reference_profile=TOY_AGING_DIMENSION,
+                required_measurement_binding=TOY_MEASUREMENT,
+                reference_prerequisites=json.dumps(
+                    [
+                        f"reference_profile:{TOY_AGING_DIMENSION}",
+                        f"measurement:{TOY_MEASUREMENT}",
+                    ]
+                ),
+                interval_table_id=table["id"],
+            )
+            rows.append(row)
+    return rows
+
+
+def _income_standin(resources, rows, facts, problem):
+    """Wire the toy stand-in as G wires nz.income.standin, prepare and problem."""
+    from test_support.microcosm_build.reference_intervals import prefit_gate_entry
+
+    declaration = toy_standin_declaration()
+    resources["toy_income_measurements"] = {
+        "schema_version": 1,
+        "measures": {
+            "central": {
+                "declaration": declaration,
+                "declaration_sha256": sha256(canonical_json(declaration)).hexdigest(),
+            }
+        },
+    }
+    # E's nz.earnings.cents: the mapped float wage becomes integer cents.
+    wages = {
+        "entity": "person",
+        "columns": [
+            {
+                "source_column": "employment_income",
+                "output_column": "employment_income_cents",
+                "quantum": "0.01",
+                "rounding": "half_even",
+            }
+        ],
+    }
+    rows.append(
+        _node(
+            "nz.earnings.cents",
+            "money.minor_units@1",
+            population="nz.central",
+            inputs=[_slice("person", ["employment_income"])],
+            outputs=[_owned("person", "employment_income_cents", "int64")],
+            params={"declaration": canonical_json(wages).decode("utf-8")},
+        )
+    )
+    rows.append(
+        _node(
+            TOY_STANDIN_NODE,
+            "measure.combine@1",
+            population="nz.central",
+            inputs=[_slice("person", list(TOY_STANDIN_COMPONENTS))],
+            outputs=[
+                _owned("person", TOY_STANDIN_OUTPUTS["measure"], "Int64"),
+                _owned("person", TOY_STANDIN_OUTPUTS["unit"], "float64"),
+                _owned("person", TOY_STANDIN_OUTPUTS["universe_status"], "string"),
+            ],
+            params={
+                "measure": _select(
+                    "toy_income_measurements",
+                    "json",
+                    "measures",
+                    "central",
+                    "declaration",
+                ),
+                "measure_sha256": _select(
+                    "toy_income_measurements",
+                    "value",
+                    "measures",
+                    "central",
+                    "declaration_sha256",
+                ),
+                "measurement_id": TOY_MEASUREMENT,
+            },
+        )
+    )
+    table = toy_standin_table()
+    resources["toy_reference_intervals"] = {"schema_version": 1, "tables": [table]}
+    references = toy_standin_references(table)
+    document = resources["target_references"]
+    document["target_references"] += references
+    document["hierarchy"].setdefault("target_labels", {}).update(
+        {
+            row["metadata"]["contract_target_id"]: f"Synthetic {row['name']}"
+            for row in references
+        }
+    )
+    facts += toy_standin_member_facts()
+    # The compiler replays each selected factor against the facts it loads,
+    # under the feed pin (_pin_calibration_facts writes both).
+    for row in rows:
+        if row["kernel"] == "targets.compile@1":
+            row["params"]["chronicle_feed_pin"] = _select("toy_calibration_feed_pin")
+    transformation = {
+        "operation": "scale_money_and_intervals",
+        "reference_names": [band["amount_reference"] for band in table["bands"]],
+        "count_reference_names": [band["count_reference"] for band in table["bands"]],
+        "interval_table_ids": [table["id"]],
+        "required_measurement_binding": TOY_MEASUREMENT,
+    }
+    resources["reference_profiles"] = {
+        "schema_version": 1,
+        "reference_resource": "target_references",
+        "factor_context_resource": "toy_reference_aging",
+        "interval_resource": "toy_reference_intervals",
+        "dimensions": {
+            TOY_AGING_DIMENSION: {
+                "default": "central",
+                # One profile: the toy feed carries one factor's anchor facts.
+                "profiles": {
+                    "central": {
+                        "transformations": [
+                            {**transformation, "factor_id": "toy_central"}
+                        ]
+                    }
+                },
+            }
+        },
+    }
+    bindings = resources["calibration_bindings"]
+    measured = [TOY_STANDIN_OUTPUTS["measure"], TOY_STANDIN_OUTPUTS["universe_status"]]
+    added = [{"entity": "person", "name": "toy_people", "constant": 1}] + [
+        {
+            "entity": "person",
+            "name": band["indicator"],
+            "interval": {"table": table["id"], "band": band["id"]},
+        }
+        for band in table["bands"]
+    ]
+    bindings["columns"] += added
+    prepare = next(row for row in rows if row["id"] == "nz.calibration.prepare")
+    prepare["inputs"].append(_slice("person", measured))
+    prepare["outputs"] += [_owned("person", row["name"], "bool") for row in added]
+    prepare["outputs"][-len(added)]["dtype"] = "int64"
+    # R2C-25: the problem slices the unit column, or _compiled_problem
+    # (T/target_kernels.py:541-551) refuses every amount row.
+    problem["inputs"] += [
+        _slice(
+            "person",
+            [row["name"] for row in added] + [*measured, TOY_STANDIN_OUTPUTS["unit"]],
+        ),
+        _slice("household", ["source_household_id"]),
+    ]
+    resources["gates"]["gates"] += [
+        {
+            "id": "toy_target_profile_coverage",
+            "gate": "target_profile_coverage",
+            "phase": "terminal",
+            "criticality": "release_blocking",
+            "evidence_absent_blocks": True,
+            "parameters": {"required_families": ["income", "toy"]},
+        },
+        {
+            **prefit_gate_entry(
+                tables=[table["id"]],
+                evidence=list(TOY_PREFIT_EVIDENCE),
+                **TOY_PREFIT_SUPPORT,
+            ),
+            "id": "toy_measurement_prefit",
+            # R2C-18 leaves every alias unwired, so the gate fails every run;
+            # as a diagnostic it reports that without blocking the toy export.
+            "criticality": "diagnostic",
+            "evidence_absent_blocks": True,
+        },
+    ]
+
+
+def _pin_calibration_facts(resources, facts, root):
+    """Write the calibration facts and the ageing factors' facts as one feed.
+
+    NZ's IRD ageing factors resolve against the pinned Chronicle feed the
+    compiler loads; the toy's ageing factors do the same against its own.
+    """
+    from test_support.microcosm_build.reference_factors import factor_fixture
+
+    _, factor_facts, _ = factor_fixture()
+    plain = json.loads(json.dumps(factor_facts, default=float))
+    path, pin = write_pinned_artifact(root, [*facts, *plain])
+    pin["source_commit"] = "c" * 40
+    identity = chronicle_feed_identity(pin)
+    artifact = load_ledger_consumer_artifact(path, feed_pin=pin, lexical_floats=True)
+    declaration, _, _ = factor_fixture(feed_identity=identity)
+    declaration["id"] = "toy_central"
+    factor, receipt = resolve_reference_factor(declaration, artifact.facts, identity)
+    entries = [
+        {"declaration": declaration, "operational_factor": factor, "receipt": receipt}
+    ]
+    resources["toy_calibration_feed_pin"] = pin
+    resources["toy_reference_aging"] = {
+        "schema_version": 1,
+        "feed_identity": identity,
+        "factors": entries,
+    }
+    return path
+
+
+#: The packaged gate's required_evidence list (N/gates.json measurement_prefit).
+TOY_PREFIT_EVIDENCE = (
+    "native_band_report",
+    "omission_register",
+    "scenario_vsi",
+    "scenario_vex",
+    "scenario_vpt",
+    "identity_receipts",
+)
+
+
 def make_nz_toy_fixture(root):
     """Prepare forty synthetic households and the complete transport declaration."""
     base = make_entitlement_fixture(root, variants=False)
@@ -782,6 +1121,10 @@ def make_nz_toy_fixture(root):
     problem = by_id["nz.targets.problem"]
     problem["inputs"].append(_slice("person", ["receives_other"]))
     _prepare(r, rows, problem)
+    _income_standin(r, rows, facts, problem)
+    sources["nz_calibration_facts"] = _pin_calibration_facts(
+        r, facts, root / "calibration-feed"
+    )
     # A closed replay slice excludes every scratch cent, formula and reporting output.
     export_inputs = [
         _slice(

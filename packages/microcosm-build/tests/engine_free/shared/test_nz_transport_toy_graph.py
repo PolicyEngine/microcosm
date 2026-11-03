@@ -19,6 +19,7 @@ from microcosm.build.transport.artifact_types import INCOME_CELLS_TYPE
 from microcosm.build.transport.cli import through
 from microcosm.build.transport.compose import (
     compose_transport_graph,
+    transport_resource,
     validate_transport_activation,
 )
 from microcosm.build.transport.reporting_kernels import (
@@ -51,6 +52,7 @@ from test_support.microcosm_build.transport_entitlement import run_entitlement_g
 from test_support.microcosm_build.transport_nz_toy import (
     DEMOGRAPHY,
     SCENARIOS,
+    TOY_STANDIN_MEMBERS,
     _cell_gates,
     _classifiers,
     make_nz_toy_fixture,
@@ -237,9 +239,13 @@ def test_variants_normalize_once_with_their_knobs_and_hold_fixed_uses_identity(t
 
 def test_each_activated_calibration_row_compiles_once_and_exempt_rows_stay_out(toy):
     fixture, run = toy
+    # The effective view, after the ageing profile and the measurement proof
+    # activate the six parked stand-in rows.
     expected = {
         row["name"]
-        for row in fixture.spec["resources"]["target_references"]["target_references"]
+        for row in transport_resource(fixture.spec, "target_references")[
+            "target_references"
+        ]
         if row["metadata"]["activation_status"] == "active"
     }
     surface = decode_target_surface(_artifact(run, "nz.targets.compile", "surface"))
@@ -477,7 +483,10 @@ def test_four_regional_age_cells_prepare_and_calibrate_once(toy):
     frame = run[0].populations["nz.central"]
     names = [name + "_indicator" for name, _, _, _ in DEMOGRAPHY]
     assert frame.table("person")[names].sum(axis=1).eq(1).all()
-    assert run[0].nodes["nz.targets.problem"].receipt["n_targets"] == 4
+    # The four cells plus the stand-in's count and amount row per coarse band.
+    assert run[0].nodes["nz.targets.problem"].receipt["n_targets"] == 4 + 2 * len(
+        TOY_STANDIN_MEMBERS
+    )
     rows = fixture.spec["resources"]["target_references"]["target_references"]
     assert {
         row["measure"]
@@ -739,3 +748,260 @@ def test_the_wage_map_v2_fits_the_toy_alpha_on_scaled_edges(toy):
     assert fit["alpha_decimal"] == "2"
     assert fit["top_band_lower"] == "500" == str(int(400 * TOY_EARNINGS_FACTOR))
     assert [anchor["count"] for anchor in fit["anchors"]] == [3.0, 1.0]
+
+
+# ---------------------------------------------------------------------------
+# G8-r2c G on the toy: the income stand-in, its coarse rows and its gates
+# ---------------------------------------------------------------------------
+
+
+def _toy_problem(run):
+    from microcosm.calibrate.artifacts import decode_problem
+
+    return decode_problem(_artifact(run, "nz.targets.problem", "problem"))
+
+
+def _gate_row(run, gate_id):
+    report = json.loads(_artifact(run, "nz.gates.terminal", "gate_report"))
+    (row,) = [row for row in report["report"]["outcomes"] if row["id"] == gate_id]
+    return row
+
+
+def _standin_bands(fixture):
+    from test_support.microcosm_build.transport_nz_toy import TOY_STANDIN_TABLE
+
+    (table,) = [
+        table
+        for table in transport_resource(fixture.spec, "toy_reference_intervals")[
+            "tables"
+        ]
+        if table["id"] == TOY_STANDIN_TABLE
+    ]
+    return table, [
+        (band, members)
+        for band, members in zip(table["bands"], TOY_STANDIN_MEMBERS, strict=True)
+    ]
+
+
+def test_each_toy_coarse_row_enters_the_problem_matrix_once_with_support(toy):
+    """Design 80 section 6 G (1): the coarse income rows reach the toy matrix."""
+    from test_support.microcosm_build.transport_nz_toy import (
+        TOY_STANDIN_NODE,
+        TOY_STANDIN_OUTPUTS,
+    )
+
+    fixture, run = toy
+    _, bands = _standin_bands(fixture)
+    problem = _toy_problem(run)
+    # Matrix row names carry the period; target_metadata keeps the reference.
+    names = [row["reference"] for row in problem.target_metadata]
+    matrix = problem.problem.matrix.tocsr()
+    metadata = {row["reference"]: row for row in problem.target_metadata}
+    expected = {
+        band[role]: measure
+        for band, _ in bands
+        for role, measure in (
+            ("count_reference", "toy_people"),
+            ("amount_reference", TOY_STANDIN_OUTPUTS["unit"]),
+        )
+    }
+    assert len(expected) == 2 * len(TOY_STANDIN_MEMBERS) == 6
+    for name, measure in expected.items():
+        assert names.count(name) == 1, name
+        index = names.index(name)
+        assert matrix[[index], :].count_nonzero() > 0, name
+        assert metadata[name]["family"] == "income"
+        assert metadata[name]["measure"] == measure
+    # A's proof names the toy stand-in as nz.calibrate's only producer. It
+    # walks the transport skeleton (compose.py measurement_proofs), so the
+    # variant branches' calibrations sit outside it.
+    resolution = json.loads(
+        fixture.graph().node("nz.targets.compile").params["reference_resolution"]
+    )
+    (proof,) = resolution["measurement_proofs"].values()
+    assert proof["producers"] == {"nz.calibrate": TOY_STANDIN_NODE}
+
+
+def test_target_profile_coverage_passes_on_the_toy_with_income_required(toy):
+    """Design 80 section 6 G (2)."""
+    fixture, run = toy
+    (entry,) = [
+        row
+        for row in fixture.spec["resources"]["gates"]["gates"]
+        if row["id"] == "toy_target_profile_coverage"
+    ]
+    assert entry["gate"] == "target_profile_coverage"
+    assert "income" in entry["parameters"]["required_families"]
+    row = _gate_row(run, "toy_target_profile_coverage")
+    assert row["status"] == "passed", row["failures"]
+
+
+def test_measurement_prefit_fails_the_toy_only_on_its_unwired_evidence(toy):
+    """Design 80 section 6 G (3): R2C-18 leaves every alias unwired until G8-x.
+
+    The gate runs on the toy's problem, and its only failures are one evidence
+    line per alias in the packaged gate's required_evidence; no roster, band,
+    support or diagnostics failure appears.
+    """
+    from importlib.resources import files
+
+    from test_support.microcosm_build.transport_nz_toy import (
+        TOY_PREFIT_EVIDENCE,
+        TOY_STANDIN_TABLE,
+    )
+
+    fixture, run = toy
+    gates = json.loads((files("microcosm.build") / "nz" / "gates.json").read_text())
+    (packaged,) = [
+        gate for gate in gates["gates"] if gate["gate"] == "measurement_prefit"
+    ]
+    assert list(TOY_PREFIT_EVIDENCE) == packaged["parameters"]["required_evidence"]
+    row = _gate_row(run, "toy_measurement_prefit")
+    assert row["gate"] == "measurement_prefit"
+    assert row["status"] == "failed"
+    assert row["failures"] == [
+        f"evidence: the run lacks required evidence {alias!r}."
+        for alias in TOY_PREFIT_EVIDENCE
+    ]
+    details = row["details"]
+    assert details["tables"] == [TOY_STANDIN_TABLE]
+    assert details["discrepant_bands"] == []
+    assert [band["band"] for band in details["bands"]] == [
+        f"{TOY_STANDIN_TABLE}/b{index}" for index in range(len(TOY_STANDIN_MEMBERS))
+    ]
+    for band in details["bands"]:
+        for role in ("count", "amount"):
+            assert band[role]["inside_band_bounds"] is True, band
+    # A diagnostic entry: the refusal reaches the report, not the export.
+    report = json.loads(_artifact(run, "nz.gates.terminal", "gate_report"))
+    assert "toy_measurement_prefit" not in report["enforcement"]["blocking"]
+
+
+def test_each_toy_coarse_reference_equals_the_sum_of_its_member_references(toy):
+    """Design 80 section 6 G (4), the differential.
+
+    Each coarse count row's problem value is the sum of its declared members'
+    count facts in the pinned toy feed, and each amount row's is the selected
+    ageing factor times the sum of their amount facts. The members come from
+    the declared toy partition, not from the rows under test.
+    """
+    from microcosm.build.ledger_artifact import load_ledger_consumer_artifact
+    from test_support.microcosm_build.transport_nz_toy import TOY_STANDIN_FACTS
+
+    fixture, run = toy
+    resources = fixture.spec["resources"]
+    artifact = load_ledger_consumer_artifact(
+        fixture.sources["nz_calibration_facts"],
+        feed_pin=resources["toy_calibration_feed_pin"],
+    )
+    native = {}
+    for fact in artifact.facts:
+        if fact.get("layout", {}).get("record_set_id") == "toy.standin.bands":
+            key = (
+                fact["observed_measure"]["source_measure_id"],
+                fact["dimensions"]["band"],
+            )
+            assert key not in native, key
+            native[key] = Fraction(str(fact["value"]))
+    assert native == {
+        (kind, label): Fraction(str(value))
+        for label, pair in TOY_STANDIN_FACTS.items()
+        for kind, value in zip(("count", "money"), pair, strict=True)
+    }
+    (entry,) = resources["toy_reference_aging"]["factors"]
+    factor = Fraction(
+        entry["operational_factor"]["numerator"],
+        entry["operational_factor"]["denominator"],
+    )
+    assert factor == Fraction(11, 10)
+    raw = {
+        row["name"]: row for row in resources["target_references"]["target_references"]
+    }
+    problem = _toy_problem(run)
+    targets = dict(
+        zip(
+            [row["reference"] for row in problem.target_metadata],
+            problem.problem.target_vector,
+            strict=True,
+        )
+    )
+    _, bands = _standin_bands(fixture)
+    for band, members in bands:
+        for role, kind, scale in (
+            ("count_reference", "count", Fraction(1)),
+            ("amount_reference", "money", factor),
+        ):
+            name = band[role]
+            selector = raw[name]["ledger_selector"]["dimension_values"]["band"]
+            assert selector == list(members), name
+            expected = scale * sum(native[kind, label] for label in members)
+            assert targets[name] == pytest.approx(float(expected), rel=1e-12), name
+
+
+@pytest.fixture(scope="module")
+def toy_effective_standin_table(toy):
+    from microcosm.build.reference_intervals import interval_table
+
+    table, _ = _standin_bands(toy[0])
+    return interval_table(table)
+
+
+def test_property_a_positive_standin_above_the_first_cut_lands_in_one_band(
+    toy, toy_effective_standin_table
+):
+    """For any toy incomes: x > 0 above the aged first cut is in exactly one
+    coarse band (the independent cut count says which), 0 < x <= first cut is
+    in none, and x <= 0 is ``excluded`` and in none. The table, as NZ's, has
+    no nil band and a first cut above zero.
+    """
+    from hypothesis import given, settings
+    from hypothesis import strategies as st
+
+    from microcosm.build.reference_intervals import interval_indicators
+    from microcosm.build.transport.measure_kernels import combine_measure
+    from test_support.microcosm_build.transport_nz_toy import (
+        TOY_STANDIN_COMPONENTS,
+        TOY_STANDIN_CUTS,
+        TOY_STANDIN_FIRST_CUT,
+        toy_standin_declaration,
+    )
+
+    declaration = toy_standin_declaration()
+    table = toy_effective_standin_table
+    factor = Fraction(11, 10)
+    cuts = [factor * cut for cut in (TOY_STANDIN_FIRST_CUT, *TOY_STANDIN_CUTS)]
+    signed = st.integers(-150_000, 150_000)
+
+    @settings(max_examples=150, deadline=None)
+    @given(
+        st.lists(
+            st.tuples(*(signed for _ in TOY_STANDIN_COMPONENTS)),
+            min_size=1,
+            max_size=12,
+        )
+    )
+    def check(records):
+        columns = {
+            column: pd.Series([row[i] for row in records], dtype="int64")
+            for i, column in enumerate(TOY_STANDIN_COMPONENTS)
+        }
+        measures, statuses, _ = combine_measure(
+            declaration, columns, np.ones(len(records))
+        )
+        indicators = interval_indicators(table, measures, statuses)
+        hits = np.vstack(list(indicators.values())).astype(int)
+        names = list(indicators)
+        for index, (x, status) in enumerate(zip(measures, statuses, strict=True)):
+            if x <= 0:
+                assert status == "excluded"
+                assert hits[:, index].sum() == 0
+            elif x <= cuts[0]:
+                assert status == "included"
+                assert hits[:, index].sum() == 0
+            else:
+                assert status == "included"
+                assert hits[:, index].sum() == 1
+                band = sum(x > cut for cut in cuts) - 1
+                assert names[int(np.argmax(hits[:, index]))] == table.indicators[band]
+
+    check()
