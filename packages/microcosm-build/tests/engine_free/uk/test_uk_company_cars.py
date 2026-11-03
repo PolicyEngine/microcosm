@@ -506,6 +506,9 @@ def test_a_row_without_epb_is_capped_at_its_pay(spec) -> None:
     assert (carve.benefit <= spi_pay).all()
     assert carve.receipt["holders_without_epb"] == stage.rounded_count(4)
     assert carve.receipt["kept_without_epb"] == stage.rounded_count(3)
+    # The second row's car takes all of its PAY (the review of microcosm#1491,
+    # item 6): its cash pay is its termination pay alone.
+    assert carve.receipt["kept_without_epb_leaving_no_pay"] == stage.rounded_count(1)
 
 
 class _UKEngine:

@@ -168,7 +168,9 @@ measure first), and the first is corrected now.
   weights. They are
   kept now, their benefits moved from PAY into EPB. The receipt records the weighted
   holders kept without EPB and the pay moved (`holders.spi_channel_tape_without_epb`
-  and `spi_carve_out.weighted_pay_moved_into_epb_gbp`).
+  and `spi_carve_out.weighted_pay_moved_into_epb_gbp`), and how many of those rows the
+  car leaves with no PAY, their cash pay being their termination pay alone
+  (`spi_carve_out.kept_without_epb_leaving_no_pay`).
 - **The carve-out.** Cars that do not fit their EPB, or a zero-EPB row's PAY, are
   scaled or dropped, above.
 

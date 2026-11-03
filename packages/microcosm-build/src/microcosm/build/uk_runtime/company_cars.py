@@ -1140,9 +1140,13 @@ def carve_spi_benefits(
     )
     receipt = {
         "holders": rounded_count(int(len(epb))),
-        # The rows capped at PAY, and those of them that keep their car.
+        # The rows capped at PAY, those of them that keep their car, and those
+        # whose car takes all of their PAY, leaving TAXTERM as their cash pay.
         "holders_without_epb": rounded_count(int(without_epb.sum())),
         "kept_without_epb": rounded_count(int((without_epb & fit["keep"]).sum())),
+        "kept_without_epb_leaving_no_pay": rounded_count(
+            int((without_epb & fit["keep"] & (spi_pay - fit["benefit"] <= 0.005)).sum())
+        ),
         "cap_below_epb_for_the_employee_contribution": rounded_count(
             int((budget < np.minimum(source, pay)).sum())
         ),

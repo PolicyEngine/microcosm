@@ -467,7 +467,7 @@
         "hmrc.benefits_in_kind.company_car_fuel.petrol_including_hybrids",
         "hmrc.benefits_in_kind.company_car_recipients"
       ],
-      "reason": "HMRC Benefits in kind statistics (July 2026) Tables 1 and 2C: company car recipients in 2024-25, in all and by fuel, the latest year published (provisional). No published index projects company car holders or their fuel mix, so the counts are held at their 2024-25 level until HMRC's 2025-26 figures, due in July 2027. They count stored inputs, so the period they are measured at moves nothing but the fact (María's ruling of 3 November 2026 to bind them).",
+      "reason": "HMRC Benefits in kind statistics (July 2026) Tables 1 and 2C: company car recipients in 2024-25, in all and by fuel, the latest year published (provisional). No published index projects company car holders or their fuel mix, so the counts are held at their 2024-25 level until HMRC's 2025-26 figures, due in July 2027. Held flat, they probably understate 2025-26: Table 1's holders went 760,000, 840,000 and 920,000 over 2022-23 to 2024-25, and Table 2C's fully electric cars 220,000, 340,000 and 465,000 (the review of microcosm#1491, item 8). They count stored inputs, so the period they are measured at moves nothing but the fact (María's ruling of 3 November 2026 to bind them).",
       "tracking": "microcosm#1418",
       "approved_by": "juaristi22",
       "approved_on": "2026-11-03",

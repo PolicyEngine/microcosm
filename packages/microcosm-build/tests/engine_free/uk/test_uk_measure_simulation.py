@@ -305,6 +305,37 @@ def test_resolver_rejects_amount_threshold_year_mismatch(
         )
 
 
+@pytest.mark.parametrize("measurement_period", [None, 2023, 2025])
+def test_resolver_rejects_a_dated_company_car_benefit_at_another_year(
+    monkeypatch, tmp_path, measurement_period
+):
+    """A company car benefit dated 2024 is priced at 2024-25's percentages, so a
+    binding that measures it at any other period, or at none, is refused, as a
+    dated CGT measure is (the review of microcosm#1491, item 7)."""
+
+    binding = {"value_variable": "company_car_benefit_2024"}
+    if measurement_period is not None:
+        binding["measurement_period"] = measurement_period
+    monkeypatch.setattr(
+        measure_simulation,
+        "_policyengine_uk_module",
+        lambda: SimpleNamespace(__version__="test"),
+    )
+    monkeypatch.setattr(
+        measure_simulation,
+        "_uk_contract_targets",
+        lambda: {"cars": {"bindings": {"policyengine": binding}}},
+    )
+    with pytest.raises(ValueError, match="company car benefit year/period mismatch"):
+        UKMeasureResolver(
+            simulation_source=tmp_path / "input.h5",
+            scratch_dir=tmp_path,
+            frame=FrameStub(),
+            year=2025,
+            microsimulation_factory=lambda **_: SimulationStub({}),
+        )
+
+
 def test_dated_cgt_measure_uses_disposal_year_with_later_calibration_year():
     sim = SimulationStub(
         {"capital_gains": ("person", np.array([3000.0, 5000.0, 20000.0]))}

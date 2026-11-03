@@ -1144,6 +1144,15 @@ class UKMeasureResolver:
         for target_id, target in self.contract_targets.items():
             binding = target["bindings"]["policyengine"]
             for name in _binding_variable_names(binding):
+                # A company car benefit dated by its name is priced in that
+                # year, so it must be measured there, as a CGT measure is.
+                benefit_year = company_car_dated_benefit_year(name)
+                if benefit_year is not None and (
+                    int(binding.get("measurement_period", self.year)) != benefit_year
+                ):
+                    raise ValueError(
+                        f"company car benefit year/period mismatch: {target_id}"
+                    )
                 cgt_measure = _cgt_model_measure(name, self.year)
                 if cgt_measure is None:
                     continue
