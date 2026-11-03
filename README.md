@@ -97,11 +97,11 @@ staging run files described below.
 
 A build that must send telemetry runs with `MICROCOSM_TELEMETRY_REQUIRED=1`.
 Only builds that start the emitter adapter read it: the UK full build, the
-UK spine build and the US fiscal refresh build. Every other build ignores
-it, including the three registered US Modal programs
-(`build_us_acs_local_release.py`, `build_us_puf_support_base.py`,
-`build_us_acs_multispine_base.py`), which do not start the adapter yet and
-run without telemetry. A build that reads it stops with
+UK spine build, the US fiscal refresh build and the three registered US
+Modal programs (`build_us_acs_local_release.py`,
+`build_us_puf_support_base.py`, `build_us_acs_multispine_base.py`), which
+record each of their stages. Every other build ignores it. A build that
+reads it stops with
 `TelemetryRequiredError` when it starts its emitter, before doing any work,
 if the emitter cannot be prepared or is missing, its
 `microcosm-emitter version` times out or fails, it is older than the
@@ -122,7 +122,10 @@ other value stops it with a `ValueError`. Leaving the requirement off
 PolicyEngine who run Microcosm without access to the collector;
 PolicyEngine's own builds keep telemetry required. The Modal stage runner
 sets it to `1` for the stage it runs, unless the plan sets `0`, and passes
-that stage a telemetry-only collector token (see
+that stage a telemetry-only collector token. It also names the stage's
+telemetry run, `MICROCOSM_TELEMETRY_RUN_ID=<plan run_id>.<stage>`, so every
+attempt of a stage reports under one run; started by hand, the US programs
+make their own attempt ID (see
 [the Modal stage runbook](docs/us-modal-stage-runbook.md#how-a-run-works),
 item 6).
 
