@@ -72,7 +72,9 @@ environment variables and user, so it uses the build's Hugging Face
 credential (`HF_TOKEN`, then `HUGGINGFACE_TOKEN`, then the `hf auth login`
 token). Without the command the build continues with no hosted telemetry and
 no remote staging, and queues no Orrery graph publication; a UK build given
-`--staging-read-back` fails at the read-back. Before it starts the emitter,
+`--staging-read-back` fails at the read-back, and a UK build asked to stage
+its dataset bundle remotely, as it is by default, is refused before it
+starts, since the emitter uploads the bundle. Before it starts the emitter,
 the build reads its version from `microcosm-emitter version` and does not
 start one older than 0.11.9. Releases before 0.10.0 send telemetry to the
 collector's Cloud Run address, which changes when the collector moves to
@@ -85,8 +87,9 @@ build prints the installed and required versions, what it loses and the
 upgrade command, `uv tool install --upgrade 'microcosm-emitter>=0.11.9'`,
 and continues as it does without the command. `uv tool upgrade` keeps any
 version constraint given at install time, such as `==0.7.0`; that
-`uv tool install --upgrade` command replaces it. Microcosm supplies build metadata, graph files and staging
-run files; the emitter owns authentication, durable queues and delivery.
+`uv tool install --upgrade` command replaces it. Microcosm supplies build
+metadata, graph files, staging run files and staged dataset bundles; the
+emitter owns authentication, durable queues and delivery.
 The telemetry module reports live progress to the hosted collector when the
 operator's Hugging Face login is accepted; otherwise it retains the events
 locally and the build continues. This live event path is independent of the
@@ -127,7 +130,7 @@ version 2 staging run files to `policyengine/populace-uk-staging` under the
 same switch. The build command also **stages the finished dataset bundle** it built,
 national, dense or exact-count, under `staged/<run_id>/` in the
 private `policyengine/populace-uk-private` repository so the team can inspect
-it without publishing it: `releases/` and `latest.json` are untouched, the
+it without publishing it (the build's emitter uploads it): `releases/` and `latest.json` are untouched, the
 release contract is not consulted, and a `releasable: false` size run stages
 like any other. Fetch a bundle with `tools/fetch_uk_staged_dataset.py`;
 re-stage a finished run directory with `tools/stage_uk_rowwise_candidate.py`.

@@ -17,8 +17,8 @@ the PEP 420 namespace `microcosm.<x>`: `frame`, `fit`, `calibrate`, `build`,
 UK build completion exports and stages Orrery graph evidence. Publication uses
 an independent module of the separately installed `microcosm-emitter`, which the
 build starts through `microcosm-emitter-interface`, and a durable queue; see
-[configuration and retry](orrery-publication.md). Staging run files go through
-the same emitter. No new producer secret is required. Keep graph export/publication tests independent
+[configuration and retry](orrery-publication.md). Staging run files and staged
+dataset bundles go through the same emitter. No new producer secret is required. Keep graph export/publication tests independent
 of the hosted runs app and collector; use synthetic files and fake HTTP.
 
 ```bash
@@ -104,8 +104,18 @@ Workspace tests use an in-memory emitter client by default
 start the installed command. It also isolates Hugging Face credentials and cache
 paths. Build tests inspect `fake_telemetry_emitters`: their events follow the
 emitter's documented request-to-event rules, and the run files they were handed
-are in `client.hub_files`. Emitter process, persistence and HTTP-delivery tests
-belong in microcosm-emitter; do not copy them into Microcosm.
+are in `client.hub_files`. Staged dataset bundles are in `client.bundle_requests`;
+the fake copies their small files as the emitter does and commits them through
+the fake Hub `share_fake_hub` gives it (`bundle_receipts` scripts other answers,
+`never_copy` leaves named files uncopied). Its bundles are jobs in a
+`FakeHandoverQueue`, which clients standing for emitters on one machine can
+share: an identical hand-over returns the queued receipt, and a delivering
+client attempts the jobs that are due, the earliest due first, with a wait
+that doubles after each failed attempt, as the emitter claims them
+(`deliver=False` and `answer_receipts=False` stand for an emitter that took a
+hand-over and stopped). Emitter process, persistence and
+HTTP-delivery tests belong in microcosm-emitter; do not copy them into
+Microcosm.
 
 The UK full-build caller sets `close_service_on_finish=False`: reporting an outcome
 leaves the emitter running for graph and staging hand-overs, and that caller's
