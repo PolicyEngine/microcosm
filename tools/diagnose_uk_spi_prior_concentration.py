@@ -80,37 +80,45 @@ def concentration(
 
 
 def cell_households(dataset: str, *, year: int) -> pd.DataFrame:
-    """The cell's households with their weights, source households and SPI flag."""
+    """The cell's households with their weights, source households and SPI flag.
+
+    A spine's ids run past the engine's 32-bit entity ids, so the tables give
+    the memberships and the engine only the values, in the tables' row order
+    (checked on the stored ages).
+    """
 
     from policyengine_uk import Microsimulation
 
     simulation = Microsimulation(dataset=dataset)
+    person = pd.read_hdf(dataset, "person")
+    household = pd.read_hdf(dataset, "household")
+    stored = int(np.asarray(pd.read_hdf(dataset, "time_period")).ravel()[0])
 
-    def values(variable: str, **kwargs) -> np.ndarray:
-        return np.asarray(simulation.calculate(variable, year, **kwargs).values)
+    def values(variable: str, period: int = year) -> np.ndarray:
+        return np.asarray(simulation.calculate(variable, period).values, dtype=float)
 
-    age = values("age").astype(float)
-    income = values("adjusted_net_income").astype(float)
-    benunit = values("benunit_id", map_to="person")
-    household = values("household_id", map_to="person")
-    person = pd.DataFrame(
+    if not np.array_equal(values("age", stored), person["age"].to_numpy(dtype=float)):
+        raise ValueError(f"{dataset}: the engine's persons are not in table order.")
+    weight = values("household_weight")
+    if len(weight) != len(household):
+        raise ValueError(f"{dataset}: the engine's households are not the table's.")
+    age = values("age")
+    income = values("adjusted_net_income")
+    members = pd.DataFrame(
         {
-            "benunit": benunit,
-            "household": household,
+            "benunit": person["person_benunit_id"].to_numpy(),
+            "household": person["person_household_id"].to_numpy(),
             "child": age < CHILD_AGE_BELOW,
             "high": (age >= 18) & (income > INCOME_ABOVE_GBP),
         }
     )
-    units = person.groupby("benunit")[["child", "high"]].any()
+    units = members.groupby("benunit")[["child", "high"]].any()
     in_cell = units.index[units["child"] & units["high"]]
-    households = person.loc[person["benunit"].isin(in_cell), "household"].unique()
-    table = pd.read_hdf(dataset, "household").set_index("household_id")
-    ids = values("household_id")
-    weight = pd.Series(values("household_weight").astype(float), index=ids)
-    cell = table.loc[households]
+    households = members.loc[members["benunit"].isin(in_cell), "household"].unique()
+    cell = household.assign(weight=weight).set_index("household_id").loc[households]
     return pd.DataFrame(
         {
-            "weight": weight.loc[households].to_numpy(),
+            "weight": cell["weight"].to_numpy(),
             "source": cell["source_household_id"].to_numpy(),
             "spi_copy": cell["household_is_spi_synthetic"].astype(bool).to_numpy(),
         },
