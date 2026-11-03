@@ -14,6 +14,8 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 import pytest
+from hypothesis import given, settings
+from hypothesis import strategies as st
 
 from microcosm.build.calibration_predicates import predicate_mask
 from microcosm.build.transport import compose
@@ -1553,3 +1555,86 @@ def test_vsi_review_triggers_and_the_wage_earner_count_stay_diagnostic():
     assert document["diagnostics"]["wage_earner_count"]["ruling"] == "R2C-8"
     gates = json.dumps(_spec()["resources"]["gates"])
     assert "wage_earner" not in gates
+
+
+@pytest.mark.parametrize(
+    "column",
+    ["entitled_to_new_zealand_superannuation", "nz_super_weekly_amount_before_tax"],
+)
+def test_the_s5_guard_refuses_a_reader_of_a_non_public_nz_super_column(column):
+    # takeup.assign reads both rules outputs of nz.benefits.super; once the
+    # stage stops listing one, that column is not public and its reader refuses.
+    spec, config = _nz_composition_spec_and_config()
+    stage = next(
+        stage
+        for stage in spec["resources"]["precalibration_stages"]["stages"]
+        if stage["id"] == "nz.precal.nz_super"
+    )
+    stage["outputs"] = [row for row in stage["outputs"] if row["column"] != column]
+    with pytest.raises(ValueError, match="undeclared pre-calibration stage output"):
+        compose.compose_transport_graph(spec, config)
+
+
+def test_every_prepared_table_on_the_standins_columns_has_no_nil_band():
+    # C excludes every record at x <= 0 (R2C-14), so a nil band on a table C
+    # feeds would never count them. Only declared-and-validated tables, with no
+    # companions and no prepared band indicator, may keep IRD's nil band.
+    spec = _spec()
+    resources = spec["resources"]
+    prepared = {
+        entry["interval"]["table"]
+        for entry in resources["calibration_bindings"]["columns"]
+        if "interval" in entry
+    }
+    fed = [
+        table
+        for table in resources["reference_intervals"]["tables"]
+        if (table["income_column"], table["universe_column"]) == (_PROXY[0], _PROXY[2])
+    ]
+    assert "ird_taxable_income_standin_ty2024" in prepared
+    for table in fed:
+        companions = any(
+            band.get("count_reference") or band.get("amount_reference")
+            for band in table["bands"]
+        )
+        if table["id"] in prepared or companions:
+            assert table["nil_band"] == "absent", table["id"]
+        else:
+            assert table["nil_band"] == "present", table["id"]
+
+
+_cents = st.integers(min_value=-(10**11), max_value=10**11)
+
+
+@settings(max_examples=150, deadline=None)
+@given(
+    rows=st.lists(
+        st.tuples(*([_cents] * len(_MARKET)), *([st.integers(0, 10**10)] * 4)),
+        min_size=1,
+        max_size=12,
+    )
+)
+def test_property_vsi_is_the_central_measure_less_its_four_transfers(rows):
+    from microcosm.build.transport.measure_kernels import combine_measure
+
+    # combine_measure only reads the declarations, so the shared copy serves.
+    measures = _pristine_spec()["resources"]["income_measurements"]["measures"]
+    columns = {
+        name: pd.Series([row[index] for row in rows], dtype="Int64")
+        for index, name in enumerate((*_MARKET, *_TRANSFERS))
+    }
+    weights = np.ones(len(rows))
+    central, central_status, _ = combine_measure(
+        measures["central"]["declaration"], columns, weights
+    )
+    vsi, vsi_status, _ = combine_measure(
+        measures["vsi"]["declaration"], columns, weights
+    )
+    for index, row in enumerate(rows):
+        market, transfers = row[: len(_MARKET)], row[len(_MARKET) :]
+        rental = market[_MARKET.index("rental_income_cents")]
+        # The rental add-back counts rental profit as max(0, r) in both.
+        assert vsi[index] == sum(market) + max(0, -rental)
+        assert central[index] - vsi[index] == sum(transfers)
+        for value, status in ((central, central_status), (vsi, vsi_status)):
+            assert status[index] == ("included" if value[index] > 0 else "excluded")
