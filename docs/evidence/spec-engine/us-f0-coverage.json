@@ -4,10 +4,10 @@
     "version": 1
   },
   "country": "us",
-  "documentation_sha256": "bc35af38f86d3eb717bab289f4c36051c89feb0e6de78851be89891bdb368c82",
+  "documentation_sha256": "d23b69b234663a92c1ad96edec4cd7f7cdeb31662887170cacd1fa51ba0a37c2",
   "field_usage": {
-    "authored_normative_field_count": 32704,
-    "claim_count": 49,
+    "authored_normative_field_count": 32609,
+    "claim_count": 48,
     "claims": [
       {
         "consumer": "loader.typed_resource_manifest",
@@ -758,20 +758,20 @@
         "verifier": "vintages"
       }
     ],
-    "configuration_field_count": 42489,
-    "consumed_field_count": 42489,
+    "configuration_field_count": 42394,
+    "consumed_field_count": 42394,
     "generation0_effect_counts": {
       "legacy_behavior": 38780,
-      "no_generation0_effect": 3709
+      "no_generation0_effect": 3614
     },
     "mode_counts": {
-      "compiler_semantic": 27763,
-      "front_end_validation": 354,
+      "compiler_semantic": 27673,
+      "front_end_validation": 349,
       "identity_only": 103,
       "legacy_behavior": 14269
     },
     "multiple_primary_use_field_count": 0,
-    "pointer_inventory_sha256": "9172578dcacc95711399be40cb1c6ae6af15d346463fee10b82f319a17808780",
+    "pointer_inventory_sha256": "f6832e8d2892af22e41afd0b0bea0cba354bbff8b84bebcc652e765a3ae7df92",
     "resolved_binding_field_count": 9785,
     "unused_field_count": 0
   },
@@ -2585,7 +2585,7 @@
       "country": "us",
       "schema_id": "country_spec",
       "schema_version": 1,
-      "spec_sha256": "4fd75d588f338b7a8d67d8b99b30d892578dce7305a86889ad7ae0efd6837864"
+      "spec_sha256": "ce8b186592308b5a9d7c6d3e7fd0ade57624d71d37d9e0470a2a7dd3fc7cdac9"
     }
   },
   "report_schema_version": 3,
@@ -2595,7 +2595,7 @@
     "country": "us",
     "schema_id": "country_spec",
     "schema_version": 1,
-    "spec_sha256": "4fd75d588f338b7a8d67d8b99b30d892578dce7305a86889ad7ae0efd6837864"
+    "spec_sha256": "ce8b186592308b5a9d7c6d3e7fd0ade57624d71d37d9e0470a2a7dd3fc7cdac9"
   },
   "status": "pass"
 }
