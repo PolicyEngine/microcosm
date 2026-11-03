@@ -864,21 +864,71 @@ def test_nz_packaged_graph_produces_region_and_bridge_columns_from_named_nodes()
     assert "region" not in pending and "Reg 17" not in pending
 
 
-def test_nz_packaged_graph_compiles_with_only_pins_and_money_producers():
+@cache
+def _nz_composed():
+    """NZ's packaged graph, composed and compiled once per process."""
     from microcosm.graph import compile_graph
 
     spec, config = _nz_composition_spec_and_config()
+    graph = compose.compose_transport_graph(spec, config)
+    return spec, config, graph, compile_graph(graph)
+
+
+def test_nz_packaged_graph_compiles_with_only_pins_and_money_producers():
+    _, config, _, compiled = _nz_composed()
     # No bridge or region root stays synthetic: CREATE declares none of them.
     assert _BRIDGE_AND_REGION.isdisjoint(
         (owned.entity, owned.column) for owned in config.create_outputs
     )
-    graph = compose.compose_transport_graph(spec, config)
-    compiled = compile_graph(graph)
     assert "nz.package" in compiled.order
     assert "nz.scn.S0.income_decile" in compiled.order
     for variant in ("V1", "V2", "V3", "V4", "VHF"):
         assert f"nz.v.{variant}.calibrate" in compiled.order
         assert f"nz.v.{variant}.gap" in compiled.order
+
+
+def test_every_calibration_node_has_its_own_standin_as_the_only_writer():
+    """R2C-15 on every calibration node, the variant branches' included.
+
+    Composition checks the measurement proof on the skeleton alone:
+    ``_check_measurement_proofs`` runs before the scenario extensions append
+    their branches, so it never sees ``nz.v.<V>.calibrate``. For each
+    calibration node of the composed graph, exactly one compiled ancestor
+    declares the measurement, it is that branch's stand-in, and it is the
+    only ancestor whose outputs or EXPAND cells hold each proved column.
+    """
+    spec, _, graph, compiled = _nz_composed()
+    proofs, refusals = compose.measurement_proofs(spec)
+    assert refusals == {}
+    columns = [tuple(name.split(".", 1)) for name in proofs[_MEASUREMENT]["columns"]]
+    _, cells = compose._precalibration_expansions(graph)
+    by_id = {node.id: node for node in graph.nodes}
+    roots = sorted(
+        node.id for node in graph.nodes if node.kernel.startswith("calibrate.")
+    )
+    variants = ("V1", "V2", "V3", "V4", "VEX", "VHF", "VPT", "VSI")
+    assert roots == ["nz.calibrate", *(f"nz.v.{name}.calibrate" for name in variants)]
+    for root in roots:
+        branch = root.removesuffix(".calibrate")
+        standin = "nz.income.standin" if branch == "nz" else f"{branch}.income.standin"
+        ancestors = compose._ancestor_closure(compiled.predecessors, {root})
+        declarers = sorted(
+            name
+            for name in ancestors
+            if (by_id[name].params or {}).get(compose.MEASUREMENT_PARAM) == _MEASUREMENT
+        )
+        assert declarers == [standin], root
+        for entity, column in columns:
+            writers = sorted(
+                name
+                for name in ancestors
+                if (entity, column) in cells[name]
+                or any(
+                    (output.entity, output.column) == (entity, column)
+                    for output in by_id[name].outputs
+                )
+            )
+            assert writers == [standin], (root, f"{entity}.{column}")
 
 
 def test_nz_as_area_state_bindings_compare_the_declared_string_geography_codes():
