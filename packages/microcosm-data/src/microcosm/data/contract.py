@@ -1368,9 +1368,18 @@ def _is_bare_file_name(path: str) -> bool:
 
 
 def _check_build_folder_release_details(
-    manifest: Mapping, release_id: str, failures: list[str]
+    manifest: Mapping,
+    release_id: str,
+    failures: list[str],
+    *,
+    compatible_packages: bool = True,
 ) -> None:
-    """``built_at`` and the built-with packages, at the manifest's top level."""
+    """``built_at`` and the built-with packages, at the manifest's top level.
+
+    With ``compatible_packages`` the compatibility lists must also include
+    the built-with versions, as the national contract has always required.
+    The local-area contract never checked them, and still does not.
+    """
     built_at = manifest.get("built_at")
     if not isinstance(built_at, str) or not built_at:
         failures.append(
@@ -1391,6 +1400,8 @@ def _check_build_folder_release_details(
         expected_name=model_package,
         failures=failures,
     )
+    if not compatible_packages:
+        return
     _check_compatible_package_entries(
         manifest.get("compatible_core_packages"),
         field="compatible_core_packages",
@@ -5663,7 +5674,9 @@ def _check_local_area_release_manifest(
         _check_build_folder_identity(
             manifest, release_id, filename="release_manifest.json", failures=failures
         )
-        _check_build_folder_release_details(manifest, release_id, failures)
+        _check_build_folder_release_details(
+            manifest, release_id, failures, compatible_packages=False
+        )
     elif not isinstance(build, Mapping) or not build.get("build_id"):
         failures.append("release_manifest.json is missing 'build.build_id'.")
     elif build["build_id"] != release_id:
