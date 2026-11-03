@@ -84,7 +84,13 @@ def compare_column(name: str, column: str, a: pd.Series, b: pd.Series) -> dict |
     scale = np.maximum(np.abs(da), np.abs(db))
     rel = np.where(scale > 0, absdiff / np.where(scale > 0, scale, 1.0), np.inf)
     sum_a, sum_b = float(np.nansum(av)), float(np.nansum(bv))
-    sum_rel = abs(sum_a - sum_b) / max(abs(sum_a), abs(sum_b), 1e-300)
+    # Relative to the larger total, with no floor: a total that leaves zero
+    # moves by 100%, however small it is. Equal totals (both zero included)
+    # agree; a non-finite total that differs gives NaN, which fails below.
+    if sum_a == sum_b:
+        sum_rel = 0.0
+    else:
+        sum_rel = abs(sum_a - sum_b) / max(abs(sum_a), abs(sum_b))
     entry.update(
         {
             "max_abs": float(absdiff.max()),

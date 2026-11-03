@@ -1,1 +1,1 @@
-Accept the one-ulp class in `person.employer_sponsored_insurance_premiums` in the Route A stage-001 lineage check (Max: d2274, d2336), as for `pre_subsidy_rent` under d1712.
+Accept the one-ulp class in `person.employer_sponsored_insurance_premiums` in the Route A stage-001 lineage check (Max: d2274, d2336), as for `pre_subsidy_rent` under d1712. The check now divides a column total's change by the larger total with no floor, so it fails a column whose total moves away from zero, however small the move.

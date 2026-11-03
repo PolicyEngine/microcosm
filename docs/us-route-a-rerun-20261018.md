@@ -102,14 +102,15 @@ The old `base-sup/PROVENANCE.md` records a strict mismatch at stage 001:
 `8.7e-11`, relative `6.08e-15`. A prior session accepted it with a scripted check.
 Max ruled on 19 October (d1712) that a repeat of exactly that class may be
 accepted for this run: every entity table has the same shape and index, totals
-are equal, and every differing value is within 1e-12 relative. Step 5b runs
-`tools/route_a/lineage_class_check.py`, which is narrower: any difference
-outside `person.pre_subsidy_rent` stops for Max, and so does a total that
-differs by more than 1e-12 relative. Max accepted the same class in
-`person.employer_sponsored_insurance_premiums`, which reached the base after
-this run, for the 2026-11 build (d2274) and for later builds (d2336): on the
-2026-11 base it differed by one unit in the last place on 73,966 rows, with
-identical totals. Its JSON verdict goes into the run's provenance. Any other mismatch,
+are equal, and every differing value is within 1e-12 relative. Max accepted the
+same class in `person.employer_sponsored_insurance_premiums`, which reached the
+base after this run, for the 2026-11 build (d2274) and for later builds (d2336):
+on the 2026-11 base it differed by one unit in the last place on 73,966 rows,
+with identical totals. Step 5b runs `tools/route_a/lineage_class_check.py`,
+which accepts differences only in those two columns, `person.pre_subsidy_rent`
+and `person.employer_sponsored_insurance_premiums`. A difference in any other
+column stops for Max, and so does a column total that moves by more than 1e-12
+relative to the larger total. Its JSON verdict goes into the run's provenance. Any other mismatch,
 skipping the new local reference, or relaxing the hand-off still needs **Max's
 explicit decision** with the new evidence. Stop before writing `ACCEPTED` while
 that decision is outstanding.

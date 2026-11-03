@@ -175,6 +175,31 @@ def test_each_value_within_tolerance_but_the_total_beyond_it_fails(
     assert any("difference above" in entry for entry in verdict["problems"])
 
 
+def test_a_total_that_leaves_zero_fails(check, monkeypatch, tmp_path):
+    # Each value moves by about 1e-13 relative, but the local total is exactly
+    # zero, so the total moves by 100%. A floor on the divisor hid this.
+    local = _tables([1.0, 2.0, 3.0], esi=(1e-307, -1e-307, 0.0))
+    modal = _tables([1.0, 2.0, 3.0], esi=(1e-307 + 1e-320, -1e-307, 0.0))
+    rc, verdict = _run(check, monkeypatch, tmp_path, local, modal)
+    assert rc == 1
+    [difference] = verdict["differences"]
+    assert difference["sum_local"] == 0.0 != difference["sum_modal"]
+    assert difference["max_rel"] <= check.REL_TOL < difference["sum_rel_diff"]
+    assert any("difference above" in entry for entry in verdict["problems"])
+
+
+def test_differing_values_with_equal_zero_totals_pass(check, monkeypatch, tmp_path):
+    # Both totals are exactly zero, so they agree; each value sits one ulp off.
+    up = float(np.nextafter(2.0, np.inf))
+    local = _tables([1.0, 2.0, 3.0], esi=(2.0, -2.0, 0.0))
+    modal = _tables([1.0, 2.0, 3.0], esi=(up, -up, 0.0))
+    rc, verdict = _run(check, monkeypatch, tmp_path, local, modal)
+    assert rc == 0
+    [difference] = verdict["differences"]
+    assert difference["sum_local"] == difference["sum_modal"] == 0.0
+    assert difference["sum_rel_diff"] == 0.0
+
+
 def test_a_dtype_change_fails(check, monkeypatch, tmp_path):
     modal = _tables([1.0, 2.0, 3.0])
     modal["person"]["age"] = modal["person"]["age"].astype(float)
@@ -247,6 +272,40 @@ def test_property_any_value_moved_by_1e9_is_outside(check, rents, data):
         "person", "pre_subsidy_rent", local, pd.Series(moved, dtype=float)
     )
     assert entry is not None and "problem" in entry
+
+
+_SIGNED = st.lists(
+    st.floats(min_value=-1e6, max_value=1e6, allow_nan=False), min_size=1, max_size=20
+)
+
+
+@settings(max_examples=100, deadline=None)
+@given(values=_SIGNED, data=st.data())
+def test_property_an_accepted_column_keeps_its_total_within_tolerance(
+    check, values, data
+):
+    # Whatever the signs and magnitudes, an accepted difference never moves
+    # the column total by more than REL_TOL of the larger total.
+    eps = data.draw(
+        st.lists(
+            st.floats(min_value=-1e-12, max_value=1e-12),
+            min_size=len(values),
+            max_size=len(values),
+        )
+    )
+    local = pd.Series(values, dtype=float)
+    modal = pd.Series(
+        [v * (1 + e) for v, e in zip(values, eps, strict=True)], dtype=float
+    )
+    entry = check.compare_column(
+        "person", "employer_sponsored_insurance_premiums", local, modal
+    )
+    if entry is None or "problem" in entry:
+        return
+    sum_a, sum_b = float(np.nansum(local)), float(np.nansum(modal))
+    assert sum_a == sum_b or abs(sum_a - sum_b) <= check.REL_TOL * max(
+        abs(sum_a), abs(sum_b)
+    )
 
 
 _PREMIUMS = st.lists(
