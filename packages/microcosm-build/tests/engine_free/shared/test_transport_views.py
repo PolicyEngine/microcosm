@@ -777,3 +777,16 @@ def test_downstream_reads_a_view_output_as_a_person_variable(tmp_path, monkeypat
     } == {(row["entity"], name) for name in row["variables"]}
     assert adapter.graph_dtype("child_amount") == "float64"
     assert adapter.graph_dtype("child_test") == "int64"
+
+
+def test_the_support_roster_reads_a_view_default_as_a_person_column(
+    tmp_path, monkeypatch
+):
+    """PR 2 writes Child closure defaults on the person table."""
+    _, document, _ = _fixture(tmp_path, monkeypatch)
+    defaults = compose_module._closure_defaults(_spec(document))
+    assert defaults == {("person", "child_income"): "child.yaml Child.child_income"}
+    document["bindings"][0].pop("views")
+    assert compose_module._closure_defaults(_spec(document)) == {
+        (None, "child_income"): "child.yaml Child.child_income"
+    }

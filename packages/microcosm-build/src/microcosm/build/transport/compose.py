@@ -2205,6 +2205,41 @@ def _source_codecs(spec: Mapping[str, object]) -> dict[str, object]:
     return out
 
 
+def _closure_defaults(spec: Mapping[str, object]) -> dict[tuple, str]:
+    """(frame entity, input) -> the closure entry of each defaulted root.
+
+    A defaulted root on a binding-local view's logical entity is a person
+    column, because the view reads the person table; every other entity
+    maps through ``entity_names``.
+    """
+    defaults: dict[tuple, str] = {}
+    if not (
+        _has_resource(spec, _CLOSURE_RESOURCE)
+        and _has_resource(spec, _BINDINGS_RESOURCE)
+    ):
+        return defaults
+    names = transport_resource(spec, _BINDINGS_RESOURCE).get("entity_names", {})
+    to_frame = {engine: frame for frame, engine in names.items()}
+    view_entities = {
+        (row.get("rulespec_path"), entity)
+        for row in _binding_modules(spec).values()
+        for entity in binding_view_entities(row)
+    }
+    person = _person_entity(spec) if view_entities else None
+    for entry in transport_resource(spec, _CLOSURE_RESOURCE).get("entries", ()):
+        if isinstance(entry, Mapping) and entry.get("class") == "defaulted":
+            frame_entity = (
+                person
+                if (entry.get("rulespec_path"), entry.get("entity")) in view_entities
+                else to_frame.get(entry.get("entity"))
+            )
+            defaults[(frame_entity, entry.get("input"))] = (
+                f"{entry.get('rulespec_path')} {entry.get('entity')}."
+                f"{entry.get('input')}"
+            )
+    return defaults
+
+
 def _support_roster(spec: Mapping[str, object]) -> dict[str, object]:
     """Every column the support gate covers, classed by its producer in lineage.
 
@@ -2252,19 +2287,7 @@ def _support_roster(spec: Mapping[str, object]) -> dict[str, object]:
                 _raw_transport_resource(spec, MONEY_NORMALIZATION_RESOURCE)
             )
         )
-    defaults: dict[tuple, str] = {}
-    if _has_resource(spec, _CLOSURE_RESOURCE) and _has_resource(
-        spec, _BINDINGS_RESOURCE
-    ):
-        names = transport_resource(spec, _BINDINGS_RESOURCE).get("entity_names", {})
-        to_frame = {engine: frame for frame, engine in names.items()}
-        for entry in transport_resource(spec, _CLOSURE_RESOURCE).get("entries", ()):
-            if isinstance(entry, Mapping) and entry.get("class") == "defaulted":
-                frame_entity = to_frame.get(entry.get("entity"))
-                defaults[(frame_entity, entry.get("input"))] = (
-                    f"{entry.get('rulespec_path')} {entry.get('entity')}."
-                    f"{entry.get('input')}"
-                )
+    defaults = _closure_defaults(spec)
     reserved = []
     for row in rows:
         for item in _sequence(
