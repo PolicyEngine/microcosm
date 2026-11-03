@@ -403,6 +403,15 @@ def test_activation_reports_a_malformed_holdout_row(toy, case):
     assert _separation_gaps(_activation_error(spec)) == [_malformed_gap()]
 
 
+def test_guard_names_a_malformed_holdout_row_once_across_views():
+    """The guard names a malformed row once, however many views carry it."""
+
+    document = {"target_references": [_odd_holdout("list measure")]}
+    views = [("holdout_references", document)] * 2
+    gaps = list(compose_module._holdout_separation_gaps(views))
+    assert gaps == [_malformed_gap(index=0)]
+
+
 _HELD = ("held_a", "held_b", "held_c")
 _ODD_VALUES = (None, "", 7, ["held_a"], {"held_a": 1})
 _MISSING = object()
