@@ -3413,7 +3413,7 @@ class TestSourceCitations:
         ]
         assert f"`{rule['donor_variable']}`" in row
 
-    def test_reporting_disclosure_cites_the_sharing_home_default_record(self) -> None:
+    def test_reporting_disclosure_cites_the_sharing_home_binding_record(self) -> None:
         disclosure = _load("reporting_classifiers.json")["disclosures"][0]
         (citation,) = json_pointer_citations(disclosure["evidence"])
         record = resolve_json_pointer(*citation)
@@ -3421,10 +3421,23 @@ class TestSourceCitations:
             record["input"]
             == "nz_super_shares_residence_with_person_at_least_adult_age"
         )
-        assert record["class"] == "defaulted"
-        assert record["value"] is False
-        assert "overstates NZS for singles who share a home" in record["reason"]
-        assert "overstated for single people who share a home" in disclosure["note"]
+        # H2 (R2C-20): household composition now encodes the input.
+        assert record["class"] == "encoded"
+        assert record["encoded_by"] == "concept_binding"
+        assert "value" not in record
+        (exempt,) = [
+            row
+            for row in _load("axiom_input_closure.json")["entries"]
+            if row["input"]
+            == "nz_super_all_shared_adults_are_exempt_dependent_children_or_temporary_visitors"
+        ]
+        assert exempt["class"] == "defaulted"
+        assert exempt["value"] is False
+        assert "this understates NZS for that group" in exempt["reason"]
+        assert (
+            "understates NZ Super for single people whose only co-resident adults"
+            in disclosure["note"]
+        )
 
     def test_reporting_non_beneficiary_audit_cites_its_exact_state_binding(
         self,

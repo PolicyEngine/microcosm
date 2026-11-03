@@ -209,7 +209,7 @@
   ],
   "disclosures": [
     {
-      "note": "NZ Super is overstated for single people who share a home because the shares-residence input defaults false; this moves their deciles upward.",
+      "note": "The model understates NZ Super for single people whose only co-resident adults are exempt dependent children or temporary visitors: the shares-residence input reads household composition, but the exempt-adults input defaults false, so they get the sharing rate. This moves their deciles downward.",
       "evidence": "axiom_input_closure.json#/entries[input=nz_super_shares_residence_with_person_at_least_adult_age]",
       "citation": {
         "item": "A1",

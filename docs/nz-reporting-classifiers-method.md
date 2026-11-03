@@ -63,9 +63,12 @@ weighted share of every fixed cell must be reported for every scenario and
 variant. These fixed memberships preserve comparisons even when variant cells
 are no longer weighted tenths.
 
-The disclosure on New Zealand Superannuation remains material: the current
-shared-residence input defaults false, overstating payments to single people
-who share a home and moving those units upward in the income ranking.
+The disclosure on New Zealand Superannuation now points the other way. The
+shared-residence input reads household composition, and the input for exempt
+co-resident adults defaults false, so a single person whose only co-resident
+adults are exempt dependent children or temporary visitors gets the sharing
+rate. That understates their payments and moves those units downward in the
+income ranking.
 
 ## A2 Receipt group
 

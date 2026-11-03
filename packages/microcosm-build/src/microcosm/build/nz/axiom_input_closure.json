@@ -943,7 +943,7 @@
    "input": "nz_super_all_shared_adults_are_exempt_dependent_children_or_temporary_visitors",
    "class": "defaulted",
    "value": false,
-   "reason": "Read only when the residence is shared, which is defaulted false.",
+   "reason": "nz_super_living_alone (s 4A) reads this input only when nz_super_shares_residence_with_person_at_least_adult_age is true, and the axiom:nz concept binding now derives that input from household composition: another person in the same household is aged 18 or over. With this input false, every single person who shares a home with an adult gets the s 4A sharing rate (nz_super_single_not_living_alone_weekly_rate_before_tax), including one whose only co-resident adults are exempt dependent children or temporary visitors, whom s 4A counts as living alone; this understates NZS for that group.",
    "citation": "New Zealand Superannuation and Retirement Income Act 2001 s 4A (nz_super_living_alone)",
    "new_default": true
   },
@@ -1048,11 +1048,8 @@
    "rulespec_path": "nz/statutes/new_zealand_superannuation/core.yaml",
    "entity": "Person",
    "input": "nz_super_shares_residence_with_person_at_least_adult_age",
-   "class": "defaulted",
-   "value": false,
-   "reason": "Household composition is not read into this person-level input in v0 (no mapping transform flags another adult in the household), so every single person gets the s 4A living-alone rate; this overstates NZS for singles who share a home. The receipt layer reads NZS eligibility, not the amount; if the reg 17 superannuitant bridge reads the amount (method card MC11), this default matters there too.",
-   "citation": "New Zealand Superannuation and Retirement Income Act 2001 s 4A (nz_super_living_alone)",
-   "new_default": true
+   "class": "encoded",
+   "encoded_by": "concept_binding"
   },
   {
    "rulespec_path": "nz/statutes/new_zealand_superannuation/core.yaml",
