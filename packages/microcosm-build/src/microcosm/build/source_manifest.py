@@ -194,6 +194,7 @@ ALLOWED_SOURCE_OPERATION_KINDS = frozenset(
         "redraw_columns_from_fitted_qrf",
         "resample_band_donor_leaves",
         "restore_spi_channel_reports_from_source",
+        "restore_spi_channel_reports_from_source_within_earnings_limit",
         "zero_pension_age_reports_below_state_pension_age",
         "zero_spi_channel_reports",
         "redraw_spi_reported_uc",

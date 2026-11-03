@@ -6204,7 +6204,6 @@
      "kind": "zero_spi_channel_reports",
      "rows": "spi_synthetic_support_channel",
      "columns": [
-      "jsa_contrib_reported",
       "jsa_income_reported",
       "esa_income_reported",
       "income_support_reported",
@@ -6227,6 +6226,18 @@
      ],
      "linkage": "person_source_id -> FRS-channel person_id",
      "reason": "follows an injury, service or a death, not income"
+    },
+    {
+     "kind": "restore_spi_channel_reports_from_source_within_earnings_limit",
+     "rows": "spi_synthetic_support_channel",
+     "columns": [
+      "jsa_contrib_reported",
+      "esa_contrib_reported"
+     ],
+     "linkage": "person_source_id -> FRS-channel person_id",
+     "earnings": "(employment_income + max(self_employment_income, 0)) / 52, the SPI row's own",
+     "weekly_limit": "policyengine-uk esa_exempt_work_higher_earnings_limit at the frame's year (ESA Regs 2008 reg 45(4)), weekly",
+     "reason": "a contributory award follows the person's National Insurance record and incapacity, which the copy keeps, but not work above the permitted-work limit"
     },
     {
      "kind": "derive",
@@ -6267,7 +6278,6 @@
    ],
    "outputs": [],
    "rewrites": [
-    "jsa_contrib_reported",
     "jsa_income_reported",
     "esa_income_reported",
     "income_support_reported",
@@ -6280,13 +6290,15 @@
     "bsp_reported",
     "war_widows_pension_reported",
     "widowed_parents_allowance_reported",
+    "jsa_contrib_reported",
+    "esa_contrib_reported",
     "is_disabled_for_benefits",
     "is_enhanced_disabled_for_benefits",
     "is_severely_disabled_for_benefits",
     "receives_benefits_in_own_right",
     "would_claim_uc"
    ],
-   "notes": "Runs on SPI-channel rows after uc_reporter_redraw, the last writer of Universal Credit reports, and before uc_capital_coherence and the Pension Credit, Child Benefit and Carer's Allowance take-up stages (microcosm#1095, uk-data#514). The stage-2 forests of hmrc_spi_income_spine re-impute each SPI adult's benefit reports from age, gender, region and the new incomes, with nothing of the benefit unit's entitlement or claim history. This stage zeroes the SPI rows' contributory and income-based JSA, income-related ESA, Income Support, Working and Child Tax Credit, Severe Disablement Allowance and Sure Start Maternity Grant reports, whose award needs an existing legacy claim, an out-of-work test, or a claim the copied household's new incomes cannot carry (policyengine-uk pays income-related ESA as reported behind a capital test alone); restores Industrial Injuries Disablement Benefit, the Armed Forces Compensation Scheme and bereavement support from the FRS twin (person_source_id), since they follow an injury, service or a death; re-derives the disability flags (the categories, which read only AA, DLA and PIP, are asserted unchanged) and receives_benefits_in_own_right from the final reports; and redraws would_claim_uc for SPI benefit units as frs_take_up draws it for FRS units: a unit with a Universal Credit reporter claims, and the other units in frs_take_up's Universal Credit population (a UC claimant or partner aged 18 to under Pension Credit qualifying age) claim as the residual of the contract's universal_credit rate on draws keyed on the SPI unit's own identity. That draw stands for a unit with no award; uc_take_up redraws every entitled unit of both channels by award band and family type once uc_capital_coherence has set the capital the engine assesses (microcosm#1334). Contributory ESA, PIP, DLA, AA, Carer's Allowance, State Pension and Winter Fuel Payment keep their draws (carers_allowance_take_up later opens the Carer's Allowance claim flag to carers over the earnings limit, microcosm#1319), and FRS rows are never modified; contributory ESA is open to new claims and not income-tested, and the incapacity it needs follows the person, whose health and disability reports the SPI copy keeps."
+   "notes": "Runs on SPI-channel rows after uc_reporter_redraw, the last writer of Universal Credit reports, and before uc_capital_coherence and the Pension Credit, Child Benefit and Carer's Allowance take-up stages (microcosm#1095, uk-data#514). The stage-2 forests of hmrc_spi_income_spine re-impute each SPI adult's benefit reports from age, gender, region and the new incomes, with nothing of the benefit unit's entitlement or claim history. This stage zeroes the SPI rows' income-based JSA, income-related ESA, Income Support, Working and Child Tax Credit, Severe Disablement Allowance and Sure Start Maternity Grant reports, whose award needs an existing legacy claim, an out-of-work test, or a claim the copied household's new incomes cannot carry (policyengine-uk pays income-related ESA as reported behind a capital test alone); restores Industrial Injuries Disablement Benefit, the Armed Forces Compensation Scheme and bereavement support from the FRS twin (person_source_id), since they follow an injury, service or a death; gives contributory JSA and ESA the FRS twin's award where the copy's own earnings (employment income plus any self-employment profit, over 52 weeks) stay within ESA's permitted-work limit, policyengine-uk's esa_exempt_work_higher_earnings_limit at the frame's year, and none above it, since a contributory award follows the person's National Insurance record and incapacity, which the copy keeps, but not work above that limit (María's ruling of 29 October 2026, microcosm#1095 B10); re-derives the disability flags (the categories, which read only AA, DLA and PIP, are asserted unchanged) and receives_benefits_in_own_right from the final reports; and redraws would_claim_uc for SPI benefit units as frs_take_up draws it for FRS units: a unit with a Universal Credit reporter claims, and the other units in frs_take_up's Universal Credit population (a UC claimant or partner aged 18 to under Pension Credit qualifying age) claim as the residual of the contract's universal_credit rate on draws keyed on the SPI unit's own identity. That draw stands for a unit with no award; uc_take_up redraws every entitled unit of both channels by award band and family type once uc_capital_coherence has set the capital the engine assesses (microcosm#1334). PIP, DLA, AA, Carer's Allowance, State Pension and Winter Fuel Payment keep their draws (carers_allowance_take_up later opens the Carer's Allowance claim flag to carers over the earnings limit, microcosm#1319), and FRS rows are never modified."
   },
   {
    "stage": "uc_capital_coherence",

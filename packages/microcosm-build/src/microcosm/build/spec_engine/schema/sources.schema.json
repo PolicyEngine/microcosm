@@ -9840,6 +9840,46 @@
      "additionalProperties": false,
      "required": [
       "kind",
+      "rows",
+      "columns",
+      "linkage",
+      "earnings",
+      "weekly_limit",
+      "reason"
+     ],
+     "properties": {
+      "kind": {
+       "const": "restore_spi_channel_reports_from_source_within_earnings_limit"
+      },
+      "rows": {
+       "type": "string"
+      },
+      "columns": {
+       "type": "array",
+       "minItems": 1,
+       "items": {
+        "type": "string"
+       }
+      },
+      "linkage": {
+       "type": "string"
+      },
+      "earnings": {
+       "type": "string"
+      },
+      "weekly_limit": {
+       "type": "string"
+      },
+      "reason": {
+       "type": "string"
+      }
+     }
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "required": [
+      "kind",
       "spi_state_pension_leaf",
       "spi_channel_columns",
       "base_channel_columns",

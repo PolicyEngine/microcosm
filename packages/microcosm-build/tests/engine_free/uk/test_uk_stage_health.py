@@ -2415,6 +2415,10 @@ def test_spi_benefit_coherence_gate_holds_the_structural_zeros() -> None:
                 column: {"rows_differing_from_twin_after": 0}
                 for column in parameters["restored_columns"]
             },
+            "restored_within_earnings_limit": {
+                column: {"rows_breaking_rule_after": 0}
+                for column in parameters["restored_within_earnings_limit_columns"]
+            },
             "benefits_in_own_right": {"mismatches_after": 0, "spi_rows_changed": 2},
             "universal_credit_take_up": {
                 "reporters_not_claiming": 0,
@@ -2443,6 +2447,14 @@ def test_spi_benefit_coherence_gate_holds_the_structural_zeros() -> None:
     broken.append(payload)
     payload = evidence()
     payload["restored"]["iidb_reported"]["rows_differing_from_twin_after"] = 2
+    broken.append(payload)
+    payload = evidence()
+    payload["restored_within_earnings_limit"]["esa_contrib_reported"][
+        "rows_breaking_rule_after"
+    ] = 1
+    broken.append(payload)
+    payload = evidence()
+    del payload["restored_within_earnings_limit"]["jsa_contrib_reported"]
     broken.append(payload)
     payload = evidence()
     payload["benefits_in_own_right"]["mismatches_after"] = 1

@@ -1434,16 +1434,22 @@ def _spi_benefit_coherence_gate(
     """SPI-channel benefit reports and take-up are coherent (microcosm#1095).
 
     Structural zeros only: no SPI row keeps a zeroed report, every restored
-    report equals the FRS twin's, no person's ``receives_benefits_in_own_right``
-    disagrees with their own reports, base rows are unchanged, every SPI unit
-    with a Universal Credit reporter claims, and no SPI unit outside the
-    Universal Credit age population claims without reporting.
+    report equals the FRS twin's, every contributory report equals the twin's
+    within the permitted-work limit and is nil above it, no person's
+    ``receives_benefits_in_own_right`` disagrees with their own reports, base
+    rows are unchanged, every SPI unit with a Universal Credit reporter claims,
+    and no SPI unit outside the Universal Credit age population claims without
+    reporting.
     """
 
     check = "spi_benefit_coherence"
     failures: list[str] = []
     zeroed = _mapping(evidence.get("zeroed"), label=f"{stage}.zeroed")
     restored = _mapping(evidence.get("restored"), label=f"{stage}.restored")
+    within_limit = _mapping(
+        evidence.get("restored_within_earnings_limit"),
+        label=f"{stage}.restored_within_earnings_limit",
+    )
     own_right = _mapping(
         evidence.get("benefits_in_own_right"), label=f"{stage}.benefits_in_own_right"
     )
@@ -1463,6 +1469,18 @@ def _spi_benefit_coherence_gate(
             failures.append(f"{stage}: the receipt does not record restoring {column}.")
         elif int(receipt.get("rows_differing_from_twin_after", -1)) != 0:
             failures.append(f"{stage}: SPI {column} differs from the FRS twin.")
+    for column in parameters["restored_within_earnings_limit_columns"]:
+        receipt = within_limit.get(column)
+        if not isinstance(receipt, Mapping):
+            failures.append(
+                f"{stage}: the receipt does not record restoring {column} within "
+                "the permitted-work limit."
+            )
+        elif int(receipt.get("rows_breaking_rule_after", -1)) != 0:
+            failures.append(
+                f"{stage}: SPI {column} is not the FRS twin's within the "
+                "permitted-work limit and nil above it."
+            )
     if int(own_right.get("mismatches_after", -1)) != 0:
         failures.append(
             f"{stage}: receives_benefits_in_own_right disagrees with own reports."

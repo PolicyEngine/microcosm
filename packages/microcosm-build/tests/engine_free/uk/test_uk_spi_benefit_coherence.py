@@ -14,7 +14,9 @@ from microcosm.build.uk_runtime.national_frame import uk_national_frame
 from microcosm.build.uk_runtime.spi_benefit_coherence import (
     SPI_BENEFIT_COHERENCE_STAGE_NAME,
     SPI_RESTORED_REPORT_COLUMNS,
+    SPI_WITHIN_LIMIT_REPORT_COLUMNS,
     SPI_ZEROED_REPORT_COLUMNS,
+    UKSPIPermittedWorkLimit,
     apply_spi_benefit_coherence,
     assert_spi_benefit_coherence_stage_parameters,
 )
@@ -49,6 +51,8 @@ FLAG_RATES = frs_disability.UKDWPDisabilityFlagRates(
 POLICY = UKTakeUpPopulationPolicy(
     adult_age=18, state_pension_age=66, instant="2024-01-01", source="test"
 )
+#: ESA's permitted-work limit in 2024-25, GBP 183.50 a week (GBP 9,542 a year).
+LIMIT = UKSPIPermittedWorkLimit(weekly_limit=183.5, year=2024, source="test")
 
 
 class _Contract:
@@ -62,6 +66,7 @@ REPORT_COLUMNS = tuple(
         (
             *SPI_ZEROED_REPORT_COLUMNS,
             *SPI_RESTORED_REPORT_COLUMNS,
+            *SPI_WITHIN_LIMIT_REPORT_COLUMNS,
             *frs_disability.UK_DISABILITY_FLAG_REPORTED_COLUMNS,
             "universal_credit_reported",
         )
@@ -83,6 +88,7 @@ def _person(
         support_source_id_column("person"): source_id,
     }
     row.update(dict.fromkeys(REPORT_COLUMNS, 0.0))
+    row.update(employment_income=0.0, self_employment_income=0.0)
     row.update(reports)
     return row
 
@@ -199,6 +205,24 @@ def _apply(frame):
         population_policy=POLICY,
         category_rates=CATEGORY_RATES,
         flag_rates=FLAG_RATES,
+        permitted_work_limit=LIMIT,
+    )
+
+
+def _with(frame, **columns_by_person):
+    """The frame with person columns set, ``{person_id: {column: value}}``."""
+
+    person = frame.table("person").copy()
+    for person_id, values in columns_by_person.items():
+        for column, value in values.items():
+            person.loc[person["person_id"] == int(person_id), column] = value
+    return uk_national_frame(
+        person=person,
+        benunit=frame.table("benunit"),
+        household=frame.table("household"),
+        household_weights=frame.weights_for("household").values,
+        weight_kind=WeightKind.IMPORTANCE,
+        time_period="2024",
     )
 
 
@@ -208,37 +232,83 @@ def test_spi_rows_lose_out_of_work_and_legacy_reports() -> None:
 
     for column in SPI_ZEROED_REPORT_COLUMNS:
         assert (person.loc[[105, 106, 107], column] == 0.0).all(), column
-    assert person.loc[21, "jsa_contrib_reported"] == 300.0
-    assert result.zeroed["jsa_contrib_reported"]["rows_reporting_before"] == 1
+    assert result.zeroed["income_support_reported"]["rows_reporting_before"] == 1
+    assert "jsa_contrib_reported" not in result.zeroed
     assert all(
         receipt["rows_reporting_after"] == 0 for receipt in result.zeroed.values()
     )
 
 
-def test_spi_rows_lose_income_related_esa_and_keep_contributory_esa() -> None:
+def test_spi_rows_lose_income_related_esa_and_their_drawn_contributory_esa() -> None:
     # policyengine-uk pays a drawn income-related ESA report as the award,
-    # behind a capital test alone, whatever the copy's new incomes; contributory
-    # ESA is open to new claims and not income-tested, so the copy keeps it.
-    frame = _frame()
-    person = frame.table("person").copy()
-    copy = person["person_id"] == 106
-    person.loc[copy, "esa_income_reported"] = 600.0
-    person.loc[copy, "esa_contrib_reported"] = 700.0
-    drawn = uk_national_frame(
-        person=person,
-        benunit=frame.table("benunit"),
-        household=frame.table("household"),
-        household_weights=frame.weights_for("household").values,
-        weight_kind=WeightKind.IMPORTANCE,
-        time_period="2024",
+    # behind a capital test alone, whatever the copy's new incomes. A drawn
+    # contributory ESA report gives way to the twin's, who reports none.
+    result = _apply(
+        _with(
+            _frame(),
+            **{"106": {"esa_income_reported": 600.0, "esa_contrib_reported": 700.0}},
+        )
     )
-    result = _apply(drawn)
     after = result.frame.table("person").set_index("person_id")
 
     assert after.loc[106, "esa_income_reported"] == 0.0
-    assert after.loc[106, "esa_contrib_reported"] == 700.0
+    assert after.loc[106, "esa_contrib_reported"] == 0.0
     assert result.zeroed["esa_income_reported"]["rows_reporting_before"] == 1
     assert "esa_contrib_reported" not in result.zeroed
+
+
+def test_spi_rows_take_the_twins_contributory_awards_within_the_permitted_work_limit() -> (
+    None
+):
+    # Twin 21 reports contributory JSA and ESA; its copy 106 earns nothing, so
+    # it takes both. Copy 105 drew JSA, but its twin 11 reports none.
+    frame = _with(_frame(), **{"21": {"esa_contrib_reported": 700.0}})
+    result = _apply(frame)
+    person = result.frame.table("person").set_index("person_id")
+
+    assert person.loc[106, "jsa_contrib_reported"] == 300.0
+    assert person.loc[106, "esa_contrib_reported"] == 700.0
+    assert person.loc[105, "jsa_contrib_reported"] == 0.0
+    assert person.loc[[21, 106], "receives_benefits_in_own_right"].all()
+    receipt = result.restored_within_earnings_limit
+    assert receipt["jsa_contrib_reported"]["rows_changed"] == 2
+    assert receipt["jsa_contrib_reported"]["twin_reporting_rows"] == 1
+    assert receipt["esa_contrib_reported"]["twin_reporting_rows_over_limit"] == 0
+    assert all(item["rows_breaking_rule_after"] == 0 for item in receipt.values())
+    assert result.permitted_work_limit["weekly_limit"] == 183.5
+
+
+@pytest.mark.parametrize(
+    "earnings,takes_award",
+    [
+        # Exactly the limit is within it (ESA Regs 2008 reg 45(4)).
+        ({"employment_income": 183.5 * 52}, True),
+        ({"employment_income": 183.5 * 52 + 1.0}, False),
+        ({"self_employment_income": 20_000.0}, False),
+        # A self-employment loss is not set against pay.
+        ({"employment_income": 9_600.0, "self_employment_income": -1_000.0}, False),
+        ({"employment_income": 6_000.0, "self_employment_income": 4_000.0}, False),
+    ],
+)
+def test_contributory_awards_stop_above_the_permitted_work_limit(
+    earnings, takes_award
+) -> None:
+    frame = _with(
+        _frame(), **{"21": {"esa_contrib_reported": 700.0}, "106": dict(earnings)}
+    )
+    result = _apply(frame)
+    person = result.frame.table("person").set_index("person_id")
+
+    expected = (300.0, 700.0) if takes_award else (0.0, 0.0)
+    assert tuple(person.loc[106, list(SPI_WITHIN_LIMIT_REPORT_COLUMNS)]) == expected
+    # The twin keeps its own reports whatever the copy earns.
+    assert tuple(person.loc[21, list(SPI_WITHIN_LIMIT_REPORT_COLUMNS)]) == (
+        300.0,
+        700.0,
+    )
+    receipt = result.restored_within_earnings_limit["jsa_contrib_reported"]
+    assert receipt["twin_reporting_rows_over_limit"] == (0 if takes_award else 1)
+    assert receipt["rows_breaking_rule_after"] == 0
 
 
 def test_spi_rows_take_injury_service_and_bereavement_reports_from_their_twin() -> None:
@@ -276,8 +346,9 @@ def test_benefits_in_own_right_follow_the_rows_own_reports() -> None:
     result = _apply(_frame())
     person = result.frame.table("person").set_index("person_id")
 
-    # 105 inherited True (twin reports UC) but its only own report was JSA,
-    # now zeroed; 106 reports UC on its own; 107 reports none.
+    # 105 inherited True (twin reports UC) but its only own report was a drawn
+    # JSA its twin does not report; 106 reports UC on its own; 107 reports
+    # none.
     assert not person.loc[105, "receives_benefits_in_own_right"]
     assert person.loc[106, "receives_benefits_in_own_right"]
     assert not person.loc[107, "receives_benefits_in_own_right"]

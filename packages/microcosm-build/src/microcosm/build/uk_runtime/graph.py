@@ -445,6 +445,10 @@ _STAGE_CONSUMES: Mapping[str, frozenset[tuple[str, str]] | None] = {
                     "receives_benefits_in_own_right",
                     # The UC draw's population (frs_take_up's rule).
                     "is_uc_claimant",
+                    # The permitted-work test of the contributory awards
+                    # (microcosm#1095 B10).
+                    "employment_income",
+                    "self_employment_income",
                 )
             ),
             ("benunit", "benunit_support_channel"),
@@ -1146,7 +1150,6 @@ _STAGE_CELLS: Mapping[str, tuple[_Cell, ...]] = {
         *_cells(
             "person",
             (
-                "jsa_contrib_reported",
                 "jsa_income_reported",
                 "esa_income_reported",
                 "income_support_reported",
@@ -1159,6 +1162,8 @@ _STAGE_CELLS: Mapping[str, tuple[_Cell, ...]] = {
                 "bsp_reported",
                 "war_widows_pension_reported",
                 "widowed_parents_allowance_reported",
+                "jsa_contrib_reported",
+                "esa_contrib_reported",
             ),
         ),
         *_cells(
