@@ -27,7 +27,8 @@
   "nz/statutes/social_security/main_benefits/rates.yaml": "7c8ebbc3e62268722529ad790e3f561bbebf807d8a4d67bba24f93cb0809ec39",
   "nz/statutes/new_zealand_superannuation/core.yaml": "d8ea0d15d97081031dcba242e66704c800bcf295e19d73bd173c56bd92d497b4",
   "nz/statutes/social_security/accommodation_supplement/core.yaml": "f2feca3c2f1de71623ccd577cd2aed20e8822614aac0ccfc767b5faf4eaa83cc",
-  "nz/statutes/income_tax/schedule_1/individual_income_tax.yaml": "5ff8e7bf645b85e3d59d612e3c6eb70e09090fb13b40d49c3c5f8a4202e0b82a"
+  "nz/statutes/income_tax/schedule_1/individual_income_tax.yaml": "5ff8e7bf645b85e3d59d612e3c6eb70e09090fb13b40d49c3c5f8a4202e0b82a",
+  "nz/statutes/income_tax/family_scheme/tax_credits.yaml": "d4bde4b4a72ec495dc516af1c95c9f438c0778d4f07cc02f64f242532a6efe05"
  },
  "receipt_flags": {
   "columns": [
@@ -1458,8 +1459,26 @@
    "input": "taxable_income",
    "class": "encoded",
    "encoded_by": "graph_node",
-   "node": "nz.gross_up",
-   "reason": "Each simulate.solve_zero@1 gross-up owns its trial input and supplies taxable_income internally for the income_tax_schedule_1 binding. Data transport, data encoding, defaults and engine outputs exclude this trial input. The solver_owned_inputs roster identifies every solving node."
+   "node": "nz.gross_up.jobseeker_support",
+   "reason": "Each simulate.solve_zero@1 gross-up owns its trial input and supplies taxable_income internally for the income_tax_schedule_1 binding: nz.gross_up.jobseeker_support, nz.gross_up.sole_parent_support and nz.gross_up.supported_living_payment. Data transport, data encoding, defaults and engine outputs exclude this trial input. The solver_owned_inputs roster identifies every solving node."
+  },
+  {
+   "rulespec_path": "nz/statutes/income_tax/family_scheme/tax_credits.yaml",
+   "entity": "Family",
+   "input": "family_tax_credit_eldest_dependent_child_care_units",
+   "class": "encoded",
+   "encoded_by": "graph_node",
+   "node": "nz.scn.S0.bridge.base_rate",
+   "reason": "The family_tax_credits binding requests only family_tax_credit_prescribed_amount, and that output reads the eldest dependent child care units. Ten base-rate bridge nodes supply this input as a component input_override: nz.scn.S0.bridge.base_rate, nz.scn.S1.bridge.base_rate, nz.scn.S2.bridge.base_rate, nz.scn.S3.bridge.base_rate, nz.scn.S5.bridge.base_rate, nz.v.V1.bridge.base_rate, nz.v.V2.bridge.base_rate, nz.v.V3.bridge.base_rate, nz.v.V4.bridge.base_rate and nz.v.VHF.bridge.base_rate. The value never becomes a frame column, so composition checks those overrides rather than a frame slice. The binding's unreached_roots in axiom_rules_bindings.json declares the module's other 15 Family roots unread."
+  },
+  {
+   "rulespec_path": "nz/statutes/income_tax/family_scheme/tax_credits.yaml",
+   "entity": "Family",
+   "input": "family_tax_credit_subsequent_dependent_child_care_units",
+   "class": "encoded",
+   "encoded_by": "graph_node",
+   "node": "nz.scn.S0.bridge.base_rate",
+   "reason": "The family_tax_credits binding requests only family_tax_credit_prescribed_amount, and that output reads the subsequent dependent child care units. Ten base-rate bridge nodes supply this input as a component input_override: nz.scn.S0.bridge.base_rate, nz.scn.S1.bridge.base_rate, nz.scn.S2.bridge.base_rate, nz.scn.S3.bridge.base_rate, nz.scn.S5.bridge.base_rate, nz.v.V1.bridge.base_rate, nz.v.V2.bridge.base_rate, nz.v.V3.bridge.base_rate, nz.v.V4.bridge.base_rate and nz.v.VHF.bridge.base_rate. The value never becomes a frame column, so composition checks those overrides rather than a frame slice. The binding's unreached_roots in axiom_rules_bindings.json declares the module's other 15 Family roots unread."
   }
  ],
  "solver_owned_inputs": [

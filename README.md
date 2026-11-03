@@ -61,6 +61,7 @@ change:
 ```bash
 uv tool install microcosm-emitter   # once per machine
 uv tool upgrade microcosm-emitter   # to take a new release
+microcosm-emitter version           # the installed release; builds need 0.11.9 or later
 ```
 
 The build finds the `microcosm-emitter` command through
@@ -68,11 +69,21 @@ The build finds the `microcosm-emitter` command through
 environment variables and user, so it uses the build's Hugging Face
 credential (`HF_TOKEN`, then `HUGGINGFACE_TOKEN`, then the `hf auth login`
 token). Without the command the build continues with no hosted telemetry and
-no remote staging. Before it starts the emitter, the build reads its
-version from `microcosm-emitter version` and does not start one older than
-0.6.0, the first release that takes staging run files; it prints the
-installed and required versions and the upgrade command, and continues as
-it does without the command. Microcosm supplies build metadata, graph files and staging
+no remote staging, and queues no Orrery graph publication; a UK build given
+`--staging-read-back` fails at the read-back. Before it starts the emitter,
+the build reads its version from `microcosm-emitter version` and does not
+start one older than 0.11.9. Releases before 0.10.0 send telemetry to the
+collector's Cloud Run address, which changes when the collector moves to
+another Google Cloud project; from 0.10.0 on, releases send to the
+collector's hostname, which stays the same. 0.10.0 would be enough for that;
+0.11.9 was the newest release when practically no machine ran the emitter
+yet, so requiring it cost nothing (see
+[graph publication](docs/orrery-publication.md#emitter-dependency)). The
+build prints the installed and required versions, what it loses and the
+upgrade command, `uv tool install --upgrade 'microcosm-emitter>=0.11.9'`,
+and continues as it does without the command. `uv tool upgrade` keeps any
+version constraint given at install time, such as `==0.7.0`; that
+`uv tool install --upgrade` command replaces it. Microcosm supplies build metadata, graph files and staging
 run files; the emitter owns authentication, durable queues and delivery.
 The telemetry module reports live progress to the hosted collector when the
 operator's Hugging Face login is accepted; otherwise it retains the events
@@ -91,8 +102,9 @@ if the emitter cannot be prepared or is missing, its
 `microcosm-emitter version` times out or fails, it is older than the
 minimum, it lists no protocol version 1, its `hello` fails, it exits or
 times out before it is ready, or it starts without its telemetry module.
-Emitter 0.11.0 and later exit at that point when the collector-token
-variables they inherit (`MICROCOSM_COLLECTOR_TOKEN`,
+Every emitter a build starts (0.11.9 and later, the minimum) reads a given
+collector token, and exits at that point when the collector-token
+variables it inherits (`MICROCOSM_COLLECTOR_TOKEN`,
 `MICROCOSM_COLLECTOR_TOKEN_EXPIRES_AT`, `MICROCOSM_COLLECTOR_ORIGIN`) are set
 only in part, cannot be read, or name another collector; with none of them
 set, the emitter uses the Hugging Face credential. Whether the collector

@@ -895,8 +895,16 @@ def impute_us_pre_subsidy_rent(
     if not np.isfinite(predicted).all():
         raise ValueError("ACS rent QRF produced nonfinite predictions.")
     predicted = np.maximum(predicted, 0.0)
+    # ``features`` follows the household table, and the person table need not
+    # list heads in that order, so match each draw to its head by household id.
+    rent_by_household = pd.Series(predicted, index=features.index)
+    head_household_ids = frame.table("person")["person_household_id"].to_numpy()[
+        head_mask
+    ]
     person_rent = np.zeros(frame.n("person"), dtype=np.float64)
-    person_rent[head_mask] = predicted
+    person_rent[head_mask] = rent_by_household.loc[head_household_ids].to_numpy(
+        dtype=np.float64
+    )
     return person_rent
 
 

@@ -120,13 +120,43 @@ its own version (`PROTOCOL_VERSION`), every emitter release accepts the
 versions interfaces still send, and an emitter that lacks a module the build
 asks for starts without it.
 
+A build does not start an emitter older than `MINIMUM_EMITTER_VERSION` in
+`microcosm.build.telemetry_emitter`, now 0.11.9, and the Modal image installs
+at least the same release (`IMAGE_EMITTER_REQUIREMENT` in
+`tools/modal_us_stage_plan.py`, `microcosm-emitter>=0.11.9`). A test checks
+that the two agree in one checkout; at a Modal launch the install step comes
+from the launching checkout and the minimum from the commit the plan pins
+(see the [US Modal stage runbook](us-modal-stage-runbook.md)). Releases
+before 0.10.0 send telemetry to the collector's Cloud Run address, which
+changes when the collector moves to another Google Cloud project. From 0.10.0
+on, the emitter's default collector address is the collector's hostname,
+which stays the same. Microcosm passes the emitter no collector address: the
+adapter's `development_collector_url` parameter, which no build command sets,
+accepts only a loopback address.
+
+0.10.0 would be enough for the hostname. The minimum is 0.11.9, the newest
+release on 2026-11-02, because practically no machine ran the separately
+installed emitter then, so refusing 0.10.0 to 0.11.8 cost nothing. A refused
+emitter does cost the build:
+
+- no hosted telemetry, and no staging hand-overs (the staging run files are
+  still written locally);
+- the UK graph step records a failed receipt (`local_service_unavailable`)
+  and queues no Orrery job, so the emitter's retry command has nothing to
+  deliver later;
+- a UK build given `--staging-read-back` fails at the read-back.
+
+The build's warning says so. Raise the minimum and the image's floor
+together, and before raising them while machines still run older emitters,
+weigh these losses against having each such machine upgrade first.
+
 To adopt a new interface release, regenerate `uv.lock`, update
 `APPROVED_UV_LOCK_SHA256` in `microcosm.build.us_runtime.worker_identity` to
 the new lockfile digest and rerun the tests and wheel checks.
 
 ## Migrating an existing workstation
 
-Install the emitter once with `uv tool install microcosm-emitter` (0.6.0 or
+Install the emitter once with `uv tool install microcosm-emitter` (0.11.9 or
 later; a build does not start an older emitter, says how to upgrade it and
 continues without it). It keeps using the existing spool database,
 `$XDG_CACHE_HOME/microcosm/telemetry/events.sqlite3`, at the same Alembic
@@ -138,3 +168,8 @@ database on one machine. The emitter rejects unversioned databases without
 modification. The emitter's README describes the repair for a machine that
 ran an earlier, unreleased build of the hand-over queue. No new credential,
 hosted service or infrastructure is required by this migration.
+
+To upgrade a machine whose emitter is older than 0.11.9, run
+`uv tool install --upgrade 'microcosm-emitter>=0.11.9'`; it also replaces a
+version constraint given at install time, which `uv tool upgrade` keeps.
+`microcosm-emitter version` prints the installed release.
