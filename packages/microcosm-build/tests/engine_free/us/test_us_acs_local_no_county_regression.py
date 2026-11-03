@@ -293,9 +293,10 @@ def test_no_county_materialization_matches_pre_county_surface(
         "_with_local_take_up",
         lambda frame, *, seed: (frame, {"seed": seed, "assigned_sha256": "stub"}),
     )
-    # microcosm#1020: this fixture's staging summary records no immigration
-    # stage; this test checks county hooks only.
+    # microcosm#1020/#1021: this fixture's staging summary records no
+    # immigration or work/disability stage; this test checks county hooks only.
     monkeypatch.setattr(module, "_require_local_immigration", lambda *_: None)
+    monkeypatch.setattr(module, "_require_local_work_disability", lambda *_: None)
     monkeypatch.setattr(module, "log", lambda *_: None)
 
     def materialize(_frame, specs, **_kwargs):
