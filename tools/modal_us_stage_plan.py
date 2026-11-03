@@ -77,10 +77,15 @@ RUNNER_HF_HUB_VERSION = "1.18.0"
 # interface. The image installs the newest emitter release when it is built
 # for a plan commit, outside the synced environment; an image built for one
 # commit keeps the emitter it was built with. A build does not start an
-# emitter older than 0.6.0, the first release with the Hugging Face hand-over
-# module (microcosm.build.telemetry_emitter.MINIMUM_EMITTER_VERSION). The
-# stage's runner records the version.
-IMAGE_EMITTER_REQUIREMENT = "microcosm-emitter>=0.7.0"
+# emitter older than microcosm.build.telemetry_emitter.MINIMUM_EMITTER_VERSION,
+# 0.11.9; releases before 0.10.0 send telemetry to the collector's Cloud Run
+# address, which changes when the collector moves to another Google Cloud
+# project. This module imports nothing from the workspace, so the floor
+# repeats that release, and a test checks that the two agree in one
+# checkout. At launch the two can differ: the image's install step comes from
+# this module in the checkout that launches the app, and the minimum from the
+# commit the plan pins. The stage's runner records the version.
+IMAGE_EMITTER_REQUIREMENT = "microcosm-emitter>=0.11.9"
 IMAGE_EMITTER_BIN_DIR = "/usr/local/bin"
 IMAGE_EMITTER_COMMAND = f"{IMAGE_EMITTER_BIN_DIR}/microcosm-emitter"
 #: The image's environment variables, which the stage tool inherits.
