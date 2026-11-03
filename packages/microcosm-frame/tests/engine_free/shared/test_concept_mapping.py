@@ -926,6 +926,24 @@ def _module_binding(module: str, **change) -> InputBinding:
     )
 
 
+# Engine entities whose bindings write the person table, and two ways to
+# compute one column there.
+_PERSON_WRITERS = {
+    "Person": {},
+    "Child": {"engine_entity": "Child", "group_rule": GroupRule.PERSON_ROLE},
+    "Dependant": {"engine_entity": "Dependant", "group_rule": GroupRule.PERSON_ROLE},
+}
+_PERSON_COMPUTATIONS = {
+    "age": {},
+    "enrolled": {
+        "concepts": ("fact:person.education_enrollment",),
+        "transform": Predicate(
+            clauses=(("fact:person.education_enrollment", ("tertiary",)),)
+        ),
+    },
+}
+
+
 class TestConstructionRules:
     def test_a_minimal_mapping_constructs(self) -> None:
         mapping = _mapping([_binding()])
@@ -1096,6 +1114,53 @@ class TestConstructionRules:
                 ],
                 **_AXIOM,
             )
+
+    def test_bindings_that_write_one_person_column_compute_it_alike(self) -> None:
+        # A person_role binding writes the person table, as a binding on the
+        # engine's person entity does, so a name they share is one column.
+        role = _PERSON_WRITERS["Child"]
+        same = _mapping([_module_binding("a"), _module_binding("b", **role)], **_AXIOM)
+        assert len(same.refs()) == 2
+        enrolled = _PERSON_COMPUTATIONS["enrolled"]
+        for other in ("Person", "Dependant"):
+            pair = [
+                _module_binding("a", **role),
+                _module_binding("b", **_PERSON_WRITERS[other], **enrolled),
+            ]
+            for bindings in (pair, pair[::-1]):
+                with pytest.raises(ValueError, match="computed differently"):
+                    _mapping(bindings, **_AXIOM)
+
+    @PROPERTY
+    @given(
+        writers=st.lists(
+            st.tuples(
+                st.sampled_from(sorted(_PERSON_WRITERS)),
+                st.sampled_from(sorted(_PERSON_COMPUTATIONS)),
+            ),
+            min_size=1,
+            max_size=5,
+        ),
+        data=st.data(),
+    )
+    def test_one_person_column_passes_in_any_order_only_when_computed_alike(
+        self, writers, data
+    ) -> None:
+        # Every binding writes the person table's x, each from its own module.
+        bindings = [
+            _module_binding(
+                f"m{index}",
+                **_PERSON_WRITERS[entity],
+                **_PERSON_COMPUTATIONS[computation],
+            )
+            for index, (entity, computation) in enumerate(writers)
+        ]
+        ordered = data.draw(st.permutations(bindings))
+        if len({computation for _, computation in writers}) == 1:
+            assert len(_mapping(ordered, **_AXIOM).refs()) == len(ordered)
+        else:
+            with pytest.raises(ValueError, match="computed differently"):
+                _mapping(ordered, **_AXIOM)
 
     def test_entity_correspondence_covers_both_concept_entities(self) -> None:
         with pytest.raises(ValueError, match="entity_correspondence"):

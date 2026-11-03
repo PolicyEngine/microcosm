@@ -1557,25 +1557,43 @@ class ConceptMapping:
             _check_group_rule(self.engine, binding)
 
     def _check_shared_names(self) -> None:
-        """One encoded column per input name: every module computes it alike.
+        """One encoded column per input name: every binding computes it alike.
 
         Module-scoped engines can read the same input name in several
-        modules. An encoded frame holds one column per name and entity, so
-        every binding of that name must compute it the same way.
+        modules. An encoded frame holds one column per name and table, so
+        every binding that writes the column must compute it the same way.
+        An executable binding writes its concept entity's table, one value
+        per row, so a ``person_role`` binding shares the person table with
+        the engine's person entity and with every other ``person_role``
+        entity. A group binding writes its engine entity's units.
         """
-        seen: dict[tuple[str, str], InputBinding] = {}
+        seen: dict[tuple[str, bool, str], InputBinding] = {}
         for binding in self.bindings:
-            key = (binding.engine_input, binding.engine_entity)
+            executable = self.is_executable(binding)
+            key = (
+                binding.engine_input,
+                executable,
+                binding.concept_entity if executable else binding.engine_entity,
+            )
             first = seen.setdefault(key, binding)
-            if (first.concepts, first.transform, first.group_rule) != (
+            # Executable bindings all give each row its own value, so the
+            # rule is part of the computation only for group bindings.
+            if (
+                first.concepts,
+                first.transform,
+                None if executable else first.group_rule,
+            ) != (
                 binding.concepts,
                 binding.transform,
-                binding.group_rule,
+                None if executable else binding.group_rule,
             ):
+                entities = " and ".join(
+                    repr(entity)
+                    for entity in sorted({first.engine_entity, binding.engine_entity})
+                )
                 raise ValueError(
-                    f"{self.engine}: {binding.engine_input!r} on "
-                    f"{binding.engine_entity!r} is computed differently in "
-                    f"{first.module} and {binding.module}."
+                    f"{self.engine}: {binding.engine_input!r} on {entities} is "
+                    f"computed differently in {first.module} and {binding.module}."
                 )
 
     def _check_shares(self) -> None:
