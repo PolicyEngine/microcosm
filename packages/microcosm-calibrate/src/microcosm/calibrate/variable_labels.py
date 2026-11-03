@@ -119,6 +119,8 @@ US_CALIBRATION_VARIABLE_LABELS: Mapping[str, Mapping[str, str]] = _immutable_reg
             "non_sch_d_capital_gains": "Non-Schedule D capital gains",
             "ordinary_dividend_income": "Ordinary dividend income",
             "partnership_and_s_corp_income": "Partnership and S corporation income",
+            "partnership_income": "Partnership income",
+            "partnership_losses": "Partnership losses",
             "qualified_dividends": "Qualified dividends",
             "qualified_business_income_deduction": (
                 "Qualified business income deduction"
@@ -126,6 +128,8 @@ US_CALIBRATION_VARIABLE_LABELS: Mapping[str, Mapping[str, str]] = _immutable_reg
             "real_estate_taxes": "Real estate taxes",
             "refundable_ctc": "Refundable CTC",
             "rent_and_royalty_net_income": "Rent and royalty net income",
+            "s_corp_income": "S corporation income",
+            "s_corp_losses": "S corporation losses",
             "salt_deduction": "SALT deduction",
             "tax_exempt_interest_income": "Tax-exempt interest income",
             "taxable_income": "Taxable income",

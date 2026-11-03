@@ -88,6 +88,18 @@ ENGINE_DERIVED_EXCLUSIONS: dict[str, dict[str, str]] = {
         "approved_by": "juaristi22",
         "approved_on": "2026-10-11",
     },
+    "tax_free_savings_income": {
+        "reason": ENGINE_DERIVED_EXCLUSION_REASON,
+        "tracking_note": (
+            "microcosm#1360: under the additive ISA income contract the "
+            "producer stores ISA interest in "
+            "individual_savings_account_interest_income, which policyengine-uk "
+            "adds into tax_free_savings_income; savings_interest_income, now "
+            "interest outside ISAs, stays required."
+        ),
+        "approved_by": "juaristi22",
+        "approved_on": "2026-10-28",
+    },
 }
 ENTITY_TABLES = ("person", "benunit", "household")
 READ_BATCH_SIZE = 12
@@ -890,6 +902,10 @@ def build_manifest(
                 stage_name="salary_sacrifice",
                 candidate_source=candidate_source,
             ),
+            "private_school_attendance": _source_stage_family_coverage_contract(
+                stage_name="private_school_attendance",
+                candidate_source=candidate_source,
+            ),
             "student_loans": _source_stage_family_coverage_contract(
                 stage_name="student_loans",
                 candidate_source=candidate_source,
@@ -912,6 +928,20 @@ def build_manifest(
                 stage_name="was_lisa",
                 candidate_source=candidate_source,
             ),
+            "isa_subscriptions": _source_stage_family_coverage_contract(
+                stage_name="isa_subscriptions",
+                candidate_source=candidate_source,
+            ),
+            "trading_allowance_receipts": _source_stage_family_coverage_contract(
+                stage_name="trading_allowance_receipts",
+                candidate_source=candidate_source,
+            ),
+            # PolicyEngine/uk-autumn-budget-dashboard-2026#316: the company cars
+            # declare their household-mass receipt like every other stage.
+            "company_cars": _source_stage_family_coverage_contract(
+                stage_name="company_cars",
+                candidate_source=candidate_source,
+            ),
             "nts_bus_travel": _source_stage_family_coverage_contract(
                 stage_name="nts_bus_travel",
                 candidate_source=candidate_source,
@@ -922,6 +952,14 @@ def build_manifest(
             ),
             "property_components": _source_stage_family_coverage_contract(
                 stage_name="property_components",
+                candidate_source=candidate_source,
+            ),
+            "regional_home_values": _source_stage_family_coverage_contract(
+                stage_name="regional_home_values",
+                candidate_source=candidate_source,
+            ),
+            "property_purchases": _source_stage_family_coverage_contract(
+                stage_name="property_purchases",
                 candidate_source=candidate_source,
             ),
             "lcfs_consumption": _source_stage_family_coverage_contract(
@@ -1200,6 +1238,9 @@ def _hmrc_family_coverage_contract(
         "base_candidate_tier": validate_uk_release_tier(candidate_source["tier"]),
         "required_predecessor_stages": [
             "frs_hmrc_spine_leaves",
+            # The SPI copies carry the annual income descriptors their twins
+            # hold, and the income stage holds them to the drawn incomes.
+            "frs_annual_income_spells",
             "spi_support_channel",
             "spi_income_band_donors",
         ],

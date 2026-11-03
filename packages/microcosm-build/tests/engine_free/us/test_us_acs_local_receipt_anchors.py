@@ -75,6 +75,17 @@ def _person(serialno: str, sporder: int, relationship: int, **overrides) -> dict
         "PAP": 0,
     }
     row.update(overrides)
+    # The loader requires the work-experience job fields (microcosm#719): a
+    # person from age 16 holds a coded job; a child is outside all four
+    # universes.
+    in_work_universe = int(row["AGEP"]) >= 16
+    for column, value in (
+        ("OCCP", 1010),
+        ("INDP", 7380),
+        ("WKWN", 52),
+        ("ESR", 1),
+    ):
+        row.setdefault(column, value if in_work_universe else None)
     return row
 
 

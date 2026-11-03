@@ -41,10 +41,11 @@ from ..stage_evidence import (
     decode_stage_evidence,
     encode_stage_evidence,
 )
-from . import battery_bindings
+from . import battery_bindings, energy_pricing, stage_health
 from .calibration_run import UK_SPINE_GATE_SCOPE, uk_scoped_gate_manifest
 from .cgt_asset_type import CGT_ASSET_TYPE_DOMAIN
 from .frs_relationships import CHRONICLE_ONS_HOUSEHOLD_TYPE_VALUE_IDS
+from .graph import UK_SPINE_ASSEMBLED_FINAL_STAGE
 
 #: The spine checkpoint's build state the terminal gates read as the spine
 #: frame: household weight kind, period and mass log (microcosm#1115).
@@ -240,14 +241,17 @@ def add_uk_spine_gate_nodes(
     compiled = compile_graph(graph)
     endpoint = uk_spine_endpoint(graph)
     stages = endpoint.stage_names
-    if "frs_brma" not in stages:
-        raise ValueError("Spine gates require the assembled frs_brma boundary.")
-    end = stages.index("frs_brma") + 1
+    if UK_SPINE_ASSEMBLED_FINAL_STAGE not in stages:
+        raise ValueError(
+            "Spine gates require the assembled "
+            f"{UK_SPINE_ASSEMBLED_FINAL_STAGE} boundary."
+        )
+    end = stages.index(UK_SPINE_ASSEMBLED_FINAL_STAGE) + 1
     checkpoints = (
         (
             "assembled",
-            compiled.versions["frs_brma"],
-            graph.node("frs_brma.checkpoint").inputs,
+            compiled.versions[UK_SPINE_ASSEMBLED_FINAL_STAGE],
+            graph.node(f"{UK_SPINE_ASSEMBLED_FINAL_STAGE}.checkpoint").inputs,
             stages[:end],
         ),
         ("transferred", endpoint.population, endpoint.inputs, stages),
@@ -290,6 +294,11 @@ def add_uk_spine_gate_nodes(
                     "phase": phase,
                     "time_period": "2024",
                     "stage_names": phase_stages,
+                    **(
+                        {"energy_pricing_code": source_hash(energy_pricing)}
+                        if phase == "transferred"
+                        else {}
+                    ),
                     "gate_manifest": json.dumps(
                         gate_battery._gates_manifest_payload(gates), sort_keys=True
                     ),
@@ -341,6 +350,9 @@ class UKSpineGateKernel(KernelBase):
     the persisted verdict binds the policy it was judged under:
     ``synthetic_smoke`` mirrors ``GateBatteryRun(synthetic_smoke=...)`` — on a
     data-only fixture the population-fact gates are recorded but never block.
+    The transferred phase also carries ``energy_pricing_code``, the hash of
+    the module that sets the energy level its rake gate recomputes, so only
+    that phase re-keys when the level's code changes.
     """
 
     ref = "uk.spine-gates@1"
@@ -359,13 +371,24 @@ class UKSpineGateKernel(KernelBase):
     def implementation_hash(self) -> str:
         from microcosm.graph.canonical import canonical_json
 
-        from ..country_spec import load_country_spec
+        from .solve_scope import uk_solve_fingerprint
 
+        # The spine stages after a gate wait on its verdict, so its key is
+        # part of theirs. No spine gate reads a gate-only register, so it keys
+        # on the solve fingerprint and a sign-off between two release builds
+        # leaves an in-graph spine a cache hit (microcosm#1301). The stage
+        # checks live in stage_health, so it keys the gate too (the independent
+        # review of microcosm#1420, finding 5). Only the transferred phase reads
+        # the energy level, through energy_pricing, so that phase alone carries
+        # its hash, as a node param: an energy change re-keys it, not the
+        # assembled gate every later spine stage waits on (the re-review, E).
         return hashlib.sha256(
             canonical_json(
                 {
-                    "code": source_hash(type(self), gate_battery, battery_bindings),
-                    "country_resources": load_country_spec("uk").fingerprint,
+                    "code": source_hash(
+                        type(self), gate_battery, battery_bindings, stage_health
+                    ),
+                    "country_resources": uk_solve_fingerprint(),
                 }
             )
         ).hexdigest()

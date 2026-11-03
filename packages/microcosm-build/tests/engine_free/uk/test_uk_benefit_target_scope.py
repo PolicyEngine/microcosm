@@ -39,8 +39,6 @@ GREAT_BRITAIN_ROWS = (
     "obr.esa",
     "obr.jobseekers_allowance",
     "obr.universal_credit",
-    "obr.universal_credit_in_cap",
-    "obr.universal_credit_outside_cap",
     "obr.housing_benefit",
     "obr.statutory_maternity_pay",
     "dwp.esa_claimants",
@@ -198,6 +196,20 @@ def test_obr_pip_binds_dla_and_pip_together() -> None:
     assert "value_variable" not in binding
 
 
+def test_obr_esa_binds_every_benefit_on_the_incapacity_line() -> None:
+    """OBR table 4.9 footnote 2: the "Incapacity benefits" line holds ESA,
+    Incapacity Benefit, Severe Disablement Allowance and the incapacity part of
+    Income Support (microcosm#1095, uk-data#582). The engine has no variable for
+    the Income Support part, which the notes record as a residual."""
+
+    binding = _targets()["obr.esa"]["bindings"]["policyengine"]
+    terms = [term.strip() for term in binding["value_expression"].split("+")]
+    assert terms == ["esa_income", "esa_contrib", "incapacity_benefit", "sda"]
+    assert "value_variable" not in binding
+    assert "Income Support" in binding["notes"]
+    assert "Severe Disablement Allowance" in binding["notes"]
+
+
 def test_pip_caseload_rows_are_england_and_wales_diagnostics_on_obr_pip() -> None:
     """The two rows resolve at K04000001, the geography Chronicle stamps DWP's
     caseload with, and fit; fitting them breaks the weight-ratio fence, so
@@ -259,3 +271,76 @@ def test_pip_caseload_diagnostics_carry_the_january_2025_caseload() -> None:
         assert metadata[f"{prefix}_status"] == "available"
         assert float(metadata[f"{prefix}_value_count"]) == value
         assert metadata[f"{prefix}_period"] == "2025-01"
+
+
+FIVE_OR_MORE_CHILDREN_ROW = "dwp.uc.households_children_5_or_more"
+TWO_CHILD_LIMIT_FIVE_CHILDREN_ROW = "dwp.uc.two_child_limit.households_5_children"
+
+
+def test_five_or_more_children_count_is_a_diagnostic_beside_the_limit_row() -> None:
+    """DWP's count carries the families outside the two-child limit, which the
+    bound limit rows leave out and the frame cannot hold, so it sits beside the
+    limit row of the same month (María's ruling of 2026-10-16, microcosm#1095)."""
+
+    from microcosm.build.uk_runtime.ledger_targets import (
+        UK_REQUIRED_TARGET_DIAGNOSTICS,
+    )
+
+    contract = load_uk_population_contract()
+    targets = {target["target_id"]: target for target in contract["targets"]}
+    assert FIVE_OR_MORE_CHILDREN_ROW not in targets
+    assert TWO_CHILD_LIMIT_FIVE_CHILDREN_ROW in targets
+    assert UK_REQUIRED_TARGET_DIAGNOSTICS[TWO_CHILD_LIMIT_FIVE_CHILDREN_ROW] == (
+        FIVE_OR_MORE_CHILDREN_ROW,
+    )
+    parity = contract["registry_parity"]
+    assert FIVE_OR_MORE_CHILDREN_ROW not in parity["scope_target_ids"]
+    assert FIVE_OR_MORE_CHILDREN_ROW not in parity["mapped"].values()
+    declaration = contract["diagnostic_references"][FIVE_OR_MORE_CHILDREN_ROW]
+    assert declaration["attach_to_target"] == TWO_CHILD_LIMIT_FIVE_CHILDREN_ROW
+    assert declaration["required_period_type"] == "month"
+    assert declaration["required_assertion"] == "observation"
+    reference = declaration["reference"]
+    # The limit rows are DWP's April 2025 publication, so the count is the
+    # same month's, which the exact fact pin fixes.
+    assert reference["period"] == "2025-04"
+    assert reference["period_match_policy"] == "exact"
+    assert reference["ledger_selector"]["geography_id"] == GREAT_BRITAIN_CODE
+    assert reference["ledger_selector"]["dimension_values"] == {
+        "number_of_children": "5 or more",
+        "payment_indicator": "Yes",
+        "child_entitlement": "all",
+    }
+    assert reference["ledger_fact_key"]
+    assert reference["measure"] in parity["excluded"]
+    assert reference["measure"] not in parity["mapped"]
+
+
+def test_five_or_more_children_diagnostic_carries_the_april_2025_count() -> None:
+    """Feed-gated: the diagnostic resolves DWP's exact April 2025 count."""
+
+    from microcosm.build.uk_runtime.ledger_targets import (
+        _attached_diagnostic_metadata,
+    )
+
+    root = paths_for("microcosm-build").repository
+    configured = os.environ.get("CHRONICLE_UK_FACTS")
+    feed = (
+        Path(configured) if configured else root / ".codex-work/consumer_facts_uk.jsonl"
+    )
+    if feed.is_dir():
+        feed = feed / "consumer_facts.jsonl"
+    if not feed.is_file():
+        pytest.skip("pinned UK Chronicle consumer feed is not present")
+    with feed.open(encoding="utf-8") as handle:
+        facts = tuple(
+            json.loads(line) for line in handle if '"dwp.uc_households"' in line
+        )
+
+    metadata = _attached_diagnostic_metadata(facts, TWO_CHILD_LIMIT_FIVE_CHILDREN_ROW)
+
+    prefix = "dwp_uc_children_5_or_more_diagnostic"
+    assert metadata[f"{prefix}_role"] == "diagnostic_only_not_in_fit"
+    assert metadata[f"{prefix}_status"] == "available"
+    assert float(metadata[f"{prefix}_value_count"]) == 76_885.0
+    assert metadata[f"{prefix}_period"] == "2025-04"

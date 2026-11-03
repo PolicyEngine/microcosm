@@ -33,6 +33,8 @@ def test_engine_uses_reported_capital_and_sentinel_routes_to_residual_proxy() ->
             "savings": [100_000.0, 100_000.0, 7_000.0],
             "other_residential_property_value": [0.0, 0.0, 0.0],
             "non_residential_property_value": [0.0, 0.0, 0.0],
+            "other_residential_property_secured_debt": [0.0, 0.0, 0.0],
+            "non_residential_property_secured_debt": [0.0, 0.0, 0.0],
             "corporate_wealth": [0.0, 0.0, 0.0],
         }
     )
@@ -89,6 +91,8 @@ def _capital_frame(uc_capital, pension_credit_capital, *, child_heads=False):
             "other_residential_property_value": [90_000.0, 50_000.0],
             "non_residential_property_value": [10_000.0, 0.0],
             "owned_land": [30_000.0, 5_000.0],
+            "other_residential_property_secured_debt": [0.0, 0.0],
+            "non_residential_property_secured_debt": [0.0, 0.0],
         }
     )
     return uk_national_frame(
@@ -114,9 +118,9 @@ def _assessable_capital(frame):
 def test_the_engine_assesses_the_recorded_property_and_no_other_unit_takes_it() -> None:
     """The household reference person's unit records the household's property
     at 90% of its value, and policyengine-uk takes each recorded figure as the
-    unit's assessable capital. Its own proxies, which apply only to a unit on
-    the sentinel, would put a third of the parents' property on their child's
-    unit (microcosm#1095)."""
+    unit's complete assessable capital. Its own property share, which reaches
+    only a unit on the sentinel, would put a third of the parents' property on
+    their child's unit (microcosm#1095)."""
 
     unavailable = [-1.0, -1.0, -1.0]
     proxied = _capital_frame(unavailable, unavailable)
@@ -149,12 +153,11 @@ def test_the_engine_assesses_the_recorded_property_and_no_other_unit_takes_it() 
         pension_credit_recorded, [pension_credit_share[0], 0.0, 0.0], rtol=1e-6
     )
 
-    # The engine's UC proxy shares household 1's gross property over its three
+    # Since policyengine-uk 2.136.1 the engine values property apart, at 90%
+    # of its value less secured debt, and shares it over the household's
     # claimants and partners, so the child's unit would be assessed a third.
     uc_proxy, _ = _assessable_capital(proxied)
-    np.testing.assert_allclose(
-        uc_proxy, [200_000.0 / 3, 100_000.0 / 3, 50_000.0], rtol=1e-6
-    )
+    np.testing.assert_allclose(uc_proxy, [60_000.0, 30_000.0, 45_000.0], rtol=1e-6)
 
     # A unit that reports Universal Credit keeps its receipt: it records the
     # carrier alone, the engine assesses it no property, and its child's unit,
@@ -170,11 +173,13 @@ def test_the_engine_assesses_the_recorded_property_and_no_other_unit_takes_it() 
 def test_a_unit_on_the_sentinel_beside_a_recording_unit_takes_the_engines_proxy() -> (
     None
 ):
-    """A unit on the unavailable sentinel stays on policyengine-uk's proxies,
-    which share the household's gross property. Beside a recording reference
-    person's unit, the Universal Credit proxy leaves it the 10% that unit did
-    not record, and the Pension Credit proxy, which subtracts nothing, counts
-    the property a second time (microcosm#1095)."""
+    """A unit on the unavailable sentinel stays on policyengine-uk's own rules.
+    Since 2.136.1 Universal Credit gives it its claimant and partner share of
+    the household's property at 90%, whatever the other units record, so
+    beside a recording reference person's unit it counts that property a
+    second time; the Pension Credit proxy, which subtracts nothing, does the
+    same. The build records every unit, so no unit is on the sentinel
+    (microcosm#1095)."""
 
     unavailable = [-1.0, -1.0, -1.0]
     tables = {
@@ -188,16 +193,16 @@ def test_a_unit_on_the_sentinel_beside_a_recording_unit_takes_the_engines_proxy(
         tables["person"], tables["benunit"], tables["household"]
     )
 
-    # The parents record and their child's unit is on the sentinel: the
-    # Universal Credit residual gives the child the 10,000 of sale costs the
-    # parents' 90,000 left out of household 1's 100,000.
+    # The parents record and their child's unit is on the sentinel: the child
+    # takes a third of household 1's property at 90%, which the parents'
+    # recorded 90,000 already holds.
     uc_mixed, pension_credit_mixed = _assessable_capital(
         _capital_frame(
             [uc_share[0], -1.0, uc_share[2]],
             [pension_credit_share[0], -1.0, pension_credit_share[2]],
         )
     )
-    np.testing.assert_allclose(uc_mixed, [90_000.0, 10_000.0, 45_000.0], rtol=1e-6)
+    np.testing.assert_allclose(uc_mixed, [90_000.0, 30_000.0, 45_000.0], rtol=1e-6)
     np.testing.assert_allclose(pension_credit_mixed, [117_000.0, 0.0, 0.0], rtol=1e-6)
 
 
@@ -208,8 +213,8 @@ def test_property_held_by_a_working_age_reference_person_leaves_pension_credit()
     child's unit records the household's property and the parents record none.
     policyengine-uk reads Pension Credit capital only for a unit with a member
     at the qualifying age, so no Pension Credit assessment counts it. Parents
-    on the sentinel take the engine's gross proxy instead, beside the child's
-    recorded figure (microcosm#1095)."""
+    on the sentinel take the engine's own property share instead, beside the
+    child's recorded figure (microcosm#1095)."""
 
     unavailable = [-1.0, -1.0, -1.0]
     tables = {
@@ -246,5 +251,6 @@ def test_property_held_by_a_working_age_reference_person_leaves_pension_credit()
             child_heads=True,
         )
     )
-    np.testing.assert_allclose(uc_mixed, [10_000.0, 90_000.0, 45_000.0], rtol=1e-6)
+    # Universal Credit gives the parents two thirds of the property at 90%.
+    np.testing.assert_allclose(uc_mixed, [60_000.0, 90_000.0, 45_000.0], rtol=1e-6)
     np.testing.assert_allclose(pension_credit_mixed, [130_000.0, 0.0, 0.0], rtol=1e-6)

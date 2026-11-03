@@ -6,8 +6,14 @@ import ast
 import importlib
 from pathlib import Path
 
+from microcosm.build import ledger_artifact
 from microcosm.build import ledger_targets as shared_ledger_targets
-from microcosm.build.uk_runtime import graph_national, graph_targets, hmrc_uprating
+from microcosm.build.uk_runtime import (
+    graph_national,
+    graph_targets,
+    hmrc_uprating,
+    measure_simulation,
+)
 from microcosm.build.uk_runtime.target_compile_modules import (
     EXCLUDED_DIRECT_IMPORTS,
     UK_TARGET_COMPILE_MODULE_NAMES,
@@ -90,8 +96,56 @@ def test_full_target_kernel_hashes_the_shared_resolver_and_the_appliers(
     assert set(uk_target_compile_modules()) <= set(hashed)
 
 
+def test_full_target_kernels_hash_the_measure_simulation(monkeypatch):
+    """full_measure and full_targets resolve their measures in
+    measure_simulation, the high-value homes region rows among them
+    (microcosm#1301), so an edit there alone re-keys the measures node."""
+    for kernel in (
+        graph_targets.UKFullTargetCompilationKernel(),
+        graph_targets.UKFullMeasureKernel(),
+    ):
+        assert measure_simulation in _hashed_by(kernel, monkeypatch, graph_targets)
+
+
+def test_full_target_kernels_hash_the_fact_decoder(monkeypatch):
+    """full_targets loads the ledger facts inside run through
+    ledger_artifact's decoder, so an edit there alone re-keys every full-graph
+    kernel built on this hash: compilation, selection and measure share it,
+    and the problem kernel embeds it (microcosm#1382). The pin holds even if
+    no listed module imports ledger_artifact any more."""
+    for kernel in (
+        graph_targets.UKFullTargetCompilationKernel(),
+        graph_targets.UKFullTargetSelectionKernel(),
+        graph_targets.UKFullMeasureKernel(),
+        graph_targets.UKFullProblemKernel(),
+    ):
+        assert ledger_artifact in _hashed_by(kernel, monkeypatch, graph_targets)
+
+
 def test_national_target_kernel_hashes_the_same_compile_modules(monkeypatch):
     hashed = _hashed_by(
         graph_national.UKNationalTargetKernel(), monkeypatch, graph_national
     )
     assert set(uk_target_compile_modules()) <= set(hashed)
+
+
+def test_national_target_kernels_hash_the_measure_simulation(monkeypatch):
+    """The national targets apply their measure exclusions, and the national
+    problem resolves its measures, in measure_simulation, as the dense line's
+    do (microcosm#1301), so an edit there alone re-keys both nodes."""
+    for kernel in (
+        graph_national.UKNationalTargetKernel(),
+        graph_national.UKNationalProblemKernel(resolver_factory=None),
+    ):
+        assert measure_simulation in _hashed_by(kernel, monkeypatch, graph_national)
+
+
+def test_national_target_kernels_hash_the_fact_decoder(monkeypatch):
+    """The national targets load the ledger facts through full_targets and
+    ledger_artifact's decoder too, so an edit there alone re-keys both
+    kernels that share this hash (microcosm#1382)."""
+    for kernel in (
+        graph_national.UKNationalTargetKernel(),
+        graph_national.UKNationalProblemKernel(resolver_factory=None),
+    ):
+        assert ledger_artifact in _hashed_by(kernel, monkeypatch, graph_national)

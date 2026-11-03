@@ -1,0 +1,762 @@
+{
+  "schema_version": 1,
+  "feed_identity": {
+    "source_commit": "2c7e8357f1dcb9af2337c10d6cf4cbd82b1e55ef",
+    "facts_sha256": "e01a463065a81ba60139a24a605e52797442504478be60970e0ff66f9d3c6b95",
+    "manifest_sha256": "7839792643a6a32a1784328644df16c250e8d4ba08287c455983a6e7ceebb34c",
+    "artifact_schema_version": "policyengine_ledger.consumer_artifact.v2",
+    "consumer_fact_schema_versions": [
+      "chronicle.consumer_fact.v4"
+    ],
+    "consumer_fact_schema_sha256": "d953306d6f01fbc64db4372d0262d3012ee590269f8a25b276b18dca0626c6a0",
+    "fact_row_count": 87112
+  },
+  "factors": [
+    {
+      "declaration": {
+        "schema_version": 1,
+        "id": "rsz_ordinary_remuneration_cy2023_to_cy2025_observed",
+        "operation": "projected_period_average_ratio",
+        "operation_version": 1,
+        "purpose": "diagnostic",
+        "feed_identity": {
+          "source_commit": "2c7e8357f1dcb9af2337c10d6cf4cbd82b1e55ef",
+          "facts_sha256": "e01a463065a81ba60139a24a605e52797442504478be60970e0ff66f9d3c6b95",
+          "manifest_sha256": "7839792643a6a32a1784328644df16c250e8d4ba08287c455983a6e7ceebb34c",
+          "artifact_schema_version": "policyengine_ledger.consumer_artifact.v2",
+          "consumer_fact_schema_versions": [
+            "chronicle.consumer_fact.v4"
+          ],
+          "consumer_fact_schema_sha256": "d953306d6f01fbc64db4372d0262d3012ee590269f8a25b276b18dca0626c6a0",
+          "fact_row_count": 87112
+        },
+        "source_period": 2023,
+        "target_period": 2025,
+        "source_schedule": [
+          {
+            "selector": {
+              "source_name": "rsz_annual_wages_key_figures",
+              "source_measure_id": "ordinary_remuneration",
+              "source_concept": "rsz.annual_wages.ordinary_remuneration",
+              "entity_name": "person",
+              "period_type": "calendar_year",
+              "period_value": 2023,
+              "geography_level": "country",
+              "geography_id": "BE",
+              "geography_vintage": "current",
+              "record_set_id": "rsz.annual_wages.year2023.ordinary_remuneration",
+              "dimensions": [
+                "rsz.annual_worker_type_sex"
+              ],
+              "dimension_values": {
+                "rsz.annual_worker_type_sex": "total"
+              },
+              "aggregate_fact_key": "ledger.aggregate_fact.v2:2c0d2f4c10c54cee45e5777b",
+              "assertion": "observation"
+            },
+            "validation": {
+              "unit": "EUR_thousands",
+              "source_sha256": "7f97f510d332a0966b1afba110ce448f4a4a83d9d58fd5c3bb4d8d36d1aeca97",
+              "source_vintage": "rsz_raw_wages_prepublication_2026_10_22",
+              "entity_role": "employee",
+              "provenance_class": "administrative",
+              "assertion": "observation",
+              "period_coverage": {
+                "start_date": "2023-01-01",
+                "end_date": "2023-12-31"
+              },
+              "source_column_id": "ordinary_remuneration"
+            },
+            "weight": "1",
+            "sequence": 0
+          }
+        ],
+        "target_schedule": [
+          {
+            "selector": {
+              "source_name": "rsz_annual_wages_key_figures",
+              "source_measure_id": "ordinary_remuneration",
+              "source_concept": "rsz.annual_wages.ordinary_remuneration",
+              "entity_name": "person",
+              "period_type": "calendar_year",
+              "period_value": 2025,
+              "geography_level": "country",
+              "geography_id": "BE",
+              "geography_vintage": "current",
+              "record_set_id": "rsz.annual_wages.year2025.ordinary_remuneration",
+              "dimensions": [
+                "rsz.annual_worker_type_sex"
+              ],
+              "dimension_values": {
+                "rsz.annual_worker_type_sex": "total"
+              },
+              "aggregate_fact_key": "ledger.aggregate_fact.v2:3c1a0cfec5e2740c02758f98",
+              "assertion": "observation"
+            },
+            "validation": {
+              "unit": "EUR_thousands",
+              "source_sha256": "7f97f510d332a0966b1afba110ce448f4a4a83d9d58fd5c3bb4d8d36d1aeca97",
+              "source_vintage": "rsz_raw_wages_prepublication_2026_10_22",
+              "entity_role": "employee",
+              "provenance_class": "administrative",
+              "assertion": "observation",
+              "period_coverage": {
+                "start_date": "2025-01-01",
+                "end_date": "2025-12-31"
+              },
+              "source_column_id": "ordinary_remuneration"
+            },
+            "weight": "1",
+            "sequence": 0,
+            "projection_offset": 0
+          }
+        ],
+        "growth": null,
+        "subperiods_per_year": 1,
+        "projection_policy": "observed_preferred_latest_contiguous",
+        "rounding": {
+          "digits": 6,
+          "mode": "nearest_half_even"
+        },
+        "expected_operational_factor": {
+          "numerator": 1063921,
+          "denominator": 1000000
+        },
+        "validity": {
+          "declared_on": "2026-11-01",
+          "valid_from": "2026-11-01",
+          "valid_until": "2027-06-30",
+          "as_of": "2026-11-01"
+        },
+        "evidence": [
+          "RSZ/ONSS annual wages key figures (Kerncijfers), ordinary remuneration, all employees, calendar years; pre-publication raw data, 2024-2025 not final",
+          "Diagnostic cross-check of the observed segment of FPB wage-driven ratio pairs; never a profile or money normalization input"
+        ],
+        "decision_references": [
+          "BE-MC0 (proposed pending d1902): targets rolled to 2026 by FPB June 2026 ratio pairs",
+          "G8-r2 factor resolver: projected_period_average_ratio@1"
+        ]
+      },
+      "operational_factor": {
+        "numerator": 1063921,
+        "denominator": 1000000
+      },
+      "receipt": {
+        "schema_version": 1,
+        "operation": "projected_period_average_ratio",
+        "operation_version": 1,
+        "factor_id": "rsz_ordinary_remuneration_cy2023_to_cy2025_observed",
+        "declaration_sha256": "12c72b7401ea0eb9784508e783f41970f08cbf548cc4615d2484721aa87ee2c6",
+        "feed_identity": {
+          "source_commit": "2c7e8357f1dcb9af2337c10d6cf4cbd82b1e55ef",
+          "facts_sha256": "e01a463065a81ba60139a24a605e52797442504478be60970e0ff66f9d3c6b95",
+          "manifest_sha256": "7839792643a6a32a1784328644df16c250e8d4ba08287c455983a6e7ceebb34c",
+          "artifact_schema_version": "policyengine_ledger.consumer_artifact.v2",
+          "consumer_fact_schema_versions": [
+            "chronicle.consumer_fact.v4"
+          ],
+          "consumer_fact_schema_sha256": "d953306d6f01fbc64db4372d0262d3012ee590269f8a25b276b18dca0626c6a0",
+          "fact_row_count": 87112
+        },
+        "source_period": 2023,
+        "target_period": 2025,
+        "source_schedule": [
+          {
+            "selector": {
+              "source_name": "rsz_annual_wages_key_figures",
+              "source_measure_id": "ordinary_remuneration",
+              "source_concept": "rsz.annual_wages.ordinary_remuneration",
+              "entity_name": "person",
+              "period_type": "calendar_year",
+              "period_value": 2023,
+              "geography_level": "country",
+              "geography_id": "BE",
+              "geography_vintage": "current",
+              "record_set_id": "rsz.annual_wages.year2023.ordinary_remuneration",
+              "dimensions": [
+                "rsz.annual_worker_type_sex"
+              ],
+              "dimension_values": {
+                "rsz.annual_worker_type_sex": "total"
+              },
+              "aggregate_fact_key": "ledger.aggregate_fact.v2:2c0d2f4c10c54cee45e5777b",
+              "assertion": "observation"
+            },
+            "aggregate_fact_key": "ledger.aggregate_fact.v2:2c0d2f4c10c54cee45e5777b",
+            "decimal_operand": "160796591.5",
+            "numeric_token_proof": {
+              "numeric_representation": "binary_float_with_lexical_token",
+              "lexical_token": "160796591.5",
+              "recovered_decimal": "160796591.5",
+              "decimal_values_equal": true
+            },
+            "validation": {
+              "unit": "EUR_thousands",
+              "source_sha256": "7f97f510d332a0966b1afba110ce448f4a4a83d9d58fd5c3bb4d8d36d1aeca97",
+              "source_vintage": "rsz_raw_wages_prepublication_2026_10_22",
+              "entity_role": "employee",
+              "provenance_class": "administrative",
+              "assertion": "observation",
+              "period_coverage": {
+                "start_date": "2023-01-01",
+                "end_date": "2023-12-31"
+              },
+              "source_column_id": "ordinary_remuneration"
+            },
+            "period": {
+              "type": "calendar_year",
+              "value": 2023
+            },
+            "source": {
+              "extracted_at": "2026-10-24",
+              "extraction_method": "CellSelectorSpec and SourceRecordSpec resolved from cells",
+              "method_notes": "Each fact carries source_record_id, source_cell_keys, and source_row_keys when available.",
+              "raw_r2_bucket": "ledger-raw",
+              "raw_r2_key": "raw/belgium/rsz-annual-wages-key-figures-2020-2025/2025/7f97f510d332a0966b1afba110ce448f4a4a83d9d58fd5c3bb4d8d36d1aeca97/annual_wages_key_figures_2020_2025.csv",
+              "raw_r2_uri": "r2://ledger-raw/raw/belgium/rsz-annual-wages-key-figures-2020-2025/2025/7f97f510d332a0966b1afba110ce448f4a4a83d9d58fd5c3bb4d8d36d1aeca97/annual_wages_key_figures_2020_2025.csv",
+              "source_file": "annual_wages_key_figures_2020_2025.csv",
+              "source_name": "rsz_annual_wages_key_figures",
+              "source_sha256": "7f97f510d332a0966b1afba110ce448f4a4a83d9d58fd5c3bb4d8d36d1aeca97",
+              "source_size_bytes": 68891,
+              "source_table": "Lonen en bezoldigde prestaties, Kerncijfers-Chiffres Clés, 2020–2025",
+              "url": "https://www.rsz.be/file/6103c41969844d308979992d7f84d51e59927e1e/c4c5776181e3dd24273ecb6b9486065cb468fadb/ruwedata-donneesbrutes-periods-wages.xlsx",
+              "vintage": "rsz_raw_wages_prepublication_2026_10_22"
+            },
+            "unit": "EUR_thousands",
+            "assertion": "observation",
+            "provenance_class": "administrative",
+            "entity_role": "employee",
+            "period_coverage": {
+              "basis": "calendar",
+              "end_date": "2023-12-31",
+              "notes": "Calendar-year remuneration or paid days/hours; pre-publication raw data, landing page updated 22/10/2026. The 2024–2025 figures are not described as final. RSZ-registered employment in Belgium; includes inbound cross-border workers, excludes posted workers and self-employed people. Administrative employment population differs from Statbel fiscal declarations.",
+              "source_period_label": "2023",
+              "start_date": "2023-01-01"
+            },
+            "weight": "1",
+            "sequence": 0
+          }
+        ],
+        "target_schedule": [
+          {
+            "selector": {
+              "source_name": "rsz_annual_wages_key_figures",
+              "source_measure_id": "ordinary_remuneration",
+              "source_concept": "rsz.annual_wages.ordinary_remuneration",
+              "entity_name": "person",
+              "period_type": "calendar_year",
+              "period_value": 2025,
+              "geography_level": "country",
+              "geography_id": "BE",
+              "geography_vintage": "current",
+              "record_set_id": "rsz.annual_wages.year2025.ordinary_remuneration",
+              "dimensions": [
+                "rsz.annual_worker_type_sex"
+              ],
+              "dimension_values": {
+                "rsz.annual_worker_type_sex": "total"
+              },
+              "aggregate_fact_key": "ledger.aggregate_fact.v2:3c1a0cfec5e2740c02758f98",
+              "assertion": "observation"
+            },
+            "aggregate_fact_key": "ledger.aggregate_fact.v2:3c1a0cfec5e2740c02758f98",
+            "decimal_operand": "171074878.6",
+            "numeric_token_proof": {
+              "numeric_representation": "binary_float_with_lexical_token",
+              "lexical_token": "171074878.6",
+              "recovered_decimal": "171074878.6",
+              "decimal_values_equal": true
+            },
+            "validation": {
+              "unit": "EUR_thousands",
+              "source_sha256": "7f97f510d332a0966b1afba110ce448f4a4a83d9d58fd5c3bb4d8d36d1aeca97",
+              "source_vintage": "rsz_raw_wages_prepublication_2026_10_22",
+              "entity_role": "employee",
+              "provenance_class": "administrative",
+              "assertion": "observation",
+              "period_coverage": {
+                "start_date": "2025-01-01",
+                "end_date": "2025-12-31"
+              },
+              "source_column_id": "ordinary_remuneration"
+            },
+            "period": {
+              "type": "calendar_year",
+              "value": 2025
+            },
+            "source": {
+              "extracted_at": "2026-10-24",
+              "extraction_method": "CellSelectorSpec and SourceRecordSpec resolved from cells",
+              "method_notes": "Each fact carries source_record_id, source_cell_keys, and source_row_keys when available.",
+              "raw_r2_bucket": "ledger-raw",
+              "raw_r2_key": "raw/belgium/rsz-annual-wages-key-figures-2020-2025/2025/7f97f510d332a0966b1afba110ce448f4a4a83d9d58fd5c3bb4d8d36d1aeca97/annual_wages_key_figures_2020_2025.csv",
+              "raw_r2_uri": "r2://ledger-raw/raw/belgium/rsz-annual-wages-key-figures-2020-2025/2025/7f97f510d332a0966b1afba110ce448f4a4a83d9d58fd5c3bb4d8d36d1aeca97/annual_wages_key_figures_2020_2025.csv",
+              "source_file": "annual_wages_key_figures_2020_2025.csv",
+              "source_name": "rsz_annual_wages_key_figures",
+              "source_sha256": "7f97f510d332a0966b1afba110ce448f4a4a83d9d58fd5c3bb4d8d36d1aeca97",
+              "source_size_bytes": 68891,
+              "source_table": "Lonen en bezoldigde prestaties, Kerncijfers-Chiffres Clés, 2020–2025",
+              "url": "https://www.rsz.be/file/6103c41969844d308979992d7f84d51e59927e1e/c4c5776181e3dd24273ecb6b9486065cb468fadb/ruwedata-donneesbrutes-periods-wages.xlsx",
+              "vintage": "rsz_raw_wages_prepublication_2026_10_22"
+            },
+            "unit": "EUR_thousands",
+            "assertion": "observation",
+            "provenance_class": "administrative",
+            "entity_role": "employee",
+            "period_coverage": {
+              "basis": "calendar",
+              "end_date": "2025-12-31",
+              "notes": "Calendar-year remuneration or paid days/hours; pre-publication raw data, landing page updated 22/10/2026. The 2024–2025 figures are not described as final. RSZ-registered employment in Belgium; includes inbound cross-border workers, excludes posted workers and self-employed people. Administrative employment population differs from Statbel fiscal declarations.",
+              "source_period_label": "2025",
+              "start_date": "2025-01-01"
+            },
+            "status": "observed",
+            "sequence": 0,
+            "weight": "1",
+            "projection_offset": 0
+          }
+        ],
+        "subperiods_per_year": 1,
+        "projection_policy": "observed_preferred_latest_contiguous",
+        "denominator_mean": {
+          "numerator": 321593183,
+          "denominator": 2
+        },
+        "growth": null,
+        "root_bounds": {
+          "lower": {
+            "numerator": 1,
+            "denominator": 1
+          },
+          "upper": {
+            "numerator": 1,
+            "denominator": 1
+          },
+          "exact": true,
+          "decimal_places": 14,
+          "degree": 1,
+          "radicand": {
+            "numerator": 1,
+            "denominator": 1
+          }
+        },
+        "numerator_mean_bounds": {
+          "lower": {
+            "numerator": 855374393,
+            "denominator": 5
+          },
+          "upper": {
+            "numerator": 855374393,
+            "denominator": 5
+          }
+        },
+        "unrounded_factor_bounds": {
+          "lower": {
+            "numerator": 1710748786,
+            "denominator": 1607965915
+          },
+          "upper": {
+            "numerator": 1710748786,
+            "denominator": 1607965915
+          }
+        },
+        "rounding": {
+          "digits": 6,
+          "mode": "nearest_half_even"
+        },
+        "operational_factor": {
+          "numerator": 1063921,
+          "denominator": 1000000
+        },
+        "validity": {
+          "declared_on": "2026-11-01",
+          "valid_from": "2026-11-01",
+          "valid_until": "2027-06-30",
+          "as_of": "2026-11-01"
+        },
+        "evidence": [
+          "RSZ/ONSS annual wages key figures (Kerncijfers), ordinary remuneration, all employees, calendar years; pre-publication raw data, 2024-2025 not final",
+          "Diagnostic cross-check of the observed segment of FPB wage-driven ratio pairs; never a profile or money normalization input"
+        ],
+        "decision_references": [
+          "BE-MC0 (proposed pending d1902): targets rolled to 2026 by FPB June 2026 ratio pairs",
+          "G8-r2 factor resolver: projected_period_average_ratio@1"
+        ],
+        "receipt_sha256": "0c6b93472a6c4e8a3510bc83106a49d25b71e6729c04e16b154e94b053fac36d"
+      }
+    },
+    {
+      "declaration": {
+        "schema_version": 1,
+        "id": "rsz_ordinary_remuneration_cy2024_to_cy2025_observed",
+        "operation": "projected_period_average_ratio",
+        "operation_version": 1,
+        "purpose": "diagnostic",
+        "feed_identity": {
+          "source_commit": "2c7e8357f1dcb9af2337c10d6cf4cbd82b1e55ef",
+          "facts_sha256": "e01a463065a81ba60139a24a605e52797442504478be60970e0ff66f9d3c6b95",
+          "manifest_sha256": "7839792643a6a32a1784328644df16c250e8d4ba08287c455983a6e7ceebb34c",
+          "artifact_schema_version": "policyengine_ledger.consumer_artifact.v2",
+          "consumer_fact_schema_versions": [
+            "chronicle.consumer_fact.v4"
+          ],
+          "consumer_fact_schema_sha256": "d953306d6f01fbc64db4372d0262d3012ee590269f8a25b276b18dca0626c6a0",
+          "fact_row_count": 87112
+        },
+        "source_period": 2024,
+        "target_period": 2025,
+        "source_schedule": [
+          {
+            "selector": {
+              "source_name": "rsz_annual_wages_key_figures",
+              "source_measure_id": "ordinary_remuneration",
+              "source_concept": "rsz.annual_wages.ordinary_remuneration",
+              "entity_name": "person",
+              "period_type": "calendar_year",
+              "period_value": 2024,
+              "geography_level": "country",
+              "geography_id": "BE",
+              "geography_vintage": "current",
+              "record_set_id": "rsz.annual_wages.year2024.ordinary_remuneration",
+              "dimensions": [
+                "rsz.annual_worker_type_sex"
+              ],
+              "dimension_values": {
+                "rsz.annual_worker_type_sex": "total"
+              },
+              "aggregate_fact_key": "ledger.aggregate_fact.v2:fff2864b2ff60754bce8bfcf",
+              "assertion": "observation"
+            },
+            "validation": {
+              "unit": "EUR_thousands",
+              "source_sha256": "7f97f510d332a0966b1afba110ce448f4a4a83d9d58fd5c3bb4d8d36d1aeca97",
+              "source_vintage": "rsz_raw_wages_prepublication_2026_10_22",
+              "entity_role": "employee",
+              "provenance_class": "administrative",
+              "assertion": "observation",
+              "period_coverage": {
+                "start_date": "2024-01-01",
+                "end_date": "2024-12-31"
+              },
+              "source_column_id": "ordinary_remuneration"
+            },
+            "weight": "1",
+            "sequence": 0
+          }
+        ],
+        "target_schedule": [
+          {
+            "selector": {
+              "source_name": "rsz_annual_wages_key_figures",
+              "source_measure_id": "ordinary_remuneration",
+              "source_concept": "rsz.annual_wages.ordinary_remuneration",
+              "entity_name": "person",
+              "period_type": "calendar_year",
+              "period_value": 2025,
+              "geography_level": "country",
+              "geography_id": "BE",
+              "geography_vintage": "current",
+              "record_set_id": "rsz.annual_wages.year2025.ordinary_remuneration",
+              "dimensions": [
+                "rsz.annual_worker_type_sex"
+              ],
+              "dimension_values": {
+                "rsz.annual_worker_type_sex": "total"
+              },
+              "aggregate_fact_key": "ledger.aggregate_fact.v2:3c1a0cfec5e2740c02758f98",
+              "assertion": "observation"
+            },
+            "validation": {
+              "unit": "EUR_thousands",
+              "source_sha256": "7f97f510d332a0966b1afba110ce448f4a4a83d9d58fd5c3bb4d8d36d1aeca97",
+              "source_vintage": "rsz_raw_wages_prepublication_2026_10_22",
+              "entity_role": "employee",
+              "provenance_class": "administrative",
+              "assertion": "observation",
+              "period_coverage": {
+                "start_date": "2025-01-01",
+                "end_date": "2025-12-31"
+              },
+              "source_column_id": "ordinary_remuneration"
+            },
+            "weight": "1",
+            "sequence": 0,
+            "projection_offset": 0
+          }
+        ],
+        "growth": null,
+        "subperiods_per_year": 1,
+        "projection_policy": "observed_preferred_latest_contiguous",
+        "rounding": {
+          "digits": 6,
+          "mode": "nearest_half_even"
+        },
+        "expected_operational_factor": {
+          "numerator": 1032192,
+          "denominator": 1000000
+        },
+        "validity": {
+          "declared_on": "2026-11-01",
+          "valid_from": "2026-11-01",
+          "valid_until": "2027-06-30",
+          "as_of": "2026-11-01"
+        },
+        "evidence": [
+          "RSZ/ONSS annual wages key figures (Kerncijfers), ordinary remuneration, all employees, calendar years; pre-publication raw data, 2024-2025 not final",
+          "Diagnostic cross-check of the observed segment of FPB wage-driven ratio pairs; never a profile or money normalization input"
+        ],
+        "decision_references": [
+          "BE-MC0 (proposed pending d1902): targets rolled to 2026 by FPB June 2026 ratio pairs",
+          "G8-r2 factor resolver: projected_period_average_ratio@1"
+        ]
+      },
+      "operational_factor": {
+        "numerator": 1032192,
+        "denominator": 1000000
+      },
+      "receipt": {
+        "schema_version": 1,
+        "operation": "projected_period_average_ratio",
+        "operation_version": 1,
+        "factor_id": "rsz_ordinary_remuneration_cy2024_to_cy2025_observed",
+        "declaration_sha256": "d44873e9991fb138a9a8d2d734c6fc001c73d17fdb85752dfd0443b7b474e6d5",
+        "feed_identity": {
+          "source_commit": "2c7e8357f1dcb9af2337c10d6cf4cbd82b1e55ef",
+          "facts_sha256": "e01a463065a81ba60139a24a605e52797442504478be60970e0ff66f9d3c6b95",
+          "manifest_sha256": "7839792643a6a32a1784328644df16c250e8d4ba08287c455983a6e7ceebb34c",
+          "artifact_schema_version": "policyengine_ledger.consumer_artifact.v2",
+          "consumer_fact_schema_versions": [
+            "chronicle.consumer_fact.v4"
+          ],
+          "consumer_fact_schema_sha256": "d953306d6f01fbc64db4372d0262d3012ee590269f8a25b276b18dca0626c6a0",
+          "fact_row_count": 87112
+        },
+        "source_period": 2024,
+        "target_period": 2025,
+        "source_schedule": [
+          {
+            "selector": {
+              "source_name": "rsz_annual_wages_key_figures",
+              "source_measure_id": "ordinary_remuneration",
+              "source_concept": "rsz.annual_wages.ordinary_remuneration",
+              "entity_name": "person",
+              "period_type": "calendar_year",
+              "period_value": 2024,
+              "geography_level": "country",
+              "geography_id": "BE",
+              "geography_vintage": "current",
+              "record_set_id": "rsz.annual_wages.year2024.ordinary_remuneration",
+              "dimensions": [
+                "rsz.annual_worker_type_sex"
+              ],
+              "dimension_values": {
+                "rsz.annual_worker_type_sex": "total"
+              },
+              "aggregate_fact_key": "ledger.aggregate_fact.v2:fff2864b2ff60754bce8bfcf",
+              "assertion": "observation"
+            },
+            "aggregate_fact_key": "ledger.aggregate_fact.v2:fff2864b2ff60754bce8bfcf",
+            "decimal_operand": "165739460",
+            "numeric_token_proof": {
+              "numeric_representation": "exact_integer",
+              "lexical_token": "165739460",
+              "recovered_decimal": "165739460",
+              "decimal_values_equal": true
+            },
+            "validation": {
+              "unit": "EUR_thousands",
+              "source_sha256": "7f97f510d332a0966b1afba110ce448f4a4a83d9d58fd5c3bb4d8d36d1aeca97",
+              "source_vintage": "rsz_raw_wages_prepublication_2026_10_22",
+              "entity_role": "employee",
+              "provenance_class": "administrative",
+              "assertion": "observation",
+              "period_coverage": {
+                "start_date": "2024-01-01",
+                "end_date": "2024-12-31"
+              },
+              "source_column_id": "ordinary_remuneration"
+            },
+            "period": {
+              "type": "calendar_year",
+              "value": 2024
+            },
+            "source": {
+              "extracted_at": "2026-10-24",
+              "extraction_method": "CellSelectorSpec and SourceRecordSpec resolved from cells",
+              "method_notes": "Each fact carries source_record_id, source_cell_keys, and source_row_keys when available.",
+              "raw_r2_bucket": "ledger-raw",
+              "raw_r2_key": "raw/belgium/rsz-annual-wages-key-figures-2020-2025/2025/7f97f510d332a0966b1afba110ce448f4a4a83d9d58fd5c3bb4d8d36d1aeca97/annual_wages_key_figures_2020_2025.csv",
+              "raw_r2_uri": "r2://ledger-raw/raw/belgium/rsz-annual-wages-key-figures-2020-2025/2025/7f97f510d332a0966b1afba110ce448f4a4a83d9d58fd5c3bb4d8d36d1aeca97/annual_wages_key_figures_2020_2025.csv",
+              "source_file": "annual_wages_key_figures_2020_2025.csv",
+              "source_name": "rsz_annual_wages_key_figures",
+              "source_sha256": "7f97f510d332a0966b1afba110ce448f4a4a83d9d58fd5c3bb4d8d36d1aeca97",
+              "source_size_bytes": 68891,
+              "source_table": "Lonen en bezoldigde prestaties, Kerncijfers-Chiffres Clés, 2020–2025",
+              "url": "https://www.rsz.be/file/6103c41969844d308979992d7f84d51e59927e1e/c4c5776181e3dd24273ecb6b9486065cb468fadb/ruwedata-donneesbrutes-periods-wages.xlsx",
+              "vintage": "rsz_raw_wages_prepublication_2026_10_22"
+            },
+            "unit": "EUR_thousands",
+            "assertion": "observation",
+            "provenance_class": "administrative",
+            "entity_role": "employee",
+            "period_coverage": {
+              "basis": "calendar",
+              "end_date": "2024-12-31",
+              "notes": "Calendar-year remuneration or paid days/hours; pre-publication raw data, landing page updated 22/10/2026. The 2024–2025 figures are not described as final. RSZ-registered employment in Belgium; includes inbound cross-border workers, excludes posted workers and self-employed people. Administrative employment population differs from Statbel fiscal declarations.",
+              "source_period_label": "2024",
+              "start_date": "2024-01-01"
+            },
+            "weight": "1",
+            "sequence": 0
+          }
+        ],
+        "target_schedule": [
+          {
+            "selector": {
+              "source_name": "rsz_annual_wages_key_figures",
+              "source_measure_id": "ordinary_remuneration",
+              "source_concept": "rsz.annual_wages.ordinary_remuneration",
+              "entity_name": "person",
+              "period_type": "calendar_year",
+              "period_value": 2025,
+              "geography_level": "country",
+              "geography_id": "BE",
+              "geography_vintage": "current",
+              "record_set_id": "rsz.annual_wages.year2025.ordinary_remuneration",
+              "dimensions": [
+                "rsz.annual_worker_type_sex"
+              ],
+              "dimension_values": {
+                "rsz.annual_worker_type_sex": "total"
+              },
+              "aggregate_fact_key": "ledger.aggregate_fact.v2:3c1a0cfec5e2740c02758f98",
+              "assertion": "observation"
+            },
+            "aggregate_fact_key": "ledger.aggregate_fact.v2:3c1a0cfec5e2740c02758f98",
+            "decimal_operand": "171074878.6",
+            "numeric_token_proof": {
+              "numeric_representation": "binary_float_with_lexical_token",
+              "lexical_token": "171074878.6",
+              "recovered_decimal": "171074878.6",
+              "decimal_values_equal": true
+            },
+            "validation": {
+              "unit": "EUR_thousands",
+              "source_sha256": "7f97f510d332a0966b1afba110ce448f4a4a83d9d58fd5c3bb4d8d36d1aeca97",
+              "source_vintage": "rsz_raw_wages_prepublication_2026_10_22",
+              "entity_role": "employee",
+              "provenance_class": "administrative",
+              "assertion": "observation",
+              "period_coverage": {
+                "start_date": "2025-01-01",
+                "end_date": "2025-12-31"
+              },
+              "source_column_id": "ordinary_remuneration"
+            },
+            "period": {
+              "type": "calendar_year",
+              "value": 2025
+            },
+            "source": {
+              "extracted_at": "2026-10-24",
+              "extraction_method": "CellSelectorSpec and SourceRecordSpec resolved from cells",
+              "method_notes": "Each fact carries source_record_id, source_cell_keys, and source_row_keys when available.",
+              "raw_r2_bucket": "ledger-raw",
+              "raw_r2_key": "raw/belgium/rsz-annual-wages-key-figures-2020-2025/2025/7f97f510d332a0966b1afba110ce448f4a4a83d9d58fd5c3bb4d8d36d1aeca97/annual_wages_key_figures_2020_2025.csv",
+              "raw_r2_uri": "r2://ledger-raw/raw/belgium/rsz-annual-wages-key-figures-2020-2025/2025/7f97f510d332a0966b1afba110ce448f4a4a83d9d58fd5c3bb4d8d36d1aeca97/annual_wages_key_figures_2020_2025.csv",
+              "source_file": "annual_wages_key_figures_2020_2025.csv",
+              "source_name": "rsz_annual_wages_key_figures",
+              "source_sha256": "7f97f510d332a0966b1afba110ce448f4a4a83d9d58fd5c3bb4d8d36d1aeca97",
+              "source_size_bytes": 68891,
+              "source_table": "Lonen en bezoldigde prestaties, Kerncijfers-Chiffres Clés, 2020–2025",
+              "url": "https://www.rsz.be/file/6103c41969844d308979992d7f84d51e59927e1e/c4c5776181e3dd24273ecb6b9486065cb468fadb/ruwedata-donneesbrutes-periods-wages.xlsx",
+              "vintage": "rsz_raw_wages_prepublication_2026_10_22"
+            },
+            "unit": "EUR_thousands",
+            "assertion": "observation",
+            "provenance_class": "administrative",
+            "entity_role": "employee",
+            "period_coverage": {
+              "basis": "calendar",
+              "end_date": "2025-12-31",
+              "notes": "Calendar-year remuneration or paid days/hours; pre-publication raw data, landing page updated 22/10/2026. The 2024–2025 figures are not described as final. RSZ-registered employment in Belgium; includes inbound cross-border workers, excludes posted workers and self-employed people. Administrative employment population differs from Statbel fiscal declarations.",
+              "source_period_label": "2025",
+              "start_date": "2025-01-01"
+            },
+            "status": "observed",
+            "sequence": 0,
+            "weight": "1",
+            "projection_offset": 0
+          }
+        ],
+        "subperiods_per_year": 1,
+        "projection_policy": "observed_preferred_latest_contiguous",
+        "denominator_mean": {
+          "numerator": 165739460,
+          "denominator": 1
+        },
+        "growth": null,
+        "root_bounds": {
+          "lower": {
+            "numerator": 1,
+            "denominator": 1
+          },
+          "upper": {
+            "numerator": 1,
+            "denominator": 1
+          },
+          "exact": true,
+          "decimal_places": 14,
+          "degree": 1,
+          "radicand": {
+            "numerator": 1,
+            "denominator": 1
+          }
+        },
+        "numerator_mean_bounds": {
+          "lower": {
+            "numerator": 855374393,
+            "denominator": 5
+          },
+          "upper": {
+            "numerator": 855374393,
+            "denominator": 5
+          }
+        },
+        "unrounded_factor_bounds": {
+          "lower": {
+            "numerator": 855374393,
+            "denominator": 828697300
+          },
+          "upper": {
+            "numerator": 855374393,
+            "denominator": 828697300
+          }
+        },
+        "rounding": {
+          "digits": 6,
+          "mode": "nearest_half_even"
+        },
+        "operational_factor": {
+          "numerator": 1032192,
+          "denominator": 1000000
+        },
+        "validity": {
+          "declared_on": "2026-11-01",
+          "valid_from": "2026-11-01",
+          "valid_until": "2027-06-30",
+          "as_of": "2026-11-01"
+        },
+        "evidence": [
+          "RSZ/ONSS annual wages key figures (Kerncijfers), ordinary remuneration, all employees, calendar years; pre-publication raw data, 2024-2025 not final",
+          "Diagnostic cross-check of the observed segment of FPB wage-driven ratio pairs; never a profile or money normalization input"
+        ],
+        "decision_references": [
+          "BE-MC0 (proposed pending d1902): targets rolled to 2026 by FPB June 2026 ratio pairs",
+          "G8-r2 factor resolver: projected_period_average_ratio@1"
+        ],
+        "receipt_sha256": "1fa388f0c5b6d3ad8e01f7a0c3355155e5aacc84b710ee4f49b137a2b98d2b9c"
+      }
+    }
+  ]
+}

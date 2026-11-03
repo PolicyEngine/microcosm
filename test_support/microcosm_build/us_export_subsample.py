@@ -25,6 +25,7 @@ tool anyway, use the real class.
 from __future__ import annotations
 
 import importlib.util
+import subprocess
 import sys
 from dataclasses import dataclass
 from pathlib import Path
@@ -397,6 +398,48 @@ def sample_synthetic(
         certainty_threshold=certainty_threshold,
     )
     return Path(receipt["output"]["path"]), receipt
+
+
+#: The commit git reports once :func:`move_head_after_load` has run.
+LATER_HEAD = "f" * 40
+
+#: The fields a tool records about the state it loaded from.
+LOAD_STATE_FIELDS = (
+    "commit",
+    "dirty",
+    "changes_sha256",
+    "sha256",
+    "installed_distributions",
+)
+
+
+def move_head_after_load(monkeypatch) -> None:
+    """Make every later ``git`` call see a clean tree at :data:`LATER_HEAD`,
+    as when the worktree moves on while a long run is still going."""
+    real_run = subprocess.run
+
+    def run(args, *rest, **options):
+        command = list(args) if isinstance(args, list | tuple) else None
+        if command and command[0] == "git":
+            if "--show-object-format" in command:
+                out = "sha1\n"
+            elif "rev-parse" in command:
+                out = LATER_HEAD + "\n"
+            else:  # ls-tree, diff-index, ls-files: nothing differs
+                out = ""
+            if not options.get("text"):
+                out = out.encode()
+            return subprocess.CompletedProcess(command, 0, out, out[:0])
+        return real_run(args, *rest, **options)
+
+    monkeypatch.setattr(subprocess, "run", run)
+
+
+def pin_git_state_at_load(monkeypatch, tool) -> None:
+    """Make ``tool._git_state`` report the state the tool loaded from."""
+    loaded = tool._TOOL_SOURCE
+    state = (loaded["commit"], loaded["dirty"], loaded["changes_sha256"])
+    monkeypatch.setattr(tool, "_git_state", lambda *args, **kwargs: state)
 
 
 __all__ = [name for name in globals() if not name.startswith("__")]

@@ -1,0 +1,51 @@
+{
+  "country": "nz",
+  "reference_set": "mass",
+  "description": "CREATE scales design weights to Stats NZ's national June 2025 estimated resident population under H8; this unfiltered person count supplies mass, not a calibration row.",
+  "target_references": [
+    {
+      "name": "stats_nz_national_erp_june_2025",
+      "ledger_selector": {
+        "source_name": "stats_nz",
+        "source_measure_id": "population",
+        "source_concept": "stats_nz.estimated_resident_population",
+        "entity_name": "person",
+        "period_type": "calendar_year",
+        "period_value": 2025,
+        "geography_level": "country",
+        "geography_id": "NZ",
+        "geography_vintage": "current",
+        "record_set_id": "stats_nz.cy2025.subnational_population.all_ages",
+        "dimensions": [],
+        "aggregate_fact_key": "ledger.aggregate_fact.v2:b1ba314a94795074129a560a"
+      },
+      "entity": "person",
+      "measure": "people",
+      "period": 2025,
+      "family": "demography",
+      "assertion_policy": "observed_only",
+      "metadata": {
+        "contract_target_id": "national_erp",
+        "activation_status": "active",
+        "criticality": "release_blocking",
+        "measure_kind": "prepared_column",
+        "publisher": "Stats NZ",
+        "target_role": "pre_calibration",
+        "reference_set": "mass",
+        "method_card_row": "MC5"
+      },
+      "hierarchy": {
+        "provider": {
+          "id": "stats_nz",
+          "label": "Stats NZ"
+        },
+        "category": {
+          "id": "demography",
+          "label": "Demography",
+          "provider_id": "stats_nz"
+        },
+        "target_label": "New Zealand estimated resident population, June 2025"
+      }
+    }
+  ]
+}

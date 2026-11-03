@@ -36,6 +36,13 @@ _PERIOD_BY_SOURCE_NAME: dict[str, str] = {
     "ETERNITY": "point",
     "DAY": "point",
 }
+# Unit constants a variable class may name: ``policyengine_us.tools.general``
+# defines both, and ``policyengine_us.model_api`` star-imports them. Any other
+# unit must be a string literal.
+_UNIT_BY_SOURCE_NAME: dict[str, str] = {
+    "USD": "currency-USD",
+    "PERCENT": "/1",
+}
 
 
 @dataclass(frozen=True, order=True)
@@ -163,6 +170,10 @@ class _SourceVariableDefinition:
     metadata: VariableMetadata
     always_computed: bool
     formula_starts: tuple[tuple[int, int, int], ...]
+    # The class body's static ``unit`` value, or None when it declares none.
+    # The audited generated-variable snapshot records no unit, so its
+    # definitions carry None as well.
+    unit: str | None = None
 
     @property
     def formula_owned(self) -> bool:
@@ -388,6 +399,20 @@ def _variable_definition(
             f"PolicyEngine variable {node.name!r} in {source_path} has unsupported "
             f"definition_period metadata {period_name!r}."
         )
+    unit = None
+    if "unit" in assignments:
+        unit_value = assignments["unit"]
+        if isinstance(unit_value, ast.Constant) and (
+            unit_value.value is None or isinstance(unit_value.value, str)
+        ):
+            unit = unit_value.value
+        elif isinstance(unit_value, ast.Name) and unit_value.id in _UNIT_BY_SOURCE_NAME:
+            unit = _UNIT_BY_SOURCE_NAME[unit_value.id]
+        else:
+            raise RuntimeError(
+                f"PolicyEngine variable {node.name!r} in {source_path} has "
+                f"unsupported unit metadata {ast.unparse(unit_value)!r}."
+            )
 
     always_computed = False
     formula_starts: list[tuple[int, int, int]] = []
@@ -416,6 +441,7 @@ def _variable_definition(
         ),
         always_computed=always_computed,
         formula_starts=tuple(sorted(formula_starts)),
+        unit=unit,
     )
 
 

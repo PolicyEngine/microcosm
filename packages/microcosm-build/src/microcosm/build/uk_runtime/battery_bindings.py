@@ -47,6 +47,7 @@ from microcosm.build.gate_battery import (
 from microcosm.build.gates import (
     GateResult,
     aggregate_admin_gate,
+    area_support_below_floor,
     area_support_gate,
     column_implication_gate,
     enum_domain_gate,
@@ -99,6 +100,7 @@ from microcosm.build.uk_runtime.terminal_gates import (
     _missing_fit_weight_evidence_gate,
     uk_cgt_projection_entrants_gate,
     uk_default_degenerate_reviewed_exclusions,
+    uk_default_local_target_fit_reviewed_exclusions,
     uk_default_target_fit_reviewed_exclusions,
     uk_degenerate_release_surface_gate,
     uk_export_surface_gate,
@@ -112,6 +114,7 @@ from microcosm.build.uk_runtime.weighted_integrity import (
     UK_DEGENERATE_EXCLUSION_REGISTER_RESOURCE,
     UK_INPUT_MASS_EXCLUSION_REGISTER_RESOURCE,
     UK_INPUT_MASS_REFERENCE_REGISTRY,
+    UK_LOCAL_TARGET_FIT_EXCLUSION_REGISTER_RESOURCE,
     UK_RELEASE_LINES,
     UK_TARGET_FIT_EXCLUSION_REGISTER_RESOURCE,
     UKInputMassParityPolicy,
@@ -569,6 +572,31 @@ def _evaluate_column_implication(
             "same_source_mismatch_count": int(sum_mismatch.sum()),
             "nonfinite_capital_count": int(nonfinite.sum()),
         }
+    # From policyengine-uk 2.136.1 a unit on the sentinel takes its own share
+    # of its household's property for each scheme, which a recording unit
+    # beside it already holds, so the property would count twice there
+    # (Vahid's review of microcosm#1333). No unit may sit on the sentinel
+    # beside a unit that records a property share for either scheme.
+    person = frame.table("person")
+    unit_household = (
+        person.drop_duplicates("person_benunit_id")
+        .set_index("person_benunit_id")["person_household_id"]
+        .reindex(target[target_id_column])
+        .to_numpy()
+    )
+    on_sentinel = carrier == sentinel
+    sentinel_beside: dict[str, int] = {}
+    for column in property_shares:
+        share = np.asarray(shares.get(column, 0.0), dtype=float)
+        recording = (carrier >= 0.0) & (share > 0.0)
+        beside = on_sentinel & np.isin(unit_household, unit_household[recording])
+        sentinel_beside[column] = int(beside.sum())
+        if beside.any():
+            failures.append(
+                f"{target_entity}: {int(beside.sum())} unit(s) on the "
+                f"{sentinel:g} sentinel beside a unit that records {column}'s "
+                "property share; the engine would count that property twice."
+            )
     return GateResult(
         name="column_implication",
         passed=not failures,
@@ -589,6 +617,7 @@ def _evaluate_column_implication(
                 f"{target_entity}.{column}": counts[column]
                 for column in capital_columns
             },
+            "sentinel_units_beside_recorded_property": sentinel_beside,
         },
     )
 
@@ -601,16 +630,25 @@ def _declared_property_shares(
     from microcosm.build.uk_runtime.uc_capital_coherence import (
         PENSION_CREDIT_PROPERTY_CAPITAL_SOURCES,
         PROPERTY_CAPITAL_OWNERS,
+        PROPERTY_CAPITAL_SECURED_DEBT,
         PROPERTY_CAPITAL_VALUATION,
         UC_PROPERTY_CAPITAL_REPORTER_RULE,
         UC_PROPERTY_CAPITAL_SOURCES,
     )
+
+    def secured_debt(sources: tuple[str, ...]) -> dict[str, str]:
+        return {
+            source: PROPERTY_CAPITAL_SECURED_DEBT[source]
+            for source in sources
+            if source in PROPERTY_CAPITAL_SECURED_DEBT
+        }
 
     rules = {
         "uc_reported_capital": {
             "sources": list(UC_PROPERTY_CAPITAL_SOURCES),
             "owners": PROPERTY_CAPITAL_OWNERS,
             "valuation": PROPERTY_CAPITAL_VALUATION,
+            "secured_debt": secured_debt(UC_PROPERTY_CAPITAL_SOURCES),
             # A unit that reports Universal Credit keeps its receipt.
             "units_reporting_universal_credit": UC_PROPERTY_CAPITAL_REPORTER_RULE,
         },
@@ -618,6 +656,7 @@ def _declared_property_shares(
             "sources": list(PENSION_CREDIT_PROPERTY_CAPITAL_SOURCES),
             "owners": PROPERTY_CAPITAL_OWNERS,
             "valuation": PROPERTY_CAPITAL_VALUATION,
+            "secured_debt": secured_debt(PENSION_CREDIT_PROPERTY_CAPITAL_SOURCES),
         },
     }
     declared = {
@@ -691,6 +730,46 @@ def _engine_enum_domain(engine: Any, column: str) -> Any:
     )
 
 
+def _nation_partitioned_domains(
+    column: str, parameters: Mapping[str, Any]
+) -> dict[str, tuple[str, ...]] | None:
+    """The declared domains by nation, refused unless they are the code's.
+
+    A nation-partitioned gate names its row partition (the household's
+    ``region``, whose nation the region tier fixes) and repeats the domains in
+    ``gates.json`` so the declaration is reviewable; the declaration must equal
+    the shared constant the stages draw from.
+    """
+
+    from microcosm.build.uk_runtime.council_tax_constants import (
+        UK_COUNCIL_TAX_BANDS_BY_NATION,
+    )
+
+    declared_keys = {"partition_column", "domains_by_nation"} & set(parameters)
+    if not declared_keys:
+        return None
+    if declared_keys != {"partition_column", "domains_by_nation"}:
+        raise ValueError(
+            "A nation-partitioned enum_domain gate declares both "
+            "partition_column and domains_by_nation."
+        )
+    if parameters["partition_column"] != "region":
+        raise ValueError(
+            "enum_domain gates partition by nation through the household region."
+        )
+    code = {"council_tax_band": UK_COUNCIL_TAX_BANDS_BY_NATION}.get(column)
+    declared = {
+        str(nation): tuple(str(member) for member in members)
+        for nation, members in dict(parameters["domains_by_nation"]).items()
+    }
+    if code is None or declared != dict(code):
+        raise ValueError(
+            f"{column} domains by nation must equal the shared constant "
+            f"{dict(code) if code is not None else None}, got {declared}."
+        )
+    return declared
+
+
 def _evaluate_enum_domain(
     context: EvidenceContext, parameters: Mapping[str, Any]
 ) -> GateResult:
@@ -703,16 +782,34 @@ def _evaluate_enum_domain(
         domain = _engine_enum_domain(context.artifacts["rules_engine"], column)
     if domain is None:
         raise ValueError(f"{column} enum domain could not be resolved from evidence.")
-    matches = [
-        context.frame.table(entity)[column]
+    tables = [
+        context.frame.table(entity)
         for entity in context.frame.entities
         if column in context.frame.table(entity).columns
     ]
-    if len(matches) != 1:
+    if len(tables) != 1:
         raise ValueError(
-            f"{column} must occur on exactly one frame entity; found {len(matches)}."
+            f"{column} must occur on exactly one frame entity; found {len(tables)}."
         )
-    return enum_domain_gate({column: matches[0]}, {column: domain})
+    (table,) = tables
+    by_nation = _nation_partitioned_domains(column, parameters)
+    if by_nation is None:
+        return enum_domain_gate({column: table[column]}, {column: domain})
+
+    from microcosm.build.uk_runtime.council_tax_constants import UK_NATION_BY_REGION
+
+    if "region" not in table.columns:
+        raise ValueError(f"{column} is partitioned by region, which its table lacks.")
+    nations = table["region"].astype(str).map(UK_NATION_BY_REGION)
+    if nations.isna().any():
+        unknown = sorted(set(table.loc[nations.isna(), "region"].astype(str)))
+        raise ValueError(f"{column} rows carry regions with no nation: {unknown}.")
+    return enum_domain_gate(
+        {column: table[column]},
+        {column: domain},
+        partitions={column: nations},
+        partition_domains={column: by_nation},
+    )
 
 
 def _evaluate_support(
@@ -1247,31 +1344,76 @@ def _evaluate_area_support(
         None,
         resource=exclusions_resource,
     )
-    records = register["exclusions"]
+    # The exclusions are gate-only (microcosm#1301): an entry, keyed
+    # ``local_authority/<code>`` or ``constituency/<code>``, excuses its
+    # area's floor miss here and defers none of its cells. The Isles of
+    # Scilly and City of London cell deferrals are the local reference
+    # generator's own constants, lockstep-tested against this block. An
+    # entry scoped to another release line stands aside; the
+    # ``bound_despite_support_floor`` approvals stay window-checked whatever
+    # the line.
+    records, out_of_line = _in_line(register["exclusions"], context)
     clock = _exclusion_clock(context)
     invalid = {}
-    for block, entries in register.items():
+    for block, entries in (
+        ("exclusions", records),
+        ("bound_despite_support_floor", register["bound_despite_support_floor"]),
+    ):
         for key, record in entries.items():
             if record.expired(clock) or record.premature(clock):
                 invalid[f"{block}/{key}"] = record
     if invalid:
-        return GateResult(
-            name="area_support",
-            passed=False,
-            failures=tuple(
-                f"{key}: reviewed exclusion is outside its approval window "
-                f"{record.approved_on}..{record.expires_on} at {clock.isoformat()}."
-                for key, record in sorted(invalid.items())
+        return _with_out_of_line(
+            GateResult(
+                name="area_support",
+                passed=False,
+                failures=tuple(
+                    f"{key}: reviewed exclusion is outside its approval window "
+                    f"{record.approved_on}..{record.expires_on} at "
+                    f"{clock.isoformat()}."
+                    for key, record in sorted(invalid.items())
+                ),
+                details={"invalid_reviewed_exclusions": sorted(invalid)},
             ),
-            details={"invalid_reviewed_exclusions": sorted(invalid)},
+            context,
+            out_of_line,
         )
     levels = tuple(str(level) for level in kwargs["geography_levels"])
-    return area_support_gate(
+    result = area_support_gate(
         context.artifacts["uk_area_support_summary"],
         area_roster=_local_area_roster(resource, levels),
         reviewed_exclusions=_exclusion_payload(records),
         **kwargs,
     )
+    return _with_out_of_line(result, context, out_of_line)
+
+
+def uk_area_support_floors() -> dict[str, float | int]:
+    """The local support floors the ``uk_local_area_support`` gate declares."""
+
+    from microcosm.build import load_country_spec
+
+    (entry,) = (
+        entry
+        for entry in load_country_spec("uk").gates.gates
+        if entry.id == "uk_local_area_support"
+    )
+    floors = entry.parameters
+    return {
+        "minimum_rows": int(floors["minimum_rows"]),
+        "minimum_effective_sample_size": float(floors["minimum_effective_sample_size"]),
+        "minimum_distinct_sources": int(floors["minimum_distinct_sources"]),
+    }
+
+
+def uk_area_support_below_floor(area_support: pd.DataFrame) -> pd.Series:
+    """``support_below_floor`` for each area, under the declared local floors.
+
+    The flag a consumer reads and the gate that blocks a release apply one rule
+    (microcosm#1278). A reviewed exclusion does not clear the flag.
+    """
+
+    return area_support_below_floor(area_support, **uk_area_support_floors())
 
 
 def _local_target_error_items(evidence: object) -> tuple[tuple[str, float], ...]:
@@ -1462,6 +1604,8 @@ def _local_default_expected_surface(crosswalk_resource: str) -> frozenset[str]:
     for area_type, geography_level in (
         ("constituency", "constituency"),
         ("la", "local_authority"),
+        # Scotland's PIPR BRMAs (microcosm#1262).
+        ("brma", "statistical_scope"),
     ):
         level = levels.get(geography_level)
         if not isinstance(level, Mapping):
@@ -1565,12 +1709,29 @@ def _evaluate_target_fit(
     context: EvidenceContext, parameters: Mapping[str, Any]
 ) -> GateResult:
     kwargs = dict(parameters)
+    register = kwargs.pop("reviewed_exclusions_resource", None)
     if kwargs.pop("surface", None) == "local_candidate":
+        # The local cells have their own register, keyed by this gate's
+        # family/area_code/metric names (microcosm#1301). An entry lifts the
+        # fence for its cell only; the cell stays bound in the solve.
+        if register != UK_LOCAL_TARGET_FIT_EXCLUSION_REGISTER_RESOURCE:
+            raise ValueError(
+                f"uk/gates.json names local exclusion register {register!r} but "
+                f"the runtime loads {UK_LOCAL_TARGET_FIT_EXCLUSION_REGISTER_RESOURCE!r}."
+            )
         errors = dict(
             _local_target_error_items(context.artifacts["local_target_diagnostics"])
         )
-        return uk_target_fit_gate(errors, **kwargs)
-    register = kwargs.pop("reviewed_exclusions_resource", None)
+        exclusions, out_of_line = _in_line(
+            uk_default_local_target_fit_reviewed_exclusions(), context
+        )
+        result = uk_target_fit_gate(
+            errors,
+            reviewed_exclusions=exclusions,
+            now=_exclusion_clock(context),
+            **kwargs,
+        )
+        return _with_out_of_line(result, context, out_of_line)
     if register != UK_TARGET_FIT_EXCLUSION_REGISTER_RESOURCE:
         raise ValueError(
             f"uk/gates.json names exclusion register {register!r} but the "
@@ -1592,7 +1753,7 @@ def _target_fit_required_artifacts(
     parameters: Mapping[str, Any],
 ) -> frozenset[str]:
     if parameters.get("surface") == "local_candidate":
-        return frozenset({"local_target_diagnostics"})
+        return frozenset({"local_target_diagnostics", "exclusions_evaluated_on"})
     return frozenset({"parity_evidence", "exclusions_evaluated_on"})
 
 
@@ -1926,6 +2087,12 @@ UK_GATE_REGISTRY: Mapping[str, GateBinding] = {
                 # microcosm#1069 c7 pension_credit_take_up stage-health check.
                 "maximum_take_up_deviation",
                 "minimum_entitled_units",
+                # microcosm#1334 uc_take_up stage-health check.
+                "maximum_caseload_deviation",
+                # frs_annual_income_spells stage-health check.
+                "pay_concept_ratio_bounds",
+                "annual_over_current_earners_bounds",
+                "minimum_observed_pay_share",
                 # microcosm#1095 spi_benefit_coherence stage-health check.
                 "zeroed_columns",
                 "restored_columns",
@@ -1935,6 +2102,11 @@ UK_GATE_REGISTRY: Mapping[str, GateBinding] = {
                 "minimum_age_child_rows",
                 "maximum_opt_out_share_deviation",
                 "minimum_eligible_family_units",
+                # microcosm#1095 take_up_signal stage-health check (María's
+                # ruling of 2026-10-29: the flags at their drawing stages).
+                "maximum_share_deviation",
+                "under_two_usage_maximum_share_deviation",
+                "outputs",
                 "absolute_tolerance",
                 "household_weight_kind",
                 "minimum_spi_households",
@@ -1985,6 +2157,11 @@ UK_GATE_REGISTRY: Mapping[str, GateBinding] = {
                 "maximum_connected_share_deviation",
                 "convergence_window_sweeps",
                 "maximum_residual_change_over_window",
+                # #1418: the bounds on an ONS-spend level over Energy Trends',
+                # which catch a wrong input row the recomputation shares, and
+                # the QEP payment method the stage must price at.
+                "ons_level_to_energy_trends_ratio",
+                "qep_payment_method",
                 # #930 bus_travel_facts check: NTS0313 incidence and NTS0303
                 # trip rates recomputed from the vendored rows.
                 "trip_rates_period_value",
@@ -1996,6 +2173,24 @@ UK_GATE_REGISTRY: Mapping[str, GateBinding] = {
                 # #1113 road_fuel_level check: the ceiling on the LCFS donor
                 # share of other personal-transport fuels netted off 07.2.2.
                 "maximum_other_fuels_share",
+                # #1359 excise_quantities check: the ceiling on the donor
+                # share whose published total sits beside its diary lines, and
+                # the support band each excise share must rest on.
+                "maximum_parent_residual_share",
+                "required_support_band",
+                # #1359 gambling_participation check: how far a stratum's
+                # topped-up share may sit from its published target, and the
+                # bounds on the scale that anchors the added stakes.
+                "maximum_stratum_shortfall",
+                "amount_scale_bounds",
+                # #1415 isa_subscriptions check: how far a total may sit from
+                # its target, and how far person balances may miss the
+                # household draws they split.
+                "maximum_relative_total_deviation",
+                "maximum_household_sum_error_gbp",
+                # The company_cars check (dashboard #316): how far SPI-channel
+                # pay plus its carved benefits may miss the tape's total.
+                "maximum_pay_identity_error_gbp",
                 # #1113 road_fuel_incidence check: the ceiling on the chain's
                 # zero share among flagged fuel-car households.
                 "maximum_flagged_zero_share",
@@ -2009,6 +2204,22 @@ UK_GATE_REGISTRY: Mapping[str, GateBinding] = {
                 "maximum_rows_receipts_below_profit",
                 "maximum_rows_with_profit_above_band",
                 "maximum_band_error_in_boundary_weights",
+                # #1308's three stages, gated with the next policyengine-uk
+                # bump (María's ruling of 2026-10-17): the purchase kinds and
+                # their fit, the home-value ranking, the Move to UC draw.
+                "kinds",
+                "maximum_transactions_relative_deviation",
+                "maximum_value_shortfall_share",
+                "regions",
+                "maximum_sources_at_cap",
+                "knots_basis_year",
+                "rank_basis",
+                "p_basis",
+                "rate_sources",
+                # The apprentice draw (microcosm#1373).
+                "rate_key",
+                "maximum_relative_realization_deviation",
+                "maximum_implied_relief",
             }
         ),
         artifact_keys=frozenset({"stage_evidence"}),
@@ -2044,12 +2255,14 @@ UK_GATE_REGISTRY: Mapping[str, GateBinding] = {
     "take_up_signal": UKGateBinding(
         name="take_up_signal",
         evaluator=_evaluate_take_up_signal,
-        parameter_keys=frozenset({"maximum_share_deviation"}),
+        parameter_keys=frozenset(
+            {"maximum_share_deviation", "under_two_usage_maximum_share_deviation"}
+        ),
     ),
     "enum_domain": UKGateBinding(
         name="enum_domain",
         evaluator=_evaluate_enum_domain,
-        parameter_keys=frozenset({"columns"}),
+        parameter_keys=frozenset({"columns", "partition_column", "domains_by_nation"}),
     ),
     "support": UKGateBinding(
         name="support",

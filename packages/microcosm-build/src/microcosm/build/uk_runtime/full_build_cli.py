@@ -66,6 +66,7 @@ from microcosm.graph import (
     Graph,
     KernelRegistry,
     SourceRef,
+    StoreMiss,
     compile_graph,
     graph_to_json,
     run_graph,
@@ -101,6 +102,8 @@ from .atomic_area_support import (
 from .atomic_area_support import (
     SYSTEMS as ATOMIC_SUPPORT_SYSTEMS,
 )
+from .brma_area_layer import BRMA_AREA_LAYER_SOURCE
+from .brma_area_layer import METHOD_VERSION as BRMA_AREA_LAYER_METHOD
 from .calibration_run import (
     _write_json,
     load_bound_spine_checkpoint,
@@ -109,7 +112,11 @@ from .calibration_run import (
     spine_provenance_from_sidecar,
 )
 from .chronicle_feed import load_uk_chronicle_feed
-from .dataset_size import UK_SIZE_L2_ANCHORS, UK_SIZE_L2_BASES
+from .dataset_size import (
+    UK_SIZE_L2_ANCHORS,
+    UK_SIZE_L2_BASES,
+    uk_size_search_bracket,
+)
 from .frs_release import load_uk_frs_release
 from .full_certification import (
     append_uk_full_certification_node,
@@ -138,9 +145,17 @@ from .graph_national import (
     register_uk_national_kernels,
     replay_uk_dense_gate_battery,
     replay_uk_national_gate_battery,
+    solved_national_measure_exclusions,
+    solved_national_registry,
     uk_national_graph,
 )
-from .graph_population import GEOGRAPHY_ASSIGNMENTS, PROPERTY_LOCALISATION_MODES
+from .graph_population import (
+    BRMA_LOCALISATION_MODES,
+    GEOGRAPHY_ASSIGNMENTS,
+    PRIVATE_RENT_LOCALISATION_MODES,
+    PROPERTY_LOCALISATION_MODES,
+    RFDR_LOCALISATION_MODES,
+)
 from .graph_targets import TARGET_SELECTION_TYPE, registry_from_payload
 from .graph_terminal import (
     FULL_DIAGNOSTICS_CSV_TYPE,
@@ -162,15 +177,19 @@ from .inspection_export import (
     register_uk_inspection_export_kernel,
     use_inspection_export,
 )
-from .local_doctrine import UK_LOCAL_ROW_METADATA_RULES
+from .local_doctrine import UK_LOCAL_L0_SEARCH_FLOOR, UK_LOCAL_ROW_METADATA_RULES
 from .national_doctrine import uk_doctrine_with_overrides
 from .national_frame import (
     load_uk_national_frame,
+    require_uk_producer_isa_income_contract,
     uk_release_export_frame,
     write_uk_national_frame,
 )
 from .national_sampling import UK_SAMPLE_RUNG_TOKENS
 from .orrery_contract import persist_uk_run_evidence, save_uk_graph_schema
+from .private_rent_localisation import COUNTS_SOURCE as PRIVATE_RENTER_COUNTS_SOURCE
+from .private_rent_localisation import METHOD_VERSION as PRIVATE_RENT_METHOD
+from .private_rent_localisation import QUANTILES_SOURCE as RENT_QUANTILES_SOURCE
 from .property_localisation import (
     BAND_MIX_SOURCE,
     QUANTILES_SOURCE,
@@ -179,6 +198,8 @@ from .property_localisation import (
 from .property_localisation import (
     METHOD_VERSION as PROPERTY_LOCALISATION_METHOD,
 )
+from .rfdr_area_layer import METHOD_VERSION as RFDR_AREA_LAYER_METHOD
+from .rfdr_area_layer import RFDR_AREA_LAYER_SOURCE
 from .rowwise_cli import (
     MANIFEST_FILENAME,
     REPOSITORY,
@@ -224,6 +245,7 @@ from .rowwise_staging import (
     thinned_epochs,
 )
 from .size_checkpoint import uk_size_checkpoint_identity
+from .solve_scope import UK_GATE_ONLY_RESOURCES
 from .staging import UK_STAGED_DATASET_REPOSITORY, UK_STAGING_REPOSITORY
 from .weight_year import uk_dataset_year_frame
 
@@ -237,6 +259,7 @@ __all__ = [
     "UK_ROWWISE_DENSE_POSTURE",
     "PreparedUKFullBuild",
     "PreparedUKNationalBuild",
+    "SolveReuseError",
     "execute_full_build",
     "execute_national_build",
     "main",
@@ -391,10 +414,11 @@ def _target_geographies(value: str) -> tuple[str, ...] | None:
     if (
         not levels
         or len(levels) != len(set(levels))
-        or set(levels) - {"country", "region", "constituency", "la"}
+        or set(levels) - {"country", "region", "constituency", "la", "brma"}
     ):
         raise argparse.ArgumentTypeError(
-            "Use all or a comma-separated subset of country,region,constituency,la."
+            "Use all or a comma-separated subset of "
+            "country,region,constituency,la,brma."
         )
     return levels
 
@@ -496,6 +520,68 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
             dest=f"{label.replace('-', '_')}_sha256",
         )
     parser.add_argument(
+        "--brma-localisation",
+        choices=BRMA_LOCALISATION_MODES,
+        default="area",
+        help=(
+            "Dense role: area (default) reads each placed Great Britain clone's BRMA "
+            "off its assigned LSOA or output area (microcosm#1262); none keeps the "
+            "spine's regional draw on every clone, for measurement builds only."
+        ),
+    )
+    parser.add_argument(
+        "--brma-area-layer",
+        type=Path,
+        default=None,
+        help=(
+            "Resource bytes for the graph source 'uk_brma_area_layer' (default: the "
+            "committed UK package resource)."
+        ),
+    )
+    parser.add_argument("--brma-area-layer-sha256", type=sha256_argument)
+    parser.add_argument(
+        "--rfdr-localisation",
+        choices=RFDR_LOCALISATION_MODES,
+        default=None,
+        help=(
+            "Dense role: area (the default with the atomic assignment) sets each "
+            "placed household's Rural Fuel Duty Relief flag off its assigned output "
+            "area (microcosm#1418); none (the default with the legacy assignment) "
+            "leaves the engine's default, for measurement builds only."
+        ),
+    )
+    parser.add_argument(
+        "--rfdr-area-layer",
+        type=Path,
+        default=None,
+        help=(
+            "Resource bytes for the graph source 'uk_rfdr_area_layer' (default: the "
+            "committed UK package resource)."
+        ),
+    )
+    parser.add_argument("--rfdr-area-layer-sha256", type=sha256_argument)
+    parser.add_argument(
+        "--private-rent-localisation",
+        choices=PRIVATE_RENT_LOCALISATION_MODES,
+        default=None,
+        help=(
+            "Dense role: brma_list (the default with area BRMAs) re-draws each Great "
+            "Britain private renter's rent from its assigned BRMA's list of rents at "
+            "its FRS rank and region level (microcosm#1262); none (the default "
+            "without them) keeps the spine's rents, for measurement builds only."
+        ),
+    )
+    parser.add_argument(
+        "--brma-rent-quantiles",
+        type=Path,
+        default=None,
+        help=(
+            "Resource bytes for the graph source 'uk_brma_rent_quantiles' (default: "
+            "the committed UK package resource)."
+        ),
+    )
+    parser.add_argument("--brma-rent-quantiles-sha256", type=sha256_argument)
+    parser.add_argument(
         "--ledger-facts",
         type=Path,
         help="Complete Chronicle artifact directory matching the committed feed pins.",
@@ -508,19 +594,25 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--native-scorecard",
         type=Path,
-        help="Measured incumbent-surface comparison bound to immutable candidate.json and its exact output bytes.",
+        help=(
+            "Optional diagnostic: a measured incumbent-surface comparison bound "
+            "to immutable candidate.json and its exact output bytes."
+        ),
     )
     parser.add_argument(
         "--matched-size-scorecard",
         type=Path,
-        help="Additional measured comparison with both populations at requested k.",
+        help=(
+            "Optional diagnostic: a further measured comparison with both "
+            "populations at the requested k."
+        ),
     )
     parser.add_argument(
         "--target-geographies",
         type=_target_geographies,
         default=None,
         metavar="all|country,...",
-        help="Default all: calibrate all applicable geographies together. country is an explicit filter in this same build.",
+        help="Default all: calibrate all applicable geographies together. country is an explicit filter in this same build; brma (Scotland's BRMA rent rows) needs area BRMAs.",
     )
     parser.add_argument(
         "--households-only",
@@ -562,6 +654,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
             "doctrine's 0.5 with --dataset-households, 1.0 otherwise."
         ),
     )
+    size_bracket = "[{:g}, {:g}]".format(*uk_size_search_bracket())
     parser.add_argument(
         "--selection-initial-lambda",
         type=float,
@@ -573,7 +666,8 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
             "there when the draw is feasible and within tolerance; a stale "
             "value costs probes, not feasibility (a warm and a cold search may "
             "settle on different penalties inside the budget window). Requires "
-            "--dataset-households."
+            "--dataset-households, and must lie in the size search's L0 bracket "
+            f"{size_bracket} (microcosm#1301): refused outside it, never clamped."
         ),
     )
     parser.add_argument(
@@ -655,7 +749,17 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         "--expected-constituency-vintage",
         help="Dense role only: constituency vintage required from the ladder.",
     )
-    parser.add_argument("--skip-holdout", action="store_true")
+    parser.add_argument(
+        "--rotated-holdout",
+        action="store_true",
+        help=(
+            "Dense only: run the five-fold rotated local holdout, an opt-in "
+            "report-only diagnostic (microcosm#1301). Each fold repeats the "
+            "dense solve and, in a sized build, the size search and refit. "
+            "Without it the holdout is recorded as not requested and the "
+            "release claims no out-of-sample fit."
+        ),
+    )
     parser.add_argument(
         "--inspection-export",
         action="store_true",
@@ -667,7 +771,30 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         ),
     )
     parser.add_argument("--release-candidate", action="store_true")
-    parser.add_argument("--review-date", type=date.fromisoformat, default=date.today())
+    parser.add_argument(
+        "--review-date",
+        type=date.fromisoformat,
+        default=date.today(),
+        help=(
+            "The solve clock (default today): the date target compilation and "
+            "the source preflight evaluate reviewed entries on, and the "
+            "calibrated gates too unless --gate-review-date is given. A build "
+            "that reuses an earlier build's solve repeats its review date, so "
+            "a build whose solve a second build will reuse should name it."
+        ),
+    )
+    parser.add_argument(
+        "--gate-review-date",
+        type=date.fromisoformat,
+        default=None,
+        help=(
+            "Dense only: the calibrated gates' clock, the date they evaluate "
+            "their reviewed exclusions on (microcosm#1301); defaults to "
+            "--review-date. Never earlier than it, nor later than today. Only "
+            "the calibrated gate node and what follows it re-key, so a second "
+            "build at a gate-only sign-off reuses the first build's solve."
+        ),
+    )
     parser.add_argument(
         "--resume-size-checkpoint",
         type=Path,
@@ -710,10 +837,32 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--graph-store",
         type=Path,
-        help="Persistent shared graph store; default <out>/.graph-store.",
+        help=(
+            "Persistent shared graph store; default <out>/.graph-store. A "
+            "build whose solve a second build will reuse should name it, and "
+            "--require-solve-reuse requires it."
+        ),
     )
     parser.add_argument(
         "--resume", choices=("auto", "require", "forbid"), default="auto"
+    )
+    parser.add_argument(
+        "--require-solve-reuse",
+        action="store_true",
+        help=(
+            "Dense only: before calibrating, require every node the calibrated "
+            "gates depend on (the spine, targets, preflight, solve, size stages "
+            "and holdout) from --graph-store, and fail with SolveReuseError "
+            "naming the missing nodes rather than re-solve (microcosm#1301). "
+            "The calibrated gates, export and certification still run. Needs "
+            "build 1's store named by --graph-store and an --out that holds no "
+            "earlier attempt (no build.json, failure.json or Logbook spool "
+            "row), and refuses a gate clock (--gate-review-date, else "
+            "--review-date) outside the window of an entry the build depends "
+            "on: before an in-line gate-only or degenerate-register sign-off's "
+            "approved_on, or after the expiry of one of them or of a measure "
+            "exclusion the solve applied. Refused with --resume forbid."
+        ),
     )
     parser.add_argument("--out", type=Path, required=True)
     parser.add_argument(
@@ -732,13 +881,22 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         "--publish-orrery",
         dest="publish_orrery",
         action="store_true",
-        help="Publish the saved graph, including when dataset staging is local-only.",
+        help=(
+            "Publish the saved graph to the public Orrery, including when "
+            "dataset staging is local-only. Off by default. Its summaries "
+            "carry the targets and each gate's verdict and count of failure "
+            "lines, but no target row's model figures and no failure line; "
+            "the export stops if a summary carries either."
+        ),
     )
     graph_publication.add_argument(
         "--no-publish-orrery",
         dest="publish_orrery",
         action="store_false",
-        help="Export graph files locally without submitting a publication job.",
+        help=(
+            "Export graph files locally without submitting a publication job "
+            "(the default)."
+        ),
     )
     parser.set_defaults(publish_orrery=None)
     args = parser.parse_args(argv)
@@ -829,6 +987,163 @@ def _prepare_property_localisation(
         "mode": mode,
         "method": PROPERTY_LOCALISATION_METHOD,
         "support_stratum_lower": SUPPORT_STRATUM_LOWER,
+        "resource_pins": resource_pins,
+    }
+
+
+def _prepare_brma_localisation(
+    args: argparse.Namespace, pins: dict, sources: dict[str, Path]
+) -> dict:
+    """Pin the area-to-BRMA layer and record the BRMA binding (microcosm#1262).
+
+    The layer enters ``pins`` under its graph source name, as the property
+    resources do, and a release candidate must build on the committed bytes.
+    ``none`` binds nothing here.
+    """
+    mode = getattr(args, "brma_localisation", "none")
+    if mode == "none":
+        if getattr(args, "brma_area_layer", None) or getattr(
+            args, "brma_area_layer_sha256", None
+        ):
+            raise ValueError(
+                "--brma-area-layer and --brma-area-layer-sha256 need "
+                "--brma-localisation area: without it nothing reads the layer."
+            )
+        return {"mode": "none"}
+    committed_path = Path(
+        str(files("microcosm.build.uk").joinpath("brma_area_layer.json"))
+    )
+    path = getattr(args, "brma_area_layer", None) or committed_path
+    pin = _pin(path, getattr(args, "brma_area_layer_sha256", None))
+    if getattr(args, "release_candidate", False):
+        committed = _pin(committed_path)
+        if pin != committed:
+            raise ValueError(
+                "--release-candidate requires the committed BRMA area layer: "
+                f"sha256 {pin['sha256']} is not the package's {committed['sha256']}."
+            )
+    pins[BRMA_AREA_LAYER_SOURCE] = pin
+    sources[BRMA_AREA_LAYER_SOURCE] = path
+    return {
+        "mode": mode,
+        "method": BRMA_AREA_LAYER_METHOD,
+        "resource_pins": {BRMA_AREA_LAYER_SOURCE: pin},
+    }
+
+
+def _prepare_rfdr_localisation(
+    args: argparse.Namespace, pins: dict, sources: dict[str, Path]
+) -> dict:
+    """Pin the Rural Fuel Duty Relief area layer and record its binding.
+
+    As with the BRMA layer, the layer enters ``pins`` under its graph source
+    name and a release candidate must build on the committed bytes
+    (microcosm#1418). ``none`` binds nothing here.
+    """
+    mode = getattr(args, "rfdr_localisation", None)
+    if mode is None:
+        # Unset, the mode follows the geography assignment, as the build config
+        # resolves it (the independent review of microcosm#1420).
+        mode = (
+            "area"
+            if getattr(args, "geography_assignment", "atomic") == "atomic"
+            else "none"
+        )
+        args.rfdr_localisation = mode
+    if mode == "none":
+        if getattr(args, "rfdr_area_layer", None) or getattr(
+            args, "rfdr_area_layer_sha256", None
+        ):
+            raise ValueError(
+                "--rfdr-area-layer and --rfdr-area-layer-sha256 need "
+                "--rfdr-localisation area: without it nothing reads the layer."
+            )
+        return {"mode": "none"}
+    committed_path = Path(
+        str(files("microcosm.build.uk").joinpath("rfdr_area_layer.json"))
+    )
+    path = getattr(args, "rfdr_area_layer", None) or committed_path
+    pin = _pin(path, getattr(args, "rfdr_area_layer_sha256", None))
+    if getattr(args, "release_candidate", False):
+        committed = _pin(committed_path)
+        if pin != committed:
+            raise ValueError(
+                "--release-candidate requires the committed RFDR area layer: "
+                f"sha256 {pin['sha256']} is not the package's {committed['sha256']}."
+            )
+    pins[RFDR_AREA_LAYER_SOURCE] = pin
+    sources[RFDR_AREA_LAYER_SOURCE] = path
+    return {
+        "mode": mode,
+        "method": RFDR_AREA_LAYER_METHOD,
+        "resource_pins": {RFDR_AREA_LAYER_SOURCE: pin},
+    }
+
+
+#: Graph source name to committed package file of the private-rent node's
+#: resources (microcosm#1262). Only the quantiles take an override.
+_PRIVATE_RENT_RESOURCE_FILES = {
+    RENT_QUANTILES_SOURCE: "brma_rent_quantiles.json",
+    PRIVATE_RENTER_COUNTS_SOURCE: "brma_private_rented_households.json",
+}
+
+
+def _prepare_private_rent_localisation(
+    args: argparse.Namespace, pins: dict, sources: dict[str, Path]
+) -> dict:
+    """Pin the rent quantiles and census counts and record the rent binding.
+
+    As with the property resources, each enters ``pins`` under its graph source
+    name and a release candidate must build on the committed bytes. ``none``
+    binds nothing here.
+    """
+    mode = getattr(args, "private_rent_localisation", None)
+    if mode is None:
+        # Unset, the mode follows the BRMA mode, as the build config resolves it.
+        mode = (
+            "brma_list"
+            if getattr(args, "brma_localisation", "none") == "area"
+            else "none"
+        )
+        args.private_rent_localisation = mode
+    if mode == "none":
+        if getattr(args, "brma_rent_quantiles", None) or getattr(
+            args, "brma_rent_quantiles_sha256", None
+        ):
+            raise ValueError(
+                "--brma-rent-quantiles and --brma-rent-quantiles-sha256 need "
+                "--private-rent-localisation brma_list: without it nothing "
+                "reads the quantiles."
+            )
+        return {"mode": "none"}
+    resource_pins = {}
+    for name, filename in _PRIVATE_RENT_RESOURCE_FILES.items():
+        committed_path = Path(str(files("microcosm.build.uk").joinpath(filename)))
+        override = (
+            getattr(args, "brma_rent_quantiles", None)
+            if name == RENT_QUANTILES_SOURCE
+            else None
+        )
+        expected = (
+            getattr(args, "brma_rent_quantiles_sha256", None)
+            if name == RENT_QUANTILES_SOURCE
+            else None
+        )
+        path = override or committed_path
+        pin = _pin(path, expected)
+        if getattr(args, "release_candidate", False):
+            committed = _pin(committed_path)
+            if pin != committed:
+                raise ValueError(
+                    f"--release-candidate requires the committed {name!r} resource: "
+                    f"sha256 {pin['sha256']} is not the package's {committed['sha256']}."
+                )
+        pins[name] = pin
+        resource_pins[name] = pin
+        sources[name] = path
+    return {
+        "mode": mode,
+        "method": PRIVATE_RENT_METHOD,
         "resource_pins": resource_pins,
     }
 
@@ -955,6 +1270,7 @@ def prepare_full_build(
 ) -> PreparedUKFullBuild:
     from .calibration_run import load_bound_spine_checkpoint
     from .graph import uk_spine_endpoint
+    from .hmrc_uprating import assert_installed_engine_is_pinned
     from .spine_build import (
         _rules_engine,
         _rules_engine_provenance,
@@ -962,6 +1278,8 @@ def prepare_full_build(
         prepare_uk_spine_execution,
     )
 
+    # The engine freeze, before any input is read (microcosm#1095).
+    assert_installed_engine_is_pinned()
     posture = posture_of(args)
     release = load_uk_frs_release()
     pins = {"ladder": _pin(args.ladder, args.ladder_sha256)}
@@ -978,6 +1296,7 @@ def prepare_full_build(
             args.input_h5, pins["dataset"], pinned=args.input_sha256 is not None
         )
         frame, _ = load_uk_national_frame(args.input_h5)
+        require_uk_producer_isa_income_contract(frame, label="--input-h5")
         sidecar_path = args.input_sidecar or args.input_h5.with_suffix(".build.json")
         gates_path = args.input_spine_gates or args.input_h5.with_suffix(
             ".spine_gates.json"
@@ -1044,6 +1363,9 @@ def prepare_full_build(
     # refusal (sidecar, digest) is reported before a support one.
     definition, geography_binding = _prepare_geography(args, pins, sources)
     property_binding = _prepare_property_localisation(args, pins, sources)
+    brma_binding = _prepare_brma_localisation(args, pins, sources)
+    private_rent_binding = _prepare_private_rent_localisation(args, pins, sources)
+    rfdr_binding = _prepare_rfdr_localisation(args, pins, sources)
     stage(
         telemetry,
         "input_pinning",
@@ -1072,6 +1394,9 @@ def prepare_full_build(
         geography_assignment=args.geography_assignment,
         source_vintage=release.vintage,
         property_localisation=args.property_localisation,
+        brma_localisation=args.brma_localisation,
+        private_rent_localisation=args.private_rent_localisation,
+        rfdr_localisation=args.rfdr_localisation,
         calibration=UKGraphCalibrationConfig(
             epochs=args.epochs,
             learning_rate=args.learning_rate,
@@ -1080,6 +1405,9 @@ def prepare_full_build(
             selection_seed=args.selection_seed,
             selection_pi_hi=args.selection_pi_hi,
             selection_initial_lambda=args.selection_initial_lambda,
+            # microcosm#1301: the doctrine's L0 floor, which the warm start
+            # above is checked against; it has no command-line setting.
+            selection_l0_search_floor=UK_LOCAL_L0_SEARCH_FLOOR,
             baseline_pi_floor=args.baseline_pi_floor,
             target_weight_rule=args.target_weight_rule,
             selection_l2=cli_size_l2(args, "selection"),
@@ -1161,6 +1489,7 @@ def prepare_full_build(
         spine_stage_names=stages,
         engine_identity=engine_identity,
         review_date=args.review_date,
+        gate_review_date=getattr(args, "gate_review_date", None),
         sample_fraction=config.effective_sample_fraction,
         release_candidate=args.release_candidate,
         spine_provenance=provenance,
@@ -1173,7 +1502,10 @@ def prepare_full_build(
         "target_scope": "all"
         if config.geography_levels is None
         else list(config.geography_levels),
+        # Both clocks (microcosm#1301): the solve's, and the calibrated
+        # gates' (the solve's unless --gate-review-date moved it).
         "review_date": args.review_date.isoformat(),
+        "gate_review_date": _gate_review_date(args).isoformat(),
         "engine_identity": engine_identity,
         "release_candidate": args.release_candidate,
         "skip_holdout": args.skip_holdout,
@@ -1193,6 +1525,9 @@ def prepare_full_build(
         },
         "geography": geography_binding,
         "property_localisation": property_binding,
+        "brma_localisation": brma_binding,
+        "private_rent_localisation": private_rent_binding,
+        "rfdr_localisation": rfdr_binding,
     }
     graph = add_uk_export_preparation(
         graph,
@@ -1256,6 +1591,104 @@ def _through(graph: Graph, endpoint: str) -> Graph:
     return replace(
         graph, nodes=tuple(node for node in graph.nodes if node.id in needed)
     )
+
+
+def _gate_review_date(args: argparse.Namespace) -> date:
+    """The calibrated gates' clock: ``--gate-review-date``, else the solve's."""
+    gate_clock = getattr(args, "gate_review_date", None)
+    return args.review_date if gate_clock is None else gate_clock
+
+
+#: The node the solve sub-graph ends before: its strict ancestors are the
+#: solve, and it and its descendants are what a gate-only sign-off re-runs.
+_SOLVE_BOUNDARY = "uk.full.gates.calibrated"
+
+
+def _solve_subgraph(graph: Graph) -> Graph:
+    """The solve: every strict ancestor of the calibrated gates (microcosm#1301).
+
+    The spine, the target surface, the source preflight, the dense solve,
+    the size search, draw and refit, the installed population and the
+    holdout: everything a second build at a gate-only sign-off must find in
+    the graph store rather than compute.
+    """
+    through = _through(graph, _SOLVE_BOUNDARY)
+    return replace(
+        through,
+        nodes=tuple(node for node in through.nodes if node.id != _SOLVE_BOUNDARY),
+    )
+
+
+class SolveReuseError(RuntimeError):
+    """``--require-solve-reuse`` found the solve absent from the graph store."""
+
+
+def _solve_reuse_failure(miss: StoreMiss) -> SolveReuseError:
+    return SolveReuseError(
+        "--require-solve-reuse: the graph store does not hold the solve this "
+        f"build would reuse ({miss}). A solve is reused only when everything "
+        "that keys it matches the earlier build: the solve code at this "
+        "commit; --review-date, --release-candidate, the size, seed, epoch "
+        "and --selection-initial-lambda arguments and --engine-blocks; every "
+        "packaged UK resource but the gate-only registers "
+        f"({', '.join(sorted(UK_GATE_ONLY_RESOURCES))}); the virtual "
+        "environment and platform; and --graph-store."
+    )
+
+
+def _run_solve_phase(compiled, *, required: bool, **kwargs):
+    """Run a phase of the solve, as a cache replay when reuse is required."""
+    if not required:
+        return _run_graph_with_progress(compiled, **kwargs)
+    try:
+        return _run_graph_with_progress(compiled, **{**kwargs, "resume": "require"})
+    except StoreMiss as miss:
+        raise _solve_reuse_failure(miss) from miss
+
+
+def refuse_occupied_solve_reuse_output(args: argparse.Namespace) -> None:
+    """Refuse a solve-reuse build into an ``--out`` that holds an attempt.
+
+    A second build writes its own bundle beside build 1's (microcosm#1301).
+    Publishing into build 1's ``--out`` would replace the bundle its
+    sign-off was drafted from, which ``draft_uk_dense_signoff.py --verify
+    --build-1`` compares build 2 with. A directory holds a bundle once its
+    ``build.json`` completion marker is published, whether the build passed,
+    was blocked or was refused. A failed attempt leaves ``failure.json`` and
+    a Logbook spool row (``logbook-spool/*.json``) instead, and a retry into
+    that ``--out`` would spool a second attempt's row beside the first:
+    ``--verify`` refuses a run directory whose spool names two attempts, and
+    the assembler takes the last row by file name. So any of the three
+    refuses the directory. As on the national line
+    (:func:`refuse_occupied_national_output`), the refusal runs before the
+    attempt opens and writes nothing into the directory. Dry runs write
+    nothing and are not refused.
+    """
+
+    if not getattr(args, "require_solve_reuse", False):
+        return
+    out = Path(args.out)
+    held = [
+        path.relative_to(out).as_posix()
+        for path in (
+            out / "build.json",
+            out / "failure.json",
+            *sorted((out / "logbook-spool").glob("*.json")),
+        )
+        if path.is_file()
+    ]
+    if held:
+        shown = ", ".join(held[:3]) + (
+            f" and {len(held) - 3} more" if len(held) > 3 else ""
+        )
+        raise FileExistsError(
+            f"--require-solve-reuse: --out {args.out} already holds a build "
+            f"attempt ({shown}). A second build publishes its own bundle and "
+            "Logbook row: here it would replace build 1's bundle, or spool its "
+            "row beside an earlier attempt's, and --verify refuses a run "
+            "directory whose spool names two attempts. Pass a new --out and "
+            "name build 1's store with --graph-store."
+        )
 
 
 def _payload(manifest, store, node: str, artifact: str) -> bytes:
@@ -1900,6 +2333,10 @@ def _execute_full_build(
     # Preserve source evidence before downstream transforms can raise. Each is
     # an ancestor-closed checkpoint of this graph, with the same node keys/RNG.
     resume = args.resume
+    # microcosm#1301: with --require-solve-reuse every phase up to the
+    # calibrated gates is a cache replay, and a miss stops the build before
+    # any node computes.
+    reuse = bool(getattr(args, "require_solve_reuse", False))
     node_ids = {node.id for node in graph.nodes}
     for endpoint in (
         "spine.gates.assembled",
@@ -1908,8 +2345,9 @@ def _execute_full_build(
     ):
         if endpoint not in node_ids:
             continue
-        checkpoint = _run_graph_with_progress(
+        checkpoint = _run_solve_phase(
             compile_graph(_through(graph, endpoint)),
+            required=reuse,
             sources=sources,
             store=store,
             kernels=kernels,
@@ -1923,8 +2361,9 @@ def _execute_full_build(
     # Persist preflight outcomes before any solver can reject them.
     stage(telemetry, "target_compilation", "started")
     preflight_graph = _through(graph, "uk.full.gates.preflight")
-    preflight = _run_graph_with_progress(
+    preflight = _run_solve_phase(
         compile_graph(preflight_graph),
+        required=reuse,
         sources=sources,
         store=store,
         kernels=kernels,
@@ -1974,6 +2413,19 @@ def _execute_full_build(
             blocking_failure_count=len(blocking),
         )
         return 1
+    if reuse:
+        # The whole solve sub-graph, required from the store before the
+        # calibrated gates run on it; the manifest is dropped at once, since
+        # the numerical phase below replays the same nodes as hits.
+        _run_solve_phase(
+            compile_graph(_solve_subgraph(graph)),
+            required=True,
+            sources=sources,
+            store=store,
+            kernels=kernels,
+            resume="require",
+            execution=execution,
+        )
     stage(
         telemetry,
         "calibration",
@@ -2365,8 +2817,11 @@ def prepare_national_build(
     args: argparse.Namespace, *, telemetry=None, attempt: dict | None = None
 ) -> PreparedUKNationalBuild:
     """Bind the national request to its graph: the checkpoint, the doctrine, the register."""
+    from .hmrc_uprating import assert_installed_engine_is_pinned
     from .spine_build import _rules_engine, _rules_engine_provenance
 
+    # The engine freeze, before the input H5 is read (microcosm#1095).
+    assert_installed_engine_is_pinned()
     posture = posture_of(args)
     national_role.require_bound_input(args)
     release = load_uk_frs_release()
@@ -2374,6 +2829,7 @@ def prepare_national_build(
     pins = {"dataset": _pin(input_h5, args.input_sha256)}
     inputs = {"dataset": _input_record(input_h5, pins["dataset"], pinned=True)}
     frame, _ = load_uk_national_frame(input_h5)
+    require_uk_producer_isa_income_contract(frame, label="--input-h5")
     sidecar_path = args.input_sidecar or input_h5.with_suffix(".build.json")
     gates_path = args.input_spine_gates or input_h5.with_suffix(".spine_gates.json")
     load_bound_spine_checkpoint(
@@ -2710,7 +3166,17 @@ def _execute_national_build(
         append_phase(state, "national_calibration_solved")
     frame = manifest.population(national.population)
     result, problem = national_result_from_manifest(
-        manifest, store, frame=frame, registry=national_registry
+        manifest, store, frame=frame, registry_document=registry_document
+    )
+    # The support floor drops rows on the frame (microcosm#1095 U3): the
+    # diagnostics and the build record describe the rows the problem solved
+    # and every exclusion it bound; the written register stays the approved
+    # one, the scoring surface a frozen-register check re-derives.
+    inputs["measure_exclusions"] = solved_national_measure_exclusions(
+        registry_document, problem.bindings
+    )
+    solved_registry = solved_national_registry(
+        registry_document, inputs["measure_exclusions"]
     )
     evidence = json.loads(
         graph_payload(manifest, store, NATIONAL_GATES_NODE, "calibration_evidence")
@@ -2722,7 +3188,7 @@ def _execute_national_build(
         telemetry,
         "calibration",
         "completed",
-        target_count=len(national_registry.specs),
+        target_count=len(solved_registry.specs),
         entity_row_counts={
             entity: int(len(frame.table(entity))) for entity in frame.entities
         },
@@ -2759,7 +3225,7 @@ def _execute_national_build(
         paths["calibration_diagnostics"],
         frame,
         target_geography_levels=evidence["target_geography_levels"],
-        target_registry=national_registry,
+        target_registry=solved_registry,
         build=build_block,
     )
     if isinstance(diagnostics_outcome, DiagnosticsWriteFailure):
@@ -3381,7 +3847,9 @@ def _dense_attempt(
 
     try:
         # The credential and chain checks still precede input loading, while
-        # the emitter records their failures.
+        # the emitter records their failures; a second build's occupied
+        # --out is refused first, before anything is written into it.
+        refuse_occupied_solve_reuse_output(args)
         preflight_staged_dataset(args)
         predecessor = resolve_predecessor(args.logbook_prev_row_digest)
         telemetry = create_staging_run_bundle(args, build_id=state.build_id)

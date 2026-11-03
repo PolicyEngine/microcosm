@@ -44,8 +44,15 @@ from microcosm.build.uk_runtime.weighted_integrity import (
     uk_qrf_tail_concentration_columns,
 )
 
+#: A synthetic approval window. The gates compare it with the real date when a
+#: test passes no ``now``, so a real-looking window (it was 2026-08-10 to
+#: 2027-02-10) would fail those tests once it lapsed, as the UK build
+#: fixture's did on 2026-10-04 (microcosm#1103). Expiry itself is tested with
+#: explicit dates.
+SYNTHETIC_EXPIRY = "2099-12-31"
 
-def _entry(reason: str, *, expires_on: str = "2027-02-10") -> dict[str, str]:
+
+def _entry(reason: str, *, expires_on: str = SYNTHETIC_EXPIRY) -> dict[str, str]:
     """A valid schema-2 approval receipt around the fixture's reason."""
 
     return {
@@ -461,9 +468,12 @@ def test_qrf_columns_check_every_declared_output_regardless_of_density() -> None
     assert "density_filter" in surface
     # Declared outputs the fixture does not carry are reported, not invented.
     assert "dividend_income" in surface["absent_columns"]
-    # The 48 declared outputs, less the ten spi_benefit_coherence replaces on
-    # every SPI-channel row (microcosm#1100); they hold no forest draw.
-    assert surface["declared_qrf_outputs"] == 38
+    # The 57 declared outputs (since microcosm#1095, stage 2's trading_loss and
+    # six owner-manager inputs, and stage 1's two loss draws, which the stage
+    # moves into loss_relief and drops, so a frame never carries them), less
+    # the ten spi_benefit_coherence replaces on every SPI-channel row
+    # (microcosm#1100); they hold no forest draw.
+    assert surface["declared_qrf_outputs"] == 47
     assert surface["superseded_by_spi_benefit_coherence"] == [
         "income_support_reported",
         "working_tax_credit_reported",
@@ -472,6 +482,8 @@ def test_qrf_columns_check_every_declared_output_regardless_of_density() -> None
         "iidb_reported",
         "afcs_reported",
         "bsp_reported",
+        "war_widows_pension_reported",
+        "widowed_parents_allowance_reported",
         "jsa_contrib_reported",
         "jsa_income_reported",
         "esa_income_reported",
@@ -545,17 +557,22 @@ def test_committed_exclusion_registers_load() -> None:
     # microcosm#1106 (signed 2026-10-11): the release leaves it to the engine,
     # so the reference carries a column the candidate no longer ships. The
     # QRF tail register went with its gate (microcosm#1276).
+    # tax_free_savings_income joins with microcosm#1360 (signed 2026-10-28):
+    # under the additive ISA income contract the candidate stores ISA interest
+    # apart, and the engine sums it into the column the reference stores.
     assert set(input_mass["efrs-post-calibration"]) == {
         "dfe_education_spending",
         "property_wealth",
+        "tax_free_savings_income",
     }
     for record in input_mass["efrs-post-calibration"].values():
         assert record.approved_by == "juaristi22"
-        assert record.approved_on in {"2026-10-02", "2026-10-11"}
-        assert record.expires_on in {"2027-04-02", "2027-04-11"}
+        assert record.approved_on in {"2026-10-02", "2026-10-11", "2026-10-28"}
+        assert record.expires_on in {"2027-04-02", "2027-04-11", "2027-04-28"}
         assert (
             "microcosm#1063" in record.adjudication
             or "microcosm#1106" in record.adjudication
+            or "microcosm#1360" in record.adjudication
         )
     assert uk_default_input_mass_reviewed_exclusions() is (
         uk_default_input_mass_reviewed_exclusions()
@@ -565,14 +582,50 @@ def test_committed_exclusion_registers_load() -> None:
 def test_local_area_support_register_loads_both_schema3_blocks() -> None:
     loaded = load_uk_local_area_support_exclusion_register(None)
     assert set(loaded["exclusions"]) == {
+        "constituency/S14000027",
         "local_authority/E06000053",
         "local_authority/E09000001",
+        "local_authority/S12000013",
+        "local_authority/S12000023",
+        "local_authority/S12000027",
     }
     assert set(loaded["bound_despite_support_floor"]) == {"census_households"}
     approval = loaded["bound_despite_support_floor"]["census_households"]
     assert approval.approved_by == "juaristi22"
     assert approval.approved_on == "2026-09-10"
     assert approval.expires_on == "2026-12-10"
+
+
+@pytest.mark.parametrize(
+    ("code", "name"),
+    [("S12000023", "Orkney Islands"), ("S12000027", "Shetland Islands")],
+)
+def test_the_islands_are_pre_signed_gate_only_on_the_local_line(
+    code: str, name: str
+) -> None:
+    # microcosm#1301: Orkney and Shetland missed the local-authority support
+    # floor on every build measured for the release, so they are signed before
+    # the first build. The entries are gate-only (the generator defers nothing
+    # for them) and scoped to the local line, the evidence that earned them.
+    record = load_uk_local_area_support_exclusion_register(None)["exclusions"][
+        f"local_authority/{code}"
+    ]
+    assert record.release_lines == ("local",)
+    assert record.applies_on("local") is True
+    assert record.applies_on("national") is False
+    assert record.approved_by == "juaristi22"
+    assert record.approved_on == "2026-10-16"
+    assert record.expires_on == "2027-01-16"
+    assert "microcosm#1301" in record.adjudication
+    assert f"{name} ({code})" in record.reason
+    assert "Gate-only" in record.reason
+    assert "signed-deferred" not in record.reason
+    # The reason names the builds, never the area's support figures: once the
+    # code and the cited builds are taken out no number is left.
+    residue = record.reason
+    for cited in (code, "K=25", "K=15", "60,000", "100,000", "95,000", "#1301"):
+        residue = residue.replace(cited, "")
+    assert not any(character.isdigit() for character in residue), residue
 
 
 def test_local_area_support_register_refuses_schema2(tmp_path) -> None:
@@ -913,7 +966,9 @@ def test_expired_exclusion_stops_suppressing_and_names_its_receipt() -> None:
     reference = _reference({"employment_income": 10.0})
     policy = _policy(
         minimum_reference_total=1.0,
-        reviewed_exclusions={"employment_income": _entry(reason)},
+        reviewed_exclusions={
+            "employment_income": _entry(reason, expires_on="2027-02-10")
+        },
     )
     candidate = {"employment_income": 0.0}
 
