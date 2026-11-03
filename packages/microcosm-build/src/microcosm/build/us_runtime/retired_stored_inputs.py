@@ -37,7 +37,6 @@ from __future__ import annotations
 
 from collections.abc import Collection
 from dataclasses import dataclass
-from numbers import Real
 from typing import Any
 
 import numpy as np
@@ -179,6 +178,7 @@ def _live_wic(
         "stored_decisions_kept": int(present.sum()),
         "stored_decisions_true": int(decisions[present].sum()),
         "people_assumed_true": int(assumed.sum()),
+        "people_allowed_without_decision": int(allowed.sum()),
         "rule": ACS_WIC_ASSUMPTION,
         "status": "interim",
         "flip_condition": ACS_WIC_FLIP_CONDITION,
@@ -186,16 +186,15 @@ def _live_wic(
 
 
 def _booleans(values: pd.Series) -> np.ndarray:
-    """Stored decisions as Booleans: bools, or real numbers equal to 0 or 1."""
+    """Stored decisions as Booleans: bools, or int or float numbers equal to 0 or 1."""
 
     out = np.empty(len(values), dtype=bool)
     for position, value in enumerate(values.to_numpy(dtype=object)):
         if isinstance(value, (bool, np.bool_)):
             out[position] = bool(value)
-        elif (
-            isinstance(value, Real)
-            and not isinstance(value, (bool, np.bool_))
-            and value in (0, 1)
+        elif isinstance(value, (int, float, np.integer, np.floating)) and value in (
+            0,
+            1,
         ):
             out[position] = bool(value)
         else:
