@@ -27,6 +27,7 @@ from microcosm.frame import concepts as concepts_module
 from microcosm.frame.concept_mapping import (
     AllocateToReferencePerson,
     ConceptMapping,
+    CoresidentAdult,
     CoresidentChildCount,
     CoverageReport,
     Fraction,
@@ -913,6 +914,20 @@ class TestConstructionRules:
             ({"transform": Scale(factor=0.5)}, "only float concepts scale"),
             ({"transform": RelationshipRole(role=Role.REFERENCE_PERSON)}, "reads"),
             ({"transform": CoresidentChildCount()}, "both parents"),
+            (
+                {
+                    "transform": CoresidentAdult(min_age=18),
+                    "concepts": ("fact:person.weeks_worked",),
+                },
+                "age only",
+            ),
+            (
+                {
+                    "transform": CoresidentAdult(min_age=18),
+                    "concepts": ("fact:person.age", "fact:person.sex"),
+                },
+                "age only",
+            ),
             ({"transform": TakeUpThreshold(program="x")}, "seed"),
             (
                 {
@@ -1092,6 +1107,8 @@ TRANSFORMS = [
     RelationshipRole(role=Role.PARENT_OF_CORESIDENT_CHILD, max_child_age=17),
     CoresidentChildCount(),
     CoresidentChildCount(max_age=17),
+    CoresidentAdult(min_age=0),
+    CoresidentAdult(min_age=18),
     TakeUpThreshold(program="nz.x"),
 ]
 
@@ -1113,6 +1130,13 @@ class TestTransforms:
             ),
             ({"kind": "scale", "factor": True}, "number"),
             ({"kind": "coresident_child_count", "max_age": "17"}, "integer"),
+            ({"kind": "coresident_adult"}, "lacks 'min_age'"),
+            ({"kind": "coresident_adult", "min_age": None}, "integer"),
+            ({"kind": "coresident_adult", "min_age": True}, "integer"),
+            ({"kind": "coresident_adult", "min_age": 18.0}, "integer"),
+            ({"kind": "coresident_adult", "min_age": "18"}, "integer"),
+            ({"kind": "coresident_adult", "min_age": -1}, "negative"),
+            ({"kind": "coresident_adult", "min_age": 18, "max_age": 3}, "unexpected"),
             ({"kind": "take_up_threshold"}, "lacks"),
             ({"kind": "signed_part"}, "lacks"),
             ({"kind": "signed_part", "sign": "up"}, "'positive' or 'negative'"),
@@ -1827,3 +1851,258 @@ class TestMalformedInput:
     def test_malformed_transform_shapes_are_refused(self, data, message) -> None:
         with pytest.raises(ValueError, match=message):
             transform_from_dict(data)
+
+
+# --- The co-resident adult test --------------------------------------------
+
+_BIG = 2**53
+_ADULT_INPUT = "synthetic_shares_home_with_adult"
+
+
+def _adult_mapping(min_age: int) -> ConceptMapping:
+    return _mapping(
+        [
+            _binding(
+                engine_input=_ADULT_INPUT,
+                transform=CoresidentAdult(min_age=min_age),
+            )
+        ]
+    )
+
+
+def _people_table(households, ages, nullable: bool) -> pd.DataFrame:
+    """A person table; ``ages`` holds ints or ``None`` for a null age."""
+
+    if nullable:
+        age = pd.array(ages, dtype="Int64")
+    else:
+        age = np.asarray(
+            [np.nan if value is None else float(value) for value in ages],
+            dtype=np.float64,
+        )
+    return pd.DataFrame(
+        {
+            "person_id": np.arange(len(ages), dtype=np.int64) * 7 + 3,
+            "person_household_id": np.asarray(households, dtype=np.int64),
+            "age": age,
+        }
+    )
+
+
+def _adult_flags(person: pd.DataFrame, min_age: int) -> list[bool]:
+    household = pd.DataFrame(
+        {
+            "household_id": np.asarray(
+                sorted(set(person["person_household_id"].tolist())), dtype=np.int64
+            )
+        }
+    )
+    out = _adult_mapping(min_age).encode({"person": person, "household": household})
+    values = out.tables["person"][_ADULT_INPUT]
+    assert values.dtype == np.bool_
+    return values.tolist()
+
+
+def _brute_force(households, ages, min_age: int) -> list[bool]:
+    """I1's reference: a double loop over Python ints."""
+
+    return [
+        any(
+            other != me
+            and households[other] == households[me]
+            and ages[other] is not None
+            and ages[other] >= min_age
+            for other in range(len(ages))
+        )
+        for me in range(len(ages))
+    ]
+
+
+@st.composite
+def _people(draw):
+    """Households of mixed sizes, ids unsorted and non-contiguous, some
+    differing only beyond 2**53, null ages, rows in a drawn order."""
+
+    ids = draw(
+        st.lists(
+            st.one_of(
+                st.integers(min_value=-50, max_value=10**6),
+                st.integers(min_value=_BIG - 3, max_value=_BIG + 5),
+                st.integers(min_value=2**62, max_value=2**62 + 3),
+            ),
+            min_size=1,
+            max_size=6,
+            unique=True,
+        )
+    )
+    households: list[int] = []
+    for household_id in ids:
+        households += [household_id] * draw(st.integers(min_value=1, max_value=5))
+    order = draw(st.permutations(range(len(households))))
+    households = [households[row] for row in order]
+    ages = draw(
+        st.lists(
+            st.one_of(st.none(), st.integers(min_value=0, max_value=100)),
+            min_size=len(households),
+            max_size=len(households),
+        )
+    )
+    return households, ages, draw(st.booleans())
+
+
+_MIN_AGES = st.integers(min_value=0, max_value=101)
+
+
+class TestCoresidentAdult:
+    @pytest.mark.parametrize("min_age", [None, True, 18.0, "18", -1])
+    def test_construction_refuses_anything_but_a_non_negative_integer(
+        self, min_age
+    ) -> None:
+        with pytest.raises(ValueError, match="min_age"):
+            CoresidentAdult(min_age=min_age)
+
+    def test_min_age_has_no_default(self) -> None:
+        with pytest.raises(TypeError):
+            CoresidentAdult()
+
+    def test_it_reads_age_only_and_lives_on_persons(self) -> None:
+        binding = _binding(transform=CoresidentAdult(min_age=18))
+        assert binding.concepts == ("fact:person.age",)
+        assert binding.concept_entity == "person"
+        assert _mapping([binding]).invertible_concepts() == ()
+
+    @PROPERTY
+    @given(people=_people(), min_age=_MIN_AGES)
+    def test_i1_it_matches_a_brute_force_double_loop(self, people, min_age) -> None:
+        households, ages, nullable = people
+        person = _people_table(households, ages, nullable)
+        assert _adult_flags(person, min_age) == _brute_force(households, ages, min_age)
+
+    @PROPERTY
+    @given(people=_people(), low=_MIN_AGES, high=_MIN_AGES)
+    def test_i2_raising_min_age_never_turns_false_into_true(
+        self, people, low, high
+    ) -> None:
+        low, high = sorted((low, high))
+        households, ages, nullable = people
+        person = _people_table(households, ages, nullable)
+        for at_low, at_high in zip(
+            _adult_flags(person, low), _adult_flags(person, high), strict=True
+        ):
+            assert at_low or not at_high
+
+    @PROPERTY
+    @given(people=_people(), min_age=_MIN_AGES, data=st.data())
+    def test_i3_shuffling_rows_permutes_the_output(self, people, min_age, data) -> None:
+        households, ages, nullable = people
+        person = _people_table(households, ages, nullable)
+        order = data.draw(st.permutations(range(len(person))))
+        shuffled = person.iloc[list(order)].reset_index(drop=True)
+        before = _adult_flags(person, min_age)
+        assert _adult_flags(shuffled, min_age) == [before[row] for row in order]
+
+    @PROPERTY
+    @given(people=_people(), min_age=_MIN_AGES, data=st.data())
+    def test_i4_a_persons_own_age_never_changes_their_value(
+        self, people, min_age, data
+    ) -> None:
+        households, ages, nullable = people
+        me = data.draw(st.integers(min_value=0, max_value=len(ages) - 1))
+        new_age = data.draw(st.one_of(st.none(), st.integers(0, 100)))
+        changed = [*ages[:me], new_age, *ages[me + 1 :]]
+        before = _adult_flags(_people_table(households, ages, nullable), min_age)
+        after = _adult_flags(_people_table(households, changed, nullable), min_age)
+        assert after[me] == before[me]
+
+    @PROPERTY
+    @given(people=_people(), min_age=_MIN_AGES, data=st.data())
+    def test_i5_an_age_change_stays_inside_its_household(
+        self, people, min_age, data
+    ) -> None:
+        households, ages, nullable = people
+        row = data.draw(st.integers(min_value=0, max_value=len(ages) - 1))
+        new_age = data.draw(st.one_of(st.none(), st.integers(0, 100)))
+        changed = [*ages[:row], new_age, *ages[row + 1 :]]
+        before = _adult_flags(_people_table(households, ages, nullable), min_age)
+        after = _adult_flags(_people_table(households, changed, nullable), min_age)
+        for other, household_id in enumerate(households):
+            if household_id != households[row]:
+                assert after[other] == before[other]
+
+    @PROPERTY
+    @given(people=_people(), min_age=_MIN_AGES)
+    def test_i6_the_qualifying_count_decides_each_household(
+        self, people, min_age
+    ) -> None:
+        households, ages, nullable = people
+        flags = _adult_flags(_people_table(households, ages, nullable), min_age)
+        for household_id in set(households):
+            members = [row for row, h in enumerate(households) if h == household_id]
+            qualifying = [
+                row for row in members if ages[row] is not None and ages[row] >= min_age
+            ]
+            for row in members:
+                if len(qualifying) >= 2:
+                    assert flags[row]
+                elif len(qualifying) == 1:
+                    assert flags[row] == (row not in qualifying)
+                else:
+                    assert not flags[row]
+
+    def test_exact_age_qualifies_and_one_person_households_are_false(self) -> None:
+        households = [5, 5, 9, 2, 2, 2]
+        ages = [18, 40, 70, 17, None, 30]
+        person = _people_table(households, ages, nullable=True)
+        assert _adult_flags(person, 18) == [True, True, False, True, True, False]
+        assert _adult_flags(person, 19) == [True, False, False, True, True, False]
+
+    def test_households_differing_only_beyond_2_53_stay_separate(self) -> None:
+        # float64 holds 2**53 and 2**53 + 1 as the same number.
+        assert float(_BIG) == float(_BIG + 1)
+        households = [_BIG + 1, _BIG, _BIG + 1]
+        ages = [10, 50, 12]
+        person = _people_table(households, ages, nullable=False)
+        assert _adult_flags(person, 18) == [False, False, False]
+        assert _adult_flags(person, 11) == [True, False, False]
+
+    def test_end_to_end_from_a_parsed_mapping(self) -> None:
+        data = _mapping([_binding(engine_input=_ADULT_INPUT)]).to_dict()
+        (binding,) = data["bindings"]
+        binding["transform"] = {"kind": "coresident_adult", "min_age": 18}
+        mapping = ConceptMapping.from_dict(json.loads(json.dumps(data)))
+        assert mapping.bindings[0].transform == CoresidentAdult(min_age=18)
+        tables = {
+            "person": pd.DataFrame(
+                {
+                    "person_id": [40, 10, 30, 20],
+                    "person_household_id": [8, 3, 8, 3],
+                    "age": [70.0, 12.0, 16.0, np.nan],
+                }
+            ),
+            "household": pd.DataFrame({"household_id": [8, 3]}),
+        }
+        out = mapping.encode(tables).tables["person"]
+        assert out["person_id"].tolist() == [40, 10, 30, 20]
+        assert out[_ADULT_INPUT].tolist() == [False, False, True, False]
+
+    def test_a_frame_without_age_skips_the_input(self) -> None:
+        tables = {
+            "person": pd.DataFrame({"person_id": [1], "person_household_id": [1]}),
+            "household": pd.DataFrame({"household_id": [1]}),
+        }
+        out = _adult_mapping(18).encode(tables).tables["person"]
+        assert _ADULT_INPUT not in out.columns
+
+    def test_a_household_id_naming_no_household_row_still_groups(self) -> None:
+        tables = {
+            "person": pd.DataFrame(
+                {
+                    "person_id": [1, 2, 3],
+                    "person_household_id": [7, 7, 9],
+                    "age": [30.0, 5.0, 40.0],
+                }
+            ),
+            "household": pd.DataFrame({"household_id": [9]}),
+        }
+        out = _adult_mapping(18).encode(tables).tables["person"]
+        assert out[_ADULT_INPUT].tolist() == [False, True, False]
