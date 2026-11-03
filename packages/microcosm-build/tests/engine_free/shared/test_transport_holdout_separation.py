@@ -77,6 +77,12 @@ def _be_test_module():
     return sys.modules[name]
 
 
+# Belgium's module defines its own ``@given`` tests. Importing it inside a
+# running ``@given`` makes Hypothesis refuse the nesting, so import it before
+# any test runs, whatever order pytest picks.
+_be_test_module()
+
+
 @pytest.fixture(scope="module")
 def toy(tmp_path_factory):
     """The composed toy package, without unrelated gate binding identities."""
