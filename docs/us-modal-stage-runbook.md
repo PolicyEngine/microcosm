@@ -67,13 +67,24 @@ release directory onto the runs volume. Publication stays the human step in
    and asserts `HEAD` equals the commit. It then runs
    `uv sync --all-packages --extra us --frozen` against that tree's own
    `uv.lock` into `/opt/venv`, installs the newest `microcosm-emitter`
-   release (0.7.0 or later) on its own with `uv tool install` into
-   `/usr/local/bin`, checks that `microcosm-emitter version` runs, and
-   asserts `git status --porcelain` is empty. The image sets
+   release (0.11.9 or later, the oldest a build starts) on its own with
+   `uv tool install` into `/usr/local/bin`, checks that
+   `microcosm-emitter version` runs, and asserts `git status --porcelain` is
+   empty. Emitter releases from 0.10.0 on send telemetry to the collector's
+   hostname by default, which stays the same when the collector moves to
+   another Google Cloud project. The image sets
    `MICROCOSM_EMITTER_COMMAND` to that command, so a build that starts its
    emitter finds it; the check reports the version and the receipt's runner
    identity records it. An image built for a commit keeps the emitter it was
-   built with. The tool's environment withholds credentials and sets
+   built with. The install step and its `>=0.11.9` floor come from the
+   checkout that launches the app (`image_build_commands`), while the
+   minimum the build enforces comes from the commit the plan pins
+   (`MINIMUM_EMITTER_VERSION`), so a launch can combine an older checkout's
+   floor with a newer commit's minimum, or the reverse. Neither floor has an
+   upper bound, so an image built now installs the newest release, which
+   every commit's minimum so far accepts. The test that requires the floor to
+   equal the minimum compares the two values of one checkout only. The
+   tool's environment withholds credentials and sets
    `HF_HUB_OFFLINE=1`, so an emitter started there keeps its events and
    hand-overs local.
    A build that sees `HF_HUB_OFFLINE` hands no staged dataset bundle to its

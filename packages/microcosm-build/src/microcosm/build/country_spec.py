@@ -131,6 +131,7 @@ ALLOWED_GATE_FUNCTIONS = frozenset(
         "input_mass_parity",
         "ledger_compile_parity",
         "macro_realism",
+        "measurement_prefit",
         "nonconstant_columns",
         "nonnegative_columns",
         "parity",
