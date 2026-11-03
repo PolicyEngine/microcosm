@@ -1142,16 +1142,20 @@ def test_h2_sharing_binding_on_the_household_shapes_the_toy_lacks():
     """A superannuitant alone, with an adult, or only with a minor.
 
     The toy has no superannuitant who lives alone or whose only co-resident
-    is under 18. Person 10 has no household id, and the coresident_adult
-    kind places them in a household with nobody, so they read false.
+    is under 18. Persons 10 and 11 have no household id, and the
+    coresident_adult kind places each in a household with nobody, so both
+    read false although each is an adult: null ids don't group together.
     """
     person = pd.DataFrame(
         {
-            "person_id": np.arange(1, 11, dtype=np.int64),
+            "person_id": np.arange(1, 12, dtype=np.int64),
             "person_household_id": pd.array(
-                [100, 200, 200, 300, 300, 400, 400, 500, 500, None], dtype="Int64"
+                [100, 200, 200, 300, 300, 400, 400, 500, 500, None, None],
+                dtype="Int64",
             ),
-            "age": np.array([70, 68, 40, 72, 16, 66, 18, 67, 17, 75], dtype=np.int64),
+            "age": np.array(
+                [70, 68, 40, 72, 16, 66, 18, 67, 17, 75, 30], dtype=np.int64
+            ),
         }
     )
     household = pd.DataFrame(
@@ -1161,7 +1165,7 @@ def test_h2_sharing_binding_on_the_household_shapes_the_toy_lacks():
     closure = _packaged_nz("axiom_input_closure.json")
     before = _encode_sharing(person, household, *_before_h2(mapping, closure))
     after = _encode_sharing(person, household, mapping, closure)
-    assert before == dict.fromkeys(range(1, 11), False)
+    assert before == dict.fromkeys(range(1, 12), False)
     assert after == {
         1: False,  # 70, lives alone
         2: True,  # 68, with a 40-year-old
@@ -1173,4 +1177,5 @@ def test_h2_sharing_binding_on_the_household_shapes_the_toy_lacks():
         8: False,  # 67, whose only co-resident is 17
         9: True,
         10: False,  # 75, no household id
+        11: False,  # 30, no household id either
     }
