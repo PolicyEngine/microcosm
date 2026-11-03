@@ -19,6 +19,7 @@ from microcosm.build.transport.artifact_types import INCOME_CELLS_TYPE
 from microcosm.build.transport.cli import through
 from microcosm.build.transport.compose import (
     compose_transport_graph,
+    measurement_proofs,
     transport_resource,
     validate_transport_activation,
 )
@@ -1026,3 +1027,160 @@ def test_without_the_toy_standin_its_six_rows_refuse_activation_by_name(toy):
         for role in ("count_reference", "amount_reference"):
             assert f"target_references.{band[role]}; awaits" in message
     assert f"measurement:{TOY_MEASUREMENT}" in message
+
+
+# ---------------------------------------------------------------------------
+# G8-r2c A on the toy: compose proves each scenario calibration's producer
+# ---------------------------------------------------------------------------
+
+
+def _toy_measurement_proof(fixture):
+    proofs, refusals = measurement_proofs(fixture.spec)
+    assert refusals == {}
+    ((binding, proof),) = proofs.items()
+    return binding, proof
+
+
+def test_composition_proves_each_extension_calibration_producer(toy):
+    """The declaration names the skeleton's calibration node; compose proves V3's."""
+    fixture, _ = toy
+    _, proof = _toy_measurement_proof(fixture)
+    graph = compose_transport_graph(copy.deepcopy(fixture.spec), fixture.config)
+    calibration = {
+        node.id for node in graph.nodes if node.kernel.startswith("calibrate.")
+    }
+    assert "nz.v.V3.calibrate" in calibration - set(proof["producers"])
+
+
+def _v3_without_declaration(rows, nodes, binding, columns):
+    """M1: V3's stand-in keeps its outputs and drops the measurement id."""
+    del rows["nz.v.V3.income.standin"]["params"]["measurement_id"]
+
+
+def _v3_second_declarer(rows, nodes, binding, columns):
+    """M2: V3's earnings node declares the measurement too."""
+    rows["nz.v.V3.earnings.cents"]["params"]["measurement_id"] = binding
+
+
+def _v3_universe_elsewhere(rows, nodes, binding, columns):
+    """M4: V3's universe column moves from the stand-in to the earnings node."""
+    standin = rows["nz.v.V3.income.standin"]
+    (moved,) = [row for row in standin["outputs"] if row["column"] == columns[1]]
+    standin["outputs"].remove(moved)
+    rows["nz.v.V3.earnings.cents"]["outputs"].append(moved)
+
+
+def _v3_review_version(rows, nodes, columns):
+    """Open a filter version inside V3 whose one node rewrites both columns.
+
+    Preparation, the compiled targets and the problem move into it.
+    """
+    standin = rows["nz.v.V3.income.standin"]
+    dtypes = {row["column"]: row["dtype"] for row in standin["outputs"]}
+    moved = [
+        rows[name]
+        for name in (
+            "nz.v.V3.calibration.prepare",
+            "nz.v.V3.targets.compile",
+            "nz.v.V3.targets.problem",
+        )
+    ]
+    for row in moved:
+        nodes.remove(row)
+        row["population"] = "nz.v.V3.review"
+    position = nodes.index(standin) + 1
+    nodes[position:position] = [
+        {
+            "id": "nz.v.V3.review",
+            "kernel": "transport.boundary@1",
+            "structural": "filter",
+            "base": "nz.v.V3",
+        },
+        {
+            "id": "nz.v.V3.review.rewrite",
+            "kernel": "transport.currency@1",
+            "population": "nz.v.V3.review",
+            "inputs": [{"entity": "person", "columns": list(columns)}],
+            "outputs": [
+                {
+                    "entity": "person",
+                    "column": column,
+                    "dtype": dtypes[column],
+                    "rewrite": True,
+                }
+                for column in columns
+            ],
+        },
+        *moved,
+    ]
+
+
+def _v3_rewrite_in_the_calibration_base(rows, nodes, binding, columns):
+    """G7: V3's calibration opens from the review version, rewrite and all."""
+    _v3_review_version(rows, nodes, columns)
+    rows["nz.v.V3.calibrate"]["base"] = "nz.v.V3.review"
+
+
+def _v3_rewrite_behind_the_problem(rows, nodes, binding, columns):
+    """G7 in NZ's placement: V3's calibration keeps its base on V3.
+
+    The problem moves into the review version and reads the rewritten
+    columns, so only the calibration's artifact edge from the problem puts
+    the rewrite among its compiled ancestors.
+    """
+    _v3_review_version(rows, nodes, columns)
+
+
+_V3_SECOND_WRITER = (
+    "calibration node 'nz.v.V3.calibrate' has writers "
+    "['nz.v.V3.income.standin', 'nz.v.V3.review.rewrite'] of "
+    "person.{income} upstream; only its producer 'nz.v.V3.income.standin' "
+    "may write it"
+)
+
+
+@pytest.mark.parametrize(
+    ("mutant", "reason"),
+    [
+        (
+            _v3_without_declaration,
+            "0 nodes declaring measurement_id {binding!r} sit upstream of "
+            "calibration node 'nz.v.V3.calibrate'",
+        ),
+        (
+            _v3_second_declarer,
+            "2 nodes declaring measurement_id {binding!r} sit upstream of "
+            "calibration node 'nz.v.V3.calibrate'",
+        ),
+        (
+            _v3_universe_elsewhere,
+            "its one declarer 'nz.v.V3.income.standin' does not write "
+            "['person.{universe}']",
+        ),
+        (_v3_rewrite_in_the_calibration_base, _V3_SECOND_WRITER),
+        (_v3_rewrite_behind_the_problem, _V3_SECOND_WRITER),
+    ],
+)
+def test_composition_refuses_a_scenario_calibration_the_declaration_never_sees(
+    toy, mutant, reason
+):
+    fixture, _ = toy
+    binding, proof = _toy_measurement_proof(fixture)
+    income, universe = (name.split(".", 1)[1] for name in proof["columns"])
+    spec = copy.deepcopy(fixture.spec)
+    (scenario,) = (
+        row for row in spec["resources"]["scenarios"]["scenarios"] if row["id"] == "V3"
+    )
+    rows = {row["id"]: row for row in scenario["nodes"]}
+    mutant(rows, scenario["nodes"], binding, (income, universe))
+    # Scenario rows sit outside the declared graph, so the declaration still
+    # proves the measurement and only the extension pass can refuse.
+    assert binding in measurement_proofs(spec)[0]
+    with pytest.raises(ValueError) as refused:
+        compose_transport_graph(spec, fixture.config)
+    message = str(refused.value)
+    assert message.startswith(
+        f"Measurement {binding!r}: the composed graph proves no producer for "
+        "extension calibration node 'nz.v.V3.calibrate'; "
+    )
+    assert reason.format(binding=binding, income=income, universe=universe) in message
