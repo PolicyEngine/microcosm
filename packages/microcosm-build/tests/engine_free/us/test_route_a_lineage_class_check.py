@@ -301,6 +301,12 @@ def _two_level(
         ),
         (
             _two_level(_tables([1.0, 2.0, 3.0]), (1, 2, 3)),
+            _two_level(
+                _tables([1.0, 2.0, 3.0]), (1, 2, 3), ("unit_id", "household_id")
+            ),
+        ),
+        (
+            _two_level(_tables([1.0, 2.0, 3.0]), (1, 2, 3)),
             _two_level(_tables([1.0, 2.0, 3.0]), (1, 2, 3), households=(1.0, 1.0, 2.0)),
         ),
     ],
