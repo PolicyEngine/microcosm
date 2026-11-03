@@ -1,5 +1,6 @@
 import argparse
 import hashlib
+import inspect
 import json
 import subprocess
 import sys
@@ -14,7 +15,6 @@ from microcosm.build.staging_cli import (
     validate_staging_arguments,
 )
 from microcosm.build.staging_storage import (
-    BestEffortUploadSession,
     HuggingFaceDatasetStorage,
     StagingRepositoryConfig,
 )
@@ -23,18 +23,23 @@ from microcosm.build.staging_v2 import (
     EVENT_SCHEMA,
     PROGRESS_SCHEMA,
     RUN_MANIFEST_SCHEMA,
+    STAGING_CONTRACT_VERSION,
+    STAGING_DOCUMENT_VERSION,
     StagingContentError,
     StagingContractError,
     StagingReadBackError,
-    StagingTelemetryV2,
+    StagingRunBundleWriterV2,
     disabled_staging_delivery,
+    validate_staging_bundle,
     validate_staging_delivery,
     validate_v2_bundle,
     validate_v2_document,
 )
+from test_support.microcosm_build.emitter import FakeEmitterClient
 from test_support.paths import paths_for
 
 _TEST_PATHS = paths_for("microcosm-build")
+UK_STAGING = "policyengine/populace-uk-staging"
 
 ROOT = _TEST_PATHS.repository
 FIXTURE_ROOT = _TEST_PATHS.tests / "fixtures" / "staging"
@@ -80,7 +85,7 @@ def _sample() -> dict:
     return {"mode": "full"}
 
 
-def _recorder(tmp_path, **kwargs) -> StagingTelemetryV2:
+def _recorder(tmp_path, **kwargs) -> StagingRunBundleWriterV2:
     defaults = {
         "run_id": "uk-smoke-5-42",
         "country_code": "GB",
@@ -96,7 +101,61 @@ def _recorder(tmp_path, **kwargs) -> StagingTelemetryV2:
         "clock": Clock(),
     }
     defaults.update(kwargs)
-    return StagingTelemetryV2(**defaults)
+    return StagingRunBundleWriterV2(**defaults)
+
+
+def _remote_recorder(tmp_path, emitter=None, **kwargs):
+    """A remote-mode recorder whose run files go to an in-memory emitter."""
+    emitter = emitter if emitter is not None else FakeEmitterClient()
+    options = {
+        "delivery_mode": "local_and_remote",
+        "repo_id": UK_STAGING,
+        "emitter_client": emitter,
+        "upload_interval_seconds": 0,
+        **kwargs,
+    }
+    return _recorder(tmp_path, **options), emitter
+
+
+def _remote_files(emitter, repository=UK_STAGING) -> dict[str, bytes]:
+    return {
+        path: content
+        for (repo, path), content in emitter.hub_files.items()
+        if repo == repository
+    }
+
+
+class _AlteringEmitter(FakeEmitterClient):
+    """An emitter whose Hub copy of one path differs once it reads back."""
+
+    def __init__(self, path, alter) -> None:
+        super().__init__()
+        self.altered_path = path
+        self.alter = alter
+
+    def read_back_run_files(self, repository, run_id, *, wait_seconds=30.0):
+        key = (repository, self.altered_path)
+        self.hub_files[key] = self.alter(self.hub_files[key])
+        return super().read_back_run_files(
+            repository, run_id, wait_seconds=wait_seconds
+        )
+
+
+def test_staging_run_bundle_writer_sends_no_telemetry_events(tmp_path) -> None:
+    """The writer hands over its files; hosted telemetry stays the build's."""
+    assert "emitter" not in inspect.signature(StagingRunBundleWriterV2).parameters
+    telemetry, emitter = _remote_recorder(tmp_path)
+    telemetry.stage("input_verification", force_upload=True)
+    telemetry.complete()
+    telemetry.verify_remote()
+
+    assert emitter.run_file_requests
+    assert set(emitter.calls) <= {
+        "stage_run_files",
+        "run_files_receipt",
+        "read_back_run_files",
+    }
+    assert emitter.telemetry_messages == []
 
 
 def test_version_2_local_bundle_has_explicit_schemas_and_ordered_events(tmp_path):
@@ -221,7 +280,9 @@ def test_failure_uses_sanitized_contract_fields(tmp_path):
         "error_type": "RuntimeError",
         "message": "The build failed during input_verification.",
         "local_diagnostic_reference": "diagnostics/local-error.txt",
+        "failure_class": None,
     }
+    assert progress["block"] is None
     assert "licensed" not in serialized
     assert "secret-value" not in serialized
     assert "traceback" not in serialized.lower()
@@ -288,20 +349,13 @@ def test_unknown_schema_version_is_incompatible():
         validate_v2_document(
             {
                 "schema_name": RUN_MANIFEST_SCHEMA,
-                "schema_version": 3,
+                "schema_version": 999,
             }
         )
 
 
 def test_running_document_cannot_report_completed_remote_read_back(tmp_path):
-    api = MemoryApi(tmp_path)
-    telemetry = _recorder(
-        tmp_path,
-        delivery_mode="local_and_remote",
-        repo_id="policyengine/populace-uk-staging",
-        api=api,
-        upload_interval_seconds=0,
-    )
+    telemetry, _ = _remote_recorder(tmp_path)
     telemetry.complete()
     telemetry.verify_remote()
     manifest = telemetry.validate_local_bundle()["run_manifest"]
@@ -341,68 +395,66 @@ def test_identifiers_and_paths_cannot_escape_contract_root(tmp_path):
 
 
 def test_remote_failures_are_best_effort_and_preserve_repository(tmp_path, capsys):
-    class FailingApi:
-        def upload_file(self, **kwargs):
-            raise RuntimeError("401 token=do-not-record")
-
-    telemetry = _recorder(
-        tmp_path,
-        delivery_mode="local_and_remote",
-        repo_id="policyengine/populace-uk-staging",
-        api=FailingApi(),
-        upload_interval_seconds=0,
+    telemetry, emitter = _remote_recorder(
+        tmp_path, FakeEmitterClient(accept_run_files=False)
     )
 
     telemetry.stage("input_verification", force_upload=True)
 
     delivery = telemetry.delivery_summary
-    assert delivery["configured_repository"] == "policyengine/populace-uk-staging"
+    assert delivery["configured_repository"] == UK_STAGING
+    # The three files the emitter did not accept count as attempts.
+    assert len(emitter.run_file_requests[-1].files) == 3
     assert delivery["upload_attempts"] == 3
     assert delivery["upload_successes"] == 0
     assert delivery["last_error_code"] == "UPLOAD_FAILED"
     assert telemetry.validate_local_bundle()["progress"]["status"] == "running"
-    assert "do-not-record" not in capsys.readouterr().err
+    assert "staging hand-over failed" in capsys.readouterr().err
+
+
+def test_a_build_without_an_emitter_records_the_failed_hand_over(tmp_path):
+    telemetry, _ = _remote_recorder(tmp_path, emitter_client=None)
+    telemetry.complete()
+
+    delivery = telemetry.delivery_summary
+    assert delivery["mode"] == "local_and_remote"
+    assert delivery["upload_successes"] == 0
+    assert delivery["last_error_code"] == "UPLOAD_FAILED"
+    assert telemetry.validate_local_bundle()["progress"]["status"] == "completed"
 
 
 def test_remote_read_back_validates_the_written_run(tmp_path):
-    api = MemoryApi(tmp_path)
-    telemetry = _recorder(
-        tmp_path,
-        delivery_mode="local_and_remote",
-        repo_id="policyengine/populace-uk-staging",
-        api=api,
-        upload_interval_seconds=0,
-    )
+    telemetry, emitter = _remote_recorder(tmp_path)
     telemetry.set_sample(_sample())
     telemetry.complete()
 
     telemetry.verify_remote()
 
-    assert isinstance(telemetry._upload_session, BestEffortUploadSession)
+    assert "read_back_run_files" in emitter.calls
+    assert {
+        (request.repository, request.run_id, request.prefix)
+        for request in emitter.run_file_requests
+    } == {(UK_STAGING, "uk-smoke-5-42", "runs")}
+    assert all(request.latest_pointer is None for request in emitter.run_file_requests)
+    assert all(request.run_index_entry is None for request in emitter.run_file_requests)
     assert telemetry.delivery_summary["read_back"] == "passed"
     assert telemetry.uploads_succeeded > 0
-    assert "runs/uk-smoke-5-42/run_manifest.json" in api.files
-    assert all(path.startswith("runs/uk-smoke-5-42/") for path in api.files)
-    remote_manifest = json.loads(api.files["runs/uk-smoke-5-42/run_manifest.json"])
+    remote = _remote_files(emitter)
+    assert "runs/uk-smoke-5-42/run_manifest.json" in remote
+    assert all(path.startswith("runs/uk-smoke-5-42/") for path in remote)
+    remote_manifest = json.loads(remote["runs/uk-smoke-5-42/run_manifest.json"])
     assert remote_manifest["delivery"]["read_back"] == "passed"
 
 
 def test_remote_read_back_requires_a_final_run_status(tmp_path):
-    api = MemoryApi(tmp_path)
-    telemetry = _recorder(
-        tmp_path,
-        delivery_mode="local_and_remote",
-        repo_id="policyengine/populace-uk-staging",
-        api=api,
-        upload_interval_seconds=0,
-    )
+    telemetry, emitter = _remote_recorder(tmp_path)
 
-    with pytest.raises(StagingContractError, match="completed or failed"):
+    with pytest.raises(StagingContractError, match="completed, blocked or failed"):
         telemetry.verify_remote()
 
     assert telemetry.delivery_summary["read_back"] == "not_requested"
-    assert api.files == {}
-    assert api.downloaded == []
+    assert emitter.hub_files == {}
+    assert emitter.calls == []
 
 
 @pytest.mark.parametrize("final_status", ["completed", "failed"])
@@ -457,52 +509,28 @@ def test_remote_read_back_rejects_schema_valid_content_changes(
     path,
     mutate,
 ):
-    api = MemoryApi(tmp_path)
-    telemetry = _recorder(
-        tmp_path,
-        delivery_mode="local_and_remote",
-        repo_id="policyengine/populace-uk-staging",
-        api=api,
-        upload_interval_seconds=0,
-    )
+    def altered(data):
+        document = json.loads(data)
+        mutate(document)
+        return json.dumps(document).encode()
+
+    telemetry, _ = _remote_recorder(tmp_path, _AlteringEmitter(path, altered))
     telemetry.complete()
-    download = telemetry._transport.download
 
-    def altered_download(path_in_repo, **kwargs):
-        data = download(path_in_repo, **kwargs)
-        if path_in_repo == path:
-            document = json.loads(data)
-            mutate(document)
-            return json.dumps(document).encode()
-        return data
-
-    telemetry._transport.download = altered_download
-
-    with pytest.raises(StagingReadBackError, match="does not match local"):
+    with pytest.raises(StagingReadBackError, match=f"differ.*{path}"):
         telemetry.verify_remote()
 
     assert telemetry.delivery_summary["read_back"] == "failed"
+    assert telemetry.delivery_summary["last_error_code"] == "READ_BACK_FAILED"
 
 
 def test_remote_producers_have_disjoint_run_scoped_upload_paths(tmp_path):
-    api = MemoryApi(tmp_path)
-    first = _recorder(
-        tmp_path / "first",
-        run_id="first",
-        candidate_id="first",
-        delivery_mode="local_and_remote",
-        repo_id="policyengine/populace-uk-staging",
-        api=api,
-        upload_interval_seconds=0,
+    emitter = FakeEmitterClient()
+    first, _ = _remote_recorder(
+        tmp_path / "first", emitter, run_id="first", candidate_id="first"
     )
-    second = _recorder(
-        tmp_path / "second",
-        run_id="second",
-        candidate_id="second",
-        delivery_mode="local_and_remote",
-        repo_id="policyengine/populace-uk-staging",
-        api=api,
-        upload_interval_seconds=0,
+    second, _ = _remote_recorder(
+        tmp_path / "second", emitter, run_id="second", candidate_id="second"
     )
 
     first_paths = {remote for _, remote in first._upload_paths()}
@@ -514,64 +542,173 @@ def test_remote_producers_have_disjoint_run_scoped_upload_paths(tmp_path):
 
 
 def test_remote_delivery_matches_local_delivery_after_completion(tmp_path):
-    api = MemoryApi(tmp_path)
-    telemetry = _recorder(
-        tmp_path,
-        delivery_mode="local_and_remote",
-        repo_id="policyengine/populace-uk-staging",
-        api=api,
-        upload_interval_seconds=0,
-    )
+    telemetry, emitter = _remote_recorder(tmp_path)
 
     telemetry.complete()
 
+    # The documents carry the emitter's counts after the hand-over that
+    # delivered them; this emitter commits at once.
     expected = telemetry.delivery_summary
     assert expected["upload_attempts"] == len(telemetry._upload_paths())
     assert expected["upload_successes"] == expected["upload_attempts"]
+    remote = _remote_files(emitter)
     for filename in ("run_manifest.json", "progress.json"):
-        remote = json.loads(api.files[f"runs/uk-smoke-5-42/{filename}"])
-        assert remote["delivery"] == expected
+        document = json.loads(remote[f"runs/uk-smoke-5-42/{filename}"])
+        assert document["delivery"] == expected
+
+
+def test_delivery_counts_are_what_the_emitter_reported(tmp_path):
+    """Files the emitter has not committed yet do not count as delivered."""
+
+    class NotYetCommitted(FakeEmitterClient):
+        def _receipt(self, repository, run_id):
+            return {
+                **super()._receipt(repository, run_id),
+                "pending_files": 3,
+                "files_attempted": 0,
+                "files_committed": 0,
+                "commit_attempts": 0,
+                "commits": 0,
+            }
+
+    telemetry, emitter = _remote_recorder(tmp_path, NotYetCommitted())
+    telemetry.stage("input_verification", force_upload=True)
+    telemetry.complete()
+
+    delivery = telemetry.delivery_summary
+    assert len(emitter.run_file_requests) >= 2
+    assert delivery["upload_attempts"] == delivery["upload_successes"] == 0
+    assert delivery["last_error_code"] is None
+    telemetry.validate_local_bundle()
 
 
 def test_remote_delivery_matches_local_delivery_after_read_back(tmp_path):
-    api = MemoryApi(tmp_path)
-    telemetry = _recorder(
-        tmp_path,
-        delivery_mode="local_and_remote",
-        repo_id="policyengine/populace-uk-staging",
-        api=api,
-        upload_interval_seconds=0,
-    )
+    telemetry, emitter = _remote_recorder(tmp_path)
     telemetry.complete()
 
-    counted_paths = len(telemetry._upload_paths())
     telemetry.verify_remote()
 
     expected = telemetry.delivery_summary
-    assert expected["upload_attempts"] == 3 * counted_paths
-    assert expected["upload_successes"] == expected["upload_attempts"]
+    assert expected["read_back"] == "passed"
+    assert expected["upload_successes"] == expected["upload_attempts"] > 0
+    remote = _remote_files(emitter)
     for filename in ("run_manifest.json", "progress.json"):
-        remote = json.loads(api.files[f"runs/uk-smoke-5-42/{filename}"])
-        assert remote["delivery"] == expected
+        document = json.loads(remote[f"runs/uk-smoke-5-42/{filename}"])
+        assert document["delivery"] == expected
 
 
-def test_remote_read_back_failure_is_explicit(tmp_path):
-    class UploadOnlyApi(MemoryApi):
-        def hf_hub_download(self, **kwargs):
-            raise RuntimeError("unavailable")
-
-    telemetry = _recorder(
-        tmp_path,
-        delivery_mode="local_and_remote",
-        repo_id="policyengine/populace-uk-staging",
-        api=UploadOnlyApi(tmp_path),
-        upload_interval_seconds=0,
-    )
+@pytest.mark.parametrize(
+    "answer",
+    [
+        {
+            "status": "failed",
+            "files": 3,
+            "mismatched_paths": [],
+            "error_code": "REPOSITORY_UNAVAILABLE",
+        },
+        {"status": "pending", "files": 0, "mismatched_paths": [], "error_code": None},
+        {
+            "status": "unavailable",
+            "files": 0,
+            "mismatched_paths": [],
+            "error_code": None,
+        },
+    ],
+)
+def test_remote_read_back_failure_is_explicit(tmp_path, answer):
+    emitter = FakeEmitterClient()
+    emitter.read_back_answer = answer
+    telemetry, _ = _remote_recorder(tmp_path, emitter)
     telemetry.complete()
 
     with pytest.raises(StagingReadBackError, match="read-back failed"):
         telemetry.verify_remote()
     assert telemetry.delivery_summary["read_back"] == "failed"
+    assert telemetry.delivery_summary["last_error_code"] == "READ_BACK_FAILED"
+
+
+def test_read_back_fails_when_the_final_state_was_not_handed_over(tmp_path):
+    """The Hub can match what the emitter committed and still be stale."""
+
+    telemetry, emitter = _remote_recorder(tmp_path)
+    telemetry.stage("input_verification", force_upload=True)
+    emitter.accept_run_files = False
+    telemetry.complete()
+
+    with pytest.raises(StagingReadBackError, match="not handed over"):
+        telemetry.verify_remote()
+    assert telemetry.delivery_summary["read_back"] == "failed"
+    assert telemetry.delivery_summary["last_error_code"] == "READ_BACK_FAILED"
+    assert "read_back_run_files" not in emitter.calls
+
+
+def test_remote_read_back_without_an_emitter_fails(tmp_path):
+    telemetry, _ = _remote_recorder(tmp_path, emitter_client=None)
+    telemetry.complete()
+
+    with pytest.raises(StagingReadBackError, match="read-back failed"):
+        telemetry.verify_remote()
+    assert telemetry.delivery_summary["read_back"] == "failed"
+
+
+def test_a_failed_refresh_after_a_passed_read_back_keeps_the_verified_delivery(
+    tmp_path, capsys
+):
+    """The read-back verdict owns the error code (microcosm#1301).
+
+    The refresh upload after a passed read-back is best effort. When it
+    fails, the delivery stays verified with no error code, the miss shows as
+    an attempt without a success, and the remote copy still shows the
+    delivery as it was before read-back; the run is not failed.
+    """
+
+    class RefreshFails(FakeEmitterClient):
+        def read_back_run_files(self, repository, run_id, *, wait_seconds=30.0):
+            answer = super().read_back_run_files(
+                repository, run_id, wait_seconds=wait_seconds
+            )
+            self.accept_run_files = False
+            return answer
+
+    telemetry, emitter = _remote_recorder(tmp_path, RefreshFails())
+    telemetry.set_sample(_sample())
+    telemetry.complete()
+
+    telemetry.verify_remote()
+
+    delivery = telemetry.delivery_summary
+    assert delivery["read_back"] == "passed"
+    assert delivery["last_error_code"] is None
+    assert delivery["upload_attempts"] > delivery["upload_successes"] > 0
+    bundle = telemetry.validate_local_bundle()
+    assert bundle["run_manifest"]["delivery"] == delivery
+    remote_manifest = json.loads(
+        _remote_files(emitter)["runs/uk-smoke-5-42/run_manifest.json"]
+    )
+    assert remote_manifest["delivery"]["read_back"] == "not_requested"
+    assert "staging hand-over failed" in capsys.readouterr().err
+
+
+def test_a_failed_read_back_keeps_its_error_code_through_later_uploads(tmp_path):
+    emitter = FakeEmitterClient()
+    emitter.read_back_answer = {
+        "status": "failed",
+        "files": 3,
+        "mismatched_paths": [],
+        "error_code": "REPOSITORY_UNAVAILABLE",
+    }
+    telemetry, _ = _remote_recorder(tmp_path, emitter)
+    telemetry.complete()
+    with pytest.raises(StagingReadBackError):
+        telemetry.verify_remote()
+
+    # A successful upload afterwards cannot clear the failed verdict's code.
+    telemetry._maybe_upload(force=True)
+
+    delivery = telemetry.delivery_summary
+    assert delivery["read_back"] == "failed"
+    assert delivery["last_error_code"] == "READ_BACK_FAILED"
+    assert telemetry.validate_local_bundle()["run_manifest"]["delivery"] == delivery
 
 
 def test_bundle_validation_checks_reviewed_artifact_digest(tmp_path):
@@ -613,7 +750,7 @@ def test_canonical_version_2_fixture_cases_validate():
         validate_v2_document(cases["unknown_version"])
 
 
-@pytest.mark.parametrize("version", ["v1", "v2"])
+@pytest.mark.parametrize("version", ["v1", "v2", "v3"])
 def test_contract_fixture_checksums_are_pinned(version):
     fixture_dir = FIXTURE_ROOT / version
     for line in (fixture_dir / "SHA256SUMS").read_text().splitlines():
@@ -623,7 +760,164 @@ def test_contract_fixture_checksums_are_pinned(version):
         ).hexdigest() == (expected)
 
 
-def test_canonical_version_2_fixtures_are_reproducible():
+def test_canonical_version_3_fixture_cases_validate():
+    v3 = FIXTURE_ROOT / "v3"
+    completed = validate_staging_bundle(v3 / "completed-spine", "uk-spine-v3-fixture")
+    calibration = validate_staging_bundle(
+        v3 / "calibration", "uk-calibration-v3-fixture"
+    )
+    failed = validate_staging_bundle(v3 / "failed", "uk-failed-v3-fixture")
+    blocked = validate_staging_bundle(v3 / "blocked", "uk-blocked-v3-fixture")
+
+    assert completed["progress"]["schema_version"] == STAGING_DOCUMENT_VERSION == 3
+    assert completed["progress"]["delivery"]["contract_version"] == 2
+    assert completed["progress"]["block"] is None
+    assert calibration["calibration_progress"]["schema_version"] == 3
+    assert failed["progress"]["failure"]["failure_class"] == "error"
+    assert failed["events"][-1]["details"]["failure_class"] == "error"
+    assert blocked["progress"]["status"] == "blocked"
+    assert blocked["progress"]["failure"] is None
+    assert blocked["run_manifest"]["block"] == {
+        "phase": "terminal",
+        "blocking_failure_count": 1,
+        "blocking_gate_ids": ["uk_target_fit"],
+    }
+    terminal = blocked["events"][-1]
+    assert (terminal["stage_id"], terminal["status"]) == ("blocked", "blocked")
+    assert terminal["details"]["gate_statuses"]["uk_target_fit"] == "failed"
+
+
+def test_delivery_contract_stays_version_2_while_documents_move_to_3():
+    """Publishers and release assemblers pin the delivery summary's version."""
+
+    assert STAGING_CONTRACT_VERSION == 2
+    assert disabled_staging_delivery("--no-staging")["contract_version"] == 2
+
+
+def test_blocked_run_closes_with_its_gate_phase(tmp_path):
+    telemetry = _recorder(tmp_path)
+    telemetry.stage("gate_battery", event_status="completed")
+    telemetry.block(
+        phase="preflight",
+        blocking_gate_ids=["uk_target_surface", "uk_support"],
+        gate_statuses={"uk_target_surface": "failed", "uk_support": "failed"},
+    )
+
+    bundle = telemetry.validate_local_bundle()
+    assert bundle["progress"]["status"] == "blocked"
+    assert bundle["progress"]["block"]["phase"] == "preflight"
+    assert bundle["progress"]["block"]["blocking_failure_count"] == 2
+    with pytest.raises(StagingContractError, match="status is 'blocked'"):
+        telemetry.complete()
+
+
+@pytest.mark.parametrize(
+    "kwargs",
+    [
+        {"phase": "terminal", "blocking_gate_ids": []},
+        {"phase": "terminal", "blocking_gate_ids": [""]},
+        {"phase": "../x", "blocking_gate_ids": ["uk_target_fit"]},
+        {"phase": "terminal", "blocking_gate_ids": ["a"], "blocking_failure_count": 0},
+        {
+            "phase": "terminal",
+            "blocking_gate_ids": ["token"],
+            "gate_statuses": {"token": "failed"},
+        },
+    ],
+)
+def test_block_refuses_an_empty_or_unsafe_block(tmp_path, kwargs):
+    telemetry = _recorder(tmp_path)
+    with pytest.raises(StagingContractError):
+        telemetry.block(**kwargs)
+    # Refused before any state changed: the run is still running and can
+    # still close another way.
+    assert telemetry.status == "running"
+
+
+def test_a_refused_block_leaves_the_run_able_to_close_failed(tmp_path):
+    telemetry = _recorder(tmp_path)
+    telemetry.stage("gate_battery", event_status="completed")
+    with pytest.raises(StagingContractError):
+        telemetry.block(
+            phase="terminal",
+            blocking_gate_ids=["token"],
+            gate_statuses={"token": "failed"},
+        )
+    telemetry.fail(
+        RuntimeError("the block could not be recorded"),
+        error_code="GATE_BLOCK_UNRECORDED",
+        failure_class="unrecorded_gate_block",
+    )
+    progress = telemetry.validate_local_bundle()["progress"]
+    assert progress["status"] == "failed" and progress["block"] is None
+    assert progress["failure"]["error_code"] == "GATE_BLOCK_UNRECORDED"
+
+
+def test_a_block_may_name_no_gate_when_it_counts_its_failures(tmp_path):
+    telemetry = _recorder(tmp_path)
+    telemetry.block(phase="assembled", blocking_gate_ids=[], blocking_failure_count=3)
+    block = telemetry.validate_local_bundle()["progress"]["block"]
+    assert block == {
+        "phase": "assembled",
+        "blocking_failure_count": 3,
+        "blocking_gate_ids": [],
+    }
+
+
+def test_failure_class_is_recorded_and_checked(tmp_path):
+    telemetry = _recorder(tmp_path)
+    with pytest.raises(StagingContractError, match="failure_class"):
+        telemetry.fail(RuntimeError("x"), failure_class="Not A Class")
+    telemetry.fail(
+        KeyboardInterrupt(), error_code="INTERRUPTED", failure_class="interrupted"
+    )
+    failure = telemetry.validate_local_bundle()["progress"]["failure"]
+    assert (failure["error_code"], failure["failure_class"]) == (
+        "INTERRUPTED",
+        "interrupted",
+    )
+
+
+def test_version_3_documents_keep_failure_and_block_apart(tmp_path):
+    telemetry = _recorder(tmp_path)
+    telemetry.block(phase="terminal", blocking_gate_ids=["uk_target_fit"])
+    manifest = telemetry.validate_local_bundle()["run_manifest"]
+
+    with pytest.raises(StagingContractError, match="Blocked runs require"):
+        validate_v2_document({**manifest, "block": None})
+    failed = {
+        **manifest,
+        "status": "failed",
+        "failure": {
+            "error_code": "BUILD_FAILED",
+            "error_type": "RuntimeError",
+            "message": "The build failed during gate_battery.",
+            "local_diagnostic_reference": None,
+            "failure_class": None,
+        },
+    }
+    with pytest.raises(StagingContractError, match="Non-blocked runs"):
+        validate_v2_document(failed)
+    with pytest.raises(StagingContractError, match="failure"):
+        validate_v2_document(
+            {**failed, "block": None, "failure": {**failed["failure"], "extra": 1}}
+        )
+
+
+def test_a_run_cannot_mix_contract_versions(tmp_path):
+    telemetry = _recorder(tmp_path)
+    telemetry.complete()
+    progress_path = telemetry.run_dir / "progress.json"
+    progress = json.loads(progress_path.read_text())
+    progress["schema_version"] = 2
+    progress.pop("block")
+    progress_path.write_text(json.dumps(progress))
+
+    with pytest.raises(StagingContractError, match="mix contract versions"):
+        telemetry.validate_local_bundle()
+
+
+def test_canonical_version_3_fixtures_are_reproducible():
     subprocess.run(
         [
             sys.executable,
@@ -635,15 +929,8 @@ def test_canonical_version_2_fixtures_are_reproducible():
     )
 
 
-def test_remote_read_back_downloads_every_run_scoped_file(tmp_path):
-    api = MemoryApi(tmp_path)
-    telemetry = _recorder(
-        tmp_path,
-        delivery_mode="local_and_remote",
-        repo_id="policyengine/populace-uk-staging",
-        api=api,
-        upload_interval_seconds=0,
-    )
+def test_remote_read_back_covers_every_run_scoped_file(tmp_path):
+    telemetry, emitter = _remote_recorder(tmp_path)
     diagnostic = tmp_path / "aggregate.json"
     diagnostic.write_text(json.dumps({"target_count": 3}))
     telemetry.add_artifact(
@@ -666,8 +953,11 @@ def test_remote_read_back_downloads_every_run_scoped_file(tmp_path):
 
     telemetry.verify_remote()
 
+    # The emitter compares each file it committed for the run with the Hub.
     expected = {remote for _, remote in telemetry._upload_paths()}
-    assert set(api.downloaded) == expected
+    assert set(_remote_files(emitter)) == expected
+    assert emitter.committed_paths(UK_STAGING, "uk-smoke-5-42") == expected
+    assert telemetry.delivery_summary["read_back"] == "passed"
 
 
 @pytest.mark.parametrize(
@@ -679,13 +969,8 @@ def test_remote_read_back_downloads_every_run_scoped_file(tmp_path):
     ],
 )
 def test_remote_read_back_rejects_changed_declared_file(tmp_path, corrupt_path):
-    api = MemoryApi(tmp_path)
-    telemetry = _recorder(
-        tmp_path,
-        delivery_mode="local_and_remote",
-        repo_id="policyengine/populace-uk-staging",
-        api=api,
-        upload_interval_seconds=0,
+    telemetry, _ = _remote_recorder(
+        tmp_path, _AlteringEmitter(corrupt_path, lambda data: b"{}\n")
     )
     diagnostic = tmp_path / "aggregate.json"
     diagnostic.write_text(json.dumps({"target_count": 3}))
@@ -706,15 +991,8 @@ def test_remote_read_back_rejects_changed_declared_file(tmp_path, corrupt_path):
         }
     )
     telemetry.complete()
-    download = telemetry._transport.download
 
-    def altered_download(path_in_repo):
-        data = download(path_in_repo)
-        return b"{}\n" if path_in_repo == corrupt_path else data
-
-    telemetry._transport.download = altered_download
-
-    with pytest.raises(StagingReadBackError, match="does not match local"):
+    with pytest.raises(StagingReadBackError, match=f"differ.*{corrupt_path}"):
         telemetry.verify_remote()
 
     assert telemetry.delivery_summary["read_back"] == "failed"
@@ -733,22 +1011,14 @@ def test_version_2_storage_prefix_is_fixed_to_runs(tmp_path):
 
 def test_version_2_accepts_explicit_configuration_for_another_country(tmp_path):
     repo_id = "example/populace-ca-staging"
-    api = MemoryApi(tmp_path, repo_id=repo_id)
-    telemetry = _recorder(
-        tmp_path,
-        country_code="CA",
-        delivery_mode="local_and_remote",
-        repo_id=repo_id,
-        api=api,
-        upload_interval_seconds=0,
-    )
+    telemetry, emitter = _remote_recorder(tmp_path, country_code="CA", repo_id=repo_id)
 
     telemetry.complete()
 
     manifest = telemetry.validate_local_bundle()["run_manifest"]
     assert manifest["country_code"] == "CA"
     assert manifest["delivery"]["configured_repository"] == repo_id
-    assert api.files
+    assert _remote_files(emitter, repo_id)
 
 
 def test_version_2_cli_uses_country_owned_repository_configuration(monkeypatch):
@@ -1022,81 +1292,57 @@ def test_storage_reads_whether_the_credential_can_write_this_repository(
     )
 
 
-class _RateLimitedApi(MemoryApi):
-    """Fail the next ``failures_left`` writes, as a rate-limited Hub does."""
-
-    def __init__(self, root: Path) -> None:
-        super().__init__(root)
-        self.failures_left = 0
-        self.calls = 0
-
-    def upload_file(self, **kwargs):
-        self.calls += 1
-        if self.failures_left > 0:
-            self.failures_left -= 1
-            raise RuntimeError("429 rate limited token=do-not-record")
-        super().upload_file(**kwargs)
-
-
 def _paused_remote_recorder(tmp_path):
-    api = _RateLimitedApi(tmp_path)
-    sleeps: list[float] = []
-    telemetry = _recorder(
-        tmp_path,
-        delivery_mode="local_and_remote",
-        repo_id="policyengine/populace-uk-staging",
-        api=api,
-        upload_interval_seconds=0,
-        sleep=sleeps.append,
-    )
+    emitter = FakeEmitterClient(accept_run_files=False)
+    telemetry, _ = _remote_recorder(tmp_path, emitter)
     telemetry.set_sample(_sample())
-    # Three consecutive failures pause remote writes for the rest of the run.
-    api.failures_left = 3
-    telemetry.stage("calibrating", force_upload=True)
+    # Three consecutive hand-overs the emitter does not accept pause the
+    # run's hand-overs until its final state.
+    for stage in ("input_verification", "sampling", "calibrating"):
+        telemetry.stage(stage, force_upload=True)
     assert telemetry.delivery_summary["last_error_code"] == "UPLOAD_FAILED"
-    calls_paused = api.calls
+    requests_paused = len(emitter.run_file_requests)
     telemetry.stage("diagnostics", force_upload=True)
-    assert api.calls == calls_paused
-    return telemetry, api, sleeps
+    assert len(emitter.run_file_requests) == requests_paused == 3
+    return telemetry, emitter
 
 
-def test_completion_flushes_the_terminal_state_after_paused_uploads(tmp_path):
+def test_completion_hands_over_the_final_state_after_paused_hand_overs(tmp_path):
     """The v20 last-mile gap: a paused run left its remote copy 'running'."""
 
-    telemetry, api, sleeps = _paused_remote_recorder(tmp_path)
-    # The first terminal attempt meets the limit again; the second, after a
-    # backed-off wait, lands.
-    api.failures_left = 3
+    telemetry, emitter = _paused_remote_recorder(tmp_path)
+    emitter.accept_run_files = True
     telemetry.complete()
-    assert sleeps == [15.0]
+
+    remote = _remote_files(emitter)
     prefix = telemetry.repo_run_prefix
-    assert json.loads(api.files[f"{prefix}/progress.json"])["status"] == "completed"
-    assert {f"{prefix}/run_manifest.json", f"{prefix}/events.ndjson"} <= set(api.files)
+    assert json.loads(remote[f"{prefix}/progress.json"])["status"] == "completed"
+    assert {f"{prefix}/run_manifest.json", f"{prefix}/events.ndjson"} <= set(remote)
+    assert emitter.run_file_requests[-2].flush is True
     delivery = telemetry.delivery_summary
     assert delivery["last_error_code"] is None
     assert delivery["upload_successes"] >= 3
     assert delivery["upload_attempts"] > delivery["upload_successes"]
 
 
-def test_failure_flushes_the_terminal_state_after_paused_uploads(tmp_path):
-    telemetry, api, sleeps = _paused_remote_recorder(tmp_path)
+def test_failure_hands_over_the_final_state_after_paused_hand_overs(tmp_path):
+    telemetry, emitter = _paused_remote_recorder(tmp_path)
+    emitter.accept_run_files = True
     telemetry.fail(RuntimeError("solver exploded"))
-    assert sleeps == []
     prefix = telemetry.repo_run_prefix
-    assert json.loads(api.files[f"{prefix}/progress.json"])["status"] == "failed"
+    remote = _remote_files(emitter)
+    assert json.loads(remote[f"{prefix}/progress.json"])["status"] == "failed"
     assert telemetry.delivery_summary["last_error_code"] is None
 
 
-def test_terminal_flush_gives_up_after_bounded_attempts(tmp_path, capsys):
-    telemetry, api, sleeps = _paused_remote_recorder(tmp_path)
-    api.failures_left = 100
+def test_a_final_state_the_emitter_does_not_accept_stays_local(tmp_path, capsys):
+    telemetry, emitter = _paused_remote_recorder(tmp_path)
     telemetry.complete()
-    assert sleeps == [15.0, 60.0]
-    assert telemetry.repo_run_prefix + "/progress.json" not in api.files
+    assert len(emitter.run_file_requests) == 4
+    assert telemetry.repo_run_prefix + "/progress.json" not in _remote_files(emitter)
     delivery = telemetry.delivery_summary
     assert delivery["last_error_code"] == "UPLOAD_FAILED"
     err = capsys.readouterr().err
-    assert "terminal state did not reach" in err
-    assert "do-not-record" not in err
-    # The local bundle is complete whatever the Hub did.
+    assert "final state was not handed over" in err
+    # The local bundle is complete whatever the emitter did.
     assert telemetry.validate_local_bundle()["progress"]["status"] == "completed"

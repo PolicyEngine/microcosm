@@ -1,0 +1,1 @@
+Match the IRS SOI congressional-district file by family, not by its pinned 2022 package: the next district release still never keys a taxable-interest control, never compiles a PTC amount target, stays on the target-parity red line and keeps its manifest note. No target value or registry version moves on the pinned feed.

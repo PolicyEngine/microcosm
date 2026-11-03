@@ -26,6 +26,7 @@ def test_archived_and_pinned_source_coordinates_are_exact() -> None:
         "2023_SIPP_Data_Dictionary.pdf"
     )
 
+
 def test_exact_source_columns_predictors_outputs_and_manifest_stage() -> None:
     assert SIPP_VOLUNTARY_FILING_SOURCE_COLUMNS == (
         "SSUID",
@@ -66,6 +67,7 @@ def test_exact_source_columns_predictors_outputs_and_manifest_stage() -> None:
         "fit_weighted_qrf",
     ]
 
+
 def test_loader_uses_reported_answers_drops_dependents_and_pairs_spouses(
     tmp_path: Path,
 ) -> None:
@@ -91,6 +93,7 @@ def test_loader_uses_reported_answers_drops_dependents_and_pairs_spouses(
     # The November extreme and the dependent/imputed/zero-weight rows vanished.
     assert donor["employment_income"].max() < 100_000.0
 
+
 def test_loader_rejects_reciprocal_spouse_target_disagreement(tmp_path: Path) -> None:
     rows = [
         _source_row(1, 101, spouse=102, filing=1),
@@ -106,6 +109,7 @@ def test_loader_rejects_reciprocal_spouse_target_disagreement(tmp_path: Path) ->
     path = _write_source(tmp_path, rows)
     with pytest.raises(ValueError, match="spouses disagree"):
         load_sipp_2023_voluntary_filing_donor(path, expected_size_bytes=None)
+
 
 def test_loader_reference_is_minimum_pnum_before_response_filter(
     tmp_path: Path,
@@ -150,6 +154,7 @@ def test_loader_reference_is_minimum_pnum_before_response_filter(
     assert married["tax_unit_weight"] == pytest.approx(31)
     assert married["employment_income"] == pytest.approx((100 + 200) * 12)
 
+
 def test_loader_rejects_missing_columns_bad_hash_and_constant_target(
     tmp_path: Path,
 ) -> None:
@@ -175,6 +180,7 @@ def test_loader_rejects_missing_columns_bad_hash_and_constant_target(
     ).replace(constant)
     with pytest.raises(ValueError, match="target is constant"):
         load_sipp_2023_voluntary_filing_donor(constant, expected_size_bytes=None)
+
 
 def test_cached_full_donor_matches_locked_response_and_weight_facts() -> None:
     snapshot = (
@@ -219,6 +225,7 @@ def test_cached_full_donor_matches_locked_response_and_weight_facts() -> None:
     )
     assert audit["weighted_true_share"] == pytest.approx(0.760308456312741, abs=1e-12)
 
+
 def test_fetch_streams_verifies_atomically_and_reuses_cache(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -255,6 +262,7 @@ def test_fetch_streams_verifies_atomically_and_reuses_cache(
         == path
     )
 
+
 def test_receiver_uses_unit_wages_head_spouse_and_full_household_children() -> None:
     frame = _frame(6)
     receiver = module._recipient_tax_unit_predictor_table(frame)
@@ -269,6 +277,7 @@ def test_receiver_uses_unit_wages_head_spouse_and_full_household_children() -> N
     # Household 5 has neither spouse nor child.
     assert receiver.loc[105, "reference_is_married"] == pytest.approx(0.0)
     assert receiver.loc[105, "count_under_18"] == pytest.approx(0.0)
+
 
 def test_qrf_predicts_once_per_source_unit_and_fans_out_identical_clones(
     monkeypatch: pytest.MonkeyPatch,
@@ -319,6 +328,7 @@ def test_qrf_predicts_once_per_source_unit_and_fans_out_identical_clones(
     ).groupby("source")["predicted"]
     assert (by_source.nunique() == 1).all()
 
+
 def test_puf_only_survivor_units_predict_from_the_surviving_clone(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -365,6 +375,7 @@ def test_puf_only_survivor_units_predict_from_the_surviving_clone(
     assert len(predicted) == len(sparse.table("tax_unit"))
     assert predicted[survivors.to_numpy()].all()
 
+
 def test_duplicate_same_role_source_rows_fail_closed() -> None:
     expanded = clone_us_frame_for_puf_support(_frame(10))
     tax_unit = expanded.table("tax_unit")
@@ -375,6 +386,7 @@ def test_duplicate_same_role_source_rows_fail_closed() -> None:
 
     with pytest.raises(ValueError, match="duplicated support copies"):
         impute_us_voluntary_filing(expanded, _donor(), seed=17)
+
 
 def test_historical_tail_copy_fans_the_source_decision_to_every_copy(
     monkeypatch: pytest.MonkeyPatch,
@@ -431,6 +443,7 @@ def test_historical_tail_copy_fans_the_source_decision_to_every_copy(
     gate = us_voluntary_filing_signal_gate(mismatch)
     assert any("disagree for 1 source unit" in failure for failure in gate.failures)
 
+
 def test_historical_puf_only_survivor_predicts_from_the_primary_detail_copy(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -457,6 +470,7 @@ def test_historical_puf_only_survivor_predicts_from_the_primary_detail_copy(
     # zero-wage tail copy.
     assert predicted[source_six].tolist() == [True, True]
 
+
 def test_historical_duplicate_clone_index_still_fails_closed() -> None:
     frame = _historical_tail_frame()
     tax_unit = frame.table("tax_unit")
@@ -469,6 +483,7 @@ def test_historical_duplicate_clone_index_still_fails_closed() -> None:
 
     with pytest.raises(ValueError, match=r"duplicated support copies.*\('103', 1\)"):
         impute_us_voluntary_filing(duplicated, _donor(), seed=17)
+
 
 @pytest.mark.parametrize("clone_index", [3, 7, 2**62])
 @pytest.mark.parametrize("dtype", [np.int64, np.float64], ids=["int", "float"])
@@ -501,6 +516,7 @@ def test_historical_out_of_domain_clone_refused_before_prediction(
     with pytest.raises(ValueError, match="historical"):
         impute_us_voluntary_filing(frame, _donor(), seed=17)
 
+
 def test_assembled_frame_without_clone_indices_fails_closed() -> None:
     # Microcosm #992 gate finding: with the clone-index column dropped, an
     # assembled ASEC-channel frame once fell back to role ranks. Assembled
@@ -532,6 +548,7 @@ def test_assembled_frame_without_clone_indices_fails_closed() -> None:
     ):
         module._source_receiver_rows(TaxUnitFrame(), receiver)
 
+
 @pytest.mark.parametrize(
     "channels",
     [["asec"] * 4, ["asec", "puf_tax_detail"] * 2],
@@ -562,6 +579,7 @@ def test_gate_refuses_assembled_frame_without_clone_indices(
         us_voluntary_filing_summary(frame)
     with pytest.raises(ValueError, match=pattern):
         us_voluntary_filing_signal_gate(frame)
+
 
 @pytest.mark.parametrize(
     ("channels", "clone_indices", "missing"),
@@ -598,6 +616,7 @@ def test_gate_refuses_assembled_frame_without_support_channel(
         match=r"assembled support metadata requires " + missing,
     ):
         us_voluntary_filing_signal_gate(frame)
+
 
 @pytest.mark.parametrize(
     "consumer", [us_voluntary_filing_summary, us_voluntary_filing_signal_gate]
@@ -644,6 +663,7 @@ def test_gate_validates_assembled_provenance_before_output_or_weights(
     with pytest.raises(ValueError, match="assembled support metadata requires"):
         consumer(TaxUnitFrame())
 
+
 def test_receiver_refuses_assembled_frame_without_support_metadata() -> None:
     # Unique source IDs give the one-row-per-source path nothing to reject,
     # so the stripped assembled table must be refused by provenance alone.
@@ -676,6 +696,7 @@ def test_receiver_refuses_assembled_frame_without_support_metadata() -> None:
     ):
         module._source_receiver_rows(TaxUnitFrame(), receiver)
 
+
 def test_gate_compares_every_historical_copy_with_repeated_clone_indices() -> None:
     # A historical table whose tail copy repeats clone index 1 is malformed
     # (both imputers refuse it). The gate still compares every copy of the
@@ -702,6 +723,7 @@ def test_gate_compares_every_historical_copy_with_repeated_clone_indices() -> No
     gate = us_voluntary_filing_signal_gate(disagreeing)
     assert any("disagree for 1 source unit" in failure for failure in gate.failures)
 
+
 @pytest.mark.parametrize(
     "output",
     [[False, False, True, True], [False, True, True, True]],
@@ -720,6 +742,7 @@ def test_gate_flags_duplicate_sources_without_support_metadata(
     gate = us_voluntary_filing_signal_gate(frame)
     assert not gate.passed
     assert any("provenance" in failure for failure in gate.failures)
+
 
 @pytest.mark.parametrize(
     "consumer", [us_voluntary_filing_summary, us_voluntary_filing_signal_gate]
@@ -747,6 +770,7 @@ def test_channel_only_gate_refuses_duplicated_source_role(
     with pytest.raises(ValueError, match="duplicated same-role rows"):
         consumer(frame)
 
+
 def test_unique_sources_without_metadata_keep_the_unexpanded_summary() -> None:
     frame = _replace_tax_unit(
         _frame(4), **{_OUTPUT: np.asarray([False, True, True, True])}
@@ -758,6 +782,7 @@ def test_unique_sources_without_metadata_keep_the_unexpanded_summary() -> None:
         frame
     )
     assert us_voluntary_filing_signal_gate(source_frame).passed
+
 
 def test_channel_only_unique_source_role_pairs_keep_valid_clone_diagnostics() -> None:
     frame = _replace_tax_unit(
@@ -771,6 +796,7 @@ def test_channel_only_unique_source_role_pairs_keep_valid_clone_diagnostics() ->
     assert summary["clone_mismatch_source_units"] == 0
     assert summary["clone_metadata_missing"] is False
     assert us_voluntary_filing_signal_gate(frame).passed
+
 
 @pytest.mark.parametrize("assembled", [True, False], ids=["assembled", "historical"])
 def test_clone_index_past_int64_fails_closed(assembled: bool) -> None:
@@ -813,6 +839,7 @@ def test_clone_index_past_int64_fails_closed(assembled: bool) -> None:
     )
     with pytest.raises(ValueError, match=malformed):
         module._source_receiver_rows(frame, receiver)
+
 
 def test_assembled_clone_two_uses_explicit_index_and_checks_every_clone() -> None:
     tax_unit = pd.DataFrame(
@@ -858,6 +885,7 @@ def test_assembled_clone_two_uses_explicit_index_and_checks_every_clone() -> Non
     assert summary["clone_source_units"] == 1
     assert summary["clone_mismatch_source_units"] == 1
 
+
 def test_real_qrf_recomputation_is_deterministic() -> None:
     frame = _frame(14)
     donor = _donor(120)
@@ -869,6 +897,7 @@ def test_real_qrf_recomputation_is_deterministic() -> None:
         n_estimators=8,
     )
     pd.testing.assert_series_equal(first, second)
+
 
 def test_wrapper_recomputes_stale_signal_and_is_idempotent(
     monkeypatch: pytest.MonkeyPatch,
@@ -905,6 +934,7 @@ def test_wrapper_recomputes_stale_signal_and_is_idempotent(
     )
     assert repeated is restored
 
+
 def test_signal_gate_requires_boolean_plausible_and_clone_consistent() -> None:
     expanded = clone_us_frame_for_puf_support(_frame(10))
     values = np.tile(
@@ -929,6 +959,7 @@ def test_signal_gate_requires_boolean_plausible_and_clone_consistent() -> None:
     constant_gate = us_voluntary_filing_signal_gate(constant)
     assert not constant_gate.passed
     assert any("constant" in failure for failure in constant_gate.failures)
+
 
 @pytest.mark.parametrize(
     ("column", "value", "message"),

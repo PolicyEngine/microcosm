@@ -26,6 +26,10 @@ import pytest
 from hypothesis import HealthCheck, given, settings
 from hypothesis import strategies as st
 
+from test_support.git_repositories import (
+    NO_BACKGROUND_MAINTENANCE,
+    NO_BACKGROUND_MAINTENANCE_ENV,
+)
 from test_support.microcosm_build.us_modal_stage_plan_tool import (
     COMMIT,
     FEED_SHA,
@@ -354,6 +358,55 @@ def test_image_pins_the_commit_and_the_lock() -> None:
     # The clean-tree assertion runs after the sync, so the release tool's
     # own dirty-tree refusal and recorded sha match the pushed commit.
     assert commands[-1].startswith('test -z "$(git')
+
+
+def test_image_installs_the_emitter_command_on_its_own(app) -> None:
+    """Builds start the separately installed emitter, never the synced one."""
+
+    plan = plan_lib.parse_plan(_plan_data())
+    commands = plan_lib.image_build_commands(plan)
+    sync = next(index for index, command in enumerate(commands) if "uv sync" in command)
+    install = commands.index(
+        "UV_TOOL_BIN_DIR=/usr/local/bin uv tool install 'microcosm-emitter>=0.7.0'"
+    )
+    # Outside the build's environment, after it is synced and before the
+    # clean-tree check. The image does not build unless the command runs.
+    assert sync < install < len(commands) - 1
+    assert commands[install + 1] == "/usr/local/bin/microcosm-emitter version"
+    # The interface in the build finds the command through the image's
+    # environment, which the stage tool inherits.
+    image = sys.modules["modal"].Image.debian_slim.return_value
+    image_env = image.apt_install.return_value.pip_install.return_value.env
+    environment = image_env.call_args.args[0]
+    assert environment["MICROCOSM_EMITTER_COMMAND"] == (
+        "/usr/local/bin/microcosm-emitter"
+    )
+    tool_env, removed = plan_lib.tool_environment(
+        {"PATH": "/usr/local/bin:/usr/bin", **environment}, {}
+    )
+    assert tool_env["MICROCOSM_EMITTER_COMMAND"] == "/usr/local/bin/microcosm-emitter"
+    assert "MICROCOSM_EMITTER_COMMAND" not in removed
+
+
+def test_the_app_never_runs_an_emitter_installed_where_the_image_puts_it(
+    app, monkeypatch, tmp_path: Path
+) -> None:
+    """A machine with a command at the image's emitter path never runs it here."""
+
+    ran = tmp_path / "emitter-ran"
+    command = tmp_path / "microcosm-emitter"
+    command.write_text(f"#!/bin/sh\ntouch '{ran}'\necho '{{}}'\n")
+    command.chmod(0o755)
+    monkeypatch.setattr(plan_lib, "IMAGE_EMITTER_COMMAND", str(command))
+    # _runner_identity() also hashes the image clone's uv.lock. The image's
+    # /root/microcosm is unreadable on a CI runner, where Python 3.13's
+    # Path.exists() raises PermissionError, so point it at an empty folder.
+    monkeypatch.setattr(plan_lib, "IMAGE_REPO_ROOT", str(tmp_path / "repo"))
+
+    recorded = {"emitter_version": "0.7.0", "protocol_versions": [1]}
+    assert app._emitter_version() == recorded
+    assert app._runner_identity()["microcosm_emitter"] == recorded
+    assert not ran.exists()
 
 
 # --------------------------------------------------------------------------- #
@@ -690,6 +743,8 @@ def test_receipt_prices_earlier_preempted_attempts() -> None:
 # --------------------------------------------------------------------------- #
 
 
+# The branch check runs git itself, from os.environ, so the settings that
+# keep background maintenance out of these repositories travel as variables.
 _GIT_ENV = {
     "PATH": os.environ.get("PATH", ""),
     "HOME": os.environ.get("HOME", "/"),
@@ -699,6 +754,7 @@ _GIT_ENV = {
     "GIT_AUTHOR_EMAIL": "t@example.com",
     "GIT_COMMITTER_NAME": "t",
     "GIT_COMMITTER_EMAIL": "t@example.com",
+    **NO_BACKGROUND_MAINTENANCE_ENV,
 }
 
 
@@ -762,6 +818,56 @@ def test_branch_is_verified_against_the_remote(
     assert check in result["branch_check"]
     if verified:
         assert result["branch_tip"] == remote["c3"]
+
+
+def test_the_branch_check_starts_no_git_maintenance(
+    app, remote, monkeypatch, tmp_path
+) -> None:
+    """Its fetch leaves no maintenance process writing to the scratch clone."""
+
+    trace = tmp_path / "trace2-events"
+    for key, value in {**_GIT_ENV, "GIT_TRACE2_EVENT": str(trace)}.items():
+        monkeypatch.setenv(key, value)
+    plan = dataclasses.replace(
+        plan_lib.parse_plan(_plan_data()),
+        repo_url=remote["url"],
+        branch="feature/x",
+        commit=remote["c3"],
+    )
+    assert app._verify_branch(plan)["branch_verified"] is True
+    started = [
+        event["argv"]
+        for event in map(json.loads, trace.read_text(encoding="utf-8").splitlines())
+        if event["event"] in ("start", "child_start")
+    ]
+    # The trace is live: it holds the fetch's own start.
+    assert any("fetch" in argv for argv in started)
+    assert [argv for argv in started if {"maintenance", "gc"} & set(argv)] == []
+
+
+def test_the_maintenance_variables_set_what_the_options_set(tmp_path) -> None:
+    if shutil.which("git") is None:
+        pytest.skip("git is not installed")
+    base = {
+        key: value
+        for key, value in _GIT_ENV.items()
+        if key not in NO_BACKGROUND_MAINTENANCE_ENV
+    }
+
+    def command_scope(options: tuple[str, ...], extra: dict[str, str]) -> list[str]:
+        listed = subprocess.run(
+            ["git", *options, "config", "--list", "--show-scope"],
+            cwd=tmp_path,
+            env={**base, **extra},
+            check=True,
+            capture_output=True,
+            text=True,
+        ).stdout
+        return [line for line in listed.splitlines() if line.startswith("command\t")]
+
+    by_options = command_scope(NO_BACKGROUND_MAINTENANCE, {})
+    assert len(by_options) == len(NO_BACKGROUND_MAINTENANCE) // 2
+    assert command_scope((), dict(NO_BACKGROUND_MAINTENANCE_ENV)) == by_options
 
 
 def test_branch_check_argvs_never_touch_the_pinned_clone() -> None:
@@ -1398,6 +1504,38 @@ def test_app_main_exits_nonzero_unless_the_stage_completed(
     else:
         app.main(run=True)
     assert json.loads(capsys.readouterr().out)["stopped_at_budget"] is stopped
+
+
+def test_app_main_spawn_returns_the_call_id_without_waiting(
+    app, monkeypatch, capsys
+) -> None:
+    data = _plan_data(max_wall_seconds=600)
+    plan = plan_lib.parse_plan(data)
+    monkeypatch.setattr(app, "_LOADED", (data, plan))
+    runner = MagicMock()
+    runner.spawn.return_value = MagicMock(object_id="fc-123")
+    monkeypatch.setitem(app.RUNNERS, ("heavy", False), runner)
+    app.main(run=True, spawn=True)
+    runner.spawn.assert_called_once_with(data)
+    runner.remote.assert_not_called()
+    assert json.loads(capsys.readouterr().out) == {
+        "run_id": plan.run_id,
+        "stage": plan.stage,
+        "function_call_id": "fc-123",
+    }
+
+
+def test_app_main_refuses_spawn_without_run(app, monkeypatch) -> None:
+    data = _plan_data(max_wall_seconds=600)
+    monkeypatch.setattr(app, "_LOADED", (data, plan_lib.parse_plan(data)))
+    runner = MagicMock()
+    monkeypatch.setitem(app.RUNNERS, ("heavy", False), runner)
+    check = MagicMock()
+    monkeypatch.setattr(app, "check_stage", check)
+    with pytest.raises(SystemExit, match="--spawn needs --run"):
+        app.main(spawn=True)
+    runner.spawn.assert_not_called()
+    check.remote.assert_not_called()
 
 
 @pytest.mark.parametrize("key", plan_lib.THREAD_ENV_KEYS)

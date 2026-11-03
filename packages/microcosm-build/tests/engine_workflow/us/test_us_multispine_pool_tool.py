@@ -106,7 +106,7 @@ def test_stacked_tool_entrypoint_fixture_e2e_emits_one_logbook_row_at_every_term
         assert published_transfer["completion"] == {
             "status": "complete",
             "group_count": 19,
-            "target_count": 70,
+            "target_count": 72,
             "residual_null_rows": 0,
         }
         calibrated = [
@@ -338,7 +338,20 @@ def test_constants_adapter_equals_live_constants_and_stays_out_of_identities(
             "country": "us",
             "schema_id": "country_spec",
             "schema_version": 1,
-            "spec_sha256": "edcd647524b51dd2fbcb417576a7421d2429ed7b51beb6756579ef3911e86d52",
+            # The US bundle's semantic hash covers microcosm.calibrate.solve's
+            # bytes (its seed protocol); microcosm#1124's opt-in
+            # retain_best_objective and microcosm#1301's budget_search_bracket
+            # move it. It covers microcosm.fit.qrf's attested bytes too, so
+            # fit_draw_next's caller-owned uniforms (microcosm#1332) move it,
+            # and so do microcosm#454's meps_esi_premiums stage and
+            # microcosm#1376's puma_county_vintage draw module,
+            # microcosm#1380's self-employment post-transfer contract, and
+            # the source-stage citation rewrites that pin us-data at a commit.
+            # microcosm#1251's passive partnership/S-corp leaf in puf_support moves it.
+            # microcosm#1259's recipient-share bound in puf_support moves it again.
+            # microcosm#1261's entity split of line 32 moves it too.
+            # microcosm#1096's exact softmax cap projection in solve moves it.
+            "spec_sha256": '7fab9cba99328cb658ef472b63cb8a2be8ad61e004f7d1e45f5c9c3fbdf5ed20',
         },
     }
 

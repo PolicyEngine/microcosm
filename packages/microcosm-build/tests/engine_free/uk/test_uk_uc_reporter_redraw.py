@@ -65,6 +65,59 @@ def test_stub_engine_fast_lane_reads_frs_capital_once_and_consumes_outputs() -> 
     assert "uc_reported_capital" not in result.frame.table("benunit")
 
 
+def test_screen_capital_adds_the_units_uc_property_share() -> None:
+    # The screen reads the recorded capital uc_capital_coherence writes: the
+    # carrier plus the household's other residential and non-residential
+    # property, at 90% of its value, for the household reference person's
+    # unit. Land is Pension Credit capital only (microcosm#1095).
+    frame = _frame()
+    household = frame.table("household")
+    rows = household["household_id"].eq(7)
+    household.loc[rows, "other_residential_property_value"] = 50_000.0
+    household.loc[rows, "non_residential_property_value"] = 10_000.0
+    household.loc[rows, "owned_land"] = 99_999.0
+    engine = _StubEngine()
+
+    redraw_spi_reported_uc(frame, engine=engine, qrf_factory=_StubQRFFactory())
+
+    screened = (
+        engine.calls[0][0]
+        .table("benunit")
+        .set_index("benunit_id")["uc_reported_capital"]
+    )
+    carrier = _frame().table("benunit").set_index("benunit_id")["frs_benunit_capital"]
+    # Benefit unit 201 is household 7's only unit and holds its reference
+    # person.
+    assert screened.loc[201] == carrier.loc[201] + 54_000.0
+    pd.testing.assert_series_equal(
+        screened.drop(201), carrier.drop(201), check_names=False
+    )
+
+
+def test_an_frs_unit_reporting_universal_credit_is_screened_on_its_carrier() -> None:
+    # uc_capital_coherence records an FRS reporter's carrier alone, so the
+    # screen does too and the reporter stays a training row whatever property
+    # its household is imputed. A unit that does not report takes its share,
+    # and so does an SPI unit, whose report is the one being redrawn.
+    frame = _frame()
+    household = frame.table("household")
+    rows = household["household_id"].isin([1, 2, 7])
+    household.loc[rows, "other_residential_property_value"] = 50_000.0
+    engine = _StubEngine()
+
+    redraw_spi_reported_uc(frame, engine=engine, qrf_factory=_StubQRFFactory())
+
+    screened = (
+        engine.calls[0][0]
+        .table("benunit")
+        .set_index("benunit_id")["uc_reported_capital"]
+    )
+    carrier = _frame().table("benunit").set_index("benunit_id")["frs_benunit_capital"]
+    assert screened.loc[101] == carrier.loc[101]
+    assert screened.loc[102] == carrier.loc[102] + 45_000.0
+    assert screened.loc[201] == carrier.loc[201] + 45_000.0
+
+
 def test_training_mask_channel_containment_screen_and_landing_rule() -> None:
     before = _frame()
     result, _, record = _stub_run()
@@ -118,6 +171,32 @@ def test_twin_calls_are_byte_identical_and_emit_transition_receipt() -> None:
         "held_reporter": 1,
         "held_nonreporter": 0,
     }
+
+
+def test_each_spi_unit_draws_from_uniforms_keyed_on_its_own_id() -> None:
+    """Each redrawn unit reads uniforms keyed on its own benefit unit id, never
+    a stream its row position decides, so a unit's draw cannot move when other
+    units are added, dropped or reordered (Vahid's review of microcosm#1332)."""
+
+    from microcosm.build.stochastic_assignment import stable_identity_uniforms
+    from microcosm.build.uk_runtime.uc_reporter_redraw import UC_REPORTER_TARGET
+
+    frame = _frame()
+    factory = _StubQRFFactory()
+    redraw_spi_reported_uc(frame, engine=_StubEngine(), qrf_factory=factory)
+    quantiles, signs = factory.record["predict_uniforms"]
+    benunit = frame.table("benunit")
+    units = benunit.loc[factory.record["predict_index"], "benunit_id"].to_numpy()
+
+    assert set(units) == {201, 203}
+    salt = f"uc_reporter_redraw:{UC_REPORTER_TARGET}"
+    for drawn, part_salt in ((quantiles, salt), (signs, f"{salt}:sign")):
+        np.testing.assert_array_equal(
+            drawn[UC_REPORTER_TARGET],
+            stable_identity_uniforms(
+                units, seed=UC_REPORTER_REDRAW_SEED, salt=part_salt
+            ),
+        )
 
 
 def test_seeded_regime_gated_qrf_twin_calls_are_byte_identical() -> None:

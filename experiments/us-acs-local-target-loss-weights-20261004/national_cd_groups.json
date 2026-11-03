@@ -1,0 +1,97 @@
+{
+ "district_families": {
+  "irs_soi": 24340
+ },
+ "district_groups": {
+  "labels_excluded": {
+   "max_size": 52,
+   "n_groups": 3125,
+   "n_singletons": 665
+  },
+  "national_as_is": {
+   "max_size": 1,
+   "n_groups": 24340,
+   "n_singletons": 24340
+  }
+ },
+ "district_loss_share": {
+  "equal": 0.7411467373100697,
+  "labels_excluded": 0.11632532848749198,
+  "national_as_is": 0.4703883014482875
+ },
+ "family_loss_share": {
+  "bea": {
+   "labels_excluded": 0.005400710201993984,
+   "n_targets": 2,
+   "national_as_is": 0.003189695156353016
+  },
+  "cbo": {
+   "labels_excluded": 0.011335762224249864,
+   "n_targets": 5,
+   "national_as_is": 0.00669497612497512
+  },
+  "census_population": {
+   "labels_excluded": 0.08007897271627366,
+   "n_targets": 936,
+   "national_as_is": 0.04867533567016965
+  },
+  "cms_aca": {
+   "labels_excluded": 0.00736047732959075,
+   "n_targets": 102,
+   "national_as_is": 0.004474004755029723
+  },
+  "cms_medicaid": {
+   "labels_excluded": 0.019466188511765726,
+   "n_targets": 134,
+   "national_as_is": 0.011832360329922678
+  },
+  "cms_medicare": {
+   "labels_excluded": 0.0004040302168963962,
+   "n_targets": 1,
+   "national_as_is": 0.0002386229176634738
+  },
+  "federal_reserve": {
+   "labels_excluded": 0.01407455951092147,
+   "n_targets": 1,
+   "national_as_is": 0.008312527912201885
+  },
+  "hhs_acf_liheap": {
+   "labels_excluded": 0.0003431823318491282,
+   "n_targets": 1,
+   "national_as_is": 0.0002086005181162017
+  },
+  "hhs_acf_tanf": {
+   "labels_excluded": 0.0004114628178889163,
+   "n_targets": 30,
+   "national_as_is": 0.00024301266095616013
+  },
+  "irs_soi": {
+   "labels_excluded": 0.8396295998536273,
+   "n_targets": 31359,
+   "national_as_is": 0.9033024163228177
+  },
+  "jct": {
+   "labels_excluded": 0.001609627518570458,
+   "n_targets": 11,
+   "national_as_is": 0.0009506566557896625
+  },
+  "ssa": {
+   "labels_excluded": 0.008415561991542597,
+   "n_targets": 111,
+   "national_as_is": 0.005021510984177707
+  },
+  "state_income_tax": {
+   "labels_excluded": 0.004336092788152227,
+   "n_targets": 44,
+   "national_as_is": 0.002560925072180314
+  },
+  "usda_snap": {
+   "labels_excluded": 0.007133771986677448,
+   "n_targets": 104,
+   "national_as_is": 0.004295354919646787
+  }
+ },
+ "feed_sha256": "b85437390021777e746f507c5890305496baf5fc7f2c78ba08ddb090f4839801",
+ "n_district_rows": 24340,
+ "n_targets": 32841
+}

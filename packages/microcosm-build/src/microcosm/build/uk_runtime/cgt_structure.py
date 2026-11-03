@@ -9,6 +9,7 @@ the clone, and the Table 3 redraw owns every gain amount.
 
 from __future__ import annotations
 
+import math
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from typing import Any
@@ -421,6 +422,19 @@ def reporter_composition_quantiles(
     return lower[indexes], upper[indexes]
 
 
+def _order_free_sum(values: np.ndarray) -> float:
+    """The correctly rounded sum, which does not depend on the row order.
+
+    Every sum the anchor's factors depend on goes through here: a pairwise
+    float sum moves in its last bits when the rows are permuted, the bisection
+    then settles on a neighbouring scale, and the anchored weights differ by a
+    few ulps between two orderings of the same households (the E8 identity
+    receipt found 1e-13 on the licensed spine; microcosm#1063).
+    """
+
+    return math.fsum(np.asarray(values, dtype=float).tolist())
+
+
 def _solve_group_factors(
     weights: np.ndarray,
     propensity: np.ndarray,
@@ -440,8 +454,8 @@ def _solve_group_factors(
         middle = 0.5 * (lower + upper)
         if middle <= lower or middle >= upper:
             break
-        achieved = float(
-            (weights * np.minimum(CGT_ANCHOR_MAXIMUM_FACTOR, middle * propensity)).sum()
+        achieved = _order_free_sum(
+            weights * np.minimum(CGT_ANCHOR_MAXIMUM_FACTOR, middle * propensity)
         )
         if achieved < target:
             lower = middle
@@ -504,7 +518,7 @@ def anchor_cgt_incidence(
         raise ValueError("CGT incidence anchor found a person without a household.")
     person_positions = person_positions.astype(np.int64)
     liable = gains > annual_exempt_amount
-    liable_mass = float(weights[person_positions][liable].sum())
+    liable_mass = _order_free_sum(weights[person_positions][liable])
     if not liable_mass > 0.0:
         raise ValueError(
             "CGT incidence anchor requires positive liable mass above the annual "
@@ -541,10 +555,11 @@ def anchor_cgt_incidence(
     )
     clone_weights = weights[clone_positions]
     mix = clone_weights * propensity
-    if not mix.sum() > 0.0:
+    mix_total = _order_free_sum(mix)
+    if not mix_total > 0.0:
         raise ValueError("CGT incidence anchor found no clone mass to compose.")
-    zero_quantile = float((mix * zero_quantiles).sum() / mix.sum())
-    exempt_quantile = float((mix * exempt_quantiles).sum() / mix.sum())
+    zero_quantile = _order_free_sum(mix * zero_quantiles) / mix_total
+    exempt_quantile = _order_free_sum(mix * exempt_quantiles) / mix_total
     if not 0.0 <= zero_quantile < exempt_quantile < 1.0:
         raise ValueError(
             "CGT incidence anchor derived an unusable reporter composition: "
@@ -565,7 +580,9 @@ def anchor_cgt_incidence(
         "loss": carrier_gains < 0.0,
     }
     liable_clone = carrier_gains > annual_exempt_amount
-    before = {name: float(clone_weights[mask].sum()) for name, mask in groups.items()}
+    before = {
+        name: _order_free_sum(clone_weights[mask]) for name, mask in groups.items()
+    }
     before["liable"] = float(clone_weights[liable_clone].sum())
     factors = np.ones(len(clone_positions), dtype=float)
     scale: dict[str, float | None] = {}

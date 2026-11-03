@@ -44,16 +44,51 @@ until you restart the kernel, load it by path with
 `load_country_spec(Path(...))` (always re-read), or call
 `microcosm.build.country_spec._load_packaged_country_spec.cache_clear()`.
 
-## Staging build telemetry
+## Build progress and staging run files
 
-US fiscal refresh builds emit pre-release staging telemetry **by default**:
-progress JSON is uploaded to `policyengine/populace-us-staging` while the build
-runs (best-effort — a missing token or failed upload never fails the build), so
-every candidate shows up on the staging dashboard before it is published.
-Disable with `--no-staging`, or point elsewhere with `--staging-repo-id` /
-`POPULACE_STAGING_REPO_ID`. An *empty* `POPULACE_STAGING_REPO_ID` is ignored
-rather than read as off, and staging with no destination at all is an argparse
-error — `--no-staging` is the only way a build produces no telemetry.
+UK build completion automatically exports Orrery execution graphs, attempts
+immutable publication before Hugging Face artifact staging, and preserves
+durable retry jobs and receipt snapshots. See
+[graph publication](docs/orrery-publication.md) for configuration and retry.
+
+Supported US and UK build commands start the local emitter as the build's
+child process, with its telemetry, graph-publication and Hugging Face
+hand-over modules. Microcosm depends only on `microcosm-emitter-interface`,
+the typed calls a build makes; the emitter itself is installed on its own,
+outside the workspace environment, so an emitter release needs no Microcosm
+change:
+
+```bash
+uv tool install microcosm-emitter   # once per machine
+uv tool upgrade microcosm-emitter   # to take a new release
+```
+
+The build finds the `microcosm-emitter` command through
+`MICROCOSM_EMITTER_COMMAND`, then `PATH`. The emitter inherits the build's
+environment variables and user, so it uses the build's Hugging Face
+credential (`HF_TOKEN`, then `HUGGINGFACE_TOKEN`, then the `hf auth login`
+token). Without the command the build continues with no hosted telemetry and
+no remote staging. Before it starts the emitter, the build reads its
+version from `microcosm-emitter version` and does not start one older than
+0.6.0, the first release that takes staging run files; it prints the
+installed and required versions and the upgrade command, and continues as
+it does without the command. Microcosm supplies build metadata, graph files and staging
+run files; the emitter owns authentication, durable queues and delivery.
+The telemetry module reports live progress to the hosted collector when the
+operator's Hugging Face login is accepted; otherwise it retains the events
+locally and the build continues. This live event path is independent of the
+staging run files described below.
+
+US fiscal refresh builds also write pre-release staging run files **by
+default**. The build hands its progress JSON to the emitter, which commits it
+to `policyengine/populace-us-staging` while the build runs, one commit per
+upload interval (best-effort: no emitter, a missing token or a failed commit
+never fails the build), so every candidate shows up on the staging dashboard
+before it is published. Disable these files with `--no-staging`, or point them
+elsewhere with `--staging-repo-id` / `POPULACE_STAGING_REPO_ID`. An *empty*
+`POPULACE_STAGING_REPO_ID` is ignored rather than read as off, and staging with
+no destination at all is an argparse error. `--no-staging` does not disable
+the local telemetry emitter service.
 
 The build manifest records what staging did: the run id, the destination, and
 how many files actually reached it, or an explicit `enabled: false` for a
@@ -75,8 +110,8 @@ The UK commands (`tools/build_uk_frs_spine.py`, a shim over the package's
 `uk_runtime.spine_build`, and `microcosm-build-uk` / `tools/build_uk_full.py`,
 whose `--release-role` builds either the national or the dense line;
 `tools/build_uk_rowwise_candidate.py` is a stub over the same driver) stage
-version 2 telemetry to `policyengine/populace-uk-staging` under the same
-switch. The build command also **stages the finished dataset bundle** it built,
+version 2 staging run files to `policyengine/populace-uk-staging` under the
+same switch. The build command also **stages the finished dataset bundle** it built,
 national, dense or exact-count, under `staged/<run_id>/` in the
 private `policyengine/populace-uk-private` repository so the team can inspect
 it without publishing it: `releases/` and `latest.json` are untouched, the
@@ -203,7 +238,8 @@ weights, calling the release tool's own gate functions (none is
 re-implemented), and exits `1` on any certain failure, `2` on AT-RISK only,
 and `0` when clean. An argparse error also exits `2` but writes no report, so
 the wrapper returns `64` whenever no report was written. It writes only its
-report: nothing under `--out`, no staging telemetry, no receipts. A base or
+report: nothing under `--out`, no staging run files, no receipts. The local
+telemetry emitter service still reports dry-run progress. A base or
 donor that the config does not name locally is still downloaded, into the same
 caches the release uses. A refusal before the stop point becomes the report's
 certain failure. A crash while grading is reported as the dry run's own error,
@@ -329,6 +365,14 @@ type publishes the [reported-receipt child of the national default](docs/us-repo
 as a tag-only donor for the ACS local chain. It is never the `latest.json`
 default.
 
+A [compatibility recertification](docs/us-compatibility-recertification.md)
+republishes a published US calibration release byte for byte under a new id,
+with a measured `compatible_model_packages` claim for a newer policyengine-us:
+a loader replay under the tested country, Core and calculator wheels, the engine's reviewed column
+changes, and the drift of the critical rows and headline totals between the
+built-with and tested engines. It never recalibrates. Publication refuses a
+child whose parent tag on the Hub does not serve the carried manifest bytes.
+
 The non-default ACS local-area chain (`tools/build_us_acs_local_release.py`)
 calibrates to the SOI `state` surface by default, the 4,459-target contract of
 Build O and Build P; `--soi-mode totals` and `--soi-mode full` are explicit
@@ -356,6 +400,13 @@ UK release workflows stop when diagnostics are unavailable because their later
 release checks require that evidence; historical schema-6 and schema-7 UK
 artifacts remain readable through isolated compatibility validation.
 
+A Draft 2020-12 JSON Schema for schema 8, generated from those models, is
+committed at
+`packages/microcosm-diagnostics/src/microcosm/diagnostics/schemas/calibration_diagnostics.v8.schema.json`
+for consumers that check the file without importing them, such as the
+collector. Its description lists the model rules a JSON Schema cannot express;
+see the [package README](packages/microcosm-diagnostics/README.md).
+
 Standard publication uploads the locally built `releases/<id>/` artifacts to
 the Hugging Face dataset, tags the release, and updates `latest.json`. It runs
 on the build machine (it needs the freshly built H5), so it isn't a CI step:
@@ -378,11 +429,12 @@ on the June 2023 release. Promotion reuses the immutable cut tag the inspect pub
 The publisher uploads only the contract files, the release manifest's
 artifacts and any `--extra-file`. The US fiscal-refresh tool therefore binds
 its terminal gate verdicts as manifest artifacts: `input_coverage.json`,
-`input_mass_parity.json`, `qrf_tail_concentration.json` and
-`reform_coverage_smoke.json`. Both manifests also record the per-run QRF tail
-register (`qrf_tail_register`) and the export-mass reference, so a waiver
-ships with the release it waives, and a `gate_evidence` block that says of
-each verdict whether it is bound, skipped by flag or never evaluated.
+`input_mass_parity.json`, `qrf_tail_concentration.json`,
+`reform_coverage_smoke.json` and `stored_inputs.json`. Both manifests also
+record the per-run QRF tail register (`qrf_tail_register`), the export-mass
+reference and the stored-input verdict (`stored_inputs`), so a waiver ships
+with the release it waives, and a `gate_evidence` block that says of each
+verdict whether it is bound, skipped by flag or never evaluated.
 
 A US release may not store a column that looks like a policyengine-us variable
 (lowercase snake_case) unless the engine it is certified against defines that
@@ -407,6 +459,46 @@ engine inputs, `would_claim_wic` and `medicare_part_b_premiums` (replaced by
 would now be refused.
 Check local files from HDF metadata alone with
 `uv run python -m microcosm.data.stored_inputs path/to/populace_us_2024.h5`.
+
+The publisher cannot run the check without the engine, so it requires each
+lane's verdict as release evidence instead (microcosm#1034), from JSON alone. A
+US national calibration release must bind `stored_inputs.json` (a
+`gate_evidence` status of `bound` and a manifest artifact) and carry the same
+`stored_inputs` block in both manifests, bound to the H5 they pin. The verdict
+must name the built-with engine; a certified release must have refused nothing,
+and an evidence release must carry each refusal line verbatim in
+`known_failures`. A US local-area release must list the package stage's
+`stored_inputs` gate, naming the built-with engine and the microdata sha256 the
+release ships. No release already on the Hub carries this evidence, and none is
+exempt. Nothing re-validates a published release automatically. The two paths
+that run the contract on one again are re-certifications: a publish retry of
+its local directory, and an annual-projection cut on a national base. Every
+published US national base already fails the unchanged calibration-diagnostics
+schema rule, and local-area releases cannot be annual bases. So publishing one
+again means rebuilding or re-packaging it, which runs the check. An
+evidence-tier run that ships a stored-input refusal needs a per-run
+`--evidence-failure-owners` entry naming its owner; the standing owner register
+covers none.
+
+The ACS local-area package stage also grades the calibrated H5's SPM
+measurement composition (microcosm#1263;
+`microcosm.build.us_runtime.spm_measurement_gate`). spm-calculator refuses a
+whole simulation's SPM measurement when one unit it measures has no classified
+adult (`age >= 18 or (age >= 15 and is_spm_independent_minor_role)`), and an
+engine that does not scope SPM by measurement universe, such as
+policyengine-us 2.2.1, measures every unit. The stage refuses an artifact on
+which any unit the built-with engine measures has no classified adult, or
+whose stored role is missing, null or not Boolean. It records the counts,
+split by source SPM universe, as the `spm_measurement_composition` gate,
+bound to the microdata sha256. The publisher requires that gate of every US
+local-area release. See [the ACS SPM role page](docs/us-acs-spm-role.md#the-release-gate).
+
+Each check grades one engine version, the built-with one. A source-enrichment
+bundle certified with a publisher compatibility range admits versions no check
+measured, later ones and possibly earlier ones; the bundle records the version
+that was measured as `compatibility.claim_measurement`, and the SPM-role
+runbook says how to grade a candidate against another released version before
+declaring a range.
 
 US exact-k ladder candidates use a tag-only lane. Run
 `tools/build_us_exact_k_ladder_release.py`, then execute the `publish_command`

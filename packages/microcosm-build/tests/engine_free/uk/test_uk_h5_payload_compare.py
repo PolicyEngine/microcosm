@@ -108,7 +108,9 @@ def test_differences_are_classified_masked_and_never_leak_values(
     assert exit_code == 1
     assert report["payload_identical"] is False
     household = report["tables"]["household"]
-    assert household["value_mismatch_rows_by_column"] == {"household_weight": "< 10"}
+    # The default SDC minimum is the floor of three (María's ruling of
+    # 2026-10-29): the one differing row reads "< 3".
+    assert household["value_mismatch_rows_by_column"] == {"household_weight": "< 3"}
     assert sorted(report["root_attrs"]["attrs_with_differing_values"]) == [
         "populace_household_weight_kind",
         "populace_mass_log_json",

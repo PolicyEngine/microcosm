@@ -113,6 +113,8 @@ def _spine_household_frame() -> pd.DataFrame:
         household_is_capital_gains_clone=[False, False, True, False],
         household_is_cgt_support_copy=[False, False, False, True],
         cgt_support_copy_index=[0, 0, 0, 1],
+        household_is_cgt_residential_clone=[False, False, False, False],
+        cgt_residential_clone_index=[0, 0, 0, 0],
     )
 
 

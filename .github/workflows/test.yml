@@ -16,12 +16,20 @@ env:
   OPENBLAS_NUM_THREADS: "1"
   MKL_NUM_THREADS: "1"
 
+# Every job sets timeout-minutes (GitHub's default is 360) so a hung test
+# frees its runner from the org's shared 60-runner pool. The engine-free and
+# engine-us caps are about 1.5x their slowest successful leg on 2026-10-07..08;
+# the engine-uk cap is about twice its slowest successful leg after the
+# policyengine-uk 2.162.3 bump (29 minutes, microcosm#1400); shorter jobs get
+# at least 5 minutes and at least twice their slowest run.
+
 jobs:
   select-countries:
     permissions:
       contents: read
       pull-requests: read
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     outputs:
       run_us: ${{ steps.plan.outputs.run_us }}
       run_uk: ${{ steps.plan.outputs.run_uk }}
@@ -35,6 +43,7 @@ jobs:
 
   lint:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v6
@@ -51,6 +60,9 @@ jobs:
 
   engine-free:
     runs-on: ubuntu-latest
+    # Successful legs took 64-74 min on 2026-10-26, and a Python 3.14 leg on
+    # microcosm#1404 hit the old 75-minute cap; 120 is about 1.6x the slowest.
+    timeout-minutes: 120
     strategy:
       fail-fast: false
       matrix:
@@ -60,6 +72,11 @@ jobs:
       - uses: astral-sh/setup-uv@v6
         with:
           python-version: ${{ matrix.python-version }}
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: tools/orrery-contract/package-lock.json
       - name: Sync workspace without country engines
         run: uv sync --all-packages --locked
       - name: Run engine-free tests
@@ -69,6 +86,8 @@ jobs:
     needs: select-countries
     if: needs['select-countries'].outputs.run_us == 'true'
     runs-on: ubuntu-latest
+    # Successful legs took 40-60 min on 2026-10-07..08 (n=23).
+    timeout-minutes: 90
     strategy:
       fail-fast: false
       matrix:
@@ -99,6 +118,7 @@ jobs:
     needs: select-countries
     if: needs['select-countries'].outputs.run_uk == 'true'
     runs-on: ubuntu-latest
+    timeout-minutes: 60
     strategy:
       fail-fast: false
       matrix:
@@ -136,6 +156,7 @@ jobs:
     # Editable installs can hide missing package directories and namespace
     # mistakes. Build each wheel once and compare its contents with source.
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v6

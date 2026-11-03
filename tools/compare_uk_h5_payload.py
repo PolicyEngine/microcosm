@@ -41,10 +41,12 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
-DEFAULT_SDC_MINIMUM_COUNT = 10
 # CD171 §5.2.1: cells based on one or two cases are never reportable. Callers
-# may raise the threshold, never lower it.
+# may raise the threshold, never lower it. The default is that floor, to which
+# María's ruling of 2026-10-29 moved every UK output
+# (microcosm.build.uk_runtime.receipt_counts.UK_DISCLOSURE_FLOOR).
 MINIMUM_SDC_COUNT = 3
+DEFAULT_SDC_MINIMUM_COUNT = MINIMUM_SDC_COUNT
 
 
 def _validated_sdc_minimum(minimum: int) -> int:
