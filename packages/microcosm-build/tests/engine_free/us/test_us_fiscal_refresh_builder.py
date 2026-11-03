@@ -15595,7 +15595,8 @@ def test_qrf_tail_surface_reports_the_largest_single_record() -> None:
 
     gate, surface = builder._qrf_tail_concentration_gate(frame)
 
-    # The gate is unchanged: it passes, and its details are the gate's own.
+    # The measurement leaves the gate as it was: it passes and carries only
+    # its own detail keys.
     assert gate.passed
     assert set(gate.details) == _TAIL_GATE_DETAIL_KEYS
     sparse = ["casualty_loss", "estate_income", "non_sch_d_capital_gains"]
@@ -15612,7 +15613,7 @@ def test_qrf_tail_surface_reports_the_largest_single_record() -> None:
     block = surface["single_record_concentration"]
     assert block["top_k"] == 100
     assert block["unmeasured"] == {}
-    # Every numeric output is measured, dense and thin ones included.
+    # The surface measures every numeric output, dense and thin ones included.
     assert (
         set(block["columns"])
         == set(surface["nonzero_shares"])
@@ -15645,7 +15646,7 @@ def test_qrf_tail_surface_reports_the_largest_single_record() -> None:
         "top_1_weight": 1.0,
         "top_k_share": 1.0,
     }
-    # A zero-mass column is reported, not divided by.
+    # The surface reports a zero-mass column and never divides by its mass.
     assert columns["estate_income"] == {
         "carriers": 0,
         "top_1_share": None,
@@ -15726,9 +15727,10 @@ def test_a_dense_output_with_unresolvable_weights_is_unmeasured_not_fatal() -> N
 
 def test_qrf_tail_single_record_measurement_never_moves_the_gate() -> None:
     """For any column geometry the strategies reach: the gate's details equal
-    the shared gate run on the sparse columns alone; every numeric output is
-    measured exactly once, with the shared measurement at the frame's
-    weights; and a checked column's top-k share is the gate's own."""
+    the shared gate run on the sparse columns alone; the surface measures
+    every numeric output exactly once, with the shared measurement at the
+    frame's weights; and a checked column's top-k share is the gate's own,
+    capped at 1."""
     builder = _load_builder_module()
     n = 12_000
     max_share = builder.US_QRF_SPARSE_NONZERO_SHARE_MAX

@@ -1365,8 +1365,8 @@ def compare_qrf_tail(
     ``qrf_tail_concentration.json`` (same frame columns and weights, so the
     shares must agree to rounding).
 
-    The single-record measurements are compared when the release recorded
-    them; a release built before its surface carried them compares none."""
+    It compares the single-record measurements when the release recorded
+    them, and none against a release built before its surface carried them."""
     differences: list[str] = []
     tail = reference["tail_concentration"]
     if bool(tail["passed"]) != bool(result["passed"]):

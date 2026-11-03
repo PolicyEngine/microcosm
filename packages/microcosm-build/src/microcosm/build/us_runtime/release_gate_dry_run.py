@@ -757,7 +757,7 @@ def qrf_tail_register_check(
             must carry ``nonzero_shares`` and ``nonzero_records``. Its
             ``single_record_concentration`` block, when present, gives each
             row the largest single record's share and weight at base weights.
-            They are reported only; no class or verdict reads them.
+            No class or verdict reads them.
         gate_details: That call's gate details.
         release_lines_at_base_weights: The lines the release would append at
             these weights.

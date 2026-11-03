@@ -8015,11 +8015,12 @@ def _qrf_tail_concentration_gate(
     The surface also measures every numeric output, dense and thin ones
     included, with :func:`microcosm.build.gates.single_record_concentration`:
     the largest single record's share of the column's weighted absolute mass
-    and that record's weight, next to the top-k share. It is reported only and
-    never changes the gate's verdict. A dense output whose entity's weights do
-    not resolve is listed under ``unmeasured`` with the reason; the gate never
-    resolves weights for dense outputs, so the measurement cannot raise where
-    the gate would not.
+    and that record's weight, next to the top-k share. These measurements
+    never change the gate's verdict. The gate never weighs a dense output, so
+    when resolving a dense output's entity weights raises ``ValueError``, the
+    surface lists the output under ``unmeasured`` with the error's type and
+    text, and the run goes on. A sparse output's weights resolve as they
+    always did, and their error still raises.
     """
     qrf_outputs = sorted(_qrf_imputed_source_outputs())
     values: dict[str, np.ndarray] = {}

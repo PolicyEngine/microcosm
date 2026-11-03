@@ -862,11 +862,13 @@ def _tail_reference(single_record=None, **options):
     }
 
 
+# Line 32 in #1259's seed-0 rerun of the #1251 chain, at initial weights: one
+# measurement, rounded.
 _LINE_32 = {
-    "carriers": 14_598,
+    "carriers": 16_001,
     "top_1_share": 0.217,
     "top_1_weight": 644.7,
-    "top_k_share": 0.399,
+    "top_k_share": 0.451,
 }
 _ZERO_MASS = {
     "carriers": 0,
