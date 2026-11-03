@@ -2524,7 +2524,7 @@ def test_the_proposed_us_releases_are_recorded_but_not_used() -> None:
     US release publishes into build folders until they are agreed."""
     assert contract.PROPOSED_US_RELEASES == {
         "populace-us-2024-national": "national",
-        "populace-us-2024-acs-local": "local_area",
+        "populace-us-2024-local": "local_area",
     }
     assert set(contract.PROPOSED_US_RELEASES.values()) <= set(
         contract.RELEASE_ROLES.values()
