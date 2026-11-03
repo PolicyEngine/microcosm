@@ -47,7 +47,9 @@ from microcosm.build.telemetry_emitter import (
     OutdatedEmitterClient,
     start_bundle_emitter,
 )
+from test_support.microcosm_build.modal_copy_back import copy_back
 from test_support.microcosm_build.stand_in_hub import CommitAttempt, StandInHub
+from test_support.microcosm_build.uk_full_build_cli import load_tool
 
 REPOSITORY = "microcosm-tests/staged-bundles"
 RUN_ID = "installed-emitter-20261102T000000Z"
@@ -100,7 +102,9 @@ def _sha256(content: bytes) -> str:
     return hashlib.sha256(content).hexdigest()
 
 
-def _write_bundle(root: Path, *, dataset_bytes: int = 4096) -> StagedDatasetBundle:
+def _write_bundle(
+    root: Path, *, dataset_bytes: int = 4096, manifest_name: str = MANIFEST
+) -> StagedDatasetBundle:
     """A finished run's directory: a dataset, its diagnostics and a manifest.
 
     The bundle has every role a build hands over: ``dataset`` and
@@ -133,9 +137,9 @@ def _write_bundle(root: Path, *, dataset_bytes: int = 4096) -> StagedDatasetBund
         "releasable": False,
         "outputs": outputs,
     }
-    (run_directory / MANIFEST).write_text(json.dumps(manifest, indent=2))
+    (run_directory / manifest_name).write_text(json.dumps(manifest, indent=2))
     bundle = StagedDatasetBundle.from_manifest(
-        run_directory, run_id=RUN_ID, manifest_name=MANIFEST
+        run_directory, run_id=RUN_ID, manifest_name=manifest_name
     )
     write_sidecars(bundle, repository=REPOSITORY)
     return bundle
@@ -377,6 +381,59 @@ def test_the_installed_emitter_uploads_the_bundle_in_one_commit(
     assert not handover.may_rewrite(DATASET)
     for name in BUNDLE_NAMES - {DATASET}:
         assert handover.may_rewrite(name)
+
+
+def test_a_modal_runs_copied_back_outputs_are_staged_by_the_re_stage_command(
+    tmp_path: Path, stand_in_hub: StandInHub, installed_emitter: InstalledEmitter
+) -> None:
+    """After ``modal volume get``, the UK re-stage command checks the outputs
+    against the stage's receipt, starts the installed emitter as it does for a
+    local directory, and records the commit the emitter made of them."""
+    stager = load_tool("stage_uk_rowwise_candidate")
+    bundle = _write_bundle(tmp_path, manifest_name=stager.MANIFEST_FILENAME)
+    copied, receipt = copy_back(bundle.run_dir, tmp_path / "modal-runs")
+
+    status = stager.main(
+        [
+            "--run-dir",
+            str(copied),
+            "--repo-id",
+            REPOSITORY,
+            "--run-id",
+            RUN_ID,
+            "--modal-receipt",
+            str(receipt),
+            "--wait-seconds",
+            str(UPLOAD_WAIT_SECONDS),
+        ]
+    )
+
+    assert status == 0
+    assert len(installed_emitter.processes) == 1
+    (commit,) = stand_in_hub.commits(REPOSITORY)
+    names = {
+        DATASET,
+        CALIBRATION_DIAGNOSTICS,
+        stager.MANIFEST_FILENAME,
+        STAGED_MANIFEST_FILENAME,
+        SHA256SUMS_FILENAME,
+    }
+    assert set(commit.added) == {f"{PREFIX}/{name}" for name in names}
+    listed = {
+        item["path"]: item["sha256"]
+        for item in json.loads(receipt.read_text())["outputs"]
+    }
+    for name in (DATASET, CALIBRATION_DIAGNOSTICS):
+        assert _sha256(commit.added[f"{PREFIX}/{name}"]) == listed[f"out/{name}"]
+    manifest = json.loads((copied / stager.MANIFEST_FILENAME).read_text())
+    staged = manifest["staged_dataset"]
+    assert (staged["status"], staged["error_code"]) == ("uploaded", None)
+    assert (staged["repository"], staged["prefix"], staged["revision"]) == (
+        REPOSITORY,
+        PREFIX,
+        commit.oid,
+    )
+    assert manifest["staged_dataset_handover"]["run_dir"] == str(copied.resolve())
 
 
 def test_a_commit_on_a_moved_head_is_refused_then_made_on_the_new_head(

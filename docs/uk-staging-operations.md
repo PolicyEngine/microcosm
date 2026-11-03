@@ -383,7 +383,42 @@ chained to the next row). So the dashboard keeps
 showing such a run without its bundle. An identical remote bundle the manifest
 does not know about is recorded as `already_staged` with the bundle's own
 commit; a different bundle
-under the same run id is refused (`REMOTE_DIFFERS`). Fetch a bundle for a scorecard, an evaluation leg or the
+under the same run id is refused (`REMOTE_DIFFERS`).
+
+A build run on Modal stages nothing from its container: the runner sets
+`HF_HUB_OFFLINE=1` for every tool, so the build records its bundle as
+`local_only` (see above). After `modal volume get` has copied the run back
+([the Modal runbook](us-modal-stage-runbook.md#commands), step 5), stage it
+from the workstation, with your own emitter and Hub credential, by naming the
+stage's receipt:
+
+```bash
+uv run python tools/stage_uk_rowwise_candidate.py \
+  --run-dir ./modal-runs/<run_id>/state/<output directory> \
+  --modal-receipt ./modal-runs/<run_id>/receipts/<stage>-<utc>.json
+```
+
+Before it starts an emitter, the command checks that the receipt is of a
+stage that finished (`COMPLETED`, and not stopped at its budget) and that
+every output the manifest registers is in it, at its path under the run's
+state directory, with the same SHA-256 and size. It refuses the directory
+otherwise, and when the directory is not inside that state directory, which
+is `state/` beside the receipt's `receipts/` directory unless
+`--modal-state-root` names another. The manifest, `staged_manifest.json` and
+`sha256sums.txt` are not compared, because staging rewrites them. Then it
+stages the directory as above, under the build's own run id: the hand-over,
+the records, a re-stage after a failed attempt and a second run on a landed
+bundle work as they do for a directory built on the workstation. Unset
+`HF_HUB_OFFLINE` first if your shell sets it: the command refuses to stage
+while it is set, and with `--local-only` it checks the receipt and rewrites
+the sidecars only. Nothing here submits the bundle to the collector: the
+command's emitter runs its Hugging Face module only, and builds do not submit
+artifacts to the collector's artifact intake yet
+(PolicyEngine/microcosm-collector#12). The Modal runner's registered programs
+are all US builds today (`tools/modal_us_stage_plan.py`), and none of them
+writes a staged-dataset bundle.
+
+Fetch a bundle for a scorecard, an evaluation leg or the
 dashboard's local-directory mode with:
 
 ```bash

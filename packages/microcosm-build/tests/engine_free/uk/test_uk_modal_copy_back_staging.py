@@ -202,7 +202,7 @@ def _another_kind_of_file(copied, run_root, receipt):
     [
         pytest.param(
             _edit_after_copy_back,
-            r"is not the file the Modal run wrote",
+            r"is not the file the Modal stage wrote",
             id="an output edited after the copy-back",
         ),
         pytest.param(
@@ -335,14 +335,16 @@ def test_a_copied_back_bundle_that_landed_is_not_handed_over_again(
 def test_a_copied_back_bundle_whose_first_hand_over_failed_is_staged_again(
     tmp_path, monkeypatch, capsys
 ):
-    """The operator's first attempt finds no credential; the emitter keeps the
-    bundle queued, and the next attempt with the receipt records it landed.
+    """The operator's first attempt finds no credential, and the emitter keeps
+    the bundle queued. The next emitter on the workstation uploads it, so the
+    next attempt reads the earlier hand-over's receipt and records it as
+    ``already_staged`` with its commit, as for a local build's queued bundle.
     The Modal build's own record stays the one the note names."""
     hub, copied, receipt = _modal_build(tmp_path, monkeypatch)
     queue = FakeHandoverQueue()
     stager = load_tool("stage_uk_rowwise_candidate")
     _workstation_emitters(monkeypatch, stager, hub_files=hub.files, queue=queue)
-    assert stager.main(_staging_argv(copied, receipt, "--wait-seconds", "0")) == 1
+    assert stager.main(_staging_argv(copied, receipt)) == 1
     manifest = _manifest(copied)
     assert manifest["staged_dataset"]["error_code"] == "CREDENTIAL_MISSING"
     assert manifest["staged_dataset_at_build"]["status"] == "skipped"
@@ -354,10 +356,11 @@ def test_a_copied_back_bundle_whose_first_hand_over_failed_is_staged_again(
     assert stager.main(_staging_argv(copied, receipt)) == 0
 
     manifest = _manifest(copied)
-    assert manifest["staged_dataset"]["status"] == "uploaded"
+    assert manifest["staged_dataset"]["status"] == "already_staged"
     assert manifest["staged_dataset"]["revision"] == hub.sha
     assert manifest["staged_dataset_at_build"]["status"] == "skipped"
     err = capsys.readouterr().err
+    assert "now records the bundle as already_staged" in err
     assert "still records skipped" in err
     assert "CREDENTIAL_MISSING" not in err
     assert len(hub.commits) == 1
@@ -391,7 +394,7 @@ def test_hf_hub_offline_on_the_workstation_stages_nothing(
         None,
     )
     _edit_an_output(copied)
-    with pytest.raises(SystemExit, match="is not the file the Modal run wrote"):
+    with pytest.raises(SystemExit, match="is not the file the Modal stage wrote"):
         stager.main(_staging_argv(copied, receipt, "--local-only"))
 
     assert started == []

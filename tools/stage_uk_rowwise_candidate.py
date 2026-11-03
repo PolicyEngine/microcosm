@@ -33,6 +33,15 @@ cannot say whether the folder holds this build's bundle; the command then
 keeps the manifest's records and says so. A directory whose bytes differ from
 the remote bundle is otherwise refused.
 
+A build run on Modal stages nothing from its container (the runner sets
+``HF_HUB_OFFLINE``, so the build records its bundle as ``local_only``). Once
+``modal volume get`` has copied the run back, ``--modal-receipt`` names the
+stage's receipt: every output the manifest registers must be in it, at its
+path under the run's state directory, with the same SHA-256 and size, and the
+receipt must be of a stage that finished. Otherwise the command refuses before
+it starts an emitter; when they match, it stages the directory as above. The
+manifest and the sidecars are not compared, because staging rewrites them.
+
 Staging is not publication: ``releases/`` and ``latest.json`` are untouched.
 """
 
@@ -45,7 +54,7 @@ import math
 import os
 import sys
 from collections.abc import Mapping
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Any
 
 from microcosm.build.staging_dataset import (
@@ -81,6 +90,13 @@ from microcosm.build.uk_runtime.staging import (
     UK_STAGED_DATASET_PREFIX,
     UK_STAGED_DATASET_REPOSITORY,
 )
+
+# The Modal runner's receipt format lives beside this command, in tools/.
+_TOOLS = Path(__file__).resolve().parent
+if str(_TOOLS) not in sys.path:
+    sys.path.insert(0, str(_TOOLS))
+
+import modal_us_stage_plan as modal_plan  # noqa: E402
 
 MANIFEST_FILENAME = "rowwise_candidate_manifest.json"
 
@@ -140,7 +156,28 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
             "emitter started on this machine retries it."
         ),
     )
-    return parser.parse_args(argv)
+    parser.add_argument(
+        "--modal-receipt",
+        type=Path,
+        help=(
+            "The receipt of the Modal stage that wrote --run-dir, as "
+            "`modal volume get` copies it back "
+            "(modal-runs/<run_id>/receipts/<stage>-<utc>.json). Every output the "
+            "manifest registers must be in it with the same SHA-256 and size."
+        ),
+    )
+    parser.add_argument(
+        "--modal-state-root",
+        type=Path,
+        help=(
+            "The copied-back state directory the receipt describes (default: "
+            "the state directory beside the receipt's directory)."
+        ),
+    )
+    args = parser.parse_args(argv)
+    if args.modal_state_root is not None and args.modal_receipt is None:
+        parser.error("--modal-state-root needs --modal-receipt")
+    return args
 
 
 def _default_run_id(run_dir: Path, manifest: dict) -> str:
@@ -176,17 +213,30 @@ def main(argv: list[str] | None = None) -> int:
     repository = None if args.local_only else str(args.repo_id).strip()
     if repository == "":
         raise SystemExit("error: --repo-id must be non-empty unless --local-only")
-    bundle = StagedDatasetBundle.from_manifest(
-        run_dir,
-        run_id=run_id,
-        manifest_name=MANIFEST_FILENAME,
-        extra_summary={
-            "dataset_households": (manifest.get("parameters") or {}).get(
-                "dataset_households"
-            ),
-            "release_posture": manifest.get("release_posture"),
-        },
-    )
+    try:
+        bundle = StagedDatasetBundle.from_manifest(
+            run_dir,
+            run_id=run_id,
+            manifest_name=MANIFEST_FILENAME,
+            extra_summary={
+                "dataset_households": (manifest.get("parameters") or {}).get(
+                    "dataset_households"
+                ),
+                "release_posture": manifest.get("release_posture"),
+            },
+        )
+    except StagedDatasetError as exc:
+        raise SystemExit(f"error: {exc}") from exc
+    if args.modal_receipt is not None:
+        problems = _modal_receipt_problems(
+            bundle, args.modal_receipt, state_root=args.modal_state_root
+        )
+        if problems:
+            raise SystemExit(
+                f"error: {run_dir} does not hold what the Modal stage wrote, so "
+                "nothing is staged:\n"
+                + "\n".join(f"  - {problem}" for problem in problems)
+            )
     existing = _valid_record(manifest.get("staged_dataset"))
     handed_over = (
         None
@@ -297,6 +347,63 @@ def main(argv: list[str] | None = None) -> int:
     _note_unchanged_records(manifest.get(AT_BUILD_RECORD_KEY), delivery)
     print(json.dumps(delivery, indent=2, sort_keys=True))
     return 0 if delivery["status"] != "failed" else 1
+
+
+def _modal_receipt_problems(
+    bundle: StagedDatasetBundle,
+    receipt_path: Path,
+    *,
+    state_root: Path | None = None,
+) -> list[str]:
+    """Why the bundle's outputs are not the files a finished Modal stage wrote.
+
+    The receipt lists every file of the stage's state directory by its path
+    under it; ``state_root`` is that directory as copied back, by default
+    ``state/`` beside the receipt's ``receipts/`` directory, as ``modal volume
+    get`` leaves them. The bundle has already verified each output against
+    the manifest's digest; this compares each with the receipt's.
+    """
+
+    receipt_path = receipt_path.expanduser()
+    try:
+        receipt = json.loads(receipt_path.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as exc:
+        return [f"cannot read the Modal receipt {receipt_path}: {exc}"]
+    if (
+        not isinstance(receipt, Mapping)
+        or receipt.get("schema") != modal_plan.RECEIPT_SCHEMA
+    ):
+        return [f"{receipt_path} is not a {modal_plan.RECEIPT_SCHEMA} receipt"]
+    problems = modal_plan.receipt_status_problems(receipt)
+    root = (
+        receipt_path.resolve().parent.parent / "state"
+        if state_root is None
+        else state_root.expanduser().resolve()
+    )
+    try:
+        relative = PurePosixPath(*bundle.run_dir.relative_to(root).parts)
+    except ValueError:
+        return [
+            *problems,
+            f"{bundle.run_dir} is not inside the Modal run's state directory "
+            f"{root} (pass --modal-state-root)",
+        ]
+    listed = {
+        str(item.get("path")): item
+        for item in receipt.get("outputs") or ()
+        if isinstance(item, Mapping)
+    }
+    for output in bundle.files:
+        path = (relative / output.name).as_posix()
+        entry = listed.get(path)
+        if entry is None:
+            problems.append(f"the receipt lists no {path}")
+        elif entry.get("sha256") != output.sha256 or entry.get("bytes") != output.bytes:
+            problems.append(
+                f"{path} is not the file the Modal stage wrote: its SHA-256 or size "
+                "differs from the receipt's"
+            )
+    return problems
 
 
 def _write_sidecars(
