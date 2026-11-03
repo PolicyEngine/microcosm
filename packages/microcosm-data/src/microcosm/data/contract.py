@@ -43,6 +43,7 @@ import re
 from collections.abc import Mapping
 from datetime import date
 from pathlib import Path
+from types import MappingProxyType
 
 from packaging.specifiers import InvalidSpecifier, SpecifierSet
 from packaging.version import InvalidVersion, Version
@@ -73,15 +74,25 @@ from microcosm.diagnostics import (
 )
 
 __all__ = [
+    "BUILD_MANIFEST_FILE_ROLE",
+    "CALIBRATION_DIAGNOSTICS_FILE_ROLE",
+    "CALIBRATION_WEIGHTS_FILE_ROLE",
+    "CHECKSUMS_FILE",
+    "CHECKSUMS_FILE_ROLE",
     "COMPATIBILITY_CLAIM_DECLARER_MAX_CHARS",
+    "DATASET_FILE_ROLE",
     "EVIDENCE_RELEASE_ID_SEGMENT",
     "EVIDENCE_RELEASE_MANIFEST_SCHEMA_VERSION",
     "LOCAL_AREA_REQUIRED_RELEASE_FILES",
     "NATIONAL_DEFAULT_DATASET_ROLE",
     "NON_DEFAULT_LOCAL_AREA_DATASET_ROLE",
+    "PROPOSED_US_RELEASES",
     "PUBLISHER_CLAIM_BASIS",
+    "RELEASE_MANIFEST_FILE_ROLE",
     "RELEASE_MANIFEST_SCHEMA_VERSION",
+    "RELEASE_ROLES",
     "REQUIRED_RELEASE_FILES",
+    "RETIRED_BUILD_FIELDS",
     "US_FISCAL_STORED_INPUTS_STAGE",
     "US_LOCAL_AREA_SPM_MEASUREMENT_STAGE",
     "US_LOCAL_AREA_STORED_INPUTS_STAGE",
@@ -94,6 +105,8 @@ __all__ = [
     "ReleaseContractError",
     "compatibility_claim_declarer_error",
     "line_for_release_id",
+    "publishes_to_build_folder",
+    "release_artifact_role",
     "release_dataset_role",
     "required_release_files",
     "stored_input_evidence_manifest_block",
@@ -173,10 +186,12 @@ NON_DEFAULT_LOCAL_AREA_DATASET_ROLE = "non_default_local_area"
 
 #: Each release's role in ``releases.json``, from its manifest's
 #: ``dataset_role``. A release keeps the role it was first published with.
-RELEASE_ROLES: Mapping[str, str] = {
-    NATIONAL_DEFAULT_DATASET_ROLE: "national",
-    NON_DEFAULT_LOCAL_AREA_DATASET_ROLE: "local_area",
-}
+RELEASE_ROLES: Mapping[str, str] = MappingProxyType(
+    {
+        NATIONAL_DEFAULT_DATASET_ROLE: "national",
+        NON_DEFAULT_LOCAL_AREA_DATASET_ROLE: "local_area",
+    }
+)
 #: The roles of a build folder's own files. The emitter interface names the
 #: same strings (``microcosm_emitter_interface.publication`` and ``.bundles``);
 #: this package supports Python versions the interface does not, so it
@@ -206,10 +221,12 @@ _ROLE_IDENTIFIER_RE = re.compile(r"^[a-z][a-z0-9_]{0,63}$")
 #: no US release, and every US release keeps tags and ``latest.json``. Once
 #: they are agreed, that function names them, the US builders write the
 #: build-folder manifests under them and the registry's US entries name them.
-PROPOSED_US_RELEASES: Mapping[str, str] = {
-    "populace-us-2024-national": "national",
-    "populace-us-2024-acs-local": "local_area",
-}
+PROPOSED_US_RELEASES: Mapping[str, str] = MappingProxyType(
+    {
+        "populace-us-2024-national": "national",
+        "populace-us-2024-acs-local": "local_area",
+    }
+)
 
 
 def publishes_to_build_folder(release_id: str) -> bool:
