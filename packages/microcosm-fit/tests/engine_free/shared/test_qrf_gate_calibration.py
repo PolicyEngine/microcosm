@@ -5,8 +5,10 @@ On rows it was not fitted to, its mean probability of a rare class falls short
 of the class's rate, so recipients draw the class too rarely. These tests pin
 the opt-in :attr:`GateCalibration.CROSS_FITTED`: it restores the rate off
 sample, leaves the forests and every draw uniform where they were, keeps a
-class too thin to cross-fit on the in-sample gate, calibrates three-sign gates,
-and checkpoints its choice only when it is made.
+class too thin to cross-fit (or a fold with no weight for a class) on the
+in-sample gate and says so, balances the rates even on saturated scores,
+deals whole groups to folds, calibrates three-sign gates, and checkpoints its
+choice only when it is made. The default path stays the in-sample classifier.
 """
 
 from __future__ import annotations
@@ -17,10 +19,32 @@ import json
 import numpy as np
 import pandas as pd
 import pytest
+from hypothesis import HealthCheck, given, settings
+from hypothesis import strategies as st
 from sklearn.ensemble import HistGradientBoostingClassifier
 
-from microcosm.fit import GateCalibration, QRFChainState, Regime, RegimeGatedQRF, fit
-from microcosm.fit.qrf import _fit_gate_calibration
+from microcosm.fit import (
+    GateCalibration,
+    GateOutcome,
+    QRFChainState,
+    Regime,
+    RegimeGatedQRF,
+    fit,
+)
+from microcosm.fit.qrf import (
+    _GATE_BALANCE_TOLERANCE,
+    _fit_gate_calibration,
+    _make_gate,
+    _stratified_folds,
+)
+
+#: Small, reproducible property runs: every example fits gates and forests.
+PROPERTY = settings(
+    max_examples=20,
+    deadline=None,
+    derandomize=True,
+    suppress_health_check=[HealthCheck.too_slow],
+)
 
 IN_SAMPLE = GateCalibration.IN_SAMPLE
 CROSS_FITTED = GateCalibration.CROSS_FITTED
@@ -142,7 +166,8 @@ def test_calibration_matches_each_class_weighted_rate() -> None:
     labels = (rng.random(n)[:, None] > np.cumsum(_softmax(logits), axis=1)).sum(axis=1)
     weights = rng.uniform(500.0, 9000.0, n)
     overconfident = np.log(_softmax(2.0 * logits))
-    slope, offsets = _fit_gate_calibration(overconfident, labels, weights)
+    slope, offsets, outcome = _fit_gate_calibration(overconfident, labels, weights)
+    assert outcome == GateOutcome.CROSS_FITTED
     calibrated = _softmax(slope * overconfident + offsets)
     onehot = np.eye(3)[labels]
     np.testing.assert_allclose(
@@ -157,7 +182,7 @@ def test_calibration_matches_each_class_weighted_rate() -> None:
     # at the optimum both of Platt's score equations hold.
     positive = (labels == 2).astype(int)
     two = np.log(_softmax(np.column_stack([np.zeros(n), 2.0 * logits[:, 2]])))
-    slope, offsets = _fit_gate_calibration(two, positive, weights)
+    slope, offsets, _ = _fit_gate_calibration(two, positive, weights)
     score = two[:, 1] - two[:, 0]
     residual = 1.0 / (1.0 + np.exp(-(slope * score + offsets[1]))) - positive
     assert abs(weights @ residual) / weights.sum() < 1e-9
@@ -305,3 +330,195 @@ def test_chain_state_names_the_calibration_only_when_cross_fitted(
     payload["model_config"]["gate_calibration"] = "platt"
     with pytest.raises(ValueError, match="gate_calibration 'platt'"):
         QRFChainState.from_dict(payload)
+
+
+def _two_class_table(n: int, seed: int, weight: np.ndarray | None = None):
+    rng = np.random.default_rng(seed)
+    target = np.zeros(n)
+    target[: n // 2] = np.exp(rng.normal(size=n // 2))
+    # x carries the sign, through noise; z carries nothing.
+    x = (target > 0) + rng.normal(0.0, 0.7, n)
+    table = pd.DataFrame({"x": x, "z": rng.normal(size=n), "target": target})
+    table["weight"] = rng.uniform(1.0, 3.0, n) if weight is None else weight
+    return table
+
+
+def test_a_weightless_fold_keeps_the_in_sample_gate() -> None:
+    """Max's reproducer: ten donors, five a class, eight weighing nothing.
+
+    One row a class carries weight, so the fold that holds it out has none of
+    that class to train on. The cross-fitted request keeps the in-sample gate
+    and says why, instead of raising inside sklearn.
+    """
+    weight = np.zeros(10)
+    weight[[0, 9]] = 1.0
+    table = _two_class_table(10, seed=1, weight=weight)
+    fits = {
+        calibration: RegimeGatedQRF(
+            n_estimators=2, seed=3, gate_calibration=calibration
+        ).fit(table, ["x", "z"], ["target"], weights="weight")
+        for calibration in (IN_SAMPLE, CROSS_FITTED)
+    }
+    assert fits[CROSS_FITTED].gate_outcomes() == {"target": GateOutcome.WEIGHTLESS_FOLD}
+    x = table.loc[:, ["x", "z"]].to_numpy()
+    np.testing.assert_array_equal(
+        fits[IN_SAMPLE]._target_models["target"].gate.predict_proba(x),
+        fits[CROSS_FITTED]._target_models["target"].gate.predict_proba(x),
+    )
+
+
+@PROPERTY
+@given(
+    seed=st.integers(0, 2**31 - 2),
+    weightless=st.integers(0, 9),
+    n=st.integers(10, 40),
+)
+def test_sparse_weights_never_break_a_cross_fitted_fit(seed, weightless, n) -> None:
+    """Any seed, any number of weightless rows: a gate, and an honest outcome."""
+    rng = np.random.default_rng(seed)
+    weight = rng.uniform(0.5, 2.0, n)
+    weight[rng.permutation(n)[: min(weightless, n - 2)]] = 0.0
+    # Keep weight on both classes, as every real fit has.
+    weight[0] = weight[n - 1] = 1.0
+    table = _two_class_table(n, seed=seed % 1000, weight=weight)
+    fitted = RegimeGatedQRF(
+        n_estimators=2, seed=seed, gate_calibration=CROSS_FITTED
+    ).fit(table, ["x", "z"], ["target"], weights="weight")
+    outcome = fitted.gate_outcomes()["target"]
+    assert outcome in {
+        GateOutcome.CROSS_FITTED,
+        GateOutcome.THIN_CLASS,
+        GateOutcome.WEIGHTLESS_FOLD,
+        GateOutcome.CLASS_RATES,
+    }
+    proba = fitted._target_models["target"].gate.predict_proba(
+        table.loc[:, ["x", "z"]].to_numpy()
+    )
+    assert np.isfinite(proba).all()
+    np.testing.assert_allclose(proba.sum(axis=1), 1.0)
+
+
+def test_saturated_scores_still_balance_the_rates() -> None:
+    """Max's reproducer: every out-of-fold logit at 29, half the rows positive."""
+    logits = np.column_stack([np.zeros(10), np.full(10, 29.0)])
+    log_proba = np.log(_softmax(logits))
+    labels = np.array([0, 1] * 5)
+    slope, offsets, outcome = _fit_gate_calibration(log_proba, labels, np.ones(10))
+    calibrated = _softmax(slope * log_proba + offsets)
+    assert calibrated[:, 1].mean() == pytest.approx(0.5, abs=_GATE_BALANCE_TOLERANCE)
+    assert outcome in {GateOutcome.CROSS_FITTED, GateOutcome.CLASS_RATES}
+
+
+@PROPERTY
+@given(
+    seed=st.integers(0, 2**31 - 2),
+    classes=st.sampled_from([2, 3]),
+    scale=st.sampled_from([0.0, 0.5, 3.0, 40.0]),
+    n=st.integers(12, 120),
+)
+def test_the_calibration_balances_every_class(seed, classes, scale, n) -> None:
+    """Saturated, constant or ordinary scores: the weighted rates always balance."""
+    rng = np.random.default_rng(seed)
+    labels = np.concatenate([np.arange(classes), rng.integers(0, classes, n)])
+    logits = scale * rng.normal(size=(len(labels), classes))
+    if scale == 0.0:
+        logits[:] = rng.normal(size=classes)  # every row the same scores
+    log_proba = np.log(np.maximum(_softmax(logits), np.finfo(float).tiny))
+    weights = rng.uniform(0.1, 10.0, len(labels))
+    slope, offsets, outcome = _fit_gate_calibration(log_proba, labels, weights)
+    calibrated = _softmax(slope * log_proba + offsets)
+    rate = weights @ np.eye(classes)[labels] / weights.sum()
+    np.testing.assert_allclose(
+        weights @ calibrated / weights.sum(), rate, atol=_GATE_BALANCE_TOLERANCE
+    )
+    if outcome == GateOutcome.CLASS_RATES:
+        assert slope == 0.0
+
+
+@PROPERTY
+@given(seed=st.integers(0, 2**31 - 2), n=st.integers(30, 90))
+def test_the_default_gate_is_the_in_sample_classifier(seed, n) -> None:
+    """The default path fits exactly the classifier it always did, groups unused."""
+    table = _two_class_table(n, seed=seed % 1000)
+    x = table.loc[:, ["x", "z"]].to_numpy()
+    labels = (table["target"].to_numpy() > 0).astype(int)
+    default = RegimeGatedQRF(n_estimators=2, seed=seed).fit(
+        table, ["x", "z"], ["target"], weights="weight"
+    )
+    gate = default._target_models["target"].gate
+    assert type(gate) is HistGradientBoostingClassifier
+    fresh = _make_gate(gate.random_state).fit(
+        x, labels, sample_weight=table["weight"].to_numpy()
+    )
+    np.testing.assert_array_equal(gate.predict_proba(x), fresh.predict_proba(x))
+    assert default.gate_outcomes() == {"target": GateOutcome.IN_SAMPLE}
+    grouped = RegimeGatedQRF(n_estimators=2, seed=seed).fit(
+        table,
+        ["x", "z"],
+        ["target"],
+        weights="weight",
+        groups=np.arange(n) // 3,
+    )
+    uniforms = {
+        "quantiles": {"target": np.linspace(0.0, 0.99, n)},
+        "sign_uniforms": {"target": np.random.default_rng(seed).random(n)},
+    }
+    pd.testing.assert_frame_equal(
+        default.predict_from_uniforms(table, **uniforms),
+        grouped.predict_from_uniforms(table, **uniforms),
+    )
+
+
+@PROPERTY
+@given(
+    seed=st.integers(0, 2**31 - 2),
+    groups=st.integers(5, 60),
+    classes=st.sampled_from([2, 3]),
+)
+def test_grouped_folds_never_split_a_group(seed, groups, classes) -> None:
+    rng = np.random.default_rng(seed)
+    codes = np.sort(rng.integers(0, groups, 4 * groups))
+    codes = np.unique(codes, return_inverse=True)[1]
+    labels = rng.integers(0, classes, len(codes))
+    folds = _stratified_folds(labels, 5, rng, codes)
+    per_group = pd.Series(folds).groupby(codes).nunique()
+    assert (per_group == 1).all()
+
+
+def test_a_grouped_chain_locks_its_grouping() -> None:
+    table = _two_class_table(60, seed=4)
+    table["household"] = np.arange(60) // 3
+    model = RegimeGatedQRF(n_estimators=2, seed=9, gate_calibration=CROSS_FITTED)
+    ungrouped = model.start_chain(table, ["x", "z"], ["target"], weights="weight")
+    assert "groups_sha256" not in ungrouped.to_dict()
+    state = model.start_chain(
+        table, ["x", "z"], ["target"], weights="weight", groups="household"
+    )
+    wire = json.loads(json.dumps(state.to_dict()))
+    assert len(wire["groups_sha256"]) == 64
+    assert QRFChainState.from_dict(wire) == state
+    recipient = table.loc[:, ["x", "z"]]
+    empty = pd.DataFrame(index=recipient.index)
+    with pytest.raises(ValueError, match="fold grouping changed"):
+        model.fit_draw_next(
+            table, recipient, empty, state=state, weights="weight", groups=None
+        )
+    step = model.fit_draw_next(
+        table, recipient, empty, state=state, weights="weight", groups="household"
+    )
+    assert step.fitted.gate_outcomes()["target"] == GateOutcome.CROSS_FITTED
+
+
+def test_gate_outcomes_name_what_each_target_got(rare_positive_frame) -> None:
+    table = _two_class_table(200, seed=6)
+    table["thin"] = 0.0
+    table.loc[:3, "thin"] = 1.0  # four positive rows: fewer than five folds
+    table["always"] = 1.0 + table["x"].abs()
+    fitted = RegimeGatedQRF(n_estimators=2, seed=1, gate_calibration=CROSS_FITTED).fit(
+        table, ["x", "z"], ["target", "thin", "always"], weights="weight"
+    )
+    assert fitted.gate_outcomes() == {
+        "target": GateOutcome.CROSS_FITTED,
+        "thin": GateOutcome.THIN_CLASS,
+        "always": None,
+    }

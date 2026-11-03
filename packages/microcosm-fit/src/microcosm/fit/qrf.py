@@ -30,7 +30,10 @@ collapsing the gate to a single class that can never draw the missing sign.
 A gate is calibrated on its own training rows only, unless the model is built
 with ``gate_calibration="cross_fitted"`` (:class:`GateCalibration`): then it is
 a gate per fold, mapped by a calibration fitted on their out-of-fold scores, so
-a rare class is drawn at its rate on rows the gate was not fitted to.
+a rare class is drawn at its rate on rows the gate was not fitted to. The rate
+balance is exact on the pooled out-of-fold donor scores, not on any recipient
+set, and in a chain a sign that changes moves later targets' amounts through
+their predictors although the forests and the draw uniforms are the same.
 
 **Chaining.** Targets are imputed sequentially; each conditions on the
 predictors plus the targets already drawn, so the joint structure across
@@ -82,6 +85,7 @@ __all__ = [
     "QRFChainStepResult",
     "Regime",
     "GateCalibration",
+    "GateOutcome",
     "DEFAULT_N_ESTIMATORS",
     "DEFAULT_ZERO_ATOL",
 ]
@@ -116,14 +120,44 @@ class GateCalibration:
     #: gate's log-probabilities, and a row's probability is the mean of the
     #: mapped fold gates. Each fold gate is mapped where it is calibrated, on
     #: rows it was not fitted to, and the mapped out-of-fold probabilities'
-    #: weighted mean equals each class's weighted rate. A target whose rarest
-    #: class has fewer rows than folds keeps the in-sample gate.
+    #: weighted mean equals each class's weighted rate on those donor rows.
+    #: With ``groups``, whole groups (households) are dealt across the folds.
+    #: A target that cannot be cross-fitted keeps the in-sample gate, and
+    #: :meth:`FittedRegimeGatedQRF.gate_outcomes` says which (:class:`GateOutcome`).
     CROSS_FITTED = "cross_fitted"
 
 
 _GATE_CALIBRATIONS = frozenset(
     {GateCalibration.IN_SAMPLE, GateCalibration.CROSS_FITTED}
 )
+
+
+class GateOutcome:
+    """The calibration a fitted sign gate actually has.
+
+    :meth:`FittedRegimeGatedQRF.gate_outcomes` names one per gated target, so a
+    stage can record where a cross-fitted request could not be met.
+    """
+
+    #: The model asked for the in-sample gate.
+    IN_SAMPLE = "in_sample"
+    #: Cross-fitted and calibrated out of fold.
+    CROSS_FITTED = "cross_fitted"
+    #: Asked cross-fitted, but a class has fewer rows (or groups) than folds,
+    #: so it cannot be in every fold: the in-sample gate.
+    THIN_CLASS = "in_sample_thin_class"
+    #: Asked cross-fitted, but a fold's training rows carry no weight for a
+    #: class, so its fold gate could not learn it: the in-sample gate.
+    WEIGHTLESS_FOLD = "in_sample_weightless_fold"
+    #: Cross-fitted, but the calibration's rate balance could not be met (or the
+    #: out-of-fold ranking was worse than none): every row gets the weighted
+    #: class rates.
+    CLASS_RATES = "cross_fitted_class_rates"
+
+
+#: Largest gap, in probability, between a calibrated class's weighted
+#: out-of-fold mean and its weighted rate that the balance check accepts.
+_GATE_BALANCE_TOLERANCE = 1e-6
 
 #: Folds of a cross-fitted gate calibration.
 _GATE_CROSS_FIT_FOLDS = 5
@@ -317,19 +351,41 @@ class _CrossFittedGate:
 
 
 def _stratified_folds(
-    labels: np.ndarray, folds: int, rng: np.random.Generator
+    labels: np.ndarray,
+    folds: int,
+    rng: np.random.Generator,
+    groups: np.ndarray | None = None,
 ) -> np.ndarray:
-    """A fold per row: each class's rows, in random order, dealt round the folds."""
+    """A fold per row: each class's rows, in random order, dealt round the folds.
+
+    With ``groups`` (integer codes, one per row) whole groups are dealt instead,
+    so rows that share a group never sit on both sides of a fold. Each group is
+    dealt with the rarest class it contains, counted in groups, so a rare class
+    spreads across the folds as its rows would.
+    """
     assignment = np.empty(len(labels), dtype=np.int64)
-    for value in np.unique(labels):
-        rows = rng.permutation(np.flatnonzero(labels == value))
-        assignment[rows] = np.arange(len(rows)) % folds
+    if groups is None:
+        for value in np.unique(labels):
+            rows = rng.permutation(np.flatnonzero(labels == value))
+            assignment[rows] = np.arange(len(rows)) % folds
+        return assignment
+    classes = np.unique(labels)
+    present = np.zeros((int(groups.max()) + 1, len(classes)), dtype=bool)
+    present[groups, np.searchsorted(classes, labels)] = True
+    rarity = present.sum(axis=0)
+    # Each group's stratum: the rarest of its classes (ties to the first).
+    stratum = np.where(present, rarity[None, :], np.iinfo(np.int64).max).argmin(axis=1)
+    group_fold = np.empty(len(present), dtype=np.int64)
+    for index in range(len(classes)):
+        members = rng.permutation(np.flatnonzero(stratum == index))
+        group_fold[members] = np.arange(len(members)) % folds
+    assignment[:] = group_fold[groups]
     return assignment
 
 
 def _fit_gate_calibration(
     log_proba: np.ndarray, label_index: np.ndarray, weights: np.ndarray
-) -> tuple[float, np.ndarray]:
+) -> tuple[float, np.ndarray, str]:
     """Fit ``p_c ∝ exp(slope * log_proba_c + offset_c)`` by weighted likelihood.
 
     One slope shared by the classes and an offset per class (the first fixed
@@ -337,22 +393,29 @@ def _fit_gate_calibration(
     optimum each offset's score equation makes the weighted mean of the
     calibrated probabilities equal its class's weighted rate. Newton steps,
     halved until the loss does not rise; the likelihood is concave, so they
-    converge from the identity map. A negative slope (an out-of-fold ranking
-    worse than none) falls back to the class rates alone.
+    converge from the identity map.
+
+    The balance is checked at exit (:data:`_GATE_BALANCE_TOLERANCE`). Where
+    Newton's steps stall, as on saturated or constant scores, along which the
+    slope and the offsets are not identified, damped (Levenberg-Marquardt)
+    steps take over. If the balance still fails, or the slope is negative (an
+    out-of-fold ranking worse than none), every row gets the class rates.
 
     Args:
         log_proba: Out-of-fold log class probabilities, one column per class.
         label_index: Each row's class, as a column index of ``log_proba``.
-        weights: Per-row weights.
+        weights: Per-row weights, with positive weight on every class.
 
     Returns:
-        ``(slope, offsets)`` with ``offsets[0] == 0``.
+        ``(slope, offsets, outcome)`` with ``offsets[0] == 0`` and ``outcome``
+        :attr:`GateOutcome.CROSS_FITTED` or :attr:`GateOutcome.CLASS_RATES`.
     """
     n, k = log_proba.shape
     w = np.asarray(weights, dtype=np.float64) / float(np.mean(weights))
     onehot = np.zeros((n, k))
     onehot[np.arange(n), label_index] = 1.0
     rows = np.arange(n)
+    rate = w @ onehot / w.sum()
 
     def unpack(theta: np.ndarray) -> tuple[float, np.ndarray]:
         return float(theta[0]), np.concatenate([[0.0], theta[1:]])
@@ -364,10 +427,7 @@ def _fit_gate_calibration(
         log_total = top + np.log(np.exp(logits - top[:, None]).sum(axis=1))
         return float(w @ (log_total - logits[rows, label_index]))
 
-    theta = np.zeros(k)
-    theta[0] = 1.0
-    current = loss(theta)
-    for _ in range(100):
+    def derivatives(theta: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
         slope, offsets = unpack(theta)
         proba = _calibrated_proba(log_proba, slope, offsets)
         residual = proba - onehot
@@ -381,6 +441,19 @@ def _fit_gate_calibration(
             hessian[0, c] = hessian[c, 0] = w @ (proba[:, c] * centred[:, c])
             for d in range(1, k):
                 hessian[c, d] = w @ (proba[:, c] * (float(c == d) - proba[:, d]))
+        return gradient, hessian
+
+    def balanced(theta: np.ndarray) -> bool:
+        slope, offsets = unpack(theta)
+        proba = _calibrated_proba(log_proba, slope, offsets)
+        gap = np.abs(w @ proba / w.sum() - rate)
+        return bool(np.all(np.isfinite(gap)) and gap.max() <= _GATE_BALANCE_TOLERANCE)
+
+    theta = np.zeros(k)
+    theta[0] = 1.0
+    current = loss(theta)
+    for _ in range(100):
+        gradient, hessian = derivatives(theta)
         step = np.linalg.solve(hessian + 1e-12 * np.eye(k), gradient)
         scale = 1.0
         trial_theta = theta - step
@@ -394,16 +467,61 @@ def _fit_gate_calibration(
         theta, previous, current = trial_theta, current, trial
         if previous - current <= 1e-13 * max(1.0, abs(current)):
             break
+    if not balanced(theta):
+        # Damped steps: a ridge that grows while a step would raise the loss
+        # and shrinks after each accepted one, so a direction the scores do
+        # not identify cannot stall the fit.
+        damping = 1e-6
+        for _ in range(500):
+            gradient, hessian = derivatives(theta)
+            scale = max(float(np.abs(np.diag(hessian)).max()), 1e-12)
+            while damping <= 1e12:
+                trial_theta = theta - np.linalg.solve(
+                    hessian + damping * scale * np.eye(k), gradient
+                )
+                trial = loss(trial_theta)
+                if np.isfinite(trial) and trial <= current:
+                    break
+                damping *= 10.0
+            else:
+                break
+            theta, current = trial_theta, trial
+            damping = max(damping / 10.0, 1e-12)
+            if balanced(theta):
+                break
     slope, offsets = unpack(theta)
-    if slope < 0.0:
-        rate = np.maximum(w @ onehot / w.sum(), _TINY)
-        return 0.0, np.log(rate) - np.log(rate[0])
-    return slope, offsets
+    if slope < 0.0 or not balanced(theta):
+        floor = np.maximum(rate, _TINY)
+        return 0.0, np.log(floor) - np.log(floor[0]), GateOutcome.CLASS_RATES
+    return slope, offsets, GateOutcome.CROSS_FITTED
 
 
-def _can_cross_fit(labels: np.ndarray) -> bool:
-    """Whether every class has a row in every fold of a cross-fitted gate."""
-    return int(np.unique(labels, return_counts=True)[1].min()) >= _GATE_CROSS_FIT_FOLDS
+def _can_cross_fit(labels: np.ndarray, groups: np.ndarray | None = None) -> bool:
+    """Whether every class can have a row in every fold of a cross-fitted gate.
+
+    A class needs at least one row (one group, with ``groups``) per fold.
+    """
+    if groups is None:
+        counts = np.unique(labels, return_counts=True)[1]
+    else:
+        pairs = np.unique(np.column_stack([labels, groups]), axis=0)
+        counts = np.unique(pairs[:, 0], return_counts=True)[1]
+    return int(counts.min()) >= _GATE_CROSS_FIT_FOLDS
+
+
+def _folds_carry_every_class(
+    folds: np.ndarray, labels: np.ndarray, weights: np.ndarray | None
+) -> bool:
+    """Whether every fold's training rows carry weight for every class."""
+    classes = np.unique(labels)
+    for fold in range(_GATE_CROSS_FIT_FOLDS):
+        training = folds != fold
+        for value in classes:
+            members = training & (labels == value)
+            carried = members.sum() if weights is None else weights[members].sum()
+            if not carried > 0:
+                return False
+    return True
 
 
 def _cross_fit_gate(
@@ -411,21 +529,31 @@ def _cross_fit_gate(
     labels: np.ndarray,
     weights: np.ndarray | None,
     seed: int,
-) -> _CrossFittedGate:
+    groups: np.ndarray | None = None,
+) -> tuple[_CrossFittedGate | None, str]:
     """Fit a gate per fold and calibrate them on their out-of-fold probabilities.
 
-    Each of :data:`_GATE_CROSS_FIT_FOLDS` folds (stratified by class) is scored
-    by a gate fitted the same way on the other folds, and the calibration
-    fitted on those scores maps every fold gate. The fold assignment and the
-    fold gates' seeds derive from ``seed``, the one the in-sample gate would
-    take, so nothing else in the fit's RNG stream moves. Every class must have
-    a row in every fold (:func:`_can_cross_fit`).
+    Each of :data:`_GATE_CROSS_FIT_FOLDS` folds (stratified by class, and dealt
+    by whole group with ``groups``) is scored by a gate fitted the same way on
+    the other folds, and the calibration fitted on those scores maps every fold
+    gate. The fold assignment and the fold gates' seeds derive from ``seed``,
+    the one the in-sample gate would take, so nothing else in the fit's RNG
+    stream moves. Every class must have a row in every fold
+    (:func:`_can_cross_fit`).
+
+    Returns:
+        ``(gate, outcome)``. ``gate`` is ``None``, with outcome
+        :attr:`GateOutcome.WEIGHTLESS_FOLD`, when some fold's training rows
+        carry no weight for a class, which no row count rules out once rows
+        can weigh zero; the caller then fits the in-sample gate.
     """
     classes = np.unique(labels)
     fold_stream, gate_stream = np.random.SeedSequence(seed).spawn(2)
     folds = _stratified_folds(
-        labels, _GATE_CROSS_FIT_FOLDS, np.random.default_rng(fold_stream)
+        labels, _GATE_CROSS_FIT_FOLDS, np.random.default_rng(fold_stream), groups
     )
+    if not _folds_carry_every_class(folds, labels, weights):
+        return None, GateOutcome.WEIGHTLESS_FOLD
     gate_seeds = np.random.default_rng(gate_stream).integers(
         0, 2**31 - 1, size=_GATE_CROSS_FIT_FOLDS
     )
@@ -446,12 +574,12 @@ def _cross_fit_gate(
             )
         log_proba[held] = _log_proba(gate.predict_proba(features[held]))
         gates.append(gate)
-    slope, offsets = _fit_gate_calibration(
+    slope, offsets, outcome = _fit_gate_calibration(
         log_proba,
         np.searchsorted(classes, labels),
         np.ones(len(labels)) if weights is None else weights,
     )
-    return _CrossFittedGate(gates, slope, offsets)
+    return _CrossFittedGate(gates, slope, offsets), outcome
 
 
 def _interp_rows(
@@ -928,6 +1056,8 @@ class _TargetModel:
             regimes.
         positive: The positive-magnitude forest, or ``None``.
         negative: The negative-magnitude forest, or ``None``.
+        gate_outcome: The calibration the gate actually has
+            (:class:`GateOutcome`), or ``None`` for ungated regimes.
     """
 
     regime: str
@@ -935,6 +1065,7 @@ class _TargetModel:
     gate: HistGradientBoostingClassifier | _CrossFittedGate | None
     positive: _Forest | None
     negative: _Forest | None
+    gate_outcome: str | None = None
 
 
 _CHAIN_STATE_SCHEMA_VERSION = 1
@@ -1005,6 +1136,37 @@ def _index_identity(index: pd.Index) -> _IndexIdentity:
     )
 
 
+def _resolve_groups(table: pd.DataFrame, groups: object) -> np.ndarray | None:
+    """Fold-grouping codes, one per donor row: ``None``, a column name or a vector.
+
+    Rows with the same code are dealt to the same fold of a cross-fitted gate,
+    so a household's members never train a fold gate that scores one of them.
+    """
+    if groups is None:
+        return None
+    if isinstance(groups, str):
+        if groups not in table.columns:
+            raise ValueError(f"groups column {groups!r} is not in the fit input.")
+        values = table[groups]
+    else:
+        values = pd.Series(np.asarray(groups))
+        if len(values) != len(table):
+            raise ValueError(
+                f"groups has {len(values)} values for {len(table)} fit rows."
+            )
+    if values.isna().any():
+        raise ValueError("groups must name a group for every fit row.")
+    codes, _ = pd.factorize(values, sort=True)
+    return codes.astype(np.int64)
+
+
+def _groups_identity(groups: np.ndarray | None) -> str | None:
+    """Fingerprint the fold grouping for safe resume checks."""
+    if groups is None:
+        return None
+    return hashlib.sha256(np.ascontiguousarray(groups).tobytes(order="C")).hexdigest()
+
+
 def _weight_identity(weights: np.ndarray | None) -> str:
     """Fingerprint the exact resolved fit weights for safe resume checks."""
     if weights is None:
@@ -1060,8 +1222,10 @@ class QRFChainState:
     draw prefix, allowing a build to checkpoint them losslessly.
 
     The gate calibration is written into the model configuration only when it
-    is not :attr:`GateCalibration.IN_SAMPLE`, so the state of an in-sample
-    chain, and any state written before the option existed, reads the same.
+    is not :attr:`GateCalibration.IN_SAMPLE`, and the fold grouping's
+    fingerprint only when the chain was started with ``groups``, so the state
+    of an in-sample, ungrouped chain, and any state written before either
+    existed, reads the same.
     """
 
     predictors: tuple[str, ...]
@@ -1082,6 +1246,7 @@ class QRFChainState:
     draw_rng_state_json: str
     schema_version: int = _CHAIN_STATE_SCHEMA_VERSION
     gate_calibration: str = GateCalibration.IN_SAMPLE
+    groups_sha256: str | None = None
 
     def __post_init__(self) -> None:
         """Reject malformed or internally inconsistent checkpoint state."""
@@ -1126,6 +1291,11 @@ class QRFChainState:
                 f"QRF chain gate_calibration {self.gate_calibration!r} is not one "
                 f"of {sorted(_GATE_CALIBRATIONS)}."
             )
+        if self.groups_sha256 is not None and (
+            len(self.groups_sha256) != 64
+            or any(c not in "0123456789abcdef" for c in self.groups_sha256)
+        ):
+            raise ValueError("QRF chain groups_sha256 is malformed.")
         _rng_from_state_json(self.fit_rng_state_json, stream="fit")
         _rng_from_state_json(self.draw_rng_state_json, stream="draw")
 
@@ -1153,6 +1323,9 @@ class QRFChainState:
         }
         if self.gate_calibration != GateCalibration.IN_SAMPLE:
             model_config["gate_calibration"] = self.gate_calibration
+        grouping = (
+            {} if self.groups_sha256 is None else {"groups_sha256": self.groups_sha256}
+        )
         return {
             "schema_version": self.schema_version,
             "predictors": list(self.predictors),
@@ -1161,6 +1334,7 @@ class QRFChainState:
             "entity": self.entity,
             "weight_kind": self.weight_kind,
             "weight_sha256": self.weight_sha256,
+            **grouping,
             "model_config": model_config,
             "donor_index": self.donor_index.to_dict(),
             "recipient_index": (
@@ -1187,11 +1361,15 @@ class QRFChainState:
             "fit_rng_state",
             "draw_rng_state",
         }
-        if set(value) != expected:
+        if set(value) not in (expected, expected | {"groups_sha256"}):
             raise ValueError(
                 "QRF chain state keys must be exactly "
-                f"{sorted(expected)}, got {sorted(value)}."
+                f"{sorted(expected)}, optionally with 'groups_sha256', "
+                f"got {sorted(value)}."
             )
+        groups_sha256 = value.get("groups_sha256")
+        if groups_sha256 is not None and not isinstance(groups_sha256, str):
+            raise ValueError("QRF chain groups_sha256 must be a string.")
 
         def names(key: str) -> tuple[str, ...]:
             raw = value[key]
@@ -1292,6 +1470,7 @@ class QRFChainState:
             fit_rng_state_json=fit_rng_state,
             draw_rng_state_json=draw_rng_state,
             gate_calibration=gate_calibration,
+            groups_sha256=groups_sha256,
         )
 
 
@@ -1580,6 +1759,7 @@ class RegimeGatedQRF:
         targets: list[str],
         *,
         weights: WeightSpec = DESIGN_WEIGHTS,
+        groups: str | Sequence[object] | np.ndarray | None = None,
     ) -> FittedRegimeGatedQRF:
         """Fit the conditional model. See
         :meth:`~microcosm.fit.model.ConditionalModel.fit`.
@@ -1593,16 +1773,21 @@ class RegimeGatedQRF:
         target's regime structurally and grows the gated, weighted-bootstrap
         forests in chain order.
 
+        ``groups`` (a column of the fit input or a vector, one entry per row)
+        deals whole groups, such as a household's members, to the same fold of
+        a cross-fitted gate; it is unused by the in-sample gate.
+
         Raises:
             ValueError: If predictors/targets are empty, span more than one
                 entity (Frame) or are missing from the columns, request a
-                weight spec the input cannot resolve, or a target column
-                contains non-finite (NaN/inf) values. Messages name the
-                culprits.
+                weight spec the input cannot resolve, a target column
+                contains non-finite (NaN/inf) values, or ``groups`` does not
+                name a group for every row. Messages name the culprits.
         """
         predictors = list(predictors)
         targets = list(targets)
         resolved = _resolve_qrf_fit_input(frame_or_df, predictors, targets, weights)
+        group_codes = _resolve_groups(resolved.table, groups)
 
         # Split the model seed into two independent streams: one drives the
         # fit (bootstrap resample, forest randomness, gate random_state), the
@@ -1625,6 +1810,7 @@ class RegimeGatedQRF:
                 columns=chained,
                 weights=resolved.weights,
                 rng=rng,
+                groups=group_codes,
             )
 
         return FittedRegimeGatedQRF(
@@ -1644,18 +1830,21 @@ class RegimeGatedQRF:
         targets: list[str],
         *,
         weights: WeightSpec = DESIGN_WEIGHTS,
+        groups: str | Sequence[object] | np.ndarray | None = None,
     ) -> QRFChainState:
         """Initialize a safe target-at-a-time chain checkpoint.
 
         This performs the same entity, column, target-finiteness, and weight
         resolution as :meth:`fit`, then locks the donor row order, resolved
-        weights, exact model configuration, target order, and independent fit
-        and draw RNG streams into immutable JSON-roundtrippable state. No model
-        is fit until :meth:`fit_draw_next`.
+        weights, fold grouping (``groups``, as in :meth:`fit`), exact model
+        configuration, target order, and independent fit and draw RNG streams
+        into immutable JSON-roundtrippable state. No model is fit until
+        :meth:`fit_draw_next`.
         """
         predictors = list(predictors)
         targets = list(targets)
         resolved = _resolve_qrf_fit_input(frame_or_df, predictors, targets, weights)
+        group_codes = _resolve_groups(resolved.table, groups)
         fit_seed, draw_seed = np.random.SeedSequence(self.seed).spawn(2)
         fit_rng = np.random.default_rng(fit_seed)
         draw_rng = np.random.default_rng(draw_seed)
@@ -1677,6 +1866,7 @@ class RegimeGatedQRF:
             fit_rng_state_json=_rng_state_json(fit_rng),
             draw_rng_state_json=_rng_state_json(draw_rng),
             gate_calibration=self.gate_calibration,
+            groups_sha256=_groups_identity(group_codes),
         )
 
     def fit_draw_next(
@@ -1689,6 +1879,7 @@ class RegimeGatedQRF:
         weights: WeightSpec = DESIGN_WEIGHTS,
         quantiles: np.ndarray | None = None,
         sign_uniforms: np.ndarray | None = None,
+        groups: str | Sequence[object] | np.ndarray | None = None,
     ) -> QRFChainStepResult:
         """Fit and draw exactly the next target in a checkpointed chain.
 
@@ -1699,7 +1890,9 @@ class RegimeGatedQRF:
 
         Every call re-runs the ordinary input/weight resolution and refuses
         model-config drift, target-prefix drift, donor/recipient row reordering,
-        weight drift, an entity/front-door change, or non-float64 raw priors.
+        weight or fold-grouping drift (``groups`` must be what
+        :meth:`start_chain` took), an entity/front-door change, or non-float64
+        raw priors.
 
         ``quantiles`` and ``sign_uniforms`` (both or neither) are caller-owned
         uniforms, one in ``[0, 1)`` per recipient row. With them the step draws
@@ -1723,6 +1916,12 @@ class RegimeGatedQRF:
         targets = list(state.targets)
         resolved = _resolve_qrf_fit_input(frame_or_df, predictors, targets, weights)
         self._validate_chain_donor(state, resolved)
+        group_codes = _resolve_groups(resolved.table, groups)
+        if _groups_identity(group_codes) != state.groups_sha256:
+            raise ValueError(
+                "QRF chain fold grouping changed since start_chain: pass the same "
+                "groups to every step."
+            )
         recipient = self._chain_recipient_table(recipient_predictors, state)
         recipient_identity = _index_identity(recipient.index)
         if state.recipient_index is not None and (
@@ -1744,6 +1943,7 @@ class RegimeGatedQRF:
             columns=chained,
             weights=resolved.weights,
             rng=fit_rng,
+            groups=group_codes,
         )
 
         augmented = recipient.loc[:, list(state.predictors)].copy()
@@ -1912,6 +2112,7 @@ class RegimeGatedQRF:
         columns: tuple[str, ...],
         weights: np.ndarray | None,
         rng: np.random.Generator,
+        groups: np.ndarray | None = None,
     ) -> _TargetModel:
         """Fit the gate and per-sign forests for one numeric target."""
         regime = detect_regime(y, zero_atol=self.zero_atol)
@@ -1946,12 +2147,12 @@ class RegimeGatedQRF:
         # sample_weight (not by bootstrap), so every sign class survives even
         # when one is vanishingly rare under the weights.
         labels = self._sign_labels(y)
-        gate = self._fit_gate(features, labels, weights, rng)
+        gate, outcome = self._fit_gate(features, labels, weights, rng, groups)
         pos_mask = y > self.zero_atol
         neg_mask = y < -self.zero_atol
         positive = forest(pos_mask) if pos_mask.any() else None
         negative = forest(neg_mask) if neg_mask.any() else None
-        return _TargetModel(regime, columns, gate, positive, negative)
+        return _TargetModel(regime, columns, gate, positive, negative, outcome)
 
     def _sign_labels(self, y: np.ndarray) -> np.ndarray:
         """Per-row sign code: ``-1`` negative, ``0`` zero, ``1`` positive."""
@@ -1966,7 +2167,8 @@ class RegimeGatedQRF:
         labels: np.ndarray,
         weights: np.ndarray | None,
         rng: np.random.Generator,
-    ) -> HistGradientBoostingClassifier | _CrossFittedGate:
+        groups: np.ndarray | None = None,
+    ) -> tuple[HistGradientBoostingClassifier | _CrossFittedGate, str]:
         """Fit the sign-gate classifier, weighting it directly by sample_weight.
 
         Unlike the forests, the gate is *not* weighted by bootstrap.
@@ -1987,10 +2189,12 @@ class RegimeGatedQRF:
 
         Under :attr:`GateCalibration.CROSS_FITTED` the gate is instead a gate
         per fold, calibrated on their out-of-fold probabilities
-        (:func:`_cross_fit_gate`), unless a class is too thin to have a row in
-        every fold. The fold gates' seeds derive from the one seed drawn here,
-        so the fit RNG advances by that single draw either way and every forest
-        after the gate is unchanged.
+        (:func:`_cross_fit_gate`, with whole ``groups`` dealt to folds), unless
+        a class is too thin to have a row in every fold or a fold's training
+        rows carry no weight for a class; then it is the in-sample gate, and
+        the returned outcome says why. The fold gates' seeds derive from the
+        one seed drawn here, so the fit RNG advances by that single draw either
+        way and every forest after the gate is unchanged.
 
         Args:
             features: The chained predictor matrix for this target's rows.
@@ -1998,20 +2202,25 @@ class RegimeGatedQRF:
             weights: Per-row weights, or ``None`` for an unweighted gate.
             rng: Seeded generator supplying the gate's ``random_state`` (kept
                 for fit reproducibility even though no resample is drawn).
+            groups: Fold-grouping codes, one per row, or ``None``.
 
         Returns:
-            The fitted sign-gate classifier, cross-fitted when configured.
+            ``(gate, outcome)``: the fitted sign-gate classifier, cross-fitted
+            when configured and possible, and its :class:`GateOutcome`.
 
         Raises:
             ValueError: If a sign class present in ``labels`` is absent from the
                 fitted gate's ``classes_`` (internal inconsistency).
         """
         seed = int(rng.integers(0, 2**31 - 1))
-        if self.gate_calibration == GateCalibration.CROSS_FITTED and _can_cross_fit(
-            labels
-        ):
-            gate = _cross_fit_gate(features, labels, weights, seed)
-        else:
+        gate: HistGradientBoostingClassifier | _CrossFittedGate | None = None
+        outcome = GateOutcome.IN_SAMPLE
+        if self.gate_calibration == GateCalibration.CROSS_FITTED:
+            if _can_cross_fit(labels, groups):
+                gate, outcome = _cross_fit_gate(features, labels, weights, seed, groups)
+            else:
+                outcome = GateOutcome.THIN_CLASS
+        if gate is None:
             gate = _make_gate(seed)
             gate.fit(features, labels, sample_weight=weights)
         training_classes = set(np.unique(labels).tolist())
@@ -2026,7 +2235,7 @@ class RegimeGatedQRF:
                 "probability zero would silently lose that sign; refusing to "
                 "fit an inconsistent gate."
             )
-        return gate
+        return gate, outcome
 
 
 @dataclass(frozen=True)
@@ -2092,6 +2301,11 @@ class FittedRegimeGatedQRF:
         self._zero_atol = zero_atol
         self._rng = np.random.default_rng(draw_seed)
         self._weight_kind = weight_kind
+        # Read now: ``predict(release_models=True)`` drops the target models.
+        self._gate_outcomes = {
+            name: getattr(model, "gate_outcome", None)
+            for name, model in target_models.items()
+        }
 
     @property
     def weight_kind(self) -> str:
@@ -2101,6 +2315,15 @@ class FittedRegimeGatedQRF:
     def regimes(self) -> dict[str, str]:
         """The detected :class:`Regime` label per target."""
         return {name: model.regime for name, model in self._target_models.items()}
+
+    def gate_outcomes(self) -> dict[str, str | None]:
+        """The calibration each target's sign gate actually has.
+
+        A :class:`GateOutcome` per gated target and ``None`` for an ungated
+        one, so a caller can record where a cross-fitted request kept the
+        in-sample gate or fell back to the class rates.
+        """
+        return dict(self._gate_outcomes)
 
     def sign_classes(self, target: str) -> tuple[int, ...]:
         """The sign classes of ``target``, ascending.

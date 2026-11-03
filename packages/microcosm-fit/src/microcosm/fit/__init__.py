@@ -88,6 +88,7 @@ from microcosm.fit.qrf import (  # noqa: E402 - after the compatibility gate
     ConditionalUniforms,
     FittedRegimeGatedQRF,
     GateCalibration,
+    GateOutcome,
     QRFChainState,
     QRFChainStepResult,
     Regime,
@@ -106,6 +107,7 @@ def fit(
     targets: list[str],
     *,
     weights: WeightSpec = DESIGN_WEIGHTS,
+    groups=None,
     **model_kwargs,
 ) -> FittedModel:
     """Fit the canonical conditional model over ``frame_or_df``.
@@ -124,14 +126,16 @@ def fit(
             defaults to the owning entity's ``"design"`` weights. On a
             DataFrame: required — a weight column name or a weight vector.
             ``"none"`` fits unweighted — the only way to do so.
+        groups: Fold grouping for a cross-fitted gate (a column or a vector,
+            one entry per row); see :meth:`RegimeGatedQRF.fit`.
         **model_kwargs: Forwarded to :class:`RegimeGatedQRF` (e.g.
-            ``n_estimators``, ``zero_atol``, ``seed``).
+            ``n_estimators``, ``zero_atol``, ``seed``, ``gate_calibration``).
 
     Returns:
         A :class:`~microcosm.fit.model.FittedModel`.
     """
     return RegimeGatedQRF(**model_kwargs).fit(
-        frame_or_df, predictors, targets, weights=weights
+        frame_or_df, predictors, targets, weights=weights, groups=groups
     )
 
 
@@ -151,6 +155,7 @@ __all__ = [
     "QRFChainStepResult",
     "Regime",
     "GateCalibration",
+    "GateOutcome",
     "QRFCacheKey",
     "cache_path",
     "load_fitted_qrf_cache",
