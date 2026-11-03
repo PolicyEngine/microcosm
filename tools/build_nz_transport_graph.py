@@ -205,6 +205,7 @@ def closure_entry_dtype(entry, mapping):
                 "str": "string",
             }[concept(binding["concepts"][0]).dtype]
         elif transform in {
+            "coresident_adult",
             "predicate",
             "relationship_role",
             "positive",

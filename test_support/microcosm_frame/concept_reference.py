@@ -20,6 +20,7 @@ import pandas as pd
 from microcosm.frame.concept_mapping import (
     AllocateToReferencePerson,
     ConceptMapping,
+    CoresidentAdult,
     CoresidentChildCount,
     Fraction,
     Identity,
@@ -154,6 +155,18 @@ def reference_values(
                     if _present(child[column])
                     and child[column] == row["person_id"]
                     and (transform.max_age is None or child["age"] <= transform.max_age)
+                )
+            )
+        elif isinstance(transform, CoresidentAdult):
+            home = row["person_household_id"]
+            out.append(
+                _present(home)
+                and any(
+                    other is not row
+                    and other["person_household_id"] == home
+                    and _present(other["age"])
+                    and other["age"] >= transform.min_age
+                    for other in persons
                 )
             )
         elif isinstance(transform, TakeUpThreshold):
