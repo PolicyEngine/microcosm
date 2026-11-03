@@ -463,6 +463,319 @@ def _raw_transport_resource(spec: Mapping[str, object], name: str) -> Mapping:
     return _mapping(value, f"{stem}.json")
 
 
+def _measurement_tables(spec: Mapping[str, object]) -> dict[str, list[Mapping]]:
+    """Each money-scaling measurement binding with the interval tables it scales.
+
+    Every declared profile counts, selected or not, so a proof never depends
+    on which profile a scenario selects.
+    """
+    declarations = _raw_transport_resource(spec, "reference_profiles")
+    interval = declarations.get("interval_resource")
+    tables = {}
+    if interval is not None and _has_resource(spec, interval):
+        tables = {
+            table.get("id"): table
+            for table in _raw_transport_resource(spec, interval).get("tables", ())
+            if isinstance(table, Mapping)
+        }
+    found: dict[str, list[Mapping]] = {}
+    dimensions = declarations.get("dimensions", {})
+    for dimension in dimensions.values() if isinstance(dimensions, Mapping) else ():
+        profiles = (
+            dimension.get("profiles", {}) if isinstance(dimension, Mapping) else {}
+        )
+        for profile in profiles.values() if isinstance(profiles, Mapping) else ():
+            for transform in (
+                profile.get("transformations", ())
+                if isinstance(profile, Mapping)
+                else ()
+            ):
+                if (
+                    not isinstance(transform, Mapping)
+                    or transform.get("operation") != "scale_money_and_intervals"
+                ):
+                    continue
+                binding = transform.get("required_measurement_binding")
+                if not isinstance(binding, str) or not binding:
+                    continue
+                listed = found.setdefault(binding, [])
+                for table_id in transform.get("interval_table_ids", ()):
+                    table = tables.get(table_id)
+                    if table is not None and table not in listed:
+                        listed.append(table)
+    return found
+
+
+MEASUREMENT_PARAM = "measurement_id"
+
+
+def _measurement_declaration(row: Mapping) -> object:
+    """The ``measurement_id`` a node declares in its params, or ``None``.
+
+    A producer declares the id as a literal string param, as
+    ``measure.combine@1`` reads ``context.params["measurement_id"]``.
+    """
+    params = row.get("params")
+    return params.get(MEASUREMENT_PARAM) if isinstance(params, Mapping) else None
+
+
+def _declared_calibration_predecessors(
+    rows: Mapping[str, Mapping],
+) -> tuple[dict[str, set[str]], dict[str, set[tuple[str, str, str]]]]:
+    """Declared predecessors and reads, by the S5 ancestry guard's rule.
+
+    A node follows its population version (or, if structural, its base and
+    every member of the base), each artifact producer it names, and each
+    writer :func:`_precalibration_declared_reads` resolves for its reads.
+    """
+    predecessors = {name: set() for name in rows}
+    reads = _precalibration_declared_reads(rows)
+    for name, row in rows.items():
+        base = row.get("base")
+        if isinstance(base, str):
+            predecessors[name].add(base)
+            predecessors[name].update(
+                item["id"] for item in rows.values() if item.get("population") == base
+            )
+        elif isinstance(row.get("population"), str):
+            predecessors[name].add(row["population"])
+        predecessors[name].update(
+            edge["producer"] for edge in row.get("artifact_inputs", ())
+        )
+        predecessors[name].update(producer for _, _, producer in reads[name])
+    return predecessors, reads
+
+
+def _calibration_roots(rows: Mapping[str, Mapping], document: Mapping) -> set[str]:
+    roots = {
+        name
+        for name, row in rows.items()
+        if isinstance(row.get("kernel"), str) and row["kernel"].startswith("calibrate.")
+    }
+    endpoint = (document.get("endpoints") or {}).get("calibration")
+    if isinstance(endpoint, str) and endpoint in rows:
+        roots.add(endpoint)
+    return roots
+
+
+def _measurement_refusal(
+    binding: str,
+    root: str,
+    found: Sequence[str],
+    declared: Sequence[str],
+) -> str:
+    return (
+        f"{len(found)} nodes declaring measurement_id {binding!r} "
+        f"sit upstream of calibration node {root!r} "
+        f"(declared by {list(declared)}); exactly one must"
+    )
+
+
+def _second_writer_refusal(
+    binding: str,
+    root: str,
+    producer: str,
+    writers: Mapping[tuple[str, str], Sequence[str]],
+) -> str | None:
+    """Why a measured column has a writer other than its producer, or ``None``.
+
+    R2C-15: the producer is the only ancestor of each calibration node that
+    writes each measured column, wherever another writer sits and whether
+    or not it rewrites. An EXPAND writes the cells it declares.
+    """
+    for (entity, column), names in sorted(writers.items(), key=str):
+        if list(names) != [producer]:
+            return (
+                f"measurement {binding!r}: calibration node {root!r} has "
+                f"writers {list(names)} of {entity}.{column} upstream; "
+                f"only its producer {producer!r} may write it"
+            )
+    return None
+
+
+def _declared_writer(row: Mapping, entity: object, column: object) -> bool:
+    """Whether a declared node may write a cell, by output or as an EXPAND.
+
+    An EXPAND whose cells only composition can tell writes every column, as
+    :func:`_precalibration_declared_reads` reads it.
+    """
+    cells = _precalibration_cells(row)
+    return (
+        (entity, column) in _owned_columns(row)
+        or cells is None
+        or (entity, column) in cells
+    )
+
+
+def measurement_proofs(
+    spec: Mapping[str, object],
+) -> tuple[dict[str, dict], dict[str, str]]:
+    """Prove each money-scaling measurement's producer from the declaration.
+
+    G8-r2c ruling R2C-1: composition satisfies ``measurement:<id>`` only when,
+    for every calibration node, exactly one node upstream of it declares
+    ``params.measurement_id: <id>`` (a string) and writes the income and
+    universe columns of every interval table the measurement's profiles
+    scale, on that table's entity. R2C-15 adds that the producer is the only
+    node upstream of that calibration node which writes each of those
+    columns. "Upstream" is ancestry in the declared
+    graph under the S5 guard's rule (:func:`_declared_calibration_predecessors`);
+    composition then checks the same producers against the compiled graph's
+    exact predecessors (:func:`_check_measurement_proofs`). Returns the
+    proofs by measurement id and, for each measurement without one, the
+    reason it stays parked.
+    """
+    if not _has_resource(spec, "reference_profiles"):
+        return {}, {}
+    wanted = _measurement_tables(spec)
+    if not wanted:
+        return {}, {}
+    if _has_resource(spec, GRAPH_RESOURCE):
+        document = _raw_transport_resource(spec, GRAPH_RESOURCE)
+        rows = _precalibration_rows(document)
+    else:
+        document, rows = {}, {}
+    roots = _calibration_roots(rows, document)
+    predecessors, _ = _declared_calibration_predecessors(rows)
+    upstream = {root: _ancestor_closure(predecessors, {root}) for root in sorted(roots)}
+    malformed = sorted(
+        name
+        for name, row in rows.items()
+        if _measurement_declaration(row) is not None
+        and not _is_text(_measurement_declaration(row))
+    )
+    proofs: dict[str, dict] = {}
+    refusals: dict[str, str] = {}
+    for binding, tables in sorted(wanted.items()):
+        required = sorted(
+            {
+                (table.get("entity"), table.get(field))
+                for table in tables
+                for field in ("income_column", "universe_column")
+            },
+            key=str,
+        )
+        declared = sorted(
+            name
+            for name, row in rows.items()
+            if _measurement_declaration(row) == binding
+        )
+        producers, reason = {}, None
+        if malformed:
+            reason = f"nodes {malformed} declare a measurement_id that is not a string"
+        elif not tables:
+            reason = "its profiles scale no declared interval table"
+        elif not upstream:
+            reason = "the graph declares no calibration node"
+        for root, closure in upstream.items():
+            if reason is not None:
+                break
+            found = [name for name in declared if name in closure]
+            if len(found) != 1:
+                reason = _measurement_refusal(binding, root, found, declared)
+                break
+            (producer,) = found
+            missing = [
+                f"{entity}.{column}"
+                for entity, column in required
+                if (entity, column) not in _owned_columns(rows[producer])
+            ]
+            if missing:
+                reason = (
+                    f"producer {producer!r} does not write {missing} on the "
+                    "interval table's entity"
+                )
+                break
+            reason = _second_writer_refusal(
+                binding,
+                root,
+                producer,
+                {
+                    (entity, column): sorted(
+                        name
+                        for name in closure
+                        if _declared_writer(rows[name], entity, column)
+                    )
+                    for entity, column in required
+                },
+            )
+            if reason is not None:
+                break
+            producers[root] = producer
+        if reason is None:
+            proofs[binding] = {
+                "measurement_id": binding,
+                "producers": producers,
+                "columns": [f"{entity}.{column}" for entity, column in required],
+            }
+        else:
+            refusals[binding] = reason
+    return proofs, refusals
+
+
+def _check_measurement_proofs(
+    spec: Mapping[str, object], graph: Graph, compiled: CompiledGraph
+) -> None:
+    """Refuse a declared proof the compiled graph's ancestry contradicts.
+
+    For each proved measurement and each calibration node of the composed
+    graph, the compiled ancestors of that node must hold exactly one node
+    whose params declare the measurement, and it must be the proof's
+    producer for that node. That producer must also be the only compiled
+    ancestor whose outputs or EXPAND cells hold each of the proof's columns
+    (R2C-15).
+    """
+    proofs, _ = measurement_proofs(spec)
+    if not proofs:
+        return
+    roots = {node.id for node in graph.nodes if node.kernel.startswith("calibrate.")}
+    endpoint = transport_endpoints(spec).get("calibration")
+    if isinstance(endpoint, str):
+        roots.add(endpoint)
+    declared = {
+        node.id: node.params.get(MEASUREMENT_PARAM)
+        for node in graph.nodes
+        if isinstance(node.params, Mapping) and MEASUREMENT_PARAM in node.params
+    }
+    by_id = {node.id: node for node in graph.nodes}
+    _, expand_cells = _precalibration_expansions(graph)
+    for binding, proof in sorted(proofs.items()):
+        named = sorted(name for name, value in declared.items() if value == binding)
+        for root in sorted(roots):
+            closure = _ancestor_closure(compiled.predecessors, {root})
+            found = [name for name in named if name in closure]
+            if found != [proof["producers"].get(root)]:
+                raise ValueError(
+                    f"Measurement {binding!r}: the compiled graph contradicts "
+                    "the declared proof; "
+                    + _measurement_refusal(binding, root, found, named)
+                    + f", and the declaration proved {proof['producers'].get(root)!r}."
+                )
+            columns = [tuple(name.split(".", 1)) for name in proof["columns"]]
+            refusal = _second_writer_refusal(
+                binding,
+                root,
+                proof["producers"][root],
+                {
+                    (entity, column): sorted(
+                        name
+                        for name in closure
+                        if (entity, column) in expand_cells[name]
+                        or any(
+                            (output.entity, output.column) == (entity, column)
+                            for output in by_id[name].outputs
+                        )
+                    )
+                    for entity, column in columns
+                },
+            )
+            if refusal is not None:
+                raise ValueError(
+                    f"Measurement {binding!r}: the compiled graph contradicts "
+                    f"the declared proof; {refusal}."
+                )
+
+
 def reference_profile_view(
     spec: Mapping[str, object], selection: Mapping | None = None
 ):
@@ -491,6 +804,7 @@ def reference_profile_view(
         factor_context=None
         if factor_context_resource is None
         else _raw_transport_resource(spec, factor_context_resource),
+        measurement_proofs=measurement_proofs(spec)[0],
     )
     if _has_resource(spec, CHRONICLE_FEED_RESOURCE):
         feed_pin = _raw_transport_resource(spec, CHRONICLE_FEED_RESOURCE)
@@ -647,8 +961,10 @@ def _reference_activation_gaps(
     resource: str,
     exempt: Mapping | None = None,
     selected: Mapping[str, Sequence[str]] | None = None,
+    refusals: Mapping[str, str] | None = None,
 ) -> Iterator[str]:
     # The absent-resource path preserves the legacy activation walk and messages.
+    # A row parked on an unproved measurement names it and the proof's reason.
     exemptions = (
         set()
         if exempt is None
@@ -668,7 +984,24 @@ def _reference_activation_gaps(
             reference.get("name") not in exemptions
             and metadata.get("activation_status", "active") != "active"
         ):
-            yield f"placeholder reference {resource}.{reference.get('name', '?')}"
+            gap = f"placeholder reference {resource}.{reference.get('name', '?')}"
+            try:
+                remaining = json.loads(
+                    metadata.get("reference_prerequisites_remaining", "[]")
+                )
+            except (TypeError, ValueError):
+                remaining = []
+            measurements = [
+                item.removeprefix("measurement:")
+                for item in remaining
+                if isinstance(item, str) and item.startswith("measurement:")
+            ]
+            if measurements:
+                gap += "; awaits " + ", ".join(
+                    f"measurement:{item} ({(refusals or {}).get(item, 'no proof')})"
+                    for item in measurements
+                )
+            yield gap
 
 
 def _reference_selections(spec: Mapping[str, object]) -> dict[str, dict]:
@@ -1117,6 +1450,7 @@ def validate_transport_activation(spec: Mapping[str, object]) -> None:
     missing = []
     # Resolve first so activation never inspects an executable profile's raw rows.
     reference_profile_views(spec)
+    _, measurement_refusals = measurement_proofs(spec)
     reference_selections = _reference_selections(spec)
     selection_closure = (
         _reference_selection_closure(spec)
@@ -1216,6 +1550,7 @@ def validate_transport_activation(spec: Mapping[str, object]) -> None:
                 resource,
                 reference_selections.get(resource),
                 selection_closure.get(resource),
+                measurement_refusals,
             )
         )
     for (resource, identity), document in selected_reference_views.items():
@@ -1226,6 +1561,7 @@ def validate_transport_activation(spec: Mapping[str, object]) -> None:
                     resource,
                     reference_selections.get(resource),
                     selection_closure.get(resource),
+                    measurement_refusals,
                 )
             )
     receipt = (
@@ -3027,21 +3363,7 @@ def _validate_precalibration_ancestry(
                 "name a node."
             )
         roots.add(endpoints["calibration"])
-    predecessors = {name: set() for name in rows}
-    reads = _precalibration_declared_reads(rows)
-    for name, row in rows.items():
-        base = row.get("base")
-        if isinstance(base, str):
-            predecessors[name].add(base)
-            predecessors[name].update(
-                item["id"] for item in rows.values() if item.get("population") == base
-            )
-        elif isinstance(row.get("population"), str):
-            predecessors[name].add(row["population"])
-        predecessors[name].update(
-            edge["producer"] for edge in row.get("artifact_inputs", ())
-        )
-        predecessors[name].update(producer for _, _, producer in reads[name])
+    predecessors, reads = _declared_calibration_predecessors(rows)
 
     declarations = rows
 
@@ -4047,6 +4369,7 @@ def compose_transport_graph(
     )
     compiled = compile_graph(skeleton)
     validate_transport_calibration_ancestry(spec, graph=skeleton, config=config)
+    _check_measurement_proofs(spec, skeleton, compiled)
     # Money ownership is checked after each graph pass of the ancestry guard.
     _check_single_money_normalization(spec, skeleton, compiled)
     _check_money_bridge_owners(skeleton, compiled)
