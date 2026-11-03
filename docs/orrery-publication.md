@@ -20,7 +20,8 @@ separately installed `microcosm-emitter` command as the build's child process
 through `microcosm-emitter-interface`, with independent telemetry, graph
 publication and Hugging Face hand-over modules. The emitter owns sockets,
 authentication, persistence, retries and resource sampling. Microcosm retains
-graph generation, public-file selection and the staged dataset upload.
+graph generation and public-file selection; the staged dataset bundle, including
+a failed build's graph evidence, goes to the same emitter's Hugging Face module.
 Slow uploads cannot delay socket acknowledgement or telemetry delivery. A
 command that started no emitter of its own starts a short-lived one with only
 the graph module to measure and queue the files.
@@ -173,7 +174,10 @@ emitter does cost the build:
 - the UK graph step records a failed receipt (`local_service_unavailable`)
   and queues no Orrery job, so the emitter's retry command has nothing to
   deliver later;
-- a UK build given `--staging-read-back` fails at the read-back.
+- a UK build given `--staging-read-back` fails at the read-back;
+- a UK build that asks for remote staging of its dataset bundle, as UK builds
+  do by default, is refused before it starts, and the refusal gives the
+  upgrade command built from the minimum.
 
 The build's warning says so. Raise the minimum and the image's floor
 together, and before raising them while machines still run older emitters,
