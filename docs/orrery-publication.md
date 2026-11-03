@@ -44,6 +44,38 @@ under an existing publication ID. No population H5 or content-store arrays are
 included; only allowlisted graph declarations, execution receipts and reviewed
 aggregate summaries can be published publicly.
 
+## Status
+
+No upload is published today. The runs application accepts an upload only
+after the collector authorizes it, and the collector has no authorization
+endpoint: PolicyEngine/calibration-diagnostics#208, which would have added
+one, was closed unmerged. A build run with `--publish-orrery` still queues an
+upload as described above when it can start the separately installed emitter
+(see [the emitter dependency](#emitter-dependency)). Without the emitter, the
+build preserves the files but writes no `orrery.upload.json`, its receipt
+snapshot records `local_service_unavailable`, and nothing is queued. A build
+run without `--publish-orrery`, the default, queues none. A queued job stays
+pending in the emitter's local queue, its files stay in the preserved
+directory, and no retry can succeed.
+
+The collector will build the Orrery graph files itself instead. Builds will
+submit the graph's inputs to the collector's artifact intake
+(PolicyEngine/microcosm-collector#12): `graph.schema.json`,
+`graph.execution.json`, the `upstream-<sha256>.json` files and the native
+evidence files, which the collector keeps private. They will not submit
+`graph.orrery.json`: the collector's Orrery worker will build it from the
+schema and the execution overlay. The worker keeps the graph of a build that
+used licensed microdata, as UK builds do, private; it becomes public only
+after output clearance. The direct upload to the runs application will then
+be removed.
+
+When a build queues an upload with remote staging enabled, it then stages its
+artifact bundle to Hugging Face under `staged/<run_id>/`. That bundle holds
+every file of the queued upload, plus `graph.execution.json` when execution
+was recorded, so the Orrery graph files can be rebuilt from it later. This does not hold for an interrupted build, a
+build run with `--publish-orrery` while staging is local-only or disabled, or a
+build whose Hugging Face staging failed or did not complete.
+
 ## Configuration
 
 | Setting | Source and consumer | Provisioning |
@@ -55,9 +87,7 @@ aggregate summaries can be published publicly.
 | `XDG_CACHE_HOME` | Optional existing cache-location setting, read by the interface in the build; the build passes the spool path (`microcosm/telemetry/events.sqlite3`) and the hand-over database beside it (`events.handovers.sqlite3`) to the emitter on its standard input | Defaults to the user's cache directory |
 
 The separately deployed runs application retains its Vercel Blob configuration.
-Authenticated production publication also requires
-PolicyEngine/calibration-diagnostics#208 deployed, and the runs application's
-publication API. Producer tests do not contact either hosted service.
+Producer tests do not contact the runs application or the collector.
 
 No new secret is required. Tests isolate ambient credentials and caches,
 replace the interface's emitter client with an in-memory one, and refuse to
