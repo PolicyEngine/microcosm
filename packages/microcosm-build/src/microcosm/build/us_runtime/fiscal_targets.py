@@ -161,6 +161,15 @@ SOI_AMOUNT_MEASURE_VARIABLES: dict[str, str] = {
     "estate_trust_net_loss_amount": "estate_losses",
     "other_income_net_income_amount": "miscellaneous_income",
     "other_income_net_loss_amount": "miscellaneous_losses",
+    # SOI Table 1.4 publishes partnership and S corporation net income and net
+    # loss separately from TY2021 (Chronicle's table_1_4 measure ids; losses
+    # are positive magnitudes). Each entity leg binds that entity's own Schedule
+    # E line-32 leaf, summed to the return, positive part for net income and
+    # negative-part magnitude for net loss (microcosm#1258).
+    "partnership_net_income_amount": "partnership_income",
+    "partnership_net_loss_amount": "partnership_losses",
+    "s_corporation_net_income_amount": "s_corp_income",
+    "s_corporation_net_loss_amount": "s_corp_losses",
     # SOI Table 1.4 "capital gain distributions reported on Form 1040" ==
     # PUF E01100 == PolicyEngine-US non_sch_d_capital_gains (Form 1040 line 7
     # when Schedule D is not required); concept-confirmed against pe-us source.
@@ -239,6 +248,12 @@ SOI_RETURN_MEASURE_VARIABLES: dict[str, str] = {
     "estate_trust_net_loss_returns": "estate_losses",
     "other_income_net_income_returns": "miscellaneous_income",
     "other_income_net_loss_returns": "miscellaneous_losses",
+    # microcosm#1258: return counts paired with the Table 1.4 partnership and
+    # S corporation legs above.
+    "partnership_net_income_returns": "partnership_income",
+    "partnership_net_loss_returns": "partnership_losses",
+    "s_corporation_net_income_returns": "s_corp_income",
+    "s_corporation_net_loss_returns": "s_corp_losses",
     "capital_gain_distributions_returns": "non_sch_d_capital_gains",
     # Build H (microcosm#299): return count paired with the Table 2.1 home
     # mortgage interest amount above (indicator sum over itemizers claiming a
@@ -290,6 +305,12 @@ SOI_VARIABLE_MAP: dict[str, str] = {
     "ordinary_dividends": "ordinary_dividend_income",
     "partnership_and_s_corp_income": "tax_unit_partnership_s_corp_income",
     "partnership_and_s_corp_losses": "tax_unit_partnership_s_corp_income",
+    # microcosm#1258: Table 1.4's entity legs read each entity's own person
+    # leaf; the materializer sums it to the tax unit before taking the part.
+    "partnership_income": "partnership_income",
+    "partnership_losses": "partnership_income",
+    "s_corp_income": "s_corp_income",
+    "s_corp_losses": "s_corp_income",
     "assigned_aca_ptc": "assigned_aca_ptc",
     "qualified_business_income_deduction": "qualified_business_income_deduction",
     "qualified_dividends": "qualified_dividend_income",
@@ -2466,8 +2487,14 @@ def _eitc_source_decomposition_total_for_bounds(
     lower: float,
     upper: float,
 ) -> float | None:
-    total = 0.0
-    matched = False
+    """Source-period Table 2.5 EITC inside ``[lower, upper)``, all child splits.
+
+    Each child split's record set nests its AGI bins under its all-AGI total
+    row, so summing every contained row would count a split twice once the
+    interval holds both. Count only each split's outermost contained rows.
+    """
+
+    rows_by_split: dict[str, list[tuple[float, float, float]]] = {}
     for spec in registry.specs:
         if not _is_eitc_decomposition_spec(spec):
             continue
@@ -2477,9 +2504,40 @@ def _eitc_source_decomposition_total_for_bounds(
             continue
         spec_lower, spec_upper = _bounds_from_metadata(spec)
         if _contains_bounds(lower, upper, spec_lower, spec_upper):
-            total += spec.value
-            matched = True
-    return total if matched else None
+            rows_by_split.setdefault(
+                spec.metadata.get("ledger_layout_record_set_id", ""), []
+            ).append((spec_lower, spec_upper, spec.value))
+    if not rows_by_split:
+        return None
+    return sum(
+        _outermost_rows_total(record_set_id, rows)
+        for record_set_id, rows in rows_by_split.items()
+    )
+
+
+def _outermost_rows_total(
+    record_set_id: str,
+    rows: list[tuple[float, float, float]],
+) -> float:
+    outermost = sorted(
+        row
+        for index, row in enumerate(rows)
+        if not any(
+            other_index != index
+            and (other[0], other[1]) != (row[0], row[1])
+            and _contains_bounds(other[0], other[1], row[0], row[1])
+            for other_index, other in enumerate(rows)
+        )
+    )
+    for previous, current in zip(outermost, outermost[1:], strict=False):
+        if current[0] < previous[1]:
+            raise ValueError(
+                f"EITC decomposition {record_set_id!r} has overlapping AGI rows "
+                f"[{_format_bound(previous[0])}, {_format_bound(previous[1])}) and "
+                f"[{_format_bound(current[0])}, {_format_bound(current[1])}); "
+                "its rows must nest or be disjoint."
+            )
+    return sum(value for _, _, value in outermost)
 
 
 def _eitc_agi_uprating_group(

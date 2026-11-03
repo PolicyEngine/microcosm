@@ -22,7 +22,11 @@ from typing import Any
 import numpy as np
 
 from microcosm.build.gates import FitWeightRecord
-from microcosm.build.us_runtime.acs_inputs import map_acs_native_inputs
+from microcosm.build.us_runtime.acs_inputs import (
+    map_acs_native_inputs,
+    with_acs_spm_independence_role,
+    without_acs_group_quarters_children,
+)
 from microcosm.build.us_runtime.acs_local_hours import (
     acs_local_hours_transfer_target_families,
     complete_acs_local_under15_hours,
@@ -51,6 +55,7 @@ from microcosm.build.us_runtime.puma_ladder import (
     UsPumaLadder,
     us_puma_ladder_assignment_summary,
 )
+from microcosm.build.us_runtime.spm_role_source import NATIVE_SPM_ROLE
 from microcosm.build.us_runtime.support_provenance import BASE_ASEC_SUPPORT_CHANNEL
 from microcosm.frame import Frame
 
@@ -65,6 +70,10 @@ class AcsMultispineResult:
     build-level weights audit. ``provenance`` contains the same fit evidence,
     along with loader, native-input, and imputed-input records, converted to
     values accepted by strict ``json.dumps(..., allow_nan=False)``.
+    ``provenance["spm_independence_role"]`` is the ACS role receipt, or
+    ``None`` when the base carries no role for the ACS spine to match.
+    ``provenance["acs_group_quarters_children"]`` is the interim drop's
+    receipt, or ``None`` when the caller kept those records.
     """
 
     frame: Frame
@@ -93,6 +102,7 @@ def build_optional_acs_multispine(
     expected_congressional_district_vintage: str | None = (
         CURRENT_CONGRESSIONAL_DISTRICT_VINTAGE
     ),
+    drop_group_quarters_children: bool = False,
 ) -> AcsMultispineResult:
     """Optionally build, transfer, and append the ACS 2024 1-year spine.
 
@@ -121,6 +131,18 @@ def build_optional_acs_multispine(
     )
     loader_provenance = _json_ready_mapping(loader_metadata)
 
+    # Interim (microcosm#1263, d1484): a group-quarters child under 15 can
+    # have no classified SPM adult, and an engine that measures every unit
+    # refuses the whole population's SPM measurement for one. The caller
+    # decides from its engine. The drop runs on the raw PUMS frame, before
+    # the native mapping, so every receipt from here on (native coverage, the
+    # hours completion, the role) counts exactly the staged rows.
+    group_quarters_children_provenance = None
+    if drop_group_quarters_children:
+        dropped = without_acs_group_quarters_children(raw_acs, age_column="AGEP")
+        raw_acs = dropped.frame
+        group_quarters_children_provenance = _json_ready_mapping(dropped.provenance)
+        del dropped
     mapped = map_acs_native_inputs(raw_acs)
     del raw_acs
     native_provenance = _json_ready_mapping(mapped.native_inputs)
@@ -131,6 +153,16 @@ def build_optional_acs_multispine(
         mapped_frame, modeled_hours = complete_acs_local_under15_hours(
             mapped_frame, policy=hours_under15_policy
         )
+    # The engine's one declared dataset source input may not be defaulted, so
+    # a pooled column must be complete on both spines. Derive it for the ACS
+    # spine exactly when the base delivers it; before the transfer, so a
+    # structural refusal costs no fits.
+    spm_role_provenance = None
+    if NATIVE_SPM_ROLE in base.table("person").columns:
+        spm_role = with_acs_spm_independence_role(mapped_frame)
+        mapped_frame = spm_role.frame
+        spm_role_provenance = _json_ready_mapping(spm_role.provenance)
+        del spm_role
 
     # Geography preflight BEFORE the expensive transfer: an unmapped donor
     # tract, incoherent preserved geography, or an unknown ACS PUMA must
@@ -225,6 +257,8 @@ def build_optional_acs_multispine(
         "acs_share": _json_ready(acs_share),
         "loader": loader_provenance,
         "native_inputs": native_provenance,
+        "spm_independence_role": spm_role_provenance,
+        "acs_group_quarters_children": group_quarters_children_provenance,
         "imputed_inputs": imputed_provenance,
         "deferred_inputs": deferred_provenance,
         "adult_care_recipient_gate": _json_ready(adult_care_gate)

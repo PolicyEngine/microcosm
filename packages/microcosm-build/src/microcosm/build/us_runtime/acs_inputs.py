@@ -18,12 +18,34 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
+from microcosm.build.gates import GateResult
+from microcosm.build.us_runtime.acs_release_predictors import (
+    crosswalk_acs_occupation_and_work_experience,
+)
+from microcosm.build.us_runtime.acs_transfer import (
+    ACS_SELF_EMPLOYMENT_COMPONENT_INPUTS,
+)
+from microcosm.build.us_runtime.spm_role_source import (
+    NATIVE_SPM_ROLE,
+    SPM_ADULT_RULE,
+    SPM_ROLE_RULE,
+)
 from microcosm.frame import US_SCHEMA, Frame
 
 __all__ = [
+    "ACS_SPM_ROLE_PARTITION",
+    "ACS_SPM_ROLE_RULE",
     "ACS_UNRESOLVED_PARENT_ID_MAPPINGS",
+    "ACS_WORK_EXPERIENCE_NATIVE_MAPPINGS",
+    "ACS_GROUP_QUARTERS_CHILD_RULE",
+    "AcsGroupQuartersChildrenResult",
     "AcsNativeInputResult",
+    "ACS_SELF_EMPLOYMENT_IDENTITY_TOLERANCE",
+    "AcsSpmRoleResult",
+    "acs_self_employment_identity_gate",
     "map_acs_native_inputs",
+    "with_acs_spm_independence_role",
+    "without_acs_group_quarters_children",
 ]
 
 _INFLATION_FACTOR_DENOMINATOR = 1_000_000.0
@@ -63,6 +85,33 @@ ACS_UNRESOLVED_PARENT_ID_MAPPINGS: tuple[tuple[str, str], ...] = (
     ("parent_2_id", "PEPAR2"),
 )
 
+#: Native work-experience receipts shared with the pre-assembly boundary.
+#: The same reviewed crosswalk serves fiscal-refresh and fresh ACS releases.
+ACS_WORK_EXPERIENCE_NATIVE_MAPPINGS: Mapping[
+    str, tuple[str, tuple[str, ...], str]
+] = {
+    "detailed_occupation_recode": (
+        "POCCU2",
+        ("OCCP", "AGEP", "ESR"),
+        "OCCP via ACS_OCCP_TO_POCCU2; source-universe sentinels",
+    ),
+    "detailed_industry_recode": (
+        "WEIND",
+        ("INDP", "AGEP", "ESR"),
+        "INDP via ACS_INDP_TO_WEIND; source-universe sentinels",
+    ),
+    "major_industry_recode": (
+        "WEMIND",
+        ("INDP", "AGEP", "ESR"),
+        "WEIND_TO_WEMIND of INDP via ACS_INDP_TO_WEIND",
+    ),
+    "worked_last_year": (
+        "WKSWORK",
+        ("WKWN", "AGEP"),
+        "WKWN > 0; blank outside past-year work universe becomes False",
+    ),
+}
+
 _FORMULA_OWNED_AGGREGATES = frozenset(
     {
         "employment_income",
@@ -76,12 +125,47 @@ _FORMULA_OWNED_AGGREGATES = frozenset(
 )
 
 
+#: RELSHIPP codes the ACS SPM independence role reads. 20 is the reference
+#: person; 21/23 the opposite-/same-sex spouse of the reference person; 37/38
+#: the institutional/noninstitutional group-quarters person, whom the PUMS
+#: records as the only person of their own household.
+_ACS_REFERENCE_PERSON = 20
+_ACS_SPOUSE_OF_REFERENCE = (21, 23)
+_ACS_GROUP_QUARTERS_PERSON = (37, 38)
+_ACS_RELSHIPP_CODES = frozenset(range(20, 39))
+_ACS_GROUP_QUARTERS_TYPEHUGQ = (2, 3)
+
+#: The ACS arm of the SPM independence role, the ASEC rule
+#: (:data:`~microcosm.build.us_runtime.spm_role_source.SPM_ROLE_RULE`) read on
+#: the ACS spine's SPM partition. ``SPM_HEAD`` is each unit's head: the
+#: reference person of a housing unit, or a group-quarters person, who is the
+#: sole member of their unit. ``A_FAMTYP 1, A_FAMREL 1/2`` is the primary
+#: family's reference person and spouse. ACS PUMS identifies no unrelated
+#: subfamily, so the rule's ``A_FAMTYP 4`` branch has no ACS counterpart.
+ACS_SPM_ROLE_RULE = (
+    "RELSHIPP == 20 OR RELSHIPP in {21, 23} OR RELSHIPP in {37, 38}, "
+    "on the one-SPM-unit-per-household ACS partition"
+)
+
+#: The SPM partition the rule is defined on. ACS PUMS carries no ``SPM_ID``,
+#: so ``assign_us_unit_structure`` makes each household one SPM unit.
+ACS_SPM_ROLE_PARTITION = "household (ACS PUMS carries no SPM_ID)"
+
+
 @dataclass(frozen=True)
 class AcsNativeInputResult:
     """Mapped ACS frame and JSON-ready native-column provenance."""
 
     frame: Frame
     native_inputs: Mapping[str, Mapping[str, Any]]
+
+
+@dataclass(frozen=True)
+class AcsSpmRoleResult:
+    """An ACS frame carrying the SPM independence role, plus its receipt."""
+
+    frame: Frame
+    provenance: Mapping[str, Any]
 
 
 def map_acs_native_inputs(frame: Frame) -> AcsNativeInputResult:
@@ -139,6 +223,7 @@ def map_acs_native_inputs(frame: Frame) -> AcsNativeInputResult:
         )
 
     _map_usual_hours(person, register=native)
+    _map_work_experience(person, register=native)
 
     _map_adjusted_person_amount(
         person,
@@ -212,6 +297,553 @@ def map_acs_native_inputs(frame: Frame) -> AcsNativeInputResult:
         metadata=frame.metadata,
     )
     return AcsNativeInputResult(mapped, native)
+
+
+def with_acs_spm_independence_role(frame: Frame) -> AcsSpmRoleResult:
+    """Derive ``is_spm_independent_minor_role`` for an ACS spine, or refuse.
+
+    The engine declares the role a dataset source input
+    (``policyengine_us.spm.DATASET_SOURCE_INPUTS``): a producer must deliver
+    it and may not default it. ASEC rows get it from the Census SPM fields
+    (:mod:`~microcosm.build.us_runtime.spm_independence_role`). The ACS has no
+    SPM fields, but it has no SPM partition either: every ACS household is one
+    SPM unit (:data:`ACS_SPM_ROLE_PARTITION`). On that partition the ASEC
+    rule's unit head is the household's reference person, or the sole person
+    of a group-quarters record, and its family branch is the reference
+    person's spouse, so the rule is read off ``RELSHIPP``
+    (:data:`ACS_SPM_ROLE_RULE`). On the pinned ASEC files, in households that
+    are one SPM unit, this reading reproduces Census's own SPM adult and child
+    counts in 215,342 of 215,343 units across the four pinned vintages
+    (income years 2022 to 2025;
+    ``experiments/acs-spm-role-asec-validation.md``).
+
+    This is deliberately not part of :func:`map_acs_native_inputs`. That
+    mapping also feeds the stacked pool, whose ASEC arm carries no role and
+    whose ACS-row rule is an open decision (``docs/us-spm-role-stage.md``
+    §7 Q1). A caller applies this only where the partner spine delivers the
+    role too, so the pooled column is complete on both spines.
+
+    Refuses rather than deriving (a refusal about units names up to five
+    example unit ids, the others give counts) when: the frame already
+    carries the role; ``RELSHIPP`` is missing, blank or outside the ACS codes
+    20 to 38; ``age`` is missing or not finite (no age range is checked);
+    the SPM partition is not the household partition; a unit has other than
+    exactly one head, more than one spouse, or a group-quarters person beside
+    anyone else; ``TYPEHUGQ`` (when present) disagrees with ``RELSHIPP`` about
+    group quarters; or a housing-unit SPM unit is left with no classified
+    adult. A group-quarters person under 15 is a one-person unit with no
+    classified adult under any role; the source places group quarters outside
+    the ACS SPM universe (:mod:`~microcosm.build.us_runtime.spm_universe_source`),
+    so those units are counted in the receipt, not refused.
+    """
+
+    if frame.schema != US_SCHEMA:
+        raise ValueError("ACS SPM independence role requires the US schema.")
+    person = frame.table("person")
+    if NATIVE_SPM_ROLE in person:
+        raise ValueError(
+            f"ACS SPM independence role refuses to overwrite existing column "
+            f"{NATIVE_SPM_ROLE!r}."
+        )
+    missing = [
+        column
+        for column in ("RELSHIPP", "age", "person_household_id", "person_spm_unit_id")
+        if column not in person
+    ]
+    if missing:
+        raise ValueError(
+            f"ACS SPM independence role requires person column(s): {missing}."
+        )
+
+    relationship = pd.to_numeric(person["RELSHIPP"], errors="coerce").to_numpy(
+        dtype=np.float64
+    )
+    off_domain = np.isnan(relationship) | ~np.isin(
+        relationship, sorted(_ACS_RELSHIPP_CODES)
+    )
+    if off_domain.any():
+        raise ValueError(
+            "ACS SPM independence role requires every RELSHIPP to be an ACS "
+            f"relationship code in [20, 38]; {int(off_domain.sum())} row(s) are "
+            "blank or off-domain."
+        )
+    age = pd.to_numeric(person["age"], errors="coerce").to_numpy(dtype=np.float64)
+    if not np.isfinite(age).all():
+        raise ValueError(
+            "ACS SPM independence role requires an observed age for every person."
+        )
+
+    household_id = person["person_household_id"].to_numpy()
+    unit_id = person["person_spm_unit_id"].to_numpy()
+    membership = pd.DataFrame({"unit": unit_id, "household": household_id})
+    households_per_unit = membership.groupby("unit", sort=False)["household"].nunique()
+    units_per_household = membership.groupby("household", sort=False)["unit"].nunique()
+    if (households_per_unit != 1).any() or (units_per_household != 1).any():
+        raise ValueError(
+            "ACS SPM independence role is defined only on the household SPM "
+            f"partition ({ACS_SPM_ROLE_PARTITION}); "
+            f"{int((households_per_unit != 1).sum())} SPM unit(s) span households "
+            f"and {int((units_per_household != 1).sum())} household(s) hold "
+            "several SPM units. A reconstructed ACS SPM partition must supply its "
+            "own role."
+        )
+
+    reference = relationship == _ACS_REFERENCE_PERSON
+    spouse = np.isin(relationship, _ACS_SPOUSE_OF_REFERENCE)
+    group_quarters = np.isin(relationship, _ACS_GROUP_QUARTERS_PERSON)
+    head = reference | group_quarters
+    units = pd.DataFrame(
+        {
+            "unit": unit_id,
+            "persons": 1,
+            "heads": head.astype(np.int64),
+            "spouses": spouse.astype(np.int64),
+            "group_quarters": group_quarters.astype(np.int64),
+        }
+    ).groupby("unit", sort=False)[["persons", "heads", "spouses", "group_quarters"]]
+    counts = units.sum()
+    _refuse_units(
+        counts.index[counts["heads"] != 1],
+        "not exactly one head (a RELSHIPP=20 reference person or one RELSHIPP "
+        "37/38 group-quarters person)",
+    )
+    _refuse_units(
+        counts.index[counts["spouses"] > 1],
+        "more than one RELSHIPP 21/23 spouse of the reference person",
+    )
+    _refuse_units(
+        counts.index[(counts["group_quarters"] > 0) & (counts["persons"] != 1)],
+        "a RELSHIPP 37/38 group-quarters person shares the unit",
+    )
+
+    household = frame.table("household")
+    if "TYPEHUGQ" in household:
+        kind = pd.Series(
+            pd.to_numeric(household["TYPEHUGQ"], errors="coerce").to_numpy(),
+            index=household["household_id"].to_numpy(),
+        )
+        person_kind = pd.Series(household_id).map(kind).to_numpy(dtype=np.float64)
+        if (np.isnan(person_kind) | ~np.isin(person_kind, (1, 2, 3))).any():
+            raise ValueError(
+                "ACS SPM independence role requires TYPEHUGQ in {1, 2, 3} for "
+                "every person's household."
+            )
+        disagree = np.isin(person_kind, _ACS_GROUP_QUARTERS_TYPEHUGQ) != group_quarters
+        if disagree.any():
+            raise ValueError(
+                "ACS SPM independence role found "
+                f"{int(disagree.sum())} person(s) whose RELSHIPP and household "
+                "TYPEHUGQ disagree about group quarters."
+            )
+
+    role = head | spouse
+    adult = (age >= 18) | ((age >= 15) & role)
+    unit_frame = pd.DataFrame(
+        {
+            "unit": unit_id,
+            "adult": adult,
+            "member_18_plus": age >= 18,
+            "group_quarters": group_quarters,
+        }
+    ).groupby("unit", sort=False)
+    unit_flags = unit_frame.agg(
+        adult=("adult", "any"),
+        member_18_plus=("member_18_plus", "any"),
+        group_quarters=("group_quarters", "any"),
+    )
+    _refuse_units(
+        unit_flags.index[~unit_flags["adult"] & ~unit_flags["group_quarters"]],
+        "a housing unit left with no classified adult "
+        f"({SPM_ADULT_RULE}); a zero-adult housing unit is a data defect, "
+        "never an inferred adult",
+    )
+
+    minor = (age >= 15) & (age < 18)
+    weights = np.asarray(frame.resolve_weights("person").values, dtype=np.float64)
+    total_weight = float(weights.sum())
+    minor_weight = float(weights[minor].sum())
+    provenance = {
+        "column": NATIVE_SPM_ROLE,
+        "entity": "person",
+        "source_columns": ["RELSHIPP"],
+        "rule": ACS_SPM_ROLE_RULE,
+        "partition": ACS_SPM_ROLE_PARTITION,
+        "asec_rule": SPM_ROLE_RULE,
+        "adult_rule": SPM_ADULT_RULE,
+        "provenance": "acs_2024_1yr_native",
+        "persons": int(len(person)),
+        "spm_units": int(len(counts)),
+        "role_true_persons": int(role.sum()),
+        "role_branches": {
+            "reference_person": int(reference.sum()),
+            "spouse_of_reference_person": int(spouse.sum()),
+            "group_quarters_sole_person": int(group_quarters.sum()),
+        },
+        "persons_aged_15_to_17": int(minor.sum()),
+        "independent_minor_persons": int((role & minor).sum()),
+        "housing_units_classified_only_by_role": int(
+            (
+                unit_flags["adult"]
+                & ~unit_flags["member_18_plus"]
+                & ~unit_flags["group_quarters"]
+            ).sum()
+        ),
+        "group_quarters_units_without_classified_adult": int(
+            (~unit_flags["adult"] & unit_flags["group_quarters"]).sum()
+        ),
+        "weighted_role_share": (
+            float(weights[role].sum()) / total_weight if total_weight else 0.0
+        ),
+        "weighted_minor_role_share": (
+            float(weights[role & minor].sum()) / minor_weight if minor_weight else 0.0
+        ),
+    }
+
+    tables = {entity: frame.table(entity).copy() for entity in frame.entities}
+    tables["person"][NATIVE_SPM_ROLE] = role
+    derived = Frame(
+        tables,
+        frame.schema,
+        {entity: frame.weights_for(entity) for entity in frame.weighted_entities},
+        frame.strata,
+        mass_log=frame.mass_log,
+        metadata=frame.metadata,
+    )
+    return AcsSpmRoleResult(derived, provenance)
+
+
+#: The ACS records the interim drop removes (microcosm#1263, decision d1484).
+ACS_GROUP_QUARTERS_CHILD_RULE = (
+    "TYPEHUGQ in {2, 3} (a group-quarters record, the record's only person) "
+    "AND age < 15"
+)
+#: Census SEHSD-WP2020-09 pp. 6-7 limits the ACS SPM sample to housing units;
+#: ``spm_universe_source`` declares ACS group quarters OUTSIDE on that basis.
+_GROUP_QUARTERS_CHILDREN_AUTHORITY = (
+    "Census SEHSD-WP2020-09 pp. 6-7: the ACS SPM universe is people in housing "
+    "units; ACS group quarters are outside it "
+    "(microcosm.build.us_runtime.spm_universe_source)"
+)
+
+
+@dataclass(frozen=True)
+class AcsGroupQuartersChildrenResult:
+    """An ACS frame without its group-quarters children, plus the receipt."""
+
+    frame: Frame
+    provenance: Mapping[str, Any]
+
+
+def without_acs_group_quarters_children(
+    frame: Frame, *, age_column: str = "age"
+) -> AcsGroupQuartersChildrenResult:
+    """Remove the ACS group-quarters records whose only person is under 15.
+
+    An interim (microcosm#1263, decision d1484), not a source rule. No role
+    can give such a person a classified adult under spm-calculator's rule
+    (``age >= 18 OR (age >= 15 AND role)``), and an engine that does not scope
+    SPM by measurement universe refuses every SPM measurement on a population
+    containing one. The source places ACS group quarters outside the SPM
+    universe, so the end state is to keep these records and exclude them from
+    SPM measurement alone. Until the engine can, the staging builder removes
+    them from the population. That also removes them from every fiscal total,
+    which the receipt and the staging's reviewed limitation disclose. The
+    builder stops calling this once the certified engine scopes SPM by
+    universe.
+
+    Refuses when ``TYPEHUGQ``, the age column or a membership column is
+    missing or unreadable, or when a group-quarters record holds other than
+    one person. Housing units are never touched, whatever their ages.
+    ``age_column`` names the age: ``AGEP`` on the raw PUMS frame, where the
+    staging applies this before any receipt is computed, or ``age`` on a
+    mapped frame.
+    """
+
+    if frame.schema != US_SCHEMA:
+        raise ValueError("ACS group-quarters children require the US schema.")
+    person = frame.table("person")
+    household = frame.table("household")
+    for table, columns, label in (
+        (person, (age_column, "person_household_id"), "person"),
+        (household, ("household_id", "TYPEHUGQ"), "household"),
+    ):
+        missing = [column for column in columns if column not in table]
+        if missing:
+            raise ValueError(
+                f"ACS group-quarters children require {label} column(s): {missing}."
+            )
+    kind = pd.Series(
+        pd.to_numeric(household["TYPEHUGQ"], errors="coerce").to_numpy(),
+        index=household["household_id"].to_numpy(),
+    )
+    if not kind.isin((1, 2, 3)).all():
+        raise ValueError(
+            "ACS group-quarters children require TYPEHUGQ in {1, 2, 3} for every "
+            "household."
+        )
+    household_id = person["person_household_id"].to_numpy()
+    person_kind = pd.Series(household_id).map(kind).to_numpy(dtype=np.float64)
+    if np.isnan(person_kind).any():
+        raise ValueError(
+            "ACS group-quarters children found persons in no declared household."
+        )
+    age = pd.to_numeric(person[age_column], errors="coerce").to_numpy(dtype=np.float64)
+    if not np.isfinite(age).all():
+        raise ValueError(
+            "ACS group-quarters children require an observed age for every person."
+        )
+    group_quarters = np.isin(person_kind, _ACS_GROUP_QUARTERS_TYPEHUGQ)
+    persons_per_household = pd.Series(household_id).map(
+        pd.Series(household_id).value_counts()
+    )
+    crowded = group_quarters & (persons_per_household.to_numpy() != 1)
+    if crowded.any():
+        raise ValueError(
+            "ACS group-quarters children found "
+            f"{int(crowded.sum())} person(s) in group-quarters records of more "
+            "than one person; a group-quarters record is its only person's."
+        )
+    child = group_quarters & (age < 15)
+    weights = frame.weights_for("household")
+    household_weight = pd.Series(
+        np.asarray(weights.values, dtype=np.float64),
+        index=household["household_id"].to_numpy(),
+    )
+    dropped_weight = float(household_weight.loc[np.unique(household_id[child])].sum())
+    total_weight = float(household_weight.sum())
+    provenance = {
+        "rule": ACS_GROUP_QUARTERS_CHILD_RULE,
+        "authority": _GROUP_QUARTERS_CHILDREN_AUTHORITY,
+        "decision": "microcosm#1263 (d1484)",
+        "status": "interim",
+        "flip_condition": (
+            "Keep these records, declared OUTSIDE the SPM universe, in the first "
+            "release certified against an engine that scopes SPM measurement by "
+            "spm_unit_spm_universe_status "
+            "(microcosm.build.us_runtime.spm_measurement_gate."
+            "engine_scopes_spm_universe)."
+        ),
+        "households_before": int(len(household)),
+        "persons_before": int(len(person)),
+        "group_quarters_households": int(group_quarters.sum()),
+        "households_dropped": int(child.sum()),
+        "persons_dropped": int(child.sum()),
+        "household_weight_dropped": dropped_weight,
+        "household_weight_share_dropped": (
+            dropped_weight / total_weight if total_weight else 0.0
+        ),
+    }
+    if not child.any():
+        return AcsGroupQuartersChildrenResult(frame, provenance)
+    return AcsGroupQuartersChildrenResult(frame.select(~child), provenance)
+
+
+#: Dollar tolerance for :func:`acs_self_employment_identity_gate`. The native
+#: mapping derives the base leaf from the same two columns, so a passing row
+#: agrees to floating-point rounding; $1 absorbs storage round trips without
+#: hiding a donor draw.
+ACS_SELF_EMPLOYMENT_IDENTITY_TOLERANCE = 1.0
+
+_SELF_EMPLOYMENT_LEAVES = (
+    "self_employment_income_before_lsr",
+    *ACS_SELF_EMPLOYMENT_COMPONENT_INPUTS,
+)
+#: The two leaves an ACS row's SEMP may sit on. QBI reconciliation
+#: (``qbi_inputs.with_us_qbi_input_reconciliation``) routes their sum wholly
+#: to one of them, so at most one is nonzero.
+_SEMP_ROUTED_LEAVES = (
+    "self_employment_income_before_lsr",
+    "sstb_self_employment_income_before_lsr",
+)
+#: Components no ACS producer separates from SEMP; on an ACS row they can only
+#: be donor draws.
+_NON_ACS_COMPONENTS = tuple(
+    column
+    for column in ACS_SELF_EMPLOYMENT_COMPONENT_INPUTS
+    if column not in _SEMP_ROUTED_LEAVES
+)
+
+
+def acs_self_employment_identity_gate(
+    person: pd.DataFrame,
+    *,
+    rows: np.ndarray | pd.Series,
+    tolerance: float = ACS_SELF_EMPLOYMENT_IDENTITY_TOLERANCE,
+) -> GateResult:
+    """Require each ACS person's self-employment to be exactly their SEMP.
+
+    ``rows`` selects the ACS person rows; the caller owns that provenance, so
+    this check reads no origin tags. On a row that reports SEMP, the base
+    self-employment leaf plus every self-employment component must equal
+    ``SEMP * ADJINC / 1_000_000`` within ``tolerance`` dollars, so a donor
+    draw added on top of SEMP fails (microcosm#1380). The sum alone would
+    let draws cancel, so the gate also checks where SEMP sits: on the base
+    leaf or, after QBI reconciliation, wholly on the SSTB leaf, never on
+    both, and never on farm operations income or partnership self-employment
+    net earnings, which ACS reports only inside SEMP. A row with blank SEMP
+    is outside the ACS self-employment universe and must carry no
+    self-employment; its blank leaves are reviewed structural nulls. A blank
+    or infinite leaf or ``ADJINC`` on a row that reports SEMP fails, because
+    the identity cannot be checked there, and so does an infinite SEMP,
+    which is not a blank.
+    """
+
+    name = "acs_self_employment_identity"
+    selected = np.asarray(rows, dtype=bool)
+    if selected.shape != (len(person),):
+        raise ValueError("rows must be a one-dimensional mask aligned to person.")
+    missing = [
+        column
+        for column in ("SEMP", "ADJINC", *_SELF_EMPLOYMENT_LEAVES)
+        if column not in person.columns
+    ]
+    if missing:
+        return GateResult(
+            name=name,
+            passed=False,
+            failures=(
+                "ACS self-employment identity needs person column(s) "
+                f"{missing}; refusing to treat them as zero.",
+            ),
+            details={"missing_columns": missing},
+        )
+
+    subset = person.loc[selected]
+
+    def numeric(column: str) -> np.ndarray:
+        return pd.to_numeric(subset[column], errors="coerce").to_numpy(
+            dtype=np.float64, na_value=np.nan
+        )
+
+    semp = numeric("SEMP")
+    adjinc = numeric("ADJINC")
+    leaves = np.column_stack([numeric(column) for column in _SELF_EMPLOYMENT_LEAVES])
+    reported = np.isfinite(semp)
+    blank_semp = np.isnan(semp)
+    infinite_semp = np.isinf(semp)
+    nonfinite_leaf = reported & ~np.isfinite(leaves).all(axis=1)
+    nonfinite_adjinc = reported & ~np.isfinite(adjinc)
+    checkable = reported & ~nonfinite_leaf & ~nonfinite_adjinc
+    filled = np.where(np.isnan(leaves), 0.0, leaves)
+    gap = np.zeros(len(subset), dtype=np.float64)
+    gap[checkable] = filled[checkable].sum(axis=1) - (
+        semp[checkable] * adjinc[checkable] / _INFLATION_FACTOR_DENOMINATOR
+    )
+    # Negated so a gap that overflows to a nonfinite value also fails.
+    mismatched = checkable & ~(np.abs(gap) <= tolerance)
+    outside_nonzero = blank_semp & (filled != 0.0).any(axis=1)
+    position = {column: index for index, column in enumerate(_SELF_EMPLOYMENT_LEAVES)}
+    non_acs_component = reported & np.column_stack(
+        [filled[:, position[column]] != 0.0 for column in _NON_ACS_COMPONENTS]
+    ).any(axis=1)
+    split_across_routed = reported & np.column_stack(
+        [filled[:, position[column]] != 0.0 for column in _SEMP_ROUTED_LEAVES]
+    ).all(axis=1)
+
+    failures: list[str] = []
+    if not selected.any():
+        failures.append("No ACS person rows were selected for the check.")
+    if mismatched.any():
+        failures.append(
+            f"{int(mismatched.sum())} ACS person row(s) reporting SEMP carry "
+            "self-employment leaves that differ from SEMP * ADJINC / 1e6 by "
+            f"more than ${tolerance:g} (largest gap "
+            f"${float(np.abs(gap).max()):,.2f}); a donor component drawn on "
+            "top of SEMP counts that income twice."
+        )
+    if outside_nonzero.any():
+        failures.append(
+            f"{int(outside_nonzero.sum())} ACS person row(s) with blank SEMP "
+            "carry nonzero self-employment."
+        )
+    if non_acs_component.any():
+        failures.append(
+            f"{int(non_acs_component.sum())} ACS person row(s) reporting SEMP "
+            f"carry nonzero {' or '.join(_NON_ACS_COMPONENTS)}, which ACS "
+            "reports only inside SEMP; only a donor draw puts it there."
+        )
+    if split_across_routed.any():
+        failures.append(
+            f"{int(split_across_routed.sum())} ACS person row(s) reporting SEMP "
+            "carry both base and SSTB self-employment; QBI reconciliation "
+            "routes SEMP wholly to one of them."
+        )
+    if infinite_semp.any():
+        failures.append(
+            f"{int(infinite_semp.sum())} ACS person row(s) have an infinite SEMP."
+        )
+    if nonfinite_leaf.any():
+        failures.append(
+            f"{int(nonfinite_leaf.sum())} ACS person row(s) reporting SEMP have a "
+            "blank or infinite self-employment leaf."
+        )
+    if nonfinite_adjinc.any():
+        failures.append(
+            f"{int(nonfinite_adjinc.sum())} ACS person row(s) reporting SEMP have "
+            "a blank or infinite ADJINC."
+        )
+    return GateResult(
+        name=name,
+        passed=not failures,
+        failures=tuple(failures),
+        details={
+            "tolerance": float(tolerance),
+            "acs_person_rows": int(selected.sum()),
+            "semp_reported_rows": int(reported.sum()),
+            "mismatched_rows": int(mismatched.sum()),
+            "max_abs_gap": float(np.abs(gap).max()) if len(gap) else 0.0,
+            "excess_over_semp": float(gap[mismatched].clip(min=0.0).sum()),
+            "blank_semp_rows": int(blank_semp.sum()),
+            "blank_semp_nonzero_rows": int(outside_nonzero.sum()),
+            "non_acs_component_rows": int(non_acs_component.sum()),
+            "base_and_sstb_rows": int(split_across_routed.sum()),
+            "infinite_semp_rows": int(infinite_semp.sum()),
+            "nonfinite_leaf_rows": int(nonfinite_leaf.sum()),
+            "nonfinite_adjinc_rows": int(nonfinite_adjinc.sum()),
+            "nonzero_rows_by_leaf": {
+                column: int((filled[:, index] != 0.0).sum())
+                for index, column in enumerate(_SELF_EMPLOYMENT_LEAVES)
+            },
+        },
+    )
+
+
+def _refuse_units(offending: pd.Index, problem: str) -> None:
+    if len(offending):
+        examples = [
+            value.item() if isinstance(value, np.generic) else value
+            for value in offending[:5]
+        ]
+        raise ValueError(
+            f"ACS SPM independence role refuses {len(offending)} SPM unit(s) "
+            f"with {problem}. Example unit id(s): {examples}."
+        )
+
+
+def _map_work_experience(
+    person: pd.DataFrame, *, register: dict[str, Mapping[str, Any]]
+) -> None:
+    # Sparse in-memory frames may omit this entire source surface. The PUMS
+    # loader requires it on every production archive; a partial surface never
+    # silently drops the contract.
+    if not {"OCCP", "INDP", "WKWN"}.intersection(person.columns):
+        return
+    mapped = crosswalk_acs_occupation_and_work_experience(person)
+    for output, (source, columns, transformation) in (
+        ACS_WORK_EXPERIENCE_NATIVE_MAPPINGS.items()
+    ):
+        values = mapped[source].to_numpy()
+        if output == "worked_last_year":
+            values = values > 0
+        _add_native(
+            person,
+            output,
+            values,
+            entity="person",
+            source_columns=columns,
+            transformation=transformation,
+            register=register,
+        )
 
 
 def _map_usual_hours(

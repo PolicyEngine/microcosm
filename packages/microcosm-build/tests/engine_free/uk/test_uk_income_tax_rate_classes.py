@@ -13,6 +13,7 @@ from microcosm.build.uk_runtime.income_tax_rate_classes import (
     UK_RATE_CLASS_ENGINE_FLOAT32_STEPS,
     UK_RATE_CLASS_ENGINE_TOLERANCE_GBP,
     UK_RATE_CLASSES,
+    gift_aid_extended_brackets,
     rate_class_engine_tolerance,
     relief_by_rate_class,
     tax_by_rate_class,
@@ -101,6 +102,78 @@ def test_relief_takes_each_persons_own_schedule() -> None:
     assert relief["basic"].tolist() == pytest.approx([800.0, 0.21 * 1_662.0])
     assert relief["higher"].tolist() == pytest.approx([0.0, 0.42 * 2_338.0])
     assert relief["additional"].tolist() == [0.0, 0.0]
+
+
+def _engine_tax_with_gift_aid(income, thresholds, rates, gift, first, stop):
+    """policyengine-uk's calc_income_tax_with_gift_aid, restated: each extended
+    limit takes its rate step off the slice above it, up to the gift."""
+
+    tax = _schedule_tax(income, thresholds, rates)
+    for index in range(first, min(stop, len(thresholds))):
+        overlap = np.clip(income - thresholds[index], 0.0, gift)
+        tax = tax - (rates[index] - rates[index - 1]) * overlap
+    return tax
+
+
+@pytest.mark.parametrize(
+    ("schedule", "name", "first", "stop"),
+    [(REST_OF_UK, "rest_of_uk", 1, 3), (SCOTLAND, "scotland", 2, 6)],
+    ids=["ruk", "scotland"],
+)
+def test_a_donors_classes_add_up_to_the_engines_extended_schedule(
+    schedule, name, first, stop
+) -> None:
+    rng = np.random.default_rng(1)
+    income = rng.uniform(-1_000.0, 200_000.0, 5_000)
+    # Gifts from none to more than a whole band, so a gift spans several.
+    gift = rng.choice([0.0, 500.0, 20_000.0, 120_000.0], income.size)
+
+    classes = tax_by_rate_class(income, *schedule, gross_gift=gift, schedule=name)
+
+    assert list(gift_aid_extended_brackets(name, len(schedule[0]))) == list(
+        range(first, stop)
+    )
+    np.testing.assert_allclose(
+        sum(classes.values()),
+        _engine_tax_with_gift_aid(income, *schedule, gift, first, stop),
+        atol=1e-6,
+    )
+    for values in classes.values():
+        assert np.all(values >= -1e-9)
+    # Without a gift nothing moves.
+    plain = tax_by_rate_class(income, *schedule)
+    none = gift == 0.0
+    for rate_class in UK_RATE_CLASSES:
+        np.testing.assert_allclose(classes[rate_class][none], plain[rate_class][none])
+
+
+def test_a_donors_returned_pay_is_relieved_at_the_extended_bands() -> None:
+    """GBP 4,000 returned on GBP 35,430 (rest of the UK) and GBP 29,430
+    (Scotland) of taxable income, by a donor of GBP 800 net, GBP 1,000 gross.
+
+    Rest of the UK: the higher limit moves from 37,700 to 38,700, so 3,270 is
+    relieved at 20% (654) and 730 at 40% (292), against 454 and 692 without
+    the gift. Scotland: the higher limit moves from 31,092 to 32,092, so 2,662
+    is relieved at 21% (559.02) and 1,338 at 42% (561.96)."""
+
+    relief = relief_by_rate_class(
+        baseline_income=np.array([35_430.0, 29_430.0, 35_430.0]),
+        counterfactual_income=np.array([39_430.0, 33_430.0, 39_430.0]),
+        scottish=np.array([False, True, False]),
+        schedules={"rest_of_uk": REST_OF_UK, "scotland": SCOTLAND},
+        gross_gift=np.array([1_000.0, 1_000.0, 0.0]),
+    )
+
+    assert relief["basic"].tolist() == pytest.approx([654.0, 559.02, 454.0])
+    assert relief["higher"].tolist() == pytest.approx([292.0, 561.96, 692.0])
+    assert relief["additional"].tolist() == [0.0, 0.0, 0.0]
+
+
+def test_an_extension_needs_its_schedule() -> None:
+    with pytest.raises(ValueError, match="needs the schedule"):
+        tax_by_rate_class(np.array([1.0]), *REST_OF_UK, gross_gift=np.array([1.0]))
+    with pytest.raises(ValueError, match="unknown income tax schedule"):
+        gift_aid_extended_brackets("wales", 3)
 
 
 def test_a_schedule_without_an_additional_rate_files_its_top_rate_as_higher() -> None:

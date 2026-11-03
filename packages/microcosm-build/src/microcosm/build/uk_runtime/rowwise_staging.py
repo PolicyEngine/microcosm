@@ -8,8 +8,10 @@ build must never abort on its own progress report.
 
 These helpers were moved from ``tools/build_uk_rowwise_candidate.py`` so the
 graph full-build driver and the rowwise tool stage identically; the tool
-imports them back. ``_hub_api`` and ``_hub_token`` are the test seams the
-drivers' tests patch on this module.
+imports them back. The run files go to the build's emitter, which commits
+them with the build's own credential; the staged dataset is still uploaded
+here. ``_hub_api`` and ``_hub_token`` are the test seams the drivers' tests
+patch on this module for the staged dataset.
 """
 
 from __future__ import annotations
@@ -22,6 +24,11 @@ from importlib import metadata
 from pathlib import Path
 from typing import Any
 
+from microcosm.build.calibration_epoch_telemetry import (
+    CALIBRATION_EPOCH_EVERY,
+    calibration_epoch_stride,
+    forwards_calibration_epoch,
+)
 from microcosm.build.run_outcome import (
     UNRECORDED_GATE_BLOCK,
     GateBlock,
@@ -55,8 +62,6 @@ from microcosm.build.uk_runtime.staging import UK_STAGED_DATASET_PREFIX
 
 __all__ = [
     "STAGED_DATASET_PHASES",
-    "STAGING_EPOCH_EVERY",
-    "STAGING_MAX_EPOCH_ROWS",
     "STAGING_UPLOAD_INTERVAL_SECONDS",
     "add_staging_artifact",
     "block_staging_run_bundle",
@@ -85,16 +90,6 @@ __all__ = [
 # and loses uploads (the v20 national run did); five minutes keeps a
 # 1,500-epoch run well inside it.
 STAGING_UPLOAD_INTERVAL_SECONDS = 300.0
-# The staging bundle keeps one row per forwarded epoch in
-# calibration_progress.json and one event in events.ndjson, both under the
-# contract's 5 MiB remote cap. A size run at 2,000 epochs solves the dense
-# pool, up to ten full-length L0 probes and the refit: about 24,000 epochs,
-# which would breach the cap mid-run. Forwarding every tenth epoch and the
-# last epoch of each phase keeps the loss curve and stays near 0.8 MB.
-STAGING_EPOCH_EVERY = 10
-# ...and never more than this many forwarded epochs per run, whatever --epochs
-# says: the stride grows with the run so the cap holds by construction.
-STAGING_MAX_EPOCH_ROWS = 2400
 STAGED_DATASET_PHASES = {
     "uploaded": "dataset_staged",
     "already_staged": "dataset_staged",
@@ -102,8 +97,6 @@ STAGED_DATASET_PHASES = {
     "skipped": "dataset_stage_skipped",
 }
 _STAGING_UPLOAD_INTERVAL_SECONDS = STAGING_UPLOAD_INTERVAL_SECONDS
-_STAGING_EPOCH_EVERY = STAGING_EPOCH_EVERY
-_STAGING_MAX_EPOCH_ROWS = STAGING_MAX_EPOCH_ROWS
 _STAGED_DATASET_PHASES = STAGED_DATASET_PHASES
 _ACTIVE_EMITTER: LocalTelemetryEmitter | None = None
 
@@ -114,8 +107,14 @@ def active_telemetry_emitter() -> LocalTelemetryEmitter | None:
     return _ACTIVE_EMITTER
 
 
+def _run_file_emitter() -> Any:
+    """The client of this build attempt's emitter, which takes its run files."""
+
+    return None if _ACTIVE_EMITTER is None else _ACTIVE_EMITTER.client
+
+
 def _hub_api() -> Any:
-    """The Hub client used for the run bundle and staged dataset (test seam)."""
+    """The Hub client used for the staged dataset (test seam)."""
 
     from huggingface_hub import HfApi
 
@@ -224,7 +223,7 @@ def create_staging_run_bundle(
         delivery_mode="local_only" if local_only else "local_and_remote",
         repo_id=None if local_only else args.staging_repo_id,
         upload_interval_seconds=args.staging_upload_interval_seconds,
-        api=None if local_only else _hub_api(),
+        emitter_client=None if local_only else _run_file_emitter(),
     )
 
 
@@ -233,6 +232,7 @@ def start_telemetry_emitter(
     *,
     build_id: str,
     run_kind: str = "calibration",
+    close_service_on_finish: bool = True,
 ) -> LocalTelemetryEmitter:
     """Start or reuse the process-local emitter for one UK build attempt."""
 
@@ -253,6 +253,7 @@ def start_telemetry_emitter(
         pipeline=posture.pipeline,
         candidate_id=args.staging_candidate_id or build_id,
         run_kind=run_kind,
+        close_service_on_finish=close_service_on_finish,
     )
     return _ACTIVE_EMITTER
 
@@ -352,27 +353,32 @@ def stage_sample(
 
 
 def staging_epoch_every(args: argparse.Namespace) -> int:
-    """The epoch stride that keeps the forwarded rows under the row budget.
+    """The shared calibration epoch stride over this run's solves.
 
     A dense run solves once; a size run solves the pool, up to ``budget_iters``
-    full-length probes and the refit. The stride is at least
-    ``STAGING_EPOCH_EVERY`` and grows so at most ``STAGING_MAX_EPOCH_ROWS``
-    epochs are forwarded, keeping ``calibration_progress.json`` and
+    full-length probes and the refit. The stride grows with that total, as
+    :func:`~microcosm.build.calibration_epoch_telemetry.calibration_epoch_stride`
+    defines for every build, keeping ``calibration_progress.json`` and
     ``events.ndjson`` under the contract's 5 MiB cap for any ``--epochs``.
     """
 
     solves = 1 if args.dataset_households is None else 2 + BUDGET_ITERS
-    total = int(args.epochs) * solves
-    return max(STAGING_EPOCH_EVERY, -(-total // STAGING_MAX_EPOCH_ROWS))
+    return calibration_epoch_stride(int(args.epochs) * solves)
 
 
 _staging_epoch_every = staging_epoch_every
 
 
 def thinned_epochs(
-    sink: Callable[[Mapping[str, Any]], None], *, every: int = STAGING_EPOCH_EVERY
+    sink: Callable[[Mapping[str, Any]], None],
+    *,
+    every: int = CALIBRATION_EPOCH_EVERY,
 ) -> Callable[[dict[str, object]], None]:
-    """Forward every ``every``-th epoch and each phase's last epoch to ``sink``.
+    """Forward the shared rule's calibration epochs to ``sink``.
+
+    :func:`~microcosm.build.calibration_epoch_telemetry.forwards_calibration_epoch`
+    selects each phase's first and last epoch and every ``every``-th epoch, as
+    for every build.
 
     The kernel flags probe epochs with ``budget_search: True``; the staging
     contract records that field as an integer or null, so the flag becomes 1
@@ -385,11 +391,7 @@ def thinned_epochs(
 
     def callback(event: dict[str, object]) -> None:
         nonlocal disabled
-        if disabled or event.get("kind") != "calibration_epoch":
-            return
-        epoch = int(event["epoch"])
-        epochs = int(event["epochs"])
-        if epoch % every != 0 and epoch != epochs:
+        if disabled or not forwards_calibration_epoch(event, every=every):
             return
         forwarded = dict(event)
         budget_search = forwarded.get("budget_search")

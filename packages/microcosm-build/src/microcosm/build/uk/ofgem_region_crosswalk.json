@@ -1,7 +1,7 @@
 {
   "version": 1,
   "country": "uk",
-  "policy": "Hand-authored crosswalk from the twelve FRS regions to the Ofgem charge-restriction regions whose cap levels price the imputed energy columns (microcosm#890 F). Each FRS region maps to the charge-restriction region covering most of its households (dominant area); Northern Ireland lies outside the GB cap and takes the GB average level. The Ofgem ids are the vendored ofgem_price_cap_facts.json geography ids.",
+  "policy": "Hand-authored crosswalk from the twelve FRS regions to the Ofgem charge-restriction regions (microcosm#890 F). The stage no longer prices energy at cap levels: it prices at the DESNZ Quarterly Energy Prices regions of qep_price_region_mapping and takes each region's gas-connected share from subnational_area_mapping (both below); this Ofgem mapping is the dominant-area rule they extend, kept as the reference the vendored cap facts are checked against. Each FRS region maps to the charge-restriction region covering most of its households (dominant area); Northern Ireland lies outside the GB cap and takes the GB average level. The Ofgem ids are the vendored ofgem_price_cap_facts.json geography ids.",
   "source": {
     "citation": "Ofgem energy price cap: charge-restriction regions (fourteen GB distribution areas) against ONS regions; dominant-area mapping reviewed for microcosm#890.",
     "urls": [

@@ -12,6 +12,7 @@ import pytest
 
 from microcosm.build.gates import FitWeightRecord
 from microcosm.build.us_runtime import acs_multispine
+from microcosm.build.us_runtime.acs_local_hours import ACS_UNDER15_ZERO_POLICY
 from microcosm.build.us_runtime.acs_pums import AcsPumsSource
 from microcosm.build.us_runtime.acs_transfer import (
     AcsImputedInput,
@@ -19,6 +20,7 @@ from microcosm.build.us_runtime.acs_transfer import (
 )
 from microcosm.build.us_runtime.base_pool import spine_column
 from microcosm.build.us_runtime.puma_ladder import UsPumaLadder
+from microcosm.build.us_runtime.spm_role_source import NATIVE_SPM_ROLE
 from microcosm.frame import US_SCHEMA, Frame, WeightKind, Weights
 
 
@@ -91,7 +93,8 @@ def test__given_source__then_stages_run_in_order_and_provenance_is_json_ready(
     tmp_path,
 ) -> None:
     events: list[tuple[Any, ...]] = []
-    base = object()
+    # A base with no SPM independence role: the ACS spine derives none.
+    base = SimpleNamespace(table=lambda entity: pd.DataFrame())
     raw_acs = object()
     mapped_acs = object()
     # The post-transfer adult-care gate probes the transferred frame's person
@@ -200,6 +203,8 @@ def test__given_source__then_stages_run_in_order_and_provenance_is_json_ready(
                 "source_columns": ["AGEP"],
             }
         },
+        "spm_independence_role": None,
+        "acs_group_quarters_children": None,
         "imputed_inputs": [
             {
                 "column": "taxable_interest_income",
@@ -286,6 +291,289 @@ def test__given_tiny_frames__then_mapping_transfer_and_pool_interoperate(
         "qualified_dividend_income"
     }
     assert result.fit_records[0].weight_kind == "design"
+
+
+def test__given_a_role_bearing_base__then_the_acs_spine_derives_the_role(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    """The pooled role is complete on both spines, so nothing registers it."""
+
+    base = _base_donor_frame()
+    base.person[NATIVE_SPM_ROLE] = [True, True, True, False]
+    monkeypatch.setattr(
+        acs_multispine,
+        "build_acs_pums_unit_frame",
+        lambda actual_source, *, chunksize: (_raw_acs_frame(), {}),
+    )
+
+    result = acs_multispine.build_optional_acs_multispine(
+        base,
+        AcsPumsSource(tmp_path / "csv_hus.zip", tmp_path / "csv_pus.zip"),
+        chunksize=2,
+        acs_share=0.25,
+        target_families={"person": {"tax_detail": ("qualified_dividend_income",)}},
+        seed=4,
+        n_estimators=2,
+    )
+
+    person = result.frame.table("person")
+    role = person[NATIVE_SPM_ROLE]
+    assert role.dtype == np.dtype(bool)
+    assert not role.isna().any()
+    acs = person[spine_column("person")].eq("acs_2024_1yr")
+    # RELSHIPP [20, 25]: the reference person holds the role, the child not.
+    assert role[acs].tolist() == [True, False]
+    assert role[~acs].tolist() == [True, True, True, False]
+    receipt = result.provenance["spm_independence_role"]
+    assert receipt["persons"] == 2
+    assert receipt["role_true_persons"] == 1
+    assert receipt["source_columns"] == ["RELSHIPP"]
+    assert NATIVE_SPM_ROLE not in {
+        item["column"] for item in result.provenance["imputed_inputs"]
+    }
+    json.dumps(result.provenance, allow_nan=False)
+
+
+def _load_staging_builder():
+    """The legacy staging builder, for its transfer-coverage audit."""
+
+    import importlib.util
+
+    from test_support.paths import paths_for
+
+    path = (
+        paths_for("microcosm-build").repository
+        / "tools"
+        / "_legacy"
+        / "build_us_acs_multispine_base.py"
+    )
+    spec = importlib.util.spec_from_file_location(
+        "legacy_build_us_acs_multispine_base_for_multispine_tests", path
+    )
+    module = importlib.util.module_from_spec(spec)
+    assert spec.loader is not None
+    spec.loader.exec_module(module)
+    return module
+
+
+def _raw_acs_frame_with_group_quarters_child(*, hours: bool = False) -> Frame:
+    """The family above plus a one-person group-quarters record of a child.
+
+    With ``hours``, the family's second member is a nine-year-old and ``WKHP``
+    is present: 40 for the adult, blank (out of the source universe) for both
+    children, so the native hours mapping runs and only the under-15
+    completion is needed for the staged rows.
+    """
+
+    family = _raw_acs_frame()
+    family_person = family.table("person").copy()
+    if hours:
+        family_person["AGEP"] = [40, 9]
+        family_person["WKHP"] = [40.0, np.nan]
+    person = pd.concat(
+        [
+            family_person,
+            pd.DataFrame(
+                {
+                    "person_id": [12],
+                    "person_household_id": [12],
+                    "person_tax_unit_id": [12],
+                    "person_spm_unit_id": [12],
+                    "person_family_id": [12],
+                    "person_marital_unit_id": [12],
+                    "AGEP": [10],
+                    "SEX": [2],
+                    "RELSHIPP": [37],
+                    "ADJINC": [1_100_000],
+                    "WAGP": [0.0],
+                    "SEMP": [0.0],
+                    "SSP": [0.0],
+                    "SSIP": [0.0],
+                    "RETP": [0.0],
+                    "INTP": [0.0],
+                    **({"WKHP": [np.nan]} if hours else {}),
+                }
+            ),
+        ],
+        ignore_index=True,
+    )
+    household = pd.concat(
+        [
+            family.table("household").assign(TYPEHUGQ=[1]),
+            pd.DataFrame(
+                {
+                    "household_id": [12],
+                    "state_fips": [6],
+                    "puma": ["0600100"],
+                    "ADJHSG": [1_000_000],
+                    "TEN": [np.nan],
+                    "RNTP": [np.nan],
+                    "GRNTP": [np.nan],
+                    "TAXAMT": [np.nan],
+                    "TYPEHUGQ": [3],
+                }
+            ),
+        ],
+        ignore_index=True,
+    )
+    return Frame(
+        {
+            "person": person,
+            "household": household,
+            "tax_unit": pd.DataFrame({"tax_unit_id": [10, 12]}),
+            "spm_unit": pd.DataFrame({"spm_unit_id": [10, 12]}),
+            "family": pd.DataFrame({"family_id": [10, 12]}),
+            "marital_unit": pd.DataFrame({"marital_unit_id": [10, 12]}),
+        },
+        US_SCHEMA,
+        {"household": Weights(np.asarray([50.0, 5.0]), WeightKind.DESIGN)},
+        pd.Series("acs_2024_1yr", index=person.index, dtype=object),
+    )
+
+
+@pytest.mark.parametrize("drop", [False, True])
+def test__given_the_interim_drop__then_group_quarters_children_leave_first(
+    monkeypatch, tmp_path, drop
+) -> None:
+    """microcosm#1263, d1484: with the drop, the group-quarters child never
+    reaches the role derivation or the transfer, and the role receipt covers
+    exactly the staged rows; without it, the receipt counts the child."""
+
+    base = _base_donor_frame()
+    base.person[NATIVE_SPM_ROLE] = [True, True, True, False]
+    monkeypatch.setattr(
+        acs_multispine,
+        "build_acs_pums_unit_frame",
+        lambda actual_source, *, chunksize: (
+            _raw_acs_frame_with_group_quarters_child(),
+            {},
+        ),
+    )
+
+    result = acs_multispine.build_optional_acs_multispine(
+        base,
+        AcsPumsSource(tmp_path / "csv_hus.zip", tmp_path / "csv_pus.zip"),
+        chunksize=2,
+        acs_share=0.25,
+        target_families={"person": {"tax_detail": ("qualified_dividend_income",)}},
+        seed=4,
+        n_estimators=2,
+        drop_group_quarters_children=drop,
+    )
+
+    person = result.frame.table("person")
+    acs_persons = int(person[spine_column("person")].eq("acs_2024_1yr").sum())
+    receipt = result.provenance["spm_independence_role"]
+    dropped = result.provenance["acs_group_quarters_children"]
+    if drop:
+        assert acs_persons == 2
+        assert receipt["persons"] == 2
+        assert receipt["group_quarters_units_without_classified_adult"] == 0
+        assert dropped["households_dropped"] == 1
+        assert dropped["persons_dropped"] == 1
+        assert dropped["status"] == "interim"
+    else:
+        assert acs_persons == 3
+        assert receipt["persons"] == 3
+        assert receipt["group_quarters_units_without_classified_adult"] == 1
+        assert dropped is None
+    json.dumps(result.provenance, allow_nan=False)
+
+
+def test__given_the_drop_and_the_hours_completion__then_hours_receipts_agree(
+    monkeypatch, tmp_path
+) -> None:
+    """Round-4 review regression (microcosm#1264). The staging builder's
+    coverage audit accepts native hours as complete only when the native
+    receipt's missing rows equal the under-15 completion's modeled rows
+    (``_require_default_transfer_coverage``). Dropped before the native
+    mapping, the group-quarters child is in neither count; dropped after it,
+    the native receipt counted it and the audit refused a valid staging."""
+
+    base = _base_donor_frame()
+    base.person[NATIVE_SPM_ROLE] = [True, True, True, False]
+    monkeypatch.setattr(
+        acs_multispine,
+        "build_acs_pums_unit_frame",
+        lambda actual_source, *, chunksize: (
+            _raw_acs_frame_with_group_quarters_child(hours=True),
+            {},
+        ),
+    )
+
+    result = acs_multispine.build_optional_acs_multispine(
+        base,
+        AcsPumsSource(tmp_path / "csv_hus.zip", tmp_path / "csv_pus.zip"),
+        chunksize=2,
+        acs_share=0.25,
+        target_families={"person": {"tax_detail": ("qualified_dividend_income",)}},
+        hours_under15_policy=ACS_UNDER15_ZERO_POLICY,
+        seed=4,
+        n_estimators=2,
+        drop_group_quarters_children=True,
+    )
+
+    native = result.provenance["native_inputs"]["weekly_hours_worked_before_lsr"]
+    modeled = result.provenance["hours_modeled_completion"]
+    assert result.provenance["acs_group_quarters_children"]["persons_dropped"] == 1
+    assert native["missing_rows"] == modeled["modeled_rows"] == 1
+    assert native["observed_rows"] == 1
+    assert result.provenance["spm_independence_role"]["persons"] == 2
+    # The staging builder's own audit accepts the staged hours as native and
+    # complete (round-5 review: call the audit rather than restate it).
+    coverage = _load_staging_builder()._require_default_transfer_coverage(
+        result,
+        base,
+        target_families={"person": {"hours": ("weekly_hours_worked_before_lsr",)}},
+    )
+    assert coverage["native_registered_inputs"] == ["weekly_hours_worked_before_lsr"]
+    assert coverage["modeled_hours_rows"] == 1
+
+
+def test__given_a_role_free_base__then_the_acs_spine_derives_none(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    monkeypatch.setattr(
+        acs_multispine,
+        "build_acs_pums_unit_frame",
+        lambda actual_source, *, chunksize: (_raw_acs_frame(), {}),
+    )
+
+    result = acs_multispine.build_optional_acs_multispine(
+        _base_donor_frame(),
+        AcsPumsSource(tmp_path / "csv_hus.zip", tmp_path / "csv_pus.zip"),
+        chunksize=2,
+        target_families={"person": {"tax_detail": ("qualified_dividend_income",)}},
+        seed=4,
+        n_estimators=2,
+    )
+
+    assert NATIVE_SPM_ROLE not in result.frame.table("person")
+    assert result.provenance["spm_independence_role"] is None
+
+
+def test__given_a_broken_acs_household__then_the_role_refuses_before_any_fit(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    base = _base_donor_frame()
+    base.person[NATIVE_SPM_ROLE] = [True, True, True, False]
+    raw = _raw_acs_frame()
+    raw.person["RELSHIPP"] = [25, 25]
+    monkeypatch.setattr(
+        acs_multispine,
+        "build_acs_pums_unit_frame",
+        lambda actual_source, *, chunksize: (raw, {}),
+    )
+    monkeypatch.setattr(acs_multispine, "transfer_acs_inputs", _must_not_run)
+
+    with pytest.raises(ValueError, match="not exactly one head"):
+        acs_multispine.build_optional_acs_multispine(
+            base,
+            AcsPumsSource(tmp_path / "csv_hus.zip", tmp_path / "csv_pus.zip"),
+        )
 
 
 def test__given_ladder__then_multispine_records_geography_assignment(

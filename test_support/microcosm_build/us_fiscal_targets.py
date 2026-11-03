@@ -28,14 +28,48 @@ from microcosm.build.us_runtime import (
     fiscal_targets,
     us_fiscal_target_exclusion_receipt,
 )
+from microcosm.build.us_runtime.congressional_district_vintage import (
+    CURRENT_CONGRESSIONAL_DISTRICT_PREFIX,
+    congressional_district_label,
+)
 from microcosm.build.us_runtime.fiscal_targets import (
     _M_CHIP_STATE_FIPS,
     US_JCT_TAX_EXPENDITURE_TARGET_REFERENCES,
 )
-from microcosm.calibrate.geography_constants import US_STATE_FIPS_TO_POSTAL
+from microcosm.calibrate.geography_constants import (
+    US_STATE_FIPS_TO_NAME,
+    US_STATE_FIPS_TO_POSTAL,
+)
 from test_support.paths import paths_for
 
 _TEST_PATHS = paths_for("microcosm-build")
+
+
+def _fixture_geography_name(geography_id: str) -> str:
+    """The name Chronicle facts carry for a US geography id.
+
+    A US registry refuses one geography id with two labels (microcosm#1335),
+    and a ledger target takes its label from its facts' geography name, so
+    every fixture fact names an id the way the production facts do.
+    """
+
+    if geography_id == "0100000US":
+        return "United States"
+    if geography_id.startswith("0400000US"):
+        state_fips = geography_id.removeprefix("0400000US")
+    elif geography_id.startswith(CURRENT_CONGRESSIONAL_DISTRICT_PREFIX):
+        state_fips = geography_id.removeprefix(CURRENT_CONGRESSIONAL_DISTRICT_PREFIX)[
+            :2
+        ]
+    else:
+        state_fips = None
+    if state_fips not in US_STATE_FIPS_TO_NAME:
+        # Territories and other ids outside the 50 states and DC.
+        return f"Test geography {geography_id}"
+    if geography_id.startswith("0400000US"):
+        return US_STATE_FIPS_TO_NAME[state_fips]
+    return congressional_district_label(geography_id)
+
 
 REFERENCE_JCT_TAX_EXPENDITURE_TARGETS = {
     "salt_deduction": "jct.tax_expenditures.cy2024.salt_deduction.revenue_loss",
@@ -320,7 +354,7 @@ def _usda_snap_caseload_fact(
         "geography": {
             "level": geography_level,
             "id": geography_id,
-            "name": f"Test geography {geography_id}",
+            "name": _fixture_geography_name(geography_id),
         },
         "dimensions": {},
         "dimension_labels": {
@@ -462,7 +496,7 @@ def _ledger_fact_for_reference(reference, *, value: float) -> dict[str, object]:
         "geography": {
             "level": geography_level,
             "id": geography_id,
-            "name": f"Test geography {geography_id}",
+            "name": _fixture_geography_name(geography_id),
         },
         "dimensions": dimensions,
         "layout": {
@@ -548,7 +582,7 @@ def _soi_eitc_filing_season_agi_fact(
     measure_id: str,
     value: float,
     income_range: str,
-    lower: float,
+    lower: float | None,
     upper: float | None,
     geography_level: str = "country",
     geography_id: str = "0100000US",
@@ -557,13 +591,15 @@ def _soi_eitc_filing_season_agi_fact(
         f"irs_soi.ty2024.filing_season_week47.eitc_by_agi.{income_range}.{measure_id}"
     )
     suffix = "count" if measure_id.endswith("_returns") else "amount"
-    constraints: list[dict[str, object]] = [
-        {
-            "variable": "adjusted_gross_income",
-            "operator": ">=",
-            "value": lower,
-        }
-    ]
+    constraints: list[dict[str, object]] = []
+    if lower is not None:
+        constraints.append(
+            {
+                "variable": "adjusted_gross_income",
+                "operator": ">=",
+                "value": lower,
+            }
+        )
     if upper is not None:
         constraints.append(
             {
@@ -640,16 +676,18 @@ def _soi_eitc_child_fact(
     value: float,
     income_range: str = "25k_to_30k",
     child_group: str = "one_qualifying_child",
-    lower: float = 25_000,
+    lower: float | None = 25_000,
     upper: float | None = 30_000,
 ) -> dict[str, object]:
-    constraints: list[dict[str, object]] = [
-        {
-            "variable": "adjusted_gross_income",
-            "operator": ">=",
-            "value": lower,
-        }
-    ]
+    constraints: list[dict[str, object]] = []
+    if lower is not None:
+        constraints.append(
+            {
+                "variable": "adjusted_gross_income",
+                "operator": ">=",
+                "value": lower,
+            }
+        )
     if upper is not None:
         constraints.append(
             {
@@ -973,7 +1011,7 @@ def _cms_medicaid_enrollment_fact(
         "geography": {
             "level": geography_level,
             "id": geography_id,
-            "name": f"Test geography {geography_id}",
+            "name": _fixture_geography_name(geography_id),
         },
         "dimensions": {},
         "dimension_labels": {"program": "Program"},
@@ -1114,7 +1152,7 @@ def _dynamic_ledger_fact(
         "geography": {
             "level": geography_level,
             "id": geography_id,
-            "name": f"Test geography {geography_id}",
+            "name": _fixture_geography_name(geography_id),
         },
         "dimensions": fact_dimensions,
         "dimension_labels": dimension_labels,

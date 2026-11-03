@@ -20,6 +20,8 @@ from microcosm.build.uk_runtime.student_loans import (
     _assert_student_loans_stage_parameters,
     _walk_top_up,
     assign_student_loan_plans,
+    course_start_year,
+    has_reported_student_loan,
     load_slc_liable_stocks,
 )
 
@@ -41,11 +43,18 @@ def _frame(
     education=None,
     weights=None,
     household_columns=None,
+    current_education=None,
+    reports_outstanding=None,
+    age_left=None,
 ):
     n = len(ages)
     ids = np.arange(1, n + 1, dtype="int64")
     regions = regions or ["LONDON"] * n
     education = education or ["TERTIARY"] * n
+    # No leaving age dates a course at 18, the rule before microcosm#868.
+    current_education = current_education or ["NOT_IN_EDUCATION"] * n
+    reports_outstanding = reports_outstanding or [False] * n
+    age_left = age_left or [0] * n
     return uk_national_frame(
         person=pd.DataFrame(
             {
@@ -55,6 +64,9 @@ def _frame(
                 "age": ages,
                 "student_loan_repayments": repayments,
                 "highest_education": education,
+                "current_education": current_education,
+                "reports_outstanding_student_loan": reports_outstanding,
+                "age_left_full_time_education": np.asarray(age_left, dtype="int64"),
             }
         ),
         benunit=pd.DataFrame({"benunit_id": ids}),

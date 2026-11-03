@@ -81,7 +81,6 @@ UK_EVIDENCE_GATE_NAMES = {
     "hmrc_spi_income": ("weights_audit",),
     "release_parity": ("export_surface", "target_surface", "target_fit"),
     "input_mass_parity": ("input_mass_parity",),
-    "qrf_tail_concentration": ("qrf_tail_concentration",),
 }
 UK_INPUT_MASS_REFERENCE_IDENTITY = {
     "filename": "enhanced_frs_2024_25.h5",
@@ -115,6 +114,13 @@ UK_INPUT_MASS_REVIEWED_EXCLUSIONS: dict[str, dict[str, str]] = {
         "adjudication": "microcosm#1106 (#1145): part B measured on the A9 candidate at 2025 and on the final-head arm c7 of 2026-10-11; ruling 2026-10-11 in session",
         "approved_on": "2026-10-11",
         "expires_on": "2027-04-11",
+    },
+    "tax_free_savings_income": {
+        "reason": "The candidate no longer ships person.tax_free_savings_income: policyengine-uk derives it as the sum of individual_savings_account_interest_income, which the candidate stores apart from non-ISA interest under the additive ISA income contract, and a persisted copy overrides that sum and is never uprated (microcosm#1360). The enhanced-FRS reference stores it in the legacy gross layout, so the column is present in the reference and absent from the candidate, which this gate otherwise fails whatever the tolerance. Non-ISA savings_interest_income stays compared; it falls below the reference's gross total by the ISA part.",
+        "approved_by": "juaristi22",
+        "adjudication": "microcosm#1360 folded into microcosm#1418's PR B (ruling 2026-10-28 in session)",
+        "approved_on": "2026-10-28",
+        "expires_on": "2027-04-28",
     },
 }
 GIT_COMMIT = "5fa48f07436a806ad75ff76fd22cfb8613bddbe0"
@@ -214,21 +220,25 @@ def _trusted_terminal_gate_signing_key(monkeypatch) -> None:
 UK_GATE_BATTERY_PRODUCER = "microcosm.build.gate_battery"
 UK_GATE_BATTERY_SIGNING_KEY_ENV = "MICROCOSM_UK_TERMINAL_GATE_SIGNING_KEY"
 UK_GATE_BATTERY_POLICY_SHA256 = (
-    "bb727d8c8af98b9d3376d5e8eabb2eaeb708a2dd26379cbc3599af38f29a03c4"
+    "40e24836c45468ccb50b025dcd05603dc4d8af37ef546fa3bc6d4ea9152f707e"
 )
 UK_GATE_BATTERY_GATES_MANIFEST_SHA256 = (
-    "a34f6782a2f2f2da7126d2e3a59881745130ff4d73733b8bd4c38eb425549061"
+    "7d9a294b0c17dd545beb88fcf3d1e596a4c36dd4aa8a7821b6fe767de3beb85f"
 )
 UK_GATE_BATTERY_SPEC_FINGERPRINT = (
-    "7fffef7f4f2aaeb25a42c06f94388416858ac8d6305d64f0c59d8bc840333872"
+    "0b82c7d90eb4400bb333a4f477509c9570221ecfd5afde13f08de4c8689b6db9"
 )
 UK_GATE_BATTERY_DEGENERATE_EVIDENCE_SHA256 = (
-    "6f0243bcda09dad26945376230c44ec3cf55d4e417c3a25e29bae8c59bc1a69d"
+    "f246388de42654dd68dbbb40c42282001b5b0a8bf48976162bcb1199085cb1d3"
 )
 UK_GATE_BATTERY_INPUT_MASS_EVIDENCE_SHA256 = (
-    "82a5fa0c7dec5ac5c169f0b8b2f4acc6b302e80637dc698d3247e75a6d133933"
+    "24bb96f93de3bda45425b797a2f5069df7477bf3a56616080cc04376beab56e5"
 )
 #: Spec entry id -> (neutral gate name, phase, legacy detail-schema name).
+#: microcosm#1240: the two report-only high-value homes gates.
+UK_DIAGNOSTIC_ENTRY_IDS = frozenset(
+    {"uk_high_value_homes_benchmarks", "uk_high_value_homes_support"}
+)
 UK_GATE_BATTERY_ENTRIES = {
     "uk_release_input_coverage_manifest_current": (
         "release_input_coverage",
@@ -243,6 +253,7 @@ UK_GATE_BATTERY_ENTRIES = {
     ),
     "uk_stage_was_wealth_support": ("stage_health", "transferred", None),
     "uk_stage_was_lisa_support": ("stage_health", "transferred", None),
+    "uk_stage_was_lisa_anchor": ("stage_health", "transferred", None),
     "uk_stage_property_components": ("stage_health", "transferred", None),
     "uk_stage_was_wealth_coherence": ("stage_health", "transferred", None),
     "uk_stage_uc_deduction_attributes": (
@@ -264,6 +275,16 @@ UK_GATE_BATTERY_ENTRIES = {
         "transferred",
         None,
     ),
+    "uk_stage_lcfs_consumption_excise_quantities": (
+        "stage_health",
+        "transferred",
+        None,
+    ),
+    "uk_stage_lcfs_consumption_gambling_participation": (
+        "stage_health",
+        "transferred",
+        None,
+    ),
     "uk_stage_lcfs_consumption_basis": ("stage_health", "transferred", None),
     "uk_stage_nts_bus_travel_support": ("stage_health", "transferred", None),
     "uk_stage_nts_bus_travel_facts": ("stage_health", "transferred", None),
@@ -275,6 +296,7 @@ UK_GATE_BATTERY_ENTRIES = {
         "transferred",
         None,
     ),
+    "uk_stage_frs_annual_income_spells": ("stage_health", "transferred", None),
     "uk_stage_spi_support_channel_mass": (
         "stage_health",
         "transferred",
@@ -286,8 +308,10 @@ UK_GATE_BATTERY_ENTRIES = {
         None,
     ),
     "uk_stage_spi_benefit_coherence": ("stage_health", "transferred", None),
+    "uk_stage_uc_take_up": ("stage_health", "transferred", None),
     "uk_stage_pension_credit_take_up": ("stage_health", "transferred", None),
     "uk_stage_child_benefit_take_up": ("stage_health", "transferred", None),
+    "uk_stage_high_value_home_support_mass": ("stage_health", "transferred", None),
     "uk_stage_cgt_support_split_mass": (
         "stage_health",
         "transferred",
@@ -319,6 +343,49 @@ UK_GATE_BATTERY_ENTRIES = {
         None,
     ),
     "uk_stage_student_loans_realization": (
+        "stage_health",
+        "transferred",
+        None,
+    ),
+    "uk_stage_regional_home_values_ranking": (
+        "stage_health",
+        "transferred",
+        None,
+    ),
+    "uk_stage_property_purchases_fit": (
+        "stage_health",
+        "transferred",
+        None,
+    ),
+    "uk_stage_uc_legacy_closure_take_up_contract": (
+        "stage_health",
+        "transferred",
+        None,
+    ),
+    "uk_stage_frs_person_draws_apprentices": (
+        "stage_health",
+        "transferred",
+        None,
+    ),
+    "uk_stage_isa_subscriptions_invariants": ("stage_health", "transferred", None),
+    "uk_stage_isa_subscriptions": ("stage_health", "transferred", None),
+    "uk_stage_company_cars_invariants": ("stage_health", "transferred", None),
+    "uk_stage_frs_take_up_signal": (
+        "stage_health",
+        "assembled",
+        None,
+    ),
+    "uk_stage_frs_person_draws_take_up_signal": (
+        "stage_health",
+        "assembled",
+        None,
+    ),
+    "uk_stage_frs_household_draws_take_up_signal": (
+        "stage_health",
+        "assembled",
+        None,
+    ),
+    "uk_stage_childcare_copy_take_up_signal": (
         "stage_health",
         "transferred",
         None,
@@ -380,12 +447,18 @@ UK_GATE_BATTERY_ENTRIES = {
         "transferred",
         "enum_domain",
     ),
+    "uk_council_tax_band_domain": ("enum_domain", "transferred", "enum_domain"),
     "uk_uc_deduction_combination_enum_domain": (
         "enum_domain",
         "terminal",
         "enum_domain",
     ),
     "uk_student_loan_plan_enum_domain": (
+        "enum_domain",
+        "terminal",
+        "enum_domain",
+    ),
+    "uk_council_tax_band_domain_terminal": (
         "enum_domain",
         "terminal",
         "enum_domain",
@@ -399,21 +472,19 @@ UK_GATE_BATTERY_ENTRIES = {
     "uk_target_fit": ("target_fit", "terminal", "target_fit"),
     "uk_cgt_projection_entrants": ("cgt_projection_entrants", "terminal", None),
     "uk_input_mass_parity": ("input_mass_parity", "terminal", "input_mass_parity"),
-    "uk_qrf_tail_concentration": (
-        "tail_concentration",
-        "terminal",
-        "qrf_tail_concentration",
-    ),
     "uk_local_geography_ladder_post_calibration": (
         "spine_agreement",
         "terminal",
         None,
     ),
+    "uk_local_brma_enum_domain": ("enum_domain", "terminal", "enum_domain"),
     "uk_local_area_support": ("area_support", "terminal", None),
     "uk_local_target_fit": ("target_fit", "terminal", None),
     "uk_local_per_family_fit": ("per_family_fit", "terminal", None),
     "uk_local_weight_ratio": ("weight_ratio", "terminal", None),
     "uk_local_weight_ess": ("weight_ess", "terminal", None),
+    "uk_high_value_homes_benchmarks": ("high_value_home_benchmarks", "terminal", None),
+    "uk_high_value_homes_support": ("high_value_home_support", "terminal", None),
 }
 
 
@@ -1108,33 +1179,10 @@ def _terminal_gate_details(name: str) -> dict:
             "reference_scope_note": UK_INPUT_MASS_REFERENCE_SCOPE_NOTE,
             "reference_identity": dict(UK_INPUT_MASS_REFERENCE_IDENTITY),
         }
-    if name == "qrf_tail_concentration":
-        return {
-            "columns_checked": 1,
-            "top_k": 100,
-            "max_top_share": 0.9994670564654868,
-            "min_nonzero_records": 104,
-            "top_share": {"self_employment_income": 0.5},
-            "carrier_counts": {"self_employment_income": 274},
-            "thin_columns": {},
-            "reviewed_exclusions": {},
-            "stale_exclusions": [],
-            "dormant_exclusions": [],
-            "expired_exclusions": [],
-            "premature_exclusions": [],
-            "exclusions_evaluated_on": "2026-08-11",
-            "surface": {
-                "declared_qrf_outputs": 1,
-                "checked_columns": ["self_employment_income"],
-                "absent_columns": [],
-                "non_numeric_columns": [],
-                "density_filter": "none: every declared output is checked (#609)",
-            },
-        }
     if name == "take_up_signal":
         # Mirrors uk_take_up_signal_gate's per-column detail block.
         return {
-            "benunit.would_claim_uc": {
+            "benunit.would_claim_tfc": {
                 "weighted_share": 0.55,
                 "target": 0.55,
                 "absolute_deviation": 0.0,
@@ -1360,6 +1408,7 @@ def _gate_battery_payload(
         "hmrc_spi_income_spine",
         "spi_benefit_coherence",
         "uc_capital_coherence",
+        "uc_take_up",
         "pension_credit_take_up",
         "child_benefit_take_up",
         "uc_deduction_attributes",
@@ -1374,6 +1423,7 @@ def _gate_battery_payload(
     stage_health_stages = {
         "uk_stage_was_wealth_support": "was_wealth",
         "uk_stage_was_lisa_support": "was_lisa",
+        "uk_stage_was_lisa_anchor": "was_lisa",
         "uk_stage_property_components": "property_components",
         "uk_stage_was_wealth_coherence": "was_wealth",
         "uk_stage_uc_deduction_attributes": "uc_deduction_attributes",
@@ -1383,6 +1433,8 @@ def _gate_battery_payload(
         "uk_stage_lcfs_consumption_road_fuel_incidence": "lcfs_consumption",
         "uk_stage_lcfs_consumption_road_fuel_level": "lcfs_consumption",
         "uk_stage_lcfs_consumption_recomposed_totals": "lcfs_consumption",
+        "uk_stage_lcfs_consumption_excise_quantities": "lcfs_consumption",
+        "uk_stage_lcfs_consumption_gambling_participation": "lcfs_consumption",
         "uk_stage_lcfs_consumption_basis": "lcfs_consumption",
         "uk_stage_nts_bus_travel_support": "nts_bus_travel",
         "uk_stage_nts_bus_travel_facts": "nts_bus_travel",
@@ -1390,11 +1442,14 @@ def _gate_battery_payload(
         "uk_stage_etb_services_support": "etb_services",
         "uk_stage_etb_services_support_pricing": "etb_services",
         "uk_stage_frs_hmrc_spine_leaves_signal": "frs_hmrc_spine_leaves",
+        "uk_stage_frs_annual_income_spells": "frs_annual_income_spells",
         "uk_stage_spi_support_channel_mass": "spi_support_channel",
         "uk_stage_hmrc_spi_income_spine_identity": "hmrc_spi_income_spine",
         "uk_stage_spi_benefit_coherence": "spi_benefit_coherence",
+        "uk_stage_uc_take_up": "uc_take_up",
         "uk_stage_pension_credit_take_up": "pension_credit_take_up",
         "uk_stage_child_benefit_take_up": "child_benefit_take_up",
+        "uk_stage_high_value_home_support_mass": "high_value_home_support",
         "uk_stage_cgt_support_split_mass": "cgt_support_split",
         "uk_stage_cgt_residential_split_mass": "cgt_residential_split",
         "uk_stage_cgt_incidence_clone_mass": "cgt_incidence_clone",
@@ -1404,6 +1459,17 @@ def _gate_battery_payload(
         "uk_stage_cgt_incidence_anchor_composition": "cgt_incidence_anchor",
         "uk_stage_salary_sacrifice_realization": "salary_sacrifice",
         "uk_stage_student_loans_realization": "student_loans",
+        "uk_stage_regional_home_values_ranking": "regional_home_values",
+        "uk_stage_property_purchases_fit": "property_purchases",
+        "uk_stage_uc_legacy_closure_take_up_contract": "uc_legacy_closure_take_up",
+        "uk_stage_frs_person_draws_apprentices": "frs_person_draws",
+        "uk_stage_isa_subscriptions_invariants": "isa_subscriptions",
+        "uk_stage_isa_subscriptions": "isa_subscriptions",
+        "uk_stage_company_cars_invariants": "company_cars",
+        "uk_stage_frs_take_up_signal": "frs_take_up",
+        "uk_stage_frs_person_draws_take_up_signal": "frs_person_draws",
+        "uk_stage_frs_household_draws_take_up_signal": "frs_household_draws",
+        "uk_stage_childcare_copy_take_up_signal": "childcare_copy_take_up",
         "uk_stage_age_tail_targets": "age_tail",
         "uk_stage_frs_relationships_composition": "frs_relationships",
     }
@@ -1446,9 +1512,10 @@ def _gate_battery_payload(
                 "worst_year": 2030,
                 "bound": 73_000.0,
             }
-        elif entry_id.startswith("uk_local_"):
+        elif entry_id.startswith("uk_local_") or entry_id in UK_DIAGNOSTIC_ENTRY_IDS:
             # Local candidate gates are explicitly excluded from national
-            # certification; this full-report fixture needs only their
+            # certification, and the microcosm#1240 high-value homes gates are
+            # report-only; this full-report fixture needs only their
             # authenticated envelope, not candidate-only evidence details.
             details = {}
         elif gate == "stage_health":
@@ -1462,8 +1529,13 @@ def _gate_battery_payload(
             "gate": gate,
             "phase": phase,
             # PR #870 review: every entry is release-blocking, the local fit and
-            # weight gates included.
-            "criticality": "release_blocking",
+            # weight gates included; the two microcosm#1240 diagnostics are the
+            # only report-only entries.
+            "criticality": (
+                "diagnostic"
+                if entry_id in UK_DIAGNOSTIC_ENTRY_IDS
+                else "release_blocking"
+            ),
             "status": "passed",
             "failures": [],
             "details": details,
@@ -2910,13 +2982,10 @@ def test_exact_k_uk_release_rejects_rehashed_weight_observable_mutation(
         ("release_parity",),
         ("hmrc_spi_income", "release_parity"),
         ("input_mass_parity",),
-        ("qrf_tail_concentration",),
-        ("input_mass_parity", "qrf_tail_concentration"),
         (
             "hmrc_spi_income",
             "release_parity",
             "input_mass_parity",
-            "qrf_tail_concentration",
         ),
     ],
 )
@@ -3016,74 +3085,6 @@ def test_exact_k_uk_terminal_rejects_substituted_input_mass_totals(
 
     failures = "\n".join(excinfo.value.failures)
     assert "must bind the reviewed enhanced-FRS incumbent totals" in failures
-
-
-def test_exact_k_uk_terminal_rejects_vacuous_qrf_surface(
-    tmp_path: Path,
-) -> None:
-    directory = _write_uk_release_dir(
-        tmp_path,
-        UK_EXACT_K_RELEASE_ID,
-        tier="frs",
-    )
-    payload, evidence = _terminal_gate_payload(
-        release_id=UK_EXACT_K_RELEASE_ID,
-        calibration_diagnostics_sha256=_sha256(
-            directory / "calibration_diagnostics.json"
-        ),
-        evidence_stages=("qrf_tail_concentration",),
-    )
-    details = payload["gates"]["qrf_tail_concentration"]["details"]
-    details["columns_checked"] = 0
-    details["top_share"] = {}
-    details["carrier_counts"] = {}
-    details["surface"]["checked_columns"] = []
-    details["surface"]["absent_columns"] = ["declared_but_absent"]
-    _refresh_terminal_gate_attestation(payload)
-    build_path = directory / "build_manifest.json"
-    build = json.loads(build_path.read_text())
-    build["terminal_gate_evidence"] = evidence
-    build_path.write_text(json.dumps(build))
-    _write_terminal_and_refresh_manifest_hashes(directory, payload)
-
-    with pytest.raises(ReleaseContractError) as excinfo:
-        validate_release_dir(directory)
-
-    failures = "\n".join(excinfo.value.failures)
-    assert "requires details.columns_checked to be positive" in failures
-    assert "requires details.surface.absent_columns to be empty" in failures
-
-
-def test_exact_k_uk_terminal_rejects_partially_omitted_qrf_surface(
-    tmp_path: Path,
-) -> None:
-    directory = _write_uk_release_dir(
-        tmp_path,
-        UK_EXACT_K_RELEASE_ID,
-        tier="frs",
-    )
-    payload, _evidence = _terminal_gate_payload(
-        release_id=UK_EXACT_K_RELEASE_ID,
-        calibration_diagnostics_sha256=_sha256(
-            directory / "calibration_diagnostics.json"
-        ),
-        evidence_stages=("qrf_tail_concentration",),
-    )
-    payload["gates"]["qrf_tail_concentration"]["details"]["surface"][
-        "declared_qrf_outputs"
-    ] = 2
-    _refresh_terminal_gate_attestation(payload)
-    build_path = directory / "build_manifest.json"
-    build = json.loads(build_path.read_text())
-    build["terminal_gate_evidence"] = dict(payload["attestation"]["evidence_sha256"])
-    build_path.write_text(json.dumps(build))
-    _write_terminal_and_refresh_manifest_hashes(directory, payload)
-
-    with pytest.raises(ReleaseContractError) as excinfo:
-        validate_release_dir(directory)
-
-    failures = "\n".join(excinfo.value.failures)
-    assert "must reconcile declared, checked, absent, nonnumeric" in failures
 
 
 def test_exact_k_uk_terminal_rejects_evidence_gate_without_its_stage(
@@ -4615,7 +4616,7 @@ def test_us_release_table_1_4_returns_rows_are_outside_the_dollar_blanket(
     validate_release_dir(release_dir)
 
 
-def _resignable_qrf_release(tmp_path: Path) -> tuple[Path, dict]:
+def _resignable_release(tmp_path: Path) -> tuple[Path, dict]:
     directory = _write_uk_release_dir(
         tmp_path,
         UK_EXACT_K_RELEASE_ID,
@@ -4626,7 +4627,7 @@ def _resignable_qrf_release(tmp_path: Path) -> tuple[Path, dict]:
         calibration_diagnostics_sha256=_sha256(
             directory / "calibration_diagnostics.json"
         ),
-        evidence_stages=("qrf_tail_concentration",),
+        evidence_stages=("input_mass_parity",),
     )
     build_path = directory / "build_manifest.json"
     build = json.loads(build_path.read_text())
@@ -4635,89 +4636,9 @@ def _resignable_qrf_release(tmp_path: Path) -> tuple[Path, dict]:
     return directory, payload
 
 
-def _write_resigned_qrf_release(directory: Path, payload: dict) -> None:
+def _write_resigned_release(directory: Path, payload: dict) -> None:
     _refresh_terminal_gate_attestation(payload)
     _write_terminal_and_refresh_manifest_hashes(directory, payload)
-
-
-def test_exact_k_uk_terminal_rejects_unexcluded_high_qrf_share(
-    tmp_path: Path,
-) -> None:
-    directory, payload = _resignable_qrf_release(tmp_path)
-    details = payload["gates"]["qrf_tail_concentration"]["details"]
-    details["top_share"]["self_employment_income"] = 1.0
-    _write_resigned_qrf_release(directory, payload)
-
-    with pytest.raises(ReleaseContractError) as excinfo:
-        validate_release_dir(directory)
-
-    failures = "\n".join(excinfo.value.failures)
-    assert "columns above details.max_top_share" in failures
-    assert "attestation.signature does not authenticate" not in failures
-
-
-def test_exact_k_uk_terminal_rejects_qrf_thin_count_at_minimum(
-    tmp_path: Path,
-) -> None:
-    directory, payload = _resignable_qrf_release(tmp_path)
-    details = payload["gates"]["qrf_tail_concentration"]["details"]
-    details["thin_columns"]["invented_thin_output"] = details["min_nonzero_records"]
-    details["surface"]["declared_qrf_outputs"] = 2
-    details["surface"]["checked_columns"].append("invented_thin_output")
-    _write_resigned_qrf_release(directory, payload)
-
-    with pytest.raises(ReleaseContractError) as excinfo:
-        validate_release_dir(directory)
-
-    failures = "\n".join(excinfo.value.failures)
-    assert "details.thin_columns values" in failures
-    assert "must reconcile declared, checked, absent, nonnumeric" not in failures
-    assert "attestation.signature does not authenticate" not in failures
-
-
-@pytest.mark.parametrize(
-    ("field", "value", "match"),
-    [
-        ("top_k", True, "details.top_k"),
-        ("top_k", 0, "details.top_k"),
-        ("max_top_share", True, "details.max_top_share"),
-        ("max_top_share", 1.0, "details.max_top_share"),
-        ("min_nonzero_records", True, "details.min_nonzero_records"),
-        ("min_nonzero_records", 1, "details.min_nonzero_records"),
-    ],
-)
-def test_exact_k_uk_terminal_rejects_invalid_qrf_thresholds(
-    tmp_path: Path,
-    field: str,
-    value: object,
-    match: str,
-) -> None:
-    directory, payload = _resignable_qrf_release(tmp_path)
-    payload["gates"]["qrf_tail_concentration"]["details"][field] = value
-    _write_resigned_qrf_release(directory, payload)
-
-    with pytest.raises(ReleaseContractError) as excinfo:
-        validate_release_dir(directory)
-
-    failures = "\n".join(excinfo.value.failures)
-    assert match in failures
-    assert "attestation.signature does not authenticate" not in failures
-
-
-def test_exact_k_uk_terminal_rejects_boolean_qrf_carrier_count(
-    tmp_path: Path,
-) -> None:
-    directory, payload = _resignable_qrf_release(tmp_path)
-    details = payload["gates"]["qrf_tail_concentration"]["details"]
-    details["carrier_counts"]["self_employment_income"] = True
-    _write_resigned_qrf_release(directory, payload)
-
-    with pytest.raises(ReleaseContractError) as excinfo:
-        validate_release_dir(directory)
-
-    failures = "\n".join(excinfo.value.failures)
-    assert "details.carrier_counts values" in failures
-    assert "attestation.signature does not authenticate" not in failures
 
 
 def test_exact_k_uk_terminal_rejects_mixed_exclusion_evaluation_dates(
@@ -4728,10 +4649,10 @@ def test_exact_k_uk_terminal_rejects_mixed_exclusion_evaluation_dates(
     (adversarial-review finding: expiry enforcement was otherwise
     invisible to the contract)."""
 
-    directory, payload = _resignable_qrf_release(tmp_path)
+    directory, payload = _resignable_release(tmp_path)
     degenerate = payload["gates"]["degenerate_release_surface"]["details"]
     degenerate["exclusions_evaluated_on"] = "2020-01-01"
-    _write_resigned_qrf_release(directory, payload)
+    _write_resigned_release(directory, payload)
 
     with pytest.raises(ReleaseContractError) as excinfo:
         validate_release_dir(directory)
@@ -4747,64 +4668,16 @@ def test_exact_k_uk_terminal_requires_the_exclusion_receipt_fields(
     schema (adversarial-review finding — the checks previously defaulted
     absent fields to empty)."""
 
-    directory, payload = _resignable_qrf_release(tmp_path)
+    directory, payload = _resignable_release(tmp_path)
     degenerate = payload["gates"]["degenerate_release_surface"]["details"]
     del degenerate["expired_exclusions"]
-    _write_resigned_qrf_release(directory, payload)
+    _write_resigned_release(directory, payload)
 
     with pytest.raises(ReleaseContractError) as excinfo:
         validate_release_dir(directory)
     failures = "\n".join(excinfo.value.failures)
     assert "honest aggregator detail schema" in failures
     assert "expired_exclusions" in failures
-
-
-def test_exact_k_uk_terminal_accepts_high_qrf_share_with_live_exclusion(
-    tmp_path: Path,
-) -> None:
-    directory, payload = _resignable_qrf_release(tmp_path)
-    details = payload["gates"]["qrf_tail_concentration"]["details"]
-    details["top_share"]["self_employment_income"] = 1.0
-    details["reviewed_exclusions"] = {
-        "self_employment_income": "Reviewed concentrated QRF instrument."
-    }
-    _write_resigned_qrf_release(directory, payload)
-
-    validate_release_dir(directory)
-
-
-@pytest.mark.parametrize(
-    ("observable", "value", "match"),
-    [
-        ("top_share", True, "details.top_share values"),
-        ("top_share", -0.1, "details.top_share values"),
-        ("carrier_counts", 1, "details.carrier_counts values"),
-        ("thin_columns", True, "details.thin_columns values"),
-        ("thin_columns", -1, "details.thin_columns values"),
-    ],
-)
-def test_exact_k_uk_terminal_rejects_invalid_qrf_observable_values(
-    tmp_path: Path,
-    observable: str,
-    value: object,
-    match: str,
-) -> None:
-    directory, payload = _resignable_qrf_release(tmp_path)
-    details = payload["gates"]["qrf_tail_concentration"]["details"]
-    column = "self_employment_income"
-    if observable == "thin_columns":
-        column = "invented_thin_output"
-        details["surface"]["declared_qrf_outputs"] = 2
-        details["surface"]["checked_columns"].append(column)
-    details[observable][column] = value
-    _write_resigned_qrf_release(directory, payload)
-
-    with pytest.raises(ReleaseContractError) as excinfo:
-        validate_release_dir(directory)
-
-    failures = "\n".join(excinfo.value.failures)
-    assert match in failures
-    assert "attestation.signature does not authenticate" not in failures
 
 
 # ---------------------------------------------------------------------------
@@ -4897,33 +4770,6 @@ def test_exact_k_uk_gate_battery_rejects_loosened_input_mass_tolerance(
     assert "relative_tolerance must equal the committed spec value" in (
         _battery_failures(directory)
     )
-
-
-def test_exact_k_uk_gate_battery_rejects_loosened_qrf_thresholds(
-    tmp_path: Path,
-) -> None:
-    directory, payload = _write_battery_release(tmp_path)
-    details = payload["gates"]["uk_qrf_tail_concentration"]["details"]
-    details["max_top_share"] = 0.999999
-    _rewrite_battery_report(directory, payload)
-
-    assert "max_top_share to equal the committed spec value" in (
-        _battery_failures(directory)
-    )
-
-
-def test_exact_k_uk_gate_battery_rejects_shrunken_qrf_tail(
-    tmp_path: Path,
-) -> None:
-    directory, payload = _write_battery_release(tmp_path)
-    details = payload["gates"]["uk_qrf_tail_concentration"]["details"]
-    details["top_k"] = 5
-    details["min_nonzero_records"] = 6
-    _rewrite_battery_report(directory, payload)
-
-    failures = _battery_failures(directory)
-    assert "top_k to equal the committed spec value" in failures
-    assert "min_nonzero_records to equal the committed spec value" in failures
 
 
 def test_exact_k_uk_gate_battery_rejects_a_blocked_report(tmp_path: Path) -> None:
@@ -5224,7 +5070,7 @@ def test_exact_k_uk_gate_battery_rejects_a_not_applicable_excuse(
     # No entry in this spec vintage declares an excuse, so not_applicable
     # cannot skip a gate's observables or drop its evidence requirement.
     directory, payload = _write_battery_release(tmp_path)
-    entry = payload["gates"]["uk_qrf_tail_concentration"]
+    entry = payload["gates"]["uk_input_mass_parity"]
     entry["status"] = "not_applicable"
     entry["details"] = {}
     entry["reason"] = "declared excused"

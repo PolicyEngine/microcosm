@@ -10,8 +10,13 @@ def test_released_engine_retains_source_claimants_and_uc_awards(tmp_path, route)
 
     This tests recorded claim membership, including a 17-year-old partner;
     it does not add or establish eligibility for under-18 claimants.
-    2025 monthly standard allowances are 400.14 single old, 497.55 couple
-    young and 628.10 couple old; an eldest child born before 2017 adds 339.
+    2025 monthly standard allowances are 316.98 single young, 400.14 single
+    old and 628.10 couple old; an eldest child born before 2017 adds 339.
+    The 24-year-old with the 17-year-old partner claims as a single person
+    (UC Regs 2013 reg 3(3)), which policyengine-uk models since 2.123.8
+    (PolicyEngine/policyengine-uk#2084): the recorded role is kept and the
+    award takes the single young allowance, where it took the couple young
+    one (497.55) before.
     """
     from microcosm.build.uk_runtime.measure_simulation import UKMeasureResolver
     from microcosm.build.uk_runtime.national_frame import (
@@ -105,7 +110,7 @@ def test_released_engine_retains_source_claimants_and_uc_awards(tmp_path, route)
     assert values["is_uc_claimant"].dtype.kind == "b"
     np.testing.assert_allclose(
         values["uc_standard_allowance"],
-        [4801.68, 5970.60, 4801.68, 7537.20],
+        [4801.68, 3803.76, 4801.68, 7537.20],
         atol=0.01,
         rtol=0,
     )
@@ -114,7 +119,7 @@ def test_released_engine_retains_source_claimants_and_uc_awards(tmp_path, route)
     )
     np.testing.assert_allclose(
         values["universal_credit"],
-        [4801.68, 5970.60, 8869.68, 11605.20],
+        [4801.68, 3803.76, 8869.68, 11605.20],
         atol=0.01,
         rtol=0,
     )

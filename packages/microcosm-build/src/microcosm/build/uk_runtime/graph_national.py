@@ -88,9 +88,11 @@ from . import (
     full_measure,
     full_targets,
     ledger_targets,
+    measure_simulation,
     national_calibration,
     national_doctrine,
 )
+from . import support_floor as support_floor_rules
 from .battery_bindings import UK_GATE_REGISTRY
 from .calibration_run import (
     UK_CALIBRATION_GATE_SCOPE_EXCLUSIONS,
@@ -121,12 +123,18 @@ from .national_calibration import (
     national_calibration_mass_reason,
 )
 from .national_doctrine import UKNationalSolveDoctrine, uk_national_target_loss_weights
-from .national_frame import load_uk_national_frame, uk_release_export_frame
+from .national_frame import (
+    load_uk_national_frame,
+    uk_identifier_range_failures,
+    uk_release_export_frame,
+    uk_time_period,
+)
 from .rowwise_posture import (
     UK_ROWWISE_DENSE_POSTURE,
     UK_ROWWISE_NATIONAL_POSTURE,
     UKRowwisePosture,
 )
+from .weight_year import uk_dataset_year_frame, uk_weight_projection_factor
 
 NATIONAL_TARGET_TYPE = ArtifactType("microcosm.uk.national-target-registry", 1)
 NATIONAL_GATE_REPORT_TYPE = ArtifactType("microcosm.uk.national-gate-report", 1)
@@ -416,9 +424,18 @@ def uk_national_graph(
 
 
 def add_uk_national_readback(
-    graph: Graph, *, population: str, dataset_source: str = "exported_dataset"
+    graph: Graph,
+    *,
+    population: str,
+    solve_year: int,
+    dataset_source: str = "exported_dataset",
 ) -> Graph:
-    """Continue the graph over the written H5: a readback gate on its content."""
+    """Continue the graph over the written H5: a readback gate on its content.
+
+    ``solve_year`` is the year the weights were solved at. The file carries
+    them at the dataset's year (``uk_runtime.weight_year``), and the readback
+    expects exactly that division of the calibrated population.
+    """
 
     node = Node(
         NATIONAL_READBACK_NODE,
@@ -426,7 +443,7 @@ def add_uk_national_readback(
         population=population,
         inputs=population_slices(population_columns(graph, population)),
         sources=(dataset_source,),
-        params={"dataset_source": dataset_source},
+        params={"dataset_source": dataset_source, "solve_year": int(solve_year)},
         artifact_outputs=(ArtifactOutput("readback", NATIONAL_READBACK_TYPE),),
         description="Read the written national H5 back and compare its content identity with the calibrated population.",
     )
@@ -463,8 +480,15 @@ class _NationalKernel(KernelBase):
             full_measure,
             full_targets,
             ledger_targets,
+            # full_targets applies the measure exclusions, and full_measure
+            # resolves the problem's measures, in measure_simulation; the
+            # dense target kernels hash it too (microcosm#1301). An edit there
+            # alone must re-key the national targets, the problem and all
+            # they feed.
+            measure_simulation,
             national_calibration,
             national_doctrine,
+            support_floor_rules,
             *uk_target_compile_modules(),
         )
         return hashlib.sha256(
@@ -500,6 +524,7 @@ class UKNationalTargetKernel(_NationalKernel):
             "national_registry": registry_payload(inputs["national_registry"]),
             "band_edge_registry": registry_payload(inputs["band_edge_registry"]),
             "measure_exclusions": inputs["measure_exclusions"],
+            "support_floor": inputs["support_floor"],
             "register_completeness": inputs["register_completeness"],
             "ledger_provenance": inputs["ledger_provenance"],
             "chronicle_feed_pin": inputs["chronicle_feed_pin"],
@@ -517,6 +542,48 @@ def _registry_artifact(context: KernelContext) -> dict[str, Any]:
     ):
         raise ValueError("Unsupported UK national target registry artifact.")
     return payload
+
+
+def solved_national_measure_exclusions(
+    registry_document: Mapping[str, Any], bindings: Mapping[str, Any]
+) -> dict[str, dict[str, str]]:
+    """The run's measure exclusions as its problem binds them.
+
+    The register's per-row entries, unchanged, and the rows the support
+    floor dropped on this frame (microcosm#1095 U3), which only the problem
+    node could measure.
+    """
+
+    declared = registry_document["measure_exclusions"]
+    bound = bindings.get("measure_exclusions", declared)
+    changed = sorted(
+        name for name, record in declared.items() if bound.get(name) != record
+    )
+    added = support_floor_rules.uk_support_floor_names(bound)
+    unexplained = sorted(set(bound) - set(declared) - added)
+    if changed or unexplained:
+        raise ValueError(
+            "The national problem's measure exclusions differ from the register's "
+            f"beyond the support floor: changed {changed}, added {unexplained}."
+        )
+    return {name: dict(record) for name, record in bound.items()}
+
+
+def solved_national_registry(
+    registry_document: Mapping[str, Any],
+    measure_exclusions: Mapping[str, Mapping[str, str]],
+) -> TargetRegistry:
+    """The register the national problem solved: the approved register less
+    the support floor's drops, checked against the declared floor."""
+
+    floor = registry_document.get("support_floor")
+    return support_floor_rules.narrow_uk_registry_by_support_floor(
+        registry_from_payload(registry_document["national_registry"]),
+        measure_exclusions,
+        None
+        if floor is None
+        else support_floor_rules.uk_support_floor_from_payload(floor["declaration"]),
+    )
 
 
 def materialize_uk_national_rows(
@@ -603,6 +670,7 @@ class UKNationalProblemKernel(_NationalKernel):
                 ),
                 period=int(registry_document["calibration_year"]),
                 measure_exclusions=registry_document["measure_exclusions"],
+                support_floor=registry_document.get("support_floor"),
                 doctrine={
                     "target_weight_rule": str(context.params["target_weight_rule"]),
                     "target_loss_cap": float(context.params["target_loss_cap"]),
@@ -625,6 +693,7 @@ def encode_uk_national_problem(
     period: int,
     doctrine: Mapping[str, object],
     measure_exclusions: Mapping[str, Mapping[str, str]] | None = None,
+    support_floor: Mapping[str, Any] | None = None,
     resolver_factory=UKMeasureResolver,
     scratch_dir: Path | None = None,
 ) -> bytes:
@@ -637,14 +706,44 @@ def encode_uk_national_problem(
     pristine tables, and encode the problem with the national doctrine's
     ``family_equal`` loss weights, mass reason and bounds in its bindings,
     which the shared dense solve node reads.
+
+    ``support_floor`` (the register's signed floor and its evaluation date,
+    microcosm#1095 U3) drops the in-scope rows the frame supports with too
+    few source households before the loss weights, families and metadata
+    are drawn; the per-row exclusions in its scope are compiled beside the
+    register only to measure their support, and leave the problem again.
     """
 
     assert_calibration_input_finite(frame)
     if not len(national_registry.specs):
         raise ValueError("The national register selects no target.")
+    exclusions = {
+        name: dict(record) for name, record in (measure_exclusions or {}).items()
+    }
+    floor = (
+        None
+        if support_floor is None
+        else support_floor_rules.uk_support_floor_from_payload(
+            support_floor["declaration"]
+        )
+    )
+    probes = (
+        ()
+        if floor is None
+        else tuple(
+            spec
+            for spec in band_edge_registry.specs
+            if spec.name in exclusions and floor.in_scope(spec)
+        )
+    )
+    compiled = (
+        TargetRegistry([*national_registry.specs, *probes], country="uk")
+        if probes
+        else national_registry
+    )
     prepared, restore, rows, evidence = materialize_uk_national_rows(
         frame,
-        national_registry,
+        compiled,
         period=period,
         band_edge_registry=band_edge_registry,
         resolver_factory=resolver_factory,
@@ -659,18 +758,32 @@ def encode_uk_national_problem(
     clean = restore(prepared)
     for entity in frame.entities:
         pd.testing.assert_frame_equal(clean.table(entity), frame.table(entity))
-    if len(problem.targets) != len(national_registry.specs):
+    if len(problem.targets) != len(compiled.specs):
         raise ValueError(
             "UK national calibration matrix did not contain every activated "
-            f"reference: declared={len(national_registry.specs)}, "
+            f"reference: declared={len(compiled.specs)}, "
             f"rows={len(problem.targets)}."
         )
-    families = [spec.family for spec in national_registry.specs]
+    registry = national_registry
+    floor_receipt = None
+    if floor is not None:
+        applied = support_floor_rules.apply_uk_support_floor(
+            compiled,
+            problem,
+            source_ids=lambda: support_floor_rules.uk_household_source_ids(frame),
+            floor=floor,
+            evaluated_on=date.fromisoformat(str(support_floor["evaluated_on"])),
+            row_excluded={spec.name for spec in probes},
+        )
+        registry, problem = applied.registry, applied.problem
+        exclusions.update(applied.exclusions)
+        floor_receipt = applied.receipt
+    families = [spec.family for spec in registry.specs]
     rule = str(doctrine["target_weight_rule"])
     target_loss_weights = uk_national_target_loss_weights(families, rule=rule)
     mass_reason = national_calibration_mass_reason(families)
     ids = frame.table("household")["household_id"].tolist()
-    levels = national_target_geography_levels(national_registry)
+    levels = national_target_geography_levels(registry)
     target_metadata = [
         {
             **spec.metadata,
@@ -679,7 +792,7 @@ def encode_uk_national_problem(
             "geography_level": levels[spec.to_target().row_name],
             "materialization": NATIONAL_MATERIALIZATION,
         }
-        for spec in national_registry.specs
+        for spec in registry.specs
     ]
     return encode_problem(
         problem,
@@ -703,12 +816,13 @@ def encode_uk_national_problem(
                 f"national/{family}" for family in sorted(set(families))
             ],
             "measure_resolution": _json_safe(evidence),
-            "measure_exclusions": dict(measure_exclusions or {}),
+            "measure_exclusions": exclusions,
+            "support_floor": floor_receipt,
             "register_sha256": national_registry.version,
             "band_edge_register_sha256": band_edge_registry.version,
             "calibration_year": int(period),
-            "activated_reference_count": len(national_registry.specs),
-            "resolved_reference_count": len(national_registry.specs),
+            "activated_reference_count": len(registry.specs),
+            "resolved_reference_count": len(registry.specs),
         },
     )
 
@@ -887,6 +1001,7 @@ class UKNationalGateKernel(_NationalKernel):
                         calibration_run,
                         weighted_integrity,
                         diagnostics,
+                        support_floor_rules,
                     ),
                     "country_resources": load_country_spec("uk").fingerprint,
                 }
@@ -896,8 +1011,11 @@ class UKNationalGateKernel(_NationalKernel):
     def run(self, context: KernelContext) -> KernelResult:
         frame = context_frame(context)
         registry_document = _registry_artifact(context)
-        national = registry_from_payload(registry_document["national_registry"])
         result, problem = decode_national_result(context, frame)
+        measure_exclusions = solved_national_measure_exclusions(
+            registry_document, problem.bindings
+        )
+        national = solved_national_registry(registry_document, measure_exclusions)
         doctrine = json.loads(str(context.params["doctrine"]))
         scope = tuple(
             str(gate) for gate in json.loads(str(context.params["gate_scope"]))
@@ -936,13 +1054,14 @@ class UKNationalGateKernel(_NationalKernel):
                 target_relative_errors={
                     str(row["name"]): float(row["relative_error"])
                     for row in diagnostics_rows
-                }
+                },
             ),
             "aggregate_admin": admin_totals,
             UK_CGT_PROJECTION_ARTIFACT_KEY: projection,
             "exclusions_evaluated_on": date.fromisoformat(
                 str(context.params["review_date"])
             ),
+            "release_line": "national",
         }
         report = evaluate_phase(
             gates,
@@ -951,6 +1070,7 @@ class UKNationalGateKernel(_NationalKernel):
             registry=UK_GATE_REGISTRY,
         )
         blocking = report.blocking_outcomes(release_candidate=False)
+        report_payload = gate_phase_report_payload(report, gates=gates)
         payload = {
             "schema_version": 1,
             "kind": "uk_national_gate_report",
@@ -958,7 +1078,7 @@ class UKNationalGateKernel(_NationalKernel):
             "policy_suffix": str(context.params["gate_policy_suffix"]),
             "scope": list(scope),
             "scope_exclusions": dict(UK_CALIBRATION_GATE_SCOPE_EXCLUSIONS),
-            "report": gate_phase_report_payload(report, gates=gates),
+            "report": report_payload,
             "aggregate_admin_measurement": _json_safe(admin_receipt),
             "blocking": [outcome.entry.id for outcome in blocking],
             "artifact_permitted": not blocking,
@@ -970,9 +1090,7 @@ class UKNationalGateKernel(_NationalKernel):
             "calibration": _json_safe(manifest_block),
             "diagnostics": _json_safe(diagnostics_rows),
             "target_geography_levels": uk_target_geography_levels(national),
-            "register": calibration_run._register_census(
-                national, registry_document["measure_exclusions"]
-            ),
+            "register": calibration_run._register_census(national, measure_exclusions),
         }
         return KernelResult(
             artifacts={
@@ -988,9 +1106,9 @@ class UKNationalReadbackKernel(KernelBase):
     capabilities = Capabilities(Determinism.DETERMINISTIC, role=KernelRole.GATE)
 
     def implementation_hash(self) -> str:
-        from . import content_identity, national_frame
+        from . import content_identity, national_frame, weight_year
 
-        return source_hash(type(self), content_identity, national_frame)
+        return source_hash(type(self), content_identity, national_frame, weight_year)
 
     def run(self, context: KernelContext) -> KernelResult:
         from ..artifact_files import file_artifact
@@ -1000,9 +1118,14 @@ class UKNationalReadbackKernel(KernelBase):
         dataset = file_artifact(path)
         written, _provenance = load_uk_national_frame(path)
         failures = []
-        # The writer drops the reviewed export exclusions (microcosm#1063 c9),
-        # so the expectation is the export frame, not the raw population.
-        expected = uk_frame_content_identity(uk_release_export_frame(frame))
+        # The writer drops the reviewed export exclusions (microcosm#1063 c9)
+        # and writes the weights at the dataset's year (microcosm#796 A19), so
+        # the expectation is that export frame, not the raw population.
+        solve_year = int(context.params["solve_year"])
+        release = uk_dataset_year_frame(
+            uk_release_export_frame(frame), solve_year=solve_year
+        )
+        expected = uk_frame_content_identity(release)
         actual = uk_frame_content_identity(written)
         if actual != expected:
             failures.append(
@@ -1010,10 +1133,17 @@ class UKNationalReadbackKernel(KernelBase):
             )
         if written.weights_for("household").kind is not WeightKind.CALIBRATED:
             failures.append("Written national H5 household weights are not calibrated.")
-        if written.mass_log != frame.mass_log:
+        if written.mass_log != release.mass_log:
             failures.append(
                 "Written national H5 mass log differs from the calibrated population."
             )
+        # The identifiers must survive the engine's 32-bit storage
+        # (microcosm#1194), whatever wrote the file.
+        failures.extend(
+            uk_identifier_range_failures(
+                {entity: written.table(entity) for entity in written.entities}
+            )
+        )
         if file_artifact(path) != dataset:
             raise ValueError("UK national H5 changed during graph readback validation.")
         report = {
@@ -1024,6 +1154,15 @@ class UKNationalReadbackKernel(KernelBase):
             "dataset": dataset,
             "content_identity": actual,
             "expected_content_identity": expected,
+            # The year the weights were solved at, the year the file carries
+            # them at, and the engine's own factor between the two.
+            "weight_year": {
+                "solve_year": solve_year,
+                "dataset_year": int(uk_time_period(release)),
+                "engine_projection_factor": uk_weight_projection_factor(
+                    int(uk_time_period(release)), solve_year
+                ),
+            },
         }
         return KernelResult(
             artifacts={"readback": canonical_json(report)},
@@ -1069,7 +1208,12 @@ def graph_payload(manifest, store, node: str, artifact: str) -> bytes:
 
 
 def national_result_from_manifest(
-    manifest, store, *, frame: Frame, registry: TargetRegistry | None = None
+    manifest,
+    store,
+    *,
+    frame: Frame,
+    registry: TargetRegistry | None = None,
+    registry_document: Mapping[str, Any] | None = None,
 ):
     """The dense result and its ordered problem, rebound to the calibrated frame.
 
@@ -1077,12 +1221,21 @@ def national_result_from_manifest(
     (each spec's entity and column measure), as the seam's result carried
     them: the graph solves the compiled rows, whose descriptors would
     otherwise read as callables on the weight entity in the diagnostics.
-    The numbers are the compiled rows' either way.
+    The numbers are the compiled rows' either way. With ``registry_document``
+    (the national targets node's artifact) the register is the one the
+    problem solved, less the support floor's drops.
     """
 
     problem = decode_problem(
         graph_payload(manifest, store, NATIONAL_PROBLEM_NODE, "problem")
     )
+    if registry_document is not None:
+        if registry is not None:
+            raise ValueError("Pass a register or a register artifact, not both.")
+        registry = solved_national_registry(
+            registry_document,
+            solved_national_measure_exclusions(registry_document, problem.bindings),
+        )
     dense = manifest.nodes["uk.full.dense"].opaque_artifacts
     solution = decode_solution(
         store.load_bytes(dense["solution"]),
@@ -1199,7 +1352,7 @@ def replay_uk_dense_gate_battery(
     """Write the local gate report the dense release contract verifies.
 
     The graph evaluated every UK gate once (``uk.full.gates.calibrated``);
-    the dense line ships the six-gate local battery, signed and bound to its
+    the dense line ships the seven-gate local battery, signed and bound to its
     Logbook attempt. The stored terminal outcomes are projected onto the
     local scope in the scoped manifest's order — nothing is re-evaluated:
     both manifests hold the same frozen declarations, and the projection
