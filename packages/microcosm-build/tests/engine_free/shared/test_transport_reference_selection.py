@@ -48,13 +48,17 @@ SHA = "7" * 64
 CONFIG = compose.TransportGraphConfig({}, (Owned("person", "person_id", "int64"),))
 
 
-def _document(names=("used", "parked")):
+#: A holdout measures its own concept, which no other reference document shares.
+HOLDOUT_MEASURE = "holdout_indicator"
+
+
+def _document(names=("used", "parked"), measure="person_count"):
     return reference_document(
         [
             reference_row(
                 name,
                 entity="person",
-                measure="person_count",
+                measure=measure,
                 activation_status="pending" if name == "parked" else "active",
             )
             for name in names
@@ -97,7 +101,7 @@ def _spec(*nodes):
             "scenarios": {"scenarios": []},
             "precal_references": _document(("precal",)),
             "target_references": _document(),
-            "holdout_references": _document(("holdout",)),
+            "holdout_references": _document(("holdout",), HOLDOUT_MEASURE),
             "receipt_contract": {
                 "receipts": {
                     "seed_column": "seed",
@@ -364,7 +368,7 @@ def test_nonexempt_placeholder_keeps_legacy_gap_message():
 def test_absent_selection_preserves_complete_legacy_activation_gap_order():
     spec = _spec()
     spec["resources"].pop("reference_selection")
-    spec["resources"]["holdout_references"] = _document(("parked",))
+    spec["resources"]["holdout_references"] = _document(("parked",), HOLDOUT_MEASURE)
     spec["resources"]["precal_references"] = _document(("parked",))
     # The assigned baseline already visits the reference-resource set in
     # sorted order, including mandatory resources selected by multiple params.
