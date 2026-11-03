@@ -1,0 +1,230 @@
+{
+ "w_dup_hold_proj_s050_0": {
+  "original": "w_hold_proj_s050_0",
+  "heads": {
+   "rerun": "c028b6ad",
+   "original": "c028b6ad"
+  },
+  "weights_sha256": [
+   "45b408d52e8fc9dd43d3ab9a6753557190b50a496a70a292b698e634a4359119",
+   "531da5900dd51d301ccfa5abbf2a3fe76f9647b0b1e01eeaefe7f5313db4c30b"
+  ],
+  "weights_byte_identical": false,
+  "trajectory_byte_identical": false,
+  "first_trajectory_difference_epoch": 1,
+  "trajectory_relative_difference_at_epochs_0_1": [
+   0.0,
+   1.0212655052358751e-07
+  ],
+  "weight_relative_difference_median_p99": [
+   0.007609989289347809,
+   0.05774602569255211
+  ],
+  "metrics": {
+   "final_loss": {
+    "rerun": 0.008208794815659282,
+    "original": 0.008363174030346048,
+    "relative_change": -0.01845940478179653
+   },
+   "within_10pct": {
+    "rerun": 0.9747687132043734,
+    "original": 0.9747687132043734,
+    "relative_change": 0.0
+   },
+   "kish_ess": {
+    "rerun": 14426.091623748967,
+    "original": 14470.994395252139,
+    "relative_change": -0.0031029499616076484
+   },
+   "top_1pct_share": {
+    "rerun": 0.6662789123313111,
+    "original": 0.6660932074856606,
+    "relative_change": 0.0002787970865991696
+   },
+   "state_ess_min": {
+    "rerun": 214.62502639815534,
+    "original": 214.66327643875408,
+    "relative_change": -0.00017818623303111902
+   },
+   "cd_ess_median": {
+    "rerun": 35.81896678753941,
+    "original": 36.13947543808666,
+    "relative_change": -0.008868658071596536
+   },
+   "cd_ess_min": {
+    "rerun": 9.5982435202179,
+    "original": 9.76014523067428,
+    "relative_change": -0.016588043172508615
+   },
+   "cds_below_50": {
+    "rerun": 339.0,
+    "original": 339.0,
+    "relative_change": 0.0
+   },
+   "cds_below_0.25_of_prior": {
+    "rerun": 21.0,
+    "original": 21.0,
+    "relative_change": 0.0
+   },
+   "ma_ess": {
+    "rerun": 455.52810921294486,
+    "original": 443.5264076753972,
+    "relative_change": 0.027059722555080157
+   },
+   "chi_square_distance_from_prior": {
+    "rerun": 0.7198015757271962,
+    "original": 0.7155849386097066,
+    "relative_change": 0.00589257387904496
+   },
+   "donor_mass_share": {
+    "rerun": 0.6536493223960544,
+    "original": 0.6534921231752623,
+    "relative_change": 0.00024055258696664694
+   },
+   "within_10pct_soi": {
+    "rerun": 0.9717569786535304,
+    "original": 0.9717569786535304,
+    "relative_change": 0.0
+   },
+   "weighted_within_10pct": {
+    "rerun": 0.9834033024972049,
+    "original": 0.9834033024972049,
+    "relative_change": 0.0
+   },
+   "holdout_weighted_capped_error": {
+    "rerun": 0.07888131716783452,
+    "original": 0.07858837734749374,
+    "relative_change": 0.0037275209162987988
+   },
+   "holdout_weighted_within_10pct": {
+    "rerun": 0.7753934817392337,
+    "original": 0.7767709476111887,
+    "relative_change": -0.001773323109201086
+   },
+   "holdout_mean_capped_error": {
+    "rerun": 0.13147374615778856,
+    "original": 0.13142768230749002,
+    "relative_change": 0.00035048818855965
+   },
+   "holdout_within_10pct": {
+    "rerun": 0.6221973094170403,
+    "original": 0.6233183856502242,
+    "relative_change": -0.0017985611510792365
+   }
+  }
+ },
+ "w_dup_hold_soft_chi_s050_0.03": {
+  "original": "w_hold_soft_chi_s050_0.03",
+  "heads": {
+   "rerun": "c028b6ad",
+   "original": "c028b6ad"
+  },
+  "weights_sha256": [
+   "f6d08425d02a27734304cac4601b3570378694774ca6b93d0ea554996a886769",
+   "2e0ffaa5bf78084f9b62c81537985980df9b3964fe1c1112def8212122c78f7b"
+  ],
+  "weights_byte_identical": false,
+  "trajectory_byte_identical": false,
+  "first_trajectory_difference_epoch": 0,
+  "trajectory_relative_difference_at_epochs_0_1": [
+   2.4942624480906572e-06,
+   2.7204213456326015e-05
+  ],
+  "weight_relative_difference_median_p99": [
+   0.003767771719286087,
+   0.045105754842458316
+  ],
+  "metrics": {
+   "final_loss": {
+    "rerun": 0.012542783178955866,
+    "original": 0.012613781321600825,
+    "relative_change": -0.005628616894077343
+   },
+   "within_10pct": {
+    "rerun": 0.9624334174376227,
+    "original": 0.9624334174376227,
+    "relative_change": 0.0
+   },
+   "kish_ess": {
+    "rerun": 21340.745363935937,
+    "original": 21350.60031260914,
+    "relative_change": -0.00046157712330840983
+   },
+   "top_1pct_share": {
+    "rerun": 0.618275891947465,
+    "original": 0.6181700873993807,
+    "relative_change": 0.00017115766395203735
+   },
+   "state_ess_min": {
+    "rerun": 218.38703907318006,
+    "original": 217.98272389710164,
+    "relative_change": 0.0018548037608212553
+   },
+   "cd_ess_median": {
+    "rerun": 48.459303422663695,
+    "original": 48.46357028215427,
+    "relative_change": -8.804261563344351e-05
+   },
+   "cd_ess_min": {
+    "rerun": 21.16045780004974,
+    "original": 21.194959497814857,
+    "relative_change": -0.0016278256048883888
+   },
+   "cds_below_50": {
+    "rerun": 246.0,
+    "original": 244.0,
+    "relative_change": 0.008196721311475308
+   },
+   "cds_below_0.25_of_prior": {
+    "rerun": 0.0,
+    "original": 0.0,
+    "relative_change": null
+   },
+   "ma_ess": {
+    "rerun": 603.3289662730363,
+    "original": 604.3634276108436,
+    "relative_change": -0.0017116544293501734
+   },
+   "chi_square_distance_from_prior": {
+    "rerun": 0.2916879587747659,
+    "original": 0.29115880286531826,
+    "relative_change": 0.0018174133985995322
+   },
+   "donor_mass_share": {
+    "rerun": 0.6101527679964142,
+    "original": 0.6100505138562665,
+    "relative_change": 0.00016761585774482946
+   },
+   "within_10pct_soi": {
+    "rerun": 0.9671592775041051,
+    "original": 0.967487684729064,
+    "relative_change": -0.0003394433129666474
+   },
+   "weighted_within_10pct": {
+    "rerun": 0.9788088605406341,
+    "original": 0.9794522286968751,
+    "relative_change": -0.0006568652736611558
+   },
+   "holdout_weighted_capped_error": {
+    "rerun": 0.07381586587123028,
+    "original": 0.07390253003104826,
+    "relative_change": -0.0011726819065811522
+   },
+   "holdout_weighted_within_10pct": {
+    "rerun": 0.7894430119169832,
+    "original": 0.7853384147855269,
+    "relative_change": 0.005226532987791188
+   },
+   "holdout_mean_capped_error": {
+    "rerun": 0.12167867780121039,
+    "original": 0.12171812209774432,
+    "relative_change": -0.0003240626445276673
+   },
+   "holdout_within_10pct": {
+    "rerun": 0.6300448430493274,
+    "original": 0.6289237668161435,
+    "relative_change": 0.0017825311942960553
+   }
+  }
+ }
+}
