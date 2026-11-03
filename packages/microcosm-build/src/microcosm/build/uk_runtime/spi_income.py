@@ -53,6 +53,11 @@ from microcosm.build.uk_runtime.pension_coherence import (
     coherence_receipt,
     twin_rate_employer_contributions,
 )
+from microcosm.build.uk_runtime.qrf_gates import (
+    UK_DEFAULT_GATE_CALIBRATION,
+    gate_outcomes,
+    pooled_gate_outcomes,
+)
 from microcosm.build.uk_runtime.receipt_counts import (
     UK_DISCLOSURE_FLOOR,
     UK_WITHHELD,
@@ -1118,6 +1123,8 @@ class UKSPIIncomeImputationResult:
     pension_coherence: Mapping[str, object] | None = None
     employment_pay_floor: Mapping[str, object] | None = None
     gift_anchor: Mapping[str, object] | None = None
+    #: Each gated target's gate outcome, for the fits not on the in-sample gate.
+    gate_outcomes: Mapping[str, str] | None = None
 
 
 @dataclass(frozen=True)
@@ -1226,6 +1233,8 @@ def impute_uk_spi_income_support(
     state_pension_age: int | None = None,
     allow_in_sample_reference: bool = False,
     employment_pay_floor: SPIEmploymentPayFloor | None = None,
+    stage1_gate_calibration: str = UK_DEFAULT_GATE_CALIBRATION,
+    stage2_gate_calibration: str = UK_DEFAULT_GATE_CALIBRATION,
 ) -> UKSPIIncomeImputationResult:
     """Run strict SPI-income and FRS-only QRFs on rebuilt positive support.
 
@@ -1243,6 +1252,13 @@ def impute_uk_spi_income_support(
     minimum wage for its age, on drawn recipients other than band carriers
     whose twin works as an employee with no trade, before employment_income
     is derived and stage 2 reads it; ``None`` keeps every draw.
+    ``stage1_gate_calibration`` and ``stage2_gate_calibration`` are the two
+    operations' declared :class:`~microcosm.fit.GateCalibration`. The FRS
+    reference forests take stage 1's, so the gate that places a twin's
+    observed sign and the tape forest's gate that reads it are calibrated
+    alike; their cross-fitted folds, like stage 2's, keep an FRS household's
+    members together. The result names each gate's outcome for the fits not
+    on the in-sample gate.
     """
 
     if support.household_weight_kind is not WeightKind.IMPORTANCE:
@@ -1473,7 +1489,11 @@ def impute_uk_spi_income_support(
         weight_kind=WeightKind.DESIGN,
     )
     qrf_cls = _qrf_class()
-    stage1 = qrf_cls(n_estimators=n_estimators, seed=seed).fit(
+    stage1 = qrf_cls(
+        n_estimators=n_estimators,
+        seed=seed,
+        gate_calibration=stage1_gate_calibration,
+    ).fit(
         donor_frame,
         list(donor_predictors.columns),
         list(SPI_INCOME_QRF_OUTPUT_COLUMNS),
@@ -1490,6 +1510,7 @@ def impute_uk_spi_income_support(
     reference_weights = person_weights.loc[reference_people]
     reference_targets = list(analogue_targets(SPI_INCOME_QRF_OUTPUT_COLUMNS))
     reference_weight_kind: dict[str, str] = {}
+    reference_fits: list[Any] = []
 
     def fit_reference(encoded: pd.DataFrame, observed: pd.DataFrame):
         frame = _person_fit_frame(
@@ -1499,9 +1520,18 @@ def impute_uk_spi_income_support(
             weight_kind=WeightKind.IMPORTANCE,
         )
         fitted = qrf_cls(
-            n_estimators=n_estimators, seed=seed + SPI_TRANSPORT_SEED_OFFSET
-        ).fit(frame, list(encoded.columns), reference_targets, weights="importance")
+            n_estimators=n_estimators,
+            seed=seed + SPI_TRANSPORT_SEED_OFFSET,
+            gate_calibration=stage1_gate_calibration,
+        ).fit(
+            frame,
+            list(encoded.columns),
+            reference_targets,
+            weights="importance",
+            groups=person.loc[encoded.index, "person_household_id"].to_numpy(),
+        )
         reference_weight_kind.setdefault("kind", fitted.weight_kind)
+        reference_fits.append(fitted)
         return fitted
 
     training_folds, used_folds = cell_fold_ids(
@@ -1728,11 +1758,16 @@ def impute_uk_spi_income_support(
     )
     # Stage 2 deliberately derives a distinct RNG stream from the single
     # reviewed stage seed; changing this edits the derivation convention.
-    stage2 = qrf_cls(n_estimators=n_estimators, seed=seed + 1).fit(
+    stage2 = qrf_cls(
+        n_estimators=n_estimators,
+        seed=seed + 1,
+        gate_calibration=stage2_gate_calibration,
+    ).fit(
         stage2_frame,
         list(encoded_train.columns),
         list(stage2_outputs),
         weights="importance",
+        groups=training_person["person_household_id"].to_numpy(),
     )
     stage2_keys = integer_record_keys(
         person.loc[spi_age_domain, "person_id"].to_numpy(),
@@ -1853,6 +1888,21 @@ def impute_uk_spi_income_support(
         pension_coherence=pension_coherence,
         employment_pay_floor=pay_floor_receipt,
         gift_anchor=gift_anchor,
+        gate_outcomes={
+            **(
+                {}
+                if stage1_gate_calibration == UK_DEFAULT_GATE_CALIBRATION
+                else {
+                    **gate_outcomes(SPI_DONOR_FIT_NAME, stage1),
+                    **pooled_gate_outcomes(SPI_TRANSPORT_FIT_NAME, reference_fits),
+                }
+            ),
+            **(
+                {}
+                if stage2_gate_calibration == UK_DEFAULT_GATE_CALIBRATION
+                else gate_outcomes(FRS_ONLY_FIT_NAME, stage2)
+            ),
+        },
     )
 
 

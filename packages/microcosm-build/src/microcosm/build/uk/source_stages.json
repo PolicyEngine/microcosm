@@ -2162,7 +2162,8 @@
       "charitable_investment_gifts": 0.0
      },
      "n_estimators": 100,
-     "seed": 42
+     "seed": 42,
+     "gate_calibration": "cross_fitted"
     },
     {
      "kind": "resample_band_donor_leaves",
@@ -2272,6 +2273,7 @@
       "maternity_allowance_reported": "Absent from the pinned enhanced-FRS export and certified Microcosm UK base; no training source can be materialized for this stage."
      },
      "postprocess": {
+      "savings_interest_income": "the stage-1 INCBBS draw, interest outside ISAs; individual_savings_account_interest_income is the stage-2 draw beside it (microcosm#1360)",
       "refresh_disability_categories": [
        "aa_category",
        "dla_sc_category",
@@ -2283,15 +2285,15 @@
        "is_disabled_for_benefits",
        "is_enhanced_disabled_for_benefits",
        "is_severely_disabled_for_benefits"
-      ],
-      "savings_interest_income": "the stage-1 INCBBS draw, interest outside ISAs; individual_savings_account_interest_income is the stage-2 draw beside it (microcosm#1360)"
+      ]
      },
      "joint_draw": true,
      "require_all_predictors": true,
      "require_all_materializable_outputs": true,
      "require_all_outputs": false,
      "n_estimators": 100,
-     "seed": 43
+     "seed": 43,
+     "gate_calibration": "cross_fitted"
     },
     {
      "kind": "zero_pension_age_reports_below_state_pension_age",
@@ -2939,7 +2941,8 @@
      ],
      "landing": "household_reference_person",
      "n_estimators": 100,
-     "seed": 0
+     "seed": 0,
+     "gate_calibration": "cross_fitted"
     }
    ],
    "outputs": [],
@@ -3160,7 +3163,8 @@
       ],
       "undrawn_fraction": 1.0
      },
-     "secured_debt_within": "other_mortgage"
+     "secured_debt_within": "other_mortgage",
+     "gate_calibration": "cross_fitted"
     },
     {
      "kind": "fold_into",
@@ -4191,7 +4195,8 @@
         ]
        }
       ]
-     }
+     },
+     "gate_calibration": "cross_fitted"
     },
     {
      "kind": "assign_trips_from_band_means",
@@ -4817,7 +4822,8 @@
      "rule": "key_or_meter_payment_positive",
      "seed": 0,
      "salt": "lcfs_prepayment_meter",
-     "n_estimators": 100
+     "n_estimators": 100,
+     "gate_calibration": "cross_fitted"
     },
     {
      "kind": "iterative_proportional_fit",
@@ -5104,7 +5110,8 @@
      "rule": "positive_total_then_petrol_share",
      "seed": 0,
      "salt": "lcfs_positive_road_fuel",
-     "n_estimators": 100
+     "n_estimators": 100,
+     "gate_calibration": "cross_fitted"
     },
     {
      "kind": "level_road_fuel",
@@ -5951,7 +5958,8 @@
      ],
      "weights": "explicit",
      "seed": 0,
-     "n_estimators": 100
+     "n_estimators": 100,
+     "gate_calibration": "cross_fitted"
     },
     {
      "kind": "support_clip",
@@ -6306,7 +6314,8 @@
      "weight_mapping": "household_to_benunit",
      "fit": "regime_gated_qrf",
      "landing": "eldest_working_age_adult_lowest_person_id",
-     "seed": 44
+     "seed": 44,
+     "gate_calibration": "cross_fitted"
     }
    ],
    "outputs": [],
@@ -7599,7 +7608,8 @@
      "clamp_minimum": 0,
      "clamp_maximum": "employment_income floored at zero; every row, reported or predicted, FRS and SPI channel",
      "preserve_asked_rows": true,
-     "cache": false
+     "cache": false,
+     "gate_calibration": "cross_fitted"
     },
     {
      "kind": "convert_donors_to_target_stock",

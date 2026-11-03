@@ -3223,6 +3223,12 @@
       },
       "weight": {
        "type": "string"
+      },
+      "gate_calibration": {
+       "enum": [
+        "in_sample",
+        "cross_fitted"
+       ]
       }
      },
      "required": [
@@ -3592,6 +3598,12 @@
          "null"
         ]
        }
+      },
+      "gate_calibration": {
+       "enum": [
+        "in_sample",
+        "cross_fitted"
+       ]
       }
      },
      "required": [
@@ -3724,6 +3736,12 @@
       },
       "weight_mapping": {
        "type": "string"
+      },
+      "gate_calibration": {
+       "enum": [
+        "in_sample",
+        "cross_fitted"
+       ]
       }
      },
      "required": [
@@ -7744,6 +7762,12 @@
       "salt": {
        "type": "string",
        "minLength": 1
+      },
+      "gate_calibration": {
+       "enum": [
+        "in_sample",
+        "cross_fitted"
+       ]
       }
      }
     },
@@ -8391,6 +8415,12 @@
          "null"
         ]
        }
+      },
+      "gate_calibration": {
+       "enum": [
+        "in_sample",
+        "cross_fitted"
+       ]
       }
      }
     },
@@ -8491,6 +8521,12 @@
       },
       "seed": {
        "type": "integer"
+      },
+      "gate_calibration": {
+       "enum": [
+        "in_sample",
+        "cross_fitted"
+       ]
       }
      }
     },
@@ -8586,6 +8622,12 @@
       },
       "seed": {
        "type": "integer"
+      },
+      "gate_calibration": {
+       "enum": [
+        "in_sample",
+        "cross_fitted"
+       ]
       }
      }
     },
@@ -8691,6 +8733,12 @@
       },
       "seed": {
        "type": "integer"
+      },
+      "gate_calibration": {
+       "enum": [
+        "in_sample",
+        "cross_fitted"
+       ]
       }
      }
     },
@@ -8957,6 +9005,12 @@
       },
       "seed": {
        "type": "integer"
+      },
+      "gate_calibration": {
+       "enum": [
+        "in_sample",
+        "cross_fitted"
+       ]
       }
      }
     },
@@ -11507,6 +11561,12 @@
          }
         }
        }
+      },
+      "gate_calibration": {
+       "enum": [
+        "in_sample",
+        "cross_fitted"
+       ]
       }
      }
     },
@@ -13445,6 +13505,12 @@
       "n_estimators": {
        "type": "integer",
        "minimum": 1
+      },
+      "gate_calibration": {
+       "enum": [
+        "in_sample",
+        "cross_fitted"
+       ]
       }
      }
     },
@@ -13486,6 +13552,12 @@
       "n_estimators": {
        "type": "integer",
        "minimum": 1
+      },
+      "gate_calibration": {
+       "enum": [
+        "in_sample",
+        "cross_fitted"
+       ]
       }
      }
     },

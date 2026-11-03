@@ -1855,6 +1855,7 @@ stages:
       charitable_investment_gifts: 0.0
     n_estimators: 100
     seed: 42
+    gate_calibration: cross_fitted
   - kind: resample_band_donor_leaves
     carrier_column: person_is_spi_income_band_carrier
     band_column: spi_income_band_donor_lower_bound
@@ -1968,6 +1969,7 @@ stages:
     require_all_outputs: false
     n_estimators: 100
     seed: 43
+    gate_calibration: cross_fitted
   - kind: zero_pension_age_reports_below_state_pension_age
     spi_state_pension_leaf: hmrc_spi_state_pension_income
     spi_channel_columns:
@@ -2494,6 +2496,7 @@ stages:
     landing: household_reference_person
     n_estimators: 100
     seed: 0
+    gate_calibration: cross_fitted
   outputs: []
   rewrites:
   - tenure_type
@@ -2680,6 +2683,7 @@ stages:
       - unit_and_investment_trusts
       undrawn_fraction: 1.0
     secured_debt_within: other_mortgage
+    gate_calibration: cross_fitted
   - kind: fold_into
     output: corporate_wealth
     inputs:
@@ -3468,6 +3472,7 @@ stages:
         trips_per_year: 0
         labels:
         - Less than once a year or never (%)
+    gate_calibration: cross_fitted
   - kind: assign_trips_from_band_means
     outputs:
     - bus_in_london_trips
@@ -3955,6 +3960,7 @@ stages:
     seed: 0
     salt: lcfs_prepayment_meter
     n_estimators: 100
+    gate_calibration: cross_fitted
   - kind: iterative_proportional_fit
     columns:
     - electricity_consumption
@@ -4176,6 +4182,7 @@ stages:
     seed: 0
     salt: lcfs_positive_road_fuel
     n_estimators: 100
+    gate_calibration: cross_fitted
   - kind: level_road_fuel
     columns:
     - petrol_spending
@@ -4812,6 +4819,7 @@ stages:
     weights: explicit
     seed: 0
     n_estimators: 100
+    gate_calibration: cross_fitted
   - kind: support_clip
     range: donor_realized
   - kind: price_bus_support
@@ -5084,6 +5092,7 @@ stages:
     fit: regime_gated_qrf
     landing: eldest_working_age_adult_lowest_person_id
     seed: 44
+    gate_calibration: cross_fitted
   outputs: []
   rewrites:
   - universal_credit_reported
@@ -6101,6 +6110,7 @@ stages:
     clamp_maximum: employment_income floored at zero; every row, reported or predicted, FRS and SPI channel
     preserve_asked_rows: true
     cache: false
+    gate_calibration: cross_fitted
   - kind: convert_donors_to_target_stock
     resource: salary_sacrifice_anchor.json
     target: 5400000

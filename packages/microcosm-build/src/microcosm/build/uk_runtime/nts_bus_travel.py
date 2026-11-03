@@ -59,6 +59,12 @@ from microcosm.build.uk_runtime.national_frame import (
     uk_time_period,
     validate_uk_national_frame,
 )
+from microcosm.build.uk_runtime.qrf_gates import (
+    UK_DEFAULT_GATE_CALIBRATION,
+    UK_GATE_OUTCOMES_EVIDENCE,
+    declared_gate_calibration,
+    gate_outcomes,
+)
 from microcosm.build.uk_runtime.receipt_counts import UK_DISCLOSURE_FLOOR, UK_WITHHELD
 from microcosm.build.uk_runtime.support_clip import (
     UKSupportClipReceipt,
@@ -1192,6 +1198,7 @@ def impute_bus_use_band(
     *,
     seed: int,
     n_estimators: int,
+    gate_calibration: str = UK_DEFAULT_GATE_CALIBRATION,
 ) -> BandImputation:
     """Draw each recipient person's interview band from a QRF fitted on the donor.
 
@@ -1199,7 +1206,9 @@ def impute_bus_use_band(
     the gate draws user / non-user, the positive forest the band among users,
     both from identity-keyed uniforms (``stable_identity_uniforms`` on the
     person id), so the draw is invariant to ordering and batching. Draws are
-    rounded to the nearest band.
+    rounded to the nearest band. A cross-fitted gate (``gate_calibration``)
+    deals each NTS household's members to the same fold, and the receipt then
+    names the gate's outcome.
     """
 
     from microcosm.fit.qrf import RegimeGatedQRF
@@ -1210,8 +1219,16 @@ def impute_bus_use_band(
     train = donor_encoded.copy()
     train[BAND_COLUMN] = donor[BAND_COLUMN].to_numpy(dtype=float)
     train["weight"] = donor["weight"].to_numpy(dtype=float)
-    model = RegimeGatedQRF(n_estimators=n_estimators, seed=seed)
-    fitted = model.fit(train, predictors, [BAND_COLUMN], weights="weight")
+    model = RegimeGatedQRF(
+        n_estimators=n_estimators, seed=seed, gate_calibration=gate_calibration
+    )
+    fitted = model.fit(
+        train,
+        predictors,
+        [BAND_COLUMN],
+        weights="weight",
+        groups=donor["household_id"].to_numpy() if "household_id" in donor else None,
+    )
     ids = recipient["person_id"].to_numpy()
     quantiles = stable_identity_uniforms(ids, seed=seed, salt=BAND_SALT_QUANTILE)
     signs = stable_identity_uniforms(ids, seed=seed, salt=BAND_SALT_SIGN)
@@ -1236,6 +1253,11 @@ def impute_bus_use_band(
         "donor_persons": int(len(donor)),
         "recipient_persons": int(len(recipient)),
     }
+    if gate_calibration != UK_DEFAULT_GATE_CALIBRATION:
+        receipt["gate_calibration"] = gate_calibration
+        receipt[UK_GATE_OUTCOMES_EVIDENCE] = gate_outcomes(
+            UK_NTS_BUS_TRAVEL_STAGE_NAME, fitted
+        )
     records = (
         FitWeightRecord(
             f"{UK_NTS_BUS_TRAVEL_STAGE_NAME}:{BAND_COLUMN}", fitted.weight_kind
@@ -1892,6 +1914,9 @@ class UKNTSBusTravelStageTransform:
                 recipient,
                 seed=seed,
                 n_estimators=int(band_parameters.get("n_estimators", 100)),
+                gate_calibration=declared_gate_calibration(
+                    self.stage, IMPUTE_BUS_USE_BAND_KIND
+                ),
             )
             means, means_receipt = band_means_from_donor(donor.person)
             single_fare_shares, shares_receipt = single_fare_shares_from_donor(

@@ -49,6 +49,10 @@ from microcosm.build.uk_runtime.national_frame import (
     uk_time_period,
     validate_uk_national_frame,
 )
+from microcosm.build.uk_runtime.qrf_gates import (
+    UK_GATE_OUTCOMES_EVIDENCE,
+    declared_gate_calibration,
+)
 from microcosm.build.uk_runtime.release_input_coverage import (
     DEFAULT_MINIMUM_NONDEFAULT_MASS_SHARE,
 )
@@ -431,7 +435,7 @@ class UKSPIIncomeSpineResult:
     post_draw_identity_rows: int
 
     def evidence(self) -> dict[str, object]:
-        return {
+        evidence: dict[str, object] = {
             "stage": UK_HMRC_SPI_INCOME_SPINE_STAGE_NAME,
             "source_vintages": {
                 "spi_donor": "2022-23",
@@ -484,6 +488,9 @@ class UKSPIIncomeSpineResult:
                 "exact": True,
             },
         }
+        if self.imputation.gate_outcomes:
+            evidence[UK_GATE_OUTCOMES_EVIDENCE] = dict(self.imputation.gate_outcomes)
+        return evidence
 
 
 @dataclass(frozen=True)
@@ -885,6 +892,12 @@ class UKSPIIncomeSpineStageTransform:
                 None if donor_age_model is None else donor_age_model.state_pension_age
             ),
             employment_pay_floor=employment_pay_floor,
+            stage1_gate_calibration=declared_gate_calibration(
+                self.stage, "fit_weighted_qrf_stage1"
+            ),
+            stage2_gate_calibration=declared_gate_calibration(
+                self.stage, "fit_weighted_qrf_stage2"
+            ),
         )
         result_frame = uk_national_frame(
             person=imputation.person,

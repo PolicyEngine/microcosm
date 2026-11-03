@@ -90,6 +90,12 @@ from microcosm.build.uk_runtime.nts_car_attributes import (
     assign_car_attributes,
     car_attributes_operation,
 )
+from microcosm.build.uk_runtime.qrf_gates import (
+    UK_DEFAULT_GATE_CALIBRATION,
+    UK_GATE_OUTCOMES_EVIDENCE,
+    declared_gate_calibration,
+    gate_outcomes,
+)
 from microcosm.build.uk_runtime.receipt_counts import (
     extreme_count,
     floored_share,
@@ -907,6 +913,7 @@ class UKLCFSConsumptionResult:
     gambling_participation: Mapping[str, Any] | None = None
     excise_quantities: Mapping[str, Any] | None = None
     car_attributes: Mapping[str, Any] | None = None
+    gate_outcomes: Mapping[str, str] | None = None
 
     def evidence(self) -> dict[str, object]:
         evidence: dict[str, object] = {
@@ -949,6 +956,8 @@ class UKLCFSConsumptionResult:
             evidence[UK_LCFS_EXCISE_QUANTITIES_RECEIPT] = dict(self.excise_quantities)
         if self.car_attributes is not None:
             evidence[ASSIGN_CAR_ATTRIBUTES_KIND] = dict(self.car_attributes)
+        if self.gate_outcomes:
+            evidence[UK_GATE_OUTCOMES_EVIDENCE] = dict(self.gate_outcomes)
         return evidence
 
 
@@ -1284,6 +1293,15 @@ class UKLCFSConsumptionStageTransform:
             gambling_participation=None if gambling is None else gambling.receipt,
             excise_quantities=excise_quantities,
             car_attributes=None if car_attributes is None else car_attributes.receipt,
+            gate_outcomes={
+                **imputation.gate_outcomes,
+                **incidence.receipt.get(UK_GATE_OUTCOMES_EVIDENCE, {}),
+                **(
+                    {}
+                    if prepayment is None
+                    else prepayment.receipt.get(UK_GATE_OUTCOMES_EVIDENCE, {})
+                ),
+            },
         )
         return result
 
@@ -1304,6 +1322,8 @@ class UKLCFSConsumptionStageTransform:
 class UKLCFSConsumptionImputationResult:
     draws: pd.DataFrame
     fit_weight_records: tuple[FitWeightRecord, ...]
+    #: Each chain target's gate outcome, when the chain is not in-sample.
+    gate_outcomes: Mapping[str, str] = field(default_factory=dict)
 
 
 class DiagnosticUnavailableError(ValueError):
@@ -1926,6 +1946,10 @@ def redraw_zero_road_fuel(
     zero = flagged & ~(before > 0)
     redrawn = household_draws.copy()
     regimes: dict[str, str] | None = None
+    gate_calibration = str(
+        parameters.get("gate_calibration", UK_DEFAULT_GATE_CALIBRATION)
+    )
+    outcomes: dict[str, str] = {}
     training_rows = 0
     records: tuple[FitWeightRecord, ...] = ()
     if zero.any():
@@ -1947,9 +1971,11 @@ def redraw_zero_road_fuel(
             / donor_total[positive]
         )
         targets = [UK_LCFS_ROAD_FUEL_TOTAL, UK_LCFS_PETROL_SHARE]
-        fitted = RegimeGatedQRF(n_estimators=n_estimators, seed=seed).fit(
-            train, list(predictors), targets, weights="household_weight"
-        )
+        fitted = RegimeGatedQRF(
+            n_estimators=n_estimators, seed=seed, gate_calibration=gate_calibration
+        ).fit(train, list(predictors), targets, weights="household_weight")
+        if gate_calibration != UK_DEFAULT_GATE_CALIBRATION:
+            outcomes = gate_outcomes(UK_LCFS_CONSUMPTION_FIT_NAME, fitted)
         regimes = {target: str(regime) for target, regime in fitted.regimes().items()}
         if regimes[UK_LCFS_ROAD_FUEL_TOTAL] != Regime.POSITIVE_ONLY:
             raise ValueError(
@@ -2021,6 +2047,9 @@ def redraw_zero_road_fuel(
         "weighted_total_before": float(np.dot(weight, before)),
         "weighted_total_after": float(np.dot(weight, after)),
     }
+    if gate_calibration != UK_DEFAULT_GATE_CALIBRATION:
+        receipt["gate_calibration"] = gate_calibration
+        receipt[UK_GATE_OUTCOMES_EVIDENCE] = outcomes
     return RoadFuelIncidence(redrawn, receipt, records)
 
 
@@ -2107,9 +2136,12 @@ def impute_prepayment_meter(
     train = donor_encoded[[*predictors, "household_weight"]].reset_index(drop=True)
     donor_flag = donor[target].to_numpy(dtype=float)
     train[target] = donor_flag
-    fitted = RegimeGatedQRF(n_estimators=n_estimators, seed=seed).fit(
-        train, list(predictors), [target], weights="household_weight"
+    gate_calibration = str(
+        parameters.get("gate_calibration", UK_DEFAULT_GATE_CALIBRATION)
     )
+    fitted = RegimeGatedQRF(
+        n_estimators=n_estimators, seed=seed, gate_calibration=gate_calibration
+    ).fit(train, list(predictors), [target], weights="household_weight")
     ids = np.asarray(household_ids)
     drawn = fitted.predict_from_uniforms(
         recipient_encoded[list(predictors)].reset_index(drop=True),
@@ -2146,6 +2178,11 @@ def impute_prepayment_meter(
             weight[great_britain & flags].sum()
         ),
     }
+    if gate_calibration != UK_DEFAULT_GATE_CALIBRATION:
+        receipt["gate_calibration"] = gate_calibration
+        receipt[UK_GATE_OUTCOMES_EVIDENCE] = gate_outcomes(
+            UK_LCFS_CONSUMPTION_FIT_NAME, fitted
+        )
     records = (
         FitWeightRecord(f"{UK_LCFS_CONSUMPTION_FIT_NAME}:{target}", fitted.weight_kind),
     )
@@ -5428,6 +5465,7 @@ def impute_lcfs_consumption(
     raw = pd.DataFrame(index=recipient_encoded.index)
     draws = pd.DataFrame(index=recipient_encoded.index)
     fit_records: list[FitWeightRecord] = []
+    outcomes: dict[str, str] = {}
     for target in targets:
         features = recipient_encoded.loc[:, list(predictors)]
         salt = f"{UK_LCFS_CONSUMPTION_FIT_NAME}:{target}"
@@ -5447,8 +5485,10 @@ def impute_lcfs_consumption(
                 f"{UK_LCFS_CONSUMPTION_FIT_NAME}:{target}", result.weight_kind
             )
         )
+        if gate_calibration != UK_DEFAULT_GATE_CALIBRATION:
+            outcomes.update(gate_outcomes(UK_LCFS_CONSUMPTION_FIT_NAME, result.fitted))
         state = result.state
-    return UKLCFSConsumptionImputationResult(draws, tuple(fit_records))
+    return UKLCFSConsumptionImputationResult(draws, tuple(fit_records), outcomes)
 
 
 def support_clip_to_donor(
@@ -5608,10 +5648,7 @@ def _qrf_n_estimators(stage: SourceStageSpec) -> int:
 
 def _qrf_gate_calibration(stage: SourceStageSpec) -> str:
     """The chain's declared gate calibration; the in-sample gate when undeclared."""
-    for operation in stage.operations:
-        if operation.kind == "fit_weighted_qrf_chain":
-            return str(operation.parameters.get("gate_calibration", "in_sample"))
-    return "in_sample"
+    return declared_gate_calibration(stage, "fit_weighted_qrf_chain")
 
 
 def _require_path(path: str | Path | None) -> Path:

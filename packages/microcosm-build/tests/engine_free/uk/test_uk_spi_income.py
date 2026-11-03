@@ -1360,3 +1360,57 @@ def test_floored_rows_keep_the_tape_pay_as_their_year_of_pay() -> None:
         spi_income._keep_floored_rows_year_of_pay(
             person.copy(), uplift=pd.Series([20_000.0], index=[10])
         )
+
+
+def test_each_spi_fit_takes_its_operations_gate_calibration(
+    monkeypatch, tmp_path
+) -> None:
+    """The tape forest and the FRS reference forests take stage 1's declared
+    gate, stage 2 its own (microcosm#1359): the reference gate places a twin's
+    observed sign where the tape gate reads it, so they are calibrated alike.
+    The FRS fits fold by household; the tape's records stand alone."""
+
+    support = _dead_support()
+    donor_path = tmp_path / SPI_DONOR_FILENAME
+    _write_donor(donor_path)
+    monkeypatch.setattr(spi_income, "QRF", _FakeQRF)
+    monkeypatch.setattr(_FakeQRF, "fit_gates", [])
+    _bypass_reviewed_donor_identity(monkeypatch)
+    real_cross_fit = spi_income.cross_fit_transport
+    monkeypatch.setattr(
+        spi_income,
+        "cross_fit_transport",
+        lambda *args, **kwargs: real_cross_fit(
+            *args, **{**kwargs, "allow_in_sample": True}
+        ),
+    )
+    try:
+        result = impute_uk_spi_income_support(
+            support,
+            donor_path,
+            seed=9,
+            n_estimators=3,
+            donor_sample_size=None,
+            state_pension_age=66,
+            allow_in_sample_reference=True,
+            stage1_gate_calibration="cross_fitted",
+        )
+    except ImportError:
+        result = None
+    (tape_kind, tape_gate, tape_groups), *frs_fits = _FakeQRF.fit_gates
+    assert (tape_kind, tape_gate, tape_groups) == ("design", "cross_fitted", None)
+    *reference_fits, stage2_fit = frs_fits
+    assert reference_fits
+    assert {gate for _, gate, _ in reference_fits} == {"cross_fitted"}
+    assert stage2_fit[1] == "in_sample"
+    households = set(support.person["person_household_id"])
+    for kind, _, groups in frs_fits:
+        assert kind == "importance"
+        assert groups is not None and set(groups) <= households
+    if result is not None:
+        assert result.gate_outcomes
+        assert {key.split(":", 1)[0] for key in result.gate_outcomes} == {
+            spi_income.SPI_DONOR_FIT_NAME,
+            spi_income.SPI_TRANSPORT_FIT_NAME,
+        }
+        assert set(result.gate_outcomes.values()) == {"cross_fitted"}
