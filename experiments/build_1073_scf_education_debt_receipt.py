@@ -7,8 +7,9 @@ Three measurements, all weighted, all against the 2025 SCF:
    Alternate Table 13 (19.92% of families hold education debt, median
    $25,500), how the federal flag, X7179 and the whose-education codes split
    the balances the X7179 and holder rules act on, the X8000 degree test for
-   loans 4 and 6, and the Parent PLUS share and borrowers under each reading
-   of a loan for a child's education.
+   loans 4 and 6 (with the balances the swap moves), the Parent PLUS share
+   and borrowers under each reading of a loan for a child's education, and
+   the loans each of the child rules moves.
 2. **Hold-out fit and predictor ablation.** Families are split into five folds
    by ``yy1`` (all implicates of a family stay together). Each fold is drawn
    from the stage's two QRFs fit on the other four, and the drawn table is
@@ -38,6 +39,7 @@ import hashlib
 import json
 import zipfile
 from collections.abc import Mapping, Sequence
+from contextlib import contextmanager
 from dataclasses import asdict
 from datetime import UTC, datetime
 from pathlib import Path
@@ -380,7 +382,8 @@ def x8000_degree_check(full: pd.DataFrame) -> list[dict[str, object]]:
     with a person whose highest degree (X5931 for the reference person, X6111
     for the spouse or partner) is at least the program's level; it
     discriminates when it is consistent with exactly one of them. Raw codes,
-    before the stage's correction; counts pool the five implicates.
+    before the stage's correction; counts pool the five implicates. Loans 4
+    and 6 are counted together and by position.
     """
 
     level = np.vectorize(lambda code: _DEGREE_LEVEL.get(int(code), 0))
@@ -394,7 +397,12 @@ def x8000_degree_check(full: pd.DataFrame) -> list[dict[str, object]]:
     reversed_family = pd.to_numeric(full[SCF_REVERSED_COLUMN]).to_numpy() == 1
     implicate = pd.to_numeric(full["y1"]).astype(int).to_numpy() % 10
     rows = []
-    for loans, positions in (("1, 2, 3, 5", (0, 1, 2, 4)), ("4, 6", (3, 5))):
+    for loans, positions in (
+        ("1, 2, 3, 5", (0, 1, 2, 4)),
+        ("4, 6", (3, 5)),
+        ("4", (3,)),
+        ("6", (5,)),
+    ):
         for family, label in ((False, "not reversed"), (True, "reversed")):
             for code in (1, 2):
                 counts = {"all": [0, 0], "implicate_1": [0, 0]}
@@ -431,37 +439,195 @@ def x8000_degree_check(full: pd.DataFrame) -> list[dict[str, object]]:
     return rows
 
 
-def _derive_reading(full: pd.DataFrame, reading: str) -> pd.DataFrame:
-    """Donor targets under one reading of the whose-education codes.
+@contextmanager
+def _stage_rules(**overrides: object):
+    """Temporarily replace stage-module rule constants (for one reading)."""
 
-    ``before`` is the previous rule: no X8000 correction and every loan for a
-    child's education the head's Parent PLUS loan (as if no child were
-    listed). ``x8000_only`` adds the correction. ``build`` is the stage.
-    ``within_limit_parent_plus`` reads an undergraduate loan within the
-    dependent limit for a child of dependent age as Parent PLUS too.
-    """
+    saved = {name: getattr(education_debt, name) for name in overrides}
+    for name, value in overrides.items():
+        setattr(education_debt, name, value)
+    try:
+        yield
+    finally:
+        for name, value in saved.items():
+            setattr(education_debt, name, value)
 
+
+_EVERY_CHILD_LOAN_PARENT_PLUS = {
+    "SCF_WHOSE_EDUCATION_HOLDER": {
+        **education_debt.SCF_WHOSE_EDUCATION_HOLDER,
+        3: education_debt._PARENT_PLUS,
+    }
+}
+#: Rule constants each reading replaces. ``before`` and ``x8000_only`` make
+#: every loan for a child's education the head's Parent PLUS loan, the rule
+#: before child routing; the limit readings apply one dependent limit to every
+#: loan year.
+_READING_RULES: Mapping[str, Mapping[str, object]] = {
+    "before": _EVERY_CHILD_LOAN_PARENT_PLUS,
+    "x8000_only": _EVERY_CHILD_LOAN_PARENT_PLUS,
+    "build": {},
+    "within_limit_parent_plus": {
+        "_DEPENDENT_UNDERGRADUATE_AGGREGATE_LIMITS": ((-np.inf, -1.0),)
+    },
+    "dependent_limit_31000_every_year": {
+        "_DEPENDENT_UNDERGRADUATE_AGGREGATE_LIMITS": ((-np.inf, 31_000.0),)
+    },
+    "dependent_limit_57500": {
+        "_DEPENDENT_UNDERGRADUATE_AGGREGATE_LIMITS": ((-np.inf, 57_500.0),)
+    },
+}
+
+
+def _reading_frame(full: pd.DataFrame, reading: str) -> pd.DataFrame:
     frame = full.copy()
     if reading in {"before", "x8000_only"}:
         for column in SCF_HOUSEHOLD_LISTING_RELATIONSHIP_COLUMNS:
             frame[column] = 0
     if reading == "before":
         frame[SCF_REVERSED_COLUMN] = 5
-    if reading != "within_limit_parent_plus":
-        return derive_scf_education_debt_targets(frame)
-    limit = education_debt._DEPENDENT_UNDERGRADUATE_AGGREGATE_LIMIT
-    education_debt._DEPENDENT_UNDERGRADUATE_AGGREGATE_LIMIT = -1.0
-    try:
-        return derive_scf_education_debt_targets(frame)
-    finally:
-        education_debt._DEPENDENT_UNDERGRADUATE_AGGREGATE_LIMIT = limit
+    return frame
 
 
-READINGS = ("before", "x8000_only", "build", "within_limit_parent_plus")
+def _derive_reading(full: pd.DataFrame, reading: str) -> pd.DataFrame:
+    """Donor targets under one reading of the whose-education codes.
+
+    ``before`` is the rule before child routing: no X8000 correction and every
+    loan for a child's education the head's Parent PLUS loan. ``x8000_only``
+    adds the correction. ``build`` is the stage. ``within_limit_parent_plus``
+    reads an undergraduate loan within the dependent limit for a child of
+    dependent age as Parent PLUS too. ``dependent_limit_31000_every_year`` is
+    the previous round's flat limit, and ``dependent_limit_57500`` gives the
+    child an over-the-limit loan up to the $57,500 a dependent student may
+    borrow when a parent cannot get a PLUS loan (34 CFR 685.203(c)(1)(iii)
+    and (e)(2)).
+    """
+
+    with _stage_rules(**_READING_RULES[reading]):
+        return derive_scf_education_debt_targets(_reading_frame(full, reading))
 
 
-def child_education_readings(full: pd.DataFrame) -> dict[str, dict[str, float]]:
-    """Parent PLUS share and borrowers (people) under each reading."""
+def _loan_holders(full: pd.DataFrame, reading: str) -> tuple[np.ndarray, np.ndarray]:
+    with _stage_rules(**_READING_RULES[reading]):
+        return education_debt._scf_education_loan_holders(_reading_frame(full, reading))
+
+
+READINGS = (
+    "before",
+    "x8000_only",
+    "build",
+    "within_limit_parent_plus",
+    "dependent_limit_31000_every_year",
+    "dependent_limit_57500",
+)
+
+
+def _federal_loan_dollars(full: pd.DataFrame) -> tuple[np.ndarray, np.ndarray]:
+    """Federal balances of loans 1-6 after the X7179 rule, and the loan mask."""
+
+    balance = np.maximum(_matrix(full, SCF_EDUCATION_LOAN_BALANCE_COLUMNS), 0.0)
+    federal = (_matrix(full, SCF_EDUCATION_LOAN_FEDERAL_COLUMNS) == 1) & (balance > 0)
+    remaining = np.maximum(
+        pd.to_numeric(full[SCF_EDUCATION_LOAN_REMAINING_BALANCE_COLUMN])
+        .fillna(0)
+        .to_numpy(dtype=np.float64),
+        0.0,
+    )
+    loans_1_6 = balance.sum(axis=1)
+    gross_up = np.ones(len(full))
+    positive = loans_1_6 > 0
+    gross_up[positive] = 1.0 + remaining[positive] / loans_1_6[positive]
+    return np.where(federal, balance, 0.0) * gross_up[:, None], federal
+
+
+def _loan_summary(
+    full: pd.DataFrame, mask: np.ndarray, dollars: np.ndarray
+) -> dict[str, float]:
+    weight = full["wgt"].to_numpy(dtype=np.float64)[:, None]
+    implicate = pd.to_numeric(full["y1"]).astype(int).to_numpy() % 10
+    federal_total = float((dollars * weight).sum())
+    moved = float((np.where(mask, dollars, 0.0) * weight).sum())
+    return {
+        "loans_pooled": int(mask.sum()),
+        "loans_implicate_1": int((mask & (implicate == 1)[:, None]).sum()),
+        "weighted_loans": float((mask * weight).sum()),
+        "federal_dollars": moved,
+        "share_of_federal": moved / federal_total,
+    }
+
+
+def child_education_loan_moves(full: pd.DataFrame) -> dict[str, dict[str, float]]:
+    """Federal loans for a child's education that this round's rules move.
+
+    Loan counts pool the five implicates (a family appears five times);
+    weighted loans and dollars use ``wgt``, and dollars follow the X7179 rule.
+    """
+
+    dollars, federal = _federal_loan_dollars(full)
+    whose = education_debt._scf_whose_education_codes(full)
+    build, fits = _loan_holders(full, "build")
+    flat, _ = _loan_holders(full, "dependent_limit_31000_every_year")
+    wide, _ = _loan_holders(full, "dependent_limit_57500")
+    child = education_debt._CHILD
+    plus = education_debt._PARENT_PLUS
+    head = education_debt._HEAD
+    for_a_child = federal & (whose == 3)
+    year = _matrix(full, SCF_EDUCATION_LOAN_YEAR_COLUMNS)
+    moves = {
+        "graduate_loans_without_a_fitting_child_to_head_own": for_a_child
+        & (build == head),
+        "loan_year_limit_child_to_parent_plus": for_a_child
+        & (flat == child)
+        & (build == plus),
+        "loan_year_limit_parent_plus_to_child": for_a_child
+        & (flat == plus)
+        & (build == child),
+        "over_the_limit_parent_plus_with_a_fitting_child": for_a_child
+        & (build == plus)
+        & fits.any(axis=1),
+        "limit_57500_parent_plus_to_child": for_a_child
+        & (build == plus)
+        & (wide == child),
+        "borrowed_before_1993": for_a_child & (year < 1993),
+        "borrowed_1993_to_2007": for_a_child & (year >= 1993) & (year < 2008),
+        "borrowed_2008_or_later": for_a_child & (year >= 2008),
+    }
+    result: dict[str, dict[str, float]] = {
+        name: _loan_summary(full, mask, dollars) for name, mask in moves.items()
+    }
+    result["earliest_years"] = {
+        "loan_for_a_child": float(year[for_a_child].min()),
+        "any_federal_loan": float(year[federal].min()),
+    }
+    return result
+
+
+def x8000_swap_share(full: pd.DataFrame) -> dict[str, float]:
+    """Federal balances whose holder the X8000 swap of loans 4 and 6 changes."""
+
+    dollars, federal = _federal_loan_dollars(full)
+    whose = _matrix(full, SCF_EDUCATION_LOAN_WHOSE_COLUMNS)
+    reversed_family = (
+        pd.to_numeric(full[SCF_REVERSED_COLUMN]).fillna(0).to_numpy() == 1
+    )[:, None]
+    positions = np.zeros(whose.shape, dtype=bool)
+    for loan in education_debt.SCF_WHOSE_EDUCATION_UNREVERSED_LOANS:
+        positions[:, loan - 1] = True
+    swapped = federal & reversed_family & positions & np.isin(whose, [1, 2])
+    result = _loan_summary(full, swapped, dollars)
+    for loan in education_debt.SCF_WHOSE_EDUCATION_UNREVERSED_LOANS:
+        only = np.zeros(whose.shape, dtype=bool)
+        only[:, loan - 1] = True
+        result[f"loan_{loan}"] = _loan_summary(full, swapped & only, dollars)
+    return result
+
+
+def child_education_readings(full: pd.DataFrame) -> dict[str, dict[str, object]]:
+    """Parent PLUS share and borrowers (people) under each reading.
+
+    ``loans_moved`` counts and sizes the loans this round's rules move
+    (:func:`child_education_loan_moves`).
+    """
 
     weight = full["wgt"].to_numpy(dtype=np.float64)
     result = {}
@@ -484,6 +650,7 @@ def child_education_readings(full: pd.DataFrame) -> dict[str, dict[str, float]]:
             "parent_plus_holders": float(weight[plus > 0].sum()),
             "child_borrowers": float(weight[child > 0].sum()),
         }
+    result["loans_moved"] = child_education_loan_moves(full)
     return result
 
 
@@ -648,6 +815,120 @@ def _rank_correlation(a: np.ndarray, b: np.ndarray) -> float:
     return float(np.corrcoef(ranks_a, ranks_b)[0, 1])
 
 
+def child_share_moves(drawn: pd.DataFrame, weight: np.ndarray) -> dict[str, float]:
+    """Child shares drawn for households without an adult child, and where they go.
+
+    The draw gives the graduate part to the head's own balance and the rest to
+    the head's Parent PLUS loan (``draw_scf_education_debt_households``).
+    """
+
+    weight = np.asarray(weight, dtype=np.float64)
+    graduate = drawn["child_graduate_balance_moved_to_head"].to_numpy(dtype=np.float64)
+    undergraduate = drawn["child_undergraduate_balance_moved_to_parent_plus"].to_numpy(
+        dtype=np.float64
+    )
+    total = float(
+        np.dot(
+            drawn[SCF_EDUCATION_DEBT_TOTAL_TARGET].to_numpy(dtype=np.float64), weight
+        )
+    )
+    moved = (graduate + undergraduate) > 0
+    return {
+        "households": float(weight[moved].sum()),
+        "share_of_borrower_households": float(weight[moved].sum())
+        / float(weight[drawn[SCF_EDUCATION_DEBT_TOTAL_TARGET].to_numpy() > 0].sum()),
+        "graduate_to_head_own_dollars": float(np.dot(graduate, weight)),
+        "undergraduate_to_parent_plus_dollars": float(np.dot(undergraduate, weight)),
+        "graduate_to_head_own_share_of_total": float(np.dot(graduate, weight)) / total,
+        "undergraduate_to_parent_plus_share_of_total": float(
+            np.dot(undergraduate, weight)
+        )
+        / total,
+        "drawn_total": total,
+    }
+
+
+def host_children_in_law(frame: Frame) -> dict[str, float]:
+    """Host households where an adult child's spouse lives, which SCF code 4 counts.
+
+    SCF listing code 4 is "CHILD (in-law)", so the SCF's adult-children count
+    can include a son- or daughter-in-law; the CPS parent pointers that build
+    the host's count name only children. A child-in-law here is a member aged
+    18 or over whom an adult child of the reference person or partner names as
+    spouse (``A_SPOUSE``) and who is not one of those children or partners.
+    """
+
+    person = frame.table("person")
+    recipients = education_debt._recipients(frame)
+    household = person["person_household_id"].to_numpy()
+
+    def _int(column: str, fill: int) -> np.ndarray:
+        return (
+            pd.to_numeric(person[column], errors="coerce")
+            .fillna(fill)
+            .astype(np.int64)
+            .to_numpy()
+        )
+
+    line = _int("A_LINENO", -1)
+    spouse_pointer = _int("A_SPOUSE", 0)
+    age = pd.to_numeric(person["age"], errors="coerce").fillna(0.0).to_numpy()
+    partners = recipients.spouse_position[recipients.spouse_position >= 0]
+    parent_rows = {*recipients.head_position.tolist(), *partners.tolist()}
+    parents = {(household[row], line[row]) for row in parent_rows}
+    pointers = [_int(column, -1) for column in ("PEPAR1", "PEPAR2")]
+    is_child = np.array(
+        [
+            any(
+                pointer[row] > 0 and (household[row], pointer[row]) in parents
+                for pointer in pointers
+            )
+            for row in range(len(person))
+        ],
+        dtype=bool,
+    )
+    adult_child = is_child & (age >= 18.0)
+    position = {(household[row], line[row]): row for row in range(len(person))}
+    in_law = np.zeros(len(person), dtype=bool)
+    for row in np.flatnonzero(adult_child & (spouse_pointer > 0)):
+        partner = position.get((household[row], spouse_pointer[row]))
+        if (
+            partner is not None
+            and not is_child[partner]
+            and partner not in parent_rows
+            and age[partner] >= 18.0
+        ):
+            in_law[partner] = True
+    order = frame.table("household")["household_id"].to_numpy()
+    household_weight = np.asarray(
+        frame.weights_for("household").values, dtype=np.float64
+    )
+    person_weight = (
+        pd.Series(household_weight, index=order)
+        .reindex(household)
+        .to_numpy(dtype=np.float64)
+    )
+
+    def _households(mask: np.ndarray) -> float:
+        held = (
+            pd.Series(mask, index=household)
+            .groupby(level=0, sort=False)
+            .any()
+            .reindex(order)
+            .fillna(False)
+            .to_numpy(dtype=bool)
+        )
+        return float(household_weight[held].sum())
+
+    total = float(household_weight.sum())
+    return {
+        "share_of_households_with_an_adult_child": _households(adult_child) / total,
+        "share_of_households_with_a_child_in_law": _households(in_law) / total,
+        "adult_children": float(person_weight[adult_child].sum()),
+        "children_in_law": float(person_weight[in_law].sum()),
+    }
+
+
 def load_host_frame(path: Path) -> Frame:
     """Read the columns the stage needs from a Microcosm US H5 (table format)."""
 
@@ -796,6 +1077,18 @@ def markdown(receipt: Mapping[str, object]) -> str:
             f"{entry['consistent_with_coded_person']} "
             f"({entry['consistent_implicate_1']}) |"
         )
+    swap = checks["x8000_swap"]
+    lines += [
+        "",
+        "The swap changes the holder of "
+        f"{_pct(swap['share_of_federal'])} of federal balances "
+        f"({_dollars(swap['federal_dollars'])}; {swap['loans_pooled']} loans "
+        f"pooled, {swap['loans_implicate_1']} in implicate 1): loan 4 "
+        f"{_pct(swap['loan_4']['share_of_federal'])} "
+        f"({swap['loan_4']['loans_pooled']} loans), loan 6 "
+        f"{_pct(swap['loan_6']['share_of_federal'])} "
+        f"({swap['loan_6']['loans_pooled']} loans).",
+    ]
     readings = checks["child_education_readings"]
     reading_labels = {
         "before": "Before: every code-3 loan Parent PLUS, codes as published",
@@ -804,6 +1097,12 @@ def markdown(receipt: Mapping[str, object]) -> str:
         "within_limit_parent_plus": (
             "Alternative: within-limit undergraduate loans for a dependent-age "
             "child also Parent PLUS"
+        ),
+        "dependent_limit_31000_every_year": (
+            "Previous limit: $31,000 for every loan year"
+        ),
+        "dependent_limit_57500": (
+            "Alternative: over-the-limit loans the child's own up to $57,500"
         ),
     }
     lines += [
@@ -827,6 +1126,47 @@ def markdown(receipt: Mapping[str, object]) -> str:
             f"{entry['parent_plus_holders'] / 1e6:,.1f}M | "
             f"{entry['child_borrowers'] / 1e6:,.1f}M | "
             f"{entry['borrowers'] / 1e6:,.1f}M |"
+        )
+    moves = readings["loans_moved"]
+    move_labels = {
+        "graduate_loans_without_a_fitting_child_to_head_own": (
+            "Graduate loans no listed child fits: head's own, not Parent PLUS"
+        ),
+        "loan_year_limit_child_to_parent_plus": (
+            "Loan-year limit: child's own under a flat $31,000, now Parent PLUS"
+        ),
+        "loan_year_limit_parent_plus_to_child": (
+            "Loan-year limit: Parent PLUS under a flat $31,000, now the child's"
+        ),
+        "over_the_limit_parent_plus_with_a_fitting_child": (
+            "Parent PLUS although a listed child fits (over the dependent limit)"
+        ),
+        "limit_57500_parent_plus_to_child": (
+            "Of those, the child's own under a $57,500 limit"
+        ),
+        "borrowed_before_1993": "All loans for a child borrowed before 1993",
+        "borrowed_1993_to_2007": "All loans for a child borrowed 1993-2007",
+        "borrowed_2008_or_later": "All loans for a child borrowed 2008 or later",
+    }
+    lines += [
+        "",
+        "Federal loans for a child's education (code 3) that each rule moves. "
+        "Loans pool the five implicates (implicate 1 in brackets); weighted "
+        "loans and dollars use `wgt`, after the X7179 rule. The earliest such "
+        f"loan was borrowed in {moves['earliest_years']['loan_for_a_child']:.0f} "
+        "(any federal loan: "
+        f"{moves['earliest_years']['any_federal_loan']:.0f}).",
+        "",
+        "| Loans | Loans | Weighted loans | Dollars | Share of federal |",
+        "|---|---:|---:|---:|---:|",
+    ]
+    for key, label in move_labels.items():
+        entry = moves[key]
+        lines.append(
+            f"| {label} | {entry['loans_pooled']} ({entry['loans_implicate_1']}) | "
+            f"{entry['weighted_loans']:,.0f} | "
+            f"${entry['federal_dollars'] / 1e9:,.2f}B | "
+            f"{_pct(entry['share_of_federal'])} |"
         )
     lines += [
         "",
@@ -1081,6 +1421,38 @@ def markdown(receipt: Mapping[str, object]) -> str:
             + " | ".join(f"{values[m]:.3f}" for m in metrics)
             + " |"
         )
+    move_rows = [
+        ("SCF hold-out (build)", holdout_moves)
+        for holdout_moves in [
+            receipt["holdout"]["variants"]
+            .get(PRODUCTION_VARIANT, {})
+            .get("child_share_moves")
+        ]
+        if holdout_moves
+    ]
+    if host is not None:
+        move_rows.append(("Host: Build", receipt["host"]["child_share_moves"]))
+    lines += [
+        "",
+        "## Child shares drawn for households without an adult child",
+        "",
+        "Such a share is a loan for a student who lives elsewhere: its graduate "
+        "part (by the drawn child graduate share) joins the head's own balance "
+        "as graduate debt, and the rest is the head's Parent PLUS loan.",
+        "",
+        "| Draw | Households | Share of borrower households | Graduate part to "
+        "the head's own balance | Undergraduate part to Parent PLUS |",
+        "|---|---:|---:|---:|---:|",
+    ]
+    for label, entry in move_rows:
+        lines.append(
+            f"| {label} | {entry['households'] / 1e6:,.2f}M | "
+            f"{_pct(entry['share_of_borrower_households'])} | "
+            f"${entry['graduate_to_head_own_dollars'] / 1e9:,.2f}B "
+            f"({_pct(entry['graduate_to_head_own_share_of_total'])}) | "
+            f"${entry['undergraduate_to_parent_plus_dollars'] / 1e9:,.2f}B "
+            f"({_pct(entry['undergraduate_to_parent_plus_share_of_total'])}) |"
+        )
     if host is not None:
         host_metrics = [
             m
@@ -1126,6 +1498,19 @@ def markdown(receipt: Mapping[str, object]) -> str:
             + " | ".join("" for _ in host_metrics)
             + " |"
         )
+        in_law = receipt["host"]["children_in_law"]
+        lines += [
+            "",
+            "SCF listing code 4 also counts children-in-law, so the SCF's adult-"
+            "children predictor can count a son- or daughter-in-law that the "
+            "host's CPS parent pointers never do. On the host, "
+            f"{_pct(in_law['share_of_households_with_a_child_in_law'])} of "
+            "households have an adult child's spouse present "
+            f"({in_law['children_in_law'] / 1e6:,.2f}M people, against "
+            f"{in_law['adult_children'] / 1e6:,.2f}M adult children in "
+            f"{_pct(in_law['share_of_households_with_an_adult_child'])} of "
+            "households).",
+        ]
     lines.append("")
     return "\n".join(lines)
 
@@ -1208,6 +1593,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         "source_checks": {
             **source_checks(donor, full),
             "x8000_degree_check": x8000_degree_check(full),
+            "x8000_swap": x8000_swap_share(full),
             "child_education_readings": child_education_readings(full),
             "consolidated_share_of_federal_balances_dated_2014_or_later": (
                 consolidated_share_of_new_loans(full)
@@ -1248,6 +1634,9 @@ def main(argv: Sequence[str] | None = None) -> int:
             "predictors": list(predictors),
             "fit": fit,
             "metrics": metrics,
+            "child_share_moves": child_share_moves(
+                drawn, donor["scf_weight"].to_numpy(dtype=np.float64)
+            ),
         }
         print(name, json.dumps(metrics, indent=None, default=float))
 
@@ -1292,6 +1681,22 @@ def main(argv: Sequence[str] | None = None) -> int:
         )
         gate = us_scf_education_debt_signal_gate(frame)
         host_fit = us_scf_education_debt_fit_table(frame)
+        # The same draw, repeated for its record of the child shares moved in
+        # households without an adult child.
+        drawn = draw_scf_education_debt_households(
+            education_debt._recipients(base).features,
+            donor,
+            seed=args.seed,
+            n_estimators=args.n_estimators,
+        )
+        host_moves = child_share_moves(
+            drawn,
+            np.asarray(base.weights_for("household").values, dtype=np.float64),
+        )
+        host_total = host_fit["households"]["federal_education_debt_total"]
+        host_moves["drawn_total_matches_build"] = bool(
+            abs(host_moves["drawn_total"] - host_total) <= 1e-9 * host_total
+        )
         label, definition, predictors = HOST_SETTINGS[BUILD_SETTING]
         receipt["host_settings"][BUILD_SETTING] = {
             "label": label,
@@ -1315,6 +1720,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             ),
             "fit": host_fit,
             "metrics_vs_scf": fit_metrics(observed, host_fit),
+            "child_share_moves": host_moves,
+            "children_in_law": host_children_in_law(base),
         }
         print("host", json.dumps(receipt["host"]["metrics_vs_scf"], default=float))
 
