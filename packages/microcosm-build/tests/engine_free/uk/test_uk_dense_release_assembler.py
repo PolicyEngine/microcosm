@@ -7,6 +7,7 @@ import hashlib
 import hmac
 import importlib.util
 import json
+import shlex
 from pathlib import Path
 
 import pytest
@@ -568,7 +569,8 @@ def test_assembler_stages_a_contract_valid_dense_release(
     summary = json.loads(capsys.readouterr().out)
     release_dir = out / UK_DENSE_RELEASE_ID
     assert summary["release_id"] == UK_DENSE_RELEASE_ID
-    assert summary["cut_tag"] == f"{UK_DENSE_RELEASE_ID}-20260903T105422Z-ca611e43"
+    assert (summary["release"], summary["build"]) == (UK_DENSE_RELEASE_ID, ATTEMPT)
+    assert "cut_tag" not in summary
     assert release_dir.is_dir()
     for name in dc._UK_DENSE_REQUIRED_RELEASE_FILES:
         assert (release_dir / name).is_file(), name
@@ -614,7 +616,18 @@ def test_assembler_stages_a_contract_valid_dense_release(
         shipped["reviewed_exclusions_stood_on"]
         == coverage["signed_deferrals"]["reviewed_exclusions"]
     )
-    assert "--tag-only" in summary["publish_command"]
+    # Each new dense build becomes current when it is published.
+    assert shlex.split(summary["publish_command"]) == [
+        "uv",
+        "run",
+        "microcosm-publish-release-build",
+        str(release_dir),
+        "--repo-id",
+        "policyengine/populace-uk-private",
+        "--artifact-root",
+        str(candidate),
+        "--make-current",
+    ]
     published = candidate / "microcosm_uk_2024_25_dense.h5"
     assert (
         published.read_bytes()
@@ -637,10 +650,24 @@ def test_assembler_stages_a_contract_valid_dense_release(
         ]
         is False
     )
-    assert (
-        manifest["artifacts"]["microcosm_uk_2024_25_dense"]["revision"]
-        == summary["cut_tag"]
+    # The build publishes into its own folder: both manifests name the release
+    # and the build (the calibration attempt), and nothing names a tag.
+    build_manifest = json.loads((release_dir / "build_manifest.json").read_text())
+    for document in (build_manifest, manifest):
+        assert (document["release"], document["build"]) == (
+            UK_DENSE_RELEASE_ID,
+            ATTEMPT,
+        )
+        assert not {"build_id", "attempt_id", "cut_tag"} & set(document)
+    assert manifest["built_at"] == build_manifest["created_at"]
+    assert manifest["built_with_model_package"]["name"] == "policyengine-uk"
+    assert manifest["built_with_core_package"]["name"] == "policyengine-core"
+    assert not any("revision" in entry for entry in manifest["artifacts"].values())
+    assert manifest["artifacts"]["microcosm_uk_2024_25_dense"]["role"] == "dataset"
+    assert manifest["artifacts"]["calibration_diagnostics"]["role"] == (
+        "calibration_diagnostics"
     )
+    assert manifest["artifacts"]["uk_local_gates"]["role"] == "uk_local_gates"
     assert (
         manifest["artifacts"]["microcosm_uk_2024_25_dense"]["repo_id"]
         == "policyengine/populace-uk-private"
@@ -664,13 +691,8 @@ def test_assembler_stages_a_contract_valid_dense_release(
     assert set(gate_summary["diagnostic_gates"]) == set(UK_LOCAL_GATE_SCOPE) - set(
         dc._UK_DENSE_RELEASE_BLOCKING_IDS
     )
-    assert (
-        "--no-latest" in summary["publish_command"]
-        and "populace-uk-private" in summary["publish_command"]
-    )
     # The national assembler's rule: the run's staging receipt rides into the
     # build manifest unchanged, where publication reads it.
-    build_manifest = json.loads((release_dir / "build_manifest.json").read_text())
     assert build_manifest["staging"] == _staging_delivery()
     # The contract re-validates the finished directory, and so does the pre-flight.
     dc.validate_release_dir(release_dir)
