@@ -79,7 +79,8 @@ def test_every_reference_is_active_or_exempt_with_matching_status():
             # G8-r2c F: the coarse stand-in rows park on their measurement
             # prerequisite, unexempt, until composition proves its producer.
             if row["metadata"].get("required_measurement_binding"):
-                assert status == "requires_prerequisites", row["name"]
+                # Active once G's producer meets A's proof; never exempt.
+                assert status in {"requires_prerequisites", "active"}, row["name"]
                 assert row["name"] not in exemptions, row["name"]
                 continue
             assert (status == "active") != (row["name"] in exemptions), (
@@ -347,7 +348,7 @@ def test_nz_every_variant_id_reaches_entitlement_rows_with_explicit_populations(
         for row in spec["resources"]["scenarios"]["scenarios"]
         if row["tier"] == "calibration"
     }
-    assert variants == {"V1", "V2", "V3", "V4", "VHF"}
+    assert variants == {"V1", "V2", "V3", "V4", "VHF", "VSI", "VEX", "VPT"}
     ids = [row["id"] for row, _ in rows]
     assert len(ids) == len(set(ids))
     for variant in variants:
@@ -1360,7 +1361,7 @@ def test_vsi_vex_and_vpt_change_only_their_own_knob():
     document = _spec()["resources"]["scenarios"]
     rows = {row["id"]: row for row in document["scenarios"]}
     assert rows["VSI"]["knobs"] == {"income_measure": "vsi"}
-    assert rows["VEX"]["knobs"] == {"annual_transfer_exposure": "0.75"}
+    assert rows["VEX"]["knobs"] == {"annual_transfer_exposure": 0.75}
     assert rows["VPT"]["knobs"] == {"earnings_tail_anchor": "vpt"}
     assert {rows[name]["tier"] for name in ("VSI", "VEX", "VPT")} == {"calibration"}
     central = document["central_knobs"]
@@ -1368,7 +1369,7 @@ def test_vsi_vex_and_vpt_change_only_their_own_knob():
         central["income_measure"],
         central["annual_transfer_exposure"],
         central["earnings_tail_anchor"],
-    ) == ("central", "1", "central")
+    ) == ("central", 1, "central")
     domains = document["knob_domains"]
     assert domains["income_measure"] == ["central", "vsi"]
     assert domains["earnings_tail_anchor"] == ["central", "vpt"]

@@ -2352,6 +2352,10 @@ class TestScenarios:
             "V3",
             "V4",
             "VHF",
+            # G8-r2c G: the stand-in's stress, exposure and tail variants.
+            "VSI",
+            "VEX",
+            "VPT",
         ]
         branch_points = {
             tier: row["branch_point"] for tier, row in document["tiers"].items()
@@ -4369,7 +4373,20 @@ class TestReportingClassifiers:
                 "scenario": scenario,
                 "cell": "beneficiary_superannuitant_other/superannuitant",
             }
-            for scenario in ("S0", "S1", "S2", "S3", "V1", "V2", "V3", "V4", "VHF")
+            for scenario in (
+                "S0",
+                "S1",
+                "S2",
+                "S3",
+                "V1",
+                "V2",
+                "V3",
+                "V4",
+                "VHF",
+                "VSI",
+                "VEX",
+                "VPT",
+            )
         ]
         support = next(
             row

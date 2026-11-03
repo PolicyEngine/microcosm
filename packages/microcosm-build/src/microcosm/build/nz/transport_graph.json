@@ -581,7 +581,7 @@
           "path": [],
           "encoding": "sha256"
         },
-        "profile_selection": "{\"aging_index\":\"central\",\"annual_transfer_exposure\":\"1\",\"area_column\":\"as_area\",\"asset_test\":\"on\",\"beneficiary_assignment\":\"central\",\"census_residual_allocation\":\"mar\",\"donor_money_index\":\"awe\",\"earnings_tail_anchor\":\"central\",\"income_measure\":\"central\",\"rent_allocation\":\"reference_unit\",\"rent_stock_factor\":1.0,\"superannuitant_treatment\":\"exclude_and_count\"}"
+        "profile_selection": "{\"aging_index\":\"central\",\"annual_transfer_exposure\":1,\"area_column\":\"as_area\",\"asset_test\":\"on\",\"beneficiary_assignment\":\"central\",\"census_residual_allocation\":\"mar\",\"donor_money_index\":\"awe\",\"earnings_tail_anchor\":\"central\",\"income_measure\":\"central\",\"rent_allocation\":\"reference_unit\",\"rent_stock_factor\":1.0,\"superannuitant_treatment\":\"exclude_and_count\"}"
       }
     },
     {
@@ -4441,7 +4441,7 @@
           "path": [],
           "encoding": "sha256"
         },
-        "profile_selection": "{\"aging_index\":\"central\",\"annual_transfer_exposure\":\"1\",\"area_column\":\"as_area\",\"asset_test\":\"on\",\"beneficiary_assignment\":\"central\",\"census_residual_allocation\":\"mar\",\"donor_money_index\":\"awe\",\"earnings_tail_anchor\":\"central\",\"income_measure\":\"central\",\"rent_allocation\":\"reference_unit\",\"rent_stock_factor\":1.0,\"superannuitant_treatment\":\"exclude_and_count\"}"
+        "profile_selection": "{\"aging_index\":\"central\",\"annual_transfer_exposure\":1,\"area_column\":\"as_area\",\"asset_test\":\"on\",\"beneficiary_assignment\":\"central\",\"census_residual_allocation\":\"mar\",\"donor_money_index\":\"awe\",\"earnings_tail_anchor\":\"central\",\"income_measure\":\"central\",\"rent_allocation\":\"reference_unit\",\"rent_stock_factor\":1.0,\"superannuitant_treatment\":\"exclude_and_count\"}"
       },
       "artifact_inputs": [
         {

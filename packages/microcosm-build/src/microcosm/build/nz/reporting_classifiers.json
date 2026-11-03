@@ -169,7 +169,10 @@
       "V2",
       "V3",
       "V4",
-      "VHF"
+      "VHF",
+      "VSI",
+      "VEX",
+      "VPT"
     ],
     "join_column": "family_id",
     "variant_rule": "carry_baseline_cell_by_unit_id",

@@ -1,6 +1,6 @@
 {
   "country": "nz",
-  "fingerprint": "1e8248a4f5905c0aabf085a933072ae186817c0a763f3174fe7ff99a0fe06fd1",
+  "fingerprint": "103897539d090aaa3a79c22354c8608567d8846e61ee616cf84eb7d95f4f4392",
   "gate_ids": [
     "calibration_per_family_fit",
     "demography_per_family_fit",
@@ -80,8 +80,8 @@
     "reference_profiles.json": "dc3d81e6fdeae12b93176872de690e21424695209390b253a3490e65cfd5740c",
     "reference_selection.json": "d7d1fbbd1c240c1943a3daa2e8c509cc33363dbd8d8bf6f405e4a7048ea86d6a",
     "release_contract.json": "6cd5e3a4a2bf30e4025e04e964c393b24040937d13db7e6a07b3966a55f3b114",
-    "reporting_classifiers.json": "2969a9907c4238680bc06f241d6bdd9e9d0544f622ecf49012572356e9b550e2",
-    "scenarios.json": "d4c338aa4286ac4640cd31c017e14ba6bf822c2bd00595af09e1c04cb63a8e9f",
+    "reporting_classifiers.json": "d50c1a24ee0959def0d3f95bf7f965f7acacfa2d9e2d84afce4567173e66d2dc",
+    "scenarios.json": "d80bbee8ca57f9f49130f8a373b979ceb8cadd532aafb2757cca5f2a0eb80b14",
     "source_stages.json": "cc82c68878ac0fc07ecbd796c1a66de6f34786ef8785125046425c37f26aff31",
     "spec/bundle.yaml": "e9716ce827e9006d4efdc392e7aaf9cbc33c16112a8fbc423e8f3e74ec506d8e",
     "spec/catalogs.yaml": "3ab2025af39cba93ead707b9463e428430a45b30696a43d0906cbcd97ed36631",
@@ -91,7 +91,7 @@
     "spec/vintages.yaml": "1ecc1a3f952bd25b834c394314e8c933ddb5b095fd64ba492dddb03e3cdd803e",
     "target_references.json": "6af5258a4e3451d7742ab9f3b454fec9e0bd7cf320fab6e784ff002a8be211c8",
     "transport_atomic_geography_support.json": "53465827f67c87aaf5a06c305c082cbf1e6cdf28f3843e853d1e012635517d10",
-    "transport_graph.json": "246b809fd212e039deabd56bd6eaa328e73c461e2df4ae37e17023eb9ec17afa",
+    "transport_graph.json": "cebbc8b5977280a885a1f5fde0a766b1d02698bdea0b2fff17f89f0b531a8e1f",
     "transport_inputs.json": "16d3957214d6305e3d3f41fe6343143a411d6055c75c43d3f171db3ee659ec2d"
   },
   "resources": [

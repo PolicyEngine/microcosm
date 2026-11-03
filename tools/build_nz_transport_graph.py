@@ -11,6 +11,7 @@ import argparse
 import copy
 import hashlib
 import json
+from decimal import Decimal
 from fractions import Fraction
 from functools import cache
 from pathlib import Path
@@ -465,8 +466,6 @@ TRANSFER_COMPONENTS = (
     "supported_living_payment_annual_gross_transfer_cents",
     "nz_super_annual_gross_transfer_cents",
 )
-#: R2C-7: VEX's declared annual-transfer exposure, as exact decimal text.
-VEX_EXPOSURE = "0.75"
 
 
 def measure_declaration(components):
@@ -752,8 +751,9 @@ def calibration_nodes(
     )
     annual = gross[-1]
     if exposure is not None:
+        # R2C-7: the knob is a number; the kernel reads exact decimal text.
         declaration = json.loads(annual["params"]["declaration"])
-        declaration["exposure"]["central"] = exposure
+        declaration["exposure"]["central"] = str(Decimal(repr(exposure)))
         annual["params"]["declaration"] = _canonical(declaration)
     rows.append(annual)
     rows.append(standin_node(population, prefix, measure))

@@ -23,7 +23,7 @@
     "census_residual_allocation": "mar",
     "donor_money_index": "awe",
     "income_measure": "central",
-    "annual_transfer_exposure": "1",
+    "annual_transfer_exposure": 1,
     "earnings_tail_anchor": "central"
   },
   "knob_domains": {
@@ -65,7 +65,7 @@
       "central",
       "vsi"
     ],
-    "annual_transfer_exposure": "exact nonnegative decimal text for money.annual_transfers@1's exposure.central; the central 1 is full_year_stock_equivalent; VEX's 0.75 is a declared judgment (R2C-7), not a measured exposure",
+    "annual_transfer_exposure": "a positive number for money.annual_transfers@1's exposure.central, written into the declaration as exact decimal text; the central 1 is full_year_stock_equivalent; VEX's 0.75 is a declared judgment (R2C-7), not a measured exposure",
     "earnings_tail_anchor": [
       "central",
       "vpt"
@@ -32112,7 +32112,7 @@
       "tier": "calibration",
       "method_card_row": "MC5",
       "knobs": {
-        "annual_transfer_exposure": "0.75"
+        "annual_transfer_exposure": 0.75
       },
       "description": "VEX exposure sensitivity (R2C-7): the annual-transfers node's exposure.central is the exact decimal 0.75 instead of 1. This is a declared judgment, disclosed as such: main has no measured annual-recipient exposure (msd_pre_activation_reconciliation.json). VSI covers exposure 0.",
       "encoding_knobs": {},
