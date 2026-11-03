@@ -2703,7 +2703,7 @@ class TestSupportRoster:
             counts[row["class"]] = counts.get(row["class"], 0) + 1
         assert counts == {
             "closure_default": 93,
-            "derived": 307,
+            "derived": 321,
             "normalized": 10,
             "copied": 3,
             "pending": 1,
