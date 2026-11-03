@@ -243,6 +243,7 @@ def test_nz_generation_zero_views_come_from_the_country_spec_seam() -> None:
         "axiom_input_closure.json",
         "axiom_rules_bindings.json",
         "benefit_gross_up.json",
+        "earnings_bands.json",
         "benefit_unit_rule.json",
         "calibration_bindings.json",
         "calibration_settings.json",
