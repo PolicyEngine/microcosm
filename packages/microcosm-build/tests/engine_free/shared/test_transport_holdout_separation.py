@@ -276,6 +276,114 @@ def test_non_text_measure_keeps_activation_outcome(toy, monkeypatch, resource, m
     assert _separation_gaps(guarded) == []
 
 
+def _leak_gap(resource, name="toy_leak", entity="household"):
+    return [
+        f"{SEPARATION}: {resource}.{name} ({entity}, receives_main) measures "
+        "the concept of holdout_references.toy_holdout_receipts "
+        "(person, receives_main)"
+    ]
+
+
+def test_unselected_mass_document_joins_the_guard(toy):
+    """With no node selecting ``mass_references``, its rows still count."""
+
+    spec = copy.deepcopy(toy.spec)
+    params = spec["resources"]["transport_graph"]["nodes"][0]["params"]
+    del params["mass_reference"], params["mass_reference_sha256"]
+    _rows(spec, "mass_references").append(
+        reference_row("toy_leak", entity="household", measure="receives_main")
+    )
+    assert _separation_gaps(_activation_error(spec)) == _leak_gap("mass_references")
+
+
+def test_parked_holdout_still_guards(toy):
+    """A ``pending`` holdout, exempted as activation asks, still holds out."""
+
+    spec = copy.deepcopy(toy.spec)
+    holdout = _rows(spec, "holdout_references")[0]
+    holdout["metadata"]["activation_status"] = "pending"
+    spec["resources"]["reference_selection"] = {
+        "schema_version": 1,
+        "resources": {
+            "holdout_references": {
+                "exempt": [
+                    {
+                        "name": holdout["name"],
+                        "activation_status": "pending",
+                        "reason": "Awaiting producer.",
+                    }
+                ]
+            }
+        },
+    }
+    assert _activation_error(spec) is None
+    _rows(spec, "target_references").append(
+        reference_row("toy_leak", entity="household", measure="receives_main")
+    )
+    assert _separation_gaps(_activation_error(spec)) == _leak_gap("target_references")
+
+
+def test_profile_selected_views_reach_the_guard(toy, monkeypatch):
+    """A selected view's rows reach the guard.
+
+    No real reference profile can do this today: ``resolve_reference_profiles``
+    keeps the base rows by name and its transformations never write
+    ``measure``, so every measure a view holds already sits in the default
+    view. This test pins one thing: views selected with a scenario's knobs
+    reach the guard. It patches ``transport_resource`` so a selected view
+    carries a row on the holdout's measure.
+    """
+
+    spec = copy.deepcopy(toy.spec)
+    reader = {
+        "id": "reader-case",
+        "kernel": "targets.compile@1",
+        "population": "open",
+        "params": {
+            "country": "xx",
+            "references": {"resource": "target_references", "encoding": "json"},
+            "references_sha256": {
+                "resource": "target_references",
+                "encoding": "sha256",
+            },
+        },
+    }
+    spec["resources"]["scenarios"]["scenarios"] = [
+        {"id": "case", "tier": "calibration", "knobs": {}, "nodes": [reader]}
+    ]
+    spec["resources"]["entitlement_graph"] = {
+        "schema_version": 1,
+        "nodes": [],
+        "variant_nodes": [],
+        "scenario_gap": "gap-{scenario}",
+        "variant_gap": "gap-{variant}",
+    }
+    assert _activation_error(spec) is None
+    original = compose_module.transport_resource
+    selected = []
+
+    def with_view_leak(spec, name, *, profile_selection=None):
+        document = original(spec, name, profile_selection=profile_selection)
+        if profile_selection is None or compose_module._stem(name) != (
+            "target_references"
+        ):
+            return document
+        selected.append(name)
+        leak = reference_row(
+            "toy_view_leak", entity="household", measure="receives_main"
+        )
+        return {
+            **document,
+            "target_references": [*document["target_references"], leak],
+        }
+
+    monkeypatch.setattr(compose_module, "transport_resource", with_view_leak)
+    assert _separation_gaps(_activation_error(spec)) == _leak_gap(
+        "target_references", "toy_view_leak"
+    )
+    assert selected
+
+
 def test_specs_without_holdout_references_keep_row_level_holdouts(toy):
     """The UK's rotated folds and the US's district blocks stay allowed.
 
