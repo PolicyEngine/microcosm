@@ -245,6 +245,31 @@ def test_packaged_activation_outcome_is_unchanged(country, monkeypatch):
     assert _separation_gaps(guarded) == []
 
 
+@pytest.mark.parametrize("measure", [["receives_main"], {"a": 1}], ids=["list", "dict"])
+@pytest.mark.parametrize(
+    "resource", ["target_references", "precal_references", "holdout_references"]
+)
+def test_non_text_measure_keeps_activation_outcome(toy, monkeypatch, resource, measure):
+    """A list or dict ``measure`` raises no ``TypeError`` from the guard.
+
+    On a non-holdout row the guard skips the row, as it skips a non-text
+    holdout measure; activation's outcome equals its outcome without the
+    guard. ``_activation_error`` catches only ``ValueError``, so a
+    ``TypeError`` fails the test.
+    """
+
+    spec = copy.deepcopy(toy.spec)
+    row = reference_row("toy_odd", entity="household", measure="receives_main")
+    row["measure"] = copy.deepcopy(measure)
+    _rows(spec, resource).append(row)
+    guarded = _activation_error(spec)
+    monkeypatch.setattr(
+        compose_module, "_holdout_separation_gaps", lambda documents: iter(())
+    )
+    assert _activation_error(spec) == guarded
+    assert _separation_gaps(guarded) == []
+
+
 def test_specs_without_holdout_references_keep_row_level_holdouts(toy):
     """The UK's rotated folds and the US's district blocks stay allowed.
 

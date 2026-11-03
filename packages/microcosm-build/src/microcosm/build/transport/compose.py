@@ -697,7 +697,11 @@ def _holdout_separation_gaps(
         if resource == _HOLDOUT_REFERENCES:
             continue
         for row in document.get("target_references", ()):
-            if not isinstance(row, Mapping) or row.get("measure") not in holdouts:
+            if (
+                not isinstance(row, Mapping)
+                or not _is_text(row.get("measure"))
+                or row["measure"] not in holdouts
+            ):
                 continue
             for holdout in holdouts[row["measure"]]:
                 gap = (
