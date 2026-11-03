@@ -360,6 +360,36 @@ def test_image_pins_the_commit_and_the_lock() -> None:
     assert commands[-1].startswith('test -z "$(git')
 
 
+def test_image_replaces_the_base_pip_before_any_package_download(app) -> None:
+    """The cached base's pip downloads only the hash-pinned pip that replaces it."""
+
+    stub = sys.modules["modal"]
+    image_steps = [
+        name.rsplit(".", 1)[-1]
+        for name, _, _ in stub.mock_calls
+        if name.startswith("Image.debian_slim")
+    ]
+    # The bootstrap follows the CA store upgrade and precedes every pip_install.
+    assert image_steps[:4] == [
+        "debian_slim",
+        "apt_install",
+        "run_commands",
+        "pip_install",
+    ]
+    image = stub.Image.debian_slim.return_value
+    image.apt_install.return_value.pip_install.assert_not_called()
+    (bootstrap_command,) = image.apt_install.return_value.run_commands.call_args.args
+    assert bootstrap_command == plan_lib.image_pip_bootstrap_command()
+    assert bootstrap_command == (
+        "printf '%s\\n' 'pip==26.2.2 --hash=sha256:"
+        "fd7f4dfa8190e014013b9f08f3e973f4e4c26ffd179a204895533a7254813a70'"
+        " > /tmp/pip-bootstrap.txt"
+        " && python -m pip install --require-hashes --no-deps"
+        " -r /tmp/pip-bootstrap.txt"
+        " && rm /tmp/pip-bootstrap.txt"
+    )
+
+
 def test_image_installs_the_emitter_command_on_its_own(app) -> None:
     """Builds start the separately installed emitter, never the synced one."""
 
@@ -376,7 +406,8 @@ def test_image_installs_the_emitter_command_on_its_own(app) -> None:
     # The interface in the build finds the command through the image's
     # environment, which the stage tool inherits.
     image = sys.modules["modal"].Image.debian_slim.return_value
-    image_env = image.apt_install.return_value.pip_install.return_value.env
+    after_pip_bootstrap = image.apt_install.return_value.run_commands.return_value
+    image_env = after_pip_bootstrap.pip_install.return_value.env
     environment = image_env.call_args.args[0]
     assert environment["MICROCOSM_EMITTER_COMMAND"] == (
         "/usr/local/bin/microcosm-emitter"
