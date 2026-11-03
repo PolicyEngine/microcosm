@@ -20,6 +20,7 @@ from hypothesis import strategies as st
 from microcosm.build.country_spec import _validate_target_references
 from microcosm.build.ledger_targets import compile_ledger_target_references
 from microcosm.build.reference_profiles import (
+    reference_document_sha256,
     resolve_reference_profiles,
     validate_reference_resolution,
 )
@@ -183,6 +184,11 @@ def _mutate(mutation):
         for kind in ("count", "money"):
             selector = rows[f"toy_{kind}_b0"]["ledger_selector"]
             selector["dimension_values"]["band"] = [*TEN[:4], TEN[0]]
+    elif mutation in ("mapping_member", "list_member"):
+        member = {"band": TEN[4]} if mutation == "mapping_member" else [TEN[4]]
+        for kind in ("count", "money"):
+            selector = rows[f"toy_{kind}_b0"]["ledger_selector"]
+            selector["dimension_values"]["band"] = [*TEN[:4], member]
     else:  # pragma: no cover - parametrization guard
         raise AssertionError(mutation)
     return base, profiles, context, intervals
@@ -199,6 +205,8 @@ def _mutate(mutation):
         ("identity_count", "value_operation 'sum'"),
         ("fact_key_and_members", "singleton fact key and a member set"),
         ("repeated_member", "repeat or are not scalars"),
+        ("mapping_member", "repeat or are not scalars"),
+        ("list_member", "repeat or are not scalars"),
     ],
 )
 def test_summed_rows_refuse_each_inconsistency(mutation, message):
@@ -216,6 +224,26 @@ def test_receipt_states_the_binary64_rounding_of_the_weight():
         (Fraction(1.1) - exact) / exact
     )
     assert abs(Fraction(record["binary64_relative_rounding"])) <= Fraction(1, 2**53)
+
+
+@pytest.mark.parametrize(
+    "field", ["weight", "exact_numerator", "binary64_relative_rounding"]
+)
+def test_a_tampered_rounding_record_refuses(field):
+    """Only the rounding recomputation sees this: the receipt hash is redone."""
+    effective, _, receipt = _resolve(summed_profile_fixture([TEN]), proof_for())
+    tampered = copy.deepcopy(receipt)
+    record = tampered["factor_weight_rounding"]["toy_central"]
+    record[field] = {
+        "weight": 1.2,
+        "exact_numerator": record["exact_numerator"] + 1,
+        "binary64_relative_rounding": "0",
+    }[field]
+    del tampered["receipt_sha256"]
+    tampered["receipt_sha256"] = reference_document_sha256(tampered)
+    with pytest.raises(ValueError, match="Factor weight rounding record mismatch"):
+        validate_reference_resolution(effective, tampered)
+    assert validate_reference_resolution(effective, receipt) == receipt
 
 
 def _partition(draw_sizes, labels):
