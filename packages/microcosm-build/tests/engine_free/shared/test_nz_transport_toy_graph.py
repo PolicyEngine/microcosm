@@ -836,10 +836,12 @@ def test_target_profile_coverage_passes_on_the_toy_with_income_required(toy):
     assert row["status"] == "passed", row["failures"]
     # The gate needs one income match; this pins all six stand-in rows, so a
     # row that leaves the income family turns the test red while the gate
-    # still passes.
+    # still passes. The binding hands the gate the problem's row names, which
+    # read name@period (target_kernels.py), so the comparison drops the period.
     from test_support.microcosm_build.transport_nz_toy import toy_standin_table
 
-    assert row["details"]["matches_by_requirement"]["income"] == sorted(
+    matched = row["details"]["matches_by_requirement"]["income"]
+    assert sorted(name.partition("@")[0] for name in matched) == sorted(
         band[role]
         for band in toy_standin_table()["bands"]
         for role in ("count_reference", "amount_reference")
