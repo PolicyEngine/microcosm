@@ -125,18 +125,20 @@ def _numeric_catalog_unit(variable: str, engine_unit: str | None) -> str:
         if variable not in _REVIEWED_UNIT_BY_UNITLESS_INPUT:
             raise ValueError(
                 f"Numeric pool input {variable!r} declares no engine unit and has "
-                "no reviewed unit."
+                "no reviewed unit; review one into _REVIEWED_UNIT_BY_UNITLESS_INPUT."
             )
         return _REVIEWED_UNIT_BY_UNITLESS_INPUT[variable]
     if variable in _REVIEWED_UNIT_BY_UNITLESS_INPUT:
         raise ValueError(
             f"Numeric pool input {variable!r} now declares engine unit "
-            f"{engine_unit!r}; remove its reviewed unit."
+            f"{engine_unit!r}; remove it from _REVIEWED_UNIT_BY_UNITLESS_INPUT."
         )
     if engine_unit not in _CATALOG_UNIT_BY_ENGINE_UNIT:
         raise ValueError(
             f"Numeric pool input {variable!r} declares engine unit "
-            f"{engine_unit!r}, which maps to no catalog unit."
+            f"{engine_unit!r}, which maps to no catalog unit; map it in "
+            "_CATALOG_UNIT_BY_ENGINE_UNIT and add the catalog unit to the unit "
+            "enum in spec_engine/schema/catalogs.schema.json."
         )
     return _CATALOG_UNIT_BY_ENGINE_UNIT[engine_unit]
 
