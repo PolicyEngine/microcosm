@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import math
+from fractions import Fraction
 from pathlib import Path
 
 import numpy as np
@@ -200,6 +202,88 @@ def test_differing_values_with_equal_zero_totals_pass(check, monkeypatch, tmp_pa
     assert difference["sum_rel_diff"] == 0.0
 
 
+def _esi_tables(esi):
+    rows = len(esi)
+    return _tables(
+        [1.0] * rows,
+        esi=esi,
+        ages=tuple(range(30, 30 + rows)),
+        index=tuple(range(1, rows + 1)),
+    )
+
+
+_UP_1 = float(np.nextafter(1.0, np.inf))
+
+
+@pytest.mark.parametrize(
+    ("local_esi", "modal_esi"),
+    [
+        # The same infinite value on both sides: the finite part of the total
+        # leaves zero, but both float totals read inf.
+        ((math.inf, 1.0, -1.0), (math.inf, _UP_1, -1.0)),
+        ((-math.inf, 1.0, -1.0), (-math.inf, _UP_1, -1.0)),
+        # Every value finite, but the running total passes the float range.
+        (
+            (1e308, 1e308, -1e308, -1e308),
+            (float(np.nextafter(1e308, np.inf)), 1e308, -1e308, -1e308),
+        ),
+    ],
+)
+def test_a_total_the_check_cannot_compute_fails(
+    check, monkeypatch, tmp_path, local_esi, modal_esi
+):
+    rc, verdict = _run(
+        check, monkeypatch, tmp_path, _esi_tables(local_esi), _esi_tables(modal_esi)
+    )
+    assert rc == 1
+    [difference] = verdict["differences"]
+    assert difference["max_rel"] <= check.REL_TOL
+    assert difference["sum_rel_diff"] is None
+    assert any("column total not finite" in entry for entry in verdict["problems"])
+
+
+def test_a_total_move_that_a_large_pair_absorbs_fails(check, monkeypatch, tmp_path):
+    # np.nansum gives -1.0 for both columns: 1e17 swallows the 1.0 and its
+    # one-ulp move. The exact totals are 0 and 2.2e-16.
+    local = _esi_tables((1e17, 1.0, -1e17, -1.0))
+    modal = _esi_tables((1e17, _UP_1, -1e17, -1.0))
+    rc, verdict = _run(check, monkeypatch, tmp_path, local, modal)
+    assert rc == 1
+    [difference] = verdict["differences"]
+    assert difference["sum_local"] == 0.0 != difference["sum_modal"]
+    assert difference["max_rel"] <= check.REL_TOL < difference["sum_rel_diff"]
+
+
+def test_a_zero_total_against_infinite_values_records_its_stop(
+    check, monkeypatch, tmp_path
+):
+    # max(0.0, nan) is 0.0 in Python, so a NaN total once divided by zero and
+    # raised before the check wrote its verdict.
+    local = _esi_tables((0.0, 0.0))
+    modal = _esi_tables((math.inf, -math.inf))
+    rc, verdict = _run(check, monkeypatch, tmp_path, local, modal)
+    assert rc == 1
+    assert verdict["inside_accepted_class"] is False
+    assert any("employer_sponsored" in entry for entry in verdict["problems"])
+
+
+@pytest.mark.parametrize(
+    "modal",
+    [
+        # Index.equals compares values only, so these passed before.
+        _tables([1.0, 2.0, 3.0], index=(1.0, 2.0, 3.0)),
+        {
+            **_tables([1.0, 2.0, 3.0]),
+            "person": _tables([1.0, 2.0, 3.0])["person"].rename_axis("household_id"),
+        },
+    ],
+)
+def test_an_index_dtype_or_name_change_fails(check, monkeypatch, tmp_path, modal):
+    rc, verdict = _run(check, monkeypatch, tmp_path, _tables([1.0, 2.0, 3.0]), modal)
+    assert rc == 1
+    assert any("index names or dtypes differ" in entry for entry in verdict["problems"])
+
+
 def test_a_dtype_change_fails(check, monkeypatch, tmp_path):
     modal = _tables([1.0, 2.0, 3.0])
     modal["person"]["age"] = modal["person"]["age"].astype(float)
@@ -274,38 +358,79 @@ def test_property_any_value_moved_by_1e9_is_outside(check, rents, data):
     assert entry is not None and "problem" in entry
 
 
-_SIGNED = st.lists(
-    st.floats(min_value=-1e6, max_value=1e6, allow_nan=False), min_size=1, max_size=20
+_SIGNED = st.builds(
+    lambda magnitude, negative: -magnitude if negative else magnitude,
+    st.one_of(
+        st.just(0.0),
+        st.floats(min_value=1e-310, max_value=1e-300),
+        st.floats(min_value=1e-3, max_value=1e3),
+        st.floats(min_value=1e15, max_value=1e20),
+    ),
+    st.booleans(),
 )
 
 
-@settings(max_examples=100, deadline=None)
-@given(values=_SIGNED, data=st.data())
-def test_property_an_accepted_column_keeps_its_total_within_tolerance(
-    check, values, data
+def _nudge(value, steps):
+    for _ in range(abs(steps)):
+        value = float(np.nextafter(value, math.copysign(math.inf, steps)))
+    return value
+
+
+def _exact_rel(a, b):
+    a, b = Fraction(a), Fraction(b)
+    return Fraction(0) if a == b else abs(a - b) / max(abs(a), abs(b))
+
+
+@settings(max_examples=300, deadline=None)
+@given(
+    base=st.lists(_SIGNED, min_size=1, max_size=12),
+    mirrored=st.integers(min_value=0, max_value=12),
+    infinite=st.sampled_from([None, math.inf, -math.inf]),
+    data=st.data(),
+)
+def test_property_the_check_agrees_with_exact_arithmetic(
+    check, base, mirrored, infinite, data
 ):
-    # Whatever the signs and magnitudes, an accepted difference never moves
-    # the column total by more than REL_TOL of the larger total.
-    eps = data.draw(
-        st.lists(
-            st.floats(min_value=-1e-12, max_value=1e-12),
-            min_size=len(values),
-            max_size=len(values),
-        )
+    # Mirrored values cancel exactly, so totals sit at or near zero while
+    # large values absorb small moves in float sums. Each value moves up to
+    # three ulps, and sometimes one moves by 1e-9 relative.
+    local = base + [-value for value in base[:mirrored]]
+    steps = data.draw(
+        st.lists(st.integers(-3, 3), min_size=len(local), max_size=len(local))
     )
-    local = pd.Series(values, dtype=float)
-    modal = pd.Series(
-        [v * (1 + e) for v, e in zip(values, eps, strict=True)], dtype=float
-    )
+    modal = [_nudge(value, k) for value, k in zip(local, steps, strict=True)]
+    if data.draw(st.booleans()):
+        position = data.draw(st.integers(0, len(modal) - 1))
+        modal[position] *= 1 + 1e-9
+    if infinite is not None:
+        local.append(infinite)
+        modal.append(infinite)
     entry = check.compare_column(
-        "person", "employer_sponsored_insurance_premiums", local, modal
+        "person",
+        "employer_sponsored_insurance_premiums",
+        pd.Series(local, dtype=float),
+        pd.Series(modal, dtype=float),
     )
-    if entry is None or "problem" in entry:
+    if entry is None:
+        assert local == modal
         return
-    sum_a, sum_b = float(np.nansum(local)), float(np.nansum(modal))
-    assert sum_a == sum_b or abs(sum_a - sum_b) <= check.REL_TOL * max(
-        abs(sum_a), abs(sum_b)
+    if infinite is not None:
+        # An infinite value hides how far the total moved.
+        assert "problem" in entry
+        return
+    tol = Fraction(check.REL_TOL)
+    value_rel = max(_exact_rel(a, b) for a, b in zip(local, modal, strict=True))
+    total_rel = _exact_rel(
+        sum(map(Fraction, local), Fraction(0)), sum(map(Fraction, modal), Fraction(0))
     )
+    if "problem" in entry:
+        # No false stop: a move well inside the tolerance passes.
+        assert value_rel > tol / 2 or total_rel > tol / 2
+    else:
+        # A pass never hides a value or total past the tolerance, allowing
+        # for the one rounding of each float total.
+        assert value_rel <= tol * Fraction(1001, 1000)
+        assert total_rel <= tol * Fraction(1001, 1000)
 
 
 _PREMIUMS = st.lists(

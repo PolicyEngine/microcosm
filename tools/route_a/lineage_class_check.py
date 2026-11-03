@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 import sys
 from pathlib import Path
 
@@ -48,6 +49,31 @@ def sha256(path: Path) -> str:
 
 def tables(path: Path) -> dict[str, pd.DataFrame]:
     return dict(_frame_tables(load_frame_checkpoint(path).frame))
+
+
+def index_types(index: pd.Index) -> tuple[list, list[str]]:
+    """Names and dtypes, level by level; Index.equals compares values only."""
+
+    if isinstance(index, pd.MultiIndex):
+        return list(index.names), [str(level.dtype) for level in index.levels]
+    return list(index.names), [str(index.dtype)]
+
+
+def exact_total(values: np.ndarray) -> float | None:
+    """The non-NaN values' total, rounded once; None for an infinite value or one past the float range.
+
+    np.nansum rounds every partial sum, so a large pair can absorb a small
+    move and leave both totals equal and wrong. math.fsum rounds once, so an
+    exact zero total stays 0.0 and any other total stays nonzero.
+    """
+
+    values = values[~np.isnan(values)]
+    if not bool(np.isfinite(values).all()):
+        return None
+    try:
+        return math.fsum(values.tolist())
+    except OverflowError:
+        return None
 
 
 def compare_column(name: str, column: str, a: pd.Series, b: pd.Series) -> dict | None:
@@ -83,11 +109,13 @@ def compare_column(name: str, column: str, a: pd.Series, b: pd.Series) -> dict |
     absdiff = np.abs(da - db)
     scale = np.maximum(np.abs(da), np.abs(db))
     rel = np.where(scale > 0, absdiff / np.where(scale > 0, scale, 1.0), np.inf)
-    sum_a, sum_b = float(np.nansum(av)), float(np.nansum(bv))
+    sum_a, sum_b = exact_total(av), exact_total(bv)
     # Relative to the larger total, with no floor: a total that leaves zero
-    # moves by 100%, however small it is. Equal totals (both zero included)
-    # agree; a non-finite total that differs gives NaN, which fails below.
-    if sum_a == sum_b:
+    # moves by 100%, however small it is. A total the check can't compute
+    # can't show whether the column moved, so it stops.
+    if sum_a is None or sum_b is None:
+        sum_rel = None
+    elif sum_a == sum_b:
         sum_rel = 0.0
     else:
         sum_rel = abs(sum_a - sum_b) / max(abs(sum_a), abs(sum_b))
@@ -100,7 +128,11 @@ def compare_column(name: str, column: str, a: pd.Series, b: pd.Series) -> dict |
             "sum_rel_diff": sum_rel,
         }
     )
-    if not (rel.max() <= REL_TOL and sum_rel <= REL_TOL):
+    if not rel.max() <= REL_TOL:
+        entry["problem"] = f"difference above {REL_TOL} relative"
+    elif sum_rel is None:
+        entry["problem"] = "column total not finite"
+    elif not sum_rel <= REL_TOL:
         entry["problem"] = f"difference above {REL_TOL} relative"
     return entry
 
@@ -121,6 +153,9 @@ def main() -> int:
             continue
         if not a.index.equals(b.index):
             problems.append(f"{name}: index differs")
+            continue
+        if index_types(a.index) != index_types(b.index):
+            problems.append(f"{name}: index names or dtypes differ")
             continue
         if list(a.columns) != list(b.columns):
             problems.append(f"{name}: column names or order differ")

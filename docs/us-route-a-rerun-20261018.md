@@ -110,7 +110,10 @@ with identical totals. Step 5b runs `tools/route_a/lineage_class_check.py`,
 which accepts differences only in those two columns, `person.pre_subsidy_rent`
 and `person.employer_sponsored_insurance_premiums`. A difference in any other
 column stops for Max, and so does a column total that moves by more than 1e-12
-relative to the larger total. Its JSON verdict goes into the run's provenance. Any other mismatch,
+relative to the larger total. The check sums each column with `math.fsum`, which
+rounds once, so rounding in a running sum can't hide a move. It also stops on a
+total it can't compute (an infinite value, or a sum past the float range) and on
+an entity table whose index names or dtypes differ. Its JSON verdict goes into the run's provenance. Any other mismatch,
 skipping the new local reference, or relaxing the hand-off still needs **Max's
 explicit decision** with the new evidence. Stop before writing `ACCEPTED` while
 that decision is outstanding.
