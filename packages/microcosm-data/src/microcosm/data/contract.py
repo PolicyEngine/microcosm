@@ -199,14 +199,28 @@ _SAFE_IDENTIFIER_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
 _ROLE_IDENTIFIER_RE = re.compile(r"^[a-z][a-z0-9_]{0,63}$")
 
 
+#: The stable releases proposed for US builds, with each one's role in
+#: ``releases.json``: the national release (the repository's default) and the
+#: ACS local-area release. They are proposals the US data builder has not
+#: agreed yet, so nothing reads them: :func:`publishes_to_build_folder` names
+#: no US release, and every US release keeps tags and ``latest.json``. Once
+#: they are agreed, that function names them, the US builders write the
+#: build-folder manifests under them and the registry's US entries name them.
+PROPOSED_US_RELEASES: Mapping[str, str] = {
+    "populace-us-2024-national": "national",
+    "populace-us-2024-acs-local": "local_area",
+}
+
+
 def publishes_to_build_folder(release_id: str) -> bool:
     """Whether builds of ``release_id`` publish into their own build folders.
 
     This is the one place that says which releases use the build-folder
     layout: the UK national, dense and local-area releases. Every US release
     keeps the tagged layout and ``latest.json`` until the stable releases US
-    builds publish under are agreed with the US data builder; this function
-    then names them too, and their builders write the same manifests.
+    builds publish under (:data:`PROPOSED_US_RELEASES`) are agreed with the
+    US data builder; this function then names them too, and their builders
+    write the same manifests.
     """
     return (
         release_id in {_UK_NATIONAL_RELEASE_ID, _UK_DENSE_RELEASE_ID}
