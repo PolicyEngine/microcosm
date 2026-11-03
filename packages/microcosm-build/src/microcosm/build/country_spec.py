@@ -10,10 +10,11 @@ projections needed to compile a source manifest into a
 the US plan (an implementation per declared stage or nothing).
 
 Belgium is the first full consumer (microcosm#261, epic microcosm#259): the
-``be/`` package declares its BE-SILC source stages, clone-and-assign commune
-geography spine (vintage-aware NIS codes), Ledger target references (never
-values), gate selection with criticality tiers, and the release contract —
-zero Python in the country folder.
+``be/`` package declares its donor-transport source stage (the pinned
+populace-us support pool), clone-and-assign commune geography spine
+(vintage-aware NIS codes), Ledger target references (never values), gate
+selection with criticality tiers, and the release contract — zero Python in
+the country folder.
 
 Typed resources, by canonical filename:
 
@@ -32,10 +33,11 @@ JSON/YAML spec-engine domains; their interpretation belongs to the compiler.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import math
 import re
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Collection, Mapping
 from dataclasses import dataclass, field
 from functools import cache
 from importlib import resources as importlib_resources
@@ -129,6 +131,7 @@ ALLOWED_GATE_FUNCTIONS = frozenset(
         "input_mass_parity",
         "ledger_compile_parity",
         "macro_realism",
+        "measurement_prefit",
         "nonconstant_columns",
         "nonnegative_columns",
         "parity",
@@ -1659,6 +1662,51 @@ class ResolvedCountrySpec:
         """
         return compute_composition_fingerprint(self.resource_hashes.values())
 
+    def fingerprint_excluding(self, excluded: Collection[str]) -> str:
+        """Composition fingerprint over every resource hash but ``excluded``.
+
+        A node whose computation reads none of the excluded resources keys on
+        this rather than :attr:`fingerprint`, so an edit to one of them leaves
+        the node a cache hit (microcosm#1301: the UK solve and its gate-only
+        registers). The excluded names are bound too, under their own domain
+        tag, so the value is never the fingerprint of a package that merely
+        lacks those resources, and another exclusion set is another value.
+        Release manifests keep recording :attr:`fingerprint`.
+
+        Raises:
+            TypeError: If ``excluded`` is a single string.
+            ValueError: If a name is not a declared resource, or is
+                ``country_package.json``, which declares the roster itself.
+        """
+        if isinstance(excluded, str):
+            raise TypeError("fingerprint_excluding takes a collection of names.")
+        names = frozenset(excluded)
+        if "country_package.json" in names:
+            raise ValueError(
+                "country_package.json declares the resource roster and cannot "
+                "be excluded from a fingerprint."
+            )
+        undeclared = sorted(names - set(self.resource_hashes))
+        if undeclared:
+            raise ValueError(
+                f"{self.country}: cannot exclude undeclared resource(s) "
+                f"{undeclared} from the fingerprint."
+            )
+        tag = hashlib.sha256(
+            b"microcosm-country-spec/excluding/1\n"
+            + "\n".join(sorted(names)).encode("utf-8")
+        ).hexdigest()
+        return compute_composition_fingerprint(
+            (
+                *(
+                    digest
+                    for name, digest in self.resource_hashes.items()
+                    if name not in names
+                ),
+                tag,
+            )
+        )
+
 
 # Compatibility is an exact alias, not a parallel representation. Existing
 # annotations and imports continue to work while every loader caller receives
@@ -1892,6 +1940,19 @@ def _attest_be_typed_geography_compatibility(
             "<-> geography_spine/constrain_to_column",
             typed_preserves_constraint,
             True,
+        )
+    elif spine.constrain_to_column == "":
+        # Donor support has no observed Belgian region to preserve.
+        require_equal(
+            "assignment/draw/universe <-> geography_spine/constrain_to_column",
+            draw_contract.get("universe"),
+            f"{spine.geography_level}_nationally",
+        )
+        require_equal(
+            "assignment/assertions/source_nuts1_preserved "
+            "<-> geography_spine/constrain_to_column",
+            isinstance(assertions, list) and "source_nuts1_preserved" in assertions,
+            False,
         )
     else:
         mismatches.append(

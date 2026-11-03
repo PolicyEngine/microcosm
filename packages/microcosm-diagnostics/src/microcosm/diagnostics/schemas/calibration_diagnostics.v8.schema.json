@@ -1,0 +1,1790 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "calibration_diagnostics.v8.schema.json",
+  "$comment": "Generated from microcosm.diagnostics.CalibrationDiagnosticsV8. Do not edit it; regenerate it with `uv run --no-sync python tools/generate_calibration_diagnostics_json_schema.py`.",
+  "title": "Microcosm calibration diagnostics, schema 8",
+  "description": "The calibration_diagnostics.json document, schema 8, that Microcosm builds write beside a calibrated dataset. The pydantic models it is generated from remain the authority. A document that satisfies this schema can still break one of the rules below, which the models enforce and this schema does not express, so validate with microcosm.diagnostics.parse_calibration_diagnostics for the complete contract. Equalities between floating-point values hold within the models' tolerances.\n\nRules the models enforce that this schema does not express:\n- Every number is finite, at any depth, including inside options, targets[].metadata and build. JSON has no NaN or Infinity, but lenient parsers such as Python's json module accept those tokens, and a JSON Schema number cannot exclude the values they produce, so parse submissions with a parser that refuses them.\n- Integer fields hold integers written without a fraction or exponent. JSON Schema counts 2.0 and 1e3 as integers; the strict models refuse them, because Python's json module decodes them as floats.\n- Strings the models type as non-blank contain at least one character that is not whitespace. These are most names, identifiers, labels, sources, entities, reasons, codes and messages, and the keys of uk_diagnostics.target_observation_basis, the zero-weight strata and the consumption-drift maps.\n- Digests match ^[0-9a-f]{64}$ with nothing after them. In the ECMA-262 regular expressions JSON Schema specifies, $ matches only at the end of the string, but validators that evaluate pattern with Python's re module also let $ match before a final newline, so they accept a digest followed by a newline.\n- In each targets[].hierarchy, category.provider_id equals provider.id and the dimensions have unique ids.\n- Each targets[].hierarchy.target.id equals that row's target_name.\n- target_surface.constraint_matrix has n_targets rows and n_records columns, and its nnz is at most rows times columns.\n- target_surface.n_targets equals the number of targets, target_registry.n_specs is at least the number of targets, target_surface.n_records equals n_records, and n_nonzero is at most n_records.\n- A UK registry (target_registry.country \"uk\") requires uk_diagnostics; any other registry requires it to be null or absent. In a UK document, uk_diagnostics.weights.n_records, effective_sample_size and top_1pct_weight_share equal the top-level n_records, effective_sample_size and top_1pct_weight_share. The n_targets, n_scored and n_skipped values in uk_diagnostics.target_pass_rates_by_geography_level sum to target_registry.n_specs, the number of targets and the number of skipped targets.\n- In uk_diagnostics.weights, positive_weight_records plus zero_weight_records equals n_records, effective_sample_size is at most n_records, and ess_fraction equals effective_sample_size divided by n_records. median_positive_weight and max_to_median_positive_weight are null exactly when positive_weight_records is 0; otherwise max_to_median_positive_weight equals max_weight divided by median_positive_weight.\n- In each uk_diagnostics.zero_weight_rows_by_stratum row, positive_weight_rows plus zero_weight_rows equals rows. Across the strata, rows, positive_weight_rows and zero_weight_rows sum to weights.n_records, weights.positive_weight_records and weights.zero_weight_records.\n- uk_diagnostics.target_pass_rates_by_geography_level has exactly one row for each of national, region, country, local_authority and constituency. In each row, n_scored plus n_skipped equals n_targets, n_within_10pct is at most n_scored, and pass_rate equals n_within_10pct divided by n_targets, or is null when n_targets is 0.\n- uk_diagnostics.weakest_families and weakest_areas_by_fit are both present or both absent. In weakest_families, weakest_areas_by_fit.bottom_by_fit and weakest_areas_by_fit.countries, n_within_10pct is at most n_targets and pass_rate equals n_within_10pct divided by n_targets. bottom_by_fit has at most limit rows and at most n_areas_scored rows.\n- A measured uk_diagnostics.rotated_holdout has unique grains and n_folds entries in both fold_losses and folds. Its fold ids cover 0 to n_folds - 1, each fold's holdout_loss equals its fold_losses entry, mean_holdout_loss is the mean of fold_losses and worst_holdout_loss is their maximum. Each fold has n_holdout_targets unique holdout_target_indices.\n- Each uk_diagnostics.consumption_drift value has change equal to final minus design, and its relative_change is null exactly when design is 0.\n\nWhere this schema is stricter than the models' parser:\n- Literal fields hold exactly their declared JSON value. The models compare literals with Python equality, so their parser also accepts 1 for true and true for 1, for example in rotated_holdout.skipped or uk_diagnostics.schema_version. The canonical writer always emits the declared value, which this schema requires.",
+  "$defs": {
+    "CalibrationHierarchy": {
+      "additionalProperties": false,
+      "properties": {
+        "provider": {
+          "$ref": "#/$defs/HierarchyNode"
+        },
+        "category": {
+          "$ref": "#/$defs/HierarchyCategory"
+        },
+        "geography": {
+          "$ref": "#/$defs/HierarchyGeography"
+        },
+        "dimensions": {
+          "items": {
+            "$ref": "#/$defs/HierarchyDimension"
+          },
+          "title": "Dimensions",
+          "type": "array"
+        },
+        "target": {
+          "$ref": "#/$defs/HierarchyNode"
+        }
+      },
+      "required": [
+        "provider",
+        "category",
+        "geography",
+        "dimensions",
+        "target"
+      ],
+      "title": "CalibrationHierarchy",
+      "type": "object"
+    },
+    "DiagnosticsWarning": {
+      "additionalProperties": false,
+      "properties": {
+        "code": {
+          "title": "Code",
+          "type": "string"
+        },
+        "severity": {
+          "const": "warning",
+          "title": "Severity",
+          "type": "string"
+        },
+        "message": {
+          "title": "Message",
+          "type": "string"
+        }
+      },
+      "required": [
+        "code",
+        "severity",
+        "message"
+      ],
+      "title": "DiagnosticsWarning",
+      "type": "object"
+    },
+    "HierarchyCategory": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "label": {
+          "title": "Label",
+          "type": "string"
+        },
+        "provider_id": {
+          "title": "Provider Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "label",
+        "provider_id"
+      ],
+      "title": "HierarchyCategory",
+      "type": "object"
+    },
+    "HierarchyDimension": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "label": {
+          "title": "Label",
+          "type": "string"
+        },
+        "value_id": {
+          "title": "Value Id",
+          "type": "string"
+        },
+        "value_label": {
+          "title": "Value Label",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "label",
+        "value_id",
+        "value_label"
+      ],
+      "title": "HierarchyDimension",
+      "type": "object"
+    },
+    "HierarchyGeography": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "label": {
+          "title": "Label",
+          "type": "string"
+        },
+        "level": {
+          "title": "Level",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "label",
+        "level"
+      ],
+      "title": "HierarchyGeography",
+      "type": "object"
+    },
+    "HierarchyNode": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "label": {
+          "title": "Label",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "label"
+      ],
+      "title": "HierarchyNode",
+      "type": "object"
+    },
+    "JsonValue": {},
+    "PastCapCensus": {
+      "additionalProperties": false,
+      "properties": {
+        "cap": {
+          "exclusiveMinimum": 0,
+          "title": "Cap",
+          "type": "number"
+        },
+        "scale_basis": {
+          "title": "Scale Basis",
+          "type": "string"
+        },
+        "n_targets": {
+          "minimum": 0,
+          "title": "N Targets",
+          "type": "integer"
+        },
+        "initial_past_cap": {
+          "minimum": 0,
+          "title": "Initial Past Cap",
+          "type": "integer"
+        },
+        "final_past_cap": {
+          "minimum": 0,
+          "title": "Final Past Cap",
+          "type": "integer"
+        },
+        "escaped": {
+          "minimum": 0,
+          "title": "Escaped",
+          "type": "integer"
+        },
+        "frozen": {
+          "minimum": 0,
+          "title": "Frozen",
+          "type": "integer"
+        },
+        "pushed_out": {
+          "minimum": 0,
+          "title": "Pushed Out",
+          "type": "integer"
+        },
+        "pushed_out_rows": {
+          "items": {
+            "$ref": "#/$defs/PushedOutTarget"
+          },
+          "title": "Pushed Out Rows",
+          "type": "array"
+        }
+      },
+      "required": [
+        "cap",
+        "scale_basis",
+        "n_targets",
+        "initial_past_cap",
+        "final_past_cap",
+        "escaped",
+        "frozen",
+        "pushed_out",
+        "pushed_out_rows"
+      ],
+      "title": "PastCapCensus",
+      "type": "object"
+    },
+    "PushedOutTarget": {
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "init_rel": {
+          "title": "Init Rel",
+          "type": "number"
+        },
+        "final_rel": {
+          "title": "Final Rel",
+          "type": "number"
+        }
+      },
+      "required": [
+        "name",
+        "init_rel",
+        "final_rel"
+      ],
+      "title": "PushedOutTarget",
+      "type": "object"
+    },
+    "RegistryTargetMetadata": {
+      "additionalProperties": false,
+      "properties": {
+        "family": {
+          "title": "Family",
+          "type": "string"
+        },
+        "se": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Se"
+        },
+        "signed": {
+          "title": "Signed",
+          "type": "boolean"
+        },
+        "notes": {
+          "title": "Notes",
+          "type": "string"
+        }
+      },
+      "required": [
+        "family",
+        "se",
+        "signed",
+        "notes"
+      ],
+      "title": "RegistryTargetMetadata",
+      "type": "object"
+    },
+    "Selector": {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "enum": [
+            "column",
+            "callable"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "name": {
+          "title": "Name",
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind",
+        "name"
+      ],
+      "title": "Selector",
+      "type": "object"
+    },
+    "SkippedTarget": {
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "reason": {
+          "title": "Reason",
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "reason"
+      ],
+      "title": "SkippedTarget",
+      "type": "object"
+    },
+    "TargetDiagnosticV8": {
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "target_name": {
+          "title": "Target Name",
+          "type": "string"
+        },
+        "period": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "string"
+            }
+          ],
+          "title": "Period"
+        },
+        "entity": {
+          "title": "Entity",
+          "type": "string"
+        },
+        "measure": {
+          "$ref": "#/$defs/Selector"
+        },
+        "filter": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Selector"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "source": {
+          "title": "Source",
+          "type": "string"
+        },
+        "metadata": {
+          "additionalProperties": {
+            "$ref": "#/$defs/JsonValue"
+          },
+          "title": "Metadata",
+          "type": "object"
+        },
+        "target": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Target"
+        },
+        "compiled_target": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Compiled Target"
+        },
+        "initial_estimate": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Initial Estimate"
+        },
+        "final_estimate": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Final Estimate"
+        },
+        "relative_error": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Relative Error"
+        },
+        "within_tolerance": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Within Tolerance"
+        },
+        "hierarchy": {
+          "$ref": "#/$defs/CalibrationHierarchy"
+        },
+        "registry": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/RegistryTargetMetadata"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "target_loss_weight": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Target Loss Weight"
+        },
+        "target_loss_weight_share": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Target Loss Weight Share"
+        },
+        "target_loss_scale": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Target Loss Scale"
+        },
+        "final_capped_scaled_error": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Final Capped Scaled Error"
+        },
+        "final_loss_contribution": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Final Loss Contribution"
+        }
+      },
+      "required": [
+        "name",
+        "target_name",
+        "period",
+        "entity",
+        "measure",
+        "filter",
+        "source",
+        "metadata",
+        "target",
+        "compiled_target",
+        "initial_estimate",
+        "final_estimate",
+        "relative_error",
+        "within_tolerance",
+        "hierarchy"
+      ],
+      "title": "TargetDiagnosticV8",
+      "type": "object"
+    },
+    "TargetLossBasis": {
+      "additionalProperties": false,
+      "properties": {
+        "formula": {
+          "title": "Formula",
+          "type": "string"
+        },
+        "cap": {
+          "exclusiveMinimum": 0,
+          "title": "Cap",
+          "type": "number"
+        },
+        "target_count": {
+          "minimum": 0,
+          "title": "Target Count",
+          "type": "integer"
+        },
+        "total_target_weight": {
+          "exclusiveMinimum": 0,
+          "title": "Total Target Weight",
+          "type": "number"
+        },
+        "weight_kind": {
+          "title": "Weight Kind",
+          "type": "string"
+        },
+        "scale_kind": {
+          "title": "Scale Kind",
+          "type": "string"
+        },
+        "hash_algorithm": {
+          "title": "Hash Algorithm",
+          "type": "string"
+        },
+        "sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Sha256",
+          "type": "string"
+        }
+      },
+      "required": [
+        "formula",
+        "cap",
+        "target_count",
+        "total_target_weight",
+        "weight_kind",
+        "scale_kind",
+        "hash_algorithm",
+        "sha256"
+      ],
+      "title": "TargetLossBasis",
+      "type": "object"
+    },
+    "TargetRegistryRef": {
+      "additionalProperties": false,
+      "properties": {
+        "country": {
+          "title": "Country",
+          "type": "string"
+        },
+        "version": {
+          "title": "Version",
+          "type": "string"
+        },
+        "n_specs": {
+          "exclusiveMinimum": 0,
+          "title": "N Specs",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "country",
+        "version",
+        "n_specs"
+      ],
+      "title": "TargetRegistryRef",
+      "type": "object"
+    },
+    "TargetSurface": {
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": {
+          "const": 1,
+          "title": "Schema Version",
+          "type": "integer"
+        },
+        "weight_entity": {
+          "title": "Weight Entity",
+          "type": "string"
+        },
+        "n_targets": {
+          "exclusiveMinimum": 0,
+          "title": "N Targets",
+          "type": "integer"
+        },
+        "n_records": {
+          "exclusiveMinimum": 0,
+          "title": "N Records",
+          "type": "integer"
+        },
+        "constraint_matrix": {
+          "$ref": "#/$defs/TargetSurfaceMatrix"
+        },
+        "sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Sha256",
+          "type": "string"
+        },
+        "names_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Names Sha256",
+          "type": "string"
+        },
+        "values_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Values Sha256",
+          "type": "string"
+        }
+      },
+      "required": [
+        "schema_version",
+        "weight_entity",
+        "n_targets",
+        "n_records",
+        "constraint_matrix",
+        "sha256",
+        "names_sha256",
+        "values_sha256"
+      ],
+      "title": "TargetSurface",
+      "type": "object"
+    },
+    "TargetSurfaceMatrix": {
+      "additionalProperties": false,
+      "properties": {
+        "rows": {
+          "minimum": 0,
+          "title": "Rows",
+          "type": "integer"
+        },
+        "columns": {
+          "minimum": 0,
+          "title": "Columns",
+          "type": "integer"
+        },
+        "nnz": {
+          "minimum": 0,
+          "title": "Nnz",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "rows",
+        "columns",
+        "nnz"
+      ],
+      "title": "TargetSurfaceMatrix",
+      "type": "object"
+    },
+    "UKAreaFit": {
+      "additionalProperties": false,
+      "properties": {
+        "geography_level": {
+          "enum": [
+            "local_authority",
+            "constituency"
+          ],
+          "title": "Geography Level",
+          "type": "string"
+        },
+        "area_code": {
+          "title": "Area Code",
+          "type": "string"
+        },
+        "country": {
+          "enum": [
+            "England",
+            "Northern Ireland",
+            "Scotland",
+            "Wales"
+          ],
+          "title": "Country",
+          "type": "string"
+        },
+        "n_targets": {
+          "exclusiveMinimum": 0,
+          "title": "N Targets",
+          "type": "integer"
+        },
+        "n_within_10pct": {
+          "minimum": 0,
+          "title": "N Within 10Pct",
+          "type": "integer"
+        },
+        "pass_rate": {
+          "maximum": 1,
+          "minimum": 0,
+          "title": "Pass Rate",
+          "type": "number"
+        },
+        "worst_target": {
+          "title": "Worst Target",
+          "type": "string"
+        },
+        "worst_abs_relative_error": {
+          "minimum": 0,
+          "title": "Worst Abs Relative Error",
+          "type": "number"
+        },
+        "loss_contribution": {
+          "minimum": 0,
+          "title": "Loss Contribution",
+          "type": "number"
+        },
+        "support_below_floor": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Support Below Floor"
+        },
+        "nonzero_households": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Nonzero Households"
+        },
+        "nonzero_source_households": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Nonzero Source Households"
+        },
+        "effective_sample_size": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Effective Sample Size"
+        }
+      },
+      "required": [
+        "geography_level",
+        "area_code",
+        "country",
+        "n_targets",
+        "n_within_10pct",
+        "pass_rate",
+        "worst_target",
+        "worst_abs_relative_error",
+        "loss_contribution"
+      ],
+      "title": "UKAreaFit",
+      "type": "object"
+    },
+    "UKConsumptionDrift": {
+      "additionalProperties": false,
+      "description": "Stage-levelled spend and its composition, design against final weights.\n\nReport only (microcosm#1113): the stage sets these levels and shares, so\ncalibration should barely move them; a large move means a bound row is\npulling weight onto the columns instead.",
+      "properties": {
+        "report_only": {
+          "const": true,
+          "title": "Report Only",
+          "type": "boolean"
+        },
+        "totals": {
+          "additionalProperties": {
+            "$ref": "#/$defs/UKDriftValue"
+          },
+          "minProperties": 1,
+          "title": "Totals",
+          "type": "object"
+        },
+        "shares": {
+          "additionalProperties": {
+            "$ref": "#/$defs/UKDriftValue"
+          },
+          "minProperties": 1,
+          "title": "Shares",
+          "type": "object"
+        }
+      },
+      "required": [
+        "report_only",
+        "totals",
+        "shares"
+      ],
+      "title": "UKConsumptionDrift",
+      "type": "object"
+    },
+    "UKCountryFit": {
+      "additionalProperties": false,
+      "properties": {
+        "country": {
+          "enum": [
+            "England",
+            "Northern Ireland",
+            "Scotland",
+            "Wales"
+          ],
+          "title": "Country",
+          "type": "string"
+        },
+        "geography_level": {
+          "enum": [
+            "local_authority",
+            "constituency"
+          ],
+          "title": "Geography Level",
+          "type": "string"
+        },
+        "n_areas": {
+          "exclusiveMinimum": 0,
+          "title": "N Areas",
+          "type": "integer"
+        },
+        "n_targets": {
+          "exclusiveMinimum": 0,
+          "title": "N Targets",
+          "type": "integer"
+        },
+        "n_within_10pct": {
+          "minimum": 0,
+          "title": "N Within 10Pct",
+          "type": "integer"
+        },
+        "pass_rate": {
+          "maximum": 1,
+          "minimum": 0,
+          "title": "Pass Rate",
+          "type": "number"
+        },
+        "worst_target": {
+          "title": "Worst Target",
+          "type": "string"
+        },
+        "worst_abs_relative_error": {
+          "minimum": 0,
+          "title": "Worst Abs Relative Error",
+          "type": "number"
+        },
+        "loss_contribution": {
+          "minimum": 0,
+          "title": "Loss Contribution",
+          "type": "number"
+        }
+      },
+      "required": [
+        "country",
+        "geography_level",
+        "n_areas",
+        "n_targets",
+        "n_within_10pct",
+        "pass_rate",
+        "worst_target",
+        "worst_abs_relative_error",
+        "loss_contribution"
+      ],
+      "title": "UKCountryFit",
+      "type": "object"
+    },
+    "UKDiagnosticsV1": {
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": {
+          "const": 1,
+          "title": "Schema Version",
+          "type": "integer"
+        },
+        "weights": {
+          "$ref": "#/$defs/UKWeightSummary"
+        },
+        "zero_weight_rows_by_stratum": {
+          "items": {
+            "$ref": "#/$defs/UKZeroWeightStratum"
+          },
+          "minItems": 1,
+          "title": "Zero Weight Rows By Stratum",
+          "type": "array"
+        },
+        "target_pass_rates_by_geography_level": {
+          "items": {
+            "$ref": "#/$defs/UKGeographyPassRate"
+          },
+          "title": "Target Pass Rates By Geography Level",
+          "type": "array"
+        },
+        "target_observation_basis": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "title": "Target Observation Basis",
+          "type": "object"
+        },
+        "weakest_families": {
+          "anyOf": [
+            {
+              "items": {
+                "$ref": "#/$defs/UKWeakestFamily"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Weakest Families"
+        },
+        "weakest_areas_by_fit": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/UKWeakestAreasByFit"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "rotated_holdout": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/UKMeasuredRotatedHoldout"
+            },
+            {
+              "$ref": "#/$defs/UKSkippedRotatedHoldout"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Rotated Holdout"
+        },
+        "consumption_drift": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/UKConsumptionDrift"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "model_figures_withheld": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/UKWithheldModelFigures"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "required": [
+        "schema_version",
+        "weights",
+        "zero_weight_rows_by_stratum",
+        "target_pass_rates_by_geography_level",
+        "target_observation_basis"
+      ],
+      "title": "UKDiagnosticsV1",
+      "type": "object"
+    },
+    "UKDriftValue": {
+      "additionalProperties": false,
+      "description": "One quantity at the design weights and at the final weights.",
+      "properties": {
+        "design": {
+          "title": "Design",
+          "type": "number"
+        },
+        "final": {
+          "title": "Final",
+          "type": "number"
+        },
+        "change": {
+          "title": "Change",
+          "type": "number"
+        },
+        "relative_change": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Relative Change"
+        }
+      },
+      "required": [
+        "design",
+        "final",
+        "change",
+        "relative_change"
+      ],
+      "title": "UKDriftValue",
+      "type": "object"
+    },
+    "UKGeographyPassRate": {
+      "additionalProperties": false,
+      "properties": {
+        "geography_level": {
+          "enum": [
+            "national",
+            "region",
+            "country",
+            "local_authority",
+            "constituency",
+            "brma"
+          ],
+          "title": "Geography Level",
+          "type": "string"
+        },
+        "n_targets": {
+          "minimum": 0,
+          "title": "N Targets",
+          "type": "integer"
+        },
+        "n_scored": {
+          "minimum": 0,
+          "title": "N Scored",
+          "type": "integer"
+        },
+        "n_skipped": {
+          "minimum": 0,
+          "title": "N Skipped",
+          "type": "integer"
+        },
+        "n_within_10pct": {
+          "minimum": 0,
+          "title": "N Within 10Pct",
+          "type": "integer"
+        },
+        "pass_rate": {
+          "anyOf": [
+            {
+              "maximum": 1,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Pass Rate"
+        }
+      },
+      "required": [
+        "geography_level",
+        "n_targets",
+        "n_scored",
+        "n_skipped",
+        "n_within_10pct",
+        "pass_rate"
+      ],
+      "title": "UKGeographyPassRate",
+      "type": "object"
+    },
+    "UKMeasuredRotatedHoldout": {
+      "additionalProperties": false,
+      "properties": {
+        "report_only": {
+          "const": true,
+          "title": "Report Only",
+          "type": "boolean"
+        },
+        "method": {
+          "const": "rotated_folds",
+          "title": "Method",
+          "type": "string"
+        },
+        "target_loss_cap": {
+          "exclusiveMinimum": 0,
+          "title": "Target Loss Cap",
+          "type": "number"
+        },
+        "loss_weight_scale": {
+          "const": "held_local_grains_only",
+          "title": "Loss Weight Scale",
+          "type": "string"
+        },
+        "target_weight_rule": {
+          "enum": [
+            "uniform",
+            "grain_equal",
+            "grain_family_equal",
+            "grain_family_equal_sqrt_count",
+            "nation_grain_family_equal",
+            "nation_grain_family_equal_sqrt_count"
+          ],
+          "title": "Target Weight Rule",
+          "type": "string"
+        },
+        "population": {
+          "const": "held_out_local_targets",
+          "title": "Population",
+          "type": "string"
+        },
+        "grains": {
+          "items": {
+            "enum": [
+              "constituency",
+              "local_authority",
+              "la"
+            ],
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Grains",
+          "type": "array"
+        },
+        "n_folds": {
+          "minimum": 2,
+          "title": "N Folds",
+          "type": "integer"
+        },
+        "seed": {
+          "title": "Seed",
+          "type": "integer"
+        },
+        "solve_seed": {
+          "title": "Solve Seed",
+          "type": "integer"
+        },
+        "mean_holdout_loss": {
+          "minimum": 0,
+          "title": "Mean Holdout Loss",
+          "type": "number"
+        },
+        "worst_holdout_loss": {
+          "minimum": 0,
+          "title": "Worst Holdout Loss",
+          "type": "number"
+        },
+        "fold_losses": {
+          "items": {
+            "minimum": 0,
+            "type": "number"
+          },
+          "title": "Fold Losses",
+          "type": "array"
+        },
+        "folds": {
+          "items": {
+            "$ref": "#/$defs/UKRotatedHoldoutFold"
+          },
+          "title": "Folds",
+          "type": "array"
+        }
+      },
+      "required": [
+        "report_only",
+        "method",
+        "target_loss_cap",
+        "loss_weight_scale",
+        "target_weight_rule",
+        "population",
+        "grains",
+        "n_folds",
+        "seed",
+        "solve_seed",
+        "mean_holdout_loss",
+        "worst_holdout_loss",
+        "fold_losses",
+        "folds"
+      ],
+      "title": "UKMeasuredRotatedHoldout",
+      "type": "object"
+    },
+    "UKRotatedHoldoutFold": {
+      "additionalProperties": false,
+      "properties": {
+        "fold": {
+          "minimum": 0,
+          "title": "Fold",
+          "type": "integer"
+        },
+        "n_train_targets": {
+          "minimum": 0,
+          "title": "N Train Targets",
+          "type": "integer"
+        },
+        "n_holdout_targets": {
+          "exclusiveMinimum": 0,
+          "title": "N Holdout Targets",
+          "type": "integer"
+        },
+        "holdout_target_indices": {
+          "items": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "title": "Holdout Target Indices",
+          "type": "array"
+        },
+        "training_national_rows": {
+          "minimum": 0,
+          "title": "Training National Rows",
+          "type": "integer"
+        },
+        "holdout_loss": {
+          "minimum": 0,
+          "title": "Holdout Loss",
+          "type": "number"
+        }
+      },
+      "required": [
+        "fold",
+        "n_train_targets",
+        "n_holdout_targets",
+        "holdout_target_indices",
+        "training_national_rows",
+        "holdout_loss"
+      ],
+      "title": "UKRotatedHoldoutFold",
+      "type": "object"
+    },
+    "UKSkippedRotatedHoldout": {
+      "additionalProperties": false,
+      "properties": {
+        "skipped": {
+          "const": true,
+          "title": "Skipped",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "skipped"
+      ],
+      "title": "UKSkippedRotatedHoldout",
+      "type": "object"
+    },
+    "UKWeakestAreasByFit": {
+      "additionalProperties": false,
+      "properties": {
+        "limit": {
+          "exclusiveMinimum": 0,
+          "title": "Limit",
+          "type": "integer"
+        },
+        "n_areas_scored": {
+          "minimum": 0,
+          "title": "N Areas Scored",
+          "type": "integer"
+        },
+        "bottom_by_fit": {
+          "items": {
+            "$ref": "#/$defs/UKAreaFit"
+          },
+          "title": "Bottom By Fit",
+          "type": "array"
+        },
+        "countries": {
+          "items": {
+            "$ref": "#/$defs/UKCountryFit"
+          },
+          "title": "Countries",
+          "type": "array"
+        }
+      },
+      "required": [
+        "limit",
+        "n_areas_scored",
+        "bottom_by_fit",
+        "countries"
+      ],
+      "title": "UKWeakestAreasByFit",
+      "type": "object"
+    },
+    "UKWeakestFamily": {
+      "additionalProperties": false,
+      "properties": {
+        "family": {
+          "title": "Family",
+          "type": "string"
+        },
+        "n_targets": {
+          "exclusiveMinimum": 0,
+          "title": "N Targets",
+          "type": "integer"
+        },
+        "n_within_10pct": {
+          "minimum": 0,
+          "title": "N Within 10Pct",
+          "type": "integer"
+        },
+        "pass_rate": {
+          "maximum": 1,
+          "minimum": 0,
+          "title": "Pass Rate",
+          "type": "number"
+        },
+        "worst_target": {
+          "title": "Worst Target",
+          "type": "string"
+        },
+        "worst_abs_relative_error": {
+          "minimum": 0,
+          "title": "Worst Abs Relative Error",
+          "type": "number"
+        },
+        "loss_contribution": {
+          "minimum": 0,
+          "title": "Loss Contribution",
+          "type": "number"
+        },
+        "loss_share": {
+          "maximum": 1,
+          "minimum": 0,
+          "title": "Loss Share",
+          "type": "number"
+        }
+      },
+      "required": [
+        "family",
+        "n_targets",
+        "n_within_10pct",
+        "pass_rate",
+        "worst_target",
+        "worst_abs_relative_error",
+        "loss_contribution",
+        "loss_share"
+      ],
+      "title": "UKWeakestFamily",
+      "type": "object"
+    },
+    "UKWeightSummary": {
+      "additionalProperties": false,
+      "properties": {
+        "n_records": {
+          "exclusiveMinimum": 0,
+          "title": "N Records",
+          "type": "integer"
+        },
+        "positive_weight_records": {
+          "minimum": 0,
+          "title": "Positive Weight Records",
+          "type": "integer"
+        },
+        "zero_weight_records": {
+          "minimum": 0,
+          "title": "Zero Weight Records",
+          "type": "integer"
+        },
+        "total_weight": {
+          "minimum": 0,
+          "title": "Total Weight",
+          "type": "number"
+        },
+        "effective_sample_size": {
+          "minimum": 0,
+          "title": "Effective Sample Size",
+          "type": "number"
+        },
+        "ess_fraction": {
+          "maximum": 1,
+          "minimum": 0,
+          "title": "Ess Fraction",
+          "type": "number"
+        },
+        "median_positive_weight": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Median Positive Weight"
+        },
+        "max_weight": {
+          "minimum": 0,
+          "title": "Max Weight",
+          "type": "number"
+        },
+        "max_to_median_positive_weight": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Max To Median Positive Weight"
+        },
+        "top_1pct_weight_share": {
+          "maximum": 1,
+          "minimum": 0,
+          "title": "Top 1Pct Weight Share",
+          "type": "number"
+        }
+      },
+      "required": [
+        "n_records",
+        "positive_weight_records",
+        "zero_weight_records",
+        "total_weight",
+        "effective_sample_size",
+        "ess_fraction",
+        "median_positive_weight",
+        "max_weight",
+        "max_to_median_positive_weight",
+        "top_1pct_weight_share"
+      ],
+      "title": "UKWeightSummary",
+      "type": "object"
+    },
+    "UKWithheldModelFigures": {
+      "additionalProperties": false,
+      "description": "Target rows whose model figures stay in the build (microcosm#1262).\n\nA row resting on fewer than ``min_source_households`` distinct source\nhouseholds keeps its place without its model figures. While any does, the\npayload's totals are restated over the published rows (``totals_basis``)\nso that none can be differenced against them, and its loss trajectory is\nempty.",
+      "properties": {
+        "targets": {
+          "exclusiveMinimum": 0,
+          "title": "Targets",
+          "type": "integer"
+        },
+        "min_source_households": {
+          "exclusiveMinimum": 0,
+          "title": "Min Source Households",
+          "type": "integer"
+        },
+        "totals_basis": {
+          "const": "published_rows",
+          "title": "Totals Basis",
+          "type": "string"
+        },
+        "note": {
+          "title": "Note",
+          "type": "string"
+        }
+      },
+      "required": [
+        "targets",
+        "min_source_households",
+        "totals_basis",
+        "note"
+      ],
+      "title": "UKWithheldModelFigures",
+      "type": "object"
+    },
+    "UKZeroWeightStratum": {
+      "additionalProperties": false,
+      "properties": {
+        "stratum": {
+          "additionalProperties": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "integer"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "minProperties": 1,
+          "title": "Stratum",
+          "type": "object"
+        },
+        "rows": {
+          "minimum": 0,
+          "title": "Rows",
+          "type": "integer"
+        },
+        "positive_weight_rows": {
+          "minimum": 0,
+          "title": "Positive Weight Rows",
+          "type": "integer"
+        },
+        "zero_weight_rows": {
+          "minimum": 0,
+          "title": "Zero Weight Rows",
+          "type": "integer"
+        },
+        "weight_sum": {
+          "minimum": 0,
+          "title": "Weight Sum",
+          "type": "number"
+        }
+      },
+      "required": [
+        "stratum",
+        "rows",
+        "positive_weight_rows",
+        "zero_weight_rows",
+        "weight_sum"
+      ],
+      "title": "UKZeroWeightStratum",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": 8,
+      "title": "Schema Version",
+      "type": "integer"
+    },
+    "weight_entity": {
+      "title": "Weight Entity",
+      "type": "string"
+    },
+    "options": {
+      "additionalProperties": {
+        "$ref": "#/$defs/JsonValue"
+      },
+      "title": "Options",
+      "type": "object"
+    },
+    "target_surface": {
+      "$ref": "#/$defs/TargetSurface"
+    },
+    "target_registry": {
+      "$ref": "#/$defs/TargetRegistryRef"
+    },
+    "l0_lambda": {
+      "anyOf": [
+        {
+          "type": "number"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "title": "L0 Lambda"
+    },
+    "n_nonzero": {
+      "minimum": 0,
+      "title": "N Nonzero",
+      "type": "integer"
+    },
+    "n_records": {
+      "exclusiveMinimum": 0,
+      "title": "N Records",
+      "type": "integer"
+    },
+    "initial_loss": {
+      "anyOf": [
+        {
+          "type": "number"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "title": "Initial Loss"
+    },
+    "final_loss": {
+      "anyOf": [
+        {
+          "type": "number"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "title": "Final Loss"
+    },
+    "fraction_within_10pct": {
+      "anyOf": [
+        {
+          "type": "number"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "title": "Fraction Within 10Pct"
+    },
+    "effective_sample_size": {
+      "anyOf": [
+        {
+          "type": "number"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "title": "Effective Sample Size"
+    },
+    "realized_max_weight_ratio": {
+      "anyOf": [
+        {
+          "type": "number"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "title": "Realized Max Weight Ratio"
+    },
+    "top_1pct_weight_share": {
+      "anyOf": [
+        {
+          "type": "number"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "title": "Top 1Pct Weight Share"
+    },
+    "loss_trajectory": {
+      "items": {
+        "anyOf": [
+          {
+            "type": "number"
+          },
+          {
+            "type": "null"
+          }
+        ]
+      },
+      "title": "Loss Trajectory",
+      "type": "array"
+    },
+    "skipped": {
+      "items": {
+        "$ref": "#/$defs/SkippedTarget"
+      },
+      "title": "Skipped",
+      "type": "array"
+    },
+    "past_cap_census": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/PastCapCensus"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "diagnostic_warnings": {
+      "items": {
+        "$ref": "#/$defs/DiagnosticsWarning"
+      },
+      "title": "Diagnostic Warnings",
+      "type": "array"
+    },
+    "targets": {
+      "items": {
+        "$ref": "#/$defs/TargetDiagnosticV8"
+      },
+      "title": "Targets",
+      "type": "array"
+    },
+    "target_loss_basis": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/TargetLossBasis"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "build": {
+      "anyOf": [
+        {
+          "additionalProperties": {
+            "$ref": "#/$defs/JsonValue"
+          },
+          "type": "object"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Build"
+    },
+    "uk_diagnostics": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/UKDiagnosticsV1"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    }
+  },
+  "required": [
+    "schema_version",
+    "weight_entity",
+    "options",
+    "target_surface",
+    "target_registry",
+    "l0_lambda",
+    "n_nonzero",
+    "n_records",
+    "initial_loss",
+    "final_loss",
+    "fraction_within_10pct",
+    "effective_sample_size",
+    "realized_max_weight_ratio",
+    "top_1pct_weight_share",
+    "loss_trajectory",
+    "skipped",
+    "past_cap_census",
+    "diagnostic_warnings",
+    "targets"
+  ],
+  "type": "object"
+}

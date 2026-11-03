@@ -93,23 +93,28 @@ _PERSON_REQUIRED = (
     "RETP",
     "INTP",
     "PWGTP",
+    "OCCP",
+    "INDP",
+    "WKWN",
+    "ESR",
 )
 # Preserve source hours and their universe/allocation evidence when supplied,
-# the citizenship, entry-year, birthplace, coverage, class-of-worker, school,
-# employment and military-service fields the ACS local lane's immigration
-# stage reads (microcosm#1020, acs_local_immigration), the weeks-worked and
-# six disability-difficulty items the local lane maps natively
-# (microcosm#1021, acs_local_work_disability), all other income (OIP), the
-# local income pass's child-support predictor (microcosm#1022,
-# acs_local_income), and the public assistance income the local lane's
-# receipt-anchor receipt records (microcosm#1022, acs_local_receipt_anchors).
-# Older or minimal source fixtures remain loadable; an absent column stays
-# absent and a Census blank stays missing, never a zero.
+# the citizenship, entry-year, birthplace, coverage, class-of-worker, school
+# and military-service fields the ACS local lane's immigration stage reads
+# (microcosm#1020, acs_local_immigration), the six disability-difficulty items
+# the local lane maps natively (microcosm#1021, acs_local_work_disability),
+# all other income (OIP), the local income pass's child-support predictor
+# (microcosm#1022, acs_local_income), and the public assistance income the
+# local lane's receipt-anchor receipt records (microcosm#1022,
+# acs_local_receipt_anchors). The employment status (ESR) the immigration
+# stage reads and the weeks worked (WKWN) the local lane maps natively are
+# required above, for the work-experience inputs. Older or minimal source
+# fixtures remain loadable; an absent column stays absent and a Census blank
+# stays missing, never a zero.
 _PERSON_OPTIONAL: tuple[str, ...] = (
     "WKHP",
     "WKL",
     "FWKHP",
-    "WKWN",
     "DDRS",
     "DEAR",
     "DEYE",
@@ -126,7 +131,6 @@ _PERSON_OPTIONAL: tuple[str, ...] = (
     "HINS7",
     "COW",
     "SCHG",
-    "ESR",
     "MIL",
     "OIP",
     "PAP",

@@ -339,8 +339,9 @@ OBR_VENDORED_RESOURCE = "obr_hvcts_costing_facts.json"
 def load_vendored_obr_hvcts_facts() -> tuple[Mapping[str, Any], ...] | None:
     """The OBR HVCTS costing facts vendored from the feed, or ``None`` before they are.
 
-    The benchmarks gate reports its OBR leg as awaiting facts until the
-    chronicle#349 re-pin vendors ``uk/obr_hvcts_costing_facts.json``.
+    ``uk/obr_hvcts_costing_facts.json`` carries the note's Table 1.1 and 1.2
+    property counts and its non-owner-occupied share; the benchmarks gate reads
+    them by concept, period and behaviour basis.
     """
     resource = resources.files("microcosm.build.uk").joinpath(OBR_VENDORED_RESOURCE)
     if not resource.is_file():

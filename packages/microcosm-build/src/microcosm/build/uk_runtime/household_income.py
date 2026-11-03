@@ -27,12 +27,17 @@ import pandas as pd
 from microcosm.frame import Frame
 
 #: The deductions policyengine-uk takes from HBAI income to reach
-#: ``hbai_household_net_income`` (its ``HBAI_HOUSEHOLD_NET_INCOME_SUBTRACTS``;
-#: an engine-lane test fails if the two lists part).
+#: ``hbai_household_net_income`` (its ``HBAI_HOUSEHOLD_NET_INCOME_SUBTRACTS``),
+#: less the ones the gross income does not add back; an engine-lane test fails
+#: if the two lists together part from the engine's.
+#: ``isa_cash_interest_flat_rate_charge`` (policyengine-uk 2.162.2) is a tax on
+#: the cash interest in non-cash ISAs, like income tax; it is zero before
+#: 2027-28.
 UK_HBAI_GROSS_INCOME_DEDUCTIONS = (
     "council_tax",
     "domestic_rates",
     "income_tax",
+    "isa_cash_interest_flat_rate_charge",
     "national_insurance",
     "student_loan_repayments",
     "employee_pension_contributions",
@@ -41,9 +46,23 @@ UK_HBAI_GROSS_INCOME_DEDUCTIONS = (
     "external_child_payments",
     "LVT",
 )
+#: The engine's HBAI subtractions the gross income leaves subtracted.
+#: ``trading_loss`` (policyengine-uk 2.131.0) is the year's self-employment
+#: loss: the surveys' gross incomes count self-employment income net of losses,
+#: so adding it back would band a loss-making household on its income before
+#: the loss.
+UK_HBAI_NET_INCOME_SUBTRACTS_NOT_ADDED_BACK = ("trading_loss",)
+#: The engine variable the build reads for a household's HBAI net income: the
+#: figure before negative incomes are reset to zero (policyengine-uk 2.132.4,
+#: pe-uk#2402). The surveys' incomes the stages match recipients to are not
+#: reset, and net income plus the deductions is gross income only before the
+#: reset.
+UK_HBAI_NET_INCOME_VARIABLE = "hbai_household_net_income_before_reset_to_zero"
+#: The predictor name the stages and their donors give that income.
+UK_HBAI_NET_INCOME_PREDICTOR = "hbai_household_net_income"
 #: The engine variables a stage materializes to build the gross income.
 UK_HBAI_GROSS_INCOME_VARIABLES = (
-    "hbai_household_net_income",
+    UK_HBAI_NET_INCOME_VARIABLE,
     *UK_HBAI_GROSS_INCOME_DEDUCTIONS,
 )
 #: The direct taxes the ETB takes from gross income for disposable income.

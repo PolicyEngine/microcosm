@@ -57,6 +57,9 @@ from microcosm.frame.input_closure import (
     resolve_judgments,
 )
 from microcosm.frame.unit_construction import (
+    MultiUnitRule,
+    TaxUnitRule,
+    UnitDeclaration,
     benefit_unit_attributes,
     benefit_unit_membership,
     build_benefit_units,
@@ -397,6 +400,69 @@ def _context(kernel, frame, params, outputs, *, artifacts=None):
         params=node.params,
         rng=np.random.default_rng(1),
         artifacts={} if artifacts is None else artifacts,
+    )
+
+
+@PROPERTY
+@given(tables=concept_frames(max_households=2, max_members=3))
+def test_group_encoding_requires_one_selected_declared_unit(tables):
+    frame = _generated_frame(tables)
+    params = {**_encode_params(groups=True), "unit_entity": "tax_unit"}
+    with pytest.raises(ValueError, match="exactly one declared unit"):
+        CONCEPTS_ENCODE_GROUPS.run(
+            _context(
+                CONCEPTS_ENCODE_GROUPS,
+                frame,
+                params,
+                (Owned("family", "input_assets", "float64"),),
+            )
+        )
+    declaration = MultiUnitRule(
+        units=(
+            UnitDeclaration(kind="benefit_unit", rule=UNIT_RULE),
+            UnitDeclaration(
+                kind="tax_unit",
+                rule=TaxUnitRule(
+                    entity="tax_unit",
+                    pairing_eligibility_column="explicit_eligibility",
+                    provenance={"eligibility": "Synthetic unused declaration."},
+                ),
+            ),
+        )
+    )
+    document = declaration.to_dict()
+    base_params = _encode_params(
+        groups=True,
+        knobs={
+            "rent_allocation": "reference_unit",
+            "asset_test": True,
+            "rent_factor": 1.0,
+        },
+    )
+    versioned = {
+        **base_params,
+        "unit_rule": canonical_text(document),
+        "unit_rule_sha256": digest(document),
+    }
+    outputs = (Owned("family", "input_assets", "float64"),)
+    with pytest.raises(ValueError, match="requires unit_entity"):
+        CONCEPTS_ENCODE_GROUPS.run(
+            _context(CONCEPTS_ENCODE_GROUPS, frame, versioned, outputs)
+        )
+    expected = CONCEPTS_ENCODE_GROUPS.run(
+        _context(CONCEPTS_ENCODE_GROUPS, frame, base_params, outputs)
+    )
+    actual = CONCEPTS_ENCODE_GROUPS.run(
+        _context(
+            CONCEPTS_ENCODE_GROUPS,
+            frame,
+            {**versioned, "unit_entity": "family"},
+            outputs,
+        )
+    )
+    pd.testing.assert_series_equal(
+        actual.columns["family", "input_assets"],
+        expected.columns["family", "input_assets"],
     )
 
 
@@ -893,6 +959,23 @@ def test_target_driven_receipts_bind_surface_and_report_expected_and_realized_ma
                 artifacts={"surface": replace(artifact, payload=wrong_unit_surface)},
             )
         )
+    # A v1 contract takes none of v2's optional parameters: each refuses as
+    # unknown, exactly as before v2 existed.
+    for name in (
+        "calibration_bindings",
+        "calibration_bindings_sha256",
+        "profile_selection",
+    ):
+        with pytest.raises(ValueError, match=rf"unknown parameter\(s\): \['{name}'\]"):
+            TAKEUP_ASSIGN.run(
+                _context(
+                    TAKEUP_ASSIGN,
+                    frame,
+                    {**params, name: "{}"},
+                    (Owned("person", "receives_alpha", "bool"),),
+                    artifacts={"surface": artifact},
+                )
+            )
 
 
 def test_wrappers_refuse_missing_resource_ids_missing_columns_and_non_input_overrides(

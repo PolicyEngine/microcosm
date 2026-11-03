@@ -272,6 +272,7 @@ def test_donor_without_person_roles_leaves_demographic_predictors_absent() -> No
             tax_unit_outputs=(),
             n_estimators=2,
             seed=0,
+            tail_bound_diagnostics=[],
         )
 
 
@@ -444,6 +445,7 @@ def test_strict_recipient_surface_names_a_tax_unit_without_a_head() -> None:
             seed=0,
             require_complete_recipient_predictors=True,
             absent_cells=puf_support.PUF_ABSENT_CELLS_PRESERVE_NULLS,
+            tail_bound_diagnostics=[],
         )
 
 
@@ -487,6 +489,7 @@ def _imputed_puf_wages(
         tax_unit_outputs=(),
         n_estimators=8,
         seed=0,
+        tail_bound_diagnostics=[],
     )
     person = imputed.table("person")
     detail = person[support_channel_column("person")].eq(PUF_TAX_DETAIL_SUPPORT_CHANNEL)

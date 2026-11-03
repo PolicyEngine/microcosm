@@ -15,22 +15,26 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, TypedDict
 
-from microcosm_emitter.orrery.client import publication_inventory, publish_graph
-from microcosm_emitter.orrery.contracts import (
+from microcosm_emitter_interface.orrery import (
     PublicationFileRole,
     PublicationReceipt,
 )
 
 from microcosm.build.artifact_files import file_artifact, materialize_bytes
 from microcosm.build.staging_dataset import StagedDatasetDelivery
+from microcosm.build.telemetry_emitter import publication_inventory, publish_graph
 from microcosm.graph import ContentStore
 from microcosm.graph.canonical import canonical_json
 from microcosm.graph.evidence import collect_execution_evidence, load_run_evidence
+from microcosm.graph.execution_overlay import execution_overlay_bytes
 from microcosm.graph.orrery import orrery_json_from_schema
+
+from .orrery_contract import public_summary_findings
 
 RECEIPT_NAME = "orrery.publication.json"
 INVENTORY_NAME = "orrery.upload.json"
 EVIDENCE_MANIFEST_NAME = "orrery.evidence-manifest.json"
+EXECUTION_OVERLAY_NAME = "graph.execution.json"
 FAILURE_MARKER_NAME = "orrery.failure.json"
 FAILURE_BUNDLE_DIRECTORY = "orrery-failure"
 # How long a build waits for a first upload result after the durable enqueue.
@@ -54,14 +58,14 @@ class GraphFinalization:
 
 
 def publication_enabled(args: Namespace) -> bool:
-    explicit = getattr(args, "publish_orrery", None)
-    if explicit is not None:
-        return explicit
-    return not (
-        getattr(args, "no_staging", False)
-        or getattr(args, "staging_local_only", False)
-        or getattr(args, "no_staged_dataset", False)
-    )
+    """Whether the saved graph goes to the public Orrery: only on request.
+
+    A UK build keeps its graph evidence local unless ``--publish-orrery`` asks
+    for the submission (María's ruling of 2026-10-26), whatever its staging;
+    staging to the private repositories does not depend on it.
+    """
+
+    return getattr(args, "publish_orrery", None) is True
 
 
 def _urls(value: object) -> Iterator[str]:
@@ -128,6 +132,11 @@ def finalize_graph(
                 store = ContentStore(args.graph_store, create=False)
                 runs = load_run_evidence(index_path, store=store, reference_base=output)
                 execution = collect_execution_evidence(schema, runs=runs, store=store)
+                # Checked before anything is preserved: without the inventory
+                # neither the build nor the emitter's retry can submit them.
+                if public_summary_findings(execution["summaries"]):
+                    receipt.update(status="failed", error_code="unpublishable_summary")
+                    raise RuntimeError("Graph summaries carry unpublishable fields.")
                 roles[index_path.name] = "index"
                 index = json.loads(index_path.read_bytes())
                 for run in index["runs"]:
@@ -141,6 +150,18 @@ def finalize_graph(
                         roles[run[field]["path"]] = role
             payload = orrery_json_from_schema(schema, execution=execution).encode()
             materialize_bytes(payload, output / "graph.orrery.json")
+            # The overlay is the projection's only input besides the schema,
+            # so a later projection can start from these two files. It is a
+            # registered build output but not part of the Orrery publication:
+            # the emitter's file roles and the runs service's contract do not
+            # admit it yet.
+            unpublished: list[str] = []
+            if execution is not None:
+                materialize_bytes(
+                    execution_overlay_bytes(execution),
+                    output / EXECUTION_OVERLAY_NAME,
+                )
+                unpublished.append(EXECUTION_OVERLAY_NAME)
             for url in _urls(json.loads(payload)):
                 name = url.split("#", 1)[0]
                 if re.fullmatch(r"upstream-[a-f0-9]{64}\.json", name):
@@ -149,7 +170,7 @@ def finalize_graph(
                     roles[name] = "upstream"
             # Keep exact sources outside the build's temporary directory and
             # outside HF's immutable receipt snapshot, including when offline.
-            names = list(roles)
+            names = [*roles, *unpublished]
             preserved = Path(args.attempt_evidence) / "orrery-publication"
             for name in roles:
                 materialize_bytes((output / name).read_bytes(), preserved / name)
@@ -169,7 +190,7 @@ def finalize_graph(
                 raise RuntimeError("Local graph inventory service is unavailable.")
             materialize_bytes(canonical_json(inventory), preserved / INVENTORY_NAME)
             materialize_bytes(canonical_json(inventory), output / INVENTORY_NAME)
-            names = [*roles, INVENTORY_NAME]
+            names = [*roles, *unpublished, INVENTORY_NAME]
             receipt = {
                 "version": 1,
                 "publication_id": inventory["publication_id"],

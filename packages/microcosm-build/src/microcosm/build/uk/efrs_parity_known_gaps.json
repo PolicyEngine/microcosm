@@ -637,6 +637,12 @@
    "tracking_note": "microcosm#1106 (the uk-data#543 defect): the release and calibration boundaries drop the WAS total, and policyengine-uk sums main_residence_value, other_residential_property_value and non_residential_property_value, which stay required.",
    "approved_by": "juaristi22",
    "approved_on": "2026-10-11"
+  },
+  "tax_free_savings_income": {
+   "reason": "formula-owned in policyengine-uk and derived from persisted components; a persisted copy overrides the formula and is not uprated",
+   "tracking_note": "microcosm#1360: under the additive ISA income contract the producer stores ISA interest in individual_savings_account_interest_income, which policyengine-uk adds into tax_free_savings_income; savings_interest_income, now interest outside ISAs, stays required.",
+   "approved_by": "juaristi22",
+   "approved_on": "2026-10-28"
   }
  },
  "exclusion_policy": {

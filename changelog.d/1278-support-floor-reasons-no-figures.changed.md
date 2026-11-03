@@ -1,0 +1,1 @@
+The two UK local-authority support-floor exclusions (Isles of Scilly, City of London) and the generated deferral rationale for their own cells now say which part of the 50-row / ESS-50 / 50-source floor each area misses, without per-area support figures (microcosm#1278 review).

@@ -29,6 +29,13 @@ AREA_SPECS = (
 )
 
 
+def _sha256(path: Path) -> str:
+    """The file's digest, read in chunks: the pinned feed is several GB."""
+
+    with path.open("rb") as stream:
+        return hashlib.file_digest(stream, "sha256").hexdigest()
+
+
 def _contract() -> dict[str, dict]:
     payload = json.loads(
         importlib_resources.files("microcosm.build.uk")
@@ -46,8 +53,10 @@ def test_the_national_rows_fan_out_as_the_calendar_2025_window():
         assert target["value_operation"] == "calendar_year_window"
         rate = target_id.split(".")[2].removesuffix("_rate_taxpayers")
         assert target["ledger_selector"]["dimension_values"] == {"marginal_rate": rate}
+        # Each person's rate band on their year of income, a proxy for the
+        # tax year.
         assert {
-            "variable": "tax_band",
+            "variable": "tax_band_annual",
             "operator": "==",
             "value": band,
         } in target["bindings"]["policyengine"]["filters"]
@@ -87,10 +96,7 @@ def _pinned_feed_facts(predicate) -> list[dict]:
         feed = feed / "consumer_facts.jsonl"
     if not feed.is_file():
         pytest.skip("pinned UK Chronicle consumer feed is not present")
-    assert (
-        hashlib.sha256(feed.read_bytes()).hexdigest()
-        == load_uk_chronicle_feed().facts_sha256
-    )
+    assert _sha256(feed) == load_uk_chronicle_feed().facts_sha256
     with feed.open(encoding="utf-8") as handle:
         return [
             fact

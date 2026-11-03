@@ -1,5 +1,5 @@
 """Price imputed domestic energy at published average prices and rake it in kWh
-to the NEED shape at the DESNZ level (microcosm#890 F, chronicle#270).
+to the NEED shape at a published level (microcosm#890 F, chronicle#270).
 
 The LCFS diary and the consumption QRF carry energy as pounds. Four published
 facts turn that into a base-year (calendar 2024) frame under one declared
@@ -15,13 +15,24 @@ operation, ``price_domestic_energy``:
   electricity meters from the DESNZ subnational statistics; gas-positive
   households are disconnected in an identity-keyed uniform order until the
   region's prior-weighted share is the published one, so every group of
-  households loses the same expected share of its connected mass;
+  households loses the same expected share of its connected mass; in a
+  region whose draw falls short, zero-gas households are connected in the
+  declared ``connect_rule`` order (microcosm#1164);
 * shape: the NEED mean kWh by household income band, tenure, property type
   and region (England and Wales; Scotland by income, tenure and property),
   raked in kWh with gas over connected households;
 * level: DESNZ Energy Trends domestic consumption at actual temperature,
-  summed over the four quarters of the fiscal year, one factor per fuel on
-  the raked kWh so the frame's prior-weighted total is the published one.
+  summed over the four quarters of the declared calendar year (2024, the
+  base year of every LCFS spend column; microcosm#1113), one factor per fuel
+  on the raked kWh so the frame's prior-weighted total is the published one.
+  A fuel the stage declares in ``spend_level_fuels`` takes the kWh ONS
+  household spending buys instead (microcosm#1418): the Consumer Trends
+  class for the year, less QEP's United Kingdom average fixed cost on every
+  domestic meter DESNZ counts, over QEP's United Kingdom average unit cost;
+* ceiling: each household's kWh is capped at the declared
+  ``household_kwh_ceiling`` (the NEED domestic-meter limits), the capped
+  households' own NEED cells are re-raked below it and the level is
+  restored (microcosm#1164).
 
 Every price, share, margin, factor and fit is returned in receipts the stage
 records; the ``energy_rake`` stage-health gate recomputes the published
@@ -36,6 +47,7 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import date
 from importlib.resources import files
+from types import MappingProxyType
 from typing import Any
 
 import numpy as np
@@ -91,6 +103,65 @@ SUBNATIONAL_METER_CONCEPTS: Mapping[str, str] = {
     ELECTRICITY_FUEL: "desnz.subnational.domestic_electricity_meter_count",
     GAS_FUEL: "desnz.subnational.domestic_gas_meter_count",
 }
+#: The period type of each fuel's sub-national statistics. DESNZ's gas runs on
+#: gas years (gas year Y, mid-May Y to mid-May Y+1, weather-corrected) and its
+#: electricity on calendar years. Microcosm pairs gas year Y with calendar year
+#: Y, the year each opens in (microcosm#1300; PolicyEngine/chronicle#356 left
+#: the alignment to Microcosm), so the meter ratio and the Great Britain level
+#: divide like-labelled years, as they did before Chronicle stamped the gas
+#: rows' own period type; every read names its type, so a re-stamped period
+#: fails by name.
+SUBNATIONAL_PERIOD_TYPES: Mapping[str, str] = {
+    ELECTRICITY_FUEL: "calendar_year",
+    GAS_FUEL: "gas_year",
+}
+UNITED_KINGDOM_GEOGRAPHY_ID = "K02000001"
+GREAT_BRITAIN_GEOGRAPHY_ID = "K03000001"
+#: Northern Ireland's row of DESNZ's sub-national domestic statistics, all
+#: domestic meters: electricity on financial years from April (the publisher's
+#: opening-year label, not weather corrected) and gas on DESNZ's Northern
+#: Ireland gas years (15 May to 15 May from 2018, weather corrected). The year
+#: labelled Y pairs with Great Britain's year Y, as Great Britain's gas year
+#: pairs with its calendar-year electricity (microcosm#1278).
+NORTHERN_IRELAND_GEOGRAPHY_ID = "N92000002"
+NORTHERN_IRELAND_PERIOD_TYPES: Mapping[str, str] = {
+    ELECTRICITY_FUEL: "fiscal_year",
+    GAS_FUEL: "gas_year",
+}
+#: The stage keys declaring which fuels take their level from ONS household
+#: spending instead of the Energy Trends volume (microcosm#1418), and the
+#: resource that spending is read from.
+SPEND_LEVEL_FUELS_KEY = "spend_level_fuels"
+SPEND_LEVEL_RESOURCE_KEY = "spend_level_resource"
+UK_ONS_HOUSEHOLD_EXPENDITURE_RESOURCE = "ons_household_expenditure_facts.json"
+#: Each fuel's ONS Consumer Trends class: household final consumption
+#: expenditure, current prices, calendar year, domestic concept.
+ONS_HOUSEHOLD_SPEND_CONCEPTS: Mapping[str, str] = {
+    ELECTRICITY_KWH: "ons.household_expenditure.electricity",
+    GAS_KWH: "ons.household_expenditure.gas",
+}
+ONS_HOUSEHOLD_SPEND_COICOP: Mapping[str, str] = {
+    ELECTRICITY_KWH: "04.5.1",
+    GAS_KWH: "04.5.2",
+}
+#: The variant of the Consumer Trends rows the energy level reads: annual,
+#: current prices, not seasonally adjusted. Defined once here; the
+#: lcfs_consumption stage's division diagnostic reads it too
+#: (docs/shared-constants.md). The road-fuel level and the heating
+#: recomposition read one row per class on its COICOP code and frequency.
+UK_ONS_HFCE_ROW_DIMENSIONS: Mapping[str, str] = MappingProxyType(
+    {
+        "frequency": "annual",
+        "price_basis": "current_prices",
+        "seasonal_adjustment": "not_seasonally_adjusted",
+    }
+)
+ONS_HOUSEHOLD_SPEND_DIMENSIONS: Mapping[str, str] = MappingProxyType(
+    {"consumption_concept": "domestic", **UK_ONS_HFCE_ROW_DIMENSIONS}
+)
+#: The basis each fuel's level block names.
+LEVEL_BASIS_ENERGY_TRENDS = "energy_trends_volume"
+LEVEL_BASIS_ONS_HOUSEHOLD_SPEND = "ons_household_spend"
 _RELATIVE_FACT_TOLERANCE = 1e-9
 
 #: FRS categorical values -> NEED dimension ids. Categories absent here are
@@ -488,6 +559,7 @@ def published_gas_connected_shares(
                     resource,
                     concept=SUBNATIONAL_METER_CONCEPTS[fuel],
                     geography_id=str(area),
+                    period_type=SUBNATIONAL_PERIOD_TYPES[fuel],
                     period_value=period_value,
                     dimensions={"metric": "meter_count", "fuel": fuel},
                 ),
@@ -517,6 +589,7 @@ def published_gas_connected_shares(
         "connection_rule": rule,
         "resource": resource,
         "period_value": period_value,
+        "period_types": dict(SUBNATIONAL_PERIOD_TYPES),
         "fallback": fallback,
         "fallback_regions": sorted(fallback_regions),
         "by_region": by_region,
@@ -777,7 +850,9 @@ def published_energy_level(
 
     The four Energy Trends quarters of the declared calendar or fiscal year
     are summed; the stage declares calendar 2024, the base year of every LCFS
-    spend column (microcosm#1113).
+    spend column (microcosm#1113). A fuel in ``spend_level_fuels`` takes the
+    kWh ONS household spending buys instead (:func:`household_spend_level`,
+    microcosm#1418); its block keeps the Energy Trends total beside it.
     """
 
     resource = str(parameters.get("level_resource") or "")
@@ -830,11 +905,24 @@ def published_energy_level(
             raise ValueError(f"{resource}: {concept} quarters must be positive.")
         level[column] = float(sum(by_quarter.values()))
         by_fuel[column] = {
+            "basis": LEVEL_BASIS_ENERGY_TRENDS,
             "concept": concept,
             "quarters": by_quarter,
             "total_kwh": level[column],
             "source_record_ids": record_ids,
         }
+    spend_fuels = declared_spend_level_fuels(parameters)
+    if spend_fuels:
+        spend_level, spend_blocks = household_spend_level(parameters, fuels=spend_fuels)
+        for column, value in spend_level.items():
+            by_fuel[column] = {
+                "basis": LEVEL_BASIS_ONS_HOUSEHOLD_SPEND,
+                **spend_blocks[column],
+                "total_kwh": value,
+                "energy_trends_kwh": level[column],
+                "energy_trends": by_fuel[column],
+            }
+            level[column] = value
     receipt = {
         "resource": resource,
         "period_type": period_type,
@@ -842,9 +930,181 @@ def published_energy_level(
         "quarters": list(quarters),
         "temperature_adjustment": temperature,
         "geography_ids": sorted(geographies),
+        "spend_level_fuels": list(spend_fuels),
         "by_fuel": by_fuel,
     }
     return level, receipt
+
+
+def declared_spend_level_fuels(parameters: Mapping[str, Any]) -> tuple[str, ...]:
+    """The fuels the stage levels to ONS household spending (none if undeclared)."""
+
+    declared = parameters.get(SPEND_LEVEL_FUELS_KEY)
+    if declared is None:
+        return ()
+    if not isinstance(declared, list) or not declared:
+        raise ValueError(
+            f"{SPEND_LEVEL_FUELS_KEY} must be a non-empty list of fuels when declared."
+        )
+    fuels = tuple(str(fuel) for fuel in declared)
+    unknown = sorted(set(fuels) - {ELECTRICITY_FUEL, GAS_FUEL})
+    if unknown or len(set(fuels)) != len(fuels):
+        raise ValueError(
+            f"{SPEND_LEVEL_FUELS_KEY} must name {ELECTRICITY_FUEL!r} and {GAS_FUEL!r} "
+            f"at most once each, not {list(fuels)}."
+        )
+    resource = str(parameters.get(SPEND_LEVEL_RESOURCE_KEY) or "")
+    if resource != UK_ONS_HOUSEHOLD_EXPENDITURE_RESOURCE:
+        raise ValueError(
+            f"{SPEND_LEVEL_RESOURCE_KEY} must be "
+            f"{UK_ONS_HOUSEHOLD_EXPENDITURE_RESOURCE!r}, not {resource!r}."
+        )
+    return fuels
+
+
+def uk_domestic_meters(fuel: str, year: int) -> tuple[float, dict[str, Any]]:
+    """Every UK domestic meter of a fuel: DESNZ's Great Britain and Northern Ireland rows.
+
+    Great Britain's sub-national count for the year in the fuel's own period
+    type (``SUBNATIONAL_PERIOD_TYPES``), with Northern Ireland's row of the
+    year labelled the same (``NORTHERN_IRELAND_PERIOD_TYPES``), as the local
+    energy rows pair them.
+    """
+
+    resource = UK_DESNZ_DOMESTIC_ENERGY_RESOURCE
+    counts: dict[str, float] = {}
+    record_ids: list[str] = []
+    for nation, geography, period_type in (
+        ("great_britain", GREAT_BRITAIN_GEOGRAPHY_ID, SUBNATIONAL_PERIOD_TYPES[fuel]),
+        (
+            "northern_ireland",
+            NORTHERN_IRELAND_GEOGRAPHY_ID,
+            NORTHERN_IRELAND_PERIOD_TYPES[fuel],
+        ),
+    ):
+        row = _one_row(
+            vendored_rows(
+                resource,
+                concept=SUBNATIONAL_METER_CONCEPTS[fuel],
+                geography_id=geography,
+                period_type=period_type,
+                period_value=year,
+                dimensions={
+                    "metric": "meter_count",
+                    "fuel": fuel,
+                    "domestic_scope": "all_domestic",
+                },
+            ),
+            what=f"{resource}: {geography} {fuel} domestic meters {year}",
+        )
+        if str(row.get("unit")) != "count":
+            raise ValueError(f"{resource}: {geography} {fuel} meters are not a count.")
+        value = float(row["value"])
+        if value <= 0:
+            raise ValueError(f"{resource}: {geography} has no {fuel} meters.")
+        counts[nation] = value
+        record_ids.append(str(row.get("source_record_id", "")))
+    total = float(sum(counts.values()))
+    return total, {
+        "resource": resource,
+        "meters": total,
+        "by_nation": counts,
+        "source_record_ids": record_ids,
+    }
+
+
+def household_spend_level(
+    parameters: Mapping[str, Any], *, fuels: Sequence[str]
+) -> tuple[dict[str, float], dict[str, dict[str, Any]]]:
+    """The kWh each fuel's ONS household spending buys at QEP prices (microcosm#1418).
+
+    ONS Consumer Trends household final consumption expenditure on the fuel's
+    class (04.5.1 electricity, 04.5.2 gas), current prices, for the stage's
+    declared calendar year, less QEP's United Kingdom average fixed cost on
+    every UK domestic meter (:func:`uk_domestic_meters`), over QEP's United
+    Kingdom average unit cost, both at the prices the stage declares. The
+    meters make the kWh cover every domestic meter, as Energy Trends' domestic
+    consumption does; the frame's households pay fewer standing charges than
+    there are meters, so its prior-weighted spend sits that much below ONS.
+
+    Northern Ireland's electricity meters stay in the subtraction although
+    QEP gives them no fixed cost (Anthony's review of microcosm#1420). Its
+    tariffs carry the standing charge in the unit rate: 31.16p a kWh in 2024,
+    against the United Kingdom's 25.83p and £205 a year. At Great Britain's
+    mean of about 3,300 kWh a meter (DESNZ sub-national, 2024), that premium
+    recovers about £177 a meter, so Northern Ireland's spending holds about
+    the same fixed charge as the rest of the UK's. Leaving its meters out
+    would count about £150m of that charge as 0.6 TWh of electricity.
+    """
+
+    period_type = str(parameters.get("level_period_type") or "")
+    if period_type != "calendar_year":
+        raise ValueError(
+            "ONS household spending is published for calendar years: a level "
+            f"from it needs level_period_type calendar_year, not {period_type!r}."
+        )
+    year = int(parameters["level_period_value"])
+    prices, _ = qep_prices(parameters)
+    if (prices.period_type, prices.period_value) != (period_type, year):
+        raise ValueError(
+            "The QEP prices that turn ONS spending into kWh must be for the "
+            f"level's year ({period_type} {year}), not "
+            f"{prices.period_type} {prices.period_value}."
+        )
+    resource = str(parameters[SPEND_LEVEL_RESOURCE_KEY])
+    uk = prices.uk_average_id
+    level: dict[str, float] = {}
+    blocks: dict[str, dict[str, Any]] = {}
+    for column, fuel in FUEL_OF_COLUMN.items():
+        if fuel not in fuels:
+            continue
+        row = _one_row(
+            vendored_rows(
+                resource,
+                concept=ONS_HOUSEHOLD_SPEND_CONCEPTS[column],
+                geography_id=UNITED_KINGDOM_GEOGRAPHY_ID,
+                period_type="calendar_year",
+                period_value=year,
+                dimensions={
+                    **ONS_HOUSEHOLD_SPEND_DIMENSIONS,
+                    "coicop": ONS_HOUSEHOLD_SPEND_COICOP[column],
+                },
+            ),
+            what=f"{resource}: {fuel} household spending {year}",
+        )
+        if str(row.get("unit")) != "gbp":
+            raise ValueError(f"{resource}: {fuel} household spending is not in gbp.")
+        spend = float(row["value"])
+        meters, meter_block = uk_domestic_meters(fuel, year)
+        unit_rate = float(prices.unit_rate[(uk, fuel)])
+        fixed_cost = float(prices.fixed_cost[(uk, fuel)])
+        standing = meters * fixed_cost
+        variable = spend - standing
+        if variable <= 0:
+            raise ValueError(
+                f"{resource}: {fuel} household spending {spend} does not cover the "
+                f"standing charges of {meters} meters at {fixed_cost} a year."
+            )
+        level[column] = variable / unit_rate
+        blocks[column] = {
+            "spend_resource": resource,
+            "spend_concept": ONS_HOUSEHOLD_SPEND_CONCEPTS[column],
+            "coicop": ONS_HOUSEHOLD_SPEND_COICOP[column],
+            "spend_gbp": spend,
+            "spend_source_record_id": str(row.get("source_record_id", "")),
+            "price_region": uk,
+            "unit_rate_gbp_per_kwh": unit_rate,
+            "fixed_cost_gbp_per_year": fixed_cost,
+            "domestic_meters": meter_block,
+            "standing_charges_gbp": standing,
+            "variable_spend_gbp": variable,
+        }
+        if fuel == ELECTRICITY_FUEL:
+            blocks[column]["northern_ireland_meters"] = (
+                "in the subtraction: Northern Ireland's tariffs carry the standing "
+                "charge in the unit rate"
+            )
+    return level, blocks
 
 
 def need_geography(frs_region: Sequence[str]) -> np.ndarray:
@@ -1020,6 +1280,106 @@ def declared_household_kwh_ceilings(
     return ceilings
 
 
+#: The declared NEED cells whose households start from the cell's NEED mean
+#: when every one of them drew no kWh (microcosm#1240). Mobile homes have no
+#: NEED property-type row and the incumbent held them at the all-dwellings
+#: mean; where every mobile home of a NEED geography drew a spend at or below
+#: the standing charge, the multiplying rake has nothing to scale and leaves
+#: the cell at zero. Any other cell with a zero current mean still fails the
+#: ``energy_rake`` gate.
+ZERO_KWH_CELLS_AT_NEED_MEAN_KEY = "zero_kwh_cells_at_need_mean"
+
+
+def declared_zero_kwh_cells_at_need_mean(
+    parameters: Mapping[str, Any],
+) -> dict[str, tuple[str, ...]] | None:
+    """The declared ``zero_kwh_cells_at_need_mean`` categories per margin, if any."""
+
+    declared = parameters.get(ZERO_KWH_CELLS_AT_NEED_MEAN_KEY)
+    if declared is None:
+        return None
+    if not isinstance(declared, Mapping) or not declared:
+        raise ValueError(
+            f"{ZERO_KWH_CELLS_AT_NEED_MEAN_KEY} must map NEED margins to categories."
+        )
+    cells: dict[str, tuple[str, ...]] = {}
+    for margin, categories in declared.items():
+        if margin not in NEED_MARGIN_DIMENSIONS:
+            raise ValueError(
+                f"{ZERO_KWH_CELLS_AT_NEED_MEAN_KEY} names {margin!r}, not a NEED "
+                f"margin ({sorted(NEED_MARGIN_DIMENSIONS)})."
+            )
+        if (
+            isinstance(categories, str)
+            or not isinstance(categories, Sequence)
+            or not categories
+            or not all(isinstance(c, str) and c for c in categories)
+        ):
+            raise ValueError(
+                f"{ZERO_KWH_CELLS_AT_NEED_MEAN_KEY}.{margin} must list NEED categories."
+            )
+        cells[str(margin)] = tuple(str(c) for c in categories)
+    return cells
+
+
+def _hold_zero_kwh_cells_at_need_mean(
+    frame: pd.DataFrame,
+    cells: Mapping[str, Sequence[str]],
+    *,
+    margins: NeedMargins,
+    connected: np.ndarray,
+    weights: np.ndarray,
+) -> list[dict[str, str]]:
+    """Start each declared cell whose every household drew no kWh at its NEED mean.
+
+    Works on the rake's own copy before the first sweep. A cell is its
+    ``_need_<margin>`` key in each NEED geography, over every row for
+    electricity and over the gas-connected rows for gas, as the rake sweeps
+    them. A cell with a positive row is left to the rake, and so is one with
+    no row or no weight. Records the cells it set, never a household.
+    """
+
+    held: list[dict[str, str]] = []
+    for margin, categories in cells.items():
+        column = f"_need_{margin}"
+        if column not in frame:
+            raise ValueError(
+                f"{ZERO_KWH_CELLS_AT_NEED_MEAN_KEY} names the {margin!r} margin, "
+                "which this rake does not sweep."
+            )
+        keys = frame[column].to_numpy().astype(str)
+        for category in categories:
+            published = {
+                geography: cell
+                for (geography, name), cell in margins.targets[margin].items()
+                if name == category
+            }
+            if not published:
+                raise ValueError(
+                    f"{ZERO_KWH_CELLS_AT_NEED_MEAN_KEY}: NEED publishes no {margin} "
+                    f"cell {category!r} for {margins.period_value}."
+                )
+            for geography, cell in sorted(published.items()):
+                key = f"{geography}:{category}"
+                for fuel, population in (
+                    (ELECTRICITY_KWH, np.ones(len(frame), dtype=bool)),
+                    (GAS_KWH, connected),
+                ):
+                    rows = (keys == key) & population
+                    if not rows.any() or float(weights[rows].sum()) <= 0.0:
+                        continue
+                    values = (
+                        pd.to_numeric(frame.loc[rows, fuel], errors="coerce")
+                        .fillna(0.0)
+                        .to_numpy(dtype=float)
+                    )
+                    if not (values == 0.0).all():
+                        continue
+                    frame.loc[rows, fuel] = float(cell[fuel])
+                    held.append({"margin": margin, "cell": key, "column": fuel})
+    return held
+
+
 def cap_household_kwh(
     values: np.ndarray,
     *,
@@ -1155,6 +1515,7 @@ def rake_energy_kwh(
     gas_connected: Sequence[bool] | None = None,
     level: Mapping[str, float] | None = None,
     ceilings: Mapping[str, float] | None = None,
+    zero_kwh_cells_at_need_mean: Mapping[str, Sequence[str]] | None = None,
 ) -> tuple[pd.DataFrame, dict[str, Any]]:
     """Rake ``electricity_kwh`` and ``gas_kwh`` to the NEED shape, then to the level.
 
@@ -1181,6 +1542,11 @@ def rake_energy_kwh(
     NEED cells, re-raking them to the levelled targets with the capped ones
     held, then restores the published total (``cap_household_kwh``;
     microcosm#1164). The fit is read after the cap.
+
+    ``zero_kwh_cells_at_need_mean`` (NEED categories per margin) starts each
+    named cell whose every household drew no kWh at the cell's NEED mean
+    before the first sweep, since a cell mean of zero cannot be scaled; the
+    receipt lists the cells it set (microcosm#1240).
     """
 
     frame = table.copy()
@@ -1248,6 +1614,22 @@ def rake_energy_kwh(
     )
     if len(connected) != len(frame):
         raise ValueError("gas_connected must align with the table.")
+    weight_values = (
+        np.ones(len(frame), dtype=float)
+        if weights is None
+        else np.asarray(weights, dtype=float)
+    )
+    held_at_need_mean = (
+        []
+        if zero_kwh_cells_at_need_mean is None
+        else _hold_zero_kwh_cells_at_need_mean(
+            frame,
+            zero_kwh_cells_at_need_mean,
+            margins=margins,
+            connected=connected,
+            weights=weight_values,
+        )
+    )
     electricity_specs = tuple(
         MarginSpec(
             spec.column,
@@ -1287,11 +1669,6 @@ def rake_energy_kwh(
     ]
     raked.loc[connected, GAS_KWH] = gas_raked[GAS_KWH].to_numpy(dtype=float)
     raked.loc[~connected, GAS_KWH] = 0.0
-    weight_values = (
-        np.ones(len(frame), dtype=float)
-        if weights is None
-        else np.asarray(weights, dtype=float)
-    )
     level_factor = {ELECTRICITY_KWH: 1.0, GAS_KWH: 1.0}
     level_receipt: dict[str, Any] | None = None
     if level is not None:
@@ -1359,6 +1736,7 @@ def rake_energy_kwh(
         "gas_connected_rows": int(connected.sum()),
         "rows": int(len(frame)),
         "zero_current_cells": zero_cells,
+        "cells_held_at_need_mean": held_at_need_mean,
         "sweep_residuals": sweep_residuals,
         "level_factor": dict(level_factor),
         "level": level_receipt,
