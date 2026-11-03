@@ -2128,16 +2128,20 @@ class _Context:
 
 
 def _matched_ids(values: pd.Series) -> np.ndarray:
-    """Ids ready for exact matching: null-free integers as int64, else as is.
+    """Ids ready for exact matching, never as floats that could round.
 
     pandas matches against a narrower unsigned index by casting the targets
     down to it (261 onto 5 for uint8), so null-free integer ids are widened
     first; :func:`_require_int64_ids` has already refused any int64 cannot
-    hold.
+    hold. A nullable integer column holding a null converts to float64,
+    where ids beyond 2**53 round together, so this returns its ids as Python
+    ints beside ``pd.NA`` instead.
     """
 
-    if values.dtype.kind in "iu" and not values.hasnans:
-        return values.to_numpy(dtype=np.int64)
+    if values.dtype.kind in "iu":
+        if not values.hasnans:
+            return values.to_numpy(dtype=np.int64)
+        return values.to_numpy(dtype=object, na_value=pd.NA)
     return values.to_numpy()
 
 

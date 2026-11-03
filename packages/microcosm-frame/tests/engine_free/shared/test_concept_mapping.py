@@ -543,6 +543,40 @@ class TestExecution:
         with pytest.raises(ValueError, match=r"\[0, 1\]"):
             mapping.encode(tables, shares={"p": 1.5})
 
+    def test_household_ids_beyond_two_to_the_53_match_beside_a_null(self) -> None:
+        # A null turns a nullable id column into float64 in pandas, where
+        # these two ids are one number.
+        big = 2**62
+        assert float(big) == float(big + 1)
+        person = pd.DataFrame(
+            {
+                "person_id": np.array([1, 2, 3, 4, 5], dtype=np.int64),
+                "person_household_id": pd.array(
+                    [big, big, big + 1, big + 1, pd.NA], dtype="Int64"
+                ),
+            }
+        )
+        household = pd.DataFrame(
+            {
+                "household_id": np.array([big, big + 1], dtype=np.int64),
+                "reference_person_id": pd.array([1, 3], dtype="Int64"),
+                "rent": [100.0, 900.0],
+            }
+        )
+        binding = _binding(
+            engine_input="rent_paid",
+            concepts=("fact:household.rent",),
+            transform=AllocateToReferencePerson(),
+        )
+        out = _mapping([binding]).encode({"person": person, "household": household})
+        assert out.tables["person"]["rent_paid"].tolist() == [
+            100.0,
+            0.0,
+            900.0,
+            0.0,
+            0.0,
+        ]
+
     def test_allocation_needs_the_reference_person(self) -> None:
         tables = {
             "person": pd.DataFrame({"person_id": [1], "person_household_id": [1]}),
@@ -2059,6 +2093,28 @@ class TestCoresidentAdult:
         person = _people_table([3, 3], [17.5, 12], nullable=False)
         assert _adult_flags(person, 18) == [False, False]
 
+    @PROPERTY
+    @given(people=_people(), min_age=_MIN_AGES, data=st.data())
+    def test_i7_null_household_ids_leave_the_others_exact(
+        self, people, min_age, data
+    ) -> None:
+        households, ages, nullable = people
+        nulls = data.draw(
+            st.lists(st.booleans(), min_size=len(ages), max_size=len(ages))
+        )
+        ids = [None if null else h for h, null in zip(households, nulls, strict=True)]
+        person = _people_table(households, ages, nullable)
+        person["person_household_id"] = pd.array(ids, dtype="Int64")
+        household = pd.DataFrame(
+            {"household_id": np.asarray(sorted(set(households)), dtype=np.int64)}
+        )
+        out = _adult_mapping(min_age).encode({"person": person, "household": household})
+        expected = [
+            ids[me] is not None and flag
+            for me, flag in enumerate(_brute_force(ids, ages, min_age))
+        ]
+        assert out.tables["person"][_ADULT_INPUT].tolist() == expected
+
     def test_households_differing_only_beyond_2_53_stay_separate(self) -> None:
         # float64 holds 2**53 and 2**53 + 1 as the same number.
         assert float(_BIG) == float(_BIG + 1)
@@ -2110,6 +2166,26 @@ class TestCoresidentAdult:
         out = _adult_mapping(18).encode(tables).tables["person"]
         # Ids 7 and 8 both name no household row, and they stay apart.
         assert out[_ADULT_INPUT].tolist() == [False, True, False, False]
+
+    @pytest.mark.parametrize("dtype", ["Int64", "UInt64"])
+    def test_a_null_household_id_keeps_ids_beyond_2_53_apart(self, dtype) -> None:
+        # The null makes pandas offer these ids as float64, where they're
+        # one number.
+        big = 2**62
+        tables = {
+            "person": pd.DataFrame(
+                {
+                    "person_id": [1, 2, 3, 4, 5],
+                    "person_household_id": pd.array(
+                        [big, big, big + 1, big + 1, pd.NA], dtype=dtype
+                    ),
+                    "age": [10.0, 10.0, 40.0, 40.0, 40.0],
+                }
+            ),
+            "household": pd.DataFrame({"household_id": [big, big + 1]}),
+        }
+        out = _adult_mapping(18).encode(tables).tables["person"]
+        assert out[_ADULT_INPUT].tolist() == [False, False, True, True, False]
 
     def test_a_null_household_id_shares_a_household_with_nobody(self) -> None:
         tables = {
