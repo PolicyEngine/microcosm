@@ -9,6 +9,8 @@ Kernel implementation identity binds adapter classes,
 never spec data, so adding a binding of an existing class leaves it unchanged.
 Counterfactual and zero-cutout bridges share the same prepared engine mapping.
 Gap and scenario-band kernels are registered with the other transport kernels.
+The evidence producers share the prepared engine mapping too; their
+implementation hashes exclude the adapters.
 """
 
 from __future__ import annotations
@@ -44,12 +46,15 @@ from microcosm.graph.codecs import SourceCodecRegistry
 
 from .codecs import register_transport_codecs
 from .column_kernels import register_column_kernels
+from .evidence_kernels import register_evidence_kernels
 from .gate_bindings import TRANSPORT_GATE_REGISTRY
 from .gate_kernels import register_gate_kernel
 from .geography_kernels import register_geography_kernels
+from .measure_kernels import register_measure_kernels
 from .money_kernels import register_money_kernels
 from .person_location_kernels import register_person_location_kernels
 from .population_kernels import register_population_kernels
+from .quantile_kernels import register_quantile_kernels
 from .reporting_kernels import register_reporting_kernels
 from .takeup_kernels import register_takeup_kernels
 from .target_kernels import register_target_kernels
@@ -521,20 +526,23 @@ def build_transport_registry(
     kernels.register(SimulateSolveZeroKernel(engine_mapping, dependencies))
     register_takeup_kernels(kernels)
     register_reporting_kernels(kernels)
+    register_evidence_kernels(kernels, engine_mapping)
     return TransportRegistry(
         kernels, codecs, engine_mapping, MappingProxyType(refs), schema, nesting
     )
 
 
 def register_transport_population_kernels(registry: KernelRegistry) -> KernelRegistry:
-    """Install the thirteen population kernels without import-time side effects.
+    """Install the sixteen population kernels without import-time side effects.
 
     Source codecs are separately installed with ``register_transport_codecs``;
     target, solver and terminal kernels keep their own registration functions.
     Repeating registration with the same kernel objects is idempotent.
     """
     register_population_kernels(registry)
+    register_quantile_kernels(registry)
     register_column_kernels(registry)
     register_geography_kernels(registry)
     register_money_kernels(registry)
+    register_measure_kernels(registry)
     return registry
