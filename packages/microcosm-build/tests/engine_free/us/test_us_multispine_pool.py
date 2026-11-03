@@ -606,7 +606,7 @@ def test_pool_transfer_plan_extends_legacy_except_receipted_asset_deferrals() ->
     assert len(target_names) == 121
     assert (
         hashlib.sha256(("\n".join(target_names) + "\n").encode()).hexdigest()
-        == "8b234f9ad808407d2fc6ff889f7f43be371f4df07c21c65f63f85205f31003e9"
+        == "dd0b1be5e81bfbcb09ce2049dcd82315e16c1b800ae49951c8ea78a1cc6c8ddb"
     )
 
 
@@ -661,7 +661,7 @@ def test_pool_input_surface_normalizes_all_four_source_registries() -> None:
     surface = pool_input_surface()
     by_name = {entry.variable: entry for entry in surface}
 
-    assert len(surface) == len(by_name) == 143
+    assert len(surface) == len(by_name) == 144
     assert [entry.variable for entry in surface] == sorted(by_name)
     assert Counter(
         provenance for entry in surface for provenance in entry.provenance
@@ -1031,14 +1031,14 @@ def test_remaining_stage_manifest_enumerates_every_simulation_projection_input()
     }
     assert Counter(entry.provision for entry in projection) == Counter(
         {
-            "materialized_pool_input_surface": 123,
+            "materialized_pool_input_surface": 124,
             "seed_stage_program_contract": 17,
             "declared_deferred_null_input": 3,
             "assembled_native_engine_input": 5,
             "frame_structural_engine_input": 10,
             "preserved_stacked_engine_input": 4,
             "derived_schedule_d_input": 1,
-            "declared_absent_engine_input": 762,
+            "declared_absent_engine_input": 761,
             "unprovisioned_source_input": 1,
         }
     )
