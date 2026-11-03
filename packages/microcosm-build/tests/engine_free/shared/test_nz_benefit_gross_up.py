@@ -25,6 +25,10 @@ from microcosm.build.transport.compose import (
     compose_transport_graph,
     load_transport_spec,
 )
+from microcosm.build.transport.evidence_contract import (
+    unreached_refs,
+    without_unreached,
+)
 from microcosm.build.transport.money_kernels import MONEY_MINOR_UNITS
 from microcosm.frame import Frame, WeightKind, Weights
 from microcosm.frame.adapters.axiom import NZ_SCHEMA, axiom_concept_mapping
@@ -128,7 +132,14 @@ def test_schedule_binding_is_compiled_and_taxable_income_is_solver_owned():
     assert surface.modules[tax["rulespec_path"]].status == "compiled"
     assert surface.modules[tax["rulespec_path"]].sha256 == tax["sha256"]
     closure = InputClosure.from_dict(_load("axiom_input_closure"))
-    assert closure.check(axiom_concept_mapping("nz"), surface) == ()
+    bindings = _load("axiom_rules_bindings")
+    checked_surface, checked_mapping = without_unreached(
+        surface,
+        axiom_concept_mapping("nz"),
+        unreached_refs(bindings["bindings"]),
+        bindings["entity_names"].values(),
+    )
+    assert closure.check(checked_mapping, checked_surface) == ()
     (entry,) = closure.entries_for(tax["rulespec_path"])
     assert entry.input == "taxable_income"
     assert entry.closure_class is ClosureClass.ENCODED

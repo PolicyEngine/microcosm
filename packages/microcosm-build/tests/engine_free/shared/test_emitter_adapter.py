@@ -268,6 +268,12 @@ def _start_build_emitter(monkeypatch, tmp_path):
 @pytest.mark.parametrize(
     ("version_answer", "reported"),
     [
+        # The release just before the minimum.
+        (_version_answer("0.11.8"), "reports version 0.11.8"),
+        # Releases before 0.10.0 send telemetry to the collector's Cloud Run
+        # address, which changes when the collector moves to another project.
+        (_version_answer("0.9.0"), "reports version 0.9.0"),
+        (_version_answer("0.6.0"), "reports version 0.6.0"),
         # 0.4.0 to 0.5.1 accept protocol 1 but have no Hugging Face module.
         (_version_answer("0.5.1"), "reports version 0.5.1"),
         (_version_answer("0.4.0"), "reports version 0.4.0"),
@@ -275,9 +281,18 @@ def _start_build_emitter(monkeypatch, tmp_path):
         (_version_answer("not-a-version"), "reports version not-a-version"),
         ("not JSON", "reports no version"),
     ],
-    ids=["0.5.1", "0.4.0", "no-version", "not-a-version", "not-json"],
+    ids=[
+        "0.11.8",
+        "0.9.0",
+        "0.6.0",
+        "0.5.1",
+        "0.4.0",
+        "no-version",
+        "not-a-version",
+        "not-json",
+    ],
 )
-def test_an_emitter_older_than_0_6_0_is_never_started_and_the_build_continues(
+def test_an_emitter_older_than_0_11_9_is_never_started_and_the_build_continues(
     monkeypatch, capsys, tmp_path, version_answer, reported
 ):
     # The emitter's telemetry module records the run's start as soon as the
@@ -294,10 +309,17 @@ def test_an_emitter_older_than_0_6_0_is_never_started_and_the_build_continues(
     assert not emitter.available
     warning = capsys.readouterr().err
     assert f"The installed microcosm-emitter {reported};" in warning
-    assert "this build needs 0.6.0 or later" in warning
-    assert "uv tool install --upgrade 'microcosm-emitter>=0.6.0'" in warning
-    # The warning says what continues and what does not, so a later refusal
-    # of remote dataset staging does not contradict it.
+    assert "this build needs 0.11.9 or later" in warning
+    # The warning says what the build loses without the emitter, including
+    # the one option that then fails the build.
+    assert (
+        "The build continues without hosted telemetry or staging hand-overs "
+        "and queues no Orrery graph publication; a UK build given "
+        "--staging-read-back will fail at the read-back." in warning
+    )
+    assert "uv tool install --upgrade 'microcosm-emitter>=0.11.9'" in warning
+    # It also says that a remote stage of the dataset bundle is refused, so
+    # the pre-flight's later refusal does not contradict it.
     assert "will continue without it" not in warning
     assert "remote staging of its dataset bundle is refused" in warning
     # The refusal can name the installed release and the upgrade.
@@ -310,8 +332,19 @@ def test_an_emitter_older_than_0_6_0_is_never_started_and_the_build_continues(
     assert client.calls == []
 
 
-@pytest.mark.parametrize("installed_version", ["0.6.0", "0.7.0", "0.10.0", "1.0.0"])
-def test_an_emitter_from_0_6_0_on_starts(
+def test_the_fake_client_reports_a_release_builds_start():
+    """The in-memory client stands for an emitter a build would start."""
+    reported = adapter._release_number(FakeEmitterClient.emitter_version)
+    assert reported is not None
+    assert reported >= adapter._release_number(adapter.MINIMUM_EMITTER_VERSION)
+
+
+@pytest.mark.parametrize(
+    "installed_version",
+    # 0.11.10 is compared by number, not as text, where it sorts before 0.11.9.
+    ["0.11.9", "0.11.10", "0.12.0", "1.0.0"],
+)
+def test_an_emitter_from_0_11_9_on_starts(
     monkeypatch, capsys, tmp_path, installed_version
 ):
     client = FakeEmitterClient()
@@ -329,13 +362,13 @@ def test_an_emitter_from_0_6_0_on_starts(
 
 
 @pytest.mark.parametrize("operation", ["inventory", "publish"])
-def test_a_short_lived_graph_emitter_older_than_0_6_0_is_never_started(
+def test_a_short_lived_graph_emitter_older_than_0_11_9_is_never_started(
     monkeypatch, capsys, tmp_path, operation
 ):
     client = FakeEmitterClient(modules={"orrery"})
     starts = _record_starts(monkeypatch, client)
     _, started = _install_emitter_command(
-        monkeypatch, tmp_path / "bin", _version_answer("0.5.1")
+        monkeypatch, tmp_path / "bin", _version_answer("0.9.0")
     )
     inventory = {"version": 1, "publication_id": "independent", "files": []}
 
@@ -348,7 +381,7 @@ def test_a_short_lived_graph_emitter_older_than_0_6_0_is_never_started(
     assert starts == []
     assert not started.exists()
     assert client.calls == []
-    assert "this build needs 0.6.0 or later" in capsys.readouterr().err
+    assert "this build needs 0.11.9 or later" in capsys.readouterr().err
 
 
 @pytest.mark.parametrize("failure", ["default_spool_path", "runtime_identity"])
