@@ -37,6 +37,7 @@ from microcosm.build.uk_runtime.spi_spine import (
 )
 from microcosm.build.uk_runtime.spi_support import (
     HOUSEHOLD_IS_SPI_SYNTHETIC_COLUMN,
+    SPI_LOSS_DRAW_COLUMNS,
     SPI_SYNTHETIC_SUPPORT_CHANNEL,
     UKSPISupportResult,
     build_uk_spi_support_channel,
@@ -54,12 +55,15 @@ def _base_frame(*, time_period: str = "2023") -> object:
             "person_benunit_id": [201, 101],
             "age": [44, 40],
             "gender": ["FEMALE", "MALE"],
+            "is_uc_claimant": [True, True],
             "employment_income": [20.0, 10.0],
             "self_employment_income": [0.0, 0.0],
             "savings_interest_income": [2.0, 1.0],
             "dividend_income": [20.0, 10.0],
             "private_pension_income": [0.0, 0.0],
             "property_income": [0.0, 0.0],
+            # The twin's other income locates the copy's draw (microcosm#1428).
+            "other_investment_income": [0.0, 0.0],
             "employee_pension_contributions": [3.0, 2.0],
             "employer_pension_contributions": [9.0, 6.0],
             "hmrc_spi_pay": [0.0, 0.0],
@@ -67,6 +71,8 @@ def _base_frame(*, time_period: str = "2023") -> object:
             "hmrc_spi_incapacity_benefit_income": [0.0, 0.0],
             "ossben_identifiable_subset": [0.0, 0.0],
             "srp_regular_code5": [0.0, 0.0],
+            "employment_status": ["FT_EMPLOYED", "FT_EMPLOYED"],
+            "miscellaneous_income": [0.0, 0.0],
             **{
                 column: [0.0, 0.0]
                 for column in FRS_ONLY_SPI_FILL_PERSON_COLUMNS
@@ -184,11 +190,9 @@ def test_spine_leaves_align_by_raw_person_id_not_position(tmp_path: Path) -> Non
     person = result.table("person")
 
     assert person["person_id"].tolist() == [2001, 1001]
-    assert person["hmrc_spi_pay"].tolist() == pytest.approx(
-        [5.0 * 365.25 / 7.0, 4.0 * 365.25 / 7.0]
-    )
+    assert person["hmrc_spi_pay"].tolist() == pytest.approx([5.0 * 52.0, 4.0 * 52.0])
     assert person["hmrc_spi_incapacity_benefit_income"].tolist() == pytest.approx(
-        [2.0 * 365.25 / 7.0, 0.0]
+        [2.0 * 52.0, 0.0]
     )
     # Employer contributions come from an ASHE rate draw on pay (microcosm#1069
     # c9): person 2001 has no employer scheme; person 1001's public-sector
@@ -227,9 +231,7 @@ def test_spine_leaves_sampled_rung_restricts_to_surviving_people(
     person = result.table("person")
 
     assert person["person_id"].tolist() == [2001, 1001]
-    assert person["hmrc_spi_pay"].tolist() == pytest.approx(
-        [5.0 * 365.25 / 7.0, 4.0 * 365.25 / 7.0]
-    )
+    assert person["hmrc_spi_pay"].tolist() == pytest.approx([5.0 * 52.0, 4.0 * 52.0])
 
 
 def _support_stage() -> SourceStageSpec:
@@ -324,7 +326,13 @@ class _FakeQRF:
     def fit(self, frame, predictors, targets, weights):
         self.targets = tuple(targets)
         self.weight_kind = weights
-        label = "stage1" if "hmrc_spi_pay" in self.targets else "stage2"
+        label = (
+            "stage1"
+            if "gift_aid" in self.targets
+            else "reference"
+            if "hmrc_spi_pay" in self.targets
+            else "stage2"
+        )
         dividend = (
             frame.table("person")["dividend_income"].tolist()
             if "dividend_income" in frame.table("person")
@@ -332,6 +340,25 @@ class _FakeQRF:
         )
         self.events.append((label, tuple(targets), dividend))
         return self
+
+    def regimes(self):
+        return dict.fromkeys(self.targets, "zero_inflated_positive")
+
+    def sign_classes(self, target):
+        return (0, 1)
+
+    def conditional_uniforms(self, frame, *, sign_placement, quantile_placement):
+        from microcosm.fit import ConditionalUniforms
+
+        return ConditionalUniforms(
+            quantiles={t: np.asarray(quantile_placement[t]) for t in self.targets},
+            sign_uniforms={t: np.asarray(sign_placement[t]) for t in self.targets},
+            degenerate=(),
+            ungated=(),
+        )
+
+    def predict_from_uniforms(self, predictors, *, quantiles, sign_uniforms):
+        return self.predict(predictors)
 
     def predict(self, predictors):
         rows = len(predictors)
@@ -362,6 +389,11 @@ def _donor_file(tmp_path: Path) -> Path:
             "PAY": 10.0,
             "TEI": 10.0,
             "TI": 10.0,
+            # Annex A bridge codes consistent with the leaves: pay is the main
+            # source, no trade pages, below State Pension age.
+            "MAINSRCE": 1,
+            "SEINC_NUM": 0,
+            "SPA": 0,
         }
     )
     pd.DataFrame([row]).to_csv(path, sep="\t", index=False)
@@ -407,7 +439,7 @@ def _synthetic_hmrc_targets(path: Path) -> HMRCIncomeTargetSet:
     )
 
 
-def test_spi_income_zero_initializes_frs_charity_and_redraws_dividends_after_stage2(
+def test_spi_income_zero_initializes_frs_charity_and_keeps_frs_dividends(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -448,11 +480,12 @@ def test_spi_income_zero_initializes_frs_charity_and_redraws_dividends_after_sta
         support,
         _donor_file(tmp_path),
         donor_sample_size=None,
+        state_pension_age=66,
         initialize_frs_channel_columns={
             "gift_aid": 0.0,
             "charitable_investment_gifts": 0.0,
         },
-        stage1_base_redraw_columns=("dividend_income",),
+        allow_in_sample_reference=True,
     )
     person = result.person
     base = person[support_channel_column("person")] != SPI_SYNTHETIC_SUPPORT_CHANNEL
@@ -464,11 +497,31 @@ def test_spi_income_zero_initializes_frs_charity_and_redraws_dividends_after_sta
     # stage-time zero — the explicit initialization above and this fill are
     # now the same semantics, and the artifact ships no NaN.
     assert person.loc[base, "hmrc_spi_employment_benefits"].eq(0.0).all()
-    assert person.loc[base, "dividend_income"].tolist() == [100.0, 101.0]
+    # FRS rows keep their reported dividends (uk-data#498, microcosm#1095).
+    reported = support.person[support_channel_column("person")] != (
+        SPI_SYNTHETIC_SUPPORT_CHANNEL
+    )
+    assert (
+        person.loc[base, "dividend_income"].tolist()
+        == support.person.loc[reported, "dividend_income"].tolist()
+    )
     assert person.loc[spi, "dividend_income"].tolist() == [100.0, 101.0]
-    assert _FakeQRF.events[1][0] == "stage2"
-    assert _FakeQRF.events[1][2] == [20.0, 10.0]
-    assert set(SPI_INCOME_QRF_OUTPUT_COLUMNS) <= set(person.columns)
+    # The tape forest, then one FRS reference forest per cross-fit fold
+    # (microcosm#840), then the FRS-only fill; every FRS fit sees reported
+    # dividends only.
+    labels = [event[0] for event in _FakeQRF.events]
+    assert labels[0] == "stage1" and labels[-1] == "stage2"
+    assert labels[1:-1] and set(labels[1:-1]) == {"reference"}
+    assert len(labels) - 2 == len(result.stage1_transport["fold_receipts"])
+    for event in _FakeQRF.events[1:-1]:
+        assert set(event[2]) <= {20.0, 10.0} and event[2]
+    assert _FakeQRF.events[-1][2] == [20.0, 10.0]
+    # Every stage-1 output stays, except the two loss draws the stage moves into
+    # loss_relief and drops (microcosm#1095).
+    assert set(SPI_INCOME_QRF_OUTPUT_COLUMNS) - set(SPI_LOSS_DRAW_COLUMNS) <= set(
+        person.columns
+    )
+    assert not set(SPI_LOSS_DRAW_COLUMNS) & set(person.columns)
 
 
 def test_reviewed_absent_incapacity_signal_raises(tmp_path: Path) -> None:
@@ -514,6 +567,8 @@ def test_reviewed_absent_incapacity_signal_raises(tmp_path: Path) -> None:
                 support,
                 _donor_file(tmp_path),
                 donor_sample_size=None,
+                state_pension_age=66,
+                allow_in_sample_reference=True,
             )
         finally:
             monkeypatch.undo()
@@ -556,7 +611,7 @@ def test_spi_spine_parsed_inputs_match_the_path_resolution(
 
     # This test checks parsed/path source resolution, independently of the engine.
     # Real index coverage lives in test_uk_spi_income.py.
-    def uprating_factors(year):
+    def uprating_factors(year, *, rebased_columns=None):
         return (
             {column: 1.25 for column in SPI_INCOME_QRF_OUTPUT_COLUMNS},
             {"from_period": 2022, "to_period": year, "basis": "synthetic_test"},
@@ -675,13 +730,47 @@ def test_income_stage_parameters_accept_the_committed_manifest() -> None:
     )
 
 
-def test_income_stage_parameters_refuse_redraw_column_drift() -> None:
-    stage = _with_mutated_operation(
-        _committed_stage("hmrc_spi_income_spine"),
-        "redraw_columns_from_fitted_qrf",
-        columns=["savings_interest_income"],
+def test_income_stage_parameters_refuse_a_base_channel_redraw() -> None:
+    stage = _committed_stage("hmrc_spi_income_spine")
+    operations = [
+        {"kind": operation.kind, **dict(operation.parameters)}
+        for operation in stage.operations
+    ]
+    operations.append(
+        {
+            "kind": "redraw_columns_from_fitted_qrf",
+            "fit": "stage1",
+            "columns": ["dividend_income"],
+            "rows": "base_support_channel",
+        }
     )
-    with pytest.raises(ValueError, match="base redraw columns drifted"):
+    stage = SourceStageSpec.from_mapping({**stage.__dict__, "operations": operations})
+    with pytest.raises(ValueError, match="must not redraw FRS-channel incomes"):
+        _assert_income_stage_parameters(
+            stage, seed=42, qrf_estimators=100, donor_sample_size=100_000
+        )
+
+
+@pytest.mark.parametrize(
+    ("kind", "parameter", "value", "message"),
+    [
+        ("fit_weighted_qrf_stage1", "recipient_role_column", None, "recipient role"),
+        ("fit_weighted_qrf_stage1", "recipient_role_column", "is_adult", "role"),
+        (
+            "fit_weighted_qrf_stage2",
+            "target_population",
+            "spi_synthetic_support_channel",
+            "target population",
+        ),
+    ],
+)
+def test_income_stage_parameters_refuse_a_recipient_domain_drift(
+    kind, parameter, value, message
+) -> None:
+    stage = _with_mutated_operation(
+        _committed_stage("hmrc_spi_income_spine"), kind, **{parameter: value}
+    )
+    with pytest.raises(ValueError, match=message):
         _assert_income_stage_parameters(
             stage, seed=42, qrf_estimators=100, donor_sample_size=100_000
         )

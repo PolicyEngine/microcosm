@@ -71,7 +71,11 @@ LINEAGE = [
 ]
 
 
-def lineage_frame(rows=LINEAGE):
+def _residential_index(row):
+    return int(row[7]) if len(row) > 7 else 0
+
+
+def lineage_frame(rows=LINEAGE, mutate=None):
     ids = np.asarray([r[0] for r in rows], dtype=np.int64)
     household = pd.DataFrame(
         {
@@ -87,11 +91,18 @@ def lineage_frame(rows=LINEAGE):
             "household_is_capital_gains_clone": np.asarray([r[4] for r in rows]),
             "household_is_cgt_support_copy": np.asarray([r[5] != 0 for r in rows]),
             "cgt_support_copy_index": np.asarray([r[5] for r in rows], dtype=np.int64),
-            # microcosm#1063: a residential arm index (0 on every row here).
-            "household_is_cgt_residential_clone": np.zeros(len(rows), dtype=bool),
-            "cgt_residential_clone_index": np.zeros(len(rows), dtype=np.int64),
+            # microcosm#1063: the residential arm index of a gaining clone, an
+            # optional eighth field (0 on every seven-field row).
+            "household_is_cgt_residential_clone": np.asarray(
+                [_residential_index(r) != 0 for r in rows]
+            ),
+            "cgt_residential_clone_index": np.asarray(
+                [_residential_index(r) for r in rows], dtype=np.int64
+            ),
         }
     )
+    if mutate is not None:
+        mutate(household)
     person = pd.DataFrame(
         {
             "person_id": ids * 10,
@@ -165,7 +176,15 @@ def run_identity(frame, tmp_path, *, k=2, endpoint="uk.full.identity"):
     return manifest, graph
 
 
-def expected_key(source_id, channel, support_index, cgt, copy_index, clone_index):
+def expected_key(
+    source_id,
+    channel,
+    support_index,
+    cgt,
+    copy_index,
+    clone_index,
+    residential_index=0,
+):
     path = []
     if channel == "spi":
         path.append(("spi_support_channel", int(support_index)))
@@ -173,6 +192,8 @@ def expected_key(source_id, channel, support_index, cgt, copy_index, clone_index
         path.append(("cgt_support_split", int(copy_index)))
     if cgt:
         path.append(("cgt_incidence_clone", 1))
+    if residential_index:
+        path.append(("cgt_residential_split", int(residential_index)))
     if clone_index:
         path.append(("geographic_support", int(clone_index)))
     return household_draw_key(
@@ -331,3 +352,74 @@ def test_identity_inputs_are_the_declared_lineage_columns():
         "cgt_residential_clone_index",
         CLONE,
     )
+
+
+# microcosm#1063 item 7: the residential split clones a gaining household into
+# residential arms; the branch sits between the incidence clone and the
+# geographic pool. The main-head spine of 2026-10-04 carried 2,735 such arms and
+# the dense build refused every one of them as an unknown structural branch.
+RESIDENTIAL_ROWS = sorted(
+    [
+        *LINEAGE,
+        (1101, 2, "frs", 0, True, 1, "SCOTLAND"),  # gaining clone of copy 1001
+        (201, 1, "frs", 0, True, 0, "LONDON", 1),  # arm 1 of gaining clone 101
+        (211, 1, "spi", 1, True, 0, "LONDON", 1),  # arm 1 of gaining clone 111
+        (1201, 2, "frs", 0, True, 1, "SCOTLAND", 1),  # arm 1 of gaining clone 1101
+    ],
+    key=lambda row: row[0],  # the frame requires ascending entity ids
+)
+
+
+@pytest.mark.parametrize("k", [1, 2])
+def test_residential_arm_households_key_their_declared_branch(tmp_path, k):
+    manifest, _ = run_identity(lineage_frame(RESIDENTIAL_ROWS), tmp_path, k=k)
+    household = manifest.population("uk.full.expand").table("household")
+    assert len(household) == k * len(RESIDENTIAL_ROWS)
+    assert household[IDENTITY_COLUMN].is_unique
+    # Every pool copy keeps its spine household's lineage columns, so the
+    # expected path is read from them, never from the remapped household id.
+    for (
+        source_id,
+        channel,
+        support_index,
+        cgt,
+        copy_index,
+        arm,
+        clone_index,
+        key,
+    ) in zip(
+        household["source_household_id"].to_numpy(),
+        household["household_support_channel"].to_numpy(),
+        household["household_support_clone_index"].to_numpy(),
+        household["household_is_capital_gains_clone"].to_numpy(),
+        household["cgt_support_copy_index"].to_numpy(),
+        household["cgt_residential_clone_index"].to_numpy(),
+        household[CLONE].to_numpy(),
+        household[IDENTITY_COLUMN].to_numpy(),
+        strict=True,
+    ):
+        assert key == expected_key(
+            int(source_id),
+            str(channel),
+            int(support_index),
+            bool(cgt),
+            int(copy_index),
+            int(clone_index),
+            int(arm),
+        )
+    arms = household[household["cgt_residential_clone_index"] != 0]
+    assert len(arms) == 3 * k
+    assert "cgt_residential_split" in arms[IDENTITY_COLUMN].iloc[0]
+
+
+def test_residential_arm_flag_and_index_must_agree(tmp_path):
+    def clear_flag(household):
+        household.loc[
+            household["household_id"] == 201, "household_is_cgt_residential_clone"
+        ] = False
+
+    frame = lineage_frame(RESIDENTIAL_ROWS, mutate=clear_flag)
+    with pytest.raises(
+        NodeRejectedError, match="residential-arm flag and arm index disagree"
+    ):
+        run_identity(frame, tmp_path, k=1)

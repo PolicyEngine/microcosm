@@ -14,6 +14,11 @@ import numpy as np
 import pandas as pd
 import pytest
 
+from microcosm.build.gates import GateResult
+from microcosm.build.us_runtime import spm_measurement_gate
+from microcosm.build.us_runtime.org_wages import (
+    US_ORG_OCCUPATION_AND_WORK_EXPERIENCE_OUTPUT_COLUMNS,
+)
 from microcosm.data import stored_inputs
 from test_support.paths import paths_for
 
@@ -53,6 +58,11 @@ _PACKAGE_ENGINE = stored_inputs.CertifiedEngine(
             "weekly_hours_worked_before_lsr",
             "hours_worked_last_week",
             "takes_up_wic_if_eligible",
+            "self_employment_income_before_lsr",
+            "sstb_self_employment_income_before_lsr",
+            "farm_operations_income",
+            "partnership_self_employment_net_earnings",
+            *US_ORG_OCCUPATION_AND_WORK_EXPERIENCE_OUTPUT_COLUMNS,
         }
     ),
 )
@@ -74,6 +84,45 @@ def _stored_input_contract_passes(monkeypatch):
             "register_sha256": stored_inputs.register_sha256(),
             "registered_non_variables": [],
         },
+    )
+
+
+#: The SPM measurement gate's real entry point, kept before the autouse
+#: fixture below replaces it, for the tests that grade real bytes.
+_REAL_CHECK_RELEASE_SPM_MEASUREMENT = spm_measurement_gate.check_release_spm_measurement
+#: What the stand-in gate reports: a measurable release under an engine that
+#: measures every unit, in the shape the publisher's contract requires.
+_MEASURABLE_DETAILS = {
+    "role_column_present": True,
+    "role_null_values": 0,
+    "role_non_boolean_values": 0,
+    "engine_scopes_spm_universe": False,
+    "universe_declared_in_release": False,
+    "measured_scope": "all_units",
+    "n_units": 8,
+    "n_units_by_universe": {"INCLUDED": 8, "OUTSIDE": 0},
+    "n_measured_units": 8,
+    "n_measured_units_without_classified_adult": 0,
+    "n_units_without_classified_adult": 0,
+    "n_units_without_classified_adult_by_universe": {"INCLUDED": 0, "OUTSIDE": 0},
+}
+
+
+@pytest.fixture(autouse=True)
+def _spm_measurement_gate_passes(monkeypatch):
+    """The package stage grades the calibrated frame's SPM measurement
+    (microcosm#1263). Most package tests here load a frame built for another
+    gate, so the verdict passes by default. The tests that pin it restore
+    :data:`_REAL_CHECK_RELEASE_SPM_MEASUREMENT` against real bytes."""
+
+    monkeypatch.setattr(
+        spm_measurement_gate,
+        "check_release_spm_measurement",
+        lambda frame, *, engine_scopes_universe: GateResult(
+            name=spm_measurement_gate.SPM_MEASUREMENT_GATE_NAME,
+            passed=True,
+            details=dict(_MEASURABLE_DETAILS),
+        ),
     )
 
 
@@ -169,6 +218,209 @@ def test_spine_composition_reports_per_spine_weight_and_size() -> None:
     )
 
 
+def _snap_qa_frame(*, households, spm_unit_columns, person_spines=None):
+    """A tiny calibrated frame for the QA SNAP snapshot.
+
+    ``households`` maps household id -> (weight, state, member count); each
+    household is one SPM unit (and one unit of every other group entity).
+    ``spm_unit_columns`` adds the fake engine's per-unit inputs.
+    """
+
+    from microcosm.build.us_runtime.base_pool import spine_column
+    from microcosm.frame import US_SCHEMA, Frame, WeightKind, Weights
+
+    unit_ids = np.asarray(list(households), dtype=np.int64)
+    members = np.repeat(unit_ids, [size for _, _, size in households.values()])
+    person = pd.DataFrame(
+        {
+            "person_id": np.arange(1, len(members) + 1),
+            spine_column("person"): (
+                person_spines
+                if person_spines is not None
+                else ["acs_2024_1yr"] * len(members)
+            ),
+        }
+    )
+    tables = {"person": person}
+    for entity in US_SCHEMA.entities:
+        if entity != "person":
+            person[f"person_{entity}_id"] = members
+            tables[entity] = pd.DataFrame({f"{entity}_id": unit_ids})
+    tables["household"]["_state"] = [state for _, state, _ in households.values()]
+    tables["spm_unit"] = tables["spm_unit"].assign(**spm_unit_columns)
+    weights = np.asarray(
+        [weight for weight, _, _ in households.values()], dtype=np.float64
+    )
+    return Frame(
+        tables,
+        US_SCHEMA,
+        {"household": Weights(weights, WeightKind.CALIBRATED)},
+    )
+
+
+def _run_snap_qa(module, frame, tmp_path, monkeypatch, *, hh_chunk):
+    """Run do_qa on ``frame`` under a fake engine; return (calls, payload)."""
+
+    from microcosm.frame.adapters import policyengine_us as adapter_module
+
+    calls: list[tuple[str, ...]] = []
+
+    class _Engine:
+        def materialize(self, sub_frame, variables, period):
+            calls.append(tuple(variables))
+            spm = sub_frame.table("spm_unit")
+            return {
+                "ssi": np.zeros(sub_frame.n("person")),
+                "is_snap_eligible": spm["_eligible"].to_numpy(),
+                "takes_up_snap_if_eligible": spm[
+                    "takes_up_snap_if_eligible"
+                ].to_numpy(),
+                "snap": spm["_snap"].to_numpy(),
+                "has_usda_elderly_disabled": spm["_elderly_or_disabled"].to_numpy(),
+                "spm_unit_count_children": spm["_children"].to_numpy(),
+                "snap_earned_income": spm["_earned"].to_numpy(),
+                "state_code_str": sub_frame.table("household")["_state"].to_numpy(),
+            }
+
+    monkeypatch.setattr(adapter_module, "PolicyEngineUSEngine", _Engine)
+    monkeypatch.setattr(module, "_load_staging_frame", lambda *_a, **_k: frame)
+    monkeypatch.setattr(module, "_sha256", lambda *_a, **_k: "artifact-sha")
+    args = SimpleNamespace(
+        out_h5=tmp_path / "calibrated.h5", hh_chunk=hh_chunk, checkpoint_dir=tmp_path
+    )
+    module.do_qa(args)
+    return calls, json.loads((tmp_path / "spine_qa.json").read_text())
+
+
+def test_do_qa_reports_a_december_eligible_snap_snapshot(tmp_path, monkeypatch):
+    """#1051 review: informational SNAP take-up by spine, state and type.
+
+    Six one-person households (household = SPM unit), weights 1..6, probed in
+    two chunks. Units 1, 2, 3, 5 and 6 are eligible (weight 17); 1, 3 and 6
+    take up (10), and 1 and 3 receive a positive benefit (4). With one-person
+    units the person-weighted rates equal the unit-weighted ones.
+    """
+
+    from microcosm.build.us_runtime.base_pool import spine_column
+
+    module = _load_tool_module()
+    spines = ["asec_puf"] * 2 + ["acs_2024_1yr"] * 4
+    frame = _snap_qa_frame(
+        households={
+            unit: (float(unit), state, 1)
+            for unit, state in zip(
+                range(1, 7), ["CA", "CA", "TX", "TX", "CA", "TX"], strict=True
+            )
+        },
+        spm_unit_columns={
+            spine_column("spm_unit"): spines,
+            "takes_up_snap_if_eligible": [True, False, True, True, False, True],
+            "_eligible": [True, True, True, False, True, True],
+            "_snap": [100.0, 0.0, 50.0, 0.0, 0.0, 0.0],
+            "_elderly_or_disabled": [False, True, False, False, False, True],
+            "_children": [0, 0, 2, 1, 0, 0],
+            "_earned": [0.0, 10.0, 20.0, 0.0, 0.0, 0.0],
+        },
+        person_spines=spines,
+    )
+    calls, payload = _run_snap_qa(module, frame, tmp_path, monkeypatch, hh_chunk=4)
+
+    # One engine pass per chunk reads SSI and the SNAP variables together.
+    assert len(calls) == 2
+    assert set(calls[0]) == {"ssi", "state_code_str", *module._QA_SNAP_VARIABLES}
+    assert set(payload["per_spine"]) == {"asec_puf", "acs_2024_1yr"}
+    assert "snap_take_up_among_eligible" not in payload
+    table = payload["snap_december_eligible_snapshot"]
+    assert table["graded"] is False
+    assert table["label"] == "December-eligible snapshot (unit- and person-weighted)"
+    assert table["not_fns_participation_rate"].startswith(
+        "Not the FNS fiscal-year participation rate."
+    )
+    assert "December" in table["definition"]
+    assert "not the FNS fiscal-year participation rate" in payload["note"]
+
+    def rates(cell):
+        return (
+            cell["eligible_units"],
+            cell["eligible_unit_weight"],
+            pytest.approx(cell["unit_take_up_rate"]),
+        )
+
+    overall = table["all"]
+    assert rates(overall) == (5, 17.0, pytest.approx(10 / 17))
+    assert overall["unit_receiving_rate"] == pytest.approx(4 / 17)
+    assert overall["eligible_persons"] == 5
+    assert overall["eligible_person_weight"] == pytest.approx(17.0)
+    assert overall["person_take_up_rate"] == pytest.approx(10 / 17)
+    assert overall["person_receiving_rate"] == pytest.approx(4 / 17)
+    assert {k: rates(v) for k, v in table["by_household_type"].items()} == {
+        "elderly_or_disabled": (2, 8.0, pytest.approx(0.75)),
+        "with_children": (1, 3.0, pytest.approx(1.0)),
+        "childless_adults": (2, 6.0, pytest.approx(1 / 6)),
+        "with_earnings": (2, 5.0, pytest.approx(0.6)),
+    }
+    assert rates(table["by_spine"]["asec_puf"]["all"]) == (2, 3.0, pytest.approx(1 / 3))
+    acs = table["by_spine"]["acs_2024_1yr"]
+    assert rates(acs["all"]) == (3, 14.0, pytest.approx(9 / 14))
+    assert rates(acs["by_household_type"]["childless_adults"]) == (
+        1,
+        5.0,
+        pytest.approx(0.0),
+    )
+    assert {k: rates(v) for k, v in table["by_state"].items()} == {
+        "CA": (3, 8.0, pytest.approx(1 / 8)),
+        "TX": (2, 9.0, pytest.approx(1.0)),
+    }
+
+
+def test_do_qa_snap_snapshot_weights_people_by_unit_size(tmp_path, monkeypatch) -> None:
+    """#1051 review A1 (round 4): her example, through do_qa.
+
+    One eligible one-person unit that does not take up and one eligible
+    four-person unit that does, at equal weights: half the units take up, but
+    four of the five eligible people do.
+    """
+
+    from microcosm.build.us_runtime.base_pool import spine_column
+
+    module = _load_tool_module()
+    frame = _snap_qa_frame(
+        households={1: (10.0, "CA", 1), 2: (10.0, "CA", 4)},
+        spm_unit_columns={
+            spine_column("spm_unit"): ["acs_2024_1yr"] * 2,
+            "takes_up_snap_if_eligible": [False, True],
+            "_eligible": [True, True],
+            "_snap": [0.0, 300.0],
+            "_elderly_or_disabled": [False, False],
+            "_children": [0, 2],
+            "_earned": [0.0, 100.0],
+        },
+    )
+    _calls, payload = _run_snap_qa(module, frame, tmp_path, monkeypatch, hh_chunk=1)
+    overall = payload["snap_december_eligible_snapshot"]["all"]
+    assert overall["eligible_units"] == 2
+    assert overall["eligible_unit_weight"] == pytest.approx(20.0)
+    assert overall["unit_take_up_rate"] == pytest.approx(0.5)
+    assert overall["eligible_persons"] == 5
+    assert overall["eligible_person_weight"] == pytest.approx(50.0)
+    assert overall["person_take_up_weight"] == pytest.approx(40.0)
+    assert overall["person_take_up_rate"] == pytest.approx(0.8)
+    assert overall["unit_receiving_rate"] == pytest.approx(0.5)
+    assert overall["person_receiving_rate"] == pytest.approx(0.8)
+
+
+def test_snap_december_snapshot_handles_no_eligible_units() -> None:
+    module = _load_tool_module()
+    empty = pd.DataFrame(columns=list(module._QA_SNAP_UNIT_COLUMNS))
+    table = module.snap_december_eligible_snapshot(empty)
+    assert table["all"]["eligible_units"] == 0
+    assert table["all"]["eligible_persons"] == 0
+    assert table["all"]["unit_take_up_rate"] is None
+    assert table["all"]["person_take_up_rate"] is None
+    assert table["by_spine"] == {}
+    assert table["by_state"] == {}
+
+
 def test_finalize_reviewed_limitations_carries_staging_and_dedupes() -> None:
     module = _load_tool_module()
     staging_summary = {
@@ -225,8 +477,138 @@ def test_finalize_reviewed_limitations_carries_staging_and_dedupes() -> None:
     }
     donor = by_id["donor_sparse_selection_training_set"]
     assert "populace-us-2024-buildo-sparse-rmloss100-x" in donor["reason"]
+    # Every published donor predates microcosm#1186, so the inherited
+    # Social Security erasure is disclosed by default.
+    social_security = by_id["social_security_cps_reporters_erased_inherited"]
+    assert social_security["status"] == "reviewed_inherited_defect"
+    assert social_security["calibration_blocker"] is False
+    assert social_security["donor_release"] == (
+        "populace-us-2024-buildo-sparse-rmloss100-x"
+    )
+    assert "microcosm#1186" in social_security["fixed_by"]
     # Ids are unique after dedupe.
     assert len(by_id) == len(limitations)
+
+
+def test_a_donor_verified_free_of_the_social_security_erasure_drops_the_disclosure(
+    monkeypatch,
+) -> None:
+    """The disclosure is fail-safe: it leaves the register only for a donor
+    added to DONORS_WITHOUT_SOCIAL_SECURITY_ERASURE after checking."""
+
+    module = _load_tool_module()
+    assert module.DONORS_WITHOUT_SOCIAL_SECURITY_ERASURE == frozenset()
+    staging_summary = {
+        "base": {"donor_release": {"release_id": "populace-us-2024-after-1186"}},
+        "reviewed_limitations": [],
+    }
+    diagnostics = {"effective_sample_size": 1.0, "ess_fraction": 0.5}
+
+    def ids():
+        return {
+            item["id"]
+            for item in module.finalize_reviewed_limitations(
+                staging_summary, diagnostics, {}
+            )
+        }
+
+    assert "social_security_cps_reporters_erased_inherited" in ids()
+    monkeypatch.setattr(
+        module,
+        "DONORS_WITHOUT_SOCIAL_SECURITY_ERASURE",
+        frozenset({"populace-us-2024-after-1186"}),
+    )
+    assert "social_security_cps_reporters_erased_inherited" not in ids()
+
+
+def test_the_acs_wic_assumption_is_disclosed_exactly_when_it_was_applied() -> None:
+    """microcosm#1263: the limitation follows the consumer export's receipt."""
+
+    module = _load_tool_module()
+    staging_summary = {"base": {"donor_release": {}}, "reviewed_limitations": []}
+    diagnostics = {"effective_sample_size": 1.0, "ess_fraction": 0.5}
+
+    def limitation(consumer_export):
+        return {
+            item["id"]: item
+            for item in module.finalize_reviewed_limitations(
+                staging_summary, diagnostics, {}, consumer_export=consumer_export
+            )
+        }.get("acs_wic_takeup_assumed_interim")
+
+    applied = {
+        "live_stored_inputs": {
+            "wic": {
+                "renamed": True,
+                "from": "would_claim_wic",
+                "to": "takes_up_wic_if_eligible",
+                "people_assumed_true": 12,
+                "flip_condition": "Drop it once microcosm#1156 lands.",
+            }
+        }
+    }
+    entry = limitation(applied)
+    assert entry["status"] == "reviewed_interim_assumption"
+    assert entry["column"] == "takes_up_wic_if_eligible"
+    assert entry["people_assumed_true"] == 12
+    assert entry["treatment"] == "Drop it once microcosm#1156 lands."
+    assert entry["calibration_blocker"] is False
+    assert limitation(None) is None
+    assert limitation({}) is None
+    assert limitation({"live_stored_inputs": {"wic": {"renamed": False}}}) is None
+
+
+def _spine_frame(spines, decisions):
+    from microcosm.frame import Frame
+    from test_support.microcosm_build.us_acs_spm_role import acs_frame
+
+    frame = acs_frame([[(20, 40.0)] for _ in spines])
+    person = frame.table("person").copy()
+    person["person_spine"] = spines
+    person["would_claim_wic"] = pd.Series(decisions, dtype=object)
+    person["medicare_part_b_premiums"] = [
+        0.0 if decision is not None else np.nan for decision in decisions
+    ]
+    tables = {entity: frame.table(entity) for entity in frame.entities}
+    tables["person"] = person
+    return Frame(
+        tables,
+        frame.schema,
+        {entity: frame.weights_for(entity) for entity in frame.weighted_entities},
+    )
+
+
+def test_only_acs_spine_people_may_lack_a_wic_decision() -> None:
+    """The tool hands the rule the ACS spine, read from the spine tag."""
+
+    module = _load_tool_module()
+    frame = _spine_frame(
+        ["asec_puf", "acs_2024_1yr", "acs_2024_1yr"], [False, None, None]
+    )
+
+    result = module._with_live_stored_inputs(frame)
+
+    person = result.frame.table("person")
+    assert person["takes_up_wic_if_eligible"].tolist() == [False, True, True]
+    assert "would_claim_wic" not in person.columns
+    assert "medicare_part_b_premiums" not in person.columns
+    assert result.provenance["wic"]["people_assumed_true"] == 2
+    # Neither retired name, nor the live one, is left for the package gate to
+    # refuse.
+    engine = stored_inputs.installed_us_engine()
+    refused = stored_inputs.undefined_stored_inputs(
+        person.columns, engine_variables=engine.variables
+    )
+    assert not {
+        "would_claim_wic",
+        "medicare_part_b_premiums",
+        "takes_up_wic_if_eligible",
+    } & set(refused)
+
+    with pytest.raises(SystemExit, match="did not allow"):
+        module._with_live_stored_inputs(
+            _spine_frame(["asec_puf", "acs_2024_1yr"], [None, None])
+        )
 
 
 def test_parse_args_enforces_stage_requirements(tmp_path: Path) -> None:
@@ -333,6 +715,62 @@ def test_local_hours_gate_refuses_missing_source_audit() -> None:
         module._require_local_hours(None, {})
 
 
+class _SelfEmploymentFrame:
+    """A staging stand-in: one ACS row per case plus an ignored ASEC row."""
+
+    def __init__(self, person: pd.DataFrame) -> None:
+        self._person = person
+
+    def table(self, entity: str) -> pd.DataFrame:
+        assert entity == "person"
+        return self._person
+
+
+def _self_employment_person(sstb_on_acs: float) -> pd.DataFrame:
+    return pd.DataFrame(
+        {
+            "person_spine": ["acs_2024_1yr", "acs_2024_1yr", "asec_puf"],
+            "SEMP": [0.0, 1_000.0, np.nan],
+            "ADJINC": [1_000_000.0, 1_000_000.0, np.nan],
+            "self_employment_income_before_lsr": [0.0, 1_000.0, 50_000.0],
+            "sstb_self_employment_income_before_lsr": [sstb_on_acs, 0.0, 9_000.0],
+            "farm_operations_income": [0.0, 0.0, 700.0],
+            "partnership_self_employment_net_earnings": [0.0, 0.0, 300.0],
+        }
+    )
+
+
+def test_release_refuses_staging_that_stacks_self_employment_on_semp() -> None:
+    module = _load_tool_module()
+
+    module._require_acs_self_employment_identity(
+        _SelfEmploymentFrame(_self_employment_person(0.0))
+    )
+    with pytest.raises(SystemExit, match="counts that income twice"):
+        module._require_acs_self_employment_identity(
+            _SelfEmploymentFrame(_self_employment_person(2_500.0))
+        )
+    with pytest.raises(SystemExit, match="no person_spine"):
+        module._require_acs_self_employment_identity(
+            _SelfEmploymentFrame(
+                _self_employment_person(0.0).drop(columns=["person_spine"])
+            )
+        )
+
+
+def test_release_checks_self_employment_wherever_it_loads_staging() -> None:
+    module = _load_tool_module()
+
+    for stage in (module.do_materialize, module._write_calibrated_artifact):
+        lines = [line.strip() for line in inspect.getsource(stage).splitlines()]
+        hours = next(
+            index
+            for index, line in enumerate(lines)
+            if line.startswith("_require_local_hours(frame")
+        )
+        assert lines[hours + 1] == "_require_acs_self_employment_identity(frame)"
+
+
 def test_local_hours_failure_propagates_to_release_boundary(monkeypatch) -> None:
     from microcosm.build.gates import GateResult
 
@@ -353,6 +791,78 @@ def test_local_hours_failure_propagates_to_release_boundary(monkeypatch) -> None
     with pytest.raises(SystemExit, match="acs_2024_1yr: unresolved hours"):
         module._require_local_hours(marker, {"reviewed_engine_input_nulls": audit})
     assert seen == [(marker, audit)]
+
+
+def test_reviewed_null_fill_refuses_to_default_fill_take_up(tmp_path) -> None:
+    """microcosm#1019: a missing take-up cell is refused even when registered,
+    because the engine default ``True`` is universal take-up."""
+
+    from microcosm.frame import Frame
+
+    module = _load_tool_module()
+    frame = _plausible_hours_frame()
+    spm_unit = frame.table("spm_unit").assign(
+        takes_up_snap_if_eligible=[True, False] * 3 + [np.nan] * 2
+    )
+    frame = Frame(
+        {
+            entity: spm_unit if entity == "spm_unit" else frame.table(entity)
+            for entity in frame.entities
+        },
+        frame.schema,
+        {"household": frame.weights_for("household")},
+    )
+    summary = tmp_path / "staging.summary.json"
+    summary.write_text(
+        json.dumps(
+            {
+                "reviewed_engine_input_nulls": [
+                    {
+                        "entity": "spm_unit",
+                        "column": "takes_up_snap_if_eligible",
+                        "missing_rows": 2,
+                    }
+                ]
+            }
+        )
+    )
+    with pytest.raises(
+        module.DeniedDefaultFillError,
+        match=r"spm_unit\.takes_up_snap_if_eligible \(2 null rows\)",
+    ):
+        module.fill_reviewed_nulls(frame, summary)
+    assert spm_unit["takes_up_snap_if_eligible"].isna().sum() == 2
+
+
+def test_take_up_consumers_refuse_a_checkpoint_without_the_assignment() -> None:
+    module = _load_tool_module()
+    for identity in (
+        {},
+        {"acs_local_take_up": {"seed": "0", "assigned_sha256": "a" * 64}},
+        {"acs_local_take_up": {"seed": 0}},
+    ):
+        with pytest.raises(SystemExit, match="Re-run --stage materialize"):
+            module._recorded_take_up(identity)
+    recorded = {"seed": 3, "assigned_sha256": "a" * 64}
+    assert module._recorded_take_up({"acs_local_take_up": recorded}) == recorded
+
+
+def _record_current_materialization(module, args, identity: dict) -> dict:
+    """Record what a current materialize stage leaves for the later stages.
+
+    The release tool refuses, before any solve, a checkpoint that predates a
+    requirement of this stack: here the take-up assignment ``run_identity.json``
+    records (microcosm#1019). A test that drives ``do_calibrate`` or a later
+    stage on a stubbed checkpoint, to exercise some other refusal, records a
+    current materialization through this one helper so it still reaches the
+    refusal it tests; the sparse-CD and target-loss-weight tests load it from
+    here. ``module`` and ``args`` locate what a materialization records outside
+    its identity (the staging summary, checkpoint files) once a requirement
+    lives there.
+    """
+
+    identity["acs_local_take_up"] = {"seed": 0, "assigned_sha256": "a" * 64}
+    return identity
 
 
 def _package_evidence_args(module, tmp_path: Path, monkeypatch, *, hours_report):
@@ -388,6 +898,12 @@ def _package_evidence_args(module, tmp_path: Path, monkeypatch, *, hours_report)
         # The general hours gate, bound to these bytes: the package stage
         # requires it before it reaches the ACS local-hours re-check.
         "hours_worked_signal": {
+            "passed": True,
+            "failures": [],
+            "detail": {},
+            "artifact_sha256": artifact_sha,
+        },
+        "acs_local_take_up_signal": {
             "passed": True,
             "failures": [],
             "detail": {},
@@ -430,7 +946,9 @@ def _package_evidence_args(module, tmp_path: Path, monkeypatch, *, hours_report)
     for name, payload in evidence.items():
         (ckpt / name).write_text(json.dumps(payload))
     (tmp_path / "out.summary.json").write_text(json.dumps({"simulation_ready": True}))
-    monkeypatch.setattr(module, "_load_staging_frame", lambda *_a, **_k: object())
+    monkeypatch.setattr(
+        module, "_load_staging_frame", lambda *_a, **_k: _plausible_hours_frame()
+    )
     monkeypatch.setattr(
         module,
         "acs_local_hours_signal_gate",
@@ -473,6 +991,84 @@ def test_package_requires_a_passing_hours_gate_in_the_finalize_report(
     with pytest.raises(SystemExit, match="Re-run --stage finalize"):
         module.do_package(args)
     assert not (args.out / "package_result.json").exists()
+
+
+def _with_person_columns(frame, **columns):
+    from microcosm.frame import Frame
+
+    return Frame(
+        {
+            **{entity: frame.table(entity) for entity in frame.entities},
+            "person": frame.table("person").assign(**columns),
+        },
+        frame.schema,
+        {"household": frame.weights_for("household")},
+    )
+
+
+def test_package_refuses_a_checkpoint_calibrated_from_stacked_staging(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """A historical checkpoint cannot reach a release through qa and finalize.
+
+    Its run identity authenticates the old staging hash and its finalize
+    report is green, but the calibrated rows still carry a donor SSTB draw on
+    top of SEMP (#1380). The package stage grades those bytes and ships
+    nothing.
+    """
+
+    module = _load_tool_module()
+    args = _package_evidence_args(
+        module,
+        tmp_path,
+        monkeypatch,
+        hours_report={"passed": True, "failures": [], "detail": {}},
+    )
+    stacked = _with_person_columns(
+        _plausible_hours_frame(),
+        sstb_self_employment_income_before_lsr=[0.0, 0.0, 5_000.0, *[0.0] * 5],
+    )
+    loaded = []
+
+    def load_frame(path, *_a, **_k):
+        loaded.append(Path(path))
+        return stacked
+
+    monkeypatch.setattr(module, "_load_staging_frame", load_frame)
+    with pytest.raises(
+        SystemExit, match="ACS self-employment identity failed: 1 ACS person row"
+    ):
+        module.do_package(args)
+    assert loaded == [Path(args.out_h5)]
+    assert not (args.out / "package_result.json").exists()
+    assert not list((args.out / "releases").rglob("*.json"))
+    assert not (args.out / module.ARTIFACT_FILENAME).exists()
+
+
+def test_package_binds_the_self_employment_gate_to_the_packaged_bytes(
+    tmp_path: Path, monkeypatch
+) -> None:
+    module = _load_tool_module()
+    args = _package_evidence_args(
+        module,
+        tmp_path,
+        monkeypatch,
+        hours_report={"passed": True, "failures": [], "detail": {}},
+    )
+    result = module.do_package(args)
+    release_dir = Path(result["release_dir"])
+    expected_sha = module._sha256(args.out_h5)
+    for name in ("build_manifest.json", "gate_summary.json"):
+        gate = json.loads((release_dir / name).read_text())["gates"][
+            "acs_self_employment_identity"
+        ]
+        assert gate["passed"] is True
+        assert gate["failures"] == []
+        assert gate["artifact_sha256"] == expected_sha
+        assert gate["checked_at_stage"] == "package"
+        assert gate["detail"]["acs_person_rows"] == 8
+        assert gate["detail"]["semp_reported_rows"] == 6
+        assert gate["detail"]["mismatched_rows"] == 0
 
 
 def test_package_binds_the_hours_gate_to_the_packaged_bytes(
@@ -522,7 +1118,7 @@ def test_package_refuses_when_the_packaged_bytes_fail_the_hours_gate(
 
     def load_frame(path, *_a, **_k):
         loaded.append(Path(path))
-        return object()
+        return _plausible_hours_frame()
 
     monkeypatch.setattr(module, "_load_staging_frame", load_frame)
     monkeypatch.setattr(
@@ -745,7 +1341,7 @@ def test_soi_mode_defaults_to_state_and_totals_and_full_are_explicit_opt_ins(
     asking for them."""
 
     module = _load_tool_module()
-    assert module.SOI_MODES == ("state", "totals", "full", "state_cd")
+    assert module.SOI_MODES == ("state", "totals", "full", "state_cd", "state_county")
     assert module.DEFAULT_SOI_MODE == module.SOI_MODE_STATE == "state"
     assert module._parse_args(_materialize_argv(tmp_path)).soi_mode == "state"
     for mode in ("totals", "full", "state_cd"):
@@ -908,8 +1504,9 @@ def test_package_records_the_materialized_soi_mode_not_the_parser_default(
 
 def test_pinned_feed_soi_surfaces_match_their_contracts() -> None:
     """On the real feed: the default ``state`` surface is Build O/P's
-    3,972-spec admin contract, built only from the three Historic Table 2
-    state tables at state geography; ``totals`` holds no
+    3,972-spec admin contract plus the 408 state AGI-band rows of
+    microcosm#940 (4,380 specs), built only from the Historic Table 2 state
+    tables at state geography; ``totals`` holds no
     ``soi_fiscal_distribution`` spec; ``full`` adds exactly those specs to
     ``totals`` and contains ``state``.
 
@@ -936,11 +1533,13 @@ def test_pinned_feed_soi_surfaces_match_their_contracts() -> None:
 
     # Build P's ACS local contract: 102 SNAP + 51 Medicaid + 3,819 SOI admin
     # specs (4,459 with the 487 population marginals); Build O's 4,461 plus the
-    # Vermont under-$1 taxable-interest pair the compiler now excludes.
+    # Vermont under-$1 taxable-interest pair the compiler now excludes. The
+    # TY2023 state AGI bands (#940: 51 states x 4 bands x 2 measures, same
+    # record-set spec) add 408 SOI specs.
     families_count = {}
     for spec in state_specs:
         families_count[spec.family] = families_count.get(spec.family, 0) + 1
-    assert families_count == {"usda_snap": 102, "cms_medicaid": 51, "irs_soi": 3819}
+    assert families_count == {"usda_snap": 102, "cms_medicaid": 51, "irs_soi": 4227}
     soi = [spec for spec in state_specs if spec.family == "irs_soi"]
     record_sets = {}
     for spec in soi:
@@ -948,7 +1547,7 @@ def test_pinned_feed_soi_surfaces_match_their_contracts() -> None:
         record_sets[key] = record_sets.get(key, 0) + 1
     assert record_sets == {
         "irs_soi.historic_table_2.state_broad_totals.v1": 2397,
-        "irs_soi.historic_table_2.state_agi_counts_and_amounts.v1": 912,
+        "irs_soi.historic_table_2.state_agi_counts_and_amounts.v1": 1320,
         "irs_soi.historic_table_2.state_eitc.v1": 510,
     }
     assert {spec.metadata["ledger_geography_level"] for spec in soi} == {"state"}
@@ -984,6 +1583,10 @@ def _staging_frame_with_hours(weekly: list[float], last_week: list[float]):
             "person_marital_unit_id": ids,
             "weekly_hours_worked_before_lsr": np.asarray(weekly, dtype=float),
             "hours_worked_last_week": np.asarray(last_week, dtype=float),
+            "detailed_occupation_recode": np.where(np.asarray(weekly) > 0, 8, 53),
+            "detailed_industry_recode": np.where(np.asarray(weekly) > 0, 13, 23),
+            "major_industry_recode": np.where(np.asarray(weekly) > 0, 9, 15),
+            "worked_last_year": np.asarray(weekly) > 0,
         }
     )
     tables = {
@@ -1070,6 +1673,23 @@ def _stub_local_hours_gate(module, monkeypatch) -> None:
     )
 
 
+def _stub_local_take_up_gate(module, monkeypatch, *, passed=True) -> None:
+    """Make the ACS take-up classification pass (or fail); its tests cover it."""
+
+    from microcosm.build.gates import GateResult
+
+    monkeypatch.setattr(
+        module,
+        "acs_local_take_up_signal_gate",
+        lambda frame: GateResult(
+            name="acs_local_take_up_signal",
+            passed=passed,
+            failures=() if passed else ("acs_2024_1yr: invented constant take-up",),
+            details={},
+        ),
+    )
+
+
 def _patch_finalize_collaborators(module, monkeypatch, frame=None, *, identity=True):
     """Stub the ladder gate and composition; ``frame=None`` loads real bytes."""
 
@@ -1086,6 +1706,7 @@ def _patch_finalize_collaborators(module, monkeypatch, frame=None, *, identity=T
     )
     monkeypatch.setattr(module, "spine_composition", lambda *a, **k: {})
     _stub_local_hours_gate(module, monkeypatch)
+    _stub_local_take_up_gate(module, monkeypatch)
     if frame is not None:
         monkeypatch.setattr(module, "_load_staging_frame", lambda *a, **k: frame)
     if identity:
@@ -1120,9 +1741,37 @@ def _write_frame_h5(path: Path, frame) -> None:
 
 
 def _plausible_hours_frame():
-    return _staging_frame_with_hours(
+    """The hours frame as ACS rows whose self-employment leaves split SEMP.
+
+    The package stage grades the identity on the bytes it ships (#1380), so
+    the frame the package tests load carries the spine tag, SEMP, ADJINC and
+    the four self-employment leaves, all consistent.
+    """
+
+    from microcosm.frame import Frame
+
+    frame = _staging_frame_with_hours(
         [40.0, 38.0, 20.0, 45.0, 0.0, 0.0, 0.0, 0.0],
         [40.0, 35.0, 22.0, 40.0, 0.0, 0.0, 0.0, 5.0],
+    )
+    semp = np.asarray([0.0, 0.0, 12_000.0, 0.0, 0.0, 0.0, np.nan, np.nan])
+    adjinc = np.full(len(semp), 1_021_000.0)
+    person = frame.table("person").assign(
+        person_spine="acs_2024_1yr",
+        SEMP=semp,
+        ADJINC=adjinc,
+        self_employment_income_before_lsr=np.nan_to_num(semp * adjinc / 1e6),
+        sstb_self_employment_income_before_lsr=0.0,
+        farm_operations_income=0.0,
+        partnership_self_employment_net_earnings=0.0,
+    )
+    return Frame(
+        {
+            **{entity: frame.table(entity) for entity in frame.entities},
+            "person": person,
+        },
+        frame.schema,
+        {"household": frame.weights_for("household")},
     )
 
 
@@ -1147,6 +1796,64 @@ def test_do_finalize_hours_gate_passes_on_plausible_surface(
     frame = _staging_frame_with_hours(weekly, last_week)
     _message, report = _run_finalize(module, monkeypatch, args, frame)
     assert report["gates"]["hours_worked_signal"]["passed"] is True
+
+
+def test_do_finalize_hard_fails_on_a_failed_take_up_gate(tmp_path, monkeypatch):
+    module = _load_tool_module()
+    args = _finalize_args(module, tmp_path)
+    _patch_finalize_collaborators(module, monkeypatch, _plausible_hours_frame())
+    _stub_local_take_up_gate(module, monkeypatch, passed=False)
+    with pytest.raises(SystemExit) as exc:
+        module.do_finalize(args)
+    assert "acs_local_take_up_signal" in str(exc.value)
+    report = json.loads(args.gate_report.read_text())
+    gate = report["gates"]["acs_local_take_up_signal"]
+    assert gate["passed"] is False
+    assert gate["failures"] == ["acs_2024_1yr: invented constant take-up"]
+    assert gate["artifact_sha256"] == module._sha256(args.out_h5)
+    summary = json.loads(args.out_summary.read_text())
+    assert "acs_local_take_up_signal" in summary["simulation_readiness_blockers"]
+
+
+def test_do_finalize_take_up_gate_fails_on_default_filled_acs_rows(
+    tmp_path, monkeypatch
+):
+    """The 2026-09-23 release signature: every ACS unit takes SNAP/TANF up."""
+
+    from microcosm.build.us_runtime.base_pool import spine_column
+    from microcosm.frame import Frame
+
+    module = _load_tool_module()
+    real_gate = module.acs_local_take_up_signal_gate
+    args = _finalize_args(module, tmp_path)
+    frame = _plausible_hours_frame()
+    spm_unit = frame.table("spm_unit").assign(
+        **{
+            spine_column("spm_unit"): ["asec_puf"] * 4 + ["acs_2024_1yr"] * 4,
+            "takes_up_snap_if_eligible": [True, True, True, False] + [True] * 4,
+            "takes_up_tanf_if_eligible": [True, False, False, False] + [True] * 4,
+            "receives_snap": [True] + [False] * 7,
+        }
+    )
+    frame = Frame(
+        {
+            entity: spm_unit if entity == "spm_unit" else frame.table(entity)
+            for entity in frame.entities
+        },
+        frame.schema,
+        {"household": frame.weights_for("household")},
+    )
+    _patch_finalize_collaborators(module, monkeypatch, frame)
+    monkeypatch.setattr(module, "acs_local_take_up_signal_gate", real_gate)
+    with pytest.raises(SystemExit, match="acs_local_take_up_signal"):
+        module.do_finalize(args)
+    gate = json.loads(args.gate_report.read_text())["gates"]["acs_local_take_up_signal"]
+    assert gate["passed"] is False
+    assert all(failure.startswith("acs_2024_1yr:") for failure in gate["failures"])
+    assert any(
+        "takes_up_snap_if_eligible is constant" in failure
+        for failure in gate["failures"]
+    )
 
 
 @requires_pytables
@@ -1343,7 +2050,9 @@ def test_a_sparse_era_calibration_is_bound_through_finalize_and_package(
     assert result["root_artifact"]["sha256"] == artifact_sha
 
 
-def _package_args_with_hours(module, tmp_path, monkeypatch, *, gate_state):
+def _package_args_with_hours(
+    module, tmp_path, monkeypatch, *, gate_state, take_up_state="passed"
+):
     """Real tiny H5 bytes; gate edits model stale separately resumed finalize."""
 
     _stub_local_hours_gate(module, monkeypatch)
@@ -1372,6 +2081,13 @@ def _package_args_with_hours(module, tmp_path, monkeypatch, *, gate_state):
         if gate_state == "missing"
         else {"hours_worked_signal": gate, "acs_local_hours_signal": local_gate}
     )
+    take_up_gate = {"passed": True, "failures": [], "artifact_sha256": artifact_sha}
+    if take_up_state == "failed":
+        take_up_gate.update(passed=False, failures=["invented take-up failure"])
+    elif take_up_state == "stale":
+        take_up_gate["artifact_sha256"] = "0" * 64
+    if gates and take_up_state != "missing":
+        gates["acs_local_take_up_signal"] = take_up_gate
     args.gate_report.write_text(json.dumps({"gates": gates}))
     args.out_summary.write_text(json.dumps({"simulation_ready": True}))
     evidence = {
@@ -1423,6 +2139,95 @@ def test_package_accepts_passing_hours_gate_bound_to_the_packaged_bytes(
     copied_sha = module._sha256(Path(result["root_artifact"]["local_path"]))
     assert gate["passed"] is True
     assert gate["artifact_sha256"] == result["root_artifact"]["sha256"] == copied_sha
+    take_up = json.loads((release_dir / "gate_summary.json").read_text())["gates"][
+        "acs_local_take_up_signal"
+    ]
+    assert take_up["passed"] is True
+    assert take_up["artifact_sha256"] == copied_sha
+    for name in ("build_manifest.json", "gate_summary.json"):
+        work_gate = json.loads((release_dir / name).read_text())["gates"][
+            "work_experience_inputs"
+        ]
+        assert work_gate == {
+            "passed": True,
+            "failures": [],
+            "columns": list(US_ORG_OCCUPATION_AND_WORK_EXPERIENCE_OUTPUT_COLUMNS),
+            "person_rows": 8,
+            "artifact_sha256": copied_sha,
+            "checked_at_stage": "package",
+        }
+
+
+@requires_pytables
+@pytest.mark.parametrize("take_up_state", ["missing", "failed", "stale"])
+def test_package_requires_a_current_take_up_gate(tmp_path, monkeypatch, take_up_state):
+    """microcosm#1019: a report finalized before the take-up gate, or failing
+    it, or bound to other bytes, cannot package."""
+
+    module = _load_tool_module()
+    args = _package_args_with_hours(
+        module,
+        tmp_path,
+        monkeypatch,
+        gate_state="passed",
+        take_up_state=take_up_state,
+    )
+    with pytest.raises(SystemExit, match="acs_local_take_up_signal"):
+        module.do_package(args)
+    assert not (args.out / "package_result.json").exists()
+    assert not list((args.out / "releases").rglob("*.json"))
+
+
+@requires_pytables
+@pytest.mark.parametrize("defect", ["missing", "asec_null", "acs_null", "nonfinite"])
+def test_package_refuses_historical_staging_with_incomplete_work_experience(
+    tmp_path, monkeypatch, defect
+):
+    """A green historical staging/finalize summary cannot stand in for inputs."""
+    from microcosm.frame import Frame
+
+    module = _load_tool_module()
+    args = _package_args_with_hours(module, tmp_path, monkeypatch, gate_state="passed")
+    frame = _plausible_hours_frame()
+    person = frame.person.copy()
+    spines = ["asec_puf"] * 4 + ["acs_2024_1yr"] * 4
+    person["person_spine"] = spines
+    if defect == "missing":
+        person = person.drop(
+            columns=[
+                column
+                for column in US_ORG_OCCUPATION_AND_WORK_EXPERIENCE_OUTPUT_COLUMNS
+                if column != "detailed_occupation_recode"
+            ]
+        )
+    else:
+        person["major_industry_recode"] = person["major_industry_recode"].astype(float)
+        row = 7 if defect == "acs_null" else 0
+        person.loc[row, "major_industry_recode"] = (
+            np.inf if defect == "nonfinite" else np.nan
+        )
+    incomplete = Frame(
+        {
+            **{entity: frame.table(entity) for entity in frame.entities},
+            "person": person,
+            "household": frame.table("household").assign(household_spine=spines),
+        },
+        frame.schema,
+        {"household": frame.weights_for("household")},
+    )
+    _write_frame_h5(args.out_h5, incomplete)
+    args.staging_h5.write_bytes(args.out_h5.read_bytes())
+    identity_path = args.checkpoint_dir / "run_identity.json"
+    identity = json.loads(identity_path.read_text())
+    identity["staging_sha256"] = module._sha256(args.staging_h5)
+    identity_path.write_text(json.dumps(identity))
+    _refresh_package_evidence_bindings(module, args)
+
+    with pytest.raises(SystemExit, match="Refusing to package:.*work-experience"):
+        module.do_package(args)
+    assert not (args.out / "releases").exists()
+    assert not (args.out / "package_result.json").exists()
+    assert not (args.out / module.ARTIFACT_FILENAME).exists()
 
 
 @requires_pytables
@@ -1448,10 +2253,371 @@ def test_package_records_the_stored_input_gate_bound_to_the_packaged_bytes(
             "failures": [],
             "engine": "policyengine-us 2.2.1",
             "register_sha256": stored_inputs.register_sha256(),
-            "registered_non_variables": [],
+            # The ACS rows' base-spine tag, a reviewed register entry.
+            "registered_non_variables": ["person_spine"],
             "artifact_sha256": result["root_artifact"]["sha256"],
             "checked_at_stage": "package",
         }
+
+
+def test_the_package_stage_output_meets_the_publisher_gate_requirement(
+    tmp_path, monkeypatch
+):
+    """Producer and publisher agree (microcosm#1034): the gate the package
+    stage writes, keyed and staged by the contract's own constants, passes
+    the publisher's US local-area stored-input requirement against the
+    release manifest and build manifest written alongside it, and the same
+    output with the gate dropped is refused."""
+
+    import importlib.metadata as metadata
+
+    from microcosm.data import contract
+
+    real_version = metadata.version
+    # The built-with record reads installed metadata; the engine-free lane has
+    # no policyengine-us, so pin it to the stand-in engine's version.
+    monkeypatch.setattr(
+        metadata,
+        "version",
+        lambda name: "2.2.1" if name == "policyengine-us" else real_version(name),
+    )
+    module = _load_tool_module()
+    assert (
+        module.US_STORED_INPUTS_EVIDENCE_KEY == contract.US_STORED_INPUTS_EVIDENCE_KEY
+    )
+    assert (
+        module.US_LOCAL_AREA_STORED_INPUTS_STAGE
+        == contract.US_LOCAL_AREA_STORED_INPUTS_STAGE
+    )
+    args = _package_args_with_hours(module, tmp_path, monkeypatch, gate_state="passed")
+    release_dir = Path(module.do_package(args)["release_dir"])
+
+    def load(name):
+        return json.loads((release_dir / name).read_text())
+
+    gate_summary = load("gate_summary.json")
+    release_manifest = load("release_manifest.json")
+    build_manifest = load("build_manifest.json")
+    assert release_manifest["build"]["built_with_model_package"] == {
+        "name": "policyengine-us",
+        "version": "2.2.1",
+    }
+    failures: list[str] = []
+    contract._check_local_area_gates(gate_summary, failures)
+    contract._check_us_local_area_stored_inputs_gate(
+        gate_summary,
+        release_manifest=release_manifest,
+        build_manifest=build_manifest,
+        failures=failures,
+    )
+    assert failures == []
+
+    del gate_summary["gates"][contract.US_STORED_INPUTS_EVIDENCE_KEY]
+    contract._check_us_local_area_stored_inputs_gate(
+        gate_summary,
+        release_manifest=release_manifest,
+        build_manifest=build_manifest,
+        failures=failures,
+    )
+    assert len(failures) == 1
+    assert "must carry the 'stored_inputs' gate" in failures[0]
+
+
+def _write_measurable_lane_h5(
+    path: Path, *, group_quarters_child: bool, role=None
+) -> None:
+    """The plausible-hours frame with the columns the SPM gate reads.
+
+    Eight one-person ACS housing units of adults; with
+    ``group_quarters_child`` the last is instead a group-quarters record of a
+    ten-year-old, whom no role can classify. ``role`` replaces the stored
+    role column, which is otherwise Boolean ``True`` for everyone.
+    """
+
+    from microcosm.frame import Frame
+
+    staging = _load_staging_builder_module()
+    frame = _plausible_hours_frame()
+    ages = [40.0, 38.0, 20.0, 45.0, 70.0, 67.0, 30.0, 50.0]
+    kinds = [1.0] * 8
+    if group_quarters_child:
+        ages[-1], kinds[-1] = 10.0, 2.0
+    person = frame.table("person").assign(
+        age=ages,
+        is_spm_independent_minor_role=[True] * 8 if role is None else role,
+        person_support_clone_index=0,
+    )
+    household = frame.table("household").assign(
+        household_spine="acs_2024_1yr", TYPEHUGQ=kinds
+    )
+    frame = Frame(
+        {
+            **{entity: frame.table(entity) for entity in frame.entities},
+            "person": person,
+            "household": household,
+        },
+        frame.schema,
+        {"household": frame.weights_for("household")},
+    )
+    staging._write_dataset(
+        frame, path, period=2024, artifact_kind="calibrated_local_area_artifact"
+    )
+
+
+@requires_pytables
+def test_package_records_the_spm_measurement_gate_bound_to_the_packaged_bytes(
+    tmp_path, monkeypatch
+):
+    """microcosm#1263: the package stage grades the calibrated H5 it ships
+    against the engine it records as built-with, and both manifests carry the
+    verdict bound to the packaged bytes."""
+
+    monkeypatch.setattr(
+        spm_measurement_gate,
+        "check_release_spm_measurement",
+        _REAL_CHECK_RELEASE_SPM_MEASUREMENT,
+    )
+    module = _load_tool_module()
+    assert (
+        module.US_SPM_MEASUREMENT_EVIDENCE_KEY
+        == spm_measurement_gate.SPM_MEASUREMENT_GATE_NAME
+    )
+    args = _package_args_with_hours(module, tmp_path, monkeypatch, gate_state="passed")
+    _write_measurable_lane_h5(args.out_h5, group_quarters_child=False)
+    _refresh_package_evidence_bindings(module, args)
+
+    result = module.do_package(args)
+
+    release_dir = Path(result["release_dir"])
+    recorded = [
+        json.loads((release_dir / name).read_text())["gates"][
+            "spm_measurement_composition"
+        ]
+        for name in ("gate_summary.json", "build_manifest.json")
+    ]
+    assert recorded[0] == recorded[1]
+    gate = recorded[0]
+    assert gate["passed"] is True
+    assert gate["failures"] == []
+    assert gate["engine"] == "policyengine-us 2.2.1"
+    assert gate["checked_at_stage"] == "package"
+    assert gate["artifact_sha256"] == result["root_artifact"]["sha256"]
+    assert gate["details"]["measured_scope"] == "all_units"
+    assert gate["details"]["n_measured_units"] == 8
+    assert gate["details"]["n_measured_units_without_classified_adult"] == 0
+
+
+@requires_pytables
+def test_package_refuses_an_unmeasurable_release_before_any_release_dir(
+    tmp_path, monkeypatch
+):
+    """The 2026-09-23 failure in this lane: one group-quarters child makes
+    every SPM measurement on the release raise SPM_COMPOSITION_REQUIRED under
+    an engine that measures every unit. The package stage refuses it, and no
+    release directory is created."""
+
+    monkeypatch.setattr(
+        spm_measurement_gate,
+        "check_release_spm_measurement",
+        _REAL_CHECK_RELEASE_SPM_MEASUREMENT,
+    )
+    module = _load_tool_module()
+    args = _package_args_with_hours(module, tmp_path, monkeypatch, gate_state="passed")
+    _write_measurable_lane_h5(args.out_h5, group_quarters_child=True)
+    _refresh_package_evidence_bindings(module, args)
+
+    with pytest.raises(SystemExit) as refusal:
+        module.do_package(args)
+
+    message = str(refusal.value)
+    assert message.startswith("Refusing to package: the SPM measurement gate failed")
+    assert "1 of 8 SPM units" in message
+    assert "0 inside the source SPM universe and 1 outside it" in message
+    assert not (args.out / "releases").exists()
+    assert not (args.out / "package_result.json").exists()
+
+
+@requires_pytables
+def test_package_refuses_a_complex_role_after_the_h5_round_trip(tmp_path, monkeypatch):
+    """A complex role column survives the lane's H5 writer and reader. Its
+    ``1j`` casts to True, yet its real part is 0, so the gate must refuse the
+    column on the bytes the release would ship rather than read it one way."""
+
+    monkeypatch.setattr(
+        spm_measurement_gate,
+        "check_release_spm_measurement",
+        _REAL_CHECK_RELEASE_SPM_MEASUREMENT,
+    )
+    module = _load_tool_module()
+    args = _package_args_with_hours(module, tmp_path, monkeypatch, gate_state="passed")
+    _write_measurable_lane_h5(
+        args.out_h5,
+        group_quarters_child=False,
+        role=np.array([1 + 0j] * 7 + [1j], dtype=np.complex128),
+    )
+    _refresh_package_evidence_bindings(module, args)
+    stored = module._load_staging_frame(args.out_h5).table("person")[
+        "is_spm_independent_minor_role"
+    ]
+    assert pd.api.types.is_complex_dtype(stored.dtype)
+
+    with pytest.raises(SystemExit) as refusal:
+        module.do_package(args)
+
+    message = str(refusal.value)
+    assert message.startswith("Refusing to package: the SPM measurement gate failed")
+    assert "8 person row(s)" in message
+    assert "complex" in message
+    assert not (args.out / "releases").exists()
+
+
+def test_package_refuses_an_spm_gate_without_an_importable_engine(
+    tmp_path, monkeypatch
+):
+    """The gate grades against the built-with engine, so it needs one."""
+
+    module = _load_tool_module()
+
+    def missing():
+        raise ImportError("No module named 'policyengine_us'")
+
+    monkeypatch.setattr(stored_inputs, "installed_us_engine", missing)
+    with pytest.raises(SystemExit, match="SPM measurement cannot be graded"):
+        module._require_spm_measurement(object())
+
+
+@pytest.mark.parametrize(
+    ("defines_declaration", "registered", "refused"),
+    [
+        (False, False, False),
+        (True, True, False),
+        (True, False, True),
+        (False, True, True),
+    ],
+)
+def test_package_refuses_an_engine_whose_scoping_disagrees_with_the_register(
+    monkeypatch, defines_declaration, registered, refused
+):
+    """The publisher trusts the reviewed register of universe-scoping engines.
+    An engine that defines the declaration without being registered, or is
+    registered without defining it, has not been reviewed: no verdict graded
+    on either reading is recorded."""
+
+    from microcosm.build.us_runtime.spm_universe_source import UNIVERSE_INPUT
+    from microcosm.data import contract
+
+    variables = set(_PACKAGE_ENGINE.variables)
+    if defines_declaration:
+        variables.add(UNIVERSE_INPUT)
+    monkeypatch.setattr(
+        stored_inputs,
+        "installed_us_engine",
+        lambda: stored_inputs.CertifiedEngine(
+            label="policyengine-us 2.2.1", variables=frozenset(variables)
+        ),
+    )
+    monkeypatch.setattr(
+        contract,
+        "US_SPM_UNIVERSE_SCOPING_MODEL_VERSIONS",
+        frozenset({"2.2.1"}) if registered else frozenset(),
+    )
+    graded_as = []
+    monkeypatch.setattr(
+        spm_measurement_gate,
+        "check_release_spm_measurement",
+        lambda frame, *, engine_scopes_universe: (
+            graded_as.append(engine_scopes_universe)
+            or GateResult(
+                name=spm_measurement_gate.SPM_MEASUREMENT_GATE_NAME,
+                passed=True,
+                details=dict(_MEASURABLE_DETAILS),
+            )
+        ),
+    )
+    module = _load_tool_module()
+
+    if refused:
+        with pytest.raises(SystemExit, match="reviewed register"):
+            module._require_spm_measurement(object())
+        assert graded_as == []
+    else:
+        module._require_spm_measurement(object())
+        assert graded_as == [defines_declaration]
+
+
+@requires_pytables
+def test_the_spm_measurement_gate_meets_the_publisher_requirement(
+    tmp_path, monkeypatch
+):
+    """Producer and publisher agree (microcosm#1263): the gate the package
+    stage writes from real bytes passes the publisher's requirement against
+    the manifests written alongside it, and the same output with the gate
+    dropped, or recording a measured unit without an adult, is refused."""
+
+    import importlib.metadata as metadata
+
+    from microcosm.data import contract
+
+    real_version = metadata.version
+    monkeypatch.setattr(
+        metadata,
+        "version",
+        lambda name: "2.2.1" if name == "policyengine-us" else real_version(name),
+    )
+    monkeypatch.setattr(
+        spm_measurement_gate,
+        "check_release_spm_measurement",
+        _REAL_CHECK_RELEASE_SPM_MEASUREMENT,
+    )
+    module = _load_tool_module()
+    assert (
+        module.US_LOCAL_AREA_SPM_MEASUREMENT_STAGE
+        == contract.US_LOCAL_AREA_SPM_MEASUREMENT_STAGE
+    )
+    args = _package_args_with_hours(module, tmp_path, monkeypatch, gate_state="passed")
+    _write_measurable_lane_h5(args.out_h5, group_quarters_child=False)
+    _refresh_package_evidence_bindings(module, args)
+    release_dir = Path(module.do_package(args)["release_dir"])
+
+    def load(name):
+        return json.loads((release_dir / name).read_text())
+
+    gate_summary = load("gate_summary.json")
+    release_manifest = load("release_manifest.json")
+    build_manifest = load("build_manifest.json")
+
+    def failures_for(summary, build=build_manifest):
+        failures: list[str] = []
+        contract._check_us_local_area_spm_measurement_gate(
+            summary,
+            release_manifest=release_manifest,
+            build_manifest=build,
+            failures=failures,
+        )
+        return failures
+
+    assert failures_for(gate_summary) == []
+
+    key = contract.US_SPM_MEASUREMENT_EVIDENCE_KEY
+    dropped = json.loads(json.dumps(gate_summary))
+    del dropped["gates"][key]
+    assert len(failures_for(dropped)) == 1
+    assert (
+        "must carry the 'spm_measurement_composition' gate"
+        in (failures_for(dropped)[0])
+    )
+
+    crashing = json.loads(json.dumps(gate_summary))
+    crashing["gates"][key]["details"].update(
+        n_measured_units_without_classified_adult=1,
+        n_units_without_classified_adult=1,
+        n_units_without_classified_adult_by_universe={"INCLUDED": 1, "OUTSIDE": 0},
+    )
+    build = json.loads(json.dumps(build_manifest))
+    build["gates"][key] = crashing["gates"][key]
+    assert any(
+        "SPM_COMPOSITION_REQUIRED" in line for line in failures_for(crashing, build)
+    )
 
 
 def _write_lane_h5(path: Path, **person_columns) -> None:
@@ -1791,7 +2957,11 @@ def test_do_calibrate_stamps_and_records_the_penalty_settings(
     module = _load_tool_module()
     calls = _recording_calibrate(monkeypatch)
     frame, design, targets = _tiny_calibration_surface()
-    identity = {"staging_sha256": "s", "target_roles_sha256": "r"}
+    identity = {
+        "staging_sha256": "s",
+        "target_roles_sha256": "r",
+        "acs_local_take_up": {"seed": 0, "assigned_sha256": "a" * 64},
+    }
     monkeypatch.setattr(module, "_verify_run_identity", lambda args: identity)
     income = TargetSpec(
         name="income",
@@ -1851,6 +3021,14 @@ def test_do_calibrate_stamps_and_records_the_penalty_settings(
         )
     )
     args.checkpoint_dir.mkdir()
+    # A checkpoint materialized before #1019 is refused before any solve.
+    monkeypatch.setattr(
+        module, "_verify_run_identity", lambda args: {"staging_sha256": "s"}
+    )
+    with pytest.raises(SystemExit, match="no ACS local take-up assignment"):
+        module.do_calibrate(args)
+    assert calls == []
+    monkeypatch.setattr(module, "_verify_run_identity", lambda args: identity)
     module.do_calibrate(args)
 
     assert len(calls) == 2
@@ -2096,3 +3274,49 @@ def test_concentration_limitation_is_true_to_the_penalty_solved() -> None:
     assert "'chi_square'" in penalized["reason"]
     assert "'softmax'" in penalized["reason"]
     assert "l2_lambda=0 " not in penalized["reason"]
+
+
+def test_a_null_esi_premium_input_is_refused_before_any_default_fill(tmp_path) -> None:
+    """microcosm#454: an ACS-spine null in the ESI premium input is never a zero.
+
+    The ``meps_esi_premiums`` stage runs on the ASEC donor rows only. A pooled
+    frame therefore carries the input as NaN on its ACS rows, and the
+    reviewed-null register would default-fill it to zero for half the
+    population while input coverage reads green. The refusal comes first: it
+    needs neither the engine nor the register file.
+    """
+
+    from microcosm.build.source_runtime import SourceRuntimeError
+    from microcosm.frame import US_SCHEMA, Frame, WeightKind, Weights
+
+    module = _load_tool_module()
+    ids = np.arange(1, 5)
+    person = pd.DataFrame(
+        {
+            "person_id": ids,
+            "person_household_id": ids,
+            "person_tax_unit_id": ids,
+            "person_spm_unit_id": ids,
+            "person_family_id": ids,
+            "person_marital_unit_id": ids,
+            # Two ASEC donor rows, two ACS rows the stage never saw.
+            "employer_sponsored_insurance_premiums": [9_000.0, 0.0, np.nan, np.nan],
+        }
+    )
+    frame = Frame(
+        {
+            "person": person,
+            "household": pd.DataFrame({"household_id": ids}),
+            "tax_unit": pd.DataFrame({"tax_unit_id": ids}),
+            "spm_unit": pd.DataFrame({"spm_unit_id": ids}),
+            "family": pd.DataFrame({"family_id": ids}),
+            "marital_unit": pd.DataFrame({"marital_unit_id": ids}),
+        },
+        US_SCHEMA,
+        {"household": Weights(values=np.ones(4), kind=WeightKind.DESIGN)},
+    )
+    absent_register = tmp_path / "no_such_summary.json"
+    with pytest.raises(SourceRuntimeError, match="never filled") as error:
+        module.fill_reviewed_nulls(frame, absent_register)
+    assert "ACS local release" in str(error.value)
+    assert "'employer_sponsored_insurance_premiums': 2" in str(error.value)

@@ -1,0 +1,1 @@
+Cap every CI job with `timeout-minutes` (about 1.5x the slowest successful engine-free and engine-us legs on 2026-10-07..08, and at least twice the slowest run for shorter jobs) so a hung test frees its runner in the PolicyEngine org's shared 60-runner pool well before GitHub's 6-hour default, and add a contract test that keeps every workflow job capped.

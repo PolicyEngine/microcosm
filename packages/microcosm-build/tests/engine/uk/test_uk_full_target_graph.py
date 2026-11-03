@@ -114,7 +114,8 @@ def test_default_all_has_direct_matrix_and_solver_parity_and_replays(
         source_year=2023,
         expected_constituency_vintage="2024_pcon",
     )
-    prepared_frame, _, national_rows, metrics, _ = target_inputs["measures"](
+    prepared_frame = target_inputs["prepared"](assignment.frame)
+    _, national_rows, metrics, _ = target_inputs["measures"](
         assignment.frame, target_inputs["national"], local_grains=("constituency", "la")
     )
     surface, cross = target_inputs["surface"]()
@@ -198,12 +199,29 @@ def test_source_census_validation_precedes_any_geography_filter(
         build(tmp_path, toy_ladder[1], levels)
 
 
-def test_target_kernel_identity_binds_country_reference_resources(monkeypatch):
+@pytest.mark.parametrize(
+    ("resource", "rekeys"),
+    [
+        ("calibration_measure_exclusions.json", True),
+        ("target_fit_reviewed_exclusions.json", False),
+        ("local_area_support_exclusions.json", False),
+    ],
+)
+def test_target_kernel_identity_binds_the_solve_scoped_resources(
+    monkeypatch, resource, rekeys
+):
+    """A solve-scoped resource re-keys the target kernels; a gate-only
+    register does not, so a sign-off reuses the surface (microcosm#1301)."""
+    from types import MappingProxyType
+
+    from microcosm.build import country_spec
+
     kernel = graph_targets.UKFullProblemKernel()
     original = kernel.implementation_hash()
+    spec = country_spec.load_country_spec("uk")
+    hashes = {**spec.resource_hashes, resource: "0" * 64}
+    edited = replace(spec, resource_hashes=MappingProxyType(hashes))
     monkeypatch.setattr(
-        graph_targets,
-        "load_country_spec",
-        lambda _country: SimpleNamespace(fingerprint="changed-reference-resource"),
+        country_spec, "_load_packaged_country_spec", lambda _country: edited
     )
-    assert kernel.implementation_hash() != original
+    assert (kernel.implementation_hash() != original) is rekeys

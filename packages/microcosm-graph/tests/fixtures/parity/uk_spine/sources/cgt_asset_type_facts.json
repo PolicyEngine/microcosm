@@ -2,70 +2,70 @@
   "resource": "synthetic-cgt-asset-type.json",
   "resource_sha256": "synthetic",
   "source_commit": "synthetic",
-  "table4_all_gains": 6803877.8232513005,
+  "table4_all_gains": 6567779.158835469,
   "table4_all_tax": 0.0,
-  "table4_all_taxpayers": 16.094983343942488,
+  "table4_all_taxpayers": 15.645847684894523,
   "table4_bands": [
     {
-      "gains": 8469.81629743428,
+      "gains": 6262.290969943808,
       "lower_bound": 0,
       "tax": null,
-      "taxpayers": 2.0315589349981042,
+      "taxpayers": 1.4320098873010005,
       "upper_bound": 10000
     },
     {
-      "gains": 21793.660633989297,
+      "gains": 24063.64355992752,
       "lower_bound": 10000,
       "tax": null,
-      "taxpayers": 1.4192719822325444,
+      "taxpayers": 1.4653704559490115,
       "upper_bound": 25000
     },
     {
-      "gains": 41822.32276068652,
+      "gains": 81614.98942021298,
       "lower_bound": 25000,
       "tax": null,
-      "taxpayers": 1.1984100692769308,
+      "taxpayers": 2.2495857610440857,
       "upper_bound": 50000
     },
     {
-      "gains": 98900.8658246953,
+      "gains": 134940.71583113162,
       "lower_bound": 50000,
       "tax": null,
-      "taxpayers": 1.3284701286752632,
+      "taxpayers": 1.9395983558176588,
       "upper_bound": 100000
     },
     {
-      "gains": 315094.2653986191,
+      "gains": 142317.70165223547,
       "lower_bound": 100000,
       "tax": null,
-      "taxpayers": 2.0148156202095766,
+      "taxpayers": 0.9050403178705543,
       "upper_bound": 250000
     },
     {
-      "gains": 853577.3892905796,
+      "gains": 622123.2583176545,
       "lower_bound": 250000,
       "tax": null,
-      "taxpayers": 2.300508382822492,
+      "taxpayers": 1.725490737653384,
       "upper_bound": 500000
     },
     {
-      "gains": 985119.1545275399,
+      "gains": 848903.2550118314,
       "lower_bound": 500000,
       "tax": null,
-      "taxpayers": 1.3228478772098182,
+      "taxpayers": 1.2211988651862962,
       "upper_bound": 1000000
     },
     {
-      "gains": 4479100.348517757,
+      "gains": 4707553.304072532,
       "lower_bound": 1000000,
       "tax": null,
-      "taxpayers": 4.479100348517757,
+      "taxpayers": 4.7075533040725315,
       "upper_bound": null
     }
   ],
-  "table4_individuals_gains": 6803877.8232513005,
+  "table4_individuals_gains": 6567779.158835469,
   "table4_individuals_tax": 0.0,
-  "table4_individuals_taxpayers": 16.094983343942488,
+  "table4_individuals_taxpayers": 15.645847684894523,
   "table4_trusts_gains": 0.0,
   "table4_trusts_tax": 0.0,
   "table7_total_disposals": 2743095.2380952383,
@@ -114,12 +114,12 @@
       "proceeds": 9000000000.0
     }
   ],
-  "table8a_disposals_total": 30.35054002000583,
-  "table8a_gains_total": 36521680.19444137,
-  "table8a_tax_total": 7304336.038888275,
-  "table8a_taxpayers_total": 27.591400018187116,
-  "table8b_all_gains": 36521680.19444137,
-  "table8b_all_taxpayers": 27.591400018187116,
-  "table8b_individuals_gains": 36521680.19444137,
-  "table8b_individuals_taxpayers": 27.591400018187116
+  "table8a_disposals_total": 29.50359849151538,
+  "table8a_gains_total": 37385992.48877222,
+  "table8a_tax_total": 7477198.497754444,
+  "table8a_taxpayers_total": 26.82145317410489,
+  "table8b_all_gains": 37385992.48877222,
+  "table8b_all_taxpayers": 26.82145317410489,
+  "table8b_individuals_gains": 37385992.48877222,
+  "table8b_individuals_taxpayers": 26.82145317410489
 }

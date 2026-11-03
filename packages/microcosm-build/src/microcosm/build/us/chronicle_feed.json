@@ -3,15 +3,15 @@
   "country": "us",
   "scope": "us_fiscal_targets",
   "source_repo": "PolicyEngine/chronicle",
-  "source_commit": "c5e5bf8aa84960c1a200ee47303b19c953092d0f",
-  "build": "tools/build_us_chronicle_feed.py --skip-artifact: one `chronicle build-bundle --year Y --source <package>` per build year in chronicle_feed_scope.json, rows kept for exactly the scope's (record set, period) pairs and sorted by aggregate_fact_key. Bare feed: `chronicle build-consumer-artifact` refuses it at this commit (994 concept_alignment rows lack `authority`); see docs/us-chronicle-feed-repin.md.",
+  "source_commit": "cf9ece2e7be11158c21fdc4dd38b44d92db552f6",
+  "build": "tools/build_us_chronicle_feed.py --skip-artifact: one `chronicle build-bundle --year Y --source <package>` per build year in chronicle_feed_scope.json, rows kept for exactly the scope's (record set, period) pairs and sorted by aggregate_fact_key. The commit is c5e5bf8 plus the TY2023 Historic Table 2 state AGI-band package (51aa40f, tag microcosm-us-feed-940-v1, chronicle#291), the digit-text guard match from chronicle main's aa3e4de3, and the BEA NIPA Table 7.8 line 17 (B4923C) package as chronicle#331 merged it (branch feed/us-51aa40f-esi-b4923c, tag microcosm-us-feed-454-v1, microcosm#454). Bare feed: `chronicle build-consumer-artifact` refuses it at this commit; see docs/us-chronicle-feed-repin.md.",
   "artifact_schema_version": null,
   "consumer_fact_schema_versions": [
     "chronicle.consumer_fact.v3"
   ],
   "consumer_fact_schema_sha256": "bdb51e2a8115634633ba7448c4005930fd9c0bfbade5e1b079b6bc24da485d3d",
-  "fact_row_count": 39158,
-  "facts_sha256": "b85437390021777e746f507c5890305496baf5fc7f2c78ba08ddb090f4839801",
+  "fact_row_count": 40181,
+  "facts_sha256": "054e5684005a7b143dcb84eabac634135ce9b2b33bb57b540602e474a4ba7c57",
   "manifest_sha256": null,
-  "scope_sha256": "b769887d716e90612518788700c5c01dba8b411c5c75f3d47bb8b1273550ddc1"
+  "scope_sha256": "f4a218fc3be534f3e447f25bf1ec4064d9f3db6b72a55874ed5db4823c922239"
 }

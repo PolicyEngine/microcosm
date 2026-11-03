@@ -53,12 +53,19 @@ repositories accept the new fixture manifest in their respective feature
 branches.
 
 Version 1 fixtures describe current US output and remain fixed during the UK
-implementation. Version 2 fixtures include successful spine, calibration,
-sanitized failure, delivery-failure, and incompatible-version cases.
+implementation. Version 2 fixtures (successful spine, calibration, sanitized
+failure, delivery-failure, and incompatible-version cases) are frozen: the UK
+writer now emits version 3, and the version 2 bytes stay only to prove old runs
+still read. Version 3 fixtures add a `blocked` run and a failure that carries
+its `failure_class`.
 
 The implementation separates versioned file serialization from country
-configuration. `microcosm.build.staging_storage` owns repository access and
-the repeated-upload failure policy used by both version 1 and version 2.
+configuration. `microcosm.build.staging_storage` owns the hand-over of run
+files to the build's emitter and its repeated-failure policy, used by both
+version 1 and version 2, and the repository access the staged dataset uses.
+The emitter commits every pending run file of a repository in one commit per
+upload interval, with the build's own credential, and reads a run back on
+request.
 `microcosm.build.staging_cli` adds and validates common command-line options
 from a supplied repository configuration. The UK repository identifier and
 environment-variable name live in `microcosm.build.uk_runtime.staging`; the
@@ -66,7 +73,8 @@ shared modules contain no UK repository or environment defaults. The two
 serializers remain separate because version 1 and version 2 intentionally
 write different files.
 
-Regenerate and verify the canonical version 2 bytes with:
+Regenerate and verify the canonical version 3 bytes with (the generator no
+longer writes version 2):
 
 ```bash
 uv run python tools/generate_staging_contract_fixtures.py
@@ -120,20 +128,33 @@ The two UK commands (`tools/build_uk_frs_spine.py`, a shim over
 in either release role, `national` or `dense`; `tools/build_uk_rowwise_candidate.py`
 is a stub over the same driver) support these staging modes:
 
-- Default: local version 2 files plus best-effort delivery to
+- Default: local version 3 files plus best-effort delivery to
   `policyengine/populace-uk-staging`.
 - `--staging-local-only`: the same validated files without constructing a
   remote client.
-- `--no-staging`: no telemetry files, with a version 2 opt-out object written
-  into build evidence.
+- `--no-staging`: no telemetry files, with an opt-out delivery object (delivery
+  contract version 2) written into build evidence.
 
 Common options are `--staging-dir`, `--staging-repo-id`,
 `--staging-run-id`, `--staging-candidate-id`,
 `--staging-upload-interval-seconds`, and `--staging-read-back`. An empty
 repository identifier is invalid in remote mode. Authenticated read-back is
-valid only in remote mode.
+valid only in remote mode: the emitter commits the run's pending files and
+compares the Hub's copy of each with the bytes it committed. Once read-back
+has passed or failed, its verdict owns the delivery's `last_error_code`: the
+refresh hand-over that follows a passed read-back is best effort, and if the
+emitter does not accept it the run keeps its verified delivery (the miss shows
+as an upload attempt without a success), while the remote copy may still show
+the delivery as it was before read-back.
 
-Version 2 storage uses the fixed repository prefix `runs/`. Individual runs
+A document's delivery counts are the emitter's as of that document's
+hand-over: `upload_successes` counts files the emitter committed and
+`upload_attempts` the files it attempted to commit plus any it did not
+accept. A document never counts the commit that carries it. Three hand-overs
+in a row that the emitter does not accept pause the run's hand-overs; the
+final state is handed over once more.
+
+Version 2 and 3 storage use the fixed repository prefix `runs/`. Individual runs
 cannot select another prefix, so consumers can enumerate that subtree without
 traversing the rest of the repository.
 
@@ -146,8 +167,36 @@ runs/<run_id>/events.ndjson
 runs/<run_id>/calibration_progress.json  # calibration runs only
 ```
 
-Every JSON document and event declares its schema name and version 2. Unknown
-schema names or versions are incompatible data. Only reviewed aggregate JSON
+Every JSON document and event declares its schema name and version (3 for
+new runs; version 2 runs stay valid, but one run never mixes versions). Unknown
+schema names or versions are incompatible data.
+
+A run ends in one of three terminal statuses:
+
+- `completed`: the build finished and its gates passed;
+- `blocked` (version 3): the build reached a gate decision and the gates refused
+  the candidate. The run carries `block` (`phase`; `blocking_failure_count`, at
+  least 1; `blocking_gate_ids`, empty when the refusal named no gate, never a
+  placeholder) and ends with a `blocked` event that also lists the gate statuses
+  when the refusing report could be read. A dense build refused at the preflight
+  gates is blocked at phase `preflight`. A block whose details the staging
+  content policy refuses closes the run `failed` with `GATE_BLOCK_UNRECORDED`
+  instead, so no run is left `running`;
+- `failed`: the build raised, or returned without a recorded block. `failure`
+  carries an `error_code` (`INTERRUPTED`, `TERMINATED`, `OUT_OF_MEMORY`,
+  `GRAPH_NODE_FAILED`, `BUILD_FAILED`, `BUILD_REFUSED`, `RUNG_ABORTED`,
+  `GATE_BLOCK_UNRECORDED`) and, in version 3, a `failure_class`.
+
+A stopped build is a failed run, not a running one. Ctrl-C closes it with
+`INTERRUPTED`; a SIGTERM (a supervisor, a budget stop, `kill`) closes it with
+`TERMINATED`, and the command then exits with status 143. Both record a
+`discarded` Logbook row. The first SIGTERM is handled once: a second one kills
+the process at once, even while the graph store is still settling. SIGKILL and
+out-of-memory kills cannot be caught; for those the hosted emitter's heartbeat
+reports `unexpected_process_exit`, and no Logbook row is written.
+
+The delivery summary (`staging_delivery`) keeps contract version 2: its shape
+did not change, and publication and the release assemblers pin it. Only reviewed aggregate JSON
 artifacts are permitted; population H5 files, NumPy archives, source survey
 tables, row-level extracts, archives, credentials, and environment data are
 rejected before remote storage is called.
@@ -155,7 +204,7 @@ rejected before remote storage is called.
 ## Staged datasets
 
 Telemetry is not the dataset. The build command (`microcosm-build-uk`; dense
-K=15, exact-count `--dataset-households` and national runs alike) also stages the bundle its
+exact-count `--dataset-households` and national runs alike) also stages the bundle its
 manifest vouches for, so a run can be inspected by the team without being
 published. The two destinations share one run id:
 
@@ -350,9 +399,9 @@ Consumers discover runs by enumerating `runs/*/run_manifest.json`, then derive
 the latest run from manifest `updated_at` timestamps. Monitor each run's
 `progress.json` for current status and `events.ndjson` for ordered stage
 durations. A remote verification run downloads and validates only its own run
-manifest and progress document. Upload failures are recorded with counts and
-reviewed error codes while local recording continues; unrestricted remote
-exception text is not serialized.
+manifest and progress document. Hand-over and commit failures are recorded
+with counts and reviewed error codes while local recording continues;
+unrestricted remote exception text is not serialized.
 
 Rollback is configuration-first: use `--staging-local-only` to retain local
 evidence or `--no-staging` for a deliberate opt-out, disable the GitHub

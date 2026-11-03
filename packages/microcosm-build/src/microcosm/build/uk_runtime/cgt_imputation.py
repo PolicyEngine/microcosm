@@ -123,6 +123,10 @@ from microcosm.build.uk_runtime.hmrc_capital_gains import (
     load_hmrc_cgt_conditioning_facts,
     load_hmrc_cgt_joint_distribution,
 )
+from microcosm.build.uk_runtime.hmrc_income import (
+    LOSS_RELIEF_COLUMN,
+    self_employment_income_after_loss_relief,
+)
 from microcosm.build.uk_runtime.national_frame import (
     uk_household_weight_kind,
     uk_national_frame,
@@ -187,7 +191,10 @@ UK_CGT_SPINE_MASS_CONSERVATION_REASON = (
 #: Persisted components of the model's ``total_income`` concept (ITA 2007
 #: s.23: taxable income after tax reliefs and before allowances).
 #: ``state_pension_reported`` stands in for ``social_security_income``; the
-#: other taxable benefits inside that concept are not persisted inputs.
+#: other taxable benefits inside that concept are not persisted inputs. ISA
+#: interest is exempt, but gross interest held it before the additive
+#: contract (microcosm#1360), so it stays beside non-ISA interest and the
+#: proxy, and every draw on it, are unchanged.
 UK_CGT_TAXABLE_INCOME_PROXY_COMPONENTS: tuple[str, ...] = (
     "employment_income",
     "self_employment_income",
@@ -195,6 +202,7 @@ UK_CGT_TAXABLE_INCOME_PROXY_COMPONENTS: tuple[str, ...] = (
     "private_pension_income",
     "property_income",
     "savings_interest_income",
+    "individual_savings_account_interest_income",
     "dividend_income",
     "miscellaneous_income",
 )
@@ -387,7 +395,17 @@ def uk_cgt_component_sum_income(person: pd.DataFrame) -> np.ndarray:
         )
     total = np.zeros(len(person))
     for column in UK_CGT_TAXABLE_INCOME_PROXY_COMPONENTS:
-        total += pd.to_numeric(person[column], errors="raise").to_numpy(dtype=float)
+        values = pd.to_numeric(person[column], errors="raise").to_numpy(dtype=float)
+        if column == "self_employment_income" and LOSS_RELIEF_COLUMN in person:
+            # Total income holds the profit after losses brought forward,
+            # which policyengine-uk keeps apart in loss_relief (microcosm#1095).
+            values = self_employment_income_after_loss_relief(
+                values,
+                pd.to_numeric(person[LOSS_RELIEF_COLUMN], errors="raise").to_numpy(
+                    dtype=float
+                ),
+            )
+        total += values
     return total
 
 
@@ -2326,7 +2344,9 @@ def _assert_cgt_spine_stage_parameters(stage: SourceStageSpec) -> None:
                 "2007 s.23); state_pension_reported stands in for "
                 "social_security_income, whose other taxable benefits are "
                 "not persisted; reliefs such as pension contributions and "
-                "Gift Aid are not deducted."
+                "Gift Aid are not deducted. ISA interest is exempt but stays "
+                "beside non-ISA interest, as gross interest held it before "
+                "microcosm#1360, so the proxy is unchanged."
             ),
             "allowance": (
                 "tapered Personal Allowance from the policy_parameters artifact"

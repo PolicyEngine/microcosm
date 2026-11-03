@@ -11,15 +11,24 @@ from microcosm.build.uk_runtime.national_frame import uk_national_frame
 from microcosm.build.uk_runtime.tenure_constants import UK_TENURE_CATEGORIES
 from microcosm.build.uk_runtime.was_wealth import (
     REGIONS,
+    UK_WAS_APPENDED_DRAWN_COLUMNS,
+    UK_WAS_APPENDED_OUTPUT_COLUMNS,
     UK_WAS_DERIVED_TOTALS,
+    UK_WAS_DIRECT_SHARE_FRACTION_COLUMN,
     UK_WAS_DRAWN_ONLY_COLUMNS,
     UK_WAS_ENGINE_PREDICTOR_ENTITIES,
+    UK_WAS_ENGINE_PREDICTORS,
+    UK_WAS_HOLDER_STRATA,
     UK_WAS_NET_FINANCIAL_LIABILITIES,
+    UK_WAS_SECURED_DEBT_WITHIN,
+    UK_WAS_SHARE_SPLIT_COLUMNS,
     UK_WAS_STRATIFIED_TARGETS,
     UK_WAS_TENURE_CATEGORY_COLUMN,
     UK_WAS_TENURE_PREDICTORS,
+    UK_WAS_UNDRAWN_DIRECT_SHARE_FRACTION,
     UK_WAS_WEALTH_OUTPUT_COLUMNS,
     UK_WAS_WEALTH_PREDICTORS,
+    UK_WAS_WEALTH_STAGE_OUTPUT_COLUMNS,
     UKWASWealthStageTransform,
     allocate_student_loan_balance_to_people,
     cap_derived_totals_to_donor_range,
@@ -31,9 +40,22 @@ from microcosm.build.uk_runtime.was_wealth import (
     tenure_coherence_receipt,
     was_tenure_category,
     wealth_identity_violations,
+    write_share_split_and_secured_debt,
 )
 
-_DRAW_COLUMNS = [*UK_WAS_WEALTH_OUTPUT_COLUMNS, *UK_WAS_DRAWN_ONLY_COLUMNS]
+_DRAW_COLUMNS = [
+    *UK_WAS_WEALTH_OUTPUT_COLUMNS,
+    *UK_WAS_DRAWN_ONLY_COLUMNS,
+    *UK_WAS_APPENDED_DRAWN_COLUMNS,
+]
+#: The five accounting identities of the chain's own totals.
+_TOTAL_IDENTITY_KEYS = (
+    "property_wealth_violation_rows",
+    "corporate_wealth_violation_rows",
+    "gross_financial_wealth_violation_rows",
+    "mortgage_debt_violation_rows",
+    "net_financial_wealth_violation_rows",
+)
 
 
 def _chain_operation(n_estimators: int = 2) -> dict[str, object]:
@@ -41,6 +63,7 @@ def _chain_operation(n_estimators: int = 2) -> dict[str, object]:
         "kind": "fit_weighted_qrf_chain",
         "seed": 0,
         "n_estimators": n_estimators,
+        "predictors": list(UK_WAS_WEALTH_PREDICTORS),
         "stratified_targets": {
             target: list(categories)
             for target, categories in UK_WAS_STRATIFIED_TARGETS.items()
@@ -55,6 +78,21 @@ def _chain_operation(n_estimators: int = 2) -> dict[str, object]:
                 *(f"-{column}" for column in UK_WAS_NET_FINANCIAL_LIABILITIES),
             ],
         },
+        "holder_strata": dict(UK_WAS_HOLDER_STRATA),
+        "share_split": {
+            "fraction": UK_WAS_DIRECT_SHARE_FRACTION_COLUMN,
+            "outputs": list(UK_WAS_SHARE_SPLIT_COLUMNS),
+            "undrawn_fraction": UK_WAS_UNDRAWN_DIRECT_SHARE_FRACTION,
+        },
+        "secured_debt_within": UK_WAS_SECURED_DEBT_WITHIN,
+    }
+
+
+def _materialize_operation() -> dict[str, object]:
+    return {
+        "kind": "materialize_rules_engine_predictors",
+        "predictors": list(UK_WAS_ENGINE_PREDICTORS),
+        "consumed_only": True,
     }
 
 
@@ -87,11 +125,11 @@ def _stage() -> SourceStageSpec:
             "source": "test",
             "grain": "household",
             "artifacts": [],
-            "operations": [_chain_operation()],
-            "outputs": list(UK_WAS_WEALTH_OUTPUT_COLUMNS),
+            "operations": [_materialize_operation(), _chain_operation()],
+            "outputs": list(UK_WAS_WEALTH_STAGE_OUTPUT_COLUMNS),
             "nonnegative_outputs": [
                 name
-                for name in UK_WAS_WEALTH_OUTPUT_COLUMNS
+                for name in UK_WAS_WEALTH_STAGE_OUTPUT_COLUMNS
                 if name != "net_financial_wealth"
             ],
         }
@@ -116,7 +154,7 @@ def _raw_was() -> pd.DataFrame:
             "totalpenr8_aggr": [100.0, 200.0],
             "dvvaldbt_scaper8_aggr": [40.0, 50.0],
             "NumAdultR8": [2, 1],
-            "NumCh18R8": [1, 0],
+            "NumChildR8": [1, 0],
             "DVGIPPENR8_AGGR": [11.0, 12.0],
             "DVGISER8_AGGR": [13.0, 14.0],
             "DVGIINVR8_aggr": [15.0, 16.0],
@@ -124,7 +162,8 @@ def _raw_was() -> pd.DataFrame:
             "HBedRmR8": [3, 4],
             "GORR8": [8, 12],
             "DVPriRntR8": [-9, 2],
-            "CTAmtR8": [1000.0, 1200.0],
+            "DVCTaxAmtAnnualR8": [1000.0, 1200.0],
+            "DVNetRentAmtAnnualR8_aggr": [0.0, 300.0],
             "HFINWNTR8_Sum": [-4_480.0, -1_356.0],
             "HFINWNTR8_exSLC_Sum": [520.0, 644.0],
             "HFINWR8_SUM": [530.0, 644.0],
@@ -134,7 +173,12 @@ def _raw_was() -> pd.DataFrame:
             "Ten1R8": [2, 4],
             "DVhvalueR8": [100_000.0, 0.0],
             "DVHseValR8_sum": [1000.0, 2000.0],
+            "DVBltValR8_sum": [0.0, 300.0],
             "DVBlDValR8_sum": [3000.0, 4000.0],
+            # No mortgage on other property, so no debt secured on it.
+            "DVHseDebtR8_sum": [0.0, 0.0],
+            "DVBLtDebtR8_sum": [0.0, 0.0],
+            "DVBldDebtR8_sum": [0.0, 0.0],
             "DVTotinc_bhcR8": [50000.0, 60000.0],
             "DVSaValR8_aggr": [500.0, 600.0],
             "vcarnr8": [1.2, 2.8],
@@ -164,6 +208,9 @@ def _frame() -> object:
             "employment_income": [4.0, 6.0, 12.0, 8.0],
             "self_employment_income": [0.0, 0.0, 1.0, 0.0],
             "capital_income": [1.0, 2.0, 4.0, 0.0],
+            "property_income": [0.0, 100.0, 50.0, 0.0],
+            # The 19-year-old is a dependent child of the benefit unit.
+            "is_uc_claimant": [True, True, False, True],
         }
     )
     benunit = pd.DataFrame(
@@ -180,6 +227,7 @@ def _frame() -> object:
             "region": ["NORTHERN_IRELAND", "SCOTLAND"],
             "num_bedrooms": [3, 4],
             "council_tax": [1000.0, 1200.0],
+            "council_tax_rebate": [250.0, 0.0],
             "household_net_income": [50000.0, 60000.0],
             "tenure_type": ["OWNED_WITH_MORTGAGE", "OWNED_OUTRIGHT"],
         }
@@ -190,6 +238,12 @@ def _frame() -> object:
         household=household,
         time_period="2023",
     )
+
+
+def _ids(recipient: pd.DataFrame) -> np.ndarray:
+    """Stable household ids for a synthetic recipient table, in row order."""
+
+    return np.arange(1, len(recipient) + 1)
 
 
 def test_was_donor_cleaning_arithmetic_and_exact_case_insensitive_columns() -> None:
@@ -213,10 +267,22 @@ def test_was_donor_cleaning_arithmetic_and_exact_case_insensitive_columns() -> N
     assert donor["tenure_social_rent"].tolist() == [False, True]
     assert donor["tenure_private_rent"].tolist() == [False, False]
     # The remainders that make each total the sum of its drawn components.
-    assert donor["other_property_value"].tolist() == [90.0, 400.0]
+    # Buy-to-let joins the other houses in other residential property, so
+    # the undrawn remainder shrinks by it (microcosm#1095).
+    assert donor["other_residential_property_value"].tolist() == [1000.0, 2300.0]
+    assert donor["other_property_value"].tolist() == [90.0, 100.0]
     assert donor["other_financial_assets"].tolist() == [5.0, 14.0]
     assert donor["main_residence_mortgage"].tolist() == [1000.0, 0.0]
     assert donor["other_mortgage"].tolist() == [0.0, 0.0]
+    # The share split inside the non-ISA total (microcosm#1095): UK shares
+    # plus employee shares, and the collective investments.
+    assert donor["directly_held_shares"].tolist() == [4.0, 6.0]
+    assert donor["unit_and_investment_trusts"].tolist() == [9.0, 10.0]
+    assert donor[UK_WAS_DIRECT_SHARE_FRACTION_COLUMN].tolist() == pytest.approx(
+        [4.0 / 13.0, 6.0 / 16.0]
+    )
+    assert donor["other_residential_property_secured_debt"].tolist() == [0.0, 0.0]
+    assert donor["non_residential_property_secured_debt"].tolist() == [0.0, 0.0]
     assert donor["region"].tolist() == ["LONDON", "SCOTLAND"]
     # The private-renter flag the Lifetime ISA stage reads on both sides.
     assert donor["is_renting"].tolist() == [False, False]
@@ -283,6 +349,47 @@ def test_was_donor_breaking_an_identity_is_refused(column, value, match) -> None
         clean_was_household_table(raw)
 
 
+def _raw_was_with_secured_debt() -> pd.DataFrame:
+    """The owner donor with 200 of mortgages on other property, 150 of it
+    secured on its other houses and buildings."""
+
+    raw = _raw_was()
+    raw.loc[0, "HMortGR8"] = 1200.0
+    raw.loc[0, "OthMortR8_sum"] = 200.0
+    raw.loc[0, "DVHseDebtR8_sum"] = 100.0
+    raw.loc[0, "DVBldDebtR8_sum"] = 50.0
+    return raw
+
+
+def test_was_donor_secured_debt_is_read_beside_its_property() -> None:
+    donor = clean_was_household_table(_raw_was_with_secured_debt())
+
+    assert donor["other_mortgage"].tolist() == [200.0, 0.0]
+    assert donor["mortgage_debt"].tolist() == [1200.0, 0.0]
+    # The other houses' and buy-to-let debt together, beside the value they
+    # make up together; the buildings' debt beside the buildings.
+    assert donor["other_residential_property_secured_debt"].tolist() == [100.0, 0.0]
+    assert donor["non_residential_property_secured_debt"].tolist() == [50.0, 0.0]
+
+
+@pytest.mark.parametrize(
+    ("column", "value", "match"),
+    [
+        ("DVBldDebtR8_sum", 150.0, "parts of the mortgages on other property"),
+        ("DVBLtDebtR8_sum", -8.0, "negative values"),
+        ("DVFCollVR8_aggr", -1.0, "negative values"),
+    ],
+)
+def test_was_donor_secured_debt_outside_its_mortgages_is_refused(
+    column, value, match
+) -> None:
+    raw = _raw_was_with_secured_debt()
+    raw.loc[0, column] = value
+
+    with pytest.raises(ValueError, match=match):
+        clean_was_household_table(raw)
+
+
 def test_was_donor_sentinel_codes_recode_to_zero_for_nonnegative_domains() -> None:
     raw = _raw_was()
     raw.loc[0, "vcarnr8"] = -8
@@ -321,9 +428,15 @@ def test_recipient_predictors_sum_person_and_benunit_variables_to_household() ->
     assert predictors["private_pension_income"].tolist() == [1.0, 2.0]
     assert predictors["self_employment_income"].tolist() == [0.0, 1.0]
     assert predictors["capital_income"].tolist() == [3.0, 4.0]
-    assert predictors["num_adults"].tolist() == [2.0, 2.0]
-    assert predictors["num_children"].tolist() == [0.0, 0.0]
+    # Adults and children are the FRS family roles, as WAS counts them, so
+    # the 19-year-old dependant is a child (microcosm#1095).
+    assert predictors["num_adults"].tolist() == [2.0, 1.0]
+    assert predictors["num_children"].tolist() == [0.0, 1.0]
+    assert predictors["rental_income"].tolist() == [100.0, 50.0]
     assert predictors["household_net_income"].tolist() == [50000.0, 60000.0]
+    # The donor records the bill paid, so the reduction comes off the
+    # liability before council tax reduction (microcosm#1095).
+    assert predictors["council_tax"].tolist() == [750.0, 1200.0]
     assert predictors[UK_WAS_TENURE_CATEGORY_COLUMN].tolist() == [
         "owned_with_mortgage",
         "owned_outright",
@@ -454,22 +567,34 @@ def test_support_clip_and_integer_vehicle_output(
         "rows_considered": 2,
     }
     evidence = transform.checkpoint_metadata()["evidence"]
-    # The drawn-only components never reach the frame.
-    assert not set(UK_WAS_DRAWN_ONLY_COLUMNS) & set(
-        transformed.table("household").columns
-    )
+    # The drawn-only components never reach the frame; the split and the
+    # secured debts do.
+    household = transformed.table("household")
+    assert not set(UK_WAS_DRAWN_ONLY_COLUMNS) & set(household.columns)
+    assert UK_WAS_DIRECT_SHARE_FRACTION_COLUMN not in household.columns
+    assert set(UK_WAS_APPENDED_OUTPUT_COLUMNS) <= set(household.columns)
+    assert (
+        household["directly_held_shares"]
+        + household["unit_and_investment_trusts"]
+        + household["stocks_and_shares_isa"]
+    ).tolist() == pytest.approx(household["corporate_wealth"].tolist())
     assert evidence["identities"] == {
         "property_wealth_violation_rows": 0,
         "corporate_wealth_violation_rows": 0,
         "gross_financial_wealth_violation_rows": 0,
         "mortgage_debt_violation_rows": 0,
         "net_financial_wealth_violation_rows": 0,
+        "share_split_violation_rows": 0,
+        "secured_debt_violation_rows": 0,
         "property_wealth_capped_rows": 0,
         "corporate_wealth_capped_rows": 0,
         "gross_financial_wealth_capped_rows": 0,
         "mortgage_debt_capped_rows": 0,
         "net_financial_wealth_capped_high_rows": 0,
         "net_financial_wealth_capped_low_rows": 0,
+        "share_split_undrawn_fraction_rows": 0,
+        "secured_debt_zeroed_without_asset_rows": 0,
+        "secured_debt_scaled_to_other_mortgage_rows": 0,
     }
     tenure = evidence["tenure_coherence"]
     assert tenure["main_residence_mortgage_off_mortgaged_tenure_rows"] == 0
@@ -586,8 +711,14 @@ def test_was_imputer_uses_checkpointed_chain_segments(
             *,
             state,
             weights,
+            quantiles,
+            sign_uniforms,
         ):
             assert weights == "weight"
+            # Every step draws from uniforms keyed on the recipients' own ids.
+            for uniforms in (quantiles, sign_uniforms):
+                assert uniforms.shape == (len(recipient_predictors),)
+                assert ((uniforms >= 0) & (uniforms < 1)).all()
             target = state.targets[state.position]
             if state.position:
                 previous = state.targets[state.position - 1]
@@ -608,7 +739,9 @@ def test_was_imputer_uses_checkpointed_chain_segments(
     donor = clean_was_household_table(_raw_was())
     recipient = recipient_predictors(_frame(), _FakeEngine())
 
-    result = module.impute_was_wealth(donor, recipient, seed=0, n_estimators=7)
+    result = module.impute_was_wealth(
+        donor, recipient, seed=0, n_estimators=7, record_ids=_ids(recipient)
+    )
 
     assert result.draws.columns.tolist() == _DRAW_COLUMNS
     assert [targets for _, targets in calls] == [
@@ -634,6 +767,10 @@ def test_was_imputer_uses_checkpointed_chain_segments(
         ("main_residence_mortgage",),
         ("other_mortgage",),
         ("consumer_debt",),
+        # The appended draws, each from its holders (microcosm#1095).
+        (UK_WAS_DIRECT_SHARE_FRACTION_COLUMN,),
+        ("other_residential_property_secured_debt",),
+        ("non_residential_property_secured_debt",),
     ]
     base = calls[0][0]
     assert set(UK_WAS_TENURE_PREDICTORS) <= set(base)
@@ -651,9 +788,20 @@ def test_was_imputer_uses_checkpointed_chain_segments(
     assert calls[5][0] == (*base, *prior)
     assert calls[6][0] == (*base, *prior, "main_residence_mortgage")
     assert calls[7][0] == (*base, *prior, "mortgage_debt")
+    assert calls[8][0] == (*base, *prior, "corporate_wealth_excl_isa")
+    debt_base = (
+        *base,
+        *prior,
+        "main_residence_mortgage",
+        "other_mortgage",
+        "consumer_debt",
+    )
+    assert calls[9][0] == debt_base
+    assert calls[10][0] == (*debt_base, "other_residential_property_secured_debt")
     # The stratified targets are fitted on their stratum's donors only: the one
-    # mortgaged owner of the two donors; the other mortgages on both.
-    assert donors == [2, 1, 2, 2, 2, 1, 2, 2]
+    # mortgaged owner of the two donors; the other mortgages on both; both
+    # donors hold share-like wealth outside ISAs and both kinds of property.
+    assert donors == [2, 1, 2, 2, 2, 1, 2, 2, 2, 2, 2]
     # Both recipients are owners, one of them mortgaged: the outright owner
     # holds no main-residence mortgage by rule but may hold other mortgages,
     # and mortgage_debt is the sum of the two.
@@ -666,6 +814,10 @@ def test_was_imputer_uses_checkpointed_chain_segments(
     assert result.draws["corporate_wealth"].tolist() == [5.0, 5.0]
     assert result.draws["gross_financial_wealth"].tolist() == [11.0, 11.0]
     assert result.draws["net_financial_wealth"].tolist() == [5.0, 5.0]
+    # The appended draws reach every holder: both recipients hold share-like
+    # wealth and both kinds of property.
+    for column in UK_WAS_APPENDED_DRAWN_COLUMNS:
+        assert result.draws[column].tolist() == [1.0, 1.0]
     fitted_targets = [name for _, targets in calls for name in targets]
     assert [record.fit_name for record in result.fit_weight_records] == [
         f"uk_was_2018_20_wealth:{target}" for target in fitted_targets
@@ -673,7 +825,7 @@ def test_was_imputer_uses_checkpointed_chain_segments(
     assert {record.weight_kind for record in result.fit_weight_records} == {"explicit"}
     # One independent RNG root per segment, derived from the declared seed.
     assert seeds == list(module.was_wealth_segment_seeds(0))
-    assert len(set(seeds)) == module.UK_WAS_CHAIN_SEGMENTS == 8
+    assert len(set(seeds)) == module.UK_WAS_CHAIN_SEGMENTS == 11
     assert result.segment_seeds == tuple(seeds)
 
 
@@ -684,7 +836,9 @@ def test_stratified_target_refuses_a_donor_without_the_stratum() -> None:
     recipient = recipient_predictors(_frame(), _FakeEngine())
 
     with pytest.raises(ValueError, match="no household in the tenure stratum"):
-        impute_was_wealth(donor, recipient, seed=0, n_estimators=2)
+        impute_was_wealth(
+            donor, recipient, seed=0, n_estimators=2, record_ids=_ids(recipient)
+        )
 
 
 def test_chain_declaration_drift_is_refused() -> None:
@@ -699,7 +853,7 @@ def test_chain_declaration_drift_is_refused() -> None:
             "source": "test",
             "grain": "household",
             "artifacts": [],
-            "operations": [operation],
+            "operations": [_materialize_operation(), operation],
             "outputs": list(UK_WAS_WEALTH_OUTPUT_COLUMNS),
         }
     )
@@ -715,11 +869,28 @@ def test_chain_declaration_drift_is_refused() -> None:
             "source": "test",
             "grain": "household",
             "artifacts": [],
-            "operations": [operation],
+            "operations": [_materialize_operation(), operation],
             "outputs": list(UK_WAS_WEALTH_OUTPUT_COLUMNS),
         }
     )
     with pytest.raises(ValueError, match="derived_totals drifted"):
+        module._assert_chain_declaration(stage)
+    operation = _chain_operation()
+    operation["predictors"] = [
+        name for name in UK_WAS_WEALTH_PREDICTORS if name != "rental_income"
+    ]
+    stage = SourceStageSpec.from_mapping(
+        {
+            "stage": "was_wealth",
+            "survey": "test",
+            "source": "test",
+            "grain": "household",
+            "artifacts": [],
+            "operations": [_materialize_operation(), operation],
+            "outputs": list(UK_WAS_WEALTH_OUTPUT_COLUMNS),
+        }
+    )
+    with pytest.raises(ValueError, match="predictors drifted"):
         module._assert_chain_declaration(stage)
 
 
@@ -760,7 +931,9 @@ def test_segment_seeds_are_distinct_and_deterministic() -> None:
 
     # Golden pin: the production roots for the declared stage seed 0. Moving
     # them is a spec-visible RNG change, never an accident. The first four are
-    # the roots the four-segment chain used before microcosm#1063.
+    # the roots the four-segment chain used before microcosm#1063, and the
+    # first eight the roots of the chain before its appended draws
+    # (microcosm#1095).
     assert seeds == (
         3757552657,
         673228719,
@@ -770,9 +943,12 @@ def test_segment_seeds_are_distinct_and_deterministic() -> None:
         2078861726,
         2471122328,
         23012616,
+        3031610183,
+        2976135721,
+        556745865,
     )
-    assert len(seeds) == 8
-    assert len(set(seeds)) == 8
+    assert len(seeds) == 11
+    assert len(set(seeds)) == 11
     assert seeds[:3] == module.was_wealth_segment_seeds(0, segments=3)
     assert seeds == module.was_wealth_segment_seeds(0)
     assert seeds != module.was_wealth_segment_seeds(1)
@@ -791,6 +967,7 @@ def _synthetic_recipients(n: int = 80, seed: int = 1063) -> pd.DataFrame:
             "employment_income": rng.uniform(0, 60_000, n),
             "self_employment_income": rng.uniform(0, 10_000, n),
             "capital_income": rng.uniform(0, 5_000, n),
+            "rental_income": np.where(rng.uniform(size=n) < 0.1, 8_000.0, 0.0),
             "num_bedrooms": rng.integers(1, 6, n),
             "council_tax": rng.uniform(800, 3_000, n),
         }
@@ -822,11 +999,20 @@ def test_later_segments_leave_the_earlier_draws_byte_equal() -> None:
     donor = _fixture_donor()
     recipient = _synthetic_recipients(48, seed=685)
 
-    full = impute_was_wealth(donor, recipient, seed=0, n_estimators=2)
+    full = impute_was_wealth(
+        donor, recipient, seed=0, n_estimators=2, record_ids=_ids(recipient)
+    )
     assert list(full.draws.columns) == _DRAW_COLUMNS
-    for segments in range(1, 8):
+    import microcosm.build.uk_runtime.was_wealth as module
+
+    for segments in range(1, module.UK_WAS_CHAIN_SEGMENTS):
         partial = impute_was_wealth(
-            donor, recipient, seed=0, n_estimators=2, segments=segments
+            donor,
+            recipient,
+            seed=0,
+            n_estimators=2,
+            record_ids=_ids(recipient),
+            segments=segments,
         )
         pd.testing.assert_frame_equal(
             partial.draws, full.draws.loc[:, list(partial.draws.columns)]
@@ -842,7 +1028,9 @@ def test_real_chain_holds_the_tenure_rules_and_the_identities() -> None:
     recipient = _synthetic_recipients()
     category = recipient[UK_WAS_TENURE_CATEGORY_COLUMN].to_numpy()
 
-    draws = impute_was_wealth(donor, recipient, seed=0, n_estimators=3).draws
+    draws = impute_was_wealth(
+        donor, recipient, seed=0, n_estimators=3, record_ids=_ids(recipient)
+    ).draws
 
     owner = np.isin(category, ["owned_outright", "owned_with_mortgage"])
     mortgaged = category == "owned_with_mortgage"
@@ -859,23 +1047,28 @@ def test_real_chain_holds_the_tenure_rules_and_the_identities() -> None:
         draws["mortgage_debt"]
         == draws["main_residence_mortgage"] + draws["other_mortgage"]
     ).all()
-    assert wealth_identity_violations(draws) == {
-        "property_wealth_violation_rows": 0,
-        "corporate_wealth_violation_rows": 0,
-        "gross_financial_wealth_violation_rows": 0,
-        "mortgage_debt_violation_rows": 0,
-        "net_financial_wealth_violation_rows": 0,
-    }
+    raw_identities = wealth_identity_violations(draws)
+    assert {key: raw_identities[key] for key in _TOTAL_IDENTITY_KEYS} == dict.fromkeys(
+        _TOTAL_IDENTITY_KEYS, 0
+    )
+    # The appended debts are drawn on their holders only.
+    for debt, asset in UK_WAS_HOLDER_STRATA.items():
+        if debt != UK_WAS_DIRECT_SHARE_FRACTION_COLUMN:
+            assert (draws.loc[draws[asset] <= 0.0, debt] == 0.0).all()
 
     capped, fired = cap_derived_totals_to_donor_range(draws, donor)
     clipped = support_clip_to_donor(capped, donor)
     # The cap keeps every total inside the donor's range, so the support clip
-    # moves nothing and the identities survive it.
+    # moves nothing and the identities survive it; the split and the debts
+    # written on the final totals hold too.
     assert all(
         column["clipped_low_rows"] == 0 and column["clipped_high_rows"] == 0
         for column in clipped.receipt.evidence()["columns"].values()
     )
-    assert set(wealth_identity_violations(clipped.clipped).values()) == {0}
+    written, _ = write_share_split_and_secured_debt(clipped.clipped)
+    assert set(wealth_identity_violations(written).values()) == {0}
+    assert (written["directly_held_shares"] > 0.0).any()
+    assert (written["unit_and_investment_trusts"] > 0.0).any()
     assert set(fired) == {
         "property_wealth_capped_rows",
         "corporate_wealth_capped_rows",
@@ -908,6 +1101,81 @@ def test_real_chain_holds_the_tenure_rules_and_the_identities() -> None:
     assert receipt["donor_main_residence_mortgage_mass_off_mortgaged_tenure"] == 0.0
 
 
+def test_split_and_secured_debt_are_written_on_the_final_totals() -> None:
+    """microcosm#1095: the split sums to the final non-ISA total; each debt
+    sits on a held asset and within the mortgages on other property."""
+
+    draws = pd.DataFrame(
+        {
+            "corporate_wealth": [100.0, 50.0, 30.0, 0.0],
+            "stocks_and_shares_isa": [20.0, 50.0, 10.0, 0.0],
+            # The third row's ISA was lowered by a clip: a non-ISA total with no
+            # drawn split, which goes to the directly held shares.
+            "corporate_wealth_excl_isa": [80.0, 0.0, 0.0, 0.0],
+            UK_WAS_DIRECT_SHARE_FRACTION_COLUMN: [0.25, 0.0, 0.0, 0.0],
+            "other_residential_property_value": [1000.0, 0.0, 500.0, 900.0],
+            "non_residential_property_value": [0.0, 0.0, 400.0, 100.0],
+            "other_residential_property_secured_debt": [300.0, 40.0, 300.0, 50.0],
+            "non_residential_property_secured_debt": [10.0, 0.0, 300.0, 25.0],
+            "other_mortgage": [500.0, 100.0, 300.0, 1000.0],
+        }
+    )
+
+    written, rows = write_share_split_and_secured_debt(draws)
+
+    assert written["directly_held_shares"].tolist() == [20.0, 0.0, 20.0, 0.0]
+    assert written["unit_and_investment_trusts"].tolist() == [60.0, 0.0, 0.0, 0.0]
+    # A debt beside no asset is zero (first row's buildings, second row's
+    # houses); the third row's 600 of debt passes its 300 of mortgages and
+    # both halve.
+    assert written["other_residential_property_secured_debt"].tolist() == [
+        300.0,
+        0.0,
+        150.0,
+        50.0,
+    ]
+    assert written["non_residential_property_secured_debt"].tolist() == [
+        0.0,
+        0.0,
+        150.0,
+        25.0,
+    ]
+    assert rows == {
+        "share_split_undrawn_fraction_rows": 1,
+        "secured_debt_zeroed_without_asset_rows": 2,
+        "secured_debt_scaled_to_other_mortgage_rows": 1,
+    }
+    # The chain's own totals are not under test here: zero them so only the
+    # split and the debts are read.
+    totals = dict.fromkeys(
+        (
+            *UK_WAS_DERIVED_TOTALS,
+            *(c for parts in UK_WAS_DERIVED_TOTALS.values() for c in parts),
+            "net_financial_wealth",
+            *UK_WAS_NET_FINANCIAL_LIABILITIES,
+        ),
+        0.0,
+    )
+    for kept in (
+        "corporate_wealth",
+        "stocks_and_shares_isa",
+        "corporate_wealth_excl_isa",
+        "other_mortgage",
+        *UK_WAS_HOLDER_STRATA.values(),
+    ):
+        totals.pop(kept, None)
+    identities = wealth_identity_violations(written.assign(**totals))
+    assert identities["share_split_violation_rows"] == 0
+    assert identities["secured_debt_violation_rows"] == 0
+    # A debt beside no asset and a split that misses its total are counted.
+    broken = written.copy()
+    broken.loc[1, "non_residential_property_secured_debt"] = 5.0
+    broken.loc[0, "directly_held_shares"] = 0.0
+    identities = wealth_identity_violations(broken.assign(**totals))
+    assert identities["share_split_violation_rows"] == 1
+    assert identities["secured_debt_violation_rows"] == 1
+
+
 def test_total_cap_takes_the_excess_from_the_remainder_first() -> None:
     donor = clean_was_household_table(_raw_was())
     draws = donor.loc[[0], _DRAW_COLUMNS].reset_index(drop=True)
@@ -925,3 +1193,27 @@ def test_total_cap_takes_the_excess_from_the_remainder_first() -> None:
     assert capped.loc[0, "non_residential_property_value"] == 3_090.0
     assert capped.loc[0, "main_residence_value"] == 100_000.0
     assert set(wealth_identity_violations(capped).values()) == {0}
+
+
+def test_was_draws_move_only_for_the_households_whose_inputs_move() -> None:
+    """Keyed on household ids: reordering, one changed and one added move no other."""
+
+    from test_support.microcosm_build.uk_keyed_draws import (
+        assert_draws_are_keyed_on_ids,
+    )
+
+    donor = clean_was_household_table(_raw_was())
+    recipient = recipient_predictors(_frame(), _FakeEngine())
+
+    def draw(rows: pd.DataFrame, ids: np.ndarray) -> pd.DataFrame:
+        return impute_was_wealth(
+            donor, rows, seed=0, n_estimators=3, record_ids=ids
+        ).draws.reset_index(drop=True)
+
+    assert_draws_are_keyed_on_ids(
+        draw,
+        recipient,
+        _ids(recipient),
+        perturbed_column="household_net_income",
+        perturbed_value=12_345.0,
+    )

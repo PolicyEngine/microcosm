@@ -403,3 +403,32 @@ def test_duplicate_or_unknown_household_identity_is_refused_by_shared_assignment
     households.loc[1, "region"] = "UNKNOWN"
     with pytest.raises(ValueError, match="exactly one"):
         geo.assign_atomic(households, spec, supports)
+
+
+def test_area_code_frames_come_from_the_committed_support_provenance():
+    """microcosm#1114: the frames a release records are the supports' declared vintages."""
+    import json
+    from importlib.resources import files
+
+    from microcosm.build.uk_runtime.atomic_area_support import (
+        PROVENANCE_RESOURCE,
+        SYSTEMS,
+        uk_area_code_frames,
+    )
+    from microcosm.build.uk_runtime.geography_ladder import (
+        UK_EXPORT_AREA_CODE_COLUMNS,
+    )
+
+    frames = uk_area_code_frames()
+    assert set(frames) == set(UK_EXPORT_AREA_CODE_COLUMNS.values())
+    provenance = json.loads(
+        files("microcosm.build.uk").joinpath(PROVENANCE_RESOURCE).read_text()
+    )
+    for ladder, export in UK_EXPORT_AREA_CODE_COLUMNS.items():
+        assert set(frames[export]) == set(SYSTEMS)
+        for system in SYSTEMS:
+            declared = provenance["supports"][system]["column_metadata"][ladder]
+            assert frames[export][system] == declared["vintage"]
+    assert frames["constituency_code_oa"] == dict.fromkeys(SYSTEMS, "2024_pcon")
+    assert frames["la_code_oa"]["uk_ew_output_area_2021"] == "2023_april_lad"
+    assert frames["region_code_oa"]["uk_ew_output_area_2021"] == "2024_rgn"

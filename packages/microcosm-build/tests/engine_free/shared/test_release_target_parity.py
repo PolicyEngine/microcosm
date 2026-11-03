@@ -39,6 +39,7 @@ from microcosm.build.us_runtime.release_target_parity import (
     registry_target_family_ids,
     us_release_target_parity_gate,
     us_target_family_id,
+    us_target_family_vintage_free_id,
 )
 from test_support.paths import paths_for
 
@@ -247,7 +248,8 @@ class TestAntiRot:
                 evidence="none",
                 fence=_FENCE,
             )
-            if family.name in RED_LINE_COMPILED_FAMILIES
+            if us_target_family_vintage_free_id(family.name)
+            in RED_LINE_COMPILED_FAMILIES
             else family
             for family in _CONTRACT.families
         )
@@ -287,7 +289,13 @@ class TestShippedManifest:
     def test_red_line_families_are_compiled(self) -> None:
         manifest = load_target_parity_manifest()
         for family in RED_LINE_COMPILED_FAMILIES:
-            assert manifest.by_name[family].status == COMPILED_STATUS
+            entries = [
+                entry
+                for entry in manifest.families
+                if us_target_family_vintage_free_id(entry.name) == family
+            ]
+            assert entries, family
+            assert all(entry.status == COMPILED_STATUS for entry in entries)
 
     def test_congressional_district_family_declares_one_surface_doctrine(self) -> None:
         family = load_target_parity_manifest().by_name[
@@ -315,7 +323,7 @@ class TestShippedManifest:
             manifest.reviewed_exclusions
         )
         assert len(manifest.compiled_families) == 32
-        assert len(manifest.reviewed_exclusions) == 52
+        assert len(manifest.reviewed_exclusions) == 53
 
     def test_wired_nipa_and_liheap_families_are_compiled(self) -> None:
         manifest = load_target_parity_manifest()

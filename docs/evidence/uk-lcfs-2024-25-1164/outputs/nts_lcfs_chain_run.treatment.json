@@ -1,0 +1,62 @@
+{
+ "annual_trips": {
+  "bus_in_london_trips": 785575532.1090488,
+  "other_local_bus_trips": 2087791319.0454783
+ },
+ "bus_fare_spending": 4126614615.148061,
+ "bus_use_band_shares_persons": {
+  "0": 0.4963432086931796,
+  "1": 0.07340094779090173,
+  "2": 0.0712358178439534,
+  "3": 0.09270656232627413,
+  "4": 0.03704223560859936,
+  "5": 0.08762694745853693,
+  "6": 0.14164428027855488
+ },
+ "gates": {
+  "uk_stage_lcfs_consumption_basis": {
+   "failures": [],
+   "passed": true
+  },
+  "uk_stage_lcfs_consumption_bus_pricing": {
+   "failures": [],
+   "passed": true
+  },
+  "uk_stage_lcfs_consumption_energy_rake": {
+   "failures": [],
+   "passed": true
+  },
+  "uk_stage_lcfs_consumption_recomposed_totals": {
+   "failures": [],
+   "passed": true
+  },
+  "uk_stage_lcfs_consumption_road_fuel_incidence": {
+   "failures": [],
+   "passed": true
+  },
+  "uk_stage_lcfs_consumption_road_fuel_level": {
+   "failures": [],
+   "passed": true
+  },
+  "uk_stage_lcfs_consumption_support": {
+   "failures": [],
+   "passed": true
+  },
+  "uk_stage_nts_bus_travel_facts": {
+   "failures": [],
+   "passed": true
+  },
+  "uk_stage_nts_bus_travel_support": {
+   "failures": [],
+   "passed": true
+  }
+ },
+ "nts_income_band_shares_persons": {
+  "1": 0.12694093213840285,
+  "2": 0.3027266879086299,
+  "3": 0.5703323799529673
+ },
+ "seconds": 205.8,
+ "spine": "uk_frs_spine_2024_25.h5",
+ "transport_consumption": 187152807062.50665
+}

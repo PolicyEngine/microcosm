@@ -54,6 +54,19 @@ def _load_fixtures():
     return fixtures
 
 
+def _load_release_tool_tests():
+    """The release-tool tests, for their record of a current materialization."""
+
+    spec = importlib.util.spec_from_file_location(
+        "acs_local_release_tool_tests",
+        Path(__file__).with_name("test_us_acs_local_release_tool.py"),
+    )
+    tests = importlib.util.module_from_spec(spec)
+    assert spec.loader is not None
+    spec.loader.exec_module(tests)
+    return tests
+
+
 def _district_hierarchy(name: str, district: str):
     """A production-shaped hierarchy: its target id is the spec name."""
 
@@ -903,17 +916,17 @@ def test_pinned_feed_state_cd_surface_matches_its_contract() -> None:
     receipt = surface.soi_receipt
     soi = [spec for spec in specs if spec.family == "irs_soi"]
     assert receipt["counts"] == {
-        "historic_table_2_state": 3819,
+        "historic_table_2_state": 4227,
         "cd_file_state": 302,
         "congressional_district": 21743,
         "congressional_district_by_parent_basis": {
             "historic_table_2": 19181,
             "cd_file_state_total_bridged": 2562,
         },
-        "total": 25864,
+        "total": 26272,
     }
-    assert len(soi) == 25864
-    assert len(specs) == 25864 + 102 + 51
+    assert len(soi) == 26272
+    assert len(specs) == 26272 + 102 + 51
     reconciliation = module.cd_surface.state_parent_reconciliation(soi)
     assert len(reconciliation) == 2189
     assert all(block["ok"] for block in reconciliation)
@@ -1123,6 +1136,7 @@ def test_calibration_outputs_are_bound_to_the_materialization(tmp_path) -> None:
         "weights_latest.npz",
         "calibration_summary.json",
         "calibration_diagnostics.json",
+        "county_reliability.json",
         "consumer_export.json",
         "consumer_reviewed_null_fills.json",
         "spine_qa.json",
@@ -1209,6 +1223,9 @@ def test_resume_refuses_weights_without_the_run_identity_stamp(
         seed=0,
         target_family_loss_multipliers={},
     )
+    # A current materialization, so the stack's pre-solve refusals pass
+    # and the stamp checks below are what refuse.
+    _load_release_tool_tests()._record_current_materialization(module, args, identity)
     settings = module._solver_settings(
         args, module.release_target_loss_weights(args, [])[1]
     )

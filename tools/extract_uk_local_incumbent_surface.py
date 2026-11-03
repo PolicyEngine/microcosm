@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import tempfile
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
@@ -175,20 +176,51 @@ def extract_incumbent_surface(
     if overlap:
         raise ValueError(f"Area codes collide across incumbent grains: {overlap[:10]}.")
 
-    if microsimulation_factory is None:
-        from policyengine_uk import Microsimulation
+    # The local metrics are their declarations read through the measure
+    # resolver, as the build's local line reads them; the incumbent was built
+    # before the annual income descriptors existed, so its annual measures
+    # are its current values, as rule 1 scores it nationally.
+    from microcosm.build.uk_runtime.candidate_score import (
+        UK_INCUMBENT_ANNUAL_INCOME_FALLBACK,
+    )
+    from microcosm.build.uk_runtime.measure_simulation import UKMeasureResolver
 
-        microsimulation_factory = Microsimulation
-    simulation = microsimulation_factory(dataset=str(incumbent_h5))
-    metric_frames = [
-        compute_household_metrics(
-            simulation,
-            grain,
-            period=period,
-            household_ids=household_ids,
+    with tempfile.TemporaryDirectory() as scratch:
+        resolver = UKMeasureResolver(
+            simulation_source=Path(incumbent_h5),
+            scratch_dir=Path(scratch),
+            year=int(period),
+            frame=None,
+            microsimulation_factory=microsimulation_factory,
         )
-        for grain in ("constituency", "la")
-    ]
+        resolver.use_current_income_for_annual_measures(
+            reason=UK_INCUMBENT_ANNUAL_INCOME_FALLBACK
+        )
+        try:
+            metric_frames = [
+                compute_household_metrics(
+                    resolver,
+                    grain,
+                    period=period,
+                    household_ids=household_ids,
+                )
+                for grain in ("constituency", "la")
+            ]
+        except KeyError as error:
+            # The UC child bands read the administrative-basis child count,
+            # which the enhanced FRS cannot supply. Say so, rather than leave
+            # the operator with the missing relationship columns.
+            if "UC relationship" not in str(error):
+                raise
+            raise ValueError(
+                f"{incumbent_h5}: the local UC child bands read "
+                "benunit.uc_calibration_child_count, and this incumbent lacks "
+                f"its relationship inputs ({error.args[0]}). The enhanced FRS "
+                "is known not to carry that measure "
+                "(uk/incumbent_unresolvable_measures.json); the local extractor "
+                "does not prune listed measures, so use a Microcosm release as "
+                "the incumbent."
+            ) from error
     metrics = metric_frames[0].copy()
     for frame in metric_frames[1:]:
         shared = sorted(set(metrics.columns) & set(frame.columns))

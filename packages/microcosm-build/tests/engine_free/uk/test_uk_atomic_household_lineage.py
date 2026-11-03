@@ -581,3 +581,41 @@ def test_actual_expand_filter_receipts_feed_shared_atomic_graph_and_replay(tmp_p
         )
         + "\n"
     )
+
+
+def _invented_key(path, source_household_id=1):
+    return household_draw_key(
+        source="invented-frs",
+        source_vintage="invented-2024-25",
+        source_household_id=source_household_id,
+        clone_path=path,
+    )
+
+
+def test_residential_split_branch_follows_the_incidence_clone():
+    # microcosm#1063 item 7: a residential arm is an EXPAND of a gaining clone
+    # after the incidence clone and before the geographic pool.
+    a, b, c, s, _ = chain()
+    arm = expansion("cgt_residential_split", s.after_ids, ((51, 21),))
+    pool = expansion("geographic_support", arm.after_ids, ((101, 1), (151, 51)))
+    actual = by_id(project(steps=(a, b, c, s, arm, pool), ids=pool.after_ids))
+    assert actual[51] == _invented_key(
+        (("cgt_incidence_clone", 1), ("cgt_residential_split", 1))
+    )
+    assert actual[151] == _invented_key(
+        (
+            ("cgt_incidence_clone", 1),
+            ("cgt_residential_split", 1),
+            ("geographic_support", 1),
+        )
+    )
+    assert actual[51] != actual[21]
+    assert actual.is_unique
+
+
+def test_residential_split_before_the_incidence_clone_is_refused():
+    a, b, c, _, _ = chain()
+    early = expansion("cgt_residential_split", b.after_ids, ((51, 11),))
+    late_clone = expansion("cgt_incidence_clone", early.after_ids, ((21, 1), (31, 11)))
+    with pytest.raises(ValueError, match="repeated or reordered structural branch"):
+        project(steps=(a, b, early, late_clone), ids=late_clone.after_ids)

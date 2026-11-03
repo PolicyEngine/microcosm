@@ -45,6 +45,7 @@ from microcosm.build.uk_runtime.national_frame import (
 from microcosm.build.uk_runtime.rowwise_geography import id_multiplier_for_values
 from microcosm.build.uk_runtime.spi_income import (
     SPI_MINIMUM_RECIPIENT_AGE,
+    SPI_RECIPIENT_ROLE_COLUMN,
     SPIDonorAgeModel,
     VerifiedSPIDonorIdentity,
     load_spi_donor_age_model,
@@ -108,7 +109,11 @@ PERSON_IS_SPI_INCOME_BAND_CARRIER = "person_is_spi_income_band_carrier"
 SPI_INCOME_BAND_TAXPAYER_RESOURCE = "hmrc_itl_taxpayer_counts.json"
 SPI_INCOME_BAND_TAXPAYER_MEASURE = "total_taxpayer_count"
 SPI_INCOME_BAND_TAXPAYER_PERIOD = "build_period_tax_year"
-SPI_INCOME_BAND_DONOR_CANDIDATES = "raw FRS base channel adults aged 16 and over"
+#: The income stage draws only for claimants and partners (uk-data#504), so a
+#: carrier is one: a dependant aged 16 to 19 would keep its twin's values.
+SPI_INCOME_BAND_DONOR_CANDIDATES = (
+    "raw FRS base channel claimants and partners (is_uc_claimant) aged 16 and over"
+)
 SPI_INCOME_BAND_DONOR_PROPENSITY = (
     "SPI 2022-23 FACT-weighted band share by region, sex and age band"
 )
@@ -461,17 +466,17 @@ def stack_spi_income_band_donors(
 ) -> UKSPIIncomeBandDonorResult:
     """Seat each band's donors and fund them from their source strata.
 
-    Carriers are adults of the raw FRS base channel, seated without
-    replacement with probability proportional to their household's weight
-    times the tape's propensity for the band given their region, sex and age
-    band, so the donors' composition follows the population's rather than the
-    sample's; a household is seated at most once across bands, the highest
-    band first. Every copy carries the support channel's lineage columns at
-    clone index 2, the synthetic flag (so the income stage draws for it), the
-    donor flag, its band and one carrier flag, and starts at its band's equal
-    weight. The mass the donors carry leaves the incumbent households of each
-    donor's funding stratum in proportion, so the total and every stratum's
-    mass are unchanged.
+    Carriers are claimants and partners of the raw FRS base channel aged 16
+    and over, seated without replacement with probability proportional to
+    their household's weight times the tape's propensity for the band given
+    their region, sex and age band, so the donors' composition follows the
+    population's rather than the sample's; a household is seated at most once
+    across bands, the highest band first. Every copy carries the support
+    channel's lineage columns at clone index 2, the synthetic flag (so the
+    income stage draws for it), the donor flag, its band and one carrier flag,
+    and starts at its band's equal weight. The mass the donors carry leaves the
+    incumbent households of each donor's funding stratum in proportion, so the
+    total and every stratum's mass are unchanged.
     """
 
     validate_uk_national_frame(frame)
@@ -495,12 +500,17 @@ def stack_spi_income_band_donors(
         ("region", household, "household"),
         ("age", person, "person"),
         ("gender", person, "person"),
+        (SPI_RECIPIENT_ROLE_COLUMN, person, "person"),
     ):
         if column not in table.columns:
             raise ValueError(
                 f"SPI income band donors require {label} column {column!r}; "
                 "run the stage after spi_support_channel."
             )
+    if not pd.api.types.is_bool_dtype(person[SPI_RECIPIENT_ROLE_COLUMN].dtype):
+        raise ValueError(
+            f"SPI income band donors need a boolean {SPI_RECIPIENT_ROLE_COLUMN!r}."
+        )
     if HOUSEHOLD_IS_SPI_INCOME_BAND_DONOR in household.columns:
         raise ValueError("SPI income band donors were already stacked.")
     plan = spi_income_band_donor_plan(
@@ -523,6 +533,7 @@ def stack_spi_income_band_donors(
         person[person_channel].eq(BASE_FRS_SUPPORT_CHANNEL)
         & person["person_household_id"].isin(set(base_households["household_id"]))
         & pd.to_numeric(person["age"], errors="coerce").ge(SPI_MINIMUM_RECIPIENT_AGE)
+        & person[SPI_RECIPIENT_ROLE_COLUMN]
     ].copy()
     if candidates.empty:
         raise ValueError("SPI income band donors found no adult FRS candidates.")

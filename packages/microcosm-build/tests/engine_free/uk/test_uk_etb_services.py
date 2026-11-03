@@ -103,7 +103,20 @@ def test_etb_services_chain_order_and_records(monkeypatch: pytest.MonkeyPatch) -
             ]
             return {"targets": targets}
 
-        def fit_draw_next(self, donor, recipient_base, raw, *, state, weights):
+        def fit_draw_next(
+            self,
+            donor,
+            recipient_base,
+            raw,
+            *,
+            state,
+            weights,
+            quantiles,
+            sign_uniforms,
+        ):
+            # Each step draws from uniforms keyed on the recipients' own ids.
+            for uniforms in (quantiles, sign_uniforms):
+                assert uniforms.shape == (len(recipient_base),)
             return type(
                 "Result",
                 (),
@@ -130,7 +143,9 @@ def test_etb_services_chain_order_and_records(monkeypatch: pytest.MonkeyPatch) -
         ]
     )
 
-    draws, records = impute_etb_services(donor, recipient, seed=0)
+    draws, records = impute_etb_services(
+        donor, recipient, seed=0, record_ids=np.arange(1, len(recipient) + 1)
+    )
 
     assert draws.columns.tolist() == [
         "dfe_education_spending",
@@ -259,7 +274,7 @@ def test_recipient_predictors_derive_education_counts_and_aggregate() -> None:
         "is_SP_age": "person",
         "dla": "person",
         "pip": "person",
-        "hbai_household_net_income": "household",
+        "hbai_household_net_income_before_reset_to_zero": "household",
         "current_education": "person",
     }
     values = {
@@ -268,7 +283,7 @@ def test_recipient_predictors_derive_education_counts_and_aggregate() -> None:
         "is_SP_age": np.array([0.0, 1.0, 0.0, 0.0]),
         "dla": np.array([0.0, 100.0, 0.0, 0.0]),
         "pip": np.array([50.0, 0.0, 0.0, 0.0]),
-        "hbai_household_net_income": np.array([1e4, 2e4]),
+        "hbai_household_net_income_before_reset_to_zero": np.array([1e4, 2e4]),
         "current_education": np.array(
             ["NOT_IN_EDUCATION", "TERTIARY", "PRIMARY", "LOWER_SECONDARY"]
         ),
@@ -288,6 +303,7 @@ def test_recipient_predictors_derive_education_counts_and_aggregate() -> None:
             "person_id": [1, 2, 3, 4],
             "person_household_id": [10, 10, 10, 20],
             "person_benunit_id": [100, 100, 100, 200],
+            "is_uc_claimant": [True, True, False, True],
         }
     )
     benunit = pd.DataFrame({"benunit_id": [100, 200], "benunit_household_id": [10, 20]})
@@ -301,6 +317,9 @@ def test_recipient_predictors_derive_education_counts_and_aggregate() -> None:
 
     result = recipient_predictors(frame, _FakeEngine())
 
+    # The adult and child counts are the FRS family roles (microcosm#1095).
+    assert result["is_adult"].tolist() == [2.0, 1.0]
+    assert result["is_child"].tolist() == [1.0, 0.0]
     assert result["count_primary_education"].tolist() == [1.0, 0.0]
     assert result["count_secondary_education"].tolist() == [0.0, 1.0]
     assert result["count_further_education"].tolist() == [1.0, 0.0]
@@ -411,3 +430,35 @@ def test_stage_transform_records_its_mass_conservation_receipt(
     assert receipt.reason == module.UK_ETB_SERVICES_MASS_CONSERVATION_REASON
     assert receipt.old_total == receipt.new_total == 40.0
     assert receipt.declared_factor == 1.0
+
+
+def test_etb_draws_move_only_for_the_households_whose_inputs_move() -> None:
+    """Keyed on household ids: reordering, one changed and one added move no other."""
+
+    from test_support.microcosm_build.uk_keyed_draws import (
+        assert_draws_are_keyed_on_ids,
+    )
+
+    donor = clean_etb_services_table(_raw_etb())
+    recipient = donor.iloc[:8].drop(
+        columns=[
+            "weight",
+            "dfe_education_spending",
+            "rail_subsidy_spending",
+            "bus_subsidy_spending",
+        ]
+    )
+
+    def draw(rows: pd.DataFrame, ids: np.ndarray) -> pd.DataFrame:
+        draws, _ = impute_etb_services(
+            donor, rows, seed=0, record_ids=ids, n_estimators=5
+        )
+        return draws.reset_index(drop=True)
+
+    assert_draws_are_keyed_on_ids(
+        draw,
+        recipient,
+        np.arange(1, len(recipient) + 1),
+        perturbed_column="hbai_household_net_income",
+        perturbed_value=54_321.0,
+    )

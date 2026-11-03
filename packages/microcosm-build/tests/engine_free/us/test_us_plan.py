@@ -1040,6 +1040,15 @@ class TestUsSources:
             "docs/evidence/uk-poverty-968/scripts/measure_968_basis_swap.py",
             "docs/evidence/uk-poverty-968/scripts/measure_968_poverty_audit.py",
             "docs/evidence/uk-poverty-968/scripts/measure_968_tail_profile.py",
+            # The microcosm#1191 wage-concept evidence runs the archived
+            # generator's utils/uprating.py unchanged, so it stubs that file's
+            # own package import name in sys.modules with a temp
+            # STORAGE_FOLDER. Nothing is installed, imported or fetched from
+            # the retired package.
+            (
+                "docs/evidence/us-puf-wage-concept-1191/scripts/"
+                "run_archived_uprating_loop.py"
+            ),
         }
         checked_suffixes = {".py", ".toml", ".md", ".json"}
         offenders: list[tuple[str, str]] = []
@@ -1275,6 +1284,10 @@ class TestBaseStageSourceClosure:
             "source_person_id",
             "source_row_id",
             "person_source_id",
+            # The household State (GESTFIPS) the pool attaches to every person
+            # and unit construction moves to the household table; the
+            # meps_esi_premiums stage joins it back by person_household_id.
+            "state_fips",
         }
     )
 
@@ -1282,6 +1295,14 @@ class TestBaseStageSourceClosure:
     #: census_cps inputs never carried them (LKWEEKS only for income year
     #: 2022; ED_VAL and PAW_TYP for every pooled year).
     SIDECAR_RESTORED_COLUMNS = frozenset({"LKWEEKS", "ED_VAL", "PAW_TYP"})
+
+    #: Census person columns asec_census_person_columns restores into every
+    #: pooled vintage, by exact PERIDNUM identity, that NO frozen input carries
+    #: (microcosm #454): the meps_esi_premiums stage's coverage, employment
+    #: and employer-size fields.
+    CENSUS_PERSON_RESTORED_COLUMNS = frozenset(
+        {"NOW_OWNGRP", "NOW_HIPAID", "NOW_GRPFTYP", "NOW_GRPFTYP2", "PEMLR", "NOEMP"}
+    )
 
     #: Release-time stage constants whose inputs are produced inside the
     #: fiscal-refresh release tool, not the base builder (org_wages consumes
@@ -1323,6 +1344,7 @@ class TestBaseStageSourceClosure:
             self.CENSUS_CPS_PERSON_COLUMNS
             | self.POOL_CONSTRUCTED_COLUMNS
             | self.SIDECAR_RESTORED_COLUMNS
+            | self.CENSUS_PERSON_RESTORED_COLUMNS
             | produced
         )
         unsourced: dict[str, list[str]] = {}
@@ -1338,6 +1360,15 @@ class TestBaseStageSourceClosure:
             ]
             if missing:
                 unsourced[name] = missing
+        from microcosm.build.us_runtime.asec_census_person_columns import (
+            ASEC_CENSUS_PERSON_COLUMN_NAMES,
+        )
+
+        # The restoration really does carry every column declared restored.
+        assert self.CENSUS_PERSON_RESTORED_COLUMNS <= set(
+            ASEC_CENSUS_PERSON_COLUMN_NAMES
+        )
+        assert not self.CENSUS_PERSON_RESTORED_COLUMNS & self.CENSUS_CPS_PERSON_COLUMNS
         assert unsourced == {}, (
             "Stage source columns with no declared provider (wire an ingestion "
             f"carry, a pinned sidecar, or an upstream stage output): {unsourced}"

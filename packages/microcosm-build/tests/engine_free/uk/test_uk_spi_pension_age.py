@@ -277,14 +277,25 @@ def test_stage1_queries_sit_at_the_middle_of_the_year_of_age() -> None:
             "person_household_id": [1, 1, 2],
             "age": [65, 66, 74],
             "gender": ["MALE", "FEMALE", "MALE"],
+            # The bridge predictors read the row's own leaves (microcosm#840).
+            "employment_income": [20_000.0, 0.0, 0.0],
+            "self_employment_income": [0.0, 0.0, 0.0],
+            "private_pension_income": [0.0, 3_000.0, 0.0],
+            "state_pension_reported": [0.0, 9_000.0, 9_000.0],
+            "employment_status": ["FT_EMPLOYED", "RETIRED", "RETIRED"],
         }
     )
     household = pd.DataFrame({"household_id": [1, 2], "region": ["LONDON", "WALES"]})
 
-    predictors = spi_income._stage1_query_predictors(person, household)
+    predictors = spi_income._stage1_query_predictors(
+        person, household, state_pension_age=66
+    )
 
     assert predictors["age"].tolist() == [65.5, 66.5, 74.5]
     assert predictors["region"].tolist() == ["LONDON", "LONDON", "WALES"]
+    assert list(predictors.columns) == list(spi_income.SPI_STAGE1_PREDICTOR_COLUMNS)
+    assert predictors["main_source"].tolist() == ["pay", "pension", "pension"]
+    assert predictors["at_or_over_spa"].tolist() == [0.0, 1.0, 1.0]
 
 
 def test_whole_year_frame_ages_draw_state_pension_from_their_own_year() -> None:
@@ -321,9 +332,11 @@ def test_whole_year_frame_ages_draw_state_pension_from_their_own_year() -> None:
         }
     )
     household = pd.DataFrame({"household_id": [1], "region": ["LONDON"]})
-    encoded_donor, encoded_query = spi_income._encode_predictor_pair(
-        donor, spi_income._stage1_query_predictors(person, household)
-    )
+    # The age rule alone is under test, so the query carries the donor's three
+    # predictors at the middle of the year of age, without the bridge.
+    query = spi_income._person_predictors(person, household, income_predictors=())
+    query["age"] = np.floor(query["age"].to_numpy(dtype=float)) + 0.5
+    encoded_donor, encoded_query = spi_income._encode_predictor_pair(donor, query)
     frame = spi_income._person_fit_frame(
         predictors=encoded_donor,
         targets=targets,

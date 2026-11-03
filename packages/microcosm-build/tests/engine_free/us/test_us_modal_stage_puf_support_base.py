@@ -671,6 +671,22 @@ def test_loose_base_plans_are_refused(mutate, message: str) -> None:
         plan_lib.parse_plan(data)
 
 
+def test_rerun_template_refuses_validation_until_the_commit_is_selected(capsys) -> None:
+    path = ROOT / "docs" / "us-modal-stage-route-a-rerun-base-plan.json"
+    data = json.loads(path.read_text())
+    assert data["source"]["commit"] == "PICK_MAIN_COMMIT_ON_2026_10_18"
+    assert plan_lib.main(["validate", str(path)]) == 2
+    assert (
+        "source.commit must be a full 40-hex lowercase sha" in capsys.readouterr().err
+    )
+    data["source"]["commit"] = _committed_plan().commit
+    plan = plan_lib.parse_plan(data)
+    assert plan.tool is plan_lib.US_PUF_SUPPORT_BASE_RERUN
+    assert plan.inputs["block_ladder_npz"].sha256 == (
+        "6840b990acdfa2003d7723da5595e3cfff7205a4fa3d8d6206ed835c85c3f233"
+    )
+
+
 def test_the_budget_ceiling_is_the_timeout_less_the_base_s_overhead() -> None:
     ceiling = plan_lib.BASE.timeout_s - plan_lib.BASE_RUNNER_OVERHEAD_SECONDS
     assert ceiling == 14_700
@@ -1187,6 +1203,61 @@ def test_the_seed_stops_the_tool_s_census_download(tmp_path: Path, monkeypatch) 
 # --------------------------------------------------------------------------- #
 # The pinned tree file and the disk guard                                     #
 # --------------------------------------------------------------------------- #
+
+
+def test_rerun_registration_preserves_the_historical_base_contract() -> None:
+    rerun = plan_lib.US_PUF_SUPPORT_BASE_RERUN
+    assert plan_lib.TOOLS[rerun.name] is rerun
+    assert (
+        dataclasses.replace(rerun, name=BASE.name, tree_files=BASE.tree_files) == BASE
+    )
+    assert BASE.tree_files["cd_vintage_crosswalk"] is plan_lib.CD_VINTAGE_CROSSWALK
+    assert plan_lib.CD_VINTAGE_CROSSWALK.sha256 == (
+        "c7cb040b1f57ca2ea2adcbfe60cc2b250ca23acbc4b640cd421e766fa54c1aec"
+    )
+    historical = _committed_plan()
+    data = base_plan_data(tool=rerun.name)
+    plan = plan_lib.parse_plan(data)
+    assert plan_lib.planned_argv(plan) == plan_lib.planned_argv(historical)
+    assert plan.tool.stages["all"].resources is plan_lib.BASE
+    assert plan.inputs == historical.inputs
+    assert plan.max_wall_seconds == historical.max_wall_seconds == 14_400
+    assert plan_lib.estimated_usd_at_timeout(plan) == 14.90
+    assert plan_lib.estimated_usd_at_timeout(plan) <= plan_lib.BASE_COST_CAP_USD
+
+
+def test_rerun_crosswalk_pin_verifies_the_current_tree() -> None:
+    (row,) = plan_lib.tree_file_rows(plan_lib.US_PUF_SUPPORT_BASE_RERUN, ROOT)
+    assert "problem" not in row
+    assert row["sha256"] == (
+        "a347303fff3fea145f758488c43cb94355df5a8cb5e512552b2ee3791d2aa233"
+    )
+    assert row["bytes"] == 78_202
+
+
+def test_rerun_crosswalk_refuses_the_historical_tree(
+    pinned_source: str, tmp_path: Path
+) -> None:
+    crosswalk = plan_lib.CD_VINTAGE_CROSSWALK_RERUN
+    historical = subprocess.run(
+        [
+            "git",
+            "-C",
+            str(ROOT),
+            "show",
+            f"{_committed_plan().commit}:{crosswalk.path}",
+        ],
+        capture_output=True,
+        check=True,
+    ).stdout
+    assert hashlib.sha256(historical).hexdigest() == (
+        plan_lib.CD_VINTAGE_CROSSWALK.sha256
+    )
+    path = tmp_path / crosswalk.path
+    path.parent.mkdir(parents=True)
+    path.write_bytes(historical)
+    (row,) = plan_lib.tree_file_rows(plan_lib.US_PUF_SUPPORT_BASE_RERUN, tmp_path)
+    assert "another version" in row["problem"]
 
 
 def test_tree_file_rows_verify_the_clone(tmp_path: Path) -> None:
@@ -2428,8 +2499,8 @@ def test_the_hand_off_never_overwrites_a_base(tmp_path: Path) -> None:
 def test_the_runbook_names_every_registered_tool() -> None:
     text = RUNBOOK.read_text()
     intro = text[: text.index("Two files do the work")]
-    assert len(plan_lib.TOOLS) == 3
-    assert "Three tools are registered" in intro
+    assert len(plan_lib.TOOLS) == 5
+    assert "Five tools are registered" in intro
     for name, tool in plan_lib.TOOLS.items():
         assert f"`{name}`" in intro, name
         if tool.script is not None:
@@ -2443,6 +2514,7 @@ PINNED_COMMIT_TESTS = (
     "test_the_owned_flags_are_the_pinned_tool_s_flags",
     "test_the_registered_crosswalk_digest_is_4b57d15a2_s",
     "test_the_pinned_tool_locks_the_reference_s_run_config_from_the_modal_argv",
+    "test_rerun_crosswalk_refuses_the_historical_tree",
 )
 
 
@@ -2463,4 +2535,4 @@ def test_the_runbook_names_every_pinned_commit_test() -> None:
     text = RUNBOOK.read_text()
     for name in PINNED_COMMIT_TESTS:
         assert f"`{name}`" in text, name
-    assert "four tests in\n  `test_us_modal_stage_puf_support_base.py`" in text
+    assert "five tests in\n  `test_us_modal_stage_puf_support_base.py`" in text

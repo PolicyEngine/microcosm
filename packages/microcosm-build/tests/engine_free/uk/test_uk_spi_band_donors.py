@@ -24,6 +24,7 @@ from microcosm.build.uk_runtime.spi_band_donors import (
     SPI_INCOME_BAND_MINIMUM_DONORS,
     UKSPIIncomeBandDonorStageTransform,
     _assert_band_donor_stage_parameters,
+    age_band_lower_bound,
     income_band_lower_bound,
     load_hmrc_itl_band_taxpayers,
     spi_income_band_donor_operation_parameters,
@@ -42,6 +43,7 @@ from microcosm.build.uk_runtime.spi_income import (
 )
 from microcosm.build.uk_runtime.spi_support import (
     HOUSEHOLD_IS_SPI_SYNTHETIC_COLUMN,
+    SPI_PROPERTY_FINANCE_COSTS_COLUMN,
     SPI_SYNTHETIC_SUPPORT_CHANNEL,
     build_uk_spi_support_channel,
     support_channel_column,
@@ -137,6 +139,11 @@ def _raw_tape(rows: int = 240, *, seed: int = 0) -> pd.DataFrame:
                 "PAY": pay,
                 "DIVIDENDS": pay * 0.05,
                 "INCBBS": pay * 0.01,
+                # Annex A bridge codes: pay is every record's main source, no
+                # trade pages, below State Pension age; composites carry none.
+                "MAINSRCE": -1.0 if composite else 1.0,
+                "SEINC_NUM": -1.0 if composite else 0.0,
+                "SPA": -1.0 if composite else 0.0,
             }
         )
         row["TEI"] = row["PAY"]
@@ -146,14 +153,26 @@ def _raw_tape(rows: int = 240, *, seed: int = 0) -> pd.DataFrame:
     return pd.DataFrame(records)
 
 
-def _support_frame(n_households: int = 60, *, reverse: bool = False):
+def _support_frame(
+    n_households: int = 60,
+    *,
+    reverse: bool = False,
+    dependant_age: int = 12,
+    dependant_is_claimant: bool = False,
+):
     ids = np.arange(1, n_households + 1, dtype="int64")
     person = pd.DataFrame(
         {
             "person_id": np.r_[ids, ids + 1_000],
             "person_benunit_id": np.r_[ids, ids],
             "person_household_id": np.r_[ids, ids],
-            "age": np.r_[np.full(n_households, 45), np.full(n_households, 12)],
+            "age": np.r_[
+                np.full(n_households, 45), np.full(n_households, dependant_age)
+            ],
+            "is_uc_claimant": np.r_[
+                np.ones(n_households, dtype=bool),
+                np.full(n_households, dependant_is_claimant, dtype=bool),
+            ],
             "gender": np.r_[
                 np.where(ids % 2 == 0, "MALE", "FEMALE"),
                 np.full(n_households, "FEMALE"),
@@ -393,6 +412,38 @@ def test_stack_is_keyed_on_identity_and_refuses_a_second_stack() -> None:
         _stack_small(first.frame)
 
 
+def test_dependants_aged_16_to_19_are_never_carriers() -> None:
+    """A dependant keeps its twin's values, so it cannot carry a band draw.
+
+    The second member of every household is 17 and the tape favours that age
+    band; only claimants and partners are candidates (uk-data#504,
+    microcosm#1095), so the 17-year-olds are seated only when the frame flags
+    them as claimants or partners.
+    """
+
+    propensity = _propensity()
+    teen_band = int(age_band_lower_bound(np.asarray([17.0]))[0])
+    favoured = (
+        propensity.assign(age_band=teen_band, propensity=1.0)
+        .drop_duplicates(["region", "gender", "age_band", "band"])
+        .reset_index(drop=True)
+    )
+    propensity = pd.concat(
+        [propensity.loc[propensity["age_band"] != teen_band], favoured],
+        ignore_index=True,
+    )
+
+    def carrier_ages(*, dependant_is_claimant: bool) -> pd.Series:
+        frame = _support_frame(
+            200, dependant_age=17, dependant_is_claimant=dependant_is_claimant
+        )
+        person = _stack_small(frame, propensity=propensity).frame.table("person")
+        return person.loc[person[PERSON_IS_SPI_INCOME_BAND_CARRIER], "age"]
+
+    assert carrier_ages(dependant_is_claimant=False).eq(45).all()
+    assert carrier_ages(dependant_is_claimant=True).eq(17).any()
+
+
 def test_stack_follows_weight_times_propensity_not_the_sample() -> None:
     # Given a tape whose band propensities are equal across the two regions,
     # seats follow household weight: the heavier half of the frame is seated
@@ -497,8 +548,13 @@ def test_resample_gives_carriers_band_conditional_leaves_and_receipts() -> None:
     assert receipt["carriers"] == 4 and receipt["weighting"] == "FACT"
     rows = {row["lower_bound"]: row for row in receipt["bands"]}
     assert rows[2_000_000]["pool_composite_records"] > 0
-    assert rows[2_000_000]["realized_min_total_income"] >= 2_000_000
-    assert rows[500_000]["realized_max_total_income"] < 1_000_000
+    # No drawn record's own value, such as a band's lowest or highest, is in
+    # the receipt, and a band whose carriers drew fewer than three records
+    # withholds its mean (UKDS disclosure control).
+    for row in receipt["bands"]:
+        assert "realized_min_total_income" not in row
+        assert "realized_max_total_income" not in row
+        assert row["realized_mean_total_income"] == "<3"
     assert all(row["carriers"] == 1 for row in receipt["bands"])
 
     # A carrier matches its region only where that regional band pool holds
@@ -520,20 +576,25 @@ def test_resample_gives_carriers_band_conditional_leaves_and_receipts() -> None:
 def test_resample_cuts_the_pools_on_the_total_income_a_record_realises() -> None:
     # Given: pay uprated threefold, so the tape's 80k records (published total
     # 84.8k, below every reserved band) realise 240k-and-over on the frame
-    # while the 260k records realise 780k-and-over.
+    # while the 260k records realise 780k-and-over. Twenty carriers in each
+    # band draw from at least ten of its records, so each band's mean is
+    # recorded rather than withheld.
     donor = prepare_spi_donor_table(_raw_tape(), seed=1)
+    per_band = 20
+    ids = np.arange(1, 2 * per_band + 1)
     household = pd.DataFrame(
         {
-            "household_id": [1, 2],
-            "region": ["LONDON", "LONDON"],
-            SPI_INCOME_BAND_DONOR_LOWER_BOUND_COLUMN: [200_000.0, 500_000.0],
+            "household_id": ids,
+            "region": ["LONDON"] * len(ids),
+            SPI_INCOME_BAND_DONOR_LOWER_BOUND_COLUMN: [200_000.0] * per_band
+            + [500_000.0] * per_band,
         }
     )
     person = pd.DataFrame(
         {
-            "person_id": [11, 21],
-            "person_household_id": [1, 2],
-            PERSON_IS_SPI_INCOME_BAND_CARRIER: [True, True],
+            "person_id": ids * 10 + 1,
+            "person_household_id": ids,
+            PERSON_IS_SPI_INCOME_BAND_CARRIER: [True] * len(ids),
         }
     )
     for column in SPI_INCOME_QRF_OUTPUT_COLUMNS:
@@ -544,16 +605,16 @@ def test_resample_cuts_the_pools_on_the_total_income_a_record_realises() -> None
         person,
         donor,
         household=household,
-        spi_people=pd.Series([True, True], index=person.index),
+        spi_people=pd.Series(True, index=person.index),
         uprating_factors=factors,
         lower_bounds=BANDS,
         regional_pool_minimum=5,
         seed=44,
     )
-    # Then: the 200k carrier drew an 80k record (its uprated pay is 240k), the
-    # 500k carrier a 260k record, and the pools are the uprated bands.
+    # Then: every 200k carrier drew an 80k record (its uprated pay is 240k),
+    # every 500k carrier a 260k record, and the pools are the uprated bands.
     pay = updated.loc[updated[PERSON_IS_SPI_INCOME_BAND_CARRIER], "hmrc_spi_pay"]
-    assert pay.tolist() == [240_000.0, 780_000.0]
+    assert pay.tolist() == [240_000.0] * per_band + [780_000.0] * per_band
     rows = {row["lower_bound"]: row for row in receipt["bands"]}
     assert rows[200_000]["pool_records"] == int(
         (donor["hmrc_spi_pay"] == 80_000.0).sum()
@@ -566,6 +627,65 @@ def test_resample_cuts_the_pools_on_the_total_income_a_record_realises() -> None
     assert receipt["carriers_outside_band"] == 0
     assert all(row["carriers_outside_band"] == 0 for row in receipt["bands"])
     assert receipt["pool_basis"].startswith("uprated total income")
+
+
+def test_resample_pools_ignore_restricted_finance_costs() -> None:
+    # Given: restricted finance costs of 200k on every record below 200k. At
+    # the stage's factor of 1.0, counted as income they would lift the 30k
+    # records (published total 31.8k) and the 80k records (84.8k) into the
+    # 200k pool, which is what the pre-fix pools did; the 260k records carry
+    # a modest cost too. TAX_CRED carries the 20% relief.
+    raw = _raw_tape()
+    low = raw["PAY"] < 200_000.0
+    raw.loc[low, "LLIR_RESTRICT_AMT_TOT"] = 200_000.0
+    raw.loc[low, "TAX_CRED"] = 40_000.0
+    mid = raw["PAY"] == 260_000.0
+    raw.loc[mid, "LLIR_RESTRICT_AMT_TOT"] = 10_000.0
+    raw.loc[mid, "TAX_CRED"] = 2_000.0
+    donor = prepare_spi_donor_table(raw, seed=1)
+    household = pd.DataFrame(
+        {
+            "household_id": [1],
+            "region": ["LONDON"],
+            SPI_INCOME_BAND_DONOR_LOWER_BOUND_COLUMN: [200_000.0],
+        }
+    )
+    person = pd.DataFrame(
+        {
+            "person_id": [11],
+            "person_household_id": [1],
+            PERSON_IS_SPI_INCOME_BAND_CARRIER: [True],
+        }
+    )
+    for column in SPI_INCOME_QRF_OUTPUT_COLUMNS:
+        person[column] = 1.0
+    factors = dict.fromkeys(SPI_INCOME_QRF_OUTPUT_COLUMNS, 1.0)
+    updated, receipt = _resample_band_donor_leaves(
+        person,
+        donor,
+        household=household,
+        spi_people=pd.Series([True], index=person.index),
+        uprating_factors=factors,
+        lower_bounds=BANDS,
+        regional_pool_minimum=5,
+        seed=44,
+    )
+    # Then: every pool is the one the tape's income leaves give (the 200k pool
+    # holds the 260k records alone and the 500k pool the 620k records alone),
+    # so the costs cut no pool...
+    rows = {row["lower_bound"]: row for row in receipt["bands"]}
+    assert rows[200_000]["pool_records"] == int(
+        (donor["hmrc_spi_pay"] == 260_000.0).sum()
+    )
+    assert rows[500_000]["pool_records"] == int(
+        (donor["hmrc_spi_pay"] == 620_000.0).sum()
+    )
+    assert receipt["carriers_outside_band"] == 0
+    assert "finance costs cut no pool" in receipt["pool_basis"]
+    # ...and the drawn record's costs travel with its leaves.
+    carrier = updated.loc[updated[PERSON_IS_SPI_INCOME_BAND_CARRIER]].iloc[0]
+    assert carrier["hmrc_spi_pay"] == 260_000.0
+    assert carrier[SPI_PROPERTY_FINANCE_COSTS_COLUMN] == 10_000.0
 
 
 def test_resample_draw_is_keyed_on_the_carrier_not_on_the_row_order() -> None:
@@ -623,7 +743,7 @@ def test_resample_draw_is_keyed_on_the_carrier_not_on_the_row_order() -> None:
     assert renumbered.sort_index().equals(first.sort_index())
 
 
-def test_resample_refuses_missing_carriers_or_undeclared_band() -> None:
+def test_resample_refuses_missing_carriers_undeclared_band_or_non_recipient() -> None:
     donor = prepare_spi_donor_table(_raw_tape(), seed=1)
     household = pd.DataFrame(
         {
@@ -647,6 +767,18 @@ def test_resample_refuses_missing_carriers_or_undeclared_band() -> None:
             donor,
             household=household,
             spi_people=pd.Series([True]),
+            uprating_factors=dict.fromkeys(SPI_INCOME_QRF_OUTPUT_COLUMNS, 1.0),
+            lower_bounds=BANDS,
+            regional_pool_minimum=5,
+            seed=1,
+        )
+    household[SPI_INCOME_BAND_DONOR_LOWER_BOUND_COLUMN] = 200_000.0
+    with pytest.raises(ValueError, match="must be SPI recipients"):
+        _resample_band_donor_leaves(
+            person,
+            donor,
+            household=household,
+            spi_people=pd.Series([False]),
             uprating_factors=dict.fromkeys(SPI_INCOME_QRF_OUTPUT_COLUMNS, 1.0),
             lower_bounds=BANDS,
             regional_pool_minimum=5,
