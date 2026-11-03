@@ -26,7 +26,9 @@ from microcosm.frame.adapters.axiom import (
     assert_no_relations,
     axiom_engine_ref,
 )
+from microcosm.frame.kernels import SimulateRulesKernel
 from microcosm.frame.schema import EntitySchema
+from microcosm.graph import Node, Owned, Slice
 from test_support.paths import paths_for
 
 ROOT = paths_for("microcosm-frame").tests / "fixtures/rulespec-zz"
@@ -869,3 +871,37 @@ def test_differential_b_real_child_program_against_the_view():
             assert through_view[name].sum() == expected.astype(
                 np.float64
             ).sum() + outside[name] * int((~selected).sum())
+
+
+# ---------------------------------------------------------------------------
+# Rules kernels: the selector is a whole-table dependency
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("person", "match"),
+    [
+        (Slice("person", ("age", "income")), "whole-table relation inputs"),
+        (
+            Slice("person", ("is_child", "age", "income"), rows="is_child"),
+            "whole-table relation inputs",
+        ),
+        (Slice("person", ("is_child", "age", "income")), None),
+    ],
+    ids=("no-selector", "masked", "whole"),
+)
+def test_every_rules_kernel_requires_the_whole_selector(monkeypatch, person, match):
+    adapter, _ = _adapter(monkeypatch)
+    node = Node(
+        "view",
+        "simulate.rules_by_ref@1",
+        population="create",
+        inputs=(person,),
+        outputs=(Owned("person", "child_amount", "float64"),),
+        params={"engine_ref": "fixture", "variables": ("child_amount",)},
+    )
+    if match is None:
+        SimulateRulesKernel._require_relation_inputs(node, adapter)
+    else:
+        with pytest.raises(ValueError, match=match):
+            SimulateRulesKernel._require_relation_inputs(node, adapter)
