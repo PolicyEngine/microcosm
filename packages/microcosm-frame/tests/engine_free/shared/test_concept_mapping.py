@@ -590,7 +590,10 @@ class TestExecution:
         with pytest.raises(ValueError, match="reference_person_id"):
             _mapping([binding]).encode(tables)
 
-    def test_group_bindings_are_deferred_not_executed(self) -> None:
+    def test_group_bindings_other_than_person_role_are_deferred(self) -> None:
+        # A person_role binding takes each person's own value, so encode runs
+        # it (Belgium's Child inputs); every other group binding waits for
+        # built units.
         tables = {
             "person": pd.DataFrame({"person_id": [1], "person_household_id": [1]}),
             "household": pd.DataFrame({"household_id": [1]}),
@@ -602,7 +605,7 @@ class TestExecution:
             assert deferred == {
                 binding.engine_input
                 for binding in mapping.bindings
-                if binding.group_rule is not None
+                if binding.group_rule not in (None, GroupRule.PERSON_ROLE)
             }
 
 
