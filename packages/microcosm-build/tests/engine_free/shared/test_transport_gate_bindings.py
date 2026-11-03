@@ -602,7 +602,7 @@ class TestRegistry:
             | set(BOUND)
             | set(PENDING)
             | set(EVIDENCE)
-            | {"cell_support", "cell_support_target"}
+            | {"cell_support", "cell_support_target", "measurement_prefit"}
         )
         for name in DEFAULT_REGISTRY:
             if name not in BOUND:

@@ -116,28 +116,14 @@
         "verifier": "legacy"
       },
       {
-        "consumer": "typed_closure.metadata_waiver_validation",
-        "generation0_effect": "no_generation0_effect",
-        "id": "catalog_metadata_waivers",
-        "legacy_sinks": [],
-        "mode": "front_end_validation",
-        "pointer_class": "all",
-        "pointer_count": 5,
-        "pointer_sha256": "64182b6be1ea6d95bff345b30a2aa046b6fa7e8ee61a282b225dfa49c28fbfdc",
-        "rationale": null,
-        "relative_sink_prefix": null,
-        "source_prefix": "/authored/spec~1catalogs.yaml/metadata_waivers",
-        "verifier": "catalog_waivers"
-      },
-      {
         "consumer": "compiler_ir.typed_inventory.columns",
         "generation0_effect": "no_generation0_effect",
         "id": "catalog_columns",
         "legacy_sinks": [],
         "mode": "compiler_semantic",
         "pointer_class": "all",
-        "pointer_count": 1683,
-        "pointer_sha256": "e43651deeb21fd914443862e0c8689c2a0c86631a00e2a7dcf5ddb3b03dd1370",
+        "pointer_count": 1593,
+        "pointer_sha256": "bdd9e79157590fade42d28cc2b5d5c8b58e13903af75375a0e3235c94d2a8339",
         "rationale": null,
         "relative_sink_prefix": null,
         "source_prefix": "/authored/spec~1catalogs.yaml/columns",
@@ -1656,13 +1642,13 @@
           "compiler_ir.node_slices"
         ],
         "expected": {
-          "map_sha256": "07fe9086b57a15ab1c2551fce5c30aebfa55175d76a308f7dbb268ac49da747a",
-          "protocol_sha256": "4ff992324004d4c09d4165bc8d24ccff15b9d84858836851b12d532c870920f4"
+          "map_sha256": "99fafd886bc7a022fcc4718169c5d9eef336d44cea849998a4584f243ac8c3cf",
+          "protocol_sha256": "61b4206ab27a7d9c616ba6caa6c8a3f537fc35222e9eae2ca4f665dbeef6a08d"
         },
         "failures": [],
         "observed": {
-          "map_sha256": "07fe9086b57a15ab1c2551fce5c30aebfa55175d76a308f7dbb268ac49da747a",
-          "protocol_sha256": "4ff992324004d4c09d4165bc8d24ccff15b9d84858836851b12d532c870920f4"
+          "map_sha256": "99fafd886bc7a022fcc4718169c5d9eef336d44cea849998a4584f243ac8c3cf",
+          "protocol_sha256": "61b4206ab27a7d9c616ba6caa6c8a3f537fc35222e9eae2ca4f665dbeef6a08d"
         },
         "status": "covered"
       },
@@ -1677,7 +1663,7 @@
           "compiler_ir.seed_stream_map"
         ],
         "expected": {
-          "implementation_sha256": "4ff992324004d4c09d4165bc8d24ccff15b9d84858836851b12d532c870920f4",
+          "implementation_sha256": "61b4206ab27a7d9c616ba6caa6c8a3f537fc35222e9eae2ca4f665dbeef6a08d",
           "protocol": "legacy-v1",
           "streams": [
             "build_model",
@@ -1698,7 +1684,7 @@
         },
         "failures": [],
         "observed": {
-          "implementation_sha256": "4ff992324004d4c09d4165bc8d24ccff15b9d84858836851b12d532c870920f4",
+          "implementation_sha256": "61b4206ab27a7d9c616ba6caa6c8a3f537fc35222e9eae2ca4f665dbeef6a08d",
           "protocol": "legacy-v1",
           "streams": [
             "build_model",

@@ -62,18 +62,36 @@ release directory onto the runs volume. Publication stays the human step in
    three times the list price (see "Preemption and restarts").
 2. **The image is the commit.** It starts from `debian_slim` with Python
    3.14, the minor version the local US builds record (`runtime.python`
-   3.14.4 in the #974 build manifest; Modal served 3.14.2). It adds git and uv 0.11.7, makes a shallow
+   3.14.4 in the #974 build manifest; Modal served 3.14.2). It adds git,
+   upgrades `ca-certificates` to Debian's current release, replaces the
+   base's pip 25.3 with pip 26.2.2 pinned by its wheel's sha256, and
+   installs uv 0.13.4 and, for the runner, `huggingface_hub` with certifi
+   2026.10.19 or later: the first releases whose CA lists drop the
+   compromised eMudhra roots (https://emudhra.we-have-a-problem.com).
+   pip 25.3's bundled certifi still trusts emSign ECC Root CA - G3, and
+   `--cert` or `PIP_CERT` would only add to that trust. It then makes a shallow
    clone of the plan's commit from GitHub, checks out the plan's branch name,
    and asserts `HEAD` equals the commit. It then runs
    `uv sync --all-packages --extra us --frozen` against that tree's own
    `uv.lock` into `/opt/venv`, installs the newest `microcosm-emitter`
-   release (0.7.0 or later) on its own with `uv tool install` into
-   `/usr/local/bin`, checks that `microcosm-emitter version` runs, and
-   asserts `git status --porcelain` is empty. The image sets
+   release (0.11.9 or later, the oldest a build starts) on its own with
+   `uv tool install` into `/usr/local/bin`, checks that
+   `microcosm-emitter version` runs, and asserts `git status --porcelain` is
+   empty. Emitter releases from 0.10.0 on send telemetry to the collector's
+   hostname by default, which stays the same when the collector moves to
+   another Google Cloud project. The image sets
    `MICROCOSM_EMITTER_COMMAND` to that command, so a build that starts its
    emitter finds it; the check reports the version and the receipt's runner
    identity records it. An image built for a commit keeps the emitter it was
-   built with. The tool's environment withholds credentials and sets
+   built with. The install step and its `>=0.11.9` floor come from the
+   checkout that launches the app (`image_build_commands`), while the
+   minimum the build enforces comes from the commit the plan pins
+   (`MINIMUM_EMITTER_VERSION`), so a launch can combine an older checkout's
+   floor with a newer commit's minimum, or the reverse. Neither floor has an
+   upper bound, so an image built now installs the newest release, which
+   every commit's minimum so far accepts. The test that requires the floor to
+   equal the minimum compares the two values of one checkout only. The
+   tool's environment withholds credentials and sets
    `HF_HUB_OFFLINE=1`, so an emitter started there keeps its events and
    hand-overs local.
    A commit that is not on GitHub fails the build. `checkout -B` would put
@@ -1124,16 +1142,23 @@ and the QRF implementation has no other active network acquisition:
 - The engine-default and null audits construct `PolicyEngineUSEngine`,
   using the installed engine's local definitions and parameters. They do
   not create a `Microsimulation` or acquire a default dataset.
-- Imported ASEC, education, ORG, SCF, SIPP and unemployment-weeks fetchers
-  are not called by this builder's path or package initialization.
+- Imported ASEC, education, ORG, SCF and unemployment-weeks fetchers are
+  not called by this builder's path or package initialization.
+- The SIPP 2023 fetcher is. The ACS SSI disability-criteria stage
+  (microcosm#1022) reads the pinned full public-use file (`pu2023.csv`,
+  3.73 GB) from the canonical SIPP cache, and downloads it there when it
+  is missing, because the runner does not pass `--sipp-donor`.
 
-No `HomeSeed` is needed for this tool. The runner's image clone and
+No `HomeSeed` is registered for this tool yet, so a fresh container makes
+that one SIPP download. Staging the file as a pinned input that seeds the
+cache (a `HomeSeed`) is a follow-up. The runner's image clone and
 dependency installation, branch proof and input preparation retain their
 existing network use; the tool runs with `HF_HUB_OFFLINE=1`, without
 credential-name environment values, and consumes the staged files.
 
 The runner owns `--base-h5`, `--donor-release-manifest`, `--source-manifest`,
-`--inputs-dir`, `--puma-ladder`, `--out-h5` and `--summary`. Plans may set
+`--inputs-dir`, `--puma-ladder`, `--out-h5`, `--summary` and `--sipp-donor`,
+which it never passes. Plans may set
 only the builder's tuning flags: `--acs-share`, `--n-estimators`,
 `--max-targets-per-fit`, `--seed`, `--geography-seed`, `--chunksize`,
 `--donor-channel`, `--hours-under15-policy`, `--max-households` and

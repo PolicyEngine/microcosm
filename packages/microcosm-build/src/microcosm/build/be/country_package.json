@@ -58,6 +58,11 @@
       "schema_id": "legacy_json"
     },
     {
+      "path": "quantile_surfaces.json",
+      "kind": "legacy_json",
+      "schema_id": "legacy_json"
+    },
+    {
       "path": "reference_aging.json",
       "kind": "legacy_json",
       "schema_id": "legacy_json"

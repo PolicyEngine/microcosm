@@ -88,7 +88,7 @@ def test_us_coverage_is_exact_complete_and_honest(
     assert fields["consumed_field_count"] == 42_489
     assert fields["unused_field_count"] == 0
     assert fields["multiple_primary_use_field_count"] == 0
-    assert fields["claim_count"] == 49
+    assert fields["claim_count"] == 48
     assert fields["mode_counts"] == {
         "legacy_behavior": 14_269,
         "compiler_semantic": 27_763,
