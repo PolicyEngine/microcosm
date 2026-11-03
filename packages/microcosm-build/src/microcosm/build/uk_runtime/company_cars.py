@@ -162,9 +162,19 @@ UK_COMPANY_CAR_FACT_FENCE: dict[str, Any] = {
         "recipients and taxable value by income range; Table 4 recipients by region"
     ),
     "classification_rationale": (
-        "The stage draws fuel and CO2 to Tables 2A and 2C, so binding them in the "
-        "weight solve would be circular. Comparing the calibrated file with Tables "
-        "1, 3A and 4 is a manual step for now; none blocks a build."
+        "The stage draws fuel and CO2 to Tables 2A and 2C from this resource, which "
+        "the weight solve never reads. The national calibration binds Table 1's car "
+        "recipients and taxable value and Table 2C's recipients by fuel from the "
+        "Chronicle feed instead (calibrated_facts). Comparing the calibrated file with "
+        "Tables 2A, 3A and 4 is a manual step for now; none blocks a build."
+    ),
+    "calibrated_facts": (
+        "HMRC Benefits in kind statistics (July 2026), 2024-25: Table 1's car recipients "
+        "and car taxable value (hmrc.benefits_in_kind.company_car_recipients, "
+        "hmrc.benefits_in_kind.company_car_taxable_value) and Table 2C's recipients "
+        "by fuel (hmrc.benefits_in_kind.company_car_fuel.*) in "
+        "uk_population_targets.json, María's ruling of 3 November 2026 "
+        "(microcosm#1418)."
     ),
     "adjudication": (
         "https://github.com/PolicyEngine/uk-autumn-budget-dashboard-2026/issues/316"
@@ -367,7 +377,7 @@ class CompanyCarsSpec:
         if fence != UK_COMPANY_CAR_FACT_FENCE:
             raise CompanyCarsError(
                 "the declared company car fact fence differs from the reviewed one: "
-                "no company car fact is a calibration target."
+                "the vendored facts seed the draws and none is a calibration target."
             )
         for operation, outputs in (
             (fuel, [FUEL_TYPE]),

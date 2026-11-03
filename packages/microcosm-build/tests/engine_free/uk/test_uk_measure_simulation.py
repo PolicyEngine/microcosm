@@ -317,6 +317,32 @@ def test_dated_cgt_measure_uses_disposal_year_with_later_calibration_year():
     assert (values > 3000).tolist() == [False, True, True]
 
 
+def test_dated_company_car_benefit_is_priced_in_its_own_tax_year(
+    monkeypatch, tmp_path: Path
+):
+    """HMRC's Table 1 taxable value is 2024-25's, so the national row reads the
+    engine's company car benefit in 2024, whatever the calibration year
+    (microcosm#1418)."""
+
+    sim = SimulationStub(
+        {"company_car_benefit": ("person", np.array([0.0, 900.0, 3_000.0]))}
+    )
+    values, route = compute_uk_measure_input(
+        FrameStub(), sim, "person", "company_car_benefit_2024", 2025
+    )
+    assert sim.calls == [("company_car_benefit", 2024, None)]
+    assert route == "engine_period:2024:company_car_benefit:native"
+    assert values.tolist() == [0.0, 900.0, 3_000.0]
+    with pytest.raises(KeyError, match="person-only"):
+        compute_uk_measure_input(
+            FrameStub(), sim, "household", "company_car_benefit_2024", 2025
+        )
+    resolver = _resolver_over(sim, monkeypatch, tmp_path)
+    assert resolver.knows("person", "company_car_benefit_2024")
+    assert not resolver.knows("household", "company_car_benefit_2024")
+    assert resolver.entity_for("company_car_benefit_2024") == "person"
+
+
 @pytest.mark.parametrize("precomputed", [False, True])
 def test_dated_cgt_binding_gates_at_observation_year_and_refuses_stale_fact(
     precomputed,

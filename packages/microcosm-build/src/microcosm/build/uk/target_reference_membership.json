@@ -1,11 +1,11 @@
 {
   "source_fact_feed": "chronicle-uk-08962f1-consumer-facts",
   "target_period": 2025,
-  "candidate_count": 1455,
-  "contract_target_count": 398,
-  "active_reference_count": 1418,
+  "candidate_count": 1460,
+  "contract_target_count": 403,
+  "active_reference_count": 1423,
   "status_counts": {
-    "active": 1418,
+    "active": 1423,
     "signed_excluded": 37
   },
   "geography_pins": {
@@ -4652,6 +4652,26 @@
       "geography_id": "K02000001"
     },
     "hmrc.child_benefit.families_in_payment.children_5_plus": {
+      "geography_level": "country",
+      "geography_id": "K02000001"
+    },
+    "hmrc.benefits_in_kind.company_car_recipients": {
+      "geography_level": "country",
+      "geography_id": "K02000001"
+    },
+    "hmrc.benefits_in_kind.company_car_taxable_value": {
+      "geography_level": "country",
+      "geography_id": "K02000001"
+    },
+    "hmrc.benefits_in_kind.company_car_fuel.fully_electric": {
+      "geography_level": "country",
+      "geography_id": "K02000001"
+    },
+    "hmrc.benefits_in_kind.company_car_fuel.petrol_including_hybrids": {
+      "geography_level": "country",
+      "geography_id": "K02000001"
+    },
+    "hmrc.benefits_in_kind.company_car_fuel.diesel_including_hybrids": {
       "geography_level": "country",
       "geography_id": "K02000001"
     }
@@ -11409,6 +11429,31 @@
     {
       "name": "hmrc.child_benefit.families_in_payment.children_5_plus",
       "from": "2025-08",
+      "to": "2025"
+    },
+    {
+      "name": "hmrc.benefits_in_kind.company_car_recipients",
+      "from": "2024",
+      "to": "2025"
+    },
+    {
+      "name": "hmrc.benefits_in_kind.company_car_taxable_value",
+      "from": "2024",
+      "to": "2025"
+    },
+    {
+      "name": "hmrc.benefits_in_kind.company_car_fuel.fully_electric",
+      "from": "2024",
+      "to": "2025"
+    },
+    {
+      "name": "hmrc.benefits_in_kind.company_car_fuel.petrol_including_hybrids",
+      "from": "2024",
+      "to": "2025"
+    },
+    {
+      "name": "hmrc.benefits_in_kind.company_car_fuel.diesel_including_hybrids",
+      "from": "2024",
       "to": "2025"
     }
   ],
@@ -32394,6 +32439,81 @@
           "resolved_value": 70030.0,
           "resolved_fact_period": "2025-08",
           "resolved_fact_key": "ledger_aggregate_fact_v2_2d81e096c621bc41f63aed4e"
+        }
+      ]
+    },
+    "hmrc.benefits_in_kind.company_car_recipients": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "hmrc.benefits_in_kind.company_car_recipients",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "resolved_period": 2025,
+          "resolved_value": 920000.0,
+          "resolved_fact_period": "2024",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_7d770efdd7134073af2341a6"
+        }
+      ]
+    },
+    "hmrc.benefits_in_kind.company_car_taxable_value": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "hmrc.benefits_in_kind.company_car_taxable_value",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "resolved_period": 2025,
+          "resolved_value": 3070000000.0,
+          "resolved_fact_period": "2024",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_b036c7a54c3c0ea9089d5114"
+        }
+      ]
+    },
+    "hmrc.benefits_in_kind.company_car_fuel.fully_electric": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "hmrc.benefits_in_kind.company_car_fuel.fully_electric",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "resolved_period": 2025,
+          "resolved_value": 465000.0,
+          "resolved_fact_period": "2024",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_3b60b8f7d982772345e8008a"
+        }
+      ]
+    },
+    "hmrc.benefits_in_kind.company_car_fuel.petrol_including_hybrids": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "hmrc.benefits_in_kind.company_car_fuel.petrol_including_hybrids",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "resolved_period": 2025,
+          "resolved_value": 390000.0,
+          "resolved_fact_period": "2024",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_38c25d0c99cf361170a8251e"
+        }
+      ]
+    },
+    "hmrc.benefits_in_kind.company_car_fuel.diesel_including_hybrids": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "hmrc.benefits_in_kind.company_car_fuel.diesel_including_hybrids",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "resolved_period": 2025,
+          "resolved_value": 60000.0,
+          "resolved_fact_period": "2024",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_58c4aa76a9d3ef1ce3e332f7"
         }
       ]
     }

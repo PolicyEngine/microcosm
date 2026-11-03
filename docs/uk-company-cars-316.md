@@ -152,15 +152,15 @@ list prices and contributions grow by CPI, and the weights are not projected.
 Expect the static 2030-31 cost to come in well under Table 6.1's £310m, from the
 size of that base. The OBR's NICs line (£92.4m, at Class 1A's 15%) implies about
 £616m of extra taxable value, a list price base of about £60bn. HMRC's 2024-25
-taxable value implies roughly half of that, so even a file that matches Table 1's
-920,000 holders and £3,070m should fall about 30 to 45% short. Matching Table 1's
-taxable value does not pin the base, since a different electric mix and different
-prices reach the same total. So the stage's receipt records the weighted total list
-price of electric cars and of the others, for the results to read the gap as base
-size.
+taxable value implies roughly half of that, so a file that matches Table 1's
+920,000 holders and £3,070m, as the national now binds (below), should still fall
+about 30 to 45% short. With Table 2C's fuel counts bound as well the electric mix is
+pinned, but the prices are not: a different price mix reaches the same total. So the
+stage's receipt records the weighted total list price of electric cars and of the
+others, for the results to read the gap as base size.
 
-Two parts of a shortfall are measured here rather than corrected (María's ruling of 31
-October 2026: measure first).
+Two parts of a shortfall were measured first (María's ruling of 31 October 2026:
+measure first), and the first is corrected now.
 
 - **The tape rows' EPB draw.** Until 3 November 2026 a tape row kept its twin's car
   only where its drawn EPB was positive, and the national `f6e33b93` lost about
@@ -175,13 +175,38 @@ October 2026: measure first).
 These figures, like the list price totals, are at the stage's weights, before
 calibration moves the holders. The results measure the base on the calibrated file.
 
-## Measured, not bound
+## Bound and measured
 
-No HMRC company car fact is a calibration target: the stage draws fuel and CO2 to
-Tables 2A and 2C, so binding them would be circular. No build step reads the other
-tables after calibration yet: comparing the calibrated file with HMRC's Table 1
-(recipients, taxable value, income tax and NICs), Table 3A (by income range) and Table
-4 (by region) is a manual step. `uk_stage_company_cars_invariants` blocks a release on
+The national calibration binds five of HMRC's 2024-25 facts from the Chronicle feed
+(María's ruling of 3 November 2026), in their own family, `hmrc_benefits_in_kind`:
+
+| Target | HMRC | Frame |
+|---|---|---|
+| `hmrc.benefits_in_kind.company_car_recipients` | Table 1, car recipients, 920,000 | People with a list price |
+| `hmrc.benefits_in_kind.company_car_taxable_value` | Table 1, car taxable value, £3,070m | The engine's company car benefit in 2024-25 |
+| `hmrc.benefits_in_kind.company_car_fuel.fully_electric` | Table 2C, 465,000 | `ELECTRIC` |
+| `hmrc.benefits_in_kind.company_car_fuel.petrol_including_hybrids` | Table 2C, 390,000 | `PETROL` and `ALTERNATIVE_FUEL` |
+| `hmrc.benefits_in_kind.company_car_fuel.diesel_including_hybrids` | Table 2C, 60,000 | `DIESEL_RDE2` and `DIESEL_NON_RDE2` |
+
+- **The taxable value** is measured in 2024-25 (`company_car_benefit_2024`,
+  `measurement_period` 2024), as the CGT rows are: the calibration year's appropriate
+  percentages are a point higher, so measuring 2025 would set 2024-25's total against
+  2025-26's rates and pull the base down.
+- **The counts** count stored inputs, so the year they are measured in moves nothing
+  but the fact. They are held at 2024-25 (`uprating_holds.json`): no index projects
+  company car holders, and HMRC's 2025-26 figures are due in July 2027.
+- **The fuel counts** bring the fuel mix to HMRC's rather than the FRS respondents':
+  about a third of the FRS's company cars are electric, and half of HMRC's. Table 2C
+  counts hybrids with their fuel, and the stage maps every FRS hybrid to
+  `ALTERNATIVE_FUEL`, which counts with petrol here, since diesel hybrids are few. If
+  the reweighting distorts other targets, redrawing the fuel types in the stage is
+  the next step.
+- The three fuel rows sum to 915,000 against Table 1's 920,000, from HMRC's rounding.
+
+The stage still draws fuel and CO2 from its vendored copy of Tables 2A and 2C, which
+the weight solve never reads. Comparing the calibrated file with Table 2A (by CO2),
+Table 3A (by income range) and Table 4 (by region) is a manual step.
+`uk_stage_company_cars_invariants` blocks a release on
 any record that breaks an invariant, a tape row whose employee pension contribution
 exceeds its carved pay included, and on a tape row whose pay plus benefits misses the
 tape's total by more than 5p.

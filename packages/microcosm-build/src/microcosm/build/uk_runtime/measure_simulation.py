@@ -46,6 +46,9 @@ from microcosm.build.uk_runtime.high_value_homes import (
     high_value_home_mask,
     uk_high_value_home_thresholds,
 )
+from microcosm.build.uk_runtime.hmrc_company_car_statistics import (
+    company_car_dated_benefit_year,
+)
 from microcosm.build.uk_runtime.hmrc_income import UK_LOSS_RELIEF_TERMS
 from microcosm.build.uk_runtime.income_tax_rate_classes import (
     UK_RATE_CLASS_ALLOCATION,
@@ -107,6 +110,9 @@ _CHILD_BENEFIT_CHILD = "is_child_or_qualifying_young_person_for_child_benefit"
 # Reserved, transient measurement names: using the model's input name here
 # would let a persisted base-period column bypass requested-year calculation.
 # Both the taxpayer mask and amount must use the same engine-year net gains.
+#: The engine variable a dated company car benefit reads
+#: (``company_car_benefit_2024``).
+_COMPANY_CAR_BENEFIT = "company_car_benefit"
 _CGT_CALIBRATION_VARIABLES = {
     "cgt_calibration_gains": "capital_gains",
     "cgt_calibration_tax": "capital_gains_tax",
@@ -557,6 +563,15 @@ def compute_uk_measure_input(
             frame, simulation, entity, model_variable, measure_year
         )
         return values, f"engine_period:{measure_year}:{model_variable}:{route}"
+
+    benefit_year = company_car_dated_benefit_year(variable)
+    if benefit_year is not None:
+        if entity != "person":
+            raise KeyError(f"the dated company car benefit is person-only: {entity}")
+        values, route = compute_uk_measure_input(
+            frame, simulation, entity, _COMPANY_CAR_BENEFIT, benefit_year
+        )
+        return values, f"engine_period:{benefit_year}:{_COMPANY_CAR_BENEFIT}:{route}"
 
     if variable == _CGT_TAXABLE_INCOME:
         if entity != "person":
@@ -1250,6 +1265,8 @@ class UKMeasureResolver:
         cgt_measure = _cgt_model_measure(variable, self.year)
         if cgt_measure is not None:
             return entity == "person" and self.knows(entity, cgt_measure[0])
+        if company_car_dated_benefit_year(variable) is not None:
+            return entity == "person" and self.knows(entity, _COMPANY_CAR_BENEFIT)
         if variable == _CGT_TAXABLE_INCOME:
             return entity == "person" and all(
                 self.knows("person", name) for name in _CGT_TAXABLE_INCOME_COMPONENTS
@@ -1293,6 +1310,8 @@ class UKMeasureResolver:
         ):
             return "person"
         if _cgt_model_measure(variable, self.year) is not None:
+            return "person"
+        if company_car_dated_benefit_year(variable) is not None:
             return "person"
         if variable in UK_NAMED_TERMS or variable in DFE_SPRING_TERM_MEASURES:
             return "person"

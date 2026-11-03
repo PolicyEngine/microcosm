@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "description": "Declared reasons for UK targets bound at the 2025 calibration period from an older fact without an uprating index (microcosm#1123). Kinds: matched_period, in_year_snapshot, control_rescaled, reviewed_no_index. uk_runtime.uprating_holds refuses an undeclared, expired or stale hold at compile time. A hold is in force only once it carries approved_by and approved_on and its status is approved: the compile refuses the rows of any other entry. Every entry expires two months after its signature, so each is reviewed again by 2026-12-11.",
+  "description": "Declared reasons for UK targets bound at the 2025 calibration period from an older fact without an uprating index (microcosm#1123). Kinds: matched_period, in_year_snapshot, control_rescaled, reviewed_no_index. uk_runtime.uprating_holds refuses an undeclared, expired or stale hold at compile time. A hold is in force only once it carries approved_by and approved_on and its status is approved: the compile refuses the rows of any other entry. Every entry expires two months after its signature.",
   "holds": [
     {
       "scope": "national",
@@ -444,6 +444,35 @@
       "approved_on": "2026-10-25",
       "status": "approved",
       "expires_on": "2026-12-11"
+    },
+    {
+      "scope": "national",
+      "kind": "matched_period",
+      "target_ids": [
+        "hmrc.benefits_in_kind.company_car_taxable_value"
+      ],
+      "reason": "HMRC Benefits in kind statistics (July 2026) Table 1's 2024-25 taxable value of the company car benefit, the latest year published (provisional). The binding measures it as the engine's company car benefit in 2024-25 (company_car_benefit_2024; measurement_period 2024, require_matching_fact_period), so the 2025-26 appropriate percentages, a point higher, stay out of the comparison. HMRC's 2025-26 figures are due in July 2027.",
+      "tracking": "microcosm#1418",
+      "approved_by": "juaristi22",
+      "approved_on": "2026-11-03",
+      "status": "approved",
+      "expires_on": "2027-01-03"
+    },
+    {
+      "scope": "national",
+      "kind": "reviewed_no_index",
+      "target_ids": [
+        "hmrc.benefits_in_kind.company_car_fuel.diesel_including_hybrids",
+        "hmrc.benefits_in_kind.company_car_fuel.fully_electric",
+        "hmrc.benefits_in_kind.company_car_fuel.petrol_including_hybrids",
+        "hmrc.benefits_in_kind.company_car_recipients"
+      ],
+      "reason": "HMRC Benefits in kind statistics (July 2026) Tables 1 and 2C: company car recipients in 2024-25, in all and by fuel, the latest year published (provisional). No published index projects company car holders or their fuel mix, so the counts are held at their 2024-25 level until HMRC's 2025-26 figures, due in July 2027. They count stored inputs, so the period they are measured at moves nothing but the fact (María's ruling of 3 November 2026 to bind them).",
+      "tracking": "microcosm#1418",
+      "approved_by": "juaristi22",
+      "approved_on": "2026-11-03",
+      "status": "approved",
+      "expires_on": "2027-01-03"
     }
   ]
 }

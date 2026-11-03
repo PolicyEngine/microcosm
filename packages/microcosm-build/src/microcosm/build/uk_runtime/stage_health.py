@@ -5111,9 +5111,9 @@ def _company_cars_gate(
     output misses the pay the row brought in by more than
     ``maximum_pay_identity_error_gbp``: the carve-out assumes how the engine
     prices a car, so an engine that prices it otherwise fails here. How far
-    holders, fuels, CO2 bands and list prices sit from HMRC's tables after
-    calibration is not a gate (María's ruling of 28 October 2026 on the ISA
-    facts), and comparing them is a manual step for now.
+    the calibrated holders, taxable value and fuels sit from HMRC's tables is
+    the target-fit gate's, which binds them (María's ruling of 3 November
+    2026); the CO2 bands and list prices are compared by hand.
     """
 
     check = "company_cars"

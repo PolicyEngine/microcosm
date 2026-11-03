@@ -897,7 +897,12 @@
       "hmrc.spi.other_investment_income.amount_by_total_income_band": "New declaration backed by SPI 2023-24 Table 3.7 other income in Chronicle (spi_income_bands_2023_24); no uk-data metric holds other investment income by band (microcosm#1418).",
       "hmrc.spi.self_employment_income.count_by_self_employment_income_band": "New declaration backed by SPI 2023-24 Table 3.10 in Chronicle (spi_income_bands_2023_24, PolicyEngine/chronicle#394); no uk-data metric holds self-employment income by self-employment band (microcosm#1418).",
       "hmrc.spi.self_employment_income.amount_by_self_employment_income_band": "New declaration backed by SPI 2023-24 Table 3.10 in Chronicle (spi_income_bands_2023_24, PolicyEngine/chronicle#394); no uk-data metric holds self-employment income by self-employment band (microcosm#1418).",
-      "hmrc.spi.employment_income.count_by_self_employment_income_band": "New declaration backed by SPI 2023-24 Table 3.10 in Chronicle (spi_income_bands_2023_24, PolicyEngine/chronicle#394); no uk-data metric holds employment income by self-employment band (microcosm#1418)."
+      "hmrc.spi.employment_income.count_by_self_employment_income_band": "New declaration backed by SPI 2023-24 Table 3.10 in Chronicle (spi_income_bands_2023_24, PolicyEngine/chronicle#394); no uk-data metric holds employment income by self-employment band (microcosm#1418).",
+      "hmrc.benefits_in_kind.company_car_recipients": "New declaration backed by HMRC Benefits in kind statistics (July 2026) Table 1 2024-25 in Chronicle (hmrc-benefits-in-kind-july-2026, PolicyEngine/chronicle#399); no uk-data metric holds company cars (microcosm#1418).",
+      "hmrc.benefits_in_kind.company_car_taxable_value": "New declaration backed by HMRC Benefits in kind statistics (July 2026) Table 1 2024-25 in Chronicle (hmrc-benefits-in-kind-july-2026, PolicyEngine/chronicle#399); no uk-data metric holds company cars (microcosm#1418).",
+      "hmrc.benefits_in_kind.company_car_fuel.fully_electric": "New declaration backed by HMRC Benefits in kind statistics (July 2026) Table 2C 2024-25 in Chronicle (hmrc-benefits-in-kind-july-2026, PolicyEngine/chronicle#399); no uk-data metric holds company cars (microcosm#1418).",
+      "hmrc.benefits_in_kind.company_car_fuel.petrol_including_hybrids": "New declaration backed by HMRC Benefits in kind statistics (July 2026) Table 2C 2024-25 in Chronicle (hmrc-benefits-in-kind-july-2026, PolicyEngine/chronicle#399); no uk-data metric holds company cars (microcosm#1418).",
+      "hmrc.benefits_in_kind.company_car_fuel.diesel_including_hybrids": "New declaration backed by HMRC Benefits in kind statistics (July 2026) Table 2C 2024-25 in Chronicle (hmrc-benefits-in-kind-july-2026, PolicyEngine/chronicle#399); no uk-data metric holds company cars (microcosm#1418)."
     },
     "suppressed_ancestors": {
       "hmrc/salary_sacrifice_it_relief_basic_rate": {
@@ -1332,7 +1337,12 @@
       "hmrc.child_benefit.families_in_payment.children_2",
       "hmrc.child_benefit.families_in_payment.children_3",
       "hmrc.child_benefit.families_in_payment.children_4",
-      "hmrc.child_benefit.families_in_payment.children_5_plus"
+      "hmrc.child_benefit.families_in_payment.children_5_plus",
+      "hmrc.benefits_in_kind.company_car_recipients",
+      "hmrc.benefits_in_kind.company_car_taxable_value",
+      "hmrc.benefits_in_kind.company_car_fuel.fully_electric",
+      "hmrc.benefits_in_kind.company_car_fuel.petrol_including_hybrids",
+      "hmrc.benefits_in_kind.company_car_fuel.diesel_including_hybrids"
     ]
   },
   "profile_parity": {
@@ -31198,6 +31208,292 @@
       ]
     },
     {
+      "target_id": "hmrc.benefits_in_kind.company_car_recipients",
+      "family": "hmrc_benefits_in_kind",
+      "geography_levels": [
+        "country"
+      ],
+      "measurement": {
+        "entity": "person",
+        "map_to": "household",
+        "concept": "uk.person.count",
+        "filters": [
+          {
+            "concept": "uk.benefits_in_kind.company_car.list_price",
+            "operator": ">",
+            "value": 0
+          }
+        ]
+      },
+      "bindings": {
+        "policyengine": {
+          "metric_name": "hmrc/company_car_recipients",
+          "value_variable": "person_count",
+          "from_entity": "person",
+          "map_to": "household",
+          "filters": [
+            {
+              "variable": "company_car_list_price",
+              "operator": ">",
+              "value": 0
+            }
+          ],
+          "notes": "HMRC Benefits in kind statistics (July 2026) Table 1, 2024-25 provisional: individuals taxed on a company car, from employers' P11D returns and the cars they payroll, a car reported both ways counted once (920,000, rounded by HMRC to the nearest 10,000). Bound at the calibration year as HMRC's 2024-25 count, the latest year published: no index projects company car holders, and the 2025-26 figures are due in July 2027 (uprating_holds.json). Counts each person with a company car on the frame, company_car_list_price above zero, the inputs the company_cars stage writes for every holder and no one else (the engine's has_company_car reads the same price). Bound with the taxable value and Table 2C's fuel counts so the frame carries the company car base Budget 2026's 2030-31 rise in every appropriate percentage acts on (Table 6.1 row 86), which no row bound before (María's ruling of 3 November 2026 (microcosm#1418)). Table 1's 2024-25 statistics leave out some company cars HMRC's sources miss, as its note says."
+        },
+        "axiom": {
+          "metric_name": "hmrc/company_car_recipients",
+          "status": "pending",
+          "value_rule": "uk.person.count"
+        }
+      },
+      "ledger_selector": {
+        "source_name": "hmrc",
+        "source_concept": "hmrc.benefit_in_kind_recipients",
+        "record_set_spec_id": "hmrc.benefits_in_kind_july_2026.table1.recipients.ty2024.v1",
+        "dimension_values": {
+          "company_car_benefit_type": "car"
+        },
+        "entity_name": "person",
+        "period_type": "tax_year",
+        "period_value": 2024
+      },
+      "category_id": "hmrc.benefits_in_kind",
+      "label": "Company car benefit recipients"
+    },
+    {
+      "target_id": "hmrc.benefits_in_kind.company_car_taxable_value",
+      "family": "hmrc_benefits_in_kind",
+      "geography_levels": [
+        "country"
+      ],
+      "measurement": {
+        "entity": "person",
+        "map_to": "household",
+        "concept": "uk.benefits_in_kind.company_car.taxable_value.amount"
+      },
+      "bindings": {
+        "policyengine": {
+          "metric_name": "hmrc/company_car_taxable_value",
+          "value_variable": "company_car_benefit_2024",
+          "from_entity": "person",
+          "map_to": "household",
+          "measurement_period": 2024,
+          "require_matching_fact_period": true,
+          "notes": "HMRC Benefits in kind statistics (July 2026) Table 1, 2024-25 provisional: the taxable value of the company car benefit (GBP 3,070m, rounded by HMRC to the nearest GBP 10m). Measured as the engine's company car benefit in 2024-25 on the frame's stored car inputs (company_car_benefit_2024; measurement_period 2024, require_matching_fact_period), as the CGT rows are measured under the 2024-25 rules: the engine's calibration-year appropriate percentages are a point higher from 2025-26, so measuring 2025 would hold the 2024-25 total against 2025-26 rates and pull the base down. The benefit is the price less contributions up to the cap, times the appropriate percentage, with availability and payments for private use at the engine's defaults, which no survey records. Bound with the holders and Table 2C's fuel counts, it pins the mix of prices and percentages beside the count (María's ruling of 3 November 2026 (microcosm#1418)); the list price base the 2030-31 rise acts on is still measured, not bound, since no HMRC table publishes it."
+        },
+        "axiom": {
+          "metric_name": "hmrc/company_car_taxable_value",
+          "status": "pending",
+          "value_rule": "uk.benefits_in_kind.company_car.taxable_value.amount"
+        }
+      },
+      "ledger_selector": {
+        "source_name": "hmrc",
+        "source_concept": "hmrc.benefit_in_kind_taxable_value",
+        "record_set_spec_id": "hmrc.benefits_in_kind_july_2026.table1.taxable_value.ty2024.v1",
+        "dimension_values": {
+          "company_car_benefit_type": "car"
+        },
+        "entity_name": "person",
+        "period_type": "tax_year",
+        "period_value": 2024
+      },
+      "category_id": "hmrc.benefits_in_kind",
+      "label": "Company car benefit taxable value"
+    },
+    {
+      "target_id": "hmrc.benefits_in_kind.company_car_fuel.fully_electric",
+      "family": "hmrc_benefits_in_kind",
+      "geography_levels": [
+        "country"
+      ],
+      "measurement": {
+        "entity": "person",
+        "map_to": "household",
+        "concept": "uk.person.count",
+        "filters": [
+          {
+            "concept": "uk.benefits_in_kind.company_car.list_price",
+            "operator": ">",
+            "value": 0
+          },
+          {
+            "concept": "uk.benefits_in_kind.company_car.fuel_type",
+            "equals": "fully_electric"
+          }
+        ]
+      },
+      "bindings": {
+        "policyengine": {
+          "metric_name": "hmrc/company_car_recipients_fully_electric",
+          "value_variable": "person_count",
+          "from_entity": "person",
+          "map_to": "household",
+          "filters": [
+            {
+              "variable": "company_car_list_price",
+              "operator": ">",
+              "value": 0
+            },
+            {
+              "variable": "company_car_fuel_type",
+              "equals": "ELECTRIC"
+            }
+          ],
+          "notes": "HMRC Benefits in kind statistics (July 2026) Table 2C, 2024-25 provisional: company car recipients whose car is fully electric (465,000), the engine's ELECTRIC fuel type. Bound at the calibration year as HMRC's 2024-25 count, the latest year published: no index projects company car holders, and the 2025-26 figures are due in July 2027 (uprating_holds.json). Counts each person with a company car on the frame, company_car_list_price above zero, the inputs the company_cars stage writes for every holder and no one else (the engine's has_company_car reads the same price). The three fuel rows sum to 915,000, 5,000 below Table 1's 920,000, from HMRC's rounding, so the solve meets the four within that gap. Bound to bring the frame's fuel mix to HMRC's 2024-25 shares rather than the FRS respondents' answers (María's ruling of 3 November 2026 (microcosm#1418)); if the reweighting distorts other targets, redrawing the fuel types in the company_cars stage is the next step. The stage still draws the unknown fuels at Table 2C's shares (uk/source_stages.json), which these rows now bind as well."
+        },
+        "axiom": {
+          "metric_name": "hmrc/company_car_recipients_fully_electric",
+          "status": "pending",
+          "value_rule": "uk.person.count"
+        }
+      },
+      "ledger_selector": {
+        "source_name": "hmrc",
+        "source_concept": "hmrc.benefit_in_kind_recipients",
+        "record_set_spec_id": "hmrc.benefits_in_kind_july_2026.table2c.recipients.ty2024.v1",
+        "dimension_values": {
+          "company_car_benefit_type": "car",
+          "company_car_fuel_type": "fully_electric"
+        },
+        "entity_name": "person",
+        "period_type": "tax_year",
+        "period_value": 2024
+      },
+      "category_id": "hmrc.benefits_in_kind",
+      "label": "Company car recipients, fully electric"
+    },
+    {
+      "target_id": "hmrc.benefits_in_kind.company_car_fuel.petrol_including_hybrids",
+      "family": "hmrc_benefits_in_kind",
+      "geography_levels": [
+        "country"
+      ],
+      "measurement": {
+        "entity": "person",
+        "map_to": "household",
+        "concept": "uk.person.count",
+        "filters": [
+          {
+            "concept": "uk.benefits_in_kind.company_car.list_price",
+            "operator": ">",
+            "value": 0
+          },
+          {
+            "concept": "uk.benefits_in_kind.company_car.fuel_type",
+            "equals": "petrol_including_hybrids"
+          }
+        ]
+      },
+      "bindings": {
+        "policyengine": {
+          "metric_name": "hmrc/company_car_recipients_petrol_including_hybrids",
+          "value_variable": "person_count",
+          "from_entity": "person",
+          "map_to": "household",
+          "filters": [
+            {
+              "variable": "company_car_list_price",
+              "operator": ">",
+              "value": 0
+            },
+            {
+              "variable": "company_car_fuel_type",
+              "in": [
+                "PETROL",
+                "ALTERNATIVE_FUEL"
+              ]
+            }
+          ],
+          "notes": "HMRC Benefits in kind statistics (July 2026) Table 2C, 2024-25 provisional: company car recipients whose car runs on petrol, hybrids included (390,000): the engine's PETROL and ALTERNATIVE_FUEL fuel types. The company_cars stage maps the FRS hybrids and other fuels to ALTERNATIVE_FUEL, and Table 2C counts each hybrid with its fuel; diesel hybrids are few, so every hybrid is counted with petrol. Bound at the calibration year as HMRC's 2024-25 count, the latest year published: no index projects company car holders, and the 2025-26 figures are due in July 2027 (uprating_holds.json). Counts each person with a company car on the frame, company_car_list_price above zero, the inputs the company_cars stage writes for every holder and no one else (the engine's has_company_car reads the same price). The three fuel rows sum to 915,000, 5,000 below Table 1's 920,000, from HMRC's rounding, so the solve meets the four within that gap. Bound to bring the frame's fuel mix to HMRC's 2024-25 shares rather than the FRS respondents' answers (María's ruling of 3 November 2026 (microcosm#1418)); if the reweighting distorts other targets, redrawing the fuel types in the company_cars stage is the next step. The stage still draws the unknown fuels at Table 2C's shares (uk/source_stages.json), which these rows now bind as well."
+        },
+        "axiom": {
+          "metric_name": "hmrc/company_car_recipients_petrol_including_hybrids",
+          "status": "pending",
+          "value_rule": "uk.person.count"
+        }
+      },
+      "ledger_selector": {
+        "source_name": "hmrc",
+        "source_concept": "hmrc.benefit_in_kind_recipients",
+        "record_set_spec_id": "hmrc.benefits_in_kind_july_2026.table2c.recipients.ty2024.v1",
+        "dimension_values": {
+          "company_car_benefit_type": "car",
+          "company_car_fuel_type": "petrol_including_hybrids"
+        },
+        "entity_name": "person",
+        "period_type": "tax_year",
+        "period_value": 2024
+      },
+      "category_id": "hmrc.benefits_in_kind",
+      "label": "Company car recipients, petrol including hybrids"
+    },
+    {
+      "target_id": "hmrc.benefits_in_kind.company_car_fuel.diesel_including_hybrids",
+      "family": "hmrc_benefits_in_kind",
+      "geography_levels": [
+        "country"
+      ],
+      "measurement": {
+        "entity": "person",
+        "map_to": "household",
+        "concept": "uk.person.count",
+        "filters": [
+          {
+            "concept": "uk.benefits_in_kind.company_car.list_price",
+            "operator": ">",
+            "value": 0
+          },
+          {
+            "concept": "uk.benefits_in_kind.company_car.fuel_type",
+            "equals": "diesel_including_hybrids"
+          }
+        ]
+      },
+      "bindings": {
+        "policyengine": {
+          "metric_name": "hmrc/company_car_recipients_diesel_including_hybrids",
+          "value_variable": "person_count",
+          "from_entity": "person",
+          "map_to": "household",
+          "filters": [
+            {
+              "variable": "company_car_list_price",
+              "operator": ">",
+              "value": 0
+            },
+            {
+              "variable": "company_car_fuel_type",
+              "in": [
+                "DIESEL_RDE2",
+                "DIESEL_NON_RDE2"
+              ]
+            }
+          ],
+          "notes": "HMRC Benefits in kind statistics (July 2026) Table 2C, 2024-25 provisional: company car recipients whose car runs on diesel, hybrids included (60,000): the engine's two diesel fuel types (the stage writes DIESEL_RDE2). Diesel hybrids are counted with petrol on the frame (hmrc.benefits_in_kind.company_car_fuel.petrol_including_hybrids). Bound at the calibration year as HMRC's 2024-25 count, the latest year published: no index projects company car holders, and the 2025-26 figures are due in July 2027 (uprating_holds.json). Counts each person with a company car on the frame, company_car_list_price above zero, the inputs the company_cars stage writes for every holder and no one else (the engine's has_company_car reads the same price). The three fuel rows sum to 915,000, 5,000 below Table 1's 920,000, from HMRC's rounding, so the solve meets the four within that gap. Bound to bring the frame's fuel mix to HMRC's 2024-25 shares rather than the FRS respondents' answers (María's ruling of 3 November 2026 (microcosm#1418)); if the reweighting distorts other targets, redrawing the fuel types in the company_cars stage is the next step. The stage still draws the unknown fuels at Table 2C's shares (uk/source_stages.json), which these rows now bind as well."
+        },
+        "axiom": {
+          "metric_name": "hmrc/company_car_recipients_diesel_including_hybrids",
+          "status": "pending",
+          "value_rule": "uk.person.count"
+        }
+      },
+      "ledger_selector": {
+        "source_name": "hmrc",
+        "source_concept": "hmrc.benefit_in_kind_recipients",
+        "record_set_spec_id": "hmrc.benefits_in_kind_july_2026.table2c.recipients.ty2024.v1",
+        "dimension_values": {
+          "company_car_benefit_type": "car",
+          "company_car_fuel_type": "diesel_including_hybrids"
+        },
+        "entity_name": "person",
+        "period_type": "tax_year",
+        "period_value": 2024
+      },
+      "category_id": "hmrc.benefits_in_kind",
+      "label": "Company car recipients, diesel including hybrids"
+    },
+    {
       "target_id": "hmrc.self_employment_income.amount",
       "family": "hmrc",
       "geography_levels": [
@@ -35602,6 +35898,10 @@
       "dft.local_bus_journeys": {
         "provider_id": "dft",
         "label": "Local bus passenger journeys"
+      },
+      "hmrc.benefits_in_kind": {
+        "provider_id": "hmrc",
+        "label": "Benefits in kind"
       }
     }
   }
