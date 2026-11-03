@@ -581,7 +581,7 @@ def _second_writer_refusal(
 
     R2C-15: the producer is the only ancestor of each calibration node that
     writes each measured column, wherever another writer sits and whether
-    or not it rewrites.
+    or not it rewrites. An EXPAND writes the cells it declares.
     """
     for (entity, column), names in sorted(writers.items(), key=str):
         if list(names) != [producer]:
@@ -591,6 +591,20 @@ def _second_writer_refusal(
                 f"only its producer {producer!r} may write it"
             )
     return None
+
+
+def _declared_writer(row: Mapping, entity: object, column: object) -> bool:
+    """Whether a declared node may write a cell, by output or as an EXPAND.
+
+    An EXPAND whose cells only composition can tell writes every column, as
+    :func:`_precalibration_declared_reads` reads it.
+    """
+    cells = _precalibration_cells(row)
+    return (
+        (entity, column) in _owned_columns(row)
+        or cells is None
+        or (entity, column) in cells
+    )
 
 
 def measurement_proofs(
@@ -680,7 +694,7 @@ def measurement_proofs(
                     (entity, column): sorted(
                         name
                         for name in closure
-                        if (entity, column) in _owned_columns(rows[name])
+                        if _declared_writer(rows[name], entity, column)
                     )
                     for entity, column in required
                 },
@@ -708,7 +722,8 @@ def _check_measurement_proofs(
     graph, the compiled ancestors of that node must hold exactly one node
     whose params declare the measurement, and it must be the proof's
     producer for that node. That producer must also be the only compiled
-    ancestor whose outputs hold each of the proof's columns (R2C-15).
+    ancestor whose outputs or EXPAND cells hold each of the proof's columns
+    (R2C-15).
     """
     proofs, _ = measurement_proofs(spec)
     if not proofs:
@@ -723,6 +738,7 @@ def _check_measurement_proofs(
         if isinstance(node.params, Mapping) and MEASUREMENT_PARAM in node.params
     }
     by_id = {node.id: node for node in graph.nodes}
+    _, expand_cells = _precalibration_expansions(graph)
     for binding, proof in sorted(proofs.items()):
         named = sorted(name for name, value in declared.items() if value == binding)
         for root in sorted(roots):
@@ -744,7 +760,8 @@ def _check_measurement_proofs(
                     (entity, column): sorted(
                         name
                         for name in closure
-                        if any(
+                        if (entity, column) in expand_cells[name]
+                        or any(
                             (output.entity, output.column) == (entity, column)
                             for output in by_id[name].outputs
                         )
