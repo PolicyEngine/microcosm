@@ -1157,7 +1157,7 @@ def markdown(receipt: Mapping[str, object]) -> str:
         "(any federal loan: "
         f"{moves['earliest_years']['any_federal_loan']:.0f}).",
         "",
-        "| Loans | Loans | Weighted loans | Dollars | Share of federal |",
+        "| Rule | Loans | Weighted loans | Dollars | Share of federal |",
         "|---|---:|---:|---:|---:|",
     ]
     for key, label in move_labels.items():
