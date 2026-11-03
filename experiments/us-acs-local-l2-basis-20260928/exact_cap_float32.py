@@ -49,7 +49,7 @@ SEED = 3
 
 
 def rounds_32_on(log_w: torch.Tensor, total: float, log_upper: torch.Tensor) -> dict:
-    """microcosm#1078's cap step (b115745d1) on a copy, with what each round did."""
+    """microcosm#1078's cap step (b7b4c2935) on a copy, with what each round did."""
     log_w = log_w.clone()
     shifts, lifted, lifted_log_cap = [], [], 0.0
     for _ in range(32):

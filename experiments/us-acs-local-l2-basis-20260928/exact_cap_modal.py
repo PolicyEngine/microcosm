@@ -140,7 +140,7 @@ def _instrument(variant: str) -> dict:
     float32_caps: dict[int, torch.Tensor] = {}
 
     def rounds_32(log_w, total, log_upper):
-        """microcosm#1078's cap step (b115745d1), plus the round count.
+        """microcosm#1078's cap step (b7b4c2935), plus the round count.
 
         Shift so ``exp(log_w)`` sums to ``total``, stop if no record is over
         its float32 log cap, else clamp and go again. Returns the rounds
