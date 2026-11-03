@@ -104,19 +104,20 @@ Max ruled on 19 October (d1712) that a repeat of exactly that class may be
 accepted for this run: every entity table has the same shape and index, totals
 are equal, and every differing value is within 1e-12 relative. Max accepted the
 same class in `person.employer_sponsored_insurance_premiums`, which reached the
-base after this run, for the 2026-11 build (d2274) and for later builds (d2336):
-on the 2026-11 base it differed by one unit in the last place on 73,966 rows,
-with identical totals. Step 5b runs `tools/route_a/lineage_class_check.py`,
-which accepts differences only in those two columns, `person.pre_subsidy_rent`
-and `person.employer_sponsored_insurance_premiums`. A difference in any other
-column stops for Max, and so does a column total that moves by more than 1e-12
-relative to the larger total. The check sums each column with `math.fsum`, which
-rounds once, so rounding in a running sum can't hide a move. It also stops on a
-total it can't compute (an infinite value, or a sum past the float range) and on
-an entity table whose index names or dtypes differ. Its JSON verdict goes into the run's provenance. Any other mismatch,
-skipping the new local reference, or relaxing the hand-off still needs **Max's
-explicit decision** with the new evidence. Stop before writing `ACCEPTED` while
-that decision is outstanding.
+base after this run, for the 2026-11 build (d2274) and for later builds (d2336).
+On the 2026-11 base that column differed by one unit in the last place on 73,966
+rows, and its float totals matched. Step 5b runs
+`tools/route_a/lineage_class_check.py`, which accepts differences only in those
+two columns, `person.pre_subsidy_rent` and
+`person.employer_sponsored_insurance_premiums`. A difference in any other column
+stops for Max, and so does a column total that moves by more than 1e-12 relative
+to the larger total. The check sums each column with `math.fsum`, which rounds
+once, so rounding in a running sum can't hide a move. It also stops on a total
+it can't compute (an infinite value, or a partial sum past the float range) and
+on an entity table whose index names or dtypes differ. Its JSON verdict goes
+into the run's provenance. Any other mismatch, skipping the new local reference,
+or relaxing the hand-off still needs **Max's explicit decision** with the new
+evidence. Stop before writing `ACCEPTED` until Max decides.
 
 ## Settings to review on 18 October
 

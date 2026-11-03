@@ -8,10 +8,10 @@ person.pre_subsidy_rent (313 of 432,523 rows, max relative 6.08e-15).
 
 Max accepted the same class in person.employer_sponsored_insurance_premiums
 for the 2026-11 build (d2274) and for later builds (d2336). On the 2026-11
-base, 73,966 of its 432,523 rows differed by exactly +1 unit in the last
-place (max relative 2.21e-16, identical totals), which fits one scale factor
-rounding differently on the two platforms. A difference in any other column
-is reported as outside the class.
+base, 73,966 of its 432,523 rows differed by +1 unit in the last place (max
+relative 2.21e-16, matching float totals), which fits one scale factor
+rounding differently on the two platforms. The check reports a difference in
+any other column as outside the class.
 
 Usage (with the build worktree's interpreter):
     python lineage_class_check.py LOCAL_FRAME.h5 MODAL_FRAME.h5 OUT.json

@@ -11,7 +11,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 import pytest
-from hypothesis import HealthCheck, given, settings
+from hypothesis import HealthCheck, example, given, settings
 from hypothesis import strategies as st
 
 from test_support.microcosm_build.us_modal_stage_plan_tool import ROOT
@@ -267,19 +267,42 @@ def test_a_zero_total_against_infinite_values_records_its_stop(
     assert any("employer_sponsored" in entry for entry in verdict["problems"])
 
 
+def _two_level(tables, people, names=("person_id", "household_id")):
+    tables["person"].index = pd.MultiIndex.from_arrays(
+        [list(people), [1, 1, 2]], names=list(names)
+    )
+    return tables
+
+
 @pytest.mark.parametrize(
-    "modal",
+    ("local", "modal"),
     [
-        # Index.equals compares values only, so these passed before.
-        _tables([1.0, 2.0, 3.0], index=(1.0, 2.0, 3.0)),
-        {
-            **_tables([1.0, 2.0, 3.0]),
-            "person": _tables([1.0, 2.0, 3.0])["person"].rename_axis("household_id"),
-        },
+        # Index.equals compares values only, so it misses each of these.
+        (_tables([1.0, 2.0, 3.0]), _tables([1.0, 2.0, 3.0], index=(1.0, 2.0, 3.0))),
+        (
+            _tables([1.0, 2.0, 3.0]),
+            {
+                **_tables([1.0, 2.0, 3.0]),
+                "person": _tables([1.0, 2.0, 3.0])["person"].rename_axis(
+                    "household_id"
+                ),
+            },
+        ),
+        # The same two changes in one level of a two-level index.
+        (
+            _two_level(_tables([1.0, 2.0, 3.0]), (1, 2, 3)),
+            _two_level(_tables([1.0, 2.0, 3.0]), (1.0, 2.0, 3.0)),
+        ),
+        (
+            _two_level(_tables([1.0, 2.0, 3.0]), (1, 2, 3)),
+            _two_level(_tables([1.0, 2.0, 3.0]), (1, 2, 3), ("person_id", "unit_id")),
+        ),
     ],
 )
-def test_an_index_dtype_or_name_change_fails(check, monkeypatch, tmp_path, modal):
-    rc, verdict = _run(check, monkeypatch, tmp_path, _tables([1.0, 2.0, 3.0]), modal)
+def test_an_index_dtype_or_name_change_fails(
+    check, monkeypatch, tmp_path, local, modal
+):
+    rc, verdict = _run(check, monkeypatch, tmp_path, local, modal)
     assert rc == 1
     assert any("index names or dtypes differ" in entry for entry in verdict["problems"])
 
@@ -381,30 +404,30 @@ def _exact_rel(a, b):
     return Fraction(0) if a == b else abs(a - b) / max(abs(a), abs(b))
 
 
-@settings(max_examples=300, deadline=None)
+@settings(max_examples=1000, deadline=None)
 @given(
     base=st.lists(_SIGNED, min_size=1, max_size=12),
     mirrored=st.integers(min_value=0, max_value=12),
-    infinite=st.sampled_from([None, math.inf, -math.inf]),
-    data=st.data(),
+    steps=st.lists(st.integers(-3, 3), min_size=24, max_size=24),
+    bumped=st.one_of(st.none(), st.integers(min_value=0, max_value=23)),
 )
+# A total that leaves exact zero by one subnormal ulp: a floor on the
+# divisor hides the move.
+@example(base=[1e-307], mirrored=1, steps=[1] + [0] * 23, bumped=None)
+# A one-ulp move beside a large pair: a running float sum absorbs it.
+@example(base=[1e17, 1.0], mirrored=2, steps=[0, 1] + [0] * 22, bumped=None)
 def test_property_the_check_agrees_with_exact_arithmetic(
-    check, base, mirrored, infinite, data
+    check, base, mirrored, steps, bumped
 ):
     # Mirrored values cancel exactly, so totals sit at or near zero while
     # large values absorb small moves in float sums. Each value moves up to
     # three ulps, and sometimes one moves by 1e-9 relative.
     local = base + [-value for value in base[:mirrored]]
-    steps = data.draw(
-        st.lists(st.integers(-3, 3), min_size=len(local), max_size=len(local))
-    )
-    modal = [_nudge(value, k) for value, k in zip(local, steps, strict=True)]
-    if data.draw(st.booleans()):
-        position = data.draw(st.integers(0, len(modal) - 1))
-        modal[position] *= 1 + 1e-9
-    if infinite is not None:
-        local.append(infinite)
-        modal.append(infinite)
+    modal = [
+        _nudge(value, k) for value, k in zip(local, steps[: len(local)], strict=True)
+    ]
+    if bumped is not None:
+        modal[bumped % len(modal)] *= 1 + 1e-9
     entry = check.compare_column(
         "person",
         "employer_sponsored_insurance_premiums",
@@ -413,10 +436,6 @@ def test_property_the_check_agrees_with_exact_arithmetic(
     )
     if entry is None:
         assert local == modal
-        return
-    if infinite is not None:
-        # An infinite value hides how far the total moved.
-        assert "problem" in entry
         return
     tol = Fraction(check.REL_TOL)
     value_rel = max(_exact_rel(a, b) for a, b in zip(local, modal, strict=True))
@@ -431,6 +450,34 @@ def test_property_the_check_agrees_with_exact_arithmetic(
         # for the one rounding of each float total.
         assert value_rel <= tol * Fraction(1001, 1000)
         assert total_rel <= tol * Fraction(1001, 1000)
+
+
+@settings(max_examples=200, deadline=None)
+@given(
+    base=st.lists(_SIGNED, min_size=1, max_size=12),
+    steps=st.lists(st.integers(-3, 3), min_size=12, max_size=12),
+    infinite=st.sampled_from([math.inf, -math.inf]),
+)
+# The same infinite value on both sides makes the float totals equal.
+@example(base=[1.0, -1.0], steps=[1] + [0] * 11, infinite=math.inf)
+def test_property_an_infinite_value_stops_any_difference(check, base, steps, infinite):
+    # An infinite value hides how far the total moved, so the check stops
+    # whenever any value in its column differs.
+    local = [*base, infinite]
+    modal = [
+        *(_nudge(value, k) for value, k in zip(base, steps[: len(base)], strict=True)),
+        infinite,
+    ]
+    entry = check.compare_column(
+        "person",
+        "employer_sponsored_insurance_premiums",
+        pd.Series(local, dtype=float),
+        pd.Series(modal, dtype=float),
+    )
+    if entry is None:
+        assert local == modal
+    else:
+        assert "problem" in entry
 
 
 _PREMIUMS = st.lists(
