@@ -2421,17 +2421,18 @@ def test_declared_scenarios_scale_national_cuts_with_their_own_factor():
         )
         profile = {"V1": "low", "V2": "high"}.get(scenario["id"], "central")
         tables = {table["id"]: table for table in intervals["tables"]}
-        national = tables["ird_taxable_income_national_ty2024"]
-        assert national["scaling"]["factor_id"] == f"ird_ty2024_to_ty2027_{profile}"
-        assert (
-            tables["ird_taxable_income_age_ty2024"]
-            == by_id["ird_taxable_income_age_ty2024"]
-        )
-        factor = national["scaling"]["operational_factor"]
+        coarse = tables["ird_taxable_income_standin_ty2024"]
+        assert coarse["scaling"]["factor_id"] == f"ird_ty2024_to_ty2027_{profile}"
+        for unscaled in (
+            "ird_taxable_income_age_ty2024",
+            "ird_taxable_income_national_ty2024",
+        ):
+            assert tables[unscaled] == by_id[unscaled]
+        factor = coarse["scaling"]["operational_factor"]
         rational = Fraction(factor["numerator"], factor["denominator"])
         for band, original in zip(
-            national["bands"],
-            by_id["ird_taxable_income_national_ty2024"]["bands"],
+            coarse["bands"],
+            by_id["ird_taxable_income_standin_ty2024"]["bands"],
             strict=True,
         ):
             if original.get("upper_cent") is not None:
