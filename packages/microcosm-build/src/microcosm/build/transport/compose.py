@@ -181,6 +181,7 @@ SKELETON_KERNELS = CREATE_REFS | frozenset(
         "transport.boundary@1",
         "transport.currency@1",
         "transport.quantile_map@1",
+        "transport.quantile_map@2",
         MONEY_NORMALIZE_REF,
         "transport.unit_attributes@1",
         "concepts.encode@1",
@@ -189,6 +190,7 @@ SKELETON_KERNELS = CREATE_REFS | frozenset(
         "simulate.solve_zero@1",  # [BE] Non-structural pre-calibration solves.
         "money.minor_units@1",
         "money.annual_transfers@1",
+        "measure.combine@1",
         "takeup.assign@1",
         "targets.compile@1",
         "calibration.prepare@1",
@@ -215,7 +217,8 @@ SKELETON_KERNELS = CREATE_REFS | frozenset(
 MONEY_NORMALIZATION_RESOURCE = "money_normalization"
 #: The only kernels that may produce donor money after CREATE once a spec
 #: declares money normalization.
-_MONEY_PRODUCERS = frozenset({MONEY_NORMALIZE_REF, "transport.quantile_map@1"})
+_QUANTILE_MAPS = frozenset({"transport.quantile_map@1", "transport.quantile_map@2"})
+_MONEY_PRODUCERS = frozenset({MONEY_NORMALIZE_REF}) | _QUANTILE_MAPS
 #: Money bridges own new integer columns in their whole population lineage.
 _MONEY_BRIDGES = frozenset({MONEY_MINOR_UNITS_REF, MONEY_ANNUAL_TRANSFERS_REF})
 #: Conversion changes the basis of an existing donor column; derived money
@@ -842,10 +845,10 @@ def _money_producer_gaps(spec: Mapping[str, object]) -> list[str]:
     and reads nothing. Otherwise every donor money concept a node reads
     after CREATE needs exactly one producer in its population lineage (its
     own version and each base version): ``money.normalize@1`` for a
-    normalized column, ``transport.quantile_map@1`` for a quantile-mapped
-    one. The concept's default transport rule is not consulted. A consumed
-    pending or quantile-mapped column without its producer names what it
-    awaits. New destination money outputs are classified separately.
+    normalized column, ``transport.quantile_map@1`` or ``@2`` for a
+    quantile-mapped one. The concept's default transport rule is not
+    consulted. A consumed pending or quantile-mapped column without its
+    producer names what it awaits. New destination money outputs are classified separately.
     """
     if not _has_resource(spec, MONEY_NORMALIZATION_RESOURCE):
         return []
@@ -941,16 +944,17 @@ def _money_producer_gaps(spec: Mapping[str, object]) -> list[str]:
                     ):
                         continue
                     expected = {
-                        "normalized": MONEY_NORMALIZE_REF,
-                        "quantile_mapped": "transport.quantile_map@1",
-                    }.get(route)
+                        "normalized": frozenset({MONEY_NORMALIZE_REF}),
+                        "quantile_mapped": _QUANTILE_MAPS,
+                    }.get(route, frozenset())
                     if kernel not in _MONEY_PRODUCERS:
                         message = (
                             f"{name} is produced by {kernel} node "
-                            f"{producer.get('id')!r}; only {MONEY_NORMALIZE_REF} or "
-                            "transport.quantile_map@1 may produce it after CREATE"
+                            f"{producer.get('id')!r}; only {MONEY_NORMALIZE_REF}, "
+                            "transport.quantile_map@1 or transport.quantile_map@2 "
+                            "may produce it after CREATE"
                         )
-                    elif kernel != expected:
+                    elif kernel not in expected:
                         message = (
                             f"{name} is declared {route} but produced by {kernel} "
                             f"node {producer.get('id')!r}"
@@ -1013,6 +1017,7 @@ def _check_single_money_normalization(
     expected = {
         MONEY_NORMALIZE_REF: "normalized",
         "transport.quantile_map@1": "quantile_mapped",
+        "transport.quantile_map@2": "quantile_mapped",
     }
     by_id = {node.id: node for node in graph.nodes}
     for (_, entity, column), owner in compiled.owners.items():
@@ -1629,6 +1634,7 @@ _SUPPORT_PRODUCERS = MappingProxyType(
     {
         MONEY_NORMALIZE_REF: "normalized",
         "transport.quantile_map@1": "quantile_mapped",
+        "transport.quantile_map@2": "quantile_mapped",
         "transport.currency@1": "currency",
     }
 )
