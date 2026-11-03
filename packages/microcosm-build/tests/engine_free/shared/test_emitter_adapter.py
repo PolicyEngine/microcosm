@@ -318,6 +318,13 @@ def test_an_emitter_older_than_0_11_9_is_never_started_and_the_build_continues(
         "--staging-read-back will fail at the read-back." in warning
     )
     assert "uv tool install --upgrade 'microcosm-emitter>=0.11.9'" in warning
+    # It also says that a remote stage of the dataset bundle is refused, so
+    # the pre-flight's later refusal does not contradict it.
+    assert "will continue without it" not in warning
+    assert "remote staging of its dataset bundle is refused" in warning
+    # The refusal can name the installed release and the upgrade.
+    assert isinstance(emitter.client, adapter.OutdatedEmitterClient)
+    assert emitter.client.reported == reported
     # Nothing reaches an emitter, and nothing raises.
     emitter.transition_stage("solve")
     emitter.complete()
