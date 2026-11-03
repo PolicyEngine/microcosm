@@ -174,9 +174,12 @@ release directory onto the runs volume. Publication stays the human step in
      collector token's expiry and origin (never its value), the collector
      origin the image's emitter reported, and the time the token had to
      last until (`token_needed_until`). Its `undelivered_events` is always
-     `null` for now: how the runner learns how many events the emitter left
-     undelivered, without reading the emitter's event queue file, waits on
-     a decision (microcosm#1470).
+     `null` for now, a gap left on purpose: the count of events the emitter
+     left undelivered comes later. A read-only `status` command in
+     microcosm-emitter will report it from the emitter's event queue file,
+     and the runner will run that command in the container after the tool
+     and record the counts here. Until then the runner does not read the
+     event queue file itself.
 
    A failed stage still mirrors its state, so `calibrate` can resume from
    `weights_latest.npz`, and its receipt says `FAILED`.
@@ -269,8 +272,9 @@ release directory onto the runs volume. Publication stays the human step in
      are lost with it. The plan, and so the setting, is copied into every
      receipt. Use it, for example, while the collector is unavailable.
    - **Events left undelivered.** Events the emitter has not sent when the
-     build ends are lost with the container. The receipt does not yet
-     record how many there were (see `runner.telemetry` above).
+     build ends are lost with the container. The receipt does not record
+     how many there were until the emitter's `status` command and the
+     runner's use of it land (see `runner.telemetry` above).
    - **On Modal:** a paid smoke run on 3 November 2026 verified the launch,
      the per-launch secret and the check before staging (see "Verified on
      Modal, 3 November 2026: the telemetry token"); it did not cover a
@@ -526,7 +530,8 @@ Hub were not touched.
 - **Not covered: a container reaching the collector.** `runner-smoke` does
   not start the emitter, so nothing sent telemetry. That waits until the
   registered US programs start the emitter (the design's PR 6). The receipt
-  does not record the undelivered-event count yet (see `runner.telemetry`).
+  does not record the undelivered-event count, which comes later with the
+  emitter's `status` command (see `runner.telemetry`).
 
 ## Acceptance attempt: 23 September materialize on the state surface
 
