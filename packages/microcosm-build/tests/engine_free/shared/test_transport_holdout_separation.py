@@ -19,8 +19,15 @@ Invariants:
   pre-calibration stages.
 - Branches: the guard reads the mass document when no node selects it,
   counts a parked holdout as a holdout, and reads profile-selected views.
-- A non-text ``measure`` on any row raises no ``TypeError``; activation's
-  outcome equals its outcome without the guard.
+- A non-text ``measure`` on a non-holdout row raises no ``TypeError``;
+  activation's outcome equals its outcome without the guard.
+- Malformed holdout rows (a list, dict or missing measure, a missing entity,
+  a row that is not an object) raise in neither guard. Activation's guard
+  reports one gap for each row that is not an object with a text measure,
+  and the stage guard skips that row; a row with no entity still holds out.
+- I5, property: on random holdout rows, well formed or not, the stage guard
+  and activation's guard hold out the same measures, neither raises, and
+  activation reports exactly one gap per malformed row.
 - Row-level holdouts stay: a spec that declares no ``holdout_references``
   rows composes whatever its rows measure.
 - Property: on random reference documents drawn from a small pool of
@@ -298,16 +305,15 @@ def test_nz_stage_output_on_a_holdout_measure_refuses_across_entities():
 
 
 @pytest.mark.parametrize("measure", [["receives_main"], {"a": 1}], ids=["list", "dict"])
-@pytest.mark.parametrize(
-    "resource", ["target_references", "precal_references", "holdout_references"]
-)
+@pytest.mark.parametrize("resource", ["target_references", "precal_references"])
 def test_non_text_measure_keeps_activation_outcome(toy, monkeypatch, resource, measure):
     """A list or dict ``measure`` raises no ``TypeError`` from the guard.
 
-    On a non-holdout row the guard skips the row, as it skips a non-text
-    holdout measure; activation's outcome equals its outcome without the
-    guard. ``_activation_error`` catches only ``ValueError``, so a
-    ``TypeError`` fails the test.
+    On a non-holdout row the guard skips the row; activation's outcome
+    equals its outcome without the guard. ``_activation_error`` catches only
+    ``ValueError``, so a ``TypeError`` fails the test. A malformed holdout
+    row is a gap of its own; ``test_activation_reports_a_malformed_holdout_row``
+    covers it.
     """
 
     spec = copy.deepcopy(toy.spec)
@@ -320,6 +326,176 @@ def test_non_text_measure_keeps_activation_outcome(toy, monkeypatch, resource, m
     )
     assert _activation_error(spec) == guarded
     assert _separation_gaps(guarded) == []
+
+
+_FAMILY_AMOUNT = "toy_family_weekly_amount"
+_ODD_CASES = ("list measure", "dict measure", "no measure", "no entity", "not a row")
+
+
+def _odd_holdout(case, measure=_FAMILY_AMOUNT):
+    """A malformed holdout row, as each case writes it."""
+
+    if case == "not a row":
+        return "toy_odd"
+    row = reference_row("toy_odd", entity="household", measure=measure)
+    if case == "list measure":
+        row["measure"] = [measure]
+    elif case == "dict measure":
+        row["measure"] = {"a": 1}
+    elif case == "no measure":
+        del row["measure"]
+    else:
+        del row["entity"]
+    return row
+
+
+def _malformed_gap(name="toy_odd", index=1):
+    return (
+        f"{SEPARATION}: holdout_references.target_references[{index}] ({name}) "
+        "is not an object with a text measure"
+    )
+
+
+@pytest.mark.parametrize("case", _ODD_CASES)
+def test_stage_guard_reads_a_malformed_holdout_row_as_activation_does(toy, case):
+    """The stage guard raised ``TypeError`` or ``KeyError`` on each of these.
+
+    It now skips a row activation's guard reports, and still holds out a
+    row with no entity.
+    """
+
+    spec = _family_stage(copy.deepcopy(toy.spec))
+    _rows(spec, "holdout_references").append(_odd_holdout(case))
+    if case != "no entity":
+        assert set(compose_module._precalibration_stages(spec)) == {"family_housing"}
+        return
+    with pytest.raises(ValueError) as refused:
+        compose_module._precalibration_stages(spec)
+    assert str(refused.value) == (
+        "precalibration_stages output is a holdout measure: stage "
+        "'toy.precal.family_housing' output (family, toy_family_weekly_amount) "
+        "measures the concept of holdout_references.toy_odd "
+        "(?, toy_family_weekly_amount)."
+    )
+
+
+@pytest.mark.parametrize("case", _ODD_CASES)
+def test_activation_reports_a_malformed_holdout_row(toy, case):
+    """Activation's guard skipped each of these rows without a word."""
+
+    spec = copy.deepcopy(toy.spec)
+    _rows(spec, "holdout_references").append(_odd_holdout(case))
+    views = [("holdout_references", spec["resources"]["holdout_references"])]
+    gaps = list(compose_module._holdout_separation_gaps(views))
+    if case == "no entity":
+        # A text measure holds out with or without an entity, and no other
+        # row measures it.
+        assert gaps == []
+        assert _activation_error(spec) is None
+        return
+    if case == "not a row":
+        assert gaps == [_malformed_gap("?")]
+        # Activation's row check refuses it before the guard runs.
+        with pytest.raises(TypeError, match="holdout_references reference must be"):
+            validate_transport_activation(spec)
+        return
+    assert gaps == [_malformed_gap()]
+    assert _separation_gaps(_activation_error(spec)) == [_malformed_gap()]
+
+
+def test_guard_names_a_malformed_holdout_row_once_across_views():
+    """The guard names a malformed row once, however many views carry it."""
+
+    document = {"target_references": [_odd_holdout("list measure")]}
+    views = [("holdout_references", document)] * 2
+    gaps = list(compose_module._holdout_separation_gaps(views))
+    assert gaps == [_malformed_gap(index=0)]
+
+
+_HELD = ("held_a", "held_b", "held_c")
+_ODD_VALUES = (None, "", 7, ["held_a"], {"held_a": 1})
+_MISSING = object()
+_MALFORMED_GAP = re.compile(
+    rf"{SEPARATION}: holdout_references\.target_references\[(\d+)\] \(.*\) "
+    "is not an object with a text measure"
+)
+
+
+def _holds(row):
+    """The oracle: an object whose measure is text holds that measure out."""
+
+    return isinstance(row, dict) and row.get("measure") in _HELD
+
+
+@st.composite
+def _holdout_rows(draw):
+    """Holdout rows on the measures ``_HELD``, well formed or not."""
+
+    rows = []
+    for index in range(draw(st.integers(0, 4))):
+        if draw(st.integers(0, 3)) == 0:
+            rows.append(draw(st.sampled_from(("toy_odd", 7, None, ["held_a"]))))
+            continue
+        row = reference_row(f"toy_held_{index}", entity="person", measure="held_a")
+        for key, values in (("measure", _HELD), ("entity", _ENTITIES)):
+            value = draw(st.sampled_from((*values, *_ODD_VALUES, _MISSING)))
+            if value is _MISSING:
+                del row[key]
+            else:
+                row[key] = value
+        rows.append(row)
+    return rows
+
+
+def _stage_holds_out(spec, measure):
+    """Whether the stage guard refuses a stage output named ``measure``."""
+
+    stage = spec["resources"]["precalibration_stages"]["stages"][0]
+    stage["derived_outputs"] = [
+        {"entity": "family", "column": measure, "purpose": "calibration_measure"}
+    ]
+    try:
+        compose_module._precalibration_stages(spec)
+    except ValueError as error:
+        assert str(error).startswith(
+            "precalibration_stages output is a holdout measure: "
+        )
+        return True
+    return False
+
+
+@settings(
+    max_examples=60,
+    deadline=None,
+    suppress_health_check=[HealthCheck.function_scoped_fixture],
+)
+@example(rows=[_odd_holdout("list measure", "held_a")])
+@example(rows=[_odd_holdout("dict measure", "held_a")])
+@example(rows=[_odd_holdout("no measure", "held_a")])
+@example(rows=[_odd_holdout("no entity", "held_a")])
+@example(rows=[_odd_holdout("not a row", "held_a")])
+@given(rows=_holdout_rows())
+def test_i5_both_guards_hold_out_the_same_measures(toy, rows):
+    spec = _family_stage(copy.deepcopy(toy.spec))
+    spec["resources"]["holdout_references"]["target_references"] = rows
+    malformed = [index for index, row in enumerate(rows) if not _holds(row)]
+    for measure in _HELD:
+        probe = reference_row("toy_probe", entity="person", measure=measure)
+        views = [
+            ("holdout_references", {"target_references": rows}),
+            ("target_references", {"target_references": [probe]}),
+        ]
+        gaps = list(compose_module._holdout_separation_gaps(views))
+        reported = [_MALFORMED_GAP.fullmatch(gap) for gap in gaps]
+        assert sorted(int(m.group(1)) for m in reported if m) == malformed
+        leaks = [gap for gap, m in zip(gaps, reported, strict=True) if not m]
+        assert all(
+            gap.startswith(f"{SEPARATION}: target_references.toy_probe ")
+            for gap in leaks
+        )
+        held = [row for row in rows if _holds(row) and row["measure"] == measure]
+        assert len(leaks) == len(held)
+        assert _stage_holds_out(spec, measure) == bool(held)
 
 
 def _leak_gap(resource, name="toy_leak", entity="household"):
