@@ -834,6 +834,16 @@ def test_target_profile_coverage_passes_on_the_toy_with_income_required(toy):
     assert "income" in entry["parameters"]["required_families"]
     row = _gate_row(run, "toy_target_profile_coverage")
     assert row["status"] == "passed", row["failures"]
+    # The gate needs one income match; this pins all six stand-in rows, so a
+    # row that leaves the income family turns the test red while the gate
+    # still passes.
+    from test_support.microcosm_build.transport_nz_toy import toy_standin_table
+
+    assert row["details"]["matches_by_requirement"]["income"] == sorted(
+        band[role]
+        for band in toy_standin_table()["bands"]
+        for role in ("count_reference", "amount_reference")
+    )
 
 
 def test_measurement_prefit_fails_the_toy_only_on_its_unwired_evidence(toy):
@@ -847,6 +857,7 @@ def test_measurement_prefit_fails_the_toy_only_on_its_unwired_evidence(toy):
 
     from test_support.microcosm_build.transport_nz_toy import (
         TOY_PREFIT_EVIDENCE,
+        TOY_PREFIT_SUPPORT,
         TOY_STANDIN_TABLE,
     )
 
@@ -856,6 +867,18 @@ def test_measurement_prefit_fails_the_toy_only_on_its_unwired_evidence(toy):
         gate for gate in gates["gates"] if gate["gate"] == "measurement_prefit"
     ]
     assert list(TOY_PREFIT_EVIDENCE) == packaged["parameters"]["required_evidence"]
+    (entry,) = [
+        gate
+        for gate in fixture.spec["resources"]["gates"]["gates"]
+        if gate["id"] == "toy_measurement_prefit"
+    ]
+    # R2C-3's ratio bounds stand on the toy; only the two support floors scale
+    # down to forty households.
+    assert set(entry["parameters"]) == set(packaged["parameters"])
+    for key in ("roster_total_bounds", "band_bounds", "maximum_discrepant_bands"):
+        assert entry["parameters"][key] == packaged["parameters"][key], key
+    for key, value in TOY_PREFIT_SUPPORT.items():
+        assert entry["parameters"][key] == value, key
     row = _gate_row(run, "toy_measurement_prefit")
     assert row["gate"] == "measurement_prefit"
     assert row["status"] == "failed"
@@ -954,7 +977,7 @@ def test_property_a_positive_standin_above_the_first_cut_lands_in_one_band(
     in none, and x <= 0 is ``excluded`` and in none. The table, as NZ's, has
     no nil band and a first cut above zero.
     """
-    from hypothesis import given, settings
+    from hypothesis import example, given, settings
     from hypothesis import strategies as st
 
     from microcosm.build.reference_intervals import interval_indicators
@@ -971,6 +994,13 @@ def test_property_a_positive_standin_above_the_first_cut_lands_in_one_band(
     factor = Fraction(11, 10)
     cuts = [factor * cut for cut in (TOY_STANDIN_FIRST_CUT, *TOY_STANDIN_CUTS)]
     signed = st.integers(-150_000, 150_000)
+    # Wages at zero and on each aged cut, one either side, with every other
+    # component zero: random draws almost never land on an edge.
+    edges = [
+        (value + step, *(0 for _ in TOY_STANDIN_COMPONENTS[1:]))
+        for value in (0, *(int(cut) for cut in cuts))
+        for step in (-1, 0, 1)
+    ]
 
     @settings(max_examples=150, deadline=None)
     @given(
@@ -980,6 +1010,7 @@ def test_property_a_positive_standin_above_the_first_cut_lands_in_one_band(
             max_size=12,
         )
     )
+    @example(edges)
     def check(records):
         columns = {
             column: pd.Series([row[i] for row in records], dtype="int64")
@@ -1005,6 +1036,29 @@ def test_property_a_positive_standin_above_the_first_cut_lands_in_one_band(
                 assert names[int(np.argmax(hits[:, index]))] == table.indicators[band]
 
     check()
+
+
+def test_the_toy_standin_measure_keeps_the_packaged_central_rules():
+    """The toy declaration differs from ``measures.central`` only in its columns.
+
+    Its entity, add-backs, floor and scale equal the packaged declaration's, it
+    names the same three outputs, and both give every component sign +1, so
+    the toy's gates run on the packaged measure's arithmetic. The toy sums
+    seven toy columns where the packaged measure sums ten.
+    """
+    from importlib.resources import files
+
+    from test_support.microcosm_build.transport_nz_toy import toy_standin_declaration
+
+    packaged = json.loads(
+        (files("microcosm.build") / "nz" / "income_measurements.json").read_text()
+    )["measures"]["central"]["declaration"]
+    toy = toy_standin_declaration()
+    for key in ("entity", "add_backs", "floor", "scale"):
+        assert toy[key] == packaged[key], key
+    assert set(toy["outputs"]) == set(packaged["outputs"])
+    assert {row["sign"] for row in toy["components"]} == {1}
+    assert {row["sign"] for row in packaged["components"]} == {1}
 
 
 def test_without_the_toy_standin_its_six_rows_refuse_activation_by_name(toy):
