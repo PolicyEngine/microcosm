@@ -35,12 +35,14 @@ car from their car job with the lowest JOBTYPE, the main job first, so a person 
 most one, as in the engine. The survey asks CARVAL and CARCON of a company van too;
 they are taken as the car's.
 
-SPI-channel rows carry their FRS twin's carriers, as they carry every root column.
-A row drawn from the SPI tape (`person_is_spi_income_recipient`) has the tape's PAY +
-EPB + TAXTERM as pay, where EPB is every taxable expense payment and benefit in kind,
-so it keeps its twin's car only where its drawn EPB is positive. The channel's other
-rows, the undrawn copies and the dependants aged 16 to 19, keep their twin's pay, and
-keep its car as an FRS row does.
+SPI-channel rows carry their FRS twin's carriers, as they carry every root column,
+and keep their twin's car. A row drawn from the SPI tape (`person_is_spi_income_recipient`)
+has the tape's PAY + EPB + TAXTERM as pay, where EPB is every taxable expense payment
+and benefit in kind. EPB is drawn on uniforms the car never conditions, so a tape row
+whose drawn EPB is zero keeps its twin's car too, and its car's benefits move from its
+PAY into its EPB (below; María's ruling of 3 November 2026). The channel's other rows,
+the undrawn copies and the dependants aged 16 to 19, keep their twin's pay, and keep
+its car as an FRS row does.
 
 ## The draws
 
@@ -54,8 +56,7 @@ Every draw is keyed on the person's identity, so reordering rows moves none.
   fuels draw at HMRC Table 2C's shares together. A holder who reports private fuel,
   which an electric car cannot carry, draws among petrol and diesel alone, and the
   others draw electricity at the share that keeps Table 2C's among all of them at the
-  stage's weights (all of them, where the private fuel holders leave too few). The tape
-  rows that lose their car for want of EPB draw at the holders' electric share. Matching
+  stage's weights (all of them, where the private fuel holders leave too few). Matching
   Table 2C at the stage's weights makes each drawn fuel depend on the other drawn cars'
   private fuel and weights, as the CO2 split does: reordering rows moves none, but a
   car's fuel can move when other rows or weights do. It never draws a hybrid:
@@ -84,7 +85,12 @@ Every draw is keyed on the person's identity, so reordering rows moves none.
 
 On a tape row the engine's car and fuel benefits come out of `employment_income`,
 capped at EPB (María's ruling of 30 October 2026) within the pay the row's employee
-pension contribution leaves. The SPI income stage capped that contribution at the pay
+pension contribution leaves. A row whose drawn EPB is zero is capped at its PAY
+instead, within the same pay, and the benefits then move from its PAY
+(`hmrc_spi_pay`) into its EPB (`hmrc_spi_employment_benefits`): its PAY + EPB + TAXTERM
+stays the tape's, and its split agrees with what the engine taxes (María's ruling of 3
+November 2026). A zero-EPB row whose PAY can't hold the car, one with no PAY for
+instance, loses it as below. The SPI income stage capped that contribution at the pay
 it drew, and `salary_sacrifice`, which runs later on the carved pay, refuses a
 contribution above the pay that remains; it keeps the salary and bonus sacrifice within
 that pay itself. A row whose contribution takes all of its pay has no room, so it loses
@@ -106,7 +112,7 @@ them alone.
    fits, with its contributions dropped. The benefit is the price above the capped
    contributions times the appropriate percentage, so the scaling is exact.
 3. A car that would need a list price below £5,000 to fit is dropped, and its EPB
-   stays in pay.
+   (or, on a row without EPB, its PAY) stays in pay.
 
 A scaled car's price is the room over its appropriate percentage, so what sets the
 percentage sets the price, and with it the base the 2030-31 rise acts on: the CO2
@@ -156,13 +162,15 @@ size.
 Two parts of a shortfall are measured here rather than corrected (María's ruling of 31
 October 2026: measure first).
 
-- **The tape rows' EPB draw.** A tape row keeps its twin's car only where its drawn
-  EPB is positive, and EPB is drawn on uniforms the car never conditions. The SPI
-  channel holds half the working-age prior mass, so before calibration holders and
-  the base come to about half the FRS level plus half of it times the share of tape
-  rows that draw EPB. The receipt records the weighted holders and list price lost
-  this way (`holders.spi_dropped_without_epb`).
-- **The carve-out.** Cars that do not fit their EPB are scaled or dropped, above.
+- **The tape rows' EPB draw.** Until 3 November 2026 a tape row kept its twin's car
+  only where its drawn EPB was positive, and the national `f6e33b93` lost about
+  272,000 weighted holders and £10.6bn of list price that way, at the stage's
+  weights. They are
+  kept now, their benefits moved from PAY into EPB. The receipt records the weighted
+  holders kept without EPB and the pay moved (`holders.spi_channel_tape_without_epb`
+  and `spi_carve_out.weighted_pay_moved_into_epb_gbp`).
+- **The carve-out.** Cars that do not fit their EPB, or a zero-EPB row's PAY, are
+  scaled or dropped, above.
 
 These figures, like the list price totals, are at the stage's weights, before
 calibration moves the holders. The results measure the base on the calibrated file.

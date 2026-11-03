@@ -13923,6 +13923,7 @@
       "kind",
       "outputs",
       "epb_column",
+      "pay_column",
       "benefits",
       "minimum_scaled_list_price_gbp"
      ],
@@ -13938,6 +13939,9 @@
        }
       },
       "epb_column": {
+       "type": "string"
+      },
+      "pay_column": {
        "type": "string"
       },
       "benefits": {

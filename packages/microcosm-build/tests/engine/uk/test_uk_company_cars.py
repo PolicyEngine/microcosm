@@ -39,45 +39,70 @@ _VARIABLES = (
 
 
 def _frame():
-    """Five employees, one per household: two FRS company car holders (an
-    electric car, and a petrol car with private fuel), two holders on SPI tape
-    rows (EPB with room for the benefits, and EPB that is not), and no car."""
+    """Six employees, one per household: two FRS company car holders (an
+    electric car, and a petrol car with private fuel), three holders on SPI tape
+    rows (EPB with room for the benefits, EPB that is not, and no EPB), and no
+    car."""
 
     person = pd.DataFrame(
         {
-            "person_id": [11, 21, 31, 41, 51],
-            "person_benunit_id": [1, 2, 3, 4, 5],
-            "person_household_id": [1, 2, 3, 4, 5],
-            "age": [40.0] * 5,
-            "employment_income": [60_000.0, 45_000.0, 150_000.0, 70_000.0, 30_000.0],
-            "frs_company_car_price_band": [9, 7, 8, 8, 0],
-            "frs_company_car_fuel_code": [4, 1, 2, 1, 0],
-            "frs_company_car_private_fuel": [False, True, False, False, False],
-            "frs_company_car_contribution": [0.0, 1_000.0, 0.0, 0.0, 0.0],
-            "person_support_channel": ["frs", "frs", "spi", "spi", "frs"],
-            "person_is_spi_income_recipient": [False, False, True, True, False],
-            "hmrc_spi_employment_benefits": [0.0, 0.0, 30_000.0, 1_500.0, 0.0],
-            "employee_pension_contributions": [3_000.0, 0.0, 9_000.0, 2_000.0, 0.0],
-            "employment_status": ["FT_EMPLOYED"] * 5,
-            "self_employment_income": [0.0] * 5,
-            "uc_is_in_gainful_self_employment": [False] * 5,
+            "person_id": [11, 21, 31, 41, 51, 61],
+            "person_benunit_id": [1, 2, 3, 4, 5, 6],
+            "person_household_id": [1, 2, 3, 4, 5, 6],
+            "age": [40.0] * 6,
+            "employment_income": [
+                60_000.0,
+                45_000.0,
+                150_000.0,
+                70_000.0,
+                30_000.0,
+                50_000.0,
+            ],
+            "frs_company_car_price_band": [9, 7, 8, 8, 0, 8],
+            "frs_company_car_fuel_code": [4, 1, 2, 1, 0, 1],
+            "frs_company_car_private_fuel": [False, True, False, False, False, False],
+            "frs_company_car_contribution": [0.0, 1_000.0, 0.0, 0.0, 0.0, 0.0],
+            "person_support_channel": ["frs", "frs", "spi", "spi", "frs", "spi"],
+            "person_is_spi_income_recipient": [False, False, True, True, False, True],
+            # The tape's PAY and EPB on the tape rows (no TAXTERM); the FRS rows'
+            # PAY is their own pay.
+            "hmrc_spi_pay": [
+                60_000.0,
+                45_000.0,
+                120_000.0,
+                68_500.0,
+                30_000.0,
+                50_000.0,
+            ],
+            "hmrc_spi_employment_benefits": [0.0, 0.0, 30_000.0, 1_500.0, 0.0, 0.0],
+            "employee_pension_contributions": [
+                3_000.0,
+                0.0,
+                9_000.0,
+                2_000.0,
+                0.0,
+                0.0,
+            ],
+            "employment_status": ["FT_EMPLOYED"] * 6,
+            "self_employment_income": [0.0] * 6,
+            "uc_is_in_gainful_self_employment": [False] * 6,
         }
     )
     household = pd.DataFrame(
         {
-            "household_id": [1, 2, 3, 4, 5],
-            "region": ["LONDON"] * 5,
-            "council_tax": [0.0] * 5,
-            "tenure_type": ["OWNED_OUTRIGHT"] * 5,
-            "rent": [0.0] * 5,
-            "household_source_id": [1, 2, 3, 4, 5],
+            "household_id": [1, 2, 3, 4, 5, 6],
+            "region": ["LONDON"] * 6,
+            "council_tax": [0.0] * 6,
+            "tenure_type": ["OWNED_OUTRIGHT"] * 6,
+            "rent": [0.0] * 6,
+            "household_source_id": [1, 2, 3, 4, 5, 6],
         }
     )
     return uk_national_frame(
         person=person,
-        benunit=pd.DataFrame({"benunit_id": [1, 2, 3, 4, 5]}),
+        benunit=pd.DataFrame({"benunit_id": [1, 2, 3, 4, 5, 6]}),
         household=household,
-        household_weights=np.ones(5),
+        household_weights=np.ones(6),
         weight_kind=WeightKind.DESIGN,
         time_period="2024",
     )
@@ -106,7 +131,7 @@ def test_the_engine_reads_the_stage_s_inputs(engine, run) -> None:
     values = engine.materialize(after, _VARIABLES, 2024)
     person = after.table("person")
     holder = person[stage.LIST_PRICE].to_numpy() > 0
-    assert holder.tolist() == [True, True, True, True, False]
+    assert holder.tolist() == [True, True, True, True, False, True]
     assert person[stage.FUEL_TYPE].tolist()[:2] == [stage.ELECTRIC, stage.PETROL]
     # The electric car pays the zero-emission rate; the petrol car with private
     # fuel takes the fuel benefit too.
@@ -134,12 +159,22 @@ def test_spi_pay_plus_the_engine_s_benefits_is_the_tape_s_total(engine, run) -> 
     # tape row's car was scaled to EPB's GBP 1,500. The engine computes in single
     # precision, so the identity holds to the penny, not to float64.
     np.testing.assert_allclose(
-        pay_after[[2, 3]] + values["benefits_in_kind"][[2, 3]],
-        pay_before[[2, 3]],
+        pay_after[[2, 3, 5]] + values["benefits_in_kind"][[2, 3, 5]],
+        pay_before[[2, 3, 5]],
         atol=0.01,
     )
     assert (values["benefits_in_kind"][[2, 3]] <= epb[[2, 3]] + 0.01).all()
     assert values["benefits_in_kind"][3] == pytest.approx(1_500.0, abs=0.01)
+    # The tape row without EPB keeps its car, and its benefits move from its PAY
+    # into its EPB, so its PAY + EPB stays the tape's.
+    spi_after = after.table("person")
+    assert values["benefits_in_kind"][5] > 0
+    assert spi_after["hmrc_spi_employment_benefits"].iloc[5] == pytest.approx(
+        values["benefits_in_kind"][5], abs=0.01
+    )
+    assert spi_after["hmrc_spi_pay"].iloc[5] + spi_after[
+        "hmrc_spi_employment_benefits"
+    ].iloc[5] == pytest.approx(50_000.0)
     # The stage priced its output again on the engine: within a penny.
     assert receipt["spi_carve_out"]["max_abs_pay_identity_error_gbp"] <= 0.01
 
@@ -160,7 +195,7 @@ def test_the_2030_rise_reaches_the_holders_alone(engine, run, tmp_path) -> None:
         tax = np.asarray(baseline.calculate("income_tax", year).values)
         tax_reformed = np.asarray(reformed.calculate("income_tax", year).values)
         holder = np.asarray(baseline.calculate("has_company_car", year).values)
-        assert holder.tolist() == [True, True, True, True, False]
+        assert holder.tolist() == [True, True, True, True, False, True]
         assert tax_reformed[~holder] == pytest.approx(tax[~holder])
         if raised:
             assert (tax_reformed[holder] > tax[holder]).all()

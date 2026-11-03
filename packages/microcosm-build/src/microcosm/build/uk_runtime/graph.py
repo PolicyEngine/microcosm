@@ -1267,9 +1267,12 @@ _STAGE_CELLS: Mapping[str, tuple[_Cell, ...]] = {
         _Cell("person", "company_car_capital_contributions", "float64"),
         _Cell("person", "company_car_private_fuel_provided", "bool"),
         # A tape row's pay gives up the benefits carved out of it, and its UC
-        # gainful self-employment follows the carved pay.
+        # gainful self-employment follows the carved pay. On a tape row without
+        # EPB the benefits move from its PAY into its EPB.
         _Cell("person", "employment_income", "float64"),
         _Cell("person", "uc_is_in_gainful_self_employment", "bool"),
+        _Cell("person", "hmrc_spi_pay", "float64"),
+        _Cell("person", "hmrc_spi_employment_benefits", "float64"),
     ),
     "childcare_copy_take_up": (
         *_cells(
