@@ -24,7 +24,12 @@ composer must wire ``gate_report`` edges from ``gates.battery@1`` nodes only.
 Evidence. Every declared artifact input is decoded by its nominal type
 (:data:`EVIDENCE_DECODERS`) and offered to the battery under its local alias,
 so a binding's ``artifact_arguments`` name aliases the composer declares. A
-type with no decoder is offered as its verified bytes. When the node declares
+type with no decoder is offered as its verified bytes. One alias is reserved:
+``graph_evidence`` maps each declared artifact edge's alias to its producer
+node, producer output, type, payload SHA-256 and producer key, so an evidence
+binding can check an artifact's identity header against the graph it runs in
+(:mod:`~microcosm.build.transport.evidence_contract`). A node that declares
+an artifact input under that alias is refused. When the node declares
 ``entities`` (with ``weight_entity``), the population slices it reads are
 rebuilt as the phase's ``frame``. No spec object is offered: thresholds reach
 a gate only through the ``gates.json`` document the node carries as a
@@ -119,7 +124,13 @@ from microcosm.graph import (
 )
 from microcosm.graph.canonical import canonical_json
 
-from . import artifact_types, binding_identity, graph_inputs, target_kernels
+from . import (
+    artifact_types,
+    binding_identity,
+    evidence_contract,
+    graph_inputs,
+    target_kernels,
+)
 from .artifact_types import (
     CELL_DIAGNOSTICS_TYPE,
     COMPARISON_TYPE,
@@ -129,6 +140,7 @@ from .artifact_types import (
     GATE_REPORT_TYPE,
     TARGET_SURFACE_TYPE,
 )
+from .evidence_contract import EVIDENCE_TYPES, GRAPH_EVIDENCE
 from .graph_inputs import (
     bool_param,
     canonical_document_param,
@@ -609,6 +621,7 @@ EVIDENCE_DECODERS: Mapping[ArtifactType, Callable[[bytes], object]] = MappingPro
         GATE_REPORT_TYPE: decode_gate_report,
         EXPORT_DESCRIPTOR_TYPE: _json_artifact,
         EXPORT_READBACK_TYPE: _json_artifact,
+        **EVIDENCE_TYPES,
     }
 )
 
@@ -616,6 +629,29 @@ EVIDENCE_DECODERS: Mapping[ArtifactType, Callable[[bytes], object]] = MappingPro
 def _decoded(value: ArtifactValue) -> object:
     decoder = EVIDENCE_DECODERS.get(value.type)
     return value.payload if decoder is None else decoder(value.payload)
+
+
+def _graph_evidence(context: KernelContext) -> dict[str, dict[str, object]]:
+    """Each declared artifact edge's provenance, under its local alias."""
+
+    if GRAPH_EVIDENCE in context.artifacts or any(
+        edge.name == GRAPH_EVIDENCE for edge in context.node.artifact_inputs
+    ):
+        raise ValueError(
+            f"{_REF} reserves the alias {GRAPH_EVIDENCE!r}; no artifact input may "
+            "use it."
+        )
+    rows = {}
+    for edge in context.node.artifact_inputs:
+        value = context.artifacts[edge.name]
+        rows[edge.name] = {
+            "producer": edge.producer,
+            "artifact": edge.artifact,
+            "type": [value.type.name, value.type.schema_version],
+            "sha256": hashlib.sha256(value.payload).hexdigest(),
+            "producer_key": value.producer_key,
+        }
+    return dict(sorted(rows.items()))
 
 
 # ---------------------------------------------------------------------------
@@ -720,6 +756,7 @@ class GateBatteryKernel(KernelBase):
             graph_inputs,
             artifact_types,
             binding_identity,
+            evidence_contract,
             target_kernels,
             target_kernels.reference_profiles_module,
             target_kernels.reference_selection_module,
@@ -835,6 +872,7 @@ class GateBatteryKernel(KernelBase):
         # A configuration error in any phase is the node's failure, not a
         # verdict: the executor records it as ``fail`` (charter F4).
         validate_gate_parameters(gates, self.registry)
+        graph_evidence = _graph_evidence(context)
         upstream = self._upstream(
             context,
             gates,
@@ -866,7 +904,11 @@ class GateBatteryKernel(KernelBase):
             evidence = EvidenceContext(
                 frame=frame,
                 artifacts={
-                    alias: _decoded(value) for alias, value in context.artifacts.items()
+                    **{
+                        alias: _decoded(value)
+                        for alias, value in context.artifacts.items()
+                    },
+                    GRAPH_EVIDENCE: MappingProxyType(graph_evidence),
                 },
             )
             report = evaluate_phase(gates, phase, evidence, registry=self.registry)

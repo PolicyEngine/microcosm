@@ -91,8 +91,10 @@ def interval_bindings(table, *, entity=None):
     }
 
 
-def _factor_entry(profile):
-    declaration, facts, identity = factor_fixture(anchor_level=PROFILE_ANCHORS[profile])
+def _factor_entry(profile, anchor=None):
+    declaration, facts, identity = factor_fixture(
+        anchor_level=PROFILE_ANCHORS[profile] if anchor is None else anchor
+    )
     declaration["id"] = f"toy_{profile}"
     factor, receipt = resolve_reference_factor(declaration, facts, identity)
     return identity, {
@@ -188,3 +190,234 @@ def interval_profile_fixture():
     base = reference_document(references)
     intervals = {"schema_version": 1, "tables": [table]}
     return base, profiles, context, intervals
+
+
+# ---------------------------------------------------------------------------
+# Summed-band money rows (G8-r2c hunk A)
+# ---------------------------------------------------------------------------
+
+SUMMED_MEASUREMENT = "reviewed_measurement"
+
+
+def band_fact(kind, label, value, *, period=2001, record_set="toy.bands"):
+    """One Ledger consumer fact for a native band's count or amount.
+
+    Count and amount facts share one record set and one band dimension, as
+    a published table that reports both measures over the same classes does.
+    """
+    key = f"toy-{kind}-{label}"
+    return {
+        "aggregate_fact_key": f"ledger.aggregate_fact.v2:{key}",
+        "semantic_fact_key": f"ledger.semantic_fact.v2:{key}",
+        "legacy_fact_key": f"ledger.fact.v1:{key}",
+        "label": f"Toy {kind} in band {label}",
+        "lineage": {
+            "source_record_id": f"toy.bands.{kind}.{label}",
+            "source_cell_keys": [f"ledger.source_cell.v1:{key}"],
+            "source_row_keys": [],
+        },
+        "value": value,
+        "period": {"type": "year", "value": period},
+        "geography": {"level": "country", "id": "XT", "name": "Toy", "vintage": "v1"},
+        "entity": {"name": "person", "role": "person"},
+        "observed_measure": {
+            "source_name": "toy_office",
+            "source_table": "Toy bands",
+            "source_measure_id": kind,
+            "source_concept": f"toy.{kind}",
+            "unit": "people" if kind == "count" else "xts",
+        },
+        "aggregation": {"method": "sum"},
+        "source": {
+            "source_name": "toy_office",
+            "source_table": "Toy bands",
+            "source_file": "toy.csv",
+            "url": "https://example.invalid/toy.csv",
+            "vintage": "v1",
+        },
+        "dimensions": {"band": label},
+        "dimension_labels": {"band": "Band"},
+        "dimension_value_labels": {"band": {label: f"Band {label}"}},
+        "universe_constraints": {"domain": "toy"},
+        "layout": {
+            "record_set_id": record_set,
+            "groupby_dimension": "band",
+            "groupby_value_id": label,
+            "measure_id": kind,
+        },
+    }
+
+
+def summed_row(kind, name, members, *, indicator, entity="person"):
+    """A parked coarse row over ``members``: ``sum`` counts, ``identity`` money."""
+    row = {
+        "name": name,
+        "entity": entity,
+        "measure": "people" if kind == "count" else "toy_income",
+        "filter": indicator,
+        "period": 2002,
+        "family": "toy",
+        "category_id": "toy.population",
+        "period_match_policy": "latest_not_after",
+        "expected_member_count": len(members),
+        "ledger_selector": {
+            "source_name": "toy_office",
+            "source_measure_id": kind,
+            "source_concept": f"toy.{kind}",
+            "entity_name": "person",
+            "period_type": "year",
+            "period_value": 2001,
+            "dimensions": ["band"],
+            "dimension_values": {"band": list(members)},
+        },
+        "metadata": {
+            "contract_target_id": name,
+            "reference_value_kind": kind,
+            "activation_status": "requires_prerequisites",
+            "required_reference_profile": "index",
+            "required_measurement_binding": SUMMED_MEASUREMENT,
+            "reference_prerequisites": json.dumps(
+                ["reference_profile:index", f"measurement:{SUMMED_MEASUREMENT}"]
+            ),
+            "parking_reason": "Reviewed measurement is required.",
+        },
+    }
+    if kind == "count":
+        row["value_operation"] = "sum"
+    return row
+
+
+def summed_profile_fixture(
+    groups, *, entity="person", table_id="toy_coarse", anchors=None
+):
+    """Coarse references, profiles, factor context and a coarse interval table.
+
+    ``groups`` lists the native member labels of each coarse band, in band
+    order; band ``b<i>`` sums ``groups[i]``. The table has no nil band, so
+    every coarse band is positive and names a summed count/money pair.
+    """
+    table = interval_table_fixture(
+        table_id=table_id,
+        entity=entity,
+        cuts=tuple(100_000 * (index + 1) for index in range(len(groups) - 1)),
+        nil=False,
+        companions=True,
+    )
+    references = []
+    for band, members in zip(table["bands"], groups, strict=True):
+        for kind in ("count", "money"):
+            references.append(
+                summed_row(
+                    kind,
+                    f"toy_{kind}_{band['id']}",
+                    members,
+                    indicator=band["indicator"],
+                    entity=entity,
+                )
+            )
+    identity, factors = None, []
+    for profile in PROFILE_ANCHORS:
+        identity, entry = _factor_entry(profile, (anchors or {}).get(profile))
+        factors.append(entry)
+    context = {"schema_version": 1, "feed_identity": identity, "factors": factors}
+    transformation = {
+        "operation": "scale_money_and_intervals",
+        "reference_names": [
+            row["name"] for row in references if row["name"].startswith("toy_money")
+        ],
+        "count_reference_names": [
+            row["name"] for row in references if row["name"].startswith("toy_count")
+        ],
+        "interval_table_ids": [table["id"]],
+        "required_measurement_binding": SUMMED_MEASUREMENT,
+    }
+    profiles = {
+        "schema_version": 1,
+        "reference_resource": "target_references",
+        "factor_context_resource": "factor_context",
+        "interval_resource": "profile_intervals",
+        "dimensions": {
+            "index": {
+                "default": "central",
+                "profiles": {
+                    profile: {
+                        "transformations": [
+                            {**deepcopy(transformation), "factor_id": f"toy_{profile}"}
+                        ]
+                    }
+                    for profile in PROFILE_ANCHORS
+                },
+            }
+        },
+    }
+    base = with_target_labels(reference_document(references))
+    intervals = {"schema_version": 1, "tables": [table]}
+    return base, profiles, context, intervals
+
+
+def with_target_labels(document):
+    """Give every row the Microcosm label a summed or scaled target needs.
+
+    The ledger refuses a multi-fact or transformed target without an explicit
+    target label (``ledger_targets.py`` ``_target_label``).
+    """
+    document["hierarchy"]["target_labels"] = {
+        row["metadata"]["contract_target_id"]: f"Toy target {row['name']}"
+        for row in document["target_references"]
+    }
+    return document
+
+
+def proof_for(producer="toy.measure", calibration="toy.calibrate"):
+    """The proof composition returns for one producer upstream of calibration."""
+    return {
+        SUMMED_MEASUREMENT: {
+            "measurement_id": SUMMED_MEASUREMENT,
+            "producers": {calibration: producer},
+            "columns": [f"person.{INCOME_COLUMN}", f"person.{UNIVERSE_COLUMN}"],
+        }
+    }
+
+
+# ---------------------------------------------------------------------------
+# Pre-fit acceptance (G8-r2c hunk D, ruling R2C-3)
+# ---------------------------------------------------------------------------
+
+#: R2C-3's frozen pre-fit thresholds, as a ``measurement_prefit`` entry
+#: declares them. ``maximum_discrepant_bands`` is 2 because three or more
+#: discrepant bands refuse. A change needs a new hub ruling first.
+R2C3_PREFIT_THRESHOLDS = {
+    "roster_total_bounds": [0.75, 1.25],
+    "band_bounds": [0.5, 2.0],
+    "maximum_discrepant_bands": 2,
+    "minimum_source_households": 30,
+    "minimum_kish_ess": 30,
+}
+
+#: Evidence aliases the toy battery wires; a country names its own.
+TOY_PREFIT_EVIDENCE = [
+    "native_band_report",
+    "omission_register",
+    "scenario_vsi",
+    "scenario_vex",
+    "scenario_vpt",
+    "identity_receipts",
+]
+
+
+def prefit_gate_entry(*, tables=("toy_coarse",), evidence=None, **overrides):
+    """A fixture ``gates.json`` entry carrying R2C-3's numbers."""
+    return {
+        "id": "measurement_prefit_toy",
+        "gate": "measurement_prefit",
+        "phase": "terminal",
+        "criticality": "release_blocking",
+        "parameters": {
+            **deepcopy(R2C3_PREFIT_THRESHOLDS),
+            "tables": list(tables),
+            "required_evidence": list(
+                TOY_PREFIT_EVIDENCE if evidence is None else evidence
+            ),
+            **overrides,
+        },
+    }

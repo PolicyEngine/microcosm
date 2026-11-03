@@ -70,17 +70,44 @@ IMAGE_VENV = "/opt/venv"
 # too. compare-lineage checks the outputs the local run left (its first two
 # outer stages), not the stages after them.
 IMAGE_PYTHON_VERSION = "3.14"
-IMAGE_UV_VERSION = "0.11.7"
+# uv verifies HTTPS against a CA list compiled into it. 0.13.4 is the first
+# release whose list drops the compromised eMudhra (emSign) roots; earlier
+# releases trust certificates anyone can issue with the disclosed keys
+# (https://emudhra.we-have-a-problem.com).
+IMAGE_UV_VERSION = "0.13.4"
+# Modal's cached debian_slim base carries pip 25.3, whose bundled certifi
+# (2025.10.05) still contains emSign ECC Root CA - G3; on 2 November 2026 it
+# accepted a certificate chained to that root inside a Modal build step.
+# ``--cert`` and ``PIP_CERT`` only add to that trust: pip loads its own
+# certifi into the SSL context the extra bundle joins. The image therefore
+# replaces pip with 26.2.2, whose bundled certifi drops the eMudhra roots,
+# before it downloads any other package. The wheel's sha256 (as PyPI
+# publishes it), not the connection, makes that one download authentic.
+IMAGE_PIP_VERSION = "26.2.2"
+IMAGE_PIP_WHEEL_SHA256 = (
+    "fd7f4dfa8190e014013b9f08f3e973f4e4c26ffd179a204895533a7254813a70"
+)
+IMAGE_PIP_BOOTSTRAP_REQUIREMENTS = "/tmp/pip-bootstrap.txt"
 RUNNER_HF_HUB_VERSION = "1.18.0"
+# The runner's Hub client verifies HTTPS against certifi's CA list, and
+# 2026.10.19 is the first certifi release without the eMudhra roots. Modal
+# reuses a cached layer while its definition is unchanged, so the floor is
+# stated rather than left to whatever certifi PyPI served at the first build.
+RUNNER_CERTIFI_MINIMUM_VERSION = "2026.10.19"
 # A build starts the separately installed microcosm-emitter command as its
 # child process (microcosm-emitter-interface); uv.lock pins only the
 # interface. The image installs the newest emitter release when it is built
 # for a plan commit, outside the synced environment; an image built for one
 # commit keeps the emitter it was built with. A build does not start an
-# emitter older than 0.6.0, the first release with the Hugging Face hand-over
-# module (microcosm.build.telemetry_emitter.MINIMUM_EMITTER_VERSION). The
-# stage's runner records the version.
-IMAGE_EMITTER_REQUIREMENT = "microcosm-emitter>=0.7.0"
+# emitter older than microcosm.build.telemetry_emitter.MINIMUM_EMITTER_VERSION,
+# 0.11.9; releases before 0.10.0 send telemetry to the collector's Cloud Run
+# address, which changes when the collector moves to another Google Cloud
+# project. This module imports nothing from the workspace, so the floor
+# repeats that release, and a test checks that the two agree in one
+# checkout. At launch the two can differ: the image's install step comes from
+# this module in the checkout that launches the app, and the minimum from the
+# commit the plan pins. The stage's runner records the version.
+IMAGE_EMITTER_REQUIREMENT = "microcosm-emitter>=0.11.9"
 IMAGE_EMITTER_BIN_DIR = "/usr/local/bin"
 IMAGE_EMITTER_COMMAND = f"{IMAGE_EMITTER_BIN_DIR}/microcosm-emitter"
 #: The image's environment variables, which the stage tool inherits.
@@ -1406,6 +1433,26 @@ def plan_digest(data: object) -> str:
 # --------------------------------------------------------------------------- #
 # Image and argv                                                               #
 # --------------------------------------------------------------------------- #
+
+
+def image_pip_bootstrap_command(
+    requirements_path: str = IMAGE_PIP_BOOTSTRAP_REQUIREMENTS,
+) -> str:
+    """The shell step that replaces the base's pip before any package download.
+
+    ``--require-hashes`` refuses any file whose sha256 is not
+    ``IMAGE_PIP_WHEEL_SHA256``, so the step installs PyPI's published pip
+    wheel or fails, whatever index or certificate answers the request. The
+    temporary requirements file is removed afterwards.
+    """
+
+    requirement = f"pip=={IMAGE_PIP_VERSION} --hash=sha256:{IMAGE_PIP_WHEEL_SHA256}"
+    path = shlex.quote(requirements_path)
+    return (
+        f"printf '%s\\n' {shlex.quote(requirement)} > {path}"
+        f" && python -m pip install --require-hashes --no-deps -r {path}"
+        f" && rm {path}"
+    )
 
 
 def image_build_commands(plan: Plan, repo_root: str = IMAGE_REPO_ROOT) -> list[str]:

@@ -22,7 +22,7 @@ def test_semantic_hash_has_golden_vector_and_surface_separation(tmp_path) -> Non
     # The ACS local income pass's predictor extensions (microcosm#1022) move
     # acs_transfer's attested bytes again.
     assert first.spec_sha256 == (
-        "1ea149bb16a89cf5c199e8acd12b98305f5bcab64e643567f605448aea8a11e7"
+        "bc297428da63a9c1e512d342202f2abfb3c0ce67d1024f4f99db550ced92e2a1"
     )
 
     second_root = _rich_minimal(tmp_path / "xy", note="second", store="local:b")
