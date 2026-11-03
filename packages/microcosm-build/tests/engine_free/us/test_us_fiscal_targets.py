@@ -895,10 +895,12 @@ def test_pinned_feed_national_state_surface_restores_the_fences(
 ) -> None:
     """The release surface on the pinned feed: 33,250 compiled targets after
     Medicaid substitution, 6,102 national_state targets at registry
-    3fad14f85468, 32 CHIP rows none of them for an M-CHIP state, no
-    other-income row and no tips return count. microcosm#1227 moved the
-    version from e1f9906bf0e0 by doubling the eight Table 2.5 EITC child
-    total rows, whose uprating source sum had counted each split twice;
+    45adaa24b243, 32 CHIP rows none of them for an M-CHIP state, no
+    other-income row and no tips return count. Raking the 224 Table 2.5
+    EITC child bins to their splits' total rows moved the version from
+    3fad14f85468. microcosm#1227 moved it from e1f9906bf0e0 by doubling the
+    eight Table 2.5 EITC child total rows, whose uprating source sum had
+    counted each split twice;
     microcosm#1206 moved it from f96be9f41781 by binding the Part B premium
     target to gross_medicare_part_b_premium_if_enrolled. Neither changed
     the counts.
@@ -911,7 +913,7 @@ def test_pinned_feed_national_state_surface_restores_the_fences(
     registry, surface, _ = pinned_feed_national_state_surface
     assert len(registry.specs) == 33_250
     assert len(surface.specs) == 6_102
-    assert surface.version == "3fad14f85468"
+    assert surface.version == "45adaa24b243"
     chip = [
         spec
         for spec in surface.specs
@@ -990,6 +992,75 @@ def test_pinned_feed_eitc_child_total_rows_count_each_split_once(
     assert {spec.metadata["uprating_agi_upper_bound"] for spec in totals} == {"inf"}
     assert sum(spec.value for spec in totals) == pytest.approx(active, rel=1e-12)
     assert sum(spec.value for spec in bins) == pytest.approx(active, rel=1e-12)
+
+
+@pytest.mark.parametrize(
+    ("measure", "active_measure"),
+    [
+        ("eitc_total", "total_earned_income_credit_amount"),
+        ("eitc_returns", "total_earned_income_credit_returns"),
+    ],
+)
+def test_pinned_feed_eitc_child_split_bins_sum_to_their_total_rows(
+    pinned_feed_national_state_surface, measure, active_measure
+) -> None:
+    """Each TY2023 Table 2.5 child split's 28 bins sum to its total row, and
+    each TY2024 filing-season AGI group's bins (all splits) to the group.
+    Uprated per AGI group alone, the splits' bins ran from 0.86 (childless
+    amount) to 1.05 (three or more, returns) of their total rows: the groups
+    grow by 0.81x to 1.73x, and childless EITC sits in the slow ones. The
+    rake keeps each total row and moves the bins, by 0.857x to 1.226x."""
+    registry, _, _ = pinned_feed_national_state_surface
+    record_set = "irs_soi.ty2023.table_2_5.eitc_by_agi_children."
+    rows = [
+        spec
+        for spec in registry.specs
+        if spec.name.startswith(record_set)
+        and spec.metadata["source_measure_id"] == measure
+    ]
+    groups = [
+        spec
+        for spec in registry.specs
+        if spec.name.startswith("irs_soi.ty2024.filing_season_week47.eitc_by_agi.")
+        and spec.metadata["source_measure_id"] == active_measure
+    ]
+
+    assert {spec.metadata["uprating_reconciliation"] for spec in rows} == {
+        "two_margin_rake"
+    }
+    for split in _EITC_CHILD_SPLITS:
+        total = next(
+            spec for spec in rows if spec.name == f"{record_set}{split}.total.{measure}"
+        )
+        bins = [
+            spec
+            for spec in rows
+            if spec.metadata["ledger_layout_record_set_id"] == f"{record_set}{split}"
+            and spec is not total
+        ]
+        assert len(bins) == 28
+        assert sum(spec.value for spec in bins) == pytest.approx(total.value, rel=1e-12)
+    bins = [spec for spec in rows if ".total." not in spec.name]
+    grouped: dict[tuple[str, str], float] = {}
+    for spec in bins:
+        key = (
+            spec.metadata["uprating_agi_lower_bound"],
+            spec.metadata["uprating_agi_upper_bound"],
+        )
+        grouped[key] = grouped.get(key, 0.0) + spec.value
+    assert len(grouped) == 10
+    for (lower, upper), value in grouped.items():
+        active = sum(
+            spec.value
+            for spec in groups
+            if float(lower) <= float(spec.metadata["agi_lower_bound"])
+            and float(spec.metadata["agi_upper_bound"]) <= float(upper)
+        )
+        assert value == pytest.approx(active, rel=1e-11)
+    adjustments = [
+        float(spec.metadata["uprating_child_split_adjustment"]) for spec in bins
+    ]
+    assert 0.85 < min(adjustments) < max(adjustments) < 1.23
 
 
 def test_reviewed_zero_support_facts_are_not_active_targets() -> None:

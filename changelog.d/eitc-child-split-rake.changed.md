@@ -1,0 +1,1 @@
+Rake the SOI Table 2.5 EITC child-split AGI bins to their splits' uprated total rows and the active filing-season AGI groups, so each split's bins sum to its total row (they had differed by up to 16%) while every AGI group still sums to its active EITC.

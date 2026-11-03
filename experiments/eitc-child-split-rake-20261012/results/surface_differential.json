@@ -1,0 +1,472 @@
+{
+ "feed": "/Users/maxghenis/PolicyEngine/_buildh-runtime/inputs/consumer_facts_us_51aa40f.jsonl",
+ "facts_sha256": "965a29ac9458edb58a05184917ee4a19772fd3dc7b4588db6eb6da5803641aac",
+ "options": {
+  "a": {
+   "compiled": 33250,
+   "changed_vs_a": 0,
+   "changed_vs_a_outside_t25": 0,
+   "per_split": {
+    "eitc_total|no_qualifying_children": {
+     "total_row": 2562234955.952693,
+     "bins_sum": 2214570789.2195635,
+     "total_over_bins": 1.1569894123166187,
+     "n_bins": 28
+    },
+    "eitc_total|one_qualifying_child": {
+     "total_row": 24406497642.895695,
+     "bins_sum": 23980706681.046722,
+     "total_over_bins": 1.017755563566669,
+     "n_bins": 28
+    },
+    "eitc_total|two_qualifying_children": {
+     "total_row": 25944067817.66286,
+     "bins_sum": 26608588998.37868,
+     "total_over_bins": 0.9750260646757214,
+     "n_bins": 28
+    },
+    "eitc_total|three_or_more_qualifying_children": {
+     "total_row": 16128849583.488752,
+     "bins_sum": 16237783531.355034,
+     "total_over_bins": 0.9932913289762774,
+     "n_bins": 28
+    },
+    "eitc_returns|no_qualifying_children": {
+     "total_row": 6610219.65761993,
+     "bins_sum": 6224960.998973993,
+     "total_over_bins": 1.061889328898516,
+     "n_bins": 28
+    },
+    "eitc_returns|one_qualifying_child": {
+     "total_row": 8469759.155140996,
+     "bins_sum": 8464518.656264862,
+     "total_over_bins": 1.0006191136305496,
+     "n_bins": 28
+    },
+    "eitc_returns|two_qualifying_children": {
+     "total_row": 5642885.331146898,
+     "bins_sum": 5871314.841494564,
+     "total_over_bins": 0.9610939769856527,
+     "n_bins": 28
+    },
+    "eitc_returns|three_or_more_qualifying_children": {
+     "total_row": 3114284.8560921764,
+     "bins_sum": 3276354.503266581,
+     "total_over_bins": 0.9505335436037772,
+     "n_bins": 28
+    }
+   },
+   "surfaces": {
+    "national_state": {
+     "version": "3fad14f85468",
+     "count": 6102,
+     "receipt": {
+      "mode": "national_state",
+      "compiled_targets": 33250,
+      "calibrated_targets": 6102,
+      "dropped_congressional_district_targets": 27148
+     },
+     "t25_rows": 232,
+     "t25_weight_share": 0.015546443186428078,
+     "t25_total_rows_weight_share": 0.002873369804386241,
+     "max_abs_weight_ratio_minus_1_outside_t25": 0.0,
+     "t25_weight_ratio_range_vs_a": [
+      1.0,
+      1.0
+     ]
+    },
+    "full": {
+     "version": "c3aaea9c1e8c",
+     "count": 33250,
+     "receipt": {
+      "mode": "full",
+      "compiled_targets": 33250,
+      "calibrated_targets": 33250,
+      "dropped_congressional_district_targets": 0
+     },
+     "t25_rows": 232,
+     "t25_weight_share": 0.0060523680952169765,
+     "t25_total_rows_weight_share": 0.0011182930973474994,
+     "max_abs_weight_ratio_minus_1_outside_t25": 0.0,
+     "t25_weight_ratio_range_vs_a": [
+      1.0,
+      1.0
+     ]
+    }
+   }
+  },
+  "b": {
+   "compiled": 33250,
+   "changed_vs_a": 8,
+   "changed_vs_a_outside_t25": 0,
+   "per_split": {
+    "eitc_total|no_qualifying_children": {
+     "total_row": 2214570789.2195635,
+     "bins_sum": 2214570789.2195635,
+     "total_over_bins": 1.0,
+     "n_bins": 28
+    },
+    "eitc_total|one_qualifying_child": {
+     "total_row": 23980706681.046726,
+     "bins_sum": 23980706681.046722,
+     "total_over_bins": 1.0000000000000002,
+     "n_bins": 28
+    },
+    "eitc_total|two_qualifying_children": {
+     "total_row": 26608588998.378685,
+     "bins_sum": 26608588998.37868,
+     "total_over_bins": 1.0000000000000002,
+     "n_bins": 28
+    },
+    "eitc_total|three_or_more_qualifying_children": {
+     "total_row": 16237783531.355032,
+     "bins_sum": 16237783531.355034,
+     "total_over_bins": 0.9999999999999999,
+     "n_bins": 28
+    },
+    "eitc_returns|no_qualifying_children": {
+     "total_row": 6224960.998973992,
+     "bins_sum": 6224960.998973993,
+     "total_over_bins": 0.9999999999999999,
+     "n_bins": 28
+    },
+    "eitc_returns|one_qualifying_child": {
+     "total_row": 8464518.656264862,
+     "bins_sum": 8464518.656264862,
+     "total_over_bins": 1.0,
+     "n_bins": 28
+    },
+    "eitc_returns|two_qualifying_children": {
+     "total_row": 5871314.841494565,
+     "bins_sum": 5871314.841494564,
+     "total_over_bins": 1.0000000000000002,
+     "n_bins": 28
+    },
+    "eitc_returns|three_or_more_qualifying_children": {
+     "total_row": 3276354.5032665804,
+     "bins_sum": 3276354.503266581,
+     "total_over_bins": 0.9999999999999999,
+     "n_bins": 28
+    }
+   },
+   "surfaces": {
+    "national_state": {
+     "version": "a211cbec63ec",
+     "count": 6102,
+     "receipt": {
+      "mode": "national_state",
+      "compiled_targets": 33250,
+      "calibrated_targets": 6102,
+      "dropped_congressional_district_targets": 27148
+     },
+     "t25_rows": 232,
+     "t25_weight_share": 0.015545945505184502,
+     "t25_total_rows_weight_share": 0.0028729105169244284,
+     "max_abs_weight_ratio_minus_1_outside_t25": 7.826326665405503e-06,
+     "t25_weight_ratio_range_vs_a": [
+      0.9296911708867882,
+      1.0256832638071551
+     ]
+    },
+    "full": {
+     "version": "a83fc4bad02f",
+     "count": 33250,
+     "receipt": {
+      "mode": "full",
+      "compiled_targets": 33250,
+      "calibrated_targets": 33250,
+      "dropped_congressional_district_targets": 0
+     },
+     "t25_rows": 232,
+     "t25_weight_share": 0.006052234092628359,
+     "t25_total_rows_weight_share": 0.0011181652791361662,
+     "max_abs_weight_ratio_minus_1_outside_t25": 2.9724934158537053e-06,
+     "t25_weight_ratio_range_vs_a": [
+      0.9296866583561875,
+      1.0256875765303104
+     ]
+    }
+   }
+  },
+  "c": {
+   "compiled": 33250,
+   "changed_vs_a": 232,
+   "changed_vs_a_outside_t25": 0,
+   "per_split": {
+    "eitc_total|no_qualifying_children": {
+     "total_row": 2562234955.952693,
+     "bins_sum": 2562234955.952693,
+     "total_over_bins": 1.0,
+     "n_bins": 28
+    },
+    "eitc_total|one_qualifying_child": {
+     "total_row": 24406497642.895695,
+     "bins_sum": 24406497642.895695,
+     "total_over_bins": 1.0,
+     "n_bins": 28
+    },
+    "eitc_total|two_qualifying_children": {
+     "total_row": 25944067817.66286,
+     "bins_sum": 25944067817.66286,
+     "total_over_bins": 1.0,
+     "n_bins": 28
+    },
+    "eitc_total|three_or_more_qualifying_children": {
+     "total_row": 16128849583.488752,
+     "bins_sum": 16128849583.48875,
+     "total_over_bins": 1.0000000000000002,
+     "n_bins": 28
+    },
+    "eitc_returns|no_qualifying_children": {
+     "total_row": 6610219.65761993,
+     "bins_sum": 6610219.65761993,
+     "total_over_bins": 1.0,
+     "n_bins": 28
+    },
+    "eitc_returns|one_qualifying_child": {
+     "total_row": 8469759.155140996,
+     "bins_sum": 8469759.155140998,
+     "total_over_bins": 0.9999999999999998,
+     "n_bins": 28
+    },
+    "eitc_returns|two_qualifying_children": {
+     "total_row": 5642885.331146898,
+     "bins_sum": 5642885.331146897,
+     "total_over_bins": 1.0000000000000002,
+     "n_bins": 28
+    },
+    "eitc_returns|three_or_more_qualifying_children": {
+     "total_row": 3114284.8560921764,
+     "bins_sum": 3114284.856092177,
+     "total_over_bins": 0.9999999999999999,
+     "n_bins": 28
+    }
+   },
+   "surfaces": {
+    "national_state": {
+     "version": "45adaa24b243",
+     "count": 6102,
+     "receipt": {
+      "mode": "national_state",
+      "compiled_targets": 33250,
+      "calibrated_targets": 6102,
+      "dropped_congressional_district_targets": 27148
+     },
+     "t25_rows": 232,
+     "t25_weight_share": 0.015479664832462678,
+     "t25_total_rows_weight_share": 0.002873670369712156,
+     "max_abs_weight_ratio_minus_1_outside_t25": 0.00014885262632868823,
+     "t25_weight_ratio_range_vs_a": [
+      0.9256659013500859,
+      1.1014828264306364
+     ]
+    },
+    "full": {
+     "version": "60a52e2f204d",
+     "count": 33250,
+     "receipt": {
+      "mode": "full",
+      "compiled_targets": 33250,
+      "calibrated_targets": 33250,
+      "dropped_congressional_district_targets": 0
+     },
+     "t25_rows": 232,
+     "t25_weight_share": 0.006025672944319804,
+     "t25_total_rows_weight_share": 0.001118339551549358,
+     "max_abs_weight_ratio_minus_1_outside_t25": 5.845703928453183e-05,
+     "t25_weight_ratio_range_vs_a": [
+      0.925582237691082,
+      1.101491022963184
+     ]
+    }
+   }
+  },
+  "d": {
+   "compiled": 33242,
+   "changed_vs_a": 8,
+   "changed_vs_a_outside_t25": 0,
+   "per_split": {
+    "eitc_total|no_qualifying_children": {
+     "total_row": null,
+     "bins_sum": 2214570789.2195635,
+     "total_over_bins": null,
+     "n_bins": 28
+    },
+    "eitc_total|one_qualifying_child": {
+     "total_row": null,
+     "bins_sum": 23980706681.046722,
+     "total_over_bins": null,
+     "n_bins": 28
+    },
+    "eitc_total|two_qualifying_children": {
+     "total_row": null,
+     "bins_sum": 26608588998.37868,
+     "total_over_bins": null,
+     "n_bins": 28
+    },
+    "eitc_total|three_or_more_qualifying_children": {
+     "total_row": null,
+     "bins_sum": 16237783531.355034,
+     "total_over_bins": null,
+     "n_bins": 28
+    },
+    "eitc_returns|no_qualifying_children": {
+     "total_row": null,
+     "bins_sum": 6224960.998973993,
+     "total_over_bins": null,
+     "n_bins": 28
+    },
+    "eitc_returns|one_qualifying_child": {
+     "total_row": null,
+     "bins_sum": 8464518.656264862,
+     "total_over_bins": null,
+     "n_bins": 28
+    },
+    "eitc_returns|two_qualifying_children": {
+     "total_row": null,
+     "bins_sum": 5871314.841494564,
+     "total_over_bins": null,
+     "n_bins": 28
+    },
+    "eitc_returns|three_or_more_qualifying_children": {
+     "total_row": null,
+     "bins_sum": 3276354.503266581,
+     "total_over_bins": null,
+     "n_bins": 28
+    }
+   },
+   "surfaces": {
+    "national_state": {
+     "version": "41a1fa2b013f",
+     "count": 6094,
+     "receipt": {
+      "mode": "national_state",
+      "compiled_targets": 33242,
+      "calibrated_targets": 6094,
+      "dropped_congressional_district_targets": 27148
+     },
+     "t25_rows": 224,
+     "t25_weight_share": 0.012717388819587214,
+     "t25_total_rows_weight_share": 0.0,
+     "max_abs_weight_ratio_minus_1_outside_t25": 0.0028667537435644874,
+     "t25_weight_ratio_range_vs_a": [
+      1.0002702644896477,
+      1.0028667537435645
+     ]
+    },
+    "full": {
+     "version": "469b8ed2c5db",
+     "count": 33242,
+     "receipt": {
+      "mode": "full",
+      "compiled_targets": 33242,
+      "calibrated_targets": 33242,
+      "dropped_congressional_district_targets": 0
+     },
+     "t25_rows": 224,
+     "t25_weight_share": 0.004940841890355,
+     "t25_total_rows_weight_share": 0.0,
+     "max_abs_weight_ratio_minus_1_outside_t25": 0.0013978385513930824,
+     "t25_weight_ratio_range_vs_a": [
+      1.0003600478982086,
+      1.0013978385513929
+     ]
+    }
+   }
+  }
+ },
+ "ht2_state_eitc_national_sums": {
+  "eitc_amount": 66299936047.82897,
+  "eitc_two_children_claims": 5507980.0,
+  "eitc_three_or_more_children_amount": 15521822104.320433,
+  "eitc_one_child_claims": 8378260.0,
+  "eitc_two_children_amount": 24546306401.384,
+  "eitc_no_children_claims": 6715140.0,
+  "eitc_three_or_more_children_claims": 3078350.0,
+  "eitc_claims": 23679560.0,
+  "eitc_no_children_amount": 2742731304.6983333,
+  "eitc_one_child_amount": 23489075117.08023
+ },
+ "cd_us_vs_t25": {
+  "eitc_no_children_claims": {
+   "cd_us": 6589240.0,
+   "a_over_bins": 1.0585190816594752,
+   "a_over_total": 0.9968261784469227,
+   "b_over_bins": 1.0585190816594752,
+   "b_over_total": 1.0585190816594754,
+   "c_over_bins": 0.9968261784469227,
+   "c_over_total": 0.9968261784469227,
+   "d_over_bins": 1.0585190816594752
+  },
+  "eitc_no_children_amount": {
+   "cd_us": 2607048748.074592,
+   "a_over_bins": 1.1772252938427594,
+   "a_over_total": 1.0174901181555525,
+   "b_over_bins": 1.1772252938427594,
+   "b_over_total": 1.1772252938427594,
+   "c_over_bins": 1.0174901181555525,
+   "c_over_total": 1.0174901181555525,
+   "d_over_bins": 1.1772252938427594
+  },
+  "eitc_one_child_claims": {
+   "cd_us": 8232160.0,
+   "a_over_bins": 0.9725490998719831,
+   "a_over_total": 0.9719473540169348,
+   "b_over_bins": 0.9725490998719831,
+   "b_over_total": 0.9725490998719831,
+   "c_over_bins": 0.9719473540169346,
+   "c_over_total": 0.9719473540169348,
+   "d_over_bins": 0.9725490998719831
+  },
+  "eitc_one_child_amount": {
+   "cd_us": 22375089125.21339,
+   "a_over_bins": 0.9330454445238539,
+   "a_over_total": 0.916767717047939,
+   "b_over_bins": 0.9330454445238539,
+   "b_over_total": 0.9330454445238536,
+   "c_over_bins": 0.916767717047939,
+   "c_over_total": 0.916767717047939,
+   "d_over_bins": 0.9330454445238539
+  },
+  "eitc_two_children_claims": {
+   "cd_us": 5414870.0,
+   "a_over_bins": 0.9222584968074418,
+   "a_over_total": 0.9595924216484912,
+   "b_over_bins": 0.9222584968074418,
+   "b_over_total": 0.9222584968074417,
+   "c_over_bins": 0.9595924216484913,
+   "c_over_total": 0.9595924216484912,
+   "d_over_bins": 0.9222584968074418
+  },
+  "eitc_two_children_amount": {
+   "cd_us": 23395909729.66105,
+   "a_over_bins": 0.8792615696791217,
+   "a_over_total": 0.9017826307766967,
+   "b_over_bins": 0.8792615696791217,
+   "b_over_total": 0.8792615696791216,
+   "c_over_bins": 0.9017826307766967,
+   "c_over_total": 0.9017826307766967,
+   "d_over_bins": 0.8792615696791217
+  },
+  "eitc_three_or_more_children_claims": {
+   "cd_us": 3025000.0,
+   "a_over_bins": 0.92328226294927,
+   "a_over_total": 0.9713305428957415,
+   "b_over_bins": 0.92328226294927,
+   "b_over_total": 0.9232822629492701,
+   "c_over_bins": 0.9713305428957414,
+   "c_over_total": 0.9713305428957415,
+   "d_over_bins": 0.92328226294927
+  },
+  "eitc_three_or_more_children_amount": {
+   "cd_us": 14787140932.119295,
+   "a_over_bins": 0.9106625238330983,
+   "a_over_total": 0.9168131214551734,
+   "b_over_bins": 0.9106625238330983,
+   "b_over_total": 0.9106625238330984,
+   "c_over_bins": 0.9168131214551735,
+   "c_over_total": 0.9168131214551734,
+   "d_over_bins": 0.9106625238330983
+  }
+ }
+}

@@ -1,0 +1,36 @@
+
+== eitc_total: shares (childless, one, two, three+)
+  a_bins                                 3.21%   34.73%   38.54%   23.52%
+  a_total_rows                           3.71%   35.35%   37.58%   23.36%
+  b_bins                                 3.21%   34.73%   38.54%   23.52%
+  b_total_rows                           3.21%   34.73%   38.54%   23.52%
+  c_bins                                 3.71%   35.35%   37.58%   23.36%
+  c_total_rows                           3.71%   35.35%   37.58%   23.36%
+  d_bins                                 3.21%   34.73%   38.54%   23.52%
+  ht2_ty2022_states_on_surface           4.14%   35.43%   37.02%   23.41%
+  cd_ty2022_us_on_full                   4.13%   35.42%   37.04%   23.41%
+  soi_state_full_population_ty2022       4.14%   35.43%   37.02%   23.41%
+  soi_state_full_population_ty2023       3.68%   35.42%   37.37%   23.53%
+  TVD (pp) of each option from:
+    ht2_ty2022_states_on_surface         a_bins=1.62  a_total_rows=0.55  b_bins=1.62  b_total_rows=1.62  c_bins=0.55  c_total_rows=0.55  d_bins=1.62
+    cd_ty2022_us_on_full                 a_bins=1.61  a_total_rows=0.54  b_bins=1.61  b_total_rows=1.61  c_bins=0.54  c_total_rows=0.54  d_bins=1.61
+    soi_state_full_population_ty2022     a_bins=1.62  a_total_rows=0.55  b_bins=1.62  b_total_rows=1.62  c_bins=0.55  c_total_rows=0.55  d_bins=1.62
+    soi_state_full_population_ty2023     a_bins=1.17  a_total_rows=0.24  b_bins=1.17  b_total_rows=1.17  c_bins=0.24  c_total_rows=0.24  d_bins=1.17
+
+== eitc_returns: shares (childless, one, two, three+)
+  a_bins                                26.11%   35.51%   24.63%   13.74%
+  a_total_rows                          27.73%   35.53%   23.67%   13.06%
+  b_bins                                26.11%   35.51%   24.63%   13.74%
+  b_total_rows                          26.11%   35.51%   24.63%   13.74%
+  c_bins                                27.73%   35.53%   23.67%   13.06%
+  c_total_rows                          27.73%   35.53%   23.67%   13.06%
+  d_bins                                26.11%   35.51%   24.63%   13.74%
+  ht2_ty2022_states_on_surface          28.36%   35.38%   23.26%   13.00%
+  cd_ty2022_us_on_full                  28.33%   35.39%   23.28%   13.00%
+  soi_state_full_population_ty2022      28.35%   35.38%   23.26%   13.00%
+  soi_state_full_population_ty2023      27.80%   35.41%   23.61%   13.19%
+  TVD (pp) of each option from:
+    ht2_ty2022_states_on_surface         a_bins=2.24  a_total_rows=0.63  b_bins=2.24  b_total_rows=2.24  c_bins=0.63  c_total_rows=0.63  d_bins=2.24
+    cd_ty2022_us_on_full                 a_bins=2.21  a_total_rows=0.60  b_bins=2.21  b_total_rows=2.21  c_bins=0.60  c_total_rows=0.60  d_bins=2.21
+    soi_state_full_population_ty2022     a_bins=2.24  a_total_rows=0.62  b_bins=2.24  b_total_rows=2.24  c_bins=0.62  c_total_rows=0.62  d_bins=2.24
+    soi_state_full_population_ty2023     a_bins=1.68  a_total_rows=0.19  b_bins=1.68  b_total_rows=1.68  c_bins=0.19  c_total_rows=0.19  d_bins=1.68
