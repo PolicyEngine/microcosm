@@ -360,6 +360,36 @@ def test_image_pins_the_commit_and_the_lock() -> None:
     assert commands[-1].startswith('test -z "$(git')
 
 
+def test_image_replaces_the_base_pip_before_any_package_download(app) -> None:
+    """The cached base's pip downloads only the hash-pinned pip that replaces it."""
+
+    stub = sys.modules["modal"]
+    image_steps = [
+        name.rsplit(".", 1)[-1]
+        for name, _, _ in stub.mock_calls
+        if name.startswith("Image.debian_slim")
+    ]
+    # The bootstrap follows the CA store upgrade and precedes every pip_install.
+    assert image_steps[:4] == [
+        "debian_slim",
+        "apt_install",
+        "run_commands",
+        "pip_install",
+    ]
+    image = stub.Image.debian_slim.return_value
+    image.apt_install.return_value.pip_install.assert_not_called()
+    (bootstrap_command,) = image.apt_install.return_value.run_commands.call_args.args
+    assert bootstrap_command == plan_lib.image_pip_bootstrap_command()
+    assert bootstrap_command == (
+        "printf '%s\\n' 'pip==26.2.2 --hash=sha256:"
+        "fd7f4dfa8190e014013b9f08f3e973f4e4c26ffd179a204895533a7254813a70'"
+        " > /tmp/pip-bootstrap.txt"
+        " && python -m pip install --require-hashes --no-deps"
+        " -r /tmp/pip-bootstrap.txt"
+        " && rm /tmp/pip-bootstrap.txt"
+    )
+
+
 def test_image_installs_the_emitter_command_on_its_own(app) -> None:
     """Builds start the separately installed emitter, never the synced one."""
 
@@ -376,7 +406,8 @@ def test_image_installs_the_emitter_command_on_its_own(app) -> None:
     # The interface in the build finds the command through the image's
     # environment, which the stage tool inherits.
     image = sys.modules["modal"].Image.debian_slim.return_value
-    image_env = image.apt_install.return_value.pip_install.return_value.env
+    after_pip_bootstrap = image.apt_install.return_value.run_commands.return_value
+    image_env = after_pip_bootstrap.pip_install.return_value.env
     environment = image_env.call_args.args[0]
     assert environment["MICROCOSM_EMITTER_COMMAND"] == (
         "/usr/local/bin/microcosm-emitter"
@@ -982,6 +1013,19 @@ def test_tool_environment_strips_credentials_and_stays_offline() -> None:
     assert env["OMP_NUM_THREADS"] == "4"  # the plan's override wins
     assert env["PATH"] == "/usr/bin"
     assert env["MICROCOSM_ACS_POOL_PEAK_LIMIT_BYTES"] == "1"
+
+
+def test_a_build_the_runner_starts_keeps_its_staged_bundle_in_the_container() -> None:
+    """A build on Modal uploads nothing from its container: the runner's
+    environment switches the Hub off, and a build that sees that hands no
+    dataset bundle to its emitter (the bundle is staged later from the
+    workstation)."""
+    from microcosm.build.staging_dataset import hub_offline
+
+    env, _removed = plan_lib.tool_environment(
+        {"PATH": "/usr/bin", "HF_HUB_OFFLINE": "0", "HF_TOKEN": "hf_secret"}, {}
+    )
+    assert hub_offline(env)
 
 
 @pytest.mark.parametrize(
