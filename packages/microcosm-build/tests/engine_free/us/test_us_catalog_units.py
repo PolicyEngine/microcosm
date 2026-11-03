@@ -6,7 +6,7 @@ from importlib import resources
 from unittest.mock import patch
 
 import pytest
-from hypothesis import HealthCheck, given, settings
+from hypothesis import HealthCheck, example, given, settings
 from hypothesis import strategies as st
 
 from tools.us_bundle_generation.core import (
@@ -46,6 +46,15 @@ def test_every_unit_the_catalog_can_assign_is_a_schema_unit() -> None:
     reviewed=st.dictionaries(_NAMES, st.tuples(_ENGINE_UNITS, _CATALOG_UNITS)),
     variable=_NAMES,
     engine_unit=_ENGINE_UNITS,
+)
+# Random draws seldom pin a reviewed entry to the engine unit its input declares.
+# In the first row the map gives that unit another catalog unit, and the entry
+# wins; in the second the map lacks the unit, as it lacks "year".
+@example(
+    mapped={"a": "usd"}, reviewed={"b": ("a", "count")}, variable="b", engine_unit="a"
+)
+@example(
+    mapped={}, reviewed={"b": ("a", "calendar_year")}, variable="b", engine_unit="a"
 )
 def test_catalog_unit_maps_declared_or_reviewed_units_and_refuses_the_rest(
     mapped: dict[str, str],
