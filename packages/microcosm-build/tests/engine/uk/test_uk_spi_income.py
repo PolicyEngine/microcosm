@@ -1,6 +1,8 @@
 """Tests split from packages/microcosm-build/tests/test_uk_spi_income.py."""
 
 # ruff: noqa: F403, F405
+from microcosm.build.uk_runtime.hmrc_uprating import uk_obr_savings_income_level
+from microcosm.build.uk_runtime.spi_income import SPI_SAVINGS_REBASE_CONCEPTS
 from test_support.microcosm_build.uk_spi_income import *
 
 
@@ -45,7 +47,8 @@ def test_spi_preserves_observed_children_outside_the_donor_age_domain(
     )
     assert result.spi_prediction_rows == int(person[channel].eq("spi").sum()) - 1
     adults = person[channel].eq("spi") & person.age.ge(16)
-    assert result.person.loc[adults, "gift_aid"].eq(10).all()
+    factor = result.gift_anchor["factors"]["gift_aid"]
+    assert result.person.loc[adults, "gift_aid"].eq(10.0 * factor).all()
 
 
 def test_spi_rebases_income_before_frs_fill_and_preserves_child_inputs(
@@ -66,9 +69,23 @@ def test_spi_rebases_income_before_frs_fill_and_preserves_child_inputs(
     monkeypatch.setattr(
         spi_income,
         "_spi_income_uprating_factors",
-        lambda year: (factors, {"from_period": 2022, "to_period": year}),
+        lambda year, *, rebased_columns=None: (
+            factors,
+            {"from_period": 2022, "to_period": year},
+        ),
         raising=False,
     )
+    # The donor savings rebase runs on the prepared tape when the stage rebases
+    # to the build year, and only then (microcosm#1418 savings follow-up),
+    # banding the tape on its income moved to 2023-24 (microcosm#1428).
+    rebased = []
+
+    def rebase(donor, published, *, income_factors=None):
+        rebased.append(sorted(published))
+        assert income_factors == factors
+        return donor, {"rebased": True, "columns": {}}
+
+    monkeypatch.setattr(spi_income, "rebase_spi_donor_savings", rebase)
     options = dict(
         seed=9,
         n_estimators=3,
@@ -77,6 +94,7 @@ def test_spi_rebases_income_before_frs_fill_and_preserves_child_inputs(
         allow_in_sample_reference=True,
     )
     reference = impute_uk_spi_income_support(support, donor_path, **options)
+    assert rebased == []
     result = impute_uk_spi_income_support(
         support,
         donor_path,
@@ -102,7 +120,12 @@ def test_spi_rebases_income_before_frs_fill_and_preserves_child_inputs(
         result.person.loc[base, "dividend_income"],
         person.loc[base, "dividend_income"],
     )
-    assert result.income_uprating == {"from_period": 2022, "to_period": 2024}
+    assert rebased == [sorted(SPI_SAVINGS_REBASE_CONCEPTS)]
+    assert result.income_uprating == {
+        "from_period": 2022,
+        "to_period": 2024,
+        "savings_rebase": {"rebased": True, "columns": {}},
+    }
 
 
 def test_child_exclusion_keeps_the_other_recipients_draws(
@@ -394,8 +417,19 @@ def test_spi_qrf_stages_use_typed_weights_and_keep_isa_interest_apart(
         .all()
     )
     assert result.person.loc[spi_people, "other_investment_income"].eq(25.0).all()
-    assert result.person.loc[spi_people, "gift_aid"].eq(10.0).all()
-    assert result.person.loc[spi_people, "charitable_investment_gifts"].eq(2.0).all()
+    # The gift leaves are the forest's draws scaled to the tape's FACT-weighted
+    # totals, 300 of Gift Aid and 30 of investment gifts (microcosm#1428).
+    factors = result.gift_anchor["factors"]
+    weights = result.person.loc[spi_people, "person_household_id"].map(
+        support.household.set_index("household_id")["household_weight"]
+    )
+    for column, draw, tape in (
+        ("gift_aid", 10.0, 300.0),
+        ("charitable_investment_gifts", 2.0, 30.0),
+    ):
+        gifts = result.person.loc[spi_people, column]
+        assert gifts.eq(draw * factors[column]).all()
+        assert (weights * gifts).sum() == pytest.approx(tape)
     assert (
         result.person.loc[
             spi_people,
@@ -712,6 +746,10 @@ def test_spi_uprating_uses_actual_engine_indices_and_explicit_nominal_holdouts()
         for column, row in receipt["columns"].items()
         if row["basis"] == "held_nominal"
     } == nominal
+    # Interest and other income are rebased to SPI's 2023-24 bands first and
+    # grow on the OBR's savings income path from there (microcosm#1418 savings
+    # follow-up).
+    obr_level, _ = uk_obr_savings_income_level(2023, 2024)
     for column, row in receipt["columns"].items():
         if column in nominal:
             assert row == {
@@ -720,6 +758,10 @@ def test_spi_uprating_uses_actual_engine_indices_and_explicit_nominal_holdouts()
                 "factor": 1.0,
                 "basis": "held_nominal",
             }
+        elif column in SPI_SAVINGS_REBASE_CONCEPTS:
+            assert row["basis"] == "spi_published_bands_then_obr_savings_income"
+            assert row["from_period"] == 2023
+            assert factors[column] == pytest.approx(obr_level)
         else:
             path, ratio = expected[row["variable"]]
             assert row["index"] == "gov.economic_assumptions.indices." + path
@@ -779,13 +821,13 @@ def test_spi_rebasing_index_is_the_projections_except_where_named() -> None:
         else:
             assert row["index"] == projection[row["variable"]], column
             assert "dataset_projection_index" not in row
-    savings = receipt["columns"]["savings_interest_income"]
-    assert savings["index"] == (
-        "gov.economic_assumptions.indices.ons.household_interest_income"
-    )
-    # 2.2692 until policyengine-uk 2.164.1's October 2026 outlook revised the
-    # ONS interest history (microcosm#1415).
-    assert savings["factor"] == pytest.approx(2.2686, abs=1e-4)
+    # Interest and other income reach the frame's year on SPI's own path, the
+    # 2023-24 bands then the OBR's savings income growth (+35.0% in 2024-25),
+    # and run on the projection's GDP per head from there.
+    for column in SPI_SAVINGS_REBASE_CONCEPTS:
+        savings = receipt["columns"][column]
+        assert savings["index"] == "obr.efo_2026_10.savings_income_growth"
+        assert savings["factor"] == pytest.approx(1.3496108, abs=1e-7)
 
 
 def _zero_taxable_income(person: pd.DataFrame, rows) -> None:
@@ -847,7 +889,8 @@ def test_undrawn_twins_keep_their_values_and_are_receipted(
         result.person.loc[copy[0], kept], person.loc[copy[0], kept], check_names=False
     )
     others = person.index[(person[channel] == "spi") & (person["age"] >= 16)].drop(copy)
-    assert result.person.loc[others, "gift_aid"].eq(10.0).all()
+    factor = result.gift_anchor["factors"]["gift_aid"]
+    assert result.person.loc[others, "gift_aid"].eq(10.0 * factor).all()
     # The stage flags the rows it drew, and only those, for the later stages
     # that tell tape-concept rows from FRS-concept ones.
     flag = result.person["person_is_spi_income_recipient"]
