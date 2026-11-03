@@ -658,7 +658,9 @@ def test_without_person_role_defaults_encoding_matches_the_old_gather(
 ):
     # Before person_role entities joined the person table's entities, the
     # kernel gathered defaults for the correspondence's entities only. With
-    # no closure root on a person_role entity, it writes the same bytes.
+    # no closure root on a person_role entity, it writes the same bytes. This
+    # checks the gather's non-Child part; the merge property below checks its
+    # Child part.
     frame = _generated_frame(tables)
     mapping = ROLE_MAPPING if role else MAPPING
     closure = replace(
@@ -680,6 +682,92 @@ def test_without_person_role_defaults_encoding_matches_the_old_gather(
     assert result.columns.keys() == old.columns.keys()
     for key, values in result.columns.items():
         pd.testing.assert_series_equal(values, old.columns[key], check_exact=True)
+
+
+# Names apart from every encoded input and fixture default, and values whose
+# types differ where they compare equal (False == 0 == 0.0).
+MERGE_NAMES = ("role_flag", "role_count", "role_share")
+MERGE_VALUES = st.sampled_from([False, True, 0, 1, 0.0, 0.5])
+DTYPE_TOKENS = {bool: "bool", int: "int64", float: "float64"}
+
+
+@PROPERTY
+@given(
+    tables=concept_frames(max_households=2, max_members=3),
+    person=st.dictionaries(st.sampled_from(MERGE_NAMES), MERGE_VALUES, max_size=3),
+    child=st.dictionaries(
+        st.sampled_from(MERGE_NAMES), MERGE_VALUES, min_size=1, max_size=3
+    ),
+    child_first=st.booleans(),
+)
+def test_person_and_child_defaults_merge_on_the_person_table_or_refuse(
+    tables, person, child, child_first
+):
+    # The person table's defaults merge into one set, in either gather
+    # order: a name that Person and Child both default must agree in type
+    # and value, or the kernel refuses. Otherwise each name gets one person
+    # column holding its default.
+    frame = _generated_frame(tables)
+    closure = replace(
+        ROLE_CLOSURE,
+        entries=(
+            *ROLE_CLOSURE.entries,
+            *(_default(PERSON_PATH, "Person", k, v) for k, v in person.items()),
+            *(_default(CHILD_DEFAULTS_PATH, "Child", k, v) for k, v in child.items()),
+        ),
+    )
+    # The selected paths' order sets the gather order.
+    paths = (PERSON_PATH, CHILD_DEFAULTS_PATH)[:: -1 if child_first else 1]
+    merged = {**child, **person}
+    outputs = tuple(
+        Owned("person", name, DTYPE_TOKENS[type(value)])
+        for name, value in sorted(merged.items())
+    )
+    params = _encode_params(mapping=ROLE_MAPPING, closure=closure, paths=paths)
+    context = _context(CONCEPTS_ENCODE, frame, params, outputs)
+    clash = any(
+        name in person
+        and (type(person[name]) is not type(value) or person[name] != value)
+        for name, value in child.items()
+    )
+    if clash:
+        with pytest.raises(ValueError, match="conflicting defaults"):
+            CONCEPTS_ENCODE.run(context)
+        return
+    result = CONCEPTS_ENCODE.run(context)
+    for name, value in merged.items():
+        expected = pd.Series([value] * len(frame.person))
+        _assert_column(result, frame, "person", name, expected)
+
+
+@PROPERTY
+@given(tables=concept_frames(max_households=2, max_members=3))
+def test_group_kernels_refuse_a_person_role_entity(tables):
+    # concepts.encode@1 writes a person_role entity's bindings and defaults
+    # on the person table, so a group kernel refuses one as its engine
+    # entity instead of writing its defaults on a unit table as well.
+    frame = _generated_frame(tables)
+    knobs = {
+        "rent_allocation": "reference_unit",
+        "asset_test": True,
+        "rent_factor": 1.0,
+    }
+    params = _encode_params(
+        groups=True,
+        knobs=knobs,
+        mapping=ROLE_MAPPING,
+        closure=ROLE_CLOSURE,
+        paths=(GROUP_PATH, CHILD_PATH),
+    )
+    family = (Owned("family", "input_assets", "float64", rewrite=True),)
+    child = {**params, "engine_entity": "Child", "rulespec_paths": (CHILD_PATH,)}
+    in_care = (Owned("family", "child_in_care", "bool", rewrite=True),)
+    for kernel in (CONCEPTS_ENCODE_GROUPS, TRANSPORT_SCENARIO_OVERRIDE):
+        # The same mapping still encodes its built units.
+        result = kernel.run(_context(kernel, frame, params, family))
+        assert list(result.columns) == [("family", "input_assets")]
+        with pytest.raises(ValueError, match="'Child' holds persons in a role"):
+            kernel.run(_context(kernel, frame, child, in_care))
 
 
 def test_person_role_defaults_share_the_person_table_with_person_inputs(tmp_path):

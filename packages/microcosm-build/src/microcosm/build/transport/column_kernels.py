@@ -6,11 +6,12 @@ it moves the node key and authenticates nothing. The kernels never load a
 country package. ``unit_rule`` is the resolved :class:`BenefitUnitRule`
 representation, rather than an unresolved country proposal. ``mapping`` is a
 :class:`ConceptMapping` representation; ``rulespec_paths`` selects its
-bindings and the closure's defaults. Each selected path names a module the
-mapping binds or, with a closure, a module the closure lists, since a module
-may default every input it reads. ``concepts.encode@1`` writes the defaults
-of the mapping's ``person_role`` entities on the person table, beside their
-bindings.
+bindings and the closure's defaults. With a closure, each selected path names
+a module the closure lists, which may bind nothing, since a module may default
+every input it reads; without one, each names a module the mapping binds.
+``concepts.encode@1`` writes the defaults of the mapping's ``person_role``
+entities on the person table, beside their bindings, and the group kernels
+refuse such an entity.
 
 The encode and scenario kernels derive no take-up draws: they refuse
 ``take_up_rates``, so the encoder refuses any selected take-up-threshold
@@ -168,8 +169,10 @@ def _paths(context: KernelContext, ref: str) -> tuple[str, ...] | None:
 def _full_mapping(context: KernelContext, ref: str) -> ConceptMapping:
     """The whole declared mapping, after checking its selected paths exist.
 
-    The mapping binds an input in each selected path, or the closure lists
-    the path: a module may default every input it reads and bind none.
+    Each selected path names a module the mapping binds or the closure lists.
+    With a closure, :func:`_closure` also refuses a path the closure lacks,
+    so there each path names a module the closure lists, which may bind
+    nothing: a module may default every input it reads.
     """
     mapping = ConceptMapping.from_dict(_document(context, ref, "mapping"))
     paths = _paths(context, ref)
@@ -432,6 +435,9 @@ class ConceptsEncodeKernel(_ColumnKernel):
         # role, so its defaults go on the person table, as its bindings do.
         # The whole mapping names these entities: a selected module may
         # default every input of an entity that only other modules bind.
+        # Only person_role bindings add an entity here: this kernel writes no
+        # defaults for an engine entity outside the correspondence that no
+        # person_role binding names, even when the closure defaults its inputs.
         entities = {
             frame: (engine,) for frame, engine in full.entity_correspondence.items()
         }
@@ -458,6 +464,13 @@ def _group_inputs(context: KernelContext, ref: str):
     # state bindings against every concept binding's input name.
     mapping = _full_mapping(context, ref)
     entity = string_param(context, ref, "engine_entity")
+    # concepts.encode@1 writes a person_role entity's bindings and defaults
+    # on the person table. Here its defaults would land on a unit table too.
+    if entity in mapping.person_role_entities():
+        raise ValueError(
+            f"{ref} engine_entity {entity!r} holds persons in a role, not built "
+            "units; concepts.encode@1 writes its inputs on the person table."
+        )
     declaration = _unit_declaration(context, ref)
     physical = context.params.get("unit_entity")
     if physical is None:
