@@ -185,10 +185,14 @@ def test_the_uk_block_delegates_rather_than_reassembling_the_shared_one(tmp_path
     field the loader learns and this seam silently drops, and a test that
     enumerated today's fields would not catch tomorrow's.
     """
+    # The block moved from calibration_run to ledger_surface, which the UK
+    # target kernels hash (microcosm#1492).
+    from microcosm.build.uk_runtime import ledger_surface
+
     artifact = load_ledger_consumer_artifact(_mixed_epoch_artifact_dir(tmp_path))
     shared = artifact.provenance()
 
-    block = calibration_run._ledger_provenance(artifact)
+    block = ledger_surface._ledger_provenance(artifact)
 
     for field, value in shared.items():
         if field in {"path_name", "schema_version", "profiles"}:
@@ -218,23 +222,26 @@ def test_band_edge_register_must_reconstitute_the_compiled_roster():
     """The reconciliation always runs: an empty receipt claims nothing was
     pruned, so the two rosters must then be name-identical; a receipt that
     disagrees with the pruned names refuses. The graph's national target
-    node and the dense target compiler both stand on this check."""
+    node and the dense target compiler both stand on this check, now in
+    ledger_surface, which the UK target kernels hash (microcosm#1492)."""
+    from microcosm.build.uk_runtime import ledger_surface
+
     compiled = TargetRegistry([_spec("a"), _spec("b")], country="uk")
     pruned = TargetRegistry([_spec("a")], country="uk")
-    calibration_run._validate_band_edge_registry(
+    ledger_surface._validate_band_edge_registry(
         register_registry=pruned,
         band_edge_registry=compiled,
         exclusion_receipt={"b": {"reason": "test"}},
     )
-    calibration_run._validate_band_edge_registry(
+    ledger_surface._validate_band_edge_registry(
         register_registry=compiled, band_edge_registry=compiled, exclusion_receipt={}
     )
     with pytest.raises(ValueError, match="must match the measure exclusion receipt"):
-        calibration_run._validate_band_edge_registry(
+        ledger_surface._validate_band_edge_registry(
             register_registry=pruned, band_edge_registry=compiled, exclusion_receipt={}
         )
     with pytest.raises(ValueError, match="must include every materialized"):
-        calibration_run._validate_band_edge_registry(
+        ledger_surface._validate_band_edge_registry(
             register_registry=compiled,
             band_edge_registry=pruned,
             exclusion_receipt={},
