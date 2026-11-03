@@ -211,8 +211,9 @@ def test_the_tagged_publisher_refuses_every_build_folder_release(
     assert uk_hub.uploads == []
 
 
-def test_the_tagged_publisher_offers_no_line_promotion() -> None:
-    """Only UK releases had promotion lines, and they no longer publish here."""
+def test_the_tagged_publisher_has_no_pointer_promotion_option() -> None:
+    """Only UK releases were made current through latest-<line>.json pointer
+    files, and they no longer publish here."""
     import inspect
 
     assert "line" not in inspect.signature(publish_release).parameters

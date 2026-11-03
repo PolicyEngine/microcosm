@@ -276,15 +276,23 @@ def test_the_command_promotes_with_promote(
     monkeypatch,
     capsys,
 ) -> None:
-    client = FakeEmitterClient()
-    monkeypatch.setattr(release_publication, "_start_release_emitter", lambda: client)
+    """Each command starts its own emitter; both write to one repository."""
+    repository: dict = {}
+    emitters: list[FakeEmitterClient] = []
+
+    def start() -> FakeEmitterClient:
+        emitters.append(FakeEmitterClient(hub_files=repository))
+        return emitters[-1]
+
+    monkeypatch.setattr(release_publication, "_start_release_emitter", start)
     assert _run([str(national), "--artifact-root", str(artifact_root)], capsys)[0] == 0
 
     code, output, _ = _run([str(national), "--promote"], capsys)
 
     assert code == 0
     assert output["current"] is True
-    assert client.calls.count("promote_build") == 1
+    assert [emitter.calls.count("promote_build") for emitter in emitters] == [0, 1]
+    assert all(emitter.closed for emitter in emitters)
 
 
 def test_preflight_checks_the_build_without_an_emitter(
@@ -315,19 +323,11 @@ def test_preflight_checks_the_build_without_an_emitter(
     }
 
 
-@pytest.mark.parametrize(
-    "arguments",
-    [
-        ["--repo-id", "policyengine/populace-uk-staging"],
-        ["--promote", "--make-current"],
-    ],
-)
-def test_the_command_refuses_conflicting_arguments(
+def test_the_command_refuses_another_repository(
     national: Path,
     artifact_root: Path,  # noqa: F811
     monkeypatch,
     capsys,
-    arguments: list[str],
 ) -> None:
     monkeypatch.setattr(
         release_publication,
@@ -335,10 +335,24 @@ def test_the_command_refuses_conflicting_arguments(
         lambda: pytest.fail("a refused command starts no emitter"),
     )
 
-    with pytest.raises((SystemExit, ValueError)):
-        release_publication.main(
-            [str(national), "--artifact-root", str(artifact_root), *arguments]
-        )
+    code, output, error = _run(
+        [
+            str(national),
+            "--artifact-root",
+            str(artifact_root),
+            "--repo-id",
+            "policyengine/populace-uk-staging",
+        ],
+        capsys,
+    )
+
+    assert (code, output) == (1, None)
+    assert "names policyengine/populace-uk-private" in error
+
+
+def test_the_command_does_one_thing_at_a_time(national: Path) -> None:  # noqa: F811
+    with pytest.raises(SystemExit):
+        release_publication.main([str(national), "--promote", "--make-current"])
 
 
 def test_the_command_refuses_a_release_that_still_publishes_with_tags(

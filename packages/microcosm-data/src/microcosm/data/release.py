@@ -1,5 +1,15 @@
 """Publish a release and move its approved repository pointer.
 
+**UK releases no longer publish here.** The UK national, dense and
+local-area releases publish each build into its own folder,
+``releases/<release>/<build>/``, through the emitter's ``publish_release``
+call (``microcosm-publish-release-build``, in ``microcosm-build``), and the
+repository's ``releases.json`` records which build is current.
+:func:`prepare_build_folder_release` checks such a build and lists its files
+with their roles; :func:`prepare_release` and :func:`publish_release` refuse
+it. Everything below describes the tagged layout the US releases keep until
+the stable releases US builds publish under are agreed.
+
 The Hub repo publishes builds under ``releases/<build_id>/``, but nothing
 identified which release is *current*: a consumer had to list the tree and
 guess, and because build ids end in a date (``populace-us-2024-9f1260b-
@@ -19,9 +29,11 @@ Two sides of the pointer live here:
   returns the typed pointer, the one-call answer to "which release is
   current?" for dashboards and scorers.
 
-Approved UK lines coexist through ``latest-<line>.json``. Those schema-1
-pointers add ``line`` and ``revision`` so a line can name an immutable cut tag
-without changing the frozen repository-global ``latest.json``.
+UK releases were made current through pointer files named
+``latest-<line>.json``. Those schema-1 pointers add the fields ``line`` and
+``revision``, so each could name an immutable per-build tag without changing
+the frozen repository-global ``latest.json``. Nothing writes them any more;
+:func:`latest_line_release` still reads them until they are deleted.
 
 The EVIDENCE tier (microcosm#506) publishes through the same producer with
 ``evidence=True``: identical immutable-tag mechanics, but the pointer that
@@ -47,11 +59,16 @@ from pathlib import Path
 from typing import Any
 
 from microcosm.data.contract import (
+    BUILD_MANIFEST_FILE_ROLE,
+    CHECKSUMS_FILE,
+    CHECKSUMS_FILE_ROLE,
     EVIDENCE_RELEASE_ID_SEGMENT,
     NATIONAL_DEFAULT_DATASET_ROLE,
+    RELEASE_MANIFEST_FILE_ROLE,
+    RELEASE_ROLES,
     _uk_line_cut_tag_re,
-    dataset_role_for_line,
     line_for_release_id,
+    publishes_to_build_folder,
     release_dataset_role,
     required_release_files,
     validate_evidence_release_dir,
@@ -60,6 +77,9 @@ from microcosm.data.contract import (
 from microcosm.data.slack import notify_release
 
 __all__ = [
+    "BUILD_FOLDER_PUBLICATION_COMMAND",
+    "BuildFolderFile",
+    "BuildFolderRelease",
     "LATEST_EVIDENCE_POINTER_PATH",
     "LATEST_POINTER_PATH",
     "LATEST_POINTER_SCHEMA_VERSION",
@@ -68,6 +88,8 @@ __all__ = [
     "RELEASE_TIER_EVIDENCE",
     "LatestPointer",
     "PreparedRelease",
+    "build_folder_identity",
+    "prepare_build_folder_release",
     "prepare_release",
     "latest_evidence_pointer_payload",
     "latest_line_release",
@@ -271,10 +293,189 @@ class PreparedRelease:
     tag: str
     filenames: list[str]
     root_artifacts: dict[str, str]
-    line: str | None
     pointer_path: str
     calibration_diagnostics_available: bool
     contract_warnings: tuple[str, ...] = ()
+
+
+#: Where a build-folder release publishes from: the workspace command that
+#: hands each build to the emitter (``microcosm.build.release_publication``).
+BUILD_FOLDER_PUBLICATION_COMMAND = "microcosm-publish-release-build"
+
+
+def _refuse_build_folder_release(release_id: str) -> None:
+    if publishes_to_build_folder(release_id):
+        raise ValueError(
+            f"release {release_id!r} publishes each build into its own folder "
+            "through the emitter, which also records it in releases.json; "
+            f"publish it with `{BUILD_FOLDER_PUBLICATION_COMMAND}`. This "
+            "publisher commits, tags and writes latest*.json pointer files."
+        )
+
+
+@dataclass(frozen=True)
+class BuildFolderFile:
+    """One file of a build folder: its bare name, role, local path and digest."""
+
+    name: str
+    role: str
+    path: Path
+    sha256: str
+    bytes: int
+
+
+@dataclass(frozen=True)
+class BuildFolderRelease:
+    """A checked build of a build-folder release, ready to hand to the emitter.
+
+    ``release_role`` is the release's role in ``releases.json``
+    (:data:`~microcosm.data.contract.RELEASE_ROLES`). ``files`` lists the
+    release manifest, the build manifest, every artifact the release manifest
+    declares and the checksum ledger when there is one, each once.
+    ``contract_warnings`` are the release contract's warnings, which never
+    refuse a build.
+    """
+
+    release_dir: Path
+    repository: str
+    release: str
+    build: str
+    release_role: str
+    files: tuple[BuildFolderFile, ...]
+    calibration_diagnostics_available: bool
+    contract_warnings: tuple[str, ...] = ()
+
+
+def build_folder_identity(release_dir: Path | str) -> tuple[str, str, str]:
+    """``(repository, release, build)`` named by a build folder's release manifest.
+
+    Reads only the manifest, so a published build can be promoted from its
+    local directory without checking it again; raises ``ValueError`` if the
+    directory is not a build-folder release or its manifest does not name
+    the release, the build and one repository.
+    """
+    release_dir = Path(release_dir)
+    if not publishes_to_build_folder(release_dir.name):
+        raise ValueError(
+            f"release {release_dir.name!r} does not publish into build folders; "
+            "it publishes with tags and latest.json (tools/publish_release.sh)."
+        )
+    manifest = json.loads((release_dir / "release_manifest.json").read_text())
+    if not isinstance(manifest, Mapping):
+        raise ValueError(f"{release_dir}/release_manifest.json is not an object.")
+    release, build = manifest.get("release"), manifest.get("build")
+    if release != release_dir.name or not isinstance(build, str) or not build:
+        raise ValueError(
+            f"{release_dir}/release_manifest.json does not name release "
+            f"{release_dir.name!r} and a build."
+        )
+    artifacts = manifest.get("artifacts")
+    repositories = sorted(
+        {
+            str(entry.get("repo_id"))
+            for entry in (artifacts.values() if isinstance(artifacts, Mapping) else ())
+            if isinstance(entry, Mapping)
+        }
+    )
+    if len(repositories) != 1:
+        raise ValueError(
+            f"release {release!r} declares artifacts in more than one repository "
+            f"({repositories}); a build is published into one repository."
+        )
+    return repositories[0], release, build
+
+
+def prepare_build_folder_release(
+    release_dir: Path | str,
+    *,
+    artifact_root: Path | str | None = None,
+    repository: str | None = None,
+) -> BuildFolderRelease:
+    """Check a build-folder release's build and list the files it publishes.
+
+    The release contract runs first. Each artifact is read from the release
+    directory, or else from ``artifact_root`` (the H5 and the calibration
+    weights live beside the candidate), and must match the SHA-256 its
+    manifest records. ``repository``, when given, must be the one the
+    artifacts name. Nothing on the Hub is read or written.
+
+    Raises:
+        ReleaseContractError: If the build breaks its release contract.
+        ValueError: If the directory is not a build-folder release, names more
+            than one repository, or a file's bytes differ from the manifest.
+        FileNotFoundError: If an artifact is in neither directory.
+    """
+    release_dir = Path(release_dir)
+    named_repository, release, build = build_folder_identity(release_dir)
+    contract_warnings = validate_release_dir(release_dir, artifact_root=artifact_root)
+    for contract_warning in contract_warnings:
+        warnings.warn(f"release contract: {contract_warning}", stacklevel=2)
+    if repository is not None and repository != named_repository:
+        raise ValueError(
+            f"release {release!r} names {named_repository} in its artifacts, not "
+            f"{repository}."
+        )
+    manifest = json.loads((release_dir / "release_manifest.json").read_text())
+    dataset_role = manifest.get("dataset_role", NATIONAL_DEFAULT_DATASET_ROLE)
+    release_role = RELEASE_ROLES.get(dataset_role)
+    if release_role is None:
+        raise ValueError(
+            f"release {release!r} declares dataset_role {dataset_role!r}, which "
+            "has no role in releases.json."
+        )
+    root = Path(artifact_root) if artifact_root is not None else None
+    sources: list[tuple[str, str, Path, str | None]] = [
+        ("release_manifest.json", RELEASE_MANIFEST_FILE_ROLE, release_dir, None),
+        ("build_manifest.json", BUILD_MANIFEST_FILE_ROLE, release_dir, None),
+    ]
+    if (release_dir / CHECKSUMS_FILE).is_file():
+        sources.append((CHECKSUMS_FILE, CHECKSUMS_FILE_ROLE, release_dir, None))
+    for entry in manifest["artifacts"].values():
+        name = entry["path"]
+        directory = release_dir
+        if not (release_dir / name).is_file() and root is not None:
+            directory = root
+        sources.append((name, entry["role"], directory, entry["sha256"]))
+    files: list[BuildFolderFile] = []
+    for name, role, directory, expected_sha256 in sources:
+        local = directory / name
+        if not local.is_file():
+            raise FileNotFoundError(
+                f"{name} of release {release!r} is in neither {release_dir} nor "
+                f"the artifact root {root}."
+            )
+        digest = _sha256(local)
+        if expected_sha256 is not None and digest != expected_sha256:
+            raise ValueError(
+                f"{name} has sha256 {digest}, but release_manifest.json records "
+                f"{expected_sha256}."
+            )
+        files.append(BuildFolderFile(name, role, local, digest, local.stat().st_size))
+    names = [item.name for item in files]
+    if len(set(names)) != len(names):
+        raise ValueError(f"release {release!r} names a file twice: {sorted(names)}.")
+    diagnostics_declaration = manifest.get("calibration_diagnostics")
+    diagnostics_available = not (
+        isinstance(diagnostics_declaration, Mapping)
+        and diagnostics_declaration.get("status") == "failed"
+    )
+    if not diagnostics_available:
+        warnings.warn(
+            "Publishing a dataset whose calibration diagnostics generation failed: "
+            f"{diagnostics_declaration.get('error_code')}: "
+            f"{diagnostics_declaration.get('message')}",
+            stacklevel=2,
+        )
+    return BuildFolderRelease(
+        release_dir=release_dir,
+        repository=named_repository,
+        release=release,
+        build=build,
+        release_role=release_role,
+        files=tuple(files),
+        calibration_diagnostics_available=diagnostics_available,
+        contract_warnings=tuple(contract_warnings),
+    )
 
 
 def prepare_release(
@@ -289,7 +490,6 @@ def prepare_release(
     update_latest: bool = True,
     tag_only: bool = False,
     evidence: bool = False,
-    line: str | None = None,
 ) -> PreparedRelease:
     """Run every local publisher guard and collect the files to upload.
 
@@ -298,8 +498,10 @@ def prepare_release(
     replays any required source-enrichment compatibility checks. No Hub client
     is constructed, no Hub activity occurs, and no release alert is sent.
     Publication must prepare again so preflight cannot authorize stale inputs.
+    A release that publishes into build folders is refused first.
     """
     release_dir = Path(release_dir)
+    _refuse_build_folder_release(release_dir.name)
     if parent_h5 is not None or compatibility_wheels:
         from microcosm.data.compatibility_recertification import (
             RECERTIFICATION_RELEASE_TYPE,
@@ -342,29 +544,8 @@ def prepare_release(
         warnings.warn(f"release contract: {contract_warning}", stacklevel=2)
     release_id = release_dir.name
     role = release_dataset_role(release_dir)
-    if line is not None:
-        pointer_path = line_pointer_path(line)
-        if evidence:
-            raise ValueError("line promotion cannot publish at the evidence tier.")
-        if not update_latest:
-            raise ValueError("line promotion requires update_latest=True.")
-        if tag_only:
-            raise ValueError("line promotion cannot use tag_only=True.")
-        expected_line = line_for_release_id(release_id)
-        if line != expected_line:
-            raise ValueError(
-                f"release {release_id!r} belongs to line {expected_line!r}, "
-                f"not {line!r}."
-            )
-        expected_role = dataset_role_for_line(line)
-        if role != expected_role:
-            raise ValueError(
-                f"release {release_id!r} declares dataset_role {role!r}; line "
-                f"{line!r} publishes only {expected_role!r} releases."
-            )
-    else:
-        pointer_path = LATEST_EVIDENCE_POINTER_PATH if evidence else LATEST_POINTER_PATH
-    if role != NATIONAL_DEFAULT_DATASET_ROLE and update_latest and line is None:
+    pointer_path = LATEST_EVIDENCE_POINTER_PATH if evidence else LATEST_POINTER_PATH
+    if role != NATIONAL_DEFAULT_DATASET_ROLE and update_latest:
         # microcosm#398 defense in depth beyond --no-latest: a non-default
         # release can never move the global default pointer, even if a
         # caller asks.
@@ -516,13 +697,12 @@ def prepare_release(
             "match the release id or uniform per-cut artifact revision."
         )
     # The repository-global pointer may only name a release whose immutable tag
-    # IS the release id. Approved line pointers have their own reader contract
-    # and may follow a per-cut tag; latest.json still may not.
-    if update_latest and tag != release_id and line is None:
+    # IS the release id.
+    if update_latest and tag != release_id:
         raise ValueError(
             f"latest.json may not name per-cut tag {tag!r} for release "
-            f"{release_id!r}; without an approved line pointer, per-cut tags "
-            "publish inspect-only. Pass update_latest=False (--no-latest)."
+            f"{release_id!r}; a tag other than the release id publishes "
+            "inspect-only. Pass update_latest=False (--no-latest)."
         )
     if root_artifacts and artifact_root is None:
         raise ValueError(
@@ -551,7 +731,6 @@ def prepare_release(
         tag=tag,
         filenames=filenames,
         root_artifacts=root_artifacts,
-        line=line,
         pointer_path=pointer_path,
         calibration_diagnostics_available=calibration_diagnostics_available,
         contract_warnings=tuple(contract_warnings),
@@ -574,9 +753,11 @@ def publish_release(
     tag_only: bool = False,
     notify: bool = True,
     evidence: bool = False,
-    line: str | None = None,
 ) -> dict:
     """Publish a release directory and optionally point ``latest.json`` at it.
+
+    A release that publishes into build folders (every UK release) is
+    refused before any check or Hub call; see the module docstring.
 
     The order is the guarantee: the release contract is validated first (an
     invalid release never reaches the Hub), then an immutable branch commit is
@@ -638,20 +819,17 @@ def publish_release(
             the certified default or feed pe.py certification. Tag and upload
             mechanics are otherwise identical. ``update_latest`` then governs
             the evidence pointer.
-        line: Promote an approved release line through ``latest-<line>.json``.
-            Line promotion requires ``update_latest=True``, a matching line
-            release id, the line's dataset role, and artifact revisions
-            pinned to the selected tag. A cut published for inspection
-            earlier (``update_latest=False`` under the same tag) is promoted
-            by the same call: the publisher recognises the existing tag that
-            already describes this release, creates no second immutable
-            revision, and writes only the main commit carrying the pointer.
-            The same recognition makes a retry after a failure between tag
-            creation and the pointer commit safe.
+
+    A release published earlier without the pointer (``update_latest=False``
+    under the same tag) is pointed to by a later call: the publisher
+    recognises the existing tag that already describes this release, creates
+    no second immutable revision, and writes only the main commit carrying
+    the pointer. The same recognition makes a retry after a failure between
+    tag creation and the pointer commit safe.
 
     Returns:
         The release's pointer payload (``latest.json`` shape, plus ``tier`` at
-        the evidence tier or ``line`` and ``revision`` for a line promotion).
+        the evidence tier).
         It is uploaded only when ``update_latest=True``. When the release
         contract warned, the returned payload also lists the warnings under
         ``contract_warnings``; the uploaded pointer never carries them, and
@@ -674,7 +852,6 @@ def publish_release(
         update_latest=update_latest,
         tag_only=tag_only,
         evidence=evidence,
-        line=line,
     )
     release_id = prepared.release_id
 
@@ -704,17 +881,6 @@ def publish_release(
             ),
         )
         pointer_label = "evidence release"
-    elif prepared.line is not None:
-        payload = line_pointer_payload(
-            release_id,
-            line=prepared.line,
-            revision=prepared.tag,
-            updated_at=updated_at,
-            calibration_diagnostics_available=(
-                prepared.calibration_diagnostics_available
-            ),
-        )
-        pointer_label = f"{prepared.line} line"
     else:
         payload = latest_pointer_payload(
             release_id,
@@ -771,9 +937,6 @@ def publish_release(
         if evidence:
             # The alert must never read as a certified release announcement.
             notify_kwargs["tier"] = RELEASE_TIER_EVIDENCE
-        if prepared.line is not None:
-            notify_kwargs["line"] = prepared.line
-            notify_kwargs["revision"] = prepared.tag
         notify_release(repo_id, release_id, payload.get("updated_at"), **notify_kwargs)
     if prepared.contract_warnings:
         return {**payload, "contract_warnings": list(prepared.contract_warnings)}

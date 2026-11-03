@@ -319,7 +319,9 @@ def test_uk_local_area_bundle_refuses_the_tagged_layout(tmp_path: Path) -> None:
     build_manifest_path.write_text(json.dumps(build_manifest))
 
     failures = _failures(release_dir)
-    assert any("build_manifest.json carries 'build_id'" in line for line in failures)
+    assert any(
+        "build_manifest.json carries 'build_id'" in failure for failure in failures
+    )
 
 
 def test_valid_local_area_bundle_passes(tmp_path: Path) -> None:

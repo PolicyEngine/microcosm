@@ -56,6 +56,8 @@ uk = ["policyengine-uk>=2.165.1", "microcosm-data>=0.1,<0.2", "h5py>=3", "tables
 [project.scripts]
 microcosm-build-uk = "microcosm.build.uk_runtime.full_build_cli:main"
 microcosm-export-us-l0-refit-h5 = "microcosm.build.us_runtime.l0_refit_export:main"
+# Publishes a release build into its own folder through the emitter.
+microcosm-publish-release-build = "microcosm.build.release_publication:main"
 
 [project.urls]
 Homepage = "https://microcosm.institute"

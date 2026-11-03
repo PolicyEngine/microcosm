@@ -1,12 +1,21 @@
 """Resolve, verify, download, and load a certified microcosm release.
 
-The normal path follows the repository's release certificate: resolve the
-registry-selected pointer, read that release's manifest at the pointer's
-immutable revision, download the manifest-selected dataset at the same
-revision, verify its SHA-256, and enforce the certified model/Core versions
-before constructing the engine dataset. Mutable root artifacts are available
-only through the explicitly unsafe ``load(..., unverified_root=True)`` escape
-hatch.
+A release whose builds publish into their own folders (every UK release in
+the registry) is read through the repository's ``releases.json``: the record
+names the release's current build (or ``build=`` pins a listed one), the
+loader reads ``releases/<release>/<build>/release_manifest.json``, downloads
+the dataset that manifest names from the same folder, verifies its SHA-256,
+and enforces the certified model/Core versions before constructing the engine
+dataset. Build folders never change after publishing, so every file is read
+at ``main``.
+
+A release that keeps the tagged layout (every US release) follows the
+repository's release certificate: resolve the registry-selected pointer, read
+that release's manifest at the pointer's immutable revision, download the
+manifest-selected dataset at the same revision and check it the same way.
+Its mutable root artifacts are available only through the explicitly unsafe
+``load(..., unverified_root=True)`` escape hatch; a build-folder release has
+no root file.
 """
 
 from __future__ import annotations
@@ -27,19 +36,22 @@ from packaging.specifiers import InvalidSpecifier, SpecifierSet
 from packaging.version import InvalidVersion, Version
 
 from microcosm.data.contract import (
+    DATASET_FILE_ROLE,
     NATIONAL_DEFAULT_DATASET_ROLE,
     NON_DEFAULT_LOCAL_AREA_DATASET_ROLE,
     RELEASE_MANIFEST_SCHEMA_VERSION,
-    dataset_role_for_line,
+    RELEASE_ROLES,
 )
 from microcosm.data.registry import DEFAULT_VARIANT, REGISTRY, DatasetSpec
 from microcosm.data.release import (
     LATEST_POINTER_PATH,
-    LINE_POINTER_PATH_TEMPLATE,
     LatestPointer,
-    latest_line_release,
     latest_release,
-    line_pointer_path,
+)
+from microcosm.data.releases_record import (
+    RELEASES_RECORD_PATH,
+    build_folder,
+    parse_releases_record,
 )
 
 __all__ = [
@@ -52,23 +64,7 @@ __all__ = [
 ]
 
 _SHA256_PATTERN = re.compile(r"[0-9a-fA-F]{64}")
-_LINE_POINTER_PATH_PATTERN = re.compile(
-    re.escape(LINE_POINTER_PATH_TEMPLATE).replace(re.escape("{line}"), r"(?P<line>.+)")
-)
 _HubDownload = Callable[..., str]
-
-
-def _line_from_pointer_path(pointer_path: str) -> str | None:
-    """Invert the shared line-pointer template and validate its line."""
-    match = _LINE_POINTER_PATH_PATTERN.fullmatch(pointer_path)
-    if match is None:
-        return None
-    line = match.group("line")
-    try:
-        rendered_path = line_pointer_path(line)
-    except ValueError:
-        return None
-    return line if rendered_path == pointer_path else None
 
 
 @dataclass(frozen=True)
@@ -80,13 +76,21 @@ class _PackageCertification:
 
 @dataclass(frozen=True)
 class _CertifiedRelease:
+    """A release's certified dataset: where it is and what it was built with.
+
+    For a build-folder release, ``build`` is the build that was loaded,
+    ``artifact_path`` is inside its folder and ``artifact_revision`` is
+    ``None`` (the folder never changes, so it is read at ``main``).
+    """
+
     release_id: str
     artifact_repo_id: str
     artifact_path: str
-    artifact_revision: str
+    artifact_revision: str | None
     artifact_sha256: str
     model: _PackageCertification
     core: _PackageCertification
+    build: str | None = None
 
 
 class _CertifiedPackageCompatibilityError(ValueError):
@@ -211,6 +215,7 @@ def _package_certification(
     package_name: str,
     built_field: str,
     release_id: str,
+    build_folder: bool = False,
 ) -> _PackageCertification:
     entries = manifest.get(field)
     if not isinstance(entries, list):
@@ -236,8 +241,14 @@ def _package_certification(
             f"{package_name}."
         )
 
-    build = _required_mapping(manifest, "build", release_id=release_id)
-    built_package = _required_mapping(build, built_field, release_id=release_id)
+    # A build-folder manifest records what the build was built with at its
+    # top level; a tagged one, in its ``build`` object.
+    owner = (
+        manifest
+        if build_folder
+        else _required_mapping(manifest, "build", release_id=release_id)
+    )
+    built_package = _required_mapping(owner, built_field, release_id=release_id)
     if built_package.get("name") != package_name:
         raise ValueError(
             f"Release {release_id!r} build provenance does not name {package_name}."
@@ -265,9 +276,16 @@ def _certified_release_from_manifest(
     release_id: str,
     manifest: Mapping[str, Any],
     *,
-    expected_revision: str,
+    expected_revision: str | None,
+    build: str | None = None,
+    release_role: str | None = None,
 ) -> _CertifiedRelease:
-    """Validate and select ``spec`` from one release manifest."""
+    """Validate and select ``spec`` from one release manifest.
+
+    With ``build``, the manifest is that build's, read from its folder in a
+    build-folder release whose ``releases.json`` gives it ``release_role``;
+    otherwise it is a tagged release's, read at ``expected_revision``.
+    """
     schema_version = manifest.get("schema_version")
     if schema_version != RELEASE_MANIFEST_SCHEMA_VERSION:
         raise ValueError(
@@ -275,12 +293,23 @@ def _certified_release_from_manifest(
             f"{schema_version!r}; this microcosm-data reads version "
             f"{RELEASE_MANIFEST_SCHEMA_VERSION}. Upgrade microcosm-data."
         )
-    build = _required_mapping(manifest, "build", release_id=release_id)
-    if build.get("build_id") != release_id:
-        raise ValueError(
-            f"{spec.pointer_path} points to release {release_id!r}, but its release "
-            f"manifest declares build_id {build.get('build_id')!r}."
-        )
+    build_folder_release = build is not None
+    if build_folder_release:
+        folder = build_folder(release_id, build)
+        named = (manifest.get("release"), manifest.get("build"))
+        if named != (release_id, build):
+            raise ValueError(
+                f"{folder}/release_manifest.json names release {named[0]!r} and "
+                f"build {named[1]!r}, not {release_id!r} and {build!r}."
+            )
+    else:
+        tagged_build = _required_mapping(manifest, "build", release_id=release_id)
+        if tagged_build.get("build_id") != release_id:
+            raise ValueError(
+                f"{spec.pointer_path} points to release {release_id!r}, but its "
+                "release manifest declares build_id "
+                f"{tagged_build.get('build_id')!r}."
+            )
 
     dataset_role = manifest.get("dataset_role", NATIONAL_DEFAULT_DATASET_ROLE)
     if dataset_role not in {
@@ -290,17 +319,14 @@ def _certified_release_from_manifest(
         raise ValueError(
             f"Release {release_id!r} has unknown dataset_role {dataset_role!r}."
         )
-    pointer_line = _line_from_pointer_path(spec.pointer_path)
-    if pointer_line is not None:
-        # A line pointer carries one role: the manifest it names must
-        # declare it, whatever its release id says.
-        expected_role = dataset_role_for_line(pointer_line)
-        if dataset_role != expected_role:
-            raise ValueError(
-                f"Release {release_id!r} declares dataset_role {dataset_role!r}; "
-                f"{spec.pointer_path!r} follows line {pointer_line!r}, which "
-                f"publishes only {expected_role!r} releases."
-            )
+    if build_folder_release and release_role != RELEASE_ROLES[dataset_role]:
+        # releases.json gives a release one role, so a manifest whose role
+        # differs is not this release's, whatever its names say.
+        raise ValueError(
+            f"Release {release_id!r} is listed with role {release_role!r} in "
+            f"releases.json, but build {build!r} declares dataset_role "
+            f"{dataset_role!r}."
+        )
     default_datasets = _required_mapping(
         manifest, "default_datasets", release_id=release_id
     )
@@ -312,11 +338,11 @@ def _certified_release_from_manifest(
             )
         artifact_label = "default"
     else:
-        if _line_from_pointer_path(spec.pointer_path) is None:
+        if not build_folder_release:
             raise ValueError(
                 f"Release {release_id!r} declares dataset_role "
-                f"{NON_DEFAULT_LOCAL_AREA_DATASET_ROLE!r}; it may be selected only "
-                f"through a {LINE_POINTER_PATH_TEMPLATE!r} line pointer, not "
+                f"{NON_DEFAULT_LOCAL_AREA_DATASET_ROLE!r}; a local-area release "
+                "is loaded from its build folder through releases.json, not "
                 f"{spec.pointer_path!r}."
             )
         if default_datasets != {}:
@@ -328,23 +354,40 @@ def _certified_release_from_manifest(
         artifact_label = "local-area"
 
     artifacts = _required_mapping(manifest, "artifacts", release_id=release_id)
-    # One revision per pointer, by intent: the loader follows a pointer to a
-    # single immutable revision and downloads every artifact of the release
-    # from it, so every artifact must be pinned to exactly that revision.
-    # This is stricter than the publisher contract's annual-revision
-    # allowance for mixed-revision releases; a release that mixes revisions
-    # is publishable for inspection but never resolvable as a default here.
-    mismatched_revisions = {
-        str(key): candidate.get("revision") if isinstance(candidate, Mapping) else None
-        for key, candidate in artifacts.items()
-        if not isinstance(candidate, Mapping)
-        or candidate.get("revision") != expected_revision
-    }
-    if mismatched_revisions:
-        raise ValueError(
-            f"Release {release_id!r} has artifacts not pinned to expected revision "
-            f"{expected_revision!r}: {mismatched_revisions}."
+    if build_folder_release:
+        # A build folder's files are found through releases.json; nothing is
+        # tagged, so a manifest that pins a revision is not this layout's.
+        pinned = sorted(
+            str(key)
+            for key, candidate in artifacts.items()
+            if not isinstance(candidate, Mapping) or "revision" in candidate
         )
+        if pinned:
+            raise ValueError(
+                f"Release {release_id!r} build {build!r} pins a revision on "
+                f"artifact(s) {pinned}; a build folder's files carry none."
+            )
+    else:
+        # One revision per pointer, by intent: the loader follows a pointer
+        # to a single immutable revision and downloads every artifact of the
+        # release from it, so every artifact must be pinned to exactly that
+        # revision. This is stricter than the publisher contract's
+        # annual-revision allowance for mixed-revision releases; a release
+        # that mixes revisions is publishable for inspection but never
+        # resolvable as a default here.
+        mismatched_revisions = {
+            str(key): candidate.get("revision")
+            if isinstance(candidate, Mapping)
+            else None
+            for key, candidate in artifacts.items()
+            if not isinstance(candidate, Mapping)
+            or candidate.get("revision") != expected_revision
+        }
+        if mismatched_revisions:
+            raise ValueError(
+                f"Release {release_id!r} has artifacts not pinned to expected "
+                f"revision {expected_revision!r}: {mismatched_revisions}."
+            )
     if dataset_role == NON_DEFAULT_LOCAL_AREA_DATASET_ROLE:
         microdata_keys = [
             key
@@ -370,10 +413,14 @@ def _certified_release_from_manifest(
             f"Release {release_id!r} {artifact_label} artifact {artifact_key!r} has kind "
             f"{artifact.get('kind')!r}, not 'microdata'."
         )
+    if build_folder_release and artifact.get("role") != DATASET_FILE_ROLE:
+        raise ValueError(
+            f"Release {release_id!r} {artifact_label} artifact {artifact_key!r} has "
+            f"role {artifact.get('role')!r}, not {DATASET_FILE_ROLE!r}."
+        )
 
     artifact_repo_id = artifact.get("repo_id")
     artifact_path = artifact.get("path")
-    artifact_revision = artifact.get("revision")
     artifact_sha256 = artifact.get("sha256")
     if artifact_repo_id != spec.hf_repo:
         raise ValueError(
@@ -399,6 +446,7 @@ def _certified_release_from_manifest(
         package_name=spec.engine_package,
         built_field="built_with_model_package",
         release_id=release_id,
+        build_folder=build_folder_release,
     )
     core = _package_certification(
         manifest,
@@ -406,12 +454,24 @@ def _certified_release_from_manifest(
         package_name="policyengine-core",
         built_field="built_with_core_package",
         release_id=release_id,
+        build_folder=build_folder_release,
     )
+    if build_folder_release:
+        return _CertifiedRelease(
+            release_id=release_id,
+            artifact_repo_id=artifact_repo_id,
+            artifact_path=f"{folder}/{artifact_path}",
+            artifact_revision=None,
+            artifact_sha256=artifact_sha256.lower(),
+            model=model,
+            core=core,
+            build=build,
+        )
     return _CertifiedRelease(
         release_id=release_id,
         artifact_repo_id=artifact_repo_id,
         artifact_path=artifact_path,
-        artifact_revision=artifact_revision,
+        artifact_revision=artifact.get("revision"),
         artifact_sha256=artifact_sha256.lower(),
         model=model,
         core=core,
@@ -429,32 +489,110 @@ def _sha256(path: Path) -> str:
 def _pointer_for(
     spec: DatasetSpec, *, hub_download: _HubDownload | None = None
 ) -> LatestPointer:
-    """Read the release pointer configured for ``spec``."""
+    """Read the release pointer configured for a tagged release's ``spec``."""
+    if spec.pointer_path != LATEST_POINTER_PATH:
+        raise ValueError(
+            f"Unsupported release pointer path {spec.pointer_path!r} for {spec.key}; "
+            f"a tagged release follows {LATEST_POINTER_PATH!r}, and a release "
+            "whose builds publish into their own folders is named by the "
+            "registry entry's release."
+        )
     if hub_download is None:
         hub_download = _hub_download()
-    api = SimpleNamespace(hf_hub_download=hub_download)
-    if spec.pointer_path == LATEST_POINTER_PATH:
-        return latest_release(spec.hf_repo, api=api)
-    line = _line_from_pointer_path(spec.pointer_path)
-    if line is not None:
-        return latest_line_release(
-            spec.hf_repo,
-            line=line,
-            api=api,
+    return latest_release(
+        spec.hf_repo, api=SimpleNamespace(hf_hub_download=hub_download)
+    )
+
+
+def _resolve_build_folder_release(
+    spec: DatasetSpec, *, build: str | None, hub_download: _HubDownload
+) -> _CertifiedRelease:
+    """Select a build of ``spec.release`` from ``releases.json`` and check it.
+
+    The current build, unless ``build`` pins a listed one; a pinned build
+    that has been withdrawn loads with a warning, since a pin is a deliberate
+    choice. A missing ``releases.json`` raises the Hub's own error.
+    """
+    release = spec.release
+    assert release is not None
+    record_path = Path(
+        hub_download(
+            repo_id=spec.hf_repo, filename=RELEASES_RECORD_PATH, repo_type="dataset"
         )
-    raise ValueError(
-        f"Unsupported release pointer path {spec.pointer_path!r} for {spec.key}; "
-        f"expected {LATEST_POINTER_PATH!r} or the "
-        f"{LINE_POINTER_PATH_TEMPLATE!r} line-pointer form."
+    )
+    try:
+        record = parse_releases_record(record_path.read_bytes())
+    except ValueError as exc:
+        raise ValueError(
+            f"{RELEASES_RECORD_PATH} in {spec.hf_repo} is not a valid release "
+            f"record: {exc}."
+        ) from exc
+    entry = record.releases.get(release)
+    if entry is None:
+        raise ValueError(
+            f"{RELEASES_RECORD_PATH} in {spec.hf_repo} does not list release "
+            f"{release!r}."
+        )
+    if build is None:
+        build = entry.current
+        if build is None:
+            raise ValueError(
+                f"Release {release!r} in {spec.hf_repo} has no current build; "
+                "pass build= to load one of its listed builds."
+            )
+    elif build not in entry.builds:
+        raise ValueError(
+            f"Build {build!r} of release {release!r} is not listed in "
+            f"{RELEASES_RECORD_PATH} in {spec.hf_repo}."
+        )
+    elif entry.builds[build].withdrawn:
+        warnings.warn(
+            f"Build {build!r} of release {release!r} has been withdrawn; it is "
+            "loaded because build= pins it.",
+            UserWarning,
+            stacklevel=3,
+        )
+    manifest_path = Path(
+        hub_download(
+            repo_id=spec.hf_repo,
+            filename=f"{build_folder(release, build)}/release_manifest.json",
+            repo_type="dataset",
+        )
+    )
+    manifest = _load_manifest(manifest_path, repo_id=spec.hf_repo, release_id=release)
+    return _certified_release_from_manifest(
+        spec,
+        release,
+        manifest,
+        expected_revision=None,
+        build=build,
+        release_role=entry.role,
     )
 
 
 def _resolve_certified_release(
-    spec: DatasetSpec, *, hub_download: _HubDownload | None = None
+    spec: DatasetSpec,
+    *,
+    hub_download: _HubDownload | None = None,
+    build: str | None = None,
 ) -> _CertifiedRelease:
-    """Resolve and validate the release pointer and its pinned manifest."""
+    """Resolve and validate the release's selected build and its manifest.
+
+    A build-folder release reads ``releases.json``; a tagged release follows
+    its pointer to a pinned manifest, and ``build`` cannot pin one of its
+    builds.
+    """
+    if spec.release is None and build is not None:
+        raise ValueError(
+            f"{spec.key} keeps the tagged layout; build= pins a build only for "
+            "releases whose builds publish into their own folders."
+        )
     if hub_download is None:
         hub_download = _hub_download()
+    if spec.release is not None:
+        return _resolve_build_folder_release(
+            spec, build=build, hub_download=hub_download
+        )
     pointer = _pointer_for(spec, hub_download=hub_download)
     manifest_path = Path(
         hub_download(
@@ -477,9 +615,11 @@ def _resolve_certified_release(
     )
 
 
-def _verified_download(spec: DatasetSpec) -> tuple[Path, _CertifiedRelease]:
+def _verified_download(
+    spec: DatasetSpec, *, build: str | None = None
+) -> tuple[Path, _CertifiedRelease]:
     hub_download = _hub_download()
-    certified = _resolve_certified_release(spec, hub_download=hub_download)
+    certified = _resolve_certified_release(spec, hub_download=hub_download, build=build)
     artifact_path = Path(
         hub_download(
             repo_id=certified.artifact_repo_id,
@@ -499,6 +639,11 @@ def _verified_download(spec: DatasetSpec) -> tuple[Path, _CertifiedRelease]:
 
 
 def _unverified_root_download(spec: DatasetSpec) -> Path:
+    if spec.release is not None:
+        raise ValueError(
+            f"Release {spec.release!r} publishes each build into its own folder "
+            "and has no root file to load unverified; load its current build."
+        )
     return Path(
         _hub_download()(
             repo_id=spec.hf_repo,
@@ -513,20 +658,23 @@ def download(
     year: int | None = None,
     *,
     variant: str = DEFAULT_VARIANT,
+    build: str | None = None,
 ) -> Path:
-    """Download and SHA-verify the latest certified release artifact.
+    """Download and SHA-verify a certified release artifact.
 
-    The registry-selected mutable pointer selects a release; both its manifest
-    and dataset artifact are then fetched at the pointer's immutable revision.
-    Uses the Hugging Face cache, so repeated calls do not re-download unchanged
-    files.
+    A build-folder release's current build (or the listed ``build`` it pins)
+    comes from ``releases.json``, and its manifest and dataset from that
+    build's folder. A tagged release's mutable pointer selects a release;
+    both its manifest and dataset artifact are then fetched at the pointer's
+    immutable revision. Uses the Hugging Face cache, so repeated calls do not
+    re-download unchanged files.
 
     Raises:
         ImportError: If ``huggingface_hub`` is not installed.
         ValueError: If release metadata or the artifact digest is invalid.
     """
     spec = resolve(country, year, variant=variant)
-    path, _ = _verified_download(spec)
+    path, _ = _verified_download(spec, build=build)
     return path
 
 
@@ -577,6 +725,7 @@ def load(
     *,
     variant: str = DEFAULT_VARIANT,
     unverified_root: bool = False,
+    build: str | None = None,
 ):
     """Return a certified population as its engine dataset object.
 
@@ -585,15 +734,25 @@ def load(
         year: Population year; ``None`` loads the latest published year.
         variant: Dataset variant; ``"compact"`` is the default fast national
             microsimulation artifact.
-        unverified_root: Load the mutable root convenience artifact while
-            bypassing release metadata, SHA-256, and engine certification.
-            This unsafe compatibility escape hatch emits a loud warning.
+        unverified_root: Load a tagged release's mutable root convenience
+            artifact while bypassing release metadata, SHA-256, and engine
+            certification. This unsafe compatibility escape hatch emits a
+            loud warning; a build-folder release has no root file.
+        build: Load this listed build of a build-folder release instead of
+            its current one.
 
     Raises:
         ImportError: If the country engine is not installed.
         ValueError: If release verification or engine compatibility fails.
     """
     spec = resolve(country, year, variant=variant)
+    if unverified_root and (spec.release is not None or build is not None):
+        raise ValueError(
+            f"{spec.key} publishes each build into its own folder and has no "
+            "root file to load unverified; load a build without unverified_root."
+            if spec.release is not None
+            else "unverified_root cannot be combined with build=."
+        )
     dataset_class = _dataset_class(spec)
     if unverified_root:
         warnings.warn(
@@ -605,7 +764,7 @@ def load(
         )
         path = _unverified_root_download(spec)
     else:
-        path, certified = _verified_download(spec)
+        path, certified = _verified_download(spec, build=build)
         _enforce_package_compatibility(certified.model, release_id=certified.release_id)
         _enforce_package_compatibility(certified.core, release_id=certified.release_id)
     return dataset_class(file_path=str(path))

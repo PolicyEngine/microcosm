@@ -2540,7 +2540,7 @@ def test_release_artifact_role_keeps_the_general_roles(
     assert contract.release_artifact_role(key, kind) == role
 
 
-def _rewrite_json(path: Path, mutate) -> None:
+def _rewrite_document(path: Path, mutate) -> None:
     document = json.loads(path.read_text())
     mutate(document)
     path.write_text(json.dumps(document))
@@ -2581,7 +2581,7 @@ def test_uk_national_build_folder_refuses_the_tagged_manifest_shape(
             "cut_tag": f"{UK_NATIONAL_RELEASE_ID}-20260920T120000Z-deadbeef",
         }
 
-    _rewrite_json(directory / "release_manifest.json", tagged)
+    _rewrite_document(directory / "release_manifest.json", tagged)
 
     assert "'build' must be the build's name" in _uk_national_failures(directory)
 
@@ -2591,7 +2591,7 @@ def test_uk_national_build_folder_refuses_the_retired_build_fields(
     tmp_path: Path, field: str
 ) -> None:
     directory = _write_uk_national_release_dir(tmp_path)
-    _rewrite_json(
+    _rewrite_document(
         directory / "build_manifest.json",
         lambda build: build.update({field: UK_NATIONAL_RELEASE_ID}),
     )
@@ -2604,7 +2604,7 @@ def test_uk_national_build_folder_release_must_be_the_directory(
     tmp_path: Path, manifest: str
 ) -> None:
     directory = _write_uk_national_release_dir(tmp_path)
-    _rewrite_json(
+    _rewrite_document(
         directory / manifest,
         lambda document: document.update(release="microcosm-uk-2024-25-dense"),
     )
@@ -2620,7 +2620,7 @@ def test_uk_national_build_folder_build_must_be_a_safe_name(
 ) -> None:
     directory = _write_uk_national_release_dir(tmp_path)
     for manifest in ("build_manifest.json", "release_manifest.json"):
-        _rewrite_json(
+        _rewrite_document(
             directory / manifest, lambda document: document.update(build=build)
         )
 
@@ -2631,7 +2631,7 @@ def test_uk_national_build_folder_manifests_must_name_the_same_build(
     tmp_path: Path,
 ) -> None:
     directory = _write_uk_national_release_dir(tmp_path)
-    _rewrite_json(
+    _rewrite_document(
         directory / "build_manifest.json",
         lambda build: build.update(
             build="uk-frs-calibration-attempt-20260101T000000Z-00000000"
@@ -2650,7 +2650,7 @@ def test_uk_national_build_folder_records_build_details_at_the_top_level(
     tmp_path: Path, field: str
 ) -> None:
     directory = _write_uk_national_release_dir(tmp_path)
-    _rewrite_json(
+    _rewrite_document(
         directory / "release_manifest.json", lambda release: release.pop(field)
     )
 
@@ -2665,7 +2665,7 @@ def test_uk_national_build_folder_refuses_an_artifact_revision(
     def pin(release: dict) -> None:
         release["artifacts"]["calibration_diagnostics"]["revision"] = "main"
 
-    _rewrite_json(directory / "release_manifest.json", pin)
+    _rewrite_document(directory / "release_manifest.json", pin)
 
     assert "artifact 'calibration_diagnostics' pins revision 'main'" in (
         _uk_national_failures(directory)
@@ -2691,7 +2691,7 @@ def test_uk_national_build_folder_names_each_artifact_role(
         else:
             artifact["role"] = role
 
-    _rewrite_json(directory / "release_manifest.json", set_role)
+    _rewrite_document(directory / "release_manifest.json", set_role)
 
     assert message in _uk_national_failures(directory)
 
@@ -2707,7 +2707,7 @@ def test_uk_national_build_folder_artifact_paths_are_bare_file_names(
     def move(release: dict) -> None:
         release["artifacts"]["release_certification"]["path"] = path
 
-    _rewrite_json(directory / "release_manifest.json", move)
+    _rewrite_document(directory / "release_manifest.json", move)
 
     assert "artifact 'release_certification' path" in _uk_national_failures(directory)
 
