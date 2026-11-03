@@ -496,7 +496,7 @@ def test_adopted_cell_targets_are_flagged_and_never_block():
     outcome = report.outcomes[0]
     assert outcome.status is GateStatus.FAILED
     flags = outcome.result.details["meets_tracked_target"]
-    assert len(flags) == 43 * 9
+    assert len(flags) == 43 * 10
     assert not any(flags.values())
     assert not report.blocking_outcomes(release_candidate=True)
 

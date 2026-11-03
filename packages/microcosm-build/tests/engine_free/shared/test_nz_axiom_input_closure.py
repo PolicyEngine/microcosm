@@ -1,9 +1,15 @@
 """The New Zealand input closure, against the committed engine surface.
 
-``build/nz/axiom_input_closure.json`` decides how every root input of the five
+``build/nz/axiom_input_closure.json`` decides how every root input of the six
 Axiom modules the NZ v0 graph binds is fed: the main-benefit entitlement and
-rates modules, New Zealand Superannuation, the Accommodation Supplement and
-the benefit gross-up's solver-owned Schedule 1 input.
+rates modules, New Zealand Superannuation, the Accommodation Supplement, the
+family tax credits the base-rate bridge reads, and the benefit gross-up's
+solver-owned Schedule 1 input. The family tax credits binding declares 15
+Family roots unreached (``unreached_roots``), and the module's four Child
+roots sit on an engine entity the schema does not map, so ``check`` runs on
+the surface and mapping that
+:func:`~microcosm.build.transport.evidence_contract.without_unreached`
+returns.
 These tests hold it to the engine-generated input surface and the ``axiom:nz``
 concept mapping, show that encoding plus the closure's defaults supplies every
 input a run needs, and replay the Axiom oracle's golden-08 household: the
@@ -25,6 +31,10 @@ import pytest
 from hypothesis import given, settings
 from hypothesis import strategies as st
 
+from microcosm.build.transport.evidence_contract import (
+    unreached_refs,
+    without_unreached,
+)
 from microcosm.frame.adapters.axiom import _batch_from_table, axiom_concept_mapping
 from microcosm.frame.adapters.axiom_input_surface import load_axiom_input_surface
 from microcosm.frame.concept_mapping import Allocation, GroupRule, Identity
@@ -58,11 +68,23 @@ RATES = "nz/statutes/social_security/main_benefits/rates.yaml"
 NZS = "nz/statutes/new_zealand_superannuation/core.yaml"
 AS = "nz/statutes/social_security/accommodation_supplement/core.yaml"
 TAX = "nz/statutes/income_tax/schedule_1/individual_income_tax.yaml"
+FTC = "nz/statutes/income_tax/family_scheme/tax_credits.yaml"
 PERSON_MODULES = (ENTITLEMENT, RATES, NZS)
+BINDINGS_PATH = _BUILD.package / "src/microcosm/build/nz/axiom_rules_bindings.json"
 
 CLOSURE = InputClosure.from_dict(json.loads(CLOSURE_PATH.read_text(encoding="utf-8")))
-SURFACE = load_axiom_input_surface(SURFACE_PATH)
-MAPPING = axiom_concept_mapping("nz")
+#: The committed engine-generated surface, Child roots and unreached roots
+#: included.
+COMMITTED_SURFACE = load_axiom_input_surface(SURFACE_PATH)
+MAPPING_FULL = axiom_concept_mapping("nz")
+_BINDINGS = json.loads(BINDINGS_PATH.read_text(encoding="utf-8"))
+UNREACHED = unreached_refs(_BINDINGS["bindings"])
+#: The surface and mapping ``check`` reads: the unreached roots and every root
+#: on an unmapped engine entity removed, and the mapping without the bindings
+#: of the unreached roots.
+SURFACE, MAPPING = without_unreached(
+    COMMITTED_SURFACE, MAPPING_FULL, UNREACHED, _BINDINGS["entity_names"].values()
+)
 #: Concept-encoded inputs whose binding lands in a later change. None does now:
 #: the cash-asset binding arrived with the liquid-asset concept (work package
 #: G3a). An entry that awaits a binding the mapping already has is reported by
@@ -143,11 +165,47 @@ class TestClosure:
             assert entry.closure_class is ClosureClass.DEFAULTED
             assert "receipt_requirements" in entry.reason
 
-    def test_the_five_modules_are_closed_at_their_surface_sizes(self) -> None:
+    def test_the_six_modules_are_closed_at_their_surface_sizes(self) -> None:
         sizes = {path: len(SURFACE.modules[path].refs()) for path in CLOSURE.modules}
-        assert sizes == {ENTITLEMENT: 60, RATES: 28, NZS: 13, AS: 39, TAX: 1}
+        assert sizes == {ENTITLEMENT: 60, RATES: 28, NZS: 13, AS: 39, FTC: 2, TAX: 1}
         for path, size in sizes.items():
             assert len(CLOSURE.entries_for(path)) == size
+
+    def test_the_family_tax_credit_roots_are_closed_unreached_or_unmapped(
+        self,
+    ) -> None:
+        # Engine-free H37: the surface's Family roots are the two closed
+        # care-unit entries plus the 15 declared unreached names, and the
+        # unmapped remainder is exactly the four Child roots.
+        committed = COMMITTED_SURFACE.modules[FTC].inputs
+        closed = {entry.input for entry in CLOSURE.entries_for(FTC)}
+        declared = {ref.name for ref in UNREACHED if ref.module == FTC}
+        assert closed == {
+            "family_tax_credit_eldest_dependent_child_care_units",
+            "family_tax_credit_subsequent_dependent_child_care_units",
+        }
+        assert len(declared) == 15 and not closed & declared
+        assert set(committed["Family"]) == closed | declared
+        assert set(committed) - set(_BINDINGS["entity_names"].values()) == {"Child"}
+        assert len(committed["Child"]) == 4
+        assert CLOSURE.defaults(FTC, "Family") == {}
+
+    def test_without_the_mapping_step_the_bound_unread_input_is_reported(
+        self,
+    ) -> None:
+        # The mutant that skips the mapping half of without_unreached: the
+        # concept-bound in_work_tax_credit_allowed_children_count is reported.
+        surface, _ = without_unreached(
+            COMMITTED_SURFACE,
+            MAPPING_FULL,
+            UNREACHED,
+            _BINDINGS["entity_names"].values(),
+        )
+        assert CLOSURE.check(MAPPING_FULL, surface) == (
+            "in_work_tax_credit_allowed_children_count (Family, "
+            f"{FTC}) is bound by the mapping but not closed.",
+        )
+        assert len(CLOSURE.check(MAPPING_FULL, COMMITTED_SURFACE)) == 20
 
     def test_every_default_is_cited_and_listed_for_review(self) -> None:
         for entry in CLOSURE.entries:
@@ -212,11 +270,19 @@ class TestClosure:
         assert {
             ref.name: node for ref, node in CLOSURE.graph_node_inputs().items()
         } == {
-            "accommodation_supplement_base_rate_weekly_amount": "nz.as.bridge.base_rate",
+            "accommodation_supplement_base_rate_weekly_amount": (
+                "nz.scn.S0.bridge.base_rate"
+            ),
             "accommodation_supplement_non_beneficiary_income_cutout_weekly_amount": (
                 "nz.as.bridge.cutout"
             ),
-            "taxable_income": "nz.gross_up",
+            "family_tax_credit_eldest_dependent_child_care_units": (
+                "nz.scn.S0.bridge.base_rate"
+            ),
+            "family_tax_credit_subsequent_dependent_child_care_units": (
+                "nz.scn.S0.bridge.base_rate"
+            ),
+            "taxable_income": "nz.gross_up.jobseeker_support",
         }
 
     def test_central_knobs_are_the_central_encoding(self) -> None:
@@ -263,13 +329,19 @@ def _with_state(tables, data) -> dict[str, pd.DataFrame]:
             dtype=bool,
         )
     for column in ("as_area", "as_area_alt"):
-        household[column] = np.asarray(
-            data.draw(
-                st.lists(
-                    st.integers(1, 4), min_size=len(household), max_size=len(household)
+        # The state bindings compare the declared string geography codes.
+        household[column] = pd.array(
+            [
+                str(code)
+                for code in data.draw(
+                    st.lists(
+                        st.integers(1, 4),
+                        min_size=len(household),
+                        max_size=len(household),
+                    )
                 )
-            ),
-            dtype=np.int64,
+            ],
+            dtype="string",
         )
     return {"person": person, "household": household}
 
@@ -407,7 +479,7 @@ def _golden_frame() -> dict[str, pd.DataFrame]:
             "mortgage_interest": [0.0],
             "mortgage_principal": [0.0],
             "property_tax": [0.0],
-            "as_area": np.asarray([1], dtype=np.int64),
+            "as_area": pd.array(["1"], dtype="string"),
         }
     )
     return {"person": person, "household": household}
@@ -489,3 +561,235 @@ def test_the_engine_turns_encoded_inputs_into_the_oracle_amount() -> None:
     for name, expected in GOLDEN["outputs"].items():
         (value,) = np.asarray(outputs[name], dtype=object).ravel()
         assert abs(float(value) - float(expected["value"])) <= 0.01, (name, value)
+
+
+FTC_OUTPUT = "family_tax_credit_prescribed_amount"
+FTC_ELDEST = "family_tax_credit_eldest_dependent_child_care_units"
+FTC_SUBSEQUENT = "family_tax_credit_subsequent_dependent_child_care_units"
+
+
+def _formula_reads(module: dict, output: str) -> tuple[set[str], set[str]]:
+    """Rules and names reachable from ``output`` by scanning rule text.
+
+    Every identifier in every string a reachable rule holds (its formulas and
+    any other expression field, metadata and sources aside) counts as a read,
+    so the scan over-approximates what any row can reach, including reads
+    behind a branch no row takes.
+    """
+
+    rules = {rule["name"]: rule for rule in module["rules"]}
+    identifier = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
+
+    def strings(value):
+        if isinstance(value, str):
+            yield value
+        elif isinstance(value, dict):
+            for key, item in value.items():
+                if key not in {"metadata", "source", "name"}:
+                    yield from strings(item)
+        elif isinstance(value, list):
+            for item in value:
+                yield from strings(item)
+
+    seen: set[str] = set()
+    names: set[str] = set()
+    frontier = [output]
+    while frontier:
+        name = frontier.pop()
+        if name in seen:
+            continue
+        seen.add(name)
+        for text in strings(rules[name]):
+            for token in identifier.findall(text):
+                names.add(token)
+                if token in rules and token not in seen:
+                    frontier.append(token)
+    return seen, names
+
+
+@pytest.mark.skipif(
+    not _DENSE_AVAILABLE or not RULESPEC_NZ,
+    reason=(
+        "needs axiom_rules_engine with its dense extension and a rulespec-nz "
+        "checkout at POPULACE_RULESPEC_NZ"
+    ),
+)
+def test_the_family_tax_credit_request_reads_only_the_two_care_units() -> None:
+    """H37 on the real engine: the bridge's request reads two inputs only.
+
+    Filed from the G8-w4 review's Part A script. Execution evaluates per row,
+    so a read behind a branch no row takes stays hidden; the formula scan
+    below over-approximates reads and cannot miss one.
+    """
+
+    import axiom_rules_engine as engine
+    import yaml
+
+    from microcosm.build.transport.evidence_contract import closure_partition
+    from microcosm.build.transport.evidence_kernels import engine_root_inputs
+    from microcosm.frame import Frame, WeightKind, Weights
+    from microcosm.frame.adapters.axiom import (
+        NZ_NESTING,
+        NZ_SCHEMA,
+        AxiomEngine,
+        AxiomPeriod,
+    )
+    from microcosm.frame.rules_kernels import SimulateCounterfactualKernel
+    from microcosm.graph import Node, Owned, Slice
+    from test_support.microcosm_frame.kernels import _context
+
+    root = Path(RULESPEC_NZ).resolve()
+    binding = next(r for r in _BINDINGS["bindings"] if r["id"] == "family_tax_credits")
+    label = binding["period"]
+    period = AxiomPeriod(**_BINDINGS["periods"][label])
+    module_path = root / FTC
+    assert hashlib_sha256(module_path) == binding["sha256"]
+
+    def adapter() -> AxiomEngine:
+        return AxiomEngine(
+            module_path,
+            schema=NZ_SCHEMA,
+            rulespec_roots=(root,),
+            periods={label: period},
+            entity_names=_BINDINGS["entity_names"],
+            nesting=NZ_NESTING,
+            output_dtypes="graph",
+        )
+
+    # Roots per entity, straight from the dense compiler.
+    committed = COMMITTED_SURFACE.modules[FTC].inputs
+    for entity in ("Family", "Child"):
+        program = engine.CompiledDenseProgram.from_file(
+            module_path, rulespec_roots=(root,), entity=entity
+        )
+        assert sorted(program.root_inputs) == sorted(committed[entity]), entity
+    live = adapter()
+    assert live.variables() == sorted(committed["Family"])
+    # The producer's per-entity reader sees the mapped entity only.
+    assert engine_root_inputs(live, binding, _BINDINGS["entity_names"]) == {
+        "Family": tuple(sorted(committed["Family"]))
+    }
+
+    def frame(extra: dict) -> Frame:
+        person = pd.DataFrame(
+            {
+                "person_id": [1, 2, 3, 4],
+                "person_household_id": [10, 10, 20, 20],
+                "person_family_id": [100, 100, 200, 200],
+            }
+        )
+        household = pd.DataFrame({"household_id": [10, 20]})
+        family = pd.DataFrame({"family_id": [100, 200], **extra})
+        return Frame(
+            {"person": person, "household": household, "family": family},
+            NZ_SCHEMA,
+            {"household": Weights(np.ones(2), WeightKind.DESIGN)},
+        )
+
+    def run(extra: dict) -> np.ndarray:
+        return adapter().materialize(frame(extra), [FTC_OUTPUT], label)[FTC_OUTPUT]
+
+    two = {
+        FTC_ELDEST: np.array([1, 1], dtype=np.int64),
+        FTC_SUBSEQUENT: np.array([0, 0], dtype=np.int64),
+    }
+    base = run(two)
+    # family_tax_credit_eldest_child_annual_amount at 2026-04-01.
+    assert np.array_equal(base, [7921.0, 7921.0])
+    assert np.array_equal(
+        run({FTC_ELDEST: np.array([1, 0]), FTC_SUBSEQUENT: np.array([0, 2])}),
+        [7921.0, 12908.0],
+    )
+    for dropped in (FTC_ELDEST, FTC_SUBSEQUENT):
+        with pytest.raises(RuntimeError, match=f"missing input `{dropped}`"):
+            run({k: v for k, v in two.items() if k != dropped})
+    others = [name for name in committed["Family"] if name not in two]
+    assert len(others) == 15
+    for value in (
+        np.array([1e12, -1e12]),
+        np.array([-999, 123456789], dtype=np.int64),
+        np.array([True, False]),
+    ):
+        assert np.array_equal(run({**two, **{name: value for name in others}}), base)
+
+    # The formula scan: every name any reachable rule mentions.
+    document = yaml.safe_load(module_path.read_text())
+    reached_rules, mentioned = _formula_reads(document, FTC_OUTPUT)
+    roots = set(committed["Family"]) | set(committed["Child"])
+    assert mentioned & roots == {FTC_ELDEST, FTC_SUBSEQUENT}
+    assert FTC_OUTPUT in reached_rules
+    declared = set(binding["unreached_roots"]["names"])
+    assert not declared & mentioned
+
+    # The bundle path: the overrides reach the engine with neither column.
+    reference = "axiom:family_tax_credits(engine-present test)"
+    node = Node(
+        "test.bridge.base_rate",
+        "simulate.counterfactual@1",
+        inputs=(
+            Slice("person", ("person_id",)),
+            Slice("household", ("household_id",)),
+            Slice("family", ("accommodation_supplement_bridge_has_dependent_child",)),
+        ),
+        outputs=(Owned("family", "test_base_rate", "float64"),),
+        params={
+            "engine_ref": reference,
+            "period": label,
+            "variables": (FTC_OUTPUT,),
+            "input_overrides": json.dumps(
+                [
+                    {"entity": "family", "column": FTC_ELDEST, "value": 1},
+                    {"entity": "family", "column": FTC_SUBSEQUENT, "value": 0},
+                ]
+            ),
+            "output_coefficients": json.dumps(
+                [
+                    {
+                        "variable": FTC_OUTPUT,
+                        "coefficient": 1,
+                        "entity": "family",
+                        "column": "test_base_rate",
+                    }
+                ]
+            ),
+        },
+    )
+    bridge_frame = frame(
+        {"accommodation_supplement_bridge_has_dependent_child": np.array([True, False])}
+    )
+    kernel = SimulateCounterfactualKernel({reference: adapter()})
+    result = kernel.run(_context(bridge_frame, node, weighted_entities=("household",)))
+    (values,) = result.columns.values()
+    assert np.array_equal(values.to_numpy(), [7921.0, 7921.0])
+
+    # The producer's partition over the live roots holds with no gap.
+    partition = closure_partition(
+        CLOSURE,
+        MAPPING_FULL,
+        [binding],
+        {
+            "family_tax_credits": engine_root_inputs(
+                live, binding, _BINDINGS["entity_names"]
+            )
+        },
+        module_sha256={"family_tax_credits": binding["sha256"]},
+        module_imports={"family_tax_credits": False},
+        mapped_entities=_BINDINGS["entity_names"].values(),
+    )
+    (row,) = partition["modules"]
+    assert row["gap"] == [] and len(row["unreached"]) == 15
+    print(
+        "engine-present H37:",
+        {
+            "family_roots": len(committed["Family"]),
+            "output": base.tolist(),
+            "reached_rules": sorted(reached_rules),
+            "read_roots": sorted(mentioned & roots),
+        },
+    )
+
+
+def hashlib_sha256(path: Path) -> str:
+    import hashlib
+
+    return hashlib.sha256(path.read_bytes()).hexdigest()

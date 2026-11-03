@@ -43,18 +43,34 @@ The evidence each bound gate reads:
   ``gates.json``.
 - ``weight_ess`` and ``weight_ratio``: the frame's one weighted entity.
 
-Two frozen bindings remain pending: ``support`` requires
-``donor_support_bounds`` (realized donor-support bounds of transported
-columns), and ``release_input_coverage`` requires ``donor_artifact_receipt``
-and ``axiom_input_closure`` (donor authentication and per-module Axiom input
-closure). Missing artifacts resolve to registered ``evidence_absent``;
-supplied artifacts still fail until the checks are implemented. New Zealand
-keeps both entries applicable with ``evidence_absent_blocks``. Only
-``macro_realism`` has no transport binding and remains ``not_applicable``
-pending national-accounts evidence and reviewed bands. ``weights_audit`` keeps its
-``DEFAULT_REGISTRY`` binding, but no transport kernel emits its
-``fit_weight_records`` evidence yet, so it resolves to a named
-``evidence_absent``.
+``measurement_prefit`` reads ``problem`` and the battery's reserved
+``graph_evidence`` map: the problem's interval diagnostics with their
+per-band support, and its matrix at the weights entering calibration.
+
+``release_input_coverage`` reads ``donor_artifact_receipt``
+(``transport.donor_receipt@1``) and ``axiom_input_closure``
+(``transport.input_closure@1``) with the battery's reserved
+``graph_evidence`` map and the frame, and requires
+``allow_engine_optional`` from ``gates.json``. Each artifact's identity
+header must name the producer node the battery's own edge names, the
+producer kernel and its implementation hash, and the digests of the bytes
+and frame columns the battery also holds
+(:func:`~microcosm.build.transport.evidence_contract.checked_header`); the
+gate then reports every bound module, never stopping at the first failure.
+``support`` reads ``donor_support_bounds`` (``transport.support_bounds@1``,
+which reads ``donor_ranges``) with ``graph_evidence`` and the frame, and
+requires ``structural_columns`` from ``gates.json``; it reports every roster
+column by its producer class. Missing artifacts resolve to registered
+``evidence_absent``. Only ``macro_realism`` has no transport binding and
+remains ``not_applicable`` pending national-accounts evidence and reviewed
+bands. ``weights_audit`` overrides the
+``DEFAULT_REGISTRY`` binding for transport countries only: it reads
+``fit_weight_records`` from ``transport.weights_audit@1``, runs
+``weights_audit_gate`` unchanged over its fit records, then checks the
+design-to-calibrated transition, the destination-mass change against the
+required ``maximum_relative_mass_change`` and the one-vector rule over every
+declared partition. ``DEFAULT_REGISTRY``, ``gates.py`` and the UK registry
+keep their binding.
 
 Every binding is a frozen dataclass over top-level functions, so
 ``gates.battery@1`` can describe it exactly
@@ -85,6 +101,7 @@ from microcosm.build.gate_battery import (
     GateBinding,
 )
 from microcosm.build.gates import (
+    FitWeightRecord,
     GateResult,
     TargetCoverageRequirement,
     aggregate_admin_gate,
@@ -93,11 +110,28 @@ from microcosm.build.gates import (
     nonnegative_columns_gate,
     per_family_fit_gate,
     target_profile_coverage_gate,
+    weights_audit_gate,
 )
 from microcosm.build.plan import _nonzero_share
 from microcosm.calibrate.solve import effective_sample_size
 from microcosm.frame import Frame
 
+from .evidence_contract import (
+    AXIOM_INPUT_CLOSURE,
+    CLOSURE_CLASSES,
+    DONOR_ARTIFACT_RECEIPT,
+    DONOR_RANGES,
+    DONOR_RECEIPT_REF,
+    DONOR_SUPPORT_BOUNDS,
+    FIT_WEIGHT_RECORDS,
+    GRAPH_EVIDENCE,
+    INPUT_CLOSURE_REF,
+    SUPPORT_BOUNDS_REF,
+    WEIGHTS_AUDIT_REF,
+    EvidenceDocument,
+    checked_header,
+    partition_counts,
+)
 from .weight_quality import aggregate_source_weights
 
 __all__ = [
@@ -1188,30 +1222,614 @@ def _cell_support_target(
     )
 
 
-def _pending_support(*, donor_support_bounds: object) -> GateResult:
-    """Fail even with supplied evidence until donor-support checks exist."""
+#: The support classes a derived row may rest on.
+_SUPPORT_COVERED = frozenset(
+    {
+        "copied",
+        "normalized",
+        "quantile_mapped",
+        "currency",
+        "structural",
+        "closure_default",
+    }
+)
+#: Classes whose rows carry realized and expected bounds.
+_SUPPORT_BOUNDED = frozenset({"copied", "normalized", "quantile_mapped", "currency"})
+_RANK_ONLY = (
+    "{entity}.{column}: lineage class 'rank_only' is reserved for the declared "
+    "rank-only input (BE d1902); no producer implements it yet."
+)
 
+
+def _support(
+    *,
+    donor_support_bounds: object,
+    graph_evidence: object,
+    frame: Frame,
+    structural_columns: Sequence[Mapping[str, str]],
+) -> GateResult:
+    """Every roster column's realized support against its producer's support.
+
+    The header is checked first, including the ``donor_ranges`` digest
+    against the battery's own edge. Every row the artifact classes structural
+    must be one of the ``structural_columns`` declared here, and its roster
+    must name every
+    data column the battery's frame slices. Then every row is reported, in
+    roster order: a bounded row (copied, normalized, quantile-mapped or
+    currency-bridged) passes only with no record and no weight outside its
+    expected bounds, where ``None`` is an open bound; a derived row passes
+    only when every walked source is covered; ``pending``, ``uncovered`` and
+    ``rank_only`` rows fail with their reasons.
+    """
+
+    if isinstance(structural_columns, str | bytes) or not isinstance(
+        structural_columns, Sequence
+    ):
+        raise TypeError("structural_columns must be a list of rows.")
+    declared = [(row["entity"], row["column"]) for row in structural_columns]
+    failures = checked_header(
+        DONOR_SUPPORT_BOUNDS,
+        donor_support_bounds,
+        graph_evidence,
+        frame,
+        kernel=SUPPORT_BOUNDS_REF,
+    )
+    details: dict[str, object] = {"structural_columns": [".".join(k) for k in declared]}
+    document = _decoded_document(donor_support_bounds, "transport_donor_support_bounds")
+    if document is None:
+        return GateResult("support", False, tuple(failures), details)
+    rows = document["columns"]
+    recorded = {
+        (row["entity"], row["column"]) for row in document["structural_columns"]
+    }
+    recorded |= {
+        (row["entity"], row["column"]) for row in rows if row["class"] == "structural"
+    }
+    for entity, column in sorted(recorded - set(declared)):
+        failures.append(
+            f"{entity}.{column}: classed structural, but gates.json's "
+            "structural_columns does not declare it."
+        )
+    # A declared row excuses a column only when the roster reaches it (H46);
+    # the rows it never reaches are listed, and do not fail the gate.
+    details["declared_unreached"] = [
+        ".".join(key) for key in declared if key not in recorded
+    ]
+    named = {(row["entity"], row["column"]) for row in rows}
+    if frame is not None:
+        skip = set(_structural_columns(frame))
+        for entity in frame.entities:
+            for column in frame.table(entity).columns:
+                if column in skip:
+                    continue
+                if (entity, str(column)) not in named:
+                    failures.append(
+                        f"{entity}.{column}: the battery slices it, but the support "
+                        "roster does not name it."
+                    )
+    counts: Counter = Counter()
+    report = []
+    for row in rows:
+        label = f"{row['entity']}.{row['column']}"
+        cls = row["class"]
+        counts[cls] += 1
+        if cls == "rank_only":
+            failures.append(
+                _RANK_ONLY.format(entity=row["entity"], column=row["column"])
+            )
+        elif cls in _SUPPORT_BOUNDED:
+            if row["records_outside"] != 0 or row["weighted_outside"] != 0:
+                failures.append(
+                    f"{label} ({cls}): {row['records_outside']} records and "
+                    f"{row['weighted_outside']!r} weight lie outside "
+                    f"[{row['expected_min']!r}, {row['expected_max']!r}]"
+                    + (
+                        " or the donor's categories"
+                        if row["expected_categories"] is not None
+                        else ""
+                    )
+                    + "."
+                )
+        elif cls == "derived":
+            missing = [
+                f"{source['entity']}.{source['column']} ({source['class']})"
+                for source in row["sources"]
+                if source["class"] not in _SUPPORT_COVERED
+            ]
+            if not row["sources"]:
+                failures.append(
+                    f"{label} (derived): the walk reached no source, so nothing "
+                    "covers it."
+                )
+            if missing:
+                failures.append(
+                    f"{label} (derived): sources without coverage: "
+                    + ", ".join(missing)
+                    + ". "
+                    + (row["reason"] or "")
+                )
+        elif cls in {"pending", "uncovered"}:
+            failures.append(f"{label} ({cls}): {row['reason']}.")
+        elif cls not in _SUPPORT_COVERED:
+            failures.append(f"{label}: unknown support class {cls!r}.")
+        report.append(
+            {
+                "column": label,
+                "class": cls,
+                "realized": [row["realized_min"], row["realized_max"]],
+                "expected": [row["expected_min"], row["expected_max"]],
+                "records_outside": row["records_outside"],
+                "weighted_outside": row["weighted_outside"],
+            }
+        )
+    details.update({"counts": dict(sorted(counts.items())), "columns": report})
+    return GateResult("support", not failures, tuple(failures), details)
+
+
+def _decoded_document(value: object, kind: str) -> Mapping[str, Any] | None:
+    if isinstance(value, EvidenceDocument) and value.kind == kind:
+        return value.document
+    return None
+
+
+def _donor_receipt_rows(receipt: Mapping[str, Any]) -> tuple[list[str], dict]:
+    donor, pin = receipt["donor"], receipt["pin"]
+    failures = []
+    if donor["sha256"] != pin["sha256"] or donor["size_bytes"] != pin["size_bytes"]:
+        failures.append(
+            f"donor: SHA-256 {donor['sha256']} ({donor['size_bytes']} bytes) is not "
+            f"the source_stages pin {pin['sha256']} ({pin['size_bytes']} bytes)."
+        )
+    for key in ("content_basis", "donor_time_period"):
+        if receipt[key] in (None, ""):
+            failures.append(f"donor: the receipt records no {key}.")
+    return failures, {
+        "sha256": donor["sha256"],
+        "size_bytes": donor["size_bytes"],
+        "pin_stage": pin["stage"],
+        "content_basis": receipt["content_basis"],
+        "donor_time_period": receipt["donor_time_period"],
+    }
+
+
+def _closure_rows(
+    closure: Mapping[str, Any], *, allow_engine_optional: bool
+) -> tuple[list[str], dict]:
+    failures = [f"closure check: {problem}" for problem in closure["check"]]
+    engine = closure["engine"]
+    declared = engine.get("declared_commit")
+    surface = engine.get("closure_surface_commit")
+    if declared is None:
+        failures.append(
+            "engine: the run declares no engine commit "
+            "(axiom_rules_bindings.engine.commit is null)."
+        )
+    elif declared != surface:
+        failures.append(
+            f"engine: the run's engine commit {declared} is not the closure's "
+            f"surface engine commit {surface}; regenerate the input surface and "
+            "re-review the closure, including its engine_optional_evidence."
+        )
+    modules = []
+    for row in closure["modules"]:
+        label = f"{row['binding']} ({row['rulespec_path']})"
+        counts = partition_counts(row)
+        if sum(counts.values()) != len(row["roots"]):
+            failures.append(f"{label}: the classes do not partition its roots.")
+        if row["sha256"] != row["reviewed_sha256"]:
+            failures.append(
+                f"{label}: module SHA-256 {row['sha256']} is not the reviewed "
+                f"{row['reviewed_sha256']}."
+            )
+        failures += [f"{label}: gap {name}." for name in row["gap"]]
+        failures += [
+            f"{label}: relation input {item} is missing from the producer's "
+            "frame slice."
+            for item in row["relation_missing"]
+        ]
+        failures += [
+            f"{label}: {name} is closed but is not a live root."
+            for name in row["unexpected"]
+        ]
+        failures += [
+            f"{label}: {name} is closed as a graph column the producer's frame "
+            "slice lacks."
+            for name in row["frame_missing"]
+        ]
+        if not allow_engine_optional:
+            failures += [
+                f"{label}: {name} is engine-optional, and gates.json sets "
+                "allow_engine_optional false."
+                for name in row["engine_optional"]
+            ]
+        modules.append(
+            {
+                "binding": row["binding"],
+                "rulespec_path": row["rulespec_path"],
+                "counts": counts,
+                "covered": sorted(
+                    name for names in row["encoded"].values() for name in names
+                ),
+                "knob_targeted": list(row["knob_targeted"]),
+                "defaulted": [item["input"] for item in row["defaulted"]],
+                "engine_optional": list(row["engine_optional"]),
+                "relation": [item["input"] for item in row["relation"]],
+                "unreached": list(row["unreached"]),
+                "unmapped_entity": list(row["unmapped_entity"]),
+                "gap": list(row["gap"]),
+            }
+        )
+    return failures, {"engine": dict(engine), "modules": modules}
+
+
+def _release_input_coverage(
+    *,
+    donor_artifact_receipt: object,
+    axiom_input_closure: object,
+    graph_evidence: object,
+    frame: Frame,
+    allow_engine_optional: bool,
+) -> GateResult:
+    """Donor authentication and per-module Axiom input closure, both checked.
+
+    Both artifacts' headers are checked first
+    (:func:`~microcosm.build.transport.evidence_contract.checked_header`).
+    The donor's bytes must equal its ``source_stages`` pin, and the receipt
+    must record ``content_basis`` and ``donor_time_period``. Every bound
+    module's live roots must partition into the closure classes with no
+    gap, no closed input that is not a root, no encoded column missing from
+    the producer's slice, and no engine-optional input unless
+    ``allow_engine_optional`` is true; the closure check must hold, and the
+    run's declared engine commit must equal the closure's surface engine
+    commit. Every module is reported, in binding order.
+    """
+
+    if not isinstance(allow_engine_optional, bool):
+        raise TypeError(
+            f"allow_engine_optional must be true or false, got {allow_engine_optional!r}."
+        )
+    failures = checked_header(
+        DONOR_ARTIFACT_RECEIPT,
+        donor_artifact_receipt,
+        graph_evidence,
+        frame,
+        kernel=DONOR_RECEIPT_REF,
+    )
+    failures += checked_header(
+        AXIOM_INPUT_CLOSURE,
+        axiom_input_closure,
+        graph_evidence,
+        frame,
+        kernel=INPUT_CLOSURE_REF,
+    )
+    details: dict[str, object] = {
+        "allow_engine_optional": allow_engine_optional,
+        "classes": list(CLOSURE_CLASSES),
+    }
+    receipt = _decoded_document(
+        donor_artifact_receipt, "transport_donor_artifact_receipt"
+    )
+    if receipt is not None:
+        donor_failures, details["donor"] = _donor_receipt_rows(receipt)
+        failures += donor_failures
+    closure = _decoded_document(axiom_input_closure, "transport_axiom_input_closure")
+    if closure is not None:
+        closure_failures, closure_details = _closure_rows(
+            closure, allow_engine_optional=allow_engine_optional
+        )
+        failures += closure_failures
+        details.update(closure_details)
     return GateResult(
-        name="support",
-        passed=False,
-        failures=("Transport donor-support evidence checks are not implemented.",),
-        details={},
+        name="release_input_coverage",
+        passed=not failures,
+        failures=tuple(failures),
+        details=details,
     )
 
 
-def _pending_release_input_coverage(
-    *, donor_artifact_receipt: object, axiom_input_closure: object
-) -> GateResult:
-    """A producer artifact cannot bypass the pending authentication checks."""
+#: H38: the battery's weights evidence covers the central branch only.
+_VARIANT_WEIGHTS_NOTE = (
+    "This audit covers the central calibration only. Uncertainty bands read "
+    "variant calibrations' weights, which no gate audits yet; per-variant "
+    "audits come due before the bands take release status (G8-y)."
+)
 
+
+def _transport_weights_audit(
+    *,
+    fit_weight_records: object,
+    graph_evidence: object,
+    frame: Frame,
+    maximum_relative_mass_change: float,
+    allowed_unweighted: Mapping[str, str] | None = None,
+) -> GateResult:
+    """The fit-kind audit plus the transport weight transition, both checked.
+
+    Runs :func:`~microcosm.build.gates.weights_audit_gate` unchanged over the
+    records' ``fit_records``, then, all reported in a fixed order: the
+    header; a ``design`` to ``calibrated`` transition; the battery frame's
+    weights and ids equal to the recorded calibrated weights; the binding of
+    the solution and result to the problem; the person-mass change within
+    ``maximum_relative_mass_change`` of the destination mass; and, for the
+    person entity and every declared partition, effective weights that are
+    exactly the inherited household vector with no persisted weight column.
+    """
+
+    limit = _number("maximum_relative_mass_change", maximum_relative_mass_change)
+    if limit < 0:
+        raise ValueError("maximum_relative_mass_change must be non-negative.")
+    failures = checked_header(
+        FIT_WEIGHT_RECORDS,
+        fit_weight_records,
+        graph_evidence,
+        frame,
+        kernel=WEIGHTS_AUDIT_REF,
+    )
+    details: dict[str, object] = {
+        "maximum_relative_mass_change": limit,
+        "variant_weights": _VARIANT_WEIGHTS_NOTE,
+    }
+    audit = _decoded_document(fit_weight_records, "transport_weights_audit")
+    if audit is None:
+        return GateResult("weights_audit", False, tuple(failures), details)
+    records = [
+        FitWeightRecord(row["fit_name"], row["weight_kind"])
+        for row in audit["fit_records"]
+    ]
+    result = weights_audit_gate(records, allowed_unweighted=allowed_unweighted)
+    transition = audit["transition"]
+    if (transition["from_kind"], transition["to_kind"]) != ("design", "calibrated"):
+        failures.append(
+            f"The transition runs {transition['from_kind']!r} to "
+            f"{transition['to_kind']!r}, not design to calibrated."
+        )
+    entity = audit["weight_entity"]
+    if frame is not None and entity in frame.entities:
+        table = frame.table(entity)
+        ids = table[frame.schema.entity_id_column(entity)].tolist()
+        weights = frame.resolve_weights(entity).values.tolist()
+        if ids != list(transition["household_id"]):
+            failures.append(f"The battery's {entity} ids differ from the audit's.")
+        elif weights != list(transition["calibrated_weight"]):
+            failures.append(
+                f"The battery's {entity} weights differ from the audited calibrated "
+                "weights."
+            )
+    binding = audit["binding"]
+    if not (
+        binding["problem_sha256"]
+        == binding["solution_problem_sha256"]
+        == binding["result_problem_sha256"]
+    ):
+        failures.append("The solution or result belongs to another problem.")
+    mass = audit["mass"]
+    change = mass["relative_change"]
+    if change is None or not abs(change) <= limit:
+        failures.append(
+            f"The calibrated person mass {mass['calibrated_person_mass']!r} moves "
+            f"{change!r} relative to the destination mass "
+            f"{mass['destination_person_mass']!r}; the declared limit is {limit!r}."
+        )
+    for row in audit["partitions"]:
+        if not row["inherited"]:
+            failures.append(
+                f"{row['entity']}: its effective weights are not the inherited "
+                f"{entity} vector; a unit may not persist a second weight vector."
+            )
+        if row["weight_columns"]:
+            failures.append(
+                f"{row['entity']}: persisted weight columns {row['weight_columns']}."
+            )
+    details.update(
+        {
+            "weight_entity": entity,
+            "transition": [transition["from_kind"], transition["to_kind"]],
+            "n_records": len(transition["household_id"]),
+            "mass": dict(mass),
+            "source_households": dict(audit["source_households"]),
+            "partitions": [dict(row) for row in audit["partitions"]],
+        }
+    )
+    return _with_failures(result, failures=failures, details=details)
+
+
+# ---------------------------------------------------------------------------
+# Pre-fit measurement acceptance (G8-r2c hunk D, ruling R2C-3)
+# ---------------------------------------------------------------------------
+
+
+def _ratio_bounds(name: str, value: object) -> tuple[Fraction, Fraction]:
+    if isinstance(value, str | bytes) or not isinstance(value, Sequence):
+        raise TypeError(f"{name} must be a [lower, upper] pair.")
+    # Exactly two items, counted without a numeric literal: this module
+    # holds no threshold literal (test_holds_no_threshold_literal).
+    *rest, last = value or (None,)
+    if len(rest) != 1:
+        raise ValueError(f"{name} must be a [lower, upper] pair.")
+    lower, upper = (Fraction(_number(name, item)) for item in (*rest, last))
+    if not 0 <= lower <= upper:
+        raise ValueError(f"{name} must satisfy 0 <= lower <= upper.")
+    return lower, upper
+
+
+def _inside(model: Fraction, reference: Fraction, bounds) -> bool:
+    lower, upper = bounds
+    return reference > 0 and lower * reference <= model <= upper * reference
+
+
+def _ratio_text(model: Fraction, reference: Fraction) -> str:
+    return "undefined" if reference == 0 else f"{float(model / reference):.6g}"
+
+
+def _measurement_prefit(
+    *,
+    problem: object,
+    graph_evidence: object,
+    tables: Sequence[str],
+    roster_total_bounds: Sequence[float],
+    band_bounds: Sequence[float],
+    maximum_discrepant_bands: int,
+    minimum_source_households: int,
+    minimum_kish_ess: float,
+    required_evidence: Sequence[str],
+) -> GateResult:
+    """Pre-fit acceptance of a measurement's interval targets (ruling R2C-3).
+
+    Each comparator is the weighted model total at the weights entering
+    calibration (the problem's ``A @ w0``) against the reference the matrix
+    uses (its right-hand side), for every band's count and amount rows of
+    each declared interval table. The gate refuses on four checks:
+
+    - roster totals: the summed count, or the summed amount, outside
+      ``roster_total_bounds`` of the summed references;
+    - concentrated discrepancy: more than ``maximum_discrepant_bands`` bands
+      whose count or amount falls outside ``band_bounds`` (a band counts
+      once if either fails);
+    - support: any band with fewer than ``minimum_source_households``
+      distinct source households, or a source-household Kish ESS below
+      ``minimum_kish_ess``, checked for count and amount contributions
+      separately (``reference_intervals.band_support``);
+    - evidence: no interval diagnostics or per-band support for a declared
+      table, a band whose references did not enter the matrix, or a
+      ``required_evidence`` alias the battery node does not wire.
+
+    Every threshold comes from ``gates.json``; none has a default.
+    """
+
+    declared_tables = _strings("tables", tables)
+    totals_bounds = _ratio_bounds("roster_total_bounds", roster_total_bounds)
+    per_band = _ratio_bounds("band_bounds", band_bounds)
+    if isinstance(maximum_discrepant_bands, bool) or not isinstance(
+        maximum_discrepant_bands, int
+    ):
+        raise TypeError("maximum_discrepant_bands must be an integer.")
+    if isinstance(minimum_source_households, bool) or not isinstance(
+        minimum_source_households, int
+    ):
+        raise TypeError("minimum_source_households must be an integer.")
+    minimum_ess = Fraction(_number("minimum_kish_ess", minimum_kish_ess))
+    evidence = _strings("required_evidence", required_evidence)
+    failures: list[str] = []
+    wired = graph_evidence if isinstance(graph_evidence, Mapping) else {}
+    for alias in evidence:
+        if alias not in wired:
+            failures.append(f"evidence: the run lacks required evidence {alias!r}.")
+    report = problem.bindings.get("interval_diagnostics")
+    reports = (
+        {row.get("table"): row for row in report.get("tables", ())}
+        if isinstance(report, Mapping)
+        else {}
+    )
+    names = [str(row.get("reference")) for row in problem.target_metadata]
+    rows = {name: index for index, name in enumerate(names)}
+    problem_rows = problem.problem
+    estimates = problem_rows.estimates(problem_rows.initial_weights.values)
+    targets = problem_rows.target_vector
+    band_details: list[dict[str, object]] = []
+    sums = {"count": [Fraction(0), Fraction(0)], "amount": [Fraction(0), Fraction(0)]}
+    discrepant: list[str] = []
+    for table_id in declared_tables:
+        table = reports.get(table_id)
+        if table is None:
+            failures.append(
+                f"evidence: the problem has no interval diagnostics for {table_id!r}."
+            )
+            continue
+        if not isinstance(table.get("support"), Mapping):
+            failures.append(
+                f"evidence: interval table {table_id!r} reports no per-band support."
+            )
+            continue
+        for band in table.get("bands", ()):
+            label = f"{table_id}/{band.get('band')}"
+            references = band.get("references")
+            support = band.get("support")
+            if not isinstance(references, Mapping) or not isinstance(support, Mapping):
+                failures.append(
+                    f"evidence: band {label} names no count and amount references."
+                )
+                continue
+            detail: dict[str, object] = {"band": label}
+            band_fails = False
+            for role in ("count", "amount"):
+                name = references.get(role)
+                if name not in rows:
+                    failures.append(
+                        f"evidence: band {label} {role} reference {name!r} did not "
+                        "enter the matrix."
+                    )
+                    band_fails = None
+                    continue
+                model = Fraction(float(estimates[rows[name]]))
+                reference = Fraction(float(targets[rows[name]]))
+                sums[role][0] += model
+                sums[role][1] += reference
+                inside = _inside(model, reference, per_band)
+                if not inside and band_fails is not None:
+                    band_fails = True
+                measured = support.get(role, {})
+                households = measured.get("source_households")
+                ess = measured.get("kish_ess")
+                if not isinstance(households, int) or not isinstance(ess, Mapping):
+                    failures.append(f"evidence: band {label} has no {role} support.")
+                else:
+                    value = Fraction(ess["numerator"], ess["denominator"])
+                    if households < minimum_source_households:
+                        failures.append(
+                            f"support: band {label} {role} has {households} source "
+                            f"households, below {minimum_source_households}."
+                        )
+                    if value < minimum_ess:
+                        failures.append(
+                            f"support: band {label} {role} has source-household Kish "
+                            f"ESS {float(value):.6g}, below {float(minimum_ess):.6g}."
+                        )
+                detail[role] = {
+                    "reference": name,
+                    "model": float(model),
+                    "comparator": float(reference),
+                    "ratio": _ratio_text(model, reference),
+                    "inside_band_bounds": inside,
+                    "source_households": households,
+                    "kish_ess": None
+                    if not isinstance(ess, Mapping)
+                    else float(Fraction(ess["numerator"], ess["denominator"])),
+                }
+            if band_fails:
+                discrepant.append(label)
+            band_details.append(detail)
+    for role in ("count", "amount"):
+        model, reference = sums[role]
+        if band_details and not _inside(model, reference, totals_bounds):
+            failures.append(
+                f"roster totals: the summed {role} is "
+                f"{_ratio_text(model, reference)} of its comparator, outside "
+                f"[{float(totals_bounds[0]):.6g}, {float(totals_bounds[1]):.6g}]."
+            )
+    if len(discrepant) > maximum_discrepant_bands:
+        failures.append(
+            f"concentrated discrepancy: {len(discrepant)} bands fall outside "
+            f"[{float(per_band[0]):.6g}, {float(per_band[1]):.6g}] "
+            f"({discrepant}); at most {maximum_discrepant_bands} may."
+        )
     return GateResult(
-        name="release_input_coverage",
-        passed=False,
-        failures=(
-            "Transport donor authentication and Axiom input-closure checks "
-            "are not implemented.",
-        ),
-        details={},
+        name="measurement_prefit",
+        passed=not failures,
+        failures=tuple(failures),
+        details={
+            "tables": list(declared_tables),
+            "bands": band_details,
+            "roster_totals": {
+                role: {
+                    "model": float(sums[role][0]),
+                    "comparator": float(sums[role][1]),
+                    "ratio": _ratio_text(*sums[role]),
+                }
+                for role in ("count", "amount")
+            },
+            "discrepant_bands": discrepant,
+            "required_evidence": list(evidence),
+        },
     )
 
 
@@ -1250,6 +1868,41 @@ def _problem_evidence(
     return {"problem_sha256": context.artifacts[PROBLEM].sha256}
 
 
+def _release_input_coverage_evidence(
+    context: EvidenceContext, parameters: Mapping[str, Any]
+) -> object:
+    return {
+        alias: getattr(context.artifacts[alias], "sha256", None)
+        for alias in (DONOR_ARTIFACT_RECEIPT, AXIOM_INPUT_CLOSURE)
+    }
+
+
+def _support_evidence(
+    context: EvidenceContext, parameters: Mapping[str, Any]
+) -> object:
+    return {
+        DONOR_SUPPORT_BOUNDS: getattr(
+            context.artifacts[DONOR_SUPPORT_BOUNDS], "sha256", None
+        )
+    }
+
+
+def _weights_audit_evidence(
+    context: EvidenceContext, parameters: Mapping[str, Any]
+) -> object:
+    return {
+        FIT_WEIGHT_RECORDS: getattr(
+            context.artifacts[FIT_WEIGHT_RECORDS], "sha256", None
+        )
+    }
+
+
+def _measurement_prefit_evidence(
+    context: EvidenceContext, parameters: Mapping[str, Any]
+) -> object:
+    return {"problem_sha256": context.artifacts[PROBLEM].sha256}
+
+
 def _cell_diagnostics_evidence(
     context: EvidenceContext, parameters: Mapping[str, Any]
 ) -> object:
@@ -1264,7 +1917,19 @@ def _cell_diagnostics_evidence(
 def _parameters(gate: object) -> frozenset[str]:
     """Every keyword the evaluator takes that no artifact or frame supplies."""
 
-    supplied = {"frame", SURFACE, PROBLEM, DIAGNOSTICS, CELL_DIAGNOSTICS}
+    supplied = {
+        "frame",
+        SURFACE,
+        PROBLEM,
+        DIAGNOSTICS,
+        CELL_DIAGNOSTICS,
+        GRAPH_EVIDENCE,
+        DONOR_ARTIFACT_RECEIPT,
+        AXIOM_INPUT_CLOSURE,
+        DONOR_SUPPORT_BOUNDS,
+        DONOR_RANGES,
+        FIT_WEIGHT_RECORDS,
+    }
     return frozenset(
         name for name in inspect.signature(gate).parameters if name not in supplied
     )
@@ -1350,22 +2015,54 @@ TRANSPORT_GATE_REGISTRY: Mapping[str, GateBinding] = MappingProxyType(
             artifact_arguments=MappingProxyType({CELL_DIAGNOSTICS: CELL_DIAGNOSTICS}),
             evidence=_cell_diagnostics_evidence,
         ),
+        "weights_audit": FunctionBinding(
+            name="weights_audit",
+            gate=_transport_weights_audit,
+            parameter_keys=_parameters(_transport_weights_audit),
+            artifact_arguments=MappingProxyType(
+                {
+                    FIT_WEIGHT_RECORDS: FIT_WEIGHT_RECORDS,
+                    GRAPH_EVIDENCE: GRAPH_EVIDENCE,
+                }
+            ),
+            frame_argument="frame",
+            evidence=_weights_audit_evidence,
+        ),
         "support": FunctionBinding(
             name="support",
-            gate=_pending_support,
+            gate=_support,
+            parameter_keys=_parameters(_support),
             artifact_arguments=MappingProxyType(
-                {"donor_support_bounds": "donor_support_bounds"}
+                {
+                    DONOR_SUPPORT_BOUNDS: DONOR_SUPPORT_BOUNDS,
+                    GRAPH_EVIDENCE: GRAPH_EVIDENCE,
+                }
             ),
+            frame_argument="frame",
+            evidence=_support_evidence,
+        ),
+        "measurement_prefit": FunctionBinding(
+            name="measurement_prefit",
+            gate=_measurement_prefit,
+            parameter_keys=_parameters(_measurement_prefit),
+            artifact_arguments=MappingProxyType(
+                {PROBLEM: PROBLEM, GRAPH_EVIDENCE: GRAPH_EVIDENCE}
+            ),
+            evidence=_measurement_prefit_evidence,
         ),
         "release_input_coverage": FunctionBinding(
             name="release_input_coverage",
-            gate=_pending_release_input_coverage,
+            gate=_release_input_coverage,
+            parameter_keys=_parameters(_release_input_coverage),
             artifact_arguments=MappingProxyType(
                 {
-                    "donor_artifact_receipt": "donor_artifact_receipt",
-                    "axiom_input_closure": "axiom_input_closure",
+                    DONOR_ARTIFACT_RECEIPT: DONOR_ARTIFACT_RECEIPT,
+                    AXIOM_INPUT_CLOSURE: AXIOM_INPUT_CLOSURE,
+                    GRAPH_EVIDENCE: GRAPH_EVIDENCE,
                 }
             ),
+            frame_argument="frame",
+            evidence=_release_input_coverage_evidence,
         ),
     }
 )

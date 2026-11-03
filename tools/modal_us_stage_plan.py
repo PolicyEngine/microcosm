@@ -72,6 +72,26 @@ IMAGE_VENV = "/opt/venv"
 IMAGE_PYTHON_VERSION = "3.14"
 IMAGE_UV_VERSION = "0.11.7"
 RUNNER_HF_HUB_VERSION = "1.18.0"
+# A build starts the separately installed microcosm-emitter command as its
+# child process (microcosm-emitter-interface); uv.lock pins only the
+# interface. The image installs the newest emitter release when it is built
+# for a plan commit, outside the synced environment; an image built for one
+# commit keeps the emitter it was built with. A build does not start an
+# emitter older than 0.6.0, the first release with the Hugging Face hand-over
+# module (microcosm.build.telemetry_emitter.MINIMUM_EMITTER_VERSION). The
+# stage's runner records the version.
+IMAGE_EMITTER_REQUIREMENT = "microcosm-emitter>=0.7.0"
+IMAGE_EMITTER_BIN_DIR = "/usr/local/bin"
+IMAGE_EMITTER_COMMAND = f"{IMAGE_EMITTER_BIN_DIR}/microcosm-emitter"
+#: The image's environment variables, which the stage tool inherits.
+IMAGE_ENVIRONMENT = {
+    "UV_PROJECT_ENVIRONMENT": IMAGE_VENV,
+    "UV_PYTHON_DOWNLOADS": "never",
+    "UV_LINK_MODE": "copy",
+    "PYTHONDONTWRITEBYTECODE": "1",
+    # Where the interface finds the emitter command (it also searches PATH).
+    "MICROCOSM_EMITTER_COMMAND": IMAGE_EMITTER_COMMAND,
+}
 WORK_ROOT = "/work"
 
 # Modal list prices for standard (non-sandbox) compute, read from
@@ -1394,6 +1414,8 @@ def image_build_commands(plan: Plan, repo_root: str = IMAGE_REPO_ROOT) -> list[s
     The tree is a shallow clone of the pushed commit (so ``git rev-parse``
     and ``git status`` inside the tools report the real code vintage), and
     the environment is synced from that tree's own uv.lock with --frozen.
+    The emitter command is installed on its own, outside that environment
+    (``IMAGE_EMITTER_REQUIREMENT``), and must run.
     """
 
     root = shlex.quote(repo_root)
@@ -1405,6 +1427,9 @@ def image_build_commands(plan: Plan, repo_root: str = IMAGE_REPO_ROOT) -> list[s
         f"git -C {root} checkout -q -B {shlex.quote(plan.branch)} FETCH_HEAD",
         f'test "$(git -C {root} rev-parse HEAD)" = {commit}',
         f"cd {root} && uv sync --all-packages --extra us --frozen",
+        f"UV_TOOL_BIN_DIR={IMAGE_EMITTER_BIN_DIR} uv tool install "
+        f"{shlex.quote(IMAGE_EMITTER_REQUIREMENT)}",
+        f"{IMAGE_EMITTER_COMMAND} version",
         f'test -z "$(git -C {root} status --porcelain)"',
     ]
 

@@ -886,6 +886,9 @@ def impute_uk_spi_income_support(
             raise TypeError("donor_table must be a pandas DataFrame.")
         raw_donor = donor_table.copy(deep=True)
     donor = _prepare_spi_donor(raw_donor, seed=seed, age_model=donor_age_model)
+    # The band donors place each record by the published total, which holds
+    # the tape's own savings, so they read the tape from before the rebase too.
+    prepared_donor = donor
     # The tape's interest and other income move to SPI's 2023-24 bands before
     # any draw, so the forest and the band donors read the same rebased tape
     # (microcosm#1418 savings follow-up).
@@ -1194,6 +1197,7 @@ def impute_uk_spi_income_support(
             household=household,
             spi_people=spi_people,
             uprating_factors=uprating_factors,
+            original_donor=prepared_donor,
             state_pension_age=(
                 None if donor_age_model is None else donor_age_model.state_pension_age
             ),
@@ -1474,6 +1478,7 @@ def _resample_band_donor_leaves(
     seed: int,
     age_pool_minimum: int | None = None,
     state_pension_age: int | None = None,
+    original_donor: pd.DataFrame | None = None,
 ) -> tuple[pd.DataFrame, dict[str, object]]:
     """Give every reserved band carrier a band-conditional tape draw.
 
@@ -1575,22 +1580,16 @@ def _resample_band_donor_leaves(
     # (microcosm#1106). The loss draws travel the same way: the published
     # total holds the profit net of losses brought forward, which
     # self_employment_income already carries (microcosm#1095).
-    income_columns = [
-        column
-        for column in columns
-        if column not in (SPI_PROPERTY_FINANCE_COSTS_COLUMN, *SPI_LOSS_DRAW_COLUMNS)
-    ]
-    income_factors = np.asarray(
-        [float(uprating_factors[column]) for column in income_columns]
-    )
-    published_total = donor["total_income"].to_numpy(dtype=float)
     leaf_values = donor[columns].to_numpy(dtype=np.float64)
-    income_values = donor[income_columns].to_numpy(dtype=np.float64)
     # The total income a drawn record realises on the frame: its income leaves
-    # at the stage's factors plus whatever of the published total the leaves do
-    # not carry, held nominal.
-    total_income = income_values @ income_factors + np.maximum(
-        published_total - income_values.sum(axis=1), 0.0
+    # at the stage's factors, net of its employment expenses and without its
+    # gifts, plus what the tape's own leaves leave of its published total,
+    # held nominal (_realised_total_income). ``original_donor`` is the tape
+    # before the savings rebase, whose leaves the published total holds.
+    total_income = _realised_total_income(
+        donor if original_donor is None else original_donor,
+        donor,
+        uprating_factors,
     )
     donor_region = donor["region"].astype(str).to_numpy()
     fact = donor["FACT"].to_numpy(dtype=float)
@@ -1936,27 +1935,55 @@ def spi_savings_rebase_published(
 #: the production tape records kept changing band from pass to pass.
 
 
-def _tape_income_in_rebase_year(
-    donor: pd.DataFrame,
-    rebased: pd.DataFrame,
-    income_factors: Mapping[str, float],
-) -> np.ndarray:
-    """The tape's total income moved to SPI_SAVINGS_REBASE_YEAR."""
+#: The tape's gift leaves relieve income rather than add to it, so a record's
+#: total income never counts them (Vahid's review of microcosm#1428).
+SPI_RELIEF_LEAF_COLUMNS = ("gift_aid", "charitable_investment_gifts")
 
-    columns = [
+
+def _realised_total_income(
+    donor: pd.DataFrame,
+    values: pd.DataFrame,
+    factors: Mapping[str, float],
+) -> np.ndarray:
+    """Each tape record's total income with its leaves moved by ``factors``.
+
+    The published total (SPI's TI) holds the income leaves net of employment
+    expenses, which are deducted from pay, and none of the gift leaves, which
+    are reliefs; restricted finance costs and the loss draws travel with their
+    leaves. So a record's income moves by its income leaves' growth less its
+    expenses' growth, and the rest of its published total, which ``donor``'s
+    own leaves do not itemise, is held nominal, negative where they over-count
+    it. ``values`` holds the leaves that move: the tape's own, or rebased ones.
+    With every factor at one and the tape's own leaves the result is the
+    published total itself (Vahid's review of microcosm#1428).
+    """
+
+    income = [
         column
         for column in SPI_INCOME_QRF_OUTPUT_COLUMNS
         if column in donor
-        and column not in (SPI_PROPERTY_FINANCE_COSTS_COLUMN, *SPI_LOSS_DRAW_COLUMNS)
+        and column
+        not in (
+            SPI_PROPERTY_FINANCE_COSTS_COLUMN,
+            *SPI_LOSS_DRAW_COLUMNS,
+            *SPI_RELIEF_LEAF_COLUMNS,
+            SPI_HMRC_EMPLOYMENT_EXPENSES_COLUMN,
+        )
     ]
-    leaves = donor[columns].to_numpy(dtype=np.float64)
-    rest = np.maximum(
-        donor["total_income"].to_numpy(dtype=np.float64) - leaves.sum(axis=1), 0.0
-    )
-    moved = rebased[columns].to_numpy(dtype=np.float64) @ np.asarray(
-        [float(income_factors.get(column, 1.0)) for column in columns]
-    )
-    return moved + rest
+    expenses = SPI_HMRC_EMPLOYMENT_EXPENSES_COLUMN in donor
+
+    def net(frame: pd.DataFrame, moved: Mapping[str, float]) -> np.ndarray:
+        total = frame[income].to_numpy(dtype=np.float64) @ np.asarray(
+            [float(moved.get(column, 1.0)) for column in income]
+        )
+        if expenses:
+            total = total - frame[SPI_HMRC_EMPLOYMENT_EXPENSES_COLUMN].to_numpy(
+                dtype=np.float64
+            ) * float(moved.get(SPI_HMRC_EMPLOYMENT_EXPENSES_COLUMN, 1.0))
+        return total
+
+    rest = donor["total_income"].to_numpy(dtype=np.float64) - net(donor, {})
+    return net(values, factors) + rest
 
 
 def rebase_spi_donor_savings(
@@ -1970,13 +1997,15 @@ def rebase_spi_donor_savings(
     Each taxpayer donor's column is scaled by its band's factor: HMRC's
     published 2023-24 amount over the tape's FACT-weighted amount for the
     taxpayers in the same range of total income, since Table 3.7 counts
-    taxpayers only. The tape is banded once on its income moved to 2023-24:
-    each income leaf at its 2022-23 to 2023-24 factor (``income_factors``;
-    none holds the leaves nominal) and each rebased column at its factor over
-    all bands, on the tape's 2022-23 bands. A taxpayer is a record the tape
-    flags (TAXPAYER 1) or one whose income crosses the first band's lower
-    bound, the Personal Allowance, by 2023-24, so a saver who becomes a
-    taxpayer is counted once. A flagged taxpayer below the first band sits in
+    taxpayers only. The tape is banded once on its income moved to 2023-24
+    (``_realised_total_income``): each income leaf at its 2022-23 to 2023-24
+    factor (``income_factors``; none holds the leaves nominal) and each
+    rebased column at its factor over all bands, the published total over the
+    taxpayers' tape total. A taxpayer is a record the tape flags (TAXPAYER 1)
+    or one whose income crosses the first band's lower bound, the Personal
+    Allowance, by 2023-24, so a saver who becomes a taxpayer is counted once;
+    the factor over all bands counts the same taxpayers, finding the crossers
+    on income moved without their savings. A flagged taxpayer below the first band sits in
     it, as the table's lowest band holds those taxpayers (note 8); a tape
     without the flag counts every record at or above the first band. Any
     other donor takes the factor of all bands together. Banded so, the rebased
@@ -2024,12 +2053,24 @@ def rebase_spi_donor_savings(
     original: dict[str, np.ndarray] = {}
     targets: dict[str, np.ndarray] = {}
     banding_factors: dict[str, float] = {}
+    # Both passes count the same taxpayers: those the tape flags and the
+    # records whose income crosses the first band by 2023-24, found here on
+    # income moved without the savings the banding factor then moves (Vahid's
+    # review of microcosm#1428).
+    first = (
+        np.searchsorted(
+            edges, _realised_total_income(donor, donor, factors_in), side="right"
+        )
+        - 1
+    )
+    first_crossed = ~tape_taxpayer & (band_2022 < 0) & (first >= 0)
+    first_taxpayer = tape_taxpayer | first_crossed if flagged else (first >= 0)
     for column, by_bound in published.items():
         values = donor[column].to_numpy(dtype=np.float64)
         target = np.asarray([float(by_bound[bound]) for bound in bounds])
-        taxpayer = tape_taxpayer | (band_2022 >= 0)
+        taxpayer = first_taxpayer
         tape = np.bincount(
-            np.clip(band_2022, 0, None)[taxpayer],
+            np.clip(first, 0, None)[taxpayer],
             weights=(weights * values)[taxpayer],
             minlength=len(bounds),
         )
@@ -2052,9 +2093,7 @@ def rebase_spi_donor_savings(
     if not original:
         return rebased, receipt
 
-    income = _tape_income_in_rebase_year(
-        donor, donor, {**factors_in, **banding_factors}
-    )
+    income = _realised_total_income(donor, donor, {**factors_in, **banding_factors})
     band = np.searchsorted(edges, income, side="right") - 1
     crossed = ~tape_taxpayer & (band_2022 < 0) & (band >= 0)
     taxpayer = tape_taxpayer | crossed if flagged else (band >= 0)

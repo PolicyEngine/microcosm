@@ -102,27 +102,114 @@
       "gate": "release_input_coverage",
       "phase": "terminal",
       "criticality": "release_blocking",
-      "parameters": {},
+      "parameters": {
+        "allow_engine_optional": false
+      },
       "evidence_absent_blocks": true,
-      "notes": "Authenticate the exact Build P donor artifact and close every declared Frame/Axiom input. A missing substantive root input of any module bound in axiom_rules_bindings.json is a build failure, never an engine default."
+      "notes": "Authenticate the exact Build P donor artifact and close every declared Frame/Axiom input. A missing substantive root input of any module bound in axiom_rules_bindings.json is a build failure, never an engine default. allow_engine_optional is false: an engine default never closes an input here, and the gate names every engine-optional input it finds."
     },
     {
       "id": "donor_support_bounds",
       "gate": "support",
       "phase": "terminal",
       "criticality": "release_blocking",
-      "parameters": {},
+      "parameters": {
+        "structural_columns": [
+          {
+            "entity": "family",
+            "column": "family_id",
+            "reason": "CREATE synthesizes this column (the family id unit construction assigns); it carries identity or assignment, not donor support."
+          },
+          {
+            "entity": "family",
+            "column": "family_household_id",
+            "reason": "CREATE synthesizes this column (the family's household pointer); it carries identity or assignment, not donor support."
+          },
+          {
+            "entity": "family",
+            "column": "family_head_person_id",
+            "reason": "CREATE synthesizes this column (the family's head person pointer); it carries identity or assignment, not donor support."
+          },
+          {
+            "entity": "family",
+            "column": "family_source_household_id",
+            "reason": "CREATE synthesizes this column (the family's donor household lineage); it carries identity or assignment, not donor support."
+          },
+          {
+            "entity": "person",
+            "column": "person_family_id",
+            "reason": "CREATE synthesizes this column (each person's family membership); it carries identity or assignment, not donor support."
+          },
+          {
+            "entity": "person",
+            "column": "take_up_seed",
+            "reason": "CREATE synthesizes this column (a generated take-up seed derived from the donor person id and seed stream); it carries identity or assignment, not donor support."
+          },
+          {
+            "entity": "household",
+            "column": "donor_support_stratum",
+            "reason": "CREATE synthesizes this column (the donor support stratum label); it carries identity or assignment, not donor support."
+          },
+          {
+            "entity": "household",
+            "column": "source_household_id",
+            "reason": "The donor supplies this household identifier; it carries identity, not donor support."
+          },
+          {
+            "entity": "household",
+            "column": "reference_person_id",
+            "reason": "The donor supplies this reference-person pointer; it carries identity, not donor support."
+          },
+          {
+            "entity": "person",
+            "column": "parent_1_person_id",
+            "reason": "The donor supplies this first-parent pointer; it carries identity, not donor support."
+          },
+          {
+            "entity": "person",
+            "column": "parent_2_person_id",
+            "reason": "The donor supplies this second-parent pointer; it carries identity, not donor support."
+          },
+          {
+            "entity": "person",
+            "column": "partner_person_id",
+            "reason": "The donor supplies this partner pointer; it carries identity, not donor support."
+          },
+          {
+            "entity": "household",
+            "column": "household_region_code",
+            "reason": "geography.derive@1 assigns this household region from the atomic geography; it carries assignment, not donor support."
+          },
+          {
+            "entity": "household",
+            "column": "as_area",
+            "reason": "geography.derive@1 assigns this Accommodation Supplement area from the atomic geography; it carries assignment, not donor support."
+          },
+          {
+            "entity": "household",
+            "column": "as_area_alt",
+            "reason": "geography.derive@1 assigns this alternative Accommodation Supplement area from the atomic geography; it carries assignment, not donor support."
+          },
+          {
+            "entity": "person",
+            "column": "region_code",
+            "reason": "geography.person_location@1 projects the household region to each person; it carries assignment, not donor support."
+          }
+        ]
+      },
       "evidence_absent_blocks": true,
-      "notes": "Every direct or derived calibration measure and every substantive Axiom input must carry a donor-support receipt."
+      "notes": "Every direct or derived calibration measure and every substantive Axiom input must carry a donor-support receipt. structural_columns lists the columns that carry identity or assignment (ruling H34): the seven columns CREATE synthesizes, the five donor identifier and pointer columns, and the geography columns the support walk reaches. Composition refuses a row whose column a value-carrying node owns, that a money roster declares, or whose concept is observed (ruling H44 D)."
     },
     {
       "id": "calibration_weights_audit",
       "gate": "weights_audit",
       "phase": "terminal",
       "criticality": "release_blocking",
-      "parameters": {},
+      "parameters": {
+        "maximum_relative_mass_change": 0.02
+      },
       "evidence_absent_blocks": true,
-      "notes": "Household weights must receipt their design-to-calibrated transition and destination-population mass change. Family scoring resolves those weights through Frame; it may not persist a second ambiguous vector."
+      "notes": "Household weights must receipt their design-to-calibrated transition and destination-population mass change. Family scoring resolves those weights through Frame; it may not persist a second ambiguous vector. The NZ hub set maximum_relative_mass_change to 0.02 (ruling H33): d1376 holds each of the 64 demography cells within 2% (demography_per_family_fit, within 0.02), and those cells split the population by 16 regions and four age bands from the same Stats NZ June 2025 estimates that set CREATE's mass. Region 99 (Chatham Islands) sits outside every cell: the national figure reads 5,324,700 and the 16 regions sum to 5,324,100 (reference_inventory.json erp_bridges), so cells within 2% bound the total within about 2.01%. This gate can therefore fail when every cell passes, but only when every cell sits at the limit and region 99 moves too. G8-x reports the measured change, and any later edit goes through review like the solver settings."
     },
     {
       "id": "exported_nonzero",
@@ -141,6 +228,7 @@
       "parameters": {
         "formula_owned_columns": [
           "accommodation_supplement_cash_assets_within_limit",
+          "accommodation_supplement_entitled_weekly_payment",
           "accommodation_supplement_maximum_weekly_rate",
           "accommodation_supplement_non_beneficiary_income_reduction",
           "accommodation_supplement_non_rate_entitlement_requirements",
@@ -227,7 +315,8 @@
           "V1",
           "V2",
           "V3",
-          "V4"
+          "V4",
+          "VHF"
         ],
         "required_cells": [
           "income_decile_by_family_type/1/single",
@@ -281,7 +370,7 @@
         "target_maximum_single_donor_dollar_share": 0.05
       },
       "evidence_absent_blocks": true,
-      "notes": "MC15: missing, malformed or scenario-incomplete source-household diagnostics block. MC15 suppresses cells below ESS 100, above contribution CV 2 or donor dollar share 10% and excludes them from reported output; proper suppression does not block. The classifier lists structural-zero cells separately. Subgroup rows report entitlement, without invented subgroup payment comparators. G8 addendum A2 explicitly expects structural-zero cells: S0/beneficiary_superannuitant_other/superannuitant, S1/beneficiary_superannuitant_other/superannuitant, S2/beneficiary_superannuitant_other/superannuitant, S3/beneficiary_superannuitant_other/superannuitant. The machine-readable list is reporting_classifiers.json structural_zero_cells; reported amounts determine actual structural-zero diagnostics."
+      "notes": "MC15: missing, malformed or scenario-incomplete source-household diagnostics block. MC15 suppresses cells below ESS 100, above contribution CV 2 or donor dollar share 10% and excludes them from reported output; proper suppression does not block. The classifier lists structural-zero cells separately. Subgroup rows report entitlement, without invented subgroup payment comparators. G8 addendum A2 explicitly expects structural-zero cells, and MC11's central exclude-and-count adds every variant: S0/beneficiary_superannuitant_other/superannuitant, S1/beneficiary_superannuitant_other/superannuitant, S2/beneficiary_superannuitant_other/superannuitant, S3/beneficiary_superannuitant_other/superannuitant, V1/beneficiary_superannuitant_other/superannuitant, V2/beneficiary_superannuitant_other/superannuitant, V3/beneficiary_superannuitant_other/superannuitant, V4/beneficiary_superannuitant_other/superannuitant, VHF/beneficiary_superannuitant_other/superannuitant. S5 pays superannuitant units, so its cell is not structurally zero. The machine-readable list is reporting_classifiers.json structural_zero_cells; reported amounts determine actual structural-zero diagnostics."
     },
     {
       "id": "weight_effective_sample_size_target_a",
@@ -314,7 +403,8 @@
           "V1",
           "V2",
           "V3",
-          "V4"
+          "V4",
+          "VHF"
         ],
         "required_cells": [
           "income_decile_by_family_type/1/single",

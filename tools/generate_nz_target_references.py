@@ -882,14 +882,14 @@ def _holdout_references(inventory):
             ),
             "measure": "accommodation_supplement_positive_payment_indicator",
             "period": "2026-06",
-            "notes": "H1 compares the June 2026 national recipient stock with family units whose accommodation_supplement_rounded_weekly_payment exceeds zero. The declared positive-payment indicator counts each unit once, with factor 1; it never sums dollars. The national fact avoids a Work and Income region to Stats NZ region bridge. MC5 holds this comparison outside calibration.",
+            "notes": "H1 compares the June 2026 national recipient stock with family units whose accommodation_supplement_entitled_weekly_payment exceeds zero: the rounded payment where the engine judges the non-rate entitlement requirements to hold and, outside S5, the unit is not superannuitant. The declared positive-payment indicator counts each unit once, with factor 1; it never sums dollars. The national fact avoids a Work and Income region to Stats NZ region bridge. MC5 holds this comparison outside calibration.",
         }
     )
     recipients["metadata"].update(
         {
             "activation_status": "active",
             "annualisation_factor": "1",
-            "indicator_input_column": "accommodation_supplement_rounded_weekly_payment",
+            "indicator_input_column": "accommodation_supplement_entitled_weekly_payment",
             "indicator_operator": "positive",
             "indicator_threshold": "0",
             "measurement_basis": "National positive-payment recipient count; June 2026 snapshot stock, not annual recipients or dollars.",
@@ -912,8 +912,8 @@ def _holdout_references(inventory):
                     },
                 )
             ),
-            "measure": "accommodation_supplement_rounded_weekly_payment",
-            "notes": "H2 annualises accommodation_supplement_rounded_weekly_payment by 52 and compares model dollars with the historical fiscal-year 2024/25 Accommodation Assistance line in MSD Annual Report 2025. The published appropriation may cover more than Accommodation Supplement; this comparator makes no AS-only scope claim and never uprates the historical observation. The selector pins msd.benefit_expenses.fy2024 because the feed repeats this amount in another record set.",
+            "measure": "accommodation_supplement_entitled_weekly_payment",
+            "notes": "H2 annualises accommodation_supplement_entitled_weekly_payment by 52 and compares model dollars with the historical fiscal-year 2024/25 Accommodation Assistance line in MSD Annual Report 2025. The published appropriation may cover more than Accommodation Supplement; this comparator makes no AS-only scope claim and never uprates the historical observation. The selector pins msd.benefit_expenses.fy2024 because the feed repeats this amount in another record set.",
         }
     )
     expenditure["metadata"].update(
