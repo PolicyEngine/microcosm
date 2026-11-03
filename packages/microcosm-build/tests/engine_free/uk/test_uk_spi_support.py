@@ -939,17 +939,32 @@ def test_spi_prior_shape_receipt_gives_aggregates_only() -> None:
 
     assert equal.prior_shape_allocation is None
     assert equal.mass_log[-1].reason == SPI_PRIOR_MASS_CHANGE_REASON
-    # Five copies: the percentiles and shares would rest on fewer than ten
-    # source households, so the receipt withholds them.
-    small = bounded.prior_shape_allocation
-    assert small["shape"] == "design_bounded"
-    assert small["bounds"] == [0.5, 2.0]
-    assert small["copies"] == "<10"
-    assert small["copy_weight_over_equal_weight_p10_p50_p90"] == "<10"
-    assert small["clipped_low_share"] == "<10"
-    assert small["clipped_high_share"] == "<10"
-    assert small["clipped_low_copies"] == "<10"
-    assert small["clipped_high_copies"] == "<10"
+    # Five copies clear the floor of 3 (María's ruling of 2026-10-29): the
+    # spread and the shares are given, the counts banded. Only the relative
+    # weights 0.05 and 3.45 lie outside the bounds.
+    five = bounded.prior_shape_allocation
+    assert five["shape"] == "design_bounded"
+    assert five["bounds"] == [0.5, 2.0]
+    assert five["copies"] == "3-9"
+    assert len(five["copy_weight_over_equal_weight_p10_p50_p90"]) == 3
+    assert five["clipped_low_share"] == five["clipped_high_share"] == pytest.approx(0.2)
+    assert five["clipped_low_copies"] == five["clipped_high_copies"] == "<3"
+    # Two copies: the spread and the shares would rest on one or two source
+    # households, so the receipt withholds them.
+    person, benunit, household = _shaped_frames([1.0, 10.0])
+    small = build_uk_spi_support_channel(
+        person=person,
+        benunit=benunit,
+        household=household,
+        spi_household_count=2,
+        seed=42,
+        source_year=2023,
+        strata_columns=("region",),
+        prior_shape=spi_support.UKSPIPriorShape("design_bounded", bounds=(0.5, 2.0)),
+    ).prior_shape_allocation
+    assert small["copies"] == "<3"
+    assert small["copy_weight_over_equal_weight_p10_p50_p90"] == "<3"
+    assert small["clipped_low_share"] == small["clipped_high_share"] == "<3"
 
     person, benunit, household = _shaped_frames([1.0, 10.0, 10.0, 10.0, 69.0] * 2)
     receipt = build_uk_spi_support_channel(
@@ -968,9 +983,10 @@ def test_spi_prior_shape_receipt_gives_aggregates_only() -> None:
     assert receipt["copy_weight_over_equal_weight_p10_p50_p90"] == [0.62, 0.62, 2.5]
     assert receipt["clipped_low_share"] == 0.2
     assert receipt["clipped_high_share"] == 0.2
-    assert receipt["clipped_low_copies"] == "<10"
-    assert receipt["clipped_high_copies"] == "<10"
-    assert receipt["copies_above_2_of_equal_weight"] == "<10"
+    # Two copies at each bound, and two above twice the equal weight: banded.
+    assert receipt["clipped_low_copies"] == "<3"
+    assert receipt["clipped_high_copies"] == "<3"
+    assert receipt["copies_above_2_of_equal_weight"] == "<3"
     assert receipt["copies_below_0.5_of_equal_weight"] == 0
     for allocation in (small, receipt):
         assert not any("min" in key or "max" in key for key in allocation)

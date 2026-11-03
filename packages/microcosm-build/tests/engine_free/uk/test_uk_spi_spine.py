@@ -960,9 +960,9 @@ def test_support_transform_records_the_declared_prior_shape() -> None:
     receipt = evidence["prior_shape_allocation"]
     assert receipt["shape"] == "design_damped"
     assert receipt["exponent"] == 0.5
-    assert receipt["copies"] == "<10"
-    # Fewer than ten copies: the receipt withholds the spread.
-    assert receipt["copy_weight_over_equal_weight_p10_p50_p90"] == "<10"
+    assert receipt["copies"] == "<3"
+    # One or two copies: the receipt withholds the spread.
+    assert receipt["copy_weight_over_equal_weight_p10_p50_p90"] == "<3"
     assert "design weights to the power 0.5" in frame.mass_log[-1].reason
 
 
