@@ -17,6 +17,11 @@ from microcosm.build.us_runtime.base_pool import (
     spine_column,
     with_optional_acs_spine,
 )
+from microcosm.build.us_runtime.county_vintage import (
+    COUNTY_FIPS_2023_COLUMN,
+    county_fips_2023_from_tracts,
+    load_ct_planning_region_by_tract,
+)
 from microcosm.build.us_runtime.puf_support import (
     support_channel_column,
     support_clone_index_column,
@@ -75,6 +80,8 @@ def _base_frame(
 
 def _acs_frame(
     *,
+    state_fips: int = 1,
+    puma: str = "0100101",
     support_metadata: bool = False,
     conflicting_support_metadata: bool = False,
     weight_kind: WeightKind = WeightKind.DESIGN,
@@ -94,8 +101,8 @@ def _acs_frame(
         "household": pd.DataFrame(
             {
                 "household_id": [1],
-                "state_fips": [1],
-                "puma": ["0100101"],
+                "state_fips": [state_fips],
+                "puma": [puma],
             }
         ),
         "tax_unit": pd.DataFrame({"tax_unit_id": [10]}),
@@ -296,9 +303,11 @@ def test__given_mixed_spines__then_ladder_keeps_acs_puma_and_assigns_asec() -> N
 
 def _assigned_geography_base_frame(
     *,
+    state_fips: int = 1,
     tracts: list[str] | None = None,
     congressional_districts: list[int] | None = None,
     counties: list[str] | None = None,
+    calibration_counties: list[str] | None = None,
     drop_columns: list[str] | None = None,
 ) -> Frame:
     """A base frame whose donor households carry block-ladder geography."""
@@ -306,12 +315,15 @@ def _assigned_geography_base_frame(
     base = _base_frame()
     tables = {entity: base.table(entity).copy() for entity in base.entities}
     household = tables["household"]
+    household["state_fips"] = state_fips
     household["tract_geoid"] = tracts or ["01001000100", "01003000100"]
     household["congressional_district_geoid"] = congressional_districts or [
         101,
         102,
     ]
     household["county_fips"] = counties or ["01001", "01003"]
+    if calibration_counties is not None:
+        household[COUNTY_FIPS_2023_COLUMN] = calibration_counties
     for column in drop_columns or []:
         household.drop(columns=[column], inplace=True)
     return Frame(
@@ -356,6 +368,112 @@ def test__given_donor_assigned_geography__then_pool_preserves_it_and_derives_pum
     assert acs_row["puma"].tolist() == ["0100101"]
     assert acs_row["congressional_district_geoid"].tolist() == [101]
     assert acs_row["county_fips"].tolist() == ["01001"]
+
+
+def _single_puma_ladder(
+    puma: str, tracts: list[str], counties: list[str], district: int
+) -> UsPumaLadder:
+    """A one-PUMA ladder whose tracts and counties are the given donors'."""
+
+    county_values, county_populations = np.unique(
+        np.asarray(counties, dtype=np.int64), return_counts=True
+    )
+    return UsPumaLadder(
+        puma=np.asarray([int(puma)]),
+        puma_population=np.asarray([2.0]),
+        cd_overlap_puma=np.asarray([int(puma)]),
+        cd_overlap_cd=np.asarray([district]),
+        cd_overlap_population=np.asarray([2.0]),
+        county_overlap_puma=np.full(len(county_values), int(puma)),
+        county_overlap_county=county_values,
+        county_overlap_population=county_populations.astype(float),
+        tract_overlap_puma=np.full(len(tracts), int(puma)),
+        tract_overlap_tract=np.asarray(tracts, dtype=np.int64),
+        tract_overlap_population=np.ones(len(tracts)),
+        metadata=_test_puma_ladder().metadata,
+    )
+
+
+@pytest.mark.parametrize("carry_county_2023", [False, True])
+@pytest.mark.parametrize(
+    ("puma", "tracts", "counties"),
+    [
+        ("0100101", ["01001000100", "01003000100"], ["01001", "01003"]),
+        ("0920301", ["09013890203", "09013890202"], ["09013", "09013"]),
+    ],
+    ids=["non_ct_mixed_county", "tolland_planning_region_split"],
+)
+def test__given_preserved_donors__then_2023_county_follows_each_tract(
+    puma: str, tracts: list[str], counties: list[str], carry_county_2023: bool
+) -> None:
+    state = int(puma[:2])
+    district = state * 100 + 1
+    ladder = _single_puma_ladder(puma, tracts, counties, district)
+    expected = county_fips_2023_from_tracts(tracts)
+    base = _assigned_geography_base_frame(
+        state_fips=state,
+        tracts=tracts,
+        congressional_districts=[district, district + 1],
+        counties=counties,
+        calibration_counties=expected.tolist() if carry_county_2023 else None,
+    )
+    if state == 9:
+        # Read the pinned packaged CSV through its hash-checked loader. The
+        # same legacy Tolland county spans two 2023 planning regions.
+        crosswalk = load_ct_planning_region_by_tract()
+        assert crosswalk["09013890203"] == "09150"
+        assert crosswalk[tracts[0]] != crosswalk[tracts[1]]
+        assert expected.tolist() == [crosswalk[tract] for tract in tracts]
+
+    result = with_optional_acs_spine(
+        base,
+        _acs_frame(state_fips=state, puma=puma),
+        puma_ladder=ladder,
+        geography_seed=1,
+        expected_congressional_district_vintage="119th_congress",
+    )
+
+    household = result.table("household")
+    donor = household[household[spine_column("household")].eq(ASEC_PUF_SPINE)]
+    assert donor["puma"].tolist() == [puma, puma]
+    assert donor["tract_geoid"].tolist() == tracts
+    assert donor["county_fips"].tolist() == counties
+    assert donor["congressional_district_geoid"].tolist() == [district, district + 1]
+    np.testing.assert_array_equal(donor[COUNTY_FIPS_2023_COLUMN], expected)
+    if state != 9:
+        assert donor[COUNTY_FIPS_2023_COLUMN].tolist() == counties
+    acs = household[household[spine_column("household")].eq(ACS_2024_1YR_SPINE)]
+    assert acs["tract_geoid"].isna().all()
+
+
+def test__given_integer_donor_tracts__then_2023_county_still_follows_each_tract() -> (
+    None
+):
+    # Integer tract GEOIDs become floats once pooled beside tractless ACS
+    # rows; the 2023 county must still come from each validated tract,
+    # including Tolland's split across two planning regions.
+    puma = "0920301"
+    tracts = ["09013890203", "09013890202"]
+    counties = ["09013", "09013"]
+    district = 901
+    base = _assigned_geography_base_frame(
+        state_fips=9,
+        tracts=[int(tract) for tract in tracts],
+        congressional_districts=[district, district + 1],
+        counties=counties,
+    )
+
+    result = with_optional_acs_spine(
+        base,
+        _acs_frame(state_fips=9, puma=puma),
+        puma_ladder=_single_puma_ladder(puma, tracts, counties, district),
+        geography_seed=1,
+        expected_congressional_district_vintage="119th_congress",
+    )
+
+    household = result.table("household")
+    donor = household[household[spine_column("household")].eq(ASEC_PUF_SPINE)]
+    assert donor[COUNTY_FIPS_2023_COLUMN].tolist() == ["09150", "09110"]
 
 
 def test__given_partial_donor_assigned_geography_columns__then_pool_fails() -> None:

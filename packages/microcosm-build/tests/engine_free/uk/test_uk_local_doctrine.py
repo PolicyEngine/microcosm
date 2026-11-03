@@ -94,7 +94,11 @@ def test_doctrine_constants_are_the_declared_contract() -> None:
     assert UK_LOCAL_CLONE_COUNT == 15
     assert UK_LOCAL_SOLVE_DOCTRINE.target_loss_cap == UK_LOCAL_TARGET_LOSS_CAP
     assert UK_LOCAL_SOLVE_DOCTRINE.max_weight_ratio == UK_LOCAL_MAX_WEIGHT_RATIO
-    assert UK_LOCAL_SOLVE_DOCTRINE.scale_rule == "default_target_loss_scales"
+    # microcosm#1240: the default rule with the reviewed family floors.
+    assert (
+        UK_LOCAL_SOLVE_DOCTRINE.scale_rule
+        == "default_target_loss_scales_with_family_floors"
+    )
     assert (
         UK_LOCAL_SOLVE_DOCTRINE.target_weight_rule
         == "nation_grain_family_equal_sqrt_count"
@@ -102,6 +106,44 @@ def test_doctrine_constants_are_the_declared_contract() -> None:
     assert UKLocalSolveDoctrine(target_weight_rule="uniform").target_weight_rule == (
         "uniform"
     )
+    # microcosm#1207: check-only loss-share floors for the two new families.
+    from microcosm.build.uk_runtime.local_doctrine import (
+        UK_LOCAL_FAMILY_LOSS_SHARE_FLOORS,
+    )
+
+    assert dict(UK_LOCAL_FAMILY_LOSS_SHARE_FLOORS) == {
+        "domestic_energy": 0.025,
+        "dft_bus_journeys": 0.0125,
+    }
+
+
+def test_size_doctrine_is_150000_households_searched_down_to_1e_10() -> None:
+    # microcosm#1124 as amended for microcosm#1301: the sized release ships
+    # 150,000 households under the unchanged size settings, and the size
+    # search's L0 floor sits below the solver's default 1e-7. Moving either is
+    # a doctrine revision: edit the constant, its note, and this pin.
+    from microcosm.build.uk_runtime.dataset_size import uk_size_search_bracket
+    from microcosm.build.uk_runtime.local_doctrine import (
+        UK_LOCAL_DATASET_HOUSEHOLDS,
+        UK_LOCAL_L0_SEARCH_FLOOR,
+        uk_local_size_doctrine,
+    )
+    from microcosm.calibrate.solve import DEFAULT_L0_SEARCH_BRACKET
+
+    assert UK_LOCAL_DATASET_HOUSEHOLDS == 150_000
+    assert UK_LOCAL_L0_SEARCH_FLOOR == 1e-10
+    assert uk_local_size_doctrine() == {
+        "dataset_households": 150_000,
+        "selection_pi_hi": 0.5,
+        "baseline_pi_floor": 0.5,
+        "refit_l2_lambda": 0.0215748772773509,
+        "refit_l2_anchor": "uniform",
+        "refit_l2_basis": "chi_square",
+        "selection_l2": None,
+    }
+    # The UK bracket lowers only the floor; the solver's default is unchanged.
+    assert DEFAULT_L0_SEARCH_BRACKET == (1e-7, 10.0)
+    assert uk_size_search_bracket() == (1e-10, 10.0)
 
 
 def test_grain_equal_weights_give_each_grain_one_equal_share() -> None:

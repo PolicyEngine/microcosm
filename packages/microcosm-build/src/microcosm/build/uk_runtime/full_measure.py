@@ -26,6 +26,7 @@ from microcosm.build.uk_runtime import (
     materialize_uk_ledger_targets,
 )
 from microcosm.build.uk_runtime.measure_simulation import UKMeasureResolver
+from microcosm.build.uk_runtime.national_frame import uk_time_period
 from microcosm.calibrate.matrix import CalibrationProblem, build_constraint_matrix
 from microcosm.frame import Frame, MassChangeRecord
 
@@ -287,8 +288,10 @@ def _engine_population_representation(frame, block_frames) -> dict[str, Any]:
         # household column and constituency metric but differed on a small
         # share of person records (state pension type, pension credit, SLC
         # repayment), so engine draws that depend on a record's position in
-        # the simulation are outside it (microcosm#1124). The released file is
-        # re-measured on one engine by the incumbent-surface evaluation.
+        # the simulation are outside it (microcosm#1124). A dense release
+        # states this in its engine_measurement limitation; re-measuring the
+        # released file on one engine is the incumbent-surface evaluation's,
+        # an opt-in diagnostic since microcosm#1301.
         "exact_scope": (
             "weight-share formulas see the pool's denominator in every block: "
             "identical clone copies, pool-scaled block weights and equal "
@@ -375,10 +378,11 @@ def _run_engine_blocks(
         for area_type in metric_parts:
             metric_parts[area_type].append(
                 compute_household_metrics(
-                    resolver.simulation,
+                    resolver,
                     area_type,
                     period=period,
                     household_ids=block_household_ids,
+                    input_period=int(uk_time_period(block_frame)),
                 )
             )
         resolver_receipts.append(

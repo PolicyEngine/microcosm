@@ -154,10 +154,13 @@ def _column_strategies(st):
 
 
 #: Register entries that postdate the files examined for #1026 and rest on a
-#: live producer instead: the parent ids (microcosm#884), bound to
+#: live producer instead (microcosm-data cannot import the build). The parent
+#: ids (microcosm#884) are bound to
 #: eligibility_inputs.US_ELIGIBILITY_INPUTS_PARENT_ID_COLUMNS by
-#: test_us_stored_input_register.py (microcosm-data cannot import the build).
-_PRODUCER_BOUND_ENTRIES = frozenset({"parent_1_id", "parent_2_id"})
+#: test_us_stored_input_register.py. That test also binds county_fips_2023 to
+#: county_vintage; test_us_county_vintage_ladders.py proves the PUMA and block
+#: assignments write it.
+_PRODUCER_BOUND_ENTRIES = frozenset({"county_fips_2023", "parent_1_id", "parent_2_id"})
 
 
 #: The role columns policyengine-core's ``build_from_dataset`` reads to build

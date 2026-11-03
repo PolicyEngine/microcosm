@@ -17,9 +17,11 @@ freezes the staging documents that calibration-diagnostics byte-checks:
 
 Every digest, version, identifier and gate count in the C1 manifests and the
 pointers is synthetic. A digest is the SHA-256 of ``release-contract-fixture:<name>``,
-so none can be mistaken for a real artifact. ``inventory.json`` and
-``registry.json`` carry live values on purpose: they freeze the contract's
-constants and the registry.
+so none can be mistaken for a real artifact. The SPI Public Use Tape marker names
+one synthetic stage; its study number and conditions are the live constants of
+``microcosm.build.uk_runtime.spi_dependency``, which a dependent release restates.
+``inventory.json`` and ``registry.json`` carry live values on purpose: they freeze
+the contract's constants and the registry.
 The fixtures deliberately carry no gate-battery report or signed certification:
 those bind the UK gate spec's live digests, which change with most UK pull
 requests, so the certification's shape is frozen as ``inventory.json`` instead and
@@ -44,9 +46,11 @@ import json
 import shutil
 import tempfile
 from pathlib import Path
-from types import ModuleType
+from types import ModuleType, SimpleNamespace
 
 from microcosm.build.staging_v2 import validate_staging_delivery
+from microcosm.build.uk_runtime.spi_dependency import uk_spi_public_use_tape_marker
+from microcosm.build.uk_runtime.spi_income import SPI_DONOR_UKDS_STUDY
 from microcosm.data import contract
 from microcosm.data.registry import DEFAULT_VARIANT, REGISTRY
 from microcosm.data.release import (
@@ -100,6 +104,13 @@ UK_STAGING_DELIVERY = {
     "last_error_code": None,
     "opt_out_reason": None,
 }
+#: One synthetic spine stage that reads the SPI Public Use Tape, so the C1
+#: manifests carry the marker a tape-dependent national release restates
+#: (microcosm#1095): the flag on the microdata entry and ``licensed_data``.
+UK_SPI_STAGE = SimpleNamespace(
+    stage="release_contract_fixture_stage",
+    artifacts=[{"ukds_study_number": SPI_DONOR_UKDS_STUDY}],
+)
 
 
 def fixture_digest(name: str) -> str:
@@ -146,6 +157,7 @@ def _c1_uk_national(root: Path, assembler: ModuleType) -> str:
         seam_part={"statuses": {"passed": 2}},
         release_cut_part={"statuses": {"passed": 4}},
         staging_delivery=validate_staging_delivery(UK_STAGING_DELIVERY),
+        spi_marker=uk_spi_public_use_tape_marker([UK_SPI_STAGE]),
         created_at=FIXTURE_TIME,
         publisher_labels={"ons": "Office for National Statistics"},
     )

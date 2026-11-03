@@ -37,6 +37,7 @@ from microcosm.build.uk_runtime.spi_spine import (
 )
 from microcosm.build.uk_runtime.spi_support import (
     HOUSEHOLD_IS_SPI_SYNTHETIC_COLUMN,
+    SPI_LOSS_DRAW_COLUMNS,
     SPI_SYNTHETIC_SUPPORT_CHANNEL,
     UKSPISupportResult,
     build_uk_spi_support_channel,
@@ -61,6 +62,8 @@ def _base_frame(*, time_period: str = "2023") -> object:
             "dividend_income": [20.0, 10.0],
             "private_pension_income": [0.0, 0.0],
             "property_income": [0.0, 0.0],
+            # The twin's other income locates the copy's draw (microcosm#1428).
+            "other_investment_income": [0.0, 0.0],
             "employee_pension_contributions": [3.0, 2.0],
             "employer_pension_contributions": [9.0, 6.0],
             "hmrc_spi_pay": [0.0, 0.0],
@@ -187,11 +190,9 @@ def test_spine_leaves_align_by_raw_person_id_not_position(tmp_path: Path) -> Non
     person = result.table("person")
 
     assert person["person_id"].tolist() == [2001, 1001]
-    assert person["hmrc_spi_pay"].tolist() == pytest.approx(
-        [5.0 * 365.25 / 7.0, 4.0 * 365.25 / 7.0]
-    )
+    assert person["hmrc_spi_pay"].tolist() == pytest.approx([5.0 * 52.0, 4.0 * 52.0])
     assert person["hmrc_spi_incapacity_benefit_income"].tolist() == pytest.approx(
-        [2.0 * 365.25 / 7.0, 0.0]
+        [2.0 * 52.0, 0.0]
     )
     # Employer contributions come from an ASHE rate draw on pay (microcosm#1069
     # c9): person 2001 has no employer scheme; person 1001's public-sector
@@ -230,9 +231,7 @@ def test_spine_leaves_sampled_rung_restricts_to_surviving_people(
     person = result.table("person")
 
     assert person["person_id"].tolist() == [2001, 1001]
-    assert person["hmrc_spi_pay"].tolist() == pytest.approx(
-        [5.0 * 365.25 / 7.0, 4.0 * 365.25 / 7.0]
-    )
+    assert person["hmrc_spi_pay"].tolist() == pytest.approx([5.0 * 52.0, 4.0 * 52.0])
 
 
 def _support_stage() -> SourceStageSpec:
@@ -517,7 +516,12 @@ def test_spi_income_zero_initializes_frs_charity_and_keeps_frs_dividends(
     for event in _FakeQRF.events[1:-1]:
         assert set(event[2]) <= {20.0, 10.0} and event[2]
     assert _FakeQRF.events[-1][2] == [20.0, 10.0]
-    assert set(SPI_INCOME_QRF_OUTPUT_COLUMNS) <= set(person.columns)
+    # Every stage-1 output stays, except the two loss draws the stage moves into
+    # loss_relief and drops (microcosm#1095).
+    assert set(SPI_INCOME_QRF_OUTPUT_COLUMNS) - set(SPI_LOSS_DRAW_COLUMNS) <= set(
+        person.columns
+    )
+    assert not set(SPI_LOSS_DRAW_COLUMNS) & set(person.columns)
 
 
 def test_reviewed_absent_incapacity_signal_raises(tmp_path: Path) -> None:
@@ -607,7 +611,7 @@ def test_spi_spine_parsed_inputs_match_the_path_resolution(
 
     # This test checks parsed/path source resolution, independently of the engine.
     # Real index coverage lives in test_uk_spi_income.py.
-    def uprating_factors(year):
+    def uprating_factors(year, *, rebased_columns=None):
         return (
             {column: 1.25 for column in SPI_INCOME_QRF_OUTPUT_COLUMNS},
             {"from_period": 2022, "to_period": year, "basis": "synthetic_test"},

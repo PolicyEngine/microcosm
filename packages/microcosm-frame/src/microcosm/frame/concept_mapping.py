@@ -68,6 +68,7 @@ __all__ = [
     "Allocation",
     "ConceptMappedEngine",
     "ConceptMapping",
+    "CoresidentAdult",
     "CoresidentChildCount",
     "CoverageReport",
     "EncodedGroupInputs",
@@ -90,6 +91,7 @@ __all__ = [
     "Role",
     "ScaledSum",
     "Share",
+    "SignedPart",
     "StateBinding",
     "StateTest",
     "Sum",
@@ -240,6 +242,30 @@ class ScaledSum:
         object.__setattr__(self, "factor", factor)
 
 
+_SIGNED_PART_SIGNS = ("positive", "negative")
+
+
+@dataclass(frozen=True)
+class SignedPart:
+    """One sign of the sum of annual-flow amount concepts, never negative.
+
+    A rule can split a signed amount between two inputs that are never
+    negative: policyengine-uk takes a trade's profit in
+    ``self_employment_income`` and its loss in ``trading_loss``. ``sign``
+    ``"positive"`` gives ``max(sum, 0)`` and ``"negative"`` gives
+    ``max(-sum, 0)``, so two bindings of the same concepts never both hold an
+    amount. Not invertible.
+    """
+
+    sign: str
+
+    def __post_init__(self) -> None:
+        if self.sign not in _SIGNED_PART_SIGNS:
+            raise ValueError(
+                f"A signed part is 'positive' or 'negative', not {self.sign!r}."
+            )
+
+
 @dataclass(frozen=True)
 class Product:
     """The engine input is the product of two concepts (hours x weeks)."""
@@ -351,6 +377,38 @@ class CoresidentChildCount:
 
 
 @dataclass(frozen=True)
+class CoresidentAdult:
+    """A boolean input: another person in this person's household is old enough.
+
+    A person's value is true when at least one other person row with the same
+    household id has an age of at least :attr:`min_age`. The person's own age
+    never counts, and a null age never qualifies.
+
+    Attributes:
+        min_age: The age, in whole years, a co-resident must have reached.
+            The law sets it, so every binding declares it; it has no default.
+    """
+
+    min_age: int
+
+    def __post_init__(self) -> None:
+        if isinstance(self.min_age, bool) or not isinstance(self.min_age, int):
+            raise ValueError(
+                f"A co-resident adult's min_age must be an integer, not "
+                f"{self.min_age!r}."
+            )
+        if self.min_age < 0:
+            raise ValueError(
+                f"A co-resident adult's min_age must not be negative: {self.min_age}."
+            )
+
+    @property
+    def concepts(self) -> tuple[str, ...]:
+        """The concepts the test reads."""
+        return ("fact:person.age",)
+
+
+@dataclass(frozen=True)
 class TakeUpThreshold:
     """A take-up flag: the program's draw falls below its rate.
 
@@ -420,10 +478,12 @@ Transform = (
     | Sum
     | Product
     | ScaledSum
+    | SignedPart
     | AllocateToReferencePerson
     | Predicate
     | RelationshipRole
     | CoresidentChildCount
+    | CoresidentAdult
     | TakeUpThreshold
     | UnitComposition
 )
@@ -439,11 +499,13 @@ _TRANSFORM_KINDS: dict[str, type] = {
     "predicate": Predicate,
     "relationship_role": RelationshipRole,
     "coresident_child_count": CoresidentChildCount,
+    "coresident_adult": CoresidentAdult,
     "take_up_threshold": TakeUpThreshold,
     "fraction": Fraction,
     "positive": Positive,
     "scale": Scale,
     "scaled_sum": ScaledSum,
+    "signed_part": SignedPart,
     "unit_composition": UnitComposition,
 }
 _KIND_BY_TRANSFORM: dict[type, str] = {
@@ -475,10 +537,14 @@ def transform_to_dict(transform: Transform) -> dict[str, object]:
         out["parameter"] = transform.parameter
     elif isinstance(transform, Scale | ScaledSum):
         out["factor"] = transform.factor
+    elif isinstance(transform, SignedPart):
+        out["sign"] = transform.sign
     elif isinstance(transform, UnitComposition):
         out["feature"] = transform.feature.value
     elif isinstance(transform, CoresidentChildCount) and transform.max_age is not None:
         out["max_age"] = transform.max_age
+    elif isinstance(transform, CoresidentAdult):
+        out["min_age"] = transform.min_age
     elif isinstance(transform, TakeUpThreshold):
         out["program"] = transform.program
     return out
@@ -492,8 +558,10 @@ _TRANSFORM_FIELDS: dict[str, frozenset[str]] = {
     "fraction": frozenset({"parameter"}),
     "scale": frozenset({"factor"}),
     "scaled_sum": frozenset({"factor"}),
+    "signed_part": frozenset({"sign"}),
     "unit_composition": frozenset({"feature"}),
     "coresident_child_count": frozenset({"max_age"}),
+    "coresident_adult": frozenset({"min_age"}),
     "take_up_threshold": frozenset({"program"}),
 }
 
@@ -579,10 +647,14 @@ def _read_transform(data: object) -> Transform:
         if isinstance(factor, bool) or not isinstance(factor, int | float):
             raise ValueError("A scale factor must be a number.")
         return _TRANSFORM_KINDS[kind](factor=factor)
+    if kind == "signed_part":
+        return SignedPart(sign=text("sign"))
     if kind == "unit_composition":
         return UnitComposition(feature=UnitFeature(text("feature")))
     if kind == "coresident_child_count":
         return CoresidentChildCount(max_age=optional_age("max_age"))
+    if kind == "coresident_adult":
+        return CoresidentAdult(min_age=required("min_age"))
     if kind == "take_up_threshold":
         return TakeUpThreshold(program=text("program"))
     return _TRANSFORM_KINDS[kind]()
@@ -812,7 +884,8 @@ class InputBinding:
         if isinstance(self.transform, AllocateToReferencePerson):
             return "person"
         if isinstance(
-            self.transform, RelationshipRole | CoresidentChildCount | UnitComposition
+            self.transform,
+            RelationshipRole | CoresidentChildCount | CoresidentAdult | UnitComposition,
         ):
             return "person"
         entities = {concept(concept_id).entity for concept_id in self.concepts}
@@ -855,7 +928,7 @@ def bind(
 #: binding allocated to the reference unit also reads to place its value. A
 #: product is outside the rule: it multiplies a usual rate (weekly hours) by
 #: weeks.
-_FLOW_TRANSFORMS = (Scale, Sum, ScaledSum, Share, Fraction)
+_FLOW_TRANSFORMS = (Scale, Sum, ScaledSum, SignedPart, Share, Fraction)
 
 
 def _check_transform_arity(binding: InputBinding) -> None:
@@ -891,7 +964,8 @@ def _check_transform_arity(binding: InputBinding) -> None:
                 f"concept's domain {list(domain)}."
             )
     if isinstance(
-        transform, Share | Fraction | Sum | ScaledSum | AllocateToReferencePerson
+        transform,
+        Share | Fraction | Sum | ScaledSum | SignedPart | AllocateToReferencePerson,
     ):
         for item in items:
             if item.monetary is None:
@@ -907,7 +981,10 @@ def _check_transform_arity(binding: InputBinding) -> None:
         )
     if isinstance(transform, Sum | ScaledSum) and len(items) < 2:
         raise ValueError(f"Binding for {name!r}: a sum reads two or more amounts.")
-    if isinstance(transform, ScaledSum) and len({item.entity for item in items}) != 1:
+    if (
+        isinstance(transform, ScaledSum | SignedPart)
+        and len({item.entity for item in items}) != 1
+    ):
         raise ValueError(f"Binding for {name!r}: a sum adds amounts on one entity.")
     if isinstance(transform, _FLOW_TRANSFORMS):
         for item in items:
@@ -960,6 +1037,13 @@ def _check_transform_arity(binding: InputBinding) -> None:
         raise ValueError(
             f"Binding for {name!r}: a child count reads both parents "
             f"(and age when limited): {transform.concepts}."
+        )
+    if isinstance(transform, CoresidentAdult) and (
+        binding.concepts != transform.concepts
+    ):
+        raise ValueError(
+            f"Binding for {name!r}: a co-resident adult test reads age only: "
+            f"{transform.concepts}."
         )
     if isinstance(transform, TakeUpThreshold):
         if binding.concepts != ("fact:person.take_up_seed",):
@@ -2044,16 +2128,20 @@ class _Context:
 
 
 def _matched_ids(values: pd.Series) -> np.ndarray:
-    """Ids ready for exact matching: null-free integers as int64, else as is.
+    """Ids ready for exact matching, never as floats that could round.
 
     pandas matches against a narrower unsigned index by casting the targets
     down to it (261 onto 5 for uint8), so null-free integer ids are widened
     first; :func:`_require_int64_ids` has already refused any int64 cannot
-    hold.
+    hold. A nullable integer column holding a null converts to float64,
+    where ids beyond 2**53 round together, so this returns its ids as Python
+    ints beside ``pd.NA`` instead.
     """
 
-    if values.dtype.kind in "iu" and not values.hasnans:
-        return values.to_numpy(dtype=np.int64)
+    if values.dtype.kind in "iu":
+        if not values.hasnans:
+            return values.to_numpy(dtype=np.int64)
+        return values.to_numpy(dtype=object, na_value=pd.NA)
     return values.to_numpy()
 
 
@@ -2100,6 +2188,15 @@ def _apply(
             axis=0,
         )
         return total * transform.factor
+    if isinstance(transform, SignedPart):
+        total = np.sum(
+            [
+                context.values(concept_id).to_numpy(dtype=np.float64)
+                for concept_id in concepts
+            ],
+            axis=0,
+        )
+        return np.maximum(total if transform.sign == "positive" else -total, 0.0)
     if isinstance(transform, UnitComposition):
         raise ValueError(
             f"{binding.engine_input!r} tests unit composition; it needs unit "
@@ -2131,6 +2228,8 @@ def _apply(
         return context.values(concepts[0]).to_numpy(dtype=np.float64) * fraction
     if isinstance(transform, CoresidentChildCount):
         return _child_counts(context, transform.max_age)
+    if isinstance(transform, CoresidentAdult):
+        return _coresident_adult_flags(context, transform.min_age)
     if isinstance(transform, TakeUpThreshold):
         rate = _unit_interval(rates, transform.program, "take-up rate")
         seeds = context.values(concepts[0]).to_numpy(dtype=np.float64)
@@ -2189,6 +2288,34 @@ def _child_counts(context: _Context, max_age: int | None) -> np.ndarray:
         named = parents[counted & (parents >= 0)]
         counts += np.bincount(named, minlength=len(person))
     return counts
+
+
+def _coresident_adult_flags(context: _Context, min_age: int) -> np.ndarray:
+    """Whether another person with the same household id has ``min_age``.
+
+    Persons are grouped on the person table's own household id column,
+    factorized as exact integers (never through a float array), so household
+    ids beyond 2**53 stay distinct. A person whose household id names no
+    household row is grouped with the other persons carrying that id; a
+    person with a null household id shares a household with nobody.
+    """
+
+    _require(context, "fact:person.age", "A co-resident adult test")
+    households, _ = pd.factorize(
+        _matched_ids(context.person[_PERSON_HOUSEHOLD_ID]), use_na_sentinel=True
+    )
+    ages = context.values("fact:person.age").to_numpy(dtype=np.float64, na_value=np.nan)
+    # NaN compares false, so a null age never qualifies.
+    qualifies = ages >= min_age
+    placed = households >= 0
+    per_household = np.bincount(
+        households[placed],
+        weights=qualifies[placed],
+        minlength=int(households.max(initial=-1)) + 1,
+    )
+    others = np.zeros(len(households), dtype=np.float64)
+    others[placed] = per_household[households[placed]] - qualifies[placed]
+    return others > 0
 
 
 def _state_column(column: str) -> tuple[str, str]:

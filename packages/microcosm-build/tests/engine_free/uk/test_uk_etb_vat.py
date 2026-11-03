@@ -65,7 +65,7 @@ def test_etb_vat_cleaning_drops_donors_with_no_expenditure_after_vat() -> None:
     assert donor.empty
     assert donor.attrs[UK_ETB_VAT_DONOR_RATE_RECEIPT] == {
         "rate_bounds": [0.0, 1.0],
-        "rows_dropped_no_expenditure_after_vat": "<10",
+        "rows_dropped_no_expenditure_after_vat": "<3",
         "rows_capped_at_upper_bound": 0,
     }
 
@@ -84,9 +84,9 @@ def test_etb_vat_cleaning_caps_rates_above_one() -> None:
     assert donor["full_rate_vat_expenditure_rate"].between(0.0, 1.0).all()
     receipt = donor.attrs[UK_ETB_VAT_DONOR_RATE_RECEIPT]
     # Donor counts are banded (microcosm#1164): an extreme-value count under
-    # ten is "<10"; zero stays zero. The receipt records no donor size, which
+    # three is "<3"; zero stays zero. The receipt records no donor size, which
     # beside the donor year's sample size would give the dropped count back.
-    assert receipt["rows_capped_at_upper_bound"] == "<10"
+    assert receipt["rows_capped_at_upper_bound"] == "<3"
     assert receipt["rows_dropped_no_expenditure_after_vat"] == 0
     assert "donor_rows" not in receipt
 
@@ -239,14 +239,14 @@ def test_recipient_predictors_aggregate_person_entities_to_household() -> None:
     # plus the HBAI deductions, less income tax, NI, council tax and rates, so
     # a pension contribution stays in it and the direct taxes do not.
     household_level = {
-        "hbai_household_net_income",
+        "hbai_household_net_income_before_reset_to_zero",
         "council_tax",
         "domestic_rates",
         "LVT",
     }
     values = {
         "is_SP_age": np.array([0.0, 1.0, 0.0, 0.0]),
-        "hbai_household_net_income": np.array([1e4, 2e4]),
+        "hbai_household_net_income_before_reset_to_zero": np.array([1e4, 2e4]),
         "income_tax": np.array([1000.0, 500.0, 0.0, 2000.0]),
         "council_tax": np.array([1200.0, 900.0]),
         "employee_pension_contributions": np.array([300.0, 0.0, 0.0, 0.0]),

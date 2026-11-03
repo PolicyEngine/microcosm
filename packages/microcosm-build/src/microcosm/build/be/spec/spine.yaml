@@ -1,10 +1,10 @@
 channels:
-- id: silc
-  source: be_silc_contract
-  observed_geography: nuts1
+- id: populace_us_support
+  source: be_populace_us_support_contract
+  observed_geography: country
 assembly:
-  mass_anchor_channel: silc
+  mass_anchor_channel: populace_us_support
   shared_dtype_policy: canonical_string_storage
 support_roles:
-- id: silc_base
+- id: populace_us_donor_base
   kind: none

@@ -39,7 +39,8 @@
    "path": "microcosm_uk_2024_25.h5",
    "repo_id": "policyengine/populace-uk-private",
    "revision": "microcosm-uk-2024-25-national-20260101T000000Z-00000000",
-   "sha256": "d357112f939979d7e34696637ef874ca0531902c86bd34f503e1885d02eafb3e"
+   "sha256": "d357112f939979d7e34696637ef874ca0531902c86bd34f503e1885d02eafb3e",
+   "spi_public_use_tape_dependent": true
   },
   "microcosm_uk_2024_25_calibration": {
    "kind": "calibration",
@@ -94,5 +95,18 @@
  "description": "UK national calibration pipeline release assembled from attempt uk-frs-calibration-attempt-20260101T000000Z-00000000 at immutable cut microcosm-uk-2024-25-national-20260101T000000Z-00000000.",
  "publisher_labels": {
   "ons": "Office for National Statistics"
+ },
+ "licensed_data": {
+  "spi_public_use_tape": {
+   "study": "SN 9422",
+   "dependent": true,
+   "stages": [
+    "release_contract_fixture_stage"
+   ],
+   "conditions": [
+    "No attempt may be made to attribute a record to a named individual.",
+    "Material that includes analyses of the tape goes to HMRC at least ten working days before it is distributed or published."
+   ]
+  }
  }
 }

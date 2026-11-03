@@ -77,7 +77,7 @@ def test_uk_dense_posture_mirrors_the_ruled_constants() -> None:
     assert posture.doctrine_bounds() == {
         "target_loss_cap": UK_LOCAL_TARGET_LOSS_CAP,
         "max_weight_ratio": UK_LOCAL_MAX_WEIGHT_RATIO,
-        "scale_rule": "default_target_loss_scales",
+        "scale_rule": "default_target_loss_scales_with_family_floors",
         "target_weight_rule": "nation_grain_family_equal_sqrt_count",
         "solve_epochs": 2000,
         "clone_count": 15,

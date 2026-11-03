@@ -14,13 +14,19 @@ import importlib.util
 import json
 import subprocess
 import sys
+from types import SimpleNamespace
 
 from hypothesis import given, settings
 from hypothesis import strategies as st
 
 from microcosm.build.staging_v2 import validate_staging_delivery
+from microcosm.build.uk_runtime.spi_dependency import (
+    UK_SPI_PUBLIC_USE_TAPE_KEY,
+    uk_spi_public_use_tape_marker,
+)
+from microcosm.build.uk_runtime.spi_income import SPI_DONOR_UKDS_STUDY
 from microcosm.data import contract, loader
-from microcosm.data.registry import REGISTRY
+from microcosm.data.registry import DEFAULT_VARIANT, REGISTRY
 from test_support.paths import paths_for
 
 ROOT = paths_for("microcosm-build").repository
@@ -36,7 +42,8 @@ def _load_assembler():
 
 
 ASSEMBLER = _load_assembler()
-UK_NATIONAL_SPEC = REGISTRY[("uk", 2025, "national")]
+#: The national line is the UK 2025 default load since microcosm#823.
+UK_NATIONAL_SPEC = REGISTRY[("uk", 2025, DEFAULT_VARIANT)]
 
 
 def test_release_contract_fixtures_are_reproducible():
@@ -95,6 +102,20 @@ _staging = st.sampled_from(
         },
     ]
 )
+#: The SPI Public Use Tape marker of a run whose stages read the tape or not.
+_spi_marker = st.sampled_from(
+    [
+        uk_spi_public_use_tape_marker([]),
+        uk_spi_public_use_tape_marker(
+            [
+                SimpleNamespace(
+                    stage="property_stage",
+                    artifacts=[{"ukds_study_number": SPI_DONOR_UKDS_STUDY}],
+                )
+            ]
+        ),
+    ]
+)
 
 
 @st.composite
@@ -125,6 +146,7 @@ def _manifest_inputs(draw):
         "seam_part": {"statuses": draw(_statuses)},
         "release_cut_part": {"statuses": draw(_statuses)},
         "staging_delivery": validate_staging_delivery(draw(_staging)),
+        "spi_marker": draw(_spi_marker),
         "created_at": "2026-01-01T00:00:00+00:00",
         "publisher_labels": draw(
             st.dictionaries(st.text(min_size=1), st.text(min_size=1), max_size=3)
@@ -137,7 +159,8 @@ def _manifest_inputs(draw):
 def test_national_manifests_satisfy_the_release_contract(inputs):
     """For any valid inputs, the assembler's manifests pass the contract's
     manifest checks, pin every artifact to the one cut tag, ship exactly the
-    signed evidence, and resolve through the registry's national spec."""
+    signed evidence, restate the SPI Public Use Tape marker, and resolve
+    through the registry's national spec."""
 
     build_manifest, release_manifest = ASSEMBLER.uk_national_release_manifests(**inputs)
     release_id = contract._UK_NATIONAL_RELEASE_ID
@@ -174,6 +197,14 @@ def test_national_manifests_satisfy_the_release_contract(inputs):
     assert certified.artifact_sha256 == inputs["measured"]["candidate"]
     assert certified.model.built_version == inputs["runtime"]["policyengine-uk"]
     assert certified.core.built_version == inputs["runtime"]["policyengine-core"]
+
+    # The release restates the SPI Public Use Tape marker: the flag on the
+    # microdata's own entry, the whole marker under licensed_data.
+    microdata = artifacts[release_manifest["default_datasets"]["national"]]
+    assert microdata["spi_public_use_tape_dependent"] is inputs["spi_marker"]["dependent"]
+    assert release_manifest["licensed_data"] == {
+        UK_SPI_PUBLIC_USE_TAPE_KEY: inputs["spi_marker"]
+    }
 
     # The manifest records each part's census exactly as the certification signed it.
     assert build_manifest["gates"] == {

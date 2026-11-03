@@ -42,7 +42,7 @@ import signal
 import subprocess
 import sys
 from collections.abc import Callable, Iterable, Mapping, Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from itertools import zip_longest
 from pathlib import Path, PurePosixPath
 
@@ -72,6 +72,26 @@ IMAGE_VENV = "/opt/venv"
 IMAGE_PYTHON_VERSION = "3.14"
 IMAGE_UV_VERSION = "0.11.7"
 RUNNER_HF_HUB_VERSION = "1.18.0"
+# A build starts the separately installed microcosm-emitter command as its
+# child process (microcosm-emitter-interface); uv.lock pins only the
+# interface. The image installs the newest emitter release when it is built
+# for a plan commit, outside the synced environment; an image built for one
+# commit keeps the emitter it was built with. A build does not start an
+# emitter older than 0.6.0, the first release with the Hugging Face hand-over
+# module (microcosm.build.telemetry_emitter.MINIMUM_EMITTER_VERSION). The
+# stage's runner records the version.
+IMAGE_EMITTER_REQUIREMENT = "microcosm-emitter>=0.7.0"
+IMAGE_EMITTER_BIN_DIR = "/usr/local/bin"
+IMAGE_EMITTER_COMMAND = f"{IMAGE_EMITTER_BIN_DIR}/microcosm-emitter"
+#: The image's environment variables, which the stage tool inherits.
+IMAGE_ENVIRONMENT = {
+    "UV_PROJECT_ENVIRONMENT": IMAGE_VENV,
+    "UV_PYTHON_DOWNLOADS": "never",
+    "UV_LINK_MODE": "copy",
+    "PYTHONDONTWRITEBYTECODE": "1",
+    # Where the interface finds the emitter command (it also searches PATH).
+    "MICROCOSM_EMITTER_COMMAND": IMAGE_EMITTER_COMMAND,
+}
 WORK_ROOT = "/work"
 
 # Modal list prices for standard (non-sandbox) compute, read from
@@ -888,6 +908,19 @@ US_PUF_SUPPORT_BASE = ToolSpec(
     stage_hash_seed_default=HASH_SEED,
 )
 
+# Keep the historical registration and its local comparison reference pinned to
+# 4b57d15a2. The 2026-10-18 rerun uses main's reviewed NC crosswalk correction
+# (d8d96d926), with the same base command, inputs and resource budget.
+CD_VINTAGE_CROSSWALK_RERUN = TreeFile(
+    path=CD_VINTAGE_CROSSWALK.path,
+    sha256="a347303fff3fea145f758488c43cb94355df5a8cb5e512552b2ee3791d2aa233",
+)
+US_PUF_SUPPORT_BASE_RERUN = replace(
+    US_PUF_SUPPORT_BASE,
+    name="us-puf-support-base-rerun",
+    tree_files={"cd_vintage_crosswalk": CD_VINTAGE_CROSSWALK_RERUN},
+)
+
 # --- The retained ACS local-release staging builder -----------------------
 # The shim delegates to tools/_legacy/build_us_acs_multispine_base.py. It
 # accepts no --stage: "all" is the runner's single stage, not a builder flag.
@@ -1005,6 +1038,7 @@ TOOLS: dict[str, ToolSpec] = {
         US_ACS_LOCAL_RELEASE,
         RUNNER_SMOKE,
         US_PUF_SUPPORT_BASE,
+        US_PUF_SUPPORT_BASE_RERUN,
         US_ACS_MULTISPINE_STAGING,
     )
 }
@@ -1380,6 +1414,8 @@ def image_build_commands(plan: Plan, repo_root: str = IMAGE_REPO_ROOT) -> list[s
     The tree is a shallow clone of the pushed commit (so ``git rev-parse``
     and ``git status`` inside the tools report the real code vintage), and
     the environment is synced from that tree's own uv.lock with --frozen.
+    The emitter command is installed on its own, outside that environment
+    (``IMAGE_EMITTER_REQUIREMENT``), and must run.
     """
 
     root = shlex.quote(repo_root)
@@ -1391,6 +1427,9 @@ def image_build_commands(plan: Plan, repo_root: str = IMAGE_REPO_ROOT) -> list[s
         f"git -C {root} checkout -q -B {shlex.quote(plan.branch)} FETCH_HEAD",
         f'test "$(git -C {root} rev-parse HEAD)" = {commit}',
         f"cd {root} && uv sync --all-packages --extra us --frozen",
+        f"UV_TOOL_BIN_DIR={IMAGE_EMITTER_BIN_DIR} uv tool install "
+        f"{shlex.quote(IMAGE_EMITTER_REQUIREMENT)}",
+        f"{IMAGE_EMITTER_COMMAND} version",
         f'test -z "$(git -C {root} status --porcelain)"',
     ]
 

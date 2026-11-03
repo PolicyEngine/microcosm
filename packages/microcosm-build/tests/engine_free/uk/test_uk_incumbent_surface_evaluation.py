@@ -18,6 +18,7 @@ from microcosm.build.uk_runtime.incumbent_surface_evaluation import (
     national_family_status,
     regional_rollup_estimates,
     render_markdown,
+    with_private_household_basis,
 )
 from test_support.paths import paths_for
 
@@ -271,6 +272,89 @@ def test_summary_and_markdown_measure_only_what_has_an_estimate() -> None:
     assert "Not measurable on our side: 1 national rows" in text
 
 
+def test_age_rows_are_also_measured_against_their_private_household_targets() -> None:
+    """The age rows less their census communal residents (microcosm#1095)."""
+
+    local = pd.DataFrame(
+        [
+            {
+                "incumbent_name": "student seat",
+                "area_type": "constituency",
+                "geography_id": "E14000001",
+                "incumbent_metric": "age/20_30",
+                "status": "bound",
+                "incumbent_target": 1_000.0,
+                "candidate_estimate": 700.0,
+            },
+            {
+                "incumbent_name": "council age row",
+                "area_type": "local_authority",
+                "geography_id": "E06000001",
+                "incumbent_metric": "age/70_80",
+                "status": "bound",
+                "incumbent_target": 500.0,
+                "candidate_estimate": 495.0,
+            },
+            {
+                "incumbent_name": "no census share",
+                "area_type": "constituency",
+                "geography_id": "S14000001",
+                "incumbent_metric": "age/20_30",
+                "status": "bound",
+                "incumbent_target": 800.0,
+                "candidate_estimate": 760.0,
+            },
+            {
+                "incumbent_name": "not an age row",
+                "area_type": "local_authority",
+                "geography_id": "E06000001",
+                "incumbent_metric": "tenure/owned_mortgage",
+                "status": "bound",
+                "incumbent_target": 300.0,
+                "candidate_estimate": 290.0,
+            },
+        ]
+    )
+    shares = {
+        ("constituency", "E14000001"): {"20_30": 0.3},
+        ("local_authority", "E06000001"): {"70_80": 0.01, "20_30": 0.5},
+    }
+
+    based = with_private_household_basis(local, shares)
+
+    assert based["communal_share"].tolist()[:2] == [0.3, 0.01]
+    assert based["communal_share"].iloc[2:].isna().all()
+    assert based["incumbent_target_private_households"].tolist()[:2] == [
+        pytest.approx(700.0),
+        pytest.approx(495.0),
+    ]
+    assert based["incumbent_target_private_households"].iloc[2:].isna().all()
+    national = pd.DataFrame(
+        [
+            {
+                "incumbent_name": "a",
+                "source": "dwp",
+                "status": "bound",
+                "incumbent_target": 100.0,
+                "candidate_estimate": 101.0,
+            }
+        ]
+    )
+    summary = evaluation_summary(national, based)
+    bases = summary["local"]["age_rows_on_two_bases"]
+    # The student seat misses its mid-year row by 30% and meets its
+    # private-household one; both bases score the same two rows.
+    assert bases["total_residents"]["rows"] == 2
+    assert bases["total_residents"]["within_25pct"] == 0.5
+    assert bases["private_households"]["within_25pct"] == 1.0
+    assert {
+        row["incumbent_metric"] for row in bases["private_households_by_metric"]
+    } == {"age/20_30", "age/70_80"}
+    assert "**Local age rows on two bases** (2 rows" in render_markdown(
+        summary, national, based
+    )
+
+
 def test_regional_rollup_measures_age_and_band_rows_by_region() -> None:
     hh = pd.Index([1, 2, 3, 4])
     region = pd.Series(["LONDON", "LONDON", "EAST_OF_ENGLAND", "YORKSHIRE"], index=hh)
@@ -456,3 +540,41 @@ def test_evaluator_requires_new_chronicle_target_identity() -> None:
             },
             expected,
         )
+
+
+def test_evaluator_records_inventory_drift_beside_the_summary(capsys) -> None:
+    """The contract checks the pinned inventory apart from the measured limits
+    (microcosm#1301), so the evaluator records the drift itself."""
+    import importlib.util
+
+    from microcosm.data.contract import uk_incumbent_surface_assessment
+
+    tool = _TEST_PATHS.repository / "tools/evaluate_uk_incumbent_surface.py"
+    spec = importlib.util.spec_from_file_location("evaluate_uk_incumbent_surface", tool)
+    module = importlib.util.module_from_spec(spec)
+    assert spec.loader is not None
+    spec.loader.exec_module(module)
+    payload = {
+        "national_rows": [
+            {
+                "incumbent_name": "synthetic_national",
+                "incumbent_target": 100.0,
+                "family": "synthetic_program",
+                "candidate_estimate": 100.0,
+                "status": "bound",
+            }
+        ],
+        "local_rows": [],
+    }
+    module._assess(payload)
+    assert payload["summary"] == uk_incumbent_surface_assessment(payload)
+    assert payload["summary"]["passed"] is True
+    assert (
+        "local rows must be a complete nonempty row list."
+        in (payload["inventory_failures"])
+    )
+    assert (
+        "national rows do not match the pinned incumbent target inventory."
+        in payload["inventory_failures"]
+    )
+    assert "warning: incumbent inventory" in capsys.readouterr().err

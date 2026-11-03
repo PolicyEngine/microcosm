@@ -25,6 +25,8 @@ def _raw(**columns) -> pd.DataFrame:
     rows = len(columns["ctannual"])
     defaults = {
         "household_id": list(range(1, rows + 1)),
+        # CTPAID 3, the household does not have to pay: a zero bill stays zero.
+        "ctpaid": [3] * rows,
         "ctreb": [2] * rows,
         "ctrebamt": [0.0] * rows,
         "gvtregno": [1] * rows,
@@ -64,6 +66,30 @@ def test_council_tax_imputes_raw_missing_from_raw_cells() -> None:
     assert result.loc[5] == 0.0
     # A non-recipient's zero bill (an exempt dwelling) stays zero.
     assert result.loc[6] == 0.0
+
+
+def test_paying_household_with_a_zero_bill_takes_the_cell_mean() -> None:
+    raw = _raw(
+        gvtregno=[1, 1, 1, 1, 1, 1, 1, 13, 2],
+        ctannual=[1200.0, 1400.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+        ctpaid=[1, 1, 1, 1, 2, 3, np.nan, np.nan, 1],
+        ctreb=[2, 2, 2, 1, 2, 2, 2, 2, 2],
+        ctrebamt=[0.0, 0.0, 0.0, 20.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+    )
+
+    result = _derive(raw)
+
+    # Someone pays and no reduction is reported, so the household owes a bill.
+    assert result.loc[3] == pytest.approx(1300.0)
+    # A reported reduction is added back, as for any recipient.
+    assert result.loc[4] == pytest.approx(20.0 * WEEKS_IN_YEAR)
+    # Council-paid, exempt, blank and unasked (Northern Ireland) zeros stay zero.
+    assert result.loc[5] == 0.0
+    assert result.loc[6] == 0.0
+    assert result.loc[7] == 0.0
+    assert result.loc[8] == 0.0
+    # No positive non-recipient bill in the cell: nothing to impute from.
+    assert result.loc[9] == 0.0
 
 
 def test_reported_reduction_is_added_back_to_the_bill() -> None:
@@ -162,10 +188,11 @@ def test_bills_outside_scotland_keep_ctannual_or_add_the_reduction() -> None:
     assert (result[recipient] >= ctannual[recipient] - 1e-9).all()
 
 
-def test_missing_raw_cells_refuse() -> None:
-    raw = _raw(ctannual=[100.0]).drop(columns="ctreb")
+@pytest.mark.parametrize("column", ["ctreb", "ctpaid"])
+def test_missing_raw_cells_refuse(column) -> None:
+    raw = _raw(ctannual=[100.0]).drop(columns=column)
 
-    with pytest.raises(KeyError, match="ctreb"):
+    with pytest.raises(KeyError, match=column):
         _derive(raw)
 
 
@@ -184,6 +211,7 @@ def test_committed_manifest_declares_the_implemented_rule() -> None:
     ("parameter", "value"),
     [
         ("donor_filter", "raw ctannual > 0"),
+        ("missing", "raw ctannual < 0 or NaN"),
         ("value", "Scottish-water-netted CTANNUAL"),
         ("cells", ["gvtregno", "ctband"]),
     ],

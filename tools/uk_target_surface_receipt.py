@@ -41,6 +41,7 @@ from typing import Any
 
 import numpy as np
 
+from microcosm.build.uk_runtime import communal_residents
 from microcosm.build.uk_runtime.cross_grain_declarations import uk_cross_grain_grain
 from microcosm.build.uk_runtime.full_targets import load_uk_full_target_inputs
 from microcosm.build.uk_runtime.graph_targets import (
@@ -186,94 +187,73 @@ def _national_reconciliation_summary(
     }
 
 
-#: Census residence-type tables the communal validation reads (#1123,
-#: decision 2: no subtraction yet, a receipt only): ONS RM120 for England and
-#: Wales, NRS UV101a for Scotland. Areas whose communal residents make up at
-#: least STUDENT_COMMUNAL_SHARE of their 18-24 residents are listed as student
-#: areas, where the age-band targets count residents the household frame
-#: cannot hold.
-_COMMUNAL_TABLES = {
-    "ons.census2021_residents": (
-        "C2021_AGE_24_NAME",
-        "C2021_RESTYPE_3_NAME",
-        "C_SEX_NAME",
-    ),
-    "nrs.census2022_residents": ("Age", "Residence Type Indicator", "Sex"),
-}
+#: Areas whose communal residents make up at least STUDENT_COMMUNAL_SHARE of
+#: their 18-24 residents are listed as student areas, where the age-band
+#: targets count residents the household frame cannot hold. The census
+#: residence-type tables, the age bands and the cells the receipt sums live in
+#: ``uk_runtime.communal_residents`` (#1123, #1278), which the incumbent
+#: evaluation reads too (microcosm#1095).
 STUDENT_COMMUNAL_SHARE = 0.10
+COMMUNAL_AGE_BANDS = communal_residents.COMMUNAL_AGE_BANDS
+_band_key = communal_residents.band_key
+_band_of = communal_residents.band_of
+_age_range = communal_residents.age_range
+#: A band whose communal share is s puts the private-household target a
+#: fraction s below the total-resident row the incumbent evaluation gates at
+#: 25% (microcosm#1278 sizing of the age-universe change).
+SIZING_SHARES = (0.20, 0.25)
 
 
-def _age_range(label: str) -> tuple[int, int] | None:
-    import re
+def _share_summary(shares: dict[str, float], *, threshold_list: bool) -> dict[str, Any]:
+    values = sorted(shares.values())
+    summary: dict[str, Any] = {
+        "areas": len(values),
+        "median_share": float(np.median(values)) if values else None,
+        "areas_at_or_above": {
+            f"{share:.2f}": sum(value >= share for value in values)
+            for share in SIZING_SHARES
+        },
+    }
+    if threshold_list:
+        summary["areas_at_or_above_lowest"] = sorted(
+            (
+                {"area": area, "communal_share": share}
+                for area, share in shares.items()
+                if share >= SIZING_SHARES[0]
+            ),
+            key=lambda row: (-row["communal_share"], row["area"]),
+        )
+    return summary
 
-    numbers = [int(value) for value in re.findall(r"\d+", str(label))]
-    if "under 1" in str(label).lower():
-        return (0, 0)
-    if len(numbers) == 2:
-        return (numbers[0], numbers[1])
-    if len(numbers) == 1 and "over" in str(label).lower():
-        return (numbers[0], 200)
-    if len(numbers) == 1:
-        return (numbers[0], numbers[0])
-    return None
 
-
-def _communal_validation(ledger_facts: Path) -> dict[str, Any]:
-    """Communal-establishment residents per area: a validation receipt only."""
+def _communal_validation(
+    ledger_facts: Path, *, region_by_area: dict[str, str] | None = None
+) -> dict[str, Any]:
+    """Communal-establishment residents per area and age band: a receipt only."""
 
     path = (
         ledger_facts / "consumer_facts.jsonl" if ledger_facts.is_dir() else ledger_facts
     )
-    totals: dict[tuple[str, str], dict[str, float]] = {}
     with path.open() as handle:
-        for line in handle:
-            if (
-                "census2021_residents" not in line
-                and "census2022_residents" not in line
-            ):
-                continue
-            fact = json.loads(line)
-            concept = (fact.get("observed_measure") or {}).get("source_concept")
-            keys = _COMMUNAL_TABLES.get(str(concept))
-            if keys is None:
-                continue
-            dimensions = fact.get("dimensions") or {}
-            age_label, residence, sex = (str(dimensions.get(key, "")) for key in keys)
-            if not sex.lower().startswith("all"):
-                continue
-            geography = fact.get("geography") or {}
-            level = str(geography.get("level"))
-            if level not in {"constituency", "local_authority"}:
-                continue
-            cell = totals.setdefault((level, str(geography.get("id"))), {})
-            residence_key = (
-                "communal"
-                if "communal" in residence.lower()
-                else "household"
-                if "household" in residence.lower()
-                else "all"
-            )
-            value = float(fact.get("value") or 0.0)
-            if age_label.lower() == "total":
-                cell[f"{residence_key}_all_ages"] = (
-                    cell.get(f"{residence_key}_all_ages", 0.0) + value
-                )
-                continue
-            ages = _age_range(age_label)
-            if ages is not None and 18 <= ages[0] and ages[1] <= 24:
-                cell[f"{residence_key}_18_24"] = (
-                    cell.get(f"{residence_key}_18_24", 0.0) + value
-                )
+        cells = communal_residents.communal_cells(
+            json.loads(line)
+            for line in handle
+            if communal_residents.is_communal_fact_line(line)
+        )
+    totals = cells.totals
+    band_keys = list(communal_residents.BAND_KEYS)
     receipt: dict[str, Any] = {
         "basis": (
             "Census 2021 (England and Wales, RM120) and 2022 (Scotland, UV101a) "
             "usual residents by residence type; Northern Ireland's district "
-            "table (CT0105) is not split by area grain here. Validation only: "
-            "the age-band targets still count communal residents (#1123)."
+            "table (CT0105) is approximate (see northern_ireland_local_authority). "
+            "Validation and sizing only: the age-band targets still count "
+            "communal residents (#1123, #1278)."
         ),
         "student_communal_share": STUDENT_COMMUNAL_SHARE,
+        "sizing_shares": list(SIZING_SHARES),
     }
-    for level in ("constituency", "local_authority"):
+    for level in communal_residents.COMMUNAL_LEVELS:
         rows = []
         for (cell_level, area), cell in sorted(totals.items()):
             if cell_level != level:
@@ -291,6 +271,7 @@ def _communal_validation(ledger_facts: Path) -> dict[str, Any]:
                     "communal_share_18_24": young_communal / young if young else None,
                 }
             )
+        band_shares = communal_residents.band_shares(cells, level)
         shares = [
             row["communal_share"] for row in rows if row["communal_share"] is not None
         ]
@@ -309,8 +290,71 @@ def _communal_validation(ledger_facts: Path) -> dict[str, Any]:
                 ),
                 key=lambda row: -row["communal_share_18_24"],
             ),
+            "bands": {
+                key: _share_summary(band_shares[key], threshold_list=True)
+                for key in band_keys
+            },
+        }
+    ni_shares = communal_residents.ni_band_shares(cells)
+    ni_counts = communal_residents.ni_band_counts(cells)
+    receipt["northern_ireland_local_authority"] = {
+        "approximate": True,
+        "basis": (
+            "NISRA CT0105 communal residents by district (census 2021), each age "
+            "band spread evenly over its single years, over NISRA's mid-2025 "
+            "district population by single year."
+        ),
+        "bands": {
+            key: _share_summary(ni_shares[key], threshold_list=True)
+            for key in band_keys
+        },
+    }
+    if region_by_area:
+        region_totals: dict[str, dict[str, float]] = {}
+        for (level, area), cell in totals.items():
+            if level != "local_authority" or area not in region_by_area:
+                continue
+            region = region_totals.setdefault(region_by_area[area], {})
+            for key, value in cell.items():
+                region[key] = region.get(key, 0.0) + value
+        for area, bands in ni_counts.items():
+            region = region_totals.setdefault(region_by_area.get(area, "N92000002"), {})
+            for key, (communal, total) in bands.items():
+                region[f"communal_{key}"] = (
+                    region.get(f"communal_{key}", 0.0) + communal
+                )
+                region[f"household_{key}"] = region.get(f"household_{key}", 0.0) + (
+                    total - communal
+                )
+        receipt["region"] = {
+            "composed_from": "local authorities (Northern Ireland approximate)",
+            "bands": {
+                key: {
+                    region: (
+                        cell.get(f"communal_{key}", 0.0)
+                        / (
+                            cell.get(f"communal_{key}", 0.0)
+                            + cell.get(f"household_{key}", 0.0)
+                        )
+                    )
+                    for region, cell in sorted(region_totals.items())
+                    if cell.get(f"communal_{key}", 0.0)
+                    + cell.get(f"household_{key}", 0.0)
+                }
+                for key in band_keys
+            },
         }
     return receipt
+
+
+def _region_by_local_authority() -> dict[str, str]:
+    crosswalk = json.loads(
+        (
+            Path(__file__).resolve().parents[1]
+            / "packages/microcosm-build/src/microcosm/build/uk/local_area_crosswalk.json"
+        ).read_text()
+    )
+    return dict(crosswalk["levels"]["local_authority"]["region_code_by_area"])
 
 
 def _group_summary(cross_geography: dict[str, Any]) -> list[dict[str, Any]]:
@@ -372,7 +416,11 @@ def build_receipt(args: argparse.Namespace) -> dict[str, Any]:
         },
         "uprating_holds": inputs.get("uprating_holds"),
         "communal_validation": (
-            _communal_validation(Path(args.ledger_facts)) if args.communal else None
+            _communal_validation(
+                Path(args.ledger_facts), region_by_area=_region_by_local_authority()
+            )
+            if args.communal
+            else None
         ),
         "national_reconciliation": _national_reconciliation_summary(
             inputs.get("national_reconciliation")
@@ -390,6 +438,8 @@ def build_receipt(args: argparse.Namespace) -> dict[str, Any]:
         # Signed cells that are off the surface and still count in their leg:
         # deferred with a value, or implied from the target's other tier.
         "off_surface_cells": cross.get("off_surface_cells"),
+        # The small-cell rule's deferrals: in the frame, never in the solve.
+        "small_cell_deferrals": cross.get("small_cell_deferrals"),
         "subset_relations": cross.get("subset_relations"),
         "partitions": cross.get("partitions"),
         "coverage": cross.get("coverage"),
@@ -447,10 +497,9 @@ def diff_receipts(before: dict[str, Any], after: dict[str, Any]) -> dict[str, An
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n", 1)[0])
     parser.add_argument("--ledger-facts", type=Path, required=True)
-    parser.add_argument("--ladder", type=Path, required=True)
+    parser.add_argument("--ladder", type=Path)
     parser.add_argument(
         "--review-date",
-        required=True,
         help="Exclusion evaluation date (YYYY-MM-DD); pinned so two receipts compare.",
     )
     parser.add_argument("--calibration-year", type=int, default=2025)
@@ -460,10 +509,31 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="Add the census communal-establishment validation receipt (#1123).",
     )
+    parser.add_argument(
+        "--communal-only",
+        action="store_true",
+        help=(
+            "Write only the communal receipt, without compiling the surface "
+            "(#1278 sizing); needs no ladder or review date."
+        ),
+    )
     parser.add_argument("--out", type=Path, required=True)
     parser.add_argument("--diff-against", type=Path)
     parser.add_argument("--diff-out", type=Path)
     args = parser.parse_args(argv)
+    if args.communal_only:
+        receipt = {
+            "schema_version": RECEIPT_SCHEMA_VERSION,
+            "code_head": _git_head(),
+            "ledger_facts": Path(args.ledger_facts).name,
+            "communal_validation": _communal_validation(
+                Path(args.ledger_facts), region_by_area=_region_by_local_authority()
+            ),
+        }
+        args.out.write_text(json.dumps(receipt, indent=2, sort_keys=True) + "\n")
+        return 0
+    if args.ladder is None or args.review_date is None:
+        parser.error("--ladder and --review-date are required unless --communal-only")
     receipt = build_receipt(args)
     args.out.write_text(json.dumps(receipt, indent=2, sort_keys=True) + "\n")
     print(json.dumps(receipt["counts"], sort_keys=True))

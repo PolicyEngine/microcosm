@@ -21,7 +21,7 @@ from microcosm.data.contract import (
     required_release_files,
     validate_release_dir,
 )
-from microcosm.data.registry import REGISTRY
+from microcosm.data.registry import DEFAULT_VARIANT, REGISTRY
 from microcosm.data.release import line_pointer_payload
 from test_support.microcosm_data.release import release_dir  # noqa: F401
 
@@ -63,7 +63,9 @@ def test_no_other_country_can_build_a_line_pointer():
 
 
 def test_the_registry_year_is_not_the_uk_national_ids_vintage():
-    spec = REGISTRY[("uk", 2025, "national")]
+    # The national line is the UK 2025 default load since microcosm#823.
+    spec = REGISTRY[("uk", 2025, DEFAULT_VARIANT)]
+    assert spec.pointer_path == "latest-national.json"
     assert contract._UK_NATIONAL_RELEASE_ID == "microcosm-uk-2024-25-national"
     assert not contract._UK_NATIONAL_RELEASE_ID.startswith(f"microcosm-uk-{spec.year}-")
 

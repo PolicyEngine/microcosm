@@ -22,6 +22,22 @@
       "engine_class": "UKSingleYearDataset",
       "engine_module": "policyengine_uk.data",
       "engine_package": "policyengine-uk",
+      "filename": "microcosm_uk_2024_25.h5",
+      "hf_repo": "policyengine/populace-uk-private",
+      "key": [
+        "uk",
+        2025,
+        "compact"
+      ],
+      "pointer_path": "latest-national.json",
+      "variant": "compact",
+      "year": 2025
+    },
+    {
+      "country": "uk",
+      "engine_class": "UKSingleYearDataset",
+      "engine_module": "policyengine_uk.data",
+      "engine_package": "policyengine-uk",
       "filename": "microcosm_uk_2024_25_dense.h5",
       "hf_repo": "policyengine/populace-uk-private",
       "key": [
@@ -31,22 +47,6 @@
       ],
       "pointer_path": "latest.json",
       "variant": "dense",
-      "year": 2025
-    },
-    {
-      "country": "uk",
-      "engine_class": "UKSingleYearDataset",
-      "engine_module": "policyengine_uk.data",
-      "engine_package": "policyengine-uk",
-      "filename": "microcosm_uk_2024_25.h5",
-      "hf_repo": "policyengine/populace-uk-private",
-      "key": [
-        "uk",
-        2025,
-        "national"
-      ],
-      "pointer_path": "latest-national.json",
-      "variant": "national",
       "year": 2025
     },
     {

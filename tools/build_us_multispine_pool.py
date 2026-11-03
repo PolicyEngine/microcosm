@@ -199,6 +199,7 @@ from microcosm.build.us_runtime.stacked_spine import (
     CANONICAL_STACKED_GAP_FILL_SURFACE,
     CANONICAL_STACKED_POST_PUF_TRANSFER_SURFACE,
     DEFAULT_STACKED_HOUSEHOLD_MASS_SHARES,
+    PRIMARY_PUF_EXECUTION_CONFIG_SCHEMA_VERSION,
     assemble_stacked_spine,
     assert_stacked_tail_cells_preserved,
     by_origin_battery,
@@ -4221,14 +4222,14 @@ def _stacked_worker_execution_authentication(
     qrf = config.get("qrf") if isinstance(config, Mapping) else None
     if (
         not isinstance(config, Mapping)
-        or config.get("schema_version") != 5
+        or config.get("schema_version") != PRIMARY_PUF_EXECUTION_CONFIG_SCHEMA_VERSION
         or not isinstance(qrf, Mapping)
     ):
         raise ValueError("Stacked publication primary execution config changed.")
     return current_worker_execution_authentication_receipt(
         qrf.get("worker_execution"),
         manifest_schema_version=POOL_MANIFEST_SCHEMA_VERSION,
-        execution_config_schema_version=5,
+        execution_config_schema_version=PRIMARY_PUF_EXECUTION_CONFIG_SCHEMA_VERSION,
         boundary="stacked publication primary-QRF worker",
     )
 

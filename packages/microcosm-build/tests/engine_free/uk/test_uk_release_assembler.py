@@ -11,6 +11,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
+from microcosm.build.country_spec import load_country_spec
 from microcosm.build.uk_runtime.calibration_run import resign_uk_gate_report
 from microcosm.build.uk_runtime.local_targets import load_uk_population_contract
 from microcosm.build.uk_runtime.national_frame import (
@@ -27,7 +28,7 @@ from microcosm.build.uk_runtime.weight_year import (
     uk_weight_projection_factor,
 )
 from microcosm.data.contract import validate_release_dir
-from microcosm.data.registry import REGISTRY
+from microcosm.data.registry import DEFAULT_VARIANT, REGISTRY
 from microcosm.frame import WeightKind
 from test_support.paths import paths_for
 
@@ -53,6 +54,9 @@ _SHARED_FIXTURES = (
     _signing_key_fixture,
 )
 _CODE_PIN = "5fa48f07436a806ad75ff76fd22cfb8613bddbe0"
+#: The stages a national spine runs: the signed provenance names them, and the
+#: assembler rederives the SPI Public Use Tape marker from them.
+_SPINE_STAGES = tuple(stage.stage for stage in load_country_spec("uk").sources.stages)
 _ATTEMPT_ID = "uk-frs-calibration-attempt-20260828T101112Z-1a2b3c4d"
 _CUT_TAG = f"{UK_NATIONAL_RELEASE_ID}-20260828T101112Z-1a2b3c4d"
 
@@ -83,7 +87,7 @@ def test_national_dataset_filename_mirrors_registry() -> None:
 
     assert driver._DATASET_KEY == "microcosm_uk_2024_25"
     assert driver._DATASET_FILENAME == f"{driver._DATASET_KEY}.h5"
-    assert REGISTRY[("uk", 2025, "national")].filename == driver._DATASET_FILENAME
+    assert REGISTRY[("uk", 2025, DEFAULT_VARIANT)].filename == driver._DATASET_FILENAME
 
 
 def _frame(weights: list[float], *, weight_kind: WeightKind):
@@ -108,7 +112,12 @@ def _frame(weights: list[float], *, weight_kind: WeightKind):
     )
 
 
-def _diagnostics(spine_sha256: str, *, runtime: dict | None = None) -> dict:
+def _diagnostics(
+    spine_sha256: str,
+    *,
+    runtime: dict | None = None,
+    spine_provenance: dict | None = None,
+) -> dict:
     return {
         "schema_version": 6,
         "weight_entity": "household",
@@ -196,6 +205,11 @@ def _diagnostics(spine_sha256: str, *, runtime: dict | None = None) -> dict:
             "build_id": _ATTEMPT_ID,
             "input_posture": {"tier": "staging_candidate", "sha256": spine_sha256},
             "runtime": dict(_SIGNED_RUNTIME if runtime is None else runtime),
+            "spine_provenance": (
+                {"stages": list(_SPINE_STAGES)}
+                if spine_provenance is None
+                else spine_provenance
+            ),
         },
     }
 
@@ -222,6 +236,7 @@ def _build_assembler_inputs(
     spine_frame=None,
     candidate_frame=None,
     runtime=None,
+    spine_provenance=None,
 ):
     pytest.importorskip("tables")  # pandas HDF backend
     pytest.importorskip("h5py")
@@ -236,7 +251,12 @@ def _build_assembler_inputs(
 
     diagnostics_path = tmp_path / "calibration_diagnostics.json"
     diagnostics_path.write_text(
-        json.dumps(_diagnostics(sha256(spine), runtime=runtime)), encoding="utf-8"
+        json.dumps(
+            _diagnostics(
+                sha256(spine), runtime=runtime, spine_provenance=spine_provenance
+            )
+        ),
+        encoding="utf-8",
     )
     diagnostics_sha = sha256(diagnostics_path)
     for report_name in ("seam_report_path", "release_cut_report_path"):
@@ -398,6 +418,16 @@ def test_assemble_green_release_dir(assembler_inputs, capsys) -> None:
         _CUT_TAG
     }
     assert "dataset_role" not in release_manifest
+    # The spine ran the SPI stages, so the release says it rests on the tape,
+    # on the microdata's own entry and with the tape's conditions.
+    assert release_manifest["artifacts"][driver._DATASET_KEY][
+        "spi_public_use_tape_dependent"
+    ]
+    tape = release_manifest["licensed_data"]["spi_public_use_tape"]
+    assert tape["study"] == "SN 9422"
+    assert tape["dependent"] is True
+    assert "spi_income_band_donors" in tape["stages"]
+    assert len(tape["conditions"]) == 2
     assert (
         release_dir / "calibration_diagnostics.json"
     ).read_bytes() == assembler_inputs["diagnostics"].read_bytes()
@@ -489,7 +519,15 @@ def _json_shape(value: object, path: tuple[str, ...] = ()) -> object:
             return {"*": sorted({_json_shape(item) for item in value.values()})}
         return {key: _json_shape(item, (*path, key)) for key, item in value.items()}
     if isinstance(value, list):
-        return [_json_shape(item, (*path, "[]")) for item in value]
+        # A list's length is a value, not part of its shape: the golden's SPI
+        # Public Use Tape marker names one synthetic stage, while an assembly
+        # from the packaged spec names every stage that reads the tape.
+        shapes: list[object] = []
+        for item in value:
+            shape = _json_shape(item, (*path, "[]"))
+            if shape not in shapes:
+                shapes.append(shape)
+        return shapes
     return type(value).__name__
 
 
@@ -840,3 +878,35 @@ def test_assemble_refuses_reserialized_diagnostics(assembler_inputs) -> None:
     )
     with pytest.raises(SystemExit, match="diagnostics bytes"):
         _load_driver_module().main(assembler_inputs["argv"])
+
+
+def test_assemble_refuses_a_recorded_spi_marker_its_stages_contradict(
+    green_certification_inputs, tmp_path: Path
+) -> None:
+    inputs = _build_assembler_inputs(
+        green_certification_inputs,
+        tmp_path,
+        spine_provenance={
+            "stages": list(_SPINE_STAGES),
+            "spi_public_use_tape": {
+                "study": "SN 9422",
+                "dependent": False,
+                "stages": [],
+                "conditions": [],
+            },
+        },
+    )
+    with pytest.raises(SystemExit, match="disagrees with the stages"):
+        _load_driver_module().main(inputs["argv"])
+
+
+def test_assemble_refuses_a_spine_stage_the_spec_does_not_declare(
+    green_certification_inputs, tmp_path: Path
+) -> None:
+    inputs = _build_assembler_inputs(
+        green_certification_inputs,
+        tmp_path,
+        spine_provenance={"stages": [*_SPINE_STAGES, "unknown_stage"]},
+    )
+    with pytest.raises(SystemExit, match="declares no stage"):
+        _load_driver_module().main(inputs["argv"])
