@@ -813,6 +813,10 @@ def calibration_nodes(
         # frame, and per-band support groups by source household (hunk D).
         problem_inputs["person"].extend(interval_inputs)
         problem_inputs["household"].append(SOURCE_HOUSEHOLD_ID_COLUMN)
+        # The 12 amount rows measure the unit column; targets.problem@1
+        # refuses a target whose measure the node doesn't slice
+        # (T/target_kernels.py _compiled_problem).
+        problem_inputs["person"].append(MEASURE_OUTPUTS["unit"])
     rows.append(
         node(
             f"{prefix}.targets.problem",

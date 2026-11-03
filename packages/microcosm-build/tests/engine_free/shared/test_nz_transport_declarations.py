@@ -1346,11 +1346,19 @@ def test_every_calibration_branch_has_one_standin_between_transfers_and_prepare(
             for item in problem["inputs"]
             for column in item["columns"]
         }
+        # The problem slices every target's measure: the amount rows' unit
+        # column, the band indicators' income and universe columns, and the
+        # source households per-band support groups by.
         assert {
             ("person", _PROXY[0]),
+            ("person", _PROXY[1]),
             ("person", _PROXY[2]),
             ("household", "source_household_id"),
         } <= read
+        targets = spec["resources"]["target_references"]["target_references"]
+        assert {
+            ("person", row["measure"]) for row in targets if row["family"] == "income"
+        } <= read | {("person", "people")}
         annual = json.loads(
             by_id[f"{prefix}.benefits.annual_transfers"]["params"]["declaration"]
         )

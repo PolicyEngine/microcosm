@@ -7532,7 +7532,8 @@
                 "receives_sole_parent_support",
                 "receives_jobseeker_support",
                 "ird_taxable_income_proxy_cents",
-                "ird_taxable_income_proxy_universe_status"
+                "ird_taxable_income_proxy_universe_status",
+                "ird_taxable_income_proxy_nzd"
               ]
             },
             {
@@ -12132,7 +12133,8 @@
                 "receives_sole_parent_support",
                 "receives_jobseeker_support",
                 "ird_taxable_income_proxy_cents",
-                "ird_taxable_income_proxy_universe_status"
+                "ird_taxable_income_proxy_universe_status",
+                "ird_taxable_income_proxy_nzd"
               ]
             },
             {
@@ -16732,7 +16734,8 @@
                 "receives_sole_parent_support",
                 "receives_jobseeker_support",
                 "ird_taxable_income_proxy_cents",
-                "ird_taxable_income_proxy_universe_status"
+                "ird_taxable_income_proxy_universe_status",
+                "ird_taxable_income_proxy_nzd"
               ]
             },
             {
@@ -21332,7 +21335,8 @@
                 "receives_sole_parent_support",
                 "receives_jobseeker_support",
                 "ird_taxable_income_proxy_cents",
-                "ird_taxable_income_proxy_universe_status"
+                "ird_taxable_income_proxy_universe_status",
+                "ird_taxable_income_proxy_nzd"
               ]
             },
             {
@@ -25932,7 +25936,8 @@
                 "receives_sole_parent_support",
                 "receives_jobseeker_support",
                 "ird_taxable_income_proxy_cents",
-                "ird_taxable_income_proxy_universe_status"
+                "ird_taxable_income_proxy_universe_status",
+                "ird_taxable_income_proxy_nzd"
               ]
             },
             {
@@ -30528,7 +30533,8 @@
                 "receives_sole_parent_support",
                 "receives_jobseeker_support",
                 "ird_taxable_income_proxy_cents",
-                "ird_taxable_income_proxy_universe_status"
+                "ird_taxable_income_proxy_universe_status",
+                "ird_taxable_income_proxy_nzd"
               ]
             },
             {
@@ -35128,7 +35134,8 @@
                 "receives_sole_parent_support",
                 "receives_jobseeker_support",
                 "ird_taxable_income_proxy_cents",
-                "ird_taxable_income_proxy_universe_status"
+                "ird_taxable_income_proxy_universe_status",
+                "ird_taxable_income_proxy_nzd"
               ]
             },
             {
@@ -39728,7 +39735,8 @@
                 "receives_sole_parent_support",
                 "receives_jobseeker_support",
                 "ird_taxable_income_proxy_cents",
-                "ird_taxable_income_proxy_universe_status"
+                "ird_taxable_income_proxy_universe_status",
+                "ird_taxable_income_proxy_nzd"
               ]
             },
             {
