@@ -134,8 +134,8 @@ equals a water-fill written from the definition in 60-digit decimal
 arithmetic, and gives the same answer by its active-set and sorted paths,
 including on an input built to need one round per record. Wherever the cap
 step that the full-scale measurement below ran settles in its active-set
-rounds, the test checks that the current step returns the same shift and
-round count, bit for bit.
+rounds, with every nonzero weight in float64's normal range, the test checks
+that the current step returns the same shift and round count, bit for bit.
 
 **What the projection replaced.** Before, each step renormalized and clamped
 in a loop of at most 32 rounds. On the ACS local release the rounds ran out on
@@ -165,6 +165,8 @@ not recorded. It has since been measured
   total was off by up to 8.2e-6. The cap ratio exceeded that total error by
   at most 6.1e-7. With a float64 normalizer on the same log-weights the largest
   ratio was 1 + 4.9e-7, the float32 rounding of the log-weights themselves.
+  That decomposition covers only the projected vectors; the same softmax
+  plausibly sets the loop's residual, but no run measured it.
 - **The solves.** National ESS agreed within 0.1% between the two steps
   (21,834 against 21,835, and 93,609 against 93,598). At share 0.5 and
   `l2_lambda = 0.03` the projection's final loss was 0.01899. Three loop runs

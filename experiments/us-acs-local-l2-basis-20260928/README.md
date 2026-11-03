@@ -42,7 +42,7 @@ what that anchor buys, what it costs, and what limits it.
 4. **The softmax parametrization is not needed at this scale for λ ≤ 0.03.**
    - The per-record gradients here are near Adam's `eps`, with mixed signs (`results/gradient_scale.json`). The same-sign stall that the small-problem evidence shows does not occur.
    - The two parametrizations trace the same training frontier for λ ≤ 0.03. At λ = 0 softmax reaches 18% more ESS (16,132 against 13,646) at a 3% higher loss (0.0160 against 0.0155), a loss gap about the size of the unpenalized solve's run-to-run variation (2.7%; see "How it was run"). At λ ≥ 0.1 projection falls inside softmax's training frontier. At λ = 0.1 projection reaches ESS 22,739 at loss 0.0228, where softmax's path (interpolated between its λ = 0.03 and 0.1 solves) gives about 0.021. At λ = 1 projection reaches 30,582 at 0.0785, against about 0.055 on softmax's path (between λ = 0.3 and 1). Equal λ is not an equal-ESS comparison.
-   - Softmax's per-step cap loop runs out of its 32 rounds on most epochs at this scale: in the runs that record it (heads 9ef71ed6, bc763cb4 and d82ff85b), 165-400 of the last batch's 400 epochs, including 400 at share 0.5, λ = 0.03 on the full surface (the `dup_` rerun) and on fold 0, and every share-0.9 run. Those epochs optimize total·softmax(log_w) past the 5x cap, by an amount these runs did not record; only the closing projection makes the returned weights exact. The loop has since been replaced by an exact projection, and the overshoot measured: it was float32-sized, 1 + 1.2e-5 at most, against 1 + 9.0e-6 for the projection, so the grid's softmax results stand (see "The softmax cap step, re-measured" below). Projection is the recommended parametrization.
+   - Softmax's per-step cap loop runs out of its 32 rounds on most epochs at this scale: in the runs that record it (heads 9ef71ed6, bc763cb4 and d82ff85b), 165-400 of the last batch's 400 epochs, including 400 at share 0.5, λ = 0.03 on the full surface (the `dup_` rerun) and on fold 0, and every share-0.9 run. Those epochs optimize total·softmax(log_w) past the 5x cap, by an amount these runs did not record; only the closing projection makes the returned weights exact. An exact projection has since replaced the loop, and two reruns measured the overshoot: float32-sized, 1 + 1.2e-5 at most, against 1 + 9.0e-6 for the projection. Those two configurations' softmax results stand; the measurement did not rerun the grid's other softmax runs (see "The softmax cap step, re-measured" below). Projection is the recommended parametrization.
 
 ## The softmax cap step, re-measured
 
@@ -61,10 +61,12 @@ its time (`results/exact_cap.md`, `results/exact_cap/`):
 | Share 0.9, softmax, no penalty | 32-round loop | 1 + 8.7e-6 | 705 of 800 | 48.7 ms | 0.031365 | 93,598 |
 
 - The loop's overshoot was float32-sized, about the same as the projection's.
-  Both are set by the solve's float32 softmax, whose normalizer missed the
-  total by up to 8.2e-6. With a float64 normalizer the projected vectors sit
-  within 1 + 4.9e-7 of their caps (`exact_cap_float32.py`,
-  `results/exact_cap_float32.json`).
+  The solve's float32 softmax sets the projection's: its normalizer missed
+  the total by up to 8.2e-6, and with a float64 normalizer the projected
+  vectors sit within 1 + 4.9e-7 of their caps (`exact_cap_float32.py`,
+  `results/exact_cap_float32.json`). That script decomposed only the
+  projected vectors; the same softmax plausibly sets the loop's overshoot,
+  but no run measured it.
 - The loop ran out because of float32 too. Its shift was `log(total)` in
   float64 minus a float32 `logsumexp`, which bottoms out at the float32
   rounding residual of `log(total)` (7.8e-8) and lifts a few capped records

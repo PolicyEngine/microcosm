@@ -22,8 +22,8 @@ and for the deeper ones below float64's range.
    60-digit decimal arithmetic, and the active-set rounds and the sort that
    bounds them agree (an input built to need one round per record exercises
    the sort). Wherever the cap step the full-scale measurement ran settles in
-   its active-set rounds, the installed step returns the same shift and round
-   count, bit for bit.
+   its active-set rounds, with every nonzero weight in float64's normal range,
+   the installed step returns the same shift and round count, bit for bit.
 6. In float32, as the solver runs it, the clamp is exact in log space and the
    realized ``total * softmax(log_w)`` sits within the float64 caps up to the
    float32 error of the softmax.
@@ -494,10 +494,14 @@ def test_the_measured_cap_step_is_unchanged_where_its_rounds_settle(problem) -> 
     ``experiments/us-acs-local-l2-basis-20260928/results/exact_cap.md``
     measured the cap step at 4bddde649. Each of its 1,600 steps settled in
     one to three active-set rounds, and none capped every record: after the
-    caps first bound, no forward pass fell more than 1% below the one before,
-    and that exit would have renormalized a 5x-capped vector to about a fifth
-    of its caps. Wherever the measured step settles the same way, the
-    installed one returns its shift and round count bit for bit.
+    caps first bound, no forward pass's largest weight-to-cap ratio fell more
+    than 1% below the previous pass's, and that exit would have renormalized
+    a 5x-capped vector to about a fifth of its caps. Wherever the measured
+    step settles the same way, the installed one returns its shift and round
+    count bit for bit. These inputs keep every nonzero weight in float64's
+    normal range; below it the installed step hands its rounds over to the
+    log-space sort, which the measured step lacked
+    (``test_a_weight_below_float64s_range_still_fills_the_room``).
     """
     measured = _measured_cap_step()
     log_w, log_upper = _normalized(*problem)

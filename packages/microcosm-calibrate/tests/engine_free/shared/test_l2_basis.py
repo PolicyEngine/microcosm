@@ -78,7 +78,10 @@ _SOLVER_SETTINGS = settings(max_examples=8, deadline=None, derandomize=True)
 _ALGEBRA_SETTINGS = settings(max_examples=200, deadline=None)
 #: Float32 slack for a softmax solve's in-loop weights over their caps: the
 #: log-weights and the softmax's normalizer are float32, and on these sizes
-#: their error stays below 1e-6 (measured 2e-7 to 6e-7).
+#: their error stays below 1e-6 (measured 2e-7 to 6e-7). The bound holds for
+#: these sizes only. On the ACS local release's 1,588,854 households the
+#: largest in-loop ratio reached 1 + 9.0e-6, 90% of it
+#: (experiments/us-acs-local-l2-basis-20260928/results/exact_cap.md).
 _IN_LOOP_CAP_TOLERANCE = 1e-5
 
 
