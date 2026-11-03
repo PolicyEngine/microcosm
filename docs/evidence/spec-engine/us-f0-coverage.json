@@ -2599,7 +2599,7 @@
       "country": "us",
       "schema_id": "country_spec",
       "schema_version": 1,
-      "spec_sha256": "be81ebbce3b245312edd7e58a76429e81f97ecc0cc5de1f3c605b41a434f18f6"
+      "spec_sha256": "7d2aaa4de2781850941e7e3d07f0e46167ef951ba10996455a8435e6edbaf064"
     }
   },
   "report_schema_version": 3,
@@ -2609,7 +2609,7 @@
     "country": "us",
     "schema_id": "country_spec",
     "schema_version": 1,
-    "spec_sha256": "be81ebbce3b245312edd7e58a76429e81f97ecc0cc5de1f3c605b41a434f18f6"
+    "spec_sha256": "7d2aaa4de2781850941e7e3d07f0e46167ef951ba10996455a8435e6edbaf064"
   },
   "status": "pass"
 }

@@ -352,7 +352,7 @@ def test_constants_adapter_equals_live_constants_and_stays_out_of_identities(
             # microcosm#1261's entity split of line 32 moves it too.
             # microcosm#1073's scf_wealth education-debt declaration moves it
             # through the bundle's source stages.
-            "spec_sha256": "be81ebbce3b245312edd7e58a76429e81f97ecc0cc5de1f3c605b41a434f18f6",
+            "spec_sha256": '7d2aaa4de2781850941e7e3d07f0e46167ef951ba10996455a8435e6edbaf064',
         },
     }
 
