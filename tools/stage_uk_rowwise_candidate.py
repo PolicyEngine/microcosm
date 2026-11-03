@@ -33,14 +33,19 @@ cannot say whether the folder holds this build's bundle; the command then
 keeps the manifest's records and says so. A directory whose bytes differ from
 the remote bundle is otherwise refused.
 
-A build run on Modal stages nothing from its container (the runner sets
-``HF_HUB_OFFLINE``, so the build records its bundle as ``local_only``). Once
-``modal volume get`` has copied the run back, ``--modal-receipt`` names the
-stage's receipt: every output the manifest registers must be in it, at its
-path under the run's state directory, with the same SHA-256 and size, and the
-receipt must be of a stage that finished. Otherwise the command refuses before
-it starts an emitter; when they match, it stages the directory as above. The
-manifest and the sidecars are not compared, because staging rewrites them.
+No UK program is registered with the Modal runner yet. A UK build run there
+would stage nothing from its container: the runner sets ``HF_HUB_OFFLINE``,
+so the build would record its bundle as ``local_only``. Once ``modal volume
+get`` has copied such a run back, ``--modal-receipt`` names the stage's
+receipt. The receipt must be of a stage that finished, and the run directory
+must be inside the run's copied-back state directory; both are checked before
+any output is read. The build manifest, while its ``staged_dataset`` record is
+still the build's own, and every output it registers must then be in the
+receipt, at their paths under the state directory, with the same SHA-256 and
+size. Otherwise the command refuses before it starts an emitter; when they
+match, it stages the directory as above. The staged manifest and the checksum
+file are not compared, because staging writes them again, and neither is the
+build manifest once a hand-over has replaced its record.
 
 Staging is not publication: ``releases/`` and ``latest.json`` are untouched.
 """
@@ -49,6 +54,7 @@ from __future__ import annotations
 
 import argparse
 import glob
+import hashlib
 import json
 import math
 import os
@@ -208,11 +214,28 @@ def main(argv: list[str] | None = None) -> int:
     manifest_path = run_dir / MANIFEST_FILENAME
     if not manifest_path.is_file():
         raise SystemExit(f"error: {manifest_path} is missing")
-    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    manifest_bytes = manifest_path.read_bytes()
+    try:
+        manifest = json.loads(manifest_bytes)
+    except ValueError:
+        raise SystemExit(f"error: {manifest_path} is not valid JSON") from None
+    if not isinstance(manifest, dict):
+        raise SystemExit(f"error: {manifest_path} must be a JSON object")
     run_id = args.run_id or _default_run_id(run_dir, manifest)
     repository = None if args.local_only else str(args.repo_id).strip()
     if repository == "":
         raise SystemExit("error: --repo-id must be non-empty unless --local-only")
+    copied_back = (
+        None
+        if args.modal_receipt is None
+        else _copied_back_stage(
+            args.modal_receipt,
+            state_root=args.modal_state_root,
+            run_dir=run_dir,
+            manifest=manifest,
+            manifest_bytes=manifest_bytes,
+        )
+    )
     try:
         bundle = StagedDatasetBundle.from_manifest(
             run_dir,
@@ -227,16 +250,10 @@ def main(argv: list[str] | None = None) -> int:
         )
     except StagedDatasetError as exc:
         raise SystemExit(f"error: {exc}") from exc
-    if args.modal_receipt is not None:
-        problems = _modal_receipt_problems(
-            bundle, args.modal_receipt, state_root=args.modal_state_root
-        )
+    if copied_back is not None:
+        problems = copied_back.output_problems(bundle)
         if problems:
-            raise SystemExit(
-                f"error: {run_dir} does not hold what the Modal stage wrote, so "
-                "nothing is staged:\n"
-                + "\n".join(f"  - {problem}" for problem in problems)
-            )
+            raise _copy_back_refusal(run_dir, problems)
     existing = _valid_record(manifest.get("staged_dataset"))
     handed_over = (
         None
@@ -349,61 +366,154 @@ def main(argv: list[str] | None = None) -> int:
     return 0 if delivery["status"] != "failed" else 1
 
 
-def _modal_receipt_problems(
-    bundle: StagedDatasetBundle,
+class _CopiedBackStage:
+    """A finished Modal stage's receipt, and where the run directory sits in it.
+
+    ``relative`` is the run directory's path under the copied-back state
+    directory, where the receipt lists each file by its path. (A plain class:
+    the tests load this command without registering it as a module, which a
+    dataclass needs.)
+    """
+
+    def __init__(self, receipt: Mapping[str, Any], relative: PurePosixPath) -> None:
+        self.receipt = receipt
+        self.relative = relative
+
+    def path(self, name: str) -> str:
+        return (self.relative / name).as_posix()
+
+    def listed(self) -> dict[str, Mapping[str, Any]]:
+        return {
+            str(item.get("path")): item
+            for item in self.receipt.get("outputs") or ()
+            if isinstance(item, Mapping)
+        }
+
+    def output_problems(self, bundle: StagedDatasetBundle) -> list[str]:
+        """Outputs whose measured SHA-256 or size differ from the receipt's.
+
+        ``bundle`` has already measured each output; the receipt lists every
+        one of them (``_copied_back_stage`` checked).
+        """
+        listed = self.listed()
+        problems = []
+        for output in bundle.files:
+            path = self.path(output.name)
+            entry = listed.get(path, {})
+            if (
+                entry.get("sha256") != output.sha256
+                or entry.get("bytes") != output.bytes
+            ):
+                problems.append(
+                    f"{path} is not the file the Modal stage wrote: its SHA-256 or "
+                    "size differs from the receipt's"
+                )
+        return problems
+
+
+def _copied_back_stage(
     receipt_path: Path,
     *,
-    state_root: Path | None = None,
-) -> list[str]:
-    """Why the bundle's outputs are not the files a finished Modal stage wrote.
+    state_root: Path | None,
+    run_dir: Path,
+    manifest: Mapping[str, Any],
+    manifest_bytes: bytes,
+) -> _CopiedBackStage:
+    """Read the receipt and check what can be checked without reading outputs.
 
-    The receipt lists every file of the stage's state directory by its path
-    under it; ``state_root`` is that directory as copied back, by default
+    The receipt must be of a stage that finished, and ``run_dir`` (resolved)
+    must be inside the stage's state directory as copied back: by default
     ``state/`` beside the receipt's ``receipts/`` directory, as ``modal volume
-    get`` leaves them. The bundle has already verified each output against
-    the manifest's digest; this compares each with the receipt's.
+    get`` leaves them, resolved as ``--modal-state-root`` is. The receipt must
+    list the build manifest and every output it registers; the build manifest
+    must also have the receipt's bytes while its record is still the build's
+    (:func:`_record_is_the_builds`). The command refuses otherwise, before any
+    output is hashed.
     """
 
     receipt_path = receipt_path.expanduser()
     try:
         receipt = json.loads(receipt_path.read_text(encoding="utf-8"))
     except (OSError, ValueError) as exc:
-        return [f"cannot read the Modal receipt {receipt_path}: {exc}"]
+        raise _copy_back_refusal(
+            run_dir, [f"cannot read the Modal receipt {receipt_path}: {exc}"]
+        ) from None
     if (
         not isinstance(receipt, Mapping)
         or receipt.get("schema") != modal_plan.RECEIPT_SCHEMA
     ):
-        return [f"{receipt_path} is not a {modal_plan.RECEIPT_SCHEMA} receipt"]
+        raise _copy_back_refusal(
+            run_dir, [f"{receipt_path} is not a {modal_plan.RECEIPT_SCHEMA} receipt"]
+        )
     problems = modal_plan.receipt_status_problems(receipt)
     root = (
         receipt_path.resolve().parent.parent / "state"
         if state_root is None
-        else state_root.expanduser().resolve()
-    )
+        else state_root.expanduser()
+    ).resolve()
     try:
-        relative = PurePosixPath(*bundle.run_dir.relative_to(root).parts)
+        relative = PurePosixPath(*run_dir.relative_to(root).parts)
     except ValueError:
-        return [
-            *problems,
-            f"{bundle.run_dir} is not inside the Modal run's state directory "
-            f"{root} (pass --modal-state-root)",
-        ]
-    listed = {
-        str(item.get("path")): item
-        for item in receipt.get("outputs") or ()
-        if isinstance(item, Mapping)
-    }
-    for output in bundle.files:
-        path = (relative / output.name).as_posix()
-        entry = listed.get(path)
-        if entry is None:
-            problems.append(f"the receipt lists no {path}")
-        elif entry.get("sha256") != output.sha256 or entry.get("bytes") != output.bytes:
+        problems.append(
+            f"{run_dir} is not inside the Modal run's state directory {root} "
+            "(pass --modal-state-root)"
+        )
+        raise _copy_back_refusal(run_dir, problems) from None
+    stage = _CopiedBackStage(receipt, relative)
+    listed = stage.listed()
+    manifest_path = stage.path(MANIFEST_FILENAME)
+    manifest_entry = listed.get(manifest_path)
+    if manifest_entry is None:
+        problems.append(f"the receipt lists no {manifest_path}")
+    elif _record_is_the_builds(manifest) and (
+        manifest_entry.get("sha256") != hashlib.sha256(manifest_bytes).hexdigest()
+        or manifest_entry.get("bytes") != len(manifest_bytes)
+    ):
+        problems.append(
+            f"{manifest_path} is not the build manifest the Modal stage wrote: its "
+            "SHA-256 or size differs from the receipt's"
+        )
+    not_mirrored = set(receipt.get("outputs_not_mirrored") or ())
+    outputs = manifest.get("outputs")
+    for entry in outputs.values() if isinstance(outputs, Mapping) else ():
+        recorded = entry.get("path") if isinstance(entry, Mapping) else None
+        name = PurePosixPath(str(recorded or "")).name
+        if not name:
+            continue  # The bundle refuses it.
+        path = stage.path(name)
+        if path in not_mirrored and not (run_dir / name).is_file():
             problems.append(
-                f"{path} is not the file the Modal stage wrote: its SHA-256 or size "
-                "differs from the receipt's"
+                f"{path} was hashed in the Modal container but never copied to the "
+                "runs volume (the receipt's outputs_not_mirrored), so no copy-back "
+                "holds it"
             )
-    return problems
+        elif path not in listed:
+            problems.append(f"the receipt lists no {path}")
+    if problems:
+        raise _copy_back_refusal(run_dir, problems)
+    return stage
+
+
+def _record_is_the_builds(manifest: Mapping[str, Any]) -> bool:
+    """Whether the build manifest still holds the build's own staged record.
+
+    A build run with ``HF_HUB_OFFLINE``, as the Modal runner runs every tool,
+    records its bundle as ``local_only`` (``disabled`` with staging off). Only
+    a hand-over replaces that with a ``local_and_remote`` record, rewriting
+    the manifest when the emitter copied it. A ``--local-only`` re-stage writes
+    the same ``local_only`` record again, in the build's own JSON rendering, so
+    the manifest keeps the bytes the receipt lists.
+    """
+
+    record = manifest.get("staged_dataset")
+    return not isinstance(record, Mapping) or record.get("mode") != "local_and_remote"
+
+
+def _copy_back_refusal(run_dir: Path, problems: list[str]) -> SystemExit:
+    return SystemExit(
+        f"error: {run_dir} does not hold what the Modal stage wrote, so nothing is "
+        "staged:\n" + "\n".join(f"  - {problem}" for problem in problems)
+    )
 
 
 def _write_sidecars(
