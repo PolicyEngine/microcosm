@@ -172,9 +172,9 @@ _RUN_MODULES = {
     "microcosm.calibrate.solve": ("uk.full.problem@1", *_NATIONAL_GRAPH),
     # full_targets' exclusion clock (exclusion_evaluation_date).
     "microcosm.build.uk_runtime.weighted_integrity": _FULL_GRAPH + _NATIONAL_GRAPH,
-    # full_targets' surface provenance and band-edge roster check, moved out
-    # of calibration_run, which no target kernel hashes.
-    "microcosm.build.uk_runtime.ledger_surface": _FULL_GRAPH + _NATIONAL_GRAPH,
+    # full_targets' surface provenance (_ledger_provenance) and band-edge
+    # roster check (_validate_band_edge_registry).
+    "microcosm.build.uk_runtime.calibration_run": _FULL_GRAPH + _NATIONAL_GRAPH,
 }
 
 #: Imports the kernels' modules make only to build the hash. They stay
@@ -208,10 +208,14 @@ UNCLASSIFIED_IMPORTS = MappingProxyType(
             "microcosm.build.uk_runtime.graph_national",
         ),
         "microcosm.build.country_spec": (
+            "microcosm.build.uk_runtime.calibration_run",
             "microcosm.build.uk_runtime.graph_national",
             "microcosm.build.uk_runtime.measure_simulation",
         ),
-        "microcosm.build.gate_battery": ("microcosm.build.uk_runtime.graph_national",),
+        "microcosm.build.gate_battery": (
+            "microcosm.build.uk_runtime.calibration_run",
+            "microcosm.build.uk_runtime.graph_national",
+        ),
         "microcosm.build.gates": (
             "microcosm.build.uk_runtime.fiscal_targets",
             "microcosm.build.uk_runtime.weighted_integrity",
@@ -245,13 +249,12 @@ UNCLASSIFIED_IMPORTS = MappingProxyType(
         "microcosm.build.uk_runtime.battery_bindings": (
             "microcosm.build.uk_runtime.graph_national",
         ),
-        "microcosm.build.uk_runtime.calibration_run": (
-            "microcosm.build.uk_runtime.graph_national",
-        ),
         "microcosm.build.uk_runtime.cgt_projection": (
+            "microcosm.build.uk_runtime.calibration_run",
             "microcosm.build.uk_runtime.graph_national",
         ),
         "microcosm.build.uk_runtime.content_identity": (
+            "microcosm.build.uk_runtime.calibration_run",
             "microcosm.build.uk_runtime.graph_national",
         ),
         "microcosm.build.uk_runtime.dataset_size": (
@@ -262,6 +265,9 @@ UNCLASSIFIED_IMPORTS = MappingProxyType(
         ),
         "microcosm.build.uk_runtime.diagnostics": (
             "microcosm.build.uk_runtime.graph_national",
+        ),
+        "microcosm.build.uk_runtime.etb_services": (
+            "microcosm.build.uk_runtime.calibration_run",
         ),
         "microcosm.build.uk_runtime.frs_annual_income": (
             "microcosm.build.uk_runtime.measure_simulation",
@@ -322,12 +328,16 @@ UNCLASSIFIED_IMPORTS = MappingProxyType(
             "microcosm.build.uk_runtime.local_doctrine",
         ),
         "microcosm.build.uk_runtime.national_frame": (
+            "microcosm.build.uk_runtime.calibration_run",
             "microcosm.build.uk_runtime.frs_relationships",
             "microcosm.build.uk_runtime.full_measure",
             "microcosm.build.uk_runtime.graph_national",
             "microcosm.build.uk_runtime.local_rowwise",
             "microcosm.build.uk_runtime.measure_simulation",
             "microcosm.build.uk_runtime.weighted_integrity",
+        ),
+        "microcosm.build.uk_runtime.release_certification": (
+            "microcosm.build.uk_runtime.calibration_run",
         ),
         "microcosm.build.uk_runtime.rowwise_dataset": (
             "microcosm.build.uk_runtime.full_measure",
@@ -366,6 +376,7 @@ UNCLASSIFIED_IMPORTS = MappingProxyType(
         ),
         "microcosm.frame.bundle": (
             "microcosm.build.country_spec",
+            "microcosm.build.uk_runtime.calibration_run",
             "microcosm.build.uk_runtime.frs_relationships",
             "microcosm.build.uk_runtime.full_measure",
             "microcosm.build.uk_runtime.graph_national",
