@@ -676,11 +676,11 @@ def test_generator_tool_writes_and_checks_the_committed_schema(
     written = tmp_path / committed.name
 
     assert tool.main(["--check"]) == 0
-    assert tool.main(["--out", str(written)]) == 0
+    assert tool.main(["--schema-version", "8", "--out", str(written)]) == 0
     assert written.read_bytes() == committed.read_bytes()
 
     written.write_text("{}\n", encoding="utf-8")
-    assert tool.main(["--check", "--out", str(written)]) == 1
+    assert tool.main(["--check", "--schema-version", "8", "--out", str(written)]) == 1
     assert "regenerate it with" in capsys.readouterr().err
     with pytest.raises(ValueError, match="differs from the schema the models generate"):
         diagnostics.assert_calibration_diagnostics_v8_json_schema_current(written)
