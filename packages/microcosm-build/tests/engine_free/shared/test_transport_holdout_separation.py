@@ -13,8 +13,14 @@ Invariants:
   another entity, a pre-calibration row, a mass row and a pre-calibration
   stage output on another entity each refuse with both rows named.
 - No packaged spec (AM, BE, NZ, UK, US) trips the guard, over every packaged
-  reference document, and composition of each gives the outcome it gave
-  before the guard.
+  reference document. Every packaged spec refuses activation today on missing
+  bindings; that refusal holds no guard line, and the guard leaves it
+  unchanged. A separate test runs the stage guard on each country's real
+  pre-calibration stages.
+- Branches: the guard reads the mass document when no node selects it,
+  counts a parked holdout as a holdout, and reads profile-selected views.
+- A non-text ``measure`` on any row raises no ``TypeError``; activation's
+  outcome equals its outcome without the guard.
 - Row-level holdouts stay: a spec that declares no ``holdout_references``
   rows composes whatever its rows measure.
 - Property: on random reference documents drawn from a small pool of
@@ -240,7 +246,14 @@ def test_packaged_reference_documents_pass_the_guard(country):
 
 @pytest.mark.parametrize("country", PACKAGED_COUNTRIES)
 def test_packaged_activation_outcome_is_unchanged(country, monkeypatch):
-    """Each packaged spec activates, or refuses, exactly as without the guard."""
+    """The guard adds no line to any packaged spec's activation refusal.
+
+    Every packaged spec refuses activation today on missing bindings, and
+    ``validate_transport_activation`` joins the guard's gaps into that same
+    refusal, so the refusal holds no guard line and equals the refusal with
+    the guard patched out. ``test_packaged_precalibration_stages_pass_the_stage_guard``
+    covers the stage guard, which activation's refusal never reaches.
+    """
 
     spec, _ = _packaged_reference_documents(country)
     guarded = _activation_error(spec)
