@@ -46,7 +46,7 @@ def test_checked_in_us_lock_is_fresh_schema_valid_and_not_authored() -> None:
         "simulate": 992,
     }
     assert remaining["receipt"]["manifest_sha256"] == (
-        "d4fb9de9c0b8081474a24d0abde84ebf05eb346483fc20e3852e29abc769a501"
+        "7ae93314d1aa09fd9d250cc1d8faea5767fd53a9c6ad32afcbb7c72c2af0d740"
     )
     assert (
         remaining["receipt"]["ssi_dependency_contract"]["engine_version_ref"]
