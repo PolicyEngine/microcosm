@@ -1561,12 +1561,15 @@ def test_bus_pricing_gate_recomputes_every_price_from_the_vendored_rows() -> Non
 def test_road_fuel_level_gate_recomputes_the_level_from_the_vendored_row() -> None:
     """The lcfs road_fuel_level receipt is fact-checked at stage time (microcosm#1113)."""
 
+    import copy
+
     import pandas as pd
 
     from microcosm.build.country_spec import load_country_spec
     from microcosm.build.uk_runtime.calibration_run import UK_SPINE_GATE_SCOPE
     from microcosm.build.uk_runtime.lcfs_consumption import (
         level_road_fuel,
+        road_fuel_household_mix,
         road_fuel_level,
         road_fuel_level_operation,
     )
@@ -1575,17 +1578,40 @@ def test_road_fuel_level_gate_recomputes_the_level_from_the_vendored_row() -> No
     assert gate_id in UK_SPINE_GATE_SCOPE
     parameters = _gate_parameters(gate_id)
     assert parameters["check"] == "road_fuel_level"
-    declared = road_fuel_level_operation(
-        load_country_spec("uk").sources.stage_map()["lcfs_consumption"]
-    )
+    stage = load_country_spec("uk").sources.stage_map()["lcfs_consumption"]
+    declared = road_fuel_level_operation(stage)
     draws = pd.DataFrame(
         {"petrol_spending": [900.0, 0.0, 400.0], "diesel_spending": [0.0, 700.0, 0.0]}
     )
+    # The declaration levels each fuel to its household-paid share
+    # (microcosm#1095 B3, K): the receipt carries the NTS shares it used.
+    paid = {"petrol_spending": 0.94, "diesel_spending": 0.89}
+    mix, mix_receipt = road_fuel_household_mix(stage, paid)
     _, receipt = level_road_fuel(
         draws,
         level=road_fuel_level(declared, other_fuels_share=0.004),
         weights=np.array([1.0e7, 1.5e7, 2.0e7]),
+        mix=mix,
+        mix_receipt={
+            **mix_receipt,
+            "nts": {
+                "fuels": {
+                    column: {"household_paid_share": share}
+                    for column, share in paid.items()
+                }
+            },
+        },
     )
+
+    def with_mix(**changes):
+        tampered = copy.deepcopy(receipt)
+        for path, value in changes.items():
+            node = tampered["mix"]
+            *parents, leaf = path.split("__")
+            for key in parents:
+                node = node[key]
+            node[leaf] = value
+        return tampered
 
     def run(ev):
         return uk_stage_health_gate(
@@ -1613,6 +1639,22 @@ def test_road_fuel_level_gate_recomputes_the_level_from_the_vendored_row() -> No
     failing({**receipt, "factor": receipt["factor"] * 1.01}, "does not reproduce")
     failing({**receipt, "source_record_id": "elsewhere"}, "declared row")
     failing({**receipt, "other_fuels_share": 0.2}, "other-fuels share")
+    assert passed.details["household_mix"] == pytest.approx(mix)
+    petrol_after = receipt["mix"]["frame_after"]["petrol_spending"]
+    failing(
+        with_mix(frame_after__petrol_spending=petrol_after * 1.01),
+        "levelled petrol_spending total",
+    )
+    failing(
+        with_mix(fuels__diesel_spending__mix=mix["diesel_spending"] * 1.01),
+        "recomputed",
+    )
+    failing(
+        with_mix(nts__fuels__petrol_spending__household_paid_share=1.2),
+        "outside (0, 1]",
+    )
+    with pytest.raises(ValueError, match="mix must be an object"):
+        run({key: value for key, value in receipt.items() if key != "mix"})
     with pytest.raises(ValueError, match="road_fuel_level must be an object"):
         run(None)
 

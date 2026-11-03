@@ -1224,6 +1224,10 @@ def _nts_donors() -> tuple[
             "NumCarVan": rows % 4,
             "HHoldNumPeople": 1 + rows % 4,
             "W2": 1.0 + (rows % 7) / 10.0,
+            # The interview weight and income fifth the zero-emission share
+            # and the household-paid road-fuel mix read (microcosm#1095 B3).
+            "W3": 1.0 + (rows % 5) / 10.0,
+            "HHIncQISEngTS_B01ID": 1 + rows % 5,
         }
     )
     person_rows = []
@@ -1328,6 +1332,58 @@ def _nts_donors() -> tuple[
     stage = pd.DataFrame(stage_rows)
     ticket = pd.DataFrame(ticket_rows)
     return household, individual, trip, stage, ticket
+
+
+def _nts_vehicles(household: pd.DataFrame) -> pd.DataFrame:
+    """Synthetic NTS Vehicle table for the households of ``_nts_donors``.
+
+    Three cars a household (a four-by-four in every tenth), each fuel by its
+    number (petrol, diesel, then another propulsion), and every eighth
+    household a motorcycle the car filter drops. The third car is
+    zero-emission (CO2 band 1), and so is the second in the top two income
+    fifths, so every fifth holds enough zero-emission cars and the risks
+    rise with income; every seventh household's first car has no linked
+    band, and every fourth household's second car is a company car. A
+    household nobody in which works (every fifth) has no commuting or
+    business miles (-9); private miles are the rest of the year's.
+    """
+
+    rows = []
+    for index, household_row in household.reset_index(drop=True).iterrows():
+        fifth = int(household_row["HHIncQISEngTS_B01ID"])
+        household_id = int(household_row["HouseholdID"])
+        for car in range(4 if index % 8 == 0 else 3):
+            motorcycle = car == 3
+            zero_emission = car == 2 or (car == 1 and fifth >= 4)
+            annual = 4000 + 1000 * (index % 9) + 500 * car
+            works = index % 5 != 0
+            commuting = 1000 * (index % 3) if works else -9
+            business = 200 * (car + 1) if works else -9
+            private = annual - max(commuting, 0) - max(business, 0)
+            rows.append(
+                {
+                    "VehicleID": household_id * 10 + car,
+                    "HouseholdID": household_id,
+                    "VehType_B03ID": 2 if motorcycle else (3 if index % 10 == 3 else 1),
+                    "CarOwn_B01ID": 2 if car == 1 and index % 4 == 0 else 1,
+                    "VehPropTypeTS_B01ID": min(car, 2) + 1,
+                    "VehCO2Bands_B01ID": (
+                        1
+                        if zero_emission
+                        else (
+                            -8
+                            if car == 0 and index % 7 == 0
+                            else 2 + (index + car) % 12
+                        )
+                    ),
+                    "VehAnMileage": annual,
+                    "VehComMile": commuting,
+                    "VehBusMile": business,
+                    "VehPriMile": private,
+                    "SurveyYear": int(household_row["SurveyYear"]),
+                }
+            )
+    return pd.DataFrame(rows)
 
 
 def _etb_donor() -> pd.DataFrame:
@@ -2126,6 +2182,7 @@ def _build_implementations(
     nts_trip: pd.DataFrame,
     nts_stage: pd.DataFrame,
     nts_ticket: pd.DataFrame,
+    nts_vehicle: pd.DataFrame,
     lcfs_household: pd.DataFrame,
     lcfs_person: pd.DataFrame,
     etb: pd.DataFrame,
@@ -2246,6 +2303,8 @@ def _build_implementations(
             engine=engine,
             lcfs_household=lcfs_household,
             lcfs_person=lcfs_person,
+            nts_household=nts_household,
+            nts_vehicle=nts_vehicle,
         ),
         "etb_vat": UKETBVATStageTransform(
             stage=stages["etb_vat"], engine=engine, donor=etb
@@ -2436,6 +2495,7 @@ def generate(output: Path) -> None:
     was = _was_donor()
     was_person = _was_person_donor()
     nts_household, nts_individual, nts_trip, nts_stage, nts_ticket = _nts_donors()
+    nts_vehicle = _nts_vehicles(nts_household)
     lcfs_household, lcfs_person = _lcfs_donors()
     etb = _etb_donor()
     spi_donor = _spi_donor()
@@ -2446,6 +2506,7 @@ def generate(output: Path) -> None:
     _write_csv(sources / "nts_trip.csv", nts_trip)
     _write_csv(sources / "nts_stage.csv", nts_stage)
     _write_csv(sources / "nts_ticket.csv", nts_ticket)
+    _write_csv(sources / "nts_vehicle.csv", nts_vehicle)
     _write_csv(sources / "lcfs_household.csv", lcfs_household)
     _write_csv(sources / "lcfs_person.csv", lcfs_person)
     _write_csv(sources / "etb.csv", etb)
@@ -2473,6 +2534,7 @@ def generate(output: Path) -> None:
         nts_trip=nts_trip,
         nts_stage=nts_stage,
         nts_ticket=nts_ticket,
+        nts_vehicle=nts_vehicle,
         lcfs_household=lcfs_household,
         lcfs_person=lcfs_person,
         etb=etb,
@@ -2560,6 +2622,7 @@ def generate(output: Path) -> None:
             "nts_trip": "nts_trip.csv",
             "nts_stage": "nts_stage.csv",
             "nts_ticket": "nts_ticket.csv",
+            "nts_vehicle": "nts_vehicle.csv",
             "lcfs_household": "lcfs_household.csv",
             "lcfs_person": "lcfs_person.csv",
             "etb": "etb.csv",

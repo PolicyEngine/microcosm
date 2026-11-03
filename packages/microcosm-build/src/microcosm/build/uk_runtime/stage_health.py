@@ -3713,10 +3713,19 @@ def _road_fuel_level_gate(
     from the drawn total, to ``maximum_relative_deviation``. The other-fuels
     share comes from the licensed LCFS donor, so it is bounded, not recomputed:
     it must lie in [0, ``maximum_other_fuels_share``].
+
+    A declared ``mix_rule`` (microcosm#1095 B3, K) levels each fuel to the
+    level times its household-paid share: each fuel's levelled total must be
+    the level times the share recomputed here from the vendored litres,
+    cars shares and pump prices, with the receipt's household-paid shares of
+    car miles, which come from the licensed NTS and so are bounded to (0, 1],
+    not recomputed; the receipt's own mix must match it.
     """
 
     from microcosm.build.country_spec import load_country_spec
     from microcosm.build.uk_runtime.lcfs_consumption import (
+        UK_LCFS_ROAD_FUEL_COLUMNS,
+        road_fuel_household_mix,
         road_fuel_level,
         road_fuel_level_operation,
     )
@@ -3733,9 +3742,8 @@ def _road_fuel_level_gate(
         parameters.get("maximum_other_fuels_share"),
         label=f"{stage}.maximum_other_fuels_share",
     )
-    declared = road_fuel_level_operation(
-        load_country_spec("uk").sources.stage_map()[stage]
-    )
+    spec_stage = load_country_spec("uk").sources.stage_map()[stage]
+    declared = road_fuel_level_operation(spec_stage)
     if declared is None:
         raise ValueError(f"{stage}: declares no level_road_fuel operation.")
     share = _finite_number(
@@ -3789,6 +3797,49 @@ def _road_fuel_level_gate(
         "factor": factor,
         "petrol_share_of_level": receipt.get("petrol_share_of_level"),
     }
+    if declared.get("mix_rule") is not None:
+        mix = _mapping(receipt.get("mix"), label=f"{stage}.road_fuel_level.mix")
+        nts = _mapping(
+            _mapping(mix.get("nts"), label=f"{stage}.road_fuel_level.mix.nts").get(
+                "fuels"
+            ),
+            label=f"{stage}.road_fuel_level.mix.nts.fuels",
+        )
+        paid: dict[str, float] = {}
+        for column in UK_LCFS_ROAD_FUEL_COLUMNS:
+            value = _finite_number(
+                _mapping(nts.get(column), label=f"{stage}.{column}").get(
+                    "household_paid_share"
+                ),
+                label=f"{stage}.{column}.household_paid_share",
+            )
+            if not 0.0 < value <= 1.0:
+                failures.append(
+                    f"{stage}: the household-paid {column} share {value} is outside "
+                    "(0, 1]."
+                )
+                value = min(max(value, 1e-12), 1.0)
+            paid[column] = value
+        expected, _ = road_fuel_household_mix(spec_stage, paid)
+        fuels = _mapping(mix.get("fuels"), label=f"{stage}.road_fuel_level.mix.fuels")
+        after = _mapping(
+            mix.get("frame_after"), label=f"{stage}.road_fuel_level.mix.frame_after"
+        )
+        for column in UK_LCFS_ROAD_FUEL_COLUMNS:
+            observed = _mapping(fuels.get(column), label=f"{stage}.{column}").get("mix")
+            if not _close(observed, expected[column]):
+                failures.append(
+                    f"{stage}: the receipt's {column} mix {observed!r} is not the "
+                    f"recomputed {expected[column]}."
+                )
+            if not _close(after.get(column), level.level * expected[column]):
+                failures.append(
+                    f"{stage}: the levelled {column} total {after.get(column)!r} is not "
+                    f"the level times its household-paid share, "
+                    f"{level.level * expected[column]}."
+                )
+        details["household_paid_share"] = paid
+        details["household_mix"] = expected
     return (
         _fail(stage, check, failures, details)
         if failures

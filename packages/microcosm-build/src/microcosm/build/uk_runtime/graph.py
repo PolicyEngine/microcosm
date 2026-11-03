@@ -194,7 +194,14 @@ _SPLIT_STAGE_SOURCES: Mapping[str, tuple[str, ...]] = {
         "nts_stage",
         "nts_ticket",
     ),
-    "lcfs_consumption": ("lcfs_household", "lcfs_person"),
+    # The zero-emission share by income fifth and the household-paid road-fuel
+    # mix read the NTS private cars (microcosm#1095 B3, J2 and K).
+    "lcfs_consumption": (
+        "lcfs_household",
+        "lcfs_person",
+        "nts_household",
+        "nts_vehicle",
+    ),
     "etb_vat": ("etb",),
     "etb_services": ("etb",),
     "frs_hmrc_spine_leaves": ("frs",),
@@ -212,6 +219,7 @@ _SPLIT_SOURCE_DESCRIPTIONS = {
     "nts_trip": "Pinned local NTS trip donor table.",
     "nts_stage": "Pinned local NTS stage donor table.",
     "nts_ticket": "Pinned local NTS ticket donor table.",
+    "nts_vehicle": "Pinned local NTS vehicle donor table.",
     "lcfs_household": "Pinned local LCFS household donor table.",
     "lcfs_person": "Pinned local LCFS person donor table.",
     "etb": "Pinned local ETB household donor table.",

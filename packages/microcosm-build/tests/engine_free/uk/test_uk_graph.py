@@ -126,15 +126,20 @@ def test_uk_production_graph_binds_split_donor_sources_and_runtime_config() -> N
         "nts_trip",
         "nts_stage",
         "nts_ticket",
+        "nts_vehicle",
         "lcfs_household",
         "lcfs_person",
         "etb",
         "spi",
         "hmrc_income",
     }
+    # The NTS household and vehicle tabs feed the zero-emission share by income
+    # fifth and the household-paid road-fuel mix (microcosm#1095 B3).
     assert graph.node("lcfs_consumption").sources == (
         "lcfs_household",
         "lcfs_person",
+        "nts_household",
+        "nts_vehicle",
     )
     assert graph.node("was_lisa").sources == ("was", "was_person")
     assert graph.node("hmrc_spi_income_spine").sources == (

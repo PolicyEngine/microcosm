@@ -68,6 +68,70 @@
   }
  },
  "$defs": {
+  "nts_cars": {
+   "type": "object",
+   "additionalProperties": false,
+   "required": [
+    "survey_years",
+    "vehicle_types",
+    "private_keeper",
+    "company_keeper",
+    "weight",
+    "income_quintile",
+    "zero_emission_co2_bands",
+    "propulsion"
+   ],
+   "properties": {
+    "survey_years": {
+     "type": "array",
+     "minItems": 1,
+     "items": {
+      "type": "integer"
+     }
+    },
+    "vehicle_types": {
+     "type": "array",
+     "minItems": 1,
+     "items": {
+      "type": "integer"
+     }
+    },
+    "private_keeper": {
+     "type": "array",
+     "minItems": 1,
+     "items": {
+      "type": "integer"
+     }
+    },
+    "company_keeper": {
+     "type": "array",
+     "minItems": 1,
+     "items": {
+      "type": "integer"
+     }
+    },
+    "weight": {
+     "type": "string"
+    },
+    "income_quintile": {
+     "type": "string"
+    },
+    "zero_emission_co2_bands": {
+     "type": "array",
+     "minItems": 1,
+     "items": {
+      "type": "integer"
+     }
+    },
+    "propulsion": {
+     "type": "object",
+     "minProperties": 1,
+     "additionalProperties": {
+      "type": "integer"
+     }
+    }
+   }
+  },
   "stage_asset": {
    "type": "object",
    "additionalProperties": false,
@@ -7538,7 +7602,23 @@
        "type": "string"
       },
       "rate_rule": {
-       "const": "per_car_zero_emission_share"
+       "enum": [
+        "per_car_zero_emission_share",
+        "per_car_zero_emission_share_by_income_quintile"
+       ]
+      },
+      "nts_cars": {
+       "$ref": "#/$defs/nts_cars"
+      },
+      "minimum_zero_emission_cars": {
+       "type": "integer",
+       "minimum": 1
+      },
+      "frame_income": {
+       "type": "string"
+      },
+      "frame_equivalisation": {
+       "type": "string"
       },
       "period_value": {
        "type": "integer"
@@ -12722,6 +12802,12 @@
        "items": {
         "type": "string"
        }
+      },
+      "mix_rule": {
+       "const": "household_paid_litres"
+      },
+      "nts_cars": {
+       "$ref": "#/$defs/nts_cars"
       }
      }
     },
