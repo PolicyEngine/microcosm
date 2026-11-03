@@ -614,6 +614,138 @@ def test_p4_no_views_no_change(relations, arithmetic, output_dtypes, population)
     assert calls[0] == calls[1]
 
 
+def _base_materialize(adapter, bundle, variables, period):
+    """A reference copy of main 4a36edcf's ``AxiomEngine.materialize``.
+
+    The no-view path regroups requested names by execution root at PR 1's
+    head; this copy keeps the base grouping, so P4 compares outputs with it.
+    """
+    from microcosm.frame.adapters.axiom import (
+        _GRAPH_OUTPUT_DTYPES,
+        _batch_from_table,
+        _graph_output,
+    )
+
+    adapter._require_schema(bundle)
+    start, end, period_kind = adapter._materialization_period(period)
+    by_entity = {}
+    for name in variables:
+        metadata = adapter.variable_metadata(name)
+        by_entity.setdefault(metadata.entity, []).append(name)
+    engine_dtypes = {}
+    if adapter._output_dtypes == "graph":
+        derived = adapter._derived_metadata()
+        engine_dtypes = {name: derived[name].dtype for name in variables}
+        assert all(dtype in _GRAPH_OUTPUT_DTYPES for dtype in engine_dtypes.values())
+    results = {}
+    for frame_entity, names in by_entity.items():
+        program = adapter._program(frame_entity)
+        if program.relations or adapter._relations:
+            adapter.assert_declared_relations(frame_entity)
+        table = bundle.table(frame_entity)
+        inputs = _batch_from_table(table, program.root_inputs)
+        execute = (
+            program.execute_f64 if adapter._arithmetic == "f64" else program.execute
+        )
+        arguments = dict(
+            period_kind=period_kind,
+            start=start,
+            end=end,
+            inputs=inputs,
+            outputs=list(names),
+        )
+        if program.relations:
+            arguments["relations"] = adapter._relation_batches(
+                bundle, frame_entity, period
+            )
+        outputs = execute(**arguments)["outputs"]
+        expected = bundle.n(frame_entity)
+        for name in names:
+            values = np.asarray(outputs[name])
+            assert values.shape == (expected,)
+            if adapter._output_dtypes == "graph":
+                values = _graph_output(name, engine_dtypes[name], values)
+            results[name] = values
+    return results
+
+
+def _no_view_programs():
+    person = _Program(
+        "Person",
+        ("age", "income"),
+        [
+            _metadata("adult_amount", "Person", "decimal"),
+            _metadata("adult_test", "Person", "judgment"),
+            _metadata("adult_flag", "Person", "bool"),
+            _metadata("adult_count", "Person", "integer"),
+            _metadata("toy_total", "Household", "decimal"),
+        ],
+        function=lambda age, income: {
+            "adult_amount": age * 2.5 + income,
+            "adult_test": np.where(age > 40, 1, np.where(age > 20, 0, -1)).astype(
+                np.int8
+            ),
+            "adult_flag": income > 0,
+            "adult_count": age // 3,
+        },
+    )
+    household = _Program(
+        "Household",
+        ("scale",),
+        person.derived_metadata,
+        function=lambda scale: {"toy_total": scale * 3.0},
+    )
+    return {"Person": person, "Household": household}
+
+
+_NO_VIEW_NAMES = ("adult_amount", "adult_test", "adult_flag", "adult_count")
+
+
+@settings(max_examples=40, deadline=None, database=None)
+@given(
+    arithmetic=st.sampled_from(("decimal", "f64")),
+    output_dtypes=st.sampled_from(("native", "graph")),
+    names=st.lists(
+        st.sampled_from((*_NO_VIEW_NAMES, "toy_total")), min_size=1, unique=True
+    ),
+    population=_population(min_rows=1, max_rows=20),
+)
+def test_p4_no_views_outputs_equal_the_base_path(
+    arithmetic, output_dtypes, names, population
+):
+    """``views=None`` returns the base adapter's tables: names, order, dtypes, values."""
+    selected, ages, incomes, _ = population
+    returned = []
+    for materialize in (AxiomEngine.materialize, _base_materialize):
+        adapter = AxiomEngine(
+            MODULE,
+            SCHEMA,
+            rulespec_roots=(ROOT,),
+            entity_names=NAMES,
+            arithmetic=arithmetic,
+            output_dtypes=output_dtypes,
+            views=None,
+        )
+        engine = _FakeEngine(_no_view_programs())
+        with pytest.MonkeyPatch.context() as patch:
+            patch.setattr(adapter, "_import_engine", lambda engine=engine: engine)
+            frame = _frame(selected, ages, incomes)
+            frame.table("household")["scale"] = np.full(1, 7.0)
+            result = materialize(adapter, frame, names, "2025")
+        returned.append(
+            (
+                list(result),
+                [(values.dtype, values.tolist()) for values in result.values()],
+                [
+                    (sorted(call), call["outputs"])
+                    for program in engine.programs.values()
+                    for call in program.calls
+                ],
+            )
+        )
+    assert returned[0] == returned[1]
+
+
 @settings(max_examples=60, deadline=None, database=None)
 @given(_population(), st.randoms(use_true_random=False))
 def test_p5_shuffling_rows_shuffles_outputs(population, generator):
@@ -710,8 +842,13 @@ def test_differential_a_mapped_child_entity_against_the_view(population):
 # ---------------------------------------------------------------------------
 
 
-def test_axiom_first_party_imports_are_pinned():
-    """A view helper moved to a new module would sit in no kernel's source hash."""
+def test_axiom_imports_are_pinned_everywhere_in_the_module():
+    """Every import node, in function bodies and relative ones too, is pinned.
+
+    A view helper moved to a new module, or into one axiom.py already imports
+    (``materialize``, ``concept_mapping``), would leave the simulate.* hashes,
+    which hash axiom.py's own file, unmoved by an edit to it.
+    """
     import ast
 
     source = (
@@ -719,8 +856,12 @@ def test_axiom_first_party_imports_are_pinned():
     ).read_text()
     imported = set()
     for node in ast.walk(ast.parse(source)):
-        if isinstance(node, ast.ImportFrom) and node.module:
-            imported.add(node.module)
+        if isinstance(node, ast.ImportFrom):
+            base = "." * node.level + (node.module or "")
+            if node.module is None:
+                imported.update(f"{base}{alias.name}" for alias in node.names)
+            else:
+                imported.add(base)
         elif isinstance(node, ast.Import):
             imported.update(alias.name for alias in node.names)
     first_party = {
@@ -736,6 +877,30 @@ def test_axiom_first_party_imports_are_pinned():
         "microcosm.frame.schema",
         "microcosm.graph.canonical",
     }
+    # Lazy engine imports in function bodies are third-party, not first-party.
+    assert {"axiom_rules_engine", "axiom_rules_engine.dense", "yaml"} <= imported
+
+
+def test_view_code_is_defined_in_the_adapter_module():
+    """Code re-exported from another module would carry that module's name."""
+    from microcosm.frame.adapters import axiom
+
+    view_code = (
+        AxiomView,
+        AxiomEngine._validate_views,
+        AxiomEngine._view_for,
+        AxiomEngine.view_root_inputs,
+        AxiomEngine._view_program,
+        AxiomEngine._view_selection,
+        AxiomEngine._materialize_view,
+        AxiomEngine.materialize,
+        AxiomEngine.relation_dependencies,
+        AxiomEngine._derived_metadata,
+        axiom._outside_values,
+        axiom._graph_output,
+        axiom._batch_from_table,
+    )
+    assert {item.__module__ for item in view_code} == {"microcosm.frame.adapters.axiom"}
 
 
 # ---------------------------------------------------------------------------
