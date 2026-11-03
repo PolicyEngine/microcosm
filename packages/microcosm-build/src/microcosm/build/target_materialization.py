@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import functools
 import json
 import math
 import re
@@ -21,9 +22,10 @@ Provider = Callable[[Any, Mapping[str, Any], int | str], np.ndarray]
 # spec carries its own band's lower edge in Ledger filter metadata. Two
 # encodings are in use — a numeric lower bound (HMRC SPI income bands) and a
 # published range label (DWP award bands, in monthly units, hence
-# ``band_period_factor``) — and both reduce to one lower edge, because no
-# reference anywhere declares an upper bound. A band's upper edge is its
-# sibling's lower edge within the same compiled contract target. Edges must
+# ``band_period_factor``) — and both reduce to one lower edge. A band's upper
+# edge is its sibling's lower edge within the same compiled contract target,
+# except for DWP's half-open labels ("£20.00 to under £40.00", "Under £20.00"),
+# which publish their own exclusive upper edge and keep it. Edges must
 # never derive from an exclusion-pruned roster, or excluding a band silently
 # widens its lower neighbour; only the compiled register's top band runs to
 # infinity unless the binding declares a source-unit ``band_upper_bound``.
@@ -33,13 +35,32 @@ _COUNT_VALUE_VARIABLES = frozenset({"household_count", "person_count", "benunit_
 _BAND_LOWER_BOUND_SUFFIX = "_lower_bound"
 _LEDGER_FILTER_PREFIX = "ledger_filter_"
 _RANGE_LABEL = re.compile(
-    r"([\d,]+(?:\.\d+)?)\s*(?:to|–|—|-)\s*(?:£\s*)?([\d,]+(?:\.\d+)?)",
+    r"([\d,]+(?:\.\d+)?)\s*(?:to(?:\s+under)?|–|—|-)\s*(?:£\s*)?([\d,]+(?:\.\d+)?)",
     re.IGNORECASE,
 )
 _OPEN_LABEL = re.compile(
     r"([\d,]+(?:\.\d+)?)\s*(?:or more|or over|and over|and above|\+)",
     re.IGNORECASE,
 )
+# DWP's half-open amount bands publish their own exclusive upper edge:
+# "£20.00 to under £40.00", and the bottom band "Under £20.00" (lower edge
+# zero). The bottom form needs the pound sign, so an age filter such as
+# "Under 25" never reads as an amount band.
+_HALF_OPEN_LABEL = re.compile(
+    r"^\s*£?\s*([\d,]+(?:\.\d+)?)\s*to\s+under\s*£?\s*([\d,]+(?:\.\d+)?)\s*$",
+    re.IGNORECASE,
+)
+_UNDER_LABEL = re.compile(r"^\s*under\s*£\s*([\d,]+(?:\.\d+)?)\s*$", re.IGNORECASE)
+#: An opt-in reading of whole-pence amount bands. DWP publishes UC award bands
+#: as "£0.01 to £100.00", "£100.01 to £200.00", ..., "£2,500.01 or over": each
+#: band starts a penny above its predecessor's top, so the band is the
+#: upper-closed interval (label lower - £0.01, next label lower - £0.01] in
+#: source units, and model values are compared in whole pence, so an award of
+#: a penny a month lands in the bottom band (microcosm#1095). Where the top
+#: category is not bound, ``band_upper_bound`` closes the last bound band.
+WHOLE_PENCE_UPPER_CLOSED = "whole_pence_upper_closed"
+BAND_SEMANTICS = frozenset({WHOLE_PENCE_UPPER_CLOSED})
+_PENNY = 0.01
 _MISSING_COLUMN = re.compile(r"^'(?:([a-z_0-9]+)\.)?([A-Za-z_0-9]+)'$")
 
 #: Provider kinds whose values are additionally masked by the binding's
@@ -63,6 +84,69 @@ class MeasureProvider(Protocol):
     def knows(self, entity: str, variable: str) -> bool: ...
 
     def compute(self, entity: str, variable: str) -> tuple[np.ndarray, str]: ...
+
+
+#: Prefix of the measure-input column a resolved counterfactual delta lands in.
+COUNTERFACTUAL_DELTA_COLUMN_PREFIX = "counterfactual_delta__"
+
+
+def counterfactual_column(binding: Mapping[str, Any]) -> str:
+    """The slash-free measure-input column of a counterfactual binding's delta.
+
+    A provider with ``counterfactual_delta(binding, period)`` resolves the
+    binding's per-row delta into this column; slashes in the metric name are
+    replaced because the prepared frame's HDF writer refuses them.
+    """
+
+    metric = str(binding.get("metric_name") or "")
+    if not metric:
+        raise ValueError("a counterfactual binding needs a metric_name")
+    return COUNTERFACTUAL_DELTA_COLUMN_PREFIX + re.sub(r"[^0-9A-Za-z_]", "_", metric)
+
+
+#: Prefix of the measure-input column a resolved value lands in when the frame
+#: already stores the variable (microcosm#1324). A stored column holds the
+#: frame's own period; the provider computes the value at the binding's
+#: measurement period, and writing it under the bare name would overwrite the
+#: stored column that filters, conditions and later stages still read.
+ENGINE_PERIOD_COLUMN_PREFIX = "engine_period__"
+
+
+def measure_input_column(adapter: Any, entity: str, variable: str) -> str:
+    """The column a resolved measure input is injected under.
+
+    A variable the adapter's frame stores goes under the reserved
+    ``engine_period__`` name; any other variable keeps its own name, as
+    before. An adapter that declares no ``stored_columns`` keeps every
+    variable's own name.
+    """
+
+    stored = getattr(adapter, "stored_columns", None)
+    if stored is not None and variable in stored.get(entity, ()):
+        return ENGINE_PERIOD_COLUMN_PREFIX + variable
+    return variable
+
+
+def inject_measure_inputs(
+    adapter: Any, measure_inputs: Mapping[tuple[str, str], np.ndarray]
+) -> None:
+    """Write resolved measure inputs into an adapter's table copies."""
+
+    for (entity, variable), values in measure_inputs.items():
+        adapter.tables[entity][measure_input_column(adapter, entity, variable)] = values
+
+
+def drop_injected_measure_inputs(
+    adapter: Any,
+    measure_inputs: Mapping[tuple[str, str], np.ndarray],
+    original_columns: Mapping[str, set[str]],
+) -> None:
+    """Drop the columns :func:`inject_measure_inputs` added to an adapter."""
+
+    for entity, variable in measure_inputs:
+        column = measure_input_column(adapter, entity, variable)
+        if column not in original_columns[entity]:
+            adapter.tables[entity].drop(columns=[column], inplace=True)
 
 
 @dataclass(frozen=True)
@@ -174,16 +258,20 @@ def resolve_target_measures(
         "provider": _measure_provider_receipt(provider),
     }
     all_skips: list[dict[str, Any]] = []
+    specs_by_name = {spec.name: spec for spec in registry.specs}
 
     for round_index in range(max_rounds):
         probe = adapter_factory()
         _inject_measure_inputs(probe, measure_inputs)
+        # With a provider at hand, a stored value column read at a period the
+        # frame does not hold is routed to the provider (microcosm#1324).
         result = materialize_target_bindings(
             probe,
             registry,
             contract,
             period=period,
             band_edge_registry=band_edge_registry,
+            route_stored_values=True,
         )
         skipped = tuple(result.skipped)
         round_receipt = {
@@ -205,11 +293,24 @@ def resolve_target_measures(
         for skip in skipped:
             reason = str(skip.reason)
             if "counterfactual_delta" in reason or "counterfactual delta" in reason:
-                _raise_measure_resolution(
-                    "counterfactual target measure cannot be resolved",
-                    receipt,
-                    all_skips,
+                key, values, route = _resolve_counterfactual_skip(
+                    skip,
+                    specs_by_name=specs_by_name,
+                    contract=contract,
+                    provider=provider,
+                    period=period,
+                    provided_this_round=provided_this_round,
+                    provided_before=provided_before,
+                    receipt=receipt,
+                    all_skips=all_skips,
                 )
+                if values is not None:
+                    measure_inputs[key] = values
+                    provided_this_round.add(key)
+                    receipt["attached"][f"{key[0]}.{key[1]}"] = route
+                    receipt["provider"] = _measure_provider_receipt(provider)
+                    progressed = True
+                continue
             match = _MISSING_COLUMN.match(reason)
             if match is None:
                 _raise_measure_resolution(
@@ -271,6 +372,59 @@ def resolve_target_measures(
     )
 
 
+def _resolve_counterfactual_skip(
+    skip: MaterializationSkip,
+    *,
+    specs_by_name: Mapping[str, Any],
+    contract: Mapping[str, Mapping[str, Any]],
+    provider: MeasureProvider,
+    period: int | str,
+    provided_this_round: set[tuple[str, str]],
+    provided_before: set[tuple[str, str]],
+    receipt: dict[str, Any],
+    all_skips: list[dict[str, Any]],
+) -> tuple[tuple[str, str], np.ndarray | None, str]:
+    """Resolve one counterfactual skip through the provider, or refuse.
+
+    Returns the measure-input key and the delta, or ``None`` values when this
+    round already provided the key (several fan-out specs share one binding).
+    """
+
+    resolve = getattr(provider, "counterfactual_delta", None)
+    spec = specs_by_name.get(skip.name)
+    target = (
+        None
+        if spec is None
+        else contract.get(str(spec.metadata.get("contract_target_id")))
+    )
+    if not callable(resolve) or target is None:
+        _raise_measure_resolution(
+            "counterfactual target measure cannot be resolved",
+            receipt,
+            all_skips,
+        )
+    binding = target["bindings"]["policyengine"]
+    entity = str(binding.get("from_entity") or spec.entity)
+    key = (entity, counterfactual_column(binding))
+    if key in provided_this_round:
+        return key, None, ""
+    if key in provided_before:
+        _raise_measure_resolution(
+            f"{entity}.{key[1]} remained unmaterializable after injection",
+            receipt,
+            all_skips,
+        )
+    try:
+        values, route = resolve(binding, binding.get("measurement_period", period))
+    except Exception as exc:  # noqa: BLE001 - receipt preserves cause
+        _raise_measure_resolution(
+            f"provider failed computing counterfactual {entity}.{key[1]}: {exc}",
+            receipt,
+            all_skips,
+        )
+    return key, np.asarray(values, dtype=float), str(route)
+
+
 def _measure_resolution_contract(
     registry: TargetRegistry,
     provider: MeasureProvider,
@@ -307,8 +461,7 @@ def _provider_entity_for(provider: MeasureProvider, variable: str) -> str | None
 def _inject_measure_inputs(
     adapter: Any, measure_inputs: Mapping[tuple[str, str], np.ndarray]
 ) -> None:
-    for (entity, variable), values in measure_inputs.items():
-        adapter.tables[entity][variable] = values
+    inject_measure_inputs(adapter, measure_inputs)
 
 
 def _raise_measure_resolution(
@@ -342,6 +495,9 @@ def _band_lower_edge(spec: Any, binding: Mapping[str, Any]) -> float | None:
         if key.endswith(_BAND_LOWER_BOUND_SUFFIX):
             numeric.append((key, float(str(value).replace(",", ""))))
             continue
+        if _UNDER_LABEL.match(str(value)):
+            labelled.append((key, 0.0))
+            continue
         match = _RANGE_LABEL.search(str(value)) or _OPEN_LABEL.search(str(value))
         if match is not None:
             labelled.append((key, float(match.group(1).replace(",", ""))))
@@ -350,6 +506,31 @@ def _band_lower_edge(spec: Any, binding: Mapping[str, Any]) -> float | None:
             continue
         return _select_band_edge(spec, binding, candidates) * factor
     return None
+
+
+def _band_label_upper_edge(spec: Any, binding: Mapping[str, Any]) -> float | None:
+    """The exclusive upper edge a half-open band label publishes, if any.
+
+    ``"£20.00 to under £40.00"`` and ``"Under £20.00"`` state their own upper
+    edge, so the band never borrows it from a sibling (whose exclusion would
+    otherwise widen it), in model units after ``band_period_factor``.
+    """
+
+    metadata = getattr(spec, "metadata", None) or {}
+    factor = float(binding.get("band_period_factor", 1) or 1)
+    uppers: list[tuple[str, float]] = []
+    for key, value in sorted(metadata.items()):
+        if not key.startswith(_LEDGER_FILTER_PREFIX) or key.endswith(
+            _BAND_LOWER_BOUND_SUFFIX
+        ):
+            continue
+        match = _HALF_OPEN_LABEL.match(str(value)) or _UNDER_LABEL.match(str(value))
+        if match is not None:
+            upper = match.group(match.lastindex or 1).replace(",", "")
+            uppers.append((key, float(upper)))
+    if not uppers:
+        return None
+    return _select_band_edge(spec, binding, uppers) * factor
 
 
 def _select_band_edge(
@@ -451,6 +632,38 @@ def _band_bounds(
         if edge > lower:
             upper = edge
             break
+    semantics = _band_semantics(binding)
+    if semantics == WHOLE_PENCE_UPPER_CLOSED:
+        if "band_upper_bound_inclusive" in binding:
+            raise ValueError(
+                "whole_pence_upper_closed bands are closed above; declare no "
+                "band_upper_bound_inclusive"
+            )
+        factor = float(binding.get("band_period_factor", 1) or 1)
+        step = _PENNY * factor
+        closed_upper = upper - step
+        # A consumer may bind only the finite portion of a published
+        # histogram. band_upper_bound is then the closed top of the last bound
+        # band in source units, so that band does not absorb a separately
+        # published, unbound top-coded category.
+        if "band_upper_bound" in binding:
+            declared_upper = float(binding["band_upper_bound"]) * factor
+            if not math.isfinite(declared_upper) or declared_upper <= lower - step:
+                raise ValueError(
+                    "band_upper_bound requires a finite bound above the band's "
+                    "lower edge"
+                )
+            closed_upper = min(closed_upper, declared_upper)
+        return lower - step, closed_upper
+    own_upper = _band_label_upper_edge(spec, binding)
+    if own_upper is not None:
+        if not own_upper > lower:
+            raise ValueError(
+                f"banded measure {getattr(spec, 'measure', '?')!r} publishes an "
+                f"upper edge {own_upper!r} that is not above its lower edge "
+                f"{lower!r}"
+            )
+        upper = own_upper
     # A consumer may bind only the finite portion of a published histogram.
     # Declare its source-unit ceiling instead of allowing the last included
     # row to absorb a separately published, unbound top-coded category.
@@ -486,8 +699,19 @@ def materialize_target_bindings(
     period: int | str,
     providers: Mapping[str, Provider] | None = None,
     band_edge_registry: TargetRegistry | None = None,
+    route_stored_values: bool = False,
 ) -> TargetMaterializationResult:
-    """Prepare measure columns declared by compiled Ledger target specs."""
+    """Prepare measure columns declared by compiled Ledger target specs.
+
+    A plain-column binding's value is read at its measurement period: the
+    binding's ``measurement_period``, else ``period`` (microcosm#1324). An
+    adapter with ``column_at`` reads an injected engine-period value first;
+    with ``route_stored_values`` (the measure resolver's probes) a stored
+    column that holds another period is reported missing, so the resolver
+    computes it at the measurement period. Without it (frame-only routes, no
+    provider) the stored column is read as it is. Filters, conditions and
+    bands keep their stored reads: who a row counts is fixed at the frame.
+    """
 
     provider_registry = {**default_provider_registry(), **(providers or {})}
     band_edges = _band_edges_by_group(
@@ -549,8 +773,14 @@ def materialize_target_bindings(
                         0.0,
                     )
             else:
+                _refuse_ignored_measurement_period(spec, binding, adapter, period)
                 values = _prepared_column_values(
-                    adapter, spec.entity, binding, band=band
+                    adapter,
+                    spec.entity,
+                    binding,
+                    band=band,
+                    period=measurement_period,
+                    route_stored=route_stored_values,
                 )
             adapter.set_column(spec.entity, spec.measure, values)
         except (KeyError, TypeError, ValueError) as error:
@@ -705,15 +935,109 @@ def _prepared_column_values(
     binding: Mapping[str, Any],
     *,
     band: tuple[float, float] | None = None,
+    period: int | str | None = None,
+    route_stored: bool = False,
 ) -> np.ndarray:
     entity = str(binding.get("from_entity") or entity)
     if "value_expression" in binding:
-        values = _expression(adapter, entity, str(binding["value_expression"]))
+        values = _expression(
+            adapter,
+            entity,
+            str(binding["value_expression"]),
+            period=period,
+            route_stored=route_stored,
+        )
     else:
-        values = _column(adapter, entity, binding["value_variable"])
+        values = _value_column(
+            adapter,
+            entity,
+            binding["value_variable"],
+            period=period,
+            route_stored=route_stored,
+        )
     return np.where(
         _binding_mask(adapter, entity, binding, values, band=band), values, 0.0
     )
+
+
+def prepared_binding_values(
+    adapter: Any,
+    entity: str,
+    binding: Mapping[str, Any],
+    *,
+    period: int | str | None = None,
+) -> np.ndarray:
+    """One binding's masked values at its own grain, as the national rows read it.
+
+    Its value variable or expression, kept where its filters and conditions
+    hold and zero elsewhere, through the same interpreter that materializes
+    every national target. A caller that needs one binding's column (the local
+    line's household metrics) reads it here, so a rebind moves every line
+    that reads the declaration.
+    """
+
+    return _prepared_column_values(adapter, entity, binding, period=period)
+
+
+class MeasurementPeriodError(RuntimeError):
+    """A binding declares a measurement period its read route cannot honour.
+
+    Deliberately not a :class:`ValueError`, which the per-spec loop turns into
+    a skip: a declared period that is quietly ignored would measure the row
+    at another year, so the whole run refuses (microcosm#1324).
+    """
+
+
+def _refuse_ignored_measurement_period(
+    spec: Any,
+    binding: Mapping[str, Any],
+    adapter: Any,
+    period: int | str,
+) -> None:
+    """Refuse a plain-column period the route would not honour.
+
+    A plain-column value is read at the calibration period (through the
+    provider, for a stored column) or, by declaration, at the frame's own
+    period (the stored column as it is). Any other declared period would be
+    read at one of those two and is refused. So is the frame's period on a
+    value the frame does not hold at that period: the engine computes it at
+    the calibration period, so the row would be measured there under the
+    declared period. Only the value terms are checked: a filter, condition or
+    band on an engine-computed variable is still read at the calibration
+    period under a declared frame period.
+    """
+
+    declared = binding.get("measurement_period")
+    frame_period = getattr(adapter, "frame_period", None)
+    if declared is None or frame_period is None or str(declared) == str(period):
+        return
+    name = getattr(spec, "name", "?")
+    if str(declared) != str(frame_period):
+        raise MeasurementPeriodError(
+            f"target {name!r} declares measurement period "
+            f"{declared!r}; a plain-column read honours only the calibration "
+            f"period {period!r} or the frame's period {frame_period!r}"
+        )
+    value_period = getattr(adapter, "value_period", None)
+    if not callable(value_period):
+        return
+    entity = str(binding.get("from_entity") or spec.entity)
+    for variable in _value_variables(binding):
+        if value_period(entity, variable) != str(declared):
+            raise MeasurementPeriodError(
+                f"target {name!r} declares the frame's period {declared!r}, "
+                f"but {entity}.{variable} is not held at that period on the "
+                f"frame, so the engine would compute it at the calibration "
+                f"period {period!r}"
+            )
+
+
+def _value_variables(binding: Mapping[str, Any]) -> tuple[str, ...]:
+    """The value variables a plain-column binding reads."""
+
+    if "value_expression" in binding:
+        return expression_names(str(binding["value_expression"]))
+    return (str(binding["value_variable"]),)
 
 
 def _binding_mask(
@@ -740,8 +1064,28 @@ def _binding_mask(
     if band is not None:
         lower, upper = band
         banded = _column(adapter, entity, binding["groupby_variable"]).astype(float)
-        mask &= (banded >= lower) & (banded < upper)
+        if _band_semantics(binding) == WHOLE_PENCE_UPPER_CLOSED:
+            pence = np.rint(banded * 100.0)
+            mask &= pence > np.rint(lower * 100.0)
+            if math.isfinite(upper):
+                mask &= pence <= np.rint(upper * 100.0)
+        else:
+            mask &= (banded >= lower) & (banded < upper)
     return mask
+
+
+def _band_semantics(binding: Mapping[str, Any]) -> str | None:
+    """A binding's declared band reading; an undeclared value refuses."""
+
+    semantics = binding.get("band_semantics")
+    if semantics is None:
+        return None
+    if semantics not in BAND_SEMANTICS:
+        raise ValueError(
+            f"unknown band_semantics {semantics!r}; expected one of "
+            f"{sorted(BAND_SEMANTICS)}"
+        )
+    return str(semantics)
 
 
 def _entity_reduction(adapter: Any, reduction: Mapping[str, Any]) -> np.ndarray:
@@ -763,6 +1107,12 @@ def _entity_reduction(adapter: Any, reduction: Mapping[str, Any]) -> np.ndarray:
     return np.asarray(adapter.entity_reduction(reduction), dtype=float)
 
 
+#: Predicate keys a declaration may carry that this interpreter does not
+#: honour: a predicate naming one would be read at the wrong period or price
+#: basis, so it refuses; such a row binds a measure that applies them instead.
+_UNHONOURED_PREDICATE_KEYS = ("input_period", "price_basis")
+
+
 def _predicate_mask(
     adapter: Any,
     default_entity: str,
@@ -770,11 +1120,29 @@ def _predicate_mask(
 ) -> np.ndarray:
     if "reduce" in predicate and hasattr(adapter, "household_condition"):
         return np.asarray(adapter.household_condition(predicate), dtype=bool)
+    unhonoured = [key for key in _UNHONOURED_PREDICATE_KEYS if key in predicate]
+    if unhonoured:
+        raise ValueError(
+            f"predicate {dict(predicate)!r} declares {unhonoured}, which the "
+            "binding interpreter does not honour; bind a measure that applies "
+            "them instead."
+        )
     entity = str(predicate.get("entity") or default_entity)
     variable = str(predicate.get("variable") or predicate.get("concept"))
     values = _column(adapter, entity, variable)
     if "operator" in predicate:
         operator, expected = str(predicate["operator"]), predicate["value"]
+    elif "in" in predicate:
+        operator, expected = "in", predicate["in"]
+    elif "lower" in predicate or "upper" in predicate:
+        # A range: the lower bound inclusive, the upper bound exclusive.
+        numeric = values.astype(float)
+        mask = np.ones(numeric.shape, dtype=bool)
+        if predicate.get("lower") is not None:
+            mask &= numeric >= float(predicate["lower"])
+        if predicate.get("upper") is not None:
+            mask &= numeric < float(predicate["upper"])
+        return mask
     else:
         operator, expected = "==", predicate["equals"]
     return _compare(values, operator, expected)
@@ -800,17 +1168,202 @@ def _compare(values: np.ndarray, operator: str, expected: object) -> np.ndarray:
     raise ValueError(f"unsupported predicate operator {operator!r}")
 
 
-def _expression(adapter: Any, entity: str, expression: str) -> np.ndarray:
-    parts = [part.strip() for part in expression.split("+")]
-    if not parts or any(not part for part in parts):
-        raise ValueError(f"unsupported value_expression {expression!r}")
-    total: np.ndarray | None = None
-    for part in parts:
-        values = _column(adapter, entity, part)
-        total = values.copy() if total is None else total + values
-    if total is None:
-        raise ValueError(f"unsupported value_expression {expression!r}")
+_EXPRESSION_NAME = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
+_EXPRESSION_TOKEN = re.compile(r"\s*([A-Za-z_][A-Za-z0-9_]*|\d+(?:\.\d+)?|[-+(),*])")
+_EXPRESSION_NUMBER = re.compile(r"\d+(?:\.\d+)?")
+#: The one function the expression grammar admits: ``max(<sum>, 0)``, a sum
+#: floored at zero (the profit after losses brought forward, microcosm#1095).
+_ZERO_FLOOR = "max"
+
+
+def _refuse_expression(expression: str) -> ValueError:
+    return ValueError(f"unsupported value_expression {expression!r}")
+
+
+@functools.cache
+def _parsed_expression(expression: str) -> tuple[Any, ...]:
+    """A value expression's tree, from a sum of terms joined by ``+`` or ``-``.
+
+    A term is a name, a positive constant times a name (``0.2 *
+    basic_rate_savings_income``: a statutory rate applied to the base it
+    taxes, which a published tax amount binds, microcosm#1418) or
+    ``max(<sum>, 0)``. Anything else (another product, a bare constant, a
+    leading sign) refuses.
+    """
+
+    text = expression.strip()
+    tokens: list[str] = []
+    position = 0
+    while position < len(text):
+        match = _EXPRESSION_TOKEN.match(text, position)
+        if match is None:
+            raise _refuse_expression(expression)
+        tokens.append(match.group(1))
+        position = match.end()
+
+    def term(at: int) -> tuple[tuple[Any, ...], int]:
+        if at >= len(tokens):
+            raise _refuse_expression(expression)
+        if tokens[at] == _ZERO_FLOOR and tokens[at + 1 : at + 2] == ["("]:
+            inner, at = total(at + 2)
+            close = tokens[at : at + 3]
+            if len(close) != 3 or close[0] != "," or close[2] != ")":
+                raise _refuse_expression(expression)
+            if not re.fullmatch(r"0(?:\.0+)?", close[1]):
+                raise _refuse_expression(expression)
+            return ("max0", inner), at + 3
+        if _EXPRESSION_NUMBER.fullmatch(tokens[at]) and tokens[at + 1 : at + 2] == [
+            "*"
+        ]:
+            coefficient = float(tokens[at])
+            name = tokens[at + 2 : at + 3]
+            if (
+                not coefficient > 0.0
+                or not name
+                or name[0] == _ZERO_FLOOR
+                or not _EXPRESSION_NAME.fullmatch(name[0])
+            ):
+                raise _refuse_expression(expression)
+            return ("scaled", coefficient, ("name", name[0])), at + 3
+        if tokens[at] == _ZERO_FLOOR or not _EXPRESSION_NAME.fullmatch(tokens[at]):
+            raise _refuse_expression(expression)
+        return ("name", tokens[at]), at + 1
+
+    def total(at: int) -> tuple[tuple[Any, ...], int]:
+        terms: list[tuple[float, tuple[Any, ...]]] = []
+        sign = 1.0
+        while True:
+            node, at = term(at)
+            terms.append((sign, node))
+            if at < len(tokens) and tokens[at] in ("+", "-"):
+                sign = 1.0 if tokens[at] == "+" else -1.0
+                at += 1
+                continue
+            return ("sum", tuple(terms)), at
+
+    tree, end = total(0)
+    if end != len(tokens):
+        raise _refuse_expression(expression)
+    return tree
+
+
+def _tree_names(node: tuple[Any, ...]) -> tuple[str, ...]:
+    if node[0] == "name":
+        return (node[1],)
+    if node[0] == "max0":
+        return _tree_names(node[1])
+    if node[0] == "scaled":
+        return _tree_names(node[2])
+    return tuple(name for _, term in node[1] for name in _tree_names(term))
+
+
+def _evaluate_tree(
+    node: tuple[Any, ...], read: Callable[[str], np.ndarray]
+) -> np.ndarray:
+    if node[0] == "name":
+        return read(node[1])
+    if node[0] == "max0":
+        return np.maximum(_evaluate_tree(node[1], read), 0.0)
+    if node[0] == "scaled":
+        return node[1] * _evaluate_tree(node[2], read)
+    (sign, first), *rest = node[1]
+    values = _evaluate_tree(first, read)
+    total = (values if sign > 0 else -values).copy()
+    for sign, term in rest:
+        values = _evaluate_tree(term, read)
+        total = total + (values if sign > 0 else -values)
     return total
+
+
+def expression_names(expression: str) -> tuple[str, ...]:
+    """Every name a value expression reads, in order, each once."""
+
+    return tuple(dict.fromkeys(_tree_names(_parsed_expression(expression))))
+
+
+def evaluate_expression(
+    expression: str, read: Callable[[str], np.ndarray]
+) -> np.ndarray:
+    """A value expression's values, each name read through ``read``.
+
+    Terms are summed left to right, a subtracted term as its negation, so a
+    sum is the same float operations whatever adapter supplies the names.
+    """
+
+    return _evaluate_tree(_parsed_expression(expression), read)
+
+
+def named_term_leaves(name: str, terms: Mapping[str, str]) -> tuple[str, ...]:
+    """The names a named term reads once the terms it nests are expanded."""
+
+    def leaves(current: str, seen: tuple[str, ...]) -> tuple[str, ...]:
+        if current in seen:
+            raise ValueError(f"named term {current!r} refers to itself")
+        found: list[str] = []
+        for part in expression_names(terms[current]):
+            found.extend(leaves(part, (*seen, current)) if part in terms else (part,))
+        return tuple(dict.fromkeys(found))
+
+    return leaves(name, ())
+
+
+def evaluate_named_term(
+    name: str, terms: Mapping[str, str], read: Callable[[str], np.ndarray]
+) -> np.ndarray:
+    """A named term's values from its leaves (microcosm#1095).
+
+    A named term is a measure declared once as an expression of this grammar
+    (``terms`` maps each name to its expression). A name the expression reads
+    that is itself a term is evaluated from its own expression; any other is
+    read through ``read``, as floats.
+    """
+
+    named_term_leaves(name, terms)
+
+    def value(part: str) -> np.ndarray:
+        if part in terms:
+            return evaluate_expression(terms[part], value)
+        return np.asarray(read(part), dtype=float)
+
+    return evaluate_expression(terms[name], value)
+
+
+def _expression(
+    adapter: Any,
+    entity: str,
+    expression: str,
+    *,
+    period: int | str | None = None,
+    route_stored: bool = False,
+) -> np.ndarray:
+    return evaluate_expression(
+        expression,
+        lambda name: _value_column(
+            adapter, entity, name, period=period, route_stored=route_stored
+        ),
+    )
+
+
+def _value_column(
+    adapter: Any,
+    entity: str,
+    variable: object,
+    *,
+    period: int | str | None,
+    route_stored: bool,
+) -> np.ndarray:
+    """A binding's value variable at its measurement period (microcosm#1324).
+
+    An adapter with ``column_at`` knows its frame's period and which columns
+    the frame stores; any other adapter reads the column as it is.
+    """
+
+    column_at = getattr(adapter, "column_at", None)
+    if callable(column_at) and period is not None:
+        return np.asarray(
+            column_at(entity, str(variable), period=period, route_stored=route_stored)
+        )
+    return _column(adapter, entity, variable)
 
 
 def _column(adapter: Any, entity: str, variable: object) -> np.ndarray:

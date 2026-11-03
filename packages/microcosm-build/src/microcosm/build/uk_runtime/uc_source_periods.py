@@ -16,6 +16,7 @@ from dataclasses import replace
 from typing import Any
 
 from microcosm.build.ledger_targets import (
+    MONTHLY_WINDOW_COUNT_X_MEAN,
     MONTHLY_WINDOW_OPERATIONS,
     LedgerTargetReference,
 )
@@ -27,9 +28,23 @@ EXPECTED_SOURCE_MONTHS = "uk_uc_expected_source_months"
 # Housing Benefit caseload rows bound on the same calendar-2025 window, and
 # since the PolicyEngine/chronicle#280 lane the three ESA caseload rows, bound on the four
 # quarterly points DWP publishes inside calendar 2025 (February, May, August,
-# November) from the payment-type cube (chronicle#282).
+# November) from the payment-type cube (chronicle#282). Since microcosm#1069
+# the State Pension, Pension Credit and Attendance Allowance Stat-Xplore cubes
+# bind on the same four calendar-2025 points (PolicyEngine/chronicle#302 via
+# #305).
 SOURCE_MONTH_FAMILIES = frozenset(
-    {"dwp_universal_credit", "dwp_housing_benefit", "dwp_legacy_benefits"}
+    {
+        "dwp_universal_credit",
+        "dwp_housing_benefit",
+        "dwp_legacy_benefits",
+        "dwp_state_pension",
+        "dwp_pension_credit",
+        "dwp_attendance_allowance",
+    }
+)
+#: Operations over an explicit month list; they may cross calendar years.
+_EXPLICIT_WINDOW_OPERATIONS = frozenset(
+    {*MONTHLY_WINDOW_OPERATIONS, MONTHLY_WINDOW_COUNT_X_MEAN}
 )
 
 
@@ -50,7 +65,7 @@ def uc_source_month_metadata(
     if not valid:
         raise ValueError("UK UC source_months must be a non-empty YYYY-MM list.")
     if months != sorted(set(months)) or (
-        value_operation not in MONTHLY_WINDOW_OPERATIONS
+        value_operation not in _EXPLICIT_WINDOW_OPERATIONS
         and len({month[:4] for month in months}) != 1
     ):
         raise ValueError(
@@ -74,7 +89,7 @@ def validate_uc_source_month_coverage(
         or reference.value_operation
         not in {
             "calendar_year_average",
-            *MONTHLY_WINDOW_OPERATIONS,
+            *_EXPLICIT_WINDOW_OPERATIONS,
         }
     ):
         raise ValueError(
@@ -88,14 +103,16 @@ def validate_uc_source_month_coverage(
             "UK UC source-month coverage metadata is invalid JSON."
         ) from error
     uc_source_month_metadata(expected, value_operation=reference.value_operation)
-    is_window = reference.value_operation in MONTHLY_WINDOW_OPERATIONS
+    is_window = reference.value_operation in _EXPLICIT_WINDOW_OPERATIONS
     if is_window and expected != reference.ledger_selector.get("period_value"):
         raise ValueError(
             "UK UC source-month coverage metadata must equal the declared source window."
         )
+    # A count x mean window resolves its count and its mean in every month.
     cells_per_month = (
         len(reference.value_operands)
-        if reference.value_operation == "monthly_window_sum_average"
+        if reference.value_operation
+        in {"monthly_window_sum_average", MONTHLY_WINDOW_COUNT_X_MEAN}
         else 1
     )
 
@@ -158,6 +175,8 @@ def validate_uc_source_month_coverage(
                     "uk_uc_source_period_basis": (
                         "mean_of_declared_monthly_cell_sums"
                         if reference.value_operation == "monthly_window_sum_average"
+                        else "mean_of_declared_monthly_count_x_mean"
+                        if reference.value_operation == MONTHLY_WINDOW_COUNT_X_MEAN
                         else "mean_of_declared_months"
                     ),
                 },

@@ -675,6 +675,16 @@ lock unchanged:
     recorded the observer opt-in as amendment 25 in the meantime; amendment 26
     above was 25 in the same lane.
 
+28. **Descriptions are empty or contain non-whitespace text.**
+    `SourceRef.description` and `Node.description` keep the empty string as the
+    explicit no-description sentinel and reject every nonempty value whose
+    characters are all whitespace. This makes the declaration boundary enforce
+    the text contract shared by presentation adapters instead of allowing a
+    graph to compile and later produce a document that its consumer rejects.
+    Descriptions remain descriptive: they stay outside `Node.normative()`, so
+    this validation changes no graph computation key. `decl.py` is re-locked.
+    Adopted during the Orrery export review in #888.
+
 
 Adding a normative field with a default changes the canonical projection
 of every node that carries it, so node keys moved with amendments 11 and

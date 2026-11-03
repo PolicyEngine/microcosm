@@ -15,7 +15,11 @@ from microcosm.build.uk_runtime.spi_support import (
     support_channel_column,
     support_clone_index_column,
 )
-from microcosm.build.uk_runtime.uc_capital_coherence import cohere_uc_capital
+from microcosm.build.uk_runtime.uc_capital_coherence import (
+    PENSION_CREDIT_PROPERTY_CAPITAL_SOURCES,
+    PROPERTY_CAPITAL_SECURED_DEBT,
+    cohere_uc_capital,
+)
 from microcosm.build.uk_runtime.uc_reporter_redraw import (
     UC_REPORTER_REDRAW_OUTPUT,
     UC_REPORTER_REDRAW_SEED,
@@ -72,8 +76,11 @@ class _StubFittedQRF:
     def __init__(self, record: dict[str, object]) -> None:
         self.record = record
 
-    def predict(self, table: pd.DataFrame) -> pd.DataFrame:
+    def predict_from_uniforms(
+        self, table: pd.DataFrame, *, quantiles, sign_uniforms
+    ) -> pd.DataFrame:
         self.record["predict_index"] = table.index.tolist()
+        self.record["predict_uniforms"] = (quantiles, sign_uniforms)
         draws = np.zeros(len(table), dtype=float)
         if len(draws):
             draws[0] = 250.0
@@ -157,11 +164,15 @@ def _frame(*, child_only: bool = False):
                     "person_household_id": household_id,
                     "age": age,
                     "is_benunit_head": member == 0,
+                    "is_household_head": member == 0,
                     "is_parent": children > 0,
                     "is_uc_child": benunit_id == 204,
+                    "is_uc_claimant": True,
                     "employment_income": 10_000.0 + benunit_id + member,
                     "self_employment_income": 100.0 * member,
                     "savings_interest_income": 10.0,
+                    # ISA interest apart (microcosm#1360): gross is the sum.
+                    "individual_savings_account_interest_income": 0.0,
                     "dividend_income": 20.0,
                     "property_income": 30.0,
                     "other_investment_income": 40.0,
@@ -176,11 +187,14 @@ def _frame(*, child_only: bool = False):
                     "person_household_id": household_id,
                     "age": 10,
                     "is_benunit_head": False,
+                    "is_household_head": False,
                     "is_parent": False,
                     "is_uc_child": True,
+                    "is_uc_claimant": False,
                     "employment_income": 0.0,
                     "self_employment_income": 0.0,
                     "savings_interest_income": 0.0,
+                    "individual_savings_account_interest_income": 0.0,
                     "dividend_income": 0.0,
                     "property_income": 0.0,
                     "other_investment_income": 0.0,
@@ -206,6 +220,11 @@ def _frame(*, child_only: bool = False):
             "household_is_capital_gains_clone": [row[4] for row in benunit_rows],
         }
     )
+    for column in (
+        *PENSION_CREDIT_PROPERTY_CAPITAL_SOURCES,
+        *PROPERTY_CAPITAL_SECURED_DEBT.values(),
+    ):
+        household[column] = 0.0
     return uk_national_frame(
         person=person,
         benunit=benunit,

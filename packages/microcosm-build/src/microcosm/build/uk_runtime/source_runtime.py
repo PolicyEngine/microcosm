@@ -76,6 +76,7 @@ def uk_stage_implementations(
     hmrc_cgt_gains_spine_transform: Callable[[Frame], Frame] | None = None,
     hmrc_cgt_asset_type_spine_transform: Callable[[Frame], Frame] | None = None,
     cgt_incidence_anchor_transform: Callable[[Frame], Frame] | None = None,
+    cgt_residential_split_transform: Callable[[Frame], Frame] | None = None,
     salary_sacrifice_transform: Callable[[Frame], Frame] | None = None,
     student_loans_transform: Callable[[Frame], Frame] | None = None,
 ) -> dict[str, Callable[[Frame], Frame]]:
@@ -107,8 +108,9 @@ def uk_stage_implementations(
         "cgt_support_split": cgt_support_split_transform,
         "cgt_incidence_clone": cgt_incidence_clone_transform,
         "hmrc_cgt_gains_spine": hmrc_cgt_gains_spine_transform,
-        "hmrc_cgt_asset_type_spine": hmrc_cgt_asset_type_spine_transform,
         "cgt_incidence_anchor": cgt_incidence_anchor_transform,
+        "cgt_residential_split": cgt_residential_split_transform,
+        "hmrc_cgt_asset_type_spine": hmrc_cgt_asset_type_spine_transform,
         "salary_sacrifice": salary_sacrifice_transform,
         "student_loans": student_loans_transform,
     }

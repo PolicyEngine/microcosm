@@ -100,6 +100,7 @@ def _target(values=(2.0, 4.0), ids=(1, 2)):
         "metadata": source_metadata,
         "assertion_policy": "observed_only",
         "period_match_policy": "latest_not_after",
+        "observation_period": None,
         "uprating_index": None,
         "uprating_from_period": None,
         "uprating_to_period": None,

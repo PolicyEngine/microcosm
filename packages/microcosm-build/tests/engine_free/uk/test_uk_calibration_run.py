@@ -72,6 +72,20 @@ def test_strict_checkpoint_accepts_explicit_declared_gate_path(tmp_path):
     assert provenance["spine_gate_report"]["path"] == str(moved)
 
 
+def test_strict_checkpoint_binds_the_recorded_output_digest(tmp_path):
+    """A sidecar that records its H5's digest binds only that file; a sidecar
+    without the key (written before spines recorded it) still binds."""
+    frame = _frame()
+    path, _, sidecar = _bound_checkpoint(tmp_path, frame)
+    calibration_run.load_bound_spine_checkpoint(path, frame, input_sha256="a" * 64)
+    sidecar["output"] = {"filename": "spine.h5", "sha256": "a" * 64, "size_bytes": 1}
+    path.write_text(json.dumps(sidecar))
+    calibration_run.load_bound_spine_checkpoint(path, frame, input_sha256="a" * 64)
+    calibration_run.load_bound_spine_checkpoint(path, frame)
+    with pytest.raises(ValueError, match="records another H5 file"):
+        calibration_run.load_bound_spine_checkpoint(path, frame, input_sha256="b" * 64)
+
+
 def test_gate_scope_classifies_every_uk_gate():
     all_ids = {entry.id for entry in load_country_spec("uk").gates.gates}
     assert (

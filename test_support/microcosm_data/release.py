@@ -20,8 +20,13 @@ from microcosm.data import ReleaseContractError, publish_cli
 from microcosm.data import release as release_module
 from microcosm.data.contract import (
     EVIDENCE_RELEASE_MANIFEST_SCHEMA_VERSION,
+    US_FISCAL_STORED_INPUTS_STAGE,
     US_SOURCE_COVERAGE_DIAGNOSTICS_FILE,
+    US_STORED_INPUTS_EVIDENCE_FILE,
+    US_STORED_INPUTS_EVIDENCE_KEY,
+    US_STORED_INPUTS_EVIDENCE_SCHEMA_VERSION,
     required_release_files,
+    stored_input_evidence_manifest_block,
 )
 from microcosm.data.release import (
     LATEST_EVIDENCE_POINTER_PATH,
@@ -36,6 +41,7 @@ from microcosm.data.release import (
     line_pointer_payload,
     publish_release,
 )
+from microcosm.data.stored_inputs import register_sha256
 
 
 @pytest.fixture(autouse=True)
@@ -674,11 +680,64 @@ def release_dir(tmp_path: Path) -> Path:
             }
         )
     )
+    _bind_stored_input_evidence(directory)
     return directory
 
 
 def _sha256(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def _bind_stored_input_evidence(directory: Path) -> None:
+    """Bind a clean stored-input verdict as the fiscal-refresh tool does
+    (microcosm#1034): ``stored_inputs.json`` as a diagnostics artifact, its
+    ``gate_evidence`` status ``bound``, and the manifests' ``stored_inputs``
+    block for the H5 ``build_manifest.json`` pins. Re-run it after changing
+    that H5's sha256."""
+    release_path = directory / "release_manifest.json"
+    release_manifest = json.loads(release_path.read_text())
+    version = release_manifest["build"]["built_with_model_package"]["version"]
+    payload = {
+        "schema_version": US_STORED_INPUTS_EVIDENCE_SCHEMA_VERSION,
+        "enforced": True,
+        "checked_at_stage": US_FISCAL_STORED_INPUTS_STAGE,
+        US_STORED_INPUTS_EVIDENCE_KEY: {
+            "passed": True,
+            "failures": [],
+            "details": {
+                "evaluated": True,
+                "engine": f"policyengine-us {version}",
+                "stored_columns": 377,
+                "registered_non_variables": ["person_source_id"],
+                "refused": [],
+                "register_sha256": register_sha256(),
+            },
+        },
+    }
+    evidence = directory / US_STORED_INPUTS_EVIDENCE_FILE
+    evidence.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n")
+    build_path = directory / "build_manifest.json"
+    build_manifest = json.loads(build_path.read_text())
+    blocks = {
+        "gate_evidence": {
+            **build_manifest.get("gate_evidence", {}),
+            US_STORED_INPUTS_EVIDENCE_KEY: "bound",
+        },
+        US_STORED_INPUTS_EVIDENCE_KEY: stored_input_evidence_manifest_block(
+            payload, dataset_sha256=build_manifest["dataset"]["sha256"]
+        ),
+    }
+    build_manifest.update(blocks)
+    build_path.write_text(json.dumps(build_manifest))
+    release_manifest["build"].update(blocks)
+    release_manifest["artifacts"][US_STORED_INPUTS_EVIDENCE_KEY] = {
+        "kind": "diagnostics",
+        "path": US_STORED_INPUTS_EVIDENCE_FILE,
+        "repo_id": "policyengine/populace-us",
+        "revision": release_manifest["build"]["build_id"],
+        "sha256": _sha256(evidence),
+    }
+    release_path.write_text(json.dumps(release_manifest))
 
 
 @pytest.fixture
@@ -734,107 +793,8 @@ def annual_release(release_dir, artifact_root):
     manifest = json.loads(path.read_text())
     manifest["artifacts"]["populace_us_2024"]["sha256"] = sha
     path.write_text(json.dumps(manifest))
+    _bind_stored_input_evidence(release_dir)
     return add_annual_extension(release_dir, artifact_root)
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 # ---------------------------------------------------------------------------
@@ -866,6 +826,7 @@ def evidence_release_dir(release_dir: Path) -> Path:
     for filename in (
         US_SOURCE_COVERAGE_DIAGNOSTICS_FILE,
         *GATE_EVIDENCE_FILES.values(),
+        US_STORED_INPUTS_EVIDENCE_FILE,
     ):
         (directory / filename).write_text((release_dir / filename).read_text())
     diagnostics = json.loads((release_dir / "calibration_diagnostics.json").read_text())
@@ -899,32 +860,6 @@ def evidence_release_dir(release_dir: Path) -> Path:
     return directory
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 def _declare_root_artifact(release_dir: Path, *, key: str, path: str) -> None:
     manifest_path = release_dir / "release_manifest.json"
     manifest = json.loads(manifest_path.read_text())
@@ -938,22 +873,6 @@ def _declare_root_artifact(release_dir: Path, *, key: str, path: str) -> None:
     manifest_path.write_text(json.dumps(manifest))
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 def _uk_hub(tmp_path: Path) -> FakeHub:
     hub = FakeHub("policyengine/populace-uk-private")
     hub._download_dir = tmp_path / "uk-hub-cache"
@@ -962,5 +881,6 @@ def _uk_hub(tmp_path: Path) -> FakeHub:
     )
     hub.seed_main_file(LATEST_POINTER_PATH, json.dumps(june_pointer, indent=1).encode())
     return hub
+
 
 __all__ = [name for name in globals() if not name.startswith("__")]

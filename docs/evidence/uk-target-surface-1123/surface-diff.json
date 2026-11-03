@@ -1,0 +1,5075 @@
+{
+ "after": {
+  "code_head": "cd39d037e219f54aeb339a16d06fae36555b4c8b",
+  "code_modifications": {
+   "diff_sha256": null,
+   "files": []
+  },
+  "review_date": "2026-10-12",
+  "source_validation": {
+   "ledger_provenance": {
+    "fact_key_epochs": [
+     "ledger"
+    ],
+    "fact_row_count": 927239,
+    "fact_schema_versions": [
+     "chronicle.consumer_fact.v4"
+    ],
+    "facts_sha256": "a45ae8570206af49d1dc570fe0f9b2ae83ed3b432ac5e430f088f488f0d256da",
+    "manifest": {
+     "schema_version": "policyengine_ledger.consumer_artifact.v2"
+    },
+    "manifest_sha256": "f7af3ec965dc7951f2fbd25b4e06fa6c4b945ed289e4b99d27d3a77c45d3988c",
+    "schema_epoch": "ledger",
+    "undeclared_fact_key_domains": []
+   },
+   "local_source_pin": {
+    "artifact": ".codex-work/consumer_facts_uk.jsonl",
+    "build": "build-bundle --suite uk -> build-consumer-artifact",
+    "fact_row_count": 927239,
+    "facts_sha256": "a45ae8570206af49d1dc570fe0f9b2ae83ed3b432ac5e430f088f488f0d256da",
+    "manifest": ".codex-work/consumer_facts_uk_manifest.json",
+    "manifest_sha256": "f7af3ec965dc7951f2fbd25b4e06fa6c4b945ed289e4b99d27d3a77c45d3988c",
+    "source_commit": "942a1fa0adc50d645734481c88f403ac2175e896",
+    "source_repo": "PolicyEngine/chronicle"
+   },
+   "national_source_pin": {
+    "artifact_schema_version": "policyengine_ledger.consumer_artifact.v2",
+    "build": "build-bundle --suite uk -> build-consumer-artifact",
+    "consumer_fact_schema_sha256": "cc9efb90e9c73913bc76a89e9df435a9ca6ff49942e63dc8d2bf183c65a70224",
+    "consumer_fact_schema_versions": [
+     "chronicle.consumer_fact.v4"
+    ],
+    "country": "uk",
+    "fact_row_count": 927239,
+    "facts_sha256": "a45ae8570206af49d1dc570fe0f9b2ae83ed3b432ac5e430f088f488f0d256da",
+    "manifest_sha256": "f7af3ec965dc7951f2fbd25b4e06fa6c4b945ed289e4b99d27d3a77c45d3988c",
+    "resource_sha256": "0ce88933556d80748805ef17b3f4399c70f0e3b45ef433a0658966b20ac617f7",
+    "resource_size_bytes": 690,
+    "scope": "uk_calibration",
+    "source_commit": "942a1fa0adc50d645734481c88f403ac2175e896",
+    "source_repo": "PolicyEngine/chronicle",
+    "version": 1
+   },
+   "register_completeness": {
+    "approved_reference_count": 1213,
+    "approved_registry_version": "90cfbfc7813f",
+    "band_edge_registry_reconciled": true,
+    "compiled_local_reference_count": 21804,
+    "compiled_reference_count": 1281,
+    "compiled_registry_version": "06216f872c0e",
+    "exclusions_evaluated_on": "2026-10-12",
+    "frozen_registry_version": null,
+    "local_registry_version": "27f3582a85a5",
+    "measure_exclusion_count": 68,
+    "reconciled_registry_version": "cbef907d4c52",
+    "validation_periods": {
+     "local": [],
+     "national": []
+    },
+    "validation_periods_unsupported": {
+     "local": {},
+     "national": {}
+    }
+   },
+   "targets": {
+    "chronicle": {
+     "fact_key_epochs": [
+      "ledger"
+     ],
+     "fact_row_count": 927239,
+     "fact_schema_versions": [
+      "chronicle.consumer_fact.v4"
+     ],
+     "facts_sha256": "a45ae8570206af49d1dc570fe0f9b2ae83ed3b432ac5e430f088f488f0d256da",
+     "manifest": {
+      "schema_version": "policyengine_ledger.consumer_artifact.v2"
+     },
+     "manifest_sha256": "f7af3ec965dc7951f2fbd25b4e06fa6c4b945ed289e4b99d27d3a77c45d3988c",
+     "schema_epoch": "ledger",
+     "undeclared_fact_key_domains": []
+    },
+    "paired_ladder_sha256": "bed3f13d3a82eea2d1f39248b71c0abf5ba6960a446ddd9415ae1dbcb7ae07fd"
+   }
+  }
+ },
+ "before": {
+  "code_head": "51a2637268633f53120acd812d0d156c79f1f7f5",
+  "code_modifications": {
+   "diff_sha256": "23754681fea0470955de46c3cfa240e42c2b8b5ea1975f048182a0b3a50b79c4",
+   "files": [
+    {
+     "path": "packages/microcosm-build/src/microcosm/build/uk_runtime/full_targets.py",
+     "sha256": "c2e972274e53a58e5604cfe25ef1f1ad23f4db619c6c1007bf336b98603e441a",
+     "status": "M"
+    },
+    {
+     "path": "packages/microcosm-build/src/microcosm/build/uk_runtime/graph_national.py",
+     "sha256": "d92ae0fd9323a1a53944c2142e476ec6860135a4c2edf2c9cb799f3c2ddbb835",
+     "status": "M"
+    },
+    {
+     "path": "packages/microcosm-build/src/microcosm/build/uk_runtime/graph_targets.py",
+     "sha256": "63d3df5275e2fbdd483edbb3cfd8ecf47557a19e1b7c16a74ac3591dd56fc592",
+     "status": "M"
+    },
+    {
+     "path": "packages/microcosm-build/src/microcosm/build/uk_runtime/target_compile_modules.py",
+     "sha256": "73d560f8035aa87c02b58fed1ad06751add2c2fe86cc64e920b47c254526ed2e",
+     "status": "A"
+    },
+    {
+     "path": "packages/microcosm-build/tests/engine_free/uk/test_uk_target_compile_modules.py",
+     "sha256": "35673369899ed2a41166d2e90adc222ea16a14c8e918785c56ac34b08c917ace",
+     "status": "A"
+    },
+    {
+     "path": "tools/uk_target_surface_receipt.py",
+     "sha256": "c5642693f1a98ce8f08243d0837bee811749ca756c93f25aab88d27e404299c3",
+     "status": "AM"
+    }
+   ]
+  },
+  "review_date": "2026-10-12",
+  "source_validation": {
+   "ledger_provenance": {
+    "fact_key_epochs": [
+     "ledger"
+    ],
+    "fact_row_count": 352549,
+    "fact_schema_versions": [
+     "chronicle.consumer_fact.v4"
+    ],
+    "facts_sha256": "3515800a522f6aa6d076c0ba95a37b924e8505dd8e13d33a55413afd84172f2d",
+    "manifest": {
+     "schema_version": "policyengine_ledger.consumer_artifact.v2"
+    },
+    "manifest_sha256": "0ee42919d02c0dced9048033c43ef057e14b2af05166d96c0bd00cd1128cd4e0",
+    "schema_epoch": "ledger",
+    "undeclared_fact_key_domains": []
+   },
+   "local_source_pin": {
+    "artifact": ".codex-work/consumer_facts_uk.jsonl",
+    "build": "build-bundle --suite uk -> build-consumer-artifact",
+    "fact_row_count": 352549,
+    "facts_sha256": "3515800a522f6aa6d076c0ba95a37b924e8505dd8e13d33a55413afd84172f2d",
+    "manifest": ".codex-work/consumer_facts_uk_manifest.json",
+    "manifest_sha256": "0ee42919d02c0dced9048033c43ef057e14b2af05166d96c0bd00cd1128cd4e0",
+    "source_commit": "1ee7dfe257415ec0066fcf511e01fbaaec23cacd",
+    "source_repo": "PolicyEngine/chronicle"
+   },
+   "national_source_pin": {
+    "artifact_schema_version": "policyengine_ledger.consumer_artifact.v2",
+    "build": "build-bundle --suite uk -> build-consumer-artifact",
+    "consumer_fact_schema_sha256": "cc9efb90e9c73913bc76a89e9df435a9ca6ff49942e63dc8d2bf183c65a70224",
+    "consumer_fact_schema_versions": [
+     "chronicle.consumer_fact.v4"
+    ],
+    "country": "uk",
+    "fact_row_count": 352549,
+    "facts_sha256": "3515800a522f6aa6d076c0ba95a37b924e8505dd8e13d33a55413afd84172f2d",
+    "manifest_sha256": "0ee42919d02c0dced9048033c43ef057e14b2af05166d96c0bd00cd1128cd4e0",
+    "resource_sha256": "0f93bc8cddff173ec1b60a9b5e3140e89211f07e6551ec9777f88467b06791d3",
+    "resource_size_bytes": 690,
+    "scope": "uk_calibration",
+    "source_commit": "1ee7dfe257415ec0066fcf511e01fbaaec23cacd",
+    "source_repo": "PolicyEngine/chronicle",
+    "version": 1
+   },
+   "register_completeness": {
+    "approved_reference_count": 1177,
+    "approved_registry_version": "20a97df0b099",
+    "band_edge_registry_reconciled": true,
+    "compiled_local_reference_count": 20885,
+    "compiled_reference_count": 1245,
+    "compiled_registry_version": "ccc69cc145cd",
+    "exclusions_evaluated_on": "2026-10-12",
+    "frozen_registry_version": null,
+    "local_registry_version": "8773c453fac5",
+    "measure_exclusion_count": 68,
+    "validation_periods": {
+     "local": [],
+     "national": []
+    },
+    "validation_periods_unsupported": {
+     "local": {},
+     "national": {}
+    }
+   },
+   "targets": {
+    "chronicle": {
+     "fact_key_epochs": [
+      "ledger"
+     ],
+     "fact_row_count": 352549,
+     "fact_schema_versions": [
+      "chronicle.consumer_fact.v4"
+     ],
+     "facts_sha256": "3515800a522f6aa6d076c0ba95a37b924e8505dd8e13d33a55413afd84172f2d",
+     "manifest": {
+      "schema_version": "policyengine_ledger.consumer_artifact.v2"
+     },
+     "manifest_sha256": "0ee42919d02c0dced9048033c43ef057e14b2af05166d96c0bd00cd1128cd4e0",
+     "schema_epoch": "ledger",
+     "undeclared_fact_key_domains": []
+    },
+    "paired_ladder_sha256": "bed3f13d3a82eea2d1f39248b71c0abf5ba6960a446ddd9415ae1dbcb7ae07fd"
+   }
+  }
+ },
+ "local": {
+  "added": 919,
+  "by_target_and_grain": [
+   {
+    "added": 0,
+    "area_type": "constituency",
+    "cells_after": 632,
+    "cells_before": 632,
+    "contract_target_id": "dwp.uc.households_by_area",
+    "moved": 632,
+    "relative_change": {
+     "max": 0.022880137828061864,
+     "median": 0.00046741767931690603,
+     "min": -0.018970531776299482
+    },
+    "removed": 0,
+    "total_after": 6197310.999999999,
+    "total_before": 6197310.999999998
+   },
+   {
+    "added": 0,
+    "area_type": "la",
+    "cells_after": 348,
+    "cells_before": 348,
+    "contract_target_id": "dwp.uc.households_by_area",
+    "moved": 348,
+    "relative_change": {
+     "max": 0.020753770220258927,
+     "median": 0.0004677158484543975,
+     "min": -0.015349861685516553
+    },
+    "removed": 0,
+    "total_after": 6196835.244699186,
+    "total_before": 6197311.0000000065
+   },
+   {
+    "added": 0,
+    "area_type": "constituency",
+    "cells_after": 632,
+    "cells_before": 632,
+    "contract_target_id": "dwp.uc.households_by_area_children_0",
+    "moved": 632,
+    "relative_change": {
+     "max": -0.005695822893220015,
+     "median": -0.03705062187076541,
+     "min": -0.06515311345333441
+    },
+    "removed": 0,
+    "total_after": 3322352.4192218482,
+    "total_before": 3452981.0
+   },
+   {
+    "added": 0,
+    "area_type": "constituency",
+    "cells_after": 632,
+    "cells_before": 632,
+    "contract_target_id": "dwp.uc.households_by_area_children_1",
+    "moved": 632,
+    "relative_change": {
+     "max": -0.056578856639447506,
+     "median": -0.07517644088164926,
+     "min": -0.0987273080558354
+    },
+    "removed": 0,
+    "total_after": 1172817.9183315798,
+    "total_before": 1268493.0
+   },
+   {
+    "added": 0,
+    "area_type": "constituency",
+    "cells_after": 632,
+    "cells_before": 632,
+    "contract_target_id": "dwp.uc.households_by_area_children_2",
+    "moved": 632,
+    "relative_change": {
+     "max": -0.059807681343850505,
+     "median": -0.08127376123272656,
+     "min": -0.10678013914670881
+    },
+    "removed": 0,
+    "total_after": 1013005.772319104,
+    "total_before": 1102950.0
+   },
+   {
+    "added": 0,
+    "area_type": "constituency",
+    "cells_after": 632,
+    "cells_before": 632,
+    "contract_target_id": "dwp.uc.households_by_area_children_3plus",
+    "moved": 632,
+    "relative_change": {
+     "max": -0.04749864288454997,
+     "median": -0.083513397902858,
+     "min": -0.10873405572631856
+    },
+    "removed": 0,
+    "total_after": 687987.9761635644,
+    "total_before": 751119.0
+   },
+   {
+    "added": 0,
+    "area_type": "constituency",
+    "cells_after": 650,
+    "cells_before": 650,
+    "contract_target_id": "hmrc.employment_income.amount",
+    "moved": 650,
+    "relative_change": {
+     "max": 0.14490191005576492,
+     "median": 0.1449019100557647,
+     "min": 0.14490191005576447
+    },
+    "removed": 0,
+    "total_after": 1235604245095.7314,
+    "total_before": 1079222800000.0
+   },
+   {
+    "added": 0,
+    "area_type": "la",
+    "cells_after": 358,
+    "cells_before": 358,
+    "contract_target_id": "hmrc.employment_income.amount",
+    "moved": 358,
+    "relative_change": {
+     "max": 0.14490191005576492,
+     "median": 0.14490191005576447,
+     "min": 0.1223660897722858
+    },
+    "removed": 0,
+    "total_after": 1232438335527.1216,
+    "total_before": 1079222800000.0005
+   },
+   {
+    "added": 0,
+    "area_type": "constituency",
+    "cells_after": 650,
+    "cells_before": 650,
+    "contract_target_id": "hmrc.employment_income.count",
+    "moved": 650,
+    "relative_change": {
+     "max": 0.09691591483362005,
+     "median": 0.09691591483361983,
+     "min": 0.09691591483361961
+    },
+    "removed": 0,
+    "total_after": 29767007.180840164,
+    "total_before": 27137000.0
+   },
+   {
+    "added": 0,
+    "area_type": "la",
+    "cells_after": 358,
+    "cells_before": 358,
+    "contract_target_id": "hmrc.employment_income.count",
+    "moved": 358,
+    "relative_change": {
+     "max": 0.09691591483362028,
+     "median": 0.09691591483361983,
+     "min": 0.0714116034294403
+    },
+    "removed": 0,
+    "total_after": 29699224.79520553,
+    "total_before": 27136999.999999996
+   },
+   {
+    "added": 593,
+    "area_type": "constituency",
+    "cells_after": 593,
+    "cells_before": 0,
+    "contract_target_id": "hmrc.higher_rate_taxpayers.count",
+    "moved": 0,
+    "relative_change": null,
+    "removed": 0,
+    "total_after": 6492749.999999993,
+    "total_before": 0.0
+   },
+   {
+    "added": 326,
+    "area_type": "la",
+    "cells_after": 326,
+    "cells_before": 0,
+    "contract_target_id": "hmrc.higher_rate_taxpayers.count",
+    "moved": 0,
+    "relative_change": null,
+    "removed": 0,
+    "total_after": 6483133.706535337,
+    "total_before": 0.0
+   },
+   {
+    "added": 0,
+    "area_type": "constituency",
+    "cells_after": 649,
+    "cells_before": 649,
+    "contract_target_id": "hmrc.self_employment_income.amount",
+    "moved": 649,
+    "relative_change": {
+     "max": 0.14294314953489495,
+     "median": 0.14294314953489473,
+     "min": 0.1429431495348945
+    },
+    "removed": 0,
+    "total_after": 122033640196.2501,
+    "total_before": 106771400000.0
+   },
+   {
+    "added": 0,
+    "area_type": "la",
+    "cells_after": 358,
+    "cells_before": 358,
+    "contract_target_id": "hmrc.self_employment_income.amount",
+    "moved": 358,
+    "relative_change": {
+     "max": 0.14848414301975144,
+     "median": 0.14294314953489495,
+     "min": 0.12207292116201285
+    },
+    "removed": 0,
+    "total_after": 121238534619.37675,
+    "total_before": 106771400000.0
+   },
+   {
+    "added": 0,
+    "area_type": "constituency",
+    "cells_after": 650,
+    "cells_before": 650,
+    "contract_target_id": "hmrc.self_employment_income.count",
+    "moved": 650,
+    "relative_change": {
+     "max": 0.07175157004734056,
+     "median": 0.07175157004734034,
+     "min": 0.07175157004734034
+    },
+    "removed": 0,
+    "total_after": 3936543.516783896,
+    "total_before": 3673000.0
+   },
+   {
+    "added": 0,
+    "area_type": "la",
+    "cells_after": 358,
+    "cells_before": 358,
+    "contract_target_id": "hmrc.self_employment_income.count",
+    "moved": 358,
+    "relative_change": {
+     "max": 0.071751570047341,
+     "median": 0.07175157004734056,
+     "min": 0.05304195622067387
+    },
+    "removed": 0,
+    "total_after": 3927461.018620408,
+    "total_before": 3672999.9999999898
+   },
+   {
+    "added": 0,
+    "area_type": "la",
+    "cells_after": 294,
+    "cells_before": 294,
+    "contract_target_id": "mhclg.council_tax_stock.by_area.band_a",
+    "moved": 58,
+    "relative_change": {
+     "max": -1.6844658558778924e-05,
+     "median": -1.6844658558889947e-05,
+     "min": -2.6006634056052746e-05
+    },
+    "removed": 0,
+    "total_after": 5590016.0,
+    "total_before": 5590029.000000002
+   },
+   {
+    "added": 0,
+    "area_type": "la",
+    "cells_after": 294,
+    "cells_before": 294,
+    "contract_target_id": "mhclg.council_tax_stock.by_area.band_b",
+    "moved": 58,
+    "relative_change": {
+     "max": -3.939036839839538e-05,
+     "median": -0.0005135430804383834,
+     "min": -0.0005135430804384944
+    },
+    "removed": 0,
+    "total_after": 4736801.0,
+    "total_before": 4737062.999999998
+   },
+   {
+    "added": 0,
+    "area_type": "la",
+    "cells_after": 294,
+    "cells_before": 294,
+    "contract_target_id": "mhclg.council_tax_stock.by_area.band_c",
+    "moved": 58,
+    "relative_change": {
+     "max": -0.00015837497062387573,
+     "median": -0.0005518535519896117,
+     "min": -0.0005518535519898338
+    },
+    "removed": 0,
+    "total_after": 5378951.0,
+    "total_before": 5379590.999999999
+   },
+   {
+    "added": 0,
+    "area_type": "la",
+    "cells_after": 294,
+    "cells_before": 294,
+    "contract_target_id": "mhclg.council_tax_stock.by_area.band_d",
+    "moved": 58,
+    "relative_change": {
+     "max": -0.0005734511874393444,
+     "median": -0.0005914353706309994,
+     "min": -0.0005914353706311104
+    },
+    "removed": 0,
+    "total_after": 3846358.0,
+    "total_before": 3847140.000000001
+   },
+   {
+    "added": 0,
+    "area_type": "la",
+    "cells_after": 294,
+    "cells_before": 294,
+    "contract_target_id": "mhclg.council_tax_stock.by_area.band_e",
+    "moved": 58,
+    "relative_change": {
+     "max": -0.001025098497008603,
+     "median": -0.0034387048149114863,
+     "min": -0.0034387048149115973
+    },
+    "removed": 0,
+    "total_after": 2409630.0,
+    "total_before": 2411808.9999999995
+   },
+   {
+    "added": 0,
+    "area_type": "la",
+    "cells_after": 294,
+    "cells_before": 294,
+    "contract_target_id": "mhclg.council_tax_stock.by_area.band_f",
+    "moved": 58,
+    "relative_change": {
+     "max": -0.0016784781797836157,
+     "median": -0.003466291390491316,
+     "min": -0.0034662913904914827
+    },
+    "removed": 0,
+    "total_after": 1282543.0,
+    "total_before": 1283745.0000000002
+   },
+   {
+    "added": 0,
+    "area_type": "la",
+    "cells_after": 294,
+    "cells_before": 294,
+    "contract_target_id": "mhclg.council_tax_stock.by_area.band_g",
+    "moved": 58,
+    "relative_change": {
+     "max": -0.001350403135053413,
+     "median": -0.005071091878525447,
+     "min": -0.005071091878525613
+    },
+    "removed": 0,
+    "total_after": 860580.0,
+    "total_before": 861732.0000000003
+   },
+   {
+    "added": 0,
+    "area_type": "constituency",
+    "cells_after": 650,
+    "cells_before": 650,
+    "contract_target_id": "ons.age.0_10",
+    "moved": 650,
+    "relative_change": {
+     "max": 0.02712528217637855,
+     "median": -0.022031420196790164,
+     "min": -0.0683677157834407
+    },
+    "removed": 0,
+    "total_after": 7364364.999999994,
+    "total_before": 7553013.0
+   },
+   {
+    "added": 0,
+    "area_type": "la",
+    "cells_after": 359,
+    "cells_before": 359,
+    "contract_target_id": "ons.age.0_10",
+    "moved": 359,
+    "relative_change": {
+     "max": 0.018656160313145653,
+     "median": -0.02421743501582363,
+     "min": -0.05757281516946855
+    },
+    "removed": 0,
+    "total_after": 7363827.0,
+    "total_before": 7553012.999999998
+   },
+   {
+    "added": 0,
+    "area_type": "constituency",
+    "cells_after": 650,
+    "cells_before": 650,
+    "contract_target_id": "ons.age.10_20",
+    "moved": 650,
+    "relative_change": {
+     "max": 0.040303015318173374,
+     "median": -0.005842457330961337,
+     "min": -0.0691455039108797
+    },
+    "removed": 0,
+    "total_after": 8239548.000000003,
+    "total_before": 8331437.0
+   },
+   {
+    "added": 0,
+    "area_type": "la",
+    "cells_after": 359,
+    "cells_before": 359,
+    "contract_target_id": "ons.age.10_20",
+    "moved": 359,
+    "relative_change": {
+     "max": 0.03546052464334948,
+     "median": -0.005796818826765415,
+     "min": -0.097648809285386
+    },
+    "removed": 0,
+    "total_after": 8238776.0,
+    "total_before": 8331437.0
+   },
+   {
+    "added": 0,
+    "area_type": "constituency",
+    "cells_after": 650,
+    "cells_before": 650,
+    "contract_target_id": "ons.age.20_30",
+    "moved": 650,
+    "relative_change": {
+     "max": 0.07779365135053906,
+     "median": -0.005062277171165364,
+     "min": -0.07527186231061023
+    },
+    "removed": 0,
+    "total_after": 8692702.000000006,
+    "total_before": 8715225.0
+   },
+   {
+    "added": 0,
+    "area_type": "la",
+    "cells_after": 359,
+    "cells_before": 359,
+    "contract_target_id": "ons.age.20_30",
+    "moved": 359,
+    "relative_change": {
+     "max": 0.051666874436401944,
+     "median": -0.0037147337378239387,
+     "min": -0.07217514582896711
+    },
+    "removed": 0,
+    "total_after": 8687364.0,
+    "total_before": 8715225.0
+   },
+   {
+    "added": 0,
+    "area_type": "constituency",
+    "cells_after": 650,
+    "cells_before": 650,
+    "contract_target_id": "ons.age.30_40",
+    "moved": 650,
+    "relative_change": {
+     "max": 0.06650383831543505,
+     "median": 0.0030344211522473907,
+     "min": -0.08818422553163585
+    },
+    "removed": 0,
+    "total_after": 9589974.000000002,
+    "total_before": 9572397.0
+   },
+   {
+    "added": 0,
+    "area_type": "la",
+    "cells_after": 359,
+    "cells_before": 359,
+    "contract_target_id": "ons.age.30_40",
+    "moved": 359,
+    "relative_change": {
+     "max": 0.055338881470350376,
+     "median": 0.004056494684425704,
+     "min": -0.048337987056428
+    },
+    "removed": 0,
+    "total_after": 9585467.0,
+    "total_before": 9572397.000000006
+   },
+   {
+    "added": 0,
+    "area_type": "constituency",
+    "cells_after": 650,
+    "cells_before": 650,
+    "contract_target_id": "ons.age.40_50",
+    "moved": 650,
+    "relative_change": {
+     "max": 0.060097915705818794,
+     "median": 0.018601044149015422,
+     "min": -0.02682456853727666
+    },
+    "removed": 0,
+    "total_after": 8781770.000000002,
+    "total_before": 8622506.0
+   },
+   {
+    "added": 0,
+    "area_type": "la",
+    "cells_after": 359,
+    "cells_before": 359,
+    "contract_target_id": "ons.age.40_50",
+    "moved": 359,
+    "relative_change": {
+     "max": 0.06174777938644338,
+     "median": 0.01877794223452245,
+     "min": -0.020260463918555516
+    },
+    "removed": 0,
+    "total_after": 8779519.0,
+    "total_before": 8622506.0
+   },
+   {
+    "added": 0,
+    "area_type": "constituency",
+    "cells_after": 650,
+    "cells_before": 650,
+    "contract_target_id": "ons.age.50_60",
+    "moved": 650,
+    "relative_change": {
+     "max": 0.014571963208296346,
+     "median": -0.011966459019350673,
+     "min": -0.04172593895624055
+    },
+    "removed": 0,
+    "total_after": 8943473.99999999,
+    "total_before": 9036816.0
+   },
+   {
+    "added": 0,
+    "area_type": "la",
+    "cells_after": 359,
+    "cells_before": 359,
+    "contract_target_id": "ons.age.50_60",
+    "moved": 359,
+    "relative_change": {
+     "max": 0.043169322762024454,
+     "median": -0.012938618696336057,
+     "min": -0.041353800025795806
+    },
+    "removed": 0,
+    "total_after": 8941737.0,
+    "total_before": 9036815.999999998
+   },
+   {
+    "added": 0,
+    "area_type": "constituency",
+    "cells_after": 650,
+    "cells_before": 650,
+    "contract_target_id": "ons.age.60_70",
+    "moved": 650,
+    "relative_change": {
+     "max": 0.05923873253963041,
+     "median": 0.03115773126321031,
+     "min": 0.007472165058621361
+    },
+    "removed": 0,
+    "total_after": 8105730.999999998,
+    "total_before": 7861034.0
+   },
+   {
+    "added": 0,
+    "area_type": "la",
+    "cells_after": 359,
+    "cells_before": 359,
+    "contract_target_id": "ons.age.60_70",
+    "moved": 359,
+    "relative_change": {
+     "max": 0.06005393782656432,
+     "median": 0.03150459292553398,
+     "min": 0.006473383375800612
+    },
+    "removed": 0,
+    "total_after": 8104402.0,
+    "total_before": 7861033.999999999
+   },
+   {
+    "added": 0,
+    "area_type": "constituency",
+    "cells_after": 650,
+    "cells_before": 650,
+    "contract_target_id": "ons.age.70_80",
+    "moved": 650,
+    "relative_change": {
+     "max": 0.05313649305278023,
+     "median": 0.008025382605449716,
+     "min": 0.001294946867421265
+    },
+    "removed": 0,
+    "total_after": 6056391.999999994,
+    "total_before": 5998605.0
+   },
+   {
+    "added": 0,
+    "area_type": "la",
+    "cells_after": 359,
+    "cells_before": 359,
+    "contract_target_id": "ons.age.70_80",
+    "moved": 359,
+    "relative_change": {
+     "max": 0.054665207110632164,
+     "median": 0.007949017676929682,
+     "min": -0.01600220811935782
+    },
+    "removed": 0,
+    "total_after": 6055475.0,
+    "total_before": 5998604.999999997
+   },
+   {
+    "added": 0,
+    "area_type": "constituency",
+    "cells_after": 650,
+    "cells_before": 650,
+    "contract_target_id": "ons.census.households",
+    "moved": 650,
+    "relative_change": {
+     "max": 0.04075009093194559,
+     "median": 0.0013318177238104134,
+     "min": -0.024798469448241156
+    },
+    "removed": 0,
+    "total_after": 29082019.72912288,
+    "total_before": 29002999.999999955
+   },
+   {
+    "added": 0,
+    "area_type": "la",
+    "cells_after": 361,
+    "cells_before": 361,
+    "contract_target_id": "ons.census.households",
+    "moved": 361,
+    "relative_change": {
+     "max": 0.04075009093194559,
+     "median": 0.0013318177238106355,
+     "min": -0.0247984694482416
+    },
+    "removed": 0,
+    "total_after": 29082019.72912284,
+    "total_before": 29003000.0
+   },
+   {
+    "added": 0,
+    "area_type": "la",
+    "cells_after": 316,
+    "cells_before": 316,
+    "contract_target_id": "ons.rent.private_rent",
+    "moved": 316,
+    "relative_change": {
+     "max": 0.05784130416602418,
+     "median": 0.000958746411323208,
+     "min": -0.031643541134858344
+    },
+    "removed": 0,
+    "total_after": 79032894704.51706,
+    "total_before": 77859489689.42834
+   },
+   {
+    "added": 0,
+    "area_type": "la",
+    "cells_after": 359,
+    "cells_before": 359,
+    "contract_target_id": "ons.tenure.owned_mortgage",
+    "moved": 359,
+    "relative_change": {
+     "max": 0.05816524225311315,
+     "median": 0.0003475827028895928,
+     "min": -0.031374358490179
+    },
+    "removed": 0,
+    "total_after": 8356868.75743341,
+    "total_before": 8333048.828390813
+   },
+   {
+    "added": 0,
+    "area_type": "la",
+    "cells_after": 359,
+    "cells_before": 359,
+    "contract_target_id": "ons.tenure.owned_outright",
+    "moved": 359,
+    "relative_change": {
+     "max": 0.05869914316237246,
+     "median": 0.0008118424494718557,
+     "min": -0.030868868269292027
+    },
+    "removed": 0,
+    "total_after": 9583759.556563001,
+    "total_before": 9564094.700679522
+   },
+   {
+    "added": 0,
+    "area_type": "la",
+    "cells_after": 359,
+    "cells_before": 359,
+    "contract_target_id": "ons.tenure.private_rent",
+    "moved": 359,
+    "relative_change": {
+     "max": 0.05784130416602418,
+     "median": 0.0003475827028891487,
+     "min": -0.031643541134858344
+    },
+    "removed": 0,
+    "total_after": 5699503.9985514935,
+    "total_before": 5660056.162982172
+   },
+   {
+    "added": 0,
+    "area_type": "la",
+    "cells_after": 359,
+    "cells_before": 359,
+    "contract_target_id": "ons.tenure.social_rent",
+    "moved": 359,
+    "relative_change": {
+     "max": 0.07238624283626738,
+     "median": -0.001454120046299745,
+     "min": -0.062487515709305885
+    },
+    "removed": 0,
+    "total_after": 5066312.081292157,
+    "total_before": 5073569.014446494
+   },
+   {
+    "added": 0,
+    "area_type": "la",
+    "cells_after": 32,
+    "cells_before": 32,
+    "contract_target_id": "scotgov.council_tax_stock.by_area.band_a",
+    "moved": 0,
+    "relative_change": null,
+    "removed": 0,
+    "total_after": 498707.0,
+    "total_before": 498707.0
+   },
+   {
+    "added": 0,
+    "area_type": "la",
+    "cells_after": 32,
+    "cells_before": 32,
+    "contract_target_id": "scotgov.council_tax_stock.by_area.band_b",
+    "moved": 0,
+    "relative_change": null,
+    "removed": 0,
+    "total_after": 583705.0,
+    "total_before": 583705.0
+   },
+   {
+    "added": 0,
+    "area_type": "la",
+    "cells_after": 32,
+    "cells_before": 32,
+    "contract_target_id": "scotgov.council_tax_stock.by_area.band_c",
+    "moved": 0,
+    "relative_change": null,
+    "removed": 0,
+    "total_after": 426388.0,
+    "total_before": 426388.0
+   },
+   {
+    "added": 0,
+    "area_type": "la",
+    "cells_after": 32,
+    "cells_before": 32,
+    "contract_target_id": "scotgov.council_tax_stock.by_area.band_d",
+    "moved": 0,
+    "relative_change": null,
+    "removed": 0,
+    "total_after": 369621.0,
+    "total_before": 369621.0
+   },
+   {
+    "added": 0,
+    "area_type": "la",
+    "cells_after": 32,
+    "cells_before": 32,
+    "contract_target_id": "scotgov.council_tax_stock.by_area.band_e",
+    "moved": 0,
+    "relative_change": null,
+    "removed": 0,
+    "total_after": 366881.0,
+    "total_before": 366881.0
+   },
+   {
+    "added": 0,
+    "area_type": "la",
+    "cells_after": 32,
+    "cells_before": 32,
+    "contract_target_id": "scotgov.council_tax_stock.by_area.band_f",
+    "moved": 0,
+    "relative_change": null,
+    "removed": 0,
+    "total_after": 221282.0,
+    "total_before": 221282.0
+   },
+   {
+    "added": 0,
+    "area_type": "la",
+    "cells_after": 32,
+    "cells_before": 32,
+    "contract_target_id": "scotgov.council_tax_stock.by_area.band_g",
+    "moved": 0,
+    "relative_change": null,
+    "removed": 0,
+    "total_after": 142084.0,
+    "total_before": 142084.0
+   },
+   {
+    "added": 0,
+    "area_type": "la",
+    "cells_after": 31,
+    "cells_before": 31,
+    "contract_target_id": "scotgov.council_tax_stock.by_area.band_h",
+    "moved": 31,
+    "relative_change": {
+     "max": -6.905600441942106e-05,
+     "median": -6.905600441953208e-05,
+     "min": -6.905600441953208e-05
+    },
+    "removed": 0,
+    "total_after": 14480.0,
+    "total_before": 14480.999999999996
+   },
+   {
+    "added": 0,
+    "area_type": "la",
+    "cells_after": 22,
+    "cells_before": 22,
+    "contract_target_id": "welshgov.council_tax_stock.by_area.band_a",
+    "moved": 0,
+    "relative_change": null,
+    "removed": 0,
+    "total_after": 194973.29,
+    "total_before": 194973.29
+   },
+   {
+    "added": 0,
+    "area_type": "la",
+    "cells_after": 22,
+    "cells_before": 22,
+    "contract_target_id": "welshgov.council_tax_stock.by_area.band_b",
+    "moved": 0,
+    "relative_change": null,
+    "removed": 0,
+    "total_after": 285787.52,
+    "total_before": 285787.52
+   },
+   {
+    "added": 0,
+    "area_type": "la",
+    "cells_after": 22,
+    "cells_before": 22,
+    "contract_target_id": "welshgov.council_tax_stock.by_area.band_c",
+    "moved": 0,
+    "relative_change": null,
+    "removed": 0,
+    "total_after": 301699.86,
+    "total_before": 301699.86
+   },
+   {
+    "added": 0,
+    "area_type": "la",
+    "cells_after": 22,
+    "cells_before": 22,
+    "contract_target_id": "welshgov.council_tax_stock.by_area.band_d",
+    "moved": 0,
+    "relative_change": null,
+    "removed": 0,
+    "total_after": 225179.88,
+    "total_before": 225179.88
+   },
+   {
+    "added": 0,
+    "area_type": "la",
+    "cells_after": 22,
+    "cells_before": 22,
+    "contract_target_id": "welshgov.council_tax_stock.by_area.band_e",
+    "moved": 0,
+    "relative_change": null,
+    "removed": 0,
+    "total_after": 185447.46,
+    "total_before": 185447.46
+   },
+   {
+    "added": 0,
+    "area_type": "la",
+    "cells_after": 22,
+    "cells_before": 22,
+    "contract_target_id": "welshgov.council_tax_stock.by_area.band_f",
+    "moved": 0,
+    "relative_change": null,
+    "removed": 0,
+    "total_after": 114672.0,
+    "total_before": 114672.0
+   },
+   {
+    "added": 0,
+    "area_type": "la",
+    "cells_after": 22,
+    "cells_before": 22,
+    "contract_target_id": "welshgov.council_tax_stock.by_area.band_g",
+    "moved": 0,
+    "relative_change": null,
+    "removed": 0,
+    "total_after": 52211.0,
+    "total_before": 52211.0
+   },
+   {
+    "added": 0,
+    "area_type": "la",
+    "cells_after": 22,
+    "cells_before": 22,
+    "contract_target_id": "welshgov.council_tax_stock.by_area.band_h",
+    "moved": 0,
+    "relative_change": null,
+    "removed": 0,
+    "total_after": 12357.0,
+    "total_before": 12357.0
+   },
+   {
+    "added": 0,
+    "area_type": "la",
+    "cells_after": 22,
+    "cells_before": 22,
+    "contract_target_id": "welshgov.council_tax_stock.by_area.band_i",
+    "moved": 0,
+    "relative_change": null,
+    "removed": 0,
+    "total_after": 5305.0,
+    "total_before": 5305.0
+   }
+  ],
+  "moved": 18811,
+  "removed": 0,
+  "rows_after": 21804,
+  "rows_before": 20885
+ },
+ "national": {
+  "added": [
+   "hmrc.itl.additional_rate_taxpayers@E12000001",
+   "hmrc.itl.additional_rate_taxpayers@E12000002",
+   "hmrc.itl.additional_rate_taxpayers@E12000003",
+   "hmrc.itl.additional_rate_taxpayers@E12000004",
+   "hmrc.itl.additional_rate_taxpayers@E12000005",
+   "hmrc.itl.additional_rate_taxpayers@E12000006",
+   "hmrc.itl.additional_rate_taxpayers@E12000007",
+   "hmrc.itl.additional_rate_taxpayers@E12000008",
+   "hmrc.itl.additional_rate_taxpayers@E12000009",
+   "hmrc.itl.additional_rate_taxpayers@N92000002",
+   "hmrc.itl.additional_rate_taxpayers@S92000003",
+   "hmrc.itl.additional_rate_taxpayers@W92000004",
+   "hmrc.itl.higher_rate_taxpayers@E12000001",
+   "hmrc.itl.higher_rate_taxpayers@E12000002",
+   "hmrc.itl.higher_rate_taxpayers@E12000003",
+   "hmrc.itl.higher_rate_taxpayers@E12000004",
+   "hmrc.itl.higher_rate_taxpayers@E12000005",
+   "hmrc.itl.higher_rate_taxpayers@E12000006",
+   "hmrc.itl.higher_rate_taxpayers@E12000007",
+   "hmrc.itl.higher_rate_taxpayers@E12000008",
+   "hmrc.itl.higher_rate_taxpayers@E12000009",
+   "hmrc.itl.higher_rate_taxpayers@N92000002",
+   "hmrc.itl.higher_rate_taxpayers@S92000003",
+   "hmrc.itl.higher_rate_taxpayers@W92000004",
+   "nisra.households.northern_ireland",
+   "nrs.households.scotland",
+   "ons.households.english_regions@E12000001",
+   "ons.households.english_regions@E12000002",
+   "ons.households.english_regions@E12000003",
+   "ons.households.english_regions@E12000004",
+   "ons.households.english_regions@E12000005",
+   "ons.households.english_regions@E12000006",
+   "ons.households.english_regions@E12000007",
+   "ons.households.english_regions@E12000008",
+   "ons.households.english_regions@E12000009",
+   "welshgov.households.wales"
+  ],
+  "moved": [
+   {
+    "after": 152500000.0,
+    "before": 150082817.48999995,
+    "family": "dft_local_bus",
+    "name": "dfi_ni.bus.passenger_receipts",
+    "relative_change": 0.016105657865605583
+   },
+   {
+    "after": 1497785386.083555,
+    "before": 1497797150.3974364,
+    "family": "hmrc_cgt",
+    "name": "hmrc.cgt.gains_by_region@E12000001",
+    "relative_change": -7.854410644547727e-06
+   },
+   {
+    "after": 8790005042.531633,
+    "before": 8790074083.38308,
+    "family": "hmrc_cgt",
+    "name": "hmrc.cgt.gains_by_region@E12000002",
+    "relative_change": -7.854410644436705e-06
+   },
+   {
+    "after": 6970931108.964237,
+    "before": 6970985861.949795,
+    "family": "hmrc_cgt",
+    "name": "hmrc.cgt.gains_by_region@E12000003",
+    "relative_change": -7.85441064465875e-06
+   },
+   {
+    "after": 6299316273.553412,
+    "before": 6299365751.358824,
+    "family": "hmrc_cgt",
+    "name": "hmrc.cgt.gains_by_region@E12000004",
+    "relative_change": -7.854410644547727e-06
+   },
+   {
+    "after": 5890914504.740136,
+    "before": 5890960774.765152,
+    "family": "hmrc_cgt",
+    "name": "hmrc.cgt.gains_by_region@E12000005",
+    "relative_change": -7.854410644547727e-06
+   },
+   {
+    "after": 11545780280.716635,
+    "before": 11545870966.728456,
+    "family": "hmrc_cgt",
+    "name": "hmrc.cgt.gains_by_region@E12000006",
+    "relative_change": -7.854410644547727e-06
+   },
+   {
+    "after": 32519459192.409492,
+    "before": 32519714615.602127,
+    "family": "hmrc_cgt",
+    "name": "hmrc.cgt.gains_by_region@E12000007",
+    "relative_change": -7.854410644547727e-06
+   },
+   {
+    "after": 25606603564.331543,
+    "before": 25606804690.69088,
+    "family": "hmrc_cgt",
+    "name": "hmrc.cgt.gains_by_region@E12000008",
+    "relative_change": -7.85441064465875e-06
+   },
+   {
+    "after": 10341182402.97839,
+    "before": 10341263627.509504,
+    "family": "hmrc_cgt",
+    "name": "hmrc.cgt.gains_by_region@E12000009",
+    "relative_change": -7.85441064465875e-06
+   },
+   {
+    "after": 1757251647.4626322,
+    "before": 1757265449.747086,
+    "family": "hmrc_cgt",
+    "name": "hmrc.cgt.gains_by_region@N92000002",
+    "relative_change": -7.854410644547727e-06
+   },
+   {
+    "after": 5680156711.201174,
+    "before": 5680201325.83493,
+    "family": "hmrc_cgt",
+    "name": "hmrc.cgt.gains_by_region@S92000003",
+    "relative_change": -7.854410644547727e-06
+   },
+   {
+    "after": 2358613885.0271363,
+    "before": 2358632410.6946497,
+    "family": "hmrc_cgt",
+    "name": "hmrc.cgt.gains_by_region@W92000004",
+    "relative_change": -7.85441064465875e-06
+   },
+   {
+    "after": 11341.337907375644,
+    "before": 11321.91780821918,
+    "family": "hmrc_cgt",
+    "name": "hmrc.cgt.taxpayers_by_region@E12000001",
+    "relative_change": 0.0017152658662091813
+   },
+   {
+    "after": 41584.90566037736,
+    "before": 41513.69863013699,
+    "family": "hmrc_cgt",
+    "name": "hmrc.cgt.taxpayers_by_region@E12000002",
+    "relative_change": 0.0017152658662091813
+   },
+   {
+    "after": 32133.790737564323,
+    "before": 32078.767123287675,
+    "family": "hmrc_cgt",
+    "name": "hmrc.cgt.taxpayers_by_region@E12000003",
+    "relative_change": 0.0017152658662091813
+   },
+   {
+    "after": 31188.67924528302,
+    "before": 31135.273972602743,
+    "family": "hmrc_cgt",
+    "name": "hmrc.cgt.taxpayers_by_region@E12000004",
+    "relative_change": 0.0017152658662091813
+   },
+   {
+    "after": 33078.902229845626,
+    "before": 33022.260273972606,
+    "family": "hmrc_cgt",
+    "name": "hmrc.cgt.taxpayers_by_region@E12000005",
+    "relative_change": 0.0017152658662091813
+   },
+   {
+    "after": 58596.91252144083,
+    "before": 58496.57534246576,
+    "family": "hmrc_cgt",
+    "name": "hmrc.cgt.taxpayers_by_region@E12000006",
+    "relative_change": 0.0017152658662091813
+   },
+   {
+    "after": 106797.5986277873,
+    "before": 106614.72602739726,
+    "family": "hmrc_cgt",
+    "name": "hmrc.cgt.taxpayers_by_region@E12000007",
+    "relative_change": 0.0017152658662091813
+   },
+   {
+    "after": 114358.49056603773,
+    "before": 114162.67123287672,
+    "family": "hmrc_cgt",
+    "name": "hmrc.cgt.taxpayers_by_region@E12000008",
+    "relative_change": 0.0017152658662091813
+   },
+   {
+    "after": 60487.13550600343,
+    "before": 60383.56164383562,
+    "family": "hmrc_cgt",
+    "name": "hmrc.cgt.taxpayers_by_region@E12000009",
+    "relative_change": 0.0017152658662091813
+   },
+   {
+    "after": 9451.114922813036,
+    "before": 9434.931506849316,
+    "family": "hmrc_cgt",
+    "name": "hmrc.cgt.taxpayers_by_region@N92000002",
+    "relative_change": 0.0017152658662091813
+   },
+   {
+    "after": 34969.12521440823,
+    "before": 34909.24657534247,
+    "family": "hmrc_cgt",
+    "name": "hmrc.cgt.taxpayers_by_region@S92000003",
+    "relative_change": 0.0017152658662091813
+   },
+   {
+    "after": 17012.006861063466,
+    "before": 16982.87671232877,
+    "family": "hmrc_cgt",
+    "name": "hmrc.cgt.taxpayers_by_region@W92000004",
+    "relative_change": 0.0017152658662091813
+   },
+   {
+    "after": 724380464.0767765,
+    "before": 720261437.9084967,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.income_tax_by_region_100000_150000@E12000001",
+    "relative_change": 0.005718793137448275
+   },
+   {
+    "after": 2622756852.6917768,
+    "before": 2607843137.254902,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.income_tax_by_region_100000_150000@E12000002",
+    "relative_change": 0.005718793137448275
+   },
+   {
+    "after": 1760993886.8073359,
+    "before": 1750980392.1568627,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.income_tax_by_region_100000_150000@E12000003",
+    "relative_change": 0.005718793137448275
+   },
+   {
+    "after": 1873397751.9226978,
+    "before": 1862745098.0392158,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.income_tax_by_region_100000_150000@E12000004",
+    "relative_change": 0.005718793137448275
+   },
+   {
+    "after": 1960822980.345757,
+    "before": 1949673202.6143792,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.income_tax_by_region_100000_150000@E12000005",
+    "relative_change": 0.005718793137448275
+   },
+   {
+    "after": 4371261421.152962,
+    "before": 4346405228.75817,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.income_tax_by_region_100000_150000@E12000006",
+    "relative_change": 0.005718793137448275
+   },
+   {
+    "after": 10053901268.651812,
+    "before": 9996732026.143791,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.income_tax_by_region_100000_150000@E12000007",
+    "relative_change": 0.005718793137448275
+   },
+   {
+    "after": 8168014198.382962,
+    "before": 8121568627.45098,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.income_tax_by_region_100000_150000@E12000008",
+    "relative_change": 0.005718793137448275
+   },
+   {
+    "after": 2647735489.3840795,
+    "before": 2632679738.5620914,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.income_tax_by_region_100000_150000@E12000009",
+    "relative_change": 0.005718793137448275
+   },
+   {
+    "after": 458357983.3037534,
+    "before": 455751633.9869281,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.income_tax_by_region_100000_150000@N92000002",
+    "relative_change": 0.005718793137448275
+   },
+   {
+    "after": 2510352987.576415,
+    "before": 2496078431.372549,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.income_tax_by_region_100000_150000@S92000003",
+    "relative_change": 0.005718793137448275
+   },
+   {
+    "after": 848024715.7036746,
+    "before": 843202614.379085,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.income_tax_by_region_100000_150000@W92000004",
+    "relative_change": 0.005718793137448275
+   },
+   {
+    "after": 27989247.31182796,
+    "before": 26471186.440677967,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.income_tax_by_region_12570_15000@E12000001",
+    "relative_change": 0.057347670250896154
+   },
+   {
+    "after": 73471774.1935484,
+    "before": 69486864.40677966,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.income_tax_by_region_12570_15000@E12000002",
+    "relative_change": 0.057347670250896154
+   },
+   {
+    "after": 53646057.34767026,
+    "before": 50736440.6779661,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.income_tax_by_region_12570_15000@E12000003",
+    "relative_change": 0.057347670250896154
+   },
+   {
+    "after": 50147401.433691755,
+    "before": 47427542.37288135,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.income_tax_by_region_12570_15000@E12000004",
+    "relative_change": 0.057347670250896154
+   },
+   {
+    "after": 58310931.89964158,
+    "before": 55148305.084745765,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.income_tax_by_region_12570_15000@E12000005",
+    "relative_change": 0.057347670250896154
+   },
+   {
+    "after": 60643369.17562725,
+    "before": 57354237.288135596,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.income_tax_by_region_12570_15000@E12000006",
+    "relative_change": 0.057347670250896154
+   },
+   {
+    "after": 81635304.65949821,
+    "before": 77207627.11864407,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.income_tax_by_region_12570_15000@E12000007",
+    "relative_change": 0.057347670250896154
+   },
+   {
+    "after": 82801523.29749104,
+    "before": 78310593.22033899,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.income_tax_by_region_12570_15000@E12000008",
+    "relative_change": 0.057347670250896154
+   },
+   {
+    "after": 57144713.26164875,
+    "before": 54045338.983050846,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.income_tax_by_region_12570_15000@E12000009",
+    "relative_change": 0.057347670250896154
+   },
+   {
+    "after": 17493279.569892477,
+    "before": 16544491.52542373,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.income_tax_by_region_12570_15000@N92000002",
+    "relative_change": 0.057347670250896154
+   },
+   {
+    "after": 54812275.985663086,
+    "before": 51839406.779661015,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.income_tax_by_region_12570_15000@S92000003",
+    "relative_change": 0.057347670250896154
+   },
+   {
+    "after": 32654121.86379929,
+    "before": 30883050.84745763,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.income_tax_by_region_12570_15000@W92000004",
+    "relative_change": 0.057347670250896154
+   },
+   {
+    "after": 314730314.73031473,
+    "before": 312790697.6744186,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.income_tax_by_region_150000_200000@E12000001",
+    "relative_change": 0.006201006201006054
+   },
+   {
+    "after": 1263601263.6012635,
+    "before": 1255813953.488372,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.income_tax_by_region_150000_200000@E12000002",
+    "relative_change": 0.006201006201006054
+   },
+   {
+    "after": 810810810.8108107,
+    "before": 805813953.4883721,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.income_tax_by_region_150000_200000@E12000003",
+    "relative_change": 0.006201006201006054
+   },
+   {
+    "after": 833040833.0408329,
+    "before": 827906976.744186,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.income_tax_by_region_150000_200000@E12000004",
+    "relative_change": 0.006201006201006054
+   },
+   {
+    "after": 973440973.4409734,
+    "before": 967441860.4651164,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.income_tax_by_region_150000_200000@E12000005",
+    "relative_change": 0.006201006201006054
+   },
+   {
+    "after": 2351702351.7023516,
+    "before": 2337209302.3255816,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.income_tax_by_region_150000_200000@E12000006",
+    "relative_change": 0.006201006201006054
+   },
+   {
+    "after": 6154206154.206153,
+    "before": 6116279069.767442,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.income_tax_by_region_150000_200000@E12000007",
+    "relative_change": 0.006201006201006054
+   },
+   {
+    "after": 4399204399.204399,
+    "before": 4372093023.255815,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.income_tax_by_region_150000_200000@E12000008",
+    "relative_change": 0.006201006201006054
+   },
+   {
+    "after": 1251901251.9012518,
+    "before": 1244186046.511628,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.income_tax_by_region_150000_200000@E12000009",
+    "relative_change": 0.006201006201006054
+   },
+   {
+    "after": 209430209.4302094,
+    "before": 208139534.88372093,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.income_tax_by_region_150000_200000@N92000002",
+    "relative_change": 0.006201006201006054
+   },
+   {
+    "after": 1071721071.7210716,
+    "before": 1065116279.0697675,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.income_tax_by_region_150000_200000@S92000003",
+    "relative_change": 0.006201006201006054
+   },
+   {
+    "after": 366210366.21036613,
+    "before": 363953488.372093,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.income_tax_by_region_150000_200000@W92000004",
+    "relative_change": 0.006201006201006054
+   },
+   {
+    "after": 197151366.1202186,
+    "before": 194389547.4137931,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.income_tax_by_region_15000_20000@E12000001",
+    "relative_change": 0.014207650273224237
+   },
+   {
+    "after": 533992896.17486346,
+    "before": 526512392.24137926,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.income_tax_by_region_15000_20000@E12000002",
+    "relative_change": 0.014207650273224237
+   },
+   {
+    "after": 403219125.68306017,
+    "before": 397570581.8965517,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.income_tax_by_region_15000_20000@E12000003",
+    "relative_change": 0.014207650273224237
+   },
+   {
+    "after": 368544262.29508203,
+    "before": 363381465.51724136,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.income_tax_by_region_15000_20000@E12000004",
+    "relative_change": 0.014207650273224237
+   },
+   {
+    "after": 419070491.80327874,
+    "before": 413199892.24137926,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.income_tax_by_region_15000_20000@E12000005",
+    "relative_change": 0.014207650273224237
+   },
+   {
+    "after": 426996174.86338806,
+    "before": 421014547.4137931,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.income_tax_by_region_15000_20000@E12000006",
+    "relative_change": 0.014207650273224237
+   },
+   {
+    "after": 469596721.31147546,
+    "before": 463018318.9655172,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.income_tax_by_region_15000_20000@E12000007",
+    "relative_change": 0.014207650273224237
+   },
+   {
+    "after": 595416939.8907105,
+    "before": 587075969.8275862,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.income_tax_by_region_15000_20000@E12000008",
+    "relative_change": 0.014207650273224237
+   },
+   {
+    "after": 408172677.59562844,
+    "before": 402454741.3793103,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.income_tax_by_region_15000_20000@E12000009",
+    "relative_change": 0.014207650273224237
+   },
+   {
+    "after": 127801639.34426232,
+    "before": 126011314.65517241,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.income_tax_by_region_15000_20000@N92000002",
+    "relative_change": 0.014207650273224237
+   },
+   {
+    "after": 370525683.0601094,
+    "before": 365335129.3103448,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.income_tax_by_region_15000_20000@S92000003",
+    "relative_change": 0.014207650273224237
+   },
+   {
+    "after": 212012021.85792354,
+    "before": 209042025.86206895,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.income_tax_by_region_15000_20000@W92000004",
+    "relative_change": 0.014207650273224237
+   },
+   {
+    "after": 733859454.3147209,
+    "before": 727874655.8279796,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.income_tax_by_region_200000_plus@E12000001",
+    "relative_change": 0.00822229272419639
+   },
+   {
+    "after": 4182998889.5939093,
+    "before": 4148885538.2194834,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.income_tax_by_region_200000_plus@E12000002",
+    "relative_change": 0.00822229272419639
+   },
+   {
+    "after": 2446198181.0490694,
+    "before": 2426248852.7599316,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.income_tax_by_region_200000_plus@E12000003",
+    "relative_change": 0.00822229272419639
+   },
+   {
+    "after": 2556277099.1962776,
+    "before": 2535430051.1341286,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.income_tax_by_region_200000_plus@E12000004",
+    "relative_change": 0.00822229272419639
+   },
+   {
+    "after": 3069978717.2165823,
+    "before": 3044942310.213714,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.income_tax_by_region_200000_plus@E12000005",
+    "relative_change": 0.00822229272419639
+   },
+   {
+    "after": 9271091106.175974,
+    "before": 9195483151.960142,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.income_tax_by_region_200000_plus@E12000006",
+    "relative_change": 0.00822229272419639
+   },
+   {
+    "after": 42196918623.09645,
+    "before": 41852792710.108826,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.income_tax_by_region_200000_plus@E12000007",
+    "relative_change": 0.00822229272419639
+   },
+   {
+    "after": 18958035903.130287,
+    "before": 18803428608.88947,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.income_tax_by_region_200000_plus@E12000008",
+    "relative_change": 0.00822229272419639
+   },
+   {
+    "after": 4268615825.9306264,
+    "before": 4233804248.066081,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.income_tax_by_region_200000_plus@E12000009",
+    "relative_change": 0.00822229272419639
+   },
+   {
+    "after": 638457725.2538072,
+    "before": 633250950.5703422,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.income_tax_by_region_200000_plus@N92000002",
+    "relative_change": 0.00822229272419639
+   },
+   {
+    "after": 3424677453.4686975,
+    "before": 3396748393.8639045,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.income_tax_by_region_200000_plus@S92000003",
+    "relative_change": 0.00822229272419639
+   },
+   {
+    "after": 777891021.5736041,
+    "before": 771547135.1776583,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.income_tax_by_region_200000_plus@W92000004",
+    "relative_change": 0.00822229272419639
+   },
+   {
+    "after": 958652611.0643576,
+    "before": 953458149.7797357,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.income_tax_by_region_20000_30000@E12000001",
+    "relative_change": 0.005448022323603752
+   },
+   {
+    "after": 2682187624.5736814,
+    "before": 2667654185.0220265,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.income_tax_by_region_20000_30000@E12000002",
+    "relative_change": 0.005448022323603752
+   },
+   {
+    "after": 1998892678.3895118,
+    "before": 1988061674.0088108,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.income_tax_by_region_20000_30000@E12000003",
+    "relative_change": 0.005448022323603752
+   },
+   {
+    "after": 1815320901.8027198,
+    "before": 1805484581.4977975,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.income_tax_by_region_20000_30000@E12000004",
+    "relative_change": 0.005448022323603752
+   },
+   {
+    "after": 2121273862.7807064,
+    "before": 2109779735.6828196,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.income_tax_by_region_20000_30000@E12000005",
+    "relative_change": 0.005448022323603752
+   },
+   {
+    "after": 2151869158.8785048,
+    "before": 2140209251.1013217,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.income_tax_by_region_20000_30000@E12000006",
+    "relative_change": 0.005448022323603752
+   },
+   {
+    "after": 2376234663.595695,
+    "before": 2363359030.8370047,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.income_tax_by_region_20000_30000@E12000007",
+    "relative_change": 0.005448022323603752
+   },
+   {
+    "after": 3069728041.812464,
+    "before": 3053094713.656388,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.income_tax_by_region_20000_30000@E12000008",
+    "relative_change": 0.005448022323603752
+   },
+   {
+    "after": 2141670726.8459055,
+    "before": 2130066079.2951543,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.income_tax_by_region_20000_30000@E12000009",
+    "relative_change": 0.005448022323603752
+   },
+   {
+    "after": 649640120.4765913,
+    "before": 646120044.0528635,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.income_tax_by_region_20000_30000@N92000002",
+    "relative_change": 0.005448022323603752
+   },
+   {
+    "after": 1917305222.1287153,
+    "before": 1906916299.5594714,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.income_tax_by_region_20000_30000@S92000003",
+    "relative_change": 0.005448022323603752
+   },
+   {
+    "after": 1142224387.6511497,
+    "before": 1136035242.290749,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.income_tax_by_region_20000_30000@W92000004",
+    "relative_change": 0.005448022323603752
+   },
+   {
+    "after": 1133646115.2292426,
+    "before": 1129084960.9375,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.income_tax_by_region_30000_40000@E12000001",
+    "relative_change": 0.004039690944032559
+   },
+   {
+    "after": 3282802878.770051,
+    "before": 3269594726.5625,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.income_tax_by_region_30000_40000@E12000002",
+    "relative_change": 0.004039690944032559
+   },
+   {
+    "after": 2453582774.444052,
+    "before": 2443710937.5,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.income_tax_by_region_30000_40000@E12000003",
+    "relative_change": 0.004039690944032559
+   },
+   {
+    "after": 2260476722.751696,
+    "before": 2251381835.9375,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.income_tax_by_region_30000_40000@E12000004",
+    "relative_change": 0.004039690944032559
+   },
+   {
+    "after": 2623970467.113778,
+    "before": 2613413085.9375,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.income_tax_by_region_30000_40000@E12000005",
+    "relative_change": 0.004039690944032559
+   },
+   {
+    "after": 2964745852.4532294,
+    "before": 2952817382.8125,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.income_tax_by_region_30000_40000@E12000006",
+    "relative_change": 0.004039690944032559
+   },
+   {
+    "after": 3930276110.9150095,
+    "before": 3914462890.625,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.income_tax_by_region_30000_40000@E12000007",
+    "relative_change": 0.004039690944032559
+   },
+   {
+    "after": 4350565752.833667,
+    "before": 4333061523.4375,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.income_tax_by_region_30000_40000@E12000008",
+    "relative_change": 0.004039690944032559
+   },
+   {
+    "after": 2771639800.760874,
+    "before": 2760488281.25,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.income_tax_by_region_30000_40000@E12000009",
+    "relative_change": 0.004039690944032559
+   },
+   {
+    "after": 803093991.4499744,
+    "before": 799862792.96875,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.income_tax_by_region_30000_40000@N92000002",
+    "relative_change": 0.004039690944032559
+   },
+   {
+    "after": 2680766364.6703534,
+    "before": 2669980468.75,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.income_tax_by_region_30000_40000@S92000003",
+    "relative_change": 0.004039690944032559
+   },
+   {
+    "after": 1397179079.8917518,
+    "before": 1391557617.1875,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.income_tax_by_region_30000_40000@W92000004",
+    "relative_change": 0.004039690944032559
+   },
+   {
+    "after": 931452719.9278346,
+    "before": 927705078.125,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.income_tax_by_region_40000_50000@E12000001",
+    "relative_change": 0.004039690944032559
+   },
+   {
+    "after": 2817076518.8061337,
+    "before": 2805742187.5,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.income_tax_by_region_40000_50000@E12000002",
+    "relative_change": 0.004039690944032559
+   },
+   {
+    "after": 2021933953.01408,
+    "before": 2013798828.125,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.income_tax_by_region_40000_50000@E12000003",
+    "relative_change": 0.004039690944032559
+   },
+   {
+    "after": 1942419696.4348745,
+    "before": 1934604492.1875,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.income_tax_by_region_40000_50000@E12000004",
+    "relative_change": 0.004039690944032559
+   },
+   {
+    "after": 2203680825.195121,
+    "before": 2194814453.125,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.income_tax_by_region_40000_50000@E12000005",
+    "relative_change": 0.004039690944032559
+   },
+   {
+    "after": 2669407185.159038,
+    "before": 2658666992.1875,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.income_tax_by_region_40000_50000@E12000006",
+    "relative_change": 0.004039690944032559
+   },
+   {
+    "after": 3782606777.267914,
+    "before": 3767387695.3125,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.income_tax_by_region_40000_50000@E12000007",
+    "relative_change": 0.004039690944032559
+   },
+   {
+    "after": 4168818880.6526256,
+    "before": 4152045898.4375,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.income_tax_by_region_40000_50000@E12000008",
+    "relative_change": 0.004039690944032559
+   },
+   {
+    "after": 2385427697.3761616,
+    "before": 2375830078.125,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.income_tax_by_region_40000_50000@E12000009",
+    "relative_change": 0.004039690944032559
+   },
+   {
+    "after": 646337314.1938267,
+    "before": 643736816.40625,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.income_tax_by_region_40000_50000@N92000002",
+    "relative_change": 0.004039690944032559
+   },
+   {
+    "after": 2544456210.5345726,
+    "before": 2534218750.0,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.income_tax_by_region_40000_50000@S92000003",
+    "relative_change": 0.004039690944032559
+   },
+   {
+    "after": 1158636310.1541357,
+    "before": 1153974609.375,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.income_tax_by_region_40000_50000@W92000004",
+    "relative_change": 0.004039690944032559
+   },
+   {
+    "after": 1343320131.1698818,
+    "before": 1336546610.1694915,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.income_tax_by_region_50000_70000@E12000001",
+    "relative_change": 0.005067927260338001
+   },
+   {
+    "after": 4213140411.3964477,
+    "before": 4191896186.440678,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.income_tax_by_region_50000_70000@E12000002",
+    "relative_change": 0.005067927260338001
+   },
+   {
+    "after": 2857608279.0341125,
+    "before": 2843199152.542373,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.income_tax_by_region_50000_70000@E12000003",
+    "relative_change": 0.005067927260338001
+   },
+   {
+    "after": 2845396277.841659,
+    "before": 2831048728.8135595,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.income_tax_by_region_50000_70000@E12000004",
+    "relative_change": 0.005067927260338001
+   },
+   {
+    "after": 3407148332.6945186,
+    "before": 3389968220.338983,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.income_tax_by_region_50000_70000@E12000005",
+    "relative_change": 0.005067927260338001
+   },
+   {
+    "after": 4738256462.6719475,
+    "before": 4714364406.779661,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.income_tax_by_region_50000_70000@E12000006",
+    "relative_change": 0.005067927260338001
+   },
+   {
+    "after": 7681348750.053233,
+    "before": 7642616525.423729,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.income_tax_by_region_50000_70000@E12000007",
+    "relative_change": 0.005067927260338001
+   },
+   {
+    "after": 7510380733.358885,
+    "before": 7472510593.220339,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.income_tax_by_region_50000_70000@E12000008",
+    "relative_change": 0.005067927260338001
+   },
+   {
+    "after": 3626964354.158681,
+    "before": 3608675847.4576273,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.income_tax_by_region_50000_70000@E12000009",
+    "relative_change": 0.005067927260338001
+   },
+   {
+    "after": 776683275.8400408,
+    "before": 772766949.1525424,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.income_tax_by_region_50000_70000@N92000002",
+    "relative_change": 0.005067927260338001
+   },
+   {
+    "after": 3920052382.777564,
+    "before": 3900286016.9491525,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.income_tax_by_region_50000_70000@S92000003",
+    "relative_change": 0.005067927260338001
+   },
+   {
+    "after": 1685256164.5585792,
+    "before": 1676758474.5762713,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.income_tax_by_region_50000_70000@W92000004",
+    "relative_change": 0.005067927260338001
+   },
+   {
+    "after": 967190494.4423149,
+    "before": 962313559.3220339,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.income_tax_by_region_70000_100000@E12000001",
+    "relative_change": 0.005067927260338001
+   },
+   {
+    "after": 3455996337.464332,
+    "before": 3438569915.254237,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.income_tax_by_region_70000_100000@E12000002",
+    "relative_change": 0.005067927260338001
+   },
+   {
+    "after": 2210372215.8340783,
+    "before": 2199226694.915254,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.income_tax_by_region_70000_100000@E12000003",
+    "relative_change": 0.005067927260338001
+   },
+   {
+    "after": 2295856224.1812525,
+    "before": 2284279661.016949,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.income_tax_by_region_70000_100000@E12000004",
+    "relative_change": 0.005067927260338001
+   },
+   {
+    "after": 2796548273.0718446,
+    "before": 2782447033.898305,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.income_tax_by_region_70000_100000@E12000005",
+    "relative_change": 0.005067927260338001
+   },
+   {
+    "after": 4689408457.902133,
+    "before": 4665762711.864407,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.income_tax_by_region_70000_100000@E12000006",
+    "relative_change": 0.005067927260338001
+   },
+   {
+    "after": 8902548869.29858,
+    "before": 8857658898.305084,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.income_tax_by_region_70000_100000@E12000007",
+    "relative_change": 0.005067927260338001
+   },
+   {
+    "after": 8072132788.211744,
+    "before": 8031430084.745763,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.income_tax_by_region_70000_100000@E12000008",
+    "relative_change": 0.005067927260338001
+   },
+   {
+    "after": 3089636301.690728,
+    "before": 3074057203.3898306,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.income_tax_by_region_70000_100000@E12000009",
+    "relative_change": 0.005067927260338001
+   },
+   {
+    "after": 592282057.8339934,
+    "before": 589295550.8474576,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.income_tax_by_region_70000_100000@N92000002",
+    "relative_change": 0.005067927260338001
+   },
+   {
+    "after": 3285028320.769984,
+    "before": 3268463983.0508475,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.income_tax_by_region_70000_100000@S92000003",
+    "relative_change": 0.005067927260338001
+   },
+   {
+    "after": 1062444103.743452,
+    "before": 1057086864.4067796,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.income_tax_by_region_70000_100000@W92000004",
+    "relative_change": 0.005067927260338001
+   },
+   {
+    "after": 21250.0,
+    "before": 21153.189066059225,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.taxpayers_by_region_100000_150000@E12000001",
+    "relative_change": 0.004576659038901587
+   },
+   {
+    "after": 77500.00000000001,
+    "before": 77146.92482915719,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.taxpayers_by_region_100000_150000@E12000002",
+    "relative_change": 0.004576659038901587
+   },
+   {
+    "after": 52500.0,
+    "before": 52260.82004555809,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.taxpayers_by_region_100000_150000@E12000003",
+    "relative_change": 0.004576659038901587
+   },
+   {
+    "after": 55000.0,
+    "before": 54749.430523917996,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.taxpayers_by_region_100000_150000@E12000004",
+    "relative_change": 0.004576659038901587
+   },
+   {
+    "after": 57500.00000000001,
+    "before": 57238.04100227791,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.taxpayers_by_region_100000_150000@E12000005",
+    "relative_change": 0.004576659038901587
+   },
+   {
+    "after": 126250.00000000001,
+    "before": 125674.82915717541,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.taxpayers_by_region_100000_150000@E12000006",
+    "relative_change": 0.004576659038901587
+   },
+   {
+    "after": 282500.00000000006,
+    "before": 281212.98405466974,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.taxpayers_by_region_100000_150000@E12000007",
+    "relative_change": 0.004576659038901587
+   },
+   {
+    "after": 232500.0,
+    "before": 231440.77448747153,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.taxpayers_by_region_100000_150000@E12000008",
+    "relative_change": 0.004576659038901587
+   },
+   {
+    "after": 77500.00000000001,
+    "before": 77146.92482915719,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.taxpayers_by_region_100000_150000@E12000009",
+    "relative_change": 0.004576659038901587
+   },
+   {
+    "after": 15000.000000000002,
+    "before": 14931.662870159455,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.taxpayers_by_region_100000_150000@N92000002",
+    "relative_change": 0.004576659038901587
+   },
+   {
+    "after": 70000.0,
+    "before": 69681.09339407746,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.taxpayers_by_region_100000_150000@S92000003",
+    "relative_change": 0.004576659038901587
+   },
+   {
+    "after": 25000.0,
+    "before": 24886.10478359909,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.taxpayers_by_region_100000_150000@W92000004",
+    "relative_change": 0.004576659038901587
+   },
+   {
+    "after": 125372.20620043257,
+    "before": 122028.94736842105,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.taxpayers_by_region_12570_15000@E12000001",
+    "relative_change": 0.02739726027397249
+   },
+   {
+    "after": 341826.7844268204,
+    "before": 332711.4035087719,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.taxpayers_by_region_12570_15000@E12000002",
+    "relative_change": 0.02739726027397249
+   },
+   {
+    "after": 251815.9697188176,
+    "before": 245100.87719298247,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.taxpayers_by_region_12570_15000@E12000003",
+    "relative_change": 0.02739726027397249
+   },
+   {
+    "after": 235742.60994953132,
+    "before": 229456.1403508772,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.taxpayers_by_region_12570_15000@E12000004",
+    "relative_change": 0.02739726027397249
+   },
+   {
+    "after": 265746.21485219896,
+    "before": 258659.64912280702,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.taxpayers_by_region_12570_15000@E12000005",
+    "relative_change": 0.02739726027397249
+   },
+   {
+    "after": 280748.01730353275,
+    "before": 273261.4035087719,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.taxpayers_by_region_12570_15000@E12000006",
+    "relative_change": 0.02739726027397249
+   },
+   {
+    "after": 349327.68565248733,
+    "before": 340012.2807017544,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.taxpayers_by_region_12570_15000@E12000007",
+    "relative_change": 0.02739726027397249
+   },
+   {
+    "after": 373973.5039653929,
+    "before": 364000.8771929825,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.taxpayers_by_region_12570_15000@E12000008",
+    "relative_change": 0.02739726027397249
+   },
+   {
+    "after": 261459.9855803893,
+    "before": 254487.71929824562,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.taxpayers_by_region_12570_15000@E12000009",
+    "relative_change": 0.02739726027397249
+   },
+   {
+    "after": 80366.79884643115,
+    "before": 78223.68421052632,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.taxpayers_by_region_12570_15000@N92000002",
+    "relative_change": 0.02739726027397249
+   },
+   {
+    "after": 255030.6416726748,
+    "before": 248229.8245614035,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.taxpayers_by_region_12570_15000@S92000003",
+    "relative_change": 0.02739726027397249
+   },
+   {
+    "after": 151089.58183129053,
+    "before": 147060.52631578947,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.taxpayers_by_region_12570_15000@W92000004",
+    "relative_change": 0.02739726027397249
+   },
+   {
+    "after": 5848.9761092150175,
+    "before": 5829.081632653061,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.taxpayers_by_region_150000_200000@E12000001",
+    "relative_change": 0.0034129692832765013
+   },
+   {
+    "after": 22226.109215017066,
+    "before": 22150.510204081635,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.taxpayers_by_region_150000_200000@E12000002",
+    "relative_change": 0.0034129692832765013
+   },
+   {
+    "after": 14037.542662116042,
+    "before": 13989.795918367348,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.taxpayers_by_region_150000_200000@E12000003",
+    "relative_change": 0.0034129692832765013
+   },
+   {
+    "after": 14037.542662116042,
+    "before": 13989.795918367348,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.taxpayers_by_region_150000_200000@E12000004",
+    "relative_change": 0.0034129692832765013
+   },
+   {
+    "after": 16377.13310580205,
+    "before": 16321.428571428572,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.taxpayers_by_region_150000_200000@E12000005",
+    "relative_change": 0.0034129692832765013
+   },
+   {
+    "after": 40942.83276450512,
+    "before": 40803.57142857143,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.taxpayers_by_region_150000_200000@E12000006",
+    "relative_change": 0.0034129692832765013
+   },
+   {
+    "after": 104111.77474402732,
+    "before": 103757.6530612245,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.taxpayers_by_region_150000_200000@E12000007",
+    "relative_change": 0.0034129692832765013
+   },
+   {
+    "after": 74866.89419795222,
+    "before": 74612.24489795919,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.taxpayers_by_region_150000_200000@E12000008",
+    "relative_change": 0.0034129692832765013
+   },
+   {
+    "after": 22226.109215017066,
+    "before": 22150.510204081635,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.taxpayers_by_region_150000_200000@E12000009",
+    "relative_change": 0.0034129692832765013
+   },
+   {
+    "after": 3509.3856655290106,
+    "before": 3497.448979591837,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.taxpayers_by_region_150000_200000@N92000002",
+    "relative_change": 0.0034129692832765013
+   },
+   {
+    "after": 17546.92832764505,
+    "before": 17487.244897959183,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.taxpayers_by_region_150000_200000@S92000003",
+    "relative_change": 0.0034129692832765013
+   },
+   {
+    "after": 7018.771331058021,
+    "before": 6994.897959183674,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.taxpayers_by_region_150000_200000@W92000004",
+    "relative_change": 0.0034129692832765013
+   },
+   {
+    "after": 229855.39081090974,
+    "before": 227070.52441229657,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.taxpayers_by_region_15000_20000@E12000001",
+    "relative_change": 0.012264323631704155
+   },
+   {
+    "after": 631111.5687351272,
+    "before": 623465.1898734177,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.taxpayers_by_region_15000_20000@E12000002",
+    "relative_change": 0.012264323631704155
+   },
+   {
+    "after": 484479.6814936848,
+    "before": 478609.8553345389,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.taxpayers_by_region_15000_20000@E12000003",
+    "relative_change": 0.012264323631704155
+   },
+   {
+    "after": 437914.14973457804,
+    "before": 432608.49909584085,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.taxpayers_by_region_15000_20000@E12000004",
+    "relative_change": 0.012264323631704155
+   },
+   {
+    "after": 496368.7534321801,
+    "before": 490354.88245931285,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.taxpayers_by_region_15000_20000@E12000005",
+    "relative_change": 0.012264323631704155
+   },
+   {
+    "after": 516183.8733296723,
+    "before": 509929.9276672694,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.taxpayers_by_region_15000_20000@E12000006",
+    "relative_change": 0.012264323631704155
+   },
+   {
+    "after": 553832.6011349076,
+    "before": 547122.513562387,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.taxpayers_by_region_15000_20000@E12000007",
+    "relative_change": 0.012264323631704155
+   },
+   {
+    "after": 720279.6082738421,
+    "before": 711552.8933092224,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.taxpayers_by_region_15000_20000@E12000008",
+    "relative_change": 0.012264323631704155
+   },
+   {
+    "after": 492405.72945268167,
+    "before": 486439.87341772154,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.taxpayers_by_region_15000_20000@E12000009",
+    "relative_change": 0.012264323631704155
+   },
+   {
+    "after": 148613.39923119164,
+    "before": 146812.8390596745,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.taxpayers_by_region_15000_20000@N92000002",
+    "relative_change": 0.012264323631704155
+   },
+   {
+    "after": 445840.19769357494,
+    "before": 440438.51717902353,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.taxpayers_by_region_15000_20000@S92000003",
+    "relative_change": 0.012264323631704155
+   },
+   {
+    "after": 255615.04667764963,
+    "before": 252518.08318264014,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.taxpayers_by_region_15000_20000@W92000004",
+    "relative_change": 0.012264323631704155
+   },
+   {
+    "after": 4815.384615384615,
+    "before": 4790.816326530612,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.taxpayers_by_region_200000_plus@E12000001",
+    "relative_change": 0.00512820512820511
+   },
+   {
+    "after": 22873.076923076922,
+    "before": 22756.377551020407,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.taxpayers_by_region_200000_plus@E12000002",
+    "relative_change": 0.00512820512820511
+   },
+   {
+    "after": 15649.999999999998,
+    "before": 15570.153061224488,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.taxpayers_by_region_200000_plus@E12000003",
+    "relative_change": 0.00512820512820511
+   },
+   {
+    "after": 15649.999999999998,
+    "before": 15570.153061224488,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.taxpayers_by_region_200000_plus@E12000004",
+    "relative_change": 0.00512820512820511
+   },
+   {
+    "after": 19261.53846153846,
+    "before": 19163.26530612245,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.taxpayers_by_region_200000_plus@E12000005",
+    "relative_change": 0.00512820512820511
+   },
+   {
+    "after": 54173.07692307692,
+    "before": 53896.683673469386,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.taxpayers_by_region_200000_plus@E12000006",
+    "relative_change": 0.00512820512820511
+   },
+   {
+    "after": 180576.92307692306,
+    "before": 179655.61224489796,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.taxpayers_by_region_200000_plus@E12000007",
+    "relative_change": 0.00512820512820511
+   },
+   {
+    "after": 102326.92307692306,
+    "before": 101804.8469387755,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.taxpayers_by_region_200000_plus@E12000008",
+    "relative_change": 0.00512820512820511
+   },
+   {
+    "after": 24076.923076923074,
+    "before": 23954.08163265306,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.taxpayers_by_region_200000_plus@E12000009",
+    "relative_change": 0.00512820512820511
+   },
+   {
+    "after": 4815.384615384615,
+    "before": 4790.816326530612,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.taxpayers_by_region_200000_plus@N92000002",
+    "relative_change": 0.00512820512820511
+   },
+   {
+    "after": 19261.53846153846,
+    "before": 19163.26530612245,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.taxpayers_by_region_200000_plus@S92000003",
+    "relative_change": 0.00512820512820511
+   },
+   {
+    "after": 6019.230769230769,
+    "before": 5988.520408163265,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.taxpayers_by_region_200000_plus@W92000004",
+    "relative_change": 0.00512820512820511
+   },
+   {
+    "after": 423180.0671671277,
+    "before": 420026.96078431373,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.taxpayers_by_region_20000_30000@E12000001",
+    "relative_change": 0.00750691426313721
+   },
+   {
+    "after": 1191772.0268668511,
+    "before": 1182892.156862745,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.taxpayers_by_region_20000_30000@E12000002",
+    "relative_change": 0.00750691426313721
+   },
+   {
+    "after": 891809.0675622284,
+    "before": 885164.2156862745,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.taxpayers_by_region_20000_30000@E12000003",
+    "relative_change": 0.00750691426313721
+   },
+   {
+    "after": 804951.1062821021,
+    "before": 798953.431372549,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.taxpayers_by_region_20000_30000@E12000004",
+    "relative_change": 0.00750691426313721
+   },
+   {
+    "after": 942307.8822599764,
+    "before": 935286.7647058823,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.taxpayers_by_region_20000_30000@E12000005",
+    "relative_change": 0.00750691426313721
+   },
+   {
+    "after": 959477.4792572107,
+    "before": 952328.431372549,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.taxpayers_by_region_20000_30000@E12000006",
+    "relative_change": 0.00750691426313721
+   },
+   {
+    "after": 1040275.5827736073,
+    "before": 1032524.5098039216,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.taxpayers_by_region_20000_30000@E12000007",
+    "relative_change": 0.00750691426313721
+   },
+   {
+    "after": 1363467.996839194,
+    "before": 1353308.8235294118,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.taxpayers_by_region_20000_30000@E12000008",
+    "relative_change": 0.00750691426313721
+   },
+   {
+    "after": 958467.5029632557,
+    "before": 951325.9803921569,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.taxpayers_by_region_20000_30000@E12000009",
+    "relative_change": 0.00750691426313721
+   },
+   {
+    "after": 287843.2437771632,
+    "before": 285698.5294117647,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.taxpayers_by_region_20000_30000@N92000002",
+    "relative_change": 0.00750691426313721
+   },
+   {
+    "after": 849390.0632161201,
+    "before": 843061.2745098039,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.taxpayers_by_region_20000_30000@S92000003",
+    "relative_change": 0.00750691426313721
+   },
+   {
+    "after": 512057.98103516403,
+    "before": 508242.64705882355,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.taxpayers_by_region_20000_30000@W92000004",
+    "relative_change": 0.00750691426313721
+   },
+   {
+    "after": 275696.0556844548,
+    "before": 275057.87037037034,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.taxpayers_by_region_30000_40000@E12000001",
+    "relative_change": 0.0023201856148493682
+   },
+   {
+    "after": 804582.3665893273,
+    "before": 802719.9074074074,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.taxpayers_by_region_30000_40000@E12000002",
+    "relative_change": 0.0023201856148493682
+   },
+   {
+    "after": 602030.1624129931,
+    "before": 600636.574074074,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.taxpayers_by_region_30000_40000@E12000003",
+    "relative_change": 0.0023201856148493682
+   },
+   {
+    "after": 554767.9814385151,
+    "before": 553483.7962962963,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.taxpayers_by_region_30000_40000@E12000004",
+    "relative_change": 0.0023201856148493682
+   },
+   {
+    "after": 644791.1832946637,
+    "before": 643298.6111111111,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.taxpayers_by_region_30000_40000@E12000005",
+    "relative_change": 0.0023201856148493682
+   },
+   {
+    "after": 724686.7749419954,
+    "before": 723009.2592592592,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.taxpayers_by_region_30000_40000@E12000006",
+    "relative_change": 0.0023201856148493682
+   },
+   {
+    "after": 953120.6496519722,
+    "before": 950914.3518518518,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.taxpayers_by_region_30000_40000@E12000007",
+    "relative_change": 0.0023201856148493682
+   },
+   {
+    "after": 1069025.5220417634,
+    "before": 1066550.9259259258,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.taxpayers_by_region_30000_40000@E12000008",
+    "relative_change": 0.0023201856148493682
+   },
+   {
+    "after": 683051.0440835268,
+    "before": 681469.9074074074,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.taxpayers_by_region_30000_40000@E12000009",
+    "relative_change": 0.0023201856148493682
+   },
+   {
+    "after": 196925.75406032483,
+    "before": 196469.9074074074,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.taxpayers_by_region_30000_40000@N92000002",
+    "relative_change": 0.0023201856148493682
+   },
+   {
+    "after": 644791.1832946637,
+    "before": 643298.6111111111,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.taxpayers_by_region_30000_40000@S92000003",
+    "relative_change": 0.0023201856148493682
+   },
+   {
+    "after": 344338.747099768,
+    "before": 343541.6666666666,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.taxpayers_by_region_30000_40000@W92000004",
+    "relative_change": 0.0023201856148493682
+   },
+   {
+    "after": 157540.6032482599,
+    "before": 157175.92592592593,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.taxpayers_by_region_40000_50000@E12000001",
+    "relative_change": 0.0023201856148493682
+   },
+   {
+    "after": 480498.8399071926,
+    "before": 479386.57407407404,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.taxpayers_by_region_40000_50000@E12000002",
+    "relative_change": 0.0023201856148493682
+   },
+   {
+    "after": 346589.32714617177,
+    "before": 345787.037037037,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.taxpayers_by_region_40000_50000@E12000003",
+    "relative_change": 0.0023201856148493682
+   },
+   {
+    "after": 329709.9767981439,
+    "before": 328946.7592592592,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.taxpayers_by_region_40000_50000@E12000004",
+    "relative_change": 0.0023201856148493682
+   },
+   {
+    "after": 373596.2877030163,
+    "before": 372731.48148148146,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.taxpayers_by_region_40000_50000@E12000005",
+    "relative_change": 0.0023201856148493682
+   },
+   {
+    "after": 456867.7494199537,
+    "before": 455810.18518518517,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.taxpayers_by_region_40000_50000@E12000006",
+    "relative_change": 0.0023201856148493682
+   },
+   {
+    "after": 640290.0232018562,
+    "before": 638807.8703703703,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.taxpayers_by_region_40000_50000@E12000007",
+    "relative_change": 0.0023201856148493682
+   },
+   {
+    "after": 714559.1647331788,
+    "before": 712905.0925925926,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.taxpayers_by_region_40000_50000@E12000008",
+    "relative_change": 0.0023201856148493682
+   },
+   {
+    "after": 409605.56844547566,
+    "before": 408657.40740740736,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.taxpayers_by_region_40000_50000@E12000009",
+    "relative_change": 0.0023201856148493682
+   },
+   {
+    "after": 111403.71229698378,
+    "before": 111145.83333333333,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.taxpayers_by_region_40000_50000@N92000002",
+    "relative_change": 0.0023201856148493682
+   },
+   {
+    "after": 409605.56844547566,
+    "before": 408657.40740740736,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.taxpayers_by_region_40000_50000@S92000003",
+    "relative_change": 0.0023201856148493682
+   },
+   {
+    "after": 196925.75406032483,
+    "before": 196469.9074074074,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.taxpayers_by_region_40000_50000@W92000004",
+    "relative_change": 0.0023201856148493682
+   },
+   {
+    "after": 145428.16950940745,
+    "before": 144842.38178633977,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.taxpayers_by_region_50000_70000@E12000001",
+    "relative_change": 0.004044311587831917
+   },
+   {
+    "after": 455837.8758572183,
+    "before": 454001.75131348515,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.taxpayers_by_region_50000_70000@E12000002",
+    "relative_change": 0.004044311587831917
+   },
+   {
+    "after": 310409.70634781086,
+    "before": 309159.3695271454,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.taxpayers_by_region_50000_70000@E12000003",
+    "relative_change": 0.004044311587831917
+   },
+   {
+    "after": 307965.5354316863,
+    "before": 306725.04378283717,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.taxpayers_by_region_50000_70000@E12000004",
+    "relative_change": 0.004044311587831917
+   },
+   {
+    "after": 370291.8937928609,
+    "before": 368800.35026269703,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.taxpayers_by_region_50000_70000@E12000005",
+    "relative_change": 0.004044311587831917
+   },
+   {
+    "after": 507165.46509583265,
+    "before": 505122.591943958,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.taxpayers_by_region_50000_70000@E12000006",
+    "relative_change": 0.004044311587831917
+   },
+   {
+    "after": 806576.4023210832,
+    "before": 803327.4956217164,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.taxpayers_by_region_50000_70000@E12000007",
+    "relative_change": 0.004044311587831917
+   },
+   {
+    "after": 802910.1459468965,
+    "before": 799676.007005254,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.taxpayers_by_region_50000_70000@E12000008",
+    "relative_change": 0.004044311587831917
+   },
+   {
+    "after": 395955.6884121681,
+    "before": 394360.77057793346,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.taxpayers_by_region_50000_70000@E12000009",
+    "relative_change": 0.004044311587831917
+   },
+   {
+    "after": 86768.06752241956,
+    "before": 86418.56392294221,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.taxpayers_by_region_50000_70000@N92000002",
+    "relative_change": 0.004044311587831917
+   },
+   {
+    "after": 364181.4665025497,
+    "before": 362714.53590192646,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.taxpayers_by_region_50000_70000@S92000003",
+    "relative_change": 0.004044311587831917
+   },
+   {
+    "after": 183312.8187093371,
+    "before": 182574.43082311735,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.taxpayers_by_region_50000_70000@W92000004",
+    "relative_change": 0.004044311587831917
+   },
+   {
+    "after": 52549.67469667664,
+    "before": 52338.003502626976,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.taxpayers_by_region_70000_100000@E12000001",
+    "relative_change": 0.004044311587831917
+   },
+   {
+    "after": 190645.3314577106,
+    "before": 189877.40805604204,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.taxpayers_by_region_70000_100000@E12000002",
+    "relative_change": 0.004044311587831917
+   },
+   {
+    "after": 120986.4603481625,
+    "before": 120499.12434325746,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.taxpayers_by_region_70000_100000@E12000003",
+    "relative_change": 0.004044311587831917
+   },
+   {
+    "after": 124652.71672234923,
+    "before": 124150.6129597198,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.taxpayers_by_region_70000_100000@E12000004",
+    "relative_change": 0.004044311587831917
+   },
+   {
+    "after": 151538.59679971868,
+    "before": 150928.19614711034,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.taxpayers_by_region_70000_100000@E12000005",
+    "relative_change": 0.004044311587831917
+   },
+   {
+    "after": 251749.60436082294,
+    "before": 250735.5516637478,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.taxpayers_by_region_70000_100000@E12000006",
+    "relative_change": 0.004044311587831917
+   },
+   {
+    "after": 471724.98681202746,
+    "before": 469824.8686514886,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.taxpayers_by_region_70000_100000@E12000007",
+    "relative_change": 0.004044311587831917
+   },
+   {
+    "after": 428951.99577984883,
+    "before": 427224.1681260946,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.taxpayers_by_region_70000_100000@E12000008",
+    "relative_change": 0.004044311587831917
+   },
+   {
+    "after": 167425.7077545279,
+    "before": 166751.31348511385,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.taxpayers_by_region_70000_100000@E12000009",
+    "relative_change": 0.004044311587831917
+   },
+   {
+    "after": 32996.307367680674,
+    "before": 32863.39754816112,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.taxpayers_by_region_70000_100000@N92000002",
+    "relative_change": 0.004044311587831917
+   },
+   {
+    "after": 161315.28046421666,
+    "before": 160665.49912434327,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.taxpayers_by_region_70000_100000@S92000003",
+    "relative_change": 0.004044311587831917
+   },
+   {
+    "after": 58660.10198698787,
+    "before": 58423.817863397555,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.taxpayers_by_region_70000_100000@W92000004",
+    "relative_change": 0.004044311587831917
+   },
+   {
+    "after": 2553888622.1795487,
+    "before": 2533214285.714286,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.total_income_by_region_100000_150000@E12000001",
+    "relative_change": 0.008161305808929376
+   },
+   {
+    "after": 9131709073.451752,
+    "before": 9057785714.285715,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.total_income_by_region_100000_150000@E12000002",
+    "relative_change": 0.008161305808929376
+   },
+   {
+    "after": 6154248679.788766,
+    "before": 6104428571.428572,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.total_income_by_region_100000_150000@E12000003",
+    "relative_change": 0.008161305808929376
+   },
+   {
+    "after": 6478156505.040807,
+    "before": 6425714285.714286,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.total_income_by_region_100000_150000@E12000004",
+    "relative_change": 0.008161305808929376
+   },
+   {
+    "after": 6826980316.850696,
+    "before": 6771714285.714286,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.total_income_by_region_100000_150000@E12000005",
+    "relative_change": 0.008161305808929376
+   },
+   {
+    "after": 14949591934.709553,
+    "before": 14828571428.571428,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.total_income_by_region_100000_150000@E12000006",
+    "relative_change": 0.008161305808929376
+   },
+   {
+    "after": 33761161785.885742,
+    "before": 33487857142.857143,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.total_income_by_region_100000_150000@E12000007",
+    "relative_change": 0.008161305808929376
+   },
+   {
+    "after": 27781325012.001923,
+    "before": 27556428571.428574,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.total_income_by_region_100000_150000@E12000008",
+    "relative_change": 0.008161305808929376
+   },
+   {
+    "after": 9256289006.241,
+    "before": 9181357142.857143,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.total_income_by_region_100000_150000@E12000009",
+    "relative_change": 0.008161305808929376
+   },
+   {
+    "after": 1694287085.9337492,
+    "before": 1680571428.5714285,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.total_income_by_region_100000_150000@N92000002",
+    "relative_change": 0.008161305808929376
+   },
+   {
+    "after": 8172443590.974555,
+    "before": 8106285714.285714,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.total_income_by_region_100000_150000@S92000003",
+    "relative_change": 0.008161305808929376
+   },
+   {
+    "after": 2989918386.9419107,
+    "before": 2965714285.714286,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.total_income_by_region_100000_150000@W92000004",
+    "relative_change": 0.008161305808929376
+   },
+   {
+    "after": 1718332022.0298975,
+    "before": 1680000000.0,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.total_income_by_region_12570_15000@E12000001",
+    "relative_change": 0.02281667977970092
+   },
+   {
+    "after": 4714673485.444531,
+    "before": 4609500000.0,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.total_income_by_region_12570_15000@E12000002",
+    "relative_change": 0.02281667977970092
+   },
+   {
+    "after": 3468882769.4728556,
+    "before": 3391500000.0,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.total_income_by_region_12570_15000@E12000003",
+    "relative_change": 0.02281667977970092
+   },
+   {
+    "after": 3243351691.5814314,
+    "before": 3171000000.0,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.total_income_by_region_12570_15000@E12000004",
+    "relative_change": 0.02281667977970092
+   },
+   {
+    "after": 3662195121.951219,
+    "before": 3580500000.0,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.total_income_by_region_12570_15000@E12000005",
+    "relative_change": 0.02281667977970092
+   },
+   {
+    "after": 3876986624.7049565,
+    "before": 3790500000.0,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.total_income_by_region_12570_15000@E12000006",
+    "relative_change": 0.02281667977970092
+   },
+   {
+    "after": 4757631785.995279,
+    "before": 4651500000.0,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.total_income_by_region_12570_15000@E12000007",
+    "relative_change": 0.02281667977970092
+   },
+   {
+    "after": 5165735641.22738,
+    "before": 5050500000.0,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.total_income_by_region_12570_15000@E12000008",
+    "relative_change": 0.02281667977970092
+   },
+   {
+    "after": 3608497246.262785,
+    "before": 3528000000.0,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.total_income_by_region_12570_15000@E12000009",
+    "relative_change": 0.02281667977970092
+   },
+   {
+    "after": 1106176239.1817465,
+    "before": 1081500000.0,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.total_income_by_region_12570_15000@N92000002",
+    "relative_change": 0.02281667977970092
+   },
+   {
+    "after": 3533320220.298977,
+    "before": 3454500000.0,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.total_income_by_region_12570_15000@S92000003",
+    "relative_change": 0.02281667977970092
+   },
+   {
+    "after": 2094217151.8489377,
+    "before": 2047500000.0,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.total_income_by_region_12570_15000@W92000004",
+    "relative_change": 0.02281667977970092
+   },
+   {
+    "after": 951947703.3207397,
+    "before": 947989108.910891,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.total_income_by_region_150000_200000@E12000001",
+    "relative_change": 0.004175780473255175
+   },
+   {
+    "after": 3758913302.843508,
+    "before": 3743282178.2178216,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.total_income_by_region_150000_200000@E12000002",
+    "relative_change": 0.004175780473255175
+   },
+   {
+    "after": 2443875521.972559,
+    "before": 2433712871.2871284,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.total_income_by_region_150000_200000@E12000003",
+    "relative_change": 0.004175780473255175
+   },
+   {
+    "after": 2455513024.4581428,
+    "before": 2445301980.1980195,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.total_income_by_region_150000_200000@E12000004",
+    "relative_change": 0.004175780473255175
+   },
+   {
+    "after": 2874463113.939153,
+    "before": 2862509900.990099,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.total_income_by_region_150000_200000@E12000005",
+    "relative_change": 0.004175780473255175
+   },
+   {
+    "after": 6877763968.979916,
+    "before": 6849163366.336633,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.total_income_by_region_150000_200000@E12000006",
+    "relative_change": 0.004175780473255175
+   },
+   {
+    "after": 17805378802.94293,
+    "before": 17731336633.663364,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.total_income_by_region_150000_200000@E12000007",
+    "relative_change": 0.004175780473255175
+   },
+   {
+    "after": 12801252734.141977,
+    "before": 12748019801.980198,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.total_income_by_region_150000_200000@E12000008",
+    "relative_change": 0.004175780473255175
+   },
+   {
+    "after": 3724000795.386757,
+    "before": 3708514851.4851484,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.total_income_by_region_150000_200000@E12000009",
+    "relative_change": 0.004175780473255175
+   },
+   {
+    "after": 648208888.4470073,
+    "before": 645513366.3366336,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.total_income_by_region_150000_200000@N92000002",
+    "relative_change": 0.004175780473255175
+   },
+   {
+    "after": 3083938158.679658,
+    "before": 3071113861.3861384,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.total_income_by_region_150000_200000@S92000003",
+    "relative_change": 0.004175780473255175
+   },
+   {
+    "after": 1099743984.8876517,
+    "before": 1095170792.079208,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.total_income_by_region_150000_200000@W92000004",
+    "relative_change": 0.004175780473255175
+   },
+   {
+    "after": 4003672998.2159724,
+    "before": 3957572614.107884,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.total_income_by_region_15000_20000@E12000001",
+    "relative_change": 0.011648651484940764
+   },
+   {
+    "after": 10973029698.814146,
+    "before": 10846680497.92531,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.total_income_by_region_15000_20000@E12000002",
+    "relative_change": 0.011648651484940764
+   },
+   {
+    "after": 8412656102.424179,
+    "before": 8315788381.742739,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.total_income_by_region_15000_20000@E12000003",
+    "relative_change": 0.011648651484940764
+   },
+   {
+    "after": 7621807115.122258,
+    "before": 7534045643.153526,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.total_income_by_region_15000_20000@E12000004",
+    "relative_change": 0.011648651484940764
+   },
+   {
+    "after": 8659796410.956028,
+    "before": 8560082987.551867,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.total_income_by_region_15000_20000@E12000005",
+    "relative_change": 0.011648651484940764
+   },
+   {
+    "after": 8976136005.876797,
+    "before": 8872780082.98755,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.total_income_by_region_15000_20000@E12000006",
+    "relative_change": 0.011648651484940764
+   },
+   {
+    "after": 9618700808.059607,
+    "before": 9507946058.091286,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.total_income_by_region_15000_20000@E12000007",
+    "relative_change": 0.011648651484940764
+   },
+   {
+    "after": 12554727673.417988,
+    "before": 12410165975.103735,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.total_income_by_region_15000_20000@E12000008",
+    "relative_change": 0.011648651484940764
+   },
+   {
+    "after": 8580711512.225837,
+    "before": 8481908713.6929455,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.total_income_by_region_15000_20000@E12000009",
+    "relative_change": 0.011648651484940764
+   },
+   {
+    "after": 2590030433.4137893,
+    "before": 2560207468.8796678,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.total_income_by_region_15000_20000@N92000002",
+    "relative_change": 0.011648651484940764
+   },
+   {
+    "after": 7770091300.241368,
+    "before": 7680622406.639004,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.total_income_by_region_15000_20000@S92000003",
+    "relative_change": 0.011648651484940764
+   },
+   {
+    "after": 4438639941.232029,
+    "before": 4387531120.33195,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.total_income_by_region_15000_20000@W92000004",
+    "relative_change": 0.011648651484940764
+   },
+   {
+    "after": 1912205434.9507554,
+    "before": 1897819856.7041965,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.total_income_by_region_200000_plus@E12000001",
+    "relative_change": 0.00758005465889755
+   },
+   {
+    "after": 10657195895.426184,
+    "before": 10577021494.370522,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.total_income_by_region_200000_plus@E12000002",
+    "relative_change": 0.00758005465889755
+   },
+   {
+    "after": 6272521012.736553,
+    "before": 6225332650.972363,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.total_income_by_region_200000_plus@E12000003",
+    "relative_change": 0.00758005465889755
+   },
+   {
+    "after": 6601371628.938276,
+    "before": 6551709314.227225,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.total_income_by_region_200000_plus@E12000004",
+    "relative_change": 0.00758005465889755
+   },
+   {
+    "after": 7953313051.100913,
+    "before": 7893480040.941658,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.total_income_by_region_200000_plus@E12000005",
+    "relative_change": 0.00758005465889755
+   },
+   {
+    "after": 23628525756.71634,
+    "before": 23450767656.09007,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.total_income_by_region_200000_plus@E12000006",
+    "relative_change": 0.00758005465889755
+   },
+   {
+    "after": 107302738101.37677,
+    "before": 106495496417.6049,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.total_income_by_region_200000_plus@E12000007",
+    "relative_change": 0.00758005465889755
+   },
+   {
+    "after": 48475016758.624245,
+    "before": 48110337768.67963,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.total_income_by_region_200000_plus@E12000008",
+    "relative_change": 0.00758005465889755
+   },
+   {
+    "after": 10998226164.079823,
+    "before": 10915486182.190378,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.total_income_by_region_200000_plus@E12000009",
+    "relative_change": 0.00758005465889755
+   },
+   {
+    "after": 1692971690.8162737,
+    "before": 1680235414.5342884,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.total_income_by_region_200000_plus@N92000002",
+    "relative_change": 0.00758005465889755
+   },
+   {
+    "after": 8671912545.763935,
+    "before": 8606673490.276356,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.total_income_by_region_200000_plus@S92000003",
+    "relative_change": 0.00758005465889755
+   },
+   {
+    "after": 2034001959.4699118,
+    "before": 2018700102.3541453,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.total_income_by_region_200000_plus@W92000004",
+    "relative_change": 0.00758005465889755
+   },
+   {
+    "after": 10506828044.750565,
+    "before": 10430830039.525692,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.total_income_by_region_20000_30000@E12000001",
+    "relative_change": 0.00728590197873924
+   },
+   {
+    "after": 29398913086.753986,
+    "before": 29186264822.13439,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.total_income_by_region_20000_30000@E12000002",
+    "relative_change": 0.00728590197873924
+   },
+   {
+    "after": 22023928016.880993,
+    "before": 21864624505.928856,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.total_income_by_region_20000_30000@E12000003",
+    "relative_change": 0.00728590197873924
+   },
+   {
+    "after": 20003384162.12127,
+    "before": 19858695652.173916,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.total_income_by_region_20000_30000@E12000004",
+    "relative_change": 0.00728590197873924
+   },
+   {
+    "after": 23337281522.474815,
+    "before": 23168478260.869568,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.total_income_by_region_20000_30000@E12000005",
+    "relative_change": 0.00728590197873924
+   },
+   {
+    "after": 23842417486.164745,
+    "before": 23669960474.308304,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.total_income_by_region_20000_30000@E12000006",
+    "relative_change": 0.00728590197873924
+   },
+   {
+    "after": 25963988533.662457,
+    "before": 25776185770.75099,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.total_income_by_region_20000_30000@E12000007",
+    "relative_change": 0.00728590197873924
+   },
+   {
+    "after": 33945136759.963367,
+    "before": 33699604743.083008,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.total_income_by_region_20000_30000@E12000008",
+    "relative_change": 0.00728590197873924
+   },
+   {
+    "after": 23741390293.426758,
+    "before": 23569664031.620556,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.total_income_by_region_20000_30000@E12000009",
+    "relative_change": 0.00728590197873924
+   },
+   {
+    "after": 7142622526.575624,
+    "before": 7090958498.023716,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.total_income_by_region_20000_30000@N92000002",
+    "relative_change": 0.00728590197873924
+   },
+   {
+    "after": 21114683282.239117,
+    "before": 20961956521.739132,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.total_income_by_region_20000_30000@S92000003",
+    "relative_change": 0.00728590197873924
+   },
+   {
+    "after": 12729426284.986263,
+    "before": 12637351778.656128,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.total_income_by_region_20000_30000@W92000004",
+    "relative_change": 0.00728590197873924
+   },
+   {
+    "after": 9530045146.181889,
+    "before": 9489038461.538462,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.total_income_by_region_30000_40000@E12000001",
+    "relative_change": 0.004321479442794818
+   },
+   {
+    "after": 27646121532.55595,
+    "before": 27527163461.53846,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.total_income_by_region_30000_40000@E12000002",
+    "relative_change": 0.004321479442794818
+   },
+   {
+    "after": 20790782453.34492,
+    "before": 20701322115.384613,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.total_income_by_region_30000_40000@E12000003",
+    "relative_change": 0.004321479442794818
+   },
+   {
+    "after": 19105043335.506145,
+    "before": 19022836538.461536,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.total_income_by_region_30000_40000@E12000004",
+    "relative_change": 0.004321479442794818
+   },
+   {
+    "after": 22251756355.471863,
+    "before": 22156009615.384613,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.total_income_by_region_30000_40000@E12000005",
+    "relative_change": 0.004321479442794818
+   },
+   {
+    "after": 25061321551.869827,
+    "before": 24953485576.923077,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.total_income_by_region_30000_40000@E12000006",
+    "relative_change": 0.004321479442794818
+   },
+   {
+    "after": 33040486709.64004,
+    "before": 32898317307.692307,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.total_income_by_region_30000_40000@E12000007",
+    "relative_change": 0.004321479442794818
+   },
+   {
+    "after": 36973877984.59719,
+    "before": 36814783653.84615,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.total_income_by_region_30000_40000@E12000008",
+    "relative_change": 0.004321479442794818
+   },
+   {
+    "after": 23487965041.886967,
+    "before": 23386899038.461536,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.total_income_by_region_30000_40000@E12000009",
+    "relative_change": 0.004321479442794818
+   },
+   {
+    "after": 6776671253.711885,
+    "before": 6747512019.230769,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.total_income_by_region_30000_40000@N92000002",
+    "relative_change": 0.004321479442794818
+   },
+   {
+    "after": 22251756355.471863,
+    "before": 22156009615.384613,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.total_income_by_region_30000_40000@S92000003",
+    "relative_change": 0.004321479442794818
+   },
+   {
+    "after": 11800173824.871443,
+    "before": 11749399038.461538,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.total_income_by_region_30000_40000@W92000004",
+    "relative_change": 0.004321479442794818
+   },
+   {
+    "after": 7046389512.566091,
+    "before": 7016069711.538462,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.total_income_by_region_40000_50000@E12000001",
+    "relative_change": 0.004321479442794818
+   },
+   {
+    "after": 21465078100.480434,
+    "before": 21372716346.153847,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.total_income_by_region_40000_50000@E12000002",
+    "relative_change": 0.004321479442794818
+   },
+   {
+    "after": 15396417276.260834,
+    "before": 15330168269.230768,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.total_income_by_region_40000_50000@E12000003",
+    "relative_change": 0.004321479442794818
+   },
+   {
+    "after": 14722121629.125324,
+    "before": 14658774038.461538,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.total_income_by_region_40000_50000@E12000004",
+    "relative_change": 0.004321479442794818
+   },
+   {
+    "after": 16745008570.531857,
+    "before": 16672956730.76923,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.total_income_by_region_40000_50000@E12000005",
+    "relative_change": 0.004321479442794818
+   },
+   {
+    "after": 20453634629.77717,
+    "before": 20365625000.0,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.total_income_by_region_40000_50000@E12000006",
+    "relative_change": 0.004321479442794818
+   },
+   {
+    "after": 28657565003.259216,
+    "before": 28534254807.692307,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.total_income_by_region_40000_50000@E12000007",
+    "relative_change": 0.004321479442794818
+   },
+   {
+    "after": 31916660631.080856,
+    "before": 31779326923.076923,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.total_income_by_region_40000_50000@E12000008",
+    "relative_change": 0.004321479442794818
+   },
+   {
+    "after": 18318365080.514717,
+    "before": 18239543269.23077,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.total_income_by_region_40000_50000@E12000009",
+    "relative_change": 0.004321479442794818
+   },
+   {
+    "after": 4956073006.446006,
+    "before": 4934747596.153846,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.total_income_by_region_40000_50000@N92000002",
+    "relative_change": 0.004321479442794818
+   },
+   {
+    "after": 18318365080.514717,
+    "before": 18239543269.23077,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.total_income_by_region_40000_50000@S92000003",
+    "relative_change": 0.004321479442794818
+   },
+   {
+    "after": 8788319934.332827,
+    "before": 8750504807.692307,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.total_income_by_region_40000_50000@W92000004",
+    "relative_change": 0.004321479442794818
+   },
+   {
+    "after": 8358357889.097241,
+    "before": 8320466666.666666,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.total_income_by_region_50000_70000@E12000001",
+    "relative_change": 0.0045539780337531255
+   },
+   {
+    "after": 26234261987.67747,
+    "before": 26115333333.333332,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.total_income_by_region_50000_70000@E12000002",
+    "relative_change": 0.0045539780337531255
+   },
+   {
+    "after": 17814894186.98098,
+    "before": 17734133333.333332,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.total_income_by_region_50000_70000@E12000003",
+    "relative_change": 0.0045539780337531255
+   },
+   {
+    "after": 17692874363.78248,
+    "before": 17612666666.666664,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.total_income_by_region_50000_70000@E12000004",
+    "relative_change": 0.0045539780337531255
+   },
+   {
+    "after": 21231449236.53898,
+    "before": 21135200000.0,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.total_income_by_region_50000_70000@E12000005",
+    "relative_change": 0.0045539780337531255
+   },
+   {
+    "after": 29284757567.63997,
+    "before": 29151999999.999996,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.total_income_by_region_50000_70000@E12000006",
+    "relative_change": 0.0045539780337531255
+   },
+   {
+    "after": 46977631931.422455,
+    "before": 46764666666.666664,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.total_income_by_region_50000_70000@E12000007",
+    "relative_change": 0.0045539780337531255
+   },
+   {
+    "after": 46489552638.62845,
+    "before": 46278799999.99999,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.total_income_by_region_50000_70000@E12000008",
+    "relative_change": 0.0045539780337531255
+   },
+   {
+    "after": 22695687114.920975,
+    "before": 22592799999.999996,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.total_income_by_region_50000_70000@E12000009",
+    "relative_change": 0.0045539780337531255
+   },
+   {
+    "after": 4978408786.4987955,
+    "before": 4955840000.0,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.total_income_by_region_50000_70000@N92000002",
+    "relative_change": 0.0045539780337531255
+   },
+   {
+    "after": 20987409590.141975,
+    "before": 20892266666.666664,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.total_income_by_region_50000_70000@S92000003",
+    "relative_change": 0.0045539780337531255
+   },
+   {
+    "after": 10530310742.030539,
+    "before": 10482573333.333332,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.total_income_by_region_50000_70000@W92000004",
+    "relative_change": 0.0045539780337531255
+   },
+   {
+    "after": 4295097776.587195,
+    "before": 4275626666.6666665,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.total_income_by_region_70000_100000@E12000001",
+    "relative_change": 0.0045539780337531255
+   },
+   {
+    "after": 15496517546.209484,
+    "before": 15426266666.666666,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.total_income_by_region_70000_100000@E12000002",
+    "relative_change": 0.0045539780337531255
+   },
+   {
+    "after": 9932413608.35789,
+    "before": 9887386666.666666,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.total_income_by_region_70000_100000@E12000003",
+    "relative_change": 0.0045539780337531255
+   },
+   {
+    "after": 10249665148.67399,
+    "before": 10203200000.0,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.total_income_by_region_70000_100000@E12000004",
+    "relative_change": 0.0045539780337531255
+   },
+   {
+    "after": 12446021966.246986,
+    "before": 12389599999.999998,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.total_income_by_region_70000_100000@E12000005",
+    "relative_change": 0.0045539780337531255
+   },
+   {
+    "after": 20743369943.74498,
+    "before": 20649333333.333332,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.total_income_by_region_70000_100000@E12000006",
+    "relative_change": 0.0045539780337531255
+   },
+   {
+    "after": 39046343423.51996,
+    "before": 38869333333.33333,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.total_income_by_region_70000_100000@E12000007",
+    "relative_change": 0.0045539780337531255
+   },
+   {
+    "after": 35507768550.763466,
+    "before": 35346800000.0,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.total_income_by_region_70000_100000@E12000008",
+    "relative_change": 0.0045539780337531255
+   },
+   {
+    "after": 13788240021.430485,
+    "before": 13725733333.333332,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.total_income_by_region_70000_100000@E12000009",
+    "relative_change": 0.0045539780337531255
+   },
+   {
+    "after": 2721042057.326547,
+    "before": 2708706666.6666665,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.total_income_by_region_70000_100000@N92000002",
+    "relative_change": 0.0045539780337531255
+   },
+   {
+    "after": 13178140905.437984,
+    "before": 13118399999.999998,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.total_income_by_region_70000_100000@S92000003",
+    "relative_change": 0.0045539780337531255
+   },
+   {
+    "after": 4819783016.340745,
+    "before": 4797933333.333333,
+    "family": "hmrc_spi_region",
+    "name": "hmrc.spi_region.total_income_by_region_70000_100000@W92000004",
+    "relative_change": 0.0045539780337531255
+   },
+   {
+    "after": 545640.0,
+    "before": 556551.0,
+    "family": "isc",
+    "name": "isc.private_school_students",
+    "relative_change": -0.019604672348086716
+   },
+   {
+    "after": 933536.5433856284,
+    "before": 931000.0,
+    "family": "ons_household_composition",
+    "name": "ons.household_composition.couple_3_plus_children_households",
+    "relative_change": 0.0027245363970229697
+   },
+   {
+    "after": 8141120.511007429,
+    "before": 8119000.0,
+    "family": "ons_household_composition",
+    "name": "ons.household_composition.couple_no_children_households",
+    "relative_change": 0.0027245363970229697
+   },
+   {
+    "after": 1853034.9432616984,
+    "before": 1848000.0,
+    "family": "ons_household_composition",
+    "name": "ons.household_composition.couple_non_dependent_children_only_households",
+    "relative_change": 0.0027245363970229697
+   },
+   {
+    "after": 5453818.753463408,
+    "before": 5439000.0,
+    "family": "ons_household_composition",
+    "name": "ons.household_composition.couple_under_3_children_households",
+    "relative_change": 0.0027245363970229697
+   },
+   {
+    "after": 4265590.177832936,
+    "before": 4254000.0,
+    "family": "ons_household_composition",
+    "name": "ons.household_composition.lone_households_over_65",
+    "relative_change": 0.0027245363970229697
+   },
+   {
+    "after": 4327759.099089551,
+    "before": 4316000.0,
+    "family": "ons_household_composition",
+    "name": "ons.household_composition.lone_households_under_65",
+    "relative_change": 0.0027245363970229697
+   },
+   {
+    "after": 1839999.5242885372,
+    "before": 1835000.0,
+    "family": "ons_household_composition",
+    "name": "ons.household_composition.lone_parent_dependent_children_households",
+    "relative_change": 0.0027245363970229697
+   },
+   {
+    "after": 1207280.3418220156,
+    "before": 1204000.0,
+    "family": "ons_household_composition",
+    "name": "ons.household_composition.lone_parent_non_dependent_children_households",
+    "relative_change": 0.0027245363970229697
+   },
+   {
+    "after": 244664.7868808736,
+    "before": 244000.0,
+    "family": "ons_household_composition",
+    "name": "ons.household_composition.multi_family_households",
+    "relative_change": 0.0027245363970229697
+   },
+   {
+    "after": 815215.0480907797,
+    "before": 813000.0,
+    "family": "ons_household_composition",
+    "name": "ons.household_composition.unrelated_adult_households",
+    "relative_change": 0.0027245363970229697
+   },
+   {
+    "after": 2063534000000.0,
+    "before": 2103053000000.0,
+    "family": "ons_land",
+    "name": "ons.land.corporate_land_value",
+    "relative_change": -0.018791252526683788
+   },
+   {
+    "after": 4485171000000.0,
+    "before": 4559831000000.0,
+    "family": "ons_land",
+    "name": "ons.land.household_land_value",
+    "relative_change": -0.016373413839240958
+   },
+   {
+    "after": 6872455000000.0,
+    "before": 7117771000000.0,
+    "family": "ons_land",
+    "name": "ons.land.land_value",
+    "relative_change": -0.03446528414583727
+   },
+   {
+    "after": 279456.0,
+    "before": 285165.0,
+    "family": "ons_population",
+    "name": "ons.population.age_0_9_by_region@E12000001",
+    "relative_change": -0.020019988427752322
+   },
+   {
+    "after": 848707.0,
+    "before": 865892.0,
+    "family": "ons_population",
+    "name": "ons.population.age_0_9_by_region@E12000002",
+    "relative_change": -0.019846585948363082
+   },
+   {
+    "after": 611749.0,
+    "before": 626938.0,
+    "family": "ons_population",
+    "name": "ons.population.age_0_9_by_region@E12000003",
+    "relative_change": -0.024227276062385728
+   },
+   {
+    "after": 530178.0,
+    "before": 543004.0,
+    "family": "ons_population",
+    "name": "ons.population.age_0_9_by_region@E12000004",
+    "relative_change": -0.023620452151365323
+   },
+   {
+    "after": 703000.0,
+    "before": 718837.0,
+    "family": "ons_population",
+    "name": "ons.population.age_0_9_by_region@E12000005",
+    "relative_change": -0.022031420196790052
+   },
+   {
+    "after": 731339.0,
+    "before": 744698.0,
+    "family": "ons_population",
+    "name": "ons.population.age_0_9_by_region@E12000006",
+    "relative_change": -0.017938815466135294
+   },
+   {
+    "after": 1014089.0,
+    "before": 1054493.0,
+    "family": "ons_population",
+    "name": "ons.population.age_0_9_by_region@E12000007",
+    "relative_change": -0.03831604382390397
+   },
+   {
+    "after": 1036231.0,
+    "before": 1059434.0,
+    "family": "ons_population",
+    "name": "ons.population.age_0_9_by_region@E12000008",
+    "relative_change": -0.021901317118385832
+   },
+   {
+    "after": 560179.0,
+    "before": 575506.0,
+    "family": "ons_population",
+    "name": "ons.population.age_0_9_by_region@E12000009",
+    "relative_change": -0.026632215823987893
+   },
+   {
+    "after": 223939.0,
+    "before": 229505.0,
+    "family": "ons_population",
+    "name": "ons.population.age_0_9_by_region@N92000002",
+    "relative_change": -0.02425219494128672
+   },
+   {
+    "after": 513367.0,
+    "before": 527989.0,
+    "family": "ons_population",
+    "name": "ons.population.age_0_9_by_region@S92000003",
+    "relative_change": -0.027693758771489607
+   },
+   {
+    "after": 312131.0,
+    "before": 321552.0,
+    "family": "ons_population",
+    "name": "ons.population.age_0_9_by_region@W92000004",
+    "relative_change": -0.02929852714335468
+   },
+   {
+    "after": 326135.0,
+    "before": 326306.0,
+    "family": "ons_population",
+    "name": "ons.population.age_10_19_by_region@E12000001",
+    "relative_change": -0.0005240479795038944
+   },
+   {
+    "after": 948264.0,
+    "before": 952864.0,
+    "family": "ons_population",
+    "name": "ons.population.age_10_19_by_region@E12000002",
+    "relative_change": -0.004827551465896529
+   },
+   {
+    "after": 689988.0,
+    "before": 696780.0,
+    "family": "ons_population",
+    "name": "ons.population.age_10_19_by_region@E12000003",
+    "relative_change": -0.009747696546973272
+   },
+   {
+    "after": 613290.0,
+    "before": 615630.0,
+    "family": "ons_population",
+    "name": "ons.population.age_10_19_by_region@E12000004",
+    "relative_change": -0.003800984357487436
+   },
+   {
+    "after": 777925.0,
+    "before": 785062.0,
+    "family": "ons_population",
+    "name": "ons.population.age_10_19_by_region@E12000005",
+    "relative_change": -0.009091001729799708
+   },
+   {
+    "after": 782243.0,
+    "before": 785091.0,
+    "family": "ons_population",
+    "name": "ons.population.age_10_19_by_region@E12000006",
+    "relative_change": -0.0036276049528016774
+   },
+   {
+    "after": 1023090.0,
+    "before": 1068691.0,
+    "family": "ons_population",
+    "name": "ons.population.age_10_19_by_region@E12000007",
+    "relative_change": -0.042669957920484
+   },
+   {
+    "after": 1176322.0,
+    "before": 1183235.0,
+    "family": "ons_population",
+    "name": "ons.population.age_10_19_by_region@E12000008",
+    "relative_change": -0.005842457330961337
+   },
+   {
+    "after": 673970.0,
+    "before": 677228.0,
+    "family": "ons_population",
+    "name": "ons.population.age_10_19_by_region@E12000009",
+    "relative_change": -0.00481078750435604
+   },
+   {
+    "after": 254084.0,
+    "before": 252764.0,
+    "family": "ons_population",
+    "name": "ons.population.age_10_19_by_region@N92000002",
+    "relative_change": 0.005222262663987065
+   },
+   {
+    "after": 607601.0,
+    "before": 612935.0,
+    "family": "ons_population",
+    "name": "ons.population.age_10_19_by_region@S92000003",
+    "relative_change": -0.008702390954995254
+   },
+   {
+    "after": 366636.0,
+    "before": 374851.0,
+    "family": "ons_population",
+    "name": "ons.population.age_10_19_by_region@W92000004",
+    "relative_change": -0.02191537437541846
+   },
+   {
+    "after": 339077.0,
+    "before": 343015.0,
+    "family": "ons_population",
+    "name": "ons.population.age_20_29_by_region@E12000001",
+    "relative_change": -0.011480547497922822
+   },
+   {
+    "after": 987726.0,
+    "before": 986590.0,
+    "family": "ons_population",
+    "name": "ons.population.age_20_29_by_region@E12000002",
+    "relative_change": 0.0011514408214152727
+   },
+   {
+    "after": 708022.0,
+    "before": 717479.0,
+    "family": "ons_population",
+    "name": "ons.population.age_20_29_by_region@E12000003",
+    "relative_change": -0.013180873586543962
+   },
+   {
+    "after": 604999.0,
+    "before": 612108.0,
+    "family": "ons_population",
+    "name": "ons.population.age_20_29_by_region@E12000004",
+    "relative_change": -0.011613963548916195
+   },
+   {
+    "after": 765265.0,
+    "before": 766058.0,
+    "family": "ons_population",
+    "name": "ons.population.age_20_29_by_region@E12000005",
+    "relative_change": -0.0010351696607828753
+   },
+   {
+    "after": 717233.0,
+    "before": 727218.0,
+    "family": "ons_population",
+    "name": "ons.population.age_20_29_by_region@E12000006",
+    "relative_change": -0.013730408213218026
+   },
+   {
+    "after": 1533954.0,
+    "before": 1508607.0,
+    "family": "ons_population",
+    "name": "ons.population.age_20_29_by_region@E12000007",
+    "relative_change": 0.0168015924624505
+   },
+   {
+    "after": 1060724.0,
+    "before": 1066121.0,
+    "family": "ons_population",
+    "name": "ons.population.age_20_29_by_region@E12000008",
+    "relative_change": -0.005062277171165364
+   },
+   {
+    "after": 678928.0,
+    "before": 684393.0,
+    "family": "ons_population",
+    "name": "ons.population.age_20_29_by_region@E12000009",
+    "relative_change": -0.00798517810673105
+   },
+   {
+    "after": 218575.0,
+    "before": 219525.0,
+    "family": "ons_population",
+    "name": "ons.population.age_20_29_by_region@N92000002",
+    "relative_change": -0.004327525338799654
+   },
+   {
+    "after": 701623.0,
+    "before": 703554.0,
+    "family": "ons_population",
+    "name": "ons.population.age_20_29_by_region@S92000003",
+    "relative_change": -0.00274463651688428
+   },
+   {
+    "after": 376576.0,
+    "before": 380557.0,
+    "family": "ons_population",
+    "name": "ons.population.age_20_29_by_region@W92000004",
+    "relative_change": -0.010460982191892398
+   },
+   {
+    "after": 360166.0,
+    "before": 363357.0,
+    "family": "ons_population",
+    "name": "ons.population.age_30_39_by_region@E12000001",
+    "relative_change": -0.008781996769017808
+   },
+   {
+    "after": 1070583.0,
+    "before": 1064968.0,
+    "family": "ons_population",
+    "name": "ons.population.age_30_39_by_region@E12000002",
+    "relative_change": 0.005272458890783538
+   },
+   {
+    "after": 768828.0,
+    "before": 770809.0,
+    "family": "ons_population",
+    "name": "ons.population.age_30_39_by_region@E12000003",
+    "relative_change": -0.002570027075449288
+   },
+   {
+    "after": 682492.0,
+    "before": 676709.0,
+    "family": "ons_population",
+    "name": "ons.population.age_30_39_by_region@E12000004",
+    "relative_change": 0.008545770781827944
+   },
+   {
+    "after": 842839.0,
+    "before": 839114.0,
+    "family": "ons_population",
+    "name": "ons.population.age_30_39_by_region@E12000005",
+    "relative_change": 0.004439206115021355
+   },
+   {
+    "after": 902358.0,
+    "before": 895639.0,
+    "family": "ons_population",
+    "name": "ons.population.age_30_39_by_region@E12000006",
+    "relative_change": 0.007501906460080532
+   },
+   {
+    "after": 1546691.0,
+    "before": 1537372.0,
+    "family": "ons_population",
+    "name": "ons.population.age_30_39_by_region@E12000007",
+    "relative_change": 0.006061642855470284
+   },
+   {
+    "after": 1286795.0,
+    "before": 1284552.0,
+    "family": "ons_population",
+    "name": "ons.population.age_30_39_by_region@E12000008",
+    "relative_change": 0.0017461340607465292
+   },
+   {
+    "after": 741210.0,
+    "before": 742082.0,
+    "family": "ons_population",
+    "name": "ons.population.age_30_39_by_region@E12000009",
+    "relative_change": -0.0011750722965925275
+   },
+   {
+    "after": 251999.0,
+    "before": 254067.0,
+    "family": "ons_population",
+    "name": "ons.population.age_30_39_by_region@N92000002",
+    "relative_change": -0.008139585227518675
+   },
+   {
+    "after": 729179.0,
+    "before": 733480.0,
+    "family": "ons_population",
+    "name": "ons.population.age_30_39_by_region@S92000003",
+    "relative_change": -0.005863827234553143
+   },
+   {
+    "after": 406834.0,
+    "before": 410248.0,
+    "family": "ons_population",
+    "name": "ons.population.age_30_39_by_region@W92000004",
+    "relative_change": -0.008321795596809789
+   },
+   {
+    "after": 325882.0,
+    "before": 320860.0,
+    "family": "ons_population",
+    "name": "ons.population.age_40_49_by_region@E12000001",
+    "relative_change": 0.01565168609362333
+   },
+   {
+    "after": 952998.0,
+    "before": 930967.0,
+    "family": "ons_population",
+    "name": "ons.population.age_40_49_by_region@E12000002",
+    "relative_change": 0.023664641174176992
+   },
+   {
+    "after": 686208.0,
+    "before": 674349.0,
+    "family": "ons_population",
+    "name": "ons.population.age_40_49_by_region@E12000003",
+    "relative_change": 0.017585849463704895
+   },
+   {
+    "after": 624432.0,
+    "before": 610611.0,
+    "family": "ons_population",
+    "name": "ons.population.age_40_49_by_region@E12000004",
+    "relative_change": 0.02263470523786837
+   },
+   {
+    "after": 763623.0,
+    "before": 746341.0,
+    "family": "ons_population",
+    "name": "ons.population.age_40_49_by_region@E12000005",
+    "relative_change": 0.023155635292714694
+   },
+   {
+    "after": 856913.0,
+    "before": 838578.0,
+    "family": "ons_population",
+    "name": "ons.population.age_40_49_by_region@E12000006",
+    "relative_change": 0.02186439424835851
+   },
+   {
+    "after": 1288929.0,
+    "before": 1268973.0,
+    "family": "ons_population",
+    "name": "ons.population.age_40_49_by_region@E12000007",
+    "relative_change": 0.015726102919447538
+   },
+   {
+    "after": 1279313.0,
+    "before": 1255951.0,
+    "family": "ons_population",
+    "name": "ons.population.age_40_49_by_region@E12000008",
+    "relative_change": 0.018601044149015422
+   },
+   {
+    "after": 700576.0,
+    "before": 688417.0,
+    "family": "ons_population",
+    "name": "ons.population.age_40_49_by_region@E12000009",
+    "relative_change": 0.017662259938380442
+   },
+   {
+    "after": 248860.0,
+    "before": 246140.0,
+    "family": "ons_population",
+    "name": "ons.population.age_40_49_by_region@N92000002",
+    "relative_change": 0.011050621597464838
+   },
+   {
+    "after": 683165.0,
+    "before": 675368.0,
+    "family": "ons_population",
+    "name": "ons.population.age_40_49_by_region@S92000003",
+    "relative_change": 0.011544817047890898
+   },
+   {
+    "after": 370871.0,
+    "before": 365951.0,
+    "family": "ons_population",
+    "name": "ons.population.age_40_49_by_region@W92000004",
+    "relative_change": 0.013444422887217033
+   },
+   {
+    "after": 352336.0,
+    "before": 360074.0,
+    "family": "ons_population",
+    "name": "ons.population.age_50_59_by_region@E12000001",
+    "relative_change": -0.021490027049995253
+   },
+   {
+    "after": 980650.0,
+    "before": 995810.0,
+    "family": "ons_population",
+    "name": "ons.population.age_50_59_by_region@E12000002",
+    "relative_change": -0.015223787670338718
+   },
+   {
+    "after": 725345.0,
+    "before": 736903.0,
+    "family": "ons_population",
+    "name": "ons.population.age_50_59_by_region@E12000003",
+    "relative_change": -0.01568456092592918
+   },
+   {
+    "after": 668214.0,
+    "before": 676307.0,
+    "family": "ons_population",
+    "name": "ons.population.age_50_59_by_region@E12000004",
+    "relative_change": -0.011966459019350673
+   },
+   {
+    "after": 785103.0,
+    "before": 794143.0,
+    "family": "ons_population",
+    "name": "ons.population.age_50_59_by_region@E12000005",
+    "relative_change": -0.01138334028002519
+   },
+   {
+    "after": 862060.0,
+    "before": 866946.0,
+    "family": "ons_population",
+    "name": "ons.population.age_50_59_by_region@E12000006",
+    "relative_change": -0.0056358758215621085
+   },
+   {
+    "after": 1100048.0,
+    "before": 1087518.0,
+    "family": "ons_population",
+    "name": "ons.population.age_50_59_by_region@E12000007",
+    "relative_change": 0.011521648377314175
+   },
+   {
+    "after": 1281037.0,
+    "before": 1287719.0,
+    "family": "ons_population",
+    "name": "ons.population.age_50_59_by_region@E12000008",
+    "relative_change": -0.005189020275386147
+   },
+   {
+    "after": 772769.0,
+    "before": 784718.0,
+    "family": "ons_population",
+    "name": "ons.population.age_50_59_by_region@E12000009",
+    "relative_change": -0.015227126177811634
+   },
+   {
+    "after": 250863.0,
+    "before": 255269.0,
+    "family": "ons_population",
+    "name": "ons.population.age_50_59_by_region@N92000002",
+    "relative_change": -0.017260223528904772
+   },
+   {
+    "after": 749563.0,
+    "before": 766715.0,
+    "family": "ons_population",
+    "name": "ons.population.age_50_59_by_region@S92000003",
+    "relative_change": -0.02237076358229595
+   },
+   {
+    "after": 415486.0,
+    "before": 424694.0,
+    "family": "ons_population",
+    "name": "ons.population.age_50_59_by_region@W92000004",
+    "relative_change": -0.021681493027921328
+   },
+   {
+    "after": 358713.0,
+    "before": 349719.0,
+    "family": "ons_population",
+    "name": "ons.population.age_60_69_by_region@E12000001",
+    "relative_change": 0.025717790568999588
+   },
+   {
+    "after": 910717.0,
+    "before": 884043.0,
+    "family": "ons_population",
+    "name": "ons.population.age_60_69_by_region@E12000002",
+    "relative_change": 0.030172740466244186
+   },
+   {
+    "after": 671969.0,
+    "before": 652931.0,
+    "family": "ons_population",
+    "name": "ons.population.age_60_69_by_region@E12000003",
+    "relative_change": 0.029157751737932447
+   },
+   {
+    "after": 611920.0,
+    "before": 591429.0,
+    "family": "ons_population",
+    "name": "ons.population.age_60_69_by_region@E12000004",
+    "relative_change": 0.03464659325126096
+   },
+   {
+    "after": 697195.0,
+    "before": 677922.0,
+    "family": "ons_population",
+    "name": "ons.population.age_60_69_by_region@E12000005",
+    "relative_change": 0.028429524340558343
+   },
+   {
+    "after": 770854.0,
+    "before": 744651.0,
+    "family": "ons_population",
+    "name": "ons.population.age_60_69_by_region@E12000006",
+    "relative_change": 0.03518829626227582
+   },
+   {
+    "after": 818948.0,
+    "before": 787666.0,
+    "family": "ons_population",
+    "name": "ons.population.age_60_69_by_region@E12000007",
+    "relative_change": 0.03971480297486507
+   },
+   {
+    "after": 1125764.0,
+    "before": 1089421.0,
+    "family": "ons_population",
+    "name": "ons.population.age_60_69_by_region@E12000008",
+    "relative_change": 0.033359922380787665
+   },
+   {
+    "after": 759591.0,
+    "before": 736639.0,
+    "family": "ons_population",
+    "name": "ons.population.age_60_69_by_region@E12000009",
+    "relative_change": 0.03115773126321031
+   },
+   {
+    "after": 228232.0,
+    "before": 223111.0,
+    "family": "ons_population",
+    "name": "ons.population.age_60_69_by_region@N92000002",
+    "relative_change": 0.022952700673655624
+   },
+   {
+    "after": 739039.0,
+    "before": 721727.0,
+    "family": "ons_population",
+    "name": "ons.population.age_60_69_by_region@S92000003",
+    "relative_change": 0.02398690917756996
+   },
+   {
+    "after": 412789.0,
+    "before": 401775.0,
+    "family": "ons_population",
+    "name": "ons.population.age_60_69_by_region@W92000004",
+    "relative_change": 0.027413353244975402
+   },
+   {
+    "after": 269819.0,
+    "before": 265573.0,
+    "family": "ons_population",
+    "name": "ons.population.age_70_79_by_region@E12000001",
+    "relative_change": 0.015988071076502575
+   },
+   {
+    "after": 675208.0,
+    "before": 669277.0,
+    "family": "ons_population",
+    "name": "ons.population.age_70_79_by_region@E12000002",
+    "relative_change": 0.008861801615773546
+   },
+   {
+    "after": 507786.0,
+    "before": 504131.0,
+    "family": "ons_population",
+    "name": "ons.population.age_70_79_by_region@E12000003",
+    "relative_change": 0.007250099676473054
+   },
+   {
+    "after": 468480.0,
+    "before": 466530.0,
+    "family": "ons_population",
+    "name": "ons.population.age_70_79_by_region@E12000004",
+    "relative_change": 0.004179795511542572
+   },
+   {
+    "after": 528891.0,
+    "before": 528207.0,
+    "family": "ons_population",
+    "name": "ons.population.age_70_79_by_region@E12000005",
+    "relative_change": 0.001294946867421265
+   },
+   {
+    "after": 603534.0,
+    "before": 599882.0,
+    "family": "ons_population",
+    "name": "ons.population.age_70_79_by_region@E12000006",
+    "relative_change": 0.006087863946576233
+   },
+   {
+    "after": 498084.0,
+    "before": 485057.0,
+    "family": "ons_population",
+    "name": "ons.population.age_70_79_by_region@E12000007",
+    "relative_change": 0.02685663746734912
+   },
+   {
+    "after": 873028.0,
+    "before": 865392.0,
+    "family": "ons_population",
+    "name": "ons.population.age_70_79_by_region@E12000008",
+    "relative_change": 0.008823746926248432
+   },
+   {
+    "after": 622182.0,
+    "before": 618254.0,
+    "family": "ons_population",
+    "name": "ons.population.age_70_79_by_region@E12000009",
+    "relative_change": 0.0063533757970024585
+   },
+   {
+    "after": 156629.0,
+    "before": 155382.0,
+    "family": "ons_population",
+    "name": "ons.population.age_70_79_by_region@N92000002",
+    "relative_change": 0.008025382605449716
+   },
+   {
+    "after": 529933.0,
+    "before": 519252.0,
+    "family": "ons_population",
+    "name": "ons.population.age_70_79_by_region@S92000003",
+    "relative_change": 0.020569973731444424
+   },
+   {
+    "after": 322818.0,
+    "before": 321668.0,
+    "family": "ons_population",
+    "name": "ons.population.age_70_79_by_region@W92000004",
+    "relative_change": 0.003575114714550409
+   },
+   {
+    "after": 125800.0,
+    "before": 122118.0,
+    "family": "ons_population",
+    "name": "ons.population.age_80_89_by_region@E12000001",
+    "relative_change": 0.03015116526638173
+   },
+   {
+    "after": 332900.0,
+    "before": 324141.0,
+    "family": "ons_population",
+    "name": "ons.population.age_80_89_by_region@E12000002",
+    "relative_change": 0.02702219096010694
+   },
+   {
+    "after": 251139.0,
+    "before": 243274.0,
+    "family": "ons_population",
+    "name": "ons.population.age_80_89_by_region@E12000003",
+    "relative_change": 0.03232980096516691
+   },
+   {
+    "after": 234889.0,
+    "before": 225626.0,
+    "family": "ons_population",
+    "name": "ons.population.age_80_89_by_region@E12000004",
+    "relative_change": 0.04105466568569227
+   },
+   {
+    "after": 283777.0,
+    "before": 275030.0,
+    "family": "ons_population",
+    "name": "ons.population.age_80_89_by_region@E12000005",
+    "relative_change": 0.0318038032214667
+   },
+   {
+    "after": 317198.0,
+    "before": 305691.0,
+    "family": "ons_population",
+    "name": "ons.population.age_80_89_by_region@E12000006",
+    "relative_change": 0.037642586795162414
+   },
+   {
+    "after": 242901.0,
+    "before": 237061.0,
+    "family": "ons_population",
+    "name": "ons.population.age_80_89_by_region@E12000007",
+    "relative_change": 0.02463500955450293
+   },
+   {
+    "after": 466197.0,
+    "before": 447958.0,
+    "family": "ons_population",
+    "name": "ons.population.age_80_89_by_region@E12000008",
+    "relative_change": 0.040715870684305155
+   },
+   {
+    "after": 327097.0,
+    "before": 313605.0,
+    "family": "ons_population",
+    "name": "ons.population.age_80_89_by_region@E12000009",
+    "relative_change": 0.043022273241816844
+   },
+   {
+    "after": 79953.0,
+    "before": 77441.0,
+    "family": "ons_population",
+    "name": "ons.population.age_80_89_by_region@N92000002",
+    "relative_change": 0.03243759765498888
+   },
+   {
+    "after": 243413.0,
+    "before": 238904.0,
+    "family": "ons_population",
+    "name": "ons.population.age_80_89_by_region@S92000003",
+    "relative_change": 0.018873689850316344
+   },
+   {
+    "after": 159376.0,
+    "before": 154319.0,
+    "family": "ons_population",
+    "name": "ons.population.age_80_89_by_region@W92000004",
+    "relative_change": 0.0327697820747932
+   },
+   {
+    "after": 1701788.0,
+    "before": 1744355.0,
+    "family": "ons_population",
+    "name": "ons.population.female_0_4",
+    "relative_change": -0.02440271619022505
+   },
+   {
+    "after": 2014595.0,
+    "before": 2052052.0,
+    "family": "ons_population",
+    "name": "ons.population.female_10_14",
+    "relative_change": -0.01825343607277008
+   },
+   {
+    "after": 2002099.0,
+    "before": 2002835.0,
+    "family": "ons_population",
+    "name": "ons.population.female_15_19",
+    "relative_change": -0.00036747909837808734
+   },
+   {
+    "after": 2036764.0,
+    "before": 2034609.0,
+    "family": "ons_population",
+    "name": "ons.population.female_20_24",
+    "relative_change": 0.0010591715656422807
+   },
+   {
+    "after": 2269669.0,
+    "before": 2291610.0,
+    "family": "ons_population",
+    "name": "ons.population.female_25_29",
+    "relative_change": -0.009574491296512111
+   },
+   {
+    "after": 2439546.0,
+    "before": 2463301.0,
+    "family": "ons_population",
+    "name": "ons.population.female_30_34",
+    "relative_change": -0.009643563657060206
+   },
+   {
+    "after": 2501726.0,
+    "before": 2472291.0,
+    "family": "ons_population",
+    "name": "ons.population.female_35_39",
+    "relative_change": 0.01190596090832341
+   },
+   {
+    "after": 2363855.0,
+    "before": 2333109.0,
+    "family": "ons_population",
+    "name": "ons.population.female_40_44",
+    "relative_change": 0.013178124125362345
+   },
+   {
+    "after": 2140231.0,
+    "before": 2088285.0,
+    "family": "ons_population",
+    "name": "ons.population.female_45_49",
+    "relative_change": 0.024874957201722836
+   },
+   {
+    "after": 2211381.0,
+    "before": 2255231.0,
+    "family": "ons_population",
+    "name": "ons.population.female_50_54",
+    "relative_change": -0.01944368448287559
+   },
+   {
+    "after": 2348471.0,
+    "before": 2360202.0,
+    "family": "ons_population",
+    "name": "ons.population.female_55_59",
+    "relative_change": -0.004970337284689985
+   },
+   {
+    "after": 1886581.0,
+    "before": 1941658.0,
+    "family": "ons_population",
+    "name": "ons.population.female_5_9",
+    "relative_change": -0.02836596352189724
+   },
+   {
+    "after": 2258870.0,
+    "before": 2193915.0,
+    "family": "ons_population",
+    "name": "ons.population.female_60_64",
+    "relative_change": 0.029606889966110828
+   },
+   {
+    "after": 1899277.0,
+    "before": 1838574.0,
+    "family": "ons_population",
+    "name": "ons.population.female_65_69",
+    "relative_change": 0.03301634853968349
+   },
+   {
+    "after": 1625449.0,
+    "before": 1622996.0,
+    "family": "ons_population",
+    "name": "ons.population.female_70_74",
+    "relative_change": 0.0015114023694451362
+   },
+   {
+    "after": 1578946.0,
+    "before": 1551183.0,
+    "family": "ons_population",
+    "name": "ons.population.female_75_79",
+    "relative_change": 0.01789795272382433
+   },
+   {
+    "after": 1064928.0,
+    "before": 1024480.0,
+    "family": "ons_population",
+    "name": "ons.population.female_80_84",
+    "relative_change": 0.03948149305013282
+   },
+   {
+    "after": 676458.0,
+    "before": 665267.0,
+    "family": "ons_population",
+    "name": "ons.population.female_85_89",
+    "relative_change": 0.016821817405643147
+   },
+   {
+    "after": 425428.0,
+    "before": 414716.0,
+    "family": "ons_population",
+    "name": "ons.population.female_90_plus",
+    "relative_change": 0.025829724437928636
+   },
+   {
+    "after": 1790962.0,
+    "before": 1829801.0,
+    "family": "ons_population",
+    "name": "ons.population.male_0_4",
+    "relative_change": -0.021225805429115008
+   },
+   {
+    "after": 2115846.0,
+    "before": 2152800.0,
+    "family": "ons_population",
+    "name": "ons.population.male_10_14",
+    "relative_change": -0.017165551839464888
+   },
+   {
+    "after": 2107008.0,
+    "before": 2123750.0,
+    "family": "ons_population",
+    "name": "ons.population.male_15_19",
+    "relative_change": -0.007883225426721596
+   },
+   {
+    "after": 2127062.0,
+    "before": 2131646.0,
+    "family": "ons_population",
+    "name": "ons.population.male_20_24",
+    "relative_change": -0.0021504508722367532
+   },
+   {
+    "after": 2259207.0,
+    "before": 2257360.0,
+    "family": "ons_population",
+    "name": "ons.population.male_25_29",
+    "relative_change": 0.0008182124251336909
+   },
+   {
+    "after": 2315894.0,
+    "before": 2333326.0,
+    "family": "ons_population",
+    "name": "ons.population.male_30_34",
+    "relative_change": -0.007470880622767684
+   },
+   {
+    "after": 2332808.0,
+    "before": 2303479.0,
+    "family": "ons_population",
+    "name": "ons.population.male_35_39",
+    "relative_change": 0.01273247987066517
+   },
+   {
+    "after": 2223098.0,
+    "before": 2196013.0,
+    "family": "ons_population",
+    "name": "ons.population.male_40_44",
+    "relative_change": 0.01233371569293995
+   },
+   {
+    "after": 2054586.0,
+    "before": 2005099.0,
+    "family": "ons_population",
+    "name": "ons.population.male_45_49",
+    "relative_change": 0.02468057686927172
+   },
+   {
+    "after": 2133309.0,
+    "before": 2164862.0,
+    "family": "ons_population",
+    "name": "ons.population.male_50_54",
+    "relative_change": -0.014575062983229414
+   },
+   {
+    "after": 2250313.0,
+    "before": 2256521.0,
+    "family": "ons_population",
+    "name": "ons.population.male_55_59",
+    "relative_change": -0.0027511377026847583
+   },
+   {
+    "after": 1985034.0,
+    "before": 2037199.0,
+    "family": "ons_population",
+    "name": "ons.population.male_5_9",
+    "relative_change": -0.02560623679866325
+   },
+   {
+    "after": 2152532.0,
+    "before": 2094462.0,
+    "family": "ons_population",
+    "name": "ons.population.male_60_64",
+    "relative_change": 0.02772549704888405
+   },
+   {
+    "after": 1795052.0,
+    "before": 1734083.0,
+    "family": "ons_population",
+    "name": "ons.population.male_65_69",
+    "relative_change": 0.03515921671569355
+   },
+   {
+    "after": 1478885.0,
+    "before": 1473758.0,
+    "family": "ons_population",
+    "name": "ons.population.male_70_74",
+    "relative_change": 0.0034788615227194786
+   },
+   {
+    "after": 1373112.0,
+    "before": 1350668.0,
+    "family": "ons_population",
+    "name": "ons.population.male_75_79",
+    "relative_change": 0.01661696286578196
+   },
+   {
+    "after": 854188.0,
+    "before": 815910.0,
+    "family": "ons_population",
+    "name": "ons.population.male_80_84",
+    "relative_change": 0.04691448811756205
+   },
+   {
+    "after": 469066.0,
+    "before": 459511.0,
+    "family": "ons_population",
+    "name": "ons.population.male_85_89",
+    "relative_change": 0.020793843890570596
+   },
+   {
+    "after": 219915.0,
+    "before": 210520.0,
+    "family": "ons_population",
+    "name": "ons.population.male_90_plus",
+    "relative_change": 0.04462758882766482
+   },
+   {
+    "after": 45774.0,
+    "before": 46776.0,
+    "family": "ons_population",
+    "name": "ons.population.scotland_babies_under_1",
+    "relative_change": -0.02142124166239101
+   },
+   {
+    "after": 877999.0,
+    "before": 896833.0,
+    "family": "ons_population",
+    "name": "ons.population.scotland_children_under_16",
+    "relative_change": -0.02100056532264094
+   },
+   {
+    "after": 69483939.0,
+    "before": 69281437.0,
+    "family": "ons_population",
+    "name": "ons.population.uk_total",
+    "relative_change": 0.002922889720084809
+   },
+   {
+    "after": 6176000.0,
+    "before": 6146000.0,
+    "family": "ons_employment",
+    "name": "ons.public_sector_employment",
+    "relative_change": 0.004881223560039061
+   },
+   {
+    "after": 1604190700.89,
+    "before": 1852699178.55,
+    "family": "slc_repayments",
+    "name": "slc.repayments.england_plan_1",
+    "relative_change": -0.13413320442798116
+   },
+   {
+    "after": 3234379913.2999997,
+    "before": 2778253361.64,
+    "family": "slc_repayments",
+    "name": "slc.repayments.england_plan_2",
+    "relative_change": 0.1641774497451698
+   },
+   {
+    "after": 5339303976.37,
+    "before": 5018231834.949999,
+    "family": "slc_repayments",
+    "name": "slc.repayments.england_total_higher_education",
+    "relative_change": 0.06398112960502544
+   }
+  ],
+  "moved_count": 552,
+  "removed": [],
+  "rows_after": 1213,
+  "rows_before": 1177
+ }
+}

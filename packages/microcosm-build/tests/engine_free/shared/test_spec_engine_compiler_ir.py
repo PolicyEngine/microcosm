@@ -22,7 +22,7 @@ from microcosm.build.spec_engine.model import (
 )
 from microcosm.build.spec_engine.resolver import F0_CONTRACT_ONLY_KERNEL_IDS
 
-US_SCHEDULE_SHA256 = "f9ae8ea539b6e039308123f5a36be27da7536ccca502dc2a5a607c7217ca6391"
+US_SCHEDULE_SHA256 = "3b9801f845400e77aaef28f1d4315b8a329f159ff3fade66255ce9a35b9c6bdc"
 
 
 @pytest.fixture(scope="module")
@@ -67,7 +67,7 @@ def test_us_compiles_exact_stage_dag_and_lossless_producer_graph(
     assert len(graph.order) == 38
     assert len(set(graph.order)) == 38
     assert len(graph.ownership_matrix) == 18
-    assert graph.compiled_output_count == 229
+    assert graph.compiled_output_count == 232
     assert graph.schedule_sha256 == US_SCHEDULE_SHA256
     assert sha256_json(graph.schedule_wire()) == US_SCHEDULE_SHA256
 
@@ -140,10 +140,10 @@ def test_us_node_slices_are_transitive_and_content_attested(
 def test_ir_retains_all_typed_resolution_products(compiled_us: CompiledSpecIR) -> None:
     inventory = compiled_us.typed_inventory
     assert len(inventory["entities"]) == 8
-    assert len(inventory["columns"]) == 177
+    assert len(inventory["columns"]) == 178
     assert len(inventory["artifacts"]) == 84
     assert len(inventory["scopes"]) == 7
-    assert len(inventory["references"]) == 335
+    assert len(inventory["references"]) == 336
     assert "engine_abi_lock" in compiled_us.generated_authorities
     assert "records" in compiled_us.vintage_authorities
     assert set(compiled_us.surfaces) == {

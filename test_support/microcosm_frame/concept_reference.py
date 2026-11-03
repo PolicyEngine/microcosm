@@ -31,7 +31,9 @@ from microcosm.frame.concept_mapping import (
     RelationshipRole,
     Role,
     Scale,
+    ScaledSum,
     Share,
+    SignedPart,
     Sum,
     TakeUpThreshold,
 )
@@ -101,6 +103,12 @@ def reference_values(
             out.append(float(value(row, concepts[0])) > 0)
         elif isinstance(transform, Sum):
             out.append(sum(float(value(row, concept_id)) for concept_id in concepts))
+        elif isinstance(transform, ScaledSum):
+            total = sum(float(value(row, concept_id)) for concept_id in concepts)
+            out.append(total * transform.factor)
+        elif isinstance(transform, SignedPart):
+            total = sum(float(value(row, concept_id)) for concept_id in concepts)
+            out.append(max(total if transform.sign == "positive" else -total, 0.0))
         elif isinstance(transform, Product):
             first, second = (float(value(row, concept_id)) for concept_id in concepts)
             out.append(first * second)

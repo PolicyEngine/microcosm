@@ -27,12 +27,39 @@ from microcosm.build import (
     default_valued_columns_gate,
     weights_audit_gate,
 )
+from microcosm.build.gates import GateResult
 from microcosm.build.us_runtime import acs_sources
+from microcosm.build.us_runtime.acs_inputs import acs_self_employment_identity_gate
 from microcosm.build.us_runtime.acs_local_hours import (
     ACS_UNDER15_ZERO_POLICY,
     acs_local_hours_signal_gate,
     acs_local_transfer_target_families,
     prepare_acs_local_hours_donor,
+)
+from microcosm.build.us_runtime.acs_local_immigration import (
+    ACS_LOCAL_IMMIGRATION_ISSUE,
+    acs_local_immigration_signal_gate,
+    require_acs_local_immigration_donor,
+    with_acs_local_immigration_inputs,
+)
+from microcosm.build.us_runtime.acs_local_income import (
+    ACS_LOCAL_INCOME_TRANSFER_ISSUE,
+    acs_local_income_transfer_signal_gate,
+    require_acs_local_income_donor,
+)
+from microcosm.build.us_runtime.acs_local_ssi_disability import (
+    ACS_LOCAL_SSI_DISABILITY_ISSUE,
+    acs_local_ssi_disability_signal_gate,
+    load_acs_local_ssi_disability_donor,
+    require_acs_local_ssi_disability_donor,
+    with_acs_local_ssi_disability_criteria,
+)
+from microcosm.build.us_runtime.acs_local_work_disability import (
+    ACS_DISABILITY_ITEMS,
+    ACS_LOCAL_DISABILITY_COLUMNS,
+    ACS_LOCAL_WORK_DISABILITY_ISSUE,
+    ACS_NATIVE_PROVENANCE,
+    acs_local_work_disability_signal_gate,
 )
 from microcosm.build.us_runtime.acs_multispine import (
     AcsMultispineResult,
@@ -59,9 +86,21 @@ from microcosm.build.us_runtime.h5_io import (
     refuse_denied_frame,
     refuse_denied_pool_h5,
 )
+from microcosm.build.us_runtime.org_wages import (
+    require_us_occupation_and_work_experience_inputs,
+)
 from microcosm.build.us_runtime.puma_ladder import (
     UsPumaLadder,
     load_us_puma_ladder,
+)
+from microcosm.build.us_runtime.spm_independence_role import (
+    us_declared_dataset_source_inputs,
+)
+from microcosm.build.us_runtime.spm_measurement_gate import engine_scopes_spm_universe
+from microcosm.build.us_runtime.spm_role_source import NATIVE_SPM_ROLE
+from microcosm.build.us_runtime.ssi_disability_criteria import (
+    SIPP_2023_SSI_DISABILITY_DONOR_SHA256,
+    fetch_sipp_2023_ssi_disability_donor,
 )
 from microcosm.frame import (
     Frame,
@@ -85,6 +124,11 @@ _STAGING_EXPORT_FIXED_OVERHEAD_BYTES = 512 * 1024**2
 _PACKAGED_MANIFEST_REFERENCE = (
     "package:microcosm.build.us_runtime/acs_2024_1yr_sources.json"
 )
+#: The raw ACS items a native disability receipt must name (microcosm#1021).
+_NATIVE_DISABILITY_SOURCES: dict[str, tuple[str, ...]] = {
+    "is_disabled": ACS_DISABILITY_ITEMS,
+    "is_blind": ("DEYE",),
+}
 
 
 def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
@@ -166,6 +210,16 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         ),
     )
     parser.add_argument(
+        "--sipp-donor",
+        type=Path,
+        help=(
+            "Local copy of the sha-pinned full SIPP 2023 public-use file "
+            "(pu2023.csv) for the ACS rows' SSI disability criteria "
+            f"({ACS_LOCAL_SSI_DISABILITY_ISSUE}). Defaults to the canonical "
+            "cache, downloading the pinned 3.73 GB file on first use."
+        ),
+    )
+    parser.add_argument(
         "--donor-release-manifest",
         type=Path,
         help=(
@@ -240,11 +294,21 @@ def main(argv: list[str] | None = None) -> int:
     donor_release = _donor_release_identity(args.donor_release_manifest, base_sha256)
     base = _load_base_frame(args.base_h5)
     _require_benefit_participation_inputs(base)
+    _require_donor_spm_independence_role(base)
+    _require_immigration_donor(base, period=args.period)
+    _require_income_donor(base)
+    _require_ssi_disability_donor(base)
+    _require_donor_work_experience(base)
     transfer_plan = declared_acs_transfer_target_families()
     _require_dense_donor_coverage(
         base,
         donor_channel=args.donor_channel,
         target_families=transfer_plan,
+    )
+    # microcosm#1022: resolve and verify the pinned SIPP donor before the ACS
+    # fetch and transfer, so an unavailable donor fails in minutes, not hours.
+    ssi_disability_donor, ssi_disability_identity = _load_ssi_disability_donor(
+        args.sipp_donor, period=args.period
     )
     base_rows = _row_counts(base)
     base_mass = float(base.weights_for("household").total)
@@ -257,6 +321,7 @@ def main(argv: list[str] | None = None) -> int:
     )
     if args.max_households is not None:
         source = replace(source, max_households=args.max_households)
+    drop_group_quarters_children = _drop_acs_group_quarters_children()
 
     result = build_optional_acs_multispine(
         base,
@@ -268,15 +333,20 @@ def main(argv: list[str] | None = None) -> int:
             donor, seed=args.seed, period=args.period
         ),
         hours_under15_policy=args.hours_under15_policy,
+        work_disability_inputs=True,
+        income_transfer=True,
         donor_channel=args.donor_channel,
         seed=args.seed,
         n_estimators=args.n_estimators,
         max_targets_per_fit=args.max_targets_per_fit,
         puma_ladder=puma_ladder,
         geography_seed=args.geography_seed,
+        drop_group_quarters_children=drop_group_quarters_children,
     )
     _require_puma_ladder_assignment(result)
     _require_benefit_participation_transfer(result)
+    self_employment_gate = _require_acs_self_employment_identity(result.frame)
+    _require_pooled_spm_independence_role(result)
     transfer_coverage = _require_default_transfer_coverage(
         result,
         base,
@@ -288,6 +358,34 @@ def main(argv: list[str] | None = None) -> int:
     # before HDF serialization so export cannot retain both full spines plus
     # writer scratch at once.
     del base
+    gc.collect()
+    # microcosm#1020: label the ACS rows' immigration status and fill every
+    # person's years_since_us_entry BEFORE the input-null audit. Left missing,
+    # they enter the reviewed-null register, whose fill is the engine default:
+    # every ACS person a citizen with a valid SSN, every clock 5 years.
+    result, immigration = _with_local_immigration(
+        result, seed=args.seed, period=args.period
+    )
+    gc.collect()
+    # microcosm#1021: the ACS rows' is_disabled/is_blind/weeks_worked were
+    # mapped natively before the transfer; gate them on the pooled frame.
+    work_disability = _require_local_work_disability(result)
+    gc.collect()
+    # microcosm#1022: the ACS rows' SNAP-relevant income leaves came from the
+    # separate ASEC-channel pass; gate them before the input-null audit.
+    income = _require_local_income_transfer(result)
+    gc.collect()
+    # microcosm#1022: run the donor's SIPP SSI disability-criteria model on
+    # the ACS rows (it reads the income pass's disability_benefits) and gate
+    # it before the input-null audit; left missing, the reviewed-null fill
+    # would fail every ACS person under 65 who is not blind.
+    result, ssi_disability = _with_local_ssi_disability(
+        result,
+        sipp_donor=ssi_disability_donor,
+        donor_identity=ssi_disability_identity,
+        seed=args.seed,
+    )
+    del ssi_disability_donor
     gc.collect()
     input_null_audit = _engine_input_null_audit(result.frame)
     gc.collect()
@@ -322,12 +420,22 @@ def main(argv: list[str] | None = None) -> int:
         puma_ladder_sha256=puma_ladder_sha256,
     )
     summary["local_hours_source"] = result.provenance.get("local_hours_source")
+    summary["acs_self_employment_identity_gate"] = {
+        "name": self_employment_gate.name,
+        "passed": self_employment_gate.passed,
+        "failures": list(self_employment_gate.failures),
+        "details": dict(self_employment_gate.details),
+    }
     summary["local_hours_gate"] = {
         "name": hours_gate.name,
         "passed": hours_gate.passed,
         "failures": list(hours_gate.failures),
         "details": dict(hours_gate.details),
     }
+    summary.update(immigration)
+    summary.update(work_disability)
+    summary.update(income)
+    summary.update(ssi_disability)
     summary_path.parent.mkdir(parents=True, exist_ok=True)
     rendered = json.dumps(summary, indent=2, sort_keys=True, allow_nan=False) + "\n"
     summary_path.write_text(rendered, encoding="utf-8")
@@ -374,6 +482,332 @@ def _require_benefit_participation_inputs(base: Frame) -> None:
             "Dense ASEC-by-PUF donor has no takes_up_* benefit-participation "
             "inputs. This tool must run after the benefit input-family stages."
         )
+
+
+def _require_immigration_donor(base: Frame, *, period: int) -> None:
+    """Refuse, before any fetch or fit, a donor the immigration stage can't use."""
+
+    try:
+        require_acs_local_immigration_donor(base, time_period=period)
+    except ValueError as exc:
+        raise SystemExit(
+            f"Dense ASEC-by-PUF donor cannot seed the ACS local immigration "
+            f"stage ({ACS_LOCAL_IMMIGRATION_ISSUE}): {exc}"
+        ) from exc
+
+
+def _with_local_immigration(
+    result: AcsMultispineResult,
+    *,
+    seed: int,
+    period: int,
+) -> tuple[AcsMultispineResult, dict[str, object]]:
+    """Run and gate the ACS local immigration stage; return the summary entries.
+
+    The stage fills only missing ACS-row labels and every missing
+    ``years_since_us_entry``; its gate must pass before the staging H5 is
+    written, and the release tool refuses a staging summary without both
+    entries (``acs_local_immigration`` and ``acs_local_immigration_gate``).
+    """
+
+    try:
+        frame, receipt = with_acs_local_immigration_inputs(
+            result.frame, seed=seed, time_period=period
+        )
+    except ValueError as exc:
+        raise SystemExit(
+            f"ACS local immigration stage failed ({ACS_LOCAL_IMMIGRATION_ISSUE}): {exc}"
+        ) from exc
+    gate = acs_local_immigration_signal_gate(frame)
+    if not gate.passed:
+        raise SystemExit(
+            "Local staging immigration gate failed: " + "; ".join(gate.failures)
+        )
+    return replace(result, frame=frame), {
+        "acs_local_immigration": receipt,
+        "acs_local_immigration_gate": {
+            "name": gate.name,
+            "passed": gate.passed,
+            "failures": list(gate.failures),
+            "details": dict(gate.details),
+        },
+    }
+
+
+def _require_local_work_disability(result: AcsMultispineResult) -> dict[str, object]:
+    """Gate the ACS local work/disability inputs; return the summary entries.
+
+    ``build_optional_acs_multispine(work_disability_inputs=True)`` maps them
+    natively before the transfer and records the receipt in its provenance.
+    The gate must pass before the staging H5 is written, and the release tool
+    refuses a staging summary without both entries
+    (``acs_local_work_disability`` and ``acs_local_work_disability_gate``).
+    """
+
+    receipt = result.provenance.get("acs_local_work_disability")
+    if not isinstance(receipt, dict):
+        raise SystemExit(
+            "ACS multispine recorded no native work/disability receipt "
+            f"({ACS_LOCAL_WORK_DISABILITY_ISSUE}); the ACS rows' is_disabled "
+            "and is_blind would be ASEC-imputed and weeks_worked absent."
+        )
+    gate = acs_local_work_disability_signal_gate(result.frame, receipt=receipt)
+    if not gate.passed:
+        raise SystemExit(
+            "Local staging work/disability gate failed: " + "; ".join(gate.failures)
+        )
+    return {
+        "acs_local_work_disability": receipt,
+        "acs_local_work_disability_gate": {
+            "name": gate.name,
+            "passed": gate.passed,
+            "failures": list(gate.failures),
+            "details": dict(gate.details),
+        },
+    }
+
+
+def _require_income_donor(base: Frame) -> None:
+    """Refuse, before any fetch or fit, a donor the income pass can't use."""
+
+    try:
+        require_acs_local_income_donor(base)
+    except ValueError as exc:
+        raise SystemExit(
+            "Dense ASEC-by-PUF donor cannot seed the ACS local income transfer "
+            f"({ACS_LOCAL_INCOME_TRANSFER_ISSUE}): {exc}"
+        ) from exc
+
+
+def _require_local_income_transfer(result: AcsMultispineResult) -> dict[str, object]:
+    """Gate the ACS local income transfer; return the summary entries.
+
+    ``build_optional_acs_multispine(income_transfer=True)`` runs the separate
+    ASEC-channel pass and records its receipt in its provenance. The gate must
+    pass before the staging H5 is written, and the release tool refuses a
+    staging summary without both entries (``acs_local_income_transfer`` and
+    ``acs_local_income_transfer_gate``).
+    """
+
+    receipt = result.provenance.get("acs_local_income_transfer")
+    if not isinstance(receipt, dict):
+        raise SystemExit(
+            "ACS multispine recorded no local income transfer receipt "
+            f"({ACS_LOCAL_INCOME_TRANSFER_ISSUE}); the ACS rows' child support, "
+            "workers' compensation, disability benefits and retirement "
+            "distributions would be default-filled zeros."
+        )
+    gate = acs_local_income_transfer_signal_gate(result.frame, receipt=receipt)
+    if not gate.passed:
+        raise SystemExit(
+            "Local staging income transfer gate failed: " + "; ".join(gate.failures)
+        )
+    return {
+        "acs_local_income_transfer": receipt,
+        "acs_local_income_transfer_gate": {
+            "name": gate.name,
+            "passed": gate.passed,
+            "failures": list(gate.failures),
+            "details": dict(gate.details),
+        },
+    }
+
+
+def _require_ssi_disability_donor(base: Frame) -> None:
+    """Refuse, before any fetch or fit, a donor without the SSI criteria."""
+
+    try:
+        require_acs_local_ssi_disability_donor(base)
+    except ValueError as exc:
+        raise SystemExit(
+            "Dense ASEC-by-PUF donor cannot anchor the ACS local SSI "
+            f"disability-criteria stage ({ACS_LOCAL_SSI_DISABILITY_ISSUE}): {exc}"
+        ) from exc
+
+
+def _load_ssi_disability_donor(
+    path: Path | None, *, period: int
+) -> tuple[pd.DataFrame, dict[str, object]]:
+    """The verified SIPP training frame and the identity its receipt pins.
+
+    ``path`` is ``--sipp-donor``; without it the pinned file is resolved
+    through the canonical cache the fiscal lane's SIPP stages share,
+    downloading it on first use. Either way the byte length and sha-256 are
+    verified before the training frame is built.
+    """
+
+    try:
+        resolved = path if path is not None else fetch_sipp_2023_ssi_disability_donor()
+        return load_acs_local_ssi_disability_donor(resolved, time_period=period)
+    except (OSError, ValueError) as exc:
+        raise SystemExit(
+            "The pinned full SIPP 2023 donor for the ACS local SSI disability "
+            f"criteria ({ACS_LOCAL_SSI_DISABILITY_ISSUE}) is unavailable: {exc} "
+            "Pass --sipp-donor with a local pu2023.csv (sha256 "
+            f"{SIPP_2023_SSI_DISABILITY_DONOR_SHA256}) or allow the pinned "
+            "download."
+        ) from exc
+
+
+def _with_local_ssi_disability(
+    result: AcsMultispineResult,
+    *,
+    sipp_donor: pd.DataFrame,
+    donor_identity: dict[str, object],
+    seed: int,
+) -> tuple[AcsMultispineResult, dict[str, object]]:
+    """Run and gate the ACS local SSI disability stage; return the summary entries.
+
+    The stage fills only missing ACS-row ``meets_ssi_disability_criteria``;
+    its gate must pass before the staging H5 is written, and the release tool
+    refuses a staging summary without both entries
+    (``acs_local_ssi_disability`` and ``acs_local_ssi_disability_gate``).
+    """
+
+    try:
+        frame, receipt = with_acs_local_ssi_disability_criteria(
+            result.frame,
+            sipp_donor=sipp_donor,
+            donor_identity=donor_identity,
+            seed=seed,
+        )
+    except ValueError as exc:
+        raise SystemExit(
+            "ACS local SSI disability-criteria stage failed "
+            f"({ACS_LOCAL_SSI_DISABILITY_ISSUE}): {exc}"
+        ) from exc
+    gate = acs_local_ssi_disability_signal_gate(frame, receipt=receipt)
+    if not gate.passed:
+        raise SystemExit(
+            "Local staging SSI disability-criteria gate failed: "
+            + "; ".join(gate.failures)
+        )
+    return replace(result, frame=frame), {
+        "acs_local_ssi_disability": receipt,
+        "acs_local_ssi_disability_gate": {
+            "name": gate.name,
+            "passed": gate.passed,
+            "failures": list(gate.failures),
+            "details": dict(gate.details),
+        },
+    }
+
+
+def _require_donor_spm_independence_role(base: Frame) -> None:
+    """Fail before any fit unless the donor delivers the source SPM role.
+
+    The engine declares ``is_spm_independent_minor_role`` a dataset source
+    input that may not be defaulted, and the ACS spine derives it only to
+    match a donor that carries it; a role-free donor would leave the staging
+    column absent or half-filled.
+    """
+
+    person = base.table("person")
+    if NATIVE_SPM_ROLE not in person:
+        raise SystemExit(
+            f"Dense ASEC-by-PUF donor carries no {NATIVE_SPM_ROLE}. The engine "
+            "declares it a dataset source input that may not be defaulted; build "
+            "the donor through the spm_independence_role stage (or the Build P "
+            "SPM role enrichment) first."
+        )
+    failure = _spm_role_column_failure(person[NATIVE_SPM_ROLE])
+    if failure is not None:
+        raise SystemExit(f"Dense ASEC-by-PUF donor {NATIVE_SPM_ROLE} {failure}")
+
+
+def _require_donor_work_experience(base: Frame) -> None:
+    """Keep historical donors from leaving ASEC job inputs null after pooling.
+
+    The local lane appends the donor's original rows to native ACS rows; it
+    never runs the fiscal ORG carry on those donor rows. The donor must
+    already carry the canonical occupation, industry and working inputs.
+    """
+
+    try:
+        require_us_occupation_and_work_experience_inputs(
+            base.table("person"), label="Dense ASEC-by-PUF donor"
+        )
+    except ValueError as error:
+        raise SystemExit(
+            f"{error} Build a fresh donor through the exact ASEC "
+            "WEIND/WEMIND restoration and fiscal org_wages carry first; "
+            "the ACS local lane preserves donor rows and cannot default these inputs."
+        ) from error
+
+
+def _drop_acs_group_quarters_children(engine_variables=None) -> bool:
+    """Whether to drop the ACS group-quarters children (microcosm#1263, d1484).
+
+    A group-quarters child under 15 can have no classified SPM adult. An
+    engine that does not scope SPM by measurement universe measures every
+    unit, so it refuses every SPM measurement on a population that keeps one;
+    the release's SPM measurement gate refuses to package such a population.
+    Drop them exactly while the installed engine (the release's built-with
+    engine) does not scope: once it does, they stay, declared outside the
+    universe, as the source rules.
+    """
+
+    if engine_variables is None:
+        from microcosm.data import stored_inputs
+
+        engine_variables = stored_inputs.installed_us_engine().variables
+    return not engine_scopes_spm_universe(engine_variables)
+
+
+def _require_pooled_spm_independence_role(
+    result: AcsMultispineResult,
+) -> dict[str, object]:
+    """Prove the staged role is complete, Boolean, and derived for the ACS rows."""
+
+    receipt = result.provenance.get("spm_independence_role")
+    if not isinstance(receipt, dict):
+        raise SystemExit(
+            "ACS multispine derived no SPM independence role for the ACS spine; "
+            f"refusing to stage {NATIVE_SPM_ROLE} as a reviewed null."
+        )
+    person = result.frame.table("person")
+    if NATIVE_SPM_ROLE not in person:
+        raise SystemExit(f"Combined multispine frame lost {NATIVE_SPM_ROLE}.")
+    column = person[NATIVE_SPM_ROLE]
+    missing = column.isna()
+    if missing.any():
+        tag = spine_column("person")
+        by_spine = (
+            {
+                str(spine): int(count)
+                for spine, count in person.loc[missing, tag]
+                .astype(str)
+                .value_counts()
+                .sort_index()
+                .items()
+            }
+            if tag in person
+            else {}
+        )
+        raise SystemExit(
+            f"Combined multispine frame leaves {NATIVE_SPM_ROLE} null on "
+            f"{int(missing.sum())} person row(s) (by spine {by_spine}); the "
+            "engine forbids a default for a declared dataset source input."
+        )
+    failure = _spm_role_column_failure(column)
+    if failure is not None:
+        raise SystemExit(f"Combined multispine frame {NATIVE_SPM_ROLE} {failure}")
+    tag = spine_column("person")
+    acs_rows = int(person[tag].eq(ACS_2024_1YR_SPINE).sum()) if tag in person else 0
+    if receipt.get("persons") != acs_rows:
+        raise SystemExit(
+            f"ACS SPM independence role receipt covers {receipt.get('persons')!r} "
+            f"person(s), but the combined frame holds {acs_rows} ACS person row(s)."
+        )
+    return receipt
+
+
+def _spm_role_column_failure(column: pd.Series) -> str | None:
+    if column.isna().any():
+        return f"is null on {int(column.isna().sum())} person row(s)."
+    if pd.api.types.infer_dtype(column, skipna=False) != "boolean":
+        return f"must be Boolean; found dtype {column.dtype}."
+    return None
 
 
 def _require_dense_donor_coverage(
@@ -484,6 +918,33 @@ def _require_benefit_participation_transfer(result: AcsMultispineResult) -> None
         )
 
 
+def _require_acs_self_employment_identity(frame: Frame) -> GateResult:
+    """Refuse staging whose ACS self-employment leaves add to SEMP (#1380)."""
+
+    person = frame.table("person")
+    tag = spine_column("person")
+    if tag not in person.columns:
+        raise SystemExit(
+            f"Combined multispine frame has no {tag}; cannot select the ACS "
+            "rows the self-employment identity covers."
+        )
+    gate = acs_self_employment_identity_gate(
+        person,
+        rows=(
+            person[tag]
+            .astype("string")
+            .eq(ACS_2024_1YR_SPINE)
+            .fillna(False)
+            .to_numpy(dtype=bool)
+        ),
+    )
+    if not gate.passed:
+        raise SystemExit(
+            "ACS self-employment identity failed: " + "; ".join(gate.failures)
+        )
+    return gate
+
+
 def _require_puma_ladder_assignment(result: AcsMultispineResult) -> None:
     """Fail unless the enabled multispine resolved launch geography inputs."""
 
@@ -586,6 +1047,29 @@ def _require_default_transfer_coverage(
         and native_hours["missing_rows"] == modeled_rows
     ):
         native_complete[native_hours_column] = native_hours
+    # microcosm#1021: the local lane maps is_disabled/is_blind natively on
+    # every ACS row (the six difficulty items, plus SSIP for is_disabled), so
+    # the null-only transfer has nothing to fit. Accept only an exact,
+    # complete native receipt; a partial or non-native one still needs a fit.
+    native_modeled_rows = {native_hours_column: modeled_rows}
+    for column in ACS_LOCAL_DISABILITY_COLUMNS:
+        native_flag = (
+            native_inputs.get(column) if isinstance(native_inputs, dict) else None
+        )
+        if (
+            column in expected
+            and isinstance(native_flag, dict)
+            and native_flag.get("entity") == "person"
+            and native_flag.get("provenance") == ACS_NATIVE_PROVENANCE
+            and isinstance(native_flag.get("source_columns"), list)
+            and set(_NATIVE_DISABILITY_SOURCES[column]).issubset(
+                native_flag["source_columns"]
+            )
+            and type(native_flag.get("missing_rows")) is int
+            and native_flag["missing_rows"] == 0
+        ):
+            native_complete[column] = native_flag
+            native_modeled_rows[column] = 0
     missing = sorted(set(expected) - set(entries) - set(native_complete))
     if missing:
         raise SystemExit(
@@ -615,11 +1099,15 @@ def _require_default_transfer_coverage(
             raw_unmodeled = entries[column].get("unmodeled_recipient_rows", 0)
         else:
             receipt = native_complete[column]
+            native_modeled = native_modeled_rows[column]
             if type(receipt.get("observed_rows")) is not int or receipt[
                 "observed_rows"
-            ] + modeled_rows != int(acs_mask.sum()):
-                raise SystemExit("ACS native hours receipt has incorrect row coverage.")
-            raw_unmodeled = receipt["missing_rows"] - modeled_rows
+            ] + native_modeled != int(acs_mask.sum()):
+                label = "hours" if column == native_hours_column else column
+                raise SystemExit(
+                    f"ACS native {label} receipt has incorrect row coverage."
+                )
+            raw_unmodeled = receipt["missing_rows"] - native_modeled
         if type(raw_unmodeled) is not int or raw_unmodeled < 0:
             raise SystemExit(
                 f"ACS imputation provenance for {column!r} has invalid "
@@ -727,7 +1215,7 @@ def _reviewed_limitations(
     if not isinstance(structural_pending, list):
         raise TypeError("transfer_coverage.structural_pending must be a list.")
 
-    return [
+    limitations = [
         {
             "id": "acs_group_quarters_housing_universe",
             "status": "reviewed_structural_absence",
@@ -831,6 +1319,94 @@ def _reviewed_limitations(
             "calibration_blocker": False,
         },
     ]
+    spm_role = result.provenance.get("spm_independence_role")
+    if isinstance(spm_role, dict):
+        limitations.append(_spm_role_limitation(spm_role))
+    dropped = result.provenance.get("acs_group_quarters_children")
+    if isinstance(dropped, dict):
+        limitations.append(_group_quarters_children_limitation(dropped))
+    return limitations
+
+
+def _group_quarters_children_limitation(
+    receipt: dict[str, object],
+) -> dict[str, object]:
+    """Disclose the interim drop of ACS group-quarters children (d1484)."""
+
+    return {
+        "id": "acs_group_quarters_children_outside_spm_universe",
+        "status": "reviewed_interim_exclusion",
+        "affected_spine": ACS_2024_1YR_SPINE,
+        "rule": receipt.get("rule"),
+        "authority": receipt.get("authority"),
+        "decision": receipt.get("decision"),
+        "reason": (
+            "A group-quarters person under 15 is a one-person SPM unit with no "
+            "classified adult under any role, and the built-with engine measures "
+            "every SPM unit, so one such unit refuses every SPM measurement on "
+            "the release. The source places ACS group quarters outside the SPM "
+            "universe."
+        ),
+        "treatment": (
+            "Remove these records from the staged population before the "
+            "transfer. They leave every fiscal total as well as SPM "
+            "measurement; calibration to the PUMA-ladder population marginals "
+            "re-spreads their weight. Every other group-quarters record stays."
+        ),
+        "flip_condition": receipt.get("flip_condition"),
+        "counts": {
+            key: receipt.get(key)
+            for key in (
+                "group_quarters_households",
+                "households_dropped",
+                "persons_dropped",
+                "household_weight_share_dropped",
+            )
+        },
+        "calibration_blocker": False,
+    }
+
+
+def _spm_role_limitation(receipt: dict[str, object]) -> dict[str, object]:
+    """Document the ACS arm of the SPM independence role and what it cannot see."""
+
+    return {
+        "id": "acs_spm_independence_role_household_partition",
+        "status": "reviewed_source_derivation",
+        "affected_spine": ACS_2024_1YR_SPINE,
+        "affected_columns": {"person": [NATIVE_SPM_ROLE]},
+        "rule": receipt.get("rule"),
+        "partition": receipt.get("partition"),
+        "asec_rule": receipt.get("asec_rule"),
+        "reason": (
+            "ACS PUMS carries no Census SPM fields and no SPM_ID, so each ACS "
+            "household is one SPM unit. On that partition the ASEC rule's unit "
+            "head is the reference person (or a group-quarters record's sole "
+            "person) and its family branch is the reference person's spouse."
+        ),
+        "treatment": (
+            "Derive the role from RELSHIPP on the household partition; never "
+            "default it. The ASEC rule's unrelated-subfamily branch has no ACS "
+            "counterpart, and a household unit cannot see a teen who would head "
+            "a separate Census SPM unit. Group-quarters persons under 15 have "
+            "no classified adult under any role; the source places group "
+            "quarters outside the ACS SPM universe. When the staging drops "
+            "them, the acs_group_quarters_children_outside_spm_universe "
+            "limitation records it."
+        ),
+        "counts": {
+            key: receipt.get(key)
+            for key in (
+                "persons",
+                "role_true_persons",
+                "independent_minor_persons",
+                "housing_units_classified_only_by_role",
+                "group_quarters_units_without_classified_adult",
+            )
+        },
+        "validation": "experiments/acs-spm-role-asec-validation.md",
+        "calibration_blocker": False,
+    }
 
 
 def _acs_group_quarters_counts(frame: Frame) -> dict[str, int]:
@@ -1156,7 +1732,13 @@ def _engine_input_null_audit(
     frame: Frame,
     engine: Any | None = None,
 ) -> list[dict[str, object]]:
-    """Inventory nullable engine inputs for the reviewed-limitations summary."""
+    """Inventory nullable engine inputs for the reviewed-limitations summary.
+
+    Every entry becomes ``reviewed_engine_input_nulls``, which the local
+    release fills with the engine default. A declared dataset source input
+    (``policyengine_us.spm.DATASET_SOURCE_INPUTS``) may not be defaulted, so a
+    null one refuses the staging build instead of entering the register.
+    """
 
     if engine is None:
         from microcosm.frame.adapters.policyengine_us import PolicyEngineUSEngine
@@ -1188,6 +1770,20 @@ def _engine_input_null_audit(
                     "missing_rows_by_spine": by_spine,
                 }
             )
+    declared = us_declared_dataset_source_inputs(engine)
+    refused = [entry for entry in entries if entry["column"] in declared]
+    if refused:
+        detail = "; ".join(
+            f"{entry['entity']}.{entry['column']} ({entry['missing_rows']} null "
+            f"rows, by spine {entry['missing_rows_by_spine']})"
+            for entry in refused
+        )
+        raise SystemExit(
+            "Declared dataset source input(s) carry nulls and may not enter "
+            "reviewed_engine_input_nulls: policyengine_us.spm says the "
+            "declaration 'does not permit synthesizing a default value when "
+            f"data are absent'. {detail}"
+        )
     return entries
 
 

@@ -127,6 +127,14 @@ def test_spine_inventory_is_roster_derived_and_gates_bind_checkpoint_versions():
     assert "spine.gates.assembled" in compiled.predecessors[admitted]
     assert graph.node(admitted).params["spine_gate_phase"] == "assembled"
     assert "spine_gate_phase" not in graph.node("was_wealth").params
+    # Only the transferred phase evaluates the energy rake, so it alone keys
+    # on the module that sets the level; the assembled gate, which every later
+    # spine stage waits on, does not (the re-review of microcosm#1420, E).
+    from microcosm.build.uk_runtime import energy_pricing
+    from microcosm.graph.kernel import source_hash
+
+    assert transferred.params["energy_pricing_code"] == source_hash(energy_pricing)
+    assert "energy_pricing_code" not in assembled.params
     # The blocking posture travels with the gate and the admission it guards.
     assert assembled.params["synthetic_smoke"] is False
     assert graph.node(admitted).params["spine_gate_synthetic_smoke"] is False
@@ -306,3 +314,31 @@ def test_sample_admission_holds_under_the_default_atomic_law(synthetic_smoke):
     assert compiled.order.index("uk.full.sample") < compiled.order.index(
         "uk.full.identity"
     )
+
+
+def test_the_spine_gate_kernel_keys_on_its_checks_not_the_energy_level(monkeypatch):
+    # The re-review of microcosm#1420, E: one kernel hash serves both phases,
+    # so it covers the modules both read and not energy_pricing, which only
+    # the transferred phase's node param carries.
+    from microcosm.build.uk_runtime import (
+        battery_bindings,
+        energy_pricing,
+        graph_evidence,
+        stage_health,
+    )
+
+    seen = []
+    real = graph_evidence.source_hash
+
+    def recording(*objects):
+        seen.append(objects)
+        return real(*objects)
+
+    monkeypatch.setattr(graph_evidence, "source_hash", recording)
+    kernel = graph_evidence.UKSpineGateKernel(
+        gates=load_country_spec("uk").gates, engine=None, engine_identity="test"
+    )
+    kernel.implementation_hash()
+    (modules,) = seen
+    assert {stage_health, battery_bindings, graph_evidence.gate_battery} <= set(modules)
+    assert energy_pricing not in modules

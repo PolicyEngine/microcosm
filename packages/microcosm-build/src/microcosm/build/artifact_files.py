@@ -6,11 +6,20 @@ import os
 import tempfile
 from collections.abc import Mapping
 from pathlib import Path
+from typing import TypedDict
 
 from .trace import sha256_file
 
 
-def file_artifact(path: str | Path) -> dict[str, object]:
+class FileArtifact(TypedDict):
+    """The measured identity of a regular file."""
+
+    filename: str
+    sha256: str
+    size_bytes: int
+
+
+def file_artifact(path: str | Path) -> FileArtifact:
     """Bind one regular file without loading its entire payload into memory."""
     source = Path(path)
     if not source.is_file():
@@ -27,7 +36,7 @@ def file_artifact(path: str | Path) -> dict[str, object]:
     return {"filename": source.name, "sha256": digest, "size_bytes": after.st_size}
 
 
-def materialize_bytes(payload: bytes, path: str | Path) -> dict[str, object]:
+def materialize_bytes(payload: bytes, path: str | Path) -> FileArtifact:
     """Write deterministic bytes atomically, including after a graph cache hit."""
     if not isinstance(payload, bytes):
         raise TypeError("Artifact payload must be immutable bytes.")
@@ -76,7 +85,7 @@ def publish_staged_bundle(
     *,
     completion_role: str = "manifest",
     expected: Mapping[str, Mapping[str, object]] | None = None,
-) -> dict[str, dict[str, object]]:
+) -> dict[str, FileArtifact]:
     """Publish a validated bundle with rollback and the completion marker last.
 
     The marker is absent while files change. Handled failures, including

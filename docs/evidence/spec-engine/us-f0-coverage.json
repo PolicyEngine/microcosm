@@ -4,10 +4,10 @@
     "version": 1
   },
   "country": "us",
-  "documentation_sha256": "d011246380630f80e22aa1ca0ccf85ab7955924edc080f81659078f28f596558",
+  "documentation_sha256": "425ce5bbc1dff6fa3cbfaee3d6734423a9b6918100a2fc4830ef7f50ec80cc58",
   "field_usage": {
-    "authored_normative_field_count": 32443,
-    "claim_count": 49,
+    "authored_normative_field_count": 32467,
+    "claim_count": 48,
     "claims": [
       {
         "consumer": "loader.typed_resource_manifest",
@@ -33,8 +33,8 @@
         ],
         "mode": "legacy_behavior",
         "pointer_class": "all",
-        "pointer_count": 802,
-        "pointer_sha256": "eaf3cc45daebdba940e20e7bf2c995e7fc0bd5219935a963e7fca60c87111409",
+        "pointer_count": 812,
+        "pointer_sha256": "c0f6e472c15063db69a9c2a200cc16a4feecb30452bbbcf8f7594c62dcffbc25",
         "rationale": null,
         "relative_sink_prefix": "/battery_contract",
         "source_prefix": "/authored/spec~1battery.yaml",
@@ -108,26 +108,12 @@
         ],
         "mode": "legacy_behavior",
         "pointer_class": "all",
-        "pointer_count": 312,
-        "pointer_sha256": "9bad55b4945af1c4213c510942e7b9d22d104bf75b0d9804e4a183e1656c8393",
+        "pointer_count": 316,
+        "pointer_sha256": "0212e52e2bf1e5996fe6b4785b2d74f2fb5680ec38b258c6ad4dbeadbd181a1b",
         "rationale": null,
         "relative_sink_prefix": "/calibration_contract",
         "source_prefix": "/authored/spec~1calibration.yaml",
         "verifier": "legacy"
-      },
-      {
-        "consumer": "typed_closure.metadata_waiver_validation",
-        "generation0_effect": "no_generation0_effect",
-        "id": "catalog_metadata_waivers",
-        "legacy_sinks": [],
-        "mode": "front_end_validation",
-        "pointer_class": "all",
-        "pointer_count": 5,
-        "pointer_sha256": "64182b6be1ea6d95bff345b30a2aa046b6fa7e8ee61a282b225dfa49c28fbfdc",
-        "rationale": null,
-        "relative_sink_prefix": null,
-        "source_prefix": "/authored/spec~1catalogs.yaml/metadata_waivers",
-        "verifier": "catalog_waivers"
       },
       {
         "consumer": "compiler_ir.typed_inventory.columns",
@@ -136,8 +122,8 @@
         "legacy_sinks": [],
         "mode": "compiler_semantic",
         "pointer_class": "all",
-        "pointer_count": 1683,
-        "pointer_sha256": "da4d81ef29c8ef2221c8e9f95fc8bfde95313a822722a6b50be103b755e05646",
+        "pointer_count": 1602,
+        "pointer_sha256": "195530a4498478321ea54ee7ec1efe657b70e17cec351cd5378d0019ff5c045a",
         "rationale": null,
         "relative_sink_prefix": null,
         "source_prefix": "/authored/spec~1catalogs.yaml/columns",
@@ -220,8 +206,8 @@
         ],
         "mode": "legacy_behavior",
         "pointer_class": "all",
-        "pointer_count": 98,
-        "pointer_sha256": "b9db96c5ea41ea6f4110b6d7e5e9433db1bddbc6b1faaae58b65d53c77a1c378",
+        "pointer_count": 111,
+        "pointer_sha256": "54b40c7a1e6e6fcfc630e1761b328f439772059e62987f5389c6f31603be961e",
         "rationale": null,
         "relative_sink_prefix": null,
         "source_prefix": "/authored/spec~1imputation.yaml/transfer_execution",
@@ -274,8 +260,8 @@
         ],
         "mode": "compiler_semantic",
         "pointer_class": "all",
-        "pointer_count": 24501,
-        "pointer_sha256": "94b01cceb1b4ed051ab991a222cbfce2c42c3048d4ebf19f4d18b903ee2d41f2",
+        "pointer_count": 24524,
+        "pointer_sha256": "018610285fcef5d736970adfce7c39d102d043a1fb12d75b64b6abdd9b13d95d",
         "rationale": null,
         "relative_sink_prefix": null,
         "source_prefix": "/authored/spec~1imputation.yaml/producer_graph",
@@ -334,8 +320,8 @@
         ],
         "mode": "legacy_behavior",
         "pointer_class": "family_execution",
-        "pointer_count": 1775,
-        "pointer_sha256": "1565c9389fdfda9eaa6eece83253cf6450120e9a7b8177db6afdbd85f2d20e0c",
+        "pointer_count": 1793,
+        "pointer_sha256": "51b81b09822b096fe9fe9aa812d04cd534f66684c009ff7b9aea40ee4ee3fd41",
         "rationale": null,
         "relative_sink_prefix": null,
         "source_prefix": "/authored/spec~1imputation.yaml/families",
@@ -514,8 +500,8 @@
         ],
         "mode": "legacy_behavior",
         "pointer_class": "all",
-        "pointer_count": 1717,
-        "pointer_sha256": "427bdfbeb2552ec0cb47585bf65bb2a491ffa28d3965c7a383785e8f82cdbb54",
+        "pointer_count": 1759,
+        "pointer_sha256": "bc2e043ffce760f7f2d8280e2cb2c74e8bc240da954e065230bf04c93aa6d376",
         "rationale": null,
         "relative_sink_prefix": "/source_manifest/stages",
         "source_prefix": "/authored/spec~1sources.yaml/stages",
@@ -736,8 +722,8 @@
         "legacy_sinks": [],
         "mode": "compiler_semantic",
         "pointer_class": "all",
-        "pointer_count": 842,
-        "pointer_sha256": "d974c1f613f417708bf94a8beed5ce6389dcced60726243eaa9839d0a12ade5f",
+        "pointer_count": 843,
+        "pointer_sha256": "3fa01138da3900edbced00b8ca4892b6de3dbd3ca77dafdc4a604facdd6522ed",
         "rationale": null,
         "relative_sink_prefix": null,
         "source_prefix": "/resolved/seed_protocol",
@@ -772,21 +758,21 @@
         "verifier": "vintages"
       }
     ],
-    "configuration_field_count": 42242,
-    "consumed_field_count": 42242,
+    "configuration_field_count": 42267,
+    "consumed_field_count": 42267,
     "generation0_effect_counts": {
-      "legacy_behavior": 38524,
-      "no_generation0_effect": 3718
+      "legacy_behavior": 38634,
+      "no_generation0_effect": 3633
     },
     "mode_counts": {
-      "compiler_semantic": 27762,
-      "front_end_validation": 354,
+      "compiler_semantic": 27705,
+      "front_end_validation": 349,
       "identity_only": 103,
-      "legacy_behavior": 14023
+      "legacy_behavior": 14110
     },
     "multiple_primary_use_field_count": 0,
-    "pointer_inventory_sha256": "e2578371d1f503d637b76d116d2e03f13c569784ab678eaba14a863ca37b75a3",
-    "resolved_binding_field_count": 9799,
+    "pointer_inventory_sha256": "274e6beaab4b7393d8b09fb3facc0477f49567e82fb30560ae02b0a7aeda3283",
+    "resolved_binding_field_count": 9800,
     "unused_field_count": 0
   },
   "inventory_coverage": {
@@ -801,20 +787,20 @@
       "early_families": 13,
       "early_targets": 48,
       "itemization_batches": 5,
-      "itemization_targets": 37,
+      "itemization_targets": 39,
       "late_groups": 19,
-      "late_targets": 71,
+      "late_targets": 73,
       "ownership_rows": 18,
-      "primary_effective_predictor_tuples": 65,
+      "primary_effective_predictor_tuples": 66,
       "primary_families": 1,
-      "primary_targets": 65,
+      "primary_targets": 66,
       "producer_authored_outputs": 93,
-      "producer_compiled_outputs": 229,
-      "producer_inputs": 2745,
+      "producer_compiled_outputs": 232,
+      "producer_inputs": 2748,
       "producer_nodes": 38,
       "producer_virtual_resources": 75,
       "release_rungs": 5,
-      "resolved_references": 335,
+      "resolved_references": 336,
       "seed_owner_bindings": 113,
       "seed_owner_rows": 54,
       "seed_sites": 54,
@@ -824,11 +810,11 @@
       "stacked_checkpoint_full_components": 13,
       "stacked_checkpoint_pool_code_components": 19,
       "stacked_checkpoint_static_components": 10,
-      "tail_control_fields": 934,
+      "tail_control_fields": 938,
       "take_up_pipeline_steps": 28,
       "take_up_programs": 17,
       "typed_artifacts": 84,
-      "typed_columns": 177,
+      "typed_columns": 178,
       "typed_entities": 8,
       "typed_scopes": 7
     },
@@ -917,13 +903,13 @@
           "legacy_adapter.stacked_checkpoint_static_components"
         ],
         "expected": {
-          "sha256": "ac92829c88a1a4fb6460d61190918d5d99c6c377fc8dd8f62f02b332d09bf59c",
-          "terminal_fields": 934
+          "sha256": "071d418bb49976f4682c320d2ad07097c177de3a645d2524f235e1ff33ac83f9",
+          "terminal_fields": 938
         },
         "failures": [],
         "observed": {
-          "sha256": "ac92829c88a1a4fb6460d61190918d5d99c6c377fc8dd8f62f02b332d09bf59c",
-          "terminal_fields": 934
+          "sha256": "071d418bb49976f4682c320d2ad07097c177de3a645d2524f235e1ff33ac83f9",
+          "terminal_fields": 938
         },
         "status": "covered"
       },
@@ -1036,10 +1022,10 @@
             8,
             8,
             8,
-            5
+            7
           ],
           "batches": 5,
-          "targets": 37
+          "targets": 39
         },
         "failures": [],
         "observed": {
@@ -1048,7 +1034,7 @@
             8,
             8,
             8,
-            5
+            7
           ],
           "ids": [
             "late/person/puf_tax_itemization__batch_1",
@@ -1074,11 +1060,11 @@
           "legacy_adapter.stacked_checkpoint_static_components"
         ],
         "expected": {
-          "schedule_sha256": "f9ae8ea539b6e039308123f5a36be27da7536ccca502dc2a5a607c7217ca6391"
+          "schedule_sha256": "3b9801f845400e77aaef28f1d4315b8a329f159ff3fade66255ce9a35b9c6bdc"
         },
         "failures": [],
         "observed": {
-          "schedule_sha256": "f9ae8ea539b6e039308123f5a36be27da7536ccca502dc2a5a607c7217ca6391"
+          "schedule_sha256": "3b9801f845400e77aaef28f1d4315b8a329f159ff3fade66255ce9a35b9c6bdc"
         },
         "status": "covered"
       },
@@ -1096,14 +1082,14 @@
         ],
         "expected": {
           "groups": 19,
-          "sha256": "c7921959e065bf05da0dadf12b2ef0275ffb405ecaae15732d742957b7f71e06",
-          "targets": 71
+          "sha256": "e9c7ab7019ee115a0dd700a182f41a020df4a47f7acd6bd6d53a22d21a415d00",
+          "targets": 73
         },
         "failures": [],
         "observed": {
           "groups": 19,
-          "sha256": "c7921959e065bf05da0dadf12b2ef0275ffb405ecaae15732d742957b7f71e06",
-          "targets": 71
+          "sha256": "e9c7ab7019ee115a0dd700a182f41a020df4a47f7acd6bd6d53a22d21a415d00",
+          "targets": 73
         },
         "status": "covered"
       },
@@ -1224,13 +1210,13 @@
           "legacy_adapter.imputation.primary_qrf"
         ],
         "expected": {
-          "sha256": "fdf23da429f8c501e198a2f5b719763d523a41565c2153fdf17b0344f21bcd7c",
-          "tuples": 65
+          "sha256": "6655e37f15befe053f8de2583c216f97098e4c2bde526f315299c2858c97f055",
+          "tuples": 66
         },
         "failures": [],
         "observed": {
-          "sha256": "fdf23da429f8c501e198a2f5b719763d523a41565c2153fdf17b0344f21bcd7c",
-          "tuples": 65
+          "sha256": "6655e37f15befe053f8de2583c216f97098e4c2bde526f315299c2858c97f055",
+          "tuples": 66
         },
         "status": "covered"
       },
@@ -1250,14 +1236,14 @@
         "expected": {
           "edges": 71,
           "nodes": 38,
-          "schedule_sha256": "f9ae8ea539b6e039308123f5a36be27da7536ccca502dc2a5a607c7217ca6391",
+          "schedule_sha256": "3b9801f845400e77aaef28f1d4315b8a329f159ff3fade66255ce9a35b9c6bdc",
           "waves": 6
         },
         "failures": [],
         "observed": {
           "edges": 71,
           "nodes": 38,
-          "schedule_sha256": "f9ae8ea539b6e039308123f5a36be27da7536ccca502dc2a5a607c7217ca6391",
+          "schedule_sha256": "3b9801f845400e77aaef28f1d4315b8a329f159ff3fade66255ce9a35b9c6bdc",
           "waves": 6
         },
         "status": "covered"
@@ -1275,11 +1261,11 @@
         ],
         "expected": {
           "relation": "source rows preserved exactly",
-          "rows": 2745
+          "rows": 2748
         },
         "failures": [],
         "observed": {
-          "rows": 2745
+          "rows": 2748
         },
         "status": "covered"
       },
@@ -1298,13 +1284,13 @@
         ],
         "expected": {
           "authored_rows": 93,
-          "compiled_rows": 229,
+          "compiled_rows": 232,
           "relation": "typed closure exact"
         },
         "failures": [],
         "observed": {
           "authored_rows": 93,
-          "compiled_rows": 229
+          "compiled_rows": 232
         },
         "status": "covered"
       },
@@ -1338,12 +1324,12 @@
         ],
         "expected": {
           "nodes": 38,
-          "sha256": "19f4aa5f548bee0be79a35860cabf8a65c7351e661e1fb296edb15ef0621db50"
+          "sha256": "584ae6d4e01bd3b5da31e76cabf740798e331f1d5bb8082732a7426c32bcdf7b"
         },
         "failures": [],
         "observed": {
           "nodes": 38,
-          "sha256": "19f4aa5f548bee0be79a35860cabf8a65c7351e661e1fb296edb15ef0621db50"
+          "sha256": "584ae6d4e01bd3b5da31e76cabf740798e331f1d5bb8082732a7426c32bcdf7b"
         },
         "status": "covered"
       },
@@ -1361,12 +1347,12 @@
         ],
         "expected": {
           "producer_count": 38,
-          "sha256": "eb9fc4ce97036a43efe79f6e3013253593b346a5a4643f2210f9d9ee24c3e7ed"
+          "sha256": "a96358962542ad09f3c1e94b256897ef4e9d902c1a7b7302b5b8ae6b291e3fee"
         },
         "failures": [],
         "observed": {
           "producer_count": 38,
-          "sha256": "eb9fc4ce97036a43efe79f6e3013253593b346a5a4643f2210f9d9ee24c3e7ed"
+          "sha256": "a96358962542ad09f3c1e94b256897ef4e9d902c1a7b7302b5b8ae6b291e3fee"
         },
         "status": "covered"
       },
@@ -1657,13 +1643,13 @@
           "compiler_ir.node_slices"
         ],
         "expected": {
-          "map_sha256": "51826ba1a6cf731d70d8bbdb195d108f22f8fca71e58cffada9ddd8307fea18c",
-          "protocol_sha256": "c69f518cecfecbb9e5095103c2f2b2669c183e743c99bcc0d3bf8b47849ce6f5"
+          "map_sha256": "4db18a3a4807145fc1ac6e437c649c5da6cdb0995d966884463c215d6fdc9e3d",
+          "protocol_sha256": "897893142e36459da5e7baa4ed481bbac8f813940b210443e5deb1dec27dd275"
         },
         "failures": [],
         "observed": {
-          "map_sha256": "51826ba1a6cf731d70d8bbdb195d108f22f8fca71e58cffada9ddd8307fea18c",
-          "protocol_sha256": "c69f518cecfecbb9e5095103c2f2b2669c183e743c99bcc0d3bf8b47849ce6f5"
+          "map_sha256": "4db18a3a4807145fc1ac6e437c649c5da6cdb0995d966884463c215d6fdc9e3d",
+          "protocol_sha256": "897893142e36459da5e7baa4ed481bbac8f813940b210443e5deb1dec27dd275"
         },
         "status": "covered"
       },
@@ -1678,7 +1664,7 @@
           "compiler_ir.seed_stream_map"
         ],
         "expected": {
-          "implementation_sha256": "c69f518cecfecbb9e5095103c2f2b2669c183e743c99bcc0d3bf8b47849ce6f5",
+          "implementation_sha256": "897893142e36459da5e7baa4ed481bbac8f813940b210443e5deb1dec27dd275",
           "protocol": "legacy-v1",
           "streams": [
             "build_model",
@@ -1699,7 +1685,7 @@
         },
         "failures": [],
         "observed": {
-          "implementation_sha256": "c69f518cecfecbb9e5095103c2f2b2669c183e743c99bcc0d3bf8b47849ce6f5",
+          "implementation_sha256": "897893142e36459da5e7baa4ed481bbac8f813940b210443e5deb1dec27dd275",
           "protocol": "legacy-v1",
           "streams": [
             "build_model",
@@ -1776,12 +1762,12 @@
           "legacy_adapter.imputation.late_producer_resource_semantics"
         ],
         "expected": {
-          "sha256": "4ed776cfbc63b8bfd345f3d8eb2ff70715fd80f5145b632a752a9f1820299035",
-          "stages": 37
+          "sha256": "c0bc66a5b13ce36943e486b224c0175ab27729a0879d5bbf08dc99bc6faeea55",
+          "stages": 38
         },
         "failures": [],
         "observed": {
-          "sha256": "4ed776cfbc63b8bfd345f3d8eb2ff70715fd80f5145b632a752a9f1820299035",
+          "sha256": "c0bc66a5b13ce36943e486b224c0175ab27729a0879d5bbf08dc99bc6faeea55",
           "stages": 38
         },
         "status": "covered"
@@ -1841,11 +1827,11 @@
           "legacy_adapter.stacked_checkpoint_static_components"
         ],
         "expected": {
-          "sha256": "7a06bc8856da3a7a2c24d893186fe165cbacbf6f58c960180630c416d438232d"
+          "sha256": "b9ce079f1f8c76436d92f0adfa92757c3317c0e321a62f088a0dfd19a01e9fbe"
         },
         "failures": [],
         "observed": {
-          "sha256": "7a06bc8856da3a7a2c24d893186fe165cbacbf6f58c960180630c416d438232d"
+          "sha256": "b9ce079f1f8c76436d92f0adfa92757c3317c0e321a62f088a0dfd19a01e9fbe"
         },
         "status": "covered"
       },
@@ -1888,7 +1874,7 @@
             "alpha",
             "zeta"
           ],
-          "sha256": "0d05253a88c1427df3a2a78e766967d0a4ddd145287c4d6fb3399df881ecd3f6"
+          "sha256": "087f5caccf3662d4d2fc4b03e27cae593245a125fd1d36e6965e2dbf2f571008"
         },
         "failures": [],
         "observed": {
@@ -1912,7 +1898,7 @@
             "alpha",
             "zeta"
           ],
-          "sha256": "0d05253a88c1427df3a2a78e766967d0a4ddd145287c4d6fb3399df881ecd3f6"
+          "sha256": "087f5caccf3662d4d2fc4b03e27cae593245a125fd1d36e6965e2dbf2f571008"
         },
         "status": "covered"
       },
@@ -1976,7 +1962,7 @@
             "take_up_contract",
             "us_qbi_reconciliation_contract"
           ],
-          "sha256": "1002b5a047281524fe74cf1dc0c31e91161d5982eea1baa9c198957d6f359550"
+          "sha256": "650e4c3bb7345ac3e46200ea0eb0bfd22ee033b9026385085e209e200150003f"
         },
         "status": "covered"
       },
@@ -2600,7 +2586,7 @@
       "country": "us",
       "schema_id": "country_spec",
       "schema_version": 1,
-      "spec_sha256": "c591ab1c859d73209e54531a2a3fb2e587fc1cf11fdd9a1b64f1b1aa18355aeb"
+      "spec_sha256": "c46f0ea7a6ff2870503a45efe937692fbaed25d05b6a06e6ca68a6fbd44680ba"
     }
   },
   "report_schema_version": 3,
@@ -2610,7 +2596,7 @@
     "country": "us",
     "schema_id": "country_spec",
     "schema_version": 1,
-    "spec_sha256": "c591ab1c859d73209e54531a2a3fb2e587fc1cf11fdd9a1b64f1b1aa18355aeb"
+    "spec_sha256": "c46f0ea7a6ff2870503a45efe937692fbaed25d05b6a06e6ca68a6fbd44680ba"
   },
   "status": "pass"
 }

@@ -11,17 +11,23 @@ mapped input exists in the installed engine is checked by the engine tests.
 
 import copy
 import json
+import re
+from contextlib import contextmanager
 from dataclasses import replace
+from types import MappingProxyType
 
 import numpy as np
 import pandas as pd
 import pytest
-from hypothesis import given, settings
+from hypothesis import assume, given, settings
 from hypothesis import strategies as st
 
+from microcosm.frame import concept_mapping as concept_mapping_module
+from microcosm.frame import concepts as concepts_module
 from microcosm.frame.concept_mapping import (
     AllocateToReferencePerson,
     ConceptMapping,
+    CoresidentAdult,
     CoresidentChildCount,
     CoverageReport,
     Fraction,
@@ -37,7 +43,9 @@ from microcosm.frame.concept_mapping import (
     RelationshipRole,
     Role,
     Scale,
+    ScaledSum,
     Share,
+    SignedPart,
     Sum,
     TakeUpThreshold,
     coverage_report,
@@ -46,9 +54,11 @@ from microcosm.frame.concept_mapping import (
 )
 from microcosm.frame.concepts import (
     CONCEPTS,
+    SOURCE_HOUSEHOLD_ID_COLUMN,
     AlignmentRelation,
     CanonicalConceptKind,
     ConceptAlignment,
+    TemporalBasis,
     concept,
     derive_take_up_draws,
 )
@@ -56,6 +66,13 @@ from test_support.microcosm_frame.concept_frames import (
     assert_concepts_round_trip,
     concept_frames,
     shares,
+)
+from test_support.microcosm_frame.concept_id_dtypes import (
+    UNSIGNED_64,
+    WIDE_CASES,
+    id_typed_frames,
+    typed,
+    wide_id_frame,
 )
 from test_support.microcosm_frame.concept_mappings import (
     COVERAGE_DOCS,
@@ -70,6 +87,8 @@ PROPERTY = settings(max_examples=100, deadline=None)
 MAPPINGS = concept_mappings()
 mapping_names = st.sampled_from(sorted(MAPPINGS))
 _PARENTS = ("fact:person.parent_1_person_id", "fact:person.parent_2_person_id")
+_LIQUID_ASSETS = "fact:person.liquid_financial_assets"
+_AS_MODULE = "nz/statutes/social_security/accommodation_supplement/core.yaml"
 
 # The round-trip and idempotence properties check exactly the concepts
 # invertible_concepts() returns, so the sets are pinned here: a decoder that
@@ -199,6 +218,29 @@ class TestEveryMapping:
             if places:
                 assert "fact:household.reference_person_id" in binding.reads
 
+    def test_liquid_assets_bind_only_the_nz_cash_asset_test(self) -> None:
+        # Every other mapping lists the concept as unmapped. The one binding
+        # is a group binding, which encode defers until units exist.
+        bound = {
+            name: [binding.ref for binding in mapping.bindings_for(_LIQUID_ASSETS)]
+            for name, mapping in MAPPINGS.items()
+        }
+        assert bound == {
+            "axiom-be": [],
+            "axiom-nz": [
+                InputRef("accommodation_supplement_cash_assets", "Family", _AS_MODULE)
+            ],
+            "policyengine-uk": [],
+            "policyengine-us": [],
+        }
+        nz = MAPPINGS["axiom-nz"]
+        (binding,) = nz.bindings_for(_LIQUID_ASSETS)
+        assert binding.concepts == (_LIQUID_ASSETS,)
+        assert isinstance(binding.transform, Identity)
+        assert binding.group_rule is GroupRule.SUM_OVER_MEMBERS
+        assert binding.relation is AlignmentRelation.APPROXIMATE
+        assert not nz.is_executable(binding)
+
     def test_declarations_match_the_engine_kind(self) -> None:
         for name, mapping in MAPPINGS.items():
             axiom = name.startswith("axiom-")
@@ -214,6 +256,36 @@ class TestEveryMapping:
 
 
 class TestExecution:
+    @pytest.mark.parametrize("name", sorted(MAPPINGS))
+    @settings(max_examples=20, deadline=None, database=None)
+    @given(tables=concept_frames(), data=st.data())
+    def test_source_household_lineage_changes_no_engine_input(
+        self, name, tables, data
+    ) -> None:
+        mapping = MAPPINGS[name]
+        parameters = _parameters(mapping, data)
+        before = mapping.encode(tables, **parameters)
+        household = tables["household"].copy()
+        household[SOURCE_HOUSEHOLD_ID_COLUMN] = pd.array(
+            data.draw(
+                st.lists(
+                    st.text(min_size=1, max_size=20),
+                    min_size=len(household),
+                    max_size=len(household),
+                )
+            ),
+            dtype=pd.StringDtype(storage="python"),
+        )
+        after = mapping.encode(
+            {"person": tables["person"], "household": household}, **parameters
+        )
+        for entity in ("person", "household"):
+            pd.testing.assert_frame_equal(before.tables[entity], after.tables[entity])
+        assert before.deferred == after.deferred
+        assert (
+            SOURCE_HOUSEHOLD_ID_COLUMN not in mapping.decode(after.tables)["household"]
+        )
+
     @PROPERTY
     @given(name=mapping_names, tables=concept_frames(), data=st.data())
     def test_encode_matches_a_row_by_row_reference(self, name, tables, data) -> None:
@@ -269,6 +341,30 @@ class TestExecution:
         for entity in ("person", "household"):
             assert len(first.tables[entity]) == len(tables[entity])
             pd.testing.assert_frame_equal(first.tables[entity], second.tables[entity])
+
+    @PROPERTY
+    @given(name=mapping_names, tables=concept_frames(), data=st.data())
+    def test_liquid_assets_reach_no_executed_input(self, name, tables, data) -> None:
+        # Bound only through a deferred group binding, the concept changes no
+        # encoded column, and no decode recovers it.
+        mapping = MAPPINGS[name]
+        parameters = _parameters(mapping, data)
+        with_assets = mapping.encode(tables, **parameters)
+        without = {
+            "person": tables["person"].drop(columns="liquid_financial_assets"),
+            "household": tables["household"],
+        }
+        without_assets = mapping.encode(without, **parameters)
+        for entity in ("person", "household"):
+            pd.testing.assert_frame_equal(
+                with_assets.tables[entity], without_assets.tables[entity]
+            )
+        if name == "axiom-nz":
+            assert "accommodation_supplement_cash_assets" in {
+                binding.engine_input for binding in with_assets.deferred
+            }
+        decoded = mapping.decode(with_assets.tables)
+        assert "liquid_financial_assets" not in decoded["person"].columns
 
     @PROPERTY
     @given(name=mapping_names, tables=concept_frames(), data=st.data())
@@ -447,6 +543,40 @@ class TestExecution:
         with pytest.raises(ValueError, match=r"\[0, 1\]"):
             mapping.encode(tables, shares={"p": 1.5})
 
+    def test_household_ids_beyond_two_to_the_53_match_beside_a_null(self) -> None:
+        # A null turns a nullable id column into float64 in pandas, where
+        # these two ids are one number.
+        big = 2**62
+        assert float(big) == float(big + 1)
+        person = pd.DataFrame(
+            {
+                "person_id": np.array([1, 2, 3, 4, 5], dtype=np.int64),
+                "person_household_id": pd.array(
+                    [big, big, big + 1, big + 1, pd.NA], dtype="Int64"
+                ),
+            }
+        )
+        household = pd.DataFrame(
+            {
+                "household_id": np.array([big, big + 1], dtype=np.int64),
+                "reference_person_id": pd.array([1, 3], dtype="Int64"),
+                "rent": [100.0, 900.0],
+            }
+        )
+        binding = _binding(
+            engine_input="rent_paid",
+            concepts=("fact:household.rent",),
+            transform=AllocateToReferencePerson(),
+        )
+        out = _mapping([binding]).encode({"person": person, "household": household})
+        assert out.tables["person"]["rent_paid"].tolist() == [
+            100.0,
+            0.0,
+            900.0,
+            0.0,
+            0.0,
+        ]
+
     def test_allocation_needs_the_reference_person(self) -> None:
         tables = {
             "person": pd.DataFrame({"person_id": [1], "person_household_id": [1]}),
@@ -474,6 +604,197 @@ class TestExecution:
                 for binding in mapping.bindings
                 if binding.group_rule is not None
             }
+
+
+def _pointer_mapping() -> ConceptMapping:
+    """One engine input per transform that resolves a pointer."""
+
+    bindings = [
+        _binding(
+            engine_input=role.value,
+            concepts=RelationshipRole(role=role).concepts,
+            transform=RelationshipRole(role=role),
+        )
+        for role in Role
+    ]
+    bindings.append(
+        _binding(
+            engine_input="children", concepts=_PARENTS, transform=CoresidentChildCount()
+        )
+    )
+    bindings.append(
+        _binding(
+            engine_input="rent_paid",
+            concepts=("fact:household.rent",),
+            transform=AllocateToReferencePerson(),
+        )
+    )
+    return _mapping(bindings)
+
+
+def _assert_same_encoding(actual, expected) -> None:
+    assert actual.keys() == expected.keys()
+    for entity, table in expected.items():
+        pd.testing.assert_frame_equal(actual[entity], table, check_dtype=False)
+
+
+def _encoding(mapping: ConceptMapping, tables, parameters) -> object:
+    """The encoded tables, or the ValueError encoding raises, as plain data."""
+
+    try:
+        return mapping.encode(tables, **parameters).tables
+    except ValueError as error:
+        return ("ValueError", str(error))
+
+
+def _as_int64(tables: dict[str, pd.DataFrame]) -> dict[str, pd.DataFrame]:
+    """The same frame with every integer id and pointer typed int64."""
+
+    out = {entity: table.copy() for entity, table in tables.items()}
+    for entity, column in (
+        ("person", "person_id"),
+        ("person", "person_household_id"),
+        ("household", "household_id"),
+    ):
+        out[entity][column] = out[entity][column].astype(np.int64)
+    for entity, column in (
+        ("person", "partner_person_id"),
+        ("person", "parent_1_person_id"),
+        ("person", "parent_2_person_id"),
+        ("household", "reference_person_id"),
+    ):
+        if column in out[entity].columns:
+            out[entity][column] = out[entity][column].astype("Int64")
+    return out
+
+
+class TestIdDtypes:
+    """Encoding matches ids of any accepted integer dtype exactly.
+
+    Pointers are matched as int64. An unsigned id above ``2**63 - 1`` would
+    wrap (``2**64 - 1`` onto -1) and so is refused, by name; every other id
+    must encode exactly as the same values typed int64.
+    """
+
+    @pytest.mark.parametrize("dtype", UNSIGNED_64, ids=str)
+    @pytest.mark.parametrize("value", [2**63, 2**64 - 1])
+    @pytest.mark.parametrize("case", sorted(WIDE_CASES))
+    def test_an_id_int64_cannot_hold_is_refused_by_column(
+        self, case, value, dtype
+    ) -> None:
+        tables, wide = wide_id_frame(case, value, dtype)
+        with pytest.raises(
+            ValueError, match=re.escape(f"{wide} hold unsigned ids above {2**63 - 1}")
+        ):
+            _pointer_mapping().encode(tables)
+
+    def test_a_dangling_pointer_cannot_wrap_onto_person_minus_one(self) -> None:
+        # Read as int64, 2**64 - 1 is -1: reference person 11's dangling
+        # partner pointer made person -1 the reference person's partner.
+        person = pd.DataFrame(
+            {
+                "person_id": np.array([-1, 11, 12, 13], dtype=np.int64),
+                "person_household_id": [1, 1, 1, 1],
+                "partner_person_id": typed(
+                    [None, 2**64 - 1, None, None], pd.UInt64Dtype()
+                ),
+            }
+        )
+        household = pd.DataFrame(
+            {"household_id": [1], "reference_person_id": pd.array([11], dtype="Int64")}
+        )
+        with pytest.raises(ValueError, match=re.escape("['person.partner_person_id']")):
+            _pointer_mapping().encode({"person": person, "household": household})
+
+    @pytest.mark.parametrize(
+        "dtype", ["uint8", "uint16", "uint32", "UInt8", "UInt16", "UInt32"]
+    )
+    def test_a_narrow_unsigned_id_cannot_catch_a_pointer_past_its_range(
+        self, dtype
+    ) -> None:
+        # pandas matched against a narrower unsigned index by casting the
+        # other side down to it, so 5 + 2**8 named person 5 under uint8, and
+        # household 1 + 2**8 was household 1; the nullable dtypes raised a
+        # TypeError instead.
+        dtype = pd.api.types.pandas_dtype(dtype)
+        span = 2 ** (8 * dtype.itemsize)
+        person = pd.DataFrame(
+            {
+                "person_id": typed([5, 6, 7, 8], dtype),
+                "person_household_id": np.array([1, 1, 1, 1 + span], dtype=np.int64),
+                "partner_person_id": pd.array([6, 5, None, 5], dtype="Int64"),
+                "parent_1_person_id": pd.array(
+                    [None, None, 5 + span, None], dtype="Int64"
+                ),
+                "parent_2_person_id": pd.array([None] * 4, dtype="Int64"),
+            }
+        )
+        household = pd.DataFrame(
+            {
+                "household_id": typed([1, 2], dtype),
+                "reference_person_id": pd.array([5 + span, 8], dtype="Int64"),
+                "rent": [100.0, 200.0],
+            }
+        )
+        tables = {"person": person, "household": household}
+        mapping = _pointer_mapping()
+        encoded = mapping.encode(tables).tables
+        _assert_same_encoding(encoded, mapping.encode(_as_int64(tables)).tables)
+        # Person 7's parent and the reference person of household 1 are nobody.
+        assert encoded["person"]["children"].tolist() == [0, 0, 0, 0]
+        assert encoded["person"]["reference_person_partner"].tolist() == [False] * 4
+
+    @pytest.mark.parametrize("dtype", UNSIGNED_64, ids=str)
+    def test_ids_up_to_int64_max_are_kept_exactly(self, dtype) -> None:
+        top = 2**63 - 1
+        pointers = pd.UInt64Dtype()
+        person = pd.DataFrame(
+            {
+                "person_id": typed([top, top - 1, top - 2], dtype),
+                "person_household_id": typed([top, top, top], dtype),
+                "partner_person_id": typed([top - 1, top, None], pointers),
+                "parent_1_person_id": typed([None, None, top], pointers),
+                "parent_2_person_id": typed([None, None, top - 1], pointers),
+            }
+        )
+        household = pd.DataFrame(
+            {
+                "household_id": typed([top], dtype),
+                "reference_person_id": typed([top], pointers),
+                "rent": [100.0],
+            }
+        )
+        out = _pointer_mapping().encode({"person": person, "household": household})
+        flags = out.tables["person"]
+        assert flags["reference_person"].tolist() == [True, False, False]
+        assert flags["reference_person_partner"].tolist() == [False, True, False]
+        assert flags["children"].tolist() == [1, 1, 0]
+        assert flags["rent_paid"].tolist() == [100.0, 0.0, 0.0]
+        assert out.tables["person"]["person_id"].tolist() == [top, top - 1, top - 2]
+
+    @settings(max_examples=300, deadline=None)
+    @given(
+        name=st.sampled_from([*sorted(MAPPINGS), "pointer transforms"]),
+        case=id_typed_frames(),
+        data=st.data(),
+    )
+    def test_every_frame_is_refused_or_encodes_as_its_int64_twin(
+        self, name, case, data
+    ) -> None:
+        mapping = _pointer_mapping() if name == "pointer transforms" else MAPPINGS[name]
+        parameters = _parameters(mapping, data)
+        if case.wide:
+            with pytest.raises(
+                ValueError, match=re.escape(f"{case.wide} hold unsigned ids above")
+            ):
+                mapping.encode(case.tables, **parameters)
+            return
+        encoded = _encoding(mapping, case.tables, parameters)
+        expected = _encoding(mapping, case.twin, parameters)
+        if isinstance(expected, tuple) or isinstance(encoded, tuple):
+            assert encoded == expected
+        else:
+            _assert_same_encoding(encoded, expected)
 
 
 class TestDecodeGuards:
@@ -627,6 +948,20 @@ class TestConstructionRules:
             ({"transform": Scale(factor=0.5)}, "only float concepts scale"),
             ({"transform": RelationshipRole(role=Role.REFERENCE_PERSON)}, "reads"),
             ({"transform": CoresidentChildCount()}, "both parents"),
+            (
+                {
+                    "transform": CoresidentAdult(min_age=18),
+                    "concepts": ("fact:person.weeks_worked",),
+                },
+                "age only",
+            ),
+            (
+                {
+                    "transform": CoresidentAdult(min_age=18),
+                    "concepts": ("fact:person.age", "fact:person.sex"),
+                },
+                "age only",
+            ),
             ({"transform": TakeUpThreshold(program="x")}, "seed"),
             (
                 {
@@ -797,6 +1132,8 @@ TRANSFORMS = [
     Scale(factor=1 / 52),
     Positive(),
     Sum(),
+    SignedPart(sign="positive"),
+    SignedPart(sign="negative"),
     Product(),
     AllocateToReferencePerson(),
     Predicate(clauses=(("fact:person.sex", ("female",)),)),
@@ -804,6 +1141,8 @@ TRANSFORMS = [
     RelationshipRole(role=Role.PARENT_OF_CORESIDENT_CHILD, max_child_age=17),
     CoresidentChildCount(),
     CoresidentChildCount(max_age=17),
+    CoresidentAdult(min_age=0),
+    CoresidentAdult(min_age=18),
     TakeUpThreshold(program="nz.x"),
 ]
 
@@ -825,7 +1164,16 @@ class TestTransforms:
             ),
             ({"kind": "scale", "factor": True}, "number"),
             ({"kind": "coresident_child_count", "max_age": "17"}, "integer"),
+            ({"kind": "coresident_adult"}, "lacks 'min_age'"),
+            ({"kind": "coresident_adult", "min_age": None}, "integer"),
+            ({"kind": "coresident_adult", "min_age": True}, "integer"),
+            ({"kind": "coresident_adult", "min_age": 18.0}, "integer"),
+            ({"kind": "coresident_adult", "min_age": "18"}, "integer"),
+            ({"kind": "coresident_adult", "min_age": -1}, "negative"),
+            ({"kind": "coresident_adult", "min_age": 18, "max_age": 3}, "unexpected"),
             ({"kind": "take_up_threshold"}, "lacks"),
+            ({"kind": "signed_part"}, "lacks"),
+            ({"kind": "signed_part", "sign": "up"}, "'positive' or 'negative'"),
         ],
     )
     def test_malformed_transforms_are_refused(self, data, message) -> None:
@@ -880,6 +1228,385 @@ class TestTransforms:
         assert out.loc[0, "isa"] == 20.0
         decoded = mapping.decode({"person": out, "household": tables["household"]})
         assert decoded["person"].loc[0, "interest_income"] == 80.0
+
+
+#: The transforms that do arithmetic on a year's amount, and so read annual
+#: flows only.
+_ARITHMETIC = (Scale, Sum, ScaledSum, SignedPart, Share, Fraction)
+_NOT_FLOWS = tuple(
+    basis for basis in TemporalBasis if basis is not TemporalBasis.ANNUAL_FLOW
+)
+_COMMITTED = tuple(
+    (name, binding)
+    for name, mapping in sorted(MAPPINGS.items())
+    for binding in mapping.bindings
+)
+_parameter_names = st.text(alphabet="abcdefghijklmnopqrstuvwxyz_.", min_size=1)
+_F6_NOTE = "microcosm#1120 review F6 probe."
+
+
+def _passes_type_checks(kind: type, concept_id: str) -> bool:
+    """Whether a ``kind`` binding accepts ``concept_id`` on all but its basis.
+
+    A scale needs a float; a sum, scaled sum, share or fraction needs an amount.
+    These are the binding checks that ran before the flow rule existed.
+    """
+    item = concept(concept_id)
+    return item.dtype == "float" if kind is Scale else item.monetary is not None
+
+
+#: Each concept that is not an annual flow, under each arithmetic transform
+#: whose type checks it passes, with an annual flow to sum it with.
+_REFUSED_READS = tuple(
+    (kind, item.id)
+    for kind in _ARITHMETIC
+    for item in CONCEPTS
+    if item.temporal_basis is not TemporalBasis.ANNUAL_FLOW
+    and _passes_type_checks(kind, item.id)
+)
+_EXAMPLE_TRANSFORMS = {
+    Scale: Scale(factor=1 / 52),
+    Sum: Sum(),
+    ScaledSum: ScaledSum(factor=1 / 52),
+    SignedPart: SignedPart(sign="negative"),
+    Share: Share(parameter="p"),
+    Fraction: Fraction(parameter="f"),
+}
+
+
+def _arithmetic(kind: type):
+    """Instances of the arithmetic transform ``kind``."""
+    if kind in (Scale, ScaledSum):
+        return st.floats(min_value=1e-3, max_value=1e3).map(
+            lambda factor: kind(factor=factor)
+        )
+    if kind is Share:
+        return st.builds(Share, parameter=_parameter_names, complement=st.booleans())
+    if kind is Fraction:
+        return st.builds(Fraction, parameter=_parameter_names)
+    if kind is SignedPart:
+        return st.sampled_from(("positive", "negative")).map(
+            lambda sign: SignedPart(sign=sign)
+        )
+    return st.just(Sum())
+
+
+def _refusal(kind: type, concept_id: str, engine_input: str = "x") -> str:
+    """The flow rule's whole message for a ``kind`` binding on ``concept_id``."""
+    name = transform_to_dict(_EXAMPLE_TRANSFORMS[kind])["kind"]
+    basis = concept(concept_id).temporal_basis.value
+    return (
+        rf"^Binding for {re.escape(repr(engine_input))}: a {name} reads annual "
+        rf"flows only, and {re.escape(concept_id)} has temporal basis {basis}\.$"
+    )
+
+
+@contextmanager
+def _redeclared(concept_id: str, basis: TemporalBasis):
+    """Run with ``concept_id`` declared under ``basis``, and nothing else."""
+    registry = dict(concepts_module.CONCEPT_BY_ID)
+    registry[concept_id] = replace(registry[concept_id], temporal_basis=basis)
+    patched = MappingProxyType(registry)
+    with pytest.MonkeyPatch.context() as patch:
+        # concept() reads the first; the mapping module imported the second.
+        patch.setattr(concepts_module, "CONCEPT_BY_ID", patched)
+        patch.setattr(concept_mapping_module, "CONCEPT_BY_ID", patched)
+        yield
+
+
+def _us_reading_the_stock(*bindings) -> dict:
+    """The US mapping's JSON form, edited as review finding F6 edited it.
+
+    Each ``(engine input, concepts, transform)`` becomes a person binding,
+    and the stock leaves ``unmapped``.
+    """
+    edited = MAPPINGS["policyengine-us"].to_dict()
+    for engine_input, concepts, transform in bindings:
+        edited["bindings"].append(
+            {
+                "engine_input": engine_input,
+                "engine_entity": "person",
+                "concepts": list(concepts),
+                "transform": transform_to_dict(transform),
+                "relation": "approximate",
+                "note": _F6_NOTE,
+            }
+        )
+    del edited["unmapped"][_LIQUID_ASSETS]
+    return edited
+
+
+class TestArithmeticReadsAnnualFlows:
+    """A scale, sum, scaled sum, share or fraction reads annual flows only.
+
+    microcosm#1120 added the first stock, ``liquid_financial_assets``. Its
+    review (finding F6) bound the US donor's ``bank_account_assets`` to it,
+    cleared it from ``unmapped``, and found that both ``Scale(1/52)`` and
+    ``Sum(interest_income, liquid_financial_assets)`` validated. A stock has
+    no weekly value and cannot be added to a year's income, so every scale,
+    sum, scaled sum, share or fraction binding checks the declared temporal
+    basis of each concept it computes from. The household reference person
+    that a binding allocated to the reference unit also reads, to place its
+    value, is not an operand. Other transforms are outside the rule.
+    """
+
+    @PROPERTY
+    @given(data=st.data())
+    def test_arithmetic_on_anything_but_an_annual_flow_is_refused(self, data) -> None:
+        kind = data.draw(st.sampled_from(_ARITHMETIC), label="kind")
+        transform = data.draw(_arithmetic(kind), label="transform")
+        eligible = [item for item in CONCEPTS if _passes_type_checks(kind, item.id)]
+        refused = data.draw(
+            st.sampled_from(
+                [
+                    item
+                    for item in eligible
+                    if item.temporal_basis is not TemporalBasis.ANNUAL_FLOW
+                ]
+            ),
+            label="refused",
+        )
+        flows = [
+            item.id
+            for item in eligible
+            if item.temporal_basis is TemporalBasis.ANNUAL_FLOW
+            and item.entity == refused.entity
+        ]
+        concepts = [refused.id]
+        if kind in (Sum, ScaledSum):
+            others = data.draw(
+                # Leave one flow out, to stand in for the refused concept below.
+                st.lists(
+                    st.sampled_from(flows),
+                    min_size=1,
+                    max_size=len(flows) - 1,
+                    unique=True,
+                ),
+                label="others",
+            )
+            concepts = data.draw(
+                st.permutations([refused.id, *others]), label="concepts"
+            )
+        with pytest.raises(ValueError, match="annual flows only") as error:
+            _binding(concepts=tuple(concepts), transform=transform)
+        assert refused.id in str(error.value)
+        # Put an annual flow in its place, and the same binding validates.
+        stand_in = data.draw(
+            st.sampled_from([item for item in flows if item not in concepts]),
+            label="stand_in",
+        )
+        swapped = tuple(stand_in if item == refused.id else item for item in concepts)
+        assert _binding(concepts=swapped, transform=transform).concepts == swapped
+
+    @pytest.mark.parametrize(
+        ("kind", "concept_id"),
+        _REFUSED_READS,
+        ids=[f"{kind.__name__}-{concept_id}" for kind, concept_id in _REFUSED_READS],
+    )
+    def test_each_concept_that_is_not_an_annual_flow_is_refused_by_name(
+        self, kind, concept_id
+    ) -> None:
+        # Today: a scale of the stock, usual weekly hours or the take-up seed,
+        # and a sum, scaled sum, share or fraction of the stock.
+        concepts = (concept_id,)
+        if kind in (Sum, ScaledSum):
+            concepts = ("fact:person.interest_income", concept_id)
+        with pytest.raises(ValueError, match=_refusal(kind, concept_id)):
+            _binding(concepts=concepts, transform=_EXAMPLE_TRANSFORMS[kind])
+        with _redeclared(concept_id, TemporalBasis.ANNUAL_FLOW):
+            _binding(concepts=concepts, transform=_EXAMPLE_TRANSFORMS[kind])
+
+    def test_redeclaring_any_operand_of_any_committed_arithmetic_binding_refuses_it(
+        self,
+    ) -> None:
+        # Exhaustive: every committed scale, sum, scaled sum, share and fraction,
+        # every concept it computes from, and every temporal basis that is not
+        # an annual flow. Changing only that concept's declared basis refuses
+        # the binding, so the rule reads the declaration. Redeclaring a
+        # placement pointer the binding also reads leaves it valid.
+        arithmetic = [
+            (name, binding)
+            for name, binding in _COMMITTED
+            if isinstance(binding.transform, _ARITHMETIC)
+        ]
+        assert arithmetic
+        placed = 0
+        for name, binding in arithmetic:
+            assert replace(binding) == binding
+            for concept_id in binding.concepts:
+                for basis in _NOT_FLOWS:
+                    with (
+                        _redeclared(concept_id, basis),
+                        pytest.raises(ValueError, match="annual flows only") as error,
+                    ):
+                        replace(binding)
+                    assert concept_id in str(error.value), (name, binding.ref)
+            for pointer in set(binding.reads) - set(binding.concepts):
+                placed += 1
+                for basis in _NOT_FLOWS:
+                    with _redeclared(pointer, basis):
+                        assert replace(binding) == binding, (name, binding.ref)
+        assert placed
+
+    def test_redeclaring_any_read_of_any_other_committed_binding_keeps_it(
+        self,
+    ) -> None:
+        # The complement, also exhaustive: no other committed binding depends
+        # on the basis of anything it reads (identities, roles, take-up,
+        # recodes, predicates, positivity tests, allocations and the hours
+        # product).
+        others = [
+            (name, binding)
+            for name, binding in _COMMITTED
+            if not isinstance(binding.transform, _ARITHMETIC)
+        ]
+        kinds = {type(binding.transform) for _, binding in others}
+        assert {Identity, Product, AllocateToReferencePerson, Positive} <= kinds
+        for name, binding in others:
+            for concept_id in binding.reads:
+                for basis in _NOT_FLOWS:
+                    with _redeclared(concept_id, basis):
+                        assert replace(binding) == binding, (name, binding.ref, basis)
+
+    @PROPERTY
+    @given(name=mapping_names, data=st.data())
+    def test_a_mapping_feeding_anything_but_an_annual_flow_to_arithmetic_is_refused(
+        self, name, data
+    ) -> None:
+        # The F6 edit generalised to every mapping and its JSON form: point an
+        # arithmetic input at a concept that is not an annual flow, and take
+        # that concept out of ``unmapped``. The edit is applied to every
+        # binding that must stay alike (a share's complement, the same input
+        # in another module), and only edits that would validate if the
+        # concept were an annual flow are kept, so the flow rule is the one
+        # obstacle.
+        mapping = MAPPINGS[name]
+        index = data.draw(
+            st.sampled_from(
+                [
+                    position
+                    for position, binding in enumerate(mapping.bindings)
+                    if isinstance(binding.transform, _ARITHMETIC)
+                ]
+            ),
+            label="binding",
+        )
+        binding = mapping.bindings[index]
+        kind = type(binding.transform)
+        refused = data.draw(
+            st.sampled_from(
+                [concept_id for reader, concept_id in _REFUSED_READS if reader is kind]
+            ),
+            label="refused",
+        )
+        replaced = data.draw(st.sampled_from(binding.concepts), label="replaced")
+
+        def alike(other: InputBinding) -> bool:
+            if isinstance(binding.transform, Share):
+                return (
+                    isinstance(other.transform, Share)
+                    and other.transform.parameter == binding.transform.parameter
+                    and other.module == binding.module
+                )
+            return (other.engine_input, other.engine_entity) == (
+                binding.engine_input,
+                binding.engine_entity,
+            )
+
+        edited = mapping.to_dict()
+        for position, other in enumerate(mapping.bindings):
+            if alike(other):
+                edited["bindings"][position]["concepts"] = [
+                    refused if item == replaced else item for item in other.concepts
+                ]
+        edited["unmapped"].pop(refused, None)
+        if not any(
+            replaced in other.reads for other in mapping.bindings if not alike(other)
+        ):
+            edited["unmapped"][replaced] = "probe"
+        with _redeclared(refused, TemporalBasis.ANNUAL_FLOW):
+            try:
+                ConceptMapping.from_dict(edited)
+            except ValueError:
+                assume(False)
+        with pytest.raises(ValueError, match="annual flows only"):
+            ConceptMapping.from_dict(edited)
+
+    @pytest.mark.parametrize(
+        "bindings",
+        [
+            [("bank_account_assets", (_LIQUID_ASSETS,), Scale(factor=1 / 52))],
+            [
+                (
+                    "bank_account_assets",
+                    ("fact:person.interest_income", _LIQUID_ASSETS),
+                    Sum(),
+                )
+            ],
+            [
+                (
+                    "bank_account_assets",
+                    ("fact:person.interest_income", _LIQUID_ASSETS),
+                    ScaledSum(factor=1 / 52),
+                )
+            ],
+            [
+                ("bank_account_assets", (_LIQUID_ASSETS,), Share(parameter="p")),
+                (
+                    "stock_assets",
+                    (_LIQUID_ASSETS,),
+                    Share(parameter="p", complement=True),
+                ),
+            ],
+            [("bank_account_assets", (_LIQUID_ASSETS,), Fraction(parameter="f"))],
+        ],
+        ids=["scale", "sum", "scaled-sum", "share-pair", "fraction"],
+    )
+    def test_the_review_counterexamples_and_their_analogues_are_refused(
+        self, bindings
+    ) -> None:
+        # The scale and the sum are F6's own; the share pair and the fraction
+        # are the same edit through the other two transforms. Each validates
+        # if the stock is declared an annual flow, including a scaled sum.
+        engine_input, _, transform = bindings[0]
+        refusal = _refusal(type(transform), _LIQUID_ASSETS, engine_input)
+        with pytest.raises(ValueError, match=refusal):
+            ConceptMapping.from_dict(_us_reading_the_stock(*bindings))
+        with _redeclared(_LIQUID_ASSETS, TemporalBasis.ANNUAL_FLOW):
+            ConceptMapping.from_dict(_us_reading_the_stock(*bindings))
+
+    @pytest.mark.parametrize("transform", [Identity(), Positive()], ids=repr)
+    def test_a_stock_still_reaches_an_engine_unchanged_or_through_a_positivity_test(
+        self, transform
+    ) -> None:
+        mapping = ConceptMapping.from_dict(
+            _us_reading_the_stock(("bank_account_assets", (_LIQUID_ASSETS,), transform))
+        )
+        assert [item.transform for item in mapping.bindings_for(_LIQUID_ASSETS)] == [
+            transform
+        ]
+
+    @pytest.mark.parametrize("name", sorted(MAPPINGS))
+    def test_every_committed_mapping_validates_and_its_arithmetic_reads_flows(
+        self, name
+    ) -> None:
+        # MAPPINGS is built under the rule when this module loads; rebuilding
+        # from JSON here states that every committed mapping still validates.
+        mapping = MAPPINGS[name]
+        assert ConceptMapping.from_dict(json.loads(json.dumps(mapping.to_dict()))) == (
+            mapping
+        )
+        arithmetic = [
+            binding
+            for binding in mapping.bindings
+            if isinstance(binding.transform, _ARITHMETIC)
+        ]
+        assert arithmetic
+        for binding in arithmetic:
+            for concept_id in binding.concepts:
+                assert (
+                    concept(concept_id).temporal_basis is TemporalBasis.ANNUAL_FLOW
+                ), (binding.ref, concept_id)
 
 
 class TestCoverageReport:
@@ -1158,3 +1885,318 @@ class TestMalformedInput:
     def test_malformed_transform_shapes_are_refused(self, data, message) -> None:
         with pytest.raises(ValueError, match=message):
             transform_from_dict(data)
+
+
+# --- The co-resident adult test --------------------------------------------
+
+_BIG = 2**53
+_ADULT_INPUT = "synthetic_shares_home_with_adult"
+
+
+def _adult_mapping(min_age: int) -> ConceptMapping:
+    return _mapping(
+        [
+            _binding(
+                engine_input=_ADULT_INPUT,
+                transform=CoresidentAdult(min_age=min_age),
+            )
+        ]
+    )
+
+
+def _people_table(households, ages, nullable: bool) -> pd.DataFrame:
+    """A person table; ``ages`` holds numbers or ``None`` for a null age."""
+
+    if nullable:
+        age = pd.array(ages, dtype="Int64")
+    else:
+        age = np.asarray(
+            [np.nan if value is None else float(value) for value in ages],
+            dtype=np.float64,
+        )
+    return pd.DataFrame(
+        {
+            "person_id": np.arange(len(ages), dtype=np.int64) * 7 + 3,
+            "person_household_id": np.asarray(households, dtype=np.int64),
+            "age": age,
+        }
+    )
+
+
+def _adult_flags(person: pd.DataFrame, min_age: int) -> list[bool]:
+    household = pd.DataFrame(
+        {
+            "household_id": np.asarray(
+                sorted(set(person["person_household_id"].tolist())), dtype=np.int64
+            )
+        }
+    )
+    out = _adult_mapping(min_age).encode({"person": person, "household": household})
+    values = out.tables["person"][_ADULT_INPUT]
+    assert values.dtype == np.bool_
+    return values.tolist()
+
+
+def _brute_force(households, ages, min_age: int) -> list[bool]:
+    """I1's reference: a double loop over Python ints."""
+
+    return [
+        any(
+            other != me
+            and households[other] == households[me]
+            and ages[other] is not None
+            and ages[other] >= min_age
+            for other in range(len(ages))
+        )
+        for me in range(len(ages))
+    ]
+
+
+@st.composite
+def _people(draw):
+    """Households of mixed sizes, ids unsorted and non-contiguous, some
+    differing only beyond 2**53, null ages, rows in a drawn order."""
+
+    ids = draw(
+        st.lists(
+            st.one_of(
+                st.integers(min_value=-50, max_value=10**6),
+                st.integers(min_value=_BIG - 3, max_value=_BIG + 5),
+                st.integers(min_value=2**62, max_value=2**62 + 3),
+            ),
+            min_size=1,
+            max_size=6,
+            unique=True,
+        )
+    )
+    households: list[int] = []
+    for household_id in ids:
+        households += [household_id] * draw(st.integers(min_value=1, max_value=5))
+    order = draw(st.permutations(range(len(households))))
+    households = [households[row] for row in order]
+    ages = draw(
+        st.lists(
+            st.one_of(st.none(), st.integers(min_value=0, max_value=100)),
+            min_size=len(households),
+            max_size=len(households),
+        )
+    )
+    return households, ages, draw(st.booleans())
+
+
+_MIN_AGES = st.integers(min_value=0, max_value=101)
+
+
+class TestCoresidentAdult:
+    @pytest.mark.parametrize("min_age", [None, True, 18.0, "18", -1])
+    def test_construction_refuses_anything_but_a_non_negative_integer(
+        self, min_age
+    ) -> None:
+        with pytest.raises(ValueError, match="min_age"):
+            CoresidentAdult(min_age=min_age)
+
+    def test_min_age_has_no_default(self) -> None:
+        with pytest.raises(TypeError):
+            CoresidentAdult()
+
+    def test_it_reads_age_only_and_lives_on_persons(self) -> None:
+        binding = _binding(transform=CoresidentAdult(min_age=18))
+        assert binding.concepts == ("fact:person.age",)
+        assert binding.concept_entity == "person"
+        assert _mapping([binding]).invertible_concepts() == ()
+
+    @PROPERTY
+    @given(people=_people(), min_age=_MIN_AGES)
+    def test_i1_it_matches_a_brute_force_double_loop(self, people, min_age) -> None:
+        households, ages, nullable = people
+        person = _people_table(households, ages, nullable)
+        assert _adult_flags(person, min_age) == _brute_force(households, ages, min_age)
+
+    @PROPERTY
+    @given(people=_people(), low=_MIN_AGES, high=_MIN_AGES)
+    def test_i2_raising_min_age_never_turns_false_into_true(
+        self, people, low, high
+    ) -> None:
+        low, high = sorted((low, high))
+        households, ages, nullable = people
+        person = _people_table(households, ages, nullable)
+        for at_low, at_high in zip(
+            _adult_flags(person, low), _adult_flags(person, high), strict=True
+        ):
+            assert at_low or not at_high
+
+    @PROPERTY
+    @given(people=_people(), min_age=_MIN_AGES, data=st.data())
+    def test_i3_shuffling_rows_permutes_the_output(self, people, min_age, data) -> None:
+        households, ages, nullable = people
+        person = _people_table(households, ages, nullable)
+        order = data.draw(st.permutations(range(len(person))))
+        shuffled = person.iloc[list(order)].reset_index(drop=True)
+        before = _adult_flags(person, min_age)
+        assert _adult_flags(shuffled, min_age) == [before[row] for row in order]
+
+    @PROPERTY
+    @given(people=_people(), min_age=_MIN_AGES, data=st.data())
+    def test_i4_a_persons_own_age_never_changes_their_value(
+        self, people, min_age, data
+    ) -> None:
+        households, ages, nullable = people
+        me = data.draw(st.integers(min_value=0, max_value=len(ages) - 1))
+        new_age = data.draw(st.one_of(st.none(), st.integers(0, 100)))
+        changed = [*ages[:me], new_age, *ages[me + 1 :]]
+        before = _adult_flags(_people_table(households, ages, nullable), min_age)
+        after = _adult_flags(_people_table(households, changed, nullable), min_age)
+        assert after[me] == before[me]
+
+    @PROPERTY
+    @given(people=_people(), min_age=_MIN_AGES, data=st.data())
+    def test_i5_an_age_change_stays_inside_its_household(
+        self, people, min_age, data
+    ) -> None:
+        households, ages, nullable = people
+        row = data.draw(st.integers(min_value=0, max_value=len(ages) - 1))
+        new_age = data.draw(st.one_of(st.none(), st.integers(0, 100)))
+        changed = [*ages[:row], new_age, *ages[row + 1 :]]
+        before = _adult_flags(_people_table(households, ages, nullable), min_age)
+        after = _adult_flags(_people_table(households, changed, nullable), min_age)
+        for other, household_id in enumerate(households):
+            if household_id != households[row]:
+                assert after[other] == before[other]
+
+    @PROPERTY
+    @given(people=_people(), min_age=_MIN_AGES)
+    def test_i6_the_qualifying_count_decides_each_household(
+        self, people, min_age
+    ) -> None:
+        households, ages, nullable = people
+        flags = _adult_flags(_people_table(households, ages, nullable), min_age)
+        for household_id in set(households):
+            members = [row for row, h in enumerate(households) if h == household_id]
+            qualifying = [
+                row for row in members if ages[row] is not None and ages[row] >= min_age
+            ]
+            for row in members:
+                if len(qualifying) >= 2:
+                    assert flags[row]
+                elif len(qualifying) == 1:
+                    assert flags[row] == (row not in qualifying)
+                else:
+                    assert not flags[row]
+
+    def test_exact_age_qualifies_and_one_person_households_are_false(self) -> None:
+        households = [5, 5, 9, 2, 2, 2]
+        ages = [18, 40, 70, 17, None, 30]
+        person = _people_table(households, ages, nullable=True)
+        assert _adult_flags(person, 18) == [True, True, False, True, True, False]
+        assert _adult_flags(person, 19) == [True, False, False, True, True, False]
+        # A fractional age below the line doesn't qualify.
+        person = _people_table([3, 3], [17.5, 12], nullable=False)
+        assert _adult_flags(person, 18) == [False, False]
+
+    @PROPERTY
+    @given(people=_people(), min_age=_MIN_AGES, data=st.data())
+    def test_i7_null_household_ids_leave_the_others_exact(
+        self, people, min_age, data
+    ) -> None:
+        households, ages, nullable = people
+        nulls = data.draw(
+            st.lists(st.booleans(), min_size=len(ages), max_size=len(ages))
+        )
+        ids = [None if null else h for h, null in zip(households, nulls, strict=True)]
+        person = _people_table(households, ages, nullable)
+        person["person_household_id"] = pd.array(ids, dtype="Int64")
+        household = pd.DataFrame(
+            {"household_id": np.asarray(sorted(set(households)), dtype=np.int64)}
+        )
+        out = _adult_mapping(min_age).encode({"person": person, "household": household})
+        expected = [
+            ids[me] is not None and flag
+            for me, flag in enumerate(_brute_force(ids, ages, min_age))
+        ]
+        assert out.tables["person"][_ADULT_INPUT].tolist() == expected
+
+    def test_households_differing_only_beyond_2_53_stay_separate(self) -> None:
+        # float64 holds 2**53 and 2**53 + 1 as the same number.
+        assert float(_BIG) == float(_BIG + 1)
+        households = [_BIG + 1, _BIG, _BIG + 1]
+        ages = [10, 50, 12]
+        person = _people_table(households, ages, nullable=False)
+        assert _adult_flags(person, 18) == [False, False, False]
+        assert _adult_flags(person, 11) == [True, False, False]
+
+    def test_end_to_end_from_a_parsed_mapping(self) -> None:
+        data = _mapping([_binding(engine_input=_ADULT_INPUT)]).to_dict()
+        (binding,) = data["bindings"]
+        binding["transform"] = {"kind": "coresident_adult", "min_age": 18}
+        mapping = ConceptMapping.from_dict(json.loads(json.dumps(data)))
+        assert mapping.bindings[0].transform == CoresidentAdult(min_age=18)
+        tables = {
+            "person": pd.DataFrame(
+                {
+                    "person_id": [40, 10, 30, 20],
+                    "person_household_id": [8, 3, 8, 3],
+                    "age": [70.0, 12.0, 16.0, np.nan],
+                }
+            ),
+            "household": pd.DataFrame({"household_id": [8, 3]}),
+        }
+        out = mapping.encode(tables).tables["person"]
+        assert out["person_id"].tolist() == [40, 10, 30, 20]
+        assert out[_ADULT_INPUT].tolist() == [False, False, True, False]
+
+    def test_a_frame_without_age_skips_the_input(self) -> None:
+        tables = {
+            "person": pd.DataFrame({"person_id": [1], "person_household_id": [1]}),
+            "household": pd.DataFrame({"household_id": [1]}),
+        }
+        out = _adult_mapping(18).encode(tables).tables["person"]
+        assert _ADULT_INPUT not in out.columns
+
+    def test_a_household_id_naming_no_household_row_still_groups(self) -> None:
+        tables = {
+            "person": pd.DataFrame(
+                {
+                    "person_id": [1, 2, 3, 4],
+                    "person_household_id": [7, 7, 9, 8],
+                    "age": [30.0, 5.0, 40.0, 50.0],
+                }
+            ),
+            "household": pd.DataFrame({"household_id": [9]}),
+        }
+        out = _adult_mapping(18).encode(tables).tables["person"]
+        # Ids 7 and 8 both name no household row, and they stay apart.
+        assert out[_ADULT_INPUT].tolist() == [False, True, False, False]
+
+    @pytest.mark.parametrize("dtype", ["Int64", "UInt64"])
+    def test_a_null_household_id_keeps_ids_beyond_2_53_apart(self, dtype) -> None:
+        # The null makes pandas offer these ids as float64, where they're
+        # one number.
+        big = 2**62
+        tables = {
+            "person": pd.DataFrame(
+                {
+                    "person_id": [1, 2, 3, 4, 5],
+                    "person_household_id": pd.array(
+                        [big, big, big + 1, big + 1, pd.NA], dtype=dtype
+                    ),
+                    "age": [10.0, 10.0, 40.0, 40.0, 40.0],
+                }
+            ),
+            "household": pd.DataFrame({"household_id": [big, big + 1]}),
+        }
+        out = _adult_mapping(18).encode(tables).tables["person"]
+        assert out[_ADULT_INPUT].tolist() == [False, False, True, True, False]
+
+    def test_a_null_household_id_shares_a_household_with_nobody(self) -> None:
+        tables = {
+            "person": pd.DataFrame(
+                {
+                    "person_id": [1, 2, 3],
+                    "person_household_id": pd.array([pd.NA, pd.NA, 4], dtype="Int64"),
+                    "age": [30.0, 40.0, 50.0],
+                }
+            ),
+            "household": pd.DataFrame({"household_id": [4]}),
+        }
+        out = _adult_mapping(18).encode(tables).tables["person"]
+        assert out[_ADULT_INPUT].tolist() == [False, False, False]

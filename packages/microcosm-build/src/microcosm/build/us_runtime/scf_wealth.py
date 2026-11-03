@@ -27,7 +27,10 @@ archived commit ``42ed5d45`` (``utils/asset_imputation.py``):
 - ``stock_assets`` ← SCF ``stocks`` + ``nmmf`` (directly-held stock plus
   stock/non-money-market mutual funds — the one code-level summation the
   canonical pipeline applies).
-- ``bond_assets`` ← SCF ``bond`` (savings bonds plus other bonds).
+- ``bond_assets`` ← SCF ``bond`` (directly held tax-exempt, mortgage-backed,
+  U.S. government and agency, and corporate and foreign bonds). Bond funds
+  are in ``nmmf``, so they land in ``stock_assets``; U.S. savings bonds are
+  the SCF's separate ``savbnd``, which this stage does not read.
 
 The SCF QRF's eight predictors are age, sex, race, marriage, own children,
 employment income, interest/dividend income, and Social Security/pension

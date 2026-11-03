@@ -5,9 +5,11 @@ feed."""
 
 # ruff: noqa: F401
 
+import base64
 import hashlib
 import importlib.util
 import json
+import sys
 from dataclasses import replace
 from pathlib import Path
 
@@ -19,18 +21,24 @@ from microcosm.build.gate_battery import (
     GatePhaseReport,
     GateStatus,
     gate_phase_report_payload,
+    gate_signing_key_env,
 )
 from microcosm.build.gates import GateResult
 from microcosm.build.logbook import LOGBOOK_ROW_FIELDS, load_spool_rows
 from microcosm.build.logbook_adoption import local_artifact_reference
 from microcosm.build.uk_runtime import full_build_cli as cli
+from microcosm.build.uk_runtime.calibration_run import UK_LOCAL_GATE_SCOPE
+from microcosm.build.uk_runtime.dataset_size import uk_size_search_bracket
 from microcosm.build.uk_runtime.full_certification import FULL_CERTIFICATION_TYPE
 from microcosm.build.uk_runtime.full_gates import (
     classify_full_gate_outcomes,
     uk_full_gate_manifest,
 )
 from microcosm.build.uk_runtime.graph_build import UKFullBuildConfig, UKFullGraph
-from microcosm.build.uk_runtime.graph_calibration import UKCalibrationNodes
+from microcosm.build.uk_runtime.graph_calibration import (
+    SIZE_RECEIPT_TYPE,
+    UKCalibrationNodes,
+)
 from microcosm.build.uk_runtime.graph_population import (
     GEOGRAPHY_GATE_TYPE,
     POPULATION_RECEIPT_TYPE,
@@ -44,6 +52,7 @@ from microcosm.build.uk_runtime.graph_terminal import (
     FULL_DIAGNOSTICS_CSV_TYPE,
     FULL_DIAGNOSTICS_TYPE,
     FULL_GATE_REPORT_TYPE,
+    FULL_HIGH_VALUE_SUPPORT_CSV_TYPE,
     FULL_HOLDOUT_TYPE,
     FULL_SUPPORT_CSV_TYPE,
     add_uk_export_preparation,
@@ -114,6 +123,11 @@ def patch_support_register(monkeypatch, pins=None) -> None:
 
 
 STEM = "microcosm_uk_2024_25_local"
+#: The UK gate signing key's variable and a synthetic 32-byte key: a
+#: release-candidate request is refused without one, and the dense build signs
+#: its local gate report with it.
+SIGNING_KEY_ENV = gate_signing_key_env("uk")
+TEST_SIGNING_KEY = base64.b64encode(b"\x05" * 32).decode()
 SUPPORT_ARGUMENTS = (
     "--atomic-support-ew",
     "supports/ew.npz",
@@ -271,7 +285,13 @@ def failure_lines(failed) -> dict[str, str]:
     return {str(gate_id): str(line) for gate_id, line in failed}
 
 
-def gate_payload(phase, failed=None):
+#: The ``uk_local_area_support`` details the synthetic evidence nodes report,
+#: when a test sets them (the real gate's details over a synthetic table, say);
+#: otherwise every gate reports empty details.
+AREA_SUPPORT_DETAILS: dict | None = None
+
+
+def gate_payload(phase, failed=None, release_candidate=False):
     gates = uk_full_gate_manifest(SELECTION)
     lines = failure_lines(failed)
     report = GatePhaseReport(
@@ -283,7 +303,12 @@ def gate_payload(phase, failed=None):
                 GateResult(
                     name=entry.id,
                     passed=entry.id not in lines,
-                    details={},
+                    details=(
+                        dict(AREA_SUPPORT_DETAILS)
+                        if entry.id == "uk_local_area_support"
+                        and AREA_SUPPORT_DETAILS is not None
+                        else {}
+                    ),
                     failures=(lines[entry.id],) if entry.id in lines else (),
                 ),
             )
@@ -297,55 +322,98 @@ def gate_payload(phase, failed=None):
             "kind": "uk_full_gate_report",
             "selection_receipt": SELECTION,
             "sample_fraction": 1.0,
-            "release_candidate": False,
+            "release_candidate": bool(release_candidate),
             "report": gate_phase_report_payload(report, gates=gates),
             "enforcement": classify_full_gate_outcomes(
-                report, sample_fraction=1.0, release_candidate=False
+                report, sample_fraction=1.0, release_candidate=bool(release_candidate)
             ),
         }
     )
 
 
 LADDER_TARGET = "ons.census.households@E14000001"
+#: Tests flip ``THIN_BRMA_ROW`` to stage a Scottish BRMA row that rests on
+#: fewer than ten source households; it carries its model figures like any
+#: other row (María's ruling of 2026-10-26).
+THIN_BRMA_ROW = False
+BRMA_TARGET = "ons.rent.private_rent_brma@S33000001"
+
+#: The synthetic measures node's engine resolution, as the problem bindings
+#: carry it: ``run_dense_main`` sets the block count from ``--engine-blocks``;
+#: tests flip ``ENGINE_POPULATION_EXACT`` to stage an inexact per-block run.
+ENGINE_BLOCKS = 1
+ENGINE_POPULATION_EXACT = True
+
+
+def measure_resolution_evidence() -> dict:
+    evidence: dict = {"blocks": ENGINE_BLOCKS}
+    if ENGINE_BLOCKS > 1:
+        evidence["engine_population_representation"] = {
+            "mode": "block_weights_scaled_to_pool",
+            "exact": bool(ENGINE_POPULATION_EXACT),
+            "blocks": ENGINE_BLOCKS,
+            "factor_by_block": {
+                str(index): float(ENGINE_BLOCKS) for index in range(ENGINE_BLOCKS)
+            },
+        }
+    return evidence
 
 
 def problem_payload() -> bytes:
     """One ordered local problem over the two fixture households."""
     frame = _frame()
-    targets = TargetSet(
-        [
+    targets = [
+        Target(
+            LADDER_TARGET,
+            "household",
+            lambda f: np.ones(f.n("household")),
+            100.0,
+            period=2025,
+        )
+    ]
+    metadata = [
+        {
+            "materialization": "uk_local_surface",
+            "geography_level": "constituency",
+            "geography_id": "E14000001",
+            "family": "census_households",
+            "source": "fixture",
+        }
+    ]
+    if THIN_BRMA_ROW:
+        targets.append(
             Target(
-                LADDER_TARGET,
+                BRMA_TARGET,
                 "household",
                 lambda f: np.ones(f.n("household")),
-                100.0,
+                1000.0,
                 period=2025,
             )
-        ]
-    )
-    return encode_problem(
-        build_constraint_matrix(frame, targets, weight_entity="household"),
-        entity_ids=frame.table("household")["household_id"].tolist(),
-        target_metadata=[
+        )
+        metadata.append(
             {
                 "materialization": "uk_local_surface",
-                "geography_level": "constituency",
-                "geography_id": "E14000001",
-                "family": "census_households",
+                "geography_level": "brma",
+                "geography_id": "S33000001",
+                "family": "private_rent",
                 "source": "fixture",
             }
-        ],
+        )
+    return encode_problem(
+        build_constraint_matrix(frame, TargetSet(targets), weight_entity="household"),
+        entity_ids=frame.table("household")["household_id"].tolist(),
+        target_metadata=metadata,
         bindings={
             "mass_reason": "fixture selected constraints",
             "max_weight_ratio": 10.0,
-            "target_loss_weights": [1.0],
+            "target_loss_weights": [1.0] * len(targets),
             "target_loss_cap": 10.0,
             "bound_families": ["census_households/constituency"],
             "binding_adjudications": {
                 "stood_on": {"census_households/constituency": ["fixture"]}
             },
             "rung_surface": {"dropped_cells": 0},
-            "measure_resolution": {"blocks": 1},
+            "measure_resolution": measure_resolution_evidence(),
             "cross_geography": {
                 "unbound_bridges": [],
                 "empty_legs_licensed": [],
@@ -393,6 +461,14 @@ def uprating_receipt() -> dict:
     }
 
 
+#: The synthetic approval window. Release validation compares it with the
+#: real date, so a real-looking month-long window made every test that
+#: assembles this candidate fail once it lapsed (2026-10-04). The window is
+#: synthetic, so it does not lapse; expiry itself is tested with explicit
+#: dates (test_assembler_rejects_expired_or_missing_measure_approval).
+SYNTHETIC_APPROVAL = {"approved_on": "2026-09-03", "expires_on": "2099-12-31"}
+
+
 def measure_exclusions() -> dict:
     return {
         "obr.housing_benefit": {
@@ -400,8 +476,7 @@ def measure_exclusions() -> dict:
             "tracking": "microcosm#869",
             "approved_by": "synthetic_reviewer",
             "adjudication": "synthetic decision",
-            "approved_on": "2026-09-03",
-            "expires_on": "2026-10-03",
+            **SYNTHETIC_APPROVAL,
         }
     }
 
@@ -431,11 +506,13 @@ def surface_payload() -> bytes:
     )
 
 
-def diagnostics_payload() -> bytes:
+def diagnostics_payload(*, rotated_holdout: bool = False) -> bytes:
     # A legacy-schema stand-in, like the rowwise-tool candidate fixture in the
     # assembler tests: the assembler validates only the current schema
     # (microcosm#1007), which the real gate kernel emits; this fake drives the
-    # driver's plumbing, not the diagnostics contract.
+    # driver's plumbing, not the diagnostics contract. The holdout is the
+    # measured report only when the request opted in (microcosm#1301), else
+    # the schema's bare skip marker, as the real gate kernel records it.
     return canonical_json(
         {
             "schema_version": 6,
@@ -467,10 +544,20 @@ def diagnostics_payload() -> bytes:
                 "weights": {"n_nonzero": 2},
                 "weakest_families": [],
                 "weakest_areas_by_fit": {},
-                "rotated_holdout": holdout_payload_dict(),
+                "rotated_holdout": holdout_payload_dict()
+                if rotated_holdout
+                else {"skipped": True},
             },
         }
     )
+
+
+#: The synthetic holdout node's report when the request did not opt in.
+SKIPPED_HOLDOUT = {
+    "report_only": True,
+    "skipped": True,
+    "reason": "Not requested: opt-in diagnostic; no out-of-sample claim.",
+}
 
 
 def holdout_payload_dict() -> dict:
@@ -491,6 +578,21 @@ TARGET_ROWS_CSV = (
     "census_households,constituency,constituency,E14000001,households\n"
 ).encode()
 
+
+def target_rows_csv() -> bytes:
+    """The terminal targets table, with the thin BRMA row when it is staged."""
+
+    if not THIN_BRMA_ROW:
+        return TARGET_ROWS_CSV
+    return (
+        TARGET_ROWS_CSV
+        + (
+            f"{BRMA_TARGET}@2025,{BRMA_TARGET}@2025,1000.0,900.0,-0.1,0.1,"
+            "private_rent,brma,brma,S33000001,rent/private_rent_brma\n"
+        ).encode()
+    )
+
+
 SUPPORT_CSV = (
     b"area_code,assigned_households,nonzero_households,nonzero_source_households,"
     b"weight_sum,max_weight,effective_sample_size,geography_level\n"
@@ -498,6 +600,15 @@ SUPPORT_CSV = (
     b"E14000002,1,1,1,87.0,87.0,1.0,constituency\n"
     b"E09000001,1,1,1,13.0,13.0,1.0,local_authority\n"
     b"E07000008,1,1,1,87.0,87.0,1.0,local_authority\n"
+)
+
+# microcosm#1240: the per-area high-value support table stays a candidate
+# artifact; the harness carries a header and one row so materialisation and
+# replay bind it like the other terminal CSVs.
+HV_SUPPORT_CSV = (
+    b"geography_level,area_code,threshold_id,nonzero_households,"
+    b"nonzero_source_households,weight_sum,max_source_share\n"
+    b"constituency,E14000001,over_gbp_2m,0,0,0.0,0.0\n"
 )
 
 
@@ -523,12 +634,21 @@ class Evidence(KernelBase):
 
     def run(self, context):
         phase = context.params["phase"]
-        artifacts = {"gate_report": gate_payload(phase, context.params.get("failed"))}
+        artifacts = {
+            "gate_report": gate_payload(
+                phase,
+                context.params.get("failed"),
+                release_candidate=bool(context.params.get("release_candidate")),
+            )
+        }
         if phase == "terminal":
             artifacts.update(
-                calibration_diagnostics=diagnostics_payload(),
-                target_diagnostics_csv=TARGET_ROWS_CSV,
+                calibration_diagnostics=diagnostics_payload(
+                    rotated_holdout=bool(context.params.get("rotated_holdout"))
+                ),
+                target_diagnostics_csv=target_rows_csv(),
                 area_support_csv=SUPPORT_CSV,
+                high_value_home_support_csv=HV_SUPPORT_CSV,
             )
         return KernelResult(artifacts=artifacts)
 
@@ -537,14 +657,45 @@ class Holdout(Evidence):
     ref = "uk.test.cli-holdout@1"
 
     def run(self, context):
+        rotated = bool(context.params.get("rotated_holdout"))
         return KernelResult(
             artifacts={
-                "holdout": canonical_json(holdout_payload_dict()),
+                "holdout": canonical_json(
+                    holdout_payload_dict() if rotated else SKIPPED_HOLDOUT
+                ),
                 "selection": canonical_json(
                     {"registry": {"country": "uk", "specs": []}, "receipt": SELECTION}
                 ),
             }
         )
+
+
+class SizeReceipt(Evidence):
+    """A sized build's refit receipt: requested and realized household counts."""
+
+    ref = "uk.test.cli-size@1"
+
+    def run(self, context):
+        receipt = size_receipt(int(context.params["households"]))
+        return KernelResult(artifacts={"size": canonical_json(receipt)})
+
+
+def size_receipt(households: int) -> dict:
+    """The stand-in size receipt of a build that realized its request.
+
+    Its search ran in the doctrine's L0 bracket (microcosm#1301), which the
+    pre-flight checks on a sized release.
+    """
+
+    lower, upper = uk_size_search_bracket()
+    return {
+        "method": "exact_k_informed_l0",
+        "requested_households": households,
+        "realized_households": households,
+        "selection_pi_hi": 0.5,
+        "baseline_pi_floor": 0.5,
+        "selection_search_bracket": {"lower": lower, "upper": upper},
+    }
 
 
 class Targets(Evidence):
@@ -653,7 +804,22 @@ def run_dense_main(
     monkeypatch.delenv("POPULACE_LOGBOOK_PREV_ROW_DIGEST", raising=False)
     patch_certification(monkeypatch)
     args = arguments(tmp_path, *extra, staging=staging)
-    build = prepared(tmp_path, failed) if build is None else build
+    households = (
+        int(extra[extra.index("--dataset-households") + 1])
+        if "--dataset-households" in extra
+        else None
+    )
+    build = (
+        prepared(
+            tmp_path,
+            failed,
+            release_candidate="--release-candidate" in extra,
+            size_households=households,
+            rotated_holdout="--rotated-holdout" in extra,
+        )
+        if build is None
+        else build
+    )
 
     def prepare(args, *, telemetry=None, attempt=None):
         if on_prepare is not None:
@@ -662,6 +828,7 @@ def run_dense_main(
 
     monkeypatch.setattr(cli, "parse_args", lambda argv: args)
     monkeypatch.setattr(cli, "prepare_full_build", prepare)
+    monkeypatch.setattr(sys.modules[__name__], "ENGINE_BLOCKS", int(args.engine_blocks))
     return cli.main([]), args.out
 
 
@@ -676,7 +843,23 @@ def graph_dense_bundle(tmp_path, monkeypatch, *extra, staging="--no-staging") ->
     return out
 
 
-def prepared(tmp_path, failed=None):
+def prepared(
+    tmp_path,
+    failed=None,
+    *,
+    release_candidate=False,
+    size_households=None,
+    rotated_holdout=False,
+):
+    """The synthetic prepared build; its gate nodes evaluate in the request's
+    posture (``release_candidate``), as the real gate nodes do. A sized
+    request (``size_households``) adds a stand-in size refit receipt. The
+    holdout is measured only when the request opted in (``rotated_holdout``,
+    microcosm#1301); otherwise the holdout node records the skip marker."""
+    # Only a release-candidate request adds the parameter, so every other
+    # synthetic build keeps its node keys; likewise the holdout opt-in.
+    posture = {"release_candidate": True} if release_candidate else {}
+    rotation = {"rotated_holdout": True} if rotated_holdout else {}
     frame = _frame()
     fixture = tmp_path / "fixture.txt"
     fixture.write_text("constant source")
@@ -711,25 +894,29 @@ def prepared(tmp_path, failed=None):
             "uk.full.gates.preflight",
             Evidence.ref,
             population=root.id,
-            params={"phase": "preflight", "failed": failed},
+            params={"phase": "preflight", "failed": failed, **posture},
             artifact_outputs=(ArtifactOutput("gate_report", FULL_GATE_REPORT_TYPE),),
         ),
         Node(
             "uk.full.gates.calibrated",
             Evidence.ref,
             population=root.id,
-            params={"phase": "terminal", "failed": failed},
+            params={"phase": "terminal", "failed": failed, **posture, **rotation},
             artifact_outputs=(
                 ArtifactOutput("gate_report", FULL_GATE_REPORT_TYPE),
                 ArtifactOutput("calibration_diagnostics", FULL_DIAGNOSTICS_TYPE),
                 ArtifactOutput("target_diagnostics_csv", FULL_DIAGNOSTICS_CSV_TYPE),
                 ArtifactOutput("area_support_csv", FULL_SUPPORT_CSV_TYPE),
+                ArtifactOutput(
+                    "high_value_home_support_csv", FULL_HIGH_VALUE_SUPPORT_CSV_TYPE
+                ),
             ),
         ),
         Node(
             "uk.full.holdout",
             Holdout.ref,
             population=root.id,
+            params=rotation,
             artifact_outputs=(
                 ArtifactOutput("holdout", FULL_HOLDOUT_TYPE),
                 ArtifactOutput("selection", TARGET_SELECTION_TYPE),
@@ -784,6 +971,16 @@ def prepared(tmp_path, failed=None):
             ),
         ),
     ]
+    if size_households is not None:
+        nodes.append(
+            Node(
+                "uk.full.size_refit",
+                SizeReceipt.ref,
+                population=root.id,
+                params={"households": int(size_households)},
+                artifact_outputs=(ArtifactOutput("size", SIZE_RECEIPT_TYPE),),
+            )
+        )
     nodes = [
         replace(
             node,
@@ -830,6 +1027,7 @@ def prepared(tmp_path, failed=None):
         graph,
         population=root.id,
         bindings={"target_scope": "all", "geography": synthetic_geography_binding()},
+        solve_year=2025,
         artifact_inputs=(
             ArtifactInput(
                 "gates",
@@ -850,6 +1048,7 @@ def prepared(tmp_path, failed=None):
         Holdout(),
         Targets(),
         Population(),
+        SizeReceipt(),
         Certification(),
     ):
         kernels.register(kernel)

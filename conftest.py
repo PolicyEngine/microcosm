@@ -11,6 +11,8 @@ import importlib.util
 import sys
 from pathlib import Path
 
+import pytest
+
 _ROOT = str(Path(__file__).resolve().parent)
 if _ROOT not in sys.path:
     sys.path.insert(0, _ROOT)
@@ -65,3 +67,67 @@ def pytest_collection_modifyitems(items) -> None:
             item.add_marker("integration")
         if group.engine_module is not None:
             item.add_marker(f"requires_{group.country}")
+
+
+@pytest.fixture(autouse=True)
+def fake_telemetry_emitters(monkeypatch, tmp_path):
+    """Default every workspace test to in-memory telemetry, never production."""
+    from huggingface_hub import constants as hf_constants
+    from microcosm_emitter_interface import client as emitter_interface_client
+
+    from microcosm.build import telemetry_emitter
+    from microcosm.build.uk_runtime import orrery_publication
+    from test_support.microcosm_build.telemetry import (
+        FakeTelemetryEmitter,
+        fake_publication_inventory,
+        fake_publish_graph,
+    )
+
+    for name in ("HF_TOKEN", "HUGGING_FACE_HUB_TOKEN", "HUGGINGFACE_TOKEN"):
+        monkeypatch.delenv(name, raising=False)
+    isolated_hf = tmp_path / "telemetry-hf"
+    token_path = isolated_hf / "token"
+    monkeypatch.setenv("HF_HOME", str(isolated_hf))
+    monkeypatch.setenv("HF_TOKEN_PATH", str(token_path))
+    monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path / "telemetry-cache"))
+    # HF constants may have been imported before this fixture ran.
+    monkeypatch.setattr(hf_constants, "HF_HOME", str(isolated_hf))
+    monkeypatch.setattr(hf_constants, "HF_TOKEN_PATH", str(token_path))
+
+    emitters = []
+
+    def start(_cls, **kwargs):
+        fields = telemetry_emitter.TelemetryRun.__dataclass_fields__
+        run = telemetry_emitter.TelemetryRun(
+            **{name: value for name, value in kwargs.items() if name in fields}
+        )
+        emitter = FakeTelemetryEmitter(
+            run, close_service_on_finish=kwargs.get("close_service_on_finish", True)
+        )
+        emitters.append(emitter)
+        return emitter
+
+    monkeypatch.setattr(
+        telemetry_emitter.LocalTelemetryEmitter, "start", classmethod(start)
+    )
+    monkeypatch.setattr(
+        orrery_publication, "publication_inventory", fake_publication_inventory
+    )
+    monkeypatch.setattr(orrery_publication, "publish_graph", fake_publish_graph)
+
+    def unexpected_start(*args, **options):
+        pytest.fail("A build test tried to start a real emitter")
+
+    # Every interface client starts the installed command through this name.
+    monkeypatch.setattr(emitter_interface_client, "start_emitter", unexpected_start)
+    # Reset any cached handle left by a previously loaded build entrypoint.
+    for module in tuple(sys.modules.values()):
+        if isinstance(
+            getattr(module, "_ACTIVE_EMITTER", None),
+            telemetry_emitter.LocalTelemetryEmitter,
+        ):
+            monkeypatch.setattr(module, "_ACTIVE_EMITTER", None)
+
+    yield emitters
+    for emitter in emitters:
+        emitter.close()

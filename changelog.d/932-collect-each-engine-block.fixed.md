@@ -1,0 +1,1 @@
+The per-clone measure resolution (`--engine-blocks` greater than one) now collects garbage after every engine block. A policyengine simulation is a large cyclic object graph that `del` alone does not reclaim, so the first K=25 dense build (2026-10-05) retained all 25 per-clone engines, reached a 140 GB memory footprint on a 24 GiB machine and was killed before the solve.

@@ -1,0 +1,59 @@
+{
+ "ok": true,
+ "created_utc": "2026-10-02T11:36:53Z",
+ "purpose": "TargetSpecs (with the metadata target-loss weighting reads) for the checkpoint's 4,459 targets, recompiled from the 09-23 release's feed; spec i is CSR row i.",
+ "feed": {
+  "path": "/Users/maxghenis/PolicyEngine/_buildh-runtime/inputs/chronicle_us_b571381/artifact/consumer_facts.jsonl",
+  "sha256": "4d1dba8c1b6274877bf184fa6de5d99b13fc61f34709ccab1487db2b5c64a79f"
+ },
+ "families": [
+  "snap",
+  "medicaid",
+  "soi"
+ ],
+ "soi_mode": "state",
+ "release_materialize_head": "767312d60430893617af57034f62edfb4920dca3",
+ "compile_head": "b115745d1dc79ed3548759540c7f09111746fcde",
+ "compile_tree_clean": true,
+ "ri_substitutions": [
+  "{'state_fips': '44', 'substituted_for_source_record_id': 'cms_medicaid.month2024_12.state_enrollment.ri.total_medicaid_enrollment', 'substituted_for_source_period': '2024-12', 'substitute_source_record_id': 'cms_medicaid.month2024_11.state_enrollment.ri.total_medicaid_enrollment', 'substitute_source_period': '2024-11', 'substitute_value': 273400.0, 'reason': 'CMS reports Rhode Island December 2024 Total Medicaid Enrollment as 0 with the footnote \"Unable to Provide Data due to System Limitations\" (pi-dataset-april-2026-release.csv, both the preliminary P/N and final U/Y rows); RI did not report the month and the April 2026 release still carries the footnoted 0. Substituted RI\\'s nearest prior reported month, November 2024 (Total Medicaid Enrollment 273,400).', 'issue': 'microcosm#386', 'applied': True, 'stale': False}"
+ ],
+ "soi_receipt": {
+  "soi_mode": "state",
+  "counts": {
+   "total": 3819
+  }
+ },
+ "checkpoint_manifest_sha256": "8a75d1235efa336df1ede147a18cc72f60e8b2fd0cbd7b8574906c4834d5b950",
+ "targets_meta_sha256": "2a69033e1cde2d08d8909c6863a94a41dd79badcda76b48e96f43f137c44ba00",
+ "checks": {
+  "admin_specs_compiled": 3972,
+  "admin_specs_in_checkpoint": 3972,
+  "population_specs": 487,
+  "duplicated_names": [],
+  "missing_from_compile": [],
+  "n_missing_from_compile": 0,
+  "extra_in_compile": [],
+  "n_extra_in_compile": 0,
+  "values": {
+   "n_compared": 4459,
+   "n_unequal": 0,
+   "max_relative_difference": 0.0,
+   "unequal_examples": []
+  },
+  "field_mismatches": [],
+  "n_field_mismatches": 0
+ },
+ "wall_seconds": 179.3,
+ "registry": {
+  "path": "/Users/maxghenis/PolicyEngine/_build_artifacts/acs-local-l2-basis-20260928/checkpoint/target_registry.json",
+  "sha256": "fd25c6002cae0c991842c81399d43a3840f12cba0294021ca8ff6718e22a209f",
+  "n_specs": 4459,
+  "family_counts": {
+   "usda_snap": 102,
+   "cms_medicaid": 51,
+   "irs_soi": 3819,
+   "census_population": 487
+  }
+ }
+}
