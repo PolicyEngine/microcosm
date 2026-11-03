@@ -5,13 +5,16 @@ every calibration node, exactly one node upstream of it declares
 ``params.measurement_id: <id>`` and writes the scaled interval table's income and
 universe columns on that table's entity. Each mutant below breaks one clause
 and must leave the rows parked, with the activation gap naming the
-measurement.
+measurement. Composition checks the same rule against the compiled graph, and
+for a calibration node that a transport extension adds, which no declared row
+names, the compiled graph alone proves the producer.
 """
 
 from __future__ import annotations
 
 import copy
 import json
+import re
 
 import pytest
 from hypothesis import HealthCheck, example, given, settings
@@ -398,10 +401,13 @@ def test_proof_result_is_bound_into_the_selection_identity():
     assert parked != proved
 
 
-def _compiled_toy(*, second_producer=False, second_writer=False, expand_cells=None):
+def _compiled_toy(
+    *, declared=True, second_producer=False, second_writer=False, expand_cells=None
+):
     """A compiled graph: CREATE, one or two producers, preparation, calibration.
 
-    With ``second_writer``, a ``filter`` version holds an undeclared rewrite
+    Without ``declared``, the first producer declares no measurement. With
+    ``second_writer``, a ``filter`` version holds an undeclared rewrite
     of the income column, and preparation and calibration live in it. With
     ``expand_cells``, preparation and calibration live in an EXPAND version
     that declares those cells.
@@ -416,12 +422,12 @@ def _compiled_toy(*, second_producer=False, second_writer=False, expand_cells=No
         compile_graph,
     )
 
-    def producer(name, column):
+    def producer(name, column, declares=True):
         return Node(
             id=name,
             kernel="measure.combine@1",
             population="toy.create",
-            params={"measurement_id": SUMMED_MEASUREMENT},
+            params={"measurement_id": SUMMED_MEASUREMENT} if declares else {},
             outputs=(Owned("person", column, "int64"),),
         )
 
@@ -433,7 +439,7 @@ def _compiled_toy(*, second_producer=False, second_writer=False, expand_cells=No
             sources=("toy_donor",),
             outputs=(Owned("person", "person_id", "int64"),),
         ),
-        producer("toy.measure", INCOME_COLUMN),
+        producer("toy.measure", INCOME_COLUMN, declared),
     ]
     read = [INCOME_COLUMN]
     if second_producer:
@@ -492,12 +498,13 @@ def _compiled_toy(*, second_producer=False, second_writer=False, expand_cells=No
 
 
 def _forced_proof(monkeypatch, producer, columns=(f"person.{INCOME_COLUMN}",)):
+    """Patch in a proof; with no producer it names no calibration node."""
     from microcosm.build.transport import compose as compose_module
 
     proof = {
         SUMMED_MEASUREMENT: {
             "measurement_id": SUMMED_MEASUREMENT,
-            "producers": {"toy.calibrate": producer},
+            "producers": {} if producer is None else {"toy.calibrate": producer},
             "columns": list(columns),
         }
     }
@@ -843,3 +850,360 @@ def test_composition_refuses_an_expand_of_a_measured_column(composed_toy):
         f"calibration node {calibration!r} has writers ['toy.expand', "
         f"'toy.measure'] of person.{INCOME_COLUMN} upstream"
     ) in message
+
+
+# ---------------------------------------------------------------------------
+# A calibration node that a transport extension adds
+# ---------------------------------------------------------------------------
+
+EXTENSION_PREFIX = (
+    f"Measurement {SUMMED_MEASUREMENT!r}: the composed graph proves no producer "
+    "for extension calibration node 'toy.calibrate'; "
+)
+
+
+@pytest.mark.parametrize(
+    "shape", [{}, {"expand_cells": (("person", "toy_other", "int64"),)}]
+)
+def test_the_compiled_graph_proves_an_extension_calibration_producer(
+    monkeypatch, shape
+):
+    check = _forced_proof(monkeypatch, None)
+    graph, compiled = _compiled_toy(**shape)
+    check({}, graph, compiled, extension_nodes={"toy.calibrate"})
+
+
+def test_a_skeleton_calibration_node_still_needs_its_declared_producer(monkeypatch):
+    """The extension rule applies only to the nodes an extension adds."""
+    check = _forced_proof(monkeypatch, None)
+    graph, compiled = _compiled_toy()
+    with pytest.raises(ValueError, match="and the declaration proved None"):
+        check({}, graph, compiled)
+
+
+def test_only_an_extension_calibration_node_leaves_the_declared_comparison(
+    monkeypatch,
+):
+    """Extension ids of other nodes leave the skeleton's checks as they were."""
+    check = _forced_proof(monkeypatch, "toy.measure")
+    graph, compiled = _compiled_toy(second_writer=True)
+    with pytest.raises(ValueError) as refused:
+        check({}, graph, compiled, extension_nodes={"toy.filter", "toy.overwrite"})
+    assert str(refused.value).startswith(
+        f"Measurement {SUMMED_MEASUREMENT!r}: the compiled graph contradicts the "
+        "declared proof; "
+    )
+    assert "writers ['toy.measure', 'toy.overwrite']" in str(refused.value)
+
+
+@pytest.mark.parametrize(
+    ("shape", "columns", "reason"),
+    [
+        ({"declared": False}, [INCOME_COLUMN], "0 nodes declaring"),
+        ({"second_producer": True}, [INCOME_COLUMN], "2 nodes declaring"),
+        (
+            {},
+            [INCOME_COLUMN, UNIVERSE_COLUMN],
+            "its one declarer 'toy.measure' does not write "
+            f"['person.{UNIVERSE_COLUMN}']",
+        ),
+        (
+            {"expand_cells": (("person", INCOME_COLUMN, "int64"),)},
+            [INCOME_COLUMN],
+            f"writers ['toy.expand', 'toy.measure'] of person.{INCOME_COLUMN}",
+        ),
+    ],
+)
+def test_composition_refuses_an_extension_calibration_without_one_writer(
+    monkeypatch, shape, columns, reason
+):
+    check = _forced_proof(monkeypatch, None, [f"person.{name}" for name in columns])
+    graph, compiled = _compiled_toy(**shape)
+    with pytest.raises(ValueError) as refused:
+        check({}, graph, compiled, extension_nodes={"toy.calibrate"})
+    assert str(refused.value).startswith(EXTENSION_PREFIX)
+    assert reason in str(refused.value)
+
+
+def test_an_extension_calibration_refuses_a_later_version_rewrite(monkeypatch):
+    """The NZ hub's G7 in miniature: a filter version rewrites the income."""
+    check = _forced_proof(monkeypatch, None)
+    graph, compiled = _compiled_toy(second_writer=True)
+    with pytest.raises(ValueError) as refused:
+        check({}, graph, compiled, extension_nodes={"toy.calibrate"})
+    assert str(refused.value) == (
+        f"{EXTENSION_PREFIX}measurement {SUMMED_MEASUREMENT!r}: calibration node "
+        "'toy.calibrate' has writers ['toy.measure', 'toy.overwrite'] of "
+        f"person.{INCOME_COLUMN} upstream; only its producer 'toy.measure' may "
+        "write it."
+    )
+
+
+def _compiled_chain(draws):
+    """:func:`_chain`'s draws as a compiled graph.
+
+    A version holds one owner per column, so a node that writes a column an
+    earlier node wrote opens a ``filter`` version and rewrites it there.
+    """
+    from microcosm.graph import (
+        Graph,
+        Node,
+        Owned,
+        Slice,
+        SourceRef,
+        StructuralDelta,
+        compile_graph,
+    )
+
+    nodes = [
+        Node(
+            id="toy.create",
+            kernel="transport.create@1",
+            structural=StructuralDelta.CREATE,
+            sources=("toy_donor",),
+            outputs=(Owned("person", "person_id", "int64"),),
+        )
+    ]
+    population, written, previous = "toy.create", set(), None
+    for index, (declares, income, universe) in enumerate(draws):
+        measured = [
+            (column, dtype)
+            for column, dtype, wanted in (
+                (INCOME_COLUMN, "int64", income),
+                (UNIVERSE_COLUMN, "string", universe),
+            )
+            if wanted
+        ]
+        if written & {column for column, _ in measured}:
+            nodes.append(
+                Node(
+                    id=f"toy.v{index}",
+                    kernel="transport.boundary@1",
+                    structural=StructuralDelta.FILTER,
+                    base=population,
+                )
+            )
+            population = f"toy.v{index}"
+        nodes.append(
+            Node(
+                id=f"toy.n{index}",
+                kernel="toy.chain@1",
+                population=population,
+                params={"measurement_id": SUMMED_MEASUREMENT} if declares else {},
+                inputs=() if previous is None else (Slice("person", (previous,)),),
+                outputs=(
+                    *(
+                        Owned("person", column, dtype, rewrite=column in written)
+                        for column, dtype in measured
+                    ),
+                    Owned("person", f"toy_step_{index}", "bool"),
+                ),
+            )
+        )
+        written |= {column for column, _ in measured}
+        previous = f"toy_step_{index}"
+    nodes.append(
+        Node(
+            id="toy.calibrate",
+            kernel="calibrate.ordered_adam@1",
+            population=population,
+            inputs=(Slice("person", (previous,)),),
+        )
+    )
+    graph = Graph(
+        country="toy",
+        sources=(SourceRef("toy_donor", "toy-codec-v1"),),
+        nodes=tuple(nodes),
+    )
+    return graph, compile_graph(graph)
+
+
+@given(
+    draws=st.lists(
+        st.tuples(st.booleans(), st.booleans(), st.booleans()),
+        min_size=1,
+        max_size=4,
+    )
+)
+@settings(
+    max_examples=60,
+    database=None,
+    deadline=None,
+    suppress_health_check=[HealthCheck.too_slow],
+)
+# One declarer alone; without the universe; with a second writer after it and
+# before it; with two declarers.
+@example(draws=[(True, True, True)])
+@example(draws=[(True, True, False)])
+@example(draws=[(True, True, True), (False, True, False)])
+@example(draws=[(False, False, True), (True, True, True)])
+@example(draws=[(True, True, False), (True, False, True)])
+def test_an_extension_chain_proves_exactly_when_the_declared_chain_does(draws):
+    """The declared proof and the compiled extension proof agree, refusal for refusal.
+
+    The declared check reads :func:`_chain`'s rows. The compiled check reads
+    the same draws compiled, as for a calibration node that an extension adds.
+    """
+    proofs, refusals = measurement_proofs(_spec(_chain(draws)))
+    graph, compiled = _compiled_chain(draws)
+    columns = [f"person.{INCOME_COLUMN}", f"person.{UNIVERSE_COLUMN}"]
+    with pytest.MonkeyPatch.context() as patch:
+        check = _forced_proof(patch, None, columns)
+        try:
+            check({}, graph, compiled, extension_nodes={"toy.calibrate"})
+        except ValueError as error:
+            refusal = str(error)
+        else:
+            refusal = None
+    assert (refusal is None) is (SUMMED_MEASUREMENT in proofs)
+    if refusal is not None:
+        reason = refusals[SUMMED_MEASUREMENT]
+        missing = re.fullmatch(
+            r"producer ('[^']+') (does not write \[.*\]) on the interval "
+            "table's entity",
+            reason,
+        )
+        if missing is not None:
+            reason = f"its one declarer {missing[1]} {missing[2]}"
+        assert refusal == f"{EXTENSION_PREFIX}{reason}."
+
+
+@pytest.fixture(scope="module")
+def nz_toy(tmp_path_factory):
+    """NZ's synthetic graph, whose V1, V3 and VHF scenarios each calibrate."""
+    from test_support.microcosm_build.transport_nz_toy import make_nz_toy_fixture
+
+    return make_nz_toy_fixture(tmp_path_factory.mktemp("nz-toy") / "fixture")
+
+
+def _nz_proof(nz_toy):
+    proofs, refusals = measurement_proofs(nz_toy.spec)
+    assert refusals == {}
+    ((binding, proof),) = proofs.items()
+    return binding, proof
+
+
+def _v3_without_declaration(rows, nodes, binding, columns):
+    """M1: V3's stand-in keeps its outputs and drops the measurement id."""
+    del rows["nz.v.V3.income.standin"]["params"]["measurement_id"]
+
+
+def _v3_second_declarer(rows, nodes, binding, columns):
+    """M2: V3's earnings node declares the measurement too."""
+    rows["nz.v.V3.earnings.cents"]["params"]["measurement_id"] = binding
+
+
+def _v3_universe_elsewhere(rows, nodes, binding, columns):
+    """M4: V3's universe column moves from the stand-in to the earnings node."""
+    standin = rows["nz.v.V3.income.standin"]
+    (moved,) = [row for row in standin["outputs"] if row["column"] == columns[1]]
+    standin["outputs"].remove(moved)
+    rows["nz.v.V3.earnings.cents"]["outputs"].append(moved)
+
+
+def _v3_later_version_rewrite(rows, nodes, binding, columns):
+    """G7: a filter version inside V3 rewrites both measured columns.
+
+    Preparation, the compiled targets and the problem move into it, and V3's
+    calibration opens from it.
+    """
+    standin = rows["nz.v.V3.income.standin"]
+    dtypes = {row["column"]: row["dtype"] for row in standin["outputs"]}
+    moved = [
+        rows[name]
+        for name in (
+            "nz.v.V3.calibration.prepare",
+            "nz.v.V3.targets.compile",
+            "nz.v.V3.targets.problem",
+        )
+    ]
+    for row in moved:
+        nodes.remove(row)
+        row["population"] = "nz.v.V3.review"
+    rows["nz.v.V3.calibrate"]["base"] = "nz.v.V3.review"
+    position = nodes.index(standin) + 1
+    nodes[position:position] = [
+        {
+            "id": "nz.v.V3.review",
+            "kernel": "transport.boundary@1",
+            "structural": "filter",
+            "base": "nz.v.V3",
+        },
+        {
+            "id": "nz.v.V3.review.rewrite",
+            "kernel": "transport.currency@1",
+            "population": "nz.v.V3.review",
+            "inputs": [{"entity": "person", "columns": list(columns)}],
+            "outputs": [
+                {
+                    "entity": "person",
+                    "column": column,
+                    "dtype": dtypes[column],
+                    "rewrite": True,
+                }
+                for column in columns
+            ],
+        },
+        *moved,
+    ]
+
+
+def test_composition_proves_each_extension_calibration_producer(nz_toy):
+    """The declaration names the skeleton's calibration node; compose proves V3's."""
+    _, proof = _nz_proof(nz_toy)
+    graph = compose_transport_graph(copy.deepcopy(nz_toy.spec), nz_toy.config)
+    calibration = {
+        node.id for node in graph.nodes if node.kernel.startswith("calibrate.")
+    }
+    assert "nz.v.V3.calibrate" in calibration - set(proof["producers"])
+
+
+@pytest.mark.parametrize(
+    ("mutant", "reason"),
+    [
+        (
+            _v3_without_declaration,
+            "0 nodes declaring measurement_id {binding!r} sit upstream of "
+            "calibration node 'nz.v.V3.calibrate'",
+        ),
+        (
+            _v3_second_declarer,
+            "2 nodes declaring measurement_id {binding!r} sit upstream of "
+            "calibration node 'nz.v.V3.calibrate'",
+        ),
+        (
+            _v3_universe_elsewhere,
+            "its one declarer 'nz.v.V3.income.standin' does not write "
+            "['person.{universe}']",
+        ),
+        (
+            _v3_later_version_rewrite,
+            "calibration node 'nz.v.V3.calibrate' has writers "
+            "['nz.v.V3.income.standin', 'nz.v.V3.review.rewrite'] of "
+            "person.{income} upstream; only its producer 'nz.v.V3.income.standin' "
+            "may write it",
+        ),
+    ],
+)
+def test_composition_refuses_a_scenario_calibration_the_declaration_never_sees(
+    nz_toy, mutant, reason
+):
+    binding, proof = _nz_proof(nz_toy)
+    income, universe = (name.split(".", 1)[1] for name in proof["columns"])
+    spec = copy.deepcopy(nz_toy.spec)
+    (scenario,) = (
+        row for row in spec["resources"]["scenarios"]["scenarios"] if row["id"] == "V3"
+    )
+    rows = {row["id"]: row for row in scenario["nodes"]}
+    mutant(rows, scenario["nodes"], binding, (income, universe))
+    # Scenario rows sit outside the declared graph, so the declaration still
+    # proves the measurement and only the extension pass can refuse.
+    assert binding in measurement_proofs(spec)[0]
+    with pytest.raises(ValueError) as refused:
+        compose_transport_graph(spec, nz_toy.config)
+    message = str(refused.value)
+    assert message.startswith(
+        f"Measurement {binding!r}: the composed graph proves no producer for "
+        "extension calibration node 'nz.v.V3.calibrate'; "
+    )
+    assert reason.format(binding=binding, income=income, universe=universe) in message
