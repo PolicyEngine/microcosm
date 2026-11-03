@@ -15,6 +15,7 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
+import microcosm.calibrate.geography_constants as geography_constants
 from microcosm.build import cross_grain
 from microcosm.calibrate import CalibrationHierarchy, TargetRegistry, TargetSpec
 from microcosm.calibrate.artifacts import (
@@ -649,12 +650,17 @@ class UKFullProblemKernel(_TargetKernel):
         # ``local_rowwise.prepare_uk_full_solve`` from the rules in
         # ``target_weights`` and ``national_doctrine`` (microcosm#1124), so an
         # edit there re-keys the problem instead of replaying a stale vector.
+        # ``target_weights`` reads the UK-wide geography codes from
+        # ``geography_constants`` (microcosm#1492).
         return hashlib.sha256(
             canonical_json(
                 {
                     "targets": super().implementation_hash(),
                     "weights": source_hash(
-                        local_rowwise, national_doctrine, target_weights
+                        local_rowwise,
+                        national_doctrine,
+                        target_weights,
+                        geography_constants,
                     ),
                 }
             )

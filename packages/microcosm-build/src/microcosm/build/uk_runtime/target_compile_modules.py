@@ -9,10 +9,16 @@ where ``linear_combination`` and the period rules live) nor the HMRC uprating
 appliers, so an edit there could reuse a cached surface computed by the old
 code.
 
-``EXCLUDED_DIRECT_IMPORTS`` names every ``microcosm.build`` module a listed
-module imports but the tuple leaves out, with the reason. A test pins that
-the two together cover every direct import of every listed module, so the
-coverage holds transitively: a new import must be listed or excluded.
+``EXCLUDED_DIRECT_IMPORTS`` names every first-party (``microcosm.*``) module
+a listed module imports but the tuple leaves out, with the reason. A test
+pins that the two together cover every direct import of every listed module,
+so the coverage holds transitively: a new import must be listed or excluded.
+Until microcosm#1492 that test read only ``microcosm.build`` imports, so it
+never saw ``microcosm.calibrate.geography_constants``, the geography labels
+of the target hierarchies, nor the ``microcosm.calibrate`` registry and
+hierarchy classes the compiled surface is built from (with
+``microcosm.calibrate.target``, which the registry imports). The transport
+compile modules already hashed those three.
 """
 
 from __future__ import annotations
@@ -52,6 +58,10 @@ UK_TARGET_COMPILE_MODULE_NAMES: tuple[str, ...] = (
     "microcosm.build.uk_runtime.uc_source_periods",
     "microcosm.build.uk_runtime.tenure_drift",
     "microcosm.build.uk_runtime.uprating_holds",
+    "microcosm.calibrate.geography_constants",
+    "microcosm.calibrate.hierarchy",
+    "microcosm.calibrate.registry",
+    "microcosm.calibrate.target",
 )
 
 EXCLUDED_DIRECT_IMPORTS: Mapping[str, str] = MappingProxyType(
@@ -110,6 +120,23 @@ EXCLUDED_DIRECT_IMPORTS: Mapping[str, str] = MappingProxyType(
         "microcosm.build.stochastic_assignment": (
             "energy_pricing imports the identity-keyed uniforms for the "
             "spine's gas connection walk, which no target value reads"
+        ),
+        "microcosm.frame.bundle": (
+            "the population container: cgt_calibration builds the spine-side "
+            "CGT calibration frame with it, ledger_targets' UKFrameTargetAdapter "
+            "reads and rebuilds the national calibration's population with it, "
+            "and calibrate.target measures a target on one; no target value "
+            "comes from it"
+        ),
+        "microcosm.frame.schema": (
+            "cgt_calibration imports EntitySchema for the spine-side CGT "
+            "calibration frame; the compile uses only uk_cgt_annual_exempt_amount "
+            "and uk_cgt_dated_measure_year"
+        ),
+        "microcosm.frame.weights": (
+            "cgt_calibration imports Weights for the spine-side CGT calibration "
+            "frame; the compile uses only uk_cgt_annual_exempt_amount and "
+            "uk_cgt_dated_measure_year"
         ),
     }
 )

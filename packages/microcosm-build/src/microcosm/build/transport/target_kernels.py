@@ -58,6 +58,7 @@ import microcosm.build.reference_factors as reference_factors_module
 import microcosm.build.reference_intervals as reference_intervals_module
 import microcosm.build.reference_profiles as reference_profiles_module
 import microcosm.calibrate.artifacts as calibrate_artifacts_module
+import microcosm.calibrate.geography_constants as geography_constants_module
 import microcosm.calibrate.hierarchy as hierarchy_module
 import microcosm.calibrate.matrix as matrix_module
 import microcosm.calibrate.monetary_binding as monetary_binding_module
@@ -565,6 +566,10 @@ def _optional_float(value: float) -> float | None:
     return value if math.isfinite(value) else None
 
 
+#: The modules target compilation reads. ``source_hash`` does not follow
+#: imports, so a module a listed one imports is listed too, or excluded with a
+#: reason in ``test_transport_compile_modules``. ``ledger_targets`` labels a
+#: target's geography from ``geography_constants`` (microcosm#1492).
 _COMPILE_MODULES = (
     graph_inputs,
     artifact_types,
@@ -577,6 +582,7 @@ _COMPILE_MODULES = (
     registry_module,
     target_module,
     hierarchy_module,
+    geography_constants_module,
     reference_selection_module,
 )
 _MATRIX_MODULES = (
