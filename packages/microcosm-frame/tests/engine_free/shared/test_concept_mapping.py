@@ -1162,6 +1162,31 @@ class TestConstructionRules:
             with pytest.raises(ValueError, match="computed differently"):
                 _mapping(ordered, **_AXIOM)
 
+    def test_an_entity_holds_persons_in_a_role_or_built_units(self) -> None:
+        role = {"engine_entity": "Child", "group_rule": GroupRule.PERSON_ROLE}
+        mapping = _mapping(
+            [
+                _module_binding("a", **role),
+                _module_binding("b", engine_input="y", **role),
+                _module_binding("c", engine_input="z"),
+            ],
+            **_AXIOM,
+        )
+        assert mapping.person_role_entities() == ("Child",)
+        with pytest.raises(ValueError, match="mix person_role with other group"):
+            _mapping(
+                [
+                    _module_binding("a", **role),
+                    _module_binding(
+                        "b",
+                        engine_input="y",
+                        engine_entity="Child",
+                        group_rule=GroupRule.REFERENCE_MEMBER,
+                    ),
+                ],
+                **_AXIOM,
+            )
+
     def test_entity_correspondence_covers_both_concept_entities(self) -> None:
         with pytest.raises(ValueError, match="entity_correspondence"):
             _mapping([_binding()], entity_correspondence={"person": "person"})

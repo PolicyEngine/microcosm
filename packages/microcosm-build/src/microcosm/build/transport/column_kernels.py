@@ -6,7 +6,11 @@ it moves the node key and authenticates nothing. The kernels never load a
 country package. ``unit_rule`` is the resolved :class:`BenefitUnitRule`
 representation, rather than an unresolved country proposal. ``mapping`` is a
 :class:`ConceptMapping` representation; ``rulespec_paths`` selects its
-bindings and the closure's defaults.
+bindings and the closure's defaults. Each selected path names a module the
+mapping binds or, with a closure, a module the closure lists, since a module
+may default every input it reads. ``concepts.encode@1`` writes the defaults
+of the mapping's ``person_role`` entities on the person table, beside their
+bindings.
 
 The encode and scenario kernels derive no take-up draws: they refuse
 ``take_up_rates``, so the encoder refuses any selected take-up-threshold
@@ -162,19 +166,28 @@ def _paths(context: KernelContext, ref: str) -> tuple[str, ...] | None:
 
 
 def _full_mapping(context: KernelContext, ref: str) -> ConceptMapping:
-    """The whole declared mapping, after checking its selected paths exist."""
+    """The whole declared mapping, after checking its selected paths exist.
+
+    The mapping binds an input in each selected path, or the closure lists
+    the path: a module may default every input it reads and bind none.
+    """
     mapping = ConceptMapping.from_dict(_document(context, ref, "mapping"))
     paths = _paths(context, ref)
     if paths is not None:
-        unknown = set(paths) - {binding.module for binding in mapping.bindings}
+        known = {binding.module for binding in mapping.bindings}
+        if "closure" in context.params:
+            closure = InputClosure.from_dict(_document(context, ref, "closure"))
+            known |= set(closure.modules)
+        unknown = set(paths) - known
         if unknown:
             raise ValueError(f"{ref} has unknown mapping paths {sorted(unknown)}.")
     return mapping
 
 
-def _mapping(context: KernelContext, ref: str) -> ConceptMapping:
-    """The mapping restricted to the selected paths, for person encoding."""
-    mapping = _full_mapping(context, ref)
+def _mapping(
+    context: KernelContext, ref: str, mapping: ConceptMapping
+) -> ConceptMapping:
+    """``mapping`` restricted to the selected paths, for person encoding."""
     paths = _paths(context, ref)
     if paths is None:
         return mapping
@@ -214,20 +227,30 @@ def _defaults(
     ref: str,
     tables: Mapping[str, pd.DataFrame],
     closure: InputClosure | None,
-    engine_entities: Mapping[str, str],
+    engine_entities: Mapping[str, tuple[str, ...]],
 ) -> dict[str, pd.DataFrame]:
+    """``tables`` with the closure's defaults for the selected paths.
+
+    ``engine_entities`` maps each frame entity to the engine entities whose
+    inputs its table holds. Their defaults merge into one set per table, so
+    two defaults that name one input must agree.
+    """
     out = dict(tables)
     if closure is None:
         return out
-    for frame_entity, engine_entity in engine_entities.items():
+    for frame_entity, entities in engine_entities.items():
         defaults: dict[str, bool | int | float] = {}
         for path in _paths(context, ref):
-            for name, value in closure.defaults(path, engine_entity).items():
-                if name in defaults and (
-                    type(defaults[name]) is not type(value) or defaults[name] != value
-                ):
-                    raise ValueError(f"{ref} has conflicting defaults for {name!r}.")
-                defaults[name] = value
+            for engine_entity in entities:
+                for name, value in closure.defaults(path, engine_entity).items():
+                    if name in defaults and (
+                        type(defaults[name]) is not type(value)
+                        or defaults[name] != value
+                    ):
+                        raise ValueError(
+                            f"{ref} has conflicting defaults for {name!r}."
+                        )
+                    defaults[name] = value
         out[frame_entity] = apply_defaults(out[frame_entity], defaults)
     return out
 
@@ -399,17 +422,22 @@ class ConceptsEncodeKernel(_ColumnKernel):
             context, self.ref, required=_ENCODE_REQUIRED, optional=_ENCODE_OPTIONAL
         )
         tables = _whole_tables(context, self.ref, ("person", "household"))
-        mapping = _mapping(context, self.ref)
+        full = _full_mapping(context, self.ref)
+        mapping = _mapping(context, self.ref, full)
         encoded = mapping.encode(
             tables,
             shares=_optional_resource_document(context, self.ref, "shares"),
         )
+        # A person_role entity (Axiom's Child) has one row per person in the
+        # role, so its defaults go on the person table, as its bindings do.
+        # The whole mapping names these entities: a selected module may
+        # default every input of an entity that only other modules bind.
+        entities = {
+            frame: (engine,) for frame, engine in full.entity_correspondence.items()
+        }
+        entities["person"] += full.person_role_entities()
         outputs = _defaults(
-            context,
-            self.ref,
-            encoded.tables,
-            _closure(context, self.ref),
-            mapping.entity_correspondence,
+            context, self.ref, encoded.tables, _closure(context, self.ref), entities
         )
         return KernelResult(
             columns=_columns(context, self.ref, outputs),
@@ -467,7 +495,7 @@ def _group_inputs(context: KernelContext, ref: str):
         state_bindings=() if closure is None else closure.state_bindings(),
         shares=_optional_resource_document(context, ref, "shares"),
     )
-    outputs = _defaults(context, ref, encoded.tables, closure, {rule.entity: entity})
+    outputs = _defaults(context, ref, encoded.tables, closure, {rule.entity: (entity,)})
     return mapping, encoded, outputs
 
 

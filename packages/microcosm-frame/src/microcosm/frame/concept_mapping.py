@@ -1506,6 +1506,7 @@ class ConceptMapping:
             )
         self._check_shares()
         self._check_shared_names()
+        self._check_person_role_entities()
         object.__setattr__(
             self,
             "_by_concept",
@@ -1595,6 +1596,28 @@ class ConceptMapping:
                     f"{self.engine}: {binding.engine_input!r} on {entities} is "
                     f"computed differently in {first.module} and {binding.module}."
                 )
+
+    def _check_person_role_entities(self) -> None:
+        """An engine entity's rows are persons in a role or built units.
+
+        :meth:`encode` writes a ``person_role`` binding on the person table,
+        and :meth:`encode_groups` writes other group bindings on built units,
+        so one entity can't take both.
+        """
+        rules: dict[str, set[GroupRule]] = defaultdict(set)
+        for binding in self.bindings:
+            if binding.group_rule is not None:
+                rules[binding.engine_entity].add(binding.group_rule)
+        mixed = sorted(
+            entity
+            for entity, found in rules.items()
+            if GroupRule.PERSON_ROLE in found and len(found) > 1
+        )
+        if mixed:
+            raise ValueError(
+                f"{self.engine}: {mixed} mix person_role with other group "
+                "rules; an entity's rows are persons in a role or built units."
+            )
 
     def _check_shares(self) -> None:
         groups: dict[tuple[str, str | None], list[InputBinding]] = defaultdict(list)
@@ -1769,6 +1792,22 @@ class ConceptMapping:
         executes on the person table like a binding without a group rule.
         """
         return binding.group_rule in (None, GroupRule.PERSON_ROLE)
+
+    def person_role_entities(self) -> tuple[str, ...]:
+        """The engine entities whose bindings use ``person_role``, sorted.
+
+        Such an entity (Axiom's ``Child``) has one row per person in the
+        role, so :meth:`encode` writes its inputs on the person table.
+        """
+        return tuple(
+            sorted(
+                {
+                    binding.engine_entity
+                    for binding in self.bindings
+                    if binding.group_rule is GroupRule.PERSON_ROLE
+                }
+            )
+        )
 
     def invertible_concepts(self) -> tuple[str, ...]:
         """Concepts :meth:`decode` recovers exactly from the engine inputs.
