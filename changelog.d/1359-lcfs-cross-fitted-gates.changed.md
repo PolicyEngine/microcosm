@@ -14,6 +14,8 @@ The near-universal divisions' zeros are now drawn at their rate too:
 
 The twelve divisions' prior-weighted total falls 1.5%, and the six divisions held at the shared frame-to-donor ratio fall with it.
 
+The prior-weighted full-rate VAT base, the twelve divisions times each household's full-rate share, falls 1.7%. Read it as a ratio. policyengine-uk's survey VAT consumption coverage matches receipts on the cut it is derived on, so re-deriving it on the first cut built with this change should move it by about the same ratio: to about 0.68 from the 0.69 that PolicyEngine/policyengine-uk#2634 derives on `a6299504`, a cut built without it.
+
 The excise inputs keep their national levels, but the multiples of spending change:
 - tobacco duty is about 1.8 times the tobacco spending of the households that carry it, down from 2.2;
 - alcohol duty is 0.44 times alcohol spending, up from 0.40;
