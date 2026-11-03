@@ -940,6 +940,10 @@ def _memoize_immutable_reference_profile_views(monkeypatch):
             }
             if compose._has_resource(spec, compose.CHRONICLE_FEED_RESOURCE):
                 names.add(compose.CHRONICLE_FEED_RESOURCE)
+            # G8-r2c: A's measurement proof reads the graph, so the resolved
+            # view depends on it too.
+            if compose._has_resource(spec, compose.GRAPH_RESOURCE):
+                names.add(compose.GRAPH_RESOURCE)
             documents = {
                 name: compose._raw_transport_resource(spec, name)
                 for name in sorted(names)
