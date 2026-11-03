@@ -236,6 +236,10 @@ _NORMALIZED_STRING_COLUMNS: Mapping[str, tuple[str, ...]] = {
         "ons_family_role",
         "capital_gains_asset_type",
         "company_car_fuel_type",
+        # The vehicle excise duty inputs' fuel and ISO registration date
+        # (microcosm#1095 B3).
+        "car_fuel_type",
+        "car_first_registration_date",
     ),
     "benunit": ("benunit_support_channel", "uc_deduction_combination"),
     "household": (
@@ -1381,6 +1385,19 @@ def _nts_vehicles(household: pd.DataFrame) -> pd.DataFrame:
                     "VehBusMile": business,
                     "VehPriMile": private,
                     "SurveyYear": int(household_row["SurveyYear"]),
+                    # The vehicle excise duty inputs' Table A-M band (A for a
+                    # zero-emission car), engine size and age band.
+                    "VehCO2Tax2008_B01ID": (
+                        1
+                        if zero_emission
+                        else (
+                            -8
+                            if car == 0 and index % 7 == 0
+                            else 1 + (index + car) % 13
+                        )
+                    ),
+                    "EngineCap": 0 if zero_emission else 1200 + 100 * (index % 10),
+                    "VehAge_B01ID": 1 + (index + 2 * car) % 14,
                 }
             )
     return pd.DataFrame(rows)
@@ -2045,10 +2062,11 @@ def _fixture_stages(
 
 
 def _normalization_markdown() -> str:
+    count = sum(len(columns) for columns in _NORMALIZED_STRING_COLUMNS.values())
     lines = [
         "# UK spine parity string normalization",
         "",
-        "The unchanged legacy transforms retain these 26 textual table columns as",
+        f"The unchanged legacy transforms retain these {count} textual table columns as",
         "pandas `object`. The frozen graph dtype token `string` is specified by",
         'interface-freeze amendment 10 as pandas `StringDtype(storage="python")`.',
         "Before computing the legacy oracle's `uk_frame_content_identity` (live,",
@@ -2104,8 +2122,8 @@ def _normalize_legacy_strings(frame: Frame) -> Frame:
         for entity, columns in _NORMALIZED_STRING_COLUMNS.items()
         for column in columns
     ]
-    if observed != expected_order or len(observed) != 27:
-        raise RuntimeError("The legacy normalization audit is not exactly 27 cells.")
+    if observed != expected_order or len(observed) != 29:
+        raise RuntimeError("The legacy normalization audit is not exactly 29 cells.")
     return Frame(
         tables,
         frame.schema,

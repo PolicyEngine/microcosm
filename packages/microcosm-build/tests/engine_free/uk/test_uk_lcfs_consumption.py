@@ -1664,6 +1664,10 @@ def _synthetic_lcfs_stage(household_columns=None, *, excise=True, gambling=True)
             "VehAnMileage": 6000.0,
             "VehComMile": 1000.0,
             "VehPriMile": 4000.0,
+            # The vehicle excise duty inputs' Table A-M band, engine size and age.
+            "VehCO2Tax2008_B01ID": np.where(position < 10 + 2 * fifth, 1, 4),
+            "EngineCap": 1400.0,
+            "VehAge_B01ID": 1 + position % 14,
         }
     )
     donor_person, donor_household = _synthetic_lcfs_donor()
@@ -1698,6 +1702,7 @@ def test_stage_transform_prices_bus_fares_from_journeys() -> None:
     from microcosm.build.uk_runtime.lcfs_consumption import (
         UK_LCFS_CONSUMPTION_ENGINE_PREDICTORS,
         UK_LCFS_CONSUMPTION_OUTPUT_COLUMNS,
+        UK_LCFS_CONSUMPTION_PERSON_OUTPUT_COLUMNS,
     )
 
     synthetic = _synthetic_lcfs_stage()
@@ -1712,6 +1717,10 @@ def test_stage_transform_prices_bus_fares_from_journeys() -> None:
 
     out = result.table("household")
     assert set(UK_LCFS_CONSUMPTION_OUTPUT_COLUMNS) <= set(out.columns)
+    # The vehicle excise duty inputs are the person's (microcosm#1095 B3).
+    assert set(UK_LCFS_CONSUMPTION_PERSON_OUTPUT_COLUMNS) <= set(
+        result.table("person").columns
+    )
     # The 20 chain targets (the heating fuels after the spend targets,
     # pe-uk#2572) and the five excise shares (microcosm#1359), the road-fuel
     # redraw's total and petrol share, the prepayment-meter flag
@@ -2664,6 +2673,9 @@ def test_nts_cars_keeps_the_declared_cars_with_their_households() -> None:
             "VehAnMileage": [5000, 8000, 3000, 4000, 6000],
             "VehComMile": [1000, 0, 0, 0, 0],
             "VehPriMile": [3500, 2000, 3000, 4000, 6000],
+            "VehCO2Tax2008_B01ID": [3, 1, 2, 1, 1],
+            "EngineCap": [1400, 2000, 125, 1600, 0],
+            "VehAge_B01ID": [6, 2, 12, 9, 3],
         }
     )
     household = pd.DataFrame(

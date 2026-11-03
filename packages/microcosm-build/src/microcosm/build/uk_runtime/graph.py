@@ -1056,6 +1056,13 @@ _STAGE_CELLS: Mapping[str, tuple[_Cell, ...]] = {
                 "horse_and_dog_pool_betting_net_losses",
             ),
         ),
+        # The vehicle excise duty inputs of the households' own cars
+        # (microcosm#1095 B3); the registration date is an ISO date.
+        _Cell("person", "car_fuel_type", "string"),
+        _Cell("person", "car_co2_emissions", "float64"),
+        _Cell("person", "car_engine_size", "float64"),
+        _Cell("person", "car_first_registration_date", "string"),
+        _Cell("person", "car_is_ved_exempt", "bool"),
     ),
     "etb_vat": (_Cell("household", "full_rate_vat_expenditure_rate", "float64"),),
     "etb_services": (

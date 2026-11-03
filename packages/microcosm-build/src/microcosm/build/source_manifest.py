@@ -48,6 +48,7 @@ ALLOWED_SOURCE_OPERATION_KINDS = frozenset(
         "assign_binary_with_anchored_residual",
         "assign_badr_qualifying_gains",
         "assign_bus_use_incidence",
+        "assign_car_attributes_from_nts",
         "assign_bus_pass_eligibility",
         "assign_clipped_normal",
         "assign_component_take_up_residual",

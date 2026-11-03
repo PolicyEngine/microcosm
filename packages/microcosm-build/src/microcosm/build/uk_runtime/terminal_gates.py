@@ -350,6 +350,13 @@ UK_ALLOWED_EXTRA_EXPORT_COLUMNS: tuple[str, ...] = (
     "person.company_car_electric_range",
     "person.company_car_capital_contributions",
     "person.company_car_private_fuel_provided",
+    # policyengine-uk's vehicle excise duty inputs for households' own cars,
+    # which the lcfs_consumption stage's NTS car step writes (microcosm#1095 B3).
+    "person.car_fuel_type",
+    "person.car_co2_emissions",
+    "person.car_engine_size",
+    "person.car_first_registration_date",
+    "person.car_is_ved_exempt",
     "person.individual_savings_account_interest_income",
     "person.local_bus_single_fare_share",
     "person.local_bus_trips",

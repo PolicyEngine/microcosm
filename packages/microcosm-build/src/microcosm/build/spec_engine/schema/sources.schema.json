@@ -12776,6 +12776,45 @@
      "additionalProperties": false,
      "required": [
       "kind",
+      "nts_cars",
+      "reference_date",
+      "oldest_age_years",
+      "default_engine_size_cc",
+      "seed",
+      "salt"
+     ],
+     "properties": {
+      "kind": {
+       "const": "assign_car_attributes_from_nts"
+      },
+      "nts_cars": {
+       "$ref": "#/$defs/nts_cars"
+      },
+      "reference_date": {
+       "type": "string",
+       "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+      },
+      "oldest_age_years": {
+       "type": "number",
+       "exclusiveMinimum": 18
+      },
+      "default_engine_size_cc": {
+       "type": "number",
+       "exclusiveMinimum": 0
+      },
+      "seed": {
+       "type": "integer"
+      },
+      "salt": {
+       "type": "string"
+      }
+     }
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "required": [
+      "kind",
       "columns",
       "resource",
       "concept",

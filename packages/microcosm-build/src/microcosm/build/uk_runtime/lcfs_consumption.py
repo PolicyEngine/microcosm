@@ -82,6 +82,14 @@ from microcosm.build.uk_runtime.national_frame import (
     uk_time_period,
     validate_uk_national_frame,
 )
+from microcosm.build.uk_runtime.nts_car_attributes import (
+    ASSIGN_CAR_ATTRIBUTES_KIND,
+    UK_CAR_INPUT_COLUMNS,
+    UK_NTS_CAR_ATTRIBUTE_COLUMNS,
+    CarAttributes,
+    assign_car_attributes,
+    car_attributes_operation,
+)
 from microcosm.build.uk_runtime.receipt_counts import (
     extreme_count,
     floored_share,
@@ -650,6 +658,8 @@ UK_NTS_VEHICLE_COLUMNS = (
     "vehanmileage",
     "vehcommile",
     "vehprimile",
+    # The vehicle excise duty inputs' CO2 bands, engine size and age.
+    *UK_NTS_CAR_ATTRIBUTE_COLUMNS,
 )
 UK_NTS_HOUSEHOLD_COLUMNS = ("householdid", "w3", "hhincqisengts_b01id")
 #: How the litres audit benchmarks each fuel: HMRC's all-road-user litres times
@@ -863,7 +873,13 @@ UK_LCFS_CONSUMPTION_OUTPUT_COLUMNS = (
     UK_LCFS_PREPAYMENT_METER_COLUMN,
     *UK_LCFS_EXCISE_DECLARED_OUTPUTS,
 )
-UK_LCFS_CONSUMPTION_NONNEGATIVE_OUTPUT_COLUMNS = UK_LCFS_CONSUMPTION_OUTPUT_COLUMNS
+#: The person inputs the vehicle excise duty step writes (microcosm#1095 B3).
+UK_LCFS_CONSUMPTION_PERSON_OUTPUT_COLUMNS = UK_CAR_INPUT_COLUMNS
+UK_LCFS_CONSUMPTION_NONNEGATIVE_OUTPUT_COLUMNS = (
+    *UK_LCFS_CONSUMPTION_OUTPUT_COLUMNS,
+    "car_co2_emissions",
+    "car_engine_size",
+)
 UK_LCFS_CONSUMPTION_FIT_NAME = "uk_lcfs_2024_25_consumption"
 UK_LCFS_CONSUMPTION_STAGE_NAME = "lcfs_consumption"
 
@@ -890,6 +906,7 @@ class UKLCFSConsumptionResult:
     excise_shares: Mapping[str, Any] | None = None
     gambling_participation: Mapping[str, Any] | None = None
     excise_quantities: Mapping[str, Any] | None = None
+    car_attributes: Mapping[str, Any] | None = None
 
     def evidence(self) -> dict[str, object]:
         evidence: dict[str, object] = {
@@ -930,6 +947,8 @@ class UKLCFSConsumptionResult:
             )
         if self.excise_quantities is not None:
             evidence[UK_LCFS_EXCISE_QUANTITIES_RECEIPT] = dict(self.excise_quantities)
+        if self.car_attributes is not None:
+            evidence[ASSIGN_CAR_ATTRIBUTES_KIND] = dict(self.car_attributes)
         return evidence
 
 
@@ -1047,6 +1066,14 @@ class UKLCFSConsumptionStageTransform:
             rate=ice_share,
             seed=_operation_seed(self.stage, "assign_binary_from_rate"),
             zero_emission_share=None if gradient is None else gradient.share,
+        )
+        car_attributes = lcfs_car_attributes(
+            self.stage,
+            frame=frame,
+            gradient=gradient,
+            has_fuel=recipient["has_fuel_consumption"].to_numpy(dtype=bool),
+            weights=weights,
+            cars=cars,
         )
         # The receipts' floors count source households, not the copies the
         # frame stacks of one (microcosm#1306 review).
@@ -1210,8 +1237,12 @@ class UKLCFSConsumptionStageTransform:
                 quantities.columns, key=UK_LCFS_EXCISE_DECLARED_OUTPUTS.index
             ):
                 household[column] = quantities[column].to_numpy(dtype=float)
+        person = frame.table("person").copy()
+        if car_attributes is not None:
+            for column in UK_LCFS_CONSUMPTION_PERSON_OUTPUT_COLUMNS:
+                person[column] = car_attributes.person[column].to_numpy()
         result = uk_national_frame(
-            person=frame.table("person").copy(),
+            person=person,
             benunit=frame.table("benunit").copy(),
             household=household,
             time_period=uk_time_period(frame),
@@ -1251,12 +1282,16 @@ class UKLCFSConsumptionStageTransform:
             excise_shares=excise_shares,
             gambling_participation=None if gambling is None else gambling.receipt,
             excise_quantities=excise_quantities,
+            car_attributes=None if car_attributes is None else car_attributes.receipt,
         )
         return result
 
     @staticmethod
     def output_columns() -> tuple[str, ...]:
-        return UK_LCFS_CONSUMPTION_OUTPUT_COLUMNS
+        return (
+            *UK_LCFS_CONSUMPTION_OUTPUT_COLUMNS,
+            *UK_LCFS_CONSUMPTION_PERSON_OUTPUT_COLUMNS,
+        )
 
     def checkpoint_metadata(self) -> dict[str, object]:
         if self.last_result is None:
@@ -4187,12 +4222,16 @@ def declares_nts_cars(stage: SourceStageSpec) -> bool:
     for operation in stage.operations:
         parameters = operation.parameters
         if (
-            operation.kind == "assign_binary_from_rate"
-            and parameters.get("target") == "has_fuel_consumption"
-            and parameters.get("rate_rule") == UK_LCFS_ICE_SHARE_BY_INCOME_RULE
-        ) or (
-            operation.kind == LEVEL_ROAD_FUEL_KIND
-            and parameters.get("mix_rule") is not None
+            (
+                operation.kind == "assign_binary_from_rate"
+                and parameters.get("target") == "has_fuel_consumption"
+                and parameters.get("rate_rule") == UK_LCFS_ICE_SHARE_BY_INCOME_RULE
+            )
+            or (
+                operation.kind == LEVEL_ROAD_FUEL_KIND
+                and parameters.get("mix_rule") is not None
+            )
+            or operation.kind == ASSIGN_CAR_ATTRIBUTES_KIND
         ):
             return True
     return False
@@ -5167,6 +5206,7 @@ class ZeroEmissionGradient:
 
     share: np.ndarray
     receipt: Mapping[str, Any]
+    fifths: np.ndarray | None = None
 
 
 def lcfs_zero_emission_gradient(
@@ -5235,6 +5275,45 @@ def lcfs_zero_emission_gradient(
             "nts": risks_receipt,
             **share_receipt,
         },
+        fifths=np.asarray(fifths),
+    )
+
+
+def lcfs_car_attributes(
+    stage: SourceStageSpec,
+    *,
+    frame: Frame,
+    gradient: ZeroEmissionGradient | None,
+    has_fuel: Sequence[bool],
+    weights: Sequence[float],
+    cars: pd.DataFrame | None,
+) -> CarAttributes | None:
+    """Apply the declared ``assign_car_attributes_from_nts`` step (none if undeclared).
+
+    It reads the fuel flag's income fifths and per-car zero-emission shares,
+    so it needs the flag's income gradient (microcosm#1095 B3, VED).
+    """
+
+    parameters = car_attributes_operation(stage)
+    if parameters is None:
+        return None
+    _nts_cars_declaration(parameters, operation=ASSIGN_CAR_ATTRIBUTES_KIND)
+    if gradient is None or gradient.fifths is None or cars is None:
+        raise ValueError(
+            f"{ASSIGN_CAR_ATTRIBUTES_KIND} reads the fuel flag's "
+            f"{UK_LCFS_ICE_SHARE_BY_INCOME_RULE} fifths and the NTS cars."
+        )
+    household = frame.table("household")
+    return assign_car_attributes(
+        person=frame.table("person"),
+        household_ids=household["household_id"].to_numpy(),
+        vehicles=vehicle_count(household["num_vehicles"]).to_numpy(),
+        weights=weights,
+        has_fuel=np.asarray(has_fuel, dtype=bool),
+        fifths=gradient.fifths,
+        zero_emission_share=gradient.share,
+        cars=cars,
+        parameters=parameters,
     )
 
 

@@ -407,6 +407,7 @@ class TestDeclaredOutputsAreWrittenColumns:
         from microcosm.build.uk_runtime.lcfs_consumption import (
             UK_LCFS_CONSUMPTION_NONNEGATIVE_OUTPUT_COLUMNS,
             UK_LCFS_CONSUMPTION_OUTPUT_COLUMNS,
+            UK_LCFS_CONSUMPTION_PERSON_OUTPUT_COLUMNS,
         )
         from microcosm.build.uk_runtime.regional_uprating import (
             UK_REGIONAL_PROPERTY_REWRITES,
@@ -476,7 +477,10 @@ class TestDeclaredOutputsAreWrittenColumns:
             stages["regional_property_uprating"].rewrites
             == UK_REGIONAL_PROPERTY_REWRITES
         )
-        assert stages["lcfs_consumption"].outputs == UK_LCFS_CONSUMPTION_OUTPUT_COLUMNS
+        assert stages["lcfs_consumption"].outputs == (
+            *UK_LCFS_CONSUMPTION_OUTPUT_COLUMNS,
+            *UK_LCFS_CONSUMPTION_PERSON_OUTPUT_COLUMNS,
+        )
         assert (
             stages["lcfs_consumption"].nonnegative_outputs
             == UK_LCFS_CONSUMPTION_NONNEGATIVE_OUTPUT_COLUMNS
@@ -695,6 +699,7 @@ class TestE3ManifestLockstep:
             "recompose_from_remainder",
             "top_up_gambling_participation",
             "level_excise_quantities",
+            "assign_car_attributes_from_nts",
             "record_mass_conservation_receipt",
         ]
         assert [op.kind for op in stages["etb_vat"].operations] == [
@@ -1085,6 +1090,8 @@ class TestE3ManifestLockstep:
             "impute_prepayment_meter": 0,
             # The gambling participation top-up (microcosm#1359).
             "top_up_gambling_participation": 0,
+            # The vehicle excise duty inputs' car draws (microcosm#1095 B3).
+            "assign_car_attributes_from_nts": 0,
         }
         assert stages["etb_vat"].operations[3].parameters["seed"] == 0
         assert stages["etb_vat"].operations[3].parameters["salt"] == "etb_vat"
