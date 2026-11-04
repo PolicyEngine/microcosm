@@ -13,6 +13,91 @@ any other feed, and `test_us_chronicle_feed.py` fails if the parity resources,
 the generator and the pin disagree, or if the scope file changes without a
 new pin.
 
+## The 2026-11-03 re-pin: Federal Student Aid loan portfolio tables (microcosm#1074)
+
+microcosm#1357 binds Federal Student Aid's loan portfolio tables as
+calibration targets in builds that carry the imputed federal student loan
+balances (`--scf-education-debt`). Its compile reads them from the pinned
+feed, so the feed has to carry them. PolicyEngine/chronicle#347 added the
+six `packages/ed_fsa` packages to Chronicle main. The pin moved from
+`a9026cc` to `41b2fb2b864a28c0eda03322b77a97ef147dfa3c` (Chronicle branch
+`feed/us-a9026cc-ed-fsa-1103`, tag `microcosm-us-feed-1074-v1`), which is
+`a9026cc` plus a cherry-pick of chronicle#347's commit `4448a7c96` and
+nothing else, not Chronicle main. That commit also adds a Census ACS S1501
+state package and changes `chronicle/source_package.py` and
+`chronicle/sources/rows.py`; the scope leaves the ACS package out.
+
+The scope adds 66 pairs, one per (record set, period) the six packages emit:
+each record set has one quarter-end month, 2025-12, 2026-03 or 2026-06. All
+66 are built at 2026, the only year the packages' manifests carry a file
+for, so 2026 is the earliest emitting year for the 2025-12 pairs and the own
+year for the rest. The scope has 706 pairs and 72 package runs; the six
+packages join the 2026 run.
+
+| Package | Pairs | Rows |
+|---|---:|---:|
+| `packages/ed_fsa/dl_portfolio_by_repayment_plan_fy2026_q3` | 36 | 227 |
+| `packages/ed_fsa/portfolio_by_age_fy2026_q2` | 4 | 24 |
+| `packages/ed_fsa/portfolio_by_debt_size_fy2026_q2` | 4 | 36 |
+| `packages/ed_fsa/portfolio_by_loan_type_fy2026_q3` | 12 | 42 |
+| `packages/ed_fsa/portfolio_by_location_fy2026_q2` | 1 | 108 |
+| `packages/ed_fsa/portfolio_summary_fy2026_q3` | 9 | 24 |
+
+Built at `41b2fb2b` with `tools/build_us_chronicle_feed.py --skip-artifact`
+(40,642 rows, `facts_sha256` `1d45a89c…`), and compared with the `a9026cc`
+feed by `experiments/us-feed-agi-age-labels/compare_feeds.py` (report in
+`experiments/us-feed-ed-fsa/compare.json`; the added rows, with their
+source, in `added_rows.json`):
+
+- the feed keeps all 40,181 `a9026cc` rows: the same keys, and no field of
+  any of them changes. Dropping the 66 new pairs' rows leaves #1343's feed
+  byte for byte and in order (`4d89e4a4…`);
+- it adds 461 rows, every one from source `ed_fsa`, in the 66 new pairs;
+- compiled at 2024 as the release does (packaged CD crosswalk, age targets,
+  Medicaid substitutions), both feeds give the same 33,250 targets in the
+  same order, with no changed field, the same registry version
+  (`b8d571e91c22`) and the same `national_state` surface (6,102 targets,
+  `3aa2a0830e7d`). No `ed_fsa` fact compiles by default: microcosm#1357's
+  `student_loan_targets=True` binds 136 of the 461, and nothing else binds
+  any;
+- the parity resources change in the feed name and digest, and the feed
+  carries 11 new families (`ed_fsa.*`, 93 feed families). The generator
+  declares them `off_by_default` reviewed exclusions under one fence for the
+  `ed_fsa` namespace, so the counts are 32 compiled and 64 reviewed
+  exclusions. The feed's label variants are unchanged (only `age` =
+  `age_20` and `age_21`).
+
+**The schema stamp stays v3.** Every row, old and new, carries
+`chronicle.consumer_fact.v3`: the exporter at this commit stamps every row
+with one constant (`CONSUMER_FACT_SCHEMA_VERSION`,
+`chronicle/consumer_contract.py:35`, the last entry of
+`CONSUMER_FACT_ROW_CONTRACTS`, `chronicle/epoch.py:171-176`), and it ends at
+v3. The session that cut the commit found that chronicle#347's export at its
+merge commit `acbedb5` stamps the same rows v4, that v4 entered Chronicle
+main in `0ec21e5`, which would restamp every feed row v4, and that apart from
+the stamp all 461 `ed_fsa` rows are that export byte for byte (Chronicle
+branch `hub-notes/ed-fsa-feed-cut-1103`, `notes/ed-fsa-feed-cut-1103/NOTES.md`).
+The 244 rows of microcosm#1357's test fixture match this feed's rows the
+same way.
+So the pin keeps `consumer_fact_schema_versions: ["chronicle.consumer_fact.v3"]`,
+and `consumer_fact_schema_sha256` stays `bdb51e2a…`: Chronicle's
+`policyengine_chronicle/schemas/consumer_fact.v3.schema.json`, the file
+whose bytes that field hashes (`policyengine_chronicle/schema.py:59-70`), is
+identical at `a9026cc` and `41b2fb2b`. The US loader carries a row's stamp
+without gating on it (`ledger_artifact.py`, `_load_fact_rows`).
+
+The B4923C anchor test follows the committed re-pin reports to the pin
+(`test_us_esi_premiums.py`). A report may now add rows when it names a
+listing of the keys it adds, the one source they all come from and the
+record-set namespace they all sit in (`ed_fsa.` here); added rows from any
+other source or in any other namespace, or rows added without a listing,
+still fail it. The test declares the namespace rather than reading it from
+the source, because a source's record sets need not sit in a namespace of
+its name.
+
+The feed's home on the build machine is
+`~/PolicyEngine/_buildh-runtime/inputs/consumer_facts_us_41b2fb2.jsonl`.
+
 ## The 2026-10-27 re-pin: one label per dimension value (microcosm#1343)
 
 The `cf9ece2` feed labelled three dimension values two ways, so compiled
@@ -182,14 +267,17 @@ the first labelled US export.
 
 | Field | Value |
 |---|---|
-| Chronicle commit | `a9026cc8f80307af0c4527fdb3779fab32ffad9f` (`cf9ece2` plus three label-only commits; branch `feed/us-cf9ece2-agi-age-labels`, tag `microcosm-us-feed-1343-v1`) |
-| Feed file | `consumer_facts_us_a9026cc.jsonl`, 40,181 rows, 169,056,411 bytes |
-| `facts_sha256` | `4d89e4a498ffd73a407821d9ce2c45837072901e0a29acf3206160d1fafd7c14` |
-| Consumer fact schema | `chronicle.consumer_fact.v3`, schema file sha256 `bdb51e2a…` (unchanged from the UK pin) |
-| Scope | 640 (record set, period) pairs; 66 package runs over build years 2020 to 2029 |
+| Chronicle commit | `41b2fb2b864a28c0eda03322b77a97ef147dfa3c` (`a9026cc` plus chronicle#347's `4448a7c96`; branch `feed/us-a9026cc-ed-fsa-1103`, tag `microcosm-us-feed-1074-v1`) |
+| Feed file | `consumer_facts_us_41b2fb2.jsonl`, 40,642 rows, 171,661,396 bytes |
+| `facts_sha256` | `1d45a89c28177a95371b4cc4068d3657c7bf12bd8edad7c82fe25bf453f9ea07` |
+| Consumer fact schema | `chronicle.consumer_fact.v3`, schema file sha256 `bdb51e2a…` (the same file at `a9026cc` and `41b2fb2b`) |
+| Scope | 706 (record set, period) pairs; 72 package runs over build years 2020 to 2029 |
 | Consumer artifact | none: refused at this commit, see below |
 
-The previous pins were `cf9ece2e7be11158c21fdc4dd38b44d92db552f6`
+The previous pins were `a9026cc8f80307af0c4527fdb3779fab32ffad9f`
+(`consumer_facts_us_a9026cc.jsonl`, 40,181 rows, 169,056,411 bytes,
+`facts_sha256` `4d89e4a4…`, 640 pairs, 66 runs; tag
+`microcosm-us-feed-1343-v1`), `cf9ece2e7be11158c21fdc4dd38b44d92db552f6`
 (`consumer_facts_us_cf9ece2.jsonl`, 40,181 rows, 169,055,585 bytes,
 `facts_sha256` `054e5684…`, the same 640 pairs and 66 runs; tag
 `microcosm-us-feed-454-v1`), `51aa40fd28e2ca81937752515e773d123fecfb71`
@@ -201,7 +289,7 @@ The previous pins were `cf9ece2e7be11158c21fdc4dd38b44d92db552f6`
 this document describes the 2026-09-18 rebuild unless it says otherwise.
 
 The feed is too large for the repository. Its home on the build machine is
-`~/PolicyEngine/_buildh-runtime/inputs/consumer_facts_us_a9026cc.jsonl`,
+`~/PolicyEngine/_buildh-runtime/inputs/consumer_facts_us_41b2fb2.jsonl`,
 beside the previous pins; `tools/build_us_target_parity_manifest.py` reads it
 there by default. A holder of the Chronicle commit regenerates it byte for
 byte with the commands below.

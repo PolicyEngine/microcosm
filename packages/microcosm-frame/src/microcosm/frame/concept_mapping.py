@@ -13,7 +13,10 @@ columns, and :meth:`ConceptMapping.decode` recovers every concept whose
 bindings are invertible. Bindings on engine group entities (tax units,
 benefit units, SPM units, families) need unit membership that a concept frame
 does not carry; they declare a :class:`GroupRule`, and :meth:`encode`
-reports them as deferred. :meth:`ConceptMapping.encode_groups` executes them
+reports them as deferred. The exception is ``person_role``: each row of such
+an entity (Axiom's ``Child``) is one person, so :meth:`encode` writes the
+binding on the person table, one value per person.
+:meth:`ConceptMapping.encode_groups` executes the other rules
 once a unit-construction step has built the units from the relationship
 pointers (:mod:`microcosm.frame.unit_construction` builds benefit units) and
 hands their :class:`GroupMembership` over. It also executes declared state
@@ -130,7 +133,9 @@ class GroupRule(StrEnum):
     """How a binding on an engine group entity collapses member values.
 
     :meth:`ConceptMapping.encode_groups` applies every rule except
-    :attr:`PERSON_ROLE`, given the units' :class:`GroupMembership`.
+    :attr:`PERSON_ROLE`, given the units' :class:`GroupMembership`;
+    :meth:`ConceptMapping.encode` applies :attr:`PERSON_ROLE`, which needs no
+    units.
     """
 
     #: Sum the members' values.
@@ -1115,7 +1120,8 @@ class EncodedInputs:
         deferred: Bindings on engine group entities, which need engine unit
             membership and were not executed here; group encoding
             (:meth:`ConceptMapping.encode_groups`) executes them on built
-            units.
+            units. ``person_role`` bindings need no units: encoding executes
+            them and never defers them.
     """
 
     tables: Mapping[str, pd.DataFrame]
@@ -1415,7 +1421,8 @@ class EncodedGroupInputs:
             aligned to that membership's unit table, with the unit id column
             plus the engine inputs.
         deferred: Group bindings not executed: their engine entity has no
-            membership here, or they take the per-person ``person_role`` rule.
+            membership here. Never a ``person_role`` binding, which
+            :meth:`ConceptMapping.encode` executes.
     """
 
     tables: Mapping[str, pd.DataFrame]
@@ -1499,6 +1506,7 @@ class ConceptMapping:
             )
         self._check_shares()
         self._check_shared_names()
+        self._check_person_role_entities()
         object.__setattr__(
             self,
             "_by_concept",
@@ -1550,26 +1558,66 @@ class ConceptMapping:
             _check_group_rule(self.engine, binding)
 
     def _check_shared_names(self) -> None:
-        """One encoded column per input name: every module computes it alike.
+        """One encoded column per input name: every binding computes it alike.
 
         Module-scoped engines can read the same input name in several
-        modules. An encoded frame holds one column per name and entity, so
-        every binding of that name must compute it the same way.
+        modules. An encoded frame holds one column per name and table, so
+        every binding that writes the column must compute it the same way.
+        An executable binding writes its concept entity's table, one value
+        per row, so a ``person_role`` binding shares the person table with
+        the engine's person entity and with every other ``person_role``
+        entity. A group binding writes its engine entity's units.
         """
-        seen: dict[tuple[str, str], InputBinding] = {}
+        seen: dict[tuple[str, bool, str], InputBinding] = {}
         for binding in self.bindings:
-            key = (binding.engine_input, binding.engine_entity)
+            executable = self.is_executable(binding)
+            key = (
+                binding.engine_input,
+                executable,
+                binding.concept_entity if executable else binding.engine_entity,
+            )
             first = seen.setdefault(key, binding)
-            if (first.concepts, first.transform, first.group_rule) != (
+            # Executable bindings all give each row its own value, so the
+            # rule is part of the computation only for group bindings.
+            if (
+                first.concepts,
+                first.transform,
+                None if executable else first.group_rule,
+            ) != (
                 binding.concepts,
                 binding.transform,
-                binding.group_rule,
+                None if executable else binding.group_rule,
             ):
-                raise ValueError(
-                    f"{self.engine}: {binding.engine_input!r} on "
-                    f"{binding.engine_entity!r} is computed differently in "
-                    f"{first.module} and {binding.module}."
+                entities = " and ".join(
+                    repr(entity)
+                    for entity in sorted({first.engine_entity, binding.engine_entity})
                 )
+                raise ValueError(
+                    f"{self.engine}: {binding.engine_input!r} on {entities} is "
+                    f"computed differently in {first.module} and {binding.module}."
+                )
+
+    def _check_person_role_entities(self) -> None:
+        """An engine entity's rows are persons in a role or built units.
+
+        :meth:`encode` writes a ``person_role`` binding on the person table,
+        and :meth:`encode_groups` writes other group bindings on built units,
+        so one entity can't take both.
+        """
+        rules: dict[str, set[GroupRule]] = defaultdict(set)
+        for binding in self.bindings:
+            if binding.group_rule is not None:
+                rules[binding.engine_entity].add(binding.group_rule)
+        mixed = sorted(
+            entity
+            for entity, found in rules.items()
+            if GroupRule.PERSON_ROLE in found and len(found) > 1
+        )
+        if mixed:
+            raise ValueError(
+                f"{self.engine}: {mixed} mix person_role with other group "
+                "rules; an entity's rows are persons in a role or built units."
+            )
 
     def _check_shares(self) -> None:
         groups: dict[tuple[str, str | None], list[InputBinding]] = defaultdict(list)
@@ -1738,8 +1786,28 @@ class ConceptMapping:
         return tuple(out.values())
 
     def is_executable(self, binding: InputBinding) -> bool:
-        """Whether :meth:`encode` computes the binding (it is not deferred)."""
-        return binding.group_rule is None
+        """Whether :meth:`encode` computes the binding (it is not deferred).
+
+        A ``person_role`` binding takes each person's own value, so it
+        executes on the person table like a binding without a group rule.
+        """
+        return binding.group_rule in (None, GroupRule.PERSON_ROLE)
+
+    def person_role_entities(self) -> tuple[str, ...]:
+        """The engine entities whose bindings use ``person_role``, sorted.
+
+        Such an entity (Axiom's ``Child``) has one row per person in the
+        role, so :meth:`encode` writes its inputs on the person table.
+        """
+        return tuple(
+            sorted(
+                {
+                    binding.engine_entity
+                    for binding in self.bindings
+                    if binding.group_rule is GroupRule.PERSON_ROLE
+                }
+            )
+        )
 
     def invertible_concepts(self) -> tuple[str, ...]:
         """Concepts :meth:`decode` recovers exactly from the engine inputs.
@@ -1799,9 +1867,11 @@ class ConceptMapping:
     ) -> EncodedInputs:
         """Compute the engine inputs a concept frame supplies.
 
-        Every executable binding whose concepts are all present in ``tables``
-        is computed. Bindings on engine group entities are returned as
-        deferred (:meth:`encode_groups` executes them on built units). Share
+        It computes every executable binding whose concepts are all present
+        in ``tables``, ``person_role`` bindings included: each writes one
+        value per person on the person table. It returns other bindings on
+        engine group entities as deferred (:meth:`encode_groups` executes
+        them on built units). Share
         parameters and take-up rates are needed only for the
         bindings that use them. A take-up rate of ``None`` marks a program
         the caller leaves unseeded: its flag is not written, so the engine
@@ -1870,8 +1940,9 @@ class ConceptMapping:
           other units, or shared per adult when ``knobs`` says so; either
           way each household's units sum back to its amount.
 
-        ``person_role`` bindings, and bindings on an engine entity with no
-        membership, are returned as deferred. Each state binding is executed
+        It skips ``person_role`` bindings, which :meth:`encode` executes,
+        and returns bindings on an engine entity with no membership as
+        deferred. Each state binding is executed
         the same way from its model-state columns. ``knobs`` then zero or
         scale named inputs.
 
@@ -1943,10 +2014,10 @@ class ConceptMapping:
             produced[name].add(frame_entity)
 
         for binding in self.bindings:
-            if binding.group_rule is None or not keep(binding.module):
+            if self.is_executable(binding) or not keep(binding.module):
                 continue
             group = units.get(binding.engine_entity)
-            if group is None or binding.group_rule is GroupRule.PERSON_ROLE:
+            if group is None:
                 deferred.append(binding)
                 continue
             if not all(context.has(concept_id) for concept_id in binding.concepts):
