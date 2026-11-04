@@ -481,6 +481,45 @@ def test_an_output_edited_after_a_failed_hand_over_is_refused_by_its_receipt_ent
     assert hub.paths(PRIVATE_REPOSITORY) == []
 
 
+def test_a_build_manifest_the_emitter_did_not_copy_is_still_compared(
+    tmp_path, monkeypatch, capsys
+):
+    """An emitter that queues the bundle without copying the build manifest
+    uploads it from disk later, so the command leaves the manifest as handed
+    over: it keeps the receipt's bytes and the build's ``local_only`` record.
+    The next run with the receipt still compares it, so an edit made after
+    that hand-over is refused before an emitter starts."""
+    hub, copied, receipt = _modal_build(tmp_path, monkeypatch)
+    manifest_bytes = (copied / MANIFEST).read_bytes()
+    queue = FakeHandoverQueue()
+    stager = load_tool("stage_uk_rowwise_candidate")
+    _workstation_emitters(
+        monkeypatch,
+        stager,
+        hub_files=hub.files,
+        queue=queue,
+        never_copy={MANIFEST},
+        deliver=False,
+        answer_receipts=False,
+    )
+    capsys.readouterr()
+    assert stager.main(_staging_argv(copied, receipt, "--wait-seconds", "0")) == 1
+    assert f"{MANIFEST} stays as handed over" in capsys.readouterr().err
+    assert (copied / MANIFEST).read_bytes() == manifest_bytes
+    _edit_the_build_manifest(copied, lambda manifest: _change_a_field(manifest, copied))
+    before = _files(copied)
+    started = _workstation_emitters(
+        monkeypatch, stager, hub_files=hub.files, hub_api=hub, queue=queue
+    )
+
+    message = _refusal(stager, _staging_argv(copied, receipt))
+
+    assert f"out/{MANIFEST} is not the build manifest the Modal stage wrote" in message
+    assert started == []
+    assert _files(copied) == before
+    assert hub.paths(PRIVATE_REPOSITORY) == []
+
+
 def test_hf_hub_offline_on_the_workstation_stages_nothing(
     tmp_path, monkeypatch, capsys
 ):
