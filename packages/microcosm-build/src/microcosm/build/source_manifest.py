@@ -165,6 +165,7 @@ ALLOWED_SOURCE_OPERATION_KINDS = frozenset(
         "impute_energy_subsidy_to_puf_support",
         "impute_cell_means",
         "impute_spi_housing_shell",
+        "impute_spi_employment_shell",
         "impute_housing_assistance_to_puf_support",
         "impute_other_health_insurance_premiums_to_puf_support",
         "impute_prior_year_income_to_puf_support",

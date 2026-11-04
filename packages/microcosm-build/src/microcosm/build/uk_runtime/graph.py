@@ -119,6 +119,11 @@ _STRUCTURAL_WEIGHT_KIND = {
 # units without an observed FRS capital answer.
 _READER_ISOLATION_BOUNDARIES = frozenset(
     {
+        # The employment shell rewrites the root person cells
+        # soc2020_major_group, sic_industry_division and employment_sector after
+        # the open-surface SPI income stage and the company cars, which would
+        # otherwise bind them (microcosm#1490).
+        "spi_employment_shell",
         # The housing shell rewrites root household cells after the
         # open-surface SPI income stage and the company cars, which would
         # otherwise bind them.
@@ -380,6 +385,26 @@ _STAGE_CONSUMES: Mapping[str, frozenset[tuple[str, str]] | None] = {
     "spi_support_channel": None,
     "spi_income_band_donors": None,
     "hmrc_spi_income_spine": None,
+    # Engine-free: the occupation predictors, the drawn-row rule and the channel
+    # split. The rewritten occupation, industry and sector cells arrive as the
+    # rewrite's incumbents (microcosm#1490).
+    "spi_employment_shell": frozenset(
+        {
+            ("person", "age"),
+            ("person", "gender"),
+            ("person", "employment_status"),
+            ("person", "employment_income"),
+            ("person", "self_employment_income"),
+            ("person", "savings_interest_income"),
+            ("person", "dividend_income"),
+            ("person", "private_pension_income"),
+            ("person", "person_is_spi_income_recipient"),
+            ("person", "hmrc_spi_pay"),
+            ("household", "region"),
+            ("household", "household_support_channel"),
+            ("household", "household_source_id"),
+        }
+    ),
     # Engine-free: the housing predictors and the channel split. The rewritten
     # housing and benefit cells arrive as the rewrite's incumbents.
     "spi_housing_shell": frozenset(
@@ -1148,6 +1173,11 @@ _STAGE_CELLS: Mapping[str, tuple[_Cell, ...]] = {
         _Cell("person", "person_is_spi_income_band_carrier", "bool"),
     ),
     "hmrc_spi_income_spine": (),  # populated below from typed groups
+    "spi_employment_shell": (
+        _Cell("person", "soc2020_major_group", "string"),
+        _Cell("person", "sic_industry_division", "int64"),
+        _Cell("person", "employment_sector", "string"),
+    ),
     "spi_housing_shell": (
         *_cells(
             "household",

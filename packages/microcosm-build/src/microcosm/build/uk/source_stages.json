@@ -2876,6 +2876,105 @@
    "survey": "Family Resources Survey 2024-25 job record; Wealth and Assets Survey round 8; HMRC Benefits in kind statistics (July 2026)"
   },
   {
+   "artifacts": [],
+   "grain": "person",
+   "notes": "Runs after company_cars, so the SPI-drawn rows' pay is net of car benefits as FRS pay is, and before spi_housing_shell (microcosm#1490). The support copies and income band donors are whole FRS households, so a drawn row (person_is_spi_income_recipient) kept its twin's SOC 2020 major group, SIC 2007 division and sector, all chosen with the twin's pay, not the incomes it drew. The stage redraws the major group of every drawn row whose twin had an occupation, or which drew pay (the tape's own PAY) or a profit; a drawn row with neither keeps NONE, and FRS rows and undrawn copies are untouched. It trains on the FRS rows' adults aged 16 and over with an occupation and positive household weight, weighted by household weight, and conditions on age, sex, region, employment-status group (employee, self-employed, retired, other) and employment, self-employment, investment (savings interest plus dividends) and private pension income, which the drawn rows hold of their own; industry, hours and qualification are the twin's and are left out. The classifier is microcosm.fit's CategoricalClassifier, the equal mixture of a regularised gradient-boosted classifier and a multinomial logit on spline features (arcsinh incomes), the blend that held out best on FRS 2024-25 (log loss, calibration slope and occupation shares within pay bands and status groups). Each drawn row then copies the SIC division and sector of an FRS adult with the drawn group and the same status group, chosen by household weight among the 50 nearest on age rank, income presence and ranks and region, falling back to the group and then to all adults where a cell holds fewer; so occupation and industry stay a pair that occurs. Every draw reads uniforms keyed on person_id. The receipt records the held-out evidence on five folds dealing whole households: log loss of the model, each learner and the training folds' class shares; the calibration slope; occupation-share gaps within pay bands and status groups; the industry copy's section and public-sector gaps within groups; and the fit's iterations, with counts banded by the shared disclosure rules.",
+   "operations": [
+    {
+     "evidence": {
+      "folds": 5,
+      "pay_band_quantiles": [
+       0.5,
+       0.8,
+       0.9,
+       0.95,
+       0.99
+      ]
+     },
+     "identity": "person_id",
+     "industry": {
+      "cells": [
+       "soc2020_major_group",
+       "status_group"
+      ],
+      "columns": [
+       "sic_industry_division",
+       "employment_sector"
+      ],
+      "neighbours": 50,
+      "presence_rank_columns": [
+       "employment_income",
+       "self_employment_income",
+       "investment_income",
+       "private_pension_income"
+      ],
+      "rank_columns": [
+       "age"
+      ],
+      "region_scale": 0.3
+     },
+     "kind": "impute_spi_employment_shell",
+     "occupation": {
+      "arcsinh_columns": [
+       "employment_income",
+       "self_employment_income",
+       "investment_income",
+       "private_pension_income"
+      ],
+      "arcsinh_scale": 1000,
+      "boosted": {
+       "early_stopping": true,
+       "l2_regularization": 1,
+       "learning_rate": 0.05,
+       "max_iter": 500,
+       "max_leaf_nodes": 15,
+       "min_samples_leaf": 40,
+       "n_iter_no_change": 20,
+       "validation_fraction": 0.2
+      },
+      "boosted_weight": 0.5,
+      "categorical_predictors": [
+       "gender",
+       "region",
+       "status_group"
+      ],
+      "logit": {
+       "degree": 3,
+       "extrapolation": "constant",
+       "knots": "quantile",
+       "max_iter": 3000,
+       "n_knots": 6,
+       "penalty_c": 1,
+       "solver": "lbfgs"
+      },
+      "predictors": [
+       "age",
+       "gender",
+       "region",
+       "status_group",
+       "employment_income",
+       "self_employment_income",
+       "investment_income",
+       "private_pension_income"
+      ],
+      "target": "soc2020_major_group"
+     },
+     "rows": "spi_income_recipients_with_occupation_pay_or_profit",
+     "seed": 0,
+     "training_rows": "frs_channel_adults_with_occupation_positive_weight"
+    }
+   ],
+   "outputs": [],
+   "rewrites": [
+    "soc2020_major_group",
+    "sic_industry_division",
+    "employment_sector"
+   ],
+   "source": "Family Resources Survey 2024-25 adults' SOC 2020 major group, SIC 2007 division and sector, redrawn onto the SPI-drawn rows from their own incomes (microcosm#1490).",
+   "stage": "spi_employment_shell",
+   "survey": "Family Resources Survey 2024-25"
+  },
+  {
    "stage": "spi_housing_shell",
    "survey": "Family Resources Survey 2024-25",
    "source": "Family Resources Survey 2024-25 base households' housing (tenure, dwelling type, bedrooms, council tax, housing costs and the housing-linked benefit reports), imputed onto the SPI support households from their own region, composition and post-SPI incomes.",

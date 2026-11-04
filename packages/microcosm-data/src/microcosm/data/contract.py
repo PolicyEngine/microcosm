@@ -475,13 +475,13 @@ _UK_GATE_BATTERY_SHIPPABLE_STATUSES = frozenset({"passed", "not_applicable"})
 # fingerprint derives from the manifest digest. Editing the spec moves all
 # three here in the same reviewed change.
 _UK_GATE_BATTERY_POLICY_SHA256 = (
-    "829eaae1a12e19f0c41c737bea0dbdda6448637e977b008bad9ca5c3db357200"
+    "7329732e070d3c10aef9ea50b9cd330c4187480b2fbcfc0b65ab1146fdfd75df"
 )
 _UK_GATE_BATTERY_GATES_MANIFEST_SHA256 = (
-    "01abc259f99ecdd73bd636102b32482f1f41dc557a5f0bf23d930348c75a8c8d"
+    "e83191ad38751ba75b8d1ed45352033f3d89851b7a2ec93b01e993a26c9498df"
 )
 _UK_GATE_BATTERY_SPEC_FINGERPRINT = (
-    "215c0fab9e2c77b415633f8f9292a5ff20839662274df7d6d7f1e126417badde"
+    "8dba276a743e06d300be96dd7e390fea9e56455fae016ac4d0a995fd04e5ae87"
 )
 #: Spec entry id -> the legacy gate name whose observable detail checks
 #: apply unchanged (the battery re-keys the report by entry id; the gate
@@ -588,6 +588,7 @@ _UK_GATE_BATTERY_ENTRY_GATES = {
     "uk_stage_isa_subscriptions_invariants": ("stage_health", "transferred"),
     "uk_stage_isa_subscriptions": ("stage_health", "transferred"),
     "uk_stage_company_cars_invariants": ("stage_health", "transferred"),
+    "uk_stage_spi_employment_shell_fit": ("stage_health", "transferred"),
     "uk_stage_frs_take_up_signal": ("stage_health", "assembled"),
     "uk_stage_frs_person_draws_take_up_signal": ("stage_health", "assembled"),
     "uk_stage_frs_household_draws_take_up_signal": ("stage_health", "assembled"),
@@ -704,6 +705,7 @@ _UK_GATE_BATTERY_EVIDENCE_IDS = frozenset(
         "uk_stage_isa_subscriptions_invariants",
         "uk_stage_isa_subscriptions",
         "uk_stage_company_cars_invariants",
+        "uk_stage_spi_employment_shell_fit",
         "uk_stage_frs_take_up_signal",
         "uk_stage_frs_person_draws_take_up_signal",
         "uk_stage_frs_household_draws_take_up_signal",
@@ -942,6 +944,7 @@ _UK_CERTIFICATION_PART_SCOPES: Mapping[str, frozenset[str]] = {
             "uk_stage_isa_subscriptions",
             "uk_stage_isa_subscriptions_invariants",
             "uk_stage_company_cars_invariants",
+            "uk_stage_spi_employment_shell_fit",
             "uk_stage_lcfs_consumption_basis",
             "uk_stage_lcfs_consumption_bus_pricing",
             "uk_stage_lcfs_consumption_energy_rake",
@@ -1009,10 +1012,10 @@ _UK_CERTIFICATION_PART_SCOPES: Mapping[str, frozenset[str]] = {
 _UK_CERTIFICATION_PART_DIGESTS: Mapping[str, Mapping[str, str]] = {
     "spine": {
         "gates_manifest_sha256": (
-            "970974c07b1102a208c9ee12962d42d540adc1966789219cb5ea18718000a16e"
+            "9d9d85efebb2f43ccbac86a3f1075c97a869ae3f46b95cf3ce2fd876a2ffecc8"
         ),
         "policy_sha256": (
-            "6416dda130412d6ceaeac2450a70befa694cbf582dee609ca34329a56849762b"
+            "f8eb18ad80403344041a7c8dab73b36bf424ab5c621cf7a146417e34d88f8ee6"
         ),
     },
     "calibration_seam": {

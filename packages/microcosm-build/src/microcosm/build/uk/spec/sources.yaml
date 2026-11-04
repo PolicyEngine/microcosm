@@ -2438,6 +2438,86 @@ stages:
   - employment_income
   - uc_is_in_gainful_self_employment
   notes: 'Writes six of policyengine-uk 2.165.0''s company car inputs (PolicyEngine/uk-autumn-budget-dashboard-2026#316) right after the SPI income stage, so every later stage reads the tape rows'' pay without the car benefits, as the engine''s employment_income excludes them, and salary_sacrifice bounds its sacrifice on that pay (María''s ruling of 31 October 2026). An FRS-channel person keeps the company car frs_spine''s carriers record; a tape row of the SPI channel (person_is_spi_income_recipient) keeps its twin''s only where its drawn EPB is positive, and the channel''s other rows, which keep their twin''s pay, keep its car. Fuel maps from the FRS code (a hybrid is an alternative fuel; a diesel meets RDE2, which every new diesel has since January 2021), and the unknown fuels draw at Table 2C''s shares together: without electricity where the respondent reports private fuel, and with the others'' electric share raised to keep Table 2C''s at the stage''s weights. The list price is drawn within the respondent''s CARVAL band from WAS round-8 company cars'' prices grown by the engine''s CPI index from 2021, the open and unknown bands by fuel class, uniformly from no lower than minimum_scaled_list_price_gbp where a band has fewer than minimum_donor_households WAS households. CO2 is zero for an electric car; the others split between 1 to 50 g/km (hybrids first) and the bands above at Table 2A''s shares among cars that emit CO2, uniformly within each band, and a car at 1 to 50 g/km takes electric_range_miles. Availability, payments for private use and the 2020 registration flag keep the engine''s defaults, which no survey records. A tape row''s pay is the tape''s PAY + EPB + TAXTERM, so the engine''s car and fuel benefits come out of employment_income, capped at EPB within the pay the row''s employee pension contribution leaves (the SPI income stage capped that contribution at the drawn pay, and salary_sacrifice refuses one above the pay that remains): where the two do not fit together the fuel goes first, then the list price is scaled down to fit with its contributions dropped, or the car dropped below minimum_scaled_list_price_gbp (María''s rulings of 30 and 31 October 2026). A scaled price is the room over the car''s appropriate percentage, so the CO2 draw, electric_range_miles and the RDE2 diesel set it, and with it the base the 2030-31 rise acts on. The stage then prices its output again on the engine: on every tape row, pay plus the benefits must equal the pay the row brought in. A carved row''s UC gainful self-employment, which the SPI income stage set on the drawn pay, takes the root''s rule again on the carved pay. No HMRC fact is a calibration target: binding the cells the stage draws to would be circular. No build step reads Tables 1, 3A and 4 after calibration yet: comparing the calibrated file with them is a manual step.'
+- stage: spi_employment_shell
+  survey: Family Resources Survey 2024-25
+  source: Family Resources Survey 2024-25 adults' SOC 2020 major group, SIC 2007 division and sector, redrawn onto the SPI-drawn rows from their own incomes (microcosm#1490).
+  grain: person
+  artifacts: []
+  operations:
+  - kind: impute_spi_employment_shell
+    training_rows: frs_channel_adults_with_occupation_positive_weight
+    rows: spi_income_recipients_with_occupation_pay_or_profit
+    identity: person_id
+    seed: 0
+    occupation:
+      target: soc2020_major_group
+      predictors:
+      - age
+      - gender
+      - region
+      - status_group
+      - employment_income
+      - self_employment_income
+      - investment_income
+      - private_pension_income
+      categorical_predictors:
+      - gender
+      - region
+      - status_group
+      arcsinh_columns:
+      - employment_income
+      - self_employment_income
+      - investment_income
+      - private_pension_income
+      arcsinh_scale: 1000.0
+      boosted:
+        learning_rate: 0.05
+        max_leaf_nodes: 15
+        min_samples_leaf: 40
+        l2_regularization: 1.0
+        early_stopping: true
+        validation_fraction: 0.2
+        n_iter_no_change: 20
+        max_iter: 500
+      logit:
+        n_knots: 6
+        degree: 3
+        knots: quantile
+        extrapolation: constant
+        penalty_c: 1.0
+        solver: lbfgs
+        max_iter: 3000
+      boosted_weight: 0.5
+    industry:
+      columns:
+      - sic_industry_division
+      - employment_sector
+      cells:
+      - soc2020_major_group
+      - status_group
+      neighbours: 50
+      rank_columns:
+      - age
+      presence_rank_columns:
+      - employment_income
+      - self_employment_income
+      - investment_income
+      - private_pension_income
+      region_scale: 0.3
+    evidence:
+      folds: 5
+      pay_band_quantiles:
+      - 0.5
+      - 0.8
+      - 0.9
+      - 0.95
+      - 0.99
+  outputs: []
+  rewrites:
+  - soc2020_major_group
+  - sic_industry_division
+  - employment_sector
+  notes: 'Runs after company_cars, so the SPI-drawn rows'' pay is net of car benefits as FRS pay is, and before spi_housing_shell (microcosm#1490). The support copies and income band donors are whole FRS households, so a drawn row (person_is_spi_income_recipient) kept its twin''s SOC 2020 major group, SIC 2007 division and sector, all chosen with the twin''s pay, not the incomes it drew. The stage redraws the major group of every drawn row whose twin had an occupation, or which drew pay (the tape''s own PAY) or a profit; a drawn row with neither keeps NONE, and FRS rows and undrawn copies are untouched. It trains on the FRS rows'' adults aged 16 and over with an occupation and positive household weight, weighted by household weight, and conditions on age, sex, region, employment-status group (employee, self-employed, retired, other) and employment, self-employment, investment (savings interest plus dividends) and private pension income, which the drawn rows hold of their own; industry, hours and qualification are the twin''s and are left out. The classifier is microcosm.fit''s CategoricalClassifier, the equal mixture of a regularised gradient-boosted classifier and a multinomial logit on spline features (arcsinh incomes), the blend that held out best on FRS 2024-25 (log loss, calibration slope and occupation shares within pay bands and status groups). Each drawn row then copies the SIC division and sector of an FRS adult with the drawn group and the same status group, chosen by household weight among the 50 nearest on age rank, income presence and ranks and region, falling back to the group and then to all adults where a cell holds fewer; so occupation and industry stay a pair that occurs. Every draw reads uniforms keyed on person_id. The receipt records the held-out evidence on five folds dealing whole households: log loss of the model, each learner and the training folds'' class shares; the calibration slope; occupation-share gaps within pay bands and status groups; the industry copy''s section and public-sector gaps within groups; and the fit''s iterations, with counts banded by the shared disclosure rules.'
 - stage: spi_housing_shell
   survey: Family Resources Survey 2024-25
   source: Family Resources Survey 2024-25 base households' housing (tenure, dwelling type, bedrooms, council tax, housing costs and the housing-linked benefit reports), imputed onto the SPI support households from their own region, composition and post-SPI incomes.

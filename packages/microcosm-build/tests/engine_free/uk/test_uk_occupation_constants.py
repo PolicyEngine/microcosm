@@ -38,3 +38,39 @@ def test_the_employment_stage_reads_the_shared_frs_view() -> None:
 def test_the_code_tables_are_immutable(mapping) -> None:
     with pytest.raises(TypeError):
         mapping[10] = "OTHER"  # type: ignore[index]
+
+
+def test_every_adult_employment_status_has_an_occupation_status_group() -> None:
+    from microcosm.build.uk_runtime.occupation_constants import (
+        UK_OCCUPATION_STATUS_GROUP,
+    )
+
+    adult_statuses = set(frs_employment.FRS_EMPSTATI_EMPLOYMENT_STATUS.values())
+    assert set(UK_OCCUPATION_STATUS_GROUP) == adult_statuses
+    assert frs_employment.CHILD_EMPLOYMENT_STATUS not in UK_OCCUPATION_STATUS_GROUP
+    assert set(UK_OCCUPATION_STATUS_GROUP.values()) == {
+        "EMPLOYEE",
+        "SELF_EMPLOYED",
+        "RETIRED",
+        "OTHER",
+    }
+
+
+def test_sic_sections_are_ordered_and_disjoint() -> None:
+    from microcosm.build.uk_runtime.occupation_constants import (
+        UK_SIC2007_SECTION_DIVISIONS,
+        uk_sic2007_sections,
+    )
+
+    ranges = list(UK_SIC2007_SECTION_DIVISIONS.items())
+    assert [section for section, _ in ranges] == list("ABCDEFGHIJKLMNOPQRSTU")
+    for (_, (_, last)), (_, (first, _)) in zip(ranges, ranges[1:], strict=False):
+        assert last < first
+    assert list(uk_sic2007_sections([0, 1, 4, 47, 85, 99])) == [
+        "",
+        "A",
+        "",
+        "G",
+        "P",
+        "U",
+    ]

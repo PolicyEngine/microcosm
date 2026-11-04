@@ -195,6 +195,9 @@ from microcosm.build.uk_runtime.spi_dependency import (
     UK_SPI_PUBLIC_USE_TAPE_KEY,
     uk_spi_public_use_tape_marker,
 )
+from microcosm.build.uk_runtime.spi_employment_shell import (
+    UKSPIEmploymentShellStageTransform,
+)
 from microcosm.build.uk_runtime.spi_housing_shell import (
     UKSPIHousingShellStageTransform,
 )
@@ -844,7 +847,10 @@ def _declared_seeds(stages) -> dict[str, dict[str, int]]:
                     # Identity-keyed draws: the seed is declared under the
                     # salt it is hashed with (microcosm#1063).
                     stage_seeds[str(operation.parameters["salt"])] = seed
-                elif operation.kind == "impute_spi_housing_shell":
+                elif operation.kind in (
+                    "impute_spi_employment_shell",
+                    "impute_spi_housing_shell",
+                ):
                     stage_seeds[stage.stage] = seed
                 elif operation.kind == "price_domestic_energy":
                     stage_seeds["gas_disconnection"] = seed
@@ -1839,6 +1845,10 @@ def prepare_uk_spine_execution(
             )
         )
     implementations["hmrc_spi_income_spine"] = hmrc_spine_transform
+    if "spi_employment_shell" in stage_names:
+        implementations["spi_employment_shell"] = UKSPIEmploymentShellStageTransform(
+            stage=stages_by_name["spi_employment_shell"]
+        )
     if "spi_housing_shell" in stage_names:
         implementations["spi_housing_shell"] = UKSPIHousingShellStageTransform(
             stage=stages_by_name["spi_housing_shell"]

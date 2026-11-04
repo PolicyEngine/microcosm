@@ -61,8 +61,9 @@ def test_uk_spine_graph_contains_every_manifest_stage() -> None:
     # copies' childcare re-draw childcare_copy_take_up, and microcosm#1334
     # uc_take_up and frs_annual_income_spells; microcosm#1428 the last stage,
     # trading_allowance_receipts; and company_cars after hmrc_spi_income_spine
-    # (PolicyEngine/uk-autumn-budget-dashboard-2026#316).
-    assert len(expected) == 52
+    # (PolicyEngine/uk-autumn-budget-dashboard-2026#316); and microcosm#1490
+    # spi_employment_shell after company_cars.
+    assert len(expected) == 53
     assert {"frs_hmrc_retained_leaves", "hmrc_spi_income"}.isdisjoint(expected)
     assert set(expected) <= ids
     assert {"frs_hmrc_retained_leaves", "hmrc_spi_income"}.isdisjoint(ids)

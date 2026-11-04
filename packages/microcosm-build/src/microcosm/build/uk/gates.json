@@ -1077,6 +1077,27 @@
       "notes": "Stage-time rules of the company_cars receipt that hold for any population (PolicyEngine/uk-autumn-budget-dashboard-2026#316). It fails on any record the receipt counts against them (a non-finite or negative value; a holder without a list price; an input written for someone without a car; an unknown fuel type; a car that emits CO2 without a figure, or an electric car with one; private fuel on an electric car; contributions above the list price; an electric range on a car outside 1 to 50 g/km; an SPI benefit above its EPB; a tape row's employee pension contribution above its carved pay, which salary_sacrifice would refuse) and on any tape row whose pay plus the car and fuel benefits the engine computes again on the stage's output misses the pay the row brought in (the tape's PAY + EPB + TAXTERM) by more than maximum_pay_identity_error_gbp, rounded up to the penny: the carve-out of the benefits from pay assumes how the engine prices a car, and the engine computes in single precision (María's ruling of 30 October 2026). It is no population fact check, so the synthetic smoke build blocks on it as every licensed build does; how far the calibrated file sits from HMRC's company car tables is not gated (María's ruling of 28 October 2026 on the ISA facts), and no build step measures it yet: comparing the calibrated file with Tables 1, 3A and 4 is a manual step."
     },
     {
+      "id": "uk_stage_spi_employment_shell_fit",
+      "gate": "stage_health",
+      "phase": "transferred",
+      "criticality": "release_blocking",
+      "evidence_absent_blocks": true,
+      "population_fact_check": true,
+      "parameters": {
+        "stage": "spi_employment_shell",
+        "check": "occupation_redraw",
+        "minimum_log_loss_gain": 0.2,
+        "calibration_slope_bounds": [
+          0.85,
+          1.15
+        ],
+        "maximum_pay_band_share_gap": 0.03,
+        "maximum_status_group_share_gap": 0.03,
+        "maximum_blend_log_loss_excess": 0.005
+      },
+      "notes": "Stage-time check of the spi_employment_shell receipt's held-out evidence (microcosm#1490): five folds dealing whole FRS households, scored on the FRS adults the occupation model trains on. It fails when the evidence was not measured; when the model's out-of-fold log loss is not at least minimum_log_loss_gain below the constant's (the training folds' class shares); when the blend's log loss exceeds its better learner's by more than maximum_blend_log_loss_excess; when the calibration slope (1 when the probabilities spread as much as the outcomes do) falls outside calibration_slope_bounds or the Platt fit fell back to class rates; when the weighted mean gap between predicted and observed occupation shares within the pay bands exceeds maximum_pay_band_share_gap; or when the largest gap within a status group exceeds maximum_status_group_share_gap. The bounds sit wide of the blend measured on FRS 2024-25 coded adults: a log-loss gain of 0.30, a slope of 1.01, a pay-band gap of 0.013, status-group gaps of at most 0.012, and a log loss 0.010 below its better learner. A population fact check: a synthetic smoke build records it without blocking, since a fixture of a few households cannot fit the population's occupation model."
+    },
+    {
       "id": "uk_release_input_coverage",
       "gate": "release_input_coverage",
       "phase": "terminal",

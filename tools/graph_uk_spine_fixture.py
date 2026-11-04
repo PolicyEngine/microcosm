@@ -166,6 +166,9 @@ from microcosm.build.uk_runtime.spi_band_donors import (
 from microcosm.build.uk_runtime.spi_benefit_coherence import (
     UKSPIBenefitCoherenceStageTransform,
 )
+from microcosm.build.uk_runtime.spi_employment_shell import (
+    UKSPIEmploymentShellStageTransform,
+)
 from microcosm.build.uk_runtime.spi_housing_shell import (
     UKSPIHousingShellStageTransform,
 )
@@ -212,7 +215,7 @@ _SPI_SAMPLE_FRACTION = _ROOT_HOUSEHOLDS / 10_000
 _SPI_DONOR_SAMPLE_SIZE = 64
 #: The packaged FRS spine roster the fixture exercises (manifest minus the
 #: certified-pair exclusions); moves whenever a spine stage is added.
-UK_FIXTURE_STAGE_COUNT = 52
+UK_FIXTURE_STAGE_COUNT = 53
 _QRF_ESTIMATORS = 4
 
 # These are the complete object-string surface observed in the unchanged
@@ -2359,6 +2362,9 @@ def _build_implementations(
             sampled_rung=True,
             donor_table=spi_donor,
             source_targets=income_targets,
+        ),
+        "spi_employment_shell": UKSPIEmploymentShellStageTransform(
+            stage=stages["spi_employment_shell"], boosted_max_iter=_QRF_ESTIMATORS
         ),
         "spi_housing_shell": UKSPIHousingShellStageTransform(
             stage=stages["spi_housing_shell"], n_estimators=_QRF_ESTIMATORS

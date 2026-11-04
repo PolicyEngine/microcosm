@@ -1199,7 +1199,7 @@ class TestUKCountryPackage:
         # frs_annual_income_spells after frs_hmrc_spine_leaves; microcosm#1428
         # trading_allowance_receipts last; company_cars right after
         # hmrc_spi_income_spine (PolicyEngine/uk-autumn-budget-dashboard-2026#316).
-        assert len(spec.sources.stages) == 52
+        assert len(spec.sources.stages) == 53
         assert not {"frs_hmrc_retained_leaves", "hmrc_spi_income"}.intersection(
             stage.stage for stage in spec.sources.stages
         )
@@ -1641,6 +1641,7 @@ class TestUKGatesManifest:
             "uk_stage_isa_subscriptions_invariants",
             "uk_stage_isa_subscriptions",
             "uk_stage_company_cars_invariants",
+            "uk_stage_spi_employment_shell_fit",
             "uk_release_input_coverage",
             "uk_degenerate_release_surface",
             "uk_zero_weight_strata",
@@ -1782,6 +1783,7 @@ class TestUKGatesManifest:
             "uk_stage_isa_subscriptions_invariants",
             "uk_stage_isa_subscriptions",
             "uk_stage_company_cars_invariants",
+            "uk_stage_spi_employment_shell_fit",
             "uk_weights_audit",
             # The #970 projection fence: a seam that cannot project cannot
             # certify the candidate's sub-exempt gainers.

@@ -158,6 +158,7 @@ UK_SPINE_GATE_SCOPE = (
     "uk_stage_isa_subscriptions_invariants",
     "uk_stage_isa_subscriptions",
     "uk_stage_company_cars_invariants",
+    "uk_stage_spi_employment_shell_fit",
     # Weight-independent like the BRMA enum below, and its column exists from
     # frs_relationships onward (#791).
     "uk_ons_household_type_enum_domain",
