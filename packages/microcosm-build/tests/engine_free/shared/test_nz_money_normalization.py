@@ -36,9 +36,9 @@ from test_support.paths import paths_for
 
 _SPEC = paths_for("microcosm-build").package / "src/microcosm/build/nz"
 _DONOR = {
-    "donor_cy2024_to_ty2027_low": 1077090,
-    "donor_cy2024_to_ty2027_central": 1079073,
-    "donor_cy2024_to_ty2027_high": 1081052,
+    "donor_cy2024_to_ty2027_low": 1079413,
+    "donor_cy2024_to_ty2027_central": 1080408,
+    "donor_cy2024_to_ty2027_high": 1081401,
 }
 
 
@@ -470,8 +470,9 @@ def test_the_three_donor_factors_are_exact_and_only_money_may_apply_them():
             "1595.11",
             "1622.73",
         ]
-        # The numerator is the TY2024 factors' N_s for the same profile:
-        # N_s = 1700.68 * (1 + q + q**2 + q**3) / 4 with q = (1 + g)**(1/4).
+        # The numerator is the TY2024 factors' N_s for the same profile. June and
+        # September 2026 are observed, so
+        # N_s = (1700.68 + 1714.86 * (1 + q + q**2)) / 4 with q = (1 + g)**(1/4).
         profile = factor_id.rsplit("_", 1)[1]
         ird = _factor(f"ird_ty2024_to_ty2027_{profile}")["receipt"]
         assert receipt["growth"] == ird["growth"]
@@ -480,8 +481,9 @@ def test_the_three_donor_factors_are_exact_and_only_money_may_apply_them():
         for bound in ("lower", "upper"):
             root = Fraction(**receipt["root_bounds"][bound])
             assert Fraction(**receipt["numerator_mean_bounds"][bound]) == (
-                Fraction("1700.68") * sum(root**index for index in range(4)) / 4
-            )
+                Fraction("1700.68")
+                + Fraction("1714.86") * sum(root**index for index in range(3))
+            ) / 4
         assert entry["declaration"]["purpose"] == "money_normalization_input"
 
 

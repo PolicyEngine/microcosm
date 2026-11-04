@@ -9,1184 +9,1184 @@
     "low": {
       "factor_id": "p1_ty2026_to_ty2027_low",
       "operational_factor": {
-        "numerator": 1026690,
+        "numerator": 1028904,
         "denominator": 1000000
       },
-      "factor_receipt_sha256": "28006b689061f41a7cfd9abf055aa3ee1ee5a5414d83fa255d36d5ee7fe326bc",
+      "factor_receipt_sha256": "18bb7590e8a4b78e869cff3766a27bd29e9171b36b23dfb1309994fb29a370a2",
       "map_bands": {
         "bands": [
           {
             "lower": 0.0,
-            "upper": 1026.69,
+            "upper": 1028.904,
             "reference": "ird_wage_salary_people_by_band__row_7"
           },
           {
-            "lower": 1026.69,
-            "upper": 2053.38,
+            "lower": 1028.904,
+            "upper": 2057.808,
             "reference": "ird_wage_salary_people_by_band__row_8"
           },
           {
-            "lower": 2053.38,
-            "upper": 3080.07,
+            "lower": 2057.808,
+            "upper": 3086.712,
             "reference": "ird_wage_salary_people_by_band__row_9"
           },
           {
-            "lower": 3080.07,
-            "upper": 4106.76,
+            "lower": 3086.712,
+            "upper": 4115.616,
             "reference": "ird_wage_salary_people_by_band__row_10"
           },
           {
-            "lower": 4106.76,
-            "upper": 5133.45,
+            "lower": 4115.616,
+            "upper": 5144.52,
             "reference": "ird_wage_salary_people_by_band__row_11"
           },
           {
-            "lower": 5133.45,
-            "upper": 6160.14,
+            "lower": 5144.52,
+            "upper": 6173.424,
             "reference": "ird_wage_salary_people_by_band__row_12"
           },
           {
-            "lower": 6160.14,
-            "upper": 7186.83,
+            "lower": 6173.424,
+            "upper": 7202.328,
             "reference": "ird_wage_salary_people_by_band__row_13"
           },
           {
-            "lower": 7186.83,
-            "upper": 8213.52,
+            "lower": 7202.328,
+            "upper": 8231.232,
             "reference": "ird_wage_salary_people_by_band__row_14"
           },
           {
-            "lower": 8213.52,
-            "upper": 9240.21,
+            "lower": 8231.232,
+            "upper": 9260.136,
             "reference": "ird_wage_salary_people_by_band__row_15"
           },
           {
-            "lower": 9240.21,
-            "upper": 10266.9,
+            "lower": 9260.136,
+            "upper": 10289.04,
             "reference": "ird_wage_salary_people_by_band__row_16"
           },
           {
-            "lower": 10266.9,
-            "upper": 11293.59,
+            "lower": 10289.04,
+            "upper": 11317.944,
             "reference": "ird_wage_salary_people_by_band__row_17"
           },
           {
-            "lower": 11293.59,
-            "upper": 12320.28,
+            "lower": 11317.944,
+            "upper": 12346.848,
             "reference": "ird_wage_salary_people_by_band__row_18"
           },
           {
-            "lower": 12320.28,
-            "upper": 13346.97,
+            "lower": 12346.848,
+            "upper": 13375.752,
             "reference": "ird_wage_salary_people_by_band__row_19"
           },
           {
-            "lower": 13346.97,
-            "upper": 14373.66,
+            "lower": 13375.752,
+            "upper": 14404.656,
             "reference": "ird_wage_salary_people_by_band__row_20"
           },
           {
-            "lower": 14373.66,
-            "upper": 15400.35,
+            "lower": 14404.656,
+            "upper": 15433.56,
             "reference": "ird_wage_salary_people_by_band__row_21"
           },
           {
-            "lower": 15400.35,
-            "upper": 16427.04,
+            "lower": 15433.56,
+            "upper": 16462.464,
             "reference": "ird_wage_salary_people_by_band__row_22"
           },
           {
-            "lower": 16427.04,
-            "upper": 17453.73,
+            "lower": 16462.464,
+            "upper": 17491.368,
             "reference": "ird_wage_salary_people_by_band__row_23"
           },
           {
-            "lower": 17453.73,
-            "upper": 18480.42,
+            "lower": 17491.368,
+            "upper": 18520.272,
             "reference": "ird_wage_salary_people_by_band__row_24"
           },
           {
-            "lower": 18480.42,
-            "upper": 19507.11,
+            "lower": 18520.272,
+            "upper": 19549.176,
             "reference": "ird_wage_salary_people_by_band__row_25"
           },
           {
-            "lower": 19507.11,
-            "upper": 20533.8,
+            "lower": 19549.176,
+            "upper": 20578.08,
             "reference": "ird_wage_salary_people_by_band__row_26"
           },
           {
-            "lower": 20533.8,
-            "upper": 21560.49,
+            "lower": 20578.08,
+            "upper": 21606.984,
             "reference": "ird_wage_salary_people_by_band__row_27"
           },
           {
-            "lower": 21560.49,
-            "upper": 22587.18,
+            "lower": 21606.984,
+            "upper": 22635.888,
             "reference": "ird_wage_salary_people_by_band__row_28"
           },
           {
-            "lower": 22587.18,
-            "upper": 23613.87,
+            "lower": 22635.888,
+            "upper": 23664.792,
             "reference": "ird_wage_salary_people_by_band__row_29"
           },
           {
-            "lower": 23613.87,
-            "upper": 24640.56,
+            "lower": 23664.792,
+            "upper": 24693.696,
             "reference": "ird_wage_salary_people_by_band__row_30"
           },
           {
-            "lower": 24640.56,
-            "upper": 25667.25,
+            "lower": 24693.696,
+            "upper": 25722.6,
             "reference": "ird_wage_salary_people_by_band__row_31"
           },
           {
-            "lower": 25667.25,
-            "upper": 26693.94,
+            "lower": 25722.6,
+            "upper": 26751.504,
             "reference": "ird_wage_salary_people_by_band__row_32"
           },
           {
-            "lower": 26693.94,
-            "upper": 27720.63,
+            "lower": 26751.504,
+            "upper": 27780.408,
             "reference": "ird_wage_salary_people_by_band__row_33"
           },
           {
-            "lower": 27720.63,
-            "upper": 28747.32,
+            "lower": 27780.408,
+            "upper": 28809.312,
             "reference": "ird_wage_salary_people_by_band__row_34"
           },
           {
-            "lower": 28747.32,
-            "upper": 29774.01,
+            "lower": 28809.312,
+            "upper": 29838.216,
             "reference": "ird_wage_salary_people_by_band__row_35"
           },
           {
-            "lower": 29774.01,
-            "upper": 30800.7,
+            "lower": 29838.216,
+            "upper": 30867.12,
             "reference": "ird_wage_salary_people_by_band__row_36"
           },
           {
-            "lower": 30800.7,
-            "upper": 31827.39,
+            "lower": 30867.12,
+            "upper": 31896.024,
             "reference": "ird_wage_salary_people_by_band__row_37"
           },
           {
-            "lower": 31827.39,
-            "upper": 32854.08,
+            "lower": 31896.024,
+            "upper": 32924.928,
             "reference": "ird_wage_salary_people_by_band__row_38"
           },
           {
-            "lower": 32854.08,
-            "upper": 33880.77,
+            "lower": 32924.928,
+            "upper": 33953.832,
             "reference": "ird_wage_salary_people_by_band__row_39"
           },
           {
-            "lower": 33880.77,
-            "upper": 34907.46,
+            "lower": 33953.832,
+            "upper": 34982.736,
             "reference": "ird_wage_salary_people_by_band__row_40"
           },
           {
-            "lower": 34907.46,
-            "upper": 35934.15,
+            "lower": 34982.736,
+            "upper": 36011.64,
             "reference": "ird_wage_salary_people_by_band__row_41"
           },
           {
-            "lower": 35934.15,
-            "upper": 36960.84,
+            "lower": 36011.64,
+            "upper": 37040.544,
             "reference": "ird_wage_salary_people_by_band__row_42"
           },
           {
-            "lower": 36960.84,
-            "upper": 37987.53,
+            "lower": 37040.544,
+            "upper": 38069.448,
             "reference": "ird_wage_salary_people_by_band__row_43"
           },
           {
-            "lower": 37987.53,
-            "upper": 39014.22,
+            "lower": 38069.448,
+            "upper": 39098.352,
             "reference": "ird_wage_salary_people_by_band__row_44"
           },
           {
-            "lower": 39014.22,
-            "upper": 40040.91,
+            "lower": 39098.352,
+            "upper": 40127.256,
             "reference": "ird_wage_salary_people_by_band__row_45"
           },
           {
-            "lower": 40040.91,
-            "upper": 41067.6,
+            "lower": 40127.256,
+            "upper": 41156.16,
             "reference": "ird_wage_salary_people_by_band__row_46"
           },
           {
-            "lower": 41067.6,
-            "upper": 42094.29,
+            "lower": 41156.16,
+            "upper": 42185.064,
             "reference": "ird_wage_salary_people_by_band__row_47"
           },
           {
-            "lower": 42094.29,
-            "upper": 43120.98,
+            "lower": 42185.064,
+            "upper": 43213.968,
             "reference": "ird_wage_salary_people_by_band__row_48"
           },
           {
-            "lower": 43120.98,
-            "upper": 44147.67,
+            "lower": 43213.968,
+            "upper": 44242.872,
             "reference": "ird_wage_salary_people_by_band__row_49"
           },
           {
-            "lower": 44147.67,
-            "upper": 45174.36,
+            "lower": 44242.872,
+            "upper": 45271.776,
             "reference": "ird_wage_salary_people_by_band__row_50"
           },
           {
-            "lower": 45174.36,
-            "upper": 46201.05,
+            "lower": 45271.776,
+            "upper": 46300.68,
             "reference": "ird_wage_salary_people_by_band__row_51"
           },
           {
-            "lower": 46201.05,
-            "upper": 47227.74,
+            "lower": 46300.68,
+            "upper": 47329.584,
             "reference": "ird_wage_salary_people_by_band__row_52"
           },
           {
-            "lower": 47227.74,
-            "upper": 48254.43,
+            "lower": 47329.584,
+            "upper": 48358.488,
             "reference": "ird_wage_salary_people_by_band__row_53"
           },
           {
-            "lower": 48254.43,
-            "upper": 49281.12,
+            "lower": 48358.488,
+            "upper": 49387.392,
             "reference": "ird_wage_salary_people_by_band__row_54"
           },
           {
-            "lower": 49281.12,
-            "upper": 50307.81,
+            "lower": 49387.392,
+            "upper": 50416.296,
             "reference": "ird_wage_salary_people_by_band__row_55"
           },
           {
-            "lower": 50307.81,
-            "upper": 51334.5,
+            "lower": 50416.296,
+            "upper": 51445.2,
             "reference": "ird_wage_salary_people_by_band__row_56"
           },
           {
-            "lower": 51334.5,
-            "upper": 52361.19,
+            "lower": 51445.2,
+            "upper": 52474.104,
             "reference": "ird_wage_salary_people_by_band__row_57"
           },
           {
-            "lower": 52361.19,
-            "upper": 53387.88,
+            "lower": 52474.104,
+            "upper": 53503.008,
             "reference": "ird_wage_salary_people_by_band__row_58"
           },
           {
-            "lower": 53387.88,
-            "upper": 54414.57,
+            "lower": 53503.008,
+            "upper": 54531.912,
             "reference": "ird_wage_salary_people_by_band__row_59"
           },
           {
-            "lower": 54414.57,
-            "upper": 55441.26,
+            "lower": 54531.912,
+            "upper": 55560.816,
             "reference": "ird_wage_salary_people_by_band__row_60"
           },
           {
-            "lower": 55441.26,
-            "upper": 56467.95,
+            "lower": 55560.816,
+            "upper": 56589.72,
             "reference": "ird_wage_salary_people_by_band__row_61"
           },
           {
-            "lower": 56467.95,
-            "upper": 57494.64,
+            "lower": 56589.72,
+            "upper": 57618.624,
             "reference": "ird_wage_salary_people_by_band__row_62"
           },
           {
-            "lower": 57494.64,
-            "upper": 58521.33,
+            "lower": 57618.624,
+            "upper": 58647.528,
             "reference": "ird_wage_salary_people_by_band__row_63"
           },
           {
-            "lower": 58521.33,
-            "upper": 59548.02,
+            "lower": 58647.528,
+            "upper": 59676.432,
             "reference": "ird_wage_salary_people_by_band__row_64"
           },
           {
-            "lower": 59548.02,
-            "upper": 60574.71,
+            "lower": 59676.432,
+            "upper": 60705.336,
             "reference": "ird_wage_salary_people_by_band__row_65"
           },
           {
-            "lower": 60574.71,
-            "upper": 61601.4,
+            "lower": 60705.336,
+            "upper": 61734.24,
             "reference": "ird_wage_salary_people_by_band__row_66"
           },
           {
-            "lower": 61601.4,
-            "upper": 62628.09,
+            "lower": 61734.24,
+            "upper": 62763.144,
             "reference": "ird_wage_salary_people_by_band__row_67"
           },
           {
-            "lower": 62628.09,
-            "upper": 63654.78,
+            "lower": 62763.144,
+            "upper": 63792.048,
             "reference": "ird_wage_salary_people_by_band__row_68"
           },
           {
-            "lower": 63654.78,
-            "upper": 64681.47,
+            "lower": 63792.048,
+            "upper": 64820.952,
             "reference": "ird_wage_salary_people_by_band__row_69"
           },
           {
-            "lower": 64681.47,
-            "upper": 65708.16,
+            "lower": 64820.952,
+            "upper": 65849.856,
             "reference": "ird_wage_salary_people_by_band__row_70"
           },
           {
-            "lower": 65708.16,
-            "upper": 66734.85,
+            "lower": 65849.856,
+            "upper": 66878.76,
             "reference": "ird_wage_salary_people_by_band__row_71"
           },
           {
-            "lower": 66734.85,
-            "upper": 67761.54,
+            "lower": 66878.76,
+            "upper": 67907.664,
             "reference": "ird_wage_salary_people_by_band__row_72"
           },
           {
-            "lower": 67761.54,
-            "upper": 68788.23,
+            "lower": 67907.664,
+            "upper": 68936.568,
             "reference": "ird_wage_salary_people_by_band__row_73"
           },
           {
-            "lower": 68788.23,
-            "upper": 69814.92,
+            "lower": 68936.568,
+            "upper": 69965.472,
             "reference": "ird_wage_salary_people_by_band__row_74"
           },
           {
-            "lower": 69814.92,
-            "upper": 70841.61,
+            "lower": 69965.472,
+            "upper": 70994.376,
             "reference": "ird_wage_salary_people_by_band__row_75"
           },
           {
-            "lower": 70841.61,
-            "upper": 71868.3,
+            "lower": 70994.376,
+            "upper": 72023.28,
             "reference": "ird_wage_salary_people_by_band__row_76"
           },
           {
-            "lower": 71868.3,
-            "upper": 72894.99,
+            "lower": 72023.28,
+            "upper": 73052.184,
             "reference": "ird_wage_salary_people_by_band__row_77"
           },
           {
-            "lower": 72894.99,
-            "upper": 73921.68,
+            "lower": 73052.184,
+            "upper": 74081.088,
             "reference": "ird_wage_salary_people_by_band__row_78"
           },
           {
-            "lower": 73921.68,
-            "upper": 74948.37,
+            "lower": 74081.088,
+            "upper": 75109.992,
             "reference": "ird_wage_salary_people_by_band__row_79"
           },
           {
-            "lower": 74948.37,
-            "upper": 75975.06,
+            "lower": 75109.992,
+            "upper": 76138.896,
             "reference": "ird_wage_salary_people_by_band__row_80"
           },
           {
-            "lower": 75975.06,
-            "upper": 77001.75,
+            "lower": 76138.896,
+            "upper": 77167.8,
             "reference": "ird_wage_salary_people_by_band__row_81"
           },
           {
-            "lower": 77001.75,
-            "upper": 78028.44,
+            "lower": 77167.8,
+            "upper": 78196.704,
             "reference": "ird_wage_salary_people_by_band__row_82"
           },
           {
-            "lower": 78028.44,
-            "upper": 79055.13,
+            "lower": 78196.704,
+            "upper": 79225.608,
             "reference": "ird_wage_salary_people_by_band__row_83"
           },
           {
-            "lower": 79055.13,
-            "upper": 80081.82,
+            "lower": 79225.608,
+            "upper": 80254.512,
             "reference": "ird_wage_salary_people_by_band__row_84"
           },
           {
-            "lower": 80081.82,
-            "upper": 81108.51,
+            "lower": 80254.512,
+            "upper": 81283.416,
             "reference": "ird_wage_salary_people_by_band__row_85"
           },
           {
-            "lower": 81108.51,
-            "upper": 82135.2,
+            "lower": 81283.416,
+            "upper": 82312.32,
             "reference": "ird_wage_salary_people_by_band__row_86"
           },
           {
-            "lower": 82135.2,
-            "upper": 83161.89,
+            "lower": 82312.32,
+            "upper": 83341.224,
             "reference": "ird_wage_salary_people_by_band__row_87"
           },
           {
-            "lower": 83161.89,
-            "upper": 84188.58,
+            "lower": 83341.224,
+            "upper": 84370.128,
             "reference": "ird_wage_salary_people_by_band__row_88"
           },
           {
-            "lower": 84188.58,
-            "upper": 85215.27,
+            "lower": 84370.128,
+            "upper": 85399.032,
             "reference": "ird_wage_salary_people_by_band__row_89"
           },
           {
-            "lower": 85215.27,
-            "upper": 86241.96,
+            "lower": 85399.032,
+            "upper": 86427.936,
             "reference": "ird_wage_salary_people_by_band__row_90"
           },
           {
-            "lower": 86241.96,
-            "upper": 87268.65,
+            "lower": 86427.936,
+            "upper": 87456.84,
             "reference": "ird_wage_salary_people_by_band__row_91"
           },
           {
-            "lower": 87268.65,
-            "upper": 88295.34,
+            "lower": 87456.84,
+            "upper": 88485.744,
             "reference": "ird_wage_salary_people_by_band__row_92"
           },
           {
-            "lower": 88295.34,
-            "upper": 89322.03,
+            "lower": 88485.744,
+            "upper": 89514.648,
             "reference": "ird_wage_salary_people_by_band__row_93"
           },
           {
-            "lower": 89322.03,
-            "upper": 90348.72,
+            "lower": 89514.648,
+            "upper": 90543.552,
             "reference": "ird_wage_salary_people_by_band__row_94"
           },
           {
-            "lower": 90348.72,
-            "upper": 91375.41,
+            "lower": 90543.552,
+            "upper": 91572.456,
             "reference": "ird_wage_salary_people_by_band__row_95"
           },
           {
-            "lower": 91375.41,
-            "upper": 92402.1,
+            "lower": 91572.456,
+            "upper": 92601.36,
             "reference": "ird_wage_salary_people_by_band__row_96"
           },
           {
-            "lower": 92402.1,
-            "upper": 93428.79,
+            "lower": 92601.36,
+            "upper": 93630.264,
             "reference": "ird_wage_salary_people_by_band__row_97"
           },
           {
-            "lower": 93428.79,
-            "upper": 94455.48,
+            "lower": 93630.264,
+            "upper": 94659.168,
             "reference": "ird_wage_salary_people_by_band__row_98"
           },
           {
-            "lower": 94455.48,
-            "upper": 95482.17,
+            "lower": 94659.168,
+            "upper": 95688.072,
             "reference": "ird_wage_salary_people_by_band__row_99"
           },
           {
-            "lower": 95482.17,
-            "upper": 96508.86,
+            "lower": 95688.072,
+            "upper": 96716.976,
             "reference": "ird_wage_salary_people_by_band__row_100"
           },
           {
-            "lower": 96508.86,
-            "upper": 97535.55,
+            "lower": 96716.976,
+            "upper": 97745.88,
             "reference": "ird_wage_salary_people_by_band__row_101"
           },
           {
-            "lower": 97535.55,
-            "upper": 98562.24,
+            "lower": 97745.88,
+            "upper": 98774.784,
             "reference": "ird_wage_salary_people_by_band__row_102"
           },
           {
-            "lower": 98562.24,
-            "upper": 99588.93,
+            "lower": 98774.784,
+            "upper": 99803.688,
             "reference": "ird_wage_salary_people_by_band__row_103"
           },
           {
-            "lower": 99588.93,
-            "upper": 100615.62,
+            "lower": 99803.688,
+            "upper": 100832.592,
             "reference": "ird_wage_salary_people_by_band__row_104"
           },
           {
-            "lower": 100615.62,
-            "upper": 101642.31,
+            "lower": 100832.592,
+            "upper": 101861.496,
             "reference": "ird_wage_salary_people_by_band__row_105"
           },
           {
-            "lower": 101642.31,
-            "upper": 102669.0,
+            "lower": 101861.496,
+            "upper": 102890.4,
             "reference": "ird_wage_salary_people_by_band__row_106"
           },
           {
-            "lower": 102669.0,
-            "upper": 103695.69,
+            "lower": 102890.4,
+            "upper": 103919.304,
             "reference": "ird_wage_salary_people_by_band__row_107"
           },
           {
-            "lower": 103695.69,
-            "upper": 104722.38,
+            "lower": 103919.304,
+            "upper": 104948.208,
             "reference": "ird_wage_salary_people_by_band__row_108"
           },
           {
-            "lower": 104722.38,
-            "upper": 105749.07,
+            "lower": 104948.208,
+            "upper": 105977.112,
             "reference": "ird_wage_salary_people_by_band__row_109"
           },
           {
-            "lower": 105749.07,
-            "upper": 106775.76,
+            "lower": 105977.112,
+            "upper": 107006.016,
             "reference": "ird_wage_salary_people_by_band__row_110"
           },
           {
-            "lower": 106775.76,
-            "upper": 107802.45,
+            "lower": 107006.016,
+            "upper": 108034.92,
             "reference": "ird_wage_salary_people_by_band__row_111"
           },
           {
-            "lower": 107802.45,
-            "upper": 108829.14,
+            "lower": 108034.92,
+            "upper": 109063.824,
             "reference": "ird_wage_salary_people_by_band__row_112"
           },
           {
-            "lower": 108829.14,
-            "upper": 109855.83,
+            "lower": 109063.824,
+            "upper": 110092.728,
             "reference": "ird_wage_salary_people_by_band__row_113"
           },
           {
-            "lower": 109855.83,
-            "upper": 110882.52,
+            "lower": 110092.728,
+            "upper": 111121.632,
             "reference": "ird_wage_salary_people_by_band__row_114"
           },
           {
-            "lower": 110882.52,
-            "upper": 111909.21,
+            "lower": 111121.632,
+            "upper": 112150.536,
             "reference": "ird_wage_salary_people_by_band__row_115"
           },
           {
-            "lower": 111909.21,
-            "upper": 112935.9,
+            "lower": 112150.536,
+            "upper": 113179.44,
             "reference": "ird_wage_salary_people_by_band__row_116"
           },
           {
-            "lower": 112935.9,
-            "upper": 113962.59,
+            "lower": 113179.44,
+            "upper": 114208.344,
             "reference": "ird_wage_salary_people_by_band__row_117"
           },
           {
-            "lower": 113962.59,
-            "upper": 114989.28,
+            "lower": 114208.344,
+            "upper": 115237.248,
             "reference": "ird_wage_salary_people_by_band__row_118"
           },
           {
-            "lower": 114989.28,
-            "upper": 116015.97,
+            "lower": 115237.248,
+            "upper": 116266.152,
             "reference": "ird_wage_salary_people_by_band__row_119"
           },
           {
-            "lower": 116015.97,
-            "upper": 117042.66,
+            "lower": 116266.152,
+            "upper": 117295.056,
             "reference": "ird_wage_salary_people_by_band__row_120"
           },
           {
-            "lower": 117042.66,
-            "upper": 118069.35,
+            "lower": 117295.056,
+            "upper": 118323.96,
             "reference": "ird_wage_salary_people_by_band__row_121"
           },
           {
-            "lower": 118069.35,
-            "upper": 119096.04,
+            "lower": 118323.96,
+            "upper": 119352.864,
             "reference": "ird_wage_salary_people_by_band__row_122"
           },
           {
-            "lower": 119096.04,
-            "upper": 120122.73,
+            "lower": 119352.864,
+            "upper": 120381.768,
             "reference": "ird_wage_salary_people_by_band__row_123"
           },
           {
-            "lower": 120122.73,
-            "upper": 121149.42,
+            "lower": 120381.768,
+            "upper": 121410.672,
             "reference": "ird_wage_salary_people_by_band__row_124"
           },
           {
-            "lower": 121149.42,
-            "upper": 122176.11,
+            "lower": 121410.672,
+            "upper": 122439.576,
             "reference": "ird_wage_salary_people_by_band__row_125"
           },
           {
-            "lower": 122176.11,
-            "upper": 123202.8,
+            "lower": 122439.576,
+            "upper": 123468.48,
             "reference": "ird_wage_salary_people_by_band__row_126"
           },
           {
-            "lower": 123202.8,
-            "upper": 124229.49,
+            "lower": 123468.48,
+            "upper": 124497.384,
             "reference": "ird_wage_salary_people_by_band__row_127"
           },
           {
-            "lower": 124229.49,
-            "upper": 125256.18,
+            "lower": 124497.384,
+            "upper": 125526.288,
             "reference": "ird_wage_salary_people_by_band__row_128"
           },
           {
-            "lower": 125256.18,
-            "upper": 126282.87,
+            "lower": 125526.288,
+            "upper": 126555.192,
             "reference": "ird_wage_salary_people_by_band__row_129"
           },
           {
-            "lower": 126282.87,
-            "upper": 127309.56,
+            "lower": 126555.192,
+            "upper": 127584.096,
             "reference": "ird_wage_salary_people_by_band__row_130"
           },
           {
-            "lower": 127309.56,
-            "upper": 128336.25,
+            "lower": 127584.096,
+            "upper": 128613.0,
             "reference": "ird_wage_salary_people_by_band__row_131"
           },
           {
-            "lower": 128336.25,
-            "upper": 129362.94,
+            "lower": 128613.0,
+            "upper": 129641.904,
             "reference": "ird_wage_salary_people_by_band__row_132"
           },
           {
-            "lower": 129362.94,
-            "upper": 130389.63,
+            "lower": 129641.904,
+            "upper": 130670.808,
             "reference": "ird_wage_salary_people_by_band__row_133"
           },
           {
-            "lower": 130389.63,
-            "upper": 131416.32,
+            "lower": 130670.808,
+            "upper": 131699.712,
             "reference": "ird_wage_salary_people_by_band__row_134"
           },
           {
-            "lower": 131416.32,
-            "upper": 132443.01,
+            "lower": 131699.712,
+            "upper": 132728.616,
             "reference": "ird_wage_salary_people_by_band__row_135"
           },
           {
-            "lower": 132443.01,
-            "upper": 133469.7,
+            "lower": 132728.616,
+            "upper": 133757.52,
             "reference": "ird_wage_salary_people_by_band__row_136"
           },
           {
-            "lower": 133469.7,
-            "upper": 134496.39,
+            "lower": 133757.52,
+            "upper": 134786.424,
             "reference": "ird_wage_salary_people_by_band__row_137"
           },
           {
-            "lower": 134496.39,
-            "upper": 135523.08,
+            "lower": 134786.424,
+            "upper": 135815.328,
             "reference": "ird_wage_salary_people_by_band__row_138"
           },
           {
-            "lower": 135523.08,
-            "upper": 136549.77,
+            "lower": 135815.328,
+            "upper": 136844.232,
             "reference": "ird_wage_salary_people_by_band__row_139"
           },
           {
-            "lower": 136549.77,
-            "upper": 137576.46,
+            "lower": 136844.232,
+            "upper": 137873.136,
             "reference": "ird_wage_salary_people_by_band__row_140"
           },
           {
-            "lower": 137576.46,
-            "upper": 138603.15,
+            "lower": 137873.136,
+            "upper": 138902.04,
             "reference": "ird_wage_salary_people_by_band__row_141"
           },
           {
-            "lower": 138603.15,
-            "upper": 139629.84,
+            "lower": 138902.04,
+            "upper": 139930.944,
             "reference": "ird_wage_salary_people_by_band__row_142"
           },
           {
-            "lower": 139629.84,
-            "upper": 140656.53,
+            "lower": 139930.944,
+            "upper": 140959.848,
             "reference": "ird_wage_salary_people_by_band__row_143"
           },
           {
-            "lower": 140656.53,
-            "upper": 141683.22,
+            "lower": 140959.848,
+            "upper": 141988.752,
             "reference": "ird_wage_salary_people_by_band__row_144"
           },
           {
-            "lower": 141683.22,
-            "upper": 142709.91,
+            "lower": 141988.752,
+            "upper": 143017.656,
             "reference": "ird_wage_salary_people_by_band__row_145"
           },
           {
-            "lower": 142709.91,
-            "upper": 143736.6,
+            "lower": 143017.656,
+            "upper": 144046.56,
             "reference": "ird_wage_salary_people_by_band__row_146"
           },
           {
-            "lower": 143736.6,
-            "upper": 144763.29,
+            "lower": 144046.56,
+            "upper": 145075.464,
             "reference": "ird_wage_salary_people_by_band__row_147"
           },
           {
-            "lower": 144763.29,
-            "upper": 145789.98,
+            "lower": 145075.464,
+            "upper": 146104.368,
             "reference": "ird_wage_salary_people_by_band__row_148"
           },
           {
-            "lower": 145789.98,
-            "upper": 146816.67,
+            "lower": 146104.368,
+            "upper": 147133.272,
             "reference": "ird_wage_salary_people_by_band__row_149"
           },
           {
-            "lower": 146816.67,
-            "upper": 147843.36,
+            "lower": 147133.272,
+            "upper": 148162.176,
             "reference": "ird_wage_salary_people_by_band__row_150"
           },
           {
-            "lower": 147843.36,
-            "upper": 148870.05,
+            "lower": 148162.176,
+            "upper": 149191.08,
             "reference": "ird_wage_salary_people_by_band__row_151"
           },
           {
-            "lower": 148870.05,
-            "upper": 149896.74,
+            "lower": 149191.08,
+            "upper": 150219.984,
             "reference": "ird_wage_salary_people_by_band__row_152"
           },
           {
-            "lower": 149896.74,
-            "upper": 150923.43,
+            "lower": 150219.984,
+            "upper": 151248.888,
             "reference": "ird_wage_salary_people_by_band__row_153"
           },
           {
-            "lower": 150923.43,
-            "upper": 151950.12,
+            "lower": 151248.888,
+            "upper": 152277.792,
             "reference": "ird_wage_salary_people_by_band__row_154"
           },
           {
-            "lower": 151950.12,
-            "upper": 152976.81,
+            "lower": 152277.792,
+            "upper": 153306.696,
             "reference": "ird_wage_salary_people_by_band__row_155"
           },
           {
-            "lower": 152976.81,
-            "upper": 154003.5,
+            "lower": 153306.696,
+            "upper": 154335.6,
             "reference": "ird_wage_salary_people_by_band__row_156"
           },
           {
-            "lower": 154003.5,
-            "upper": 155030.19,
+            "lower": 154335.6,
+            "upper": 155364.504,
             "reference": "ird_wage_salary_people_by_band__row_157"
           },
           {
-            "lower": 155030.19,
-            "upper": 156056.88,
+            "lower": 155364.504,
+            "upper": 156393.408,
             "reference": "ird_wage_salary_people_by_band__row_158"
           },
           {
-            "lower": 156056.88,
-            "upper": 157083.57,
+            "lower": 156393.408,
+            "upper": 157422.312,
             "reference": "ird_wage_salary_people_by_band__row_159"
           },
           {
-            "lower": 157083.57,
-            "upper": 158110.26,
+            "lower": 157422.312,
+            "upper": 158451.216,
             "reference": "ird_wage_salary_people_by_band__row_160"
           },
           {
-            "lower": 158110.26,
-            "upper": 159136.95,
+            "lower": 158451.216,
+            "upper": 159480.12,
             "reference": "ird_wage_salary_people_by_band__row_161"
           },
           {
-            "lower": 159136.95,
-            "upper": 160163.64,
+            "lower": 159480.12,
+            "upper": 160509.024,
             "reference": "ird_wage_salary_people_by_band__row_162"
           },
           {
-            "lower": 160163.64,
-            "upper": 161190.33,
+            "lower": 160509.024,
+            "upper": 161537.928,
             "reference": "ird_wage_salary_people_by_band__row_163"
           },
           {
-            "lower": 161190.33,
-            "upper": 162217.02,
+            "lower": 161537.928,
+            "upper": 162566.832,
             "reference": "ird_wage_salary_people_by_band__row_164"
           },
           {
-            "lower": 162217.02,
-            "upper": 163243.71,
+            "lower": 162566.832,
+            "upper": 163595.736,
             "reference": "ird_wage_salary_people_by_band__row_165"
           },
           {
-            "lower": 163243.71,
-            "upper": 164270.4,
+            "lower": 163595.736,
+            "upper": 164624.64,
             "reference": "ird_wage_salary_people_by_band__row_166"
           },
           {
-            "lower": 164270.4,
-            "upper": 165297.09,
+            "lower": 164624.64,
+            "upper": 165653.544,
             "reference": "ird_wage_salary_people_by_band__row_167"
           },
           {
-            "lower": 165297.09,
-            "upper": 166323.78,
+            "lower": 165653.544,
+            "upper": 166682.448,
             "reference": "ird_wage_salary_people_by_band__row_168"
           },
           {
-            "lower": 166323.78,
-            "upper": 167350.47,
+            "lower": 166682.448,
+            "upper": 167711.352,
             "reference": "ird_wage_salary_people_by_band__row_169"
           },
           {
-            "lower": 167350.47,
-            "upper": 168377.16,
+            "lower": 167711.352,
+            "upper": 168740.256,
             "reference": "ird_wage_salary_people_by_band__row_170"
           },
           {
-            "lower": 168377.16,
-            "upper": 169403.85,
+            "lower": 168740.256,
+            "upper": 169769.16,
             "reference": "ird_wage_salary_people_by_band__row_171"
           },
           {
-            "lower": 169403.85,
-            "upper": 170430.54,
+            "lower": 169769.16,
+            "upper": 170798.064,
             "reference": "ird_wage_salary_people_by_band__row_172"
           },
           {
-            "lower": 170430.54,
-            "upper": 171457.23,
+            "lower": 170798.064,
+            "upper": 171826.968,
             "reference": "ird_wage_salary_people_by_band__row_173"
           },
           {
-            "lower": 171457.23,
-            "upper": 172483.92,
+            "lower": 171826.968,
+            "upper": 172855.872,
             "reference": "ird_wage_salary_people_by_band__row_174"
           },
           {
-            "lower": 172483.92,
-            "upper": 173510.61,
+            "lower": 172855.872,
+            "upper": 173884.776,
             "reference": "ird_wage_salary_people_by_band__row_175"
           },
           {
-            "lower": 173510.61,
-            "upper": 174537.3,
+            "lower": 173884.776,
+            "upper": 174913.68,
             "reference": "ird_wage_salary_people_by_band__row_176"
           },
           {
-            "lower": 174537.3,
-            "upper": 175563.99,
+            "lower": 174913.68,
+            "upper": 175942.584,
             "reference": "ird_wage_salary_people_by_band__row_177"
           },
           {
-            "lower": 175563.99,
-            "upper": 176590.68,
+            "lower": 175942.584,
+            "upper": 176971.488,
             "reference": "ird_wage_salary_people_by_band__row_178"
           },
           {
-            "lower": 176590.68,
-            "upper": 177617.37,
+            "lower": 176971.488,
+            "upper": 178000.392,
             "reference": "ird_wage_salary_people_by_band__row_179"
           },
           {
-            "lower": 177617.37,
-            "upper": 178644.06,
+            "lower": 178000.392,
+            "upper": 179029.296,
             "reference": "ird_wage_salary_people_by_band__row_180"
           },
           {
-            "lower": 178644.06,
-            "upper": 179670.75,
+            "lower": 179029.296,
+            "upper": 180058.2,
             "reference": "ird_wage_salary_people_by_band__row_181"
           },
           {
-            "lower": 179670.75,
-            "upper": 180697.44,
+            "lower": 180058.2,
+            "upper": 181087.104,
             "reference": "ird_wage_salary_people_by_band__row_182"
           },
           {
-            "lower": 180697.44,
-            "upper": 181724.13,
+            "lower": 181087.104,
+            "upper": 182116.008,
             "reference": "ird_wage_salary_people_by_band__row_183"
           },
           {
-            "lower": 181724.13,
-            "upper": 182750.82,
+            "lower": 182116.008,
+            "upper": 183144.912,
             "reference": "ird_wage_salary_people_by_band__row_184"
           },
           {
-            "lower": 182750.82,
-            "upper": 183777.51,
+            "lower": 183144.912,
+            "upper": 184173.816,
             "reference": "ird_wage_salary_people_by_band__row_185"
           },
           {
-            "lower": 183777.51,
-            "upper": 184804.2,
+            "lower": 184173.816,
+            "upper": 185202.72,
             "reference": "ird_wage_salary_people_by_band__row_186"
           },
           {
-            "lower": 184804.2,
-            "upper": 185830.89,
+            "lower": 185202.72,
+            "upper": 186231.624,
             "reference": "ird_wage_salary_people_by_band__row_187"
           },
           {
-            "lower": 185830.89,
-            "upper": 186857.58,
+            "lower": 186231.624,
+            "upper": 187260.528,
             "reference": "ird_wage_salary_people_by_band__row_188"
           },
           {
-            "lower": 186857.58,
-            "upper": 187884.27,
+            "lower": 187260.528,
+            "upper": 188289.432,
             "reference": "ird_wage_salary_people_by_band__row_189"
           },
           {
-            "lower": 187884.27,
-            "upper": 188910.96,
+            "lower": 188289.432,
+            "upper": 189318.336,
             "reference": "ird_wage_salary_people_by_band__row_190"
           },
           {
-            "lower": 188910.96,
-            "upper": 189937.65,
+            "lower": 189318.336,
+            "upper": 190347.24,
             "reference": "ird_wage_salary_people_by_band__row_191"
           },
           {
-            "lower": 189937.65,
-            "upper": 190964.34,
+            "lower": 190347.24,
+            "upper": 191376.144,
             "reference": "ird_wage_salary_people_by_band__row_192"
           },
           {
-            "lower": 190964.34,
-            "upper": 191991.03,
+            "lower": 191376.144,
+            "upper": 192405.048,
             "reference": "ird_wage_salary_people_by_band__row_193"
           },
           {
-            "lower": 191991.03,
-            "upper": 193017.72,
+            "lower": 192405.048,
+            "upper": 193433.952,
             "reference": "ird_wage_salary_people_by_band__row_194"
           },
           {
-            "lower": 193017.72,
-            "upper": 194044.41,
+            "lower": 193433.952,
+            "upper": 194462.856,
             "reference": "ird_wage_salary_people_by_band__row_195"
           },
           {
-            "lower": 194044.41,
-            "upper": 195071.1,
+            "lower": 194462.856,
+            "upper": 195491.76,
             "reference": "ird_wage_salary_people_by_band__row_196"
           },
           {
-            "lower": 195071.1,
-            "upper": 196097.79,
+            "lower": 195491.76,
+            "upper": 196520.664,
             "reference": "ird_wage_salary_people_by_band__row_197"
           },
           {
-            "lower": 196097.79,
-            "upper": 197124.48,
+            "lower": 196520.664,
+            "upper": 197549.568,
             "reference": "ird_wage_salary_people_by_band__row_198"
           },
           {
-            "lower": 197124.48,
-            "upper": 198151.17,
+            "lower": 197549.568,
+            "upper": 198578.472,
             "reference": "ird_wage_salary_people_by_band__row_199"
           },
           {
-            "lower": 198151.17,
-            "upper": 199177.86,
+            "lower": 198578.472,
+            "upper": 199607.376,
             "reference": "ird_wage_salary_people_by_band__row_200"
           },
           {
-            "lower": 199177.86,
-            "upper": 200204.55,
+            "lower": 199607.376,
+            "upper": 200636.28,
             "reference": "ird_wage_salary_people_by_band__row_201"
           },
           {
-            "lower": 200204.55,
-            "upper": 201231.24,
+            "lower": 200636.28,
+            "upper": 201665.184,
             "reference": "ird_wage_salary_people_by_band__row_202"
           },
           {
-            "lower": 201231.24,
-            "upper": 202257.93,
+            "lower": 201665.184,
+            "upper": 202694.088,
             "reference": "ird_wage_salary_people_by_band__row_203"
           },
           {
-            "lower": 202257.93,
-            "upper": 203284.62,
+            "lower": 202694.088,
+            "upper": 203722.992,
             "reference": "ird_wage_salary_people_by_band__row_204"
           },
           {
-            "lower": 203284.62,
-            "upper": 204311.31,
+            "lower": 203722.992,
+            "upper": 204751.896,
             "reference": "ird_wage_salary_people_by_band__row_205"
           },
           {
-            "lower": 204311.31,
-            "upper": 205338.0,
+            "lower": 204751.896,
+            "upper": 205780.8,
             "reference": "ird_wage_salary_people_by_band__row_206"
           },
           {
-            "lower": 205338.0,
-            "upper": 210471.45,
+            "lower": 205780.8,
+            "upper": 210925.32,
             "reference": "ird_wage_salary_people_by_band__row_207"
           },
           {
-            "lower": 210471.45,
-            "upper": 215604.9,
+            "lower": 210925.32,
+            "upper": 216069.84,
             "reference": "ird_wage_salary_people_by_band__row_208"
           },
           {
-            "lower": 215604.9,
-            "upper": 220738.35,
+            "lower": 216069.84,
+            "upper": 221214.36,
             "reference": "ird_wage_salary_people_by_band__row_209"
           },
           {
-            "lower": 220738.35,
-            "upper": 225871.8,
+            "lower": 221214.36,
+            "upper": 226358.88,
             "reference": "ird_wage_salary_people_by_band__row_210"
           },
           {
-            "lower": 225871.8,
-            "upper": 231005.25,
+            "lower": 226358.88,
+            "upper": 231503.4,
             "reference": "ird_wage_salary_people_by_band__row_211"
           },
           {
-            "lower": 231005.25,
-            "upper": 236138.7,
+            "lower": 231503.4,
+            "upper": 236647.92,
             "reference": "ird_wage_salary_people_by_band__row_212"
           },
           {
-            "lower": 236138.7,
-            "upper": 241272.15,
+            "lower": 236647.92,
+            "upper": 241792.44,
             "reference": "ird_wage_salary_people_by_band__row_213"
           },
           {
-            "lower": 241272.15,
-            "upper": 246405.6,
+            "lower": 241792.44,
+            "upper": 246936.96,
             "reference": "ird_wage_salary_people_by_band__row_214"
           },
           {
-            "lower": 246405.6,
-            "upper": 251539.05,
+            "lower": 246936.96,
+            "upper": 252081.48,
             "reference": "ird_wage_salary_people_by_band__row_215"
           },
           {
-            "lower": 251539.05,
-            "upper": 256672.5,
+            "lower": 252081.48,
+            "upper": 257226.0,
             "reference": "ird_wage_salary_people_by_band__row_216"
           },
           {
-            "lower": 256672.5,
-            "upper": 261805.95,
+            "lower": 257226.0,
+            "upper": 262370.52,
             "reference": "ird_wage_salary_people_by_band__row_217"
           },
           {
-            "lower": 261805.95,
-            "upper": 266939.4,
+            "lower": 262370.52,
+            "upper": 267515.04,
             "reference": "ird_wage_salary_people_by_band__row_218"
           },
           {
-            "lower": 266939.4,
-            "upper": 272072.85,
+            "lower": 267515.04,
+            "upper": 272659.56,
             "reference": "ird_wage_salary_people_by_band__row_219"
           },
           {
-            "lower": 272072.85,
-            "upper": 277206.3,
+            "lower": 272659.56,
+            "upper": 277804.08,
             "reference": "ird_wage_salary_people_by_band__row_220"
           },
           {
-            "lower": 277206.3,
-            "upper": 282339.75,
+            "lower": 277804.08,
+            "upper": 282948.6,
             "reference": "ird_wage_salary_people_by_band__row_221"
           },
           {
-            "lower": 282339.75,
-            "upper": 287473.2,
+            "lower": 282948.6,
+            "upper": 288093.12,
             "reference": "ird_wage_salary_people_by_band__row_222"
           },
           {
-            "lower": 287473.2,
-            "upper": 292606.65,
+            "lower": 288093.12,
+            "upper": 293237.64,
             "reference": "ird_wage_salary_people_by_band__row_223"
           },
           {
-            "lower": 292606.65,
-            "upper": 297740.1,
+            "lower": 293237.64,
+            "upper": 298382.16,
             "reference": "ird_wage_salary_people_by_band__row_224"
           },
           {
-            "lower": 297740.1,
-            "upper": 302873.55,
+            "lower": 298382.16,
+            "upper": 303526.68,
             "reference": "ird_wage_salary_people_by_band__row_225"
           },
           {
-            "lower": 302873.55,
-            "upper": 308007.0,
+            "lower": 303526.68,
+            "upper": 308671.2,
             "reference": "ird_wage_salary_people_by_band__row_226"
           },
           {
-            "lower": 308007.0,
-            "upper": 359341.5,
+            "lower": 308671.2,
+            "upper": 360116.4,
             "reference": "ird_wage_salary_people_by_band__row_227"
           },
           {
-            "lower": 359341.5,
-            "upper": 410676.0,
+            "lower": 360116.4,
+            "upper": 411561.6,
             "reference": "ird_wage_salary_people_by_band__row_228"
           },
           {
-            "lower": 410676.0,
-            "upper": 462010.5,
+            "lower": 411561.6,
+            "upper": 463006.8,
             "reference": "ird_wage_salary_people_by_band__row_229"
           },
           {
-            "lower": 462010.5,
-            "upper": 513345.0,
+            "lower": 463006.8,
+            "upper": 514452.0,
             "reference": "ird_wage_salary_people_by_band__row_230"
           },
           {
-            "lower": 513345.0,
-            "upper": 564679.5,
+            "lower": 514452.0,
+            "upper": 565897.2,
             "reference": "ird_wage_salary_people_by_band__row_231"
           },
           {
-            "lower": 564679.5,
-            "upper": 616014.0,
+            "lower": 565897.2,
+            "upper": 617342.4,
             "reference": "ird_wage_salary_people_by_band__row_232"
           },
           {
-            "lower": 616014.0,
-            "upper": 667348.5,
+            "lower": 617342.4,
+            "upper": 668787.6,
             "reference": "ird_wage_salary_people_by_band__row_233"
           },
           {
-            "lower": 667348.5,
-            "upper": 718683.0,
+            "lower": 668787.6,
+            "upper": 720232.8,
             "reference": "ird_wage_salary_people_by_band__row_234"
           },
           {
-            "lower": 718683.0,
-            "upper": 770017.5,
+            "lower": 720232.8,
+            "upper": 771678.0,
             "reference": "ird_wage_salary_people_by_band__row_235"
           },
           {
-            "lower": 770017.5,
-            "upper": 821352.0,
+            "lower": 771678.0,
+            "upper": 823123.2,
             "reference": "ird_wage_salary_people_by_band__row_236"
           },
           {
-            "lower": 821352.0,
-            "upper": 872686.5,
+            "lower": 823123.2,
+            "upper": 874568.4,
             "reference": "ird_wage_salary_people_by_band__row_237"
           },
           {
-            "lower": 872686.5,
-            "upper": 924021.0,
+            "lower": 874568.4,
+            "upper": 926013.6,
             "reference": "ird_wage_salary_people_by_band__row_238"
           },
           {
-            "lower": 924021.0,
-            "upper": 975355.5,
+            "lower": 926013.6,
+            "upper": 977458.8,
             "reference": "ird_wage_salary_people_by_band__row_239"
           },
           {
-            "lower": 975355.5,
-            "upper": 1026690.0,
+            "lower": 977458.8,
+            "upper": 1028904.0,
             "reference": "ird_wage_salary_people_by_band__row_240"
           },
           {
-            "lower": 1026690.0,
+            "lower": 1028904.0,
             "upper": null,
             "reference": "ird_wage_salary_people_by_band__row_241"
           }
@@ -1196,1184 +1196,1184 @@
     "central": {
       "factor_id": "p1_ty2026_to_ty2027_central",
       "operational_factor": {
-        "numerator": 1028580,
+        "numerator": 1029853,
         "denominator": 1000000
       },
-      "factor_receipt_sha256": "43e1914b11969709ea4f0df7fc9a8280f82f15bf186b4e107f986da0a7871c53",
+      "factor_receipt_sha256": "492c93a13573d84678f626281cf810ba1912fc985b96b13b44965aed148284f5",
       "map_bands": {
         "bands": [
           {
             "lower": 0.0,
-            "upper": 1028.58,
+            "upper": 1029.853,
             "reference": "ird_wage_salary_people_by_band__row_7"
           },
           {
-            "lower": 1028.58,
-            "upper": 2057.16,
+            "lower": 1029.853,
+            "upper": 2059.706,
             "reference": "ird_wage_salary_people_by_band__row_8"
           },
           {
-            "lower": 2057.16,
-            "upper": 3085.74,
+            "lower": 2059.706,
+            "upper": 3089.559,
             "reference": "ird_wage_salary_people_by_band__row_9"
           },
           {
-            "lower": 3085.74,
-            "upper": 4114.32,
+            "lower": 3089.559,
+            "upper": 4119.412,
             "reference": "ird_wage_salary_people_by_band__row_10"
           },
           {
-            "lower": 4114.32,
-            "upper": 5142.9,
+            "lower": 4119.412,
+            "upper": 5149.265,
             "reference": "ird_wage_salary_people_by_band__row_11"
           },
           {
-            "lower": 5142.9,
-            "upper": 6171.48,
+            "lower": 5149.265,
+            "upper": 6179.118,
             "reference": "ird_wage_salary_people_by_band__row_12"
           },
           {
-            "lower": 6171.48,
-            "upper": 7200.06,
+            "lower": 6179.118,
+            "upper": 7208.971,
             "reference": "ird_wage_salary_people_by_band__row_13"
           },
           {
-            "lower": 7200.06,
-            "upper": 8228.64,
+            "lower": 7208.971,
+            "upper": 8238.824,
             "reference": "ird_wage_salary_people_by_band__row_14"
           },
           {
-            "lower": 8228.64,
-            "upper": 9257.22,
+            "lower": 8238.824,
+            "upper": 9268.677,
             "reference": "ird_wage_salary_people_by_band__row_15"
           },
           {
-            "lower": 9257.22,
-            "upper": 10285.8,
+            "lower": 9268.677,
+            "upper": 10298.53,
             "reference": "ird_wage_salary_people_by_band__row_16"
           },
           {
-            "lower": 10285.8,
-            "upper": 11314.38,
+            "lower": 10298.53,
+            "upper": 11328.383,
             "reference": "ird_wage_salary_people_by_band__row_17"
           },
           {
-            "lower": 11314.38,
-            "upper": 12342.96,
+            "lower": 11328.383,
+            "upper": 12358.236,
             "reference": "ird_wage_salary_people_by_band__row_18"
           },
           {
-            "lower": 12342.96,
-            "upper": 13371.54,
+            "lower": 12358.236,
+            "upper": 13388.089,
             "reference": "ird_wage_salary_people_by_band__row_19"
           },
           {
-            "lower": 13371.54,
-            "upper": 14400.12,
+            "lower": 13388.089,
+            "upper": 14417.942,
             "reference": "ird_wage_salary_people_by_band__row_20"
           },
           {
-            "lower": 14400.12,
-            "upper": 15428.7,
+            "lower": 14417.942,
+            "upper": 15447.795,
             "reference": "ird_wage_salary_people_by_band__row_21"
           },
           {
-            "lower": 15428.7,
-            "upper": 16457.28,
+            "lower": 15447.795,
+            "upper": 16477.648,
             "reference": "ird_wage_salary_people_by_band__row_22"
           },
           {
-            "lower": 16457.28,
-            "upper": 17485.86,
+            "lower": 16477.648,
+            "upper": 17507.501,
             "reference": "ird_wage_salary_people_by_band__row_23"
           },
           {
-            "lower": 17485.86,
-            "upper": 18514.44,
+            "lower": 17507.501,
+            "upper": 18537.354,
             "reference": "ird_wage_salary_people_by_band__row_24"
           },
           {
-            "lower": 18514.44,
-            "upper": 19543.02,
+            "lower": 18537.354,
+            "upper": 19567.207,
             "reference": "ird_wage_salary_people_by_band__row_25"
           },
           {
-            "lower": 19543.02,
-            "upper": 20571.6,
+            "lower": 19567.207,
+            "upper": 20597.06,
             "reference": "ird_wage_salary_people_by_band__row_26"
           },
           {
-            "lower": 20571.6,
-            "upper": 21600.18,
+            "lower": 20597.06,
+            "upper": 21626.913,
             "reference": "ird_wage_salary_people_by_band__row_27"
           },
           {
-            "lower": 21600.18,
-            "upper": 22628.76,
+            "lower": 21626.913,
+            "upper": 22656.766,
             "reference": "ird_wage_salary_people_by_band__row_28"
           },
           {
-            "lower": 22628.76,
-            "upper": 23657.34,
+            "lower": 22656.766,
+            "upper": 23686.619,
             "reference": "ird_wage_salary_people_by_band__row_29"
           },
           {
-            "lower": 23657.34,
-            "upper": 24685.92,
+            "lower": 23686.619,
+            "upper": 24716.472,
             "reference": "ird_wage_salary_people_by_band__row_30"
           },
           {
-            "lower": 24685.92,
-            "upper": 25714.5,
+            "lower": 24716.472,
+            "upper": 25746.325,
             "reference": "ird_wage_salary_people_by_band__row_31"
           },
           {
-            "lower": 25714.5,
-            "upper": 26743.08,
+            "lower": 25746.325,
+            "upper": 26776.178,
             "reference": "ird_wage_salary_people_by_band__row_32"
           },
           {
-            "lower": 26743.08,
-            "upper": 27771.66,
+            "lower": 26776.178,
+            "upper": 27806.031,
             "reference": "ird_wage_salary_people_by_band__row_33"
           },
           {
-            "lower": 27771.66,
-            "upper": 28800.24,
+            "lower": 27806.031,
+            "upper": 28835.884,
             "reference": "ird_wage_salary_people_by_band__row_34"
           },
           {
-            "lower": 28800.24,
-            "upper": 29828.82,
+            "lower": 28835.884,
+            "upper": 29865.737,
             "reference": "ird_wage_salary_people_by_band__row_35"
           },
           {
-            "lower": 29828.82,
-            "upper": 30857.4,
+            "lower": 29865.737,
+            "upper": 30895.59,
             "reference": "ird_wage_salary_people_by_band__row_36"
           },
           {
-            "lower": 30857.4,
-            "upper": 31885.98,
+            "lower": 30895.59,
+            "upper": 31925.443,
             "reference": "ird_wage_salary_people_by_band__row_37"
           },
           {
-            "lower": 31885.98,
-            "upper": 32914.56,
+            "lower": 31925.443,
+            "upper": 32955.296,
             "reference": "ird_wage_salary_people_by_band__row_38"
           },
           {
-            "lower": 32914.56,
-            "upper": 33943.14,
+            "lower": 32955.296,
+            "upper": 33985.149,
             "reference": "ird_wage_salary_people_by_band__row_39"
           },
           {
-            "lower": 33943.14,
-            "upper": 34971.72,
+            "lower": 33985.149,
+            "upper": 35015.002,
             "reference": "ird_wage_salary_people_by_band__row_40"
           },
           {
-            "lower": 34971.72,
-            "upper": 36000.3,
+            "lower": 35015.002,
+            "upper": 36044.855,
             "reference": "ird_wage_salary_people_by_band__row_41"
           },
           {
-            "lower": 36000.3,
-            "upper": 37028.88,
+            "lower": 36044.855,
+            "upper": 37074.708,
             "reference": "ird_wage_salary_people_by_band__row_42"
           },
           {
-            "lower": 37028.88,
-            "upper": 38057.46,
+            "lower": 37074.708,
+            "upper": 38104.561,
             "reference": "ird_wage_salary_people_by_band__row_43"
           },
           {
-            "lower": 38057.46,
-            "upper": 39086.04,
+            "lower": 38104.561,
+            "upper": 39134.414,
             "reference": "ird_wage_salary_people_by_band__row_44"
           },
           {
-            "lower": 39086.04,
-            "upper": 40114.62,
+            "lower": 39134.414,
+            "upper": 40164.267,
             "reference": "ird_wage_salary_people_by_band__row_45"
           },
           {
-            "lower": 40114.62,
-            "upper": 41143.2,
+            "lower": 40164.267,
+            "upper": 41194.12,
             "reference": "ird_wage_salary_people_by_band__row_46"
           },
           {
-            "lower": 41143.2,
-            "upper": 42171.78,
+            "lower": 41194.12,
+            "upper": 42223.973,
             "reference": "ird_wage_salary_people_by_band__row_47"
           },
           {
-            "lower": 42171.78,
-            "upper": 43200.36,
+            "lower": 42223.973,
+            "upper": 43253.826,
             "reference": "ird_wage_salary_people_by_band__row_48"
           },
           {
-            "lower": 43200.36,
-            "upper": 44228.94,
+            "lower": 43253.826,
+            "upper": 44283.679,
             "reference": "ird_wage_salary_people_by_band__row_49"
           },
           {
-            "lower": 44228.94,
-            "upper": 45257.52,
+            "lower": 44283.679,
+            "upper": 45313.532,
             "reference": "ird_wage_salary_people_by_band__row_50"
           },
           {
-            "lower": 45257.52,
-            "upper": 46286.1,
+            "lower": 45313.532,
+            "upper": 46343.385,
             "reference": "ird_wage_salary_people_by_band__row_51"
           },
           {
-            "lower": 46286.1,
-            "upper": 47314.68,
+            "lower": 46343.385,
+            "upper": 47373.238,
             "reference": "ird_wage_salary_people_by_band__row_52"
           },
           {
-            "lower": 47314.68,
-            "upper": 48343.26,
+            "lower": 47373.238,
+            "upper": 48403.091,
             "reference": "ird_wage_salary_people_by_band__row_53"
           },
           {
-            "lower": 48343.26,
-            "upper": 49371.84,
+            "lower": 48403.091,
+            "upper": 49432.944,
             "reference": "ird_wage_salary_people_by_band__row_54"
           },
           {
-            "lower": 49371.84,
-            "upper": 50400.42,
+            "lower": 49432.944,
+            "upper": 50462.797,
             "reference": "ird_wage_salary_people_by_band__row_55"
           },
           {
-            "lower": 50400.42,
-            "upper": 51429.0,
+            "lower": 50462.797,
+            "upper": 51492.65,
             "reference": "ird_wage_salary_people_by_band__row_56"
           },
           {
-            "lower": 51429.0,
-            "upper": 52457.58,
+            "lower": 51492.65,
+            "upper": 52522.503,
             "reference": "ird_wage_salary_people_by_band__row_57"
           },
           {
-            "lower": 52457.58,
-            "upper": 53486.16,
+            "lower": 52522.503,
+            "upper": 53552.356,
             "reference": "ird_wage_salary_people_by_band__row_58"
           },
           {
-            "lower": 53486.16,
-            "upper": 54514.74,
+            "lower": 53552.356,
+            "upper": 54582.209,
             "reference": "ird_wage_salary_people_by_band__row_59"
           },
           {
-            "lower": 54514.74,
-            "upper": 55543.32,
+            "lower": 54582.209,
+            "upper": 55612.062,
             "reference": "ird_wage_salary_people_by_band__row_60"
           },
           {
-            "lower": 55543.32,
-            "upper": 56571.9,
+            "lower": 55612.062,
+            "upper": 56641.915,
             "reference": "ird_wage_salary_people_by_band__row_61"
           },
           {
-            "lower": 56571.9,
-            "upper": 57600.48,
+            "lower": 56641.915,
+            "upper": 57671.768,
             "reference": "ird_wage_salary_people_by_band__row_62"
           },
           {
-            "lower": 57600.48,
-            "upper": 58629.06,
+            "lower": 57671.768,
+            "upper": 58701.621,
             "reference": "ird_wage_salary_people_by_band__row_63"
           },
           {
-            "lower": 58629.06,
-            "upper": 59657.64,
+            "lower": 58701.621,
+            "upper": 59731.474,
             "reference": "ird_wage_salary_people_by_band__row_64"
           },
           {
-            "lower": 59657.64,
-            "upper": 60686.22,
+            "lower": 59731.474,
+            "upper": 60761.327,
             "reference": "ird_wage_salary_people_by_band__row_65"
           },
           {
-            "lower": 60686.22,
-            "upper": 61714.8,
+            "lower": 60761.327,
+            "upper": 61791.18,
             "reference": "ird_wage_salary_people_by_band__row_66"
           },
           {
-            "lower": 61714.8,
-            "upper": 62743.38,
+            "lower": 61791.18,
+            "upper": 62821.033,
             "reference": "ird_wage_salary_people_by_band__row_67"
           },
           {
-            "lower": 62743.38,
-            "upper": 63771.96,
+            "lower": 62821.033,
+            "upper": 63850.886,
             "reference": "ird_wage_salary_people_by_band__row_68"
           },
           {
-            "lower": 63771.96,
-            "upper": 64800.54,
+            "lower": 63850.886,
+            "upper": 64880.739,
             "reference": "ird_wage_salary_people_by_band__row_69"
           },
           {
-            "lower": 64800.54,
-            "upper": 65829.12,
+            "lower": 64880.739,
+            "upper": 65910.592,
             "reference": "ird_wage_salary_people_by_band__row_70"
           },
           {
-            "lower": 65829.12,
-            "upper": 66857.7,
+            "lower": 65910.592,
+            "upper": 66940.445,
             "reference": "ird_wage_salary_people_by_band__row_71"
           },
           {
-            "lower": 66857.7,
-            "upper": 67886.28,
+            "lower": 66940.445,
+            "upper": 67970.298,
             "reference": "ird_wage_salary_people_by_band__row_72"
           },
           {
-            "lower": 67886.28,
-            "upper": 68914.86,
+            "lower": 67970.298,
+            "upper": 69000.151,
             "reference": "ird_wage_salary_people_by_band__row_73"
           },
           {
-            "lower": 68914.86,
-            "upper": 69943.44,
+            "lower": 69000.151,
+            "upper": 70030.004,
             "reference": "ird_wage_salary_people_by_band__row_74"
           },
           {
-            "lower": 69943.44,
-            "upper": 70972.02,
+            "lower": 70030.004,
+            "upper": 71059.857,
             "reference": "ird_wage_salary_people_by_band__row_75"
           },
           {
-            "lower": 70972.02,
-            "upper": 72000.6,
+            "lower": 71059.857,
+            "upper": 72089.71,
             "reference": "ird_wage_salary_people_by_band__row_76"
           },
           {
-            "lower": 72000.6,
-            "upper": 73029.18,
+            "lower": 72089.71,
+            "upper": 73119.563,
             "reference": "ird_wage_salary_people_by_band__row_77"
           },
           {
-            "lower": 73029.18,
-            "upper": 74057.76,
+            "lower": 73119.563,
+            "upper": 74149.416,
             "reference": "ird_wage_salary_people_by_band__row_78"
           },
           {
-            "lower": 74057.76,
-            "upper": 75086.34,
+            "lower": 74149.416,
+            "upper": 75179.269,
             "reference": "ird_wage_salary_people_by_band__row_79"
           },
           {
-            "lower": 75086.34,
-            "upper": 76114.92,
+            "lower": 75179.269,
+            "upper": 76209.122,
             "reference": "ird_wage_salary_people_by_band__row_80"
           },
           {
-            "lower": 76114.92,
-            "upper": 77143.5,
+            "lower": 76209.122,
+            "upper": 77238.975,
             "reference": "ird_wage_salary_people_by_band__row_81"
           },
           {
-            "lower": 77143.5,
-            "upper": 78172.08,
+            "lower": 77238.975,
+            "upper": 78268.828,
             "reference": "ird_wage_salary_people_by_band__row_82"
           },
           {
-            "lower": 78172.08,
-            "upper": 79200.66,
+            "lower": 78268.828,
+            "upper": 79298.681,
             "reference": "ird_wage_salary_people_by_band__row_83"
           },
           {
-            "lower": 79200.66,
-            "upper": 80229.24,
+            "lower": 79298.681,
+            "upper": 80328.534,
             "reference": "ird_wage_salary_people_by_band__row_84"
           },
           {
-            "lower": 80229.24,
-            "upper": 81257.82,
+            "lower": 80328.534,
+            "upper": 81358.387,
             "reference": "ird_wage_salary_people_by_band__row_85"
           },
           {
-            "lower": 81257.82,
-            "upper": 82286.4,
+            "lower": 81358.387,
+            "upper": 82388.24,
             "reference": "ird_wage_salary_people_by_band__row_86"
           },
           {
-            "lower": 82286.4,
-            "upper": 83314.98,
+            "lower": 82388.24,
+            "upper": 83418.093,
             "reference": "ird_wage_salary_people_by_band__row_87"
           },
           {
-            "lower": 83314.98,
-            "upper": 84343.56,
+            "lower": 83418.093,
+            "upper": 84447.946,
             "reference": "ird_wage_salary_people_by_band__row_88"
           },
           {
-            "lower": 84343.56,
-            "upper": 85372.14,
+            "lower": 84447.946,
+            "upper": 85477.799,
             "reference": "ird_wage_salary_people_by_band__row_89"
           },
           {
-            "lower": 85372.14,
-            "upper": 86400.72,
+            "lower": 85477.799,
+            "upper": 86507.652,
             "reference": "ird_wage_salary_people_by_band__row_90"
           },
           {
-            "lower": 86400.72,
-            "upper": 87429.3,
+            "lower": 86507.652,
+            "upper": 87537.505,
             "reference": "ird_wage_salary_people_by_band__row_91"
           },
           {
-            "lower": 87429.3,
-            "upper": 88457.88,
+            "lower": 87537.505,
+            "upper": 88567.358,
             "reference": "ird_wage_salary_people_by_band__row_92"
           },
           {
-            "lower": 88457.88,
-            "upper": 89486.46,
+            "lower": 88567.358,
+            "upper": 89597.211,
             "reference": "ird_wage_salary_people_by_band__row_93"
           },
           {
-            "lower": 89486.46,
-            "upper": 90515.04,
+            "lower": 89597.211,
+            "upper": 90627.064,
             "reference": "ird_wage_salary_people_by_band__row_94"
           },
           {
-            "lower": 90515.04,
-            "upper": 91543.62,
+            "lower": 90627.064,
+            "upper": 91656.917,
             "reference": "ird_wage_salary_people_by_band__row_95"
           },
           {
-            "lower": 91543.62,
-            "upper": 92572.2,
+            "lower": 91656.917,
+            "upper": 92686.77,
             "reference": "ird_wage_salary_people_by_band__row_96"
           },
           {
-            "lower": 92572.2,
-            "upper": 93600.78,
+            "lower": 92686.77,
+            "upper": 93716.623,
             "reference": "ird_wage_salary_people_by_band__row_97"
           },
           {
-            "lower": 93600.78,
-            "upper": 94629.36,
+            "lower": 93716.623,
+            "upper": 94746.476,
             "reference": "ird_wage_salary_people_by_band__row_98"
           },
           {
-            "lower": 94629.36,
-            "upper": 95657.94,
+            "lower": 94746.476,
+            "upper": 95776.329,
             "reference": "ird_wage_salary_people_by_band__row_99"
           },
           {
-            "lower": 95657.94,
-            "upper": 96686.52,
+            "lower": 95776.329,
+            "upper": 96806.182,
             "reference": "ird_wage_salary_people_by_band__row_100"
           },
           {
-            "lower": 96686.52,
-            "upper": 97715.1,
+            "lower": 96806.182,
+            "upper": 97836.035,
             "reference": "ird_wage_salary_people_by_band__row_101"
           },
           {
-            "lower": 97715.1,
-            "upper": 98743.68,
+            "lower": 97836.035,
+            "upper": 98865.888,
             "reference": "ird_wage_salary_people_by_band__row_102"
           },
           {
-            "lower": 98743.68,
-            "upper": 99772.26,
+            "lower": 98865.888,
+            "upper": 99895.741,
             "reference": "ird_wage_salary_people_by_band__row_103"
           },
           {
-            "lower": 99772.26,
-            "upper": 100800.84,
+            "lower": 99895.741,
+            "upper": 100925.594,
             "reference": "ird_wage_salary_people_by_band__row_104"
           },
           {
-            "lower": 100800.84,
-            "upper": 101829.42,
+            "lower": 100925.594,
+            "upper": 101955.447,
             "reference": "ird_wage_salary_people_by_band__row_105"
           },
           {
-            "lower": 101829.42,
-            "upper": 102858.0,
+            "lower": 101955.447,
+            "upper": 102985.3,
             "reference": "ird_wage_salary_people_by_band__row_106"
           },
           {
-            "lower": 102858.0,
-            "upper": 103886.58,
+            "lower": 102985.3,
+            "upper": 104015.153,
             "reference": "ird_wage_salary_people_by_band__row_107"
           },
           {
-            "lower": 103886.58,
-            "upper": 104915.16,
+            "lower": 104015.153,
+            "upper": 105045.006,
             "reference": "ird_wage_salary_people_by_band__row_108"
           },
           {
-            "lower": 104915.16,
-            "upper": 105943.74,
+            "lower": 105045.006,
+            "upper": 106074.859,
             "reference": "ird_wage_salary_people_by_band__row_109"
           },
           {
-            "lower": 105943.74,
-            "upper": 106972.32,
+            "lower": 106074.859,
+            "upper": 107104.712,
             "reference": "ird_wage_salary_people_by_band__row_110"
           },
           {
-            "lower": 106972.32,
-            "upper": 108000.9,
+            "lower": 107104.712,
+            "upper": 108134.565,
             "reference": "ird_wage_salary_people_by_band__row_111"
           },
           {
-            "lower": 108000.9,
-            "upper": 109029.48,
+            "lower": 108134.565,
+            "upper": 109164.418,
             "reference": "ird_wage_salary_people_by_band__row_112"
           },
           {
-            "lower": 109029.48,
-            "upper": 110058.06,
+            "lower": 109164.418,
+            "upper": 110194.271,
             "reference": "ird_wage_salary_people_by_band__row_113"
           },
           {
-            "lower": 110058.06,
-            "upper": 111086.64,
+            "lower": 110194.271,
+            "upper": 111224.124,
             "reference": "ird_wage_salary_people_by_band__row_114"
           },
           {
-            "lower": 111086.64,
-            "upper": 112115.22,
+            "lower": 111224.124,
+            "upper": 112253.977,
             "reference": "ird_wage_salary_people_by_band__row_115"
           },
           {
-            "lower": 112115.22,
-            "upper": 113143.8,
+            "lower": 112253.977,
+            "upper": 113283.83,
             "reference": "ird_wage_salary_people_by_band__row_116"
           },
           {
-            "lower": 113143.8,
-            "upper": 114172.38,
+            "lower": 113283.83,
+            "upper": 114313.683,
             "reference": "ird_wage_salary_people_by_band__row_117"
           },
           {
-            "lower": 114172.38,
-            "upper": 115200.96,
+            "lower": 114313.683,
+            "upper": 115343.536,
             "reference": "ird_wage_salary_people_by_band__row_118"
           },
           {
-            "lower": 115200.96,
-            "upper": 116229.54,
+            "lower": 115343.536,
+            "upper": 116373.389,
             "reference": "ird_wage_salary_people_by_band__row_119"
           },
           {
-            "lower": 116229.54,
-            "upper": 117258.12,
+            "lower": 116373.389,
+            "upper": 117403.242,
             "reference": "ird_wage_salary_people_by_band__row_120"
           },
           {
-            "lower": 117258.12,
-            "upper": 118286.7,
+            "lower": 117403.242,
+            "upper": 118433.095,
             "reference": "ird_wage_salary_people_by_band__row_121"
           },
           {
-            "lower": 118286.7,
-            "upper": 119315.28,
+            "lower": 118433.095,
+            "upper": 119462.948,
             "reference": "ird_wage_salary_people_by_band__row_122"
           },
           {
-            "lower": 119315.28,
-            "upper": 120343.86,
+            "lower": 119462.948,
+            "upper": 120492.801,
             "reference": "ird_wage_salary_people_by_band__row_123"
           },
           {
-            "lower": 120343.86,
-            "upper": 121372.44,
+            "lower": 120492.801,
+            "upper": 121522.654,
             "reference": "ird_wage_salary_people_by_band__row_124"
           },
           {
-            "lower": 121372.44,
-            "upper": 122401.02,
+            "lower": 121522.654,
+            "upper": 122552.507,
             "reference": "ird_wage_salary_people_by_band__row_125"
           },
           {
-            "lower": 122401.02,
-            "upper": 123429.6,
+            "lower": 122552.507,
+            "upper": 123582.36,
             "reference": "ird_wage_salary_people_by_band__row_126"
           },
           {
-            "lower": 123429.6,
-            "upper": 124458.18,
+            "lower": 123582.36,
+            "upper": 124612.213,
             "reference": "ird_wage_salary_people_by_band__row_127"
           },
           {
-            "lower": 124458.18,
-            "upper": 125486.76,
+            "lower": 124612.213,
+            "upper": 125642.066,
             "reference": "ird_wage_salary_people_by_band__row_128"
           },
           {
-            "lower": 125486.76,
-            "upper": 126515.34,
+            "lower": 125642.066,
+            "upper": 126671.919,
             "reference": "ird_wage_salary_people_by_band__row_129"
           },
           {
-            "lower": 126515.34,
-            "upper": 127543.92,
+            "lower": 126671.919,
+            "upper": 127701.772,
             "reference": "ird_wage_salary_people_by_band__row_130"
           },
           {
-            "lower": 127543.92,
-            "upper": 128572.5,
+            "lower": 127701.772,
+            "upper": 128731.625,
             "reference": "ird_wage_salary_people_by_band__row_131"
           },
           {
-            "lower": 128572.5,
-            "upper": 129601.08,
+            "lower": 128731.625,
+            "upper": 129761.478,
             "reference": "ird_wage_salary_people_by_band__row_132"
           },
           {
-            "lower": 129601.08,
-            "upper": 130629.66,
+            "lower": 129761.478,
+            "upper": 130791.331,
             "reference": "ird_wage_salary_people_by_band__row_133"
           },
           {
-            "lower": 130629.66,
-            "upper": 131658.24,
+            "lower": 130791.331,
+            "upper": 131821.184,
             "reference": "ird_wage_salary_people_by_band__row_134"
           },
           {
-            "lower": 131658.24,
-            "upper": 132686.82,
+            "lower": 131821.184,
+            "upper": 132851.037,
             "reference": "ird_wage_salary_people_by_band__row_135"
           },
           {
-            "lower": 132686.82,
-            "upper": 133715.4,
+            "lower": 132851.037,
+            "upper": 133880.89,
             "reference": "ird_wage_salary_people_by_band__row_136"
           },
           {
-            "lower": 133715.4,
-            "upper": 134743.98,
+            "lower": 133880.89,
+            "upper": 134910.743,
             "reference": "ird_wage_salary_people_by_band__row_137"
           },
           {
-            "lower": 134743.98,
-            "upper": 135772.56,
+            "lower": 134910.743,
+            "upper": 135940.596,
             "reference": "ird_wage_salary_people_by_band__row_138"
           },
           {
-            "lower": 135772.56,
-            "upper": 136801.14,
+            "lower": 135940.596,
+            "upper": 136970.449,
             "reference": "ird_wage_salary_people_by_band__row_139"
           },
           {
-            "lower": 136801.14,
-            "upper": 137829.72,
+            "lower": 136970.449,
+            "upper": 138000.302,
             "reference": "ird_wage_salary_people_by_band__row_140"
           },
           {
-            "lower": 137829.72,
-            "upper": 138858.3,
+            "lower": 138000.302,
+            "upper": 139030.155,
             "reference": "ird_wage_salary_people_by_band__row_141"
           },
           {
-            "lower": 138858.3,
-            "upper": 139886.88,
+            "lower": 139030.155,
+            "upper": 140060.008,
             "reference": "ird_wage_salary_people_by_band__row_142"
           },
           {
-            "lower": 139886.88,
-            "upper": 140915.46,
+            "lower": 140060.008,
+            "upper": 141089.861,
             "reference": "ird_wage_salary_people_by_band__row_143"
           },
           {
-            "lower": 140915.46,
-            "upper": 141944.04,
+            "lower": 141089.861,
+            "upper": 142119.714,
             "reference": "ird_wage_salary_people_by_band__row_144"
           },
           {
-            "lower": 141944.04,
-            "upper": 142972.62,
+            "lower": 142119.714,
+            "upper": 143149.567,
             "reference": "ird_wage_salary_people_by_band__row_145"
           },
           {
-            "lower": 142972.62,
-            "upper": 144001.2,
+            "lower": 143149.567,
+            "upper": 144179.42,
             "reference": "ird_wage_salary_people_by_band__row_146"
           },
           {
-            "lower": 144001.2,
-            "upper": 145029.78,
+            "lower": 144179.42,
+            "upper": 145209.273,
             "reference": "ird_wage_salary_people_by_band__row_147"
           },
           {
-            "lower": 145029.78,
-            "upper": 146058.36,
+            "lower": 145209.273,
+            "upper": 146239.126,
             "reference": "ird_wage_salary_people_by_band__row_148"
           },
           {
-            "lower": 146058.36,
-            "upper": 147086.94,
+            "lower": 146239.126,
+            "upper": 147268.979,
             "reference": "ird_wage_salary_people_by_band__row_149"
           },
           {
-            "lower": 147086.94,
-            "upper": 148115.52,
+            "lower": 147268.979,
+            "upper": 148298.832,
             "reference": "ird_wage_salary_people_by_band__row_150"
           },
           {
-            "lower": 148115.52,
-            "upper": 149144.1,
+            "lower": 148298.832,
+            "upper": 149328.685,
             "reference": "ird_wage_salary_people_by_band__row_151"
           },
           {
-            "lower": 149144.1,
-            "upper": 150172.68,
+            "lower": 149328.685,
+            "upper": 150358.538,
             "reference": "ird_wage_salary_people_by_band__row_152"
           },
           {
-            "lower": 150172.68,
-            "upper": 151201.26,
+            "lower": 150358.538,
+            "upper": 151388.391,
             "reference": "ird_wage_salary_people_by_band__row_153"
           },
           {
-            "lower": 151201.26,
-            "upper": 152229.84,
+            "lower": 151388.391,
+            "upper": 152418.244,
             "reference": "ird_wage_salary_people_by_band__row_154"
           },
           {
-            "lower": 152229.84,
-            "upper": 153258.42,
+            "lower": 152418.244,
+            "upper": 153448.097,
             "reference": "ird_wage_salary_people_by_band__row_155"
           },
           {
-            "lower": 153258.42,
-            "upper": 154287.0,
+            "lower": 153448.097,
+            "upper": 154477.95,
             "reference": "ird_wage_salary_people_by_band__row_156"
           },
           {
-            "lower": 154287.0,
-            "upper": 155315.58,
+            "lower": 154477.95,
+            "upper": 155507.803,
             "reference": "ird_wage_salary_people_by_band__row_157"
           },
           {
-            "lower": 155315.58,
-            "upper": 156344.16,
+            "lower": 155507.803,
+            "upper": 156537.656,
             "reference": "ird_wage_salary_people_by_band__row_158"
           },
           {
-            "lower": 156344.16,
-            "upper": 157372.74,
+            "lower": 156537.656,
+            "upper": 157567.509,
             "reference": "ird_wage_salary_people_by_band__row_159"
           },
           {
-            "lower": 157372.74,
-            "upper": 158401.32,
+            "lower": 157567.509,
+            "upper": 158597.362,
             "reference": "ird_wage_salary_people_by_band__row_160"
           },
           {
-            "lower": 158401.32,
-            "upper": 159429.9,
+            "lower": 158597.362,
+            "upper": 159627.215,
             "reference": "ird_wage_salary_people_by_band__row_161"
           },
           {
-            "lower": 159429.9,
-            "upper": 160458.48,
+            "lower": 159627.215,
+            "upper": 160657.068,
             "reference": "ird_wage_salary_people_by_band__row_162"
           },
           {
-            "lower": 160458.48,
-            "upper": 161487.06,
+            "lower": 160657.068,
+            "upper": 161686.921,
             "reference": "ird_wage_salary_people_by_band__row_163"
           },
           {
-            "lower": 161487.06,
-            "upper": 162515.64,
+            "lower": 161686.921,
+            "upper": 162716.774,
             "reference": "ird_wage_salary_people_by_band__row_164"
           },
           {
-            "lower": 162515.64,
-            "upper": 163544.22,
+            "lower": 162716.774,
+            "upper": 163746.627,
             "reference": "ird_wage_salary_people_by_band__row_165"
           },
           {
-            "lower": 163544.22,
-            "upper": 164572.8,
+            "lower": 163746.627,
+            "upper": 164776.48,
             "reference": "ird_wage_salary_people_by_band__row_166"
           },
           {
-            "lower": 164572.8,
-            "upper": 165601.38,
+            "lower": 164776.48,
+            "upper": 165806.333,
             "reference": "ird_wage_salary_people_by_band__row_167"
           },
           {
-            "lower": 165601.38,
-            "upper": 166629.96,
+            "lower": 165806.333,
+            "upper": 166836.186,
             "reference": "ird_wage_salary_people_by_band__row_168"
           },
           {
-            "lower": 166629.96,
-            "upper": 167658.54,
+            "lower": 166836.186,
+            "upper": 167866.039,
             "reference": "ird_wage_salary_people_by_band__row_169"
           },
           {
-            "lower": 167658.54,
-            "upper": 168687.12,
+            "lower": 167866.039,
+            "upper": 168895.892,
             "reference": "ird_wage_salary_people_by_band__row_170"
           },
           {
-            "lower": 168687.12,
-            "upper": 169715.7,
+            "lower": 168895.892,
+            "upper": 169925.745,
             "reference": "ird_wage_salary_people_by_band__row_171"
           },
           {
-            "lower": 169715.7,
-            "upper": 170744.28,
+            "lower": 169925.745,
+            "upper": 170955.598,
             "reference": "ird_wage_salary_people_by_band__row_172"
           },
           {
-            "lower": 170744.28,
-            "upper": 171772.86,
+            "lower": 170955.598,
+            "upper": 171985.451,
             "reference": "ird_wage_salary_people_by_band__row_173"
           },
           {
-            "lower": 171772.86,
-            "upper": 172801.44,
+            "lower": 171985.451,
+            "upper": 173015.304,
             "reference": "ird_wage_salary_people_by_band__row_174"
           },
           {
-            "lower": 172801.44,
-            "upper": 173830.02,
+            "lower": 173015.304,
+            "upper": 174045.157,
             "reference": "ird_wage_salary_people_by_band__row_175"
           },
           {
-            "lower": 173830.02,
-            "upper": 174858.6,
+            "lower": 174045.157,
+            "upper": 175075.01,
             "reference": "ird_wage_salary_people_by_band__row_176"
           },
           {
-            "lower": 174858.6,
-            "upper": 175887.18,
+            "lower": 175075.01,
+            "upper": 176104.863,
             "reference": "ird_wage_salary_people_by_band__row_177"
           },
           {
-            "lower": 175887.18,
-            "upper": 176915.76,
+            "lower": 176104.863,
+            "upper": 177134.716,
             "reference": "ird_wage_salary_people_by_band__row_178"
           },
           {
-            "lower": 176915.76,
-            "upper": 177944.34,
+            "lower": 177134.716,
+            "upper": 178164.569,
             "reference": "ird_wage_salary_people_by_band__row_179"
           },
           {
-            "lower": 177944.34,
-            "upper": 178972.92,
+            "lower": 178164.569,
+            "upper": 179194.422,
             "reference": "ird_wage_salary_people_by_band__row_180"
           },
           {
-            "lower": 178972.92,
-            "upper": 180001.5,
+            "lower": 179194.422,
+            "upper": 180224.275,
             "reference": "ird_wage_salary_people_by_band__row_181"
           },
           {
-            "lower": 180001.5,
-            "upper": 181030.08,
+            "lower": 180224.275,
+            "upper": 181254.128,
             "reference": "ird_wage_salary_people_by_band__row_182"
           },
           {
-            "lower": 181030.08,
-            "upper": 182058.66,
+            "lower": 181254.128,
+            "upper": 182283.981,
             "reference": "ird_wage_salary_people_by_band__row_183"
           },
           {
-            "lower": 182058.66,
-            "upper": 183087.24,
+            "lower": 182283.981,
+            "upper": 183313.834,
             "reference": "ird_wage_salary_people_by_band__row_184"
           },
           {
-            "lower": 183087.24,
-            "upper": 184115.82,
+            "lower": 183313.834,
+            "upper": 184343.687,
             "reference": "ird_wage_salary_people_by_band__row_185"
           },
           {
-            "lower": 184115.82,
-            "upper": 185144.4,
+            "lower": 184343.687,
+            "upper": 185373.54,
             "reference": "ird_wage_salary_people_by_band__row_186"
           },
           {
-            "lower": 185144.4,
-            "upper": 186172.98,
+            "lower": 185373.54,
+            "upper": 186403.393,
             "reference": "ird_wage_salary_people_by_band__row_187"
           },
           {
-            "lower": 186172.98,
-            "upper": 187201.56,
+            "lower": 186403.393,
+            "upper": 187433.246,
             "reference": "ird_wage_salary_people_by_band__row_188"
           },
           {
-            "lower": 187201.56,
-            "upper": 188230.14,
+            "lower": 187433.246,
+            "upper": 188463.099,
             "reference": "ird_wage_salary_people_by_band__row_189"
           },
           {
-            "lower": 188230.14,
-            "upper": 189258.72,
+            "lower": 188463.099,
+            "upper": 189492.952,
             "reference": "ird_wage_salary_people_by_band__row_190"
           },
           {
-            "lower": 189258.72,
-            "upper": 190287.3,
+            "lower": 189492.952,
+            "upper": 190522.805,
             "reference": "ird_wage_salary_people_by_band__row_191"
           },
           {
-            "lower": 190287.3,
-            "upper": 191315.88,
+            "lower": 190522.805,
+            "upper": 191552.658,
             "reference": "ird_wage_salary_people_by_band__row_192"
           },
           {
-            "lower": 191315.88,
-            "upper": 192344.46,
+            "lower": 191552.658,
+            "upper": 192582.511,
             "reference": "ird_wage_salary_people_by_band__row_193"
           },
           {
-            "lower": 192344.46,
-            "upper": 193373.04,
+            "lower": 192582.511,
+            "upper": 193612.364,
             "reference": "ird_wage_salary_people_by_band__row_194"
           },
           {
-            "lower": 193373.04,
-            "upper": 194401.62,
+            "lower": 193612.364,
+            "upper": 194642.217,
             "reference": "ird_wage_salary_people_by_band__row_195"
           },
           {
-            "lower": 194401.62,
-            "upper": 195430.2,
+            "lower": 194642.217,
+            "upper": 195672.07,
             "reference": "ird_wage_salary_people_by_band__row_196"
           },
           {
-            "lower": 195430.2,
-            "upper": 196458.78,
+            "lower": 195672.07,
+            "upper": 196701.923,
             "reference": "ird_wage_salary_people_by_band__row_197"
           },
           {
-            "lower": 196458.78,
-            "upper": 197487.36,
+            "lower": 196701.923,
+            "upper": 197731.776,
             "reference": "ird_wage_salary_people_by_band__row_198"
           },
           {
-            "lower": 197487.36,
-            "upper": 198515.94,
+            "lower": 197731.776,
+            "upper": 198761.629,
             "reference": "ird_wage_salary_people_by_band__row_199"
           },
           {
-            "lower": 198515.94,
-            "upper": 199544.52,
+            "lower": 198761.629,
+            "upper": 199791.482,
             "reference": "ird_wage_salary_people_by_band__row_200"
           },
           {
-            "lower": 199544.52,
-            "upper": 200573.1,
+            "lower": 199791.482,
+            "upper": 200821.335,
             "reference": "ird_wage_salary_people_by_band__row_201"
           },
           {
-            "lower": 200573.1,
-            "upper": 201601.68,
+            "lower": 200821.335,
+            "upper": 201851.188,
             "reference": "ird_wage_salary_people_by_band__row_202"
           },
           {
-            "lower": 201601.68,
-            "upper": 202630.26,
+            "lower": 201851.188,
+            "upper": 202881.041,
             "reference": "ird_wage_salary_people_by_band__row_203"
           },
           {
-            "lower": 202630.26,
-            "upper": 203658.84,
+            "lower": 202881.041,
+            "upper": 203910.894,
             "reference": "ird_wage_salary_people_by_band__row_204"
           },
           {
-            "lower": 203658.84,
-            "upper": 204687.42,
+            "lower": 203910.894,
+            "upper": 204940.747,
             "reference": "ird_wage_salary_people_by_band__row_205"
           },
           {
-            "lower": 204687.42,
-            "upper": 205716.0,
+            "lower": 204940.747,
+            "upper": 205970.6,
             "reference": "ird_wage_salary_people_by_band__row_206"
           },
           {
-            "lower": 205716.0,
-            "upper": 210858.9,
+            "lower": 205970.6,
+            "upper": 211119.865,
             "reference": "ird_wage_salary_people_by_band__row_207"
           },
           {
-            "lower": 210858.9,
-            "upper": 216001.8,
+            "lower": 211119.865,
+            "upper": 216269.13,
             "reference": "ird_wage_salary_people_by_band__row_208"
           },
           {
-            "lower": 216001.8,
-            "upper": 221144.7,
+            "lower": 216269.13,
+            "upper": 221418.395,
             "reference": "ird_wage_salary_people_by_band__row_209"
           },
           {
-            "lower": 221144.7,
-            "upper": 226287.6,
+            "lower": 221418.395,
+            "upper": 226567.66,
             "reference": "ird_wage_salary_people_by_band__row_210"
           },
           {
-            "lower": 226287.6,
-            "upper": 231430.5,
+            "lower": 226567.66,
+            "upper": 231716.925,
             "reference": "ird_wage_salary_people_by_band__row_211"
           },
           {
-            "lower": 231430.5,
-            "upper": 236573.4,
+            "lower": 231716.925,
+            "upper": 236866.19,
             "reference": "ird_wage_salary_people_by_band__row_212"
           },
           {
-            "lower": 236573.4,
-            "upper": 241716.3,
+            "lower": 236866.19,
+            "upper": 242015.455,
             "reference": "ird_wage_salary_people_by_band__row_213"
           },
           {
-            "lower": 241716.3,
-            "upper": 246859.2,
+            "lower": 242015.455,
+            "upper": 247164.72,
             "reference": "ird_wage_salary_people_by_band__row_214"
           },
           {
-            "lower": 246859.2,
-            "upper": 252002.1,
+            "lower": 247164.72,
+            "upper": 252313.985,
             "reference": "ird_wage_salary_people_by_band__row_215"
           },
           {
-            "lower": 252002.1,
-            "upper": 257145.0,
+            "lower": 252313.985,
+            "upper": 257463.25,
             "reference": "ird_wage_salary_people_by_band__row_216"
           },
           {
-            "lower": 257145.0,
-            "upper": 262287.9,
+            "lower": 257463.25,
+            "upper": 262612.515,
             "reference": "ird_wage_salary_people_by_band__row_217"
           },
           {
-            "lower": 262287.9,
-            "upper": 267430.8,
+            "lower": 262612.515,
+            "upper": 267761.78,
             "reference": "ird_wage_salary_people_by_band__row_218"
           },
           {
-            "lower": 267430.8,
-            "upper": 272573.7,
+            "lower": 267761.78,
+            "upper": 272911.045,
             "reference": "ird_wage_salary_people_by_band__row_219"
           },
           {
-            "lower": 272573.7,
-            "upper": 277716.6,
+            "lower": 272911.045,
+            "upper": 278060.31,
             "reference": "ird_wage_salary_people_by_band__row_220"
           },
           {
-            "lower": 277716.6,
-            "upper": 282859.5,
+            "lower": 278060.31,
+            "upper": 283209.575,
             "reference": "ird_wage_salary_people_by_band__row_221"
           },
           {
-            "lower": 282859.5,
-            "upper": 288002.4,
+            "lower": 283209.575,
+            "upper": 288358.84,
             "reference": "ird_wage_salary_people_by_band__row_222"
           },
           {
-            "lower": 288002.4,
-            "upper": 293145.3,
+            "lower": 288358.84,
+            "upper": 293508.105,
             "reference": "ird_wage_salary_people_by_band__row_223"
           },
           {
-            "lower": 293145.3,
-            "upper": 298288.2,
+            "lower": 293508.105,
+            "upper": 298657.37,
             "reference": "ird_wage_salary_people_by_band__row_224"
           },
           {
-            "lower": 298288.2,
-            "upper": 303431.1,
+            "lower": 298657.37,
+            "upper": 303806.635,
             "reference": "ird_wage_salary_people_by_band__row_225"
           },
           {
-            "lower": 303431.1,
-            "upper": 308574.0,
+            "lower": 303806.635,
+            "upper": 308955.9,
             "reference": "ird_wage_salary_people_by_band__row_226"
           },
           {
-            "lower": 308574.0,
-            "upper": 360003.0,
+            "lower": 308955.9,
+            "upper": 360448.55,
             "reference": "ird_wage_salary_people_by_band__row_227"
           },
           {
-            "lower": 360003.0,
-            "upper": 411432.0,
+            "lower": 360448.55,
+            "upper": 411941.2,
             "reference": "ird_wage_salary_people_by_band__row_228"
           },
           {
-            "lower": 411432.0,
-            "upper": 462861.0,
+            "lower": 411941.2,
+            "upper": 463433.85,
             "reference": "ird_wage_salary_people_by_band__row_229"
           },
           {
-            "lower": 462861.0,
-            "upper": 514290.0,
+            "lower": 463433.85,
+            "upper": 514926.5,
             "reference": "ird_wage_salary_people_by_band__row_230"
           },
           {
-            "lower": 514290.0,
-            "upper": 565719.0,
+            "lower": 514926.5,
+            "upper": 566419.15,
             "reference": "ird_wage_salary_people_by_band__row_231"
           },
           {
-            "lower": 565719.0,
-            "upper": 617148.0,
+            "lower": 566419.15,
+            "upper": 617911.8,
             "reference": "ird_wage_salary_people_by_band__row_232"
           },
           {
-            "lower": 617148.0,
-            "upper": 668577.0,
+            "lower": 617911.8,
+            "upper": 669404.45,
             "reference": "ird_wage_salary_people_by_band__row_233"
           },
           {
-            "lower": 668577.0,
-            "upper": 720006.0,
+            "lower": 669404.45,
+            "upper": 720897.1,
             "reference": "ird_wage_salary_people_by_band__row_234"
           },
           {
-            "lower": 720006.0,
-            "upper": 771435.0,
+            "lower": 720897.1,
+            "upper": 772389.75,
             "reference": "ird_wage_salary_people_by_band__row_235"
           },
           {
-            "lower": 771435.0,
-            "upper": 822864.0,
+            "lower": 772389.75,
+            "upper": 823882.4,
             "reference": "ird_wage_salary_people_by_band__row_236"
           },
           {
-            "lower": 822864.0,
-            "upper": 874293.0,
+            "lower": 823882.4,
+            "upper": 875375.05,
             "reference": "ird_wage_salary_people_by_band__row_237"
           },
           {
-            "lower": 874293.0,
-            "upper": 925722.0,
+            "lower": 875375.05,
+            "upper": 926867.7,
             "reference": "ird_wage_salary_people_by_band__row_238"
           },
           {
-            "lower": 925722.0,
-            "upper": 977151.0,
+            "lower": 926867.7,
+            "upper": 978360.35,
             "reference": "ird_wage_salary_people_by_band__row_239"
           },
           {
-            "lower": 977151.0,
-            "upper": 1028580.0,
+            "lower": 978360.35,
+            "upper": 1029853.0,
             "reference": "ird_wage_salary_people_by_band__row_240"
           },
           {
-            "lower": 1028580.0,
+            "lower": 1029853.0,
             "upper": null,
             "reference": "ird_wage_salary_people_by_band__row_241"
           }
@@ -2383,1184 +2383,1184 @@
     "high": {
       "factor_id": "p1_ty2026_to_ty2027_high",
       "operational_factor": {
-        "numerator": 1030467,
+        "numerator": 1030799,
         "denominator": 1000000
       },
-      "factor_receipt_sha256": "5d1b1006938c2628d7f2d4344643270c2477f01cd0d313bfa323834ff8e54cb2",
+      "factor_receipt_sha256": "7d4e0a99053d9d912228e42801d93f8ad65da7e051b67a4e7f7504ae5d116c67",
       "map_bands": {
         "bands": [
           {
             "lower": 0.0,
-            "upper": 1030.467,
+            "upper": 1030.799,
             "reference": "ird_wage_salary_people_by_band__row_7"
           },
           {
-            "lower": 1030.467,
-            "upper": 2060.934,
+            "lower": 1030.799,
+            "upper": 2061.598,
             "reference": "ird_wage_salary_people_by_band__row_8"
           },
           {
-            "lower": 2060.934,
-            "upper": 3091.401,
+            "lower": 2061.598,
+            "upper": 3092.397,
             "reference": "ird_wage_salary_people_by_band__row_9"
           },
           {
-            "lower": 3091.401,
-            "upper": 4121.868,
+            "lower": 3092.397,
+            "upper": 4123.196,
             "reference": "ird_wage_salary_people_by_band__row_10"
           },
           {
-            "lower": 4121.868,
-            "upper": 5152.335,
+            "lower": 4123.196,
+            "upper": 5153.995,
             "reference": "ird_wage_salary_people_by_band__row_11"
           },
           {
-            "lower": 5152.335,
-            "upper": 6182.802,
+            "lower": 5153.995,
+            "upper": 6184.794,
             "reference": "ird_wage_salary_people_by_band__row_12"
           },
           {
-            "lower": 6182.802,
-            "upper": 7213.269,
+            "lower": 6184.794,
+            "upper": 7215.593,
             "reference": "ird_wage_salary_people_by_band__row_13"
           },
           {
-            "lower": 7213.269,
-            "upper": 8243.736,
+            "lower": 7215.593,
+            "upper": 8246.392,
             "reference": "ird_wage_salary_people_by_band__row_14"
           },
           {
-            "lower": 8243.736,
-            "upper": 9274.203,
+            "lower": 8246.392,
+            "upper": 9277.191,
             "reference": "ird_wage_salary_people_by_band__row_15"
           },
           {
-            "lower": 9274.203,
-            "upper": 10304.67,
+            "lower": 9277.191,
+            "upper": 10307.99,
             "reference": "ird_wage_salary_people_by_band__row_16"
           },
           {
-            "lower": 10304.67,
-            "upper": 11335.137,
+            "lower": 10307.99,
+            "upper": 11338.789,
             "reference": "ird_wage_salary_people_by_band__row_17"
           },
           {
-            "lower": 11335.137,
-            "upper": 12365.604,
+            "lower": 11338.789,
+            "upper": 12369.588,
             "reference": "ird_wage_salary_people_by_band__row_18"
           },
           {
-            "lower": 12365.604,
-            "upper": 13396.071,
+            "lower": 12369.588,
+            "upper": 13400.387,
             "reference": "ird_wage_salary_people_by_band__row_19"
           },
           {
-            "lower": 13396.071,
-            "upper": 14426.538,
+            "lower": 13400.387,
+            "upper": 14431.186,
             "reference": "ird_wage_salary_people_by_band__row_20"
           },
           {
-            "lower": 14426.538,
-            "upper": 15457.005,
+            "lower": 14431.186,
+            "upper": 15461.985,
             "reference": "ird_wage_salary_people_by_band__row_21"
           },
           {
-            "lower": 15457.005,
-            "upper": 16487.472,
+            "lower": 15461.985,
+            "upper": 16492.784,
             "reference": "ird_wage_salary_people_by_band__row_22"
           },
           {
-            "lower": 16487.472,
-            "upper": 17517.939,
+            "lower": 16492.784,
+            "upper": 17523.583,
             "reference": "ird_wage_salary_people_by_band__row_23"
           },
           {
-            "lower": 17517.939,
-            "upper": 18548.406,
+            "lower": 17523.583,
+            "upper": 18554.382,
             "reference": "ird_wage_salary_people_by_band__row_24"
           },
           {
-            "lower": 18548.406,
-            "upper": 19578.873,
+            "lower": 18554.382,
+            "upper": 19585.181,
             "reference": "ird_wage_salary_people_by_band__row_25"
           },
           {
-            "lower": 19578.873,
-            "upper": 20609.34,
+            "lower": 19585.181,
+            "upper": 20615.98,
             "reference": "ird_wage_salary_people_by_band__row_26"
           },
           {
-            "lower": 20609.34,
-            "upper": 21639.807,
+            "lower": 20615.98,
+            "upper": 21646.779,
             "reference": "ird_wage_salary_people_by_band__row_27"
           },
           {
-            "lower": 21639.807,
-            "upper": 22670.274,
+            "lower": 21646.779,
+            "upper": 22677.578,
             "reference": "ird_wage_salary_people_by_band__row_28"
           },
           {
-            "lower": 22670.274,
-            "upper": 23700.741,
+            "lower": 22677.578,
+            "upper": 23708.377,
             "reference": "ird_wage_salary_people_by_band__row_29"
           },
           {
-            "lower": 23700.741,
-            "upper": 24731.208,
+            "lower": 23708.377,
+            "upper": 24739.176,
             "reference": "ird_wage_salary_people_by_band__row_30"
           },
           {
-            "lower": 24731.208,
-            "upper": 25761.675,
+            "lower": 24739.176,
+            "upper": 25769.975,
             "reference": "ird_wage_salary_people_by_band__row_31"
           },
           {
-            "lower": 25761.675,
-            "upper": 26792.142,
+            "lower": 25769.975,
+            "upper": 26800.774,
             "reference": "ird_wage_salary_people_by_band__row_32"
           },
           {
-            "lower": 26792.142,
-            "upper": 27822.609,
+            "lower": 26800.774,
+            "upper": 27831.573,
             "reference": "ird_wage_salary_people_by_band__row_33"
           },
           {
-            "lower": 27822.609,
-            "upper": 28853.076,
+            "lower": 27831.573,
+            "upper": 28862.372,
             "reference": "ird_wage_salary_people_by_band__row_34"
           },
           {
-            "lower": 28853.076,
-            "upper": 29883.543,
+            "lower": 28862.372,
+            "upper": 29893.171,
             "reference": "ird_wage_salary_people_by_band__row_35"
           },
           {
-            "lower": 29883.543,
-            "upper": 30914.01,
+            "lower": 29893.171,
+            "upper": 30923.97,
             "reference": "ird_wage_salary_people_by_band__row_36"
           },
           {
-            "lower": 30914.01,
-            "upper": 31944.477,
+            "lower": 30923.97,
+            "upper": 31954.769,
             "reference": "ird_wage_salary_people_by_band__row_37"
           },
           {
-            "lower": 31944.477,
-            "upper": 32974.944,
+            "lower": 31954.769,
+            "upper": 32985.568,
             "reference": "ird_wage_salary_people_by_band__row_38"
           },
           {
-            "lower": 32974.944,
-            "upper": 34005.411,
+            "lower": 32985.568,
+            "upper": 34016.367,
             "reference": "ird_wage_salary_people_by_band__row_39"
           },
           {
-            "lower": 34005.411,
-            "upper": 35035.878,
+            "lower": 34016.367,
+            "upper": 35047.166,
             "reference": "ird_wage_salary_people_by_band__row_40"
           },
           {
-            "lower": 35035.878,
-            "upper": 36066.345,
+            "lower": 35047.166,
+            "upper": 36077.965,
             "reference": "ird_wage_salary_people_by_band__row_41"
           },
           {
-            "lower": 36066.345,
-            "upper": 37096.812,
+            "lower": 36077.965,
+            "upper": 37108.764,
             "reference": "ird_wage_salary_people_by_band__row_42"
           },
           {
-            "lower": 37096.812,
-            "upper": 38127.279,
+            "lower": 37108.764,
+            "upper": 38139.563,
             "reference": "ird_wage_salary_people_by_band__row_43"
           },
           {
-            "lower": 38127.279,
-            "upper": 39157.746,
+            "lower": 38139.563,
+            "upper": 39170.362,
             "reference": "ird_wage_salary_people_by_band__row_44"
           },
           {
-            "lower": 39157.746,
-            "upper": 40188.213,
+            "lower": 39170.362,
+            "upper": 40201.161,
             "reference": "ird_wage_salary_people_by_band__row_45"
           },
           {
-            "lower": 40188.213,
-            "upper": 41218.68,
+            "lower": 40201.161,
+            "upper": 41231.96,
             "reference": "ird_wage_salary_people_by_band__row_46"
           },
           {
-            "lower": 41218.68,
-            "upper": 42249.147,
+            "lower": 41231.96,
+            "upper": 42262.759,
             "reference": "ird_wage_salary_people_by_band__row_47"
           },
           {
-            "lower": 42249.147,
-            "upper": 43279.614,
+            "lower": 42262.759,
+            "upper": 43293.558,
             "reference": "ird_wage_salary_people_by_band__row_48"
           },
           {
-            "lower": 43279.614,
-            "upper": 44310.081,
+            "lower": 43293.558,
+            "upper": 44324.357,
             "reference": "ird_wage_salary_people_by_band__row_49"
           },
           {
-            "lower": 44310.081,
-            "upper": 45340.548,
+            "lower": 44324.357,
+            "upper": 45355.156,
             "reference": "ird_wage_salary_people_by_band__row_50"
           },
           {
-            "lower": 45340.548,
-            "upper": 46371.015,
+            "lower": 45355.156,
+            "upper": 46385.955,
             "reference": "ird_wage_salary_people_by_band__row_51"
           },
           {
-            "lower": 46371.015,
-            "upper": 47401.482,
+            "lower": 46385.955,
+            "upper": 47416.754,
             "reference": "ird_wage_salary_people_by_band__row_52"
           },
           {
-            "lower": 47401.482,
-            "upper": 48431.949,
+            "lower": 47416.754,
+            "upper": 48447.553,
             "reference": "ird_wage_salary_people_by_band__row_53"
           },
           {
-            "lower": 48431.949,
-            "upper": 49462.416,
+            "lower": 48447.553,
+            "upper": 49478.352,
             "reference": "ird_wage_salary_people_by_band__row_54"
           },
           {
-            "lower": 49462.416,
-            "upper": 50492.883,
+            "lower": 49478.352,
+            "upper": 50509.151,
             "reference": "ird_wage_salary_people_by_band__row_55"
           },
           {
-            "lower": 50492.883,
-            "upper": 51523.35,
+            "lower": 50509.151,
+            "upper": 51539.95,
             "reference": "ird_wage_salary_people_by_band__row_56"
           },
           {
-            "lower": 51523.35,
-            "upper": 52553.817,
+            "lower": 51539.95,
+            "upper": 52570.749,
             "reference": "ird_wage_salary_people_by_band__row_57"
           },
           {
-            "lower": 52553.817,
-            "upper": 53584.284,
+            "lower": 52570.749,
+            "upper": 53601.548,
             "reference": "ird_wage_salary_people_by_band__row_58"
           },
           {
-            "lower": 53584.284,
-            "upper": 54614.751,
+            "lower": 53601.548,
+            "upper": 54632.347,
             "reference": "ird_wage_salary_people_by_band__row_59"
           },
           {
-            "lower": 54614.751,
-            "upper": 55645.218,
+            "lower": 54632.347,
+            "upper": 55663.146,
             "reference": "ird_wage_salary_people_by_band__row_60"
           },
           {
-            "lower": 55645.218,
-            "upper": 56675.685,
+            "lower": 55663.146,
+            "upper": 56693.945,
             "reference": "ird_wage_salary_people_by_band__row_61"
           },
           {
-            "lower": 56675.685,
-            "upper": 57706.152,
+            "lower": 56693.945,
+            "upper": 57724.744,
             "reference": "ird_wage_salary_people_by_band__row_62"
           },
           {
-            "lower": 57706.152,
-            "upper": 58736.619,
+            "lower": 57724.744,
+            "upper": 58755.543,
             "reference": "ird_wage_salary_people_by_band__row_63"
           },
           {
-            "lower": 58736.619,
-            "upper": 59767.086,
+            "lower": 58755.543,
+            "upper": 59786.342,
             "reference": "ird_wage_salary_people_by_band__row_64"
           },
           {
-            "lower": 59767.086,
-            "upper": 60797.553,
+            "lower": 59786.342,
+            "upper": 60817.141,
             "reference": "ird_wage_salary_people_by_band__row_65"
           },
           {
-            "lower": 60797.553,
-            "upper": 61828.02,
+            "lower": 60817.141,
+            "upper": 61847.94,
             "reference": "ird_wage_salary_people_by_band__row_66"
           },
           {
-            "lower": 61828.02,
-            "upper": 62858.487,
+            "lower": 61847.94,
+            "upper": 62878.739,
             "reference": "ird_wage_salary_people_by_band__row_67"
           },
           {
-            "lower": 62858.487,
-            "upper": 63888.954,
+            "lower": 62878.739,
+            "upper": 63909.538,
             "reference": "ird_wage_salary_people_by_band__row_68"
           },
           {
-            "lower": 63888.954,
-            "upper": 64919.421,
+            "lower": 63909.538,
+            "upper": 64940.337,
             "reference": "ird_wage_salary_people_by_band__row_69"
           },
           {
-            "lower": 64919.421,
-            "upper": 65949.888,
+            "lower": 64940.337,
+            "upper": 65971.136,
             "reference": "ird_wage_salary_people_by_band__row_70"
           },
           {
-            "lower": 65949.888,
-            "upper": 66980.355,
+            "lower": 65971.136,
+            "upper": 67001.935,
             "reference": "ird_wage_salary_people_by_band__row_71"
           },
           {
-            "lower": 66980.355,
-            "upper": 68010.822,
+            "lower": 67001.935,
+            "upper": 68032.734,
             "reference": "ird_wage_salary_people_by_band__row_72"
           },
           {
-            "lower": 68010.822,
-            "upper": 69041.289,
+            "lower": 68032.734,
+            "upper": 69063.533,
             "reference": "ird_wage_salary_people_by_band__row_73"
           },
           {
-            "lower": 69041.289,
-            "upper": 70071.756,
+            "lower": 69063.533,
+            "upper": 70094.332,
             "reference": "ird_wage_salary_people_by_band__row_74"
           },
           {
-            "lower": 70071.756,
-            "upper": 71102.223,
+            "lower": 70094.332,
+            "upper": 71125.131,
             "reference": "ird_wage_salary_people_by_band__row_75"
           },
           {
-            "lower": 71102.223,
-            "upper": 72132.69,
+            "lower": 71125.131,
+            "upper": 72155.93,
             "reference": "ird_wage_salary_people_by_band__row_76"
           },
           {
-            "lower": 72132.69,
-            "upper": 73163.157,
+            "lower": 72155.93,
+            "upper": 73186.729,
             "reference": "ird_wage_salary_people_by_band__row_77"
           },
           {
-            "lower": 73163.157,
-            "upper": 74193.624,
+            "lower": 73186.729,
+            "upper": 74217.528,
             "reference": "ird_wage_salary_people_by_band__row_78"
           },
           {
-            "lower": 74193.624,
-            "upper": 75224.091,
+            "lower": 74217.528,
+            "upper": 75248.327,
             "reference": "ird_wage_salary_people_by_band__row_79"
           },
           {
-            "lower": 75224.091,
-            "upper": 76254.558,
+            "lower": 75248.327,
+            "upper": 76279.126,
             "reference": "ird_wage_salary_people_by_band__row_80"
           },
           {
-            "lower": 76254.558,
-            "upper": 77285.025,
+            "lower": 76279.126,
+            "upper": 77309.925,
             "reference": "ird_wage_salary_people_by_band__row_81"
           },
           {
-            "lower": 77285.025,
-            "upper": 78315.492,
+            "lower": 77309.925,
+            "upper": 78340.724,
             "reference": "ird_wage_salary_people_by_band__row_82"
           },
           {
-            "lower": 78315.492,
-            "upper": 79345.959,
+            "lower": 78340.724,
+            "upper": 79371.523,
             "reference": "ird_wage_salary_people_by_band__row_83"
           },
           {
-            "lower": 79345.959,
-            "upper": 80376.426,
+            "lower": 79371.523,
+            "upper": 80402.322,
             "reference": "ird_wage_salary_people_by_band__row_84"
           },
           {
-            "lower": 80376.426,
-            "upper": 81406.893,
+            "lower": 80402.322,
+            "upper": 81433.121,
             "reference": "ird_wage_salary_people_by_band__row_85"
           },
           {
-            "lower": 81406.893,
-            "upper": 82437.36,
+            "lower": 81433.121,
+            "upper": 82463.92,
             "reference": "ird_wage_salary_people_by_band__row_86"
           },
           {
-            "lower": 82437.36,
-            "upper": 83467.827,
+            "lower": 82463.92,
+            "upper": 83494.719,
             "reference": "ird_wage_salary_people_by_band__row_87"
           },
           {
-            "lower": 83467.827,
-            "upper": 84498.294,
+            "lower": 83494.719,
+            "upper": 84525.518,
             "reference": "ird_wage_salary_people_by_band__row_88"
           },
           {
-            "lower": 84498.294,
-            "upper": 85528.761,
+            "lower": 84525.518,
+            "upper": 85556.317,
             "reference": "ird_wage_salary_people_by_band__row_89"
           },
           {
-            "lower": 85528.761,
-            "upper": 86559.228,
+            "lower": 85556.317,
+            "upper": 86587.116,
             "reference": "ird_wage_salary_people_by_band__row_90"
           },
           {
-            "lower": 86559.228,
-            "upper": 87589.695,
+            "lower": 86587.116,
+            "upper": 87617.915,
             "reference": "ird_wage_salary_people_by_band__row_91"
           },
           {
-            "lower": 87589.695,
-            "upper": 88620.162,
+            "lower": 87617.915,
+            "upper": 88648.714,
             "reference": "ird_wage_salary_people_by_band__row_92"
           },
           {
-            "lower": 88620.162,
-            "upper": 89650.629,
+            "lower": 88648.714,
+            "upper": 89679.513,
             "reference": "ird_wage_salary_people_by_band__row_93"
           },
           {
-            "lower": 89650.629,
-            "upper": 90681.096,
+            "lower": 89679.513,
+            "upper": 90710.312,
             "reference": "ird_wage_salary_people_by_band__row_94"
           },
           {
-            "lower": 90681.096,
-            "upper": 91711.563,
+            "lower": 90710.312,
+            "upper": 91741.111,
             "reference": "ird_wage_salary_people_by_band__row_95"
           },
           {
-            "lower": 91711.563,
-            "upper": 92742.03,
+            "lower": 91741.111,
+            "upper": 92771.91,
             "reference": "ird_wage_salary_people_by_band__row_96"
           },
           {
-            "lower": 92742.03,
-            "upper": 93772.497,
+            "lower": 92771.91,
+            "upper": 93802.709,
             "reference": "ird_wage_salary_people_by_band__row_97"
           },
           {
-            "lower": 93772.497,
-            "upper": 94802.964,
+            "lower": 93802.709,
+            "upper": 94833.508,
             "reference": "ird_wage_salary_people_by_band__row_98"
           },
           {
-            "lower": 94802.964,
-            "upper": 95833.431,
+            "lower": 94833.508,
+            "upper": 95864.307,
             "reference": "ird_wage_salary_people_by_band__row_99"
           },
           {
-            "lower": 95833.431,
-            "upper": 96863.898,
+            "lower": 95864.307,
+            "upper": 96895.106,
             "reference": "ird_wage_salary_people_by_band__row_100"
           },
           {
-            "lower": 96863.898,
-            "upper": 97894.365,
+            "lower": 96895.106,
+            "upper": 97925.905,
             "reference": "ird_wage_salary_people_by_band__row_101"
           },
           {
-            "lower": 97894.365,
-            "upper": 98924.832,
+            "lower": 97925.905,
+            "upper": 98956.704,
             "reference": "ird_wage_salary_people_by_band__row_102"
           },
           {
-            "lower": 98924.832,
-            "upper": 99955.299,
+            "lower": 98956.704,
+            "upper": 99987.503,
             "reference": "ird_wage_salary_people_by_band__row_103"
           },
           {
-            "lower": 99955.299,
-            "upper": 100985.766,
+            "lower": 99987.503,
+            "upper": 101018.302,
             "reference": "ird_wage_salary_people_by_band__row_104"
           },
           {
-            "lower": 100985.766,
-            "upper": 102016.233,
+            "lower": 101018.302,
+            "upper": 102049.101,
             "reference": "ird_wage_salary_people_by_band__row_105"
           },
           {
-            "lower": 102016.233,
-            "upper": 103046.7,
+            "lower": 102049.101,
+            "upper": 103079.9,
             "reference": "ird_wage_salary_people_by_band__row_106"
           },
           {
-            "lower": 103046.7,
-            "upper": 104077.167,
+            "lower": 103079.9,
+            "upper": 104110.699,
             "reference": "ird_wage_salary_people_by_band__row_107"
           },
           {
-            "lower": 104077.167,
-            "upper": 105107.634,
+            "lower": 104110.699,
+            "upper": 105141.498,
             "reference": "ird_wage_salary_people_by_band__row_108"
           },
           {
-            "lower": 105107.634,
-            "upper": 106138.101,
+            "lower": 105141.498,
+            "upper": 106172.297,
             "reference": "ird_wage_salary_people_by_band__row_109"
           },
           {
-            "lower": 106138.101,
-            "upper": 107168.568,
+            "lower": 106172.297,
+            "upper": 107203.096,
             "reference": "ird_wage_salary_people_by_band__row_110"
           },
           {
-            "lower": 107168.568,
-            "upper": 108199.035,
+            "lower": 107203.096,
+            "upper": 108233.895,
             "reference": "ird_wage_salary_people_by_band__row_111"
           },
           {
-            "lower": 108199.035,
-            "upper": 109229.502,
+            "lower": 108233.895,
+            "upper": 109264.694,
             "reference": "ird_wage_salary_people_by_band__row_112"
           },
           {
-            "lower": 109229.502,
-            "upper": 110259.969,
+            "lower": 109264.694,
+            "upper": 110295.493,
             "reference": "ird_wage_salary_people_by_band__row_113"
           },
           {
-            "lower": 110259.969,
-            "upper": 111290.436,
+            "lower": 110295.493,
+            "upper": 111326.292,
             "reference": "ird_wage_salary_people_by_band__row_114"
           },
           {
-            "lower": 111290.436,
-            "upper": 112320.903,
+            "lower": 111326.292,
+            "upper": 112357.091,
             "reference": "ird_wage_salary_people_by_band__row_115"
           },
           {
-            "lower": 112320.903,
-            "upper": 113351.37,
+            "lower": 112357.091,
+            "upper": 113387.89,
             "reference": "ird_wage_salary_people_by_band__row_116"
           },
           {
-            "lower": 113351.37,
-            "upper": 114381.837,
+            "lower": 113387.89,
+            "upper": 114418.689,
             "reference": "ird_wage_salary_people_by_band__row_117"
           },
           {
-            "lower": 114381.837,
-            "upper": 115412.304,
+            "lower": 114418.689,
+            "upper": 115449.488,
             "reference": "ird_wage_salary_people_by_band__row_118"
           },
           {
-            "lower": 115412.304,
-            "upper": 116442.771,
+            "lower": 115449.488,
+            "upper": 116480.287,
             "reference": "ird_wage_salary_people_by_band__row_119"
           },
           {
-            "lower": 116442.771,
-            "upper": 117473.238,
+            "lower": 116480.287,
+            "upper": 117511.086,
             "reference": "ird_wage_salary_people_by_band__row_120"
           },
           {
-            "lower": 117473.238,
-            "upper": 118503.705,
+            "lower": 117511.086,
+            "upper": 118541.885,
             "reference": "ird_wage_salary_people_by_band__row_121"
           },
           {
-            "lower": 118503.705,
-            "upper": 119534.172,
+            "lower": 118541.885,
+            "upper": 119572.684,
             "reference": "ird_wage_salary_people_by_band__row_122"
           },
           {
-            "lower": 119534.172,
-            "upper": 120564.639,
+            "lower": 119572.684,
+            "upper": 120603.483,
             "reference": "ird_wage_salary_people_by_band__row_123"
           },
           {
-            "lower": 120564.639,
-            "upper": 121595.106,
+            "lower": 120603.483,
+            "upper": 121634.282,
             "reference": "ird_wage_salary_people_by_band__row_124"
           },
           {
-            "lower": 121595.106,
-            "upper": 122625.573,
+            "lower": 121634.282,
+            "upper": 122665.081,
             "reference": "ird_wage_salary_people_by_band__row_125"
           },
           {
-            "lower": 122625.573,
-            "upper": 123656.04,
+            "lower": 122665.081,
+            "upper": 123695.88,
             "reference": "ird_wage_salary_people_by_band__row_126"
           },
           {
-            "lower": 123656.04,
-            "upper": 124686.507,
+            "lower": 123695.88,
+            "upper": 124726.679,
             "reference": "ird_wage_salary_people_by_band__row_127"
           },
           {
-            "lower": 124686.507,
-            "upper": 125716.974,
+            "lower": 124726.679,
+            "upper": 125757.478,
             "reference": "ird_wage_salary_people_by_band__row_128"
           },
           {
-            "lower": 125716.974,
-            "upper": 126747.441,
+            "lower": 125757.478,
+            "upper": 126788.277,
             "reference": "ird_wage_salary_people_by_band__row_129"
           },
           {
-            "lower": 126747.441,
-            "upper": 127777.908,
+            "lower": 126788.277,
+            "upper": 127819.076,
             "reference": "ird_wage_salary_people_by_band__row_130"
           },
           {
-            "lower": 127777.908,
-            "upper": 128808.375,
+            "lower": 127819.076,
+            "upper": 128849.875,
             "reference": "ird_wage_salary_people_by_band__row_131"
           },
           {
-            "lower": 128808.375,
-            "upper": 129838.842,
+            "lower": 128849.875,
+            "upper": 129880.674,
             "reference": "ird_wage_salary_people_by_band__row_132"
           },
           {
-            "lower": 129838.842,
-            "upper": 130869.309,
+            "lower": 129880.674,
+            "upper": 130911.473,
             "reference": "ird_wage_salary_people_by_band__row_133"
           },
           {
-            "lower": 130869.309,
-            "upper": 131899.776,
+            "lower": 130911.473,
+            "upper": 131942.272,
             "reference": "ird_wage_salary_people_by_band__row_134"
           },
           {
-            "lower": 131899.776,
-            "upper": 132930.243,
+            "lower": 131942.272,
+            "upper": 132973.071,
             "reference": "ird_wage_salary_people_by_band__row_135"
           },
           {
-            "lower": 132930.243,
-            "upper": 133960.71,
+            "lower": 132973.071,
+            "upper": 134003.87,
             "reference": "ird_wage_salary_people_by_band__row_136"
           },
           {
-            "lower": 133960.71,
-            "upper": 134991.177,
+            "lower": 134003.87,
+            "upper": 135034.669,
             "reference": "ird_wage_salary_people_by_band__row_137"
           },
           {
-            "lower": 134991.177,
-            "upper": 136021.644,
+            "lower": 135034.669,
+            "upper": 136065.468,
             "reference": "ird_wage_salary_people_by_band__row_138"
           },
           {
-            "lower": 136021.644,
-            "upper": 137052.111,
+            "lower": 136065.468,
+            "upper": 137096.267,
             "reference": "ird_wage_salary_people_by_band__row_139"
           },
           {
-            "lower": 137052.111,
-            "upper": 138082.578,
+            "lower": 137096.267,
+            "upper": 138127.066,
             "reference": "ird_wage_salary_people_by_band__row_140"
           },
           {
-            "lower": 138082.578,
-            "upper": 139113.045,
+            "lower": 138127.066,
+            "upper": 139157.865,
             "reference": "ird_wage_salary_people_by_band__row_141"
           },
           {
-            "lower": 139113.045,
-            "upper": 140143.512,
+            "lower": 139157.865,
+            "upper": 140188.664,
             "reference": "ird_wage_salary_people_by_band__row_142"
           },
           {
-            "lower": 140143.512,
-            "upper": 141173.979,
+            "lower": 140188.664,
+            "upper": 141219.463,
             "reference": "ird_wage_salary_people_by_band__row_143"
           },
           {
-            "lower": 141173.979,
-            "upper": 142204.446,
+            "lower": 141219.463,
+            "upper": 142250.262,
             "reference": "ird_wage_salary_people_by_band__row_144"
           },
           {
-            "lower": 142204.446,
-            "upper": 143234.913,
+            "lower": 142250.262,
+            "upper": 143281.061,
             "reference": "ird_wage_salary_people_by_band__row_145"
           },
           {
-            "lower": 143234.913,
-            "upper": 144265.38,
+            "lower": 143281.061,
+            "upper": 144311.86,
             "reference": "ird_wage_salary_people_by_band__row_146"
           },
           {
-            "lower": 144265.38,
-            "upper": 145295.847,
+            "lower": 144311.86,
+            "upper": 145342.659,
             "reference": "ird_wage_salary_people_by_band__row_147"
           },
           {
-            "lower": 145295.847,
-            "upper": 146326.314,
+            "lower": 145342.659,
+            "upper": 146373.458,
             "reference": "ird_wage_salary_people_by_band__row_148"
           },
           {
-            "lower": 146326.314,
-            "upper": 147356.781,
+            "lower": 146373.458,
+            "upper": 147404.257,
             "reference": "ird_wage_salary_people_by_band__row_149"
           },
           {
-            "lower": 147356.781,
-            "upper": 148387.248,
+            "lower": 147404.257,
+            "upper": 148435.056,
             "reference": "ird_wage_salary_people_by_band__row_150"
           },
           {
-            "lower": 148387.248,
-            "upper": 149417.715,
+            "lower": 148435.056,
+            "upper": 149465.855,
             "reference": "ird_wage_salary_people_by_band__row_151"
           },
           {
-            "lower": 149417.715,
-            "upper": 150448.182,
+            "lower": 149465.855,
+            "upper": 150496.654,
             "reference": "ird_wage_salary_people_by_band__row_152"
           },
           {
-            "lower": 150448.182,
-            "upper": 151478.649,
+            "lower": 150496.654,
+            "upper": 151527.453,
             "reference": "ird_wage_salary_people_by_band__row_153"
           },
           {
-            "lower": 151478.649,
-            "upper": 152509.116,
+            "lower": 151527.453,
+            "upper": 152558.252,
             "reference": "ird_wage_salary_people_by_band__row_154"
           },
           {
-            "lower": 152509.116,
-            "upper": 153539.583,
+            "lower": 152558.252,
+            "upper": 153589.051,
             "reference": "ird_wage_salary_people_by_band__row_155"
           },
           {
-            "lower": 153539.583,
-            "upper": 154570.05,
+            "lower": 153589.051,
+            "upper": 154619.85,
             "reference": "ird_wage_salary_people_by_band__row_156"
           },
           {
-            "lower": 154570.05,
-            "upper": 155600.517,
+            "lower": 154619.85,
+            "upper": 155650.649,
             "reference": "ird_wage_salary_people_by_band__row_157"
           },
           {
-            "lower": 155600.517,
-            "upper": 156630.984,
+            "lower": 155650.649,
+            "upper": 156681.448,
             "reference": "ird_wage_salary_people_by_band__row_158"
           },
           {
-            "lower": 156630.984,
-            "upper": 157661.451,
+            "lower": 156681.448,
+            "upper": 157712.247,
             "reference": "ird_wage_salary_people_by_band__row_159"
           },
           {
-            "lower": 157661.451,
-            "upper": 158691.918,
+            "lower": 157712.247,
+            "upper": 158743.046,
             "reference": "ird_wage_salary_people_by_band__row_160"
           },
           {
-            "lower": 158691.918,
-            "upper": 159722.385,
+            "lower": 158743.046,
+            "upper": 159773.845,
             "reference": "ird_wage_salary_people_by_band__row_161"
           },
           {
-            "lower": 159722.385,
-            "upper": 160752.852,
+            "lower": 159773.845,
+            "upper": 160804.644,
             "reference": "ird_wage_salary_people_by_band__row_162"
           },
           {
-            "lower": 160752.852,
-            "upper": 161783.319,
+            "lower": 160804.644,
+            "upper": 161835.443,
             "reference": "ird_wage_salary_people_by_band__row_163"
           },
           {
-            "lower": 161783.319,
-            "upper": 162813.786,
+            "lower": 161835.443,
+            "upper": 162866.242,
             "reference": "ird_wage_salary_people_by_band__row_164"
           },
           {
-            "lower": 162813.786,
-            "upper": 163844.253,
+            "lower": 162866.242,
+            "upper": 163897.041,
             "reference": "ird_wage_salary_people_by_band__row_165"
           },
           {
-            "lower": 163844.253,
-            "upper": 164874.72,
+            "lower": 163897.041,
+            "upper": 164927.84,
             "reference": "ird_wage_salary_people_by_band__row_166"
           },
           {
-            "lower": 164874.72,
-            "upper": 165905.187,
+            "lower": 164927.84,
+            "upper": 165958.639,
             "reference": "ird_wage_salary_people_by_band__row_167"
           },
           {
-            "lower": 165905.187,
-            "upper": 166935.654,
+            "lower": 165958.639,
+            "upper": 166989.438,
             "reference": "ird_wage_salary_people_by_band__row_168"
           },
           {
-            "lower": 166935.654,
-            "upper": 167966.121,
+            "lower": 166989.438,
+            "upper": 168020.237,
             "reference": "ird_wage_salary_people_by_band__row_169"
           },
           {
-            "lower": 167966.121,
-            "upper": 168996.588,
+            "lower": 168020.237,
+            "upper": 169051.036,
             "reference": "ird_wage_salary_people_by_band__row_170"
           },
           {
-            "lower": 168996.588,
-            "upper": 170027.055,
+            "lower": 169051.036,
+            "upper": 170081.835,
             "reference": "ird_wage_salary_people_by_band__row_171"
           },
           {
-            "lower": 170027.055,
-            "upper": 171057.522,
+            "lower": 170081.835,
+            "upper": 171112.634,
             "reference": "ird_wage_salary_people_by_band__row_172"
           },
           {
-            "lower": 171057.522,
-            "upper": 172087.989,
+            "lower": 171112.634,
+            "upper": 172143.433,
             "reference": "ird_wage_salary_people_by_band__row_173"
           },
           {
-            "lower": 172087.989,
-            "upper": 173118.456,
+            "lower": 172143.433,
+            "upper": 173174.232,
             "reference": "ird_wage_salary_people_by_band__row_174"
           },
           {
-            "lower": 173118.456,
-            "upper": 174148.923,
+            "lower": 173174.232,
+            "upper": 174205.031,
             "reference": "ird_wage_salary_people_by_band__row_175"
           },
           {
-            "lower": 174148.923,
-            "upper": 175179.39,
+            "lower": 174205.031,
+            "upper": 175235.83,
             "reference": "ird_wage_salary_people_by_band__row_176"
           },
           {
-            "lower": 175179.39,
-            "upper": 176209.857,
+            "lower": 175235.83,
+            "upper": 176266.629,
             "reference": "ird_wage_salary_people_by_band__row_177"
           },
           {
-            "lower": 176209.857,
-            "upper": 177240.324,
+            "lower": 176266.629,
+            "upper": 177297.428,
             "reference": "ird_wage_salary_people_by_band__row_178"
           },
           {
-            "lower": 177240.324,
-            "upper": 178270.791,
+            "lower": 177297.428,
+            "upper": 178328.227,
             "reference": "ird_wage_salary_people_by_band__row_179"
           },
           {
-            "lower": 178270.791,
-            "upper": 179301.258,
+            "lower": 178328.227,
+            "upper": 179359.026,
             "reference": "ird_wage_salary_people_by_band__row_180"
           },
           {
-            "lower": 179301.258,
-            "upper": 180331.725,
+            "lower": 179359.026,
+            "upper": 180389.825,
             "reference": "ird_wage_salary_people_by_band__row_181"
           },
           {
-            "lower": 180331.725,
-            "upper": 181362.192,
+            "lower": 180389.825,
+            "upper": 181420.624,
             "reference": "ird_wage_salary_people_by_band__row_182"
           },
           {
-            "lower": 181362.192,
-            "upper": 182392.659,
+            "lower": 181420.624,
+            "upper": 182451.423,
             "reference": "ird_wage_salary_people_by_band__row_183"
           },
           {
-            "lower": 182392.659,
-            "upper": 183423.126,
+            "lower": 182451.423,
+            "upper": 183482.222,
             "reference": "ird_wage_salary_people_by_band__row_184"
           },
           {
-            "lower": 183423.126,
-            "upper": 184453.593,
+            "lower": 183482.222,
+            "upper": 184513.021,
             "reference": "ird_wage_salary_people_by_band__row_185"
           },
           {
-            "lower": 184453.593,
-            "upper": 185484.06,
+            "lower": 184513.021,
+            "upper": 185543.82,
             "reference": "ird_wage_salary_people_by_band__row_186"
           },
           {
-            "lower": 185484.06,
-            "upper": 186514.527,
+            "lower": 185543.82,
+            "upper": 186574.619,
             "reference": "ird_wage_salary_people_by_band__row_187"
           },
           {
-            "lower": 186514.527,
-            "upper": 187544.994,
+            "lower": 186574.619,
+            "upper": 187605.418,
             "reference": "ird_wage_salary_people_by_band__row_188"
           },
           {
-            "lower": 187544.994,
-            "upper": 188575.461,
+            "lower": 187605.418,
+            "upper": 188636.217,
             "reference": "ird_wage_salary_people_by_band__row_189"
           },
           {
-            "lower": 188575.461,
-            "upper": 189605.928,
+            "lower": 188636.217,
+            "upper": 189667.016,
             "reference": "ird_wage_salary_people_by_band__row_190"
           },
           {
-            "lower": 189605.928,
-            "upper": 190636.395,
+            "lower": 189667.016,
+            "upper": 190697.815,
             "reference": "ird_wage_salary_people_by_band__row_191"
           },
           {
-            "lower": 190636.395,
-            "upper": 191666.862,
+            "lower": 190697.815,
+            "upper": 191728.614,
             "reference": "ird_wage_salary_people_by_band__row_192"
           },
           {
-            "lower": 191666.862,
-            "upper": 192697.329,
+            "lower": 191728.614,
+            "upper": 192759.413,
             "reference": "ird_wage_salary_people_by_band__row_193"
           },
           {
-            "lower": 192697.329,
-            "upper": 193727.796,
+            "lower": 192759.413,
+            "upper": 193790.212,
             "reference": "ird_wage_salary_people_by_band__row_194"
           },
           {
-            "lower": 193727.796,
-            "upper": 194758.263,
+            "lower": 193790.212,
+            "upper": 194821.011,
             "reference": "ird_wage_salary_people_by_band__row_195"
           },
           {
-            "lower": 194758.263,
-            "upper": 195788.73,
+            "lower": 194821.011,
+            "upper": 195851.81,
             "reference": "ird_wage_salary_people_by_band__row_196"
           },
           {
-            "lower": 195788.73,
-            "upper": 196819.197,
+            "lower": 195851.81,
+            "upper": 196882.609,
             "reference": "ird_wage_salary_people_by_band__row_197"
           },
           {
-            "lower": 196819.197,
-            "upper": 197849.664,
+            "lower": 196882.609,
+            "upper": 197913.408,
             "reference": "ird_wage_salary_people_by_band__row_198"
           },
           {
-            "lower": 197849.664,
-            "upper": 198880.131,
+            "lower": 197913.408,
+            "upper": 198944.207,
             "reference": "ird_wage_salary_people_by_band__row_199"
           },
           {
-            "lower": 198880.131,
-            "upper": 199910.598,
+            "lower": 198944.207,
+            "upper": 199975.006,
             "reference": "ird_wage_salary_people_by_band__row_200"
           },
           {
-            "lower": 199910.598,
-            "upper": 200941.065,
+            "lower": 199975.006,
+            "upper": 201005.805,
             "reference": "ird_wage_salary_people_by_band__row_201"
           },
           {
-            "lower": 200941.065,
-            "upper": 201971.532,
+            "lower": 201005.805,
+            "upper": 202036.604,
             "reference": "ird_wage_salary_people_by_band__row_202"
           },
           {
-            "lower": 201971.532,
-            "upper": 203001.999,
+            "lower": 202036.604,
+            "upper": 203067.403,
             "reference": "ird_wage_salary_people_by_band__row_203"
           },
           {
-            "lower": 203001.999,
-            "upper": 204032.466,
+            "lower": 203067.403,
+            "upper": 204098.202,
             "reference": "ird_wage_salary_people_by_band__row_204"
           },
           {
-            "lower": 204032.466,
-            "upper": 205062.933,
+            "lower": 204098.202,
+            "upper": 205129.001,
             "reference": "ird_wage_salary_people_by_band__row_205"
           },
           {
-            "lower": 205062.933,
-            "upper": 206093.4,
+            "lower": 205129.001,
+            "upper": 206159.8,
             "reference": "ird_wage_salary_people_by_band__row_206"
           },
           {
-            "lower": 206093.4,
-            "upper": 211245.735,
+            "lower": 206159.8,
+            "upper": 211313.795,
             "reference": "ird_wage_salary_people_by_band__row_207"
           },
           {
-            "lower": 211245.735,
-            "upper": 216398.07,
+            "lower": 211313.795,
+            "upper": 216467.79,
             "reference": "ird_wage_salary_people_by_band__row_208"
           },
           {
-            "lower": 216398.07,
-            "upper": 221550.405,
+            "lower": 216467.79,
+            "upper": 221621.785,
             "reference": "ird_wage_salary_people_by_band__row_209"
           },
           {
-            "lower": 221550.405,
-            "upper": 226702.74,
+            "lower": 221621.785,
+            "upper": 226775.78,
             "reference": "ird_wage_salary_people_by_band__row_210"
           },
           {
-            "lower": 226702.74,
-            "upper": 231855.075,
+            "lower": 226775.78,
+            "upper": 231929.775,
             "reference": "ird_wage_salary_people_by_band__row_211"
           },
           {
-            "lower": 231855.075,
-            "upper": 237007.41,
+            "lower": 231929.775,
+            "upper": 237083.77,
             "reference": "ird_wage_salary_people_by_band__row_212"
           },
           {
-            "lower": 237007.41,
-            "upper": 242159.745,
+            "lower": 237083.77,
+            "upper": 242237.765,
             "reference": "ird_wage_salary_people_by_band__row_213"
           },
           {
-            "lower": 242159.745,
-            "upper": 247312.08,
+            "lower": 242237.765,
+            "upper": 247391.76,
             "reference": "ird_wage_salary_people_by_band__row_214"
           },
           {
-            "lower": 247312.08,
-            "upper": 252464.415,
+            "lower": 247391.76,
+            "upper": 252545.755,
             "reference": "ird_wage_salary_people_by_band__row_215"
           },
           {
-            "lower": 252464.415,
-            "upper": 257616.75,
+            "lower": 252545.755,
+            "upper": 257699.75,
             "reference": "ird_wage_salary_people_by_band__row_216"
           },
           {
-            "lower": 257616.75,
-            "upper": 262769.085,
+            "lower": 257699.75,
+            "upper": 262853.745,
             "reference": "ird_wage_salary_people_by_band__row_217"
           },
           {
-            "lower": 262769.085,
-            "upper": 267921.42,
+            "lower": 262853.745,
+            "upper": 268007.74,
             "reference": "ird_wage_salary_people_by_band__row_218"
           },
           {
-            "lower": 267921.42,
-            "upper": 273073.755,
+            "lower": 268007.74,
+            "upper": 273161.735,
             "reference": "ird_wage_salary_people_by_band__row_219"
           },
           {
-            "lower": 273073.755,
-            "upper": 278226.09,
+            "lower": 273161.735,
+            "upper": 278315.73,
             "reference": "ird_wage_salary_people_by_band__row_220"
           },
           {
-            "lower": 278226.09,
-            "upper": 283378.425,
+            "lower": 278315.73,
+            "upper": 283469.725,
             "reference": "ird_wage_salary_people_by_band__row_221"
           },
           {
-            "lower": 283378.425,
-            "upper": 288530.76,
+            "lower": 283469.725,
+            "upper": 288623.72,
             "reference": "ird_wage_salary_people_by_band__row_222"
           },
           {
-            "lower": 288530.76,
-            "upper": 293683.095,
+            "lower": 288623.72,
+            "upper": 293777.715,
             "reference": "ird_wage_salary_people_by_band__row_223"
           },
           {
-            "lower": 293683.095,
-            "upper": 298835.43,
+            "lower": 293777.715,
+            "upper": 298931.71,
             "reference": "ird_wage_salary_people_by_band__row_224"
           },
           {
-            "lower": 298835.43,
-            "upper": 303987.765,
+            "lower": 298931.71,
+            "upper": 304085.705,
             "reference": "ird_wage_salary_people_by_band__row_225"
           },
           {
-            "lower": 303987.765,
-            "upper": 309140.1,
+            "lower": 304085.705,
+            "upper": 309239.7,
             "reference": "ird_wage_salary_people_by_band__row_226"
           },
           {
-            "lower": 309140.1,
-            "upper": 360663.45,
+            "lower": 309239.7,
+            "upper": 360779.65,
             "reference": "ird_wage_salary_people_by_band__row_227"
           },
           {
-            "lower": 360663.45,
-            "upper": 412186.8,
+            "lower": 360779.65,
+            "upper": 412319.6,
             "reference": "ird_wage_salary_people_by_band__row_228"
           },
           {
-            "lower": 412186.8,
-            "upper": 463710.15,
+            "lower": 412319.6,
+            "upper": 463859.55,
             "reference": "ird_wage_salary_people_by_band__row_229"
           },
           {
-            "lower": 463710.15,
-            "upper": 515233.5,
+            "lower": 463859.55,
+            "upper": 515399.5,
             "reference": "ird_wage_salary_people_by_band__row_230"
           },
           {
-            "lower": 515233.5,
-            "upper": 566756.85,
+            "lower": 515399.5,
+            "upper": 566939.45,
             "reference": "ird_wage_salary_people_by_band__row_231"
           },
           {
-            "lower": 566756.85,
-            "upper": 618280.2,
+            "lower": 566939.45,
+            "upper": 618479.4,
             "reference": "ird_wage_salary_people_by_band__row_232"
           },
           {
-            "lower": 618280.2,
-            "upper": 669803.55,
+            "lower": 618479.4,
+            "upper": 670019.35,
             "reference": "ird_wage_salary_people_by_band__row_233"
           },
           {
-            "lower": 669803.55,
-            "upper": 721326.9,
+            "lower": 670019.35,
+            "upper": 721559.3,
             "reference": "ird_wage_salary_people_by_band__row_234"
           },
           {
-            "lower": 721326.9,
-            "upper": 772850.25,
+            "lower": 721559.3,
+            "upper": 773099.25,
             "reference": "ird_wage_salary_people_by_band__row_235"
           },
           {
-            "lower": 772850.25,
-            "upper": 824373.6,
+            "lower": 773099.25,
+            "upper": 824639.2,
             "reference": "ird_wage_salary_people_by_band__row_236"
           },
           {
-            "lower": 824373.6,
-            "upper": 875896.95,
+            "lower": 824639.2,
+            "upper": 876179.15,
             "reference": "ird_wage_salary_people_by_band__row_237"
           },
           {
-            "lower": 875896.95,
-            "upper": 927420.3,
+            "lower": 876179.15,
+            "upper": 927719.1,
             "reference": "ird_wage_salary_people_by_band__row_238"
           },
           {
-            "lower": 927420.3,
-            "upper": 978943.65,
+            "lower": 927719.1,
+            "upper": 979259.05,
             "reference": "ird_wage_salary_people_by_band__row_239"
           },
           {
-            "lower": 978943.65,
-            "upper": 1030467.0,
+            "lower": 979259.05,
+            "upper": 1030799.0,
             "reference": "ird_wage_salary_people_by_band__row_240"
           },
           {
-            "lower": 1030467.0,
+            "lower": 1030799.0,
             "upper": null,
             "reference": "ird_wage_salary_people_by_band__row_241"
           }
