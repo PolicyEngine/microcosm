@@ -413,8 +413,10 @@ Unless the build manifest's `staged_dataset` record is `local_and_remote`,
 the manifest must have the receipt's SHA-256 and size, so a manifest edited to
 register another file the stage wrote, rename a role or change any other field
 is refused. A hand-over from the workstation writes a `local_and_remote`
-record and rewrites the manifest, so after one, even one that failed, the
-manifest is not compared. The command reads that mode from the manifest
+record into the manifest when the emitter copied the manifest, so after such
+a hand-over, even one that failed, the manifest is not compared; a manifest
+the emitter uploads from disk stays as handed over, with the receipt's bytes,
+and is still compared. The command reads that mode from the manifest
 itself, so it cannot tell a record a hand-over wrote from one edited to say
 `local_and_remote`: such an edit also ends the manifest's comparison, and the
 edits above are then not caught. Every output must have the receipt's SHA-256

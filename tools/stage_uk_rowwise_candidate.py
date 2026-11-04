@@ -43,7 +43,7 @@ any output is read. The receipt must list the build manifest and every output
 it registers, at their paths under the state directory. Every output must have
 the receipt's SHA-256 and size. So must the build manifest, unless its
 ``staged_dataset`` record is ``local_and_remote``, as a hand-over from the
-workstation leaves it. The command reads that mode from the manifest itself,
+workstation leaves it when it rewrites the manifest. The command reads that mode from the manifest itself,
 so an edit that sets it also ends the manifest's comparison. Edits to the
 manifest's other fields, including which files the stage wrote it registers
 as outputs and under which roles, are then not caught; an output whose bytes
@@ -517,8 +517,10 @@ def _record_is_the_builds(manifest: Mapping[str, Any]) -> bool:
     records its bundle as ``local_only`` (``disabled`` with staging off), so
     any record but a ``local_and_remote`` one counts as the build's own. A
     hand-over from the workstation replaces it with a ``local_and_remote``
-    record and rewrites the manifest; ``--local-only`` with ``--modal-receipt``
-    leaves the manifest as it is (:func:`_leave_the_copied_back_manifest`).
+    record when the emitter copied the manifest, rewriting it; a manifest the
+    emitter uploads from disk stays as handed over, with the receipt's bytes.
+    ``--local-only`` with ``--modal-receipt`` leaves the manifest as it is
+    (:func:`_leave_the_copied_back_manifest`).
 
     This reads only ``staged_dataset.mode``, from the manifest itself, so a
     manifest edited to say ``local_and_remote`` is not compared either. No
