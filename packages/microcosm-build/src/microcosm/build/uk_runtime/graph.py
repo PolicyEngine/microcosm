@@ -457,12 +457,15 @@ _STAGE_CONSUMES: Mapping[str, frozenset[tuple[str, str]] | None] = {
                     "receives_benefits_in_own_right",
                     # The UC draw's population (frs_take_up's rule).
                     "is_uc_claimant",
-                    # The permitted-work test of the contributory awards
-                    # (microcosm#1095 B10).
+                    # The work tests of the contributory awards: the copy's
+                    # earnings and its twin's hours (microcosm#1095 B10).
                     "employment_income",
                     "self_employment_income",
+                    "hours_worked",
                 )
             ),
+            # The receipt counts support by source household.
+            ("household", "household_source_id"),
             ("benunit", "benunit_support_channel"),
             ("benunit", "would_claim_uc"),
         }
