@@ -286,9 +286,22 @@ _GRANDCHILD = 5
         # A graduate loan is never Parent PLUS, whatever its size.
         (((_CHILD, 25),),
          _loan(9_000, whose=3, year=2022, program=13, borrowed=80_000), "child"),
+        # A program code the codebook does not list as undergraduate (10-12,
+        # 16) is never Parent PLUS for being over the limit.
+        (((_CHILD, 25),),
+         _loan(9_000, whose=3, year=2022, program=9, borrowed=40_000), "child"),
         # A child aged 38-42 (code 40) was at least 28 in 2015: independent.
         (((_CHILD, 40),), _loan(9_000, whose=3, year=2015, borrowed=50_000),
          "child"),
+        # The age-24 boundary: aged 28-32 (code 30), so at least 24 in 2021,
+        # when the youngest age in the band reached 24. Over the limit, the
+        # loan still stays the child's own.
+        (((_CHILD, 30),), _loan(9_000, whose=3, year=2021, borrowed=40_000),
+         "child"),
+        # The age-16 boundary: aged 18-27 (code 25), so at most 16 in 2014,
+        # when the oldest age in the band reached 16. The child fits and keeps
+        # the loan.
+        (((_CHILD, 25),), _loan(9_000, whose=3, year=2014), "child"),
         # Aged 28-32 (code 30), so possibly 23 in 2018: possibly dependent.
         (((_CHILD, 30),), _loan(9_000, whose=3, year=2018, borrowed=50_000),
          "parent_plus"),
@@ -339,6 +352,43 @@ def test_the_dependent_limit_follows_the_loan_year() -> None:
         education_debt._dependent_undergraduate_limit(years),
         [17_250.0, 17_250.0, 23_000.0, 23_000.0, 31_000.0, 31_000.0],
     )
+
+
+def _child_and_parent_plus(*loans, listed=((_CHILD, 25),)) -> tuple[float, float]:
+    row = _derive(_family(*loans, listed=listed)).iloc[0]
+    return (
+        row["child_federal_student_loan_balance"],
+        row["federal_parent_plus_loan_balance"],
+    )
+
+
+def test_the_dependent_limit_sums_an_only_fitting_childs_loans(monkeypatch) -> None:
+    bachelors_2016 = _loan(20_000, whose=3, year=2016, program=12)
+    # Two 2016 bachelor's loans of $20,000 sum above the $31,000 limit for an
+    # only child of dependent age, so they read as one $40,000 loan does.
+    assert _child_and_parent_plus(bachelors_2016, bachelors_2016) == (0.0, 40_000)
+    assert _child_and_parent_plus(_loan(40_000, whose=3, year=2016)) == (0.0, 40_000)
+    # Years are read oldest first: the 2014 loan fits within the limit, and
+    # the 2016 one would take the child's total past it.
+    assert _child_and_parent_plus(
+        _loan(20_000, whose=3, year=2014), bachelors_2016
+    ) == (20_000, 20_000)
+    # A loan over the limit on its own is the parent's and leaves the child's
+    # total untouched.
+    assert _child_and_parent_plus(
+        _loan(40_000, whose=3, year=2014), bachelors_2016
+    ) == (20_000, 40_000)
+    # With two fitting children each loan is compared with the limit alone.
+    two_children = ((_CHILD, 25), (_CHILD, 25))
+    assert _child_and_parent_plus(
+        bachelors_2016, bachelors_2016, listed=two_children
+    ) == (40_000, 0.0)
+    # The per-loan reading the receipt sizes reads both loans as the child's.
+    monkeypatch.setattr(
+        education_debt, "_DEPENDENT_LIMIT_SUMS_AN_ONLY_CHILDS_LOANS", False
+    )
+    assert _child_and_parent_plus(bachelors_2016, bachelors_2016) == (40_000, 0.0)
+    assert _child_and_parent_plus(_loan(40_000, whose=3, year=2016)) == (0.0, 40_000)
 
 
 def test_child_targets_carry_the_childs_flags_shares_and_ages() -> None:
@@ -919,12 +969,17 @@ def test_a_childs_draw_without_an_adult_child_splits_by_its_graduate_share() -> 
     )
     # Every donor family holds half its debt itself (none of it graduate) and
     # half as an adult child's loan, half of whose principal was graduate.
-    donor["head_own_share"] = 0.5
-    donor["child_own_share"] = 0.5
+    # The drawn shares sum to 0.6 before the draw normalizes them, so the
+    # moved dollars must divide by that sum. The head's own loans are new IBR
+    # loans and the child's are not.
+    donor["head_own_share"] = 0.3
+    donor["child_own_share"] = 0.3
     donor["spouse_own_share"] = 0.0
     donor["parent_plus_share"] = 0.0
     donor["head_graduate_share"] = 0.0
     donor["child_graduate_share"] = 0.5
+    donor["head_is_ibr_new_borrower"] = 1.0
+    donor["child_is_ibr_new_borrower"] = 0.0
     donor[SCF_EDUCATION_DEBT_ADULT_CHILDREN_PREDICTOR] = 1.0
     features = _features(donor).iloc[:120].copy()
     features[SCF_EDUCATION_DEBT_ADULT_CHILDREN_PREDICTOR] = 0.0
@@ -947,6 +1002,9 @@ def test_a_childs_draw_without_an_adult_child_splits_by_its_graduate_share() -> 
     np.testing.assert_allclose(
         drawn["child_undergraduate_balance_moved_to_parent_plus"], 0.25 * total
     )
+    # The head now holds the child's loan too, which is not new, so the head
+    # is no longer a new IBR borrower.
+    assert (drawn["head_is_ibr_new_borrower"] == 0).all()
     # With an adult child present, nothing moves.
     kept = draw_scf_education_debt_households(
         _features(donor).iloc[:120], donor, seed=6, n_estimators=10
@@ -955,6 +1013,19 @@ def test_a_childs_draw_without_an_adult_child_splits_by_its_graduate_share() -> 
     assert (kept["child_graduate_balance_moved_to_head"] == 0).all()
     assert (kept["child_undergraduate_balance_moved_to_parent_plus"] == 0).all()
     np.testing.assert_allclose(kept["head_graduate_share"], 0.0)
+    assert (kept["head_is_ibr_new_borrower"] == 1).all()
+    assert (kept["child_is_ibr_new_borrower"] == 0).all()
+
+
+def test_moved_dollars_stay_finite_when_the_shares_sum_to_a_subnormal() -> None:
+    # 2e-310 is subnormal: 10,000 / 2e-310 overflows, and 0 * inf is NaN.
+    sums = np.array([2e-310, 2e-310, 0.6, 0.0])
+    part = np.array([1e-310, 0.0, 0.15, 0.0])
+    total = np.array([10_000.0, 10_000.0, 8_000.0, 5_000.0])
+    np.testing.assert_allclose(
+        education_debt._part_of_drawn_total(part, sums, total),
+        [5_000.0, 0.0, 2_000.0, 0.0],
+    )
 
 
 def test_adult_children_count_children_of_either_partner_aged_18_or_over() -> None:
