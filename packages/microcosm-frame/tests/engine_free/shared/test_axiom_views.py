@@ -14,7 +14,7 @@ from types import SimpleNamespace
 import numpy as np
 import pandas as pd
 import pytest
-from hypothesis import given, settings
+from hypothesis import example, given, settings
 from hypothesis import strategies as st
 
 from microcosm.frame import Frame, WeightKind, Weights
@@ -50,6 +50,7 @@ def f(age: np.ndarray, income: np.ndarray) -> dict[str, np.ndarray]:
         "child_amount": age * 10.0 + income,
         "child_test": np.where(age < 18, 1, -1).astype(np.int8),
         "child_flag": age % 2 == 0,
+        "child_count": age // 3,
     }
 
 
@@ -61,6 +62,7 @@ CHILD_METADATA = [
     _metadata("child_amount", "Child", "decimal"),
     _metadata("child_test", "Child", "judgment"),
     _metadata("child_flag", "Child", "bool"),
+    _metadata("child_count", "Child", "integer"),
 ]
 
 
@@ -478,7 +480,7 @@ def _population(draw, *, min_rows=0, max_rows=60):
     selected = draw(st.lists(st.booleans(), min_size=n, max_size=n))
     ages = draw(st.lists(st.integers(0, 90), min_size=n, max_size=n))
     incomes = draw(st.lists(st.integers(-1000, 1000), min_size=n, max_size=n))
-    outside = draw(st.integers(-1000, 1000).filter(lambda value: value != 0).map(float))
+    outside = float(draw(st.integers(1, 1000)) * draw(st.sampled_from((-1, 1))))
     return (
         np.asarray(selected, dtype=bool),
         np.asarray(ages, dtype=np.int64),
@@ -487,47 +489,101 @@ def _population(draw, *, min_rows=0, max_rows=60):
     )
 
 
-def _run(population, *, function=f):
-    selected, ages, incomes, outside = population
+_PROPERTY_OUTPUTS = {
+    "decimal": ("child_amount", np.dtype("float64")),
+    "integer": ("child_count", np.dtype("int64")),
+    "judgment": ("child_test", np.dtype("int64")),
+    "bool": ("child_flag", np.dtype("bool")),
+}
+
+
+def _property_outside(population, dtype):
+    outside = population[3]
+    return {
+        "decimal": float(outside),
+        "integer": int(outside),
+        "judgment": 1 if outside > 0 else -1,
+        "bool": outside > 0,
+    }[dtype]
+
+
+def _edge_population(selected):
+    n = len(selected)
+    return (
+        np.asarray(selected, dtype=bool),
+        np.arange(n, dtype=np.int64),
+        np.arange(n, dtype=np.float64) * 3.0,
+        5.0,
+    )
+
+
+def _edge_examples(*, shuffled=False):
+    """Replay every graph dtype at zero rows, no rows selected and all selected."""
+
+    def decorate(test):
+        for dtype in _PROPERTY_OUTPUTS:
+            for selected in ([], [False, False], [True, True]):
+                arguments = dict(population=_edge_population(selected), dtype=dtype)
+                if shuffled:
+                    arguments["seed"] = 0
+                test = example(**arguments)(test)
+        return test
+
+    return decorate
+
+
+def _run(population, *, dtype="decimal", function=f):
+    selected, ages, incomes, _ = population
+    name, _ = _PROPERTY_OUTPUTS[dtype]
+    outside = _property_outside(population, dtype)
     with pytest.MonkeyPatch.context() as patch:
         adapter, engine = _adapter(
             patch,
             {"Child": _child_program(function=function)},
-            views=(_view(outside={**OUTSIDE, "child_amount": outside}),),
+            views=(_view(outside={name: outside}),),
         )
-        result = _materialize(adapter, selected, ["child_amount"], ages, incomes)
-    return result["child_amount"], engine.programs["Child"]
+        result = _materialize(adapter, selected, [name], ages, incomes)
+    return result[name], engine.programs["Child"]
 
 
 @settings(max_examples=60, deadline=None, database=None)
-@given(_population())
-def test_p1_one_output_per_row(population):
-    """A sentinel per selected row shows each index written exactly once."""
-    selected, ages, incomes, outside = population
-    out, program = _run(population)
-    assert len(out) == len(selected)
-    sentinel = np.full(len(selected), np.nan)
-    sentinel[selected] = f(ages[selected], incomes[selected])["child_amount"]
-    sentinel[~selected] = outside
-    assert np.array_equal(out, sentinel)
+@_edge_examples()
+@given(population=_population(), dtype=st.sampled_from(tuple(_PROPERTY_OUTPUTS)))
+def test_p1_one_output_per_row(population, dtype):
+    """An exact oracle checks every row in each graph dtype."""
+    selected, ages, incomes, _ = population
+    name, graph_dtype = _PROPERTY_OUTPUTS[dtype]
+    outside = _property_outside(population, dtype)
+    out, program = _run(population, dtype=dtype)
+    expected = np.full(len(selected), outside, dtype=graph_dtype)
+    expected[selected] = f(ages[selected], incomes[selected])[name]
+    assert out.dtype == graph_dtype
+    assert np.array_equal(out, expected)
     assert len(program.calls) == int(selected.any())
 
 
 @settings(max_examples=60, deadline=None, database=None)
-@given(_population())
-def test_p2_outside_rows_hold_the_outside_value(population):
-    selected, _, _, outside = population
-    out, _ = _run(population)
-    assert out.dtype == np.float64
-    assert (out[~selected] == np.float64(outside)).all()
+@_edge_examples()
+@given(population=_population(), dtype=st.sampled_from(tuple(_PROPERTY_OUTPUTS)))
+def test_p2_outside_rows_hold_the_outside_value(population, dtype):
+    selected, _, _, _ = population
+    _, graph_dtype = _PROPERTY_OUTPUTS[dtype]
+    outside = _property_outside(population, dtype)
+    out, _ = _run(population, dtype=dtype)
+    assert out.dtype == graph_dtype
+    assert (out[~selected] == outside).all()
 
 
 @settings(max_examples=60, deadline=None, database=None)
-@given(_population())
-def test_p3_conservation_is_exact_for_decimals(population):
-    selected, ages, incomes, outside = population
-    out, _ = _run(population)
-    view_total = f(ages[selected], incomes[selected])["child_amount"].sum()
+@_edge_examples()
+@given(population=_population(), dtype=st.sampled_from(tuple(_PROPERTY_OUTPUTS)))
+def test_p3_conservation_is_exact(population, dtype):
+    """Integer-valued decimals and all discrete graph totals compare exactly."""
+    selected, ages, incomes, _ = population
+    name, _ = _PROPERTY_OUTPUTS[dtype]
+    outside = _property_outside(population, dtype)
+    out, _ = _run(population, dtype=dtype)
+    view_total = f(ages[selected], incomes[selected])[name].sum()
     assert out.sum() == view_total + outside * int((~selected).sum())
 
 
@@ -747,23 +803,31 @@ def test_p4_no_views_outputs_equal_the_base_path(
 
 
 @settings(max_examples=60, deadline=None, database=None)
-@given(_population(), st.randoms(use_true_random=False))
-def test_p5_shuffling_rows_shuffles_outputs(population, generator):
+@_edge_examples(shuffled=True)
+@given(
+    population=_population(),
+    seed=st.integers(0, 2**32 - 1),
+    dtype=st.sampled_from(tuple(_PROPERTY_OUTPUTS)),
+)
+def test_p5_shuffling_rows_shuffles_outputs(population, seed, dtype):
     selected, ages, incomes, outside = population
-    order = list(range(len(selected)))
-    generator.shuffle(order)
-    out, _ = _run(population)
-    shuffled, _ = _run((selected[order], ages[order], incomes[order], outside))
+    order = np.random.default_rng(seed).permutation(len(selected))
+    out, _ = _run(population, dtype=dtype)
+    shuffled, _ = _run(
+        (selected[order], ages[order], incomes[order], outside), dtype=dtype
+    )
     assert np.array_equal(shuffled, out[order])
 
 
 @settings(max_examples=60, deadline=None, database=None)
-@given(_population())
-def test_p6_each_selected_output_is_f_of_that_row_alone(population):
+@_edge_examples()
+@given(population=_population(), dtype=st.sampled_from(tuple(_PROPERTY_OUTPUTS)))
+def test_p6_each_selected_output_is_f_of_that_row_alone(population, dtype):
     selected, ages, incomes, _ = population
-    out, _ = _run(population)
+    name, _ = _PROPERTY_OUTPUTS[dtype]
+    out, _ = _run(population, dtype=dtype)
     for index in np.flatnonzero(selected):
-        alone = f(ages[index : index + 1], incomes[index : index + 1])["child_amount"]
+        alone = f(ages[index : index + 1], incomes[index : index + 1])[name]
         assert out[index] == alone[0]
 
 
@@ -794,18 +858,22 @@ CHILD_SCHEMA = EntitySchema(person_entity="child", group_entities=("household",)
 
 
 @settings(max_examples=40, deadline=None, database=None)
-@given(_population(min_rows=1, max_rows=30).filter(lambda item: item[0].any()))
-def test_differential_a_mapped_child_entity_against_the_view(population):
+@example(population=_edge_population([True, True]), dtype="decimal")
+@example(population=_edge_population([True, True]), dtype="integer")
+@example(population=_edge_population([True, True]), dtype="judgment")
+@example(population=_edge_population([True, True]), dtype="bool")
+@given(
+    population=_population(min_rows=1, max_rows=30).filter(lambda item: item[0].any()),
+    dtype=st.sampled_from(tuple(_PROPERTY_OUTPUTS)),
+)
+def test_differential_a_mapped_child_entity_against_the_view(population, dtype):
     """An adapter whose person entity maps to Child, and the view, agree per child."""
-    selected, ages, incomes, outside = population
+    selected, ages, incomes, _ = population
+    name, _ = _PROPERTY_OUTPUTS[dtype]
+    outside = _property_outside(population, dtype)
     with pytest.MonkeyPatch.context() as patch:
-        view, _ = _adapter(
-            patch,
-            views=(_view(outside={**OUTSIDE, "child_amount": outside}),),
-        )
-        through_view = view.materialize(
-            _frame(selected, ages, incomes), VARIABLES, "2025"
-        )
+        view, _ = _adapter(patch, views=(_view(outside={name: outside}),))
+        through_view = view.materialize(_frame(selected, ages, incomes), [name], "2025")
         mapped = AxiomEngine(
             MODULE,
             CHILD_SCHEMA,
@@ -831,10 +899,9 @@ def test_differential_a_mapped_child_entity_against_the_view(population):
             schema=CHILD_SCHEMA,
             weights={"household": Weights(np.ones(1), WeightKind.DESIGN)},
         )
-        direct = mapped.materialize(children, VARIABLES, "2025")
-    for name in VARIABLES:
-        assert through_view[name][selected].tolist() == direct[name].tolist()
-        assert through_view[name].dtype == direct[name].dtype
+        direct = mapped.materialize(children, [name], "2025")
+    assert through_view[name][selected].tolist() == direct[name].tolist()
+    assert through_view[name].dtype == direct[name].dtype
 
 
 # ---------------------------------------------------------------------------
