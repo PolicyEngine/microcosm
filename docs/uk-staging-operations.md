@@ -412,11 +412,12 @@ to the runs volume (the receipt's `outputs_not_mirrored`) is named as such.
 Unless the build manifest's `staged_dataset` record is `local_and_remote`,
 the manifest must have the receipt's SHA-256 and size, so a manifest edited to
 register another file the stage wrote, rename a role or change any other field
-is refused. A hand-over from the workstation writes a `local_and_remote`
-record into the manifest when the emitter copied the manifest, so after such
-a hand-over, even one that failed, the manifest is not compared; a manifest
-the emitter uploads from disk stays as handed over, with the receipt's bytes,
-and is still compared. The command reads that mode from the manifest
+is refused. An attempt to hand the directory over from the workstation that
+records its outcome in the manifest writes a `local_and_remote` record,
+whether the bundle landed, failed or was refused, so after such an attempt the
+manifest is not compared. A bundle the emitter queued without copying the
+manifest leaves the manifest as handed over, with the receipt's bytes and the
+build's record, and it is then still compared. The command reads that mode from the manifest
 itself, so it cannot tell a record a hand-over wrote from one edited to say
 `local_and_remote`: such an edit also ends the manifest's comparison, and the
 edits above are then not caught. Every output must have the receipt's SHA-256
@@ -429,11 +430,19 @@ attempt and a second run on a landed bundle work as they do for a directory
 built on the workstation. Unset `HF_HUB_OFFLINE` first if your shell sets it:
 the command refuses to stage while it is set. With `--local-only` it checks
 the directory against the receipt and writes `staged_manifest.json` and
-`sha256sums.txt`, but leaves the build manifest as it is, so later runs with
-the receipt still compare it. (Without `--modal-receipt`, `--local-only` also
-records the bundle as `local_only` in the build manifest.) Nothing here
-submits the bundle to the collector: the
-command's emitter runs its Hugging Face module only, and builds do not submit
+`sha256sums.txt`, but leaves the build manifest as it is, so a manifest that
+still holds the build's record is still compared by later runs with the
+receipt.
+
+> **Warning:** on a copied-back directory, always pass `--modal-receipt` with
+> `--local-only`. Without the receipt, `--local-only` writes a `local_only`
+> record into the build manifest. Whenever that record differs from the
+> build's own (a build that disabled its staged dataset, another `--run-id`, a
+> national build, or a hand-over that did not land), every later run with the
+> receipt refuses the directory as "not the build manifest the Modal stage
+> wrote". If that has happened, fetch the run again with `modal volume get`.
+
+Nothing here submits the bundle to the collector: the command's emitter runs its Hugging Face module only, and builds do not submit
 artifacts to the collector's artifact intake yet
 (PolicyEngine/microcosm-collector#12).
 

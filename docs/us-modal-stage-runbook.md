@@ -421,7 +421,9 @@ workstation after step 5, with the operator's own emitter and Hub credential:
 `tools/stage_uk_rowwise_candidate.py --modal-receipt` checks the outputs the
 build manifest registers against the receipt, and the manifest itself until
 its record says a hand-over happened, then hands the bundle over as for a
-local build (see [Staged datasets](uk-staging-operations.md#staged-datasets)).
+local build. It reads that record from the manifest itself, so an edit that
+says a hand-over happened is not caught; the outputs are still compared (see
+[Staged datasets](uk-staging-operations.md#staged-datasets)).
 
 To prove the run path on a new commit or workspace for well under a cent,
 run `docs/us-modal-stage-smoke-plan.json` (tool `runner-smoke`). It is an

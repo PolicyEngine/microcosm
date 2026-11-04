@@ -34,25 +34,29 @@ keeps the manifest's records and says so. A directory whose bytes differ from
 the remote bundle is otherwise refused.
 
 No UK program is registered with the Modal runner yet. A UK build run there
-would stage nothing from its container: the runner sets ``HF_HUB_OFFLINE``,
-so the build would record its bundle as ``local_only``. Once ``modal volume
-get`` has copied such a run back, ``--modal-receipt`` names the stage's
-receipt. The receipt must be of a stage that finished, and the run directory
-must be inside the run's copied-back state directory; both are checked before
-any output is read. The receipt must list the build manifest and every output
-it registers, at their paths under the state directory. Every output must have
-the receipt's SHA-256 and size. So must the build manifest, unless its
-``staged_dataset`` record is ``local_and_remote``, as a hand-over from the
-workstation leaves it when it rewrites the manifest. The command reads that mode from the manifest itself,
-so an edit that sets it also ends the manifest's comparison. Edits to the
-manifest's other fields, including which files the stage wrote it registers
-as outputs and under which roles, are then not caught; an output whose bytes
-differ from the receipt's is still refused. Otherwise the command refuses before it starts an emitter; when everything
-compared matches, it stages the directory as above. The staged manifest and
-the checksum file are not compared, because staging writes them again. With
-``--local-only`` the command checks the directory and writes those two files,
-but leaves the build manifest as it is, so later runs with the receipt can
-still compare it.
+would stage nothing from its container: the runner sets ``HF_HUB_OFFLINE``, so
+the build would record its bundle as ``local_only``. Once ``modal volume get``
+has copied such a run back, ``--modal-receipt`` names the stage's receipt. The
+receipt must be of a stage that finished, and the run directory must be inside
+the run's copied-back state directory; both are checked before any output is
+read. The receipt must list the build manifest and every output it registers,
+at their paths under the state directory. Every output must have the receipt's
+SHA-256 and size. So must the build manifest, unless its ``staged_dataset``
+record is ``local_and_remote``, as an attempt to hand the directory over from
+the workstation leaves it whenever it records its outcome in the manifest. The
+command reads that mode from the manifest itself, so an edit that sets it also
+ends the manifest's comparison. Edits to the manifest's other fields,
+including which files the stage wrote it registers as outputs and under which
+roles, are then not caught; an output whose bytes differ from the receipt's is
+still refused. Every refusal comes before the command starts an emitter, and a
+directory that passes is staged as above. The staged manifest and the checksum
+file are not compared, because staging writes them again. With
+``--local-only`` the command checks the directory and writes those two files
+but leaves the build manifest as it is, so a manifest that still holds the
+build's record is still compared by later runs with the receipt. Without
+``--modal-receipt``, ``--local-only`` writes a ``local_only`` record into the
+build manifest, which on a copied-back directory can make every later run with
+the receipt refuse it; pass the receipt with ``--local-only`` there.
 
 Staging is not publication: ``releases/`` and ``latest.json`` are untouched.
 """
@@ -161,7 +165,9 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
             "sha256sums.txt) without uploading. Without --modal-receipt, also "
             "record the bundle as local_only in the build manifest; with it, "
             "leave the build manifest as it is. A directory whose manifest "
-            "records a landed bundle is left unchanged."
+            "records a landed bundle is left unchanged. On a directory copied "
+            "back from Modal, pass --modal-receipt too: the local_only record "
+            "can make every later run with the receipt refuse the directory."
         ),
     )
     parser.add_argument(
@@ -184,7 +190,9 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
             "(modal-runs/<run_id>/receipts/<stage>-<utc>.json). Every output the "
             "manifest registers must be in it with the same SHA-256 and size, "
             "and so must the build manifest unless its staged_dataset record "
-            "is local_and_remote."
+            "is local_and_remote. That mode is read from the manifest itself, "
+            "so an edit that sets it is not caught; the outputs are still "
+            "compared."
         ),
     )
     parser.add_argument(
@@ -515,11 +523,13 @@ def _record_is_the_builds(manifest: Mapping[str, Any]) -> bool:
 
     A build run with ``HF_HUB_OFFLINE``, as the Modal runner runs every tool,
     records its bundle as ``local_only`` (``disabled`` with staging off), so
-    any record but a ``local_and_remote`` one counts as the build's own. A
-    hand-over from the workstation replaces it with a ``local_and_remote``
-    record when the emitter copied the manifest, rewriting it; a manifest the
-    emitter uploads from disk stays as handed over, with the receipt's bytes.
-    ``--local-only`` with ``--modal-receipt`` leaves the manifest as it is
+    any record but a ``local_and_remote`` one counts as the build's own. An
+    attempt to hand the directory over from the workstation that records its
+    outcome in the manifest writes a ``local_and_remote`` record, whether the
+    bundle landed, failed or was refused. A bundle the emitter queued without
+    copying the manifest leaves the manifest as handed over, with the
+    receipt's bytes and the build's record. ``--local-only`` with
+    ``--modal-receipt`` leaves the manifest as it is
     (:func:`_leave_the_copied_back_manifest`).
 
     This reads only ``staged_dataset.mode``, from the manifest itself, so a
@@ -544,8 +554,8 @@ def _leave_the_copied_back_manifest(local_only: Mapping[str, Any]) -> int:
     the receipt's bytes, which every later run with the receipt refuses.
     """
     print(
-        "the build manifest stays as it is, so later runs with --modal-receipt "
-        "can still compare it with the receipt; staged_manifest.json and "
+        "the build manifest is left unchanged for later runs with "
+        "--modal-receipt; staged_manifest.json and "
         f"{SHA256SUMS_FILENAME} are written. The local_only record of the bundle, "
         "which the manifest does not get:",
         file=sys.stderr,
