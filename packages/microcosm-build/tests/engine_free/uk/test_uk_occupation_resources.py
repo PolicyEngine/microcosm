@@ -18,8 +18,9 @@ from microcosm.build.uk_runtime.aps_occupation import (
     UK_APS_PERSON_TAB_ROLE,
     _artifact,
     clean_aps_occupation_table,
+    read_pinned_columns,
 )
-from microcosm.build.uk_runtime.frs_spine import REGION_MAP, read_pinned_tab
+from microcosm.build.uk_runtime.frs_spine import REGION_MAP
 from microcosm.build.uk_runtime.occupation_constants import (
     UK_SOC2020_SUB_MAJOR_GROUPS,
 )
@@ -32,10 +33,10 @@ def test_the_aps_cleaning_maps_every_code_of_the_licensed_tab() -> None:
     stage = next(
         s for s in load_country_spec("uk").sources.stages if s.stage == "aps_occupation"
     )
-    raw = read_pinned_tab(
+    raw = read_pinned_columns(
         Path(tab),
         _artifact(stage, UK_APS_PERSON_TAB_ROLE),
-        columns=list(UK_APS_OCCUPATION_CLEANING["columns"].values()),
+        list(UK_APS_OCCUPATION_CLEANING["columns"].values()),
     )
     donors, receipt = clean_aps_occupation_table(raw)
     assert set(donors["soc2020_sub_major_group"]) == set(

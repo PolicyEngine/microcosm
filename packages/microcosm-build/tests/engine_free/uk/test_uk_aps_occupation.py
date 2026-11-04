@@ -121,6 +121,29 @@ def test_a_digest_mismatch_is_refused(tmp_path) -> None:
         transform._raw_donor()
 
 
+def test_the_chunked_reader_matches_the_shared_pinned_reader(tmp_path, raw) -> None:
+    import hashlib
+
+    from microcosm.build.uk_runtime.aps_occupation import read_pinned_columns
+    from microcosm.build.uk_runtime.frs_spine import read_pinned_tab
+
+    tab = tmp_path / "aps.tab"
+    raw.to_csv(tab, sep="\t", index=False)
+    artifact = {
+        "size_bytes": tab.stat().st_size,
+        "sha256": hashlib.sha256(tab.read_bytes()).hexdigest(),
+    }
+    columns = list(UK_APS_OCCUPATION_CLEANING["columns"].values())
+    chunked = read_pinned_columns(tab, artifact, columns, chunk_rows=500)
+    pd.testing.assert_frame_equal(
+        chunked, read_pinned_tab(tab, artifact, columns=columns)
+    )
+    with pytest.raises(ValueError, match="not the pinned"):
+        read_pinned_columns(tab, {**artifact, "size_bytes": 1}, columns)
+    with pytest.raises(ValueError, match="missing required column"):
+        read_pinned_columns(tab, artifact, [*columns, "NOT_A_COLUMN"])
+
+
 def test_a_missing_tab_is_refused() -> None:
     with pytest.raises(ValueError, match="requires the caller-supplied APS"):
         UKAPSOccupationStageTransform(stage=_stage())._raw_donor()

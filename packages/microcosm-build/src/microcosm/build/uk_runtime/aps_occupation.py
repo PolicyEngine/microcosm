@@ -39,6 +39,7 @@ from microcosm.build.stochastic_assignment import (
     integer_record_keys,
     stable_identity_uniforms,
 )
+from microcosm.build.trace import sha256_file
 from microcosm.build.uk_runtime.occupation_constants import (
     UK_OCCUPATION_STATUS_GROUP,
     UK_SIC2007_SECTION_DIVISIONS,
@@ -77,6 +78,7 @@ __all__ = [
     "UKAPSOccupationStageTransform",
     "clean_aps_occupation_table",
     "impute_soc2020_sub_major_group",
+    "read_pinned_columns",
     "sub_major_model",
 ]
 
@@ -744,6 +746,59 @@ def _assert_invariants(person_in: pd.DataFrame, person_out: pd.DataFrame) -> Non
         )
 
 
+def read_pinned_columns(
+    path: Path,
+    artifact: Mapping[str, Any],
+    columns: Sequence[str],
+    *,
+    chunk_rows: int = 20_000,
+) -> pd.DataFrame:
+    """The named columns of a size- and sha256-pinned tab, read a chunk at a time.
+
+    The shared ``read_pinned_tab`` parses a whole tab in one pass, which for
+    the APS person tab (548 columns) costs some 2.4 GiB of memory to keep 12
+    of them. This checks the same pins, then reads only the named columns
+    (matched case-insensitively) as text, a chunk of rows at a time, and
+    converts them to numbers as that reader does, under lower-case names.
+    """
+    if not path.exists():
+        raise FileNotFoundError(f"The pinned tab is missing: {path}.")
+    size = path.stat().st_size
+    if size != int(artifact["size_bytes"]):
+        raise ValueError(
+            f"The tab {path.name} is {size} bytes, not the pinned "
+            f"{int(artifact['size_bytes'])}."
+        )
+    digest = sha256_file(path)
+    if digest != str(artifact["sha256"]):
+        raise ValueError(
+            f"The tab {path.name} hashes to {digest}, not the pinned "
+            f"{artifact['sha256']}."
+        )
+    names: dict[str, list[str]] = {}
+    for name in pd.read_csv(path, sep="\t", nrows=0).columns:
+        names.setdefault(str(name).lower(), []).append(str(name))
+    wanted = [str(column).lower() for column in columns]
+    missing = sorted(column for column in wanted if column not in names)
+    if missing:
+        raise ValueError(f"{path.name} is missing required column(s): {missing}.")
+    repeated = sorted(column for column in wanted if len(names[column]) > 1)
+    if repeated:
+        raise ValueError(
+            f"{path.name} has duplicate column(s) after lower-casing: {repeated}."
+        )
+    chunks = pd.read_csv(
+        path,
+        sep="\t",
+        usecols=[names[column][0] for column in wanted],
+        dtype=str,
+        chunksize=chunk_rows,
+    )
+    raw = pd.concat(list(chunks), ignore_index=True)
+    raw.columns = [str(column).lower() for column in raw.columns]
+    return raw.apply(pd.to_numeric, errors="coerce")
+
+
 def _artifact(stage, role: str) -> Mapping[str, Any]:
     for artifact in stage.artifacts:
         if artifact.get("role") == role:
@@ -778,12 +833,10 @@ class UKAPSOccupationStageTransform:
                 f"{UK_APS_OCCUPATION_STAGE_NAME} requires the caller-supplied APS "
                 "person tab."
             )
-        from microcosm.build.uk_runtime.frs_spine import read_pinned_tab
-
-        return read_pinned_tab(
+        return read_pinned_columns(
             Path(self.aps_tab_path).expanduser().resolve(),
             _artifact(self.stage, UK_APS_PERSON_TAB_ROLE),
-            columns=list(UK_APS_OCCUPATION_CLEANING["columns"].values()),
+            list(UK_APS_OCCUPATION_CLEANING["columns"].values()),
         )
 
     def __call__(self, frame):
