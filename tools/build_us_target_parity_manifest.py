@@ -66,7 +66,7 @@ US_PACKAGE_DIR = (
 MANIFEST_PATH = US_PACKAGE_DIR / "target_parity_manifest.json"
 FEED_FAMILIES_PATH = US_PACKAGE_DIR / "target_parity_feed_families.json"
 
-DEFAULT_FEED_NAME = "consumer_facts_us_a9026cc.jsonl"
+DEFAULT_FEED_NAME = "consumer_facts_us_41b2fb2.jsonl"
 DEFAULT_FEED_PATH = (
     Path.home() / "PolicyEngine" / "_buildh-runtime" / "inputs" / DEFAULT_FEED_NAME
 )
@@ -131,6 +131,43 @@ _NAMESPACE_EXCLUSIONS: dict[str, tuple[str, str, str, dict[str, str]]] = {
             verdict_basis=(
                 "no fence to rebuild; state income is calibrated from IRS SOI "
                 "state tables + Census STC (compiled)."
+            ),
+        ),
+    ),
+    # microcosm#1074: the six packages/ed_fsa packages (chronicle#347) enter
+    # the feed at 41b2fb2b. Their portfolio facts bind only in a build that
+    # carries the imputed federal student loan balances (microcosm#1357,
+    # ``--scf-education-debt``), so a default compile turns none into a target.
+    "ed_fsa": (
+        "off_by_default",
+        "Federal Student Aid loan portfolio tables (chronicle#347). The "
+        "location, age, debt-size and loan-type tables bind only in a build "
+        "that carries the imputed federal student loan balance columns "
+        "(microcosm#1357: student_loan_targets=True, set by the release "
+        "tool's --scf-education-debt), and the repayment-plan and summary "
+        "tables stay diagnostic there too; the default compile, which this "
+        "manifest describes, turns none of them into a target.",
+        "compile_us_fiscal_target_registry(age_targets=True) + "
+        "apply_us_medicaid_enrollment_substitutions on the 41b2fb2b feed: "
+        "33,250 targets, none from the feed's 461 ed_fsa facts; sample fact "
+        "ed_fsa.portfolio_by_location.2026_03_31.ar.borrowers",
+        _fence(
+            origin=(
+                "microcosm#1074 (re-pin to chronicle#347's packages): a source "
+                "new to the feed, bound as an opt-in family by microcosm#1357. "
+                "This re-pin did not search the retired us-data pipeline for "
+                "a student loan portfolio target."
+            ),
+            purpose=(
+                "a default build has no federal student loan balance columns, "
+                "so it cannot materialize these targets; the opt-in keeps a "
+                "default build and a --scf-education-debt build from failing "
+                "each other on the one-surface contract."
+            ),
+            verdict_basis=(
+                "off by default until a default build carries the balance "
+                "columns; promote the bound families to compiled when the "
+                "default compile binds them."
             ),
         ),
     ),
