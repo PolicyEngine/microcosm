@@ -1392,6 +1392,30 @@ class TestAnchorFeedCheck:
     @pytest.mark.parametrize(
         "mutate",
         [
+            # A listing made from a feed other than the report's new feed.
+            lambda a: a["new_feed"].update(sha256="other"),
+            # A listing that names one added key twice.
+            lambda a: a["rows"].append(dict(a["rows"][0])),
+        ],
+        ids=["listing-other-feed", "listing-repeats-key"],
+    )
+    def test_a_later_report_refuses_a_listing_it_cannot_follow(self, mutate) -> None:
+        added = self._added([("k1", "ed_fsa", "ed_fsa.a")])
+        mutate(added)
+        with pytest.raises(AssertionError):
+            _follow_later_repin_report(
+                self._later_report(added_keys=["k1"]),
+                feed_sha256="old",
+                feed_rows=10,
+                anchor_record_sets=self._ANCHORS,
+                added=added,
+                declared_source="ed_fsa",
+                declared_namespace="ed_fsa.",
+            )
+
+    @pytest.mark.parametrize(
+        "mutate",
+        [
             lambda r: r["rows"].update(keys_only_in_old=["k0"]),
             lambda r: r["rows"].update(new_rows=r["rows"]["new_rows"] + 1),
             lambda r: r["rows"]["changed_fields"].update(
