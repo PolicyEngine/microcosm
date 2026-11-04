@@ -148,9 +148,10 @@ def _apply_pending_roster_transformations(
     assert "child_benefit_take_up" not in roster
     roster.insert(roster.index("pension_credit_take_up") + 1, "child_benefit_take_up")
     # microcosm#1319 re-mint pending: the Carer's Allowance draw reads the
-    # post-SPI earnings, right after the Child Benefit redraw.
+    # post-SPI earnings, right after salary_sacrifice, whose converted pay
+    # its earnings test reads (microcosm#1095 B5).
     assert "carers_allowance_take_up" not in roster
-    roster.insert(roster.index("child_benefit_take_up") + 1, "carers_allowance_take_up")
+    roster.insert(roster.index("salary_sacrifice") + 1, "carers_allowance_take_up")
     # microcosm#1095 re-mint pending: the SPI benefit pass runs after the last
     # UC report writer and before every UC, PC and CB consumer.
     assert "spi_benefit_coherence" not in roster
