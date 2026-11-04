@@ -734,7 +734,8 @@ def _check_measurement_proofs(
     producer under R2C-1's rule: the one declarer must output each of the
     proof's columns. Either way, the producer must also be the only compiled
     ancestor whose outputs or EXPAND cells hold each of the proof's columns
-    (R2C-15). As the declared check does, it refuses a node whose
+    (R2C-15). It returns at once when the declaration proves no measurement.
+    Otherwise, as the declared check does, it also refuses a node whose
     ``measurement_id`` is neither ``None`` nor a nonempty string. Composition
     runs this check on the skeleton and again on the extended graph.
     """
