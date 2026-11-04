@@ -175,6 +175,17 @@ class LedgerHierarchyMetadataError(ValueError):
     """A selected Chronicle fact cannot populate the required hierarchy."""
 
 
+#: The optional ``chronicle.consumer_fact.v5`` field (chronicle#376, PR #377)
+#: that keeps a source package's own wording of a dimension value where it
+#: differs from the label the row exports. It is keyed like
+#: ``dimension_value_labels`` (dimension id, then value id, then text).
+#: Microcosm never takes a label from it: ``dimension_value_labels`` and
+#: ``layout.groupby_value_label`` carry the one label Chronicle gives each
+#: value, so the hierarchy check validates only this field's shape.
+PACKAGE_DIMENSION_VALUE_LABELS_FIELD = "package_dimension_value_labels"
+_ABSENT = object()
+
+
 def hierarchy_seed_from_catalog(
     hierarchy: Mapping[str, object],
     category_id: str,
@@ -1481,6 +1492,9 @@ def _validate_chronicle_hierarchy_labels(
                 f"Ledger target reference {reference_name!r}: every selected "
                 f"Chronicle fact requires a non-empty label; missing for {fact_id!r}."
             )
+        _validate_package_dimension_value_labels(
+            fact, fact_id=fact_id, reference_name=reference_name
+        )
 
         raw_dimensions = _dimensions(fact)
         dimensions = {str(key): value for key, value in raw_dimensions.items()}
@@ -1552,6 +1566,45 @@ def _validate_chronicle_hierarchy_labels(
                 f"{dimension_id!r} value {value_id!r} has conflicting labels "
                 f"{sorted(labels)!r}."
             )
+
+
+def _validate_package_dimension_value_labels(
+    fact: object, *, fact_id: str, reference_name: str
+) -> None:
+    """Refuse a malformed v5 package-wording map; never read it as a label.
+
+    The field is optional. When present it must have the v5 schema's shape:
+    an object mapping each dimension id to an object of value id to
+    non-empty text, the shape ``dimension_value_labels`` has.
+    """
+
+    if isinstance(fact, Mapping):
+        package_labels = fact.get(PACKAGE_DIMENSION_VALUE_LABELS_FIELD, _ABSENT)
+    else:
+        package_labels = getattr(fact, PACKAGE_DIMENSION_VALUE_LABELS_FIELD, _ABSENT)
+    if package_labels is _ABSENT:
+        return
+    prefix = (
+        f"Ledger target reference {reference_name!r}: Chronicle fact {fact_id!r} "
+        f"{PACKAGE_DIMENSION_VALUE_LABELS_FIELD}"
+    )
+    if not isinstance(package_labels, Mapping):
+        raise LedgerHierarchyMetadataError(
+            f"{prefix} must be an object keyed by dimension id, got "
+            f"{type(package_labels).__name__}."
+        )
+    for dimension_id, value_labels in package_labels.items():
+        if not isinstance(value_labels, Mapping):
+            raise LedgerHierarchyMetadataError(
+                f"{prefix} dimension {dimension_id!r} must be an object keyed by "
+                f"value id, got {type(value_labels).__name__}."
+            )
+        for value_id, label in value_labels.items():
+            if not isinstance(label, str) or not label.strip():
+                raise LedgerHierarchyMetadataError(
+                    f"{prefix} dimension {dimension_id!r} value {value_id!r} "
+                    f"requires non-empty text, got {label!r}."
+                )
 
 
 def _requires_microcosm_target_label(

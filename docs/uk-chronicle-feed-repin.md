@@ -24,7 +24,11 @@ restate it: `tests/engine_free/uk/test_uk_chronicle_feed.py` (the pin and the
 consumer-fact schema digest) and `tests/engine_free/uk/test_uk_full_targets.py`
 (`test_current_national_and_local_pins_share_one_reviewed_identity`). A schema
 digest moves for every country whose feed is built after the Chronicle change,
-so the NZ pin (`nz/chronicle_feed.json`) moves at its own next re-pin. Then
+so the NZ pin (`nz/chronicle_feed.json`) moves at its own next re-pin. A feed
+whose rows carry a newer per-row `schema_version` also needs that row contract
+declared in `microcosm.build.chronicle_epoch` first. Microcosm declares
+`ledger.consumer_fact.v1` and `chronicle.consumer_fact.v2` to `v5`
+(microcosm#1509); the v5 schema's digest is `acd33a09…`. Then
 regenerate. Vendor
 the per-concern fact resources (step 5) before the national generator: the
 generator refuses to compile against a vendored resource whose feed identity
