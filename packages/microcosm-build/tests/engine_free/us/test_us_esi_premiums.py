@@ -1100,6 +1100,23 @@ class TestOperatorBoundary:
             assert_operator_free_source_frame(_run(_realistic_rows(40)), label="raw")
 
 
+#: Committed reports of the re-pins after microcosm#454 that kept every row of
+#: the feed before them, oldest first. Together they carry the three banked
+#: B4923C facts from the #454 feed to the pinned one. A re-pin that keeps the
+#: rows adds its report here; one that adds or changes rows needs its own check.
+_LATER_ROW_KEEPING_REPIN_REPORTS = (
+    # microcosm#1343: three dimension values relabelled, nothing else.
+    "experiments/us-feed-agi-age-labels/compare.json",
+)
+#: The row fields those re-pins may change: labels, and the record-set hash
+#: that covers the labels.
+_LABEL_AND_HASH_FIELDS = (
+    "dimension_value_labels/",
+    "layout/groupby_value_label",
+    "layout/record_set_spec_hash",
+)
+
+
 class TestAnchorFeedCheck:
     @staticmethod
     def _facts(values: dict[int, object]) -> list[dict]:
@@ -1129,9 +1146,13 @@ class TestAnchorFeedCheck:
         """The pinned feed's three added facts are the stage's anchor values.
 
         The feed itself is too large for the repository, so this reads the
-        committed row-by-row report of the re-pin. Changing the anchor without
-        re-pinning the feed, or the reverse, fails here and not only at a
-        release preflight.
+        committed row-by-row report of the re-pin that added them, then the
+        committed report of every later re-pin that kept the feed's rows
+        (``_LATER_ROW_KEEPING_REPIN_REPORTS``). Each later report must start
+        from the feed before it, keep every key, change no value and leave
+        the three B4923C record sets alone, and the last must end at the pin.
+        Changing the anchor without re-pinning the feed, or the reverse, fails
+        here and not only at a release preflight.
         """
 
         report = json.loads(
@@ -1142,8 +1163,6 @@ class TestAnchorFeedCheck:
         pin = json.loads(
             files("microcosm.build.us").joinpath("chronicle_feed.json").read_text()
         )
-        assert report["new"]["sha256"] == pin["facts_sha256"]
-        assert report["new"]["rows"] == pin["fact_row_count"]
         assert report["previous_rows_missing"] == 0
         assert report["previous_rows_changed"] == 0
         added = report["rows_added"]
@@ -1152,9 +1171,28 @@ class TestAnchorFeedCheck:
             esi.EMPLOYER_PREMIUM_ANCHOR["values"]
         )
         template = esi.EMPLOYER_PREMIUM_ANCHOR["feed_record_set"]
-        assert {row["record_set_id"] for row in added} == {
+        anchor_record_sets = {
             template.format(year=year) for year in esi.EMPLOYER_PREMIUM_ANCHOR["values"]
         }
+        assert {row["record_set_id"] for row in added} == anchor_record_sets
+
+        feed_sha256 = report["new"]["sha256"]
+        feed_rows = report["new"]["rows"]
+        for report_path in _LATER_ROW_KEEPING_REPIN_REPORTS:
+            later = json.loads((_REPOSITORY_ROOT / report_path).read_text())
+            rows = later["rows"]
+            assert later["feeds"]["old"]["sha256"] == feed_sha256, report_path
+            assert rows["old_rows"] == rows["new_rows"] == feed_rows, report_path
+            assert rows["keys_only_in_old"] == rows["keys_only_in_new"] == []
+            for field, counts in rows["changed_fields"].items():
+                assert field.startswith(_LABEL_AND_HASH_FIELDS), (report_path, field)
+                assert anchor_record_sets.isdisjoint(counts["by_record_set"]), (
+                    report_path,
+                    field,
+                )
+            feed_sha256 = later["feeds"]["new"]["sha256"]
+        assert feed_sha256 == pin["facts_sha256"]
+        assert feed_rows == pin["fact_row_count"]
         assert {row["source_sha256"] for row in added} == {
             esi.EMPLOYER_PREMIUM_ANCHOR["sha256"]
         }

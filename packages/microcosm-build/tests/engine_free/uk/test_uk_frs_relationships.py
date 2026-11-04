@@ -445,6 +445,64 @@ def test_older_foster_children_and_other_units_are_not_marked() -> None:
     assert result.evidence["looked_after_children"] == 0
 
 
+def _non_parental(result) -> list[bool]:
+    return result.person_values["child_limit_non_parental_caring_exception"].tolist()
+
+
+def test_a_child_whose_unit_holds_no_parent_is_in_non_parental_care() -> None:
+    # A grandparent carer; a lone teenage mother's baby in her parents' unit,
+    # whose own parent is a child of that unit (UC Regs 2013 Sch 12 para 4).
+    result = _derive(
+        [
+            _person(1, age=60, hrp=True, rel={2: GRANDPARENT}),
+            _person(2, age=7, table="child", rel={1: GRANDCHILD}),
+        ],
+        [
+            _person(1, age=45, hrp=True, rel={2: PARENT, 3: GRANDPARENT}),
+            _person(2, age=15, table="child", rel={1: CHILD, 3: PARENT}),
+            _person(3, age=0, table="child", rel={1: GRANDCHILD, 2: CHILD}),
+        ],
+    )
+
+    assert _non_parental(result) == [False, True, False, False, True]
+    assert result.evidence["non_parental_care_children"] == 2
+
+
+def test_a_parent_or_step_parent_in_the_unit_leaves_the_child_unmarked() -> None:
+    # Natural, adopted and step children of either partner, the link read
+    # from either side of the grid (the child's own entry here reads
+    # non-relative).
+    one, two = _couple(code=COHABITEE)
+    result = _derive(
+        [
+            _person(1, age=40, hrp=True, rel={**one, 3: PARENT, 4: STEP_PARENT}),
+            _person(2, age=38, rel={**two, 3: STEP_PARENT}),
+            _person(3, age=12, table="child", rel={1: CHILD, 2: STEP_CHILD}),
+            _person(4, age=9, table="child", rel={1: NON_RELATIVE, 2: NON_RELATIVE}),
+        ]
+    )
+
+    assert _non_parental(result) == [False, False, False, False]
+    assert result.evidence["non_parental_care_children"] == 0
+
+
+def test_placed_children_adults_and_parents_elsewhere_follow_the_unit() -> None:
+    result = _derive(
+        [
+            # A local authority placement is not a caring arrangement of the
+            # claimant's own.
+            _person(1, age=45, hrp=True, rel={2: FOSTER_PARENT, 3: GRANDPARENT}),
+            _person(2, age=8, table="child", rel={1: FOSTER_CHILD}),
+            # The parent lives in the household in a benefit unit of their
+            # own, so the grandparent's unit holds no parent of the child.
+            _person(3, age=4, table="child", rel={1: GRANDCHILD, 4: CHILD}),
+            _person(4, age=20, rel={1: CHILD, 3: PARENT}, benunit=2),
+        ]
+    )
+
+    assert _non_parental(result) == [False, False, True, False]
+
+
 def test_weighted_cells_and_domains_in_evidence() -> None:
     person, household, adult, child, raw_household = _tables(
         [_person(1, age=30, hrp=True)],

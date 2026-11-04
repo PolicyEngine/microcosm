@@ -35,13 +35,27 @@ from test_support.microcosm_build.reference_intervals import (
 from test_support.paths import paths_for
 
 
-def _bindings():
+def _packaged_bindings():
     return json.loads(
         (
             paths_for("microcosm-build").package
             / "src/microcosm/build/nz/calibration_bindings.json"
         ).read_text()
     )
+
+
+def _bindings():
+    """NZ's packaged bindings without their interval outputs.
+
+    The stand-in income band indicators need the effective interval document
+    (the ``intervals`` argument), which these tests don't pass. The interval
+    tests below cover interval outputs on their own fixture.
+    """
+    bindings = _packaged_bindings()
+    bindings["columns"] = [
+        entry for entry in bindings["columns"] if "interval" not in entry
+    ]
+    return bindings
 
 
 def _tables():
@@ -82,6 +96,13 @@ def _replace_people(tables, ages):
             "region_code": ["01"] * len(ages),
         }
     )
+
+
+def test_packaged_interval_outputs_need_the_effective_interval_document():
+    bindings = _packaged_bindings()
+    assert any("interval" in entry for entry in bindings["columns"])
+    with pytest.raises(ValueError, match="need the effective interval document"):
+        prepare_calibration_columns(_tables(), bindings)
 
 
 def test_prepared_columns_partition_age_and_canonical_tenure_on_a_real_frame():

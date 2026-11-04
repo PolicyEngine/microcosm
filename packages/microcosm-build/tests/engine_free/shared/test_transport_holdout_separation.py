@@ -281,7 +281,7 @@ def test_packaged_precalibration_stages_pass_the_stage_guard(country):
     """
 
     stages = compose_module._precalibration_stages(load_transport_spec(country))
-    expected = {"income_tax_schedule_1", "main_benefits_rates"}
+    expected = {"income_tax_schedule_1", "main_benefits_rates", "nz_super"}
     assert set(stages) == (expected if country == "nz" else set())
 
 

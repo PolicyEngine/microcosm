@@ -13,6 +13,87 @@ any other feed, and `test_us_chronicle_feed.py` fails if the parity resources,
 the generator and the pin disagree, or if the scope file changes without a
 new pin.
 
+## The 2026-10-27 re-pin: one label per dimension value (microcosm#1343)
+
+The `cf9ece2` feed labelled three dimension values two ways, so compiled
+targets that select the same value id showed it under two names. Each value
+now carries the one wording microcosm#1343 chose:
+
+| Dimension = value | Before (package) | After |
+|---|---|---|
+| `us:statutes/26/62#adjusted_gross_income` = `under_1` | "No adjusted gross income and deficit" (`soi-filing-season-week47-2024-eitc-total`, the IRS column header); "No adjusted gross income" (seven other IRS SOI packages) | "No adjusted gross income" |
+| `us:statutes/26/62#adjusted_gross_income` = `all` | "All returns" (`soi-historic-table-2`, `soi-table-1-1`); "All returns, total" (`soi-table-1-2`, `-1-4`, `-2-1`, `-4-3`) | "All returns, total" |
+| `age` = `85_plus` | "Age 85 and over" (`census-pep-2024-national-age-sex`); "Age 85 plus" (`census-pep-2024-state-age-sex`) | "Age 85 plus" |
+
+The pin moved from `cf9ece2` to `a9026cc`, a commit that is `cf9ece2` plus
+three label-only commits (Chronicle branch `feed/us-cf9ece2-agi-age-labels`,
+tag `microcosm-us-feed-1343-v1`), not Chronicle main. The three commits were
+first written on `51aa40f` (branch `feed/us-51aa40f-agi-age-labels`, head
+`9b91e8b`, never pinned on main); after microcosm#1189 moved the pin to
+`cf9ece2`, they were cherry-picked onto it without conflicts, since they and
+`cf9ece2`'s two commits change different files:
+
+- the week-47 change of PolicyEngine/chronicle#377 (`6d74e42`), without the
+  `build-bundle` label check that PR adds;
+- `soi-historic-table-2` and `soi-table-1-1` relabel their `all` rows. Table
+  1.1's row had no `expected_row_header`, so its row-header check compared the
+  label with the IRS text in cell A10; the row now names that text
+  ("All returns") explicitly, so the check is unchanged. Chronicle's tests
+  that pin Table 1.1's `record_set_spec_hash`, the checked-in consumer fact
+  sample built from its first rows, and that sample's pinned digest move
+  with it; at `a9026cc` they pass unchanged from the `51aa40f` branch;
+- `census-pep-2024-national-age-sex` relabels its `85_plus` row.
+
+Every package's checks of the publisher's text (row and column headers,
+guard cells, the single-year age sequence) are unchanged.
+`soi-historic-table-2-state-broad-2022` keeps "All returns" for `state` =
+`all` (chronicle#267): that is the `state` dimension, which no other feed
+package labels. The feed still labels `age` = `age_20` and `age_21` two ways
+(Census population projections and ACS B01001), but no compiled target
+selects those values; they are outside this change.
+
+Built at `a9026cc` from the same 640 scope pairs (only the scope's
+`source_commit` changes), and compared with the `cf9ece2` feed by
+`experiments/us-feed-agi-age-labels/compare_feeds.py` (report in
+`compare.json`):
+
+- the feed keeps the same 40,181 `aggregate_fact_key`s and every value,
+  key and constraint, including the three B4923C facts. 816 rows change, in
+  six record sets, and only in label fields and `layout.record_set_spec_hash`,
+  which covers row labels: the value label and `layout.groupby_value_label`
+  on 66 rows (2 `under_1`, 63 `all`, 1 `85_plus`), and the hash on every row
+  of the six record sets;
+- compiled at 2024 as the release does (packaged CD crosswalk, age targets,
+  Medicaid substitutions), both feeds give the same 33,250 targets in the
+  same order with the same values. 50 targets change, each only in its
+  hierarchy dimension's `value_label` and its
+  `metadata["ledger_layout_groupby_value_label"]`: 2 `under_1`, 47 `all`,
+  1 `85_plus`. The registry version moves from `dde00e855af8` to
+  `b8d571e91c22` and the `national_state` surface (6,102 targets) from
+  `3fad14f85468` to `3aa2a0830e7d`, because the version hashes the
+  hierarchy labels;
+- no dimension value in the compiled targets carries two labels any more;
+- the parity resources change in the feed name and digest, and the
+  feed-family inventory gains `dimension_value_label_variants`: every
+  dimension value the feed labels more than one way, with its labels. On
+  this feed that is only `age` = `age_20` and `age_21`. The generator writes
+  it from the feed, and `test_us_chronicle_feed.py` checks the committed
+  listing in CI, where the label test above skips for want of the feed. A
+  later re-pin built on a Chronicle commit without the three label commits
+  lists those values again and fails there. The family counts are unchanged:
+  32 compiled, 53 reviewed exclusions, 82 feed families;
+- the same tool, run at `cf9ece2` with that commit's scope file, reproduced
+  its `054e5684…` byte for byte.
+
+These are the same row and target changes the label commits made on the
+`51aa40f` feed (`965a29ac…` to `e477e04a…`, 21 October 2026).
+
+Chronicle main (`272c987`, 25 October 2026) still has all three old
+labels in these packages. PolicyEngine/chronicle#377 gives the three values
+the same wording on main through its label register
+(`chronicle/dimension_values/canonical_labels.json`); until it merges, a
+re-pin onto main (#1030) must carry these labels or lose them.
+
 ## The 2026-10-11 re-pin: BEA private group health insurance (microcosm#454)
 
 Decision d1317 made BEA NIPA Table 7.8 line 17 (series B4923C) the scale
@@ -101,22 +182,26 @@ the first labelled US export.
 
 | Field | Value |
 |---|---|
-| Chronicle commit | `cf9ece2e7be11158c21fdc4dd38b44d92db552f6` (`51aa40f` plus the digit-text guard and the B4923C package; tag `microcosm-us-feed-454-v1`) |
-| Feed file | `consumer_facts_us_cf9ece2.jsonl`, 40,181 rows, 169,055,585 bytes |
-| `facts_sha256` | `054e5684005a7b143dcb84eabac634135ce9b2b33bb57b540602e474a4ba7c57` |
+| Chronicle commit | `a9026cc8f80307af0c4527fdb3779fab32ffad9f` (`cf9ece2` plus three label-only commits; branch `feed/us-cf9ece2-agi-age-labels`, tag `microcosm-us-feed-1343-v1`) |
+| Feed file | `consumer_facts_us_a9026cc.jsonl`, 40,181 rows, 169,056,411 bytes |
+| `facts_sha256` | `4d89e4a498ffd73a407821d9ce2c45837072901e0a29acf3206160d1fafd7c14` |
 | Consumer fact schema | `chronicle.consumer_fact.v3`, schema file sha256 `bdb51e2a…` (unchanged from the UK pin) |
 | Scope | 640 (record set, period) pairs; 66 package runs over build years 2020 to 2029 |
 | Consumer artifact | none: refused at this commit, see below |
 
-The previous pins were `51aa40fd28e2ca81937752515e773d123fecfb71`
-(`consumer_facts_us_51aa40f.jsonl`, 40,178 rows, `facts_sha256`
-`965a29ac…`, 637 pairs, 63 runs) and, before it,
+The previous pins were `cf9ece2e7be11158c21fdc4dd38b44d92db552f6`
+(`consumer_facts_us_cf9ece2.jsonl`, 40,181 rows, 169,055,585 bytes,
+`facts_sha256` `054e5684…`, the same 640 pairs and 66 runs; tag
+`microcosm-us-feed-454-v1`), `51aa40fd28e2ca81937752515e773d123fecfb71`
+(`consumer_facts_us_51aa40f.jsonl`, 40,178 rows, 169,038,757 bytes,
+`facts_sha256` `965a29ac…`, 637 pairs, 63 runs; tag
+`microcosm-us-feed-940-v1`) and, before it,
 `c5e5bf8aa84960c1a200ee47303b19c953092d0f` (`consumer_facts_us_c5e5bf8.jsonl`,
-39,158 rows, `facts_sha256` `b8543739…`, 586 pairs, 62 runs); the rest of this
-document describes the 2026-09-18 rebuild unless it says otherwise.
+39,158 rows, `facts_sha256` `b8543739…`, 586 pairs, 62 runs); the rest of
+this document describes the 2026-09-18 rebuild unless it says otherwise.
 
 The feed is too large for the repository. Its home on the build machine is
-`~/PolicyEngine/_buildh-runtime/inputs/consumer_facts_us_cf9ece2.jsonl`,
+`~/PolicyEngine/_buildh-runtime/inputs/consumer_facts_us_a9026cc.jsonl`,
 beside the previous pins; `tools/build_us_target_parity_manifest.py` reads it
 there by default. A holder of the Chronicle commit regenerates it byte for
 byte with the commands below.
