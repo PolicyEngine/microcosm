@@ -13,6 +13,7 @@ from __future__ import annotations
 import hashlib
 import json
 import re
+from collections.abc import Iterable, Sequence
 from dataclasses import asdict, dataclass
 from importlib.resources import files
 
@@ -20,6 +21,7 @@ from microcosm.build.chronicle_epoch import (
     is_accepted_consumer_artifact_schema_version,
     require_accepted_consumer_fact_schema_versions,
 )
+from microcosm.build.ledger_artifact import validate_pinned_row_contracts
 
 
 @dataclass(frozen=True)
@@ -82,6 +84,63 @@ def require_committed_uk_chronicle_feed_pin(
             "diagnostic run"
         )
     return pin
+
+
+def require_uk_chronicle_feed_row_contracts(
+    fact_schema_versions: Iterable[str],
+    *,
+    facts_sha256: str,
+    pin: UKChronicleFeed | None = None,
+) -> UKChronicleFeed:
+    """Hold the row contracts a loaded UK feed's rows carry to the pin.
+
+    The digest checks say the rows are the committed feed's; this says what
+    they are. Rows of the committed feed (``facts_sha256`` is the pin's) must
+    carry exactly the pin's ``consumer_fact_schema_versions``, which a re-pin
+    types by hand. Rows of another feed, admitted by ``--allow-unpinned-feed``
+    for a reviewed diagnostic run, must carry declared row contracts only.
+    Returns the pin they were checked against.
+    """
+
+    pin = pin or load_uk_chronicle_feed()
+    validate_pinned_row_contracts(
+        fact_schema_versions,
+        pinned=(
+            pin.consumer_fact_schema_versions
+            if facts_sha256 == pin.facts_sha256
+            else None
+        ),
+        subject="UK Chronicle feed",
+    )
+    return pin
+
+
+def require_uk_chronicle_feed_subset_row_contracts(
+    fact_schema_versions: Iterable[str],
+    *,
+    pinned_versions: Sequence[str] | None = None,
+) -> None:
+    """Hold the row contracts of part of the pinned UK feed to the pin.
+
+    For the tools that parse the feed's rows themselves: the reference
+    generators and the compile-parity tool, which read the guide's subsets
+    of the pinned artifact, and the DESNZ constituency builder, which parses
+    only the rows it needs. A subset need not carry every row contract the
+    pin lists, so each row's contract must be one the pin lists
+    (``pinned_versions``, by default the committed pin's) and one
+    :mod:`microcosm.build.chronicle_epoch` declares.
+    """
+
+    validate_pinned_row_contracts(
+        fact_schema_versions,
+        pinned=(
+            load_uk_chronicle_feed().consumer_fact_schema_versions
+            if pinned_versions is None
+            else pinned_versions
+        ),
+        subject="UK Chronicle feed",
+        subset=True,
+    )
 
 
 def _feed_path():

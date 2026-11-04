@@ -17,10 +17,14 @@ new pin.
 
 The US feed is on `chronicle.consumer_fact.v3`; Chronicle `main` writes
 `chronicle.consumer_fact.v5` since PolicyEngine/chronicle#377. The US pin
-loader, like the UK one and the feed-pin check against a loaded artifact,
-refuses a pin whose `consumer_fact_schema_versions` names a row contract that
-`microcosm.build.chronicle_epoch` does not declare (microcosm#1509). v5 is
-declared, and its schema digest is `acd33a09…`.
+loader refuses a pin whose `consumer_fact_schema_versions` names a row contract
+that `microcosm.build.chronicle_epoch` does not declare (microcosm#1509). The
+pin describes a bare feed, so the full feed-pin check cannot run on it;
+instead the fiscal-refresh release tool, after its digest check, refuses rows
+on an undeclared row contract and, on the committed feed, rows whose contracts
+are not exactly the pin's list (`_check_us_ledger_feed_row_contracts`). So set
+the list from the rebuilt feed's rows at a re-pin: `tools/build_us_chronicle_feed.py`
+does not write it. v5 is declared, and its schema digest is `acd33a09…`.
 
 v5 rows may carry `package_dimension_value_labels`, a package's own wording of
 a value where it differs from Chronicle's label. The congressional-district

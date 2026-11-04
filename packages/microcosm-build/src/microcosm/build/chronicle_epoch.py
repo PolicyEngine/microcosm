@@ -592,19 +592,20 @@ class UndeclaredConsumerFactSchemaVersionError(ValueError):
 def require_accepted_consumer_fact_schema_versions(
     versions: object, *, subject: str
 ) -> None:
-    """Refuse a feed's row-contract list unless every entry is declared here.
+    """Refuse a row-contract list unless every entry is declared here.
 
-    ``versions`` is a reviewed feed's ``consumer_fact_schema_versions``: the
-    per-row ``schema_version`` values its rows carry. Feed pins, the
-    identities restating them, and the pin check against a loaded artifact
-    call this, so a feed on a row contract Microcosm has not been told about
-    is refused until :data:`DECLARED_IDENTITIES` declares it. A bare feed
-    loaded without a pin is not checked: its per-row ids are carried as
-    published (:mod:`microcosm.build.ledger_artifact`).
+    ``versions`` is a feed's ``consumer_fact_schema_versions``, or the
+    ``schema_version`` values its rows carry. Feed pins, the identities
+    restating them, the full feed-pin check, and the UK and US builds' checks
+    of the rows they compile call this, so a feed on a row contract Microcosm
+    has not been told about is refused until :data:`DECLARED_IDENTITIES`
+    declares it. An id outside Chronicle's namespaces is not a Chronicle row
+    contract at all, and :func:`_declare` cannot declare it, so the message
+    says so instead of advising a declaration.
     """
-    if isinstance(versions, (str, bytes)) or not isinstance(versions, (list, tuple)):
+    if not isinstance(versions, (list, tuple)):
         raise ValueError(
-            f"{subject} consumer_fact_schema_versions must be a list of row "
+            f"{subject}: consumer_fact_schema_versions must be a list of row "
             f"contracts, got {type(versions).__name__}."
         )
     undeclared = [
@@ -612,14 +613,39 @@ def require_accepted_consumer_fact_schema_versions(
         for version in versions
         if not is_accepted_consumer_fact_schema_version(version)
     ]
-    if undeclared:
-        raise UndeclaredConsumerFactSchemaVersionError(
-            f"{subject} names Chronicle consumer-fact row contract(s) "
-            f"{undeclared!r} that Microcosm does not declare. Declare each in "
-            "microcosm.build.chronicle_epoch (DECLARED_IDENTITIES) before "
-            "pinning a feed on it; declared: "
-            f"{describe_accepted_consumer_fact_schema_versions()}."
+    if not undeclared:
+        return
+    declarable = [
+        version
+        for version in undeclared
+        if isinstance(version, str)
+        and version.partition(".")[0] in CHRONICLE_NAMESPACES
+    ]
+    foreign = [version for version in undeclared if version not in declarable]
+    problems = []
+    if declarable:
+        problems.append(
+            f"undeclared Chronicle row contract(s) {declarable!r}: declare "
+            f"{declarable!r} in microcosm.build.chronicle_epoch "
+            "(DECLARED_IDENTITIES) before pinning a feed on it"
         )
+    if foreign:
+        single = len(foreign) == 1
+        problems.append(
+            f"{foreign!r} "
+            + (
+                "is not a Chronicle row contract: its namespace is"
+                if single
+                else "are not Chronicle row contracts: their namespaces are"
+            )
+            + f" not among {sorted(CHRONICLE_NAMESPACES)!r}, so "
+            "microcosm.build.chronicle_epoch cannot declare "
+            + ("it" if single else "them")
+        )
+    raise UndeclaredConsumerFactSchemaVersionError(
+        f"{subject}: " + "; ".join(problems) + ". Declared row contracts: "
+        f"{describe_accepted_consumer_fact_schema_versions()}."
+    )
 
 
 def _describe(kind: str) -> str:

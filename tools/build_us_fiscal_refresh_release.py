@@ -71,7 +71,10 @@ from microcosm.build.gates import (
     target_fit_gate,
     target_profile_coverage_gate,
 )
-from microcosm.build.ledger_artifact import load_ledger_consumer_artifact
+from microcosm.build.ledger_artifact import (
+    load_ledger_consumer_artifact,
+    validate_pinned_row_contracts,
+)
 from microcosm.build.source_runtime import SourceRuntimeConfig, run_source_stage
 from microcosm.build.staging import DEFAULT_STAGING_PREFIX, StagingRunBundleWriter
 from microcosm.build.telemetry_emitter import (
@@ -12551,6 +12554,35 @@ def _check_committed_us_ledger_feed_pin(
         )
 
 
+def _check_us_ledger_feed_row_contracts(
+    fact_schema_versions: Sequence[str],
+    *,
+    facts_sha256: str,
+    pin: USChronicleFeed | None = None,
+) -> None:
+    """Hold the row contracts the loaded feed's rows carry to the US pin.
+
+    :func:`_check_committed_us_ledger_feed_pin` compares digests; the US pin
+    describes a bare feed, so the full feed-pin check cannot run. Rows of the
+    committed feed (``facts_sha256`` is the pin's) must carry exactly the pin's
+    ``consumer_fact_schema_versions``, which a re-pin types by hand. Rows of a
+    feed admitted by ``--allow-unpinned-feed`` must carry declared row
+    contracts only. Either way a row contract
+    ``microcosm.build.chronicle_epoch`` does not declare is refused.
+    """
+
+    pin = pin or load_us_chronicle_feed()
+    validate_pinned_row_contracts(
+        fact_schema_versions,
+        pinned=(
+            pin.consumer_fact_schema_versions
+            if facts_sha256 == pin.facts_sha256
+            else None
+        ),
+        subject="US Chronicle feed",
+    )
+
+
 def _check_us_esi_anchor_against_feed(
     facts: Sequence[Mapping[str, Any]],
     *,
@@ -12800,6 +12832,10 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
         ledger_artifact.facts_sha256,
         manifest_sha256=ledger_artifact.manifest_sha256,
         allow_unpinned_feed=args.allow_unpinned_feed,
+    )
+    _check_us_ledger_feed_row_contracts(
+        ledger_artifact.fact_schema_versions,
+        facts_sha256=ledger_artifact.facts_sha256,
     )
     esi_anchor_feed_mismatches = _check_us_esi_anchor_against_feed(
         ledger_artifact.facts,

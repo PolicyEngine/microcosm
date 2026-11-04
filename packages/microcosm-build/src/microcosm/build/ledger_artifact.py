@@ -29,14 +29,16 @@ per-row schema ids the rows themselves declare are all recorded in
 :meth:`LedgerConsumerArtifact.provenance`, so a release manifest witnesses
 which era it actually consumed rather than which era it assumed.
 
-Acceptance widened here, with one exception. A load checks the *manifest*
-schema id against the declared ids. Row-level ids and fact keys are carried as
-published, because real feeds mint rows in namespaces that belong to neither
-era and a consumer that rejected them would fail closed on data that has
-always loaded. The exception is a load checked against a full Chronicle feed
-pin: :func:`validate_chronicle_feed_pin` also requires every row contract the
-pin and its rows name to be declared, so a re-pin onto a new Chronicle row
-contract has to declare it first.
+Acceptance widened here; a reviewed pin narrows it. A load checks the
+*manifest* schema id against the declared ids. Row-level ids and fact keys are
+carried as published, because this loader also serves feeds loaded by path
+for diagnostics and experiments, and bare feeds with no manifest, some minted
+in namespaces that belong to neither era. A feed held to a reviewed pin is
+narrower: :func:`validate_chronicle_feed_pin` requires every row contract the
+full pin and its rows name to be declared, and
+:func:`validate_pinned_row_contracts` does the same for the UK and US builds,
+which hold their feeds to committed pins by digest. So a re-pin onto a new
+Chronicle row contract has to declare it first.
 """
 
 from __future__ import annotations
@@ -44,7 +46,7 @@ from __future__ import annotations
 import hashlib
 import json
 from argparse import ArgumentParser, Namespace
-from collections.abc import Mapping
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -71,9 +73,11 @@ __all__ = [
     "LexicalFloat",
     "add_ledger_artifact_args",
     "chronicle_feed_identity",
+    "consumer_fact_schema_versions_of",
     "load_ledger_consumer_artifact",
     "resolve_ledger_artifact",
     "validate_chronicle_feed_pin",
+    "validate_pinned_row_contracts",
 ]
 
 #: The id Microcosm's own minted artifacts still declare. Frozen at v1 by
@@ -217,16 +221,13 @@ class LedgerConsumerArtifact:
     def fact_schema_versions(self) -> tuple[str, ...]:
         """Distinct per-row ``schema_version`` values in the feed, sorted.
 
-        Reported verbatim and never gated on — see :func:`_load_fact_rows`.
-        Empty when no row declares one; more than one entry when a feed mixes
-        producers, which the pinned US fiscal-refresh feed already does.
+        Reported verbatim; the loader does not check them (see
+        :func:`_load_fact_rows`). :func:`validate_chronicle_feed_pin` and the
+        UK and US builds' checks (:func:`validate_pinned_row_contracts`) hold
+        them to a reviewed pin and the declared row contracts. Empty when no
+        row declares one; more than one entry when a feed mixes producers.
         """
-        observed = {
-            str(row["schema_version"])
-            for row in self.facts
-            if isinstance(row, dict) and row.get("schema_version") is not None
-        }
-        return tuple(sorted(observed))
+        return consumer_fact_schema_versions_of(self.facts)
 
     def provenance(self) -> dict[str, Any]:
         """Chronicle-artifact identity block for build and release manifests.
@@ -309,6 +310,54 @@ def validate_chronicle_feed_pin(
         feed_pin["consumer_fact_schema_versions"],
         subject="Chronicle feed pin and its artifact's rows",
     )
+
+
+def consumer_fact_schema_versions_of(rows: Iterable[Any]) -> tuple[str, ...]:
+    """Distinct per-row ``schema_version`` values of ``rows``, sorted.
+
+    The same reading as :attr:`LedgerConsumerArtifact.fact_schema_versions`,
+    for tools that parse a feed's rows themselves.
+    """
+    observed = {
+        str(row["schema_version"])
+        for row in rows
+        if isinstance(row, Mapping) and row.get("schema_version") is not None
+    }
+    return tuple(sorted(observed))
+
+
+def validate_pinned_row_contracts(
+    fact_schema_versions: Iterable[str],
+    *,
+    pinned: Sequence[str] | None,
+    subject: str,
+    subset: bool = False,
+) -> None:
+    """Hold the row contracts a consumer's rows carry to the declared set and a pin.
+
+    For builds that hold a feed to its committed pin by digest, where
+    :func:`validate_chronicle_feed_pin` cannot run (the US pin describes a
+    bare feed) or is not used. Every row contract the rows carry must be
+    declared in :mod:`microcosm.build.chronicle_epoch`. With ``pinned``, the
+    rows must also carry exactly the pin's ``consumer_fact_schema_versions``,
+    which a re-pin types by hand; with ``subset``, only row contracts the pin
+    lists, for a reader of part of the pinned feed. ``pinned=None`` is for a
+    feed that is not the pinned one (a reviewed ``--allow-unpinned-feed``
+    run), whose rows are held to the declared row contracts only.
+    """
+    observed = list(fact_schema_versions)
+    require_accepted_consumer_fact_schema_versions(observed, subject=f"{subject} rows")
+    if pinned is None:
+        return
+    expected = list(pinned)
+    if subset:
+        matches = set(observed) <= set(expected)
+    else:
+        matches = set(observed) == set(expected)
+    if not matches:
+        raise ChronicleFeedPinMismatchError(
+            "consumer_fact_schema_versions", expected=expected, actual=observed
+        )
 
 
 def load_ledger_consumer_artifact(
@@ -481,16 +530,18 @@ def _load_fact_rows(
                     f"Invalid Chronicle facts JSONL row {line_number}: expected "
                     f"object, got {type(row).__name__}."
                 )
-            # A per-row ``schema_version`` is carried here, not checked. Real
-            # feeds stamp ids from namespaces that are neither era: the pinned
-            # US fiscal-refresh feed (consumer_facts_buildn_v9_4.jsonl) mixes
-            # 'arch.consumer_fact.v1' with 'ledger.consumer_fact.v1' and loads
-            # without a full feed pin. Rejecting an unrecognized id here would
-            # fail the build closed on its own pinned input. The observed ids
-            # are reported through
-            # :attr:`LedgerConsumerArtifact.fact_schema_versions`, and a full
-            # Chronicle feed pin requires each to be declared
-            # (:func:`validate_chronicle_feed_pin`).
+            # A per-row ``schema_version`` is carried here, not checked. This
+            # loader also serves feeds loaded by path for diagnostics and
+            # experiments, and bare feeds with no manifest, some stamped from
+            # namespaces that are neither era (the July 2026 US fiscal-refresh
+            # feed, consumer_facts_buildn_v9_4.jsonl, mixes
+            # 'arch.consumer_fact.v1' with 'ledger.consumer_fact.v1'). The
+            # observed ids are reported through
+            # :attr:`LedgerConsumerArtifact.fact_schema_versions`; the checks
+            # that hold a reviewed feed to its pin refuse an undeclared one:
+            # :func:`validate_chronicle_feed_pin` for a full pin, and
+            # :func:`validate_pinned_row_contracts` in the UK and US builds,
+            # which hold their feeds to committed pins by digest.
             assertion = row.get("assertion", DEFAULT_LEDGER_ASSERTION)
             if assertion not in ALLOWED_LEDGER_ASSERTIONS:
                 raise ValueError(

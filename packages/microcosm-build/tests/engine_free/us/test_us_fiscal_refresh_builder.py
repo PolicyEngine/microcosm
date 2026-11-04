@@ -7310,6 +7310,7 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
             facts=({"fact": 1},),
             facts_sha256="facts-sha",
             manifest_sha256=None,
+            fact_schema_versions=(),
             provenance=lambda: {
                 "path_name": "facts.jsonl",
                 "fact_row_count": 1,

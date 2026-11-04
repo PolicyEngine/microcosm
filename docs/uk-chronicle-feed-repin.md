@@ -24,14 +24,24 @@ restate it: `tests/engine_free/uk/test_uk_chronicle_feed.py` (the pin and the
 consumer-fact schema digest) and `tests/engine_free/uk/test_uk_full_targets.py`
 (`test_current_national_and_local_pins_share_one_reviewed_identity`). A schema
 digest moves for every country whose feed is built after the Chronicle change,
-so the NZ pin (`nz/chronicle_feed.json`) moves at its own next re-pin. A feed
-whose rows carry a newer per-row `schema_version` needs that row contract
-declared in `microcosm.build.chronicle_epoch` first: the UK pin loader, the
-identity check the factor and transport code use (`chronicle_feed_identity`)
-and the feed-pin check against a loaded artifact (`validate_chronicle_feed_pin`)
-refuse a pin naming an undeclared one (microcosm#1509). Microcosm declares
-`ledger.consumer_fact.v1` and `chronicle.consumer_fact.v2` to `v5`; the v5
-schema's digest is `acd33a09…`. Then
+so the NZ pin (`nz/chronicle_feed.json`) moves at its own next re-pin. Set the
+pin's `consumer_fact_schema_versions` from the manifest, not by hand from the
+last pin. A feed whose rows carry a newer per-row `schema_version` needs that
+row contract declared in `microcosm.build.chronicle_epoch` first
+(microcosm#1509):
+
+- the UK pin loader, and `chronicle_feed_identity` and
+  `validate_chronicle_feed_pin` where the factor and transport code use them,
+  refuse a pin naming an undeclared row contract;
+- the UK code that reads the feed's rows refuses rows on an undeclared row
+  contract, or rows whose contracts differ from the pin's list: the full and
+  national builds, the vendoring tool and the release certifier on the
+  committed artifact (exactly the pin's list), and the reference generators,
+  the compile-parity tool and the DESNZ constituency builder on a subset or
+  on the rows they parse (each a contract the pin lists).
+
+Microcosm declares `ledger.consumer_fact.v1` and `chronicle.consumer_fact.v2`
+to `v5`; the v5 schema's digest is `acd33a09…`. Then
 regenerate. Vendor
 the per-concern fact resources (step 5) before the national generator: the
 generator refuses to compile against a vendored resource whose feed identity
