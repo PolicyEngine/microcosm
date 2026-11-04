@@ -72,7 +72,8 @@ Published releases live under `releases/<release_id>/` in the Hub dataset repo.
 Each release must include `build_manifest.json` and `release_manifest.json`;
 US releases must also include `us_source_coverage.json`. A current release
 manifest contains a typed `calibration_diagnostics` status. `available` binds a
-schema-8 `calibration_diagnostics.json` file and its SHA-256. `failed` records
+schema-9 `calibration_diagnostics.json` file (schema 8 in releases published
+before it) and its SHA-256. `failed` records
 the expected schema, error code, and sanitized message and deliberately omits
 the file and artifact entry. Publication logs a warning but continues, because
 the diagnostics document reports a completed calibration and is not an input

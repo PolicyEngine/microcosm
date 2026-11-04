@@ -1345,3 +1345,43 @@ def test_each_coarse_band_lists_exactly_its_native_rows_labels(artifact):
                 labels[measure, member] for member in members
             ]
         }
+
+
+def test_each_coarse_row_selects_its_native_rows_committed_labels():
+    """R2C-16 without the feed: membership checked against committed rows.
+
+    Each coarse row's label list equals, in order, the committed labels of the
+    native rows its ``metadata.native_rows`` names, and its selector otherwise
+    equals theirs. For each measure the 12 bands' native rows tile rows 50 to
+    244 once, in order. The feed audit above checks the same labels against the
+    feed, which CI doesn't load.
+    """
+    native = {
+        row["name"]: row
+        for row in _document("income_diagnostic_references.json")[
+            "diagnostic_references"
+        ]
+    }
+    prefixes = {
+        "count": "ird_taxable_income_people_by_band",
+        "money": "ird_taxable_income_total_by_band",
+    }
+    tiled = {kind: [] for kind in prefixes}
+    for row in (row for row in _rows() if row["family"] == "income"):
+        kind = row["metadata"]["reference_value_kind"]
+        members = row["metadata"]["native_rows"].split(",")
+        tiled[kind] += members
+        selector = dict(row["ledger_selector"])
+        (labels,) = selector.pop("dimension_values").values()
+        expected = []
+        for member in members:
+            member_selector = dict(
+                native[f"{prefixes[kind]}__{member}"]["ledger_selector"]
+            )
+            del member_selector["aggregate_fact_key"]
+            (label,) = member_selector.pop("dimension_values").values()
+            assert selector == member_selector, (row["name"], member)
+            expected.append(label)
+        assert labels == expected, row["name"]
+    for kind, members in tiled.items():
+        assert members == [f"row_{n}" for n in range(50, 245)], kind

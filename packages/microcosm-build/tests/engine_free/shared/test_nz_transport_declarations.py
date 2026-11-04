@@ -5,6 +5,7 @@ from __future__ import annotations
 import copy
 import json
 import os
+import re
 import subprocess
 import sys
 from functools import cache
@@ -1150,6 +1151,46 @@ def test_wage_table_has_235_right_closed_bands_and_no_companions():
         table["first_lower_cut_cents"],
     ) == ("person", "employment_income_cents", "right", "absent", "refuse", 0)
     assert not any("count_reference" in band for band in table["bands"])
+
+
+# The rows whose label repeats the previous row's upper endpoint ($20,000,
+# $50,000 and $80,000). Right closure gives each shared endpoint to the lower band.
+_WAGE_SHARED_ENDPOINT_ROWS = ["row_27", "row_57", "row_87"]
+
+
+def _label_dollars(text):
+    return 1_000_000 if text == "1 million" else int(text.replace(",", ""))
+
+
+def test_each_wage_cut_follows_from_its_committed_label():
+    """Each band's cents follow from its own label, with no feed.
+
+    "$a - $b" is the right-closed band (a - 1, b] in dollars, so the cut below
+    it is 100(a - 1) cents and its ``upper_cent`` is 100b. A label whose lower
+    endpoint repeats the previous band's upper one starts at that cut instead,
+    and only the three pinned rows do. "Over $1 million" is the open tail. The
+    edges test above scales these cuts, and the feed audit checks the labels
+    against the feed, which CI doesn't load.
+    """
+    _, table, _ = _earnings_sources()
+    bands = table["bands"]
+    cuts = [table["first_lower_cut_cents"]] + [band["upper_cent"] for band in bands]
+    shared, previous = [], None
+    for index, band in enumerate(bands[:-1]):
+        label = " ".join(band["source_label"].split())
+        match = re.fullmatch(r"\$([\d,]+) - \$([\d,]+|1 million)", label)
+        assert match, (band["id"], label)
+        lower, upper = (_label_dollars(text) for text in match.groups())
+        if lower == previous:
+            shared.append(band["id"])
+            assert cuts[index] == 100 * lower, band["id"]
+        else:
+            assert cuts[index] == 100 * (lower - 1), band["id"]
+        assert cuts[index + 1] == 100 * upper, band["id"]
+        previous = upper
+    assert shared == _WAGE_SHARED_ENDPOINT_ROWS
+    assert bands[-1]["source_label"] == "Over $1 million"
+    assert previous == 1_000_000 and cuts[-2:] == [100 * previous, None]
 
 
 @pytest.mark.parametrize(
