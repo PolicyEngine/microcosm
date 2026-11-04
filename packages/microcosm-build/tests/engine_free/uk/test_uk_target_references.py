@@ -129,8 +129,10 @@ _TEST_PATHS = paths_for("microcosm-build")
 # after the compile, less the North East and Wales rows over £2m, signed out
 # below the small-cell floor; microcosm#1095 (#1422): the three OBR council
 # tax nation rows, pinned to the UK, and SLC's three nation repayment rows in
-# place of the devolved total
-ACTIVE_REFERENCE_COUNT = 1423
+# place of the devolved total; microcosm#1418: HMRC's five 2024-25 company
+# car rows; microcosm#1426: HMRC's two High Income Child Benefit Charge rows,
+# measured diagnostics
+ACTIVE_REFERENCE_COUNT = 1425
 REGION_TIER_LEVEL = {code: level for level, code in UK_REGION_TIER}
 
 

@@ -88,6 +88,28 @@ RESIDUAL_DISCLOSURE = (
 FAMILY_REASON = "G8-r3b must implement Census-family multiplicity classification before activation. The hub records the signed d1932 reconciliation; MC7 benefit units and family labels cannot substitute for Census multiplicities."
 IRD_REASON = "B4: G8-r2c must supply reviewed IRD-definition taxable-income measurement, annual component closure and the record universe. Ageing resolution does not establish that measurement."
 IRD_MEASUREMENT_BINDING = "ird_taxable_income_ty2027_v1"
+IRD_STANDIN_REASON = "G8-r2c: these 24 coarse rows need composition's proof (R2C-1, R2C-15) that exactly one node upstream of each calibration node, declaring measurement_id ird_taxable_income_ty2027_v1, writes the stand-in income and universe columns on person. Until that proof holds they stay parked and compilation refuses; nothing exempts them."
+IRD_NATIVE_REASON = "R2C-4: the 474 native IRD taxable-income rows are diagnostic selectors only. The 24 coarse stand-in rows replace them in the calibration roster; the native-band report compares each coarse band with these rows."
+IRD_STANDIN_TABLE = "ird_taxable_income_standin_ty2024"
+IRD_STANDIN_MEASURE = "ird_taxable_income_proxy_nzd"
+IRD_STANDIN_COUNT = "ird_taxable_income_standin_people_by_band"
+IRD_STANDIN_AMOUNT = "ird_taxable_income_standin_total_by_band"
+# Design 80 section 3: cuts at $50k ... $1m above a first lower cut of $40k.
+IRD_STANDIN_FIRST_CUT_DOLLARS = 40_000
+IRD_STANDIN_CUTS_DOLLARS = (
+    50_000,
+    60_000,
+    70_000,
+    80_000,
+    100_000,
+    125_000,
+    150_000,
+    200_000,
+    300_000,
+    500_000,
+    1_000_000,
+    None,
+)
 # Reviewed national detail-row map: nil row 8 through open tail row 244.
 # Published national total row 246 is diagnostic and is deliberately absent.
 IRD_NATIONAL_ROWS = tuple(f"row_{row}" for row in range(8, 245))
@@ -118,6 +140,28 @@ INTERVAL_DISCLOSURE = (
     "(G8-r2c) and no active row requests them. Boundary diagnostics report "
     "weighted mass within $1 of every cut and the fixed-weight change under the "
     "left-closed alternative; publisher reclassification is unavailable."
+)
+WAGE_TABLE = "ird_wage_salary_national_ty2026"
+# Reviewed wage-and-salary detail rows: "$1 - $1,000" (row 7) through
+# "Over $1 million" (row 241). Published total row 242 is diagnostic.
+WAGE_ROWS = tuple(f"row_{row}" for row in range(7, 242))
+# Rows whose published lower label repeats the previous row's upper endpoint:
+# "$20,000 - $21,000", "$50,000 - $51,000" and "$80,000 - $81,000".
+WAGE_SHARED_ENDPOINT_ROWS = ("row_27", "row_57", "row_87")
+WAGE_INCOME_COLUMN = "employment_income_cents"
+# Declared so the table validates; no producer writes it, so preparation
+# never classifies wages into these bands (design 80, section 2).
+WAGE_UNIVERSE_COLUMN = "employment_income_universe_status"
+WAGE_DISCLOSURE = (
+    "IRD publishes the TY2026 wage-and-salary bands as labels only. The cuts, "
+    "right closure and integer-cent arithmetic are Microcosm's declared "
+    "convention. Three published label pairs share an endpoint ($20,000, $50,000 "
+    "and $80,000: rows 26/27, 56/57 and 86/87); the right-closed cuts give each "
+    "shared endpoint to the lower band. The table has no nil band, because IRD counts only people "
+    "with wages, and refuses negative wages. It serves as the single source of "
+    "cuts for earnings_bands.json, which scales every cut by the P1 TY2026 to "
+    "TY2027 factor for the transport.quantile_map@2 producer; it carries no "
+    "companions and no fit rows."
 )
 VP_REASON = "G8-w3b must refuse Veterans Pension as unsupported under H4. Activation needs veteran facts and a reviewed receipt producer; G8-y owns the closing step."
 
@@ -361,6 +405,16 @@ def calibration_bindings():
                     ],
                 }
             )
+    # G8-r2c G: the coarse stand-in table's band indicators, prepared from
+    # nz.income.standin's income and universe columns.
+    for band_id, *_ in coarse_band_members():
+        columns.append(
+            {
+                "entity": "person",
+                "name": f"ird_taxable_income_standin_band_{band_id}_indicator",
+                "interval": {"table": IRD_STANDIN_TABLE, "band": band_id},
+            }
+        )
     for code, _, low, high in RECEIPT_AGES:
         columns.append(
             {
@@ -608,6 +662,7 @@ def build_reference_documents(artifact, *, package_dir=SPEC):
             if region == "99":
                 row["metadata"]["growth_geography_proxy"] = "national-growth proxy"
             targets.append(row)
+    native_income = []
     for measure, contract, column in (
         ("individuals", "ird_taxable_income_people_by_band", "people"),
         (
@@ -627,9 +682,11 @@ def build_reference_documents(artifact, *, package_dir=SPEC):
             raise ValueError(
                 "Expected the reviewed 237 taxable-income detail rows 8–244"
             )
+        # R2C-4: the 474 native rows leave every executable document; they
+        # stay reviewable selectors in income_diagnostic_references.json.
         for fact in details:
             row_id = fact["layout"]["source_row_id"]
-            targets.append(
+            native_income.append(
                 _reference(
                     fact,
                     name=f"{contract}__{row_id}",
@@ -638,26 +695,20 @@ def build_reference_documents(artifact, *, package_dir=SPEC):
                     measure=column,
                     family="income",
                     period=2027,
-                    status="requires_prerequisites",
-                    reason=IRD_REASON,
+                    status="diagnostic_only",
+                    reason=IRD_NATIVE_REASON,
                     filter_column=f"taxable_income_band_{row_id}_indicator",
-                    label=f"TY2026-27 {contract.replace('_', ' ')} {fact['dimensions']['taxable_income_band_source_label']} (parked)",
+                    label=f"TY2026-27 {contract.replace('_', ' ')} {fact['dimensions']['taxable_income_band_source_label']} (diagnostic)",
                 )
             )
-            targets[-1]["metadata"].update(
-                {
-                    "reference_prerequisites": json.dumps(
-                        [
-                            "reference_profile:aging_index",
-                            f"measurement:{IRD_MEASUREMENT_BINDING}",
-                        ],
-                        separators=(",", ":"),
-                    ),
-                    "required_reference_profile": "aging_index",
-                    "required_measurement_binding": IRD_MEASUREMENT_BINDING,
-                    "reference_value_kind": "count" if column == "people" else "money",
-                }
+            native_income[-1]["metadata"]["reference_value_kind"] = (
+                "count" if column == "people" else "money"
             )
+        if column == "people":
+            count_facts = {f["layout"]["source_row_id"]: f for f in details}
+        else:
+            amount_facts = {f["layout"]["source_row_id"]: f for f in details}
+    targets.extend(coarse_income_rows(count_facts, amount_facts))
     wage_facts = inventory.cells(
         "ird_wage_salary_distribution.ty2026.income_bands", measure="individuals"
     )
@@ -679,10 +730,16 @@ def build_reference_documents(artifact, *, package_dir=SPEC):
                 reference_set="precal",
                 period=2027,
                 method_card="MC4",
-                status="requires_g8r2c_wage_quantile_producer",
-                reason="G8-r2c must connect the reviewed TY2026-to-TY2027 wage bridge, intervals and coverage to an active P1 earnings quantile producer; declarations alone do not produce calibrated earnings.",
-                label=f"TY2026-27 wage/salary band {fact['dimensions']['wage_salary_band_source_label']} (parked)",
+                label=f"TY2026-27 wage/salary band {fact['dimensions']['wage_salary_band_source_label']}",
             )
+        )
+        precal[-1]["metadata"].update(
+            {
+                "precal_use": "earnings_quantile_band",
+                "quantile_producer": "transport.quantile_map@2",
+                "band_edges_resource": "earnings_bands.json",
+                "interval_table_id": WAGE_TABLE,
+            }
         )
     precal_templates = json.loads(PRECAL_TEMPLATES.read_text())
     for contract, status, reason in (
@@ -810,6 +867,8 @@ def build_reference_documents(artifact, *, package_dir=SPEC):
                 "rolled_forward_by_ratio",
                 "allocated_residual_by_ratio",
                 "linear_combination",
+                # R2C-17: the coarse count rows sum their native members.
+                "sum",
             ]
             if reference_set == "calibration"
             else ["identity"],
@@ -833,6 +892,20 @@ def build_reference_documents(artifact, *, package_dir=SPEC):
                 label="New Zealand estimated resident population, June 2025",
             )
         ],
+    }
+    documents["income_diagnostic_references.json"] = {
+        "country": "nz",
+        "reference_set": "diagnostic",
+        "executable": False,
+        "description": (
+            "Generated by tools/generate_nz_target_references.py. R2C-4: the 474 "
+            "native IRD TY2024 taxable-income rows (237 people and 237 totals, "
+            "rows 8-244) are non-executable diagnostic selectors. No compiler, "
+            "profile or gate reads this document; the 24 coarse stand-in rows in "
+            "target_references.json replace them in the calibration roster, and "
+            "the native-band report (G8-x) compares each coarse band with them."
+        ),
+        "diagnostic_references": native_income,
     }
     documents["holdout_references.json"] = _holdout_references(inventory)
     documents["reference_selection.json"] = _reference_selection(documents)
@@ -943,6 +1016,10 @@ def _reference_selection(documents):
             # profile rows activate; raw unresolved rows cannot compile directly.
             if status in {"active", "requires_reference_profile_resolution"}:
                 continue
+            # The coarse stand-in rows stay parked until composition proves
+            # their measurement producer; no exemption hides them (R2C-1).
+            if row["metadata"].get("required_measurement_binding"):
+                continue
             if row["family"] == "working_for_families":
                 reason = "WFF activation needs module bindings, receipt and claim state, and a tax-year-to-model-period bridge. G8-w3b keeps these tripwires exempt; G8-y owns the closing step."
                 if "harvested_cell_references" in status:
@@ -1028,7 +1105,7 @@ def _interval_table(table_id, rows, labels, upper_dollars, locator, companions):
         bounds = _label_bounds(label)
         indicator = (
             f"taxable_income_band_{row_id}_indicator"
-            if companions
+            if table_id == IRD_NATIONAL_TABLE
             else f"taxable_income_age_table_band_{row_id}_indicator"
         )
         band = {"id": row_id}
@@ -1083,6 +1160,243 @@ def _interval_table(table_id, rows, labels, upper_dollars, locator, companions):
     }
 
 
+def _wage_upper_dollars(row):
+    """Each wage row's published upper cut in dollars; None is the open tail."""
+    if 7 <= row <= 206:
+        return 1000 * (row - 6)
+    if 207 <= row <= 226:
+        return 200000 + 5000 * (row - 206)
+    if 227 <= row <= 240:
+        return 300000 + 50000 * (row - 226)
+    if row == 241:
+        return None
+    raise ValueError(f"No wage-and-salary cut for row {row}")
+
+
+def _wage_label_bounds(label):
+    """Read a wage label as (lower, upper) dollars; IRD spells $1,000,000 "$1 million"."""
+    return _label_bounds(re.sub(r"\$1 million$", "$1,000,000", " ".join(label.split())))
+
+
+def wage_interval_table(labels):
+    """Generate the wage cuts from the row formulas and check every label.
+
+    Labels must tile (0, $1,000,000] with no gap, from "$1 - $1,000" to the
+    open tail. Exactly the three reviewed rows repeat the previous row's
+    upper endpoint; the right-closed cuts give each shared endpoint to the
+    lower band.
+    """
+    if tuple(sorted(labels, key=lambda row: int(row[4:]))) != WAGE_ROWS:
+        raise ValueError("Wage detail rows differ from the reviewed rows 7-241")
+    bands, previous, shared = [], Decimal(0), []
+    for row_id in WAGE_ROWS:
+        row = int(row_id.removeprefix("row_"))
+        label = labels[row_id]
+        lower, published_upper = _wage_label_bounds(label)
+        upper = _wage_upper_dollars(row)
+        if published_upper != (None if upper is None else Decimal(upper)):
+            raise ValueError(
+                f"Wage row {row_id} label {label!r} disagrees with its cut"
+            )
+        if lower == previous and upper is not None:
+            shared.append(row_id)
+        elif lower != (previous if upper is None else previous + 1):
+            raise ValueError(f"Wage row {row_id} label {label!r} leaves a gap")
+        bands.append(
+            {
+                "id": row_id,
+                "kind": "positive",
+                "upper_cent": None if upper is None else upper * 100,
+                "indicator": f"wage_salary_band_{row_id}_indicator",
+                "source_label": label,
+            }
+        )
+        if upper is not None:
+            previous = Decimal(upper)
+    if tuple(shared) != WAGE_SHARED_ENDPOINT_ROWS:
+        raise ValueError(f"{WAGE_TABLE} shared endpoint rows changed: {shared}")
+    return {
+        "id": WAGE_TABLE,
+        "entity": "person",
+        "currency": "NZD",
+        "input_unit": "integer_cent",
+        "income_column": WAGE_INCOME_COLUMN,
+        "universe_column": WAGE_UNIVERSE_COLUMN,
+        "source_period": 2026,
+        "target_period": 2027,
+        "positive_band_closure": "right",
+        "nil_band": "absent",
+        "negative_income_policy": "refuse",
+        "first_lower_cut_cents": 0,
+        "source_locator": "ird_wage_salary_distribution.ty2026.income_bands rows 7-241",
+        "diagnostics": {
+            "boundary_window_cents": 100,
+            "alternative_positive_band_closure": "left",
+        },
+        "description": (
+            "National TY2026 wage-and-salary bands, rows 7-241: 200 bands of "
+            "$1,000 to $200,000, 20 of $5,000 to $300,000, 14 of $50,000 to "
+            "$1,000,000 and the open tail. Declared and validated only: no "
+            "companions and no fit rows. " + WAGE_DISCLOSURE
+        ),
+        "bands": bands,
+    }
+
+
+def _wage_labels(inventory):
+    labels = {}
+    for fact in inventory.cells(
+        "ird_wage_salary_distribution.ty2026.income_bands", measure="individuals"
+    ):
+        if fact["layout"]["table_record_kind"] != "detail":
+            continue
+        row = fact["layout"]["source_row_id"]
+        label = fact["dimensions"]["wage_salary_band_source_label"]
+        if labels.setdefault(row, label) != label:
+            raise ValueError(f"Wage row {row} has inconsistent labels")
+    return labels
+
+
+def coarse_band_members():
+    """Native rows of each coarse band: (band id, lower $, upper $, row ids).
+
+    A native row joins the coarse band whose (lower, upper] holds its own
+    upper cut; the open native tail joins the open coarse tail. Every coarse
+    band must tile whole native rows (design 80 section 3: rows 50-244).
+    """
+    native = [
+        (row_id, _national_upper_dollars(int(row_id.removeprefix("row_"))))
+        for row_id in IRD_NATIONAL_ROWS[1:]
+    ]
+    bands, lower = [], IRD_STANDIN_FIRST_CUT_DOLLARS
+    for index, upper in enumerate(IRD_STANDIN_CUTS_DOLLARS, start=1):
+        members = [
+            row_id
+            for row_id, cut in native
+            if (cut is None and upper is None)
+            or (cut is not None and cut > lower and (upper is None or cut <= upper))
+        ]
+        if (
+            upper is not None
+            and _national_upper_dollars(int(members[-1].removeprefix("row_"))) != upper
+        ):
+            raise ValueError(f"Coarse band {index} does not end on a native cut")
+        bands.append((f"b{index:02d}", lower, upper, tuple(members)))
+        lower = upper
+    covered = [row for *_, members in bands for row in members]
+    expected = [
+        row for row, cut in native if cut is None or cut > IRD_STANDIN_FIRST_CUT_DOLLARS
+    ]
+    if covered != expected:
+        raise ValueError("Coarse bands do not tile the native rows above $40,000")
+    return bands
+
+
+def _coarse_label(lower, upper):
+    return f"${lower:,} - ${upper:,}" if upper is not None else f"Over ${lower:,}"
+
+
+def coarse_income_rows(count_facts, amount_facts):
+    """The 12 summed count rows (sum) and 12 summed amount rows (identity).
+
+    R2C-17: a summed count row carries value_operation sum and no operands;
+    its amount companion is identity, which the aging_index resolver turns
+    into one weighted operand. Each pins its band's native labels.
+    """
+    dimension = "taxable_income_band_source_label"
+    rows = []
+    for band_id, lower, upper, members in coarse_band_members():
+        for kind, facts, contract, measure in (
+            ("count", count_facts, IRD_STANDIN_COUNT, "people"),
+            ("money", amount_facts, IRD_STANDIN_AMOUNT, IRD_STANDIN_MEASURE),
+        ):
+            row = _reference(
+                facts[members[0]],
+                name=f"{contract}__{band_id}",
+                contract=contract,
+                entity="person",
+                measure=measure,
+                family="income",
+                period=2027,
+                status="requires_prerequisites",
+                reason=IRD_STANDIN_REASON,
+                filter_column=f"ird_taxable_income_standin_band_{band_id}_indicator",
+                label=f"TY2026-27 IRD taxable income stand-in {'people' if kind == 'count' else 'total'} {_coarse_label(lower, upper)} (rows {members[0].removeprefix('row_')}-{members[-1].removeprefix('row_')})",
+            )
+            selector = row["ledger_selector"]
+            selector.pop("aggregate_fact_key")
+            labels = [facts[member]["dimensions"][dimension] for member in members]
+            if len(set(labels)) != len(labels):
+                raise ValueError(f"Coarse band {band_id} repeats a native label")
+            selector["dimension_values"] = {dimension: labels}
+            row["expected_member_count"] = len(members)
+            if kind == "count":
+                row["value_operation"] = "sum"
+            row["metadata"].update(
+                {
+                    "reference_prerequisites": json.dumps(
+                        [
+                            "reference_profile:aging_index",
+                            f"measurement:{IRD_MEASUREMENT_BINDING}",
+                        ],
+                        separators=(",", ":"),
+                    ),
+                    "required_reference_profile": "aging_index",
+                    "required_measurement_binding": IRD_MEASUREMENT_BINDING,
+                    "reference_value_kind": kind,
+                    "interval_table_id": IRD_STANDIN_TABLE,
+                    "native_rows": ",".join(members),
+                }
+            )
+            rows.append(row)
+    return rows
+
+
+def _coarse_table():
+    bands = []
+    for band_id, lower, upper, members in coarse_band_members():
+        bands.append(
+            {
+                "id": band_id,
+                "kind": "positive",
+                "upper_cent": None if upper is None else upper * 100,
+                "indicator": f"ird_taxable_income_standin_band_{band_id}_indicator",
+                "source_label": f"{_coarse_label(lower, upper)}: native rows {members[0].removeprefix('row_')}-{members[-1].removeprefix('row_')}",
+                "count_reference": f"{IRD_STANDIN_COUNT}__{band_id}",
+                "amount_reference": f"{IRD_STANDIN_AMOUNT}__{band_id}",
+            }
+        )
+    return {
+        "id": IRD_STANDIN_TABLE,
+        "entity": "person",
+        "currency": "NZD",
+        "input_unit": "integer_cent",
+        "income_column": IRD_PROXY_INCOME_COLUMN,
+        "universe_column": IRD_PROXY_UNIVERSE_COLUMN,
+        "source_period": 2024,
+        "target_period": 2027,
+        "positive_band_closure": "right",
+        "nil_band": "absent",
+        "negative_income_policy": "floor_zero",
+        "first_lower_cut_cents": IRD_STANDIN_FIRST_CUT_DOLLARS * 100,
+        "source_locator": "Income tables 2001-24!BE50:BE244 (coarse sums of native rows 50-244)",
+        "diagnostics": {
+            "boundary_window_cents": 100,
+            "alternative_positive_band_closure": "left",
+            "support_household_entity": "household",
+        },
+        "description": (
+            "Coarse TY2024 taxable-income bands for the d1952 stand-in measure: "
+            "eleven finite bands above $40,000 and the open tail over $1,000,000, "
+            "each the sum of whole native rows 50-244. No nil band: records at or "
+            "below the first cut stay visible as below-first-cut in the boundary "
+            "diagnostics. Every band names its summed count and amount rows, and "
+            "per-band source-household support feeds measurement_prefit."
+        ),
+        "bands": bands,
+    }
+
+
 def _reference_intervals(inventory):
     national = _band_labels(
         inventory.cells(
@@ -1102,7 +1416,7 @@ def _reference_intervals(inventory):
             national,
             _national_upper_dollars,
             "Income tables 2001-24!BE8:BE244",
-            companions=True,
+            companions=False,
         ),
         _interval_table(
             IRD_AGE_TABLE,
@@ -1115,14 +1429,18 @@ def _reference_intervals(inventory):
     ]
     tables[0]["description"] = (
         "National TY2024 taxable-income bands, rows 8-244: one nil band, 235 "
-        "finite bands and the open tail over $1,000,000. Every band names its "
-        "parked count and amount references."
+        "finite bands and the open tail over $1,000,000. Declared and validated "
+        "only (R2C-4): no companions and no fit rows; the 474 native rows are "
+        "diagnostic selectors in income_diagnostic_references.json, and the "
+        "coarse stand-in table carries the calibration rows."
     )
     tables[1]["description"] = (
         "Age-by-income TY2024 taxable-income bands, rows 6-188: one nil band, "
         "181 finite bands and the open tail over $180,000. Declared and "
         "validated only; no reference companions and no fit rows."
     )
+    tables.append(wage_interval_table(_wage_labels(inventory)))
+    tables.append(_coarse_table())
     return {
         "schema_version": 1,
         "country": "nz",
@@ -1263,14 +1581,14 @@ def _reference_profiles(inventory, rows, family_declaration):
                                 "operation": "scale_money_and_intervals",
                                 "factor_id": f"ird_ty2024_to_ty2027_{profile}",
                                 "reference_names": [
-                                    f"ird_taxable_income_total_by_band__{row_id}"
-                                    for row_id in IRD_NATIONAL_ROWS
+                                    f"{IRD_STANDIN_AMOUNT}__{band_id}"
+                                    for band_id, *_ in coarse_band_members()
                                 ],
                                 "count_reference_names": [
-                                    f"ird_taxable_income_people_by_band__{row_id}"
-                                    for row_id in IRD_NATIONAL_ROWS
+                                    f"{IRD_STANDIN_COUNT}__{band_id}"
+                                    for band_id, *_ in coarse_band_members()
                                 ],
-                                "interval_table_ids": [IRD_NATIONAL_TABLE],
+                                "interval_table_ids": [IRD_STANDIN_TABLE],
                                 "required_measurement_binding": IRD_MEASUREMENT_BINDING,
                             }
                         ]
@@ -1636,7 +1954,21 @@ def _receipts(inventory, erp, documents, feed_pin, ta_facts, family_declaration)
                 Counter(row["metadata"]["activation_status"] for row in rows)
             ),
         }
+    diagnostic = documents["income_diagnostic_references.json"]["diagnostic_references"]
+    counts["income_diagnostic_references.json"] = {
+        "total": len(diagnostic),
+        "by_contract": dict(
+            Counter(row["metadata"]["contract_target_id"] for row in diagnostic)
+        ),
+        "by_activation_status": dict(
+            Counter(row["metadata"]["activation_status"] for row in diagnostic)
+        ),
+    }
     excluded = [
+        (
+            "ird_taxable_income_native_bands",
+            "R2C-4: the 474 native rows are diagnostic selectors only; 24 coarse stand-in rows (sums of native rows 50-244) replace them in calibration.",
+        ),
         (
             "regional_all_age_erp",
             "Bridge operands only; selecting totals together with age leaves duplicates the fit partition.",

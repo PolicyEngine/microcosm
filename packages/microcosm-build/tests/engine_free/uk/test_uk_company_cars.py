@@ -1052,12 +1052,15 @@ class _NoSacrifice:
             {salary_sacrifice.SALSAC_OUTPUT: 0.0}, index=predictors.index
         )
 
+    def gate_outcomes(self) -> dict[str, str]:
+        return {salary_sacrifice.SALSAC_OUTPUT: "cross_fitted"}
+
 
 class _NoSacrificeForest:
-    def __init__(self, *, n_estimators: int, seed: int) -> None:
+    def __init__(self, *, n_estimators: int, seed: int, gate_calibration: str) -> None:
         pass
 
-    def fit(self, frame, predictors, targets, *, weights):
+    def fit(self, frame, predictors, targets, *, weights, groups):
         return _NoSacrifice()
 
 

@@ -108,6 +108,8 @@ def uk_stage_health_gate(
         return _property_components_gate(stage, evidence, parameters)
     if check == "property_purchases":
         return _property_purchases_gate(stage, evidence, parameters)
+    if check == "spi_hourly_pay":
+        return _spi_hourly_pay_gate(stage, evidence, parameters)
     if check == "regional_home_values":
         return _regional_home_values_gate(stage, evidence, parameters)
     if check == "legacy_closure_take_up":
@@ -1432,16 +1434,22 @@ def _spi_benefit_coherence_gate(
     """SPI-channel benefit reports and take-up are coherent (microcosm#1095).
 
     Structural zeros only: no SPI row keeps a zeroed report, every restored
-    report equals the FRS twin's, no person's ``receives_benefits_in_own_right``
-    disagrees with their own reports, base rows are unchanged, every SPI unit
-    with a Universal Credit reporter claims, and no SPI unit outside the
-    Universal Credit age population claims without reporting.
+    report equals the FRS twin's, every contributory report equals the twin's
+    within the permitted-work limit and is nil above it, no person's
+    ``receives_benefits_in_own_right`` disagrees with their own reports, base
+    rows are unchanged, every SPI unit with a Universal Credit reporter claims,
+    and no SPI unit outside the Universal Credit age population claims without
+    reporting.
     """
 
     check = "spi_benefit_coherence"
     failures: list[str] = []
     zeroed = _mapping(evidence.get("zeroed"), label=f"{stage}.zeroed")
     restored = _mapping(evidence.get("restored"), label=f"{stage}.restored")
+    within_limit = _mapping(
+        evidence.get("restored_within_earnings_limit"),
+        label=f"{stage}.restored_within_earnings_limit",
+    )
     own_right = _mapping(
         evidence.get("benefits_in_own_right"), label=f"{stage}.benefits_in_own_right"
     )
@@ -1461,6 +1469,18 @@ def _spi_benefit_coherence_gate(
             failures.append(f"{stage}: the receipt does not record restoring {column}.")
         elif int(receipt.get("rows_differing_from_twin_after", -1)) != 0:
             failures.append(f"{stage}: SPI {column} differs from the FRS twin.")
+    for column in parameters["restored_within_earnings_limit_columns"]:
+        receipt = within_limit.get(column)
+        if not isinstance(receipt, Mapping):
+            failures.append(
+                f"{stage}: the receipt does not record restoring {column} within "
+                "the permitted-work limit."
+            )
+        elif int(receipt.get("rows_breaking_rule_after", -1)) != 0:
+            failures.append(
+                f"{stage}: SPI {column} is not the FRS twin's within the "
+                "permitted-work limit and nil above it."
+            )
     if int(own_right.get("mismatches_after", -1)) != 0:
         failures.append(
             f"{stage}: receives_benefits_in_own_right disagrees with own reports."
@@ -1503,9 +1523,12 @@ def _uc_take_up_gate(
 
     Every reporter claims and no unit outside the draw changes. Over a family
     type's pools whose target the draw can reach, the realized Great Britain
-    caseload is within ``maximum_caseload_deviation`` of DWP's count, and the
-    family type's whole caseload is no further from DWP's than before the
-    redraw, give or take that share of DWP's count. A family type whose
+    caseload is within ``maximum_reachable_pool_deviation`` of DWP's count, and
+    the family type's whole caseload is no further from DWP's than before the
+    redraw, give or take ``maximum_caseload_deviation`` of DWP's count. The two
+    are separate, so that widening the second for what a stage before the
+    redraw does to the caseload leaves the first as tight as the draw achieves.
+    A family type whose
     caseload rests on fewer than three sources, which the receipt prints "<3",
     is flagged unchecked, never failed: a small-cell rule never stops a build
     (María's ruling of 2026-10-26).
@@ -1515,6 +1538,10 @@ def _uc_take_up_gate(
     tolerance = _finite_number(
         parameters["maximum_caseload_deviation"],
         label=f"{stage}.maximum_caseload_deviation",
+    )
+    pool_tolerance = _finite_number(
+        parameters["maximum_reachable_pool_deviation"],
+        label=f"{stage}.maximum_reachable_pool_deviation",
     )
     failures: list[str] = []
     details: dict[str, object] = {}
@@ -1556,11 +1583,11 @@ def _uc_take_up_gate(
         realized = _finite_number(
             values["reachable_pools_caseload_after"], label=f"{stage}.{name}"
         )
-        if target > 0.0 and abs(realized - target) > tolerance * target:
+        if target > 0.0 and abs(realized - target) > pool_tolerance * target:
             failures.append(
                 f"{stage}: family type {name} realizes {realized:,.0f} against "
                 f"DWP's {target:,.0f} over its reachable pools (tolerance "
-                f"{tolerance})."
+                f"{pool_tolerance})."
             )
         if abs(after - dwp) > abs(before - dwp) + tolerance * dwp:
             failures.append(
@@ -1614,6 +1641,80 @@ def _spi_income_spine_gate(
         if failures
         else _pass(stage, check, details)
     )
+
+
+def _spi_hourly_pay_gate(
+    stage: str,
+    evidence: Mapping[str, object],
+    parameters: Mapping[str, object],
+) -> GateResult:
+    """Drawn SPI employees are paid at least their floor (uk-data#629).
+
+    The employment pay floor lifts each eligible drawn employee's pay to its
+    twin's hours at the lower of the minimum wage for its age and the twin's
+    own hourly pay, so none may stay below its floor; and after the floor the
+    drawn employees' weighted share below the minimum wage for their age may
+    exceed the FRS employees' own share by at most the declared margin. A
+    share the receipt withholds (one or two source households on a side)
+    is not judged, and the details give only the verdicts, not the shares.
+    """
+
+    check = "spi_hourly_pay"
+    floor = evidence.get("employment_pay_floor")
+    if not isinstance(floor, Mapping):
+        return _fail(
+            stage, check, [f"{stage}: the receipt carries no employment pay floor."], {}
+        )
+    hourly = _mapping(
+        floor.get("hourly_pay_check"),
+        label=f"{stage}.employment_pay_floor.hourly_pay_check",
+    )
+    margin = _finite_number(
+        parameters["maximum_share_above_frs"], label=f"{stage}.maximum_share_above_frs"
+    )
+    failures: list[str] = []
+    below_floor = hourly.get("eligible_rows_below_their_floor_after")
+    if below_floor != 0:
+        failures.append(
+            f"{stage}: eligible drawn employees remain below their pay floor "
+            f"({below_floor})."
+        )
+    drawn = _mapping(
+        hourly.get("spi_drawn_employees"),
+        label=f"{stage}.hourly_pay_check.spi_drawn_employees",
+    )
+    reference = _mapping(
+        hourly.get("frs_employees"), label=f"{stage}.hourly_pay_check.frs_employees"
+    )
+    after = drawn.get("below_minimum_wage_share_after")
+    frs_share = reference.get("below_minimum_wage_share")
+    judged = all(
+        isinstance(value, (int, float)) and not isinstance(value, bool)
+        for value in (after, frs_share)
+    )
+    within = None
+    if judged:
+        after_share = _finite_number(
+            after, label=f"{stage}.below_minimum_wage_share_after"
+        )
+        reference_share = _finite_number(
+            frs_share, label=f"{stage}.frs_employees.below_minimum_wage_share"
+        )
+        # A share at exactly the margin passes, whatever the float rounding.
+        within = after_share - reference_share <= margin + 1e-12
+        if not within:
+            failures.append(
+                f"{stage}: after the floor, drawn employees sit below the minimum "
+                f"wage more often than FRS employees, beyond the margin {margin}."
+            )
+    details = {
+        "eligible_rows_below_their_floor_after": below_floor,
+        "share_judged": judged,
+        "share_within_margin": within,
+    }
+    if failures:
+        return _fail(stage, check, failures, details)
+    return _pass(stage, check, details)
 
 
 def _source_signal_gate(
@@ -3612,10 +3713,19 @@ def _road_fuel_level_gate(
     from the drawn total, to ``maximum_relative_deviation``. The other-fuels
     share comes from the licensed LCFS donor, so it is bounded, not recomputed:
     it must lie in [0, ``maximum_other_fuels_share``].
+
+    A declared ``mix_rule`` (microcosm#1095 B3, K) levels each fuel to the
+    level times its household-paid share: each fuel's levelled total must be
+    the level times the share recomputed here from the vendored litres,
+    cars shares and pump prices, with the receipt's household-paid shares of
+    car miles, which come from the licensed NTS and so are bounded to (0, 1],
+    not recomputed; the receipt's own mix must match it.
     """
 
     from microcosm.build.country_spec import load_country_spec
     from microcosm.build.uk_runtime.lcfs_consumption import (
+        UK_LCFS_ROAD_FUEL_COLUMNS,
+        road_fuel_household_mix,
         road_fuel_level,
         road_fuel_level_operation,
     )
@@ -3632,9 +3742,8 @@ def _road_fuel_level_gate(
         parameters.get("maximum_other_fuels_share"),
         label=f"{stage}.maximum_other_fuels_share",
     )
-    declared = road_fuel_level_operation(
-        load_country_spec("uk").sources.stage_map()[stage]
-    )
+    spec_stage = load_country_spec("uk").sources.stage_map()[stage]
+    declared = road_fuel_level_operation(spec_stage)
     if declared is None:
         raise ValueError(f"{stage}: declares no level_road_fuel operation.")
     share = _finite_number(
@@ -3688,6 +3797,49 @@ def _road_fuel_level_gate(
         "factor": factor,
         "petrol_share_of_level": receipt.get("petrol_share_of_level"),
     }
+    if declared.get("mix_rule") is not None:
+        mix = _mapping(receipt.get("mix"), label=f"{stage}.road_fuel_level.mix")
+        nts = _mapping(
+            _mapping(mix.get("nts"), label=f"{stage}.road_fuel_level.mix.nts").get(
+                "fuels"
+            ),
+            label=f"{stage}.road_fuel_level.mix.nts.fuels",
+        )
+        paid: dict[str, float] = {}
+        for column in UK_LCFS_ROAD_FUEL_COLUMNS:
+            value = _finite_number(
+                _mapping(nts.get(column), label=f"{stage}.{column}").get(
+                    "household_paid_share"
+                ),
+                label=f"{stage}.{column}.household_paid_share",
+            )
+            if not 0.0 < value <= 1.0:
+                failures.append(
+                    f"{stage}: the household-paid {column} share {value} is outside "
+                    "(0, 1]."
+                )
+                value = min(max(value, 1e-12), 1.0)
+            paid[column] = value
+        expected, _ = road_fuel_household_mix(spec_stage, paid)
+        fuels = _mapping(mix.get("fuels"), label=f"{stage}.road_fuel_level.mix.fuels")
+        after = _mapping(
+            mix.get("frame_after"), label=f"{stage}.road_fuel_level.mix.frame_after"
+        )
+        for column in UK_LCFS_ROAD_FUEL_COLUMNS:
+            observed = _mapping(fuels.get(column), label=f"{stage}.{column}").get("mix")
+            if not _close(observed, expected[column]):
+                failures.append(
+                    f"{stage}: the receipt's {column} mix {observed!r} is not the "
+                    f"recomputed {expected[column]}."
+                )
+            if not _close(after.get(column), level.level * expected[column]):
+                failures.append(
+                    f"{stage}: the levelled {column} total {after.get(column)!r} is not "
+                    f"the level times its household-paid share, "
+                    f"{level.level * expected[column]}."
+                )
+        details["household_paid_share"] = paid
+        details["household_mix"] = expected
     return (
         _fail(stage, check, failures, details)
         if failures

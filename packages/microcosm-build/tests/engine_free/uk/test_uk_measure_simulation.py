@@ -802,8 +802,9 @@ def test_packaged_exclusions_load():
     # and SLC's Scottish and Northern Irish repayment rows (ruling R4: Wales
     # only binds). The savings follow-up holds the SPI £1m-and-over interest
     # amount row on its measured distortion (microcosm#1428, María's ruling of
-    # 2026-10-30).
-    assert len(names) == len(set(names)) == 45
+    # 2026-10-30). microcosm#1426 holds HMRC's High Income Child Benefit Charge count
+    # and revenue as measured diagnostics (María's ruling of 2026-11-03).
+    assert len(names) == len(set(names)) == 47
     (gas,) = [
         entry
         for entry in exclusions

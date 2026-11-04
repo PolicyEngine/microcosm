@@ -68,6 +68,70 @@
   }
  },
  "$defs": {
+  "nts_cars": {
+   "type": "object",
+   "additionalProperties": false,
+   "required": [
+    "survey_years",
+    "vehicle_types",
+    "private_keeper",
+    "company_keeper",
+    "weight",
+    "income_quintile",
+    "zero_emission_co2_bands",
+    "propulsion"
+   ],
+   "properties": {
+    "survey_years": {
+     "type": "array",
+     "minItems": 1,
+     "items": {
+      "type": "integer"
+     }
+    },
+    "vehicle_types": {
+     "type": "array",
+     "minItems": 1,
+     "items": {
+      "type": "integer"
+     }
+    },
+    "private_keeper": {
+     "type": "array",
+     "minItems": 1,
+     "items": {
+      "type": "integer"
+     }
+    },
+    "company_keeper": {
+     "type": "array",
+     "minItems": 1,
+     "items": {
+      "type": "integer"
+     }
+    },
+    "weight": {
+     "type": "string"
+    },
+    "income_quintile": {
+     "type": "string"
+    },
+    "zero_emission_co2_bands": {
+     "type": "array",
+     "minItems": 1,
+     "items": {
+      "type": "integer"
+     }
+    },
+    "propulsion": {
+     "type": "object",
+     "minProperties": 1,
+     "additionalProperties": {
+      "type": "integer"
+     }
+    }
+   }
+  },
   "stage_asset": {
    "type": "object",
    "additionalProperties": false,
@@ -2285,6 +2349,30 @@
         "below_age"
        ]
       },
+      "non_parental_care_child": {
+       "type": "object",
+       "additionalProperties": false,
+       "properties": {
+        "child_codes": {
+         "type": "array",
+         "minItems": 1,
+         "items": {
+          "type": "integer"
+         }
+        },
+        "parent_codes": {
+         "type": "array",
+         "minItems": 1,
+         "items": {
+          "type": "integer"
+         }
+        }
+       },
+       "required": [
+        "child_codes",
+        "parent_codes"
+       ]
+      },
       "one_person_age_split": {
        "type": "integer",
        "minimum": 0
@@ -2359,6 +2447,7 @@
       "family_link_codes",
       "dependent_child",
       "looked_after_child",
+      "non_parental_care_child",
       "one_person_age_split",
       "family_role_values",
       "household_type_values",
@@ -3134,6 +3223,12 @@
       },
       "weight": {
        "type": "string"
+      },
+      "gate_calibration": {
+       "enum": [
+        "in_sample",
+        "cross_fitted"
+       ]
       }
      },
      "required": [
@@ -3503,6 +3598,12 @@
          "null"
         ]
        }
+      },
+      "gate_calibration": {
+       "enum": [
+        "in_sample",
+        "cross_fitted"
+       ]
       }
      },
      "required": [
@@ -3635,6 +3736,12 @@
       },
       "weight_mapping": {
        "type": "string"
+      },
+      "gate_calibration": {
+       "enum": [
+        "in_sample",
+        "cross_fitted"
+       ]
       }
      },
      "required": [
@@ -7513,7 +7620,23 @@
        "type": "string"
       },
       "rate_rule": {
-       "const": "per_car_zero_emission_share"
+       "enum": [
+        "per_car_zero_emission_share",
+        "per_car_zero_emission_share_by_income_quintile"
+       ]
+      },
+      "nts_cars": {
+       "$ref": "#/$defs/nts_cars"
+      },
+      "minimum_zero_emission_cars": {
+       "type": "integer",
+       "minimum": 1
+      },
+      "frame_income": {
+       "type": "string"
+      },
+      "frame_equivalisation": {
+       "type": "string"
       },
       "period_value": {
        "type": "integer"
@@ -7639,6 +7762,12 @@
       "salt": {
        "type": "string",
        "minLength": 1
+      },
+      "gate_calibration": {
+       "enum": [
+        "in_sample",
+        "cross_fitted"
+       ]
       }
      }
     },
@@ -7682,6 +7811,12 @@
       },
       "seed": {
        "type": "integer"
+      },
+      "gate_calibration": {
+       "enum": [
+        "in_sample",
+        "cross_fitted"
+       ]
       }
      }
     },
@@ -8280,6 +8415,12 @@
          "null"
         ]
        }
+      },
+      "gate_calibration": {
+       "enum": [
+        "in_sample",
+        "cross_fitted"
+       ]
       }
      }
     },
@@ -8380,6 +8521,12 @@
       },
       "seed": {
        "type": "integer"
+      },
+      "gate_calibration": {
+       "enum": [
+        "in_sample",
+        "cross_fitted"
+       ]
       }
      }
     },
@@ -8475,6 +8622,12 @@
       },
       "seed": {
        "type": "integer"
+      },
+      "gate_calibration": {
+       "enum": [
+        "in_sample",
+        "cross_fitted"
+       ]
       }
      }
     },
@@ -8580,6 +8733,12 @@
       },
       "seed": {
        "type": "integer"
+      },
+      "gate_calibration": {
+       "enum": [
+        "in_sample",
+        "cross_fitted"
+       ]
       }
      }
     },
@@ -8846,6 +9005,12 @@
       },
       "seed": {
        "type": "integer"
+      },
+      "gate_calibration": {
+       "enum": [
+        "in_sample",
+        "cross_fitted"
+       ]
       }
      }
     },
@@ -9815,6 +9980,58 @@
      "additionalProperties": false,
      "required": [
       "kind",
+      "rows",
+      "columns",
+      "linkage",
+      "earnings",
+      "weekly_limit",
+      "hours",
+      "weekly_hours_limit",
+      "award",
+      "reason"
+     ],
+     "properties": {
+      "kind": {
+       "const": "restore_spi_channel_reports_from_source_within_earnings_limit"
+      },
+      "rows": {
+       "type": "string"
+      },
+      "columns": {
+       "type": "array",
+       "minItems": 1,
+       "items": {
+        "type": "string"
+       }
+      },
+      "linkage": {
+       "type": "string"
+      },
+      "earnings": {
+       "type": "string"
+      },
+      "weekly_limit": {
+       "type": "string"
+      },
+      "hours": {
+       "type": "string"
+      },
+      "weekly_hours_limit": {
+       "type": "string"
+      },
+      "award": {
+       "type": "string"
+      },
+      "reason": {
+       "type": "string"
+      }
+     }
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "required": [
+      "kind",
       "spi_state_pension_leaf",
       "spi_channel_columns",
       "base_channel_columns",
@@ -9842,6 +10059,67 @@
        }
       },
       "state_pension_age": {
+       "type": "string"
+      },
+      "receipt": {
+       "type": "string"
+      }
+     }
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "required": [
+      "kind",
+      "column",
+      "hours_column",
+      "hours_basis",
+      "weeks_in_year",
+      "hourly_rate",
+      "employee_statuses",
+      "rows",
+      "pay_basis",
+      "reason",
+      "annual_income",
+      "receipt"
+     ],
+     "properties": {
+      "kind": {
+       "const": "floor_spi_employment_pay_at_minimum_wage"
+      },
+      "column": {
+       "type": "string"
+      },
+      "hours_column": {
+       "type": "string"
+      },
+      "hours_basis": {
+       "type": "string"
+      },
+      "weeks_in_year": {
+       "type": "number",
+       "exclusiveMinimum": 0
+      },
+      "hourly_rate": {
+       "type": "string"
+      },
+      "employee_statuses": {
+       "type": "array",
+       "minItems": 1,
+       "items": {
+        "type": "string"
+       }
+      },
+      "rows": {
+       "type": "string"
+      },
+      "pay_basis": {
+       "type": "string"
+      },
+      "reason": {
+       "type": "string"
+      },
+      "annual_income": {
        "type": "string"
       },
       "receipt": {
@@ -11283,6 +11561,12 @@
          }
         }
        }
+      },
+      "gate_calibration": {
+       "enum": [
+        "in_sample",
+        "cross_fitted"
+       ]
       }
      }
     },
@@ -12552,6 +12836,45 @@
      "additionalProperties": false,
      "required": [
       "kind",
+      "nts_cars",
+      "reference_date",
+      "oldest_age_years",
+      "default_engine_size_cc",
+      "seed",
+      "salt"
+     ],
+     "properties": {
+      "kind": {
+       "const": "assign_car_attributes_from_nts"
+      },
+      "nts_cars": {
+       "$ref": "#/$defs/nts_cars"
+      },
+      "reference_date": {
+       "type": "string",
+       "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+      },
+      "oldest_age_years": {
+       "type": "number",
+       "exclusiveMinimum": 18
+      },
+      "default_engine_size_cc": {
+       "type": "number",
+       "exclusiveMinimum": 0
+      },
+      "seed": {
+       "type": "integer"
+      },
+      "salt": {
+       "type": "string"
+      }
+     }
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "required": [
+      "kind",
       "columns",
       "resource",
       "concept",
@@ -12596,6 +12919,12 @@
        "items": {
         "type": "string"
        }
+      },
+      "mix_rule": {
+       "const": "household_paid_litres"
+      },
+      "nts_cars": {
+       "$ref": "#/$defs/nts_cars"
       }
      }
     },
@@ -13176,6 +13505,12 @@
       "n_estimators": {
        "type": "integer",
        "minimum": 1
+      },
+      "gate_calibration": {
+       "enum": [
+        "in_sample",
+        "cross_fitted"
+       ]
       }
      }
     },
@@ -13217,6 +13552,12 @@
       "n_estimators": {
        "type": "integer",
        "minimum": 1
+      },
+      "gate_calibration": {
+       "enum": [
+        "in_sample",
+        "cross_fitted"
+       ]
       }
      }
     },

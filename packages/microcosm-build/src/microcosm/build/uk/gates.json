@@ -440,12 +440,12 @@
         "maximum_relative_deviation": 1e-09,
         "maximum_stratum_shortfall": 0.01,
         "amount_scale_bounds": [
-          0.5,
+          0.3,
           2.5
         ],
         "required_support_band": "30+"
       },
-      "notes": "Stage-time fact check on the lcfs gambling_participation receipt (microcosm#1359): each key's adult participation rates (the National Lottery's products, and the betting and gaming the other gambling duties charge; past four weeks and past twelve months, by sex and age band) are recomputed from the vendored GSGB 2025 rows through the stage's own declaration, never taken from the receipt, and must equal the receipt's, and the receipt's settings (theta per key, the occasional players' stake share, the strata, the propensity classifier, the seed and the salt) must be the declared ones. Per key, each household stratum the receipt gives must sit within maximum_stratum_shortfall of its four-week target and from there of its twelve-month target, or add no household where the diary already passed a target; the national shares must reach the targets less that shortfall; no added household may lack a stake; the three classes' shares of the key's stakes must sum to one; the scale that brings the added regular players' mean stake to the seen households' must lie in amount_scale_bounds, so a broken stake draw that the anchoring would otherwise hide fails (Vahid's review, round 4; the upper bound rose from 2.0 to 2.5 on María's ruling of 2026-10-26, since full spine builds scale the National Lottery's added regular players by about 2.03); the propensity must rest on 30 or more donors; and the excise levelling must have shared the gambling bases by the topped-up keys, each key positive on its twelve-month share. The receipt withholds a stratum with a cell on one or two source households, which the gate counts rather than checks; a key withheld nationally fails. The rates are recomputed from the same vendored rows the stage read, so the check catches a step that did not apply the declared rates or settings; it cannot catch an error in the rows themselves, and the stratum targets, which need the frame's adults, are the step's own (it refuses a stratum it cannot fill). A population fact check: the synthetic smoke records it without blocking."
+      "notes": "Stage-time fact check on the lcfs gambling_participation receipt (microcosm#1359): each key's adult participation rates (the National Lottery's products, and the betting and gaming the other gambling duties charge; past four weeks and past twelve months, by sex and age band) are recomputed from the vendored GSGB 2025 rows through the stage's own declaration, never taken from the receipt, and must equal the receipt's, and the receipt's settings (theta per key, the occasional players' stake share, the strata, the propensity classifier, the seed and the salt) must be the declared ones. Per key, each household stratum the receipt gives must sit within maximum_stratum_shortfall of its four-week target and from there of its twelve-month target, or add no household where the diary already passed a target; the national shares must reach the targets less that shortfall; no added household may lack a stake; the three classes' shares of the key's stakes must sum to one; the scale that brings the added regular players' mean stake to the seen households' must lie in amount_scale_bounds, so a broken stake draw that the anchoring would otherwise hide fails (Vahid's review, round 4; the upper bound rose from 2.0 to 2.5 on María's ruling of 2026-10-26, since full spine builds scale the National Lottery's added regular players by about 2.03; the lower bound fell from 0.5 to 0.3 on her ruling of 2026-11-03, since the chain's cross-fitted sign gates (microcosm#1359) draw betting and gaming for more of the diary's households at about the donors' own stake per player, which takes that key's scale to about 0.41); the propensity must rest on 30 or more donors; and the excise levelling must have shared the gambling bases by the topped-up keys, each key positive on its twelve-month share. The receipt withholds a stratum with a cell on one or two source households, which the gate counts rather than checks; a key withheld nationally fails. The rates are recomputed from the same vendored rows the stage read, so the check catches a step that did not apply the declared rates or settings; it cannot catch an error in the rows themselves, and the stratum targets, which need the frame's adults, are the step's own (it refuses a stratum it cannot fill). A population fact check: the synthetic smoke records it without blocking."
     },
     {
       "id": "uk_stage_lcfs_consumption_basis",
@@ -597,6 +597,20 @@
       "notes": "Stage-time SPI redraw identity gate over the HMRC SPI income spine receipt."
     },
     {
+      "id": "uk_stage_hmrc_spi_income_spine_hourly_pay",
+      "gate": "stage_health",
+      "phase": "transferred",
+      "criticality": "release_blocking",
+      "evidence_absent_blocks": true,
+      "population_fact_check": true,
+      "parameters": {
+        "stage": "hmrc_spi_income_spine",
+        "check": "spi_hourly_pay",
+        "maximum_share_above_frs": 0.02
+      },
+      "notes": "Stage-time hourly-pay check over the employment pay floor receipt (uk-data#629): no eligible drawn SPI employee keeps pay below its floor (its twin's hours at the lower of the minimum wage for its age and the twin's own hourly pay), and the drawn employees' weighted share below the minimum wage for their age after the floor is at most the FRS employees' own share plus maximum_share_above_frs. A withheld share (one or two source households on a side) is not judged. A synthetic smoke build records a failure without blocking on it (population_fact_check)."
+    },
+    {
       "id": "uk_stage_spi_benefit_coherence",
       "gate": "stage_health",
       "phase": "transferred",
@@ -606,7 +620,6 @@
         "stage": "spi_benefit_coherence",
         "check": "spi_benefit_coherence",
         "zeroed_columns": [
-          "jsa_contrib_reported",
           "jsa_income_reported",
           "esa_income_reported",
           "income_support_reported",
@@ -621,9 +634,13 @@
           "bsp_reported",
           "war_widows_pension_reported",
           "widowed_parents_allowance_reported"
+        ],
+        "restored_within_earnings_limit_columns": [
+          "jsa_contrib_reported",
+          "esa_contrib_reported"
         ]
       },
-      "notes": "Stage-time structural gate over the SPI benefit coherence receipt (microcosm#1095, uk-data#514): no SPI-channel row keeps a zeroed legacy report, every restored report equals the FRS twin's, receives_benefits_in_own_right agrees with each person's own reports, FRS rows are unchanged, every SPI benefit unit with a Universal Credit reporter claims, and no SPI unit outside the Universal Credit age population claims without reporting."
+      "notes": "Stage-time structural gate over the SPI benefit coherence receipt (microcosm#1095, uk-data#514): no SPI-channel row keeps a zeroed legacy report, every restored report equals the FRS twin's, contributory JSA and ESA follow the twin's within each benefit's own earnings and hours limits, JSA's award cut by the earnings above its disregard, and are nil outside them (B10, María's ruling of 29 October 2026; JSA's own limits from Vahid's review of microcosm#1426), receives_benefits_in_own_right agrees with each person's own reports, FRS rows are unchanged, every SPI benefit unit with a Universal Credit reporter claims, and no SPI unit outside the Universal Credit age population claims without reporting."
     },
     {
       "id": "uk_stage_uc_take_up",
@@ -635,9 +652,10 @@
       "parameters": {
         "stage": "uc_take_up",
         "check": "uc_take_up",
-        "maximum_caseload_deviation": 0.055
+        "maximum_caseload_deviation": 0.055,
+        "maximum_reachable_pool_deviation": 0.055
       },
-      "notes": "Stage-time gate over the Universal Credit take-up receipt (microcosm#1334): every reporter claims and no unit outside the draw changes; in each DWP family type the pools whose target is reachable realize DWP's calendar-2025 caseload within 0.055 of it at the stage's weights, Great Britain only, counting units the engine moves off their legacy benefits at their expected claim at the closure; and the family type's caseload is no further from DWP's than before the redraw, give or take 0.055 of DWP's count. The tolerance was 0.05 until microcosm#1418: routing gilt interest out of dividend_income reshuffles the SPI channel's draws. In the savings follow-up (microcosm#1428), small upstream changes moved single people's GBP 1,000 to 1,100 band into a pool whose DWP count exceeds its entitled units, and the family type's caseload ended 0.0568, then 0.0674, of DWP's count further from it than before the redraw. The stage now joins a pool that cannot meet its count to the adjacent pool with more room for its gap, so a family type's caseload lands on DWP's wherever its entitled units allow, and the tolerance stays at 0.055 (María's ruling of 2026-10-31). The terminal take-up signal gate no longer measures would_claim_uc, whose rate is now set by award band and family type, not as one share of the age population."
+      "notes": "Stage-time gate over the Universal Credit take-up receipt (microcosm#1334): every reporter claims and no unit outside the draw changes; in each DWP family type the pools whose target is reachable realize DWP's calendar-2025 caseload within 0.055 of it at the stage's weights (maximum_reachable_pool_deviation), Great Britain only, counting units the engine moves off their legacy benefits at their expected claim at the closure; and the family type's caseload is no further from DWP's than before the redraw, give or take 0.055 of DWP's count (maximum_caseload_deviation). The tolerance was 0.05 until microcosm#1418: routing gilt interest out of dividend_income reshuffles the SPI channel's draws. In the savings follow-up (microcosm#1428), small upstream changes moved single people's GBP 1,000 to 1,100 band into a pool whose DWP count exceeds its entitled units, and the family type's caseload ended 0.0568, then 0.0674, of DWP's count further from it than before the redraw. The stage now joins a pool that cannot meet its count to the adjacent pool with more room for its gap, so a family type's caseload lands on DWP's wherever its entitled units allow, and the tolerance stays at 0.055 (María's ruling of 2026-10-31). The SPI employment pay floor (uk-data#629) moves single people's caseload before the redraw close to DWP's; before the pool joining, the redraw's usual downward move then read as about twice 0.055 of DWP's count, so maximum_caseload_deviation was 0.12 from María's ruling of 2026-10-29. With the pool joining every family type ends closer to DWP's count after the redraw than before it (the T1426 spine, #1426 at 97fd4d0e4), so it is 0.055 again (María's ruling of 2026-11-02). It holds on t1426m (#1426 at 2b49a00ac), the spine on the current base, where single people, the family type that moves least, end 0.016 of DWP's count closer than before the redraw. The terminal take-up signal gate no longer measures would_claim_uc, whose rate is now set by award band and family type, not as one share of the age population."
     },
     {
       "id": "uk_stage_pension_credit_take_up",
@@ -1376,6 +1394,11 @@
           "person.company_car_electric_range",
           "person.company_car_capital_contributions",
           "person.company_car_private_fuel_provided",
+          "person.car_fuel_type",
+          "person.car_co2_emissions",
+          "person.car_engine_size",
+          "person.car_first_registration_date",
+          "person.car_is_ved_exempt",
           "person.individual_savings_account_interest_income",
           "person.local_bus_single_fare_share",
           "person.local_bus_trips",
@@ -1413,6 +1436,7 @@
           "person.uc_is_in_startup_period",
           "person.uc_is_in_gainful_self_employment",
           "person.is_looked_after_by_local_authority",
+          "person.child_limit_non_parental_caring_exception",
           "person.would_claim_carers_allowance",
           "person.would_claim_marriage_allowance",
           "person.would_claim_scp",

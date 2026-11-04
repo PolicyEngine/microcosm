@@ -816,7 +816,16 @@ def _reported_ssi_anchor(person: pd.DataFrame, *, age: np.ndarray) -> np.ndarray
 def _person_ssi_disability_predictors(frame: Frame) -> pd.DataFrame:
     """Build the exact nineteen predictors on every recipient support row."""
 
-    person = frame.table("person")
+    return _person_table_ssi_disability_predictors(frame.table("person"))
+
+
+def _person_table_ssi_disability_predictors(person: pd.DataFrame) -> pd.DataFrame:
+    """The nineteen predictors from one person table.
+
+    Shared with the ACS local lane, which builds a CPS-named view of its ACS
+    rows (:mod:`~microcosm.build.us_runtime.acs_local_ssi_disability`).
+    """
+
     required = {
         "person_household_id",
         "bank_account_assets",
@@ -982,6 +991,75 @@ def _weighted_replacement_sample(donor: pd.DataFrame) -> pd.DataFrame:
     return donor.iloc[selected].reset_index(drop=True)
 
 
+def _ssi_disability_training_sample(donor: pd.DataFrame) -> pd.DataFrame:
+    """Validate the SIPP donor and draw the archived weighted training sample."""
+
+    required = {
+        *SIPP_SSI_DISABILITY_MODEL_PREDICTORS,
+        _OUTPUT,
+        _DONOR_WEIGHT_COLUMN,
+    }
+    missing = sorted(required - set(donor.columns))
+    if missing:
+        raise ValueError(f"SIPP SSI disability donor missing column(s): {missing}.")
+
+    training = donor.loc[
+        :, [*SIPP_SSI_DISABILITY_MODEL_PREDICTORS, _OUTPUT, _DONOR_WEIGHT_COLUMN]
+    ].copy()
+    for column in [*SIPP_SSI_DISABILITY_MODEL_PREDICTORS, _DONOR_WEIGHT_COLUMN]:
+        training[column] = pd.to_numeric(training[column], errors="coerce")
+    values = training.loc[
+        :, [*SIPP_SSI_DISABILITY_MODEL_PREDICTORS, _DONOR_WEIGHT_COLUMN]
+    ].to_numpy(dtype=np.float64)
+    if not np.isfinite(values).all():
+        raise ValueError("SIPP SSI disability donor predictors/weights must be finite.")
+    target = pd.to_numeric(training[_OUTPUT], errors="coerce").to_numpy(
+        dtype=np.float64
+    )
+    if not (np.isfinite(target) & np.isin(target, [0.0, 1.0])).all():
+        raise ValueError("SIPP SSI disability donor target must be boolean.")
+    if np.unique(target).size != 2:
+        raise ValueError("SIPP SSI disability donor target must contain both classes.")
+    training[_OUTPUT] = target
+    return _weighted_replacement_sample(training)
+
+
+def _fit_ssi_disability_model(training: pd.DataFrame, *, n_estimators: int) -> Any:
+    """Fit the archived forest (fixed model seed) on the training sample."""
+
+    global QRF
+    if QRF is None:
+        from importlib import import_module
+
+        QRF = import_module("microcosm.fit").QRF
+    return QRF(n_estimators=int(n_estimators), seed=_ARCHIVED_MODEL_SEED).fit(
+        training,
+        predictors=list(SIPP_SSI_DISABILITY_MODEL_PREDICTORS),
+        targets=[_OUTPUT],
+        weights="none",
+    )
+
+
+def _archived_disability_signal(receiver: pd.DataFrame) -> np.ndarray:
+    """The archived post-prediction screen.
+
+    A QRF positive is kept only for a person with a measured difficulty,
+    positive Social Security disability, or other disability income.
+    """
+
+    difficulty_signal = (
+        receiver.loc[:, list(SIPP_SSI_DISABILITY_DIFFICULTY_PREDICTORS)]
+        .astype(bool)
+        .any(axis=1)
+        .to_numpy()
+    )
+    return (
+        difficulty_signal
+        | (receiver["social_security_disability"].to_numpy(dtype=np.float64) > 0.0)
+        | receiver["has_disability_income"].to_numpy(dtype=np.float64).astype(bool)
+    )
+
+
 def impute_us_ssi_disability_criteria(
     frame: Frame,
     donor: pd.DataFrame,
@@ -1002,41 +1080,12 @@ def impute_us_ssi_disability_criteria(
     del seed  # The archived model fixed both its source draw and forest seed.
     if n_estimators < 1:
         raise ValueError("n_estimators must be positive")
-
-    training = donor.loc[
-        :, [*SIPP_SSI_DISABILITY_MODEL_PREDICTORS, _OUTPUT, _DONOR_WEIGHT_COLUMN]
-    ].copy()
-    for column in [*SIPP_SSI_DISABILITY_MODEL_PREDICTORS, _DONOR_WEIGHT_COLUMN]:
-        training[column] = pd.to_numeric(training[column], errors="coerce")
-    values = training.loc[
-        :, [*SIPP_SSI_DISABILITY_MODEL_PREDICTORS, _DONOR_WEIGHT_COLUMN]
-    ].to_numpy(dtype=np.float64)
-    if not np.isfinite(values).all():
-        raise ValueError("SIPP SSI disability donor predictors/weights must be finite.")
-    target = pd.to_numeric(training[_OUTPUT], errors="coerce").to_numpy(
-        dtype=np.float64
-    )
-    if not (np.isfinite(target) & np.isin(target, [0.0, 1.0])).all():
-        raise ValueError("SIPP SSI disability donor target must be boolean.")
-    if np.unique(target).size != 2:
-        raise ValueError("SIPP SSI disability donor target must contain both classes.")
-    training[_OUTPUT] = target
-    training = _weighted_replacement_sample(training)
+    training = _ssi_disability_training_sample(donor)
 
     person = frame.table("person")
     _validate_support_provenance(person)
     receiver = _person_ssi_disability_predictors(frame)
-    global QRF
-    if QRF is None:
-        from importlib import import_module
-
-        QRF = import_module("microcosm.fit").QRF
-    fitted = QRF(n_estimators=int(n_estimators), seed=_ARCHIVED_MODEL_SEED).fit(
-        training,
-        predictors=list(SIPP_SSI_DISABILITY_MODEL_PREDICTORS),
-        targets=[_OUTPUT],
-        weights="none",
-    )
+    fitted = _fit_ssi_disability_model(training, n_estimators=int(n_estimators))
     if not has_support_role_metadata(person, entity="person"):
         prediction = fitted.predict(receiver)
         if _OUTPUT not in prediction:
@@ -1066,18 +1115,7 @@ def impute_us_ssi_disability_criteria(
             predicted[mask] = _coerce_boolean_predictions(prediction[_OUTPUT])
             del channel_model
 
-    difficulty_signal = (
-        receiver.loc[:, list(SIPP_SSI_DISABILITY_DIFFICULTY_PREDICTORS)]
-        .astype(bool)
-        .any(axis=1)
-        .to_numpy()
-    )
-    disability_signal = (
-        difficulty_signal
-        | (receiver["social_security_disability"].to_numpy(dtype=np.float64) > 0.0)
-        | receiver["has_disability_income"].to_numpy(dtype=np.float64).astype(bool)
-    )
-    result = predicted & disability_signal
+    result = predicted & _archived_disability_signal(receiver)
 
     # The archived direct-CPS pass preserves measured SSI reporters.  Its PUF
     # clone override does not, even though raw ASEC columns were duplicated.
@@ -1203,9 +1241,7 @@ def us_ssi_disability_criteria_summary(frame: Frame) -> dict[str, object]:
             clone_divergence_source_people = int((unique > 1).sum())
 
     age_column = "age" if "age" in person else "A_AGE"
-    age = pd.to_numeric(person[age_column], errors="coerce").to_numpy(
-        dtype=np.float64
-    )
+    age = pd.to_numeric(person[age_column], errors="coerce").to_numpy(dtype=np.float64)
     reported = _reported_ssi_anchor(person, age=age) > 0.0
     native_role = np.ones(len(person), dtype=bool)
     if channel_values is not None:

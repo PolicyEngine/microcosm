@@ -1,11 +1,11 @@
 {
- "compiled_count": 1423,
+ "compiled_count": 1425,
  "counts_by_kind": {
   "calibration_drift": 566,
   "fixture_only": 42,
-  "ledger_only": 828
+  "ledger_only": 830
  },
- "difference_count": 1436,
+ "difference_count": 1438,
  "differences": [
   {
    "fixture_value": 1608000.0,
@@ -1915,6 +1915,20 @@
    "kind": "ledger_only",
    "ledger_value": 70030.0,
    "name": "hmrc.child_benefit.families_in_payment.children_5_plus",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 310000.0,
+   "name": "hmrc.child_benefit.hicbc_liable_taxpayers",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 360000000.0,
+   "name": "hmrc.child_benefit.hicbc_revenue",
    "period": 2025,
    "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
   },
