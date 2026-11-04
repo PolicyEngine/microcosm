@@ -1,7 +1,7 @@
 """Publish a release build into its own folder through the emitter.
 
-A release whose builds publish into their own folders (the UK national,
-dense and local-area releases, which
+A release whose builds can publish into their own folders (the UK
+national, dense and local-area releases, which
 ``microcosm.data.contract.publishes_to_build_folder`` names) is handed to the
 separately installed emitter with the interface's ``publish_release`` call.
 Microcosm decides what the build contains and checks it with the release
@@ -10,6 +10,12 @@ contract; the emitter's release writer puts the files in
 ``releases.json`` in one commit, refusing a change that breaks the shared
 rules in ``microcosm_emitter_interface.releases``. Nothing here commits,
 tags or writes a pointer file.
+
+Until a repository switches to ``releases.json``, its releases still publish
+and promote through their ``latest*.json`` pointer files with
+``tools/publish_release.sh``. So the command lists the repository's files
+first and refuses, before any emitter starts, while any pointer file is
+there; the tagged publisher refuses a repository that has ``releases.json``.
 
 A build is current only when the emitter's receipt says so: ``status`` is
 ``published`` and ``current`` is the build. A publication with
@@ -23,9 +29,10 @@ does: it is this command's child process and inherits its environment
 ``TRANSFORMERS_OFFLINE`` too, so with either set the command refuses before
 it starts one, and it hands nothing over until the emitter's write-access
 check passes, as the staged-bundle hand-over does: otherwise the change
-would wait, pending, until the emitter dropped it an hour later.
-Publication sends no Slack alert. The dashboard is to announce release
-changes from ``releases.json``; until it does, these publications raise none.
+would wait, pending, until the emitter dropped it an hour later. The
+command's own listing of the repository's files uses ``huggingface_hub`` in
+this process, with the same credential. Publication sends no Slack alert;
+the dashboard announces changes to ``releases.json``.
 """
 
 from __future__ import annotations
@@ -43,6 +50,7 @@ from microcosm_emitter_interface.publication import (
     ReleaseReceipt,
     unavailable_release_receipt,
 )
+from microcosm_emitter_interface.releases import is_pointer_file
 
 from microcosm.build.staging_dataset import hub_offline, write_access_problem
 from microcosm.build.telemetry_emitter import start_bundle_emitter
@@ -77,19 +85,13 @@ PUBLICATION_WAIT_SECONDS = 2 * 3600.0
 #: How long the command waits for a promotion, which changes only
 #: ``releases.json``.
 PROMOTION_WAIT_SECONDS = 300.0
-_POINTER_FILES = (
-    "The repository still has latest*.json pointer files, and the emitter "
-    "changes no release's current build while any exists, so that they and "
-    "releases.json cannot disagree."
-)
 #: What the emitter's refusal codes mean for the operator, where its own
-#: message does not say what to do next: for a publication, and for a
-#: promotion of a build already published.
+#: message does not say what to do next.
 _REFUSAL_ADVICE = {
     "POINTER_FILES_PRESENT": (
-        f"{_POINTER_FILES} Nothing was published: publish the build without "
-        "--make-current, and make it current with --promote once the pointer "
-        "files are deleted."
+        "The repository has latest*.json pointer files again, so its releases "
+        "publish and promote through them with tools/publish_release.sh until "
+        "it switches to releases.json; nothing was changed."
     ),
     "BUILD_FOLDER_EXISTS": (
         "Another build with this name was published already, with a different "
@@ -103,13 +105,6 @@ _REFUSAL_ADVICE = {
     "REQUEST_EXPIRED": (
         "The change was still waiting an hour after it was handed over, so "
         "the emitter dropped it; run the command again."
-    ),
-}
-_PROMOTION_REFUSAL_ADVICE = {
-    **_REFUSAL_ADVICE,
-    "POINTER_FILES_PRESENT": (
-        f"{_POINTER_FILES} The build stays published but is not current. Run "
-        "this --promote command again once the pointer files are deleted."
     ),
 }
 #: Why the command refuses with ``HF_HUB_OFFLINE`` or ``TRANSFORMERS_OFFLINE``
@@ -158,9 +153,8 @@ class ReleasePublication:
 
     ``wanted_current`` says whether the change asked for the build to become
     current: a promotion, or a publication with ``make_current``.
-    ``promotion`` says whether it was a promotion. ``problem`` says why
-    nothing was handed over, when the emitter could not take the change or
-    its write-access check refused it.
+    ``problem`` says why nothing was handed over, when the emitter could not
+    take the change or its write-access check refused it.
     """
 
     repository: str
@@ -169,7 +163,6 @@ class ReleasePublication:
     wanted_current: bool
     receipt: ReleaseReceipt
     problem: str | None = None
-    promotion: bool = False
 
     @property
     def published(self) -> bool:
@@ -200,9 +193,7 @@ class ReleasePublication:
                 "again later to see whether it landed."
             )
         if status == "refused":
-            advice = (
-                _PROMOTION_REFUSAL_ADVICE if self.promotion else _REFUSAL_ADVICE
-            ).get(str(code))
+            advice = _REFUSAL_ADVICE.get(str(code))
             reason = self.receipt.get("message") or code
             return f"The emitter refused it ({code}): {reason}" + (
                 f" {advice}" if advice else ""
@@ -269,7 +260,6 @@ def _hand_over(
         wanted_current=wanted_current,
         receipt=receipt,
         problem=problem,
-        promotion=isinstance(change, PromoteBuild),
     )
 
 
@@ -277,6 +267,41 @@ def _refuse_offline() -> None:
     """Refuse before an emitter starts when it could not reach the Hub."""
     if hub_offline():
         raise ValueError(_OFFLINE_REFUSAL)
+
+
+def _repository_files(repository: str) -> list[str]:
+    """Every file path on the dataset repository's ``main`` (test seam)."""
+    from huggingface_hub import HfApi
+
+    return list(HfApi().list_repo_files(repository, repo_type="dataset"))
+
+
+def _refuse_pointer_files(repository: str) -> None:
+    """Refuse a repository whose releases still publish through pointer files.
+
+    While any ``latest*.json`` file is in the repository (the interface's
+    ``is_pointer_file`` rule, which the emitter applies too), its releases
+    publish and are made current with tools/publish_release.sh, and only its
+    switch to ``releases.json`` moves them here. A repository whose files
+    cannot be listed is refused too.
+    """
+    try:
+        paths = _repository_files(repository)
+    except (OSError, ValueError) as error:
+        raise ValueError(
+            f"could not list the files of {repository} to check for "
+            f"latest*.json pointer files ({type(error).__name__}: {error}); "
+            "check the Hugging Face credential (HF_TOKEN or `hf auth login`) "
+            "and run the command again"
+        ) from error
+    pointer_files = sorted(path for path in paths if is_pointer_file(path))
+    if pointer_files:
+        raise ValueError(
+            f"{repository} still has the pointer file(s) "
+            f"{', '.join(pointer_files)}, so its releases publish and are made "
+            "current through them with tools/publish_release.sh until it "
+            "switches to releases.json"
+        )
 
 
 def publication_request(
@@ -319,11 +344,15 @@ def publish_release_build(
     queue is the one builds on this machine share, so a change still pending
     when it closes is retried by the next emitter started here. It refuses
     (``ValueError``) before anything else when ``HF_HUB_OFFLINE`` or
-    ``TRANSFORMERS_OFFLINE`` is set, and hands nothing over unless the
-    emitter's write-access check passes.
+    ``TRANSFORMERS_OFFLINE`` is set, then, before the build is checked or any
+    emitter starts, when the repository still has ``latest*.json`` pointer
+    files; it hands nothing over unless the emitter's write-access check
+    passes.
     """
     if client is None:
         _refuse_offline()
+    named_repository, _, _ = build_folder_identity(release_dir)
+    _refuse_pointer_files(named_repository)
     prepared = prepare_build_folder_release(
         release_dir, artifact_root=artifact_root, repository=repository
     )
@@ -354,6 +383,7 @@ def promote_release_build(
             f"release {release!r} names {named_repository} in its artifacts, not "
             f"{repository}."
         )
+    _refuse_pointer_files(named_repository)
     return _hand_over(
         PromoteBuild(repository=named_repository, release=release, build=build),
         client=client,
@@ -429,8 +459,9 @@ def main(argv: list[str] | None = None) -> int:
     A build that fails its checks (the release contract, a file whose bytes
     differ, another repository) is refused with the reason and status 1,
     before any emitter starts, and so is any change while ``HF_HUB_OFFLINE``
-    or ``TRANSFORMERS_OFFLINE`` is set. A change the emitter's write-access
-    check refuses is handed nothing and exits 1 with the reason.
+    or ``TRANSFORMERS_OFFLINE`` is set or while the repository still has
+    ``latest*.json`` pointer files. A change the emitter's write-access check
+    refuses is handed nothing and exits 1 with the reason.
     """
     parser = _parser()
     args = parser.parse_args(argv)

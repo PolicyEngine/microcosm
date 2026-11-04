@@ -1,22 +1,23 @@
 """Resolve, verify, download, and load a certified microcosm release.
 
-A release whose builds publish into their own folders (the registry's UK
-2025 national and dense entries) is read through the repository's
-``releases.json``: the record names the release's current build (or
-``build=`` pins a listed one), the loader reads
-``releases/<release>/<build>/release_manifest.json``, downloads the dataset
-that manifest names from the same folder, verifies its SHA-256, and enforces
-the certified model/Core versions before constructing the engine dataset.
-Build folders never change after publishing, so every file is read at
-``main``.
+A registry entry that names a release whose builds can publish into their
+own folders (the UK 2025 national and dense entries) is read through the
+repository's ``releases.json`` once the repository has one: the record names
+the release's current build (or ``build=`` pins a listed one), the loader
+reads ``releases/<release>/<build>/release_manifest.json``, downloads the
+dataset that manifest names from the same folder, verifies its SHA-256, and
+enforces the certified model/Core versions before constructing the engine
+dataset. Build folders never change after publishing, so every file is read
+at ``main``.
 
-A release that keeps the tagged layout (every US entry, and UK 2023) follows
-the repository's release certificate: resolve the registry-selected pointer,
-read that release's manifest at the pointer's immutable revision, download
-the manifest-selected dataset at the same revision and check it the same way.
-Its mutable root artifacts are available only through the explicitly unsafe
-``load(..., unverified_root=True)`` escape hatch; a build-folder release has
-no root file.
+A repository without ``releases.json`` (every repository until its switch to
+build folders) follows the release certificate as before: resolve the
+registry-selected pointer (``latest.json``, or a UK release's
+``latest-<line>.json``), read that release's manifest at the pointer's
+immutable revision, download the manifest-selected dataset at the same
+revision and check it the same way. Its mutable root artifacts are available
+only through the explicitly unsafe ``load(..., unverified_root=True)`` escape
+hatch; a repository with ``releases.json`` has no root file.
 """
 
 from __future__ import annotations
@@ -42,12 +43,16 @@ from microcosm.data.contract import (
     NON_DEFAULT_LOCAL_AREA_DATASET_ROLE,
     RELEASE_MANIFEST_SCHEMA_VERSION,
     RELEASE_ROLES,
+    dataset_role_for_line,
 )
 from microcosm.data.registry import DEFAULT_VARIANT, REGISTRY, DatasetSpec
 from microcosm.data.release import (
     LATEST_POINTER_PATH,
+    LINE_POINTER_PATH_TEMPLATE,
     LatestPointer,
+    latest_line_release,
     latest_release,
+    line_pointer_path,
 )
 from microcosm.data.releases_record import (
     RELEASES_RECORD_PATH,
@@ -65,7 +70,27 @@ __all__ = [
 ]
 
 _SHA256_PATTERN = re.compile(r"[0-9a-fA-F]{64}")
+_LINE_POINTER_PATH_PATTERN = re.compile(
+    re.escape(LINE_POINTER_PATH_TEMPLATE).replace(re.escape("{line}"), r"(?P<line>.+)")
+)
 _HubDownload = Callable[..., str]
+#: The exception names that mean a file is absent from the repository (the
+#: Hub's ``EntryNotFoundError``, or a test fake's ``FileNotFoundError``),
+#: and nothing else.
+_ABSENT_FILE_ERRORS = frozenset({"EntryNotFoundError", "FileNotFoundError"})
+
+
+def _line_from_pointer_path(pointer_path: str) -> str | None:
+    """Invert the shared line-pointer template and validate its line."""
+    match = _LINE_POINTER_PATH_PATTERN.fullmatch(pointer_path)
+    if match is None:
+        return None
+    line = match.group("line")
+    try:
+        rendered_path = line_pointer_path(line)
+    except ValueError:
+        return None
+    return line if rendered_path == pointer_path else None
 
 
 @dataclass(frozen=True)
@@ -320,6 +345,19 @@ def _certified_release_from_manifest(
         raise ValueError(
             f"Release {release_id!r} has unknown dataset_role {dataset_role!r}."
         )
+    pointer_line = (
+        None if build_folder_release else _line_from_pointer_path(spec.pointer_path)
+    )
+    if pointer_line is not None:
+        # A line pointer carries one role: the manifest it names must
+        # declare it, whatever its release id says.
+        expected_role = dataset_role_for_line(pointer_line)
+        if dataset_role != expected_role:
+            raise ValueError(
+                f"Release {release_id!r} declares dataset_role {dataset_role!r}; "
+                f"{spec.pointer_path!r} follows line {pointer_line!r}, which "
+                f"publishes only {expected_role!r} releases."
+            )
     if build_folder_release and release_role != RELEASE_ROLES[dataset_role]:
         # releases.json gives a release one role, so a manifest whose role
         # differs is not this release's, whatever its names say.
@@ -339,11 +377,12 @@ def _certified_release_from_manifest(
             )
         artifact_label = "default"
     else:
-        if not build_folder_release:
+        if not build_folder_release and pointer_line is None:
             raise ValueError(
                 f"Release {release_id!r} declares dataset_role "
                 f"{NON_DEFAULT_LOCAL_AREA_DATASET_ROLE!r}; a local-area release "
-                "is loaded from its build folder through releases.json, not "
+                "is loaded from its build folder through releases.json, or "
+                f"through a {LINE_POINTER_PATH_TEMPLATE!r} line pointer, not "
                 f"{spec.pointer_path!r}."
             )
         if default_datasets != {}:
@@ -490,39 +529,69 @@ def _sha256(path: Path) -> str:
 def _pointer_for(
     spec: DatasetSpec, *, hub_download: _HubDownload | None = None
 ) -> LatestPointer:
-    """Read the release pointer configured for a tagged release's ``spec``."""
-    if spec.pointer_path != LATEST_POINTER_PATH:
-        raise ValueError(
-            f"Unsupported release pointer path {spec.pointer_path!r} for {spec.key}; "
-            f"a tagged release follows {LATEST_POINTER_PATH!r}, and a release "
-            "whose builds publish into their own folders is named by the "
-            "registry entry's release."
-        )
+    """Read the release pointer configured for ``spec``."""
     if hub_download is None:
         hub_download = _hub_download()
-    return latest_release(
-        spec.hf_repo, api=SimpleNamespace(hf_hub_download=hub_download)
+    api = SimpleNamespace(hf_hub_download=hub_download)
+    if spec.pointer_path == LATEST_POINTER_PATH:
+        return latest_release(spec.hf_repo, api=api)
+    line = _line_from_pointer_path(spec.pointer_path)
+    if line is not None:
+        return latest_line_release(
+            spec.hf_repo,
+            line=line,
+            api=api,
+        )
+    raise ValueError(
+        f"Unsupported release pointer path {spec.pointer_path!r} for {spec.key}; "
+        f"expected {LATEST_POINTER_PATH!r} or the "
+        f"{LINE_POINTER_PATH_TEMPLATE!r} line-pointer form."
     )
 
 
+def _is_absent_file_error(exc: BaseException) -> bool:
+    """Whether a download failed only because the file is not there."""
+    return bool({cls.__name__ for cls in type(exc).__mro__} & _ABSENT_FILE_ERRORS)
+
+
+def _releases_record_bytes(
+    spec: DatasetSpec, *, hub_download: _HubDownload
+) -> bytes | None:
+    """The repository's ``releases.json``, or ``None`` when it has none.
+
+    Until its switch to build folders a repository has no ``releases.json``,
+    and its releases are found through their pointer files. Only the file's
+    absence means that (offline, a file that was never cached counts as
+    absent, as the pointer files then are); any other failure propagates.
+    """
+    try:
+        record_path = hub_download(
+            repo_id=spec.hf_repo, filename=RELEASES_RECORD_PATH, repo_type="dataset"
+        )
+    except Exception as exc:
+        if _is_absent_file_error(exc):
+            return None
+        raise
+    return Path(record_path).read_bytes()
+
+
 def _resolve_build_folder_release(
-    spec: DatasetSpec, *, build: str | None, hub_download: _HubDownload
+    spec: DatasetSpec,
+    *,
+    record_bytes: bytes,
+    build: str | None,
+    hub_download: _HubDownload,
 ) -> _CertifiedRelease:
     """Select a build of ``spec.release`` from ``releases.json`` and check it.
 
     The current build, unless ``build`` pins a listed one; a pinned build
     that has been withdrawn loads with a warning, since a pin is a deliberate
-    choice. A missing ``releases.json`` raises the Hub's own error.
+    choice.
     """
     release = spec.release
     assert release is not None
-    record_path = Path(
-        hub_download(
-            repo_id=spec.hf_repo, filename=RELEASES_RECORD_PATH, repo_type="dataset"
-        )
-    )
     try:
-        record = parse_releases_record(record_path.read_bytes())
+        record = parse_releases_record(record_bytes)
     except ValueError as exc:
         raise ValueError(
             f"{RELEASES_RECORD_PATH} in {spec.hf_repo} is not a valid release "
@@ -579,9 +648,10 @@ def _resolve_certified_release(
 ) -> _CertifiedRelease:
     """Resolve and validate the release's selected build and its manifest.
 
-    A build-folder release reads ``releases.json``; a tagged release follows
-    its pointer to a pinned manifest, and ``build`` cannot pin one of its
-    builds.
+    An entry that names a release reads the repository's ``releases.json``
+    when it has one. Otherwise, and for every other entry, the loader follows
+    the entry's pointer to a pinned manifest, and ``build`` cannot pin a
+    build.
     """
     if spec.release is None and build is not None:
         raise ValueError(
@@ -591,9 +661,20 @@ def _resolve_certified_release(
     if hub_download is None:
         hub_download = _hub_download()
     if spec.release is not None:
-        return _resolve_build_folder_release(
-            spec, build=build, hub_download=hub_download
-        )
+        record_bytes = _releases_record_bytes(spec, hub_download=hub_download)
+        if record_bytes is not None:
+            return _resolve_build_folder_release(
+                spec,
+                record_bytes=record_bytes,
+                build=build,
+                hub_download=hub_download,
+            )
+        if build is not None:
+            raise ValueError(
+                f"{spec.hf_repo} has no releases.json yet, so build= cannot pin a "
+                f"build of {spec.release!r}; its current build is the one "
+                f"{spec.pointer_path} names."
+            )
     pointer = _pointer_for(spec, hub_download=hub_download)
     manifest_path = Path(
         hub_download(
@@ -640,11 +721,6 @@ def _verified_download(
 
 
 def _unverified_root_download(spec: DatasetSpec) -> Path:
-    if spec.release is not None:
-        raise ValueError(
-            f"Release {spec.release!r} publishes each build into its own folder "
-            "and has no root file to load unverified; load its current build."
-        )
     return Path(
         _hub_download()(
             repo_id=spec.hf_repo,
@@ -663,9 +739,10 @@ def download(
 ) -> Path:
     """Download and SHA-verify a certified release artifact.
 
-    A build-folder release's current build (or the listed ``build`` it pins)
-    comes from ``releases.json``, and its manifest and dataset from that
-    build's folder. A tagged release's mutable pointer selects a release;
+    Where the repository has ``releases.json``, a release's current build
+    (or the listed ``build`` it pins) comes from it, and its manifest and
+    dataset from that build's folder. Otherwise the entry's mutable pointer
+    selects a release;
     both its manifest and dataset artifact are then fetched at the pointer's
     immutable revision. Uses the Hugging Face cache, so repeated calls do not
     re-download unchanged files.
@@ -735,24 +812,30 @@ def load(
         year: Population year; ``None`` loads the latest published year.
         variant: Dataset variant; ``"compact"`` is the default fast national
             microsimulation artifact.
-        unverified_root: Load a tagged release's mutable root convenience
-            artifact while bypassing release metadata, SHA-256, and engine
-            certification. This unsafe compatibility escape hatch emits a
-            loud warning; a build-folder release has no root file.
-        build: Load this listed build of a build-folder release instead of
-            its current one.
+        unverified_root: Load the mutable root convenience artifact while
+            bypassing release metadata, SHA-256, and engine certification.
+            This unsafe compatibility escape hatch emits a loud warning; a
+            repository that records its builds in ``releases.json`` has no
+            root file.
+        build: Load this listed build of a release recorded in the
+            repository's ``releases.json`` instead of its current one.
 
     Raises:
         ImportError: If the country engine is not installed.
         ValueError: If release verification or engine compatibility fails.
     """
     spec = resolve(country, year, variant=variant)
-    if unverified_root and (spec.release is not None or build is not None):
+    if unverified_root and build is not None:
+        raise ValueError("unverified_root cannot be combined with build=.")
+    if (
+        unverified_root
+        and spec.release is not None
+        and _releases_record_bytes(spec, hub_download=_hub_download()) is not None
+    ):
         raise ValueError(
-            f"{spec.key} publishes each build into its own folder and has no "
-            "root file to load unverified; load a build without unverified_root."
-            if spec.release is not None
-            else "unverified_root cannot be combined with build=."
+            f"{spec.hf_repo} records the builds of {spec.release!r} in "
+            "releases.json, and has no root file to load unverified; load a "
+            "build without unverified_root."
         )
     dataset_class = _dataset_class(spec)
     if unverified_root:

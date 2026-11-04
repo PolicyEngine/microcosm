@@ -70,6 +70,7 @@ from microcosm.data.contract import (
     validate_evidence_release_dir,
     validate_release_dir,
 )
+from microcosm.data.releases_record import RELEASES_RECORD_PATH
 from microcosm.data.slack import notify_release
 
 __all__ = [
@@ -1024,6 +1025,34 @@ def _repo_revision(api: object, *, repo_id: str) -> str | None:
     return str(value) if value else None
 
 
+def _refuse_releases_record(api: object, *, repo_id: str, revision: str | None) -> None:
+    """Refuse a repository that records its builds in ``releases.json``.
+
+    Such a repository publishes each build into its own folder through the
+    emitter, and ``releases.json`` is the only record of which build is
+    current; a tag or ``latest*.json`` pointer file written beside it would
+    disagree with the record. Only the file's absence lets the publication
+    go on; any other failure to read it propagates.
+    """
+    try:
+        api.hf_hub_download(
+            repo_id=repo_id,
+            filename=RELEASES_RECORD_PATH,
+            repo_type="dataset",
+            revision=revision,
+        )
+    except Exception as exc:
+        if _is_absent_entry_error(exc):
+            return
+        raise
+    raise ValueError(
+        f"{repo_id} records its builds in {RELEASES_RECORD_PATH}, so this "
+        "publisher, which tags each build and writes latest*.json pointer "
+        "files, refuses it; publish its builds with "
+        "`microcosm-publish-release-build`."
+    )
+
+
 def _publish_atomic(
     api: object,
     *,
@@ -1044,6 +1073,9 @@ def _publish_atomic(
 ) -> None:
     staging_branch = f"release-staging/{release_id}"
     main_revision = _repo_revision(api, repo_id=repo_id)
+    # The main commit below is made on main_revision, so a releases.json
+    # added after this check makes it fail rather than land beside it.
+    _refuse_releases_record(api, repo_id=repo_id, revision=main_revision)
     existing_revision = (
         _tag_revision(api, repo_id=repo_id, tag=tag) if create_tag else None
     )
