@@ -26,6 +26,19 @@ Run the stage (paid; sized per stage in the plan module)::
 ``--spawn`` returns once the stage is spawned; ``--run`` alone waits on it
 (see ``main``).
 
+With ``--run``, the launch first runs this machine's ``microcosm-emitter
+telemetry-token``, which exchanges the operator's Hugging Face login for a
+collector token that only writes telemetry and lasts the stage's class
+timeout plus an hour. It reaches the container in a Modal secret made for
+this launch, never in the plan, and the stage's build gets it so that its
+emitter can send telemetry; no Hugging Face credential reaches the build.
+The launch refuses, launching nothing, when the token cannot be obtained or
+is shorter than asked for. A plan with ``MICROCOSM_TELEMETRY_REQUIRED=0``
+in its env asks for none, and its build runs without telemetry. That
+opt-out exists only for people outside PolicyEngine who run Microcosm
+without access to the collector; PolicyEngine's own plans keep telemetry
+required.
+
 Set ``MICROCOSM_MODAL_HF_SECRET=<modal secret name>`` only when an input
 lives in a gated or private Hugging Face repo; public releases need no
 token, and no secret is attached otherwise. Nothing here uploads to the Hub
@@ -230,8 +243,12 @@ def _cpu_visibility() -> dict[str, object]:
     }
 
 
-def _emitter_version() -> dict[str, object] | None:
-    """The installed emitter's ``version`` answer, or None if it does not run."""
+def _emitter_version() -> plan_lib.EmitterVersionAnswer | None:
+    """The installed emitter's ``version`` answer, or None if it does not run.
+
+    It runs without the runner's credentials or the collector token, which
+    ``version`` does not need.
+    """
 
     try:
         answer = subprocess.run(
@@ -239,6 +256,7 @@ def _emitter_version() -> dict[str, object] | None:
             capture_output=True,
             text=True,
             timeout=60,
+            env=plan_lib.emitter_query_environment(os.environ),
         )
         version = json.loads(answer.stdout) if answer.returncode == 0 else None
     except (OSError, subprocess.SubprocessError, ValueError):
@@ -696,6 +714,13 @@ def check_stage(plan_data: dict) -> dict:
         problems.append(
             f"the emitter command {plan_lib.IMAGE_EMITTER_COMMAND} does not run"
         )
+    # A check asks for no collector token; whether the image's emitter could
+    # take one, which the paid run refuses without.
+    report["telemetry"], telemetry_problem = plan_lib.telemetry_check_report(
+        plan, report["emitter"]
+    )
+    if telemetry_problem:
+        problems.append(telemetry_problem)
 
     argv = plan_lib.planned_argv(plan)
     parse = (
@@ -756,7 +781,11 @@ def check_stage(plan_data: dict) -> dict:
 
 
 class _Refusal(plan_lib.PlanError):
-    """The lock or the budget stopped an attempt before it staged anything."""
+    """A check stopped an attempt before it staged anything.
+
+    The run's lock, its budget, the work disk, the hash seed, or the
+    collector token. The attempt record is finished, so nothing is charged.
+    """
 
 
 def _run_stage(plan_data: dict) -> dict:
@@ -788,7 +817,7 @@ def _run_stage(plan_data: dict) -> dict:
     #    lock wait, staging, the tool, hashing and mirroring are all charged
     #    if preemption cuts the attempt short. Any exception from here on
     #    leaves the attempt unfinished (charged) with outcome "error"; only a
-    #    receipt or a refusal by the lock or the budget finishes it.
+    #    receipt or a refusal before staging (_Refusal) finishes it.
     plan_sha256 = plan_lib.plan_digest(plan_data)
     attempt = _Attempt(plan, plan_sha256, container_started)
     attempt.write()
@@ -796,14 +825,20 @@ def _run_stage(plan_data: dict) -> dict:
     try:
         return _attempt_stage(plan, plan_data, plan_sha256, attempt, git)
     except _Refusal as refusal:
-        attempt.end(plan_lib.OUTCOME_REFUSED, finished=True, note=str(refusal)[:500])
+        attempt.end(
+            plan_lib.OUTCOME_REFUSED,
+            finished=True,
+            note=str(refusal)[: plan_lib.ATTEMPT_NOTE_MAX_CHARS],
+        )
         raise
     except BaseException as error:
         try:
             attempt.end(
                 plan_lib.OUTCOME_ERROR,
                 finished=False,
-                note=f"{type(error).__name__}: {error}"[:500],
+                note=f"{type(error).__name__}: {error}"[
+                    : plan_lib.ATTEMPT_NOTE_MAX_CHARS
+                ],
             )
         except Exception as record_error:  # noqa: BLE001 - keep the first error
             print(f"attempt record failed: {record_error}", flush=True)
@@ -878,6 +913,20 @@ def _attempt_stage(
     seed_problem = plan_lib.hash_seed_problem(env)
     if seed_problem:
         raise _Refusal(seed_problem)
+
+    # 4d. Telemetry, before anything is pulled or staged: unless the plan
+    #     sets MICROCOSM_TELEMETRY_REQUIRED=0, the collector token from the
+    #     launch's secret must be complete, come from the collector the
+    #     image's emitter sends to, and stay usable as long as the emitter may
+    #     send it: past the budget's SIGKILL of the tool (its SIGTERM plus
+    #     STOP_GRACE_SECONDS) and the emitter's drain (token_needed_until). A
+    #     preemption restart too long after the launch is refused here too;
+    #     the operator launches again.
+    telemetry, telemetry_problem = plan_lib.telemetry_check(
+        plan, os.environ, _emitter_version(), container_started=attempt.started
+    )
+    if telemetry_problem:
+        raise _Refusal(telemetry_problem)
 
     # 5. This run's prior state (checkpoints, calibrated H5) onto local disk,
     #    hashed as it is copied and verified against the run's latest receipt
@@ -1013,6 +1062,9 @@ def _attempt_stage(
             "home_seeds": home_seeds,
             "input_links": input_links,
             "tool_budget": tool_budget,
+            # The token's expiry and origin, never its value; the
+            # undelivered-event count is not recorded yet (telemetry_check).
+            "telemetry": telemetry,
         },
         prior_receipts=prior,
         stopped_at_budget=budget.fired,
@@ -1207,6 +1259,15 @@ def main(run: bool = False, spawn: bool = False) -> None:
     a rejected plan, a refusal or an exception, which ``_run_stage``
     re-raises. Every attempt of a run shares its run_id, so match the attempt
     record by ``modal.function_call_id`` and the receipt by ``attempt_id``.
+
+    Before either, ``--run`` obtains the stage's collector token from this
+    machine's emitter (``plan_lib.request_telemetry_token``) and attaches it
+    in a Modal secret made for this launch, unless the plan sets
+    ``MICROCOSM_TELEMETRY_REQUIRED=0``. It refuses to launch, launching
+    nothing, when the token cannot be obtained. The plan sent to the stage is
+    unchanged, so its digest and the attempt budget keyed on it stay the
+    same, and no receipt copies the token. The output shows the token's
+    expiry and origin, never its value.
     """
 
     assert _LOADED is not None
@@ -1221,6 +1282,25 @@ def main(run: bool = False, spawn: bool = False) -> None:
         print("CHECK OK")
         return
     runner = RUNNERS[(plan.resources.name, plan.nonpreemptible)]
+    try:
+        token = plan_lib.request_telemetry_token(plan, os.environ)
+    except plan_lib.PlanError as error:
+        raise SystemExit(f"REFUSED to launch: {error}") from None
+    if token is None:
+        print(
+            f"TELEMETRY: the plan sets {plan_lib.TELEMETRY_REQUIRED_ENV}=0, so no "
+            "collector token was requested and the stage runs without telemetry "
+            "(an opt-out only for people outside PolicyEngine without access to "
+            "the collector)",
+            file=sys.stderr,
+        )
+    else:
+        # with_options replaces the function's secrets, so the Hub secret,
+        # if one is named, goes again with the token's.
+        runner = runner.with_options(
+            secrets=[*_secrets(), modal.Secret.from_dict(token.secret_values())]
+        )
+    collector_token = None if token is None else token.record()
     if spawn:
         call = runner.spawn(plan_data)
         print(
@@ -1229,6 +1309,7 @@ def main(run: bool = False, spawn: bool = False) -> None:
                     "run_id": plan.run_id,
                     "stage": plan.stage,
                     "function_call_id": call.object_id,
+                    "collector_token": collector_token,
                 },
                 indent=2,
             )
@@ -1256,6 +1337,7 @@ def main(run: bool = False, spawn: bool = False) -> None:
     ):
         brief[key] = receipt.get(key)
     brief["outputs"] = len(receipt["outputs"])
+    brief["collector_token"] = collector_token
     print(json.dumps(brief, indent=2))
     # FAILED covers a nonzero exit and a stop at the max_wall_seconds budget,
     # which a tool that handles the stop signal can still end with exit 0.

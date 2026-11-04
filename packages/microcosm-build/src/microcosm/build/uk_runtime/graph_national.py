@@ -472,6 +472,10 @@ class _NationalKernel(KernelBase):
     )
 
     def implementation_hash(self) -> str:
+        import microcosm.calibrate.artifacts as calibrate_artifacts
+        import microcosm.calibrate.matrix as calibrate_matrix
+
+        from . import weighted_integrity
         from .target_compile_modules import uk_target_compile_modules
 
         implementation = source_hash(
@@ -489,6 +493,17 @@ class _NationalKernel(KernelBase):
             national_calibration,
             national_doctrine,
             support_floor_rules,
+            # The constraint matrices and their encoding, as the dense kernels
+            # hash them (microcosm#1492). Not calibrate.solve: neither the
+            # national target nor the problem path calls it. Its one caller
+            # here, national_calibration_manifest, runs in
+            # uk.full.national-gates@1, which reads the solve's result, whose
+            # key moves with calibrate.solve through calibrate.adam@1.
+            calibrate_matrix,
+            calibrate_artifacts,
+            # full_targets takes its exclusion clock from here; hashed
+            # directly, as the dense target kernels do.
+            weighted_integrity,
             *uk_target_compile_modules(),
         )
         return hashlib.sha256(

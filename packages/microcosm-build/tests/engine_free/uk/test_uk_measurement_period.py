@@ -461,6 +461,9 @@ REVIEWED_PLAIN_COLUMN_POPULATION_VARIABLES = frozenset(
         "attends_private_school",
         "benefit_cap_reduction",
         "benunit_tenure_type",
+        # Engine-computed at the calibration period: the High Income Child
+        # Benefit Charge, which the HICBC count reads (microcosm#1426).
+        "CB_HITC",
         # Engine-computed at the calibration period: the Child Benefit paid and
         # the children it is paid for (microcosm#1095).
         "child_benefit",

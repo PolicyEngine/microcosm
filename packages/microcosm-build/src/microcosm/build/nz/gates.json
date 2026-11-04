@@ -98,6 +98,38 @@
       "notes": "The active national profile must retain every family of the D1 MC5 calibration set (target_references.json). Accommodation Supplement and Working for Families references are held out (holdout_references.json) and must never be required here. Treasury model outputs (DistributionExplorer, IncomeExplorer) and official Budget reform scores are validation oracles, never calibration targets."
     },
     {
+      "id": "measurement_prefit",
+      "gate": "measurement_prefit",
+      "phase": "terminal",
+      "criticality": "release_blocking",
+      "evidence_absent_blocks": true,
+      "notes": "R2C-3 (2026-11-02), frozen before any candidate run: the summed count and the summed amount over the coarse stand-in table's 12 bands each within 75-125% of the aged IRD comparator; refuse when 3 or more of the 12 bands have a count or an amount outside 50-200% (a band counts once); every band at least 30 distinct source households and source-household Kish ESS at least 30, for count and amount contributions separately; and the run's required evidence present by alias. R2C-18: only aliases a graph node really produces are wired into nz.gates.terminal, and none is yet, so the gate refuses every run as lacking evidence until G8-x wires them. A change to any number needs a new hub ruling first.",
+      "parameters": {
+        "tables": [
+          "ird_taxable_income_standin_ty2024"
+        ],
+        "roster_total_bounds": [
+          0.75,
+          1.25
+        ],
+        "band_bounds": [
+          0.5,
+          2.0
+        ],
+        "maximum_discrepant_bands": 2,
+        "minimum_source_households": 30,
+        "minimum_kish_ess": 30,
+        "required_evidence": [
+          "native_band_report",
+          "omission_register",
+          "scenario_vsi",
+          "scenario_vex",
+          "scenario_vpt",
+          "identity_receipts"
+        ]
+      }
+    },
+    {
       "id": "release_input_coverage",
       "gate": "release_input_coverage",
       "phase": "terminal",
@@ -316,7 +348,10 @@
           "V2",
           "V3",
           "V4",
-          "VHF"
+          "VHF",
+          "VSI",
+          "VEX",
+          "VPT"
         ],
         "required_cells": [
           "income_decile_by_family_type/1/single",
@@ -370,7 +405,7 @@
         "target_maximum_single_donor_dollar_share": 0.05
       },
       "evidence_absent_blocks": true,
-      "notes": "MC15: missing, malformed or scenario-incomplete source-household diagnostics block. MC15 suppresses cells below ESS 100, above contribution CV 2 or donor dollar share 10% and excludes them from reported output; proper suppression does not block. The classifier lists structural-zero cells separately. Subgroup rows report entitlement, without invented subgroup payment comparators. G8 addendum A2 explicitly expects structural-zero cells, and MC11's central exclude-and-count adds every variant: S0/beneficiary_superannuitant_other/superannuitant, S1/beneficiary_superannuitant_other/superannuitant, S2/beneficiary_superannuitant_other/superannuitant, S3/beneficiary_superannuitant_other/superannuitant, V1/beneficiary_superannuitant_other/superannuitant, V2/beneficiary_superannuitant_other/superannuitant, V3/beneficiary_superannuitant_other/superannuitant, V4/beneficiary_superannuitant_other/superannuitant, VHF/beneficiary_superannuitant_other/superannuitant. S5 pays superannuitant units, so its cell is not structurally zero. The machine-readable list is reporting_classifiers.json structural_zero_cells; reported amounts determine actual structural-zero diagnostics."
+      "notes": "MC15: missing, malformed or scenario-incomplete source-household diagnostics block. MC15 suppresses cells below ESS 100, above contribution CV 2 or donor dollar share 10% and excludes them from reported output; proper suppression does not block. The classifier lists structural-zero cells separately. Subgroup rows report entitlement, without invented subgroup payment comparators. G8 addendum A2 explicitly expects structural-zero cells, and MC11's central exclude-and-count adds every variant: S0/beneficiary_superannuitant_other/superannuitant, S1/beneficiary_superannuitant_other/superannuitant, S2/beneficiary_superannuitant_other/superannuitant, S3/beneficiary_superannuitant_other/superannuitant, V1/beneficiary_superannuitant_other/superannuitant, V2/beneficiary_superannuitant_other/superannuitant, V3/beneficiary_superannuitant_other/superannuitant, V4/beneficiary_superannuitant_other/superannuitant, VHF/beneficiary_superannuitant_other/superannuitant, VSI/beneficiary_superannuitant_other/superannuitant, VEX/beneficiary_superannuitant_other/superannuitant, VPT/beneficiary_superannuitant_other/superannuitant. S5 pays superannuitant units, so its cell is not structurally zero. The machine-readable list is reporting_classifiers.json structural_zero_cells; reported amounts determine actual structural-zero diagnostics."
     },
     {
       "id": "weight_effective_sample_size_target_a",
@@ -404,7 +439,10 @@
           "V2",
           "V3",
           "V4",
-          "VHF"
+          "VHF",
+          "VSI",
+          "VEX",
+          "VPT"
         ],
         "required_cells": [
           "income_decile_by_family_type/1/single",
