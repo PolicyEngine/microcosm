@@ -28,6 +28,7 @@ from microcosm.frame.adapters.axiom import (
     axiom_engine_ref,
 )
 from microcosm.frame.kernels import SimulateRulesKernel
+from microcosm.frame.rules_kernels import SimulateCounterfactualKernel
 from microcosm.frame.schema import EntitySchema
 from microcosm.graph import Node, Owned, Slice
 from test_support.paths import paths_for
@@ -234,10 +235,51 @@ def test_adapter_refuses_an_unexecutable_view(monkeypatch, updates, error, match
         _adapter(monkeypatch, **updates)
 
 
+def _selector_override(variables):
+    return {
+        "engine_ref": "fixture",
+        "variables": variables,
+        "period": "2025",
+        "input_overrides": [{"entity": "person", "column": "is_child", "value": True}],
+    }
+
+
 def test_input_overrides_name_a_view_selector_in_the_refusal(monkeypatch):
-    adapter, _ = _adapter(monkeypatch)
+    adapter, engine = _adapter(monkeypatch)
     with pytest.raises(ValueError, match="view selector 'is_child'"):
         adapter.validate_input_override("person", "is_child")
+    kernel = SimulateCounterfactualKernel({"fixture": adapter})
+    with pytest.raises(ValueError, match="view selector 'is_child'"):
+        kernel._evaluate(
+            _frame([True, False, False]), [_selector_override(["child_amount"])], []
+        )
+    assert engine.programs["Child"].calls == []
+
+
+def test_a_selector_that_a_program_reads_stays_overridable(monkeypatch):
+    """A Person program that reads the selector makes it an engine input.
+
+    The override reaches that program's input and, through the column it
+    writes, the rows the view selects.
+    """
+    person = _Program(
+        "Person",
+        ("is_child",),
+        [_metadata("adult_amount", "Person", "decimal")],
+        function=lambda selected: {"adult_amount": selected.astype(np.float64)},
+    )
+    child = _child_program()
+    adapter, _ = _adapter(monkeypatch, {"Person": person, "Child": child})
+    assert "is_child" in adapter.variables()
+    adapter.validate_input_override("person", "is_child")
+    kernel = SimulateCounterfactualKernel({"fixture": adapter})
+    kernel._evaluate(
+        _frame([True, False, False]),
+        [_selector_override(["adult_amount", "child_amount"])],
+        [],
+    )
+    assert person.calls[-1]["inputs"]["is_child"].tolist() == [True, True, True]
+    assert child.calls[-1]["inputs"]["age"].tolist() == [0, 1, 2]
 
 
 def test_adapter_refuses_views_with_relations(monkeypatch):

@@ -131,7 +131,10 @@ refuses one that doesn't cast to the output's graph dtype without loss. A
 view's root inputs read the person columns of the same names, and its outputs
 resolve to the person entity, so downstream kernels read them as person
 columns. An empty selection makes no engine call, and a null or non-bool
-selector refuses. Gather and scatter assume that the engine computes each
+selector refuses. An input override of a selector changes which rows each
+view selects; the adapter accepts one only when a program reads the selector
+as a root input, as bridges require of any overridden column, and otherwise
+refuses it by the selector's name. Gather and scatter assume that the engine computes each
 selected row from that row's inputs alone. Views refuse programs with dense
 relations, and a real-engine differential, skip-gated on the dense extension and a
 rulespec-be tree, is written to test the assumption.

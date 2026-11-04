@@ -818,18 +818,27 @@ class AxiomEngine:
         return tuple(sorted(dependencies))
 
     def validate_input_override(self, entity: str, column: str) -> None:
-        """Refuse view selector overrides and related inputs without a source mapping.
+        """Refuse unread view selectors and related inputs without a source mapping.
 
-        View selectors choose batch rows; they are not engine root inputs.
-        Bridges write physical table columns after checking logical engine
-        inputs. An aliased relation input needs both names resolved together,
-        and only the related entity's table feeds a batch. Accepting either
-        override would silently leave the source intact.
+        A view selector chooses batch rows. A selector that a program also
+        reads as a root input is an engine input: an override changes that
+        input and, through the column it writes, the rows each view selects.
+        Bridges refuse an override of any other selector as outside the
+        engine's inputs; this check names the selector instead. Bridges write
+        physical table columns after checking logical engine inputs. An
+        aliased relation input needs both names resolved together, and only
+        the related entity's table feeds a batch. Accepting either override
+        would silently leave the source intact.
         """
-        if entity == self._schema.person_entity and any(
-            view.selector == column for view in self._views or ()
+        if (
+            entity == self._schema.person_entity
+            and any(view.selector == column for view in self._views or ())
+            and column not in self.variables()
         ):
-            raise ValueError(f"Input overrides cannot change view selector {column!r}.")
+            raise ValueError(
+                f"Input overrides cannot change view selector {column!r}, which "
+                "no program reads as an input."
+            )
         if not self._relations:
             return
         program = self._program(entity, missing_ok=True)
