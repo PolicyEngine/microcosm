@@ -31,7 +31,7 @@ it starts one, and it hands nothing over until the emitter's write-access
 check passes, as the staged-bundle hand-over does: otherwise the change
 would wait, pending, until the emitter dropped it an hour later. The
 command's own listing of the repository's files uses ``huggingface_hub`` in
-this process, with the same credential. Publication sends no Slack alert;
+this process, with the credential the emitter reads. Publication sends no Slack alert;
 the dashboard announces changes to ``releases.json``.
 """
 
@@ -39,6 +39,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 from dataclasses import dataclass
 from pathlib import Path
@@ -270,10 +271,30 @@ def _refuse_offline() -> None:
 
 
 def _repository_files(repository: str) -> list[str]:
-    """Every file path on the dataset repository's ``main`` (test seam)."""
-    from huggingface_hub import HfApi
+    """Every file path on the dataset repository's ``main`` (test seam).
 
-    return list(HfApi().list_repo_files(repository, repo_type="dataset"))
+    It reads with the credential the emitter uses: ``HF_TOKEN``, then
+    ``HUGGINGFACE_TOKEN``, then (``huggingface_hub``'s own order) the saved
+    login. ``huggingface_hub`` does not read ``HUGGINGFACE_TOKEN`` itself.
+    """
+    import huggingface_hub
+
+    token = os.environ.get("HF_TOKEN") or os.environ.get("HUGGINGFACE_TOKEN") or None
+    api = huggingface_hub.HfApi(token=token)
+    return list(api.list_repo_files(repository, repo_type="dataset"))
+
+
+def _listing_errors() -> tuple[type[BaseException], ...]:
+    """The failures a listing raises: the Hub's, offline mode's and httpx's.
+
+    huggingface_hub's HTTP and offline errors are ``OSError``; httpx's
+    transport errors, such as a refused connection, are not.
+    """
+    try:
+        import httpx
+    except ImportError:  # pragma: no cover - huggingface_hub 1.x requires it
+        return (OSError, ValueError)
+    return (OSError, ValueError, httpx.HTTPError)
 
 
 def _refuse_pointer_files(repository: str) -> None:
@@ -287,7 +308,7 @@ def _refuse_pointer_files(repository: str) -> None:
     """
     try:
         paths = _repository_files(repository)
-    except (OSError, ValueError) as error:
+    except _listing_errors() as error:
         raise ValueError(
             f"could not list the files of {repository} to check for "
             f"latest*.json pointer files ({type(error).__name__}: {error}); "

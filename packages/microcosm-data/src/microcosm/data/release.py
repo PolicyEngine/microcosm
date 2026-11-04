@@ -91,6 +91,7 @@ __all__ = [
     "latest_line_release",
     "latest_pointer_payload",
     "line_pointer_path",
+    "missing_on_hub",
     "line_pointer_payload",
     "publish_release",
     "latest_release",
@@ -1025,14 +1026,35 @@ def _repo_revision(api: object, *, repo_id: str) -> str | None:
     return str(value) if value else None
 
 
+def missing_on_hub(error: BaseException) -> bool:
+    """Whether a download failed because the Hub answered that the file is absent.
+
+    Only that answer counts: ``EntryNotFoundError`` for the Hub's 404
+    (``RemoteEntryNotFoundError`` in huggingface_hub 1.x). huggingface_hub
+    also raises ``LocalEntryNotFoundError``, a subclass of it and of
+    ``FileNotFoundError``, when it could not ask the Hub (a 5xx that outlasted
+    its retries, a 403, offline mode) and nothing is cached; that says
+    nothing about the file, so it, like every other error, does not count.
+    """
+    try:
+        from huggingface_hub.utils import EntryNotFoundError, LocalEntryNotFoundError
+    except ImportError:  # pragma: no cover - declared dependency
+        return False
+    return isinstance(error, EntryNotFoundError) and not isinstance(
+        error, LocalEntryNotFoundError
+    )
+
+
 def _refuse_releases_record(api: object, *, repo_id: str, revision: str | None) -> None:
     """Refuse a repository that records its builds in ``releases.json``.
 
     Such a repository publishes each build into its own folder through the
     emitter, and ``releases.json`` is the only record of which build is
     current; a tag or ``latest*.json`` pointer file written beside it would
-    disagree with the record. Only the file's absence lets the publication
-    go on; any other failure to read it propagates.
+    disagree with the record. Only the Hub's answer that the file is absent
+    (:func:`missing_on_hub`) lets the publication go on; any other failure
+    to read it, a server error included, propagates before anything is
+    written.
     """
     try:
         api.hf_hub_download(
@@ -1042,7 +1064,7 @@ def _refuse_releases_record(api: object, *, repo_id: str, revision: str | None) 
             revision=revision,
         )
     except Exception as exc:
-        if _is_absent_entry_error(exc):
+        if missing_on_hub(exc):
             return
         raise
     raise ValueError(

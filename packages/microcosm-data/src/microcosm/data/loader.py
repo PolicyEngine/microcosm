@@ -53,6 +53,7 @@ from microcosm.data.release import (
     latest_line_release,
     latest_release,
     line_pointer_path,
+    missing_on_hub,
 )
 from microcosm.data.releases_record import (
     RELEASES_RECORD_PATH,
@@ -74,10 +75,6 @@ _LINE_POINTER_PATH_PATTERN = re.compile(
     re.escape(LINE_POINTER_PATH_TEMPLATE).replace(re.escape("{line}"), r"(?P<line>.+)")
 )
 _HubDownload = Callable[..., str]
-#: The exception names that mean a file is absent from the repository (the
-#: Hub's ``EntryNotFoundError``, or a test fake's ``FileNotFoundError``),
-#: and nothing else.
-_ABSENT_FILE_ERRORS = frozenset({"EntryNotFoundError", "FileNotFoundError"})
 
 
 def _line_from_pointer_path(pointer_path: str) -> str | None:
@@ -549,9 +546,18 @@ def _pointer_for(
     )
 
 
-def _is_absent_file_error(exc: BaseException) -> bool:
-    """Whether a download failed only because the file is not there."""
-    return bool({cls.__name__ for cls in type(exc).__mro__} & _ABSENT_FILE_ERRORS)
+def _never_cached_offline(exc: BaseException) -> bool:
+    """Whether huggingface_hub is offline and the file was never cached.
+
+    Offline, the cache is all a load has, so a ``releases.json`` that was
+    never cached reads as absent, as the pointer files then do.
+    """
+    try:
+        from huggingface_hub import constants
+        from huggingface_hub.utils import LocalEntryNotFoundError
+    except ImportError:  # pragma: no cover - declared dependency
+        return False
+    return bool(constants.HF_HUB_OFFLINE) and isinstance(exc, LocalEntryNotFoundError)
 
 
 def _releases_record_bytes(
@@ -560,16 +566,18 @@ def _releases_record_bytes(
     """The repository's ``releases.json``, or ``None`` when it has none.
 
     Until its switch to build folders a repository has no ``releases.json``,
-    and its releases are found through their pointer files. Only the file's
-    absence means that (offline, a file that was never cached counts as
-    absent, as the pointer files then are); any other failure propagates.
+    and its releases are found through their pointer files. Only the Hub's
+    answer that the file is absent (:func:`~microcosm.data.release.missing_on_hub`)
+    means that, or, in offline mode, a file that was never cached. Any other
+    failure propagates, a server error included: falling back then would load
+    the pointer file's build in a repository that has switched.
     """
     try:
         record_path = hub_download(
             repo_id=spec.hf_repo, filename=RELEASES_RECORD_PATH, repo_type="dataset"
         )
     except Exception as exc:
-        if _is_absent_file_error(exc):
+        if missing_on_hub(exc) or _never_cached_offline(exc):
             return None
         raise
     return Path(record_path).read_bytes()
