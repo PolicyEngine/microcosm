@@ -35,7 +35,7 @@ __all__ = [
 # ---------------------------------------------------------------------------
 #
 # Which PolicyEngine-UK inputs each engine-neutral concept feeds
-# (microcosm.frame.concepts), reviewed against policyengine-uk 2.165.1. Every
+# (microcosm.frame.concepts), reviewed against policyengine-uk 2.174.1. Every
 # target is a pure input (in ``PolicyEngineUKEngine.variables``). The UK
 # loader also accepts some formula-owned variables as overrides
 # (``employment_income``, ``state_pension_reported``, ``is_household_head``);
@@ -415,6 +415,82 @@ UK_ENGINE_DEFAULT_INPUTS: dict[str, str] = {
         "income tests, so those tests are slightly harder for them to pass; "
         "employer NICs do not read it (microcosm#1373; for María's signature)."
     ),
+    "income_not_otherwise_charged": (
+        "The part of miscellaneous_income that ITTOIA 2005 Part 5 Chapter 8 "
+        "charges, which the trading allowance relieves from policyengine-uk "
+        "2.165.3. The build does not separate it: the FRS odd-job receipts sit "
+        "in miscellaneous_income with its other items, and the SPI tape's "
+        "profits are after the allowance. So the input stays zero and the "
+        "allowance relieves no casual income, as before 2.165.3: income tax is "
+        "overstated by up to GBP 1,000 for a person with such income and no "
+        "trade receipts that use the allowance. The means tests read "
+        "miscellaneous income before the allowance, so they do not move. "
+        "policyengine-uk-data#641 sets it from the FRS odd-job income; its port "
+        "waits for the odd-job annualisation fix, policyengine-uk-data#640 "
+        "(microcosm#1095; for María's signature)."
+    ),
+    "machine_games_standard_rate_higher_stake_net_takings": (
+        "The part of the standard-rate Machine Games Duty takings from machines "
+        "with a stake above GBP 1 or a prize above GBP 100 (policyengine-uk "
+        "2.167.0), which pays the 25 percent higher rate from 1 April 2027 and "
+        "the standard rate before. The lcfs_consumption stage writes the "
+        "standard-rate takings whole (microcosm#1381) and has no source for a "
+        "split by machine category, so the input stays zero. Nothing changes "
+        "before April 2027; from then the Budget 2026 rate rise scores nothing "
+        "on these takings. The split needs the Gambling Commission's yield by "
+        "machine category in Chronicle (microcosm#1418, item 5; for María's "
+        "signature)."
+    ),
+    "trading_allowance_claim_status": (
+        "Whether a trader's stored profit already deducts the trading allowance "
+        "(policyengine-uk 2.172.0, policyengine-uk#2765). Neither the FRS nor "
+        "the SPI tape records turnover or the claim, so the input stays UNKNOWN, "
+        "the engine's current treatment, and the trading_allowance_receipts "
+        "stage keeps the claim in self_employment_gross_receipts "
+        "(microcosm#1428), with the two limits its notes give: an allowance "
+        "above GBP 3,000 relieves every non-claimant, and a claimant's extra "
+        "relief from a raise falls below the raise as profit grows. "
+        "microcosm#1439 stores the status and retires the encoding (for María's "
+        "signature)."
+    ),
+    "soc2020_major_group": (
+        "The SOC 2020 major group of the person's main job, or of their last "
+        "job if they are not in work (policyengine-uk 2.173.0, "
+        "policyengine-uk#2858). The build carries no occupation yet, so every "
+        "person takes NONE ('No occupation recorded'), and no engine formula "
+        "reads it. microcosm#1490 carries the FRS major group from "
+        "frs_employment, redraws it on the SPI channel and removes this entry "
+        "(for María's signature)."
+    ),
+    "soc2020_sub_major_group": (
+        "The SOC 2020 sub-major group of the same job (policyengine-uk "
+        "2.173.0). The FRS codes the major group only, so the sub-major group "
+        "needs an imputation within it from a survey that codes it. Until a "
+        "stage imputes it every person takes NONE, and no engine formula reads "
+        "it (microcosm#1490; for María's signature)."
+    ),
+    "is_in_full_time_education": (
+        "Whether the person is on a full-time course (policyengine-uk 2.173.2), "
+        "which Universal Credit's condition that a claimant is not receiving "
+        "education reads (UC Regs 2013 regs. 12 and 13). The build leaves it "
+        "false, so no claimant receives education and every claimant meets the "
+        "condition, as before 2.173.2: Universal Credit eligibility is "
+        "overstated for a full-time student whom no exception covers. "
+        "frs_education reads FTED, so a later change can set it, with its own "
+        "measurement of the Universal Credit rows (microcosm#1095; for María's "
+        "signature)."
+    ),
+    "has_education_maintenance_funding": (
+        "Whether the person has a student loan or grant for their maintenance "
+        "(policyengine-uk 2.173.2), which makes a full-time course that is not "
+        "advanced education count as education for Universal Credit (UC Regs "
+        "2013 reg. 12(2)(b)). It matters only where is_in_full_time_education "
+        "is true, which the build never sets, so it stays false and changes "
+        "nothing. The FRS has no clean source for it: a payment under a scheme "
+        "that helps people under 21 finish such courses does not count (reg. "
+        "68(7)), and the FRS does not say what a grant or loan pays for "
+        "(microcosm#1095; for María's signature)."
+    ),
 }
 
 
@@ -439,7 +515,7 @@ def _uk_take_up(program: str, entity: str) -> InputBinding:
 
 POLICYENGINE_UK_CONCEPT_MAPPING = ConceptMapping(
     engine="policyengine-uk",
-    engine_version="2.165.1",
+    engine_version="2.174.1",
     entity_correspondence={"person": "person", "household": "household"},
     input_declaration=InputDeclaration.ENGINE_TYPED,
     bindings=(
@@ -819,9 +895,13 @@ POLICYENGINE_UK_CONCEPT_MAPPING = ConceptMapping(
             "unit_and_investment_trusts, add up to more; the WAS stage writes "
             "both on its corporate_wealth less the stocks-and-shares ISA, so "
             "they and the ISA sum to it (microcosm#1095). Universal Credit's "
-            "one person-level source is "
+            "person-level sources (capital.person_sources) are "
             "lifetime_isa_countable_capital, the Lifetime ISA at its surrender "
-            "value (capital.person_sources). "
+            "value, and since policyengine-uk 2.174.0 cash_isa_countable_capital "
+            "and stocks_and_shares_isa_countable_capital: each member's ISA "
+            "balances count in their own benefit unit, and the formulas take "
+            "them out of cash_isa and share_like_capital before they allocate "
+            "the rest. "
             "uc_reported_capital (benefit unit, default -1) is Universal "
             "Credit capital; since policyengine-uk 2.136.1 a value of zero or "
             "more set directly is the unit's complete countable capital, in "

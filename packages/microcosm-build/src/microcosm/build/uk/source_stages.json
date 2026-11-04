@@ -7323,7 +7323,7 @@
     {
      "role": "policy_parameters",
      "kind": "versioned_parameter_tree",
-     "dependency": "policyengine-uk>=2.165.1 via microcosm-build[uk]",
+     "dependency": "policyengine-uk>=2.174.1 via microcosm-build[uk]",
      "parameters": [
       "gov.hmrc.cgt.annual_exempt_amount"
      ],
@@ -7404,7 +7404,7 @@
     {
      "role": "policy_parameters",
      "kind": "versioned_parameter_tree",
-     "dependency": "policyengine-uk>=2.165.1 via microcosm-build[uk]",
+     "dependency": "policyengine-uk>=2.174.1 via microcosm-build[uk]",
      "parameters": [
       "gov.hmrc.cgt.annual_exempt_amount",
       "gov.hmrc.cgt.badr.lifetime_limit",
