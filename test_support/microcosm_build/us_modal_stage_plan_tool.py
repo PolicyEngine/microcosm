@@ -34,12 +34,29 @@ def _load():
 
 
 plan_lib = _load()
+#: A collector origin under a reserved name (RFC 2606), never a real collector.
+TEST_COLLECTOR_ORIGIN = "https://collector.invalid"
 #: What the image's emitter answers to ``microcosm-emitter version``. Tests
 #: get this answer instead of running a command at the image's emitter path.
-RECORDED_EMITTER_VERSION = {"emitter_version": "0.11.9", "protocol_versions": [1]}
+RECORDED_EMITTER_VERSION = {
+    "emitter_version": "0.11.9",
+    "protocol_versions": [1],
+    "collector_origin": TEST_COLLECTOR_ORIGIN,
+}
+#: A made-up collector token. Tests never use a real credential.
+DUMMY_COLLECTOR_TOKEN = "dummy-collector-token-not-a-credential"
+#: Long after any test runs.
+TEST_TOKEN_EXPIRES_AT = "2099-01-01T00:00:00+00:00"
+#: What the secret a launch with ``--run`` makes for the container holds: the
+#: runner's own names for the collector token, its expiry and its origin.
+RUNNER_TOKEN_SECRET = {
+    "MICROCOSM_MODAL_TELEMETRY_TOKEN": DUMMY_COLLECTOR_TOKEN,
+    "MICROCOSM_MODAL_TELEMETRY_TOKEN_EXPIRES_AT": TEST_TOKEN_EXPIRES_AT,
+    "MICROCOSM_MODAL_TELEMETRY_ORIGIN": TEST_COLLECTOR_ORIGIN,
+}
 
 
-def load_app(monkeypatch):
+def load_app(monkeypatch, *, real_emitter_version: bool = False):
     """``tools/modal_us_stage.py`` imported against a stub ``modal`` module.
 
     The stub answers ``is_local()`` with False, so the module defines its
@@ -48,7 +65,11 @@ def load_app(monkeypatch):
     ``@app.function`` keeps its function and records its Modal options as
     ``modal_options``. ``_emitter_version`` answers
     ``RECORDED_EMITTER_VERSION``, so no test runs an emitter installed at the
-    image's path (``/usr/local/bin/microcosm-emitter``) on the test machine.
+    image's path (``/usr/local/bin/microcosm-emitter``) on the test machine;
+    ``real_emitter_version`` keeps the module's own, for a test that replaces
+    what it runs. The environment holds ``RUNNER_TOKEN_SECRET``, as a
+    container launched with ``--run`` does; a test of a container without
+    the token removes it.
     """
 
     from unittest.mock import MagicMock
@@ -70,9 +91,14 @@ def load_app(monkeypatch):
     module = importlib.util.module_from_spec(spec)
     assert spec.loader is not None
     spec.loader.exec_module(module)
-    monkeypatch.setattr(
-        module, "_emitter_version", lambda: copy.deepcopy(RECORDED_EMITTER_VERSION)
-    )
+    if not real_emitter_version:
+        monkeypatch.setattr(
+            module,
+            "_emitter_version",
+            lambda: copy.deepcopy(RECORDED_EMITTER_VERSION),
+        )
+    for name, value in RUNNER_TOKEN_SECRET.items():
+        monkeypatch.setenv(name, value)
     return module
 
 

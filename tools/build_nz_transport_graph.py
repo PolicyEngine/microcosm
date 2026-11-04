@@ -205,6 +205,7 @@ def closure_entry_dtype(entry, mapping):
                 "str": "string",
             }[concept(binding["concepts"][0]).dtype]
         elif transform in {
+            "coresident_adult",
             "predicate",
             "relationship_role",
             "positive",
@@ -1267,7 +1268,7 @@ def documents():
             "terminal": ["nz.export.prepare", "nz.package"],
         },
         "pending_outputs": [
-            "G8-x income reconciliation evidence: the native-band report, omission-register and identity-receipt artifacts and the VSI, VEX and VPT run evidence that measurement_prefit requires (R2C-18), and the NZS sharing binding (R2C-5)",
+            "G8-x income reconciliation evidence: the native-band report, omission-register and identity-receipt artifacts and the VSI, VEX and VPT run evidence that measurement_prefit requires (R2C-18)",
             "Census rent and liquid-assets quantile producers",
         ],
     }

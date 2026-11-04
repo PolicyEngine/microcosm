@@ -26,6 +26,12 @@ from microcosm.build.uk_runtime.national_frame import (
     uk_time_period,
     validate_uk_national_frame,
 )
+from microcosm.build.uk_runtime.qrf_gates import (
+    UK_DEFAULT_GATE_CALIBRATION,
+    UK_GATE_OUTCOMES_EVIDENCE,
+    declared_gate_calibration,
+    gate_outcomes,
+)
 from microcosm.build.uk_runtime.support_clip import (
     UKSupportClipReceipt,
     UKSupportClipResult,
@@ -368,14 +374,19 @@ class UKWASWealthResult:
     #: construction unless the support clip moved a total) and the rows the
     #: donor-range cap adjusted.
     identities: Mapping[str, object] = field(default_factory=dict)
+    #: Each chain target's gate outcome, when the chain is not in-sample.
+    gate_outcomes: Mapping[str, str] = field(default_factory=dict)
 
     def evidence(self) -> dict[str, object]:
-        return {
+        evidence: dict[str, object] = {
             "stage": UK_WAS_WEALTH_STAGE_NAME,
             "support_clip": self.support_clip.evidence(),
             "tenure_coherence": dict(self.tenure_coherence),
             "identities": dict(self.identities),
         }
+        if self.gate_outcomes:
+            evidence[UK_GATE_OUTCOMES_EVIDENCE] = dict(self.gate_outcomes)
+        return evidence
 
 
 #: The household-mass receipt this stage records (the manifest's
@@ -432,6 +443,9 @@ class UKWASWealthStageTransform:
             seed=UK_WAS_WEALTH_DECLARED_SEEDS["was_wealth"],
             n_estimators=_qrf_n_estimators(self.stage),
             record_ids=frame.table("household")["household_id"].to_numpy(),
+            gate_calibration=declared_gate_calibration(
+                self.stage, "fit_weighted_qrf_chain"
+            ),
         )
         self.last_fit_weight_records = imputation.fit_weight_records
         capped, capped_rows = cap_derived_totals_to_donor_range(imputation.draws, donor)
@@ -485,6 +499,7 @@ class UKWASWealthStageTransform:
             support_clip=clip_result.receipt,
             tenure_coherence=tenure_coherence,
             identities=identities,
+            gate_outcomes=imputation.gate_outcomes,
         )
         return result
 
@@ -809,6 +824,8 @@ class UKWASWealthImputationResult:
     fit_weight_records: tuple[FitWeightRecord, ...]
     #: The per-segment RNG roots derived from the declared stage seed.
     segment_seeds: tuple[int, ...] = ()
+    #: Each target's gate outcome, when the chain is not in-sample.
+    gate_outcomes: Mapping[str, str] = field(default_factory=dict)
 
 
 #: The chain's segments, each with its own model and child seed:
@@ -854,6 +871,7 @@ def impute_was_wealth(
     n_estimators: int,
     record_ids: Sequence[object] | np.ndarray,
     segments: int = UK_WAS_CHAIN_SEGMENTS,
+    gate_calibration: str = UK_DEFAULT_GATE_CALIBRATION,
 ) -> UKWASWealthImputationResult:
     """Fit segmented checkpointed QRF chains and draw WAS wealth outputs.
 
@@ -874,7 +892,9 @@ def impute_was_wealth(
 
     ``segments`` runs only the first *k* chain segments (a test seam: each
     segment draws from its own child seed, so the earlier segments' draws are
-    identical whether or not the later ones run).
+    identical whether or not the later ones run). ``gate_calibration`` is the
+    chain's declared :class:`~microcosm.fit.GateCalibration`; when it is not
+    the in-sample gate, the result names each target's gate outcome.
     """
 
     from microcosm.fit import RegimeGatedQRF
@@ -912,11 +932,16 @@ def impute_was_wealth(
         donor_encoded.loc[~np.isin(donor_category, categories), target] = 0.0
     segment_seeds = was_wealth_segment_seeds(seed)
     segment_models = iter(
-        RegimeGatedQRF(n_estimators=n_estimators, seed=segment_seed)
+        RegimeGatedQRF(
+            n_estimators=n_estimators,
+            seed=segment_seed,
+            gate_calibration=gate_calibration,
+        )
         for segment_seed in segment_seeds
     )
     raw = pd.DataFrame(index=recipient_encoded.index)
     fit_records: list[FitWeightRecord] = []
+    outcomes: dict[str, str] = {}
 
     def run_segment(
         base_predictors: Sequence[str],
@@ -983,6 +1008,8 @@ def impute_was_wealth(
                     f"{UK_WAS_WEALTH_FIT_NAME}:{target}", result.weight_kind
                 )
             )
+            if gate_calibration != UK_DEFAULT_GATE_CALIBRATION:
+                outcomes.update(gate_outcomes(UK_WAS_WEALTH_FIT_NAME, result.fitted))
             segment_raw[target] = result.raw_draw
             raw.loc[recipient_rows.index, target] = np.asarray(
                 result.raw_draw, dtype=float
@@ -995,7 +1022,7 @@ def impute_was_wealth(
     base = encoded_predictors
     run_segment(base, ("owned_land",))
     if segments == 1:
-        return _partial_result(raw, fit_records, segment_seeds)
+        return _partial_result(raw, fit_records, segment_seeds, outcomes)
     recipient_encoded["owned_land"] = raw["owned_land"]
     run_segment(
         (*base, "owned_land"),
@@ -1003,7 +1030,7 @@ def impute_was_wealth(
         stratum=UK_WAS_STRATIFIED_TARGETS["main_residence_value"],
     )
     if segments == 2:
-        return _partial_result(raw, fit_records, segment_seeds)
+        return _partial_result(raw, fit_records, segment_seeds, outcomes)
     recipient_encoded["main_residence_value"] = raw["main_residence_value"]
     run_segment(
         (*base, "owned_land", "main_residence_value"),
@@ -1015,7 +1042,7 @@ def impute_was_wealth(
     )
     derive_total("property_wealth")
     if segments == 3:
-        return _partial_result(raw, fit_records, segment_seeds)
+        return _partial_result(raw, fit_records, segment_seeds, outcomes)
     donor_encoded["corporate_wealth"] = donor_encoded["corporate_wealth"].astype(float)
     donor_encoded["private_pension_wealth"] = donor_encoded[
         "private_pension_wealth"
@@ -1034,7 +1061,7 @@ def impute_was_wealth(
     )
     derive_total("corporate_wealth")
     if segments == 4:
-        return _partial_result(raw, fit_records, segment_seeds)
+        return _partial_result(raw, fit_records, segment_seeds, outcomes)
     recipient_encoded["private_pension_wealth"] = raw["private_pension_wealth"]
     recipient_encoded["corporate_wealth"] = raw["corporate_wealth"]
     # Downstream targets condition on both components, carrying the
@@ -1057,7 +1084,7 @@ def impute_was_wealth(
     )
     derive_total("gross_financial_wealth")
     if segments == 5:
-        return _partial_result(raw, fit_records, segment_seeds)
+        return _partial_result(raw, fit_records, segment_seeds, outcomes)
     prior_outputs = tuple(
         column
         for column in UK_WAS_WEALTH_OUTPUT_COLUMNS
@@ -1071,7 +1098,7 @@ def impute_was_wealth(
         stratum=UK_WAS_STRATIFIED_TARGETS["main_residence_mortgage"],
     )
     if segments == 6:
-        return _partial_result(raw, fit_records, segment_seeds)
+        return _partial_result(raw, fit_records, segment_seeds, outcomes)
     recipient_encoded["main_residence_mortgage"] = raw["main_residence_mortgage"]
     # The mortgages on other property are held on every tenure (an outright
     # owner's or a renter's buy-to-let), so they are drawn without a stratum
@@ -1082,12 +1109,12 @@ def impute_was_wealth(
     )
     derive_total("mortgage_debt")
     if segments == 7:
-        return _partial_result(raw, fit_records, segment_seeds)
+        return _partial_result(raw, fit_records, segment_seeds, outcomes)
     recipient_encoded["mortgage_debt"] = raw["mortgage_debt"]
     run_segment((*base, *prior_outputs, "mortgage_debt"), ("consumer_debt",))
     raw["net_financial_wealth"] = derived_net_financial_wealth(raw)
     if segments == 8:
-        return _partial_result(raw, fit_records, segment_seeds)
+        return _partial_result(raw, fit_records, segment_seeds, outcomes)
     # The appended draws (microcosm#1095): each from the holders of its column
     # only, conditioned on everything the chain drew; nothing before them
     # reads them.
@@ -1106,7 +1133,7 @@ def impute_was_wealth(
         holders=UK_WAS_HOLDER_STRATA[UK_WAS_DIRECT_SHARE_FRACTION_COLUMN],
     )
     if segments == 9:
-        return _partial_result(raw, fit_records, segment_seeds)
+        return _partial_result(raw, fit_records, segment_seeds, outcomes)
     debt_predictors = (
         *base,
         *prior_outputs,
@@ -1121,7 +1148,7 @@ def impute_was_wealth(
         holders=UK_WAS_HOLDER_STRATA[residential],
     )
     if segments == 10:
-        return _partial_result(raw, fit_records, segment_seeds)
+        return _partial_result(raw, fit_records, segment_seeds, outcomes)
     recipient_encoded[residential] = raw[residential]
     run_segment(
         (*debt_predictors, residential),
@@ -1139,6 +1166,7 @@ def impute_was_wealth(
         ],
         fit_weight_records=tuple(fit_records),
         segment_seeds=segment_seeds,
+        gate_outcomes=outcomes,
     )
 
 
@@ -1167,6 +1195,7 @@ def _partial_result(
     raw: pd.DataFrame,
     fit_records: list[FitWeightRecord],
     segment_seeds: tuple[int, ...],
+    outcomes: Mapping[str, str] | None = None,
 ) -> UKWASWealthImputationResult:
     produced = [
         column
@@ -1181,6 +1210,7 @@ def _partial_result(
         draws=raw.loc[:, produced],
         fit_weight_records=tuple(fit_records),
         segment_seeds=segment_seeds,
+        gate_outcomes=dict(outcomes or {}),
     )
 
 

@@ -1,11 +1,11 @@
 {
   "source_fact_feed": "chronicle-uk-08962f1-consumer-facts",
   "target_period": 2025,
-  "candidate_count": 1455,
-  "contract_target_count": 398,
-  "active_reference_count": 1418,
+  "candidate_count": 1457,
+  "contract_target_count": 400,
+  "active_reference_count": 1420,
   "status_counts": {
-    "active": 1418,
+    "active": 1420,
     "signed_excluded": 37
   },
   "geography_pins": {
@@ -4652,6 +4652,14 @@
       "geography_id": "K02000001"
     },
     "hmrc.child_benefit.families_in_payment.children_5_plus": {
+      "geography_level": "country",
+      "geography_id": "K02000001"
+    },
+    "hmrc.child_benefit.hicbc_liable_taxpayers": {
+      "geography_level": "country",
+      "geography_id": "K02000001"
+    },
+    "hmrc.child_benefit.hicbc_revenue": {
       "geography_level": "country",
       "geography_id": "K02000001"
     }
@@ -11409,6 +11417,16 @@
     {
       "name": "hmrc.child_benefit.families_in_payment.children_5_plus",
       "from": "2025-08",
+      "to": "2025"
+    },
+    {
+      "name": "hmrc.child_benefit.hicbc_liable_taxpayers",
+      "from": "2024",
+      "to": "2025"
+    },
+    {
+      "name": "hmrc.child_benefit.hicbc_revenue",
+      "from": "2024",
       "to": "2025"
     }
   ],
@@ -32394,6 +32412,36 @@
           "resolved_value": 70030.0,
           "resolved_fact_period": "2025-08",
           "resolved_fact_key": "ledger_aggregate_fact_v2_2d81e096c621bc41f63aed4e"
+        }
+      ]
+    },
+    "hmrc.child_benefit.hicbc_liable_taxpayers": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "hmrc.child_benefit.hicbc_liable_taxpayers",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "resolved_period": 2025,
+          "resolved_value": 310000.0,
+          "resolved_fact_period": "2024",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_c97b337a85676fd4ad28495d"
+        }
+      ]
+    },
+    "hmrc.child_benefit.hicbc_revenue": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "hmrc.child_benefit.hicbc_revenue",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "resolved_period": 2025,
+          "resolved_value": 360000000.0,
+          "resolved_fact_period": "2024",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_efce468e05f7b7c8cbe6c72b"
         }
       ]
     }

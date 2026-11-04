@@ -6,9 +6,10 @@ under 18 in the dwelling, or only children losing an element:
 https://www.gov.uk/government/statistics/universal-credit-claimants-statistics-on-the-two-child-limit-policy-april-2025/background-information-and-methodology
 
 The retained frame does not identify April open claims or exact birth dates.
-The affected measures therefore explicitly remain positive-award/birth-year
-proxies. Their receipts record those gaps; improved fit is not evidence that
-the administrative population has been reconstructed.
+The affected measures therefore explicitly remain positive-award proxies, and
+they date births by the engine's own cutoff test, whose dates of birth come
+from whole ages. Their receipts record those gaps; improved fit is not
+evidence that the administrative population has been reconstructed.
 """
 
 from __future__ import annotations
@@ -162,10 +163,14 @@ def uc_tcl_comparison_contract(year: int) -> dict[str, Any]:
         "source_claim_state": "open claim within source observation month",
         "model_claim_state_proxy": "universal_credit > 0",
         "source_birth_cutoff": "2017-04-06",
-        "model_birth_cutoff_proxy": "model birth_year >= 2017",
+        "model_birth_cutoff_proxy": (
+            "policyengine-uk uc_is_child_born_before_child_limit: date of birth "
+            "before 2017-04-06"
+        ),
         "birth_precision": (
-            "model year minus retained age input; source-age observation "
-            "date/advancement and exact birth date unavailable"
+            "whole-year interview age and the stored months since the last "
+            "birthday, placed at 6 October of the model year; policyengine-uk "
+            "holds ages fixed across years; exact birth date unavailable"
         ),
         "source_period": "April snapshot; retain matched fact's observation year",
         "model_period": str(year),
@@ -225,12 +230,14 @@ def compute_uc_target_measure(
             > 0
         )
 
-    birth_year = calculate("birth_year")
-    if not np.equal(birth_year, np.floor(birth_year)).all():
-        raise ValueError("UC birth-year proxy requires integer model birth years.")
+    # The engine's own cutoff test, a date of birth before 6 April 2017, so the
+    # measure dates births as the child element does: a calendar year would
+    # count a child born from January to 5 April 2017 as affected
+    # (microcosm#1095 AC3).
+    born_before = calculate("uc_is_child_born_before_child_limit").astype(bool)
     # The first two children are the oldest. This count is invariant to person
     # row order and ties, and deliberately includes excepted later children.
-    post_cutoff_count = count(children & (birth_year >= 2017))
+    post_cutoff_count = count(children & ~born_before)
     affected_count = np.minimum(post_cutoff_count, np.maximum(child_count - 2, 0))
     if variable == "uc_tcl_affected_child_count_proxy":
         return affected_count
