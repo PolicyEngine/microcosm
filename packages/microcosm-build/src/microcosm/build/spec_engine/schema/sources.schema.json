@@ -8994,6 +8994,374 @@
      "additionalProperties": false,
      "required": [
       "kind",
+      "lowercase_columns",
+      "adult_age",
+      "age_cap",
+      "pay_weeks",
+      "columns",
+      "codes"
+     ],
+     "properties": {
+      "kind": {
+       "const": "clean_aps_occupation_table"
+      },
+      "lowercase_columns": {
+       "type": "boolean"
+      },
+      "adult_age": {
+       "type": "integer",
+       "minimum": 0
+      },
+      "age_cap": {
+       "type": "integer",
+       "minimum": 0
+      },
+      "pay_weeks": {
+       "type": "integer",
+       "minimum": 1
+      },
+      "columns": {
+       "type": "object",
+       "additionalProperties": false,
+       "required": [
+        "age",
+        "sex",
+        "region",
+        "economic_activity",
+        "status",
+        "main_minor_group",
+        "last_minor_group",
+        "weekly_pay",
+        "person_weight",
+        "income_weight",
+        "main_section",
+        "last_section"
+       ],
+       "properties": {
+        "age": {
+         "type": "string",
+         "minLength": 1
+        },
+        "sex": {
+         "type": "string",
+         "minLength": 1
+        },
+        "region": {
+         "type": "string",
+         "minLength": 1
+        },
+        "economic_activity": {
+         "type": "string",
+         "minLength": 1
+        },
+        "status": {
+         "type": "string",
+         "minLength": 1
+        },
+        "main_minor_group": {
+         "type": "string",
+         "minLength": 1
+        },
+        "last_minor_group": {
+         "type": "string",
+         "minLength": 1
+        },
+        "weekly_pay": {
+         "type": "string",
+         "minLength": 1
+        },
+        "person_weight": {
+         "type": "string",
+         "minLength": 1
+        },
+        "income_weight": {
+         "type": "string",
+         "minLength": 1
+        },
+        "main_section": {
+         "type": "string",
+         "minLength": 1
+        },
+        "last_section": {
+         "type": "string",
+         "minLength": 1
+        }
+       }
+      },
+      "codes": {
+       "type": "object",
+       "additionalProperties": false,
+       "required": [
+        "in_employment",
+        "under_16",
+        "employee",
+        "sex",
+        "region",
+        "status_group",
+        "other_status_group",
+        "sections"
+       ],
+       "properties": {
+        "in_employment": {
+         "type": "integer"
+        },
+        "under_16": {
+         "type": "integer"
+        },
+        "employee": {
+         "type": "integer"
+        },
+        "sex": {
+         "type": "object",
+         "minProperties": 1,
+         "additionalProperties": {
+          "type": "string"
+         }
+        },
+        "region": {
+         "type": "object",
+         "minProperties": 1,
+         "additionalProperties": {
+          "type": "string"
+         }
+        },
+        "status_group": {
+         "type": "object",
+         "minProperties": 1,
+         "additionalProperties": {
+          "type": "string"
+         }
+        },
+        "other_status_group": {
+         "type": "string"
+        },
+        "sections": {
+         "type": "array",
+         "minItems": 1,
+         "items": {
+          "type": "string"
+         }
+        }
+       }
+      }
+     }
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "required": [
+      "kind",
+      "output",
+      "within",
+      "rows",
+      "identity",
+      "seed",
+      "predictors",
+      "categorical_predictors",
+      "unseen_categories",
+      "arcsinh_columns",
+      "arcsinh_scale",
+      "boosted",
+      "logit",
+      "boosted_weight",
+      "evidence"
+     ],
+     "properties": {
+      "kind": {
+       "const": "impute_soc2020_sub_major_group"
+      },
+      "output": {
+       "type": "string"
+      },
+      "within": {
+       "type": "string"
+      },
+      "rows": {
+       "type": "string"
+      },
+      "identity": {
+       "type": "string"
+      },
+      "seed": {
+       "type": "integer"
+      },
+      "predictors": {
+       "type": "array",
+       "minItems": 1,
+       "items": {
+        "type": "string"
+       }
+      },
+      "categorical_predictors": {
+       "type": "array",
+       "minItems": 1,
+       "items": {
+        "type": "string"
+       }
+      },
+      "unseen_categories": {
+       "enum": [
+        "refuse",
+        "ignore"
+       ]
+      },
+      "arcsinh_columns": {
+       "type": "array",
+       "minItems": 1,
+       "items": {
+        "type": "string"
+       }
+      },
+      "arcsinh_scale": {
+       "type": "number",
+       "exclusiveMinimum": 0
+      },
+      "boosted": {
+       "type": "object",
+       "additionalProperties": false,
+       "required": [
+        "learning_rate",
+        "max_leaf_nodes",
+        "min_samples_leaf",
+        "l2_regularization",
+        "early_stopping",
+        "validation_fraction",
+        "n_iter_no_change",
+        "max_iter"
+       ],
+       "properties": {
+        "learning_rate": {
+         "type": "number",
+         "exclusiveMinimum": 0
+        },
+        "max_leaf_nodes": {
+         "type": "integer",
+         "minimum": 2
+        },
+        "min_samples_leaf": {
+         "type": "integer",
+         "minimum": 1
+        },
+        "l2_regularization": {
+         "type": "number",
+         "minimum": 0
+        },
+        "early_stopping": {
+         "type": "boolean"
+        },
+        "validation_fraction": {
+         "type": "number",
+         "exclusiveMinimum": 0,
+         "exclusiveMaximum": 1
+        },
+        "n_iter_no_change": {
+         "type": "integer",
+         "minimum": 1
+        },
+        "max_iter": {
+         "type": "integer",
+         "minimum": 1
+        }
+       }
+      },
+      "logit": {
+       "type": "object",
+       "additionalProperties": false,
+       "required": [
+        "n_knots",
+        "degree",
+        "knots",
+        "extrapolation",
+        "penalty_c",
+        "solver",
+        "max_iter"
+       ],
+       "properties": {
+        "n_knots": {
+         "type": "integer",
+         "minimum": 2
+        },
+        "degree": {
+         "type": "integer",
+         "minimum": 1
+        },
+        "knots": {
+         "enum": [
+          "quantile",
+          "uniform"
+         ]
+        },
+        "extrapolation": {
+         "enum": [
+          "constant",
+          "linear",
+          "continue",
+          "error"
+         ]
+        },
+        "penalty_c": {
+         "type": "number",
+         "exclusiveMinimum": 0
+        },
+        "solver": {
+         "type": "string"
+        },
+        "max_iter": {
+         "type": "integer",
+         "minimum": 1
+        }
+       }
+      },
+      "boosted_weight": {
+       "type": "number",
+       "minimum": 0,
+       "maximum": 1
+      },
+      "evidence": {
+       "type": "object",
+       "additionalProperties": false,
+       "required": [
+        "folds",
+        "grouping",
+        "pay_band_quantiles",
+        "age_band_edges"
+       ],
+       "properties": {
+        "folds": {
+         "type": "integer",
+         "minimum": 2
+        },
+        "grouping": {
+         "enum": [
+          "person",
+          "household"
+         ]
+        },
+        "pay_band_quantiles": {
+         "type": "array",
+         "minItems": 1,
+         "items": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "exclusiveMaximum": 1
+         }
+        },
+        "age_band_edges": {
+         "type": "array",
+         "minItems": 1,
+         "items": {
+          "type": "integer"
+         }
+        }
+       }
+      }
+     }
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "required": [
+      "kind",
       "output",
       "rows",
       "donor_rows",

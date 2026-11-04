@@ -385,6 +385,7 @@ UK_ALLOWED_EXTRA_EXPORT_COLUMNS: tuple[str, ...] = (
     "person.salary_sacrifice_reported",
     "person.sic_industry_division",
     "person.soc2020_major_group",
+    "person.soc2020_sub_major_group",
     "person.stands_as_sole_owner_or_partner_of_company",
     "person.statutory_paternity_pay",
     "person.student_loan_balance",

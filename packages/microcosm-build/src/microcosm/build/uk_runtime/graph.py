@@ -209,6 +209,7 @@ _SPLIT_STAGE_SOURCES: Mapping[str, tuple[str, ...]] = {
     ),
     "etb_vat": ("etb",),
     "etb_services": ("etb",),
+    "aps_occupation": ("aps",),
     "frs_hmrc_spine_leaves": ("frs",),
     "frs_annual_income_spells": ("frs",),
     "spi_income_band_donors": ("spi",),
@@ -228,6 +229,7 @@ _SPLIT_SOURCE_DESCRIPTIONS = {
     "lcfs_household": "Pinned local LCFS household donor table.",
     "lcfs_person": "Pinned local LCFS person donor table.",
     "etb": "Pinned local ETB household donor table.",
+    "aps": "Pinned local APS person donor table.",
     "spi": "Pinned local SPI donor table.",
     "hmrc_income": "Pinned local HMRC income facts workbook.",
 }
@@ -400,6 +402,23 @@ _STAGE_CONSUMES: Mapping[str, frozenset[tuple[str, str]] | None] = {
             ("person", "private_pension_income"),
             ("person", "person_is_spi_income_recipient"),
             ("person", "hmrc_spi_pay"),
+            ("household", "region"),
+            ("household", "household_support_channel"),
+            ("household", "household_source_id"),
+        }
+    ),
+    # Engine-free: the sub-major predictors, the major group it nests in, the
+    # draw keys and the channel split (microcosm#1490).
+    "aps_occupation": frozenset(
+        {
+            ("person", "age"),
+            ("person", "gender"),
+            ("person", "employment_status"),
+            ("person", "employment_income"),
+            ("person", "sic_industry_division"),
+            ("person", "soc2020_major_group"),
+            ("person", "person_is_spi_income_recipient"),
+            ("person", "person_source_id"),
             ("household", "region"),
             ("household", "household_support_channel"),
             ("household", "household_source_id"),
@@ -1178,6 +1197,7 @@ _STAGE_CELLS: Mapping[str, tuple[_Cell, ...]] = {
         _Cell("person", "sic_industry_division", "int64"),
         _Cell("person", "employment_sector", "string"),
     ),
+    "aps_occupation": (_Cell("person", "soc2020_sub_major_group", "string"),),
     "spi_housing_shell": (
         *_cells(
             "household",

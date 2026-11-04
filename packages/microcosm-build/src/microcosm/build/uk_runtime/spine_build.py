@@ -67,6 +67,7 @@ from microcosm.build.telemetry_emitter import (
 )
 from microcosm.build.termination import BuildTerminatedError, raise_on_sigterm
 from microcosm.build.uk_runtime.age_tail import UKAgeTailStageTransform
+from microcosm.build.uk_runtime.aps_occupation import UKAPSOccupationStageTransform
 from microcosm.build.uk_runtime.battery_bindings import UK_GATE_REGISTRY
 from microcosm.build.uk_runtime.calibration_run import (
     UK_SPINE_GATE_SCOPE,
@@ -418,6 +419,14 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="Caller-supplied private ETB 1977-2024 household tab for ETB stages.",
     )
     parser.add_argument(
+        "--aps-tab",
+        type=Path,
+        help=(
+            "Caller-supplied private APS April 2024-March 2025 person tab for "
+            "aps_occupation."
+        ),
+    )
+    parser.add_argument(
         "--emit-nonzero-shares",
         type=Path,
         help="Optional JSON path for unweighted per-produced-column nonzero shares.",
@@ -465,6 +474,7 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
                 ("--lcfs-hh-tab", args.lcfs_hh_tab),
                 ("--lcfs-person-tab", args.lcfs_person_tab),
                 ("--etb-tab", args.etb_tab),
+                ("--aps-tab", args.aps_tab),
             )
             if value is not None
         )
@@ -574,6 +584,7 @@ def _synthetic_graph_sources(source: Path) -> dict[str, Path]:
         "lcfs_household": "lcfs_household",
         "lcfs_person": "lcfs_person",
         "etb": "etb",
+        "aps": "aps",
         "spi": "spi_donor",
         "hmrc_income": "hmrc_income_targets",
     }
@@ -1647,6 +1658,12 @@ def prepare_uk_spine_execution(
         raise ValueError(
             "--etb-tab is required when etb_vat or etb_services is scheduled."
         )
+    if (
+        args.synthetic_fixture_dir is None
+        and "aps_occupation" in stage_names
+        and args.aps_tab is None
+    ):
+        raise ValueError("--aps-tab is required when aps_occupation is scheduled.")
     stages = [stages_by_name[name] for name in stage_names]
     synthetic_fixture = _synthetic_fixture_evidence(args.synthetic_fixture_dir)
     engine = _rules_engine()
@@ -1849,6 +1866,13 @@ def prepare_uk_spine_execution(
         implementations["spi_employment_shell"] = UKSPIEmploymentShellStageTransform(
             stage=stages_by_name["spi_employment_shell"]
         )
+    if "aps_occupation" in stage_names:
+        implementations["aps_occupation"] = _GraphSourceTransform(
+            lambda sources: UKAPSOccupationStageTransform(
+                stage=stages_by_name["aps_occupation"],
+                aps_tab_path=sources["aps"],
+            )
+        )
     if "spi_housing_shell" in stage_names:
         implementations["spi_housing_shell"] = UKSPIHousingShellStageTransform(
             stage=stages_by_name["spi_housing_shell"]
@@ -2029,6 +2053,8 @@ def prepare_uk_spine_execution(
             graph_sources["nts_vehicle"] = args.nts_vehicle_tab
         if "etb_vat" in stage_names or "etb_services" in stage_names:
             graph_sources["etb"] = args.etb_tab
+        if "aps_occupation" in stage_names:
+            graph_sources["aps"] = args.aps_tab
         if "spi_income_band_donors" in stage_names:
             graph_sources["spi"] = args.spi_tab
         if "property_components" in stage_names:

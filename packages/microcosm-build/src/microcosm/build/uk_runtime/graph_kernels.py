@@ -121,6 +121,7 @@ _STAGE_MODULES = {
     "spi_income_band_donors": "spi_band_donors",
     "hmrc_spi_income_spine": "spi_spine",
     "spi_employment_shell": "spi_employment_shell",
+    "aps_occupation": "aps_occupation",
     "spi_housing_shell": "spi_housing_shell",
     "uc_reporter_redraw": "uc_reporter_redraw",
     "spi_benefit_coherence": "spi_benefit_coherence",
@@ -276,6 +277,17 @@ _STAGE_HELPER_MODULES = {
     "spi_employment_shell": (
         fit_categorical,
         fit_donors,
+        fit_held_out,
+        occupation_constants,
+        receipt_counts,
+        stochastic_assignment,
+    ),
+    # The sub-major draw fits and scores through microcosm.fit's categorical
+    # classifier and held-out scores, reads the shared occupation codes, and
+    # counts its receipt's support by the shared disclosure rules
+    # (microcosm#1490).
+    "aps_occupation": (
+        fit_categorical,
         fit_held_out,
         occupation_constants,
         receipt_counts,
@@ -580,6 +592,7 @@ def _fixture_implementations(source: Path) -> Mapping[str, object]:
     from microcosm.frame.adapters.policyengine_uk import PolicyEngineUKEngine
 
     from .age_tail import UKAgeTailStageTransform
+    from .aps_occupation import UKAPSOccupationStageTransform
     from .carers_allowance_take_up import UKCarersAllowanceTakeUpStageTransform
     from .cgt_asset_type import UKCGTAssetTypeStageTransform, UKCGTBADRParameters
     from .cgt_imputation import UKCGTPolicyParameters, uk_cgt_spine_stage_transform
@@ -661,6 +674,9 @@ def _fixture_implementations(source: Path) -> Mapping[str, object]:
     )
     etb = pd.read_csv(
         _fixture_input(source, inputs, "etb"), float_precision="round_trip"
+    )
+    aps = pd.read_csv(
+        _fixture_input(source, inputs, "aps"), float_precision="round_trip"
     )
     nts_household = pd.read_csv(
         _fixture_input(source, inputs, "nts_household"), float_precision="round_trip"
@@ -827,6 +843,11 @@ def _fixture_implementations(source: Path) -> Mapping[str, object]:
             ),
             "spi_employment_shell": UKSPIEmploymentShellStageTransform(
                 stage=stages["spi_employment_shell"], boosted_max_iter=qrf_estimators
+            ),
+            "aps_occupation": UKAPSOccupationStageTransform(
+                stage=stages["aps_occupation"],
+                donor=aps,
+                boosted_max_iter=qrf_estimators,
             ),
             "spi_housing_shell": UKSPIHousingShellStageTransform(
                 stage=stages["spi_housing_shell"], n_estimators=qrf_estimators

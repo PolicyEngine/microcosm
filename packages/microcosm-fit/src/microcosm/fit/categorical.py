@@ -18,6 +18,13 @@ boosted classifier, 0 only the logit.
 The fit follows the package's weight contract (:mod:`microcosm.fit.model`): a
 Frame fit reads the owning entity's typed weights, a DataFrame fit needs them
 stated, and ``weights="none"`` is the only unweighted path.
+
+A category the fit never saw is refused at prediction by default. A model that
+predicts for another survey's rows can choose ``unseen_categories="ignore"``
+instead: such a category then sets none of its predictor's indicators, as
+scikit-learn's ``handle_unknown="ignore"`` encodes it, and
+:meth:`FittedCategoricalClassifier.unseen_category_rows` says which rows held
+one.
 """
 
 from __future__ import annotations
@@ -53,6 +60,8 @@ __all__ = [
 
 #: Added to a feature's standard deviation so a constant column scales to zero.
 _SCALE_FLOOR = 1e-9
+#: How a category the fit never saw is read at prediction.
+_UNSEEN_CATEGORY_RULES = ("refuse", "ignore")
 
 
 @dataclass(frozen=True)
@@ -137,6 +146,9 @@ class CategoricalClassifier:
             tames long-tailed amounts such as incomes. The boosted classifier,
             which splits on ranks, always sees the raw values.
         seed: Seeds the boosted classifier and the :meth:`predict` draws.
+        unseen_categories: ``"refuse"`` (the default) raises when a row to
+            predict holds a category the fit never saw; ``"ignore"`` sets none
+            of that predictor's indicators for it.
     """
 
     boosted_weight: float = 0.5
@@ -145,11 +157,16 @@ class CategoricalClassifier:
     categorical_predictors: tuple[str, ...] = ()
     arcsinh_scales: Mapping[str, float] = field(default_factory=dict)
     seed: int = 0
+    unseen_categories: str = "refuse"
 
     def __post_init__(self) -> None:
         weight = float(self.boosted_weight)
         if not 0.0 <= weight <= 1.0:
             raise ValueError("boosted_weight must be in [0, 1].")
+        if self.unseen_categories not in _UNSEEN_CATEGORY_RULES:
+            raise ValueError(
+                f"unseen_categories must be one of {list(_UNSEEN_CATEGORY_RULES)}."
+            )
         for column, scale in self.arcsinh_scales.items():
             if not np.isfinite(scale) or scale <= 0:
                 raise ValueError(f"arcsinh scale for {column!r} must be positive.")
@@ -210,7 +227,9 @@ class CategoricalClassifier:
             if weight_values is None
             else np.asarray(weight_values, dtype=np.float64)
         )
-        features = _Features.fit(table, predictors, self.categorical_predictors)
+        features = _Features.fit(
+            table, predictors, self.categorical_predictors, self.unseen_categories
+        )
         classes = np.unique(y)
         fitted = FittedCategoricalClassifier(
             entity=entity,
@@ -260,16 +279,22 @@ class _Features:
     numeric: tuple[str, ...]
     categorical: tuple[str, ...]
     levels: Mapping[str, np.ndarray]
+    unseen: str = "refuse"
 
     @classmethod
     def fit(
-        cls, table: pd.DataFrame, predictors: list[str], categorical: Sequence[str]
+        cls,
+        table: pd.DataFrame,
+        predictors: list[str],
+        categorical: Sequence[str],
+        unseen: str = "refuse",
     ) -> _Features:
         numeric = tuple(c for c in predictors if c not in categorical)
         features = cls(
             numeric=numeric,
             categorical=tuple(c for c in predictors if c in categorical),
             levels={},
+            unseen=unseen,
         )
         features.numeric_values(table)
         features.levels = {
@@ -291,17 +316,27 @@ class _Features:
             raise ValueError(f"Numeric predictors have non-finite values: {bad}.")
         return values
 
+    def _indicators(self, table: pd.DataFrame, column: str) -> np.ndarray:
+        values = table[column].to_numpy()
+        return values[:, None] == self.levels[column][None, :]
+
+    def unseen_rows(self, table: pd.DataFrame) -> np.ndarray:
+        rows = np.zeros(len(table), dtype=bool)
+        for column in self.categorical:
+            rows |= ~self._indicators(table, column).any(axis=1)
+        return rows
+
     def one_hot(self, table: pd.DataFrame) -> np.ndarray:
         parts = []
         for column in self.categorical:
-            values = table[column].to_numpy()
-            known = self.levels[column]
-            unseen = sorted({str(v) for v in values} - {str(v) for v in known})
-            if unseen:
+            indicators = self._indicators(table, column)
+            seen = indicators.any(axis=1)
+            if self.unseen == "refuse" and not seen.all():
+                unseen = sorted({str(v) for v in table[column].to_numpy()[~seen]})
                 raise ValueError(
                     f"Predictor {column!r} has categories the fit never saw: {unseen}."
                 )
-            parts.append((values[:, None] == known[None, :]).astype(np.float64))
+            parts.append(indicators.astype(np.float64))
         if not parts:
             return np.zeros((len(table), 0))
         return np.hstack(parts)
@@ -479,6 +514,10 @@ class FittedCategoricalClassifier:
         return (
             weight * components["boosted"] + (1.0 - weight) * components["spline_logit"]
         )
+
+    def unseen_category_rows(self, frame_or_df: Frame | pd.DataFrame) -> np.ndarray:
+        """Rows holding a category of some categorical predictor the fit never saw."""
+        return self._features.unseen_rows(self._table(frame_or_df))
 
     def predict_from_uniforms(
         self, frame_or_df: Frame | pd.DataFrame, uniforms: np.ndarray

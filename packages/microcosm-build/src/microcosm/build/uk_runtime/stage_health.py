@@ -126,6 +126,8 @@ def uk_stage_health_gate(
         return _company_cars_gate(stage, evidence, parameters)
     if check == "occupation_redraw":
         return _occupation_redraw_gate(stage, evidence, parameters)
+    if check == "sub_major_draw":
+        return _sub_major_draw_gate(stage, evidence, parameters)
     return GateResult(
         name="stage_health",
         passed=False,
@@ -5398,6 +5400,137 @@ def _occupation_redraw_gate(
             f"above {maximum_status}."
         )
     details.update({"log_loss": dict(losses), "calibration_slope": slope})
+    return GateResult(
+        name="stage_health",
+        passed=not failures,
+        failures=tuple(failures),
+        details=details,
+    )
+
+
+def _sub_major_draw_gate(
+    stage: str,
+    evidence: Mapping[str, object],
+    parameters: Mapping[str, object],
+) -> GateResult:
+    """The APS sub-major draw's held-out and frame evidence (microcosm#1490).
+
+    Fails when the evidence was not measured; when the model's out-of-fold log
+    loss, pooled over the major groups, is not ``minimum_log_loss_gain`` below
+    the constant's; when the blend loses more than
+    ``maximum_blend_log_loss_excess`` to its better learner; when a major
+    group's calibration slope leaves ``calibration_slope_bounds`` or its Platt
+    fit fell back to class rates; when the pooled sub-major share gaps exceed
+    ``maximum_pay_band_share_gap`` within pay bands or
+    ``maximum_region_share_gap`` within regions; or when the FRS rows'
+    expected shares miss the donors' in some major group by more than
+    ``maximum_frame_share_gap``.
+    """
+
+    check = "sub_major_draw"
+    minimum_gain = _finite_number(
+        parameters["minimum_log_loss_gain"], label=f"{stage}.minimum_log_loss_gain"
+    )
+    low, high = (
+        _finite_number(bound, label=f"{stage}.calibration_slope_bounds")
+        for bound in parameters["calibration_slope_bounds"]
+    )
+    maximum_pay = _finite_number(
+        parameters["maximum_pay_band_share_gap"],
+        label=f"{stage}.maximum_pay_band_share_gap",
+    )
+    maximum_region = _finite_number(
+        parameters["maximum_region_share_gap"],
+        label=f"{stage}.maximum_region_share_gap",
+    )
+    maximum_excess = _finite_number(
+        parameters["maximum_blend_log_loss_excess"],
+        label=f"{stage}.maximum_blend_log_loss_excess",
+    )
+    maximum_frame = _finite_number(
+        parameters["maximum_frame_share_gap"],
+        label=f"{stage}.maximum_frame_share_gap",
+    )
+    held_out = _mapping(evidence.get("held_out"), label=f"{stage}.held_out")
+    details: dict[str, object] = {"stage": stage, "check": check}
+    if held_out.get("status") != "measured":
+        return GateResult(
+            name="stage_health",
+            passed=False,
+            failures=(
+                f"{stage}: the held-out evidence was not measured "
+                f"({held_out.get('reason')}).",
+            ),
+            details=details,
+        )
+    failures: list[str] = []
+    losses = _mapping(held_out.get("log_loss"), label=f"{stage}.held_out.log_loss")
+    model = _finite_number(losses.get("model"), label=f"{stage}.log_loss.model")
+    constant = _finite_number(
+        losses.get("marginal"), label=f"{stage}.log_loss.marginal"
+    )
+    if constant - model < minimum_gain:
+        failures.append(
+            f"{stage}: the model's pooled log loss ({model:.4f}) is less than "
+            f"{minimum_gain} below the constant's ({constant:.4f})."
+        )
+    learners = {
+        name: _finite_number(losses[name], label=f"{stage}.log_loss.{name}")
+        for name in ("boosted", "spline_logit")
+        if name in losses
+    }
+    if len(learners) == 2 and model > min(learners.values()) + maximum_excess:
+        failures.append(
+            f"{stage}: the blend's pooled log loss ({model:.4f}) exceeds its better "
+            f"learner's ({min(learners.values()):.4f}) by more than {maximum_excess}."
+        )
+    groups = _mapping(held_out.get("major_groups"), label=f"{stage}.major_groups")
+    slopes: dict[str, object] = {}
+    for group, entry in groups.items():
+        entry = _mapping(entry, label=f"{stage}.major_groups.{group}")
+        slope = entry.get("calibration_slope")
+        slopes[str(group)] = slope
+        if slope is None or entry.get("calibration_outcome") != "cross_fitted":
+            failures.append(
+                f"{stage}: the calibration slope of {group} could not be fitted."
+            )
+            continue
+        value = _finite_number(slope, label=f"{stage}.{group}.calibration_slope")
+        if not low <= value <= high:
+            failures.append(
+                f"{stage}: the calibration slope of {group} ({value:.3f}) is "
+                f"outside [{low}, {high}]."
+            )
+    for key, maximum, label in (
+        ("pay_band_share_gap", maximum_pay, "pay bands"),
+        ("region_share_gap", maximum_region, "regions"),
+    ):
+        gap = _finite_number(held_out.get(key), label=f"{stage}.{key}")
+        if gap > maximum:
+            failures.append(
+                f"{stage}: sub-major shares miss within the {label} by {gap:.4f} "
+                f"on average, above {maximum}."
+            )
+    frame = _mapping(
+        evidence.get("frame_against_donors"), label=f"{stage}.frame_against_donors"
+    )
+    frame_gap = frame.get("share_gap_max")
+    if frame_gap is None:
+        failures.append(f"{stage}: no major group compares the FRS rows with donors.")
+    else:
+        value = _finite_number(frame_gap, label=f"{stage}.frame_share_gap_max")
+        if value > maximum_frame:
+            failures.append(
+                f"{stage}: the FRS rows' expected sub-major shares miss the donors' "
+                f"by {value:.4f} in a major group, above {maximum_frame}."
+            )
+    details.update(
+        {
+            "log_loss": dict(losses),
+            "calibration_slopes": slopes,
+            "frame_share_gap_max": frame_gap,
+        }
+    )
     return GateResult(
         name="stage_health",
         passed=not failures,

@@ -175,6 +175,22 @@ def test_unseen_categories_at_prediction_are_refused() -> None:
         fitted.predict_proba(data.assign(group="east"))
 
 
+def test_ignored_unseen_categories_set_no_indicator() -> None:
+    data = _planted()
+    fitted = _model(unseen_categories="ignore").fit(
+        data, PREDICTORS, ["label"], weights="weight"
+    )
+    east = data.head(50).assign(group="east")
+    proba = fitted.predict_proba(east)
+    np.testing.assert_allclose(proba.sum(axis=1), 1.0)
+    # Every unseen level reads alike: none of the group's indicators is set.
+    np.testing.assert_allclose(
+        proba, fitted.predict_proba(data.head(50).assign(group="west"))
+    )
+    assert fitted.unseen_category_rows(east).all()
+    assert not fitted.unseen_category_rows(data).any()
+
+
 def test_non_finite_numeric_predictors_are_refused() -> None:
     data = _planted()
     data.loc[3, "pay"] = np.nan
@@ -194,6 +210,7 @@ def test_a_missing_label_is_refused() -> None:
     [
         ({"boosted_weight": 1.5}, "boosted_weight"),
         ({"arcsinh_scales": {"pay": 0.0}}, "positive"),
+        ({"unseen_categories": "drop"}, "unseen_categories"),
     ],
 )
 def test_bad_settings_are_refused(overrides, message) -> None:

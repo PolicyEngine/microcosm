@@ -2202,6 +2202,11 @@ UK_GATE_REGISTRY: Mapping[str, GateBinding] = {
                 "maximum_pay_band_share_gap",
                 "maximum_status_group_share_gap",
                 "maximum_blend_log_loss_excess",
+                # The sub_major_draw check (microcosm#1490) shares those and adds
+                # the sub-major share gap within regions and the FRS rows' gap
+                # from the APS donors within a major group.
+                "maximum_region_share_gap",
+                "maximum_frame_share_gap",
                 # #1113 road_fuel_incidence check: the ceiling on the chain's
                 # zero share among flagged fuel-car households.
                 "maximum_flagged_zero_share",

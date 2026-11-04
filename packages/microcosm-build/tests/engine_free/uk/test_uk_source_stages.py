@@ -72,8 +72,10 @@ E7_STAGE_NAMES = [
     # (PolicyEngine/uk-autumn-budget-dashboard-2026#316).
     "company_cars",
     # The employment shell redraws the drawn rows' occupation from that carved
-    # pay, before the housing shell (microcosm#1490).
+    # pay, before the housing shell, and the sub-major group is drawn within
+    # the major group it settles (microcosm#1490).
     "spi_employment_shell",
+    "aps_occupation",
 ]
 HOUSING_SHELL_STAGE_NAMES = [
     "spi_housing_shell",
@@ -322,6 +324,7 @@ class TestUKSourceStagesManifest:
                     "trading_allowance_receipts": _identity,
                     "company_cars": _identity,
                     "spi_employment_shell": _identity,
+                    "aps_occupation": _identity,
                     "childcare_copy_take_up": _identity,
                     "age_tail": _identity,
                     "frs_relationships": _identity,

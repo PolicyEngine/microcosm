@@ -224,13 +224,13 @@ def _trusted_terminal_gate_signing_key(monkeypatch) -> None:
 UK_GATE_BATTERY_PRODUCER = "microcosm.build.gate_battery"
 UK_GATE_BATTERY_SIGNING_KEY_ENV = "MICROCOSM_UK_TERMINAL_GATE_SIGNING_KEY"
 UK_GATE_BATTERY_POLICY_SHA256 = (
-    "7329732e070d3c10aef9ea50b9cd330c4187480b2fbcfc0b65ab1146fdfd75df"
+    "97ec5dd9ee1f1809412c5a3513b9471963f359ae3a501871fb8ace91520820f8"
 )
 UK_GATE_BATTERY_GATES_MANIFEST_SHA256 = (
-    "e83191ad38751ba75b8d1ed45352033f3d89851b7a2ec93b01e993a26c9498df"
+    "c790fadd40555b6062380b29b6c83f8c1cdec3ca6af5e1ad32fec71e0291d6f6"
 )
 UK_GATE_BATTERY_SPEC_FINGERPRINT = (
-    "8dba276a743e06d300be96dd7e390fea9e56455fae016ac4d0a995fd04e5ae87"
+    "5fe0c71990495612dc6afc06215b66fb5e8b15558a4a6271416f59d3b3af5bcb"
 )
 UK_GATE_BATTERY_DEGENERATE_EVIDENCE_SHA256 = (
     "f246388de42654dd68dbbb40c42282001b5b0a8bf48976162bcb1199085cb1d3"
@@ -376,6 +376,7 @@ UK_GATE_BATTERY_ENTRIES = {
     "uk_stage_isa_subscriptions": ("stage_health", "transferred", None),
     "uk_stage_company_cars_invariants": ("stage_health", "transferred", None),
     "uk_stage_spi_employment_shell_fit": ("stage_health", "transferred", None),
+    "uk_stage_aps_occupation_fit": ("stage_health", "transferred", None),
     "uk_stage_frs_take_up_signal": (
         "stage_health",
         "assembled",
@@ -465,6 +466,11 @@ UK_GATE_BATTERY_ENTRIES = {
         "enum_domain",
     ),
     "uk_soc2020_major_group_enum_domain": (
+        "enum_domain",
+        "terminal",
+        "enum_domain",
+    ),
+    "uk_soc2020_sub_major_group_enum_domain": (
         "enum_domain",
         "terminal",
         "enum_domain",
@@ -1479,6 +1485,7 @@ def _gate_battery_payload(
         "uk_stage_isa_subscriptions": "isa_subscriptions",
         "uk_stage_company_cars_invariants": "company_cars",
         "uk_stage_spi_employment_shell_fit": "spi_employment_shell",
+        "uk_stage_aps_occupation_fit": "aps_occupation",
         "uk_stage_frs_take_up_signal": "frs_take_up",
         "uk_stage_frs_person_draws_take_up_signal": "frs_person_draws",
         "uk_stage_frs_household_draws_take_up_signal": "frs_household_draws",

@@ -184,6 +184,10 @@ def _apply_pending_roster_transformations(
     # rows' occupation from the pay the company cars carve.
     assert "spi_employment_shell" not in roster
     roster.insert(roster.index("company_cars") + 1, "spi_employment_shell")
+    # microcosm#1490 re-mint pending: the APS sub-major group is drawn within
+    # the major group the employment shell settles.
+    assert "aps_occupation" not in roster
+    roster.insert(roster.index("spi_employment_shell") + 1, "aps_occupation")
     # microcosm#1428 re-mint pending: the self-employed's gross receipts run
     # last.
     assert "trading_allowance_receipts" not in roster

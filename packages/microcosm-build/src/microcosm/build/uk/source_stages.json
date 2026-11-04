@@ -2975,6 +2975,170 @@
    "survey": "Family Resources Survey 2024-25"
   },
   {
+   "artifacts": [
+    {
+     "access": "private_local_input",
+     "doi": "10.5255/UKDA-SN-9408-1",
+     "filename": "apsp_a24m25_eul_pwta22.tab",
+     "kind": "private_microdata",
+     "locator": "caller-supplied local input",
+     "role": "aps_person_tab",
+     "runtime_sha256_required": true,
+     "sha256": "8b4327d3c331b18cf1b1e16485489645f5f57562cca0555315a520c1592b56af",
+     "size_bytes": 257997154,
+     "ukds_study_number": 9408
+    }
+   ],
+   "grain": "person",
+   "notes": "Runs after spi_employment_shell, which settles every row's SOC 2020 major group and SIC 2007 division, and before any later stage copies households (microcosm#1490). The FRS codes the major group only; the APS codes the minor group, whose first two digits are the sub-major group. The donors are the APS adults (16 and over, not under-16 status) with a minor group: the main job's for people in employment (ILODEFR 1), the last job's otherwise, as the FRS records the main or last job. An employee's pay (GRSSWK, gross weekly pay in the main job) is asked in the income waves only, so employees without one leave the donors and those with one carry the income weight PIWTA22; everyone else carries the person weight PWTA22. Each major group gets its own model over its sub-major groups: microcosm.fit's CategoricalClassifier, the equal mixture of a regularised gradient-boosted classifier and a multinomial logit on spline features, on age (capped at 80, the FRS top code), sex, region, employment-status group (employee, self-employed, retired, other), annual pay (weekly pay times 52, arcsinh in the logit) and SIC 2007 section, the predictors both surveys record alike; a section the group's donors never hold sets no indicator, and the receipt counts the households that held one. That blend and predictor set held out best on the APS (five stratified folds by person; adding full or part time, usual hours and qualification gained less than 0.02 nats), and the same model trained on the APS scored the FRS's own major groups within 0.01 nats of a model trained on the FRS. A person with no major group keeps NONE. Draws read uniforms keyed on person_source_id, so a copy draws its FRS twin's group, except for the SPI income recipients, whose incomes and occupation the SPI stages drew and who key on their own person_id. Codes verified 2026-11-04 against the deposited SN 9408 data dictionary (apsp_a24m25_eul_pwta22_ukda_data_dictionary.rtf): SC20MMN and SC20LMN are minor groups 111 to 926 with -9 and -8 missing; ILODEFR 1 is in employment; INECAC05 1 is employee, 2 self-employed, 16 and 24 retired, 26 under 16, and every other code is grouped as other; SEX 1 male, 2 female; GOVTOF 1 to 13 are the government office regions with Merseyside (3) part of the North West, and agree with GOR9DCENSUS2021 on every record; INDS07M and INDS07L 1 to 21 are SIC 2007 sections A to U; GRSSWK, PWTA22 and PIWTA22 use -9 and -8 for missing. The receipt records the donors by major group and the held-out evidence per major group and pooled: log loss of the model, each learner and the training folds' class shares; each group's calibration slope; and sub-major share gaps within pay bands, regions, age bands and status groups; then the FRS rows' expected sub-major shares against the donors' within each major group, with counts banded by the shared disclosure rules.",
+   "operations": [
+    {
+     "adult_age": 16,
+     "age_cap": 80,
+     "codes": {
+      "employee": 1,
+      "in_employment": 1,
+      "other_status_group": "OTHER",
+      "region": {
+       "1": "NORTH_EAST",
+       "10": "SOUTH_WEST",
+       "11": "WALES",
+       "12": "SCOTLAND",
+       "13": "NORTHERN_IRELAND",
+       "2": "NORTH_WEST",
+       "3": "NORTH_WEST",
+       "4": "YORKSHIRE",
+       "5": "EAST_MIDLANDS",
+       "6": "WEST_MIDLANDS",
+       "7": "EAST_OF_ENGLAND",
+       "8": "LONDON",
+       "9": "SOUTH_EAST"
+      },
+      "sections": [
+       "A",
+       "B",
+       "C",
+       "D",
+       "E",
+       "F",
+       "G",
+       "H",
+       "I",
+       "J",
+       "K",
+       "L",
+       "M",
+       "N",
+       "O",
+       "P",
+       "Q",
+       "R",
+       "S",
+       "T",
+       "U"
+      ],
+      "sex": {
+       "1": "MALE",
+       "2": "FEMALE"
+      },
+      "status_group": {
+       "1": "EMPLOYEE",
+       "16": "RETIRED",
+       "2": "SELF_EMPLOYED",
+       "24": "RETIRED"
+      },
+      "under_16": 26
+     },
+     "columns": {
+      "age": "AGE",
+      "economic_activity": "ILODEFR",
+      "income_weight": "PIWTA22",
+      "last_minor_group": "SC20LMN",
+      "last_section": "INDS07L",
+      "main_minor_group": "SC20MMN",
+      "main_section": "INDS07M",
+      "person_weight": "PWTA22",
+      "region": "GOVTOF",
+      "sex": "SEX",
+      "status": "INECAC05",
+      "weekly_pay": "GRSSWK"
+     },
+     "kind": "clean_aps_occupation_table",
+     "lowercase_columns": true,
+     "pay_weeks": 52
+    },
+    {
+     "arcsinh_columns": [
+      "employment_income"
+     ],
+     "arcsinh_scale": 1000,
+     "boosted": {
+      "early_stopping": true,
+      "l2_regularization": 1,
+      "learning_rate": 0.05,
+      "max_iter": 500,
+      "max_leaf_nodes": 15,
+      "min_samples_leaf": 40,
+      "n_iter_no_change": 20,
+      "validation_fraction": 0.2
+     },
+     "boosted_weight": 0.5,
+     "categorical_predictors": [
+      "gender",
+      "region",
+      "status_group",
+      "sic_section"
+     ],
+     "evidence": {
+      "age_band_edges": [
+       25,
+       35,
+       45,
+       55,
+       65
+      ],
+      "folds": 5,
+      "grouping": "person",
+      "pay_band_quantiles": [
+       0.5,
+       0.8,
+       0.9
+      ]
+     },
+     "identity": "person_source_id_or_spi_recipient_person_id",
+     "kind": "impute_soc2020_sub_major_group",
+     "logit": {
+      "degree": 3,
+      "extrapolation": "constant",
+      "knots": "quantile",
+      "max_iter": 3000,
+      "n_knots": 6,
+      "penalty_c": 1,
+      "solver": "lbfgs"
+     },
+     "output": "soc2020_sub_major_group",
+     "predictors": [
+      "age",
+      "gender",
+      "region",
+      "status_group",
+      "employment_income",
+      "sic_section"
+     ],
+     "rows": "people_with_a_major_group",
+     "seed": 0,
+     "unseen_categories": "ignore",
+     "within": "soc2020_major_group"
+    }
+   ],
+   "outputs": [
+    "soc2020_sub_major_group"
+   ],
+   "source": "Office for National Statistics, Annual Population Survey, April 2024 - March 2025, UK Data Service SN 9408 (End User Licence), DOI 10.5255/UKDA-SN-9408-1; local licensed person tab; the SOC 2020 minor group of the main job, or of the last job for people not in work (microcosm#1490).",
+   "stage": "aps_occupation",
+   "survey": "Annual Population Survey, April 2024 - March 2025"
+  },
+  {
    "stage": "spi_housing_shell",
    "survey": "Family Resources Survey 2024-25",
    "source": "Family Resources Survey 2024-25 base households' housing (tenure, dwelling type, bedrooms, council tax, housing costs and the housing-linked benefit reports), imputed onto the SPI support households from their own region, composition and post-SPI incomes.",

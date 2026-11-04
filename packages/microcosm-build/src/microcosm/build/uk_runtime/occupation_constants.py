@@ -28,6 +28,52 @@ UK_SOC2020_MAJOR_GROUPS: Mapping[int, str] = MappingProxyType(
     }
 )
 
+#: The engine's ``soc2020_sub_major_group`` members (policyengine-uk
+#: ``SOC2020SubMajorGroup``) by SOC 2020 sub-major group code, in code order
+#: (ONS SOC 2020 Volume 1). A sub-major group's first digit is its major group.
+UK_SOC2020_SUB_MAJOR_GROUPS: Mapping[int, str] = MappingProxyType(
+    {
+        11: "CORPORATE_MANAGERS_AND_DIRECTORS",
+        12: "OTHER_MANAGERS_AND_PROPRIETORS",
+        21: "SCIENCE_RESEARCH_ENGINEERING_AND_TECHNOLOGY_PROFESSIONALS",
+        22: "HEALTH_PROFESSIONALS",
+        23: "TEACHING_AND_OTHER_EDUCATIONAL_PROFESSIONALS",
+        24: "BUSINESS_MEDIA_AND_PUBLIC_SERVICE_PROFESSIONALS",
+        31: "SCIENCE_ENGINEERING_AND_TECHNOLOGY_ASSOCIATE_PROFESSIONALS",
+        32: "HEALTH_AND_SOCIAL_CARE_ASSOCIATE_PROFESSIONALS",
+        33: "PROTECTIVE_SERVICE",
+        34: "CULTURE_MEDIA_AND_SPORTS",
+        35: "BUSINESS_AND_PUBLIC_SERVICE_ASSOCIATE_PROFESSIONALS",
+        41: "ADMINISTRATIVE",
+        42: "SECRETARIAL_AND_RELATED",
+        51: "SKILLED_AGRICULTURAL_AND_RELATED_TRADES",
+        52: "SKILLED_METAL_ELECTRICAL_AND_ELECTRONIC_TRADES",
+        53: "SKILLED_CONSTRUCTION_AND_BUILDING_TRADES",
+        54: "TEXTILES_PRINTING_AND_OTHER_SKILLED_TRADES",
+        61: "CARING_PERSONAL_SERVICE",
+        62: "LEISURE_TRAVEL_AND_RELATED_PERSONAL_SERVICE",
+        63: "COMMUNITY_AND_CIVIL_ENFORCEMENT",
+        71: "SALES",
+        72: "CUSTOMER_SERVICE",
+        81: "PROCESS_PLANT_AND_MACHINE_OPERATIVES",
+        82: "TRANSPORT_AND_MOBILE_MACHINE_DRIVERS_AND_OPERATIVES",
+        91: "ELEMENTARY_TRADES_AND_RELATED",
+        92: "ELEMENTARY_ADMINISTRATION_AND_SERVICE",
+    }
+)
+
+#: Each sub-major group's major group, by member name, derived from the codes;
+#: NONE is its own.
+UK_SOC2020_MAJOR_GROUP_OF_SUB_MAJOR_GROUP: Mapping[str, str] = MappingProxyType(
+    {
+        UK_SOC2020_NO_OCCUPATION: UK_SOC2020_NO_OCCUPATION,
+        **{
+            name: UK_SOC2020_MAJOR_GROUPS[code // 10]
+            for code, name in UK_SOC2020_SUB_MAJOR_GROUPS.items()
+        },
+    }
+)
+
 #: The FRS adult-table ``SOC2020`` coding -> the engine's member: 0 is undefined,
 #: and each major group is its code times 1000 (UKDS FRS 2024-25 data
 #: dictionary, SN 9563).
@@ -102,6 +148,8 @@ __all__ = [
     "UK_OCCUPATION_STATUS_GROUP",
     "UK_SIC2007_SECTION_DIVISIONS",
     "UK_SOC2020_MAJOR_GROUPS",
+    "UK_SOC2020_MAJOR_GROUP_OF_SUB_MAJOR_GROUP",
     "UK_SOC2020_NO_OCCUPATION",
+    "UK_SOC2020_SUB_MAJOR_GROUPS",
     "uk_sic2007_sections",
 ]

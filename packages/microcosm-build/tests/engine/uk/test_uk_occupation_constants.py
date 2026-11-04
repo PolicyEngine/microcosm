@@ -4,10 +4,15 @@ from policyengine_uk.variables.household.income.soc2020_major_group import (
     SOC2020_MAJOR_GROUP_CODES,
     SOC2020MajorGroup,
 )
+from policyengine_uk.variables.household.income.soc2020_sub_major_group import (
+    SOC2020_SUB_MAJOR_GROUP_CODES,
+    SOC2020SubMajorGroup,
+)
 
 from microcosm.build.uk_runtime.occupation_constants import (
     UK_SOC2020_MAJOR_GROUPS,
     UK_SOC2020_NO_OCCUPATION,
+    UK_SOC2020_SUB_MAJOR_GROUPS,
 )
 
 
@@ -20,4 +25,16 @@ def test_major_groups_are_the_engine_enum_in_code_order() -> None:
 def test_major_group_codes_are_the_engine_code_map() -> None:
     assert dict(SOC2020_MAJOR_GROUP_CODES) == {
         name: code for code, name in UK_SOC2020_MAJOR_GROUPS.items()
+    }
+
+
+def test_sub_major_groups_are_the_engine_enum_in_code_order() -> None:
+    members = list(SOC2020SubMajorGroup.__members__)
+    assert members[0] == UK_SOC2020_NO_OCCUPATION
+    assert members[1:] == list(UK_SOC2020_SUB_MAJOR_GROUPS.values())
+
+
+def test_sub_major_group_codes_are_the_engine_code_map() -> None:
+    assert dict(SOC2020_SUB_MAJOR_GROUP_CODES) == {
+        name: code for code, name in UK_SOC2020_SUB_MAJOR_GROUPS.items()
     }

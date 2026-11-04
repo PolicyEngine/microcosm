@@ -454,13 +454,6 @@ UK_ENGINE_DEFAULT_INPUTS: dict[str, str] = {
         "microcosm#1439 stores the status and retires the encoding (for María's "
         "signature)."
     ),
-    "soc2020_sub_major_group": (
-        "The SOC 2020 sub-major group of the same job (policyengine-uk "
-        "2.173.0). The FRS codes the major group only, so the sub-major group "
-        "needs an imputation within it from a survey that codes it. Until a "
-        "stage imputes it every person takes NONE, and no engine formula reads "
-        "it (microcosm#1490; for María's signature)."
-    ),
     "is_in_full_time_education": (
         "Whether the person is on a full-time course (policyengine-uk 2.173.2), "
         "which Universal Credit's condition that a claimant is not receiving "

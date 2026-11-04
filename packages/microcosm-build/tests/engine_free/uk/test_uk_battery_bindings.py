@@ -1081,10 +1081,11 @@ class TestBatteryRegressions:
         # amount, and the release-frame council-tax band check (#1278).
         # Plus uk_local_brma_enum_domain, the terminal recheck of the area-BRMA
         # rewrite (microcosm#1262; its enum_domain binding is stubbed here), and
-        # the SOC 2020 major group's enum check (microcosm#1490).
-        assert len(passed) == 23
+        # the SOC 2020 major and sub-major groups' enum checks (microcosm#1490).
+        assert len(passed) == 24
         assert "uk_local_brma_enum_domain" in passed
         assert "uk_soc2020_major_group_enum_domain" in passed
+        assert "uk_soc2020_sub_major_group_enum_domain" in passed
 
     def test_input_mass_parity_compares_the_release_surface(self) -> None:
         # The frame carries the spine's WAS property_wealth and the reference

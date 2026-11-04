@@ -74,3 +74,24 @@ def test_sic_sections_are_ordered_and_disjoint() -> None:
         "P",
         "U",
     ]
+
+
+def test_each_sub_major_group_nests_in_its_codes_major_group() -> None:
+    from microcosm.build.uk_runtime.occupation_constants import (
+        UK_SOC2020_MAJOR_GROUP_OF_SUB_MAJOR_GROUP,
+        UK_SOC2020_SUB_MAJOR_GROUPS,
+    )
+
+    codes = list(UK_SOC2020_SUB_MAJOR_GROUPS)
+    assert codes == sorted(codes) and len(codes) == 26
+    assert {code // 10 for code in codes} == set(UK_SOC2020_MAJOR_GROUPS)
+    names = list(UK_SOC2020_SUB_MAJOR_GROUPS.values())
+    assert len(set(names)) == len(names)
+    assert UK_SOC2020_NO_OCCUPATION not in names
+    assert dict(UK_SOC2020_MAJOR_GROUP_OF_SUB_MAJOR_GROUP) == {
+        UK_SOC2020_NO_OCCUPATION: UK_SOC2020_NO_OCCUPATION,
+        **{
+            name: UK_SOC2020_MAJOR_GROUPS[code // 10]
+            for code, name in UK_SOC2020_SUB_MAJOR_GROUPS.items()
+        },
+    }
