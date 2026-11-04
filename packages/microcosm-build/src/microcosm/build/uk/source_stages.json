@@ -2697,9 +2697,11 @@
     "company_car_co2_emissions",
     "company_car_electric_range",
     "company_car_capital_contributions",
-    "employment_income"
+    "employment_income",
+    "hmrc_spi_pay",
+    "hmrc_spi_employment_benefits"
    ],
-   "notes": "Writes six of policyengine-uk 2.165.0's company car inputs (PolicyEngine/uk-autumn-budget-dashboard-2026#316) right after the SPI income stage, so every later stage reads the tape rows' pay without the car benefits, as the engine's employment_income excludes them, and salary_sacrifice bounds its sacrifice on that pay (María's ruling of 31 October 2026). An FRS-channel person keeps the company car frs_spine's carriers record; a tape row of the SPI channel (person_is_spi_income_recipient) keeps its twin's only where its drawn EPB is positive, and the channel's other rows, which keep their twin's pay, keep its car. Fuel maps from the FRS code (a hybrid is an alternative fuel; a diesel meets RDE2, which every new diesel has since January 2021), and the unknown fuels draw at Table 2C's shares together: without electricity where the respondent reports private fuel, and with the others' electric share raised to keep Table 2C's at the stage's weights. The list price is drawn within the respondent's CARVAL band from WAS round-8 company cars' prices grown by the engine's CPI index from 2021, the open and unknown bands by fuel class, uniformly from no lower than minimum_scaled_list_price_gbp where a band has fewer than minimum_donor_households WAS households. CO2 is zero for an electric car; the others split between 1 to 50 g/km (hybrids first) and the bands above at Table 2A's shares among cars that emit CO2, uniformly within each band, and a car at 1 to 50 g/km takes electric_range_miles. Availability, payments for private use and the 2020 registration flag keep the engine's defaults, which no survey records. A tape row's pay is the tape's PAY + EPB + TAXTERM, so the engine's car and fuel benefits come out of employment_income, capped at EPB within the pay the row's employee pension contribution leaves (the SPI income stage capped that contribution at the drawn pay, and salary_sacrifice refuses one above the pay that remains): where the two do not fit together the fuel goes first, then the list price is scaled down to fit with its contributions dropped, or the car dropped below minimum_scaled_list_price_gbp (María's rulings of 30 and 31 October 2026). A scaled price is the room over the car's appropriate percentage, so the CO2 draw, electric_range_miles and the RDE2 diesel set it, and with it the base the 2030-31 rise acts on. The stage then prices its output again on the engine: on every tape row, pay plus the benefits must equal the pay the row brought in. A carved row's UC gainful self-employment, which the SPI income stage set on the drawn pay, takes the root's rule again on the carved pay. No HMRC fact is a calibration target: binding the cells the stage draws to would be circular. No build step reads Tables 1, 3A and 4 after calibration yet: comparing the calibrated file with them is a manual step.",
+   "notes": "Writes six of policyengine-uk 2.165.0's company car inputs (PolicyEngine/uk-autumn-budget-dashboard-2026#316) right after the SPI income stage, so every later stage reads the tape rows' pay without the car benefits, as the engine's employment_income excludes them, and salary_sacrifice bounds its sacrifice on that pay (María's ruling of 31 October 2026). An FRS-channel person keeps the company car frs_spine's carriers record, and every row of the SPI channel keeps its twin's: the tape rows (person_is_spi_income_recipient), whatever EPB they drew, since the car never conditions it, and the channel's other rows, which keep their twin's pay (María's rulings of 3 November 2026). Fuel maps from the FRS code (a hybrid is an alternative fuel; a diesel meets RDE2, which every new diesel has since January 2021), and the unknown fuels draw at Table 2C's shares together: without electricity where the respondent reports private fuel, and with the others' electric share raised to keep Table 2C's at the stage's weights. The list price is drawn within the respondent's CARVAL band from WAS round-8 company cars' prices grown by the engine's CPI index from 2021, the open and unknown bands by fuel class, uniformly from no lower than minimum_scaled_list_price_gbp where a band has fewer than minimum_donor_households WAS households. CO2 is zero for an electric car; the others split between 1 to 50 g/km (hybrids first) and the bands above at Table 2A's shares among cars that emit CO2, uniformly within each band, and a car at 1 to 50 g/km takes electric_range_miles. Availability, payments for private use and the 2020 registration flag keep the engine's defaults, which no survey records. A tape row's pay is the tape's PAY + EPB + TAXTERM, so the engine's car and fuel benefits come out of employment_income, capped at EPB + PAY within the pay the row's employee pension contribution leaves (the SPI income stage capped that contribution at the drawn pay, and salary_sacrifice refuses one above the pay that remains; cap epb_then_pay): EPB holds them first, and the part above EPB moves from the row's hmrc_spi_pay into its hmrc_spi_employment_benefits so its PAY + EPB + TAXTERM stays the tape's (a cap of EPB alone dropped or shrank cars on rows that drew a little EPB, Vahid's review of microcosm#1491); where the two do not fit together the fuel goes first, then the list price is scaled down to fit with its contributions dropped, or the car dropped below minimum_scaled_list_price_gbp (María's rulings of 30 and 31 October 2026). A scaled price is the room over the car's appropriate percentage, so the CO2 draw, electric_range_miles and the RDE2 diesel set it, and with it the base the 2030-31 rise acts on. The stage then prices its output again on the engine: on every tape row, pay plus the benefits must equal the pay the row brought in. A carved row's UC gainful self-employment, which the SPI income stage set on the drawn pay, takes the root's rule again on the carved pay. The national calibration binds Table 1's car recipients and taxable value, the value measured at 2024-25 rates, and Table 2C's recipients by fuel (uk_population_targets.json, María's ruling of 3 November 2026); the vendored facts only seed the draws, and comparing the calibrated file with Tables 2A, 3A and 4 is a manual step.",
    "operations": [
     {
      "artifact_role": "benefits_in_kind_facts",
@@ -2830,14 +2832,18 @@
       "company_car_benefit",
       "car_fuel_benefit"
      ],
+     "cap": "epb_then_pay",
      "epb_column": "hmrc_spi_employment_benefits",
      "kind": "carve_spi_company_car_benefits",
      "minimum_scaled_list_price_gbp": 5000,
      "outputs": [
       "employment_income",
       "company_car_private_fuel_provided",
-      "uc_is_in_gainful_self_employment"
-     ]
+      "uc_is_in_gainful_self_employment",
+      "hmrc_spi_pay",
+      "hmrc_spi_employment_benefits"
+     ],
+     "pay_column": "hmrc_spi_pay"
     },
     {
      "declared_factor": 1,
@@ -2848,8 +2854,9 @@
     },
     {
      "adjudication": "https://github.com/PolicyEngine/uk-autumn-budget-dashboard-2026/issues/316",
+     "calibrated_facts": "HMRC Benefits in kind statistics (July 2026), 2024-25: Table 1's car recipients and car taxable value (hmrc.benefits_in_kind.company_car_recipients, hmrc.benefits_in_kind.company_car_taxable_value) and Table 2C's recipients by fuel (hmrc.benefits_in_kind.company_car_fuel.*) in uk_population_targets.json, María's ruling of 3 November 2026 (microcosm#1418).",
      "calibration_permitted": false,
-     "classification_rationale": "The stage draws fuel and CO2 to Tables 2A and 2C, so binding them in the weight solve would be circular. Comparing the calibrated file with Tables 1, 3A and 4 is a manual step for now; none blocks a build.",
+     "classification_rationale": "The stage draws fuel and CO2 to Tables 2A and 2C from this resource, which the weight solve never reads. The national calibration binds Table 1's car recipients and taxable value and Table 2C's recipients by fuel from the Chronicle feed instead (calibrated_facts). Comparing the calibrated file with Tables 2A, 3A and 4 is a manual step for now; none blocks a build.",
      "fact_fence_id": "company_car_facts_imputation_seeds_measured_only",
      "fenced_fact_composition": "HMRC Benefits in kind statistics (July 2026): Table 1 car and car fuel benefit recipients, taxable value, income tax and NICs; Table 2A recipients by CO2 band; Table 2C recipients by fuel; Tables 3A and 3B recipients and taxable value by income range; Table 4 recipients by region",
      "fenced_fact_count": 96,
@@ -2864,11 +2871,15 @@
     "company_car_capital_contributions",
     "company_car_private_fuel_provided",
     "employment_income",
-    "uc_is_in_gainful_self_employment"
+    "uc_is_in_gainful_self_employment",
+    "hmrc_spi_pay",
+    "hmrc_spi_employment_benefits"
    ],
    "rewrites": [
     "employment_income",
-    "uc_is_in_gainful_self_employment"
+    "uc_is_in_gainful_self_employment",
+    "hmrc_spi_pay",
+    "hmrc_spi_employment_benefits"
    ],
    "source": "The FRS job record's company car answers through frs_spine's carriers (EXPBEN01, EXPBEN03, CARVAL, FUELTYP, CARCON, CARAMT), WAS round-8 company cars' list prices, and HMRC's 2024-25 company car recipients by CO2 band (Table 2A) and fuel (Table 2C), via the vendored facts",
    "stage": "company_cars",

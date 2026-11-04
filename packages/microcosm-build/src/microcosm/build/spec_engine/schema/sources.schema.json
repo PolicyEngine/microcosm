@@ -14264,7 +14264,9 @@
       "kind",
       "outputs",
       "epb_column",
+      "pay_column",
       "benefits",
+      "cap",
       "minimum_scaled_list_price_gbp"
      ],
      "properties": {
@@ -14280,6 +14282,14 @@
       },
       "epb_column": {
        "type": "string"
+      },
+      "pay_column": {
+       "type": "string"
+      },
+      "cap": {
+       "enum": [
+        "epb_then_pay"
+       ]
       },
       "benefits": {
        "type": "array",
@@ -14303,7 +14313,8 @@
       "classification_rationale",
       "fact_fence_id",
       "fenced_fact_composition",
-      "fenced_fact_count"
+      "fenced_fact_count",
+      "calibrated_facts"
      ],
      "properties": {
       "kind": {
@@ -14326,6 +14337,9 @@
       },
       "fenced_fact_count": {
        "type": "number"
+      },
+      "calibrated_facts": {
+       "type": "string"
       }
      }
     }
