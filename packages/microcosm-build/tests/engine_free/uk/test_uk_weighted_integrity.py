@@ -468,12 +468,12 @@ def test_qrf_columns_check_every_declared_output_regardless_of_density() -> None
     assert "density_filter" in surface
     # Declared outputs the fixture does not carry are reported, not invented.
     assert "dividend_income" in surface["absent_columns"]
-    # The 57 declared outputs (since microcosm#1095, stage 2's trading_loss and
+    # The 59 declared outputs (since microcosm#1095, stage 2's trading_loss and
     # six owner-manager inputs, and stage 1's two loss draws, which the stage
     # moves into loss_relief and drops, so a frame never carries them), less
-    # the ten spi_benefit_coherence replaces on every SPI-channel row
-    # (microcosm#1100); they hold no forest draw.
-    assert surface["declared_qrf_outputs"] == 47
+    # the thirteen spi_benefit_coherence replaces on every SPI-channel row
+    # (microcosm#1100; contributory ESA since B10); they hold no forest draw.
+    assert surface["declared_qrf_outputs"] == 46
     assert surface["superseded_by_spi_benefit_coherence"] == [
         "income_support_reported",
         "working_tax_credit_reported",
@@ -486,6 +486,7 @@ def test_qrf_columns_check_every_declared_output_regardless_of_density() -> None
         "widowed_parents_allowance_reported",
         "jsa_contrib_reported",
         "jsa_income_reported",
+        "esa_contrib_reported",
         "esa_income_reported",
     ]
     assert not set(surface["superseded_by_spi_benefit_coherence"]) & set(values)
@@ -500,12 +501,14 @@ def test_the_superseded_columns_are_the_coherence_stage_declaration() -> None:
     )
     from microcosm.build.uk_runtime.spi_benefit_coherence import (
         SPI_RESTORED_REPORT_COLUMNS,
+        SPI_WITHIN_LIMIT_REPORT_COLUMNS,
         SPI_ZEROED_REPORT_COLUMNS,
     )
 
     assert uk_spi_coherence_superseded_columns() == (
         *SPI_ZEROED_REPORT_COLUMNS,
         *SPI_RESTORED_REPORT_COLUMNS,
+        *SPI_WITHIN_LIMIT_REPORT_COLUMNS,
     )
 
 

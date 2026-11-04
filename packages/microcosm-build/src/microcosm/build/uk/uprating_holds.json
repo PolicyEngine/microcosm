@@ -444,6 +444,20 @@
       "approved_on": "2026-10-25",
       "status": "approved",
       "expires_on": "2026-12-11"
+    },
+    {
+      "scope": "national",
+      "kind": "reviewed_no_index",
+      "target_ids": [
+        "hmrc.child_benefit.hicbc_liable_taxpayers",
+        "hmrc.child_benefit.hicbc_revenue"
+      ],
+      "reason": "HMRC's Table 16 count of taxpayers liable to the High Income Child Benefit Charge and its revenue for 2024-25, the publisher's provisional figures in the August 2025 release and the first year at today's thresholds, measured at 2025 with no index: the charge's thresholds (\u00a360,000 to \u00a380,000, 1 percent per \u00a3200) are the same in 2024-25 and 2025-26. Child Benefit rose 1.7 percent in April 2025 and incomes grew, which the measure at 2025 carries and the 2024-25 figure does not. Renew when HMRC's next release brings final 2024-25 and provisional 2025-26 figures.",
+      "tracking": "microcosm#1095",
+      "approved_by": "juaristi22",
+      "approved_on": "2026-11-03",
+      "status": "approved",
+      "expires_on": "2027-02-03"
     }
   ]
 }
