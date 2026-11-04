@@ -1,7 +1,8 @@
 """Publish a release build into its own folder through the emitter.
 
-A release whose builds publish into their own folders (every UK release:
-``microcosm.data.contract.publishes_to_build_folder``) is handed to the
+A release whose builds publish into their own folders (the UK national,
+dense and local-area releases, which
+``microcosm.data.contract.publishes_to_build_folder`` names) is handed to the
 separately installed emitter with the interface's ``publish_release`` call.
 Microcosm decides what the build contains and checks it with the release
 contract; the emitter's release writer puts the files in
@@ -18,8 +19,13 @@ the release's current build requested after it landed first.
 The emitter finds its Hugging Face credential the way a build's emitter
 does: it is this command's child process and inherits its environment
 (``HF_TOKEN``, then ``HUGGINGFACE_TOKEN``, then the token saved by
-``hf auth login``). Publication sends no Slack alert; announcing release
-changes from ``releases.json`` is the dashboard's job.
+``hf auth login``). It inherits ``HF_HUB_OFFLINE`` and
+``TRANSFORMERS_OFFLINE`` too, so with either set the command refuses before
+it starts one, and it hands nothing over until the emitter's write-access
+check passes, as the staged-bundle hand-over does: otherwise the change
+would wait, pending, until the emitter dropped it an hour later.
+Publication sends no Slack alert. The dashboard is to announce release
+changes from ``releases.json``; until it does, these publications raise none.
 """
 
 from __future__ import annotations
@@ -38,7 +44,8 @@ from microcosm_emitter_interface.publication import (
     unavailable_release_receipt,
 )
 
-from microcosm.build.telemetry_emitter import emitter_problem, start_bundle_emitter
+from microcosm.build.staging_dataset import hub_offline, write_access_problem
+from microcosm.build.telemetry_emitter import start_bundle_emitter
 from microcosm.data.contract import publishes_to_build_folder
 from microcosm.data.publish_cli import publication_refusal
 from microcosm.data.release import (
@@ -49,6 +56,7 @@ from microcosm.data.release import (
 
 if TYPE_CHECKING:
     from microcosm_emitter_interface import EmitterStartupError, RequestFailure
+    from microcosm_emitter_interface.bundles import WriteAccess
 
 __all__ = [
     "PROMOTION_WAIT_SECONDS",
@@ -69,13 +77,17 @@ PUBLICATION_WAIT_SECONDS = 2 * 3600.0
 #: How long the command waits for a promotion, which changes only
 #: ``releases.json``.
 PROMOTION_WAIT_SECONDS = 300.0
+_POINTER_FILES = (
+    "The repository still has latest*.json pointer files, and the emitter "
+    "changes no release's current build while any exists, so that they and "
+    "releases.json cannot disagree."
+)
 #: What the emitter's refusal codes mean for the operator, where its own
-#: message does not say what to do next.
+#: message does not say what to do next: for a publication, and for a
+#: promotion of a build already published.
 _REFUSAL_ADVICE = {
     "POINTER_FILES_PRESENT": (
-        "The repository still has latest*.json pointer files, and the emitter "
-        "changes no release's current build while any exists, so that they "
-        "and releases.json cannot disagree. Publish the build without "
+        f"{_POINTER_FILES} Nothing was published: publish the build without "
         "--make-current, and make it current with --promote once the pointer "
         "files are deleted."
     ),
@@ -93,6 +105,21 @@ _REFUSAL_ADVICE = {
         "the emitter dropped it; run the command again."
     ),
 }
+_PROMOTION_REFUSAL_ADVICE = {
+    **_REFUSAL_ADVICE,
+    "POINTER_FILES_PRESENT": (
+        f"{_POINTER_FILES} The build stays published but is not current. Run "
+        "this --promote command again once the pointer files are deleted."
+    ),
+}
+#: Why the command refuses with ``HF_HUB_OFFLINE`` or ``TRANSFORMERS_OFFLINE``
+#: set: the emitter it starts inherits the variable.
+_OFFLINE_REFUSAL = (
+    "HF_HUB_OFFLINE or TRANSFORMERS_OFFLINE is set, so the emitter this command "
+    "starts could not reach the Hugging Face Hub, and the change would stay "
+    "pending until the emitter dropped it an hour later; unset it and run the "
+    "command again"
+)
 
 
 class ReleaseEmitter(Protocol):
@@ -106,6 +133,8 @@ class ReleaseEmitter(Protocol):
 
     @property
     def modules(self) -> frozenset[str]: ...
+
+    def check_write_access(self, repository: str) -> WriteAccess: ...
 
     def publish_release(
         self, request: PublishRelease, *, wait_seconds: float = 300.0
@@ -128,8 +157,10 @@ class ReleasePublication:
     """What became of one release change: the emitter's receipt, read.
 
     ``wanted_current`` says whether the change asked for the build to become
-    current: a promotion, or a publication with ``make_current``. ``problem``
-    says why no emitter could take the change, when none could.
+    current: a promotion, or a publication with ``make_current``.
+    ``promotion`` says whether it was a promotion. ``problem`` says why
+    nothing was handed over, when the emitter could not take the change or
+    its write-access check refused it.
     """
 
     repository: str
@@ -138,6 +169,7 @@ class ReleasePublication:
     wanted_current: bool
     receipt: ReleaseReceipt
     problem: str | None = None
+    promotion: bool = False
 
     @property
     def published(self) -> bool:
@@ -158,7 +190,7 @@ class ReleasePublication:
         """A sentence or two on the outcome, for the operator."""
         status, code = self.receipt["status"], self.receipt.get("error_code")
         if self.problem is not None:
-            return f"No emitter took the change: {self.problem}."
+            return f"Nothing was handed over: {self.problem}."
         if status == "unavailable":
             return "The emitter did not answer; nothing was handed over."
         if status == "pending":
@@ -168,7 +200,9 @@ class ReleasePublication:
                 "again later to see whether it landed."
             )
         if status == "refused":
-            advice = _REFUSAL_ADVICE.get(str(code))
+            advice = (
+                _PROMOTION_REFUSAL_ADVICE if self.promotion else _REFUSAL_ADVICE
+            ).get(str(code))
             reason = self.receipt.get("message") or code
             return f"The emitter refused it ({code}): {reason}" + (
                 f" {advice}" if advice else ""
@@ -210,7 +244,15 @@ def _hand_over(
     owned = client is None
     emitter: ReleaseEmitter = _start_release_emitter() if owned else client
     try:
-        problem = emitter_problem(emitter)
+        # The staged-bundle hand-over's check: the emitter is running with its
+        # Hugging Face module, and its credential can write the repository.
+        problem = write_access_problem(
+            emitter,
+            change.repository,
+            action="the release change",
+            emitter_task="the emitter, which commits it",
+            proof="the change itself",
+        )
         if problem is not None:
             receipt = unavailable_release_receipt(change)
         elif isinstance(change, PublishRelease):
@@ -227,7 +269,14 @@ def _hand_over(
         wanted_current=wanted_current,
         receipt=receipt,
         problem=problem,
+        promotion=isinstance(change, PromoteBuild),
     )
+
+
+def _refuse_offline() -> None:
+    """Refuse before an emitter starts when it could not reach the Hub."""
+    if hub_offline():
+        raise ValueError(_OFFLINE_REFUSAL)
 
 
 def publication_request(
@@ -268,8 +317,13 @@ def publish_release_build(
     build that breaks its release contract is never handed over. Without a
     ``client``, a short-lived emitter is started and closed afterwards; its
     queue is the one builds on this machine share, so a change still pending
-    when it closes is retried by the next emitter started here.
+    when it closes is retried by the next emitter started here. It refuses
+    (``ValueError``) before anything else when ``HF_HUB_OFFLINE`` or
+    ``TRANSFORMERS_OFFLINE`` is set, and hands nothing over unless the
+    emitter's write-access check passes.
     """
+    if client is None:
+        _refuse_offline()
     prepared = prepare_build_folder_release(
         release_dir, artifact_root=artifact_root, repository=repository
     )
@@ -288,7 +342,12 @@ def promote_release_build(
     client: ReleaseEmitter | None = None,
     wait_seconds: float = PROMOTION_WAIT_SECONDS,
 ) -> ReleasePublication:
-    """Make a published build, named by its local manifest, the current build."""
+    """Make a published build, named by its local manifest, the current build.
+
+    It refuses and checks write access as :func:`publish_release_build` does.
+    """
+    if client is None:
+        _refuse_offline()
     named_repository, release, build = build_folder_identity(release_dir)
     if repository is not None and repository != named_repository:
         raise ValueError(
@@ -308,9 +367,11 @@ def _parser() -> argparse.ArgumentParser:
         prog="microcosm-publish-release-build",
         description=(
             "Publish a build of a release whose builds publish into their own "
-            "folders (every UK release) through the emitter, or make a "
-            "published build current. Releases that publish with tags and "
-            "latest.json use tools/publish_release.sh."
+            "folders (the UK national, dense and local-area releases) through "
+            "the emitter, or make a published build current. Releases that "
+            "publish with tags and latest.json (every US release, the June "
+            "2023 UK release and populace-uk-<year>-<tier>-k<N> releases) use "
+            "tools/publish_release.sh."
         ),
     )
     parser.add_argument("release_dir", type=Path, help="The local release directory.")
@@ -367,7 +428,9 @@ def main(argv: list[str] | None = None) -> int:
 
     A build that fails its checks (the release contract, a file whose bytes
     differ, another repository) is refused with the reason and status 1,
-    before any emitter starts.
+    before any emitter starts, and so is any change while ``HF_HUB_OFFLINE``
+    or ``TRANSFORMERS_OFFLINE`` is set. A change the emitter's write-access
+    check refuses is handed nothing and exits 1 with the reason.
     """
     parser = _parser()
     args = parser.parse_args(argv)
