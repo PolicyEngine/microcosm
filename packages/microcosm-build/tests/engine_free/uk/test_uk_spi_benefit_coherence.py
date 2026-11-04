@@ -17,6 +17,7 @@ from microcosm.build.uk_runtime.spi_benefit_coherence import (
     SPI_WITHIN_LIMIT_REPORT_COLUMNS,
     SPI_ZEROED_REPORT_COLUMNS,
     UKSPIPermittedWorkLimit,
+    _within_limit_receipt,
     apply_spi_benefit_coherence,
     assert_spi_benefit_coherence_stage_parameters,
 )
@@ -52,8 +53,8 @@ POLICY = UKTakeUpPopulationPolicy(
     adult_age=18, state_pension_age=66, instant="2024-01-01", source="test"
 )
 #: The 2024-25 limits: ESA's permitted work (GBP 183.50 a week, GBP 9,542 a
-#: year, under 16 hours) and JSA's age-related amounts, GBP 5 disregard and
-#: 16-hour remunerative work.
+#: year, under 16 hours) and JSA's age-related amounts, GBP 5 disregard,
+#: 16-hour remunerative work and GBP 50 pension disregard.
 LIMIT = UKSPIPermittedWorkLimit(
     esa_weekly_limit=183.5,
     esa_hours_limit=16.0,
@@ -61,6 +62,7 @@ LIMIT = UKSPIPermittedWorkLimit(
     jsa_amount_from_25=90.5,
     jsa_earnings_disregard=5.0,
     jsa_remunerative_hours=16.0,
+    jsa_pension_disregard=50.0,
     year=2024,
     source="test",
 )
@@ -99,7 +101,12 @@ def _person(
         support_source_id_column("person"): source_id,
     }
     row.update(dict.fromkeys(REPORT_COLUMNS, 0.0))
-    row.update(employment_income=0.0, self_employment_income=0.0, hours_worked=0.0)
+    row.update(
+        employment_income=0.0,
+        self_employment_income=0.0,
+        hours_worked=0.0,
+        private_pension_income=0.0,
+    )
     row.update(reports)
     return row
 
@@ -416,6 +423,124 @@ def test_the_within_limit_receipt_gives_figures_on_three_households() -> None:
     assert receipt["weighted_amount_after"] == pytest.approx(1_400.0)
     assert receipt["weighted_reporters_after"] == pytest.approx(6.0)
     assert receipt["weighted_amount_before"] == 0.0
+
+
+def test_the_receipt_gives_the_awards_resting_on_pension_payments() -> None:
+    # Each copy carries GBP 300 a week of pension, above both thresholds: ESA
+    # Regs 2008 reg 74 would take half the GBP 215 above GBP 85 off each
+    # copy's ESA, but the awards stand, and the receipt gives how much rests
+    # on them (Vahid's review of microcosm#1426).
+    pensions = {
+        copy: {"private_pension_income": 300.0 * 52} for copy in ("105", "106", "107")
+    }
+    frame = _with(
+        _frame(),
+        **{
+            "11": {"esa_contrib_reported": 100.0},
+            "21": {"esa_contrib_reported": 200.0},
+            "31": {
+                "esa_contrib_reported": 300.0,
+                "receives_benefits_in_own_right": True,
+            },
+        },
+        **pensions,
+    )
+    result = _apply(frame)
+    person = result.frame.table("person").set_index("person_id")
+
+    assert person.loc[[105, 106, 107], "esa_contrib_reported"].tolist() == [
+        100.0,
+        200.0,
+        300.0,
+    ]
+    receipt = result.restored_within_earnings_limit["esa_contrib_reported"]
+    # Each copy's weight is its household's: 1, 2 and 3.
+    assert receipt["pension_payments_above_threshold"] == {
+        "source_households": "3-9",
+        "weighted_amount_after": pytest.approx(1_400.0),
+        "weighted_reporters_after": pytest.approx(6.0),
+    }
+    assert result.permitted_work_limit["jsa_pension_disregard"] == 50.0
+    assert result.permitted_work_limit["esa_pension_payments_threshold"] == 85.0
+
+
+@pytest.mark.parametrize(
+    "column,weekly_pension,above",
+    [
+        # JSA Regs 1996 reg 81 takes off the pension payments above GBP 50 a
+        # week and ESA Regs 2008 reg 74 half of those above GBP 85: at the
+        # threshold itself nothing would come off.
+        ("jsa_contrib_reported", 50.0, False),
+        ("jsa_contrib_reported", 50.01, True),
+        ("esa_contrib_reported", 85.0, False),
+        ("esa_contrib_reported", 85.01, True),
+    ],
+)
+def test_the_pension_thresholds_are_reg_81s_and_reg_74s(
+    column, weekly_pension, above
+) -> None:
+    frame = _with(
+        _frame(),
+        **{
+            "21": {column: 700.0},
+            "106": {"private_pension_income": weekly_pension * 52},
+        },
+    )
+    result = _apply(frame)
+    person = result.frame.table("person").set_index("person_id")
+
+    # Neither award is reduced for pension payments.
+    assert person.loc[106, column] == 700.0
+    block = result.restored_within_earnings_limit[column][
+        "pension_payments_above_threshold"
+    ]
+    # The one copy above the threshold rests on one source household.
+    assert block["source_households"] == ("<3" if above else 0)
+
+
+def _pension_block(above, sources) -> dict[str, object]:
+    """The pension block of a receipt on six copies each taking GBP 100."""
+
+    taking = np.ones(6, dtype=bool)
+    return _within_limit_receipt(
+        old=np.zeros(6),
+        new=np.full(6, 100.0),
+        spi=taking,
+        twin_reports=taking,
+        outside=~taking,
+        reduced=~taking,
+        pension_above=np.asarray(above, dtype=bool),
+        weights=np.arange(1.0, 7.0),
+        sources=np.asarray(sources),
+    )["pension_payments_above_threshold"]
+
+
+@pytest.mark.parametrize(
+    "above,sources,expected",
+    [
+        # All six copies above the threshold, on six source households of
+        # weights 1 to 6.
+        ([1] * 6, range(6), ("3-9", 2_100.0, 21.0)),
+        # Three above beside three below.
+        ([1, 1, 1, 0, 0, 0], range(6), ("3-9", 600.0, 6.0)),
+        # Four above beside two: the four's figures beside the six's would
+        # give back the two's.
+        ([1, 1, 1, 1, 0, 0], range(6), ("3-9", "<3", "<3")),
+        ([1, 1, 0, 0, 0, 0], range(6), ("<3", "<3", "<3")),
+        ([0] * 6, range(6), (0, 0.0, 0.0)),
+        # Six copies of two source households count as two.
+        ([1] * 6, [0, 0, 0, 1, 1, 1], ("<3", "<3", "<3")),
+    ],
+)
+def test_the_pension_figures_withhold_what_rests_on_one_or_two_households(
+    above, sources, expected
+) -> None:
+    support, amount, reporters = expected
+    assert _pension_block(above, list(sources)) == {
+        "source_households": support,
+        "weighted_amount_after": amount,
+        "weighted_reporters_after": reporters,
+    }
 
 
 def test_spi_rows_take_injury_service_and_bereavement_reports_from_their_twin() -> None:

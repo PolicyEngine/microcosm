@@ -29,6 +29,8 @@ def test_the_jsa_limits_are_the_engines_rates_for_the_year() -> None:
     assert (limit.jsa_amount_under_25, limit.jsa_amount_from_25) == (71.7, 90.5)
     assert limit.jsa_earnings_disregard == 5.0
     assert limit.jsa_remunerative_hours == 16.0
+    # Reg 81's GBP 50 a week, above which pension payments come off JSA.
+    assert limit.jsa_pension_disregard == 50.0
     later = uk_spi_permitted_work_limit(2025)
     assert (later.jsa_amount_under_25, later.jsa_amount_from_25) == (72.9, 92.05)
     assert list(limit.jsa_amount([24, 25])) == [71.7, 90.5]
