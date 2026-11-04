@@ -230,8 +230,10 @@ _NORMALIZED_STRING_COLUMNS: Mapping[str, tuple[str, ...]] = {
         "marital_status",
         "employment_status",
         "employment_sector",
-        # The SOC 2020 major group of the main or last job (microcosm#1490).
+        # The SOC 2020 major group of the main or last job, and the sub-major
+        # group drawn within it (microcosm#1490).
         "soc2020_major_group",
+        "soc2020_sub_major_group",
         "aa_category",
         "dla_sc_category",
         "dla_m_category",
@@ -2169,8 +2171,8 @@ def _normalize_legacy_strings(frame: Frame) -> Frame:
         for entity, columns in _NORMALIZED_STRING_COLUMNS.items()
         for column in columns
     ]
-    if observed != expected_order or len(observed) != 30:
-        raise RuntimeError("The legacy normalization audit is not exactly 30 cells.")
+    if observed != expected_order or len(observed) != 31:
+        raise RuntimeError("The legacy normalization audit is not exactly 31 cells.")
     return Frame(
         tables,
         frame.schema,
