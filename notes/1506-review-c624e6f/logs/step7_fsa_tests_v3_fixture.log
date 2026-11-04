@@ -1,0 +1,37 @@
+============================= test session starts ==============================
+platform linux -- Python 3.13.18, pytest-8.4.2, pluggy-1.6.0
+rootdir: /tmp/claude-0/-home-user-microcosm/5ad06060-77ec-5ce5-a42b-f9145f5c5324/scratchpad/wtm
+configfile: pyproject.toml
+plugins: xdist-3.8.0, hypothesis-6.167.1, anyio-4.13.0
+created: 4/4 workers
+4 workers [25 items]
+
+.........................                                                [100%]
+==================================== PASSES ====================================
+=========================== short test summary info ============================
+PASSED packages/microcosm-build/tests/engine_free/us/test_us_fsa_student_loan_targets.py::test_state_rows_allocate_not_reported_pro_rata
+PASSED packages/microcosm-build/tests/engine_free/us/test_us_fsa_student_loan_targets.py::test_bands_bind_as_shares_and_compile_their_edges
+PASSED packages/microcosm-build/tests/engine_free/us/test_us_fsa_student_loan_targets.py::test_a_partial_feed_refuses
+PASSED packages/microcosm-build/tests/engine_free/us/test_us_fsa_student_loan_targets.py::test_a_gapped_band_partition_refuses
+PASSED packages/microcosm-build/tests/engine_free/us/test_us_fsa_student_loan_targets.py::test_no_fsa_facts_plans_nothing
+PASSED packages/microcosm-build/tests/engine_free/us/test_us_fsa_student_loan_targets.py::test_household_values_sum_the_stored_balances[metadata0-expected0]
+PASSED packages/microcosm-build/tests/engine_free/us/test_us_fsa_student_loan_targets.py::test_household_values_sum_the_stored_balances[metadata1-expected1]
+PASSED packages/microcosm-build/tests/engine_free/us/test_us_fsa_student_loan_targets.py::test_household_values_sum_the_stored_balances[metadata2-expected2]
+PASSED packages/microcosm-build/tests/engine_free/us/test_us_fsa_student_loan_targets.py::test_household_values_sum_the_stored_balances[metadata3-expected3]
+PASSED packages/microcosm-build/tests/engine_free/us/test_us_fsa_student_loan_targets.py::test_household_values_sum_the_stored_balances[metadata4-expected4]
+PASSED packages/microcosm-build/tests/engine_free/us/test_us_fsa_student_loan_targets.py::test_household_values_sum_the_stored_balances[metadata5-expected5]
+PASSED packages/microcosm-build/tests/engine_free/us/test_us_fsa_student_loan_targets.py::test_household_values_sum_the_stored_balances[metadata6-expected6]
+PASSED packages/microcosm-build/tests/engine_free/us/test_us_fsa_student_loan_targets.py::test_household_values_sum_the_stored_balances[metadata7-expected7]
+PASSED packages/microcosm-build/tests/engine_free/us/test_us_fsa_student_loan_targets.py::test_household_values_sum_the_stored_balances[metadata8-expected8]
+PASSED packages/microcosm-build/tests/engine_free/us/test_us_fsa_student_loan_targets.py::test_household_values_need_both_balance_columns
+PASSED packages/microcosm-build/tests/engine_free/us/test_us_fsa_student_loan_targets.py::test_plan_binds_the_latest_quarter_every_table_publishes
+PASSED packages/microcosm-build/tests/engine_free/us/test_us_fsa_student_loan_targets.py::test_registry_compiles_every_family_onto_one_in_scope_control
+PASSED packages/microcosm-build/tests/engine_free/us/test_us_fsa_student_loan_targets.py::test_specs_sit_at_the_build_period_with_a_declared_alignment
+PASSED packages/microcosm-build/tests/engine_free/us/test_us_fsa_student_loan_targets.py::test_compiled_fsa_targets_round_trip_through_the_materializer
+PASSED packages/microcosm-build/tests/engine_free/us/test_us_fsa_student_loan_targets.py::test_aged_compile_keeps_fsa_dollars_at_the_reference_date
+PASSED packages/microcosm-build/tests/engine_free/us/test_us_fsa_student_loan_targets.py::test_release_filter_guard_accepts_the_compiled_fsa_bands
+PASSED packages/microcosm-build/tests/engine_free/us/test_us_fsa_student_loan_targets.py::test_release_filter_guard_refuses_a_balance_band_it_would_ignore
+PASSED packages/microcosm-build/tests/engine_free/us/test_us_fsa_student_loan_targets.py::test_release_parity_contract_reads_the_registry_without_fsa_rows
+PASSED packages/microcosm-build/tests/engine_free/us/test_us_fsa_student_loan_targets.py::test_compile_without_the_flag_ignores_fsa_facts
+PASSED packages/microcosm-build/tests/engine_free/us/test_us_fsa_student_loan_targets.py::test_every_fsa_fact_has_one_disposition
+============================= 25 passed in 58.10s ==============================

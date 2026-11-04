@@ -1,0 +1,4 @@
+$ python tools/build_us_target_parity_manifest.py
+Wrote target_parity_manifest.json: 32 compiled, 64 reviewed exclusions (93 feed families).
+$ git status --porcelain (after regeneration)
+(empty => regenerated files byte-identical to committed at c624e6f)

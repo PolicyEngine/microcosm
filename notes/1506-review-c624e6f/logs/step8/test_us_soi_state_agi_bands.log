@@ -1,0 +1,10 @@
+============================= test session starts ==============================
+platform linux -- Python 3.13.18, pytest-8.4.2, pluggy-1.6.0
+rootdir: /home/user/microcosm
+configfile: pyproject.toml
+plugins: xdist-3.8.0, hypothesis-6.167.1, anyio-4.13.0
+created: 4/4 workers
+4 workers [29 items]
+
+.............................                                            [100%]
+======================== 29 passed in 106.88s (0:01:46) ========================

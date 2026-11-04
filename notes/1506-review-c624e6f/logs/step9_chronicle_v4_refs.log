@@ -1,0 +1,20 @@
+== 0ec21e5
+4:177-    "chronicle.consumer_fact.v3",
+5:178-    "chronicle.consumer_fact.v4",
+7:180-CONSUMER_FACT_EMIT_SCHEMA_VERSION = CONSUMER_FACT_ROW_CONTRACTS[-1]
+consumer_fact.v4.schema.json: 200
+== acbedb5
+4:177-    "chronicle.consumer_fact.v3",
+5:178-    "chronicle.consumer_fact.v4",
+7:180-CONSUMER_FACT_EMIT_SCHEMA_VERSION = CONSUMER_FACT_ROW_CONTRACTS[-1]
+consumer_fact.v4.schema.json: 200
+== 00b4b14
+4:177-    "chronicle.consumer_fact.v3",
+5:178-    "chronicle.consumer_fact.v4",
+7:180-CONSUMER_FACT_EMIT_SCHEMA_VERSION = CONSUMER_FACT_ROW_CONTRACTS[-1]
+consumer_fact.v4.schema.json: 200
+== 41b2fb2b864a28c0eda03322b77a97ef147dfa3c
+4:174-    "chronicle.consumer_fact.v3",
+6:176-CONSUMER_FACT_EMIT_SCHEMA_VERSION = CONSUMER_FACT_ROW_CONTRACTS[-1]
+curl: (22) The requested URL returned error: 404
+consumer_fact.v4.schema.json: 404

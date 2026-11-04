@@ -1,0 +1,22 @@
+CONFLICT (content): Merge conflict in packages/microcosm-build/tests/engine_contract/us/test_spec_engine_coverage_tool.py
+Auto-merging packages/microcosm-build/tests/engine_free/shared/test_spec_engine_field_usage.py
+CONFLICT (content): Merge conflict in packages/microcosm-build/tests/engine_free/shared/test_spec_engine_field_usage.py
+Auto-merging packages/microcosm-build/tests/engine_free/us/test_us_fiscal_refresh_builder.py
+Auto-merging packages/microcosm-build/tests/engine_free/us/test_us_fiscal_targets.py
+Auto-merging packages/microcosm-build/tests/engine_free/us/test_us_spine_blindness.py
+Auto-merging packages/microcosm-build/tests/engine_workflow/us/test_us_multispine_pool_tool.py
+CONFLICT (content): Merge conflict in packages/microcosm-build/tests/engine_workflow/us/test_us_multispine_pool_tool.py
+Auto-merging tools/spec_engine_coverage.py
+CONFLICT (content): Merge conflict in tools/spec_engine_coverage.py
+Auto-merging tools/us_bundle_generation/core.py
+Automatic merge failed; fix conflicts and then commit the result.
+docs/evidence/spec-engine/us-f0-coverage.json
+packages/microcosm-build/src/microcosm/build/spec_engine/field_usage.py
+packages/microcosm-build/src/microcosm/build/spec_engine/inventory_coverage.py
+packages/microcosm-build/tests/engine_contract/us/test_spec_engine_coverage_tool.py
+packages/microcosm-build/tests/engine_free/shared/test_spec_engine_field_usage.py
+packages/microcosm-build/tests/engine_workflow/us/test_us_multispine_pool_tool.py
+tools/spec_engine_coverage.py
+1c537bf8 scratch: merge #1357 0ff293b into #1506 c624e6f, conflicts resolved to ours (never pushed)
+c624e6fe Document the 41b2fb2b US feed re-pin and add its changelog fragment
+a9714b94 Re-pin the US Chronicle feed to 41b2fb2b, adding FSA loan portfolio tables

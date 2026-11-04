@@ -1,0 +1,18 @@
+$ uv run ruff check .
+All checks passed!
+exit=0
+$ uv run ruff format --check (changed .py files)
+5 files already formatted
+exit=0
+$ python tools/ci_test_plan.py verify
+test_files=866
+engine-free-shared=240
+engine-free-us=206
+engine-free-uk=267
+engine-contract-us=36
+engine-scenario-us=29
+engine-workflow-us=22
+engine-uk=65
+integration-uk=1
+verification=ok
+exit=0

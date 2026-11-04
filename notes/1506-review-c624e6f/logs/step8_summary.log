@@ -1,0 +1,12 @@
+packages/microcosm-build/tests/engine_free/shared/test_release_target_parity.py: ======================== 39 passed in 150.50s (0:02:30) ========================
+packages/microcosm-build/tests/engine_free/us/test_us_chronicle_feed.py: ============================= 28 passed in 58.37s ==============================
+packages/microcosm-build/tests/engine_free/us/test_us_esi_premiums.py: ======================== 159 passed in 88.38s (0:01:28) ========================
+packages/microcosm-build/tests/engine_free/us/test_us_fiscal_targets.py: ======================= 174 passed in 124.21s (0:02:04) ========================
+packages/microcosm-build/tests/engine_free/us/test_us_soi_congressional_district_vintage.py: ============================= 51 passed in 59.72s ==============================
+packages/microcosm-build/tests/engine_free/us/test_us_soi_state_agi_bands.py: ======================== 29 passed in 106.88s (0:01:46) ========================
+packages/microcosm-build/tests/engine_free/us/test_us_medicare_irmaa_holdout.py: ======================== 24 passed in 60.76s (0:01:00) =========================
+packages/microcosm-build/tests/engine_free/us/test_us_acs_local_sparse_cd.py: ======================== 28 passed in 117.50s (0:01:57) ========================
+packages/microcosm-build/tests/engine_free/us/test_us_release_gate_preflight.py: ======================== 84 passed in 100.52s (0:01:40) ========================
+packages/microcosm-build/tests/engine_free/us/test_us_spec_bundle.py: ======================== 4 passed in 134.00s (0:02:14) =========================
+packages/microcosm-build/tests/engine_free/us/test_us_acs_local_release_tool.py: ======================= 215 passed in 196.07s (0:03:16) ========================
+packages/microcosm-build/tests/engine_free/us/test_us_fiscal_refresh_builder.py: ================== 346 passed, 6 skipped in 149.70s (0:02:29) ==================

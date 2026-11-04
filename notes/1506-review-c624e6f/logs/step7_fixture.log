@@ -1,0 +1,10 @@
+fixture gz sha256 9faed0e397ed20c5b2ccddebfbe58ea83a81f1d4ed896b1bee9569c6f98ecdaa
+fixture rows 244 notes rows 461
+fixture stamps {'chronicle.consumer_fact.v4'}
+fixture rows byte-identical to a notes row: 0
+fixture rows byte-identical to a notes row restamped v4: 244
+fixture rows sharing a key with a notes row and differing only in schema_version: 244
+notes rows the fixture lacks: 217
+restamped-v3 fixture rows byte-identical to a notes row: 244
+wrote /tmp/claude-0/-home-user-microcosm/5ad06060-77ec-5ce5-a42b-f9145f5c5324/scratchpad/fixture_v3.jsonl.gz
+receipt v3 == v4: True | FSA plan (references, values, metadata, labels, controls) v3 == v4: True | planned targets: 132

@@ -1,0 +1,14 @@
+pin check passed; feed rows 40642
+student_loan_targets=True: targets 33382, FSA 132, by measure {'balance_excluding_parent_plus': 1, 'borrowers': 65, 'parent_plus_balance': 1, 'total_balance': 65}
+  parity registry: 33250 targets
+  assert_target_parity_manifest_current passed; gate True {'compiled_families': 32, 'reviewed_exclusions': 64, 'registry_families': 32}
+  unfiltered registry: parity assert refuses:   - the manifest marks family(ies) a reviewed exclusion the registry now compiles ['ed_fsa.portfolio_by_age', 'ed_fsa.portfolio_by_debt_size', 'ed_fsa.portfolio_by_loan_type', 'ed_fsa.portfolio_by_loc
+student_loan_targets=False: targets 33250, FSA 0, by measure {}
+  parity registry: 33250 targets
+  assert_target_parity_manifest_current passed; gate True {'compiled_families': 32, 'reviewed_exclusions': 64, 'registry_families': 32}
+receipt status bound reference_period 2026-03 facts 461
+disposition_counts {'allocated': 4, 'bound': 136, 'diagnostic': 251, 'excluded': 8, 'other_quarter': 58, 'out_of_scope': 4}
+receipt from fixture packages/microcosm-build/tests/fixtures/us_fsa_portfolio_chronicle_347_facts.jsonl.gz equals receipt from feed: False
+  differing keys: ['disposition_counts', 'dispositions']
+  fixture disposition_counts {'allocated': 4, 'bound': 136, 'diagnostic': 34, 'excluded': 8, 'other_quarter': 58, 'out_of_scope': 4}
+  fixture targets and controls equal the feed's: True

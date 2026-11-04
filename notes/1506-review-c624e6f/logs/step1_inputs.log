@@ -1,0 +1,119 @@
+++ gunzip -c /tmp/claude-0/-home-user-microcosm/5ad06060-77ec-5ce5-a42b-f9145f5c5324/scratchpad/notes/consumer_facts.jsonl.gz
+++ sha256sum /tmp/claude-0/-home-user-microcosm/5ad06060-77ec-5ce5-a42b-f9145f5c5324/scratchpad/feed/consumer_facts_us_41b2fb2.jsonl
+1d45a89c28177a95371b4cc4068d3657c7bf12bd8edad7c82fe25bf453f9ea07  /tmp/claude-0/-home-user-microcosm/5ad06060-77ec-5ce5-a42b-f9145f5c5324/scratchpad/feed/consumer_facts_us_41b2fb2.jsonl
+++ wc -l
+40642
+++ python3 -I -c '
+import json,sys,collections
+c=collections.Counter(); src=collections.Counter()
+for l in open(sys.argv[1]):
+  r=json.loads(l); c[r.get('\''schema_version'\'')]+=1
+print(c)' /tmp/claude-0/-home-user-microcosm/5ad06060-77ec-5ce5-a42b-f9145f5c5324/scratchpad/feed/consumer_facts_us_41b2fb2.jsonl
+Counter({'chronicle.consumer_fact.v3': 40642})
+++ git show c624e6f:packages/microcosm-build/src/microcosm/build/us/chronicle_feed_scope.json
+++ cmp /tmp/claude-0/-home-user-microcosm/5ad06060-77ec-5ce5-a42b-f9145f5c5324/scratchpad/committed_scope.json /tmp/claude-0/-home-user-microcosm/5ad06060-77ec-5ce5-a42b-f9145f5c5324/scratchpad/notes/chronicle_feed_scope.json
+++ echo SCOPE_BYTE_IDENTICAL
+SCOPE_BYTE_IDENTICAL
+++ sha256sum /tmp/claude-0/-home-user-microcosm/5ad06060-77ec-5ce5-a42b-f9145f5c5324/scratchpad/notes/chronicle_feed_scope.json
+73a39c166a8f78c8a8a1ae711515e5d2e6b76a74952e67d7783cf974a4615633  /tmp/claude-0/-home-user-microcosm/5ad06060-77ec-5ce5-a42b-f9145f5c5324/scratchpad/notes/chronicle_feed_scope.json
+++ cat /tmp/claude-0/-home-user-microcosm/5ad06060-77ec-5ce5-a42b-f9145f5c5324/scratchpad/notes/receipt.json
+++ python3 -I -m json.tool
+++ head -80
+{
+    "scope": "/tmp/claude-0/-home-user-chronicle/244108b5-0899-5977-b85f-cb0a4308f8e0/scratchpad/feed-scope/chronicle_feed_scope.json",
+    "scope_sha256": "73a39c166a8f78c8a8a1ae711515e5d2e6b76a74952e67d7783cf974a4615633",
+    "source_commit": "41b2fb2b864a28c0eda03322b77a97ef147dfa3c",
+    "chronicle_root": "/tmp/claude-0/-home-user-chronicle/244108b5-0899-5977-b85f-cb0a4308f8e0/scratchpad/wt-cut",
+    "runs": [
+        {
+            "year": 2020,
+            "packages": [
+                "packages/bea/nipa_total_wages_salaries",
+                "packages/cms_medicaid/chip_monthly_enrollment_dataset",
+                "packages/irs_soi/table_1_4",
+                "packages/irs_soi/w2_statistics_2020"
+            ],
+            "command": "uv run --frozen chronicle build-bundle --year 2020 --source packages/bea/nipa_total_wages_salaries --source packages/cms_medicaid/chip_monthly_enrollment_dataset --source packages/irs_soi/table_1_4 --source packages/irs_soi/w2_statistics_2020 --out /tmp/claude-0/-home-user-chronicle/244108b5-0899-5977-b85f-cb0a4308f8e0/scratchpad/out-cut/bundles/2020 --replace"
+        },
+        {
+            "year": 2021,
+            "packages": [
+                "packages/irs_soi/table_1_4"
+            ],
+            "command": "uv run --frozen chronicle build-bundle --year 2021 --source packages/irs_soi/table_1_4 --out /tmp/claude-0/-home-user-chronicle/244108b5-0899-5977-b85f-cb0a4308f8e0/scratchpad/out-cut/bundles/2021 --replace"
+        },
+        {
+            "year": 2022,
+            "packages": [
+                "packages/irs_soi/historic_table_2",
+                "packages/irs_soi/historic_table_2_state_agi_2022",
+                "packages/irs_soi/historic_table_2_state_broad_2022",
+                "packages/irs_soi/historic_table_2_state_eitc_2022",
+                "packages/irs_soi/table_1_1",
+                "packages/irs_soi/table_1_4",
+                "packages/irs_soi/table_2_5_eitc_agi_children_2022"
+            ],
+            "command": "uv run --frozen chronicle build-bundle --year 2022 --source packages/irs_soi/historic_table_2 --source packages/irs_soi/historic_table_2_state_agi_2022 --source packages/irs_soi/historic_table_2_state_broad_2022 --source packages/irs_soi/historic_table_2_state_eitc_2022 --source packages/irs_soi/table_1_1 --source packages/irs_soi/table_1_4 --source packages/irs_soi/table_2_5_eitc_agi_children_2022 --out /tmp/claude-0/-home-user-chronicle/244108b5-0899-5977-b85f-cb0a4308f8e0/scratchpad/out-cut/bundles/2022 --replace"
+        },
+        {
+            "year": 2023,
+            "packages": [
+                "packages/bea/nipa_pension_contributions",
+                "packages/bea/nipa_personal_income_components",
+                "packages/bea/nipa_personal_income_disposition",
+                "packages/bea/nipa_private_group_health_insurance",
+                "packages/bea/nipa_total_wages_salaries",
+                "packages/bea/regional_personal_income_state",
+                "packages/cbo/individual_income_tax_receipts_2026_02",
+                "packages/cbo/revenue_projections_income_by_source_2026_02",
+                "packages/census/b01001_female_15_44_2023",
+                "packages/census/population_projections_2023",
+                "packages/census/stc_individual_income_tax",
+                "packages/cms_nhe/historical_service_source",
+                "packages/cms_nhe/table_24",
+                "packages/federal_reserve/z1_household_net_worth",
+                "packages/hhs_acf_liheap/fy2023_national_profile",
+                "packages/irs_soi/congressional_district_2022",
+                "packages/irs_soi/historic_table_2_state_agi_2023",
+                "packages/irs_soi/ira_roth_contributions_2022",
+                "packages/irs_soi/ira_traditional_contributions_2022",
+                "packages/irs_soi/state_2022",
+                "packages/irs_soi/table_1_1",
+                "packages/irs_soi/table_1_2",
+                "packages/irs_soi/table_1_4",
+                "packages/irs_soi/table_2_1",
+                "packages/irs_soi/table_2_5",
+                "packages/irs_soi/table_2_5_eitc_agi_children_2023",
+                "packages/irs_soi/table_4_3",
+                "packages/irs_soi/w2_statistics_2020"
+            ],
+            "command": "uv run --frozen chronicle build-bundle --year 2023 --source packages/bea/nipa_pension_contributions --source packages/bea/nipa_personal_income_components --source packages/bea/nipa_personal_income_disposition --source packages/bea/nipa_private_group_health_insurance --source packages/bea/nipa_total_wages_salaries --source packages/bea/regional_personal_income_state --source packages/cbo/individual_income_tax_receipts_2026_02 --source packages/cbo/revenue_projections_income_by_source_2026_02 --source packages/census/b01001_female_15_44_2023 --source packages/census/population_projections_2023 --source packages/census/stc_individual_income_tax --source packages/cms_nhe/historical_service_source --source packages/cms_nhe/table_24 --source packages/federal_reserve/z1_household_net_worth --source packages/hhs_acf_liheap/fy2023_national_profile --source packages/irs_soi/congressional_district_2022 --source packages/irs_soi/historic_table_2_state_agi_2023 --source packages/irs_soi/ira_roth_contributions_2022 --source packages/irs_soi/ira_traditional_contributions_2022 --source packages/irs_soi/state_2022 --source packages/irs_soi/table_1_1 --source packages/irs_soi/table_1_2 --source packages/irs_soi/table_1_4 --source packages/irs_soi/table_2_1 --source packages/irs_soi/table_2_5 --source packages/irs_soi/table_2_5_eitc_agi_children_2023 --source packages/irs_soi/table_4_3 --source packages/irs_soi/w2_statistics_2020 --out /tmp/claude-0/-home-user-chronicle/244108b5-0899-5977-b85f-cb0a4308f8e0/scratchpad/out-cut/bundles/2023 --replace"
+        },
+        {
+            "year": 2024,
+            "packages": [
+                "packages/bea/nipa_private_group_health_insurance",
+                "packages/bea/nipa_total_wages_salaries",
+                "packages/cbo/revenue_projections_income_by_source_2026_02",
+                "packages/census/pep_2024_national_age_sex",
+                "packages/census/pep_2024_state_age_sex",
+                "packages/cms_aca/oep_state_level",
+                "packages/cms_medicaid/chip_monthly_enrollment_december_2024",
+added pairs 66
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-microcosm/5ad06060-77ec-5ce5-a42b-f9145f5c5324/scratchpad/scripts/drop_ed_fsa_pairs.py", line 13, in <module>
+    key = (r["layout"]["record_set_id"], r["period"]["period_type"], str(r["period"]["period_value"]))
+                                         ~~~~~~~~~~~^^^^^^^^^^^^^^^
+KeyError: 'period_type'
+e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855  /root/PolicyEngine/_buildh-runtime/inputs/consumer_facts_us_a9026cc.jsonl
+0
+added pairs 66
+dropped 461 kept 40181
+4d89e4a498ffd73a407821d9ce2c45837072901e0a29acf3206160d1fafd7c14  /root/PolicyEngine/_buildh-runtime/inputs/consumer_facts_us_a9026cc.jsonl
+40181
+/bin/bash: line 5:   560 Killed                  grep -Fvxf $I/consumer_facts_us_a9026cc.jsonl $I/consumer_facts_us_41b2fb2.jsonl > $S/feed/added_lines.jsonl
+added lines 461 equal to ed_fsa_rows.jsonl in order: True
+Counter({'ed_fsa': 461})
+source_commit 41b2fb2b864a28c0eda03322b77a97ef147dfa3c pair_count 706 pairs 706 runs 72 runs[2026] ['packages/cbo/revenue_projections_income_by_source_2026_02', 'packages/ed_fsa/dl_portfolio_by_repayment_plan_fy2026_q3', 'packages/ed_fsa/portfolio_by_age_fy2026_q2', 'packages/ed_fsa/portfolio_by_debt_size_fy2026_q2', 'packages/ed_fsa/portfolio_by_loan_type_fy2026_q3', 'packages/ed_fsa/portfolio_by_location_fy2026_q2', 'packages/ed_fsa/portfolio_summary_fy2026_q3', 'packages/jct/obbba_revenue_estimates_2025']
+old pairs are a prefix-preserving subsequence: True new pairs 66 new pair build years {2026} new pair packages ['packages/ed_fsa/dl_portfolio_by_repayment_plan_fy2026_q3', 'packages/ed_fsa/portfolio_by_age_fy2026_q2', 'packages/ed_fsa/portfolio_by_debt_size_fy2026_q2', 'packages/ed_fsa/portfolio_by_loan_type_fy2026_q3', 'packages/ed_fsa/portfolio_by_location_fy2026_q2', 'packages/ed_fsa/portfolio_summary_fy2026_q3']
+other keys changed: [] | runs changed only in 2026: ['2026']

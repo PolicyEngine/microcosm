@@ -1,0 +1,34 @@
+== committed chain, unmutated
+[baseline] PASSED (not refused)
+== mutations of the committed ed_fsa report and listing
+[add-non-ed_fsa-row (listed honestly)] REFUSED: AssertionError at test_us_esi_premiums.py:1165: assert sources == {declared_source}, (label, sources)  | msg="('experiments/us-feed-ed-fsa/compare.json', {'ed_fsa', 'irs_soi'})"
+[add-non-ed_fsa-row (not listed)] REFUSED: AssertionError at test_us_esi_premiums.py:1163: assert set(listed) == set(added_keys), (label, "added keys differ")  | msg="('experiments/us-feed-ed-fsa/compare.json', 'added keys differ')"
+[add-non-ed_fsa-row (listing claims ed_fsa)] REFUSED: AssertionError at test_us_esi_premiums.py:1252: assert feed_rows == pin["fact_row_count"]  | msg=''
+[drop-a-listed-row (from added_rows.json)] REFUSED: AssertionError at test_us_esi_premiums.py:1163: assert set(listed) == set(added_keys), (label, "added keys differ")  | msg="('experiments/us-feed-ed-fsa/compare.json', 'added keys differ')"
+[drop-a-listed-row (from compare.json keys_only_in_new)] REFUSED: AssertionError at test_us_esi_premiums.py:1163: assert set(listed) == set(added_keys), (label, "added keys differ")  | msg="('experiments/us-feed-ed-fsa/compare.json', 'added keys differ')"
+[drop-a-kept-row] REFUSED: AssertionError at test_us_esi_premiums.py:1151: assert rows["keys_only_in_old"] == [], label  | msg='experiments/us-feed-ed-fsa/compare.json'
+[change-a-kept-row (value)] REFUSED: AssertionError at test_us_esi_premiums.py:1153: assert field.startswith(_LABEL_AND_HASH_FIELDS), (label, field)  | msg="('experiments/us-feed-ed-fsa/compare.json', 'value')"
+[change-a-kept-row (label, in an anchor record set)] REFUSED: AssertionError at test_us_esi_premiums.py:1154: assert anchor_record_sets.isdisjoint(counts["by_record_set"]), (label, field)  | msg="('experiments/us-feed-ed-fsa/compare.json', 'layout/groupby_value_label')"
+[change-a-kept-row (label, elsewhere; allowed by design)] PASSED (not refused)
+[change-a-kept-row (source field)] REFUSED: AssertionError at test_us_esi_premiums.py:1153: assert field.startswith(_LABEL_AND_HASH_FIELDS), (label, field)  | msg="('experiments/us-feed-ed-fsa/compare.json', 'source/source_name')"
+== declarations
+[declare-second-source (tuple of two sources)] REFUSED: AssertionError at test_us_esi_premiums.py:1165: assert sources == {declared_source}, (label, sources)  | msg="('experiments/us-feed-ed-fsa/compare.json', {'ed_fsa'})"
+[declare-second-source (three-element declaration)] REFUSED: ValueError at test_us_esi_premiums.py:1240: added_path, declared_source = additions  | msg='too many values to unpack (expected 2)'
+[declare-wrong-source (irs_soi)] REFUSED: AssertionError at test_us_esi_premiums.py:1165: assert sources == {declared_source}, (label, sources)  | msg="('experiments/us-feed-ed-fsa/compare.json', {'ed_fsa'})"
+[declare-nothing (None)] REFUSED: AssertionError at test_us_esi_premiums.py:1157: assert added_keys == [], (label, "adds rows without declaring them")  | msg="('experiments/us-feed-ed-fsa/compare.json', 'adds rows without declaring them')"
+[drop-the-ed_fsa-report] REFUSED: AssertionError at test_us_esi_premiums.py:1251: assert feed_sha256 == pin["facts_sha256"]  | msg=''
+[listing-repeats-a-key] REFUSED: AssertionError at test_us_esi_premiums.py:1162: assert len(listed) == len(added["rows"]), (label, "an added key twice")  | msg="('experiments/us-feed-ed-fsa/compare.json', 'an added key twice')"
+[listing-for-another-feed] REFUSED: AssertionError at test_us_esi_premiums.py:1160: assert added["new_feed"]["sha256"] == later["feeds"]["new"]["sha256"], label  | msg='experiments/us-feed-ed-fsa/compare.json'
+== the PR's parametrized unit cases: which assert fires
+[undeclared-additions] AssertionError at test_us_esi_premiums.py:1157: assert added_keys == [], (label, "adds rows without declaring them")  | msg="('report', 'adds rows without declaring them')"
+[other-source] AssertionError at test_us_esi_premiums.py:1165: assert sources == {declared_source}, (label, sources)  | msg="('report', {'ed_fsa', 'irs_soi'})"
+[listing-short] AssertionError at test_us_esi_premiums.py:1163: assert set(listed) == set(added_keys), (label, "added keys differ")  | msg="('report', 'added keys differ')"
+[listing-extra] AssertionError at test_us_esi_premiums.py:1163: assert set(listed) == set(added_keys), (label, "added keys differ")  | msg="('report', 'added keys differ')"
+[anchor-record-set] AssertionError at test_us_esi_premiums.py:1166: assert anchor_record_sets.isdisjoint(  | msg='report'
+[no-source] AssertionError at test_us_esi_premiums.py:1159: assert declared_source, (label, "declares added rows without a source")  | msg="('report', 'declares added rows without a source')"
+[dropped-row] AssertionError at test_us_esi_premiums.py:1151: assert rows["keys_only_in_old"] == [], label  | msg='report'
+[row-count] AssertionError at test_us_esi_premiums.py:1169: assert rows["new_rows"] == rows["old_rows"] + len(added_keys), label  | msg='report'
+[value-change] AssertionError at test_us_esi_premiums.py:1153: assert field.startswith(_LABEL_AND_HASH_FIELDS), (label, field)  | msg="('report', 'value')"
+[wrong-base] AssertionError at test_us_esi_premiums.py:1149: assert later["feeds"]["old"]["sha256"] == feed_sha256, label  | msg='report'
+== the mislabelled listing again, with a pin that agrees with the report (a re-pin that did add the row)
+[add-non-ed_fsa-row (listing claims ed_fsa, pin row count +1)] PASSED (not refused)

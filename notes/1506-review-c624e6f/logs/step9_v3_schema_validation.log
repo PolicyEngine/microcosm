@@ -1,0 +1,4 @@
+rows 40642 invalid 994 first invalid (236, "'authority' is a required property")
+515 ('cms_medicaid', 'concept_alignment', "'authority' is a required property")
+468 ('census_acs', 'concept_alignment', "'authority' is a required property")
+11 ('jct', 'concept_alignment', "'authority' is a required property")
