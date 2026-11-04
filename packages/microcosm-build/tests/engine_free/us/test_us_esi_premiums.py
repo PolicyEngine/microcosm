@@ -1154,34 +1154,60 @@ def _follow_later_repin_report(
     """
 
     rows = later["rows"]
-    assert later["feeds"]["old"]["sha256"] == feed_sha256, label
-    assert rows["old_rows"] == feed_rows, label
-    assert rows["keys_only_in_old"] == [], label
+    assert later["feeds"]["old"]["sha256"] == feed_sha256, (
+        label,
+        "starts from another feed",
+    )
+    assert rows["old_rows"] == feed_rows, (label, "an old feed of another size")
+    assert rows["keys_only_in_old"] == [], (label, "drops rows")
     for field, counts in rows["changed_fields"].items():
-        assert field.startswith(_LABEL_AND_HASH_FIELDS), (label, field)
-        assert anchor_record_sets.isdisjoint(counts["by_record_set"]), (label, field)
+        assert field.startswith(_LABEL_AND_HASH_FIELDS), (
+            label,
+            "changes more than labels",
+            field,
+        )
+        assert anchor_record_sets.isdisjoint(counts["by_record_set"]), (
+            label,
+            "changes a B4923C record set",
+            field,
+        )
     added_keys = rows["keys_only_in_new"]
     if added is None:
         assert added_keys == [], (label, "adds rows without declaring them")
     else:
         assert declared_source, (label, "declares added rows without a source")
         assert declared_namespace, (label, "declares added rows without a namespace")
-        assert added["new_feed"]["sha256"] == later["feeds"]["new"]["sha256"], label
+        assert added["new_feed"]["sha256"] == later["feeds"]["new"]["sha256"], (
+            label,
+            "a listing of another feed",
+        )
         listed = {row["aggregate_fact_key"]: row for row in added["rows"]}
         assert len(listed) == len(added["rows"]), (label, "an added key twice")
         assert set(listed) == set(added_keys), (label, "added keys differ")
         sources = {row["source_name"] for row in listed.values()}
-        assert sources == {declared_source}, (label, sources)
+        assert sources == {declared_source}, (
+            label,
+            "an added row from another source",
+            sources,
+        )
         assert anchor_record_sets.isdisjoint(
             row["record_set_id"] for row in listed.values()
-        ), label
+        ), (label, "an added row in a B4923C record set")
         outside = sorted(
             row["record_set_id"]
             for row in listed.values()
             if not row["record_set_id"].startswith(declared_namespace)
         )
-        assert outside == [], (label, declared_namespace, outside)
-    assert rows["new_rows"] == rows["old_rows"] + len(added_keys), label
+        assert outside == [], (
+            label,
+            "an added row outside the namespace",
+            declared_namespace,
+            outside,
+        )
+    assert rows["new_rows"] == rows["old_rows"] + len(added_keys), (
+        label,
+        "a new row count that does not add up",
+    )
     return later["feeds"]["new"]["sha256"], rows["new_rows"]
 
 
@@ -1321,36 +1347,60 @@ class TestAnchorFeedCheck:
             declared_namespace="ed_fsa.",
         ) == ("new", 12)
 
+    # Each refusing case below names the check that must refuse it, so a check
+    # moved ahead of another fails the case it takes over.
     @pytest.mark.parametrize(
-        ("added_keys", "added_rows", "declared_source", "declared_namespace"),
+        (
+            "added_keys",
+            "added_rows",
+            "declared_source",
+            "declared_namespace",
+            "refusal",
+        ),
         [
             # Rows added with no declaration.
-            (["k1"], None, None, None),
+            (["k1"], None, None, None, "adds rows without declaring them"),
             # A row from a source the re-pin did not declare.
             (
                 ["k1", "k2"],
                 [("k1", "ed_fsa", "ed_fsa.a"), ("k2", "irs_soi", "x")],
                 "ed_fsa",
                 "ed_fsa.",
+                "an added row from another source",
             ),
             # The listing misses a key the report adds.
-            (["k1", "k2"], [("k1", "ed_fsa", "ed_fsa.a")], "ed_fsa", "ed_fsa."),
+            (
+                ["k1", "k2"],
+                [("k1", "ed_fsa", "ed_fsa.a")],
+                "ed_fsa",
+                "ed_fsa.",
+                "added keys differ",
+            ),
             # The listing names a key the report does not add.
             (
                 ["k1"],
                 [("k1", "ed_fsa", "ed_fsa.a"), ("k9", "ed_fsa", "ed_fsa.b")],
                 "ed_fsa",
                 "ed_fsa.",
+                "added keys differ",
             ),
-            # A declared row in a B4923C anchor record set.
+            # A declared row in a B4923C anchor record set, which also sits
+            # outside the declared namespace.
             (
                 ["k1"],
                 [("k1", "ed_fsa", "bea_nipa.cy2024.private_group_health_insurance")],
                 "ed_fsa",
                 "ed_fsa.",
+                "an added row in a B4923C record set",
             ),
             # A listing with no declared source.
-            (["k1"], [("k1", "ed_fsa", "ed_fsa.a")], None, "ed_fsa."),
+            (
+                ["k1"],
+                [("k1", "ed_fsa", "ed_fsa.a")],
+                None,
+                "ed_fsa.",
+                "declares added rows without a source",
+            ),
             # A row the listing labels with the declared source, in a record
             # set outside the declared namespace.
             (
@@ -1358,9 +1408,25 @@ class TestAnchorFeedCheck:
                 [("k1", "ed_fsa", "irs_soi.ty2023.table_1_4")],
                 "ed_fsa",
                 "ed_fsa.",
+                "an added row outside the namespace",
+            ),
+            # A row in a record set that contains the declared namespace but
+            # does not start with it.
+            (
+                ["k1"],
+                [("k1", "ed_fsa", "x.ed_fsa.a")],
+                "ed_fsa",
+                "ed_fsa.",
+                "an added row outside the namespace",
             ),
             # A listing with no declared namespace.
-            (["k1"], [("k1", "ed_fsa", "ed_fsa.a")], "ed_fsa", None),
+            (
+                ["k1"],
+                [("k1", "ed_fsa", "ed_fsa.a")],
+                "ed_fsa",
+                None,
+                "declares added rows without a namespace",
+            ),
         ],
         ids=[
             "undeclared-additions",
@@ -1370,15 +1436,16 @@ class TestAnchorFeedCheck:
             "anchor-record-set",
             "no-source",
             "outside-namespace",
+            "namespace-not-leading",
             "no-namespace",
         ],
     )
     def test_a_later_report_refuses_rows_added_outside_its_declaration(
-        self, added_keys, added_rows, declared_source, declared_namespace
+        self, added_keys, added_rows, declared_source, declared_namespace, refusal
     ) -> None:
         later = self._later_report(added_keys=added_keys)
         added = None if added_rows is None else self._added(added_rows)
-        with pytest.raises(AssertionError):
+        with pytest.raises(AssertionError, match=refusal):
             _follow_later_repin_report(
                 later,
                 feed_sha256="old",
@@ -1390,19 +1457,24 @@ class TestAnchorFeedCheck:
             )
 
     @pytest.mark.parametrize(
-        "mutate",
+        ("mutate", "refusal"),
         [
             # A listing made from a feed other than the report's new feed.
-            lambda a: a["new_feed"].update(sha256="other"),
+            (
+                lambda a: a["new_feed"].update(sha256="other"),
+                "a listing of another feed",
+            ),
             # A listing that names one added key twice.
-            lambda a: a["rows"].append(dict(a["rows"][0])),
+            (lambda a: a["rows"].append(dict(a["rows"][0])), "an added key twice"),
         ],
         ids=["listing-other-feed", "listing-repeats-key"],
     )
-    def test_a_later_report_refuses_a_listing_it_cannot_follow(self, mutate) -> None:
+    def test_a_later_report_refuses_a_listing_it_cannot_follow(
+        self, mutate, refusal
+    ) -> None:
         added = self._added([("k1", "ed_fsa", "ed_fsa.a")])
         mutate(added)
-        with pytest.raises(AssertionError):
+        with pytest.raises(AssertionError, match=refusal):
             _follow_later_repin_report(
                 self._later_report(added_keys=["k1"]),
                 feed_sha256="old",
@@ -1414,21 +1486,58 @@ class TestAnchorFeedCheck:
             )
 
     @pytest.mark.parametrize(
-        "mutate",
+        ("mutate", "refusal"),
         [
-            lambda r: r["rows"].update(keys_only_in_old=["k0"]),
-            lambda r: r["rows"].update(new_rows=r["rows"]["new_rows"] + 1),
-            lambda r: r["rows"]["changed_fields"].update(
-                value={"rows": 1, "by_record_set": {"x": 1}}
+            (lambda r: r["rows"].update(keys_only_in_old=["k0"]), "drops rows"),
+            (
+                lambda r: r["rows"].update(new_rows=r["rows"]["new_rows"] + 1),
+                "a new row count that does not add up",
             ),
-            lambda r: r["feeds"]["old"].update(sha256="other"),
+            (
+                lambda r: r["rows"]["changed_fields"].update(
+                    value={"rows": 1, "by_record_set": {"x": 1}}
+                ),
+                "changes more than labels",
+            ),
+            (
+                lambda r: r["feeds"]["old"].update(sha256="other"),
+                "starts from another feed",
+            ),
+            # An old feed of another size, with a new count that still adds up.
+            (
+                lambda r: r["rows"].update(old_rows=11, new_rows=12),
+                "an old feed of another size",
+            ),
+            # A label change in a B4923C record set.
+            (
+                lambda r: r["rows"]["changed_fields"].update(
+                    {
+                        "layout/groupby_value_label": {
+                            "rows": 1,
+                            "by_record_set": {
+                                "bea_nipa.cy2024.private_group_health_insurance": 1
+                            },
+                        }
+                    }
+                ),
+                "changes a B4923C record set",
+            ),
         ],
-        ids=["dropped-row", "row-count", "value-change", "wrong-base"],
+        ids=[
+            "dropped-row",
+            "row-count",
+            "value-change",
+            "wrong-base",
+            "old-row-count",
+            "anchor-label",
+        ],
     )
-    def test_a_later_report_still_refuses_dropped_or_changed_rows(self, mutate) -> None:
+    def test_a_later_report_still_refuses_dropped_or_changed_rows(
+        self, mutate, refusal
+    ) -> None:
         later = self._later_report(added_keys=["k1"])
         mutate(later)
-        with pytest.raises(AssertionError):
+        with pytest.raises(AssertionError, match=refusal):
             _follow_later_repin_report(
                 later,
                 feed_sha256="old",
