@@ -283,6 +283,67 @@ def test_local_k_role_moves_only_its_own_line_pointer(tmp_path: Path) -> None:
     assert all(path != LATEST_EVIDENCE_POINTER_PATH for path, _ in uk_hub.uploads)
 
 
+#: A releases.json that the switch to build folders writes; its contents do
+#: not matter to the tagged publisher, which refuses once it exists.
+_RELEASES_RECORD = json.dumps(
+    {"schema_version": 1, "default": None, "releases": {}}
+).encode()
+
+
+@pytest.mark.parametrize(
+    "options",
+    [{}, {"update_latest": False}, {"update_latest": False, "tag_only": True}],
+    ids=["latest", "no-latest", "tag-only"],
+)
+def test_the_tagged_publisher_refuses_a_repository_with_releases_json(
+    hub: FakeHub, release_dir: Path, artifact_root: Path, monkeypatch, options: dict
+) -> None:
+    """Once a repository records its builds in releases.json, the emitter
+    publishes there; a tag or pointer file written beside it would disagree
+    with the record, so the publisher refuses before it writes anything."""
+    monkeypatch.setattr(release_module, "notify_release", lambda *a, **k: None)
+    hub.seed_main_file("releases.json", _RELEASES_RECORD)
+
+    with pytest.raises(ValueError, match="releases.json") as refusal:
+        publish_release(
+            release_dir,
+            "policyengine/populace-us",
+            api=hub,
+            artifact_root=artifact_root,
+            **options,
+        )
+
+    assert "microcosm-publish-release-build" in str(refusal.value)
+    assert hub.tags == []
+    assert hub.uploads == []
+    assert [event for event, _ in hub.events] == []
+
+
+def test_the_tagged_publisher_refuses_a_uk_promotion_once_releases_json_exists(
+    release_dir: Path, artifact_root: Path, tmp_path: Path, monkeypatch
+) -> None:
+    national = _as_uk_national_line_release(release_dir)
+    monkeypatch.setattr(
+        release_module, "validate_release_dir", lambda _path, **_kwargs: []
+    )
+    monkeypatch.setattr(release_module, "notify_release", lambda *a, **k: None)
+    hub = _uk_hub(tmp_path)
+    hub.seed_main_file("releases.json", _RELEASES_RECORD)
+
+    with pytest.raises(ValueError, match="releases.json"):
+        publish_release(
+            national,
+            "policyengine/populace-uk-private",
+            api=hub,
+            artifact_root=artifact_root,
+            tag_name=UK_NATIONAL_CUT_TAG,
+            line="national",
+        )
+
+    assert hub.tags == []
+    assert line_pointer_path("national") not in hub._commits[hub._refs["main"]]
+
+
 def test_prepare_build_folder_release_lists_each_file_with_its_role(
     release_dir: Path, artifact_root: Path, monkeypatch
 ) -> None:

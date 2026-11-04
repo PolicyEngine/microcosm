@@ -151,6 +151,19 @@ def test_uk_2025_dense_is_registered_off_the_default_variant() -> None:
     assert ("uk", 2025, DEFAULT_VARIANT) in REGISTRY
 
 
+def test_uk_2025_national_line_is_the_default_variant_after_promotion():
+    """microcosm#823: the line's first certified cut was promoted on
+    2026-10-26, so the line moved to the default variant (Max's #823
+    ruling) and its own variant key retired; the June 2023 line stays
+    addressable at its year. Until its repository switches to
+    releases.json, the loader follows latest-national.json."""
+    spec = REGISTRY[("uk", 2025, DEFAULT_VARIANT)]
+    assert spec.pointer_path == "latest-national.json"
+    assert spec.filename == "microcosm_uk_2024_25.h5"
+    assert ("uk", 2025, "national") not in REGISTRY
+    assert REGISTRY[("uk", 2023, DEFAULT_VARIANT)].filename == "populace_uk_2023.h5"
+
+
 def test_uk_2025_national_release_is_the_default_variant():
     """The national release is the default UK 2025 load: its current build in
     releases.json, not a pointer file; the June 2023 release stays

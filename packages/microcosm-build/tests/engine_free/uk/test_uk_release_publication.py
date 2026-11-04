@@ -10,6 +10,7 @@ emitter's own tests cover the writer, its queue and the Hub.
 from __future__ import annotations
 
 import json
+from dataclasses import dataclass, field
 from pathlib import Path
 
 import pytest
@@ -49,16 +50,39 @@ READ_ONLY_CREDENTIAL = {
 }
 
 
+@dataclass
+class HubListing:
+    """The dataset repository's file list as the command reads it.
+
+    ``files`` is what it lists, and ``listed`` the repositories it asked for.
+    """
+
+    files: list[str] = field(default_factory=list)
+    listed: list[str] = field(default_factory=list)
+
+
 @pytest.fixture(autouse=True)
-def _hub_online(monkeypatch) -> None:
+def hub_listing(monkeypatch) -> HubListing:
     """Run each test as on a build machine that can reach the Hub.
 
     Local test runs set ``HF_HUB_OFFLINE``, and the command refuses to start
     an emitter with it set. Every emitter here is the in-memory client, and
-    the repository's root fixture refuses to start a real one.
+    the repository's root fixture refuses to start a real one. The file list
+    the command reads, to refuse a repository that still has pointer files,
+    is in memory too and empty unless a test adds to it.
     """
     for name in OFFLINE_VARIABLES:
         monkeypatch.delenv(name, raising=False)
+    listing = HubListing()
+
+    def list_files(repository: str) -> list[str]:
+        listing.listed.append(repository)
+        return list(listing.files)
+
+    monkeypatch.setattr(
+        release_publication, "_repository_files", list_files, raising=False
+    )
+    return listing
 
 
 @pytest.fixture
@@ -170,7 +194,10 @@ def test_pointer_files_refuse_a_build_made_current(
 
     assert outcome.receipt["status"] == "refused"
     assert outcome.receipt["error_code"] == "POINTER_FILES_PRESENT"
-    assert "without --make-current" in outcome.explanation()
+    # The command refuses such a repository before handing anything over;
+    # this is a pointer file that appeared after that check.
+    assert "tools/publish_release.sh" in outcome.explanation()
+    assert "without --make-current" not in outcome.explanation()
     assert (UK_REPO_ID, "releases.json") not in client.hub_files
 
 
@@ -395,29 +422,65 @@ def test_the_command_fails_and_explains_a_change_that_did_not_land(
     assert client.closed is True
 
 
-def test_a_promotion_refused_for_pointer_files_says_to_promote_again_later(
+@pytest.mark.parametrize(
+    "pointer_file",
+    ["latest.json", "latest-national.json", "releases/old/latest-evidence.json"],
+)
+@pytest.mark.parametrize("promote", [False, True], ids=["publish", "promote"])
+def test_the_command_refuses_a_repository_with_pointer_files_before_an_emitter(
+    national: Path,
+    artifact_root: Path,  # noqa: F811
+    monkeypatch,
+    capsys,
+    hub_listing: HubListing,
+    pointer_file: str,
+    promote: bool,
+) -> None:
+    """Until a repository switches to releases.json, its releases publish
+    and promote through its pointer files, with tools/publish_release.sh."""
+    started, repository = _start_emitters(monkeypatch)
+    hub_listing.files.extend(["README.md", pointer_file])
+    argv = (
+        [str(national), "--promote"]
+        if promote
+        else [str(national), "--artifact-root", str(artifact_root)]
+    )
+
+    code, output, error = _run(argv, capsys)
+
+    assert code == 1
+    assert started == []
+    assert output is None
+    assert hub_listing.listed == [UK_REPO_ID]
+    assert "refusing to publish" in error and pointer_file in error
+    assert "tools/publish_release.sh" in error
+    assert repository == {}
+
+
+def test_the_command_refuses_when_it_cannot_list_the_repository(
     national: Path,
     artifact_root: Path,  # noqa: F811
     monkeypatch,
     capsys,
 ) -> None:
-    """The build is published already, so publishing it again cannot help."""
-    _, repository = _start_emitters(monkeypatch)
-    repository[(UK_REPO_ID, "latest-national.json")] = b"{}"
-    assert _run([str(national), "--artifact-root", str(artifact_root)], capsys)[0] == 0
+    started, _ = _start_emitters(monkeypatch)
 
-    code, output, error = _run([str(national), "--promote"], capsys)
+    def unlistable(repository: str) -> list[str]:
+        raise OSError(f"401 Client Error for {repository}")
+
+    monkeypatch.setattr(
+        release_publication, "_repository_files", unlistable, raising=False
+    )
+
+    code, output, error = _run(
+        [str(national), "--artifact-root", str(artifact_root)], capsys
+    )
 
     assert code == 1
-    assert (output["status"], output["error_code"]) == (
-        "refused",
-        "POINTER_FILES_PRESENT",
-    )
-    assert "without --make-current" not in error
-    assert "stays published but is not current" in error
-    assert "Run this --promote command again once the pointer files" in error
-    record = json.loads(repository[(UK_REPO_ID, "releases.json")])
-    assert record["releases"][UK_NATIONAL_RELEASE_ID]["current"] is None
+    assert started == []
+    assert output is None
+    assert f"could not list the files of {UK_REPO_ID}" in error
+    assert "401 Client Error" in error
 
 
 @pytest.mark.parametrize("variable", OFFLINE_VARIABLES)
