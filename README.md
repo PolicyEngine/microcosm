@@ -488,7 +488,8 @@ uv run microcosm-publish-release-build releases/<release> --promote
 
 A build counts as current only when the emitter's receipt is `published` and
 names it as `current`. Each path refuses a repository in the other's layout,
-so a UK release always has one way to change its current build:
+so the UK national, dense and local-area releases always have one way to
+change their current build:
 
 - `microcosm-publish-release-build` lists the repository's files and refuses,
   before any emitter starts, while any `latest*.json` pointer file is there.
@@ -503,7 +504,10 @@ commit that writes `releases.json` and deletes the pointer files. Release
 alerts do not stop: the switch waits until the dashboard posts them from
 changes to `releases.json`. `microcosm.data.load` reads a release's current
 build from `releases.json` where the repository has one, and follows its
-pointer file otherwise.
+pointer file otherwise. The UK repository's other releases, the June 2023
+release (whose pointer is `latest.json`) and `populace-uk-<year>-<tier>-k<N>`
+releases, have no publication path after its switch yet; that is open for
+the switch.
 
 The publisher uploads only the contract files, the release manifest's
 artifacts and any `--extra-file`. The US fiscal-refresh tool therefore binds
