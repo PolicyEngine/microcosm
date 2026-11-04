@@ -810,6 +810,66 @@ def test_restaging_a_national_build_records_the_bundle_its_emitter_delivered(
     _sums_verify(out)
 
 
+def test_a_local_only_check_of_a_copied_back_national_build_leaves_its_manifest(
+    monkeypatch, tmp_path
+):
+    """A national build changes its outputs after it records its staged
+    dataset: it rewrites its build record, and registers its score receipt
+    when it has one. So the ``local_only`` record a ``--local-only`` run
+    would write differs from the build's. With ``--modal-receipt`` the command
+    leaves the build manifest as the Modal stage wrote it, and a later run
+    with the receipt stages the directory."""
+    pytest.importorskip("tables")
+    from test_support.microcosm_build.emitter import FakeEmitterClient
+    from test_support.microcosm_build.modal_copy_back import copy_back
+    from test_support.microcosm_build.uk_full_build_cli import load_tool
+
+    hub = candidate._FakeHub()
+    # As the Modal runner runs every tool, so the build keeps its bundle local.
+    monkeypatch.setenv("HF_HUB_OFFLINE", "1")
+    builder, out = _national_build(monkeypatch, tmp_path, hub)
+    monkeypatch.delenv("HF_HUB_OFFLINE")
+    manifest = json.loads((out / builder.MANIFEST_FILENAME).read_text())
+    staged = manifest["staged_dataset"]
+    assert (staged["mode"], staged["status"]) == ("local_only", "skipped")
+    registered = {
+        Path(entry["path"]).name: entry["sha256"]
+        for entry in manifest["outputs"].values()
+    }
+    assert {name: entry["sha256"] for name, entry in staged["files"].items()} != (
+        registered
+    )
+    copied, receipt = copy_back(out, tmp_path / "modal-runs")
+    manifest_path = copied / builder.MANIFEST_FILENAME
+    manifest_bytes = manifest_path.read_bytes()
+    stager = load_tool("stage_uk_rowwise_candidate")
+    started: list[FakeEmitterClient] = []
+
+    def start() -> FakeEmitterClient:
+        started.append(FakeEmitterClient(hub_files=hub.files, hub_api=hub))
+        return started[-1]
+
+    monkeypatch.setattr(stager, "_start_bundle_emitter", start)
+    argv = [
+        "--run-dir",
+        str(copied),
+        "--modal-receipt",
+        str(receipt),
+        "--wait-seconds",
+        "60",
+    ]
+
+    assert stager.main([*argv, "--local-only"]) == 0
+
+    assert started == []
+    assert manifest_path.read_bytes() == manifest_bytes
+    assert stager.main(argv) == 0
+    restaged = json.loads(manifest_path.read_text())["staged_dataset"]
+    assert (restaged["status"], restaged["revision"]) == ("uploaded", hub.sha)
+    assert len(hub.commits) == 1
+    _sums_verify(copied)
+
+
 def test_a_national_re_stage_never_replaces_a_landed_record(monkeypatch, tmp_path):
     """On another machine the emitter does not hold the build's hand-over,
     and the directory's outputs changed after it. A record that says the

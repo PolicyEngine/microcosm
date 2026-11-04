@@ -5,16 +5,18 @@ tool with ``HF_HUB_OFFLINE=1``, so a UK build run there would upload nothing:
 it would verify its bundle, write the sidecars and record the bundle as
 ``local_only``. These tests run such a build locally with that variable set
 and lay it out as ``modal volume get`` copies a run back. Then
-``tools/stage_uk_rowwise_candidate.py --modal-receipt`` checks the build
-manifest and every output it registers against the stage's receipt, and hands
-the bundle to the operator's emitter with the code that re-stages a local
-build that kept its bundle local.
+``tools/stage_uk_rowwise_candidate.py --modal-receipt`` checks every output
+the build manifest registers against the stage's receipt, and the build
+manifest itself while its ``staged_dataset`` record is not
+``local_and_remote``, and hands the bundle to the operator's emitter with the
+code that re-stages a local build that kept its bundle local.
 """
 
 from __future__ import annotations
 
 import hashlib
 import json
+import re
 import shutil
 from pathlib import Path
 
@@ -38,17 +40,21 @@ from test_support.microcosm_build.uk_full_build_cli import (
 
 PRIVATE_REPOSITORY = "policyengine/populace-uk-private"
 MANIFEST = "rowwise_candidate_manifest.json"
+#: The refusal of the CSV output ``_edit_an_output`` changes, by its receipt entry.
+EDITED_OUTPUT_REFUSAL = r"out/[^/\s]+\.csv is not the file the Modal stage wrote"
 
 
-def _modal_build(tmp_path, monkeypatch):
+def _modal_build(tmp_path, monkeypatch, *, staging=None):
     """A dense build run as the Modal runner runs it, then copied back.
 
-    Returns the Hub, the copied-back run directory and the stage's receipt.
+    ``staging`` is the build's staging switch (none: the remote mode, which
+    ``HF_HUB_OFFLINE`` makes ``local_only``). Returns the Hub, the copied-back
+    run directory and the stage's receipt.
     """
     pytest.importorskip("tables")
     hub = _remote_hub(monkeypatch)
     monkeypatch.setenv("HF_HUB_OFFLINE", "1")
-    status, out = run_dense_main(tmp_path, monkeypatch, staging=None)
+    status, out = run_dense_main(tmp_path, monkeypatch, staging=staging)
     assert status == 0
     monkeypatch.delenv("HF_HUB_OFFLINE")
     assert hub.paths(PRIVATE_REPOSITORY) == []
@@ -198,7 +204,17 @@ def test_copied_back_outputs_are_handed_over_as_a_local_build_is_restaged(
         assert hashlib.sha256((copied / name).read_bytes()).hexdigest() == digest
 
 
-def _edit_after_copy_back(copied, run_root, receipt):
+def _edit_under_a_record_that_says_it_was_handed_over(copied, run_root, receipt):
+    """Edit an output, its manifest digest and the record's mode.
+
+    With ``staged_dataset.mode`` set to ``local_and_remote``, the build manifest
+    is not compared with the receipt: the command cannot tell such an edit from
+    a record a hand-over wrote. Each output still is.
+    """
+    _edit_the_build_manifest(
+        copied,
+        lambda manifest: manifest["staged_dataset"].update(mode="local_and_remote"),
+    )
     _edit_an_output(copied)
 
 
@@ -253,9 +269,9 @@ def _another_kind_of_file(copied, run_root, receipt):
     ("change", "refusal"),
     [
         pytest.param(
-            _edit_after_copy_back,
-            rf"out/{MANIFEST} is not the build manifest the Modal stage wrote",
-            id="an output edited after the copy-back",
+            _edit_under_a_record_that_says_it_was_handed_over,
+            EDITED_OUTPUT_REFUSAL,
+            id="an output edited under a record edited to say it was handed over",
         ),
         pytest.param(
             _receipt_records_other_bytes,
@@ -363,7 +379,8 @@ def test_a_copied_back_bundle_that_landed_is_not_handed_over_again(
 ):
     """Staging rewrites the manifest and ``sha256sums.txt``, so they no longer
     match the receipt; the outputs still do, so a second run with the receipt,
-    and a re-stage without it, both find the record and change nothing."""
+    a re-stage without it and a ``--local-only`` run with it all find the
+    record and change nothing."""
     hub, copied, receipt = _modal_build(tmp_path, monkeypatch)
     stager = load_tool("stage_uk_rowwise_candidate")
     started = _workstation_emitters(
@@ -388,6 +405,9 @@ def test_a_copied_back_bundle_that_landed_is_not_handed_over_again(
         capsys.readouterr()
         assert stager.main(argv) == 0
         assert "nothing to do" in capsys.readouterr().err
+    capsys.readouterr()
+    assert stager.main(_staging_argv(copied, receipt, "--local-only")) == 0
+    assert "--local-only does not replace it" in capsys.readouterr().err
 
     assert _files(copied) == landed
     assert len(hub.commits) == 1
@@ -426,6 +446,39 @@ def test_a_copied_back_bundle_whose_first_hand_over_failed_is_staged_again(
     assert "still records skipped" in err
     assert "CREDENTIAL_MISSING" not in err
     assert len(hub.commits) == 1
+
+
+def test_an_output_edited_after_a_failed_hand_over_is_refused_by_its_receipt_entry(
+    tmp_path, monkeypatch
+):
+    """A hand-over replaces the build manifest's ``local_only`` record, so the
+    manifest is no longer compared with the receipt, and comparing each output
+    with its receipt entry is the only check left. An output edited after a
+    failed hand-over, with its manifest digest updated, is refused before an
+    emitter starts, and nothing reaches the Hub."""
+    hub, copied, receipt = _modal_build(tmp_path, monkeypatch)
+    queue = FakeHandoverQueue()
+    stager = load_tool("stage_uk_rowwise_candidate")
+    _workstation_emitters(monkeypatch, stager, hub_files=hub.files, queue=queue)
+    assert stager.main(_staging_argv(copied, receipt)) == 1
+    staged = _manifest(copied)["staged_dataset"]
+    assert (staged["mode"], staged["error_code"]) == (
+        "local_and_remote",
+        "CREDENTIAL_MISSING",
+    )
+    _edit_an_output(copied)
+    before = _files(copied)
+    started = _workstation_emitters(
+        monkeypatch, stager, hub_files=hub.files, hub_api=hub, queue=queue
+    )
+
+    message = _refusal(stager, _staging_argv(copied, receipt))
+
+    assert re.search(EDITED_OUTPUT_REFUSAL, message), message
+    assert "is not the build manifest the Modal stage wrote" not in message
+    assert started == []
+    assert _files(copied) == before
+    assert hub.paths(PRIVATE_REPOSITORY) == []
 
 
 def test_hf_hub_offline_on_the_workstation_stages_nothing(
@@ -630,25 +683,104 @@ def test_the_run_directory_is_checked_where_it_really_is(tmp_path, monkeypatch, 
     assert manifest["staged_dataset_handover"]["run_dir"] == str(copied.resolve())
 
 
-def test_a_local_only_check_keeps_the_build_manifest_the_stage_wrote(
+@pytest.mark.parametrize(
+    "case",
+    [
+        "the build's own local_only record",
+        "a build that disabled its staged dataset",
+        "another --run-id",
+        "after a failed hand-over",
+    ],
+)
+def test_a_local_only_check_with_the_receipt_leaves_the_build_manifest(
+    tmp_path, monkeypatch, case
+):
+    """With ``--modal-receipt``, ``--local-only`` checks the directory and
+    writes the sidecars but leaves the build manifest as it is. The
+    ``local_only`` record it would write differs from the manifest's when the
+    build disabled its staged dataset, when ``--run-id`` names another run id,
+    and once a hand-over has replaced the record; a later run with the receipt
+    then still finds the manifest the stage wrote, or the hand-over's record,
+    and stages the directory."""
+    hub, copied, receipt = _modal_build(
+        tmp_path,
+        monkeypatch,
+        staging=(
+            "--no-staged-dataset"
+            if case == "a build that disabled its staged dataset"
+            else None
+        ),
+    )
+    stager = load_tool("stage_uk_rowwise_candidate")
+    queue = FakeHandoverQueue()
+    if case == "after a failed hand-over":
+        _workstation_emitters(monkeypatch, stager, hub_files=hub.files, queue=queue)
+        assert stager.main(_staging_argv(copied, receipt)) == 1
+    run_id = ("--run-id", "another-run") if case == "another --run-id" else ()
+    manifest_bytes = (copied / MANIFEST).read_bytes()
+    started = _workstation_emitters(
+        monkeypatch, stager, hub_files=hub.files, hub_api=hub, queue=queue
+    )
+
+    assert (
+        _completes(stager, _staging_argv(copied, receipt, "--local-only", *run_id)) == 0
+    )
+
+    assert started == []
+    assert (copied / MANIFEST).read_bytes() == manifest_bytes
+    # The sidecars describe the directory as it now is.
+    staged_manifest = json.loads((copied / "staged_manifest.json").read_text())
+    assert staged_manifest["repository"] is None
+    assert staged_manifest["manifest"]["sha256"] == (
+        hashlib.sha256(manifest_bytes).hexdigest()
+    )
+    for line in (copied / "sha256sums.txt").read_text().splitlines():
+        digest, name = line.split("  ")
+        assert hashlib.sha256((copied / name).read_bytes()).hexdigest() == digest
+    assert _completes(stager, _staging_argv(copied, receipt)) == 0
+    assert _manifest(copied)["staged_dataset"]["status"] in (
+        "uploaded",
+        "already_staged",
+    )
+    assert len(hub.commits) == 1
+
+
+def test_a_local_only_run_without_the_receipt_records_the_bundle_as_before(
     tmp_path, monkeypatch
 ):
-    """``--local-only`` writes the build's own ``local_only`` record into the
-    build manifest again, so the manifest keeps the bytes the receipt lists
-    and a later run with the receipt still stages it."""
+    """Without ``--modal-receipt``, ``--local-only`` records the bundle as
+    ``local_only`` in the build manifest, as for a directory built on the
+    workstation, keeps what the build recorded in ``staged_dataset_at_build``
+    and lists the rewritten manifest in ``sha256sums.txt``."""
     hub, copied, receipt = _modal_build(tmp_path, monkeypatch)
-    manifest_bytes = (copied / MANIFEST).read_bytes()
+    at_build = _manifest(copied)["staged_dataset_at_build"]
     stager = load_tool("stage_uk_rowwise_candidate")
     started = _workstation_emitters(
         monkeypatch, stager, hub_files=hub.files, hub_api=hub
     )
 
-    assert _completes(stager, _staging_argv(copied, receipt, "--local-only")) == 0
-    assert started == []
-    assert (copied / MANIFEST).read_bytes() == manifest_bytes
-    assert _completes(stager, _staging_argv(copied, receipt)) == 0
+    assert (
+        _completes(
+            stager,
+            ["--run-dir", str(copied), "--run-id", "another-run", "--local-only"],
+        )
+        == 0
+    )
 
-    assert _manifest(copied)["staged_dataset"]["status"] == "uploaded"
+    manifest = _manifest(copied)
+    staged = manifest["staged_dataset"]
+    assert (staged["mode"], staged["status"], staged["run_id"], staged["prefix"]) == (
+        "local_only",
+        "skipped",
+        "another-run",
+        "staged/another-run",
+    )
+    assert manifest["staged_dataset_at_build"] == at_build
+    for line in (copied / "sha256sums.txt").read_text().splitlines():
+        digest, name = line.split("  ")
+        assert hashlib.sha256((copied / name).read_bytes()).hexdigest() == digest
+    assert started == []
+    assert hub.paths(PRIVATE_REPOSITORY) == []
 
 
 @pytest.mark.parametrize(
