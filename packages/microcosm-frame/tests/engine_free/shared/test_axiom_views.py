@@ -1079,9 +1079,11 @@ def _real_inputs(names, n, generator):
     A name in ``_REAL_INPUT_VALUES`` draws from its values there. Otherwise
     counts, ages and years become integers, money becomes decimals, and
     every other input a bool. The run on the pinned engine checks the
-    typing: the engine refuses an input of the wrong type by name. Names
-    draw in sorted order, because ``root_inputs`` comes back in a different
-    order in each process, and the seed fixes the batch only for one order.
+    typing where a program needs a number: it reports a bool, text or date
+    column there as a type mismatch, though the message doesn't name the
+    input. Names draw in sorted order, because ``root_inputs`` comes back in
+    a different order in each process, and the seed fixes the batch only for
+    one order.
     """
     columns = {}
     for name in sorted(names):

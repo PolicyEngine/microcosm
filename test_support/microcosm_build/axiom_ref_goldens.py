@@ -12,7 +12,7 @@ fails the byte comparison.
 
 To regenerate this golden intentionally, call ``engine_refs`` on a fresh
 scratch directory, then write its result to ``GOLDEN`` with
-``json.dumps(refs, indent=1, sort_keys=True) + "\n"``. Keep the frozen source
+``json.dumps(refs, indent=1, sort_keys=True) + "\\n"``. Keep the frozen source
 rows unchanged when NZ's live bindings move. The separate real-tree golden
 uses the live bindings; its test documents that regeneration procedure.
 
