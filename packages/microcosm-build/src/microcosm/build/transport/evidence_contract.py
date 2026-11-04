@@ -1027,12 +1027,15 @@ def closure_partition(
     Returns:
         ``{"check": [...], "modules": [...]}``: ``check`` is
         :meth:`InputClosure.check` on the live surface (stamped with the
-        closure's commits) and the mapping without unreached refs; each
+        closure's commits) and the mapping without unreached refs. The
+        checker unions each path's checked roots per engine entity across all
+        bindings, independent of binding order. Each per-binding
         module row puts every live root in exactly one of
         :data:`CLOSURE_CLASSES`.
 
     Raises:
-        ValueError: Naming every refused ``unreached_roots`` declaration.
+        ValueError: Naming every refused ``unreached_roots`` declaration, or
+            both bindings when one module path carries different SHA-256 values.
     """
 
     mapped = frozenset(mapped_entities)
@@ -1159,6 +1162,20 @@ def closure_partition(
         }
         for row in bindings
     }
+    path_bindings: dict[str, str] = {}
+    path_roots: dict[str, dict[str, set[str]]] = {}
+    for row in bindings:
+        binding = str(row["id"])
+        path = str(row["rulespec_path"])
+        previous = path_bindings.setdefault(path, binding)
+        if module_sha256[previous] != module_sha256[binding]:
+            raise ValueError(
+                f"Rules bindings {previous!r} and {binding!r} give different "
+                f"module SHA-256 values for {path!r}."
+            )
+        by_entity = path_roots.setdefault(path, {})
+        for entity, names in checked_roots[binding].items():
+            by_entity.setdefault(entity, set()).update(names)
     surface = AxiomInputSurface(
         country=closure.country,
         rulespec_commit=closure.surface_rulespec_commit,
@@ -1166,14 +1183,19 @@ def closure_partition(
         engine_surface="live",
         modules=MappingProxyType(
             {
-                str(row["rulespec_path"]): AxiomModuleSurface(
-                    path=str(row["rulespec_path"]),
-                    sha256=module_sha256[str(row["id"])],
+                path: AxiomModuleSurface(
+                    path=path,
+                    sha256=module_sha256[path_bindings[path]],
                     status="compiled",
-                    inputs=MappingProxyType(checked_roots[str(row["id"])]),
+                    inputs=MappingProxyType(
+                        {
+                            entity: tuple(sorted(names))
+                            for entity, names in sorted(by_entity.items())
+                        }
+                    ),
                     canonical_inputs=MappingProxyType({}),
                 )
-                for row in bindings
+                for path, by_entity in sorted(path_roots.items())
             }
         ),
     )

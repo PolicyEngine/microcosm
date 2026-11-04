@@ -790,3 +790,33 @@ def test_the_support_roster_reads_a_view_default_as_a_person_column(
     assert compose_module._closure_defaults(_spec(document)) == {
         (None, "child_income"): "child.yaml Child.child_income"
     }
+
+
+def test_shared_path_closure_does_not_depend_on_binding_order(tmp_path, monkeypatch):
+    _, document, _ = _fixture(tmp_path, monkeypatch)
+    second = copy.deepcopy(document["bindings"][0])
+    second["id"] = "no_view"
+    second.pop("views")
+    document["bindings"].append(second)
+    forward = _partition(document)
+    document["bindings"].reverse()
+    backward = _partition(document)
+    assert forward["check"] == backward["check"] == []
+    assert {row["binding"]: row for row in forward["modules"]} == {
+        row["binding"]: row for row in backward["modules"]
+    }
+
+
+@pytest.mark.parametrize("reverse", [False, True])
+def test_shared_path_refuses_different_module_hashes(tmp_path, monkeypatch, reverse):
+    _, document, _ = _fixture(tmp_path, monkeypatch)
+    second = copy.deepcopy(document["bindings"][0])
+    second.update(id="no_view", sha256="d" * 64)
+    second.pop("views")
+    document["bindings"].append(second)
+    if reverse:
+        document["bindings"].reverse()
+    with pytest.raises(
+        ValueError, match=r"(?:child_benefit.*no_view|no_view.*child_benefit)"
+    ):
+        _partition(document)
