@@ -264,7 +264,12 @@ def test_direct_annual_cents_exposure_and_super_before_tax_are_explicit():
     ]
     assert all(column["rounding"] == "exact" for column in annual["columns"])
     super_node = nodes["nz.gross_up.super_cents"]
-    assert "engine_ref" not in super_node["params"]
+    # R2C-2: the NZS cents name the nz_super S5 stage, as net_cents names rates.
+    assert super_node["params"]["engine_ref"] == {
+        "binding": "nz_super",
+        "field": "engine_ref",
+    }
+    assert super_node["params"]["period"] == {"binding": "nz_super", "field": "period"}
     (super_column,) = json.loads(super_node["params"]["declaration"])["columns"]
     assert super_column["source_column"] == "nz_super_weekly_amount_before_tax"
     assert super_column["source_tax_basis"] == "before_tax"
@@ -305,7 +310,8 @@ def composed_gross_up(tmp_path):
     fixture = make_composed_fixture(tmp_path / "gross-up-composition")
     spec = copy.deepcopy(fixture.spec)
     nodes = _load("benefit_gross_up")["nodes"]
-    wanted = {"main_benefits_rates", "income_tax_schedule_1"}
+    # The nz_super stage (R2C-2) names its binding through super_cents.
+    wanted = {"main_benefits_rates", "income_tax_schedule_1", "nz_super"}
     bindings = [
         row for row in _load("axiom_rules_bindings")["bindings"] if row["id"] in wanted
     ]

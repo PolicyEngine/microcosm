@@ -1075,6 +1075,8 @@ class TestUKCountryPackage:
             "hmrc_stamp_tax_facts.json",
             "hmrc_isa_statistics_facts.json",
             "hmrc_benefits_in_kind_facts.json",
+            # microcosm#1095: dense builds only, uk_runtime.property_localisation.
+            "scotgov_chargeable_dwellings_by_band.json",
             "dwp_move_to_uc_facts.json",
             "dwp_uc_award_band_facts.json",
             "obr_hvcts_costing_facts.json",
@@ -1191,8 +1193,8 @@ class TestUKCountryPackage:
         # microcosm#1240 high_value_home_support between them, microcosm#1112
         # regional_home_values after it, and microcosm#1095 property_purchases
         # after property_components and uc_legacy_closure_take_up after
-        # uc_capital_coherence; microcosm#1319 carers_allowance_take_up after
-        # child_benefit_take_up; childcare_copy_take_up last, after every copy
+        # uc_capital_coherence; microcosm#1319 carers_allowance_take_up, after
+        # salary_sacrifice since microcosm#1095 B5; childcare_copy_take_up last, after every copy
         # stage; microcosm#1334 uc_take_up after uc_capital_coherence and
         # frs_annual_income_spells after frs_hmrc_spine_leaves; microcosm#1428
         # trading_allowance_receipts last; company_cars right after
@@ -1242,6 +1244,8 @@ class TestExistingPackagesGeneralize:
             "hmrc_stamp_tax_facts.json",
             "hmrc_isa_statistics_facts.json",
             "hmrc_benefits_in_kind_facts.json",
+            # microcosm#1095: dense builds only, uk_runtime.property_localisation.
+            "scotgov_chargeable_dwellings_by_band.json",
             "dwp_move_to_uc_facts.json",
             "dwp_uc_award_band_facts.json",
             "obr_hvcts_costing_facts.json",
@@ -1609,6 +1613,7 @@ class TestUKGatesManifest:
             "uk_stage_frs_annual_income_spells",
             "uk_stage_spi_support_channel_mass",
             "uk_stage_hmrc_spi_income_spine_identity",
+            "uk_stage_hmrc_spi_income_spine_hourly_pay",
             "uk_stage_spi_benefit_coherence",
             "uk_stage_uc_take_up",
             "uk_stage_pension_credit_take_up",
@@ -1748,6 +1753,7 @@ class TestUKGatesManifest:
             "uk_stage_frs_annual_income_spells",
             "uk_stage_spi_support_channel_mass",
             "uk_stage_hmrc_spi_income_spine_identity",
+            "uk_stage_hmrc_spi_income_spine_hourly_pay",
             "uk_stage_spi_benefit_coherence",
             "uk_stage_uc_take_up",
             "uk_stage_pension_credit_take_up",

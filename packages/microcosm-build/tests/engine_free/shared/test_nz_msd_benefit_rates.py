@@ -23,9 +23,30 @@ def _rates():
     return load_transport_spec("nz")["resources"]["msd_benefit_rates_20260401"]
 
 
+def _declaration():
+    """The packaged gross-up nodes without super_cents' S5 provenance selections.
+
+    G8-r2c G (R2C-2) attributes nz.gross_up.super_cents to the nz_super stage
+    through engine_ref and period selections. They name the stage, not the
+    rounding, and the shared helper prepares only the rates and Schedule 1
+    references, so this arithmetic check drops them.
+    """
+    declaration = copy.deepcopy(
+        load_transport_spec("nz")["resources"]["benefit_gross_up"]
+    )
+    for node in declaration["nodes"]:
+        if node["id"] == "nz.gross_up.super_cents":
+            assert node["params"].pop("engine_ref") == {
+                "binding": "nz_super",
+                "field": "engine_ref",
+            }
+            node["params"].pop("period")
+    return declaration
+
+
 def test_all_14_msd_points_match_to_the_cent_through_engine_and_annual_transfers():
     engine = ScheduleFixtureEngine()
-    comparisons = compare_msd_benefit_rates(engine)
+    comparisons = compare_msd_benefit_rates(engine, declaration=_declaration())
     assert len(comparisons) == 14
     for row in comparisons:
         assert row["model_gross"] == row["before_tax"], row
@@ -117,13 +138,18 @@ def test_net_as_gross_and_added_acc_levy_cannot_match_the_msd_oracle():
     # An engine returning no tax kills net_as_gross; adding a levy also moves
     # this published comparison. No levy is present in the declared path.
     no_tax = ScheduleFixtureEngine([{"lower": "0", "rate": "0"}])
-    assert any(row["difference"] != "0" for row in compare_msd_benefit_rates(no_tax))
+    assert any(
+        row["difference"] != "0"
+        for row in compare_msd_benefit_rates(no_tax, declaration=_declaration())
+    )
     with_levy = copy.deepcopy(schedule_fixture())
     for bracket in with_levy:
         bracket["rate"] = str(float(Fraction(bracket["rate"]) + Fraction("0.0175")))
     assert any(
         row["difference"] != "0"
-        for row in compare_msd_benefit_rates(ScheduleFixtureEngine(with_levy))
+        for row in compare_msd_benefit_rates(
+            ScheduleFixtureEngine(with_levy), declaration=_declaration()
+        )
     )
 
 

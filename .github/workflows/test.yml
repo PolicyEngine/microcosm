@@ -164,3 +164,24 @@ jobs:
           python-version: "3.13"
       - name: Build and inspect every shard wheel
         run: tools/build_and_inspect_wheels.sh
+
+  installed-emitter:
+    # Stages bundles through the released microcosm-emitter, at the minimum
+    # release builds accept and at the newest release pinned in
+    # tools/installed-emitter/, with its Hugging Face Hub requests answered by
+    # a loopback stand-in. It needs no secrets.
+    permissions:
+      contents: read
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.13"
+      - name: Sync workspace without country engines
+        run: uv sync --all-packages --locked
+      - name: Run installed-emitter tests
+        run: bash tools/run_installed_emitter_tests.sh

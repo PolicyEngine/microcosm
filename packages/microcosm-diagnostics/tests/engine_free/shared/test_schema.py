@@ -8,7 +8,9 @@ from pydantic import ValidationError
 
 from microcosm.diagnostics import (
     CalibrationDiagnosticsV8,
+    CalibrationDiagnosticsV9,
     calibration_diagnostics_json_schema,
+    expand_calibration_diagnostics,
     parse_calibration_diagnostics,
     write_calibration_diagnostics,
 )
@@ -332,8 +334,10 @@ def test_writer_strict_serialization_rejects_a_non_finite_mutated_mapping(
 
     outcome = write_calibration_diagnostics(model, path)
 
+    # The writer validates the schema 9 document it builds from the model, so
+    # the non-finite value is refused there, before serialization.
     assert outcome.status == "failed"
-    assert outcome.error_code == "serialization_error"
+    assert outcome.error_code == "validation_error"
     assert not path.exists()
 
 
@@ -380,7 +384,10 @@ def test_writer_round_trips_valid_output(tmp_path: Path) -> None:
     outcome = write_calibration_diagnostics(model, path)
 
     assert outcome.status == "available"
-    assert parse_calibration_diagnostics(json.loads(path.read_text())) == model
+    assert outcome.schema_version == 9
+    written = parse_calibration_diagnostics(json.loads(path.read_text()))
+    assert isinstance(written, CalibrationDiagnosticsV9)
+    assert expand_calibration_diagnostics(written) == model
 
 
 @pytest.mark.parametrize(

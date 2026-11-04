@@ -656,6 +656,9 @@ def _fixture_implementations(source: Path) -> Mapping[str, object]:
     nts_stage = pd.read_csv(
         _fixture_input(source, inputs, "nts_stage"), float_precision="round_trip"
     )
+    nts_vehicle = pd.read_csv(
+        _fixture_input(source, inputs, "nts_vehicle"), float_precision="round_trip"
+    )
     nts_ticket = pd.read_csv(
         _fixture_input(source, inputs, "nts_ticket"), float_precision="round_trip"
     )
@@ -769,6 +772,8 @@ def _fixture_implementations(source: Path) -> Mapping[str, object]:
                 engine=engine,
                 lcfs_household=lcfs_household,
                 lcfs_person=lcfs_person,
+                nts_household=nts_household,
+                nts_vehicle=nts_vehicle,
             ),
             "etb_vat": UKETBVATStageTransform(
                 stage=stages["etb_vat"], engine=engine, donor=etb

@@ -350,7 +350,8 @@ def test_constants_adapter_equals_live_constants_and_stays_out_of_identities(
             # microcosm#1251's passive partnership/S-corp leaf in puf_support moves it.
             # microcosm#1259's recipient-share bound in puf_support moves it again.
             # microcosm#1261's entity split of line 32 moves it too.
-            "spec_sha256": '153a7b6ad8f13b5de1fd32e3e4e2805015e4c90823f313cec51cb5bd27c990b0',
+            # The opt-in cross-fitted gate calibration in microcosm.fit.qrf moves it.
+            "spec_sha256": 'a6bb8fc46541352972195992cdc1b2401637322d353992d6321f204d5c74245a',
         },
     }
 

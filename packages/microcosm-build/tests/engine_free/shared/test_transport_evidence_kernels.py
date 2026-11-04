@@ -127,6 +127,18 @@ LEAF_ADDED_MODULES = frozenset(
         "microcosm.graph.weight_update",
     ]
 )
+#: Modules the bindings reach without the leaf that base 25c8cc14 did not
+#: have. Since #1342, ``microcosm.calibrate.diagnostics`` imports
+#: ``microcosm.calibrate.hierarchy_labels`` and the ``microcosm.diagnostics``
+#: package imports ``microcosm.diagnostics.catalogs``. ``gate_bindings``
+#: imports ``microcosm.calibrate.solve``, whose package ``__init__`` imports
+#: both ``microcosm.calibrate.diagnostics`` and ``microcosm.diagnostics``.
+BINDING_MODULES_ADDED_AFTER_BASE = frozenset(
+    [
+        "microcosm.calibrate.hierarchy_labels",
+        "microcosm.diagnostics.catalogs",
+    ]
+)
 BATTERY = "toy.gates.terminal"
 
 
@@ -527,11 +539,16 @@ class TestImplementationHashes:
         # At base 25c8cc14 the battery's binding identity held 197 modules;
         # w4 adds the leaf and exactly the modules it imports that the
         # bindings did not already reach (the graph package among them).
+        # Modules the bindings later reach without the leaf are listed in
+        # BINDING_MODULES_ADDED_AFTER_BASE.
         modules = set()
         for name, binding in TRANSPORT_GATE_REGISTRY.items():
             _, digests = binding_identity.describe(binding, path=name)
             modules |= set(digests)
-        assert len(modules) == 197 + len(LEAF_ADDED_MODULES)
+        assert len(modules) == (
+            197 + len(BINDING_MODULES_ADDED_AFTER_BASE) + len(LEAF_ADDED_MODULES)
+        )
+        assert BINDING_MODULES_ADDED_AFTER_BASE <= modules
         assert LEAF_ADDED_MODULES <= modules
         assert LEAF_ADDED_MODULES <= set(
             binding_identity.source_closure([evidence_contract.__name__])
@@ -2761,16 +2778,16 @@ class TestSupportRoster:
             counts[row["class"]] = counts.get(row["class"], 0) + 1
         assert counts == {
             "closure_default": 93,
-            "derived": 307,
+            "derived": 322,
             "normalized": 10,
             "copied": 3,
             "pending": 1,
+            "quantile_mapped": 1,
             "structural": 6,
         }
         derived = [row for row in roster if row["class"] == "derived"]
         pending = {
             "household.rent",
-            "person.employment_income",
             "person.liquid_financial_assets",
         }
         for row in derived:
