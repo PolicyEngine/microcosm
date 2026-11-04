@@ -50,7 +50,8 @@ from its binding, including for extension nodes.
 Composition refuses an extension whose nodes change any skeleton node's
 compiled predecessors (for example a new member of a calibration base
 version). Explicit ``package_inputs`` may add extension artifacts to the final
-receipt; every other skeleton predecessor set remains fixed.
+receipt, and explicit ``gate_inputs`` may add extension evidence to a skeleton
+gate battery; every other skeleton predecessor set remains fixed.
 
 Composition reads no donor, no facts and no engine, and writes nothing.
 Activation checks selected resource paths, non-null selected roots and encoding
@@ -622,7 +623,9 @@ def measurement_proofs(
     columns. "Upstream" is ancestry in the declared
     graph under the S5 guard's rule (:func:`_declared_calibration_predecessors`);
     composition then checks the same producers against the compiled graph's
-    exact predecessors (:func:`_check_measurement_proofs`). Returns the
+    exact predecessors (:func:`_check_measurement_proofs`). A calibration node
+    that a transport extension adds has no row here, so that check proves its
+    producer from the compiled graph under the same two rules. Returns the
     proofs by measurement id and, for each measurement without one, the
     reason it stays parked.
     """
@@ -715,20 +718,32 @@ def measurement_proofs(
 
 
 def _check_measurement_proofs(
-    spec: Mapping[str, object], graph: Graph, compiled: CompiledGraph
+    spec: Mapping[str, object],
+    graph: Graph,
+    compiled: CompiledGraph,
+    *,
+    extension_nodes: Iterable[str] = (),
 ) -> None:
-    """Refuse a declared proof the compiled graph's ancestry contradicts.
+    """Refuse a composed graph whose calibration ancestry breaks a proof.
 
     For each proved measurement and each calibration node of the composed
     graph, the compiled ancestors of that node must hold exactly one node
-    whose params declare the measurement, and it must be the proof's
-    producer for that node. That producer must also be the only compiled
+    whose params declare the measurement. For a node of the declared graph,
+    it must be the proof's producer for that node. The declaration never
+    names a calibration node that a transport extension adds
+    (``extension_nodes``), so for one of those the compiled graph proves the
+    producer under R2C-1's rule: the one declarer must output each of the
+    proof's columns. Either way, the producer must also be the only compiled
     ancestor whose outputs or EXPAND cells hold each of the proof's columns
-    (R2C-15).
+    (R2C-15). It returns at once when the declaration proves no measurement.
+    Otherwise, as the declared check does, it also refuses a node whose
+    ``measurement_id`` is neither ``None`` nor a nonempty string. Composition
+    runs this check on the skeleton and again on the extended graph.
     """
     proofs, _ = measurement_proofs(spec)
     if not proofs:
         return
+    extension_nodes = frozenset(extension_nodes)
     roots = {node.id for node in graph.nodes if node.kernel.startswith("calibrate.")}
     endpoint = transport_endpoints(spec).get("calibration")
     if isinstance(endpoint, str):
@@ -738,25 +753,63 @@ def _check_measurement_proofs(
         for node in graph.nodes
         if isinstance(node.params, Mapping) and MEASUREMENT_PARAM in node.params
     }
+    malformed = sorted(
+        name
+        for name, value in declared.items()
+        if value is not None and not _is_text(value)
+    )
+    if malformed:
+        raise ValueError(
+            f"Composition refuses: nodes {malformed} declare a measurement_id "
+            "that is not a string."
+        )
     by_id = {node.id: node for node in graph.nodes}
     _, expand_cells = _precalibration_expansions(graph)
     for binding, proof in sorted(proofs.items()):
         named = sorted(name for name, value in declared.items() if value == binding)
+        columns = [tuple(name.split(".", 1)) for name in proof["columns"]]
         for root in sorted(roots):
             closure = _ancestor_closure(compiled.predecessors, {root})
             found = [name for name in named if name in closure]
-            if found != [proof["producers"].get(root)]:
-                raise ValueError(
+            if root in extension_nodes:
+                prefix = (
+                    f"Measurement {binding!r}: the composed graph proves no "
+                    f"producer for extension calibration node {root!r}; "
+                )
+                if len(found) != 1:
+                    raise ValueError(
+                        prefix + _measurement_refusal(binding, root, found, named) + "."
+                    )
+                (producer,) = found
+                outputs = {
+                    (output.entity, output.column) for output in by_id[producer].outputs
+                }
+                missing = [
+                    f"{entity}.{column}"
+                    for entity, column in columns
+                    if (entity, column) not in outputs
+                ]
+                if missing:
+                    raise ValueError(
+                        prefix + f"its one declarer {producer!r} does not write "
+                        f"{missing}."
+                    )
+            else:
+                prefix = (
                     f"Measurement {binding!r}: the compiled graph contradicts "
                     "the declared proof; "
-                    + _measurement_refusal(binding, root, found, named)
-                    + f", and the declaration proved {proof['producers'].get(root)!r}."
                 )
-            columns = [tuple(name.split(".", 1)) for name in proof["columns"]]
+                producer = proof["producers"].get(root)
+                if found != [producer]:
+                    raise ValueError(
+                        prefix
+                        + _measurement_refusal(binding, root, found, named)
+                        + f", and the declaration proved {producer!r}."
+                    )
             refusal = _second_writer_refusal(
                 binding,
                 root,
-                proof["producers"][root],
+                producer,
                 {
                     (entity, column): sorted(
                         name
@@ -771,10 +824,7 @@ def _check_measurement_proofs(
                 },
             )
             if refusal is not None:
-                raise ValueError(
-                    f"Measurement {binding!r}: the compiled graph contradicts "
-                    f"the declared proof; {refusal}."
-                )
+                raise ValueError(prefix + f"{refusal}.")
 
 
 def reference_profile_view(
@@ -4642,6 +4692,9 @@ def compose_transport_graph(
     extended = compile_graph(graph)
     _check_extension_checkpoints(spec, config, graph, extended)
     validate_transport_calibration_ancestry(spec, graph=graph, config=config)
+    _check_measurement_proofs(
+        spec, graph, extended, extension_nodes=(node.id for node in additional)
+    )
     # Money ownership is checked after each graph pass of the ancestry guard.
     _check_single_money_normalization(spec, graph, extended)
     _check_money_bridge_owners(graph, extended)

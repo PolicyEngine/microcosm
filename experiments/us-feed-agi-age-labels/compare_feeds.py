@@ -4,10 +4,11 @@ Usage:
     uv run python experiments/us-feed-agi-age-labels/compare_feeds.py \\
         <old feed jsonl> <new feed jsonl> <out.json>
 
-1. Rows, joined on ``aggregate_fact_key``: both feeds must hold the same keys.
-   For every shared row, every changed leaf field is counted per record set;
-   every changed label is listed in full, and every ``record_set_spec_hash``
-   change once per record set.
+1. Rows, joined on ``aggregate_fact_key``: the row counts, the keys only in the
+   old feed (``keys_only_in_old``) and the keys only in the new feed
+   (``keys_only_in_new``). For every shared row, every changed leaf field is
+   counted per record set; every changed label is listed in full, and every
+   ``record_set_spec_hash`` change once per record set.
 2. Feed labels: every (dimension, value) that carries more than one label in
    either feed, with its labels.
 3. Compile both feeds as the release does (target period 2024, packaged

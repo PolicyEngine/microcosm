@@ -824,7 +824,7 @@ class TestClosurePartition:
         assert counts == {
             "main_benefits_entitlement": {**zero, "encoded": 13, "defaulted": 47},
             "main_benefits_rates": {**zero, "encoded": 13, "defaulted": 15},
-            "nz_super": {**zero, "encoded": 2, "defaulted": 11},
+            "nz_super": {**zero, "encoded": 3, "defaulted": 10},
             "accommodation_supplement": {
                 **zero,
                 "encoded": 17,
@@ -2777,8 +2777,8 @@ class TestSupportRoster:
         for row in roster:
             counts[row["class"]] = counts.get(row["class"], 0) + 1
         assert counts == {
-            "closure_default": 93,
-            "derived": 322,
+            "closure_default": 92,
+            "derived": 323,
             "normalized": 10,
             "copied": 3,
             "pending": 1,
