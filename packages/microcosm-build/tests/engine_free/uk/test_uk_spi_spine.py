@@ -321,12 +321,15 @@ def test_preclone_support_gate_passes_at_limit_and_fails_above() -> None:
 class _FakeQRF:
     events: list[tuple[str, tuple[str, ...], list[float]]] = []
 
-    def __init__(self, n_estimators: int, seed: int) -> None:
+    def __init__(
+        self, n_estimators: int, seed: int, gate_calibration: str = "in_sample"
+    ) -> None:
         self.seed = seed
+        self.gate_calibration = gate_calibration
         self.targets: tuple[str, ...] = ()
         self.weight_kind = "unknown"
 
-    def fit(self, frame, predictors, targets, weights):
+    def fit(self, frame, predictors, targets, weights, groups=None):
         self.targets = tuple(targets)
         self.weight_kind = weights
         label = (
@@ -346,6 +349,10 @@ class _FakeQRF:
 
     def regimes(self):
         return dict.fromkeys(self.targets, "zero_inflated_positive")
+
+    def gate_outcomes(self):
+        outcome = None if self.gate_calibration == "in_sample" else "cross_fitted"
+        return dict.fromkeys(self.targets, outcome)
 
     def sign_classes(self, target):
         return (0, 1)
