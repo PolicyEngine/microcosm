@@ -264,10 +264,14 @@ from microcosm.build.us_runtime.fiscal_targets import (
 from microcosm.build.us_runtime.fsa_student_loan_targets import (
     FSA_BALANCE_LOWER_BOUND_KEY,
     FSA_BALANCE_UPPER_BOUND_KEY,
+    FSA_BOUND_TABLES,
     FSA_MATERIALIZER,
+    FSA_SOURCE_NAME,
     FSA_TARGET_FAMILY,
+    FsaTargetPlan,
     fsa_student_loan_household_values,
     fsa_student_loan_target_receipt,
+    plan_fsa_student_loan_targets,
 )
 from microcosm.build.us_runtime.h5_io import (
     AuthenticatedPoolH5,
@@ -12771,6 +12775,38 @@ def _check_us_esi_anchor_against_feed(
     return mismatches
 
 
+def _check_us_feed_carries_fsa_facts(
+    facts: Sequence[Mapping[str, Any]],
+    *,
+    scf_education_debt: bool,
+) -> FsaTargetPlan | None:
+    """Refuse a ``--scf-education-debt`` build on a feed with no FSA facts.
+
+    microcosm#1074: the flag's stage imputes the federal student loan balances
+    and Federal Student Aid's portfolio calibrates them. On a feed with no
+    ``ed_fsa`` facts the plan is empty, so the compile would bind no FSA
+    target and the build would ship the balances uncalibrated, raising
+    nothing. The build stops here instead, before any stage runs. Without the
+    flag the facts are inert and nothing is planned. Returns the plan, which
+    the ``us_source_coverage.json`` receipt reuses.
+    """
+
+    if not scf_education_debt:
+        return None
+    plan = plan_fsa_student_loan_targets(facts, target_period=PERIOD)
+    if plan.status == "no_fsa_facts":
+        raise SystemExit(
+            "error: --scf-education-debt calibrates the stage's federal student "
+            "loan balances to Federal Student Aid's portfolio, but the "
+            f"Chronicle feed carries no {FSA_SOURCE_NAME} facts (the "
+            f"{', '.join(FSA_BOUND_TABLES)} tables), so no FSA target would "
+            "compile (microcosm#1074). Build on a feed with the six "
+            "packages/ed_fsa packages of PolicyEngine/chronicle#347, as the "
+            "US pin carries from microcosm#1506, or drop the flag."
+        )
+    return plan
+
+
 def _main(argv: Sequence[str] | None = None) -> int | None:
     global _ACTIVE_EMITTER, _ACTIVE_PROGRESS
     _ACTIVE_EMITTER = None
@@ -12999,6 +13035,11 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
     )
     if dry_run is not None:
         dry_run.esi_anchor_feed_mismatches = list(esi_anchor_feed_mismatches)
+    # A --scf-education-debt build on a feed with no FSA facts would compile
+    # no FSA target; refuse it before the compile (microcosm#1074).
+    fsa_target_plan = _check_us_feed_carries_fsa_facts(
+        ledger_artifact.facts, scf_education_debt=args.scf_education_debt
+    )
     target_registry = compile_us_fiscal_target_registry(
         ledger_artifact.facts,
         target_period=PERIOD,
@@ -13014,8 +13055,10 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
     # Every FSA fact's disposition (bound, allocated, out of scope,
     # diagnostic) and the in-scope controls, for us_source_coverage.json.
     fsa_target_receipt = (
-        fsa_student_loan_target_receipt(ledger_artifact.facts, target_period=PERIOD)
-        if args.scf_education_debt
+        fsa_student_loan_target_receipt(
+            ledger_artifact.facts, target_period=PERIOD, plan=fsa_target_plan
+        )
+        if fsa_target_plan is not None
         else None
     )
     # The exclusion register's keys do not say which feed facts a compile

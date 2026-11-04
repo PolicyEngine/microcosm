@@ -96,7 +96,9 @@ FSA_PACKAGES = {
     "repo": "https://github.com/PolicyEngine/chronicle.git",
     # The merge commit of chronicle#347 on Chronicle main (2026-10-22). Its
     # packages/ed_fsa tree is the PR head's (81e3f98), whose FSA facts are the
-    # first draft's (4448a7c), the export the test fixture holds. The digest
+    # first draft's (4448a7c), the export the test fixture holds, restamped
+    # consumer_fact.v3 as the feed microcosm#1506 pins (41b2fb2b) carries
+    # it. The digest
     # is of the LF export the container wrote at the PR head (run
     # 20261022T194252Z-c94516ee1); a Windows build writes the same rows with
     # CRLF endings. The run records whether the merge commit's export matches.

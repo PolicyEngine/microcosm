@@ -235,7 +235,10 @@ borrower is a person whose federal balance is positive.
   each sum to the same total.
 - **Opt-in.** `compile_us_fiscal_target_registry(student_loan_targets=True)`
   binds the facts; the release tool sets it with `--scf-education-debt`, the
-  only builds that carry the columns. The release materializes the rows from
+  only builds that carry the columns. The tool refuses a
+  `--scf-education-debt` build on a feed with no `ed_fsa` facts, before the
+  compile, since it would bind no FSA target
+  (`_check_us_feed_carries_fsa_facts`). The release materializes the rows from
   the stored person columns (`fsa_student_loan_household_values`), because the
   pinned policyengine-us does not define them yet. The release's
   restated-filter guard accepts the age and balance bands only on that
@@ -265,9 +268,12 @@ borrower is a person whose federal balance is positive.
   re-pin `us/chronicle_feed.json`, and regenerate the two parity resources with
   the FSA families declared as reviewed exclusions that bind only with
   `--scf-education-debt`. The fixture
-  `tests/fixtures/us_fsa_portfolio_chronicle_347_facts.jsonl.gz` holds rows of
-  the chronicle#347 export the tests pin, byte-identical at its merge commit
-  (`acbedb5`); refresh it if a later Chronicle commit restates the facts.
+  `tests/fixtures/us_fsa_portfolio_chronicle_347_facts.jsonl.gz` holds 244 of
+  the 461 FSA rows of the feed microcosm#1506 pins (Chronicle `41b2fb2b`),
+  byte for byte, stamped `chronicle.consumer_fact.v3` like every row of that
+  feed. chronicle#347's own export at its merge commit (`acbedb5`) differs from
+  them only in its `chronicle.consumer_fact.v4` stamp. Refresh the fixture if
+  a later pin restates the facts.
 
 ## 4. Keep the exclusion register honest
 

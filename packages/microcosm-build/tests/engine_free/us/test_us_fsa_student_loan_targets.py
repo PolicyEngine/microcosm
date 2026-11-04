@@ -1,15 +1,20 @@
 """Federal Student Aid portfolio targets for federal student loan balances.
 
 The fixture ``us_fsa_portfolio_chronicle_347_facts.jsonl.gz`` holds, byte for
-byte, 244 of the 461 rows ``chronicle build-bundle --year 2026`` writes for the
-six ``packages/ed_fsa`` source packages of PolicyEngine/chronicle#347 (first
-drafted at ``4448a7c``; the exports at the PR head ``81e3f98``, which reads
-the raw files from R2, and at its merge commit ``acbedb5`` on Chronicle main
-are byte-identical): every
-portfolio-summary, location, age, debt-size and loan-type row, and the FY2026
-Q2 Direct Loan repayment-plan dollars. The tests pin the plan's reference quarter, its one in-scope control,
-each family's reconciled values, every fact's disposition, the release
-materializer and the release's restated-filter guard (microcosm#1074).
+byte, 244 of the 461 ``ed_fsa`` rows of the US feed microcosm#1506 pins
+(Chronicle ``41b2fb2b``), stamped ``chronicle.consumer_fact.v3`` like every
+row of that feed. They are the rows ``chronicle build-bundle --year 2026``
+writes there for the six ``packages/ed_fsa`` source packages of
+PolicyEngine/chronicle#347, as first drafted at ``4448a7c``. The exports at
+the PR head ``81e3f98``, which reads the raw files from R2, and at its merge
+commit ``acbedb5`` on Chronicle main differ from them only in their
+``chronicle.consumer_fact.v4`` stamp. The rows are every portfolio-summary,
+location, age, debt-size and loan-type row, and the FY2026 Q2 Direct Loan
+repayment-plan dollars. The tests pin the plan's reference quarter, its one
+in-scope control, each family's reconciled values, every fact's disposition,
+the release materializer, the release's restated-filter guard and its refusal
+of a ``--scf-education-debt`` build on a feed with no FSA facts
+(microcosm#1074).
 """
 
 from __future__ import annotations
@@ -17,6 +22,7 @@ from __future__ import annotations
 import dataclasses
 import gzip
 import importlib.util
+import inspect
 import json
 import math
 from collections import Counter
@@ -542,3 +548,30 @@ def test_release_parity_contract_reads_the_registry_without_fsa_rows() -> None:
     parity = builder._without_opt_in_student_loan_targets(registry)
     assert len(parity) == len(registry) - 132
     assert not [spec for spec in parity.specs if spec.family == FSA_TARGET_FAMILY]
+
+
+def test_release_refuses_a_debt_build_on_a_feed_without_fsa_facts() -> None:
+    builder = _load_builder_module()
+    without_fsa = packaged_reference_facts()
+
+    with pytest.raises(SystemExit, match="--scf-education-debt") as refused:
+        builder._check_us_feed_carries_fsa_facts(without_fsa, scf_education_debt=True)
+    assert "no ed_fsa facts" in str(refused.value)
+    assert "portfolio_by_location" in str(refused.value)
+
+    # Without the flag the facts are inert, so nothing is planned or refused.
+    assert (
+        builder._check_us_feed_carries_fsa_facts(without_fsa, scf_education_debt=False)
+        is None
+    )
+    plan = builder._check_us_feed_carries_fsa_facts(
+        [*without_fsa, *_facts()], scf_education_debt=True
+    )
+    assert plan.status == "bound"
+    assert len(plan.values) == 132
+
+    # The refusal runs before the compile, and the receipt reuses its plan.
+    source = inspect.getsource(builder._main)
+    check = source.index("_check_us_feed_carries_fsa_facts(")
+    assert check < source.index("compile_us_fiscal_target_registry(")
+    assert "plan=fsa_target_plan" in source
