@@ -480,10 +480,14 @@ def test_the_three_donor_factors_are_exact_and_only_money_may_apply_them():
         assert receipt["target_schedule"] == ird["target_schedule"]
         for bound in ("lower", "upper"):
             root = Fraction(**receipt["root_bounds"][bound])
-            assert Fraction(**receipt["numerator_mean_bounds"][bound]) == (
-                Fraction("1700.68")
-                + Fraction("1714.86") * sum(root**index for index in range(3))
-            ) / 4
+            assert (
+                Fraction(**receipt["numerator_mean_bounds"][bound])
+                == (
+                    Fraction("1700.68")
+                    + Fraction("1714.86") * sum(root**index for index in range(3))
+                )
+                / 4
+            )
         assert entry["declaration"]["purpose"] == "money_normalization_input"
 
 

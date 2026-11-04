@@ -6,7 +6,7 @@ import copy
 import json
 import os
 from datetime import date
-from decimal import Decimal, localcontext
+from decimal import ROUND_FLOOR, ROUND_HALF_EVEN, Decimal, localcontext
 from fractions import Fraction
 from pathlib import Path
 
@@ -222,18 +222,78 @@ def test_treasury_fy2027_source_column_uses_chronicle_2026_and_2027_refuses(
         )
 
 
-def test_p1_rounds_once_and_the_truncated_numerator_refuses(operand_facts):
-    # p1_ty2026_to_ty2027_central's unrounded value truncates to a different numerator.
-    declaration = _entry("p1_ty2026_to_ty2027_central")["declaration"]
+def _p1_numerators(declaration):
+    """A P1 factor's numerator under one half-even rounding, and what truncation
+    or an intermediate rounding would declare instead, all in millionths."""
+    value = {period: Decimal(text) for _, period, _, text in _OPERANDS}
+    sources = [
+        row["selector"]["period_value"] for row in declaration["source_schedule"]
+    ]
+    cent = Decimal("0.01")
+    with localcontext() as context:
+        context.prec = 60
+        growth = Decimal("2.7") + Decimal(declaration["growth"]["scenario_delta"])
+        q = (1 + growth / 100).sqrt().sqrt()
+        q6 = q.quantize(Decimal("0.000001"))
+        june, september = value["2026-Q2"], value["2026-Q3"]
+        denominator = sum(value[period] for period in sources) / 4
+
+        def mean(projected):
+            return (june + september + sum(projected)) / 4
+
+        def millionths(numerator, rounding=ROUND_HALF_EVEN):
+            ratio = numerator / denominator * 1000000
+            return int(ratio.to_integral_value(rounding=rounding))
+
+        exact = mean([september * q, september * q * q])
+        return millionths(exact), {
+            "truncated": millionths(exact, ROUND_FLOOR),
+            "numerator rounded to cents": millionths(exact.quantize(cent)),
+            "projected quarters rounded to cents": millionths(
+                mean([(september * q**power).quantize(cent) for power in (1, 2)])
+            ),
+            "q rounded to six digits": millionths(
+                mean([september * q6, september * q6 * q6])
+            ),
+        }
+
+
+@pytest.mark.parametrize("profile", ["low", "central", "high"])
+def test_p1_rounds_once_and_refuses_truncated_or_intermediate_numerators(
+    profile, operand_facts
+):
+    factor_id = f"p1_ty2026_to_ty2027_{profile}"
+    declaration = _entry(factor_id)["declaration"]
     assert declaration["source_period"] == 2026
     assert [
         row["selector"]["period_value"] for row in declaration["source_schedule"]
     ] == ["2025-Q2", "2025-Q3", "2025-Q4", "2026-Q1"]
-    declaration["expected_operational_factor"]["numerator"] = 1029852
-    with pytest.raises(ValueError, match="expected factor mismatch"):
-        resolve_reference_factor(
-            declaration, operand_facts, _document()["feed_identity"]
-        )
+    once, alternatives = _p1_numerators(declaration)
+    assert once == _EXPECTED[factor_id]
+    for numerator in sorted(set(alternatives.values()) - {once}):
+        declaration["expected_operational_factor"]["numerator"] = numerator
+        with pytest.raises(ValueError, match="expected factor mismatch"):
+            resolve_reference_factor(
+                declaration, operand_facts, _document()["feed_identity"]
+            )
+
+
+def test_p1_profiles_separate_one_rounding_from_each_alternative():
+    """Each alternative misses some profile's declared numerator, so the
+    refusal test above exercises every alternative."""
+    missed = set()
+    for profile in ("low", "central", "high"):
+        declaration = _entry(f"p1_ty2026_to_ty2027_{profile}")["declaration"]
+        once, alternatives = _p1_numerators(declaration)
+        missed |= {
+            name for name, numerator in alternatives.items() if numerator != once
+        }
+    assert missed == {
+        "truncated",
+        "numerator rounded to cents",
+        "projected quarters rounded to cents",
+        "q rounded to six digits",
+    }
 
 
 def test_root_enclosure_certifies_no_rounded_quarters_and_irrational_root():
@@ -247,9 +307,14 @@ def test_root_enclosure_certifies_no_rounded_quarters_and_irrational_root():
         assert lower**4 < radicand < upper**4
         assert receipt["root_bounds"]["exact"] is False
         denominator = _fraction(receipt["denominator_mean"])
-        assert _fraction(receipt["numerator_mean_bounds"]["lower"]) == (
-            Fraction("1700.68") + Fraction("1714.86") * sum(lower**i for i in range(3))
-        ) / 4
+        assert (
+            _fraction(receipt["numerator_mean_bounds"]["lower"])
+            == (
+                Fraction("1700.68")
+                + Fraction("1714.86") * sum(lower**i for i in range(3))
+            )
+            / 4
+        )
         for bound in ("lower", "upper"):
             value = _fraction(receipt["unrounded_factor_bounds"][bound])
             assert (

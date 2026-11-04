@@ -728,39 +728,10 @@ def _nz_composition_spec_and_config():
                 )
         rows[at:at] = synthetic
 
-    def add_measurement(rows):
-        """A compile-only producer of the stand-in columns, until G declares one."""
-        if any(
-            row.get("params", {}).get("measurement_id") == _MEASUREMENT for row in rows
-        ):
-            return
-        prepare = next(row for row in rows if row["id"].endswith(".targets.prepare"))
-        rows.insert(
-            rows.index(prepare),
-            {
-                "id": prepare["id"].removesuffix(".targets.prepare")
-                + ".synthetic_measurement",
-                "kernel": "measure.combine@1",
-                "population": prepare["population"],
-                "inputs": [{"entity": "person", "columns": ["age"]}],
-                "outputs": [
-                    {"entity": "person", "column": column, "dtype": dtype}
-                    for column, dtype in (
-                        ("ird_taxable_income_proxy_cents", "Int64"),
-                        ("ird_taxable_income_proxy_nzd", "float64"),
-                        ("ird_taxable_income_proxy_universe_status", "string"),
-                    )
-                ],
-                "params": {"measurement_id": _MEASUREMENT},
-            },
-        )
-
     add_quantiles(resources["transport_graph"]["nodes"])
-    add_measurement(resources["transport_graph"]["nodes"])
     for scenario in resources["scenarios"]["scenarios"]:
         if scenario["tier"] == "calibration":
             add_quantiles(scenario["nodes"])
-            add_measurement(scenario["nodes"])
     rows = _instantiated_nz_rows(spec)
     produced = {
         (output["entity"], output["column"])
@@ -891,12 +862,13 @@ def test_nz_packaged_graph_compiles_with_only_pins_and_money_producers():
 def test_every_calibration_node_has_its_own_standin_as_the_only_writer():
     """R2C-15 on every calibration node, the variant branches' included.
 
-    Composition checks the measurement proof on the skeleton alone:
-    ``_check_measurement_proofs`` runs before the scenario extensions append
-    their branches, so it never sees ``nz.v.<V>.calibrate``. For each
-    calibration node of the composed graph, exactly one compiled ancestor
-    declares the measurement, it is that branch's stand-in, and it is the
-    only ancestor whose outputs or EXPAND cells hold each proved column.
+    Composition runs ``_check_measurement_proofs`` on the skeleton and again
+    on the extended graph, where the declaration names no producer for
+    ``nz.v.<V>.calibrate`` and the compiled graph has to prove one. This test
+    checks NZ's graph directly: for each calibration node of the composed
+    graph, exactly one compiled ancestor declares the measurement, it is that
+    branch's stand-in, and it is the only ancestor whose outputs or EXPAND
+    cells hold each proved column.
     """
     spec, _, graph, compiled = _nz_composed()
     proofs, refusals = compose.measurement_proofs(spec)
