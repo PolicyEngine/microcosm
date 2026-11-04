@@ -444,10 +444,12 @@ def test_v5_row_contract_is_declared_like_v4() -> None:
     """chronicle#377's v5 row is a declared chronicle-era row contract.
 
     v5 is the v4 row plus the optional ``package_dimension_value_labels``,
-    so it is declared exactly as v4 is: the same identity kind, the
-    chronicle epoch, and named in the accepted-versions message a refusal
-    prints. Chronicle's own table (``CONSUMER_FACT_ROW_CONTRACTS`` in
-    ``chronicle/epoch.py``) ends at v5 from 44eebe037.
+    so it is declared exactly as v4 is: the same identity kind, the chronicle
+    epoch, and a place in the accepted-versions list that the feed-pin checks
+    print when they refuse an undeclared row contract
+    (``test_ledger_artifact.py``). Chronicle's own table
+    (``CONSUMER_FACT_ROW_CONTRACTS`` in ``chronicle/epoch.py``) ends at v5
+    from 44eebe037.
     """
     v4 = declared_identity(CHRONICLE_CONSUMER_FACT_SCHEMA_VERSION_V4)
     v5 = declared_identity(_CHRONICLE_V5_ROW_SCHEMA_ID)

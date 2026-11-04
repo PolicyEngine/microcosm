@@ -60,6 +60,34 @@ def test_national_feed_rejects_malformed_identity(
         chronicle_feed.load_uk_chronicle_feed()
 
 
+@pytest.mark.parametrize(
+    "versions",
+    [
+        ["chronicle.consumer_fact.v6"],
+        ["chronicle.consumer_fact.v4", "chronicle.consumer_fact.v6"],
+    ],
+    ids=["undeclared_only", "declared_and_undeclared"],
+)
+def test_national_feed_rejects_an_undeclared_row_contract(
+    monkeypatch, tmp_path, versions
+):
+    """A pin naming a row contract chronicle_epoch does not declare is refused."""
+    from microcosm.build.uk_runtime import chronicle_feed
+
+    raw = json.loads(chronicle_feed._feed_path().read_text())
+    raw["consumer_fact_schema_versions"] = versions
+    path = tmp_path / "pin.json"
+    path.write_text(json.dumps(raw))
+    monkeypatch.setattr(chronicle_feed, "_feed_path", lambda: path)
+
+    with pytest.raises(ValueError) as refusal:
+        chronicle_feed.load_uk_chronicle_feed()
+
+    message = str(refusal.value)
+    assert "['chronicle.consumer_fact.v6']" in message
+    assert "microcosm.build.chronicle_epoch" in message
+
+
 def test_committed_feed_pin_check_refuses_a_foreign_artifact():
     from microcosm.build.uk_runtime.chronicle_feed import (
         UKChronicleFeedPinError,

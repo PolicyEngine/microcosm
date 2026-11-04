@@ -104,6 +104,32 @@ def test_pin_rejects_malformed_identity(
         chronicle_feed.load_us_chronicle_feed()
 
 
+@pytest.mark.parametrize(
+    "versions",
+    [
+        ["chronicle.consumer_fact.v6"],
+        ["chronicle.consumer_fact.v3", "chronicle.consumer_fact.v6"],
+    ],
+    ids=["undeclared_only", "declared_and_undeclared"],
+)
+def test_pin_rejects_an_undeclared_row_contract(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, versions: list[str]
+) -> None:
+    """A pin naming a row contract chronicle_epoch does not declare is refused."""
+    raw = json.loads(chronicle_feed._feed_path().read_text())
+    raw["consumer_fact_schema_versions"] = versions
+    path = tmp_path / "pin.json"
+    path.write_text(json.dumps(raw))
+    monkeypatch.setattr(chronicle_feed, "_feed_path", lambda: path)
+
+    with pytest.raises(ValueError) as refusal:
+        chronicle_feed.load_us_chronicle_feed()
+
+    message = str(refusal.value)
+    assert "['chronicle.consumer_fact.v6']" in message
+    assert "microcosm.build.chronicle_epoch" in message
+
+
 def test_pin_rejects_an_unsupported_artifact_schema(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
