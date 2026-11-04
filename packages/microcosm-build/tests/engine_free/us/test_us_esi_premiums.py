@@ -1325,7 +1325,14 @@ class TestAnchorFeedCheck:
             ],
         }
 
-    _ANCHORS = {"bea_nipa.cy2024.private_group_health_insurance"}
+    #: The pin test's three B4923C record sets, one for each year of the
+    #: banked series. The cases below touch cy2024, which sorts between the
+    #: other two.
+    _ANCHORS = {
+        "bea_nipa.cy2023.private_group_health_insurance",
+        "bea_nipa.cy2024.private_group_health_insurance",
+        "bea_nipa.cy2025.private_group_health_insurance",
+    }
 
     def test_a_later_report_may_add_rows_from_its_declared_source(self) -> None:
         later = self._later_report(
@@ -1348,7 +1355,10 @@ class TestAnchorFeedCheck:
         ) == ("new", 12)
 
     # Each refusing case below names the check that must refuse it, so a check
-    # moved ahead of another fails the case it takes over.
+    # moved ahead of another fails the case it takes over. A case for a check
+    # that reads a list or a mapping puts its one bad entry between two good
+    # ones, so a check that reads only the first entry, or only the last,
+    # lets the case through.
     @pytest.mark.parametrize(
         (
             "added_keys",
@@ -1360,10 +1370,15 @@ class TestAnchorFeedCheck:
         [
             # Rows added with no declaration.
             (["k1"], None, None, None, "adds rows without declaring them"),
-            # A row from a source the re-pin did not declare.
+            # A row from a source the re-pin did not declare, between two rows
+            # from the declared source.
             (
-                ["k1", "k2"],
-                [("k1", "ed_fsa", "ed_fsa.a"), ("k2", "irs_soi", "x")],
+                ["k1", "k2", "k3"],
+                [
+                    ("k1", "ed_fsa", "ed_fsa.a"),
+                    ("k2", "irs_soi", "x"),
+                    ("k3", "ed_fsa", "ed_fsa.b"),
+                ],
                 "ed_fsa",
                 "ed_fsa.",
                 "an added row from another source",
@@ -1385,12 +1400,14 @@ class TestAnchorFeedCheck:
                 "added keys differ",
             ),
             # A declared row in a B4923C anchor record set, which also sits
-            # outside the declared namespace, after a row that sits inside it.
+            # outside the declared namespace, between two rows that sit inside
+            # it.
             (
-                ["k1", "k2"],
+                ["k1", "k2", "k3"],
                 [
                     ("k1", "ed_fsa", "ed_fsa.a"),
                     ("k2", "ed_fsa", "bea_nipa.cy2024.private_group_health_insurance"),
+                    ("k3", "ed_fsa", "ed_fsa.b"),
                 ],
                 "ed_fsa",
                 "ed_fsa.",
@@ -1405,10 +1422,14 @@ class TestAnchorFeedCheck:
                 "declares added rows without a source",
             ),
             # A row the listing labels with the declared source, in a record
-            # set outside the declared namespace.
+            # set outside the declared namespace, between two rows inside it.
             (
-                ["k1"],
-                [("k1", "ed_fsa", "irs_soi.ty2023.table_1_4")],
+                ["k1", "k2", "k3"],
+                [
+                    ("k1", "ed_fsa", "ed_fsa.a"),
+                    ("k2", "ed_fsa", "irs_soi.ty2023.table_1_4"),
+                    ("k3", "ed_fsa", "ed_fsa.b"),
+                ],
                 "ed_fsa",
                 "ed_fsa.",
                 "an added row outside the namespace",
@@ -1505,15 +1526,27 @@ class TestAnchorFeedCheck:
                 lambda r: r["rows"].update(new_rows=r["rows"]["new_rows"] + 1),
                 "a new row count that does not add up",
             ),
-            # A new row count one short. Each count and digest a check compares
-            # has a case above the expected value and one below it.
+            # A new row count one short. The four checks of a feed's digest or
+            # row count each have a case above the expected value and one below
+            # it.
             (
                 lambda r: r["rows"].update(new_rows=r["rows"]["new_rows"] - 1),
                 "a new row count that does not add up",
             ),
+            # A value change, between a hash change and a label change.
             (
                 lambda r: r["rows"]["changed_fields"].update(
-                    value={"rows": 1, "by_record_set": {"x": 1}}
+                    {
+                        "layout/record_set_spec_hash": {
+                            "rows": 1,
+                            "by_record_set": {"x": 1},
+                        },
+                        "value": {"rows": 1, "by_record_set": {"x": 1}},
+                        "dimension_value_labels/age/85_plus": {
+                            "rows": 1,
+                            "by_record_set": {"x": 1},
+                        },
+                    }
                 ),
                 "changes more than labels",
             ),
@@ -1536,18 +1569,27 @@ class TestAnchorFeedCheck:
                 lambda r: r["rows"].update(old_rows=9, new_rows=10),
                 "an old feed of another size",
             ),
-            # A label change in a B4923C record set, after a record set outside
-            # the anchors.
+            # A label change in a B4923C record set, between two record sets
+            # outside the anchors, in the second of three changed fields.
             (
                 lambda r: r["rows"]["changed_fields"].update(
                     {
+                        "layout/record_set_spec_hash": {
+                            "rows": 1,
+                            "by_record_set": {"x": 1},
+                        },
                         "layout/groupby_value_label": {
-                            "rows": 2,
+                            "rows": 3,
                             "by_record_set": {
                                 "x": 1,
                                 "bea_nipa.cy2024.private_group_health_insurance": 1,
+                                "z": 1,
                             },
-                        }
+                        },
+                        "dimension_value_labels/age/85_plus": {
+                            "rows": 1,
+                            "by_record_set": {"z": 1},
+                        },
                     }
                 ),
                 "changes a B4923C record set",
