@@ -1026,3 +1026,156 @@ def test_without_the_toy_standin_its_six_rows_refuse_activation_by_name(toy):
         for role in ("count_reference", "amount_reference"):
             assert f"target_references.{band[role]}; awaits" in message
     assert f"measurement:{TOY_MEASUREMENT}" in message
+
+
+# ---------------------------------------------------------------------------
+# H2 (R2C-20): NZS co-residence from household composition
+# ---------------------------------------------------------------------------
+
+_SHARING = "nz_super_shares_residence_with_person_at_least_adult_age"
+_NZS_CORE = "nz/statutes/new_zealand_superannuation/core.yaml"
+
+
+def _packaged_nz(name):
+    """One of NZ's packaged JSON resources, the bytes its graph selects."""
+    from importlib.resources import files
+
+    path = files("microcosm.build").joinpath("nz", name)
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
+def _before_h2(mapping, closure):
+    """NZ's mapping and closure as they stood before H2 bound the input.
+
+    The mapping had no binding for it, and the closure defaulted it to false
+    with the citation the defaulted entry carried.
+    """
+    mapping = copy.deepcopy(mapping)
+    mapping["bindings"] = [
+        row for row in mapping["bindings"] if row["engine_input"] != _SHARING
+    ]
+    closure = copy.deepcopy(closure)
+    (entry,) = [row for row in closure["entries"] if row["input"] == _SHARING]
+    del entry["encoded_by"]
+    entry.update(
+        {
+            "class": "defaulted",
+            "value": False,
+            "reason": "Before H2, no mapping transform read household composition.",
+            "citation": (
+                "New Zealand Superannuation and Retirement Income Act 2001 s 4A "
+                "(nz_super_living_alone)"
+            ),
+            "new_default": True,
+        }
+    )
+    return mapping, closure
+
+
+def _encode_sharing(person, household, mapping, closure):
+    """Run concepts.encode@1 on NZS core.yaml and return the sharing column."""
+    from microcosm.build.transport.column_kernels import CONCEPTS_ENCODE
+
+    def text(document):
+        return canonical_json(document).decode("utf-8")
+
+    node = Node(
+        "nz.encode.person",
+        CONCEPTS_ENCODE.ref,
+        population="nz.central",
+        params={
+            "mapping": text(mapping),
+            "mapping_sha256": sha256(canonical_json(mapping)).hexdigest(),
+            "closure": text(closure),
+            "closure_sha256": sha256(canonical_json(closure)).hexdigest(),
+            "rulespec_paths": (_NZS_CORE,),
+        },
+        outputs=(Owned("person", _SHARING, "bool"),),
+    )
+    result = CONCEPTS_ENCODE.run(
+        KernelContext(
+            node=node,
+            tables={"person": person.copy(), "household": household.copy()},
+            weights={},
+            strata=pd.Series(["toy"] * len(person), name="stratum"),
+            params=node.params,
+            rng=np.random.default_rng(1),
+        )
+    )
+    values = result.columns["person", _SHARING]
+    assert values.dtype == np.bool_
+    return values.to_dict()
+
+
+def test_h2_sharing_binding_turns_the_toy_superannuitants_default_into_true(toy):
+    """R2C-20 H2 on the toy's created frame, through NZ's packaged resources.
+
+    The toy's adapters invent their rates, so this records the input only.
+    Each of the twenty persons aged 65 or over lives with a partner aged 65
+    to 79 and a 16-year-old: before H2 the closure default gave each false,
+    and the coresident_adult binding now gives each true.
+    """
+    frame = toy[1][0].populations["nz.create"]
+    person = frame.table("person")
+    household = frame.table("household")
+    mapping = _packaged_nz("concept_mapping.json")
+    closure = _packaged_nz("axiom_input_closure.json")
+    before = _encode_sharing(person, household, *_before_h2(mapping, closure))
+    after = _encode_sharing(person, household, mapping, closure)
+    superannuitants = [
+        10000 + 3 * h + member for h in range(30, 40) for member in (0, 1)
+    ]
+    assert sorted(person.loc[person["age"] >= 65, "person_id"]) == superannuitants
+    for identity in superannuitants:
+        row = person.set_index("person_id").loc[identity]
+        others = person[
+            (person["person_household_id"] == row["person_household_id"])
+            & (person["person_id"] != identity)
+        ]
+        assert sorted(others["age"].tolist())[0] == 16
+        assert sorted(others["age"].tolist())[1] >= 65
+        assert before[identity] is False
+        assert after[identity] is True
+
+
+def test_h2_sharing_binding_on_the_household_shapes_the_toy_lacks():
+    """A superannuitant alone, with an adult, or only with a minor.
+
+    The toy has no superannuitant who lives alone or whose only co-resident
+    is under 18. Persons 10 and 11 have no household id, and the
+    coresident_adult kind places each in a household with nobody, so both
+    read false although each is an adult: null ids don't group together.
+    """
+    person = pd.DataFrame(
+        {
+            "person_id": np.arange(1, 12, dtype=np.int64),
+            "person_household_id": pd.array(
+                [100, 200, 200, 300, 300, 400, 400, 500, 500, None, None],
+                dtype="Int64",
+            ),
+            "age": np.array(
+                [70, 68, 40, 72, 16, 66, 18, 67, 17, 75, 30], dtype=np.int64
+            ),
+        }
+    )
+    household = pd.DataFrame(
+        {"household_id": np.array([100, 200, 300, 400, 500], dtype=np.int64)}
+    )
+    mapping = _packaged_nz("concept_mapping.json")
+    closure = _packaged_nz("axiom_input_closure.json")
+    before = _encode_sharing(person, household, *_before_h2(mapping, closure))
+    after = _encode_sharing(person, household, mapping, closure)
+    assert before == dict.fromkeys(range(1, 12), False)
+    assert after == {
+        1: False,  # 70, lives alone
+        2: True,  # 68, with a 40-year-old
+        3: True,
+        4: False,  # 72, whose only co-resident is 16
+        5: True,
+        6: True,  # 66, with an 18-year-old: the adult age is inclusive
+        7: True,
+        8: False,  # 67, whose only co-resident is 17
+        9: True,
+        10: False,  # 75, no household id
+        11: False,  # 30, no household id either
+    }
