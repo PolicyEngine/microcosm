@@ -461,20 +461,27 @@ _EVERY_CHILD_LOAN_PARENT_PLUS = {
 }
 #: Rule constants each reading replaces. ``before`` and ``x8000_only`` make
 #: every loan for a child's education the head's Parent PLUS loan, the rule
-#: before child routing; the limit readings apply one dependent limit to every
-#: loan year.
+#: before child routing; ``per_loan_limit`` compares each loan with the
+#: dependent limit alone, for an only fitting child too; the other limit
+#: readings replace the dependent limit's tiers.
 _READING_RULES: Mapping[str, Mapping[str, object]] = {
     "before": _EVERY_CHILD_LOAN_PARENT_PLUS,
     "x8000_only": _EVERY_CHILD_LOAN_PARENT_PLUS,
     "build": {},
+    "per_loan_limit": {"_DEPENDENT_LIMIT_SUMS_AN_ONLY_CHILDS_LOANS": False},
     "within_limit_parent_plus": {
         "_DEPENDENT_UNDERGRADUATE_AGGREGATE_LIMITS": ((-np.inf, -1.0),)
     },
     "dependent_limit_31000_every_year": {
         "_DEPENDENT_UNDERGRADUATE_AGGREGATE_LIMITS": ((-np.inf, 31_000.0),)
     },
-    "dependent_limit_57500": {
-        "_DEPENDENT_UNDERGRADUATE_AGGREGATE_LIMITS": ((-np.inf, 57_500.0),)
+    # 34 CFR 685.203(e)(2): $46,000 before July 1, 2008 (2007 edition) and
+    # $57,500 from then (today's (c)(1)(iii) and (e)(2)).
+    "limit_when_a_parent_cannot_get_plus": {
+        "_DEPENDENT_UNDERGRADUATE_AGGREGATE_LIMITS": (
+            (-np.inf, 46_000.0),
+            (2008.0, 57_500.0),
+        )
     },
 }
 
@@ -494,20 +501,26 @@ def _derive_reading(full: pd.DataFrame, reading: str) -> pd.DataFrame:
 
     ``before`` is the rule before child routing: no X8000 correction and every
     loan for a child's education the head's Parent PLUS loan. ``x8000_only``
-    adds the correction. ``build`` is the stage. ``within_limit_parent_plus``
-    reads an undergraduate loan within the dependent limit for a child of
-    dependent age as Parent PLUS too. ``dependent_limit_31000_every_year`` is
-    the previous round's flat limit, and ``dependent_limit_57500`` gives the
-    child an over-the-limit loan up to the $57,500 a dependent student may
-    borrow when a parent cannot get a PLUS loan (34 CFR 685.203(c)(1)(iii)
-    and (e)(2)).
+    adds the correction. ``build`` is the stage. ``per_loan_limit`` compares
+    each loan with the dependent limit alone, as the build does with two or
+    more fitting children, instead of summing an only fitting child's loans.
+    ``within_limit_parent_plus`` reads an undergraduate loan within the
+    dependent limit for a child of dependent age as Parent PLUS too.
+    ``dependent_limit_31000_every_year`` is the previous round's flat limit,
+    and ``limit_when_a_parent_cannot_get_plus`` gives the child an
+    over-the-limit loan up to what a dependent student may borrow when a
+    parent cannot get a PLUS loan: $46,000 before July 1, 2008 (34 CFR
+    685.203(e)(2), 2007 edition) and $57,500 from then (34 CFR
+    685.203(c)(1)(iii) and (e)(2)).
     """
 
     with _stage_rules(**_READING_RULES[reading]):
         return derive_scf_education_debt_targets(_reading_frame(full, reading))
 
 
-def _loan_holders(full: pd.DataFrame, reading: str) -> tuple[np.ndarray, np.ndarray]:
+def _loan_holders(full: pd.DataFrame, reading: str):
+    """The stage's per-loan holders under one reading (``_LoanHolders``)."""
+
     with _stage_rules(**_READING_RULES[reading]):
         return education_debt._scf_education_loan_holders(_reading_frame(full, reading))
 
@@ -516,9 +529,10 @@ READINGS = (
     "before",
     "x8000_only",
     "build",
+    "per_loan_limit",
     "within_limit_parent_plus",
     "dependent_limit_31000_every_year",
-    "dependent_limit_57500",
+    "limit_when_a_parent_cannot_get_plus",
 )
 
 
@@ -561,18 +575,41 @@ def child_education_loan_moves(full: pd.DataFrame) -> dict[str, dict[str, float]
 
     Loan counts pool the five implicates (a family appears five times);
     weighted loans and dollars use ``wgt``, and dollars follow the X7179 rule.
+
+    ``summed_over_the_limit_*`` are the federal code-3 undergraduate loans a
+    listed child fits, each within its year's dependent limit, that the
+    child's own total through their year cannot take (the stage's
+    ``over_the_total``): the loans summing moves. The build reads them as
+    Parent PLUS where one listed child fits the family's such loans and as
+    the child's where two or more do; the per-loan reading reads them all as
+    the child's. ``undergraduate_before_2008_*`` are the code-3 undergraduate
+    loans borrowed before 2008 that a listed child who could still have been
+    dependent fits, by where the amount borrowed falls against that year's
+    limit and the flat $31,000.
     """
 
     dollars, federal = _federal_loan_dollars(full)
     whose = education_debt._scf_whose_education_codes(full)
-    build, fits = _loan_holders(full, "build")
-    flat, _ = _loan_holders(full, "dependent_limit_31000_every_year")
-    wide, _ = _loan_holders(full, "dependent_limit_57500")
+    holders = _loan_holders(full, "build")
+    build, fits = holders.holder, holders.fits
+    per_loan = _loan_holders(full, "per_loan_limit").holder
+    flat = _loan_holders(full, "dependent_limit_31000_every_year").holder
+    wide = _loan_holders(full, "limit_when_a_parent_cannot_get_plus").holder
     child = education_debt._CHILD
     plus = education_debt._PARENT_PLUS
     head = education_debt._HEAD
     for_a_child = federal & (whose == 3)
     year = _matrix(full, SCF_EDUCATION_LOAN_YEAR_COLUMNS)
+    borrowed = np.maximum(_matrix(full, SCF_EDUCATION_LOAN_AMOUNT_BORROWED_COLUMNS), 0)
+    tier = education_debt._dependent_undergraduate_limit(year)
+    summed = for_a_child & holders.over_the_total
+    early = (
+        for_a_child
+        & holders.undergraduate
+        & fits.any(axis=1)
+        & holders.could_be_dependent
+        & (year < 2008)
+    )
     moves = {
         "graduate_loans_without_a_fitting_child_to_head_own": for_a_child
         & (build == head),
@@ -585,9 +622,23 @@ def child_education_loan_moves(full: pd.DataFrame) -> dict[str, dict[str, float]
         "over_the_limit_parent_plus_with_a_fitting_child": for_a_child
         & (build == plus)
         & fits.any(axis=1),
-        "limit_57500_parent_plus_to_child": for_a_child
+        "limit_without_plus_parent_plus_to_child": for_a_child
         & (build == plus)
         & (wide == child),
+        "summed_over_the_limit_each_within": summed,
+        "summed_over_the_limit_parent_plus_in_build": summed & (build == plus),
+        "summed_over_the_limit_child_in_build": summed & (build == child),
+        "summed_over_the_limit_parent_plus_per_loan": summed & (per_loan == plus),
+        "summed_over_the_limit_child_per_loan": summed & (per_loan == child),
+        "per_loan_child_to_parent_plus": for_a_child
+        & (per_loan == child)
+        & (build == plus),
+        "undergraduate_before_2008_dependent_age": early,
+        "undergraduate_before_2008_within_their_tier": early & (borrowed <= tier),
+        "undergraduate_before_2008_over_their_tier_within_31000": early
+        & (borrowed > tier)
+        & (borrowed <= 31_000.0),
+        "undergraduate_before_2008_over_31000": early & (borrowed > 31_000.0),
         "borrowed_before_1993": for_a_child & (year < 1993),
         "borrowed_1993_to_2007": for_a_child & (year >= 1993) & (year < 2008),
         "borrowed_2008_or_later": for_a_child & (year >= 2008),
@@ -848,14 +899,51 @@ def child_share_moves(drawn: pd.DataFrame, weight: np.ndarray) -> dict[str, floa
     }
 
 
+def drawn_balances_match_build(
+    drawn: pd.DataFrame, recipients, person: pd.DataFrame
+) -> dict[str, bool]:
+    """Do the draw's four balance columns land on the build's people exactly?
+
+    Places the head's, spouse's and child's own balances and the head's Parent
+    PLUS balance as ``impute_us_scf_education_debt`` does (a spouse's balance
+    goes to the head when no spouse or partner is present) and compares them,
+    person by person, with the build frame's two balance columns.
+    """
+
+    n = len(person)
+    own = np.zeros(n, dtype=np.float64)
+    plus = np.zeros(n, dtype=np.float64)
+    head = recipients.head_position
+    spouse = recipients.spouse_position
+    child = recipients.child_position
+    has_spouse = spouse >= 0
+    has_child = child >= 0
+    spouse_own = drawn["spouse_federal_student_loan_balance"].to_numpy()
+    own[head] = drawn["head_federal_student_loan_balance"].to_numpy() + np.where(
+        has_spouse, 0.0, spouse_own
+    )
+    own[spouse[has_spouse]] = spouse_own[has_spouse]
+    own[child[has_child]] = drawn["child_federal_student_loan_balance"].to_numpy()[
+        has_child
+    ]
+    plus[head] = drawn["federal_parent_plus_loan_balance"].to_numpy()
+    built_own = person["federal_student_loan_balance"].to_numpy(dtype=np.float64)
+    built_plus = person["federal_parent_plus_loan_balance"].to_numpy(dtype=np.float64)
+    return {
+        "own_balances_match_build": bool(np.array_equal(own, built_own)),
+        "parent_plus_balances_match_build": bool(np.array_equal(plus, built_plus)),
+    }
+
+
 def host_children_in_law(frame: Frame) -> dict[str, float]:
-    """Host households where an adult child's spouse lives, which SCF code 4 counts.
+    """Host households where an adult child's partner lives, which SCF code 4 counts.
 
     SCF listing code 4 is "CHILD (in-law)", so the SCF's adult-children count
     can include a son- or daughter-in-law; the CPS parent pointers that build
     the host's count name only children. A child-in-law here is a member aged
     18 or over whom an adult child of the reference person or partner names as
-    spouse (``A_SPOUSE``) and who is not one of those children or partners.
+    spouse (``A_SPOUSE``) or cohabiting partner (``PECOHAB``, when present) and
+    who is not one of those children or partners.
     """
 
     person = frame.table("person")
@@ -889,16 +977,21 @@ def host_children_in_law(frame: Frame) -> dict[str, float]:
     )
     adult_child = is_child & (age >= 18.0)
     position = {(household[row], line[row]): row for row in range(len(person))}
-    in_law = np.zeros(len(person), dtype=bool)
-    for row in np.flatnonzero(adult_child & (spouse_pointer > 0)):
-        partner = position.get((household[row], spouse_pointer[row]))
-        if (
-            partner is not None
-            and not is_child[partner]
-            and partner not in parent_rows
-            and age[partner] >= 18.0
-        ):
-            in_law[partner] = True
+    partner_pointers = {"spouse": spouse_pointer}
+    if "PECOHAB" in person.columns:
+        partner_pointers["cohabiting_partner"] = _int("PECOHAB", 0)
+    named = {key: np.zeros(len(person), dtype=bool) for key in partner_pointers}
+    for key, pointer in partner_pointers.items():
+        for row in np.flatnonzero(adult_child & (pointer > 0)):
+            partner = position.get((household[row], pointer[row]))
+            if (
+                partner is not None
+                and not is_child[partner]
+                and partner not in parent_rows
+                and age[partner] >= 18.0
+            ):
+                named[key][partner] = True
+    in_law = np.logical_or.reduce(list(named.values()))
     order = frame.table("household")["household_id"].to_numpy()
     household_weight = np.asarray(
         frame.weights_for("household").values, dtype=np.float64
@@ -926,6 +1019,11 @@ def host_children_in_law(frame: Frame) -> dict[str, float]:
         "share_of_households_with_a_child_in_law": _households(in_law) / total,
         "adult_children": float(person_weight[adult_child].sum()),
         "children_in_law": float(person_weight[in_law].sum()),
+        **{
+            f"named_as_{key}": float(person_weight[mask].sum())
+            for key, mask in named.items()
+        },
+        "pecohab_present": "cohabiting_partner" in named,
     }
 
 
@@ -1094,6 +1192,9 @@ def markdown(receipt: Mapping[str, object]) -> str:
         "before": "Before: every code-3 loan Parent PLUS, codes as published",
         "x8000_only": "X8000 correction only",
         "build": "Build: co-resident adult child unless only a parent could borrow",
+        "per_loan_limit": (
+            "Each loan against the dependent limit alone, for an only fitting child too"
+        ),
         "within_limit_parent_plus": (
             "Alternative: within-limit undergraduate loans for a dependent-age "
             "child also Parent PLUS"
@@ -1101,8 +1202,9 @@ def markdown(receipt: Mapping[str, object]) -> str:
         "dependent_limit_31000_every_year": (
             "Previous limit: $31,000 for every loan year"
         ),
-        "dependent_limit_57500": (
-            "Alternative: over-the-limit loans the child's own up to $57,500"
+        "limit_when_a_parent_cannot_get_plus": (
+            "Alternative: over-the-limit loans the child's own up to $46,000 "
+            "before July 2008 and $57,500 from then"
         ),
     }
     lines += [
@@ -1141,9 +1243,39 @@ def markdown(receipt: Mapping[str, object]) -> str:
         "over_the_limit_parent_plus_with_a_fitting_child": (
             "Parent PLUS although a listed child fits (over the dependent limit)"
         ),
-        "limit_57500_parent_plus_to_child": (
-            "Of those, the child's own under a $57,500 limit"
+        "limit_without_plus_parent_plus_to_child": (
+            "Of those, the child's own under a $46,000 (before July 2008) or "
+            "$57,500 limit"
         ),
+        "summed_over_the_limit_each_within": (
+            "Each within its year's limit, but over what the child's total "
+            "through that year leaves"
+        ),
+        "summed_over_the_limit_parent_plus_in_build": (
+            "Of those, Parent PLUS in the build (one listed child fits)"
+        ),
+        "summed_over_the_limit_child_in_build": (
+            "Of those, the child's in the build (two or more listed children fit)"
+        ),
+        "summed_over_the_limit_parent_plus_per_loan": (
+            "Of those, Parent PLUS with each loan against the limit alone"
+        ),
+        "summed_over_the_limit_child_per_loan": (
+            "Of those, the child's with each loan against the limit alone"
+        ),
+        "per_loan_child_to_parent_plus": (
+            "Any loan the child's with each loan alone, Parent PLUS in the build"
+        ),
+        "undergraduate_before_2008_dependent_age": (
+            "Undergraduate, before 2008, fitting a child who could be dependent"
+        ),
+        "undergraduate_before_2008_within_their_tier": (
+            "Of those, within their year's limit"
+        ),
+        "undergraduate_before_2008_over_their_tier_within_31000": (
+            "Of those, over their year's limit but within $31,000"
+        ),
+        "undergraduate_before_2008_over_31000": "Of those, over $31,000",
         "borrowed_before_1993": "All loans for a child borrowed before 1993",
         "borrowed_1993_to_2007": "All loans for a child borrowed 1993-2007",
         "borrowed_2008_or_later": "All loans for a child borrowed 2008 or later",
@@ -1454,6 +1586,24 @@ def markdown(receipt: Mapping[str, object]) -> str:
             f"({_pct(entry['undergraduate_to_parent_plus_share_of_total'])}) |"
         )
     if host is not None:
+        repeat = receipt["host"]["child_share_moves"]
+        verdicts = {
+            key: "yes" if repeat.get(key) else "no"
+            for key in (
+                "drawn_total_matches_build",
+                "own_balances_match_build",
+                "parent_plus_balances_match_build",
+            )
+        }
+        lines += [
+            "",
+            "The host row repeats the build's draw. It matches the build in its "
+            f"weighted total ({verdicts['drawn_total_matches_build']}) and, person "
+            "by person, in the four balance columns placed on the build's people: "
+            f"own balances {verdicts['own_balances_match_build']}, Parent PLUS "
+            f"balances {verdicts['parent_plus_balances_match_build']}.",
+        ]
+    if host is not None:
         host_metrics = [
             m
             for m in metrics
@@ -1505,8 +1655,11 @@ def markdown(receipt: Mapping[str, object]) -> str:
             "children predictor can count a son- or daughter-in-law that the "
             "host's CPS parent pointers never do. On the host, "
             f"{_pct(in_law['share_of_households_with_a_child_in_law'])} of "
-            "households have an adult child's spouse present "
-            f"({in_law['children_in_law'] / 1e6:,.2f}M people, against "
+            "households have an adult child's spouse or cohabiting partner "
+            f"present ({in_law['children_in_law'] / 1e6:,.2f}M people: "
+            f"{in_law['named_as_spouse'] / 1e6:,.2f}M named by `A_SPOUSE` and "
+            f"{in_law.get('named_as_cohabiting_partner', 0.0) / 1e6:,.2f}M by "
+            "`PECOHAB`; against "
             f"{in_law['adult_children'] / 1e6:,.2f}M adult children in "
             f"{_pct(in_law['share_of_households_with_an_adult_child'])} of "
             "households).",
@@ -1682,9 +1835,13 @@ def main(argv: Sequence[str] | None = None) -> int:
         gate = us_scf_education_debt_signal_gate(frame)
         host_fit = us_scf_education_debt_fit_table(frame)
         # The same draw, repeated for its record of the child shares moved in
-        # households without an adult child.
+        # households without an adult child. The check compares its weighted
+        # total and, person by person, its four balance columns with the
+        # build's (the moves come from the second QRF, the total from the
+        # first).
+        host_recipients = education_debt._recipients(base)
         drawn = draw_scf_education_debt_households(
-            education_debt._recipients(base).features,
+            host_recipients.features,
             donor,
             seed=args.seed,
             n_estimators=args.n_estimators,
@@ -1696,6 +1853,9 @@ def main(argv: Sequence[str] | None = None) -> int:
         host_total = host_fit["households"]["federal_education_debt_total"]
         host_moves["drawn_total_matches_build"] = bool(
             abs(host_moves["drawn_total"] - host_total) <= 1e-9 * host_total
+        )
+        host_moves.update(
+            drawn_balances_match_build(drawn, host_recipients, frame.table("person"))
         )
         label, definition, predictors = HOST_SETTINGS[BUILD_SETTING]
         receipt["host_settings"][BUILD_SETTING] = {
