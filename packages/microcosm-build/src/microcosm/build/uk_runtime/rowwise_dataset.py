@@ -35,6 +35,7 @@ from microcosm.build.uk_runtime.national_frame import (
     uk_household_weight_kind,
     uk_isa_income_contract,
     uk_national_frame,
+    uk_savings_income_projection,
     uk_time_period,
 )
 from microcosm.build.uk_runtime.rowwise_geography import (
@@ -927,6 +928,7 @@ def _write_uk_ladder_rowwise_dataset(
         mass_log=frame.mass_log,
         isa_income_contract=uk_isa_income_contract(frame),
         path=Path(output_path),
+        savings_income_projection=uk_savings_income_projection(frame),
     )
 
 

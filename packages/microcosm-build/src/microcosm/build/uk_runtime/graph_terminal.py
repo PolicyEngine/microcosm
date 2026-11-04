@@ -25,7 +25,10 @@ import pandas as pd
 
 from microcosm.calibrate import TargetRegistry
 from microcosm.frame import Frame, MassChangeRecord, WeightKind, engine_tables
-from microcosm.frame.adapters.policyengine_uk import UK_ISA_INCOME_CONTRACT
+from microcosm.frame.adapters.policyengine_uk import (
+    UK_ISA_INCOME_CONTRACT,
+    UK_SAVINGS_INCOME_PROJECTION,
+)
 from microcosm.graph import (
     ArtifactInput,
     ArtifactOutput,
@@ -71,6 +74,7 @@ from .national_frame import (
     uk_identifier_range_failures,
     uk_isa_income_contract,
     uk_release_identifier_tables,
+    uk_savings_income_projection,
     uk_time_period,
     validate_uk_national_frame,
 )
@@ -301,6 +305,7 @@ def materialize_uk_export(
         mass_log=frame.mass_log,
         isa_income_contract=uk_isa_income_contract(frame),
         path=destination,
+        savings_income_projection=uk_savings_income_projection(frame),
     )
     return file_artifact(destination)
 
@@ -328,6 +333,8 @@ def validate_uk_export(
             failures.append(f"Exported {key} differs from its graph descriptor.")
     if payload["isa_income_contract"] != dict(UK_ISA_INCOME_CONTRACT):
         failures.append("Exported ISA income contract is not the producer's.")
+    if payload["savings_income_projection"] != UK_SAVINGS_INCOME_PROJECTION:
+        failures.append("Exported savings income projection is not the producer's.")
     failures.extend(_area_code_failures(payload["household"], descriptor))
     failures.extend(uk_identifier_range_failures(payload))
     if file_artifact(path) != dataset:
