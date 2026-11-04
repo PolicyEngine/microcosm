@@ -100,9 +100,9 @@
     "person": {
       "employment_income": {
         "awaits": [
-          "P1: precal_references ird_wage_salary_people_by_band rows 7 to 241"
+          "P1: precal_references ird_wage_salary_people_by_band rows 7 to 241, mapped by transport.quantile_map@2 on earnings_bands.json"
         ],
-        "reason": "MC4 quantile-maps earnings onto IRD wage bands; P1 is parked until its source-period wage bridge and intervals exist (d1952 option A, earnings first)."
+        "reason": "MC4 quantile-maps earnings onto IRD wage bands (d1952 option A, earnings first). G8-r2c activates P1: nz.earnings.map runs transport.quantile_map@2 on the TY2026 wage cuts scaled by the P1 TY2026-to-TY2027 factor, with a grouped Pareto open top, and nz.earnings.cents writes employment_income_cents half-even. No FX rate or donor factor touches wages."
       },
       "liquid_financial_assets": {
         "awaits": [

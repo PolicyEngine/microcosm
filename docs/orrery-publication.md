@@ -69,12 +69,20 @@ used licensed microdata, as UK builds do, private; it becomes public only
 after output clearance. The direct upload to the runs application will then
 be removed.
 
-When a build queues an upload with remote staging enabled, it then stages its
-artifact bundle to Hugging Face under `staged/<run_id>/`. That bundle holds
-every file of the queued upload, plus `graph.execution.json` when execution
-was recorded, so the Orrery graph files can be rebuilt from it later. This does not hold for an interrupted build, a
-build run with `--publish-orrery` while staging is local-only or disabled, or a
-build whose Hugging Face staging failed or did not complete.
+When a build queues an upload with remote staging enabled, it then hands its
+artifact bundle to its emitter, which uploads it to Hugging Face under
+`staged/<run_id>/`. That bundle holds every file of the queued upload, plus
+`graph.execution.json` when execution was recorded, so the Orrery graph files
+can be rebuilt from it later. This does not hold for:
+
+- an interrupted build;
+- a build run with `--publish-orrery` while staging is local-only or disabled;
+- a build whose Hugging Face staging failed or did not complete;
+- a build whose hand-over the emitter still held when the build's wait ended
+  (`UPLOAD_PENDING`, or the emitter's last error code while it retries): the
+  bundle may land later, and a re-stage records it;
+- a build refused remote staging before it began, because no usable emitter
+  was installed.
 
 ## Configuration
 

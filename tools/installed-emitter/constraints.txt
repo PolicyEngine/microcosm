@@ -1,0 +1,8 @@
+# Constraints for every microcosm-emitter release the installed-emitter CI job
+# installs. The stand-in Hub server (test_support/microcosm_build/stand_in_hub.py)
+# answers the HTTP requests of this huggingface_hub release, which
+# microcosm-emitter's own lock file also pins. tools/installed_emitter_releases.py
+# warns when the package index has a newer 1.x release, which a new emitter
+# install takes. Change it only together with the stand-in, after reading the
+# new release's request code.
+huggingface-hub==1.33.0
