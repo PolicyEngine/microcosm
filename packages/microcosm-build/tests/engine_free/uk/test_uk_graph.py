@@ -468,11 +468,12 @@ def test_property_components_reads_cover_the_stage_inputs() -> None:
 
 def test_spi_benefit_coherence_reads_cover_its_work_tests() -> None:
     """The contributory awards' work tests read the copy's earnings and its
-    twin's hours, and the receipt counts by source household: the node gets
-    only its declared cells (the 4 November b5j spine failed at the node
-    before the hours followed)."""
+    twin's hours, and the receipt reads its pension payments and counts by
+    source household: the node gets only its declared cells (the 4 November
+    b5j spine failed at the node before the hours followed)."""
     from microcosm.build.uk_runtime.graph import _STAGE_CONSUMES
     from microcosm.build.uk_runtime.spi_benefit_coherence import (
+        SPI_PENSION_PAYMENTS_COLUMN,
         SPI_WITHIN_LIMIT_EARNINGS_COLUMNS,
         SPI_WITHIN_LIMIT_HOURS_COLUMN,
         SPI_WITHIN_LIMIT_REPORT_COLUMNS,
@@ -486,6 +487,7 @@ def test_spi_benefit_coherence_reads_cover_its_work_tests() -> None:
             *SPI_WITHIN_LIMIT_REPORT_COLUMNS,
             *SPI_WITHIN_LIMIT_EARNINGS_COLUMNS,
             SPI_WITHIN_LIMIT_HOURS_COLUMN,
+            SPI_PENSION_PAYMENTS_COLUMN,
         )
     } | {("household", "household_source_id")}
     assert required <= declared, sorted(required - declared)

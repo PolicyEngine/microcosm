@@ -462,6 +462,8 @@ _STAGE_CONSUMES: Mapping[str, frozenset[tuple[str, str]] | None] = {
                     "employment_income",
                     "self_employment_income",
                     "hours_worked",
+                    # The pension payments the receipt reads beside them.
+                    "private_pension_income",
                 )
             ),
             # The receipt counts support by source household.

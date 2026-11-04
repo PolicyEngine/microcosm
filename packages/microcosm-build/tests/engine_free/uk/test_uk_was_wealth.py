@@ -691,8 +691,9 @@ def test_was_imputer_uses_checkpointed_chain_segments(
     seeds = []
 
     class FakeQRF:
-        def __init__(self, *, n_estimators, seed):
+        def __init__(self, *, n_estimators, seed, gate_calibration):
             assert n_estimators == 7
+            assert gate_calibration == "in_sample"
             seeds.append(seed)
 
         def start_chain(self, donor, predictors, targets, *, weights):
