@@ -660,15 +660,16 @@ def test_per_row_schema_id_is_optional(tmp_path) -> None:
 
 
 def test_per_row_schema_id_outside_both_eras_still_loads(tmp_path) -> None:
-    """Dual acceptance widens what loads; it must not narrow it.
+    """A load without a full feed pin carries per-row ids it does not declare.
 
-    Real feeds stamp rows from namespaces that are neither era. The pinned US
-    fiscal-refresh feed ``consumer_facts_buildn_v9_4.jsonl`` declares
-    ``arch.consumer_fact.v1`` on the overwhelming majority of its rows and
-    ``ledger.consumer_fact.v1`` on the rest, and it loads through this loader
-    on the release path. A consumer that gated the per-row id against the two
-    ids chronicle#143 names would fail the build closed on its own pinned
-    input — so the id is carried and reported, never gated.
+    Feeds loaded by path for diagnostics and experiments, and bare feeds with
+    no manifest, stamp rows from namespaces that are neither era: the July 2026
+    US fiscal-refresh feed ``consumer_facts_buildn_v9_4.jsonl``, the US pin
+    until 2026-09-18, declares ``arch.consumer_fact.v1`` on most of its rows.
+    The loader carries and reports such ids. The checks that hold a reviewed
+    feed to its pin refuse them: ``validate_chronicle_feed_pin``, and the UK and
+    US builds' row-contract checks (``test_ledger_artifact.py``,
+    ``test_uk_full_targets.py``, ``test_us_fiscal_refresh_builder.py``).
     """
     facts_path = tmp_path / "consumer_facts.jsonl"
     rows = [

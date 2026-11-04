@@ -575,9 +575,8 @@ def test_feed_pin_refuses_rows_that_mix_in_an_undeclared_row_contract(tmp_path):
             ["chronicle.consumer_fact.v5", _UNDECLARED_ROW_CONTRACT],
             [_UNDECLARED_ROW_CONTRACT],
         ),
-        (["arch.consumer_fact.v1"], ["arch.consumer_fact.v1"]),
     ],
-    ids=["undeclared_only", "declared_and_undeclared", "foreign_namespace"],
+    ids=["undeclared_only", "declared_and_undeclared"],
 )
 def test_feed_identity_refuses_an_undeclared_row_contract(
     tmp_path, versions, undeclared
@@ -599,6 +598,63 @@ def test_feed_identity_refuses_an_undeclared_row_contract(
     _assert_undeclared_refusal(str(refusal.value), undeclared)
 
 
+def test_feed_identity_refuses_a_foreign_row_contract_without_advising_a_declaration(
+    tmp_path,
+):
+    """An id outside Chronicle's namespaces is not a row contract to declare.
+
+    ``_declare`` refuses any namespace outside ``CHRONICLE_NAMESPACES``, so the
+    message must not tell the reader to declare ``arch.consumer_fact.v1``.
+    """
+    _, pin = write_pinned_artifact(tmp_path / "artifact", [_fact_row()])
+    pin["source_commit"] = "c" * 40
+
+    with pytest.raises(ValueError) as refusal:
+        chronicle_feed_identity(
+            {
+                **pin,
+                "consumer_fact_schema_versions": [
+                    "arch.consumer_fact.v1",
+                    _UNDECLARED_ROW_CONTRACT,
+                ],
+            }
+        )
+
+    message = str(refusal.value)
+    assert "['arch.consumer_fact.v1'] is not a Chronicle row contract" in message
+    assert "cannot declare it" in message
+    assert f"declare {[_UNDECLARED_ROW_CONTRACT]!r}" in message
+    for declared in _DECLARED_ROW_CONTRACTS:
+        assert declared in message
+
+
+def test_feed_pin_refuses_rows_carrying_a_row_contract_the_pin_does_not_list(
+    tmp_path,
+):
+    """Rows carrying a declared row contract the pin's list leaves out are refused."""
+    artifact_dir, pin = write_pinned_artifact(
+        tmp_path / "artifact",
+        [
+            _fact_row(schema_version="chronicle.consumer_fact.v4"),
+            _fact_row(
+                aggregate_fact_key="ledger.aggregate_fact.v2:def456",
+                schema_version="chronicle.consumer_fact.v5",
+            ),
+        ],
+    )
+    pinned_v4 = {**pin, "consumer_fact_schema_versions": ["chronicle.consumer_fact.v4"]}
+
+    with pytest.raises(ChronicleFeedPinMismatchError) as refusal:
+        load_ledger_consumer_artifact(artifact_dir, feed_pin=pinned_v4)
+
+    _assert_pin_mismatch(
+        refusal.value,
+        "consumer_fact_schema_versions",
+        ["chronicle.consumer_fact.v4"],
+        ["chronicle.consumer_fact.v4", "chronicle.consumer_fact.v5"],
+    )
+
+
 def test_feed_identity_refuses_a_row_contract_list_that_is_not_a_list(tmp_path):
     _, pin = write_pinned_artifact(tmp_path / "artifact", [_fact_row()])
     pin["source_commit"] = "c" * 40
@@ -612,8 +668,11 @@ def test_feed_identity_refuses_a_row_contract_list_that_is_not_a_list(tmp_path):
 
 
 def _committed_feed_identities():
-    """``(resource, path, object)`` for each committed object naming row contracts."""
-    build_root = paths_for("microcosm-build").package / "src/microcosm/build"
+    """``(resource, path, object)`` for each committed object naming row contracts.
+
+    Every JSON resource of every workspace package, at any depth.
+    """
+    packages = paths_for("microcosm-build").repository / "packages"
     found = []
 
     def walk(node, resource, location):
@@ -626,8 +685,8 @@ def _committed_feed_identities():
             for index, child in enumerate(node):
                 walk(child, resource, f"{location}[{index}]")
 
-    for path in sorted(build_root.glob("*/*.json")):
-        resource = path.relative_to(build_root).as_posix()
+    for path in sorted(packages.glob("*/src/**/*.json")):
+        resource = path.relative_to(packages).as_posix()
         walk(json.loads(path.read_text()), resource, "")
     return found
 
@@ -637,16 +696,17 @@ def test_committed_feed_pins_and_restated_identities_name_declared_row_contracts
     identities = _committed_feed_identities()
     resources = {resource for resource, _location, _identity in identities}
 
+    build = "microcosm-build/src/microcosm/build"
     assert {
-        "uk/chronicle_feed.json",
-        "us/chronicle_feed.json",
-        "nz/chronicle_feed.json",
-        "be/chronicle_feed.json",
-        "be/reference_inventory.json",
-        "be/reference_aging.json",
-        "nz/reference_inventory.json",
-        "nz/reference_aging.json",
-        "nz/msd_pre_activation_reconciliation.json",
+        f"{build}/uk/chronicle_feed.json",
+        f"{build}/us/chronicle_feed.json",
+        f"{build}/nz/chronicle_feed.json",
+        f"{build}/be/chronicle_feed.json",
+        f"{build}/be/reference_inventory.json",
+        f"{build}/be/reference_aging.json",
+        f"{build}/nz/reference_inventory.json",
+        f"{build}/nz/reference_aging.json",
+        f"{build}/nz/msd_pre_activation_reconciliation.json",
     } <= resources
     for resource, location, identity in identities:
         versions = identity["consumer_fact_schema_versions"]

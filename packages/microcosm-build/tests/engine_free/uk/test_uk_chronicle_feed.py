@@ -88,6 +88,44 @@ def test_national_feed_rejects_an_undeclared_row_contract(
     assert "microcosm.build.chronicle_epoch" in message
 
 
+@pytest.mark.parametrize(
+    ("tool", "check"),
+    [
+        ("tools/vendor_uk_ledger_facts.py", "require_uk_chronicle_feed_row_contracts("),
+        ("tools/certify_uk_release_cut.py", "require_uk_chronicle_feed_row_contracts("),
+        (
+            "tools/generate_uk_target_references.py",
+            "require_uk_chronicle_feed_subset_row_contracts(",
+        ),
+        (
+            "tools/generate_uk_local_target_references.py",
+            "require_uk_chronicle_feed_subset_row_contracts(",
+        ),
+        (
+            "tools/build_uk_ledger_compile_parity_signed_differences.py",
+            "require_uk_chronicle_feed_subset_row_contracts(",
+        ),
+        (
+            "tools/build_uk_desnz_constituency_energy_facts.py",
+            "require_uk_chronicle_feed_subset_row_contracts(",
+        ),
+    ],
+)
+def test_uk_feed_tools_check_the_row_contracts_of_the_rows_they_read(tool, check):
+    """Each UK tool that reads the pinned feed's rows holds their row contracts.
+
+    The full-artifact tools hold the rows to the pin's list when the facts are
+    the committed feed; the tools that read a subset of it, or only some of
+    its rows, require each row's contract to be one the pin lists. Both refuse
+    a row contract ``microcosm.build.chronicle_epoch`` does not declare.
+    """
+    from test_support.paths import paths_for
+
+    source = (paths_for("microcosm-build").repository / tool).read_text()
+
+    assert check in source
+
+
 def test_committed_feed_pin_check_refuses_a_foreign_artifact():
     from microcosm.build.uk_runtime.chronicle_feed import (
         UKChronicleFeedPinError,
