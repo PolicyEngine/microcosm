@@ -1070,3 +1070,14 @@ def test_every_rules_kernel_requires_the_whole_selector(monkeypatch, person, mat
     else:
         with pytest.raises(ValueError, match=match):
             SimulateRulesKernel._require_relation_inputs(node, adapter)
+
+
+def test_view_equality_preserves_outside_value_types_and_hashes():
+    left = AxiomView("Child", "s", {"a": 0.0, "b": 0})
+    right = AxiomView("Child", "s", {"a": 0, "b": False})
+    assert left != right
+    equal = AxiomView("Child", "s", {"b": 0, "a": 0.0})
+    assert left == equal
+    assert hash(left) == hash(equal)
+    assert len({left, right, equal}) == 2
+    assert left != left.to_dict()

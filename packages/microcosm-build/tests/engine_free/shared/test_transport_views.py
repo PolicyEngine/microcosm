@@ -428,7 +428,16 @@ def test_an_injected_python_engine_with_views_is_refused(tmp_path, monkeypatch):
         engine_root_inputs(_Python(), document["bindings"][0], document["entity_names"])
 
 
-def test_an_injected_axiom_engine_must_carry_the_binding_views(tmp_path, monkeypatch):
+@pytest.mark.parametrize(
+    "selector,outside",
+    [
+        ("is_kid", {"child_amount": 0.0, "child_test": 0}),
+        ("is_child", {"child_amount": 0, "child_test": 0}),
+    ],
+)
+def test_an_injected_axiom_engine_must_carry_the_binding_views(
+    tmp_path, monkeypatch, selector, outside
+):
     root, document, _ = _fixture(tmp_path, monkeypatch)
     schema = UNIT_RULE_SCHEMA
     periods = {PERIOD: AxiomPeriod("2026-04-01", "2027-03-31", "tax_year")}
@@ -451,13 +460,7 @@ def test_an_injected_axiom_engine_must_carry_the_binding_views(tmp_path, monkeyp
             root,
             unit_rule=UNIT_RULE,
             engines_by_binding={
-                "child_benefit": adapter(
-                    (
-                        AxiomView(
-                            "Child", "is_kid", {"child_amount": 0.0, "child_test": 0}
-                        ),
-                    )
-                )
+                "child_benefit": adapter((AxiomView("Child", selector, outside),))
             },
         )
     prepared = build_transport_registry(

@@ -338,7 +338,7 @@ class AxiomRelation:
         return tuple(sorted(dependencies))
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, eq=False)
 class AxiomView:
     """A binding-local view: one logical engine entity over selected persons.
 
@@ -377,6 +377,14 @@ class AxiomView:
                     "integer or decimal number."
                 )
         object.__setattr__(self, "outside", MappingProxyType(dict(self.outside)))
+
+    def __eq__(self, other: object) -> bool:
+        if not isinstance(other, AxiomView):
+            return NotImplemented
+        return canonical_json(self.to_dict()) == canonical_json(other.to_dict())
+
+    def __hash__(self) -> int:
+        return hash(canonical_json(self.to_dict()))
 
     def to_dict(self) -> dict[str, object]:
         """Return the JSON declaration."""
