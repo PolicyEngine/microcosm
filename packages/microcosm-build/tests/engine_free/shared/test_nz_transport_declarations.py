@@ -1105,14 +1105,15 @@ def test_every_profiles_edges_equal_cut_times_factor_exactly():
     resources, table, factors = _earnings_sources()
     document = resources["earnings_bands"]
     cuts = [table["first_lower_cut_cents"]] + [b["upper_cent"] for b in table["bands"]]
-    # Design 80 gives the P1 factors as 1.026690, 1.028580 and 1.030467.
+    # The September 2026 QES re-declaration gives the P1 factors as 1.028904,
+    # 1.029853 and 1.030799 (design 80 gave 1.026690, 1.028580 and 1.030467).
     assert {
         profile: factors[f"p1_ty2026_to_ty2027_{profile}"]["operational_factor"]
         for profile in _PROFILES
     } == {
-        "low": {"numerator": 1026690, "denominator": 1000000},
-        "central": {"numerator": 1028580, "denominator": 1000000},
-        "high": {"numerator": 1030467, "denominator": 1000000},
+        "low": {"numerator": 1028904, "denominator": 1000000},
+        "central": {"numerator": 1029853, "denominator": 1000000},
+        "high": {"numerator": 1030799, "denominator": 1000000},
     }
     assert set(document["profiles"]) == set(_PROFILES)
     for profile in _PROFILES:
@@ -1133,7 +1134,7 @@ def test_every_profiles_edges_equal_cut_times_factor_exactly():
         ]
     # Design 80's worked band "$50,001 - $51,000" at the central factor.
     row_57 = document["profiles"]["central"]["map_bands"]["bands"][50]
-    assert (row_57["lower"], row_57["upper"]) == (51429.0, 52457.58)
+    assert (row_57["lower"], row_57["upper"]) == (51492.65, 52522.503)
 
 
 def test_wage_table_has_235_right_closed_bands_and_no_companions():
