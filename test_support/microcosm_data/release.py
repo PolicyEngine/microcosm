@@ -46,6 +46,7 @@ from test_support.microcosm_data.build_folders import (
     UK_NATIONAL_BUILD,
     to_build_folder_layout,
 )
+from test_support.microcosm_data.hub_errors import missing_on_hub
 
 
 @pytest.fixture(autouse=True)
@@ -530,7 +531,9 @@ class FakeHub:
         try:
             content = self._commits[commit][filename]
         except KeyError as exc:
-            raise FileNotFoundError(f"{filename}@{ref}") from exc
+            raise missing_on_hub(
+                repo_id, filename, ref, message=f"{filename}@{ref}"
+            ) from exc
         local = self._download_dir / ref / filename
         local.parent.mkdir(parents=True, exist_ok=True)
         local.write_bytes(content)

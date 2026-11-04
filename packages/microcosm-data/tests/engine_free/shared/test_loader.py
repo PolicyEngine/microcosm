@@ -13,7 +13,11 @@ from types import SimpleNamespace
 
 import huggingface_hub
 import pytest
-from huggingface_hub.errors import GatedRepoError, RepositoryNotFoundError
+from huggingface_hub.errors import (
+    GatedRepoError,
+    LocalEntryNotFoundError,
+    RepositoryNotFoundError,
+)
 
 import microcosm.data.loader as loader
 from microcosm.data import DEFAULT_VARIANT, download, latest_year, load, resolve
@@ -33,6 +37,7 @@ from test_support.microcosm_data.build_folders import (
     UK_NATIONAL_BUILD,
     build_folder_release_manifest,
 )
+from test_support.microcosm_data.hub_errors import hub_unreachable, missing_on_hub
 
 #: Release id served by the hub fixture. Any well-formed id works: nothing in
 #: this suite may assert which release the live Hub currently points at,
@@ -352,8 +357,11 @@ class FakeHubDownload:
         try:
             return str(self.files[(repo_id, filename, revision)])
         except KeyError as exc:
-            raise FileNotFoundError(
-                f"{repo_id}/{filename} at revision {revision!r}"
+            raise missing_on_hub(
+                repo_id,
+                filename,
+                revision,
+                message=f"{repo_id}/{filename} at revision {revision!r}",
             ) from exc
 
 
@@ -957,6 +965,62 @@ def test_only_a_missing_releases_json_follows_the_pointer_file(tmp_path: Path) -
     with pytest.raises(ConnectionError, match="did not answer"):
         loader._resolve_certified_release(resolve("uk", 2025), hub_download=unreachable)
     assert hub.calls == []
+
+
+@pytest.mark.parametrize(
+    "status_code", [None, 503, 403], ids=["no-answer", "server-error", "forbidden"]
+)
+def test_a_hub_failure_reading_releases_json_does_not_fall_back(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, status_code: int | None
+) -> None:
+    """Online, huggingface_hub raises LocalEntryNotFoundError when it could
+    not ask the Hub, after a 5xx or on a 403. That is not the file's absence:
+    falling back would load the pointer's build after the switch."""
+    monkeypatch.setattr(huggingface_hub.constants, "HF_HUB_OFFLINE", False)
+    hub = _line_pointer_hub(
+        tmp_path,
+        line="national",
+        release_id=UK_NATIONAL_RELEASE_ID,
+        revision=UK_NATIONAL_CUT_TAG,
+        manifest=_uk_national_line_manifest(),
+    )
+
+    def unreachable(**request) -> str:
+        if request["filename"] == "releases.json":
+            raise hub_unreachable(UK_REPO_ID, "releases.json", status_code=status_code)
+        return hub(**request)
+
+    with pytest.raises(LocalEntryNotFoundError):
+        loader._resolve_certified_release(resolve("uk", 2025), hub_download=unreachable)
+    assert hub.calls == []
+
+
+def test_offline_a_releases_json_never_cached_falls_back_to_the_pointer_file(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """In offline mode the cache is all there is: a releases.json never
+    cached loads the cached pointer file's build, as an offline load did
+    before."""
+    monkeypatch.setattr(huggingface_hub.constants, "HF_HUB_OFFLINE", True)
+    hub = _line_pointer_hub(
+        tmp_path,
+        line="national",
+        release_id=UK_NATIONAL_RELEASE_ID,
+        revision=UK_NATIONAL_CUT_TAG,
+        manifest=_uk_national_line_manifest(),
+    )
+
+    def offline(**request) -> str:
+        if request["filename"] == "releases.json":
+            raise hub_unreachable(UK_REPO_ID, "releases.json")
+        return hub(**request)
+
+    certified = loader._resolve_certified_release(
+        resolve("uk", 2025), hub_download=offline
+    )
+
+    assert certified.release_id == UK_NATIONAL_RELEASE_ID
+    assert certified.artifact_revision == UK_NATIONAL_CUT_TAG
 
 
 def test_line_pointer_refuses_any_artifact_revision_mismatch(tmp_path: Path) -> None:

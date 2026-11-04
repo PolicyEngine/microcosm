@@ -13,6 +13,8 @@ import json
 from dataclasses import dataclass, field
 from pathlib import Path
 
+import httpx
+import huggingface_hub
 import pytest
 from microcosm_emitter_interface.releases import ReleaseRecordError, ReleasesRecord
 
@@ -23,6 +25,7 @@ from test_support.microcosm_build.emitter import FakeEmitterClient
 from test_support.microcosm_data.build_folders import UK_NATIONAL_BUILD
 from test_support.microcosm_data.release import (
     _as_uk_national_build_folder_release,
+    _as_uk_national_line_release,
     artifact_root,  # noqa: F401  (a fixture)
     release_dir,  # noqa: F401  (a fixture)
 )
@@ -30,6 +33,9 @@ from test_support.microcosm_data.release import (
 UK_REPO_ID = "policyengine/populace-uk-private"
 UK_NATIONAL_RELEASE_ID = "microcosm-uk-2024-25-national"
 UK_EARLIER_BUILD = "uk-frs-calibration-attempt-20260901T000000Z-0badcafe"
+#: The command's own listing of the repository's files, before the fixture
+#: below replaces it in every test.
+REAL_REPOSITORY_FILES = release_publication._repository_files
 #: The variables ``huggingface_hub`` reads to refuse every Hub request.
 OFFLINE_VARIABLES = ("HF_HUB_OFFLINE", "TRANSFORMERS_OFFLINE")
 #: What ``check_write_access`` answers when the emitter finds no credential.
@@ -455,6 +461,103 @@ def test_the_command_refuses_a_repository_with_pointer_files_before_an_emitter(
     assert "refusing to publish" in error and pointer_file in error
     assert "tools/publish_release.sh" in error
     assert repository == {}
+
+
+def test_the_command_refuses_a_network_error_while_listing(
+    national: Path,
+    artifact_root: Path,  # noqa: F811
+    monkeypatch,
+    capsys,
+) -> None:
+    """httpx's transport errors, such as a refused connection, are not
+    OSError; they are refused with the same explanation, not a traceback."""
+    started, _ = _start_emitters(monkeypatch)
+
+    def unreachable(repository: str) -> list[str]:
+        raise httpx.ConnectError("[Errno 61] Connection refused")
+
+    monkeypatch.setattr(
+        release_publication, "_repository_files", unreachable, raising=False
+    )
+
+    code, output, error = _run(
+        [str(national), "--artifact-root", str(artifact_root)], capsys
+    )
+
+    assert code == 1
+    assert started == []
+    assert output is None
+    assert f"could not list the files of {UK_REPO_ID}" in error
+    assert "ConnectError" in error
+
+
+@pytest.mark.parametrize(
+    ("environment", "token"),
+    [
+        ({"HUGGINGFACE_TOKEN": "not-a-real-token-b"}, "not-a-real-token-b"),
+        (
+            {
+                "HF_TOKEN": "not-a-real-token-a",
+                "HUGGINGFACE_TOKEN": "not-a-real-token-b",
+            },
+            "not-a-real-token-a",
+        ),
+    ],
+    ids=["huggingface-token", "hf-token-first"],
+)
+def test_the_listing_reads_the_credential_the_emitter_reads(
+    monkeypatch, environment: dict, token: str
+) -> None:
+    """The emitter reads HF_TOKEN, then HUGGINGFACE_TOKEN, then the saved
+    login; huggingface_hub alone does not read HUGGINGFACE_TOKEN, so the
+    listing passes it on."""
+    for name in ("HF_TOKEN", "HUGGINGFACE_TOKEN"):
+        monkeypatch.delenv(name, raising=False)
+    for name, value in environment.items():
+        monkeypatch.setenv(name, value)
+    tokens: list[str | None] = []
+
+    class RecordingApi:
+        def __init__(self, token: str | None = None) -> None:
+            tokens.append(token)
+
+        def list_repo_files(self, repo_id: str, *, repo_type: str) -> list[str]:
+            assert (repo_id, repo_type) == (UK_REPO_ID, "dataset")
+            return ["README.md"]
+
+    monkeypatch.setattr(huggingface_hub, "HfApi", RecordingApi)
+
+    assert REAL_REPOSITORY_FILES(UK_REPO_ID) == ["README.md"]
+    assert tokens == [token]
+
+
+@pytest.mark.parametrize("promote", [False, True], ids=["publish", "promote"])
+def test_the_command_refuses_a_tagged_uk_release(
+    release_dir: Path,  # noqa: F811
+    artifact_root: Path,  # noqa: F811
+    monkeypatch,
+    capsys,
+    hub_listing: HubListing,
+    promote: bool,
+) -> None:
+    """Today's UK assemblers write the tagged layout, whose release manifest
+    describes the build in a ``build`` object; the command refuses it before
+    it lists the repository or starts an emitter."""
+    tagged = _as_uk_national_line_release(release_dir)
+    started, _ = _start_emitters(monkeypatch)
+    argv = (
+        [str(tagged), "--promote"]
+        if promote
+        else [str(tagged), "--artifact-root", str(artifact_root)]
+    )
+
+    code, output, error = _run(argv, capsys)
+
+    assert code == 1
+    assert started == []
+    assert hub_listing.listed == []
+    assert output is None
+    assert "does not name release" in error
 
 
 def test_the_command_refuses_when_it_cannot_list_the_repository(

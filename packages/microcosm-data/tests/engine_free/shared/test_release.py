@@ -1,6 +1,9 @@
 """Tests split from packages/microcosm-data/tests/test_release.py."""
 
 # ruff: noqa: F403, F405
+from huggingface_hub.errors import LocalEntryNotFoundError
+
+from test_support.microcosm_data.hub_errors import hub_unreachable
 from test_support.microcosm_data.release import *
 
 
@@ -317,6 +320,77 @@ def test_the_tagged_publisher_refuses_a_repository_with_releases_json(
     assert hub.tags == []
     assert hub.uploads == []
     assert [event for event, _ in hub.events] == []
+
+
+@pytest.mark.parametrize(
+    "status_code", [None, 503, 403], ids=["no-answer", "server-error", "forbidden"]
+)
+def test_the_tagged_publisher_refuses_when_it_cannot_read_releases_json(
+    hub: FakeHub,
+    release_dir: Path,
+    artifact_root: Path,
+    monkeypatch,
+    status_code: int | None,
+) -> None:
+    """Only the Hub's 404 for releases.json lets a publication go on.
+
+    huggingface_hub raises LocalEntryNotFoundError, which is also an
+    EntryNotFoundError and a FileNotFoundError, when it could not ask the
+    Hub: after a 5xx outlasted its retries, or on a 403. A publication that
+    went on could write a tag and a pointer file beside a releases.json.
+    """
+    monkeypatch.setattr(release_module, "notify_release", lambda *a, **k: None)
+    download = hub.hf_hub_download
+
+    def unreachable(*, repo_id, filename, repo_type, revision=None):
+        if filename == "releases.json":
+            raise hub_unreachable(repo_id, filename, revision, status_code=status_code)
+        return download(
+            repo_id=repo_id, filename=filename, repo_type=repo_type, revision=revision
+        )
+
+    monkeypatch.setattr(hub, "hf_hub_download", unreachable)
+
+    with pytest.raises(LocalEntryNotFoundError):
+        publish_release(
+            release_dir,
+            "policyengine/populace-us",
+            api=hub,
+            artifact_root=artifact_root,
+        )
+
+    assert hub.tags == []
+    assert hub.uploads == []
+    assert [event for event, _ in hub.events] == []
+
+
+def test_the_tagged_publisher_refuses_a_uk_build_folder_release(
+    release_dir: Path, artifact_root: Path, tmp_path: Path, monkeypatch
+) -> None:
+    """A build in the build-folder layout pins no revision, so the tagged
+    publisher, which publishes a revision per build, refuses it before any
+    Hub request."""
+    national = _as_uk_national_build_folder_release(release_dir)
+    monkeypatch.setattr(
+        release_module, "validate_release_dir", lambda _path, **_kwargs: []
+    )
+    hub = _uk_hub(tmp_path)
+    events_before = list(hub.events)
+
+    with pytest.raises(ValueError):
+        release_module.prepare_release(national, artifact_root=artifact_root)
+    with pytest.raises(ValueError):
+        publish_release(
+            national,
+            "policyengine/populace-uk-private",
+            api=hub,
+            artifact_root=artifact_root,
+            update_latest=False,
+        )
+
+    assert hub.events == events_before
+    assert hub.tags == []
+    assert hub.uploads == []
 
 
 def test_the_tagged_publisher_refuses_a_uk_promotion_once_releases_json_exists(
