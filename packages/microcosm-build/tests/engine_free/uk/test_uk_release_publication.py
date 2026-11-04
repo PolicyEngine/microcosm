@@ -29,6 +29,36 @@ from test_support.microcosm_data.release import (
 UK_REPO_ID = "policyengine/populace-uk-private"
 UK_NATIONAL_RELEASE_ID = "microcosm-uk-2024-25-national"
 UK_EARLIER_BUILD = "uk-frs-calibration-attempt-20260901T000000Z-0badcafe"
+#: The variables ``huggingface_hub`` reads to refuse every Hub request.
+OFFLINE_VARIABLES = ("HF_HUB_OFFLINE", "TRANSFORMERS_OFFLINE")
+#: What ``check_write_access`` answers when the emitter finds no credential.
+NO_CREDENTIAL = {
+    "status": "checked",
+    "credential": "missing",
+    "reachable": None,
+    "can_write": None,
+    "error_type": None,
+}
+#: What it answers for a credential that can read but not write.
+READ_ONLY_CREDENTIAL = {
+    "status": "checked",
+    "credential": "present",
+    "reachable": True,
+    "can_write": False,
+    "error_type": None,
+}
+
+
+@pytest.fixture(autouse=True)
+def _hub_online(monkeypatch) -> None:
+    """Run each test as on a build machine that can reach the Hub.
+
+    Local test runs set ``HF_HUB_OFFLINE``, and the command refuses to start
+    an emitter with it set. Every emitter here is the in-memory client, and
+    the repository's root fixture refuses to start a real one.
+    """
+    for name in OFFLINE_VARIABLES:
+        monkeypatch.delenv(name, raising=False)
 
 
 @pytest.fixture
@@ -295,12 +325,195 @@ def test_the_command_promotes_with_promote(
     assert all(emitter.closed for emitter in emitters)
 
 
+def _start_emitters(
+    monkeypatch, *options: dict
+) -> tuple[list[FakeEmitterClient], dict]:
+    """Each command run starts the next emitter; all write to one repository.
+
+    ``options`` are the keyword arguments of each emitter in the order the
+    commands start them; later emitters take none.
+    """
+    repository: dict = {}
+    started: list[FakeEmitterClient] = []
+    remaining = list(options)
+
+    def start() -> FakeEmitterClient:
+        settings = remaining.pop(0) if remaining else {}
+        started.append(FakeEmitterClient(hub_files=repository, **settings))
+        return started[-1]
+
+    monkeypatch.setattr(release_publication, "_start_release_emitter", start)
+    return started, repository
+
+
+@pytest.mark.parametrize(
+    ("receipt", "explanations"),
+    [
+        (
+            {"status": "pending", "error_code": "REPOSITORY_UNAVAILABLE"},
+            (
+                "still trying (REPOSITORY_UNAVAILABLE)",
+                "Run the same command again later",
+            ),
+        ),
+        (
+            {
+                "status": "refused",
+                "error_code": "BUILD_FOLDER_EXISTS",
+                "message": "the build's folder already exists.",
+            },
+            (
+                "refused it (BUILD_FOLDER_EXISTS): the build's folder already exists.",
+                "never changed after publishing",
+            ),
+        ),
+        ({"status": "unavailable"}, ("did not answer",)),
+    ],
+    ids=["pending", "refused", "unavailable"],
+)
+def test_the_command_fails_and_explains_a_change_that_did_not_land(
+    national: Path,
+    artifact_root: Path,  # noqa: F811
+    monkeypatch,
+    capsys,
+    receipt: dict,
+    explanations: tuple[str, ...],
+) -> None:
+    client = FakeEmitterClient(release_receipts=[receipt])
+    monkeypatch.setattr(release_publication, "_start_release_emitter", lambda: client)
+
+    code, output, error = _run(
+        [str(national), "--artifact-root", str(artifact_root)], capsys
+    )
+
+    assert code == 1
+    assert output["status"] == receipt["status"]
+    assert output["error_code"] == receipt.get("error_code")
+    assert output["current"] is False
+    for explanation in explanations:
+        assert explanation in error
+    assert client.closed is True
+
+
+def test_a_promotion_refused_for_pointer_files_says_to_promote_again_later(
+    national: Path,
+    artifact_root: Path,  # noqa: F811
+    monkeypatch,
+    capsys,
+) -> None:
+    """The build is published already, so publishing it again cannot help."""
+    _, repository = _start_emitters(monkeypatch)
+    repository[(UK_REPO_ID, "latest-national.json")] = b"{}"
+    assert _run([str(national), "--artifact-root", str(artifact_root)], capsys)[0] == 0
+
+    code, output, error = _run([str(national), "--promote"], capsys)
+
+    assert code == 1
+    assert (output["status"], output["error_code"]) == (
+        "refused",
+        "POINTER_FILES_PRESENT",
+    )
+    assert "without --make-current" not in error
+    assert "stays published but is not current" in error
+    assert "Run this --promote command again once the pointer files" in error
+    record = json.loads(repository[(UK_REPO_ID, "releases.json")])
+    assert record["releases"][UK_NATIONAL_RELEASE_ID]["current"] is None
+
+
+@pytest.mark.parametrize("variable", OFFLINE_VARIABLES)
+@pytest.mark.parametrize("promote", [False, True], ids=["publish", "promote"])
+def test_the_command_refuses_offline_mode_before_starting_an_emitter(
+    national: Path,
+    artifact_root: Path,  # noqa: F811
+    monkeypatch,
+    capsys,
+    variable: str,
+    promote: bool,
+) -> None:
+    """The emitter inherits the variable and could never reach the Hub, so the
+    change would wait out the emitter's hour as pending."""
+    started, _ = _start_emitters(monkeypatch)
+    monkeypatch.setenv(variable, "1")
+    argv = (
+        [str(national), "--promote"]
+        if promote
+        else [str(national), "--artifact-root", str(artifact_root)]
+    )
+
+    code, output, error = _run(argv, capsys)
+
+    assert code == 1
+    assert started == []
+    assert output is None
+    assert "refusing to publish" in error and variable in error
+
+
+@pytest.mark.parametrize(
+    ("access", "reason"),
+    [
+        (
+            NO_CREDENTIAL,
+            "needs a Hugging Face write credential (HF_TOKEN or `hf auth login`)",
+        ),
+        (READ_ONLY_CREDENTIAL, "read-only"),
+    ],
+    ids=["no-credential", "read-only"],
+)
+def test_the_command_checks_write_access_before_publishing(
+    national: Path,
+    artifact_root: Path,  # noqa: F811
+    monkeypatch,
+    capsys,
+    access: dict,
+    reason: str,
+) -> None:
+    started, repository = _start_emitters(monkeypatch, {"write_access": access})
+
+    code, output, error = _run(
+        [str(national), "--artifact-root", str(artifact_root)], capsys
+    )
+
+    (emitter,) = started
+    assert code == 1
+    assert "check_write_access" in emitter.calls
+    assert emitter.release_requests == []
+    assert output["status"] == "unavailable"
+    assert f"the release change to {UK_REPO_ID}" in error and reason in error
+    assert (UK_REPO_ID, "releases.json") not in repository
+    assert emitter.closed is True
+
+
+def test_the_command_checks_write_access_before_promoting(
+    national: Path,
+    artifact_root: Path,  # noqa: F811
+    monkeypatch,
+    capsys,
+) -> None:
+    started, repository = _start_emitters(
+        monkeypatch, {}, {"write_access": NO_CREDENTIAL}
+    )
+    assert _run([str(national), "--artifact-root", str(artifact_root)], capsys)[0] == 0
+
+    code, output, error = _run([str(national), "--promote"], capsys)
+
+    promoter = started[1]
+    assert code == 1
+    assert "check_write_access" in promoter.calls
+    assert promoter.release_requests == []
+    assert output["status"] == "unavailable"
+    assert "needs a Hugging Face write credential" in error
+    record = json.loads(repository[(UK_REPO_ID, "releases.json")])
+    assert record["releases"][UK_NATIONAL_RELEASE_ID]["current"] is None
+
+
 def test_preflight_checks_the_build_without_an_emitter(
     national: Path,
     artifact_root: Path,  # noqa: F811
     monkeypatch,
     capsys,
 ) -> None:
+    # A preflight reads only local files, so offline mode does not refuse it.
+    monkeypatch.setenv("HF_HUB_OFFLINE", "1")
     monkeypatch.setattr(
         release_publication,
         "_start_release_emitter",

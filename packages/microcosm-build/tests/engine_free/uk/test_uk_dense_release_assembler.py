@@ -616,7 +616,9 @@ def test_assembler_stages_a_contract_valid_dense_release(
         shipped["reviewed_exclusions_stood_on"]
         == coverage["signed_deferrals"]["reviewed_exclusions"]
     )
-    # Each new dense build becomes current when it is published.
+    # While the repository keeps its latest*.json pointer files, the emitter
+    # refuses any change to a current build, so the printed publication lists
+    # the build and the promotion makes it current once those files are gone.
     assert shlex.split(summary["publish_command"]) == [
         "uv",
         "run",
@@ -626,7 +628,15 @@ def test_assembler_stages_a_contract_valid_dense_release(
         "policyengine/populace-uk-private",
         "--artifact-root",
         str(candidate),
-        "--make-current",
+    ]
+    assert shlex.split(summary.get("promote_command", "")) == [
+        "uv",
+        "run",
+        "microcosm-publish-release-build",
+        str(release_dir),
+        "--repo-id",
+        "policyengine/populace-uk-private",
+        "--promote",
     ]
     published = candidate / "microcosm_uk_2024_25_dense.h5"
     assert (

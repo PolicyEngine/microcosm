@@ -484,6 +484,50 @@ def test_assemble_green_release_dir(assembler_inputs, capsys) -> None:
     ]
 
 
+def test_an_assembled_national_build_publishes_through_the_emitter(
+    assembler_inputs, capsys
+) -> None:
+    """The publication checks the assembled directory with the release
+    contract itself, not a replaced one, and hands every file over."""
+    from microcosm.build import release_publication
+    from microcosm.data.contract import (
+        BUILD_MANIFEST_FILE_ROLE,
+        RELEASE_MANIFEST_FILE_ROLE,
+    )
+    from test_support.microcosm_build.emitter import FakeEmitterClient
+
+    driver = _load_driver_module()
+    assert driver.main(assembler_inputs["argv"]) == 0
+    capsys.readouterr()
+    release_dir = assembler_inputs["out_dir"] / UK_NATIONAL_RELEASE_ID
+    client = FakeEmitterClient()
+
+    outcome = release_publication.publish_release_build(
+        release_dir,
+        artifact_root=assembler_inputs["candidate"].parent,
+        client=client,
+    )
+
+    assert outcome.published and outcome.succeeded and not outcome.current
+    (request,) = client.release_requests
+    assert (request.release, request.build, request.release_role) == (
+        UK_NATIONAL_RELEASE_ID,
+        _ATTEMPT_ID,
+        "national",
+    )
+    manifest = json.loads((release_dir / "release_manifest.json").read_text())
+    assert {item.name: item.role for item in request.files} == {
+        "release_manifest.json": RELEASE_MANIFEST_FILE_ROLE,
+        "build_manifest.json": BUILD_MANIFEST_FILE_ROLE,
+        **{entry["path"]: entry["role"] for entry in manifest["artifacts"].values()},
+    }
+    folder = f"releases/{UK_NATIONAL_RELEASE_ID}/{_ATTEMPT_ID}"
+    published_dataset = client.hub_files[
+        ("policyengine/populace-uk-private", f"{folder}/{driver._DATASET_FILENAME}")
+    ]
+    assert published_dataset == assembler_inputs["candidate"].read_bytes()
+
+
 def test_assemble_preserves_successful_version_2_delivery(
     assembler_inputs, capsys
 ) -> None:
