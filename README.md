@@ -120,8 +120,11 @@ apply. Unset or `0`, a build continues without the emitter as above; any
 other value stops it with a `ValueError`. Leaving the requirement off
 (unset or `0`) exists only for the convenience of people outside
 PolicyEngine who run Microcosm without access to the collector;
-PolicyEngine's own builds keep telemetry required. Nothing in Microcosm
-sets the variable yet.
+PolicyEngine's own builds keep telemetry required. The Modal stage runner
+sets it to `1` for the stage it runs, unless the plan sets `0`, and passes
+that stage a telemetry-only collector token (see
+[the Modal stage runbook](docs/us-modal-stage-runbook.md#how-a-run-works),
+item 6).
 
 US fiscal refresh builds also write pre-release staging run files **by
 default**. The build hands its progress JSON to the emitter, which commits it

@@ -6,6 +6,7 @@ import copy
 import json
 import math
 import os
+import re
 from collections import Counter
 from dataclasses import replace
 from pathlib import Path
@@ -1347,6 +1348,20 @@ def test_each_coarse_band_lists_exactly_its_native_rows_labels(artifact):
         }
 
 
+# The native income rows whose label repeats the previous row's upper endpoint
+# ($50,000, $80,000 and $300,000). Each opens a coarse band, and right closure
+# leaves the shared endpoint in the band below.
+_INCOME_SHARED_ENDPOINT_ROWS = {"row_60", "row_90", "row_230"}
+
+
+def _label_cents(label):
+    """The cents at each end of a "$a - $b" label."""
+    lower, upper = re.fullmatch(
+        r"\$([\d,]+) - \$([\d,]+)", " ".join(label.split())
+    ).groups()
+    return 100 * int(lower.replace(",", "")), 100 * int(upper.replace(",", ""))
+
+
 def test_each_coarse_row_selects_its_native_rows_committed_labels():
     """R2C-16 without the feed: membership checked against committed rows.
 
@@ -1355,6 +1370,11 @@ def test_each_coarse_row_selects_its_native_rows_committed_labels():
     equals theirs. For each measure the 12 bands' native rows tile rows 50 to
     244 once, in order. The feed audit above checks the same labels against the
     feed, which CI doesn't load.
+
+    Each finite band's first label starts $1 above the band's lower cut (at the
+    cut, for the three pinned rows) and its last label ends at its
+    ``upper_cent``, so no native row can move to a neighbouring band in both
+    lists unnoticed. The open tail's one label is "Over $1,000,000".
     """
     native = {
         row["name"]: row
@@ -1385,3 +1405,29 @@ def test_each_coarse_row_selects_its_native_rows_committed_labels():
         assert labels == expected, row["name"]
     for kind, members in tiled.items():
         assert members == [f"row_{n}" for n in range(50, 245)], kind
+    (table,) = (
+        table
+        for table in _document("reference_intervals.json")["tables"]
+        if table["id"] == "ird_taxable_income_standin_ty2024"
+    )
+    coarse = {row["name"]: row for row in _rows()}
+    cut, shared = table["first_lower_cut_cents"], set()
+    for band in table["bands"]:
+        for name in (band["count_reference"], band["amount_reference"]):
+            row = coarse[name]
+            (labels,) = row["ledger_selector"]["dimension_values"].values()
+            if band["upper_cent"] is None:
+                assert [" ".join(label.split()) for label in labels] == [
+                    "Over $1,000,000"
+                ], name
+                assert cut == 100_000_000, name
+                continue
+            lower, _ = _label_cents(labels[0])
+            _, upper = _label_cents(labels[-1])
+            if lower == cut:
+                shared.add(row["metadata"]["native_rows"].split(",")[0])
+            else:
+                assert lower == cut + 100, name
+            assert upper == band["upper_cent"], name
+        cut = band["upper_cent"]
+    assert shared == _INCOME_SHARED_ENDPOINT_ROWS

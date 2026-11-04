@@ -19,6 +19,7 @@ from microcosm.build.transport.artifact_types import INCOME_CELLS_TYPE
 from microcosm.build.transport.cli import through
 from microcosm.build.transport.compose import (
     compose_transport_graph,
+    measurement_proofs,
     transport_resource,
     validate_transport_activation,
 )
@@ -834,6 +835,18 @@ def test_target_profile_coverage_passes_on_the_toy_with_income_required(toy):
     assert "income" in entry["parameters"]["required_families"]
     row = _gate_row(run, "toy_target_profile_coverage")
     assert row["status"] == "passed", row["failures"]
+    # The gate needs one income match; this pins all six stand-in rows, so a
+    # row that leaves the income family turns the test red while the gate
+    # still passes. The binding hands the gate the problem's row names, which
+    # read name@period (target_kernels.py), so the comparison drops the period.
+    from test_support.microcosm_build.transport_nz_toy import toy_standin_table
+
+    matched = row["details"]["matches_by_requirement"]["income"]
+    assert sorted(name.partition("@")[0] for name in matched) == sorted(
+        band[role]
+        for band in toy_standin_table()["bands"]
+        for role in ("count_reference", "amount_reference")
+    )
 
 
 def test_measurement_prefit_fails_the_toy_only_on_its_unwired_evidence(toy):
@@ -847,6 +860,7 @@ def test_measurement_prefit_fails_the_toy_only_on_its_unwired_evidence(toy):
 
     from test_support.microcosm_build.transport_nz_toy import (
         TOY_PREFIT_EVIDENCE,
+        TOY_PREFIT_SUPPORT,
         TOY_STANDIN_TABLE,
     )
 
@@ -856,6 +870,18 @@ def test_measurement_prefit_fails_the_toy_only_on_its_unwired_evidence(toy):
         gate for gate in gates["gates"] if gate["gate"] == "measurement_prefit"
     ]
     assert list(TOY_PREFIT_EVIDENCE) == packaged["parameters"]["required_evidence"]
+    (entry,) = [
+        gate
+        for gate in fixture.spec["resources"]["gates"]["gates"]
+        if gate["id"] == "toy_measurement_prefit"
+    ]
+    # R2C-3's ratio bounds stand on the toy; only the two support floors scale
+    # down to forty households.
+    assert set(entry["parameters"]) == set(packaged["parameters"])
+    for key in ("roster_total_bounds", "band_bounds", "maximum_discrepant_bands"):
+        assert entry["parameters"][key] == packaged["parameters"][key], key
+    for key, value in TOY_PREFIT_SUPPORT.items():
+        assert entry["parameters"][key] == value, key
     row = _gate_row(run, "toy_measurement_prefit")
     assert row["gate"] == "measurement_prefit"
     assert row["status"] == "failed"
@@ -954,7 +980,7 @@ def test_property_a_positive_standin_above_the_first_cut_lands_in_one_band(
     in none, and x <= 0 is ``excluded`` and in none. The table, as NZ's, has
     no nil band and a first cut above zero.
     """
-    from hypothesis import given, settings
+    from hypothesis import example, given, settings
     from hypothesis import strategies as st
 
     from microcosm.build.reference_intervals import interval_indicators
@@ -971,6 +997,13 @@ def test_property_a_positive_standin_above_the_first_cut_lands_in_one_band(
     factor = Fraction(11, 10)
     cuts = [factor * cut for cut in (TOY_STANDIN_FIRST_CUT, *TOY_STANDIN_CUTS)]
     signed = st.integers(-150_000, 150_000)
+    # Wages at zero and on each aged cut, one either side, with every other
+    # component zero: random draws almost never land on an edge.
+    edges = [
+        (value + step, *(0 for _ in TOY_STANDIN_COMPONENTS[1:]))
+        for value in (0, *(int(cut) for cut in cuts))
+        for step in (-1, 0, 1)
+    ]
 
     @settings(max_examples=150, deadline=None)
     @given(
@@ -980,6 +1013,7 @@ def test_property_a_positive_standin_above_the_first_cut_lands_in_one_band(
             max_size=12,
         )
     )
+    @example(edges)
     def check(records):
         columns = {
             column: pd.Series([row[i] for row in records], dtype="int64")
@@ -1007,6 +1041,29 @@ def test_property_a_positive_standin_above_the_first_cut_lands_in_one_band(
     check()
 
 
+def test_the_toy_standin_measure_keeps_the_packaged_central_rules():
+    """The toy declaration differs from ``measures.central`` only in its columns.
+
+    Its entity, add-backs, floor and scale equal the packaged declaration's, it
+    names the same three outputs, and both give every component sign +1, so
+    the toy's gates run on the packaged measure's arithmetic. The toy sums
+    seven toy columns where the packaged measure sums ten.
+    """
+    from importlib.resources import files
+
+    from test_support.microcosm_build.transport_nz_toy import toy_standin_declaration
+
+    packaged = json.loads(
+        (files("microcosm.build") / "nz" / "income_measurements.json").read_text()
+    )["measures"]["central"]["declaration"]
+    toy = toy_standin_declaration()
+    for key in ("entity", "add_backs", "floor", "scale"):
+        assert toy[key] == packaged[key], key
+    assert set(toy["outputs"]) == set(packaged["outputs"])
+    assert {row["sign"] for row in toy["components"]} == {1}
+    assert {row["sign"] for row in packaged["components"]} == {1}
+
+
 def test_without_the_toy_standin_its_six_rows_refuse_activation_by_name(toy):
     """The drop-the-node mutant, built in the test: A's proof fails closed."""
     from test_support.microcosm_build.transport_nz_toy import (
@@ -1026,3 +1083,313 @@ def test_without_the_toy_standin_its_six_rows_refuse_activation_by_name(toy):
         for role in ("count_reference", "amount_reference"):
             assert f"target_references.{band[role]}; awaits" in message
     assert f"measurement:{TOY_MEASUREMENT}" in message
+
+
+# ---------------------------------------------------------------------------
+# H2 (R2C-20): NZS co-residence from household composition
+# ---------------------------------------------------------------------------
+
+_SHARING = "nz_super_shares_residence_with_person_at_least_adult_age"
+_NZS_CORE = "nz/statutes/new_zealand_superannuation/core.yaml"
+
+
+def _packaged_nz(name):
+    """One of NZ's packaged JSON resources, the bytes its graph selects."""
+    from importlib.resources import files
+
+    path = files("microcosm.build").joinpath("nz", name)
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
+def _before_h2(mapping, closure):
+    """NZ's mapping and closure as they stood before H2 bound the input.
+
+    The mapping had no binding for it, and the closure defaulted it to false
+    with the citation the defaulted entry carried.
+    """
+    mapping = copy.deepcopy(mapping)
+    mapping["bindings"] = [
+        row for row in mapping["bindings"] if row["engine_input"] != _SHARING
+    ]
+    closure = copy.deepcopy(closure)
+    (entry,) = [row for row in closure["entries"] if row["input"] == _SHARING]
+    del entry["encoded_by"]
+    entry.update(
+        {
+            "class": "defaulted",
+            "value": False,
+            "reason": "Before H2, no mapping transform read household composition.",
+            "citation": (
+                "New Zealand Superannuation and Retirement Income Act 2001 s 4A "
+                "(nz_super_living_alone)"
+            ),
+            "new_default": True,
+        }
+    )
+    return mapping, closure
+
+
+def _encode_sharing(person, household, mapping, closure):
+    """Run concepts.encode@1 on NZS core.yaml and return the sharing column."""
+    from microcosm.build.transport.column_kernels import CONCEPTS_ENCODE
+
+    def text(document):
+        return canonical_json(document).decode("utf-8")
+
+    node = Node(
+        "nz.encode.person",
+        CONCEPTS_ENCODE.ref,
+        population="nz.central",
+        params={
+            "mapping": text(mapping),
+            "mapping_sha256": sha256(canonical_json(mapping)).hexdigest(),
+            "closure": text(closure),
+            "closure_sha256": sha256(canonical_json(closure)).hexdigest(),
+            "rulespec_paths": (_NZS_CORE,),
+        },
+        outputs=(Owned("person", _SHARING, "bool"),),
+    )
+    result = CONCEPTS_ENCODE.run(
+        KernelContext(
+            node=node,
+            tables={"person": person.copy(), "household": household.copy()},
+            weights={},
+            strata=pd.Series(["toy"] * len(person), name="stratum"),
+            params=node.params,
+            rng=np.random.default_rng(1),
+        )
+    )
+    values = result.columns["person", _SHARING]
+    assert values.dtype == np.bool_
+    return values.to_dict()
+
+
+def test_h2_sharing_binding_turns_the_toy_superannuitants_default_into_true(toy):
+    """R2C-20 H2 on the toy's created frame, through NZ's packaged resources.
+
+    The toy's adapters invent their rates, so this records the input only.
+    Each of the twenty persons aged 65 or over lives with a partner aged 65
+    to 79 and a 16-year-old: before H2 the closure default gave each false,
+    and the coresident_adult binding now gives each true.
+    """
+    frame = toy[1][0].populations["nz.create"]
+    person = frame.table("person")
+    household = frame.table("household")
+    mapping = _packaged_nz("concept_mapping.json")
+    closure = _packaged_nz("axiom_input_closure.json")
+    before = _encode_sharing(person, household, *_before_h2(mapping, closure))
+    after = _encode_sharing(person, household, mapping, closure)
+    superannuitants = [
+        10000 + 3 * h + member for h in range(30, 40) for member in (0, 1)
+    ]
+    assert sorted(person.loc[person["age"] >= 65, "person_id"]) == superannuitants
+    for identity in superannuitants:
+        row = person.set_index("person_id").loc[identity]
+        others = person[
+            (person["person_household_id"] == row["person_household_id"])
+            & (person["person_id"] != identity)
+        ]
+        assert sorted(others["age"].tolist())[0] == 16
+        assert sorted(others["age"].tolist())[1] >= 65
+        assert before[identity] is False
+        assert after[identity] is True
+
+
+def test_h2_sharing_binding_on_the_household_shapes_the_toy_lacks():
+    """A superannuitant alone, with an adult, or only with a minor.
+
+    The toy has no superannuitant who lives alone or whose only co-resident
+    is under 18. Persons 10 and 11 have no household id, and the
+    coresident_adult kind places each in a household with nobody, so both
+    read false although each is an adult: null ids don't group together.
+    """
+    person = pd.DataFrame(
+        {
+            "person_id": np.arange(1, 12, dtype=np.int64),
+            "person_household_id": pd.array(
+                [100, 200, 200, 300, 300, 400, 400, 500, 500, None, None],
+                dtype="Int64",
+            ),
+            "age": np.array(
+                [70, 68, 40, 72, 16, 66, 18, 67, 17, 75, 30], dtype=np.int64
+            ),
+        }
+    )
+    household = pd.DataFrame(
+        {"household_id": np.array([100, 200, 300, 400, 500], dtype=np.int64)}
+    )
+    mapping = _packaged_nz("concept_mapping.json")
+    closure = _packaged_nz("axiom_input_closure.json")
+    before = _encode_sharing(person, household, *_before_h2(mapping, closure))
+    after = _encode_sharing(person, household, mapping, closure)
+    assert before == dict.fromkeys(range(1, 12), False)
+    assert after == {
+        1: False,  # 70, lives alone
+        2: True,  # 68, with a 40-year-old
+        3: True,
+        4: False,  # 72, whose only co-resident is 16
+        5: True,
+        6: True,  # 66, with an 18-year-old: the adult age is inclusive
+        7: True,
+        8: False,  # 67, whose only co-resident is 17
+        9: True,
+        10: False,  # 75, no household id
+        11: False,  # 30, no household id either
+    }
+
+
+# ---------------------------------------------------------------------------
+# G8-r2c A on the toy: compose proves each scenario calibration's producer
+# ---------------------------------------------------------------------------
+
+
+def _toy_measurement_proof(fixture):
+    proofs, refusals = measurement_proofs(fixture.spec)
+    assert refusals == {}
+    ((binding, proof),) = proofs.items()
+    return binding, proof
+
+
+def test_composition_proves_each_extension_calibration_producer(toy):
+    """The declaration names the skeleton's calibration node; compose proves V3's."""
+    fixture, _ = toy
+    _, proof = _toy_measurement_proof(fixture)
+    graph = compose_transport_graph(copy.deepcopy(fixture.spec), fixture.config)
+    calibration = {
+        node.id for node in graph.nodes if node.kernel.startswith("calibrate.")
+    }
+    assert "nz.v.V3.calibrate" in calibration - set(proof["producers"])
+
+
+def _v3_without_declaration(rows, nodes, binding, columns):
+    """M1: V3's stand-in keeps its outputs and drops the measurement id."""
+    del rows["nz.v.V3.income.standin"]["params"]["measurement_id"]
+
+
+def _v3_second_declarer(rows, nodes, binding, columns):
+    """M2: V3's earnings node declares the measurement too."""
+    rows["nz.v.V3.earnings.cents"]["params"]["measurement_id"] = binding
+
+
+def _v3_universe_elsewhere(rows, nodes, binding, columns):
+    """M4: V3's universe column moves from the stand-in to the earnings node."""
+    standin = rows["nz.v.V3.income.standin"]
+    (moved,) = [row for row in standin["outputs"] if row["column"] == columns[1]]
+    standin["outputs"].remove(moved)
+    rows["nz.v.V3.earnings.cents"]["outputs"].append(moved)
+
+
+def _v3_review_version(rows, nodes, columns):
+    """Open a filter version inside V3 whose one node rewrites both columns.
+
+    Preparation, the compiled targets and the problem move into it.
+    """
+    standin = rows["nz.v.V3.income.standin"]
+    dtypes = {row["column"]: row["dtype"] for row in standin["outputs"]}
+    moved = [
+        rows[name]
+        for name in (
+            "nz.v.V3.calibration.prepare",
+            "nz.v.V3.targets.compile",
+            "nz.v.V3.targets.problem",
+        )
+    ]
+    for row in moved:
+        nodes.remove(row)
+        row["population"] = "nz.v.V3.review"
+    position = nodes.index(standin) + 1
+    nodes[position:position] = [
+        {
+            "id": "nz.v.V3.review",
+            "kernel": "transport.boundary@1",
+            "structural": "filter",
+            "base": "nz.v.V3",
+        },
+        {
+            "id": "nz.v.V3.review.rewrite",
+            "kernel": "transport.currency@1",
+            "population": "nz.v.V3.review",
+            "inputs": [{"entity": "person", "columns": list(columns)}],
+            "outputs": [
+                {
+                    "entity": "person",
+                    "column": column,
+                    "dtype": dtypes[column],
+                    "rewrite": True,
+                }
+                for column in columns
+            ],
+        },
+        *moved,
+    ]
+
+
+def _v3_rewrite_in_the_calibration_base(rows, nodes, binding, columns):
+    """G7: V3's calibration opens from the review version, rewrite and all."""
+    _v3_review_version(rows, nodes, columns)
+    rows["nz.v.V3.calibrate"]["base"] = "nz.v.V3.review"
+
+
+def _v3_rewrite_behind_the_problem(rows, nodes, binding, columns):
+    """G7 in NZ's placement: V3's calibration keeps its base on V3.
+
+    The problem moves into the review version and reads the rewritten
+    columns, so only the calibration's artifact edge from the problem puts
+    the rewrite among its compiled ancestors.
+    """
+    _v3_review_version(rows, nodes, columns)
+
+
+_V3_SECOND_WRITER = (
+    "calibration node 'nz.v.V3.calibrate' has writers "
+    "['nz.v.V3.income.standin', 'nz.v.V3.review.rewrite'] of "
+    "person.{income} upstream; only its producer 'nz.v.V3.income.standin' "
+    "may write it"
+)
+
+
+@pytest.mark.parametrize(
+    ("mutant", "reason"),
+    [
+        (
+            _v3_without_declaration,
+            "0 nodes declaring measurement_id {binding!r} sit upstream of "
+            "calibration node 'nz.v.V3.calibrate'",
+        ),
+        (
+            _v3_second_declarer,
+            "2 nodes declaring measurement_id {binding!r} sit upstream of "
+            "calibration node 'nz.v.V3.calibrate'",
+        ),
+        (
+            _v3_universe_elsewhere,
+            "its one declarer 'nz.v.V3.income.standin' does not write "
+            "['person.{universe}']",
+        ),
+        (_v3_rewrite_in_the_calibration_base, _V3_SECOND_WRITER),
+        (_v3_rewrite_behind_the_problem, _V3_SECOND_WRITER),
+    ],
+)
+def test_composition_refuses_a_scenario_calibration_the_declaration_never_sees(
+    toy, mutant, reason
+):
+    fixture, _ = toy
+    binding, proof = _toy_measurement_proof(fixture)
+    income, universe = (name.split(".", 1)[1] for name in proof["columns"])
+    spec = copy.deepcopy(fixture.spec)
+    (scenario,) = (
+        row for row in spec["resources"]["scenarios"]["scenarios"] if row["id"] == "V3"
+    )
+    rows = {row["id"]: row for row in scenario["nodes"]}
+    mutant(rows, scenario["nodes"], binding, (income, universe))
+    # Scenario rows sit outside the declared graph, so the declaration still
+    # proves the measurement and only the extension pass can refuse.
+    assert binding in measurement_proofs(spec)[0]
+    with pytest.raises(ValueError) as refused:
+        compose_transport_graph(spec, fixture.config)
+    message = str(refused.value)
+    assert message.startswith(
+        f"Measurement {binding!r}: the composed graph proves no producer for "
+        "extension calibration node 'nz.v.V3.calibrate'; "
+    )
+    assert reason.format(binding=binding, income=income, universe=universe) in message

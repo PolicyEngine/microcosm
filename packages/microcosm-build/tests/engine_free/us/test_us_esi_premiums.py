@@ -1101,12 +1101,27 @@ class TestOperatorBoundary:
 
 
 #: Committed reports of the re-pins after microcosm#454 that kept every row of
-#: the feed before them, oldest first. Together they carry the three banked
-#: B4923C facts from the #454 feed to the pinned one. A re-pin that keeps the
-#: rows adds its report here; one that adds or changes rows needs its own check.
-_LATER_ROW_KEEPING_REPIN_REPORTS = (
+#: the feed before them, oldest first, each with the rows it adds. Together
+#: they carry the three banked B4923C facts from the #454 feed to the pinned
+#: one. A re-pin that keeps the rows adds its report here, with ``None`` when it
+#: adds no row, or else the committed listing of its added rows
+#: (``experiments/us-feed-ed-fsa/list_added_rows.py``), the one source they
+#: must all come from and the record-set namespace they must all sit in. The
+#: namespace is declared rather than read from the source, because a source's
+#: record sets need not sit in a namespace of its name (``bea`` rows sit in
+#: ``bea_nipa.`` and ``bea_regional.``). One that drops or changes rows needs
+#: its own check.
+_LATER_ROW_KEEPING_REPIN_REPORTS: tuple[
+    tuple[str, tuple[str, str, str] | None], ...
+] = (
     # microcosm#1343: three dimension values relabelled, nothing else.
-    "experiments/us-feed-agi-age-labels/compare.json",
+    ("experiments/us-feed-agi-age-labels/compare.json", None),
+    # microcosm#1074: Federal Student Aid's loan portfolio tables added, 461
+    # rows from the six packages/ed_fsa packages; nothing else.
+    (
+        "experiments/us-feed-ed-fsa/compare.json",
+        ("experiments/us-feed-ed-fsa/added_rows.json", "ed_fsa", "ed_fsa."),
+    ),
 )
 #: The row fields those re-pins may change: labels, and the record-set hash
 #: that covers the labels.
@@ -1115,6 +1130,85 @@ _LABEL_AND_HASH_FIELDS = (
     "layout/groupby_value_label",
     "layout/record_set_spec_hash",
 )
+
+
+def _follow_later_repin_report(
+    later: dict,
+    *,
+    feed_sha256: str,
+    feed_rows: int,
+    anchor_record_sets: set[str],
+    added: dict | None = None,
+    declared_source: str | None = None,
+    declared_namespace: str | None = None,
+    label: str = "report",
+) -> tuple[str, int]:
+    """Check one later re-pin report against the feed before it.
+
+    The report must start at ``feed_sha256``, keep every key of the feed before
+    it, change only labels and ``record_set_spec_hash`` and leave the B4923C
+    record sets alone. It may add rows only when ``added`` lists exactly the
+    keys it adds and every one of them comes from ``declared_source``, outside
+    the B4923C record sets, in a record set whose id starts with
+    ``declared_namespace``. Returns the new feed's digest and row count.
+    """
+
+    rows = later["rows"]
+    assert later["feeds"]["old"]["sha256"] == feed_sha256, (
+        label,
+        "starts from another feed",
+    )
+    assert rows["old_rows"] == feed_rows, (label, "an old feed of another size")
+    assert rows["keys_only_in_old"] == [], (label, "drops rows")
+    for field, counts in rows["changed_fields"].items():
+        assert field.startswith(_LABEL_AND_HASH_FIELDS), (
+            label,
+            "changes more than labels",
+            field,
+        )
+        assert anchor_record_sets.isdisjoint(counts["by_record_set"]), (
+            label,
+            "changes a B4923C record set",
+            field,
+        )
+    added_keys = rows["keys_only_in_new"]
+    if added is None:
+        assert added_keys == [], (label, "adds rows without declaring them")
+    else:
+        assert declared_source, (label, "declares added rows without a source")
+        assert declared_namespace, (label, "declares added rows without a namespace")
+        assert added["new_feed"]["sha256"] == later["feeds"]["new"]["sha256"], (
+            label,
+            "a listing of another feed",
+        )
+        listed = {row["aggregate_fact_key"]: row for row in added["rows"]}
+        assert len(listed) == len(added["rows"]), (label, "an added key twice")
+        assert set(listed) == set(added_keys), (label, "added keys differ")
+        sources = {row["source_name"] for row in listed.values()}
+        assert sources == {declared_source}, (
+            label,
+            "an added row from another source",
+            sources,
+        )
+        assert anchor_record_sets.isdisjoint(
+            row["record_set_id"] for row in listed.values()
+        ), (label, "an added row in a B4923C record set")
+        outside = sorted(
+            row["record_set_id"]
+            for row in listed.values()
+            if not row["record_set_id"].startswith(declared_namespace)
+        )
+        assert outside == [], (
+            label,
+            "an added row outside the namespace",
+            declared_namespace,
+            outside,
+        )
+    assert rows["new_rows"] == rows["old_rows"] + len(added_keys), (
+        label,
+        "a new row count that does not add up",
+    )
+    return later["feeds"]["new"]["sha256"], rows["new_rows"]
 
 
 class TestAnchorFeedCheck:
@@ -1149,8 +1243,10 @@ class TestAnchorFeedCheck:
         committed row-by-row report of the re-pin that added them, then the
         committed report of every later re-pin that kept the feed's rows
         (``_LATER_ROW_KEEPING_REPIN_REPORTS``). Each later report must start
-        from the feed before it, keep every key, change no value and leave
-        the three B4923C record sets alone, and the last must end at the pin.
+        from the feed before it, keep every key, change no value, leave the
+        three B4923C record sets alone and add rows only from its declared
+        source (``_follow_later_repin_report``), and the last must end at the
+        pin.
         Changing the anchor without re-pinning the feed, or the reverse, fails
         here and not only at a release preflight.
         """
@@ -1178,19 +1274,22 @@ class TestAnchorFeedCheck:
 
         feed_sha256 = report["new"]["sha256"]
         feed_rows = report["new"]["rows"]
-        for report_path in _LATER_ROW_KEEPING_REPIN_REPORTS:
+        for report_path, additions in _LATER_ROW_KEEPING_REPIN_REPORTS:
             later = json.loads((_REPOSITORY_ROOT / report_path).read_text())
-            rows = later["rows"]
-            assert later["feeds"]["old"]["sha256"] == feed_sha256, report_path
-            assert rows["old_rows"] == rows["new_rows"] == feed_rows, report_path
-            assert rows["keys_only_in_old"] == rows["keys_only_in_new"] == []
-            for field, counts in rows["changed_fields"].items():
-                assert field.startswith(_LABEL_AND_HASH_FIELDS), (report_path, field)
-                assert anchor_record_sets.isdisjoint(counts["by_record_set"]), (
-                    report_path,
-                    field,
-                )
-            feed_sha256 = later["feeds"]["new"]["sha256"]
+            later_added, declared_source, declared_namespace = None, None, None
+            if additions is not None:
+                added_path, declared_source, declared_namespace = additions
+                later_added = json.loads((_REPOSITORY_ROOT / added_path).read_text())
+            feed_sha256, feed_rows = _follow_later_repin_report(
+                later,
+                feed_sha256=feed_sha256,
+                feed_rows=feed_rows,
+                anchor_record_sets=anchor_record_sets,
+                added=later_added,
+                declared_source=declared_source,
+                declared_namespace=declared_namespace,
+                label=report_path,
+            )
         assert feed_sha256 == pin["facts_sha256"]
         assert feed_rows == pin["fact_row_count"]
         assert {row["source_sha256"] for row in added} == {
@@ -1202,6 +1301,356 @@ class TestAnchorFeedCheck:
             for row in added
         ]
         assert esi.us_esi_premiums_anchor_feed_mismatches(facts) == []
+
+    @staticmethod
+    def _later_report(*, added_keys: list[str], changed_fields: dict | None = None):
+        return {
+            "feeds": {"old": {"sha256": "old"}, "new": {"sha256": "new"}},
+            "rows": {
+                "old_rows": 10,
+                "new_rows": 10 + len(added_keys),
+                "keys_only_in_old": [],
+                "keys_only_in_new": added_keys,
+                "changed_fields": changed_fields or {},
+            },
+        }
+
+    @staticmethod
+    def _added(rows: list[tuple[str, str, str]]) -> dict:
+        return {
+            "new_feed": {"sha256": "new"},
+            "rows": [
+                {"aggregate_fact_key": key, "source_name": source, "record_set_id": rs}
+                for key, source, rs in rows
+            ],
+        }
+
+    #: The pin test's three B4923C record sets, one for each year of the
+    #: banked series. Each anchor case below runs once for each of them, so a
+    #: check that reads only some of the three lets one of those cases
+    #: through.
+    _ANCHORS = {
+        "bea_nipa.cy2023.private_group_health_insurance",
+        "bea_nipa.cy2024.private_group_health_insurance",
+        "bea_nipa.cy2025.private_group_health_insurance",
+    }
+
+    def test_a_later_report_may_add_rows_from_its_declared_source(self) -> None:
+        later = self._later_report(
+            added_keys=["k1", "k2"],
+            changed_fields={
+                "layout/record_set_spec_hash": {"rows": 1, "by_record_set": {"x": 1}}
+            },
+        )
+        added = self._added(
+            [("k1", "ed_fsa", "ed_fsa.a"), ("k2", "ed_fsa", "ed_fsa.b")]
+        )
+        assert _follow_later_repin_report(
+            later,
+            feed_sha256="old",
+            feed_rows=10,
+            anchor_record_sets=self._ANCHORS,
+            added=added,
+            declared_source="ed_fsa",
+            declared_namespace="ed_fsa.",
+        ) == ("new", 12)
+
+    def test_a_later_report_may_relabel_rows_and_add_none(self) -> None:
+        # As microcosm#1343's re-pin did: label changes, the record-set hash
+        # that covers them, and no added row.
+        later = self._later_report(
+            added_keys=[],
+            changed_fields={
+                "dimension_value_labels/age/85_plus": {
+                    "rows": 1,
+                    "by_record_set": {"x": 1},
+                },
+                "layout/groupby_value_label": {"rows": 1, "by_record_set": {"x": 1}},
+                "layout/record_set_spec_hash": {"rows": 2, "by_record_set": {"x": 2}},
+            },
+        )
+        assert _follow_later_repin_report(
+            later,
+            feed_sha256="old",
+            feed_rows=10,
+            anchor_record_sets=self._ANCHORS,
+        ) == ("new", 10)
+
+    # Each refusing case below names the check that must refuse it, so a check
+    # moved ahead of another fails the case it takes over. A check that reads
+    # only the first entry of a list or a mapping, or only the last, lets
+    # through each case whose comment puts its bad entry between two good
+    # ones.
+    @pytest.mark.parametrize(
+        (
+            "added_keys",
+            "added_rows",
+            "declared_source",
+            "declared_namespace",
+            "refusal",
+        ),
+        [
+            # Rows added with no declaration.
+            (["k1"], None, None, None, "adds rows without declaring them"),
+            # A row from a source the re-pin did not declare, between two rows
+            # from the declared source.
+            (
+                ["k1", "k2", "k3"],
+                [
+                    ("k1", "ed_fsa", "ed_fsa.a"),
+                    ("k2", "irs_soi", "x"),
+                    ("k3", "ed_fsa", "ed_fsa.b"),
+                ],
+                "ed_fsa",
+                "ed_fsa.",
+                "an added row from another source",
+            ),
+            # The listing misses a key the report adds.
+            (
+                ["k1", "k2"],
+                [("k1", "ed_fsa", "ed_fsa.a")],
+                "ed_fsa",
+                "ed_fsa.",
+                "added keys differ",
+            ),
+            # The listing names a key the report does not add.
+            (
+                ["k1"],
+                [("k1", "ed_fsa", "ed_fsa.a"), ("k9", "ed_fsa", "ed_fsa.b")],
+                "ed_fsa",
+                "ed_fsa.",
+                "added keys differ",
+            ),
+            # A declared row in a B4923C anchor record set, which also sits
+            # outside the declared namespace, between two rows that sit inside
+            # it: one case for each anchor.
+            *(
+                (
+                    ["k1", "k2", "k3"],
+                    [
+                        ("k1", "ed_fsa", "ed_fsa.a"),
+                        ("k2", "ed_fsa", anchor),
+                        ("k3", "ed_fsa", "ed_fsa.b"),
+                    ],
+                    "ed_fsa",
+                    "ed_fsa.",
+                    "an added row in a B4923C record set",
+                )
+                for anchor in sorted(_ANCHORS)
+            ),
+            # A listing with no declared source.
+            (
+                ["k1"],
+                [("k1", "ed_fsa", "ed_fsa.a")],
+                None,
+                "ed_fsa.",
+                "declares added rows without a source",
+            ),
+            # A row the listing labels with the declared source, in a record
+            # set outside the declared namespace, between two rows inside it.
+            (
+                ["k1", "k2", "k3"],
+                [
+                    ("k1", "ed_fsa", "ed_fsa.a"),
+                    ("k2", "ed_fsa", "irs_soi.ty2023.table_1_4"),
+                    ("k3", "ed_fsa", "ed_fsa.b"),
+                ],
+                "ed_fsa",
+                "ed_fsa.",
+                "an added row outside the namespace",
+            ),
+            # A row in a record set that contains the declared namespace but
+            # does not start with it.
+            (
+                ["k1"],
+                [("k1", "ed_fsa", "x.ed_fsa.a")],
+                "ed_fsa",
+                "ed_fsa.",
+                "an added row outside the namespace",
+            ),
+            # A listing with no declared namespace.
+            (
+                ["k1"],
+                [("k1", "ed_fsa", "ed_fsa.a")],
+                "ed_fsa",
+                None,
+                "declares added rows without a namespace",
+            ),
+        ],
+        ids=[
+            "undeclared-additions",
+            "other-source",
+            "listing-short",
+            "listing-extra",
+            "anchor-record-set-cy2023",
+            "anchor-record-set-cy2024",
+            "anchor-record-set-cy2025",
+            "no-source",
+            "outside-namespace",
+            "namespace-not-leading",
+            "no-namespace",
+        ],
+    )
+    def test_a_later_report_refuses_rows_added_outside_its_declaration(
+        self, added_keys, added_rows, declared_source, declared_namespace, refusal
+    ) -> None:
+        later = self._later_report(added_keys=added_keys)
+        added = None if added_rows is None else self._added(added_rows)
+        with pytest.raises(AssertionError, match=refusal):
+            _follow_later_repin_report(
+                later,
+                feed_sha256="old",
+                feed_rows=10,
+                anchor_record_sets=self._ANCHORS,
+                added=added,
+                declared_source=declared_source,
+                declared_namespace=declared_namespace,
+            )
+
+    @pytest.mark.parametrize(
+        ("mutate", "refusal"),
+        [
+            # A listing made from a feed other than the report's new feed.
+            (
+                lambda a: a["new_feed"].update(sha256="other"),
+                "a listing of another feed",
+            ),
+            # A listing whose digest sorts before the report's new feed.
+            (
+                lambda a: a["new_feed"].update(sha256="aaa"),
+                "a listing of another feed",
+            ),
+            # A listing that names one added key twice.
+            (lambda a: a["rows"].append(dict(a["rows"][0])), "an added key twice"),
+        ],
+        ids=[
+            "listing-other-feed",
+            "listing-other-feed-sorts-first",
+            "listing-repeats-key",
+        ],
+    )
+    def test_a_later_report_refuses_a_listing_it_cannot_follow(
+        self, mutate, refusal
+    ) -> None:
+        added = self._added([("k1", "ed_fsa", "ed_fsa.a")])
+        mutate(added)
+        with pytest.raises(AssertionError, match=refusal):
+            _follow_later_repin_report(
+                self._later_report(added_keys=["k1"]),
+                feed_sha256="old",
+                feed_rows=10,
+                anchor_record_sets=self._ANCHORS,
+                added=added,
+                declared_source="ed_fsa",
+                declared_namespace="ed_fsa.",
+            )
+
+    @pytest.mark.parametrize(
+        ("mutate", "refusal"),
+        [
+            (lambda r: r["rows"].update(keys_only_in_old=["k0"]), "drops rows"),
+            (
+                lambda r: r["rows"].update(new_rows=r["rows"]["new_rows"] + 1),
+                "a new row count that does not add up",
+            ),
+            # A new row count one short. The four checks of a feed's digest or
+            # row count each have a case above the expected value and one below
+            # it.
+            (
+                lambda r: r["rows"].update(new_rows=r["rows"]["new_rows"] - 1),
+                "a new row count that does not add up",
+            ),
+            # A value change, between a hash change and a label change.
+            (
+                lambda r: r["rows"]["changed_fields"].update(
+                    {
+                        "layout/record_set_spec_hash": {
+                            "rows": 1,
+                            "by_record_set": {"x": 1},
+                        },
+                        "value": {"rows": 1, "by_record_set": {"x": 1}},
+                        "dimension_value_labels/age/85_plus": {
+                            "rows": 1,
+                            "by_record_set": {"x": 1},
+                        },
+                    }
+                ),
+                "changes more than labels",
+            ),
+            (
+                lambda r: r["feeds"]["old"].update(sha256="other"),
+                "starts from another feed",
+            ),
+            # An old feed whose digest sorts before the expected one.
+            (
+                lambda r: r["feeds"]["old"].update(sha256="aaa"),
+                "starts from another feed",
+            ),
+            # An old feed of another size, with a new count that still adds up.
+            (
+                lambda r: r["rows"].update(old_rows=11, new_rows=12),
+                "an old feed of another size",
+            ),
+            # An old feed one row short, with a new count that still adds up.
+            (
+                lambda r: r["rows"].update(old_rows=9, new_rows=10),
+                "an old feed of another size",
+            ),
+            # A label change in a B4923C record set, between two record sets
+            # outside the anchors, in the second of three changed fields: one
+            # case for each anchor, which the default argument binds.
+            *(
+                (
+                    lambda r, anchor=anchor: r["rows"]["changed_fields"].update(
+                        {
+                            "layout/record_set_spec_hash": {
+                                "rows": 1,
+                                "by_record_set": {"x": 1},
+                            },
+                            "layout/groupby_value_label": {
+                                "rows": 3,
+                                "by_record_set": {"x": 1, anchor: 1, "z": 1},
+                            },
+                            "dimension_value_labels/age/85_plus": {
+                                "rows": 1,
+                                "by_record_set": {"z": 1},
+                            },
+                        }
+                    ),
+                    "changes a B4923C record set",
+                )
+                for anchor in sorted(_ANCHORS)
+            ),
+        ],
+        ids=[
+            "dropped-row",
+            "row-count",
+            "row-count-short",
+            "value-change",
+            "wrong-base",
+            "wrong-base-sorts-first",
+            "old-row-count",
+            "old-row-count-short",
+            "anchor-label-cy2023",
+            "anchor-label-cy2024",
+            "anchor-label-cy2025",
+        ],
+    )
+    def test_a_later_report_still_refuses_dropped_or_changed_rows(
+        self, mutate, refusal
+    ) -> None:
+        later = self._later_report(added_keys=["k1"])
+        mutate(later)
+        with pytest.raises(AssertionError, match=refusal):
+            _follow_later_repin_report(
+                later,
+                feed_sha256="old",
+                feed_rows=10,
+                anchor_record_sets=self._ANCHORS,
+                added=self._added([("k1", "ed_fsa", "ed_fsa.a")]),
+                declared_source="ed_fsa",
+                declared_namespace="ed_fsa.",
+            )
 
     def test_a_missing_repeated_or_different_fact_is_named(self) -> None:
         facts = self._facts({2023: 923_195_000_000, 2024: 1_002_920_000_000})

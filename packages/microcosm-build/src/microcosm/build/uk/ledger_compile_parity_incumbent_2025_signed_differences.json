@@ -1,11 +1,11 @@
 {
- "compiled_count": 1420,
+ "compiled_count": 1425,
  "counts_by_kind": {
   "calibration_drift": 566,
   "fixture_only": 42,
-  "ledger_only": 825
+  "ledger_only": 830
  },
- "difference_count": 1433,
+ "difference_count": 1438,
  "differences": [
   {
    "fixture_value": 1608000.0,
@@ -1292,6 +1292,41 @@
    "kind": "ledger_only",
    "ledger_value": 104200000000.0,
    "name": "dwp.workplace_pension.employer_contributions",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 60000.0,
+   "name": "hmrc.benefits_in_kind.company_car_fuel.diesel_including_hybrids",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 465000.0,
+   "name": "hmrc.benefits_in_kind.company_car_fuel.fully_electric",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 390000.0,
+   "name": "hmrc.benefits_in_kind.company_car_fuel.petrol_including_hybrids",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 920000.0,
+   "name": "hmrc.benefits_in_kind.company_car_recipients",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 3070000000.0,
+   "name": "hmrc.benefits_in_kind.company_car_taxable_value",
    "period": 2025,
    "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
   },
