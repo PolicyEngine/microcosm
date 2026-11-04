@@ -850,3 +850,40 @@ def test_one_adapter_exposes_roots_from_two_logical_views(tmp_path, monkeypatch)
         engine_root_inputs(adapter, document["bindings"][0], document["entity_names"])
         == expected
     )
+
+
+def test_outside_cannot_name_a_binding_output_on_person(tmp_path, monkeypatch):
+    root, document, _ = _fixture(
+        tmp_path,
+        monkeypatch,
+        programs={"Person": _person_program(), "Child": _child_program()},
+        variables=["adult_amount", *CHILD_OUTPUTS],
+    )
+    document["bindings"][0]["views"][0]["outside"]["adult_amount"] = 0.0
+    with pytest.raises(ValueError, match="outside keys"):
+        build_transport_registry(document, root, unit_rule=UNIT_RULE)
+
+
+@pytest.mark.parametrize(
+    "name,value,message",
+    [
+        (
+            "child_amount",
+            True,
+            "View outside value .* does not cast losslessly to its 'decimal' output",
+        ),
+        ("child_test", 2, "Judgment output 'child_test' holds codes outside -1/0/1"),
+        (
+            "child_test",
+            0.5,
+            "View outside value .* does not cast losslessly to its 'judgment' output",
+        ),
+    ],
+)
+def test_registry_refuses_outside_values_that_cannot_cast(
+    tmp_path, monkeypatch, name, value, message
+):
+    root, document, _ = _fixture(tmp_path, monkeypatch)
+    document["bindings"][0]["views"][0]["outside"][name] = value
+    with pytest.raises(ValueError, match=message):
+        build_transport_registry(document, root, unit_rule=UNIT_RULE)

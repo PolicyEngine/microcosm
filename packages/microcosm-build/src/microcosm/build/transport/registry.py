@@ -30,6 +30,7 @@ from microcosm.frame.adapters.axiom import (
     AxiomPeriod,
     AxiomRelation,
     AxiomView,
+    _outside_values,
     assert_no_relations,
     axiom_engine_ref,
     rulespec_tree_digest,
@@ -474,7 +475,8 @@ def _check_views(engine: AxiomEngine, semantics: Mapping) -> None:
     program, when the module has one, too. A view's outside keys must equal
     the binding's variables on its logical entity, and no view input may
     share its name with a root input of the binding entity's program: both
-    would read one person column.
+    would read one person column. Each outside value must cast losslessly to
+    its output's graph dtype before a registry can pin it.
     """
     label = f"rules binding {semantics['id']!r}.views"
     entity = semantics["entity"]
@@ -496,6 +498,8 @@ def _check_views(engine: AxiomEngine, semantics: Mapping) -> None:
                 f"{sorted(view.outside)} differ from the binding's variables on "
                 f"it {sorted(on_view)}."
             )
+        for name, value in view.outside.items():
+            _outside_values(name, derived[name].dtype, value, 0)
     if binding_program is not None:
         shared = sorted(
             {name for inputs in engine.view_root_inputs().values() for name in inputs}
