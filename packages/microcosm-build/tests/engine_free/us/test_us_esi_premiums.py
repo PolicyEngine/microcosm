@@ -1356,8 +1356,9 @@ class TestAnchorFeedCheck:
         ) == ("new", 12)
 
     def test_a_later_report_may_relabel_rows_and_add_none(self) -> None:
-        # As microcosm#1343's re-pin did: label changes in two dimensions,
-        # the record-set hash that covers them, and no added row.
+        # As microcosm#1343's re-pin did: label changes in two dimensions, in
+        # different record sets, with a group-by label and record-set hash
+        # change in each record set, and no added row.
         later = self._later_report(
             added_keys=[],
             changed_fields={
@@ -1369,8 +1370,14 @@ class TestAnchorFeedCheck:
                     "rows": 1,
                     "by_record_set": {"y": 1},
                 },
-                "layout/groupby_value_label": {"rows": 1, "by_record_set": {"x": 1}},
-                "layout/record_set_spec_hash": {"rows": 2, "by_record_set": {"x": 2}},
+                "layout/groupby_value_label": {
+                    "rows": 2,
+                    "by_record_set": {"x": 1, "y": 1},
+                },
+                "layout/record_set_spec_hash": {
+                    "rows": 3,
+                    "by_record_set": {"x": 2, "y": 1},
+                },
             },
         )
         assert _follow_later_repin_report(
