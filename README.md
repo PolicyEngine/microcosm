@@ -443,6 +443,37 @@ reviewed cut with `--promote-line <line> --tag-name <cut-tag>`. Promotion moves
 only that line pointer; the UK repository-global `latest.json` remains frozen
 on the June 2023 release. Promotion reuses the immutable cut tag the inspect publication created (it checks the tagged manifest is byte-identical) and writes only the pointer commit, so the two-step sequence and a retry after a failed pointer commit both work. A line's registry entry is registered off the default variant until its first promotion; the default flips in a follow-up after the pointer exists.
 
+**Build folders, after a repository's switch.** A UK national, dense or
+local-area build can also be published into its own folder,
+`releases/<release>/<build>/`, through the separately installed emitter,
+whose release writer records it in the repository's `releases.json`, the
+only record of each release's builds and which one is current:
+
+```bash
+uv run microcosm-publish-release-build releases/<release> \
+  --repo-id <owner/repository> --artifact-root <candidate-dir> [--make-current]
+uv run microcosm-publish-release-build releases/<release> --promote
+```
+
+A build counts as current only when the emitter's receipt is `published` and
+names it as `current`. Each path refuses a repository in the other's layout,
+so a UK release always has one way to change its current build:
+
+- `microcosm-publish-release-build` lists the repository's files and refuses,
+  before any emitter starts, while any `latest*.json` pointer file is there.
+  It also refuses with `HF_HUB_OFFLINE` or `TRANSFORMERS_OFFLINE` set, and
+  hands nothing over unless the emitter's write-access check passes.
+- `microcosm-publish-release` (and `tools/publish_release.sh`) refuses a
+  repository that has `releases.json`.
+
+So UK releases keep publishing, promoting and sending their Slack alerts
+through the pointer files, as above, until their repository's switch, one
+commit that writes `releases.json` and deletes the pointer files. Release
+alerts do not stop: the switch waits until the dashboard posts them from
+changes to `releases.json`. `microcosm.data.load` reads a release's current
+build from `releases.json` where the repository has one, and follows its
+pointer file otherwise.
+
 The publisher uploads only the contract files, the release manifest's
 artifacts and any `--extra-file`. The US fiscal-refresh tool therefore binds
 its terminal gate verdicts as manifest artifacts: `input_coverage.json`,
