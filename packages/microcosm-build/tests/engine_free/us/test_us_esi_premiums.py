@@ -1105,16 +1105,22 @@ class TestOperatorBoundary:
 #: they carry the three banked B4923C facts from the #454 feed to the pinned
 #: one. A re-pin that keeps the rows adds its report here, with ``None`` when it
 #: adds no row, or else the committed listing of its added rows
-#: (``experiments/us-feed-ed-fsa/list_added_rows.py``) and the one source they
-#: must all come from. One that drops or changes rows needs its own check.
-_LATER_ROW_KEEPING_REPIN_REPORTS: tuple[tuple[str, tuple[str, str] | None], ...] = (
+#: (``experiments/us-feed-ed-fsa/list_added_rows.py``), the one source they
+#: must all come from and the record-set namespace they must all sit in. The
+#: namespace is declared rather than read from the source, because a source's
+#: record sets need not sit in a namespace of its name (``bea`` rows sit in
+#: ``bea_nipa.`` and ``bea_regional.``). One that drops or changes rows needs
+#: its own check.
+_LATER_ROW_KEEPING_REPIN_REPORTS: tuple[
+    tuple[str, tuple[str, str, str] | None], ...
+] = (
     # microcosm#1343: three dimension values relabelled, nothing else.
     ("experiments/us-feed-agi-age-labels/compare.json", None),
     # microcosm#1074: Federal Student Aid's loan portfolio tables added, 461
     # rows from the six packages/ed_fsa packages; nothing else.
     (
         "experiments/us-feed-ed-fsa/compare.json",
-        ("experiments/us-feed-ed-fsa/added_rows.json", "ed_fsa"),
+        ("experiments/us-feed-ed-fsa/added_rows.json", "ed_fsa", "ed_fsa."),
     ),
 )
 #: The row fields those re-pins may change: labels, and the record-set hash
@@ -1134,6 +1140,7 @@ def _follow_later_repin_report(
     anchor_record_sets: set[str],
     added: dict | None = None,
     declared_source: str | None = None,
+    declared_namespace: str | None = None,
     label: str = "report",
 ) -> tuple[str, int]:
     """Check one later re-pin report against the feed before it.
@@ -1142,7 +1149,8 @@ def _follow_later_repin_report(
     it, change only labels and ``record_set_spec_hash`` and leave the B4923C
     record sets alone. It may add rows only when ``added`` lists exactly the
     keys it adds and every one of them comes from ``declared_source``, outside
-    the B4923C record sets. Returns the new feed's digest and row count.
+    the B4923C record sets, in a record set whose id starts with
+    ``declared_namespace``. Returns the new feed's digest and row count.
     """
 
     rows = later["rows"]
@@ -1157,6 +1165,7 @@ def _follow_later_repin_report(
         assert added_keys == [], (label, "adds rows without declaring them")
     else:
         assert declared_source, (label, "declares added rows without a source")
+        assert declared_namespace, (label, "declares added rows without a namespace")
         assert added["new_feed"]["sha256"] == later["feeds"]["new"]["sha256"], label
         listed = {row["aggregate_fact_key"]: row for row in added["rows"]}
         assert len(listed) == len(added["rows"]), (label, "an added key twice")
@@ -1166,6 +1175,12 @@ def _follow_later_repin_report(
         assert anchor_record_sets.isdisjoint(
             row["record_set_id"] for row in listed.values()
         ), label
+        outside = sorted(
+            row["record_set_id"]
+            for row in listed.values()
+            if not row["record_set_id"].startswith(declared_namespace)
+        )
+        assert outside == [], (label, declared_namespace, outside)
     assert rows["new_rows"] == rows["old_rows"] + len(added_keys), label
     return later["feeds"]["new"]["sha256"], rows["new_rows"]
 
@@ -1235,9 +1250,9 @@ class TestAnchorFeedCheck:
         feed_rows = report["new"]["rows"]
         for report_path, additions in _LATER_ROW_KEEPING_REPIN_REPORTS:
             later = json.loads((_REPOSITORY_ROOT / report_path).read_text())
-            later_added, declared_source = None, None
+            later_added, declared_source, declared_namespace = None, None, None
             if additions is not None:
-                added_path, declared_source = additions
+                added_path, declared_source, declared_namespace = additions
                 later_added = json.loads((_REPOSITORY_ROOT / added_path).read_text())
             feed_sha256, feed_rows = _follow_later_repin_report(
                 later,
@@ -1246,6 +1261,7 @@ class TestAnchorFeedCheck:
                 anchor_record_sets=anchor_record_sets,
                 added=later_added,
                 declared_source=declared_source,
+                declared_namespace=declared_namespace,
                 label=report_path,
             )
         assert feed_sha256 == pin["facts_sha256"]
@@ -1302,34 +1318,49 @@ class TestAnchorFeedCheck:
             anchor_record_sets=self._ANCHORS,
             added=added,
             declared_source="ed_fsa",
+            declared_namespace="ed_fsa.",
         ) == ("new", 12)
 
     @pytest.mark.parametrize(
-        ("added_keys", "added_rows", "declared_source"),
+        ("added_keys", "added_rows", "declared_source", "declared_namespace"),
         [
             # Rows added with no declaration.
-            (["k1"], None, None),
+            (["k1"], None, None, None),
             # A row from a source the re-pin did not declare.
             (
                 ["k1", "k2"],
                 [("k1", "ed_fsa", "ed_fsa.a"), ("k2", "irs_soi", "x")],
                 "ed_fsa",
+                "ed_fsa.",
             ),
             # The listing misses a key the report adds.
-            (["k1", "k2"], [("k1", "ed_fsa", "ed_fsa.a")], "ed_fsa"),
+            (["k1", "k2"], [("k1", "ed_fsa", "ed_fsa.a")], "ed_fsa", "ed_fsa."),
             # The listing names a key the report does not add.
-            (["k1"], [("k1", "ed_fsa", "a"), ("k9", "ed_fsa", "b")], "ed_fsa"),
+            (
+                ["k1"],
+                [("k1", "ed_fsa", "ed_fsa.a"), ("k9", "ed_fsa", "ed_fsa.b")],
+                "ed_fsa",
+                "ed_fsa.",
+            ),
             # A declared row in a B4923C anchor record set.
             (
                 ["k1"],
                 [("k1", "ed_fsa", "bea_nipa.cy2024.private_group_health_insurance")],
                 "ed_fsa",
+                "ed_fsa.",
             ),
             # A listing with no declared source.
-            (["k1"], [("k1", "ed_fsa", "ed_fsa.a")], None),
+            (["k1"], [("k1", "ed_fsa", "ed_fsa.a")], None, "ed_fsa."),
             # A row the listing labels with the declared source, in a record
             # set outside the declared namespace.
-            (["k1"], [("k1", "ed_fsa", "irs_soi.ty2023.table_1_4")], "ed_fsa"),
+            (
+                ["k1"],
+                [("k1", "ed_fsa", "irs_soi.ty2023.table_1_4")],
+                "ed_fsa",
+                "ed_fsa.",
+            ),
+            # A listing with no declared namespace.
+            (["k1"], [("k1", "ed_fsa", "ed_fsa.a")], "ed_fsa", None),
         ],
         ids=[
             "undeclared-additions",
@@ -1339,10 +1370,11 @@ class TestAnchorFeedCheck:
             "anchor-record-set",
             "no-source",
             "outside-namespace",
+            "no-namespace",
         ],
     )
     def test_a_later_report_refuses_rows_added_outside_its_declaration(
-        self, added_keys, added_rows, declared_source
+        self, added_keys, added_rows, declared_source, declared_namespace
     ) -> None:
         later = self._later_report(added_keys=added_keys)
         added = None if added_rows is None else self._added(added_rows)
@@ -1354,6 +1386,7 @@ class TestAnchorFeedCheck:
                 anchor_record_sets=self._ANCHORS,
                 added=added,
                 declared_source=declared_source,
+                declared_namespace=declared_namespace,
             )
 
     @pytest.mark.parametrize(
@@ -1379,6 +1412,7 @@ class TestAnchorFeedCheck:
                 anchor_record_sets=self._ANCHORS,
                 added=self._added([("k1", "ed_fsa", "ed_fsa.a")]),
                 declared_source="ed_fsa",
+                declared_namespace="ed_fsa.",
             )
 
     def test_a_missing_repeated_or_different_fact_is_named(self) -> None:
