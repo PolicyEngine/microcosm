@@ -1919,6 +1919,40 @@
           "expected_row_count": 26
         }
       ]
+    },
+    {
+      "resource": "scotgov_chargeable_dwellings_by_band.json",
+      "purpose": "The Scottish Government's chargeable dwellings by council-tax band, A to H, for each of the 32 council areas at September 2025 (CTAXBASE 2025). Consumed by the post-geography band node, which draws each Scottish owner clone's band from its council area's mix at the clone's rank among Scotland's owners (microcosm#1095 B12).",
+      "consumers": [
+        "uk_runtime.property_localisation"
+      ],
+      "planned_consumers": [],
+      "selections": [
+        {
+          "label": "ctaxbase_2025_chargeable_dwellings_by_band",
+          "selector": {
+            "source_name": "scotgov",
+            "source_concept": [
+              "scotgov.chargeable_dwellings_band_a",
+              "scotgov.chargeable_dwellings_band_b",
+              "scotgov.chargeable_dwellings_band_c",
+              "scotgov.chargeable_dwellings_band_d",
+              "scotgov.chargeable_dwellings_band_e",
+              "scotgov.chargeable_dwellings_band_f",
+              "scotgov.chargeable_dwellings_band_g",
+              "scotgov.chargeable_dwellings_band_h"
+            ],
+            "period_type": "month",
+            "period_value": [
+              "2025-09"
+            ],
+            "geography_level": [
+              "local_authority"
+            ]
+          },
+          "expected_row_count": 256
+        }
+      ]
     }
   ]
 }

@@ -23,9 +23,11 @@ from microcosm.calibrate.matrix import build_constraint_matrix
 from microcosm.frame import EntitySchema, Frame, WeightKind, Weights
 
 
-def _fixture():
+def _fixture(*, third_child_born_early_2017=False):
     # Own QYP ages, award, dwelling. Units 1, 3, 4 share a dwelling: two
-    # affected claims and an unrelated claimant with a baby and PIP.
+    # affected claims and an unrelated claimant with a baby and PIP. A child
+    # of 9 or over was born before 6 April 2017; the 8-year-old third child of
+    # unit 5 after it, or with the keyword from January to 5 April 2017.
     scenarios = [
         ([19, 17, 15, 13, 11], 100, 0),  # five older qualifying children
         ([19, 10, 3], 100, 1),  # includes an older QYP; child gets PIP
@@ -47,7 +49,8 @@ def _fixture():
                     person_benunit_id=bu,
                     person_household_id=hh,
                     age=age,
-                    birth_year=2025 - age,
+                    born_before=i > 0
+                    and (age >= 9 or (bu == 5 and third_child_born_early_2017)),
                     is_benunit_head=i == 0,
                     is_parent=i == 0,
                     qyp=i > 0 or bu == 3,  # young claimant also QYP: exclude
@@ -70,6 +73,7 @@ def _fixture():
         "is_child_or_qualifying_young_person_for_universal_credit": "qyp",
         "uc_individual_disabled_child_element": "disabled_element",
         "uc_is_child_limit_affected": "denied_element",
+        "uc_is_child_born_before_child_limit": "born_before",
     }
 
     def calculate(variable, year):
@@ -116,6 +120,26 @@ def test_tcl_counts_include_exceptions_and_do_not_use_denied_element_flags():
     assert before[6] and not before[0]
 
 
+def test_tcl_dates_births_by_the_engine_cutoff_not_the_calendar_year():
+    """A third child born from January to 5 April 2017 is not affected: the
+    measure reads the engine's own cutoff test, not the birth year
+    (microcosm#1095 AC3)."""
+    for variable in (
+        "uc_tcl_affected_child_count_proxy",
+        "uc_tcl_affected_benunit_proxy",
+    ):
+        frame, sim = _fixture()
+        after_cutoff, _ = compute_uk_measure_input(
+            frame, sim, "benunit", variable, 2025
+        )
+        frame, sim = _fixture(third_child_born_early_2017=True)
+        early_2017, _ = compute_uk_measure_input(frame, sim, "benunit", variable, 2025)
+        assert after_cutoff[5] == 1 and early_2017[5] == 0
+        np.testing.assert_array_equal(
+            np.delete(after_cutoff, 5), np.delete(early_2017, 5)
+        )
+
+
 def test_tcl_receipt_explicitly_records_remaining_claim_date_and_period_proxies():
     frame, sim = _fixture()
     resolver = UKMeasureResolver.__new__(UKMeasureResolver)
@@ -130,7 +154,10 @@ def test_tcl_receipt_explicitly_records_remaining_claim_date_and_period_proxies(
         resolver.compute("benunit", variable)
     contract = resolver.receipt()["uc_tcl_comparison_contract"]
     assert contract["source_birth_cutoff"] == "2017-04-06"
-    assert contract["model_birth_cutoff_proxy"] == "model birth_year >= 2017"
+    assert contract["model_birth_cutoff_proxy"] == (
+        "policyengine-uk uc_is_child_born_before_child_limit: date of birth "
+        "before 2017-04-06"
+    )
     assert contract["model_claim_state_proxy"] == "universal_credit > 0"
     assert contract["status"] == "partial_alignment_with_explicit_proxies"
     assert contract["model_period"] == "2025"
