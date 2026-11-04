@@ -820,3 +820,33 @@ def test_shared_path_refuses_different_module_hashes(tmp_path, monkeypatch, reve
         ValueError, match=r"(?:child_benefit.*no_view|no_view.*child_benefit)"
     ):
         _partition(document)
+
+
+def test_one_adapter_exposes_roots_from_two_logical_views(tmp_path, monkeypatch):
+    vehicle = _Program(
+        "Vehicle",
+        ("vehicle_value",),
+        [_metadata("vehicle_amount", "Vehicle", "decimal")],
+        lambda value: {"vehicle_amount": value * 0.1},
+    )
+    _, adapter, document, _ = _prepared(
+        tmp_path,
+        monkeypatch,
+        programs={"Child": _child_program(), "Vehicle": vehicle},
+        views=[
+            _view(),
+            _view(
+                logical_entity="Vehicle",
+                selector={"column": "has_vehicle"},
+                outside={"vehicle_amount": 0.0},
+            ),
+        ],
+        variables=[*CHILD_OUTPUTS, "vehicle_amount"],
+    )
+    expected = {"Child": ("age", "child_income"), "Vehicle": ("vehicle_value",)}
+    assert adapter.view_root_inputs() == expected
+    assert {"age", "child_income", "vehicle_value"} <= set(adapter.variables())
+    assert (
+        engine_root_inputs(adapter, document["bindings"][0], document["entity_names"])
+        == expected
+    )
