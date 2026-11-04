@@ -1327,6 +1327,9 @@ class TestAnchorFeedCheck:
             ),
             # A listing with no declared source.
             (["k1"], [("k1", "ed_fsa", "ed_fsa.a")], None),
+            # A row the listing labels with the declared source, in a record
+            # set outside the declared namespace.
+            (["k1"], [("k1", "ed_fsa", "irs_soi.ty2023.table_1_4")], "ed_fsa"),
         ],
         ids=[
             "undeclared-additions",
@@ -1335,6 +1338,7 @@ class TestAnchorFeedCheck:
             "listing-extra",
             "anchor-record-set",
             "no-source",
+            "outside-namespace",
         ],
     )
     def test_a_later_report_refuses_rows_added_outside_its_declaration(
