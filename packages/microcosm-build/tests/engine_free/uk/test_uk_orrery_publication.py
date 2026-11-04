@@ -539,3 +539,64 @@ def test_build_without_recorded_execution_writes_no_execution_overlay(
     assert not (args.out / OVERLAY_NAME).exists()
     assert OVERLAY_NAME not in result.files
     assert f"orrery/{OVERLAY_NAME}" not in manifest["outputs"]
+
+
+def test_failure_evidence_is_handed_to_the_builds_emitter_with_each_files_role(
+    tmp_path, monkeypatch
+):
+    """A failed build's graph evidence is staged like a dataset bundle: the
+    build's emitter commits it under ``staged/<run_id>/``, and the build
+    makes no Hub call of its own."""
+    from microcosm.build.telemetry_emitter import TelemetryRun
+    from test_support.microcosm_build.emitter import FakeEmitterClient
+    from test_support.microcosm_build.telemetry import FakeTelemetryEmitter
+    from test_support.microcosm_build.uk_rowwise_candidate import _FakeHub
+
+    output = tmp_path / orrery_publication.FAILURE_BUNDLE_DIRECTORY
+    output.mkdir()
+    schema = output / "graph.schema.json"
+    schema.write_text('{"nodes": []}')
+    evidence = {
+        "schema_version": 1,
+        "build_kind": "uk_graph_evidence",
+        "releasable": False,
+        "outputs": {
+            schema.name: {
+                "path": str(schema),
+                "sha256": hashlib.sha256(schema.read_bytes()).hexdigest(),
+                "bytes": schema.stat().st_size,
+            }
+        },
+    }
+    (output / orrery_publication.EVIDENCE_MANIFEST_NAME).write_text(
+        json.dumps(evidence)
+    )
+    hub = _FakeHub()
+    client = FakeEmitterClient(hub_files=hub.files, hub_api=hub)
+    run = TelemetryRun(run_id="uk-attempt", country_code="GB", pipeline="uk")
+    monkeypatch.setattr(
+        rowwise_staging, "_ACTIVE_EMITTER", FakeTelemetryEmitter(run, client=client)
+    )
+    args = Namespace(
+        no_staging=False,
+        no_staged_dataset=False,
+        staging_local_only=False,
+        staged_dataset_repo_id="policyengine/populace-uk-private",
+    )
+
+    delivery = orrery_publication.stage_graph_evidence(
+        args, output, run_id="uk-attempt"
+    )
+
+    assert delivery["status"] == "uploaded"
+    assert delivery["revision"] == hub.sha
+    (request,) = client.bundle_requests
+    assert {item.name: item.role for item in request.files} == {
+        "graph.schema.json": "graph_schema_json",
+        orrery_publication.EVIDENCE_MANIFEST_NAME: "build_manifest",
+        "staged_manifest.json": "staged_manifest",
+        "sha256sums.txt": "checksums",
+    }
+    assert hub.commits[0]["paths"] == sorted(
+        f"staged/uk-attempt/{item.name}" for item in request.files
+    )

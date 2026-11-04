@@ -47,8 +47,10 @@ until you restart the kernel, load it by path with
 ## Build progress and staging run files
 
 UK build completion automatically exports Orrery execution graphs, attempts
-immutable publication before Hugging Face artifact staging, and preserves
-durable retry jobs and receipt snapshots. See
+immutable publication before Hugging Face artifact staging when
+`--publish-orrery` asks for it, and preserves durable retry jobs and receipt
+snapshots. No upload is published today; see
+[the status of graph publication](docs/orrery-publication.md#status). See
 [graph publication](docs/orrery-publication.md) for configuration and retry.
 
 Supported US and UK build commands start the local emitter as the build's
@@ -61,6 +63,7 @@ change:
 ```bash
 uv tool install microcosm-emitter   # once per machine
 uv tool upgrade microcosm-emitter   # to take a new release
+microcosm-emitter version           # the installed release; builds need 0.11.9 or later
 ```
 
 The build finds the `microcosm-emitter` command through
@@ -68,12 +71,25 @@ The build finds the `microcosm-emitter` command through
 environment variables and user, so it uses the build's Hugging Face
 credential (`HF_TOKEN`, then `HUGGINGFACE_TOKEN`, then the `hf auth login`
 token). Without the command the build continues with no hosted telemetry and
-no remote staging. Before it starts the emitter, the build reads its
-version from `microcosm-emitter version` and does not start one older than
-0.6.0, the first release that takes staging run files; it prints the
-installed and required versions and the upgrade command, and continues as
-it does without the command. Microcosm supplies build metadata, graph files and staging
-run files; the emitter owns authentication, durable queues and delivery.
+no remote staging, and queues no Orrery graph publication; a UK build given
+`--staging-read-back` fails at the read-back, and a UK build asked to stage
+its dataset bundle remotely, as it is by default, is refused before it
+starts, since the emitter uploads the bundle. Before it starts the emitter,
+the build reads its version from `microcosm-emitter version` and does not
+start one older than 0.11.9. Releases before 0.10.0 send telemetry to the
+collector's Cloud Run address, which changes when the collector moves to
+another Google Cloud project; from 0.10.0 on, releases send to the
+collector's hostname, which stays the same. 0.10.0 would be enough for that;
+0.11.9 was the newest release when practically no machine ran the emitter
+yet, so requiring it cost nothing (see
+[graph publication](docs/orrery-publication.md#emitter-dependency)). The
+build prints the installed and required versions, what it loses and the
+upgrade command, `uv tool install --upgrade 'microcosm-emitter>=0.11.9'`,
+and continues as it does without the command. `uv tool upgrade` keeps any
+version constraint given at install time, such as `==0.7.0`; that
+`uv tool install --upgrade` command replaces it. Microcosm supplies build
+metadata, graph files, staging run files and staged dataset bundles; the
+emitter owns authentication, durable queues and delivery.
 The telemetry module reports live progress to the hosted collector when the
 operator's Hugging Face login is accepted; otherwise it retains the events
 locally and the build continues. This live event path is independent of the
@@ -114,7 +130,7 @@ version 2 staging run files to `policyengine/populace-uk-staging` under the
 same switch. The build command also **stages the finished dataset bundle** it built,
 national, dense or exact-count, under `staged/<run_id>/` in the
 private `policyengine/populace-uk-private` repository so the team can inspect
-it without publishing it: `releases/` and `latest.json` are untouched, the
+it without publishing it (the build's emitter uploads it): `releases/` and `latest.json` are untouched, the
 release contract is not consulted, and a `releasable: false` size run stages
 like any other. Fetch a bundle with `tools/fetch_uk_staged_dataset.py`;
 re-stage a finished run directory with `tools/stage_uk_rowwise_candidate.py`.
@@ -384,8 +400,9 @@ the historical `record` and `projection`) penalize distance from the design
 weights; see [penalized calibration toward the design weights](docs/calibration-l2-basis.md)
 for the algebra, the evidence and the measured frontier.
 
-National and ACS local-area builds now use the same typed schema-8 calibration
-diagnostics writer. The local builder adds its Census population marginals to a
+National and ACS local-area builds now use the same typed calibration
+diagnostics writer, which publishes schema 9: the schema-8 document builders
+assemble, with each hierarchy label declared once in `hierarchy_catalogs`. The local builder adds its Census population marginals to a
 versioned `TargetRegistry`, including provider, category, geography, and target
 hierarchy, before calibration. Both builders always attempt diagnostics after
 the calibrated dataset exists. If construction, validation, serialization, or
@@ -400,11 +417,11 @@ UK release workflows stop when diagnostics are unavailable because their later
 release checks require that evidence; historical schema-6 and schema-7 UK
 artifacts remain readable through isolated compatibility validation.
 
-A Draft 2020-12 JSON Schema for schema 8, generated from those models, is
-committed at
-`packages/microcosm-diagnostics/src/microcosm/diagnostics/schemas/calibration_diagnostics.v8.schema.json`
-for consumers that check the file without importing them, such as the
-collector. Its description lists the model rules a JSON Schema cannot express;
+Draft 2020-12 JSON Schemas for schema 9 and schema 8, generated from those
+models, are committed at
+`packages/microcosm-diagnostics/src/microcosm/diagnostics/schemas/calibration_diagnostics.v9.schema.json`
+and `calibration_diagnostics.v8.schema.json` beside it, for consumers that check
+the file without importing them, such as the collector. Its description lists the model rules a JSON Schema cannot express;
 see the [package README](packages/microcosm-diagnostics/README.md).
 
 Standard publication uploads the locally built `releases/<id>/` artifacts to

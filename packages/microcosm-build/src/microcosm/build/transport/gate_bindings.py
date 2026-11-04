@@ -43,6 +43,10 @@ The evidence each bound gate reads:
   ``gates.json``.
 - ``weight_ess`` and ``weight_ratio``: the frame's one weighted entity.
 
+``measurement_prefit`` reads ``problem`` and the battery's reserved
+``graph_evidence`` map: the problem's interval diagnostics with their
+per-band support, and its matrix at the weights entering calibration.
+
 ``release_input_coverage`` reads ``donor_artifact_receipt``
 (``transport.donor_receipt@1``) and ``axiom_input_closure``
 (``transport.input_closure@1``) with the battery's reserved
@@ -1630,6 +1634,206 @@ def _transport_weights_audit(
 
 
 # ---------------------------------------------------------------------------
+# Pre-fit measurement acceptance (G8-r2c hunk D, ruling R2C-3)
+# ---------------------------------------------------------------------------
+
+
+def _ratio_bounds(name: str, value: object) -> tuple[Fraction, Fraction]:
+    if isinstance(value, str | bytes) or not isinstance(value, Sequence):
+        raise TypeError(f"{name} must be a [lower, upper] pair.")
+    # Exactly two items, counted without a numeric literal: this module
+    # holds no threshold literal (test_holds_no_threshold_literal).
+    *rest, last = value or (None,)
+    if len(rest) != 1:
+        raise ValueError(f"{name} must be a [lower, upper] pair.")
+    lower, upper = (Fraction(_number(name, item)) for item in (*rest, last))
+    if not 0 <= lower <= upper:
+        raise ValueError(f"{name} must satisfy 0 <= lower <= upper.")
+    return lower, upper
+
+
+def _inside(model: Fraction, reference: Fraction, bounds) -> bool:
+    lower, upper = bounds
+    return reference > 0 and lower * reference <= model <= upper * reference
+
+
+def _ratio_text(model: Fraction, reference: Fraction) -> str:
+    return "undefined" if reference == 0 else f"{float(model / reference):.6g}"
+
+
+def _measurement_prefit(
+    *,
+    problem: object,
+    graph_evidence: object,
+    tables: Sequence[str],
+    roster_total_bounds: Sequence[float],
+    band_bounds: Sequence[float],
+    maximum_discrepant_bands: int,
+    minimum_source_households: int,
+    minimum_kish_ess: float,
+    required_evidence: Sequence[str],
+) -> GateResult:
+    """Pre-fit acceptance of a measurement's interval targets (ruling R2C-3).
+
+    Each comparator is the weighted model total at the weights entering
+    calibration (the problem's ``A @ w0``) against the reference the matrix
+    uses (its right-hand side), for every band's count and amount rows of
+    each declared interval table. The gate refuses on four checks:
+
+    - roster totals: the summed count, or the summed amount, outside
+      ``roster_total_bounds`` of the summed references;
+    - concentrated discrepancy: more than ``maximum_discrepant_bands`` bands
+      whose count or amount falls outside ``band_bounds`` (a band counts
+      once if either fails);
+    - support: any band with fewer than ``minimum_source_households``
+      distinct source households, or a source-household Kish ESS below
+      ``minimum_kish_ess``, checked for count and amount contributions
+      separately (``reference_intervals.band_support``);
+    - evidence: no interval diagnostics or per-band support for a declared
+      table, a band whose references did not enter the matrix, or a
+      ``required_evidence`` alias the battery node does not wire.
+
+    Every threshold comes from ``gates.json``; none has a default.
+    """
+
+    declared_tables = _strings("tables", tables)
+    totals_bounds = _ratio_bounds("roster_total_bounds", roster_total_bounds)
+    per_band = _ratio_bounds("band_bounds", band_bounds)
+    if isinstance(maximum_discrepant_bands, bool) or not isinstance(
+        maximum_discrepant_bands, int
+    ):
+        raise TypeError("maximum_discrepant_bands must be an integer.")
+    if isinstance(minimum_source_households, bool) or not isinstance(
+        minimum_source_households, int
+    ):
+        raise TypeError("minimum_source_households must be an integer.")
+    minimum_ess = Fraction(_number("minimum_kish_ess", minimum_kish_ess))
+    evidence = _strings("required_evidence", required_evidence)
+    failures: list[str] = []
+    wired = graph_evidence if isinstance(graph_evidence, Mapping) else {}
+    for alias in evidence:
+        if alias not in wired:
+            failures.append(f"evidence: the run lacks required evidence {alias!r}.")
+    report = problem.bindings.get("interval_diagnostics")
+    reports = (
+        {row.get("table"): row for row in report.get("tables", ())}
+        if isinstance(report, Mapping)
+        else {}
+    )
+    names = [str(row.get("reference")) for row in problem.target_metadata]
+    rows = {name: index for index, name in enumerate(names)}
+    problem_rows = problem.problem
+    estimates = problem_rows.estimates(problem_rows.initial_weights.values)
+    targets = problem_rows.target_vector
+    band_details: list[dict[str, object]] = []
+    sums = {"count": [Fraction(0), Fraction(0)], "amount": [Fraction(0), Fraction(0)]}
+    discrepant: list[str] = []
+    for table_id in declared_tables:
+        table = reports.get(table_id)
+        if table is None:
+            failures.append(
+                f"evidence: the problem has no interval diagnostics for {table_id!r}."
+            )
+            continue
+        if not isinstance(table.get("support"), Mapping):
+            failures.append(
+                f"evidence: interval table {table_id!r} reports no per-band support."
+            )
+            continue
+        for band in table.get("bands", ()):
+            label = f"{table_id}/{band.get('band')}"
+            references = band.get("references")
+            support = band.get("support")
+            if not isinstance(references, Mapping) or not isinstance(support, Mapping):
+                failures.append(
+                    f"evidence: band {label} names no count and amount references."
+                )
+                continue
+            detail: dict[str, object] = {"band": label}
+            band_fails = False
+            for role in ("count", "amount"):
+                name = references.get(role)
+                if name not in rows:
+                    failures.append(
+                        f"evidence: band {label} {role} reference {name!r} did not "
+                        "enter the matrix."
+                    )
+                    band_fails = None
+                    continue
+                model = Fraction(float(estimates[rows[name]]))
+                reference = Fraction(float(targets[rows[name]]))
+                sums[role][0] += model
+                sums[role][1] += reference
+                inside = _inside(model, reference, per_band)
+                if not inside and band_fails is not None:
+                    band_fails = True
+                measured = support.get(role, {})
+                households = measured.get("source_households")
+                ess = measured.get("kish_ess")
+                if not isinstance(households, int) or not isinstance(ess, Mapping):
+                    failures.append(f"evidence: band {label} has no {role} support.")
+                else:
+                    value = Fraction(ess["numerator"], ess["denominator"])
+                    if households < minimum_source_households:
+                        failures.append(
+                            f"support: band {label} {role} has {households} source "
+                            f"households, below {minimum_source_households}."
+                        )
+                    if value < minimum_ess:
+                        failures.append(
+                            f"support: band {label} {role} has source-household Kish "
+                            f"ESS {float(value):.6g}, below {float(minimum_ess):.6g}."
+                        )
+                detail[role] = {
+                    "reference": name,
+                    "model": float(model),
+                    "comparator": float(reference),
+                    "ratio": _ratio_text(model, reference),
+                    "inside_band_bounds": inside,
+                    "source_households": households,
+                    "kish_ess": None
+                    if not isinstance(ess, Mapping)
+                    else float(Fraction(ess["numerator"], ess["denominator"])),
+                }
+            if band_fails:
+                discrepant.append(label)
+            band_details.append(detail)
+    for role in ("count", "amount"):
+        model, reference = sums[role]
+        if band_details and not _inside(model, reference, totals_bounds):
+            failures.append(
+                f"roster totals: the summed {role} is "
+                f"{_ratio_text(model, reference)} of its comparator, outside "
+                f"[{float(totals_bounds[0]):.6g}, {float(totals_bounds[1]):.6g}]."
+            )
+    if len(discrepant) > maximum_discrepant_bands:
+        failures.append(
+            f"concentrated discrepancy: {len(discrepant)} bands fall outside "
+            f"[{float(per_band[0]):.6g}, {float(per_band[1]):.6g}] "
+            f"({discrepant}); at most {maximum_discrepant_bands} may."
+        )
+    return GateResult(
+        name="measurement_prefit",
+        passed=not failures,
+        failures=tuple(failures),
+        details={
+            "tables": list(declared_tables),
+            "bands": band_details,
+            "roster_totals": {
+                role: {
+                    "model": float(sums[role][0]),
+                    "comparator": float(sums[role][1]),
+                    "ratio": _ratio_text(*sums[role]),
+                }
+                for role in ("count", "amount")
+            },
+            "discrepant_bands": discrepant,
+            "required_evidence": list(evidence),
+        },
+    )
+
+
+# ---------------------------------------------------------------------------
 # Evidence payloads (the report's evidence_sha256 lines)
 # ---------------------------------------------------------------------------
 
@@ -1691,6 +1895,12 @@ def _weights_audit_evidence(
             context.artifacts[FIT_WEIGHT_RECORDS], "sha256", None
         )
     }
+
+
+def _measurement_prefit_evidence(
+    context: EvidenceContext, parameters: Mapping[str, Any]
+) -> object:
+    return {"problem_sha256": context.artifacts[PROBLEM].sha256}
 
 
 def _cell_diagnostics_evidence(
@@ -1830,6 +2040,15 @@ TRANSPORT_GATE_REGISTRY: Mapping[str, GateBinding] = MappingProxyType(
             ),
             frame_argument="frame",
             evidence=_support_evidence,
+        ),
+        "measurement_prefit": FunctionBinding(
+            name="measurement_prefit",
+            gate=_measurement_prefit,
+            parameter_keys=_parameters(_measurement_prefit),
+            artifact_arguments=MappingProxyType(
+                {PROBLEM: PROBLEM, GRAPH_EVIDENCE: GRAPH_EVIDENCE}
+            ),
+            evidence=_measurement_prefit_evidence,
         ),
         "release_input_coverage": FunctionBinding(
             name="release_input_coverage",

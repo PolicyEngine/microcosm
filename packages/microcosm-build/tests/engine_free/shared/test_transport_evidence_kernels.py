@@ -127,6 +127,18 @@ LEAF_ADDED_MODULES = frozenset(
         "microcosm.graph.weight_update",
     ]
 )
+#: Modules the bindings reach without the leaf that base 25c8cc14 did not
+#: have. Since #1342, ``microcosm.calibrate.diagnostics`` imports
+#: ``microcosm.calibrate.hierarchy_labels`` and the ``microcosm.diagnostics``
+#: package imports ``microcosm.diagnostics.catalogs``. ``gate_bindings``
+#: imports ``microcosm.calibrate.solve``, whose package ``__init__`` imports
+#: both ``microcosm.calibrate.diagnostics`` and ``microcosm.diagnostics``.
+BINDING_MODULES_ADDED_AFTER_BASE = frozenset(
+    [
+        "microcosm.calibrate.hierarchy_labels",
+        "microcosm.diagnostics.catalogs",
+    ]
+)
 BATTERY = "toy.gates.terminal"
 
 
@@ -527,11 +539,16 @@ class TestImplementationHashes:
         # At base 25c8cc14 the battery's binding identity held 197 modules;
         # w4 adds the leaf and exactly the modules it imports that the
         # bindings did not already reach (the graph package among them).
+        # Modules the bindings later reach without the leaf are listed in
+        # BINDING_MODULES_ADDED_AFTER_BASE.
         modules = set()
         for name, binding in TRANSPORT_GATE_REGISTRY.items():
             _, digests = binding_identity.describe(binding, path=name)
             modules |= set(digests)
-        assert len(modules) == 197 + len(LEAF_ADDED_MODULES)
+        assert len(modules) == (
+            197 + len(BINDING_MODULES_ADDED_AFTER_BASE) + len(LEAF_ADDED_MODULES)
+        )
+        assert BINDING_MODULES_ADDED_AFTER_BASE <= modules
         assert LEAF_ADDED_MODULES <= modules
         assert LEAF_ADDED_MODULES <= set(
             binding_identity.source_closure([evidence_contract.__name__])
@@ -1309,6 +1326,22 @@ class TestRelations:
         assert absent["check"] == []
         assert absent["modules"][0]["gap"] == ["Family.toy_member_income"]
 
+    def test_relation_columns_on_another_entitys_slice_are_a_gap(self) -> None:
+        # S1: the partition reads a relation's columns from the person slice
+        # only; the same columns on the household or family slice do not count.
+        relation = {**_TOY_RELATION, "role_column": "role", "roles": ["head"]}
+        for entity in ("household", "family"):
+            row = self._partition(
+                {"person": frozenset(), entity: frozenset({"member_income", "role"})},
+                relations=[relation],
+            )
+            assert row["relation"] == []
+            assert row["gap"] == ["Family.toy_member_income"]
+            assert row["relation_missing"] == [
+                "Family.toy_member_income: person.member_income",
+                "Family.toy_member_income: person.role",
+            ]
+
 
 # ---------------------------------------------------------------------------
 # Relation inputs on a real AxiomEngine (S1, S3, S4)
@@ -1457,6 +1490,19 @@ class TestRelationInputsOnAnAxiomEngine:
         assert evidence_kernels.engine_root_inputs(engine, row, _ENTITY_NAMES) == {
             "Family": ("toy_member_income",)
         }
+
+    def test_a_relation_on_an_unmapped_root_entity_is_refused(self, tmp_path) -> None:
+        # S1: entity_names maps no engine entity for the manifest's
+        # root_entity (family), so engine_root_inputs refuses the binding.
+        engine = _fake_axiom(tmp_path / "m.yaml")
+        row = {"id": "b", "relations": [_TOY_RELATION]}
+        names = {"person": "Person", "household": "Household"}
+        with pytest.raises(
+            ValueError,
+            match=r"rules binding 'b' relates 'toy_member_income' on 'family', "
+            r"which entity_names does not map\.",
+        ):
+            evidence_kernels.engine_root_inputs(engine, row, names)
 
     def test_a_present_column_is_one_relation_row(self, tmp_path) -> None:
         document = self._run(tmp_path, _TOY_RELATION, {"member_income": np.ones(3)})
@@ -2872,6 +2918,30 @@ class TestExternalSources:
         assert row["class"] == "derived"
         assert [s["column"] for s in row["sources"]] == ["age"]
 
+    def test_a_rulespec_name_with_another_codec_is_uncovered(self) -> None:
+        # C1: the RuleSpec tree is matched on its codec. A source named like
+        # the tree but carrying another codec is an external source.
+        spec = _impute_spec(inputs=["age"], sources=("rulespec_nz",))
+        spec["resources"]["transport_graph"]["sources"].append(
+            {"name": "rulespec_nz", "codec": "toy-wage-table-v1"}
+        )
+        roster = compose._support_roster(spec)
+        (row,) = [r for r in roster["columns"] if r["column"] == "imputed_wage"]
+        assert row["class"] == "derived"
+        (external,) = [s for s in row["sources"] if s["column"] == "rulespec_nz"]
+        assert external["class"] == "uncovered"
+        assert "toy-wage-table-v1" in external["reason"]
+        donor, _ = _donor_and_terminal()
+        terminal = _support_frame({("person", "imputed_wage"): [1e9] * 6})
+        ranges, bounds, rn, bn = _run_support(roster, donor, terminal)
+        outcome = _support_outcome(ranges, bounds, rn, bn, terminal)
+        assert outcome.status is GateStatus.FAILED
+        assert any(
+            "person.imputed_wage (derived): sources without coverage: "
+            "source.rulespec_nz (uncovered)" in line
+            for line in outcome.result.failures
+        ), outcome.result.failures
+
 
 class TestDeclaredStructuralRows:
     def test_a_row_no_node_writes_is_refused(self, nz_composed) -> None:
@@ -3239,6 +3309,35 @@ class TestSupportBounds:
         )
         assert any(line.startswith("family.family_flag (uncovered)") for line in lines)
 
+    def test_a_forged_derived_row_without_sources_fails(self) -> None:
+        # C1: the roster classes a sourceless row uncovered, so only a forged
+        # artifact carries a derived row with no sources; the gate fails it.
+        donor, terminal = _donor_and_terminal()
+        more = [
+            {
+                "entity": "person",
+                "column": "flag",
+                "class": "derived",
+                "sources": [{"entity": "person", "column": "age", "class": "copied"}],
+                "reason": "Sources are walked per node.",
+            }
+        ]
+        ranges, bounds, rn, bn = _run_support(_toy_roster(more=more), donor, terminal)
+        structural = [("household", "source_household_id")]
+        honest = _support_outcome(ranges, bounds, rn, bn, terminal, structural)
+        assert not any("person.flag" in line for line in honest.result.failures)
+
+        def empty_sources(document) -> None:
+            (row,) = [r for r in document["columns"] if r["column"] == "flag"]
+            row["sources"] = []
+
+        forged = _forged(bounds, empty_sources)
+        outcome = _support_outcome(ranges, forged, rn, bn, terminal, structural)
+        assert outcome.status is GateStatus.FAILED
+        assert (
+            "person.flag (derived): the walk reached no source, so nothing covers it."
+        ) in outcome.result.failures
+
     def test_a_rank_only_row_is_refused_with_the_reserved_message(self) -> None:
         donor, terminal = _donor_and_terminal()
         more = [{"entity": "person", "column": "pension_rank", "class": "rank_only"}]
@@ -3579,6 +3678,19 @@ class TestComponentSupport:
             self._run((5.0,) * 6, ["a"] * 6, sliced=False)
         with pytest.raises(ValueError, match=r"component column person\.None"):
             self._run((5.0,) * 6, ["a"] * 6, roster=self._roster(None))
+
+    def test_an_aggregate_total_is_checked_against_its_own_component(self) -> None:
+        # E2: household totals (members 0-2, 3-4, 5) are checked against the
+        # household's component. A total of 150 in a lies inside b's bands,
+        # so each of the household's three member rows counts as outside.
+        roster = self._roster()
+        params = roster["columns"][0]["producer_params"]
+        params["aggregate_entity"] = "household"
+        codes = ["a", "a", "a", "b", "b", "b"]
+        row = self._run((50.0, 50.0, 50.0, 60.0, 60.0, 150.0), codes, roster=roster)
+        assert row["records_outside"] == 3
+        inside = self._run((3.0, 3.0, 3.0, 60.0, 60.0, 150.0), codes, roster=roster)
+        assert inside["records_outside"] == 0
 
 
 class TestNormalizedSupport:

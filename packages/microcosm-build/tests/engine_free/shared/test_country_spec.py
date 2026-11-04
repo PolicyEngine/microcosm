@@ -527,6 +527,7 @@ class TestBelgianPackage:
             "target_references.json",
             "precal_references.json",
             "holdout_references.json",
+            "quantile_surfaces.json",
             "reference_aging.json",
             "reference_intervals.json",
             "reference_inventory.json",
