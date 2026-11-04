@@ -385,9 +385,10 @@ class TestDenseLineMirrors:
         from microcosm.build.uk_runtime.release_identity import UK_DENSE_RELEASE_ID
 
         assert data_contract._UK_DENSE_RELEASE_ID == UK_DENSE_RELEASE_ID
-        # Its builds publish into their own folders, with no tag to match.
-        assert data_contract.publishes_to_build_folder(UK_DENSE_RELEASE_ID)
-        assert not hasattr(data_contract, "_UK_DENSE_CUT_TAG_RE")
+        assert data_contract._UK_DENSE_CUT_TAG_RE.fullmatch(
+            f"{UK_DENSE_RELEASE_ID}-20260903T105422Z-ca611e43"
+        )
+        assert data_contract._UK_DENSE_CUT_TAG_RE.fullmatch(UK_DENSE_RELEASE_ID) is None
 
     def test_dataset_filename_mirrors_the_assembler(self) -> None:
         import importlib.util

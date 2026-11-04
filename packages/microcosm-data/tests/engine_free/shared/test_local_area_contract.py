@@ -109,16 +109,18 @@ def _write_local_bundle(
     extra_gates: dict | None = None,
     spm_measurement_gate: object = _DEFAULT,
     build_manifest_spm_measurement_gate: object = _DEFAULT,
+    build_folder: bool = False,
 ) -> Path:
     """A local-area release directory the contract accepts by default.
 
     A US id gets the package stage's stored-input and SPM measurement gates in
     ``gate_summary.json`` and ``build_manifest.json`` and the built-with
     engine they name; a UK id gets none of them, as the UK lanes write none.
-    ``None`` omits a piece, and a value replaces it. A UK local-area release
-    publishes each build into its own folder, so its manifests name the
-    release and the build (``UK_LOCAL_BUILD``) and record its UK built-with
-    packages at the top level.
+    ``None`` omits a piece, and a value replaces it. With ``build_folder``,
+    a UK local-area bundle is written in the build-folder layout the
+    emitter's publication uses: its manifests name the release and the build
+    (``UK_LOCAL_BUILD``) and record its UK built-with packages at the top
+    level.
     """
     release_dir = root / "releases" / release_id
     release_dir.mkdir(parents=True)
@@ -252,7 +254,7 @@ def _write_local_bundle(
         },
         "reviewed_limitations": [{"id": "cd_population_marginal_vintage_2020"}],
     }
-    if release_id.startswith("microcosm-uk-2024-25-"):
+    if build_folder:
         manifest = _as_uk_build_folder(manifest, release_id=release_id)
         payloads["build_manifest.json"] = json.dumps(
             build_folder_build_manifest(
@@ -296,7 +298,9 @@ def _as_uk_build_folder(manifest: dict, *, release_id: str) -> dict:
 def test_uk_local_area_bundle_publishes_in_the_build_folder_layout(
     tmp_path: Path,
 ) -> None:
-    release_dir = _write_local_bundle(tmp_path, release_id=UK_LOCAL_RELEASE_ID)
+    release_dir = _write_local_bundle(
+        tmp_path, release_id=UK_LOCAL_RELEASE_ID, build_folder=True
+    )
     manifest = json.loads((release_dir / "release_manifest.json").read_text())
     build_manifest = json.loads((release_dir / "build_manifest.json").read_text())
 
@@ -311,8 +315,12 @@ def test_uk_local_area_bundle_publishes_in_the_build_folder_layout(
     validate_release_dir(release_dir)
 
 
-def test_uk_local_area_bundle_refuses_the_tagged_layout(tmp_path: Path) -> None:
-    release_dir = _write_local_bundle(tmp_path, release_id=UK_LOCAL_RELEASE_ID)
+def test_uk_local_area_build_folder_refuses_a_retired_build_field(
+    tmp_path: Path,
+) -> None:
+    release_dir = _write_local_bundle(
+        tmp_path, release_id=UK_LOCAL_RELEASE_ID, build_folder=True
+    )
     build_manifest_path = release_dir / "build_manifest.json"
     build_manifest = json.loads(build_manifest_path.read_text())
     build_manifest["build_id"] = UK_LOCAL_RELEASE_ID

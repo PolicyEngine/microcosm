@@ -54,6 +54,7 @@ RELEASE_ID = "populace-us-2024-9f1260b-20260611"
 UK_RELEASE_ID = "populace-uk-2023-dd68c73-4aa4b14-20260619T023711Z"
 UK_EXACT_K_RELEASE_ID = "populace-uk-2023-frs-k535080"
 UK_NATIONAL_RELEASE_ID = "microcosm-uk-2024-25-national"
+UK_NATIONAL_CUT_TAG = f"{UK_NATIONAL_RELEASE_ID}-20260828T101112Z-1a2b3c4d"
 UK_RECORD_COUNT = 535_080
 UK_TERMINAL_GATE_REPORT_FILE = "terminal_gates.json"
 UK_TERMINAL_GATE_PRODUCER = (
@@ -1771,18 +1772,22 @@ def _copy_real_uk_june_release(tmp_path: Path) -> Path:
 
 
 def _write_uk_national_release_dir(tmp_path: Path) -> Path:
-    """Build the national fixture from the green exact-k shape.
-
-    The national release publishes each build into its own folder, so the
-    fixture's manifests name the release and the build in that layout.
-    """
+    """Build the constant-id national fixture from the green exact-k shape."""
 
     directory = _write_uk_release_dir(tmp_path, UK_EXACT_K_RELEASE_ID, tier="frs")
     national = directory.with_name(UK_NATIONAL_RELEASE_ID)
     directory.replace(national)
 
+    build_path = national / "build_manifest.json"
+    build = json.loads(build_path.read_text())
+    build["build_id"] = UK_NATIONAL_RELEASE_ID
+    build_path.write_text(json.dumps(build))
+
     release_path = national / "release_manifest.json"
     release = json.loads(release_path.read_text())
+    release["build"]["build_id"] = UK_NATIONAL_RELEASE_ID
+    for artifact in release["artifacts"].values():
+        artifact["revision"] = UK_NATIONAL_CUT_TAG
 
     # The certification signs the evidence copies' actual bytes: the seam
     # report already sits in the directory (terminal_gates.json from the
@@ -1812,11 +1817,11 @@ def _write_uk_national_release_dir(tmp_path: Path) -> Path:
         "kind": "diagnostics",
         "path": "release_certification.json",
         "repo_id": "policyengine/populace-uk-private",
-        "revision": UK_EXACT_K_RELEASE_ID,
+        "revision": UK_NATIONAL_CUT_TAG,
         "sha256": _sha256(certification_path),
     }
     release_path.write_text(json.dumps(release))
-    return to_build_folder_layout(national, build=UK_NATIONAL_BUILD)
+    return national
 
 
 def _rewrite_exact_k_fixture_to_two_records(directory: Path) -> None:
@@ -2486,7 +2491,7 @@ def test_uk_national_release_requires_policyengine_uk_model_pin(
     directory = _write_uk_national_release_dir(tmp_path)
     release_path = directory / "release_manifest.json"
     release = json.loads(release_path.read_text())
-    release["built_with_model_package"]["name"] = "policyengine-us"
+    release["build"]["built_with_model_package"]["name"] = "policyengine-us"
     release_path.write_text(json.dumps(release))
 
     with pytest.raises(
@@ -2494,6 +2499,66 @@ def test_uk_national_release_requires_policyengine_uk_model_pin(
         match="built_with_model_package.name.*policyengine-uk",
     ):
         validate_release_dir(directory)
+
+
+@pytest.mark.parametrize(
+    "revision",
+    [
+        "main",
+        UK_NATIONAL_RELEASE_ID + "-",
+        # Prefixed but outside the attempt-derived cut-tag grammar: the
+        # contract validates the same <YYYYMMDDTHHMMSSZ>-<uuid8> shape the
+        # assembler mints, so a hand-edited suffix cannot claim a cut.
+        UK_NATIONAL_RELEASE_ID + "-hotfix",
+        UK_NATIONAL_RELEASE_ID + "-20260828t101112Z-1a2b3c4d",
+        UK_NATIONAL_RELEASE_ID + "-20260828T101112Z-1A2B3C4D",
+        # Present but non-string: must fail loudly rather than vanish from
+        # the publish layer's string-only revision collection.
+        123,
+    ],
+)
+def test_uk_national_release_rejects_invalid_artifact_revisions(
+    tmp_path: Path,
+    revision: str,
+) -> None:
+    directory = _write_uk_national_release_dir(tmp_path)
+    release_path = directory / "release_manifest.json"
+    release = json.loads(release_path.read_text())
+    for artifact in release["artifacts"].values():
+        artifact["revision"] = revision
+    release_path.write_text(json.dumps(release))
+
+    with pytest.raises(ReleaseContractError, match="revision"):
+        validate_release_dir(directory)
+
+
+def test_uk_national_release_rejects_mixed_cut_revisions(tmp_path: Path) -> None:
+    # Two individually grammar-valid cut tags are still two cuts: the
+    # contract refuses the mixture, not just publish.
+    directory = _write_uk_national_release_dir(tmp_path)
+    release_path = directory / "release_manifest.json"
+    release = json.loads(release_path.read_text())
+    first_key = next(iter(release["artifacts"]))
+    release["artifacts"][first_key]["revision"] = (
+        UK_NATIONAL_RELEASE_ID + "-20260901T000000Z-deadbeef"
+    )
+    release_path.write_text(json.dumps(release))
+
+    with pytest.raises(ReleaseContractError, match="more than one revision"):
+        validate_release_dir(directory)
+
+
+def _write_uk_national_build_folder_release_dir(tmp_path: Path) -> Path:
+    """The national fixture in the build-folder layout.
+
+    Until the repository switches to releases.json the national release is
+    assembled with tags; the contract also checks the build-folder layout
+    the emitter's publication uses, whose manifests name the release and the
+    build.
+    """
+    return to_build_folder_layout(
+        _write_uk_national_release_dir(tmp_path), build=UK_NATIONAL_BUILD
+    )
 
 
 @pytest.mark.parametrize(
@@ -2571,7 +2636,7 @@ def _uk_national_failures(directory: Path) -> str:
 def test_uk_national_build_folder_manifests_name_the_release_and_the_build(
     tmp_path: Path,
 ) -> None:
-    directory = _write_uk_national_release_dir(tmp_path)
+    directory = _write_uk_national_build_folder_release_dir(tmp_path)
     release = json.loads((directory / "release_manifest.json").read_text())
     build = json.loads((directory / "build_manifest.json").read_text())
 
@@ -2586,27 +2651,11 @@ def test_uk_national_build_folder_manifests_name_the_release_and_the_build(
     validate_release_dir(directory)
 
 
-def test_uk_national_build_folder_refuses_the_tagged_manifest_shape(
-    tmp_path: Path,
-) -> None:
-    directory = _write_uk_national_release_dir(tmp_path)
-
-    def tagged(release: dict) -> None:
-        release["build"] = {
-            "build_id": UK_NATIONAL_RELEASE_ID,
-            "cut_tag": f"{UK_NATIONAL_RELEASE_ID}-20260920T120000Z-deadbeef",
-        }
-
-    _rewrite_document(directory / "release_manifest.json", tagged)
-
-    assert "'build' must be the build's name" in _uk_national_failures(directory)
-
-
 @pytest.mark.parametrize("field", ["build_id", "attempt_id", "cut_tag"])
 def test_uk_national_build_folder_refuses_the_retired_build_fields(
     tmp_path: Path, field: str
 ) -> None:
-    directory = _write_uk_national_release_dir(tmp_path)
+    directory = _write_uk_national_build_folder_release_dir(tmp_path)
     _rewrite_document(
         directory / "build_manifest.json",
         lambda build: build.update({field: UK_NATIONAL_RELEASE_ID}),
@@ -2619,7 +2668,7 @@ def test_uk_national_build_folder_refuses_the_retired_build_fields(
 def test_uk_national_build_folder_release_must_be_the_directory(
     tmp_path: Path, manifest: str
 ) -> None:
-    directory = _write_uk_national_release_dir(tmp_path)
+    directory = _write_uk_national_build_folder_release_dir(tmp_path)
     _rewrite_document(
         directory / manifest,
         lambda document: document.update(release="microcosm-uk-2024-25-dense"),
@@ -2634,7 +2683,7 @@ def test_uk_national_build_folder_release_must_be_the_directory(
 def test_uk_national_build_folder_build_must_be_a_safe_name(
     tmp_path: Path, build: object
 ) -> None:
-    directory = _write_uk_national_release_dir(tmp_path)
+    directory = _write_uk_national_build_folder_release_dir(tmp_path)
     for manifest in ("build_manifest.json", "release_manifest.json"):
         _rewrite_document(
             directory / manifest, lambda document: document.update(build=build)
@@ -2646,7 +2695,7 @@ def test_uk_national_build_folder_build_must_be_a_safe_name(
 def test_uk_national_build_folder_manifests_must_name_the_same_build(
     tmp_path: Path,
 ) -> None:
-    directory = _write_uk_national_release_dir(tmp_path)
+    directory = _write_uk_national_build_folder_release_dir(tmp_path)
     _rewrite_document(
         directory / "build_manifest.json",
         lambda build: build.update(
@@ -2665,7 +2714,7 @@ def test_uk_national_build_folder_manifests_must_name_the_same_build(
 def test_uk_national_build_folder_records_build_details_at_the_top_level(
     tmp_path: Path, field: str
 ) -> None:
-    directory = _write_uk_national_release_dir(tmp_path)
+    directory = _write_uk_national_build_folder_release_dir(tmp_path)
     _rewrite_document(
         directory / "release_manifest.json", lambda release: release.pop(field)
     )
@@ -2676,7 +2725,7 @@ def test_uk_national_build_folder_records_build_details_at_the_top_level(
 def test_uk_national_build_folder_refuses_an_artifact_revision(
     tmp_path: Path,
 ) -> None:
-    directory = _write_uk_national_release_dir(tmp_path)
+    directory = _write_uk_national_build_folder_release_dir(tmp_path)
 
     def pin(release: dict) -> None:
         release["artifacts"]["calibration_diagnostics"]["revision"] = "main"
@@ -2698,7 +2747,7 @@ def test_uk_national_build_folder_refuses_an_artifact_revision(
 def test_uk_national_build_folder_names_each_artifact_role(
     tmp_path: Path, role: str | None, message: str
 ) -> None:
-    directory = _write_uk_national_release_dir(tmp_path)
+    directory = _write_uk_national_build_folder_release_dir(tmp_path)
 
     def set_role(release: dict) -> None:
         artifact = release["artifacts"]["calibration_diagnostics"]
@@ -2718,7 +2767,7 @@ def test_uk_national_build_folder_names_each_artifact_role(
 def test_uk_national_build_folder_artifact_paths_are_bare_file_names(
     tmp_path: Path, path: str
 ) -> None:
-    directory = _write_uk_national_release_dir(tmp_path)
+    directory = _write_uk_national_build_folder_release_dir(tmp_path)
 
     def move(release: dict) -> None:
         release["artifacts"]["release_certification"]["path"] = path
