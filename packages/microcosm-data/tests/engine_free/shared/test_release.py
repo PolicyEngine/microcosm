@@ -158,68 +158,129 @@ def test_line_pointer_payload_refuses_a_line_id_mismatch() -> None:
         )
 
 
-def _write_uk_build_folder_release(
-    release_id: str, release_dir: Path, tmp_path: Path
-) -> Path:
-    """One build-folder release of each kind: national, dense or local-area."""
-    if release_id == UK_NATIONAL_RELEASE_ID:
-        return _as_uk_national_build_folder_release(release_dir)
-    from .test_local_area_contract import _write_local_bundle
-
-    if release_id == UK_LOCAL_RELEASE_ID:
-        return _write_local_bundle(tmp_path / "local", release_id=release_id)
-    from test_support.microcosm_data.build_folders import UK_DENSE_BUILD
-
-    dense = _write_local_bundle(tmp_path / "dense", release_id=UK_LOCAL_RELEASE_ID)
-    dense = dense.rename(dense.with_name(release_id))
-    for name in ("build_manifest.json", "release_manifest.json"):
-        manifest = json.loads((dense / name).read_text())
-        manifest.update(release=release_id, build=UK_DENSE_BUILD)
-        (dense / name).write_text(json.dumps(manifest))
-    return dense
-
-
 @pytest.mark.parametrize(
-    "release_id",
-    [UK_NATIONAL_RELEASE_ID, "microcosm-uk-2024-25-dense", UK_LOCAL_RELEASE_ID],
+    ("options", "message"),
+    [
+        ({"update_latest": False}, "requires update_latest=True"),
+        ({"tag_only": True}, "cannot use tag_only=True"),
+        ({"evidence": True}, "cannot publish at the evidence tier"),
+    ],
 )
-def test_the_tagged_publisher_refuses_every_build_folder_release(
-    release_dir: Path, artifact_root: Path, tmp_path: Path, release_id: str
+def test_prepare_release_refuses_incompatible_line_modes(
+    release_dir: Path, monkeypatch, options: dict, message: str
 ) -> None:
-    """A UK build publishes into its own folder through the emitter; this
-    publisher, which commits, tags and writes pointer files, refuses it
-    before any check or Hub call, on every path."""
-    uk_dir = _write_uk_build_folder_release(release_id, release_dir, tmp_path)
+    monkeypatch.setattr(
+        release_module, "validate_release_dir", lambda _path, **_kwargs: []
+    )
+    monkeypatch.setattr(
+        release_module,
+        "validate_evidence_release_dir",
+        lambda _path, **_kwargs: None,
+    )
+
+    with pytest.raises(ValueError, match=message):
+        release_module.prepare_release(release_dir, line="national", **options)
+
+
+def test_prepare_release_refuses_a_line_id_mismatch(
+    release_dir: Path, monkeypatch
+) -> None:
+    monkeypatch.setattr(
+        release_module, "validate_release_dir", lambda _path, **_kwargs: []
+    )
+
+    with pytest.raises(ValueError, match="belongs to line None"):
+        release_module.prepare_release(release_dir, line="national")
+
+
+def test_national_cut_promotes_only_its_line_pointer(
+    release_dir: Path, artifact_root: Path, tmp_path: Path, monkeypatch
+) -> None:
+    national = _as_uk_national_line_release(release_dir)
+    monkeypatch.setattr(
+        release_module, "validate_release_dir", lambda _path, **_kwargs: []
+    )
+    alerts: list = []
+    monkeypatch.setattr(
+        release_module,
+        "notify_release",
+        lambda repo_id, release_id, updated_at, **kwargs: alerts.append(
+            (repo_id, release_id, updated_at, kwargs)
+        ),
+    )
     uk_hub = FakeHub("policyengine/populace-uk-private")
     uk_hub._download_dir = tmp_path / "uk-hub-cache"
-    message = "microcosm-publish-release-build"
+    june_pointer = latest_pointer_payload(
+        JUNE_UK_RELEASE_ID, updated_at="2026-06-19T02:38:00+00:00"
+    )
+    june_pointer_bytes = json.dumps(june_pointer, indent=1).encode()
+    uk_hub.seed_main_file(LATEST_POINTER_PATH, june_pointer_bytes)
 
-    with pytest.raises(ValueError, match=message):
-        release_module.prepare_release(uk_dir, artifact_root=artifact_root)
-    with pytest.raises(ValueError, match=message):
-        publish_release(
-            uk_dir,
+    published = publish_release(
+        national,
+        "policyengine/populace-uk-private",
+        api=uk_hub,
+        artifact_root=artifact_root,
+        tag_name=UK_NATIONAL_CUT_TAG,
+        line="national",
+        updated_at="2026-09-20T12:00:00+00:00",
+    )
+
+    pointer_path = line_pointer_path("national")
+    main_files = uk_hub._commits[uk_hub._refs["main"]]
+    assert main_files[LATEST_POINTER_PATH] == june_pointer_bytes
+    assert {
+        path
+        for path in main_files
+        if path.startswith("latest") and path.endswith(".json")
+    } == {LATEST_POINTER_PATH, pointer_path}
+    assert uk_hub.events[-1][1]["paths"][-1] == pointer_path
+    assert uk_hub.uploads[-1][0] == pointer_path
+    assert uk_hub.tags == [{"tag": UK_NATIONAL_CUT_TAG, "revision": "commit-1"}]
+    assert published["revision"] == UK_NATIONAL_CUT_TAG
+    assert published["line"] == "national"
+    assert (
+        latest_line_release(
+            "policyengine/populace-uk-private", line="national", api=uk_hub
+        ).revision
+        == UK_NATIONAL_CUT_TAG
+    )
+    assert alerts == [
+        (
             "policyengine/populace-uk-private",
-            api=uk_hub,
-            artifact_root=artifact_root,
-            update_latest=False,
+            UK_NATIONAL_RELEASE_ID,
+            "2026-09-20T12:00:00+00:00",
+            {
+                "warn_if_unset": True,
+                "line": "national",
+                "revision": UK_NATIONAL_CUT_TAG,
+            },
         )
-    with pytest.raises(ValueError, match=message):
-        publish_cli.main([str(uk_dir), "--preflight-only", "--no-latest"])
-
-    assert uk_hub.events == []
-    assert uk_hub.uploads == []
+    ]
 
 
-def test_the_tagged_publisher_has_no_pointer_promotion_option() -> None:
-    """Only UK releases were made current through latest-<line>.json pointer
-    files, and they no longer publish here."""
-    import inspect
+def test_local_k_role_moves_only_its_own_line_pointer(tmp_path: Path) -> None:
+    from .test_local_area_contract import _write_local_bundle
 
-    assert "line" not in inspect.signature(publish_release).parameters
-    assert "line" not in inspect.signature(release_module.prepare_release).parameters
-    with pytest.raises(SystemExit):
-        publish_cli.main(["releases/x", "--promote-line", "national"])
+    release_dir = _write_local_bundle(tmp_path, release_id=UK_LOCAL_RELEASE_ID)
+    uk_hub = FakeHub("policyengine/populace-uk-private")
+    uk_hub._download_dir = tmp_path / "uk-local-hub-cache"
+
+    published = publish_release(
+        release_dir,
+        "policyengine/populace-uk-private",
+        api=uk_hub,
+        artifact_root=tmp_path,
+        line="local-k55000",
+        notify=False,
+    )
+
+    pointer_path = line_pointer_path("local-k55000")
+    assert published["revision"] == UK_LOCAL_RELEASE_ID
+    assert uk_hub.tags == [{"tag": UK_LOCAL_RELEASE_ID, "revision": "commit-1"}]
+    assert uk_hub.events[-1][1]["paths"][-1] == pointer_path
+    assert all(path != LATEST_POINTER_PATH for path, _ in uk_hub.uploads)
+    assert all(path != LATEST_EVIDENCE_POINTER_PATH for path, _ in uk_hub.uploads)
 
 
 def test_prepare_build_folder_release_lists_each_file_with_its_role(
@@ -264,7 +325,9 @@ def test_prepare_build_folder_release_publishes_the_checksum_ledger(
 ) -> None:
     from .test_local_area_contract import _write_local_bundle
 
-    release_dir = _write_local_bundle(tmp_path, release_id=UK_LOCAL_RELEASE_ID)
+    release_dir = _write_local_bundle(
+        tmp_path, release_id=UK_LOCAL_RELEASE_ID, build_folder=True
+    )
 
     prepared = release_module.prepare_build_folder_release(
         release_dir, artifact_root=tmp_path
@@ -1823,94 +1886,132 @@ def test_non_enrichment_publisher_refuses_enrichment_only_arguments(
     assert hub.uploads == []
 
 
-def test_publish_then_promote_reuses_the_immutable_tag(
-    hub: FakeHub, release_dir: Path, artifact_root: Path, monkeypatch
+def test_inspect_then_promote_reuses_the_immutable_tag(
+    release_dir: Path, artifact_root: Path, tmp_path: Path, monkeypatch
 ) -> None:
-    """Publishing without the pointer, then with it: the second call
-    recognises the existing tag that describes this release, writes no second
-    immutable revision and only the main commit carrying the pointer."""
+    """The documented two-step sequence: publish for inspection under the cut
+    tag, then promote the same cut. The second call recognises the existing
+    tag that describes this release, writes no second immutable revision
+    and only the main commit carrying the pointer (review of #966)."""
+    national = _as_uk_national_line_release(release_dir)
+    monkeypatch.setattr(
+        release_module, "validate_release_dir", lambda _path, **_kwargs: []
+    )
     monkeypatch.setattr(release_module, "notify_release", lambda *a, **k: None)
+    hub = _uk_hub(tmp_path)
+    june_pointer_bytes = hub._commits[hub._refs["main"]][LATEST_POINTER_PATH]
 
     publish_release(
-        release_dir,
-        "policyengine/populace-us",
+        national,
+        "policyengine/populace-uk-private",
         api=hub,
         artifact_root=artifact_root,
+        tag_name=UK_NATIONAL_CUT_TAG,
         update_latest=False,
     )
-    assert LATEST_POINTER_PATH not in hub._commits[hub._refs["main"]]
+    assert line_pointer_path("national") not in hub._commits[hub._refs["main"]]
     events_after_inspect = len(hub.events)
 
     promoted = publish_release(
-        release_dir,
-        "policyengine/populace-us",
+        national,
+        "policyengine/populace-uk-private",
         api=hub,
         artifact_root=artifact_root,
+        tag_name=UK_NATIONAL_CUT_TAG,
+        line="national",
         updated_at="2026-09-23T12:00:00+00:00",
     )
 
     kinds = [event for event, _ in hub.events[events_after_inspect:]]
     assert kinds == ["create_commit"], kinds
-    assert hub.tags == [{"tag": RELEASE_ID, "revision": "commit-1"}]
-    assert promoted["release_id"] == RELEASE_ID
-    assert latest_release("policyengine/populace-us", api=hub).release_id == (
-        RELEASE_ID
+    assert hub.tags == [{"tag": UK_NATIONAL_CUT_TAG, "revision": "commit-1"}]
+    main_files = hub._commits[hub._refs["main"]]
+    assert main_files[LATEST_POINTER_PATH] == june_pointer_bytes
+    assert json.loads(main_files[line_pointer_path("national")])["revision"] == (
+        UK_NATIONAL_CUT_TAG
+    )
+    assert promoted["revision"] == UK_NATIONAL_CUT_TAG
+    assert (
+        latest_line_release(
+            "policyengine/populace-uk-private", line="national", api=hub
+        ).revision
+        == UK_NATIONAL_CUT_TAG
     )
 
 
 def test_retry_after_a_failed_pointer_commit_reuses_the_tag(
-    hub: FakeHub, release_dir: Path, artifact_root: Path, monkeypatch
+    release_dir: Path, artifact_root: Path, tmp_path: Path, monkeypatch
 ) -> None:
     """A failure between tag creation and the pointer commit leaves the tag;
     the retry stands on it instead of dying on create_tag."""
+    national = _as_uk_national_line_release(release_dir)
+    monkeypatch.setattr(
+        release_module, "validate_release_dir", lambda _path, **_kwargs: []
+    )
     monkeypatch.setattr(release_module, "notify_release", lambda *a, **k: None)
+    hub = _uk_hub(tmp_path)
     hub.fail_main_commit = True
     with pytest.raises(RuntimeError, match="injected main commit failure"):
         publish_release(
-            release_dir,
-            "policyengine/populace-us",
+            national,
+            "policyengine/populace-uk-private",
             api=hub,
             artifact_root=artifact_root,
+            tag_name=UK_NATIONAL_CUT_TAG,
+            line="national",
         )
-    assert hub.tags == [{"tag": RELEASE_ID, "revision": "commit-1"}]
-    assert LATEST_POINTER_PATH not in hub._commits[hub._refs["main"]]
+    assert hub.tags == [{"tag": UK_NATIONAL_CUT_TAG, "revision": "commit-1"}]
+    assert line_pointer_path("national") not in hub._commits[hub._refs["main"]]
 
     hub.fail_main_commit = False
     publish_release(
-        release_dir,
-        "policyengine/populace-us",
+        national,
+        "policyengine/populace-uk-private",
         api=hub,
         artifact_root=artifact_root,
+        tag_name=UK_NATIONAL_CUT_TAG,
+        line="national",
     )
 
-    assert hub.tags == [{"tag": RELEASE_ID, "revision": "commit-1"}]
-    assert LATEST_POINTER_PATH in hub._commits[hub._refs["main"]]
+    assert hub.tags == [{"tag": UK_NATIONAL_CUT_TAG, "revision": "commit-1"}]
+    assert line_pointer_path("national") in hub._commits[hub._refs["main"]]
 
 
-def test_publication_refuses_a_tag_that_describes_another_release(
-    hub: FakeHub, release_dir: Path, artifact_root: Path, monkeypatch
+def test_promotion_refuses_a_tag_that_describes_another_release(
+    release_dir: Path, artifact_root: Path, tmp_path: Path, monkeypatch
 ) -> None:
+    national = _as_uk_national_line_release(release_dir)
+    monkeypatch.setattr(
+        release_module, "validate_release_dir", lambda _path, **_kwargs: []
+    )
     monkeypatch.setattr(release_module, "notify_release", lambda *a, **k: None)
+    hub = _uk_hub(tmp_path)
     # A tag already pointing at a revision with no manifest for this release.
-    hub._refs[RELEASE_ID] = hub._refs["main"]
+    hub._refs[UK_NATIONAL_CUT_TAG] = hub._refs["main"]
     with pytest.raises(ValueError, match="does not describe this release"):
         publish_release(
-            release_dir,
-            "policyengine/populace-us",
+            national,
+            "policyengine/populace-uk-private",
             api=hub,
             artifact_root=artifact_root,
+            tag_name=UK_NATIONAL_CUT_TAG,
+            line="national",
         )
-    # A tag whose manifest is another release's.
-    hub._commits["other"] = {f"releases/{RELEASE_ID}/release_manifest.json": b"{}"}
-    hub._refs[RELEASE_ID] = "other"
+    # A tag whose manifest is another cut's.
+    hub._commits["other"] = {
+        f"releases/{UK_NATIONAL_RELEASE_ID}/release_manifest.json": b"{}"
+    }
+    hub._refs[UK_NATIONAL_CUT_TAG] = "other"
     with pytest.raises(ValueError, match="describes another release"):
         publish_release(
-            release_dir,
-            "policyengine/populace-us",
+            national,
+            "policyengine/populace-uk-private",
             api=hub,
             artifact_root=artifact_root,
+            tag_name=UK_NATIONAL_CUT_TAG,
+            line="national",
         )
-    assert LATEST_POINTER_PATH not in hub._commits[hub._refs["main"]]
+    assert line_pointer_path("national") not in hub._commits[hub._refs["main"]]
 
 
 def test_line_pointer_path_refuses_the_evidence_line() -> None:
@@ -1918,17 +2019,44 @@ def test_line_pointer_path_refuses_the_evidence_line() -> None:
         line_pointer_path("evidence")
 
 
+def test_line_promotion_refuses_a_release_whose_role_is_not_the_lines(
+    release_dir: Path, artifact_root: Path, monkeypatch
+) -> None:
+    """The national line carries national-default releases only; a
+    local-area manifest cannot ride the national pointer on its id."""
+    national = _as_uk_national_line_release(release_dir)
+    manifest_path = national / "release_manifest.json"
+    manifest = json.loads(manifest_path.read_text())
+    manifest["dataset_role"] = "non_default_local_area"
+    manifest_path.write_text(json.dumps(manifest))
+    monkeypatch.setattr(
+        release_module, "validate_release_dir", lambda _path, **_kwargs: []
+    )
+    with pytest.raises(ValueError, match="publishes only 'national_default'"):
+        release_module.prepare_release(
+            national,
+            artifact_root=artifact_root,
+            tag_name=UK_NATIONAL_CUT_TAG,
+            line="national",
+        )
+
+
 def test_transient_errors_while_checking_an_existing_tag_propagate(
-    hub: FakeHub, release_dir: Path, artifact_root: Path, monkeypatch
+    release_dir: Path, artifact_root: Path, tmp_path: Path, monkeypatch
 ) -> None:
     """Only "absent" answers are swallowed: a transient failure looking up
-    the tag or its manifest propagates, so a good tag is never orphaned
+    the tag or its manifest propagates, so a good cut is never orphaned
     and the create path is never re-entered with the tag in place."""
+    national = _as_uk_national_line_release(release_dir)
+    monkeypatch.setattr(
+        release_module, "validate_release_dir", lambda _path, **_kwargs: []
+    )
     monkeypatch.setattr(release_module, "notify_release", lambda *a, **k: None)
+    hub = _uk_hub(tmp_path)
     original_repo_info = hub.repo_info
 
     def flaky_repo_info(*, repo_id, repo_type, revision=None):
-        if revision == RELEASE_ID:
+        if revision == UK_NATIONAL_CUT_TAG:
             raise RuntimeError("injected transient Hub failure")
         return original_repo_info(
             repo_id=repo_id, repo_type=repo_type, revision=revision
@@ -1937,16 +2065,18 @@ def test_transient_errors_while_checking_an_existing_tag_propagate(
     monkeypatch.setattr(hub, "repo_info", flaky_repo_info)
     with pytest.raises(RuntimeError, match="injected transient Hub failure"):
         publish_release(
-            release_dir,
-            "policyengine/populace-us",
+            national,
+            "policyengine/populace-uk-private",
             api=hub,
             artifact_root=artifact_root,
+            tag_name=UK_NATIONAL_CUT_TAG,
+            line="national",
         )
     assert hub.tags == []
     assert not [event for event, _ in hub.events if event == "create_branch"]
 
     monkeypatch.setattr(hub, "repo_info", original_repo_info)
-    hub._refs[RELEASE_ID] = hub._refs["main"]
+    hub._refs[UK_NATIONAL_CUT_TAG] = hub._refs["main"]
 
     def flaky_download(*, repo_id, filename, repo_type, revision=None):
         raise RuntimeError("injected transient download failure")
@@ -1954,9 +2084,11 @@ def test_transient_errors_while_checking_an_existing_tag_propagate(
     monkeypatch.setattr(hub, "hf_hub_download", flaky_download)
     with pytest.raises(RuntimeError, match="injected transient download failure"):
         publish_release(
-            release_dir,
-            "policyengine/populace-us",
+            national,
+            "policyengine/populace-uk-private",
             api=hub,
             artifact_root=artifact_root,
+            tag_name=UK_NATIONAL_CUT_TAG,
+            line="national",
         )
-    assert LATEST_POINTER_PATH not in hub._commits[hub._refs["main"]]
+    assert line_pointer_path("national") not in hub._commits[hub._refs["main"]]

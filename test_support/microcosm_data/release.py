@@ -753,6 +753,35 @@ def artifact_root(tmp_path: Path) -> Path:
     return directory
 
 
+def _as_uk_national_line_release(release_dir: Path) -> Path:
+    """Retarget the publisher fixture to the constant UK national line id."""
+    national = release_dir.with_name(UK_NATIONAL_RELEASE_ID)
+    release_dir.rename(national)
+
+    build_path = national / "build_manifest.json"
+    build = json.loads(build_path.read_text())
+    build["build_id"] = UK_NATIONAL_RELEASE_ID
+    build_path.write_text(json.dumps(build))
+
+    certification_path = national / "release_certification.json"
+    certification_path.write_text("{}")
+    manifest_path = national / "release_manifest.json"
+    manifest = json.loads(manifest_path.read_text())
+    manifest["build"]["build_id"] = UK_NATIONAL_RELEASE_ID
+    for artifact in manifest["artifacts"].values():
+        artifact["repo_id"] = "policyengine/populace-uk-private"
+        artifact["revision"] = UK_NATIONAL_CUT_TAG
+    manifest["artifacts"]["release_certification"] = {
+        "kind": "diagnostics",
+        "path": certification_path.name,
+        "repo_id": "policyengine/populace-uk-private",
+        "revision": UK_NATIONAL_CUT_TAG,
+        "sha256": _sha256(certification_path),
+    }
+    manifest_path.write_text(json.dumps(manifest))
+    return national
+
+
 def _as_uk_national_build_folder_release(release_dir: Path) -> Path:
     """Retarget the publisher fixture to the UK national release.
 
@@ -872,6 +901,16 @@ def _declare_root_artifact(release_dir: Path, *, key: str, path: str) -> None:
         "sha256": "1" * 64,
     }
     manifest_path.write_text(json.dumps(manifest))
+
+
+def _uk_hub(tmp_path: Path) -> FakeHub:
+    hub = FakeHub("policyengine/populace-uk-private")
+    hub._download_dir = tmp_path / "uk-hub-cache"
+    june_pointer = latest_pointer_payload(
+        JUNE_UK_RELEASE_ID, updated_at="2026-06-19T02:38:00+00:00"
+    )
+    hub.seed_main_file(LATEST_POINTER_PATH, json.dumps(june_pointer, indent=1).encode())
+    return hub
 
 
 __all__ = [name for name in globals() if not name.startswith("__")]
