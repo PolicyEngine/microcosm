@@ -61,6 +61,7 @@ from microcosm.data.us_critical_targets import (
 )
 from microcosm.diagnostics import (
     CALIBRATION_DIAGNOSTICS_SCHEMA_VERSION,
+    HIERARCHY_CALIBRATION_DIAGNOSTICS_SCHEMA_VERSIONS,
     SUPPORTED_CALIBRATION_DIAGNOSTICS_SCHEMA_VERSIONS,
     UK_DIAGNOSTICS_SCHEMA_VERSION,
     UK_MODEL_FIGURE_FIELDS,
@@ -226,6 +227,29 @@ US_SPM_UNIVERSE_SCOPING_MODEL_VERSIONS: frozenset[str] = frozenset()
 _SUPPORTED_CALIBRATION_DIAGNOSTICS_SCHEMA_VERSIONS = (
     SUPPORTED_CALIBRATION_DIAGNOSTICS_SCHEMA_VERSIONS
 )
+#: Schema 8 (labels on every row; releases published before schema 9) and
+#: schema 9 (labels in ``hierarchy_catalogs``; what the writer publishes).
+#: Both carry the calibration hierarchy and are validated by the shared
+#: models, so every check of a current document accepts either.
+_HIERARCHY_CALIBRATION_DIAGNOSTICS_SCHEMA_VERSIONS = (
+    HIERARCHY_CALIBRATION_DIAGNOSTICS_SCHEMA_VERSIONS
+)
+_HIERARCHY_SCHEMA_VERSIONS_TEXT = " or ".join(
+    str(version)
+    for version in sorted(_HIERARCHY_CALIBRATION_DIAGNOSTICS_SCHEMA_VERSIONS)
+)
+
+
+def _is_hierarchy_diagnostics_version(value: object) -> bool:
+    """Whether a declared diagnostics version is schema 8 or 9 (exact integers)."""
+
+    return (
+        isinstance(value, int)
+        and not isinstance(value, bool)
+        and value in _HIERARCHY_CALIBRATION_DIAGNOSTICS_SCHEMA_VERSIONS
+    )
+
+
 US_SOURCE_COVERAGE_DIAGNOSTICS_FILE = "us_source_coverage.json"
 SOURCE_COVERAGE_DIAGNOSTICS_SCHEMA_VERSION = 1
 _SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
@@ -451,13 +475,13 @@ _UK_GATE_BATTERY_SHIPPABLE_STATUSES = frozenset({"passed", "not_applicable"})
 # fingerprint derives from the manifest digest. Editing the spec moves all
 # three here in the same reviewed change.
 _UK_GATE_BATTERY_POLICY_SHA256 = (
-    "40e24836c45468ccb50b025dcd05603dc4d8af37ef546fa3bc6d4ea9152f707e"
+    "7c20944f06349bca285eb3f8e8e696cfef99c356b7685d990e36f9e53c019753"
 )
 _UK_GATE_BATTERY_GATES_MANIFEST_SHA256 = (
-    "7d9a294b0c17dd545beb88fcf3d1e596a4c36dd4aa8a7821b6fe767de3beb85f"
+    "d57afaa831f0599d53b23b653119f4508eecf9ceb97aa7f1d16197a93824cd3c"
 )
 _UK_GATE_BATTERY_SPEC_FINGERPRINT = (
-    "0b82c7d90eb4400bb333a4f477509c9570221ecfd5afde13f08de4c8689b6db9"
+    "6b9c4d1cfb177629672c7ee9daa659422261b2e0c15b8715ca184b3d3bdc4ff6"
 )
 #: Spec entry id -> the legacy gate name whose observable detail checks
 #: apply unchanged (the battery re-keys the report by entry id; the gate
@@ -529,6 +553,7 @@ _UK_GATE_BATTERY_ENTRY_GATES = {
         "stage_health",
         "transferred",
     ),
+    "uk_stage_hmrc_spi_income_spine_hourly_pay": ("stage_health", "transferred"),
     "uk_stage_spi_benefit_coherence": ("stage_health", "transferred"),
     "uk_stage_uc_take_up": ("stage_health", "transferred"),
     "uk_stage_pension_credit_take_up": ("stage_health", "transferred"),
@@ -655,6 +680,7 @@ _UK_GATE_BATTERY_EVIDENCE_IDS = frozenset(
         "uk_stage_frs_annual_income_spells",
         "uk_stage_spi_support_channel_mass",
         "uk_stage_hmrc_spi_income_spine_identity",
+        "uk_stage_hmrc_spi_income_spine_hourly_pay",
         "uk_stage_spi_benefit_coherence",
         "uk_stage_uc_take_up",
         "uk_stage_pension_credit_take_up",
@@ -909,6 +935,7 @@ _UK_CERTIFICATION_PART_SCOPES: Mapping[str, frozenset[str]] = {
             "uk_stage_high_value_home_support_mass",
             "uk_stage_hmrc_cgt_asset_type_spine_summary",
             "uk_stage_hmrc_cgt_gains_spine_summary",
+            "uk_stage_hmrc_spi_income_spine_hourly_pay",
             "uk_stage_hmrc_spi_income_spine_identity",
             "uk_stage_isa_subscriptions",
             "uk_stage_isa_subscriptions_invariants",
@@ -979,10 +1006,10 @@ _UK_CERTIFICATION_PART_SCOPES: Mapping[str, frozenset[str]] = {
 _UK_CERTIFICATION_PART_DIGESTS: Mapping[str, Mapping[str, str]] = {
     "spine": {
         "gates_manifest_sha256": (
-            "4f59118f648d48c04aff3a28def11c472318b2dae368513a69467138799bd613"
+            "970974c07b1102a208c9ee12962d42d540adc1966789219cb5ea18718000a16e"
         ),
         "policy_sha256": (
-            "33e851f78f1dc1fde7969c6d875ea2d85b9ea41a39551680ad5a59b369b60f44"
+            "6416dda130412d6ceaeac2450a70befa694cbf582dee609ca34329a56849762b"
         ),
     },
     "calibration_seam": {
@@ -995,10 +1022,10 @@ _UK_CERTIFICATION_PART_DIGESTS: Mapping[str, Mapping[str, str]] = {
     },
     "release_cut": {
         "gates_manifest_sha256": (
-            "97a16c72db2c97d224a7e6e26f4afcad6eec4ed581b337bdb68fe9df4dbea82d"
+            "c7d6169e6c2516274d3635937c0965f405ad0a02cd821c17bc246c11f82b3a8c"
         ),
         "policy_sha256": (
-            "9961e4d3417e7812fb2248bd757fa057c2c3e08643dd4cc058da4713aae57057"
+            "606a841fca55d7936b7c15a10305582eba11b1a67c4da5248b97c4fa7ff721e5"
         ),
     },
 }
@@ -1631,10 +1658,10 @@ def _check_calibration_diagnostics_declaration(
         return
     status = declaration.get("status")
     if status == "available":
-        if declaration.get("schema_version") != CALIBRATION_DIAGNOSTICS_SCHEMA_VERSION:
+        if not _is_hierarchy_diagnostics_version(declaration.get("schema_version")):
             failures.append(
                 "release_manifest.json available calibration diagnostics must "
-                f"declare schema_version {CALIBRATION_DIAGNOSTICS_SCHEMA_VERSION}."
+                f"declare schema_version {_HIERARCHY_SCHEMA_VERSIONS_TEXT}."
             )
         _check_sha256_field(
             filename="release_manifest.json",
@@ -1660,12 +1687,13 @@ def _check_calibration_diagnostics_declaration(
                 )
         return
     if status == "failed":
-        if declaration.get("expected_schema_version") != (
-            CALIBRATION_DIAGNOSTICS_SCHEMA_VERSION
+        if not _is_hierarchy_diagnostics_version(
+            declaration.get("expected_schema_version")
         ):
             failures.append(
                 "release_manifest.json failed calibration diagnostics must "
-                "declare the current expected_schema_version."
+                "declare the current expected_schema_version "
+                f"({_HIERARCHY_SCHEMA_VERSIONS_TEXT})."
             )
         for field in ("error_code", "message"):
             if not isinstance(declaration.get(field), str) or not declaration[field]:
@@ -3411,9 +3439,7 @@ def _check_calibration_diagnostics(
     """
 
     schema_version = diagnostics.get("schema_version")
-    if not grandfathered_uk_june and schema_version == (
-        CALIBRATION_DIAGNOSTICS_SCHEMA_VERSION
-    ):
+    if not grandfathered_uk_june and _is_hierarchy_diagnostics_version(schema_version):
         try:
             parse_calibration_diagnostics(diagnostics)
         except ValidationError as error:
@@ -4513,10 +4539,10 @@ def _validate_local_area_release_dir(release_dir: Path, release_id: str) -> None
                 )
             else:
                 _check_local_area_calibration_diagnostics(diagnostics, failures)
-            if (
-                _is_uk_exact_k_release_id(release_id)
-                and diagnostics.get("schema_version")
-                != CALIBRATION_DIAGNOSTICS_SCHEMA_VERSION
+            if _is_uk_exact_k_release_id(
+                release_id
+            ) and not _is_hierarchy_diagnostics_version(
+                diagnostics.get("schema_version")
             ):
                 _check_legacy_uk_calibration_diagnostics(diagnostics, failures)
             if _is_uk_exact_k_release_id(release_id):
@@ -4642,9 +4668,7 @@ def _validate_uk_dense_release_dir(release_dir: Path, release_id: str) -> list[s
     if diagnostics_path.is_file():
         diagnostics = _load_json(diagnostics_path, failures)
         if diagnostics is not None:
-            if diagnostics.get("schema_version") == (
-                CALIBRATION_DIAGNOSTICS_SCHEMA_VERSION
-            ):
+            if _is_hierarchy_diagnostics_version(diagnostics.get("schema_version")):
                 _check_calibration_diagnostics(diagnostics, failures)
             _check_local_area_calibration_diagnostics(diagnostics, failures)
     report: Mapping | None = None
@@ -6487,7 +6511,7 @@ def _check_uk_candidate_restated_losses(
 def _check_local_area_calibration_diagnostics(
     diagnostics: Mapping, failures: list[str]
 ) -> None:
-    if diagnostics.get("schema_version") == CALIBRATION_DIAGNOSTICS_SCHEMA_VERSION:
+    if _is_hierarchy_diagnostics_version(diagnostics.get("schema_version")):
         target_surface = diagnostics.get("target_surface")
         n_targets = (
             target_surface.get("n_targets")
@@ -6841,9 +6865,9 @@ def validate_release_dir(
             if (
                 _is_uk_exact_k_release_id(release_id)
                 or release_id == _UK_NATIONAL_RELEASE_ID
-            ) and diagnostics.get(
-                "schema_version"
-            ) != CALIBRATION_DIAGNOSTICS_SCHEMA_VERSION:
+            ) and not _is_hierarchy_diagnostics_version(
+                diagnostics.get("schema_version")
+            ):
                 _check_legacy_uk_calibration_diagnostics(diagnostics, failures)
             if _is_uk_exact_k_release_id(release_id):
                 _check_uk_exact_k_diagnostics_identity(
@@ -7962,8 +7986,8 @@ def _check_uk_dense_surface_files(
         )
         original_diagnostics = loaded["source_calibration_diagnostics.json"]
         if shipped_diagnostics:
-            if original_diagnostics.get("schema_version") == (
-                CALIBRATION_DIAGNOSTICS_SCHEMA_VERSION
+            if _is_hierarchy_diagnostics_version(
+                original_diagnostics.get("schema_version")
             ):
                 shipped_sha256 = _sha256(release_dir / "calibration_diagnostics.json")
                 if shipped_sha256 != identity["candidate_diagnostics_sha256"]:

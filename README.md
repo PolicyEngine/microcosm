@@ -72,7 +72,9 @@ environment variables and user, so it uses the build's Hugging Face
 credential (`HF_TOKEN`, then `HUGGINGFACE_TOKEN`, then the `hf auth login`
 token). Without the command the build continues with no hosted telemetry and
 no remote staging, and queues no Orrery graph publication; a UK build given
-`--staging-read-back` fails at the read-back. Before it starts the emitter,
+`--staging-read-back` fails at the read-back, and a UK build asked to stage
+its dataset bundle remotely, as it is by default, is refused before it
+starts, since the emitter uploads the bundle. Before it starts the emitter,
 the build reads its version from `microcosm-emitter version` and does not
 start one older than 0.11.9. Releases before 0.10.0 send telemetry to the
 collector's Cloud Run address, which changes when the collector moves to
@@ -85,12 +87,44 @@ build prints the installed and required versions, what it loses and the
 upgrade command, `uv tool install --upgrade 'microcosm-emitter>=0.11.9'`,
 and continues as it does without the command. `uv tool upgrade` keeps any
 version constraint given at install time, such as `==0.7.0`; that
-`uv tool install --upgrade` command replaces it. Microcosm supplies build metadata, graph files and staging
-run files; the emitter owns authentication, durable queues and delivery.
+`uv tool install --upgrade` command replaces it. Microcosm supplies build
+metadata, graph files, staging run files and staged dataset bundles; the
+emitter owns authentication, durable queues and delivery.
 The telemetry module reports live progress to the hosted collector when the
 operator's Hugging Face login is accepted; otherwise it retains the events
 locally and the build continues. This live event path is independent of the
 staging run files described below.
+
+A build that must send telemetry runs with `MICROCOSM_TELEMETRY_REQUIRED=1`.
+Only builds that start the emitter adapter read it: the UK full build, the
+UK spine build and the US fiscal refresh build. Every other build ignores
+it, including the three registered US Modal programs
+(`build_us_acs_local_release.py`, `build_us_puf_support_base.py`,
+`build_us_acs_multispine_base.py`), which do not start the adapter yet and
+run without telemetry. A build that reads it stops with
+`TelemetryRequiredError` when it starts its emitter, before doing any work,
+if the emitter cannot be prepared or is missing, its
+`microcosm-emitter version` times out or fails, it is older than the
+minimum, it lists no protocol version 1, its `hello` fails, it exits or
+times out before it is ready, or it starts without its telemetry module.
+Every emitter a build starts (0.11.9 and later, the minimum) reads a given
+collector token, and exits at that point when the collector-token
+variables it inherits (`MICROCOSM_COLLECTOR_TOKEN`,
+`MICROCOSM_COLLECTOR_TOKEN_EXPIRES_AT`, `MICROCOSM_COLLECTOR_ORIGIN`) are set
+only in part, cannot be read, or name another collector; with none of them
+set, the emitter uses the Hugging Face credential. Whether the collector
+later accepts the credential is not visible to the build. For a failure the
+interface reports itself, interface 0.7.0 first prints its own line saying
+the build will continue; the error that follows says that line does not
+apply. Unset or `0`, a build continues without the emitter as above; any
+other value stops it with a `ValueError`. Leaving the requirement off
+(unset or `0`) exists only for the convenience of people outside
+PolicyEngine who run Microcosm without access to the collector;
+PolicyEngine's own builds keep telemetry required. The Modal stage runner
+sets it to `1` for the stage it runs, unless the plan sets `0`, and passes
+that stage a telemetry-only collector token (see
+[the Modal stage runbook](docs/us-modal-stage-runbook.md#how-a-run-works),
+item 6).
 
 US fiscal refresh builds also write pre-release staging run files **by
 default**. The build hands its progress JSON to the emitter, which commits it
@@ -127,7 +161,7 @@ version 2 staging run files to `policyengine/populace-uk-staging` under the
 same switch. The build command also **stages the finished dataset bundle** it built,
 national, dense or exact-count, under `staged/<run_id>/` in the
 private `policyengine/populace-uk-private` repository so the team can inspect
-it without publishing it: `releases/` and `latest.json` are untouched, the
+it without publishing it (the build's emitter uploads it): `releases/` and `latest.json` are untouched, the
 release contract is not consulted, and a `releasable: false` size run stages
 like any other. Fetch a bundle with `tools/fetch_uk_staged_dataset.py`;
 re-stage a finished run directory with `tools/stage_uk_rowwise_candidate.py`.
@@ -397,8 +431,9 @@ the historical `record` and `projection`) penalize distance from the design
 weights; see [penalized calibration toward the design weights](docs/calibration-l2-basis.md)
 for the algebra, the evidence and the measured frontier.
 
-National and ACS local-area builds now use the same typed schema-8 calibration
-diagnostics writer. The local builder adds its Census population marginals to a
+National and ACS local-area builds now use the same typed calibration
+diagnostics writer, which publishes schema 9: the schema-8 document builders
+assemble, with each hierarchy label declared once in `hierarchy_catalogs`. The local builder adds its Census population marginals to a
 versioned `TargetRegistry`, including provider, category, geography, and target
 hierarchy, before calibration. Both builders always attempt diagnostics after
 the calibrated dataset exists. If construction, validation, serialization, or
@@ -413,11 +448,11 @@ UK release workflows stop when diagnostics are unavailable because their later
 release checks require that evidence; historical schema-6 and schema-7 UK
 artifacts remain readable through isolated compatibility validation.
 
-A Draft 2020-12 JSON Schema for schema 8, generated from those models, is
-committed at
-`packages/microcosm-diagnostics/src/microcosm/diagnostics/schemas/calibration_diagnostics.v8.schema.json`
-for consumers that check the file without importing them, such as the
-collector. Its description lists the model rules a JSON Schema cannot express;
+Draft 2020-12 JSON Schemas for schema 9 and schema 8, generated from those
+models, are committed at
+`packages/microcosm-diagnostics/src/microcosm/diagnostics/schemas/calibration_diagnostics.v9.schema.json`
+and `calibration_diagnostics.v8.schema.json` beside it, for consumers that check
+the file without importing them, such as the collector. Its description lists the model rules a JSON Schema cannot express;
 see the [package README](packages/microcosm-diagnostics/README.md).
 
 Standard publication uploads the locally built `releases/<id>/` artifacts to

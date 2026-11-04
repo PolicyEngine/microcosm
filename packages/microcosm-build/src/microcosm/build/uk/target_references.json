@@ -407,6 +407,8 @@
       "hmrc.child_benefit.families_in_payment.children_3": "hmrc.child_benefit",
       "hmrc.child_benefit.families_in_payment.children_4": "hmrc.child_benefit",
       "hmrc.child_benefit.families_in_payment.children_5_plus": "hmrc.child_benefit",
+      "hmrc.child_benefit.hicbc_liable_taxpayers": "hmrc.child_benefit",
+      "hmrc.child_benefit.hicbc_revenue": "hmrc.child_benefit",
       "hmrc.itl.additional_rate_taxpayers": "hmrc.income_tax_liabilities_statistics",
       "hmrc.itl.higher_rate_taxpayers": "hmrc.income_tax_liabilities_statistics",
       "hmrc.itl.income_tax_by_total_income_band": "hmrc.income_tax_liabilities_statistics",
@@ -800,6 +802,8 @@
       "hmrc.child_benefit.families_in_payment.children_3": "Families in payment, three children",
       "hmrc.child_benefit.families_in_payment.children_4": "Families in payment, four children",
       "hmrc.child_benefit.families_in_payment.children_5_plus": "Families in payment, five or more children",
+      "hmrc.child_benefit.hicbc_liable_taxpayers": "Taxpayers liable to the High Income Child Benefit Charge",
+      "hmrc.child_benefit.hicbc_revenue": "High Income Child Benefit Charge revenue",
       "hmrc.itl.additional_rate_taxpayers": "Additional rate Income Tax payers by region and nation",
       "hmrc.itl.higher_rate_taxpayers": "Higher rate Income Tax payers by region and nation",
       "hmrc.itl.income_tax_by_total_income_band": "Income Tax liabilities by total income band",
@@ -49953,6 +49957,54 @@
         }
       ],
       "uprating_from_period": "2025-08",
+      "uprating_to_period": 2025
+    },
+    {
+      "name": "hmrc.child_benefit.hicbc_liable_taxpayers",
+      "ledger_selector": {
+        "source_name": "hmrc",
+        "source_concept": "hmrc.self_assessment_taxpayers_with_hicbc_liability",
+        "record_set_spec_id": "hmrc.child_benefit.aug2025.hicbc_individuals.ty2024.v1",
+        "source_measure_id": "hicbc_individuals",
+        "entity_name": "person",
+        "period_type": "tax_year",
+        "period_value": 2024,
+        "geography_level": "country",
+        "geography_id": "K02000001"
+      },
+      "entity": "person",
+      "measure": "hmrc/child_benefit/hicbc_liable_taxpayers",
+      "family": "hmrc_child_benefit",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "hmrc.child_benefit.hicbc_liable_taxpayers",
+        "measure_kind": "prepared_column"
+      },
+      "uprating_from_period": "2024",
+      "uprating_to_period": 2025
+    },
+    {
+      "name": "hmrc.child_benefit.hicbc_revenue",
+      "ledger_selector": {
+        "source_name": "hmrc",
+        "source_concept": "hmrc.hicbc_tax_revenue",
+        "record_set_spec_id": "hmrc.child_benefit.aug2025.hicbc_revenue.ty2024.v1",
+        "source_measure_id": "hicbc_revenue",
+        "entity_name": "government",
+        "period_type": "tax_year",
+        "period_value": 2024,
+        "geography_level": "country",
+        "geography_id": "K02000001"
+      },
+      "entity": "person",
+      "measure": "hmrc/child_benefit/hicbc_revenue",
+      "family": "hmrc_child_benefit",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "hmrc.child_benefit.hicbc_revenue",
+        "measure_kind": "prepared_column"
+      },
+      "uprating_from_period": "2024",
       "uprating_to_period": 2025
     }
   ]

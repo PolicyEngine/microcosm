@@ -1160,19 +1160,19 @@ def test_nz_default_factor_receipt_is_compact_and_covers_the_exact_roster():
     _, _, receipt = resolve_reference_profiles(
         base, declarations, {}, intervals, factor_context=context
     )
-    assert set(receipt["interval_tables"]) == {"ird_taxable_income_national_ty2024"}
+    assert set(receipt["interval_tables"]) == {"ird_taxable_income_standin_ty2024"}
     assert (
-        receipt["interval_tables"]["ird_taxable_income_national_ty2024"]["bands"] == 237
+        receipt["interval_tables"]["ird_taxable_income_standin_ty2024"]["bands"] == 12
     )
     assert "selected_declarations" not in receipt
     assert "base_reference_document" not in receipt
     companions = receipt["factor_companions"]
     expected_names = {
-        f"ird_taxable_income_{kind}_by_band__row_{index}"
+        f"ird_taxable_income_standin_{kind}_by_band__b{index:02d}"
         for kind in ("people", "total")
-        for index in range(8, 245)
+        for index in range(1, 13)
     }
-    assert len(companions) == 474
+    assert len(companions) == 24
     assert set(companions) == expected_names
     source_rows = {row["name"]: row for row in base["target_references"]}
     for name, companion in companions.items():
@@ -1184,6 +1184,7 @@ def test_nz_default_factor_receipt_is_compact_and_covers_the_exact_roster():
             "dimension": "aging_index",
             "profile": "central",
             "source": {
+                "expected_member_count": source["expected_member_count"],
                 "ledger_selector": source["ledger_selector"],
                 "period": source.get("period"),
                 "value_operation": source.get("value_operation", "identity"),
