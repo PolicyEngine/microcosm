@@ -3,10 +3,18 @@
 No NZ CI test builds an Axiom reference for NZ's rows: NZ's engine-free graph
 injects Python toy engines. These helpers build native references through
 ``build_transport_registry`` over a synthetic tree that holds NZ's six
-binding paths, with NZ's rows, ``unreached_roots`` included, and over the
-relation fixtures. The golden ``axiom_engine_refs.json`` holds the documents
+binding paths, with the six rows frozen in ``axiom_ref_bindings`` at
+``ef398616``, ``unreached_roots`` included, and over the relation fixtures.
+The live NZ bindings do not affect this synthetic tree. The golden
+``axiom_engine_refs.json`` holds the documents
 generated at the base of S2b PR 1 (main ``4a36edcf``); a reference that moves
 fails the byte comparison.
+
+To regenerate this golden intentionally, call ``engine_refs`` on a fresh
+scratch directory, then write its result to ``GOLDEN`` with
+``json.dumps(refs, indent=1, sort_keys=True) + "\n"``. Keep the frozen source
+rows unchanged when NZ's live bindings move. The separate real-tree golden
+uses the live bindings; its test documents that regeneration procedure.
 
 Preparation compiles nothing here: the module checks that would compile a
 program (``assert_no_relations`` and ``assert_declared_relations``) and the
@@ -18,7 +26,6 @@ from __future__ import annotations
 
 import copy
 import hashlib
-import json
 from collections.abc import Mapping
 from pathlib import Path
 
@@ -33,6 +40,7 @@ from microcosm.frame.adapters.axiom import (
     axiom_engine_ref,
 )
 from microcosm.frame.schema import EntitySchema
+from test_support.microcosm_build.axiom_ref_bindings import NZ_BINDINGS_SNAPSHOT
 from test_support.microcosm_build.transport_population import UNIT_RULE
 from test_support.paths import paths_for
 
@@ -54,8 +62,8 @@ def _module_bytes(path: str) -> bytes:
 
 
 def nz_document(root: Path) -> dict:
-    """NZ's six binding rows over a synthetic tree written below ``root``."""
-    source = json.loads(NZ_BINDINGS.read_text())
+    """Frozen NZ binding rows over a synthetic tree written below ``root``."""
+    source = copy.deepcopy(NZ_BINDINGS_SNAPSHOT)
     rows = []
     for row in source["bindings"]:
         payload = _module_bytes(row["rulespec_path"])
