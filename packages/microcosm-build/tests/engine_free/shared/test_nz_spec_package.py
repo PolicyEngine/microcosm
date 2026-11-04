@@ -1226,6 +1226,7 @@ class TestReferenceSets:
                 "rolled_forward_by_ratio",
                 "allocated_residual_by_ratio",
                 "linear_combination",
+                "sum",
             ]
             if reference_set == "calibration"
             else ["identity"]
@@ -1243,7 +1244,8 @@ class TestReferenceSets:
         # reads comes through its own selector or identifiers.
         for reference in _references(reference_set):
             assert reference.value_operation in expected_operations
-            if reference.value_operation == "identity":
+            # R2C-17: a summed count row sums its pinned members, no operands.
+            if reference.value_operation in {"identity", "sum"}:
                 assert reference.value_operands == ()
             else:
                 assert {operand["role"] for operand in reference.value_operands} == {
@@ -1269,7 +1271,8 @@ class TestReferenceSets:
                 compile_ledger_target_references([], [reference], country="nz")
         assert (
             sum(row.metadata["activation_status"] == "active" for row in references)
-            == {"calibration": 77, "precal": 80, "holdout": 2}[reference_set]
+            # G8-r2c E activates the 235 P1 wage rows.
+            == {"calibration": 77, "precal": 315, "holdout": 2}[reference_set]
         )
 
     def test_pre_calibration_rows_are_not_weight_calibration_targets(self) -> None:
@@ -1293,13 +1296,14 @@ class TestReferenceSets:
             "stats_nz_census_households_by_size_region",
             "stats_nz_census_families_by_type_region",
             "stats_nz_census_households_by_tenure_region",
-            "ird_taxable_income_people_by_band",
-            "ird_taxable_income_total_by_band",
+            "ird_taxable_income_standin_people_by_band",
+            "ird_taxable_income_standin_total_by_band",
             "msd_main_benefit_recipients_by_program_age",
             "msd_nz_super_recipients",
             "msd_veterans_pension_recipients",
         }
-        assert len(references) == 773
+        # R2C-4: 24 coarse stand-in rows replace the 474 native IRD rows.
+        assert len(references) == 323
         assert {reference.metadata["target_role"] for reference in references} == {
             "calibration"
         }
@@ -2348,6 +2352,10 @@ class TestScenarios:
             "V3",
             "V4",
             "VHF",
+            # G8-r2c G: the stand-in's stress, exposure and tail variants.
+            "VSI",
+            "VEX",
+            "VPT",
         ]
         branch_points = {
             tier: row["branch_point"] for tier, row in document["tiers"].items()
@@ -4365,7 +4373,20 @@ class TestReportingClassifiers:
                 "scenario": scenario,
                 "cell": "beneficiary_superannuitant_other/superannuitant",
             }
-            for scenario in ("S0", "S1", "S2", "S3", "V1", "V2", "V3", "V4", "VHF")
+            for scenario in (
+                "S0",
+                "S1",
+                "S2",
+                "S3",
+                "V1",
+                "V2",
+                "V3",
+                "V4",
+                "VHF",
+                "VSI",
+                "VEX",
+                "VPT",
+            )
         ]
         support = next(
             row

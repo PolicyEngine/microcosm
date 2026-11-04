@@ -2089,6 +2089,7 @@ UK_GATE_REGISTRY: Mapping[str, GateBinding] = {
                 "minimum_entitled_units",
                 # microcosm#1334 uc_take_up stage-health check.
                 "maximum_caseload_deviation",
+                "maximum_reachable_pool_deviation",
                 # frs_annual_income_spells stage-health check.
                 "pay_concept_ratio_bounds",
                 "annual_over_current_earners_bounds",
@@ -2096,6 +2097,7 @@ UK_GATE_REGISTRY: Mapping[str, GateBinding] = {
                 # microcosm#1095 spi_benefit_coherence stage-health check.
                 "zeroed_columns",
                 "restored_columns",
+                "restored_within_earnings_limit_columns",
                 # microcosm#1063 child_benefit_take_up stage-health check.
                 "maximum_claim_rate_deviation",
                 "maximum_age_claim_rate_deviation",
@@ -2220,6 +2222,9 @@ UK_GATE_REGISTRY: Mapping[str, GateBinding] = {
                 "rate_key",
                 "maximum_relative_realization_deviation",
                 "maximum_implied_relief",
+                # uk-data#629 spi_hourly_pay check: the drawn employees' share
+                # below the minimum wage may exceed the FRS rows' by this much.
+                "maximum_share_above_frs",
             }
         ),
         artifact_keys=frozenset({"stage_evidence"}),

@@ -726,7 +726,10 @@ def uk_terminal_only_code_hash() -> str:
     ``catalog_calibration_diagnostics`` with the UK label choices (which read
     ``UK_GEOGRAPHY_ID_TO_LABEL``), dumped from ``CalibrationDiagnosticsV9``.
     Those modules decide the published labels and bytes, so an edit to them
-    re-keys the calibrated node the same way, never the solve.
+    re-keys the calibrated node the same way. ``geography_constants``, like
+    ``high_value_homes``, also feeds the target kernels, which hash it
+    (microcosm#1492), so an edit to it still re-solves; an edit to the other
+    three never does.
 
     Hashed once per process, as the code was imported: an edit to the files
     while a build runs cannot fail the calibrated gates after the solve.
