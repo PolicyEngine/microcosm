@@ -691,6 +691,36 @@ MERGE_VALUES = st.sampled_from([False, True, 0, 1, 0.0, 0.5])
 DTYPE_TOKENS = {bool: "bool", int: "int64", float: "float64"}
 
 
+@pytest.mark.parametrize(
+    ("person_value", "child_value"),
+    [(0, False), (0, 0.0), (False, 0.0), (1, True)],
+    ids=["int-bool-zero", "int-float-zero", "bool-float-zero", "int-bool-one"],
+)
+@pytest.mark.parametrize(
+    "child_first", [False, True], ids=["person-first", "child-first"]
+)
+def test_person_and_child_type_only_defaults_conflict(
+    tmp_path, person_value, child_value, child_first
+):
+    # Pin the merge property's type-only refusal on every run, including
+    # bool's subclass relationship with int in both gather orders.
+    sources = write_population_sources(tmp_path / "sources")
+    frame = _donor_frame(sources)
+    closure = replace(
+        ROLE_CLOSURE,
+        entries=(
+            *ROLE_CLOSURE.entries,
+            _default(PERSON_PATH, "Person", "role_flag", person_value),
+            _default(CHILD_DEFAULTS_PATH, "Child", "role_flag", child_value),
+        ),
+    )
+    paths = (PERSON_PATH, CHILD_DEFAULTS_PATH)[:: -1 if child_first else 1]
+    params = _encode_params(mapping=ROLE_MAPPING, closure=closure, paths=paths)
+    outputs = (Owned("person", "role_flag", DTYPE_TOKENS[type(person_value)]),)
+    with pytest.raises(ValueError, match="conflicting defaults"):
+        CONCEPTS_ENCODE.run(_context(CONCEPTS_ENCODE, frame, params, outputs))
+
+
 @PROPERTY
 @given(
     tables=concept_frames(max_households=2, max_members=3),
