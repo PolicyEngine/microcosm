@@ -292,9 +292,10 @@ No program registered here writes a staged-dataset bundle yet; see "What
 this does not cover yet". A UK rowwise build's run directory, whose
 `rowwise_candidate_manifest.json` registers one, would be staged from the
 workstation after step 5, with the operator's own emitter and Hub credential:
-`tools/stage_uk_rowwise_candidate.py --modal-receipt` checks the build
-manifest and its outputs against the receipt and hands the bundle over as for
-a local build (see [Staged datasets](uk-staging-operations.md#staged-datasets)).
+`tools/stage_uk_rowwise_candidate.py --modal-receipt` checks the outputs the
+build manifest registers against the receipt, and the manifest itself until
+its record says a hand-over happened, then hands the bundle over as for a
+local build (see [Staged datasets](uk-staging-operations.md#staged-datasets)).
 
 To prove the run path on a new commit or workspace for well under a cent,
 run `docs/us-modal-stage-smoke-plan.json` (tool `runner-smoke`). It is an

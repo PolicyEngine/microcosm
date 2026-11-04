@@ -409,21 +409,28 @@ directory `--modal-state-root` names, either resolved the same way. The
 receipt must list the build manifest and every output it registers, at their
 paths under the state directory. An output the stage hashed but never copied
 to the runs volume (the receipt's `outputs_not_mirrored`) is named as such.
-While the build manifest's `staged_dataset` record is still the build's own
-`local_only` one, the manifest must have the receipt's SHA-256 and size, so a
-manifest edited to register another file, rename a role or change any other
-field is refused. Then every output must have the receipt's SHA-256 and size.
-Every refusal comes before an emitter starts. `staged_manifest.json` and
-`sha256sums.txt` are not compared, because staging writes them again, and the
-build manifest is not compared once a hand-over has replaced its record. Then
-the command stages the directory as above, under the build's own run id: the
-hand-over, the records, a re-stage after a failed attempt and a second run on
-a landed bundle work as they do for a directory built on the workstation.
-Unset `HF_HUB_OFFLINE` first if your shell sets it: the command refuses to
-stage while it is set. With `--local-only` it checks the receipt and rewrites
-the sidecars and the build manifest; the manifest gets the build's own
-`local_only` record again, in the build's own JSON rendering, so it keeps the
-bytes the receipt lists. Nothing here submits the bundle to the collector: the
+Unless the build manifest's `staged_dataset` record is `local_and_remote`,
+the manifest must have the receipt's SHA-256 and size, so a manifest edited to
+register another file the stage wrote, rename a role or change any other field
+is refused. A hand-over from the workstation writes a `local_and_remote`
+record and rewrites the manifest, so after one, even one that failed, the
+manifest is not compared. The command reads that mode from the manifest
+itself, so it cannot tell a record a hand-over wrote from one edited to say
+`local_and_remote`: such an edit also ends the manifest's comparison, and the
+edits above are then not caught. Every output must have the receipt's SHA-256
+and size whatever the record says, so an output whose bytes differ from the
+receipt's is always refused. Every refusal comes before an emitter starts.
+`staged_manifest.json` and `sha256sums.txt` are not compared, because staging
+writes them again. Then the command stages the directory as above, under the
+build's own run id: the hand-over, the records, a re-stage after a failed
+attempt and a second run on a landed bundle work as they do for a directory
+built on the workstation. Unset `HF_HUB_OFFLINE` first if your shell sets it:
+the command refuses to stage while it is set. With `--local-only` it checks
+the directory against the receipt and writes `staged_manifest.json` and
+`sha256sums.txt`, but leaves the build manifest as it is, so later runs with
+the receipt still compare it. (Without `--modal-receipt`, `--local-only` also
+records the bundle as `local_only` in the build manifest.) Nothing here
+submits the bundle to the collector: the
 command's emitter runs its Hugging Face module only, and builds do not submit
 artifacts to the collector's artifact intake yet
 (PolicyEngine/microcosm-collector#12).
