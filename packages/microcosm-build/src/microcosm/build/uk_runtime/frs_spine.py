@@ -1296,7 +1296,7 @@ def frs_property_income(person: pd.DataFrame, household: pd.DataFrame) -> np.nda
     sub-tenant disregard. Income tax, HBAI income and household net income do
     not read ``sublet_income``. So SUBRENT stays here, where income tax and
     HBAI income count it, and the means tests do not count it until it moves
-    to ``sublet_income``. PolicyEngine/policyengine-uk-data#508 sets the order:
+    to ``sublet_income``. uk-data#508 sets the order:
     first a release with PolicyEngine/policyengine-uk#2002 (the householder's
     rent-a-room relief), then the move with a lock bump (microcosm#1095).
     """
