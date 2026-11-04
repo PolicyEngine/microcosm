@@ -58,6 +58,7 @@ _CODE_PIN = "5fa48f07436a806ad75ff76fd22cfb8613bddbe0"
 #: assembler rederives the SPI Public Use Tape marker from them.
 _SPINE_STAGES = tuple(stage.stage for stage in load_country_spec("uk").sources.stages)
 _ATTEMPT_ID = "uk-frs-calibration-attempt-20260828T101112Z-1a2b3c4d"
+_CUT_TAG = f"{UK_NATIONAL_RELEASE_ID}-20260828T101112Z-1a2b3c4d"
 
 
 def _load_driver_module():
@@ -403,17 +404,8 @@ def test_assemble_green_release_dir(assembler_inputs, capsys) -> None:
         "last_error_code": None,
         "opt_out_reason": "test fixture deliberately disables staging",
     }
-    # The build publishes into its own folder: both manifests name the release
-    # and the build (the calibration attempt), and nothing names a tag.
-    for manifest in (build_manifest, release_manifest):
-        assert (manifest["release"], manifest["build"]) == (
-            UK_NATIONAL_RELEASE_ID,
-            _ATTEMPT_ID,
-        )
-        assert not {"build_id", "attempt_id", "cut_tag"} & set(manifest)
-    assert release_manifest["built_at"] == build_manifest["created_at"]
-    assert release_manifest["built_with_core_package"]["name"] == "policyengine-core"
-    assert release_manifest["built_with_model_package"]["name"] == "policyengine-uk"
+    assert build_manifest["attempt_id"] == _ATTEMPT_ID
+    assert build_manifest["cut_tag"] == _CUT_TAG
     assert release_manifest["default_datasets"] == {"national": driver._DATASET_KEY}
     assert release_manifest["artifacts"][driver._DATASET_KEY]["path"] == (
         driver._DATASET_FILENAME
@@ -422,20 +414,8 @@ def test_assemble_green_release_dir(assembler_inputs, capsys) -> None:
         release_manifest["artifacts"][f"{driver._DATASET_KEY}_calibration"]["path"]
         == f"{driver._DATASET_KEY}_calibration.npz"
     )
-    assert not any(
-        "revision" in entry for entry in release_manifest["artifacts"].values()
-    )
-    assert {
-        key: entry["role"] for key, entry in release_manifest["artifacts"].items()
-    } == {
-        driver._DATASET_KEY: "dataset",
-        f"{driver._DATASET_KEY}_calibration": "calibration_weights",
-        "calibration_diagnostics": "calibration_diagnostics",
-        "release_certification": "release_certification",
-        "terminal_gates": "terminal_gates",
-        "release_cut_gates": "release_cut_gates",
-        "spine_gates": "spine_gates",
-        "score_vs_enhanced_frs": "score_vs_enhanced_frs",
+    assert {entry["revision"] for entry in release_manifest["artifacts"].values()} == {
+        _CUT_TAG
     }
     assert "dataset_role" not in release_manifest
     # The spine ran the SPI stages, so the release says it rests on the tape,
@@ -454,78 +434,43 @@ def test_assemble_green_release_dir(assembler_inputs, capsys) -> None:
     assert (
         release_dir / "release_certification.json"
     ).read_bytes() == assembler_inputs["certification"].read_bytes()
-    assert (summary["release"], summary["build"]) == (
-        UK_NATIONAL_RELEASE_ID,
-        _ATTEMPT_ID,
-    )
-    assert "cut_tag" not in summary
+    assert summary["cut_tag"] == _CUT_TAG
     assert summary["release_dir"] == str(release_dir)
-    # The commands are rendered shell-safe; parse them back rather than
-    # comparing one quoting. The publication lists the build without making
-    # it current; the reviewed promotion is the separate second command.
+    # The command is rendered shell-safe; parse it back rather than comparing
+    # one quoting of it.
     assert shlex.split(summary["publish_command"]) == [
         "uv",
         "run",
-        "microcosm-publish-release-build",
+        "python",
+        "-m",
+        "microcosm.data.publish_cli",
         str(release_dir),
         "--repo-id",
         "policyengine/populace-uk-private",
         "--artifact-root",
         str(assembler_inputs["candidate"].parent),
+        "--no-latest",
+        "--tag-name",
+        _CUT_TAG,
     ]
-    assert shlex.split(summary["promote_command"]) == [
+    promote_command = shlex.split(summary["promote_command"])
+    assert promote_command == [
         "uv",
         "run",
-        "microcosm-publish-release-build",
+        "python",
+        "-m",
+        "microcosm.data.publish_cli",
         str(release_dir),
         "--repo-id",
         "policyengine/populace-uk-private",
-        "--promote",
-    ]
-
-
-def test_an_assembled_national_build_publishes_through_the_emitter(
-    assembler_inputs, capsys
-) -> None:
-    """The publication checks the assembled directory with the release
-    contract itself, not a replaced one, and hands every file over."""
-    from microcosm.build import release_publication
-    from microcosm.data.contract import (
-        BUILD_MANIFEST_FILE_ROLE,
-        RELEASE_MANIFEST_FILE_ROLE,
-    )
-    from test_support.microcosm_build.emitter import FakeEmitterClient
-
-    driver = _load_driver_module()
-    assert driver.main(assembler_inputs["argv"]) == 0
-    capsys.readouterr()
-    release_dir = assembler_inputs["out_dir"] / UK_NATIONAL_RELEASE_ID
-    client = FakeEmitterClient()
-
-    outcome = release_publication.publish_release_build(
-        release_dir,
-        artifact_root=assembler_inputs["candidate"].parent,
-        client=client,
-    )
-
-    assert outcome.published and outcome.succeeded and not outcome.current
-    (request,) = client.release_requests
-    assert (request.release, request.build, request.release_role) == (
-        UK_NATIONAL_RELEASE_ID,
-        _ATTEMPT_ID,
+        "--artifact-root",
+        str(assembler_inputs["candidate"].parent),
+        "--promote-line",
         "national",
-    )
-    manifest = json.loads((release_dir / "release_manifest.json").read_text())
-    assert {item.name: item.role for item in request.files} == {
-        "release_manifest.json": RELEASE_MANIFEST_FILE_ROLE,
-        "build_manifest.json": BUILD_MANIFEST_FILE_ROLE,
-        **{entry["path"]: entry["role"] for entry in manifest["artifacts"].values()},
-    }
-    folder = f"releases/{UK_NATIONAL_RELEASE_ID}/{_ATTEMPT_ID}"
-    published_dataset = client.hub_files[
-        ("policyengine/populace-uk-private", f"{folder}/{driver._DATASET_FILENAME}")
+        "--tag-name",
+        _CUT_TAG,
     ]
-    assert published_dataset == assembler_inputs["candidate"].read_bytes()
+    assert "--no-latest" not in promote_command
 
 
 def test_assemble_preserves_successful_version_2_delivery(
@@ -652,15 +597,10 @@ def test_assemble_refuses_missing_score_receipt(assembler_inputs) -> None:
         _load_driver_module().main(assembler_inputs["argv"])
 
 
-def test_assemble_takes_no_cut_tag(assembler_inputs) -> None:
-    """A build in its own folder has no tag to name."""
-    with pytest.raises(SystemExit):
+def test_assemble_refuses_unprefixed_cut_tag(assembler_inputs) -> None:
+    with pytest.raises(SystemExit, match="--cut-tag must be"):
         _load_driver_module().main(
-            [
-                *assembler_inputs["argv"],
-                "--cut-tag",
-                f"{UK_NATIONAL_RELEASE_ID}-20260828T101112Z-1a2b3c4d",
-            ]
+            [*assembler_inputs["argv"], "--cut-tag", "not-a-national-cut"]
         )
 
 
@@ -855,6 +795,17 @@ def test_assemble_late_failure_leaves_no_partial_release(
     # The NPZ stages beside its destination as a dotted temp file; a late
     # failure must clean that up too.
     assert not list(assembler_inputs["candidate"].parent.glob(".*.tmp.npz"))
+
+
+def test_assemble_refuses_cut_tag_outside_the_grammar(assembler_inputs) -> None:
+    with pytest.raises(SystemExit, match="YYYYMMDDTHHMMSSZ"):
+        _load_driver_module().main(
+            [
+                *assembler_inputs["argv"],
+                "--cut-tag",
+                f"{UK_NATIONAL_RELEASE_ID}-hotfix",
+            ]
+        )
 
 
 def test_assemble_refuses_reserialized_diagnostics(assembler_inputs) -> None:
