@@ -13,6 +13,26 @@ any other feed, and `test_us_chronicle_feed.py` fails if the parity resources,
 the generator and the pin disagree, or if the scope file changes without a
 new pin.
 
+## A re-pin onto a newer row contract
+
+The US feed is on `chronicle.consumer_fact.v3`; Chronicle `main` writes
+`chronicle.consumer_fact.v5` since PolicyEngine/chronicle#377. The US pin
+loader, like the UK one and the feed-pin check against a loaded artifact,
+refuses a pin whose `consumer_fact_schema_versions` names a row contract that
+`microcosm.build.chronicle_epoch` does not declare (microcosm#1509). v5 is
+declared, and its schema digest is `acd33a09…`.
+
+v5 rows may carry `package_dimension_value_labels`, a package's own wording of
+a value where it differs from Chronicle's label. The congressional-district
+vintage translation (`us_runtime/congressional_district_vintage.py`:
+`_translated_fact_shell` and `_state_total_proxy_source_district_fact`) copies
+each source row whole and rewrites only the geography, the layout and the
+group-by entry of `dimension_value_labels`. So after a re-pin onto v5, a
+derived district row keeps any package wording keyed by the source row's value
+ids (the 118th-Congress district, or the state row's value), not the derived
+row's. No code reads the field, so no label, value or refusal changes; v4's
+`geography.publisher_name` is copied the same way.
+
 ## The 2026-10-27 re-pin: one label per dimension value (microcosm#1343)
 
 The `cf9ece2` feed labelled three dimension values two ways, so compiled

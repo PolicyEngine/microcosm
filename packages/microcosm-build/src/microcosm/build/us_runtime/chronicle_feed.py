@@ -25,6 +25,7 @@ from importlib.resources import files
 
 from microcosm.build.chronicle_epoch import (
     is_accepted_consumer_artifact_schema_version,
+    require_accepted_consumer_fact_schema_versions,
 )
 
 __all__ = [
@@ -141,6 +142,9 @@ def load_us_chronicle_feed() -> USChronicleFeed:
         or len(set(versions)) != len(versions)
     ):
         raise ValueError("US Chronicle feed consumer_fact_schema_versions is invalid.")
+    require_accepted_consumer_fact_schema_versions(
+        versions, subject="US Chronicle feed"
+    )
     expected_scope_sha256 = us_chronicle_feed_scope_sha256()
     if raw["scope_sha256"] != expected_scope_sha256:
         raise ValueError(

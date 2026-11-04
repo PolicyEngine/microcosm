@@ -18,6 +18,7 @@ from importlib.resources import files
 
 from microcosm.build.chronicle_epoch import (
     is_accepted_consumer_artifact_schema_version,
+    require_accepted_consumer_fact_schema_versions,
 )
 
 
@@ -130,6 +131,9 @@ def load_uk_chronicle_feed() -> UKChronicleFeed:
         or len(set(versions)) != len(versions)
     ):
         raise ValueError("UK Chronicle feed consumer_fact_schema_versions is invalid.")
+    require_accepted_consumer_fact_schema_versions(
+        versions, subject="UK Chronicle feed"
+    )
     return UKChronicleFeed(
         **{**raw, "consumer_fact_schema_versions": tuple(versions)},
         resource_sha256=hashlib.sha256(content).hexdigest(),

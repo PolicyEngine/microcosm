@@ -1573,9 +1573,12 @@ def _validate_package_dimension_value_labels(
 ) -> None:
     """Refuse a malformed v5 package-wording map; never read it as a label.
 
-    The field is optional. When present it must have the v5 schema's shape:
-    an object mapping each dimension id to an object of value id to
-    non-empty text, the shape ``dimension_value_labels`` has.
+    The field is optional. When present it must have the shape the v5 schema
+    gives it and ``dimension_value_labels`` alike: an object mapping each
+    dimension id to an object of value id to non-empty text. This check is
+    stricter than Microcosm's check of ``dimension_value_labels`` above, which
+    reads only the entries a target selects and takes any non-null value as
+    text: nothing reads this field at any one entry, so every entry is checked.
     """
 
     if isinstance(fact, Mapping):

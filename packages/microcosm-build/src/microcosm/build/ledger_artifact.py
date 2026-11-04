@@ -29,11 +29,14 @@ per-row schema ids the rows themselves declare are all recorded in
 :meth:`LedgerConsumerArtifact.provenance`, so a release manifest witnesses
 which era it actually consumed rather than which era it assumed.
 
-Acceptance widened here; nothing narrowed. Only the *manifest* schema id is
-gated, and only against the declared ids. Row-level ids and fact keys are
-carried as published — real feeds mint rows in namespaces that belong to
-neither era, and a consumer that rejected them would fail closed on data that
-has always loaded.
+Acceptance widened here, with one exception. A load checks the *manifest*
+schema id against the declared ids. Row-level ids and fact keys are carried as
+published, because real feeds mint rows in namespaces that belong to neither
+era and a consumer that rejected them would fail closed on data that has
+always loaded. The exception is a load checked against a full Chronicle feed
+pin: :func:`validate_chronicle_feed_pin` also requires every row contract the
+pin and its rows name to be declared, so a re-pin onto a new Chronicle row
+contract has to declare it first.
 """
 
 from __future__ import annotations
@@ -54,6 +57,7 @@ from microcosm.build.chronicle_epoch import (
     feed_fact_key_epochs,
     feed_undeclared_fact_key_domains,
     is_accepted_consumer_artifact_schema_version,
+    require_accepted_consumer_fact_schema_versions,
 )
 
 __all__ = [
@@ -95,7 +99,9 @@ def chronicle_feed_identity(feed_pin: Mapping[str, Any]) -> dict[str, Any]:
     """Select reviewed source commit and loader-verified fields, excluding prose.
 
     The source commit is a caller declaration unless the authenticated manifest
-    also carries it; the artifact loader verifies the remaining six fields.
+    also carries it; the artifact loader verifies the remaining six fields. An
+    identity naming a row contract :mod:`microcosm.build.chronicle_epoch` does
+    not declare is refused.
     """
     missing = sorted(set(_FEED_IDENTITY_FIELDS) - feed_pin.keys())
     if missing:
@@ -104,6 +110,10 @@ def chronicle_feed_identity(feed_pin: Mapping[str, Any]) -> dict[str, Any]:
         )
     if not isinstance(feed_pin["source_commit"], str) or not feed_pin["source_commit"]:
         raise ValueError("Chronicle factor feed identity requires a source commit.")
+    require_accepted_consumer_fact_schema_versions(
+        feed_pin["consumer_fact_schema_versions"],
+        subject="Chronicle feed identity",
+    )
     return {field: feed_pin[field] for field in _FEED_IDENTITY_FIELDS}
 
 
@@ -264,6 +274,12 @@ def validate_chronicle_feed_pin(
     must agree with both the loaded rows and the manifest, rather than trusting
     manifest metadata alone. A full artifact pin cannot authenticate a bare
     facts file's missing manifest metadata.
+
+    Once the pin, the rows and the manifest agree, every row contract they
+    name must be one :mod:`microcosm.build.chronicle_epoch` declares, so a
+    feed on a newer Chronicle row contract is refused until it is declared.
+    The exact comparison runs first, so a pin that differs from its artifact
+    reports the differing field.
     """
 
     if not isinstance(feed_pin, Mapping):
@@ -289,6 +305,10 @@ def validate_chronicle_feed_pin(
         expected = feed_pin[field]
         if type(actual) is not type(expected) or actual != expected:
             raise ChronicleFeedPinMismatchError(field, expected=expected, actual=actual)
+    require_accepted_consumer_fact_schema_versions(
+        feed_pin["consumer_fact_schema_versions"],
+        subject="Chronicle feed pin and its artifact's rows",
+    )
 
 
 def load_ledger_consumer_artifact(
@@ -461,14 +481,16 @@ def _load_fact_rows(
                     f"Invalid Chronicle facts JSONL row {line_number}: expected "
                     f"object, got {type(row).__name__}."
                 )
-            # A per-row ``schema_version`` is carried, never gated on. Real
+            # A per-row ``schema_version`` is carried here, not checked. Real
             # feeds stamp ids from namespaces that are neither era: the pinned
             # US fiscal-refresh feed (consumer_facts_buildn_v9_4.jsonl) mixes
-            # 'arch.consumer_fact.v1' with 'ledger.consumer_fact.v1'. Rejecting
-            # an unrecognized id would fail the build closed on its own pinned
-            # input, and rejecting is not what dual acceptance asks for. The
-            # observed ids are reported through
-            # :attr:`LedgerConsumerArtifact.fact_schema_versions` instead.
+            # 'arch.consumer_fact.v1' with 'ledger.consumer_fact.v1' and loads
+            # without a full feed pin. Rejecting an unrecognized id here would
+            # fail the build closed on its own pinned input. The observed ids
+            # are reported through
+            # :attr:`LedgerConsumerArtifact.fact_schema_versions`, and a full
+            # Chronicle feed pin requires each to be declared
+            # (:func:`validate_chronicle_feed_pin`).
             assertion = row.get("assertion", DEFAULT_LEDGER_ASSERTION)
             if assertion not in ALLOWED_LEDGER_ASSERTIONS:
                 raise ValueError(

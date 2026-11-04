@@ -88,6 +88,7 @@ __all__ = [
     "MICROCOSM_CONSUMER_ARTIFACT_SCHEMA_VERSION",
     "PUBLISHED_CONSUMER_ARTIFACT_SCHEMA_VERSION",
     "UNDECLARED",
+    "UndeclaredConsumerFactSchemaVersionError",
     "consumer_artifact_schema_epoch",
     "consumer_fact_schema_epoch",
     "declared_identity",
@@ -101,6 +102,7 @@ __all__ = [
     "is_accepted_consumer_fact_schema_version",
     "is_chronicle_fact_key",
     "parse_fact_key",
+    "require_accepted_consumer_fact_schema_versions",
     "row_fact_key_epochs",
 ]
 
@@ -581,6 +583,43 @@ def describe_accepted_consumer_artifact_schema_versions() -> str:
 def describe_accepted_consumer_fact_schema_versions() -> str:
     """Every accepted per-row fact schema id, oldest era first, for messages."""
     return _describe(CONSUMER_FACT_SCHEMA_IDENTITY_KIND)
+
+
+class UndeclaredConsumerFactSchemaVersionError(ValueError):
+    """A Chronicle feed names a per-row row contract this module does not declare."""
+
+
+def require_accepted_consumer_fact_schema_versions(
+    versions: object, *, subject: str
+) -> None:
+    """Refuse a feed's row-contract list unless every entry is declared here.
+
+    ``versions`` is a reviewed feed's ``consumer_fact_schema_versions``: the
+    per-row ``schema_version`` values its rows carry. Feed pins, the
+    identities restating them, and the pin check against a loaded artifact
+    call this, so a feed on a row contract Microcosm has not been told about
+    is refused until :data:`DECLARED_IDENTITIES` declares it. A bare feed
+    loaded without a pin is not checked: its per-row ids are carried as
+    published (:mod:`microcosm.build.ledger_artifact`).
+    """
+    if isinstance(versions, (str, bytes)) or not isinstance(versions, (list, tuple)):
+        raise ValueError(
+            f"{subject} consumer_fact_schema_versions must be a list of row "
+            f"contracts, got {type(versions).__name__}."
+        )
+    undeclared = [
+        version
+        for version in versions
+        if not is_accepted_consumer_fact_schema_version(version)
+    ]
+    if undeclared:
+        raise UndeclaredConsumerFactSchemaVersionError(
+            f"{subject} names Chronicle consumer-fact row contract(s) "
+            f"{undeclared!r} that Microcosm does not declare. Declare each in "
+            "microcosm.build.chronicle_epoch (DECLARED_IDENTITIES) before "
+            "pinning a feed on it; declared: "
+            f"{describe_accepted_consumer_fact_schema_versions()}."
+        )
 
 
 def _describe(kind: str) -> str:
