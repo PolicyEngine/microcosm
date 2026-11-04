@@ -99,6 +99,7 @@
     "dividend_income",
     "donor_country_code",
     "donor_support_stratum",
+    "employment_income",
     "family_source_household_id",
     "farm_self_employment_income",
     "household_region_code",
@@ -266,6 +267,7 @@
       "person": [
         "age",
         "dividend_income",
+        "employment_income",
         "farm_self_employment_income",
         "interest_income",
         "jobseeker_applicant_age",
@@ -435,6 +437,7 @@
       "person": [
         "age",
         "dividend_income",
+        "employment_income",
         "farm_self_employment_income",
         "interest_income",
         "jobseeker_applicant_age",
