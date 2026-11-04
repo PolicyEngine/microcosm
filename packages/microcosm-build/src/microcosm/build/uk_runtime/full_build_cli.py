@@ -201,6 +201,8 @@ from .private_rent_localisation import QUANTILES_SOURCE as RENT_QUANTILES_SOURCE
 from .property_localisation import (
     BAND_MIX_SOURCE,
     QUANTILES_SOURCE,
+    SCOTLAND_BAND_MIX_RESOURCE,
+    SCOTLAND_BAND_MIX_SOURCE,
     SUPPORT_STRATUM_LOWER,
 )
 from .property_localisation import (
@@ -506,7 +508,9 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help=(
             "Dense role: price_paid (default) reads each owner clone's home value "
             "off its assigned constituency's uprated Land Registry sale distribution "
-            "and its council-tax band off its LSOA's VOA mix (microcosm#1240); none "
+            "and its council-tax band off its LSOA's VOA mix (microcosm#1240), or a "
+            "Scottish owner clone's off its council area's CTAXBASE mix "
+            "(microcosm#1095 B12); none "
             "keeps the spine's values and bands on every clone, for measurement "
             "builds only."
         ),
@@ -944,15 +948,18 @@ def _input_record(path: Path, pin: dict, *, pinned: bool) -> dict:
     }
 
 
-#: Graph source name to command-line label of the two property-localisation
-#: resources (microcosm#1240). Both default to the committed package files.
+#: Graph source name to command-line label of the property-localisation
+#: resources (microcosm#1240; the Scottish band mix, microcosm#1095 B12). Each
+#: defaults to the committed package file.
 _PROPERTY_RESOURCE_ARGUMENTS = {
     QUANTILES_SOURCE: "price-paid-quantiles",
     BAND_MIX_SOURCE: "voa-band-mix",
+    SCOTLAND_BAND_MIX_SOURCE: "scotgov-band-mix",
 }
 _PROPERTY_RESOURCE_FILES = {
     QUANTILES_SOURCE: "high_value_home_value_knots.json",
     BAND_MIX_SOURCE: "voa_council_tax_band_mix_lsoa.json",
+    SCOTLAND_BAND_MIX_SOURCE: SCOTLAND_BAND_MIX_RESOURCE,
 }
 
 

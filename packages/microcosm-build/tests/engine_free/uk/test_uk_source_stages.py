@@ -101,11 +101,6 @@ PENSION_CREDIT_TAKE_UP_STAGE_NAMES = [
 CHILD_BENEFIT_TAKE_UP_STAGE_NAMES = [
     "child_benefit_take_up",
 ]
-# microcosm#1319: the Carer's Allowance draw reads the post-SPI earnings and
-# the anchor the SPI income chain refreshes.
-CARERS_ALLOWANCE_TAKE_UP_STAGE_NAMES = [
-    "carers_allowance_take_up",
-]
 E9_STAGE_NAMES = [
     "uc_deduction_attributes",
 ]
@@ -119,6 +114,10 @@ E8_STAGE_NAMES = [
     "cgt_residential_split",
     "hmrc_cgt_asset_type_spine",
     "salary_sacrifice",
+    # microcosm#1095 B5: the Carer's Allowance draw reads the earnings test on
+    # the pay salary sacrifice converts, each draw keyed on lineage so that a
+    # CGT copy claims with the member it copies (microcosm#1319).
+    "carers_allowance_take_up",
     "student_loans",
     # The copies' childcare re-draw runs after every copy stage, before the
     # private-school attendance ranks households on net income (which counts
@@ -151,7 +150,6 @@ UK_SOURCE_STAGE_NAMES = [
     *UC_LEGACY_CLOSURE_TAKE_UP_STAGE_NAMES,
     *PENSION_CREDIT_TAKE_UP_STAGE_NAMES,
     *CHILD_BENEFIT_TAKE_UP_STAGE_NAMES,
-    *CARERS_ALLOWANCE_TAKE_UP_STAGE_NAMES,
     *E9_STAGE_NAMES,
     *E8_STAGE_NAMES,
 ]
@@ -225,7 +223,6 @@ class TestUKSourceStagesManifest:
             *UC_LEGACY_CLOSURE_TAKE_UP_STAGE_NAMES,
             *PENSION_CREDIT_TAKE_UP_STAGE_NAMES,
             *CHILD_BENEFIT_TAKE_UP_STAGE_NAMES,
-            *CARERS_ALLOWANCE_TAKE_UP_STAGE_NAMES,
             *E9_STAGE_NAMES,
         ]
 
@@ -410,6 +407,7 @@ class TestDeclaredOutputsAreWrittenColumns:
         from microcosm.build.uk_runtime.lcfs_consumption import (
             UK_LCFS_CONSUMPTION_NONNEGATIVE_OUTPUT_COLUMNS,
             UK_LCFS_CONSUMPTION_OUTPUT_COLUMNS,
+            UK_LCFS_CONSUMPTION_PERSON_OUTPUT_COLUMNS,
         )
         from microcosm.build.uk_runtime.regional_uprating import (
             UK_REGIONAL_PROPERTY_REWRITES,
@@ -479,7 +477,10 @@ class TestDeclaredOutputsAreWrittenColumns:
             stages["regional_property_uprating"].rewrites
             == UK_REGIONAL_PROPERTY_REWRITES
         )
-        assert stages["lcfs_consumption"].outputs == UK_LCFS_CONSUMPTION_OUTPUT_COLUMNS
+        assert stages["lcfs_consumption"].outputs == (
+            *UK_LCFS_CONSUMPTION_OUTPUT_COLUMNS,
+            *UK_LCFS_CONSUMPTION_PERSON_OUTPUT_COLUMNS,
+        )
         assert (
             stages["lcfs_consumption"].nonnegative_outputs
             == UK_LCFS_CONSUMPTION_NONNEGATIVE_OUTPUT_COLUMNS
@@ -698,6 +699,7 @@ class TestE3ManifestLockstep:
             "recompose_from_remainder",
             "top_up_gambling_participation",
             "level_excise_quantities",
+            "assign_car_attributes_from_nts",
             "record_mass_conservation_receipt",
         ]
         assert [op.kind for op in stages["etb_vat"].operations] == [
@@ -735,6 +737,7 @@ class TestE3ManifestLockstep:
             "draw_spi_donor_ages_by_population",
             "fit_weighted_qrf_stage1",
             "resample_band_donor_leaves",
+            "floor_spi_employment_pay_at_minimum_wage",
             "fit_weighted_qrf_stage2",
             "zero_pension_age_reports_below_state_pension_age",
             "materialize_hmrc_income_bands_fail_closed",
@@ -807,6 +810,8 @@ class TestE3ManifestLockstep:
             "assign_student_loan_plan_cohorts",
             "top_up_to_stock",
             "top_up_to_stock",
+            # The balance moves to the borrowers (microcosm#1095 B9).
+            "derive",
         ]
 
     def test_engine_predictor_and_rewrite_constants_match_manifest(self) -> None:
@@ -1085,6 +1090,8 @@ class TestE3ManifestLockstep:
             "impute_prepayment_meter": 0,
             # The gambling participation top-up (microcosm#1359).
             "top_up_gambling_participation": 0,
+            # The vehicle excise duty inputs' car draws (microcosm#1095 B3).
+            "assign_car_attributes_from_nts": 0,
         }
         assert stages["etb_vat"].operations[3].parameters["seed"] == 0
         assert stages["etb_vat"].operations[3].parameters["salt"] == "etb_vat"
@@ -1098,12 +1105,13 @@ class TestE3ManifestLockstep:
         assert stages["hmrc_spi_income_spine"].operations[3].parameters["seed"] == 42
         # The reserved carriers' resample draws at stage seed + 2 (PolicyEngine/chronicle#280 lane).
         assert stages["hmrc_spi_income_spine"].operations[4].parameters["seed"] == 44
-        assert stages["hmrc_spi_income_spine"].operations[5].parameters["seed"] == 43
-        # The donor age draw and the State Pension age guard take no seed of
-        # their own: ages draw on the stage-1 seed, the guard is deterministic
-        # (microcosm#1069).
+        assert stages["hmrc_spi_income_spine"].operations[6].parameters["seed"] == 43
+        # The donor age draw, the employment pay floor and the State Pension
+        # age guard take no seed of their own: ages draw on the stage-1 seed,
+        # the floor and the guard are deterministic (microcosm#1069).
         assert "seed" not in stages["hmrc_spi_income_spine"].operations[2].parameters
-        assert "seed" not in stages["hmrc_spi_income_spine"].operations[6].parameters
+        assert "seed" not in stages["hmrc_spi_income_spine"].operations[5].parameters
+        assert "seed" not in stages["hmrc_spi_income_spine"].operations[7].parameters
         assert stages["spi_income_band_donors"].operations[0].parameters["seed"] == 3
         assert stages["uc_reporter_redraw"].operations[3].parameters["seed"] == 44
         assert stages["uc_capital_coherence"].operations[1].parameters["seed"] == 0
@@ -1123,8 +1131,10 @@ class TestE3ManifestLockstep:
         assert stages["salary_sacrifice"].operations[3].parameters["seed"] == 2024
         assert [
             operation.parameters["seed"]
-            for operation in stages["student_loans"].operations[1:]
+            for operation in stages["student_loans"].operations[1:3]
         ] == [42, 42]
+        # The balance re-split is deterministic (microcosm#1095 B9).
+        assert "seed" not in stages["student_loans"].operations[3].parameters
 
     def test_e9_declared_seed_lockstep(self) -> None:
         from microcosm.build.uk_runtime.uc_deduction_attributes import (

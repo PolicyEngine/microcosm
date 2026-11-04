@@ -17752,3 +17752,51 @@ def test_esi_premium_signal_evidence_keeps_a_waived_failure_on_the_record() -> N
         "failures": ["ESI premiums: 100 employer premium(s) outside employed ..."],
     }
     assert builder._esi_premiums_signal_evidence(None) == {"evaluated": False}
+
+
+def test_a_build_that_must_send_telemetry_stops_before_any_input_without_an_emitter(
+    monkeypatch, tmp_path
+) -> None:
+    """MICROCOSM_TELEMETRY_REQUIRED=1 and no emitter: the build's first call raises.
+
+    The build starts its emitter right after reading its arguments, so with
+    the real adapter (not the shared fixture's in-memory one) it stops before
+    its first check, download or write.
+    """
+
+    from microcosm.build import telemetry_emitter
+    from test_support.microcosm_build.telemetry import ADAPTER_START
+
+    builder = _load_builder_module()
+    monkeypatch.setattr(
+        telemetry_emitter.LocalTelemetryEmitter, "start", classmethod(ADAPTER_START)
+    )
+    monkeypatch.setenv("MICROCOSM_TELEMETRY_REQUIRED", "1")
+    monkeypatch.setenv(
+        "MICROCOSM_EMITTER_COMMAND", str(tmp_path / "missing" / "microcosm-emitter")
+    )
+    output = tmp_path / "out"
+    monkeypatch.setattr(
+        builder,
+        "_parse_args",
+        lambda argv: SimpleNamespace(
+            staging_run_id="observed-run",
+            release_id="release-id",
+            dry_run_gates_report=None,
+            out=output,
+        ),
+    )
+
+    def went_on(*args, **kwargs):
+        pytest.fail("the build went on without the emitter it must use")
+
+    # The build's next steps after starting its emitter.
+    monkeypatch.setattr(builder._ReleaseDryRun, "start", went_on)
+    monkeypatch.setattr(builder, "_git_dirty", went_on)
+
+    with pytest.raises(telemetry_emitter.TelemetryRequiredError) as raised:
+        builder.main([])
+
+    assert raised.value.reason == "command_not_found"
+    assert builder._ACTIVE_EMITTER is None
+    assert not output.exists()
