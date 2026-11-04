@@ -93,7 +93,7 @@ def test_rows_with_neither_an_occupation_nor_work_keep_none(tables, shell) -> No
     assert receipt["drawn"]["kept_no_occupation"] == "3-9"
 
 
-def test_copied_industry_pairs_occur_among_donors_of_the_drawn_group(
+def test_copied_pairs_come_from_donors_of_the_drawn_group_and_own_status(
     tables, shell
 ) -> None:
     person, household, weights = tables
@@ -101,22 +101,68 @@ def test_copied_industry_pairs_occur_among_donors_of_the_drawn_group(
     frs = person["person_household_id"].isin(
         household.loc[household["household_support_channel"] == "frs", "household_id"]
     ) & (person["soc2020_major_group"] != "NONE")
-    donor_triples = set(
+    donors = set(
         zip(
             person.loc[frs, "soc2020_major_group"],
+            person.loc[frs, "employment_status"],
             person.loc[frs, "sic_industry_division"],
             person.loc[frs, "employment_sector"],
             strict=True,
         )
     )
     drawn = drawn_rows(person)
-    for triple in zip(
+    for copied in zip(
         person_out.loc[drawn, "soc2020_major_group"],
+        person_out.loc[drawn, "employment_status"],
         person_out.loc[drawn, "sic_industry_division"],
         person_out.loc[drawn, "employment_sector"],
         strict=True,
     ):
-        assert triple in donor_triples
+        assert copied in donors
+
+
+def test_a_row_draws_only_groups_its_status_group_holds(tables) -> None:
+    person, household, weights = tables
+    changed = person.copy()
+    frs = changed["person_household_id"].isin(
+        household.loc[household["household_support_channel"] == "frs", "household_id"]
+    )
+    managers = (
+        changed["soc2020_major_group"] == "MANAGERS_DIRECTORS_AND_SENIOR_OFFICIALS"
+    )
+    self_employed = changed["employment_status"] == "FT_SELF_EMPLOYED"
+    changed.loc[frs & managers & self_employed, "employment_status"] = "FT_EMPLOYED"
+    out, receipt = impute_spi_employment_shell(
+        changed, household, weights, boosted_max_iter=60
+    )
+    drawn = drawn_rows(changed) & (changed["employment_status"] == "FT_SELF_EMPLOYED")
+    assert drawn.any()
+    assert not (
+        out.loc[drawn, "soc2020_major_group"]
+        == "MANAGERS_DIRECTORS_AND_SENIOR_OFFICIALS"
+    ).any()
+    assert receipt["industry_copy"]["restricted_draws"] not in (0, "<3")
+    assert receipt["industry_copy"]["donors_of_another_status_group"] == 0
+
+
+def test_a_recipients_pay_predictor_is_the_tape_pay(tables) -> None:
+    from microcosm.build.uk_runtime.spi_employment_shell import _person_table
+
+    person, household, _ = tables
+    changed = person.assign(
+        employment_income=person["employment_income"]
+        + 40_000.0 * person["person_is_spi_income_recipient"]
+    )
+    table = _person_table(changed, household)
+    recipient = person["person_is_spi_income_recipient"].to_numpy()
+    np.testing.assert_allclose(
+        table.loc[recipient, "employment_income"],
+        person.loc[recipient, "hmrc_spi_pay"],
+    )
+    np.testing.assert_allclose(
+        table.loc[~recipient, "employment_income"],
+        person.loc[~recipient, "employment_income"],
+    )
 
 
 def test_draws_are_keyed_on_each_persons_id(tables, shell) -> None:
@@ -139,11 +185,11 @@ def test_the_receipt_is_finite_json_with_banded_counts(shell) -> None:
     assert set(held_out["log_loss"]) == {"model", "boosted", "spline_logit", "marginal"}
     assert held_out["calibration_outcome"] == "cross_fitted"
     assert receipt["training"]["people"] == 1500
-    assert set(receipt["industry_copy"]["levels"]) == {
-        "group_and_status",
-        "group",
-        "everyone",
-    }
+    copy = receipt["industry_copy"]
+    assert copy["cell"] == "group_and_status_group"
+    assert copy["donors_of_another_status_group"] == 0
+    assert copy["restricted_draws"] == 0
+    assert copy["held_out"]["status"] == "measured"
     for band in held_out["pay_bands"].values():
         assert band["support"] in {"<3", "3-9", "10-29", "30+"} or band["support"] == 0
 

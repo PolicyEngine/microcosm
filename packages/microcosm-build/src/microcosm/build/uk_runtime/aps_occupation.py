@@ -8,7 +8,9 @@ first two digits. Each major group gets its own model over its sub-major
 groups, ``microcosm.fit``'s categorical classifier (the equal mixture of a
 regularised boosted classifier and a spline logit) on age, sex, region,
 employment-status group, annual pay and SIC 2007 section, the predictors both
-surveys record alike. A person with no major group keeps NONE.
+surveys record alike. Pay is an employee's pay on both sides: the APS asks it of
+employees only, so it is zero outside the employee status group, and an SPI
+income recipient's is the tape's PAY. A person with no major group keeps NONE.
 
 The donors are the APS adults with a minor group whose pay is known: an
 employee's pay is asked in the income waves only, so an employee with pay
@@ -87,6 +89,9 @@ MAJOR_GROUP_COLUMN = "soc2020_major_group"
 STATUS_GROUP = "status_group"
 SECTION = "sic_section"
 PAY = "employment_income"
+#: The SPI tape's own PAY, an SPI income recipient's pay.
+SPI_PAY_COLUMN = "hmrc_spi_pay"
+_EMPLOYEE = "EMPLOYEE"
 PREDICTORS = ("age", "gender", "region", STATUS_GROUP, PAY, SECTION)
 CATEGORICAL_PREDICTORS = ("gender", "region", STATUS_GROUP, SECTION)
 FRS_CHANNEL = "frs"
@@ -150,6 +155,7 @@ UK_APS_OCCUPATION_IMPUTATION: dict[str, Any] = {
     "within": MAJOR_GROUP_COLUMN,
     "rows": "people_with_a_major_group",
     "identity": "person_source_id_or_spi_recipient_person_id",
+    "pay": "employees_only_with_the_tape_pay_of_spi_income_recipients",
     "seed": 0,
     "predictors": list(PREDICTORS),
     "categorical_predictors": list(CATEGORICAL_PREDICTORS),
@@ -211,8 +217,11 @@ def clean_aps_occupation_table(
     A donor is an adult aged ``adult_age`` or over (``under_16`` status
     excluded) with a minor group: the main job's when in employment, the last
     job's otherwise. An employee needs a weekly pay of zero or more to stay,
-    since the income weight carries the employees asked; annual pay is the
-    weekly pay times ``pay_weeks`` where one is recorded and zero elsewhere.
+    since the income weight carries the employees asked. Pay is an employee's
+    gross weekly pay in the main job times ``pay_weeks``, and zero for everyone
+    else, as the frame's is: the APS asks it of employees only, and the few on
+    government employment and training programmes who report one are not
+    employees.
     Region, sex and status follow the declared codes, section codes 1 to 21
     are the SIC 2007 sections in order, and anything else is "" (no section).
     Ages are capped at ``age_cap``, as the frame's are.
@@ -283,7 +292,9 @@ def clean_aps_occupation_table(
             "gender": sex[keep],
             "region": region[keep],
             STATUS_GROUP: status_group[keep],
-            PAY: np.where(pay >= 0, pay * float(cleaning["pay_weeks"]), 0.0)[keep],
+            PAY: np.where(
+                employee & (pay >= 0), pay * float(cleaning["pay_weeks"]), 0.0
+            )[keep],
             SECTION: section[keep],
             MAJOR_GROUP_COLUMN: np.asarray(
                 [UK_SOC2020_MAJOR_GROUP_OF_SUB_MAJOR_GROUP[g] for g in sub_major[keep]],
@@ -336,9 +347,27 @@ def sub_major_model(
 def _frame_table(
     person: pd.DataFrame, household: pd.DataFrame, age_cap: float
 ) -> pd.DataFrame:
-    """Every person's predictors, major group, identities and channel."""
+    """Every person's predictors, major group, identities and channel.
+
+    Pay follows the donors' concept, an employee's pay: zero outside the
+    EMPLOYEE status group, and for an SPI income recipient the tape's PAY
+    (``hmrc_spi_pay``), since its ``employment_income`` also holds the tape's
+    EPB and TAXTERM.
+    """
     households = household.set_index("household_id")
     by_person = person["person_household_id"].to_numpy()
+    recipient = person["person_is_spi_income_recipient"].astype(bool).to_numpy()
+    status_group = (
+        person["employment_status"]
+        .astype(str)
+        .map(UK_OCCUPATION_STATUS_GROUP)
+        .to_numpy(dtype=object)
+    )
+    pay = np.where(
+        recipient,
+        person[SPI_PAY_COLUMN].to_numpy(dtype=np.float64),
+        person[PAY].to_numpy(dtype=np.float64),
+    )
     return pd.DataFrame(
         {
             "person_id": person["person_id"].to_numpy(),
@@ -347,16 +376,11 @@ def _frame_table(
             "age": np.minimum(person["age"].to_numpy(dtype=np.float64), age_cap),
             "gender": person["gender"].astype(str).to_numpy(),
             "region": households["region"].astype(str).reindex(by_person).to_numpy(),
-            STATUS_GROUP: person["employment_status"]
-            .astype(str)
-            .map(UK_OCCUPATION_STATUS_GROUP)
-            .to_numpy(dtype=object),
-            PAY: person[PAY].to_numpy(dtype=np.float64),
+            STATUS_GROUP: status_group,
+            PAY: np.where(status_group == _EMPLOYEE, pay, 0.0),
             SECTION: uk_sic2007_sections(person["sic_industry_division"].to_numpy()),
             MAJOR_GROUP_COLUMN: person[MAJOR_GROUP_COLUMN].astype(str).to_numpy(),
-            "spi_income_recipient": person["person_is_spi_income_recipient"]
-            .astype(bool)
-            .to_numpy(),
+            "spi_income_recipient": recipient,
             "channel": households["household_support_channel"]
             .astype(str)
             .reindex(by_person)

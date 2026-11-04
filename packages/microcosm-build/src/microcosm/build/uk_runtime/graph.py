@@ -418,6 +418,7 @@ _STAGE_CONSUMES: Mapping[str, frozenset[tuple[str, str]] | None] = {
             ("person", "sic_industry_division"),
             ("person", "soc2020_major_group"),
             ("person", "person_is_spi_income_recipient"),
+            ("person", "hmrc_spi_pay"),
             ("person", "person_source_id"),
             ("household", "region"),
             ("household", "household_support_channel"),

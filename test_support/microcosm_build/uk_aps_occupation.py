@@ -5,7 +5,8 @@ group's first sub-major group above the group's median weekly pay, one of the
 others below it. Everyone else draws a sub-major group at random. The frame's
 FRS households hold an adult and a partner with a major group and a child with
 none; each SPI household copies one, with its adult an SPI income recipient on
-a high drawn pay and its partner and child exact copies of the twin's.
+a high drawn pay (``hmrc_spi_pay``) and its partner and child exact copies of
+the twin's.
 """
 
 from __future__ import annotations
@@ -118,6 +119,7 @@ def occupation_frame_tables(n_frs: int = 900, n_spi: int = 150, seed: int = 0):
                 "sic_industry_division": rng.choice(_DIVISIONS, n_frs).astype(np.int64),
                 "soc2020_major_group": rng.choice(majors, n_frs),
                 "person_is_spi_income_recipient": False,
+                "hmrc_spi_pay": 0.0,
             }
         )
 
@@ -134,6 +136,7 @@ def occupation_frame_tables(n_frs: int = 900, n_spi: int = 150, seed: int = 0):
             "sic_industry_division": np.zeros(n_frs, dtype=np.int64),
             "soc2020_major_group": "NONE",
             "person_is_spi_income_recipient": False,
+            "hmrc_spi_pay": 0.0,
         }
     )
     frs = pd.concat([adult, partner, child], ignore_index=True)
@@ -149,7 +152,10 @@ def occupation_frame_tables(n_frs: int = 900, n_spi: int = 150, seed: int = 0):
         lead = copy.index[0]
         copy.loc[lead, "person_is_spi_income_recipient"] = True
         copy.loc[lead, "employment_status"] = "FT_EMPLOYED"
-        copy.loc[lead, "employment_income"] = rng.lognormal(12.3, 0.4)
+        # The tape's PAY, and an employment_income that adds benefits and
+        # termination pay to it.
+        copy.loc[lead, "hmrc_spi_pay"] = rng.lognormal(12.3, 0.4)
+        copy.loc[lead, "employment_income"] = copy.loc[lead, "hmrc_spi_pay"] + 5000.0
         copies.append(copy)
     spi = pd.concat(copies, ignore_index=True)
     spi["person_id"] = 100_000 + np.arange(len(spi)) * 10

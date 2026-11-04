@@ -248,6 +248,18 @@ class TestUKSourceStagesManifest:
             assert "age" not in stage.outputs, stage.stage
             assert "age" not in stage.rewrites, stage.stage
 
+    def test_no_stage_after_aps_occupation_writes_an_occupation_group(self) -> None:
+        # aps_occupation checks that the sub-major group nests in the major
+        # group; that holds on the shipped frame only while no later stage
+        # writes either (microcosm#1490). The clones copy whole rows.
+        manifest = SourceManifest.from_mapping(_load_json(CANONICAL_SOURCE_STAGES))
+        stages = list(manifest.stages)
+        names = [stage.stage for stage in stages]
+        for stage in stages[names.index("aps_occupation") + 1 :]:
+            for column in ("soc2020_major_group", "soc2020_sub_major_group"):
+                assert column not in stage.outputs, stage.stage
+                assert column not in stage.rewrites, stage.stage
+
     def test_e8_block_is_final_and_all_stages_are_canonical(self) -> None:
         canonical = _load_json(CANONICAL_SOURCE_STAGES)
         names = [stage["stage"] for stage in canonical["stages"]]

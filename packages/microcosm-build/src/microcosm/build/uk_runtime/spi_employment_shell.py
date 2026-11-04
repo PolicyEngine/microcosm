@@ -11,7 +11,11 @@ on the FRS rows' adults with an occupation and draws each drawn row's major
 group from its age, sex, region, employment-status group and incomes, then
 copies an industry division and sector pair from an FRS adult with the drawn
 group, the same status group and the nearest age and incomes, so occupation and
-industry stay a pair that occurs.
+industry stay a pair that occurs and the sector one the row's status holds. A
+row draws only among the groups that FRS adults of its own status group hold,
+so such an adult always exists. A drawn row's pay is the tape's PAY
+(``hmrc_spi_pay``): its ``employment_income`` also holds the tape's EPB and
+TAXTERM, and termination pay says nothing of an occupation.
 
 The model is ``microcosm.fit``'s country-agnostic categorical classifier, the
 equal mixture of a regularised boosted classifier and a spline logit; the held-
@@ -53,6 +57,7 @@ from microcosm.fit import (
     can_deal_folds,
     categorical_scores,
     donor_distance_features,
+    inverse_cdf_draw,
     keyed_nearest_donors,
     out_of_fold_proba,
     stratified_folds,
@@ -107,6 +112,8 @@ UK_SPI_EMPLOYMENT_SHELL_OPERATION: dict[str, Any] = {
     "training_rows": "frs_channel_adults_with_occupation_positive_weight",
     "rows": "spi_income_recipients_with_occupation_pay_or_profit",
     "identity": "person_id",
+    "pay": "employment_income_or_the_tape_pay_of_spi_income_recipients",
+    "draw_support": "groups_frs_adults_of_the_rows_status_group_hold",
     "seed": 0,
     "occupation": {
         "target": OCCUPATION_COLUMN,
@@ -210,9 +217,19 @@ def _pay_bands(
 
 
 def _person_table(person: pd.DataFrame, household: pd.DataFrame) -> pd.DataFrame:
-    """The predictors, target, keys and channel of every person."""
+    """The predictors, target, keys and channel of every person.
+
+    An SPI income recipient's ``employment_income`` predictor is the tape's
+    PAY: the column itself also holds the tape's EPB and TAXTERM (less the
+    company car benefits), which say nothing of an occupation.
+    """
     households = household.set_index("household_id")
     by_person = person["person_household_id"].to_numpy()
+    pay = np.where(
+        person["person_is_spi_income_recipient"].astype(bool).to_numpy(),
+        person[SPI_PAY_COLUMN].to_numpy(dtype=np.float64),
+        person["employment_income"].to_numpy(dtype=np.float64),
+    )
     table = pd.DataFrame(
         {
             "person_id": person["person_id"].to_numpy(),
@@ -224,7 +241,7 @@ def _person_table(person: pd.DataFrame, household: pd.DataFrame) -> pd.DataFrame
             .astype(str)
             .map(UK_OCCUPATION_STATUS_GROUP)
             .to_numpy(dtype=object),
-            "employment_income": person["employment_income"].to_numpy(dtype=np.float64),
+            "employment_income": pay,
             "self_employment_income": person["self_employment_income"].to_numpy(
                 dtype=np.float64
             ),
@@ -323,13 +340,12 @@ def _held_out_evidence(
 
 
 def _copy_cells(groups: np.ndarray, status: np.ndarray) -> list[np.ndarray]:
-    """The donor cells finest first: group and status, group, everyone."""
+    """The one donor cell, group and status group: a copied sector is always one
+    the row's status holds, and a (group, section) pair one that occurs."""
     return [
         np.asarray(
             [f"{g}|{s}" for g, s in zip(groups, status, strict=True)], dtype=object
-        ),
-        np.asarray(groups, dtype=object),
-        np.zeros(len(groups), dtype=object),
+        )
     ]
 
 
@@ -370,17 +386,24 @@ def _held_out_industry(
     folds: np.ndarray,
     industry: Mapping[str, Any],
     seed: int,
-) -> dict[str, float]:
+) -> dict[str, object]:
     """Copy each fold's pairs from the other folds, given the adults' own groups.
 
     The gaps are the weighted mean, over major groups, of the total variation
     between the copied and observed SIC section shares, and of the absolute
-    public-sector share difference.
+    public-sector share difference. An adult whose group and status group no
+    adult of the other folds holds has no donor; it is left out and counted.
     """
     copied = np.full(len(train), -1, dtype=np.int64)
     keys = train["person_id"].to_numpy()
+    cells = _copy_cells(
+        train[OCCUPATION_COLUMN].to_numpy(), train[STATUS_GROUP].to_numpy()
+    )[0]
     for fold in np.unique(folds):
-        test, rest = folds == fold, folds != fold
+        rest = folds != fold
+        test = (folds == fold) & np.isin(cells, cells[rest & (weights > 0)])
+        if not test.any():
+            continue
         positions, _ = _copy_donors(
             train.loc[test],
             train.loc[rest],
@@ -401,7 +424,9 @@ def _held_out_industry(
     groups = train[OCCUPATION_COLUMN].to_numpy()
     total = section_gap = public_gap = 0.0
     for group in np.unique(groups):
-        rows = groups == group
+        rows = (groups == group) & (copied >= 0)
+        if not rows.any():
+            continue
         w = weights[rows]
         observed = pd.Series(w).groupby(section[rows]).sum() / w.sum()
         drawn = pd.Series(w).groupby(section[copied[rows]]).sum() / w.sum()
@@ -420,10 +445,54 @@ def _held_out_industry(
             float(w @ public[rows] - w @ public[copied[rows]]) / w.sum()
         )
         total += w.sum()
+    without = rounded_count(int((copied < 0).sum()))
+    if not total:
+        return {"status": "not_measured", "adults_without_a_donor": without}
     return {
+        "status": "measured",
         "section_share_gap_within_group": section_gap / total,
         "public_sector_share_gap_within_group": public_gap / total,
+        "adults_without_a_donor": without,
     }
+
+
+def _draw_held_groups(
+    fitted,
+    recipients: pd.DataFrame,
+    train: pd.DataFrame,
+    train_weights: np.ndarray,
+    uniforms: np.ndarray,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Each row's group, drawn among the groups FRS adults of its status group hold.
+
+    The other groups' probabilities go to zero and the rest are renormalised,
+    so the industry copy always has a donor of the row's own group and status
+    group. Rows that lose no probability draw exactly as the classifier gives.
+    Returns the drawn groups and which rows lost probability; a row whose status
+    group holds none of the groups refuses the stage.
+    """
+    classes = fitted.classes_
+    proba = fitted.predict_proba(recipients)
+    holders = train.loc[train_weights > 0]
+    status = recipients[STATUS_GROUP].to_numpy()
+    allowed = np.zeros(proba.shape, dtype=bool)
+    for status_group, groups in (
+        holders.groupby(STATUS_GROUP)[OCCUPATION_COLUMN].unique().items()
+    ):
+        rows = np.flatnonzero(status == status_group)
+        allowed[np.ix_(rows, np.flatnonzero(np.isin(classes, groups)))] = True
+    restricted = (proba * ~allowed).sum(axis=1) > 0
+    if restricted.any():
+        kept = np.where(allowed[restricted], proba[restricted], 0.0)
+        total = kept.sum(axis=1)
+        if (total <= 0).any():
+            raise ValueError(
+                f"{UK_SPI_EMPLOYMENT_SHELL_STAGE_NAME}: a drawn row's status group "
+                "holds none of the groups it could draw."
+            )
+        proba = proba.copy()
+        proba[restricted] = kept / total[:, None]
+    return classes[inverse_cdf_draw(proba, uniforms)], restricted
 
 
 def _weighted_shares(
@@ -540,21 +609,31 @@ def impute_spi_employment_shell(
         recipients["person_id"].to_numpy(), label=f"{stage} person_id"
     )
     new_groups = np.asarray([], dtype=object)
-    copy_levels = np.asarray([], dtype=np.int64)
+    restricted = np.zeros(0, dtype=bool)
+    mismatched = 0
     if len(recipients):
-        new_groups = fitted.predict_from_uniforms(
+        new_groups, restricted = _draw_held_groups(
+            fitted,
             recipients,
+            train,
+            train_weights,
             stable_identity_uniforms(
                 keys, seed=seed, salt=f"{stage}:{OCCUPATION_COLUMN}"
             ),
-        )[OCCUPATION_COLUMN].to_numpy()
-        donor_positions, copy_levels = _copy_donors(
+        )
+        donor_positions, _ = _copy_donors(
             recipients,
             train,
             new_groups,
             train_weights,
             stable_identity_uniforms(keys, seed=seed, salt=f"{stage}:industry"),
             operation["industry"],
+        )
+        mismatched = int(
+            (
+                train[STATUS_GROUP].to_numpy()[donor_positions]
+                != recipients[STATUS_GROUP].to_numpy()
+            ).sum()
         )
         donor_rows = train_rows[donor_positions]
         person_out.loc[drawn, OCCUPATION_COLUMN] = new_groups
@@ -585,10 +664,9 @@ def impute_spi_employment_shell(
         },
         "industry_copy": {
             "neighbours": int(operation["industry"]["neighbours"]),
-            "levels": {
-                name: rounded_count(int((copy_levels == level).sum()))
-                for level, name in enumerate(("group_and_status", "group", "everyone"))
-            },
+            "cell": "group_and_status_group",
+            "restricted_draws": rounded_count(int(restricted.sum())),
+            "donors_of_another_status_group": rounded_count(mismatched),
             "held_out": industry_held_out,
         },
     }

@@ -8750,6 +8750,8 @@
       "training_rows",
       "rows",
       "identity",
+      "pay",
+      "draw_support",
       "seed",
       "occupation",
       "industry",
@@ -8766,6 +8768,12 @@
        "type": "string"
       },
       "identity": {
+       "type": "string"
+      },
+      "pay": {
+       "type": "string"
+      },
+      "draw_support": {
        "type": "string"
       },
       "seed": {
@@ -9155,6 +9163,7 @@
       "within",
       "rows",
       "identity",
+      "pay",
       "seed",
       "predictors",
       "categorical_predictors",
@@ -9180,6 +9189,9 @@
        "type": "string"
       },
       "identity": {
+       "type": "string"
+      },
+      "pay": {
        "type": "string"
       },
       "seed": {

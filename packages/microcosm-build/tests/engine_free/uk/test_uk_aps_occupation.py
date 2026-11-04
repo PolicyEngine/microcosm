@@ -143,7 +143,9 @@ def test_cleaning_keeps_adults_with_a_minor_group_and_known_pay(raw, donors) -> 
     kept = raw.loc[expected]
     np.testing.assert_allclose(
         table["employment_income"].to_numpy(),
-        np.where(kept["GRSSWK"] >= 0, kept["GRSSWK"] * 52, 0.0),
+        np.where(
+            (kept["INECAC05"] == 1) & (kept["GRSSWK"] >= 0), kept["GRSSWK"] * 52, 0.0
+        ),
     )
     np.testing.assert_allclose(
         table["weight"].to_numpy(),
@@ -173,6 +175,34 @@ def test_cleaning_keeps_adults_with_a_minor_group_and_known_pay(raw, donors) -> 
     assert (nested == table["soc2020_major_group"]).all()
     assert receipt["dropped"]["no_region"] == 0
     assert receipt["dropped"]["employee_pay_unknown"] not in (0, "<3")
+
+
+def test_only_an_employees_pay_counts_among_donors(raw) -> None:
+    changed = raw.copy()
+    changed.loc[changed["INECAC05"] != 1, "GRSSWK"] = 400.0
+    table, _ = clean_aps_occupation_table(changed)
+    others = table["status_group"] != "EMPLOYEE"
+    assert others.any()
+    assert (table.loc[others, "employment_income"] == 0).all()
+
+
+def test_frame_pay_is_an_employees_and_a_recipients_is_the_tape_pay(tables) -> None:
+    from microcosm.build.uk_runtime.aps_occupation import _frame_table
+
+    person, household, _ = tables
+    table = _frame_table(person, household, 80.0)
+    employee = (table["status_group"] == "EMPLOYEE").to_numpy()
+    recipient = person["person_is_spi_income_recipient"].to_numpy()
+    assert (~employee).any() and recipient.any()
+    assert (table.loc[~employee, "employment_income"] == 0).all()
+    np.testing.assert_allclose(
+        table.loc[recipient, "employment_income"],
+        person.loc[recipient, "hmrc_spi_pay"],
+    )
+    rest = employee & ~recipient
+    np.testing.assert_allclose(
+        table.loc[rest, "employment_income"], person.loc[rest, "employment_income"]
+    )
 
 
 def test_an_unknown_minor_group_is_refused(raw) -> None:
