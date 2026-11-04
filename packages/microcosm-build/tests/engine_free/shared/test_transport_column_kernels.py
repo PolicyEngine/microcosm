@@ -832,6 +832,45 @@ def test_group_kernels_refuse_a_person_role_entity(tables):
                 kernel.run(_context(kernel, frame, role, output))
 
 
+@pytest.mark.parametrize(
+    "kernel",
+    [CONCEPTS_ENCODE_GROUPS, TRANSPORT_SCENARIO_OVERRIDE],
+    ids=["encode-groups", "scenario-override"],
+)
+@pytest.mark.parametrize(
+    ("engine_entity", "frame_entity", "column", "dtype"),
+    [
+        ("Person", "person", "eligibility_code", "int64"),
+        ("Household", "household", "household_flag", "bool"),
+    ],
+    ids=["person", "household"],
+)
+def test_group_kernels_refuse_a_correspondence_entity(
+    tmp_path, kernel, engine_entity, frame_entity, column, dtype
+):
+    sources = write_population_sources(tmp_path / "sources")
+    frame = _donor_frame(sources)
+    # Both entities have a default the unguarded kernel could write on
+    # family rows, even though concepts.encode@1 owns their input tables.
+    closure = replace(
+        CLOSURE,
+        entries=(
+            *CLOSURE.entries,
+            _default(PERSON_PATH, "Household", "household_flag", True),
+        ),
+    )
+    params = {
+        **_encode_params(groups=True, knobs={}, closure=closure, paths=(PERSON_PATH,)),
+        "engine_entity": engine_entity,
+    }
+    outputs = (Owned("family", column, dtype, rewrite=True),)
+    with pytest.raises(
+        ValueError,
+        match=f"'{engine_entity}' belongs on the {frame_entity} table, not built units",
+    ):
+        kernel.run(_context(kernel, frame, params, outputs))
+
+
 def test_person_role_defaults_share_the_person_table_with_person_inputs(tmp_path):
     sources = write_population_sources(tmp_path / "sources")
     frame = _donor_frame(sources)
