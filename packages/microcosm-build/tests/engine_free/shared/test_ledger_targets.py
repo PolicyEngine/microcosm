@@ -1,4 +1,5 @@
 import json
+from copy import deepcopy
 from dataclasses import asdict, replace
 
 import pytest
@@ -12,6 +13,7 @@ from microcosm.build.ledger_artifact import (
     load_ledger_consumer_artifact,
 )
 from microcosm.build.ledger_targets import (
+    LedgerHierarchyMetadataError,
     LedgerTargetMapping,
     LedgerTargetReference,
     _shift_period_years,
@@ -36,6 +38,12 @@ from microcosm.calibrate import (
     HierarchyNode,
     TargetRegistry,
     TargetSpec,
+)
+from test_support.microcosm_build.chronicle_feed import (
+    MALFORMED_PACKAGE_DIMENSION_VALUE_LABELS,
+    PACKAGE_DIMENSION_VALUE_LABELS,
+    as_v4_row,
+    chronicle_v5_fact_rows,
 )
 
 _FISCAL_MONTHS = [f"2025-{month:02d}" for month in range(4, 13)] + [
@@ -3901,6 +3909,88 @@ def test_hierarchy_rejects_conflicting_chronicle_dimension_value_labels() -> Non
             [_exact_agi_reference(value_operation="sum")],
             country="us",
         )
+
+
+_AGI_DIMENSION = "us:statutes/26/62#adjusted_gross_income"
+
+
+def _chronicle_v5_agi_row(rows):
+    (row,) = (
+        row
+        for row in rows
+        if row["observed_measure"]["source_measure_id"] == "adjusted_gross_income"
+    )
+    return row
+
+
+def _strings(value):
+    if isinstance(value, str):
+        yield value
+    elif isinstance(value, dict):
+        for key, child in value.items():
+            yield from _strings(key)
+            yield from _strings(child)
+    elif isinstance(value, (list, tuple)):
+        for child in value:
+            yield from _strings(child)
+
+
+@pytest.mark.parametrize("row_contract", ["v5", "v4"])
+def test_chronicle_fact_hierarchy_takes_chronicle_label_not_package_wording(
+    row_contract,
+) -> None:
+    """Each value keeps Chronicle's one label (chronicle#377).
+
+    Chronicle's v5 sample row labels the AGI value ``all`` "All returns,
+    total" and keeps the IRS package's "All returns" in
+    ``package_dimension_value_labels``. The compiled target carries only
+    Chronicle's label, and the v4 restatement of the same row compiles to the
+    same target.
+    """
+    rows = chronicle_v5_fact_rows()
+    v5_row = _chronicle_v5_agi_row(rows)
+    package_wording = v5_row[PACKAGE_DIMENSION_VALUE_LABELS][_AGI_DIMENSION]["all"]
+    chronicle_label = v5_row["dimension_value_labels"][_AGI_DIMENSION]["all"]
+    assert (package_wording, chronicle_label) == ("All returns", "All returns, total")
+    if row_contract == "v4":
+        rows = [as_v4_row(row) for row in rows]
+
+    (spec,) = compile_ledger_target_references(
+        rows, [_exact_agi_reference()], country="us"
+    ).specs
+
+    assert spec.hierarchy is not None
+    groupby = spec.hierarchy.dimensions[0]
+    assert (groupby.id, groupby.value_id, groupby.value_label) == (
+        _AGI_DIMENSION,
+        "all",
+        chronicle_label,
+    )
+    assert spec.metadata["ledger_layout_groupby_value_label"] == chronicle_label
+    assert package_wording not in set(_strings(asdict(spec)))
+
+
+@pytest.mark.parametrize(
+    "malformed",
+    [value for _case, value in MALFORMED_PACKAGE_DIMENSION_VALUE_LABELS],
+    ids=[case for case, _value in MALFORMED_PACKAGE_DIMENSION_VALUE_LABELS],
+)
+def test_hierarchy_refuses_malformed_package_dimension_value_labels(
+    malformed,
+) -> None:
+    """A selected v5 fact's package wording must be shaped as the v5 schema says.
+
+    ``package_dimension_value_labels`` maps dimension id, then value id, to
+    non-empty text, like ``dimension_value_labels``; compilation refuses any
+    other shape, as it refuses a missing or blank Chronicle label.
+    """
+    rows = chronicle_v5_fact_rows()
+    _chronicle_v5_agi_row(rows)[PACKAGE_DIMENSION_VALUE_LABELS] = deepcopy(malformed)
+
+    with pytest.raises(
+        LedgerHierarchyMetadataError, match="package_dimension_value_labels"
+    ):
+        compile_ledger_target_references(rows, [_exact_agi_reference()], country="us")
 
 
 def test_multi_fact_hierarchy_requires_explicit_microcosm_target_label() -> None:

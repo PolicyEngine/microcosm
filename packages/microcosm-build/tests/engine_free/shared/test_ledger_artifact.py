@@ -16,7 +16,13 @@ from pathlib import Path
 import pytest
 from hypothesis import given, settings
 from hypothesis import strategies as st
+from jsonschema import Draft202012Validator
 
+from microcosm.build.chronicle_epoch import (
+    CHRONICLE_EPOCH,
+    consumer_fact_schema_epoch,
+    is_accepted_consumer_fact_schema_version,
+)
 from microcosm.build.ledger_artifact import (
     CONSUMER_ARTIFACT_SCHEMA_VERSION,
     ChronicleFeedPinMismatchError,
@@ -28,7 +34,16 @@ from microcosm.build.ledger_artifact import (
     validate_chronicle_feed_pin,
 )
 from microcosm.graph.canonical import canonical_json
-from test_support.microcosm_build.chronicle_feed import write_pinned_artifact
+from test_support.microcosm_build.chronicle_feed import (
+    MALFORMED_PACKAGE_DIMENSION_VALUE_LABELS,
+    PACKAGE_DIMENSION_VALUE_LABELS,
+    as_v4_row,
+    chronicle_v5_fact_rows,
+    chronicle_v5_schema,
+    chronicle_v5_schema_sha256,
+    chronicle_v5_schema_version,
+    write_pinned_artifact,
+)
 from test_support.paths import paths_for
 
 
@@ -366,6 +381,86 @@ def test_complete_feed_pin_accepts_exact_match(tmp_path):
     assert artifact.facts_sha256 == pin["facts_sha256"]
     assert artifact.manifest_sha256 == pin["manifest_sha256"]
     assert artifact.fact_row_count == pin["fact_row_count"]
+
+
+#: sha256 of Chronicle's ``consumer_fact.v5.schema.json`` at 44eebe037, the
+#: digest chronicle#377 publishes for the v5 contract.
+_CHRONICLE_V5_SCHEMA_SHA256 = (
+    "acd33a091cd8d192be5d264e3e94c13e00afb6fd1972e57d4576ac55a54f6970"
+)
+#: The v4 schema digest the UK, NZ and BE feed pins carry today.
+_CHRONICLE_V4_SCHEMA_SHA256 = (
+    "d953306d6f01fbc64db4372d0262d3012ee590269f8a25b276b18dca0626c6a0"
+)
+
+
+def test_chronicle_v5_fixture_is_valid_under_chronicle_v5_schema():
+    """The v5 fixture is Chronicle's, checked against Chronicle's own schema.
+
+    The malformed ``package_dimension_value_labels`` values the target
+    compiler refuses are the ones this schema refuses, so Microcosm's check
+    and Chronicle's contract agree.
+    """
+    schema = chronicle_v5_schema()
+    Draft202012Validator.check_schema(schema)
+    validator = Draft202012Validator(schema)
+    rows = chronicle_v5_fact_rows()
+
+    assert chronicle_v5_schema_sha256() == _CHRONICLE_V5_SCHEMA_SHA256
+    assert len(rows) == 3
+    for row in rows:
+        assert row["schema_version"] == chronicle_v5_schema_version()
+        assert row[PACKAGE_DIMENSION_VALUE_LABELS]
+        validator.validate(row)
+    for case, malformed in MALFORMED_PACKAGE_DIMENSION_VALUE_LABELS:
+        row = deepcopy(rows[0])
+        row[PACKAGE_DIMENSION_VALUE_LABELS] = malformed
+        assert not validator.is_valid(row), case
+
+
+def test_chronicle_v5_artifact_loads_under_its_feed_pin(tmp_path):
+    """A v5 artifact loads under a full feed pin, and its rows stay as published.
+
+    The loader keeps ``package_dimension_value_labels`` on the parsed rows,
+    because rows are carried exactly as the hashed file holds them; no
+    Microcosm reader takes a label from it.
+    """
+    rows = chronicle_v5_fact_rows()
+    artifact_dir, pin = write_pinned_artifact(
+        tmp_path / "artifact",
+        rows,
+        consumer_fact_schema_sha256=chronicle_v5_schema_sha256(),
+    )
+    v5 = chronicle_v5_schema_version()
+
+    artifact = load_ledger_consumer_artifact(artifact_dir, feed_pin=pin)
+
+    validate_chronicle_feed_pin(artifact, pin)
+    assert pin["consumer_fact_schema_versions"] == [v5]
+    assert pin["consumer_fact_schema_sha256"] == _CHRONICLE_V5_SCHEMA_SHA256
+    assert artifact.fact_schema_versions == (v5,)
+    assert artifact.provenance()["fact_schema_versions"] == [v5]
+    assert is_accepted_consumer_fact_schema_version(v5)
+    assert consumer_fact_schema_epoch(v5) == CHRONICLE_EPOCH
+    assert list(artifact.facts) == rows
+    assert all(row[PACKAGE_DIMENSION_VALUE_LABELS] for row in artifact.facts)
+
+
+def test_chronicle_v4_artifact_still_loads_under_its_feed_pin(tmp_path):
+    rows = [as_v4_row(row) for row in chronicle_v5_fact_rows()]
+    artifact_dir, pin = write_pinned_artifact(
+        tmp_path / "artifact",
+        rows,
+        consumer_fact_schema_sha256=_CHRONICLE_V4_SCHEMA_SHA256,
+    )
+
+    artifact = load_ledger_consumer_artifact(artifact_dir, feed_pin=pin)
+
+    validate_chronicle_feed_pin(artifact, pin)
+    assert artifact.fact_schema_versions == ("chronicle.consumer_fact.v4",)
+    assert is_accepted_consumer_fact_schema_version("chronicle.consumer_fact.v4")
+    assert list(artifact.facts) == rows
+    assert not any(PACKAGE_DIMENSION_VALUE_LABELS in row for row in artifact.facts)
 
 
 def test_feed_pin_rejects_changed_facts_with_self_consistent_manifest(tmp_path):

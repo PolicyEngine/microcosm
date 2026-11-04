@@ -46,6 +46,7 @@ from microcosm.build.chronicle_epoch import (
     consumer_artifact_schema_epoch,
     consumer_fact_schema_epoch,
     declared_identity,
+    describe_accepted_consumer_fact_schema_versions,
     fact_key_epoch,
     fact_key_epoch_label,
     feed_fact_key_epochs,
@@ -57,6 +58,7 @@ from microcosm.build.chronicle_epoch import (
     row_fact_key_epochs,
 )
 from microcosm.build.ledger_artifact import load_ledger_consumer_artifact
+from test_support.microcosm_build.chronicle_feed import chronicle_v5_schema_version
 from test_support.paths import paths_for
 
 _TEST_PATHS = paths_for("microcosm-build")
@@ -65,6 +67,11 @@ _TEST_PATHS = paths_for("microcosm-build")
 #: payload, ``chronicle.*.v3`` domain in place of ``ledger.*.v2``.
 _CHRONICLE_AGGREGATE_KEY = "chronicle.aggregate_fact.v3:abc123"
 _LEDGER_AGGREGATE_KEY = "ledger.aggregate_fact.v2:abc123"
+
+#: The per-row id Chronicle ``main`` stamps on every fact since chronicle#377
+#: (44eebe037), read from Chronicle's own v5 schema so the spelling is
+#: Chronicle's, not this module's.
+_CHRONICLE_V5_ROW_SCHEMA_ID = chronicle_v5_schema_version()
 
 #: Every consumer-artifact manifest id a real producer stamps. Microcosm's
 #: own minted v1 and Chronicle's published v2 are both ledger-era; v3 is the
@@ -402,6 +409,7 @@ def test_schema_id_membership_covers_every_real_producer_id() -> None:
         CHRONICLE_CONSUMER_FACT_SCHEMA_VERSION,
         CHRONICLE_CONSUMER_FACT_SCHEMA_VERSION_V3,
         CHRONICLE_CONSUMER_FACT_SCHEMA_VERSION_V4,
+        _CHRONICLE_V5_ROW_SCHEMA_ID,
     }
     for schema_id, expected_epoch in _ARTIFACT_SCHEMA_IDS_BY_EPOCH:
         assert is_accepted_consumer_artifact_schema_version(schema_id), schema_id
@@ -418,6 +426,7 @@ def test_schema_id_membership_covers_every_real_producer_id() -> None:
     assert consumer_fact_schema_epoch(CHRONICLE_CONSUMER_FACT_SCHEMA_VERSION_V4) == (
         CHRONICLE_EPOCH
     )
+    assert consumer_fact_schema_epoch(_CHRONICLE_V5_ROW_SCHEMA_ID) == CHRONICLE_EPOCH
     assert not is_accepted_consumer_artifact_schema_version(
         "policyengine_chronicle.other.v9"
     )
@@ -429,6 +438,27 @@ def test_schema_id_membership_covers_every_real_producer_id() -> None:
     # kinds do not leak into one another.
     assert not is_accepted_consumer_fact_schema_version("ledger.aggregate_fact.v2")
     assert consumer_artifact_schema_epoch(LEDGER_CONSUMER_FACT_SCHEMA_VERSION) is None
+
+
+def test_v5_row_contract_is_declared_like_v4() -> None:
+    """chronicle#377's v5 row is a declared chronicle-era row contract.
+
+    v5 is the v4 row plus the optional ``package_dimension_value_labels``,
+    so it is declared exactly as v4 is: the same identity kind, the
+    chronicle epoch, and named in the accepted-versions message a refusal
+    prints. Chronicle's own table (``CONSUMER_FACT_ROW_CONTRACTS`` in
+    ``chronicle/epoch.py``) ends at v5 from 44eebe037.
+    """
+    v4 = declared_identity(CHRONICLE_CONSUMER_FACT_SCHEMA_VERSION_V4)
+    v5 = declared_identity(_CHRONICLE_V5_ROW_SCHEMA_ID)
+
+    assert v4 is not None
+    assert v5 is not None
+    assert (v5.kind, v5.epoch, v5.family) == (v4.kind, CHRONICLE_EPOCH, v4.family)
+    assert is_accepted_consumer_fact_schema_version(_CHRONICLE_V5_ROW_SCHEMA_ID)
+    assert _CHRONICLE_V5_ROW_SCHEMA_ID in (
+        describe_accepted_consumer_fact_schema_versions()
+    )
 
 
 def test_chronicle_main_manifest_loads_exactly_as_published(tmp_path) -> None:
@@ -603,6 +633,7 @@ def test_malformed_schema_version_types_raise_the_documented_error(
         CHRONICLE_CONSUMER_FACT_SCHEMA_VERSION,
         CHRONICLE_CONSUMER_FACT_SCHEMA_VERSION_V3,
         CHRONICLE_CONSUMER_FACT_SCHEMA_VERSION_V4,
+        _CHRONICLE_V5_ROW_SCHEMA_ID,
     ],
 )
 def test_per_row_schema_id_is_accepted_in_either_era(
