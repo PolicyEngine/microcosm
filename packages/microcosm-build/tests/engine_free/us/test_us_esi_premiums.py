@@ -1385,10 +1385,13 @@ class TestAnchorFeedCheck:
                 "added keys differ",
             ),
             # A declared row in a B4923C anchor record set, which also sits
-            # outside the declared namespace.
+            # outside the declared namespace, after a row that sits inside it.
             (
-                ["k1"],
-                [("k1", "ed_fsa", "bea_nipa.cy2024.private_group_health_insurance")],
+                ["k1", "k2"],
+                [
+                    ("k1", "ed_fsa", "ed_fsa.a"),
+                    ("k2", "ed_fsa", "bea_nipa.cy2024.private_group_health_insurance"),
+                ],
                 "ed_fsa",
                 "ed_fsa.",
                 "an added row in a B4923C record set",
@@ -1464,10 +1467,19 @@ class TestAnchorFeedCheck:
                 lambda a: a["new_feed"].update(sha256="other"),
                 "a listing of another feed",
             ),
+            # A listing whose digest sorts before the report's new feed.
+            (
+                lambda a: a["new_feed"].update(sha256="aaa"),
+                "a listing of another feed",
+            ),
             # A listing that names one added key twice.
             (lambda a: a["rows"].append(dict(a["rows"][0])), "an added key twice"),
         ],
-        ids=["listing-other-feed", "listing-repeats-key"],
+        ids=[
+            "listing-other-feed",
+            "listing-other-feed-sorts-first",
+            "listing-repeats-key",
+        ],
     )
     def test_a_later_report_refuses_a_listing_it_cannot_follow(
         self, mutate, refusal
@@ -1493,6 +1505,12 @@ class TestAnchorFeedCheck:
                 lambda r: r["rows"].update(new_rows=r["rows"]["new_rows"] + 1),
                 "a new row count that does not add up",
             ),
+            # A new row count one short. Each count and digest a check compares
+            # has a case above the expected value and one below it.
+            (
+                lambda r: r["rows"].update(new_rows=r["rows"]["new_rows"] - 1),
+                "a new row count that does not add up",
+            ),
             (
                 lambda r: r["rows"]["changed_fields"].update(
                     value={"rows": 1, "by_record_set": {"x": 1}}
@@ -1503,19 +1521,31 @@ class TestAnchorFeedCheck:
                 lambda r: r["feeds"]["old"].update(sha256="other"),
                 "starts from another feed",
             ),
+            # An old feed whose digest sorts before the expected one.
+            (
+                lambda r: r["feeds"]["old"].update(sha256="aaa"),
+                "starts from another feed",
+            ),
             # An old feed of another size, with a new count that still adds up.
             (
                 lambda r: r["rows"].update(old_rows=11, new_rows=12),
                 "an old feed of another size",
             ),
-            # A label change in a B4923C record set.
+            # An old feed one row short, with a new count that still adds up.
+            (
+                lambda r: r["rows"].update(old_rows=9, new_rows=10),
+                "an old feed of another size",
+            ),
+            # A label change in a B4923C record set, after a record set outside
+            # the anchors.
             (
                 lambda r: r["rows"]["changed_fields"].update(
                     {
                         "layout/groupby_value_label": {
-                            "rows": 1,
+                            "rows": 2,
                             "by_record_set": {
-                                "bea_nipa.cy2024.private_group_health_insurance": 1
+                                "x": 1,
+                                "bea_nipa.cy2024.private_group_health_insurance": 1,
                             },
                         }
                     }
@@ -1526,9 +1556,12 @@ class TestAnchorFeedCheck:
         ids=[
             "dropped-row",
             "row-count",
+            "row-count-short",
             "value-change",
             "wrong-base",
+            "wrong-base-sorts-first",
             "old-row-count",
+            "old-row-count-short",
             "anchor-label",
         ],
     )
