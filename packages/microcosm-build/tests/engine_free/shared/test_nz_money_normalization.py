@@ -497,15 +497,11 @@ def test_a_tax_year_factor_is_refused_on_donor_money(profile):
         check_money_factor(relabelled, _declaration())
 
 
-def test_preflight_names_exactly_the_three_pending_quantile_maps():
-    """The packaged graph now reads donor money; only quantile maps remain."""
+def test_preflight_names_exactly_the_two_pending_quantile_maps():
+    """G8-r2c E maps P1 wages; only the rent and liquid-asset maps remain."""
     spec = compose_module.load_transport_spec("nz")
     gaps = compose_module._money_producer_gaps(spec)
     assert [gap.split(" <- ")[0] for gap in gaps] == [
         f"money column {name} awaits quantile map"
-        for name in (
-            "household.rent",
-            "person.employment_income",
-            "person.liquid_financial_assets",
-        )
+        for name in ("household.rent", "person.liquid_financial_assets")
     ]

@@ -17,9 +17,22 @@ package; each is separately resumable):
                 irs_soi}; ``--soi-mode state`` by default -- Build O's
                 state-geography SOI contract -- with ``totals``, ``full`` and
                 ``state_cd`` (district SOI rows, one vintage per state
-                concept) as explicit opt-ins), seed ACS-row SNAP/TANF take-up
-                on the full staging frame (microcosm#1019; the consumer
-                export re-derives the same flags), run the household-chunked
+                concept) as explicit opt-ins), refuse a staging run that
+                records no passing ACS local immigration stage
+                (microcosm#1020), no passing native ACS work/disability
+                stage (microcosm#1021), no passing ACS local income
+                transfer or no passing ACS local SSI disability-criteria
+                stage (microcosm#1022), seed ACS-row SNAP/TANF take-up on
+                the full staging frame (microcosm#1019) and fill the ACS
+                rows' discretionary ABAWD exemption (a cap-based
+                upper-bound proxy), housing-assistance receipt and
+                Medicare take-up without the engine (microcosm#1022; the
+                consumer export re-derives the same values), assign the
+                ACS rows' SSI and Medicaid take-up after a
+                household-batched engine pre-pass over the drawn rung's
+                ACS households (microcosm#1022; the consumer export
+                applies the recorded assignment), run the
+                household-chunked
                 engine pass under the nullable-artifact contract (input-schema
                 projection + reviewed-null fill), add PUMA-ladder population
                 marginals (state + congressional district), assign the CD
@@ -54,12 +67,15 @@ package; each is separately resumable):
                 sub-PUMA coverage), and flip the summary simulation-ready.
   package     : refuse a calibrated H5 that stores a model input the
                 installed policyengine-us does not define (microcosm#1026;
-                ``microcosm.data.stored_inputs``), or on which that engine's
+                ``microcosm.data.stored_inputs``) or on which that engine's
                 SPM measurement would refuse a unit with no classified adult
                 (microcosm#1263;
                 ``microcosm.build.us_runtime.spm_measurement_gate``), or that
                 lacks complete occupation, industry and worked-last-year
-                inputs on any person (microcosm#719), then
+                inputs on any person (microcosm#719), refuse ACS persons
+                made SSI-criteria-positive while the run records no SSI
+                take-up handling for ACS rows (the SSI take-up release
+                block, microcosm#1022), then
                 assemble releases/<id>/ with the non-default local-area
                 manifest shape (dataset_role ``non_default_local_area``,
                 namespace ``buildo_acs_local``, donor identity chain, the
@@ -91,11 +107,54 @@ import pandas as pd
 from microcosm.build.us_runtime import target_loss_weights as loss_weighting
 from microcosm.build.us_runtime.acs_inputs import acs_self_employment_identity_gate
 from microcosm.build.us_runtime.acs_local_hours import acs_local_hours_signal_gate
+from microcosm.build.us_runtime.acs_local_immigration import (
+    ACS_LOCAL_IMMIGRATION_COLUMNS,
+    ACS_LOCAL_IMMIGRATION_GATE_NAME,
+    ACS_LOCAL_IMMIGRATION_ISSUE,
+    acs_local_immigration_receipt_failures,
+    acs_local_immigration_signal_gate,
+)
+from microcosm.build.us_runtime.acs_local_income import (
+    ACS_LOCAL_INCOME_DONOR_CHANNEL,
+    ACS_LOCAL_INCOME_SHARED_RETIREMENT_COMPONENTS,
+    ACS_LOCAL_INCOME_TRANSFER_COLUMNS,
+    ACS_LOCAL_INCOME_TRANSFER_GATE_NAME,
+    ACS_LOCAL_INCOME_TRANSFER_ISSUE,
+    ACS_LOCAL_INCOME_TRANSFER_METHOD,
+    acs_local_income_transfer_signal_gate,
+)
+from microcosm.build.us_runtime.acs_local_ssi_disability import (
+    ACS_LOCAL_SSI_DISABILITY_COLUMN,
+    ACS_LOCAL_SSI_DISABILITY_GATE_NAME,
+    ACS_LOCAL_SSI_DISABILITY_ISSUE,
+    ACS_LOCAL_SSI_DISABILITY_METHOD,
+    acs_local_ssi_disability_signal_gate,
+)
+from microcosm.build.us_runtime.acs_local_ssi_medicaid_take_up import (
+    ACS_LOCAL_SSI_MEDICAID_TAKE_UP_COLUMNS,
+    ACS_LOCAL_SSI_MEDICAID_TAKE_UP_GATE_NAME,
+    ACS_LOCAL_SSI_MEDICAID_TAKE_UP_ISSUE,
+    ACS_LOCAL_SSI_MEDICAID_TAKE_UP_METHOD,
+    acs_local_ssi_medicaid_take_up_assignment,
+    acs_local_ssi_medicaid_take_up_signal_gate,
+    with_acs_local_ssi_medicaid_take_up,
+    with_recorded_acs_local_ssi_medicaid_take_up,
+)
 from microcosm.build.us_runtime.acs_local_take_up import (
+    ACS_LOCAL_ENGINE_FREE_FILL_COLUMNS,
+    ACS_LOCAL_ENGINE_FREE_FILLS_ISSUE,
     ACS_LOCAL_TAKE_UP_COLUMNS,
     ACS_LOCAL_TAKE_UP_GATE_NAME,
     acs_local_take_up_signal_gate,
     with_acs_local_take_up_inputs,
+)
+from microcosm.build.us_runtime.acs_local_work_disability import (
+    ACS_LOCAL_DISABILITY_COLUMNS,
+    ACS_LOCAL_WORK_DISABILITY_GATE_NAME,
+    ACS_LOCAL_WORK_DISABILITY_ISSUE,
+    ACS_NATIVE_PROVENANCE,
+    WEEKS_WORKED_EXPORT_BLOCKER,
+    acs_local_work_disability_signal_gate,
 )
 from microcosm.build.us_runtime.acs_pums import ACS_2024_1YR_SPINE
 from microcosm.build.us_runtime.base_pool import spine_column
@@ -103,6 +162,9 @@ from microcosm.build.us_runtime.esi_premiums import refuse_unassigned_us_esi_pre
 from microcosm.build.us_runtime.org_wages import (
     US_ORG_OCCUPATION_AND_WORK_EXPERIENCE_OUTPUT_COLUMNS,
     require_us_occupation_and_work_experience_inputs,
+)
+from microcosm.build.us_runtime.ssi_disability_criteria import (
+    SIPP_2023_SSI_DISABILITY_DONOR_SHA256,
 )
 from microcosm.data.contract import (
     US_LOCAL_AREA_SPM_MEASUREMENT_STAGE,
@@ -363,6 +425,39 @@ def soi_surface_predicate(soi_mode: str):
     return selected
 
 
+def _compiled_fiscal_registry(feed: str | Path):
+    """The production compile path and its reviewed substitution records.
+
+    feed -> ``compile_us_fiscal_target_registry(age_targets=True)`` ->
+    ``apply_us_medicaid_enrollment_substitutions`` (RI FIPS-44).
+    """
+
+    from microcosm.build.ledger_artifact import load_ledger_consumer_artifact
+    from microcosm.build.us_runtime import (
+        default_congressional_district_vintage_crosswalk_path,
+        load_congressional_district_vintage_crosswalk,
+    )
+    from microcosm.build.us_runtime.fiscal_targets import (
+        compile_us_fiscal_target_registry,
+    )
+    from microcosm.build.us_runtime.medicaid_take_up import (
+        apply_us_medicaid_enrollment_substitutions,
+    )
+
+    artifact = load_ledger_consumer_artifact(str(feed))
+    registry = compile_us_fiscal_target_registry(
+        artifact.facts,
+        target_period=PERIOD,
+        congressional_district_vintage_crosswalk=(
+            load_congressional_district_vintage_crosswalk(
+                default_congressional_district_vintage_crosswalk_path()
+            )
+        ),
+        age_targets=True,
+    )
+    return apply_us_medicaid_enrollment_substitutions(registry)
+
+
 def state_admin_specs(
     feed: str | Path, families: list[str], soi_mode: str = DEFAULT_SOI_MODE
 ):
@@ -461,6 +556,34 @@ def state_admin_surface(
     )
 
 
+def acs_local_ssi_medicaid_take_up_targets(feed: str | Path) -> dict[str, object]:
+    """The counts the ACS SSI/Medicaid take-up stage scales (microcosm#1022).
+
+    Compiled from the same feed and path as :func:`state_admin_specs` (a
+    second compile, run before the staging frame is loaded) and read exactly
+    as the fiscal lane's take-up stages read them: the SSA age-band SSI
+    recipient counts, and the post-substitution CMS state Medicaid enrollment
+    table with its reviewed substitution records.
+    """
+
+    import build_us_fiscal_refresh_release as release_tool
+
+    registry, substitutions = _compiled_fiscal_registry(feed)
+    try:
+        ssi = release_tool._ssi_take_up_band_targets_from_registry(registry.specs)
+        medicaid = release_tool._medicaid_source_target_table(registry.specs)
+    except RuntimeError as exc:
+        raise SystemExit(
+            "The ledger feed cannot supply the ACS local SSI/Medicaid take-up "
+            f"counts ({ACS_LOCAL_SSI_MEDICAID_TAKE_UP_ISSUE}): {exc}"
+        ) from exc
+    return {
+        "ssi_band_targets": ssi,
+        "medicaid_state_targets": medicaid,
+        "medicaid_substitutions": [dict(record) for record in substitutions],
+    }
+
+
 # ---------------------------------------------------------------------------
 # Engine pass under the nullable-artifact contract
 # ---------------------------------------------------------------------------
@@ -474,12 +597,128 @@ class DeniedDefaultFillError(ValueError):
     """NaN in an engine input whose engine default must never be the fill."""
 
 
-#: Runtime-owned take-up draws. Their engine default, ``True``, is universal
-#: take-up, so a missing cell is a build defect even when the staging register
-#: lists the column (microcosm#1019); the ACS take-up stage fills them first.
-NEVER_DEFAULT_FILLED = frozenset(
-    ("spm_unit", column) for column in ACS_LOCAL_TAKE_UP_COLUMNS
-)
+#: Why each runtime-owned input must never take its engine default, and what
+#: fills it instead. A missing cell is a build defect even when the staging
+#: register lists the column.
+_NEVER_DEFAULT_FILLED_REASONS: dict[tuple[str, str], str] = {
+    # microcosm#1019: the take-up default, True, is universal take-up; this
+    # tool's ACS take-up stage fills them first.
+    **{
+        ("spm_unit", column): (
+            "the engine default is universal take-up (microcosm#1019); run the "
+            "ACS local take-up stage first"
+        )
+        for column in ACS_LOCAL_TAKE_UP_COLUMNS
+    },
+    # microcosm#1020: the immigration defaults are a citizen with a valid SSN
+    # and 5 years since entry; staging's ACS local immigration stage fills
+    # them.
+    **{
+        ("person", column): (
+            "the engine default is a citizen with a valid SSN, 5 years since "
+            f"entry ({ACS_LOCAL_IMMIGRATION_ISSUE}); re-run staging with the "
+            "current builder"
+        )
+        for column in ACS_LOCAL_IMMIGRATION_COLUMNS
+    },
+    # microcosm#1021: the disability default, False, removes every disability
+    # exemption; staging maps ACS rows natively and the donor release carries
+    # its own, so neither spine should ever reach the fill.
+    **{
+        ("person", column): (
+            "the engine default False removes every disability exemption "
+            f"({ACS_LOCAL_WORK_DISABILITY_ISSUE}); re-run staging with the "
+            "current builder"
+        )
+        for column in ACS_LOCAL_DISABILITY_COLUMNS
+    },
+    # microcosm#1022: each default biases SNAP on ACS rows; this tool's ACS
+    # take-up stage fills them first, without the engine.
+    **{
+        key: f"{reason} ({ACS_LOCAL_ENGINE_FREE_FILLS_ISSUE}); run the ACS local "
+        "take-up stage first"
+        for key, reason in zip(
+            ACS_LOCAL_ENGINE_FREE_FILL_COLUMNS,
+            (
+                "the engine default False switches the cap-based discretionary "
+                "ABAWD exemption proxy (drawn at the 8% statutory cap) off for "
+                "every ACS adult",
+                "the engine default False drops every ACS housing-assistance "
+                "recipient the transferred take-up flag records",
+                "the engine default True enrolls every Medicare-eligible ACS "
+                "person regardless of measured HINS3 coverage",
+            ),
+            strict=True,
+        )
+    },
+    # microcosm#1022: the income default, 0, drops every ACS recipient's
+    # income; staging's separate ASEC-channel pass fills the ACS rows and the
+    # donor release carries its own measured or imputed amounts.
+    **{
+        ("person", column): (
+            f"the engine default 0 drops {reason} for every ACS recipient "
+            f"({ACS_LOCAL_INCOME_TRANSFER_ISSUE}); re-run staging with the "
+            "current builder"
+        )
+        for column, reason in zip(
+            ACS_LOCAL_INCOME_TRANSFER_COLUMNS,
+            (
+                "child support received, SNAP and SSI unearned income",
+                "child support paid, the SNAP child-support deduction",
+                "workers' compensation, SNAP and SSI unearned income",
+                "non-SSA disability benefits, SNAP and SSI unearned income",
+                "401(k) distributions, gross and SNAP unearned income",
+                "403(b) distributions, gross and SNAP unearned income",
+                "SEP distributions, gross and SNAP unearned income",
+                "Keogh distributions, gross and SNAP unearned income",
+                "Roth-IRA distributions, SNAP and SSI unearned income",
+            ),
+            strict=True,
+        )
+    },
+    # microcosm#1022: the SSI disability default, False, fails every ACS
+    # person under 65 who is not blind; staging runs the donor's SIPP model on
+    # the ACS rows and the donor release carries its own values.
+    ("person", ACS_LOCAL_SSI_DISABILITY_COLUMN): (
+        "the engine default False fails the SSI disability test for every ACS "
+        f"person under 65 who is not blind ({ACS_LOCAL_SSI_DISABILITY_ISSUE}); "
+        "re-run staging with the current builder"
+    ),
+    # microcosm#1022: the SSI and Medicaid take-up default, True, is universal
+    # take-up; materialize assigns the ACS rows after an engine pre-pass and
+    # the consumer export applies the recorded assignment.
+    **{
+        ("person", column): (
+            f"the engine default is universal {program} take-up "
+            f"({ACS_LOCAL_SSI_MEDICAID_TAKE_UP_ISSUE}); run the ACS local "
+            "SSI/Medicaid take-up stage first"
+        )
+        for column, program in zip(
+            ACS_LOCAL_SSI_MEDICAID_TAKE_UP_COLUMNS, ("SSI", "Medicaid"), strict=True
+        )
+    },
+}
+NEVER_DEFAULT_FILLED = frozenset(_NEVER_DEFAULT_FILLED_REASONS)
+
+#: The checkpoint file holding the ACS rows' SSI and Medicaid take-up that
+#: materialize assigned (microcosm#1022); the consumer export applies it.
+ACS_SSI_MEDICAID_TAKE_UP_FILENAME = "acs_local_ssi_medicaid_take_up.npz"
+
+
+def _formula_owned_columns(base_frame) -> set[str]:
+    """The present non-structural columns ``formula_owned_outputs`` classifies
+    as engine outputs: what the engine pass holds back."""
+
+    from microcosm.frame.adapters.policyengine_us import PolicyEngineUSEngine
+
+    adapter = PolicyEngineUSEngine()
+    structural = set(adapter._structural_columns())
+    present = {
+        column
+        for entity in base_frame.entities
+        for column in base_frame.table(entity).columns
+    }
+    return set(adapter.formula_owned_outputs(present)) - structural
 
 
 class DeclaredSourceInputNullError(UnregisteredNullError):
@@ -515,13 +754,8 @@ def project_input_only(base_frame, period: int = PERIOD):
     """
 
     from microcosm.frame import Frame
-    from microcosm.frame.adapters.policyengine_us import PolicyEngineUSEngine
 
-    adapter = PolicyEngineUSEngine()
-    structural = set(adapter._structural_columns())
-    tables = {entity: base_frame.table(entity) for entity in base_frame.entities}
-    present = {column for table in tables.values() for column in table.columns}
-    formula_owned = set(adapter.formula_owned_outputs(present)) - structural
+    formula_owned = _formula_owned_columns(base_frame)
     dropped: dict[str, list[str]] = {}
     if not formula_owned:
         return base_frame, dropped
@@ -588,15 +822,14 @@ def fill_reviewed_nulls(
     """
 
     denied = [
-        f"{entity}.{column} ({int(frame.table(entity)[column].isna().sum())} null rows)"
+        f"{entity}.{column} ({int(frame.table(entity)[column].isna().sum())} null "
+        f"rows): {_NEVER_DEFAULT_FILLED_REASONS[(entity, column)]}"
         for entity, column in sorted(NEVER_DEFAULT_FILLED)
         if column in frame.table(entity) and frame.table(entity)[column].isna().any()
     ]
     if denied:
         raise DeniedDefaultFillError(
-            "Refusing to default-fill runtime-owned take-up input(s) "
-            f"{'; '.join(denied)}: the engine default is universal take-up "
-            "(microcosm#1019). Run the ACS local take-up stage first."
+            f"Refusing to default-fill runtime-owned input(s): {'; '.join(denied)}."
         )
 
     # microcosm#454: the ESI employer premium exists only where the
@@ -1432,13 +1665,26 @@ def _load_staging_frame(path: Path):
 
 
 def _with_local_take_up(frame, *, seed: int):
-    """Seed ACS-row SNAP/TANF take-up before any reviewed-null fill (#1019)."""
+    """Seed ACS-row SNAP/TANF take-up (#1019) and the engine-free fills
+    (#1022) before any reviewed-null fill."""
 
     frame, receipt = with_acs_local_take_up_inputs(frame, seed=seed)
     for column, entry in receipt["programs"].items():
         log(
             f"ACS take-up {column}: filled {entry['filled_rows']:,} rows, "
             f"weighted ACS share {entry['weighted_take_up_share']:.3f}"
+        )
+    for column, entry in receipt["engine_free_fills"]["columns"].items():
+        log(f"ACS engine-free fill {column}: filled {entry['filled_rows']:,} rows")
+    audit = receipt["engine_free_fills"]["columns"]["takes_up_medicare_if_eligible"][
+        "hins3_audit"
+    ]
+    for kind in ("blank", "invalid"):
+        counts = audit[kind]
+        log(
+            f"ACS HINS3 {kind} (read as not covered; informational): "
+            f"{counts['rows']:,} rows, weight {counts['weight']:,.0f}; at 65+ "
+            f"{counts['rows_65_plus']:,} rows, weight {counts['weight_65_plus']:,.0f}"
         )
     return frame, receipt
 
@@ -1448,9 +1694,12 @@ def _recorded_take_up(identity: dict) -> dict:
 
     The consumer export re-derives the flags with the recorded seed and must
     reproduce the recorded digest, so both engine passes see the same flags.
+    A receipt without the engine-free fills is a pre-#1022 checkpoint, whose
+    ACS rows reached the engine pass with three SNAP-relevant defaults.
     """
 
     receipt = identity.get("acs_local_take_up")
+    fills = receipt.get("engine_free_fills") if isinstance(receipt, dict) else None
     if (
         not isinstance(receipt, dict)
         or type(receipt.get("seed")) is not int
@@ -1462,7 +1711,202 @@ def _recorded_take_up(identity: dict) -> dict:
             "SPM unit default-filled to take up SNAP and TANF. Re-run --stage "
             "materialize."
         )
+    if (
+        not isinstance(fills, dict)
+        or fills.get("issue") != ACS_LOCAL_ENGINE_FREE_FILLS_ISSUE
+    ):
+        raise SystemExit(
+            "run_identity.json records no ACS engine-free fills "
+            f"({ACS_LOCAL_ENGINE_FREE_FILLS_ISSUE}): the checkpoint was "
+            "materialized with every ACS row's discretionary ABAWD exemption, "
+            "housing-assistance receipt and Medicare take-up at the engine "
+            "default. Re-run --stage materialize."
+        )
     return receipt
+
+
+def _acs_engine_values(
+    view, *, variable: str, summary_path: Path, hh_chunk: int
+) -> np.ndarray:
+    """One household-batched engine pass over a pre-pass view (microcosm#1022).
+
+    The stage calls this on the donor households first, to measure the donor
+    rows' pooled contribution that sets each ACS residual target, then on the
+    ACS households. The view gets materialize's own engine-pass contract
+    (input-schema projection plus reviewed-null fill), then the fiscal lane's
+    batched helper evaluates ``variable`` in chunks of ``hh_chunk``
+    households, so the pre-pass holds one chunk's simulation at a time. The
+    view is the stage's own copy of those households, so both contract steps
+    edit it in place (the classifier of :func:`project_input_only`, without
+    its copy): the pre-pass never holds a second copy of the rows, and the
+    donor view (about 5% of persons) is freed before the ACS view is built.
+    """
+
+    import build_us_fiscal_refresh_release as release_tool
+
+    helpers = {
+        "uncapped_ssi": release_tool._ssi_person_uncapped_amount,
+        "is_medicaid_eligible": release_tool._medicaid_person_eligibility,
+    }
+    helper = helpers[variable]
+    started = time.time()
+    formula_owned = _formula_owned_columns(view)
+    for entity in view.entities:
+        table = view.table(entity)
+        held = sorted(set(table.columns) & formula_owned)
+        if held:
+            table.drop(columns=held, inplace=True)
+    fill_reviewed_nulls(view, summary_path, period=PERIOD)
+    if view.n("household") > hh_chunk:
+        release_tool._assert_group_entities_nest_in_households(view)
+        release_tool._assert_medicaid_claiming_tax_units_local(view)
+    values = helper(view, maximum_microsim_batch_size=hh_chunk)
+    gc.collect()
+    log(
+        f"Engine pre-pass {variable}: {len(values):,} persons "
+        f"({time.time() - started:.1f}s, peak RSS {rss():.2f}GB)"
+    )
+    return values
+
+
+def _with_local_ssi_medicaid_take_up(
+    frame, *, seed: int, targets: dict, summary_path: Path, hh_chunk: int
+):
+    """Assign and gate ACS-row SSI and Medicaid take-up (microcosm#1022).
+
+    Runs before materialize's engine pass, so the CMS enrollment targets
+    select enrollees among eligible ACS persons instead of shrinking the
+    eligible population; a failed gate stops the stage before the hours of
+    materialization. The ACS targets are what the donor rows leave of the SSA
+    and CMS counts on the pooled weights, measured with the same two engine
+    passes over the donor households (microcosm#1060 review).
+    """
+
+    started = time.time()
+    try:
+        frame, receipt = with_acs_local_ssi_medicaid_take_up(
+            frame,
+            seed=seed,
+            ssi_band_targets=targets["ssi_band_targets"],
+            medicaid_state_targets=targets["medicaid_state_targets"],
+            medicaid_substitutions=targets["medicaid_substitutions"],
+            uncapped_ssi=lambda view: _acs_engine_values(
+                view,
+                variable="uncapped_ssi",
+                summary_path=summary_path,
+                hh_chunk=hh_chunk,
+            ),
+            medicaid_eligibility=lambda view: _acs_engine_values(
+                view,
+                variable="is_medicaid_eligible",
+                summary_path=summary_path,
+                hh_chunk=hh_chunk,
+            ),
+        )
+    except ValueError as exc:
+        raise SystemExit(
+            "ACS local SSI/Medicaid take-up stage failed "
+            f"({ACS_LOCAL_SSI_MEDICAID_TAKE_UP_ISSUE}): {exc}"
+        ) from exc
+    receipt["engine_prepass"].update(
+        stage_wall_s=round(time.time() - started, 1),
+        hh_chunk=hh_chunk,
+        peak_rss_gb=round(rss(), 2),
+    )
+    gate = acs_local_ssi_medicaid_take_up_signal_gate(frame, receipt=receipt)
+    receipt["gate"] = {
+        "name": gate.name,
+        "passed": gate.passed,
+        "failures": list(gate.failures),
+    }
+    if not gate.passed:
+        raise SystemExit(
+            "ACS local SSI/Medicaid take-up gate failed: " + "; ".join(gate.failures)
+        )
+    for program in ("ssi", "medicaid"):
+        entry = receipt[program]
+        log(
+            f"ACS take-up {entry['column']}: filled {entry['filled_rows']:,} rows, "
+            f"weighted ACS share {entry['weighted_take_up_share']:.3f}"
+        )
+    return frame, receipt
+
+
+def _write_ssi_medicaid_take_up(frame, path: Path) -> str:
+    """Record the ACS persons' SSI/Medicaid take-up; return the file sha256."""
+
+    assignment = acs_local_ssi_medicaid_take_up_assignment(frame)
+    person_ids = assignment["person_id"].to_numpy()
+    if person_ids.dtype == object:
+        person_ids = person_ids.astype(str)
+    with Path(path).open("wb") as handle:
+        np.savez(
+            handle,
+            person_id=person_ids,
+            **{
+                column: assignment[column].to_numpy(dtype=bool)
+                for column in ACS_LOCAL_SSI_MEDICAID_TAKE_UP_COLUMNS
+            },
+        )
+    return _sha256(path)
+
+
+def _recorded_ssi_medicaid_take_up(identity: dict, checkpoint_dir: Path):
+    """The ACS SSI/Medicaid take-up materialize assigned, or refuse.
+
+    Returns the run-identity receipt and the recorded assignment file. A
+    checkpoint without a passing receipt, or whose file is missing or changed,
+    was materialized with every eligible ACS person taking SSI and Medicaid
+    up (the engine default), or cannot prove what it calibrated against.
+    """
+
+    receipt = identity.get("acs_local_ssi_medicaid_take_up")
+    recorded = receipt.get("assignment_file") if isinstance(receipt, dict) else None
+    gate = receipt.get("gate") if isinstance(receipt, dict) else None
+    if (
+        not isinstance(receipt, dict)
+        or receipt.get("issue") != ACS_LOCAL_SSI_MEDICAID_TAKE_UP_ISSUE
+        or receipt.get("method") != ACS_LOCAL_SSI_MEDICAID_TAKE_UP_METHOD
+        or type(receipt.get("seed")) is not int
+        or not isinstance(receipt.get("assigned_sha256"), str)
+        or not isinstance(gate, dict)
+        or gate.get("passed") is not True
+        or not isinstance(recorded, dict)
+        or recorded.get("name") != ACS_SSI_MEDICAID_TAKE_UP_FILENAME
+        or not isinstance(recorded.get("sha256"), str)
+    ):
+        raise SystemExit(
+            "run_identity.json records no passing ACS local SSI/Medicaid take-up "
+            f"assignment ({ACS_LOCAL_SSI_MEDICAID_TAKE_UP_ISSUE}): the checkpoint "
+            "was materialized with every eligible ACS person taking SSI and "
+            "Medicaid up (the engine default). Re-run --stage materialize."
+        )
+    path = Path(checkpoint_dir) / ACS_SSI_MEDICAID_TAKE_UP_FILENAME
+    if not path.is_file() or _sha256(path) != recorded["sha256"]:
+        raise SystemExit(
+            f"The recorded ACS SSI/Medicaid take-up assignment {path} is missing "
+            f"or changed since materialize ({ACS_LOCAL_SSI_MEDICAID_TAKE_UP_ISSUE})."
+            " Re-run --stage materialize."
+        )
+    return receipt, path
+
+
+def _with_recorded_ssi_medicaid_take_up(frame, receipt: dict, path: Path):
+    """Apply the recorded ACS SSI/Medicaid take-up; refuse a mismatch."""
+
+    columns = ("person_id", *ACS_LOCAL_SSI_MEDICAID_TAKE_UP_COLUMNS)
+    try:
+        with np.load(path, allow_pickle=False) as recorded:
+            table = pd.DataFrame({column: recorded[column] for column in columns})
+        return with_recorded_acs_local_ssi_medicaid_take_up(
+            frame, table, assigned_sha256=receipt["assigned_sha256"]
+        )
+    except (KeyError, OSError, ValueError) as exc:
+        raise SystemExit(
+            "The consumer export cannot reproduce the ACS SSI/Medicaid take-up "
+            f"materialize calibrated against ({ACS_LOCAL_SSI_MEDICAID_TAKE_UP_ISSUE}):"
+            f" {exc} Re-run --stage materialize against this staging file."
+        ) from exc
 
 
 def _cd_holdout_fraction(args) -> float:
@@ -1554,11 +1998,21 @@ def do_materialize(args) -> None:
             "nullable-artifact engine-pass contract requires its "
             "reviewed_engine_input_nulls register."
         )
+    staging_summary = _load_json(summary_path)
+    # microcosm#1020/#1021/#1022: refuse a pre-change staging run before
+    # hashing or loading.
+    _require_local_immigration(staging_summary)
+    _require_local_work_disability(staging_summary)
+    _require_local_income_transfer(staging_summary)
+    _require_local_ssi_disability(staging_summary)
+    # microcosm#1022: the SSI and Medicaid take-up counts, from the same feed
+    # and compile path, before the staging frame is loaded.
+    ssi_medicaid_targets = acs_local_ssi_medicaid_take_up_targets(args.feed)
     log("hashing staging inputs for the run identity …")
     staging_sha = _sha256(args.staging_h5)
     ladder_sha = _sha256(args.ladder)
     frame = _load_staging_frame(args.staging_h5)
-    _require_local_hours(frame, _load_json(summary_path))
+    _require_local_hours(frame, staging_summary)
     _require_acs_self_employment_identity(frame)
     # microcosm#1019: seed ACS take-up on the full staging frame, before
     # any development rung is drawn, so a rung keeps the flags the full
@@ -1572,6 +2026,26 @@ def do_materialize(args) -> None:
         f"loaded staging frame households={frame.n('household')} "
         f"(rung {sampling['rung']}; {time.time() - started:.1f}s)"
     )
+    # microcosm#1022: assign the ACS rows' SSI and Medicaid take-up after a
+    # household-batched engine pre-pass over the ACS households, before the
+    # engine pass materializes the Medicaid enrollment targets, and record the
+    # assignment for the consumer export.
+    args.checkpoint_dir.mkdir(parents=True, exist_ok=True)
+    frame, ssi_medicaid = _with_local_ssi_medicaid_take_up(
+        frame,
+        seed=args.seed,
+        targets=ssi_medicaid_targets,
+        summary_path=summary_path,
+        hh_chunk=args.hh_chunk,
+    )
+    del ssi_medicaid_targets
+    ssi_medicaid["assignment_file"] = {
+        "name": ACS_SSI_MEDICAID_TAKE_UP_FILENAME,
+        "sha256": _write_ssi_medicaid_take_up(
+            frame, args.checkpoint_dir / ACS_SSI_MEDICAID_TAKE_UP_FILENAME
+        ),
+    }
+    gc.collect()
 
     started = time.time()
     args.checkpoint_dir.mkdir(parents=True, exist_ok=True)
@@ -1695,6 +2169,7 @@ def do_materialize(args) -> None:
                 **county_surface.run_metadata(args, county_holdout),
                 "sampling": sampling,
                 "acs_local_take_up": take_up,
+                "acs_local_ssi_medicaid_take_up": ssi_medicaid,
             },
             indent=2,
         )
@@ -2185,6 +2660,17 @@ def do_calibrate(args) -> None:
     identity = _verify_run_identity(args)
     # Refuse a pre-#1019 checkpoint before hours of solving, not at export.
     _recorded_take_up(identity)
+    # Likewise a checkpoint materialized from a pre-#1020, pre-#1021 or
+    # pre-#1022 (income or SSI disability) staging run: the consumer export at
+    # the end of this stage would refuse its summary.
+    staging_summary = _load_json(_staging_summary_path(args))
+    _require_local_immigration(staging_summary)
+    _require_local_work_disability(staging_summary)
+    _require_local_income_transfer(staging_summary)
+    _require_local_ssi_disability(staging_summary)
+    # microcosm#1022: and a checkpoint without the recorded ACS SSI/Medicaid
+    # take-up the export must apply.
+    _recorded_ssi_medicaid_take_up(identity, args.checkpoint_dir)
     _apply_county_solver_profile(args, identity=identity)
     frame, design_weights, registry, roles, matrix = load_checkpoint_surface(
         args.checkpoint_dir, identity
@@ -2522,8 +3008,16 @@ def _write_calibrated_artifact(
     from microcosm.frame import Frame, WeightKind, Weights
 
     recorded_take_up = _recorded_take_up(identity)
+    staging_summary = _load_json(_staging_summary_path(args))
+    _require_local_immigration(staging_summary)
+    _require_local_work_disability(staging_summary)
+    _require_local_income_transfer(staging_summary)
+    _require_local_ssi_disability(staging_summary)
+    ssi_medicaid, ssi_medicaid_path = _recorded_ssi_medicaid_take_up(
+        identity, args.checkpoint_dir
+    )
     frame = _load_staging_frame(args.staging_h5)
-    _require_local_hours(frame, _load_json(_staging_summary_path(args)))
+    _require_local_hours(frame, staging_summary)
     _require_acs_self_employment_identity(frame)
     frame, take_up = _with_local_take_up(frame, seed=recorded_take_up["seed"])
     if take_up["assigned_sha256"] != recorded_take_up["assigned_sha256"]:
@@ -2533,6 +3027,9 @@ def _write_calibrated_artifact(
             "materialize against this staging file."
         )
     frame = _resample_like_materialize(frame, identity)
+    # microcosm#1022: apply the ACS SSI/Medicaid take-up materialize recorded
+    # on the same rung; it must reproduce the recorded digest.
+    frame = _with_recorded_ssi_medicaid_take_up(frame, ssi_medicaid, ssi_medicaid_path)
     staging_ids = frame.table("household")["household_id"].to_numpy()
     with pd.HDFStore(args.checkpoint_dir / "target_frame_lean.h5", mode="r") as store:
         lean_ids = store["household"]["household_id"].to_numpy()
@@ -2548,6 +3045,12 @@ def _write_calibrated_artifact(
             f"{len(staging_ids)} households."
         )
 
+    # TODO(policyengine-us#9660): the staging ACS rows carry native
+    # weeks_worked (microcosm#1021), but the pinned policyengine-us gives it a
+    # formula_2025, so this projection holds it back as formula-owned. Once
+    # #9660 part A1 deletes that formula and the pin/ABI lock are bumped, it
+    # becomes an input and ships; the donor rows then need weeks_worked from
+    # WKSWORK too (US_HOURS_WORKED_POOL_EXCLUDED_COLUMNS).
     projected, dropped = project_input_only(frame, period=PERIOD)
     del frame
     gc.collect()
@@ -2589,6 +3092,10 @@ def _write_calibrated_artifact(
                 "filled_columns": len(fills),
                 "total_values_filled": sum(f["filled_rows"] for f in fills),
                 "acs_local_take_up": take_up,
+                "acs_local_ssi_medicaid_take_up": {
+                    "assigned_sha256": ssi_medicaid["assigned_sha256"],
+                    "assignment_file": ssi_medicaid["assignment_file"],
+                },
                 "live_stored_inputs": live_inputs.provenance,
                 "note": (
                     "The engine-pass contract (input-schema projection + "
@@ -3198,16 +3705,285 @@ def finalize_reviewed_limitations(
             "reason": (
                 "SNAP and TANF take-up on ACS rows are seeded by the local "
                 "runtime and gated by acs_local_take_up_signal "
-                "(microcosm#1019). The other runtime-owned takes_up_* flags "
-                "(EITC, ACA, Medicaid, SSI, Medicare, Head Start and the "
-                "rest) are neither transferred nor seeded on ACS rows, so "
-                "they ship at the engine default, universal take-up. The QA "
+                "(microcosm#1019), Medicare take-up is native ACS HINS3 "
+                "(acs_engine_free_default_fills), and SSI and Medicaid "
+                "take-up are assigned after an engine pre-pass "
+                "(acs_local_ssi_medicaid_take_up). The other runtime-owned "
+                "takes_up_* flags (EITC, ACA, Head Start and the rest) are "
+                "neither transferred nor seeded on ACS rows, so they ship at "
+                "the engine default, universal take-up. The QA "
                 "probe's SNAP take-up table is a December-eligible snapshot "
                 "(unit- and person-weighted), informational and never "
                 "graded; it is not the FNS fiscal-year participation rate, "
                 "which is among eligible people over a federal fiscal year."
             ),
             "treatment": "Tracked via microcosm#1022.",
+            "calibration_blocker": False,
+        },
+        {
+            "id": "acs_engine_free_default_fills",
+            "status": "reviewed_modeling_decision",
+            "affected_spines": ["acs_2024_1yr"],
+            "columns": [column for _, column in ACS_LOCAL_ENGINE_FREE_FILL_COLUMNS],
+            "reason": (
+                "Three SNAP-relevant inputs are filled on ACS rows without the "
+                f"engine ({ACS_LOCAL_ENGINE_FREE_FILLS_ISSUE}) instead of taking "
+                "their engine defaults. is_snap_abawd_discretionary_exempt "
+                "mirrors the donor seeding: every person aged 18-64 draws "
+                "against the snap_abawd_discretionary_exemption manifest rate "
+                "(the statutory cap), keyed on acs_2024_1yr:SERIALNO:SPORDER. "
+                "It is a cap-based proxy, not an observed exemption assignment: "
+                "seeding all adults rather than covered individuals only, at "
+                "the cap rather than actual state usage, makes it an "
+                "upper-bound propensity, as on the donor. "
+                "receives_housing_assistance copies the transferred "
+                "takes_up_housing_assistance_if_eligible (equal on the donor by "
+                "construction) and is False in TYPEHUGQ 2/3 group quarters, "
+                "whose transferred take-up flag is the open transfer-side fix "
+                "microcosm#975. takes_up_medicare_if_eligible is ACS HINS3 == 1 "
+                "(coverage at interview), as the donor maps ASEC MCARE == 1; a "
+                "blank or invalid HINS3 reads as not covered."
+            ),
+            "treatment": (
+                "Filled by the release tool before both reviewed-null fills, "
+                "digested in run_identity.json and re-derived at export; gated "
+                "by acs_local_take_up_signal (exempt share of ages 18-64 around "
+                "the manifest rate, receipt equal to the transferred take-up, "
+                "Medicare equal to HINS3 with a high share at 65+). Blank and "
+                "invalid HINS3 counts (unweighted, weighted and at 65+) are "
+                "reported in the receipt and the gate detail, not graded."
+            ),
+            "calibration_blocker": False,
+        },
+        {
+            "id": "acs_immigration_status_method",
+            "status": "reviewed_modeling_decision",
+            "affected_spines": ["acs_2024_1yr", "asec_puf"],
+            "columns": list(ACS_LOCAL_IMMIGRATION_COLUMNS),
+            "reason": (
+                "ACS rows run the ASEC immigration stage's cited residual "
+                "method through a CPS-named view of native ACS fields "
+                "(microcosm#1020): CIT for citizenship, the exact YOEP entry "
+                "year for the PEINUSYR bins, POBP for nativity, and HINS3-7 / "
+                "COW / ESR / MIL / SSP / SSIP / SCHG for the legal-status "
+                "indicators. ACS coverage is at interview (CPS: any time last "
+                "year), and the federal-pension, Social Security reason and "
+                "housing-subsidy indicators have no ACS field, so the ACS "
+                "residual (likely undocumented) pool can only be as large or "
+                "larger than the ASEC method would find for the same people. "
+                "The ACS rows target the Pew worker and Higher Ed student "
+                "controls less the donor rows' pooled delivered counts, "
+                "floored at zero, so the pooled file meets each control "
+                "whenever the ACS rows have the capacity. "
+                "years_since_us_entry is an arrival-based status-duration "
+                "proxy: the period minus the measured arrival year (age for "
+                "the US-born). Known limitation: neither the ACS nor the "
+                "ASEC donor records the date qualified status was granted, "
+                "so the clock runs from arrival, while 8 U.S.C. 1613(a) "
+                "starts it at entry with qualified status. It can clear the "
+                "five-year bar early for people who adjusted status after "
+                "arriving (arrival in 2014 and status in 2023 gives 10 "
+                "modeled years in 2024, against one qualifying year; "
+                "policyengine-us#9658). That affects the policyengine-us "
+                "2.2.1 tests that read the clock: Medicaid (CHIP follows "
+                "it) and Washington TANF read it against a five-year bar, "
+                "so the long clock can clear the bar early; Washington RCA "
+                "reads it as a window that closes (years_since_us_entry < "
+                "window_years), so the long clock can wrongly exclude a "
+                "recently qualified person from RCA. Under the statute the "
+                "SNAP five-year bar also runs from entry with qualified "
+                "status, but the pinned engine's federal SNAP status test "
+                "reads the status, not this clock, so any SNAP effect is "
+                "indirect. The receipt "
+                "reports the size of the affected group under each lag of "
+                "one to ten, 15 and 20 years; the real-data check is "
+                "microcosm#1093."
+            ),
+            "treatment": (
+                "Gated by acs_local_immigration_signal; the staging summary's "
+                "acs_local_immigration receipt records the mapping, the "
+                "per-status control, donor delivered, residual, ACS assigned "
+                "and pooled counts, the adjustment-lag sensitivity of the "
+                "entry clock (affected bar-status weight and its cumulative "
+                "share for lags of one to ten, 15 and 20 years, and the "
+                "largest observed clock), and an assignment digest. "
+                "Packaging refuses a "
+                "receipt whose targets are not the donor residual."
+            ),
+            "calibration_blocker": False,
+        },
+        {
+            "id": "acs_work_disability_inputs",
+            "status": "reviewed_modeling_decision",
+            "affected_spines": ["acs_2024_1yr"],
+            "columns": list(ACS_LOCAL_DISABILITY_COLUMNS),
+            "reason": (
+                "ACS rows read is_disabled and is_blind from their own "
+                "disability-difficulty items (microcosm#1021), not the ASEC "
+                "transfer: is_disabled is any of DEAR/DEYE/DOUT/DPHY/DREM/DDRS "
+                "== 1, or SSIP > 0 under age 65 (the ASEC eligibility-inputs "
+                "definition), and is_blind is DEYE == 1. An item below its "
+                "minimum question age (5 for DPHY/DREM/DDRS, 15 for DOUT) is "
+                "blank and reads as no difficulty. Native ACS weeks_worked "
+                "(WKWN, under the WKHP universe rules) is carried on the "
+                "staging ACS spine only: the pinned policyengine-us gives "
+                "weeks_worked a formula_2025, so the export holds it back as "
+                f"formula-owned until {WEEKS_WORKED_EXPORT_BLOCKER}. is_veteran "
+                "(ACS MIL == 2) is not exported because policyengine-us "
+                "computes it from veterans_benefits for every year; "
+                "is_incapable_of_self_care stays on the ASEC transfer."
+            ),
+            "treatment": (
+                "Gated by acs_local_work_disability_signal at staging and "
+                "finalize; the staging summary's acs_local_work_disability "
+                "receipt records the definitions, item universes, SSI "
+                "increment, zero transfer-imputed cells and the weeks-worked "
+                "counts."
+            ),
+            "calibration_blocker": False,
+        },
+        {
+            "id": "acs_local_income_transfer",
+            "status": "reviewed_modeling_decision",
+            "affected_spines": ["acs_2024_1yr"],
+            "columns": list(ACS_LOCAL_INCOME_TRANSFER_COLUMNS),
+            "reason": (
+                "ACS rows get child support received and paid, workers' "
+                "compensation, non-SSA disability benefits and 401(k)/403(b)/"
+                "SEP/Keogh/Roth-IRA distributions from a separate local-lane "
+                f"QRF pass ({ACS_LOCAL_INCOME_TRANSFER_ISSUE}), outside the "
+                "shared declared transfer plan and its execution contract. "
+                "The ACS asks none of them separately (OIP and RETP are "
+                "combined amounts), so the pass fits on the donor's ASEC "
+                "observation role, the measured CPS values, never the PUF "
+                "clone role's CPS-trained predictions. It uses the existing "
+                "transfer predictors plus two local-only predictor "
+                "extensions of its own transfer call, which leave the shared "
+                "execution contract and the shared transfer's draws "
+                "unchanged: ACS OIP (times ADJINC) for the child support "
+                "family only, against a donor analog of UC, workers' "
+                "compensation, VA, child support, alimony, strike and other "
+                "ASEC other income (ASEC FIN_VAL, contributions from outside "
+                "the household, is not carried); and, for the "
+                "work/disability and retirement-distribution families, an "
+                "ACS-aligned RETP analog that adds the five account "
+                "distributions and disability benefits to the shared pension "
+                "and regular-IRA analog (survivor income and other-account "
+                "distributions are not carried). OIP is withheld from "
+                "workers' compensation pending review. The shared plan "
+                "already transfers "
+                + ", ".join(ACS_LOCAL_INCOME_SHARED_RETIREMENT_COMPONENTS)
+                + ", so this pass transfers only the other account types and "
+                "refuses any overlap with the shared plan."
+            ),
+            "treatment": (
+                "Gated by acs_local_income_transfer_signal at staging and "
+                "finalize (complete, non-negative amounts on both spines, "
+                "ACS signal where the donor has recipients, a complete "
+                "ASEC-channel receipt with the reviewed method, each "
+                "predictor extension on exactly its own families, and ACS "
+                "OIP and donor coverage); ACS/donor recipient-share and "
+                "recipient-mean ratios outside the review band are "
+                "reported, not failed."
+            ),
+            "calibration_blocker": False,
+        },
+        {
+            "id": "acs_local_ssi_disability_criteria",
+            "status": "reviewed_modeling_decision",
+            "affected_spines": ["acs_2024_1yr"],
+            "columns": [ACS_LOCAL_SSI_DISABILITY_COLUMN],
+            "reason": (
+                "ACS rows get meets_ssi_disability_criteria from the donor "
+                "release's archived SIPP QRF (the same pinned full SIPP 2023 "
+                "file, screens, predictors, weighted sample and fixed forest), "
+                "run on a CPS-named view of each ACS person "
+                f"({ACS_LOCAL_SSI_DISABILITY_ISSUE}). The six ACS difficulty "
+                "items stand in for the ASEC PEDIS* items, and a blank below "
+                "an item's minimum question age reads as no difficulty; age, "
+                "sex, wages and marriage are native; interest, dividend and "
+                "rental income, liquid assets and Social Security disability "
+                "come from the shared transfer, and disability benefits from "
+                "the local income pass. ACS persons under 65 who report SSI "
+                "(SSIP) are anchored, and the draws are keyed on "
+                "acs_2024_1yr:SERIALNO:SPORDER and the build seed. SSI take-up "
+                "on ACS rows is then assigned against these criteria "
+                "(acs_local_ssi_medicaid_take_up)."
+            ),
+            "treatment": (
+                "Gated by acs_local_ssi_disability_signal at staging and "
+                "finalize (a complete boolean on both spines, non-constant with "
+                "a positive weighted share among ACS persons aged 18-64, and a "
+                "receipt pinned to the SIPP file with no unfilled ACS row); the "
+                "ACS/donor 18-64 share ratio outside the review band and "
+                "under-65 SSI reporters without the criteria are reported, not "
+                "failed. Packaging is blocked while any ACS person meets the "
+                "criteria and the run records no SSI take-up handling for ACS "
+                "rows (the SSI take-up release block); the recorded "
+                "acs_local_ssi_medicaid_take_up assignment is that handling."
+            ),
+            "calibration_blocker": False,
+        },
+        {
+            "id": "acs_local_ssi_medicaid_take_up",
+            "status": "reviewed_modeling_decision",
+            "affected_spines": ["acs_2024_1yr"],
+            "columns": list(ACS_LOCAL_SSI_MEDICAID_TAKE_UP_COLUMNS),
+            "reason": (
+                "ACS rows get takes_up_ssi_if_eligible and "
+                "takes_up_medicaid_if_eligible from the donor stages' own "
+                "methods at materialize "
+                f"({ACS_LOCAL_SSI_MEDICAID_TAKE_UP_ISSUE}), after a "
+                "household-batched engine pre-pass over the ACS households "
+                "(December 2024 uncapped_ssi > 0 as the SSI candidates, then "
+                "is_medicaid_eligible with the SSI flags assigned). Each "
+                "target is the residual of the donor stage's count (the SSA "
+                "federal-payment recipients by age band; the CMS December "
+                "2024 state enrollment) after the donor rows' pooled "
+                "recipients: the donor H5 was assigned against the full "
+                "count and pool assembly scaled its weights by 1 - acs_share, "
+                "so the stage measures the donor's contribution with the same "
+                "two engine passes over the donor households (stored flag x "
+                "candidacy or eligibility x pre-calibration person weight) "
+                "and targets count minus contribution, floored at zero "
+                "(microcosm#1060 review). SSI: ssi_reported (SSIP, asked from "
+                "age 15) reporters always take up, as a floor even above the "
+                "residual, and everyone else draws at the ssi_take_up band "
+                "prior; where the ACS candidate capacity is below the "
+                "residual every candidate takes up and the shortfall is "
+                "recorded. The under-18 band draws but is fenced from "
+                "grading, as on the donor. Medicaid: the medicaid_take_up "
+                "manifest stage fills and greedily calibrates each state to "
+                "its residual among eligible non-anchored persons. ACS HINS4 "
+                "== 1 is the anchor, but HINS4 also covers CHIP and "
+                "state-funded means-tested plans, so it is not forced "
+                "wholesale: where a state's anchored eligible weight exceeds "
+                "its residual, each HINS4 record there stays anchored with "
+                "probability residual / anchored eligible weight on a keyed "
+                "draw, and the state's excess is recorded. The treatment is "
+                "state-level because the CMS counts carry no child/adult "
+                "split; policyengine-us 2.2.1 keeps CHIP take-up separate "
+                "and CHIP eligibility exclusive of Medicaid eligibility. "
+                "Draws are keyed on acs_2024_1yr:SERIALNO:SPORDER and the "
+                "build seed. The targets bind the pre-calibration frame; the "
+                "release solve does not carry the SSA band counts."
+            ),
+            "treatment": (
+                "Gated by acs_local_ssi_medicaid_take_up_signal at "
+                "materialize and finalize: both flags complete and "
+                "non-constant on both spines, every ACS SSIP reporter taking "
+                "up and every HINS4 anchor outside the thinned states taking "
+                "up, every band and state target equal to its count minus "
+                "the donor contribution, the 18-64 and 65+ SSI bands within "
+                "5% of their residuals wherever the prior was count-truthful "
+                "(every candidate assigned where saturated), and the donor "
+                "medicaid_take_up gate passing on the ACS state diagnostics "
+                "at the residuals. The under-18 band, SSI bands the donor "
+                "meets or whose anchors exceed the residual, saturated "
+                "Medicaid states and every shortfall and excess are "
+                "reported, not failed. The consumer export applies the "
+                "recorded assignment and must reproduce its digest."
+            ),
             "calibration_blocker": False,
         },
         {
@@ -3368,6 +4144,234 @@ def _require_local_hours(frame, staging_summary: dict) -> None:
         raise SystemExit("Local hours coverage failed: " + "; ".join(gate.failures))
 
 
+def _require_local_immigration(staging_summary: dict) -> dict:
+    """The staging immigration receipt (microcosm#1020), or refuse the staging.
+
+    Staging runs the ACS local immigration stage and its gate before writing
+    the H5. A summary without both is a pre-#1020 staging run, whose ACS
+    persons would all be default-filled citizens with a valid SSN and whose
+    entry clocks would all be the engine default of 5 years. A receipt whose
+    worker and student targets are not the donor residual
+    (:func:`acs_local_immigration_receipt_failures`) predates the #1052
+    review and is refused too.
+    """
+
+    receipt = staging_summary.get("acs_local_immigration")
+    gate = staging_summary.get("acs_local_immigration_gate")
+    if (
+        not isinstance(receipt, dict)
+        or receipt.get("issue") != ACS_LOCAL_IMMIGRATION_ISSUE
+        or not isinstance(receipt.get("assigned_sha256"), str)
+        or not isinstance(gate, dict)
+        or gate.get("passed") is not True
+    ):
+        raise SystemExit(
+            "The staging summary records no passing ACS local immigration stage "
+            f"({ACS_LOCAL_IMMIGRATION_ISSUE}): every ACS person would reach the "
+            "engine as a citizen with a valid SSN and every years_since_us_entry "
+            "as the engine default. Re-run staging "
+            "(tools/build_us_acs_multispine_base.py) with the current builder."
+        )
+    failures = acs_local_immigration_receipt_failures(receipt)
+    if failures:
+        raise SystemExit(
+            "The staging summary's ACS local immigration receipt does not "
+            "target the donor residual (microcosm#1052 review): "
+            + "; ".join(failures)
+            + ". Re-run staging (tools/build_us_acs_multispine_base.py) with "
+            "the current builder."
+        )
+    return receipt
+
+
+def _require_local_work_disability(staging_summary: dict) -> dict:
+    """The staging work/disability receipt (microcosm#1021), or refuse it.
+
+    Staging maps ACS ``is_disabled``/``is_blind``/``weeks_worked`` natively
+    before the transfer and gates them before writing the H5. A summary
+    without a passing receipt and gate is a pre-#1021 staging run, whose ACS
+    disability flags were imputed from ASEC donors and whose ACS rows carry
+    no weeks worked.
+    """
+
+    receipt = staging_summary.get("acs_local_work_disability")
+    gate = staging_summary.get("acs_local_work_disability_gate")
+    native = isinstance(receipt, dict) and all(
+        isinstance(receipt.get(column), dict)
+        and receipt[column].get("source") == ACS_NATIVE_PROVENANCE
+        and type(receipt[column].get("imputed_rows")) is int
+        and receipt[column]["imputed_rows"] == 0
+        for column in ACS_LOCAL_DISABILITY_COLUMNS
+    )
+    if (
+        not native
+        or receipt.get("issue") != ACS_LOCAL_WORK_DISABILITY_ISSUE
+        or not isinstance(gate, dict)
+        or gate.get("passed") is not True
+    ):
+        raise SystemExit(
+            "The staging summary records no passing native ACS work/disability "
+            f"stage ({ACS_LOCAL_WORK_DISABILITY_ISSUE}): the ACS rows' "
+            "is_disabled and is_blind would be ASEC-imputed rather than read "
+            "from the ACS difficulty items, and weeks_worked would be absent. "
+            "Re-run staging (tools/build_us_acs_multispine_base.py) with the "
+            "current builder."
+        )
+    return receipt
+
+
+def _require_local_income_transfer(staging_summary: dict) -> dict:
+    """The staging income-transfer receipt (microcosm#1022), or refuse it.
+
+    Staging runs a separate ASEC-channel QRF pass for the SNAP-relevant income
+    leaves the shared plan does not carry, and gates them before writing the
+    H5. A summary without a passing receipt and gate is a pre-#1022 staging
+    run, whose ACS rows reach the reviewed-null fill with no child support,
+    workers' compensation, disability benefits or account distributions. A
+    receipt with another method predates the reviewed OIP and aligned-RETP
+    predictors and is refused too.
+    """
+
+    receipt = staging_summary.get("acs_local_income_transfer")
+    gate = staging_summary.get("acs_local_income_transfer_gate")
+    columns = receipt.get("columns") if isinstance(receipt, dict) else None
+    complete = isinstance(columns, dict) and all(
+        isinstance(columns.get(column), dict)
+        and type(columns[column].get("imputed_rows")) is int
+        and columns[column].get("unmodeled_rows") == 0
+        for column in ACS_LOCAL_INCOME_TRANSFER_COLUMNS
+    )
+    if (
+        not complete
+        or receipt.get("issue") != ACS_LOCAL_INCOME_TRANSFER_ISSUE
+        or receipt.get("method") != ACS_LOCAL_INCOME_TRANSFER_METHOD
+        or receipt.get("donor_channel") != ACS_LOCAL_INCOME_DONOR_CHANNEL
+        or not isinstance(gate, dict)
+        or gate.get("passed") is not True
+    ):
+        raise SystemExit(
+            "The staging summary records no passing ACS local income transfer "
+            f"({ACS_LOCAL_INCOME_TRANSFER_ISSUE}): the ACS rows' child support, "
+            "workers' compensation, disability benefits and 401(k)/403(b)/SEP/"
+            "Keogh/Roth-IRA distributions would be the engine default 0. Re-run "
+            "staging (tools/build_us_acs_multispine_base.py) with the current "
+            "builder."
+        )
+    return receipt
+
+
+def _require_local_ssi_disability(staging_summary: dict) -> dict:
+    """The staging SSI disability-criteria receipt (microcosm#1022), or refuse it.
+
+    Staging runs the donor release's archived SIPP model on the ACS rows and
+    gates it before writing the H5. A summary without a passing receipt and
+    gate, pinned to the SIPP file, is a pre-change staging run, whose ACS rows
+    reach the reviewed-null fill with ``meets_ssi_disability_criteria`` False.
+    """
+
+    receipt = staging_summary.get("acs_local_ssi_disability")
+    gate = staging_summary.get("acs_local_ssi_disability_gate")
+    donor = receipt.get("sipp_donor") if isinstance(receipt, dict) else None
+    if (
+        not isinstance(receipt, dict)
+        or receipt.get("issue") != ACS_LOCAL_SSI_DISABILITY_ISSUE
+        or receipt.get("column") != ACS_LOCAL_SSI_DISABILITY_COLUMN
+        or receipt.get("method") != ACS_LOCAL_SSI_DISABILITY_METHOD
+        or type(receipt.get("filled_rows")) is not int
+        or receipt.get("unfilled_acs_rows") != 0
+        or not isinstance(donor, dict)
+        or donor.get("sha256") != SIPP_2023_SSI_DISABILITY_DONOR_SHA256
+        or not isinstance(gate, dict)
+        or gate.get("passed") is not True
+    ):
+        raise SystemExit(
+            "The staging summary records no passing ACS local SSI "
+            f"disability-criteria stage ({ACS_LOCAL_SSI_DISABILITY_ISSUE}): "
+            "every ACS person under 65 who is not blind would fail the SSI "
+            "disability test (the engine default False). Re-run staging "
+            "(tools/build_us_acs_multispine_base.py) with the current builder "
+            "and the pinned SIPP donor."
+        )
+    return receipt
+
+
+def _recorded_ssi_take_up_handling(identity: dict, checkpoint_dir: Path) -> dict | None:
+    """The run's recorded SSI take-up handling for ACS rows, or ``None``.
+
+    The ACS SSI/Medicaid take-up stage assigns ``takes_up_ssi_if_eligible`` on
+    ACS rows at materialize (microcosm#1022) and records the assignment in
+    ``run_identity.json``. That receipt, with its assignment file unchanged,
+    is the handling; a run without it has none. A present receipt that is
+    not a passing one, or whose file changed, is refused outright. Packaging
+    separately requires the ``acs_local_ssi_medicaid_take_up_signal``
+    finalize gate bound to the packaged bytes.
+    """
+
+    if "acs_local_ssi_medicaid_take_up" not in identity:
+        return None
+    receipt, _ = _recorded_ssi_medicaid_take_up(identity, checkpoint_dir)
+    return {
+        "stage": "acs_local_ssi_medicaid_take_up",
+        "issue": receipt["issue"],
+        "method": receipt["method"],
+        "assigned_sha256": receipt["assigned_sha256"],
+        "assignment_file": dict(receipt["assignment_file"]),
+        "finalize_gate": ACS_LOCAL_SSI_MEDICAID_TAKE_UP_GATE_NAME,
+    }
+
+
+def _require_ssi_take_up_handling(
+    staging_summary: dict, identity: dict, checkpoint_dir: Path
+) -> dict:
+    """Refuse to package SSI criteria that universal SSI take-up would pay.
+
+    The SSI disability-criteria stage makes ACS persons under 65
+    criteria-positive. With ``takes_up_ssi_if_eligible`` at the engine default
+    ``True``, every one of them who passes the income and resource tests
+    receives SSI, which overstates ACS SSI under 65 and moves SNAP through SSI
+    income, the elderly-or-disabled definition and categorical eligibility.
+    Packaging is therefore blocked while the staged ACS rows carry any
+    criteria-positive person (the staging receipt's ``outcome.acs_true_rows``)
+    and the run records no SSI take-up handling (microcosm#1022, review of
+    PR #1058). A summary that cannot count those persons is refused too.
+
+    Returns the block's evidence for the build manifest.
+    """
+
+    receipt = staging_summary.get("acs_local_ssi_disability")
+    outcome = receipt.get("outcome") if isinstance(receipt, dict) else None
+    positive = outcome.get("acs_true_rows") if isinstance(outcome, dict) else None
+    if type(positive) is not int or positive < 0:
+        raise SystemExit(
+            "The staging summary's acs_local_ssi_disability receipt records no "
+            "count of criteria-positive ACS persons (outcome.acs_true_rows), so "
+            "packaging cannot show that no ACS person ships SSI disability "
+            f"criteria at universal SSI take-up ({ACS_LOCAL_SSI_DISABILITY_ISSUE})."
+            " Re-run staging with the current builder."
+        )
+    block: dict[str, object] = {
+        "criteria_positive_acs_rows": positive,
+        "filled_true_rows": outcome.get("filled_true_rows"),
+        "take_up_handling": None,
+    }
+    if positive == 0:
+        return block
+    handling = _recorded_ssi_take_up_handling(identity, checkpoint_dir)
+    if handling is None:
+        raise SystemExit(
+            f"Refusing to package: {positive:,} ACS person(s) meet "
+            f"{ACS_LOCAL_SSI_DISABILITY_COLUMN} after the SSI disability-criteria "
+            "stage, but the run records no SSI take-up handling for ACS rows. "
+            "takes_up_ssi_if_eligible would ship at the engine default True, so "
+            "every one of them who passes the income and resource tests would "
+            "receive SSI and ACS SSI under 65 would be overstated "
+            f"({ACS_LOCAL_SSI_DISABILITY_ISSUE}). Land the ACS SSI/Medicaid "
+            "take-up stage (microcosm PR #1060), then re-run --stage "
+            "materialize through --stage finalize before packaging."
+        )
+    return {**block, "take_up_handling": handling}
+
+
 def _require_acs_self_employment_identity(frame):
     """Refuse a frame whose ACS self-employment leaves add to SEMP (#1380).
 
@@ -3484,6 +4488,38 @@ def do_finalize(args) -> None:
     # constant (the engine-default universal take-up) on either spine, or
     # unanchored or out of band on the ACS spine this tool seeds.
     take_up_gate = acs_local_take_up_signal_gate(frame)
+    # microcosm#1020: refuse immigration labels or entry clocks that are
+    # missing, all-CITIZEN or all at the engine default on either spine,
+    # labels that contradict measured ACS CIT citizenship, and a file outside
+    # the non-citizen and undocumented-anchor bands.
+    immigration_gate = acs_local_immigration_signal_gate(frame)
+    # microcosm#1021: refuse ACS disability flags that are missing, constant,
+    # or not the native ACS difficulty items on the packaged bytes, or a
+    # staging receipt that shows them imputed. weeks_worked is graded at
+    # staging only: the export holds it back until policyengine-us#9660.
+    work_disability_gate = acs_local_work_disability_signal_gate(
+        frame,
+        receipt=staging_summary.get("acs_local_work_disability"),
+        require_weeks_worked=False,
+    )
+    # microcosm#1022: refuse transferred ACS income leaves that are missing,
+    # negative or carry no signal on the packaged bytes, or a staging receipt
+    # that is not the complete ASEC-channel pass.
+    income_gate = acs_local_income_transfer_signal_gate(
+        frame, receipt=staging_summary.get("acs_local_income_transfer")
+    )
+    # microcosm#1022: refuse ACS SSI disability criteria that are missing or
+    # carry no working-age signal on the packaged bytes, or a staging receipt
+    # that is not the complete SIPP-pinned pass.
+    ssi_disability_gate = acs_local_ssi_disability_signal_gate(
+        frame, receipt=staging_summary.get("acs_local_ssi_disability")
+    )
+    # microcosm#1022: refuse ACS SSI or Medicaid take-up that is missing,
+    # constant or unanchored on the packaged bytes, or a materialize receipt
+    # whose enforced SSI bands or Medicaid states miss their donor residuals.
+    ssi_medicaid_gate = acs_local_ssi_medicaid_take_up_signal_gate(
+        frame, receipt=identity.get("acs_local_ssi_medicaid_take_up")
+    )
     del frame
     gc.collect()
     if _sha256(args.out_h5) != hours_artifact_sha:
@@ -3540,6 +4576,36 @@ def do_finalize(args) -> None:
             "passed": bool(take_up_gate.passed),
             "failures": list(take_up_gate.failures),
             "detail": dict(take_up_gate.details),
+            "artifact_sha256": hours_artifact_sha,
+        },
+        ACS_LOCAL_IMMIGRATION_GATE_NAME: {
+            "passed": bool(immigration_gate.passed),
+            "failures": list(immigration_gate.failures),
+            "detail": dict(immigration_gate.details),
+            "artifact_sha256": hours_artifact_sha,
+        },
+        ACS_LOCAL_WORK_DISABILITY_GATE_NAME: {
+            "passed": bool(work_disability_gate.passed),
+            "failures": list(work_disability_gate.failures),
+            "detail": dict(work_disability_gate.details),
+            "artifact_sha256": hours_artifact_sha,
+        },
+        ACS_LOCAL_INCOME_TRANSFER_GATE_NAME: {
+            "passed": bool(income_gate.passed),
+            "failures": list(income_gate.failures),
+            "detail": dict(income_gate.details),
+            "artifact_sha256": hours_artifact_sha,
+        },
+        ACS_LOCAL_SSI_DISABILITY_GATE_NAME: {
+            "passed": bool(ssi_disability_gate.passed),
+            "failures": list(ssi_disability_gate.failures),
+            "detail": dict(ssi_disability_gate.details),
+            "artifact_sha256": hours_artifact_sha,
+        },
+        ACS_LOCAL_SSI_MEDICAID_TAKE_UP_GATE_NAME: {
+            "passed": bool(ssi_medicaid_gate.passed),
+            "failures": list(ssi_medicaid_gate.failures),
+            "detail": dict(ssi_medicaid_gate.details),
             "artifact_sha256": hours_artifact_sha,
         },
         "calibration": {
@@ -3610,9 +4676,49 @@ def do_finalize(args) -> None:
                 "are reviewed_limitations (calibration_blocker: false) and "
                 "are NOT re-imposed on the ACS spine. Take-up draws are not "
                 "transferred: ACS SNAP/TANF take-up is seeded by this tool "
-                "and gated by acs_local_take_up_signal (microcosm#1019); the "
-                "other ACS take-up flags are the reviewed limitation "
-                "acs_take_up_engine_defaults (microcosm#1022)."
+                "and gated by acs_local_take_up_signal (microcosm#1019). The "
+                "same stage fills the ACS rows' discretionary ABAWD exemption "
+                "(a cap-based proxy: the donor's seeded 18-64 draw at the "
+                "statutory-cap manifest rate, not an observed assignment), "
+                "housing-assistance receipt (the transferred housing take-up "
+                "flag; False in group quarters) and Medicare take-up (native "
+                "HINS3) without the engine, gated by the same gate "
+                f"({ACS_LOCAL_ENGINE_FREE_FILLS_ISSUE}; reviewed limitation "
+                "acs_engine_free_default_fills); the other ACS take-up flags "
+                "are the reviewed limitation acs_take_up_engine_defaults. "
+                "Immigration "
+                "labels are not transferred either: staging derives ACS "
+                "ssn_card_type/immigration_status_str from native ACS fields "
+                "and years_since_us_entry on both spines, gated by "
+                "acs_local_immigration_signal (microcosm#1020; reviewed "
+                "limitation acs_immigration_status_method). ACS "
+                "is_disabled/is_blind are not transferred: staging reads them "
+                "from the native ACS difficulty items (and SSIP) on every ACS "
+                "row, gated by acs_local_work_disability_signal "
+                "(microcosm#1021; reviewed limitation "
+                "acs_work_disability_inputs). Native ACS weeks_worked is "
+                "staged but held back from the export until "
+                f"{WEEKS_WORKED_EXPORT_BLOCKER}. ACS child support "
+                "received/paid, workers' compensation, disability benefits "
+                "and 401(k)/403(b)/SEP/Keogh/Roth-IRA distributions come from "
+                "a separate local QRF pass on the donor's ASEC observation "
+                "role, outside the shared transfer plan, gated by "
+                "acs_local_income_transfer_signal "
+                f"({ACS_LOCAL_INCOME_TRANSFER_ISSUE}; reviewed limitation "
+                "acs_local_income_transfer). ACS "
+                "meets_ssi_disability_criteria is not transferred: staging "
+                "runs the donor release's archived SIPP SSI disability model "
+                "on the ACS rows, with the native ACS difficulty items as its "
+                "difficulty predictors, gated by "
+                "acs_local_ssi_disability_signal "
+                f"({ACS_LOCAL_SSI_DISABILITY_ISSUE}; reviewed limitation "
+                "acs_local_ssi_disability_criteria). ACS SSI and Medicaid "
+                "take-up are not transferred either: materialize assigns them "
+                "on the ACS rows after an engine pre-pass, against the SSA "
+                "band and CMS state counts scaled to the ACS rows' weight "
+                "share, gated by acs_local_ssi_medicaid_take_up_signal "
+                f"({ACS_LOCAL_SSI_MEDICAID_TAKE_UP_ISSUE}; reviewed limitation "
+                "acs_local_ssi_medicaid_take_up)."
             ),
         },
         "spine_composition": {
@@ -3664,6 +4770,11 @@ def do_finalize(args) -> None:
             "hours_worked_signal",
             "acs_local_hours_signal",
             ACS_LOCAL_TAKE_UP_GATE_NAME,
+            ACS_LOCAL_IMMIGRATION_GATE_NAME,
+            ACS_LOCAL_WORK_DISABILITY_GATE_NAME,
+            ACS_LOCAL_INCOME_TRANSFER_GATE_NAME,
+            ACS_LOCAL_SSI_DISABILITY_GATE_NAME,
+            ACS_LOCAL_SSI_MEDICAID_TAKE_UP_GATE_NAME,
             "calibration",
             "consumer_ready",
         )
@@ -3816,6 +4927,28 @@ def _require_stored_inputs(calibrated_h5: Path) -> dict[str, object]:
     return {"passed": True, "failures": [], "engine": engine.label, **summary}
 
 
+def _require_bound_finalize_gate(gates: object, name: str, h5_sha: str) -> None:
+    """Refuse packaging unless the finalize report's ``name`` gate passed on
+    exactly the H5 bytes being packaged.
+
+    A report finalized before the gate existed, a failed gate, or one bound to
+    other bytes (a recalibrate without re-running finalize) cannot vouch for
+    the packaged surface.
+    """
+
+    gate = gates.get(name) if isinstance(gates, dict) else None
+    if (
+        not isinstance(gate, dict)
+        or gate.get("passed") is not True
+        or gate.get("artifact_sha256") != h5_sha
+    ):
+        raise SystemExit(
+            f"Packaging requires a present, passing {name} gate bound to the "
+            "packaged H5; an old simulation_ready summary is insufficient. "
+            "Re-run --stage finalize against the current artifact."
+        )
+
+
 def _require_spm_measurement(frame) -> dict[str, object]:
     """Refuse an artifact on which an SPM measurement would crash.
 
@@ -3912,6 +5045,11 @@ def do_package(args) -> dict:
     # as build.built_with_model_package, so the artifact may store no model
     # input that engine does not define. A refused artifact leaves nothing.
     stored_inputs_gate = _require_stored_inputs(calibrated_h5)
+    # microcosm#1022 (review of #1058): ACS persons the SSI disability-criteria
+    # stage made criteria-positive must not ship at universal SSI take-up.
+    ssi_take_up_block = _require_ssi_take_up_handling(
+        staging_summary, identity, args.checkpoint_dir
+    )
     log("hashing calibrated H5 …")
     h5_sha = _sha256(calibrated_h5)
     # The H5 and its evidence must come from this checkpoint's calibration;
@@ -3976,17 +5114,24 @@ def do_package(args) -> dict:
         )
     # microcosm#1019: a report finalized before the take-up gate existed (or
     # against other bytes) cannot vouch for the packaged ACS take-up surface.
-    take_up_gate = gates.get(ACS_LOCAL_TAKE_UP_GATE_NAME)
-    if (
-        not isinstance(take_up_gate, dict)
-        or take_up_gate.get("passed") is not True
-        or take_up_gate.get("artifact_sha256") != h5_sha
-    ):
-        raise SystemExit(
-            f"Packaging requires a present, passing {ACS_LOCAL_TAKE_UP_GATE_NAME} "
-            "gate bound to the packaged H5; an old simulation_ready summary is "
-            "insufficient. Re-run --stage finalize against the current artifact."
-        )
+    _require_bound_finalize_gate(gates, ACS_LOCAL_TAKE_UP_GATE_NAME, h5_sha)
+    # microcosm#1020: nor, before the immigration gate existed, for the
+    # packaged immigration labels and years_since_us_entry clock.
+    _require_bound_finalize_gate(gates, ACS_LOCAL_IMMIGRATION_GATE_NAME, h5_sha)
+    # microcosm#1021: nor, before the work/disability gate existed, for the
+    # packaged native ACS disability flags.
+    _require_bound_finalize_gate(gates, ACS_LOCAL_WORK_DISABILITY_GATE_NAME, h5_sha)
+    # microcosm#1022: nor, before the income-transfer gate existed, for the
+    # packaged ACS child support, disability and distribution income.
+    _require_bound_finalize_gate(gates, ACS_LOCAL_INCOME_TRANSFER_GATE_NAME, h5_sha)
+    # microcosm#1022: nor, before the SSI disability gate existed, for the
+    # packaged ACS SSI disability criteria.
+    _require_bound_finalize_gate(gates, ACS_LOCAL_SSI_DISABILITY_GATE_NAME, h5_sha)
+    # microcosm#1022: nor, before the SSI/Medicaid take-up gate existed, for
+    # the packaged ACS SSI and Medicaid take-up.
+    _require_bound_finalize_gate(
+        gates, ACS_LOCAL_SSI_MEDICAID_TAKE_UP_GATE_NAME, h5_sha
+    )
     # Old summaries can say simulation_ready despite #765. Recheck the
     # actual artifact and the source-null evidence before packaging it, and
     # bind that result to the bytes being packaged: the finalize-time report
@@ -4185,6 +5330,7 @@ def do_package(args) -> dict:
         "gates": gate_report.get("gates", {}),
         "run_identity": identity,
         "staging_orchestration": staging_orchestration,
+        "ssi_take_up_release_block": ssi_take_up_block,
         "refresh_recipe": refresh_recipe,
     }
 

@@ -1007,6 +1007,15 @@ def _reference_activation_gaps(
 _HOLDOUT_REFERENCES = "holdout_references"
 
 
+def _is_holdout(row: object) -> bool:
+    """Whether a ``holdout_references`` row holds out its measure.
+
+    Activation's guard and the stage guard both read holdouts through this.
+    """
+
+    return isinstance(row, Mapping) and _is_text(row.get("measure"))
+
+
 def _holdout_separation_gaps(
     documents: Iterable[tuple[str, Mapping]],
 ) -> Iterator[str]:
@@ -1015,20 +1024,31 @@ def _holdout_separation_gaps(
     A holdout row tests the calibrated model against a fact it never saw, so
     no other reference document may carry a row with the same ``measure``,
     whatever its entity. Only rows of ``holdout_references`` count as
-    holdouts; a spec without that document has nothing to guard.
+    holdouts; a spec without that document has nothing to guard. A holdout
+    row that is not an object with a text measure is a gap itself, since
+    neither guard can hold it out.
     """
 
     documents = tuple(documents)
     holdouts: dict[str, list[Mapping]] = {}
+    seen = set()
     for resource, document in documents:
         if resource != _HOLDOUT_REFERENCES:
             continue
-        for row in document.get("target_references", ()):
-            if isinstance(row, Mapping) and _is_text(row.get("measure")):
+        for index, row in enumerate(document.get("target_references", ())):
+            if _is_holdout(row):
                 holdouts.setdefault(row["measure"], []).append(row)
+                continue
+            name = row.get("name", "?") if isinstance(row, Mapping) else "?"
+            gap = (
+                f"holdout separation: {resource}.target_references[{index}] "
+                f"({name}) is not an object with a text measure"
+            )
+            if gap not in seen:
+                seen.add(gap)
+                yield gap
     if not holdouts:
         return
-    seen = set()
     for resource, document in documents:
         if resource == _HOLDOUT_REFERENCES:
             continue
@@ -2992,7 +3012,13 @@ def _precalibration_stages(spec: Mapping[str, object]) -> dict[str, Mapping]:
         if _has_resource(spec, "holdout_references")
         else ()
     )
-    holdout_columns = {(row["entity"], row["measure"]) for row in holdout}
+    # Activation's guard reports each row this skips.
+    holdout = [row for row in holdout if _is_holdout(row)]
+    holdout_columns = {
+        (row["entity"], row["measure"])
+        for row in holdout
+        if _is_text(row.get("entity"))
+    }
     # A stage output measures a holdout's concept on any entity.
     holdout_measures = {row["measure"]: row for row in holdout}
     holdout_modules = {
@@ -3105,7 +3131,7 @@ def _precalibration_stages(spec: Mapping[str, object]) -> dict[str, Mapping]:
                     "precalibration_stages output is a holdout measure: stage "
                     f"{identifier!r} output ({entity}, {column}) measures the "
                     f"concept of holdout_references.{holdout_row.get('name', '?')} "
-                    f"({holdout_row['entity']}, {holdout_row['measure']})."
+                    f"({holdout_row.get('entity', '?')}, {holdout_row['measure']})."
                 )
         if stage["rulespec_path"] in holdout_modules:
             raise ValueError("precalibration_stages module produces a holdout measure.")

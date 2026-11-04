@@ -4415,6 +4415,102 @@
     },
     {
       "entity": "person",
+      "name": "ird_taxable_income_standin_band_b01_indicator",
+      "interval": {
+        "table": "ird_taxable_income_standin_ty2024",
+        "band": "b01"
+      }
+    },
+    {
+      "entity": "person",
+      "name": "ird_taxable_income_standin_band_b02_indicator",
+      "interval": {
+        "table": "ird_taxable_income_standin_ty2024",
+        "band": "b02"
+      }
+    },
+    {
+      "entity": "person",
+      "name": "ird_taxable_income_standin_band_b03_indicator",
+      "interval": {
+        "table": "ird_taxable_income_standin_ty2024",
+        "band": "b03"
+      }
+    },
+    {
+      "entity": "person",
+      "name": "ird_taxable_income_standin_band_b04_indicator",
+      "interval": {
+        "table": "ird_taxable_income_standin_ty2024",
+        "band": "b04"
+      }
+    },
+    {
+      "entity": "person",
+      "name": "ird_taxable_income_standin_band_b05_indicator",
+      "interval": {
+        "table": "ird_taxable_income_standin_ty2024",
+        "band": "b05"
+      }
+    },
+    {
+      "entity": "person",
+      "name": "ird_taxable_income_standin_band_b06_indicator",
+      "interval": {
+        "table": "ird_taxable_income_standin_ty2024",
+        "band": "b06"
+      }
+    },
+    {
+      "entity": "person",
+      "name": "ird_taxable_income_standin_band_b07_indicator",
+      "interval": {
+        "table": "ird_taxable_income_standin_ty2024",
+        "band": "b07"
+      }
+    },
+    {
+      "entity": "person",
+      "name": "ird_taxable_income_standin_band_b08_indicator",
+      "interval": {
+        "table": "ird_taxable_income_standin_ty2024",
+        "band": "b08"
+      }
+    },
+    {
+      "entity": "person",
+      "name": "ird_taxable_income_standin_band_b09_indicator",
+      "interval": {
+        "table": "ird_taxable_income_standin_ty2024",
+        "band": "b09"
+      }
+    },
+    {
+      "entity": "person",
+      "name": "ird_taxable_income_standin_band_b10_indicator",
+      "interval": {
+        "table": "ird_taxable_income_standin_ty2024",
+        "band": "b10"
+      }
+    },
+    {
+      "entity": "person",
+      "name": "ird_taxable_income_standin_band_b11_indicator",
+      "interval": {
+        "table": "ird_taxable_income_standin_ty2024",
+        "band": "b11"
+      }
+    },
+    {
+      "entity": "person",
+      "name": "ird_taxable_income_standin_band_b12_indicator",
+      "interval": {
+        "table": "ird_taxable_income_standin_ty2024",
+        "band": "b12"
+      }
+    },
+    {
+      "entity": "person",
       "name": "age_18_24_indicator",
       "predicates": [
         {

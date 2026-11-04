@@ -2164,6 +2164,9 @@ class _Context:
         self._household_rows = pd.Index(
             _matched_ids(household[_HOUSEHOLD_ID])
         ).get_indexer(_matched_ids(person[_PERSON_HOUSEHOLD_ID]))
+        # A null household id names no household, even where the household
+        # table holds a null id of its own, which get_indexer would match.
+        self._household_rows[person[_PERSON_HOUSEHOLD_ID].isna().to_numpy()] = -1
 
     def has(self, concept_id: str) -> bool:
         item = CONCEPT_BY_ID[concept_id]
@@ -2187,15 +2190,21 @@ class _Context:
         return rows
 
     def household_amount_for_persons(self, concept_id: str) -> np.ndarray:
-        """A household amount on each person's row."""
+        """A household amount on each person's row; NaN with no household."""
         amounts = self.values(concept_id).to_numpy(dtype=np.float64)
-        return amounts[self._household_rows]
+        # Row -1 reads the appended NaN, never the last household's amount.
+        return np.append(amounts, np.nan)[self._household_rows]
 
     def reference_rows(self) -> np.ndarray:
-        """For each person, the row of their household's reference person."""
+        """For each person, the row of their household's reference person.
+
+        -1 for a person with no household, as for a household whose
+        reference person is null or unknown.
+        """
         _require(self, _REFERENCE_PERSON, "Placing values on the reference person")
         by_household = self.person_rows(self.household["reference_person_id"])
-        return by_household[self._household_rows]
+        # Row -1 reads the appended -1, never the last household's reference.
+        return np.append(by_household, -1)[self._household_rows]
 
 
 def _matched_ids(values: pd.Series) -> np.ndarray:

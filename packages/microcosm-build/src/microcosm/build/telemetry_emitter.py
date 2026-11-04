@@ -4,8 +4,8 @@ A build imports only ``microcosm-emitter-interface``. Starting the adapter
 starts the ``microcosm-emitter`` command, installed on its own (for example
 ``uv tool install microcosm-emitter``), as this build's child process, with
 three modules: telemetry, Orrery graph publication, and the Hugging Face
-hand-over of staging run files. The interface finds the command through
-``MICROCOSM_EMITTER_COMMAND``, then ``PATH``.
+hand-over of staging run files and staged dataset bundles. The interface
+finds the command through ``MICROCOSM_EMITTER_COMMAND``, then ``PATH``.
 
 The child inherits the build's environment variables and runs as the same
 user, so it finds the build's Hugging Face credential (``HF_TOKEN``, then
@@ -28,16 +28,20 @@ import subprocess
 import sys
 from collections.abc import Mapping, Sequence
 from pathlib import Path
-from typing import Any
+from typing import Any, Protocol
 
 from microcosm_emitter_interface import (
     EmitterClient,
+    EmitterStartupError,
     HuggingFaceSettings,
     OrrerySettings,
+    RequestFailure,
+    StageDatasetBundle,
     TelemetryRun,
     TelemetrySettings,
     default_spool_path,
 )
+from microcosm_emitter_interface.bundles import DatasetBundleReceipt, WriteAccess
 from microcosm_emitter_interface.launcher import resolve_command
 from microcosm_emitter_interface.orrery import (
     PublicationFileRole,
@@ -46,6 +50,7 @@ from microcosm_emitter_interface.orrery import (
     publication_id_of,
     unavailable_receipt,
 )
+from microcosm_emitter_interface.protocol import HUGGING_FACE_MODULE
 from microcosm_emitter_interface.telemetry import (
     DEFAULT_FAILURE_CLASS,
     DEFAULT_HEARTBEAT_SECONDS,
@@ -58,11 +63,15 @@ from microcosm.build.telemetry_identity import runtime_identity
 __all__ = [
     "DEFAULT_HEARTBEAT_SECONDS",
     "MINIMUM_EMITTER_VERSION",
+    "BundleEmitter",
     "EmitterClient",
     "LocalTelemetryEmitter",
+    "OutdatedEmitterClient",
     "TelemetryRun",
+    "emitter_problem",
     "publication_inventory",
     "publish_graph",
+    "start_bundle_emitter",
     "start_local_telemetry_emitter_service",
 ]
 
@@ -72,17 +81,49 @@ SETUP_WARNING = (
 #: The emitter took about four seconds to become ready on an M1 Max; this is
 #: only a ceiling on the wait.
 STARTUP_TIMEOUT_SECONDS = 15.0
-#: The first emitter release with everything a build hands over: the Hugging
-#: Face module (``stage_run_files``, ``run_files_receipt`` and
-#: ``read_back_run_files``) and its queue in ``events.handovers.sqlite3``.
-#: Releases 0.4.0 to 0.5.1 accept the same protocol version but start without
-#: that module; 0.7.0 added only release publication, which builds do not use.
-MINIMUM_EMITTER_VERSION = "0.6.0"
+#: The oldest emitter release a build starts, and the newest release on
+#: 2026-11-02, when it was chosen. Since 0.10.0 the emitter sends to the
+#: collector's hostname by default, which stays the same when the collector
+#: moves to another Google Cloud project; earlier releases send to its Cloud
+#: Run address, which changes with the move. 0.11.1 fixed two cases in which
+#: the telemetry module stopped; 0.11.2 to 0.11.9 change no emitter behaviour.
+#: 0.10.0 would have been enough for the hostname. The newest release was
+#: required instead because practically no machine ran the separately
+#: installed emitter yet, so refusing 0.10.0 to 0.11.8 cost nothing then. A
+#: refused emitter costs a build its hosted telemetry, its staging hand-overs
+#: and its Orrery graph publication, fails a UK build given
+#: ``--staging-read-back``, and refuses a UK build that asks for remote
+#: staging of its dataset bundle (``OUTDATED_EMITTER_WARNING``), so a later
+#: rise weighs that against how many machines would have to upgrade.
+#: 0.6.0 added the Hugging Face module (``stage_run_files``,
+#: ``run_files_receipt`` and ``read_back_run_files`` for staging run files;
+#: ``stage_dataset_bundle``, ``dataset_bundle_receipt`` and
+#: ``check_write_access`` for staged dataset bundles) and its queue in
+#: ``events.handovers.sqlite3``; releases 0.4.0 to 0.5.1 accept the same
+#: protocol version but start without that module. ``IMAGE_EMITTER_REQUIREMENT``
+#: in ``tools/modal_us_stage_plan.py`` repeats this release.
+MINIMUM_EMITTER_VERSION = "0.11.9"
+UPGRADE_EMITTER_COMMAND = (
+    f"uv tool install --upgrade 'microcosm-emitter>={MINIMUM_EMITTER_VERSION}'"
+)
+INSTALL_EMITTER_COMMAND = "uv tool install microcosm-emitter"
+#: Printed instead of starting an older emitter. Without one, staging run
+#: files are still written locally, the UK graph step records a failed
+#: receipt (``local_service_unavailable``) and creates no publication job,
+#: ``StagingRunBundleWriterV2.verify_remote`` fails because no files were
+#: handed over, and the UK pre-flight refuses a remote stage of the dataset
+#: bundle (``rowwise_staging.preflight_staged_dataset``), naming the upgrade
+#: command (``emitter_problem``).
 OUTDATED_EMITTER_WARNING = (
     "The installed microcosm-emitter {reported}; this build needs {required} "
-    "or later, so it did not start that emitter and will continue without it. "
-    "Upgrade it with `uv tool install --upgrade 'microcosm-emitter>={required}'`, "
-    "or point MICROCOSM_EMITTER_COMMAND at a newer one."
+    "or later, so it did not start that emitter. The build continues without "
+    "hosted telemetry or staging hand-overs and queues no Orrery graph "
+    "publication; a UK build given --staging-read-back will fail at the "
+    "read-back. But a UK build that asks for remote staging of its dataset "
+    "bundle is refused before it starts; UK builds ask for it by default, and "
+    "--staging-local-only or --no-staged-dataset keeps the bundle local. "
+    "Upgrade it with `{upgrade}`, or point MICROCOSM_EMITTER_COMMAND at a "
+    "newer one."
 )
 _RELEASE_NUMBER = re.compile(r"(\d+)\.(\d+)\.(\d+)")
 _MINIMUM_RELEASE = tuple(int(part) for part in MINIMUM_EMITTER_VERSION.split("."))
@@ -142,11 +183,91 @@ def _start_emitter(**options: Any) -> EmitterClient:
     reported = "reports no version" if version is None else f"reports version {version}"
     print(
         OUTDATED_EMITTER_WARNING.format(
-            reported=reported, required=MINIMUM_EMITTER_VERSION
+            reported=reported,
+            required=MINIMUM_EMITTER_VERSION,
+            upgrade=UPGRADE_EMITTER_COMMAND,
         ),
         file=sys.stderr,
     )
-    return EmitterClient()
+    return OutdatedEmitterClient(reported)
+
+
+class OutdatedEmitterClient(EmitterClient):
+    """The client for an installed emitter too old to start: never available.
+
+    ``reported`` is what its ``version`` command answered (for example
+    ``reports version 0.5.1``), so a refusal can name it.
+    """
+
+    def __init__(self, reported: str) -> None:
+        super().__init__()
+        self.reported = reported
+
+
+class BundleEmitter(Protocol):
+    """The interface ``EmitterClient``'s staged-bundle calls and state.
+
+    ``startup_error`` says why an emitter did not start, and ``last_failure``
+    why its latest call reported failure.
+    """
+
+    startup_error: EmitterStartupError | None
+    last_failure: RequestFailure | None
+
+    @property
+    def available(self) -> bool: ...
+
+    @property
+    def modules(self) -> frozenset[str]: ...
+
+    def stage_dataset_bundle(
+        self, request: StageDatasetBundle, *, wait_seconds: float = 0
+    ) -> DatasetBundleReceipt: ...
+
+    def dataset_bundle_receipt(
+        self, handover_id: str
+    ) -> DatasetBundleReceipt | None: ...
+
+    def check_write_access(self, repository: str) -> WriteAccess: ...
+
+    def close(self) -> None: ...
+
+
+def emitter_problem(client: BundleEmitter | None) -> str | None:
+    """Why ``client`` cannot take a Hugging Face hand-over, and what fixes it.
+
+    ``None`` when it is running with its Hugging Face module.
+    """
+
+    if isinstance(client, OutdatedEmitterClient):
+        return (
+            f"the installed microcosm-emitter {client.reported}, and builds need "
+            f"{MINIMUM_EMITTER_VERSION} or later, so the build did not start it; "
+            f"upgrade it with `{UPGRADE_EMITTER_COMMAND}`, or point "
+            "MICROCOSM_EMITTER_COMMAND at a newer one"
+        )
+    if client is None:
+        return "the build could not prepare its emitter (see the warning above)"
+    if not client.available:
+        failure = client.startup_error
+        reason = None if failure is None else failure.reason
+        if reason == "command_not_found":
+            return (
+                "no microcosm-emitter command was found (MICROCOSM_EMITTER_COMMAND, "
+                f"then PATH); install it with `{INSTALL_EMITTER_COMMAND}`"
+            )
+        if reason is not None:
+            return (
+                f"the emitter did not start ({reason}); check that "
+                "`microcosm-emitter version` runs, then try again"
+            )
+        return "the build's emitter is not running"
+    if HUGGING_FACE_MODULE not in client.modules:
+        return (
+            "the running emitter has no Hugging Face module; upgrade it with "
+            f"`{UPGRADE_EMITTER_COMMAND}`"
+        )
+    return None
 
 
 class LocalTelemetryEmitter:
@@ -383,6 +504,19 @@ def _orrery_emitter() -> EmitterClient:
     """A short-lived emitter that runs only the Orrery module."""
     return _start_emitter(
         orrery=OrrerySettings(), startup_timeout=STARTUP_TIMEOUT_SECONDS
+    )
+
+
+def start_bundle_emitter() -> EmitterClient:
+    """A short-lived emitter with only the Hugging Face module.
+
+    A command that stages a finished run's bundle, outside any build, uses
+    it; the caller closes it. Its hand-over queue is the one builds on this
+    machine share (``events.handovers.sqlite3``), so it also resumes their
+    queued hand-overs.
+    """
+    return _start_emitter(
+        hugging_face=HuggingFaceSettings(), startup_timeout=STARTUP_TIMEOUT_SECONDS
     )
 
 
