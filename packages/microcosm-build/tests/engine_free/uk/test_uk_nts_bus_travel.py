@@ -635,6 +635,21 @@ def test_band_draw_is_identity_keyed_rounded_and_within_the_donor_range() -> Non
     assert (second.band == first.band[order]).all()
 
 
+def test_cross_fitted_band_refuses_a_donor_without_households() -> None:
+    # Row folds would split a household's members between fold gates, so a
+    # cross-fitted gate refuses a donor it cannot fold by household.
+    household, individual, trip = _synthetic_nts()
+    donor = clean_nts_travel_tables(household, individual, trip, columns=_columns())
+    with pytest.raises(NTSBusTravelError, match="household_id"):
+        impute_bus_use_band(
+            donor.person.drop(columns="household_id"),
+            pd.DataFrame(),
+            seed=0,
+            n_estimators=4,
+            gate_calibration="cross_fitted",
+        )
+
+
 def test_recipient_income_band_is_hbai_gross_income() -> None:
     # microcosm#1164: the NTS band is gross cash income, so the recipient adds
     # the engine's HBAI deductions back to its HBAI net income; the engine's
