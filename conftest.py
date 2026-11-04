@@ -92,6 +92,10 @@ def fake_telemetry_emitters(monkeypatch, tmp_path):
         "MICROCOSM_COLLECTOR_TOKEN",
         "MICROCOSM_COLLECTOR_TOKEN_EXPIRES_AT",
         "MICROCOSM_COLLECTOR_ORIGIN",
+        # The Modal runner's own names for the same three values.
+        "MICROCOSM_MODAL_TELEMETRY_TOKEN",
+        "MICROCOSM_MODAL_TELEMETRY_TOKEN_EXPIRES_AT",
+        "MICROCOSM_MODAL_TELEMETRY_ORIGIN",
     ):
         monkeypatch.delenv(name, raising=False)
     isolated_hf = tmp_path / "telemetry-hf"
