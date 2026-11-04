@@ -51,8 +51,19 @@ FLAG_RATES = frs_disability.UKDWPDisabilityFlagRates(
 POLICY = UKTakeUpPopulationPolicy(
     adult_age=18, state_pension_age=66, instant="2024-01-01", source="test"
 )
-#: ESA's permitted-work limit in 2024-25, GBP 183.50 a week (GBP 9,542 a year).
-LIMIT = UKSPIPermittedWorkLimit(weekly_limit=183.5, year=2024, source="test")
+#: The 2024-25 limits: ESA's permitted work (GBP 183.50 a week, GBP 9,542 a
+#: year, under 16 hours) and JSA's age-related amounts, GBP 5 disregard and
+#: 16-hour remunerative work.
+LIMIT = UKSPIPermittedWorkLimit(
+    esa_weekly_limit=183.5,
+    esa_hours_limit=16.0,
+    jsa_amount_under_25=71.7,
+    jsa_amount_from_25=90.5,
+    jsa_earnings_disregard=5.0,
+    jsa_remunerative_hours=16.0,
+    year=2024,
+    source="test",
+)
 
 
 class _Contract:
@@ -88,7 +99,7 @@ def _person(
         support_source_id_column("person"): source_id,
     }
     row.update(dict.fromkeys(REPORT_COLUMNS, 0.0))
-    row.update(employment_income=0.0, self_employment_income=0.0)
+    row.update(employment_income=0.0, self_employment_income=0.0, hours_worked=0.0)
     row.update(reports)
     return row
 
@@ -187,7 +198,13 @@ def _frame(*, base_own_right_override: bool | None = None):
             "would_claim_uc": [True, True, False, True, True, True],
         }
     )
-    household = pd.DataFrame({"household_id": [1, 2, 3, 5, 6, 7]})
+    household = pd.DataFrame(
+        {
+            "household_id": [1, 2, 3, 5, 6, 7],
+            # Each SPI copy repeats its twin's household.
+            "household_source_id": [1, 2, 3, 1, 2, 3],
+        }
+    )
     return uk_national_frame(
         person=person,
         benunit=benunit,
@@ -257,11 +274,10 @@ def test_spi_rows_lose_income_related_esa_and_their_drawn_contributory_esa() -> 
     assert "esa_contrib_reported" not in result.zeroed
 
 
-def test_spi_rows_take_the_twins_contributory_awards_within_the_permitted_work_limit() -> (
-    None
-):
-    # Twin 21 reports contributory JSA and ESA; its copy 106 earns nothing, so
-    # it takes both. Copy 105 drew JSA, but its twin 11 reports none.
+def test_spi_rows_take_the_twins_contributory_awards_within_their_limits() -> None:
+    # Twin 21 reports contributory JSA and ESA; its copy 106 earns nothing and
+    # works no hours, so it takes both. Copy 105 drew JSA, but its twin 11
+    # reports none.
     frame = _with(_frame(), **{"21": {"esa_contrib_reported": 700.0}})
     result = _apply(frame)
     person = result.frame.table("person").set_index("person_id")
@@ -271,15 +287,66 @@ def test_spi_rows_take_the_twins_contributory_awards_within_the_permitted_work_l
     assert person.loc[105, "jsa_contrib_reported"] == 0.0
     assert person.loc[[21, 106], "receives_benefits_in_own_right"].all()
     receipt = result.restored_within_earnings_limit
-    assert receipt["jsa_contrib_reported"]["rows_changed"] == 2
-    assert receipt["jsa_contrib_reported"]["twin_reporting_rows"] == 1
-    assert receipt["esa_contrib_reported"]["twin_reporting_rows_over_limit"] == 0
     assert all(item["rows_breaking_rule_after"] == 0 for item in receipt.values())
-    assert result.permitted_work_limit["weekly_limit"] == 183.5
+    assert result.permitted_work_limit["esa_weekly_limit"] == 183.5
+    assert result.permitted_work_limit["jsa_amount_from_25"] == 90.5
+
+
+#: Contributory JSA at the 2024-25 rate from 25, GBP 90.50 a week.
+JSA_FULL = 90.5 * 52
 
 
 @pytest.mark.parametrize(
-    "earnings,takes_award",
+    "copy,expected",
+    [
+        # No work: the twin's whole award.
+        ({}, JSA_FULL),
+        # The disregard itself costs nothing.
+        ({"employment_income": 5.0 * 52}, JSA_FULL),
+        # GBP 50 a week cuts the award by the GBP 45 above the disregard
+        # (Jobseekers Act 1995 s. 4(1)(b)), to GBP 45.50 a week.
+        ({"employment_income": 50.0 * 52}, 45.5 * 52),
+        # At the prescribed amount, GBP 95.49 a week, the award is 1p a week.
+        ({"employment_income": 95.49 * 52}, 0.01 * 52),
+        # Above it, nothing (JSA Regs 1996 reg 56).
+        ({"employment_income": 95.5 * 52}, 0.0),
+        # GBP 150 a week is within ESA's limit but not JSA's (Vahid's case).
+        ({"employment_income": 150.0 * 52}, 0.0),
+        ({"self_employment_income": 50.0 * 52}, 45.5 * 52),
+        # Remunerative work from 16 hours a week (reg 51(1)(a)), paid or not.
+        ({"hours_worked": 16.0 * 52}, 0.0),
+        ({"hours_worked": 15.5 * 52}, JSA_FULL),
+        # Under 25 the lower amount, GBP 71.70, sets the limit and the award.
+        ({"age": 22, "employment_income": 50.0 * 52}, (71.7 - 45.0) * 52),
+        ({"age": 22, "employment_income": 76.71 * 52}, 0.0),
+    ],
+)
+def test_contributory_jsa_follows_its_own_earnings_and_hours_limits(
+    copy, expected
+) -> None:
+    frame = _with(
+        _frame(), **{"21": {"jsa_contrib_reported": JSA_FULL}, "106": dict(copy)}
+    )
+    result = _apply(frame)
+    person = result.frame.table("person").set_index("person_id")
+
+    assert person.loc[106, "jsa_contrib_reported"] == pytest.approx(expected)
+    # The twin keeps its own report whatever the copy earns.
+    assert person.loc[21, "jsa_contrib_reported"] == JSA_FULL
+    receipt = result.restored_within_earnings_limit["jsa_contrib_reported"]
+    assert receipt["rows_breaking_rule_after"] == 0
+
+
+def test_contributory_jsa_never_exceeds_the_twins_award() -> None:
+    # Twin 21's GBP 300 a year is below the copy's GBP 45.50 a week.
+    frame = _with(_frame(), **{"106": {"employment_income": 50.0 * 52}})
+    person = _apply(frame).frame.table("person").set_index("person_id")
+
+    assert person.loc[106, "jsa_contrib_reported"] == 300.0
+
+
+@pytest.mark.parametrize(
+    "copy,takes_award",
     [
         # Exactly the limit is within it (ESA Regs 2008 reg 45(4)).
         ({"employment_income": 183.5 * 52}, True),
@@ -288,27 +355,67 @@ def test_spi_rows_take_the_twins_contributory_awards_within_the_permitted_work_l
         # A self-employment loss is not set against pay.
         ({"employment_income": 9_600.0, "self_employment_income": -1_000.0}, False),
         ({"employment_income": 6_000.0, "self_employment_income": 4_000.0}, False),
+        # Permitted work is under 16 hours a week.
+        ({"hours_worked": 15.5 * 52}, True),
+        ({"hours_worked": 16.0 * 52}, False),
     ],
 )
-def test_contributory_awards_stop_above_the_permitted_work_limit(
-    earnings, takes_award
-) -> None:
+def test_contributory_esa_stops_outside_permitted_work(copy, takes_award) -> None:
     frame = _with(
-        _frame(), **{"21": {"esa_contrib_reported": 700.0}, "106": dict(earnings)}
+        _frame(), **{"21": {"esa_contrib_reported": 700.0}, "106": dict(copy)}
     )
     result = _apply(frame)
     person = result.frame.table("person").set_index("person_id")
 
-    expected = (300.0, 700.0) if takes_award else (0.0, 0.0)
-    assert tuple(person.loc[106, list(SPI_WITHIN_LIMIT_REPORT_COLUMNS)]) == expected
-    # The twin keeps its own reports whatever the copy earns.
-    assert tuple(person.loc[21, list(SPI_WITHIN_LIMIT_REPORT_COLUMNS)]) == (
-        300.0,
-        700.0,
-    )
-    receipt = result.restored_within_earnings_limit["jsa_contrib_reported"]
-    assert receipt["twin_reporting_rows_over_limit"] == (0 if takes_award else 1)
+    assert person.loc[106, "esa_contrib_reported"] == (700.0 if takes_award else 0.0)
+    assert person.loc[21, "esa_contrib_reported"] == 700.0
+    receipt = result.restored_within_earnings_limit["esa_contrib_reported"]
+    assert receipt["twin_reporters_outside_limits"] == (0 if takes_award else "<3")
     assert receipt["rows_breaking_rule_after"] == 0
+
+
+def test_the_within_limit_receipt_withholds_figures_under_three_households() -> None:
+    # Copy 105 loses its drawn JSA and copy 106 takes its twin's: one source
+    # household carries each figure, and two the change between them.
+    result = _apply(_frame())
+    receipt = result.restored_within_earnings_limit["jsa_contrib_reported"]
+
+    assert receipt["twin_reporters"] == "<3"
+    assert receipt["changed"] == "<3"
+    assert receipt["twin_reporters_outside_limits"] == 0
+    for key in (
+        "weighted_amount_before",
+        "weighted_amount_after",
+        "weighted_reporters_before",
+        "weighted_reporters_after",
+    ):
+        assert receipt[key] == "<3", key
+    assert result.permitted_work_limit["spi_source_households_within_limits"] == {
+        "jsa_contrib_reported": "3-9",
+        "esa_contrib_reported": "3-9",
+    }
+
+
+def test_the_within_limit_receipt_gives_figures_on_three_households() -> None:
+    frame = _with(
+        _frame(),
+        **{
+            "11": {"esa_contrib_reported": 100.0},
+            "21": {"esa_contrib_reported": 200.0},
+            "31": {
+                "esa_contrib_reported": 300.0,
+                "receives_benefits_in_own_right": True,
+            },
+        },
+    )
+    receipt = _apply(frame).restored_within_earnings_limit["esa_contrib_reported"]
+
+    assert receipt["twin_reporters"] == "3-9"
+    assert receipt["changed"] == "3-9"
+    # Each copy's weight is its household's: 1, 2 and 3.
+    assert receipt["weighted_amount_after"] == pytest.approx(1_400.0)
+    assert receipt["weighted_reporters_after"] == pytest.approx(6.0)
+    assert receipt["weighted_amount_before"] == 0.0
 
 
 def test_spi_rows_take_injury_service_and_bereavement_reports_from_their_twin() -> None:

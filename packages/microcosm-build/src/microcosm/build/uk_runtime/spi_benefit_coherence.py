@@ -31,13 +31,20 @@ qualifying-young-person status and the taxable benefits:
   Compensation Scheme and bereavement support from the FRS twin, since they
   follow an injury, service or a death and not income;
 - it gives contributory JSA and ESA the FRS twin's award where the copy's own
-  earnings stay within ESA's permitted-work limit, and none above it (María's
+  work stays within each benefit's limits, and none outside them (María's
   ruling of 29 October 2026, microcosm#1095 B10). A contributory award
   follows the person's National Insurance record and, for ESA, an incapacity
-  the copy keeps; what the copy changes is its work. The limit is
+  the copy keeps; what the copy changes is its work. ESA's is permitted work
+  (ESA Regs 2008 reg 45(4)): under 16 hours a week, and earnings up to
   policyengine-uk's own ``esa_exempt_work_higher_earnings_limit`` at the
-  frame's year (ESA Regs 2008 reg 45(4), GBP 183.50 a week in 2024-25), and
-  policyengine-uk pays both awards as reported;
+  frame's year (GBP 183.50 a week in 2024-25). JSA's is its own (Jobseekers
+  Act 1995 ss. 1(2)(e), 2(1)(c) and 4(1)(b), Vahid's review of
+  microcosm#1426): under 16 hours a week (JSA Regs 1996 reg 51(1)(a)),
+  earnings no higher than the prescribed amount, the age-related amount plus
+  the earnings disregard less 1p (reg 56; GBP 95.49 a week from 25 in
+  2024-25), and an award of at most the age-related amount less the earnings
+  above the disregard (reg 80), all read from policyengine-uk's parameters
+  at the frame's year. policyengine-uk pays both awards as reported;
 - it re-derives the disability flags from the final reports with the FRS
   stage's rule (the categories, which read only AA, DLA and PIP, are
   unchanged and asserted so);
@@ -58,14 +65,16 @@ contributory ESA kept its forest draw, which on the A8 spine sat at half the
 FRS rate per working-age adult with 9.9% of its SPI reporters by weight earning
 above the permitted-work limit (uk-data#514 zeroes it on a build where 41%
 did), and contributory JSA was zeroed, two thirds of its SPI reporters on the
-30 September build earning above the limit. The limit is tested on the copy's
+30 September build earning above the limit. B10 first gave contributory JSA
+ESA's limit too, about twice JSA's own. The limits are tested on the copy's
 gross earnings, its employment income plus any self-employment profit over 52
-weeks. ESA's own test reads net earnings, but up to the limit pay and profit
-sit under the personal allowance and the National Insurance thresholds, so the
-two differ only by half of any pension contributions, which the gross test
-leaves in. The SPI tape has no hours, so the test reads no hours. JSA's own
-work rules are stricter (remunerative work from 16 hours a week, and earnings
-over a small disregard reduce the award), so for JSA the limit is a ceiling.
+weeks. The benefits' own tests read net earnings, but up to the limits pay and
+profit sit under the personal allowance and the National Insurance
+thresholds, so the two differ only by half of any pension contributions,
+which the gross test leaves in. The SPI tape has no hours, so the copy keeps
+its twin's usual hours (``hours_worked`` over 52 weeks), which the SPI pay
+floor also reads as the copy's (uk-data#629), and the hours tests read them.
+Neither award is reduced for the copy's pension payments.
 """
 
 from __future__ import annotations
@@ -102,6 +111,13 @@ from microcosm.build.uk_runtime.national_frame import (
     uk_national_frame,
     uk_time_period,
     validate_uk_national_frame,
+)
+from microcosm.build.uk_runtime.receipt_counts import (
+    UK_DISCLOSURE_FLOOR,
+    UK_WITHHELD,
+    distinct_count,
+    source_household_ids,
+    support_band,
 )
 from microcosm.build.uk_runtime.spi_support import (
     BASE_FRS_SUPPORT_CHANNEL,
@@ -148,22 +164,50 @@ SPI_RESTORED_REPORT_COLUMNS = (
 )
 SPI_RESTORED_REPORT_REASON = "follows an injury, service or a death, not income"
 #: Contributory awards the SPI row takes from the FRS twin where the copy's own
-#: earnings stay within ESA's permitted-work limit, and none above it (María's
-#: ruling of 29 October 2026, microcosm#1095 B10).
-SPI_WITHIN_LIMIT_REPORT_COLUMNS = ("jsa_contrib_reported", "esa_contrib_reported")
+#: work stays within each benefit's limits, and none outside them (María's
+#: ruling of 29 October 2026, microcosm#1095 B10; JSA's own limits from
+#: Vahid's review of microcosm#1426).
+SPI_JSA_CONTRIB_COLUMN = "jsa_contrib_reported"
+SPI_ESA_CONTRIB_COLUMN = "esa_contrib_reported"
+SPI_WITHIN_LIMIT_REPORT_COLUMNS = (SPI_JSA_CONTRIB_COLUMN, SPI_ESA_CONTRIB_COLUMN)
 SPI_WITHIN_LIMIT_EARNINGS_COLUMNS = ("employment_income", "self_employment_income")
+#: The twin's usual weekly hours, annualised at 52 weeks by the FRS spine
+#: (uk-data#531), which the copy keeps and the SPI pay floor reads.
+SPI_WITHIN_LIMIT_HOURS_COLUMN = "hours_worked"
 SPI_WITHIN_LIMIT_WEEKS_IN_YEAR = 52
 SPI_WITHIN_LIMIT_EARNINGS = (
     "(employment_income + max(self_employment_income, 0)) / 52, the SPI row's own"
 )
+SPI_WITHIN_LIMIT_HOURS = (
+    "hours_worked / 52, the twin's usual hours, which the SPI row keeps"
+)
 SPI_PERMITTED_WORK_LIMIT_VARIABLE = "esa_exempt_work_higher_earnings_limit"
+#: JSA's age-related amount is its higher one from this age.
+SPI_JSA_HIGHER_AMOUNT_FROM_AGE = 25
 SPI_PERMITTED_WORK_LIMIT = (
-    f"policyengine-uk {SPI_PERMITTED_WORK_LIMIT_VARIABLE} at the frame's year "
-    "(ESA Regs 2008 reg 45(4)), weekly"
+    f"{SPI_ESA_CONTRIB_COLUMN}: up to policyengine-uk "
+    f"{SPI_PERMITTED_WORK_LIMIT_VARIABLE} (ESA Regs 2008 reg 45(4)); "
+    f"{SPI_JSA_CONTRIB_COLUMN}: below the age-related amount "
+    "(gov.dwp.JSA.contrib.amount_18_24 under 25, amount_over_25 from 25) plus "
+    "gov.dwp.JSA.contrib.earn_disregard, the prescribed amount being that sum "
+    "less 1p (JSA Regs 1996 reg 56); weekly, at the frame's year"
+)
+SPI_WITHIN_LIMIT_HOURS_LIMIT = (
+    f"{SPI_ESA_CONTRIB_COLUMN}: below gov.dwp.ESA.exempt_work.hours_limit (ESA "
+    f"Regs 2008 reg 45(4)); {SPI_JSA_CONTRIB_COLUMN}: below "
+    "gov.dwp.JSA.remunerative_work.claimant_hours (JSA Regs 1996 reg 51(1)(a)); "
+    "weekly, at the frame's year"
+)
+SPI_WITHIN_LIMIT_AWARD = (
+    f"{SPI_ESA_CONTRIB_COLUMN}: the twin's; {SPI_JSA_CONTRIB_COLUMN}: the lower "
+    "of the twin's and 52 times the age-related amount less the earnings above "
+    "the disregard (Jobseekers Act 1995 s. 4(1)(b), JSA Regs 1996 reg 80); nil "
+    "outside the limits"
 )
 SPI_WITHIN_LIMIT_REASON = (
-    "a contributory award follows the person's National Insurance record and "
-    "incapacity, which the copy keeps, but not work above the permitted-work limit"
+    "a contributory award follows the person's National Insurance record and, "
+    "for ESA, incapacity, which the copy keeps, but not work outside each "
+    "benefit's own earnings and hours limits"
 )
 SPI_TWIN_LINKAGE = "person_source_id -> FRS-channel person_id"
 SPI_BENEFITS_IN_OWN_RIGHT_OUTPUT = "receives_benefits_in_own_right"
@@ -226,6 +270,9 @@ def spi_benefit_coherence_operations() -> tuple[tuple[str, dict[str, object]], .
                 "linkage": SPI_TWIN_LINKAGE,
                 "earnings": SPI_WITHIN_LIMIT_EARNINGS,
                 "weekly_limit": SPI_PERMITTED_WORK_LIMIT,
+                "hours": SPI_WITHIN_LIMIT_HOURS,
+                "weekly_hours_limit": SPI_WITHIN_LIMIT_HOURS_LIMIT,
+                "award": SPI_WITHIN_LIMIT_AWARD,
                 "reason": SPI_WITHIN_LIMIT_REASON,
             },
         ),
@@ -278,7 +325,7 @@ class UKSPIBenefitCoherenceResult:
     spi_benefit_units: int
     zeroed: Mapping[str, Mapping[str, float]]
     restored: Mapping[str, Mapping[str, float]]
-    restored_within_earnings_limit: Mapping[str, Mapping[str, float]]
+    restored_within_earnings_limit: Mapping[str, Mapping[str, object]]
     permitted_work_limit: Mapping[str, object]
     disability_flags_changed: Mapping[str, int]
     benefits_in_own_right: Mapping[str, float]
@@ -306,18 +353,52 @@ class UKSPIBenefitCoherenceResult:
 
 @dataclass(frozen=True)
 class UKSPIPermittedWorkLimit:
-    """ESA's weekly permitted-work earnings limit as policyengine-uk reads a year."""
+    """The contributory awards' weekly work limits as policyengine-uk reads a year.
 
-    weekly_limit: float
+    ESA's permitted work: earnings up to ``esa_weekly_limit`` in under
+    ``esa_hours_limit`` hours. JSA: under ``jsa_remunerative_hours`` hours and
+    earnings below the age-related amount plus ``jsa_earnings_disregard``, and
+    an award of at most that amount less the earnings above the disregard.
+    """
+
+    esa_weekly_limit: float
+    esa_hours_limit: float
+    jsa_amount_under_25: float
+    jsa_amount_from_25: float
+    jsa_earnings_disregard: float
+    jsa_remunerative_hours: float
     year: int
     source: str
 
+    def jsa_amount(self, age: np.ndarray) -> np.ndarray:
+        """JSA's weekly age-related amount at each age."""
+
+        return np.where(
+            np.asarray(age, dtype=float) < SPI_JSA_HIGHER_AMOUNT_FROM_AGE,
+            self.jsa_amount_under_25,
+            self.jsa_amount_from_25,
+        )
+
+    def evidence(self) -> dict[str, object]:
+        return {
+            "esa_weekly_limit": self.esa_weekly_limit,
+            "esa_hours_limit": self.esa_hours_limit,
+            "jsa_amount_under_25": self.jsa_amount_under_25,
+            "jsa_amount_from_25": self.jsa_amount_from_25,
+            "jsa_earnings_disregard": self.jsa_earnings_disregard,
+            "jsa_remunerative_hours": self.jsa_remunerative_hours,
+            "year": self.year,
+            "source": self.source,
+        }
+
 
 def uk_spi_permitted_work_limit(year: int | str) -> UKSPIPermittedWorkLimit:
-    """Read the limit from the engine's own variable for ``year``.
+    """Read the limits from the engine's own variable and parameters for ``year``.
 
-    The variable reads parameters alone (16 hours at the national living wage,
-    rounded up to the next 50p), so one person in an empty household gives it.
+    ESA's earnings limit is a variable that reads parameters alone (16 hours at
+    the national living wage, rounded up to the next 50p), so one person in an
+    empty household gives it; the rest are the parameters at the year, as the
+    engine's formulas read them.
     """
 
     try:
@@ -343,12 +424,33 @@ def uk_spi_permitted_work_limit(year: int | str) -> UKSPIPermittedWorkLimit:
             f"policyengine-uk {SPI_PERMITTED_WORK_LIMIT_VARIABLE} at {period} is "
             f"not one positive amount: {values.tolist()}."
         )
+    dwp = simulation.tax_benefit_system.parameters(period).gov.dwp
+    amounts = {
+        "esa_hours_limit": float(dwp.ESA.exempt_work.hours_limit),
+        "jsa_amount_under_25": float(dwp.JSA.contrib.amount_18_24),
+        "jsa_amount_from_25": float(dwp.JSA.contrib.amount_over_25),
+        "jsa_earnings_disregard": float(dwp.JSA.contrib.earn_disregard),
+        "jsa_remunerative_hours": float(dwp.JSA.remunerative_work.claimant_hours),
+    }
+    invalid = {
+        name: value
+        for name, value in amounts.items()
+        if not (np.isfinite(value) and value > 0.0)
+    }
+    if invalid:
+        raise ValueError(
+            f"policyengine-uk's contributory work limits at {period} are not all "
+            f"positive amounts: {invalid}."
+        )
     return UKSPIPermittedWorkLimit(
-        weekly_limit=float(values[0]),
+        esa_weekly_limit=float(values[0]),
+        **amounts,
         year=period,
         source=(
             f"policyengine-uk {metadata.version('policyengine-uk')} "
-            f"{SPI_PERMITTED_WORK_LIMIT_VARIABLE} at {period}"
+            f"{SPI_PERMITTED_WORK_LIMIT_VARIABLE}, gov.dwp.ESA.exempt_work."
+            "hours_limit, gov.dwp.JSA.contrib and gov.dwp.JSA.remunerative_work."
+            f"claimant_hours at {period}"
         ),
     )
 
@@ -419,6 +521,7 @@ def apply_spi_benefit_coherence(
         *SPI_RESTORED_REPORT_COLUMNS,
         *SPI_WITHIN_LIMIT_REPORT_COLUMNS,
         *SPI_WITHIN_LIMIT_EARNINGS_COLUMNS,
+        SPI_WITHIN_LIMIT_HOURS_COLUMN,
         *BENEFITS_IN_OWN_RIGHT_REPORTED_COLUMNS,
         *frs_disability.UK_DISABILITY_FLAG_REPORTED_COLUMNS,
         *frs_disability.FRS_DISABILITY_OUTPUT_COLUMNS,
@@ -515,32 +618,32 @@ def apply_spi_benefit_coherence(
         )
 
     limit = permitted_work_limit or uk_spi_permitted_work_limit(uk_time_period(frame))
-    within_limit = _weekly_earnings(person) <= limit.weekly_limit
+    within_limits, award_caps = _contributory_work_limits(person, limit)
+    sources = _person_source_households(person, household)
     twin_awards = fill_support_channel_from_source(
         person,
         person.loc[base, ["person_id", *SPI_WITHIN_LIMIT_REPORT_COLUMNS]],
         entity="person",
         columns=SPI_WITHIN_LIMIT_REPORT_COLUMNS,
     )
-    restored_within_limit: dict[str, dict[str, float]] = {}
+    restored_within_limit: dict[str, dict[str, object]] = {}
     for column in SPI_WITHIN_LIMIT_REPORT_COLUMNS:
         old = _numeric(person[column])
         twin_award = _numeric(twin_awards[column])
-        new = np.where(spi, np.where(within_limit, twin_award, 0.0), old)
+        within = within_limits[column]
+        award = np.where(within, np.minimum(twin_award, award_caps[column]), 0.0)
+        new = np.where(spi, award, old)
         twin_reports = spi & (twin_award > 0.0)
-        restored_within_limit[column] = {
-            "rows_changed": int((spi & ~np.isclose(old, new)).sum()),
-            "twin_reporting_rows": int(twin_reports.sum()),
-            "twin_reporting_rows_over_limit": int((twin_reports & ~within_limit).sum()),
-            "weighted_twin_reporters": float(weights[twin_reports].sum()),
-            "weighted_twin_reporters_over_limit": float(
-                weights[twin_reports & ~within_limit].sum()
-            ),
-            "weighted_amount_before": float((old * weights)[spi].sum()),
-            "weighted_amount_after": float((new * weights)[spi].sum()),
-            "weighted_reporters_before": float(weights[spi & (old > 0.0)].sum()),
-            "weighted_reporters_after": float(weights[spi & (new > 0.0)].sum()),
-        }
+        restored_within_limit[column] = _within_limit_receipt(
+            old=old,
+            new=new,
+            spi=spi,
+            twin_reports=twin_reports,
+            outside=twin_reports & ~within,
+            reduced=twin_reports & within & (award < twin_award),
+            weights=weights,
+            sources=sources,
+        )
         person[column] = new
     twin_check = fill_support_channel_from_source(
         person,
@@ -549,17 +652,24 @@ def apply_spi_benefit_coherence(
         columns=SPI_WITHIN_LIMIT_REPORT_COLUMNS,
     )
     for column in SPI_WITHIN_LIMIT_REPORT_COLUMNS:
-        expected = np.where(within_limit, _numeric(twin_check[column]), 0.0)
+        expected = np.where(
+            within_limits[column],
+            np.minimum(_numeric(twin_check[column]), award_caps[column]),
+            0.0,
+        )
         restored_within_limit[column]["rows_breaking_rule_after"] = int(
             (spi & ~np.isclose(_numeric(person[column]), expected)).sum()
         )
     permitted_work = {
-        "weekly_limit": limit.weekly_limit,
-        "year": limit.year,
-        "source": limit.source,
+        **limit.evidence(),
         "earnings": SPI_WITHIN_LIMIT_EARNINGS,
-        "spi_rows_within_limit": int((spi & within_limit).sum()),
-        "weighted_spi_within_limit": float(weights[spi & within_limit].sum()),
+        "hours": SPI_WITHIN_LIMIT_HOURS,
+        "spi_source_households_within_limits": {
+            column: support_band(
+                distinct_count(sources, spi & within_limits[column], weights)
+            )
+            for column in SPI_WITHIN_LIMIT_REPORT_COLUMNS
+        },
     }
 
     flags_changed = _refresh_disability(
@@ -757,6 +867,94 @@ def _weekly_earnings(person: pd.DataFrame) -> np.ndarray:
         _numeric(person[column]) for column in SPI_WITHIN_LIMIT_EARNINGS_COLUMNS
     )
     return (employment + np.maximum(profit, 0.0)) / SPI_WITHIN_LIMIT_WEEKS_IN_YEAR
+
+
+def _contributory_work_limits(
+    person: pd.DataFrame, limit: UKSPIPermittedWorkLimit
+) -> tuple[dict[str, np.ndarray], dict[str, np.ndarray]]:
+    """Each contributory award's within-limits mask and its annual award cap.
+
+    JSA's earnings test is the strict "below the age-related amount plus the
+    disregard", which on amounts in pence is reg 56's "no more than that sum
+    less 1p". ESA's award is the twin's, uncapped, within permitted work.
+    """
+
+    earnings = _weekly_earnings(person)
+    hours = _numeric(person[SPI_WITHIN_LIMIT_HOURS_COLUMN])
+    hours = hours / SPI_WITHIN_LIMIT_WEEKS_IN_YEAR
+    jsa_amount = limit.jsa_amount(_numeric(person["age"]))
+    disregard = limit.jsa_earnings_disregard
+    within = {
+        SPI_JSA_CONTRIB_COLUMN: (hours < limit.jsa_remunerative_hours)
+        & (earnings < jsa_amount + disregard),
+        SPI_ESA_CONTRIB_COLUMN: (hours < limit.esa_hours_limit)
+        & (earnings <= limit.esa_weekly_limit),
+    }
+    caps = {
+        SPI_JSA_CONTRIB_COLUMN: SPI_WITHIN_LIMIT_WEEKS_IN_YEAR
+        * np.maximum(jsa_amount - np.maximum(earnings - disregard, 0.0), 0.0),
+        SPI_ESA_CONTRIB_COLUMN: np.full(len(person), np.inf),
+    }
+    return within, caps
+
+
+def _within_limit_receipt(
+    *,
+    old: np.ndarray,
+    new: np.ndarray,
+    spi: np.ndarray,
+    twin_reports: np.ndarray,
+    outside: np.ndarray,
+    reduced: np.ndarray,
+    weights: np.ndarray,
+    sources: np.ndarray,
+) -> dict[str, object]:
+    """One award's receipt on distinct source households (microcosm#1164).
+
+    Support is banded. A weighted figure is "<3" when one or two source
+    households carry it, or carry the change between its before and after,
+    which the two figures would otherwise give back by difference.
+    """
+
+    changed = distinct_count(sources, spi & ~np.isclose(old, new), weights)
+
+    def weighted(values: np.ndarray, mask: np.ndarray) -> float | str:
+        support = distinct_count(sources, mask, weights)
+        if 0 < support < UK_DISCLOSURE_FLOOR or 0 < changed < UK_DISCLOSURE_FLOOR:
+            return UK_WITHHELD
+        return float((values * weights)[mask].sum())
+
+    before = spi & (old > 0.0)
+    after = spi & (new > 0.0)
+    return {
+        "twin_reporters": support_band(distinct_count(sources, twin_reports, weights)),
+        "twin_reporters_outside_limits": support_band(
+            distinct_count(sources, outside, weights)
+        ),
+        "twin_reporters_reduced": support_band(
+            distinct_count(sources, reduced, weights)
+        ),
+        "changed": support_band(changed),
+        "weighted_amount_before": weighted(old, before),
+        "weighted_amount_after": weighted(new, after),
+        "weighted_reporters_before": weighted(np.ones_like(old), before),
+        "weighted_reporters_after": weighted(np.ones_like(new), after),
+    }
+
+
+def _person_source_households(
+    person: pd.DataFrame, household: pd.DataFrame
+) -> np.ndarray:
+    """Each person's source household, the lineage the receipt counts by."""
+
+    by_household = pd.Series(
+        source_household_ids(household, stage=SPI_BENEFIT_COHERENCE_STAGE_NAME),
+        index=household["household_id"].to_numpy(),
+    )
+    sources = person["person_household_id"].map(by_household)
+    if sources.isna().any():
+        raise ValueError("SPI benefit coherence persons must map to a household.")
+    return sources.to_numpy()
 
 
 def _person_weights(

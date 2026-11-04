@@ -9925,6 +9925,9 @@
       "linkage",
       "earnings",
       "weekly_limit",
+      "hours",
+      "weekly_hours_limit",
+      "award",
       "reason"
      ],
      "properties": {
@@ -9948,6 +9951,15 @@
        "type": "string"
       },
       "weekly_limit": {
+       "type": "string"
+      },
+      "hours": {
+       "type": "string"
+      },
+      "weekly_hours_limit": {
+       "type": "string"
+      },
+      "award": {
        "type": "string"
       },
       "reason": {

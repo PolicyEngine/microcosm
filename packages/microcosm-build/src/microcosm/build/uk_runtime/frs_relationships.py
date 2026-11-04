@@ -209,7 +209,13 @@ LOOKED_AFTER_CHILD_RULE: Mapping[str, int] = {
 #: the child is parent or step parent, 7 or 8; either side's declaration
 #: establishes the link) and whom no local authority placed there. Such a
 #: child lives with kinship or friends carers, or with a claimant whose own
-#: child is the child's parent. The multiple births, adoption and
+#: child is the child's parent. The flag is an upper bound on the exception:
+#: a friend or family carer also needs one of para 4(2)'s conditions (a child
+#: arrangements order, special guardianship, guardian's allowance, a kinship
+#: care order, guardianship, a permanence order, or taking on a child who
+#: would otherwise likely be looked after), which the FRS grid does not show,
+#: so informal arrangements are flagged too (Vahid's review of #1426). The
+#: multiple births, adoption and
 #: non-consensual conception exceptions stay false: the FRS has no twin field,
 #: and its birth dates are blank (María's ruling of 2026-11-02).
 NON_PARENTAL_CARE_CHILD_RULE: Mapping[str, tuple[int, ...]] = {
