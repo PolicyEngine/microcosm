@@ -74,7 +74,23 @@ thresholds, so the two differ only by half of any pension contributions,
 which the gross test leaves in. The SPI tape has no hours, so the copy keeps
 its twin's usual hours (``hours_worked`` over 52 weeks), which the SPI pay
 floor also reads as the copy's (uk-data#629), and the hours tests read them.
-Neither award is reduced for the copy's pension payments.
+The tape's pay covers the tax year, so averaging it over 52 weeks is strict
+for anyone who worked part of the year: a copy whose pay was earned in 26
+weeks and which claimed in the other 26 is tested on half its weekly pay in
+work, not on the nil it earned while claiming. The tests therefore understate
+part-year claimants, above all of contribution-based JSA, which lasts at most
+182 days (Jobseekers Act 1995 s. 5(1)).
+
+Neither award is reduced for the copy's pension payments, though the copy
+carries the tape's pension income (``private_pension_income``, from its
+PENSION): JSA Regs 1996 reg 81 takes every pound of pension payments above
+policyengine-uk's ``gov.dwp.JSA.contrib.pension_disregard`` (GBP 50 a week)
+off contribution-based JSA, and ESA Regs 2008 reg 74 half of every pound
+above GBP 85 a week off contributory ESA. B10 tests the copy's work alone, so
+the receipt shows how much rests on the omission: for each award, the support
+and weighted award of the copies whose pension payments are above its
+threshold, the most a reduction could take off (Vahid's review of
+microcosm#1426).
 """
 
 from __future__ import annotations
@@ -209,6 +225,14 @@ SPI_WITHIN_LIMIT_REASON = (
     "for ESA, incapacity, which the copy keeps, but not work outside each "
     "benefit's own earnings and hours limits"
 )
+#: The copy's pension payments, the tape's PENSION, which neither award is
+#: reduced for; the receipt reads them against each award's threshold.
+SPI_PENSION_PAYMENTS_COLUMN = "private_pension_income"
+#: Half of every pound of pension payments above GBP 85 a week comes off
+#: contributory ESA (ESA Regs 2008 reg 74(1)), an amount policyengine-uk has
+#: no parameter for. JSA's threshold is policyengine-uk's
+#: ``gov.dwp.JSA.contrib.pension_disregard`` (JSA Regs 1996 reg 81(1)).
+SPI_ESA_PENSION_PAYMENTS_THRESHOLD = 85.0
 SPI_TWIN_LINKAGE = "person_source_id -> FRS-channel person_id"
 SPI_BENEFITS_IN_OWN_RIGHT_OUTPUT = "receives_benefits_in_own_right"
 SPI_BENEFITS_IN_OWN_RIGHT_RULE = (
@@ -359,6 +383,8 @@ class UKSPIPermittedWorkLimit:
     ``esa_hours_limit`` hours. JSA: under ``jsa_remunerative_hours`` hours and
     earnings below the age-related amount plus ``jsa_earnings_disregard``, and
     an award of at most that amount less the earnings above the disregard.
+    ``jsa_pension_disregard`` is the weekly pension payments above which JSA
+    is reduced, which only the receipt reads.
     """
 
     esa_weekly_limit: float
@@ -367,6 +393,7 @@ class UKSPIPermittedWorkLimit:
     jsa_amount_from_25: float
     jsa_earnings_disregard: float
     jsa_remunerative_hours: float
+    jsa_pension_disregard: float
     year: int
     source: str
 
@@ -379,6 +406,14 @@ class UKSPIPermittedWorkLimit:
             self.jsa_amount_from_25,
         )
 
+    def pension_payments_thresholds(self) -> dict[str, float]:
+        """Each award's weekly pension payments threshold (reg 81, reg 74)."""
+
+        return {
+            SPI_JSA_CONTRIB_COLUMN: self.jsa_pension_disregard,
+            SPI_ESA_CONTRIB_COLUMN: SPI_ESA_PENSION_PAYMENTS_THRESHOLD,
+        }
+
     def evidence(self) -> dict[str, object]:
         return {
             "esa_weekly_limit": self.esa_weekly_limit,
@@ -387,6 +422,8 @@ class UKSPIPermittedWorkLimit:
             "jsa_amount_from_25": self.jsa_amount_from_25,
             "jsa_earnings_disregard": self.jsa_earnings_disregard,
             "jsa_remunerative_hours": self.jsa_remunerative_hours,
+            "jsa_pension_disregard": self.jsa_pension_disregard,
+            "esa_pension_payments_threshold": SPI_ESA_PENSION_PAYMENTS_THRESHOLD,
             "year": self.year,
             "source": self.source,
         }
@@ -431,6 +468,7 @@ def uk_spi_permitted_work_limit(year: int | str) -> UKSPIPermittedWorkLimit:
         "jsa_amount_from_25": float(dwp.JSA.contrib.amount_over_25),
         "jsa_earnings_disregard": float(dwp.JSA.contrib.earn_disregard),
         "jsa_remunerative_hours": float(dwp.JSA.remunerative_work.claimant_hours),
+        "jsa_pension_disregard": float(dwp.JSA.contrib.pension_disregard),
     }
     invalid = {
         name: value
@@ -522,6 +560,7 @@ def apply_spi_benefit_coherence(
         *SPI_WITHIN_LIMIT_REPORT_COLUMNS,
         *SPI_WITHIN_LIMIT_EARNINGS_COLUMNS,
         SPI_WITHIN_LIMIT_HOURS_COLUMN,
+        SPI_PENSION_PAYMENTS_COLUMN,
         *BENEFITS_IN_OWN_RIGHT_REPORTED_COLUMNS,
         *frs_disability.UK_DISABILITY_FLAG_REPORTED_COLUMNS,
         *frs_disability.FRS_DISABILITY_OUTPUT_COLUMNS,
@@ -619,6 +658,10 @@ def apply_spi_benefit_coherence(
 
     limit = permitted_work_limit or uk_spi_permitted_work_limit(uk_time_period(frame))
     within_limits, award_caps = _contributory_work_limits(person, limit)
+    weekly_pension = (
+        _numeric(person[SPI_PENSION_PAYMENTS_COLUMN]) / SPI_WITHIN_LIMIT_WEEKS_IN_YEAR
+    )
+    pension_thresholds = limit.pension_payments_thresholds()
     sources = _person_source_households(person, household)
     twin_awards = fill_support_channel_from_source(
         person,
@@ -641,6 +684,7 @@ def apply_spi_benefit_coherence(
             twin_reports=twin_reports,
             outside=twin_reports & ~within,
             reduced=twin_reports & within & (award < twin_award),
+            pension_above=weekly_pension > pension_thresholds[column],
             weights=weights,
             sources=sources,
         )
@@ -861,7 +905,11 @@ def _numeric(values: pd.Series) -> np.ndarray:
 
 
 def _weekly_earnings(person: pd.DataFrame) -> np.ndarray:
-    """Employment income plus any self-employment profit, over 52 weeks."""
+    """Employment income plus any self-employment profit, over 52 weeks.
+
+    Annual pay averaged over 52 weeks, which understates part-year claimants
+    (see the module docstring).
+    """
 
     employment, profit = (
         _numeric(person[column]) for column in SPI_WITHIN_LIMIT_EARNINGS_COLUMNS
@@ -906,6 +954,7 @@ def _within_limit_receipt(
     twin_reports: np.ndarray,
     outside: np.ndarray,
     reduced: np.ndarray,
+    pension_above: np.ndarray,
     weights: np.ndarray,
     sources: np.ndarray,
 ) -> dict[str, object]:
@@ -913,7 +962,10 @@ def _within_limit_receipt(
 
     Support is banded. A weighted figure is "<3" when one or two source
     households carry it, or carry the change between its before and after,
-    which the two figures would otherwise give back by difference.
+    which the two figures would otherwise give back by difference. The award
+    on the copies whose pension payments are above its threshold is "<3" too
+    when one or two carry the rest of the award, which it would give back
+    beside the whole.
     """
 
     changed = distinct_count(sources, spi & ~np.isclose(old, new), weights)
@@ -926,6 +978,14 @@ def _within_limit_receipt(
 
     before = spi & (old > 0.0)
     after = spi & (new > 0.0)
+    above = after & np.asarray(pension_above, dtype=bool)
+    rest = distinct_count(sources, after & ~above, weights)
+
+    def weighted_above(values: np.ndarray) -> float | str:
+        if 0 < rest < UK_DISCLOSURE_FLOOR:
+            return UK_WITHHELD
+        return weighted(values, above)
+
     return {
         "twin_reporters": support_band(distinct_count(sources, twin_reports, weights)),
         "twin_reporters_outside_limits": support_band(
@@ -939,6 +999,11 @@ def _within_limit_receipt(
         "weighted_amount_after": weighted(new, after),
         "weighted_reporters_before": weighted(np.ones_like(old), before),
         "weighted_reporters_after": weighted(np.ones_like(new), after),
+        "pension_payments_above_threshold": {
+            "source_households": support_band(distinct_count(sources, above, weights)),
+            "weighted_amount_after": weighted_above(new),
+            "weighted_reporters_after": weighted_above(np.ones_like(new)),
+        },
     }
 
 
