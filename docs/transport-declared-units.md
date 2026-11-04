@@ -134,7 +134,7 @@ columns. An empty selection makes no engine call, and a null or non-bool
 selector refuses. Gather and scatter assume that the engine computes each
 selected row from that row's inputs alone. Views refuse programs with dense
 relations, and a real-engine differential, skip-gated on the dense extension and a
-rulespec-be tree, tests the assumption.
+rulespec-be tree, is written to test the assumption.
 
 The registry refuses `views: []`, views beside `relations`, views on a binding
 on another entity than the person entity, a logical entity that a frame entity
@@ -160,4 +160,5 @@ as a person column.
 
 A binding without `views` keeps its semantics, engine reference and native
 execution call. The engine reference carries `views` only when the binding
-declares them, in declaration order.
+declares them, with the views list in declaration order and each
+`outside` mapping in sorted key order.

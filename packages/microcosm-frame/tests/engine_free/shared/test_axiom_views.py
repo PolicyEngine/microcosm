@@ -234,6 +234,12 @@ def test_adapter_refuses_an_unexecutable_view(monkeypatch, updates, error, match
         _adapter(monkeypatch, **updates)
 
 
+def test_input_overrides_name_a_view_selector_in_the_refusal(monkeypatch):
+    adapter, _ = _adapter(monkeypatch)
+    with pytest.raises(ValueError, match="view selector 'is_child'"):
+        adapter.validate_input_override("person", "is_child")
+
+
 def test_adapter_refuses_views_with_relations(monkeypatch):
     relation = AxiomRelation(
         predicate="toy_member",

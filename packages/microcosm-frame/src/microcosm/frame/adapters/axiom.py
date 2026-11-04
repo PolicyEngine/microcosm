@@ -818,13 +818,18 @@ class AxiomEngine:
         return tuple(sorted(dependencies))
 
     def validate_input_override(self, entity: str, column: str) -> None:
-        """Refuse related overrides a bridge cannot apply to their source.
+        """Refuse view selector overrides and related inputs without a source mapping.
 
+        View selectors choose batch rows; they are not engine root inputs.
         Bridges write physical table columns after checking logical engine
         inputs. An aliased relation input needs both names resolved together,
         and only the related entity's table feeds a batch. Accepting either
         override would silently leave the source intact.
         """
+        if entity == self._schema.person_entity and any(
+            view.selector == column for view in self._views or ()
+        ):
+            raise ValueError(f"Input overrides cannot change view selector {column!r}.")
         if not self._relations:
             return
         program = self._program(entity, missing_ok=True)
