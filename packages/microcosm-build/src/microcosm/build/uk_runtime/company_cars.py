@@ -27,9 +27,10 @@ on identity, so reordering rows moves none:
    every row of the SPI channel, which carries its twin's carriers: the tape rows
    (``person_is_spi_income_recipient``), the undrawn copies and the dependants
    aged 16 to 19. A tape row's EPB (expenses payments and benefits in kind) is
-   drawn on uniforms the car never conditions, so a tape row whose drawn EPB is
-   zero keeps its twin's car too, and step 5 moves the car's benefit into its EPB
-   (María's ruling of 3 November 2026).
+   drawn on uniforms the car never conditions, so every tape row keeps its
+   twin's car, whatever EPB it drew, and step 5 moves any part of the car's
+   benefits above its EPB from its PAY into its EPB (María's rulings of 3
+   November 2026).
 2. **Fuel.** The FRS fuel codes map to the engine's fuel types (a hybrid is an
    alternative fuel, a diesel is taken to meet RDE2, as the declaration says).
    The cars whose fuel the respondent did not know draw at Table 2C's shares
@@ -46,18 +47,19 @@ on identity, so reordering rows moves none:
    1 to 50 g/km matches Table 2A's among cars that emit CO2, and the bands above
    it are drawn at Table 2A's shares, uniformly within each. A car at 1 to 50
    g/km takes the declared electric range.
-5. **SPI pay.** A tape row's pay is the tape's PAY + EPB + TAXTERM, so EPB already
-   holds the car and fuel benefits where it is positive. The engine's benefits
-   on the kept cars come out of ``employment_income``, capped at EPB within the
-   pay the row's employee pension contribution leaves, which ``salary_sacrifice``
-   requires. A row whose drawn EPB is zero is capped at its PAY instead, within
-   the same pay, and the benefits move from its PAY into its EPB, so its PAY +
-   EPB + TAXTERM stays the tape's and its split agrees with what the engine taxes
-   (María's ruling of 3 November 2026). Where the car and fuel benefits do not
-   fit together, private fuel goes first; a car whose benefit still exceeds the
-   cap has its list price scaled down to fit (its contributions dropped), or is
-   dropped below the declared minimum price (María's rulings of 30 and 31
-   October 2026), as a car on a row without PAY is. A scaled price is the room
+5. **SPI pay.** A tape row's pay is the tape's PAY + EPB + TAXTERM. The engine's
+   benefits on the kept cars come out of ``employment_income``, capped at EPB +
+   PAY within the pay the row's employee pension contribution leaves, which
+   ``salary_sacrifice`` requires. EPB holds them first, and the part above EPB
+   moves from the row's PAY into its EPB, so its PAY + EPB + TAXTERM stays the
+   tape's and its split agrees with what the engine taxes (María's rulings of 3
+   November 2026; a cap of EPB alone dropped or shrank cars on the rows that drew
+   a little EPB, Vahid's review of microcosm#1491). Where the car and fuel
+   benefits do not fit together, private fuel goes first; a car whose benefit
+   still exceeds the cap has its list price scaled down to fit (its
+   contributions dropped), or is dropped below the declared minimum price
+   (María's rulings of 30 and 31 October 2026), as a car on a row with neither
+   EPB nor PAY is. A scaled price is the room
    over the car's appropriate percentage, so the CO2 draw, the declared electric
    range and the RDE2 diesel set it, and with it the base a later rate rise acts
    on. A carved row's UC gainful self-employment takes the root's rule again on
@@ -258,6 +260,10 @@ DEFAULT_FUEL_TYPE = PETROL
 #: fuel, which an electric car cannot carry, and with the others' electric share
 #: raised to keep Table 2C's.
 UNKNOWN_FUEL_RULE = "table_2c_shares_together_non_electric_with_private_fuel"
+#: The declared cap on a tape row's car benefits: EPB + PAY within the pay its
+#: employee pension contribution leaves, EPB holding them first and the part
+#: above it moving from PAY into EPB.
+CARVE_CAP_RULE = "epb_then_pay"
 
 CPI_INDEX = "gov.economic_assumptions.indices.obr.consumer_price_index"
 CAPITAL_CONTRIBUTION_CAP = (
@@ -428,13 +434,14 @@ class CompanyCarsSpec:
         if (
             carve.get("epb_column") != SPI_HMRC_EMPLOYMENT_BENEFITS_COLUMN
             or carve.get("pay_column") != SPI_HMRC_PAY_COLUMN
+            or carve.get("cap") != CARVE_CAP_RULE
             or list(carve.get("benefits", ()))
             != [COMPANY_CAR_BENEFIT, CAR_FUEL_BENEFIT]
         ):
             raise CompanyCarsError(
                 "the SPI carve-out takes the engine's company car and car fuel "
-                f"benefits out of pay, capped at {SPI_HMRC_EMPLOYMENT_BENEFITS_COLUMN}, "
-                f"or at {SPI_HMRC_PAY_COLUMN} where that is zero."
+                f"benefits out of pay, capped at {SPI_HMRC_EMPLOYMENT_BENEFITS_COLUMN} + "
+                f"{SPI_HMRC_PAY_COLUMN}, EPB first ({CARVE_CAP_RULE!r})."
             )
         minimum_households = int(prices["minimum_donor_households"])
         # No list price cell may rest on fewer WAS households than the
@@ -1094,16 +1101,18 @@ def carve_spi_benefits(
     contribution_cap: float,
     spec: CompanyCarsSpec,
 ) -> SPICarveOut:
-    """Fit each tape row's car benefits inside its EPB, or its PAY without EPB.
+    """Fit each tape row's car benefits inside its EPB and PAY.
 
     Every array holds the tape rows' holders only; ``spi_pay`` is the tape's
-    PAY. The cap is EPB within the pay the row's employee pension contribution
-    leaves: the SPI income stage capped that contribution at the pay it drew,
-    and ``salary_sacrifice`` refuses one above the pay that remains, so the
-    carve-out never takes pay below it. A row whose drawn EPB is zero is capped
-    at its PAY within the same pay, so the benefits the stage then moves from
-    its PAY into its EPB leave neither negative (María's ruling of 3 November
-    2026). Where the car and fuel benefits do not fit together, the private
+    PAY. The cap is EPB + PAY within the pay the row's employee pension
+    contribution leaves: the SPI income stage capped that contribution at the
+    pay it drew, and ``salary_sacrifice`` refuses one above the pay that
+    remains, so the carve-out never takes pay below it. EPB holds the benefits
+    first, and the stage moves the part above EPB from the row's PAY into its
+    EPB, which the cap leaves neither negative. EPB is drawn on uniforms the
+    car never conditions, so a small drawn EPB caps a car no more than a zero
+    one does (María's rulings of 3 November 2026, the second on Vahid's review
+    of microcosm#1491). Where the car and fuel benefits do not fit together, the private
     fuel goes first, so a car that fits without its fuel is always kept (María's
     ruling of 31 October 2026). A car whose benefit still exceeds the cap has
     its list price scaled down to fit. The engine's car benefit is the price
@@ -1117,7 +1126,7 @@ def carve_spi_benefits(
     pay = np.maximum(np.asarray(pay, dtype=float), 0.0)
     employee = np.maximum(np.asarray(employee_contributions, dtype=float), 0.0)
     without_epb = epb <= 0.0
-    source = np.where(without_epb, spi_pay, epb)
+    source = epb + spi_pay
     budget = np.minimum(source, np.maximum(pay - employee, 0.0))
     cars = {
         "car_benefit": car_benefit,
@@ -1129,25 +1138,29 @@ def carve_spi_benefits(
         "minimum_price": spec.minimum_scaled_list_price_gbp,
     }
     fit = _fit_inside(budget, **cars)
-    # The same cars inside EPB (or PAY) within pay alone: what the
-    # contribution's room costs, measured rather than ruled on (the third review
-    # of microcosm#1430). The room bites only where the SPI stage's drawn
-    # contribution exceeds the row's cash pay, PAY + TAXTERM.
+    # The same cars inside EPB + PAY within pay alone: what the contribution's
+    # room costs, measured rather than ruled on (the third review of
+    # microcosm#1430).
     without_room = _fit_inside(np.minimum(source, pay), **cars)
     room_costs = fit["benefit"] < without_room["benefit"] - 1e-9
     given_up = np.where(without_room["keep"], without_room["price"], 0.0) - np.where(
         fit["keep"], fit["price"], 0.0
     )
+    moved = np.maximum(fit["benefit"] - epb, 0.0)
     receipt = {
         "holders": rounded_count(int(len(epb))),
-        # The rows capped at PAY, those of them that keep their car, and those
+        # The rows without EPB and those of them that keep their car; the rows
+        # with EPB whose car takes more than it, the rest from PAY; and the rows
         # whose car takes all of their PAY, leaving TAXTERM as their cash pay.
         "holders_without_epb": rounded_count(int(without_epb.sum())),
         "kept_without_epb": rounded_count(int((without_epb & fit["keep"]).sum())),
-        "kept_without_epb_leaving_no_pay": rounded_count(
-            int((without_epb & fit["keep"] & (spi_pay - fit["benefit"] <= 0.005)).sum())
+        "kept_with_epb_topped_up_from_pay": rounded_count(
+            int((~without_epb & fit["keep"] & (moved > 0.0)).sum())
         ),
-        "cap_below_epb_for_the_employee_contribution": rounded_count(
+        "kept_leaving_no_pay": rounded_count(
+            int((fit["keep"] & (spi_pay > 0.0) & (spi_pay - moved <= 0.005)).sum())
+        ),
+        "cap_below_epb_and_pay_for_the_employee_contribution": rounded_count(
             int((budget < np.minimum(source, pay)).sum())
         ),
         "cars_the_employee_contribution_scales_or_drops": rounded_count(
@@ -1269,9 +1282,8 @@ def impute_company_cars(
     epb = table["epb"].to_numpy(float)
     spi_pay = table["spi_pay"].to_numpy(float)
     holders = bands > 0
-    # The tape rows whose drawn EPB is zero keep their twin's car as well: the
-    # carve-out moves its benefit from their PAY into their EPB (María's ruling
-    # of 3 November 2026).
+    # Every tape row keeps its twin's car, whatever EPB it drew (María's rulings
+    # of 3 November 2026); the receipt counts the ones that drew none.
     without_epb = holders & tape & (epb <= 0.0)
 
     def support(mask: np.ndarray) -> int:
@@ -1374,10 +1386,10 @@ def impute_company_cars(
         for name, values in columns.items():
             person[name] = values
         person[EMPLOYMENT_INCOME] = new_pay
-        # A row without EPB holds its car's benefits in EPB now, taken from its
-        # PAY, so its PAY + EPB + TAXTERM stays the tape's and its split agrees
-        # with what the engine taxes.
-        moved = np.where(without_epb, carved, 0.0)
+        # EPB holds the car's benefits first; the part above it moves from the
+        # row's PAY into its EPB, so its PAY + EPB + TAXTERM stays the tape's
+        # and its split agrees with what the engine taxes.
+        moved = np.where(tape, np.maximum(carved - epb, 0.0), 0.0)
         shifted = moved > 0.0
         for name, values in (
             (SPI_HMRC_EMPLOYMENT_BENEFITS_COLUMN, epb + moved),
@@ -1420,8 +1432,8 @@ def impute_company_cars(
                 int(newly_gainful.sum())
             ),
             "weighted_benefit_carved_gbp": total(carved, holders & tape),
-            # The EPB the tape rows' holders drew, and the benefits that moved
-            # from PAY into EPB on the rows that drew none.
+            # The EPB the tape rows' holders drew, and the benefits above it
+            # that moved from PAY into EPB.
             "weighted_epb_gbp": total(epb, tape_holders),
             "weighted_pay_moved_into_epb_gbp": total(moved, moved > 0.0),
             "weighted_list_price_scaled_away_gbp": total(scaled_away, scaled),

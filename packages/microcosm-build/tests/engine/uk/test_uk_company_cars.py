@@ -155,26 +155,29 @@ def test_spi_pay_plus_the_engine_s_benefits_is_the_tape_s_total(engine, run) -> 
     epb = before.table("person")["hmrc_spi_employment_benefits"].to_numpy()
     # FRS-channel pay is untouched.
     np.testing.assert_array_equal(pay_after[[0, 1, 4]], pay_before[[0, 1, 4]])
-    # A tape row's pay gives up the engine's benefits, which fit in EPB: the second
-    # tape row's car was scaled to EPB's GBP 1,500. The engine computes in single
-    # precision, so the identity holds to the penny, not to float64.
+    # A tape row's pay gives up the engine's benefits. The engine computes in
+    # single precision, so the identity holds to the penny, not to float64.
     np.testing.assert_allclose(
         pay_after[[2, 3, 5]] + values["benefits_in_kind"][[2, 3, 5]],
         pay_before[[2, 3, 5]],
         atol=0.01,
     )
-    assert (values["benefits_in_kind"][[2, 3]] <= epb[[2, 3]] + 0.01).all()
-    assert values["benefits_in_kind"][3] == pytest.approx(1_500.0, abs=0.01)
-    # The tape row without EPB keeps its car, and its benefits move from its PAY
-    # into its EPB, so its PAY + EPB stays the tape's.
+    # The first tape row's benefits fit in its EPB. The second's go above its
+    # EPB of GBP 1,500, and the rest moves from its PAY into its EPB; the third
+    # drew no EPB, so all of its benefits move. Each keeps its PAY + EPB.
     spi_after = after.table("person")
-    assert values["benefits_in_kind"][5] > 0
-    assert spi_after["hmrc_spi_employment_benefits"].iloc[5] == pytest.approx(
-        values["benefits_in_kind"][5], abs=0.01
+    epb_after = spi_after["hmrc_spi_employment_benefits"].to_numpy()
+    spi_pay_after = spi_after["hmrc_spi_pay"].to_numpy()
+    assert values["benefits_in_kind"][2] <= epb[2] + 0.01
+    assert epb_after[2] == pytest.approx(epb[2])
+    for row in (3, 5):
+        assert values["benefits_in_kind"][row] > epb[row]
+        assert epb_after[row] == pytest.approx(
+            values["benefits_in_kind"][row], abs=0.01
+        )
+    np.testing.assert_allclose(
+        (spi_pay_after + epb_after)[[2, 3, 5]], [150_000.0, 70_000.0, 50_000.0]
     )
-    assert spi_after["hmrc_spi_pay"].iloc[5] + spi_after[
-        "hmrc_spi_employment_benefits"
-    ].iloc[5] == pytest.approx(50_000.0)
     # The stage priced its output again on the engine: within a penny.
     assert receipt["spi_carve_out"]["max_abs_pay_identity_error_gbp"] <= 0.01
 

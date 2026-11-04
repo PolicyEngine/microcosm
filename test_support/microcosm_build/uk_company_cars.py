@@ -98,6 +98,7 @@ COMPANY_CARS_STAGE_OPERATIONS: tuple[dict[str, Any], ...] = (
         "epb_column": "hmrc_spi_employment_benefits",
         "pay_column": "hmrc_spi_pay",
         "benefits": ["company_car_benefit", "car_fuel_benefit"],
+        "cap": "epb_then_pay",
         "minimum_scaled_list_price_gbp": 5_000.0,
     },
     {

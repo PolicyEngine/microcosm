@@ -359,8 +359,8 @@ def test_the_carve_out_fits_each_benefit_inside_epb_and_pay(spec) -> None:
     car = 0.25 * (price - np.minimum([0.0, 6_000.0, 0.0, 0.0], CAP))
     carve = stage.carve_spi_benefits(
         epb=np.array([20_000.0, 3_000.0, 500.0, 9_000.0]),
-        spi_pay=np.array([70_000.0, 57_000.0, 39_500.0, 41_000.0]),
-        pay=np.array([90_000.0, 60_000.0, 40_000.0, 50_000.0]),
+        spi_pay=np.array([70_000.0, 1_000.0, 0.0, 0.0]),
+        pay=np.array([90_000.0, 4_000.0, 500.0, 9_000.0]),
         employee_contributions=np.zeros(4),
         list_price=price,
         contributions=np.array([0.0, 6_000.0, 0.0, 0.0]),
@@ -372,19 +372,21 @@ def test_the_carve_out_fits_each_benefit_inside_epb_and_pay(spec) -> None:
     )
     # 1: car 10,000 plus fuel 7,000 fit inside 20,000.
     assert carve.keep[0] and carve.benefit[0] == pytest.approx(17_000.0)
-    # 2: car 8,750 above EPB 3,000: the price scales to 12,000 with no contribution.
-    assert carve.keep[1] and carve.benefit[1] == pytest.approx(3_000.0)
-    assert carve.list_price[1] == pytest.approx(12_000.0)
+    # 2: car 8,750 above EPB 3,000 and PAY 1,000: the price scales to 16,000 with
+    # no contribution.
+    assert carve.keep[1] and carve.benefit[1] == pytest.approx(4_000.0)
+    assert carve.list_price[1] == pytest.approx(16_000.0)
     assert carve.contributions[1] == 0.0
-    # 3: EPB 500 would need a GBP 2,000 car, below the minimum price: dropped.
+    # 3: EPB 500 and no PAY would need a GBP 2,000 car, below the minimum price:
+    # dropped.
     assert not carve.keep[2] and carve.benefit[2] == 0.0
-    # 4: car 7,500 and fuel 7,000 do not fit inside EPB 9,000 together, so the
-    # fuel goes first and the car fits whole.
+    # 4: car 7,500 and fuel 7,000 do not fit inside EPB 9,000 and no PAY together,
+    # so the fuel goes first and the car fits whole.
     assert carve.keep[3] and not carve.private_fuel[3]
     assert carve.benefit[3] == pytest.approx(7_500.0)
     assert carve.list_price[3] == pytest.approx(30_000.0)
     assert carve.scaled.tolist() == [False, True, False, False]
-    assert (carve.benefit <= np.array([20_000.0, 3_000.0, 500.0, 9_000.0])).all()
+    assert (carve.benefit <= np.array([90_000.0, 4_000.0, 500.0, 9_000.0])).all()
 
 
 def test_private_fuel_goes_first_when_car_and_fuel_do_not_fit_together(spec) -> None:
@@ -393,8 +395,8 @@ def test_private_fuel_goes_first_when_car_and_fuel_do_not_fit_together(spec) -> 
 
     carve = stage.carve_spi_benefits(
         epb=np.array([6_000.0, 9_000.0]),
-        spi_pay=np.array([34_000.0, 31_000.0]),
-        pay=np.array([40_000.0, 40_000.0]),
+        spi_pay=np.zeros(2),
+        pay=np.array([6_000.0, 9_000.0]),
         employee_contributions=np.zeros(2),
         list_price=np.array([40_000.0, 35_000.0]),
         contributions=np.zeros(2),
@@ -407,15 +409,19 @@ def test_private_fuel_goes_first_when_car_and_fuel_do_not_fit_together(spec) -> 
     assert carve.keep.all() and not carve.private_fuel.any()
     assert carve.benefit[0] == pytest.approx(4_000.0)
     # The review's case: a 29% car on GBP 35,000 (10,150) with GBP 8,062 of fuel
-    # in EPB 9,000. The fuel goes, and the car scales to GBP 31,034.
+    # in EPB 9,000 with no PAY. The fuel goes, and the car scales to GBP 31,034.
     assert carve.list_price[1] == pytest.approx(9_000.0 / 0.29)
     assert carve.benefit[1] == pytest.approx(9_000.0)
 
 
-def test_the_cap_is_epb_within_the_pay(spec) -> None:
+def test_the_cap_is_epb_and_pay_within_the_pay(spec) -> None:
+    """EPB + PAY cap a car's benefits, EPB first: a car above EPB takes the rest
+    from PAY (María's rulings of 3 November 2026, the second on Vahid's review of
+    microcosm#1491); one above both scales."""
+
     carve = stage.carve_spi_benefits(
-        epb=np.array([9_000.0, 9_000.0]),
-        spi_pay=np.array([31_000.0, 0.0]),
+        epb=np.array([9_000.0, 2_000.0]),
+        spi_pay=np.array([31_000.0, 2_000.0]),
         pay=np.array([40_000.0, 4_000.0]),
         employee_contributions=np.zeros(2),
         list_price=np.array([40_000.0, 40_000.0]),
@@ -426,9 +432,35 @@ def test_the_cap_is_epb_within_the_pay(spec) -> None:
         contribution_cap=CAP,
         spec=spec,
     )
-    assert carve.benefit.tolist() == pytest.approx([9_000.0, 4_000.0])
-    assert carve.scaled.all()
-    assert carve.list_price.tolist() == pytest.approx([36_000.0, 16_000.0])
+    assert carve.benefit.tolist() == pytest.approx([10_000.0, 4_000.0])
+    assert carve.scaled.tolist() == [False, True]
+    assert carve.list_price.tolist() == pytest.approx([40_000.0, 16_000.0])
+    assert carve.receipt["kept_with_epb_topped_up_from_pay"] == stage.rounded_count(2)
+
+
+def test_a_small_epb_caps_a_car_no_more_than_none(spec) -> None:
+    """The review's probe on three rows that differ only in their drawn EPB:
+    each keeps its GBP 40,000 car, where a cap of EPB alone dropped the car on
+    EPB of GBP 100 and scaled it to GBP 8,000 on GBP 2,000 (Vahid's review of
+    microcosm#1491, item 5)."""
+
+    epb = np.array([0.0, 100.0, 2_000.0])
+    carve = stage.carve_spi_benefits(
+        epb=epb,
+        spi_pay=50_000.0 - epb,
+        pay=np.full(3, 50_000.0),
+        employee_contributions=np.zeros(3),
+        list_price=np.full(3, 40_000.0),
+        contributions=np.zeros(3),
+        private_fuel=np.zeros(3, dtype=bool),
+        car_benefit=np.full(3, 10_000.0),
+        fuel_benefit=np.zeros(3),
+        contribution_cap=CAP,
+        spec=spec,
+    )
+    assert carve.keep.all() and not carve.scaled.any()
+    assert carve.benefit.tolist() == pytest.approx([10_000.0] * 3)
+    assert carve.list_price.tolist() == pytest.approx([40_000.0] * 3)
 
 
 def test_the_cap_leaves_the_pay_an_employee_contribution_needs(spec) -> None:
@@ -457,20 +489,20 @@ def test_the_cap_leaves_the_pay_an_employee_contribution_needs(spec) -> None:
     assert carve.list_price[0] == pytest.approx(2_850.0 / 0.25)
     # The contribution takes all the pay: no room, so the car is dropped.
     assert not carve.keep[1] and carve.benefit[1] == 0.0
-    # Room to spare: EPB caps as before.
-    assert carve.benefit[2] == pytest.approx(9_000.0)
+    # Room to spare: EPB and PAY hold the whole car.
+    assert carve.benefit[2] == pytest.approx(10_000.0)
     assert (pay - carve.benefit >= employee - 1e-9).all()
-    assert carve.receipt["cap_below_epb_for_the_employee_contribution"] == (
-        stage.rounded_count(2)
+    assert carve.receipt["cap_below_epb_and_pay_for_the_employee_contribution"] == (
+        stage.rounded_count(3)
     )
-    # What the room costs beside a cap of EPB within pay alone (item 3 of the
-    # third review): the first car would scale to GBP 12,000, not 11,400; the
-    # second would keep a GBP 24,000 car; the third is untouched.
+    # What the room costs beside a cap of EPB + PAY within pay alone (item 3 of
+    # the third review): the first car would scale to GBP 12,000, not 11,400; the
+    # second would keep its GBP 40,000 car; the third is untouched.
     assert carve.receipt["cars_the_employee_contribution_scales_or_drops"] == (
         stage.rounded_count(2)
     )
     np.testing.assert_allclose(
-        carve.list_price_given_up_for_the_contribution, [600.0, 24_000.0, 0.0]
+        carve.list_price_given_up_for_the_contribution, [600.0, 40_000.0, 0.0]
     )
 
 
@@ -508,7 +540,7 @@ def test_a_row_without_epb_is_capped_at_its_pay(spec) -> None:
     assert carve.receipt["kept_without_epb"] == stage.rounded_count(3)
     # The second row's car takes all of its PAY (the review of microcosm#1491,
     # item 6): its cash pay is its termination pay alone.
-    assert carve.receipt["kept_without_epb_leaving_no_pay"] == stage.rounded_count(1)
+    assert carve.receipt["kept_leaving_no_pay"] == stage.rounded_count(1)
 
 
 class _UKEngine:
@@ -660,23 +692,22 @@ def test_the_whole_stage_writes_its_columns_and_carves_spi_pay(statistics) -> No
         - before.loc[tape, "employment_income"]
     )
     assert gap.abs().max() < 1e-6
-    # A row with EPB carves inside it; a row without moves the benefits from its
-    # PAY into its EPB, and every tape row keeps its PAY + EPB.
-    with_epb = tape & ~without_epb
-    assert (
-        benefit[with_epb] <= before.loc[with_epb, "hmrc_spi_employment_benefits"] + 1e-6
-    ).all()
+    # EPB holds a car's benefits first, the part above it moves from PAY into
+    # EPB, and every tape row keeps its PAY + EPB.
+    epb_before = before["hmrc_spi_employment_benefits"]
+    moved = (benefit - epb_before).clip(lower=0.0).where(tape, 0.0)
+    assert (moved[tape & ~without_epb] > 0).any()
     epb_after = after["hmrc_spi_employment_benefits"]
     pay_after = after["hmrc_spi_pay"]
-    np.testing.assert_allclose(epb_after[without_epb], benefit[without_epb])
+    np.testing.assert_allclose(epb_after[tape], (epb_before + moved)[tape], atol=1e-6)
     np.testing.assert_allclose(
-        (pay_after + epb_after)[tape],
-        (before["hmrc_spi_pay"] + before["hmrc_spi_employment_benefits"])[tape],
+        pay_after[tape], (before["hmrc_spi_pay"] - moved)[tape], atol=1e-6
     )
     assert (pay_after[tape] >= 0).all()
+    untouched = ~(moved > 1e-6)
     for column in ("hmrc_spi_pay", "hmrc_spi_employment_benefits"):
         pd.testing.assert_series_equal(
-            after.loc[~without_epb, column], before.loc[~without_epb, column]
+            after.loc[untouched, column], before.loc[untouched, column]
         )
     # The carved pay keeps every net-pay contribution, including the tape rows
     # that contribute all of it, and a carved row's UC gainful self-employment
@@ -782,12 +813,13 @@ def test_an_engine_that_prices_a_car_otherwise_misses_the_identity(
 ) -> None:
     """The second pricing reads the engine, not the carve-out's own sum: an
     engine whose car benefit ignores the list price leaves a scaled car's
-    benefit above what came out of pay."""
+    benefit above what came out of pay. Its flat benefit is above any row's pay,
+    so every tape row's car is scaled."""
 
     def flat(frame):
         car, fuel = _benefits(frame)
         price = frame.table("person")[stage.LIST_PRICE].to_numpy(float)
-        return np.where(price > 0, 9_000.0, 0.0), fuel
+        return np.where(price > 0, 200_000.0, 0.0), fuel
 
     transform = dataclasses.replace(_transform(statistics), benefits=flat)
     transform(_stage_frame())

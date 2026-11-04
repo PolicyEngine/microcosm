@@ -13925,6 +13925,7 @@
       "epb_column",
       "pay_column",
       "benefits",
+      "cap",
       "minimum_scaled_list_price_gbp"
      ],
      "properties": {
@@ -13943,6 +13944,11 @@
       },
       "pay_column": {
        "type": "string"
+      },
+      "cap": {
+       "enum": [
+        "epb_then_pay"
+       ]
       },
       "benefits": {
        "type": "array",
