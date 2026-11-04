@@ -57,9 +57,9 @@ source, in `added_rows.json`):
   Medicaid substitutions), both feeds give the same 33,250 targets in the
   same order, with no changed field, the same registry version
   (`b8d571e91c22`) and the same `national_state` surface (6,102 targets,
-  `3aa2a0830e7d`). No `ed_fsa` fact compiles by default: only
-  microcosm#1357's `student_loan_targets=True` binds any of them, 136 of the
-  461;
+  `3aa2a0830e7d`). No `ed_fsa` fact compiles by default: microcosm#1357's
+  `student_loan_targets=True` binds 136 of the 461, and nothing else binds
+  any;
 - the parity resources change in the feed name and digest, and the feed
   carries 11 new families (`ed_fsa.*`, 93 feed families). The generator
   declares them `off_by_default` reviewed exclusions under one fence for the
