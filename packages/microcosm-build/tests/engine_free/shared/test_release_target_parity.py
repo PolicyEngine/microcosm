@@ -343,10 +343,18 @@ class TestShippedManifest:
         assert "PR #1034" in state_wages.fence.origin
 
     def test_fsa_portfolio_families_are_off_by_default_exclusions(self) -> None:
-        """microcosm#1074: the ed_fsa families bind only in a build with the
-        federal student loan balance columns (microcosm#1357's opt-in), so the
-        default surface this manifest describes declares every one of them a
-        fenced reviewed exclusion, and none compiled."""
+        """microcosm#1074: no ed_fsa family compiles by default, so the default
+        surface this manifest describes declares all 11 fenced reviewed
+        exclusions under one ``ed_fsa`` namespace fence, and none compiled.
+
+        Only four of the 11 bind even in a build with the federal student loan
+        balance columns: microcosm#1357's opt-in binds the location, age,
+        debt-size and loan-type tables (its ``FSA_BOUND_TABLES``). The
+        portfolio summary and the six repayment-plan and IDR tables stay
+        diagnostic in every build (its ``FSA_DIAGNOSTIC_TABLES``), and so do
+        the loan-type table's recipient counts. Giving those seven families
+        their own exclusions waits for microcosm#1357, which owns their
+        reasons."""
         manifest = load_target_parity_manifest()
         fsa = {
             name: family

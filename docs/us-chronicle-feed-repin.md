@@ -58,7 +58,8 @@ source, in `added_rows.json`):
   same order, with no changed field, the same registry version
   (`b8d571e91c22`) and the same `national_state` surface (6,102 targets,
   `3aa2a0830e7d`). No `ed_fsa` fact compiles by default: only
-  microcosm#1357's `student_loan_targets=True` binds them;
+  microcosm#1357's `student_loan_targets=True` binds any of them, 136 of the
+  461;
 - the parity resources change in the feed name and digest, and the feed
   carries 11 new families (`ed_fsa.*`, 93 feed families). The generator
   declares them `off_by_default` reviewed exclusions under one fence for the
@@ -87,8 +88,12 @@ without gating on it (`ledger_artifact.py`, `_load_fact_rows`).
 
 The B4923C anchor test follows the committed re-pin reports to the pin
 (`test_us_esi_premiums.py`). A report may now add rows when it names a
-listing of the keys it adds and the one source they all come from; added
-rows from any other source, or rows added without a listing, still fail it.
+listing of the keys it adds, the one source they all come from and the
+record-set namespace they all sit in (`ed_fsa.` here); added rows from any
+other source or in any other namespace, or rows added without a listing,
+still fail it. The test declares the namespace rather than reading it from
+the source, because a source's record sets need not sit in a namespace of
+its name.
 
 The feed's home on the build machine is
 `~/PolicyEngine/_buildh-runtime/inputs/consumer_facts_us_41b2fb2.jsonl`.
