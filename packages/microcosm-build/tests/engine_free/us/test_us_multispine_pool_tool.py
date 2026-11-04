@@ -1046,8 +1046,11 @@ def test_legacy_entrypoint_publication_matches_origin_main_golden(
         # that skipped the CPS-reported Social Security restoration on resume.
         # microcosm#1258 moves the identity again (the late schedule and the
         # remaining-stage manifest gain the S-corp transfer target); pool_h5
-        # and agreement stay unchanged.
-        "manifest": "bfaa7ffc709b68dbb7d05ee8f4c7e0600612f22ef21f3329784b782a9f59e812",
+        # and agreement stay unchanged. microcosm#776 moves it again: the
+        # immigration family's entry clock re-derives the pool engine
+        # contracts and late registry identities; pool_h5 and agreement
+        # are still unchanged.
+        "manifest": "ba39a6940903f464ad9899edcbfee907d0ca8a03d189423f200b5a5de195fd8f",
     }
 
 

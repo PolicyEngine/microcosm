@@ -106,7 +106,7 @@ def test_stacked_tool_entrypoint_fixture_e2e_emits_one_logbook_row_at_every_term
         assert published_transfer["completion"] == {
             "status": "complete",
             "group_count": 19,
-            "target_count": 72,
+            "target_count": 73,
             "residual_null_rows": 0,
         }
         calibrated = [
@@ -350,7 +350,9 @@ def test_constants_adapter_equals_live_constants_and_stays_out_of_identities(
             # microcosm#1251's passive partnership/S-corp leaf in puf_support moves it.
             # microcosm#1259's recipient-share bound in puf_support moves it again.
             # microcosm#1261's entity split of line 32 moves it too.
-            "spec_sha256": 'fe3901b59a02c22978cc57a296afddfca91732f952c8ebc0ed9d44f3bfe6bf16',
+            # microcosm#776's entry clock and arrival-year seed site move it
+            # again.
+            "spec_sha256": "c46f0ea7a6ff2870503a45efe937692fbaed25d05b6a06e6ca68a6fbd44680ba",
         },
     }
 

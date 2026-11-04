@@ -416,6 +416,7 @@ def _collect_executable_content(
                 _is_executable_key(key)
                 and not declared_kernel_loader
                 and not compiler_identity_field
+                and not _is_release_input_column_key(key=key, location=location)
             ):
                 offenders.append(child_location)
             if (
@@ -608,6 +609,22 @@ def _is_reconciliation_raw_fact_keys(*, key: str, value: object, parent: dict) -
             isinstance(item, str) and re.fullmatch(_AGGREGATE_FACT_KEY, item)
             for item in keys
         )
+    )
+
+
+def _is_release_input_column_key(*, key: str, location: str) -> bool:
+    """Admit an engine variable name as a release-coverage column key.
+
+    ``release_input_coverage_manifest.json`` keys its ``columns`` by the
+    PolicyEngine input each row covers. ``years_since_us_entry``
+    (microcosm#776) holds the token ``entry``, but a column name is data the
+    release gate reads, never an entrypoint. Only a plain snake_case name in
+    that one mapping is admitted, and its row is still scanned.
+    """
+
+    return (
+        location.endswith("/release_input_coverage_manifest.json.columns")
+        and re.fullmatch(r"[a-z][a-z0-9_]*", key) is not None
     )
 
 

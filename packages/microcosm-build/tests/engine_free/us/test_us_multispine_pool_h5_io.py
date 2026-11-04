@@ -1108,7 +1108,7 @@ def _cached_canonical_stacked_late_dag_receipt(
         "completion": {
             "status": "complete",
             "group_count": 19,
-            "target_count": 72,
+            "target_count": 73,
             "residual_null_rows": 0,
         },
     }

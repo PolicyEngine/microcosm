@@ -43,6 +43,7 @@ EXPECTED_LEGACY_V1_SITES = {
     "energy_subsidy_training_cap",
     "exact_k_pcg64_selection",
     "housing_inputs_training_cap",
+    "immigration_arrival_year_draw",
     "immigration_ead_students_assignment",
     "immigration_ead_workers_assignment",
     "legacy_congressional_district_assignment",
@@ -142,6 +143,7 @@ AUDITED_SOURCE_BY_SITE = {
         (
             "immigration_ead_workers_assignment",
             "immigration_ead_students_assignment",
+            "immigration_arrival_year_draw",
         ),
         "packages/microcosm-build/src/microcosm/build/us_runtime/immigration.py",
     ),

@@ -47,7 +47,11 @@ year the immigration stage itself uses,
 :func:`~microcosm.build.us_runtime.immigration._asec_arrival_year`), clipped
 at zero. For the US-born (``CIT`` / ``PRCITSHP`` 1-3) it is their age: years in
 the US since birth. The engine reads it as the five-year-bar clock, which
-8 U.S.C. 1613(a) starts at entry *with qualified status*.
+8 U.S.C. 1613(a) starts at entry *with qualified status*. Since
+microcosm#776 the immigration stage stores the donor clock itself, with the
+arrival year drawn within the person's ``PEINUSYR`` band; this stage keeps
+any stored clock, so the bin-year fallback applies only to donor rows
+labelled before #776.
 
 **Known limitation: the clock runs from arrival.** Neither the ACS nor the
 ASEC donor records the date qualified status was granted. The proxy therefore
@@ -92,11 +96,16 @@ from microcosm.build.us_runtime.acs_transfer import ASEC_PUF_DONOR_SPINE
 from microcosm.build.us_runtime.base_pool import spine_column
 from microcosm.build.us_runtime.immigration import (
     _ARRIVAL_YEAR_MIDPOINTS,
+    _ENGINE_DEFAULT_YEARS_SINCE_US_ENTRY,
+    _FIVE_YEAR_BAR,
+    _FOREIGN_BORN_CITIZENSHIP_CODES,
     _NON_CITIZEN_SHARE_BAND,
     _SSN_CODE_TO_NAME,
     IMMIGRATION_STATUS_VALUES,
     SSN_CARD_TYPE_VALUES,
     US_IMMIGRATION_OUTPUT_COLUMNS,
+    US_IMMIGRATION_OWNED_PERSON_COLUMNS,
+    US_IMMIGRATION_YEARS_SINCE_ENTRY_COLUMN,
     _asec_arrival_year,
     _assign_ssn_card_codes,
     _derive_immigration_status,
@@ -129,7 +138,8 @@ ACS_LOCAL_IMMIGRATION_ISSUE = "microcosm#1020"
 #: The engine's five-year-bar clock. This stage fills it with an
 #: arrival-based status-duration proxy (years since measured arrival), which
 #: can clear the bar early for people who gained qualified status later.
-YEARS_SINCE_US_ENTRY_COLUMN = "years_since_us_entry"
+#: The immigration stage owns the column (microcosm#776).
+YEARS_SINCE_US_ENTRY_COLUMN = US_IMMIGRATION_YEARS_SINCE_ENTRY_COLUMN
 #: How the ACS worker and student targets are set (microcosm#1052 review):
 #: the national control minus the donor rows' pooled delivered count, floored
 #: at zero. A staging receipt without it predates the review and is refused.
@@ -145,24 +155,23 @@ FIVE_YEAR_BAR_STATUSES: tuple[str, ...] = (
     "CONDITIONAL_ENTRANT",
     "PAROLED_ONE_YEAR",
 )
-#: ``gov.hhs.medicaid.eligibility.five_year_bar_years`` (8 U.S.C. 1613(a)).
-FIVE_YEAR_BAR_YEARS = 5.0
+#: ``gov.hhs.medicaid.eligibility.five_year_bar_years`` (8 U.S.C. 1613(a)),
+#: the bar the immigration stage's entry-clock summary also reports.
+FIVE_YEAR_BAR_YEARS = _FIVE_YEAR_BAR
 #: Arrival-to-qualified-status lags the sensitivity block reports: one to ten
 #: years, then 15 and 20. Lags past five years exist (arrival in 2014 and
 #: status in 2023 is a nine-year lag), so five windows were not enough
 #: (microcosm#1052 review, round 4).
 ADJUSTMENT_LAG_YEARS: tuple[int, ...] = (1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 15, 20)
 #: The person inputs this stage owns on ACS rows (and, for the entry clock, on
-#: donor rows too).
-ACS_LOCAL_IMMIGRATION_COLUMNS: tuple[str, ...] = (
-    *US_IMMIGRATION_OUTPUT_COLUMNS,
-    YEARS_SINCE_US_ENTRY_COLUMN,
-)
+#: donor rows too): the immigration stage's own two labels and clock.
+ACS_LOCAL_IMMIGRATION_COLUMNS: tuple[str, ...] = US_IMMIGRATION_OWNED_PERSON_COLUMNS
 ACS_LOCAL_IMMIGRATION_GATE_NAME = "acs_local_immigration_signal"
 #: policyengine-us's ``years_since_us_entry`` default, an engine modelling
 #: convention rather than a statute value. A spine carrying it on every row
-#: has no entry-clock signal.
-ENGINE_DEFAULT_YEARS_SINCE_US_ENTRY = 5.0
+#: has no entry-clock signal. The immigration stage's gate refuses the same
+#: default-filled signature.
+ENGINE_DEFAULT_YEARS_SINCE_US_ENTRY = _ENGINE_DEFAULT_YEARS_SINCE_US_ENTRY
 
 _ACS_MIL = ACS_SOURCE_COLUMN_RENAMES["MIL"]
 _AGE = "age"
@@ -215,7 +224,7 @@ _DONOR_WORKER_COLUMNS: tuple[tuple[str, str], ...] = (
 _DONOR_STUDENT_COLUMNS: tuple[str, ...] = ("A_HSCOL", "is_full_time_college_student")
 
 _CITIZENSHIP_DOMAIN = (1, 2, 3, 4, 5)
-_FOREIGN_BORN = (4, 5)
+_FOREIGN_BORN = _FOREIGN_BORN_CITIZENSHIP_CODES
 _MEASURED_CITIZEN = (1, 2, 3, 4)
 _YES = (1,)
 #: SCHG 15/16: college undergraduate, graduate or professional school.
@@ -1170,7 +1179,10 @@ def acs_local_immigration_signal_gate(frame: Frame) -> GateResult:
     stage's band. Donor-spine composition is reported but not graded; the
     donor release graded it. The whole file must pass
     :func:`~microcosm.build.us_runtime.immigration.us_immigration_composition_gate`
-    (agreement, non-citizen band and the undocumented anchor band).
+    (agreement, non-citizen band and the undocumented anchor band, and,
+    since microcosm#776, a complete, non-negative entry clock that is not
+    the engine default for every non-citizen), so a missing clock cell is
+    named for its spine and once more for the file.
     """
 
     person = frame.table("person")

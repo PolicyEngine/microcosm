@@ -23,8 +23,12 @@ def test_semantic_hash_has_golden_vector_and_surface_separation(tmp_path) -> Non
     # acs_transfer's attested bytes again.
     # The ACS SSI disability-criteria stage (microcosm#1022) moves
     # ssi_disability_criteria's attested bytes.
+    # The immigration stage's entry clock and its new seed site,
+    # immigration_arrival_year_draw (microcosm#776), move the immigration
+    # stage's attested bytes and the seed protocol, and the clock's years
+    # catalog unit moves the schema-set receipt.
     assert first.spec_sha256 == (
-        "5892f4b1e6267b840e1f1528191c0f7c8e92e3089060dbcac2c74274d8073b84"
+        "f5950b7ee44d714cc411cbdabd0a2004d512a141744063f3545a3c01a999dbdc"
     )
 
     second_root = _rich_minimal(tmp_path / "xy", note="second", store="local:b")
