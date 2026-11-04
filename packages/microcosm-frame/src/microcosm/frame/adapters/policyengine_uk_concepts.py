@@ -231,15 +231,17 @@ _UK_OWNED_COMPANY_INTERMEDIARIES_AT_DEFAULT = (
 )
 _UK_CHILD_LIMIT_EXCEPTIONS_AT_DEFAULT = (
     "The exceptions to the Universal Credit and Child Tax Credit two-child limit "
-    "(UC Regs 2013 Sch 12; CTC Regs 2002 regs 9 to 14; policyengine-uk 2.161.0): "
-    "multiple births, adoption, non-parental caring arrangements, non-consensual "
-    "conception and the continuation of an earlier exception. The FRS records "
-    "none of them as such, so each stays false, and a third or later child who "
-    "qualifies for one gets no child element: Universal Credit is understated "
-    "for those families until the limit ends on 6 April 2026. Multiple births "
-    "(siblings of the same age) and non-parental care (a child whose benefit "
-    "unit holds no parent) could be read from the FRS household grid after this "
-    "lock (microcosm#1095; for María's signature)."
+    "(UC Regs 2013 Sch 12; CTC Regs 2002 regs 9 to 14; policyengine-uk 2.161.0) "
+    "for multiple births, adoption, non-consensual conception and the "
+    "continuation of an earlier exception. The FRS records none of them as such, "
+    "so each stays false, and a third or later child who qualifies for one gets "
+    "no child element: Universal Credit is understated for those families until "
+    "the limit ends on 6 April 2026. Multiple births stay false although "
+    "siblings of the same age could stand for them: the FRS has no twin field and "
+    "its birth dates are blank, so same-age siblings would also take in siblings "
+    "born under a year apart (María's ruling of 2 November 2026). The "
+    "non-parental caring exception is read from the household grid by "
+    "frs_relationships (microcosm#1095; for María's signature)."
 )
 
 
@@ -328,7 +330,6 @@ UK_ENGINE_DEFAULT_INPUTS: dict[str, str] = {
             "child_limit_continuation_exception",
             "child_limit_multiple_birth_exception",
             "child_limit_non_consensual_conception_exception",
-            "child_limit_non_parental_caring_exception",
         ),
         _UK_CHILD_LIMIT_EXCEPTIONS_AT_DEFAULT,
     ),

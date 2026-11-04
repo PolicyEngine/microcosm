@@ -140,8 +140,12 @@ _SOLVE_GENERATORS = (
 
 
 def _module_path(name: str) -> str:
-    relative = Path(*name.split(".")[2:]).with_suffix(".py")
-    return str((_BUILD_SOURCE / relative).relative_to(_REPOSITORY))
+    """The repository path of a first-party module in any workspace package:
+    the compile modules include ``microcosm.calibrate`` ones (microcosm#1492)."""
+    shard, *rest = name.split(".")[1:]
+    relative = Path(*rest).with_suffix(".py")
+    source = _REPOSITORY / "packages" / f"microcosm-{shard}" / "src" / "microcosm"
+    return str((source / shard / relative).relative_to(_REPOSITORY))
 
 
 def _docstrings(tree: ast.Module) -> set[int]:

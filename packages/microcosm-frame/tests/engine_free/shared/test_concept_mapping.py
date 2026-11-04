@@ -15,11 +15,12 @@ import re
 from contextlib import contextmanager
 from dataclasses import replace
 from types import MappingProxyType
+from typing import NamedTuple
 
 import numpy as np
 import pandas as pd
 import pytest
-from hypothesis import assume, given, settings
+from hypothesis import assume, example, given, settings
 from hypothesis import strategies as st
 
 from microcosm.frame import concept_mapping as concept_mapping_module
@@ -160,6 +161,27 @@ def _parameters(mapping: ConceptMapping, data) -> dict[str, dict[str, float]]:
     }
 
 
+def _detached(tables: dict[str, pd.DataFrame], data) -> dict[str, pd.DataFrame]:
+    """``tables`` with some persons' household ids made null or unknown.
+
+    ``encode`` runs no frame validator, so a person may name no household.
+    """
+
+    person = tables["person"].copy()
+    pointers = person["person_household_id"].tolist()
+    known = set(tables["household"]["household_id"].tolist())
+    unknown = st.integers(0, 2**40).filter(lambda value: value not in known)
+    detached = st.lists(st.sampled_from(range(len(pointers))), unique=True)
+    for row in data.draw(detached, label="detached rows"):
+        pointers[row] = data.draw(st.none() | unknown, label=f"household of {row}")
+    person["person_household_id"] = (
+        pd.array(pointers, dtype="Int64")
+        if None in pointers
+        else np.asarray(pointers, dtype=np.int64)
+    )
+    return {**tables, "person": person}
+
+
 def _assert_same_values(actual: pd.Series, expected: pd.Series) -> None:
     if actual.dtype.kind in "fiub" and expected.dtype.kind in "fiub":
         np.testing.assert_allclose(
@@ -291,6 +313,7 @@ class TestExecution:
     def test_encode_matches_a_row_by_row_reference(self, name, tables, data) -> None:
         mapping = MAPPINGS[name]
         parameters = _parameters(mapping, data)
+        tables = _detached(tables, data)
         compared = assert_encode_matches_reference(
             mapping, tables, parameters["shares"], parameters["take_up_rates"]
         )
@@ -2200,3 +2223,272 @@ class TestCoresidentAdult:
         }
         out = _adult_mapping(18).encode(tables).tables["person"]
         assert out[_ADULT_INPUT].tolist() == [False, False, False]
+
+
+# --- A person with no household --------------------------------------------
+
+_POINTER_DTYPES = ("Int64", "UInt64")
+_RENT = "fact:household.rent"
+#: P3's household id in the probe: null, or an id no household carries.
+_DETACHED = pytest.mark.parametrize("detached", [None, 99], ids=["null", "unknown"])
+_REFERENCE_ROLES = (
+    Role.REFERENCE_PERSON,
+    Role.REFERENCE_PERSON_PARTNER,
+    Role.UNMARRIED_PARTNER_OF_REFERENCE_PERSON,
+)
+
+
+def _probe_tables(
+    dtype: str,
+    detached: int | None,
+    *,
+    references=(1, 2),
+    partners=(None, None, None, None),
+    household_ids=(10, 20),
+) -> dict[str, pd.DataFrame]:
+    """P1 in household 10, P2 and P4 in household 20, P3 in ``detached``."""
+
+    dtype = pd.api.types.pandas_dtype(dtype)
+    person = pd.DataFrame(
+        {
+            "person_id": np.array([1, 2, 3, 4], dtype=np.int64),
+            "person_household_id": typed([10, 20, detached, 20], dtype),
+            "partner_person_id": pd.array(list(partners), dtype="Int64"),
+            "parent_1_person_id": pd.array([None] * 4, dtype="Int64"),
+            "parent_2_person_id": pd.array([None] * 4, dtype="Int64"),
+            "legal_marital_status": ["never_married"] * 4,
+        }
+    )
+    household = pd.DataFrame(
+        {
+            "household_id": typed(list(household_ids), dtype),
+            "reference_person_id": pd.array(list(references), dtype="Int64"),
+            "rent": [100.0, 900.0, 500.0][: len(household_ids)],
+        }
+    )
+    return {"person": person, "household": household}
+
+
+def _context(tables: dict[str, pd.DataFrame]):
+    return concept_mapping_module._Context(tables["person"], tables["household"])
+
+
+class _Strays(NamedTuple):
+    """A frame in which some persons may name no household, and a row order
+    for each of its tables."""
+
+    tables: dict[str, pd.DataFrame]
+    household_order: tuple[int, ...]
+    person_order: tuple[int, ...]
+
+
+def _reversed(tables: dict[str, pd.DataFrame]) -> _Strays:
+    return _Strays(
+        tables,
+        tuple(reversed(range(len(tables["household"])))),
+        tuple(reversed(range(len(tables["person"])))),
+    )
+
+
+@st.composite
+def _strays(draw) -> _Strays:
+    """A valid frame, then some persons' household ids made null or unknown.
+
+    Ids are typed Int64 or UInt64. A household row whose own id is null may
+    join, led by a person whose household id is null: get_indexer matches
+    a null with a null.
+    """
+
+    tables = draw(concept_frames(max_households=3, max_members=4))
+    dtype = pd.api.types.pandas_dtype(draw(st.sampled_from(_POINTER_DTYPES)))
+    person = tables["person"].copy()
+    household = tables["household"].copy()
+    known = household["household_id"].tolist()
+    pointers = person["person_household_id"].tolist()
+    unknown = st.integers(0, 2**40).filter(lambda value: value not in known)
+    for row in draw(st.lists(st.sampled_from(range(len(pointers))), unique=True)):
+        pointers[row] = draw(st.none() | unknown)
+    household_ids = list(known)
+    if draw(st.booleans()):
+        person_ids = person["person_id"].tolist()
+        nulls = [
+            id_ for id_, at in zip(person_ids, pointers, strict=True) if at is None
+        ]
+        extra = household.iloc[[0]].copy()
+        extra["reference_person_id"] = pd.array(
+            [draw(st.sampled_from(nulls or person_ids))], dtype="Int64"
+        )
+        household = pd.concat([household, extra], ignore_index=True)
+        household_ids.append(None)
+    person["person_household_id"] = typed(pointers, dtype)
+    household["household_id"] = typed(household_ids, dtype)
+    return _Strays(
+        {"person": person, "household": household},
+        tuple(draw(st.permutations(range(len(household))))),
+        tuple(draw(st.permutations(range(len(person))))),
+    )
+
+
+def _homes(tables: dict[str, pd.DataFrame]) -> list[int | None]:
+    """Each person's household row, looked up by id; None for no household."""
+
+    rows = {
+        int(value): row
+        for row, value in enumerate(tables["household"]["household_id"])
+        if not pd.isna(value)
+    }
+    return [
+        None if pd.isna(value) else rows.get(int(value))
+        for value in tables["person"]["person_household_id"]
+    ]
+
+
+_STRAYS = settings(max_examples=50, deadline=None)
+#: The probe cases, each with both tables' rows reversed.
+_PROBES = (
+    _reversed(_probe_tables("Int64", None)),
+    _reversed(_probe_tables("UInt64", 99, partners=(None, 3, 2, None))),
+    _reversed(_probe_tables("Int64", None, partners=(None, 3, 2, None))),
+    _reversed(_probe_tables("UInt64", None, references=(1, 3))),
+    _reversed(_probe_tables("Int64", 99, references=(1, 3))),
+    _reversed(
+        _probe_tables(
+            "UInt64", None, references=(1, 2, 3), household_ids=(10, 20, None)
+        )
+    ),
+)
+
+
+def _with_probes(test):
+    for probe in _PROBES:
+        test = example(strays=probe)(test)
+    return test
+
+
+class TestNoHousehold:
+    """A person whose household id is null or names no household has none.
+
+    ``encode`` runs no frame validator, so such a person can reach it.
+
+    - I1: they read no household's row. Their reference row is -1 and their
+      household amount NaN; no role flags them as a reference person or a
+      reference person's partner, and allocation gives them 0.
+    - I2: permuting the household rows changes no person's values, and
+      permuting the person rows permutes them alike.
+    - I3: each household whose reference person is a member keeps its
+      amount: its members' allocations sum to it.
+    """
+
+    @_DETACHED
+    @pytest.mark.parametrize("dtype", _POINTER_DTYPES)
+    def test_no_household_reads_no_reference_row(self, dtype, detached) -> None:
+        # Row -1 read the last household: P3 got household 20's reference.
+        context = _context(_probe_tables(dtype, detached))
+        assert context.reference_rows().tolist() == [0, 1, -1, 1]
+        amounts = context.household_amount_for_persons(_RENT)
+        assert amounts[[0, 1, 3]].tolist() == [100.0, 900.0, 900.0]
+        assert np.isnan(amounts[2])
+
+    @_DETACHED
+    @pytest.mark.parametrize("dtype", _POINTER_DTYPES)
+    def test_partner_flag_ignores_household_row_order(self, dtype, detached) -> None:
+        # P3 partners P2, household 20's reference person. P3 was flagged
+        # while household 20 was the last row, and not once it moved up.
+        tables = _probe_tables(dtype, detached, partners=(None, 3, 2, None))
+        role = RelationshipRole(role=Role.REFERENCE_PERSON_PARTNER)
+        for household in (tables["household"], tables["household"].iloc[::-1]):
+            context = _context({**tables, "household": household})
+            flags = concept_mapping_module._role_flags(role, context)
+            assert flags.tolist() == [False] * 4
+
+    @_DETACHED
+    @pytest.mark.parametrize("dtype", _POINTER_DTYPES)
+    def test_allocation_skips_a_reference_person_with_no_household(
+        self, dtype, detached
+    ) -> None:
+        # Household 20 names P3, who belongs to no household, as its
+        # reference person; P3 took household 20's rent.
+        tables = _probe_tables(dtype, detached, references=(1, 3))
+        out = _pointer_mapping().encode(tables).tables["person"]
+        assert out["rent_paid"].tolist() == [100.0, 0.0, 0.0, 0.0]
+        assert out["reference_person"].tolist() == [True, False, False, False]
+
+    @pytest.mark.parametrize("dtype", _POINTER_DTYPES)
+    def test_null_household_id_finds_no_null_household_row(self, dtype) -> None:
+        # pd.NA finds pd.NA in get_indexer, so P3 found the third household.
+        tables = _probe_tables(
+            dtype, None, references=(1, 2, 3), household_ids=(10, 20, None)
+        )
+        assert _context(tables).reference_rows().tolist() == [0, 1, -1, 1]
+        out = _pointer_mapping().encode(tables).tables["person"]
+        assert out["reference_person"].tolist() == [True, True, False, False]
+        assert out["rent_paid"].tolist() == [100.0, 900.0, 0.0, 0.0]
+
+    def test_empty_household_table_leaves_everyone_without_one(self) -> None:
+        tables = _probe_tables("Int64", None)
+        tables["household"] = tables["household"].iloc[:0]
+        context = _context(tables)
+        assert context.reference_rows().tolist() == [-1] * 4
+        assert np.isnan(context.household_amount_for_persons(_RENT)).all()
+        out = _pointer_mapping().encode(tables).tables["person"]
+        assert out["rent_paid"].tolist() == [0.0] * 4
+        assert not out["reference_person"].any()
+
+    @_STRAYS
+    @_with_probes
+    @given(strays=_strays())
+    def test_i1_no_household_reads_no_households_row(self, strays) -> None:
+        tables = strays.tables
+        household = tables["household"]
+        context = _context(tables)
+        references = context.reference_rows()
+        amounts = context.household_amount_for_persons(_RENT)
+        out = _pointer_mapping().encode(tables).tables["person"]
+        row_of = {
+            int(value): row for row, value in enumerate(tables["person"]["person_id"])
+        }
+        for row, home in enumerate(_homes(tables)):
+            if home is None:
+                assert references[row] == -1
+                assert np.isnan(amounts[row])
+                assert out["rent_paid"].iloc[row] == 0.0
+                assert not any(out[role.value].iloc[row] for role in _REFERENCE_ROLES)
+                continue
+            reference = household["reference_person_id"].iloc[home]
+            assert references[row] == row_of.get(int(reference), -1)
+            assert amounts[row] == household["rent"].iloc[home]
+
+    @_STRAYS
+    @_with_probes
+    @given(strays=_strays())
+    def test_i2_row_order_changes_no_persons_values(self, strays) -> None:
+        tables = strays.tables
+        mapping = _pointer_mapping()
+        before = mapping.encode(tables).tables["person"]
+        household = tables["household"].iloc[list(strays.household_order)]
+        after = mapping.encode(
+            {**tables, "household": household.reset_index(drop=True)}
+        )
+        pd.testing.assert_frame_equal(after.tables["person"], before)
+        order = list(strays.person_order)
+        person = tables["person"].iloc[order].reset_index(drop=True)
+        moved = mapping.encode({**tables, "person": person}).tables["person"]
+        pd.testing.assert_frame_equal(moved, before.iloc[order].reset_index(drop=True))
+
+    @_STRAYS
+    @_with_probes
+    @given(strays=_strays())
+    def test_i3_each_household_keeps_its_amount(self, strays) -> None:
+        tables = strays.tables
+        household = tables["household"]
+        person_ids = tables["person"]["person_id"].tolist()
+        paid = _pointer_mapping().encode(tables).tables["person"]["rent_paid"]
+        homes = _homes(tables)
+        for row in range(len(household)):
+            members = [index for index, home in enumerate(homes) if home == row]
+            reference = household["reference_person_id"].iloc[row]
+            if pd.isna(reference) or int(reference) not in {
+                person_ids[member] for member in members
+            }:
+                continue
+            assert paid.iloc[members].sum() == household["rent"].iloc[row]

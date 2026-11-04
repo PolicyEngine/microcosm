@@ -1,0 +1,206 @@
+{
+  "schema_version": 1,
+  "country": "nz",
+  "generator": "tools/build_nz_transport_graph.py",
+  "measurement_id": "ird_taxable_income_ty2027_v1",
+  "description": "The d1952 stand-in income measure: a person-level, annual, TY2027 NZD statistical measure computed by measure.combine@1 in integer cents. It is not IRD taxable income. Universe: included at x > 0, excluded at x <= 0, unresolved on any null component (R2C-14). The unit column is max(0, x)/100 (R2C-10).",
+  "measures": {
+    "central": {
+      "description": "Design 80 section 3: P1-mapped wages, signed self-employment, interest, dividends, rental profit with losses added back (max(0, r)), and the annual gross JS, SPS, SLP and NZS transfers.",
+      "declaration": {
+        "entity": "person",
+        "components": [
+          {
+            "column": "employment_income_cents",
+            "sign": 1
+          },
+          {
+            "column": "nonfarm_self_employment_income_cents",
+            "sign": 1
+          },
+          {
+            "column": "farm_self_employment_income_cents",
+            "sign": 1
+          },
+          {
+            "column": "interest_income_cents",
+            "sign": 1
+          },
+          {
+            "column": "dividend_income_cents",
+            "sign": 1
+          },
+          {
+            "column": "rental_income_cents",
+            "sign": 1
+          },
+          {
+            "column": "jobseeker_support_annual_gross_transfer_cents",
+            "sign": 1
+          },
+          {
+            "column": "sole_parent_support_annual_gross_transfer_cents",
+            "sign": 1
+          },
+          {
+            "column": "supported_living_payment_annual_gross_transfer_cents",
+            "sign": 1
+          },
+          {
+            "column": "nz_super_annual_gross_transfer_cents",
+            "sign": 1
+          }
+        ],
+        "add_backs": [
+          "rental_income_cents"
+        ],
+        "floor": 0,
+        "scale": 100,
+        "outputs": {
+          "measure": "ird_taxable_income_proxy_cents",
+          "unit": "ird_taxable_income_proxy_nzd",
+          "universe_status": "ird_taxable_income_proxy_universe_status"
+        }
+      },
+      "declaration_sha256": "f438e1ff7b2231161086c49ac3c0256da8fe5d8ef6250658314c59a4a6fbb4d8"
+    },
+    "vsi": {
+      "description": "VSI stress test: the central measure without the four transfer addends, with the same flags, payments and entitlement rules.",
+      "declaration": {
+        "entity": "person",
+        "components": [
+          {
+            "column": "employment_income_cents",
+            "sign": 1
+          },
+          {
+            "column": "nonfarm_self_employment_income_cents",
+            "sign": 1
+          },
+          {
+            "column": "farm_self_employment_income_cents",
+            "sign": 1
+          },
+          {
+            "column": "interest_income_cents",
+            "sign": 1
+          },
+          {
+            "column": "dividend_income_cents",
+            "sign": 1
+          },
+          {
+            "column": "rental_income_cents",
+            "sign": 1
+          }
+        ],
+        "add_backs": [
+          "rental_income_cents"
+        ],
+        "floor": 0,
+        "scale": 100,
+        "outputs": {
+          "measure": "ird_taxable_income_proxy_cents",
+          "unit": "ird_taxable_income_proxy_nzd",
+          "universe_status": "ird_taxable_income_proxy_universe_status"
+        }
+      },
+      "declaration_sha256": "317f2cf0fad594d7e17894ef8b40b4d5ea3e8685a998d0e4dcf0dce2016f5a28"
+    }
+  },
+  "omission_register": {
+    "description": "Items IRD taxable income contains that the stand-in omits. A size appears only where a repo resource or a cited public source gives one; design 80's percentages are the proposal's claims and carry no source here, so every size reads unknown. Unknown is not zero.",
+    "items": [
+      {
+        "item": "private_pension_income",
+        "size": "unknown",
+        "reason": "The taxable share of private pensions is unknown."
+      },
+      {
+        "item": "realized_capital_gains",
+        "size": "unknown",
+        "reason": "NZ taxes few realised gains."
+      },
+      {
+        "item": "veterans_pension",
+        "size": "unknown",
+        "reason": "Receipt is unsupported under H4 (receipt_contract.json); the VP rows stay parked."
+      },
+      {
+        "item": "youth_and_young_parent_payment",
+        "size": "unknown",
+        "reason": "No program binding."
+      },
+      {
+        "item": "acc_weekly_compensation",
+        "size": "unknown",
+        "reason": "No ACC producer."
+      },
+      {
+        "item": "student_allowances",
+        "size": "unknown",
+        "reason": "No student-allowance producer."
+      },
+      {
+        "item": "paid_parental_leave",
+        "size": "unknown",
+        "reason": "No PPL producer."
+      },
+      {
+        "item": "trust_income",
+        "size": "unknown",
+        "reason": "No trust producer; may overlap other items."
+      },
+      {
+        "item": "overseas_income",
+        "size": "unknown",
+        "reason": "No overseas-income producer."
+      },
+      {
+        "item": "look_through_company_income",
+        "size": "unknown",
+        "reason": "No LTC producer."
+      },
+      {
+        "item": "partnership_and_maori_authority_allocations",
+        "size": "unknown",
+        "reason": "No allocation producer."
+      },
+      {
+        "item": "taxable_property_disposals",
+        "size": "unknown",
+        "reason": "No disposal producer."
+      },
+      {
+        "item": "deductions_and_losses_beyond_those_netted",
+        "size": "unknown",
+        "reason": "Only self-employment losses and the rental add-back are netted."
+      }
+    ]
+  },
+  "review_triggers": {
+    "description": "R2C-3: VSI escalation triggers are review triggers, not gates. When one fires the hub writes a ruling before any release claim. No gate kind computes them yet, so G8-x reports them.",
+    "scenario": "VSI",
+    "triggers": [
+      {
+        "measure": "accommodation_supplement_recipients",
+        "relative_change_above": "0.10"
+      },
+      {
+        "measure": "accommodation_supplement_expenditure",
+        "relative_change_above": "0.10"
+      },
+      {
+        "measure": "central_weighted_positive_population_crossing_floor",
+        "share_above": "0.05"
+      }
+    ]
+  },
+  "diagnostics": {
+    "wage_earner_count": {
+      "ruling": "R2C-8",
+      "status": "diagnostic only; G8-x reports it",
+      "comparison": "the sum of the 235 IRD P1 wage counts against the model's weighted persons with positive employment_income, before and after the fit"
+    }
+  }
+}
