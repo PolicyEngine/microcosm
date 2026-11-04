@@ -1326,8 +1326,9 @@ class TestAnchorFeedCheck:
         }
 
     #: The pin test's three B4923C record sets, one for each year of the
-    #: banked series. The cases below touch cy2024, which sorts between the
-    #: other two.
+    #: banked series. Each anchor case below runs once for each of them, so a
+    #: check that reads only some of the three lets one of those cases
+    #: through.
     _ANCHORS = {
         "bea_nipa.cy2023.private_group_health_insurance",
         "bea_nipa.cy2024.private_group_health_insurance",
@@ -1354,11 +1355,32 @@ class TestAnchorFeedCheck:
             declared_namespace="ed_fsa.",
         ) == ("new", 12)
 
+    def test_a_later_report_may_relabel_rows_and_add_none(self) -> None:
+        # As microcosm#1343's re-pin did: label changes, the record-set hash
+        # that covers them, and no added row.
+        later = self._later_report(
+            added_keys=[],
+            changed_fields={
+                "dimension_value_labels/age/85_plus": {
+                    "rows": 1,
+                    "by_record_set": {"x": 1},
+                },
+                "layout/groupby_value_label": {"rows": 1, "by_record_set": {"x": 1}},
+                "layout/record_set_spec_hash": {"rows": 2, "by_record_set": {"x": 2}},
+            },
+        )
+        assert _follow_later_repin_report(
+            later,
+            feed_sha256="old",
+            feed_rows=10,
+            anchor_record_sets=self._ANCHORS,
+        ) == ("new", 10)
+
     # Each refusing case below names the check that must refuse it, so a check
-    # moved ahead of another fails the case it takes over. A case for a check
-    # that reads a list or a mapping puts its one bad entry between two good
-    # ones, so a check that reads only the first entry, or only the last,
-    # lets the case through.
+    # moved ahead of another fails the case it takes over. A check that reads
+    # only the first entry of a list or a mapping, or only the last, lets
+    # through each case whose comment puts its bad entry between two good
+    # ones.
     @pytest.mark.parametrize(
         (
             "added_keys",
@@ -1401,17 +1423,20 @@ class TestAnchorFeedCheck:
             ),
             # A declared row in a B4923C anchor record set, which also sits
             # outside the declared namespace, between two rows that sit inside
-            # it.
-            (
-                ["k1", "k2", "k3"],
-                [
-                    ("k1", "ed_fsa", "ed_fsa.a"),
-                    ("k2", "ed_fsa", "bea_nipa.cy2024.private_group_health_insurance"),
-                    ("k3", "ed_fsa", "ed_fsa.b"),
-                ],
-                "ed_fsa",
-                "ed_fsa.",
-                "an added row in a B4923C record set",
+            # it: one case for each anchor.
+            *(
+                (
+                    ["k1", "k2", "k3"],
+                    [
+                        ("k1", "ed_fsa", "ed_fsa.a"),
+                        ("k2", "ed_fsa", anchor),
+                        ("k3", "ed_fsa", "ed_fsa.b"),
+                    ],
+                    "ed_fsa",
+                    "ed_fsa.",
+                    "an added row in a B4923C record set",
+                )
+                for anchor in sorted(_ANCHORS)
             ),
             # A listing with no declared source.
             (
@@ -1457,7 +1482,9 @@ class TestAnchorFeedCheck:
             "other-source",
             "listing-short",
             "listing-extra",
-            "anchor-record-set",
+            "anchor-record-set-cy2023",
+            "anchor-record-set-cy2024",
+            "anchor-record-set-cy2025",
             "no-source",
             "outside-namespace",
             "namespace-not-leading",
@@ -1570,29 +1597,29 @@ class TestAnchorFeedCheck:
                 "an old feed of another size",
             ),
             # A label change in a B4923C record set, between two record sets
-            # outside the anchors, in the second of three changed fields.
-            (
-                lambda r: r["rows"]["changed_fields"].update(
-                    {
-                        "layout/record_set_spec_hash": {
-                            "rows": 1,
-                            "by_record_set": {"x": 1},
-                        },
-                        "layout/groupby_value_label": {
-                            "rows": 3,
-                            "by_record_set": {
-                                "x": 1,
-                                "bea_nipa.cy2024.private_group_health_insurance": 1,
-                                "z": 1,
+            # outside the anchors, in the second of three changed fields: one
+            # case for each anchor, which the default argument binds.
+            *(
+                (
+                    lambda r, anchor=anchor: r["rows"]["changed_fields"].update(
+                        {
+                            "layout/record_set_spec_hash": {
+                                "rows": 1,
+                                "by_record_set": {"x": 1},
                             },
-                        },
-                        "dimension_value_labels/age/85_plus": {
-                            "rows": 1,
-                            "by_record_set": {"z": 1},
-                        },
-                    }
-                ),
-                "changes a B4923C record set",
+                            "layout/groupby_value_label": {
+                                "rows": 3,
+                                "by_record_set": {"x": 1, anchor: 1, "z": 1},
+                            },
+                            "dimension_value_labels/age/85_plus": {
+                                "rows": 1,
+                                "by_record_set": {"z": 1},
+                            },
+                        }
+                    ),
+                    "changes a B4923C record set",
+                )
+                for anchor in sorted(_ANCHORS)
             ),
         ],
         ids=[
@@ -1604,7 +1631,9 @@ class TestAnchorFeedCheck:
             "wrong-base-sorts-first",
             "old-row-count",
             "old-row-count-short",
-            "anchor-label",
+            "anchor-label-cy2023",
+            "anchor-label-cy2024",
+            "anchor-label-cy2025",
         ],
     )
     def test_a_later_report_still_refuses_dropped_or_changed_rows(
