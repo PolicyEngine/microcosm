@@ -45,18 +45,24 @@ class _Fitted:
             assert uniforms.shape == (len(predictors),)
         return pd.DataFrame({SALSAC_OUTPUT: self.value}, index=predictors.index)
 
+    def gate_outcomes(self) -> dict[str, str]:
+        return {SALSAC_OUTPUT: "cross_fitted"}
+
 
 class _FakeQRF:
     training_frames: list[pd.DataFrame] = []
 
-    def __init__(self, *, n_estimators: int, seed: int) -> None:
+    def __init__(self, *, n_estimators: int, seed: int, gate_calibration: str) -> None:
         assert n_estimators == 100
         assert seed == 42
+        assert gate_calibration == "cross_fitted"
 
-    def fit(self, frame, predictors, targets, *, weights):
+    def fit(self, frame, predictors, targets, *, weights, groups):
         assert predictors == ["age", "employment_income"]
         assert targets == [SALSAC_OUTPUT]
         assert weights == "_fit_weight"
+        # One household key per training person, for the gate's folds.
+        assert len(groups) == len(frame)
         self.training_frames.append(frame.copy())
         return _Fitted()
 
@@ -490,8 +496,8 @@ def test_draws_move_only_for_the_people_whose_inputs_move(
             return pd.DataFrame({SALSAC_OUTPUT: 0.0}, index=predictors.index)
 
     class _KeyedQRF(_FakeQRF):
-        def fit(self, frame, predictors, targets, *, weights):
-            super().fit(frame, predictors, targets, weights=weights)
+        def fit(self, frame, predictors, targets, *, weights, groups):
+            super().fit(frame, predictors, targets, weights=weights, groups=groups)
             return _Keyed()
 
     monkeypatch.setattr(salary_sacrifice, "QRF", _KeyedQRF)

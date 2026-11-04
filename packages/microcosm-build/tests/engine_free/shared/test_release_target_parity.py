@@ -488,6 +488,46 @@ class TestJctObbbaAdjudication:
         assert feed_families["families"]["jct.obbba_title_vii"] == 1
 
 
+class TestFeedLabelVariants:
+    """microcosm#1343: the inventory records every dimension value the feed
+    labels more than one way, so CI sees a label regression without the feed."""
+
+    def test_generator_lists_values_with_two_labels_from_either_field(self) -> None:
+        generator = _load_generator()
+        agi = "us:statutes/26/62#adjusted_gross_income"
+        rows = [
+            {
+                "dimension_value_labels": {agi: {"all": "All returns"}},
+                "layout": {
+                    "groupby_dimension": agi,
+                    "groupby_value_id": "all",
+                    "groupby_value_label": "All returns",
+                },
+            },
+            {
+                "dimension_value_labels": {
+                    agi: {"all": "All returns, total"},
+                    "filing_status": {"all": "All filing statuses"},
+                },
+                "layout": {},
+            },
+            {
+                "dimension_value_labels": {"age": {"85_plus": "Age 85 plus"}},
+                "layout": {
+                    "groupby_dimension": "age",
+                    "groupby_value_id": "85_plus",
+                    "groupby_value_label": "Age 85 and over",
+                },
+            },
+            {"dimension_value_labels": {"age": {"age_20": "Age 20"}}},
+        ]
+
+        assert generator._dimension_value_label_variants(rows) == {
+            "age": {"85_plus": ["Age 85 and over", "Age 85 plus"]},
+            agi: {"all": ["All returns", "All returns, total"]},
+        }
+
+
 class TestRegeneration:
     """Feed-dependent reproduction — guarded on the pinned feed being present."""
 
