@@ -7,6 +7,7 @@ execution of a view is the skip-gated differential (b) at the end.
 
 import importlib.util
 import json
+import math
 import os
 from pathlib import Path
 from types import SimpleNamespace
@@ -985,27 +986,82 @@ _BE_ROOT = os.environ.get("POPULACE_RULESPEC_BE")
 _BE_MODULE = "be/statutes/family_benefits/regional_routing.yaml"
 _BE_MODULE_SHA256 = "408e73587e60d91136f80a71612802cb8c111f7ea5baf5abaeecb772c43c2413"
 _GRAPH_KINDS = ("bool", "integer", "decimal", "judgment")
+#: The values of the Child roots whose names mislead :func:`_real_inputs`'s
+#: suffix rule, typed as the written cases in rulespec-be's own tests at
+#: 530849e type them. The routing region takes all four region codes,
+#: Flanders 0 to the German-speaking Community 3.
+_REAL_INPUT_VALUES = {
+    "belgium_family_benefits_region": (0, 1, 2, 3),
+    **dict.fromkeys(
+        (
+            "brussels_family_benefits_child_domiciled_in_brussels_capital_region",
+            "flanders_family_benefits_child_domiciled_in_dutch_language_region",
+            "german_speaking_community_family_benefits_child_domiciled_in_german_language_region",
+            "german_speaking_community_family_benefits_foreign_stay_or_settlement_authorized_more_than_three_months",
+            "wallonia_family_benefits_child_legal_domicile_in_french_language_region",
+            "wallonia_family_benefits_child_without_legal_domicile_effectively_resides_in_french_language_region",
+            "wallonia_family_benefits_parents_eu_or_reg883_and_economic_activity_in_french_region",
+        ),
+        (False, True),
+    ),
+    "flanders_family_benefits_disability_tier": tuple(range(5)),
+    "flanders_family_benefits_orphan_status_code": tuple(range(3)),
+    "wallonia_family_benefits_disability_tier": tuple(range(8)),
+    "german_speaking_community_family_benefits_disability_category": tuple(range(4)),
+    "german_speaking_community_family_benefits_benefit_year": (2025, 2026, 2027, 2028),
+    "german_speaking_community_family_benefits_article_10_extension_months_used": tuple(
+        range(26)
+    ),
+    "german_speaking_community_family_benefits_months_since_disappearance": tuple(
+        range(26)
+    ),
+    **dict.fromkeys(
+        (
+            "german_speaking_community_family_benefits_current_index_factor",
+            "german_speaking_community_family_benefits_pre_2025_index_factor",
+        ),
+        (1.0, 1.1, 1.2, 1.4),
+    ),
+}
 
 
 def _real_inputs(names, n, generator):
     """Typed random inputs by name: RuleSpec inputs carry no dtype (axiom#62).
 
-    Counts, ages and years become integers, money becomes decimals, the
-    region becomes one of the three region codes, and every other input a
-    bool. The run on the pinned engine checks the guess: the engine refuses
-    an input of the wrong type by name.
+    A name in ``_REAL_INPUT_VALUES`` draws from its values there. Otherwise
+    counts, ages and years become integers, money becomes decimals, and
+    every other input a bool. The run on the pinned engine checks the
+    typing: the engine refuses an input of the wrong type by name. Names
+    draw in sorted order, because ``root_inputs`` comes back in a different
+    order in each process, and the seed fixes the batch only for one order.
     """
     columns = {}
-    for name in names:
-        if name.endswith(("_years", "_count", "_months", "_rank")):
+    for name in sorted(names):
+        if name in _REAL_INPUT_VALUES:
+            columns[name] = generator.choice(np.asarray(_REAL_INPUT_VALUES[name]), n)
+        elif name.endswith(("_years", "_count", "_months", "_rank")):
             columns[name] = generator.integers(0, 26, n).astype(np.int64)
         elif name.endswith(("_income", "_amount", "_eur")):
             columns[name] = generator.integers(0, 60_000, n).astype(np.float64)
-        elif name.endswith("_region"):
-            columns[name] = generator.integers(1, 4, n).astype(np.int64)
         else:
             columns[name] = generator.integers(0, 2, n).astype(bool)
     return columns
+
+
+def test_real_inputs_preserve_types_regions_and_seed_across_root_orders():
+    """Misleading suffixes keep the types of the pinned RuleSpec examples."""
+    kinds = {
+        "belgium_family_benefits_region": "i",
+        "flanders_family_benefits_child_domiciled_in_dutch_language_region": "b",
+        "flanders_family_benefits_disability_tier": "i",
+        "german_speaking_community_family_benefits_current_index_factor": "f",
+        "german_speaking_community_family_benefits_foreign_stay_or_settlement_authorized_more_than_three_months": "b",
+    }
+    forward = _real_inputs(kinds, 200, np.random.default_rng(530849))
+    assert {name: values.dtype.kind for name, values in forward.items()} == kinds
+    assert set(forward["belgium_family_benefits_region"]) == {0, 1, 2, 3}
+    reverse = _real_inputs(reversed(kinds), 200, np.random.default_rng(530849))
+    assert all(np.array_equal(forward[name], reverse[name]) for name in kinds)
 
 
 @pytest.mark.skipif(
@@ -1033,6 +1089,7 @@ def test_differential_b_real_child_program_against_the_view():
         module, rulespec_roots=(root,), entity="Child"
     )
     assert not list(program.relations)
+    assert "is_child" not in program.root_inputs
     dtypes = {
         item.name: item.dtype
         for item in program.derived_metadata
@@ -1045,6 +1102,7 @@ def test_differential_b_real_child_program_against_the_view():
     batch = _real_inputs(program.root_inputs, n, generator)
     bounds = dict(period_kind="calendar_year", start="2026-01-01", end="2026-12-31")
     full = program.execute(**bounds, inputs=batch, outputs=outputs)["outputs"]
+    assert any(len(set(np.asarray(full[name]).tolist())) > 1 for name in outputs)
     for order in (
         generator.permutation(n),
         np.asarray([0]),
@@ -1099,10 +1157,15 @@ def test_differential_b_real_child_program_against_the_view():
         assert through_view[name][selected].tolist() == expected.tolist()
         assert (through_view[name][~selected] == outside[name]).all()
         if dtypes[name] == "decimal":
-            # P3 on the real engine.
-            assert through_view[name].sum() == expected.astype(
-                np.float64
-            ).sum() + outside[name] * int((~selected).sum())
+            # P3 on the real engine. math.fsum rounds the exact total once,
+            # so neither the order of the rows nor the outside rows can move
+            # it, as float64 sums in numpy's order can.
+            assert math.fsum(through_view[name]) == math.fsum(
+                [
+                    *expected.astype(np.float64),
+                    *[outside[name]] * int((~selected).sum()),
+                ]
+            )
 
 
 # ---------------------------------------------------------------------------
