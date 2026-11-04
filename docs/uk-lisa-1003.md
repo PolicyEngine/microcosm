@@ -139,12 +139,17 @@ financial wealth. LISAs are not inside `savings` (savings accounts),
 `cash_isa`, `stocks_and_shares_isa` or `corporate_wealth`. The LISA columns are
 a detail of gross financial wealth: they must never be added to it, to
 `savings`, or to the ISA columns. The engine's `total_wealth` does not read
-`gross_financial_wealth`. On policyengine-uk 2.165.1 the means tests of
+`gross_financial_wealth`. On policyengine-uk 2.174.1 the means tests of
 Universal Credit, Housing Benefit, Pension Credit, income-based ESA and JSA and
 Income Support count a LISA at its surrender value
 (`lifetime_isa_countable_capital`: the balance less the withdrawal charge below
-the charge-free age) as person capital, and count the household `cash_isa`,
-the sum of its members' `cash_isa_balance` (microcosm#1415), beside `savings`.
+the charge-free age) as person capital. From 2.174.0 they also count each
+member's `cash_isa_balance` and `stocks_and_shares_isa_balance`
+(microcosm#1415) in the holder's own benefit unit, and take those balances out
+of the household `cash_isa` and `share_like_capital` before they share the
+rest. Where the build records a unit's complete capital
+(`uc_reported_capital`, `pension_credit_reported_capital`), that figure
+replaces these sources for Universal Credit and Pension Credit.
 Innovative-finance ISAs and ISAs of unknown type remain inside gross financial
 wealth only.
 

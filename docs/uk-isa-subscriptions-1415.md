@@ -26,8 +26,10 @@ The pinned policyengine-uk 2.174.1 reads all five:
   `stocks_and_shares_isa` sum.
 
 The release does not store those household totals. A stored total would
-override the sum, so the means tests, which count the household `cash_isa`,
-read the sum of the person balances.
+override the sum. From policyengine-uk 2.174.0 the means tests count each
+person balance in its holder's own benefit unit and take it out of the
+household totals first, so with no stored total no part of the household
+`cash_isa` is left to share between benefit units.
 
 ## Sources
 

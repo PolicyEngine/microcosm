@@ -1288,6 +1288,17 @@ def frs_property_income(person: pd.DataFrame, household: pd.DataFrame) -> np.nda
     all (above). Routing SUBRENT to policyengine-uk's ``sublet_income`` and the
     lodgers' payments to the householder needs the engine to apply the relief
     first.
+
+    From policyengine-uk 2.173.3 (PolicyEngine/policyengine-uk#1995) Income
+    Support, Housing Benefit, Pension Credit and Council Tax Reduction treat
+    rent from other property as capital: they no longer count
+    ``property_income``, and they count ``sublet_income`` less the £20 weekly
+    sub-tenant disregard. Income tax, HBAI income and household net income do
+    not read ``sublet_income``. So SUBRENT stays here, where income tax and
+    HBAI income count it, and the means tests do not count it until it moves
+    to ``sublet_income``. PolicyEngine/policyengine-uk-data#508 sets the order:
+    first a release with PolicyEngine/policyengine-uk#2002 (the householder's
+    rent-a-room relief), then the move with a lock bump (microcosm#1095).
     """
 
     is_head = (_number(person, "hrpid") == 1).to_numpy(dtype=float)
