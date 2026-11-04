@@ -1,14 +1,16 @@
 """Publish a release and move its approved repository pointer.
 
-**UK releases no longer publish here.** The UK national, dense and
-local-area releases publish each build into its own folder,
+**The UK national, dense and local-area releases no longer publish
+here.** They publish each build into its own folder,
 ``releases/<release>/<build>/``, through the emitter's ``publish_release``
 call (``microcosm-publish-release-build``, in ``microcosm-build``), and the
 repository's ``releases.json`` records which build is current.
 :func:`prepare_build_folder_release` checks such a build and lists its files
 with their roles; :func:`prepare_release` and :func:`publish_release` refuse
-it. Everything below describes the tagged layout the US releases keep until
-the stable releases US builds publish under are agreed.
+it. Everything below describes the tagged layout the other releases keep:
+every US release, until the stable releases US builds publish under are
+agreed, and the June 2023 UK release and ``populace-uk-<year>-<tier>-k<N>``
+releases.
 
 The Hub repo publishes builds under ``releases/<build_id>/``, but nothing
 identified which release is *current*: a consumer had to list the tree and
@@ -29,10 +31,11 @@ Two sides of the pointer live here:
   returns the typed pointer, the one-call answer to "which release is
   current?" for dashboards and scorers.
 
-UK releases were made current through pointer files named
-``latest-<line>.json``. Those schema-1 pointers add the fields ``line`` and
-``revision``, so each could name an immutable per-build tag without changing
-the frozen repository-global ``latest.json``. Nothing writes them any more;
+The UK national and local-area releases were made current through pointer
+files named ``latest-<line>.json``. Those schema-1 pointers add the fields
+``line`` and ``revision``, so each could name an immutable per-build tag
+without changing the frozen repository-global ``latest.json``. Nothing
+writes them any more;
 :func:`latest_line_release` still reads them until they are deleted.
 
 The EVIDENCE tier (microcosm#506) publishes through the same producer with
@@ -756,8 +759,9 @@ def publish_release(
 ) -> dict:
     """Publish a release directory and optionally point ``latest.json`` at it.
 
-    A release that publishes into build folders (every UK release) is
-    refused before any check or Hub call; see the module docstring.
+    A release that publishes into build folders (the UK national, dense
+    and local-area releases) is refused before any check or Hub call; see
+    the module docstring.
 
     The order is the guarantee: the release contract is validated first (an
     invalid release never reaches the Hub), then an immutable branch commit is

@@ -177,12 +177,17 @@ uv run microcosm-publish-release-build \
   --artifact-root <candidate-dir>
 ```
 
-It checks the build against the release contract again, then hands every
+It refuses at once, before it starts an emitter, when `HF_HUB_OFFLINE` or
+`TRANSFORMERS_OFFLINE` is set, since the emitter inherits them and could not
+reach the Hub. It checks the build against the release contract again,
+starts the emitter, and hands nothing over unless the emitter's write-access
+check finds a credential that can write the repository. It then hands every
 file to the emitter with its role and SHA-256. The emitter writes the build's
 folder and `releases.json` in one commit, listing the build without making
 it current. The command waits for the emitter's answer and prints its
 receipt: `status` is `published`, `pending` (the emitter is still trying, and
-keeps the change queued for an hour) or `refused` with an `error_code`.
+keeps the change queued for an hour), `refused` with an `error_code`, or
+`unavailable` (no emitter answered).
 Running the same command again is safe: a build already published with the
 same release manifest is reported `published`, and one published with a
 different manifest is refused (`BUILD_FOLDER_EXISTS`), since a build is never
@@ -225,7 +230,9 @@ While the repository still holds the older `latest*.json` pointer files, the
 emitter refuses every change to a release's current build
 (`POINTER_FILES_PRESENT`), so that the pointer files and `releases.json`
 cannot disagree. Until those files are deleted, a build can be published but
-not made current.
+not made current: the promotion is refused at once, changes nothing and says
+to run it again, and the published build stays listed. Run `promote_command`
+again once they are deleted.
 
 The 2025 national release is the default UK load (microcosm#823):
 `microcosm.data.load("uk")` and `microcosm.data.load("uk", 2025)` read its

@@ -1,18 +1,19 @@
 """Resolve, verify, download, and load a certified microcosm release.
 
-A release whose builds publish into their own folders (every UK release in
-the registry) is read through the repository's ``releases.json``: the record
-names the release's current build (or ``build=`` pins a listed one), the
-loader reads ``releases/<release>/<build>/release_manifest.json``, downloads
-the dataset that manifest names from the same folder, verifies its SHA-256,
-and enforces the certified model/Core versions before constructing the engine
-dataset. Build folders never change after publishing, so every file is read
-at ``main``.
+A release whose builds publish into their own folders (the registry's UK
+2025 national and dense entries) is read through the repository's
+``releases.json``: the record names the release's current build (or
+``build=`` pins a listed one), the loader reads
+``releases/<release>/<build>/release_manifest.json``, downloads the dataset
+that manifest names from the same folder, verifies its SHA-256, and enforces
+the certified model/Core versions before constructing the engine dataset.
+Build folders never change after publishing, so every file is read at
+``main``.
 
-A release that keeps the tagged layout (every US release) follows the
-repository's release certificate: resolve the registry-selected pointer, read
-that release's manifest at the pointer's immutable revision, download the
-manifest-selected dataset at the same revision and check it the same way.
+A release that keeps the tagged layout (every US entry, and UK 2023) follows
+the repository's release certificate: resolve the registry-selected pointer,
+read that release's manifest at the pointer's immutable revision, download
+the manifest-selected dataset at the same revision and check it the same way.
 Its mutable root artifacts are available only through the explicitly unsafe
 ``load(..., unverified_root=True)`` escape hatch; a build-folder release has
 no root file.

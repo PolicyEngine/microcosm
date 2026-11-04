@@ -1,11 +1,13 @@
 #!/usr/bin/env bash
 #
 # Publish a Microcosm release that keeps tags and latest.json (every US
-# release) and fire its Slack alert, in one tracked path.
+# release, the June 2023 UK release and populace-uk-<year>-<tier>-k<N>
+# releases) and fire its Slack alert, in one tracked path.
 #
-# UK releases publish each build into its own folder through the emitter
-# with `microcosm-publish-release-build` instead; `microcosm-publish-release`
-# refuses them, and they send no Slack alert.
+# The UK national, dense and local-area releases publish each build into its
+# own folder through the emitter with `microcosm-publish-release-build`
+# instead; `microcosm-publish-release` refuses them, and they send no Slack
+# alert until the dashboard posts one from releases.json.
 #
 # Thin wrapper around `microcosm-publish-release` so that every ship goes
 # through the same command and the release alert is guaranteed to be wired.
@@ -19,7 +21,7 @@
 #
 # One-time setup on the build machine (see README "Releasing & alerts"):
 #   cp tools/release.env.example tools/release.env   # then fill in the URLs
-# or just export SLACK_WEBHOOK_POPULACE_US in your shell.
+# or just export SLACK_WEBHOOK_POPULACE_US / _UK in your shell.
 
 set -euo pipefail
 
@@ -31,8 +33,8 @@ if [[ -f "$ENV_FILE" ]]; then
   set +a
 fi
 
-if [[ -z "${SLACK_WEBHOOK_POPULACE_US:-}" ]]; then
-  echo "warning: no SLACK_WEBHOOK_POPULACE_US set — this release will" >&2
+if [[ -z "${SLACK_WEBHOOK_POPULACE_US:-}" && -z "${SLACK_WEBHOOK_POPULACE_UK:-}" ]]; then
+  echo "warning: no SLACK_WEBHOOK_POPULACE_US/_UK set — this release will" >&2
   echo "         publish WITHOUT a Slack alert. Set them in your shell or in" >&2
   echo "         $ENV_FILE (see README 'Releasing & alerts')." >&2
 fi

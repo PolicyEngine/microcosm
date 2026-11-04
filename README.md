@@ -427,8 +427,8 @@ see the [package README](packages/microcosm-diagnostics/README.md).
 Publication runs on the build machine (it needs the freshly built H5), so it
 isn't a CI step. Releases use one of two layouts.
 
-**UK releases publish each build into its own folder.** The national, dense
-and local-area releases (`microcosm.data.contract.publishes_to_build_folder`)
+**The UK national, dense and local-area releases publish each build into its
+own folder.** These releases (`microcosm.data.contract.publishes_to_build_folder`)
 hand each build to the separately installed emitter, whose release writer
 puts it in `releases/<release>/<build>/` and records it in the repository's
 `releases.json`, the only record of each release's builds and which one is
@@ -449,27 +449,34 @@ The first command publishes a build, and makes it current with
 `--make-current`; the second makes a published build current. A build counts
 as current only when the emitter's receipt is `published` and names it as
 `current`. While the older `latest*.json` pointer files exist, the emitter
-refuses every change to a release's current build. These publications send
-no Slack alert; announcing release changes from `releases.json` is the
-dashboard's job. The UK assemblers print the exact commands, and the
+refuses every change to a release's current build, so until they are deleted
+a build is published without `--make-current` and promoted afterwards. The
+command refuses before it starts an emitter when `HF_HUB_OFFLINE` or
+`TRANSFORMERS_OFFLINE` is set, and hands nothing over unless the emitter's
+write-access check passes. These publications send no Slack alert: release
+alerts for them stop until the dashboard posts them from `releases.json`.
+The UK assemblers print the exact commands, and the
 [national](docs/uk-national-release-assembly-runbook-806.md) and
 [dense](docs/uk-dense-release-assembly-runbook-762.md) runbooks describe them.
 `microcosm.data.load` reads the current build of such a release from
 `releases.json`, or the listed build `build=` names.
 
-**US releases keep tags and `latest.json`** until the stable releases US
-builds publish under are agreed with the US data builder. Publication uploads
-the locally built `releases/<id>/` artifacts to the Hugging Face dataset,
-tags the release, and updates `latest.json`:
+**Every other release keeps tags and `latest.json`:** every US release,
+until the stable releases US builds publish under are agreed with the US data
+builder, and the UK releases outside those three, namely the June 2023 release
+and `populace-uk-<year>-<tier>-k<N>` releases. Publication uploads the locally
+built `releases/<id>/` artifacts to the Hugging Face dataset, tags the release,
+and updates `latest.json`:
 
 ```bash
 tools/publish_release.sh releases/<id> --repo-id policyengine/populace-us
 ```
 
 `tools/publish_release.sh` is a thin wrapper around `microcosm-publish-release`
-(all arguments pass straight through), which refuses a UK release. The moment
-`latest.json` goes live, the publish CLI posts a release alert to
-`#populace-us`.
+(all arguments pass straight through), which refuses the releases that
+publish into build folders. The moment `latest.json` goes live, the publish
+CLI posts a release alert to the country's channel: `#populace-us`, or
+`#populace-uk` for a UK release published this way.
 
 The publisher uploads only the contract files, the release manifest's
 artifacts and any `--extra-file`. The US fiscal-refresh tool therefore binds
@@ -588,8 +595,10 @@ cp tools/release.env.example tools/release.env   # then paste the webhook URLs
 ```
 
 `tools/release.env` is gitignored; the wrapper loads it (or you can just export
-`SLACK_WEBHOOK_POPULACE_US` in your shell) and warns if it is not set. After
-that, every US release publishes with an automatic Slack alert.
+`SLACK_WEBHOOK_POPULACE_US` / `SLACK_WEBHOOK_POPULACE_UK` in your shell) and
+warns if neither is set. After that, every release published with tags and
+`latest.json` publishes with an automatic Slack alert. The releases that
+publish into build folders read neither variable.
 
 Canonical UK exact-k builds also require a stable, base64-encoded 32-byte
 release key. Source `tools/release.env` before the national build as well as

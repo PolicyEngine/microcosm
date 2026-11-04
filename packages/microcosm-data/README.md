@@ -24,11 +24,12 @@ sim.calculate("household_net_income", 2024).sum()
 tag, verifies the artifact SHA-256, and refuses model or Core versions outside
 the release's certified compatibility specifiers.
 
-A UK release publishes each build into its own folder,
-`releases/<release>/<build>/`, and the repository's `releases.json` records
-which build of each release is current. `load("uk")` reads that record, then
+The UK national, dense and local-area releases publish each build into its
+own folder, `releases/<release>/<build>/`, and the repository's
+`releases.json` records which build of each release is current. `load("uk")`
+(the 2025 national release) and the 2025 dense variant read that record, then
 the current build's `release_manifest.json`, then the dataset it names, all
-from the build's folder, and checks the SHA-256 and engine versions the same
+from the build's folder, and check the SHA-256 and engine versions the same
 way. `load("uk", build="<build>")` loads a listed build instead (a withdrawn
 one with a warning). `available()` lists
 the default-variant `(country, year)` pairs (the ones a bare ``load(country, year)``
@@ -77,8 +78,9 @@ benchmark comparisons live outside this package.
 
 ## Release contract
 
-Published US releases live under `releases/<release_id>/` in the Hub dataset
-repo, and UK release builds under `releases/<release>/<build>/`.
+Published US releases, and the UK releases that keep tags, live under
+`releases/<release_id>/` in the Hub dataset repo, and builds of the UK
+national, dense and local-area releases under `releases/<release>/<build>/`.
 Each release must include `build_manifest.json` and `release_manifest.json`;
 US releases must also include `us_source_coverage.json`. A current release
 manifest contains a typed `calibration_diagnostics` status. `available` binds a

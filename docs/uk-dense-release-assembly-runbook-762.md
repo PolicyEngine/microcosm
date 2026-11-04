@@ -9,9 +9,10 @@ as its own release, never the default one: a constant release id,
 `dataset_role: non_default_local_area` (the role `local_area` in
 `releases.json`) and an empty `default_datasets` map. Each build is published
 once into its own folder, `releases/microcosm-uk-2024-25-dense/<build>/`,
-through the emitter, and becomes the dense release's current build when it is
-published; `releases.json` keeps the national release as the repository's
-default. It is registered as `("uk", 2025, "dense")` in the private repo
+through the emitter, and becomes the dense release's current build: by a
+promotion once the older `latest*.json` pointer files are deleted, and when it
+is published after that (see [§5](#5-publish-human-step)); `releases.json`
+keeps the national release as the repository's default. It is registered as `("uk", 2025, "dense")` in the private repo
 `policyengine/populace-uk-private`. Publication is a separate human step.
 Since microcosm#1124 (ruling of 2026-10-13, amended for microcosm#1301) the
 line may ship the 150,000-household exact-k selection from that pool instead
@@ -591,27 +592,50 @@ existing approvals have not been widened or renewed.
 
 ## 5. Publish (human step)
 
-Run the printed command. Its shape is:
+The assembler prints two commands. Run its `publish_command` first. Its shape
+is:
 
 ```bash
 uv run microcosm-publish-release-build releases/microcosm-uk-2024-25-dense \
-  --repo-id policyengine/populace-uk-private --artifact-root <candidate-dir> \
-  --make-current
+  --repo-id policyengine/populace-uk-private --artifact-root <candidate-dir>
 ```
 
-It checks the build against the release contract again and hands every file
-to the separately installed emitter with its role and SHA-256. The emitter
-writes the build's folder and `releases.json` in one commit. The command
-succeeds only when the receipt is `published` and names this build as
-`current`; a change to the dense release's current build requested after
-this one can land first and leave another build current. Running the same
-command again is safe: an already published build with the same release
-manifest is reported `published`.
+It refuses at once, before it starts an emitter, when `HF_HUB_OFFLINE` or
+`TRANSFORMERS_OFFLINE` is set, since the emitter inherits them and could not
+reach the Hub. It checks the build against the release contract again, starts
+the emitter, and hands nothing over unless the emitter's write-access check
+finds a credential that can write the repository. It then hands every file to
+the emitter with its role and SHA-256. The emitter writes the build's folder
+and `releases.json` in one commit, listing the build without making it
+current. The command prints the receipt: `status` is `published`, `pending`
+(the emitter is still trying, and keeps the change queued for an hour),
+`refused` with an `error_code`, or `unavailable` (no emitter answered). It
+succeeds only on `published`. Running the same command again is safe: an
+already published build with the same release manifest is reported
+`published`.
+
+Each new dense build then becomes the dense release's current build with the
+assembler's `promote_command`:
+
+```bash
+uv run microcosm-publish-release-build releases/microcosm-uk-2024-25-dense \
+  --repo-id policyengine/populace-uk-private --promote
+```
 
 While the repository still holds the older `latest*.json` pointer files, the
 emitter refuses every change to a release's current build
-(`POINTER_FILES_PRESENT`). Until those files are deleted, publish without
-`--make-current`, and make the build current later with `--promote`.
+(`POINTER_FILES_PRESENT`), so that the pointer files and `releases.json`
+cannot disagree. Until they are deleted, the promotion is refused at once,
+changes nothing and says to run it again; the published build stays listed.
+Run `promote_command` once they are deleted. The promotion succeeds only when
+the receipt is `published` and names this build as `current`; a change to the
+dense release's current build requested after this one can land first and
+leave another build current.
+
+Once the pointer files are deleted, a new dense build can instead be published
+as current in one commit by adding `--make-current` to `publish_command`. Do
+not add it before then: the emitter refuses the whole publication, after the
+dataset is hashed on both sides, and nothing is published.
 
 A contract warning reaches the command's stderr, and `--preflight-only` adds
 it to its verdict under `contract_warnings`. Neither refuses on one. No dense

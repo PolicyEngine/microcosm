@@ -851,7 +851,7 @@ def line_for_release_id(release_id: str) -> str | None:
     """Return the ``<line>`` name of the ``latest-<line>.json`` pointer file.
 
     Each such pointer file named the current build of one UK release before
-    UK releases published into build folders: ``national`` for the national
+    those releases published into build folders: ``national`` for the national
     release and ``local-k<N>`` for a local-area one. Only the pointer reader
     still needs it.
     """

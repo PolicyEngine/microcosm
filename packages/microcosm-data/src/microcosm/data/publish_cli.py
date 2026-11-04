@@ -1,8 +1,10 @@
 """CLI for contract-checked Microcosm release publication.
 
 It publishes releases that keep the tagged layout and ``latest.json``: every
-US release. A UK release publishes each build into its own folder through the
-emitter (``microcosm-publish-release-build``), and this command refuses it.
+US release, the June 2023 UK release and ``populace-uk-<year>-<tier>-k<N>``
+releases. The UK national, dense and local-area releases publish each build
+into its own folder through the emitter (``microcosm-publish-release-build``),
+and this command refuses them.
 """
 
 from __future__ import annotations
