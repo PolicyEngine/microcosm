@@ -292,6 +292,7 @@ def _fixture_tables() -> dict[str, list[dict[str, object]]]:
         "CONVBL": 2,
         "MJOBSECT": 1,
         "SIC": 84,
+        "SOC2020": 4000,
         "FTED": 2,
         "TYPEED2": 0,
         "EDUCQUAL": 17,

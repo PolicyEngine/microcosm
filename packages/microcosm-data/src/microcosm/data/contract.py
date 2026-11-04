@@ -475,13 +475,13 @@ _UK_GATE_BATTERY_SHIPPABLE_STATUSES = frozenset({"passed", "not_applicable"})
 # fingerprint derives from the manifest digest. Editing the spec moves all
 # three here in the same reviewed change.
 _UK_GATE_BATTERY_POLICY_SHA256 = (
-    "7c20944f06349bca285eb3f8e8e696cfef99c356b7685d990e36f9e53c019753"
+    "829eaae1a12e19f0c41c737bea0dbdda6448637e977b008bad9ca5c3db357200"
 )
 _UK_GATE_BATTERY_GATES_MANIFEST_SHA256 = (
-    "d57afaa831f0599d53b23b653119f4508eecf9ceb97aa7f1d16197a93824cd3c"
+    "01abc259f99ecdd73bd636102b32482f1f41dc557a5f0bf23d930348c75a8c8d"
 )
 _UK_GATE_BATTERY_SPEC_FINGERPRINT = (
-    "6b9c4d1cfb177629672c7ee9daa659422261b2e0c15b8715ca184b3d3bdc4ff6"
+    "215c0fab9e2c77b415633f8f9292a5ff20839662274df7d6d7f1e126417badde"
 )
 #: Spec entry id -> the legacy gate name whose observable detail checks
 #: apply unchanged (the battery re-keys the report by entry id; the gate
@@ -506,6 +506,7 @@ _UK_GATE_BATTERY_ENTRY_LEGACY_NAMES = {
     "uk_council_tax_band_domain": "enum_domain",
     "uk_uc_deduction_combination_enum_domain": "enum_domain",
     "uk_student_loan_plan_enum_domain": "enum_domain",
+    "uk_soc2020_major_group_enum_domain": "enum_domain",
     "uk_council_tax_band_domain_terminal": "enum_domain",
     "uk_target_surface": "target_surface",
     "uk_target_fit": "target_fit",
@@ -616,6 +617,7 @@ _UK_GATE_BATTERY_ENTRY_GATES = {
     "uk_council_tax_band_domain": ("enum_domain", "transferred"),
     "uk_uc_deduction_combination_enum_domain": ("enum_domain", "terminal"),
     "uk_student_loan_plan_enum_domain": ("enum_domain", "terminal"),
+    "uk_soc2020_major_group_enum_domain": ("enum_domain", "terminal"),
     "uk_council_tax_band_domain_terminal": ("enum_domain", "terminal"),
     "uk_calibration_reference_coverage": (
         "calibration_reference_coverage",
@@ -995,6 +997,7 @@ _UK_CERTIFICATION_PART_SCOPES: Mapping[str, frozenset[str]] = {
             "uk_release_input_coverage",
             "uk_release_input_coverage_manifest_current",
             "uk_student_loan_plan_enum_domain",
+            "uk_soc2020_major_group_enum_domain",
             "uk_council_tax_band_domain_terminal",
             "uk_support",
             "uk_take_up_signal",
@@ -1022,10 +1025,10 @@ _UK_CERTIFICATION_PART_DIGESTS: Mapping[str, Mapping[str, str]] = {
     },
     "release_cut": {
         "gates_manifest_sha256": (
-            "c7d6169e6c2516274d3635937c0965f405ad0a02cd821c17bc246c11f82b3a8c"
+            "fc2f2669d2c73f8a50df9fbf8d42df2cb1e05142b531ef16409445f938547278"
         ),
         "policy_sha256": (
-            "606a841fca55d7936b7c15a10305582eba11b1a67c4da5248b97c4fa7ff721e5"
+            "9fa54cd666e8768404729d349855636a13026a0a719164f4f83ec5e68d98620e"
         ),
     },
 }

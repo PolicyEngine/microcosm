@@ -224,13 +224,13 @@ def _trusted_terminal_gate_signing_key(monkeypatch) -> None:
 UK_GATE_BATTERY_PRODUCER = "microcosm.build.gate_battery"
 UK_GATE_BATTERY_SIGNING_KEY_ENV = "MICROCOSM_UK_TERMINAL_GATE_SIGNING_KEY"
 UK_GATE_BATTERY_POLICY_SHA256 = (
-    "7c20944f06349bca285eb3f8e8e696cfef99c356b7685d990e36f9e53c019753"
+    "829eaae1a12e19f0c41c737bea0dbdda6448637e977b008bad9ca5c3db357200"
 )
 UK_GATE_BATTERY_GATES_MANIFEST_SHA256 = (
-    "d57afaa831f0599d53b23b653119f4508eecf9ceb97aa7f1d16197a93824cd3c"
+    "01abc259f99ecdd73bd636102b32482f1f41dc557a5f0bf23d930348c75a8c8d"
 )
 UK_GATE_BATTERY_SPEC_FINGERPRINT = (
-    "6b9c4d1cfb177629672c7ee9daa659422261b2e0c15b8715ca184b3d3bdc4ff6"
+    "215c0fab9e2c77b415633f8f9292a5ff20839662274df7d6d7f1e126417badde"
 )
 UK_GATE_BATTERY_DEGENERATE_EVIDENCE_SHA256 = (
     "f246388de42654dd68dbbb40c42282001b5b0a8bf48976162bcb1199085cb1d3"
@@ -459,6 +459,11 @@ UK_GATE_BATTERY_ENTRIES = {
         "enum_domain",
     ),
     "uk_student_loan_plan_enum_domain": (
+        "enum_domain",
+        "terminal",
+        "enum_domain",
+    ),
+    "uk_soc2020_major_group_enum_domain": (
         "enum_domain",
         "terminal",
         "enum_domain",

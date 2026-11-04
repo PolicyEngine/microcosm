@@ -454,15 +454,6 @@ UK_ENGINE_DEFAULT_INPUTS: dict[str, str] = {
         "microcosm#1439 stores the status and retires the encoding (for María's "
         "signature)."
     ),
-    "soc2020_major_group": (
-        "The SOC 2020 major group of the person's main job, or of their last "
-        "job if they are not in work (policyengine-uk 2.173.0, "
-        "policyengine-uk#2858). The build carries no occupation yet, so every "
-        "person takes NONE ('No occupation recorded'), and no engine formula "
-        "reads it. microcosm#1490 carries the FRS major group from "
-        "frs_employment, redraws it on the SPI channel and removes this entry "
-        "(for María's signature)."
-    ),
     "soc2020_sub_major_group": (
         "The SOC 2020 sub-major group of the same job (policyengine-uk "
         "2.173.0). The FRS codes the major group only, so the sub-major group "

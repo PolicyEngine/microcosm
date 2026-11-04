@@ -827,6 +827,7 @@ _STAGE_CELLS: Mapping[str, tuple[_Cell, ...]] = {
         _Cell("person", "employment_status", "string"),
         _Cell("person", "employment_sector", "string"),
         _Cell("person", "sic_industry_division", "int64"),
+        _Cell("person", "soc2020_major_group", "string"),
     ),
     "frs_council_tax": (_Cell("household", "council_tax", "float64"),),
     "frs_disability": (

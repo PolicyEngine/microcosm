@@ -223,6 +223,8 @@ _NORMALIZED_STRING_COLUMNS: Mapping[str, tuple[str, ...]] = {
         "marital_status",
         "employment_status",
         "employment_sector",
+        # The SOC 2020 major group of the main or last job (microcosm#1490).
+        "soc2020_major_group",
         "aa_category",
         "dla_sc_category",
         "dla_m_category",
@@ -494,6 +496,8 @@ def _frs_tables() -> dict[str, pd.DataFrame]:
             "RETIRE1": 1 + household_id % 12 if household_id % 13 == 0 else "",
             "MJOBSECT": 1 + household_id % 2,
             "SIC": 10 + household_id % 80,
+            # SOC 2020 major groups 1-9 as the FRS codes them, 1000-9000.
+            "SOC2020": 1000 * (1 + household_id % 9),
             "FTED": 2,
             "TYPEED2": 0,
             "EDUCQUAL": 1 + household_id % 18,
@@ -2122,8 +2126,8 @@ def _normalize_legacy_strings(frame: Frame) -> Frame:
         for entity, columns in _NORMALIZED_STRING_COLUMNS.items()
         for column in columns
     ]
-    if observed != expected_order or len(observed) != 29:
-        raise RuntimeError("The legacy normalization audit is not exactly 29 cells.")
+    if observed != expected_order or len(observed) != 30:
+        raise RuntimeError("The legacy normalization audit is not exactly 30 cells.")
     return Frame(
         tables,
         frame.schema,

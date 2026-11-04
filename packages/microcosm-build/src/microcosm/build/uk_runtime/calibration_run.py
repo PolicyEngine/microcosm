@@ -194,6 +194,7 @@ UK_NATIONAL_GATE_SCOPE = (
     "uk_export_surface",
     "uk_take_up_signal",
     "uk_student_loan_plan_enum_domain",
+    "uk_soc2020_major_group_enum_domain",
     # The spine checks council_tax_band at the transferred boundary; this
     # instance checks the release frame, after any later step that writes the
     # band (microcosm#1278).

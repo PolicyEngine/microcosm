@@ -1659,6 +1659,7 @@ class TestUKGatesManifest:
             "uk_council_tax_band_domain",
             "uk_uc_deduction_combination_enum_domain",
             "uk_student_loan_plan_enum_domain",
+            "uk_soc2020_major_group_enum_domain",
             "uk_council_tax_band_domain_terminal",
             "uk_calibration_reference_coverage",
             "uk_target_surface",

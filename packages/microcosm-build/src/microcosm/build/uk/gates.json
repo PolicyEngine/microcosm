@@ -1426,6 +1426,7 @@
           "person.salary_sacrifice_asked",
           "person.salary_sacrifice_reported",
           "person.sic_industry_division",
+          "person.soc2020_major_group",
           "person.stands_as_sole_owner_or_partner_of_company",
           "person.statutory_paternity_pay",
           "person.student_loan_balance",
@@ -1628,6 +1629,18 @@
         ]
       },
       "notes": "The person student-loan plan assignment must remain inside the PolicyEngine-UK StudentLoanPlan enum domain."
+    },
+    {
+      "id": "uk_soc2020_major_group_enum_domain",
+      "gate": "enum_domain",
+      "phase": "terminal",
+      "criticality": "release_blocking",
+      "parameters": {
+        "columns": [
+          "soc2020_major_group"
+        ]
+      },
+      "notes": "The person SOC 2020 major group must remain inside the PolicyEngine-UK SOC2020MajorGroup enum domain. Checked on the frame the release ships, after every stage that writes the column: frs_employment carries the FRS code, and a later stage may redraw it (microcosm#1490)."
     },
     {
       "id": "uk_council_tax_band_domain_terminal",

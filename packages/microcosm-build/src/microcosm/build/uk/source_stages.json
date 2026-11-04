@@ -738,18 +738,19 @@
     },
     {
      "kind": "map_coded_amounts",
-     "scope": "empstati employment status, mjobsect sector, and raw SIC division"
+     "scope": "empstati employment status, mjobsect sector, raw SIC division, and SOC2020 major group"
     }
    ],
    "outputs": [
     "employment_status",
     "employment_sector",
-    "sic_industry_division"
+    "sic_industry_division",
+    "soc2020_major_group"
    ],
    "nonnegative_outputs": [
     "sic_industry_division"
    ],
-   "notes": "Ports FRS employment derivations. empstati codes 1-11 each map to the status their UKDS SN 9563 adult-table data-dictionary label names, as uk-data#526 does: 11 (Other Inactive) is OTHER_INACTIVE and only 9 (Permanently sick/disabled) is LONG_TERM_DISABLED. People outside adult.tab are CHILD; an adult with a blank or unknown code refuses the build. mjobsect and sic are direct-indexed and fail loudly if absent."
+   "notes": "Ports FRS employment derivations. empstati codes 1-11 each map to the status their UKDS SN 9563 adult-table data-dictionary label names, as uk-data#526 does: 11 (Other Inactive) is OTHER_INACTIVE and only 9 (Permanently sick/disabled) is LONG_TERM_DISABLED. People outside adult.tab are CHILD; an adult with a blank or unknown code refuses the build. SOC2020 codes the SOC 2020 major group as 1000-9000 (0 undefined) and maps to policyengine-uk's SOC2020MajorGroup names (occupation_constants); it is the main job, or the last job for an adult not in work, since the FRS asks the employment questions of everyone who has ever worked (2024-25 question instructions, details of employment, p. 183; PDF p. 184). People outside adult.tab are NONE, and an adult with a blank or unknown SOC2020 code refuses the build (microcosm#1490). mjobsect, sic and soc2020 are direct-indexed and fail loudly if absent."
   },
   {
    "stage": "frs_council_tax",
