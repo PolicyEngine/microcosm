@@ -1295,23 +1295,6 @@ def _drive_epochs(args, telemetry, epochs: int = 2) -> None:
         )
 
 
-def _remote_hub(monkeypatch, client_options=None, **kwargs):
-    """One fake Hub for the run files and the bundle the build's emitter commits."""
-    from test_support.microcosm_build.telemetry import share_fake_hub
-    from test_support.microcosm_build.uk_rowwise_candidate import _FakeHub
-
-    hub = _FakeHub(**kwargs)
-    share_fake_hub(monkeypatch, hub, **(client_options or {}))
-    return hub
-
-
-def _bundle_emitter_for(hub):
-    """The re-stage tool's own short-lived emitter, committing to ``hub``."""
-    from test_support.microcosm_build.emitter import FakeEmitterClient
-
-    return lambda: FakeEmitterClient(hub_files=hub.files, hub_api=hub)
-
-
 def test_no_staging_records_both_opt_outs(tmp_path, monkeypatch):
     pytest.importorskip("tables")
     status, out = run_dense_main(tmp_path, monkeypatch, staging="--no-staging")
@@ -1946,25 +1929,6 @@ def _landed_dense_build(tmp_path, monkeypatch):
     manifest = json.loads((out / cli.MANIFEST_FILENAME).read_text())
     assert manifest["staged_dataset"]["status"] == "uploaded"
     return hub, out
-
-
-def _edit_an_output(out):
-    """Change a CSV output after landing, keeping the manifest consistent."""
-    manifest_path = out / cli.MANIFEST_FILENAME
-    manifest = json.loads(manifest_path.read_text())
-    key, entry = next(
-        (key, entry)
-        for key, entry in manifest["outputs"].items()
-        if entry and str(entry["path"]).endswith(".csv")
-    )
-    path = out / Path(entry["path"]).name
-    path.write_bytes(path.read_bytes() + b"edited,after,landing\n")
-    manifest["outputs"][key] = {
-        **entry,
-        "sha256": hashlib.sha256(path.read_bytes()).hexdigest(),
-        "bytes": path.stat().st_size,
-    }
-    manifest_path.write_text(json.dumps(manifest, indent=2, sort_keys=True))
 
 
 @pytest.mark.parametrize(
@@ -3805,3 +3769,39 @@ def test_the_orrery_publication_is_off_unless_asked(tmp_path):
     assert not publication_enabled(arguments(tmp_path))
     assert not publication_enabled(arguments(tmp_path, "--no-publish-orrery"))
     assert publication_enabled(arguments(tmp_path, "--publish-orrery"))
+
+
+def test_a_dense_build_that_must_send_telemetry_stops_before_any_input_without_an_emitter(
+    tmp_path, monkeypatch
+):
+    """MICROCOSM_TELEMETRY_REQUIRED=1 and no emitter: the full build stops first.
+
+    It starts its emitter after reading and checking its arguments, so with
+    the real adapter (not the shared fixture's in-memory one) it stops before
+    its attempt reads an input or writes anything.
+    """
+    from microcosm.build import telemetry_emitter
+    from test_support.microcosm_build.telemetry import ADAPTER_START
+
+    monkeypatch.setattr(
+        telemetry_emitter.LocalTelemetryEmitter, "start", classmethod(ADAPTER_START)
+    )
+    monkeypatch.setenv("MICROCOSM_TELEMETRY_REQUIRED", "1")
+    monkeypatch.setenv(
+        "MICROCOSM_EMITTER_COMMAND", str(tmp_path / "missing" / "microcosm-emitter")
+    )
+    args = arguments(tmp_path)
+    monkeypatch.setattr(cli, "parse_args", lambda argv: args)
+
+    def went_on(*positional, **named):
+        pytest.fail("the build went on without the emitter it must use")
+
+    # The build's next step after starting its emitter.
+    monkeypatch.setattr(cli, "_dense_attempt", went_on)
+    before = sorted(tmp_path.rglob("*"))
+
+    with pytest.raises(telemetry_emitter.TelemetryRequiredError) as raised:
+        cli.main([])
+
+    assert raised.value.reason == "command_not_found"
+    assert sorted(tmp_path.rglob("*")) == before

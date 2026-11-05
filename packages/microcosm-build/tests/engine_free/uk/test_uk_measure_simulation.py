@@ -305,6 +305,37 @@ def test_resolver_rejects_amount_threshold_year_mismatch(
         )
 
 
+@pytest.mark.parametrize("measurement_period", [None, 2023, 2025])
+def test_resolver_rejects_a_dated_company_car_benefit_at_another_year(
+    monkeypatch, tmp_path, measurement_period
+):
+    """A company car benefit dated 2024 is priced at 2024-25's percentages, so a
+    binding that measures it at any other period, or at none, is refused, as a
+    dated CGT measure is (the review of microcosm#1491, item 7)."""
+
+    binding = {"value_variable": "company_car_benefit_2024"}
+    if measurement_period is not None:
+        binding["measurement_period"] = measurement_period
+    monkeypatch.setattr(
+        measure_simulation,
+        "_policyengine_uk_module",
+        lambda: SimpleNamespace(__version__="test"),
+    )
+    monkeypatch.setattr(
+        measure_simulation,
+        "_uk_contract_targets",
+        lambda: {"cars": {"bindings": {"policyengine": binding}}},
+    )
+    with pytest.raises(ValueError, match="company car benefit year/period mismatch"):
+        UKMeasureResolver(
+            simulation_source=tmp_path / "input.h5",
+            scratch_dir=tmp_path,
+            frame=FrameStub(),
+            year=2025,
+            microsimulation_factory=lambda **_: SimulationStub({}),
+        )
+
+
 def test_dated_cgt_measure_uses_disposal_year_with_later_calibration_year():
     sim = SimulationStub(
         {"capital_gains": ("person", np.array([3000.0, 5000.0, 20000.0]))}
@@ -315,6 +346,32 @@ def test_dated_cgt_measure_uses_disposal_year_with_later_calibration_year():
     assert sim.calls == [("capital_gains", 2024, None)]
     assert route == "engine_period:2024:capital_gains:native"
     assert (values > 3000).tolist() == [False, True, True]
+
+
+def test_dated_company_car_benefit_is_priced_in_its_own_tax_year(
+    monkeypatch, tmp_path: Path
+):
+    """HMRC's Table 1 taxable value is 2024-25's, so the national row reads the
+    engine's company car benefit in 2024, whatever the calibration year
+    (microcosm#1418)."""
+
+    sim = SimulationStub(
+        {"company_car_benefit": ("person", np.array([0.0, 900.0, 3_000.0]))}
+    )
+    values, route = compute_uk_measure_input(
+        FrameStub(), sim, "person", "company_car_benefit_2024", 2025
+    )
+    assert sim.calls == [("company_car_benefit", 2024, None)]
+    assert route == "engine_period:2024:company_car_benefit:native"
+    assert values.tolist() == [0.0, 900.0, 3_000.0]
+    with pytest.raises(KeyError, match="person-only"):
+        compute_uk_measure_input(
+            FrameStub(), sim, "household", "company_car_benefit_2024", 2025
+        )
+    resolver = _resolver_over(sim, monkeypatch, tmp_path)
+    assert resolver.knows("person", "company_car_benefit_2024")
+    assert not resolver.knows("household", "company_car_benefit_2024")
+    assert resolver.entity_for("company_car_benefit_2024") == "person"
 
 
 @pytest.mark.parametrize("precomputed", [False, True])
@@ -745,8 +802,9 @@ def test_packaged_exclusions_load():
     # and SLC's Scottish and Northern Irish repayment rows (ruling R4: Wales
     # only binds). The savings follow-up holds the SPI £1m-and-over interest
     # amount row on its measured distortion (microcosm#1428, María's ruling of
-    # 2026-10-30).
-    assert len(names) == len(set(names)) == 45
+    # 2026-10-30). microcosm#1426 holds HMRC's High Income Child Benefit Charge count
+    # and revenue as measured diagnostics (María's ruling of 2026-11-03).
+    assert len(names) == len(set(names)) == 47
     (gas,) = [
         entry
         for entry in exclusions

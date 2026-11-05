@@ -2408,7 +2408,7 @@ def test_composition_refuses_a_supplied_interval_document_from_another_profile()
         _prepare_node(spec, row, {"index": "low"}, interval_knobs=None)
 
 
-def test_declared_scenarios_scale_national_cuts_with_their_own_factor():
+def test_declared_scenarios_scale_the_standin_cuts_with_their_own_factor():
     from fractions import Fraction
 
     spec = load_transport_spec("nz")
@@ -2421,17 +2421,18 @@ def test_declared_scenarios_scale_national_cuts_with_their_own_factor():
         )
         profile = {"V1": "low", "V2": "high"}.get(scenario["id"], "central")
         tables = {table["id"]: table for table in intervals["tables"]}
-        national = tables["ird_taxable_income_national_ty2024"]
-        assert national["scaling"]["factor_id"] == f"ird_ty2024_to_ty2027_{profile}"
-        assert (
-            tables["ird_taxable_income_age_ty2024"]
-            == by_id["ird_taxable_income_age_ty2024"]
-        )
-        factor = national["scaling"]["operational_factor"]
+        coarse = tables["ird_taxable_income_standin_ty2024"]
+        assert coarse["scaling"]["factor_id"] == f"ird_ty2024_to_ty2027_{profile}"
+        for unscaled in (
+            "ird_taxable_income_age_ty2024",
+            "ird_taxable_income_national_ty2024",
+        ):
+            assert tables[unscaled] == by_id[unscaled]
+        factor = coarse["scaling"]["operational_factor"]
         rational = Fraction(factor["numerator"], factor["denominator"])
         for band, original in zip(
-            national["bands"],
-            by_id["ird_taxable_income_national_ty2024"]["bands"],
+            coarse["bands"],
+            by_id["ird_taxable_income_standin_ty2024"]["bands"],
             strict=True,
         ):
             if original.get("upper_cent") is not None:
@@ -2753,7 +2754,6 @@ def test_cli_arguments():
 _GAPS = (
     "axiom_rules_bindings.engine.commit",
     "axiom_rules_bindings.engine.wheel_sha256",
-    "money column person.employment_income awaits quantile map",
     "money column person.liquid_financial_assets awaits quantile map",
     "money column household.rent awaits quantile map",
 )
@@ -2801,7 +2801,7 @@ def test_packaged_spec_refuses_with_every_activation_gap_named():
 
 def test_packaged_spec_refuses_before_reading_any_source(tmp_path, monkeypatch):
     # Inside the packaged factors' validity, so activation decides the refusal.
-    monkeypatch.setattr(cli_module, "_today", lambda: date(2026, 10, 24))
+    monkeypatch.setattr(cli_module, "_today", lambda: date(2026, 11, 5))
     missing = tmp_path / "absent"
     with pytest.raises(ValueError, match="not activated"):
         prepare_transport_build(
@@ -2812,7 +2812,7 @@ def test_packaged_spec_refuses_before_reading_any_source(tmp_path, monkeypatch):
 def test_cli_main_refuses_the_packaged_spec_and_writes_nothing(
     tmp_path, monkeypatch, capsys
 ):
-    monkeypatch.setattr(cli_module, "_today", lambda: date(2026, 10, 24))
+    monkeypatch.setattr(cli_module, "_today", lambda: date(2026, 11, 5))
     out = tmp_path / "out"
     assert cli_module.main(["--country", "nz", "--out", str(out)]) == 1
     message = capsys.readouterr().err
@@ -3533,7 +3533,7 @@ def test_prepare_does_not_create_inventory_store_before_activation(
     tmp_path, monkeypatch
 ):
     # Inside the packaged factors' validity, so activation decides the refusal.
-    monkeypatch.setattr(cli_module, "_today", lambda: date(2026, 10, 24))
+    monkeypatch.setattr(cli_module, "_today", lambda: date(2026, 11, 5))
     inventory = tmp_path / "inventory"
     with pytest.raises(ValueError, match="not activated"):
         prepare_transport_build(

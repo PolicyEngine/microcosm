@@ -76,6 +76,8 @@ _TEST_PATHS = paths_for("microcosm-build")
 # The one pin of the national active reference count: the country spec and
 # national calibration tests read it from the committed membership, or not at
 # all, so a change to the target set moves this pin alone. How it is made up:
+# microcosm#1418's company car base: + 5, HMRC's 2024-25 company car
+# recipients and taxable value (Table 1) and recipients by fuel (Table 2C);
 # microcosm#1418 PR C: + 13, SPI Table 3.7's other income by band, and + 16,
 # SPI Table 3.10's self-employment bands from GBP 1 to GBP 10,000; its
 # savings follow-up (microcosm#1428): + 8, Table 3.10's individuals with
@@ -127,8 +129,10 @@ _TEST_PATHS = paths_for("microcosm-build")
 # after the compile, less the North East and Wales rows over £2m, signed out
 # below the small-cell floor; microcosm#1095 (#1422): the three OBR council
 # tax nation rows, pinned to the UK, and SLC's three nation repayment rows in
-# place of the devolved total
-ACTIVE_REFERENCE_COUNT = 1418
+# place of the devolved total; microcosm#1418: HMRC's five 2024-25 company
+# car rows; microcosm#1426: HMRC's two High Income Child Benefit Charge rows,
+# measured diagnostics
+ACTIVE_REFERENCE_COUNT = 1425
 REGION_TIER_LEVEL = {code: level for level, code in UK_REGION_TIER}
 
 

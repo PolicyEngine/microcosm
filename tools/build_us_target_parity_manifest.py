@@ -19,7 +19,11 @@ wired, not excluded.
 Derivation (from the sha-pinned feed + the deterministic registry compile):
 
 - **Feed-family inventory** = every ``namespace.concept`` family id the feed
-  carries, with fact counts (``target_parity_feed_families.json``).
+  carries, with fact counts (``target_parity_feed_families.json``), and every
+  dimension value the feed labels more than one way, with its labels
+  (``dimension_value_label_variants``; microcosm#1343). CI reads the
+  committed listing, so a re-pin that brings back a second label fails there
+  without the feed.
 - **Compiled families** = the families the one-surface registry compiles today
   (``compile_us_fiscal_target_registry(age_targets=True)`` + the reviewed CMS
   Medicaid enrollment substitution). Status ``compiled``.
@@ -38,11 +42,15 @@ import json
 from collections import Counter
 from pathlib import Path
 
+from microcosm.build.ledger_artifact import consumer_fact_schema_versions_of
 from microcosm.build.us_runtime import (
     default_congressional_district_vintage_crosswalk_path,
     load_congressional_district_vintage_crosswalk,
 )
-from microcosm.build.us_runtime.chronicle_feed import load_us_chronicle_feed
+from microcosm.build.us_runtime.chronicle_feed import (
+    load_us_chronicle_feed,
+    require_us_chronicle_feed_row_contracts,
+)
 from microcosm.build.us_runtime.fiscal_targets import compile_us_fiscal_target_registry
 from microcosm.build.us_runtime.medicaid_take_up import (
     apply_us_medicaid_enrollment_substitutions,
@@ -62,7 +70,7 @@ US_PACKAGE_DIR = (
 MANIFEST_PATH = US_PACKAGE_DIR / "target_parity_manifest.json"
 FEED_FAMILIES_PATH = US_PACKAGE_DIR / "target_parity_feed_families.json"
 
-DEFAULT_FEED_NAME = "consumer_facts_us_cf9ece2.jsonl"
+DEFAULT_FEED_NAME = "consumer_facts_us_41b2fb2.jsonl"
 DEFAULT_FEED_PATH = (
     Path.home() / "PolicyEngine" / "_buildh-runtime" / "inputs" / DEFAULT_FEED_NAME
 )
@@ -127,6 +135,43 @@ _NAMESPACE_EXCLUSIONS: dict[str, tuple[str, str, str, dict[str, str]]] = {
             verdict_basis=(
                 "no fence to rebuild; state income is calibrated from IRS SOI "
                 "state tables + Census STC (compiled)."
+            ),
+        ),
+    ),
+    # microcosm#1074: the six packages/ed_fsa packages (chronicle#347) enter
+    # the feed at 41b2fb2b. Their portfolio facts bind only in a build that
+    # carries the imputed federal student loan balances (microcosm#1357,
+    # ``--scf-education-debt``), so a default compile turns none into a target.
+    "ed_fsa": (
+        "off_by_default",
+        "Federal Student Aid loan portfolio tables (chronicle#347). The "
+        "location, age, debt-size and loan-type tables bind only in a build "
+        "that carries the imputed federal student loan balance columns "
+        "(microcosm#1357: student_loan_targets=True, set by the release "
+        "tool's --scf-education-debt), and the repayment-plan and summary "
+        "tables stay diagnostic there too; the default compile, which this "
+        "manifest describes, turns none of them into a target.",
+        "compile_us_fiscal_target_registry(age_targets=True) + "
+        "apply_us_medicaid_enrollment_substitutions on the 41b2fb2b feed: "
+        "33,250 targets, none from the feed's 461 ed_fsa facts; sample fact "
+        "ed_fsa.portfolio_by_location.2026_03_31.ar.borrowers",
+        _fence(
+            origin=(
+                "microcosm#1074 (re-pin to chronicle#347's packages): a source "
+                "new to the feed, bound as an opt-in family by microcosm#1357. "
+                "This re-pin did not search the retired us-data pipeline for "
+                "a student loan portfolio target."
+            ),
+            purpose=(
+                "a default build has no federal student loan balance columns, "
+                "so it cannot materialize these targets; the opt-in keeps a "
+                "default build and a --scf-education-debt build from failing "
+                "each other on the one-surface contract."
+            ),
+            verdict_basis=(
+                "off by default until a default build carries the balance "
+                "columns; promote the bound families to compiled when the "
+                "default compile binds them."
             ),
         ),
     ),
@@ -692,6 +737,43 @@ def _feed_family_counts(facts: list[dict]) -> Counter[str]:
     return counts
 
 
+def _dimension_value_label_variants(
+    facts: list[dict],
+) -> dict[str, dict[str, list[str]]]:
+    """Every (dimension, value id) the feed labels more than one way.
+
+    Labels come from each row's ``dimension_value_labels`` and, for the row's
+    group-by value, ``layout.groupby_value_label``, stripped as the ledger
+    compiler strips them. Returned as {dimension: {value id: sorted labels}}.
+    """
+    labels_by_value: dict[tuple[str, str], set[str]] = {}
+
+    def record(dimension_id: object, value_id: object, label: object) -> None:
+        text = str(label).strip() if label is not None else ""
+        if dimension_id and value_id is not None and text:
+            key = (str(dimension_id), str(value_id))
+            labels_by_value.setdefault(key, set()).add(text)
+
+    for fact in facts:
+        for dimension_id, value_labels in (
+            fact.get("dimension_value_labels") or {}
+        ).items():
+            for value_id, label in (value_labels or {}).items():
+                record(dimension_id, value_id, label)
+        layout = fact.get("layout") or {}
+        record(
+            layout.get("groupby_dimension"),
+            layout.get("groupby_value_id"),
+            layout.get("groupby_value_label"),
+        )
+
+    variants: dict[str, dict[str, list[str]]] = {}
+    for (dimension_id, value_id), labels in sorted(labels_by_value.items()):
+        if len(labels) > 1:
+            variants.setdefault(dimension_id, {})[value_id] = sorted(labels)
+    return variants
+
+
 def _compiled_families(facts: list[dict]) -> set[str]:
     # Parity is declared against the one registry every calibrated artifact
     # compiles, using the canonical source-to-current CD vintage translation.
@@ -805,6 +887,7 @@ def build_manifest(
         "feed": feed_name,
         "feed_sha256": feed_sha256,
         "families": dict(sorted(feed_counts.items())),
+        "dimension_value_label_variants": _dimension_value_label_variants(facts),
     }
     return manifest, feed_families
 
@@ -831,6 +914,14 @@ def main() -> None:
             f"{EXPECTED_FEED_SHA256}; refusing to regenerate against an "
             "unexpected feed."
         )
+    # The digest says these are the committed feed's rows; their own
+    # schema_version values must also be exactly the pin's declared row
+    # contracts, as the release tool requires.
+    require_us_chronicle_feed_row_contracts(
+        consumer_fact_schema_versions_of(facts),
+        facts_sha256=feed_sha256,
+        pin=load_us_chronicle_feed(),
+    )
 
     manifest, feed_families = build_manifest(facts, feed_sha256, args.feed_name)
 

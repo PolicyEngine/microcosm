@@ -7412,6 +7412,7 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
             facts=({"fact": 1},),
             facts_sha256="facts-sha",
             manifest_sha256=None,
+            fact_schema_versions=(),
             provenance=lambda: {
                 "path_name": "facts.jsonl",
                 "fact_row_count": 1,
@@ -16895,6 +16896,54 @@ def test_committed_feed_pin_is_waived_only_by_the_flag() -> None:
     )
 
 
+@pytest.mark.parametrize(
+    ("facts_sha256", "rows", "message"),
+    [
+        ("a" * 64, ("chronicle.consumer_fact.v6",), "['chronicle.consumer_fact.v6']"),
+        ("a" * 64, ("chronicle.consumer_fact.v5",), "consumer_fact_schema_versions"),
+        ("a" * 64, (), "consumer_fact_schema_versions"),
+        ("f" * 64, ("chronicle.consumer_fact.v6",), "['chronicle.consumer_fact.v6']"),
+    ],
+    ids=["undeclared", "not_in_the_pin", "unstamped", "undeclared_unpinned_feed"],
+)
+def test_feed_row_contract_check_refuses_rows_the_pin_or_epoch_lacks(
+    facts_sha256, rows, message
+) -> None:
+    """The release build holds the rows' row contracts, not only the pin's list.
+
+    On the committed feed (its facts digest) the rows must carry exactly the
+    pin's list, which a re-pin types by hand; a feed admitted by
+    ``--allow-unpinned-feed`` is held only to the declared row contracts.
+    """
+    builder = _load_builder_module()
+    check = getattr(builder, "_check_us_ledger_feed_row_contracts", None)
+    assert callable(check)
+    bare = _feed_pin(bare=True)
+    assert bare.consumer_fact_schema_versions == ("chronicle.consumer_fact.v3",)
+    check(("chronicle.consumer_fact.v3",), facts_sha256="a" * 64, pin=bare)
+    check(("chronicle.consumer_fact.v5",), facts_sha256="f" * 64, pin=bare)
+
+    with pytest.raises(ValueError) as refusal:
+        check(rows, facts_sha256=facts_sha256, pin=bare)
+
+    assert message in str(refusal.value)
+
+
+def test_main_checks_the_feed_row_contracts_before_compiling_targets() -> None:
+    builder = _load_builder_module()
+    source = inspect.getsource(builder._main)
+    call = (
+        "_check_us_ledger_feed_row_contracts(\n"
+        "        ledger_artifact.fact_schema_versions,"
+    )
+    assert call in source
+    assert source.count("_check_us_ledger_feed_row_contracts(") == 1
+    pinned = source.index("_check_committed_us_ledger_feed_pin(")
+    checked = source.index(call)
+    compiled = source.index("target_registry = compile_us_fiscal_target_registry(")
+    assert pinned < checked < compiled
+
+
 def _minimal_pin_argv() -> list[str]:
     return [
         "--base-h5",
@@ -17854,3 +17903,51 @@ def test_esi_premium_signal_evidence_keeps_a_waived_failure_on_the_record() -> N
         "failures": ["ESI premiums: 100 employer premium(s) outside employed ..."],
     }
     assert builder._esi_premiums_signal_evidence(None) == {"evaluated": False}
+
+
+def test_a_build_that_must_send_telemetry_stops_before_any_input_without_an_emitter(
+    monkeypatch, tmp_path
+) -> None:
+    """MICROCOSM_TELEMETRY_REQUIRED=1 and no emitter: the build's first call raises.
+
+    The build starts its emitter right after reading its arguments, so with
+    the real adapter (not the shared fixture's in-memory one) it stops before
+    its first check, download or write.
+    """
+
+    from microcosm.build import telemetry_emitter
+    from test_support.microcosm_build.telemetry import ADAPTER_START
+
+    builder = _load_builder_module()
+    monkeypatch.setattr(
+        telemetry_emitter.LocalTelemetryEmitter, "start", classmethod(ADAPTER_START)
+    )
+    monkeypatch.setenv("MICROCOSM_TELEMETRY_REQUIRED", "1")
+    monkeypatch.setenv(
+        "MICROCOSM_EMITTER_COMMAND", str(tmp_path / "missing" / "microcosm-emitter")
+    )
+    output = tmp_path / "out"
+    monkeypatch.setattr(
+        builder,
+        "_parse_args",
+        lambda argv: SimpleNamespace(
+            staging_run_id="observed-run",
+            release_id="release-id",
+            dry_run_gates_report=None,
+            out=output,
+        ),
+    )
+
+    def went_on(*args, **kwargs):
+        pytest.fail("the build went on without the emitter it must use")
+
+    # The build's next steps after starting its emitter.
+    monkeypatch.setattr(builder._ReleaseDryRun, "start", went_on)
+    monkeypatch.setattr(builder, "_git_dirty", went_on)
+
+    with pytest.raises(telemetry_emitter.TelemetryRequiredError) as raised:
+        builder.main([])
+
+    assert raised.value.reason == "command_not_found"
+    assert builder._ACTIVE_EMITTER is None
+    assert not output.exists()

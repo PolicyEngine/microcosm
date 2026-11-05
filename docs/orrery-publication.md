@@ -69,12 +69,20 @@ used licensed microdata, as UK builds do, private; it becomes public only
 after output clearance. The direct upload to the runs application will then
 be removed.
 
-When a build queues an upload with remote staging enabled, it then stages its
-artifact bundle to Hugging Face under `staged/<run_id>/`. That bundle holds
-every file of the queued upload, plus `graph.execution.json` when execution
-was recorded, so the Orrery graph files can be rebuilt from it later. This does not hold for an interrupted build, a
-build run with `--publish-orrery` while staging is local-only or disabled, or a
-build whose Hugging Face staging failed or did not complete.
+When a build queues an upload with remote staging enabled, it then hands its
+artifact bundle to its emitter, which uploads it to Hugging Face under
+`staged/<run_id>/`. That bundle holds every file of the queued upload, plus
+`graph.execution.json` when execution was recorded, so the Orrery graph files
+can be rebuilt from it later. This does not hold for:
+
+- an interrupted build;
+- a build run with `--publish-orrery` while staging is local-only or disabled;
+- a build whose Hugging Face staging failed or did not complete;
+- a build whose hand-over the emitter still held when the build's wait ended
+  (`UPLOAD_PENDING`, or the emitter's last error code while it retries): the
+  bundle may land later, and a re-stage records it;
+- a build refused remote staging before it began, because no usable emitter
+  was installed.
 
 ## Configuration
 
@@ -85,6 +93,9 @@ build whose Hugging Face staging failed or did not complete.
 | Collector origin | Built into the installed emitter; the build sends no address unless a caller passes a loopback development address in the module settings | No producer variable or destination override |
 | Runs origin | Tracked `DEFAULT_GRAPH_PUBLICATION_ORIGIN` | No new producer variable |
 | `XDG_CACHE_HOME` | Optional existing cache-location setting, read by the interface in the build; the build passes the spool path (`microcosm/telemetry/events.sqlite3`) and the hand-over database beside it (`events.handovers.sqlite3`) to the emitter on its standard input | Defaults to the user's cache directory |
+| `MICROCOSM_TELEMETRY_REQUIRED` | Optional, read by the build adapter (`microcosm.build.telemetry_emitter`) each time a build starts its emitter; only builds that start the adapter read it. `1`: the build stops with `TelemetryRequiredError` if the emitter cannot be prepared or is missing, its `version` times out or fails, it is older than `MINIMUM_EMITTER_VERSION`, it lists no protocol version 1, its `hello` fails, it exits or times out before it is ready, or it starts without its telemetry module (for a failure the interface reports, its line saying the build will continue does not apply); unset or `0`: it continues without the emitter; any other value: `ValueError` | Whoever starts the build. The Modal stage runner sets `1` unless the plan sets `0`; workstations: the operator's shell. Leaving it off (unset or `0`) exists only for people outside PolicyEngine who run Microcosm without access to the collector; PolicyEngine's own builds keep telemetry required. Not a credential |
+| `MICROCOSM_TELEMETRY_RUN_ID` | Optional, read by the US build programs that open a run through `microcosm.build.program_telemetry`: the telemetry run ID they report under; the part before its last `.` becomes the run's candidate ID. Unset, each attempt makes its own ID (`<pipeline>-<UTC time>-<8 hex digits>`); a value the collector would refuse stops the program with `ValueError` before any work | The Modal stage runner sets `<plan run_id>.<stage>`, and a plan may not set it; workstations: the operator's shell, usually unset. Not a credential |
+| `MICROCOSM_TELEMETRY_PARENT_PID` | Read by the same programs: when it equals the process's parent's ID, the process is a child stage whose parent records its telemetry, and it starts no emitter | Set by `build_us_puf_support_base.py --stage all` for the child interpreters it starts; a plan may not set it. Not a credential |
 
 The separately deployed runs application retains its Vercel Blob configuration.
 Producer tests do not contact the runs application or the collector.

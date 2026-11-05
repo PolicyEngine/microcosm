@@ -723,7 +723,14 @@ def hub_offline(environment: Mapping[str, str] | None = None) -> bool:
     return str(value or "").upper() in _TRUE_VALUES
 
 
-def write_access_problem(emitter: BundleEmitter | None, repository: str) -> str | None:
+def write_access_problem(
+    emitter: BundleEmitter | None,
+    repository: str,
+    *,
+    action: str = "remote dataset staging",
+    emitter_task: str = "the build's emitter, which uploads the bundle",
+    proof: str = "the upload at the end of the run",
+) -> str | None:
     """Why a remote stage to ``repository`` could not complete, or None.
 
     ``emitter`` is the build's emitter client, running or not. The refusal
@@ -733,19 +740,21 @@ def write_access_problem(emitter: BundleEmitter | None, repository: str) -> str 
     check, or the emitter's own check of the credential, the repository and
     the credential's write scope (``check_write_access``). A scope the Hub
     does not describe is a warning: only the upload itself proves it.
+
+    Another hand-over to the Hub, such as a release change, names itself in
+    the messages: ``action`` is what needs the access, ``emitter_task`` the
+    emitter and what it does for it, and ``proof`` what proves an unread
+    write scope.
     """
 
     try:
         repository_identifier(repository)
     except ValueError:
         return (
-            "remote dataset staging needs a Hugging Face repository identifier of "
+            f"{action} needs a Hugging Face repository identifier of "
             f"the form owner/name; got {repository!r}"
         )
-    needs = (
-        f"remote dataset staging to {repository} needs the build's emitter, "
-        "which uploads the bundle, but"
-    )
+    needs = f"{action} to {repository} needs {emitter_task}, but"
     problem = emitter_problem(emitter)
     if problem is not None:
         return f"{needs} {problem}"
@@ -766,17 +775,17 @@ def write_access_problem(emitter: BundleEmitter | None, repository: str) -> str 
         )
     if access.get("credential") != "present":
         return (
-            f"remote dataset staging to {repository} needs a Hugging Face write "
+            f"{action} to {repository} needs a Hugging Face write "
             "credential (HF_TOKEN or `hf auth login`)"
         )
     if access.get("reachable") is False:
         error_type = access.get("error_type")
         reason = error_type if isinstance(error_type, str) else "no answer"
-        return f"remote dataset staging cannot reach {repository} ({reason})"
+        return f"{action} cannot reach {repository} ({reason})"
     can_write = access.get("can_write")
     if can_write is False:
         return (
-            f"remote dataset staging to {repository} needs a write credential: "
+            f"{action} to {repository} needs a write credential: "
             "the ambient Hugging Face token is read-only or is not scoped to this "
             "repository or its owner (a fine-grained token needs repo.write on "
             f"{repository} or on {repository.split('/', 1)[0]})"
@@ -784,7 +793,7 @@ def write_access_problem(emitter: BundleEmitter | None, repository: str) -> str 
     if can_write is None:
         _warn(
             "the Hugging Face credential's write scope could not be read; "
-            "the upload at the end of the run will prove it."
+            f"{proof} will prove it."
         )
     return None
 

@@ -668,13 +668,16 @@ def test_committed_target_fit_register_retains_only_live_deferrals() -> None:
     # to +23.4 % across the C3 and final arms, inside the bound, and the gate
     # fails the deferral as stale.
     assert set(register) == {
+        "hmrc.spi.employment_income.count_by_self_employment_income_band.band_1000_2000@2025",
         "hmrc.spi.savings_interest_income.amount_by_total_income_band.band_15000@2025",
-        "hmrc.spi.savings_interest_income.amount_by_total_income_band.band_20000@2025",
-        "hmrc.spi.savings_interest_income.amount_by_total_income_band.band_30000@2025",
+        "hmrc/dividend_income_income_band_15_000_to_20_000@2025",
         "hmrc/dividend_income_income_band_20_000_to_30_000@2025",
         "hmrc/dividend_income_income_band_30_000_to_40_000@2025",
         "hmrc/dividend_income_income_band_40_000_to_50_000@2025",
+        "hmrc/dividend_income_income_band_50_000_to_70_000@2025",
         "hmrc/private_pension_income_income_band_12_570_to_15_000@2025",
+        "hmrc/private_pension_income_income_band_15_000_to_20_000@2025",
+        "hmrc/property_income_income_band_15_000_to_20_000@2025",
         "hmrc/state_pension_count_income_band_500_000_to_1_000_000@2025",
     }
     assert {record.release_lines for record in register.values()} == {("local",)}
@@ -700,11 +703,10 @@ def test_committed_local_target_fit_register_is_empty_and_well_formed() -> None:
         assert "%" not in record.reason, key
     assert uk_default_local_target_fit_reviewed_exclusions() is register
     assert set(register) == {
-        "age_structure/E06000018/age/20_30",
+        "age_structure/E06000023/age/20_30",
         "age_structure/E07000008/age/20_30",
         "age_structure/E07000178/age/20_30",
-        "age_structure/E14001080/age/20_30",
-        "age_structure/E14001081/age/20_30",
+        "age_structure/E08000003/age/20_30",
         "age_structure/E14001096/age/20_30",
         "age_structure/E14001131/age/20_30",
         "age_structure/E14001149/age/20_30",
@@ -718,25 +720,24 @@ def test_committed_local_target_fit_register_is_empty_and_well_formed() -> None:
         "age_structure/E14001353/age/20_30",
         "age_structure/E14001410/age/20_30",
         "age_structure/E14001412/age/20_30",
-        "age_structure/E14001420/age/20_30",
         "age_structure/E14001467/age/20_30",
-        "age_structure/S12000013/age/20_30",
-        "age_structure/S12000013/age/60_70",
-        "age_structure/S14000027/age/60_70",
         "age_structure/W07000091/age/20_30",
         "council_tax/E06000014/council_tax/band_a",
+        "council_tax/E07000178/council_tax/band_e",
+        "council_tax/E08000028/council_tax/band_f",
         "council_tax/E09000020/council_tax/band_b",
-        "council_tax/E09000020/council_tax/band_g",
-        "council_tax/E09000030/council_tax/band_f",
-        "council_tax/E09000033/council_tax/band_b",
-        "council_tax/E09000033/council_tax/band_f",
+        "council_tax/E09000033/council_tax/band_c",
         "council_tax/E09000033/council_tax/band_g",
         "council_tax/S12000013/council_tax/band_a",
+        "council_tax/S12000013/council_tax/band_b",
         "council_tax/S12000013/council_tax/band_f",
-        "council_tax/S12000035/council_tax/band_b",
-        "council_tax/W06000018/council_tax/band_h",
-        "tenure/E09000033/tenure/owned_mortgage",
-        "uc_households/E14001098/uc_hh_3plus_children",
+        "domestic_energy/S12000023/energy/electricity_kwh",
+        "domestic_energy/S14000051/energy/electricity_kwh",
+        "hmrc_income_by_area/E09000020/hmrc/self_employment_income/amount",
+        "hmrc_income_by_area/E14001172/hmrc/employment_income/amount",
+        "hmrc_income_by_area/E14001268/hmrc/self_employment_income/amount",
+        "hmrc_income_by_area/E14001310/hmrc/self_employment_income/amount",
+        "hmrc_income_by_area/E14001535/hmrc/higher_rate_taxpayers/count",
     }
     assert {record.release_lines for record in register.values()} == {("local",)}
 

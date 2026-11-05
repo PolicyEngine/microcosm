@@ -17,11 +17,15 @@ from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
+from microcosm.build.ledger_artifact import consumer_fact_schema_versions_of
 from microcosm.build.ledger_targets import MONTHLY_WINDOW_OPERATIONS
 from microcosm.build.target_reference_authoring import (
     TargetReferenceAuthoringConfig,
     author_target_references,
     target_references_resource,
+)
+from microcosm.build.uk_runtime.chronicle_feed import (
+    require_uk_chronicle_feed_subset_row_contracts,
 )
 from microcosm.build.uk_runtime.high_value_homes import (
     load_uk_high_value_home_stock_facts,
@@ -111,16 +115,21 @@ NATIONAL_GEOGRAPHY_LEVELS = frozenset({"country", "region"})
 
 def main() -> None:
     args = _parser().parse_args()
-    contract = _filter_contract_by_geography_levels(
-        json.loads(args.contract.read_text()),
-        allowed_levels=NATIONAL_GEOGRAPHY_LEVELS,
-    )
-    _validate_amount_entity_pins(contract)
     facts = [
         json.loads(line)
         for line in args.ledger_facts.read_text().splitlines()
         if line.strip()
     ]
+    # The rows of a subset of the pinned feed: each row contract must be one
+    # the committed pin lists and chronicle_epoch declares.
+    require_uk_chronicle_feed_subset_row_contracts(
+        consumer_fact_schema_versions_of(facts)
+    )
+    contract = _filter_contract_by_geography_levels(
+        json.loads(args.contract.read_text()),
+        allowed_levels=NATIONAL_GEOGRAPHY_LEVELS,
+    )
+    _validate_amount_entity_pins(contract)
     # microcosm#1301: the high-value homes region rows select the
     # Microcosm-derived facts the local cells bind (microcosm#1240), carried in
     # the committed resource rather than the Chronicle feed. Their fan-out

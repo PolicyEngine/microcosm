@@ -1517,8 +1517,10 @@ def test_the_calibrated_node_keys_on_the_schema_9_publication_code_not_the_solve
     # changes the output's bytes, so it must re-key the calibrated node (through
     # its terminal_code parameter); otherwise a store run with resume="auto"
     # serves the old labels. Like the high-value homes code, it stays out of
-    # the two kernels' shared code hash, so it never re-keys the preflight node
-    # or the solve.
+    # the two kernels' shared code hash. An edit to the catalogs, the schema
+    # or the label choices therefore never re-keys the preflight node or the
+    # solve; an edit to geography_constants still does, because the target
+    # kernels the preflight reads hash it too (microcosm#1492).
     import microcosm.calibrate.geography_constants as geography_constants_module
     import microcosm.calibrate.hierarchy_labels as hierarchy_labels_module
     import microcosm.diagnostics.catalogs as catalogs_module

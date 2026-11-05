@@ -529,6 +529,7 @@ def test_the_tool_builds_a_resource_the_loader_accepts(tmp_path) -> None:
                 "facts_sha256": facts_sha,
                 "manifest_sha256": hashlib.sha256(manifest.read_bytes()).hexdigest(),
                 "fact_row_count": len(lines),
+                "consumer_fact_schema_versions": ["chronicle.consumer_fact.v4"],
             }
         ),
         encoding="utf-8",

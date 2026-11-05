@@ -5,6 +5,7 @@ from __future__ import annotations
 import copy
 import json
 import os
+import re
 import subprocess
 import sys
 from functools import cache
@@ -14,6 +15,8 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 import pytest
+from hypothesis import given, settings
+from hypothesis import strategies as st
 
 from microcosm.build.calibration_predicates import predicate_mask
 from microcosm.build.transport import compose
@@ -76,6 +79,13 @@ def test_every_reference_is_active_or_exempt_with_matching_status():
         }
         for row in document["target_references"]:
             status = row["metadata"].get("activation_status", "active")
+            # G8-r2c F: the coarse stand-in rows park on their measurement
+            # prerequisite, unexempt, until composition proves its producer.
+            if row["metadata"].get("required_measurement_binding"):
+                # Active once G's producer meets A's proof; never exempt.
+                assert status in {"requires_prerequisites", "active"}, row["name"]
+                assert row["name"] not in exemptions, row["name"]
+                continue
             assert (status == "active") != (row["name"] in exemptions), (
                 resource,
                 row["name"],
@@ -341,7 +351,7 @@ def test_nz_every_variant_id_reaches_entitlement_rows_with_explicit_populations(
         for row in spec["resources"]["scenarios"]["scenarios"]
         if row["tier"] == "calibration"
     }
-    assert variants == {"V1", "V2", "V3", "V4", "VHF"}
+    assert variants == {"V1", "V2", "V3", "V4", "VHF", "VSI", "VEX", "VPT"}
     ids = [row["id"] for row, _ in rows]
     assert len(ids) == len(set(ids))
     for variant in variants:
@@ -657,6 +667,7 @@ def test_nz_executable_support_keeps_region99_separate_from_ta999():
     )
 
 
+_MEASUREMENT = "ird_taxable_income_ty2027_v1"
 _BRIDGE_AND_REGION = {
     ("person", "region_code"),
     ("family", "accommodation_supplement_base_rate_weekly_amount"),
@@ -685,10 +696,19 @@ def _nz_composition_spec_and_config():
         money = next(row for row in rows if row["kernel"] == "money.normalize@1")
         at = rows.index(money) + 1
         synthetic = []
+        mapped = {
+            (output["entity"], output["column"])
+            for row in rows
+            if row["kernel"].startswith("transport.quantile_map@")
+            for output in row.get("outputs", ())
+        }
         for entity, columns in resources["money_normalization"][
             "quantile_mapped"
         ].items():
             for column in columns:
+                # G8-r2c E declares the real P1 wage map; keep it the only producer.
+                if (entity, column) in mapped:
+                    continue
                 synthetic.append(
                     {
                         "id": money["id"] + ".synthetic_quantile." + column,
@@ -816,21 +836,72 @@ def test_nz_packaged_graph_produces_region_and_bridge_columns_from_named_nodes()
     assert "region" not in pending and "Reg 17" not in pending
 
 
-def test_nz_packaged_graph_compiles_with_only_pins_and_money_producers():
+@cache
+def _nz_composed():
+    """NZ's packaged graph, composed and compiled once per process."""
     from microcosm.graph import compile_graph
 
     spec, config = _nz_composition_spec_and_config()
+    graph = compose.compose_transport_graph(spec, config)
+    return spec, config, graph, compile_graph(graph)
+
+
+def test_nz_packaged_graph_compiles_with_only_pins_and_money_producers():
+    _, config, _, compiled = _nz_composed()
     # No bridge or region root stays synthetic: CREATE declares none of them.
     assert _BRIDGE_AND_REGION.isdisjoint(
         (owned.entity, owned.column) for owned in config.create_outputs
     )
-    graph = compose.compose_transport_graph(spec, config)
-    compiled = compile_graph(graph)
     assert "nz.package" in compiled.order
     assert "nz.scn.S0.income_decile" in compiled.order
     for variant in ("V1", "V2", "V3", "V4", "VHF"):
         assert f"nz.v.{variant}.calibrate" in compiled.order
         assert f"nz.v.{variant}.gap" in compiled.order
+
+
+def test_every_calibration_node_has_its_own_standin_as_the_only_writer():
+    """R2C-15 on every calibration node, the variant branches' included.
+
+    Composition runs ``_check_measurement_proofs`` on the skeleton and again
+    on the extended graph, where the declaration names no producer for
+    ``nz.v.<V>.calibrate`` and the compiled graph has to prove one. This test
+    checks NZ's graph directly: for each calibration node of the composed
+    graph, exactly one compiled ancestor declares the measurement, it is that
+    branch's stand-in, and it is the only ancestor whose outputs or EXPAND
+    cells hold each proved column.
+    """
+    spec, _, graph, compiled = _nz_composed()
+    proofs, refusals = compose.measurement_proofs(spec)
+    assert refusals == {}
+    columns = [tuple(name.split(".", 1)) for name in proofs[_MEASUREMENT]["columns"]]
+    _, cells = compose._precalibration_expansions(graph)
+    by_id = {node.id: node for node in graph.nodes}
+    roots = sorted(
+        node.id for node in graph.nodes if node.kernel.startswith("calibrate.")
+    )
+    variants = ("V1", "V2", "V3", "V4", "VEX", "VHF", "VPT", "VSI")
+    assert roots == ["nz.calibrate", *(f"nz.v.{name}.calibrate" for name in variants)]
+    for root in roots:
+        branch = root.removesuffix(".calibrate")
+        standin = "nz.income.standin" if branch == "nz" else f"{branch}.income.standin"
+        ancestors = compose._ancestor_closure(compiled.predecessors, {root})
+        declarers = sorted(
+            name
+            for name in ancestors
+            if (by_id[name].params or {}).get(compose.MEASUREMENT_PARAM) == _MEASUREMENT
+        )
+        assert declarers == [standin], root
+        for entity, column in columns:
+            writers = sorted(
+                name
+                for name in ancestors
+                if (entity, column) in cells[name]
+                or any(
+                    (output.entity, output.column) == (entity, column)
+                    for output in by_id[name].outputs
+                )
+            )
+            assert writers == [standin], (root, f"{entity}.{column}")
 
 
 def test_nz_as_area_state_bindings_compare_the_declared_string_geography_codes():
@@ -895,6 +966,10 @@ def _memoize_immutable_reference_profile_views(monkeypatch):
             }
             if compose._has_resource(spec, compose.CHRONICLE_FEED_RESOURCE):
                 names.add(compose.CHRONICLE_FEED_RESOURCE)
+            # G8-r2c: A's measurement proof reads the graph, so the resolved
+            # view depends on it too.
+            if compose._has_resource(spec, compose.GRAPH_RESOURCE):
+                names.add(compose.GRAPH_RESOURCE)
             documents = {
                 name: compose._raw_transport_resource(spec, name)
                 for name in sorted(names)
@@ -962,3 +1037,668 @@ def test_nz_export_slices_need_no_ids_because_compile_refuses_them():
         GraphError, match=r"reads household\.household_id, which no node owns"
     ):
         compose.compose_transport_graph(spec, config)
+
+
+# ---------------------------------------------------------------------------
+# G8-r2c E: the P1 wage map on scaled band edges
+# ---------------------------------------------------------------------------
+
+_WAGE_TABLE = "ird_wage_salary_national_ty2026"
+_PROFILES = ("low", "central", "high")
+
+
+def _earnings_sources():
+    spec = _spec()
+    resources = spec["resources"]
+    (table,) = [
+        row
+        for row in resources["reference_intervals"]["tables"]
+        if row["id"] == _WAGE_TABLE
+    ]
+    factors = {
+        entry["receipt"]["factor_id"]: entry
+        for entry in resources["reference_aging"]["factors"]
+    }
+    return resources, table, factors
+
+
+def _branches(spec):
+    """Each calibration branch's node list: the skeleton's and every variant's."""
+    yield "nz", spec["resources"]["transport_graph"]["nodes"]
+    for scenario in spec["resources"]["scenarios"]["scenarios"]:
+        if scenario["tier"] == "calibration":
+            yield f"nz.v.{scenario['id']}", scenario["nodes"]
+
+
+def test_every_profiles_edges_equal_cut_times_factor_exactly():
+    """Each edge is float(cut_cents × P1 factor / 100), rounded once from Fraction."""
+    from fractions import Fraction
+
+    resources, table, factors = _earnings_sources()
+    document = resources["earnings_bands"]
+    cuts = [table["first_lower_cut_cents"]] + [b["upper_cent"] for b in table["bands"]]
+    # The September 2026 QES re-declaration gives the P1 factors as 1.028904,
+    # 1.029853 and 1.030799 (design 80 gave 1.026690, 1.028580 and 1.030467).
+    assert {
+        profile: factors[f"p1_ty2026_to_ty2027_{profile}"]["operational_factor"]
+        for profile in _PROFILES
+    } == {
+        "low": {"numerator": 1028904, "denominator": 1000000},
+        "central": {"numerator": 1029853, "denominator": 1000000},
+        "high": {"numerator": 1030799, "denominator": 1000000},
+    }
+    assert set(document["profiles"]) == set(_PROFILES)
+    for profile in _PROFILES:
+        entry = factors[f"p1_ty2026_to_ty2027_{profile}"]
+        factor = Fraction(
+            entry["operational_factor"]["numerator"],
+            entry["operational_factor"]["denominator"],
+        )
+        declared = document["profiles"][profile]
+        assert declared["factor_receipt_sha256"] == entry["receipt"]["receipt_sha256"]
+        bands = declared["map_bands"]["bands"]
+        assert [row["reference"] for row in bands] == [
+            f"ird_wage_salary_people_by_band__{band['id']}" for band in table["bands"]
+        ]
+        edges = [bands[0]["lower"]] + [row["upper"] for row in bands]
+        assert edges == [
+            None if cut is None else float(Fraction(cut) * factor / 100) for cut in cuts
+        ]
+    # Design 80's worked band "$50,001 - $51,000" at the central factor.
+    row_57 = document["profiles"]["central"]["map_bands"]["bands"][50]
+    assert (row_57["lower"], row_57["upper"]) == (51492.65, 52522.503)
+
+
+def test_wage_table_has_235_right_closed_bands_and_no_companions():
+    _, table, _ = _earnings_sources()
+    assert len(table["bands"]) == 235
+    assert table["bands"][0]["id"] == "row_7" and table["bands"][-1]["id"] == "row_241"
+    assert table["bands"][-1]["upper_cent"] is None
+    assert table["bands"][-2]["upper_cent"] == 100_000_000
+    assert (
+        table["entity"],
+        table["income_column"],
+        table["positive_band_closure"],
+        table["nil_band"],
+        table["negative_income_policy"],
+        table["first_lower_cut_cents"],
+    ) == ("person", "employment_income_cents", "right", "absent", "refuse", 0)
+    assert not any("count_reference" in band for band in table["bands"])
+
+
+# The rows whose label repeats the previous row's upper endpoint ($20,000,
+# $50,000 and $80,000). Right closure gives each shared endpoint to the lower band.
+_WAGE_SHARED_ENDPOINT_ROWS = ["row_27", "row_57", "row_87"]
+
+
+def _label_dollars(text):
+    return 1_000_000 if text == "1 million" else int(text.replace(",", ""))
+
+
+def test_each_wage_cut_follows_from_its_committed_label():
+    """Each band's cents follow from its own label, with no feed.
+
+    "$a - $b" is the right-closed band (a - 1, b] in dollars, so the cut below
+    it is 100(a - 1) cents and its ``upper_cent`` is 100b. A label whose lower
+    endpoint repeats the previous band's upper one starts at that cut instead,
+    and only the three pinned rows do. "Over $1 million" is the open tail. The
+    edges test above scales these cuts, and the feed audit checks the labels
+    against the feed, which CI doesn't load.
+    """
+    _, table, _ = _earnings_sources()
+    bands = table["bands"]
+    cuts = [table["first_lower_cut_cents"]] + [band["upper_cent"] for band in bands]
+    shared, previous = [], None
+    for index, band in enumerate(bands[:-1]):
+        label = " ".join(band["source_label"].split())
+        match = re.fullmatch(r"\$([\d,]+) - \$([\d,]+|1 million)", label)
+        assert match, (band["id"], label)
+        lower, upper = (_label_dollars(text) for text in match.groups())
+        if lower == previous:
+            shared.append(band["id"])
+            assert cuts[index] == 100 * lower, band["id"]
+        else:
+            assert cuts[index] == 100 * (lower - 1), band["id"]
+        assert cuts[index + 1] == 100 * upper, band["id"]
+        previous = upper
+    assert shared == _WAGE_SHARED_ENDPOINT_ROWS
+    assert bands[-1]["source_label"] == "Over $1 million"
+    assert previous == 1_000_000 and cuts[-2:] == [100 * previous, None]
+
+
+@pytest.mark.parametrize(
+    "mutate",
+    ["hand_edited_edge", "stale_factor_receipt", "stale_interval_table", "tail"],
+)
+def test_the_builder_check_refuses_each_stale_earnings_declaration(mutate):
+    from tools import build_nz_transport_graph as builder
+
+    resources, _, _ = _earnings_sources()
+    document = copy.deepcopy(resources["earnings_bands"])
+    intervals = copy.deepcopy(resources["reference_intervals"])
+    aging = copy.deepcopy(resources["reference_aging"])
+    builder.validate_earnings_bands(document, intervals, aging)
+    if mutate == "hand_edited_edge":
+        document["profiles"]["high"]["map_bands"]["bands"][100]["upper"] += 0.01
+        match = "edges differ"
+    elif mutate == "stale_factor_receipt":
+        for entry in aging["factors"]:
+            if entry["receipt"]["factor_id"] == "p1_ty2026_to_ty2027_low":
+                entry["receipt"]["receipt_sha256"] = "0" * 64
+        match = "stale factor_receipt_sha256"
+    elif mutate == "stale_interval_table":
+        (table,) = [t for t in intervals["tables"] if t["id"] == _WAGE_TABLE]
+        table["source_locator"] += " (edited)"
+        match = "stale wage interval table"
+    else:
+        document["tails"]["central"]["estimator"]["anchor_references"].pop(0)
+        match = "tails differ"
+    with pytest.raises(ValueError, match=match):
+        builder.validate_earnings_bands(document, intervals, aging)
+
+
+def test_the_wage_map_and_cents_precede_the_person_encoder_on_every_branch():
+    spec = _spec()
+    selected = {"V1": "low", "V2": "high"}
+    for prefix, rows in _branches(spec):
+        ids = [row["id"] for row in rows]
+        by_id = {row["id"]: row for row in rows}
+        mapper, cents = (
+            by_id[f"{prefix}.earnings.map"],
+            by_id[f"{prefix}.earnings.cents"],
+        )
+        assert (
+            ids.index(mapper["id"])
+            < ids.index(cents["id"])
+            < ids.index(f"{prefix}.encode.person")
+        )
+        assert mapper["kernel"] == "transport.quantile_map@2"
+        assert mapper["population"] == by_id[f"{prefix}.money.normalize"]["population"]
+        assert mapper["outputs"] == [
+            {
+                "entity": "person",
+                "column": "employment_income",
+                "dtype": "float64",
+                "rewrite": True,
+            }
+        ]
+        assert mapper["artifact_inputs"] == [
+            {"name": "surface", "producer": "nz.facts.precal", "artifact": "surface"}
+        ]
+        variant = prefix.removeprefix("nz.v.") if prefix != "nz" else None
+        assert mapper["params"]["bands"]["path"] == [
+            "profiles",
+            selected.get(variant, "central"),
+            "map_bands",
+        ]
+        assert mapper["params"]["interpolation"]["path"] == [
+            "tails",
+            "vpt" if variant == "VPT" else "central",
+        ]
+        assert cents["kernel"] == "money.minor_units@1"
+        assert json.loads(cents["params"]["declaration"])["columns"] == [
+            {
+                "output_column": "employment_income_cents",
+                "quantum": "0.01",
+                "rounding": "half_even",
+                "source_column": "employment_income",
+            }
+        ]
+        # The encoder reads the mapped wages from the same population.
+        encode = by_id[f"{prefix}.encode.person"]
+        assert any("employment_income" in item["columns"] for item in encode["inputs"])
+
+
+def test_the_tails_anchor_on_the_r2c9_rows_with_the_declared_bracket():
+    resources, table, _ = _earnings_sources()
+    labels = {band["id"]: band["source_label"] for band in table["bands"]}
+    tails = resources["earnings_bands"]["tails"]
+    central = tails["central"]["estimator"]["anchor_references"]
+    vpt = tails["vpt"]["estimator"]["anchor_references"]
+    assert central == [
+        f"ird_wage_salary_people_by_band__row_{row}" for row in range(231, 242)
+    ]
+    assert vpt == [
+        f"ird_wage_salary_people_by_band__row_{row}" for row in range(227, 242)
+    ]
+    assert " ".join(labels["row_231"].split()) == "$500,001 - $550,000"
+    assert " ".join(labels["row_227"].split()) == "$300,001 - $350,000"
+    assert labels["row_241"] == "Over $1 million"
+    for tail in tails.values():
+        assert tail["method"] == "pareto"
+        assert tail["estimator"]["id"] == "grouped_pareto_mle@1"
+        assert tail["estimator"]["bracket"] == ["1.00000095367431640625", "64"]
+        assert tail["estimator"]["iterations"] == 64
+
+
+def test_r2c6_exports_employment_income_on_the_export_and_both_slices():
+    contract = _spec()["resources"]["export_contract"]
+    assert "employment_income" in contract["optional"]
+    for role in ("export", "gates"):
+        assert "employment_income" in contract["entity_slices"][role]["person"]
+
+
+def test_the_wage_bands_reach_quantile_map_v2_as_a_bare_band_list():
+    resources, _, _ = _earnings_sources()
+    for profile in resources["earnings_bands"]["profiles"].values():
+        assert set(profile["map_bands"]) == {"bands"}
+
+
+def test_pending_outputs_no_longer_name_p1_earnings():
+    pending = _spec()["resources"]["transport_graph"]["pending_outputs"]
+    assert "Census rent and liquid-assets quantile producers" in pending
+    assert not any("P1" in entry or "earnings" in entry for entry in pending)
+
+
+# ---------------------------------------------------------------------------
+# G8-r2c G: the stand-in income measure, its variants, S5 and the gates
+# ---------------------------------------------------------------------------
+
+_TRANSFERS = (
+    "jobseeker_support_annual_gross_transfer_cents",
+    "sole_parent_support_annual_gross_transfer_cents",
+    "supported_living_payment_annual_gross_transfer_cents",
+    "nz_super_annual_gross_transfer_cents",
+)
+_MARKET = (
+    "employment_income_cents",
+    "nonfarm_self_employment_income_cents",
+    "farm_self_employment_income_cents",
+    "interest_income_cents",
+    "dividend_income_cents",
+    "rental_income_cents",
+)
+_PROXY = (
+    "ird_taxable_income_proxy_cents",
+    "ird_taxable_income_proxy_nzd",
+    "ird_taxable_income_proxy_universe_status",
+)
+
+
+def test_the_measure_declarations_are_c_shaped_with_r2c10_floor_and_scale():
+    from microcosm.build.transport.measure_kernels import validate_measure_declaration
+
+    document = _spec()["resources"]["income_measurements"]
+    assert document["measurement_id"] == _MEASUREMENT
+    assert set(document["measures"]) == {"central", "vsi"}
+    for entry in document["measures"].values():
+        declaration = entry["declaration"]
+        assert validate_measure_declaration(declaration) == declaration
+        assert (
+            entry["declaration_sha256"]
+            == sha256(
+                json.dumps(declaration, sort_keys=True, separators=(",", ":")).encode()
+            ).hexdigest()
+        )
+        assert (declaration["entity"], declaration["floor"], declaration["scale"]) == (
+            "person",
+            0,
+            100,
+        )
+        assert declaration["add_backs"] == ["rental_income_cents"]
+        assert declaration["outputs"] == dict(
+            zip(("measure", "unit", "universe_status"), _PROXY, strict=True)
+        )
+        assert all(row["sign"] == 1 for row in declaration["components"])
+    central = [
+        row["column"]
+        for row in document["measures"]["central"]["declaration"]["components"]
+    ]
+    vsi = [
+        row["column"]
+        for row in document["measures"]["vsi"]["declaration"]["components"]
+    ]
+    assert central == [*_MARKET, *_TRANSFERS]
+    # VSI omits exactly the four transfer addends.
+    assert set(central) - set(vsi) == set(_TRANSFERS)
+    assert set(vsi) <= set(central)
+
+
+def test_the_omission_register_gives_no_unsourced_size():
+    register = _spec()["resources"]["income_measurements"]["omission_register"]
+    items = {row["item"]: row for row in register["items"]}
+    assert {
+        "private_pension_income",
+        "veterans_pension",
+        "acc_weekly_compensation",
+    } <= set(items)
+    # Design 80's percentages are the proposal's claims, with no repo source.
+    assert {row["size"] for row in items.values()} == {"unknown"}
+
+
+def test_every_calibration_branch_has_one_standin_between_transfers_and_prepare():
+    spec = _spec()
+    measures = {"VSI": "vsi"}
+    for prefix, rows in _branches(spec):
+        ids = [row["id"] for row in rows]
+        by_id = {row["id"]: row for row in rows}
+        standin = by_id[f"{prefix}.income.standin"]
+        assert (
+            ids.index(f"{prefix}.benefits.annual_transfers")
+            < ids.index(standin["id"])
+            < ids.index(f"{prefix}.targets.prepare")
+        )
+        assert standin["kernel"] == "measure.combine@1"
+        assert standin["params"]["measurement_id"] == _MEASUREMENT
+        variant = prefix.removeprefix("nz.v.") if prefix != "nz" else None
+        measure = measures.get(variant, "central")
+        assert standin["params"]["measure"]["path"] == [
+            "measures",
+            measure,
+            "declaration",
+        ]
+        assert {(o["column"], o["dtype"]) for o in standin["outputs"]} == {
+            (_PROXY[0], "Int64"),
+            (_PROXY[1], "float64"),
+            (_PROXY[2], "string"),
+        }
+        declared = spec["resources"]["income_measurements"]["measures"][measure]
+        (inputs,) = standin["inputs"]
+        assert inputs["columns"] == [
+            row["column"] for row in declared["declaration"]["components"]
+        ]
+        prepare, problem = (
+            by_id[f"{prefix}.targets.prepare"],
+            by_id[f"{prefix}.targets.problem"],
+        )
+        read = {
+            (item["entity"], column)
+            for item in prepare["inputs"]
+            for column in item["columns"]
+        }
+        assert {("person", _PROXY[0]), ("person", _PROXY[2])} <= read
+        read = {
+            (item["entity"], column)
+            for item in problem["inputs"]
+            for column in item["columns"]
+        }
+        # The problem slices every target's measure: the amount rows' unit
+        # column, the band indicators' income and universe columns, and the
+        # source households per-band support groups by.
+        assert {
+            ("person", _PROXY[0]),
+            ("person", _PROXY[1]),
+            ("person", _PROXY[2]),
+            ("household", "source_household_id"),
+        } <= read
+        targets = spec["resources"]["target_references"]["target_references"]
+        assert {
+            ("person", row["measure"]) for row in targets if row["family"] == "income"
+        } <= read | {("person", "people")}
+        annual = json.loads(
+            by_id[f"{prefix}.benefits.annual_transfers"]["params"]["declaration"]
+        )
+        assert annual["exposure"]["central"] == ("0.75" if variant == "VEX" else 1)
+
+
+def test_vsi_vex_and_vpt_change_only_their_own_knob():
+    document = _spec()["resources"]["scenarios"]
+    rows = {row["id"]: row for row in document["scenarios"]}
+    assert rows["VSI"]["knobs"] == {"income_measure": "vsi"}
+    assert rows["VEX"]["knobs"] == {"annual_transfer_exposure": 0.75}
+    assert rows["VPT"]["knobs"] == {"earnings_tail_anchor": "vpt"}
+    assert {rows[name]["tier"] for name in ("VSI", "VEX", "VPT")} == {"calibration"}
+    central = document["central_knobs"]
+    assert (
+        central["income_measure"],
+        central["annual_transfer_exposure"],
+        central["earnings_tail_anchor"],
+    ) == ("central", 1, "central")
+    domains = document["knob_domains"]
+    assert domains["income_measure"] == ["central", "vsi"]
+    assert domains["earnings_tail_anchor"] == ["central", "vpt"]
+    assert "declared judgment" in domains["annual_transfer_exposure"]
+    assert "declared judgment" in rows["VEX"]["description"]
+
+
+def test_a_proves_nz_income_standin_the_measurements_only_producer():
+    spec = _spec()
+    proofs, refusals = compose.measurement_proofs(spec)
+    assert refusals == {}
+    assert proofs[_MEASUREMENT]["producers"] == {"nz.calibrate": "nz.income.standin"}
+    assert proofs[_MEASUREMENT]["columns"] == [
+        "person.ird_taxable_income_proxy_cents",
+        "person.ird_taxable_income_proxy_universe_status",
+    ]
+
+
+def test_a_refuses_a_second_declared_producer_upstream_of_calibration():
+    spec = _spec()
+    rows = spec["resources"]["transport_graph"]["nodes"]
+    standin = next(row for row in rows if row["id"] == "nz.income.standin")
+    second = copy.deepcopy(standin)
+    second["id"] = "nz.income.second"
+    rows.insert(rows.index(standin) + 1, second)
+    proofs, refusals = compose.measurement_proofs(spec)
+    assert _MEASUREMENT not in proofs
+    assert "2 nodes declaring measurement_id" in refusals[_MEASUREMENT]
+
+
+def test_without_the_standin_the_24_rows_refuse_activation_by_name():
+    spec = _spec()
+    rows = spec["resources"]["transport_graph"]["nodes"]
+    rows[:] = [row for row in rows if row["id"] != "nz.income.standin"]
+    with pytest.raises(ValueError) as error:
+        compose.validate_transport_activation(spec)
+    message = str(error.value)
+    assert (
+        "placeholder reference target_references.ird_taxable_income_standin" in message
+    )
+    assert f"awaits measurement:{_MEASUREMENT}" in message
+
+
+def test_the_nz_super_stage_lists_its_rules_outputs_for_r2c2():
+    spec = _spec()
+    stages = {
+        stage["id"]: stage
+        for stage in spec["resources"]["precalibration_stages"]["stages"]
+    }
+    stage = stages["nz.precal.nz_super"]
+    assert stage["rules_binding"] == "nz_super"
+    assert [(row["column"], row["purpose"]) for row in stage["outputs"]] == [
+        ("entitled_to_new_zealand_superannuation", "classification"),
+        ("nz_super_weekly_amount_before_tax", "calibration_measure"),
+    ]
+    assert [row["column"] for row in stage["derived_outputs"]] == [
+        "nz_super_weekly_amount_before_tax_cents"
+    ]
+    # The stand-in itself stays off S5: no stage lists its columns.
+    listed = json.dumps(stages)
+    assert not any(column in listed for column in _PROXY)
+
+
+def test_the_s5_guard_refuses_an_undeclared_nz_super_derived_output():
+    from microcosm.graph import compile_graph
+
+    spec, config = _nz_composition_spec_and_config()
+    compile_graph(compose.compose_transport_graph(spec, config))
+    stage = next(
+        stage
+        for stage in spec["resources"]["precalibration_stages"]["stages"]
+        if stage["id"] == "nz.precal.nz_super"
+    )
+    stage["derived_outputs"] = []
+    with pytest.raises(ValueError, match="undeclared pre-calibration stage output"):
+        compose.compose_transport_graph(spec, config)
+
+
+def test_measurement_prefit_carries_r2c3s_frozen_numbers_and_six_aliases():
+    from test_support.microcosm_build.reference_intervals import R2C3_PREFIT_THRESHOLDS
+
+    gates = {row["id"]: row for row in _spec()["resources"]["gates"]["gates"]}
+    entry = gates["measurement_prefit"]
+    assert (entry["gate"], entry["phase"], entry["criticality"]) == (
+        "measurement_prefit",
+        "terminal",
+        "release_blocking",
+    )
+    parameters = entry["parameters"]
+    assert parameters["roster_total_bounds"] == [0.75, 1.25]
+    assert parameters["band_bounds"] == [0.5, 2.0]
+    assert parameters["maximum_discrepant_bands"] == 2
+    assert parameters["minimum_source_households"] == 30
+    assert parameters["minimum_kish_ess"] == 30
+    assert {
+        key: value for key, value in parameters.items() if key in R2C3_PREFIT_THRESHOLDS
+    } == R2C3_PREFIT_THRESHOLDS
+    assert parameters["tables"] == ["ird_taxable_income_standin_ty2024"]
+    assert parameters["required_evidence"] == [
+        "native_band_report",
+        "omission_register",
+        "scenario_vsi",
+        "scenario_vex",
+        "scenario_vpt",
+        "identity_receipts",
+    ]
+
+
+def test_the_prefit_table_has_12_bands_each_with_both_companions():
+    (table,) = [
+        row
+        for row in _spec()["resources"]["reference_intervals"]["tables"]
+        if row["id"] == "ird_taxable_income_standin_ty2024"
+    ]
+    assert len(table["bands"]) == 12
+    assert all(
+        band["count_reference"] and band["amount_reference"] for band in table["bands"]
+    )
+    assert table["nil_band"] == "absent"
+    assert table["diagnostics"]["support_household_entity"] == "household"
+
+
+def test_r2c18_wires_no_placeholder_evidence_into_the_terminal_battery():
+    rows = {row["id"]: row for row in _spec()["resources"]["transport_graph"]["nodes"]}
+    names = {edge["name"] for edge in rows["nz.gates.terminal"]["artifact_inputs"]}
+    assert not names & {
+        "native_band_report",
+        "omission_register",
+        "scenario_vsi",
+        "scenario_vex",
+        "scenario_vpt",
+        "identity_receipts",
+    }
+
+
+def test_cell_support_gates_require_the_three_new_variants_and_income_lists_hold():
+    gates = {row["id"]: row for row in _spec()["resources"]["gates"]["gates"]}
+    for name in ("reported_cell_support", "reported_cell_support_target_a"):
+        assert {"VSI", "VEX", "VPT"} <= set(
+            gates[name]["parameters"]["required_scenarios"]
+        )
+    families = [
+        "demography",
+        "household_structure",
+        "housing_tenure",
+        "income",
+        "main_benefits",
+        "superannuation",
+    ]
+    assert gates["calibration_per_family_fit"]["parameters"]["families"] == families
+    assert (
+        gates["national_and_region_admin_aggregates"]["parameters"]["families"]
+        == families
+    )
+    assert (
+        gates["target_profile_coverage"]["parameters"]["required_families"] == families
+    )
+    assert gates["calibration_per_family_fit"]["parameters"]["within"] == 0.05
+
+
+def test_vsi_review_triggers_and_the_wage_earner_count_stay_diagnostic():
+    document = _spec()["resources"]["income_measurements"]
+    triggers = document["review_triggers"]
+    assert triggers["scenario"] == "VSI"
+    assert [
+        row.get("relative_change_above", row.get("share_above"))
+        for row in triggers["triggers"]
+    ] == [
+        "0.10",
+        "0.10",
+        "0.05",
+    ]
+    assert document["diagnostics"]["wage_earner_count"]["ruling"] == "R2C-8"
+    gates = json.dumps(_spec()["resources"]["gates"])
+    assert "wage_earner" not in gates
+
+
+@pytest.mark.parametrize(
+    "column",
+    ["entitled_to_new_zealand_superannuation", "nz_super_weekly_amount_before_tax"],
+)
+def test_the_s5_guard_refuses_a_reader_of_a_non_public_nz_super_column(column):
+    # takeup.assign reads both rules outputs of nz.benefits.super; once the
+    # stage stops listing one, that column is not public and its reader refuses.
+    spec, config = _nz_composition_spec_and_config()
+    stage = next(
+        stage
+        for stage in spec["resources"]["precalibration_stages"]["stages"]
+        if stage["id"] == "nz.precal.nz_super"
+    )
+    stage["outputs"] = [row for row in stage["outputs"] if row["column"] != column]
+    with pytest.raises(ValueError, match="undeclared pre-calibration stage output"):
+        compose.compose_transport_graph(spec, config)
+
+
+def test_every_prepared_table_on_the_standins_columns_has_no_nil_band():
+    # C excludes every record at x <= 0 (R2C-14), so a nil band on a table C
+    # feeds would never count them. Only declared-and-validated tables, with no
+    # companions and no prepared band indicator, may keep IRD's nil band.
+    spec = _spec()
+    resources = spec["resources"]
+    prepared = {
+        entry["interval"]["table"]
+        for entry in resources["calibration_bindings"]["columns"]
+        if "interval" in entry
+    }
+    fed = [
+        table
+        for table in resources["reference_intervals"]["tables"]
+        if (table["income_column"], table["universe_column"]) == (_PROXY[0], _PROXY[2])
+    ]
+    assert "ird_taxable_income_standin_ty2024" in prepared
+    for table in fed:
+        companions = any(
+            band.get("count_reference") or band.get("amount_reference")
+            for band in table["bands"]
+        )
+        if table["id"] in prepared or companions:
+            assert table["nil_band"] == "absent", table["id"]
+        else:
+            assert table["nil_band"] == "present", table["id"]
+
+
+_cents = st.integers(min_value=-(10**11), max_value=10**11)
+
+
+@settings(max_examples=150, deadline=None)
+@given(
+    rows=st.lists(
+        st.tuples(*([_cents] * len(_MARKET)), *([st.integers(0, 10**10)] * 4)),
+        min_size=1,
+        max_size=12,
+    )
+)
+def test_property_vsi_is_the_central_measure_less_its_four_transfers(rows):
+    from microcosm.build.transport.measure_kernels import combine_measure
+
+    # combine_measure only reads the declarations, so the shared copy serves.
+    measures = _pristine_spec()["resources"]["income_measurements"]["measures"]
+    columns = {
+        name: pd.Series([row[index] for row in rows], dtype="Int64")
+        for index, name in enumerate((*_MARKET, *_TRANSFERS))
+    }
+    weights = np.ones(len(rows))
+    central, central_status, _ = combine_measure(
+        measures["central"]["declaration"], columns, weights
+    )
+    vsi, vsi_status, _ = combine_measure(
+        measures["vsi"]["declaration"], columns, weights
+    )
+    for index, row in enumerate(rows):
+        market, transfers = row[: len(_MARKET)], row[len(_MARKET) :]
+        rental = market[_MARKET.index("rental_income_cents")]
+        # The rental add-back counts rental profit as max(0, r) in both.
+        assert vsi[index] == sum(market) + max(0, -rental)
+        assert central[index] - vsi[index] == sum(transfers)
+        for value, status in ((central, central_status), (vsi, vsi_status)):
+            assert status[index] == ("included" if value[index] > 0 else "excluded")

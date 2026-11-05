@@ -6,6 +6,14 @@ loads and maps the ACS spine, transfers model input leaves from the dense
 donor, assigns the PUMA-anchored state/CD/county geography ladder, audits every
 fit's resolved typed weight kind, and writes the combined base. Calibration is
 deliberately downstream.
+
+Telemetry: after parsing its arguments the builder starts the emitter
+(``microcosm.build.program_telemetry``, pipeline ``us_acs_multispine_staging``),
+records a stage change at each main phase (``load_donor``,
+``fetch_acs_sources``, ``build_multispine``, ``local_inputs``,
+``audit_inputs``, ``export``) and then completion, or failure with the error.
+With ``MICROCOSM_TELEMETRY_REQUIRED=1``, which the Modal stage runner sets, an
+emitter that cannot be used stops the builder before it reads any input.
 """
 
 from __future__ import annotations
@@ -28,6 +36,8 @@ from microcosm.build import (
     weights_audit_gate,
 )
 from microcosm.build.gates import GateResult
+from microcosm.build.program_telemetry import program_telemetry
+from microcosm.build.telemetry_emitter import LocalTelemetryEmitter
 from microcosm.build.us_runtime import acs_sources
 from microcosm.build.us_runtime.acs_inputs import acs_self_employment_identity_gate
 from microcosm.build.us_runtime.acs_local_hours import (
@@ -282,8 +292,18 @@ def _donor_release_identity(
     }
 
 
+#: The telemetry pipeline this builder reports under.
+TELEMETRY_PIPELINE = "us_acs_multispine_staging"
+
+
 def main(argv: list[str] | None = None) -> int:
     args = _parse_args(argv)
+    with program_telemetry(pipeline=TELEMETRY_PIPELINE) as telemetry:
+        return _build(args, telemetry)
+
+
+def _build(args: argparse.Namespace, telemetry: LocalTelemetryEmitter) -> int:
+    telemetry.transition_stage("load_donor")
     summary_path = args.summary or args.out_h5.with_suffix(".summary.json")
     _validate_artifact_paths(args, summary_path=summary_path)
 
@@ -315,6 +335,7 @@ def main(argv: list[str] | None = None) -> int:
     puma_ladder_sha256 = _sha256(args.puma_ladder)
     puma_ladder = load_us_puma_ladder(args.puma_ladder)
 
+    telemetry.transition_stage("fetch_acs_sources")
     source = acs_sources.fetch_acs_pums_sources(
         args.inputs_dir,
         manifest=manifest,
@@ -323,6 +344,7 @@ def main(argv: list[str] | None = None) -> int:
         source = replace(source, max_households=args.max_households)
     drop_group_quarters_children = _drop_acs_group_quarters_children()
 
+    telemetry.transition_stage("build_multispine")
     result = build_optional_acs_multispine(
         base,
         source,
@@ -359,6 +381,7 @@ def main(argv: list[str] | None = None) -> int:
     # writer scratch at once.
     del base
     gc.collect()
+    telemetry.transition_stage("local_inputs")
     # microcosm#1020: label the ACS rows' immigration status and fill every
     # person's years_since_us_entry BEFORE the input-null audit. Left missing,
     # they enter the reviewed-null register, whose fill is the engine default:
@@ -387,6 +410,7 @@ def main(argv: list[str] | None = None) -> int:
     )
     del ssi_disability_donor
     gc.collect()
+    telemetry.transition_stage("audit_inputs")
     input_null_audit = _engine_input_null_audit(result.frame)
     gc.collect()
     hours_gate = acs_local_hours_signal_gate(
@@ -397,6 +421,7 @@ def main(argv: list[str] | None = None) -> int:
             "Local staging hours gate failed: " + "; ".join(hours_gate.failures)
         )
 
+    telemetry.transition_stage("export")
     args.out_h5.parent.mkdir(parents=True, exist_ok=True)
     staging_export_peak_bytes = _preflight_staging_export(result.frame)
     _write_dataset(result.frame, args.out_h5, period=args.period)

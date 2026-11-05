@@ -255,6 +255,10 @@
       "dft.local_bus_journeys": {
         "provider_id": "dft",
         "label": "Local bus passenger journeys"
+      },
+      "hmrc.benefits_in_kind": {
+        "provider_id": "hmrc",
+        "label": "Benefits in kind"
       }
     },
     "target_categories": {
@@ -386,6 +390,11 @@
       "dwp.uc.two_child_limit.households_claimant_pip": "dwp.universal_credit_two_child_limit",
       "dwp.uc.two_child_limit.households_disabled_child_element": "dwp.universal_credit_two_child_limit",
       "dwp.workplace_pension.employer_contributions": "dwp.workplace_pensions",
+      "hmrc.benefits_in_kind.company_car_fuel.diesel_including_hybrids": "hmrc.benefits_in_kind",
+      "hmrc.benefits_in_kind.company_car_fuel.fully_electric": "hmrc.benefits_in_kind",
+      "hmrc.benefits_in_kind.company_car_fuel.petrol_including_hybrids": "hmrc.benefits_in_kind",
+      "hmrc.benefits_in_kind.company_car_recipients": "hmrc.benefits_in_kind",
+      "hmrc.benefits_in_kind.company_car_taxable_value": "hmrc.benefits_in_kind",
       "hmrc.cgt.badr_ir_qualifying_gains_by_band": "hmrc.capital_gains_tax",
       "hmrc.cgt.badr_ir_taxpayers_by_band": "hmrc.capital_gains_tax",
       "hmrc.cgt.gains_by_age_band": "hmrc.capital_gains_tax",
@@ -407,6 +416,8 @@
       "hmrc.child_benefit.families_in_payment.children_3": "hmrc.child_benefit",
       "hmrc.child_benefit.families_in_payment.children_4": "hmrc.child_benefit",
       "hmrc.child_benefit.families_in_payment.children_5_plus": "hmrc.child_benefit",
+      "hmrc.child_benefit.hicbc_liable_taxpayers": "hmrc.child_benefit",
+      "hmrc.child_benefit.hicbc_revenue": "hmrc.child_benefit",
       "hmrc.itl.additional_rate_taxpayers": "hmrc.income_tax_liabilities_statistics",
       "hmrc.itl.higher_rate_taxpayers": "hmrc.income_tax_liabilities_statistics",
       "hmrc.itl.income_tax_by_total_income_band": "hmrc.income_tax_liabilities_statistics",
@@ -779,6 +790,11 @@
       "dwp.uc.two_child_limit.households_claimant_pip": "Households claimant Personal Independence Payment",
       "dwp.uc.two_child_limit.households_disabled_child_element": "Households disabled child element",
       "dwp.workplace_pension.employer_contributions": "Employer workplace pension contributions, Great Britain",
+      "hmrc.benefits_in_kind.company_car_fuel.diesel_including_hybrids": "Company car recipients, diesel including hybrids",
+      "hmrc.benefits_in_kind.company_car_fuel.fully_electric": "Company car recipients, fully electric",
+      "hmrc.benefits_in_kind.company_car_fuel.petrol_including_hybrids": "Company car recipients, petrol including hybrids",
+      "hmrc.benefits_in_kind.company_car_recipients": "Company car benefit recipients",
+      "hmrc.benefits_in_kind.company_car_taxable_value": "Company car benefit taxable value",
       "hmrc.cgt.badr_ir_qualifying_gains_by_band": "Capital Gains Tax BADR and Investors' Relief qualifying gains by band",
       "hmrc.cgt.badr_ir_taxpayers_by_band": "Capital Gains Tax BADR and Investors' Relief claimants by band of qualifying gain",
       "hmrc.cgt.gains_by_age_band": "Capital Gains Tax gains by age band",
@@ -800,6 +816,8 @@
       "hmrc.child_benefit.families_in_payment.children_3": "Families in payment, three children",
       "hmrc.child_benefit.families_in_payment.children_4": "Families in payment, four children",
       "hmrc.child_benefit.families_in_payment.children_5_plus": "Families in payment, five or more children",
+      "hmrc.child_benefit.hicbc_liable_taxpayers": "Taxpayers liable to the High Income Child Benefit Charge",
+      "hmrc.child_benefit.hicbc_revenue": "High Income Child Benefit Charge revenue",
       "hmrc.itl.additional_rate_taxpayers": "Additional rate Income Tax payers by region and nation",
       "hmrc.itl.higher_rate_taxpayers": "Higher rate Income Tax payers by region and nation",
       "hmrc.itl.income_tax_by_total_income_band": "Income Tax liabilities by total income band",
@@ -49953,6 +49971,189 @@
         }
       ],
       "uprating_from_period": "2025-08",
+      "uprating_to_period": 2025
+    },
+    {
+      "name": "hmrc.benefits_in_kind.company_car_recipients",
+      "ledger_selector": {
+        "source_name": "hmrc",
+        "source_concept": "hmrc.benefit_in_kind_recipients",
+        "record_set_spec_id": "hmrc.benefits_in_kind_july_2026.table1.recipients.ty2024.v1",
+        "dimension_values": {
+          "company_car_benefit_type": "car"
+        },
+        "entity_name": "person",
+        "period_type": "tax_year",
+        "period_value": 2024,
+        "geography_level": "country",
+        "geography_id": "K02000001"
+      },
+      "entity": "person",
+      "measure": "hmrc/company_car_recipients",
+      "family": "hmrc_benefits_in_kind",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "hmrc.benefits_in_kind.company_car_recipients",
+        "measure_kind": "prepared_column"
+      },
+      "uprating_from_period": "2024",
+      "uprating_to_period": 2025
+    },
+    {
+      "name": "hmrc.benefits_in_kind.company_car_taxable_value",
+      "ledger_selector": {
+        "source_name": "hmrc",
+        "source_concept": "hmrc.benefit_in_kind_taxable_value",
+        "record_set_spec_id": "hmrc.benefits_in_kind_july_2026.table1.taxable_value.ty2024.v1",
+        "dimension_values": {
+          "company_car_benefit_type": "car"
+        },
+        "entity_name": "person",
+        "period_type": "tax_year",
+        "period_value": 2024,
+        "geography_level": "country",
+        "geography_id": "K02000001"
+      },
+      "entity": "person",
+      "measure": "hmrc/company_car_taxable_value",
+      "family": "hmrc_benefits_in_kind",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "hmrc.benefits_in_kind.company_car_taxable_value",
+        "measure_kind": "prepared_column",
+        "measurement_period": "2024",
+        "source_period_policy": "exact_observation"
+      },
+      "uprating_from_period": "2024",
+      "uprating_to_period": 2025
+    },
+    {
+      "name": "hmrc.benefits_in_kind.company_car_fuel.fully_electric",
+      "ledger_selector": {
+        "source_name": "hmrc",
+        "source_concept": "hmrc.benefit_in_kind_recipients",
+        "record_set_spec_id": "hmrc.benefits_in_kind_july_2026.table2c.recipients.ty2024.v1",
+        "dimension_values": {
+          "company_car_benefit_type": "car",
+          "company_car_fuel_type": "fully_electric"
+        },
+        "entity_name": "person",
+        "period_type": "tax_year",
+        "period_value": 2024,
+        "geography_level": "country",
+        "geography_id": "K02000001"
+      },
+      "entity": "person",
+      "measure": "hmrc/company_car_recipients_fully_electric",
+      "family": "hmrc_benefits_in_kind",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "hmrc.benefits_in_kind.company_car_fuel.fully_electric",
+        "measure_kind": "prepared_column"
+      },
+      "uprating_from_period": "2024",
+      "uprating_to_period": 2025
+    },
+    {
+      "name": "hmrc.benefits_in_kind.company_car_fuel.petrol_including_hybrids",
+      "ledger_selector": {
+        "source_name": "hmrc",
+        "source_concept": "hmrc.benefit_in_kind_recipients",
+        "record_set_spec_id": "hmrc.benefits_in_kind_july_2026.table2c.recipients.ty2024.v1",
+        "dimension_values": {
+          "company_car_benefit_type": "car",
+          "company_car_fuel_type": "petrol_including_hybrids"
+        },
+        "entity_name": "person",
+        "period_type": "tax_year",
+        "period_value": 2024,
+        "geography_level": "country",
+        "geography_id": "K02000001"
+      },
+      "entity": "person",
+      "measure": "hmrc/company_car_recipients_petrol_including_hybrids",
+      "family": "hmrc_benefits_in_kind",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "hmrc.benefits_in_kind.company_car_fuel.petrol_including_hybrids",
+        "measure_kind": "prepared_column"
+      },
+      "uprating_from_period": "2024",
+      "uprating_to_period": 2025
+    },
+    {
+      "name": "hmrc.benefits_in_kind.company_car_fuel.diesel_including_hybrids",
+      "ledger_selector": {
+        "source_name": "hmrc",
+        "source_concept": "hmrc.benefit_in_kind_recipients",
+        "record_set_spec_id": "hmrc.benefits_in_kind_july_2026.table2c.recipients.ty2024.v1",
+        "dimension_values": {
+          "company_car_benefit_type": "car",
+          "company_car_fuel_type": "diesel_including_hybrids"
+        },
+        "entity_name": "person",
+        "period_type": "tax_year",
+        "period_value": 2024,
+        "geography_level": "country",
+        "geography_id": "K02000001"
+      },
+      "entity": "person",
+      "measure": "hmrc/company_car_recipients_diesel_including_hybrids",
+      "family": "hmrc_benefits_in_kind",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "hmrc.benefits_in_kind.company_car_fuel.diesel_including_hybrids",
+        "measure_kind": "prepared_column"
+      },
+      "uprating_from_period": "2024",
+      "uprating_to_period": 2025
+    },
+    {
+      "name": "hmrc.child_benefit.hicbc_liable_taxpayers",
+      "ledger_selector": {
+        "source_name": "hmrc",
+        "source_concept": "hmrc.self_assessment_taxpayers_with_hicbc_liability",
+        "record_set_spec_id": "hmrc.child_benefit.aug2025.hicbc_individuals.ty2024.v1",
+        "source_measure_id": "hicbc_individuals",
+        "entity_name": "person",
+        "period_type": "tax_year",
+        "period_value": 2024,
+        "geography_level": "country",
+        "geography_id": "K02000001"
+      },
+      "entity": "person",
+      "measure": "hmrc/child_benefit/hicbc_liable_taxpayers",
+      "family": "hmrc_child_benefit",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "hmrc.child_benefit.hicbc_liable_taxpayers",
+        "measure_kind": "prepared_column"
+      },
+      "uprating_from_period": "2024",
+      "uprating_to_period": 2025
+    },
+    {
+      "name": "hmrc.child_benefit.hicbc_revenue",
+      "ledger_selector": {
+        "source_name": "hmrc",
+        "source_concept": "hmrc.hicbc_tax_revenue",
+        "record_set_spec_id": "hmrc.child_benefit.aug2025.hicbc_revenue.ty2024.v1",
+        "source_measure_id": "hicbc_revenue",
+        "entity_name": "government",
+        "period_type": "tax_year",
+        "period_value": 2024,
+        "geography_level": "country",
+        "geography_id": "K02000001"
+      },
+      "entity": "person",
+      "measure": "hmrc/child_benefit/hicbc_revenue",
+      "family": "hmrc_child_benefit",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "hmrc.child_benefit.hicbc_revenue",
+        "measure_kind": "prepared_column"
+      },
+      "uprating_from_period": "2024",
       "uprating_to_period": 2025
     }
   ]
