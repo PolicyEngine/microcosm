@@ -67,6 +67,7 @@ __all__ = [
     "CHRONICLE_CONSUMER_FACT_SCHEMA_VERSION",
     "CHRONICLE_CONSUMER_FACT_SCHEMA_VERSION_V3",
     "CHRONICLE_CONSUMER_FACT_SCHEMA_VERSION_V4",
+    "CHRONICLE_CONSUMER_FACT_SCHEMA_VERSION_V5",
     "CHRONICLE_EPOCH",
     "CHRONICLE_FACT_KEY_DOMAINS",
     "CHRONICLE_NAMESPACES",
@@ -206,17 +207,21 @@ CHRONICLE_CONSUMER_ARTIFACT_SCHEMA_VERSION = (
 #: The per-row consumer-fact ``schema_version`` Chronicle stamped before
 #: chronicle#261, its chronicle-era successor (the v2 row adds the dimension
 #: and value labels), the v3 row chronicle#266 (PR #267) added (the v2 row
-#: plus the publisher's ``geography.name``), and the v4 row chronicle#281
-#: (PR #282) emits today: the v3 row with ``geography.name`` resolved to one
-#: spelling per identifier where Chronicle's register carries it, the
-#: publisher's own text moving to an optional ``geography.publisher_name``.
-#: Every declared row contract keeps loading; the name and the labels are
-#: display metadata and never enter a fact key, so the keys of a v4 row are
-#: the v2 bytes.
+#: plus the publisher's ``geography.name``), the v4 row chronicle#281 (PR #282)
+#: added (the v3 row with ``geography.name`` resolved to one spelling per
+#: identifier where Chronicle's register carries it, the publisher's own text
+#: moving to an optional ``geography.publisher_name``), and the v5 row
+#: chronicle#376 (PR #377) emits today: the v4 row with each dimension value's
+#: label taken from Chronicle's register where it carries the value, the source
+#: package's own wording moving to an optional
+#: ``package_dimension_value_labels``. Every declared row contract keeps
+#: loading; the names and the labels are display metadata and never enter a
+#: fact key, so the keys of a v5 row are the v2 bytes.
 LEDGER_CONSUMER_FACT_SCHEMA_VERSION = "ledger.consumer_fact.v1"
 CHRONICLE_CONSUMER_FACT_SCHEMA_VERSION = "chronicle.consumer_fact.v2"
 CHRONICLE_CONSUMER_FACT_SCHEMA_VERSION_V3 = "chronicle.consumer_fact.v3"
 CHRONICLE_CONSUMER_FACT_SCHEMA_VERSION_V4 = "chronicle.consumer_fact.v4"
+CHRONICLE_CONSUMER_FACT_SCHEMA_VERSION_V5 = "chronicle.consumer_fact.v5"
 
 #: Fact-key domains, ledger-era spelling beside its chronicle-era successor.
 #: The ledger column is what Chronicle's ``main`` hashes with today; the
@@ -279,6 +284,11 @@ DECLARED_IDENTITIES: tuple[DeclaredIdentity, ...] = (
     ),
     _declare(
         CHRONICLE_CONSUMER_FACT_SCHEMA_VERSION_V4,
+        epoch=CHRONICLE_EPOCH,
+        kind=CONSUMER_FACT_SCHEMA_IDENTITY_KIND,
+    ),
+    _declare(
+        CHRONICLE_CONSUMER_FACT_SCHEMA_VERSION_V5,
         epoch=CHRONICLE_EPOCH,
         kind=CONSUMER_FACT_SCHEMA_IDENTITY_KIND,
     ),
