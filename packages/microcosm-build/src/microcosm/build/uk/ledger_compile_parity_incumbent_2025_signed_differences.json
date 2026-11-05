@@ -1,11 +1,11 @@
 {
- "compiled_count": 1533,
+ "compiled_count": 1585,
  "counts_by_kind": {
   "calibration_drift": 566,
   "fixture_only": 42,
-  "ledger_only": 938
+  "ledger_only": 990
  },
- "difference_count": 1546,
+ "difference_count": 1598,
  "differences": [
   {
    "fixture_value": 1608000.0,
@@ -6248,6 +6248,370 @@
    "kind": "ledger_only",
    "ledger_value": 143200.0,
    "name": "ons.occupation.elementary_by_region@W92000004",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 1807200.0,
+   "name": "ons.occupation.female_administrative",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 1180100.0,
+   "name": "ons.occupation.female_business_and_public_service_associate_professionals",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 1318500.0,
+   "name": "ons.occupation.female_business_media_and_public_service_professionals",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 1861000.0,
+   "name": "ons.occupation.female_caring_personal_service",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 4300.0,
+   "name": "ons.occupation.female_community_and_civil_enforcement",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 972700.0,
+   "name": "ons.occupation.female_corporate_managers_and_directors",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 354000.0,
+   "name": "ons.occupation.female_culture_media_and_sports",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 277500.0,
+   "name": "ons.occupation.female_customer_service",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 1345800.0,
+   "name": "ons.occupation.female_elementary_administration_and_service",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 91100.0,
+   "name": "ons.occupation.female_elementary_trades_and_related",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 629200.0,
+   "name": "ons.occupation.female_health_and_social_care_associate_professionals",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 1281200.0,
+   "name": "ons.occupation.female_health_professionals",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 398800.0,
+   "name": "ons.occupation.female_leisure_travel_and_related_personal_service",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 466100.0,
+   "name": "ons.occupation.female_other_managers_and_proprietors",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 149200.0,
+   "name": "ons.occupation.female_process_plant_and_machine_operatives",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 120100.0,
+   "name": "ons.occupation.female_protective_service",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 853800.0,
+   "name": "ons.occupation.female_sales",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 155900.0,
+   "name": "ons.occupation.female_science_engineering_and_technology_associate_professionals",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 679600.0,
+   "name": "ons.occupation.female_science_research_engineering_and_technology_professionals",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 428200.0,
+   "name": "ons.occupation.female_secretarial_and_related",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 60200.0,
+   "name": "ons.occupation.female_skilled_agricultural_and_related_trades",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 23400.0,
+   "name": "ons.occupation.female_skilled_construction_and_building_trades",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 35300.0,
+   "name": "ons.occupation.female_skilled_metal_electrical_and_electronic_trades",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 1155900.0,
+   "name": "ons.occupation.female_teaching_and_other_educational_professionals",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 215700.0,
+   "name": "ons.occupation.female_textiles_printing_and_other_skilled_trades",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 77400.0,
+   "name": "ons.occupation.female_transport_and_mobile_machine_drivers_and_operatives",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 791600.0,
+   "name": "ons.occupation.male_administrative",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 1227600.0,
+   "name": "ons.occupation.male_business_and_public_service_associate_professionals",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 1505100.0,
+   "name": "ons.occupation.male_business_media_and_public_service_professionals",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 430400.0,
+   "name": "ons.occupation.male_caring_personal_service",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 18900.0,
+   "name": "ons.occupation.male_community_and_civil_enforcement",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 1647200.0,
+   "name": "ons.occupation.male_corporate_managers_and_directors",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 419300.0,
+   "name": "ons.occupation.male_culture_media_and_sports",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 170300.0,
+   "name": "ons.occupation.male_customer_service",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 1267000.0,
+   "name": "ons.occupation.male_elementary_administration_and_service",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 295000.0,
+   "name": "ons.occupation.male_elementary_trades_and_related",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 136700.0,
+   "name": "ons.occupation.male_health_and_social_care_associate_professionals",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 452100.0,
+   "name": "ons.occupation.male_health_professionals",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 180400.0,
+   "name": "ons.occupation.male_leisure_travel_and_related_personal_service",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 723900.0,
+   "name": "ons.occupation.male_other_managers_and_proprietors",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 526900.0,
+   "name": "ons.occupation.male_process_plant_and_machine_operatives",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 295500.0,
+   "name": "ons.occupation.male_protective_service",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 603600.0,
+   "name": "ons.occupation.male_sales",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 434700.0,
+   "name": "ons.occupation.male_science_engineering_and_technology_associate_professionals",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 1978200.0,
+   "name": "ons.occupation.male_science_research_engineering_and_technology_professionals",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 44600.0,
+   "name": "ons.occupation.male_secretarial_and_related",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 274200.0,
+   "name": "ons.occupation.male_skilled_agricultural_and_related_trades",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 893000.0,
+   "name": "ons.occupation.male_skilled_construction_and_building_trades",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 901400.0,
+   "name": "ons.occupation.male_skilled_metal_electrical_and_electronic_trades",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 594700.0,
+   "name": "ons.occupation.male_teaching_and_other_educational_professionals",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 368500.0,
+   "name": "ons.occupation.male_textiles_printing_and_other_skilled_trades",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 1093900.0,
+   "name": "ons.occupation.male_transport_and_mobile_machine_drivers_and_operatives",
    "period": 2025,
    "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
   },

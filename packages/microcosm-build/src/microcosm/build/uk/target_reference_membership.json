@@ -1,11 +1,11 @@
 {
   "source_fact_feed": "chronicle-uk-6475380-consumer-facts",
   "target_period": 2025,
-  "candidate_count": 1570,
-  "contract_target_count": 414,
-  "active_reference_count": 1533,
+  "candidate_count": 1622,
+  "contract_target_count": 466,
+  "active_reference_count": 1585,
   "status_counts": {
-    "active": 1533,
+    "active": 1585,
     "signed_excluded": 37
   },
   "geography_pins": {
@@ -5150,6 +5150,214 @@
           "geography_id": "N92000002"
         }
       ]
+    },
+    "ons.occupation.female_corporate_managers_and_directors": {
+      "geography_level": "country",
+      "geography_id": "K02000001"
+    },
+    "ons.occupation.male_corporate_managers_and_directors": {
+      "geography_level": "country",
+      "geography_id": "K02000001"
+    },
+    "ons.occupation.female_other_managers_and_proprietors": {
+      "geography_level": "country",
+      "geography_id": "K02000001"
+    },
+    "ons.occupation.male_other_managers_and_proprietors": {
+      "geography_level": "country",
+      "geography_id": "K02000001"
+    },
+    "ons.occupation.female_science_research_engineering_and_technology_professionals": {
+      "geography_level": "country",
+      "geography_id": "K02000001"
+    },
+    "ons.occupation.male_science_research_engineering_and_technology_professionals": {
+      "geography_level": "country",
+      "geography_id": "K02000001"
+    },
+    "ons.occupation.female_health_professionals": {
+      "geography_level": "country",
+      "geography_id": "K02000001"
+    },
+    "ons.occupation.male_health_professionals": {
+      "geography_level": "country",
+      "geography_id": "K02000001"
+    },
+    "ons.occupation.female_teaching_and_other_educational_professionals": {
+      "geography_level": "country",
+      "geography_id": "K02000001"
+    },
+    "ons.occupation.male_teaching_and_other_educational_professionals": {
+      "geography_level": "country",
+      "geography_id": "K02000001"
+    },
+    "ons.occupation.female_business_media_and_public_service_professionals": {
+      "geography_level": "country",
+      "geography_id": "K02000001"
+    },
+    "ons.occupation.male_business_media_and_public_service_professionals": {
+      "geography_level": "country",
+      "geography_id": "K02000001"
+    },
+    "ons.occupation.female_science_engineering_and_technology_associate_professionals": {
+      "geography_level": "country",
+      "geography_id": "K02000001"
+    },
+    "ons.occupation.male_science_engineering_and_technology_associate_professionals": {
+      "geography_level": "country",
+      "geography_id": "K02000001"
+    },
+    "ons.occupation.female_health_and_social_care_associate_professionals": {
+      "geography_level": "country",
+      "geography_id": "K02000001"
+    },
+    "ons.occupation.male_health_and_social_care_associate_professionals": {
+      "geography_level": "country",
+      "geography_id": "K02000001"
+    },
+    "ons.occupation.female_protective_service": {
+      "geography_level": "country",
+      "geography_id": "K02000001"
+    },
+    "ons.occupation.male_protective_service": {
+      "geography_level": "country",
+      "geography_id": "K02000001"
+    },
+    "ons.occupation.female_culture_media_and_sports": {
+      "geography_level": "country",
+      "geography_id": "K02000001"
+    },
+    "ons.occupation.male_culture_media_and_sports": {
+      "geography_level": "country",
+      "geography_id": "K02000001"
+    },
+    "ons.occupation.female_business_and_public_service_associate_professionals": {
+      "geography_level": "country",
+      "geography_id": "K02000001"
+    },
+    "ons.occupation.male_business_and_public_service_associate_professionals": {
+      "geography_level": "country",
+      "geography_id": "K02000001"
+    },
+    "ons.occupation.female_administrative": {
+      "geography_level": "country",
+      "geography_id": "K02000001"
+    },
+    "ons.occupation.male_administrative": {
+      "geography_level": "country",
+      "geography_id": "K02000001"
+    },
+    "ons.occupation.female_secretarial_and_related": {
+      "geography_level": "country",
+      "geography_id": "K02000001"
+    },
+    "ons.occupation.male_secretarial_and_related": {
+      "geography_level": "country",
+      "geography_id": "K02000001"
+    },
+    "ons.occupation.female_skilled_agricultural_and_related_trades": {
+      "geography_level": "country",
+      "geography_id": "K02000001"
+    },
+    "ons.occupation.male_skilled_agricultural_and_related_trades": {
+      "geography_level": "country",
+      "geography_id": "K02000001"
+    },
+    "ons.occupation.female_skilled_metal_electrical_and_electronic_trades": {
+      "geography_level": "country",
+      "geography_id": "K02000001"
+    },
+    "ons.occupation.male_skilled_metal_electrical_and_electronic_trades": {
+      "geography_level": "country",
+      "geography_id": "K02000001"
+    },
+    "ons.occupation.female_skilled_construction_and_building_trades": {
+      "geography_level": "country",
+      "geography_id": "K02000001"
+    },
+    "ons.occupation.male_skilled_construction_and_building_trades": {
+      "geography_level": "country",
+      "geography_id": "K02000001"
+    },
+    "ons.occupation.female_textiles_printing_and_other_skilled_trades": {
+      "geography_level": "country",
+      "geography_id": "K02000001"
+    },
+    "ons.occupation.male_textiles_printing_and_other_skilled_trades": {
+      "geography_level": "country",
+      "geography_id": "K02000001"
+    },
+    "ons.occupation.female_caring_personal_service": {
+      "geography_level": "country",
+      "geography_id": "K02000001"
+    },
+    "ons.occupation.male_caring_personal_service": {
+      "geography_level": "country",
+      "geography_id": "K02000001"
+    },
+    "ons.occupation.female_leisure_travel_and_related_personal_service": {
+      "geography_level": "country",
+      "geography_id": "K02000001"
+    },
+    "ons.occupation.male_leisure_travel_and_related_personal_service": {
+      "geography_level": "country",
+      "geography_id": "K02000001"
+    },
+    "ons.occupation.female_community_and_civil_enforcement": {
+      "geography_level": "country",
+      "geography_id": "K02000001"
+    },
+    "ons.occupation.male_community_and_civil_enforcement": {
+      "geography_level": "country",
+      "geography_id": "K02000001"
+    },
+    "ons.occupation.female_sales": {
+      "geography_level": "country",
+      "geography_id": "K02000001"
+    },
+    "ons.occupation.male_sales": {
+      "geography_level": "country",
+      "geography_id": "K02000001"
+    },
+    "ons.occupation.female_customer_service": {
+      "geography_level": "country",
+      "geography_id": "K02000001"
+    },
+    "ons.occupation.male_customer_service": {
+      "geography_level": "country",
+      "geography_id": "K02000001"
+    },
+    "ons.occupation.female_process_plant_and_machine_operatives": {
+      "geography_level": "country",
+      "geography_id": "K02000001"
+    },
+    "ons.occupation.male_process_plant_and_machine_operatives": {
+      "geography_level": "country",
+      "geography_id": "K02000001"
+    },
+    "ons.occupation.female_transport_and_mobile_machine_drivers_and_operatives": {
+      "geography_level": "country",
+      "geography_id": "K02000001"
+    },
+    "ons.occupation.male_transport_and_mobile_machine_drivers_and_operatives": {
+      "geography_level": "country",
+      "geography_id": "K02000001"
+    },
+    "ons.occupation.female_elementary_trades_and_related": {
+      "geography_level": "country",
+      "geography_id": "K02000001"
+    },
+    "ons.occupation.male_elementary_trades_and_related": {
+      "geography_level": "country",
+      "geography_id": "K02000001"
+    },
+    "ons.occupation.female_elementary_administration_and_service": {
+      "geography_level": "country",
+      "geography_id": "K02000001"
+    },
+    "ons.occupation.male_elementary_administration_and_service": {
+      "geography_level": "country",
+      "geography_id": "K02000001"
     }
   },
   "genuine_sum_residue": [
@@ -34371,6 +34579,786 @@
           "resolved_value": 79600.0,
           "resolved_fact_period": "2025",
           "resolved_fact_key": "ledger_aggregate_fact_v2_1bf4cf71bad64ca3f21eb3d7"
+        }
+      ]
+    },
+    "ons.occupation.female_corporate_managers_and_directors": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "ons.occupation.female_corporate_managers_and_directors",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "resolved_period": 2025,
+          "resolved_value": 972700.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_90dc02727f0a85a8bf50025f"
+        }
+      ]
+    },
+    "ons.occupation.male_corporate_managers_and_directors": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "ons.occupation.male_corporate_managers_and_directors",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "resolved_period": 2025,
+          "resolved_value": 1647200.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_a086ba101e5964df70fd40a6"
+        }
+      ]
+    },
+    "ons.occupation.female_other_managers_and_proprietors": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "ons.occupation.female_other_managers_and_proprietors",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "resolved_period": 2025,
+          "resolved_value": 466100.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_e98f171a7db6a631b5a1c455"
+        }
+      ]
+    },
+    "ons.occupation.male_other_managers_and_proprietors": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "ons.occupation.male_other_managers_and_proprietors",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "resolved_period": 2025,
+          "resolved_value": 723900.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_ee674d8fbf5d2c6de0a1f814"
+        }
+      ]
+    },
+    "ons.occupation.female_science_research_engineering_and_technology_professionals": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "ons.occupation.female_science_research_engineering_and_technology_professionals",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "resolved_period": 2025,
+          "resolved_value": 679600.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_80c0c6b7dc599a0c4e24c66d"
+        }
+      ]
+    },
+    "ons.occupation.male_science_research_engineering_and_technology_professionals": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "ons.occupation.male_science_research_engineering_and_technology_professionals",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "resolved_period": 2025,
+          "resolved_value": 1978200.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_fdf303899069777fde618c93"
+        }
+      ]
+    },
+    "ons.occupation.female_health_professionals": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "ons.occupation.female_health_professionals",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "resolved_period": 2025,
+          "resolved_value": 1281200.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_db0de6fa5aa5bfabadee6dd5"
+        }
+      ]
+    },
+    "ons.occupation.male_health_professionals": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "ons.occupation.male_health_professionals",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "resolved_period": 2025,
+          "resolved_value": 452100.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_836c0b37ce3e971417520b1d"
+        }
+      ]
+    },
+    "ons.occupation.female_teaching_and_other_educational_professionals": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "ons.occupation.female_teaching_and_other_educational_professionals",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "resolved_period": 2025,
+          "resolved_value": 1155900.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_352a687552e7d68c2a2423f3"
+        }
+      ]
+    },
+    "ons.occupation.male_teaching_and_other_educational_professionals": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "ons.occupation.male_teaching_and_other_educational_professionals",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "resolved_period": 2025,
+          "resolved_value": 594700.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_7a17881acb92592b36d5706a"
+        }
+      ]
+    },
+    "ons.occupation.female_business_media_and_public_service_professionals": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "ons.occupation.female_business_media_and_public_service_professionals",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "resolved_period": 2025,
+          "resolved_value": 1318500.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_c6b1e6e7281fabbb6cd0c591"
+        }
+      ]
+    },
+    "ons.occupation.male_business_media_and_public_service_professionals": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "ons.occupation.male_business_media_and_public_service_professionals",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "resolved_period": 2025,
+          "resolved_value": 1505100.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_a3e69e1a66a44f49ac669ab4"
+        }
+      ]
+    },
+    "ons.occupation.female_science_engineering_and_technology_associate_professionals": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "ons.occupation.female_science_engineering_and_technology_associate_professionals",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "resolved_period": 2025,
+          "resolved_value": 155900.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_03a81a2bf6dd5844aa517a97"
+        }
+      ]
+    },
+    "ons.occupation.male_science_engineering_and_technology_associate_professionals": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "ons.occupation.male_science_engineering_and_technology_associate_professionals",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "resolved_period": 2025,
+          "resolved_value": 434700.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_b2bcbda0e5a277c3283b76cc"
+        }
+      ]
+    },
+    "ons.occupation.female_health_and_social_care_associate_professionals": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "ons.occupation.female_health_and_social_care_associate_professionals",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "resolved_period": 2025,
+          "resolved_value": 629200.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_e95aded35d227d2cc41798fd"
+        }
+      ]
+    },
+    "ons.occupation.male_health_and_social_care_associate_professionals": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "ons.occupation.male_health_and_social_care_associate_professionals",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "resolved_period": 2025,
+          "resolved_value": 136700.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_931159aa3647b598919e18c8"
+        }
+      ]
+    },
+    "ons.occupation.female_protective_service": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "ons.occupation.female_protective_service",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "resolved_period": 2025,
+          "resolved_value": 120100.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_b1bc0622dbe68ac2c213283f"
+        }
+      ]
+    },
+    "ons.occupation.male_protective_service": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "ons.occupation.male_protective_service",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "resolved_period": 2025,
+          "resolved_value": 295500.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_af672ca0439f21f865a32b1f"
+        }
+      ]
+    },
+    "ons.occupation.female_culture_media_and_sports": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "ons.occupation.female_culture_media_and_sports",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "resolved_period": 2025,
+          "resolved_value": 354000.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_853afa7b0c1f5b70e3624d53"
+        }
+      ]
+    },
+    "ons.occupation.male_culture_media_and_sports": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "ons.occupation.male_culture_media_and_sports",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "resolved_period": 2025,
+          "resolved_value": 419300.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_0fb1cacaa871896d940ede8a"
+        }
+      ]
+    },
+    "ons.occupation.female_business_and_public_service_associate_professionals": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "ons.occupation.female_business_and_public_service_associate_professionals",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "resolved_period": 2025,
+          "resolved_value": 1180100.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_aae028114b9bf195574636b4"
+        }
+      ]
+    },
+    "ons.occupation.male_business_and_public_service_associate_professionals": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "ons.occupation.male_business_and_public_service_associate_professionals",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "resolved_period": 2025,
+          "resolved_value": 1227600.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_3d68f3f0b85a9d39375b0eab"
+        }
+      ]
+    },
+    "ons.occupation.female_administrative": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "ons.occupation.female_administrative",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "resolved_period": 2025,
+          "resolved_value": 1807200.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_2c197a6328b917917f27ebb2"
+        }
+      ]
+    },
+    "ons.occupation.male_administrative": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "ons.occupation.male_administrative",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "resolved_period": 2025,
+          "resolved_value": 791600.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_83b0da4950bfa99e7c87b412"
+        }
+      ]
+    },
+    "ons.occupation.female_secretarial_and_related": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "ons.occupation.female_secretarial_and_related",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "resolved_period": 2025,
+          "resolved_value": 428200.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_75af1eaeab3429c17d69cadd"
+        }
+      ]
+    },
+    "ons.occupation.male_secretarial_and_related": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "ons.occupation.male_secretarial_and_related",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "resolved_period": 2025,
+          "resolved_value": 44600.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_1640216d9271a3ee17c537a4"
+        }
+      ]
+    },
+    "ons.occupation.female_skilled_agricultural_and_related_trades": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "ons.occupation.female_skilled_agricultural_and_related_trades",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "resolved_period": 2025,
+          "resolved_value": 60200.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_439e63ffcdac063bf94fcc0a"
+        }
+      ]
+    },
+    "ons.occupation.male_skilled_agricultural_and_related_trades": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "ons.occupation.male_skilled_agricultural_and_related_trades",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "resolved_period": 2025,
+          "resolved_value": 274200.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_2d4c764a7e855c210955ff1e"
+        }
+      ]
+    },
+    "ons.occupation.female_skilled_metal_electrical_and_electronic_trades": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "ons.occupation.female_skilled_metal_electrical_and_electronic_trades",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "resolved_period": 2025,
+          "resolved_value": 35300.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_3d02191081d6fd006e3c5b4e"
+        }
+      ]
+    },
+    "ons.occupation.male_skilled_metal_electrical_and_electronic_trades": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "ons.occupation.male_skilled_metal_electrical_and_electronic_trades",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "resolved_period": 2025,
+          "resolved_value": 901400.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_c42f2a53d45960fc85f3122b"
+        }
+      ]
+    },
+    "ons.occupation.female_skilled_construction_and_building_trades": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "ons.occupation.female_skilled_construction_and_building_trades",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "resolved_period": 2025,
+          "resolved_value": 23400.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_105e8c02e718319e13e01c87"
+        }
+      ]
+    },
+    "ons.occupation.male_skilled_construction_and_building_trades": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "ons.occupation.male_skilled_construction_and_building_trades",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "resolved_period": 2025,
+          "resolved_value": 893000.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_7b388e20cc5b8ba757e81707"
+        }
+      ]
+    },
+    "ons.occupation.female_textiles_printing_and_other_skilled_trades": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "ons.occupation.female_textiles_printing_and_other_skilled_trades",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "resolved_period": 2025,
+          "resolved_value": 215700.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_f2ebfa4f9bfda9863b5aee83"
+        }
+      ]
+    },
+    "ons.occupation.male_textiles_printing_and_other_skilled_trades": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "ons.occupation.male_textiles_printing_and_other_skilled_trades",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "resolved_period": 2025,
+          "resolved_value": 368500.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_017f71455a3bcc1de3c5966d"
+        }
+      ]
+    },
+    "ons.occupation.female_caring_personal_service": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "ons.occupation.female_caring_personal_service",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "resolved_period": 2025,
+          "resolved_value": 1861000.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_3c59af13e410ac5d46ff653b"
+        }
+      ]
+    },
+    "ons.occupation.male_caring_personal_service": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "ons.occupation.male_caring_personal_service",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "resolved_period": 2025,
+          "resolved_value": 430400.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_38cb89392d2c35523dd86337"
+        }
+      ]
+    },
+    "ons.occupation.female_leisure_travel_and_related_personal_service": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "ons.occupation.female_leisure_travel_and_related_personal_service",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "resolved_period": 2025,
+          "resolved_value": 398800.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_27b069f02ad19332a26f1cc6"
+        }
+      ]
+    },
+    "ons.occupation.male_leisure_travel_and_related_personal_service": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "ons.occupation.male_leisure_travel_and_related_personal_service",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "resolved_period": 2025,
+          "resolved_value": 180400.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_d26b5b2d4e32906ece1dccc7"
+        }
+      ]
+    },
+    "ons.occupation.female_community_and_civil_enforcement": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "ons.occupation.female_community_and_civil_enforcement",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "resolved_period": 2025,
+          "resolved_value": 4300.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_5ef5166e30dff5105951bfbb"
+        }
+      ]
+    },
+    "ons.occupation.male_community_and_civil_enforcement": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "ons.occupation.male_community_and_civil_enforcement",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "resolved_period": 2025,
+          "resolved_value": 18900.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_8d29d343b602fd513c760398"
+        }
+      ]
+    },
+    "ons.occupation.female_sales": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "ons.occupation.female_sales",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "resolved_period": 2025,
+          "resolved_value": 853800.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_40997e52636a20aae6fdea4d"
+        }
+      ]
+    },
+    "ons.occupation.male_sales": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "ons.occupation.male_sales",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "resolved_period": 2025,
+          "resolved_value": 603600.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_1f37f8fa51ad10cf1425a484"
+        }
+      ]
+    },
+    "ons.occupation.female_customer_service": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "ons.occupation.female_customer_service",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "resolved_period": 2025,
+          "resolved_value": 277500.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_2fd6497b226ddf7c46644582"
+        }
+      ]
+    },
+    "ons.occupation.male_customer_service": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "ons.occupation.male_customer_service",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "resolved_period": 2025,
+          "resolved_value": 170300.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_5c940927469ee1eba506978a"
+        }
+      ]
+    },
+    "ons.occupation.female_process_plant_and_machine_operatives": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "ons.occupation.female_process_plant_and_machine_operatives",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "resolved_period": 2025,
+          "resolved_value": 149200.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_49ad25e6aa53d90c8f1820e2"
+        }
+      ]
+    },
+    "ons.occupation.male_process_plant_and_machine_operatives": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "ons.occupation.male_process_plant_and_machine_operatives",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "resolved_period": 2025,
+          "resolved_value": 526900.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_0151c8526f97c2779979564a"
+        }
+      ]
+    },
+    "ons.occupation.female_transport_and_mobile_machine_drivers_and_operatives": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "ons.occupation.female_transport_and_mobile_machine_drivers_and_operatives",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "resolved_period": 2025,
+          "resolved_value": 77400.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_9ba21d72182e6b274ed044ab"
+        }
+      ]
+    },
+    "ons.occupation.male_transport_and_mobile_machine_drivers_and_operatives": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "ons.occupation.male_transport_and_mobile_machine_drivers_and_operatives",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "resolved_period": 2025,
+          "resolved_value": 1093900.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_74be8f6a436e1d1376cb0851"
+        }
+      ]
+    },
+    "ons.occupation.female_elementary_trades_and_related": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "ons.occupation.female_elementary_trades_and_related",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "resolved_period": 2025,
+          "resolved_value": 91100.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_f4f4a476173a5e55848dc43b"
+        }
+      ]
+    },
+    "ons.occupation.male_elementary_trades_and_related": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "ons.occupation.male_elementary_trades_and_related",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "resolved_period": 2025,
+          "resolved_value": 295000.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_46c37e228278ee0d3bbe50d6"
+        }
+      ]
+    },
+    "ons.occupation.female_elementary_administration_and_service": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "ons.occupation.female_elementary_administration_and_service",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "resolved_period": 2025,
+          "resolved_value": 1345800.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_fc7938aec5dbb39aba323aa7"
+        }
+      ]
+    },
+    "ons.occupation.male_elementary_administration_and_service": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "ons.occupation.male_elementary_administration_and_service",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "resolved_period": 2025,
+          "resolved_value": 1267000.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_8665de57144d01d0e47cdeef"
         }
       ]
     }

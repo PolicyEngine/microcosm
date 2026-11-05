@@ -523,6 +523,7 @@ REVIEWED_PLAIN_COLUMN_POPULATION_VARIABLES = frozenset(
         "savings_interest_income_outside_isas",
         "self_employment_income_after_loss_relief",
         "soc2020_major_group",
+        "soc2020_sub_major_group",
         "state_pension",
         "state_pension_type",
         "student_loan_plan",

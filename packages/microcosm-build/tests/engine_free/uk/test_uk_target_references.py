@@ -132,8 +132,9 @@ _TEST_PATHS = paths_for("microcosm-build")
 # place of the devolved total; microcosm#1418: HMRC's five 2024-25 company
 # car rows; microcosm#1426: HMRC's two High Income Child Benefit Charge rows,
 # measured diagnostics; microcosm#1490: the APS's people in employment by SOC
-# 2020 major group, nine groups over the twelve region-tier areas
-ACTIVE_REFERENCE_COUNT = 1533
+# 2020 major group, nine groups over the twelve region-tier areas, and by
+# sub-major group and sex, 52 UK rows
+ACTIVE_REFERENCE_COUNT = 1585
 REGION_TIER_LEVEL = {code: level for level, code in UK_REGION_TIER}
 
 
