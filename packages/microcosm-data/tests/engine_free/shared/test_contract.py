@@ -42,6 +42,10 @@ from microcosm.diagnostics import (
     CalibrationDiagnosticsV8,
     catalog_calibration_diagnostics,
 )
+from test_support.microcosm_data.build_folders import (
+    UK_NATIONAL_BUILD,
+    to_build_folder_layout,
+)
 from test_support.paths import paths_for
 
 _TEST_PATHS = paths_for("microcosm-data")
@@ -2558,6 +2562,235 @@ def test_uk_national_release_rejects_mixed_cut_revisions(tmp_path: Path) -> None
 
     with pytest.raises(ReleaseContractError, match="more than one revision"):
         validate_release_dir(directory)
+
+
+def _write_uk_national_build_folder_release_dir(tmp_path: Path) -> Path:
+    """The national fixture in the build-folder layout.
+
+    Until the repository switches to releases.json the national release is
+    assembled with tags; the contract also checks the build-folder layout
+    the emitter's publication uses, whose manifests name the release and the
+    build.
+    """
+    return to_build_folder_layout(
+        _write_uk_national_release_dir(tmp_path), build=UK_NATIONAL_BUILD
+    )
+
+
+@pytest.mark.parametrize(
+    ("release_id", "publishes"),
+    [
+        (UK_NATIONAL_RELEASE_ID, True),
+        ("microcosm-uk-2024-25-dense", True),
+        ("microcosm-uk-2024-25-local-k55000", True),
+        # Which stable releases US builds publish under is not agreed with
+        # the US data builder yet, so every US release keeps tags and
+        # latest.json.
+        (RELEASE_ID, False),
+        ("populace-us-2024-buildo-acs-local-abc1234-20260723T000000Z", False),
+        (UK_RELEASE_ID, False),
+        (UK_EXACT_K_RELEASE_ID, False),
+        ("microcosm-uk-2024-25-local-k0", False),
+    ],
+)
+def test_publishes_to_build_folder_names_only_the_uk_releases(
+    release_id: str, publishes: bool
+) -> None:
+    assert contract.publishes_to_build_folder(release_id) is publishes
+
+
+def test_the_proposed_us_releases_are_recorded_but_not_used() -> None:
+    """The US stable releases are proposed, not agreed with the US data
+    builder: the contract records them with their roles in one place, and no
+    US release publishes into build folders until they are agreed."""
+    assert contract.PROPOSED_US_RELEASES == {
+        "populace-us-2024-national": "national",
+        "populace-us-2024-local": "local_area",
+    }
+    assert set(contract.PROPOSED_US_RELEASES.values()) <= set(
+        contract.RELEASE_ROLES.values()
+    )
+    for release in contract.PROPOSED_US_RELEASES:
+        assert release.startswith("populace-us-")
+        assert contract.publishes_to_build_folder(release) is False
+
+
+def test_release_roles_record_national_and_local_area() -> None:
+    assert contract.RELEASE_ROLES == {
+        "national_default": "national",
+        "non_default_local_area": "local_area",
+    }
+
+
+@pytest.mark.parametrize(
+    ("key", "kind", "role"),
+    [
+        ("microcosm_uk_2024_25", "microdata", "dataset"),
+        ("microcosm_uk_2024_25_calibration", "calibration", "calibration_weights"),
+        ("calibration_diagnostics", "diagnostics", "calibration_diagnostics"),
+        ("release_certification", "diagnostics", "release_certification"),
+    ],
+)
+def test_release_artifact_role_keeps_the_general_roles(
+    key: str, kind: str, role: str
+) -> None:
+    assert contract.release_artifact_role(key, kind) == role
+
+
+def _rewrite_document(path: Path, mutate) -> None:
+    document = json.loads(path.read_text())
+    mutate(document)
+    path.write_text(json.dumps(document))
+
+
+def _uk_national_failures(directory: Path) -> str:
+    with pytest.raises(ReleaseContractError) as caught:
+        validate_release_dir(directory)
+    return "\n".join(caught.value.failures)
+
+
+def test_uk_national_build_folder_manifests_name_the_release_and_the_build(
+    tmp_path: Path,
+) -> None:
+    directory = _write_uk_national_build_folder_release_dir(tmp_path)
+    release = json.loads((directory / "release_manifest.json").read_text())
+    build = json.loads((directory / "build_manifest.json").read_text())
+
+    assert (release["release"], release["build"]) == (
+        UK_NATIONAL_RELEASE_ID,
+        UK_NATIONAL_BUILD,
+    )
+    assert (build["release"], build["build"]) == (
+        UK_NATIONAL_RELEASE_ID,
+        UK_NATIONAL_BUILD,
+    )
+    validate_release_dir(directory)
+
+
+@pytest.mark.parametrize("field", ["build_id", "attempt_id", "cut_tag"])
+def test_uk_national_build_folder_refuses_the_retired_build_fields(
+    tmp_path: Path, field: str
+) -> None:
+    directory = _write_uk_national_build_folder_release_dir(tmp_path)
+    _rewrite_document(
+        directory / "build_manifest.json",
+        lambda build: build.update({field: UK_NATIONAL_RELEASE_ID}),
+    )
+
+    assert f"build_manifest.json carries {field!r}" in _uk_national_failures(directory)
+
+
+@pytest.mark.parametrize("manifest", ["build_manifest.json", "release_manifest.json"])
+def test_uk_national_build_folder_release_must_be_the_directory(
+    tmp_path: Path, manifest: str
+) -> None:
+    directory = _write_uk_national_build_folder_release_dir(tmp_path)
+    _rewrite_document(
+        directory / manifest,
+        lambda document: document.update(release="microcosm-uk-2024-25-dense"),
+    )
+
+    assert f"{manifest} 'release' is 'microcosm-uk-2024-25-dense'" in (
+        _uk_national_failures(directory)
+    )
+
+
+@pytest.mark.parametrize("build", ["", "uk/attempt", "-attempt", 7, None])
+def test_uk_national_build_folder_build_must_be_a_safe_name(
+    tmp_path: Path, build: object
+) -> None:
+    directory = _write_uk_national_build_folder_release_dir(tmp_path)
+    for manifest in ("build_manifest.json", "release_manifest.json"):
+        _rewrite_document(
+            directory / manifest, lambda document: document.update(build=build)
+        )
+
+    assert "'build' must be the build's name" in _uk_national_failures(directory)
+
+
+def test_uk_national_build_folder_manifests_must_name_the_same_build(
+    tmp_path: Path,
+) -> None:
+    directory = _write_uk_national_build_folder_release_dir(tmp_path)
+    _rewrite_document(
+        directory / "build_manifest.json",
+        lambda build: build.update(
+            build="uk-frs-calibration-attempt-20260101T000000Z-00000000"
+        ),
+    )
+
+    assert "build_manifest.json and release_manifest.json name different builds" in (
+        _uk_national_failures(directory)
+    )
+
+
+@pytest.mark.parametrize(
+    "field", ["built_at", "built_with_core_package", "built_with_model_package"]
+)
+def test_uk_national_build_folder_records_build_details_at_the_top_level(
+    tmp_path: Path, field: str
+) -> None:
+    directory = _write_uk_national_build_folder_release_dir(tmp_path)
+    _rewrite_document(
+        directory / "release_manifest.json", lambda release: release.pop(field)
+    )
+
+    assert field in _uk_national_failures(directory)
+
+
+def test_uk_national_build_folder_refuses_an_artifact_revision(
+    tmp_path: Path,
+) -> None:
+    directory = _write_uk_national_build_folder_release_dir(tmp_path)
+
+    def pin(release: dict) -> None:
+        release["artifacts"]["calibration_diagnostics"]["revision"] = "main"
+
+    _rewrite_document(directory / "release_manifest.json", pin)
+
+    assert "artifact 'calibration_diagnostics' pins revision 'main'" in (
+        _uk_national_failures(directory)
+    )
+
+
+@pytest.mark.parametrize(
+    ("role", "message"),
+    [
+        (None, "artifact 'calibration_diagnostics' is missing 'role'"),
+        ("diagnostics", "artifact 'calibration_diagnostics' role is 'diagnostics'"),
+    ],
+)
+def test_uk_national_build_folder_names_each_artifact_role(
+    tmp_path: Path, role: str | None, message: str
+) -> None:
+    directory = _write_uk_national_build_folder_release_dir(tmp_path)
+
+    def set_role(release: dict) -> None:
+        artifact = release["artifacts"]["calibration_diagnostics"]
+        if role is None:
+            artifact.pop("role")
+        else:
+            artifact["role"] = role
+
+    _rewrite_document(directory / "release_manifest.json", set_role)
+
+    assert message in _uk_national_failures(directory)
+
+
+@pytest.mark.parametrize(
+    "path", ["releases/microcosm-uk-2024-25-national/x.json", "../x.json", "a\\b.json"]
+)
+def test_uk_national_build_folder_artifact_paths_are_bare_file_names(
+    tmp_path: Path, path: str
+) -> None:
+    directory = _write_uk_national_build_folder_release_dir(tmp_path)
+
+    def move(release: dict) -> None:
+        release["artifacts"]["release_certification"]["path"] = path
+
+    _rewrite_document(directory / "release_manifest.json", move)
+
+    assert "artifact 'release_certification' path" in _uk_national_failures(directory)
 
 
 def test_uk_national_release_binds_signed_evidence_bytes(tmp_path: Path) -> None:
