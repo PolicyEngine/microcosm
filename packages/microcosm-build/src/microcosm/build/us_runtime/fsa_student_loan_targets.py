@@ -159,8 +159,9 @@ _AGE_BOUND_STAMP_FROM_CONSTRAINT_ROWS = "constraint_rows"
 #: The age the materializer gives a person whose ``age`` is missing or not a
 #: number. It sits below every band's lower edge but the youngest band's, which
 #: is open (``-inf``), so that person counts in the youngest band and the age
-#: bands still sum to the total balance and borrower count. FSA allocates its
-#: own "not reported" ages across the reported bands, so no band takes them.
+#: bands still sum to the total balance and borrower count. The plan spreads
+#: FSA's own "not reported" ages across the reported bands, so no target is a
+#: not-reported band that such a person could fall in.
 FSA_MISSING_AGE = -1.0
 
 _LOCATION = "portfolio_by_location"

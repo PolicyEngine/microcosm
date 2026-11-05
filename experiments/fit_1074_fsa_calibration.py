@@ -738,15 +738,17 @@ def _fmt_signed_pct(value: float | None) -> str:
 
 
 def _fmt_points(value: float | None) -> str:
-    return "" if _missing(value) else f"{100 * value:+.1f}"
+    # Adding 0.0 turns a rounded -0.0 into 0.0, so a flat row reads +0.0.
+    return "" if _missing(value) else f"{round(100 * value, 1) + 0.0:+.1f}"
 
 
 def _fmt_money(value: float | None) -> str:
     if _missing(value):
         return ""
+    sign = "-" if value < 0 else ""
     if abs(value) >= 1e9:
-        return f"${value / 1e9:,.1f}B"
-    return f"${value:,.0f}"
+        return f"{sign}${abs(value) / 1e9:,.1f}B"
+    return f"{sign}${abs(value):,.0f}"
 
 
 def _fmt_ratio(value: float | None) -> str:
