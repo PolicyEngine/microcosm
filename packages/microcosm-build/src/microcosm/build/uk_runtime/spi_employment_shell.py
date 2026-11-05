@@ -38,6 +38,7 @@ from microcosm.build.stochastic_assignment import (
     integer_record_keys,
     stable_identity_uniforms,
 )
+from microcosm.build.uk_runtime.household_lineage import collapse_geographic_clones
 from microcosm.build.uk_runtime.occupation_constants import (
     UK_OCCUPATION_STATUS_GROUP,
     UK_SOC2020_NO_OCCUPATION,
@@ -552,6 +553,13 @@ def impute_spi_employment_shell(
         )
     if not training.any():
         raise ValueError(f"{stage} needs FRS adults with an occupation to train on.")
+    # The fit and the donors see each survey record once: its geographic
+    # clones fold into its first row with their weight, and every other copy
+    # stays its own row; a frame without geographic clones keeps every row
+    # and weight (household_lineage.collapse_geographic_clones, microcosm#931).
+    training, fit_weights = collapse_geographic_clones(
+        {"person": person, "household": household}, "person", training, weights
+    )
 
     # The training rows in person_id order, so neither the fit (the early
     # stopping split, the folds) nor the donor ties depend on how the frame
@@ -561,7 +569,7 @@ def impute_spi_employment_shell(
         np.argsort(table["person_id"].to_numpy()[train_rows], kind="stable")
     ]
     train = table.iloc[train_rows].reset_index(drop=True)
-    train_weights = weights[train_rows]
+    train_weights = fit_weights[train_rows]
     train_sources = sources[train_rows]
     model = occupation_model(operation, boosted_max_iter=boosted_max_iter)
     seed = int(operation["seed"])

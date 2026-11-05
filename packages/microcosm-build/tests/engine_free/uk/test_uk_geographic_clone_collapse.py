@@ -94,6 +94,7 @@ _COLLAPSING_STAGES = {
     "uc_reporter_redraw": "uc_reporter_redraw",
     "uc_capital_coherence": "uc_capital_coherence",
     "salary_sacrifice": "salary_sacrifice",
+    "spi_employment_shell": "spi_employment_shell",
 }
 
 
@@ -140,4 +141,8 @@ def test_every_collapsing_stage_sees_the_lineage_live_at_it() -> None:
             assert not missing, (node.id, missing)
             checked.append(node.id)
         live |= {(cell.entity, cell.column) for cell in node.outputs}
-    assert sorted(checked) == ["spi_housing_shell", "uc_capital_coherence"]
+    assert sorted(checked) == [
+        "spi_employment_shell",
+        "spi_housing_shell",
+        "uc_capital_coherence",
+    ]

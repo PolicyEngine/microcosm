@@ -402,7 +402,9 @@ _STAGE_CONSUMES: Mapping[str, frozenset[tuple[str, str]] | None] = {
     "hmrc_spi_income_spine": None,
     # Engine-free: the occupation predictors, the drawn-row rule and the channel
     # split. The rewritten occupation, industry and sector cells arrive as the
-    # rewrite's incumbents (microcosm#1490).
+    # rewrite's incumbents (microcosm#1490). The lineage live here lets the fit
+    # fold geographic clones into each survey record, and the receipt count
+    # true sources (microcosm#931).
     "spi_employment_shell": frozenset(
         {
             ("person", "age"),
@@ -417,7 +419,8 @@ _STAGE_CONSUMES: Mapping[str, frozenset[tuple[str, str]] | None] = {
             ("person", "hmrc_spi_pay"),
             ("household", "region"),
             ("household", "household_support_channel"),
-            ("household", "household_source_id"),
+            ("household", "household_support_clone_index"),
+            ("household", "source_household_id"),
         }
     ),
     # Engine-free: the sub-major predictors, the major group it nests in, the
