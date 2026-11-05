@@ -187,6 +187,39 @@ on a shared seeded stream) remains available as `--geography-assignment
 legacy` for measurement builds only, and still supplies the rosters and
 dispersion checks used by target compilation.
 
+Each support also has a conditioned form for the geography-first draw
+(microcosm#931), which only that move binds. It is declared in
+`uk/spec/sources.yaml` with role `uk_atomic_area_conditioned_support`, beside
+the support it extends, and recorded in
+`uk/uk_atomic_area_conditioned_supports.provenance.json`;
+`tools/build_uk_conditioned_area_supports.py` builds it from the registered
+support's bytes and chronicle#412's raw-only registrations. It adds two kinds of
+column:
+
+- **`imd_decile`**, an exact-match constraint code. It is the area's
+  deprivation decile within its own nation, at the 2019 vintage the FRS
+  2024-25 deciles follow (IoD 2019, WIMD 2019, SIMD 2020v2 and NIMDM 2017). An
+  area takes the decile that most of its live residential postcodes carry in
+  the May 2026 NSPL. A tie goes to its parent area's plurality, and an area
+  without such a postcode takes its parent's decile. The relation is
+  `inferred_modal`.
+- **`households_band_a`, `households_band_b` and so on**, weight columns. Each is
+  the area's households in that council-tax band times 10^6, which a `weight_by`
+  stage chooses per household:
+  - England and Wales take bands A to I from the area's LSOA mix in VOA
+    CTSOP1.1. Only Wales has band I.
+  - Scotland takes bands A to H from its council's CTAXBASE 2025 chargeable
+    dwellings, so there the band moves mass only between councils.
+  - Northern Ireland has domestic rates, so its support carries no bands.
+
+The provenance lists every zero-mass draw cell (FRS region by decile, and
+region alone, for each weight column), so the move can choose a draw's fallback
+ahead of time instead of meeting an empty cell. `spine.yaml` declares the FRS
+channel's `observed_constraints: [imd_decile]`, and the UK country adapter
+refuses a spec in which the supports, their conditioned forms and that
+declaration disagree. The shared pieces (`atomic_support_conditioning`: modal
+codes, exact apportionment and zero-mass cells) name no country's columns.
+
 The Northern Ireland source builder currently infers Data Zone constituencies
 using the modal active-postcode constituency. Review the official
 [NISRA constituency aggregation and lookup resources](https://www.nisra.gov.uk/publications/census-2021-output-geography-information-papers)

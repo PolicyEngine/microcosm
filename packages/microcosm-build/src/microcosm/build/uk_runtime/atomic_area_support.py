@@ -21,6 +21,7 @@ from microcosm.build.atomic_geography import (
     encode_atomic_support,
     validate_assignment_spec,
 )
+from microcosm.build.atomic_support_conditioning import extend_atomic_support
 from microcosm.build.uk_runtime.rowwise_geography import FRS_REGION_TO_REGION_CODE
 from microcosm.graph.canonical import canonical_json
 
@@ -45,6 +46,23 @@ UK_NATIVE_ALIAS_COLUMNS = (
 #: The committed provenance of the three support artifacts: per-column source
 #: and vintage of every derived layer, with the artifacts' digests.
 PROVENANCE_RESOURCE = "uk_atomic_area_supports.provenance.json"
+#: The conditioned supports (microcosm#931): each system's support plus the
+#: area's IMD decile and, where council tax is banded, its households by band.
+#: Only the geography-first move binds them; today's build binds SOURCES.
+CONDITIONED_SOURCES = {system: system + "_conditioned_support" for system in SYSTEMS}
+CONDITIONED_PROVENANCE_RESOURCE = "uk_atomic_area_conditioned_supports.provenance.json"
+#: The FRS records the deprivation tenth of each address within its own nation.
+IMD_DECILE_COLUMN = "imd_decile"
+IMD_DECILES = tuple(str(decile) for decile in range(1, 11))
+#: Households by council-tax band, times BAND_WEIGHT_SCALE: bands A to I in
+#: England and Wales (only Wales has band I), A to H in Scotland. Northern
+#: Ireland has domestic rates, so its support carries no band weights.
+BAND_WEIGHT_SCALE = 10**6
+BAND_WEIGHT_COLUMNS = {
+    SYSTEMS[0]: tuple(f"households_band_{band}" for band in "abcdefghi"),
+    SYSTEMS[1]: tuple(f"households_band_{band}" for band in "abcdefgh"),
+    SYSTEMS[2]: (),
+}
 
 
 def uk_area_code_frames() -> dict[str, dict[str, str]]:
@@ -108,6 +126,10 @@ _INPUT_COLUMNS = (
     "itl3_code",
 )
 _COUNT_COLUMNS = frozenset({"population", "households"})
+#: Every column of an unconditioned support, as the adapter normalizes it.
+_SUPPORT_COLUMNS = frozenset(
+    {"area", *_INPUT_COLUMNS[1:], "frs_region", "itl1_code", "itl2_code"}
+)
 _CODE = re.compile(r"[EWSN][0-9]{8}")
 _WARD = re.compile(r"[EWSN][0-9]{2}[0-9RS][0-9]{5}")
 _ITL = re.compile(r"TL[C-N][0-9A-Z]{2}")
@@ -312,6 +334,147 @@ def assemble_uk_atomic_area_support(
     )
 
 
+def _canonical_support(system: str, support) -> bytes:
+    """Re-assemble a decoded support's adapter columns into canonical bytes."""
+    arrays = {
+        column: support.arrays["area" if column == "oa_code" else column]
+        for column in _INPUT_COLUMNS
+    }
+    metadata = {
+        column: dict(
+            support.metadata["columns"]["area" if column == "oa_code" else column]
+        )
+        for column in _INPUT_COLUMNS
+    }
+    return assemble_uk_atomic_area_support(
+        system=system, arrays=arrays, column_metadata=metadata
+    )
+
+
+def assemble_uk_conditioned_area_support(
+    *,
+    base: bytes,
+    imd_decile: np.ndarray,
+    band_weights: Mapping[str, np.ndarray],
+    column_metadata: Mapping,
+) -> bytes:
+    """Add each area's IMD decile and households by band to a canonical support.
+
+    ``base`` must be this adapter's canonical output for its system, the
+    support today's build binds. ``imd_decile`` gives each area, in support
+    order, its decile code within the nation. ``band_weights`` gives each of
+    the system's band columns (:data:`BAND_WEIGHT_COLUMNS`) the area's
+    households in that band times :data:`BAND_WEIGHT_SCALE`; an area's band
+    weights must sum to its households times the scale, up to half a unit
+    per band of rounding. English areas carry no band I. The caller states
+    every new column's source, vintage or basis, as for any support column.
+    """
+    _require(type(base) is bytes, "immutable support bytes required")
+    support = decode_atomic_support(base)
+    system = support.metadata["system"]
+    _require(system in SYSTEMS, "unknown area system")
+    _require(set(support.arrays) == _SUPPORT_COLUMNS, "base is already conditioned")
+    _require(
+        _canonical_support(system, support) == base,
+        "base is not the canonical UK adapter output",
+    )
+    bands = BAND_WEIGHT_COLUMNS[system]
+    _require(
+        type(column_metadata) is dict
+        and set(column_metadata) == {IMD_DECILE_COLUMN, *bands},
+        "exact conditioning metadata required",
+    )
+    for column, item in column_metadata.items():
+        code = column == IMD_DECILE_COLUMN
+        _require(
+            type(item) is dict
+            and set(item)
+            == (
+                {"kind", "source", "vintage", "relation"}
+                if code
+                else {"kind", "source", "basis"}
+            )
+            and all(_text(value) for value in item.values())
+            and item["kind"] == ("code" if code else "weight")
+            and (not code or item["relation"] in RELATIONS),
+            "conditioning column description",
+        )
+    areas = len(support.arrays["area"])
+    _require(
+        type(imd_decile) is np.ndarray
+        and imd_decile.dtype.kind == "U"
+        and imd_decile.shape == (areas,)
+        and set(imd_decile.tolist()) <= set(IMD_DECILES),
+        "one decile code, 1 to 10, per area",
+    )
+    _require(
+        type(band_weights) is dict and set(band_weights) == set(bands),
+        "exact band weights required",
+    )
+    weights = {}
+    for band in bands:
+        array = band_weights[band]
+        _require(
+            type(array) is np.ndarray
+            and array.dtype.kind in "iu"
+            and array.shape == (areas,)
+            and bool(np.all(array >= 0)),
+            "nonnegative integer band weights, one per area",
+        )
+        weights[band] = array.astype(np.int64)
+    if bands:
+        households = [int(value) for value in support.arrays["households"]]
+        for row, count in enumerate(households):
+            split = sum(int(weights[band][row]) for band in bands)
+            _require(
+                2 * abs(split - count * BAND_WEIGHT_SCALE) <= len(bands),
+                "band weights must split the area's households",
+            )
+    if system == SYSTEMS[0]:
+        english = np.char.startswith(np.asarray(support.arrays["area"]), "E")
+        _require(
+            not np.any(weights["households_band_i"][english]),
+            "band I exists only in Wales",
+        )
+    return extend_atomic_support(
+        base,
+        arrays={IMD_DECILE_COLUMN: imd_decile.copy(), **weights},
+        columns={column: dict(item) for column, item in column_metadata.items()},
+    )
+
+
+def uk_conditioned_support_base(payload: bytes) -> bytes:
+    """The canonical support a conditioned support extends.
+
+    Refuses a payload that is not exactly what
+    :func:`assemble_uk_conditioned_area_support` makes of that base, so a
+    caller can hold a conditioned support to the registered support it adds to.
+    """
+    _require(type(payload) is bytes, "immutable support bytes required")
+    support = decode_atomic_support(payload)
+    system = support.metadata["system"]
+    _require(system in SYSTEMS, "unknown area system")
+    extra = (IMD_DECILE_COLUMN, *BAND_WEIGHT_COLUMNS[system])
+    _require(
+        set(support.arrays) == _SUPPORT_COLUMNS | set(extra),
+        "conditioned support columns differ",
+    )
+    base = _canonical_support(system, support)
+    rebuilt = assemble_uk_conditioned_area_support(
+        base=base,
+        imd_decile=np.asarray(support.arrays[IMD_DECILE_COLUMN]).copy(),
+        band_weights={
+            band: np.asarray(support.arrays[band]).copy()
+            for band in BAND_WEIGHT_COLUMNS[system]
+        },
+        column_metadata={
+            column: dict(support.metadata["columns"][column]) for column in extra
+        },
+    )
+    _require(rebuilt == payload, "support is not the canonical conditioned output")
+    return base
+
+
 def _layers(system: str) -> tuple[tuple[str, str], ...]:
     shared = tuple(
         (column, column)
@@ -382,32 +545,12 @@ def uk_atomic_assignment_definition(
             ),
             "support system identity differs",
         )
-        expected_columns = {
-            "area",
-            *(_INPUT_COLUMNS[1:]),
-            "frs_region",
-            "itl1_code",
-            "itl2_code",
-        }
-        _require(set(support.arrays) == expected_columns, "support columns differ")
+        _require(set(support.arrays) == _SUPPORT_COLUMNS, "support columns differ")
         # The declaration accepts this adapter's normalized form. This closes
         # forged derived aliases/region normalization without claiming source
         # authority from a self-consistent payload.
-        restored_arrays = {
-            column: support.arrays["area" if column == "oa_code" else column]
-            for column in _INPUT_COLUMNS
-        }
-        restored_metadata = {
-            column: dict(
-                support.metadata["columns"]["area" if column == "oa_code" else column]
-            )
-            for column in _INPUT_COLUMNS
-        }
         _require(
-            assemble_uk_atomic_area_support(
-                system=system, arrays=restored_arrays, column_metadata=restored_metadata
-            )
-            == supports[system],
+            _canonical_support(system, support) == supports[system],
             "support is not the canonical UK adapter output",
         )
         systems.append(

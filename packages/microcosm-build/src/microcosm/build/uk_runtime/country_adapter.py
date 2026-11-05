@@ -58,30 +58,64 @@ def validate_uk_country_source_projection(spec: CountrySpec) -> None:
         for artifact in root.artifacts
         if artifact["role"] == "frs_table"
     ]
-    # The atomic-area supports (microcosm#932) are declared beside the raw FRS
-    # tables with their own role and loader; every other row is an FRS table.
+    # The atomic-area supports (microcosm#932) and their conditioned forms
+    # (microcosm#931) are declared beside the raw FRS tables with their own
+    # roles and loader; every other row is an FRS table.
     declared = [row for row in sources["sources"] if row["role"] == "frs_raw_table"]
     if declared != expected:
         raise ValueError(
             "UK country raw-source pins differ from the canonical FRS spine stage."
         )
+    from .atomic_area_support import CONDITIONED_SOURCES, IMD_DECILE_COLUMN, SOURCES
+
+    supports = {
+        "uk_atomic_area_support": SOURCES,
+        "uk_atomic_area_conditioned_support": CONDITIONED_SOURCES,
+    }
     others = [row for row in sources["sources"] if row["role"] != "frs_raw_table"]
     if any(
-        row["role"] != "uk_atomic_area_support"
+        row["role"] not in supports
         or row["loader"] != "kernel:load_uk_atomic_area_support"
         for row in others
     ):
         raise ValueError(
             "UK country sources beyond the raw FRS tables must be atomic-area supports."
         )
+    by_id = {row["id"]: row for row in others}
+    if sorted(by_id) != sorted(
+        source for ids in supports.values() for source in ids.values()
+    ) or any(
+        by_id[source]["role"] != role
+        for role, ids in supports.items()
+        for source in ids.values()
+    ):
+        raise ValueError(
+            "UK atomic-area supports must be each system's support and its "
+            "conditioned form."
+        )
+    # A conditioned support keeps its system's area vintages and adds the
+    # vintages of the columns it conditions on.
+    for system, source in SOURCES.items():
+        if not set(by_id[source]["vintages"]) < set(
+            by_id[CONDITIONED_SOURCES[system]]["vintages"]
+        ):
+            raise ValueError(
+                f"The conditioned {system} support must extend its support's vintages."
+            )
+    # The FRS records each address's region and IMD decile; the conditioned
+    # supports carry the decile the geography-first draw matches.
     if spine["channels"] != [
         {
             "id": "frs",
             "source": [row["id"] for row in expected],
             "observed_geography": "region",
+            "observed_constraints": [IMD_DECILE_COLUMN],
         }
     ]:
-        raise ValueError("UK FRS channel must consume the declared raw FRS tables.")
+        raise ValueError(
+            "UK FRS channel must consume the declared raw FRS tables and observe "
+            "the region and the IMD decile."
+        )
     if bundle["dataset_run"]["target_period"] != release.calibration_year:
         raise ValueError(
             "UK country target period differs from the FRS release calibration year."
@@ -90,6 +124,8 @@ def validate_uk_country_source_projection(spec: CountrySpec) -> None:
 
 def uk_atomic_support_register(
     spec: CountrySpec | None = None,
+    *,
+    conditioned: bool = False,
 ) -> dict[str, dict[str, object]]:
     """The committed identity of each atomic-area support, by system.
 
@@ -98,16 +134,23 @@ def uk_atomic_support_register(
     build on exactly these bytes, whatever digest the operator pinned on
     the command line; the dense release pre-flight reads the same register
     against the manifest's ``geography.assignment.support_pins``.
+    ``conditioned`` reads the conditioned supports (microcosm#931) instead,
+    which only the geography-first move binds.
     """
-    from .atomic_area_support import SOURCES
+    from .atomic_area_support import CONDITIONED_SOURCES, SOURCES
 
     spec = load_country_spec("uk") if spec is None else spec
     if spec.resolved_spec is None:
         raise ValueError("The atomic-area support register needs a resolved UK spec.")
+    role, sources = (
+        ("uk_atomic_area_conditioned_support", CONDITIONED_SOURCES)
+        if conditioned
+        else ("uk_atomic_area_support", SOURCES)
+    )
     rows = spec.resolved_spec.resource("sources").domain.to_wire()["sources"]
-    by_id = {row["id"]: row for row in rows if row["role"] == "uk_atomic_area_support"}
+    by_id = {row["id"]: row for row in rows if row["role"] == role}
     register = {}
-    for system, source in SOURCES.items():
+    for system, source in sources.items():
         row = by_id.get(source)
         if row is None:
             raise ValueError(

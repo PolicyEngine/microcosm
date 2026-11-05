@@ -16,6 +16,8 @@ channels:
   - frs_penprov
   - frs_pension
   observed_geography: region
+  observed_constraints:
+  - imd_decile
 assembly:
   mass_anchor_channel: frs
   shared_dtype_policy: canonical_string_storage
