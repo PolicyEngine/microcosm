@@ -12,9 +12,9 @@ commit ``acbedb5`` on Chronicle main differ from them only in their
 location, age, debt-size and loan-type row, and the FY2026 Q2 Direct Loan
 repayment-plan dollars. The tests pin the plan's reference quarter, its one
 in-scope control, each family's reconciled values, every fact's disposition,
-the release materializer, the release's restated-filter guard and its refusal
-of a ``--scf-education-debt`` build on a feed with no FSA facts
-(microcosm#1074).
+the release materializer (a missing age counts in the youngest band), the
+release's restated-filter guard and its refusal of a ``--scf-education-debt``
+build on a feed with no FSA facts (microcosm#1074).
 """
 
 from __future__ import annotations
@@ -39,6 +39,7 @@ from hypothesis import strategies as st
 from microcosm.build.us_runtime import compile_us_fiscal_target_registry
 from microcosm.build.us_runtime.fsa_student_loan_targets import (
     FSA_MATERIALIZER,
+    FSA_MISSING_AGE,
     FSA_PERIOD_ALIGNMENT,
     FSA_TARGET_FAMILY,
     fsa_student_loan_household_values,
@@ -499,6 +500,41 @@ def test_household_values_need_both_balance_columns() -> None:
     )
     with pytest.raises(ValueError, match="Unknown FSA measure"):
         fsa_student_loan_household_values(frame, {"fsa_measure": "recipients"})
+
+
+@pytest.mark.parametrize("missing", [np.nan, None, "unknown"])
+def test_a_missing_age_counts_in_the_youngest_band(missing: object) -> None:
+    base = _frame()
+    tables = {entity: base.table(entity) for entity in base.entities}
+    # Person 3 holds $85,000 at age 30; without an age, the youngest band
+    # (whose lower edge is open) takes that balance and that borrower.
+    tables["person"] = base.table("person").assign(
+        age=pd.Series([24.0, 52.0, missing, 61.0, 40.0, 70.0], dtype=object)
+    )
+    frame = Frame(tables, US_SCHEMA, {"household": base.weights_for("household")})
+    bands = [
+        reference.metadata
+        for reference in _references()
+        if reference.metadata["target_role"] == "fsa_age_band_borrowers"
+    ]
+    youngest = next(meta for meta in bands if "age_lower_bound" not in meta)
+
+    assert FSA_MISSING_AGE < float(youngest["age_upper_bound"])
+    np.testing.assert_array_equal(
+        fsa_student_loan_household_values(frame, youngest), [1.0, 1.0, 0.0]
+    )
+    np.testing.assert_array_equal(
+        fsa_student_loan_household_values(
+            frame, {**youngest, "fsa_measure": "total_balance"}
+        ),
+        [3_000.0, 85_000.0, 0.0],
+    )
+    # Every other band leaves that person out, so the bands still partition
+    # every borrower.
+    np.testing.assert_array_equal(
+        np.sum([fsa_student_loan_household_values(frame, m) for m in bands], axis=0),
+        fsa_student_loan_household_values(frame, {"fsa_measure": "borrowers"}),
+    )
 
 
 def test_compiled_fsa_targets_round_trip_through_the_materializer() -> None:

@@ -25,10 +25,13 @@ Repayment plans, the portfolio summary and the loan-type table stay out of the
 loss: :data:`FSA_DIAGNOSTIC_TABLES` and the row rules in
 :func:`plan_fsa_student_loan_targets` give each reason. Under 34 CFR 685.220(f), the
 Secretary pays off each loan that a Direct Consolidation Loan consolidates, and
-FSA's notes don't say whether its Parent PLUS row leaves those loans out. The
-stage's column holds every loan for a child's education, consolidated or not, so
-the row and the column may measure different loans. Every other family pins the
-total, so a target on either side of FSA's split would still constrain the split.
+FSA's notes don't say whether its Parent PLUS row leaves those loans out. A
+consolidated Parent PLUS loan has been paid off, so FSA likely files the new
+loan under "Consolidation", and its Parent PLUS row would then be a lower bound
+on the stage's column, which holds every loan for a child's education,
+consolidated or not. That is an inference, not FSA's statement. Every other
+family pins the total, so a target on either side of FSA's split would still
+constrain the split.
 
 Reference period. The build's period is the H5's (2024), but the balances are
 stocks that the student-debt analysis reads as they stand (its reference year
@@ -40,9 +43,14 @@ alignment. The reference date is the latest quarter that every bound table
 publishes (FY2026 Q2, 31 March 2026, at chronicle#347): the location workbook
 publishes only that date, and holding the other tables to it keeps every family
 a statement about one portfolio on one day. Later quarters of the age,
-debt-size and loan-type tables stay in the receipt. The age bands read the
-frame's ``age`` column as age at that date: the stage draws on the same column,
-and the student-debt analysis reads it, with no shift.
+debt-size and loan-type tables stay in the receipt. The materializer groups the
+frame's stored, unaged ``age`` into FSA's March 2026 bands: the stage draws on
+the same column, and the student-debt analysis reads it, with no shift. A shift
+here alone would set calibration and the analysis's age table apart. Between
+March 2024 and March 2026, FSA's largest change in a band's share (ages 25 to
+34) is about 1.4 points for borrowers and 2.6 for balances. A person with no
+numeric age counts in the youngest band (:data:`FSA_MISSING_AGE`), so
+the age bands still partition every borrower.
 
 One control total. FSA's borrower tables do not agree exactly with one another
 or with its recipient tables, and the location table holds rows the host
@@ -94,6 +102,7 @@ __all__ = [
     "FSA_MATERIALIZER",
     "FSA_MEASURE_KEY",
     "FSA_MEASURES",
+    "FSA_MISSING_AGE",
     "FSA_PERIOD_ALIGNMENT",
     "FSA_SOURCE_NAME",
     "FSA_TARGET_FAMILY",
@@ -147,6 +156,12 @@ _AGE_LOWER_BOUND_KEY = "age_lower_bound"
 _AGE_UPPER_BOUND_KEY = "age_upper_bound"
 _AGE_BOUND_STAMP_SOURCE_KEY = "age_bound_stamp_source"
 _AGE_BOUND_STAMP_FROM_CONSTRAINT_ROWS = "constraint_rows"
+#: The age the materializer gives a person whose ``age`` is missing or not a
+#: number. It sits below every band's lower edge but the youngest band's, which
+#: is open (``-inf``), so that person counts in the youngest band and the age
+#: bands still sum to the total balance and borrower count. FSA allocates its
+#: own "not reported" ages across the reported bands, so no band takes them.
+FSA_MISSING_AGE = -1.0
 
 _LOCATION = "portfolio_by_location"
 _AGE = "portfolio_by_age"
@@ -161,7 +176,6 @@ _MEASURE_BY_SOURCE_MEASURE = {
     _DOLLARS: FSA_TOTAL_BALANCE,
     _BORROWER_COUNT: FSA_BORROWERS,
 }
-_PARENT_PLUS_LOAN_TYPE = "parent_plus"
 _NOT_REPORTED_LOCATION = "not_reported"
 _OTHER_LOCATION = "other"
 _PUERTO_RICO_FIPS = "72"
@@ -233,8 +247,8 @@ FSA_DIAGNOSTIC_TABLES: Mapping[str, str] = {
 }
 
 _REASON_OTHER_QUARTER = (
-    "Not the reference quarter: every bound table binds at the latest quarter "
-    "all four publish ({reference})."
+    "Not the reference quarter: every family binds at the latest quarter all "
+    "four tables publish ({reference})."
 )
 _REASON_PUERTO_RICO = (
     "Puerto Rico is outside the host universe (the CPS samples the 50 states "
@@ -247,9 +261,9 @@ _REASON_OTHER_LOCATION = (
     "with its pro-rata share of Not Reported."
 )
 _REASON_NOT_REPORTED_LOCATION = (
-    "'Not Reported' (FFEL and Perkins loans whose commercial lenders need not "
-    "report an address) has no state; it is allocated to every reported "
-    "location in proportion to that location's reported value."
+    "'Not Reported' has no state (FSA says it includes FFEL and Perkins loans "
+    "whose commercial lenders need not report an address); it is allocated to "
+    "every reported location in proportion to that location's reported value."
 )
 _REASON_NOT_REPORTED_AGE = (
     "Age not reported: in no partition, so the reported bands, which bind as "
@@ -506,7 +520,9 @@ def fsa_student_loan_household_values(
     Sums ``FSA_MEASURES[metadata["fsa_measure"]]`` over each household's
     people (a positive-balance indicator for borrower counts), within the
     person's age band and balance band when the spec compiles them, and
-    zeroes households outside the spec's state. Returns ``None`` when the
+    zeroes households outside the spec's state. The age is the frame's stored
+    ``age``, unaged; a missing one reads as :data:`FSA_MISSING_AGE`, in the
+    youngest band, and a missing balance reads as 0. Returns ``None`` when the
     frame does not carry both balance columns, so the target is not
     materialized and the release reports it dropped.
     """
@@ -534,7 +550,7 @@ def fsa_student_loan_household_values(
     if _AGE_LOWER_BOUND_KEY in metadata or _AGE_UPPER_BOUND_KEY in metadata:
         age = (
             pd.to_numeric(person[_AGE_VARIABLE], errors="coerce")
-            .fillna(-1.0)
+            .fillna(FSA_MISSING_AGE)
             .to_numpy(dtype=np.float64)
         )
         mask &= _band_mask(age, metadata, _AGE_LOWER_BOUND_KEY, _AGE_UPPER_BOUND_KEY)

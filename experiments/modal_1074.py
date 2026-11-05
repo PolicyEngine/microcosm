@@ -9,16 +9,17 @@ run's files back into this checkout. Inputs:
 - the published host release `populace-us-2024-spm-20260915` from Hugging Face
   (policyengine/populace-us at a pinned revision);
 - the Federal Reserve's SCF 2025 public zips (summary extract and full file);
-- for ``fit``: a candidate Chronicle feed, built in the container and cached
-  on the volume. It is the US feed pinned when the experiment began (rebuilt
-  byte for byte at Chronicle ``51aa40f`` with ``tools/build_us_chronicle_feed.py``
-  and checked against that pin's facts sha256; main has since re-pinned to
-  ``cf9ece2``, which adds the B4923C ESI anchor facts of microcosm#454, a
-  reviewed exclusion that binds no target) plus the six FSA packages of
+- for ``fit``: a Chronicle feed, built in the container and cached on the
+  volume. ``--feed pin`` (the default) rebuilds the US feed the commit pins
+  (``us/chronicle_feed.json``) at its Chronicle commit with the commit's
+  ``tools/build_us_chronicle_feed.py`` and checks its sha256 and row count;
+  after microcosm#1506 that pin (``41b2fb2b``, 40,642 rows) carries the 461
+  FSA rows. ``--feed candidate`` is the earlier splice, for a commit whose pin
+  predates #1506: the US feed pinned when the experiment began (rebuilt byte
+  for byte at Chronicle ``51aa40f``) plus the six FSA packages of
   PolicyEngine/chronicle#347 (``chronicle build-bundle --year 2026`` at the
   merge commit ``acbedb5`` on Chronicle main, which reads the raw files from
-  R2). The candidate is a reviewed diagnostic input only; no pin in the
-  repository names it.
+  R2). No pin in the repository names the candidate.
 
     export PYTHONIOENCODING=utf-8 PYTHONUTF8=1
     modal run experiments/modal_1074.py::preflight --commit <sha>
@@ -34,9 +35,12 @@ fails):
 - ``spec``: the bundle generator and the spec-engine coverage attestation in
   ``--check`` mode, and the engine-free spec-engine tests, which fail if the
   change moved a spec identity;
-- ``feed``: build (or verify the cached) candidate feed only;
+- ``lint``: ``ruff check .`` and ``ruff format --check`` on this PR's files;
+- ``feed``: build (or verify the cached) feed only;
 - ``fit``: the calibration fit and receipt
-  (``experiments/fit_1074_fsa_calibration.py``), labelled with the run id.
+  (``experiments/fit_1074_fsa_calibration.py``), labelled with the run id;
+- ``fit_smoke``: the same fit at ``SMOKE_EPOCHS``, its receipt kept in the
+  run's results only, to check the arm grid and receipt builder end to end.
 
 After the steps the run saves every tracked file they changed
 (``git status --porcelain``) and every untracked file matching OUTPUT_GLOBS,
@@ -129,6 +133,7 @@ STEPS: dict[str, list[list[str]]] = {
             f"{_TESTS}/engine_free/us/test_us_fsa_student_loan_targets.py",
             f"{_TESTS}/engine_free/us/test_us_fiscal_targets.py",
             f"{_TESTS}/engine_free/us/test_us_chronicle_feed.py",
+            f"{_TESTS}/engine_free/us/test_us_spine_blindness.py",
             f"{_TESTS}/engine_free/shared/test_ledger_targets.py",
             f"{_TESTS}/engine_free/shared/test_ledger_artifact.py",
             f"{_TESTS}/engine_free/shared/test_release_target_parity.py",
@@ -168,6 +173,22 @@ STEPS: dict[str, list[list[str]]] = {
             f"{_TESTS}/engine_free/us/test_us_bundle_core_contracts.py",
         ],
     ],
+    "lint": [
+        ["{python}", "-m", "ruff", "check", "."],
+        [
+            "{python}",
+            "-m",
+            "ruff",
+            "format",
+            "--check",
+            "experiments/fit_1074_fsa_calibration.py",
+            "experiments/modal_1074.py",
+            "tools/build_us_fiscal_refresh_release.py",
+            "packages/microcosm-build/src/microcosm/build/us_runtime",
+            f"{_TESTS}/engine_free/us/test_us_fsa_student_loan_targets.py",
+            f"{_TESTS}/engine_free/us/test_us_fiscal_refresh_builder.py",
+        ],
+    ],
     "feed": [],
     "fit": [
         [
@@ -189,7 +210,37 @@ STEPS: dict[str, list[list[str]]] = {
             "{run_id}",
         ]
     ],
+    # The same fit at SMOKE_EPOCHS, writing its receipt to the run's results
+    # only: a check that the arm grid and the receipt builder run end to end.
+    "fit_smoke": [
+        [
+            "{python}",
+            "experiments/fit_1074_fsa_calibration.py",
+            "--h5",
+            "{h5}",
+            "--feed",
+            "{feed}",
+            "--feed-provenance",
+            "{feed_provenance}",
+            "--scf-cache-dir",
+            "{scf}",
+            "--materialization-cache-dir",
+            "/cache/materialization",
+            "--epochs",
+            "{smoke_epochs}",
+            "--out-json",
+            "{results}/smoke/1074-fsa-calibration-fit.json",
+            "--out-md",
+            "{results}/smoke/1074-fsa-calibration-receipts.md",
+            "--run",
+            "{run_id}",
+        ]
+    ],
 }
+#: The steps that read a feed, and those that take --fit-args.
+FEED_STEPS = {"feed", "fit", "fit_smoke"}
+FIT_STEPS = {"fit", "fit_smoke"}
+SMOKE_EPOCHS = 20
 OUTPUT_GLOBS = ("experiments/receipts/1074-*.json", "experiments/1074-*.md")
 CPU = 8.0
 # The whole 57,240-household support in one engine peaks near 88 GB.
@@ -306,16 +357,17 @@ def _inputs() -> dict[str, Path]:
     return {"h5": host, "zips": zips, "scf": scf}
 
 
-def _pinned_feed(log) -> Path:
-    """The pinned US feed, rebuilt at its Chronicle commit and sha-checked."""
+def _pinned_feed(log, pin: dict = PINNED_FEED) -> Path:
+    """A US feed, rebuilt at its Chronicle commit with the clone's builder and
+    scope, and sha-checked against ``pin`` (a cached copy is reused)."""
 
     feeds = CACHE / "feeds"
     feeds.mkdir(parents=True, exist_ok=True)
-    path = feeds / f"consumer_facts_us_{PINNED_FEED['commit'][:7]}.jsonl"
-    if _verified(path, PINNED_FEED["facts_sha256"]):
+    path = feeds / f"consumer_facts_us_{pin['commit'][:7]}.jsonl"
+    if _verified(path, pin["facts_sha256"]):
         return path
     root = Path("/work/chronicle-pinned")
-    _clone(PINNED_FEED["repo"], PINNED_FEED["commit"], root)
+    _clone(pin["repo"], pin["commit"], root)
     subprocess.run(["uv", "sync", "--frozen"], cwd=root, env=_uv_env(), check=True)
     out = Path("/tmp/us-feed")
     t0 = time.time()
@@ -336,14 +388,67 @@ def _pinned_feed(log) -> Path:
     )
     log["pinned_feed_build_seconds"] = round(time.time() - t0, 1)
     built = out / "consumer_facts.jsonl"
-    if not _verified(built, PINNED_FEED["facts_sha256"]):
+    if not _verified(built, pin["facts_sha256"]):
         raise RuntimeError(
-            f"rebuilt US feed sha256 {_sha256(built)} != pinned "
-            f"{PINNED_FEED['facts_sha256']}"
+            f"rebuilt US feed sha256 {_sha256(built)} != pinned {pin['facts_sha256']}"
         )
     shutil.copyfile(built, path)
     cache.commit()
     return path
+
+
+#: The US feed pin of the checked-out commit.
+BRANCH_PIN = "packages/microcosm-build/src/microcosm/build/us/chronicle_feed.json"
+
+
+def _branch_pinned_feed(log) -> tuple[Path, Path]:
+    """The US feed the checked-out commit pins, rebuilt at its Chronicle commit.
+
+    The ``pin`` feed of the fit: after microcosm#1506 it carries the 461 FSA
+    rows, so no splice is needed. A pin without them fails the fit, which
+    refuses a feed that binds no FSA target.
+    """
+
+    pin = json.loads((WORK / BRANCH_PIN).read_text(encoding="utf-8"))
+    path = _pinned_feed(
+        log,
+        {
+            "repo": f"https://github.com/{pin['source_repo']}.git",
+            "commit": pin["source_commit"],
+            "facts_sha256": pin["facts_sha256"],
+        },
+    )
+    rows = sum(1 for line in path.read_bytes().splitlines() if line.strip())
+    if rows != pin["fact_row_count"]:
+        raise RuntimeError(
+            f"pinned feed has {rows} rows, pin says {pin['fact_row_count']}"
+        )
+    provenance = path.with_suffix(".provenance.json")
+    provenance.write_text(
+        json.dumps(
+            {
+                "kind": "committed pin",
+                "pin_path": BRANCH_PIN,
+                "pin": {
+                    key: pin[key]
+                    for key in (
+                        "source_repo",
+                        "source_commit",
+                        "facts_sha256",
+                        "fact_row_count",
+                        "scope_sha256",
+                    )
+                },
+                "path": path.name,
+                "rows": rows,
+                "sha256": _sha256(path),
+            },
+            indent=1,
+        ),
+        encoding="utf-8",
+    )
+    cache.commit()
+    return path, provenance
 
 
 def _fsa_rows(log) -> Path:
@@ -542,7 +647,12 @@ def preflight_remote(commit: str) -> dict:
     nonpreemptible=True,
 )
 def run_steps(
-    commit: str, steps: list[str], run_id: str, script_text: str = ""
+    commit: str,
+    steps: list[str],
+    run_id: str,
+    script_text: str = "",
+    feed_source: str = "pin",
+    fit_args: tuple[str, ...] = (),
 ) -> dict:
     import resource  # Unix-only; the local entrypoint runs on Windows too
 
@@ -563,11 +673,17 @@ def run_steps(
         "cpu": CPU,
         "memory_mb": MEMORY_MB,
         "inputs": {"host": HOST, "scf": {k: v[1] for k, v in SCF_ZIPS.items()}},
+        "feed_source": feed_source,
+        "fit_args": list(fit_args),
         "started_at": started.isoformat(),
     }
-    if {"feed", "fit"} & set(steps):
-        feed_log: dict[str, object] = {}
-        feed, provenance = _candidate_feed(feed_log)
+    fields["smoke_epochs"] = str(SMOKE_EPOCHS)
+    if FEED_STEPS & set(steps):
+        feed_log: dict[str, object] = {"source": feed_source}
+        if feed_source == "pin":
+            feed, provenance = _branch_pinned_feed(feed_log)
+        else:
+            feed, provenance = _candidate_feed(feed_log)
         fields |= {"feed": str(feed), "feed_provenance": str(provenance)}
         log["feed"] = {
             **json.loads(provenance.read_text()),
@@ -591,6 +707,8 @@ def run_steps(
             commands = [[fields["python"], "_modal_probe.py"]]
         else:
             commands = [_expand(command, fields) for command in STEPS[step]]
+            if step in FIT_STEPS:
+                commands = [[*command, *fit_args] for command in commands]
         before = resource.getrusage(resource.RUSAGE_CHILDREN).ru_maxrss
         t0 = time.time()
         returncodes = []
@@ -665,18 +783,34 @@ def preflight(commit: str) -> None:
 
 
 @app.local_entrypoint()
-def launch(commit: str, steps: str = "tests", script: str = "") -> None:
+def launch(
+    commit: str,
+    steps: str = "tests",
+    script: str = "",
+    feed: str = "pin",
+    fit_args: str = "",
+) -> None:
     """Spawn the run and exit at once (use with ``modal run --detach``).
 
     A client attached for the whole run cancels the remote input when it is
     stopped (for example when the machine runs low on memory), even under
     --detach. ``launch`` returns as soon as the call is spawned, so nothing
     local can cancel it; ``collect`` fetches the results.
+
+    ``feed`` is ``pin`` (the US feed the commit pins, which carries the FSA
+    rows after microcosm#1506) or ``candidate`` (the 51aa40f feed plus the
+    chronicle#347 rows, for a commit whose pin predates #1506). ``fit_args``
+    is appended to the fit commands, e.g.
+    ``--fit-args "--extra-chi-square-lambda 0.3"``.
     """
     _check_commit(commit)
+    if feed not in {"pin", "candidate"}:
+        raise SystemExit("--feed must be pin or candidate")
     names, script_text = _names(steps, script)
     run_id = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ") + "-" + commit[:9]
-    call = run_steps.spawn(commit, names, run_id, script_text)
+    call = run_steps.spawn(
+        commit, names, run_id, script_text, feed, tuple(fit_args.split())
+    )
     print(f"run_id={run_id}")
     print(f"function_call_id={call.object_id}")
 

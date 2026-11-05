@@ -7,39 +7,50 @@ receipt), calibrated on its own 57,240-household support:
 
 - **release**: the published weights, which never saw the student loan
   columns (the "before");
-- **A, no FSA**: a dense refit from those weights to the release's
-  ``national_state`` surface, compiled from the candidate feed without the
-  FSA family. It separates what re-solving on the current surface moves from
-  what the FSA family moves;
-- **B, with FSA**: the same refit with the 132 FSA targets added;
-- **A + L2, B + L2**: both again with an L2 anchor to the published weights
-  (``l2_lambda = 0.03``). The release default has none, and a dense refit of
-  an L0-selected support without one concentrates weight, so these show how
-  much of the movement the anchor holds back;
-- **B, counts xF** (with and without the L2 anchor): B with the 67 FSA
-  balance targets at full loss weight and the 65 borrower-count targets at a
-  fraction F (0, 0.1, 0.25) of theirs, renormalized to mean 1. FSA counts
-  44.3M borrowers, about twice what the SCF and the host see, and binding them
-  at full weight about doubles the share of households with debt; at 0 the
-  counts only validate.
+- **A**: a dense refit from those weights to the release's ``national_state``
+  surface, compiled from the feed without the FSA family. It separates what
+  re-solving on the current surface moves from what the FSA family moves;
+- **B**: the same refit with the 130 FSA targets added;
+- **A and B + record L2** (``l2_lambda = 0.03``, ``l2_basis = "record"``):
+  ``calibrate``'s default concentration penalty, ``mean((w / w_release) ** 2)``,
+  which spreads weight without anchoring to the design (``solve.py``). It is
+  the penalty the release's ``--l2-lambda`` passes today;
+- **A and B + chi-square L2** (``l2_lambda = 0.03``, ``l2_basis =
+  "chi_square"``): the anchor-weighted chi-square distance from the published
+  weights, the setting the ACS local L2 study recommends on its own loss. The
+  release has no flag for this basis. ``--extra-chi-square-lambda`` adds A and
+  B at another lambda, for when 0.03 barely moves the fit;
+- **B, counts x0** (at lambda 0 and with record L2): B with the 65 FSA balance
+  targets at full loss weight and the 65 borrower-count targets at none of
+  theirs, renormalized to mean 1, so the counts only validate. No release flag
+  reproduces it: ``--target-family-loss-multiplier ed_fsa=`` scales balances
+  and counts together.
+
+The release's L2 setting depends on these arms' FSA fit, non-FSA fit,
+effective sample size and income tables, which the receipt reports for each.
 
 Each arm uses the release tool's own compile (``compile_us_fiscal_target_registry``
 with ``student_loan_targets``), Medicaid substitutions, ``national_state``
 surface, target materializer (``_materialize_target_frame``, the FSA rows
 through ``fsa_student_loan_household_values``), loss weights and loss cap, and
 ``calibrate`` with the release's epochs, learning rate, weight cap and
-conserved mass. It is not a release: it runs no release gate, uses a
-candidate feed (the ``51aa40f`` US feed, pinned when the experiment began,
-plus the merged chronicle#347 FSA rows) and publishes nothing.
+conserved mass. It is not a release: it runs no release gate, reads the feed
+``--feed`` names (``experiments/modal_1074.py`` builds the US feed the branch
+pins, or the earlier candidate splice; ``--feed-provenance`` says which) and
+publishes nothing. These arms re-solve the published 57,240 households, while a
+Route A build solves the whole base.
 
-Outputs: the fit table per family and per FSA target, the borrower and
-household composition by race before and after (and in the SCF), the weight
-movement, every FSA fact that does not bind with its reason, and a schema-8
+Outputs: the fit table per family and per FSA target, the share of households
+with debt by household income quintile (each arm's own cut points, and the
+release arm's applied to every arm), the borrower and household composition by
+race before and after (and in the SCF), the weight movement, every FSA fact
+that does not bind with its reason, and a schema-8
 ``calibration_diagnostics.json`` for arm B (left on the run volume; the
-dashboard's staging page reads that format).
+dashboard's staging page reads that format). The JSON receipt writes a missing
+value as ``null``.
 
     python experiments/fit_1074_fsa_calibration.py --h5 populace_us_2024.h5 \\
-        --feed candidate_feed.jsonl --scf-cache-dir dta
+        --feed consumer_facts.jsonl --scf-cache-dir dta
 """
 
 from __future__ import annotations
@@ -53,6 +64,7 @@ import subprocess
 import sys
 import time
 from collections.abc import Mapping, Sequence
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -62,63 +74,97 @@ REPO = Path(__file__).resolve().parents[1]
 ISSUE = "PolicyEngine/microcosm#1074"
 HOST_RELEASE = "populace-us-2024-spm-20260915"
 TARGET_SURFACE = "national_state"
-ARMS = ("release", "a_no_fsa", "b_with_fsa", "a_no_fsa_l2", "b_with_fsa_l2")
-#: The L2 anchor of the sensitivity arms: ``l2_lambda`` times
-#: ``mean((w / w_release) ** 2)``, the configuration
-#: ``docs/calibration-l2-basis.md`` studies. The release default is 0.
+RELEASE_ARM = "release"
+#: The concentration penalty of the L2 arms, in units of the loss: the setting
+#: the ACS local L2 study recommends on its own loss
+#: (``experiments/us-acs-local-l2-basis-20260928/README.md``). The release
+#: default is 0.
 L2_SENSITIVITY_LAMBDA = 0.03
-#: solved arm -> (with the FSA family, l2_lambda or None for the release's).
-SOLVED_ARMS = {
-    "a_no_fsa": (False, None),
-    "b_with_fsa": (True, None),
-    "a_no_fsa_l2": (False, L2_SENSITIVITY_LAMBDA),
-    "b_with_fsa_l2": (True, L2_SENSITIVITY_LAMBDA),
+L2_BASIS_RECORD = "record"
+L2_BASIS_CHI_SQUARE = "chi_square"
+
+
+@dataclass(frozen=True)
+class Arm:
+    """One solved arm: what it binds and how ``calibrate`` penalizes it.
+
+    ``l2_lambda`` None takes the release's ``--l2-lambda`` default (0), where
+    the basis does nothing. ``count_weight`` is the fraction of its loss weight
+    each FSA borrower-count target keeps, before the vector is renormalized to
+    mean 1, as a family multiplier is; at 0 the counts only validate.
+    """
+
+    label: str
+    with_fsa: bool
+    l2_lambda: float | None = None
+    l2_basis: str = L2_BASIS_RECORD
+    count_weight: float = 1.0
+
+
+#: The grid the next receipt runs (the #1074 review of 2026-11-05): A and B at
+#: lambda 0, record 0.03 and chi-square 0.03, and B with the counts at x0, at
+#: lambda 0 and record 0.03. The release arm, the published weights, comes
+#: first in every table.
+SOLVED_ARMS: dict[str, Arm] = {
+    "a_no_fsa": Arm("A", with_fsa=False),
+    "b_with_fsa": Arm("B", with_fsa=True),
+    "a_no_fsa_l2": Arm("A + record L2", False, L2_SENSITIVITY_LAMBDA),
+    "b_with_fsa_l2": Arm("B + record L2", True, L2_SENSITIVITY_LAMBDA),
+    "a_no_fsa_chi2": Arm(
+        "A + chi-square L2", False, L2_SENSITIVITY_LAMBDA, L2_BASIS_CHI_SQUARE
+    ),
+    "b_with_fsa_chi2": Arm(
+        "B + chi-square L2", True, L2_SENSITIVITY_LAMBDA, L2_BASIS_CHI_SQUARE
+    ),
+    "b_counts_w0": Arm("B, counts x0", True, count_weight=0.0),
+    "b_counts_w0_l2": Arm(
+        "B + record L2, counts x0", True, L2_SENSITIVITY_LAMBDA, count_weight=0.0
+    ),
 }
-#: Down-weighted borrower counts (the #1074 review): every FSA balance target
-#: keeps its full loss weight, and each FSA borrower-count target (state, age
-#: band, debt-size band) keeps this fraction of its weight. The vector is then
-#: renormalized to mean 1, as a family multiplier is. At 0 the counts only
-#: validate. solved arm -> (with the FSA family, l2_lambda or None for the
-#: release's, borrower-count loss-weight fraction).
-COUNT_WEIGHT_ARMS = {
-    "b_counts_w0": (True, None, 0.0),
-    "b_counts_w010": (True, None, 0.1),
-    "b_counts_w025": (True, None, 0.25),
-    "b_counts_w0_l2": (True, L2_SENSITIVITY_LAMBDA, 0.0),
-    "b_counts_w010_l2": (True, L2_SENSITIVITY_LAMBDA, 0.1),
-    "b_counts_w025_l2": (True, L2_SENSITIVITY_LAMBDA, 0.25),
-}
-ALL_ARMS = ARMS + tuple(COUNT_WEIGHT_ARMS)
-#: Every solved arm, with the original four at full borrower-count weight.
-ALL_SOLVED_ARMS = {
-    **{arm: (*spec, 1.0) for arm, spec in SOLVED_ARMS.items()},
-    **COUNT_WEIGHT_ARMS,
-}
-ARM_LABELS = {
-    "release": "Release",
-    "a_no_fsa": "A, no FSA",
-    "b_with_fsa": "B, with FSA",
-    "a_no_fsa_l2": "A + L2",
-    "b_with_fsa_l2": "B + L2",
-    "b_counts_w0": "B, counts x0",
-    "b_counts_w010": "B, counts x0.1",
-    "b_counts_w025": "B, counts x0.25",
-    "b_counts_w0_l2": "B + L2, counts x0",
-    "b_counts_w010_l2": "B + L2, counts x0.1",
-    "b_counts_w025_l2": "B + L2, counts x0.25",
-}
-#: The arms the borrower-count comparison table shows.
-COUNT_COMPARISON_ARMS = (
-    "release",
-    "b_with_fsa",
-    "b_counts_w025",
-    "b_counts_w010",
-    "b_counts_w0",
-    "b_with_fsa_l2",
-    "b_counts_w025_l2",
-    "b_counts_w010_l2",
-    "b_counts_w0_l2",
-)
+
+
+def arm_grid(extra_chi_square_lambdas: Sequence[float] = ()) -> dict[str, Arm]:
+    """:data:`SOLVED_ARMS`, plus A and B at each extra chi-square lambda."""
+
+    grid = dict(SOLVED_ARMS)
+    for value in extra_chi_square_lambdas:
+        if not (math.isfinite(value) and value > 0):
+            raise ValueError(f"A chi-square lambda must be positive, got {value!r}.")
+        tag = f"{value:g}".replace(".", "p")
+        for prefix, label, with_fsa in (
+            ("a_no_fsa", "A", False),
+            ("b_with_fsa", "B", True),
+        ):
+            name = f"{prefix}_chi2_{tag}"
+            if name in grid or value == L2_SENSITIVITY_LAMBDA:
+                raise ValueError(f"Chi-square lambda {value:g} is already in the grid.")
+            grid[name] = Arm(
+                f"{label} + chi-square L2 {value:g}",
+                with_fsa,
+                value,
+                L2_BASIS_CHI_SQUARE,
+            )
+    return grid
+
+
+def arm_pairs(grid: Mapping[str, Arm]) -> list[tuple[str, str]]:
+    """(with FSA, without) pairs at one penalty and full count weight: what
+    adding the FSA family costs the rest of the surface."""
+
+    pairs = []
+    for name, arm in grid.items():
+        if not arm.with_fsa or arm.count_weight != 1.0:
+            continue
+        for other, control in grid.items():
+            if (
+                not control.with_fsa
+                and control.l2_lambda == arm.l2_lambda
+                and control.l2_basis == arm.l2_basis
+            ):
+                pairs.append((name, other))
+    return pairs
+
+
 #: The release's per-target loss cap (``US_FISCAL_TARGET_LOSS_CAP``): a miss
 #: counts at most 100% of the target's scale, as the loss counts it.
 ERROR_CAP = 1.0
@@ -272,7 +318,7 @@ def scaled_borrower_count_loss_weights(
     return scaled / scaled.mean()
 
 
-def borrower_count_comparison(
+def arm_comparison(
     rows: Sequence[Mapping[str, object]],
     headline: Sequence[Mapping[str, object]],
     fit_overall: Mapping[str, Mapping[str, Mapping[str, float]]],
@@ -280,7 +326,8 @@ def borrower_count_comparison(
     arms: Sequence[str],
 ) -> dict[str, object]:
     """Per arm: the FSA fit by balance and count, the rest of the surface, the
-    borrower levels, the Parent PLUS mix and the borrower age profile."""
+    borrower levels, the Parent PLUS mix, the borrower age profile and the
+    weight concentration (the release's are the published weights')."""
 
     fsa = [row for row in rows if row["is_fsa"]]
     balances = [row for row in fsa if not _is_borrower_count_role(row["target_role"])]
@@ -294,17 +341,22 @@ def borrower_count_comparison(
             "borrower_count": len(counts),
             "age_bands": len(ages),
         },
+        "non_fsa_targets": sum(1 for row in rows if not row["is_fsa"]),
         "fsa_age_distribution": {
             row["label"]: row["target"] / fsa_age_total for row in ages
         },
         "arms": {},
     }
+    any_solved = next(iter(weights.values()))
     for arm in arms:
         age_total = sum(row[arm] for row in ages)
         age_shares = {row["label"]: row[arm] / age_total for row in ages}
+        movement = weights.get(arm)
         result["arms"][arm] = {
             "balance_targets": _summary([row[f"{arm}_error"] for row in balances]),
             "borrower_count_targets": _summary([row[f"{arm}_error"] for row in counts]),
+            "fsa_targets": fit_overall["fsa"][arm],
+            "non_fsa_targets": fit_overall["non_fsa"][arm],
             "non_fsa_mean_capped_abs_rel_error": fit_overall["non_fsa"][arm][
                 "mean_capped_abs_rel_error"
             ],
@@ -312,6 +364,7 @@ def borrower_count_comparison(
                 "Households with federal education debt"
             ][arm],
             "borrowers": by_label["Borrowers (people with a balance)"][arm],
+            "mean_balance_per_borrower": by_label["Mean balance per borrower"][arm],
             "parent_plus_share": by_label["Parent PLUS share of the balance"][arm],
             "borrower_age_distribution": age_shares,
             "borrower_age_tvd_vs_fsa": 0.5
@@ -320,9 +373,12 @@ def borrower_count_comparison(
                 for label, share in result["fsa_age_distribution"].items()
             ),
             "effective_sample_size": (
-                weights[arm]["effective_sample_size"]["final"]
-                if arm in weights
-                else weights["b_with_fsa"]["effective_sample_size"]["initial"]
+                movement["effective_sample_size"]["final"]
+                if movement is not None
+                else any_solved["effective_sample_size"]["initial"]
+            ),
+            "median_household_weight_ratio": (
+                movement["ratio_quantiles"]["0.5"] if movement is not None else 1.0
             ),
         }
     return result
@@ -499,65 +555,259 @@ def repayment_plan_diagnostic(facts: Sequence[Mapping]) -> dict[str, object]:
     return {"status": "diagnostic_only", "period": latest, "plans": table}
 
 
-def _fmt_pct(value: float, digits: int = 1) -> str:
-    return "" if value != value else f"{100 * value:.{digits}f}%"
+def parent_plus_diagnostic(
+    facts: Sequence[Mapping], fsa_receipt: Mapping[str, object]
+) -> dict[str, object]:
+    """FSA's Parent PLUS row at the reference quarter, as a diagnostic fact.
+
+    The loan-type table binds no target (microcosm#1525), so FSA's Parent PLUS
+    figure comes from its dollar rows at the reference quarter, which the plan
+    marks diagnostic: the Parent PLUS share of their sum, and that share of the
+    in-scope control. Under 34 CFR 685.220(f) the Secretary pays off each loan
+    a Direct Consolidation Loan consolidates, so FSA likely files a
+    consolidated Parent PLUS loan under Consolidation, and the share is likely a
+    lower bound on the stage's column (an inference; FSA's notes don't say).
+    """
+
+    reference = fsa_receipt["reference_period"]
+    ids = {
+        item["source_record_id"]
+        for item in fsa_receipt["dispositions"]
+        if item["table"] == "portfolio_by_loan_type"
+        and item["measure"] == "dollars_outstanding"
+        and item["period"] == reference
+        and item["disposition"] == "diagnostic"
+    }
+    rows = [fact for fact in facts if fact["lineage"]["source_record_id"] in ids]
+    by_type = {
+        fact["layout"]["groupby_value_id"]: float(fact["value"]) for fact in rows
+    }
+    if not ids or len(rows) != len(ids) or len(by_type) != len(rows):
+        raise RuntimeError(
+            f"FSA's loan-type dollar rows at {reference} are missing or repeated."
+        )
+    if "parent_plus" not in by_type:
+        raise RuntimeError(
+            f"FSA's loan-type table has no Parent PLUS row at {reference}."
+        )
+    partition = math.fsum(by_type.values())
+    share = by_type["parent_plus"] / partition
+    control = fsa_receipt["controls"]["total_balance"]["in_scope_control"]
+    return {
+        "status": "diagnostic",
+        "reference_period": reference,
+        "published_by_loan_type": dict(sorted(by_type.items())),
+        "published_loan_type_total": partition,
+        "parent_plus_share": share,
+        "parent_plus_share_of_in_scope_control": share * control,
+        "reading": (
+            "likely a lower bound: FSA likely files a consolidated Parent PLUS "
+            "loan under Consolidation (34 CFR 685.220(f)); FSA's notes don't say"
+        ),
+    }
 
 
-def _fmt_signed_pct(value: float) -> str:
-    return "" if value != value else f"{100 * value:+.1f}%"
+_QUINTILES = ("1", "2", "3", "4", "5")
 
 
-def _fmt_money(value: float) -> str:
-    if value != value:
+def _quintile_summary(groups: Mapping[str, Mapping[str, float]]) -> dict[str, object]:
+    """Debt shares, weight shares, Q5 - Q1 and the bottom two quintiles' share
+    of borrower households, from five ``{household_weight, share}`` groups."""
+
+    shares = {q: groups[q]["share_with_federal_education_debt"] for q in _QUINTILES}
+    weight = {q: groups[q]["household_weight"] for q in _QUINTILES}
+    holders = {q: weight[q] * shares[q] for q in _QUINTILES}
+    return {
+        "share_with_federal_education_debt": shares,
+        "share_of_household_weight": {
+            q: weight[q] / sum(weight.values()) for q in _QUINTILES
+        },
+        "q5_minus_q1": shares["5"] - shares["1"],
+        "bottom_two_share_of_borrower_households": (holders["1"] + holders["2"])
+        / sum(holders.values()),
+    }
+
+
+def _household_debt(frame) -> np.ndarray:
+    """Each household's federal balance (own plus Parent PLUS), in table order."""
+
+    import pandas as pd
+
+    own, plus = _person_balances(frame)
+    return (
+        pd.Series(own + plus, index=frame.table("person")["person_household_id"])
+        .groupby(level=0)
+        .sum()
+        .reindex(frame.table("household")["household_id"].to_numpy())
+        .fillna(0.0)
+        .to_numpy(dtype=np.float64)
+    )
+
+
+def income_quintile_tables(
+    frame,
+    weights: Mapping[str, np.ndarray],
+    fit_tables: Mapping[str, Mapping[str, object]],
+    scf_fit: Mapping[str, object],
+) -> dict[str, object]:
+    """Households with federal education debt by household income quintile.
+
+    ``own_cut_points``: each arm's own weighted quintiles (its fit table's
+    ``by_income_quintile``), and the SCF's. ``release_cut_points``: every
+    household keeps the quintile it has at the release's weights, which applies
+    the release arm's cut points to every arm (a tie at a cut keeps the
+    release's split), so a column compares the same households across arms.
+    The income is the one the imputation conditions on, over the SCF primary
+    economic unit. The student debt pilot cuts tax-unit AGI over all tax units
+    and counts borrowers as people, so these rows are not its income tables.
+    """
+
+    from microcosm.build.us_runtime.scf_education_debt import (
+        _income_quintiles,
+        _recipients,
+    )
+
+    income = _recipients(frame).features["household_income"].to_numpy(np.float64)
+    release = np.asarray(weights[RELEASE_ARM], dtype=np.float64)
+    fixed = _income_quintiles(income, release).astype(str)
+    holds = _household_debt(frame) > 0
+    by_fixed = {}
+    for arm, values in weights.items():
+        w = np.asarray(values, dtype=np.float64)
+        by_fixed[arm] = _quintile_summary(
+            {
+                q: {
+                    "household_weight": float(w[fixed == q].sum()),
+                    "share_with_federal_education_debt": float(
+                        w[(fixed == q) & holds].sum() / w[fixed == q].sum()
+                    ),
+                }
+                for q in _QUINTILES
+            }
+        )
+    own = {
+        arm: _quintile_summary(table["by_income_quintile"])
+        for arm, table in {"scf_2025": scf_fit, **fit_tables}.items()
+    }
+    release_shares = own[RELEASE_ARM]["share_with_federal_education_debt"]
+    fixed_shares = by_fixed[RELEASE_ARM]["share_with_federal_education_debt"]
+    return {
+        "income": "household_income of the SCF primary economic unit",
+        "own_cut_points": own,
+        "release_cut_points": by_fixed,
+        "release_income_range_by_quintile": {
+            q: [float(income[fixed == q].min()), float(income[fixed == q].max())]
+            for q in _QUINTILES
+        },
+        "release_fixed_cuts_reproduce_own": bool(
+            np.allclose(
+                [release_shares[q] for q in _QUINTILES],
+                [fixed_shares[q] for q in _QUINTILES],
+            )
+        ),
+    }
+
+
+def json_ready(value: object) -> object:
+    """``value`` as strict JSON: a NaN or infinite float becomes None (``null``)
+    and a numpy scalar or array its Python value, at any depth."""
+
+    if isinstance(value, Mapping):
+        return {key: json_ready(item) for key, item in value.items()}
+    if isinstance(value, list | tuple | np.ndarray):
+        return [json_ready(item) for item in value]
+    if isinstance(value, np.generic):
+        value = value.item()
+    if isinstance(value, float) and not math.isfinite(value):
+        return None
+    return value
+
+
+def _missing(value: float | None) -> bool:
+    """A value the JSON receipt writes as ``null`` (None or not a number)."""
+
+    return value is None or value != value
+
+
+def _fmt_pct(value: float | None, digits: int = 1) -> str:
+    return "" if _missing(value) else f"{100 * value:.{digits}f}%"
+
+
+def _fmt_signed_pct(value: float | None) -> str:
+    return "" if _missing(value) else f"{100 * value:+.1f}%"
+
+
+def _fmt_points(value: float | None) -> str:
+    return "" if _missing(value) else f"{100 * value:+.1f}"
+
+
+def _fmt_money(value: float | None) -> str:
+    if _missing(value):
         return ""
     if abs(value) >= 1e9:
         return f"${value / 1e9:,.1f}B"
     return f"${value:,.0f}"
 
 
-def _fmt_ratio(value: float) -> str:
+def _fmt_ratio(value: float | None) -> str:
+    if _missing(value):
+        return ""
     return f"{value:.1e}" if abs(value) < 0.01 else f"{value:.2f}"
 
 
-def _fmt_count(value: float) -> str:
-    if value != value:
+def _fmt_count(value: float | None) -> str:
+    if _missing(value):
         return ""
     if abs(value) >= 1e6:
         return f"{value / 1e6:,.2f}M"
     return f"{value:,.0f}"
 
 
-def borrower_count_markdown(receipt: Mapping[str, object]) -> list[str]:
-    """The down-weighted borrower-count arms beside B, B + L2 and the release."""
+def _arms(receipt: Mapping[str, object], *, solved: bool = False) -> list[str]:
+    """The receipt's arms in table order, the release first (or only the solved)."""
 
-    comparison = receipt["borrower_count_weighting"]
+    return [
+        name
+        for name, arm in receipt["arms"].items()
+        if not solved or name != RELEASE_ARM
+    ]
+
+
+def _labels(receipt: Mapping[str, object], arms: Sequence[str]) -> str:
+    return " | ".join(receipt["arms"][arm]["label"] for arm in arms)
+
+
+def arm_summary_markdown(receipt: Mapping[str, object]) -> list[str]:
+    """Every arm's FSA fit, non-FSA fit, levels, age profile and concentration."""
+
+    comparison = receipt["arm_comparison"]
     arms = comparison["arms"]
     targets = comparison["targets"]
     controls = receipt["fsa"]["controls"]
-    pp_row = next(
-        row
-        for row in receipt["headline"]
-        if row["label"] == "Parent PLUS share of the balance"
-    )
     scf_share = receipt["scf_fit_tables"]["scf_2025"]["households"][
         "share_with_federal_education_debt"
     ]
-    shown = COUNT_COMPARISON_ARMS
+    shown = _arms(receipt)
     lines = [
         "",
-        "## Down-weighted borrower counts",
+        "## Every arm at a glance",
         "",
-        f"Every arm binds the {targets['balance']} FSA balance targets at full "
-        f"loss weight. The {targets['borrower_count']} borrower-count targets "
-        "(state, age band, debt-size band) keep the stated fraction of their "
-        "weight (1 in B and B + L2), and the vector is renormalized to mean 1. "
-        "At x0 they only validate. Reference: FSA, except the household share, "
-        "which is the SCF's.",
+        "The fit, the levels and the weight concentration the release's L2 "
+        "setting depends on. Reference: FSA, except the household share, which "
+        "is the SCF's; FSA's Parent PLUS share is diagnostic (no target binds "
+        "it). The x0 arms keep the "
+        f"{targets['borrower_count']} borrower-count targets at none of their "
+        "loss weight, so those counts only validate.",
         "",
-        "| | Reference | " + " | ".join(ARM_LABELS[arm] for arm in shown) + " |",
+        "| | Reference | " + _labels(receipt, shown) + " |",
         "|---|---:|" + "---:|" * len(shown),
     ]
     rows = (
+        (
+            f"All FSA targets within 5% ({targets['balance'] + targets['borrower_count']})",
+            "",
+            lambda m: _fmt_pct(m["fsa_targets"]["share_within_5pct"], 0),
+        ),
         (
             f"FSA balance targets within 5% ({targets['balance']})",
             "",
@@ -584,6 +834,11 @@ def borrower_count_markdown(receipt: Mapping[str, object]) -> list[str]:
             lambda m: _fmt_pct(m["non_fsa_mean_capped_abs_rel_error"], 2),
         ),
         (
+            f"Non-FSA targets within 5% ({comparison['non_fsa_targets']:,})",
+            "",
+            lambda m: _fmt_pct(m["non_fsa_targets"]["share_within_5pct"]),
+        ),
+        (
             "Households with federal education debt",
             _fmt_pct(scf_share),
             lambda m: _fmt_pct(m["households_with_federal_education_debt"]),
@@ -594,14 +849,27 @@ def borrower_count_markdown(receipt: Mapping[str, object]) -> list[str]:
             lambda m: _fmt_count(m["borrowers"]),
         ),
         (
-            "Parent PLUS share of the balance",
-            _fmt_pct(pp_row["target"]),
+            "Mean balance per borrower",
+            _fmt_money(
+                controls["total_balance"]["in_scope_control"]
+                / controls["borrowers"]["in_scope_control"]
+            ),
+            lambda m: _fmt_money(m["mean_balance_per_borrower"]),
+        ),
+        (
+            "Parent PLUS share of the balance (FSA: diagnostic)",
+            _fmt_pct(receipt["fsa"]["parent_plus"]["parent_plus_share"]),
             lambda m: _fmt_pct(m["parent_plus_share"]),
         ),
         (
             "Effective sample size",
             "",
             lambda m: f"{m['effective_sample_size']:,.0f}",
+        ),
+        (
+            "Median household's share of its published weight",
+            "",
+            lambda m: _fmt_pct(m["median_household_weight_ratio"], 2),
         ),
     )
     for label, reference, getter in rows:
@@ -627,7 +895,33 @@ def borrower_count_markdown(receipt: Mapping[str, object]) -> list[str]:
     return lines
 
 
+def _feed_sentence(receipt: Mapping[str, object]) -> str:
+    """Which feed the arms compiled, from the runner's provenance."""
+
+    feed = receipt["feed"]
+    provenance = feed.get("provenance") or {}
+    digest = f"`{feed['sha256'][:12]}…`, {feed['rows']:,} rows"
+    if provenance.get("kind") == "committed pin":
+        pin = provenance["pin"]
+        return (
+            f"the US feed the branch pins, rebuilt at Chronicle "
+            f"`{pin['source_commit'][:8]}` ({digest}, as pinned), which "
+            "carries the FSA rows."
+        )
+    if "pinned_feed" in provenance:
+        return (
+            f"a candidate, the `{provenance['pinned_feed']['commit'][:7]}` US "
+            "feed plus the chronicle#347 FSA rows built at "
+            f"`{provenance['fsa_packages']['commit'][:7]}` ({digest}); no pin "
+            "names it."
+        )
+    return f"`--feed` ({digest})."
+
+
 def markdown(receipt: Mapping[str, object]) -> str:
+    arms = _arms(receipt)
+    solved = _arms(receipt, solved=True)
+    pairs = [tuple(pair) for pair in receipt["arm_pairs"]]
     lines = [
         "# microcosm#1074 receipts: Federal Student Aid portfolio targets",
         "",
@@ -640,19 +934,20 @@ def markdown(receipt: Mapping[str, object]) -> str:
         "Host: the published default "
         f"`{receipt['host']['release']}` (sha256 `{receipt['host']['sha256'][:12]}…`, "
         f"{receipt['host']['households']:,} households), with the SCF 2025 "
-        "education-debt stage run at seed 0. Feed: the `51aa40f` US feed "
-        "(the pin before main's cf9ece2 re-pin, whose added B4923C facts bind no "
-        "target) plus the merged chronicle#347 FSA rows "
-        f"(`{receipt['feed']['candidate_sha256'][:12]}…`, "
-        f"{receipt['feed']['rows']:,} rows). Arms: **release** = the published "
-        "weights; **A** = a dense refit to the `national_state` surface without "
-        "the FSA family; **B** = the same refit with it; **+ L2** = A and B "
-        "with an L2 anchor to the published weights; **B, counts xF** = B "
-        "(and B + L2) with the balance targets at full loss weight and the "
-        "borrower-count targets at F of theirs. Same epochs "
-        f"({receipt['solver']['epochs']}), learning rate, 5x weight cap and "
-        "conserved mass as a release. Not a release: no gate ran and nothing "
-        "was published.",
+        f"education-debt stage run at seed 0. Feed: {_feed_sentence(receipt)} "
+        "Arms: **release** = the published weights; **A** = a dense refit to "
+        "the `national_state` surface without the FSA family; **B** = the same "
+        "refit with it; **+ record L2** and **+ chi-square L2** = A and B with "
+        "a concentration penalty at the stated `l2_lambda`, on `calibrate`'s "
+        "default `record` basis (the mean squared weight ratio, which spreads "
+        "weight without anchoring to the design; the only basis the release's "
+        "`--l2-lambda` passes) or its `chi_square` basis (the anchor-weighted "
+        "distance from the published weights); **counts x0** = B with the "
+        "balance targets at full loss weight and the borrower counts at none. "
+        f"Same epochs ({receipt['solver']['epochs']}), learning rate, 5x weight "
+        "cap and conserved mass as a release, on the published support rather "
+        "than the whole base a Route A build solves. Not a release: no gate "
+        "ran and nothing was published.",
         "",
         "## FSA targets: the reconciled levels",
         "",
@@ -682,21 +977,33 @@ def markdown(receipt: Mapping[str, object]) -> str:
         "",
         f"Reference date: {receipt['fsa']['reference_label']} "
         f"(`{receipt['fsa']['reference_period']}`), the latest quarter all four "
-        "bound tables publish. The targets bind that stock unaged "
+        "tables publish. The targets bind that stock unaged "
         "(`period_alignment = stock_at_source_reference_date`), and the build "
         "writes the calibrated balances at its period, 2024, since the H5 "
         "records one period for every column. policyengine-us#10415 (merged "
         "2026-10-30) holds the balances at their stored value in every year, so "
-        "a 2024 or a 2026 read returns the March 2026 stock.",
+        "a 2024 or a 2026 read returns each person's March 2026 stock. "
+        "policyengine-us also raises household weights by population growth, "
+        "x1.0165 from 2024 to 2026 at the student debt pilot's pin, so a 2026 "
+        "read of these weights shows every level here 1.65% higher. The age "
+        "bands group the stored, unaged `age`.",
+        "",
+        f"FSA's Parent PLUS row ({_fmt_money(receipt['fsa']['parent_plus']['published_by_loan_type']['parent_plus'])}, "
+        f"{_fmt_pct(receipt['fsa']['parent_plus']['parent_plus_share'])} of the "
+        "loan-type table's dollar rows) is diagnostic: 34 CFR 685.220(f) has "
+        "the Secretary pay off each loan a Direct Consolidation Loan "
+        "consolidates, so FSA likely files a consolidated Parent PLUS loan under "
+        "Consolidation and the share is likely a lower bound on the stage's "
+        "column. FSA's notes don't say.",
+        "",
+        *arm_summary_markdown(receipt),
         "",
         "## Fit by FSA family",
         "",
         "Mean absolute relative error (share of targets within 5%).",
         "",
-        "| FSA family | Targets | "
-        + " | ".join(ARM_LABELS[arm] for arm in ARMS)
-        + " |",
-        "|---|---:|" + "---:|" * len(ARMS),
+        "| FSA family | Targets | " + _labels(receipt, arms) + " |",
+        "|---|---:|" + "---:|" * len(arms),
     ]
     for family, row in receipt["fit_by_family"].items():
         if not family.startswith("ed_fsa/"):
@@ -704,7 +1011,7 @@ def markdown(receipt: Mapping[str, object]) -> str:
         cells = [
             f"{_fmt_pct(row[arm]['mean_abs_rel_error'])} "
             f"({_fmt_pct(row[arm]['share_within_5pct'], 0)})"
-            for arm in ARMS
+            for arm in arms
         ]
         lines.append(
             f"| {family.removeprefix('ed_fsa/')} | {row['release']['targets']} | "
@@ -715,8 +1022,11 @@ def markdown(receipt: Mapping[str, object]) -> str:
         "",
         "## Headline levels",
         "",
-        "| | FSA target | " + " | ".join(ARM_LABELS[arm] for arm in ARMS) + " |",
-        "|---|---:|" + "---:|" * len(ARMS),
+        "Reference: FSA's in-scope control; the Parent PLUS rows are FSA's "
+        "diagnostic loan-type row, and the household share has no FSA figure.",
+        "",
+        "| | FSA | " + _labels(receipt, arms) + " |",
+        "|---|---:|" + "---:|" * len(arms),
     ]
     for row in receipt["headline"]:
         formatter = _fmt_count if row["kind"] == "count" else _fmt_money
@@ -724,10 +1034,10 @@ def markdown(receipt: Mapping[str, object]) -> str:
             formatter = _fmt_pct
         lines.append(
             f"| {row['label']} | {formatter(row['target'])} | "
-            + " | ".join(formatter(row[arm]) for arm in ARMS)
+            + " | ".join(formatter(row[arm]) for arm in arms)
             + " |"
         )
-    lines += borrower_count_markdown(receipt)
+    lines += income_markdown(receipt)
     lines += [
         "",
         "## Every other family: does adding FSA cost the rest of the surface?",
@@ -738,9 +1048,13 @@ def markdown(receipt: Mapping[str, object]) -> str:
         "much adding the FSA family moves it:",
         "",
         "| Family | Targets | "
-        + " | ".join(ARM_LABELS[arm] for arm in ARMS)
-        + " | B - A (pp) | B+L2 - A+L2 (pp) |",
-        "|---|---:|" + "---:|" * (len(ARMS) + 2),
+        + _labels(receipt, arms)
+        + "".join(
+            f" | {receipt['arms'][b]['label']} - {receipt['arms'][a]['label']} (pp)"
+            for b, a in pairs
+        )
+        + " |",
+        "|---|---:|" + "---:|" * (len(arms) + len(pairs)),
     ]
     others = [
         (family, row)
@@ -752,65 +1066,80 @@ def markdown(receipt: Mapping[str, object]) -> str:
     def delta(row, with_arm: str, without_arm: str) -> float:
         return row[with_arm][metric] - row[without_arm][metric]
 
-    others.sort(key=lambda item: -abs(delta(item[1], "b_with_fsa", "a_no_fsa")))
+    def deltas(row) -> str:
+        return "".join(f" | {100 * delta(row, b, a):+.2f}" for b, a in pairs)
+
+    others.sort(key=lambda item: -abs(delta(item[1], *pairs[0])))
     for family, row in others:
         lines.append(
             f"| {family} | {row['release']['targets']} | "
-            + " | ".join(_fmt_pct(row[arm][metric]) for arm in ARMS)
-            + f" | {100 * delta(row, 'b_with_fsa', 'a_no_fsa'):+.2f}"
-            + f" | {100 * delta(row, 'b_with_fsa_l2', 'a_no_fsa_l2'):+.2f} |"
+            + " | ".join(_fmt_pct(row[arm][metric]) for arm in arms)
+            + deltas(row)
+            + " |"
         )
     totals = receipt["fit_overall"]["non_fsa"]
     lines += [
         f"| **all non-FSA targets** | {totals['release']['targets']} | "
-        + " | ".join(_fmt_pct(totals[arm][metric]) for arm in ARMS)
-        + f" | {100 * delta(totals, 'b_with_fsa', 'a_no_fsa'):+.2f}"
-        + f" | {100 * delta(totals, 'b_with_fsa_l2', 'a_no_fsa_l2'):+.2f} |",
+        + " | ".join(_fmt_pct(totals[arm][metric]) for arm in arms)
+        + deltas(totals)
+        + " |",
         "",
         "## Racial composition of borrowers, before and after calibration",
         "",
         "Borrower households by the reference person's race (the SCF's "
         "`racecl4`; the SCF column pools the five implicates):",
         "",
-        "| | SCF 2025 | "
-        + " | ".join(ARM_LABELS[arm] for arm in ARMS)
-        + " | B - release (pp) |",
-        "|---|---:|" + "---:|" * (len(ARMS) + 1),
+        "| | SCF 2025 | " + _labels(receipt, arms) + " | B - release (pp) |",
+        "|---|---:|" + "---:|" * (len(arms) + 1),
     ]
     race = receipt["race"]
+    households = race["households"]
     for label in _RACE_LABELS.values():
         lines.append(
-            f"| {label} | {_fmt_pct(race['households']['scf_2025'][label])} | "
-            + " | ".join(_fmt_pct(race["households"][arm][label]) for arm in ARMS)
-            + f" | {100 * (race['households']['b_with_fsa'][label] - race['households']['release'][label]):+.1f} |"
+            f"| {label} | {_fmt_pct(households['scf_2025'][label])} | "
+            + " | ".join(_fmt_pct(households[arm][label]) for arm in arms)
+            + f" | {_fmt_points(households['b_with_fsa'][label] - households['release'][label])} |"
         )
     lines += [
         "",
-        "Borrowers (people) by their own race, and the share of adults who borrow:",
+        "Borrowers (people) by their own race:",
         "",
-        "| | "
-        + " | ".join(ARM_LABELS[arm] for arm in ARMS)
-        + " | Adults with a balance: release | B | B + L2 |",
-        "|---|" + "---:|" * (len(ARMS) + 3),
+        "| | " + _labels(receipt, arms) + " |",
+        "|---|" + "---:|" * len(arms),
     ]
     for label in _RACE_LABELS.values():
         lines.append(
             f"| {label} | "
             + " | ".join(
-                _fmt_pct(race["people"][arm]["borrowers"][label]) for arm in ARMS
+                _fmt_pct(race["people"][arm]["borrowers"][label]) for arm in arms
             )
-            + f" | {_fmt_pct(race['people']['release']['borrower_share_of_adults_by_race'][label])}"
-            + f" | {_fmt_pct(race['people']['b_with_fsa']['borrower_share_of_adults_by_race'][label])}"
-            + f" | {_fmt_pct(race['people']['b_with_fsa_l2']['borrower_share_of_adults_by_race'][label])} |"
+            + " |"
+        )
+    lines += [
+        "",
+        "Adults with a balance, by race:",
+        "",
+        "| | " + _labels(receipt, arms) + " |",
+        "|---|" + "---:|" * len(arms),
+    ]
+    for label in _RACE_LABELS.values():
+        lines.append(
+            f"| {label} | "
+            + " | ".join(
+                _fmt_pct(race["people"][arm]["borrower_share_of_adults_by_race"][label])
+                for arm in arms
+            )
+            + " |"
         )
     weights = receipt["weights"]
     lines += [
         "",
         "## Weight movement against the published weights",
         "",
-        "| | " + " | ".join(ARM_LABELS[arm] for arm in SOLVED_ARMS) + " |",
-        "|---|" + "---:|" * len(SOLVED_ARMS),
+        "| | " + _labels(receipt, solved) + " |",
+        "|---|" + "---:|" * len(solved),
     ]
+    initial_ess = weights[solved[0]]["effective_sample_size"]["initial"]
     rows_movement = (
         (
             "Borrower households' weight ratio",
@@ -833,16 +1162,13 @@ def markdown(receipt: Mapping[str, object]) -> str:
             lambda m: _fmt_ratio(m["ratio_quantiles"]["0.99"]),
         ),
         (
-            "Effective sample size (release "
-            f"{weights['b_with_fsa']['effective_sample_size']['initial']:,.0f})",
+            f"Effective sample size (release {initial_ess:,.0f})",
             lambda m: f"{m['effective_sample_size']['final']:,.0f}",
         ),
     )
     for label, getter in rows_movement:
         lines.append(
-            f"| {label} | "
-            + " | ".join(getter(weights[arm]) for arm in SOLVED_ARMS)
-            + " |"
+            f"| {label} | " + " | ".join(getter(weights[arm]) for arm in solved) + " |"
         )
     lines += [
         "",
@@ -867,10 +1193,8 @@ def markdown(receipt: Mapping[str, object]) -> str:
         "",
         "## Every FSA target",
         "",
-        "| Target | FSA (reconciled) | "
-        + " | ".join(ARM_LABELS[arm] for arm in ARMS)
-        + " |",
-        "|---|---:|" + "---:|" * len(ARMS),
+        "| Target | FSA (reconciled) | " + _labels(receipt, arms) + " |",
+        "|---|---:|" + "---:|" * len(arms),
     ]
     for row in receipt["fsa_targets"]:
         formatter = _fmt_count if row["measure_mode"] == "indicator_sum" else _fmt_money
@@ -878,11 +1202,85 @@ def markdown(receipt: Mapping[str, object]) -> str:
             f"| {row['label']} | {formatter(row['target'])} | "
             + " | ".join(
                 f"{formatter(row[arm])} ({_fmt_signed_pct(row[arm + '_error'])})"
-                for arm in ARMS
+                for arm in arms
             )
             + " |"
         )
     return "\n".join(lines) + "\n"
+
+
+def income_markdown(receipt: Mapping[str, object]) -> list[str]:
+    """Households with debt by income quintile, at each arm's own cut points and
+    at the release arm's, with the A controls beside each B arm."""
+
+    income = receipt["income_quintiles"]
+    arms = _arms(receipt)
+    header = "| | " + " | ".join(f"Q{q}" for q in _QUINTILES)
+    header += (
+        " | Q5 - Q1, points | Bottom two quintiles' share of borrower households |"
+    )
+    rule = "|---|" + "---:|" * (len(_QUINTILES) + 2)
+
+    def row(label: str, table: Mapping[str, object]) -> str:
+        shares = table["share_with_federal_education_debt"]
+        return (
+            f"| {label} | "
+            + " | ".join(_fmt_pct(shares[q]) for q in _QUINTILES)
+            + f" | {_fmt_points(table['q5_minus_q1'])}"
+            + f" | {_fmt_pct(table['bottom_two_share_of_borrower_households'])} |"
+        )
+
+    own = income["own_cut_points"]
+    fixed = income["release_cut_points"]
+    lines = [
+        "",
+        "## Households with federal education debt by household income quintile",
+        "",
+        "The income is the household income the imputation conditions on, over "
+        "the SCF primary economic unit. The student debt pilot counts borrowers "
+        "as people and cuts tax-unit AGI over all tax units, so these rows are "
+        "not its income tables. Where Q4 tops a row, Q5 - Q1 is an endpoint "
+        "contrast rather than a slope.",
+        "",
+        "Each arm's own weighted quintiles (the SCF's are its own families'):",
+        "",
+        header,
+        rule,
+        row("SCF 2025", own["scf_2025"]),
+        *(row(receipt["arms"][arm]["label"], own[arm]) for arm in arms),
+    ]
+    ranges = income["release_income_range_by_quintile"]
+    lines += [
+        "",
+        "At the release arm's cut points: every household keeps the quintile it "
+        "has at the published weights, so each column holds the same households "
+        "in every arm. The release row reproduces its own-cut row"
+        + ("" if income["release_fixed_cuts_reproduce_own"] else " (it does not here)")
+        + ". Income range of each release quintile: "
+        + "; ".join(
+            f"Q{q} {_fmt_money(ranges[q][0])} to {_fmt_money(ranges[q][1])}"
+            for q in _QUINTILES
+        )
+        + ".",
+        "",
+        header,
+        rule,
+        *(row(receipt["arms"][arm]["label"], fixed[arm]) for arm in arms),
+        "",
+        "Each fixed quintile's share of household weight:",
+        "",
+        "| | " + " | ".join(f"Q{q}" for q in _QUINTILES) + " |",
+        "|---|" + "---:|" * len(_QUINTILES),
+        *(
+            f"| {receipt['arms'][arm]['label']} | "
+            + " | ".join(
+                _fmt_pct(fixed[arm]["share_of_household_weight"][q]) for q in _QUINTILES
+            )
+            + " |"
+            for arm in arms
+        ),
+    ]
+    return lines
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -894,6 +1292,16 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--run", default="")
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--epochs", type=int)
+    parser.add_argument(
+        "--extra-chi-square-lambda",
+        type=float,
+        action="append",
+        default=[],
+        help=(
+            "Also solve A and B with the chi-square penalty at this lambda "
+            f"(beside {L2_SENSITIVITY_LAMBDA:g}); repeatable."
+        ),
+    )
     parser.add_argument("--diagnostics-dir", type=Path)
     parser.add_argument(
         "--materialization-cache-dir",
@@ -960,6 +1368,9 @@ def main(argv: Sequence[str] | None = None) -> int:
         ]
     )
     epochs = int(args.epochs or cli.epochs)
+    grid = arm_grid(args.extra_chi_square_lambda)
+    all_arms = (RELEASE_ARM, *grid)
+    pairs = arm_pairs(grid)
 
     _log(f"reading feed {args.feed}")
     facts = _read_facts(args.feed)
@@ -991,6 +1402,12 @@ def main(argv: Sequence[str] | None = None) -> int:
         registry.specs, TARGET_SURFACE
     )
     fsa_receipt = fsa_student_loan_target_receipt(facts, target_period=release.PERIOD)
+    if fsa_receipt["status"] != "bound":
+        raise RuntimeError(
+            f"The feed binds no FSA target (status {fsa_receipt['status']!r}); "
+            "the fit needs a feed that carries the ed_fsa facts."
+        )
+    parent_plus = parent_plus_diagnostic(facts, fsa_receipt)
     _log(f"{len(specs)} targets on the {TARGET_SURFACE} surface")
 
     _log("loading the host and running the SCF education-debt stage")
@@ -1048,18 +1465,20 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     results = {}
     timings = {}
-    for arm, (with_fsa, l2_lambda, count_weight) in ALL_SOLVED_ARMS.items():
-        arm_registry = registry_b if with_fsa else registry_a
+    for arm, spec in grid.items():
+        arm_registry = registry_b if spec.with_fsa else registry_a
         loss_weights = release._fiscal_target_loss_weights(
             arm_registry, cli.target_family_loss_multipliers
         )
-        if count_weight != 1.0:
+        if spec.count_weight != 1.0:
             loss_weights = scaled_borrower_count_loss_weights(
-                arm_registry.specs, loss_weights, count_weight
+                arm_registry.specs, loss_weights, spec.count_weight
             )
+        l2_lambda = cli.l2_lambda if spec.l2_lambda is None else spec.l2_lambda
         _log(
             f"calibrating arm {arm} ({len(arm_registry)} targets, {epochs} epochs, "
-            f"borrower-count weight x{count_weight:g})"
+            f"l2 {spec.l2_basis} {l2_lambda:g}, "
+            f"borrower-count weight x{spec.count_weight:g})"
         )
         t0 = time.perf_counter()
         results[arm] = calibrate(
@@ -1070,7 +1489,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             max_weight_ratio=cli.max_weight_ratio,
             seed=args.seed,
             mass="conserve",
-            l2_lambda=cli.l2_lambda if l2_lambda is None else l2_lambda,
+            l2_lambda=l2_lambda,
+            l2_basis=spec.l2_basis,
             target_loss_weights=loss_weights,
             target_loss_cap=release.US_FISCAL_TARGET_LOSS_CAP,
         )
@@ -1080,11 +1500,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             f"{results[arm].final_loss:.5f} in {timings[arm]:.0f}s"
         )
     weights = {
-        "release": initial,
-        **{
-            arm: np.asarray(results[arm].weights, dtype=np.float64)
-            for arm in ALL_SOLVED_ARMS
-        },
+        RELEASE_ARM: initial,
+        **{arm: np.asarray(results[arm].weights, dtype=np.float64) for arm in grid},
     }
 
     problem = build_constraint_matrix(target_frame, registry_b.to_target_set())
@@ -1100,7 +1517,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             "is_fsa": spec.family == FSA_TARGET_FAMILY,
             "target": target,
         }
-        for arm in ALL_ARMS:
+        for arm in all_arms:
             value = float(estimates[arm][index])
             row[arm] = value
             row[f"{arm}_error"] = _relative_error(value, target)
@@ -1120,14 +1537,14 @@ def main(argv: Sequence[str] | None = None) -> int:
     for family in sorted({row["family"] for row in rows}):
         members = [row for row in rows if row["family"] == family]
         fit_by_family[family] = {
-            arm: _summary([row[f"{arm}_error"] for row in members]) for arm in ALL_ARMS
+            arm: _summary([row[f"{arm}_error"] for row in members]) for arm in all_arms
         }
     fit_overall = {
         group: {
             arm: _summary(
                 [row[f"{arm}_error"] for row in rows if row["is_fsa"] == is_fsa]
             )
-            for arm in ALL_ARMS
+            for arm in all_arms
         }
         for group, is_fsa in (("fsa", True), ("non_fsa", False))
     }
@@ -1149,7 +1566,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     race = {
         "households": {
             "scf_2025": household_race_composition(scf_fit),
-            **{arm: household_race_composition(fit_tables[arm]) for arm in ALL_ARMS},
+            **{arm: household_race_composition(fit_tables[arm]) for arm in all_arms},
         },
         "people": {
             arm: race_composition(target_frame, w) for arm, w in weights.items()
@@ -1160,17 +1577,15 @@ def main(argv: Sequence[str] | None = None) -> int:
         arm: _person_weights(target_frame, w) for arm, w in weights.items()
     }
     controls = fsa_receipt["controls"]
-    pp_target = next(
-        row["target"]
-        for row in rows
-        if row["is_fsa"] and row["target_role"] == "fsa_parent_plus_balance"
-    )
+    # FSA's Parent PLUS figure is a diagnostic fact since #1525: its share of
+    # the loan-type table's dollar rows, applied to the in-scope control.
+    pp_target = parent_plus["parent_plus_share_of_in_scope_control"]
     headline = [
         {
             "label": "Federal balance, own plus Parent PLUS",
             "kind": "amount",
             "target": controls["total_balance"]["in_scope_control"],
-            **{arm: float(np.dot(own + plus, person_weights[arm])) for arm in ALL_ARMS},
+            **{arm: float(np.dot(own + plus, person_weights[arm])) for arm in all_arms},
         },
         {
             "label": "Borrowers (people with a balance)",
@@ -1178,14 +1593,14 @@ def main(argv: Sequence[str] | None = None) -> int:
             "target": controls["borrowers"]["in_scope_control"],
             **{
                 arm: float(person_weights[arm][(own + plus) > 0].sum())
-                for arm in ALL_ARMS
+                for arm in all_arms
             },
         },
         {
-            "label": "Parent PLUS balance",
+            "label": "Parent PLUS balance (FSA: diagnostic)",
             "kind": "amount",
             "target": pp_target,
-            **{arm: float(np.dot(plus, person_weights[arm])) for arm in ALL_ARMS},
+            **{arm: float(np.dot(plus, person_weights[arm])) for arm in all_arms},
         },
         {
             "label": "Parent PLUS share of the balance",
@@ -1194,7 +1609,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             **{
                 arm: float(np.dot(plus, person_weights[arm]))
                 / float(np.dot(own + plus, person_weights[arm]))
-                for arm in ALL_ARMS
+                for arm in all_arms
             },
         },
         {
@@ -1205,7 +1620,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             **{
                 arm: float(np.dot(own + plus, person_weights[arm]))
                 / float(person_weights[arm][(own + plus) > 0].sum())
-                for arm in ALL_ARMS
+                for arm in all_arms
             },
         },
         {
@@ -1216,7 +1631,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 arm: float(
                     fit_tables[arm]["households"]["share_with_federal_education_debt"]
                 )
-                for arm in ALL_ARMS
+                for arm in all_arms
             },
         },
     ]
@@ -1258,7 +1673,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             "engine_adaptation": engine_adaptation,
         },
         "feed": {
-            "candidate_sha256": feed_sha,
+            "sha256": feed_sha,
             "rows": len(facts),
             "provenance": (
                 json.loads(args.feed_provenance.read_text())
@@ -1283,17 +1698,26 @@ def main(argv: Sequence[str] | None = None) -> int:
                 }
                 for arm in results
             },
-            "arms": {
-                arm: {
-                    "with_fsa": with_fsa,
-                    "targets": len(registry_b if with_fsa else registry_a),
-                    "l2_lambda": cli.l2_lambda if l2_lambda is None else l2_lambda,
-                    "borrower_count_loss_weight": count_weight,
-                }
-                for arm, (with_fsa, l2_lambda, count_weight) in ALL_SOLVED_ARMS.items()
-            },
             "surface": surface_receipt,
         },
+        # Table order: the release, then the solved grid.
+        "arms": {
+            RELEASE_ARM: {"label": "Release", "weights": "published"},
+            **{
+                arm: {
+                    "label": spec.label,
+                    "with_fsa": spec.with_fsa,
+                    "targets": len(registry_b if spec.with_fsa else registry_a),
+                    "l2_lambda": (
+                        cli.l2_lambda if spec.l2_lambda is None else spec.l2_lambda
+                    ),
+                    "l2_basis": spec.l2_basis,
+                    "borrower_count_loss_weight": spec.count_weight,
+                }
+                for arm, spec in grid.items()
+            },
+        },
+        "arm_pairs": [list(pair) for pair in pairs],
         "fsa": {
             **{
                 key: fsa_receipt[key]
@@ -1308,6 +1732,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 )
             },
             "materialization_dropped": fsa_dropped,
+            "parent_plus": parent_plus,
             "repayment_plan_diagnostic": repayment_plan_diagnostic(facts),
         },
         "headline": headline,
@@ -1317,20 +1742,26 @@ def main(argv: Sequence[str] | None = None) -> int:
         "race": race,
         "support": borrower_support(target_frame),
         "scf_fit_tables": {"scf_2025": scf_fit, **fit_tables},
+        "income_quintiles": income_quintile_tables(
+            target_frame, weights, fit_tables, scf_fit
+        ),
         "weights": {
             arm: weight_movement(
                 target_frame, initial, weights[arm], cli.max_weight_ratio
             )
-            for arm in ALL_SOLVED_ARMS
+            for arm in grid
         },
         "seconds": time.perf_counter() - started,
     }
-    receipt["borrower_count_weighting"] = borrower_count_comparison(
-        rows, headline, fit_overall, receipt["weights"], ALL_ARMS
+    receipt["arm_comparison"] = arm_comparison(
+        rows, headline, fit_overall, receipt["weights"], all_arms
     )
+    # Strict JSON: a missing value (the household share's FSA target, an
+    # empty group's share) is null, never a bare NaN.
+    receipt = json_ready(receipt)
     args.out_json.parent.mkdir(parents=True, exist_ok=True)
     args.out_json.write_text(
-        json.dumps(receipt, indent=2, default=float, allow_nan=True) + "\n",
+        json.dumps(receipt, indent=2, default=float, allow_nan=False) + "\n",
         encoding="utf-8",
         newline="\n",
     )

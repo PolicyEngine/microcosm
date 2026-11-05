@@ -1049,6 +1049,14 @@ US_ACA_REPORTED_SUBSIDIZED_ANCHOR = (
     "reported_has_subsidized_marketplace_health_coverage_at_interview"
 )
 US_ACA_REPORTED_MARKETPLACE_COVERAGE = "has_marketplace_health_coverage_at_interview"
+#: The SCF education-debt fit table (microcosm#1073), in the artifacts
+#: directory of a ``--scf-education-debt`` build: at the staged frame's
+#: pre-calibration weights, and at the release's calibrated weights before any
+#: post-export scoring (microcosm#1074).
+US_SCF_EDUCATION_DEBT_FIT_FILENAME = "us_scf_education_debt_fit.json"
+US_SCF_EDUCATION_DEBT_CALIBRATED_FIT_FILENAME = (
+    "us_scf_education_debt_calibrated_fit.json"
+)
 US_ACA_APTC_TARGET_TABLE = "cms_aca_aptc_recipients_by_state"
 US_ACA_TARGET_ROLE_TABLES = {
     "aca_ptc_recipients": US_ACA_APTC_TARGET_TABLE,
@@ -12727,24 +12735,37 @@ def _with_scf_education_debt_stage(
             )
         )
     if fit_path is not None:
-        # Design-weight fit of the staged frame against the SCF; the receipt
-        # tool tabulates the calibrated export the same way (microcosm#1073).
-        fit_path.parent.mkdir(parents=True, exist_ok=True)
-        fit_path.write_text(
-            json.dumps(
-                {
-                    "schema_version": 1,
-                    "weights": "pre_calibration_household_weights",
-                    "fit": us_scf_education_debt_fit_table(base_frame),
-                },
-                indent=2,
-                sort_keys=True,
-                default=float,
-            )
-            + "\n",
-            encoding="utf-8",
+        # Design-weight fit of the staged frame against the SCF; the release
+        # writes the same table at its calibrated weights after the solve
+        # (US_SCF_EDUCATION_DEBT_CALIBRATED_FIT_FILENAME, microcosm#1074).
+        _write_us_scf_education_debt_fit(
+            fit_path, base_frame, weights="pre_calibration_household_weights"
         )
     return base_frame
+
+
+def _write_us_scf_education_debt_fit(path: Path, frame: Frame, *, weights: str) -> None:
+    """Write the microcosm#1073 fit table of ``frame`` at its household weights.
+
+    ``weights`` names those weights in the payload: the staged frame's
+    pre-calibration weights, or the release's calibrated weights.
+    """
+
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "weights": weights,
+                "fit": us_scf_education_debt_fit_table(frame),
+            },
+            indent=2,
+            sort_keys=True,
+            default=float,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
 
 
 def _check_us_ledger_feed_row_contracts(
@@ -14456,7 +14477,7 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
             args=args,
             telemetry=telemetry,
             fit_path=(
-                artifact_root / "us_scf_education_debt_fit.json"
+                artifact_root / US_SCF_EDUCATION_DEBT_FIT_FILENAME
                 if dry_run is None
                 else None
             ),
@@ -15366,6 +15387,15 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
         )
     else:
         export_frame = _with_l0_refit_weights(base_frame, result)
+    if args.scf_education_debt:
+        # microcosm#1074: the stage's fit table at the weights the release
+        # ships, before any scoring or terminal gate, so a build that binds
+        # the FSA family reports the borrower-household share it moved.
+        _write_us_scf_education_debt_fit(
+            artifact_root / US_SCF_EDUCATION_DEBT_CALIBRATED_FIT_FILENAME,
+            export_frame,
+            weights="calibrated_household_weights",
+        )
     result = _without_calibrated_frames(
         result,
         export_frame=export_frame if ladder_outcome is not None else None,
