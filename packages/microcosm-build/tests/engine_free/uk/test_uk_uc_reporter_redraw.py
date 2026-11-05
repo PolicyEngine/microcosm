@@ -1,6 +1,7 @@
 """Tests split from packages/microcosm-build/tests/test_uk_uc_reporter_redraw.py."""
 
 # ruff: noqa: F403, F405
+from test_support.microcosm_build.uk_geographic_clones import with_geographic_clones
 from test_support.microcosm_build.uk_uc_reporter_redraw import *
 
 
@@ -467,3 +468,23 @@ def test_landing_invariants_refuse_base_writes_and_double_landings() -> None:
         _assert_landing_invariants(
             wrong_total, benunit, spi=spi, draws=draws, base_before=base_before
         )
+
+
+def test_geographic_clones_fit_each_benefit_unit_once_at_its_whole_weight() -> None:
+    """Two geographic clones of every unit at half its weight hand the forest
+    the rows and weights the units hand it alone (microcosm#931)."""
+
+    alone = _StubQRFFactory()
+    redraw_spi_reported_uc(_frame(), engine=_StubEngine(), qrf_factory=alone)
+    cloned = _StubQRFFactory()
+    redraw_spi_reported_uc(
+        with_geographic_clones(_frame()), engine=_StubEngine(), qrf_factory=cloned
+    )
+    assert cloned.record["fit_index"] == alone.record["fit_index"]
+    np.testing.assert_array_equal(
+        cloned.record["fit_weights"], alone.record["fit_weights"]
+    )
+    np.testing.assert_array_equal(
+        cloned.record["fit_groups"], alone.record["fit_groups"]
+    )
+    pd.testing.assert_frame_equal(cloned.record["fit_table"], alone.record["fit_table"])

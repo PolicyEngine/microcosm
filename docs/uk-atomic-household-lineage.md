@@ -23,6 +23,14 @@ The host can extract the household pairs from its verified shared EXPAND receipt
 
 The full-build graph now adopts this key: `uk.full.identity` (`UKGeographyIdentityKernel`) reads the spine's explicit lineage columns and the pool clone index and writes `geography_household_key` with exactly this encoding, and `test_uk_atomic_identity_graph.py` holds the kernel to this projector on the executor's actual EXPAND receipt. The existing source stage order still interleaves enrichment before later SPI/CGT cloning; moving atomic assignment before every enrichment stage remains a separate staged migration under the geography-first umbrella issue (PolicyEngine/microcosm#931). This helper does not claim that migration, native FRS qualification or a new UK release.
 
+## Shared lineage readers
+
+The UK's copy lineage is declared once, as data, in `uk_runtime.household_lineage.UK_COPY_LINEAGE`: every copy's true source is `source_household_id`, and each copying step (the SPI support channel, the CGT support split, high-value support, the CGT incidence clone, the CGT residential split and the geographic clone) names its marker and ordinal columns in path order. The country-neutral readers in `microcosm.build.source_lineage` take that declaration as a parameter, so another country can declare its own lineage and reuse them (microcosm#931):
+
+- `record_sources` gives every record of any entity its true source through household membership. Every UK floor counts distinct sources through it (`receipt_counts.record_source_households`), so a household's copies and clones count once.
+- `copy_paths` reads every household's ordered clone path; `uk_household_clone_paths` is the UK's strict entry for the identity kernel.
+- `replica_keys` and `collapse_replicas` keep one training row per true source and path without the geographic branch, with the clones' weights summed. The FRS-trained fits (the SPI stage-2 and reference forests, the housing shell, the UC reporter redraw, the UC capital donor cells and the salary-sacrifice forest) fold their training rows through `household_lineage.collapse_geographic_clones`, so once geographic clones precede enrichment each fit still sees each survey record once. A frame without geographic clones keeps its rows and weights value for value.
+
 ## Verification scope
 
 Invented tests cover the full four-branch path, explicit selection, exact large IDs, source and ordinal changes, stable keys under row reordering and pool growth, unknown/colliding ancestry refusal and detached output. A real shared CREATE/EXPAND/FILTER graph supplies the household lineage receipt and replays from cache. Its projected keys then feed the existing seven-node atomic graph, including three system imports, assignment, derivation and its gate. That graph also completes required replay and preserves the supplied entity tables, weights, strata and metadata. No native source, private archive, country engine or external resource is used.

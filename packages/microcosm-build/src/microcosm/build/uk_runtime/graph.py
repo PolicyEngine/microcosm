@@ -439,9 +439,13 @@ _STAGE_CONSUMES: Mapping[str, frozenset[tuple[str, str]] | None] = {
         }
     ),
     # Engine-free: the housing predictors and the channel split. The rewritten
-    # housing and benefit cells arrive as the rewrite's incumbents.
+    # housing and benefit cells arrive as the rewrite's incumbents. The
+    # lineage live here lets the model fold geographic clones into each survey
+    # household (microcosm#931).
     "spi_housing_shell": frozenset(
         {
+            ("household", "source_household_id"),
+            ("household", "household_support_clone_index"),
             ("person", "age"),
             ("person", "is_household_head"),
             ("person", "employment_income"),
@@ -535,6 +539,13 @@ _STAGE_CONSUMES: Mapping[str, frozenset[tuple[str, str]] | None] = {
     ),
     "uc_capital_coherence": frozenset(
         {
+            # The lineage live here lets the donor pool fold geographic clones
+            # into each survey benefit unit (microcosm#931).
+            ("household", "source_household_id"),
+            ("household", "household_support_channel"),
+            ("household", "household_support_clone_index"),
+            ("household", "household_is_high_value_support_copy"),
+            ("household", "high_value_support_copy_index"),
             ("person", "is_benunit_head"),
             ("person", "is_parent"),
             ("person", "person_support_channel"),

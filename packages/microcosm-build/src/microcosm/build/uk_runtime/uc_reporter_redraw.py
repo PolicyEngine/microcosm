@@ -21,6 +21,7 @@ from microcosm.build.stochastic_assignment import (
     integer_record_keys,
     stable_identity_uniforms,
 )
+from microcosm.build.uk_runtime.household_lineage import collapse_geographic_clones
 from microcosm.build.uk_runtime.national_frame import (
     uk_household_weight_kind,
     uk_national_frame,
@@ -318,7 +319,18 @@ def redraw_spi_reported_uc(
         raise ValueError(
             "UC reporter redraw has no screened canonical FRS training rows."
         )
-    if float(weights[training].sum()) <= 0.0:
+    # The forest trains on each screened benefit unit once: its geographic
+    # clones fold into its first row with their weight, and every other copy
+    # stays its own row; a frame without geographic clones keeps every row
+    # and weight (household_lineage.collapse_geographic_clones, microcosm#931).
+    # The screen is each row's own engine output, so the fold follows it.
+    training, fit_weights = collapse_geographic_clones(
+        {"person": person, "benunit": benunit, "household": household},
+        "benunit",
+        training,
+        weights,
+    )
+    if float(fit_weights[training].sum()) <= 0.0:
         raise ValueError("UC reporter redraw training weights must have positive mass.")
     if not target.any():
         # An empty draw domain is not a valid outcome: the rewrite would zero
@@ -351,7 +363,7 @@ def redraw_spi_reported_uc(
         encoded_train,
         model_predictors,
         [UC_REPORTER_TARGET],
-        weights=weights[training],
+        weights=fit_weights[training],
         groups=benunit_household[training],
     )
     draws = np.zeros(len(benunit), dtype=np.float64)

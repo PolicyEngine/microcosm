@@ -9,19 +9,27 @@ marker column, an ordinal column, or both (:class:`CopyBranch`). A country
 declares its copy lineage once (:class:`CopyLineage`) and passes it in; this
 module names no country's columns.
 
-:func:`record_sources` gives every record of any entity its true source,
-through household membership: the key a disclosure floor counts distinct
-sources by, so that a household's copies and clones count once
-(microcosm#931). A frame without the source column is refused, since its
-copies would count as sources of their own, unless the caller runs before the
-first copying step and says so (``before_copies``): each household is then its
-own source, and its id serves, as long as the frame carries no declared copy
-column either.
+- :func:`record_sources` gives every record of any entity its true source,
+  through household membership: the key a disclosure floor counts distinct
+  sources by, so that a household's copies and clones count once
+  (microcosm#931). A frame without the source column is refused, since its
+  copies would count as sources of their own, unless the caller runs before
+  the first copying step and says so (``before_copies``): each household is
+  then its own source, and its id serves, as long as the frame carries no
+  declared copy column either.
+- :func:`copy_paths` gives every household its ordered copy path, read from
+  the declared columns, never inferred from ids, weights or values.
+- :func:`replica_keys` and :func:`collapse_replicas` keep one training row per
+  true source and path without the named branches, with the rows' weights
+  summed, so a fit trained on the frame sees each survey record once however
+  many geographic clones carry it. A frame without such replicas keeps its
+  rows and weights value for value.
 """
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+import math
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 
 import numpy as np
@@ -33,7 +41,10 @@ from microcosm.frame.concepts import SOURCE_HOUSEHOLD_ID_COLUMN
 __all__ = [
     "CopyBranch",
     "CopyLineage",
+    "collapse_replicas",
+    "copy_paths",
     "record_sources",
+    "replica_keys",
 ]
 
 
@@ -167,3 +178,188 @@ def record_sources(
     if not unit_ids.isin(unit_households.index).all():
         raise ValueError(f"A {entity} without members has no source.")
     return unit_ids.map(unit_households).map(by_household).to_numpy()
+
+
+def copy_paths(
+    household: pd.DataFrame,
+    lineage: CopyLineage,
+    *,
+    require: Iterable[str] = (),
+) -> tuple[np.ndarray, list[tuple[tuple[str, int], ...]]]:
+    """Every household's true source and ordered copy path, in row order.
+
+    A path lists, in branch order, ``(branch, ordinal)`` for each step the
+    household is a copy in. A step whose columns are all absent has not run
+    and adds nothing; a step with only some of its columns, or a step named in
+    ``require`` that is absent, is refused. So are a null, negative or
+    non-integer ordinal, a marker value the step does not declare, and a
+    marker that disagrees with its ordinal: the path is read from the declared
+    columns, never inferred from ids, weights or values.
+    """
+
+    required = set(require)
+    unknown = required - {branch.name for branch in lineage.branches}
+    if unknown:
+        raise ValueError(f"No copy branch is named {sorted(unknown)}.")
+    if lineage.source not in household.columns:
+        raise ValueError(f"Copy paths need {lineage.entity}.{lineage.source}.")
+    sources = household[lineage.source]
+    if sources.isna().any():
+        raise ValueError(f"{lineage.entity}.{lineage.source} is null on some rows.")
+    steps: list[tuple[str, np.ndarray]] = []
+    for branch in lineage.branches:
+        present = [c for c in branch.columns if c in household.columns]
+        if not present:
+            if branch.name in required:
+                raise ValueError(
+                    f"The {lineage.entity} table lacks the {branch.name!r} "
+                    f"step's column(s) {list(branch.columns)}."
+                )
+            continue
+        if len(present) != len(branch.columns):
+            raise ValueError(
+                f"The {branch.name!r} step needs both {list(branch.columns)}; "
+                f"the {lineage.entity} table carries only {present}."
+            )
+        steps.append((branch.name, _branch_ordinals(household, branch)))
+    paths = [
+        tuple((name, int(ordinals[row])) for name, ordinals in steps if ordinals[row])
+        for row in range(len(household))
+    ]
+    return sources.to_numpy(), paths
+
+
+def _branch_ordinals(household: pd.DataFrame, branch: CopyBranch) -> np.ndarray:
+    ordinals = None
+    if branch.index is not None:
+        values = household[branch.index]
+        if values.isna().any() or not pd.api.types.is_integer_dtype(values.dtype):
+            raise ValueError(f"The {branch.name!r} ordinals must be integers.")
+        ordinals = values.to_numpy(dtype=np.int64)
+        if (ordinals < 0).any():
+            raise ValueError(f"The {branch.name!r} step refuses negative ordinals.")
+    if branch.marker is None:
+        return ordinals
+    marker = household[branch.marker]
+    if marker.isna().any():
+        raise ValueError(f"The {branch.name!r} marker is null on some rows.")
+    if isinstance(branch.copy, bool) and not pd.api.types.is_bool_dtype(marker.dtype):
+        raise ValueError(f"The {branch.name!r} marker must be boolean.")
+    is_copy = marker.eq(branch.copy).to_numpy(dtype=bool)
+    if not (is_copy | marker.eq(branch.original).to_numpy(dtype=bool)).all():
+        raise ValueError(
+            f"The {branch.name!r} marker holds a value other than "
+            f"{branch.copy!r} and {branch.original!r}."
+        )
+    if ordinals is None:
+        return is_copy.astype(np.int64)
+    if not np.array_equal(is_copy, ordinals != 0):
+        raise ValueError(f"The {branch.name!r} marker and ordinal disagree.")
+    return ordinals
+
+
+def replica_keys(
+    tables: Mapping[str, pd.DataFrame],
+    schema: EntitySchema,
+    entity: str,
+    lineage: CopyLineage,
+    *,
+    merge: Iterable[str],
+) -> np.ndarray:
+    """A key per ``entity`` record that only its replicas in ``merge`` share.
+
+    A household's key is its true source and its copy path without the
+    ``merge`` branches; a person's or unit's adds its rank among its
+    household's members or units by id, which every copy keeps, since a copy
+    remaps ids in order. Two records share a key exactly when one is the
+    other's replica in the ``merge`` branches alone.
+    """
+
+    merged = set(merge)
+    unknown = merged - {branch.name for branch in lineage.branches}
+    if unknown:
+        raise ValueError(f"No copy branch is named {sorted(unknown)}.")
+    household = tables[lineage.entity]
+    sources, paths = copy_paths(household, lineage)
+    household_keys = pd.Series(
+        [
+            repr((source, tuple(step for step in path if step[0] not in merged)))
+            for source, path in zip(sources.tolist(), paths, strict=True)
+        ],
+        index=household[schema.id_column(lineage.entity)].to_numpy(),
+        dtype=object,
+    )
+    if entity == lineage.entity:
+        return household_keys.to_numpy()
+    person = tables[schema.person_entity]
+    members = person[schema.membership_column(lineage.entity)]
+    if not members.isin(household_keys.index).all():
+        raise ValueError(
+            f"Every {schema.person_entity} needs a {lineage.entity} on the frame."
+        )
+    if entity == schema.person_entity:
+        ids = person[schema.person_id_column]
+        owners = members
+    else:
+        units = pd.DataFrame(
+            {
+                "unit": person[schema.membership_column(entity)].to_numpy(),
+                "household": members.to_numpy(),
+            }
+        ).drop_duplicates()
+        if units["unit"].duplicated().any():
+            raise ValueError(
+                f"A {entity} with members in several {lineage.entity}s has no key."
+            )
+        by_unit = pd.Series(units["household"].to_numpy(), index=units["unit"])
+        ids = tables[entity][schema.id_column(entity)]
+        if not ids.isin(by_unit.index).all():
+            raise ValueError(f"A {entity} without members has no key.")
+        owners = ids.map(by_unit)
+    rank = (
+        pd.Series(ids.to_numpy())
+        .groupby(owners.to_numpy(), sort=False)
+        .rank(method="first")
+        .astype(np.int64)
+    )
+    keys = owners.map(household_keys).to_numpy(dtype=object)
+    return np.asarray(
+        [f"{key}#{position}" for key, position in zip(keys, rank, strict=True)],
+        dtype=object,
+    )
+
+
+def collapse_replicas(
+    keys: np.ndarray, rows: np.ndarray, weights: np.ndarray
+) -> tuple[np.ndarray, np.ndarray]:
+    """Keep the first of each key's ``rows``, carrying the key's summed weight.
+
+    ``rows`` marks the records a fit trains on and ``weights`` their weights,
+    both over every record. The first selected record of each key, in row
+    order, stays selected with the selected weights of its key summed
+    exactly (:func:`math.fsum`, so the sum does not depend on row order); its
+    replicas leave the selection. Weights off the selection are returned
+    unchanged. When no two selected records share a key, the selection and
+    weights are returned as they were, value for value.
+    """
+
+    keys = np.asarray(keys, dtype=object)
+    selected = np.asarray(rows, dtype=bool)
+    values = np.asarray(weights, dtype=np.float64)
+    if not (len(keys) == len(selected) == len(values)):
+        raise ValueError("Replica keys, rows and weights must align.")
+    positions = np.flatnonzero(selected)
+    codes, uniques = pd.factorize(pd.Series(keys[positions], dtype=object), sort=False)
+    if len(uniques) == len(positions):
+        return selected, values
+    first = np.full(len(uniques), -1, dtype=np.int64)
+    members: list[list[float]] = [[] for _ in range(len(uniques))]
+    for position, code in zip(positions.tolist(), codes.tolist(), strict=True):
+        if first[code] < 0:
+            first[code] = position
+        members[code].append(float(values[position]))
+    kept = np.zeros(len(selected), dtype=bool)
+    kept[first] = True
+    summed = values.copy()
+    summed[first] = [math.fsum(group) for group in members]
+    return kept, summed
