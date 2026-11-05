@@ -1,0 +1,71 @@
+{
+ "cells": {
+  "households": [
+   "B25003_E001"
+  ],
+  "owner": [
+   "B25003_E002"
+  ],
+  "persons_0_17": [
+   "B01001_E003",
+   "B01001_E004",
+   "B01001_E005",
+   "B01001_E006",
+   "B01001_E027",
+   "B01001_E028",
+   "B01001_E029",
+   "B01001_E030"
+  ],
+  "persons_65p": [
+   "B01001_E020",
+   "B01001_E021",
+   "B01001_E022",
+   "B01001_E023",
+   "B01001_E024",
+   "B01001_E025",
+   "B01001_E044",
+   "B01001_E045",
+   "B01001_E046",
+   "B01001_E047",
+   "B01001_E048",
+   "B01001_E049"
+  ],
+  "persons_in_households": [
+   "B25008_E001"
+  ],
+  "persons_male": [
+   "B01001_E002"
+  ],
+  "persons_total": [
+   "B01003_E001"
+  ],
+  "real_estate_taxes_aggregate": [
+   "B25090_E001"
+  ],
+  "rent_contract_monthly_aggregate": [
+   "B25060_E001"
+  ],
+  "rent_gross_monthly_aggregate": [
+   "B25065_E001"
+  ],
+  "renter": [
+   "B25003_E003"
+  ]
+ },
+ "files_sha256": {
+  "acsdt1y2024-b01001.dat": "84db6a3a8eda54d882b9a5e6a5bb48864fcbb573a262127ed026ae5fb6d6953e",
+  "acsdt1y2024-b01003.dat": "3f04d8c2ad77dab54085f014b795c33c19463eede4539e110247bb329d1025fd",
+  "acsdt1y2024-b25003.dat": "944b9d7aa807cc32c50a50b37af0afac50db914f02dc68bafa628e4227a496ad",
+  "acsdt1y2024-b25008.dat": "6e8e40d7679c47b90df6504c449bde6b28c4384c329b68af0dd436c6943418ca",
+  "acsdt1y2024-b25060.dat": "aa6d70941599febec9c35e60d8692df6bbc2c01146d2d18d912d9bd24dbfd457",
+  "acsdt1y2024-b25065.dat": "e17f8ebae8941b0f7466d0e3cdad5cca6425b000ab88d001ddac192bce540f0e",
+  "acsdt1y2024-b25090.dat": "60f95c0745c34d9bd9d4dfca86d09947f463ef61c76d0e525b0b4b80a018810b"
+ },
+ "rows_by_level": {
+  "cd": 5232,
+  "county": 10200,
+  "national": 12,
+  "state": 612
+ },
+ "source": "ACS 2024 1-year table-based summary file (Census), https://www2.census.gov/programs-surveys/acs/summary_file/2024/table-based-SF/"
+}
