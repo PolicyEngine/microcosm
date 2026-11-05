@@ -24,6 +24,7 @@ import dataclasses
 import os
 import shutil
 import socket
+import subprocess
 import sysconfig
 from pathlib import Path
 
@@ -100,6 +101,8 @@ client = EmitterClient.start(
 )
 if not client.available:
     sys.exit("the installed emitter did not start")
+# The interface (0.7.0) has no public way to name the host's process, so
+# this reads the client's private handle on it.
 pathlib.Path(pid_file).write_text(str(client._process.process.pid))
 client.telemetry.stage("first_stage")
 client.telemetry.stage("second_stage")
@@ -196,14 +199,23 @@ def test_the_runner_records_the_events_the_installed_emitter_still_holds(
     }
 
 
-def _process_exists(pid: int) -> bool:
-    try:
-        os.kill(pid, 0)
-    except ProcessLookupError:
-        return False
-    except PermissionError:
-        return True
-    return True
+def _process_running(pid: int) -> bool:
+    """Whether ``pid`` is a process that has not exited.
+
+    A process that has exited but that its parent, here the system's process
+    reaper since the tool exited first, has not yet collected still answers
+    a signal 0, so ``ps`` reads its state instead: none for a process that
+    is gone, ``Z`` for one that has exited and awaits collection.
+    """
+
+    answer = subprocess.run(
+        ["ps", "-o", "stat=", "-p", str(pid)],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    state = answer.stdout.strip()
+    return answer.returncode == 0 and bool(state) and not state.startswith("Z")
 
 
 def test_the_runner_asks_for_status_only_once_the_build_s_emitter_has_exited(
@@ -232,7 +244,7 @@ def test_the_runner_asks_for_status_only_once_the_build_s_emitter_has_exited(
     host_running_when_asked = []
 
     def status(env: dict[str, str]) -> dict:
-        host_running_when_asked.append(_process_exists(int(pid_file.read_text())))
+        host_running_when_asked.append(_process_running(int(pid_file.read_text())))
         return runner_s_own_status(env)
 
     monkeypatch.setattr(app, "_emitter_status", status)

@@ -589,6 +589,36 @@ def test_the_check_in_the_container_reports_the_emitter_floor_the_image_was_buil
     ] == ["UV_TOOL_BIN_DIR=/usr/local/bin uv tool install 'microcosm-emitter>=9.8.7'"]
 
 
+def test_the_package_s_version_file_wins_over_a_stray_one_beside_the_plan_module(
+    monkeypatch, tmp_path: Path
+) -> None:
+    """In a checkout, a file left beside the plan module changes nothing.
+
+    Only the container, which has no checkout around the plan module's copy,
+    reads the copy of the file the image adds beside it.
+    """
+
+    checkout = tmp_path / "checkout"
+    (checkout / "tools").mkdir(parents=True)
+    shutil.copyfile(
+        ROOT / "tools" / "modal_us_stage_plan.py",
+        checkout / "tools" / "modal_us_stage_plan.py",
+    )
+    (checkout / "tools" / "minimum_emitter_version.json").write_text(
+        '{"minimum_emitter_version": "9.9.9"}\n'
+    )
+    package = checkout / "packages" / "microcosm-build" / "src" / "microcosm" / "build"
+    package.mkdir(parents=True)
+    (package / "minimum_emitter_version.json").write_text(
+        '{"minimum_emitter_version": "1.2.3"}\n'
+    )
+    copy_in_a_checkout = _import_plan_module_copy(
+        checkout / "tools" / "modal_us_stage_plan.py", monkeypatch
+    )
+
+    assert copy_in_a_checkout.image_emitter_requirement() == "microcosm-emitter>=1.2.3"
+
+
 def test_the_app_never_runs_an_emitter_installed_where_the_image_puts_it(
     app, monkeypatch, tmp_path: Path
 ) -> None:
@@ -3411,6 +3441,54 @@ def test_a_problem_line_is_one_bounded_line(
     assert len(problem) == 300
     assert problem.endswith("…")
     assert not {"\n", "\r", "\t"} & set(problem)
+
+
+def _status_output_with_an_extra_field(depth: int) -> str:
+    """``status``'s output for one run with an extra field, objects ``depth`` deep."""
+
+    printed = json.dumps({"runs": [_PRINTED_RUNS[0]]})
+    assert printed.endswith("}]}")
+    nested = '{"a": ' * depth + "0" + "}" * depth
+    return f'{printed[:-3]}, "extra": {nested}}}]}}'
+
+
+def _deepest_extra_field_the_parser_accepts() -> int:
+    low, high = 1, 1_000_000
+    while low < high:
+        middle = (low + high + 1) // 2
+        try:
+            json.loads(_status_output_with_an_extra_field(middle))
+        except RecursionError:
+            high = middle - 1
+        else:
+            low = middle
+    return low
+
+
+def test_runs_nested_deeper_than_a_receipt_can_hold_are_recorded_as_a_problem() -> None:
+    """Runs the parser accepts but the receipt cannot be written with.
+
+    ``status``'s runs are recorded as printed, extra fields included. A field
+    nested just under the parser's limit is accepted, but the receipt holds
+    the runs four objects deeper, and writing it (after the mirror) then fails
+    on Python 3.13 and 3.14: the stage would get no receipt.
+    """
+
+    stdout = _status_output_with_an_extra_field(
+        _deepest_extra_field_the_parser_accepts() - 1
+    )
+    runs = json.loads(stdout)["runs"]
+    with pytest.raises(RecursionError):
+        json.dumps(
+            {"runner": {"telemetry": {"undelivered_events": {"runs": runs}}}},
+            indent=2,
+        )
+
+    assert plan_lib.undelivered_events_from_status(0, stdout, "") == {
+        "runs": None,
+        "problem": "`microcosm-emitter status` exited 0 but printed runs nested "
+        "too deeply for the receipt",
+    }
 
 
 def test_deeply_nested_output_is_recorded_as_a_problem(
