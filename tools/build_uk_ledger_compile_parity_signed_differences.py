@@ -11,6 +11,10 @@ from pathlib import Path
 import numpy as np
 
 from microcosm.build.gates import ledger_compile_parity_signed_differences
+from microcosm.build.ledger_artifact import consumer_fact_schema_versions_of
+from microcosm.build.uk_runtime.chronicle_feed import (
+    require_uk_chronicle_feed_subset_row_contracts,
+)
 from microcosm.build.uk_runtime.derived_facts import uk_derived_fact_rows
 from microcosm.build.uk_runtime.ledger_targets import (
     LOCAL_REGISTRY_PARITY_FIXTURE_RESOURCE,
@@ -1184,6 +1188,11 @@ def _fixture_for_receipt(spec: ParityReceiptSpec) -> dict:
 def main() -> None:
     args = _parse_args()
     facts = _load_jsonl(args.ledger_facts)
+    # The rows of a subset of the pinned feed: each row contract must be one
+    # the committed pin lists and chronicle_epoch declares.
+    require_uk_chronicle_feed_subset_row_contracts(
+        consumer_fact_schema_versions_of(facts)
+    )
     args.output_dir.mkdir(parents=True, exist_ok=True)
     for spec in RECEIPTS:
         if args.surface != "all" and spec.surface != args.surface:

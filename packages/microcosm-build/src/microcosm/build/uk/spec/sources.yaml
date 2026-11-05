@@ -798,14 +798,15 @@ stages:
     numeric_errors: coerce
     runtime_sha256_required: true
   - kind: map_coded_amounts
-    scope: empstati employment status, mjobsect sector, and raw SIC division
+    scope: empstati employment status, mjobsect sector, raw SIC division, and SOC2020 major group
   outputs:
   - employment_status
   - employment_sector
   - sic_industry_division
+  - soc2020_major_group
   nonnegative_outputs:
   - sic_industry_division
-  notes: "Ports FRS employment derivations. empstati codes 1-11 each map to the status their UKDS SN 9563 adult-table data-dictionary label names, as uk-data#526 does: 11 (Other Inactive) is OTHER_INACTIVE and only 9 (Permanently sick/disabled) is LONG_TERM_DISABLED. People outside adult.tab are CHILD; an adult with a blank or unknown code refuses the build. mjobsect and sic are direct-indexed and fail loudly if absent."
+  notes: "Ports FRS employment derivations. empstati codes 1-11 each map to the status their UKDS SN 9563 adult-table data-dictionary label names, as uk-data#526 does: 11 (Other Inactive) is OTHER_INACTIVE and only 9 (Permanently sick/disabled) is LONG_TERM_DISABLED. People outside adult.tab are CHILD; an adult with a blank or unknown code refuses the build. SOC2020 codes the SOC 2020 major group as 1000-9000 (0 undefined) and maps to policyengine-uk's SOC2020MajorGroup names (occupation_constants); it is the main job, or the last job for an adult not in work, since the FRS asks the employment questions of everyone who has ever worked (2024-25 question instructions, details of employment, p. 183; PDF p. 184). People outside adult.tab are NONE, and an adult with a blank or unknown SOC2020 code refuses the build (microcosm#1490). mjobsect, sic and soc2020 are direct-indexed and fail loudly if absent."
 - stage: frs_council_tax
   survey: Family Resources Survey 2024-25
   source: Department for Work and Pensions Family Resources Survey 2024-25, UK Data Service SN 9563, DOI 10.5255/UKDA-SN-9563-1; local licensed 2024_25 tabs.
@@ -1103,7 +1104,7 @@ stages:
   nonnegative_outputs:
   - maximum_extended_childcare_hours_usage
   - max_free_entitlement_hours_used
-  notes: Identity-keyed seed 0 streams replace the incumbent sequential take-up seed 100; salts are output variable names. Reported positive receipt anchors are transient and consumed only. The Universal Credit draw's population is the benefit units with a UC claimant or partner (is_uc_claimant) aged 18 or over and under Pension Credit qualifying age (66 for everyone who can reach it in this release), the age and role conditions of policyengine-uk 2.165.1's is_uc_eligible; the engine lockstep test pins it and names the three engine cases not mirrored (16- and 17-year-old claimants under the UC Regs 2013 reg 8 exceptions, mixed-age couples on the Pension Credit route, and from 2.128.0 pension-age families moved onto Universal Credit when their legacy benefit closes, SI 2014/1230 reg 60A). So the contract rate is a share of those units, an anchor outside them stays true, and any other unit is never drawn; a unit with no claimant or partner of that age keeps its reported Housing Benefit, which a claim it cannot make no longer zeroes (#882, microcosm#867, microcosm#1095). The universal childcare flag is nested under the working-parent one. A unit that claims the extended hours claims the universal hours, and any other unit claims them at the contract's universal_childcare rate, the rate conditional on not claiming the extended hours; the extended draw is unchanged. childcare_copy_take_up later re-draws the childcare flags and hours of the support and CGT copies on their own benefit units. A child of DfE age 0 or 1 (its age on 31 December of the fit's model year, the age DfE counts by) in a unit that claims the working-parent hours uses them at its age's contract rate, extended_childcare_age_0_usage or extended_childcare_age_1_usage (DfE registers far fewer of the youngest eligible children than of those aged 2 to 4, and fewer at 9 to 11 months than at age 1); a child that does not gets max_free_entitlement_hours_used 0, so the engine funds it no hours, and every other person keeps the engine's default of 30.
+  notes: Identity-keyed seed 0 streams replace the incumbent sequential take-up seed 100; salts are output variable names. Reported positive receipt anchors are transient and consumed only. The Universal Credit draw's population is the benefit units with a UC claimant or partner (is_uc_claimant) aged 18 or over and under Pension Credit qualifying age (66 for everyone who can reach it in this release), the age and role conditions of policyengine-uk 2.174.1's is_uc_eligible, whose education condition (from 2.173.2) every claimant meets because the build flags nobody in full-time education; the engine lockstep test pins it and names the three engine cases not mirrored (16- and 17-year-old claimants under the UC Regs 2013 reg 8 exceptions, mixed-age couples on the Pension Credit route, and from 2.128.0 pension-age families moved onto Universal Credit when their legacy benefit closes, SI 2014/1230 reg 60A). So the contract rate is a share of those units, an anchor outside them stays true, and any other unit is never drawn; a unit with no claimant or partner of that age keeps its reported Housing Benefit, which a claim it cannot make no longer zeroes (#882, microcosm#867, microcosm#1095). The universal childcare flag is nested under the working-parent one. A unit that claims the extended hours claims the universal hours, and any other unit claims them at the contract's universal_childcare rate, the rate conditional on not claiming the extended hours; the extended draw is unchanged. childcare_copy_take_up later re-draws the childcare flags and hours of the support and CGT copies on their own benefit units. A child of DfE age 0 or 1 (its age on 31 December of the fit's model year, the age DfE counts by) in a unit that claims the working-parent hours uses them at its age's contract rate, extended_childcare_age_0_usage or extended_childcare_age_1_usage (DfE registers far fewer of the youngest eligible children than of those aged 2 to 4, and fewer at 9 to 11 months than at age 1); a child that does not gets max_free_entitlement_hours_used 0, so the engine funds it no hours, and every other person keeps the engine's default of 30.
 - stage: frs_person_draws
   survey: Family Resources Survey 2024-25
   source: Sourced UK take-up contract rates and identity-keyed deterministic draws.
@@ -2505,6 +2506,228 @@ stages:
   - hmrc_spi_pay
   - hmrc_spi_employment_benefits
   notes: 'Writes six of policyengine-uk 2.165.0''s company car inputs (PolicyEngine/uk-autumn-budget-dashboard-2026#316) right after the SPI income stage, so every later stage reads the tape rows'' pay without the car benefits, as the engine''s employment_income excludes them, and salary_sacrifice bounds its sacrifice on that pay (María''s ruling of 31 October 2026). An FRS-channel person keeps the company car frs_spine''s carriers record, and every row of the SPI channel keeps its twin''s: the tape rows (person_is_spi_income_recipient), whatever EPB they drew, since the car never conditions it, and the channel''s other rows, which keep their twin''s pay (María''s rulings of 3 November 2026). Fuel maps from the FRS code (a hybrid is an alternative fuel; a diesel meets RDE2, which every new diesel has since January 2021), and the unknown fuels draw at Table 2C''s shares together: without electricity where the respondent reports private fuel, and with the others'' electric share raised to keep Table 2C''s at the stage''s weights. The list price is drawn within the respondent''s CARVAL band from WAS round-8 company cars'' prices grown by the engine''s CPI index from 2021, the open and unknown bands by fuel class, uniformly from no lower than minimum_scaled_list_price_gbp where a band has fewer than minimum_donor_households WAS households. CO2 is zero for an electric car; the others split between 1 to 50 g/km (hybrids first) and the bands above at Table 2A''s shares among cars that emit CO2, uniformly within each band, and a car at 1 to 50 g/km takes electric_range_miles. Availability, payments for private use and the 2020 registration flag keep the engine''s defaults, which no survey records. A tape row''s pay is the tape''s PAY + EPB + TAXTERM, so the engine''s car and fuel benefits come out of employment_income, capped at EPB + PAY within the pay the row''s employee pension contribution leaves (the SPI income stage capped that contribution at the drawn pay, and salary_sacrifice refuses one above the pay that remains; cap epb_then_pay): EPB holds them first, and the part above EPB moves from the row''s hmrc_spi_pay into its hmrc_spi_employment_benefits so its PAY + EPB + TAXTERM stays the tape''s (a cap of EPB alone dropped or shrank cars on rows that drew a little EPB, Vahid''s review of microcosm#1491); where the two do not fit together the fuel goes first, then the list price is scaled down to fit with its contributions dropped, or the car dropped below minimum_scaled_list_price_gbp (María''s rulings of 30 and 31 October 2026). A scaled price is the room over the car''s appropriate percentage, so the CO2 draw, electric_range_miles and the RDE2 diesel set it, and with it the base the 2030-31 rise acts on. The stage then prices its output again on the engine: on every tape row, pay plus the benefits must equal the pay the row brought in. A carved row''s UC gainful self-employment, which the SPI income stage set on the drawn pay, takes the root''s rule again on the carved pay. The national calibration binds Table 1''s car recipients and taxable value, the value measured at 2024-25 rates, and Table 2C''s recipients by fuel (uk_population_targets.json, María''s ruling of 3 November 2026); the vendored facts only seed the draws, and comparing the calibrated file with Tables 2A, 3A and 4 is a manual step.'
+- stage: spi_employment_shell
+  survey: Family Resources Survey 2024-25
+  source: Family Resources Survey 2024-25 adults' SOC 2020 major group, SIC 2007 division and sector, redrawn onto the SPI-drawn rows from their own incomes (microcosm#1490).
+  grain: person
+  artifacts: []
+  operations:
+  - kind: impute_spi_employment_shell
+    training_rows: frs_channel_adults_with_occupation_positive_weight
+    rows: spi_income_recipients_with_occupation_pay_or_profit
+    identity: person_id
+    pay: employment_income_or_the_tape_pay_of_spi_income_recipients
+    draw_support: groups_frs_adults_of_the_rows_status_group_hold
+    seed: 0
+    occupation:
+      target: soc2020_major_group
+      predictors:
+      - age
+      - gender
+      - region
+      - status_group
+      - employment_income
+      - self_employment_income
+      - investment_income
+      - private_pension_income
+      categorical_predictors:
+      - gender
+      - region
+      - status_group
+      arcsinh_columns:
+      - employment_income
+      - self_employment_income
+      - investment_income
+      - private_pension_income
+      arcsinh_scale: 1000.0
+      boosted:
+        learning_rate: 0.05
+        max_leaf_nodes: 15
+        min_samples_leaf: 40
+        l2_regularization: 1.0
+        early_stopping: true
+        validation_fraction: 0.2
+        n_iter_no_change: 20
+        max_iter: 500
+      logit:
+        n_knots: 6
+        degree: 3
+        knots: quantile
+        extrapolation: constant
+        penalty_c: 1.0
+        solver: lbfgs
+        max_iter: 3000
+      boosted_weight: 0.5
+    industry:
+      columns:
+      - sic_industry_division
+      - employment_sector
+      cells:
+      - soc2020_major_group
+      - status_group
+      neighbours: 50
+      rank_columns:
+      - age
+      presence_rank_columns:
+      - employment_income
+      - self_employment_income
+      - investment_income
+      - private_pension_income
+      region_scale: 0.3
+    evidence:
+      folds: 5
+      pay_band_quantiles:
+      - 0.5
+      - 0.8
+      - 0.9
+      - 0.95
+      - 0.99
+  outputs: []
+  rewrites:
+  - soc2020_major_group
+  - sic_industry_division
+  - employment_sector
+  notes: 'Runs after company_cars and before spi_housing_shell (microcosm#1490). A drawn row''s pay predictor is the tape''s PAY (hmrc_spi_pay), cash pay without benefits in kind, as FRS pay is: the car benefits sit in the tape''s EPB, which company_cars carves out of employment_income, and company_cars moves the part of them above EPB from PAY into EPB. The support copies and income band donors are whole FRS households, so a drawn row (person_is_spi_income_recipient) kept its twin''s SOC 2020 major group, SIC 2007 division and sector, all chosen with the twin''s pay, not the incomes it drew. The stage redraws the major group of every drawn row whose twin had an occupation, or which drew pay (the tape''s own PAY) or a profit; a drawn row with neither keeps NONE, and FRS rows and undrawn copies are untouched. It trains on the FRS rows'' adults aged 16 and over with an occupation and positive household weight, weighted by household weight, and conditions on age, sex, region, employment-status group (employee, self-employed, retired, other) and employment, self-employment, investment (savings interest plus dividends) and private pension income, which the drawn rows hold of their own; a drawn row''s employment income is the tape''s PAY (hmrc_spi_pay), since its employment_income also holds EPB and TAXTERM, and termination pay says nothing of an occupation. Industry, hours and qualification are the twin''s and are left out. The classifier is microcosm.fit''s CategoricalClassifier, the equal mixture of a regularised gradient-boosted classifier and a multinomial logit on spline features (arcsinh incomes), the blend that held out best on FRS 2024-25 (log loss, calibration slope and occupation shares within pay bands and status groups). Each drawn row then copies the SIC division and sector of an FRS adult with the drawn group and the same status group, chosen by household weight among the 50 nearest on age rank, income presence and ranks and region (all of the cell''s adults where it holds fewer); so occupation and industry stay a pair that occurs, and the sector is one the row''s status group holds. A row draws only among the groups FRS adults of its own status group hold, so such an adult always exists; the receipt counts the rows whose draw that restricts, which on FRS 2024-25 at full scale is none. Every draw reads uniforms keyed on person_id. The receipt records the held-out evidence on five folds dealing whole households: log loss of the model, each learner and the training folds'' class shares; the calibration slope; occupation-share gaps within pay bands and status groups; the industry copy''s section and public-sector gaps within groups; and the fit''s iterations, with counts banded by the shared disclosure rules.'
+- stage: aps_occupation
+  survey: Annual Population Survey, April 2024 - March 2025
+  source: Office for National Statistics, Annual Population Survey, April 2024 - March 2025, UK Data Service SN 9408 (End User Licence), DOI 10.5255/UKDA-SN-9408-1; local licensed person tab; the SOC 2020 minor group of the main job, or of the last job for people not in work (microcosm#1490).
+  grain: person
+  artifacts:
+  - role: aps_person_tab
+    kind: private_microdata
+    ukds_study_number: 9408
+    doi: 10.5255/UKDA-SN-9408-1
+    filename: apsp_a24m25_eul_pwta22.tab
+    sha256: 8b4327d3c331b18cf1b1e16485489645f5f57562cca0555315a520c1592b56af
+    size_bytes: 257997154
+    access: private_local_input
+    locator: caller-supplied local input
+    runtime_sha256_required: true
+  operations:
+  - kind: clean_aps_occupation_table
+    lowercase_columns: true
+    adult_age: 16
+    age_cap: 80
+    pay_weeks: 52
+    columns:
+      age: AGE
+      sex: SEX
+      region: GOVTOF
+      economic_activity: ILODEFR
+      status: INECAC05
+      main_minor_group: SC20MMN
+      last_minor_group: SC20LMN
+      weekly_pay: GRSSWK
+      person_weight: PWTA22
+      income_weight: PIWTA22
+      main_section: INDS07M
+      last_section: INDS07L
+    codes:
+      in_employment: 1
+      under_16: 26
+      employee: 1
+      sex:
+        '1': MALE
+        '2': FEMALE
+      region:
+        '1': NORTH_EAST
+        '2': NORTH_WEST
+        '3': NORTH_WEST
+        '4': YORKSHIRE
+        '5': EAST_MIDLANDS
+        '6': WEST_MIDLANDS
+        '7': EAST_OF_ENGLAND
+        '8': LONDON
+        '9': SOUTH_EAST
+        '10': SOUTH_WEST
+        '11': WALES
+        '12': SCOTLAND
+        '13': NORTHERN_IRELAND
+      status_group:
+        '1': EMPLOYEE
+        '2': SELF_EMPLOYED
+        '16': RETIRED
+        '24': RETIRED
+      other_status_group: OTHER
+      sections:
+      - A
+      - B
+      - C
+      - D
+      - E
+      - F
+      - G
+      - H
+      - I
+      - J
+      - K
+      - L
+      - M
+      - 'N'
+      - O
+      - P
+      - Q
+      - R
+      - S
+      - T
+      - U
+  - kind: impute_soc2020_sub_major_group
+    output: soc2020_sub_major_group
+    within: soc2020_major_group
+    rows: people_with_a_major_group
+    identity: person_source_id_or_spi_recipient_person_id
+    pay: employees_only_with_the_tape_pay_of_spi_income_recipients
+    seed: 0
+    predictors:
+    - age
+    - gender
+    - region
+    - status_group
+    - employment_income
+    - sic_section
+    categorical_predictors:
+    - gender
+    - region
+    - status_group
+    - sic_section
+    unseen_categories: ignore
+    arcsinh_columns:
+    - employment_income
+    arcsinh_scale: 1000.0
+    boosted:
+      learning_rate: 0.05
+      max_leaf_nodes: 15
+      min_samples_leaf: 40
+      l2_regularization: 1.0
+      early_stopping: true
+      validation_fraction: 0.2
+      n_iter_no_change: 20
+      max_iter: 500
+    logit:
+      n_knots: 6
+      degree: 3
+      knots: quantile
+      extrapolation: constant
+      penalty_c: 1.0
+      solver: lbfgs
+      max_iter: 3000
+    boosted_weight: 0.5
+    evidence:
+      folds: 5
+      grouping: person
+      pay_band_quantiles:
+      - 0.5
+      - 0.8
+      - 0.9
+      age_band_edges:
+      - 25
+      - 35
+      - 45
+      - 55
+      - 65
+  outputs:
+  - soc2020_sub_major_group
+  notes: 'Runs after spi_employment_shell, which settles every row''s SOC 2020 major group and SIC 2007 division, and before any later stage copies households (microcosm#1490). The FRS codes the major group only; the APS codes the minor group, whose first two digits are the sub-major group. The donors are the APS adults (16 and over, not under-16 status) with a minor group: the main job''s for people in employment (ILODEFR 1), the last job''s otherwise, as the FRS records the main or last job. An employee''s pay (GRSSWK, gross weekly pay in the main job) is asked in the income waves only, so employees without one leave the donors and those with one carry the income weight PIWTA22; everyone else carries the person weight PWTA22. Each major group gets its own model over its sub-major groups: microcosm.fit''s CategoricalClassifier, the equal mixture of a regularised gradient-boosted classifier and a multinomial logit on spline features, on age (capped at 80, the FRS top code), sex, region, employment-status group (employee, self-employed, retired, other), annual pay and SIC 2007 section, the predictors both surveys record alike. Pay is an employee''s on both sides: the APS asks GRSSWK of employees only, so pay is weekly pay times 52 for an employee and zero for everyone else (the few on government employment and training programmes who report one included), and on the frame it is employment income for an employee, the tape''s PAY for an SPI income recipient, and zero outside the employee status group; the logit reads it through arcsinh; a section the group''s donors never hold sets no indicator, and the receipt counts the households that held one. That blend and predictor set held out best on the APS (five stratified folds by person; adding full or part time, usual hours and qualification gained less than 0.02 nats), and the same model trained on the APS scored the FRS''s own major groups within 0.01 nats of a model trained on the FRS. A person with no major group keeps NONE. Draws read uniforms keyed on person_source_id, so a copy draws its FRS twin''s group, except for the SPI income recipients, whose incomes and occupation the SPI stages drew and who key on their own person_id. Codes verified 2026-11-04 against the deposited SN 9408 data dictionary (apsp_a24m25_eul_pwta22_ukda_data_dictionary.rtf): SC20MMN and SC20LMN are minor groups 111 to 926 with -9 and -8 missing; ILODEFR 1 is in employment; INECAC05 1 is employee, 2 self-employed, 16 and 24 retired, 26 under 16, and every other code is grouped as other; SEX 1 male, 2 female; GOVTOF 1 to 13 are the government office regions with Merseyside (3) part of the North West, and agree with GOR9DCENSUS2021 on every record; INDS07M and INDS07L 1 to 21 are SIC 2007 sections A to U; GRSSWK, PWTA22 and PIWTA22 use -9 and -8 for missing. The receipt records the donors by major group and the held-out evidence per major group and pooled: log loss of the model, each learner and the training folds'' class shares; each group''s calibration slope; and sub-major share gaps within pay bands, regions, age bands and status groups; then the FRS rows'' expected sub-major shares against the donors'' within each major group, with counts banded by the shared disclosure rules.'
 - stage: spi_housing_shell
   survey: Family Resources Survey 2024-25
   source: Family Resources Survey 2024-25 base households' housing (tenure, dwelling type, bedrooms, council tax, housing costs and the housing-linked benefit reports), imputed onto the SPI support households from their own region, composition and post-SPI incomes.
@@ -5302,7 +5525,7 @@ stages:
   rewrites:
   - frs_benunit_capital
   - would_claim_uc
-  notes: Runs after the last universal_credit_reported writer and before CGT cloning. Redraws every SPI benefit unit's capital, since the channel's incomes are SPI draws and the copied FRS answer no longer belongs to the unit (uk-data#495, microcosm#1095), from weighted base-FRS units with available capital in cells of UC reporter status by financial investment income band (interest, dividends and other investment income; property income is excluded because TOTCAPB4 counts accounts and assets) by is_uc_couple (two retained FRS claimant/partner roles, independently of legal is_married) by dependent-children band. A cell with fewer than 20 donors widens in the declared coarsening order, and reporter status is never coarsened. It then applies the monotone reported-UC OR refresh. The recorded capitals add property (uk-data#495, microcosm#1095), since policyengine-uk 2.165.1 replaces every capital source with a recorded figure of 0 or more and takes it as countable, and TOTCAPB4 has no property. WAS records the property for the household, and each means test counts the claimant's and partner's own capital (UC Regs 2013 reg 18; SPCA 2002 s.5). The household reference person's benefit unit therefore holds all of the household's property, and no other unit records any (María's ruling of 2026-10-12), since that person is the one in whose name the home is owned or rented, the best single reading of the owner. The engine shares household property over every claimant or partner instead, which puts a parent's property on an adult child's claim; a recorded figure consumes its own unit's share, so the engine's shares reach only a unit on the unavailable sentinel, and since policyengine-uk 2.136.1 such a unit takes its share whatever a recording unit beside it holds (the receipt counts any unit left there). The property counts at 90% of its value, market value less 10% for the costs of sale, less the debt secured on it, class by class and floored at zero per class (UC Regs 2013 reg 49(1); SPC Regs 2002 reg 19), as policyengine-uk values Universal Credit property capital. The was_wealth stage draws the debt on other residential and on non-residential property (microcosm#1095), and owned land carries none, as the engine has no input for it (pe-uk#1969). Universal Credit counts other residential and non-residential property, and Pension Credit counts those and owned land. A unit that reports Universal Credit keeps its receipt and records the carrier alone for Universal Credit, since DWP assessed its capital to pay it and the property is imputed without that receipt. frs_benunit_capital stays the financial carrier, and its unavailable sentinel -1 passes through to both. Both recorded figures project to later years by GDP per head, as financial capital does, while policyengine-uk 2.139.1 projects other residential property by house prices, so the other residential property in a recorded figure grows faster than the engine's own projection of it; by the OBR indices the engine carries, it grows 1.5% faster by 2025 and 2.0% by 2026 from a 2024 base.
+  notes: Runs after the last universal_credit_reported writer and before CGT cloning. Redraws every SPI benefit unit's capital, since the channel's incomes are SPI draws and the copied FRS answer no longer belongs to the unit (uk-data#495, microcosm#1095), from weighted base-FRS units with available capital in cells of UC reporter status by financial investment income band (interest, dividends and other investment income; property income is excluded because TOTCAPB4 counts accounts and assets) by is_uc_couple (two retained FRS claimant/partner roles, independently of legal is_married) by dependent-children band. A cell with fewer than 20 donors widens in the declared coarsening order, and reporter status is never coarsened. It then applies the monotone reported-UC OR refresh. The recorded capitals add property (uk-data#495, microcosm#1095), since policyengine-uk 2.174.1 replaces every capital source with a recorded figure of 0 or more and takes it as countable, and TOTCAPB4 has no property. WAS records the property for the household, and each means test counts the claimant's and partner's own capital (UC Regs 2013 reg 18; SPCA 2002 s.5). The household reference person's benefit unit therefore holds all of the household's property, and no other unit records any (María's ruling of 2026-10-12), since that person is the one in whose name the home is owned or rented, the best single reading of the owner. The engine shares household property over every claimant or partner instead, which puts a parent's property on an adult child's claim; a recorded figure consumes its own unit's share, so the engine's shares reach only a unit on the unavailable sentinel, and since policyengine-uk 2.136.1 such a unit takes its share whatever a recording unit beside it holds (the receipt counts any unit left there). The property counts at 90% of its value, market value less 10% for the costs of sale, less the debt secured on it, class by class and floored at zero per class (UC Regs 2013 reg 49(1); SPC Regs 2002 reg 19), as policyengine-uk values Universal Credit property capital. The was_wealth stage draws the debt on other residential and on non-residential property (microcosm#1095), and owned land carries none, as the engine has no input for it (pe-uk#1969). Universal Credit counts other residential and non-residential property, and Pension Credit counts those and owned land. From policyengine-uk 2.173.3 Council Tax Reduction counts the same three at the same value, from the household's own sources, except that a working-age applicant with Universal Credit takes the Universal Credit assessment. A unit that reports Universal Credit keeps its receipt and records the carrier alone for Universal Credit, since DWP assessed its capital to pay it and the property is imputed without that receipt. frs_benunit_capital stays the financial carrier, and its unavailable sentinel -1 passes through to both. Both recorded figures project to later years by GDP per head, as financial capital does, while policyengine-uk 2.139.1 projects other residential property by house prices, so the other residential property in a recorded figure grows faster than the engine's own projection of it; by the OBR indices the engine carries, it grows 1.5% faster by 2025 and 2.0% by 2026 from a 2024 base.
 - stage: uc_take_up
   survey: Family Resources Survey 2024-25
   source: 'DWP Stat-Xplore, Households on Universal Credit by family type and monthly award amount band, April to December 2025, applied to PolicyEngine-UK pre-take-up Universal Credit awards after the SPI income chain and UC capital coherence.'
@@ -5946,7 +6169,7 @@ stages:
   artifacts:
   - role: policy_parameters
     kind: versioned_parameter_tree
-    dependency: policyengine-uk>=2.165.1 via microcosm-build[uk]
+    dependency: policyengine-uk>=2.174.1 via microcosm-build[uk]
     parameters:
     - gov.hmrc.cgt.annual_exempt_amount
     instant_rule: raw dated parameter files evaluated at 1 June of the build period's tax year
@@ -6011,7 +6234,7 @@ stages:
   artifacts:
   - role: policy_parameters
     kind: versioned_parameter_tree
-    dependency: policyengine-uk>=2.165.1 via microcosm-build[uk]
+    dependency: policyengine-uk>=2.174.1 via microcosm-build[uk]
     parameters:
     - gov.hmrc.cgt.annual_exempt_amount
     - gov.hmrc.cgt.badr.lifetime_limit

@@ -97,11 +97,11 @@ staging run files described below.
 
 A build that must send telemetry runs with `MICROCOSM_TELEMETRY_REQUIRED=1`.
 Only builds that start the emitter adapter read it: the UK full build, the
-UK spine build and the US fiscal refresh build. Every other build ignores
-it, including the three registered US Modal programs
-(`build_us_acs_local_release.py`, `build_us_puf_support_base.py`,
-`build_us_acs_multispine_base.py`), which do not start the adapter yet and
-run without telemetry. A build that reads it stops with
+UK spine build, the US fiscal refresh build and the three registered US
+Modal programs (`build_us_acs_local_release.py`,
+`build_us_puf_support_base.py`, `build_us_acs_multispine_base.py`), which
+record each of their stages. Every other build ignores it. A build that
+reads it stops with
 `TelemetryRequiredError` when it starts its emitter, before doing any work,
 if the emitter cannot be prepared or is missing, its
 `microcosm-emitter version` times out or fails, it is older than the
@@ -122,7 +122,10 @@ other value stops it with a `ValueError`. Leaving the requirement off
 PolicyEngine who run Microcosm without access to the collector;
 PolicyEngine's own builds keep telemetry required. The Modal stage runner
 sets it to `1` for the stage it runs, unless the plan sets `0`, and passes
-that stage a telemetry-only collector token (see
+that stage a telemetry-only collector token. It also names the stage's
+telemetry run, `MICROCOSM_TELEMETRY_RUN_ID=<plan run_id>.<stage>`, so every
+attempt of a stage reports under one run; started by hand, the US programs
+make their own attempt ID (see
 [the Modal stage runbook](docs/us-modal-stage-runbook.md#how-a-run-works),
 item 6).
 
@@ -473,6 +476,41 @@ cut for inspection with `--no-latest --tag-name <cut-tag>`, then promote the
 reviewed cut with `--promote-line <line> --tag-name <cut-tag>`. Promotion moves
 only that line pointer; the UK repository-global `latest.json` remains frozen
 on the June 2023 release. Promotion reuses the immutable cut tag the inspect publication created (it checks the tagged manifest is byte-identical) and writes only the pointer commit, so the two-step sequence and a retry after a failed pointer commit both work. A line's registry entry is registered off the default variant until its first promotion; the default flips in a follow-up after the pointer exists.
+
+**Build folders, after a repository's switch.** A UK national, dense or
+local-area build can also be published into its own folder,
+`releases/<release>/<build>/`, through the separately installed emitter,
+whose release writer records it in the repository's `releases.json`, the
+only record of each release's builds and which one is current:
+
+```bash
+uv run microcosm-publish-release-build releases/<release> \
+  --repo-id <owner/repository> --artifact-root <candidate-dir> [--make-current]
+uv run microcosm-publish-release-build releases/<release> --promote
+```
+
+A build counts as current only when the emitter's receipt is `published` and
+names it as `current`. Each path refuses a repository in the other's layout,
+so the UK national, dense and local-area releases always have one way to
+change their current build:
+
+- `microcosm-publish-release-build` lists the repository's files and refuses,
+  before any emitter starts, while any `latest*.json` pointer file is there.
+  It also refuses with `HF_HUB_OFFLINE` or `TRANSFORMERS_OFFLINE` set, and
+  hands nothing over unless the emitter's write-access check passes.
+- `microcosm-publish-release` (and `tools/publish_release.sh`) refuses a
+  repository that has `releases.json`.
+
+So UK releases keep publishing, promoting and sending their Slack alerts
+through the pointer files, as above, until their repository's switch, one
+commit that writes `releases.json` and deletes the pointer files. Release
+alerts do not stop: the switch waits until the dashboard posts them from
+changes to `releases.json`. `microcosm.data.load` reads a release's current
+build from `releases.json` where the repository has one, and follows its
+pointer file otherwise. The UK repository's other releases, the June 2023
+release (whose pointer is `latest.json`) and `populace-uk-<year>-<tier>-k<N>`
+releases, have no publication path after its switch yet; that is open for
+the switch.
 
 The publisher uploads only the contract files, the release manifest's
 artifacts and any `--extra-file`. The US fiscal-refresh tool therefore binds

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import re
 
 import numpy as np
@@ -13,6 +14,18 @@ from microcosm.build.uk_runtime.frs_employment import (
     FRS_EMPSTATI_EMPLOYMENT_STATUS,
     derive_employment_status_from_frs,
     derive_frs_employment,
+    derive_soc2020_major_group_from_frs,
+)
+from microcosm.build.uk_runtime.occupation_constants import (
+    UK_FRS_SOC2020_MAJOR_GROUP,
+    UK_SOC2020_NO_OCCUPATION,
+)
+from microcosm.build.uk_runtime.terminal_gates import UK_ALLOWED_EXTRA_EXPORT_COLUMNS
+from test_support.paths import paths_for
+
+UK_PACKAGE = (
+    paths_for("microcosm-build").repository
+    / "packages/microcosm-build/src/microcosm/build/uk"
 )
 
 # EMPSTATI ("Adult - Employment Status - ILO definition") value labels in the
@@ -59,7 +72,7 @@ def _expected(adult, code):
     return DATA_DICTIONARY[code][1] if adult else "CHILD"
 
 
-def test_employment_maps_status_sector_and_sic() -> None:
+def test_employment_maps_status_sector_sic_and_soc() -> None:
     # Person 6 is not in adult.tab (a child-table person), so every adult.tab
     # column aligns to NaN for them.
     person = pd.DataFrame({"person_id": [1, 2, 3, 4, 5, 6]})
@@ -69,6 +82,7 @@ def test_employment_maps_status_sector_and_sic() -> None:
             "empstati": [8, 1.0, 11, 10, 9],
             "mjobsect": [1, np.nan, 2, 1, 0],
             "sic": [20, 7, np.nan, 84.9, -5],
+            "soc2020": [9000, 2000, 0, 4000.0, 1000],
         }
     )
 
@@ -91,6 +105,14 @@ def test_employment_maps_status_sector_and_sic() -> None:
         "NOT_EMPLOYED",
     ]
     assert result["sic_industry_division"].tolist() == [0, 84, 0, 7, 20, 0]
+    assert result["soc2020_major_group"].tolist() == [
+        "MANAGERS_DIRECTORS_AND_SENIOR_OFFICIALS",
+        "ADMINISTRATIVE_AND_SECRETARIAL",
+        "NONE",
+        "PROFESSIONAL",
+        "ELEMENTARY",
+        "NONE",
+    ]
 
 
 def test_other_inactive_is_not_long_term_disabled() -> None:
@@ -152,7 +174,13 @@ def test_unknown_adult_code_fails_the_build(code) -> None:
 def test_adult_record_with_unknown_or_blank_code_fails_the_stage(code) -> None:
     person = pd.DataFrame({"person_id": [1, 2]})
     adult = pd.DataFrame(
-        {"person_id": [1, 2], "empstati": [1, code], "mjobsect": [1, 1], "sic": [1, 1]}
+        {
+            "person_id": [1, 2],
+            "empstati": [1, code],
+            "mjobsect": [1, 1],
+            "sic": [1, 1],
+            "soc2020": [1000, 1000],
+        }
     )
 
     with pytest.raises(ValueError, match="EMPSTATI"):
@@ -228,7 +256,7 @@ def test_stage_marks_adults_by_adult_tab_membership(rows) -> None:
             ],
             "empstati": [code for is_adult, code in rows if is_adult],
         }
-    ).assign(mjobsect=0, sic=0)
+    ).assign(mjobsect=0, sic=0, soc2020=0)
 
     result = derive_frs_employment(person, adult.iloc[::-1])
 
@@ -237,12 +265,87 @@ def test_stage_marks_adults_by_adult_tab_membership(rows) -> None:
     ]
 
 
-@pytest.mark.parametrize("missing", ["empstati", "mjobsect", "sic"])
+@pytest.mark.parametrize("missing", ["empstati", "mjobsect", "sic", "soc2020"])
 def test_employment_missing_fail_loud_columns_raise(missing: str) -> None:
     person = pd.DataFrame({"person_id": [1]})
     adult = pd.DataFrame(
-        {"person_id": [1], "empstati": [1], "mjobsect": [1], "sic": [10]}
+        {
+            "person_id": [1],
+            "empstati": [1],
+            "mjobsect": [1],
+            "sic": [10],
+            "soc2020": [2000],
+        }
     ).drop(columns=[missing])
 
     with pytest.raises(KeyError):
         derive_frs_employment(person, adult)
+
+
+# SOC2020 ("Standard Occupational Classification 2020, major group") in the
+# UKDS FRS 2024-25 data dictionary (SN 9563, adult table): 0 undefined, then
+# the nine major groups as 1000-9000.
+SOC_CODES = [0, *range(1000, 10000, 1000)]
+
+
+@pytest.mark.parametrize("code", SOC_CODES)
+def test_each_soc_code_maps_to_its_major_group(code) -> None:
+    expected = "NONE" if code == 0 else UK_FRS_SOC2020_MAJOR_GROUP[code]
+    assert derive_soc2020_major_group_from_frs([code], [True]).tolist() == [expected]
+    # A child-table person has no occupation whatever the aligned value.
+    assert derive_soc2020_major_group_from_frs([code], [False]).tolist() == ["NONE"]
+
+
+def test_child_rows_have_no_occupation_even_when_blank() -> None:
+    result = derive_soc2020_major_group_from_frs([np.nan, -1, 1500], [False] * 3)
+    assert result.tolist() == [UK_SOC2020_NO_OCCUPATION] * 3
+
+
+@pytest.mark.parametrize("code", [-1, 1, 1500, 10000, 9000.5, np.nan, "x"])
+def test_unknown_adult_soc_code_fails_the_build(code) -> None:
+    with pytest.raises(ValueError, match="SOC2020"):
+        derive_soc2020_major_group_from_frs([1000, code], [True, True])
+
+
+def test_unknown_soc_message_names_codes_and_prints_no_count() -> None:
+    with pytest.raises(ValueError) as error:
+        derive_soc2020_major_group_from_frs([1500, 1500, np.nan], [True] * 3)
+    message = str(error.value)
+    assert "['1500', 'blank or non-numeric']" in message
+    assert _digits_outside_code_list(message.replace("SOC2020", "SOC")) == []
+
+
+def test_soc_mismatched_lengths_fail() -> None:
+    with pytest.raises(ValueError, match="same length"):
+        derive_soc2020_major_group_from_frs([1000, 2000], [True])
+
+
+@given(
+    st.lists(
+        st.one_of(
+            st.tuples(st.just(True), st.sampled_from(SOC_CODES)),
+            st.tuples(
+                st.just(False), st.one_of(st.just(np.nan), st.integers(-9, 99999))
+            ),
+        ),
+        max_size=60,
+    )
+)
+def test_each_soc_row_maps_on_its_own(rows) -> None:
+    result = derive_soc2020_major_group_from_frs(
+        [code for _, code in rows], [adult for adult, _ in rows]
+    )
+    assert result.tolist() == [
+        UK_FRS_SOC2020_MAJOR_GROUP[code] if adult else "NONE" for adult, code in rows
+    ]
+
+
+def test_gates_check_the_occupation_domain_and_export_the_column() -> None:
+    gates = json.loads((UK_PACKAGE / "gates.json").read_text(encoding="utf-8"))
+    by_id = {gate["id"]: gate for gate in gates["gates"]}
+    enum = by_id["uk_soc2020_major_group_enum_domain"]
+    assert (enum["gate"], enum["phase"]) == ("enum_domain", "terminal")
+    assert enum["parameters"]["columns"] == ["soc2020_major_group"]
+    exported = by_id["uk_export_surface"]["parameters"]["allowed_extra_columns"]
+    assert "person.soc2020_major_group" in exported
+    assert "person.soc2020_major_group" in UK_ALLOWED_EXTRA_EXPORT_COLUMNS

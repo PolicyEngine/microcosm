@@ -27,9 +27,12 @@ from microcosm.build.uk_runtime.national_frame import (
 )
 from microcosm.frame import WeightKind
 from microcosm.frame.adapters.policyengine_uk import (
+    UK_DEFAULT_SAVINGS_INCOME_PROJECTION,
     UK_ISA_INCOME_CONTRACT,
     UK_ISA_INCOME_CONTRACT_ATTR,
     UK_LEGACY_ISA_INCOME_CONTRACT,
+    UK_SAVINGS_INCOME_PROJECTION,
+    UK_SAVINGS_INCOME_PROJECTION_ATTR,
     PolicyEngineUKEngine,
     uk_isa_income_contract_from,
 )
@@ -168,12 +171,13 @@ def test_a_malformed_contract_fails_closed(tmp_path) -> None:
 def test_a_2024_frame_read_at_2025_projects_each_component(tmp_path) -> None:
     """The build's frame is FRS 2024-25, read at 2025.
 
-    Under legacy_gross the engine grows gross interest (by per-capita GDP,
-    1.0462 to 2025 on policyengine-uk 2.165.1) and takes off the stored ISA part
-    unchanged: 1,000 x 1.0462 - 300 and 300 x 0.0462 outside ISAs. The additive
-    contract grows non-ISA and ISA interest each by its own index, so the
-    ISA-only saver has no interest outside ISAs and both savers' ISA interest
-    grows (microcosm#1360).
+    The written file declares the producer's savings income rule, so the
+    engine grows savings interest by the OBR's savings income per person
+    (1.0032 to 2025 on policyengine-uk 2.174.1). Under legacy_gross it grows
+    gross interest and takes off the stored ISA part unchanged: 1,000 x 1.0032
+    - 300 and 300 x 0.0032 outside ISAs. The additive contract grows non-ISA
+    and ISA interest each by the rule, so the ISA-only saver has no interest
+    outside ISAs and both savers' ISA interest grows (microcosm#1360).
     """
 
     from policyengine_uk import Microsimulation
@@ -189,9 +193,69 @@ def test_a_2024_frame_read_at_2025_projects_each_component(tmp_path) -> None:
             for name in ("savings_interest_income", "tax_free_savings_income")
         }
     legacy, additive = readings["legacy_gross"], readings["additive"]
-    assert legacy["savings_interest_income"] == pytest.approx([746.2, 13.86], abs=0.01)
+    assert legacy["savings_interest_income"] == pytest.approx([703.2, 0.96], abs=0.01)
     assert legacy["tax_free_savings_income"] == pytest.approx([300.0, 300.0])
-    assert additive["savings_interest_income"] == pytest.approx([732.34, 0.0], abs=0.01)
+    assert additive["savings_interest_income"] == pytest.approx([702.24, 0.0], abs=0.01)
     assert additive["tax_free_savings_income"] == pytest.approx(
-        [313.86, 313.86], abs=0.01
+        [300.96, 300.96], abs=0.01
+    )
+
+
+def test_the_engine_grows_savings_income_by_the_rule_the_file_declares(
+    tmp_path,
+) -> None:
+    """policyengine-uk 2.165.2 grows savings income by the rule an H5 declares.
+
+    The producer declares the OBR's savings income per person in 2022-23 to
+    2025-26, the path the SPI income stage and the SPI Table 3.7 interest
+    targets follow (microcosm#1418). The same file declaring nothing grows by
+    GDP per head, as every file did before.
+    """
+
+    from policyengine_uk import Microsimulation
+    from policyengine_uk.data.savings_income_projection import (
+        DEFAULT_SAVINGS_INCOME_PROJECTION,
+        OBR_SAVINGS_INCOME_2022_2025,
+        SAVINGS_INCOME_PROJECTION_KEY,
+        read_savings_income_projection,
+    )
+
+    assert UK_SAVINGS_INCOME_PROJECTION_ATTR == SAVINGS_INCOME_PROJECTION_KEY
+    assert UK_SAVINGS_INCOME_PROJECTION == OBR_SAVINGS_INCOME_2022_2025
+    assert UK_DEFAULT_SAVINGS_INCOME_PROJECTION == DEFAULT_SAVINGS_INCOME_PROJECTION
+    declared = write_uk_national_frame(
+        _frame("additive", "2024"), tmp_path / "declared.h5"
+    )
+    undeclared = write_uk_national_frame(
+        _frame("additive", "2024"), tmp_path / "undeclared.h5"
+    )
+    with h5py.File(undeclared, mode="r+") as file:
+        del file.attrs[UK_SAVINGS_INCOME_PROJECTION_ATTR]
+    assert read_savings_income_projection(declared) == OBR_SAVINGS_INCOME_2022_2025
+    assert read_savings_income_projection(undeclared) is None
+
+    simulation = Microsimulation(dataset=str(declared))
+    growth = simulation.tax_benefit_system.parameters.gov.economic_assumptions
+    per_capita = growth.yoy_growth.obr.per_capita
+    obr = float(per_capita.savings_income("2025-01-01"))
+    gdp = float(per_capita.gdp("2025-01-01"))
+    assert obr != pytest.approx(gdp)
+    for dataset, rate in (
+        (simulation, obr),
+        (Microsimulation(dataset=str(undeclared)), gdp),
+    ):
+        interest = dataset.calculate("savings_interest_income", 2025).values
+        isa = dataset.calculate("tax_free_savings_income", 2025).values
+        assert interest == pytest.approx([700.0 * (1 + rate), 0.0], abs=0.01)
+        assert isa == pytest.approx([300.0 * (1 + rate)] * 2, abs=0.01)
+    # The stages' in-process projection (materialize with dataset_period)
+    # declares the producer's rule too, as the released file does.
+    projected = PolicyEngineUKEngine().materialize(
+        _frame("additive", "2024"),
+        ["savings_interest_income"],
+        2025,
+        dataset_period=2024,
+    )
+    assert np.asarray(projected["savings_interest_income"]) == pytest.approx(
+        [700.0 * (1 + obr), 0.0], abs=0.01
     )

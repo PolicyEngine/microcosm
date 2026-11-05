@@ -1598,7 +1598,9 @@ def test_main_checkpointed_all_dispatches_fresh_process_supervisor(
     monkeypatch.setattr(
         builder,
         "_run_staged_all",
-        lambda actual_args: calls.append(actual_args),
+        # The parent's telemetry run comes along; its own tests are in
+        # test_us_modal_build_programs_telemetry.py.
+        lambda actual_args, telemetry: calls.append(actual_args),
     )
 
     builder.main([])

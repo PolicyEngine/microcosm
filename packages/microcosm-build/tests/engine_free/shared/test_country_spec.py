@@ -1199,8 +1199,9 @@ class TestUKCountryPackage:
         # stage; microcosm#1334 uc_take_up after uc_capital_coherence and
         # frs_annual_income_spells after frs_hmrc_spine_leaves; microcosm#1428
         # trading_allowance_receipts last; company_cars right after
-        # hmrc_spi_income_spine (PolicyEngine/uk-autumn-budget-dashboard-2026#316).
-        assert len(spec.sources.stages) == 52
+        # hmrc_spi_income_spine (PolicyEngine/uk-autumn-budget-dashboard-2026#316);
+        # microcosm#1490 spi_employment_shell after it and aps_occupation next.
+        assert len(spec.sources.stages) == 54
         assert not {"frs_hmrc_retained_leaves", "hmrc_spi_income"}.intersection(
             stage.stage for stage in spec.sources.stages
         )
@@ -1643,6 +1644,8 @@ class TestUKGatesManifest:
             "uk_stage_isa_subscriptions_invariants",
             "uk_stage_isa_subscriptions",
             "uk_stage_company_cars_invariants",
+            "uk_stage_spi_employment_shell_fit",
+            "uk_stage_aps_occupation_fit",
             "uk_release_input_coverage",
             "uk_degenerate_release_surface",
             "uk_zero_weight_strata",
@@ -1661,6 +1664,8 @@ class TestUKGatesManifest:
             "uk_council_tax_band_domain",
             "uk_uc_deduction_combination_enum_domain",
             "uk_student_loan_plan_enum_domain",
+            "uk_soc2020_major_group_enum_domain",
+            "uk_soc2020_sub_major_group_enum_domain",
             "uk_council_tax_band_domain_terminal",
             "uk_calibration_reference_coverage",
             "uk_target_surface",
@@ -1783,6 +1788,8 @@ class TestUKGatesManifest:
             "uk_stage_isa_subscriptions_invariants",
             "uk_stage_isa_subscriptions",
             "uk_stage_company_cars_invariants",
+            "uk_stage_spi_employment_shell_fit",
+            "uk_stage_aps_occupation_fit",
             "uk_weights_audit",
             # The #970 projection fence: a seam that cannot project cannot
             # certify the candidate's sub-exempt gainers.

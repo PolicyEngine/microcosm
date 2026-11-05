@@ -246,10 +246,17 @@ SPI_DONOR_INCOME_YEAR = 2022
 #: against x1.65 in that one year) and short of its interest, and the solve
 #: met the band targets by stretching the few households that carry them.
 #: Both columns run on the projection's index from the frame's year on, named
-#: here.
+#: here. From policyengine-uk 2.165.2 that is the OBR's savings income per
+#: person, which the engine applies in the fiscal years 2022 to 2025 under the
+#: rule the producer declares (``obr_savings_income_2022_2025``), and GDP per
+#: head in other years: the path the band targets take (microcosm#1095).
 SPI_HISTORY_INDEX_DIFFERS_FROM_PROJECTION = {
-    "savings_interest_income": "gov.economic_assumptions.indices.obr.per_capita.gdp",
-    "other_investment_income": "gov.economic_assumptions.indices.obr.per_capita.gdp",
+    "savings_interest_income": (
+        "gov.economic_assumptions.indices.obr.per_capita.savings_income"
+    ),
+    "other_investment_income": (
+        "gov.economic_assumptions.indices.obr.per_capita.savings_income"
+    ),
 }
 #: The published rows the donor savings rebase reads (vendored from the
 #: Chronicle feed pin), the year they describe, and each rebased column's

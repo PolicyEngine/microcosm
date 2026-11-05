@@ -134,6 +134,7 @@ from .evidence_contract import (
     WEIGHTS_AUDIT_REF,
     WEIGHTS_AUDIT_TYPE,
     binding_relation_inputs,
+    binding_view_entities,
 )
 from .money_kernels import (
     MONEY_ANNUAL_TRANSFERS_REF,
@@ -141,7 +142,7 @@ from .money_kernels import (
     MONEY_NORMALIZE_REF,
 )
 from .reference_selection import selection_resources, validate_exemptions
-from .registry import binding_relation_dependencies
+from .registry import binding_relation_dependencies, binding_view_dependencies
 from .target_kernels import TARGET_COMPILATION_KERNELS
 from .unit_declarations import (
     CREATE_REFS,
@@ -2274,6 +2275,41 @@ def _source_codecs(spec: Mapping[str, object]) -> dict[str, object]:
     return out
 
 
+def _closure_defaults(spec: Mapping[str, object]) -> dict[tuple, str]:
+    """(frame entity, input) -> the closure entry of each defaulted root.
+
+    A defaulted root on a binding-local view's logical entity is a person
+    column, because the view reads the person table; every other entity
+    maps through ``entity_names``.
+    """
+    defaults: dict[tuple, str] = {}
+    if not (
+        _has_resource(spec, _CLOSURE_RESOURCE)
+        and _has_resource(spec, _BINDINGS_RESOURCE)
+    ):
+        return defaults
+    names = transport_resource(spec, _BINDINGS_RESOURCE).get("entity_names", {})
+    to_frame = {engine: frame for frame, engine in names.items()}
+    view_entities = {
+        (row.get("rulespec_path"), entity)
+        for row in _binding_modules(spec).values()
+        for entity in binding_view_entities(row)
+    }
+    person = _person_entity(spec) if view_entities else None
+    for entry in transport_resource(spec, _CLOSURE_RESOURCE).get("entries", ()):
+        if isinstance(entry, Mapping) and entry.get("class") == "defaulted":
+            frame_entity = (
+                person
+                if (entry.get("rulespec_path"), entry.get("entity")) in view_entities
+                else to_frame.get(entry.get("entity"))
+            )
+            defaults[(frame_entity, entry.get("input"))] = (
+                f"{entry.get('rulespec_path')} {entry.get('entity')}."
+                f"{entry.get('input')}"
+            )
+    return defaults
+
+
 def _support_roster(spec: Mapping[str, object]) -> dict[str, object]:
     """Every column the support gate covers, classed by its producer in lineage.
 
@@ -2321,19 +2357,7 @@ def _support_roster(spec: Mapping[str, object]) -> dict[str, object]:
                 _raw_transport_resource(spec, MONEY_NORMALIZATION_RESOURCE)
             )
         )
-    defaults: dict[tuple, str] = {}
-    if _has_resource(spec, _CLOSURE_RESOURCE) and _has_resource(
-        spec, _BINDINGS_RESOURCE
-    ):
-        names = transport_resource(spec, _BINDINGS_RESOURCE).get("entity_names", {})
-        to_frame = {engine: frame for frame, engine in names.items()}
-        for entry in transport_resource(spec, _CLOSURE_RESOURCE).get("entries", ()):
-            if isinstance(entry, Mapping) and entry.get("class") == "defaulted":
-                frame_entity = to_frame.get(entry.get("entity"))
-                defaults[(frame_entity, entry.get("input"))] = (
-                    f"{entry.get('rulespec_path')} {entry.get('entity')}."
-                    f"{entry.get('input')}"
-                )
+    defaults = _closure_defaults(spec)
     reserved = []
     for row in rows:
         for item in _sequence(
@@ -2510,13 +2534,13 @@ def _person_entity(spec: Mapping[str, object]) -> str:
 
 
 def _check_closure_relation_slices(spec: Mapping[str, object], graph: Graph) -> None:
-    """A closure producer's person slice carries every declared relation column.
+    """A closure producer's person slice carries every relation and view column.
 
     A ``Slice`` delivers only the columns it names, and
     ``transport.input_closure@1`` reads each relation input's physical
     ``column`` and declared ``role_column`` on the person entity. A slice that
     omits one would report a ``gap`` the frame does not have, so composition
-    refuses it by name.
+    refuses it by name. Each binding-local view's selector is required too.
     """
 
     nodes = [node for node in graph.nodes if node.kernel == INPUT_CLOSURE_REF]
@@ -2537,6 +2561,15 @@ def _check_closure_relation_slices(spec: Mapping[str, object], graph: Graph) -> 
                 for item in binding_relation_inputs(row)
                 for column in (item.column, item.role_column)
                 if column is not None
+            }
+            | {
+                view["selector"]["column"]
+                for row in (rows if isinstance(rows, list) else ())
+                if isinstance(row, Mapping) and isinstance(row.get("views"), list)
+                for view in row["views"]
+                if isinstance(view, Mapping)
+                and isinstance(view.get("selector"), Mapping)
+                and isinstance(view["selector"].get("column"), str)
             }
         )
         if not required:
@@ -4222,11 +4255,20 @@ def transport_rules_node(
 
 
 def _require_relation_inputs(spec, binding_id, inputs) -> None:
+    """A rules node slices its binding's relation and view dependencies whole.
+
+    A view binding's node must also slice, on the person entity, every input
+    the reviewed closure encodes (other than through a graph node) or
+    defaults on the view's logical entity: the engine would otherwise run
+    the view without a column the closure says the frame carries.
+    """
     document = transport_resource(spec, "axiom_rules_bindings")
     bindings = [
         row for row in document.get("bindings", ()) if row.get("id") == binding_id
     ]
-    if len(bindings) != 1 or "relations" not in bindings[0]:
+    if len(bindings) != 1 or (
+        "relations" not in bindings[0] and "views" not in bindings[0]
+    ):
         return
     declaration = _versioned_create_units(spec)
     if declaration is None:
@@ -4234,13 +4276,50 @@ def _require_relation_inputs(spec, binding_id, inputs) -> None:
             CREATE_V1_REF, transport_resource(spec, "benefit_unit_rule")
         )
     schema = declaration.entity_schema()[0]
-    dependencies = binding_relation_dependencies(
-        bindings[0], schema=schema, entity_names=document["entity_names"]
-    )
+    dependencies = {
+        *binding_relation_dependencies(
+            bindings[0], schema=schema, entity_names=document["entity_names"]
+        ),
+        *binding_view_dependencies(
+            bindings[0], schema=schema, entity_names=document["entity_names"]
+        ),
+    }
     missing = missing_relation_inputs(dependencies, inputs, schema)
     if missing:
         raise ValueError(
             f"Rules binding {binding_id!r} needs whole-table relation inputs {missing}."
+        )
+    logical = binding_view_entities(bindings[0])
+    if not logical or not _has_resource(spec, _CLOSURE_RESOURCE):
+        return
+    path = bindings[0].get("rulespec_path")
+    closed = sorted(
+        {
+            entry.get("input")
+            for entry in transport_resource(spec, _CLOSURE_RESOURCE).get("entries", ())
+            if isinstance(entry, Mapping)
+            and entry.get("rulespec_path") == path
+            and entry.get("entity") in logical
+            and (
+                entry.get("class") == "defaulted"
+                or (
+                    entry.get("class") == "encoded"
+                    and entry.get("encoded_by") != "graph_node"
+                )
+            )
+        }
+    )
+    sliced = {
+        column
+        for item in inputs
+        if item.entity == schema.person_entity
+        for column in item.columns
+    }
+    absent = [name for name in closed if name not in sliced]
+    if absent:
+        raise ValueError(
+            f"Rules binding {binding_id!r} runs views on {sorted(logical)} whose "
+            f"closed inputs {absent} its {schema.person_entity!r} slice omits."
         )
 
 

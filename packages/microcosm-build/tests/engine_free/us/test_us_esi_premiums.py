@@ -1356,8 +1356,9 @@ class TestAnchorFeedCheck:
         ) == ("new", 12)
 
     def test_a_later_report_may_relabel_rows_and_add_none(self) -> None:
-        # As microcosm#1343's re-pin did: label changes, the record-set hash
-        # that covers them, and no added row.
+        # As microcosm#1343's re-pin did: label changes in two dimensions, in
+        # different record sets, with a group-by label and record-set hash
+        # change in each record set, and no added row.
         later = self._later_report(
             added_keys=[],
             changed_fields={
@@ -1365,8 +1366,18 @@ class TestAnchorFeedCheck:
                     "rows": 1,
                     "by_record_set": {"x": 1},
                 },
-                "layout/groupby_value_label": {"rows": 1, "by_record_set": {"x": 1}},
-                "layout/record_set_spec_hash": {"rows": 2, "by_record_set": {"x": 2}},
+                "dimension_value_labels/us:statutes/26/62#adjusted_gross_income/all": {
+                    "rows": 1,
+                    "by_record_set": {"y": 1},
+                },
+                "layout/groupby_value_label": {
+                    "rows": 2,
+                    "by_record_set": {"x": 1, "y": 1},
+                },
+                "layout/record_set_spec_hash": {
+                    "rows": 3,
+                    "by_record_set": {"x": 2, "y": 1},
+                },
             },
         )
         assert _follow_later_repin_report(
@@ -1375,6 +1386,26 @@ class TestAnchorFeedCheck:
             feed_rows=10,
             anchor_record_sets=self._ANCHORS,
         ) == ("new", 10)
+
+    def test_a_later_report_may_add_rows_from_a_source_with_its_own_namespace(
+        self,
+    ) -> None:
+        # A source whose namespace is not its name and a dot, a row that
+        # shares the anchors' namespace outside their record sets, and a new
+        # feed with its own digest.
+        later = self._later_report(added_keys=["k1"])
+        later["feeds"]["new"]["sha256"] = "newer"
+        added = self._added([("k1", "bea", "bea_nipa.cy2024.total_wages_salaries")])
+        added["new_feed"]["sha256"] = "newer"
+        assert _follow_later_repin_report(
+            later,
+            feed_sha256="old",
+            feed_rows=10,
+            anchor_record_sets=self._ANCHORS,
+            added=added,
+            declared_source="bea",
+            declared_namespace="bea_nipa.",
+        ) == ("newer", 11)
 
     # Each refusing case below names the check that must refuse it, so a check
     # moved ahead of another fails the case it takes over. A check that reads
@@ -1621,6 +1652,40 @@ class TestAnchorFeedCheck:
                 )
                 for anchor in sorted(_ANCHORS)
             ),
+            # A hash change, then a dimension label change, in a B4923C record
+            # set, between two record sets outside the anchors, in the second
+            # of three changed fields: one case for each anchor and field,
+            # which the default arguments bind.
+            *(
+                (
+                    lambda r, fields=fields, anchor=anchor: r["rows"][
+                        "changed_fields"
+                    ].update(
+                        {
+                            fields[0]: {"rows": 1, "by_record_set": {"x": 1}},
+                            fields[1]: {
+                                "rows": 3,
+                                "by_record_set": {"x": 1, anchor: 1, "z": 1},
+                            },
+                            fields[2]: {"rows": 1, "by_record_set": {"z": 1}},
+                        }
+                    ),
+                    "changes a B4923C record set",
+                )
+                for anchor in sorted(_ANCHORS)
+                for fields in (
+                    (
+                        "layout/groupby_value_label",
+                        "layout/record_set_spec_hash",
+                        "dimension_value_labels/age/85_plus",
+                    ),
+                    (
+                        "layout/record_set_spec_hash",
+                        "dimension_value_labels/age/85_plus",
+                        "layout/groupby_value_label",
+                    ),
+                )
+            ),
         ],
         ids=[
             "dropped-row",
@@ -1634,6 +1699,12 @@ class TestAnchorFeedCheck:
             "anchor-label-cy2023",
             "anchor-label-cy2024",
             "anchor-label-cy2025",
+            "anchor-hash-cy2023",
+            "anchor-dimension-label-cy2023",
+            "anchor-hash-cy2024",
+            "anchor-dimension-label-cy2024",
+            "anchor-hash-cy2025",
+            "anchor-dimension-label-cy2025",
         ],
     )
     def test_a_later_report_still_refuses_dropped_or_changed_rows(

@@ -71,6 +71,11 @@ E7_STAGE_NAMES = [
     # the income stage writes it, so every later stage reads pay without them
     # (PolicyEngine/uk-autumn-budget-dashboard-2026#316).
     "company_cars",
+    # The employment shell redraws the drawn rows' occupation from that carved
+    # pay, before the housing shell, and the sub-major group is drawn within
+    # the major group it settles (microcosm#1490).
+    "spi_employment_shell",
+    "aps_occupation",
 ]
 HOUSING_SHELL_STAGE_NAMES = [
     "spi_housing_shell",
@@ -243,6 +248,18 @@ class TestUKSourceStagesManifest:
             assert "age" not in stage.outputs, stage.stage
             assert "age" not in stage.rewrites, stage.stage
 
+    def test_no_stage_after_aps_occupation_writes_an_occupation_group(self) -> None:
+        # aps_occupation checks that the sub-major group nests in the major
+        # group; that holds on the shipped frame only while no later stage
+        # writes either (microcosm#1490). The clones copy whole rows.
+        manifest = SourceManifest.from_mapping(_load_json(CANONICAL_SOURCE_STAGES))
+        stages = list(manifest.stages)
+        names = [stage.stage for stage in stages]
+        for stage in stages[names.index("aps_occupation") + 1 :]:
+            for column in ("soc2020_major_group", "soc2020_sub_major_group"):
+                assert column not in stage.outputs, stage.stage
+                assert column not in stage.rewrites, stage.stage
+
     def test_e8_block_is_final_and_all_stages_are_canonical(self) -> None:
         canonical = _load_json(CANONICAL_SOURCE_STAGES)
         names = [stage["stage"] for stage in canonical["stages"]]
@@ -318,6 +335,8 @@ class TestUKSourceStagesManifest:
                     "isa_subscriptions": _identity,
                     "trading_allowance_receipts": _identity,
                     "company_cars": _identity,
+                    "spi_employment_shell": _identity,
+                    "aps_occupation": _identity,
                     "childcare_copy_take_up": _identity,
                     "age_tail": _identity,
                     "frs_relationships": _identity,

@@ -18,11 +18,13 @@ never narrows a small group by difference. No study the build reads sets a
 higher floor. The UK Data Service catalogue entries were read for conditions
 beyond the End User Licence (microcosm#1278): the FRS 2024-25 (SN 9563) has
 none (checked 2026-10-16), and neither have the LCFS, ETB, WAS and NTS studies
-(checked 2026-10-14). The SPI 2022-23 Public Use Tape (SN 9422, checked
-2026-10-16) adds two: no attempt may be made to attribute a record to a named
-individual, and material that includes analyses of the tape goes to HMRC at
-least ten working days before it is distributed or published. The move to
-three changes neither. The build marks the outputs that rest on the tape
+(checked 2026-10-14) or the APS, April 2024 - March 2025 (SN 9408, checked
+2026-11-04), whose access and copyright terms read as the FRS's. The SPI
+2022-23 Public Use Tape (SN 9422, checked 2026-10-16) adds two: no attempt may
+be made to attribute a record to a named individual, and material that
+includes analyses of the tape goes to HMRC at least ten working days before it
+is distributed or published. The move to three changes neither. The build
+marks the outputs that rest on the tape
 (:mod:`microcosm.build.uk_runtime.spi_dependency`).
 """
 

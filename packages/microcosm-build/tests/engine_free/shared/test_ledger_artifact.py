@@ -16,19 +16,37 @@ from pathlib import Path
 import pytest
 from hypothesis import given, settings
 from hypothesis import strategies as st
+from jsonschema import Draft202012Validator
 
+from microcosm.build.chronicle_epoch import (
+    CHRONICLE_EPOCH,
+    consumer_fact_schema_epoch,
+    is_accepted_consumer_fact_schema_version,
+)
 from microcosm.build.ledger_artifact import (
     CONSUMER_ARTIFACT_SCHEMA_VERSION,
     ChronicleFeedPinMismatchError,
     LedgerConsumerArtifact,
     LexicalFloat,
     add_ledger_artifact_args,
+    chronicle_feed_identity,
     load_ledger_consumer_artifact,
     resolve_ledger_artifact,
     validate_chronicle_feed_pin,
 )
 from microcosm.graph.canonical import canonical_json
-from test_support.microcosm_build.chronicle_feed import write_pinned_artifact
+from test_support.microcosm_build.chronicle_feed import (
+    MALFORMED_PACKAGE_DIMENSION_VALUE_LABELS,
+    PACKAGE_DIMENSION_VALUE_LABELS,
+    chronicle_v4_fact_rows,
+    chronicle_v4_schema,
+    chronicle_v4_schema_sha256,
+    chronicle_v5_fact_rows,
+    chronicle_v5_schema,
+    chronicle_v5_schema_sha256,
+    chronicle_v5_schema_version,
+    write_pinned_artifact,
+)
 from test_support.paths import paths_for
 
 
@@ -366,6 +384,338 @@ def test_complete_feed_pin_accepts_exact_match(tmp_path):
     assert artifact.facts_sha256 == pin["facts_sha256"]
     assert artifact.manifest_sha256 == pin["manifest_sha256"]
     assert artifact.fact_row_count == pin["fact_row_count"]
+
+
+#: sha256 of Chronicle's ``consumer_fact.v5.schema.json`` at 44eebe037, the
+#: digest chronicle#377 publishes for the v5 contract.
+_CHRONICLE_V5_SCHEMA_SHA256 = (
+    "acd33a091cd8d192be5d264e3e94c13e00afb6fd1972e57d4576ac55a54f6970"
+)
+#: The v4 schema digest the UK and Belgian feed pins carry (NZ is on v5, #1507).
+_CHRONICLE_V4_SCHEMA_SHA256 = (
+    "d953306d6f01fbc64db4372d0262d3012ee590269f8a25b276b18dca0626c6a0"
+)
+#: Every per-row contract Chronicle has issued, oldest first, as Chronicle's
+#: ``CONSUMER_FACT_ROW_CONTRACTS`` lists them at 44eebe037.
+_DECLARED_ROW_CONTRACTS = (
+    "ledger.consumer_fact.v1",
+    "chronicle.consumer_fact.v2",
+    "chronicle.consumer_fact.v3",
+    "chronicle.consumer_fact.v4",
+    "chronicle.consumer_fact.v5",
+)
+#: A row contract nobody has declared: the next version Chronicle might issue.
+_UNDECLARED_ROW_CONTRACT = "chronicle.consumer_fact.v6"
+
+
+def test_chronicle_v5_fixture_is_valid_under_chronicle_v5_schema():
+    """The v5 fixture is Chronicle's, checked against Chronicle's own schema.
+
+    The malformed ``package_dimension_value_labels`` values the target
+    compiler refuses are the ones this schema refuses, so Microcosm's check
+    and Chronicle's contract agree.
+    """
+    schema = chronicle_v5_schema()
+    Draft202012Validator.check_schema(schema)
+    validator = Draft202012Validator(schema)
+    rows = chronicle_v5_fact_rows()
+
+    assert chronicle_v5_schema_sha256() == _CHRONICLE_V5_SCHEMA_SHA256
+    assert len(rows) == 3
+    for row in rows:
+        assert row["schema_version"] == chronicle_v5_schema_version()
+        assert row[PACKAGE_DIMENSION_VALUE_LABELS]
+        validator.validate(row)
+    for case, malformed in MALFORMED_PACKAGE_DIMENSION_VALUE_LABELS:
+        row = deepcopy(rows[0])
+        row[PACKAGE_DIMENSION_VALUE_LABELS] = malformed
+        assert not validator.is_valid(row), case
+
+
+def test_chronicle_v4_fixture_is_valid_under_chronicle_v4_schema():
+    """The v4 fixture is Chronicle's own v4 rows, from just before chronicle#377.
+
+    They carry v4's label for the AGI value ``all``, the package's "All
+    returns", and v4's schema refuses the v5-only field.
+    """
+    schema = chronicle_v4_schema()
+    Draft202012Validator.check_schema(schema)
+    validator = Draft202012Validator(schema)
+    rows = chronicle_v4_fact_rows()
+
+    assert chronicle_v4_schema_sha256() == _CHRONICLE_V4_SCHEMA_SHA256
+    assert len(rows) == 3
+    for row in rows:
+        assert row["schema_version"] == "chronicle.consumer_fact.v4"
+        assert PACKAGE_DIMENSION_VALUE_LABELS not in row
+        validator.validate(row)
+    with_v5_field = {
+        **rows[0],
+        PACKAGE_DIMENSION_VALUE_LABELS: chronicle_v5_fact_rows()[0][
+            PACKAGE_DIMENSION_VALUE_LABELS
+        ],
+    }
+    assert not validator.is_valid(with_v5_field)
+
+
+def test_chronicle_v5_artifact_loads_under_its_feed_pin(tmp_path):
+    """A v5 artifact loads under a full feed pin, and its rows stay as published.
+
+    The loader keeps ``package_dimension_value_labels`` on the parsed rows,
+    because rows are carried exactly as the hashed file holds them; no
+    Microcosm reader takes a label from it.
+    """
+    rows = chronicle_v5_fact_rows()
+    artifact_dir, pin = write_pinned_artifact(
+        tmp_path / "artifact",
+        rows,
+        consumer_fact_schema_sha256=chronicle_v5_schema_sha256(),
+    )
+    v5 = chronicle_v5_schema_version()
+
+    artifact = load_ledger_consumer_artifact(artifact_dir, feed_pin=pin)
+
+    validate_chronicle_feed_pin(artifact, pin)
+    assert pin["consumer_fact_schema_versions"] == [v5]
+    assert pin["consumer_fact_schema_sha256"] == _CHRONICLE_V5_SCHEMA_SHA256
+    assert artifact.fact_schema_versions == (v5,)
+    assert artifact.provenance()["fact_schema_versions"] == [v5]
+    assert is_accepted_consumer_fact_schema_version(v5)
+    assert consumer_fact_schema_epoch(v5) == CHRONICLE_EPOCH
+    assert list(artifact.facts) == rows
+    assert all(row[PACKAGE_DIMENSION_VALUE_LABELS] for row in artifact.facts)
+
+
+def test_chronicle_v4_artifact_still_loads_under_its_feed_pin(tmp_path):
+    rows = chronicle_v4_fact_rows()
+    artifact_dir, pin = write_pinned_artifact(
+        tmp_path / "artifact",
+        rows,
+        consumer_fact_schema_sha256=chronicle_v4_schema_sha256(),
+    )
+
+    artifact = load_ledger_consumer_artifact(artifact_dir, feed_pin=pin)
+
+    validate_chronicle_feed_pin(artifact, pin)
+    assert artifact.fact_schema_versions == ("chronicle.consumer_fact.v4",)
+    assert is_accepted_consumer_fact_schema_version("chronicle.consumer_fact.v4")
+    assert list(artifact.facts) == rows
+    assert not any(PACKAGE_DIMENSION_VALUE_LABELS in row for row in artifact.facts)
+
+
+@pytest.mark.parametrize("row_contract", _DECLARED_ROW_CONTRACTS)
+def test_feed_pin_accepts_each_declared_row_contract(tmp_path, row_contract):
+    artifact_dir, pin = write_pinned_artifact(
+        tmp_path / "artifact", [_fact_row(schema_version=row_contract)]
+    )
+
+    artifact = load_ledger_consumer_artifact(artifact_dir, feed_pin=pin)
+
+    validate_chronicle_feed_pin(artifact, pin)
+    assert artifact.fact_schema_versions == (row_contract,)
+
+
+def _assert_undeclared_refusal(message: str, undeclared: list[str]) -> None:
+    assert repr(undeclared) in message
+    assert "microcosm.build.chronicle_epoch" in message
+    for declared in _DECLARED_ROW_CONTRACTS:
+        assert declared in message
+
+
+def test_feed_pin_refuses_an_undeclared_row_contract(tmp_path):
+    """A pin and an artifact that agree on an undeclared row contract are refused.
+
+    The exact comparison passes, because both name the same version; the
+    accepted-contract check then refuses it, naming the version and where to
+    declare it.
+    """
+    artifact_dir, pin = write_pinned_artifact(
+        tmp_path / "artifact", [_fact_row(schema_version=_UNDECLARED_ROW_CONTRACT)]
+    )
+    assert pin["consumer_fact_schema_versions"] == [_UNDECLARED_ROW_CONTRACT]
+    artifact = load_ledger_consumer_artifact(artifact_dir)
+
+    with pytest.raises(ValueError) as direct:
+        validate_chronicle_feed_pin(artifact, pin)
+    with pytest.raises(ValueError) as loaded:
+        load_ledger_consumer_artifact(artifact_dir, feed_pin=pin)
+
+    for refusal in (direct.value, loaded.value):
+        assert not isinstance(refusal, ChronicleFeedPinMismatchError)
+        _assert_undeclared_refusal(str(refusal), [_UNDECLARED_ROW_CONTRACT])
+
+
+def test_feed_pin_refuses_rows_that_mix_in_an_undeclared_row_contract(tmp_path):
+    artifact_dir, pin = write_pinned_artifact(
+        tmp_path / "artifact",
+        [
+            _fact_row(schema_version="chronicle.consumer_fact.v4"),
+            _fact_row(
+                aggregate_fact_key="ledger.aggregate_fact.v2:def456",
+                schema_version=_UNDECLARED_ROW_CONTRACT,
+            ),
+        ],
+    )
+    assert pin["consumer_fact_schema_versions"] == [
+        "chronicle.consumer_fact.v4",
+        _UNDECLARED_ROW_CONTRACT,
+    ]
+
+    with pytest.raises(ValueError) as refusal:
+        load_ledger_consumer_artifact(artifact_dir, feed_pin=pin)
+
+    _assert_undeclared_refusal(str(refusal.value), [_UNDECLARED_ROW_CONTRACT])
+
+
+@pytest.mark.parametrize(
+    ("versions", "undeclared"),
+    [
+        ([_UNDECLARED_ROW_CONTRACT], [_UNDECLARED_ROW_CONTRACT]),
+        (
+            ["chronicle.consumer_fact.v5", _UNDECLARED_ROW_CONTRACT],
+            [_UNDECLARED_ROW_CONTRACT],
+        ),
+    ],
+    ids=["undeclared_only", "declared_and_undeclared"],
+)
+def test_feed_identity_refuses_an_undeclared_row_contract(
+    tmp_path, versions, undeclared
+):
+    """Factor declarations and restated identities go through the same check.
+
+    ``chronicle_feed_identity`` selects the reviewed fields of a feed pin for
+    reference factors, money normalization and the transport composer.
+    """
+    _, pin = write_pinned_artifact(tmp_path / "artifact", [_fact_row()])
+    pin["source_commit"] = "c" * 40
+    assert chronicle_feed_identity(pin)["consumer_fact_schema_versions"] == [
+        "chronicle.consumer_fact.v4"
+    ]
+
+    with pytest.raises(ValueError) as refusal:
+        chronicle_feed_identity({**pin, "consumer_fact_schema_versions": versions})
+
+    _assert_undeclared_refusal(str(refusal.value), undeclared)
+
+
+def test_feed_identity_refuses_a_foreign_row_contract_without_advising_a_declaration(
+    tmp_path,
+):
+    """An id outside Chronicle's namespaces is not a row contract to declare.
+
+    ``_declare`` refuses any namespace outside ``CHRONICLE_NAMESPACES``, so the
+    message must not tell the reader to declare ``arch.consumer_fact.v1``.
+    """
+    _, pin = write_pinned_artifact(tmp_path / "artifact", [_fact_row()])
+    pin["source_commit"] = "c" * 40
+
+    with pytest.raises(ValueError) as refusal:
+        chronicle_feed_identity(
+            {
+                **pin,
+                "consumer_fact_schema_versions": [
+                    "arch.consumer_fact.v1",
+                    _UNDECLARED_ROW_CONTRACT,
+                ],
+            }
+        )
+
+    message = str(refusal.value)
+    assert "['arch.consumer_fact.v1'] is not a Chronicle row contract" in message
+    assert "cannot declare it" in message
+    assert f"declare {[_UNDECLARED_ROW_CONTRACT]!r}" in message
+    for declared in _DECLARED_ROW_CONTRACTS:
+        assert declared in message
+
+
+def test_feed_pin_refuses_rows_carrying_a_row_contract_the_pin_does_not_list(
+    tmp_path,
+):
+    """Rows carrying a declared row contract the pin's list leaves out are refused."""
+    artifact_dir, pin = write_pinned_artifact(
+        tmp_path / "artifact",
+        [
+            _fact_row(schema_version="chronicle.consumer_fact.v4"),
+            _fact_row(
+                aggregate_fact_key="ledger.aggregate_fact.v2:def456",
+                schema_version="chronicle.consumer_fact.v5",
+            ),
+        ],
+    )
+    pinned_v4 = {**pin, "consumer_fact_schema_versions": ["chronicle.consumer_fact.v4"]}
+
+    with pytest.raises(ChronicleFeedPinMismatchError) as refusal:
+        load_ledger_consumer_artifact(artifact_dir, feed_pin=pinned_v4)
+
+    _assert_pin_mismatch(
+        refusal.value,
+        "consumer_fact_schema_versions",
+        ["chronicle.consumer_fact.v4"],
+        ["chronicle.consumer_fact.v4", "chronicle.consumer_fact.v5"],
+    )
+
+
+def test_feed_identity_refuses_a_row_contract_list_that_is_not_a_list(tmp_path):
+    _, pin = write_pinned_artifact(tmp_path / "artifact", [_fact_row()])
+    pin["source_commit"] = "c" * 40
+
+    with pytest.raises(
+        ValueError, match="consumer_fact_schema_versions must be a list"
+    ):
+        chronicle_feed_identity(
+            {**pin, "consumer_fact_schema_versions": "chronicle.consumer_fact.v4"}
+        )
+
+
+def _committed_feed_identities():
+    """``(resource, path, object)`` for each committed object naming row contracts.
+
+    Every JSON resource of every workspace package, at any depth.
+    """
+    packages = paths_for("microcosm-build").repository / "packages"
+    found = []
+
+    def walk(node, resource, location):
+        if isinstance(node, dict):
+            if "consumer_fact_schema_versions" in node:
+                found.append((resource, location, node))
+            for key, child in node.items():
+                walk(child, resource, f"{location}/{key}")
+        elif isinstance(node, list):
+            for index, child in enumerate(node):
+                walk(child, resource, f"{location}[{index}]")
+
+    for path in sorted(packages.glob("*/src/**/*.json")):
+        resource = path.relative_to(packages).as_posix()
+        walk(json.loads(path.read_text()), resource, "")
+    return found
+
+
+def test_committed_feed_pins_and_restated_identities_name_declared_row_contracts():
+    """The UK, US, NZ and BE pins, and every resource restating one, still pass."""
+    identities = _committed_feed_identities()
+    resources = {resource for resource, _location, _identity in identities}
+
+    build = "microcosm-build/src/microcosm/build"
+    assert {
+        f"{build}/uk/chronicle_feed.json",
+        f"{build}/us/chronicle_feed.json",
+        f"{build}/nz/chronicle_feed.json",
+        f"{build}/be/chronicle_feed.json",
+        f"{build}/be/reference_inventory.json",
+        f"{build}/be/reference_aging.json",
+        f"{build}/nz/reference_inventory.json",
+        f"{build}/nz/reference_aging.json",
+        f"{build}/nz/msd_pre_activation_reconciliation.json",
+    } <= resources
+    for resource, location, identity in identities:
+        versions = identity["consumer_fact_schema_versions"]
+        assert all(
+            is_accepted_consumer_fact_schema_version(version) for version in versions
+        ), (resource, location)
+        assert chronicle_feed_identity(identity)["consumer_fact_schema_versions"] == (
+            versions
+        ), (resource, location)
 
 
 def test_feed_pin_rejects_changed_facts_with_self_consistent_manifest(tmp_path):
