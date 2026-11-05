@@ -143,12 +143,12 @@ SOURCES: dict[str, dict[str, str | int]] = {
         "product": "NIMDM 2017 results by Super Output Area",
     },
 }
-#: The commit of chronicle#413 these registrations were read at. Re-pinned to
-#: the merge commit once chronicle#413 lands; the file digests do not move.
+#: The Chronicle commit that registers these files: chronicle#413's merge. The
+#: supports were first built at its head; the file digests did not move.
 CHRONICLE = {
     "pull_request": "PolicyEngine/chronicle#413",
-    "commit": "df468b8911efc54701326c5b528cfbf7650f92b5",
-    "merged": False,
+    "commit": "c51f40d2bdaa66315dd63f334ede5790a8891e27",
+    "merged": True,
 }
 ISSUES = {
     "umbrella": "PolicyEngine/microcosm#931",
@@ -171,7 +171,7 @@ NOTES = (
     "SIMD 2020v2, NIMDM 2017): the FRS 2024-25 variables IMDE, IMDW, IMDS and IMDN "
     "carry no change note from 2023-24, which predates the 2025 indices, and on an "
     "internal comparison England's FRS decile shares by region fit IoD 2019 better than "
-    "IoD 2025, as the 2023-24 FRS does. DWP has been asked to confirm.",
+    "IoD 2025, as the 2023-24 FRS does. The vintage is still to be confirmed with DWP.",
     "An area's decile is the one most of its live small-user postcodes carry in the May "
     "2026 NSPL (oa21cd: the 2021 output area in England and Wales, the 2022 output area "
     "in Scotland, the 2021 data zone in Northern Ireland). Ranks are within-nation only.",

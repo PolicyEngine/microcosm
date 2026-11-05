@@ -2,8 +2,8 @@
   "band_weight_scale": 1000000,
   "built_on": "2026-11-05",
   "chronicle": {
-    "commit": "df468b8911efc54701326c5b528cfbf7650f92b5",
-    "merged": false,
+    "commit": "c51f40d2bdaa66315dd63f334ede5790a8891e27",
+    "merged": true,
     "pull_request": "PolicyEngine/chronicle#413"
   },
   "issues": {
@@ -12,7 +12,7 @@
   },
   "kind": "uk_atomic_area_conditioned_supports_provenance",
   "notes": [
-    "imd_decile is the 2019 vintage of each nation's index (IoD 2019, WIMD 2019, SIMD 2020v2, NIMDM 2017): the FRS 2024-25 variables IMDE, IMDW, IMDS and IMDN carry no change note from 2023-24, which predates the 2025 indices, and on an internal comparison England's FRS decile shares by region fit IoD 2019 better than IoD 2025, as the 2023-24 FRS does. DWP has been asked to confirm.",
+    "imd_decile is the 2019 vintage of each nation's index (IoD 2019, WIMD 2019, SIMD 2020v2, NIMDM 2017): the FRS 2024-25 variables IMDE, IMDW, IMDS and IMDN carry no change note from 2023-24, which predates the 2025 indices, and on an internal comparison England's FRS decile shares by region fit IoD 2019 better than IoD 2025, as the 2023-24 FRS does. The vintage is still to be confirmed with DWP.",
     "An area's decile is the one most of its live small-user postcodes carry in the May 2026 NSPL (oa21cd: the 2021 output area in England and Wales, the 2022 output area in Scotland, the 2021 data zone in Northern Ireland). Ranks are within-nation only.",
     "Northern Ireland's SOAs (2001) do not nest in its 2021 data zones, so many data zones' postcodes span deciles; the modal decile is recorded with relation inferred_modal and the counts below.",
     "England and Wales band weights read each area's LSOA mix as committed (shares to 6 dp ending at exactly 1), so households x share x 10^6 is exact. Scotland's read its council's chargeable dwellings, rounded half to even per band."
