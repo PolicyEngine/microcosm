@@ -487,6 +487,9 @@ REVIEWED_PLAIN_COLUMN_POPULATION_VARIABLES = frozenset(
         "eldest_adult_age",
         "employment_income",
         "employment_sector",
+        # Stored inputs the occupation rows filter on (microcosm#1490): who is
+        # in work and the SOC 2020 major group, which nothing uprates.
+        "employment_status",
         "esa",
         "esa_contrib",
         "esa_income",
@@ -519,6 +522,7 @@ REVIEWED_PLAIN_COLUMN_POPULATION_VARIABLES = frozenset(
         # (microcosm#1095).
         "savings_interest_income_outside_isas",
         "self_employment_income_after_loss_relief",
+        "soc2020_major_group",
         "state_pension",
         "state_pension_type",
         "student_loan_plan",

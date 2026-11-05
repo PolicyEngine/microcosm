@@ -1,11 +1,11 @@
 {
   "source_fact_feed": "chronicle-uk-6475380-consumer-facts",
   "target_period": 2025,
-  "candidate_count": 1462,
-  "contract_target_count": 405,
-  "active_reference_count": 1425,
+  "candidate_count": 1570,
+  "contract_target_count": 414,
+  "active_reference_count": 1533,
   "status_counts": {
-    "active": 1425,
+    "active": 1533,
     "signed_excluded": 37
   },
   "geography_pins": {
@@ -4682,6 +4682,474 @@
     "hmrc.child_benefit.hicbc_revenue": {
       "geography_level": "country",
       "geography_id": "K02000001"
+    },
+    "ons.occupation.managers_directors_and_senior_officials_by_region": {
+      "geography_fanout": [
+        {
+          "geography_level": "region",
+          "geography_id": "E12000001"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000002"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000003"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000004"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000005"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000006"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000007"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000008"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000009"
+        },
+        {
+          "geography_level": "country",
+          "geography_id": "W92000004"
+        },
+        {
+          "geography_level": "country",
+          "geography_id": "S92000003"
+        },
+        {
+          "geography_level": "country",
+          "geography_id": "N92000002"
+        }
+      ]
+    },
+    "ons.occupation.professional_by_region": {
+      "geography_fanout": [
+        {
+          "geography_level": "region",
+          "geography_id": "E12000001"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000002"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000003"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000004"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000005"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000006"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000007"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000008"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000009"
+        },
+        {
+          "geography_level": "country",
+          "geography_id": "W92000004"
+        },
+        {
+          "geography_level": "country",
+          "geography_id": "S92000003"
+        },
+        {
+          "geography_level": "country",
+          "geography_id": "N92000002"
+        }
+      ]
+    },
+    "ons.occupation.associate_professional_by_region": {
+      "geography_fanout": [
+        {
+          "geography_level": "region",
+          "geography_id": "E12000001"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000002"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000003"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000004"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000005"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000006"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000007"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000008"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000009"
+        },
+        {
+          "geography_level": "country",
+          "geography_id": "W92000004"
+        },
+        {
+          "geography_level": "country",
+          "geography_id": "S92000003"
+        },
+        {
+          "geography_level": "country",
+          "geography_id": "N92000002"
+        }
+      ]
+    },
+    "ons.occupation.administrative_and_secretarial_by_region": {
+      "geography_fanout": [
+        {
+          "geography_level": "region",
+          "geography_id": "E12000001"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000002"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000003"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000004"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000005"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000006"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000007"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000008"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000009"
+        },
+        {
+          "geography_level": "country",
+          "geography_id": "W92000004"
+        },
+        {
+          "geography_level": "country",
+          "geography_id": "S92000003"
+        },
+        {
+          "geography_level": "country",
+          "geography_id": "N92000002"
+        }
+      ]
+    },
+    "ons.occupation.skilled_trades_by_region": {
+      "geography_fanout": [
+        {
+          "geography_level": "region",
+          "geography_id": "E12000001"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000002"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000003"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000004"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000005"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000006"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000007"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000008"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000009"
+        },
+        {
+          "geography_level": "country",
+          "geography_id": "W92000004"
+        },
+        {
+          "geography_level": "country",
+          "geography_id": "S92000003"
+        },
+        {
+          "geography_level": "country",
+          "geography_id": "N92000002"
+        }
+      ]
+    },
+    "ons.occupation.caring_leisure_and_other_service_by_region": {
+      "geography_fanout": [
+        {
+          "geography_level": "region",
+          "geography_id": "E12000001"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000002"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000003"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000004"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000005"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000006"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000007"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000008"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000009"
+        },
+        {
+          "geography_level": "country",
+          "geography_id": "W92000004"
+        },
+        {
+          "geography_level": "country",
+          "geography_id": "S92000003"
+        },
+        {
+          "geography_level": "country",
+          "geography_id": "N92000002"
+        }
+      ]
+    },
+    "ons.occupation.sales_and_customer_service_by_region": {
+      "geography_fanout": [
+        {
+          "geography_level": "region",
+          "geography_id": "E12000001"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000002"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000003"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000004"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000005"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000006"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000007"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000008"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000009"
+        },
+        {
+          "geography_level": "country",
+          "geography_id": "W92000004"
+        },
+        {
+          "geography_level": "country",
+          "geography_id": "S92000003"
+        },
+        {
+          "geography_level": "country",
+          "geography_id": "N92000002"
+        }
+      ]
+    },
+    "ons.occupation.process_plant_and_machine_operatives_by_region": {
+      "geography_fanout": [
+        {
+          "geography_level": "region",
+          "geography_id": "E12000001"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000002"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000003"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000004"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000005"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000006"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000007"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000008"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000009"
+        },
+        {
+          "geography_level": "country",
+          "geography_id": "W92000004"
+        },
+        {
+          "geography_level": "country",
+          "geography_id": "S92000003"
+        },
+        {
+          "geography_level": "country",
+          "geography_id": "N92000002"
+        }
+      ]
+    },
+    "ons.occupation.elementary_by_region": {
+      "geography_fanout": [
+        {
+          "geography_level": "region",
+          "geography_id": "E12000001"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000002"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000003"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000004"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000005"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000006"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000007"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000008"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000009"
+        },
+        {
+          "geography_level": "country",
+          "geography_id": "W92000004"
+        },
+        {
+          "geography_level": "country",
+          "geography_id": "S92000003"
+        },
+        {
+          "geography_level": "country",
+          "geography_id": "N92000002"
+        }
+      ]
     }
   },
   "genuine_sum_residue": [
@@ -32562,6 +33030,1347 @@
           "resolved_value": 360000000.0,
           "resolved_fact_period": "2024",
           "resolved_fact_key": "ledger_aggregate_fact_v2_efce468e05f7b7c8cbe6c72b"
+        }
+      ]
+    },
+    "ons.occupation.managers_directors_and_senior_officials_by_region": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "ons.occupation.managers_directors_and_senior_officials_by_region@E12000001",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "geography_level": "region",
+          "geography_id": "E12000001",
+          "resolved_period": 2025,
+          "resolved_value": 107500.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_282c7852315ef990ba0acabd"
+        },
+        {
+          "name": "ons.occupation.managers_directors_and_senior_officials_by_region@E12000002",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "geography_level": "region",
+          "geography_id": "E12000002",
+          "resolved_period": 2025,
+          "resolved_value": 342900.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_85275ce7327ac9f34be58ecf"
+        },
+        {
+          "name": "ons.occupation.managers_directors_and_senior_officials_by_region@E12000003",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "geography_level": "region",
+          "geography_id": "E12000003",
+          "resolved_period": 2025,
+          "resolved_value": 254900.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_a4f263b0d4888831c99e3c68"
+        },
+        {
+          "name": "ons.occupation.managers_directors_and_senior_officials_by_region@E12000004",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "geography_level": "region",
+          "geography_id": "E12000004",
+          "resolved_period": 2025,
+          "resolved_value": 247700.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_a6f644eaf82c1ba2b58dbff2"
+        },
+        {
+          "name": "ons.occupation.managers_directors_and_senior_officials_by_region@E12000005",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "geography_level": "region",
+          "geography_id": "E12000005",
+          "resolved_period": 2025,
+          "resolved_value": 278100.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_a1d42d39d07e8899d93dcaba"
+        },
+        {
+          "name": "ons.occupation.managers_directors_and_senior_officials_by_region@E12000006",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "geography_level": "region",
+          "geography_id": "E12000006",
+          "resolved_period": 2025,
+          "resolved_value": 413400.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_2368bb923fec7e0a4ee9b1fc"
+        },
+        {
+          "name": "ons.occupation.managers_directors_and_senior_officials_by_region@E12000007",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "geography_level": "region",
+          "geography_id": "E12000007",
+          "resolved_period": 2025,
+          "resolved_value": 732600.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_ffaf80e5785e7a6f1e40cc6b"
+        },
+        {
+          "name": "ons.occupation.managers_directors_and_senior_officials_by_region@E12000008",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "geography_level": "region",
+          "geography_id": "E12000008",
+          "resolved_period": 2025,
+          "resolved_value": 620600.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_c3f9a24148b57f122d02cb2e"
+        },
+        {
+          "name": "ons.occupation.managers_directors_and_senior_officials_by_region@E12000009",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "geography_level": "region",
+          "geography_id": "E12000009",
+          "resolved_period": 2025,
+          "resolved_value": 339200.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_c77d70f1cecca37654b47797"
+        },
+        {
+          "name": "ons.occupation.managers_directors_and_senior_officials_by_region@W92000004",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "geography_level": "country",
+          "geography_id": "W92000004",
+          "resolved_period": 2025,
+          "resolved_value": 144400.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_ef097dbfe3fe960657f17391"
+        },
+        {
+          "name": "ons.occupation.managers_directors_and_senior_officials_by_region@S92000003",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "geography_level": "country",
+          "geography_id": "S92000003",
+          "resolved_period": 2025,
+          "resolved_value": 247500.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_b736ccc30dcb4577cb275cf6"
+        },
+        {
+          "name": "ons.occupation.managers_directors_and_senior_officials_by_region@N92000002",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "geography_level": "country",
+          "geography_id": "N92000002",
+          "resolved_period": 2025,
+          "resolved_value": 81100.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_fff587042753c07127d21fbb"
+        }
+      ]
+    },
+    "ons.occupation.professional_by_region": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "ons.occupation.professional_by_region@E12000001",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "geography_level": "region",
+          "geography_id": "E12000001",
+          "resolved_period": 2025,
+          "resolved_value": 290200.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_3dbb6ff350c6d4a9024931e6"
+        },
+        {
+          "name": "ons.occupation.professional_by_region@E12000002",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "geography_level": "region",
+          "geography_id": "E12000002",
+          "resolved_period": 2025,
+          "resolved_value": 963500.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_39510938be8e2bcd981d16a9"
+        },
+        {
+          "name": "ons.occupation.professional_by_region@E12000003",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "geography_level": "region",
+          "geography_id": "E12000003",
+          "resolved_period": 2025,
+          "resolved_value": 651200.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_d4bf30aa3a935298182a01aa"
+        },
+        {
+          "name": "ons.occupation.professional_by_region@E12000004",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "geography_level": "region",
+          "geography_id": "E12000004",
+          "resolved_period": 2025,
+          "resolved_value": 532400.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_a2ec079318570d063137be96"
+        },
+        {
+          "name": "ons.occupation.professional_by_region@E12000005",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "geography_level": "region",
+          "geography_id": "E12000005",
+          "resolved_period": 2025,
+          "resolved_value": 699800.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_0ffec58bb56b31e2062d9a84"
+        },
+        {
+          "name": "ons.occupation.professional_by_region@E12000006",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "geography_level": "region",
+          "geography_id": "E12000006",
+          "resolved_period": 2025,
+          "resolved_value": 816100.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_6fe142aa8706e0dff5c7ccf7"
+        },
+        {
+          "name": "ons.occupation.professional_by_region@E12000007",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "geography_level": "region",
+          "geography_id": "E12000007",
+          "resolved_period": 2025,
+          "resolved_value": 1655600.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_c4230134e0f070e7beccb9bb"
+        },
+        {
+          "name": "ons.occupation.professional_by_region@E12000008",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "geography_level": "region",
+          "geography_id": "E12000008",
+          "resolved_period": 2025,
+          "resolved_value": 1309100.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_6b0a30afb01f49e21b5a08f0"
+        },
+        {
+          "name": "ons.occupation.professional_by_region@E12000009",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "geography_level": "region",
+          "geography_id": "E12000009",
+          "resolved_period": 2025,
+          "resolved_value": 755200.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_55f0528003afd187f159cb11"
+        },
+        {
+          "name": "ons.occupation.professional_by_region@W92000004",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "geography_level": "country",
+          "geography_id": "W92000004",
+          "resolved_period": 2025,
+          "resolved_value": 342000.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_a40bea7cbbf7f0c8e3de37fd"
+        },
+        {
+          "name": "ons.occupation.professional_by_region@S92000003",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "geography_level": "country",
+          "geography_id": "S92000003",
+          "resolved_period": 2025,
+          "resolved_value": 722700.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_f8fccdfe6f1ab10da34a06db"
+        },
+        {
+          "name": "ons.occupation.professional_by_region@N92000002",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "geography_level": "country",
+          "geography_id": "N92000002",
+          "resolved_period": 2025,
+          "resolved_value": 227400.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_fd42409d090bb9e37c08f389"
+        }
+      ]
+    },
+    "ons.occupation.associate_professional_by_region": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "ons.occupation.associate_professional_by_region@E12000001",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "geography_level": "region",
+          "geography_id": "E12000001",
+          "resolved_period": 2025,
+          "resolved_value": 168800.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_05f05c5de71fb09be4ba150a"
+        },
+        {
+          "name": "ons.occupation.associate_professional_by_region@E12000002",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "geography_level": "region",
+          "geography_id": "E12000002",
+          "resolved_period": 2025,
+          "resolved_value": 496100.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_d8ab0fbff9191f68dee8f3ab"
+        },
+        {
+          "name": "ons.occupation.associate_professional_by_region@E12000003",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "geography_level": "region",
+          "geography_id": "E12000003",
+          "resolved_period": 2025,
+          "resolved_value": 358600.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_f698eeed1f0b6abf8da1ca64"
+        },
+        {
+          "name": "ons.occupation.associate_professional_by_region@E12000004",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "geography_level": "region",
+          "geography_id": "E12000004",
+          "resolved_period": 2025,
+          "resolved_value": 353300.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_96c4d856c32be355f39414cf"
+        },
+        {
+          "name": "ons.occupation.associate_professional_by_region@E12000005",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "geography_level": "region",
+          "geography_id": "E12000005",
+          "resolved_period": 2025,
+          "resolved_value": 411500.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_013d5fb5f84aea011105f570"
+        },
+        {
+          "name": "ons.occupation.associate_professional_by_region@E12000006",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "geography_level": "region",
+          "geography_id": "E12000006",
+          "resolved_period": 2025,
+          "resolved_value": 471800.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_deab99610408a387d0c25fbb"
+        },
+        {
+          "name": "ons.occupation.associate_professional_by_region@E12000007",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "geography_level": "region",
+          "geography_id": "E12000007",
+          "resolved_period": 2025,
+          "resolved_value": 810900.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_d52da166984a5dc1b93c47a2"
+        },
+        {
+          "name": "ons.occupation.associate_professional_by_region@E12000008",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "geography_level": "region",
+          "geography_id": "E12000008",
+          "resolved_period": 2025,
+          "resolved_value": 737500.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_640c3d88d88bfeb8fe693dc0"
+        },
+        {
+          "name": "ons.occupation.associate_professional_by_region@E12000009",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "geography_level": "region",
+          "geography_id": "E12000009",
+          "resolved_period": 2025,
+          "resolved_value": 423200.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_6533e1d5def671799688f8f2"
+        },
+        {
+          "name": "ons.occupation.associate_professional_by_region@W92000004",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "geography_level": "country",
+          "geography_id": "W92000004",
+          "resolved_period": 2025,
+          "resolved_value": 225900.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_662054be7c03f30a08c6f72c"
+        },
+        {
+          "name": "ons.occupation.associate_professional_by_region@S92000003",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "geography_level": "country",
+          "geography_id": "S92000003",
+          "resolved_period": 2025,
+          "resolved_value": 403400.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_51dcbccf162d0ed39b1bd864"
+        },
+        {
+          "name": "ons.occupation.associate_professional_by_region@N92000002",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "geography_level": "country",
+          "geography_id": "N92000002",
+          "resolved_period": 2025,
+          "resolved_value": 92000.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_b53b42386302eb07cc21fa9d"
+        }
+      ]
+    },
+    "ons.occupation.administrative_and_secretarial_by_region": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "ons.occupation.administrative_and_secretarial_by_region@E12000001",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "geography_level": "region",
+          "geography_id": "E12000001",
+          "resolved_period": 2025,
+          "resolved_value": 118200.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_598e347b4a8c4d3a6cb76873"
+        },
+        {
+          "name": "ons.occupation.administrative_and_secretarial_by_region@E12000002",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "geography_level": "region",
+          "geography_id": "E12000002",
+          "resolved_period": 2025,
+          "resolved_value": 334300.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_9c09946f320e098451945783"
+        },
+        {
+          "name": "ons.occupation.administrative_and_secretarial_by_region@E12000003",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "geography_level": "region",
+          "geography_id": "E12000003",
+          "resolved_period": 2025,
+          "resolved_value": 251100.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_f54a15e3a8cc9fbf67a9003c"
+        },
+        {
+          "name": "ons.occupation.administrative_and_secretarial_by_region@E12000004",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "geography_level": "region",
+          "geography_id": "E12000004",
+          "resolved_period": 2025,
+          "resolved_value": 227100.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_bf83867e1930842297cf0999"
+        },
+        {
+          "name": "ons.occupation.administrative_and_secretarial_by_region@E12000005",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "geography_level": "region",
+          "geography_id": "E12000005",
+          "resolved_period": 2025,
+          "resolved_value": 276000.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_1baf2e9c826fb8025931df87"
+        },
+        {
+          "name": "ons.occupation.administrative_and_secretarial_by_region@E12000006",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "geography_level": "region",
+          "geography_id": "E12000006",
+          "resolved_period": 2025,
+          "resolved_value": 326400.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_405d8e8338e86e8c27ba1412"
+        },
+        {
+          "name": "ons.occupation.administrative_and_secretarial_by_region@E12000007",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "geography_level": "region",
+          "geography_id": "E12000007",
+          "resolved_period": 2025,
+          "resolved_value": 395700.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_0fde3df7e937ccf5d7d4c9e1"
+        },
+        {
+          "name": "ons.occupation.administrative_and_secretarial_by_region@E12000008",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "geography_level": "region",
+          "geography_id": "E12000008",
+          "resolved_period": 2025,
+          "resolved_value": 426000.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_f61f31f8bad3b795e75495fc"
+        },
+        {
+          "name": "ons.occupation.administrative_and_secretarial_by_region@E12000009",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "geography_level": "region",
+          "geography_id": "E12000009",
+          "resolved_period": 2025,
+          "resolved_value": 235700.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_32d83e7bcb1ddbaac1e64319"
+        },
+        {
+          "name": "ons.occupation.administrative_and_secretarial_by_region@W92000004",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "geography_level": "country",
+          "geography_id": "W92000004",
+          "resolved_period": 2025,
+          "resolved_value": 136300.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_93ba27ea556d845367cd9d90"
+        },
+        {
+          "name": "ons.occupation.administrative_and_secretarial_by_region@S92000003",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "geography_level": "country",
+          "geography_id": "S92000003",
+          "resolved_period": 2025,
+          "resolved_value": 232800.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_e3e69cafdca459ea57bc0bc0"
+        },
+        {
+          "name": "ons.occupation.administrative_and_secretarial_by_region@N92000002",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "geography_level": "country",
+          "geography_id": "N92000002",
+          "resolved_period": 2025,
+          "resolved_value": 111900.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_83ccc491f67f5a8526c9653c"
+        }
+      ]
+    },
+    "ons.occupation.skilled_trades_by_region": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "ons.occupation.skilled_trades_by_region@E12000001",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "geography_level": "region",
+          "geography_id": "E12000001",
+          "resolved_period": 2025,
+          "resolved_value": 124000.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_34a0250204d2c84b290fc82f"
+        },
+        {
+          "name": "ons.occupation.skilled_trades_by_region@E12000002",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "geography_level": "region",
+          "geography_id": "E12000002",
+          "resolved_period": 2025,
+          "resolved_value": 298100.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_88ee7e29a64eec323fb2d2a0"
+        },
+        {
+          "name": "ons.occupation.skilled_trades_by_region@E12000003",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "geography_level": "region",
+          "geography_id": "E12000003",
+          "resolved_period": 2025,
+          "resolved_value": 231300.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_c6c97763e229bfe1288fd312"
+        },
+        {
+          "name": "ons.occupation.skilled_trades_by_region@E12000004",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "geography_level": "region",
+          "geography_id": "E12000004",
+          "resolved_period": 2025,
+          "resolved_value": 214200.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_58ebcc62366709a9785e82d3"
+        },
+        {
+          "name": "ons.occupation.skilled_trades_by_region@E12000005",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "geography_level": "region",
+          "geography_id": "E12000005",
+          "resolved_period": 2025,
+          "resolved_value": 240900.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_42e4ea5466bc5bdbe8911d36"
+        },
+        {
+          "name": "ons.occupation.skilled_trades_by_region@E12000006",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "geography_level": "region",
+          "geography_id": "E12000006",
+          "resolved_period": 2025,
+          "resolved_value": 271300.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_2020cc161688e62a2321a768"
+        },
+        {
+          "name": "ons.occupation.skilled_trades_by_region@E12000007",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "geography_level": "region",
+          "geography_id": "E12000007",
+          "resolved_period": 2025,
+          "resolved_value": 232000.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_8a4dcef160714b8742e70bd0"
+        },
+        {
+          "name": "ons.occupation.skilled_trades_by_region@E12000008",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "geography_level": "region",
+          "geography_id": "E12000008",
+          "resolved_period": 2025,
+          "resolved_value": 393300.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_f1e17c58f111c168ce3ed0e9"
+        },
+        {
+          "name": "ons.occupation.skilled_trades_by_region@E12000009",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "geography_level": "region",
+          "geography_id": "E12000009",
+          "resolved_period": 2025,
+          "resolved_value": 275500.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_48c90b219915404135bee027"
+        },
+        {
+          "name": "ons.occupation.skilled_trades_by_region@W92000004",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "geography_level": "country",
+          "geography_id": "W92000004",
+          "resolved_period": 2025,
+          "resolved_value": 147800.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_3543414cd652a7d2948e2119"
+        },
+        {
+          "name": "ons.occupation.skilled_trades_by_region@S92000003",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "geography_level": "country",
+          "geography_id": "S92000003",
+          "resolved_period": 2025,
+          "resolved_value": 240200.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_1f9aa9478d87283d4a5b493f"
+        },
+        {
+          "name": "ons.occupation.skilled_trades_by_region@N92000002",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "geography_level": "country",
+          "geography_id": "N92000002",
+          "resolved_period": 2025,
+          "resolved_value": 103000.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_b2a3f6f9fbaee6d67f7436b3"
+        }
+      ]
+    },
+    "ons.occupation.caring_leisure_and_other_service_by_region": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "ons.occupation.caring_leisure_and_other_service_by_region@E12000001",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "geography_level": "region",
+          "geography_id": "E12000001",
+          "resolved_period": 2025,
+          "resolved_value": 114800.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_832e1acb2ec88b66cf48aadc"
+        },
+        {
+          "name": "ons.occupation.caring_leisure_and_other_service_by_region@E12000002",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "geography_level": "region",
+          "geography_id": "E12000002",
+          "resolved_period": 2025,
+          "resolved_value": 330100.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_3e79868b0e6f6774a70583f3"
+        },
+        {
+          "name": "ons.occupation.caring_leisure_and_other_service_by_region@E12000003",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "geography_level": "region",
+          "geography_id": "E12000003",
+          "resolved_period": 2025,
+          "resolved_value": 234900.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_e8357cce8f80ead04fb009e7"
+        },
+        {
+          "name": "ons.occupation.caring_leisure_and_other_service_by_region@E12000004",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "geography_level": "region",
+          "geography_id": "E12000004",
+          "resolved_period": 2025,
+          "resolved_value": 207800.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_bb533efb890bc66972e1f14f"
+        },
+        {
+          "name": "ons.occupation.caring_leisure_and_other_service_by_region@E12000005",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "geography_level": "region",
+          "geography_id": "E12000005",
+          "resolved_period": 2025,
+          "resolved_value": 263700.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_f24cf96bbb7bf02a0a414c1d"
+        },
+        {
+          "name": "ons.occupation.caring_leisure_and_other_service_by_region@E12000006",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "geography_level": "region",
+          "geography_id": "E12000006",
+          "resolved_period": 2025,
+          "resolved_value": 264100.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_d9de1d4692760de516fa89df"
+        },
+        {
+          "name": "ons.occupation.caring_leisure_and_other_service_by_region@E12000007",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "geography_level": "region",
+          "geography_id": "E12000007",
+          "resolved_period": 2025,
+          "resolved_value": 352000.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_522d4026d4b2aca17ec0c617"
+        },
+        {
+          "name": "ons.occupation.caring_leisure_and_other_service_by_region@E12000008",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "geography_level": "region",
+          "geography_id": "E12000008",
+          "resolved_period": 2025,
+          "resolved_value": 393700.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_55472ad8622b134ec7d35120"
+        },
+        {
+          "name": "ons.occupation.caring_leisure_and_other_service_by_region@E12000009",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "geography_level": "region",
+          "geography_id": "E12000009",
+          "resolved_period": 2025,
+          "resolved_value": 235500.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_bc8c417c039efe6ac8cb6d18"
+        },
+        {
+          "name": "ons.occupation.caring_leisure_and_other_service_by_region@W92000004",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "geography_level": "country",
+          "geography_id": "W92000004",
+          "resolved_period": 2025,
+          "resolved_value": 142300.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_fd5992da90a06d50f452bfc0"
+        },
+        {
+          "name": "ons.occupation.caring_leisure_and_other_service_by_region@S92000003",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "geography_level": "country",
+          "geography_id": "S92000003",
+          "resolved_period": 2025,
+          "resolved_value": 268000.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_6cb03e6b8c7dbee9059cd0aa"
+        },
+        {
+          "name": "ons.occupation.caring_leisure_and_other_service_by_region@N92000002",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "geography_level": "country",
+          "geography_id": "N92000002",
+          "resolved_period": 2025,
+          "resolved_value": 86900.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_00bf03ebffce612173e47282"
+        }
+      ]
+    },
+    "ons.occupation.sales_and_customer_service_by_region": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "ons.occupation.sales_and_customer_service_by_region@E12000001",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "geography_level": "region",
+          "geography_id": "E12000001",
+          "resolved_period": 2025,
+          "resolved_value": 79300.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_fb170371d0da97c381e57881"
+        },
+        {
+          "name": "ons.occupation.sales_and_customer_service_by_region@E12000002",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "geography_level": "region",
+          "geography_id": "E12000002",
+          "resolved_period": 2025,
+          "resolved_value": 205200.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_a8ccf29ff762115bba718d57"
+        },
+        {
+          "name": "ons.occupation.sales_and_customer_service_by_region@E12000003",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "geography_level": "region",
+          "geography_id": "E12000003",
+          "resolved_period": 2025,
+          "resolved_value": 154000.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_276c03f3e3287c31ccaa576b"
+        },
+        {
+          "name": "ons.occupation.sales_and_customer_service_by_region@E12000004",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "geography_level": "region",
+          "geography_id": "E12000004",
+          "resolved_period": 2025,
+          "resolved_value": 155300.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_e57de37799d96085f34a79a9"
+        },
+        {
+          "name": "ons.occupation.sales_and_customer_service_by_region@E12000005",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "geography_level": "region",
+          "geography_id": "E12000005",
+          "resolved_period": 2025,
+          "resolved_value": 168600.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_4eb0e4460d9c52fc831e7623"
+        },
+        {
+          "name": "ons.occupation.sales_and_customer_service_by_region@E12000006",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "geography_level": "region",
+          "geography_id": "E12000006",
+          "resolved_period": 2025,
+          "resolved_value": 168200.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_9cc5f7b31ee874f7a26b6505"
+        },
+        {
+          "name": "ons.occupation.sales_and_customer_service_by_region@E12000007",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "geography_level": "region",
+          "geography_id": "E12000007",
+          "resolved_period": 2025,
+          "resolved_value": 209500.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_54034cceacb3849c88238634"
+        },
+        {
+          "name": "ons.occupation.sales_and_customer_service_by_region@E12000008",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "geography_level": "region",
+          "geography_id": "E12000008",
+          "resolved_period": 2025,
+          "resolved_value": 263000.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_0014bc7a36555b6c15c5ab47"
+        },
+        {
+          "name": "ons.occupation.sales_and_customer_service_by_region@E12000009",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "geography_level": "region",
+          "geography_id": "E12000009",
+          "resolved_period": 2025,
+          "resolved_value": 164000.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_94c0edccee2eecf7b3260481"
+        },
+        {
+          "name": "ons.occupation.sales_and_customer_service_by_region@W92000004",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "geography_level": "country",
+          "geography_id": "W92000004",
+          "resolved_period": 2025,
+          "resolved_value": 89500.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_20f5371662a58dc743cc751c"
+        },
+        {
+          "name": "ons.occupation.sales_and_customer_service_by_region@S92000003",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "geography_level": "country",
+          "geography_id": "S92000003",
+          "resolved_period": 2025,
+          "resolved_value": 172800.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_7409cf50d47f552dafb2e8cb"
+        },
+        {
+          "name": "ons.occupation.sales_and_customer_service_by_region@N92000002",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "geography_level": "country",
+          "geography_id": "N92000002",
+          "resolved_period": 2025,
+          "resolved_value": 75800.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_d40a11befd373ec7573ab517"
+        }
+      ]
+    },
+    "ons.occupation.process_plant_and_machine_operatives_by_region": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "ons.occupation.process_plant_and_machine_operatives_by_region@E12000001",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "geography_level": "region",
+          "geography_id": "E12000001",
+          "resolved_period": 2025,
+          "resolved_value": 85900.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_478eceb50c85cebcbd6e1c4a"
+        },
+        {
+          "name": "ons.occupation.process_plant_and_machine_operatives_by_region@E12000002",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "geography_level": "region",
+          "geography_id": "E12000002",
+          "resolved_period": 2025,
+          "resolved_value": 201800.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_9c7c129a842c3f17d610fdb3"
+        },
+        {
+          "name": "ons.occupation.process_plant_and_machine_operatives_by_region@E12000003",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "geography_level": "region",
+          "geography_id": "E12000003",
+          "resolved_period": 2025,
+          "resolved_value": 179300.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_c03b83e8afe33cbc02bcf009"
+        },
+        {
+          "name": "ons.occupation.process_plant_and_machine_operatives_by_region@E12000004",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "geography_level": "region",
+          "geography_id": "E12000004",
+          "resolved_period": 2025,
+          "resolved_value": 165600.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_17838f4c744d3440ff1969fd"
+        },
+        {
+          "name": "ons.occupation.process_plant_and_machine_operatives_by_region@E12000005",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "geography_level": "region",
+          "geography_id": "E12000005",
+          "resolved_period": 2025,
+          "resolved_value": 193800.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_efb58c6dde85cbae4887c70f"
+        },
+        {
+          "name": "ons.occupation.process_plant_and_machine_operatives_by_region@E12000006",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "geography_level": "region",
+          "geography_id": "E12000006",
+          "resolved_period": 2025,
+          "resolved_value": 188200.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_4dd8d3d2f8ec34f96b92cec3"
+        },
+        {
+          "name": "ons.occupation.process_plant_and_machine_operatives_by_region@E12000007",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "geography_level": "region",
+          "geography_id": "E12000007",
+          "resolved_period": 2025,
+          "resolved_value": 171400.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_e43b3c8b098b1298c61c6a48"
+        },
+        {
+          "name": "ons.occupation.process_plant_and_machine_operatives_by_region@E12000008",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "geography_level": "region",
+          "geography_id": "E12000008",
+          "resolved_period": 2025,
+          "resolved_value": 216300.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_7641d95922b3dafeffe1865d"
+        },
+        {
+          "name": "ons.occupation.process_plant_and_machine_operatives_by_region@E12000009",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "geography_level": "region",
+          "geography_id": "E12000009",
+          "resolved_period": 2025,
+          "resolved_value": 154600.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_f0c52abae59624b0b63b01c8"
+        },
+        {
+          "name": "ons.occupation.process_plant_and_machine_operatives_by_region@W92000004",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "geography_level": "country",
+          "geography_id": "W92000004",
+          "resolved_period": 2025,
+          "resolved_value": 90000.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_2d5ad4064820b89e3ef29ac8"
+        },
+        {
+          "name": "ons.occupation.process_plant_and_machine_operatives_by_region@S92000003",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "geography_level": "country",
+          "geography_id": "S92000003",
+          "resolved_period": 2025,
+          "resolved_value": 141400.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_8efb64fbd952516cb58b2438"
+        },
+        {
+          "name": "ons.occupation.process_plant_and_machine_operatives_by_region@N92000002",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "geography_level": "country",
+          "geography_id": "N92000002",
+          "resolved_period": 2025,
+          "resolved_value": 59100.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_c20b8aa55af53faa8c4d0b7b"
+        }
+      ]
+    },
+    "ons.occupation.elementary_by_region": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "ons.occupation.elementary_by_region@E12000001",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "geography_level": "region",
+          "geography_id": "E12000001",
+          "resolved_period": 2025,
+          "resolved_value": 113000.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_b7af8015dca8a297b1b1bac4"
+        },
+        {
+          "name": "ons.occupation.elementary_by_region@E12000002",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "geography_level": "region",
+          "geography_id": "E12000002",
+          "resolved_period": 2025,
+          "resolved_value": 330000.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_d439024e8fc937da83cea721"
+        },
+        {
+          "name": "ons.occupation.elementary_by_region@E12000003",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "geography_level": "region",
+          "geography_id": "E12000003",
+          "resolved_period": 2025,
+          "resolved_value": 295500.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_d557829e84fb5760e4b3c963"
+        },
+        {
+          "name": "ons.occupation.elementary_by_region@E12000004",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "geography_level": "region",
+          "geography_id": "E12000004",
+          "resolved_period": 2025,
+          "resolved_value": 261000.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_da8e1456d61f70e8a0ef4fbf"
+        },
+        {
+          "name": "ons.occupation.elementary_by_region@E12000005",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "geography_level": "region",
+          "geography_id": "E12000005",
+          "resolved_period": 2025,
+          "resolved_value": 293900.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_adc2f485aa18d747ff0dc88e"
+        },
+        {
+          "name": "ons.occupation.elementary_by_region@E12000006",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "geography_level": "region",
+          "geography_id": "E12000006",
+          "resolved_period": 2025,
+          "resolved_value": 268300.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_a7ace0ddc4914b5de8b28528"
+        },
+        {
+          "name": "ons.occupation.elementary_by_region@E12000007",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "geography_level": "region",
+          "geography_id": "E12000007",
+          "resolved_period": 2025,
+          "resolved_value": 299000.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_482728caef2f6e498fa79068"
+        },
+        {
+          "name": "ons.occupation.elementary_by_region@E12000008",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "geography_level": "region",
+          "geography_id": "E12000008",
+          "resolved_period": 2025,
+          "resolved_value": 377200.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_c22d49d67c9111bf7ff70c70"
+        },
+        {
+          "name": "ons.occupation.elementary_by_region@E12000009",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "geography_level": "region",
+          "geography_id": "E12000009",
+          "resolved_period": 2025,
+          "resolved_value": 267600.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_be73b10d65f32d79400945e2"
+        },
+        {
+          "name": "ons.occupation.elementary_by_region@W92000004",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "geography_level": "country",
+          "geography_id": "W92000004",
+          "resolved_period": 2025,
+          "resolved_value": 143200.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_7dbcbd4eb1f20bbb465c6ccb"
+        },
+        {
+          "name": "ons.occupation.elementary_by_region@S92000003",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "geography_level": "country",
+          "geography_id": "S92000003",
+          "resolved_period": 2025,
+          "resolved_value": 270500.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_029cfa3a85283fa08696a4d0"
+        },
+        {
+          "name": "ons.occupation.elementary_by_region@N92000002",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "geography_level": "country",
+          "geography_id": "N92000002",
+          "resolved_period": 2025,
+          "resolved_value": 79600.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_1bf4cf71bad64ca3f21eb3d7"
         }
       ]
     }

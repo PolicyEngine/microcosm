@@ -548,6 +548,15 @@
       "ons.land.corporate_land_value": "ons.land",
       "ons.land.household_land_value": "ons.land",
       "ons.land.land_value": "ons.land",
+      "ons.occupation.administrative_and_secretarial_by_region": "ons.employment",
+      "ons.occupation.associate_professional_by_region": "ons.employment",
+      "ons.occupation.caring_leisure_and_other_service_by_region": "ons.employment",
+      "ons.occupation.elementary_by_region": "ons.employment",
+      "ons.occupation.managers_directors_and_senior_officials_by_region": "ons.employment",
+      "ons.occupation.process_plant_and_machine_operatives_by_region": "ons.employment",
+      "ons.occupation.professional_by_region": "ons.employment",
+      "ons.occupation.sales_and_customer_service_by_region": "ons.employment",
+      "ons.occupation.skilled_trades_by_region": "ons.employment",
       "ons.population.age_0": "ons.population",
       "ons.population.age_0_9_by_region": "ons.population",
       "ons.population.age_1": "ons.population",
@@ -948,6 +957,15 @@
       "ons.land.corporate_land_value": "Corporate land value",
       "ons.land.household_land_value": "Household land value",
       "ons.land.land_value": "Land value",
+      "ons.occupation.administrative_and_secretarial_by_region": "Administrative and secretarial occupations in employment by region",
+      "ons.occupation.associate_professional_by_region": "Associate professional occupations in employment by region",
+      "ons.occupation.caring_leisure_and_other_service_by_region": "Caring, leisure and other service occupations in employment by region",
+      "ons.occupation.elementary_by_region": "Elementary occupations in employment by region",
+      "ons.occupation.managers_directors_and_senior_officials_by_region": "Managers, directors and senior officials in employment by region",
+      "ons.occupation.process_plant_and_machine_operatives_by_region": "Process, plant and machine operatives in employment by region",
+      "ons.occupation.professional_by_region": "Professional occupations in employment by region",
+      "ons.occupation.sales_and_customer_service_by_region": "Sales and customer service occupations in employment by region",
+      "ons.occupation.skilled_trades_by_region": "Skilled trades occupations in employment by region",
       "ons.population.age_0": "Age 0",
       "ons.population.age_0_9_by_region": "Age 0 9 by region",
       "ons.population.age_1": "Age 1",
@@ -50155,6 +50173,3246 @@
       },
       "uprating_from_period": "2024",
       "uprating_to_period": 2025
+    },
+    {
+      "name": "ons.occupation.managers_directors_and_senior_officials_by_region@E12000001",
+      "ledger_selector": {
+        "source_name": "ons",
+        "source_concept": "ons.aps_people_in_employment",
+        "dimension_values": {
+          "soc2020_major_group": 1,
+          "sex": "all",
+          "employment_status": "all",
+          "statistic": "estimate"
+        },
+        "entity_name": "person",
+        "period_type": "calendar_year",
+        "period_value": 2025,
+        "geography_level": "region",
+        "geography_id": "E12000001"
+      },
+      "entity": "person",
+      "measure": "ons.occupation.managers_directors_and_senior_officials_by_region@E12000001",
+      "family": "ons_occupation",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "ons.occupation.managers_directors_and_senior_officials_by_region",
+        "measure_kind": "prepared_column",
+        "geography_level": "region",
+        "geography_id": "E12000001",
+        "geography_predicate": "{\"entity\":\"household\",\"map_to\":\"person\",\"operator\":\"==\",\"reduce\":\"any\",\"value\":\"NORTH_EAST\",\"variable\":\"region\"}",
+        "cross_grain_grain": "region"
+      }
+    },
+    {
+      "name": "ons.occupation.managers_directors_and_senior_officials_by_region@E12000002",
+      "ledger_selector": {
+        "source_name": "ons",
+        "source_concept": "ons.aps_people_in_employment",
+        "dimension_values": {
+          "soc2020_major_group": 1,
+          "sex": "all",
+          "employment_status": "all",
+          "statistic": "estimate"
+        },
+        "entity_name": "person",
+        "period_type": "calendar_year",
+        "period_value": 2025,
+        "geography_level": "region",
+        "geography_id": "E12000002"
+      },
+      "entity": "person",
+      "measure": "ons.occupation.managers_directors_and_senior_officials_by_region@E12000002",
+      "family": "ons_occupation",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "ons.occupation.managers_directors_and_senior_officials_by_region",
+        "measure_kind": "prepared_column",
+        "geography_level": "region",
+        "geography_id": "E12000002",
+        "geography_predicate": "{\"entity\":\"household\",\"map_to\":\"person\",\"operator\":\"==\",\"reduce\":\"any\",\"value\":\"NORTH_WEST\",\"variable\":\"region\"}",
+        "cross_grain_grain": "region"
+      }
+    },
+    {
+      "name": "ons.occupation.managers_directors_and_senior_officials_by_region@E12000003",
+      "ledger_selector": {
+        "source_name": "ons",
+        "source_concept": "ons.aps_people_in_employment",
+        "dimension_values": {
+          "soc2020_major_group": 1,
+          "sex": "all",
+          "employment_status": "all",
+          "statistic": "estimate"
+        },
+        "entity_name": "person",
+        "period_type": "calendar_year",
+        "period_value": 2025,
+        "geography_level": "region",
+        "geography_id": "E12000003"
+      },
+      "entity": "person",
+      "measure": "ons.occupation.managers_directors_and_senior_officials_by_region@E12000003",
+      "family": "ons_occupation",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "ons.occupation.managers_directors_and_senior_officials_by_region",
+        "measure_kind": "prepared_column",
+        "geography_level": "region",
+        "geography_id": "E12000003",
+        "geography_predicate": "{\"entity\":\"household\",\"map_to\":\"person\",\"operator\":\"==\",\"reduce\":\"any\",\"value\":\"YORKSHIRE\",\"variable\":\"region\"}",
+        "cross_grain_grain": "region"
+      }
+    },
+    {
+      "name": "ons.occupation.managers_directors_and_senior_officials_by_region@E12000004",
+      "ledger_selector": {
+        "source_name": "ons",
+        "source_concept": "ons.aps_people_in_employment",
+        "dimension_values": {
+          "soc2020_major_group": 1,
+          "sex": "all",
+          "employment_status": "all",
+          "statistic": "estimate"
+        },
+        "entity_name": "person",
+        "period_type": "calendar_year",
+        "period_value": 2025,
+        "geography_level": "region",
+        "geography_id": "E12000004"
+      },
+      "entity": "person",
+      "measure": "ons.occupation.managers_directors_and_senior_officials_by_region@E12000004",
+      "family": "ons_occupation",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "ons.occupation.managers_directors_and_senior_officials_by_region",
+        "measure_kind": "prepared_column",
+        "geography_level": "region",
+        "geography_id": "E12000004",
+        "geography_predicate": "{\"entity\":\"household\",\"map_to\":\"person\",\"operator\":\"==\",\"reduce\":\"any\",\"value\":\"EAST_MIDLANDS\",\"variable\":\"region\"}",
+        "cross_grain_grain": "region"
+      }
+    },
+    {
+      "name": "ons.occupation.managers_directors_and_senior_officials_by_region@E12000005",
+      "ledger_selector": {
+        "source_name": "ons",
+        "source_concept": "ons.aps_people_in_employment",
+        "dimension_values": {
+          "soc2020_major_group": 1,
+          "sex": "all",
+          "employment_status": "all",
+          "statistic": "estimate"
+        },
+        "entity_name": "person",
+        "period_type": "calendar_year",
+        "period_value": 2025,
+        "geography_level": "region",
+        "geography_id": "E12000005"
+      },
+      "entity": "person",
+      "measure": "ons.occupation.managers_directors_and_senior_officials_by_region@E12000005",
+      "family": "ons_occupation",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "ons.occupation.managers_directors_and_senior_officials_by_region",
+        "measure_kind": "prepared_column",
+        "geography_level": "region",
+        "geography_id": "E12000005",
+        "geography_predicate": "{\"entity\":\"household\",\"map_to\":\"person\",\"operator\":\"==\",\"reduce\":\"any\",\"value\":\"WEST_MIDLANDS\",\"variable\":\"region\"}",
+        "cross_grain_grain": "region"
+      }
+    },
+    {
+      "name": "ons.occupation.managers_directors_and_senior_officials_by_region@E12000006",
+      "ledger_selector": {
+        "source_name": "ons",
+        "source_concept": "ons.aps_people_in_employment",
+        "dimension_values": {
+          "soc2020_major_group": 1,
+          "sex": "all",
+          "employment_status": "all",
+          "statistic": "estimate"
+        },
+        "entity_name": "person",
+        "period_type": "calendar_year",
+        "period_value": 2025,
+        "geography_level": "region",
+        "geography_id": "E12000006"
+      },
+      "entity": "person",
+      "measure": "ons.occupation.managers_directors_and_senior_officials_by_region@E12000006",
+      "family": "ons_occupation",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "ons.occupation.managers_directors_and_senior_officials_by_region",
+        "measure_kind": "prepared_column",
+        "geography_level": "region",
+        "geography_id": "E12000006",
+        "geography_predicate": "{\"entity\":\"household\",\"map_to\":\"person\",\"operator\":\"==\",\"reduce\":\"any\",\"value\":\"EAST_OF_ENGLAND\",\"variable\":\"region\"}",
+        "cross_grain_grain": "region"
+      }
+    },
+    {
+      "name": "ons.occupation.managers_directors_and_senior_officials_by_region@E12000007",
+      "ledger_selector": {
+        "source_name": "ons",
+        "source_concept": "ons.aps_people_in_employment",
+        "dimension_values": {
+          "soc2020_major_group": 1,
+          "sex": "all",
+          "employment_status": "all",
+          "statistic": "estimate"
+        },
+        "entity_name": "person",
+        "period_type": "calendar_year",
+        "period_value": 2025,
+        "geography_level": "region",
+        "geography_id": "E12000007"
+      },
+      "entity": "person",
+      "measure": "ons.occupation.managers_directors_and_senior_officials_by_region@E12000007",
+      "family": "ons_occupation",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "ons.occupation.managers_directors_and_senior_officials_by_region",
+        "measure_kind": "prepared_column",
+        "geography_level": "region",
+        "geography_id": "E12000007",
+        "geography_predicate": "{\"entity\":\"household\",\"map_to\":\"person\",\"operator\":\"==\",\"reduce\":\"any\",\"value\":\"LONDON\",\"variable\":\"region\"}",
+        "cross_grain_grain": "region"
+      }
+    },
+    {
+      "name": "ons.occupation.managers_directors_and_senior_officials_by_region@E12000008",
+      "ledger_selector": {
+        "source_name": "ons",
+        "source_concept": "ons.aps_people_in_employment",
+        "dimension_values": {
+          "soc2020_major_group": 1,
+          "sex": "all",
+          "employment_status": "all",
+          "statistic": "estimate"
+        },
+        "entity_name": "person",
+        "period_type": "calendar_year",
+        "period_value": 2025,
+        "geography_level": "region",
+        "geography_id": "E12000008"
+      },
+      "entity": "person",
+      "measure": "ons.occupation.managers_directors_and_senior_officials_by_region@E12000008",
+      "family": "ons_occupation",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "ons.occupation.managers_directors_and_senior_officials_by_region",
+        "measure_kind": "prepared_column",
+        "geography_level": "region",
+        "geography_id": "E12000008",
+        "geography_predicate": "{\"entity\":\"household\",\"map_to\":\"person\",\"operator\":\"==\",\"reduce\":\"any\",\"value\":\"SOUTH_EAST\",\"variable\":\"region\"}",
+        "cross_grain_grain": "region"
+      }
+    },
+    {
+      "name": "ons.occupation.managers_directors_and_senior_officials_by_region@E12000009",
+      "ledger_selector": {
+        "source_name": "ons",
+        "source_concept": "ons.aps_people_in_employment",
+        "dimension_values": {
+          "soc2020_major_group": 1,
+          "sex": "all",
+          "employment_status": "all",
+          "statistic": "estimate"
+        },
+        "entity_name": "person",
+        "period_type": "calendar_year",
+        "period_value": 2025,
+        "geography_level": "region",
+        "geography_id": "E12000009"
+      },
+      "entity": "person",
+      "measure": "ons.occupation.managers_directors_and_senior_officials_by_region@E12000009",
+      "family": "ons_occupation",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "ons.occupation.managers_directors_and_senior_officials_by_region",
+        "measure_kind": "prepared_column",
+        "geography_level": "region",
+        "geography_id": "E12000009",
+        "geography_predicate": "{\"entity\":\"household\",\"map_to\":\"person\",\"operator\":\"==\",\"reduce\":\"any\",\"value\":\"SOUTH_WEST\",\"variable\":\"region\"}",
+        "cross_grain_grain": "region"
+      }
+    },
+    {
+      "name": "ons.occupation.managers_directors_and_senior_officials_by_region@W92000004",
+      "ledger_selector": {
+        "source_name": "ons",
+        "source_concept": "ons.aps_people_in_employment",
+        "dimension_values": {
+          "soc2020_major_group": 1,
+          "sex": "all",
+          "employment_status": "all",
+          "statistic": "estimate"
+        },
+        "entity_name": "person",
+        "period_type": "calendar_year",
+        "period_value": 2025,
+        "geography_level": "country",
+        "geography_id": "W92000004"
+      },
+      "entity": "person",
+      "measure": "ons.occupation.managers_directors_and_senior_officials_by_region@W92000004",
+      "family": "ons_occupation",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "ons.occupation.managers_directors_and_senior_officials_by_region",
+        "measure_kind": "prepared_column",
+        "geography_level": "country",
+        "geography_id": "W92000004",
+        "geography_predicate": "{\"entity\":\"household\",\"map_to\":\"person\",\"operator\":\"==\",\"reduce\":\"any\",\"value\":\"WALES\",\"variable\":\"region\"}",
+        "cross_grain_grain": "region"
+      }
+    },
+    {
+      "name": "ons.occupation.managers_directors_and_senior_officials_by_region@S92000003",
+      "ledger_selector": {
+        "source_name": "ons",
+        "source_concept": "ons.aps_people_in_employment",
+        "dimension_values": {
+          "soc2020_major_group": 1,
+          "sex": "all",
+          "employment_status": "all",
+          "statistic": "estimate"
+        },
+        "entity_name": "person",
+        "period_type": "calendar_year",
+        "period_value": 2025,
+        "geography_level": "country",
+        "geography_id": "S92000003"
+      },
+      "entity": "person",
+      "measure": "ons.occupation.managers_directors_and_senior_officials_by_region@S92000003",
+      "family": "ons_occupation",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "ons.occupation.managers_directors_and_senior_officials_by_region",
+        "measure_kind": "prepared_column",
+        "geography_level": "country",
+        "geography_id": "S92000003",
+        "geography_predicate": "{\"entity\":\"household\",\"map_to\":\"person\",\"operator\":\"==\",\"reduce\":\"any\",\"value\":\"SCOTLAND\",\"variable\":\"region\"}",
+        "cross_grain_grain": "region"
+      }
+    },
+    {
+      "name": "ons.occupation.managers_directors_and_senior_officials_by_region@N92000002",
+      "ledger_selector": {
+        "source_name": "ons",
+        "source_concept": "ons.aps_people_in_employment",
+        "dimension_values": {
+          "soc2020_major_group": 1,
+          "sex": "all",
+          "employment_status": "all",
+          "statistic": "estimate"
+        },
+        "entity_name": "person",
+        "period_type": "calendar_year",
+        "period_value": 2025,
+        "geography_level": "country",
+        "geography_id": "N92000002"
+      },
+      "entity": "person",
+      "measure": "ons.occupation.managers_directors_and_senior_officials_by_region@N92000002",
+      "family": "ons_occupation",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "ons.occupation.managers_directors_and_senior_officials_by_region",
+        "measure_kind": "prepared_column",
+        "geography_level": "country",
+        "geography_id": "N92000002",
+        "geography_predicate": "{\"entity\":\"household\",\"map_to\":\"person\",\"operator\":\"==\",\"reduce\":\"any\",\"value\":\"NORTHERN_IRELAND\",\"variable\":\"region\"}",
+        "cross_grain_grain": "region"
+      }
+    },
+    {
+      "name": "ons.occupation.professional_by_region@E12000001",
+      "ledger_selector": {
+        "source_name": "ons",
+        "source_concept": "ons.aps_people_in_employment",
+        "dimension_values": {
+          "soc2020_major_group": 2,
+          "sex": "all",
+          "employment_status": "all",
+          "statistic": "estimate"
+        },
+        "entity_name": "person",
+        "period_type": "calendar_year",
+        "period_value": 2025,
+        "geography_level": "region",
+        "geography_id": "E12000001"
+      },
+      "entity": "person",
+      "measure": "ons.occupation.professional_by_region@E12000001",
+      "family": "ons_occupation",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "ons.occupation.professional_by_region",
+        "measure_kind": "prepared_column",
+        "geography_level": "region",
+        "geography_id": "E12000001",
+        "geography_predicate": "{\"entity\":\"household\",\"map_to\":\"person\",\"operator\":\"==\",\"reduce\":\"any\",\"value\":\"NORTH_EAST\",\"variable\":\"region\"}",
+        "cross_grain_grain": "region"
+      }
+    },
+    {
+      "name": "ons.occupation.professional_by_region@E12000002",
+      "ledger_selector": {
+        "source_name": "ons",
+        "source_concept": "ons.aps_people_in_employment",
+        "dimension_values": {
+          "soc2020_major_group": 2,
+          "sex": "all",
+          "employment_status": "all",
+          "statistic": "estimate"
+        },
+        "entity_name": "person",
+        "period_type": "calendar_year",
+        "period_value": 2025,
+        "geography_level": "region",
+        "geography_id": "E12000002"
+      },
+      "entity": "person",
+      "measure": "ons.occupation.professional_by_region@E12000002",
+      "family": "ons_occupation",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "ons.occupation.professional_by_region",
+        "measure_kind": "prepared_column",
+        "geography_level": "region",
+        "geography_id": "E12000002",
+        "geography_predicate": "{\"entity\":\"household\",\"map_to\":\"person\",\"operator\":\"==\",\"reduce\":\"any\",\"value\":\"NORTH_WEST\",\"variable\":\"region\"}",
+        "cross_grain_grain": "region"
+      }
+    },
+    {
+      "name": "ons.occupation.professional_by_region@E12000003",
+      "ledger_selector": {
+        "source_name": "ons",
+        "source_concept": "ons.aps_people_in_employment",
+        "dimension_values": {
+          "soc2020_major_group": 2,
+          "sex": "all",
+          "employment_status": "all",
+          "statistic": "estimate"
+        },
+        "entity_name": "person",
+        "period_type": "calendar_year",
+        "period_value": 2025,
+        "geography_level": "region",
+        "geography_id": "E12000003"
+      },
+      "entity": "person",
+      "measure": "ons.occupation.professional_by_region@E12000003",
+      "family": "ons_occupation",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "ons.occupation.professional_by_region",
+        "measure_kind": "prepared_column",
+        "geography_level": "region",
+        "geography_id": "E12000003",
+        "geography_predicate": "{\"entity\":\"household\",\"map_to\":\"person\",\"operator\":\"==\",\"reduce\":\"any\",\"value\":\"YORKSHIRE\",\"variable\":\"region\"}",
+        "cross_grain_grain": "region"
+      }
+    },
+    {
+      "name": "ons.occupation.professional_by_region@E12000004",
+      "ledger_selector": {
+        "source_name": "ons",
+        "source_concept": "ons.aps_people_in_employment",
+        "dimension_values": {
+          "soc2020_major_group": 2,
+          "sex": "all",
+          "employment_status": "all",
+          "statistic": "estimate"
+        },
+        "entity_name": "person",
+        "period_type": "calendar_year",
+        "period_value": 2025,
+        "geography_level": "region",
+        "geography_id": "E12000004"
+      },
+      "entity": "person",
+      "measure": "ons.occupation.professional_by_region@E12000004",
+      "family": "ons_occupation",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "ons.occupation.professional_by_region",
+        "measure_kind": "prepared_column",
+        "geography_level": "region",
+        "geography_id": "E12000004",
+        "geography_predicate": "{\"entity\":\"household\",\"map_to\":\"person\",\"operator\":\"==\",\"reduce\":\"any\",\"value\":\"EAST_MIDLANDS\",\"variable\":\"region\"}",
+        "cross_grain_grain": "region"
+      }
+    },
+    {
+      "name": "ons.occupation.professional_by_region@E12000005",
+      "ledger_selector": {
+        "source_name": "ons",
+        "source_concept": "ons.aps_people_in_employment",
+        "dimension_values": {
+          "soc2020_major_group": 2,
+          "sex": "all",
+          "employment_status": "all",
+          "statistic": "estimate"
+        },
+        "entity_name": "person",
+        "period_type": "calendar_year",
+        "period_value": 2025,
+        "geography_level": "region",
+        "geography_id": "E12000005"
+      },
+      "entity": "person",
+      "measure": "ons.occupation.professional_by_region@E12000005",
+      "family": "ons_occupation",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "ons.occupation.professional_by_region",
+        "measure_kind": "prepared_column",
+        "geography_level": "region",
+        "geography_id": "E12000005",
+        "geography_predicate": "{\"entity\":\"household\",\"map_to\":\"person\",\"operator\":\"==\",\"reduce\":\"any\",\"value\":\"WEST_MIDLANDS\",\"variable\":\"region\"}",
+        "cross_grain_grain": "region"
+      }
+    },
+    {
+      "name": "ons.occupation.professional_by_region@E12000006",
+      "ledger_selector": {
+        "source_name": "ons",
+        "source_concept": "ons.aps_people_in_employment",
+        "dimension_values": {
+          "soc2020_major_group": 2,
+          "sex": "all",
+          "employment_status": "all",
+          "statistic": "estimate"
+        },
+        "entity_name": "person",
+        "period_type": "calendar_year",
+        "period_value": 2025,
+        "geography_level": "region",
+        "geography_id": "E12000006"
+      },
+      "entity": "person",
+      "measure": "ons.occupation.professional_by_region@E12000006",
+      "family": "ons_occupation",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "ons.occupation.professional_by_region",
+        "measure_kind": "prepared_column",
+        "geography_level": "region",
+        "geography_id": "E12000006",
+        "geography_predicate": "{\"entity\":\"household\",\"map_to\":\"person\",\"operator\":\"==\",\"reduce\":\"any\",\"value\":\"EAST_OF_ENGLAND\",\"variable\":\"region\"}",
+        "cross_grain_grain": "region"
+      }
+    },
+    {
+      "name": "ons.occupation.professional_by_region@E12000007",
+      "ledger_selector": {
+        "source_name": "ons",
+        "source_concept": "ons.aps_people_in_employment",
+        "dimension_values": {
+          "soc2020_major_group": 2,
+          "sex": "all",
+          "employment_status": "all",
+          "statistic": "estimate"
+        },
+        "entity_name": "person",
+        "period_type": "calendar_year",
+        "period_value": 2025,
+        "geography_level": "region",
+        "geography_id": "E12000007"
+      },
+      "entity": "person",
+      "measure": "ons.occupation.professional_by_region@E12000007",
+      "family": "ons_occupation",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "ons.occupation.professional_by_region",
+        "measure_kind": "prepared_column",
+        "geography_level": "region",
+        "geography_id": "E12000007",
+        "geography_predicate": "{\"entity\":\"household\",\"map_to\":\"person\",\"operator\":\"==\",\"reduce\":\"any\",\"value\":\"LONDON\",\"variable\":\"region\"}",
+        "cross_grain_grain": "region"
+      }
+    },
+    {
+      "name": "ons.occupation.professional_by_region@E12000008",
+      "ledger_selector": {
+        "source_name": "ons",
+        "source_concept": "ons.aps_people_in_employment",
+        "dimension_values": {
+          "soc2020_major_group": 2,
+          "sex": "all",
+          "employment_status": "all",
+          "statistic": "estimate"
+        },
+        "entity_name": "person",
+        "period_type": "calendar_year",
+        "period_value": 2025,
+        "geography_level": "region",
+        "geography_id": "E12000008"
+      },
+      "entity": "person",
+      "measure": "ons.occupation.professional_by_region@E12000008",
+      "family": "ons_occupation",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "ons.occupation.professional_by_region",
+        "measure_kind": "prepared_column",
+        "geography_level": "region",
+        "geography_id": "E12000008",
+        "geography_predicate": "{\"entity\":\"household\",\"map_to\":\"person\",\"operator\":\"==\",\"reduce\":\"any\",\"value\":\"SOUTH_EAST\",\"variable\":\"region\"}",
+        "cross_grain_grain": "region"
+      }
+    },
+    {
+      "name": "ons.occupation.professional_by_region@E12000009",
+      "ledger_selector": {
+        "source_name": "ons",
+        "source_concept": "ons.aps_people_in_employment",
+        "dimension_values": {
+          "soc2020_major_group": 2,
+          "sex": "all",
+          "employment_status": "all",
+          "statistic": "estimate"
+        },
+        "entity_name": "person",
+        "period_type": "calendar_year",
+        "period_value": 2025,
+        "geography_level": "region",
+        "geography_id": "E12000009"
+      },
+      "entity": "person",
+      "measure": "ons.occupation.professional_by_region@E12000009",
+      "family": "ons_occupation",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "ons.occupation.professional_by_region",
+        "measure_kind": "prepared_column",
+        "geography_level": "region",
+        "geography_id": "E12000009",
+        "geography_predicate": "{\"entity\":\"household\",\"map_to\":\"person\",\"operator\":\"==\",\"reduce\":\"any\",\"value\":\"SOUTH_WEST\",\"variable\":\"region\"}",
+        "cross_grain_grain": "region"
+      }
+    },
+    {
+      "name": "ons.occupation.professional_by_region@W92000004",
+      "ledger_selector": {
+        "source_name": "ons",
+        "source_concept": "ons.aps_people_in_employment",
+        "dimension_values": {
+          "soc2020_major_group": 2,
+          "sex": "all",
+          "employment_status": "all",
+          "statistic": "estimate"
+        },
+        "entity_name": "person",
+        "period_type": "calendar_year",
+        "period_value": 2025,
+        "geography_level": "country",
+        "geography_id": "W92000004"
+      },
+      "entity": "person",
+      "measure": "ons.occupation.professional_by_region@W92000004",
+      "family": "ons_occupation",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "ons.occupation.professional_by_region",
+        "measure_kind": "prepared_column",
+        "geography_level": "country",
+        "geography_id": "W92000004",
+        "geography_predicate": "{\"entity\":\"household\",\"map_to\":\"person\",\"operator\":\"==\",\"reduce\":\"any\",\"value\":\"WALES\",\"variable\":\"region\"}",
+        "cross_grain_grain": "region"
+      }
+    },
+    {
+      "name": "ons.occupation.professional_by_region@S92000003",
+      "ledger_selector": {
+        "source_name": "ons",
+        "source_concept": "ons.aps_people_in_employment",
+        "dimension_values": {
+          "soc2020_major_group": 2,
+          "sex": "all",
+          "employment_status": "all",
+          "statistic": "estimate"
+        },
+        "entity_name": "person",
+        "period_type": "calendar_year",
+        "period_value": 2025,
+        "geography_level": "country",
+        "geography_id": "S92000003"
+      },
+      "entity": "person",
+      "measure": "ons.occupation.professional_by_region@S92000003",
+      "family": "ons_occupation",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "ons.occupation.professional_by_region",
+        "measure_kind": "prepared_column",
+        "geography_level": "country",
+        "geography_id": "S92000003",
+        "geography_predicate": "{\"entity\":\"household\",\"map_to\":\"person\",\"operator\":\"==\",\"reduce\":\"any\",\"value\":\"SCOTLAND\",\"variable\":\"region\"}",
+        "cross_grain_grain": "region"
+      }
+    },
+    {
+      "name": "ons.occupation.professional_by_region@N92000002",
+      "ledger_selector": {
+        "source_name": "ons",
+        "source_concept": "ons.aps_people_in_employment",
+        "dimension_values": {
+          "soc2020_major_group": 2,
+          "sex": "all",
+          "employment_status": "all",
+          "statistic": "estimate"
+        },
+        "entity_name": "person",
+        "period_type": "calendar_year",
+        "period_value": 2025,
+        "geography_level": "country",
+        "geography_id": "N92000002"
+      },
+      "entity": "person",
+      "measure": "ons.occupation.professional_by_region@N92000002",
+      "family": "ons_occupation",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "ons.occupation.professional_by_region",
+        "measure_kind": "prepared_column",
+        "geography_level": "country",
+        "geography_id": "N92000002",
+        "geography_predicate": "{\"entity\":\"household\",\"map_to\":\"person\",\"operator\":\"==\",\"reduce\":\"any\",\"value\":\"NORTHERN_IRELAND\",\"variable\":\"region\"}",
+        "cross_grain_grain": "region"
+      }
+    },
+    {
+      "name": "ons.occupation.associate_professional_by_region@E12000001",
+      "ledger_selector": {
+        "source_name": "ons",
+        "source_concept": "ons.aps_people_in_employment",
+        "dimension_values": {
+          "soc2020_major_group": 3,
+          "sex": "all",
+          "employment_status": "all",
+          "statistic": "estimate"
+        },
+        "entity_name": "person",
+        "period_type": "calendar_year",
+        "period_value": 2025,
+        "geography_level": "region",
+        "geography_id": "E12000001"
+      },
+      "entity": "person",
+      "measure": "ons.occupation.associate_professional_by_region@E12000001",
+      "family": "ons_occupation",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "ons.occupation.associate_professional_by_region",
+        "measure_kind": "prepared_column",
+        "geography_level": "region",
+        "geography_id": "E12000001",
+        "geography_predicate": "{\"entity\":\"household\",\"map_to\":\"person\",\"operator\":\"==\",\"reduce\":\"any\",\"value\":\"NORTH_EAST\",\"variable\":\"region\"}",
+        "cross_grain_grain": "region"
+      }
+    },
+    {
+      "name": "ons.occupation.associate_professional_by_region@E12000002",
+      "ledger_selector": {
+        "source_name": "ons",
+        "source_concept": "ons.aps_people_in_employment",
+        "dimension_values": {
+          "soc2020_major_group": 3,
+          "sex": "all",
+          "employment_status": "all",
+          "statistic": "estimate"
+        },
+        "entity_name": "person",
+        "period_type": "calendar_year",
+        "period_value": 2025,
+        "geography_level": "region",
+        "geography_id": "E12000002"
+      },
+      "entity": "person",
+      "measure": "ons.occupation.associate_professional_by_region@E12000002",
+      "family": "ons_occupation",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "ons.occupation.associate_professional_by_region",
+        "measure_kind": "prepared_column",
+        "geography_level": "region",
+        "geography_id": "E12000002",
+        "geography_predicate": "{\"entity\":\"household\",\"map_to\":\"person\",\"operator\":\"==\",\"reduce\":\"any\",\"value\":\"NORTH_WEST\",\"variable\":\"region\"}",
+        "cross_grain_grain": "region"
+      }
+    },
+    {
+      "name": "ons.occupation.associate_professional_by_region@E12000003",
+      "ledger_selector": {
+        "source_name": "ons",
+        "source_concept": "ons.aps_people_in_employment",
+        "dimension_values": {
+          "soc2020_major_group": 3,
+          "sex": "all",
+          "employment_status": "all",
+          "statistic": "estimate"
+        },
+        "entity_name": "person",
+        "period_type": "calendar_year",
+        "period_value": 2025,
+        "geography_level": "region",
+        "geography_id": "E12000003"
+      },
+      "entity": "person",
+      "measure": "ons.occupation.associate_professional_by_region@E12000003",
+      "family": "ons_occupation",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "ons.occupation.associate_professional_by_region",
+        "measure_kind": "prepared_column",
+        "geography_level": "region",
+        "geography_id": "E12000003",
+        "geography_predicate": "{\"entity\":\"household\",\"map_to\":\"person\",\"operator\":\"==\",\"reduce\":\"any\",\"value\":\"YORKSHIRE\",\"variable\":\"region\"}",
+        "cross_grain_grain": "region"
+      }
+    },
+    {
+      "name": "ons.occupation.associate_professional_by_region@E12000004",
+      "ledger_selector": {
+        "source_name": "ons",
+        "source_concept": "ons.aps_people_in_employment",
+        "dimension_values": {
+          "soc2020_major_group": 3,
+          "sex": "all",
+          "employment_status": "all",
+          "statistic": "estimate"
+        },
+        "entity_name": "person",
+        "period_type": "calendar_year",
+        "period_value": 2025,
+        "geography_level": "region",
+        "geography_id": "E12000004"
+      },
+      "entity": "person",
+      "measure": "ons.occupation.associate_professional_by_region@E12000004",
+      "family": "ons_occupation",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "ons.occupation.associate_professional_by_region",
+        "measure_kind": "prepared_column",
+        "geography_level": "region",
+        "geography_id": "E12000004",
+        "geography_predicate": "{\"entity\":\"household\",\"map_to\":\"person\",\"operator\":\"==\",\"reduce\":\"any\",\"value\":\"EAST_MIDLANDS\",\"variable\":\"region\"}",
+        "cross_grain_grain": "region"
+      }
+    },
+    {
+      "name": "ons.occupation.associate_professional_by_region@E12000005",
+      "ledger_selector": {
+        "source_name": "ons",
+        "source_concept": "ons.aps_people_in_employment",
+        "dimension_values": {
+          "soc2020_major_group": 3,
+          "sex": "all",
+          "employment_status": "all",
+          "statistic": "estimate"
+        },
+        "entity_name": "person",
+        "period_type": "calendar_year",
+        "period_value": 2025,
+        "geography_level": "region",
+        "geography_id": "E12000005"
+      },
+      "entity": "person",
+      "measure": "ons.occupation.associate_professional_by_region@E12000005",
+      "family": "ons_occupation",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "ons.occupation.associate_professional_by_region",
+        "measure_kind": "prepared_column",
+        "geography_level": "region",
+        "geography_id": "E12000005",
+        "geography_predicate": "{\"entity\":\"household\",\"map_to\":\"person\",\"operator\":\"==\",\"reduce\":\"any\",\"value\":\"WEST_MIDLANDS\",\"variable\":\"region\"}",
+        "cross_grain_grain": "region"
+      }
+    },
+    {
+      "name": "ons.occupation.associate_professional_by_region@E12000006",
+      "ledger_selector": {
+        "source_name": "ons",
+        "source_concept": "ons.aps_people_in_employment",
+        "dimension_values": {
+          "soc2020_major_group": 3,
+          "sex": "all",
+          "employment_status": "all",
+          "statistic": "estimate"
+        },
+        "entity_name": "person",
+        "period_type": "calendar_year",
+        "period_value": 2025,
+        "geography_level": "region",
+        "geography_id": "E12000006"
+      },
+      "entity": "person",
+      "measure": "ons.occupation.associate_professional_by_region@E12000006",
+      "family": "ons_occupation",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "ons.occupation.associate_professional_by_region",
+        "measure_kind": "prepared_column",
+        "geography_level": "region",
+        "geography_id": "E12000006",
+        "geography_predicate": "{\"entity\":\"household\",\"map_to\":\"person\",\"operator\":\"==\",\"reduce\":\"any\",\"value\":\"EAST_OF_ENGLAND\",\"variable\":\"region\"}",
+        "cross_grain_grain": "region"
+      }
+    },
+    {
+      "name": "ons.occupation.associate_professional_by_region@E12000007",
+      "ledger_selector": {
+        "source_name": "ons",
+        "source_concept": "ons.aps_people_in_employment",
+        "dimension_values": {
+          "soc2020_major_group": 3,
+          "sex": "all",
+          "employment_status": "all",
+          "statistic": "estimate"
+        },
+        "entity_name": "person",
+        "period_type": "calendar_year",
+        "period_value": 2025,
+        "geography_level": "region",
+        "geography_id": "E12000007"
+      },
+      "entity": "person",
+      "measure": "ons.occupation.associate_professional_by_region@E12000007",
+      "family": "ons_occupation",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "ons.occupation.associate_professional_by_region",
+        "measure_kind": "prepared_column",
+        "geography_level": "region",
+        "geography_id": "E12000007",
+        "geography_predicate": "{\"entity\":\"household\",\"map_to\":\"person\",\"operator\":\"==\",\"reduce\":\"any\",\"value\":\"LONDON\",\"variable\":\"region\"}",
+        "cross_grain_grain": "region"
+      }
+    },
+    {
+      "name": "ons.occupation.associate_professional_by_region@E12000008",
+      "ledger_selector": {
+        "source_name": "ons",
+        "source_concept": "ons.aps_people_in_employment",
+        "dimension_values": {
+          "soc2020_major_group": 3,
+          "sex": "all",
+          "employment_status": "all",
+          "statistic": "estimate"
+        },
+        "entity_name": "person",
+        "period_type": "calendar_year",
+        "period_value": 2025,
+        "geography_level": "region",
+        "geography_id": "E12000008"
+      },
+      "entity": "person",
+      "measure": "ons.occupation.associate_professional_by_region@E12000008",
+      "family": "ons_occupation",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "ons.occupation.associate_professional_by_region",
+        "measure_kind": "prepared_column",
+        "geography_level": "region",
+        "geography_id": "E12000008",
+        "geography_predicate": "{\"entity\":\"household\",\"map_to\":\"person\",\"operator\":\"==\",\"reduce\":\"any\",\"value\":\"SOUTH_EAST\",\"variable\":\"region\"}",
+        "cross_grain_grain": "region"
+      }
+    },
+    {
+      "name": "ons.occupation.associate_professional_by_region@E12000009",
+      "ledger_selector": {
+        "source_name": "ons",
+        "source_concept": "ons.aps_people_in_employment",
+        "dimension_values": {
+          "soc2020_major_group": 3,
+          "sex": "all",
+          "employment_status": "all",
+          "statistic": "estimate"
+        },
+        "entity_name": "person",
+        "period_type": "calendar_year",
+        "period_value": 2025,
+        "geography_level": "region",
+        "geography_id": "E12000009"
+      },
+      "entity": "person",
+      "measure": "ons.occupation.associate_professional_by_region@E12000009",
+      "family": "ons_occupation",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "ons.occupation.associate_professional_by_region",
+        "measure_kind": "prepared_column",
+        "geography_level": "region",
+        "geography_id": "E12000009",
+        "geography_predicate": "{\"entity\":\"household\",\"map_to\":\"person\",\"operator\":\"==\",\"reduce\":\"any\",\"value\":\"SOUTH_WEST\",\"variable\":\"region\"}",
+        "cross_grain_grain": "region"
+      }
+    },
+    {
+      "name": "ons.occupation.associate_professional_by_region@W92000004",
+      "ledger_selector": {
+        "source_name": "ons",
+        "source_concept": "ons.aps_people_in_employment",
+        "dimension_values": {
+          "soc2020_major_group": 3,
+          "sex": "all",
+          "employment_status": "all",
+          "statistic": "estimate"
+        },
+        "entity_name": "person",
+        "period_type": "calendar_year",
+        "period_value": 2025,
+        "geography_level": "country",
+        "geography_id": "W92000004"
+      },
+      "entity": "person",
+      "measure": "ons.occupation.associate_professional_by_region@W92000004",
+      "family": "ons_occupation",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "ons.occupation.associate_professional_by_region",
+        "measure_kind": "prepared_column",
+        "geography_level": "country",
+        "geography_id": "W92000004",
+        "geography_predicate": "{\"entity\":\"household\",\"map_to\":\"person\",\"operator\":\"==\",\"reduce\":\"any\",\"value\":\"WALES\",\"variable\":\"region\"}",
+        "cross_grain_grain": "region"
+      }
+    },
+    {
+      "name": "ons.occupation.associate_professional_by_region@S92000003",
+      "ledger_selector": {
+        "source_name": "ons",
+        "source_concept": "ons.aps_people_in_employment",
+        "dimension_values": {
+          "soc2020_major_group": 3,
+          "sex": "all",
+          "employment_status": "all",
+          "statistic": "estimate"
+        },
+        "entity_name": "person",
+        "period_type": "calendar_year",
+        "period_value": 2025,
+        "geography_level": "country",
+        "geography_id": "S92000003"
+      },
+      "entity": "person",
+      "measure": "ons.occupation.associate_professional_by_region@S92000003",
+      "family": "ons_occupation",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "ons.occupation.associate_professional_by_region",
+        "measure_kind": "prepared_column",
+        "geography_level": "country",
+        "geography_id": "S92000003",
+        "geography_predicate": "{\"entity\":\"household\",\"map_to\":\"person\",\"operator\":\"==\",\"reduce\":\"any\",\"value\":\"SCOTLAND\",\"variable\":\"region\"}",
+        "cross_grain_grain": "region"
+      }
+    },
+    {
+      "name": "ons.occupation.associate_professional_by_region@N92000002",
+      "ledger_selector": {
+        "source_name": "ons",
+        "source_concept": "ons.aps_people_in_employment",
+        "dimension_values": {
+          "soc2020_major_group": 3,
+          "sex": "all",
+          "employment_status": "all",
+          "statistic": "estimate"
+        },
+        "entity_name": "person",
+        "period_type": "calendar_year",
+        "period_value": 2025,
+        "geography_level": "country",
+        "geography_id": "N92000002"
+      },
+      "entity": "person",
+      "measure": "ons.occupation.associate_professional_by_region@N92000002",
+      "family": "ons_occupation",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "ons.occupation.associate_professional_by_region",
+        "measure_kind": "prepared_column",
+        "geography_level": "country",
+        "geography_id": "N92000002",
+        "geography_predicate": "{\"entity\":\"household\",\"map_to\":\"person\",\"operator\":\"==\",\"reduce\":\"any\",\"value\":\"NORTHERN_IRELAND\",\"variable\":\"region\"}",
+        "cross_grain_grain": "region"
+      }
+    },
+    {
+      "name": "ons.occupation.administrative_and_secretarial_by_region@E12000001",
+      "ledger_selector": {
+        "source_name": "ons",
+        "source_concept": "ons.aps_people_in_employment",
+        "dimension_values": {
+          "soc2020_major_group": 4,
+          "sex": "all",
+          "employment_status": "all",
+          "statistic": "estimate"
+        },
+        "entity_name": "person",
+        "period_type": "calendar_year",
+        "period_value": 2025,
+        "geography_level": "region",
+        "geography_id": "E12000001"
+      },
+      "entity": "person",
+      "measure": "ons.occupation.administrative_and_secretarial_by_region@E12000001",
+      "family": "ons_occupation",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "ons.occupation.administrative_and_secretarial_by_region",
+        "measure_kind": "prepared_column",
+        "geography_level": "region",
+        "geography_id": "E12000001",
+        "geography_predicate": "{\"entity\":\"household\",\"map_to\":\"person\",\"operator\":\"==\",\"reduce\":\"any\",\"value\":\"NORTH_EAST\",\"variable\":\"region\"}",
+        "cross_grain_grain": "region"
+      }
+    },
+    {
+      "name": "ons.occupation.administrative_and_secretarial_by_region@E12000002",
+      "ledger_selector": {
+        "source_name": "ons",
+        "source_concept": "ons.aps_people_in_employment",
+        "dimension_values": {
+          "soc2020_major_group": 4,
+          "sex": "all",
+          "employment_status": "all",
+          "statistic": "estimate"
+        },
+        "entity_name": "person",
+        "period_type": "calendar_year",
+        "period_value": 2025,
+        "geography_level": "region",
+        "geography_id": "E12000002"
+      },
+      "entity": "person",
+      "measure": "ons.occupation.administrative_and_secretarial_by_region@E12000002",
+      "family": "ons_occupation",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "ons.occupation.administrative_and_secretarial_by_region",
+        "measure_kind": "prepared_column",
+        "geography_level": "region",
+        "geography_id": "E12000002",
+        "geography_predicate": "{\"entity\":\"household\",\"map_to\":\"person\",\"operator\":\"==\",\"reduce\":\"any\",\"value\":\"NORTH_WEST\",\"variable\":\"region\"}",
+        "cross_grain_grain": "region"
+      }
+    },
+    {
+      "name": "ons.occupation.administrative_and_secretarial_by_region@E12000003",
+      "ledger_selector": {
+        "source_name": "ons",
+        "source_concept": "ons.aps_people_in_employment",
+        "dimension_values": {
+          "soc2020_major_group": 4,
+          "sex": "all",
+          "employment_status": "all",
+          "statistic": "estimate"
+        },
+        "entity_name": "person",
+        "period_type": "calendar_year",
+        "period_value": 2025,
+        "geography_level": "region",
+        "geography_id": "E12000003"
+      },
+      "entity": "person",
+      "measure": "ons.occupation.administrative_and_secretarial_by_region@E12000003",
+      "family": "ons_occupation",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "ons.occupation.administrative_and_secretarial_by_region",
+        "measure_kind": "prepared_column",
+        "geography_level": "region",
+        "geography_id": "E12000003",
+        "geography_predicate": "{\"entity\":\"household\",\"map_to\":\"person\",\"operator\":\"==\",\"reduce\":\"any\",\"value\":\"YORKSHIRE\",\"variable\":\"region\"}",
+        "cross_grain_grain": "region"
+      }
+    },
+    {
+      "name": "ons.occupation.administrative_and_secretarial_by_region@E12000004",
+      "ledger_selector": {
+        "source_name": "ons",
+        "source_concept": "ons.aps_people_in_employment",
+        "dimension_values": {
+          "soc2020_major_group": 4,
+          "sex": "all",
+          "employment_status": "all",
+          "statistic": "estimate"
+        },
+        "entity_name": "person",
+        "period_type": "calendar_year",
+        "period_value": 2025,
+        "geography_level": "region",
+        "geography_id": "E12000004"
+      },
+      "entity": "person",
+      "measure": "ons.occupation.administrative_and_secretarial_by_region@E12000004",
+      "family": "ons_occupation",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "ons.occupation.administrative_and_secretarial_by_region",
+        "measure_kind": "prepared_column",
+        "geography_level": "region",
+        "geography_id": "E12000004",
+        "geography_predicate": "{\"entity\":\"household\",\"map_to\":\"person\",\"operator\":\"==\",\"reduce\":\"any\",\"value\":\"EAST_MIDLANDS\",\"variable\":\"region\"}",
+        "cross_grain_grain": "region"
+      }
+    },
+    {
+      "name": "ons.occupation.administrative_and_secretarial_by_region@E12000005",
+      "ledger_selector": {
+        "source_name": "ons",
+        "source_concept": "ons.aps_people_in_employment",
+        "dimension_values": {
+          "soc2020_major_group": 4,
+          "sex": "all",
+          "employment_status": "all",
+          "statistic": "estimate"
+        },
+        "entity_name": "person",
+        "period_type": "calendar_year",
+        "period_value": 2025,
+        "geography_level": "region",
+        "geography_id": "E12000005"
+      },
+      "entity": "person",
+      "measure": "ons.occupation.administrative_and_secretarial_by_region@E12000005",
+      "family": "ons_occupation",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "ons.occupation.administrative_and_secretarial_by_region",
+        "measure_kind": "prepared_column",
+        "geography_level": "region",
+        "geography_id": "E12000005",
+        "geography_predicate": "{\"entity\":\"household\",\"map_to\":\"person\",\"operator\":\"==\",\"reduce\":\"any\",\"value\":\"WEST_MIDLANDS\",\"variable\":\"region\"}",
+        "cross_grain_grain": "region"
+      }
+    },
+    {
+      "name": "ons.occupation.administrative_and_secretarial_by_region@E12000006",
+      "ledger_selector": {
+        "source_name": "ons",
+        "source_concept": "ons.aps_people_in_employment",
+        "dimension_values": {
+          "soc2020_major_group": 4,
+          "sex": "all",
+          "employment_status": "all",
+          "statistic": "estimate"
+        },
+        "entity_name": "person",
+        "period_type": "calendar_year",
+        "period_value": 2025,
+        "geography_level": "region",
+        "geography_id": "E12000006"
+      },
+      "entity": "person",
+      "measure": "ons.occupation.administrative_and_secretarial_by_region@E12000006",
+      "family": "ons_occupation",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "ons.occupation.administrative_and_secretarial_by_region",
+        "measure_kind": "prepared_column",
+        "geography_level": "region",
+        "geography_id": "E12000006",
+        "geography_predicate": "{\"entity\":\"household\",\"map_to\":\"person\",\"operator\":\"==\",\"reduce\":\"any\",\"value\":\"EAST_OF_ENGLAND\",\"variable\":\"region\"}",
+        "cross_grain_grain": "region"
+      }
+    },
+    {
+      "name": "ons.occupation.administrative_and_secretarial_by_region@E12000007",
+      "ledger_selector": {
+        "source_name": "ons",
+        "source_concept": "ons.aps_people_in_employment",
+        "dimension_values": {
+          "soc2020_major_group": 4,
+          "sex": "all",
+          "employment_status": "all",
+          "statistic": "estimate"
+        },
+        "entity_name": "person",
+        "period_type": "calendar_year",
+        "period_value": 2025,
+        "geography_level": "region",
+        "geography_id": "E12000007"
+      },
+      "entity": "person",
+      "measure": "ons.occupation.administrative_and_secretarial_by_region@E12000007",
+      "family": "ons_occupation",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "ons.occupation.administrative_and_secretarial_by_region",
+        "measure_kind": "prepared_column",
+        "geography_level": "region",
+        "geography_id": "E12000007",
+        "geography_predicate": "{\"entity\":\"household\",\"map_to\":\"person\",\"operator\":\"==\",\"reduce\":\"any\",\"value\":\"LONDON\",\"variable\":\"region\"}",
+        "cross_grain_grain": "region"
+      }
+    },
+    {
+      "name": "ons.occupation.administrative_and_secretarial_by_region@E12000008",
+      "ledger_selector": {
+        "source_name": "ons",
+        "source_concept": "ons.aps_people_in_employment",
+        "dimension_values": {
+          "soc2020_major_group": 4,
+          "sex": "all",
+          "employment_status": "all",
+          "statistic": "estimate"
+        },
+        "entity_name": "person",
+        "period_type": "calendar_year",
+        "period_value": 2025,
+        "geography_level": "region",
+        "geography_id": "E12000008"
+      },
+      "entity": "person",
+      "measure": "ons.occupation.administrative_and_secretarial_by_region@E12000008",
+      "family": "ons_occupation",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "ons.occupation.administrative_and_secretarial_by_region",
+        "measure_kind": "prepared_column",
+        "geography_level": "region",
+        "geography_id": "E12000008",
+        "geography_predicate": "{\"entity\":\"household\",\"map_to\":\"person\",\"operator\":\"==\",\"reduce\":\"any\",\"value\":\"SOUTH_EAST\",\"variable\":\"region\"}",
+        "cross_grain_grain": "region"
+      }
+    },
+    {
+      "name": "ons.occupation.administrative_and_secretarial_by_region@E12000009",
+      "ledger_selector": {
+        "source_name": "ons",
+        "source_concept": "ons.aps_people_in_employment",
+        "dimension_values": {
+          "soc2020_major_group": 4,
+          "sex": "all",
+          "employment_status": "all",
+          "statistic": "estimate"
+        },
+        "entity_name": "person",
+        "period_type": "calendar_year",
+        "period_value": 2025,
+        "geography_level": "region",
+        "geography_id": "E12000009"
+      },
+      "entity": "person",
+      "measure": "ons.occupation.administrative_and_secretarial_by_region@E12000009",
+      "family": "ons_occupation",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "ons.occupation.administrative_and_secretarial_by_region",
+        "measure_kind": "prepared_column",
+        "geography_level": "region",
+        "geography_id": "E12000009",
+        "geography_predicate": "{\"entity\":\"household\",\"map_to\":\"person\",\"operator\":\"==\",\"reduce\":\"any\",\"value\":\"SOUTH_WEST\",\"variable\":\"region\"}",
+        "cross_grain_grain": "region"
+      }
+    },
+    {
+      "name": "ons.occupation.administrative_and_secretarial_by_region@W92000004",
+      "ledger_selector": {
+        "source_name": "ons",
+        "source_concept": "ons.aps_people_in_employment",
+        "dimension_values": {
+          "soc2020_major_group": 4,
+          "sex": "all",
+          "employment_status": "all",
+          "statistic": "estimate"
+        },
+        "entity_name": "person",
+        "period_type": "calendar_year",
+        "period_value": 2025,
+        "geography_level": "country",
+        "geography_id": "W92000004"
+      },
+      "entity": "person",
+      "measure": "ons.occupation.administrative_and_secretarial_by_region@W92000004",
+      "family": "ons_occupation",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "ons.occupation.administrative_and_secretarial_by_region",
+        "measure_kind": "prepared_column",
+        "geography_level": "country",
+        "geography_id": "W92000004",
+        "geography_predicate": "{\"entity\":\"household\",\"map_to\":\"person\",\"operator\":\"==\",\"reduce\":\"any\",\"value\":\"WALES\",\"variable\":\"region\"}",
+        "cross_grain_grain": "region"
+      }
+    },
+    {
+      "name": "ons.occupation.administrative_and_secretarial_by_region@S92000003",
+      "ledger_selector": {
+        "source_name": "ons",
+        "source_concept": "ons.aps_people_in_employment",
+        "dimension_values": {
+          "soc2020_major_group": 4,
+          "sex": "all",
+          "employment_status": "all",
+          "statistic": "estimate"
+        },
+        "entity_name": "person",
+        "period_type": "calendar_year",
+        "period_value": 2025,
+        "geography_level": "country",
+        "geography_id": "S92000003"
+      },
+      "entity": "person",
+      "measure": "ons.occupation.administrative_and_secretarial_by_region@S92000003",
+      "family": "ons_occupation",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "ons.occupation.administrative_and_secretarial_by_region",
+        "measure_kind": "prepared_column",
+        "geography_level": "country",
+        "geography_id": "S92000003",
+        "geography_predicate": "{\"entity\":\"household\",\"map_to\":\"person\",\"operator\":\"==\",\"reduce\":\"any\",\"value\":\"SCOTLAND\",\"variable\":\"region\"}",
+        "cross_grain_grain": "region"
+      }
+    },
+    {
+      "name": "ons.occupation.administrative_and_secretarial_by_region@N92000002",
+      "ledger_selector": {
+        "source_name": "ons",
+        "source_concept": "ons.aps_people_in_employment",
+        "dimension_values": {
+          "soc2020_major_group": 4,
+          "sex": "all",
+          "employment_status": "all",
+          "statistic": "estimate"
+        },
+        "entity_name": "person",
+        "period_type": "calendar_year",
+        "period_value": 2025,
+        "geography_level": "country",
+        "geography_id": "N92000002"
+      },
+      "entity": "person",
+      "measure": "ons.occupation.administrative_and_secretarial_by_region@N92000002",
+      "family": "ons_occupation",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "ons.occupation.administrative_and_secretarial_by_region",
+        "measure_kind": "prepared_column",
+        "geography_level": "country",
+        "geography_id": "N92000002",
+        "geography_predicate": "{\"entity\":\"household\",\"map_to\":\"person\",\"operator\":\"==\",\"reduce\":\"any\",\"value\":\"NORTHERN_IRELAND\",\"variable\":\"region\"}",
+        "cross_grain_grain": "region"
+      }
+    },
+    {
+      "name": "ons.occupation.skilled_trades_by_region@E12000001",
+      "ledger_selector": {
+        "source_name": "ons",
+        "source_concept": "ons.aps_people_in_employment",
+        "dimension_values": {
+          "soc2020_major_group": 5,
+          "sex": "all",
+          "employment_status": "all",
+          "statistic": "estimate"
+        },
+        "entity_name": "person",
+        "period_type": "calendar_year",
+        "period_value": 2025,
+        "geography_level": "region",
+        "geography_id": "E12000001"
+      },
+      "entity": "person",
+      "measure": "ons.occupation.skilled_trades_by_region@E12000001",
+      "family": "ons_occupation",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "ons.occupation.skilled_trades_by_region",
+        "measure_kind": "prepared_column",
+        "geography_level": "region",
+        "geography_id": "E12000001",
+        "geography_predicate": "{\"entity\":\"household\",\"map_to\":\"person\",\"operator\":\"==\",\"reduce\":\"any\",\"value\":\"NORTH_EAST\",\"variable\":\"region\"}",
+        "cross_grain_grain": "region"
+      }
+    },
+    {
+      "name": "ons.occupation.skilled_trades_by_region@E12000002",
+      "ledger_selector": {
+        "source_name": "ons",
+        "source_concept": "ons.aps_people_in_employment",
+        "dimension_values": {
+          "soc2020_major_group": 5,
+          "sex": "all",
+          "employment_status": "all",
+          "statistic": "estimate"
+        },
+        "entity_name": "person",
+        "period_type": "calendar_year",
+        "period_value": 2025,
+        "geography_level": "region",
+        "geography_id": "E12000002"
+      },
+      "entity": "person",
+      "measure": "ons.occupation.skilled_trades_by_region@E12000002",
+      "family": "ons_occupation",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "ons.occupation.skilled_trades_by_region",
+        "measure_kind": "prepared_column",
+        "geography_level": "region",
+        "geography_id": "E12000002",
+        "geography_predicate": "{\"entity\":\"household\",\"map_to\":\"person\",\"operator\":\"==\",\"reduce\":\"any\",\"value\":\"NORTH_WEST\",\"variable\":\"region\"}",
+        "cross_grain_grain": "region"
+      }
+    },
+    {
+      "name": "ons.occupation.skilled_trades_by_region@E12000003",
+      "ledger_selector": {
+        "source_name": "ons",
+        "source_concept": "ons.aps_people_in_employment",
+        "dimension_values": {
+          "soc2020_major_group": 5,
+          "sex": "all",
+          "employment_status": "all",
+          "statistic": "estimate"
+        },
+        "entity_name": "person",
+        "period_type": "calendar_year",
+        "period_value": 2025,
+        "geography_level": "region",
+        "geography_id": "E12000003"
+      },
+      "entity": "person",
+      "measure": "ons.occupation.skilled_trades_by_region@E12000003",
+      "family": "ons_occupation",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "ons.occupation.skilled_trades_by_region",
+        "measure_kind": "prepared_column",
+        "geography_level": "region",
+        "geography_id": "E12000003",
+        "geography_predicate": "{\"entity\":\"household\",\"map_to\":\"person\",\"operator\":\"==\",\"reduce\":\"any\",\"value\":\"YORKSHIRE\",\"variable\":\"region\"}",
+        "cross_grain_grain": "region"
+      }
+    },
+    {
+      "name": "ons.occupation.skilled_trades_by_region@E12000004",
+      "ledger_selector": {
+        "source_name": "ons",
+        "source_concept": "ons.aps_people_in_employment",
+        "dimension_values": {
+          "soc2020_major_group": 5,
+          "sex": "all",
+          "employment_status": "all",
+          "statistic": "estimate"
+        },
+        "entity_name": "person",
+        "period_type": "calendar_year",
+        "period_value": 2025,
+        "geography_level": "region",
+        "geography_id": "E12000004"
+      },
+      "entity": "person",
+      "measure": "ons.occupation.skilled_trades_by_region@E12000004",
+      "family": "ons_occupation",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "ons.occupation.skilled_trades_by_region",
+        "measure_kind": "prepared_column",
+        "geography_level": "region",
+        "geography_id": "E12000004",
+        "geography_predicate": "{\"entity\":\"household\",\"map_to\":\"person\",\"operator\":\"==\",\"reduce\":\"any\",\"value\":\"EAST_MIDLANDS\",\"variable\":\"region\"}",
+        "cross_grain_grain": "region"
+      }
+    },
+    {
+      "name": "ons.occupation.skilled_trades_by_region@E12000005",
+      "ledger_selector": {
+        "source_name": "ons",
+        "source_concept": "ons.aps_people_in_employment",
+        "dimension_values": {
+          "soc2020_major_group": 5,
+          "sex": "all",
+          "employment_status": "all",
+          "statistic": "estimate"
+        },
+        "entity_name": "person",
+        "period_type": "calendar_year",
+        "period_value": 2025,
+        "geography_level": "region",
+        "geography_id": "E12000005"
+      },
+      "entity": "person",
+      "measure": "ons.occupation.skilled_trades_by_region@E12000005",
+      "family": "ons_occupation",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "ons.occupation.skilled_trades_by_region",
+        "measure_kind": "prepared_column",
+        "geography_level": "region",
+        "geography_id": "E12000005",
+        "geography_predicate": "{\"entity\":\"household\",\"map_to\":\"person\",\"operator\":\"==\",\"reduce\":\"any\",\"value\":\"WEST_MIDLANDS\",\"variable\":\"region\"}",
+        "cross_grain_grain": "region"
+      }
+    },
+    {
+      "name": "ons.occupation.skilled_trades_by_region@E12000006",
+      "ledger_selector": {
+        "source_name": "ons",
+        "source_concept": "ons.aps_people_in_employment",
+        "dimension_values": {
+          "soc2020_major_group": 5,
+          "sex": "all",
+          "employment_status": "all",
+          "statistic": "estimate"
+        },
+        "entity_name": "person",
+        "period_type": "calendar_year",
+        "period_value": 2025,
+        "geography_level": "region",
+        "geography_id": "E12000006"
+      },
+      "entity": "person",
+      "measure": "ons.occupation.skilled_trades_by_region@E12000006",
+      "family": "ons_occupation",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "ons.occupation.skilled_trades_by_region",
+        "measure_kind": "prepared_column",
+        "geography_level": "region",
+        "geography_id": "E12000006",
+        "geography_predicate": "{\"entity\":\"household\",\"map_to\":\"person\",\"operator\":\"==\",\"reduce\":\"any\",\"value\":\"EAST_OF_ENGLAND\",\"variable\":\"region\"}",
+        "cross_grain_grain": "region"
+      }
+    },
+    {
+      "name": "ons.occupation.skilled_trades_by_region@E12000007",
+      "ledger_selector": {
+        "source_name": "ons",
+        "source_concept": "ons.aps_people_in_employment",
+        "dimension_values": {
+          "soc2020_major_group": 5,
+          "sex": "all",
+          "employment_status": "all",
+          "statistic": "estimate"
+        },
+        "entity_name": "person",
+        "period_type": "calendar_year",
+        "period_value": 2025,
+        "geography_level": "region",
+        "geography_id": "E12000007"
+      },
+      "entity": "person",
+      "measure": "ons.occupation.skilled_trades_by_region@E12000007",
+      "family": "ons_occupation",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "ons.occupation.skilled_trades_by_region",
+        "measure_kind": "prepared_column",
+        "geography_level": "region",
+        "geography_id": "E12000007",
+        "geography_predicate": "{\"entity\":\"household\",\"map_to\":\"person\",\"operator\":\"==\",\"reduce\":\"any\",\"value\":\"LONDON\",\"variable\":\"region\"}",
+        "cross_grain_grain": "region"
+      }
+    },
+    {
+      "name": "ons.occupation.skilled_trades_by_region@E12000008",
+      "ledger_selector": {
+        "source_name": "ons",
+        "source_concept": "ons.aps_people_in_employment",
+        "dimension_values": {
+          "soc2020_major_group": 5,
+          "sex": "all",
+          "employment_status": "all",
+          "statistic": "estimate"
+        },
+        "entity_name": "person",
+        "period_type": "calendar_year",
+        "period_value": 2025,
+        "geography_level": "region",
+        "geography_id": "E12000008"
+      },
+      "entity": "person",
+      "measure": "ons.occupation.skilled_trades_by_region@E12000008",
+      "family": "ons_occupation",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "ons.occupation.skilled_trades_by_region",
+        "measure_kind": "prepared_column",
+        "geography_level": "region",
+        "geography_id": "E12000008",
+        "geography_predicate": "{\"entity\":\"household\",\"map_to\":\"person\",\"operator\":\"==\",\"reduce\":\"any\",\"value\":\"SOUTH_EAST\",\"variable\":\"region\"}",
+        "cross_grain_grain": "region"
+      }
+    },
+    {
+      "name": "ons.occupation.skilled_trades_by_region@E12000009",
+      "ledger_selector": {
+        "source_name": "ons",
+        "source_concept": "ons.aps_people_in_employment",
+        "dimension_values": {
+          "soc2020_major_group": 5,
+          "sex": "all",
+          "employment_status": "all",
+          "statistic": "estimate"
+        },
+        "entity_name": "person",
+        "period_type": "calendar_year",
+        "period_value": 2025,
+        "geography_level": "region",
+        "geography_id": "E12000009"
+      },
+      "entity": "person",
+      "measure": "ons.occupation.skilled_trades_by_region@E12000009",
+      "family": "ons_occupation",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "ons.occupation.skilled_trades_by_region",
+        "measure_kind": "prepared_column",
+        "geography_level": "region",
+        "geography_id": "E12000009",
+        "geography_predicate": "{\"entity\":\"household\",\"map_to\":\"person\",\"operator\":\"==\",\"reduce\":\"any\",\"value\":\"SOUTH_WEST\",\"variable\":\"region\"}",
+        "cross_grain_grain": "region"
+      }
+    },
+    {
+      "name": "ons.occupation.skilled_trades_by_region@W92000004",
+      "ledger_selector": {
+        "source_name": "ons",
+        "source_concept": "ons.aps_people_in_employment",
+        "dimension_values": {
+          "soc2020_major_group": 5,
+          "sex": "all",
+          "employment_status": "all",
+          "statistic": "estimate"
+        },
+        "entity_name": "person",
+        "period_type": "calendar_year",
+        "period_value": 2025,
+        "geography_level": "country",
+        "geography_id": "W92000004"
+      },
+      "entity": "person",
+      "measure": "ons.occupation.skilled_trades_by_region@W92000004",
+      "family": "ons_occupation",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "ons.occupation.skilled_trades_by_region",
+        "measure_kind": "prepared_column",
+        "geography_level": "country",
+        "geography_id": "W92000004",
+        "geography_predicate": "{\"entity\":\"household\",\"map_to\":\"person\",\"operator\":\"==\",\"reduce\":\"any\",\"value\":\"WALES\",\"variable\":\"region\"}",
+        "cross_grain_grain": "region"
+      }
+    },
+    {
+      "name": "ons.occupation.skilled_trades_by_region@S92000003",
+      "ledger_selector": {
+        "source_name": "ons",
+        "source_concept": "ons.aps_people_in_employment",
+        "dimension_values": {
+          "soc2020_major_group": 5,
+          "sex": "all",
+          "employment_status": "all",
+          "statistic": "estimate"
+        },
+        "entity_name": "person",
+        "period_type": "calendar_year",
+        "period_value": 2025,
+        "geography_level": "country",
+        "geography_id": "S92000003"
+      },
+      "entity": "person",
+      "measure": "ons.occupation.skilled_trades_by_region@S92000003",
+      "family": "ons_occupation",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "ons.occupation.skilled_trades_by_region",
+        "measure_kind": "prepared_column",
+        "geography_level": "country",
+        "geography_id": "S92000003",
+        "geography_predicate": "{\"entity\":\"household\",\"map_to\":\"person\",\"operator\":\"==\",\"reduce\":\"any\",\"value\":\"SCOTLAND\",\"variable\":\"region\"}",
+        "cross_grain_grain": "region"
+      }
+    },
+    {
+      "name": "ons.occupation.skilled_trades_by_region@N92000002",
+      "ledger_selector": {
+        "source_name": "ons",
+        "source_concept": "ons.aps_people_in_employment",
+        "dimension_values": {
+          "soc2020_major_group": 5,
+          "sex": "all",
+          "employment_status": "all",
+          "statistic": "estimate"
+        },
+        "entity_name": "person",
+        "period_type": "calendar_year",
+        "period_value": 2025,
+        "geography_level": "country",
+        "geography_id": "N92000002"
+      },
+      "entity": "person",
+      "measure": "ons.occupation.skilled_trades_by_region@N92000002",
+      "family": "ons_occupation",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "ons.occupation.skilled_trades_by_region",
+        "measure_kind": "prepared_column",
+        "geography_level": "country",
+        "geography_id": "N92000002",
+        "geography_predicate": "{\"entity\":\"household\",\"map_to\":\"person\",\"operator\":\"==\",\"reduce\":\"any\",\"value\":\"NORTHERN_IRELAND\",\"variable\":\"region\"}",
+        "cross_grain_grain": "region"
+      }
+    },
+    {
+      "name": "ons.occupation.caring_leisure_and_other_service_by_region@E12000001",
+      "ledger_selector": {
+        "source_name": "ons",
+        "source_concept": "ons.aps_people_in_employment",
+        "dimension_values": {
+          "soc2020_major_group": 6,
+          "sex": "all",
+          "employment_status": "all",
+          "statistic": "estimate"
+        },
+        "entity_name": "person",
+        "period_type": "calendar_year",
+        "period_value": 2025,
+        "geography_level": "region",
+        "geography_id": "E12000001"
+      },
+      "entity": "person",
+      "measure": "ons.occupation.caring_leisure_and_other_service_by_region@E12000001",
+      "family": "ons_occupation",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "ons.occupation.caring_leisure_and_other_service_by_region",
+        "measure_kind": "prepared_column",
+        "geography_level": "region",
+        "geography_id": "E12000001",
+        "geography_predicate": "{\"entity\":\"household\",\"map_to\":\"person\",\"operator\":\"==\",\"reduce\":\"any\",\"value\":\"NORTH_EAST\",\"variable\":\"region\"}",
+        "cross_grain_grain": "region"
+      }
+    },
+    {
+      "name": "ons.occupation.caring_leisure_and_other_service_by_region@E12000002",
+      "ledger_selector": {
+        "source_name": "ons",
+        "source_concept": "ons.aps_people_in_employment",
+        "dimension_values": {
+          "soc2020_major_group": 6,
+          "sex": "all",
+          "employment_status": "all",
+          "statistic": "estimate"
+        },
+        "entity_name": "person",
+        "period_type": "calendar_year",
+        "period_value": 2025,
+        "geography_level": "region",
+        "geography_id": "E12000002"
+      },
+      "entity": "person",
+      "measure": "ons.occupation.caring_leisure_and_other_service_by_region@E12000002",
+      "family": "ons_occupation",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "ons.occupation.caring_leisure_and_other_service_by_region",
+        "measure_kind": "prepared_column",
+        "geography_level": "region",
+        "geography_id": "E12000002",
+        "geography_predicate": "{\"entity\":\"household\",\"map_to\":\"person\",\"operator\":\"==\",\"reduce\":\"any\",\"value\":\"NORTH_WEST\",\"variable\":\"region\"}",
+        "cross_grain_grain": "region"
+      }
+    },
+    {
+      "name": "ons.occupation.caring_leisure_and_other_service_by_region@E12000003",
+      "ledger_selector": {
+        "source_name": "ons",
+        "source_concept": "ons.aps_people_in_employment",
+        "dimension_values": {
+          "soc2020_major_group": 6,
+          "sex": "all",
+          "employment_status": "all",
+          "statistic": "estimate"
+        },
+        "entity_name": "person",
+        "period_type": "calendar_year",
+        "period_value": 2025,
+        "geography_level": "region",
+        "geography_id": "E12000003"
+      },
+      "entity": "person",
+      "measure": "ons.occupation.caring_leisure_and_other_service_by_region@E12000003",
+      "family": "ons_occupation",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "ons.occupation.caring_leisure_and_other_service_by_region",
+        "measure_kind": "prepared_column",
+        "geography_level": "region",
+        "geography_id": "E12000003",
+        "geography_predicate": "{\"entity\":\"household\",\"map_to\":\"person\",\"operator\":\"==\",\"reduce\":\"any\",\"value\":\"YORKSHIRE\",\"variable\":\"region\"}",
+        "cross_grain_grain": "region"
+      }
+    },
+    {
+      "name": "ons.occupation.caring_leisure_and_other_service_by_region@E12000004",
+      "ledger_selector": {
+        "source_name": "ons",
+        "source_concept": "ons.aps_people_in_employment",
+        "dimension_values": {
+          "soc2020_major_group": 6,
+          "sex": "all",
+          "employment_status": "all",
+          "statistic": "estimate"
+        },
+        "entity_name": "person",
+        "period_type": "calendar_year",
+        "period_value": 2025,
+        "geography_level": "region",
+        "geography_id": "E12000004"
+      },
+      "entity": "person",
+      "measure": "ons.occupation.caring_leisure_and_other_service_by_region@E12000004",
+      "family": "ons_occupation",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "ons.occupation.caring_leisure_and_other_service_by_region",
+        "measure_kind": "prepared_column",
+        "geography_level": "region",
+        "geography_id": "E12000004",
+        "geography_predicate": "{\"entity\":\"household\",\"map_to\":\"person\",\"operator\":\"==\",\"reduce\":\"any\",\"value\":\"EAST_MIDLANDS\",\"variable\":\"region\"}",
+        "cross_grain_grain": "region"
+      }
+    },
+    {
+      "name": "ons.occupation.caring_leisure_and_other_service_by_region@E12000005",
+      "ledger_selector": {
+        "source_name": "ons",
+        "source_concept": "ons.aps_people_in_employment",
+        "dimension_values": {
+          "soc2020_major_group": 6,
+          "sex": "all",
+          "employment_status": "all",
+          "statistic": "estimate"
+        },
+        "entity_name": "person",
+        "period_type": "calendar_year",
+        "period_value": 2025,
+        "geography_level": "region",
+        "geography_id": "E12000005"
+      },
+      "entity": "person",
+      "measure": "ons.occupation.caring_leisure_and_other_service_by_region@E12000005",
+      "family": "ons_occupation",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "ons.occupation.caring_leisure_and_other_service_by_region",
+        "measure_kind": "prepared_column",
+        "geography_level": "region",
+        "geography_id": "E12000005",
+        "geography_predicate": "{\"entity\":\"household\",\"map_to\":\"person\",\"operator\":\"==\",\"reduce\":\"any\",\"value\":\"WEST_MIDLANDS\",\"variable\":\"region\"}",
+        "cross_grain_grain": "region"
+      }
+    },
+    {
+      "name": "ons.occupation.caring_leisure_and_other_service_by_region@E12000006",
+      "ledger_selector": {
+        "source_name": "ons",
+        "source_concept": "ons.aps_people_in_employment",
+        "dimension_values": {
+          "soc2020_major_group": 6,
+          "sex": "all",
+          "employment_status": "all",
+          "statistic": "estimate"
+        },
+        "entity_name": "person",
+        "period_type": "calendar_year",
+        "period_value": 2025,
+        "geography_level": "region",
+        "geography_id": "E12000006"
+      },
+      "entity": "person",
+      "measure": "ons.occupation.caring_leisure_and_other_service_by_region@E12000006",
+      "family": "ons_occupation",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "ons.occupation.caring_leisure_and_other_service_by_region",
+        "measure_kind": "prepared_column",
+        "geography_level": "region",
+        "geography_id": "E12000006",
+        "geography_predicate": "{\"entity\":\"household\",\"map_to\":\"person\",\"operator\":\"==\",\"reduce\":\"any\",\"value\":\"EAST_OF_ENGLAND\",\"variable\":\"region\"}",
+        "cross_grain_grain": "region"
+      }
+    },
+    {
+      "name": "ons.occupation.caring_leisure_and_other_service_by_region@E12000007",
+      "ledger_selector": {
+        "source_name": "ons",
+        "source_concept": "ons.aps_people_in_employment",
+        "dimension_values": {
+          "soc2020_major_group": 6,
+          "sex": "all",
+          "employment_status": "all",
+          "statistic": "estimate"
+        },
+        "entity_name": "person",
+        "period_type": "calendar_year",
+        "period_value": 2025,
+        "geography_level": "region",
+        "geography_id": "E12000007"
+      },
+      "entity": "person",
+      "measure": "ons.occupation.caring_leisure_and_other_service_by_region@E12000007",
+      "family": "ons_occupation",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "ons.occupation.caring_leisure_and_other_service_by_region",
+        "measure_kind": "prepared_column",
+        "geography_level": "region",
+        "geography_id": "E12000007",
+        "geography_predicate": "{\"entity\":\"household\",\"map_to\":\"person\",\"operator\":\"==\",\"reduce\":\"any\",\"value\":\"LONDON\",\"variable\":\"region\"}",
+        "cross_grain_grain": "region"
+      }
+    },
+    {
+      "name": "ons.occupation.caring_leisure_and_other_service_by_region@E12000008",
+      "ledger_selector": {
+        "source_name": "ons",
+        "source_concept": "ons.aps_people_in_employment",
+        "dimension_values": {
+          "soc2020_major_group": 6,
+          "sex": "all",
+          "employment_status": "all",
+          "statistic": "estimate"
+        },
+        "entity_name": "person",
+        "period_type": "calendar_year",
+        "period_value": 2025,
+        "geography_level": "region",
+        "geography_id": "E12000008"
+      },
+      "entity": "person",
+      "measure": "ons.occupation.caring_leisure_and_other_service_by_region@E12000008",
+      "family": "ons_occupation",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "ons.occupation.caring_leisure_and_other_service_by_region",
+        "measure_kind": "prepared_column",
+        "geography_level": "region",
+        "geography_id": "E12000008",
+        "geography_predicate": "{\"entity\":\"household\",\"map_to\":\"person\",\"operator\":\"==\",\"reduce\":\"any\",\"value\":\"SOUTH_EAST\",\"variable\":\"region\"}",
+        "cross_grain_grain": "region"
+      }
+    },
+    {
+      "name": "ons.occupation.caring_leisure_and_other_service_by_region@E12000009",
+      "ledger_selector": {
+        "source_name": "ons",
+        "source_concept": "ons.aps_people_in_employment",
+        "dimension_values": {
+          "soc2020_major_group": 6,
+          "sex": "all",
+          "employment_status": "all",
+          "statistic": "estimate"
+        },
+        "entity_name": "person",
+        "period_type": "calendar_year",
+        "period_value": 2025,
+        "geography_level": "region",
+        "geography_id": "E12000009"
+      },
+      "entity": "person",
+      "measure": "ons.occupation.caring_leisure_and_other_service_by_region@E12000009",
+      "family": "ons_occupation",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "ons.occupation.caring_leisure_and_other_service_by_region",
+        "measure_kind": "prepared_column",
+        "geography_level": "region",
+        "geography_id": "E12000009",
+        "geography_predicate": "{\"entity\":\"household\",\"map_to\":\"person\",\"operator\":\"==\",\"reduce\":\"any\",\"value\":\"SOUTH_WEST\",\"variable\":\"region\"}",
+        "cross_grain_grain": "region"
+      }
+    },
+    {
+      "name": "ons.occupation.caring_leisure_and_other_service_by_region@W92000004",
+      "ledger_selector": {
+        "source_name": "ons",
+        "source_concept": "ons.aps_people_in_employment",
+        "dimension_values": {
+          "soc2020_major_group": 6,
+          "sex": "all",
+          "employment_status": "all",
+          "statistic": "estimate"
+        },
+        "entity_name": "person",
+        "period_type": "calendar_year",
+        "period_value": 2025,
+        "geography_level": "country",
+        "geography_id": "W92000004"
+      },
+      "entity": "person",
+      "measure": "ons.occupation.caring_leisure_and_other_service_by_region@W92000004",
+      "family": "ons_occupation",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "ons.occupation.caring_leisure_and_other_service_by_region",
+        "measure_kind": "prepared_column",
+        "geography_level": "country",
+        "geography_id": "W92000004",
+        "geography_predicate": "{\"entity\":\"household\",\"map_to\":\"person\",\"operator\":\"==\",\"reduce\":\"any\",\"value\":\"WALES\",\"variable\":\"region\"}",
+        "cross_grain_grain": "region"
+      }
+    },
+    {
+      "name": "ons.occupation.caring_leisure_and_other_service_by_region@S92000003",
+      "ledger_selector": {
+        "source_name": "ons",
+        "source_concept": "ons.aps_people_in_employment",
+        "dimension_values": {
+          "soc2020_major_group": 6,
+          "sex": "all",
+          "employment_status": "all",
+          "statistic": "estimate"
+        },
+        "entity_name": "person",
+        "period_type": "calendar_year",
+        "period_value": 2025,
+        "geography_level": "country",
+        "geography_id": "S92000003"
+      },
+      "entity": "person",
+      "measure": "ons.occupation.caring_leisure_and_other_service_by_region@S92000003",
+      "family": "ons_occupation",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "ons.occupation.caring_leisure_and_other_service_by_region",
+        "measure_kind": "prepared_column",
+        "geography_level": "country",
+        "geography_id": "S92000003",
+        "geography_predicate": "{\"entity\":\"household\",\"map_to\":\"person\",\"operator\":\"==\",\"reduce\":\"any\",\"value\":\"SCOTLAND\",\"variable\":\"region\"}",
+        "cross_grain_grain": "region"
+      }
+    },
+    {
+      "name": "ons.occupation.caring_leisure_and_other_service_by_region@N92000002",
+      "ledger_selector": {
+        "source_name": "ons",
+        "source_concept": "ons.aps_people_in_employment",
+        "dimension_values": {
+          "soc2020_major_group": 6,
+          "sex": "all",
+          "employment_status": "all",
+          "statistic": "estimate"
+        },
+        "entity_name": "person",
+        "period_type": "calendar_year",
+        "period_value": 2025,
+        "geography_level": "country",
+        "geography_id": "N92000002"
+      },
+      "entity": "person",
+      "measure": "ons.occupation.caring_leisure_and_other_service_by_region@N92000002",
+      "family": "ons_occupation",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "ons.occupation.caring_leisure_and_other_service_by_region",
+        "measure_kind": "prepared_column",
+        "geography_level": "country",
+        "geography_id": "N92000002",
+        "geography_predicate": "{\"entity\":\"household\",\"map_to\":\"person\",\"operator\":\"==\",\"reduce\":\"any\",\"value\":\"NORTHERN_IRELAND\",\"variable\":\"region\"}",
+        "cross_grain_grain": "region"
+      }
+    },
+    {
+      "name": "ons.occupation.sales_and_customer_service_by_region@E12000001",
+      "ledger_selector": {
+        "source_name": "ons",
+        "source_concept": "ons.aps_people_in_employment",
+        "dimension_values": {
+          "soc2020_major_group": 7,
+          "sex": "all",
+          "employment_status": "all",
+          "statistic": "estimate"
+        },
+        "entity_name": "person",
+        "period_type": "calendar_year",
+        "period_value": 2025,
+        "geography_level": "region",
+        "geography_id": "E12000001"
+      },
+      "entity": "person",
+      "measure": "ons.occupation.sales_and_customer_service_by_region@E12000001",
+      "family": "ons_occupation",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "ons.occupation.sales_and_customer_service_by_region",
+        "measure_kind": "prepared_column",
+        "geography_level": "region",
+        "geography_id": "E12000001",
+        "geography_predicate": "{\"entity\":\"household\",\"map_to\":\"person\",\"operator\":\"==\",\"reduce\":\"any\",\"value\":\"NORTH_EAST\",\"variable\":\"region\"}",
+        "cross_grain_grain": "region"
+      }
+    },
+    {
+      "name": "ons.occupation.sales_and_customer_service_by_region@E12000002",
+      "ledger_selector": {
+        "source_name": "ons",
+        "source_concept": "ons.aps_people_in_employment",
+        "dimension_values": {
+          "soc2020_major_group": 7,
+          "sex": "all",
+          "employment_status": "all",
+          "statistic": "estimate"
+        },
+        "entity_name": "person",
+        "period_type": "calendar_year",
+        "period_value": 2025,
+        "geography_level": "region",
+        "geography_id": "E12000002"
+      },
+      "entity": "person",
+      "measure": "ons.occupation.sales_and_customer_service_by_region@E12000002",
+      "family": "ons_occupation",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "ons.occupation.sales_and_customer_service_by_region",
+        "measure_kind": "prepared_column",
+        "geography_level": "region",
+        "geography_id": "E12000002",
+        "geography_predicate": "{\"entity\":\"household\",\"map_to\":\"person\",\"operator\":\"==\",\"reduce\":\"any\",\"value\":\"NORTH_WEST\",\"variable\":\"region\"}",
+        "cross_grain_grain": "region"
+      }
+    },
+    {
+      "name": "ons.occupation.sales_and_customer_service_by_region@E12000003",
+      "ledger_selector": {
+        "source_name": "ons",
+        "source_concept": "ons.aps_people_in_employment",
+        "dimension_values": {
+          "soc2020_major_group": 7,
+          "sex": "all",
+          "employment_status": "all",
+          "statistic": "estimate"
+        },
+        "entity_name": "person",
+        "period_type": "calendar_year",
+        "period_value": 2025,
+        "geography_level": "region",
+        "geography_id": "E12000003"
+      },
+      "entity": "person",
+      "measure": "ons.occupation.sales_and_customer_service_by_region@E12000003",
+      "family": "ons_occupation",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "ons.occupation.sales_and_customer_service_by_region",
+        "measure_kind": "prepared_column",
+        "geography_level": "region",
+        "geography_id": "E12000003",
+        "geography_predicate": "{\"entity\":\"household\",\"map_to\":\"person\",\"operator\":\"==\",\"reduce\":\"any\",\"value\":\"YORKSHIRE\",\"variable\":\"region\"}",
+        "cross_grain_grain": "region"
+      }
+    },
+    {
+      "name": "ons.occupation.sales_and_customer_service_by_region@E12000004",
+      "ledger_selector": {
+        "source_name": "ons",
+        "source_concept": "ons.aps_people_in_employment",
+        "dimension_values": {
+          "soc2020_major_group": 7,
+          "sex": "all",
+          "employment_status": "all",
+          "statistic": "estimate"
+        },
+        "entity_name": "person",
+        "period_type": "calendar_year",
+        "period_value": 2025,
+        "geography_level": "region",
+        "geography_id": "E12000004"
+      },
+      "entity": "person",
+      "measure": "ons.occupation.sales_and_customer_service_by_region@E12000004",
+      "family": "ons_occupation",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "ons.occupation.sales_and_customer_service_by_region",
+        "measure_kind": "prepared_column",
+        "geography_level": "region",
+        "geography_id": "E12000004",
+        "geography_predicate": "{\"entity\":\"household\",\"map_to\":\"person\",\"operator\":\"==\",\"reduce\":\"any\",\"value\":\"EAST_MIDLANDS\",\"variable\":\"region\"}",
+        "cross_grain_grain": "region"
+      }
+    },
+    {
+      "name": "ons.occupation.sales_and_customer_service_by_region@E12000005",
+      "ledger_selector": {
+        "source_name": "ons",
+        "source_concept": "ons.aps_people_in_employment",
+        "dimension_values": {
+          "soc2020_major_group": 7,
+          "sex": "all",
+          "employment_status": "all",
+          "statistic": "estimate"
+        },
+        "entity_name": "person",
+        "period_type": "calendar_year",
+        "period_value": 2025,
+        "geography_level": "region",
+        "geography_id": "E12000005"
+      },
+      "entity": "person",
+      "measure": "ons.occupation.sales_and_customer_service_by_region@E12000005",
+      "family": "ons_occupation",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "ons.occupation.sales_and_customer_service_by_region",
+        "measure_kind": "prepared_column",
+        "geography_level": "region",
+        "geography_id": "E12000005",
+        "geography_predicate": "{\"entity\":\"household\",\"map_to\":\"person\",\"operator\":\"==\",\"reduce\":\"any\",\"value\":\"WEST_MIDLANDS\",\"variable\":\"region\"}",
+        "cross_grain_grain": "region"
+      }
+    },
+    {
+      "name": "ons.occupation.sales_and_customer_service_by_region@E12000006",
+      "ledger_selector": {
+        "source_name": "ons",
+        "source_concept": "ons.aps_people_in_employment",
+        "dimension_values": {
+          "soc2020_major_group": 7,
+          "sex": "all",
+          "employment_status": "all",
+          "statistic": "estimate"
+        },
+        "entity_name": "person",
+        "period_type": "calendar_year",
+        "period_value": 2025,
+        "geography_level": "region",
+        "geography_id": "E12000006"
+      },
+      "entity": "person",
+      "measure": "ons.occupation.sales_and_customer_service_by_region@E12000006",
+      "family": "ons_occupation",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "ons.occupation.sales_and_customer_service_by_region",
+        "measure_kind": "prepared_column",
+        "geography_level": "region",
+        "geography_id": "E12000006",
+        "geography_predicate": "{\"entity\":\"household\",\"map_to\":\"person\",\"operator\":\"==\",\"reduce\":\"any\",\"value\":\"EAST_OF_ENGLAND\",\"variable\":\"region\"}",
+        "cross_grain_grain": "region"
+      }
+    },
+    {
+      "name": "ons.occupation.sales_and_customer_service_by_region@E12000007",
+      "ledger_selector": {
+        "source_name": "ons",
+        "source_concept": "ons.aps_people_in_employment",
+        "dimension_values": {
+          "soc2020_major_group": 7,
+          "sex": "all",
+          "employment_status": "all",
+          "statistic": "estimate"
+        },
+        "entity_name": "person",
+        "period_type": "calendar_year",
+        "period_value": 2025,
+        "geography_level": "region",
+        "geography_id": "E12000007"
+      },
+      "entity": "person",
+      "measure": "ons.occupation.sales_and_customer_service_by_region@E12000007",
+      "family": "ons_occupation",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "ons.occupation.sales_and_customer_service_by_region",
+        "measure_kind": "prepared_column",
+        "geography_level": "region",
+        "geography_id": "E12000007",
+        "geography_predicate": "{\"entity\":\"household\",\"map_to\":\"person\",\"operator\":\"==\",\"reduce\":\"any\",\"value\":\"LONDON\",\"variable\":\"region\"}",
+        "cross_grain_grain": "region"
+      }
+    },
+    {
+      "name": "ons.occupation.sales_and_customer_service_by_region@E12000008",
+      "ledger_selector": {
+        "source_name": "ons",
+        "source_concept": "ons.aps_people_in_employment",
+        "dimension_values": {
+          "soc2020_major_group": 7,
+          "sex": "all",
+          "employment_status": "all",
+          "statistic": "estimate"
+        },
+        "entity_name": "person",
+        "period_type": "calendar_year",
+        "period_value": 2025,
+        "geography_level": "region",
+        "geography_id": "E12000008"
+      },
+      "entity": "person",
+      "measure": "ons.occupation.sales_and_customer_service_by_region@E12000008",
+      "family": "ons_occupation",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "ons.occupation.sales_and_customer_service_by_region",
+        "measure_kind": "prepared_column",
+        "geography_level": "region",
+        "geography_id": "E12000008",
+        "geography_predicate": "{\"entity\":\"household\",\"map_to\":\"person\",\"operator\":\"==\",\"reduce\":\"any\",\"value\":\"SOUTH_EAST\",\"variable\":\"region\"}",
+        "cross_grain_grain": "region"
+      }
+    },
+    {
+      "name": "ons.occupation.sales_and_customer_service_by_region@E12000009",
+      "ledger_selector": {
+        "source_name": "ons",
+        "source_concept": "ons.aps_people_in_employment",
+        "dimension_values": {
+          "soc2020_major_group": 7,
+          "sex": "all",
+          "employment_status": "all",
+          "statistic": "estimate"
+        },
+        "entity_name": "person",
+        "period_type": "calendar_year",
+        "period_value": 2025,
+        "geography_level": "region",
+        "geography_id": "E12000009"
+      },
+      "entity": "person",
+      "measure": "ons.occupation.sales_and_customer_service_by_region@E12000009",
+      "family": "ons_occupation",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "ons.occupation.sales_and_customer_service_by_region",
+        "measure_kind": "prepared_column",
+        "geography_level": "region",
+        "geography_id": "E12000009",
+        "geography_predicate": "{\"entity\":\"household\",\"map_to\":\"person\",\"operator\":\"==\",\"reduce\":\"any\",\"value\":\"SOUTH_WEST\",\"variable\":\"region\"}",
+        "cross_grain_grain": "region"
+      }
+    },
+    {
+      "name": "ons.occupation.sales_and_customer_service_by_region@W92000004",
+      "ledger_selector": {
+        "source_name": "ons",
+        "source_concept": "ons.aps_people_in_employment",
+        "dimension_values": {
+          "soc2020_major_group": 7,
+          "sex": "all",
+          "employment_status": "all",
+          "statistic": "estimate"
+        },
+        "entity_name": "person",
+        "period_type": "calendar_year",
+        "period_value": 2025,
+        "geography_level": "country",
+        "geography_id": "W92000004"
+      },
+      "entity": "person",
+      "measure": "ons.occupation.sales_and_customer_service_by_region@W92000004",
+      "family": "ons_occupation",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "ons.occupation.sales_and_customer_service_by_region",
+        "measure_kind": "prepared_column",
+        "geography_level": "country",
+        "geography_id": "W92000004",
+        "geography_predicate": "{\"entity\":\"household\",\"map_to\":\"person\",\"operator\":\"==\",\"reduce\":\"any\",\"value\":\"WALES\",\"variable\":\"region\"}",
+        "cross_grain_grain": "region"
+      }
+    },
+    {
+      "name": "ons.occupation.sales_and_customer_service_by_region@S92000003",
+      "ledger_selector": {
+        "source_name": "ons",
+        "source_concept": "ons.aps_people_in_employment",
+        "dimension_values": {
+          "soc2020_major_group": 7,
+          "sex": "all",
+          "employment_status": "all",
+          "statistic": "estimate"
+        },
+        "entity_name": "person",
+        "period_type": "calendar_year",
+        "period_value": 2025,
+        "geography_level": "country",
+        "geography_id": "S92000003"
+      },
+      "entity": "person",
+      "measure": "ons.occupation.sales_and_customer_service_by_region@S92000003",
+      "family": "ons_occupation",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "ons.occupation.sales_and_customer_service_by_region",
+        "measure_kind": "prepared_column",
+        "geography_level": "country",
+        "geography_id": "S92000003",
+        "geography_predicate": "{\"entity\":\"household\",\"map_to\":\"person\",\"operator\":\"==\",\"reduce\":\"any\",\"value\":\"SCOTLAND\",\"variable\":\"region\"}",
+        "cross_grain_grain": "region"
+      }
+    },
+    {
+      "name": "ons.occupation.sales_and_customer_service_by_region@N92000002",
+      "ledger_selector": {
+        "source_name": "ons",
+        "source_concept": "ons.aps_people_in_employment",
+        "dimension_values": {
+          "soc2020_major_group": 7,
+          "sex": "all",
+          "employment_status": "all",
+          "statistic": "estimate"
+        },
+        "entity_name": "person",
+        "period_type": "calendar_year",
+        "period_value": 2025,
+        "geography_level": "country",
+        "geography_id": "N92000002"
+      },
+      "entity": "person",
+      "measure": "ons.occupation.sales_and_customer_service_by_region@N92000002",
+      "family": "ons_occupation",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "ons.occupation.sales_and_customer_service_by_region",
+        "measure_kind": "prepared_column",
+        "geography_level": "country",
+        "geography_id": "N92000002",
+        "geography_predicate": "{\"entity\":\"household\",\"map_to\":\"person\",\"operator\":\"==\",\"reduce\":\"any\",\"value\":\"NORTHERN_IRELAND\",\"variable\":\"region\"}",
+        "cross_grain_grain": "region"
+      }
+    },
+    {
+      "name": "ons.occupation.process_plant_and_machine_operatives_by_region@E12000001",
+      "ledger_selector": {
+        "source_name": "ons",
+        "source_concept": "ons.aps_people_in_employment",
+        "dimension_values": {
+          "soc2020_major_group": 8,
+          "sex": "all",
+          "employment_status": "all",
+          "statistic": "estimate"
+        },
+        "entity_name": "person",
+        "period_type": "calendar_year",
+        "period_value": 2025,
+        "geography_level": "region",
+        "geography_id": "E12000001"
+      },
+      "entity": "person",
+      "measure": "ons.occupation.process_plant_and_machine_operatives_by_region@E12000001",
+      "family": "ons_occupation",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "ons.occupation.process_plant_and_machine_operatives_by_region",
+        "measure_kind": "prepared_column",
+        "geography_level": "region",
+        "geography_id": "E12000001",
+        "geography_predicate": "{\"entity\":\"household\",\"map_to\":\"person\",\"operator\":\"==\",\"reduce\":\"any\",\"value\":\"NORTH_EAST\",\"variable\":\"region\"}",
+        "cross_grain_grain": "region"
+      }
+    },
+    {
+      "name": "ons.occupation.process_plant_and_machine_operatives_by_region@E12000002",
+      "ledger_selector": {
+        "source_name": "ons",
+        "source_concept": "ons.aps_people_in_employment",
+        "dimension_values": {
+          "soc2020_major_group": 8,
+          "sex": "all",
+          "employment_status": "all",
+          "statistic": "estimate"
+        },
+        "entity_name": "person",
+        "period_type": "calendar_year",
+        "period_value": 2025,
+        "geography_level": "region",
+        "geography_id": "E12000002"
+      },
+      "entity": "person",
+      "measure": "ons.occupation.process_plant_and_machine_operatives_by_region@E12000002",
+      "family": "ons_occupation",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "ons.occupation.process_plant_and_machine_operatives_by_region",
+        "measure_kind": "prepared_column",
+        "geography_level": "region",
+        "geography_id": "E12000002",
+        "geography_predicate": "{\"entity\":\"household\",\"map_to\":\"person\",\"operator\":\"==\",\"reduce\":\"any\",\"value\":\"NORTH_WEST\",\"variable\":\"region\"}",
+        "cross_grain_grain": "region"
+      }
+    },
+    {
+      "name": "ons.occupation.process_plant_and_machine_operatives_by_region@E12000003",
+      "ledger_selector": {
+        "source_name": "ons",
+        "source_concept": "ons.aps_people_in_employment",
+        "dimension_values": {
+          "soc2020_major_group": 8,
+          "sex": "all",
+          "employment_status": "all",
+          "statistic": "estimate"
+        },
+        "entity_name": "person",
+        "period_type": "calendar_year",
+        "period_value": 2025,
+        "geography_level": "region",
+        "geography_id": "E12000003"
+      },
+      "entity": "person",
+      "measure": "ons.occupation.process_plant_and_machine_operatives_by_region@E12000003",
+      "family": "ons_occupation",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "ons.occupation.process_plant_and_machine_operatives_by_region",
+        "measure_kind": "prepared_column",
+        "geography_level": "region",
+        "geography_id": "E12000003",
+        "geography_predicate": "{\"entity\":\"household\",\"map_to\":\"person\",\"operator\":\"==\",\"reduce\":\"any\",\"value\":\"YORKSHIRE\",\"variable\":\"region\"}",
+        "cross_grain_grain": "region"
+      }
+    },
+    {
+      "name": "ons.occupation.process_plant_and_machine_operatives_by_region@E12000004",
+      "ledger_selector": {
+        "source_name": "ons",
+        "source_concept": "ons.aps_people_in_employment",
+        "dimension_values": {
+          "soc2020_major_group": 8,
+          "sex": "all",
+          "employment_status": "all",
+          "statistic": "estimate"
+        },
+        "entity_name": "person",
+        "period_type": "calendar_year",
+        "period_value": 2025,
+        "geography_level": "region",
+        "geography_id": "E12000004"
+      },
+      "entity": "person",
+      "measure": "ons.occupation.process_plant_and_machine_operatives_by_region@E12000004",
+      "family": "ons_occupation",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "ons.occupation.process_plant_and_machine_operatives_by_region",
+        "measure_kind": "prepared_column",
+        "geography_level": "region",
+        "geography_id": "E12000004",
+        "geography_predicate": "{\"entity\":\"household\",\"map_to\":\"person\",\"operator\":\"==\",\"reduce\":\"any\",\"value\":\"EAST_MIDLANDS\",\"variable\":\"region\"}",
+        "cross_grain_grain": "region"
+      }
+    },
+    {
+      "name": "ons.occupation.process_plant_and_machine_operatives_by_region@E12000005",
+      "ledger_selector": {
+        "source_name": "ons",
+        "source_concept": "ons.aps_people_in_employment",
+        "dimension_values": {
+          "soc2020_major_group": 8,
+          "sex": "all",
+          "employment_status": "all",
+          "statistic": "estimate"
+        },
+        "entity_name": "person",
+        "period_type": "calendar_year",
+        "period_value": 2025,
+        "geography_level": "region",
+        "geography_id": "E12000005"
+      },
+      "entity": "person",
+      "measure": "ons.occupation.process_plant_and_machine_operatives_by_region@E12000005",
+      "family": "ons_occupation",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "ons.occupation.process_plant_and_machine_operatives_by_region",
+        "measure_kind": "prepared_column",
+        "geography_level": "region",
+        "geography_id": "E12000005",
+        "geography_predicate": "{\"entity\":\"household\",\"map_to\":\"person\",\"operator\":\"==\",\"reduce\":\"any\",\"value\":\"WEST_MIDLANDS\",\"variable\":\"region\"}",
+        "cross_grain_grain": "region"
+      }
+    },
+    {
+      "name": "ons.occupation.process_plant_and_machine_operatives_by_region@E12000006",
+      "ledger_selector": {
+        "source_name": "ons",
+        "source_concept": "ons.aps_people_in_employment",
+        "dimension_values": {
+          "soc2020_major_group": 8,
+          "sex": "all",
+          "employment_status": "all",
+          "statistic": "estimate"
+        },
+        "entity_name": "person",
+        "period_type": "calendar_year",
+        "period_value": 2025,
+        "geography_level": "region",
+        "geography_id": "E12000006"
+      },
+      "entity": "person",
+      "measure": "ons.occupation.process_plant_and_machine_operatives_by_region@E12000006",
+      "family": "ons_occupation",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "ons.occupation.process_plant_and_machine_operatives_by_region",
+        "measure_kind": "prepared_column",
+        "geography_level": "region",
+        "geography_id": "E12000006",
+        "geography_predicate": "{\"entity\":\"household\",\"map_to\":\"person\",\"operator\":\"==\",\"reduce\":\"any\",\"value\":\"EAST_OF_ENGLAND\",\"variable\":\"region\"}",
+        "cross_grain_grain": "region"
+      }
+    },
+    {
+      "name": "ons.occupation.process_plant_and_machine_operatives_by_region@E12000007",
+      "ledger_selector": {
+        "source_name": "ons",
+        "source_concept": "ons.aps_people_in_employment",
+        "dimension_values": {
+          "soc2020_major_group": 8,
+          "sex": "all",
+          "employment_status": "all",
+          "statistic": "estimate"
+        },
+        "entity_name": "person",
+        "period_type": "calendar_year",
+        "period_value": 2025,
+        "geography_level": "region",
+        "geography_id": "E12000007"
+      },
+      "entity": "person",
+      "measure": "ons.occupation.process_plant_and_machine_operatives_by_region@E12000007",
+      "family": "ons_occupation",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "ons.occupation.process_plant_and_machine_operatives_by_region",
+        "measure_kind": "prepared_column",
+        "geography_level": "region",
+        "geography_id": "E12000007",
+        "geography_predicate": "{\"entity\":\"household\",\"map_to\":\"person\",\"operator\":\"==\",\"reduce\":\"any\",\"value\":\"LONDON\",\"variable\":\"region\"}",
+        "cross_grain_grain": "region"
+      }
+    },
+    {
+      "name": "ons.occupation.process_plant_and_machine_operatives_by_region@E12000008",
+      "ledger_selector": {
+        "source_name": "ons",
+        "source_concept": "ons.aps_people_in_employment",
+        "dimension_values": {
+          "soc2020_major_group": 8,
+          "sex": "all",
+          "employment_status": "all",
+          "statistic": "estimate"
+        },
+        "entity_name": "person",
+        "period_type": "calendar_year",
+        "period_value": 2025,
+        "geography_level": "region",
+        "geography_id": "E12000008"
+      },
+      "entity": "person",
+      "measure": "ons.occupation.process_plant_and_machine_operatives_by_region@E12000008",
+      "family": "ons_occupation",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "ons.occupation.process_plant_and_machine_operatives_by_region",
+        "measure_kind": "prepared_column",
+        "geography_level": "region",
+        "geography_id": "E12000008",
+        "geography_predicate": "{\"entity\":\"household\",\"map_to\":\"person\",\"operator\":\"==\",\"reduce\":\"any\",\"value\":\"SOUTH_EAST\",\"variable\":\"region\"}",
+        "cross_grain_grain": "region"
+      }
+    },
+    {
+      "name": "ons.occupation.process_plant_and_machine_operatives_by_region@E12000009",
+      "ledger_selector": {
+        "source_name": "ons",
+        "source_concept": "ons.aps_people_in_employment",
+        "dimension_values": {
+          "soc2020_major_group": 8,
+          "sex": "all",
+          "employment_status": "all",
+          "statistic": "estimate"
+        },
+        "entity_name": "person",
+        "period_type": "calendar_year",
+        "period_value": 2025,
+        "geography_level": "region",
+        "geography_id": "E12000009"
+      },
+      "entity": "person",
+      "measure": "ons.occupation.process_plant_and_machine_operatives_by_region@E12000009",
+      "family": "ons_occupation",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "ons.occupation.process_plant_and_machine_operatives_by_region",
+        "measure_kind": "prepared_column",
+        "geography_level": "region",
+        "geography_id": "E12000009",
+        "geography_predicate": "{\"entity\":\"household\",\"map_to\":\"person\",\"operator\":\"==\",\"reduce\":\"any\",\"value\":\"SOUTH_WEST\",\"variable\":\"region\"}",
+        "cross_grain_grain": "region"
+      }
+    },
+    {
+      "name": "ons.occupation.process_plant_and_machine_operatives_by_region@W92000004",
+      "ledger_selector": {
+        "source_name": "ons",
+        "source_concept": "ons.aps_people_in_employment",
+        "dimension_values": {
+          "soc2020_major_group": 8,
+          "sex": "all",
+          "employment_status": "all",
+          "statistic": "estimate"
+        },
+        "entity_name": "person",
+        "period_type": "calendar_year",
+        "period_value": 2025,
+        "geography_level": "country",
+        "geography_id": "W92000004"
+      },
+      "entity": "person",
+      "measure": "ons.occupation.process_plant_and_machine_operatives_by_region@W92000004",
+      "family": "ons_occupation",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "ons.occupation.process_plant_and_machine_operatives_by_region",
+        "measure_kind": "prepared_column",
+        "geography_level": "country",
+        "geography_id": "W92000004",
+        "geography_predicate": "{\"entity\":\"household\",\"map_to\":\"person\",\"operator\":\"==\",\"reduce\":\"any\",\"value\":\"WALES\",\"variable\":\"region\"}",
+        "cross_grain_grain": "region"
+      }
+    },
+    {
+      "name": "ons.occupation.process_plant_and_machine_operatives_by_region@S92000003",
+      "ledger_selector": {
+        "source_name": "ons",
+        "source_concept": "ons.aps_people_in_employment",
+        "dimension_values": {
+          "soc2020_major_group": 8,
+          "sex": "all",
+          "employment_status": "all",
+          "statistic": "estimate"
+        },
+        "entity_name": "person",
+        "period_type": "calendar_year",
+        "period_value": 2025,
+        "geography_level": "country",
+        "geography_id": "S92000003"
+      },
+      "entity": "person",
+      "measure": "ons.occupation.process_plant_and_machine_operatives_by_region@S92000003",
+      "family": "ons_occupation",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "ons.occupation.process_plant_and_machine_operatives_by_region",
+        "measure_kind": "prepared_column",
+        "geography_level": "country",
+        "geography_id": "S92000003",
+        "geography_predicate": "{\"entity\":\"household\",\"map_to\":\"person\",\"operator\":\"==\",\"reduce\":\"any\",\"value\":\"SCOTLAND\",\"variable\":\"region\"}",
+        "cross_grain_grain": "region"
+      }
+    },
+    {
+      "name": "ons.occupation.process_plant_and_machine_operatives_by_region@N92000002",
+      "ledger_selector": {
+        "source_name": "ons",
+        "source_concept": "ons.aps_people_in_employment",
+        "dimension_values": {
+          "soc2020_major_group": 8,
+          "sex": "all",
+          "employment_status": "all",
+          "statistic": "estimate"
+        },
+        "entity_name": "person",
+        "period_type": "calendar_year",
+        "period_value": 2025,
+        "geography_level": "country",
+        "geography_id": "N92000002"
+      },
+      "entity": "person",
+      "measure": "ons.occupation.process_plant_and_machine_operatives_by_region@N92000002",
+      "family": "ons_occupation",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "ons.occupation.process_plant_and_machine_operatives_by_region",
+        "measure_kind": "prepared_column",
+        "geography_level": "country",
+        "geography_id": "N92000002",
+        "geography_predicate": "{\"entity\":\"household\",\"map_to\":\"person\",\"operator\":\"==\",\"reduce\":\"any\",\"value\":\"NORTHERN_IRELAND\",\"variable\":\"region\"}",
+        "cross_grain_grain": "region"
+      }
+    },
+    {
+      "name": "ons.occupation.elementary_by_region@E12000001",
+      "ledger_selector": {
+        "source_name": "ons",
+        "source_concept": "ons.aps_people_in_employment",
+        "dimension_values": {
+          "soc2020_major_group": 9,
+          "sex": "all",
+          "employment_status": "all",
+          "statistic": "estimate"
+        },
+        "entity_name": "person",
+        "period_type": "calendar_year",
+        "period_value": 2025,
+        "geography_level": "region",
+        "geography_id": "E12000001"
+      },
+      "entity": "person",
+      "measure": "ons.occupation.elementary_by_region@E12000001",
+      "family": "ons_occupation",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "ons.occupation.elementary_by_region",
+        "measure_kind": "prepared_column",
+        "geography_level": "region",
+        "geography_id": "E12000001",
+        "geography_predicate": "{\"entity\":\"household\",\"map_to\":\"person\",\"operator\":\"==\",\"reduce\":\"any\",\"value\":\"NORTH_EAST\",\"variable\":\"region\"}",
+        "cross_grain_grain": "region"
+      }
+    },
+    {
+      "name": "ons.occupation.elementary_by_region@E12000002",
+      "ledger_selector": {
+        "source_name": "ons",
+        "source_concept": "ons.aps_people_in_employment",
+        "dimension_values": {
+          "soc2020_major_group": 9,
+          "sex": "all",
+          "employment_status": "all",
+          "statistic": "estimate"
+        },
+        "entity_name": "person",
+        "period_type": "calendar_year",
+        "period_value": 2025,
+        "geography_level": "region",
+        "geography_id": "E12000002"
+      },
+      "entity": "person",
+      "measure": "ons.occupation.elementary_by_region@E12000002",
+      "family": "ons_occupation",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "ons.occupation.elementary_by_region",
+        "measure_kind": "prepared_column",
+        "geography_level": "region",
+        "geography_id": "E12000002",
+        "geography_predicate": "{\"entity\":\"household\",\"map_to\":\"person\",\"operator\":\"==\",\"reduce\":\"any\",\"value\":\"NORTH_WEST\",\"variable\":\"region\"}",
+        "cross_grain_grain": "region"
+      }
+    },
+    {
+      "name": "ons.occupation.elementary_by_region@E12000003",
+      "ledger_selector": {
+        "source_name": "ons",
+        "source_concept": "ons.aps_people_in_employment",
+        "dimension_values": {
+          "soc2020_major_group": 9,
+          "sex": "all",
+          "employment_status": "all",
+          "statistic": "estimate"
+        },
+        "entity_name": "person",
+        "period_type": "calendar_year",
+        "period_value": 2025,
+        "geography_level": "region",
+        "geography_id": "E12000003"
+      },
+      "entity": "person",
+      "measure": "ons.occupation.elementary_by_region@E12000003",
+      "family": "ons_occupation",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "ons.occupation.elementary_by_region",
+        "measure_kind": "prepared_column",
+        "geography_level": "region",
+        "geography_id": "E12000003",
+        "geography_predicate": "{\"entity\":\"household\",\"map_to\":\"person\",\"operator\":\"==\",\"reduce\":\"any\",\"value\":\"YORKSHIRE\",\"variable\":\"region\"}",
+        "cross_grain_grain": "region"
+      }
+    },
+    {
+      "name": "ons.occupation.elementary_by_region@E12000004",
+      "ledger_selector": {
+        "source_name": "ons",
+        "source_concept": "ons.aps_people_in_employment",
+        "dimension_values": {
+          "soc2020_major_group": 9,
+          "sex": "all",
+          "employment_status": "all",
+          "statistic": "estimate"
+        },
+        "entity_name": "person",
+        "period_type": "calendar_year",
+        "period_value": 2025,
+        "geography_level": "region",
+        "geography_id": "E12000004"
+      },
+      "entity": "person",
+      "measure": "ons.occupation.elementary_by_region@E12000004",
+      "family": "ons_occupation",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "ons.occupation.elementary_by_region",
+        "measure_kind": "prepared_column",
+        "geography_level": "region",
+        "geography_id": "E12000004",
+        "geography_predicate": "{\"entity\":\"household\",\"map_to\":\"person\",\"operator\":\"==\",\"reduce\":\"any\",\"value\":\"EAST_MIDLANDS\",\"variable\":\"region\"}",
+        "cross_grain_grain": "region"
+      }
+    },
+    {
+      "name": "ons.occupation.elementary_by_region@E12000005",
+      "ledger_selector": {
+        "source_name": "ons",
+        "source_concept": "ons.aps_people_in_employment",
+        "dimension_values": {
+          "soc2020_major_group": 9,
+          "sex": "all",
+          "employment_status": "all",
+          "statistic": "estimate"
+        },
+        "entity_name": "person",
+        "period_type": "calendar_year",
+        "period_value": 2025,
+        "geography_level": "region",
+        "geography_id": "E12000005"
+      },
+      "entity": "person",
+      "measure": "ons.occupation.elementary_by_region@E12000005",
+      "family": "ons_occupation",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "ons.occupation.elementary_by_region",
+        "measure_kind": "prepared_column",
+        "geography_level": "region",
+        "geography_id": "E12000005",
+        "geography_predicate": "{\"entity\":\"household\",\"map_to\":\"person\",\"operator\":\"==\",\"reduce\":\"any\",\"value\":\"WEST_MIDLANDS\",\"variable\":\"region\"}",
+        "cross_grain_grain": "region"
+      }
+    },
+    {
+      "name": "ons.occupation.elementary_by_region@E12000006",
+      "ledger_selector": {
+        "source_name": "ons",
+        "source_concept": "ons.aps_people_in_employment",
+        "dimension_values": {
+          "soc2020_major_group": 9,
+          "sex": "all",
+          "employment_status": "all",
+          "statistic": "estimate"
+        },
+        "entity_name": "person",
+        "period_type": "calendar_year",
+        "period_value": 2025,
+        "geography_level": "region",
+        "geography_id": "E12000006"
+      },
+      "entity": "person",
+      "measure": "ons.occupation.elementary_by_region@E12000006",
+      "family": "ons_occupation",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "ons.occupation.elementary_by_region",
+        "measure_kind": "prepared_column",
+        "geography_level": "region",
+        "geography_id": "E12000006",
+        "geography_predicate": "{\"entity\":\"household\",\"map_to\":\"person\",\"operator\":\"==\",\"reduce\":\"any\",\"value\":\"EAST_OF_ENGLAND\",\"variable\":\"region\"}",
+        "cross_grain_grain": "region"
+      }
+    },
+    {
+      "name": "ons.occupation.elementary_by_region@E12000007",
+      "ledger_selector": {
+        "source_name": "ons",
+        "source_concept": "ons.aps_people_in_employment",
+        "dimension_values": {
+          "soc2020_major_group": 9,
+          "sex": "all",
+          "employment_status": "all",
+          "statistic": "estimate"
+        },
+        "entity_name": "person",
+        "period_type": "calendar_year",
+        "period_value": 2025,
+        "geography_level": "region",
+        "geography_id": "E12000007"
+      },
+      "entity": "person",
+      "measure": "ons.occupation.elementary_by_region@E12000007",
+      "family": "ons_occupation",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "ons.occupation.elementary_by_region",
+        "measure_kind": "prepared_column",
+        "geography_level": "region",
+        "geography_id": "E12000007",
+        "geography_predicate": "{\"entity\":\"household\",\"map_to\":\"person\",\"operator\":\"==\",\"reduce\":\"any\",\"value\":\"LONDON\",\"variable\":\"region\"}",
+        "cross_grain_grain": "region"
+      }
+    },
+    {
+      "name": "ons.occupation.elementary_by_region@E12000008",
+      "ledger_selector": {
+        "source_name": "ons",
+        "source_concept": "ons.aps_people_in_employment",
+        "dimension_values": {
+          "soc2020_major_group": 9,
+          "sex": "all",
+          "employment_status": "all",
+          "statistic": "estimate"
+        },
+        "entity_name": "person",
+        "period_type": "calendar_year",
+        "period_value": 2025,
+        "geography_level": "region",
+        "geography_id": "E12000008"
+      },
+      "entity": "person",
+      "measure": "ons.occupation.elementary_by_region@E12000008",
+      "family": "ons_occupation",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "ons.occupation.elementary_by_region",
+        "measure_kind": "prepared_column",
+        "geography_level": "region",
+        "geography_id": "E12000008",
+        "geography_predicate": "{\"entity\":\"household\",\"map_to\":\"person\",\"operator\":\"==\",\"reduce\":\"any\",\"value\":\"SOUTH_EAST\",\"variable\":\"region\"}",
+        "cross_grain_grain": "region"
+      }
+    },
+    {
+      "name": "ons.occupation.elementary_by_region@E12000009",
+      "ledger_selector": {
+        "source_name": "ons",
+        "source_concept": "ons.aps_people_in_employment",
+        "dimension_values": {
+          "soc2020_major_group": 9,
+          "sex": "all",
+          "employment_status": "all",
+          "statistic": "estimate"
+        },
+        "entity_name": "person",
+        "period_type": "calendar_year",
+        "period_value": 2025,
+        "geography_level": "region",
+        "geography_id": "E12000009"
+      },
+      "entity": "person",
+      "measure": "ons.occupation.elementary_by_region@E12000009",
+      "family": "ons_occupation",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "ons.occupation.elementary_by_region",
+        "measure_kind": "prepared_column",
+        "geography_level": "region",
+        "geography_id": "E12000009",
+        "geography_predicate": "{\"entity\":\"household\",\"map_to\":\"person\",\"operator\":\"==\",\"reduce\":\"any\",\"value\":\"SOUTH_WEST\",\"variable\":\"region\"}",
+        "cross_grain_grain": "region"
+      }
+    },
+    {
+      "name": "ons.occupation.elementary_by_region@W92000004",
+      "ledger_selector": {
+        "source_name": "ons",
+        "source_concept": "ons.aps_people_in_employment",
+        "dimension_values": {
+          "soc2020_major_group": 9,
+          "sex": "all",
+          "employment_status": "all",
+          "statistic": "estimate"
+        },
+        "entity_name": "person",
+        "period_type": "calendar_year",
+        "period_value": 2025,
+        "geography_level": "country",
+        "geography_id": "W92000004"
+      },
+      "entity": "person",
+      "measure": "ons.occupation.elementary_by_region@W92000004",
+      "family": "ons_occupation",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "ons.occupation.elementary_by_region",
+        "measure_kind": "prepared_column",
+        "geography_level": "country",
+        "geography_id": "W92000004",
+        "geography_predicate": "{\"entity\":\"household\",\"map_to\":\"person\",\"operator\":\"==\",\"reduce\":\"any\",\"value\":\"WALES\",\"variable\":\"region\"}",
+        "cross_grain_grain": "region"
+      }
+    },
+    {
+      "name": "ons.occupation.elementary_by_region@S92000003",
+      "ledger_selector": {
+        "source_name": "ons",
+        "source_concept": "ons.aps_people_in_employment",
+        "dimension_values": {
+          "soc2020_major_group": 9,
+          "sex": "all",
+          "employment_status": "all",
+          "statistic": "estimate"
+        },
+        "entity_name": "person",
+        "period_type": "calendar_year",
+        "period_value": 2025,
+        "geography_level": "country",
+        "geography_id": "S92000003"
+      },
+      "entity": "person",
+      "measure": "ons.occupation.elementary_by_region@S92000003",
+      "family": "ons_occupation",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "ons.occupation.elementary_by_region",
+        "measure_kind": "prepared_column",
+        "geography_level": "country",
+        "geography_id": "S92000003",
+        "geography_predicate": "{\"entity\":\"household\",\"map_to\":\"person\",\"operator\":\"==\",\"reduce\":\"any\",\"value\":\"SCOTLAND\",\"variable\":\"region\"}",
+        "cross_grain_grain": "region"
+      }
+    },
+    {
+      "name": "ons.occupation.elementary_by_region@N92000002",
+      "ledger_selector": {
+        "source_name": "ons",
+        "source_concept": "ons.aps_people_in_employment",
+        "dimension_values": {
+          "soc2020_major_group": 9,
+          "sex": "all",
+          "employment_status": "all",
+          "statistic": "estimate"
+        },
+        "entity_name": "person",
+        "period_type": "calendar_year",
+        "period_value": 2025,
+        "geography_level": "country",
+        "geography_id": "N92000002"
+      },
+      "entity": "person",
+      "measure": "ons.occupation.elementary_by_region@N92000002",
+      "family": "ons_occupation",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "ons.occupation.elementary_by_region",
+        "measure_kind": "prepared_column",
+        "geography_level": "country",
+        "geography_id": "N92000002",
+        "geography_predicate": "{\"entity\":\"household\",\"map_to\":\"person\",\"operator\":\"==\",\"reduce\":\"any\",\"value\":\"NORTHERN_IRELAND\",\"variable\":\"region\"}",
+        "cross_grain_grain": "region"
+      }
     }
   ]
 }

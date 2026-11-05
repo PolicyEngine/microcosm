@@ -904,7 +904,16 @@
       "hmrc.benefits_in_kind.company_car_fuel.petrol_including_hybrids": "New declaration backed by HMRC Benefits in kind statistics (July 2026) Table 2C 2024-25 in Chronicle (hmrc-benefits-in-kind-july-2026, PolicyEngine/chronicle#399); no uk-data metric holds company cars (microcosm#1418).",
       "hmrc.benefits_in_kind.company_car_fuel.diesel_including_hybrids": "New declaration backed by HMRC Benefits in kind statistics (July 2026) Table 2C 2024-25 in Chronicle (hmrc-benefits-in-kind-july-2026, PolicyEngine/chronicle#399); no uk-data metric holds company cars (microcosm#1418).",
       "hmrc.child_benefit.hicbc_liable_taxpayers": "No incumbent target: uk-data binds no High Income Child Benefit Charge row; microcosm#1095 adds HMRC's Table 16 count and revenue (Child Benefit Statistics, August 2025) as measured diagnostics.",
-      "hmrc.child_benefit.hicbc_revenue": "No incumbent target: uk-data binds no High Income Child Benefit Charge row; microcosm#1095 adds HMRC's Table 16 count and revenue (Child Benefit Statistics, August 2025) as measured diagnostics."
+      "hmrc.child_benefit.hicbc_revenue": "No incumbent target: uk-data binds no High Income Child Benefit Charge row; microcosm#1095 adds HMRC's Table 16 count and revenue (Child Benefit Statistics, August 2025) as measured diagnostics.",
+      "ons.occupation.managers_directors_and_senior_officials_by_region": "New declaration backed by Nomis APS218 Jan 2025-Dec 2025 in Chronicle (ons-aps218-occupation-jan-dec-2025, PolicyEngine/chronicle#411); no uk-data metric holds employment by occupation (microcosm#1490).",
+      "ons.occupation.professional_by_region": "New declaration backed by Nomis APS218 Jan 2025-Dec 2025 in Chronicle (ons-aps218-occupation-jan-dec-2025, PolicyEngine/chronicle#411); no uk-data metric holds employment by occupation (microcosm#1490).",
+      "ons.occupation.associate_professional_by_region": "New declaration backed by Nomis APS218 Jan 2025-Dec 2025 in Chronicle (ons-aps218-occupation-jan-dec-2025, PolicyEngine/chronicle#411); no uk-data metric holds employment by occupation (microcosm#1490).",
+      "ons.occupation.administrative_and_secretarial_by_region": "New declaration backed by Nomis APS218 Jan 2025-Dec 2025 in Chronicle (ons-aps218-occupation-jan-dec-2025, PolicyEngine/chronicle#411); no uk-data metric holds employment by occupation (microcosm#1490).",
+      "ons.occupation.skilled_trades_by_region": "New declaration backed by Nomis APS218 Jan 2025-Dec 2025 in Chronicle (ons-aps218-occupation-jan-dec-2025, PolicyEngine/chronicle#411); no uk-data metric holds employment by occupation (microcosm#1490).",
+      "ons.occupation.caring_leisure_and_other_service_by_region": "New declaration backed by Nomis APS218 Jan 2025-Dec 2025 in Chronicle (ons-aps218-occupation-jan-dec-2025, PolicyEngine/chronicle#411); no uk-data metric holds employment by occupation (microcosm#1490).",
+      "ons.occupation.sales_and_customer_service_by_region": "New declaration backed by Nomis APS218 Jan 2025-Dec 2025 in Chronicle (ons-aps218-occupation-jan-dec-2025, PolicyEngine/chronicle#411); no uk-data metric holds employment by occupation (microcosm#1490).",
+      "ons.occupation.process_plant_and_machine_operatives_by_region": "New declaration backed by Nomis APS218 Jan 2025-Dec 2025 in Chronicle (ons-aps218-occupation-jan-dec-2025, PolicyEngine/chronicle#411); no uk-data metric holds employment by occupation (microcosm#1490).",
+      "ons.occupation.elementary_by_region": "New declaration backed by Nomis APS218 Jan 2025-Dec 2025 in Chronicle (ons-aps218-occupation-jan-dec-2025, PolicyEngine/chronicle#411); no uk-data metric holds employment by occupation (microcosm#1490)."
     },
     "suppressed_ancestors": {
       "hmrc/salary_sacrifice_it_relief_basic_rate": {
@@ -1346,7 +1355,16 @@
       "hmrc.benefits_in_kind.company_car_fuel.petrol_including_hybrids",
       "hmrc.benefits_in_kind.company_car_fuel.diesel_including_hybrids",
       "hmrc.child_benefit.hicbc_liable_taxpayers",
-      "hmrc.child_benefit.hicbc_revenue"
+      "hmrc.child_benefit.hicbc_revenue",
+      "ons.occupation.managers_directors_and_senior_officials_by_region",
+      "ons.occupation.professional_by_region",
+      "ons.occupation.associate_professional_by_region",
+      "ons.occupation.administrative_and_secretarial_by_region",
+      "ons.occupation.skilled_trades_by_region",
+      "ons.occupation.caring_leisure_and_other_service_by_region",
+      "ons.occupation.sales_and_customer_service_by_region",
+      "ons.occupation.process_plant_and_machine_operatives_by_region",
+      "ons.occupation.elementary_by_region"
     ]
   },
   "profile_parity": {
@@ -31586,6 +31604,663 @@
       "selector_note": "HMRC Child Benefit Statistics, Annual Release (August 2025), Table 16, United Kingdom: High Income Child Benefit Charge revenue in 2024-25, the publisher's provisional figure (rounded to the nearest £10 million and adjusted for late returns).",
       "category_id": "hmrc.child_benefit",
       "label": "High Income Child Benefit Charge revenue"
+    },
+    {
+      "target_id": "ons.occupation.managers_directors_and_senior_officials_by_region",
+      "family": "ons_occupation",
+      "geography_levels": [
+        "country",
+        "region"
+      ],
+      "measurement": {
+        "entity": "person",
+        "map_to": "household",
+        "concept": "uk.person.count",
+        "filters": [
+          {
+            "concept": "uk.employment.soc2020_major_group",
+            "equals": "managers_directors_and_senior_officials"
+          },
+          {
+            "concept": "uk.employment.status",
+            "in": [
+              "ft_employed",
+              "pt_employed",
+              "ft_self_employed",
+              "pt_self_employed"
+            ]
+          }
+        ]
+      },
+      "bindings": {
+        "policyengine": {
+          "metric_name": "ons/regional_occupation/managers_directors_and_senior_officials",
+          "filters": [
+            {
+              "variable": "soc2020_major_group",
+              "equals": "MANAGERS_DIRECTORS_AND_SENIOR_OFFICIALS"
+            },
+            {
+              "variable": "employment_status",
+              "in": [
+                "FT_EMPLOYED",
+                "PT_EMPLOYED",
+                "FT_SELF_EMPLOYED",
+                "PT_SELF_EMPLOYED"
+              ]
+            }
+          ],
+          "value_variable": "person_count",
+          "from_entity": "person",
+          "map_to": "household",
+          "notes": "ONS Annual Population Survey (Nomis APS218, NM_218_1), Jan 2025-Dec 2025, revision 0 released 21 April 2026: people in employment resident in the area whose main job is in SOC 2020 major group 1 (managers, directors and senior officials), all persons and all employment types, rounded by Nomis to the nearest hundred. One reference per region-tier area (microcosm#905), as the regional age rows: the nine English regions at Chronicle's region level, Wales, Scotland and Northern Ireland at country level. Counts each person in work on the frame (employment_status full- or part-time employed or self-employed) whose soc2020_major_group is MANAGERS_DIRECTORS_AND_SENIOR_OFFICIALS: the FRS code of the main job on FRS rows and the redrawn group on SPI-channel rows (microcosm#1490). Adults out of work keep their last job's group and are not counted, nor is anyone without a code. The APS also counts unpaid family workers and people on government schemes, whom the frame's statuses do not separate. Bound at the calibration year for the occupation rows PolicyEngine/uk-ai-study#16 reads (María's ruling of 4 November 2026)."
+        },
+        "axiom": {
+          "metric_name": "ons/regional_occupation/managers_directors_and_senior_officials",
+          "status": "pending",
+          "value_rule": "uk.person.count"
+        }
+      },
+      "ledger_selector": {
+        "source_name": "ons",
+        "source_concept": "ons.aps_people_in_employment",
+        "dimension_values": {
+          "soc2020_major_group": 1,
+          "sex": "all",
+          "employment_status": "all",
+          "statistic": "estimate"
+        },
+        "entity_name": "person",
+        "period_type": "calendar_year",
+        "period_value": 2025
+      },
+      "category_id": "ons.employment",
+      "label": "Managers, directors and senior officials in employment by region",
+      "selector_note": "Selects the area's estimate for one major group from the calendar-2025 package (ons-aps218-occupation-jan-dec-2025, PolicyEngine/chronicle#411) by its dimensions: never the confidence interval, which is its own concept, and never a sub-major row, which the same record sets hold. The nine major groups add to slightly less than Nomis's all-occupations total: the rest are people in employment in no major group, whom no row binds."
+    },
+    {
+      "target_id": "ons.occupation.professional_by_region",
+      "family": "ons_occupation",
+      "geography_levels": [
+        "country",
+        "region"
+      ],
+      "measurement": {
+        "entity": "person",
+        "map_to": "household",
+        "concept": "uk.person.count",
+        "filters": [
+          {
+            "concept": "uk.employment.soc2020_major_group",
+            "equals": "professional"
+          },
+          {
+            "concept": "uk.employment.status",
+            "in": [
+              "ft_employed",
+              "pt_employed",
+              "ft_self_employed",
+              "pt_self_employed"
+            ]
+          }
+        ]
+      },
+      "bindings": {
+        "policyengine": {
+          "metric_name": "ons/regional_occupation/professional",
+          "filters": [
+            {
+              "variable": "soc2020_major_group",
+              "equals": "PROFESSIONAL"
+            },
+            {
+              "variable": "employment_status",
+              "in": [
+                "FT_EMPLOYED",
+                "PT_EMPLOYED",
+                "FT_SELF_EMPLOYED",
+                "PT_SELF_EMPLOYED"
+              ]
+            }
+          ],
+          "value_variable": "person_count",
+          "from_entity": "person",
+          "map_to": "household",
+          "notes": "ONS Annual Population Survey (Nomis APS218, NM_218_1), Jan 2025-Dec 2025, revision 0 released 21 April 2026: people in employment resident in the area whose main job is in SOC 2020 major group 2 (professional occupations), all persons and all employment types, rounded by Nomis to the nearest hundred. One reference per region-tier area (microcosm#905), as the regional age rows: the nine English regions at Chronicle's region level, Wales, Scotland and Northern Ireland at country level. Counts each person in work on the frame (employment_status full- or part-time employed or self-employed) whose soc2020_major_group is PROFESSIONAL: the FRS code of the main job on FRS rows and the redrawn group on SPI-channel rows (microcosm#1490). Adults out of work keep their last job's group and are not counted, nor is anyone without a code. The APS also counts unpaid family workers and people on government schemes, whom the frame's statuses do not separate. Bound at the calibration year for the occupation rows PolicyEngine/uk-ai-study#16 reads (María's ruling of 4 November 2026)."
+        },
+        "axiom": {
+          "metric_name": "ons/regional_occupation/professional",
+          "status": "pending",
+          "value_rule": "uk.person.count"
+        }
+      },
+      "ledger_selector": {
+        "source_name": "ons",
+        "source_concept": "ons.aps_people_in_employment",
+        "dimension_values": {
+          "soc2020_major_group": 2,
+          "sex": "all",
+          "employment_status": "all",
+          "statistic": "estimate"
+        },
+        "entity_name": "person",
+        "period_type": "calendar_year",
+        "period_value": 2025
+      },
+      "category_id": "ons.employment",
+      "label": "Professional occupations in employment by region",
+      "selector_note": "Selects the area's estimate for one major group from the calendar-2025 package (ons-aps218-occupation-jan-dec-2025, PolicyEngine/chronicle#411) by its dimensions: never the confidence interval, which is its own concept, and never a sub-major row, which the same record sets hold. The nine major groups add to slightly less than Nomis's all-occupations total: the rest are people in employment in no major group, whom no row binds."
+    },
+    {
+      "target_id": "ons.occupation.associate_professional_by_region",
+      "family": "ons_occupation",
+      "geography_levels": [
+        "country",
+        "region"
+      ],
+      "measurement": {
+        "entity": "person",
+        "map_to": "household",
+        "concept": "uk.person.count",
+        "filters": [
+          {
+            "concept": "uk.employment.soc2020_major_group",
+            "equals": "associate_professional"
+          },
+          {
+            "concept": "uk.employment.status",
+            "in": [
+              "ft_employed",
+              "pt_employed",
+              "ft_self_employed",
+              "pt_self_employed"
+            ]
+          }
+        ]
+      },
+      "bindings": {
+        "policyengine": {
+          "metric_name": "ons/regional_occupation/associate_professional",
+          "filters": [
+            {
+              "variable": "soc2020_major_group",
+              "equals": "ASSOCIATE_PROFESSIONAL"
+            },
+            {
+              "variable": "employment_status",
+              "in": [
+                "FT_EMPLOYED",
+                "PT_EMPLOYED",
+                "FT_SELF_EMPLOYED",
+                "PT_SELF_EMPLOYED"
+              ]
+            }
+          ],
+          "value_variable": "person_count",
+          "from_entity": "person",
+          "map_to": "household",
+          "notes": "ONS Annual Population Survey (Nomis APS218, NM_218_1), Jan 2025-Dec 2025, revision 0 released 21 April 2026: people in employment resident in the area whose main job is in SOC 2020 major group 3 (associate professional occupations), all persons and all employment types, rounded by Nomis to the nearest hundred. One reference per region-tier area (microcosm#905), as the regional age rows: the nine English regions at Chronicle's region level, Wales, Scotland and Northern Ireland at country level. Counts each person in work on the frame (employment_status full- or part-time employed or self-employed) whose soc2020_major_group is ASSOCIATE_PROFESSIONAL: the FRS code of the main job on FRS rows and the redrawn group on SPI-channel rows (microcosm#1490). Adults out of work keep their last job's group and are not counted, nor is anyone without a code. The APS also counts unpaid family workers and people on government schemes, whom the frame's statuses do not separate. Bound at the calibration year for the occupation rows PolicyEngine/uk-ai-study#16 reads (María's ruling of 4 November 2026)."
+        },
+        "axiom": {
+          "metric_name": "ons/regional_occupation/associate_professional",
+          "status": "pending",
+          "value_rule": "uk.person.count"
+        }
+      },
+      "ledger_selector": {
+        "source_name": "ons",
+        "source_concept": "ons.aps_people_in_employment",
+        "dimension_values": {
+          "soc2020_major_group": 3,
+          "sex": "all",
+          "employment_status": "all",
+          "statistic": "estimate"
+        },
+        "entity_name": "person",
+        "period_type": "calendar_year",
+        "period_value": 2025
+      },
+      "category_id": "ons.employment",
+      "label": "Associate professional occupations in employment by region",
+      "selector_note": "Selects the area's estimate for one major group from the calendar-2025 package (ons-aps218-occupation-jan-dec-2025, PolicyEngine/chronicle#411) by its dimensions: never the confidence interval, which is its own concept, and never a sub-major row, which the same record sets hold. The nine major groups add to slightly less than Nomis's all-occupations total: the rest are people in employment in no major group, whom no row binds."
+    },
+    {
+      "target_id": "ons.occupation.administrative_and_secretarial_by_region",
+      "family": "ons_occupation",
+      "geography_levels": [
+        "country",
+        "region"
+      ],
+      "measurement": {
+        "entity": "person",
+        "map_to": "household",
+        "concept": "uk.person.count",
+        "filters": [
+          {
+            "concept": "uk.employment.soc2020_major_group",
+            "equals": "administrative_and_secretarial"
+          },
+          {
+            "concept": "uk.employment.status",
+            "in": [
+              "ft_employed",
+              "pt_employed",
+              "ft_self_employed",
+              "pt_self_employed"
+            ]
+          }
+        ]
+      },
+      "bindings": {
+        "policyengine": {
+          "metric_name": "ons/regional_occupation/administrative_and_secretarial",
+          "filters": [
+            {
+              "variable": "soc2020_major_group",
+              "equals": "ADMINISTRATIVE_AND_SECRETARIAL"
+            },
+            {
+              "variable": "employment_status",
+              "in": [
+                "FT_EMPLOYED",
+                "PT_EMPLOYED",
+                "FT_SELF_EMPLOYED",
+                "PT_SELF_EMPLOYED"
+              ]
+            }
+          ],
+          "value_variable": "person_count",
+          "from_entity": "person",
+          "map_to": "household",
+          "notes": "ONS Annual Population Survey (Nomis APS218, NM_218_1), Jan 2025-Dec 2025, revision 0 released 21 April 2026: people in employment resident in the area whose main job is in SOC 2020 major group 4 (administrative and secretarial occupations), all persons and all employment types, rounded by Nomis to the nearest hundred. One reference per region-tier area (microcosm#905), as the regional age rows: the nine English regions at Chronicle's region level, Wales, Scotland and Northern Ireland at country level. Counts each person in work on the frame (employment_status full- or part-time employed or self-employed) whose soc2020_major_group is ADMINISTRATIVE_AND_SECRETARIAL: the FRS code of the main job on FRS rows and the redrawn group on SPI-channel rows (microcosm#1490). Adults out of work keep their last job's group and are not counted, nor is anyone without a code. The APS also counts unpaid family workers and people on government schemes, whom the frame's statuses do not separate. Bound at the calibration year for the occupation rows PolicyEngine/uk-ai-study#16 reads (María's ruling of 4 November 2026)."
+        },
+        "axiom": {
+          "metric_name": "ons/regional_occupation/administrative_and_secretarial",
+          "status": "pending",
+          "value_rule": "uk.person.count"
+        }
+      },
+      "ledger_selector": {
+        "source_name": "ons",
+        "source_concept": "ons.aps_people_in_employment",
+        "dimension_values": {
+          "soc2020_major_group": 4,
+          "sex": "all",
+          "employment_status": "all",
+          "statistic": "estimate"
+        },
+        "entity_name": "person",
+        "period_type": "calendar_year",
+        "period_value": 2025
+      },
+      "category_id": "ons.employment",
+      "label": "Administrative and secretarial occupations in employment by region",
+      "selector_note": "Selects the area's estimate for one major group from the calendar-2025 package (ons-aps218-occupation-jan-dec-2025, PolicyEngine/chronicle#411) by its dimensions: never the confidence interval, which is its own concept, and never a sub-major row, which the same record sets hold. The nine major groups add to slightly less than Nomis's all-occupations total: the rest are people in employment in no major group, whom no row binds."
+    },
+    {
+      "target_id": "ons.occupation.skilled_trades_by_region",
+      "family": "ons_occupation",
+      "geography_levels": [
+        "country",
+        "region"
+      ],
+      "measurement": {
+        "entity": "person",
+        "map_to": "household",
+        "concept": "uk.person.count",
+        "filters": [
+          {
+            "concept": "uk.employment.soc2020_major_group",
+            "equals": "skilled_trades"
+          },
+          {
+            "concept": "uk.employment.status",
+            "in": [
+              "ft_employed",
+              "pt_employed",
+              "ft_self_employed",
+              "pt_self_employed"
+            ]
+          }
+        ]
+      },
+      "bindings": {
+        "policyengine": {
+          "metric_name": "ons/regional_occupation/skilled_trades",
+          "filters": [
+            {
+              "variable": "soc2020_major_group",
+              "equals": "SKILLED_TRADES"
+            },
+            {
+              "variable": "employment_status",
+              "in": [
+                "FT_EMPLOYED",
+                "PT_EMPLOYED",
+                "FT_SELF_EMPLOYED",
+                "PT_SELF_EMPLOYED"
+              ]
+            }
+          ],
+          "value_variable": "person_count",
+          "from_entity": "person",
+          "map_to": "household",
+          "notes": "ONS Annual Population Survey (Nomis APS218, NM_218_1), Jan 2025-Dec 2025, revision 0 released 21 April 2026: people in employment resident in the area whose main job is in SOC 2020 major group 5 (skilled trades occupations), all persons and all employment types, rounded by Nomis to the nearest hundred. One reference per region-tier area (microcosm#905), as the regional age rows: the nine English regions at Chronicle's region level, Wales, Scotland and Northern Ireland at country level. Counts each person in work on the frame (employment_status full- or part-time employed or self-employed) whose soc2020_major_group is SKILLED_TRADES: the FRS code of the main job on FRS rows and the redrawn group on SPI-channel rows (microcosm#1490). Adults out of work keep their last job's group and are not counted, nor is anyone without a code. The APS also counts unpaid family workers and people on government schemes, whom the frame's statuses do not separate. Bound at the calibration year for the occupation rows PolicyEngine/uk-ai-study#16 reads (María's ruling of 4 November 2026)."
+        },
+        "axiom": {
+          "metric_name": "ons/regional_occupation/skilled_trades",
+          "status": "pending",
+          "value_rule": "uk.person.count"
+        }
+      },
+      "ledger_selector": {
+        "source_name": "ons",
+        "source_concept": "ons.aps_people_in_employment",
+        "dimension_values": {
+          "soc2020_major_group": 5,
+          "sex": "all",
+          "employment_status": "all",
+          "statistic": "estimate"
+        },
+        "entity_name": "person",
+        "period_type": "calendar_year",
+        "period_value": 2025
+      },
+      "category_id": "ons.employment",
+      "label": "Skilled trades occupations in employment by region",
+      "selector_note": "Selects the area's estimate for one major group from the calendar-2025 package (ons-aps218-occupation-jan-dec-2025, PolicyEngine/chronicle#411) by its dimensions: never the confidence interval, which is its own concept, and never a sub-major row, which the same record sets hold. The nine major groups add to slightly less than Nomis's all-occupations total: the rest are people in employment in no major group, whom no row binds."
+    },
+    {
+      "target_id": "ons.occupation.caring_leisure_and_other_service_by_region",
+      "family": "ons_occupation",
+      "geography_levels": [
+        "country",
+        "region"
+      ],
+      "measurement": {
+        "entity": "person",
+        "map_to": "household",
+        "concept": "uk.person.count",
+        "filters": [
+          {
+            "concept": "uk.employment.soc2020_major_group",
+            "equals": "caring_leisure_and_other_service"
+          },
+          {
+            "concept": "uk.employment.status",
+            "in": [
+              "ft_employed",
+              "pt_employed",
+              "ft_self_employed",
+              "pt_self_employed"
+            ]
+          }
+        ]
+      },
+      "bindings": {
+        "policyengine": {
+          "metric_name": "ons/regional_occupation/caring_leisure_and_other_service",
+          "filters": [
+            {
+              "variable": "soc2020_major_group",
+              "equals": "CARING_LEISURE_AND_OTHER_SERVICE"
+            },
+            {
+              "variable": "employment_status",
+              "in": [
+                "FT_EMPLOYED",
+                "PT_EMPLOYED",
+                "FT_SELF_EMPLOYED",
+                "PT_SELF_EMPLOYED"
+              ]
+            }
+          ],
+          "value_variable": "person_count",
+          "from_entity": "person",
+          "map_to": "household",
+          "notes": "ONS Annual Population Survey (Nomis APS218, NM_218_1), Jan 2025-Dec 2025, revision 0 released 21 April 2026: people in employment resident in the area whose main job is in SOC 2020 major group 6 (caring, leisure and other service occupations), all persons and all employment types, rounded by Nomis to the nearest hundred. One reference per region-tier area (microcosm#905), as the regional age rows: the nine English regions at Chronicle's region level, Wales, Scotland and Northern Ireland at country level. Counts each person in work on the frame (employment_status full- or part-time employed or self-employed) whose soc2020_major_group is CARING_LEISURE_AND_OTHER_SERVICE: the FRS code of the main job on FRS rows and the redrawn group on SPI-channel rows (microcosm#1490). Adults out of work keep their last job's group and are not counted, nor is anyone without a code. The APS also counts unpaid family workers and people on government schemes, whom the frame's statuses do not separate. Bound at the calibration year for the occupation rows PolicyEngine/uk-ai-study#16 reads (María's ruling of 4 November 2026)."
+        },
+        "axiom": {
+          "metric_name": "ons/regional_occupation/caring_leisure_and_other_service",
+          "status": "pending",
+          "value_rule": "uk.person.count"
+        }
+      },
+      "ledger_selector": {
+        "source_name": "ons",
+        "source_concept": "ons.aps_people_in_employment",
+        "dimension_values": {
+          "soc2020_major_group": 6,
+          "sex": "all",
+          "employment_status": "all",
+          "statistic": "estimate"
+        },
+        "entity_name": "person",
+        "period_type": "calendar_year",
+        "period_value": 2025
+      },
+      "category_id": "ons.employment",
+      "label": "Caring, leisure and other service occupations in employment by region",
+      "selector_note": "Selects the area's estimate for one major group from the calendar-2025 package (ons-aps218-occupation-jan-dec-2025, PolicyEngine/chronicle#411) by its dimensions: never the confidence interval, which is its own concept, and never a sub-major row, which the same record sets hold. The nine major groups add to slightly less than Nomis's all-occupations total: the rest are people in employment in no major group, whom no row binds."
+    },
+    {
+      "target_id": "ons.occupation.sales_and_customer_service_by_region",
+      "family": "ons_occupation",
+      "geography_levels": [
+        "country",
+        "region"
+      ],
+      "measurement": {
+        "entity": "person",
+        "map_to": "household",
+        "concept": "uk.person.count",
+        "filters": [
+          {
+            "concept": "uk.employment.soc2020_major_group",
+            "equals": "sales_and_customer_service"
+          },
+          {
+            "concept": "uk.employment.status",
+            "in": [
+              "ft_employed",
+              "pt_employed",
+              "ft_self_employed",
+              "pt_self_employed"
+            ]
+          }
+        ]
+      },
+      "bindings": {
+        "policyengine": {
+          "metric_name": "ons/regional_occupation/sales_and_customer_service",
+          "filters": [
+            {
+              "variable": "soc2020_major_group",
+              "equals": "SALES_AND_CUSTOMER_SERVICE"
+            },
+            {
+              "variable": "employment_status",
+              "in": [
+                "FT_EMPLOYED",
+                "PT_EMPLOYED",
+                "FT_SELF_EMPLOYED",
+                "PT_SELF_EMPLOYED"
+              ]
+            }
+          ],
+          "value_variable": "person_count",
+          "from_entity": "person",
+          "map_to": "household",
+          "notes": "ONS Annual Population Survey (Nomis APS218, NM_218_1), Jan 2025-Dec 2025, revision 0 released 21 April 2026: people in employment resident in the area whose main job is in SOC 2020 major group 7 (sales and customer service occupations), all persons and all employment types, rounded by Nomis to the nearest hundred. One reference per region-tier area (microcosm#905), as the regional age rows: the nine English regions at Chronicle's region level, Wales, Scotland and Northern Ireland at country level. Counts each person in work on the frame (employment_status full- or part-time employed or self-employed) whose soc2020_major_group is SALES_AND_CUSTOMER_SERVICE: the FRS code of the main job on FRS rows and the redrawn group on SPI-channel rows (microcosm#1490). Adults out of work keep their last job's group and are not counted, nor is anyone without a code. The APS also counts unpaid family workers and people on government schemes, whom the frame's statuses do not separate. Bound at the calibration year for the occupation rows PolicyEngine/uk-ai-study#16 reads (María's ruling of 4 November 2026)."
+        },
+        "axiom": {
+          "metric_name": "ons/regional_occupation/sales_and_customer_service",
+          "status": "pending",
+          "value_rule": "uk.person.count"
+        }
+      },
+      "ledger_selector": {
+        "source_name": "ons",
+        "source_concept": "ons.aps_people_in_employment",
+        "dimension_values": {
+          "soc2020_major_group": 7,
+          "sex": "all",
+          "employment_status": "all",
+          "statistic": "estimate"
+        },
+        "entity_name": "person",
+        "period_type": "calendar_year",
+        "period_value": 2025
+      },
+      "category_id": "ons.employment",
+      "label": "Sales and customer service occupations in employment by region",
+      "selector_note": "Selects the area's estimate for one major group from the calendar-2025 package (ons-aps218-occupation-jan-dec-2025, PolicyEngine/chronicle#411) by its dimensions: never the confidence interval, which is its own concept, and never a sub-major row, which the same record sets hold. The nine major groups add to slightly less than Nomis's all-occupations total: the rest are people in employment in no major group, whom no row binds."
+    },
+    {
+      "target_id": "ons.occupation.process_plant_and_machine_operatives_by_region",
+      "family": "ons_occupation",
+      "geography_levels": [
+        "country",
+        "region"
+      ],
+      "measurement": {
+        "entity": "person",
+        "map_to": "household",
+        "concept": "uk.person.count",
+        "filters": [
+          {
+            "concept": "uk.employment.soc2020_major_group",
+            "equals": "process_plant_and_machine_operatives"
+          },
+          {
+            "concept": "uk.employment.status",
+            "in": [
+              "ft_employed",
+              "pt_employed",
+              "ft_self_employed",
+              "pt_self_employed"
+            ]
+          }
+        ]
+      },
+      "bindings": {
+        "policyengine": {
+          "metric_name": "ons/regional_occupation/process_plant_and_machine_operatives",
+          "filters": [
+            {
+              "variable": "soc2020_major_group",
+              "equals": "PROCESS_PLANT_AND_MACHINE_OPERATIVES"
+            },
+            {
+              "variable": "employment_status",
+              "in": [
+                "FT_EMPLOYED",
+                "PT_EMPLOYED",
+                "FT_SELF_EMPLOYED",
+                "PT_SELF_EMPLOYED"
+              ]
+            }
+          ],
+          "value_variable": "person_count",
+          "from_entity": "person",
+          "map_to": "household",
+          "notes": "ONS Annual Population Survey (Nomis APS218, NM_218_1), Jan 2025-Dec 2025, revision 0 released 21 April 2026: people in employment resident in the area whose main job is in SOC 2020 major group 8 (process, plant and machine operatives), all persons and all employment types, rounded by Nomis to the nearest hundred. One reference per region-tier area (microcosm#905), as the regional age rows: the nine English regions at Chronicle's region level, Wales, Scotland and Northern Ireland at country level. Counts each person in work on the frame (employment_status full- or part-time employed or self-employed) whose soc2020_major_group is PROCESS_PLANT_AND_MACHINE_OPERATIVES: the FRS code of the main job on FRS rows and the redrawn group on SPI-channel rows (microcosm#1490). Adults out of work keep their last job's group and are not counted, nor is anyone without a code. The APS also counts unpaid family workers and people on government schemes, whom the frame's statuses do not separate. Bound at the calibration year for the occupation rows PolicyEngine/uk-ai-study#16 reads (María's ruling of 4 November 2026)."
+        },
+        "axiom": {
+          "metric_name": "ons/regional_occupation/process_plant_and_machine_operatives",
+          "status": "pending",
+          "value_rule": "uk.person.count"
+        }
+      },
+      "ledger_selector": {
+        "source_name": "ons",
+        "source_concept": "ons.aps_people_in_employment",
+        "dimension_values": {
+          "soc2020_major_group": 8,
+          "sex": "all",
+          "employment_status": "all",
+          "statistic": "estimate"
+        },
+        "entity_name": "person",
+        "period_type": "calendar_year",
+        "period_value": 2025
+      },
+      "category_id": "ons.employment",
+      "label": "Process, plant and machine operatives in employment by region",
+      "selector_note": "Selects the area's estimate for one major group from the calendar-2025 package (ons-aps218-occupation-jan-dec-2025, PolicyEngine/chronicle#411) by its dimensions: never the confidence interval, which is its own concept, and never a sub-major row, which the same record sets hold. The nine major groups add to slightly less than Nomis's all-occupations total: the rest are people in employment in no major group, whom no row binds."
+    },
+    {
+      "target_id": "ons.occupation.elementary_by_region",
+      "family": "ons_occupation",
+      "geography_levels": [
+        "country",
+        "region"
+      ],
+      "measurement": {
+        "entity": "person",
+        "map_to": "household",
+        "concept": "uk.person.count",
+        "filters": [
+          {
+            "concept": "uk.employment.soc2020_major_group",
+            "equals": "elementary"
+          },
+          {
+            "concept": "uk.employment.status",
+            "in": [
+              "ft_employed",
+              "pt_employed",
+              "ft_self_employed",
+              "pt_self_employed"
+            ]
+          }
+        ]
+      },
+      "bindings": {
+        "policyengine": {
+          "metric_name": "ons/regional_occupation/elementary",
+          "filters": [
+            {
+              "variable": "soc2020_major_group",
+              "equals": "ELEMENTARY"
+            },
+            {
+              "variable": "employment_status",
+              "in": [
+                "FT_EMPLOYED",
+                "PT_EMPLOYED",
+                "FT_SELF_EMPLOYED",
+                "PT_SELF_EMPLOYED"
+              ]
+            }
+          ],
+          "value_variable": "person_count",
+          "from_entity": "person",
+          "map_to": "household",
+          "notes": "ONS Annual Population Survey (Nomis APS218, NM_218_1), Jan 2025-Dec 2025, revision 0 released 21 April 2026: people in employment resident in the area whose main job is in SOC 2020 major group 9 (elementary occupations), all persons and all employment types, rounded by Nomis to the nearest hundred. One reference per region-tier area (microcosm#905), as the regional age rows: the nine English regions at Chronicle's region level, Wales, Scotland and Northern Ireland at country level. Counts each person in work on the frame (employment_status full- or part-time employed or self-employed) whose soc2020_major_group is ELEMENTARY: the FRS code of the main job on FRS rows and the redrawn group on SPI-channel rows (microcosm#1490). Adults out of work keep their last job's group and are not counted, nor is anyone without a code. The APS also counts unpaid family workers and people on government schemes, whom the frame's statuses do not separate. Bound at the calibration year for the occupation rows PolicyEngine/uk-ai-study#16 reads (María's ruling of 4 November 2026)."
+        },
+        "axiom": {
+          "metric_name": "ons/regional_occupation/elementary",
+          "status": "pending",
+          "value_rule": "uk.person.count"
+        }
+      },
+      "ledger_selector": {
+        "source_name": "ons",
+        "source_concept": "ons.aps_people_in_employment",
+        "dimension_values": {
+          "soc2020_major_group": 9,
+          "sex": "all",
+          "employment_status": "all",
+          "statistic": "estimate"
+        },
+        "entity_name": "person",
+        "period_type": "calendar_year",
+        "period_value": 2025
+      },
+      "category_id": "ons.employment",
+      "label": "Elementary occupations in employment by region",
+      "selector_note": "Selects the area's estimate for one major group from the calendar-2025 package (ons-aps218-occupation-jan-dec-2025, PolicyEngine/chronicle#411) by its dimensions: never the confidence interval, which is its own concept, and never a sub-major row, which the same record sets hold. The nine major groups add to slightly less than Nomis's all-occupations total: the rest are people in employment in no major group, whom no row binds."
     },
     {
       "target_id": "hmrc.self_employment_income.amount",
