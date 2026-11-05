@@ -106,14 +106,20 @@ RUNNER_CERTIFI_MINIMUM_VERSION = "2026.10.19"
 # commit keeps the emitter it was built with. The oldest release it accepts
 # is the oldest a build starts (MINIMUM_EMITTER_VERSION in
 # microcosm.build.telemetry_emitter), written once, in microcosm-build's
-# package data. This module imports nothing from the workspace, so it reads
-# that file by its path in the checkout it belongs to: the checkout that
-# launches the app, when Modal defines the image (image_emitter_requirement).
-# In the container this module is a copy without a checkout, and it never
-# reads the file. So at launch the two can still differ: the image's install
-# step comes from the launching checkout, and the minimum from the commit the
-# plan pins. The stage's runner records the version. The runner needs 0.13.0
-# or later, which added the `status` command it runs after the tool.
+# package data. This module imports nothing from the workspace, so on the
+# launching machine it reads that file by its path in the checkout it belongs
+# to (MINIMUM_EMITTER_VERSION_FILE), when Modal defines the image
+# (image_emitter_requirement). In the container this module is the copy the
+# image adds at /root, with no checkout around it, so the image also adds the
+# launching checkout's file beside it (MINIMUM_EMITTER_VERSION_FILENAME), and
+# a copy with that file beside it reads it first
+# (minimum_emitter_version_file): the check, which runs there, then reports
+# the requirement the image was built with. So at launch the image's install
+# step comes from the launching checkout, and the minimum the build enforces
+# from the commit the plan pins. The stage's runner records the version. The
+# runner needs 0.13.0 or later, which added the `status` command it runs
+# after the tool.
+MINIMUM_EMITTER_VERSION_FILENAME = "minimum_emitter_version.json"
 MINIMUM_EMITTER_VERSION_FILE = (
     Path(__file__).resolve().parents[1]
     / "packages"
@@ -121,7 +127,7 @@ MINIMUM_EMITTER_VERSION_FILE = (
     / "src"
     / "microcosm"
     / "build"
-    / "minimum_emitter_version.json"
+    / MINIMUM_EMITTER_VERSION_FILENAME
 )
 IMAGE_EMITTER_BIN_DIR = "/usr/local/bin"
 IMAGE_EMITTER_COMMAND = f"{IMAGE_EMITTER_BIN_DIR}/microcosm-emitter"
@@ -1554,16 +1560,27 @@ def image_pip_bootstrap_command(
 _EMITTER_RELEASE = re.compile(r"\d+\.\d+\.\d+")
 
 
-def minimum_emitter_version() -> str:
-    """The oldest emitter release a build starts, from ``MINIMUM_EMITTER_VERSION_FILE``.
+def minimum_emitter_version_file() -> Path:
+    """The file that names the oldest emitter release a build starts.
 
-    That file is microcosm-build's package data, which the build adapter
-    reads as ``MINIMUM_EMITTER_VERSION``; this reads it by its path in this
-    module's checkout. Raises ``PlanError`` when the file is missing or does
-    not hold ``{"minimum_emitter_version": "X.Y.Z"}``.
+    The copy beside this module when there is one: the image adds the
+    launching checkout's file beside its copy of this module. Otherwise the
+    file in this module's checkout, ``MINIMUM_EMITTER_VERSION_FILE``.
     """
 
-    path = MINIMUM_EMITTER_VERSION_FILE
+    beside = Path(__file__).resolve().with_name(MINIMUM_EMITTER_VERSION_FILENAME)
+    return beside if beside.is_file() else MINIMUM_EMITTER_VERSION_FILE
+
+
+def minimum_emitter_version() -> str:
+    """The oldest emitter release a build starts, from ``minimum_emitter_version_file``.
+
+    That file is microcosm-build's package data, which the build adapter
+    reads as ``MINIMUM_EMITTER_VERSION``. Raises ``PlanError`` when the file
+    is missing or does not hold ``{"minimum_emitter_version": "X.Y.Z"}``.
+    """
+
+    path = minimum_emitter_version_file()
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, ValueError) as error:
@@ -2255,7 +2272,8 @@ def _status_runs(stdout: str) -> list[EmitterStatusRun] | None:
 
     try:
         printed = json.loads(stdout)
-    except ValueError:
+    # Output nested deeper than the parser recurses raises RecursionError.
+    except (ValueError, RecursionError):
         return None
     runs = printed.get("runs") if isinstance(printed, dict) else None
     if not isinstance(runs, list):
@@ -3578,6 +3596,8 @@ def write_probe_verdict(
         "mirrored_state_gib": stage.mirrored_state_gib,
         "implied_mirror_seconds": round(needed),
         "mirror_reserve_seconds": reserve,
+        "stop_grace_seconds": STOP_GRACE_SECONDS,
+        "emitter_status_reserve_seconds": EMITTER_STATUS_TIMEOUT_SECONDS,
         "receipt_reserve_seconds": RECEIPT_RESERVE_SECONDS,
     }
     if needed > reserve:

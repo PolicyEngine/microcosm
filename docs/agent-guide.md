@@ -141,7 +141,8 @@ version check), not the emitter's own queue or delivery.
 image's emitter path: its tool starts the emitter's telemetry module through
 the interface, with no credential, no collector token and a closed loopback
 collector address, so the emitter keeps its events and sends nothing, and the
-test checks what the runner records from the emitter's `status`. The runner warns when
+test checks what the runner records from the emitter's `status`, and that the
+emitter host has exited before the runner runs it. The runner warns when
 the package index has a newer release than the pin; raise the pin in a pull
 request then. `tools/installed-emitter/constraints.txt` pins the
 `huggingface_hub` release whose requests the stand-in answers; the runner also

@@ -169,7 +169,9 @@ written once, in microcosm-build's package data,
 `packages/microcosm-build/src/microcosm/build/minimum_emitter_version.json`:
 the adapter reads it as package data, and the runner, which imports nothing
 from the workspace, reads it by its path in the checkout that launches the
-app. At a Modal launch the install step therefore comes from the launching
+app. The image adds that checkout's file beside the runner's copy of the
+plan module, so the check, which runs in the container, reads the same
+file. At a Modal launch the install step therefore comes from the launching
 checkout and the minimum from the commit the plan pins (see the
 [US Modal stage runbook](us-modal-stage-runbook.md)). Releases
 before 0.10.0 send telemetry to the collector's Cloud Run address, which

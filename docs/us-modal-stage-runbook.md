@@ -97,7 +97,12 @@ release directory onto the runs volume. Publication stays the human step in
    built with. The release is written once, in microcosm-build's package
    data (`packages/microcosm-build/src/microcosm/build/minimum_emitter_version.json`):
    the build adapter reads it as `MINIMUM_EMITTER_VERSION`, and the runner
-   reads the same file by its path in the checkout. The install step and its
+   reads the same file by its path in the checkout. The container has no
+   checkout around the plan module's copy (`/root/modal_us_stage_plan.py`),
+   so the image adds the launching checkout's file beside it
+   (`/root/minimum_emitter_version.json`), and the copy reads that one: the
+   check, which runs there, reports the install step the image was built
+   with. The install step and its
    `>=0.13.0` floor come from the checkout that launches the app
    (`image_build_commands`, `image_emitter_requirement`), while the minimum
    the build enforces comes from the commit the plan pins, so a launch can
@@ -1005,7 +1010,11 @@ The plan is `docs/us-modal-stage-route-a-base-plan.json` (run
   `status` (up to 60 s, `EMITTER_STATUS_TIMEOUT_SECONDS`), then hashing and
   mirroring the state, then the runner's identity, the receipt and the
   attempt's final commit (`RECEIPT_RESERVE_SECONDS`, 120 s, an allowance).
-  After a
+  The check's write probe reports each of these figures. Not counted: the
+  emitter the build started keeps the tool's output open while it finishes,
+  up to about 15.5 s after the tool exits (`EMITTER_EXIT_NOTICE_SECONDS` and
+  `EMITTER_DRAIN_SECONDS`), also after a stop; the runner waits for it before
+  `status`. After a
   stop or a failure the push copies the whole state, about 50 GiB
   (`BASE_MIRRORED_STATE_GIB`): the local run's 44 GB of checkpoints and
   2.35 GB H5, plus the final checkpoint's hard-linked alias

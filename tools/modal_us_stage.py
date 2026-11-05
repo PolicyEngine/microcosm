@@ -60,7 +60,7 @@ import tempfile
 import threading
 import time
 from datetime import UTC, datetime
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 import modal
 
@@ -74,6 +74,13 @@ PLAN_ENV = "MICROCOSM_MODAL_PLAN"
 HF_SECRET_ENV = "MICROCOSM_MODAL_HF_SECRET"
 APP_NAME = "microcosm-us-stage"
 PLAN_MODULE_REMOTE = "/root/modal_us_stage_plan.py"
+#: Beside the plan module's copy, where that copy looks for it first
+#: (``plan_lib.minimum_emitter_version_file``).
+MINIMUM_EMITTER_VERSION_REMOTE = str(
+    PurePosixPath(PLAN_MODULE_REMOTE).with_name(
+        plan_lib.MINIMUM_EMITTER_VERSION_FILENAME
+    )
+)
 
 
 def _local_plan() -> tuple[dict, plan_lib.Plan] | None:
@@ -123,6 +130,13 @@ def _image() -> modal.Image:
         image = image.run_commands(*plan_lib.image_build_commands(plan))
         image = image.add_local_file(
             str(_HERE / "modal_us_stage_plan.py"), PLAN_MODULE_REMOTE
+        )
+        # The launching checkout's emitter floor, beside the plan module's
+        # copy, which has no checkout around it: the check, which runs in the
+        # container, reports the install step from it.
+        image = image.add_local_file(
+            str(plan_lib.minimum_emitter_version_file()),
+            MINIMUM_EMITTER_VERSION_REMOTE,
         )
     return image
 
