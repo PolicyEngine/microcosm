@@ -19,7 +19,10 @@ of a ``--scf-education-debt`` build on a feed with no FSA facts
 
 from __future__ import annotations
 
+import ast
+import copy
 import dataclasses
+import functools
 import gzip
 import importlib.util
 import inspect
@@ -30,6 +33,8 @@ from collections import Counter
 import numpy as np
 import pandas as pd
 import pytest
+from hypothesis import HealthCheck, given, settings
+from hypothesis import strategies as st
 
 from microcosm.build.us_runtime import compile_us_fiscal_target_registry
 from microcosm.build.us_runtime.fsa_student_loan_targets import (
@@ -115,8 +120,8 @@ def test_plan_binds_the_latest_quarter_every_table_publishes() -> None:
     assert plan.status == "bound"
     assert plan.reference_period == "2026-03"
     assert plan.reference_label == "Data as of Mar. 31, 2026"
-    # 51 states x 2 measures, 5 age and 9 debt-size bands x 2, 2 loan types.
-    assert len(plan.references) == 51 * 2 + 5 * 2 + 9 * 2 + 2
+    # 51 states x 2 measures, 5 age and 9 debt-size bands x 2.
+    assert len(plan.references) == 51 * 2 + 5 * 2 + 9 * 2
     for measure, dollars in (("total_balance", True), ("borrowers", False)):
         control = plan.controls[measure]
         assert control["in_scope_control"] == pytest.approx(_control(dollars))
@@ -142,7 +147,7 @@ def test_registry_compiles_every_family_onto_one_in_scope_control() -> None:
     balance = _control(dollars=True)
     borrowers = _control(dollars=False)
 
-    assert len(registry) == 132
+    assert len(registry) == 130
     assert {role: len(specs) for role, specs in roles.items()} == {
         "fsa_state_balance": 51,
         "fsa_state_borrowers": 51,
@@ -150,8 +155,6 @@ def test_registry_compiles_every_family_onto_one_in_scope_control() -> None:
         "fsa_age_band_borrowers": 5,
         "fsa_debt_size_band_balance": 9,
         "fsa_debt_size_band_borrowers": 9,
-        "fsa_parent_plus_balance": 1,
-        "fsa_balance_excluding_parent_plus": 1,
     }
     for role, total in (
         ("fsa_state_balance", balance),
@@ -162,14 +165,6 @@ def test_registry_compiles_every_family_onto_one_in_scope_control() -> None:
         ("fsa_debt_size_band_borrowers", borrowers),
     ):
         assert math.fsum(spec.value for spec in roles[role]) == pytest.approx(total)
-    loan_types = (
-        roles["fsa_parent_plus_balance"] + roles["fsa_balance_excluding_parent_plus"]
-    )
-    assert math.fsum(spec.value for spec in loan_types) == pytest.approx(balance)
-    # Parent PLUS is $117.9B of the $1,723.8B the six loan-type rows publish.
-    assert roles["fsa_parent_plus_balance"][0].value == pytest.approx(
-        balance * 117.9 / 1_723.8, rel=1e-6
-    )
 
 
 def test_state_rows_allocate_not_reported_pro_rata() -> None:
@@ -281,8 +276,8 @@ def test_every_fsa_fact_has_one_disposition() -> None:
     assert len(by_id) == len(facts)
     assert receipt["disposition_counts"] == {
         "allocated": 4,
-        "bound": 136,
-        "diagnostic": 34,
+        "bound": 130,
+        "diagnostic": 40,
         "excluded": 8,
         "other_quarter": 58,
         "out_of_scope": 4,
@@ -299,9 +294,9 @@ def test_every_fsa_fact_has_one_disposition() -> None:
     assert by_id[f"{loan_type}.recipients.parent_plus.recipients"]["disposition"] == (
         "excluded"
     )
-    assert by_id[f"{loan_type}.dollars_outstanding.consolidation.dollars_outstanding"][
-        "target"
-    ] == (f"{loan_type}.dollars_outstanding.excluding_parent_plus.dollars_outstanding")
+    assert by_id[f"{loan_type}.dollars_outstanding.parent_plus.dollars_outstanding"][
+        "disposition"
+    ] == ("diagnostic")
     assert {
         item["disposition"]
         for item in receipt["dispositions"]
@@ -312,7 +307,7 @@ def test_every_fsa_fact_has_one_disposition() -> None:
         for item in receipt["dispositions"]
         if item["disposition"] == "other_quarter"
     } == {"2025-12", "2026-06"}
-    assert len(receipt["targets"]) == 132
+    assert len(receipt["targets"]) == 130
 
 
 def test_a_partial_feed_refuses() -> None:
@@ -339,6 +334,40 @@ def test_a_partial_feed_refuses() -> None:
     without_texas = [fact for fact in facts if fact["geography"]["id"] != "0400000US48"]
     with pytest.raises(ValueError, match="missing states"):
         _plan(without_texas)
+
+
+def test_a_table_without_any_row_it_reconciles_refuses() -> None:
+    facts = _facts()
+    receipt = fsa_student_loan_target_receipt(facts, target_period=2024)
+    reconciled = {
+        item["source_record_id"]
+        for item in receipt["dispositions"]
+        if item["disposition"] in {"bound", "allocated", "out_of_scope"}
+    }
+
+    assert len(reconciled) == 138
+    for fact in facts:
+        if fact["lineage"]["source_record_id"] in reconciled:
+            with pytest.raises(ValueError):
+                _plan([other for other in facts if other is not fact])
+
+
+def test_a_location_row_nobody_reviewed_refuses() -> None:
+    facts = _facts()
+    other = next(
+        fact
+        for fact in facts
+        if fact["lineage"]["source_record_id"].endswith(
+            "portfolio_by_location.2026_03_31.other.borrowers"
+        )
+    )
+    new_row = copy.deepcopy(other)
+    new_row["layout"]["groupby_value_id"] = "new_scope_row"
+    new_row["geography"]["id"] = "0400000US72"
+    new_row["lineage"]["source_record_id"] += ".new_scope_row"
+
+    with pytest.raises(ValueError, match="new_scope_row"):
+        _plan([*facts, new_row])
 
 
 def test_a_gapped_band_partition_refuses() -> None:
@@ -474,10 +503,6 @@ def test_compiled_fsa_targets_round_trip_through_the_materializer() -> None:
     assert total["fsa_debt_size_band_balance"] == pytest.approx(128_000.0 * 1_000.0)
     assert total["fsa_state_borrowers"] == total["fsa_age_band_borrowers"] == 3_000.0
     assert total["fsa_debt_size_band_borrowers"] == 3_000.0
-    assert (
-        total["fsa_parent_plus_balance"] + total["fsa_balance_excluding_parent_plus"]
-        == total["fsa_state_balance"]
-    )
 
 
 def _load_builder_module():
@@ -546,7 +571,7 @@ def test_release_parity_contract_reads_the_registry_without_fsa_rows() -> None:
     )
 
     parity = builder._without_opt_in_student_loan_targets(registry)
-    assert len(parity) == len(registry) - 132
+    assert len(parity) == len(registry) - 130
     assert not [spec for spec in parity.specs if spec.family == FSA_TARGET_FAMILY]
 
 
@@ -568,10 +593,99 @@ def test_release_refuses_a_debt_build_on_a_feed_without_fsa_facts() -> None:
         [*without_fsa, *_facts()], scf_education_debt=True
     )
     assert plan.status == "bound"
-    assert len(plan.values) == 132
+    assert len(plan.values) == 130
 
-    # The refusal runs before the compile, and the receipt reuses its plan.
-    source = inspect.getsource(builder._main)
-    check = source.index("_check_us_feed_carries_fsa_facts(")
-    assert check < source.index("compile_us_fiscal_target_registry(")
-    assert "plan=fsa_target_plan" in source
+    # The refusal runs before the compile, and the receipt reuses its plan. The
+    # syntax tree tells a call from a comment, and a statement in _main's own
+    # body from one that a condition can skip.
+    main = ast.parse(inspect.getsource(builder._main)).body[0]
+    calls = {
+        stmt.value.func.id: stmt
+        for stmt in main.body
+        if isinstance(stmt, ast.Assign)
+        and isinstance(stmt.value, ast.Call)
+        and isinstance(stmt.value.func, ast.Name)
+    }
+    check = calls["_check_us_feed_carries_fsa_facts"]
+    assert check.targets[0].id == "fsa_target_plan"
+    assert check.lineno < calls["compile_us_fiscal_target_registry"].lineno
+    (receipt,) = (
+        node
+        for node in ast.walk(main)
+        if isinstance(node, ast.Call)
+        and getattr(node.func, "id", "") == "fsa_student_loan_target_receipt"
+    )
+    plan_argument = {kw.arg: ast.unparse(kw.value) for kw in receipt.keywords}["plan"]
+    assert plan_argument == "fsa_target_plan"
+
+
+_PROPERTIES = settings(
+    max_examples=50, deadline=None, suppress_health_check=[HealthCheck.too_slow]
+)
+
+
+@functools.lru_cache(maxsize=1)
+def _references() -> tuple:
+    return _plan().references
+
+
+@_PROPERTIES
+@given(st.lists(st.floats(1.0, 1e12), min_size=244, max_size=244))
+def test_every_family_sums_to_the_control_for_any_values(values: list[float]) -> None:
+    facts = _facts()
+    for fact, value in zip(facts, values, strict=True):
+        fact["value"] = value
+    plan = _plan(facts)
+    sums: Counter = Counter()
+    for reference in plan.references:
+        sums[reference.metadata["target_role"]] += plan.values[reference.name]
+
+    for measure, suffix in (("total_balance", "balance"), ("borrowers", "borrowers")):
+        control = plan.controls[measure]
+        for family in ("state", "age_band", "debt_size_band"):
+            assert sums[f"fsa_{family}_{suffix}"] == pytest.approx(
+                control["in_scope_control"]
+            )
+        leaving = (
+            control["published_out_of_scope"]
+            * control["not_reported_allocation_factor"]
+        )
+        assert control["in_scope_control"] + leaving == pytest.approx(
+            control["published_total"]
+        )
+
+
+_BALANCES = st.sampled_from(
+    [0.0, 4_999.99, 5_000.0, 40_000.0, 99_999.99, 100_000.0, 200_000.0]
+) | st.floats(0.0, 500_000.0)
+_AGES = st.sampled_from([0.0, 24.0, 24.9, 25.0, 61.0, 62.0, 99.0]) | st.floats(
+    0.0, 110.0
+)
+
+
+@_PROPERTIES
+@given(st.lists(st.tuples(_BALANCES, _BALANCES, _AGES), min_size=6, max_size=6))
+def test_age_and_debt_bands_partition_every_household(rows: list[tuple]) -> None:
+    base = _frame()
+    tables = {entity: base.table(entity) for entity in base.entities}
+    tables["person"] = base.table("person").assign(
+        federal_student_loan_balance=[row[0] for row in rows],
+        federal_parent_plus_loan_balance=[row[1] for row in rows],
+        age=[row[2] for row in rows],
+    )
+    frame = Frame(tables, US_SCHEMA, {"household": base.weights_for("household")})
+
+    for family in ("age_band", "debt_size_band"):
+        for measure, suffix in (
+            ("total_balance", "balance"),
+            ("borrowers", "borrowers"),
+        ):
+            columns = [
+                fsa_student_loan_household_values(frame, reference.metadata)
+                for reference in _references()
+                if reference.metadata["target_role"] == f"fsa_{family}_{suffix}"
+            ]
+            np.testing.assert_allclose(
+                np.sum(columns, axis=0),
+                fsa_student_loan_household_values(frame, {"fsa_measure": measure}),
+            )
