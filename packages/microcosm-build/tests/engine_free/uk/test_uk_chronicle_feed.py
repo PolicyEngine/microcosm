@@ -126,6 +126,42 @@ def test_uk_feed_tools_check_the_row_contracts_of_the_rows_they_read(tool, check
     assert check in source
 
 
+@pytest.mark.parametrize(
+    ("rows", "pinned", "refused"),
+    [
+        (
+            ("chronicle.consumer_fact.v5",),
+            ("chronicle.consumer_fact.v4",),
+            True,
+        ),
+        (
+            ("chronicle.consumer_fact.v4", "chronicle.consumer_fact.v5"),
+            ("chronicle.consumer_fact.v4",),
+            True,
+        ),
+        (
+            ("chronicle.consumer_fact.v4",),
+            ("chronicle.consumer_fact.v4", "chronicle.consumer_fact.v5"),
+            False,
+        ),
+        ((), ("chronicle.consumer_fact.v4",), False),
+    ],
+    ids=["declared_not_on_the_list", "one_not_on_the_list", "strict_subset", "none"],
+)
+def test_subset_check_requires_each_row_contract_on_the_pin(rows, pinned, refused):
+    """A subset of the pinned feed may carry fewer row contracts, never others."""
+    from microcosm.build.ledger_artifact import ChronicleFeedPinMismatchError
+    from microcosm.build.uk_runtime.chronicle_feed import (
+        require_uk_chronicle_feed_subset_row_contracts,
+    )
+
+    if refused:
+        with pytest.raises(ChronicleFeedPinMismatchError):
+            require_uk_chronicle_feed_subset_row_contracts(rows, pinned_versions=pinned)
+    else:
+        require_uk_chronicle_feed_subset_row_contracts(rows, pinned_versions=pinned)
+
+
 def test_committed_feed_pin_check_refuses_a_foreign_artifact():
     from microcosm.build.uk_runtime.chronicle_feed import (
         UKChronicleFeedPinError,

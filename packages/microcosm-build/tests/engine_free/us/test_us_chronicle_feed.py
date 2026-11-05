@@ -13,11 +13,13 @@ from __future__ import annotations
 import hashlib
 import importlib.util
 import json
+import re
 import subprocess
 import sys
 import textwrap
 from importlib.resources import files
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -141,6 +143,62 @@ def test_pin_rejects_an_unsupported_artifact_schema(
     monkeypatch.setattr(chronicle_feed, "_feed_path", lambda: path)
     with pytest.raises(ValueError, match="artifact_schema_version is unsupported"):
         chronicle_feed.load_us_chronicle_feed()
+
+
+@pytest.mark.parametrize(
+    ("rows", "message"),
+    [
+        (["chronicle.consumer_fact.v6"], "['chronicle.consumer_fact.v6']"),
+        (["chronicle.consumer_fact.v4"], "consumer_fact_schema_versions"),
+        (
+            ["chronicle.consumer_fact.v3", "chronicle.consumer_fact.v4"],
+            "consumer_fact_schema_versions",
+        ),
+    ],
+    ids=["undeclared", "not_in_the_pin", "pin_lists_fewer"],
+)
+def test_parity_generator_holds_the_rows_row_contracts_to_the_pin(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    rows: list[str],
+    message: str,
+) -> None:
+    """The target-parity generator checks the rows it compiles, as the release does.
+
+    It holds the feed to the committed pin by digest and writes committed
+    files, so on the pinned feed the rows must carry exactly the pin's
+    ``consumer_fact_schema_versions``; the refusal comes before any compile
+    or write.
+    """
+    generator = _load_tool("build_us_target_parity_manifest")
+    feed = tmp_path / "consumer_facts.jsonl"
+    feed.write_text(
+        "".join(
+            json.dumps({"aggregate_fact_key": f"fact-{index}", "schema_version": row})
+            + "\n"
+            for index, row in enumerate(rows)
+        )
+    )
+    facts_sha256 = hashlib.sha256(feed.read_bytes()).hexdigest()
+    pin = SimpleNamespace(
+        facts_sha256=facts_sha256,
+        consumer_fact_schema_versions=("chronicle.consumer_fact.v3",),
+    )
+    monkeypatch.setattr(generator, "EXPECTED_FEED_SHA256", facts_sha256)
+    monkeypatch.setattr(generator, "load_us_chronicle_feed", lambda: pin)
+    monkeypatch.setattr(generator, "MANIFEST_PATH", tmp_path / "manifest.json")
+    monkeypatch.setattr(generator, "FEED_FAMILIES_PATH", tmp_path / "families.json")
+
+    def build_manifest(*args, **kwargs):
+        raise AssertionError("the rows reached the manifest build")
+
+    monkeypatch.setattr(generator, "build_manifest", build_manifest)
+    monkeypatch.setattr(sys, "argv", ["generator", "--ledger-facts", str(feed)])
+
+    with pytest.raises(ValueError, match=re.escape(message)):
+        generator.main()
+
+    assert not (tmp_path / "manifest.json").exists()
 
 
 def test_parity_resources_and_generator_restate_the_pin() -> None:
