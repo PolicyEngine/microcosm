@@ -238,7 +238,12 @@ def test_wrong_fact_count_refuses_before_either_compiler(prepared):
 def test_current_national_and_local_pins_share_one_reviewed_identity():
     # main (#904) reads one committed pin, ``uk/chronicle_feed.json``, for the
     # national feed and the local census; the full build checks they agree.
-    # The identity is the 08962f1 merge of PolicyEngine/chronicle#399
+    # The identity is Chronicle main at 3a06cf1 (the merge of
+    # PolicyEngine/chronicle#414), which carries the
+    # chronicle.consumer_fact.v5 rows of PolicyEngine/chronicle#377 (one
+    # label per dimension value) and the ONS APS and ASHE occupation facts of
+    # PolicyEngine/chronicle#411, on top of the 08962f1 merge of
+    # PolicyEngine/chronicle#399
     # (PolicyEngine/uk-autumn-budget-dashboard-2026#316: HMRC's benefits in
     # kind statistics, with one OBR EFO number per line and year), on top of
     # the 7d5d627 merge of PolicyEngine/chronicle#396 (the UK facts of
@@ -262,19 +267,19 @@ def test_current_national_and_local_pins_share_one_reviewed_identity():
     assert (
         national.facts_sha256
         == local["facts_sha256"]
-        == ("11b20b4333270e269a5cbfe6302eb4986851990b340ef02d948eb71d62c12d5c")
+        == ("bcb226fd07a1eba8970a69b13e87ab20c3bd90e96e02509894a65799dbd9482a")
     )
     assert (
         national.manifest_sha256
         == local["manifest_sha256"]
-        == ("96faf0e33686682cf37e8fa9511727571b3f8221f15bbc21591b799af87de722")
+        == ("801d3e5e9d7039f877a12fc45afdd2d6b52ddbb46eecc91d7bd5ff843ea5efb8")
     )
     assert (
         national.source_commit
         == local["source_commit"]
-        == "08962f1b893fc1ba3b7bdd3d800c7e867318951a"
+        == "3a06cf18aec340c129e738b7bc58718b0ba24534"
     )
-    assert national.fact_row_count == local["fact_row_count"] == 1512256
+    assert national.fact_row_count == local["fact_row_count"] == 1585295
 
 
 def test_chronicle_source_codec_validates_directory_manifest(tmp_path):
