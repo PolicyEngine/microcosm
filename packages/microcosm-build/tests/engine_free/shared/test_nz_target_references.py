@@ -6,6 +6,7 @@ import copy
 import json
 import math
 import os
+import re
 from collections import Counter
 from dataclasses import replace
 from pathlib import Path
@@ -419,7 +420,7 @@ def test_ageing_profiles_scale_the_24_coarse_rows_and_keep_them_parked(profile):
     assert scaled["scaling"]["factor_id"] == f"ird_ty2024_to_ty2027_{profile}"
     before = {row["name"]: row for row in base["target_references"]}
     after = {row["name"]: row for row in effective["target_references"]}
-    factor = {"low": 1.115056, "central": 1.117109, "high": 1.119158}[profile]
+    factor = {"low": 1.117460, "central": 1.118491, "high": 1.119519}[profile]
     for count_name, money_name in zip(_COARSE_COUNTS, _COARSE_MONEY, strict=True):
         for field in ("ledger_selector", "measure", "filter", "period"):
             assert after[count_name][field] == before[count_name][field]
@@ -444,7 +445,7 @@ def test_ageing_profiles_scale_the_24_coarse_rows_and_keep_them_parked(profile):
     assert receipt["selection"]["aging_index"] == profile
 
 
-def test_the_central_first_coarse_cut_is_4468436_cents():
+def test_the_central_first_coarse_cut_is_4473964_cents():
     effective, intervals, _ = resolve_reference_profiles(
         _document("target_references.json"),
         _document("reference_profiles.json"),
@@ -454,7 +455,7 @@ def test_the_central_first_coarse_cut_is_4468436_cents():
     )
     (scaled,) = [table for table in intervals["tables"] if "scaling" in table]
     assert scaled["first_lower_cut_cents"] == {
-        "numerator": 4_468_436,
+        "numerator": 4_473_964,
         "denominator": 1,
     }
     assert scaled["source_first_lower_cut_cents"] == 4_000_000
@@ -502,7 +503,7 @@ def test_coarse_amounts_equal_the_aged_sum_of_their_native_rows(artifact, facts_
         if row["metadata"]["reference_value_kind"] == "count":
             assert target.value == pytest.approx(math.fsum(values), rel=1e-15)
         else:
-            aged = math.fsum(value * 1.117109 for value in values)
+            aged = math.fsum(value * 1.118491 for value in values)
             assert target.value == pytest.approx(aged, rel=1e-12)
 
 
@@ -840,7 +841,7 @@ def test_generation_reproduces_committed_resources_with_exact_feed_identity(arti
     for filename, document in generated.items():
         assert document == _document(filename), filename
     assert artifact.fact_row_count == _document("chronicle_feed.json")["fact_row_count"]
-    assert artifact.fact_schema_versions == ("chronicle.consumer_fact.v4",)
+    assert artifact.fact_schema_versions == ("chronicle.consumer_fact.v5",)
 
 
 @pytest.mark.parametrize("existing_output", [False, True])
@@ -1347,6 +1348,20 @@ def test_each_coarse_band_lists_exactly_its_native_rows_labels(artifact):
         }
 
 
+# The native income rows whose label repeats the previous row's upper endpoint
+# ($50,000, $80,000 and $300,000). Each opens a coarse band, and right closure
+# leaves the shared endpoint in the band below.
+_INCOME_SHARED_ENDPOINT_ROWS = {"row_60", "row_90", "row_230"}
+
+
+def _label_cents(label):
+    """The cents at each end of a "$a - $b" label."""
+    lower, upper = re.fullmatch(
+        r"\$([\d,]+) - \$([\d,]+)", " ".join(label.split())
+    ).groups()
+    return 100 * int(lower.replace(",", "")), 100 * int(upper.replace(",", ""))
+
+
 def test_each_coarse_row_selects_its_native_rows_committed_labels():
     """R2C-16 without the feed: membership checked against committed rows.
 
@@ -1355,6 +1370,11 @@ def test_each_coarse_row_selects_its_native_rows_committed_labels():
     equals theirs. For each measure the 12 bands' native rows tile rows 50 to
     244 once, in order. The feed audit above checks the same labels against the
     feed, which CI doesn't load.
+
+    Each finite band's first label starts $1 above the band's lower cut (at the
+    cut, for the three pinned rows) and its last label ends at its
+    ``upper_cent``, so no native row can move to a neighbouring band in both
+    lists unnoticed. The open tail's one label is "Over $1,000,000".
     """
     native = {
         row["name"]: row
@@ -1385,3 +1405,29 @@ def test_each_coarse_row_selects_its_native_rows_committed_labels():
         assert labels == expected, row["name"]
     for kind, members in tiled.items():
         assert members == [f"row_{n}" for n in range(50, 245)], kind
+    (table,) = (
+        table
+        for table in _document("reference_intervals.json")["tables"]
+        if table["id"] == "ird_taxable_income_standin_ty2024"
+    )
+    coarse = {row["name"]: row for row in _rows()}
+    cut, shared = table["first_lower_cut_cents"], set()
+    for band in table["bands"]:
+        for name in (band["count_reference"], band["amount_reference"]):
+            row = coarse[name]
+            (labels,) = row["ledger_selector"]["dimension_values"].values()
+            if band["upper_cent"] is None:
+                assert [" ".join(label.split()) for label in labels] == [
+                    "Over $1,000,000"
+                ], name
+                assert cut == 100_000_000, name
+                continue
+            lower, _ = _label_cents(labels[0])
+            _, upper = _label_cents(labels[-1])
+            if lower == cut:
+                shared.add(row["metadata"]["native_rows"].split(",")[0])
+            else:
+                assert lower == cut + 100, name
+            assert upper == band["upper_cent"], name
+        cut = band["upper_cent"]
+    assert shared == _INCOME_SHARED_ENDPOINT_ROWS

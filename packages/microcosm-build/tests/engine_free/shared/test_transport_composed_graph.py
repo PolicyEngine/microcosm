@@ -2801,7 +2801,7 @@ def test_packaged_spec_refuses_with_every_activation_gap_named():
 
 def test_packaged_spec_refuses_before_reading_any_source(tmp_path, monkeypatch):
     # Inside the packaged factors' validity, so activation decides the refusal.
-    monkeypatch.setattr(cli_module, "_today", lambda: date(2026, 10, 24))
+    monkeypatch.setattr(cli_module, "_today", lambda: date(2026, 11, 5))
     missing = tmp_path / "absent"
     with pytest.raises(ValueError, match="not activated"):
         prepare_transport_build(
@@ -2812,7 +2812,7 @@ def test_packaged_spec_refuses_before_reading_any_source(tmp_path, monkeypatch):
 def test_cli_main_refuses_the_packaged_spec_and_writes_nothing(
     tmp_path, monkeypatch, capsys
 ):
-    monkeypatch.setattr(cli_module, "_today", lambda: date(2026, 10, 24))
+    monkeypatch.setattr(cli_module, "_today", lambda: date(2026, 11, 5))
     out = tmp_path / "out"
     assert cli_module.main(["--country", "nz", "--out", str(out)]) == 1
     message = capsys.readouterr().err
@@ -3533,7 +3533,7 @@ def test_prepare_does_not_create_inventory_store_before_activation(
     tmp_path, monkeypatch
 ):
     # Inside the packaged factors' validity, so activation decides the refusal.
-    monkeypatch.setattr(cli_module, "_today", lambda: date(2026, 10, 24))
+    monkeypatch.setattr(cli_module, "_today", lambda: date(2026, 11, 5))
     inventory = tmp_path / "inventory"
     with pytest.raises(ValueError, match="not activated"):
         prepare_transport_build(

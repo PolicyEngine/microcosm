@@ -168,6 +168,11 @@
    },
    {
     "entity": "Person",
+    "module": "nz/statutes/new_zealand_superannuation/core.yaml",
+    "name": "nz_super_shares_residence_with_person_at_least_adult_age"
+   },
+   {
+    "entity": "Person",
     "module": "nz/statutes/social_security/main_benefits/entitlement.yaml",
     "name": "sole_parent_applicant_age"
    },
@@ -932,7 +937,7 @@
    }
   ]
  },
- "covered_count": 89,
+ "covered_count": 90,
  "covered_inputs": [
   {
    "entity": "Person",
@@ -1178,6 +1183,11 @@
    "entity": "Person",
    "module": "nz/statutes/new_zealand_superannuation/special_rates.yaml",
    "name": "nz_super_receives_or_becomes_entitled"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/new_zealand_superannuation/core.yaml",
+   "name": "nz_super_shares_residence_with_person_at_least_adult_age"
   },
   {
    "entity": "Person",
@@ -3505,11 +3515,6 @@
    "entity": "Person",
    "module": "nz/statutes/new_zealand_superannuation/special_rates.yaml",
    "name": "nz_super_saved_non_qualifying_spouse_rate_eligible_under_schedule_1aa_clause_7"
-  },
-  {
-   "entity": "Person",
-   "module": "nz/statutes/new_zealand_superannuation/core.yaml",
-   "name": "nz_super_shares_residence_with_person_at_least_adult_age"
   },
   {
    "entity": "Person",

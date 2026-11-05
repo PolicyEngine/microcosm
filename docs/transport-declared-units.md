@@ -81,7 +81,8 @@ relation declaration. The expected related input map must match the union of
 compiled schemas sharing that key. `one` means exactly one selected person per
 root; `many` permits zero. A role selector requires both its column and distinct
 role values. This interface supports person members of genuine group partitions;
-binding-local views and arbitrary links remain separate work.
+arbitrary links remain separate work. Binding-local views (below) run an engine
+entity that has no frame table.
 
 Rules nodes declare whole-table slices for selector columns and every mapped
 related input. Tables always carry their IDs and memberships, and no slice can
@@ -104,3 +105,63 @@ declaration remains absent; an explicitly supplied empty declaration is distinct
 Bindings without relations retain their existing engine-reference serialization
 and native execution call shape. Calibration roster counts use the same frame
 unit framework, with frozen-kernel differential tests preserving NZ results.
+
+## Binding-local views
+
+A binding on the person entity may run its module's program on an engine
+entity that no frame entity maps to, such as rulespec-be's `Child`, by
+declaring `views`:
+
+```json
+"views": [
+  {
+    "logical_entity": "Child",
+    "selector": {"column": "is_child"},
+    "outside": {"child_benefit": 0.0}
+  }
+]
+```
+
+The adapter (`AxiomView`) gathers the person rows whose bool `selector`
+column holds true, in table order, runs the program on `logical_entity` over
+them, and scatters each output back through the same mask. Every other row
+gets the view's `outside` value for that output. Each binding variable on the
+logical entity needs an outside value, with no implicit fill, and the adapter
+refuses one that doesn't cast to the output's graph dtype without loss. A
+view's root inputs read the person columns of the same names, and its outputs
+resolve to the person entity, so downstream kernels read them as person
+columns. An empty selection makes no engine call, and a null or non-bool
+selector refuses. An input override of a selector changes which rows each
+view selects; the adapter accepts one only when a program reads the selector
+as a root input, as bridges require of any overridden column, and otherwise
+refuses it by the selector's name. Gather and scatter assume that the engine computes each
+selected row from that row's inputs alone. Views refuse programs with dense
+relations, and a real-engine differential, skip-gated on the dense extension and a
+rulespec-be tree, is written to test the assumption.
+
+The registry refuses `views: []`, views beside `relations`, views on a binding
+on another entity than the person entity, a logical entity that a frame entity
+maps to, two views on one logical entity, a selector that names a structural
+column or a binding variable, and an outside key that names no binding
+variable. Once the adapter pins its RuleSpec bytes, the registry also refuses
+dense relations on a view's program or on the binding entity's program, outside
+keys that differ from the binding's variables on the logical entity, and a
+view input that shares its name with a root input of the binding entity's
+program, since both would read one person column. Views need
+`output_dtypes="graph"`, and an injected Python adapter can't run them.
+
+A rules node slices each view's selector over the whole person table, as it
+does a relation's selector columns; composition and every rules kernel apply
+the same check. When the spec carries an input closure, composition also
+refuses a view node whose person slice omits an input that the closure encodes
+(other than through a graph node) or defaults on the logical entity, and a
+closure producer whose person slice omits a selector. The closure counts a
+view's roots as live on its logical entity and checks them against the person
+table; `unreached_roots` still excuses only roots on the binding's engine
+entity. The support roster classes a defaulted root on a view's logical entity
+as a person column.
+
+A binding without `views` keeps its semantics, engine reference and native
+execution call. The engine reference carries `views` only when the binding
+declares them, with the views list in declaration order and each
+`outside` mapping in sorted key order.

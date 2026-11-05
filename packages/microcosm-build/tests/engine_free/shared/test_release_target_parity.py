@@ -323,7 +323,8 @@ class TestShippedManifest:
             manifest.reviewed_exclusions
         )
         assert len(manifest.compiled_families) == 32
-        assert len(manifest.reviewed_exclusions) == 53
+        # 53, plus the 11 ed_fsa families of the 41b2fb2b feed (microcosm#1074).
+        assert len(manifest.reviewed_exclusions) == 64
 
     def test_wired_nipa_and_liheap_families_are_compiled(self) -> None:
         manifest = load_target_parity_manifest()
@@ -340,6 +341,32 @@ class TestShippedManifest:
         state_wages = manifest.by_name["bea_regional.state_wages_salaries"]
         assert state_wages.status == REVIEWED_EXCLUSION_STATUS
         assert "PR #1034" in state_wages.fence.origin
+
+    def test_fsa_portfolio_families_are_off_by_default_exclusions(self) -> None:
+        """microcosm#1074: no ed_fsa family compiles by default, so the default
+        surface this manifest describes declares all 11 fenced reviewed
+        exclusions under one ``ed_fsa`` namespace fence, and none compiled.
+
+        Only four of the 11 bind even in a build with the federal student loan
+        balance columns: microcosm#1357's opt-in binds the location, age,
+        debt-size and loan-type tables (its ``FSA_BOUND_TABLES``). The
+        portfolio summary and the six repayment-plan and IDR tables stay
+        diagnostic in every build (its ``FSA_DIAGNOSTIC_TABLES``), and so do
+        the loan-type table's recipient counts. Giving those seven families
+        their own exclusions waits for microcosm#1357, which owns their
+        reasons."""
+        manifest = load_target_parity_manifest()
+        fsa = {
+            name: family
+            for name, family in manifest.by_name.items()
+            if name.startswith("ed_fsa.")
+        }
+        assert len(fsa) == 11
+        for family in fsa.values():
+            assert family.status == REVIEWED_EXCLUSION_STATUS
+            assert family.classification == "off_by_default"
+            assert "--scf-education-debt" in family.reason
+            assert "microcosm#1074" in family.fence.origin
 
     def test_ssi_state_payments_family_is_compiled(self) -> None:
         manifest = load_target_parity_manifest()

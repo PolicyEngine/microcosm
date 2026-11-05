@@ -23,19 +23,20 @@ carriers (``frs_spine.frs_company_car_carriers``). SPI-channel rows carry their
 FRS twin's carriers, as they carry every root column. The steps, every draw keyed
 on identity, so reordering rows moves none:
 
-1. **Holders.** An FRS-channel person with a company car keeps it. A tape row of
-   the SPI channel (``person_is_spi_income_recipient``) keeps its twin's car only
-   where its drawn EPB (expenses payments and benefits in kind) is positive: EPB
-   holds the car benefit on the tape. The channel's other rows, the undrawn
-   copies and the dependants aged 16 to 19, keep their twin's pay and so keep its
-   car as FRS rows do.
+1. **Holders.** An FRS-channel person with a company car keeps it, and so does
+   every row of the SPI channel, which carries its twin's carriers: the tape rows
+   (``person_is_spi_income_recipient``), the undrawn copies and the dependants
+   aged 16 to 19. A tape row's EPB (expenses payments and benefits in kind) is
+   drawn on uniforms the car never conditions, so every tape row keeps its
+   twin's car, whatever EPB it drew, and step 5 moves any part of the car's
+   benefits above its EPB from its PAY into its EPB (María's rulings of 3
+   November 2026).
 2. **Fuel.** The FRS fuel codes map to the engine's fuel types (a hybrid is an
    alternative fuel, a diesel is taken to meet RDE2, as the declaration says).
    The cars whose fuel the respondent did not know draw at Table 2C's shares
    together: where the respondent reports private fuel, among the fuels other
    than electricity, and the others draw electricity at the share that keeps
-   Table 2C's at the stage's weights. The tape rows that lose their car for
-   want of EPB draw at the holders' shares.
+   Table 2C's at the stage's weights.
 3. **List price.** Within the respondent's band, a draw from WAS round-8 company
    cars' list prices, grown to the build year by the engine's CPI index; the open
    top band and an unknown band draw from the WAS cars of the same fuel class.
@@ -46,15 +47,20 @@ on identity, so reordering rows moves none:
    1 to 50 g/km matches Table 2A's among cars that emit CO2, and the bands above
    it are drawn at Table 2A's shares, uniformly within each. A car at 1 to 50
    g/km takes the declared electric range.
-5. **SPI pay.** A tape row's pay is the tape's PAY + EPB + TAXTERM, so EPB already
-   holds the car and fuel benefits. The engine's benefits on the kept cars come
-   out of ``employment_income``, capped at EPB within the pay the row's employee
-   pension contribution leaves, which ``salary_sacrifice`` requires. Where the
-   car and fuel benefits do not fit together, private fuel goes first; a car
-   whose benefit still exceeds the cap has its list price scaled down to fit
-   (its contributions dropped), or is dropped below the declared minimum price
-   (María's rulings of 30 and 31 October 2026). A scaled price is the room over
-   the car's appropriate percentage, so the CO2 draw, the declared electric
+5. **SPI pay.** A tape row's pay is the tape's PAY + EPB + TAXTERM. The engine's
+   benefits on the kept cars come out of ``employment_income``, capped at EPB +
+   PAY within the pay the row's employee pension contribution leaves, which
+   ``salary_sacrifice`` requires. EPB holds them first, and the part above EPB
+   moves from the row's PAY into its EPB, so its PAY + EPB + TAXTERM stays the
+   tape's and its split agrees with what the engine taxes (María's rulings of 3
+   November 2026; a cap of EPB alone dropped or shrank cars on the rows that drew
+   a little EPB, Vahid's review of microcosm#1491). Where the car and fuel
+   benefits do not fit together, private fuel goes first; a car whose benefit
+   still exceeds the cap has its list price scaled down to fit (its
+   contributions dropped), or is dropped below the declared minimum price
+   (María's rulings of 30 and 31 October 2026), as a car on a row with neither
+   EPB nor PAY is. A scaled price is the room
+   over the car's appropriate percentage, so the CO2 draw, the declared electric
    range and the RDE2 diesel set it, and with it the base a later rate rise acts
    on. A carved row's UC gainful self-employment takes the root's rule again on
    its carved pay. The stage then prices the cars again on its output: pay plus
@@ -120,6 +126,7 @@ from microcosm.build.uk_runtime.spi_income import (
 )
 from microcosm.build.uk_runtime.spi_support import (
     SPI_HMRC_EMPLOYMENT_BENEFITS_COLUMN,
+    SPI_HMRC_PAY_COLUMN,
     SPI_SYNTHETIC_SUPPORT_CHANNEL,
     support_channel_column,
 )
@@ -157,9 +164,19 @@ UK_COMPANY_CAR_FACT_FENCE: dict[str, Any] = {
         "recipients and taxable value by income range; Table 4 recipients by region"
     ),
     "classification_rationale": (
-        "The stage draws fuel and CO2 to Tables 2A and 2C, so binding them in the "
-        "weight solve would be circular. Comparing the calibrated file with Tables "
-        "1, 3A and 4 is a manual step for now; none blocks a build."
+        "The stage draws fuel and CO2 to Tables 2A and 2C from this resource, which "
+        "the weight solve never reads. The national calibration binds Table 1's car "
+        "recipients and taxable value and Table 2C's recipients by fuel from the "
+        "Chronicle feed instead (calibrated_facts). Comparing the calibrated file with "
+        "Tables 2A, 3A and 4 is a manual step for now; none blocks a build."
+    ),
+    "calibrated_facts": (
+        "HMRC Benefits in kind statistics (July 2026), 2024-25: Table 1's car recipients "
+        "and car taxable value (hmrc.benefits_in_kind.company_car_recipients, "
+        "hmrc.benefits_in_kind.company_car_taxable_value) and Table 2C's recipients "
+        "by fuel (hmrc.benefits_in_kind.company_car_fuel.*) in "
+        "uk_population_targets.json, María's ruling of 3 November 2026 "
+        "(microcosm#1418)."
     ),
     "adjudication": (
         "https://github.com/PolicyEngine/uk-autumn-budget-dashboard-2026/issues/316"
@@ -200,12 +217,15 @@ UK_COMPANY_CARS_INPUT_COLUMNS = (
     CAPITAL_CONTRIBUTIONS,
     PRIVATE_FUEL,
 )
-#: The manifest's outputs: the inputs, the tape rows' pay it rewrites, and their
-#: UC gainful self-employment, which the SPI income stage derived from that pay.
+#: The manifest's outputs: the inputs, the tape rows' pay it rewrites, their
+#: UC gainful self-employment, which the SPI income stage derived from that pay,
+#: and the PAY and EPB of the tape rows whose car's benefit moves into EPB.
 UK_COMPANY_CARS_OUTPUT_COLUMNS = (
     *UK_COMPANY_CARS_INPUT_COLUMNS,
     EMPLOYMENT_INCOME,
     UC_GAINFUL_SELF_EMPLOYMENT,
+    SPI_HMRC_PAY_COLUMN,
+    SPI_HMRC_EMPLOYMENT_BENEFITS_COLUMN,
 )
 UK_COMPANY_CARS_NONNEGATIVE_OUTPUT_COLUMNS = (
     LIST_PRICE,
@@ -213,8 +233,15 @@ UK_COMPANY_CARS_NONNEGATIVE_OUTPUT_COLUMNS = (
     ELECTRIC_RANGE,
     CAPITAL_CONTRIBUTIONS,
     EMPLOYMENT_INCOME,
+    SPI_HMRC_PAY_COLUMN,
+    SPI_HMRC_EMPLOYMENT_BENEFITS_COLUMN,
 )
-UK_COMPANY_CARS_REWRITES = (EMPLOYMENT_INCOME, UC_GAINFUL_SELF_EMPLOYMENT)
+UK_COMPANY_CARS_REWRITES = (
+    EMPLOYMENT_INCOME,
+    UC_GAINFUL_SELF_EMPLOYMENT,
+    SPI_HMRC_PAY_COLUMN,
+    SPI_HMRC_EMPLOYMENT_BENEFITS_COLUMN,
+)
 #: The engine variables the SPI carve-out reads.
 COMPANY_CAR_BENEFIT = "company_car_benefit"
 CAR_FUEL_BENEFIT = "car_fuel_benefit"
@@ -233,6 +260,10 @@ DEFAULT_FUEL_TYPE = PETROL
 #: fuel, which an electric car cannot carry, and with the others' electric share
 #: raised to keep Table 2C's.
 UNKNOWN_FUEL_RULE = "table_2c_shares_together_non_electric_with_private_fuel"
+#: The declared cap on a tape row's car benefits: EPB + PAY within the pay its
+#: employee pension contribution leaves, EPB holding them first and the part
+#: above it moving from PAY into EPB.
+CARVE_CAP_RULE = "epb_then_pay"
 
 CPI_INDEX = "gov.economic_assumptions.indices.obr.consumer_price_index"
 CAPITAL_CONTRIBUTION_CAP = (
@@ -352,13 +383,22 @@ class CompanyCarsSpec:
         if fence != UK_COMPANY_CAR_FACT_FENCE:
             raise CompanyCarsError(
                 "the declared company car fact fence differs from the reviewed one: "
-                "no company car fact is a calibration target."
+                "the vendored facts seed the draws and none is a calibration target."
             )
         for operation, outputs in (
             (fuel, [FUEL_TYPE]),
             (prices, [LIST_PRICE, CAPITAL_CONTRIBUTIONS]),
             (co2, [CO2_EMISSIONS, ELECTRIC_RANGE]),
-            (carve, [EMPLOYMENT_INCOME, PRIVATE_FUEL, UC_GAINFUL_SELF_EMPLOYMENT]),
+            (
+                carve,
+                [
+                    EMPLOYMENT_INCOME,
+                    PRIVATE_FUEL,
+                    UC_GAINFUL_SELF_EMPLOYMENT,
+                    SPI_HMRC_PAY_COLUMN,
+                    SPI_HMRC_EMPLOYMENT_BENEFITS_COLUMN,
+                ],
+            ),
         ):
             if list(operation.get("outputs", ())) != outputs:
                 raise CompanyCarsError(
@@ -391,12 +431,17 @@ class CompanyCarsSpec:
                 "CO2 is drawn to Table 2A's shares among cars that emit it, "
                 "hybrids first into 1 to 50 g/km."
             )
-        if carve.get("epb_column") != SPI_HMRC_EMPLOYMENT_BENEFITS_COLUMN or list(
-            carve.get("benefits", ())
-        ) != [COMPANY_CAR_BENEFIT, CAR_FUEL_BENEFIT]:
+        if (
+            carve.get("epb_column") != SPI_HMRC_EMPLOYMENT_BENEFITS_COLUMN
+            or carve.get("pay_column") != SPI_HMRC_PAY_COLUMN
+            or carve.get("cap") != CARVE_CAP_RULE
+            or list(carve.get("benefits", ()))
+            != [COMPANY_CAR_BENEFIT, CAR_FUEL_BENEFIT]
+        ):
             raise CompanyCarsError(
                 "the SPI carve-out takes the engine's company car and car fuel "
-                f"benefits out of pay, capped at {SPI_HMRC_EMPLOYMENT_BENEFITS_COLUMN}."
+                f"benefits out of pay, capped at {SPI_HMRC_EMPLOYMENT_BENEFITS_COLUMN} + "
+                f"{SPI_HMRC_PAY_COLUMN}, EPB first ({CARVE_CAP_RULE!r})."
             )
         minimum_households = int(prices["minimum_donor_households"])
         # No list price cell may rest on fewer WAS households than the
@@ -533,7 +578,7 @@ def clean_was_company_car_donor(
 
 def holder_table(frame: Frame) -> pd.DataFrame:
     """One row per person: identity, weight, source household, channel, whether
-    it is a tape row, carriers, EPB and pay."""
+    it is a tape row, carriers, the tape's EPB and PAY, and pay."""
 
     person = frame.table("person")
     household = frame.table("household")
@@ -568,6 +613,7 @@ def holder_table(frame: Frame) -> pd.DataFrame:
             column
             for column in (
                 SPI_HMRC_EMPLOYMENT_BENEFITS_COLUMN,
+                SPI_HMRC_PAY_COLUMN,
                 SPI_INCOME_RECIPIENT_COLUMN,
                 EMPLOYEE_PENSION_CONTRIBUTIONS,
                 *UC_GAINFUL_SELF_EMPLOYMENT_INPUTS,
@@ -612,6 +658,7 @@ def holder_table(frame: Frame) -> pd.DataFrame:
             "private_fuel": person[PRIVATE_FUEL_CARRIER].astype(bool).to_numpy(),
             "contribution": np.maximum(_number(CONTRIBUTION_CARRIER), 0.0),
             "epb": np.where(tape, _number(SPI_HMRC_EMPLOYMENT_BENEFITS_COLUMN), 0.0),
+            "spi_pay": np.where(tape, _number(SPI_HMRC_PAY_COLUMN), 0.0),
             "employment_income": _number(EMPLOYMENT_INCOME),
             # The SPI income stage capped a tape row's net-pay contribution at
             # the pay it drew (spi_income, uk_runtime.pension_coherence).
@@ -706,18 +753,15 @@ def assign_fuel_types(
     weights: np.ndarray,
     statistics: HMRCCompanyCarStatistics,
     spec: CompanyCarsSpec,
-    unfueled_electric: float | None = None,
 ) -> tuple[np.ndarray, np.ndarray]:
     """The engine fuel type of each car, and whether it was drawn.
 
     ``codes``, ``private_fuel`` and ``weights`` hold the cars only. An electric
     car carries no fuel benefit, so a car whose fuel is drawn and whose holder
     reports private fuel draws among the other fuels, at their Table 2C shares.
-    The other drawn cars draw electricity at ``unfueled_electric``, by default
-    the share that keeps Table 2C's among these drawn cars
-    (``unknown_fuel_electric_share``), and petrol and diesel at Table 2C's
-    shares between them. The tape rows that lose their car pass the holders'
-    share, so they draw as the holders do.
+    The other drawn cars draw electricity at the share that keeps Table 2C's
+    among these drawn cars (``unknown_fuel_electric_share``), and petrol and
+    diesel at Table 2C's shares between them.
     """
 
     codes = np.asarray(codes, dtype=int)
@@ -731,10 +775,9 @@ def assign_fuel_types(
     fuel = np.array([mapped.get(int(code), "") for code in codes], dtype=object)
     drawn = fuel == ""
     if drawn.any():
-        if unfueled_electric is None:
-            unfueled_electric = unknown_fuel_electric_share(
-                codes, private_fuel=private_fuel, weights=weights, statistics=statistics
-            )
+        unfueled_electric = unknown_fuel_electric_share(
+            codes, private_fuel=private_fuel, weights=weights, statistics=statistics
+        )
         names = np.array([ELECTRIC, PETROL, spec.diesel_fuel_type], dtype=object)
         table_2c = _table_2c_shares(statistics)
         uniforms = _uniforms(ids[drawn], spec.fuel_seed, f"{spec.fuel_salt}:fuel")
@@ -1047,6 +1090,7 @@ def _fit_inside(
 def carve_spi_benefits(
     *,
     epb: np.ndarray,
+    spi_pay: np.ndarray,
     pay: np.ndarray,
     employee_contributions: np.ndarray,
     list_price: np.ndarray,
@@ -1057,13 +1101,18 @@ def carve_spi_benefits(
     contribution_cap: float,
     spec: CompanyCarsSpec,
 ) -> SPICarveOut:
-    """Fit each tape row's car benefits inside its EPB.
+    """Fit each tape row's car benefits inside its EPB and PAY.
 
-    Every array holds the tape rows' holders only. The cap is EPB within the
-    pay the row's employee pension contribution leaves: the SPI income stage
-    capped that contribution at the pay it drew, and ``salary_sacrifice``
-    refuses one above the pay that remains, so the carve-out never takes pay
-    below it. Where the car and fuel benefits do not fit together, the private
+    Every array holds the tape rows' holders only; ``spi_pay`` is the tape's
+    PAY. The cap is EPB + PAY within the pay the row's employee pension
+    contribution leaves: the SPI income stage capped that contribution at the
+    pay it drew, and ``salary_sacrifice`` refuses one above the pay that
+    remains, so the carve-out never takes pay below it. EPB holds the benefits
+    first, and the stage moves the part above EPB from the row's PAY into its
+    EPB, which the cap leaves neither negative. EPB is drawn on uniforms the
+    car never conditions, so a small drawn EPB caps a car no more than a zero
+    one does (María's rulings of 3 November 2026, the second on Vahid's review
+    of microcosm#1491). Where the car and fuel benefits do not fit together, the private
     fuel goes first, so a car that fits without its fuel is always kept (María's
     ruling of 31 October 2026). A car whose benefit still exceeds the cap has
     its list price scaled down to fit. The engine's car benefit is the price
@@ -1073,9 +1122,12 @@ def carve_spi_benefits(
     """
 
     epb = np.maximum(np.asarray(epb, dtype=float), 0.0)
+    spi_pay = np.maximum(np.asarray(spi_pay, dtype=float), 0.0)
     pay = np.maximum(np.asarray(pay, dtype=float), 0.0)
     employee = np.maximum(np.asarray(employee_contributions, dtype=float), 0.0)
-    budget = np.minimum(epb, np.maximum(pay - employee, 0.0))
+    without_epb = epb <= 0.0
+    source = epb + spi_pay
+    budget = np.minimum(source, np.maximum(pay - employee, 0.0))
     cars = {
         "car_benefit": car_benefit,
         "fuel_benefit": fuel_benefit,
@@ -1086,19 +1138,30 @@ def carve_spi_benefits(
         "minimum_price": spec.minimum_scaled_list_price_gbp,
     }
     fit = _fit_inside(budget, **cars)
-    # The same cars inside EPB within pay alone: what the contribution's room
-    # costs, measured rather than ruled on (the third review of microcosm#1430).
-    # The room bites only where the SPI stage's drawn contribution exceeds the
-    # row's cash pay, PAY + TAXTERM.
-    without_room = _fit_inside(np.minimum(epb, pay), **cars)
+    # The same cars inside EPB + PAY within pay alone: what the contribution's
+    # room costs, measured rather than ruled on (the third review of
+    # microcosm#1430).
+    without_room = _fit_inside(np.minimum(source, pay), **cars)
     room_costs = fit["benefit"] < without_room["benefit"] - 1e-9
     given_up = np.where(without_room["keep"], without_room["price"], 0.0) - np.where(
         fit["keep"], fit["price"], 0.0
     )
+    moved = np.maximum(fit["benefit"] - epb, 0.0)
     receipt = {
         "holders": rounded_count(int(len(epb))),
-        "cap_below_epb_for_the_employee_contribution": rounded_count(
-            int((budget < np.minimum(epb, pay)).sum())
+        # The rows without EPB and those of them that keep their car; the rows
+        # with EPB whose car takes more than it, the rest from PAY; and the rows
+        # whose car takes all of their PAY, leaving TAXTERM as their cash pay.
+        "holders_without_epb": rounded_count(int(without_epb.sum())),
+        "kept_without_epb": rounded_count(int((without_epb & fit["keep"]).sum())),
+        "kept_with_epb_topped_up_from_pay": rounded_count(
+            int((~without_epb & fit["keep"] & (moved > 0.0)).sum())
+        ),
+        "kept_leaving_no_pay": rounded_count(
+            int((fit["keep"] & (spi_pay > 0.0) & (spi_pay - moved <= 0.005)).sum())
+        ),
+        "cap_below_epb_and_pay_for_the_employee_contribution": rounded_count(
+            int((budget < np.minimum(source, pay)).sum())
         ),
         "cars_the_employee_contribution_scales_or_drops": rounded_count(
             int(room_costs.sum())
@@ -1206,8 +1269,8 @@ def impute_company_cars(
     benefits: BenefitCalculator,
     contribution_cap: float,
 ) -> tuple[Frame, dict[str, Any]]:
-    """Write the six inputs, carve the tape rows' benefits out of pay, and
-    receipt it."""
+    """Write the six inputs, carve the tape rows' benefits out of pay (and, on
+    a row without EPB, out of PAY into EPB), and receipt it."""
 
     table = holder_table(frame)
     ids = table["person_id"].to_numpy()
@@ -1216,9 +1279,12 @@ def impute_company_cars(
     tape = table["tape"].to_numpy(bool)
     sources = table["source_household"].to_numpy()
     bands = table["price_band"].to_numpy(int)
-    reported = bands > 0
-    no_epb = reported & tape & (table["epb"].to_numpy(float) <= 0.0)
-    holders = reported & ~no_epb
+    epb = table["epb"].to_numpy(float)
+    spi_pay = table["spi_pay"].to_numpy(float)
+    holders = bands > 0
+    # Every tape row keeps its twin's car, whatever EPB it drew (María's rulings
+    # of 3 November 2026); the receipt counts the ones that drew none.
+    without_epb = holders & tape & (epb <= 0.0)
 
     def support(mask: np.ndarray) -> int:
         return distinct_count(sources, mask, weights)
@@ -1228,12 +1294,6 @@ def impute_company_cars(
 
     fuel_codes = table["fuel_code"].to_numpy(int)
     reported_fuel = table["private_fuel"].to_numpy(bool)
-    unfueled_electric = unknown_fuel_electric_share(
-        fuel_codes[holders],
-        private_fuel=reported_fuel[holders],
-        weights=weights[holders],
-        statistics=statistics,
-    )
     fuel, drawn = assign_fuel_types(
         fuel_codes[holders],
         ids[holders],
@@ -1241,7 +1301,6 @@ def impute_company_cars(
         weights=weights[holders],
         statistics=statistics,
         spec=spec,
-        unfueled_electric=unfueled_electric,
     )
     drawn_with_private_fuel = int((drawn & reported_fuel[holders]).sum())
     hybrid = fuel_codes[holders] == FRS_COMPANY_CAR_FUEL_HYBRID
@@ -1260,24 +1319,6 @@ def impute_company_cars(
         spec=spec,
     )
     private = reported_fuel[holders] & ~electric
-    # The tape rows without EPB lose their twin's car, since EPB is drawn on
-    # uniforms the car never conditions; their fuels and prices, drawn as the
-    # holders' are (at the holders' electric share), measure the base that
-    # leaves with them (María's ruling of 31 October 2026: measure it first).
-    lost_price = np.zeros(len(ids))
-    if no_epb.any():
-        lost_fuel, _ = assign_fuel_types(
-            fuel_codes[no_epb],
-            ids[no_epb],
-            private_fuel=reported_fuel[no_epb],
-            weights=weights[no_epb],
-            statistics=statistics,
-            spec=spec,
-            unfueled_electric=unfueled_electric,
-        )
-        lost_price[no_epb], _ = draw_list_prices(
-            bands[no_epb], lost_fuel == ELECTRIC, ids[no_epb], donor=donor, spec=spec
-        )
 
     person = frame.table("person").copy()
     columns = {
@@ -1301,6 +1342,7 @@ def impute_company_cars(
     employee = table["employee_contribution"].to_numpy(float)
     new_pay = pay.copy()
     carved = np.zeros(len(pay))
+    moved = np.zeros(len(pay))
     newly_gainful = np.zeros(len(pay), dtype=bool)
     tape_holders = holders & tape
     scaled_away = np.zeros(len(pay))
@@ -1308,11 +1350,11 @@ def impute_company_cars(
     carve_receipt: dict[str, Any] = {"holders": rounded_count(0)}
     identity_error = 0.0
     if tape_holders.any():
-        epb = table["epb"].to_numpy(float)
         car_benefit, fuel_benefit = benefits(_frame_with(frame, person, None))
         rows = np.flatnonzero(tape_holders)
         carve = carve_spi_benefits(
             epb=epb[rows],
+            spi_pay=spi_pay[rows],
             pay=pay[rows],
             employee_contributions=employee[rows],
             list_price=columns[LIST_PRICE][rows],
@@ -1344,6 +1386,20 @@ def impute_company_cars(
         for name, values in columns.items():
             person[name] = values
         person[EMPLOYMENT_INCOME] = new_pay
+        # EPB holds the car's benefits first; the part above it moves from the
+        # row's PAY into its EPB, so its PAY + EPB + TAXTERM stays the tape's
+        # and its split agrees with what the engine taxes.
+        moved = np.where(tape, np.maximum(carved - epb, 0.0), 0.0)
+        shifted = moved > 0.0
+        for name, values in (
+            (SPI_HMRC_EMPLOYMENT_BENEFITS_COLUMN, epb + moved),
+            (SPI_HMRC_PAY_COLUMN, spi_pay - moved),
+        ):
+            column = pd.to_numeric(person[name], errors="coerce").to_numpy(
+                float, copy=True
+            )
+            column[shifted] = values[shifted]
+            person[name] = column
         gainful_before = person[UC_GAINFUL_SELF_EMPLOYMENT].astype(bool).to_numpy()
         gainful = refresh_uc_gainful_self_employment(person, carved > 0.0)
         newly_gainful = gainful & ~gainful_before
@@ -1376,7 +1432,10 @@ def impute_company_cars(
                 int(newly_gainful.sum())
             ),
             "weighted_benefit_carved_gbp": total(carved, holders & tape),
+            # The EPB the tape rows' holders drew, and the benefits above it
+            # that moved from PAY into EPB.
             "weighted_epb_gbp": total(epb, tape_holders),
+            "weighted_pay_moved_into_epb_gbp": total(moved, moved > 0.0),
             "weighted_list_price_scaled_away_gbp": total(scaled_away, scaled),
             "weighted_list_price_dropped_gbp": total(scaled_away, dropped_rows),
             # Within those, the price the employee contribution's room takes
@@ -1386,6 +1445,16 @@ def impute_company_cars(
             ),
         }
 
+    def written(column: str) -> np.ndarray:
+        """A tape row's column as the stage writes it (zero elsewhere)."""
+
+        if column not in person:
+            return np.zeros(len(person))
+        values = pd.to_numeric(person[column], errors="coerce").to_numpy(float)
+        return np.where(tape, values, 0.0)
+
+    output_epb = written(SPI_HMRC_EMPLOYMENT_BENEFITS_COLUMN)
+    output_spi_pay = written(SPI_HMRC_PAY_COLUMN)
     fuel_type = columns[FUEL_TYPE]
     electric_holders = holders & (fuel_type == ELECTRIC)
     other_holders = holders & ~electric_holders
@@ -1398,10 +1467,10 @@ def impute_company_cars(
             "frs_channel": rounded_count(int((holders & ~spi).sum())),
             "spi_channel_tape": rounded_count(int((holders & tape).sum())),
             "spi_channel_twin_pay": rounded_count(int((holders & spi & ~tape).sum())),
-            "spi_dropped_without_epb": {
-                "count": rounded_count(int(no_epb.sum())),
-                "weighted": total(np.ones(len(pay)), no_epb),
-                "weighted_list_price_gbp": total(lost_price, no_epb),
+            # The tape rows that keep their car on a drawn EPB of zero.
+            "spi_channel_tape_without_epb": {
+                "count": rounded_count(int((holders & without_epb).sum())),
+                "weighted": total(np.ones(len(pay)), holders & without_epb),
             },
             "support": support_band(support(holders)),
             "weighted": total(np.ones(len(pay)), holders),
@@ -1461,10 +1530,14 @@ def impute_company_cars(
                     columns,
                     holders=holders,
                     tape=tape,
-                    epb=table["epb"].to_numpy(float),
+                    epb=output_epb,
                     carved=carved,
                     pay=new_pay,
                     employee_contributions=employee,
+                    spi_pay=output_spi_pay,
+                    spi_pay_and_epb_change=output_spi_pay
+                    + output_epb
+                    - (spi_pay + epb),
                 ).items()
             },
             "frs_holders_without_pay": rounded_count(
@@ -1484,11 +1557,15 @@ def _violations(
     carved: np.ndarray,
     pay: np.ndarray,
     employee_contributions: np.ndarray,
+    spi_pay: np.ndarray,
+    spi_pay_and_epb_change: np.ndarray,
 ) -> dict[str, int]:
     """Counts of rows breaking an invariant every population keeps; all zero.
 
-    ``pay`` is the stage's output pay, and ``employee_contributions`` the tape
-    rows' net-pay contributions (zero elsewhere)."""
+    ``pay`` is the stage's output pay, ``epb`` and ``spi_pay`` the tape rows'
+    output EPB and PAY, ``spi_pay_and_epb_change`` how far their sum moved, and
+    ``employee_contributions`` the tape rows' net-pay contributions (zero
+    elsewhere)."""
 
     price = columns[LIST_PRICE]
     co2 = columns[CO2_EMISSIONS]
@@ -1525,6 +1602,12 @@ def _violations(
         # remains, so the carve-out keeps it within the carved pay.
         "employee_contribution_above_carved_pay": int(
             (tape & (employee_contributions > np.maximum(pay, 0.0) + 1e-6)).sum()
+        ),
+        # The benefits a row without EPB moves into EPB come out of its PAY.
+        # Written so a NaN counts.
+        "spi_pay_below_zero": int((tape & ~(spi_pay >= -1e-6)).sum()),
+        "spi_pay_and_epb_moved": int(
+            (tape & ~(np.abs(spi_pay_and_epb_change) <= 1e-6)).sum()
         ),
     }
 

@@ -164,8 +164,9 @@ coarse stand-in table `ird_taxable_income_standin_ty2024` (G8-r2c F) carries
 the calibration rows. `tools/generate_nz_target_references.py` generates all
 four from the row formulas and checks every cut against the pinned feed's own
 band labels. Ageing scales the coarse cuts exactly by the selected factor and
-keeps fractional cents: under the central factor 1.117109, the first cut of
-$40,000 becomes 4,468,436 cents and $125,000 becomes 13,963,862.5 cents. Before matrix construction the calibration problem
+keeps fractional cents: under the September 2026 central factor 1.118491, the
+first cut of $40,000 becomes 4,473,964 cents and $125,000 becomes 13,981,137.5
+cents. Before matrix construction the calibration problem
 reports, for every cut, the weighted mass within $1, and for every band the
 fixed-weight change under the left-closed alternative. These diagnostics never
 change a target, and publisher reclassification is unavailable, because the

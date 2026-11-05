@@ -3805,3 +3805,39 @@ def test_the_orrery_publication_is_off_unless_asked(tmp_path):
     assert not publication_enabled(arguments(tmp_path))
     assert not publication_enabled(arguments(tmp_path, "--no-publish-orrery"))
     assert publication_enabled(arguments(tmp_path, "--publish-orrery"))
+
+
+def test_a_dense_build_that_must_send_telemetry_stops_before_any_input_without_an_emitter(
+    tmp_path, monkeypatch
+):
+    """MICROCOSM_TELEMETRY_REQUIRED=1 and no emitter: the full build stops first.
+
+    It starts its emitter after reading and checking its arguments, so with
+    the real adapter (not the shared fixture's in-memory one) it stops before
+    its attempt reads an input or writes anything.
+    """
+    from microcosm.build import telemetry_emitter
+    from test_support.microcosm_build.telemetry import ADAPTER_START
+
+    monkeypatch.setattr(
+        telemetry_emitter.LocalTelemetryEmitter, "start", classmethod(ADAPTER_START)
+    )
+    monkeypatch.setenv("MICROCOSM_TELEMETRY_REQUIRED", "1")
+    monkeypatch.setenv(
+        "MICROCOSM_EMITTER_COMMAND", str(tmp_path / "missing" / "microcosm-emitter")
+    )
+    args = arguments(tmp_path)
+    monkeypatch.setattr(cli, "parse_args", lambda argv: args)
+
+    def went_on(*positional, **named):
+        pytest.fail("the build went on without the emitter it must use")
+
+    # The build's next step after starting its emitter.
+    monkeypatch.setattr(cli, "_dense_attempt", went_on)
+    before = sorted(tmp_path.rglob("*"))
+
+    with pytest.raises(telemetry_emitter.TelemetryRequiredError) as raised:
+        cli.main([])
+
+    assert raised.value.reason == "command_not_found"
+    assert sorted(tmp_path.rglob("*")) == before

@@ -392,6 +392,14 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="Caller-supplied private NTS ticket tab for nts_bus_travel.",
     )
     parser.add_argument(
+        "--nts-vehicle-tab",
+        type=Path,
+        help=(
+            "Caller-supplied private NTS vehicle tab for lcfs_consumption's "
+            "zero-emission share by income fifth and household-paid road-fuel mix."
+        ),
+    )
+    parser.add_argument(
         "--lcfs-hh-tab",
         type=Path,
         help="Caller-supplied private LCFS 2024-25 household tab for lcfs_consumption.",
@@ -450,6 +458,7 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
                 ("--nts-trip-tab", args.nts_trip_tab),
                 ("--nts-stage-tab", args.nts_stage_tab),
                 ("--nts-ticket-tab", args.nts_ticket_tab),
+                ("--nts-vehicle-tab", args.nts_vehicle_tab),
                 ("--lcfs-hh-tab", args.lcfs_hh_tab),
                 ("--lcfs-person-tab", args.lcfs_person_tab),
                 ("--etb-tab", args.etb_tab),
@@ -558,6 +567,7 @@ def _synthetic_graph_sources(source: Path) -> dict[str, Path]:
         "nts_trip": "nts_trip",
         "nts_stage": "nts_stage",
         "nts_ticket": "nts_ticket",
+        "nts_vehicle": "nts_vehicle",
         "lcfs_household": "lcfs_household",
         "lcfs_person": "lcfs_person",
         "etb": "etb",
@@ -1613,6 +1623,8 @@ def prepare_uk_spine_execution(
             for flag, value in (
                 ("--lcfs-hh-tab", args.lcfs_hh_tab),
                 ("--lcfs-person-tab", args.lcfs_person_tab),
+                ("--nts-household-tab", args.nts_household_tab),
+                ("--nts-vehicle-tab", args.nts_vehicle_tab),
             )
             if value is None
         ]
@@ -1780,6 +1792,8 @@ def prepare_uk_spine_execution(
                 engine=engine,
                 lcfs_hh_tab_path=sources["lcfs_household"],
                 lcfs_person_tab_path=sources["lcfs_person"],
+                nts_household_tab_path=sources["nts_household"],
+                nts_vehicle_tab_path=sources["nts_vehicle"],
             )
         )
     if "etb_vat" in stage_names:
@@ -2001,6 +2015,8 @@ def prepare_uk_spine_execution(
         if "lcfs_consumption" in stage_names:
             graph_sources["lcfs_household"] = args.lcfs_hh_tab
             graph_sources["lcfs_person"] = args.lcfs_person_tab
+            graph_sources["nts_household"] = args.nts_household_tab
+            graph_sources["nts_vehicle"] = args.nts_vehicle_tab
         if "etb_vat" in stage_names or "etb_services" in stage_names:
             graph_sources["etb"] = args.etb_tab
         if "spi_income_band_donors" in stage_names:
