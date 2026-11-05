@@ -122,7 +122,20 @@ def _frame():
             "would_claim_uc": [row[7] for row in rows],
         }
     )
-    household = pd.DataFrame({"household_id": [row[0] for row in rows]})
+    # Each household is its own survey source here, with the lineage a spine
+    # carries by this stage: its unit's support channel and no high-value copy.
+    household = pd.DataFrame(
+        {
+            "household_id": [row[0] for row in rows],
+            "source_household_id": [row[0] for row in rows],
+            "household_support_channel": [row[3] for row in rows],
+            "household_support_clone_index": [
+                1 if row[3] == "spi" else 0 for row in rows
+            ],
+            "household_is_high_value_support_copy": False,
+            "high_value_support_copy_index": 0,
+        }
+    )
     # No household holds property here; the property-share tests add it.
     for column in (
         *PENSION_CREDIT_PROPERTY_CAPITAL_SOURCES,

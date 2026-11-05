@@ -5,17 +5,27 @@ its explicit clone path (microcosm#931); the post-geography property node
 (microcosm#1240) needs the same path without the geographic clone branch, so
 that every pool clone of one spine household shares one key. Both read the
 path through this module, which validates the lineage columns once and never
-infers a branch from ids, weights or values.
+infers a branch from ids, weights or values. The UK's copy lineage is declared
+here (:data:`UK_COPY_LINEAGE`) for the shared readers in
+``microcosm.build.source_lineage``: the receipts' true sources and the
+FRS-trained fits' collapse of geographic clones read it too.
 """
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 
 import numpy as np
 import pandas as pd
 
-from microcosm.build.source_lineage import CopyBranch, CopyLineage
+from microcosm.build.source_lineage import (
+    CopyBranch,
+    CopyLineage,
+    collapse_replicas,
+    copy_paths,
+    replica_keys,
+)
+from microcosm.build.uk_runtime.national_frame import UK_NATIONAL_SCHEMA
 from microcosm.build.uk_runtime.rowwise_dataset import ladder_clone_index_column
 
 __all__ = [
@@ -24,6 +34,7 @@ __all__ = [
     "HIGH_VALUE_SUPPORT_INDEX_COLUMN",
     "UK_COPY_LINEAGE",
     "UK_HOUSEHOLD_LINEAGE_COLUMNS",
+    "collapse_geographic_clones",
     "uk_household_clone_paths",
 ]
 
@@ -91,10 +102,22 @@ UK_COPY_LINEAGE = CopyLineage(
 )
 
 
-def _require_bool(series: pd.Series, column: str) -> None:
-    dtype = series.dtype
-    if dtype != np.dtype("bool") and not isinstance(dtype, pd.BooleanDtype):
-        raise ValueError(f"Geography identity requires a boolean {column}.")
+#: The branches every post-clone household carries: the SPI support channel
+#: and the CGT steps. High-value support (a spine built before that stage has
+#: neither of its columns) and the geographic clone index (a spine frame has
+#: none yet) are read where present.
+_REQUIRED_BRANCHES = (
+    "spi_support_channel",
+    "cgt_support_split",
+    "cgt_incidence_clone",
+    "cgt_residential_split",
+)
+_INT64_LINEAGE_COLUMNS = (
+    "source_household_id",
+    "cgt_support_copy_index",
+    "cgt_residential_clone_index",
+    HIGH_VALUE_SUPPORT_INDEX_COLUMN,
+)
 
 
 def uk_household_clone_paths(
@@ -108,129 +131,55 @@ def uk_household_clone_paths(
     with the copy index when it is a high-value home support copy,
     ``cgt_incidence_clone`` (ordinal 1) from its flag, ``cgt_residential_split``
     with the arm index, and ``geographic_support`` with the pool clone index
-    when it is not the original copy. Malformed lineage fails by name.
+    when it is not the original copy. The shared reader
+    (``microcosm.build.source_lineage.copy_paths``) reads it on
+    :data:`UK_COPY_LINEAGE`; malformed lineage fails by name.
     """
     clone_column = ladder_clone_index_column("household")
     required = [c for c in UK_HOUSEHOLD_LINEAGE_COLUMNS if c != clone_column]
     missing = [c for c in required if c not in household]
     if missing:
         raise ValueError(f"Geography identity lacks lineage column(s) {missing}.")
-    # A spine frame carries no pool clone index yet: every row is clone 0.
-    columns: list[str] = list(required) + (
-        [clone_column] if clone_column in household else []
-    )
-    has_high_value = all(c in household for c in UK_OPTIONAL_LINEAGE_COLUMNS)
-    if any(c in household for c in UK_OPTIONAL_LINEAGE_COLUMNS) and not has_high_value:
-        raise ValueError(
-            "Geography identity needs both high-value support lineage columns or neither."
-        )
-    if has_high_value:
-        columns.extend(UK_OPTIONAL_LINEAGE_COLUMNS)
-    lineage = household.loc[:, columns]
-    if lineage.isna().any().any():
+    present = [
+        column
+        for column in (UK_COPY_LINEAGE.source, *UK_COPY_LINEAGE.copy_columns)
+        if column in household
+    ]
+    if household.loc[:, present].isna().any().any():
         raise ValueError("Geography identity refuses null lineage values.")
-    if lineage["source_household_id"].dtype != np.dtype("int64"):
-        raise ValueError("Geography identity requires int64 source household ids.")
-    if lineage["cgt_support_copy_index"].dtype != np.dtype("int64"):
-        raise ValueError("Geography identity requires an int64 support copy index.")
-    if lineage["cgt_residential_clone_index"].dtype != np.dtype("int64"):
-        raise ValueError("Geography identity requires an int64 residential arm index.")
-    if has_high_value and lineage[HIGH_VALUE_SUPPORT_INDEX_COLUMN].dtype != np.dtype(
-        "int64"
-    ):
-        raise ValueError(
-            "Geography identity requires an int64 high-value support copy index."
-        )
-    for column in (
-        "household_is_cgt_support_copy",
-        "household_is_capital_gains_clone",
-        "household_is_cgt_residential_clone",
-        *((HIGH_VALUE_SUPPORT_COPY_COLUMN,) if has_high_value else ()),
-    ):
-        _require_bool(lineage[column], column)
-    high_value_copy = (
-        lineage[HIGH_VALUE_SUPPORT_COPY_COLUMN].to_numpy()
-        if has_high_value
-        else np.zeros(len(lineage), dtype=bool)
+    for column in _INT64_LINEAGE_COLUMNS:
+        if column in household and household[column].dtype != np.dtype("int64"):
+            raise ValueError(f"Geography identity requires an int64 {column}.")
+    sources, paths = copy_paths(household, UK_COPY_LINEAGE, require=_REQUIRED_BRANCHES)
+    return [int(source) for source in sources], paths
+
+
+def collapse_geographic_clones(
+    tables: Mapping[str, pd.DataFrame],
+    entity: str,
+    rows: np.ndarray,
+    weights: np.ndarray,
+) -> tuple[np.ndarray, np.ndarray]:
+    """A fit's training rows with each record's geographic clones folded in.
+
+    A survey record a fit trains on keeps one row, its first among ``rows``,
+    with the weight of all its geographic clones; every other copy (SPI
+    support, high-value support and the CGT steps) stays a row of its own
+    (microcosm#931). The record's key is its true source and its clone path
+    without the geographic branch, through the shared reader
+    (``microcosm.build.source_lineage``); a frame without geographic clones,
+    as every spine is today, keeps ``rows`` and ``weights`` value for value.
+    Returns the kept rows and the weights over every row of ``entity``.
+    """
+
+    keys = replica_keys(
+        tables,
+        UK_NATIONAL_SCHEMA,
+        entity,
+        UK_COPY_LINEAGE,
+        merge=(GEOGRAPHIC_SUPPORT_BRANCH,),
     )
-    high_value_index = (
-        lineage[HIGH_VALUE_SUPPORT_INDEX_COLUMN].to_numpy()
-        if has_high_value
-        else np.zeros(len(lineage), dtype=np.int64)
-    )
-    source_ids: list[int] = []
-    paths: list[tuple[tuple[str, int], ...]] = []
-    for (
-        source_id,
-        channel,
-        support_index,
-        support_copy,
-        copy_index,
-        cgt,
-        residential_arm,
-        residential_index,
-        clone_index,
-        hv_copy,
-        hv_index,
-    ) in zip(
-        lineage["source_household_id"].to_numpy(),
-        lineage["household_support_channel"].to_numpy(),
-        lineage["household_support_clone_index"].to_numpy(),
-        lineage["household_is_cgt_support_copy"].to_numpy(),
-        lineage["cgt_support_copy_index"].to_numpy(),
-        lineage["household_is_capital_gains_clone"].to_numpy(),
-        lineage["household_is_cgt_residential_clone"].to_numpy(),
-        lineage["cgt_residential_clone_index"].to_numpy(),
-        (
-            lineage[clone_column].to_numpy()
-            if clone_column in lineage
-            else np.zeros(len(lineage), dtype=np.int64)
-        ),
-        high_value_copy,
-        high_value_index,
-        strict=True,
-    ):
-        channel = str(channel)
-        support_index, clone_index = int(support_index), int(clone_index)
-        copy_index = int(copy_index)
-        residential_index = int(residential_index)
-        hv_index = int(hv_index)
-        if residential_index < 0 or hv_index < 0:
-            raise ValueError("Geography identity refuses negative clone indices.")
-        if bool(residential_arm) != (residential_index != 0):
-            raise ValueError("Household residential-arm flag and arm index disagree.")
-        if channel not in {_BASE_SUPPORT_CHANNEL, _SPI_SUPPORT_CHANNEL}:
-            raise ValueError(f"Unknown household support channel {channel!r}.")
-        if support_index < 0 or clone_index < 0 or copy_index < 0:
-            raise ValueError("Geography identity refuses negative clone indices.")
-        if (channel == _SPI_SUPPORT_CHANNEL) != (support_index != 0):
-            raise ValueError(
-                "Household support channel and support clone index disagree."
-            )
-        if bool(support_copy) != (copy_index != 0):
-            raise ValueError(
-                "Household support-copy flag and support copy index disagree."
-            )
-        if bool(hv_copy) != (hv_index != 0):
-            raise ValueError(
-                "Household high-value support-copy flag and copy index disagree."
-            )
-        path: list[tuple[str, int]] = []
-        if support_index:
-            path.append(("spi_support_channel", support_index))
-        if copy_index:
-            path.append(("cgt_support_split", copy_index))
-        if hv_index:
-            path.append(("high_value_support", hv_index))
-        if bool(cgt):
-            path.append(("cgt_incidence_clone", 1))
-        if residential_index:
-            path.append(("cgt_residential_split", residential_index))
-        if clone_index:
-            path.append((GEOGRAPHIC_SUPPORT_BRANCH, clone_index))
-        source_ids.append(int(source_id))
-        paths.append(tuple(path))
-    return source_ids, paths
+    return collapse_replicas(keys, rows, weights)
 
 
 def without_geographic_branch(

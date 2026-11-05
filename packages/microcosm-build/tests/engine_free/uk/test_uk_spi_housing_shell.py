@@ -25,6 +25,7 @@ from microcosm.build.uk_runtime.spi_housing_shell import (
     restrict_bands_to_nation,
 )
 from microcosm.frame import WeightKind
+from test_support.microcosm_build.uk_geographic_clones import with_geographic_clones
 from test_support.microcosm_build.uk_spi_housing_shell import housing_shell_tables
 
 
@@ -125,7 +126,9 @@ def test_stage_transform_runs_on_a_frame_and_records_its_receipt() -> None:
 
 def test_a_frame_without_frs_training_rows_is_refused() -> None:
     person, _, household, weights = housing_shell_tables()
-    household = household.assign(household_support_channel="spi")
+    household = household.assign(
+        household_support_channel="spi", household_support_clone_index=1
+    )
     with pytest.raises(ValueError, match="FRS training rows"):
         impute_spi_housing_shell(person, household, weights, seed=0, n_estimators=20)
 
@@ -288,3 +291,44 @@ def test_without_the_restriction_spi_rows_leave_their_nation(monkeypatch) -> Non
         band in bands
         for band, bands in zip(spi["council_tax_band"], allowed, strict=True)
     )
+
+
+def test_geographic_clones_train_the_model_as_their_survey_household() -> None:
+    """Two geographic clones of every household at half its weight fit the
+    model each survey household fits alone, so every SPI copy's first clone
+    draws the housing it draws without clones (microcosm#931)."""
+
+    person, benunit, household, weights = housing_shell_tables()
+    pool = with_geographic_clones(
+        uk_national_frame(
+            person=person,
+            benunit=benunit,
+            household=household,
+            household_weights=weights,
+            time_period="2024",
+        )
+    )
+    _, alone, alone_receipt = impute_spi_housing_shell(
+        person, household, weights, seed=0, n_estimators=20
+    )
+    _, cloned, receipt = impute_spi_housing_shell(
+        pool.table("person"),
+        pool.table("household"),
+        pool.weights_for("household").values,
+        seed=0,
+        n_estimators=20,
+    )
+    columns = [*HOUSING_CATEGORICAL_COLUMNS, *HOUSING_AMOUNT_COLUMNS]
+    first = cloned.loc[cloned["household_clone_index"] == 0]
+    pd.testing.assert_frame_equal(
+        first.set_index("household_id")[columns],
+        alone.set_index("household_id")[columns],
+    )
+    assert receipt["training_households"] == alone_receipt["training_households"]
+    assert {
+        column: shares["training"]
+        for column, shares in receipt["category_shares"].items()
+    } == {
+        column: shares["training"]
+        for column, shares in alone_receipt["category_shares"].items()
+    }

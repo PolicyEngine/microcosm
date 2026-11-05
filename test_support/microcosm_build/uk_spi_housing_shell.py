@@ -47,6 +47,10 @@ def housing_shell_tables(n_frs: int = 600, n_spi: int = 200, seed: int = 0):
             "ons_household_type": household_type,
             "council_tax_single_adult_raw": np.where(single, 1, 2),
             "household_support_channel": channel,
+            # Each household is its own survey source here, and an SPI copy
+            # is the support channel's first copy.
+            "source_household_id": household_id,
+            "household_support_clone_index": np.where(channel == "spi", 1, 0),
             "tenure_type": tenure,
             "accommodation_type": accommodation,
             "num_bedrooms": np.where(high, 4, 2).astype(np.int64),

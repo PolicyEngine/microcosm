@@ -66,6 +66,7 @@ from . import (
     receipt_counts,
     rowwise_geography,
     spi_income,
+    spi_rank_transport,
     spi_support,
     uc_capital_coherence,
     uc_deduction_attributes,
@@ -158,8 +159,9 @@ _STAGE_HELPER_MODULES = {
     # (microcosm#1164).
     "frs_annual_income_spells": (receipt_counts,),
     # The SPI income stage's imputation, band-donor resample and receipt live
-    # in spi_income, so an edit there moves the stage's hash (microcosm#1278).
-    "hmrc_spi_income_spine": (spi_income,),
+    # in spi_income, so an edit there moves the stage's hash (microcosm#1278),
+    # and its twin transport in spi_rank_transport (microcosm#840).
+    "hmrc_spi_income_spine": (spi_income, spi_rank_transport),
     "frs_spine": (uc_relationships,),
     "frs_legacy_proxies": (uk_engine_adapter,),
     "frs_education_grant_split": (uk_engine_adapter,),
@@ -266,11 +268,12 @@ _STAGE_HELPER_MODULES = {
     "childcare_copy_take_up": (frs_take_up, household_lineage, receipt_counts),
 }
 
-# The receipts' counting rules and the shared lineage they read: every floor
-# counts true source households through receipt_counts, which reads them
-# through source_lineage on household_lineage's declaration (microcosm#931).
-# An edit to any of the three moves the hash of every stage whose module or
-# helpers import one of them; test_uk_graph derives this set from the imports.
+# The receipts' counting rules and the shared lineage readers: every floor
+# counts true source households through receipt_counts, and the FRS-trained
+# fits fold geographic clones through household_lineage, both reading
+# source_lineage on household_lineage's declaration (microcosm#931). An edit
+# to any of the three moves the hash of every stage whose module or helpers
+# import one of them; test_uk_graph derives this set from the imports.
 _COUNTING_MODULES = (receipt_counts, household_lineage, source_lineage)
 _COUNTING_STAGES = frozenset(
     {
@@ -280,6 +283,7 @@ _COUNTING_STAGES = frozenset(
         "frs_annual_income_spells",
         "hmrc_spi_income_spine",
         "company_cars",
+        "spi_housing_shell",
         "high_value_home_support",
         "regional_home_values",
         "property_components",
@@ -287,6 +291,7 @@ _COUNTING_STAGES = frozenset(
         "nts_bus_travel",
         "lcfs_consumption",
         "etb_vat",
+        "uc_reporter_redraw",
         "spi_benefit_coherence",
         "uc_capital_coherence",
         "uc_take_up",

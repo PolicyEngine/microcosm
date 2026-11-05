@@ -48,6 +48,7 @@ from microcosm.build.uk_runtime.hmrc_income import (
     LOSS_RELIEF_COLUMN,
     self_employment_income_after_loss_relief,
 )
+from microcosm.build.uk_runtime.household_lineage import collapse_geographic_clones
 from microcosm.build.uk_runtime.pension_coherence import (
     cap_net_pay_contributions,
     coherence_receipt,
@@ -1448,6 +1449,18 @@ def impute_uk_spi_income_support(
     )
     if not training_people.any():
         raise ValueError("FRS-only stage has no canonical base training rows.")
+    # Both forests train on each survey record once: its geographic clones
+    # fold into its first row with their weight, and every other copy stays
+    # its own row; a frame without geographic clones keeps every row and
+    # weight (household_lineage.collapse_geographic_clones, microcosm#931).
+    kept, training_weight_values = collapse_geographic_clones(
+        {"person": person, "household": household},
+        "person",
+        training_people.to_numpy(dtype=bool),
+        person_weights.to_numpy(dtype=np.float64),
+    )
+    training_people = pd.Series(kept, index=person.index)
+    training_weights = pd.Series(training_weight_values, index=person.index)
     # The reference forest's population mirrors the draw's: FRS claimants and
     # partners aged 16 and over with taxable income under the same rule.
     reference_people = (
@@ -1506,7 +1519,7 @@ def impute_uk_spi_income_support(
     # from the stage seed like stage 2's and the band resample's; changing the
     # offset edits the derivation convention.
     assert_analogue_map_covers(SPI_INCOME_QRF_OUTPUT_COLUMNS)
-    reference_weights = person_weights.loc[reference_people]
+    reference_weights = training_weights.loc[reference_people]
     reference_targets = list(analogue_targets(SPI_INCOME_QRF_OUTPUT_COLUMNS))
     reference_weight_kind: dict[str, str] = {}
     reference_fits: list[Any] = []
@@ -1748,11 +1761,10 @@ def impute_uk_spi_income_support(
     _require_finite_numeric(training_targets, label="FRS-only training outputs")
     if (training_targets.to_numpy(dtype=np.float64) < 0.0).any():
         raise ValueError("FRS-only training outputs must be non-negative.")
-    person_weights = _person_household_weights(person, household)
     stage2_frame = _person_fit_frame(
         predictors=encoded_train,
         targets=training_targets,
-        weights=person_weights.loc[training_people].to_numpy(dtype=np.float64),
+        weights=training_weights.loc[training_people].to_numpy(dtype=np.float64),
         weight_kind=WeightKind.IMPORTANCE,
     )
     # Stage 2 deliberately derives a distinct RNG stream from the single

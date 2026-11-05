@@ -6,7 +6,14 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from microcosm.build.source_lineage import CopyBranch, CopyLineage, record_sources
+from microcosm.build.source_lineage import (
+    CopyBranch,
+    CopyLineage,
+    collapse_replicas,
+    copy_paths,
+    record_sources,
+    replica_keys,
+)
 from microcosm.frame import EntitySchema
 
 SCHEMA = EntitySchema(group_entities=("unit", "household"))
@@ -139,3 +146,120 @@ def test_record_sources_returns_the_tables_row_order() -> None:
         record_sources(shuffled, SCHEMA, "household", LINEAGE),
         np.asarray([1, 1, 1, 2]),
     )
+
+
+def test_copy_paths_read_each_step_in_declared_order() -> None:
+    tables = _tables()
+    tables["household"]["is_clone"] = [False, False, True, False]
+    sources, paths = copy_paths(tables["household"], LINEAGE)
+    assert sources.tolist() == [1, 2, 1, 1]
+    assert paths == [(), (), (("support", 1), ("clone", 1)), (("place", 1),)]
+
+
+def test_a_step_that_has_not_run_adds_nothing_unless_required() -> None:
+    household = _tables()["household"].drop(columns=["place_index"])
+    _, paths = copy_paths(household, LINEAGE)
+    assert paths == [(), (), (("support", 1),), ()]
+    with pytest.raises(ValueError, match="lacks the 'place'"):
+        copy_paths(household, LINEAGE, require=("place",))
+    with pytest.raises(ValueError, match="No copy branch"):
+        copy_paths(household, LINEAGE, require=("unknown",))
+
+
+@pytest.mark.parametrize(
+    "defect",
+    [
+        "partial_step",
+        "disagreeing_marker",
+        "negative_ordinal",
+        "float_ordinal",
+        "unknown_marker",
+        "integer_flag",
+        "null_marker",
+        "no_source",
+    ],
+)
+def test_copy_paths_refuse_lineage_they_cannot_read(defect: str) -> None:
+    household = _tables()["household"]
+    if defect == "partial_step":
+        household = household.drop(columns=["support_index"])
+    elif defect == "disagreeing_marker":
+        household.loc[0, "channel"] = "b"
+    elif defect == "negative_ordinal":
+        household.loc[3, "place_index"] = -1
+    elif defect == "float_ordinal":
+        household["place_index"] = household["place_index"].astype(float)
+    elif defect == "unknown_marker":
+        household.loc[0, "channel"] = "c"
+    elif defect == "integer_flag":
+        household["is_clone"] = household["is_clone"].astype(int)
+    elif defect == "null_marker":
+        household["channel"] = pd.array(["a", None, "b", "a"], dtype="string")
+    else:
+        household = household.drop(columns=["source_household_id"])
+    with pytest.raises(ValueError):
+        copy_paths(household, LINEAGE)
+
+
+def _placed_tables() -> dict[str, pd.DataFrame]:
+    """The tables placed twice: clone 1 of every row at id + 1000."""
+
+    tables = _tables()
+    placed = {}
+    for entity, table in tables.items():
+        clone = table.copy()
+        for column in clone.columns:
+            if column.endswith("_id") and column != "source_household_id":
+                clone[column] = clone[column] + 1000
+        if entity == "household":
+            clone["place_index"] = clone["place_index"] + 1
+        placed[entity] = pd.concat([table, clone], ignore_index=True)
+    return placed
+
+
+def test_replica_keys_are_shared_by_placed_clones_alone() -> None:
+    tables = _placed_tables()
+    households = replica_keys(tables, SCHEMA, "household", LINEAGE, merge=("place",))
+    # Households 1 and 4 are one record placed twice, and so are their
+    # clones; the support copy (3) stays apart from its source (1).
+    first = dict(zip(tables["household"]["household_id"], households, strict=True))
+    assert first[1] == first[4] == first[1001] == first[1004]
+    assert len({first[1], first[2], first[3]}) == 3
+    assert first[2] == first[1002] and first[3] == first[1003]
+    people = replica_keys(tables, SCHEMA, "person", LINEAGE, merge=("place",))
+    by_person = dict(zip(tables["person"]["person_id"], people, strict=True))
+    # Members keep their rank: a household's first member is the clone's.
+    assert by_person[10] == by_person[1010] == by_person[40]
+    assert by_person[11] == by_person[41] and by_person[10] != by_person[11]
+    units = replica_keys(tables, SCHEMA, "unit", LINEAGE, merge=("place",))
+    by_unit = dict(zip(tables["unit"]["unit_id"], units, strict=True))
+    assert by_unit[100] == by_unit[400] == by_unit[1100]
+    with pytest.raises(ValueError, match="No copy branch"):
+        replica_keys(tables, SCHEMA, "unit", LINEAGE, merge=("elsewhere",))
+
+
+def test_collapse_keeps_each_records_first_row_with_its_summed_weight() -> None:
+    keys = np.asarray(["a", "b", "a", "c", "b", "a"], dtype=object)
+    rows = np.asarray([True, True, True, False, True, True])
+    weights = np.asarray([0.1, 0.2, 0.2, 9.0, 0.3, 0.7])
+    kept, summed = collapse_replicas(keys, rows, weights)
+    assert kept.tolist() == [True, True, False, False, False, False]
+    # Exact sums, whatever the order: 0.1 + 0.2 + 0.7 rounds once.
+    assert summed[0] == 1.0 and summed[1] == 0.5
+    assert summed[3] == 9.0
+    order = np.asarray([5, 4, 3, 2, 1, 0])
+    reversed_kept, reversed_summed = collapse_replicas(
+        keys[order], rows[order], weights[order]
+    )
+    assert reversed_summed[reversed_kept].tolist() == [1.0, 0.5]
+
+
+def test_a_selection_without_replicas_keeps_its_rows_and_weights() -> None:
+    keys = np.asarray(["a", "b", "a"], dtype=object)
+    rows = np.asarray([True, True, False])
+    weights = np.asarray([0.1, 0.2, 0.3])
+    kept, summed = collapse_replicas(keys, rows, weights)
+    assert kept.tolist() == rows.tolist()
+    assert summed.tobytes() == weights.tobytes()
+    with pytest.raises(ValueError, match="align"):
+        collapse_replicas(keys, rows[:2], weights)

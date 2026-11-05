@@ -30,6 +30,7 @@ from microcosm.build.uk_runtime.cgt_structure import (
     _assert_closed_world_operations,
 )
 from microcosm.build.uk_runtime.cgt_support import HOUSEHOLD_IS_CGT_SUPPORT_COPY
+from microcosm.build.uk_runtime.household_lineage import collapse_geographic_clones
 from microcosm.build.uk_runtime.national_frame import (
     uk_household_weight_kind,
     uk_national_frame,
@@ -612,8 +613,19 @@ def impute_salary_sacrifice(
         index=household["household_id"],
     )
     person_weights = person_households.map(household_weights).to_numpy(dtype=float)
+    # The forest trains on each asked respondent once: their geographic
+    # clones fold into their first row with their weight, and every other copy
+    # stays its own row; a frame without geographic clones keeps every row and
+    # weight (household_lineage.collapse_geographic_clones, microcosm#931).
+    kept, fit_weights = collapse_geographic_clones(
+        {"person": person, "household": household},
+        "person",
+        training_mask.to_numpy(dtype=bool),
+        person_weights,
+    )
+    training_mask = pd.Series(kept, index=training_mask.index)
     training = numeric.loc[training_mask, [*SALSAC_PREDICTORS, SALSAC_OUTPUT]].copy()
-    training["_fit_weight"] = person_weights[training_mask.to_numpy()]
+    training["_fit_weight"] = fit_weights[kept]
     model = _qrf_class()(
         n_estimators=SALSAC_QRF_ESTIMATORS,
         seed=SALSAC_QRF_SEED,

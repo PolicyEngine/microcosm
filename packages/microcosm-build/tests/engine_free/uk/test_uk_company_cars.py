@@ -1115,6 +1115,7 @@ def test_salary_sacrifice_runs_on_the_stage_s_output(
             "household_id": ids,
             "source_household_id": ids,
             "household_support_channel": np.where(spi, "spi", "frs"),
+            "household_support_clone_index": np.where(spi, 1, 0),
         }
     )
     frame = uk_national_frame(
