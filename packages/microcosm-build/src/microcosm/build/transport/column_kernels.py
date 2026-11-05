@@ -471,6 +471,16 @@ def _group_inputs(context: KernelContext, ref: str):
             f"{ref} engine_entity {entity!r} holds persons in a role, not built "
             "units; concepts.encode@1 writes its inputs on the person table."
         )
+    if entity in mapping.entity_correspondence.values():
+        frame_entity = next(
+            frame
+            for frame, engine in mapping.entity_correspondence.items()
+            if engine == entity
+        )
+        raise ValueError(
+            f"{ref} engine_entity {entity!r} belongs on the {frame_entity} table, "
+            "not built units; concepts.encode@1 writes its inputs there."
+        )
     declaration = _unit_declaration(context, ref)
     physical = context.params.get("unit_entity")
     if physical is None:
