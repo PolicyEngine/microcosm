@@ -457,6 +457,17 @@ python3 tools/modal_us_stage_plan.py verify-receipt \
   --state-root ./modal-runs/<run_id>/state
 ```
 
+No program registered here writes a staged-dataset bundle yet; see "What
+this does not cover yet". A UK rowwise build's run directory, whose
+`rowwise_candidate_manifest.json` registers one, would be staged from the
+workstation after step 5, with the operator's own emitter and Hub credential:
+`tools/stage_uk_rowwise_candidate.py --modal-receipt` checks the outputs the
+build manifest registers against the receipt, and the manifest itself until
+its record says a hand-over happened, then hands the bundle over as for a
+local build. It reads that record from the manifest itself, so an edit that
+says a hand-over happened is not caught; the outputs are still compared (see
+[Staged datasets](uk-staging-operations.md#staged-datasets)).
+
 To prove the run path on a new commit or workspace for well under a cent,
 run `docs/us-modal-stage-smoke-plan.json` (tool `runner-smoke`). It is an
 inline script, so it needs no file in the pinned tree. It imports the synced
@@ -1665,6 +1676,14 @@ hold digests, sizes and paths, never file contents.
   placement avoids preemption (see "Preemption and restarts"). The heavy
   class sets a memory request but no hard limit. What Modal does with a
   container killed for memory has not been observed here.
+- **Staging a US build's datasets.** Only UK builds write a staged-dataset
+  bundle (their manifest's `outputs`, staged under `staged/<run_id>/` on a
+  private repository), and the copied-back staging command reads only their
+  manifest. The `package` stage writes a release directory with its own
+  `release_manifest.json` (an `artifacts` mapping) and `sha256sums.txt`, which is
+  also the name of the bundle's checksum file. A US bundle needs a private
+  repository, a manifest that registers its outputs, and a command that reads
+  it; none exists yet.
 - **Certification.** A receipt proves which bytes a stage produced. It does
   not certify a release. Preflight (`tools/preflight_us_release_gates.py`)
   and certification still run on the output as before.
