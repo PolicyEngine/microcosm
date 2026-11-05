@@ -127,7 +127,6 @@ def load_app(
             module,
             "_emitter_status",
             lambda env: copy.deepcopy(RECORDED_EMITTER_STATUS),
-            raising=False,
         )
     for name, value in RUNNER_TOKEN_SECRET.items():
         monkeypatch.setenv(name, value)

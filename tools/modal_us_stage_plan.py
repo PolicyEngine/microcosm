@@ -103,16 +103,26 @@ RUNNER_CERTIFI_MINIMUM_VERSION = "2026.10.19"
 # child process (microcosm-emitter-interface); uv.lock pins only the
 # interface. The image installs the newest emitter release when it is built
 # for a plan commit, outside the synced environment; an image built for one
-# commit keeps the emitter it was built with. A build does not start an
-# emitter older than microcosm.build.telemetry_emitter.MINIMUM_EMITTER_VERSION,
-# 0.11.9; releases before 0.10.0 send telemetry to the collector's Cloud Run
-# address, which changes when the collector moves to another Google Cloud
-# project. This module imports nothing from the workspace, so the floor
-# repeats that release, and a test checks that the two agree in one
-# checkout. At launch the two can differ: the image's install step comes from
-# this module in the checkout that launches the app, and the minimum from the
-# commit the plan pins. The stage's runner records the version.
-IMAGE_EMITTER_REQUIREMENT = "microcosm-emitter>=0.11.9"
+# commit keeps the emitter it was built with. The oldest release it accepts
+# is the oldest a build starts (MINIMUM_EMITTER_VERSION in
+# microcosm.build.telemetry_emitter), written once, in microcosm-build's
+# package data. This module imports nothing from the workspace, so it reads
+# that file by its path in the checkout it belongs to: the checkout that
+# launches the app, when Modal defines the image (image_emitter_requirement).
+# In the container this module is a copy without a checkout, and it never
+# reads the file. So at launch the two can still differ: the image's install
+# step comes from the launching checkout, and the minimum from the commit the
+# plan pins. The stage's runner records the version. The runner needs 0.13.0
+# or later, which added the `status` command it runs after the tool.
+MINIMUM_EMITTER_VERSION_FILE = (
+    Path(__file__).resolve().parents[1]
+    / "packages"
+    / "microcosm-build"
+    / "src"
+    / "microcosm"
+    / "build"
+    / "minimum_emitter_version.json"
+)
 IMAGE_EMITTER_BIN_DIR = "/usr/local/bin"
 IMAGE_EMITTER_COMMAND = f"{IMAGE_EMITTER_BIN_DIR}/microcosm-emitter"
 #: The image's environment variables, which the stage tool inherits.
@@ -418,7 +428,8 @@ BASE_RUNNER_OVERHEAD_SECONDS = 30 * 60
 BASE_MIRRORED_STATE_GIB = 50
 # Staging has no frame checkpoints: its 10.7 GB H5 (~10 GiB), summary and
 # logs fit in a 12 GiB mirror allowance. Thirty minutes reserves 60 s for
-# stopping, 120 s for the receipt, and 1,620 s for hashing/copying the state.
+# stopping, 60 s for the image emitter's status, 120 s for the receipt, and
+# 1,560 s for hashing/copying the state.
 # The check's write probe refuses a slower volume (about 8 MB/s required).
 ACS_STAGING_RUNNER_OVERHEAD_SECONDS = 30 * 60
 ACS_STAGING_MIRRORED_STATE_GIB = 12
@@ -1540,6 +1551,38 @@ def image_pip_bootstrap_command(
     )
 
 
+_EMITTER_RELEASE = re.compile(r"\d+\.\d+\.\d+")
+
+
+def minimum_emitter_version() -> str:
+    """The oldest emitter release a build starts, from ``MINIMUM_EMITTER_VERSION_FILE``.
+
+    That file is microcosm-build's package data, which the build adapter
+    reads as ``MINIMUM_EMITTER_VERSION``; this reads it by its path in this
+    module's checkout. Raises ``PlanError`` when the file is missing or does
+    not hold ``{"minimum_emitter_version": "X.Y.Z"}``.
+    """
+
+    path = MINIMUM_EMITTER_VERSION_FILE
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as error:
+        raise PlanError(
+            f"cannot read the emitter's minimum release from {path} "
+            f"({type(error).__name__})"
+        ) from None
+    version = data.get("minimum_emitter_version") if isinstance(data, dict) else None
+    if not isinstance(version, str) or _EMITTER_RELEASE.fullmatch(version) is None:
+        raise PlanError(f'{path} must hold {{"minimum_emitter_version": "X.Y.Z"}}')
+    return version
+
+
+def image_emitter_requirement() -> str:
+    """What the image installs: at least the oldest emitter release a build starts."""
+
+    return f"microcosm-emitter>={minimum_emitter_version()}"
+
+
 def image_build_commands(plan: Plan, repo_root: str = IMAGE_REPO_ROOT) -> list[str]:
     """Shell steps that pin the image's tree and environment to the plan.
 
@@ -1547,7 +1590,7 @@ def image_build_commands(plan: Plan, repo_root: str = IMAGE_REPO_ROOT) -> list[s
     and ``git status`` inside the tools report the real code vintage), and
     the environment is synced from that tree's own uv.lock with --frozen.
     The emitter command is installed on its own, outside that environment
-    (``IMAGE_EMITTER_REQUIREMENT``), and must run.
+    (``image_emitter_requirement``), and must run.
     """
 
     root = shlex.quote(repo_root)
@@ -1560,7 +1603,7 @@ def image_build_commands(plan: Plan, repo_root: str = IMAGE_REPO_ROOT) -> list[s
         f'test "$(git -C {root} rev-parse HEAD)" = {commit}',
         f"cd {root} && uv sync --all-packages --extra us --frozen",
         f"UV_TOOL_BIN_DIR={IMAGE_EMITTER_BIN_DIR} uv tool install "
-        f"{shlex.quote(IMAGE_EMITTER_REQUIREMENT)}",
+        f"{shlex.quote(image_emitter_requirement())}",
         f"{IMAGE_EMITTER_COMMAND} version",
         f'test -z "$(git -C {root} status --porcelain)"',
     ]
@@ -1831,6 +1874,17 @@ EMITTER_TOKEN_MARGIN_SECONDS = 30
 #: How long the launch waits for ``telemetry-token``: one exchange with the
 #: collector.
 TELEMETRY_TOKEN_TIMEOUT_SECONDS = 120
+#: How long the runner waits for the image emitter's ``status`` after the
+#: tool. It reads the event queue file and prints, so it normally answers in
+#: well under a second; only a file another connection holds for a commit
+#: makes it wait (the emitter's 5 s busy timeout). The runner's reserve after
+#: the tool keeps this much for it (``write_probe_verdict``).
+EMITTER_STATUS_TIMEOUT_SECONDS = 60
+#: ``status``'s exit code when no event queue file exists at the path it
+#: reads: no emitter kept one in the container, so none holds an event.
+EMITTER_STATUS_NO_FILE_EXIT_CODE = 8
+#: The longest problem line a receipt keeps of a ``status`` failure.
+EMITTER_STATUS_PROBLEM_MAX_CHARS = 300
 #: What each failing exit code of ``microcosm-emitter telemetry-token`` means
 #: (its ``cli`` module). 2 is argparse's usage error, which a release before
 #: 0.11.0, without the command, also gives.
@@ -1875,6 +1929,38 @@ class EmitterVersionAnswer(TypedDict, total=False):
     collector_origin: str
 
 
+class EmitterStatusRun(TypedDict):
+    """One run as ``microcosm-emitter status`` prints it (emitter 0.13.0).
+
+    ``reason`` is the run's ``local_only_reason``: why a ``local_only`` run
+    is excluded from upload, or why a ``pending`` one waits.
+    ``undelivered_events`` counts the run's events the emitter's event queue
+    file still holds. The emitter also prunes events it never delivered
+    (older than 7 days, or beyond 100 MiB), so 0 means none are held, not
+    that every event was delivered.
+    """
+
+    run_id: str
+    producer_id: str
+    upload_state: str
+    reason: str | None
+    undelivered_events: int
+
+
+class UndeliveredEventsRecord(TypedDict):
+    """What a receipt records of the image emitter's ``status`` after the tool.
+
+    ``runs`` is ``status``'s list as printed; an empty list when it found no
+    event queue file (exit 8). On any other failure (another exit code, a
+    timeout, a command that could not run, output that is not its list of
+    runs) ``runs`` is None and ``problem`` one line saying why. A failure is
+    recorded only: it never changes the stage's status or outcome.
+    """
+
+    runs: list[EmitterStatusRun] | None
+    problem: str | None
+
+
 class TelemetryRecord(TypedDict):
     """What the plan's summary, the check and the receipt say about telemetry.
 
@@ -1882,7 +1968,10 @@ class TelemetryRecord(TypedDict):
     is what a launch asks for; ``image_emitter_collector_origin`` what the
     image's emitter reported (None in the summary, which runs no emitter);
     ``collector_token`` and ``token_needed_until`` are known only in the
-    container that has the token.
+    container that has the token. ``undelivered_events`` is None until the
+    tool has run, so in the summary and the check; the receipt holds what the
+    image emitter's ``status`` answered after the tool
+    (``undelivered_events_from_status``).
     """
 
     required: bool
@@ -1890,10 +1979,7 @@ class TelemetryRecord(TypedDict):
     image_emitter_collector_origin: str | None
     collector_token: CollectorTokenRecord | None
     token_needed_until: str | None
-    # Not recorded yet: how many events the emitter left undelivered when the
-    # tool ended. The count comes later from the emitter's read-only `status`
-    # command, which the runner will run in the container after the tool.
-    undelivered_events: None
+    undelivered_events: UndeliveredEventsRecord | None
 
 
 def telemetry_required(env: Mapping[str, str]) -> bool:
@@ -2139,6 +2225,83 @@ def telemetry_record(
         "token_needed_until": None if needed_until is None else _utc(needed_until),
         "undelivered_events": None,
     }
+
+
+_STATUS_COMMAND = "`microcosm-emitter status`"
+_STATUS_RUN_FIELDS = {
+    "run_id": str,
+    "producer_id": str,
+    "upload_state": str,
+    "reason": (str, type(None)),
+}
+
+
+def undelivered_events_problem(problem: str) -> UndeliveredEventsRecord:
+    """A record of a ``status`` that gave no runs, with ``problem`` as one line.
+
+    Whitespace, line breaks included, becomes single spaces, and a line
+    longer than EMITTER_STATUS_PROBLEM_MAX_CHARS is cut to that length,
+    ending in an ellipsis.
+    """
+
+    line = " ".join(problem.split())
+    if len(line) > EMITTER_STATUS_PROBLEM_MAX_CHARS:
+        line = line[: EMITTER_STATUS_PROBLEM_MAX_CHARS - 1] + "…"
+    return {"runs": None, "problem": line}
+
+
+def _status_runs(stdout: str) -> list[EmitterStatusRun] | None:
+    """The runs ``status`` printed, or None if its output is not its JSON."""
+
+    try:
+        printed = json.loads(stdout)
+    except ValueError:
+        return None
+    runs = printed.get("runs") if isinstance(printed, dict) else None
+    if not isinstance(runs, list):
+        return None
+    for run in runs:
+        if not isinstance(run, dict):
+            return None
+        for name, kind in _STATUS_RUN_FIELDS.items():
+            if name not in run or not isinstance(run[name], kind):
+                return None
+        count = run.get("undelivered_events")
+        if type(count) is not int or count < 0:
+            return None
+    return runs
+
+
+def undelivered_events_from_status(
+    returncode: int, stdout: str, stderr: str
+) -> UndeliveredEventsRecord:
+    """What a receipt records of the image emitter's ``status`` answer.
+
+    Exit 0 gives the runs it printed, as printed; exit 8 (no event queue
+    file) an empty list. Any other exit code gives a problem naming the code
+    and the last line ``status`` wrote on standard error, which is its own
+    message, argparse's for an emitter without the command (exit 2), or a
+    traceback's last line. Output that is not its list of runs is a problem
+    too.
+    """
+
+    if returncode == EMITTER_STATUS_NO_FILE_EXIT_CODE:
+        return {"runs": [], "problem": None}
+    if returncode != 0:
+        lines = [line for line in stderr.splitlines() if line.strip()]
+        if not lines:
+            return undelivered_events_problem(
+                f"{_STATUS_COMMAND} exited {returncode} without a message"
+            )
+        return undelivered_events_problem(
+            f"{_STATUS_COMMAND} exited {returncode}: {lines[-1]}"
+        )
+    runs = _status_runs(stdout)
+    if runs is None:
+        return undelivered_events_problem(
+            f"{_STATUS_COMMAND} exited 0 but did not print its JSON list of runs"
+        )
+    return {"runs": runs, "problem": None}
 
 
 def token_needed_until(plan: Plan, container_started: float) -> int:
@@ -3389,7 +3552,8 @@ def write_probe_verdict(
     ``mirrored_state_gib``, that is the time mirroring its whole state would
     take after the tool (the push after a stop, which copies everything). The
     runner keeps ``runner_overhead_seconds`` after the tool's deadline, of
-    which the stop may take STOP_GRACE_SECONDS and the runner's identity, the
+    which the stop may take STOP_GRACE_SECONDS, the image emitter's
+    ``status`` EMITTER_STATUS_TIMEOUT_SECONDS, and the runner's identity, the
     receipt and the attempt's final commit RECEIPT_RESERVE_SECONDS; if the
     extrapolated mirror does not fit in the rest, a stop at the budget would
     run into the class timeout mid-mirror and leave no receipt, so the check
@@ -3402,7 +3566,10 @@ def write_probe_verdict(
     rate = probe_bytes / max(probe_seconds, 1e-6)
     needed = stage.mirrored_state_gib * 1024**3 / rate
     reserve = (
-        stage.runner_overhead_seconds - STOP_GRACE_SECONDS - RECEIPT_RESERVE_SECONDS
+        stage.runner_overhead_seconds
+        - STOP_GRACE_SECONDS
+        - EMITTER_STATUS_TIMEOUT_SECONDS
+        - RECEIPT_RESERVE_SECONDS
     )
     verdict: dict[str, object] = {
         "bytes": probe_bytes,

@@ -135,7 +135,13 @@ without `hf_xet`, or with it turned off, for files sent in one part. A request
 it has no route for, or that its handler fails on, fails the test. The tests check
 what builds rely on in the hand-over (one commit per bundle on the head it
 names, `copied_files`, `already_staged`, the recorded error codes and the
-version check), not the emitter's own queue or delivery. The runner warns when
+version check), not the emitter's own queue or delivery.
+`test_installed_emitter_status.py` runs a stage through the US Modal runner's
+`_run_stage` against local directories, with the installed command at the
+image's emitter path: its tool starts the emitter's telemetry module through
+the interface, with no credential, no collector token and a closed loopback
+collector address, so the emitter keeps its events and sends nothing, and the
+test checks what the runner records from the emitter's `status`. The runner warns when
 the package index has a newer release than the pin; raise the pin in a pull
 request then. `tools/installed-emitter/constraints.txt` pins the
 `huggingface_hub` release whose requests the stand-in answers; the runner also

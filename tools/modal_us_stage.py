@@ -264,6 +264,43 @@ def _emitter_version() -> plan_lib.EmitterVersionAnswer | None:
     return version if isinstance(version, dict) else None
 
 
+def _emitter_status(env: dict[str, str]) -> plan_lib.UndeliveredEventsRecord:
+    """What the image emitter's ``status`` reports, as the receipt records it.
+
+    The runner calls this once the tool has exited and its output has ended:
+    the emitter the build started holds that output until it has delivered
+    what it could and stopped, so by then its event queue file is final.
+    ``status`` reads that file read-only and prints each run in it; the
+    runner never reads the file itself. It runs without
+    ``--event-queue-file``, in the tool's environment ``env`` without
+    credentials or the collector token, so the emitter's default path is the
+    one the build computed. A failure is recorded as a problem line and
+    never raises.
+    """
+
+    try:
+        answer = subprocess.run(
+            [plan_lib.IMAGE_EMITTER_COMMAND, "status"],
+            capture_output=True,
+            text=True,
+            errors="replace",
+            timeout=plan_lib.EMITTER_STATUS_TIMEOUT_SECONDS,
+            env=plan_lib.emitter_query_environment(env),
+        )
+    except subprocess.TimeoutExpired:
+        return plan_lib.undelivered_events_problem(
+            "`microcosm-emitter status` did not answer within "
+            f"{plan_lib.EMITTER_STATUS_TIMEOUT_SECONDS} s"
+        )
+    except (OSError, subprocess.SubprocessError) as error:
+        return plan_lib.undelivered_events_problem(
+            f"`microcosm-emitter status` could not run ({type(error).__name__})"
+        )
+    return plan_lib.undelivered_events_from_status(
+        answer.returncode, answer.stdout, answer.stderr
+    )
+
+
 def _runner_identity() -> dict[str, object]:
     identity: dict[str, object] = {
         "python": sys.version.split()[0],
@@ -1037,6 +1074,10 @@ def _attempt_stage(
     wall = time.time() - started
     peak_kib = resource.getrusage(resource.RUSAGE_CHILDREN).ru_maxrss
     finished_at = _now()
+    # The output has ended, so the emitter the build started has stopped:
+    # what its event queue file still holds is final. Its own `status`
+    # reports each run's undelivered events; a failure is only recorded.
+    telemetry = {**telemetry, "undelivered_events": _emitter_status(env)}
 
     # 7. Outputs: mirror the state tree to the volume, hashing each file as it
     #    is copied (a file pulled and left untouched keeps its verified
@@ -1080,8 +1121,8 @@ def _attempt_stage(
             "home_seeds": home_seeds,
             "input_links": input_links,
             "tool_budget": tool_budget,
-            # The token's expiry and origin, never its value; the
-            # undelivered-event count is not recorded yet (telemetry_check).
+            # The token's expiry and origin, never its value, and what the
+            # image emitter's `status` reported after the tool.
             "telemetry": telemetry,
         },
         prior_receipts=prior,
