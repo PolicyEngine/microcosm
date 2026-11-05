@@ -184,7 +184,7 @@ STEPS: dict[str, list[list[str]]] = {
             "experiments/fit_1074_fsa_calibration.py",
             "experiments/modal_1074.py",
             "tools/build_us_fiscal_refresh_release.py",
-            "packages/microcosm-build/src/microcosm/build/us_runtime",
+            "packages/microcosm-build/src/microcosm/build/us_runtime/fsa_student_loan_targets.py",
             f"{_TESTS}/engine_free/us/test_us_fsa_student_loan_targets.py",
             f"{_TESTS}/engine_free/us/test_us_fiscal_refresh_builder.py",
         ],
