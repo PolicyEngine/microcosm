@@ -2291,22 +2291,24 @@ def test_a_finished_base_pushes_only_its_output_and_evidence(tmp_path: Path) -> 
 def test_write_probe_verdict_sizes_the_mirror_against_the_reserve() -> None:
     stage = BASE.stages["all"]
     gib = 1024**3
-    # The reserve less the stop's grace and the time kept after the mirror
+    # The reserve less the stop's grace, the 60 s the image emitter's
+    # `status` may take after the tool, and the time kept after the mirror
     # for the runner identity, the receipt and the final commit.
     reserve = (
         plan_lib.BASE_RUNNER_OVERHEAD_SECONDS
         - plan_lib.STOP_GRACE_SECONDS
+        - 60
         - plan_lib.RECEIPT_RESERVE_SECONDS
     )
-    # The slowest rate that still mirrors 50 GiB inside that (about 33 MB/s).
+    # The slowest rate that still mirrors 50 GiB inside that (about 34 MB/s).
     floor = 50 * gib / reserve
-    assert floor / 1e6 == pytest.approx(33.1, abs=0.1)
+    assert floor / 1e6 == pytest.approx(34.4, abs=0.1)
     fast = plan_lib.write_probe_verdict(stage, gib, gib / (floor * 1.01))
     assert "problem" not in fast
-    assert fast["mirror_reserve_seconds"] == reserve == 1620
+    assert fast["mirror_reserve_seconds"] == reserve == 1560
     assert fast["receipt_reserve_seconds"] == 120
     slow = plan_lib.write_probe_verdict(stage, gib, gib / (floor * 0.99))
-    assert "more than the 1620s the runner keeps for the mirror" in slow["problem"]
+    assert "more than the 1560s the runner keeps for the mirror" in slow["problem"]
     # The runbook's one measured volume rate (reads, at least 58 MB/s) fits.
     assert "problem" not in plan_lib.write_probe_verdict(stage, 58_000_000, 1.0)
     acs = plan_lib.US_ACS_LOCAL_RELEASE.stages["materialize"]
