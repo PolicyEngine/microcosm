@@ -342,8 +342,10 @@ def validate_pinned_row_contracts(
     rows must also carry exactly the pin's ``consumer_fact_schema_versions``,
     which a re-pin types by hand; with ``subset``, only row contracts the pin
     lists, for a reader of part of the pinned feed. ``pinned=None`` is for a
-    feed that is not the pinned one (a reviewed ``--allow-unpinned-feed``
-    run), whose rows are held to the declared row contracts only.
+    feed that is not the pinned one, whose rows are held to the declared row
+    contracts only: a reviewed ``--allow-unpinned-feed`` run, or the UK
+    release certifier given another feed than the committed one (it holds
+    the feed to the operator's digests, not the pin's).
     """
     observed = list(fact_schema_versions)
     require_accepted_consumer_fact_schema_versions(observed, subject=f"{subject} rows")

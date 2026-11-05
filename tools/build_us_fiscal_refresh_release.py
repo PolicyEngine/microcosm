@@ -71,10 +71,7 @@ from microcosm.build.gates import (
     target_fit_gate,
     target_profile_coverage_gate,
 )
-from microcosm.build.ledger_artifact import (
-    load_ledger_consumer_artifact,
-    validate_pinned_row_contracts,
-)
+from microcosm.build.ledger_artifact import load_ledger_consumer_artifact
 from microcosm.build.source_runtime import SourceRuntimeConfig, run_source_stage
 from microcosm.build.staging import DEFAULT_STAGING_PREFIX, StagingRunBundleWriter
 from microcosm.build.telemetry_emitter import (
@@ -237,6 +234,7 @@ from microcosm.build.us_runtime.acs_release_predictors import (
 from microcosm.build.us_runtime.chronicle_feed import (
     USChronicleFeed,
     load_us_chronicle_feed,
+    require_us_chronicle_feed_row_contracts,
 )
 from microcosm.build.us_runtime.demographics import (
     CENSUS_NATIONAL_AGE_BENCHMARK,
@@ -12571,15 +12569,10 @@ def _check_us_ledger_feed_row_contracts(
     ``microcosm.build.chronicle_epoch`` does not declare is refused.
     """
 
-    pin = pin or load_us_chronicle_feed()
-    validate_pinned_row_contracts(
+    require_us_chronicle_feed_row_contracts(
         fact_schema_versions,
-        pinned=(
-            pin.consumer_fact_schema_versions
-            if facts_sha256 == pin.facts_sha256
-            else None
-        ),
-        subject="US Chronicle feed",
+        facts_sha256=facts_sha256,
+        pin=pin or load_us_chronicle_feed(),
     )
 
 

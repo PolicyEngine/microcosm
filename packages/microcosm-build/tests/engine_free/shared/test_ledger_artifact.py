@@ -391,7 +391,7 @@ def test_complete_feed_pin_accepts_exact_match(tmp_path):
 _CHRONICLE_V5_SCHEMA_SHA256 = (
     "acd33a091cd8d192be5d264e3e94c13e00afb6fd1972e57d4576ac55a54f6970"
 )
-#: The v4 schema digest the UK, NZ and BE feed pins carry today.
+#: The v4 schema digest the UK and Belgian feed pins carry (NZ is on v5, #1507).
 _CHRONICLE_V4_SCHEMA_SHA256 = (
     "d953306d6f01fbc64db4372d0262d3012ee590269f8a25b276b18dca0626c6a0"
 )

@@ -97,9 +97,11 @@ def require_uk_chronicle_feed_row_contracts(
     The digest checks say the rows are the committed feed's; this says what
     they are. Rows of the committed feed (``facts_sha256`` is the pin's) must
     carry exactly the pin's ``consumer_fact_schema_versions``, which a re-pin
-    types by hand. Rows of another feed, admitted by ``--allow-unpinned-feed``
-    for a reviewed diagnostic run, must carry declared row contracts only.
-    Returns the pin they were checked against.
+    types by hand. Rows of another feed must carry declared row contracts
+    only: a feed admitted by ``--allow-unpinned-feed`` for a reviewed
+    diagnostic run, or one the release certifier is given (it holds the feed
+    to the operator's digests, not the pin's). Returns the pin they were
+    checked against.
     """
 
     pin = pin or load_uk_chronicle_feed()

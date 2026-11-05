@@ -25,8 +25,9 @@ Neither file differs at Chronicle `main` `28064d037562b47377193a5b75f4de120d3768
 
 - `consumer_fact.v4.schema.json`: `policyengine_chronicle/schemas/consumer_fact.v4.schema.json`,
   byte for byte (sha256
-  `d953306d6f01fbc64db4372d0262d3012ee590269f8a25b276b18dca0626c6a0`, the digest the UK, NZ
-  and Belgian feed pins carry). It is unchanged at `44eebe037`.
+  `d953306d6f01fbc64db4372d0262d3012ee590269f8a25b276b18dca0626c6a0`, the digest the UK and
+  Belgian feed pins carry; the NZ pin moved to v5 in microcosm#1507). It is unchanged at
+  `44eebe037`.
 - `consumer_facts.v4.jsonl`: the same sample file at that commit (sha256
   `d02308d049edcd0e60b29d590211456c6427a505e1acf50f1ae71bbcd2962a8c`): the same three facts
   as v4 rows, labelling the adjusted gross income value `all` "All returns" in

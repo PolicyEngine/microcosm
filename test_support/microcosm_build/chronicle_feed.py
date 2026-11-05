@@ -73,7 +73,7 @@ def chronicle_v4_schema() -> dict[str, Any]:
 
 
 def chronicle_v4_schema_sha256() -> str:
-    """The digest the UK, NZ and Belgian feed pins carry for v4."""
+    """The v4 schema digest the UK and Belgian feed pins carry (NZ is on v5)."""
     return hashlib.sha256(CHRONICLE_V4_SCHEMA_PATH.read_bytes()).hexdigest()
 
 

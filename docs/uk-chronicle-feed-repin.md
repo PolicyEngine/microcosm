@@ -35,10 +35,12 @@ row contract declared in `microcosm.build.chronicle_epoch` first
   refuse a pin naming an undeclared row contract;
 - the UK code that reads the feed's rows refuses rows on an undeclared row
   contract, or rows whose contracts differ from the pin's list: the full and
-  national builds, the vendoring tool and the release certifier on the
-  committed artifact (exactly the pin's list), and the reference generators,
-  the compile-parity tool and the DESNZ constituency builder on a subset or
-  on the rows they parse (each a contract the pin lists).
+  national builds and the vendoring tool on the committed artifact (exactly
+  the pin's list), the release certifier likewise when it is given the
+  committed feed (it holds the feed to the operator's digests), and the
+  reference generators, the compile-parity tool and the DESNZ constituency
+  builder on a subset or on the rows they parse (each a contract the pin
+  lists).
 
 Microcosm declares `ledger.consumer_fact.v1` and `chronicle.consumer_fact.v2`
 to `v5`; the v5 schema's digest is `acd33a09…`. Then
