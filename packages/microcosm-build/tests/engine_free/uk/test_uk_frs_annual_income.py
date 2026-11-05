@@ -18,6 +18,7 @@ import pytest
 from microcosm.build.source_manifest import SourceOperationSpec, SourceStageSpec
 from microcosm.build.uk_runtime import frs_annual_income as fai
 from microcosm.build.uk_runtime.frs_spine import WEEKS_IN_YEAR
+from microcosm.build.uk_runtime.receipt_counts import own_source_households
 from microcosm.build.uk_runtime.stage_health import uk_stage_health_gate
 
 INTERVIEW = pd.Timestamp("2024-10-15")
@@ -416,6 +417,7 @@ def test_receipt_bands_its_structural_counts(broken: int, count: object) -> None
     receipt = fai._receipt(
         pd.DataFrame({"person_household_id": np.arange(rows)}),
         weights=np.ones(rows),
+        household_sources=np.arange(rows),
         descriptors=descriptors,
         current=np.zeros(rows),
         se_current=np.zeros(rows),
@@ -445,6 +447,7 @@ def test_receipt_says_whether_the_stage_held_the_ratio(ratio, support, held) -> 
     receipt = fai._receipt(
         pd.DataFrame({"person_household_id": np.arange(rows)}),
         weights=np.ones(rows),
+        household_sources=np.arange(rows),
         descriptors=pd.DataFrame(
             {column: np.ones(rows) for column in fai.ANNUAL_SHARE_COLUMNS}
             | {column: np.zeros(rows) for column in fai.OTHER_SPELLS_COLUMNS}
@@ -544,6 +547,7 @@ def test_pay_concept_ratio_measures_few_reporters_and_refuses_none() -> None:
         np.ones(len(person)),
         job.iloc[:5],
         np.ones(len(person), dtype=bool),
+        household_sources=own_source_households(person),
     )
     assert 0 < support < 10 and math.isfinite(ratio)
     with pytest.raises(ValueError, match="no household reports both"):
@@ -552,11 +556,13 @@ def test_pay_concept_ratio_measures_few_reporters_and_refuses_none() -> None:
             np.ones(len(person)),
             job.iloc[:0],
             np.ones(len(person), dtype=bool),
+            household_sources=own_source_households(person),
         )
 
 
 def _reporting_jobs(households: int, ratio: float) -> tuple:
-    """One current employee main job a household, at one DV-to-usual ratio."""
+    """One current employee main job a household, at one DV-to-usual ratio;
+    each holder is their own household and so their own source."""
     person_ids = np.arange(1, households + 1)
     job = pd.DataFrame(
         {
@@ -576,10 +582,12 @@ def test_a_thin_pay_concept_ratio_is_held_to_its_bounds(measured, used) -> None:
     """On fewer than ten households a ratio past the plausibility bounds is
     noise: it is held to them, and the build goes on (Vahid's second review
     of #1396). On ten or more it still refuses."""
-    ratio, support = fai.pay_concept_ratio(*_reporting_jobs(5, measured))
+    jobs = _reporting_jobs(5, measured)
+    ratio, support = fai.pay_concept_ratio(*jobs, household_sources=jobs[0])
     assert support == 5 and ratio == pytest.approx(used)
     with pytest.raises(ValueError, match="lies outside"):
-        fai.pay_concept_ratio(*_reporting_jobs(10, 1.5))
+        jobs = _reporting_jobs(10, 1.5)
+        fai.pay_concept_ratio(*jobs, household_sources=jobs[0])
 
 
 @pytest.mark.parametrize("key", ["pay_concept_ratio", "annual_over_current_earners"])

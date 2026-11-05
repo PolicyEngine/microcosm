@@ -31,15 +31,25 @@ marks the outputs that rest on the tape
 from __future__ import annotations
 
 import math
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping
 from pathlib import Path
 from typing import Any
 
 import numpy as np
+import pandas as pd
 
-#: The lineage a stage receipt counts distinct support by: support copies
-#: repeat their source household, so a cell is counted in sources, not rows.
-SOURCE_HOUSEHOLD_COLUMN = "household_source_id"
+from microcosm.build.source_lineage import record_sources
+from microcosm.build.uk_runtime.household_lineage import UK_COPY_LINEAGE
+from microcosm.build.uk_runtime.national_frame import UK_NATIONAL_SCHEMA
+from microcosm.frame.concepts import SOURCE_HOUSEHOLD_ID_COLUMN
+
+#: The lineage a stage receipt counts distinct support by: every copy and
+#: clone keeps the survey household it was made from, its true source, so a
+#: cell is counted in survey households, not rows (microcosm#931). The support
+#: channel's immediate parent, ``household_source_id``, is lineage the
+#: executor reads and never a count's key: a copy made from a clone names the
+#: clone there.
+SOURCE_HOUSEHOLD_COLUMN = SOURCE_HOUSEHOLD_ID_COLUMN
 #: CD171's absolute floor in distinct source households: a figure resting on
 #: fewer is withheld, with any figure that gives it back by difference
 #: (María's ruling of 2026-10-29 moved every output from ten to it).
@@ -51,25 +61,60 @@ UK_BELOW_TEN_BAND = f"{UK_DISCLOSURE_FLOOR}-9"
 
 
 def source_household_ids(household: Any, *, stage: str) -> np.ndarray:
-    """Every household row's source household, for a receipt's support counts.
+    """Every household row's true source household, for a receipt's counts.
 
-    A table without the column is refused, and so is one with a null in it: a
-    null drops out of a distinct count or counts as one source, so a cell
-    would read fewer sources than it rests on.
+    The household table's rows by :func:`record_source_households`' rule.
     """
 
-    if SOURCE_HOUSEHOLD_COLUMN not in household.columns:
-        raise ValueError(
-            f"{stage} counts support by {SOURCE_HOUSEHOLD_COLUMN!r}, which the "
-            "frame does not carry."
+    return record_source_households({"household": household}, "household", stage=stage)
+
+
+def record_source_households(
+    tables: Mapping[str, pd.DataFrame] | Any,
+    entity: str,
+    *,
+    stage: str,
+    before_copies: bool = False,
+) -> np.ndarray:
+    """Every ``entity`` row's true source household: the key a floor counts.
+
+    ``tables`` is a frame or its tables by entity. A household reads its own
+    ``source_household_id``, a person its household's, and a benefit unit the
+    household its members share, through the shared reader
+    (``microcosm.build.source_lineage.record_sources``) on the UK's copy
+    lineage. A frame without the column is refused, and so is a null source:
+    it drops out of a distinct count, so a cell would read fewer sources than
+    it rests on. A stage that runs before the SPI support channel, the first
+    copying step, says so with ``before_copies``: no row is a copy yet, so
+    each household is its own source and its id serves, unless the frame
+    already carries copy lineage.
+    """
+
+    if not isinstance(tables, Mapping):
+        tables = {name: tables.table(name) for name in UK_NATIONAL_SCHEMA.entities}
+    try:
+        return record_sources(
+            tables,
+            UK_NATIONAL_SCHEMA,
+            entity,
+            UK_COPY_LINEAGE,
+            before_copies=before_copies,
         )
-    ids = household[SOURCE_HOUSEHOLD_COLUMN]
-    if ids.isna().any():
+    except ValueError as error:
         raise ValueError(
-            f"{stage} counts support by {SOURCE_HOUSEHOLD_COLUMN!r}, which is null "
-            "on some rows: every row needs its source household."
-        )
-    return ids.to_numpy()
+            f"{stage} counts support by true source households: {error}"
+        ) from error
+
+
+def own_source_households(person: pd.DataFrame) -> np.ndarray:
+    """Each person's own household as its true source: the rule before copies.
+
+    For a caller that holds a person table without the frame's lineage, as
+    every household is its own source before the SPI support channel copies
+    any; a frame with copies counts through :func:`record_source_households`.
+    """
+
+    return person[UK_NATIONAL_SCHEMA.membership_column("household")].to_numpy()
 
 
 def distinct_count(

@@ -15,12 +15,14 @@ from collections.abc import Sequence
 import numpy as np
 import pandas as pd
 
+from microcosm.build.source_lineage import CopyBranch, CopyLineage
 from microcosm.build.uk_runtime.rowwise_dataset import ladder_clone_index_column
 
 __all__ = [
     "GEOGRAPHIC_SUPPORT_BRANCH",
     "HIGH_VALUE_SUPPORT_COPY_COLUMN",
     "HIGH_VALUE_SUPPORT_INDEX_COLUMN",
+    "UK_COPY_LINEAGE",
     "UK_HOUSEHOLD_LINEAGE_COLUMNS",
     "uk_household_clone_paths",
 ]
@@ -52,6 +54,41 @@ UK_OPTIONAL_LINEAGE_COLUMNS: tuple[str, ...] = (
 GEOGRAPHIC_SUPPORT_BRANCH = "geographic_support"
 _BASE_SUPPORT_CHANNEL = "frs"
 _SPI_SUPPORT_CHANNEL = "spi"
+#: The UK's copy lineage for the shared readers in
+#: ``microcosm.build.source_lineage``: every copy's true source is
+#: ``source_household_id``, and its copying steps are the clone path's
+#: branches below, in path order.
+UK_COPY_LINEAGE = CopyLineage(
+    entity="household",
+    branches=(
+        CopyBranch(
+            "spi_support_channel",
+            index="household_support_clone_index",
+            marker="household_support_channel",
+            copy=_SPI_SUPPORT_CHANNEL,
+            original=_BASE_SUPPORT_CHANNEL,
+        ),
+        CopyBranch(
+            "cgt_support_split",
+            index="cgt_support_copy_index",
+            marker="household_is_cgt_support_copy",
+        ),
+        CopyBranch(
+            "high_value_support",
+            index=HIGH_VALUE_SUPPORT_INDEX_COLUMN,
+            marker=HIGH_VALUE_SUPPORT_COPY_COLUMN,
+        ),
+        CopyBranch("cgt_incidence_clone", marker="household_is_capital_gains_clone"),
+        CopyBranch(
+            "cgt_residential_split",
+            index="cgt_residential_clone_index",
+            marker="household_is_cgt_residential_clone",
+        ),
+        CopyBranch(
+            GEOGRAPHIC_SUPPORT_BRANCH, index=ladder_clone_index_column("household")
+        ),
+    ),
+)
 
 
 def _require_bool(series: pd.Series, column: str) -> None:

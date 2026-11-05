@@ -17,7 +17,7 @@ ceilings: a ceiling on the dropped share sums published values, so a scope
 never mixes units. A scope's ``unit`` is the one its targets' contract
 measurements give (:func:`uk_support_floor_target_unit`). On a built frame, a
 row in a scope whose matrix row reaches no source household
-(``household_source_id``) with a positive prior weight is dropped, not pooled;
+(``source_household_id``) with a positive prior weight is dropped, not pooled;
 each target's dropped published total is reported. The run refuses outside the
 block's approval window, when a scope's ``unit`` is not its targets' unit
 (:func:`assert_uk_support_floor_units`), when a scope's dropped rows pass
@@ -51,8 +51,11 @@ UK_SUPPORT_FLOOR_KEY = "support_floor"
 UK_SUPPORT_FLOOR_VALUE = 1
 UK_SUPPORT_FLOOR_KIND = "support_floor"
 UK_SUPPORT_FLOOR_METRIC = "distinct_source_households_with_positive_prior_weight"
-#: The spine household each row was built from; every clone shares it.
-UK_SUPPORT_LINEAGE_COLUMN = "household_source_id"
+#: The survey household each row was built from, its true source: every copy
+#: and clone shares it. The receipts' column (``receipt_counts.
+#: SOURCE_HOUSEHOLD_COLUMN``), named here because the target kernels hash this
+#: module and not that one; a test holds the two equal (microcosm#931).
+UK_SUPPORT_LINEAGE_COLUMN = "source_household_id"
 _FIELDS = (
     "metric",
     "floor",
@@ -352,15 +355,26 @@ def load_uk_support_floor_declaration(
 
 
 def uk_household_source_ids(frame: Any) -> np.ndarray:
-    """The source household of each household column, or refuse."""
+    """The true source household of each household column, or refuse.
+
+    A frame without the column, or with a null in it, is refused: a null
+    drops out of the distinct count, so a row would read less support than it
+    has.
+    """
 
     household = frame.table("household")
     if UK_SUPPORT_LINEAGE_COLUMN not in household:
         raise ValueError(
-            f"The UK support floor counts source households, and the frame has "
-            f"no household.{UK_SUPPORT_LINEAGE_COLUMN} column."
+            f"The UK support floor counts true source households, and the frame "
+            f"has no household.{UK_SUPPORT_LINEAGE_COLUMN} column."
         )
-    return household[UK_SUPPORT_LINEAGE_COLUMN].to_numpy()
+    sources = household[UK_SUPPORT_LINEAGE_COLUMN]
+    if sources.isna().any():
+        raise ValueError(
+            f"The UK support floor counts true source households, and "
+            f"household.{UK_SUPPORT_LINEAGE_COLUMN} is null on some rows."
+        )
+    return sources.to_numpy()
 
 
 def uk_row_support(

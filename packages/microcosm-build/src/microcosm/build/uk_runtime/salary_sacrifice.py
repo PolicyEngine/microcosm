@@ -43,8 +43,8 @@ from microcosm.build.uk_runtime.qrf_gates import (
 )
 from microcosm.build.uk_runtime.receipt_counts import (
     distinct_count,
+    record_source_households,
     small_cell_share,
-    source_household_ids,
     support_band,
 )
 from microcosm.build.uk_runtime.spi_support import support_channel_column
@@ -379,7 +379,7 @@ def draw_spi_bonuses(
     groups = [[cell] for cell in range(len(edges) + 1)]
 
     def donor_sources(group: list[int]) -> int:
-        return len(pd.unique(sources[paid_donors & np.isin(raw_cells, group)]))
+        return distinct_count(sources, paid_donors & np.isin(raw_cells, group))
 
     position = len(groups) - 1
     while len(groups) > 1 and position >= 0:
@@ -733,12 +733,11 @@ def impute_salary_sacrifice(
             f"{bonus_resource['data_year']}, but the frame's period is "
             f"{uk_time_period(frame)!r}."
         )
-    source_ids = person_households.map(
-        pd.Series(
-            source_household_ids(household, stage="The salary-sacrifice stage"),
-            index=household["household_id"].to_numpy(),
-        )
-    ).to_numpy()
+    source_ids = record_source_households(
+        {"person": person, "household": household},
+        "person",
+        stage="The salary-sacrifice stage",
+    )
     spi_draw = draw_spi_bonuses(
         bonus=bonus_source,
         employment_income=employment_income,
