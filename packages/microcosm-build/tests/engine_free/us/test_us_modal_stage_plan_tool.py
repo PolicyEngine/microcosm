@@ -3452,43 +3452,31 @@ def _status_output_with_an_extra_field(depth: int) -> str:
     return f'{printed[:-3]}, "extra": {nested}}}]}}'
 
 
-def _deepest_extra_field_the_parser_accepts() -> int:
-    low, high = 1, 1_000_000
-    while low < high:
-        middle = (low + high + 1) // 2
-        try:
-            json.loads(_status_output_with_an_extra_field(middle))
-        except RecursionError:
-            high = middle - 1
-        else:
-            low = middle
-    return low
+@pytest.mark.parametrize(("depth", "recorded"), [(32, True), (33, False)])
+def test_runs_with_a_field_nested_deeper_than_32_levels_are_recorded_as_a_problem(
+    depth: int, recorded: bool
+) -> None:
+    """The runs are kept as printed, but none nested more than 32 levels deep.
 
-
-def test_runs_nested_deeper_than_a_receipt_can_hold_are_recorded_as_a_problem() -> None:
-    """Runs the parser accepts but the receipt cannot be written with.
-
-    ``status``'s runs are recorded as printed, extra fields included. A field
-    nested just under the parser's limit is accepted, but the receipt holds
-    the runs four objects deeper, and writing it (after the mirror) then fails
-    on Python 3.13 and 3.14: the stage would get no receipt.
+    The receipt holds the runs six levels deeper and is written with indented
+    JSON, whose memory grows with the square of the depth: a field nested
+    tens of thousands of levels deep, which the parser accepts, would take
+    gigabytes to write, or fail to and leave no receipt. ``status`` prints
+    flat fields, so a bound of 32 refuses nothing it prints.
     """
 
-    stdout = _status_output_with_an_extra_field(
-        _deepest_extra_field_the_parser_accepts() - 1
-    )
-    runs = json.loads(stdout)["runs"]
-    with pytest.raises(RecursionError):
-        json.dumps(
-            {"runner": {"telemetry": {"undelivered_events": {"runs": runs}}}},
-            indent=2,
-        )
+    stdout = _status_output_with_an_extra_field(depth)
 
-    assert plan_lib.undelivered_events_from_status(0, stdout, "") == {
-        "runs": None,
-        "problem": "`microcosm-emitter status` exited 0 but printed runs nested "
-        "too deeply for the receipt",
-    }
+    record = plan_lib.undelivered_events_from_status(0, stdout, "")
+
+    if recorded:
+        assert record == {"runs": json.loads(stdout)["runs"], "problem": None}
+    else:
+        assert record == {
+            "runs": None,
+            "problem": "`microcosm-emitter status` exited 0 but printed runs "
+            "nested more than 32 levels deep",
+        }
 
 
 def test_deeply_nested_output_is_recorded_as_a_problem(
