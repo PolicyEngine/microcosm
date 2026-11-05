@@ -12,6 +12,7 @@ import collections
 import copy
 import dataclasses
 import hashlib
+import importlib.util
 import inspect
 import json
 import math
@@ -22,7 +23,7 @@ import sys
 import time
 import uuid
 from datetime import UTC, datetime
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
@@ -529,6 +530,63 @@ def test_the_image_is_not_defined_without_a_usable_emitter_floor(
 
     with pytest.raises(plan_lib.PlanError, match="minimum_emitter_version.json"):
         plan_lib.image_build_commands(plan)
+
+
+def _import_plan_module_copy(path: Path, monkeypatch):
+    """Import the plan module at ``path`` as the container imports its copy."""
+
+    name = "modal_us_stage_plan_image_copy"
+    spec = importlib.util.spec_from_file_location(name, path)
+    module = importlib.util.module_from_spec(spec)
+    assert spec.loader is not None
+    # dataclasses resolve string annotations through sys.modules.
+    monkeypatch.setitem(sys.modules, name, module)
+    spec.loader.exec_module(module)
+    return module
+
+
+def test_the_check_in_the_container_reports_the_emitter_floor_the_image_was_built_with(
+    app, monkeypatch, tmp_path: Path
+) -> None:
+    """The container's plan module is the copy the image adds, without a checkout.
+
+    The check (``check_stage``) runs there and calls ``summarize``, which
+    builds the image's install step. That must name the release the image
+    was built with: the launching checkout's, as the app defined the image.
+    """
+
+    version_file = tmp_path / "launching-checkout" / "minimum_emitter_version.json"
+    version_file.parent.mkdir()
+    version_file.write_text('{"minimum_emitter_version": "9.8.7"}\n')
+    monkeypatch.setattr(plan_lib, "MINIMUM_EMITTER_VERSION_FILE", version_file)
+    data = _plan_data()
+    monkeypatch.setattr(app, "_LOADED", (data, plan_lib.parse_plan(data)))
+    modal = sys.modules["modal"]
+    modal.reset_mock()
+    app._image()
+
+    # What the image adds, all of it beside the plan module's copy, copied
+    # into a directory with no checkout around it.
+    container_root = tmp_path / "container-root"
+    container_root.mkdir()
+    beside = PurePosixPath(app.PLAN_MODULE_REMOTE).parent
+    added = [
+        entry.args for entry in modal.mock_calls if entry[0].endswith("add_local_file")
+    ]
+    for local, remote in added:
+        assert PurePosixPath(remote).parent == beside
+        shutil.copyfile(local, container_root / PurePosixPath(remote).name)
+    copy_of_the_module = _import_plan_module_copy(
+        container_root / PurePosixPath(app.PLAN_MODULE_REMOTE).name, monkeypatch
+    )
+
+    summary = copy_of_the_module.summarize(copy_of_the_module.parse_plan(data))
+
+    assert [
+        command
+        for command in summary["image_build_commands"]
+        if "uv tool install" in command
+    ] == ["UV_TOOL_BIN_DIR=/usr/local/bin uv tool install 'microcosm-emitter>=9.8.7'"]
 
 
 def test_the_app_never_runs_an_emitter_installed_where_the_image_puts_it(
@@ -3103,9 +3161,9 @@ def test_a_stage_whose_plan_opts_out_runs_without_a_token(
 # The image emitter's `status`, after the tool ----------------------------- #
 
 # A stand-in tool that finishes at once and leaves, in its own session, a
-# process that holds its output for 2 s and then writes a marker file: the
-# place of the emitter a build starts, which delivers its last events after
-# the build exits.
+# process that holds its standard error for 2 s and then writes a marker
+# file: the place of the emitter a build starts, which delivers its last
+# events after the build exits.
 _EMITTER_HOLDER_TOOL = """\
 import pathlib, subprocess, sys
 state, marker = pathlib.Path(sys.argv[1]), sys.argv[2]
@@ -3115,7 +3173,14 @@ hold = (
     "import pathlib, sys, time; time.sleep(2); "
     "pathlib.Path(sys.argv[1]).write_text('finished')"
 )
-subprocess.Popen([sys.executable, "-c", hold, marker], start_new_session=True)
+# Like the emitter host the interface starts: in its own session, with its
+# standard output sent nowhere, so it holds the runner's pipe only through
+# the standard error it inherits.
+subprocess.Popen(
+    [sys.executable, "-c", hold, marker],
+    start_new_session=True,
+    stdout=subprocess.DEVNULL,
+)
 print("tool done", flush=True)
 """
 
@@ -3346,6 +3411,26 @@ def test_a_problem_line_is_one_bounded_line(
     assert len(problem) == 300
     assert problem.endswith("…")
     assert not {"\n", "\r", "\t"} & set(problem)
+
+
+def test_deeply_nested_output_is_recorded_as_a_problem(
+    status_runner, tmp_path: Path, monkeypatch
+) -> None:
+    # Nested deeper than Python's JSON parser recurses (RecursionError).
+    depth = 1_000_000
+    _install_status_emitter(monkeypatch, tmp_path, stdout="[" * depth + "]" * depth)
+
+    try:
+        receipt = status_runner._run_stage(_fake_plan(max_wall_seconds=600))
+    except RecursionError:
+        pytest.fail("deeply nested output from status ended the attempt")
+
+    assert receipt["runner"]["telemetry"]["undelivered_events"] == {
+        "runs": None,
+        "problem": "`microcosm-emitter status` exited 0 but did not print its "
+        "JSON list of runs",
+    }
+    assert receipt["status"] == "COMPLETED"
 
 
 def test_the_receipt_records_a_status_that_hangs_or_cannot_start(

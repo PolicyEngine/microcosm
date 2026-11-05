@@ -75,6 +75,39 @@ client.close()
 (pathlib.Path(state) / "out").mkdir(parents=True, exist_ok=True)
 (pathlib.Path(state) / "out" / "result.txt").write_text("done\\n")
 """
+#: A tool that starts the emitter the same way, writes the emitter host's
+#: process ID to a file, records two stages and exits at once, without
+#: finishing its run or closing the emitter, as a build that is killed does.
+#: The emitter notices its parent's exit only afterwards, records the run's
+#: failure and stops.
+_UNFINISHED_TOOL = """\
+import os, pathlib, sys
+
+state, site_packages, collector, run_id, producer_id, pid_file = sys.argv[1:7]
+sys.path.insert(0, site_packages)
+from microcosm_emitter_interface import EmitterClient, TelemetryRun, TelemetrySettings
+
+run = TelemetryRun(
+    run_id=run_id,
+    country_code="US",
+    pipeline="installed_emitter_status",
+    producer_id=producer_id,
+)
+client = EmitterClient.start(
+    telemetry=TelemetrySettings(
+        run=run, development_collector_url=collector, heartbeat_seconds=3600
+    )
+)
+if not client.available:
+    sys.exit("the installed emitter did not start")
+pathlib.Path(pid_file).write_text(str(client._process.process.pid))
+client.telemetry.stage("first_stage")
+client.telemetry.stage("second_stage")
+(pathlib.Path(state) / "out").mkdir(parents=True, exist_ok=True)
+(pathlib.Path(state) / "out" / "result.txt").write_text("done\\n")
+sys.stdout.flush()
+os._exit(0)
+"""
 #: A tool that leaves a file that is not an event queue file where the
 #: emitter would keep one, and starts no emitter.
 _UNUSABLE_FILE_TOOL = """\
@@ -150,6 +183,67 @@ def test_the_runner_records_the_events_the_installed_emitter_still_holds(
     assert receipt["status"] == "COMPLETED"
     undelivered = receipt["runner"]["telemetry"]["undelivered_events"]
     assert undelivered == {
+        "runs": [
+            {
+                "run_id": RUN_ID,
+                "producer_id": PRODUCER_ID,
+                "upload_state": "local_only",
+                "reason": "missing_huggingface_credential",
+                "undelivered_events": 4,
+            }
+        ],
+        "problem": None,
+    }
+
+
+def _process_exists(pid: int) -> bool:
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    return True
+
+
+def test_the_runner_asks_for_status_only_once_the_build_s_emitter_has_exited(
+    runner, monkeypatch, tmp_path: Path
+) -> None:
+    """The emitter host holds the tool's output, which the runner reads to its end.
+
+    The interface starts the host in its own session with its standard
+    output sent nowhere, so only the standard error it inherits holds the
+    runner's pipe; this test fails if a change there let the runner ask for
+    ``status`` while the host was still running.
+    """
+
+    pid_file = tmp_path / "emitter-host.pid"
+    app = runner(
+        _tool(
+            _UNFINISHED_TOOL,
+            _SITE_PACKAGES,
+            _closed_loopback_origin(),
+            RUN_ID,
+            PRODUCER_ID,
+            str(pid_file),
+        )
+    )
+    runner_s_own_status = app._emitter_status
+    host_running_when_asked = []
+
+    def status(env: dict[str, str]) -> dict:
+        host_running_when_asked.append(_process_exists(int(pid_file.read_text())))
+        return runner_s_own_status(env)
+
+    monkeypatch.setattr(app, "_emitter_status", status)
+
+    receipt = app._run_stage(_opted_out_plan())
+
+    assert receipt["status"] == "COMPLETED"
+    assert host_running_when_asked == [False]
+    # The run's start, its two stages and the failure the emitter records
+    # once it notices the build has gone.
+    assert receipt["runner"]["telemetry"]["undelivered_events"] == {
         "runs": [
             {
                 "run_id": RUN_ID,

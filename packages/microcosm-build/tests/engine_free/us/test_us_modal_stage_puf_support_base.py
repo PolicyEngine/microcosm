@@ -2307,6 +2307,8 @@ def test_write_probe_verdict_sizes_the_mirror_against_the_reserve() -> None:
     assert "problem" not in fast
     assert fast["mirror_reserve_seconds"] == reserve == 1560
     assert fast["receipt_reserve_seconds"] == 120
+    # The 60 s kept for the image emitter's `status` is reported too.
+    assert fast.get("emitter_status_reserve_seconds") == 60
     slow = plan_lib.write_probe_verdict(stage, gib, gib / (floor * 0.99))
     assert "more than the 1560s the runner keeps for the mirror" in slow["problem"]
     # The runbook's one measured volume rate (reads, at least 58 MB/s) fits.
