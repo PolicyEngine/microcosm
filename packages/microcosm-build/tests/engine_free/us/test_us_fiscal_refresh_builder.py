@@ -7310,6 +7310,7 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
             facts=({"fact": 1},),
             facts_sha256="facts-sha",
             manifest_sha256=None,
+            fact_schema_versions=(),
             provenance=lambda: {
                 "path_name": "facts.jsonl",
                 "fact_row_count": 1,
@@ -16791,6 +16792,54 @@ def test_committed_feed_pin_is_waived_only_by_the_flag() -> None:
         ).allow_unpinned_feed
         is True
     )
+
+
+@pytest.mark.parametrize(
+    ("facts_sha256", "rows", "message"),
+    [
+        ("a" * 64, ("chronicle.consumer_fact.v6",), "['chronicle.consumer_fact.v6']"),
+        ("a" * 64, ("chronicle.consumer_fact.v5",), "consumer_fact_schema_versions"),
+        ("a" * 64, (), "consumer_fact_schema_versions"),
+        ("f" * 64, ("chronicle.consumer_fact.v6",), "['chronicle.consumer_fact.v6']"),
+    ],
+    ids=["undeclared", "not_in_the_pin", "unstamped", "undeclared_unpinned_feed"],
+)
+def test_feed_row_contract_check_refuses_rows_the_pin_or_epoch_lacks(
+    facts_sha256, rows, message
+) -> None:
+    """The release build holds the rows' row contracts, not only the pin's list.
+
+    On the committed feed (its facts digest) the rows must carry exactly the
+    pin's list, which a re-pin types by hand; a feed admitted by
+    ``--allow-unpinned-feed`` is held only to the declared row contracts.
+    """
+    builder = _load_builder_module()
+    check = getattr(builder, "_check_us_ledger_feed_row_contracts", None)
+    assert callable(check)
+    bare = _feed_pin(bare=True)
+    assert bare.consumer_fact_schema_versions == ("chronicle.consumer_fact.v3",)
+    check(("chronicle.consumer_fact.v3",), facts_sha256="a" * 64, pin=bare)
+    check(("chronicle.consumer_fact.v5",), facts_sha256="f" * 64, pin=bare)
+
+    with pytest.raises(ValueError) as refusal:
+        check(rows, facts_sha256=facts_sha256, pin=bare)
+
+    assert message in str(refusal.value)
+
+
+def test_main_checks_the_feed_row_contracts_before_compiling_targets() -> None:
+    builder = _load_builder_module()
+    source = inspect.getsource(builder._main)
+    call = (
+        "_check_us_ledger_feed_row_contracts(\n"
+        "        ledger_artifact.fact_schema_versions,"
+    )
+    assert call in source
+    assert source.count("_check_us_ledger_feed_row_contracts(") == 1
+    pinned = source.index("_check_committed_us_ledger_feed_pin(")
+    checked = source.index(call)
+    compiled = source.index("target_registry = compile_us_fiscal_target_registry(")
+    assert pinned < checked < compiled
 
 
 def _minimal_pin_argv() -> list[str]:

@@ -2,6 +2,7 @@
 
 import hashlib
 import json
+import re
 from dataclasses import replace
 from datetime import date
 from types import SimpleNamespace
@@ -39,12 +40,16 @@ def prepared(monkeypatch):
     local = _registry("local")
     calls = []
     artifact = SimpleNamespace(
-        facts=({"test": True},), facts_sha256="a" * 64, manifest_sha256="b" * 64
+        facts=({"test": True},),
+        facts_sha256="a" * 64,
+        manifest_sha256="b" * 64,
+        fact_schema_versions=("chronicle.consumer_fact.v4",),
     )
     pin = SimpleNamespace(
         facts_sha256=artifact.facts_sha256,
         manifest_sha256=artifact.manifest_sha256,
         fact_row_count=1,
+        consumer_fact_schema_versions=("chronicle.consumer_fact.v4",),
         to_dict=lambda: {
             "facts_sha256": artifact.facts_sha256,
             "manifest_sha256": artifact.manifest_sha256,
@@ -113,6 +118,33 @@ def _load(**kwargs):
         exclusions_evaluated_on=date(2026, 9, 10),
         **kwargs,
     )
+
+
+@pytest.mark.parametrize(
+    ("rows", "message"),
+    [
+        (("chronicle.consumer_fact.v6",), "['chronicle.consumer_fact.v6']"),
+        (
+            ("chronicle.consumer_fact.v4", "chronicle.consumer_fact.v5"),
+            "consumer_fact_schema_versions",
+        ),
+        ((), "consumer_fact_schema_versions"),
+    ],
+    ids=["undeclared", "not_in_the_pin", "unstamped"],
+)
+def test_full_inputs_hold_the_rows_row_contracts_to_the_pin(prepared, rows, message):
+    """The committed feed's rows must carry exactly the pin's declared row contracts.
+
+    The pin's list is typed by hand at a re-pin, so a feed whose digests match
+    the pin is also held to it by the row contracts its rows actually carry.
+    """
+    _national, _approved, _local, artifact, calls = prepared
+    artifact.fact_schema_versions = rows
+
+    with pytest.raises(ValueError, match=re.escape(message)):
+        _load()
+
+    assert calls == []
 
 
 def test_full_inputs_preserve_band_edges_and_validation_periods(prepared):
@@ -427,12 +459,65 @@ def _with_region_rows(*names):
     return TargetRegistry([*plain.specs, *region.specs], country="uk"), plain
 
 
+@pytest.mark.parametrize(
+    ("pinned_feed", "rows", "message"),
+    [
+        (True, ("chronicle.consumer_fact.v6",), "['chronicle.consumer_fact.v6']"),
+        (True, ("chronicle.consumer_fact.v5",), "consumer_fact_schema_versions"),
+        (False, ("chronicle.consumer_fact.v6",), "['chronicle.consumer_fact.v6']"),
+    ],
+    ids=["undeclared", "not_in_the_pin", "undeclared_unpinned_feed"],
+)
+def test_the_national_role_holds_the_rows_row_contracts(
+    monkeypatch, pinned_feed, rows, message
+):
+    """The national role refuses rows on a row contract the pin or epoch lacks.
+
+    On the committed feed the rows must carry the pin's list. A feed admitted
+    by ``--allow-unpinned-feed`` is another artifact, so its rows are held only
+    to the declared row contracts.
+    """
+    pin = SimpleNamespace(
+        facts_sha256="a" * 64,
+        manifest_sha256="b" * 64,
+        consumer_fact_schema_versions=("chronicle.consumer_fact.v4",),
+        to_dict=lambda: {},
+    )
+    artifact = SimpleNamespace(
+        facts=({"feed": True},),
+        facts_sha256=pin.facts_sha256 if pinned_feed else "c" * 64,
+        manifest_sha256=pin.manifest_sha256,
+        fact_schema_versions=rows,
+        provenance=lambda: {"artifact_id": "synthetic"},
+    )
+    monkeypatch.setattr(
+        runtime, "load_ledger_consumer_artifact", lambda *a, **kw: artifact
+    )
+    monkeypatch.setattr(
+        runtime, "require_committed_uk_chronicle_feed_pin", lambda *a, **kw: pin
+    )
+
+    def compile_national(facts, *, target_period):
+        raise AssertionError("the rows reached target compilation")
+
+    monkeypatch.setattr(runtime, "compile_uk_target_registry", compile_national)
+
+    with pytest.raises(ValueError, match=re.escape(message)):
+        runtime.load_uk_national_target_inputs(
+            "facts.jsonl",
+            calibration_year=2025,
+            exclusions_evaluated_on=date(2026, 10, 16),
+            allow_unpinned_feed=not pinned_feed,
+        )
+
+
 def test_the_national_line_drops_local_only_rows_before_reconciliation(monkeypatch):
     compiled, plain = _with_region_rows("retained", "excluded")
     artifact = SimpleNamespace(
         facts=({"feed": True},),
         facts_sha256="a" * 64,
         manifest_sha256="b" * 64,
+        fact_schema_versions=("chronicle.consumer_fact.v4",),
         provenance=lambda: {"artifact_id": "synthetic"},
     )
     monkeypatch.setattr(
@@ -441,7 +526,11 @@ def test_the_national_line_drops_local_only_rows_before_reconciliation(monkeypat
     monkeypatch.setattr(
         runtime,
         "require_committed_uk_chronicle_feed_pin",
-        lambda facts_sha256, **kwargs: SimpleNamespace(to_dict=lambda: {}),
+        lambda facts_sha256, **kwargs: SimpleNamespace(
+            facts_sha256=facts_sha256,
+            consumer_fact_schema_versions=("chronicle.consumer_fact.v4",),
+            to_dict=lambda: {},
+        ),
     )
     compiled_facts = []
 

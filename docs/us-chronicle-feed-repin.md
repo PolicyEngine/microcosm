@@ -13,6 +13,32 @@ any other feed, and `test_us_chronicle_feed.py` fails if the parity resources,
 the generator and the pin disagree, or if the scope file changes without a
 new pin.
 
+## A re-pin onto a newer row contract
+
+The US feed is on `chronicle.consumer_fact.v3`; Chronicle `main` writes
+`chronicle.consumer_fact.v5` since PolicyEngine/chronicle#377. The US pin
+loader refuses a pin whose `consumer_fact_schema_versions` names a row contract
+that `microcosm.build.chronicle_epoch` does not declare (microcosm#1509). The
+pin describes a bare feed, so the full feed-pin check cannot run on it;
+instead the fiscal-refresh release tool and `tools/build_us_target_parity_manifest.py`,
+after their digest checks, refuse rows on an undeclared row contract and, on
+the committed feed, rows whose contracts are not exactly the pin's list
+(`require_us_chronicle_feed_row_contracts`). So set the list from the rebuilt
+feed's rows at a re-pin: `tools/build_us_chronicle_feed.py` does not write it,
+and the parity generator, which the rebuild runs, refuses a stale list. v5 is
+declared, and its schema digest is `acd33a09…`.
+
+v5 rows may carry `package_dimension_value_labels`, a package's own wording of
+a value where it differs from Chronicle's label. The congressional-district
+vintage translation (`us_runtime/congressional_district_vintage.py`:
+`_translated_fact_shell` and `_state_total_proxy_source_district_fact`) copies
+each source row whole and rewrites only the geography, the layout and the
+group-by entry of `dimension_value_labels`. So after a re-pin onto v5, a
+derived district row keeps any package wording keyed by the source row's value
+ids (the 118th-Congress district, or the state row's value), not the derived
+row's. No code reads the field, so no label, value or refusal changes; v4's
+`geography.publisher_name` is copied the same way.
+
 ## The 2026-11-03 re-pin: Federal Student Aid loan portfolio tables (microcosm#1074)
 
 microcosm#1357 binds Federal Student Aid's loan portfolio tables as
@@ -84,7 +110,9 @@ and `consumer_fact_schema_sha256` stays `bdb51e2a…`: Chronicle's
 `policyengine_chronicle/schemas/consumer_fact.v3.schema.json`, the file
 whose bytes that field hashes (`policyengine_chronicle/schema.py:59-70`), is
 identical at `a9026cc` and `41b2fb2b`. The US loader carries a row's stamp
-without gating on it (`ledger_artifact.py`, `_load_fact_rows`).
+without checking it (`ledger_artifact.py`, `_load_fact_rows`); since
+microcosm#1509 the release tool and the target-parity tool check the stamps
+against the pin (see "A re-pin onto a newer row contract").
 
 The B4923C anchor test follows the committed re-pin reports to the pin
 (`test_us_esi_premiums.py`). A report may now add rows when it names a

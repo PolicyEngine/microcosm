@@ -587,7 +587,7 @@ def test_relation_manifest_validation(tmp_path, monkeypatch, field, value, match
         ("scalar", TypeError, "list of relation manifests"),
         ("duplicate", ValueError, "repeats a compiled relation key"),
         ("missing", ValueError, "manifests require exactly"),
-        ("views", NotImplementedError, "views are not supported"),
+        ("views", ValueError, "at least one view"),
     ],
 )
 def test_relation_declaration_refuses_ambiguous_or_future_shapes(

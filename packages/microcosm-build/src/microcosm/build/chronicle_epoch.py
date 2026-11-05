@@ -88,6 +88,7 @@ __all__ = [
     "MICROCOSM_CONSUMER_ARTIFACT_SCHEMA_VERSION",
     "PUBLISHED_CONSUMER_ARTIFACT_SCHEMA_VERSION",
     "UNDECLARED",
+    "UndeclaredConsumerFactSchemaVersionError",
     "consumer_artifact_schema_epoch",
     "consumer_fact_schema_epoch",
     "declared_identity",
@@ -101,6 +102,7 @@ __all__ = [
     "is_accepted_consumer_fact_schema_version",
     "is_chronicle_fact_key",
     "parse_fact_key",
+    "require_accepted_consumer_fact_schema_versions",
     "row_fact_key_epochs",
 ]
 
@@ -207,16 +209,20 @@ CHRONICLE_CONSUMER_ARTIFACT_SCHEMA_VERSION = (
 #: The per-row consumer-fact ``schema_version`` Chronicle stamped before
 #: chronicle#261, its chronicle-era successor (the v2 row adds the dimension
 #: and value labels), the v3 row chronicle#266 (PR #267) added (the v2 row
-#: plus the publisher's ``geography.name``), the v4 row chronicle#281 (PR #282)
-#: added (the v3 row with ``geography.name`` resolved to one spelling per
-#: identifier where Chronicle's register carries it, the publisher's own text
-#: moving to an optional ``geography.publisher_name``), and the v5 row
-#: chronicle#376 (PR #377) emits today: the v4 row with each dimension value's
-#: label taken from Chronicle's register where it carries the value, the source
-#: package's own wording moving to an optional
-#: ``package_dimension_value_labels``. Every declared row contract keeps
-#: loading; the names and the labels are display metadata and never enter a
-#: fact key, so the keys of a v5 row are the v2 bytes.
+#: plus the publisher's ``geography.name``), the v4 row chronicle#281 (PR
+#: #282) added (the v3 row with ``geography.name`` resolved to one spelling
+#: per identifier where Chronicle's register carries it, the publisher's own
+#: text moving to an optional ``geography.publisher_name``), and the v5 row
+#: chronicle#376 (PR #377, merged as 44eebe037) emits today: the v4 row with
+#: ``dimension_value_labels`` and ``layout.groupby_value_label`` carrying the
+#: one label Chronicle's register gives each dimension value, and an optional
+#: ``package_dimension_value_labels`` keeping a source package's own wording
+#: where it differs. Microcosm never takes a label from that field
+#: (:mod:`microcosm.build.ledger_targets` checks only its shape). Every
+#: declared row contract keeps loading; the names and the labels are display
+#: metadata and never enter a fact key, so the keys of a v5 row are the v2
+#: bytes. Chronicle's own list is ``CONSUMER_FACT_ROW_CONTRACTS`` in
+#: ``chronicle/epoch.py``.
 LEDGER_CONSUMER_FACT_SCHEMA_VERSION = "ledger.consumer_fact.v1"
 CHRONICLE_CONSUMER_FACT_SCHEMA_VERSION = "chronicle.consumer_fact.v2"
 CHRONICLE_CONSUMER_FACT_SCHEMA_VERSION_V3 = "chronicle.consumer_fact.v3"
@@ -577,6 +583,69 @@ def describe_accepted_consumer_artifact_schema_versions() -> str:
 def describe_accepted_consumer_fact_schema_versions() -> str:
     """Every accepted per-row fact schema id, oldest era first, for messages."""
     return _describe(CONSUMER_FACT_SCHEMA_IDENTITY_KIND)
+
+
+class UndeclaredConsumerFactSchemaVersionError(ValueError):
+    """A Chronicle feed names a per-row row contract this module does not declare."""
+
+
+def require_accepted_consumer_fact_schema_versions(
+    versions: object, *, subject: str
+) -> None:
+    """Refuse a row-contract list unless every entry is declared here.
+
+    ``versions`` is a feed's ``consumer_fact_schema_versions``, or the
+    ``schema_version`` values its rows carry. Feed pins, the identities
+    restating them, the full feed-pin check, and the UK and US builds' checks
+    of the rows they compile call this, so a feed on a row contract Microcosm
+    has not been told about is refused until :data:`DECLARED_IDENTITIES`
+    declares it. An id outside Chronicle's namespaces is not a Chronicle row
+    contract at all, and :func:`_declare` cannot declare it, so the message
+    says so instead of advising a declaration.
+    """
+    if not isinstance(versions, (list, tuple)):
+        raise ValueError(
+            f"{subject}: consumer_fact_schema_versions must be a list of row "
+            f"contracts, got {type(versions).__name__}."
+        )
+    undeclared = [
+        version
+        for version in versions
+        if not is_accepted_consumer_fact_schema_version(version)
+    ]
+    if not undeclared:
+        return
+    declarable = [
+        version
+        for version in undeclared
+        if isinstance(version, str)
+        and version.partition(".")[0] in CHRONICLE_NAMESPACES
+    ]
+    foreign = [version for version in undeclared if version not in declarable]
+    problems = []
+    if declarable:
+        problems.append(
+            f"undeclared Chronicle row contract(s) {declarable!r}: declare "
+            f"{declarable!r} in microcosm.build.chronicle_epoch "
+            "(DECLARED_IDENTITIES) before pinning a feed on it"
+        )
+    if foreign:
+        single = len(foreign) == 1
+        problems.append(
+            f"{foreign!r} "
+            + (
+                "is not a Chronicle row contract: its namespace is"
+                if single
+                else "are not Chronicle row contracts: their namespaces are"
+            )
+            + f" not among {sorted(CHRONICLE_NAMESPACES)!r}, so "
+            "microcosm.build.chronicle_epoch cannot declare "
+            + ("it" if single else "them")
+        )
+    raise UndeclaredConsumerFactSchemaVersionError(
+        f"{subject}: " + "; ".join(problems) + ". Declared row contracts: "
+        f"{describe_accepted_consumer_fact_schema_versions()}."
+    )
 
 
 def _describe(kind: str) -> str:

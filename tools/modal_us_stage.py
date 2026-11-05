@@ -464,6 +464,13 @@ class _BudgetWatch(threading.Thread):
     The tool runs in its own process group (``process_group=0``), and the
     whole group is stopped: a tool that runs stages as child interpreters
     must not leave one running behind the hashing and mirroring.
+
+    The runner reads the tool's output to its end before it sets ``done``,
+    and the emitter a build starts (in its own session, so outside the
+    group) holds that output while it delivers its last events, for up to
+    about EMITTER_DRAIN_SECONDS after the build exits. A tool that has
+    exited and left nothing in its group finished before its budget: the
+    watch stops nothing and does not mark the stage stopped at the budget.
     """
 
     def __init__(
@@ -481,6 +488,12 @@ class _BudgetWatch(threading.Thread):
 
     def run(self) -> None:
         if self.max_wall_seconds is None or self.done.wait(self.max_wall_seconds):
+            return
+        # poll() reaps the tool first, so the group check below does not
+        # count the tool itself.
+        if self.proc.poll() is not None and not plan_lib.process_group_alive(
+            self.proc.pid
+        ):
             return
         self.fired = True
         print(f"BUDGET: stopping the tool after {self.max_wall_seconds}s", flush=True)
@@ -680,7 +693,9 @@ def check_stage(plan_data: dict) -> dict:
         problems.append(str(probe["problem"]))
 
     # The probe and the parser run in the environment the stage would get.
-    tool_env, env_removed = plan_lib.tool_environment(os.environ, plan.env)
+    tool_env, env_removed = plan_lib.tool_environment(
+        os.environ, plan.env, telemetry_run_id=plan_lib.telemetry_run_id(plan)
+    )
     report["tool_env_removed"] = env_removed
     report["python_hash_seed"] = plan_lib.hash_seed_record(
         plan.tool, os.environ, tool_env
@@ -905,10 +920,13 @@ def _attempt_stage(
 
     # 4c. The tool's environment, fixed before anything is pulled or staged:
     #     credentials and the container's PYTHONHASHSEED withheld, the Hub
-    #     offline, the plan's overrides last. An environment that would give
-    #     the tool a hash seed other than none or "0" (what Route A's local
-    #     base recorded) is refused here, cheaply.
-    env, env_removed = plan_lib.tool_environment(os.environ, plan.env)
+    #     offline, the plan's overrides last, and the stage's telemetry run
+    #     (<plan run_id>.<stage>). An environment that would give the tool a
+    #     hash seed other than none or "0" (what Route A's local base
+    #     recorded) is refused here, cheaply.
+    env, env_removed = plan_lib.tool_environment(
+        os.environ, plan.env, telemetry_run_id=plan_lib.telemetry_run_id(plan)
+    )
     hash_seed = plan_lib.hash_seed_record(plan.tool, os.environ, env)
     seed_problem = plan_lib.hash_seed_problem(env)
     if seed_problem:
