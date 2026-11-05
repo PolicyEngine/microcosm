@@ -30,6 +30,18 @@ every SPM unit (Supplemental Poverty Measure technical documentation,
 section 4.3.1) allocates resources for poverty measurement; it does not
 establish that every unit enrolled.
 
+**Known limitation of the one-unit partition.** Because each ACS housing
+unit is one SPM unit, an unrelated adult roommate (``RELSHIPP`` 34/36) who
+buys and prepares food apart, a SNAP household of their own
+(7 U.S.C. 2012(m)(1)) and a separate Census SPM unit, shares the
+recipient's unit. When ``FS == 1`` that combined unit is anchored as
+receiving SNAP and takes it up, so the roommate's income and size enter the
+recipient's SNAP test, which can change its eligibility and benefit. This is
+the loader's household fallback (microcosm#1023). The adult-nonrelative
+split that would separate such roommates (microcosm#1061) is on hold, a
+data-driven version is microcosm#1353, and the effect's size is unmeasured
+(microcosm#1093).
+
 - ``FS == 2``: every SPM unit of the household is ``False`` (hard).
 - Group quarters (``TYPEHUGQ`` 2/3) are ``False``. FS is a housing-unit item,
   and a group-quarters record that carries a code anyway is ignored and
