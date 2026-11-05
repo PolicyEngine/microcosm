@@ -137,6 +137,12 @@ BINDING_MODULES_ADDED_AFTER_BASE = frozenset(
     [
         "microcosm.calibrate.hierarchy_labels",
         "microcosm.diagnostics.catalogs",
+        # microcosm#1490: microcosm.fit exports its categorical classifier,
+        # held-out scores and keyed donors, so a binding that imports the
+        # package reaches them.
+        "microcosm.fit.categorical",
+        "microcosm.fit.donors",
+        "microcosm.fit.held_out",
     ]
 )
 BATTERY = "toy.gates.terminal"

@@ -158,6 +158,8 @@ UK_SPINE_GATE_SCOPE = (
     "uk_stage_isa_subscriptions_invariants",
     "uk_stage_isa_subscriptions",
     "uk_stage_company_cars_invariants",
+    "uk_stage_spi_employment_shell_fit",
+    "uk_stage_aps_occupation_fit",
     # Weight-independent like the BRMA enum below, and its column exists from
     # frs_relationships onward (#791).
     "uk_ons_household_type_enum_domain",
@@ -194,6 +196,8 @@ UK_NATIONAL_GATE_SCOPE = (
     "uk_export_surface",
     "uk_take_up_signal",
     "uk_student_loan_plan_enum_domain",
+    "uk_soc2020_major_group_enum_domain",
+    "uk_soc2020_sub_major_group_enum_domain",
     # The spine checks council_tax_band at the transferred boundary; this
     # instance checks the release frame, after any later step that writes the
     # band (microcosm#1278).

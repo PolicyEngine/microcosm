@@ -475,13 +475,13 @@ _UK_GATE_BATTERY_SHIPPABLE_STATUSES = frozenset({"passed", "not_applicable"})
 # fingerprint derives from the manifest digest. Editing the spec moves all
 # three here in the same reviewed change.
 _UK_GATE_BATTERY_POLICY_SHA256 = (
-    "7c20944f06349bca285eb3f8e8e696cfef99c356b7685d990e36f9e53c019753"
+    "97ec5dd9ee1f1809412c5a3513b9471963f359ae3a501871fb8ace91520820f8"
 )
 _UK_GATE_BATTERY_GATES_MANIFEST_SHA256 = (
-    "d57afaa831f0599d53b23b653119f4508eecf9ceb97aa7f1d16197a93824cd3c"
+    "70eaed7fd3350ad6770725251836334e308067d5f4e8868ff61ea7f380e669ea"
 )
 _UK_GATE_BATTERY_SPEC_FINGERPRINT = (
-    "6b9c4d1cfb177629672c7ee9daa659422261b2e0c15b8715ca184b3d3bdc4ff6"
+    "9f0c914ac30f383c3d0284e5889fe7e246333d3c1b5351015912bea0ef22aba1"
 )
 #: Spec entry id -> the legacy gate name whose observable detail checks
 #: apply unchanged (the battery re-keys the report by entry id; the gate
@@ -506,6 +506,8 @@ _UK_GATE_BATTERY_ENTRY_LEGACY_NAMES = {
     "uk_council_tax_band_domain": "enum_domain",
     "uk_uc_deduction_combination_enum_domain": "enum_domain",
     "uk_student_loan_plan_enum_domain": "enum_domain",
+    "uk_soc2020_major_group_enum_domain": "enum_domain",
+    "uk_soc2020_sub_major_group_enum_domain": "enum_domain",
     "uk_council_tax_band_domain_terminal": "enum_domain",
     "uk_target_surface": "target_surface",
     "uk_target_fit": "target_fit",
@@ -587,6 +589,8 @@ _UK_GATE_BATTERY_ENTRY_GATES = {
     "uk_stage_isa_subscriptions_invariants": ("stage_health", "transferred"),
     "uk_stage_isa_subscriptions": ("stage_health", "transferred"),
     "uk_stage_company_cars_invariants": ("stage_health", "transferred"),
+    "uk_stage_spi_employment_shell_fit": ("stage_health", "transferred"),
+    "uk_stage_aps_occupation_fit": ("stage_health", "transferred"),
     "uk_stage_frs_take_up_signal": ("stage_health", "assembled"),
     "uk_stage_frs_person_draws_take_up_signal": ("stage_health", "assembled"),
     "uk_stage_frs_household_draws_take_up_signal": ("stage_health", "assembled"),
@@ -616,6 +620,8 @@ _UK_GATE_BATTERY_ENTRY_GATES = {
     "uk_council_tax_band_domain": ("enum_domain", "transferred"),
     "uk_uc_deduction_combination_enum_domain": ("enum_domain", "terminal"),
     "uk_student_loan_plan_enum_domain": ("enum_domain", "terminal"),
+    "uk_soc2020_major_group_enum_domain": ("enum_domain", "terminal"),
+    "uk_soc2020_sub_major_group_enum_domain": ("enum_domain", "terminal"),
     "uk_council_tax_band_domain_terminal": ("enum_domain", "terminal"),
     "uk_calibration_reference_coverage": (
         "calibration_reference_coverage",
@@ -702,6 +708,8 @@ _UK_GATE_BATTERY_EVIDENCE_IDS = frozenset(
         "uk_stage_isa_subscriptions_invariants",
         "uk_stage_isa_subscriptions",
         "uk_stage_company_cars_invariants",
+        "uk_stage_spi_employment_shell_fit",
+        "uk_stage_aps_occupation_fit",
         "uk_stage_frs_take_up_signal",
         "uk_stage_frs_person_draws_take_up_signal",
         "uk_stage_frs_household_draws_take_up_signal",
@@ -940,6 +948,8 @@ _UK_CERTIFICATION_PART_SCOPES: Mapping[str, frozenset[str]] = {
             "uk_stage_isa_subscriptions",
             "uk_stage_isa_subscriptions_invariants",
             "uk_stage_company_cars_invariants",
+            "uk_stage_spi_employment_shell_fit",
+            "uk_stage_aps_occupation_fit",
             "uk_stage_lcfs_consumption_basis",
             "uk_stage_lcfs_consumption_bus_pricing",
             "uk_stage_lcfs_consumption_energy_rake",
@@ -995,6 +1005,8 @@ _UK_CERTIFICATION_PART_SCOPES: Mapping[str, frozenset[str]] = {
             "uk_release_input_coverage",
             "uk_release_input_coverage_manifest_current",
             "uk_student_loan_plan_enum_domain",
+            "uk_soc2020_major_group_enum_domain",
+            "uk_soc2020_sub_major_group_enum_domain",
             "uk_council_tax_band_domain_terminal",
             "uk_support",
             "uk_take_up_signal",
@@ -1006,10 +1018,10 @@ _UK_CERTIFICATION_PART_SCOPES: Mapping[str, frozenset[str]] = {
 _UK_CERTIFICATION_PART_DIGESTS: Mapping[str, Mapping[str, str]] = {
     "spine": {
         "gates_manifest_sha256": (
-            "970974c07b1102a208c9ee12962d42d540adc1966789219cb5ea18718000a16e"
+            "c552c77c2e6b0ca23323996820d9a2f53833fa0377eef4c607bc5fde32e939cf"
         ),
         "policy_sha256": (
-            "6416dda130412d6ceaeac2450a70befa694cbf582dee609ca34329a56849762b"
+            "0a2635b7b22034ee1fa9b6574bc259805397171b367f4c7941509648704bf1bb"
         ),
     },
     "calibration_seam": {
@@ -1022,10 +1034,10 @@ _UK_CERTIFICATION_PART_DIGESTS: Mapping[str, Mapping[str, str]] = {
     },
     "release_cut": {
         "gates_manifest_sha256": (
-            "c7d6169e6c2516274d3635937c0965f405ad0a02cd821c17bc246c11f82b3a8c"
+            "b4a55e285e36599f222db70e034dfd2176e4d3dfb1d04d92691fa80e2d85d840"
         ),
         "policy_sha256": (
-            "606a841fca55d7936b7c15a10305582eba11b1a67c4da5248b97c4fa7ff721e5"
+            "ec9c19267423146f8f9d88353381b932d20bfbb692e3c7d027224914adb9fb2a"
         ),
     },
 }

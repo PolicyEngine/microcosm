@@ -52,7 +52,8 @@ To include raw spine construction in the same execution, pass `--spine-request /
   "--nts-ticket-tab", "/data/nts/ticket.tab",
   "--lcfs-hh-tab", "/data/lcfs/household.tab",
   "--lcfs-person-tab", "/data/lcfs/person.tab",
-  "--etb-tab", "/data/etb/household.tab"
+  "--etb-tab", "/data/etb/household.tab",
+  "--aps-tab", "/data/aps/apsp_a24m25_eul_pwta22.tab"
 ]
 ```
 
@@ -68,11 +69,11 @@ For smaller outputs, add `--dataset-households 150000` to use the common informe
 
 ## Graph owners and shared contracts
 
-The spine graph is the 48-stage source roster declared by the UK spec, built by `uk_runtime.spine_build` (the spine tool moved into the package; `tools/build_uk_frs_spine.py` is a six-line shim over it). The superseded `frs_hmrc_retained_leaves` and `hmrc_spi_income` stages and the `UK_SPINE_EXCLUSIONS` list that hid them are removed; the active HMRC path is `frs_hmrc_spine_leaves`, `spi_support_channel`, `spi_income_band_donors` and `hmrc_spi_income_spine`, and the FRS HMRC leaf columns come from `uk_runtime.frs_hmrc_source`. The spine's assembled and transferred gate batteries are graph nodes (`uk_runtime.graph_evidence`); stage evidence and fit-weight records are read back from the content store through the shared `stage_evidence` artifact rather than from in-memory collectors; the HMRC replay sidecar is rebuilt from the SPI stage's checkpoint metadata; the spine sidecar records the operation inventory and the graph manifest, and the graph manifest is saved as `spine.graph.json` under the checkpoint root.
+The spine graph is the 54-stage source roster declared by the UK spec, built by `uk_runtime.spine_build` (the spine tool moved into the package; `tools/build_uk_frs_spine.py` is a six-line shim over it). The superseded `frs_hmrc_retained_leaves` and `hmrc_spi_income` stages and the `UK_SPINE_EXCLUSIONS` list that hid them are removed; the active HMRC path is `frs_hmrc_spine_leaves`, `spi_support_channel`, `spi_income_band_donors` and `hmrc_spi_income_spine`, and the FRS HMRC leaf columns come from `uk_runtime.frs_hmrc_source`. The spine's assembled and transferred gate batteries are graph nodes (`uk_runtime.graph_evidence`); stage evidence and fit-weight records are read back from the content store through the shared `stage_evidence` artifact rather than from in-memory collectors; the HMRC replay sidecar is rebuilt from the SPI stage's checkpoint metadata; the spine sidecar records the operation inventory and the graph manifest, and the graph manifest is saved as `spine.graph.json` under the checkpoint root.
 
 | Operation | Graph owner |
 | --- | --- |
-| Raw FRS and donor preparation, enrichment, support channels | The 48 UK spine stage nodes and their declared composite operations |
+| Raw FRS and donor preparation, enrichment, support channels | The 54 UK spine stage nodes and their declared composite operations |
 | Assembled and transferred spine gates | `spine.gates.assembled`, `spine.gates.transferred` |
 | Bound checkpoint admission | `uk.full.spine_checkpoint`, when resuming a saved spine |
 | Pool sample and mass normalization | `uk.full.sample`, `uk.full.normalize` |
