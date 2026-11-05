@@ -391,6 +391,98 @@ def test_the_dependent_limit_sums_an_only_fitting_childs_loans(monkeypatch) -> N
     assert _child_and_parent_plus(_loan(40_000, whose=3, year=2016)) == (0.0, 40_000)
 
 
+def _for_a_child(borrowed: float, year: int, **items: int) -> dict[str, float]:
+    return _loan(borrowed, whose=3, year=year, **items)
+
+
+@pytest.mark.parametrize(
+    ("loans", "listed_at", "expected"),
+    [
+        pytest.param(
+            [_for_a_child(25_000, 2014), _for_a_child(10_000, 2016)],
+            (25,),
+            (25_000, 10_000),
+            id="years-read-oldest-first",
+        ),
+        pytest.param(
+            [
+                _for_a_child(20_000, 2014),
+                _for_a_child(20_000, 2015),
+                _for_a_child(10_000, 2016),
+            ],
+            (25,),
+            (30_000, 20_000),
+            id="the-parents-years-stay-out-of-the-total",
+        ),
+        pytest.param(
+            [
+                _for_a_child(10_000, 2014),
+                _for_a_child(10_000, 2015),
+                _for_a_child(15_000, 2016),
+            ],
+            (25,),
+            (20_000, 15_000),
+            id="the-total-keeps-every-year-the-child-keeps",
+        ),
+        pytest.param(
+            [_for_a_child(40_000, 2016), _for_a_child(5_000, 2016)],
+            (25,),
+            (5_000, 40_000),
+            id="a-loan-over-the-limit-stays-out-of-its-years-group",
+        ),
+        pytest.param(
+            [_for_a_child(31_000, 2016), _for_a_child(1_000, 2017)],
+            (25,),
+            (31_000, 1_000),
+            id="a-loan-at-the-limit-counts",
+        ),
+        pytest.param(
+            [_for_a_child(20_000, 2016, federal=5), _for_a_child(20_000, 2016)],
+            (25,),
+            (20_000, 0.0),
+            id="a-private-loan-stays-out-of-the-total",
+        ),
+        pytest.param(
+            [
+                _for_a_child(20_000, 2008),
+                _for_a_child(20_000, 2008),
+                _for_a_child(5_000, 2022, program=13),
+            ],
+            (35, 25),
+            (5_000, 40_000),
+            id="only-pooled-loans-decide-how-many-children-fit",
+        ),
+        pytest.param(
+            [_for_a_child(12_000, 2005), _for_a_child(12_000, 2005)],
+            (35,),
+            (0.0, 24_000),
+            id="the-limit-from-1993-to-2007",
+        ),
+        pytest.param(
+            [_for_a_child(10_000, 1992), _for_a_child(10_000, 1992)],
+            (50,),
+            (0.0, 20_000),
+            id="the-limit-before-1993",
+        ),
+    ],
+)
+def test_the_summing_rule_for_an_only_fitting_child(loans, listed_at, expected) -> None:
+    listed = tuple((_CHILD, code) for code in listed_at)
+    assert _child_and_parent_plus(*loans, listed=listed) == expected
+
+
+def test_over_the_total_skips_a_year_the_child_could_not_be_dependent() -> None:
+    family = _family(
+        _for_a_child(20_000, 2010),
+        _for_a_child(15_000, 2017),
+        listed=((_CHILD, 35),),
+    )
+    holders = education_debt._scf_education_loan_holders(
+        pd.DataFrame.from_records([family])
+    )
+    assert holders.over_the_total[0, :2].tolist() == [False, False]
+
+
 def test_child_targets_carry_the_childs_flags_shares_and_ages() -> None:
     row = _derive(
         _family(

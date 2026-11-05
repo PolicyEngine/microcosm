@@ -578,14 +578,15 @@ def child_education_loan_moves(full: pd.DataFrame) -> dict[str, dict[str, float]
 
     ``summed_over_the_limit_*`` are the federal code-3 undergraduate loans a
     listed child fits, each within its year's dependent limit, that the
-    child's own total through their year cannot take (the stage's
-    ``over_the_total``): the loans summing moves. The build reads them as
-    Parent PLUS where one listed child fits the family's such loans and as
-    the child's where two or more do; the per-loan reading reads them all as
-    the child's. ``undergraduate_before_2008_*`` are the code-3 undergraduate
-    loans borrowed before 2008 that a listed child who could still have been
-    dependent fits, by where the amount borrowed falls against that year's
-    limit and the flat $31,000.
+    running total of the family's such loans through their year cannot take
+    (the stage's ``over_the_total``; for an only fitting child, the child's
+    own total): the loans summing moves. The build reads them as Parent PLUS
+    where one listed child fits the family's such loans and as the child's
+    where two or more do; the per-loan reading reads them all as the
+    child's. ``undergraduate_before_2008_*`` are the federal code-3
+    undergraduate loans borrowed before 2008 that a listed child who could
+    still have been dependent fits, by where the amount borrowed falls
+    against that year's limit and the flat $31,000.
     """
 
     dollars, federal = _federal_loan_dollars(full)

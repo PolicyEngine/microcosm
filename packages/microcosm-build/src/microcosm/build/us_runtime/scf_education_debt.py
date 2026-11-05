@@ -97,8 +97,10 @@ X7951). Loans beyond the sixth are one total, X7179, with none of these items.
   borrowed it, so the student lives elsewhere and only the parent's loan is
   reported, or it exceeds the dependent limit. An undergraduate loan within
   the limit for a child of dependent age could be either, and is read as the
-  child's own, the household member the listing names; the receipt reports
-  the Parent PLUS share under the other reading too.
+  child's own, the household member the listing names, except for an only
+  fitting child whose total through that year exceeds that year's limit
+  (above); the receipt reports the Parent PLUS share under the other reading
+  too.
 - **The over-the-limit rule leans toward Parent PLUS.** A dependent student
   whose parent cannot get a PLUS loan (after adverse credit, for example) may
   borrow up to $57,500 of their own (34 CFR 685.203(c)(1)(iii) and (e)(2);
@@ -110,7 +112,11 @@ X7951). Loans beyond the sixth are one total, X7179, with none of these items.
   been under 24, as the parent's, and reads one year's loans together, so a
   year that takes an only child over the limit is the parent's whole. The
   receipt sizes the other reading, which gives such loans to the child up to
-  $46,000 or $57,500. **With two or more fitting children it leans toward
+  $46,000 or $57,500. The SCF also lists Perkins loans among its federal
+  student loans (X7879-X7994), while 34 CFR 685.203(e) caps only Direct,
+  Stafford and SLS loans, so when an only child's loans include a Perkins
+  loan, the stage can read loans the child could have borrowed under the
+  limit as Parent PLUS. **With two or more fitting children it leans toward
   the child:** each loan is compared with the limit alone, so loans that
   sum above one child's limit all read as the child's. The receipt counts
   those loans.
@@ -857,10 +863,10 @@ class _LoanHolders:
     (rows x 10 x 6). ``could_be_dependent``: a fitting child could still have
     been under 24 then. ``pooled``: a federal code-3 undergraduate loan some
     listed child fits, the loans the dependent limit sums. ``over_the_total``:
-    a pooled loan within the limit on its own that the child's total through
-    its year cannot take (the running rule in the module docstring), read
-    for every family although it moves a loan only where
-    ``one_fitting_child``.
+    a pooled loan within the limit on its own that the running total of the
+    family's pooled loans through its year cannot take (the running rule in
+    the module docstring), read for every family although it moves a loan
+    only where ``one_fitting_child``, whose total it then is.
     """
 
     holder: np.ndarray
