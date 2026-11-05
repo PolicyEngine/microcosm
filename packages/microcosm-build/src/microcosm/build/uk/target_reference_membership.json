@@ -1,11 +1,11 @@
 {
   "source_fact_feed": "chronicle-uk-6475380-consumer-facts",
   "target_period": 2025,
-  "candidate_count": 1622,
-  "contract_target_count": 466,
-  "active_reference_count": 1585,
+  "candidate_count": 1620,
+  "contract_target_count": 464,
+  "active_reference_count": 1583,
   "status_counts": {
-    "active": 1585,
+    "active": 1583,
     "signed_excluded": 37
   },
   "geography_pins": {
@@ -5300,14 +5300,6 @@
       "geography_id": "K02000001"
     },
     "ons.occupation.male_leisure_travel_and_related_personal_service": {
-      "geography_level": "country",
-      "geography_id": "K02000001"
-    },
-    "ons.occupation.female_community_and_civil_enforcement": {
-      "geography_level": "country",
-      "geography_id": "K02000001"
-    },
-    "ons.occupation.male_community_and_civil_enforcement": {
       "geography_level": "country",
       "geography_id": "K02000001"
     },
@@ -35149,36 +35141,6 @@
           "resolved_value": 180400.0,
           "resolved_fact_period": "2025",
           "resolved_fact_key": "ledger_aggregate_fact_v2_d26b5b2d4e32906ece1dccc7"
-        }
-      ]
-    },
-    "ons.occupation.female_community_and_civil_enforcement": {
-      "status": "active",
-      "candidates": [
-        {
-          "name": "ons.occupation.female_community_and_civil_enforcement",
-          "status": "active",
-          "matched_fact_count_overall": 1,
-          "matched_fact_count_at_or_before_period": 1,
-          "resolved_period": 2025,
-          "resolved_value": 4300.0,
-          "resolved_fact_period": "2025",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_5ef5166e30dff5105951bfbb"
-        }
-      ]
-    },
-    "ons.occupation.male_community_and_civil_enforcement": {
-      "status": "active",
-      "candidates": [
-        {
-          "name": "ons.occupation.male_community_and_civil_enforcement",
-          "status": "active",
-          "matched_fact_count_overall": 1,
-          "matched_fact_count_at_or_before_period": 1,
-          "resolved_period": 2025,
-          "resolved_value": 18900.0,
-          "resolved_fact_period": "2025",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_8d29d343b602fd513c760398"
         }
       ]
     },

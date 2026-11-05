@@ -1,11 +1,11 @@
 {
- "compiled_count": 1585,
+ "compiled_count": 1583,
  "counts_by_kind": {
   "calibration_drift": 566,
   "fixture_only": 42,
-  "ledger_only": 990
+  "ledger_only": 988
  },
- "difference_count": 1598,
+ "difference_count": 1596,
  "differences": [
   {
    "fixture_value": 1608000.0,
@@ -6281,13 +6281,6 @@
   },
   {
    "kind": "ledger_only",
-   "ledger_value": 4300.0,
-   "name": "ons.occupation.female_community_and_civil_enforcement",
-   "period": 2025,
-   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
-  },
-  {
-   "kind": "ledger_only",
    "ledger_value": 972700.0,
    "name": "ons.occupation.female_corporate_managers_and_directors",
    "period": 2025,
@@ -6458,13 +6451,6 @@
    "kind": "ledger_only",
    "ledger_value": 430400.0,
    "name": "ons.occupation.male_caring_personal_service",
-   "period": 2025,
-   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
-  },
-  {
-   "kind": "ledger_only",
-   "ledger_value": 18900.0,
-   "name": "ons.occupation.male_community_and_civil_enforcement",
    "period": 2025,
    "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
   },

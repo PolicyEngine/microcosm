@@ -952,8 +952,6 @@
       "ons.occupation.male_caring_personal_service": "New declaration backed by Nomis APS218 Jan 2025-Dec 2025 in Chronicle (ons-aps218-occupation-jan-dec-2025, PolicyEngine/chronicle#411); no uk-data metric holds employment by occupation and sex (microcosm#1490).",
       "ons.occupation.female_leisure_travel_and_related_personal_service": "New declaration backed by Nomis APS218 Jan 2025-Dec 2025 in Chronicle (ons-aps218-occupation-jan-dec-2025, PolicyEngine/chronicle#411); no uk-data metric holds employment by occupation and sex (microcosm#1490).",
       "ons.occupation.male_leisure_travel_and_related_personal_service": "New declaration backed by Nomis APS218 Jan 2025-Dec 2025 in Chronicle (ons-aps218-occupation-jan-dec-2025, PolicyEngine/chronicle#411); no uk-data metric holds employment by occupation and sex (microcosm#1490).",
-      "ons.occupation.female_community_and_civil_enforcement": "New declaration backed by Nomis APS218 Jan 2025-Dec 2025 in Chronicle (ons-aps218-occupation-jan-dec-2025, PolicyEngine/chronicle#411); no uk-data metric holds employment by occupation and sex (microcosm#1490).",
-      "ons.occupation.male_community_and_civil_enforcement": "New declaration backed by Nomis APS218 Jan 2025-Dec 2025 in Chronicle (ons-aps218-occupation-jan-dec-2025, PolicyEngine/chronicle#411); no uk-data metric holds employment by occupation and sex (microcosm#1490).",
       "ons.occupation.female_sales": "New declaration backed by Nomis APS218 Jan 2025-Dec 2025 in Chronicle (ons-aps218-occupation-jan-dec-2025, PolicyEngine/chronicle#411); no uk-data metric holds employment by occupation and sex (microcosm#1490).",
       "ons.occupation.male_sales": "New declaration backed by Nomis APS218 Jan 2025-Dec 2025 in Chronicle (ons-aps218-occupation-jan-dec-2025, PolicyEngine/chronicle#411); no uk-data metric holds employment by occupation and sex (microcosm#1490).",
       "ons.occupation.female_customer_service": "New declaration backed by Nomis APS218 Jan 2025-Dec 2025 in Chronicle (ons-aps218-occupation-jan-dec-2025, PolicyEngine/chronicle#411); no uk-data metric holds employment by occupation and sex (microcosm#1490).",
@@ -1455,8 +1453,6 @@
       "ons.occupation.male_caring_personal_service",
       "ons.occupation.female_leisure_travel_and_related_personal_service",
       "ons.occupation.male_leisure_travel_and_related_personal_service",
-      "ons.occupation.female_community_and_civil_enforcement",
-      "ons.occupation.male_community_and_civil_enforcement",
       "ons.occupation.female_sales",
       "ons.occupation.male_sales",
       "ons.occupation.female_customer_service",
@@ -35404,166 +35400,6 @@
       },
       "category_id": "ons.employment",
       "label": "Leisure, travel and related personal service occupations: men in employment",
-      "selector_note": "Selects the UK estimate for one sub-major group and sex from the calendar-2025 package (ons-aps218-occupation-jan-dec-2025, PolicyEngine/chronicle#411) by its dimensions: never the confidence interval, which is its own concept, never the all-persons row, and never a major-group row, which the same record sets hold."
-    },
-    {
-      "target_id": "ons.occupation.female_community_and_civil_enforcement",
-      "family": "ons_occupation",
-      "geography_levels": [
-        "country"
-      ],
-      "measurement": {
-        "entity": "person",
-        "map_to": "household",
-        "concept": "uk.person.count",
-        "filters": [
-          {
-            "concept": "uk.employment.soc2020_sub_major_group",
-            "equals": "community_and_civil_enforcement"
-          },
-          {
-            "concept": "uk.demographics.gender",
-            "equals": "female"
-          },
-          {
-            "concept": "uk.employment.status",
-            "in": [
-              "ft_employed",
-              "pt_employed",
-              "ft_self_employed",
-              "pt_self_employed"
-            ]
-          }
-        ]
-      },
-      "bindings": {
-        "policyengine": {
-          "metric_name": "ons/occupation/female_community_and_civil_enforcement",
-          "filters": [
-            {
-              "variable": "soc2020_sub_major_group",
-              "equals": "COMMUNITY_AND_CIVIL_ENFORCEMENT"
-            },
-            {
-              "variable": "gender",
-              "equals": "FEMALE"
-            },
-            {
-              "variable": "employment_status",
-              "in": [
-                "FT_EMPLOYED",
-                "PT_EMPLOYED",
-                "FT_SELF_EMPLOYED",
-                "PT_SELF_EMPLOYED"
-              ]
-            }
-          ],
-          "value_variable": "person_count",
-          "from_entity": "person",
-          "map_to": "household",
-          "notes": "ONS Annual Population Survey (Nomis APS218, NM_218_1), Jan 2025-Dec 2025, revision 0 released 21 April 2026: women in employment resident in the UK whose main job is in SOC 2020 sub-major group 63 (community and civil enforcement occupations), all employment types, rounded by Nomis to the nearest hundred. Counts each person in work on the frame (employment_status full- or part-time employed or self-employed) whose gender is FEMALE and whose soc2020_sub_major_group is COMMUNITY_AND_CIVIL_ENFORCEMENT: the group aps_occupation draws within the major group from the APS's own records (microcosm#1490). Adults out of work keep their last job's group and are not counted, nor is anyone without a code. The APS also counts unpaid family workers and people on government schemes, whom the frame's statuses do not separate. Men and women together bind the sub-major group's UK total, which nests in its major group's regional rows. Bound beside the major groups because the draw alone left the sub-major groups and their mix of men and women outside the APS's confidence intervals on the calibrated frame (María's ruling of 5 November 2026)."
-        },
-        "axiom": {
-          "metric_name": "ons/occupation/female_community_and_civil_enforcement",
-          "status": "pending",
-          "value_rule": "uk.person.count"
-        }
-      },
-      "ledger_selector": {
-        "source_name": "ons",
-        "source_concept": "ons.aps_people_in_employment",
-        "dimension_values": {
-          "soc2020_sub_major_group": 63,
-          "sex": "female",
-          "employment_status": "all",
-          "statistic": "estimate"
-        },
-        "entity_name": "person",
-        "period_type": "calendar_year",
-        "period_value": 2025
-      },
-      "category_id": "ons.employment",
-      "label": "Community and civil enforcement occupations: women in employment",
-      "selector_note": "Selects the UK estimate for one sub-major group and sex from the calendar-2025 package (ons-aps218-occupation-jan-dec-2025, PolicyEngine/chronicle#411) by its dimensions: never the confidence interval, which is its own concept, never the all-persons row, and never a major-group row, which the same record sets hold."
-    },
-    {
-      "target_id": "ons.occupation.male_community_and_civil_enforcement",
-      "family": "ons_occupation",
-      "geography_levels": [
-        "country"
-      ],
-      "measurement": {
-        "entity": "person",
-        "map_to": "household",
-        "concept": "uk.person.count",
-        "filters": [
-          {
-            "concept": "uk.employment.soc2020_sub_major_group",
-            "equals": "community_and_civil_enforcement"
-          },
-          {
-            "concept": "uk.demographics.gender",
-            "equals": "male"
-          },
-          {
-            "concept": "uk.employment.status",
-            "in": [
-              "ft_employed",
-              "pt_employed",
-              "ft_self_employed",
-              "pt_self_employed"
-            ]
-          }
-        ]
-      },
-      "bindings": {
-        "policyengine": {
-          "metric_name": "ons/occupation/male_community_and_civil_enforcement",
-          "filters": [
-            {
-              "variable": "soc2020_sub_major_group",
-              "equals": "COMMUNITY_AND_CIVIL_ENFORCEMENT"
-            },
-            {
-              "variable": "gender",
-              "equals": "MALE"
-            },
-            {
-              "variable": "employment_status",
-              "in": [
-                "FT_EMPLOYED",
-                "PT_EMPLOYED",
-                "FT_SELF_EMPLOYED",
-                "PT_SELF_EMPLOYED"
-              ]
-            }
-          ],
-          "value_variable": "person_count",
-          "from_entity": "person",
-          "map_to": "household",
-          "notes": "ONS Annual Population Survey (Nomis APS218, NM_218_1), Jan 2025-Dec 2025, revision 0 released 21 April 2026: men in employment resident in the UK whose main job is in SOC 2020 sub-major group 63 (community and civil enforcement occupations), all employment types, rounded by Nomis to the nearest hundred. Counts each person in work on the frame (employment_status full- or part-time employed or self-employed) whose gender is MALE and whose soc2020_sub_major_group is COMMUNITY_AND_CIVIL_ENFORCEMENT: the group aps_occupation draws within the major group from the APS's own records (microcosm#1490). Adults out of work keep their last job's group and are not counted, nor is anyone without a code. The APS also counts unpaid family workers and people on government schemes, whom the frame's statuses do not separate. Men and women together bind the sub-major group's UK total, which nests in its major group's regional rows. Bound beside the major groups because the draw alone left the sub-major groups and their mix of men and women outside the APS's confidence intervals on the calibrated frame (María's ruling of 5 November 2026)."
-        },
-        "axiom": {
-          "metric_name": "ons/occupation/male_community_and_civil_enforcement",
-          "status": "pending",
-          "value_rule": "uk.person.count"
-        }
-      },
-      "ledger_selector": {
-        "source_name": "ons",
-        "source_concept": "ons.aps_people_in_employment",
-        "dimension_values": {
-          "soc2020_sub_major_group": 63,
-          "sex": "male",
-          "employment_status": "all",
-          "statistic": "estimate"
-        },
-        "entity_name": "person",
-        "period_type": "calendar_year",
-        "period_value": 2025
-      },
-      "category_id": "ons.employment",
-      "label": "Community and civil enforcement occupations: men in employment",
       "selector_note": "Selects the UK estimate for one sub-major group and sex from the calendar-2025 package (ons-aps218-occupation-jan-dec-2025, PolicyEngine/chronicle#411) by its dimensions: never the confidence interval, which is its own concept, never the all-persons row, and never a major-group row, which the same record sets hold."
     },
     {

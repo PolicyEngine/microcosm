@@ -556,7 +556,6 @@
       "ons.occupation.female_business_and_public_service_associate_professionals": "ons.employment",
       "ons.occupation.female_business_media_and_public_service_professionals": "ons.employment",
       "ons.occupation.female_caring_personal_service": "ons.employment",
-      "ons.occupation.female_community_and_civil_enforcement": "ons.employment",
       "ons.occupation.female_corporate_managers_and_directors": "ons.employment",
       "ons.occupation.female_culture_media_and_sports": "ons.employment",
       "ons.occupation.female_customer_service": "ons.employment",
@@ -582,7 +581,6 @@
       "ons.occupation.male_business_and_public_service_associate_professionals": "ons.employment",
       "ons.occupation.male_business_media_and_public_service_professionals": "ons.employment",
       "ons.occupation.male_caring_personal_service": "ons.employment",
-      "ons.occupation.male_community_and_civil_enforcement": "ons.employment",
       "ons.occupation.male_corporate_managers_and_directors": "ons.employment",
       "ons.occupation.male_culture_media_and_sports": "ons.employment",
       "ons.occupation.male_customer_service": "ons.employment",
@@ -1017,7 +1015,6 @@
       "ons.occupation.female_business_and_public_service_associate_professionals": "Business and public service associate professionals: women in employment",
       "ons.occupation.female_business_media_and_public_service_professionals": "Business, media and public service professionals: women in employment",
       "ons.occupation.female_caring_personal_service": "Caring personal service occupations: women in employment",
-      "ons.occupation.female_community_and_civil_enforcement": "Community and civil enforcement occupations: women in employment",
       "ons.occupation.female_corporate_managers_and_directors": "Corporate managers and directors: women in employment",
       "ons.occupation.female_culture_media_and_sports": "Culture, media and sports occupations: women in employment",
       "ons.occupation.female_customer_service": "Customer service occupations: women in employment",
@@ -1043,7 +1040,6 @@
       "ons.occupation.male_business_and_public_service_associate_professionals": "Business and public service associate professionals: men in employment",
       "ons.occupation.male_business_media_and_public_service_professionals": "Business, media and public service professionals: men in employment",
       "ons.occupation.male_caring_personal_service": "Caring personal service occupations: men in employment",
-      "ons.occupation.male_community_and_civil_enforcement": "Community and civil enforcement occupations: men in employment",
       "ons.occupation.male_corporate_managers_and_directors": "Corporate managers and directors: men in employment",
       "ons.occupation.male_culture_media_and_sports": "Culture, media and sports occupations: men in employment",
       "ons.occupation.male_customer_service": "Customer service occupations: men in employment",
@@ -54503,58 +54499,6 @@
       "period": 2025,
       "metadata": {
         "contract_target_id": "ons.occupation.male_leisure_travel_and_related_personal_service",
-        "measure_kind": "prepared_column"
-      }
-    },
-    {
-      "name": "ons.occupation.female_community_and_civil_enforcement",
-      "ledger_selector": {
-        "source_name": "ons",
-        "source_concept": "ons.aps_people_in_employment",
-        "dimension_values": {
-          "soc2020_sub_major_group": 63,
-          "sex": "female",
-          "employment_status": "all",
-          "statistic": "estimate"
-        },
-        "entity_name": "person",
-        "period_type": "calendar_year",
-        "period_value": 2025,
-        "geography_level": "country",
-        "geography_id": "K02000001"
-      },
-      "entity": "person",
-      "measure": "ons/occupation/female_community_and_civil_enforcement",
-      "family": "ons_occupation",
-      "period": 2025,
-      "metadata": {
-        "contract_target_id": "ons.occupation.female_community_and_civil_enforcement",
-        "measure_kind": "prepared_column"
-      }
-    },
-    {
-      "name": "ons.occupation.male_community_and_civil_enforcement",
-      "ledger_selector": {
-        "source_name": "ons",
-        "source_concept": "ons.aps_people_in_employment",
-        "dimension_values": {
-          "soc2020_sub_major_group": 63,
-          "sex": "male",
-          "employment_status": "all",
-          "statistic": "estimate"
-        },
-        "entity_name": "person",
-        "period_type": "calendar_year",
-        "period_value": 2025,
-        "geography_level": "country",
-        "geography_id": "K02000001"
-      },
-      "entity": "person",
-      "measure": "ons/occupation/male_community_and_civil_enforcement",
-      "family": "ons_occupation",
-      "period": 2025,
-      "metadata": {
-        "contract_target_id": "ons.occupation.male_community_and_civil_enforcement",
         "measure_kind": "prepared_column"
       }
     },
