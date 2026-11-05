@@ -78,6 +78,7 @@ __all__ = [
     "source_coverage_gate",
     "source_stage_input_coverage_gate",
     "tail_concentration_gate",
+    "single_record_concentration",
     "target_fit_gate",
     "target_profile_coverage_gate",
     "TargetCoverageRequirement",
@@ -3475,3 +3476,113 @@ def tail_concentration_gate(
             "dormant_exclusions": dormant_exclusions,
         },
     )
+
+
+def single_record_concentration(
+    values: Iterable[float],
+    weights: Iterable[float],
+    *,
+    top_k: int = 100,
+) -> dict[str, float | int | None]:
+    """One column's largest single record, as a share of its weighted mass.
+
+    The measurement :func:`tail_concentration_gate` does not make. That gate
+    asks whether the ``top_k`` records together carry too much of a column, so
+    one record can carry a fifth of it and pass. In microcosm#1259's seed-0
+    rerun of the microcosm#1251 chain, one tax unit of weight 644.7 drew a
+    $218.9M Schedule E line-32 value. At initial weights it carried 21.7% of
+    the column's weighted absolute mass, while the top 100 of its 16,001
+    carriers carried 45.1%, under the gate's 0.75.
+
+    Reporting only: this returns measurements, with no verdict and no
+    threshold. After microcosm#1259's draw bound, the worst single-draw share
+    in a 12-seed sweep was still 33% for collectibles gains, so a threshold
+    needs a justification per column.
+
+    The population is the gate's: records whose value and weight are finite
+    and whose weighted absolute mass ``|value| * weight`` is positive. This
+    skips no column for being thin, so a column with at most ``top_k``
+    carriers reports a ``top_k_share`` of exactly 1.
+
+    Args:
+        values: The column's per-record values. This takes a signed column's
+            absolute mass.
+        weights: Per-record weights, aligned with ``values``.
+        top_k: How many of the largest records ``top_k_share`` covers
+            (default 100, the gate's tail).
+
+    Returns:
+        ``carriers``, the number of records with positive mass, and three
+        measurements:
+
+        * ``top_1_share``: the largest record's mass over the column's total
+          mass, which this sums in record order.
+        * ``top_1_weight``: that record's weight. Among records tied for the
+          largest mass it is the largest weight, so record order never
+          changes it.
+        * ``top_k_share``: the ``top_k`` largest records' share. This sums
+          the tail as the gate does and caps the ratio at 1. On a column
+          the gate checks whose total mass is finite, it equals
+          ``min(top_share, 1)`` for the gate's ``top_share``. The gate sums
+          its tail in the order ``np.partition`` leaves it, which numpy
+          leaves undefined and which differs across platforms, and its total
+          in record order; when the records outside the tail hold less mass
+          than one rounding step, its share can pass 1 by that step.
+
+        The three are ``None`` when the column has no share to report: its
+        total mass is zero (no carriers) or not finite. Otherwise, exactly in
+        float64, ``0 < top_1_share <= top_k_share <= 1``, and with
+        ``top_k = 1`` the two shares are the same number. Raising ``top_k``
+        never lowers ``top_k_share`` by more than float rounding; each
+        ``top_k`` sums its own partition, so near a share of 1 it can fall by
+        a rounding step, an intended drop that keeps ``top_k_share`` the
+        gate's own number. Scaling every weight by one positive factor scales
+        ``top_1_weight`` by it and leaves both shares unchanged, up to float
+        rounding.
+
+    Raises:
+        ValueError: If ``top_k`` falls below 1 or the values and weights do
+            not align.
+    """
+    if top_k < 1:
+        raise ValueError(f"top_k must be at least 1, got {top_k!r}.")
+    value_vector = np.asarray(values, dtype=np.float64).reshape(-1)
+    weight_vector = np.asarray(weights, dtype=np.float64).reshape(-1)
+    if value_vector.shape[0] != weight_vector.shape[0]:
+        raise ValueError(
+            "values and weights must align, got "
+            f"{value_vector.shape[0]} values vs {weight_vector.shape[0]} weights."
+        )
+    finite = np.isfinite(value_vector) & np.isfinite(weight_vector)
+    carrier_weights = weight_vector[finite]
+    # This reports a product or a sum past the float64 range as a column with
+    # no share, never as a warning or a NaN.
+    with np.errstate(over="ignore"):
+        mass = np.abs(value_vector[finite]) * carrier_weights
+        carrying = mass > 0.0
+        mass = mass[carrying]
+        carriers = int(mass.size)
+        total = float(mass.sum())
+        if not carriers or not math.isfinite(total):
+            return {
+                "carriers": carriers,
+                "top_1_share": None,
+                "top_1_weight": None,
+                "top_k_share": None,
+            }
+        top = float(mass.max())
+        # With at most top_k carriers the tail is the whole column. Above
+        # that, this sums the tail as the gate does, in an order numpy's
+        # partition leaves undefined; that sum can pass the record-order
+        # total by a rounding step, hence the cap.
+        tail = (
+            total
+            if carriers <= top_k
+            else float(np.partition(mass, -top_k)[-top_k:].sum())
+        )
+    return {
+        "carriers": carriers,
+        "top_1_share": top / total,
+        "top_1_weight": float(carrier_weights[carrying][mass == top].max()),
+        "top_k_share": min(tail / total, 1.0),
+    }

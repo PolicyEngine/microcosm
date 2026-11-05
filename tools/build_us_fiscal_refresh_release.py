@@ -67,6 +67,7 @@ from microcosm.build.gates import (
     nonconstant_columns_gate,
     observed_value_counts,
     parity_gate,
+    single_record_concentration,
     tail_concentration_gate,
     target_fit_gate,
     target_profile_coverage_gate,
@@ -8011,6 +8012,18 @@ def _qrf_tail_concentration_gate(
     absent, or non-numeric, and each numeric output's record nonzero share and
     finite nonzero record count, the numbers behind the dense/sparse split) for
     the release artifact and the ``--dry-run-gates-report`` certainty model.
+
+    The surface also measures every numeric output, dense and thin ones
+    included, with :func:`microcosm.build.gates.single_record_concentration`:
+    the largest single record's share of the column's weighted absolute mass
+    and that record's weight, next to the top-k share. The measurements cannot
+    change the gate's inputs, its verdict or the errors it raises: the loop
+    resolves weights only for sparse outputs, and the gate runs before any
+    measurement. A misaligned sparse output therefore still fails with the
+    gate's own message, which names the column.
+    :func:`_qrf_single_record_measurements` runs after the gate and turns
+    every ``Exception`` into an ``unmeasured`` entry, so it cannot fail a run
+    the gate would pass.
     """
     qrf_outputs = sorted(_qrf_imputed_source_outputs())
     values: dict[str, np.ndarray] = {}
@@ -8021,6 +8034,7 @@ def _qrf_tail_concentration_gate(
     nonzero_shares: dict[str, float] = {}
     nonzero_records: dict[str, int] = {}
     entity_weights: dict[str, np.ndarray] = {}
+    dense_values: dict[str, tuple[str, np.ndarray]] = {}
     for column in qrf_outputs:
         try:
             entity = export_frame.column_entity(column)
@@ -8038,6 +8052,7 @@ def _qrf_tail_concentration_gate(
         nonzero_records[column] = int((np.isfinite(array) & (array != 0.0)).sum())
         if nonzero_share > US_QRF_SPARSE_NONZERO_SHARE_MAX:
             dense.append(column)
+            dense_values[column] = (entity, array)
             continue
         if entity not in entity_weights:
             entity_weights[entity] = np.asarray(
@@ -8053,6 +8068,14 @@ def _qrf_tail_concentration_gate(
         min_nonzero_records=US_QRF_TAIL_CONCENTRATION_MIN_NONZERO_RECORDS,
         reviewed_exclusions=reviewed_exclusions,
     )
+    single_record, unmeasured = _qrf_single_record_measurements(
+        export_frame,
+        qrf_outputs,
+        sparse_values=values,
+        sparse_weights=weights,
+        dense_values=dense_values,
+        entity_weights=entity_weights,
+    )
     surface: dict[str, object] = {
         "qrf_imputed_outputs": len(qrf_outputs),
         "checked_sparse_columns": sorted(values),
@@ -8062,8 +8085,60 @@ def _qrf_tail_concentration_gate(
         "sparse_nonzero_share_max": US_QRF_SPARSE_NONZERO_SHARE_MAX,
         "nonzero_shares": nonzero_shares,
         "nonzero_records": nonzero_records,
+        "single_record_concentration": {
+            "top_k": US_QRF_TAIL_CONCENTRATION_TOP_K,
+            "columns": single_record,
+            "unmeasured": unmeasured,
+        },
     }
     return gate, surface
+
+
+def _qrf_single_record_measurements(
+    export_frame: Frame,
+    qrf_outputs: Sequence[str],
+    *,
+    sparse_values: Mapping[str, np.ndarray],
+    sparse_weights: Mapping[str, np.ndarray],
+    dense_values: Mapping[str, tuple[str, np.ndarray]],
+    entity_weights: Mapping[str, np.ndarray],
+) -> tuple[dict[str, dict[str, float | int | None]], dict[str, str]]:
+    """Each numeric QRF output's single-record measurements, after the gate.
+
+    A sparse output reuses the values and weights the gate checked. A dense
+    output resolves its entity's weights here, since the gate never weighs
+    one, and reuses weights that a sparse output of the same entity already
+    resolved. Any ``Exception``, from resolving weights or from measuring,
+    lists the output under ``unmeasured`` with the error's type and text, so
+    this never fails the run. Both mappings keep the order of
+    ``qrf_outputs``.
+    """
+    resolved = dict(entity_weights)
+    columns: dict[str, dict[str, float | int | None]] = {}
+    unmeasured: dict[str, str] = {}
+    for column in qrf_outputs:
+        if column not in sparse_values and column not in dense_values:
+            continue
+        try:
+            if column in sparse_values:
+                column_values = sparse_values[column]
+                column_weights = sparse_weights[column]
+            else:
+                entity, column_values = dense_values[column]
+                if entity not in resolved:
+                    resolved[entity] = np.asarray(
+                        export_frame.resolve_weights(entity).values,
+                        dtype=np.float64,
+                    )
+                column_weights = resolved[entity]
+            columns[column] = single_record_concentration(
+                column_values,
+                column_weights,
+                top_k=US_QRF_TAIL_CONCENTRATION_TOP_K,
+            )
+        except Exception as error:
+            unmeasured[column] = f"{type(error).__name__}: {error}"
+    return columns, unmeasured
 
 
 #: Failure-line prefix for a per-run QRF tail-concentration register that does
@@ -8163,9 +8238,9 @@ def _record_qrf_tail_concentration_gate(
     flag says) to ``terminal_gate_failures``, so the batched pre-export raise
     refuses the run with the #568 weight sidecar on disk. Whenever the gate
     evaluated, ``qrf_tail_concentration.json`` is written with the per-column
-    shares, carrier counts, and the mismatch. Only a genuine evaluation crash
-    escapes: it propagates on an otherwise-clean run and becomes one unowned
-    failure line under earlier failures.
+    shares, carrier counts, single-record shares, and the mismatch. Only a
+    genuine evaluation crash escapes: it propagates on an otherwise-clean run
+    and becomes one unowned failure line under earlier failures.
 
     Returns the register-mismatch failure lines (empty when the register
     matches) so --evidence-release can refuse them.

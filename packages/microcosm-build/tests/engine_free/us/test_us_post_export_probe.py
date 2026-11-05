@@ -834,3 +834,139 @@ def test_the_report_names_the_commit_the_probe_loaded_from(
             "hashed": "at write",
         },
     }
+
+
+def _tail_result(single_record=None, *, passed=True, share=0.4, unmeasured=None):
+    surface = {"checked_sparse_columns": ["partnership_income"]}
+    if single_record is not None:
+        surface["single_record_concentration"] = {
+            "top_k": 100,
+            "columns": single_record,
+            "unmeasured": unmeasured or {},
+        }
+    return {
+        "passed": passed,
+        "surface": surface,
+        "details": {"top_share": {"partnership_income": share}},
+    }
+
+
+def _tail_reference(single_record=None, **options):
+    result = _tail_result(single_record, **options)
+    return {
+        "surface": result["surface"],
+        "tail_concentration": {
+            "passed": result["passed"],
+            "details": result["details"],
+        },
+    }
+
+
+# Line 32 in #1259's seed-0 rerun of the #1251 chain, at initial weights: one
+# measurement, rounded.
+_LINE_32 = {
+    "carriers": 16_001,
+    "top_1_share": 0.217,
+    "top_1_weight": 644.7,
+    "top_k_share": 0.451,
+}
+_ZERO_MASS = {
+    "carriers": 0,
+    "top_1_share": None,
+    "top_1_weight": None,
+    "top_k_share": None,
+}
+
+
+def test_the_probe_compares_single_record_measurements(probe_tool) -> None:
+    measured = {"partnership_income": _LINE_32, "estate_income": _ZERO_MASS}
+
+    same = probe_tool.compare_qrf_tail(
+        _tail_result(measured), _tail_reference(measured)
+    )
+
+    assert same == {
+        "differences": [],
+        "columns_compared": 1,
+        "single_record_columns_compared": 2,
+    }
+
+    moved = probe_tool.compare_qrf_tail(
+        _tail_result(
+            {**measured, "partnership_income": {**_LINE_32, "top_1_weight": 1.08}}
+        ),
+        _tail_reference(measured),
+    )
+
+    assert moved["differences"] == ["partnership_income: top_1_weight 1.08 vs 644.7"]
+
+    lost = probe_tool.compare_qrf_tail(
+        _tail_result({**measured, "estate_income": {**_ZERO_MASS, "top_1_share": 0.5}}),
+        _tail_reference(measured),
+    )
+
+    assert lost["differences"] == ["estate_income: top_1_share 0.5 vs None"]
+
+    narrower = probe_tool.compare_qrf_tail(
+        _tail_result({"partnership_income": _LINE_32}), _tail_reference(measured)
+    )
+
+    assert narrower["differences"] == [
+        "single-record columns differ: only probe [], only release ['estate_income']"
+    ]
+    assert narrower["single_record_columns_compared"] == 1
+
+
+def test_the_probe_compares_unmeasured_reasons(probe_tool) -> None:
+    """Review N8: an output unmeasured in both runs for different reasons is a
+    difference, and so is an output unmeasured in one run only."""
+    measured = {"partnership_income": _LINE_32}
+    unmeasured = {
+        "taxable_interest_income": "ValueError: Cannot resolve person-level weights"
+    }
+
+    same = probe_tool.compare_qrf_tail(
+        _tail_result(measured, unmeasured=unmeasured),
+        _tail_reference(measured, unmeasured=unmeasured),
+    )
+
+    assert same["differences"] == []
+
+    another_reason = probe_tool.compare_qrf_tail(
+        _tail_result(
+            measured,
+            unmeasured={
+                "taxable_interest_income": "RuntimeError: weight store offline"
+            },
+        ),
+        _tail_reference(measured, unmeasured=unmeasured),
+    )
+
+    assert another_reason["differences"] == [
+        "taxable_interest_income: unmeasured as 'RuntimeError: weight store "
+        "offline' vs 'ValueError: Cannot resolve person-level weights'"
+    ]
+
+    only_release = probe_tool.compare_qrf_tail(
+        _tail_result(measured), _tail_reference(measured, unmeasured=unmeasured)
+    )
+
+    assert only_release["differences"] == [
+        "unmeasured columns differ: only probe [], only release "
+        "['taxable_interest_income']"
+    ]
+
+
+def test_a_release_without_single_record_measurements_compares_none(
+    probe_tool,
+) -> None:
+    """A release built before its tail surface carried the block (Route A)."""
+    comparison = probe_tool.compare_qrf_tail(
+        _tail_result({"partnership_income": _LINE_32}), _tail_reference()
+    )
+
+    assert comparison == {
+        "differences": [],
+        "columns_compared": 1,
+        "single_record_columns_compared": 0,
+    }

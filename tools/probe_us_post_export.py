@@ -1363,7 +1363,11 @@ def compare_qrf_tail(
 ) -> dict[str, Any]:
     """The probe's source-export QRF tail result against a release's
     ``qrf_tail_concentration.json`` (same frame columns and weights, so the
-    shares must agree to rounding)."""
+    shares must agree to rounding).
+
+    It compares the single-record measurements, and the reason behind each
+    unmeasured output, when the release recorded them, and none against a
+    release built before its surface carried them."""
     differences: list[str] = []
     tail = reference["tail_concentration"]
     if bool(tail["passed"]) != bool(result["passed"]):
@@ -1387,7 +1391,51 @@ def compare_qrf_tail(
             continue
         if not math.isclose(float(left), float(right), rel_tol=1e-9, abs_tol=1e-12):
             differences.append(f"{column}: top share {left!r} vs {right!r}")
-    return {"differences": differences, "columns_compared": len(shares)}
+    block = _single_record_block(result["surface"])
+    reference_block = _single_record_block(reference["surface"])
+    if block is None or reference_block is None:
+        block = reference_block = {"columns": {}, "unmeasured": {}}
+    measured, recorded = block["columns"], reference_block["columns"]
+    if sorted(measured) != sorted(recorded):
+        differences.append(
+            "single-record columns differ: only probe "
+            f"{sorted(set(measured) - set(recorded))}, only release "
+            f"{sorted(set(recorded) - set(measured))}"
+        )
+    compared = sorted(set(measured) & set(recorded))
+    for column in compared:
+        for field in ("carriers", "top_1_share", "top_1_weight", "top_k_share"):
+            left, right = measured[column].get(field), recorded[column].get(field)
+            if left is None or right is None:
+                if left != right:
+                    differences.append(f"{column}: {field} {left} vs {right}")
+                continue
+            if not math.isclose(float(left), float(right), rel_tol=1e-9, abs_tol=1e-12):
+                differences.append(f"{column}: {field} {left!r} vs {right!r}")
+    skipped, recorded_skipped = block["unmeasured"], reference_block["unmeasured"]
+    if sorted(skipped) != sorted(recorded_skipped):
+        differences.append(
+            "unmeasured columns differ: only probe "
+            f"{sorted(set(skipped) - set(recorded_skipped))}, only release "
+            f"{sorted(set(recorded_skipped) - set(skipped))}"
+        )
+    for column in sorted(set(skipped) & set(recorded_skipped)):
+        if skipped[column] != recorded_skipped[column]:
+            differences.append(
+                f"{column}: unmeasured as {skipped[column]!r} vs "
+                f"{recorded_skipped[column]!r}"
+            )
+    return {
+        "differences": differences,
+        "columns_compared": len(shares),
+        "single_record_columns_compared": len(compared),
+    }
+
+
+def _single_record_block(surface: Mapping[str, Any]) -> Mapping[str, Any] | None:
+    """A tail surface's single-record block (``columns`` and ``unmeasured``),
+    if it has one."""
+    return surface.get("single_record_concentration")
 
 
 def compare_post_export_plans(
@@ -2262,7 +2310,12 @@ class ExportProbe:
                     "pass" if not comparison["differences"] else "fail",
                     AUTHORITATIVE,
                     "; ".join(comparison["differences"])
-                    or "same verdict, columns and top-k shares",
+                    or (
+                        "same verdict, columns, top-k shares and single-record "
+                        "measurements"
+                        if comparison["single_record_columns_compared"]
+                        else "same verdict, columns and top-k shares"
+                    ),
                     "fidelity of this probe to the release",
                 )
         _write_json(self.out_dir / "qrf_tail_concentration.json", record)
