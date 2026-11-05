@@ -1,0 +1,193 @@
+"""The Modal stage runner records what the installed emitter left undelivered.
+
+The runner's other tests stand in for the image emitter's ``status``. These run
+a stage through the runner's own ``_run_stage`` against local directories, with
+the separately installed ``microcosm-emitter`` at the image's emitter path: the
+stage's tool starts it through the interface with its telemetry module, as a
+build does, and the runner then runs its ``status`` and records the answer in
+the receipt.
+
+The tool's plan opts out of telemetry (``MICROCOSM_TELEMETRY_REQUIRED=0``), so
+the emitter is given no collector token, and the test environment holds no
+Hugging Face credential. The emitter therefore keeps the run's events in its
+event queue file, as ``local_only``, and sends nothing. Its collector origin is
+a closed loopback port all the same, so that nothing could reach the collector.
+
+``tools/run_installed_emitter_tests.sh`` installs the minimum release builds
+accept and the newest pinned release, and runs this file once for each, with
+``MICROCOSM_EMITTER_COMMAND`` naming the installed command.
+"""
+
+from __future__ import annotations
+
+import dataclasses
+import os
+import shutil
+import socket
+import sysconfig
+from pathlib import Path
+
+import pytest
+
+from test_support.microcosm_build.us_modal_stage_plan_tool import (
+    fake_plan,
+    fake_tool,
+    install_fake_runner,
+    load_app,
+    plan_lib,
+)
+
+#: The telemetry run a stage of the fake plan reports under.
+RUN_ID = "fake-run.run"
+PRODUCER_ID = "installed-emitter-status-test"
+#: The fake runner's venv Python is a link to this interpreter, which then
+#: does not find this environment's packages; a tool that imports the
+#: interface puts them on its path, the first argument after its state.
+_SITE_PACKAGES = sysconfig.get_paths()["purelib"]
+#: A tool that starts the emitter with its telemetry module, records two
+#: stages and the build's completion, and closes it, as a build program does.
+#: The emitter, in its own session, holds the tool's output until it has
+#: finished, so the runner asks for its status only then.
+_EMITTING_TOOL = """\
+import pathlib, sys
+
+state, site_packages, collector, run_id, producer_id = sys.argv[1:6]
+sys.path.insert(0, site_packages)
+from microcosm_emitter_interface import EmitterClient, TelemetryRun, TelemetrySettings
+
+run = TelemetryRun(
+    run_id=run_id,
+    country_code="US",
+    pipeline="installed_emitter_status",
+    producer_id=producer_id,
+)
+client = EmitterClient.start(
+    telemetry=TelemetrySettings(
+        run=run, development_collector_url=collector, heartbeat_seconds=3600
+    )
+)
+if not client.available:
+    sys.exit("the installed emitter did not start")
+client.telemetry.stage("first_stage")
+client.telemetry.stage("second_stage")
+client.telemetry.complete()
+client.close()
+(pathlib.Path(state) / "out").mkdir(parents=True, exist_ok=True)
+(pathlib.Path(state) / "out" / "result.txt").write_text("done\\n")
+"""
+#: A tool that leaves a file that is not an event queue file where the
+#: emitter would keep one, and starts no emitter.
+_UNUSABLE_FILE_TOOL = """\
+import pathlib, sys
+
+sys.path.insert(0, sys.argv[2])
+from microcosm_emitter_interface import default_spool_path
+
+path = default_spool_path()
+path.parent.mkdir(parents=True, exist_ok=True)
+path.write_bytes(b"not an event queue file")
+(pathlib.Path(sys.argv[1]) / "out").mkdir(parents=True, exist_ok=True)
+(pathlib.Path(sys.argv[1]) / "out" / "result.txt").write_text("done\\n")
+"""
+
+
+@pytest.fixture
+def installed_command() -> str:
+    command = os.environ.get("MICROCOSM_EMITTER_COMMAND", "").strip()
+    if not command or shutil.which(command) is None:
+        pytest.fail(
+            "Run these tests with tools/run_installed_emitter_tests.sh, which sets "
+            "MICROCOSM_EMITTER_COMMAND."
+        )
+    return command
+
+
+@pytest.fixture
+def runner(installed_command: str, tmp_path: Path, monkeypatch):
+    """The runner's app, with the installed emitter at the image's emitter path.
+
+    Only ``status`` runs at that path; ``version`` keeps its recorded answer.
+    """
+
+    app = load_app(monkeypatch, real_emitter_status=True)
+    monkeypatch.setattr(plan_lib, "IMAGE_EMITTER_COMMAND", installed_command)
+    return install_fake_runner(app, tmp_path, monkeypatch)
+
+
+def _closed_loopback_origin() -> str:
+    with socket.socket() as probe:
+        probe.bind(("127.0.0.1", 0))
+        port = probe.getsockname()[1]
+    return f"http://127.0.0.1:{port}"
+
+
+def _tool(script: str, *arguments: str) -> plan_lib.ToolSpec:
+    return dataclasses.replace(
+        fake_tool(),
+        argv_builder=lambda plan, paths, state: ["-c", script, state, *arguments],
+    )
+
+
+def _opted_out_plan() -> dict:
+    return fake_plan(max_wall_seconds=600, env={"MICROCOSM_TELEMETRY_REQUIRED": "0"})
+
+
+def test_the_runner_records_the_events_the_installed_emitter_still_holds(
+    runner,
+) -> None:
+    app = runner(
+        _tool(
+            _EMITTING_TOOL,
+            _SITE_PACKAGES,
+            _closed_loopback_origin(),
+            RUN_ID,
+            PRODUCER_ID,
+        )
+    )
+
+    receipt = app._run_stage(_opted_out_plan())
+
+    assert receipt["status"] == "COMPLETED"
+    undelivered = receipt["runner"]["telemetry"]["undelivered_events"]
+    assert undelivered == {
+        "runs": [
+            {
+                "run_id": RUN_ID,
+                "producer_id": PRODUCER_ID,
+                "upload_state": "local_only",
+                "reason": "missing_huggingface_credential",
+                "undelivered_events": 4,
+            }
+        ],
+        "problem": None,
+    }
+
+
+def test_the_runner_records_no_runs_when_no_emitter_kept_an_event_queue_file(
+    runner,
+) -> None:
+    app = runner(fake_tool())
+
+    receipt = app._run_stage(_opted_out_plan())
+
+    assert receipt["status"] == "COMPLETED"
+    assert receipt["runner"]["telemetry"]["undelivered_events"] == {
+        "runs": [],
+        "problem": None,
+    }
+
+
+def test_the_runner_records_the_installed_emitter_s_refusal_of_an_unusable_file(
+    runner,
+) -> None:
+    app = runner(_tool(_UNUSABLE_FILE_TOOL, _SITE_PACKAGES))
+
+    receipt = app._run_stage(_opted_out_plan())
+
+    assert receipt["status"] == "COMPLETED"
+    path = Path(os.environ["XDG_CACHE_HOME"]) / "microcosm/telemetry/events.sqlite3"
+    assert receipt["runner"]["telemetry"]["undelivered_events"] == {
+        "runs": None,
+        "problem": f"`microcosm-emitter status` exited 9: The file at {path} is "
+        "not an event queue file.",
+    }
