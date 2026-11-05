@@ -221,6 +221,17 @@ RUNNER_TOKEN_SECRET_ENV = {
     RUNNER_TOKEN_ORIGIN_ENV: EMITTER_TOKEN_ORIGIN_ENV,
 }
 _TOKEN_ENV_NAMES = frozenset(COLLECTOR_TOKEN_ENV) | frozenset(RUNNER_TOKEN_SECRET_ENV)
+#: The telemetry run a build program reports under, and the parent process
+#: that records a child stage's telemetry (``microcosm.build.program_telemetry``,
+#: whose names these must stay). The runner sets the run ID for each stage to
+#: ``<plan run_id>.<stage>`` (``telemetry_run_id``), so every attempt of a
+#: plan's stage reports under one run, which the collector shows as a
+#: restart, and the program names the plan's run as the candidate. A plan may
+#: set neither, and the runner removes both from whatever else the container
+#: holds.
+TELEMETRY_RUN_ID_ENV = "MICROCOSM_TELEMETRY_RUN_ID"
+TELEMETRY_PARENT_PID_ENV = "MICROCOSM_TELEMETRY_PARENT_PID"
+_TELEMETRY_RUN_ENV_NAMES = frozenset({TELEMETRY_RUN_ID_ENV, TELEMETRY_PARENT_PID_ENV})
 #: Where the build's interface finds the emitter command, and where the
 #: launch looks first for the operator's emitter on the operator's machine
 #: (then ``PATH``). In the container the image sets it (IMAGE_ENVIRONMENT) to
@@ -1434,6 +1445,12 @@ def parse_plan(data: object) -> Plan:
                 "per-launch secret supplies it, and an emitter given part of it "
                 "exits at start"
             )
+        if key in _TELEMETRY_RUN_ENV_NAMES:
+            raise PlanError(
+                f"env {key!r} names the stage's telemetry run, which the runner "
+                "and the build programs set themselves (the run is "
+                "<plan run_id>.<stage>)"
+            )
         if key == EMITTER_COMMAND_ENV:
             raise PlanError(
                 f"env {key!r} would start another emitter than the image's "
@@ -1697,8 +1714,21 @@ def _runner_token_values(environ: Mapping[str, str]) -> dict[str, str] | None:
     return values if all(values.values()) else None
 
 
+def telemetry_run_id(plan: Plan) -> str:
+    """The telemetry run the stage's build reports under: ``<run_id>.<stage>``.
+
+    Stage names hold no ``.``, so the part before the last ``.`` is the
+    plan's ``run_id``, which the build program names as the run's candidate.
+    """
+
+    return f"{plan.run_id}.{plan.stage}"
+
+
 def tool_environment(
-    base: Mapping[str, str], plan_env: Mapping[str, str]
+    base: Mapping[str, str],
+    plan_env: Mapping[str, str],
+    *,
+    telemetry_run_id: str | None = None,
 ) -> tuple[dict[str, str], list[str]]:
     """The stage tool's environment, and the names removed from ``base``.
 
@@ -1717,6 +1747,12 @@ def tool_environment(
     anywhere else: all three values, stripped, or none, and none when the
     plan sets ``0``. A plan may not name another emitter command
     (EMITTER_COMMAND_ENV).
+
+    The tool reports telemetry under ``telemetry_run_id``
+    (TELEMETRY_RUN_ID_ENV), which the runner always passes
+    (``telemetry_run_id(plan)``); without it the tool makes its own attempt
+    ID. A plan may not set that variable or TELEMETRY_PARENT_PID_ENV, and
+    both are removed from ``base``.
     """
 
     for key in plan_env:
@@ -1724,6 +1760,7 @@ def tool_environment(
             not _ENV_KEY.fullmatch(key)
             or is_credential_env_key(key)
             or key in _TOKEN_ENV_NAMES
+            or key in _TELEMETRY_RUN_ENV_NAMES
             or key == EMITTER_COMMAND_ENV
         ):
             raise PlanError(f"env {key!r} may not be passed to the tool")
@@ -1732,12 +1769,17 @@ def tool_environment(
     removed = sorted(
         key
         for key in base
-        if is_credential_env_key(key) or key == HASH_SEED_ENV or key in _TOKEN_ENV_NAMES
+        if is_credential_env_key(key)
+        or key == HASH_SEED_ENV
+        or key in _TOKEN_ENV_NAMES
+        or key in _TELEMETRY_RUN_ENV_NAMES
     )
     dropped = set(removed)
     env = {key: value for key, value in base.items() if key not in dropped}
     env["HF_HUB_OFFLINE"] = "1"
     env[TELEMETRY_REQUIRED_ENV] = "1"
+    if telemetry_run_id is not None:
+        env[TELEMETRY_RUN_ID_ENV] = telemetry_run_id
     given = _runner_token_values(base) if telemetry_required(plan_env) else None
     if given is not None:
         env.update(
@@ -2283,6 +2325,18 @@ def stop_process_group(
     except ProcessLookupError:
         pass
     return sent
+
+
+def process_group_alive(process_group: int) -> bool:
+    """Whether any process is left in ``process_group`` (signal 0 checks only)."""
+
+    try:
+        os.killpg(process_group, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    return True
 
 
 def tree_file_rows(tool: ToolSpec, repo_root: Path | str) -> list[dict[str, object]]:

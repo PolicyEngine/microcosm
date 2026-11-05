@@ -59,7 +59,9 @@ release directory onto the runs volume. Publication stays the human step in
    `MICROCOSM_COLLECTOR_ORIGIN`) or the runner's own names for them
    (`MICROCOSM_MODAL_TELEMETRY_*`). Nor may it set
    `MICROCOSM_EMITTER_COMMAND`: the build always starts the image's emitter,
-   whose version and collector origin the check and the run verify. The runner sets the flags for input paths,
+   whose version and collector origin the check and the run verify. Nor may
+   it set `MICROCOSM_TELEMETRY_RUN_ID` or `MICROCOSM_TELEMETRY_PARENT_PID`,
+   which name the stage's telemetry run (item 6). The runner sets the flags for input paths,
    checkpoints and outputs, and a plan cannot pass them. It also cannot pass
    `--allow-dirty`: every run builds from a clean clone. A registered
    option's flag must be a plain long flag with no `=` in it that is neither
@@ -237,8 +239,48 @@ release directory onto the runs volume. Publication stays the human step in
      `MICROCOSM_TELEMETRY_REQUIRED=1`, so a build that starts its emitter
      stops at once when the emitter cannot be used. The emitter the build
      starts inherits the token and sends telemetry only to the collector it
-     was obtained from. Today the registered tools do not start the emitter,
-     so they send nothing yet.
+     was obtained from.
+   - **The registered programs start the emitter.** `us-acs-local-release`,
+     `us-puf-support-base` (and its rerun) and `us-acs-multispine-staging`
+     start it right after parsing their arguments
+     (`microcosm.build.program_telemetry`), so a stage whose emitter cannot
+     be used exits nonzero within seconds, before it reads an input. They
+     record a stage change before each stage (the ACS release's stages, the
+     base's outer stages, the staging builder's main phases) and then
+     completion, or failure with the error; a validation refusal is
+     recorded as a failure. A SIGTERM, such as the runner's stop at the
+     budget, is recorded as a termination in the stage that was running,
+     and the program then exits 143, as the UK builds do. In the base, only the `--stage all` parent
+     starts the emitter: it records each child interpreter's stage and,
+     from the child's exit code, its outcome, and the children start none.
+     `runner-smoke`, an inline script, starts no emitter. A plan pinned to a
+     commit from before these programs started the emitter (#1502) runs
+     tool code that starts none, so its stage sends nothing, though the
+     runner still passes the token.
+   - **After the build exits.** The emitter runs in its own session and
+     holds the tool's output (it inherits the tool's standard error) while
+     it delivers its last events, for up to about 15 s. The runner reads
+     that output to its end before it hashes and mirrors the state, so the
+     container waits for that delivery. A tool that exited before its budget
+     and left nothing in its process group is not stopped or recorded as
+     stopped at the budget while the emitter still holds the output; a
+     process the tool left in its group still is.
+   - **The telemetry run.** The tool's environment gets
+     `MICROCOSM_TELEMETRY_RUN_ID=<plan run_id>.<stage>`, also when the plan
+     opts out, so each stage is its own telemetry run. The program names the
+     plan's `run_id` as the run's candidate ID, which the collector stores
+     with the run. A later attempt of the same stage, after a preemption
+     restart or a relaunch, reports under the same run, which the collector
+     shows as a restart of it. The collector accepts that only from the same
+     Hugging Face account: a stage relaunched by another operator's login
+     is refused by the collector, and its build continues without sending.
+     Give each plan `run_id` to one tool only: the ID does not name the
+     tool, so another tool's plan with the same `run_id` and stage name
+     registers the same telemetry run with another pipeline, the collector
+     refuses it (409), and that stage's telemetry stays in its container.
+     Started by hand, without the variable, a program makes its own attempt
+     ID, `<pipeline>-<UTC time>-<8 hex digits>`, as the US fiscal refresh
+     does.
    - **Before staging.** The container refuses the attempt (`refused`,
      finished, nothing charged) when the token is missing or incomplete,
      when the image's emitter does not answer `microcosm-emitter version` or
@@ -282,8 +324,9 @@ release directory onto the runs volume. Publication stays the human step in
      run".
    - **Opting out.** A plan whose `env` sets `MICROCOSM_TELEMETRY_REQUIRED`
      to `0` asks for no token, and its build runs without telemetry: the
-     emitter, if one starts, keeps its events in the container, and they
-     are lost with it. The plan, and so the setting, is copied into every
+     build still starts its emitter when it can, but with no token and no
+     Hugging Face credential the emitter keeps its events in the container,
+     and they are lost with it. The plan, and so the setting, is copied into every
      receipt. The setting exists only for people outside PolicyEngine who
      run Microcosm without access to the collector. PolicyEngine's own
      builds keep telemetry required, so PolicyEngine's plans do not set it.

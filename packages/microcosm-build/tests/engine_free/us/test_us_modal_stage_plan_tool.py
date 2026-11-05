@@ -2167,6 +2167,73 @@ def test_a_stopped_stage_pushes_its_whole_state_first_paths_first(
     assert receipt["outputs"] == plan_lib.hash_tree(volume_state)
 
 
+# A stand-in tool that finishes at once but leaves a process holding its
+# output open for a few seconds. With ``own_session`` that process is outside
+# the tool's process group, like the emitter a build starts (the interface
+# starts it with ``start_new_session=True`` and no ``stderr=``, so it holds
+# the tool's output while it delivers its last events). Without it, the
+# process stays in the tool's group, like a child stage its parent left.
+_HOLDER_TOOL = """\
+import pathlib, subprocess, sys
+state = pathlib.Path(sys.argv[1])
+(state / "out").mkdir(parents=True, exist_ok=True)
+(state / "out" / "result.txt").write_text("done\\n")
+hold = "import sys, time; time.sleep(float(sys.argv[1]))"
+subprocess.Popen(
+    [sys.executable, "-c", hold, sys.argv[2]],
+    start_new_session=sys.argv[3] == "own_session",
+)
+print("tool done", flush=True)
+"""
+
+
+def _holder_tool(hold_seconds: float, placement: str) -> plan_lib.ToolSpec:
+    return dataclasses.replace(
+        _fake_tool(timeout_s=8, overhead=5),
+        argv_builder=lambda plan, paths, state: [
+            "-c",
+            _HOLDER_TOOL,
+            state,
+            str(hold_seconds),
+            placement,
+        ],
+    )
+
+
+def test_a_tool_that_exits_before_its_budget_is_not_stopped_while_its_emitter_holds_its_output(
+    fake_runner, tmp_path: Path, monkeypatch, capsys
+) -> None:
+    # The tool exits 0 at once; a process in its own session (the emitter's
+    # place) holds the output past the tool's budget of about 3 s. The runner
+    # waits for the output to end, so the emitter can deliver, but the stage
+    # finished before its budget and is not recorded as stopped at it.
+    monkeypatch.setattr(plan_lib, "MIN_ATTEMPT_SECONDS", 1)
+    app = fake_runner(_holder_tool(5, "own_session"))
+    started = time.monotonic()
+    receipt = app._run_stage(_fake_plan())
+    assert time.monotonic() - started >= 4.5
+    assert receipt["runner"]["tool_budget"]["seconds"] <= 3
+    assert (receipt["status"], receipt["stopped_at_budget"], receipt["returncode"]) == (
+        "COMPLETED",
+        False,
+        0,
+    )
+    assert "BUDGET: stopping the tool" not in capsys.readouterr().out
+
+
+def test_a_tool_that_exits_but_leaves_its_group_running_is_still_stopped_at_its_budget(
+    fake_runner, tmp_path: Path, monkeypatch
+) -> None:
+    # A process left in the tool's group (a child stage whose parent died)
+    # would hold the output until it finished: the budget still stops it.
+    monkeypatch.setattr(plan_lib, "MIN_ATTEMPT_SECONDS", 1)
+    app = fake_runner(_holder_tool(60, "tool_group"))
+    started = time.monotonic()
+    receipt = app._run_stage(_fake_plan())
+    assert time.monotonic() - started < 8
+    assert (receipt["status"], receipt["stopped_at_budget"]) == ("FAILED", True)
+
+
 # --------------------------------------------------------------------------- #
 # The hash seed and the disk floor, through the app                           #
 # --------------------------------------------------------------------------- #
@@ -2215,8 +2282,8 @@ def test_a_forced_hash_seed_is_refused_before_anything_is_staged(
     app = fake_runner(_seed_tool())
     real = plan_lib.tool_environment
 
-    def forced(base, plan_env):
-        env, removed = real(base, plan_env)
+    def forced(base, plan_env, **options):
+        env, removed = real(base, plan_env, **options)
         return {**env, "PYTHONHASHSEED": _PROBE_SEED}, removed
 
     monkeypatch.setattr(plan_lib, "tool_environment", forced)
@@ -2269,8 +2336,8 @@ def test_check_stage_fails_when_the_run_would_refuse(
     monkeypatch.setattr(
         plan_lib,
         "tool_environment",
-        lambda base, plan_env: (
-            {**real(base, plan_env)[0], "PYTHONHASHSEED": _PROBE_SEED},
+        lambda base, plan_env, **options: (
+            {**real(base, plan_env, **options)[0], "PYTHONHASHSEED": _PROBE_SEED},
             [],
         ),
     )
@@ -2363,6 +2430,101 @@ def test_a_plan_that_opts_out_runs_its_tool_without_a_collector_token() -> None:
     )
     assert env["MICROCOSM_TELEMETRY_REQUIRED"] == "0"
     assert not set(COLLECTOR_TOKEN_NAMES) & set(env)
+
+
+#: The variables a build program reads for its telemetry run
+#: (``microcosm.build.program_telemetry``); the runner and the programs set
+#: them, a plan never does.
+TELEMETRY_RUN_NAMES = ("MICROCOSM_TELEMETRY_RUN_ID", "MICROCOSM_TELEMETRY_PARENT_PID")
+
+
+def test_each_stage_reports_under_the_plan_s_run_and_its_stage() -> None:
+    from microcosm.build import program_telemetry
+
+    assert plan_lib.TELEMETRY_RUN_ID_ENV == program_telemetry.TELEMETRY_RUN_ID_VARIABLE
+    assert (
+        plan_lib.TELEMETRY_PARENT_PID_ENV
+        == program_telemetry.TELEMETRY_PARENT_PID_VARIABLE
+    )
+    plan = plan_lib.parse_plan(_plan_data(stage="calibrate"))
+    run_id = plan_lib.telemetry_run_id(plan)
+    assert run_id == "acs-local-20260923.calibrate"
+    # The program names the plan's run as the telemetry run's candidate.
+    assert program_telemetry.telemetry_run_identity(
+        "us_acs_local_release", environ={"MICROCOSM_TELEMETRY_RUN_ID": run_id}
+    ) == (run_id, "acs-local-20260923")
+    # Only from the runner: a value anywhere else in the container is removed.
+    env, removed = plan_lib.tool_environment(
+        {"PATH": "/usr/bin", "MICROCOSM_TELEMETRY_RUN_ID": "elsewhere.run"},
+        {},
+        telemetry_run_id=run_id,
+    )
+    assert env["MICROCOSM_TELEMETRY_RUN_ID"] == run_id
+    assert removed == ["MICROCOSM_TELEMETRY_RUN_ID"]
+
+
+def test_every_registered_stage_s_telemetry_run_id_is_one_the_collector_accepts() -> (
+    None
+):
+    from microcosm.build import program_telemetry
+
+    longest_run_id = "r" * 80
+    for tool in plan_lib.TOOLS.values():
+        for stage in tool.stages:
+            assert "." not in stage, (tool.name, stage)
+            data = _plan_data(stage="materialize", run_id=longest_run_id)
+            plan = dataclasses.replace(
+                plan_lib.parse_plan(data), tool=tool, stage=stage
+            )
+            run_id = plan_lib.telemetry_run_id(plan)
+            assert program_telemetry.telemetry_run_identity(
+                "pipeline", environ={"MICROCOSM_TELEMETRY_RUN_ID": run_id}
+            ) == (run_id, longest_run_id)
+
+
+def test_the_runner_removes_the_telemetry_run_variables_from_the_container() -> None:
+    base = {
+        "PATH": "/usr/bin",
+        "MICROCOSM_TELEMETRY_RUN_ID": "elsewhere.run",
+        "MICROCOSM_TELEMETRY_PARENT_PID": "1",
+    }
+    env, removed = plan_lib.tool_environment(base, {})
+    # Without a run ID from the runner the tool makes its own; a parent ID
+    # from the container would make a build program start no emitter.
+    assert not set(TELEMETRY_RUN_NAMES) & set(env)
+    assert removed == sorted(TELEMETRY_RUN_NAMES)
+    env, removed = plan_lib.tool_environment(base, {}, telemetry_run_id="plan.run")
+    assert env["MICROCOSM_TELEMETRY_RUN_ID"] == "plan.run"
+    assert "MICROCOSM_TELEMETRY_PARENT_PID" not in env
+    assert removed == sorted(TELEMETRY_RUN_NAMES)
+
+
+def test_the_check_probes_the_tool_in_the_environment_with_its_telemetry_run(
+    fake_runner, monkeypatch
+) -> None:
+    app = fake_runner(_seed_tool())
+    clone = app._git_state(None)
+    monkeypatch.setattr(app, "_git_state", lambda plan: {**clone, "tree_files": []})
+    real = plan_lib.tool_environment
+    seen: list[str | None] = []
+
+    def spy(base, plan_env, **options):
+        env, removed = real(base, plan_env, **options)
+        seen.append(env.get("MICROCOSM_TELEMETRY_RUN_ID"))
+        return env, removed
+
+    monkeypatch.setattr(plan_lib, "tool_environment", spy)
+    app.check_stage(_fake_plan())
+    assert seen == ["fake-run.run"]
+
+
+@pytest.mark.parametrize("key", TELEMETRY_RUN_NAMES)
+def test_a_plan_may_not_choose_the_stage_s_telemetry_run(key: str) -> None:
+    with pytest.raises(plan_lib.PlanError, match="the runner and the build") as refused:
+        plan_lib.parse_plan(_plan_data(env={key: "chosen-by-the-plan"}))
+    assert key in str(refused.value)
+    with pytest.raises(plan_lib.PlanError, match="may not be passed"):
+        plan_lib.tool_environment({}, {key: "chosen-by-the-plan"})
 
 
 def test_the_image_emitter_s_version_runs_without_credentials_or_the_token(
@@ -2844,6 +3006,44 @@ def test_a_stage_passes_its_token_to_the_tool_and_records_only_its_expiry_and_or
     run_dir = tmp_path / "runs" / "runs" / "fake-run"
     for path in [*run_dir.rglob("*.json"), *run_dir.rglob("*.log")]:
         assert DUMMY_COLLECTOR_TOKEN not in path.read_text(), path
+
+
+# A stand-in tool that records the telemetry run its environment names.
+_TELEMETRY_RUN_TOOL = """\
+import json, os, pathlib, sys
+state = pathlib.Path(sys.argv[1])
+(state / "out").mkdir(parents=True, exist_ok=True)
+(state / "out" / "telemetry-run.json").write_text(json.dumps({
+    name: os.environ.get(name)
+    for name in ("MICROCOSM_TELEMETRY_RUN_ID", "MICROCOSM_TELEMETRY_REQUIRED")
+}))
+"""
+
+
+@pytest.mark.parametrize("env", [{}, {"MICROCOSM_TELEMETRY_REQUIRED": "0"}])
+def test_a_stage_gives_its_tool_the_plan_s_run_and_stage_as_its_telemetry_run(
+    fake_runner, tmp_path: Path, env: dict
+) -> None:
+    app = fake_runner(
+        dataclasses.replace(
+            _fake_tool(),
+            argv_builder=lambda plan, paths, state: [
+                "-c",
+                _TELEMETRY_RUN_TOOL,
+                state,
+            ],
+        )
+    )
+    receipt = app._run_stage(_fake_plan(max_wall_seconds=600, env=env))
+    assert receipt["status"] == "COMPLETED"
+    state = tmp_path / "runs" / "runs" / "fake-run" / "state"
+    seen = json.loads((state / "out" / "telemetry-run.json").read_text())
+    # A plan that opts out still names the run: its build's emitter, if one
+    # starts, keeps its events under it in the container.
+    assert seen == {
+        "MICROCOSM_TELEMETRY_RUN_ID": "fake-run.run",
+        "MICROCOSM_TELEMETRY_REQUIRED": env.get("MICROCOSM_TELEMETRY_REQUIRED", "1"),
+    }
 
 
 @pytest.mark.parametrize("problem", ["missing", "expires-too-soon", "other-origin"])
