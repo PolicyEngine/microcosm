@@ -370,6 +370,23 @@ def test_a_location_row_nobody_reviewed_refuses() -> None:
         _plan([*facts, new_row])
 
 
+@pytest.mark.parametrize("value_id", ["pr", "other"])
+def test_a_repeated_location_scope_row_refuses(value_id: str) -> None:
+    facts = _facts()
+    row = next(
+        fact
+        for fact in facts
+        if fact["layout"]["groupby_value_id"] == value_id
+        and fact["lineage"]["source_record_id"].endswith(".borrowers")
+        and "portfolio_by_location.2026_03_31" in fact["lineage"]["source_record_id"]
+    )
+    repeat = copy.deepcopy(row)
+    repeat["lineage"]["source_record_id"] += ".repeat"
+
+    with pytest.raises(ValueError, match=rf"repeated \['{value_id}'\]"):
+        _plan([*facts, repeat])
+
+
 def test_a_gapped_band_partition_refuses() -> None:
     facts = _facts()
     gapped = [

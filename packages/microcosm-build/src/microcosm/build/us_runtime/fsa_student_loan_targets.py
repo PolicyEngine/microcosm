@@ -23,11 +23,12 @@ counted, which is how the stage assigns those balances.
 
 Repayment plans, the portfolio summary and the loan-type table stay out of the
 loss: :data:`FSA_DIAGNOSTIC_TABLES` and the row rules in
-:func:`plan_fsa_student_loan_targets` give each reason. Originating a Direct
-Consolidation Loan discharges the loans it consolidates (34 CFR 685.220(a)), so
-FSA's Parent PLUS row covers only unconsolidated loans, while the stage's column
-holds every loan for a child's education, consolidated or not. Every other family
-pins the total, so a target on either side of FSA's split would set the same split.
+:func:`plan_fsa_student_loan_targets` give each reason. Under 34 CFR 685.220(f), the
+Secretary pays off each loan that a Direct Consolidation Loan consolidates, and
+FSA's notes don't say whether its Parent PLUS row leaves those loans out. The
+stage's column holds every loan for a child's education, consolidated or not, so
+the row and the column may measure different loans. Every other family pins the
+total, so a target on either side of FSA's split would still constrain the split.
 
 Reference period. The build's period is the H5's (2024), but the balances are
 stocks that the student-debt analysis reads as they stand (its reference year
@@ -259,9 +260,9 @@ _REASON_LOAN_TYPE_RECIPIENTS = (
     "counts twice), so they are not counts of people."
 )
 _REASON_LOAN_TYPE_DOLLARS = (
-    "Consolidation discharges a Parent PLUS loan (34 CFR 685.220(a)), so FSA's split "
-    "sets a floor on the stage's Parent PLUS column, and every other family pins "
-    "the total."
+    "FSA's notes don't say whether its Parent PLUS row leaves out loans the Secretary "
+    "paid off through consolidation (34 CFR 685.220(f)), the stage's column holds "
+    "every loan for a child's education, and every other family pins the total."
 )
 _REASON_STAFFORD_SUBTOTAL = (
     "Stafford (Combined) is a subtotal of rows the table already lists."
@@ -756,11 +757,14 @@ def _require_reviewed_rows(
     rows: Iterable[object],
     reviewed: frozenset[str],
 ) -> None:
-    found = {_str_at(fact, "layout", "groupby_value_id") for fact in rows}
-    if found != reviewed:
+    found = [_str_at(fact, "layout", "groupby_value_id") for fact in rows]
+    if sorted(found) != sorted(reviewed):
+        values = set(found)
+        repeated = sorted({value for value in found if found.count(value) > 1})
         raise ValueError(
             f"FSA {table} {source_measure} rows changed at the reference quarter: "
-            f"missing {sorted(reviewed - found)}, unreviewed {sorted(found - reviewed)}."
+            f"missing {sorted(reviewed - values)}, unreviewed "
+            f"{sorted(values - reviewed)}, repeated {repeated}."
         )
 
 
