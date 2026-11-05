@@ -142,7 +142,12 @@ cross-platform equivalence has not been established.
 The version-1 declaration lists `identity`, `stream`, three assignment `outputs`
 (`area`, `system`, `basis`), and `systems`. Each system supplies its atomic
 identity and source, a selector, observed constraints, an optional observed-area
-column, sampling stages and derived layers. Geographic codes use nullable
+column, sampling stages and derived layers. A stage samples by one `weight`
+column, or declares `weight_by` (`input`, `map`, `default`) instead: each
+household samples by the weight column `map` names for its `input` code, or by
+`default` where the code is missing, and a code `map` does not name is refused
+(microcosm#931). A declaration without `weight_by` keeps its canonical bytes,
+so its definition digest and draws are unchanged. Geographic codes use nullable
 strings throughout, retaining leading zeroes. An engine that needs integer
 storage must declare that conversion separately. A system without a particular
 layer produces missing values for that layer, which the integrity gate checks.
