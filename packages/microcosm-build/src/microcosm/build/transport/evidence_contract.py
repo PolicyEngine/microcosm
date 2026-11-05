@@ -78,7 +78,6 @@ from microcosm.graph.kernel import source_hash
 
 __all__ = [
     "AXIOM_INPUT_CLOSURE",
-    "BINDING_LOCAL_VIEW_MESSAGE",
     "CLOSURE_CLASSES",
     "DONOR_ARTIFACT_RECEIPT",
     "DONOR_RECEIPT_REF",
@@ -218,12 +217,6 @@ CLOSURE_CLASSES = (
     "relation",
     "unreached",
     "gap",
-)
-
-BINDING_LOCAL_VIEW_MESSAGE = (
-    "{module} {entity}.{input}: closure source 'binding_local_view' is reserved "
-    "for binding-local views (S2b, S2D-AGREED item 3) and is refused until that "
-    "extension lands."
 )
 
 _SHA256 = re.compile(r"[0-9a-f]{64}")
@@ -840,6 +833,30 @@ def binding_relation_inputs(row: Mapping[str, object]) -> tuple[RelationInput, .
     return tuple(sorted(inputs.values()))
 
 
+def binding_view_entities(row: Mapping[str, object]) -> frozenset[str]:
+    """The logical engine entities a binding's ``views`` block declares.
+
+    Reads the declaration fields only; the registry validates the views
+    themselves (``registry._binding_views``).
+    """
+
+    views = row.get("views")
+    if views is None:
+        return frozenset()
+    if isinstance(views, str | bytes) or not isinstance(views, Sequence):
+        raise TypeError(f"rules binding {row.get('id')!r}.views must be a list.")
+    entities = set()
+    for view in views:
+        if not isinstance(view, Mapping) or not isinstance(
+            view.get("logical_entity"), str
+        ):
+            raise ValueError(
+                f"rules binding {row.get('id')!r} view lacks a logical_entity."
+            )
+        entities.add(view["logical_entity"])
+    return frozenset(entities)
+
+
 def module_declares_imports(source: bytes) -> bool:
     """Whether a RuleSpec module has a top-level ``imports:`` key."""
 
@@ -997,7 +1014,9 @@ def closure_partition(
         module_sha256: Binding id -> SHA-256 of the module bytes the run binds.
         module_imports: Binding id -> whether the module declares ``imports:``.
         mapped_entities: The engine entities the schema maps; roots on any
-            other entity are reported as ``unmapped_entity`` and are not live.
+            other entity are reported as ``unmapped_entity`` and are not live,
+            except a binding-local view's logical entity on that view's
+            binding, whose roots are live and read person columns.
         frame_columns: Frame entity -> columns the producer's slice carries,
             or ``None`` to skip the frame checks (engine-free tests).
         entity_names: Frame entity -> engine entity, needed with
@@ -1008,17 +1027,29 @@ def closure_partition(
     Returns:
         ``{"check": [...], "modules": [...]}``: ``check`` is
         :meth:`InputClosure.check` on the live surface (stamped with the
-        closure's commits) and the mapping without unreached refs; each
+        closure's commits) and the mapping without unreached refs. The
+        checker unions each path's checked roots per engine entity across all
+        bindings, independent of binding order. Each per-binding
         module row puts every live root in exactly one of
         :data:`CLOSURE_CLASSES`.
 
     Raises:
-        ValueError: Naming every refused ``unreached_roots`` declaration, or a
-            binding that declares a binding-local view.
+        ValueError: Naming every refused ``unreached_roots`` declaration, or
+            both bindings when one module path carries different SHA-256 values.
     """
 
     mapped = frozenset(mapped_entities)
     to_frame = {engine: frame for frame, engine in (entity_names or {}).items()}
+    # Per binding: each view's logical entity is live there and reads the
+    # person table.
+    view_entities = {str(row["id"]): binding_view_entities(row) for row in bindings}
+    binding_to_frame = {
+        binding: {
+            **to_frame,
+            **{entity: person_entity for entity in view_entities[binding]},
+        }
+        for binding in view_entities
+    }
     refusals: list[str] = []
     excused: set[InputRef] = set()
     declared_unreached: dict[str, frozenset[str]] = {}
@@ -1033,22 +1064,17 @@ def closure_partition(
     for row in bindings:
         binding = str(row["id"])
         path = str(row["rulespec_path"])
-        if "views" in row:
-            refusals.append(
-                BINDING_LOCAL_VIEW_MESSAGE.format(
-                    module=path, entity=row.get("engine_entity"), input="*"
-                )
-            )
+        live_entities = mapped | view_entities[binding]
         by_entity = roots.get(binding, {})
         live_roots[binding] = {
             entity: tuple(sorted(set(names)))
             for entity, names in sorted(by_entity.items())
-            if entity in mapped
+            if entity in live_entities
         }
         unmapped_roots[binding] = sorted(
             _label(entity, name)
             for entity, names in by_entity.items()
-            if entity not in mapped
+            if entity not in live_entities
             for name in names
         )
         declaration = _unreached_declaration(row)
@@ -1136,6 +1162,20 @@ def closure_partition(
         }
         for row in bindings
     }
+    path_bindings: dict[str, str] = {}
+    path_roots: dict[str, dict[str, set[str]]] = {}
+    for row in bindings:
+        binding = str(row["id"])
+        path = str(row["rulespec_path"])
+        previous = path_bindings.setdefault(path, binding)
+        if module_sha256[previous] != module_sha256[binding]:
+            raise ValueError(
+                f"Rules bindings {previous!r} and {binding!r} give different "
+                f"module SHA-256 values for {path!r}."
+            )
+        by_entity = path_roots.setdefault(path, {})
+        for entity, names in checked_roots[binding].items():
+            by_entity.setdefault(entity, set()).update(names)
     surface = AxiomInputSurface(
         country=closure.country,
         rulespec_commit=closure.surface_rulespec_commit,
@@ -1143,19 +1183,27 @@ def closure_partition(
         engine_surface="live",
         modules=MappingProxyType(
             {
-                str(row["rulespec_path"]): AxiomModuleSurface(
-                    path=str(row["rulespec_path"]),
-                    sha256=module_sha256[str(row["id"])],
+                path: AxiomModuleSurface(
+                    path=path,
+                    sha256=module_sha256[path_bindings[path]],
                     status="compiled",
-                    inputs=MappingProxyType(checked_roots[str(row["id"])]),
+                    inputs=MappingProxyType(
+                        {
+                            entity: tuple(sorted(names))
+                            for entity, names in sorted(by_entity.items())
+                        }
+                    ),
                     canonical_inputs=MappingProxyType({}),
                 )
-                for row in bindings
+                for path, by_entity in sorted(path_roots.items())
             }
         ),
     )
     checked_surface, checked_mapping = without_unreached(
-        surface, mapping, excused, mapped
+        surface,
+        mapping,
+        excused,
+        mapped.union(*view_entities.values()),
     )
     problems = list(closure.check(checked_mapping, checked_surface))
 
@@ -1171,7 +1219,7 @@ def closure_partition(
         roots_out: list[str] = []
         listed = path in closure.modules
         for entity, names in live_roots[binding].items():
-            frame_entity = to_frame.get(entity)
+            frame_entity = binding_to_frame[binding].get(entity)
             carried = (
                 None
                 if frame_columns is None

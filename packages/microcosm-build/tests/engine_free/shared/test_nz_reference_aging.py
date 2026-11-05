@@ -34,16 +34,16 @@ from tools.generate_nz_reference_aging import (
 _PATHS = paths_for("microcosm-build")
 _SPEC = _PATHS.package / "src/microcosm/build/nz"
 _EXPECTED = {
-    "ird_ty2024_to_ty2027_low": 1115056,
-    "ird_ty2024_to_ty2027_central": 1117109,
-    "ird_ty2024_to_ty2027_high": 1119158,
-    "p1_ty2026_to_ty2027_low": 1026690,
-    "p1_ty2026_to_ty2027_central": 1028580,
-    "p1_ty2026_to_ty2027_high": 1030467,
+    "ird_ty2024_to_ty2027_low": 1117460,
+    "ird_ty2024_to_ty2027_central": 1118491,
+    "ird_ty2024_to_ty2027_high": 1119519,
+    "p1_ty2026_to_ty2027_low": 1028904,
+    "p1_ty2026_to_ty2027_central": 1029853,
+    "p1_ty2026_to_ty2027_high": 1030799,
     "observed_ty2026_over_ty2024": 1086069,
-    "donor_cy2024_to_ty2027_low": 1077090,
-    "donor_cy2024_to_ty2027_central": 1079073,
-    "donor_cy2024_to_ty2027_high": 1081052,
+    "donor_cy2024_to_ty2027_low": 1079413,
+    "donor_cy2024_to_ty2027_central": 1080408,
+    "donor_cy2024_to_ty2027_high": 1081401,
 }
 _DENOMINATORS = {
     "p1_": Fraction("1670.0725"),
@@ -107,7 +107,7 @@ def test_packaged_factor_context_validation_ignores_the_wall_clock(monkeypatch):
     class FutureDate(date):
         @classmethod
         def today(cls):
-            return cls(2026, 11, 5)
+            return cls(2027, 2, 3)
 
     monkeypatch.setattr(reference_factors, "date", FutureDate)
 
@@ -117,10 +117,10 @@ def test_packaged_factor_context_validation_ignores_the_wall_clock(monkeypatch):
 @pytest.mark.parametrize(
     "today,current",
     [
-        (date(2026, 10, 22), False),
-        (date(2026, 10, 23), True),
-        (date(2026, 11, 3), True),
-        (date(2026, 11, 4), False),
+        (date(2026, 11, 3), False),
+        (date(2026, 11, 4), True),
+        (date(2027, 2, 2), True),
+        (date(2027, 2, 3), False),
     ],
 )
 def test_factor_currency_uses_inclusive_declared_boundaries(today, current):
@@ -222,13 +222,14 @@ def test_treasury_fy2027_source_column_uses_chronicle_2026_and_2027_refuses(
         )
 
 
-def test_p1_high_rounds_once_to_1030467_and_old_truncation_refuses(operand_facts):
-    declaration = _entry("p1_ty2026_to_ty2027_high")["declaration"]
+def test_p1_rounds_once_and_the_truncated_numerator_refuses(operand_facts):
+    # p1_ty2026_to_ty2027_central's unrounded value truncates to a different numerator.
+    declaration = _entry("p1_ty2026_to_ty2027_central")["declaration"]
     assert declaration["source_period"] == 2026
     assert [
         row["selector"]["period_value"] for row in declaration["source_schedule"]
     ] == ["2025-Q2", "2025-Q3", "2025-Q4", "2026-Q1"]
-    declaration["expected_operational_factor"]["numerator"] = 1030466
+    declaration["expected_operational_factor"]["numerator"] = 1029852
     with pytest.raises(ValueError, match="expected factor mismatch"):
         resolve_reference_factor(
             declaration, operand_facts, _document()["feed_identity"]
@@ -247,8 +248,8 @@ def test_root_enclosure_certifies_no_rounded_quarters_and_irrational_root():
         assert receipt["root_bounds"]["exact"] is False
         denominator = _fraction(receipt["denominator_mean"])
         assert _fraction(receipt["numerator_mean_bounds"]["lower"]) == (
-            Fraction("1700.68") * sum(lower**i for i in range(4)) / 4
-        )
+            Fraction("1700.68") + Fraction("1714.86") * sum(lower**i for i in range(3))
+        ) / 4
         for bound in ("lower", "upper"):
             value = _fraction(receipt["unrounded_factor_bounds"][bound])
             assert (
@@ -258,29 +259,30 @@ def test_root_enclosure_certifies_no_rounded_quarters_and_irrational_root():
             assert round(value * 1000000) == _EXPECTED[factor_id]
 
 
-def test_september_observation_reanchors_and_requires_reviewed_redeclaration(
+def test_december_observation_reanchors_and_requires_reviewed_redeclaration(
     operand_facts,
 ):
     declaration = _entry()["declaration"]
     anchor = next(
-        fact for fact in operand_facts if fact["period"]["value"] == "2026-Q2"
+        fact for fact in operand_facts if fact["period"]["value"] == "2026-Q3"
     )
-    september = copy.deepcopy(anchor)
-    september["aggregate_fact_key"] = "ledger.aggregate_fact.v2:synthetic_september"
-    september["period"]["value"] = "2026-Q3"
-    september["layout"]["record_set_id"] = "stats_nz.qes.awe.2026q3"
-    september["period_coverage"].update(
-        {"start_date": "2026-07-01", "end_date": "2026-09-30"}
+    december = copy.deepcopy(anchor)
+    december["aggregate_fact_key"] = "ledger.aggregate_fact.v2:synthetic_december"
+    december["period"]["value"] = "2026-Q4"
+    december["layout"]["record_set_id"] = "stats_nz.qes.awe.2026q4"
+    december["period_coverage"].update(
+        {"start_date": "2026-10-01", "end_date": "2026-12-31"}
     )
-    september["value"] = LexicalFloat("1750.00")
+    december["value"] = LexicalFloat("1750.00")
     declaration["feed_identity"]["facts_sha256"] = "9" * 64
-    facts = (*operand_facts, september)
+    facts = (*operand_facts, december)
     with pytest.raises(ValueError, match="expected factor mismatch.*re-declaration"):
         resolve_reference_factor(declaration, facts, declaration["feed_identity"])
     with localcontext() as context:
         context.prec = 80
         q = (Decimal("1.027").sqrt()).sqrt()
-        numerator = (Decimal("1700.68") + Decimal(1750) * (1 + q + q * q)) / 4
+        observed = Decimal("1700.68") + Decimal("1714.86")
+        numerator = (observed + Decimal(1750) * (1 + q)) / 4
         expected = round(numerator / Decimal("1537.7225") * 1000000)
     declaration["expected_operational_factor"]["numerator"] = expected
     factor, receipt = resolve_reference_factor(
@@ -290,17 +292,18 @@ def test_september_observation_reanchors_and_requires_reviewed_redeclaration(
     assert [slot["status"] for slot in receipt["target_schedule"]] == [
         "observed",
         "observed",
-        "projected",
+        "observed",
         "projected",
     ]
     lower = _fraction(receipt["root_bounds"]["lower"])
+    observed_sum = Fraction("1700.68") + Fraction("1714.86")
     assert (
         _fraction(receipt["numerator_mean_bounds"]["lower"])
-        == (Fraction("1700.68") + 1750 * (1 + lower + lower**2)) / 4
+        == (observed_sum + 1750 * (1 + lower)) / 4
     )
-    for slot in receipt["target_schedule"][2:]:
+    for slot in receipt["target_schedule"][3:]:
         assert slot["projection_anchor"] == {
-            "aggregate_fact_key": september["aggregate_fact_key"]
+            "aggregate_fact_key": december["aggregate_fact_key"]
         }
 
 
@@ -309,9 +312,9 @@ def test_donor_factors_average_calendar_2024_and_share_the_tax_year_numerator(
 ):
     """Hub-recomputed values (G8-w rulings 4, H1); the feed calculation governs."""
     for profile, numerator in (
-        ("low", 1077090),
-        ("central", 1079073),
-        ("high", 1081052),
+        ("low", 1079413),
+        ("central", 1080408),
+        ("high", 1081401),
     ):
         entry = _entry(f"donor_cy2024_to_ty2027_{profile}")
         ird = _entry(f"ird_ty2024_to_ty2027_{profile}")
