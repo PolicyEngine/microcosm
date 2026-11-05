@@ -17,6 +17,7 @@ from microcosm.build.ledger_artifact import load_ledger_consumer_artifact
 from microcosm.build.uk_runtime.chronicle_feed import (
     load_uk_chronicle_feed,
     require_committed_uk_chronicle_feed_pin,
+    require_uk_chronicle_feed_row_contracts,
 )
 from microcosm.build.uk_runtime.derived_facts import (
     load_uk_derived_facts,
@@ -195,6 +196,9 @@ def load_uk_full_target_inputs(
             "UK full-build Chronicle fact row count differs from the reviewed "
             "national and local feed pins."
         )
+    require_uk_chronicle_feed_row_contracts(
+        artifact.fact_schema_versions, facts_sha256=artifact.facts_sha256, pin=pin
+    )
     year = (
         load_uk_frs_release().calibration_year
         if calibration_year is None
@@ -396,6 +400,9 @@ def load_uk_national_target_inputs(
         artifact.facts_sha256,
         manifest_sha256=artifact.manifest_sha256,
         allow_unpinned_feed=bool(allow_unpinned_feed),
+    )
+    require_uk_chronicle_feed_row_contracts(
+        artifact.fact_schema_versions, facts_sha256=artifact.facts_sha256, pin=pin
     )
     year = (
         load_uk_frs_release().calibration_year

@@ -138,6 +138,7 @@ def _national_inputs(monkeypatch, tmp_path: Path, *, registry=None):
         facts=None,
         facts_sha256="1" * 64,
         manifest_sha256="2" * 64,
+        fact_schema_versions=("chronicle.consumer_fact.v4",),
         path=ledger_dir,
         provenance=lambda: {
             "facts_sha256": "1" * 64,
@@ -146,7 +147,9 @@ def _national_inputs(monkeypatch, tmp_path: Path, *, registry=None):
         },
     )
     pin = SimpleNamespace(
-        to_dict=lambda: {"facts_sha256": "1" * 64, "manifest_sha256": "2" * 64}
+        facts_sha256="1" * 64,
+        consumer_fact_schema_versions=("chronicle.consumer_fact.v4",),
+        to_dict=lambda: {"facts_sha256": "1" * 64, "manifest_sha256": "2" * 64},
     )
     monkeypatch.setattr(
         full_targets, "load_ledger_consumer_artifact", lambda path, **kwargs: artifact
@@ -1218,6 +1221,7 @@ def _foreign_artifact(ledger_dir: Path, *, facts_sha256: str, manifest_sha256):
         facts=None,
         facts_sha256=facts_sha256,
         manifest_sha256=manifest_sha256,
+        fact_schema_versions=("chronicle.consumer_fact.v4",),
         path=ledger_dir,
         provenance=lambda: {
             "facts_sha256": facts_sha256,
