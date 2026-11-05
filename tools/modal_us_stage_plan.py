@@ -2247,10 +2247,12 @@ def telemetry_record(
 
 
 _STATUS_COMMAND = "`microcosm-emitter status`"
-#: How many objects deep the receipt holds the runs (the receipt, ``runner``,
-#: ``telemetry``, ``undelivered_events``), and a margin for what passes the
-#: receipt on, such as Modal's return of it to the launch.
-_RECEIPT_NESTING_OF_RUNS = 4 + 4
+#: How deep a run's fields may nest (a scalar is 0, an object or list one
+#: more than its deepest member). ``status`` prints scalars; a deeper field
+#: would reach the receipt, which is written as indented JSON, whose memory
+#: grows with the square of the depth, and which fails past the
+#: interpreter's recursion limits.
+EMITTER_STATUS_MAX_FIELD_NESTING = 32
 _STATUS_RUN_FIELDS = {
     "run_id": str,
     "producer_id": str,
@@ -2306,7 +2308,8 @@ def undelivered_events_from_status(
     and the last line ``status`` wrote on standard error, which is its own
     message, argparse's for an emitter without the command (exit 2), or a
     traceback's last line. Output that is not its list of runs is a problem
-    too.
+    too, and so are runs with a field nested more than
+    EMITTER_STATUS_MAX_FIELD_NESTING levels deep.
     """
 
     if returncode == EMITTER_STATUS_NO_FILE_EXIT_CODE:
@@ -2325,32 +2328,38 @@ def undelivered_events_from_status(
         return undelivered_events_problem(
             f"{_STATUS_COMMAND} exited 0 but did not print its JSON list of runs"
         )
-    if not _receipt_can_hold(runs):
+    if any(
+        _nesting(value) > EMITTER_STATUS_MAX_FIELD_NESTING
+        for run in runs
+        for value in run.values()
+    ):
         return undelivered_events_problem(
-            f"{_STATUS_COMMAND} exited 0 but printed runs nested too deeply "
-            "for the receipt"
+            f"{_STATUS_COMMAND} exited 0 but printed runs nested more than "
+            f"{EMITTER_STATUS_MAX_FIELD_NESTING} levels deep"
         )
     return {"runs": runs, "problem": None}
 
 
-def _receipt_can_hold(runs: list[EmitterStatusRun]) -> bool:
-    """Whether the receipt can be written with ``runs`` in it.
+def _nesting(value: object) -> int:
+    """How deep ``value`` nests: 0 for a scalar, one more than its deepest member.
 
-    The runs are kept as printed, extra fields included, and a field nested
-    just under the JSON parser's limit passes the parse; held deeper in the
-    receipt, it would make the receipt's write fail after the mirror and
-    leave no receipt. So they are serialized once here, as deep as the
-    receipt holds them and a little deeper, as the receipt is written.
+    Walked with a list rather than by recursion, so any depth the parser
+    accepted costs memory in proportion to its size.
     """
 
-    held: object = {"runs": runs}
-    for _ in range(_RECEIPT_NESTING_OF_RUNS):
-        held = {"held": held}
-    try:
-        json.dumps(held, indent=2)
-    except (ValueError, RecursionError):
-        return False
-    return True
+    deepest = 0
+    pending = [(value, 0)]
+    while pending:
+        item, depth = pending.pop()
+        if isinstance(item, dict):
+            members = list(item.values())
+        elif isinstance(item, list):
+            members = item
+        else:
+            continue
+        deepest = max(deepest, depth + 1)
+        pending.extend((member, depth + 1) for member in members)
+    return deepest
 
 
 def token_needed_until(plan: Plan, container_started: float) -> int:
