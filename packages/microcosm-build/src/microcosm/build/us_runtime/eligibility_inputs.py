@@ -87,9 +87,22 @@ count bound, and int32 safety on whatever frame it is handed, so a missed
 remap fails closed instead of exporting a stale pointer.
 
 Existing-frame note: a frame that already carries the pre-#884 outputs
-with signal (a ``--base-h5`` release input, an existing pool) passes through
-untouched, without parent ids; the gate asserts the parent-id identities only
-on frames that carry them.
+with signal (a ``--base-h5`` release input, an existing pool) keeps every
+column it carries. If it lacks the parent ids but still carries the raw
+pointers, the CPS evidence column and ``person_household_id``, the ids are
+resolved from those carried columns and added; nothing else changes
+(microcosm#1185). The resolution keys on ``(person_household_id, A_LINENO)``,
+not ``(PH_SEQ, A_LINENO)``: a support clone keeps its source's PH_SEQ and line
+numbers but sits in its own household, so the frame's household id is what
+keeps each pointer inside its own copy of the household. Only rows with CPS
+evidence (a non-empty ``PERIDNUM``, the column the pool's ``cps_source`` scope
+reads) take part, on both sides of a pointer: ACS rows carry synthesized
+reference-person links under the same PEPAR names (``acs_pums``), which
+``acs_inputs`` deliberately reports as unknown (0). On the CPS rows the carried
+``own_children_in_household`` came from the same pointers, so the stage
+requires the two to agree exactly and fails closed if they do not. A frame
+without those carried columns passes through untouched, without parent ids;
+the gate asserts the parent-id identities only on frames that carry them.
 """
 
 from __future__ import annotations
@@ -188,6 +201,15 @@ _PARENT_POINTER_COLUMNS: tuple[str, ...] = ("PEPAR1", "PEPAR2")
 #: The frame's person identifier. Not an ASEC source column: it is the
 #: structural id the stage aligns its output on, so it is already present.
 _PERSON_ID_COLUMN = "person_id"
+
+#: The frame's own household of each person. Unlike PH_SEQ it differs between
+#: a support clone and its source, so carried pointers resolve against it.
+_PERSON_HOUSEHOLD_ID_COLUMN = "person_household_id"
+
+#: The raw CPS ASEC column that marks a CPS-lineage row. ACS rows do not carry
+#: it; the multispine pool's ``cps_source`` scope reads the same column
+#: (``multispine_pool._CPS_SOURCE_EVIDENCE_COLUMN``).
+_CPS_EVIDENCE_COLUMN = "PERIDNUM"
 
 #: Raw CPS ASEC person columns the derivation reads. PH_SEQ/A_LINENO are
 #: the household sequence and person line number the parent pointers
@@ -428,13 +450,127 @@ def _disabled_carries_signal(person: pd.DataFrame) -> bool:
     return values.nunique() > 1
 
 
+def _cps_evidence_mask(person: pd.DataFrame) -> np.ndarray:
+    """Rows with a non-empty CPS evidence value (``PERIDNUM``)."""
+
+    evidence = person[_CPS_EVIDENCE_COLUMN]
+    available = evidence.notna()
+    if pd.api.types.is_string_dtype(evidence.dtype) or evidence.dtype == object:
+        available &= evidence.astype("string").str.strip().ne("").fillna(False)
+    return available.to_numpy(dtype=bool)
+
+
+def _integral_positive(values: np.ndarray) -> np.ndarray:
+    """Finite, positive, whole-number entries (a usable line or pointer)."""
+
+    finite = np.isfinite(values)
+    whole = np.zeros(len(values), dtype=bool)
+    whole[finite] = values[finite] == np.floor(values[finite])
+    return finite & whole & (values > 0)
+
+
+def _parent_ids_from_carried_pointers(
+    person: pd.DataFrame,
+) -> dict[str, np.ndarray] | None:
+    """Resolve the parent ids of a frame that carries the pre-#884 outputs.
+
+    Returns ``None`` when the frame lacks a column the resolution needs (the
+    pointers, ``A_LINENO``, ``person_id``, ``person_household_id`` or the CPS
+    evidence column) or carries a non-numeric household or person id; the
+    frame then passes through without parent ids, as before microcosm#1185.
+
+    A pointer names the person on the same ``A_LINENO`` in the pointing
+    person's own ``person_household_id``. Only CPS-evidenced rows point or are
+    pointed at; every other row reads 0 ("unknown"). Keys are exact int64, so
+    household ids past 2**53 stay distinct.
+
+    Raises:
+        SourceRuntimeError: If ``(person_household_id, A_LINENO)`` repeats
+            among CPS-evidenced rows (an ambiguous pointer), or if the
+            resolved ids disagree with the carried
+            ``own_children_in_household`` on a CPS-evidenced row. Both read
+            the same pointers, so a disagreement means the frame's pointers or
+            households no longer describe the relationships it was built from.
+    """
+
+    required = (
+        *_PARENT_POINTER_COLUMNS,
+        "A_LINENO",
+        _PERSON_ID_COLUMN,
+        _PERSON_HOUSEHOLD_ID_COLUMN,
+        _CPS_EVIDENCE_COLUMN,
+    )
+    if any(column not in person.columns for column in required):
+        return None
+    household_values = pd.to_numeric(
+        person[_PERSON_HOUSEHOLD_ID_COLUMN], errors="coerce"
+    )
+    person_id_values = pd.to_numeric(person[_PERSON_ID_COLUMN], errors="coerce")
+    if household_values.isna().any() or person_id_values.isna().any():
+        return None
+    household = household_values.to_numpy(dtype=np.int64)
+    person_id = person_id_values.to_numpy(dtype=np.int64)
+    cps = _cps_evidence_mask(person)
+    line = pd.to_numeric(person["A_LINENO"], errors="coerce").to_numpy(dtype=np.float64)
+
+    person_id_by_line: dict[tuple[int, int], int] = {}
+    for row in np.flatnonzero(cps & _integral_positive(line)).tolist():
+        key = (int(household[row]), int(line[row]))
+        if key in person_id_by_line:
+            raise SourceRuntimeError(
+                "US eligibility-inputs parent-id resolution on a carried frame "
+                "requires (person_household_id, A_LINENO) to identify at most "
+                f"one CPS person; household {key[0]} repeats line {key[1]}."
+            )
+        person_id_by_line[key] = int(person_id[row])
+
+    resolved: dict[str, np.ndarray] = {}
+    for column, pointer_column in zip(
+        US_ELIGIBILITY_INPUTS_PARENT_ID_COLUMNS, _PARENT_POINTER_COLUMNS, strict=True
+    ):
+        pointer = pd.to_numeric(person[pointer_column], errors="coerce").to_numpy(
+            dtype=np.float64
+        )
+        values = np.zeros(len(person), dtype=np.int64)
+        for row in np.flatnonzero(cps & _integral_positive(pointer)).tolist():
+            values[row] = person_id_by_line.get(
+                (int(household[row]), int(pointer[row])), 0
+            )
+        resolved[column] = values
+
+    observed = pd.to_numeric(
+        person["own_children_in_household"], errors="coerce"
+    ).to_numpy(dtype=np.float64)
+    expected = _pointed_at_counts(person_id, resolved)
+    mismatched = cps & (observed != expected) & (person_id != 0)
+    if mismatched.any():
+        examples = [
+            {
+                "person_id": int(person_id[row]),
+                "own_children_in_household": float(observed[row]),
+                "pointed_at_by": float(expected[row]),
+            }
+            for row in np.flatnonzero(mismatched)[:5].tolist()
+        ]
+        raise SourceRuntimeError(
+            "US eligibility-inputs parent ids resolved on a carried frame "
+            "disagree with its own_children_in_household for "
+            f"{int(mismatched.sum())} CPS person(s); both come from the same "
+            f"PEPAR pointers. Examples: {examples}."
+        )
+    return resolved
+
+
 def with_us_eligibility_inputs(frame: Frame, *, seed: int, time_period: int) -> Frame:
     """Run the ``eligibility_inputs`` manifest stage over a US frame.
 
     A frame already carrying every output column with a non-constant
-    disability distribution passes through untouched (idempotent). Any
-    other surface — columns missing, or disability constant at the engine
-    default — is recomputed from the raw ASEC columns.
+    disability distribution passes through untouched (idempotent). A frame
+    carrying every output column except the parent ids keeps its values and
+    gains the ids from its carried pointers, when it has the columns
+    :func:`_parent_ids_from_carried_pointers` reads; otherwise it too passes
+    through untouched. Any other surface — columns missing, or disability
+    constant at the engine default — is recomputed from the raw ASEC columns.
 
     Args:
         frame: A US-schema frame whose person table still carries the raw
@@ -452,8 +588,10 @@ def with_us_eligibility_inputs(frame: Frame, *, seed: int, time_period: int) -> 
     Raises:
         ValueError: If the frame is not US-schema or the stage output does
             not cover every person.
-        SourceRuntimeError: If required raw ASEC columns are missing, or if
-            the parent pointers cannot be resolved unambiguously.
+        SourceRuntimeError: If required raw ASEC columns are missing, if
+            the parent pointers cannot be resolved unambiguously, or if ids
+            resolved on a carried frame disagree with its carried
+            ``own_children_in_household``.
     """
 
     if frame.schema != US_SCHEMA:
@@ -463,15 +601,36 @@ def with_us_eligibility_inputs(frame: Frame, *, seed: int, time_period: int) -> 
         column in person.columns for column in _LEGACY_OUTPUT_COLUMNS
     ) and _disabled_carries_signal(person)
     if have_legacy:
-        # A frame that already carries trusted eligibility inputs passes
-        # through untouched, with or without the parent ids. A frame built
-        # before they existed (a --base-h5 input, an existing pool) keeps
-        # exactly what it had: recomputing here would overwrite carried values
-        # with raw-column re-derivations, and resolving raw pointers on a
-        # cloned or pooled frame would key on (PH_SEQ, A_LINENO) pairs that
-        # are no longer unique there. Without the ids, PolicyEngine-US uses
-        # its count-based proxy, as before microcosm#884.
-        return frame
+        # A frame that already carries trusted eligibility inputs keeps every
+        # value it has: recomputing here would overwrite carried values with
+        # raw-column re-derivations. A frame built before the parent ids
+        # existed (a --base-h5 input, an existing pool) gains them from its
+        # carried pointers when it still has them (microcosm#1185). The
+        # resolution keys on the frame's own household, because a clone or a
+        # pooled frame repeats (PH_SEQ, A_LINENO) pairs. Without those
+        # columns, PolicyEngine-US uses its count-based proxy, as before
+        # microcosm#884.
+        if any(
+            column in person.columns
+            for column in US_ELIGIBILITY_INPUTS_PARENT_ID_COLUMNS
+        ):
+            # Ids already present (or one without its pair, which the gate
+            # refuses) are never rewritten.
+            return frame
+        carried = _parent_ids_from_carried_pointers(person)
+        if carried is None:
+            return frame
+        tables = {entity: frame.table(entity).copy() for entity in frame.entities}
+        for column, values in carried.items():
+            tables["person"][column] = values
+        return Frame(
+            tables,
+            frame.schema,
+            {entity: frame.weights_for(entity) for entity in frame.weighted_entities},
+            frame.strata,
+            mass_log=frame.mass_log,
+            metadata=frame.metadata,
+        )
 
     stage_person = person.copy(deep=True)
     stage_person[_PERSON_WEIGHT_COLUMN] = frame.resolve_weights("person").values
