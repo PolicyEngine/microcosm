@@ -115,9 +115,9 @@ from microcosm.build.uk_runtime.receipt_counts import (
     UK_DISCLOSURE_FLOOR,
     distinct_count,
     extreme_count,
+    record_source_households,
     rounded_count,
     small_cell_share,
-    source_household_ids,
     support_band,
 )
 from microcosm.build.uk_runtime.spi_income import (
@@ -596,9 +596,10 @@ def holder_table(frame: Frame) -> pd.DataFrame:
         np.asarray(frame.weights_for("household").values, dtype=float),
         index=household["household_id"].to_numpy(),
     )
-    sources = pd.Series(
-        source_household_ids(household, stage=UK_COMPANY_CARS_STAGE_NAME),
-        index=household["household_id"].to_numpy(),
+    sources = record_source_households(
+        {"person": person, "household": household},
+        "person",
+        stage=UK_COMPANY_CARS_STAGE_NAME,
     )
     household_ids = person["person_household_id"].to_numpy()
     channel_column = support_channel_column("person")
@@ -649,7 +650,7 @@ def holder_table(frame: Frame) -> pd.DataFrame:
         {
             "person_id": person["person_id"].to_numpy(),
             "household_id": household_ids,
-            "source_household": sources.reindex(household_ids).to_numpy(),
+            "source_household": sources,
             "weight": weights.reindex(household_ids).to_numpy(float),
             "spi": spi,
             "tape": tape,

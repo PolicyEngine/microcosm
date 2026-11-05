@@ -105,6 +105,7 @@ def _frame(
         {
             "household_id": ids,
             "household_source_id": ids,
+            "source_household_id": ids,
             "household_support_channel": channels,
             HOUSEHOLD_IS_CGT_CLONE: clones,
             HOUSEHOLD_IS_CGT_SUPPORT_COPY: donors,
@@ -518,6 +519,7 @@ def test_draws_move_only_for_the_people_whose_inputs_move(
                     HOUSEHOLD_IS_CGT_CLONE: False,
                     HOUSEHOLD_IS_CGT_SUPPORT_COPY: False,
                     "household_source_id": groups,
+                    "source_household_id": groups,
                 }
             ),
             household_weights=np.ones(len(ids)),

@@ -200,7 +200,7 @@ def _frame(
         }
     )
     if lineage:
-        household["household_source_id"] = (
+        household["source_household_id"] = (
             ids if source_ids is None else np.asarray(source_ids, dtype="int64")
         )
     return uk_national_frame(
@@ -276,7 +276,7 @@ def test_only_the_claimant_and_partner_place_a_unit_in_the_draw() -> None:
             {
                 "household_id": np.asarray([1, 2], dtype="int64"),
                 "region": pd.array(["NORTH_WEST", "NORTH_WEST"], dtype="string"),
-                "household_source_id": np.asarray([1, 2], dtype="int64"),
+                "source_household_id": np.asarray([1, 2], dtype="int64"),
             }
         ),
         time_period="2024",
@@ -557,7 +557,7 @@ def test_the_stage_bands_support_copies_on_their_sources() -> None:
 
 def test_the_graph_node_bands_support_copies_on_their_sources() -> None:
     # The same cell through the executor's input projection: the node declares
-    # household_source_id, so a graph build counts sources too.
+    # source_household_id, so a graph build counts sources too.
     combinations = _graph_evidence(_copies_of_two_households())["combinations"]
     assert combinations["esa_income"]["rate_unreachable"] == "<3"
     assert combinations["esa_income"]["support"] == "<3"
@@ -570,7 +570,7 @@ def test_the_stage_refuses_a_frame_without_lineage() -> None:
         weights=np.ones(3),
         lineage=False,
     )
-    with pytest.raises(ValueError, match="household_source_id"):
+    with pytest.raises(ValueError, match="source_household_id"):
         lc.assign_uc_claim_at_legacy_closure(frame, rates=_RATES)
 
 
@@ -615,7 +615,7 @@ def test_the_stage_refuses_a_null_lineage() -> None:
         would_claim_uc=np.zeros(3, dtype=bool),
         weights=np.ones(3),
     )
-    frame.table("household")["household_source_id"] = pd.array(
+    frame.table("household")["source_household_id"] = pd.array(
         [1, None, 3], dtype="Int64"
     )
     # A null would drop out of a distinct count or count as one source.

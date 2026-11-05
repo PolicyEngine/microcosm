@@ -63,8 +63,8 @@ from microcosm.build.uk_runtime.receipt_counts import (
     UK_DISCLOSURE_FLOOR,
     UK_WITHHELD,
     distinct_count,
+    record_source_households,
     small_cell_share,
-    source_household_ids,
     support_band,
 )
 from microcosm.build.uk_runtime.uc_capital_coherence import (
@@ -317,9 +317,10 @@ def assign_uc_claim_at_legacy_closure(
         raise ValueError("The legacy closure draw needs benunit 'would_claim_uc'.")
     # The graph node declares the lineage, since the executor hands a stage
     # only its declared cells.
-    household_sources = pd.Series(
-        source_household_ids(household, stage="The legacy closure stage"),
-        index=household["household_id"].to_numpy(),
+    source_ids = record_source_households(
+        {"person": person, "benunit": benunit, "household": household},
+        "benunit",
+        stage="The legacy closure stage",
     )
     household_weights = frame.weights_for("household")
     weights = _household_to_benunit_weights(
@@ -338,7 +339,6 @@ def assign_uc_claim_at_legacy_closure(
         unit_households.map(by_household["region"].astype(str)).to_numpy()
         != "NORTHERN_IRELAND"
     )
-    source_ids = unit_households.map(household_sources).to_numpy()
     probability, combinations_drawn = legacy_closure_claim_probabilities(
         combination=combination,
         drawn=drawn,

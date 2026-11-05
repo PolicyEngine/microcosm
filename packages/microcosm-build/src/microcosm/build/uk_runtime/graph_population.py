@@ -77,7 +77,7 @@ from .local_authority_input import (
     verify_local_authority_engine_domain,
 )
 from .national_frame import UK_NATIONAL_SCHEMA
-from .receipt_counts import rounded_count
+from .receipt_counts import rounded_count, source_household_ids
 from .rowwise_dataset import expand_uk_geographic_pool, ladder_clone_index_column
 
 POPULATION_RECEIPT_TYPE = ArtifactType("microcosm.uk.population-receipt", 1)
@@ -835,6 +835,7 @@ class UKPrivateRentKernel(_PopulationKernel):
         )
         new_rent, details = private_rent_localisation.localise_rents(
             spine_key=keys,
+            source=source_household_ids(household, stage="uk.full.private_rent"),
             region=household["region"].to_numpy(),
             tenure_type=household["tenure_type"].to_numpy(),
             rent=household["rent"].to_numpy(),

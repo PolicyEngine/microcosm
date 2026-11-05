@@ -343,7 +343,7 @@ _STAGE_CONSUMES: Mapping[str, frozenset[tuple[str, str]] | None] = {
             ("household", "main_residence_value"),
             ("household", "property_wealth"),
             ("household", "household_is_high_value_support_copy"),
-            ("household", "household_source_id"),
+            ("household", "source_household_id"),
         }
     ),
     # Engine-free: each kind's stock, the region that marks where SDLT
@@ -354,7 +354,7 @@ _STAGE_CONSUMES: Mapping[str, frozenset[tuple[str, str]] | None] = {
             ("household", "region"),
             ("household", "other_residential_property_value"),
             ("household", "non_residential_property_value"),
-            ("household", "household_source_id"),
+            ("household", "source_household_id"),
         }
     ),
     # The NTS band model materializes an engine predictor (household gross
@@ -467,7 +467,7 @@ _STAGE_CONSUMES: Mapping[str, frozenset[tuple[str, str]] | None] = {
                 )
             ),
             # The receipt counts support by source household.
-            ("household", "household_source_id"),
+            ("household", "source_household_id"),
             ("benunit", "benunit_support_channel"),
             ("benunit", "would_claim_uc"),
         }
@@ -514,7 +514,7 @@ _STAGE_CONSUMES: Mapping[str, frozenset[tuple[str, str]] | None] = {
             ("person", "jsa_income_reported"),
             ("person", "universal_credit_reported"),
             ("benunit", "would_claim_uc"),
-            ("household", "household_source_id"),
+            ("household", "source_household_id"),
         }
     ),
     "uc_deduction_attributes": frozenset({("household", "region")}),
@@ -654,7 +654,7 @@ _STAGE_CONSUMES: Mapping[str, frozenset[tuple[str, str]] | None] = {
     # profit, and the receipt counts support by source household
     # (microcosm#1428).
     "trading_allowance_receipts": frozenset(
-        {("person", "self_employment_income"), ("household", "household_source_id")}
+        {("person", "self_employment_income"), ("household", "source_household_id")}
     ),
     # The copies' childcare re-draw reads every household's clone path (the
     # lineage columns of each copy stage) and keeps the native units' cells:

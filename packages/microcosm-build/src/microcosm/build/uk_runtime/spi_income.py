@@ -63,9 +63,9 @@ from microcosm.build.uk_runtime.receipt_counts import (
     UK_WITHHELD,
     distinct_count,
     extreme_count,
+    record_source_households,
     rounded_count,
     small_cell_share,
-    source_household_ids,
 )
 from microcosm.build.uk_runtime.spi_rank_transport import (
     SPI_STAGE1_ANALOGUE_COLUMNS,
@@ -961,13 +961,12 @@ def _floor_employment_pay_at_minimum_wage(
         floored
     ]
 
-    household_sources = pd.Series(
-        source_household_ids(household, stage="The SPI employment pay floor"),
-        index=household["household_id"].to_numpy(),
-    )
-
     def sources_of(frame: pd.DataFrame) -> np.ndarray:
-        return frame["person_household_id"].map(household_sources).to_numpy()
+        return record_source_households(
+            {"person": frame, "household": household},
+            "person",
+            stage="The SPI employment pay floor",
+        )
 
     weights = person_weights.loc[candidates.index].to_numpy(dtype=np.float64)
     sources = sources_of(candidates)
@@ -3404,11 +3403,11 @@ def _spi_pension_coherence(
     rows = spi_people.to_numpy(dtype=bool)
     pay = person.loc[spi_people, "employment_income"].to_numpy(dtype=np.float64)
     weights = _person_household_weights(person, household).to_numpy(dtype=float)[rows]
-    sources = (
-        person["person_household_id"]
-        .map(household.set_index("household_id")["household_source_id"])
-        .to_numpy()[rows]
-    )
+    sources = record_source_households(
+        {"person": person, "household": household},
+        "person",
+        stage="The SPI pension coherence",
+    )[rows]
     employee_before = person.loc[spi_people, "employee_pension_contributions"].to_numpy(
         dtype=np.float64
     )

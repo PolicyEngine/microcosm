@@ -67,7 +67,7 @@ def _frame():
         {
             "household_id": [1, 2, 3, 4, 5, 6],
             "region": ["LONDON"] * 6,
-            "household_source_id": [10, 10, 20, 30, 40, 40],
+            "source_household_id": [10, 10, 20, 30, 40, 40],
             "band_low": [1.0, 1.0, 1.0, 1.0, 0.0, 0.0],
             "band_thin": [1.0, 1.0, 0.0, 0.0, 0.0, 1.0],
             "band_zero_weight": [0.0, 0.0, 0.0, 0.0, 1.0, 1.0],
@@ -290,11 +290,11 @@ def test_lineage_is_read_only_when_a_row_in_scope_needs_it():
     no_lineage = uk_national_frame(
         person=frame.table("person"),
         benunit=frame.table("benunit"),
-        household=frame.table("household").drop(columns=["household_source_id"]),
+        household=frame.table("household").drop(columns=["source_household_id"]),
         household_weights=frame.weights_for("household").values,
         time_period="2025",
     )
-    with pytest.raises(ValueError, match="household_source_id"):
+    with pytest.raises(ValueError, match="source_household_id"):
         uk_household_source_ids(no_lineage)
 
 
@@ -708,3 +708,13 @@ def test_readers_take_the_solved_register_from_the_problem_bindings():
         solved_national_measure_exclusions(
             document, {"measure_exclusions": {"thin": record}}
         )
+
+
+def test_the_floor_counts_the_receipts_true_source_column() -> None:
+    """The floor names its column because the target kernels hash it and not
+    receipt_counts; the two stay one column (microcosm#931)."""
+
+    from microcosm.build.uk_runtime.receipt_counts import SOURCE_HOUSEHOLD_COLUMN
+    from microcosm.build.uk_runtime.support_floor import UK_SUPPORT_LINEAGE_COLUMN
+
+    assert UK_SUPPORT_LINEAGE_COLUMN == SOURCE_HOUSEHOLD_COLUMN

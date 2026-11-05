@@ -156,7 +156,7 @@ def _frame(
         }
     )
     if lineage:
-        household["household_source_id"] = (
+        household["source_household_id"] = (
             ids if source_ids is None else np.asarray(source_ids, dtype="int64")
         )
     return uk_national_frame(
@@ -717,7 +717,7 @@ def _outside_pool_frame():
             frame.table("household"),
             inside.table("household").assign(
                 household_id=lambda df: df["household_id"] + 10_000,
-                household_source_id=lambda df: df["household_source_id"] + 10_000,
+                source_household_id=lambda df: df["source_household_id"] + 10_000,
             ),
         ],
         ignore_index=True,
@@ -789,7 +789,7 @@ def test_households_are_read_through_membership_not_position() -> None:
         {
             "household_id": household_ids,
             "region": pd.array(regions, dtype="string"),
-            "household_source_id": household_ids * 10,
+            "source_household_id": household_ids * 10,
         }
     )
     frame = uk_national_frame(
@@ -857,7 +857,7 @@ def test_the_stage_refuses_a_frame_without_lineage() -> None:
         weekly_pay=np.full(3, 300.0),
         lineage=False,
     )
-    with pytest.raises(ValueError, match="household_source_id"):
+    with pytest.raises(ValueError, match="source_household_id"):
         _run(frame)
 
 
@@ -867,7 +867,7 @@ def test_the_stage_refuses_a_null_lineage() -> None:
         reported=np.zeros(3),
         weekly_pay=np.full(3, 300.0),
     )
-    frame.table("household")["household_source_id"] = pd.array(
+    frame.table("household")["source_household_id"] = pd.array(
         [1, None, 3], dtype="Int64"
     )
     # A null would drop out of a distinct count or count as one source.
@@ -1003,7 +1003,7 @@ def test_the_graph_node_reads_the_lineage_and_rewrites_the_flag_on_its_own_bound
     # An open surface: the receipt's lineage and the eligibility's inputs
     # reach the stage in a graph build.
     assert {
-        ("household", "household_source_id"),
+        ("household", "source_household_id"),
         ("household", "region"),
         ("person", "care_hours"),
         ("person", _INSIDE),

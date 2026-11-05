@@ -227,6 +227,76 @@ def test_spi_income_source_changes_invalidate_the_stages_that_run_it(monkeypatch
     assert registry.implementation_hash(control) == before[control]
 
 
+def _imported_module_names(module) -> set[str]:
+    import ast
+    import inspect
+
+    tree = ast.parse(Path(inspect.getfile(module)).read_text(encoding="utf-8"))
+    names: set[str] = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.ImportFrom):
+            if node.module:
+                names.add(node.module.rsplit(".", 1)[-1])
+            names.update(alias.name for alias in node.names)
+        elif isinstance(node, ast.Import):
+            names.update(alias.name.rsplit(".", 1)[-1] for alias in node.names)
+    return names
+
+
+def test_every_stage_that_counts_by_lineage_binds_the_counting_modules() -> None:
+    """An edit to how a floor counts moves the hash of every stage that counts.
+
+    ``source_hash`` does not follow imports, so the receipts' counting rules,
+    the shared lineage reader and the UK's lineage declaration are bound into
+    each stage whose module or helpers import one of them (microcosm#931).
+    """
+    from microcosm.build.uk_runtime import graph_kernels
+
+    counting = {"receipt_counts", "household_lineage", "source_lineage"}
+    expected = {
+        stage
+        for stage in graph_kernels._STAGE_MODULES
+        if any(
+            counting & _imported_module_names(module)
+            for module in (
+                graph_kernels._stage_module(stage),
+                *graph_kernels._STAGE_HELPER_MODULES.get(stage, ()),
+            )
+        )
+    }
+    assert set(graph_kernels._COUNTING_STAGES) == expected
+
+
+def test_counting_module_changes_invalidate_every_stage_that_counts(monkeypatch):
+    from microcosm.build import source_lineage
+    from microcosm.build.uk_runtime import graph_kernels, receipt_counts
+
+    graph = uk_spine_graph()
+    registry = uk_registry(graph=graph)
+    affected = [
+        graph.node(stage).kernel for stage in sorted(graph_kernels._COUNTING_STAGES)
+    ]
+    control = graph.node("frs_council_tax").kernel
+    for module in (receipt_counts, source_lineage):
+        before = {
+            ref: registry.implementation_hash(ref) for ref in (*affected, control)
+        }
+        helper_path = Path(module.__file__).resolve()
+        original = Path.read_bytes
+
+        def changed_helper_bytes(path: Path, helper=helper_path, read=original):
+            content = read(path)
+            if path.resolve() == helper:
+                return content + b"\n# A helper-only source change.\n"
+            return content
+
+        with monkeypatch.context() as patched:
+            patched.setattr(Path, "read_bytes", changed_helper_bytes)
+            for ref in affected:
+                assert registry.implementation_hash(ref) != before[ref], ref
+            assert registry.implementation_hash(control) == before[control]
+
+
 def test_isa_statistics_source_changes_invalidate_the_stages_that_read_them(
     monkeypatch,
 ):
@@ -489,5 +559,5 @@ def test_spi_benefit_coherence_reads_cover_its_work_tests() -> None:
             SPI_WITHIN_LIMIT_HOURS_COLUMN,
             SPI_PENSION_PAYMENTS_COLUMN,
         )
-    } | {("household", "household_source_id")}
+    } | {("household", "source_household_id")}
     assert required <= declared, sorted(required - declared)

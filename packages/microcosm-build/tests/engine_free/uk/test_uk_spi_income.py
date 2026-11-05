@@ -1100,6 +1100,7 @@ def _pay_floor_frames(
         {
             "household_id": np.arange(1, len(rows) + 1),
             "household_source_id": [row.get("source", i) for i, row in enumerate(rows)],
+            "source_household_id": [row.get("source", i) for i, row in enumerate(rows)],
         }
     )
     rows_mask = pd.Series([row.get("drawn", True) for row in rows], index=person.index)

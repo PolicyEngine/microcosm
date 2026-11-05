@@ -19,6 +19,10 @@ from microcosm.build.uk_runtime.diagnostics import (
     uk_weight_summary,
 )
 from microcosm.build.uk_runtime.national_frame import UK_BUILD_IDENTIFIER_COLUMNS
+from microcosm.build.uk_runtime.receipt_counts import (
+    SOURCE_HOUSEHOLD_COLUMN,
+    source_household_ids,
+)
 from microcosm.build.uk_runtime.rowwise_geography import id_multiplier_for_values
 
 __all__ = [
@@ -229,10 +233,13 @@ def load_run(path: str | Path, *, label: str, skip_h5: bool = False) -> RowwiseR
             stored = store.select("household", stop=0).columns
         carrier = UK_BUILD_IDENTIFIER_COLUMNS["household"]
         identifier = carrier if carrier in stored else "household_id"
+        # A file that keeps each household's true source counts support by it
+        # (microcosm#931); an older one falls back to the id arithmetic below.
+        sources = [SOURCE_HOUSEHOLD_COLUMN] if SOURCE_HOUSEHOLD_COLUMN in stored else []
         weights = pd.read_hdf(
             h5_path,
             "household",
-            columns=[identifier, "household_weight", "clone_index"],
+            columns=[identifier, "household_weight", "clone_index", *sources],
         ).rename(columns={identifier: "household_id"})
     uk_diagnostics = _mapping(calibration.get("uk_diagnostics"))
     holdout_value = uk_diagnostics.get("rotated_holdout")
@@ -548,11 +555,21 @@ def weight_tables(
     if weight_frame is not None:
         values = weight_frame["household_weight"].to_numpy(dtype=np.float64)
         result["summary"] = uk_weight_summary(values)
-        multiplier, basis = _source_multiplier(weight_frame, spine_weights)
-        base_ids = (
-            weight_frame["household_id"].to_numpy(dtype=np.int64)
-            - weight_frame["clone_index"].to_numpy(dtype=np.int64) * multiplier
-        )
+        if SOURCE_HOUSEHOLD_COLUMN in weight_frame:
+            # Every copy and clone keeps its true source, so a source with
+            # copies counts once (receipt_counts).
+            multiplier, basis = None, SOURCE_HOUSEHOLD_COLUMN
+            base_ids = source_household_ids(
+                weight_frame, stage="The dataset-size evaluation"
+            )
+        else:
+            # Without the column only the geographic clones fold back: the id
+            # arithmetic recovers each spine household, copies apart.
+            multiplier, basis = _source_multiplier(weight_frame, spine_weights)
+            base_ids = (
+                weight_frame["household_id"].to_numpy(dtype=np.int64)
+                - weight_frame["clone_index"].to_numpy(dtype=np.int64) * multiplier
+            )
         result["distinct_source_households"] = int(np.unique(base_ids).size)
         result["source_id_multiplier"] = multiplier
         result["source_id_multiplier_basis"] = basis

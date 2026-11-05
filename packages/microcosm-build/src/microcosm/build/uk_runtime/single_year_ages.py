@@ -32,6 +32,10 @@ import pandas as pd
 
 from microcosm.build.uk_runtime.diagnostics import UK_DIAGNOSTIC_MIN_SOURCE_HOUSEHOLDS
 from microcosm.build.uk_runtime.ledger_fact_vendoring import vendored_rows
+from microcosm.build.uk_runtime.receipt_counts import (
+    distinct_count,
+    record_source_households,
+)
 
 UK_SINGLE_YEAR_AGE_RESOURCE = "ons_mid2025_single_year_age_by_sex.json"
 UK_SINGLE_YEAR_AGE_PERIOD = 2025
@@ -46,13 +50,6 @@ UK_TAIL_AGE_BANDS: tuple[tuple[int, int], ...] = (
     (80, 90),
 )
 UK_SINGLE_YEAR_AGE_SEXES = ("FEMALE", "MALE")
-#: The columns that identify the spine household a row was copied from, in
-#: the full build's order of preference (uk_runtime.full_measure).
-_SOURCE_IDENTITY_COLUMNS = (
-    "household_source_id",
-    "source_household_id",
-    "source_household_key",
-)
 
 
 def _age_key(age: int) -> str:
@@ -91,18 +88,6 @@ def load_ons_single_year_ages() -> dict[tuple[str, int], float]:
     return populations
 
 
-def household_source_ids(household: pd.DataFrame) -> np.ndarray:
-    """Each household row's source household, which every copy of it shares."""
-
-    for column in _SOURCE_IDENTITY_COLUMNS:
-        if column in household:
-            return household[column].to_numpy()
-    raise ValueError(
-        "The single-year age report counts each cell's carriers as source "
-        f"households and needs one of {list(_SOURCE_IDENTITY_COLUMNS)}."
-    )
-
-
 def single_year_age_report(
     person: pd.DataFrame,
     household: pd.DataFrame,
@@ -123,7 +108,13 @@ def single_year_age_report(
     if (position < 0).any():
         raise ValueError("Every person must belong to a household row.")
     person_weight = weights[position]
-    person_source = household_source_ids(household)[position]
+    # Each cell's carriers are its true source households of positive weight,
+    # the receipts' one rule (uk_runtime.receipt_counts).
+    person_source = record_source_households(
+        {"person": person, "household": household},
+        "person",
+        stage="The single-year age report",
+    )
     raw_age = person["age"].to_numpy(dtype=float)
     if not np.isfinite(raw_age).all() or (raw_age < 0).any():
         raise ValueError("Every person needs a finite, non-negative age.")
@@ -132,7 +123,7 @@ def single_year_age_report(
     withheld = f"<{minimum_carriers}"
 
     def cell(mask: np.ndarray, ons_value: float) -> dict[str, Any]:
-        carriers = int(np.unique(person_source[mask]).size)
+        carriers = distinct_count(person_source, mask, person_weight)
         if carriers < minimum_carriers:
             return {"source_households": withheld}
         persons = float(person_weight[mask].sum())
@@ -193,7 +184,6 @@ __all__ = [
     "UK_SINGLE_YEAR_AGE_RESOURCE",
     "UK_SINGLE_YEAR_AGE_SEXES",
     "UK_TAIL_AGE_BANDS",
-    "household_source_ids",
     "load_ons_single_year_ages",
     "single_year_age_report",
 ]

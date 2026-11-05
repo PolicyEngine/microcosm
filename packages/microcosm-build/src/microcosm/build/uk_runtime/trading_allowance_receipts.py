@@ -68,9 +68,9 @@ from microcosm.build.uk_runtime.national_frame import (
 )
 from microcosm.build.uk_runtime.receipt_counts import (
     distinct_count,
+    record_source_households,
     rounded_count,
     small_cell_share,
-    source_household_ids,
     support_band,
 )
 from microcosm.frame import Frame, MassChangeRecord
@@ -284,17 +284,12 @@ def store_trading_allowance_receipts(frame: Frame) -> UKTradingAllowanceReceipts
             strict=True,
         )
     )
-    source_by_household = dict(
-        zip(
-            household["household_id"].to_numpy(),
-            source_household_ids(
-                household, stage=TRADING_ALLOWANCE_RECEIPTS_STAGE_NAME
-            ),
-            strict=True,
-        )
-    )
     weights = person["person_household_id"].map(weight_by_household).to_numpy(float)
-    sources = person["person_household_id"].map(source_by_household).to_numpy()
+    sources = record_source_households(
+        {"person": person, "household": household},
+        "person",
+        stage=TRADING_ALLOWANCE_RECEIPTS_STAGE_NAME,
+    )
     rates = claimant_rates(profit.to_numpy(dtype=np.float64))
     trader = profit.to_numpy(dtype=np.float64) > 0.0
     bands: list[dict[str, object]] = []
