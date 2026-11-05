@@ -112,7 +112,7 @@ RUNNER_CERTIFI_MINIMUM_VERSION = "2026.10.19"
 # (image_emitter_requirement). In the container this module is the copy the
 # image adds at /root, with no checkout around it, so the image also adds the
 # launching checkout's file beside it (MINIMUM_EMITTER_VERSION_FILENAME), and
-# a copy with that file beside it reads it first
+# a copy without a checkout around it reads that one
 # (minimum_emitter_version_file): the check, which runs there, then reports
 # the requirement the image was built with. So at launch the image's install
 # step comes from the launching checkout, and the minimum the build enforces
@@ -1563,13 +1563,15 @@ _EMITTER_RELEASE = re.compile(r"\d+\.\d+\.\d+")
 def minimum_emitter_version_file() -> Path:
     """The file that names the oldest emitter release a build starts.
 
-    The copy beside this module when there is one: the image adds the
-    launching checkout's file beside its copy of this module. Otherwise the
-    file in this module's checkout, ``MINIMUM_EMITTER_VERSION_FILE``.
+    In a checkout, the package's file, ``MINIMUM_EMITTER_VERSION_FILE``, so a
+    file left beside this module there changes nothing. Only without a
+    checkout around this module, as for the copy in the container, the file
+    beside it, which the image adds there from the launching checkout.
     """
 
-    beside = Path(__file__).resolve().with_name(MINIMUM_EMITTER_VERSION_FILENAME)
-    return beside if beside.is_file() else MINIMUM_EMITTER_VERSION_FILE
+    if MINIMUM_EMITTER_VERSION_FILE.parent.is_dir():
+        return MINIMUM_EMITTER_VERSION_FILE
+    return Path(__file__).resolve().with_name(MINIMUM_EMITTER_VERSION_FILENAME)
 
 
 def minimum_emitter_version() -> str:
@@ -2245,6 +2247,10 @@ def telemetry_record(
 
 
 _STATUS_COMMAND = "`microcosm-emitter status`"
+#: How many objects deep the receipt holds the runs (the receipt, ``runner``,
+#: ``telemetry``, ``undelivered_events``), and a margin for what passes the
+#: receipt on, such as Modal's return of it to the launch.
+_RECEIPT_NESTING_OF_RUNS = 4 + 4
 _STATUS_RUN_FIELDS = {
     "run_id": str,
     "producer_id": str,
@@ -2319,7 +2325,32 @@ def undelivered_events_from_status(
         return undelivered_events_problem(
             f"{_STATUS_COMMAND} exited 0 but did not print its JSON list of runs"
         )
+    if not _receipt_can_hold(runs):
+        return undelivered_events_problem(
+            f"{_STATUS_COMMAND} exited 0 but printed runs nested too deeply "
+            "for the receipt"
+        )
     return {"runs": runs, "problem": None}
+
+
+def _receipt_can_hold(runs: list[EmitterStatusRun]) -> bool:
+    """Whether the receipt can be written with ``runs`` in it.
+
+    The runs are kept as printed, extra fields included, and a field nested
+    just under the JSON parser's limit passes the parse; held deeper in the
+    receipt, it would make the receipt's write fail after the mirror and
+    leave no receipt. So they are serialized once here, as deep as the
+    receipt holds them and a little deeper, as the receipt is written.
+    """
+
+    held: object = {"runs": runs}
+    for _ in range(_RECEIPT_NESTING_OF_RUNS):
+        held = {"held": held}
+    try:
+        json.dumps(held, indent=2)
+    except (ValueError, RecursionError):
+        return False
+    return True
 
 
 def token_needed_until(plan: Plan, container_started: float) -> int:
@@ -3572,8 +3603,13 @@ def write_probe_verdict(
     runner keeps ``runner_overhead_seconds`` after the tool's deadline, of
     which the stop may take STOP_GRACE_SECONDS, the image emitter's
     ``status`` EMITTER_STATUS_TIMEOUT_SECONDS, and the runner's identity, the
-    receipt and the attempt's final commit RECEIPT_RESERVE_SECONDS; if the
-    extrapolated mirror does not fit in the rest, a stop at the budget would
+    receipt and the attempt's final commit RECEIPT_RESERVE_SECONDS; the
+    verdict reports each figure. Not counted: after the tool exits, also
+    after a stop, the emitter the build started keeps the tool's output open
+    while it finishes, up to EMITTER_EXIT_NOTICE_SECONDS plus
+    EMITTER_DRAIN_SECONDS, and the runner waits for it before ``status``. If
+    the extrapolated mirror does not fit in the mirror's share, a stop at the
+    budget would
     run into the class timeout mid-mirror and leave no receipt, so the check
     reports a problem. One small probe from the check container is a hint,
     not a guarantee.

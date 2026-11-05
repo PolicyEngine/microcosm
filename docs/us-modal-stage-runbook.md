@@ -217,8 +217,9 @@ release directory onto the runs volume. Publication stays the human step in
      - `{"runs": null, "problem": "<one line>"}`: any other exit code, with
        the last line `status` wrote on standard error (exit 2 is an emitter
        without `status`, older than 0.13.0); a timeout; a command that
-       could not run; or output that is not its list of runs. The line has
-       at most 300 characters.
+       could not run; output that is not its list of runs; or runs nested
+       so deeply that the receipt could not be written with them. The line
+       has at most 300 characters.
 
      A `status` failure is recorded only: it never changes the stage's
      status or outcome. The plan's summary and the check have
