@@ -90,6 +90,7 @@ __all__ = [
     "LINE_POINTER_PATH_TEMPLATE",
     "RELEASE_TIER_CERTIFIED",
     "RELEASE_TIER_EVIDENCE",
+    "TAGGED_RELEASE_ADVICE",
     "LatestPointer",
     "PreparedRelease",
     "build_folder_identity",
@@ -306,6 +307,16 @@ class PreparedRelease:
 #: Where a build-folder release publishes from: the workspace command that
 #: hands each build to the emitter (``microcosm.build.release_publication``).
 BUILD_FOLDER_PUBLICATION_COMMAND = "microcosm-publish-release-build"
+#: Where a release that does not publish into build folders goes. Every US
+#: release publishes with tags and ``latest.json``; the other UK releases keep
+#: that layout too, but no publisher takes their builds once the UK
+#: repository records its builds in ``releases.json``.
+TAGGED_RELEASE_ADVICE = (
+    "US releases publish with tags and latest.json through "
+    "tools/publish_release.sh; the June 2023 UK release and "
+    "populace-uk-<year>-<tier>-k<N> releases take no new builds once the UK "
+    "repository records its builds in releases.json."
+)
 
 
 def _refuse_build_folder_release(release_id: str) -> None:
@@ -362,8 +373,8 @@ def build_folder_identity(release_dir: Path | str) -> tuple[str, str, str]:
     release_dir = Path(release_dir)
     if not publishes_to_build_folder(release_dir.name):
         raise ValueError(
-            f"release {release_dir.name!r} does not publish into build folders; "
-            "it publishes with tags and latest.json (tools/publish_release.sh)."
+            f"release {release_dir.name!r} does not publish into build folders. "
+            + TAGGED_RELEASE_ADVICE
         )
     manifest = json.loads((release_dir / "release_manifest.json").read_text())
     if not isinstance(manifest, Mapping):
@@ -1055,8 +1066,9 @@ def _refuse_releases_record(api: object, *, repo_id: str, revision: str | None) 
     raise ValueError(
         f"{repo_id} records its builds in {RELEASES_RECORD_PATH}, so this "
         "publisher, which tags each build and writes latest*.json pointer "
-        "files, refuses it; publish its builds with "
-        "`microcosm-publish-release-build`."
+        "files, refuses it. Only releases that publish into build folders "
+        f"publish there, through `{BUILD_FOLDER_PUBLICATION_COMMAND}`; any "
+        "other release takes no new builds there."
     )
 
 
