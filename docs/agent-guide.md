@@ -15,9 +15,10 @@ the PEP 420 namespace `microcosm.<x>`: `frame`, `fit`, `calibrate`, `build`,
 ## Commands
 
 UK build completion exports and stages Orrery graph evidence. Publication uses
-an independent worker inside the external `microcosm-emitter` service and a durable queue;
-see [configuration and retry](orrery-publication.md). No new producer secret or
-environment variable is required. Keep graph export/publication tests independent
+an independent module of the separately installed `microcosm-emitter`, which the
+build starts through `microcosm-emitter-interface`, and a durable queue; see
+[configuration and retry](orrery-publication.md). Staging run files and staged
+dataset bundles go through the same emitter. No new producer secret is required. Keep graph export/publication tests independent
 of the hosted runs app and collector; use synthetic files and fake HTTP.
 
 ```bash
@@ -40,7 +41,7 @@ or `uv sync --all-packages --all-extras`. To keep both countries set up, point
 `UV_PROJECT_ENVIRONMENT` at a separate directory outside the checkout for each.
 
 PR CI (`.github/workflows/test.yml`) has `lint`, `engine-free`, `engine-us`,
-`engine-uk`, `integration-uk`, and `wheels` jobs, plus the
+`engine-uk`, `integration-uk`, `wheels`, and `installed-emitter` jobs, plus the
 `select-countries` orchestration job.
 `tools/ci_test_plan.py` is the only authority for test-directory ownership, CI
 job assignment, country ownership, US timing-report categories, and
@@ -98,16 +99,61 @@ the one in `test_graph_reconstruction.py` uses it for the reconstruction marker
 of a declaration-only document.
 These CI tests perform no browser rendering.
 
-Workspace tests use an in-memory telemetry emitter by default. The shared
-fixture isolates Hugging Face credentials and cache paths. Adapter tests replace
-emitter startup, inventory and publication APIs with fakes. Emitter process, persistence
-and HTTP-delivery tests belong in microcosm-emitter; do not copy them
-into Microcosm. Build tests inspect `fake_telemetry_emitters` without creating
-sockets or service processes.
+Workspace tests use an in-memory emitter client by default
+(`test_support/microcosm_build/emitter.py`), and the shared fixture refuses to
+start the installed command. It also isolates Hugging Face credentials and cache
+paths. Build tests inspect `fake_telemetry_emitters`: their events follow the
+emitter's documented request-to-event rules, and the run files they were handed
+are in `client.hub_files`. Staged dataset bundles are in `client.bundle_requests`;
+the fake copies their small files as the emitter does and commits them through
+the fake Hub `share_fake_hub` gives it (`bundle_receipts` scripts other answers,
+`never_copy` leaves named files uncopied). Its bundles are jobs in a
+`FakeHandoverQueue`, which clients standing for emitters on one machine can
+share: an identical hand-over returns the queued receipt, and a delivering
+client attempts the jobs that are due, the earliest due first, with a wait
+that doubles after each failed attempt, as the emitter claims them
+(`deliver=False` and `answer_receipts=False` stand for an emitter that took a
+hand-over and stopped). Emitter process, persistence and
+HTTP-delivery tests belong in microcosm-emitter; do not copy them into
+Microcosm.
+
+The `installed-emitter` job is the one place that starts the real emitter.
+`tools/run_installed_emitter_tests.sh` installs `microcosm-emitter` at each
+release `tools/installed_emitter_releases.py` names (`MINIMUM_EMITTER_VERSION`,
+then the newest release pinned in `tools/installed-emitter/requirements.txt`),
+each into its own uv tool directory, and runs `installed_emitter/shared/` once
+for each; it tests every release even when an earlier one fails. Those tests
+start the installed command with `start_bundle_emitter()`, as the UK re-stage
+command does (the Hugging Face module only), and send its Hugging Face Hub
+requests through `HF_ENDPOINT` to a loopback stand-in server
+(`test_support/microcosm_build/stand_in_hub.py`), so the job needs no secret.
+With Xet turned off, the stand-in takes the dataset through the LFS upload a
+real Hub requires for it, with the single-part `basic` transfer. It does not
+model Xet, which machines with `hf_xet` use, or the multipart transfer a real
+Hub can choose for a large object, so the tested path is that of machines
+without `hf_xet`, or with it turned off, for files sent in one part. A request
+it has no route for, or that its handler fails on, fails the test. The tests check
+what builds rely on in the hand-over (one commit per bundle on the head it
+names, `copied_files`, `already_staged`, the recorded error codes and the
+version check), not the emitter's own queue or delivery.
+`test_installed_emitter_status.py` runs a stage through the US Modal runner's
+`_run_stage` against local directories, with the installed command at the
+image's emitter path: its tool starts the emitter's telemetry module through
+the interface, with no credential, no collector token and a closed loopback
+collector address, so the emitter keeps its events and sends nothing, and the
+test checks what the runner records from the emitter's `status`, and that the
+emitter host has exited before the runner runs it. The runner warns when
+the package index has a newer release than the pin; raise the pin in a pull
+request then. `tools/installed-emitter/constraints.txt` pins the
+`huggingface_hub` release whose requests the stand-in answers; the runner also
+warns when a newer 1.x release, which a new emitter install takes, is
+published. Change the constraint only together with the stand-in. Run the job's tests locally with
+`bash tools/run_installed_emitter_tests.sh <directory for the tool installs>`.
 
 The UK full-build caller sets `close_service_on_finish=False`: reporting an outcome
-leaves the graph worker available, and that caller's existing `finally` cleanup
-closes the combined service. Other callers close automatically when they finish.
+leaves the emitter running for graph and staging hand-overs, and that caller's
+existing `finally` cleanup closes it. Other callers close automatically when they
+finish, so they hand over their staging run's final state first.
 Keep validation-refused outcomes and structured
 failure codes intact when changing the adapter.
 
@@ -144,6 +190,9 @@ of these directories below its package's `tests/` directory:
 - `engine/uk/`: imports or executes the UK engine.
 - `integration/uk/`: runs serially through the `integration-uk` job with the
   explicit `--run-integration` option.
+- `installed_emitter/shared/`: starts the separately installed
+  `microcosm-emitter`; runs through the `installed-emitter` job, once per
+  installed release, with the explicit `--run-integration` option.
 
 Classify a mixed US module by its most resource-intensive test, or split it when
 the tests already have cleanly separable helpers. The directory is the execution
@@ -458,14 +507,15 @@ module instead of copying it or reconstructing alternate views in consumers.
 
 ## Calibration diagnostics JSON Schema
 
-`packages/microcosm-diagnostics/src/microcosm/diagnostics/schemas/calibration_diagnostics.v8.schema.json`
-is generated from the schema-8 models in `microcosm.diagnostics.schema`. After
-changing one, regenerate it with
+`packages/microcosm-diagnostics/src/microcosm/diagnostics/schemas/calibration_diagnostics.v9.schema.json`
+(what builds publish) and `calibration_diagnostics.v8.schema.json` beside it
+(documents published before schema 9) are generated from the models in
+`microcosm.diagnostics.schema`. After changing one, regenerate both with
 `uv run --no-sync python tools/generate_calibration_diagnostics_json_schema.py`.
 A new model validator also needs an entry in
-`CALIBRATION_DIAGNOSTICS_V8_JSON_SCHEMA_GAPS` and a document in
-`test_json_schema.py` that the schema accepts and the models refuse; the
-diagnostics tests fail until both exist.
+`CALIBRATION_DIAGNOSTICS_V9_JSON_SCHEMA_GAPS` (or the schema-8 list) and a
+document in `test_json_schema_v9.py` (or `test_json_schema.py`) that the schema
+accepts and the models refuse; the diagnostics tests fail until both exist.
 
 ## Review this guide
 
@@ -523,6 +573,9 @@ An optional `entitlement_graph.json` legacy resource installs the entitlement
 extension in both composition and the local driver. Its scenario templates,
 bridge parameters, comparison references and receipt connections are described
 in [the entitlement declaration contract](transport-entitlement.md).
+An optional `precalibration_stages.json` legacy resource lists the rules
+bindings whose declared outputs may feed calibration; see
+[pre-calibration stages](transport-precalibration-stages.md).
 The zero solver requires independent, non-increasing row residuals and verifies
 the returned answers after its fixed iterations. Its receipt counts the final
 verification. The local differential driver validates call and output identities

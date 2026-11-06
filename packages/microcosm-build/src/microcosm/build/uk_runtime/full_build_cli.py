@@ -90,7 +90,15 @@ from ..staging_cli import (
     validate_staged_dataset_arguments,
     validate_staging_arguments,
 )
-from ..staging_dataset import SHA256SUMS_FILENAME, refresh_sha256sums_entry
+from ..staging_dataset import (
+    AT_BUILD_RECORD_KEY,
+    HANDOVER_RECORD_KEY,
+    SHA256SUMS_FILENAME,
+    StagedBundleHandOver,
+    at_build_record,
+    handover_record,
+    refresh_sha256sums_entry,
+)
 from . import country_adapter, national_role
 from .atomic_area_support import (
     IDENTITY_COLUMN,
@@ -154,6 +162,7 @@ from .graph_population import (
     GEOGRAPHY_ASSIGNMENTS,
     PRIVATE_RENT_LOCALISATION_MODES,
     PROPERTY_LOCALISATION_MODES,
+    RFDR_LOCALISATION_MODES,
 )
 from .graph_targets import TARGET_SELECTION_TYPE, registry_from_payload
 from .graph_terminal import (
@@ -180,6 +189,7 @@ from .local_doctrine import UK_LOCAL_L0_SEARCH_FLOOR, UK_LOCAL_ROW_METADATA_RULE
 from .national_doctrine import uk_doctrine_with_overrides
 from .national_frame import (
     load_uk_national_frame,
+    require_uk_producer_isa_income_contract,
     uk_release_export_frame,
     write_uk_national_frame,
 )
@@ -191,11 +201,15 @@ from .private_rent_localisation import QUANTILES_SOURCE as RENT_QUANTILES_SOURCE
 from .property_localisation import (
     BAND_MIX_SOURCE,
     QUANTILES_SOURCE,
+    SCOTLAND_BAND_MIX_RESOURCE,
+    SCOTLAND_BAND_MIX_SOURCE,
     SUPPORT_STRATUM_LOWER,
 )
 from .property_localisation import (
     METHOD_VERSION as PROPERTY_LOCALISATION_METHOD,
 )
+from .rfdr_area_layer import METHOD_VERSION as RFDR_AREA_LAYER_METHOD
+from .rfdr_area_layer import RFDR_AREA_LAYER_SOURCE
 from .rowwise_cli import (
     MANIFEST_FILENAME,
     REPOSITORY,
@@ -494,7 +508,9 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help=(
             "Dense role: price_paid (default) reads each owner clone's home value "
             "off its assigned constituency's uprated Land Registry sale distribution "
-            "and its council-tax band off its LSOA's VOA mix (microcosm#1240); none "
+            "and its council-tax band off its LSOA's VOA mix (microcosm#1240), or a "
+            "Scottish owner clone's off its council area's CTAXBASE mix "
+            "(microcosm#1095 B12); none "
             "keeps the spine's values and bands on every clone, for measurement "
             "builds only."
         ),
@@ -535,6 +551,27 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         ),
     )
     parser.add_argument("--brma-area-layer-sha256", type=sha256_argument)
+    parser.add_argument(
+        "--rfdr-localisation",
+        choices=RFDR_LOCALISATION_MODES,
+        default=None,
+        help=(
+            "Dense role: area (the default with the atomic assignment) sets each "
+            "placed household's Rural Fuel Duty Relief flag off its assigned output "
+            "area (microcosm#1418); none (the default with the legacy assignment) "
+            "leaves the engine's default, for measurement builds only."
+        ),
+    )
+    parser.add_argument(
+        "--rfdr-area-layer",
+        type=Path,
+        default=None,
+        help=(
+            "Resource bytes for the graph source 'uk_rfdr_area_layer' (default: the "
+            "committed UK package resource)."
+        ),
+    )
+    parser.add_argument("--rfdr-area-layer-sha256", type=sha256_argument)
     parser.add_argument(
         "--private-rent-localisation",
         choices=PRIVATE_RENT_LOCALISATION_MODES,
@@ -911,15 +948,18 @@ def _input_record(path: Path, pin: dict, *, pinned: bool) -> dict:
     }
 
 
-#: Graph source name to command-line label of the two property-localisation
-#: resources (microcosm#1240). Both default to the committed package files.
+#: Graph source name to command-line label of the property-localisation
+#: resources (microcosm#1240; the Scottish band mix, microcosm#1095 B12). Each
+#: defaults to the committed package file.
 _PROPERTY_RESOURCE_ARGUMENTS = {
     QUANTILES_SOURCE: "price-paid-quantiles",
     BAND_MIX_SOURCE: "voa-band-mix",
+    SCOTLAND_BAND_MIX_SOURCE: "scotgov-band-mix",
 }
 _PROPERTY_RESOURCE_FILES = {
     QUANTILES_SOURCE: "high_value_home_value_knots.json",
     BAND_MIX_SOURCE: "voa_council_tax_band_mix_lsoa.json",
+    SCOTLAND_BAND_MIX_SOURCE: SCOTLAND_BAND_MIX_RESOURCE,
 }
 
 
@@ -1003,6 +1043,55 @@ def _prepare_brma_localisation(
         "mode": mode,
         "method": BRMA_AREA_LAYER_METHOD,
         "resource_pins": {BRMA_AREA_LAYER_SOURCE: pin},
+    }
+
+
+def _prepare_rfdr_localisation(
+    args: argparse.Namespace, pins: dict, sources: dict[str, Path]
+) -> dict:
+    """Pin the Rural Fuel Duty Relief area layer and record its binding.
+
+    As with the BRMA layer, the layer enters ``pins`` under its graph source
+    name and a release candidate must build on the committed bytes
+    (microcosm#1418). ``none`` binds nothing here.
+    """
+    mode = getattr(args, "rfdr_localisation", None)
+    if mode is None:
+        # Unset, the mode follows the geography assignment, as the build config
+        # resolves it (the independent review of microcosm#1420).
+        mode = (
+            "area"
+            if getattr(args, "geography_assignment", "atomic") == "atomic"
+            else "none"
+        )
+        args.rfdr_localisation = mode
+    if mode == "none":
+        if getattr(args, "rfdr_area_layer", None) or getattr(
+            args, "rfdr_area_layer_sha256", None
+        ):
+            raise ValueError(
+                "--rfdr-area-layer and --rfdr-area-layer-sha256 need "
+                "--rfdr-localisation area: without it nothing reads the layer."
+            )
+        return {"mode": "none"}
+    committed_path = Path(
+        str(files("microcosm.build.uk").joinpath("rfdr_area_layer.json"))
+    )
+    path = getattr(args, "rfdr_area_layer", None) or committed_path
+    pin = _pin(path, getattr(args, "rfdr_area_layer_sha256", None))
+    if getattr(args, "release_candidate", False):
+        committed = _pin(committed_path)
+        if pin != committed:
+            raise ValueError(
+                "--release-candidate requires the committed RFDR area layer: "
+                f"sha256 {pin['sha256']} is not the package's {committed['sha256']}."
+            )
+    pins[RFDR_AREA_LAYER_SOURCE] = pin
+    sources[RFDR_AREA_LAYER_SOURCE] = path
+    return {
+        "mode": mode,
+        "method": RFDR_AREA_LAYER_METHOD,
+        "resource_pins": {RFDR_AREA_LAYER_SOURCE: pin},
     }
 
 
@@ -1222,6 +1311,7 @@ def prepare_full_build(
             args.input_h5, pins["dataset"], pinned=args.input_sha256 is not None
         )
         frame, _ = load_uk_national_frame(args.input_h5)
+        require_uk_producer_isa_income_contract(frame, label="--input-h5")
         sidecar_path = args.input_sidecar or args.input_h5.with_suffix(".build.json")
         gates_path = args.input_spine_gates or args.input_h5.with_suffix(
             ".spine_gates.json"
@@ -1290,6 +1380,7 @@ def prepare_full_build(
     property_binding = _prepare_property_localisation(args, pins, sources)
     brma_binding = _prepare_brma_localisation(args, pins, sources)
     private_rent_binding = _prepare_private_rent_localisation(args, pins, sources)
+    rfdr_binding = _prepare_rfdr_localisation(args, pins, sources)
     stage(
         telemetry,
         "input_pinning",
@@ -1320,6 +1411,7 @@ def prepare_full_build(
         property_localisation=args.property_localisation,
         brma_localisation=args.brma_localisation,
         private_rent_localisation=args.private_rent_localisation,
+        rfdr_localisation=args.rfdr_localisation,
         calibration=UKGraphCalibrationConfig(
             epochs=args.epochs,
             learning_rate=args.learning_rate,
@@ -1450,6 +1542,7 @@ def prepare_full_build(
         "property_localisation": property_binding,
         "brma_localisation": brma_binding,
         "private_rent_localisation": private_rent_binding,
+        "rfdr_localisation": rfdr_binding,
     }
     graph = add_uk_export_preparation(
         graph,
@@ -1981,6 +2074,43 @@ def _refresh_completion(output: Path, roles: Mapping[str, Path]) -> None:
     materialize_bytes(canonical_json(completion), marker)
 
 
+def _kept_for_emitter(staged: StagedBundleHandOver, path: Path) -> bool:
+    """Whether ``path`` must keep its bytes because the emitter reads it later.
+
+    The emitter copies a bundle's small files when the bundle is handed over
+    and uploads every other file from disk; a changed one would make it refuse
+    the upload (``PRESERVED_BYTES_CHANGED``). Such a file keeps its handed-over
+    bytes; the staging records it would have gained are in the staging run's
+    ``staged_dataset`` artifact and in the manifest printed at the end.
+    """
+    if staged.may_rewrite(path.name):
+        return False
+    print(
+        f"warning: {path.name} stays as handed over: the emitter uploads it "
+        "from disk, so the build leaves it unchanged; its staging records are "
+        "in the staging run's artifacts and in the manifest printed below.",
+        file=sys.stderr,
+    )
+    return True
+
+
+def _record_staged_dataset(
+    manifest: dict, staged: StagedBundleHandOver, delivery: Mapping
+) -> None:
+    """The manifest's staging records: the delivery, and the emitter's hand-over.
+
+    The hand-over block lets a later re-stage ask for that hand-over's
+    outcome instead of handing over a second bundle; the at-build block keeps
+    what the staging run and Logbook row recorded, which re-stages leave.
+    """
+    manifest["staging_delivery"] = delivery
+    manifest["staged_dataset"] = staged.delivery
+    manifest[AT_BUILD_RECORD_KEY] = at_build_record(staged.delivery)
+    record = handover_record(staged)
+    if record is not None:
+        manifest[HANDOVER_RECORD_KEY] = record
+
+
 def _close_attempt(
     args: argparse.Namespace,
     attempt: dict,
@@ -2000,25 +2130,31 @@ def _close_attempt(
     if manifest is not None:
         append_phase(state, "published")
         args._gate_report = {"gates": record.get("gate_rows", {})}
-        staged_dataset = stage_dataset(
+        staged = stage_dataset(
             args,
             manifest=manifest,
             output_paths={"manifest": output / MANIFEST_FILENAME},
             run_id=state.build_id if telemetry is None else telemetry.run_id,
             staging_bundle=telemetry,
         )
+        staged_dataset = staged.delivery
         append_phase(state, STAGED_DATASET_PHASES[staged_dataset["status"]])
         try:
             _close_staging(args, telemetry, classified, record)
         finally:
-            manifest["staging_delivery"] = staging_delivery(telemetry)
-            manifest["staged_dataset"] = staged_dataset
-            replace_manifest(output / MANIFEST_FILENAME, manifest)
-            if (output / SHA256SUMS_FILENAME).is_file():
-                refresh_sha256sums_entry(output, MANIFEST_FILENAME)
-            _refresh_completion(
-                output, {"rowwise_candidate_manifest": output / MANIFEST_FILENAME}
-            )
+            _record_staged_dataset(manifest, staged, staging_delivery(telemetry))
+            manifest_path = output / MANIFEST_FILENAME
+            sums_path = output / SHA256SUMS_FILENAME
+            # Only files the emitter copied, or that are not in the bundle,
+            # may change now.
+            if not _kept_for_emitter(staged, manifest_path):
+                replace_manifest(manifest_path, manifest)
+                if sums_path.is_file() and not _kept_for_emitter(staged, sums_path):
+                    refresh_sha256sums_entry(output, MANIFEST_FILENAME)
+                if not _kept_for_emitter(staged, output / "build.json"):
+                    _refresh_completion(
+                        output, {"rowwise_candidate_manifest": manifest_path}
+                    )
         state.artifact_location = local_artifact_reference(
             output / f"{stem}.h5", repository_hint=REPOSITORY
         )
@@ -2751,6 +2887,7 @@ def prepare_national_build(
     pins = {"dataset": _pin(input_h5, args.input_sha256)}
     inputs = {"dataset": _input_record(input_h5, pins["dataset"], pinned=True)}
     frame, _ = load_uk_national_frame(input_h5)
+    require_uk_producer_isa_income_contract(frame, label="--input-h5")
     sidecar_path = args.input_sidecar or input_h5.with_suffix(".build.json")
     gates_path = args.input_spine_gates or input_h5.with_suffix(".spine_gates.json")
     load_bound_spine_checkpoint(
@@ -3390,10 +3527,14 @@ def _close_national_attempt(
 ) -> None:
     """Stage the published bundle, evaluate, close the telemetry, spool the row.
 
-    The seam's order: the manifest and the staged bundle first, the
-    incumbent evaluation after the bundle is on the Hub and before the
-    telemetry completes, then the build record and the manifest rewritten
-    with the delivery summary and the sums refreshed.
+    The seam's order: the manifest and the staged bundle's hand-over first,
+    then the incumbent evaluation, which waits for no upload and runs before
+    the telemetry completes, then the build record and the manifest rewritten
+    with the delivery summary and the sums refreshed. The build record is
+    rewritten after the hand-over, so the bundle the emitter holds keeps the
+    earlier build record; a re-stage asks the emitter for that hand-over's
+    outcome (the manifest's ``staged_dataset_handover``) rather than hand
+    over the changed directory again.
     """
     from microcosm.build.staging_v2 import validate_staging_delivery
 
@@ -3406,13 +3547,14 @@ def _close_national_attempt(
     if manifest is not None:
         append_phase(state, "published")
         args._gate_report = record["gate_report"]
-        staged_dataset = stage_dataset(
+        staged = stage_dataset(
             args,
             manifest=manifest,
             output_paths=paths,
             run_id=state.build_id if telemetry is None else telemetry.run_id,
             staging_bundle=telemetry,
         )
+        staged_dataset = staged.delivery
         append_phase(state, STAGED_DATASET_PHASES[staged_dataset["status"]])
         evaluation = national_role.evaluate_against_incumbent(
             args,
@@ -3427,36 +3569,43 @@ def _close_national_attempt(
             _close_staging(args, telemetry, classified, record)
         finally:
             delivery = staging_delivery(telemetry)
-            build_record = json.loads(paths["build_record"].read_text())
-            build_record["staging_delivery"] = validate_staging_delivery(delivery)
-            _write_json(paths["build_record"], build_record)
-            manifest["outputs"]["build_record"] = national_role.artifact_info(
-                paths["build_record"]
-            )
-            manifest["build_record"] = {
-                "path": str(paths["build_record"]),
-                "sha256": manifest["outputs"]["build_record"]["sha256"],
-            }
-            manifest["staging_delivery"] = delivery
-            manifest["staged_dataset"] = staged_dataset
+            _record_staged_dataset(manifest, staged, delivery)
             manifest["evaluation"] = evaluation
             if evaluation.get("status") == "completed":
                 manifest["outputs"]["score_receipt"] = evaluation["receipt"]
-            replace_manifest(paths["manifest"], manifest)
-            if (output / SHA256SUMS_FILENAME).is_file():
-                refresh_sha256sums_entry(output, paths["build_record"].name)
+            # Only files the emitter copied, or that are not in the bundle,
+            # may change now. The manifest records the build record's digest,
+            # so the build record changes only with the manifest.
+            rewritten: dict[str, Path] = {}
+            if not _kept_for_emitter(staged, paths["manifest"]):
+                if not _kept_for_emitter(staged, paths["build_record"]):
+                    build_record = json.loads(paths["build_record"].read_text())
+                    build_record["staging_delivery"] = validate_staging_delivery(
+                        delivery
+                    )
+                    _write_json(paths["build_record"], build_record)
+                    manifest["outputs"]["build_record"] = national_role.artifact_info(
+                        paths["build_record"]
+                    )
+                    manifest["build_record"] = {
+                        "path": str(paths["build_record"]),
+                        "sha256": manifest["outputs"]["build_record"]["sha256"],
+                    }
+                    rewritten["build_record"] = paths["build_record"]
+                replace_manifest(paths["manifest"], manifest)
+                rewritten["rowwise_candidate_manifest"] = paths["manifest"]
+            sums_path = output / SHA256SUMS_FILENAME
+            if sums_path.is_file() and not _kept_for_emitter(staged, sums_path):
+                if "build_record" in rewritten:
+                    refresh_sha256sums_entry(output, paths["build_record"].name)
                 if evaluation.get("status") == "completed":
                     national_role.list_sha256sums_entry(
                         output, paths["score_receipt"].name
                     )
-                refresh_sha256sums_entry(output, MANIFEST_FILENAME)
-            _refresh_completion(
-                output,
-                {
-                    "build_record": paths["build_record"],
-                    "rowwise_candidate_manifest": paths["manifest"],
-                },
-            )
+                if "rowwise_candidate_manifest" in rewritten:
+                    refresh_sha256sums_entry(output, MANIFEST_FILENAME)
+            if rewritten and not _kept_for_emitter(staged, output / "build.json"):
+                _refresh_completion(output, rewritten)
     else:
         from .orrery_publication import stage_graph_evidence
 

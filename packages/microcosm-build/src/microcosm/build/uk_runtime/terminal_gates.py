@@ -137,23 +137,32 @@ class UKZeroWeightStratumDeclaration:
         object.__setattr__(self, "selector", dict(sorted(normalized.items())))
 
 
+# No household may carry zero weight (microcosm#1095, re-declared from #688):
+# the two SPI-synthetic strata keep their selectors at a cap of 0, so a
+# zero-weight row there is named by stratum, and one anywhere else fails as
+# unmatched. The June caps of 100,000 counted 10,000 SPI-synthetic households
+# times ten output-area clones, a grain the national seam no longer builds.
 UK_DEFAULT_ZERO_WEIGHT_STRATA: tuple[UKZeroWeightStratumDeclaration, ...] = (
     UKZeroWeightStratumDeclaration(
-        name="june_spi_synthetic_base",
+        name="spi_synthetic_base",
         selector={_SPI_FLAG: True, _CAPITAL_GAINS_FLAG: False},
-        maximum_zero_weight_rows=100_000,
+        maximum_zero_weight_rows=0,
         reason=(
-            "The certified June FRS-derived artifact ships 100,000 zero-weight "
-            "SPI-synthetic non-capital-gains rows."
+            "No SPI-synthetic non-capital-gains row may carry zero weight: the "
+            "SPI stage gives the stacked donors their prior mass before "
+            "calibration, and the national seam's calibrated control of "
+            "2026-10-28 (4374e0bf) ships none at zero."
         ),
     ),
     UKZeroWeightStratumDeclaration(
-        name="june_spi_synthetic_capital_gains",
+        name="spi_synthetic_capital_gains",
         selector={_SPI_FLAG: True, _CAPITAL_GAINS_FLAG: True},
-        maximum_zero_weight_rows=100_000,
+        maximum_zero_weight_rows=0,
         reason=(
-            "The certified June FRS-derived artifact ships 100,000 zero-weight "
-            "SPI-synthetic capital-gains-clone rows."
+            "No SPI-synthetic capital-gains-clone row may carry zero weight: the "
+            "SPI stage gives the stacked donors their prior mass before "
+            "calibration, and the national seam's calibrated control of "
+            "2026-10-28 (4374e0bf) ships none at zero."
         ),
     ),
 )
@@ -256,6 +265,9 @@ UK_ALLOWED_EXTRA_EXPORT_COLUMNS: tuple[str, ...] = (
     "household.household_lifetime_isa_balance",
     # #930: the NTS bus-travel stage's household journey cell.
     "household.household_local_bus_trips",
+    # microcosm#1418: the dense build's Rural Fuel Duty Relief flag, set off
+    # each placed household's output area; the incumbent does not carry it.
+    "household.in_rural_fuel_duty_relief_area",
     "household.spi_income_band_donor_lower_bound",
     "household.intermediate_zone_code",
     "household.la_code_oa",
@@ -303,6 +315,12 @@ UK_ALLOWED_EXTRA_EXPORT_COLUMNS: tuple[str, ...] = (
     "person.private_pension_income_annual_share",
     "person.self_employment_income_annual_share",
     "person.self_employment_income_other_spells",
+    # The self-employed's gross receipts for the trading allowance, which the
+    # enhanced FRS leaves at the engine's zero (microcosm#1428).
+    "person.self_employment_gross_receipts",
+    # The annuity and trust part of private_pension_income, a calibration-only
+    # descriptor no engine input reads (microcosm#1428).
+    "person.annuity_and_trust_income",
     "person.esa_health_condition_proxy",
     "person.esa_includes_support_component",
     "person.esa_support_group_proxy",
@@ -319,6 +337,27 @@ UK_ALLOWED_EXTRA_EXPORT_COLUMNS: tuple[str, ...] = (
     "person.is_uc_claimant",
     "person.legacy_jobseeker_proxy",
     "person.lifetime_isa_balance",
+    "person.lifetime_isa_payments",
+    "person.cash_isa_balance",
+    "person.stocks_and_shares_isa_balance",
+    "person.cash_isa_subscriptions",
+    "person.stocks_and_shares_isa_subscriptions",
+    # policyengine-uk 2.165.0's company car inputs, which the company_cars stage
+    # writes (PolicyEngine/uk-autumn-budget-dashboard-2026#316).
+    "person.company_car_list_price",
+    "person.company_car_co2_emissions",
+    "person.company_car_fuel_type",
+    "person.company_car_electric_range",
+    "person.company_car_capital_contributions",
+    "person.company_car_private_fuel_provided",
+    # policyengine-uk's vehicle excise duty inputs for households' own cars,
+    # which the lcfs_consumption stage's NTS car step writes (microcosm#1095 B3).
+    "person.car_fuel_type",
+    "person.car_co2_emissions",
+    "person.car_engine_size",
+    "person.car_first_registration_date",
+    "person.car_is_ved_exempt",
+    "person.individual_savings_account_interest_income",
     "person.local_bus_single_fare_share",
     "person.local_bus_trips",
     "person.local_bus_use_band",
@@ -345,6 +384,8 @@ UK_ALLOWED_EXTRA_EXPORT_COLUMNS: tuple[str, ...] = (
     "person.salary_sacrifice_asked",
     "person.salary_sacrifice_reported",
     "person.sic_industry_division",
+    "person.soc2020_major_group",
+    "person.soc2020_sub_major_group",
     "person.stands_as_sole_owner_or_partner_of_company",
     "person.statutory_paternity_pay",
     "person.student_loan_balance",
@@ -355,6 +396,7 @@ UK_ALLOWED_EXTRA_EXPORT_COLUMNS: tuple[str, ...] = (
     "person.uc_is_in_startup_period",
     "person.uc_is_in_gainful_self_employment",
     "person.is_looked_after_by_local_authority",
+    "person.child_limit_non_parental_caring_exception",
     "person.would_claim_carers_allowance",
     "person.would_claim_marriage_allowance",
     "person.would_claim_scp",
@@ -372,8 +414,9 @@ UK_ALLOWED_EXTRA_EXPORT_COLUMNS: tuple[str, ...] = (
     # the SPI channel's hmrc_spi_* leaves (#717), the FRS education and
     # housing fields, the two raw FRS codes the spine fences
     # (ossben_identifiable_subset, srp_regular_code5) and
-    # other_investment_income. Only incapacity_benefit_reported is dropped
-    # (UK_REVIEWED_EXPORT_EXCLUSIONS).
+    # other_investment_income. Only incapacity_benefit_reported, an all-zero
+    # layer the pinned reference leaves off its surface, is dropped
+    # (national_frame.UK_RELEASE_EXPORT_DROPPED_COLUMNS).
     "benunit.benunit_source_id",
     "benunit.benunit_support_channel",
     "benunit.benunit_support_clone_index",
@@ -460,15 +503,18 @@ UK_KNOWN_MISSING_REFERENCE_EXPORT_COLUMNS: tuple[str, ...] = (
 )
 
 UK_REVIEWED_EXPORT_EXCLUSIONS: Mapping[str, str] = {
-    "person.incapacity_benefit_reported": (
-        "The enhanced FRS stores this legacy reported-benefit input as an "
-        "all-zero layer; the candidate must drop dead zero layers."
-    ),
     "household.property_wealth": (
         "policyengine-uk derives property_wealth from main_residence_value, "
         "other_residential_property_value and non_residential_property_value; "
         "a persisted copy overrides that sum and has no uprating index, so the "
         "candidate must drop it (microcosm#1106, the uk-data#543 defect)."
+    ),
+    "person.tax_free_savings_income": (
+        "policyengine-uk derives tax_free_savings_income as the sum of the ISA "
+        "interest it adds (individual_savings_account_interest_income); a "
+        "persisted copy overrides that sum and is never uprated, so the "
+        "candidate stores ISA interest apart from non-ISA interest under the "
+        "additive ISA income contract and drops it (microcosm#1360)."
     ),
 }
 

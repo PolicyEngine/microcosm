@@ -36,6 +36,11 @@ from microcosm.build.uk_runtime.national_frame import (
     uk_time_period,
     validate_uk_national_frame,
 )
+from microcosm.build.uk_runtime.qrf_gates import (
+    UK_DEFAULT_GATE_CALIBRATION,
+    UK_GATE_OUTCOMES_EVIDENCE,
+    gate_outcomes,
+)
 from microcosm.build.uk_runtime.receipt_counts import (
     distinct_count,
     small_cell_share,
@@ -69,6 +74,10 @@ SALSAC_RATE_CAP = 0.5
 #: rest of the contribution stays an employee contribution (uk-data#518).
 SALSAC_MOVE_PAY_SHARE_CAP = 0.5
 SALSAC_QRF_SEED = 42
+#: The fit's sign gate is cross-fitted, its folds dealt by household
+#: (microcosm#1359): an in-sample gate draws a rare sacrifice too rarely on
+#: the people it was not fitted to.
+SALSAC_QRF_GATE_CALIBRATION = "cross_fitted"
 SALSAC_QRF_ESTIMATORS = 100
 SALSAC_CONVERSION_SEED = 2024
 SALSAC_CONVERSION_SALT = "salary_sacrifice_conversion"
@@ -436,6 +445,8 @@ class UKSalarySacrificeResult:
     realization_deviation: float
     #: The bonus conversion's receipt (microcosm#1340).
     bonus_receipt: Mapping[str, object] | None = None
+    #: The fit's gate outcome, when the gate is not in-sample.
+    gate_outcomes: Mapping[str, str] | None = None
 
     def evidence(self) -> dict[str, object]:
         return {
@@ -483,6 +494,11 @@ class UKSalarySacrificeResult:
                 {}
                 if self.bonus_receipt is None
                 else {"bonus_sacrifice_receipt": dict(self.bonus_receipt)}
+            ),
+            **(
+                {UK_GATE_OUTCOMES_EVIDENCE: dict(self.gate_outcomes)}
+                if self.gate_outcomes
+                else {}
             ),
         }
 
@@ -598,12 +614,19 @@ def impute_salary_sacrifice(
     person_weights = person_households.map(household_weights).to_numpy(dtype=float)
     training = numeric.loc[training_mask, [*SALSAC_PREDICTORS, SALSAC_OUTPUT]].copy()
     training["_fit_weight"] = person_weights[training_mask.to_numpy()]
-    model = _qrf_class()(n_estimators=SALSAC_QRF_ESTIMATORS, seed=SALSAC_QRF_SEED)
+    model = _qrf_class()(
+        n_estimators=SALSAC_QRF_ESTIMATORS,
+        seed=SALSAC_QRF_SEED,
+        gate_calibration=SALSAC_QRF_GATE_CALIBRATION,
+    )
+    # A person's household mates share its predictors' household parts, so a
+    # cross-fitted gate deals each household to one fold.
     fitted = model.fit(
         training,
         list(SALSAC_PREDICTORS),
         [SALSAC_OUTPUT],
         weights="_fit_weight",
+        groups=person_households.loc[training_mask].to_numpy(),
     )
     if predict_mask.any():
         # Uniforms keyed on each person's own id, never a positional stream:
@@ -746,9 +769,13 @@ def impute_salary_sacrifice(
     # Net-pay contributions come out of pay: the spine caps them at pay
     # (uk_runtime.pension_coherence), and the conversion takes the same amount
     # off both, so a contribution above the pay that remains is a defect. The
-    # caps hold here only while no stage between them and this one lowers
-    # pay: today only hmrc_spi_income_spine and salary_sacrifice write
-    # employment_income, so a new pay rewrite must cap contributions again.
+    # caps hold here only while every stage between them and this one that
+    # lowers pay keeps the contribution: company_cars carves a tape row's car
+    # benefits only out of the pay its contribution leaves, and a new pay
+    # rewrite must do the same or cap contributions again. A pay rewrite also
+    # moves the root's UC gainful self-employment rule, which reads pay:
+    # company_cars takes it again on the carved pay, but this stage's own
+    # conversion does not yet.
     if (employee > np.maximum(employment_income, 0.0) + 1e-6).any():
         raise ValueError(
             "Employee pension contributions must not exceed the pay that remains."
@@ -764,7 +791,7 @@ def impute_salary_sacrifice(
     person["employment_income"] = employment_income
     person[SALSAC_PRE_CONVERSION_PAY_COLUMN] = pre_conversion_pay
     # Weighted aggregates only, banded on distinct source households; a figure
-    # one to nine of them carry is "<10" (UKDS disclosure control).
+    # one or two of them carry is "<3" (UKDS disclosure control).
 
     def bonus_sources(mask: np.ndarray) -> int:
         return distinct_count(source_ids, mask, person_weights)
@@ -839,6 +866,11 @@ def impute_salary_sacrifice(
             else 0.0
         ),
         bonus_receipt=bonus_receipt,
+        gate_outcomes=(
+            gate_outcomes("salary_sacrifice", fitted)
+            if SALSAC_QRF_GATE_CALIBRATION != UK_DEFAULT_GATE_CALIBRATION
+            else None
+        ),
     )
 
 
@@ -883,6 +915,7 @@ def salary_sacrifice_operation_parameters() -> tuple[
                 "weight_mapping": "household_to_person",
                 "seed": SALSAC_QRF_SEED,
                 "n_estimators": SALSAC_QRF_ESTIMATORS,
+                "gate_calibration": SALSAC_QRF_GATE_CALIBRATION,
                 "clamp_minimum": 0,
                 "clamp_maximum": SALSAC_AMOUNT_LIMIT,
                 "preserve_asked_rows": True,

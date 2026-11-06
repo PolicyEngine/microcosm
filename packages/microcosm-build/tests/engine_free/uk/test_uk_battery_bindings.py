@@ -56,18 +56,12 @@ from tools.generate_uk_local_target_references import SUPPORT_FLOOR_DEFERRED_ARE
 
 KEY = base64.b64encode(b"\x07" * 32).decode("ascii")
 #: The shared exclusion-expiry clock, fixed inside the committed registers'
-#: validity window (latest approval 2026-09-23, the two v21b deferrals on the
-#: target-fit register from the PolicyEngine/chronicle#280 lane; earliest expiry
-#: 2026-10-21, the same entries) so the suite never drifts across an approval
-#: or expiry boundary. Move it forward when a register gains a later approval.
-# The committed registers are evaluated as of this date; the microcosm#1063
-# c9 input-mass entries take force on 2026-10-02, the
-# microcosm#1095 UC payment-band measure exclusions on 2026-10-07 (its West
-# Midlands target-fit deferral is retired with microcosm#1106), and the
-# microcosm#1106 property_wealth input-mass entry on 2026-10-11. The earliest
-# expiry is 2026-10-15.
-# On or after the newest committed receipt's approval (2026-10-14).
-CLOCK = date(2026, 10, 14)
+#: validity window so the suite never drifts across an approval or expiry
+#: boundary: on the latest approval (2026-10-28, the tax_free_savings_income
+#: input-mass exclusion of microcosm#1360) and before the earliest expiry
+#: (2026-11-16, the first of the dense build's target-fit entries). Move it
+#: forward when a register gains a later approval.
+CLOCK = date(2026, 10, 28)
 
 VALIDATE_REFERENCE = (
     "microcosm.build.uk_runtime.weighted_integrity."
@@ -1086,9 +1080,12 @@ class TestBatteryRegressions:
         # path over distinct sub-exempt gains that never cross the exempt
         # amount, and the release-frame council-tax band check (#1278).
         # Plus uk_local_brma_enum_domain, the terminal recheck of the area-BRMA
-        # rewrite (microcosm#1262; its enum_domain binding is stubbed here).
-        assert len(passed) == 22
+        # rewrite (microcosm#1262; its enum_domain binding is stubbed here), and
+        # the SOC 2020 major and sub-major groups' enum checks (microcosm#1490).
+        assert len(passed) == 24
         assert "uk_local_brma_enum_domain" in passed
+        assert "uk_soc2020_major_group_enum_domain" in passed
+        assert "uk_soc2020_sub_major_group_enum_domain" in passed
 
     def test_input_mass_parity_compares_the_release_surface(self) -> None:
         # The frame carries the spine's WAS property_wealth and the reference
@@ -1811,10 +1808,14 @@ class TestPreflightBindings:
         # 1,896 DESNZ energy cells by constituency (632 Great Britain seats,
         # three rows), 1,894 of them compiled: the Orkney and Shetland seat has
         # no gas kWh row and its gas-connected cell is deferred, as the two
-        # councils' are.
-        assert result.details["candidate_targets"] == 25_192
-        assert result.details["reference_targets"] == 29_325
-        # Only the 4,133 signed area deferrals and absences remain (2,100
+        # councils' are. microcosm#1418 adds SPI pension income and the
+        # taxpayers with it by constituency and authority: 2,022 cells, 2,016
+        # of them compiled, less the 40 the rounded-thousand floor defers
+        # (microcosm#1420: the 20 count cells HMRC publishes at 5,000 or fewer
+        # and their amounts).
+        assert result.details["candidate_targets"] == 27_168
+        assert result.details["reference_targets"] == 31_347
+        # Only the 4,179 signed area deferrals and absences remain (2,100
         # before microcosm#929 bound the Welsh and Scottish council-tax cells;
         # Shetland band H is the one Scottish support deferral; microcosm#1123
         # adds the three higher rate taxpayer gaps; microcosm#1240 the six
@@ -1823,10 +1824,12 @@ class TestPreflightBindings:
         # higher-rate cells; microcosm#1207 the ten energy cells above;
         # microcosm#1301 the 2,323 high-value homes cells above; microcosm#1095
         # the two single adult discount cells and the Orkney and Shetland
-        # seat's two gas cells above); the 1,011 household rows are ordinary
-        # Chronicle-compiled references.
+        # seat's two gas cells above; microcosm#1418 the six pension cells of
+        # the two authorities without SPI local measures and the City of
+        # London, and the 40 under the rounded-thousand floor); the 1,011
+        # household rows are ordinary Chronicle-compiled references.
         exclusions = result.details["reviewed_exclusions"]
-        assert len(exclusions) == 4_133
+        assert len(exclusions) == 4_179
         households = [
             name for name in exclusions if str(name).startswith("households@")
         ]

@@ -16,9 +16,9 @@ homes or halls of residence. The FRS's own ages stop at 80 (AGE80): the
 age_tail stage draws each such person's band from ONS's 80 to 84, 85 to 89
 and 90 and over, with a uniform age within the band, so the single years above
 80 show that draw. Every cell names its carriers as
-distinct source households and reads "<10" in place of its figures when fewer
-than 10 carry it. When any single year of a sex is withheld, every cell of that
-sex reads "<10", its bands too, so no difference from the sex's persons, which
+distinct source households and reads "<3" in place of its figures when fewer
+than 3 carry it. When any single year of a sex is withheld, every cell of that
+sex reads "<3", its bands too, so no difference from the sex's persons, which
 other reports give, gives a withheld age back (UKDS disclosure control).
 """
 

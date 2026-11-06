@@ -60,7 +60,7 @@ def _stage():
     ]
 
 
-def _frame(contract, *, natives: int = _NATIVES):
+def _frame(contract, *, natives: int = _NATIVES, with_infants: bool = False):
     """Native households plus one copy of each per copy stage.
 
     Every copy carries its host's childcare draws, as the copy stages leave
@@ -99,8 +99,12 @@ def _frame(contract, *, natives: int = _NATIVES):
     household["region"] = "LONDON"
     ids = household["household_id"].to_numpy(dtype=np.int64)
     sources = household["source_household_id"].to_numpy(dtype=np.int64)
-    # Every other host's child is under 2, and its copies inherit its age.
+    # Every other host's child is under 2, and its copies inherit its age; with
+    # infants, every fourth host's child is under 1, whose usage rate is below
+    # one, so the under-2 usage varies as it does in a build.
     ages = np.where(sources % 2 == 0, 1, 3)
+    if with_infants:
+        ages = np.where(sources % 4 == 0, 0, ages)
     person = pd.DataFrame(
         {
             "person_id": ids,
@@ -351,3 +355,58 @@ def test_copies_children_redraw_their_under_two_usage_on_their_own_draws() -> No
         contract.rate("extended_childcare_age_1_usage"), abs=0.03
     )
     assert (after.loc[~under_two, UK_UNDER_TWO_USAGE_OUTPUT] == 30.0).all()
+
+
+def test_stage_records_the_redrawn_flags_for_its_signal_gate() -> None:
+    """The copy stage measures the five flags it re-draws over the whole frame,
+    after the re-draw, for the stage-time take-up signal gate (microcosm#1095)."""
+    from microcosm.build import load_country_spec
+    from microcosm.build.uk_runtime.stage_health import uk_stage_health_gate
+
+    contract = load_uk_take_up_contract()
+    stage = UKChildcareCopyTakeUpStageTransform(contract=contract, stage=_stage())
+    with pytest.raises(RuntimeError, match="completed stage run"):
+        stage.checkpoint_metadata()
+    stage(_frame(contract))
+    evidence = stage.checkpoint_metadata()["evidence"]
+    assert evidence["stage"] == "childcare_copy_take_up"
+    gate = next(
+        entry
+        for entry in load_country_spec("uk").gates.gates
+        if entry.id == "uk_stage_childcare_copy_take_up_signal"
+    )
+    assert [row["output"] for row in evidence["take_up_signal"]["flags"]] == list(
+        gate.parameters["outputs"]
+    )
+    result = uk_stage_health_gate(
+        evidence=evidence,
+        stage="childcare_copy_take_up",
+        check="take_up_signal",
+        parameters=dict(gate.parameters),
+    )
+    assert not any("omits" in f or "undeclared" in f for f in result.failures)
+
+
+def test_the_copy_stage_gate_passes_end_to_end_through_the_spine_battery() -> None:
+    """The copy stage's receipt, read through the battery's stage_health
+    binding with the committed gate parameters, passes on a frame whose flags
+    vary (the re-review of microcosm#1422)."""
+    from microcosm.build import load_country_spec
+    from microcosm.build.gate_battery import EvidenceContext
+    from microcosm.build.uk_runtime.battery_bindings import UK_GATE_REGISTRY
+
+    contract = load_uk_take_up_contract()
+    stage = UKChildcareCopyTakeUpStageTransform(contract=contract, stage=_stage())
+    stage(_frame(contract, with_infants=True))
+    gate = next(
+        entry
+        for entry in load_country_spec("uk").gates.gates
+        if entry.id == "uk_stage_childcare_copy_take_up_signal"
+    )
+    assert gate.phase == "transferred"
+    evidence = {"childcare_copy_take_up": stage.checkpoint_metadata()["evidence"]}
+    result = UK_GATE_REGISTRY["stage_health"].evaluator(
+        EvidenceContext(artifacts={"stage_evidence": evidence}), dict(gate.parameters)
+    )
+    assert result.passed, result.failures
+    assert result.details["flags_withheld_unchecked"] == []

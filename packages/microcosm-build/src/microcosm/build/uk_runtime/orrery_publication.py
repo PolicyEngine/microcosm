@@ -15,14 +15,14 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, TypedDict
 
-from microcosm_emitter.orrery.client import publication_inventory, publish_graph
-from microcosm_emitter.orrery.contracts import (
+from microcosm_emitter_interface.orrery import (
     PublicationFileRole,
     PublicationReceipt,
 )
 
 from microcosm.build.artifact_files import file_artifact, materialize_bytes
 from microcosm.build.staging_dataset import StagedDatasetDelivery
+from microcosm.build.telemetry_emitter import publication_inventory, publish_graph
 from microcosm.graph import ContentStore
 from microcosm.graph.canonical import canonical_json
 from microcosm.graph.evidence import collect_execution_evidence, load_run_evidence
@@ -251,7 +251,7 @@ def finalize_graph(
 def stage_graph_evidence(
     args: Namespace, output: Path, *, run_id: str
 ) -> StagedDatasetDelivery | None:
-    """Stage failure evidence through the existing generic HF bundle adapter."""
+    """Stage failure evidence as a bundle, through the build's emitter."""
     from microcosm.build.staging_dataset import (
         StagedDatasetBundle,
         disabled_staged_dataset,
@@ -259,7 +259,6 @@ def stage_graph_evidence(
         stage_bundle,
         write_sidecars,
     )
-    from microcosm.build.staging_storage import HuggingFaceDatasetStorage
 
     from . import rowwise_staging
     from .staging import UK_STAGED_DATASET_PREFIX
@@ -279,8 +278,10 @@ def stage_graph_evidence(
     if mode == "local_only":
         return local_only_staged_dataset(bundle, prefix=UK_STAGED_DATASET_PREFIX)
     assert repository is not None, "Remote staging requires a repository."
+    # Nothing in the evidence directory is rewritten after the hand-over.
     return stage_bundle(
         bundle,
-        storage=HuggingFaceDatasetStorage(repository, api=rowwise_staging._hub_api()),
+        emitter=rowwise_staging.bundle_emitter(),
+        repository=repository,
         prefix=UK_STAGED_DATASET_PREFIX,
-    )
+    ).delivery

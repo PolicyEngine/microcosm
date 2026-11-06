@@ -22,7 +22,17 @@ sim.calculate("household_net_income", 2024).sum()
 `load("us")` (no year) loads the latest published compact year. It resolves
 `latest.json`, reads the selected release manifest at the immutable release
 tag, verifies the artifact SHA-256, and refuses model or Core versions outside
-the release's certified compatibility specifiers. `available()` lists
+the release's certified compatibility specifiers.
+
+A UK release can also be published into build folders,
+`releases/<release>/<build>/`, once its repository switches to a
+`releases.json` record of each release's builds and current build. The UK
+2025 national and dense entries name their release: where the repository
+has `releases.json`, `load("uk")` reads the current build there, then that
+build's `release_manifest.json` and dataset, with the same SHA-256 and
+engine checks, and `load("uk", build="<build>")` loads a listed build (a
+withdrawn one with a warning). Where it has none, the loader follows the
+entry's pointer file (`latest-national.json`) exactly as before. `available()` lists
 the default-variant `(country, year)` pairs (the ones a bare ``load(country, year)``
 resolves); `available_variants()` lists every published
 `(country, year, variant)`, non-default lines included.
@@ -30,6 +40,8 @@ resolves); `available_variants()` lists every published
 The old mutable-root behavior is available only as an unsafe escape hatch:
 `load("us", 2024, unverified_root=True)`. It emits a runtime warning because it
 bypasses the release pointer, manifest, digest, and engine compatibility checks.
+A repository that records its builds in `releases.json` has no root file, so it
+refuses the option.
 
 ## Why a shard, not a repo per country
 
@@ -72,7 +84,8 @@ Published releases live under `releases/<release_id>/` in the Hub dataset repo.
 Each release must include `build_manifest.json` and `release_manifest.json`;
 US releases must also include `us_source_coverage.json`. A current release
 manifest contains a typed `calibration_diagnostics` status. `available` binds a
-schema-8 `calibration_diagnostics.json` file and its SHA-256. `failed` records
+schema-9 `calibration_diagnostics.json` file (schema 8 in releases published
+before it) and its SHA-256. `failed` records
 the expected schema, error code, and sanitized message and deliberately omits
 the file and artifact entry. Publication logs a warning but continues, because
 the diagnostics document reports a completed calibration and is not an input

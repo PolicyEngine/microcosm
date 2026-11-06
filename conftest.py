@@ -73,7 +73,7 @@ def pytest_collection_modifyitems(items) -> None:
 def fake_telemetry_emitters(monkeypatch, tmp_path):
     """Default every workspace test to in-memory telemetry, never production."""
     from huggingface_hub import constants as hf_constants
-    from microcosm_emitter.host import launcher
+    from microcosm_emitter_interface import client as emitter_interface_client
 
     from microcosm.build import telemetry_emitter
     from microcosm.build.uk_runtime import orrery_publication
@@ -84,6 +84,22 @@ def fake_telemetry_emitters(monkeypatch, tmp_path):
     )
 
     for name in ("HF_TOKEN", "HUGGING_FACE_HUB_TOKEN", "HUGGINGFACE_TOKEN"):
+        monkeypatch.delenv(name, raising=False)
+    # Whether a build must send telemetry, the telemetry run a build program
+    # reports under, and a collector token given to its emitter: a shell that
+    # exports them must not change what a test sees.
+    for name in (
+        "MICROCOSM_TELEMETRY_REQUIRED",
+        "MICROCOSM_TELEMETRY_RUN_ID",
+        "MICROCOSM_TELEMETRY_PARENT_PID",
+        "MICROCOSM_COLLECTOR_TOKEN",
+        "MICROCOSM_COLLECTOR_TOKEN_EXPIRES_AT",
+        "MICROCOSM_COLLECTOR_ORIGIN",
+        # The Modal runner's own names for the same three values.
+        "MICROCOSM_MODAL_TELEMETRY_TOKEN",
+        "MICROCOSM_MODAL_TELEMETRY_TOKEN_EXPIRES_AT",
+        "MICROCOSM_MODAL_TELEMETRY_ORIGIN",
+    ):
         monkeypatch.delenv(name, raising=False)
     isolated_hf = tmp_path / "telemetry-hf"
     token_path = isolated_hf / "token"
@@ -116,9 +132,10 @@ def fake_telemetry_emitters(monkeypatch, tmp_path):
     monkeypatch.setattr(orrery_publication, "publish_graph", fake_publish_graph)
 
     def unexpected_start(*args, **options):
-        pytest.fail("A build test tried to start a real emitter service")
+        pytest.fail("A build test tried to start a real emitter")
 
-    monkeypatch.setattr(launcher, "start_services", unexpected_start)
+    # Every interface client starts the installed command through this name.
+    monkeypatch.setattr(emitter_interface_client, "start_emitter", unexpected_start)
     # Reset any cached handle left by a previously loaded build entrypoint.
     for module in tuple(sys.modules.values()):
         if isinstance(

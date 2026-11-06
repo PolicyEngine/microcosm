@@ -38,6 +38,14 @@ from microcosm.data.contract import (
     stored_input_evidence_manifest_block,
 )
 from microcosm.data.stored_inputs import register_sha256
+from microcosm.diagnostics import (
+    CalibrationDiagnosticsV8,
+    catalog_calibration_diagnostics,
+)
+from test_support.microcosm_data.build_folders import (
+    UK_NATIONAL_BUILD,
+    to_build_folder_layout,
+)
 from test_support.paths import paths_for
 
 _TEST_PATHS = paths_for("microcosm-data")
@@ -114,6 +122,13 @@ UK_INPUT_MASS_REVIEWED_EXCLUSIONS: dict[str, dict[str, str]] = {
         "adjudication": "microcosm#1106 (#1145): part B measured on the A9 candidate at 2025 and on the final-head arm c7 of 2026-10-11; ruling 2026-10-11 in session",
         "approved_on": "2026-10-11",
         "expires_on": "2027-04-11",
+    },
+    "tax_free_savings_income": {
+        "reason": "The candidate no longer ships person.tax_free_savings_income: policyengine-uk derives it as the sum of individual_savings_account_interest_income, which the candidate stores apart from non-ISA interest under the additive ISA income contract, and a persisted copy overrides that sum and is never uprated (microcosm#1360). The enhanced-FRS reference stores it in the legacy gross layout, so the column is present in the reference and absent from the candidate, which this gate otherwise fails whatever the tolerance. Non-ISA savings_interest_income stays compared; it falls below the reference's gross total by the ISA part.",
+        "approved_by": "juaristi22",
+        "adjudication": "microcosm#1360 folded into microcosm#1418's PR B (ruling 2026-10-28 in session)",
+        "approved_on": "2026-10-28",
+        "expires_on": "2027-04-28",
     },
 }
 GIT_COMMIT = "5fa48f07436a806ad75ff76fd22cfb8613bddbe0"
@@ -213,19 +228,19 @@ def _trusted_terminal_gate_signing_key(monkeypatch) -> None:
 UK_GATE_BATTERY_PRODUCER = "microcosm.build.gate_battery"
 UK_GATE_BATTERY_SIGNING_KEY_ENV = "MICROCOSM_UK_TERMINAL_GATE_SIGNING_KEY"
 UK_GATE_BATTERY_POLICY_SHA256 = (
-    "5f8a65be07c1df68e6beeab1a795a660940a626f6fe12b8cd282b236a9d41d03"
+    "97ec5dd9ee1f1809412c5a3513b9471963f359ae3a501871fb8ace91520820f8"
 )
 UK_GATE_BATTERY_GATES_MANIFEST_SHA256 = (
-    "46e58e85a771c10101ea79905a62077fd9d68c408dc3ecf5c706b6af16f0cb4a"
+    "70eaed7fd3350ad6770725251836334e308067d5f4e8868ff61ea7f380e669ea"
 )
 UK_GATE_BATTERY_SPEC_FINGERPRINT = (
-    "fdb46cc0f42398589c0fbdfdccdb288a1edd6c0b941c26ff2e282128a4037a60"
+    "9f0c914ac30f383c3d0284e5889fe7e246333d3c1b5351015912bea0ef22aba1"
 )
 UK_GATE_BATTERY_DEGENERATE_EVIDENCE_SHA256 = (
-    "6a179222c6b6058ad9caacfd347f7bdb8cb98a62237b50d1fc1136df09337251"
+    "f246388de42654dd68dbbb40c42282001b5b0a8bf48976162bcb1199085cb1d3"
 )
 UK_GATE_BATTERY_INPUT_MASS_EVIDENCE_SHA256 = (
-    "82a5fa0c7dec5ac5c169f0b8b2f4acc6b302e80637dc698d3247e75a6d133933"
+    "24bb96f93de3bda45425b797a2f5069df7477bf3a56616080cc04376beab56e5"
 )
 #: Spec entry id -> (neutral gate name, phase, legacy detail-schema name).
 #: microcosm#1240: the two report-only high-value homes gates.
@@ -246,6 +261,7 @@ UK_GATE_BATTERY_ENTRIES = {
     ),
     "uk_stage_was_wealth_support": ("stage_health", "transferred", None),
     "uk_stage_was_lisa_support": ("stage_health", "transferred", None),
+    "uk_stage_was_lisa_anchor": ("stage_health", "transferred", None),
     "uk_stage_property_components": ("stage_health", "transferred", None),
     "uk_stage_was_wealth_coherence": ("stage_health", "transferred", None),
     "uk_stage_uc_deduction_attributes": (
@@ -299,6 +315,7 @@ UK_GATE_BATTERY_ENTRIES = {
         "transferred",
         None,
     ),
+    "uk_stage_hmrc_spi_income_spine_hourly_pay": ("stage_health", "transferred", None),
     "uk_stage_spi_benefit_coherence": ("stage_health", "transferred", None),
     "uk_stage_uc_take_up": ("stage_health", "transferred", None),
     "uk_stage_pension_credit_take_up": ("stage_health", "transferred", None),
@@ -355,6 +372,31 @@ UK_GATE_BATTERY_ENTRIES = {
         None,
     ),
     "uk_stage_frs_person_draws_apprentices": (
+        "stage_health",
+        "transferred",
+        None,
+    ),
+    "uk_stage_isa_subscriptions_invariants": ("stage_health", "transferred", None),
+    "uk_stage_isa_subscriptions": ("stage_health", "transferred", None),
+    "uk_stage_company_cars_invariants": ("stage_health", "transferred", None),
+    "uk_stage_spi_employment_shell_fit": ("stage_health", "transferred", None),
+    "uk_stage_aps_occupation_fit": ("stage_health", "transferred", None),
+    "uk_stage_frs_take_up_signal": (
+        "stage_health",
+        "assembled",
+        None,
+    ),
+    "uk_stage_frs_person_draws_take_up_signal": (
+        "stage_health",
+        "assembled",
+        None,
+    ),
+    "uk_stage_frs_household_draws_take_up_signal": (
+        "stage_health",
+        "assembled",
+        None,
+    ),
+    "uk_stage_childcare_copy_take_up_signal": (
         "stage_health",
         "transferred",
         None,
@@ -423,6 +465,16 @@ UK_GATE_BATTERY_ENTRIES = {
         "enum_domain",
     ),
     "uk_student_loan_plan_enum_domain": (
+        "enum_domain",
+        "terminal",
+        "enum_domain",
+    ),
+    "uk_soc2020_major_group_enum_domain": (
+        "enum_domain",
+        "terminal",
+        "enum_domain",
+    ),
+    "uk_soc2020_sub_major_group_enum_domain": (
         "enum_domain",
         "terminal",
         "enum_domain",
@@ -1392,6 +1444,7 @@ def _gate_battery_payload(
     stage_health_stages = {
         "uk_stage_was_wealth_support": "was_wealth",
         "uk_stage_was_lisa_support": "was_lisa",
+        "uk_stage_was_lisa_anchor": "was_lisa",
         "uk_stage_property_components": "property_components",
         "uk_stage_was_wealth_coherence": "was_wealth",
         "uk_stage_uc_deduction_attributes": "uc_deduction_attributes",
@@ -1413,6 +1466,7 @@ def _gate_battery_payload(
         "uk_stage_frs_annual_income_spells": "frs_annual_income_spells",
         "uk_stage_spi_support_channel_mass": "spi_support_channel",
         "uk_stage_hmrc_spi_income_spine_identity": "hmrc_spi_income_spine",
+        "uk_stage_hmrc_spi_income_spine_hourly_pay": "hmrc_spi_income_spine",
         "uk_stage_spi_benefit_coherence": "spi_benefit_coherence",
         "uk_stage_uc_take_up": "uc_take_up",
         "uk_stage_pension_credit_take_up": "pension_credit_take_up",
@@ -1431,6 +1485,15 @@ def _gate_battery_payload(
         "uk_stage_property_purchases_fit": "property_purchases",
         "uk_stage_uc_legacy_closure_take_up_contract": "uc_legacy_closure_take_up",
         "uk_stage_frs_person_draws_apprentices": "frs_person_draws",
+        "uk_stage_isa_subscriptions_invariants": "isa_subscriptions",
+        "uk_stage_isa_subscriptions": "isa_subscriptions",
+        "uk_stage_company_cars_invariants": "company_cars",
+        "uk_stage_spi_employment_shell_fit": "spi_employment_shell",
+        "uk_stage_aps_occupation_fit": "aps_occupation",
+        "uk_stage_frs_take_up_signal": "frs_take_up",
+        "uk_stage_frs_person_draws_take_up_signal": "frs_person_draws",
+        "uk_stage_frs_household_draws_take_up_signal": "frs_household_draws",
+        "uk_stage_childcare_copy_take_up_signal": "childcare_copy_take_up",
         "uk_stage_age_tail_targets": "age_tail",
         "uk_stage_frs_relationships_composition": "frs_relationships",
     }
@@ -2501,6 +2564,235 @@ def test_uk_national_release_rejects_mixed_cut_revisions(tmp_path: Path) -> None
         validate_release_dir(directory)
 
 
+def _write_uk_national_build_folder_release_dir(tmp_path: Path) -> Path:
+    """The national fixture in the build-folder layout.
+
+    Until the repository switches to releases.json the national release is
+    assembled with tags; the contract also checks the build-folder layout
+    the emitter's publication uses, whose manifests name the release and the
+    build.
+    """
+    return to_build_folder_layout(
+        _write_uk_national_release_dir(tmp_path), build=UK_NATIONAL_BUILD
+    )
+
+
+@pytest.mark.parametrize(
+    ("release_id", "publishes"),
+    [
+        (UK_NATIONAL_RELEASE_ID, True),
+        ("microcosm-uk-2024-25-dense", True),
+        ("microcosm-uk-2024-25-local-k55000", True),
+        # Which stable releases US builds publish under is not agreed with
+        # the US data builder yet, so every US release keeps tags and
+        # latest.json.
+        (RELEASE_ID, False),
+        ("populace-us-2024-buildo-acs-local-abc1234-20260723T000000Z", False),
+        (UK_RELEASE_ID, False),
+        (UK_EXACT_K_RELEASE_ID, False),
+        ("microcosm-uk-2024-25-local-k0", False),
+    ],
+)
+def test_publishes_to_build_folder_names_only_the_uk_releases(
+    release_id: str, publishes: bool
+) -> None:
+    assert contract.publishes_to_build_folder(release_id) is publishes
+
+
+def test_the_proposed_us_releases_are_recorded_but_not_used() -> None:
+    """The US stable releases are proposed, not agreed with the US data
+    builder: the contract records them with their roles in one place, and no
+    US release publishes into build folders until they are agreed."""
+    assert contract.PROPOSED_US_RELEASES == {
+        "populace-us-2024-national": "national",
+        "populace-us-2024-local": "local_area",
+    }
+    assert set(contract.PROPOSED_US_RELEASES.values()) <= set(
+        contract.RELEASE_ROLES.values()
+    )
+    for release in contract.PROPOSED_US_RELEASES:
+        assert release.startswith("populace-us-")
+        assert contract.publishes_to_build_folder(release) is False
+
+
+def test_release_roles_record_national_and_local_area() -> None:
+    assert contract.RELEASE_ROLES == {
+        "national_default": "national",
+        "non_default_local_area": "local_area",
+    }
+
+
+@pytest.mark.parametrize(
+    ("key", "kind", "role"),
+    [
+        ("microcosm_uk_2024_25", "microdata", "dataset"),
+        ("microcosm_uk_2024_25_calibration", "calibration", "calibration_weights"),
+        ("calibration_diagnostics", "diagnostics", "calibration_diagnostics"),
+        ("release_certification", "diagnostics", "release_certification"),
+    ],
+)
+def test_release_artifact_role_keeps_the_general_roles(
+    key: str, kind: str, role: str
+) -> None:
+    assert contract.release_artifact_role(key, kind) == role
+
+
+def _rewrite_document(path: Path, mutate) -> None:
+    document = json.loads(path.read_text())
+    mutate(document)
+    path.write_text(json.dumps(document))
+
+
+def _uk_national_failures(directory: Path) -> str:
+    with pytest.raises(ReleaseContractError) as caught:
+        validate_release_dir(directory)
+    return "\n".join(caught.value.failures)
+
+
+def test_uk_national_build_folder_manifests_name_the_release_and_the_build(
+    tmp_path: Path,
+) -> None:
+    directory = _write_uk_national_build_folder_release_dir(tmp_path)
+    release = json.loads((directory / "release_manifest.json").read_text())
+    build = json.loads((directory / "build_manifest.json").read_text())
+
+    assert (release["release"], release["build"]) == (
+        UK_NATIONAL_RELEASE_ID,
+        UK_NATIONAL_BUILD,
+    )
+    assert (build["release"], build["build"]) == (
+        UK_NATIONAL_RELEASE_ID,
+        UK_NATIONAL_BUILD,
+    )
+    validate_release_dir(directory)
+
+
+@pytest.mark.parametrize("field", ["build_id", "attempt_id", "cut_tag"])
+def test_uk_national_build_folder_refuses_the_retired_build_fields(
+    tmp_path: Path, field: str
+) -> None:
+    directory = _write_uk_national_build_folder_release_dir(tmp_path)
+    _rewrite_document(
+        directory / "build_manifest.json",
+        lambda build: build.update({field: UK_NATIONAL_RELEASE_ID}),
+    )
+
+    assert f"build_manifest.json carries {field!r}" in _uk_national_failures(directory)
+
+
+@pytest.mark.parametrize("manifest", ["build_manifest.json", "release_manifest.json"])
+def test_uk_national_build_folder_release_must_be_the_directory(
+    tmp_path: Path, manifest: str
+) -> None:
+    directory = _write_uk_national_build_folder_release_dir(tmp_path)
+    _rewrite_document(
+        directory / manifest,
+        lambda document: document.update(release="microcosm-uk-2024-25-dense"),
+    )
+
+    assert f"{manifest} 'release' is 'microcosm-uk-2024-25-dense'" in (
+        _uk_national_failures(directory)
+    )
+
+
+@pytest.mark.parametrize("build", ["", "uk/attempt", "-attempt", 7, None])
+def test_uk_national_build_folder_build_must_be_a_safe_name(
+    tmp_path: Path, build: object
+) -> None:
+    directory = _write_uk_national_build_folder_release_dir(tmp_path)
+    for manifest in ("build_manifest.json", "release_manifest.json"):
+        _rewrite_document(
+            directory / manifest, lambda document: document.update(build=build)
+        )
+
+    assert "'build' must be the build's name" in _uk_national_failures(directory)
+
+
+def test_uk_national_build_folder_manifests_must_name_the_same_build(
+    tmp_path: Path,
+) -> None:
+    directory = _write_uk_national_build_folder_release_dir(tmp_path)
+    _rewrite_document(
+        directory / "build_manifest.json",
+        lambda build: build.update(
+            build="uk-frs-calibration-attempt-20260101T000000Z-00000000"
+        ),
+    )
+
+    assert "build_manifest.json and release_manifest.json name different builds" in (
+        _uk_national_failures(directory)
+    )
+
+
+@pytest.mark.parametrize(
+    "field", ["built_at", "built_with_core_package", "built_with_model_package"]
+)
+def test_uk_national_build_folder_records_build_details_at_the_top_level(
+    tmp_path: Path, field: str
+) -> None:
+    directory = _write_uk_national_build_folder_release_dir(tmp_path)
+    _rewrite_document(
+        directory / "release_manifest.json", lambda release: release.pop(field)
+    )
+
+    assert field in _uk_national_failures(directory)
+
+
+def test_uk_national_build_folder_refuses_an_artifact_revision(
+    tmp_path: Path,
+) -> None:
+    directory = _write_uk_national_build_folder_release_dir(tmp_path)
+
+    def pin(release: dict) -> None:
+        release["artifacts"]["calibration_diagnostics"]["revision"] = "main"
+
+    _rewrite_document(directory / "release_manifest.json", pin)
+
+    assert "artifact 'calibration_diagnostics' pins revision 'main'" in (
+        _uk_national_failures(directory)
+    )
+
+
+@pytest.mark.parametrize(
+    ("role", "message"),
+    [
+        (None, "artifact 'calibration_diagnostics' is missing 'role'"),
+        ("diagnostics", "artifact 'calibration_diagnostics' role is 'diagnostics'"),
+    ],
+)
+def test_uk_national_build_folder_names_each_artifact_role(
+    tmp_path: Path, role: str | None, message: str
+) -> None:
+    directory = _write_uk_national_build_folder_release_dir(tmp_path)
+
+    def set_role(release: dict) -> None:
+        artifact = release["artifacts"]["calibration_diagnostics"]
+        if role is None:
+            artifact.pop("role")
+        else:
+            artifact["role"] = role
+
+    _rewrite_document(directory / "release_manifest.json", set_role)
+
+    assert message in _uk_national_failures(directory)
+
+
+@pytest.mark.parametrize(
+    "path", ["releases/microcosm-uk-2024-25-national/x.json", "../x.json", "a\\b.json"]
+)
+def test_uk_national_build_folder_artifact_paths_are_bare_file_names(
+    tmp_path: Path, path: str
+) -> None:
+    directory = _write_uk_national_build_folder_release_dir(tmp_path)
+
+    def move(release: dict) -> None:
+        release["artifacts"]["release_certification"]["path"] = path
+
+    _rewrite_document(directory / "release_manifest.json", move)
+
+    assert "artifact 'release_certification' path" in _uk_national_failures(directory)
+
+
 def test_uk_national_release_binds_signed_evidence_bytes(tmp_path: Path) -> None:
     # Rewriting a copied part report must refuse: the certification signs the
     # evidence bytes, not just the digest fields' shapes.
@@ -2610,7 +2902,7 @@ def test_legacy_diagnostics_exemption_is_scoped_to_the_exact_june_id(
         payload=diagnostics,
     )
 
-    with pytest.raises(ReleaseContractError, match="publishes version 8"):
+    with pytest.raises(ReleaseContractError, match="publishes version 9"):
         validate_release_dir(directory)
 
 
@@ -3924,6 +4216,95 @@ def test_schema_8_calibration_hierarchy_is_accepted(release_dir: Path) -> None:
         artifact_key="calibration_diagnostics",
         payload=diagnostics,
     )
+
+    validate_release_dir(release_dir)
+
+
+def _schema_9_calibration_diagnostics() -> dict:
+    """What the writer publishes for the schema-8 fixture: labels in catalogs."""
+
+    model = CalibrationDiagnosticsV8.model_validate(_schema_8_calibration_diagnostics())
+    return json.loads(
+        catalog_calibration_diagnostics(model).model_dump_json(exclude_defaults=True)
+    )
+
+
+def test_schema_9_calibration_catalogs_are_accepted(release_dir: Path) -> None:
+    _write_json_and_refresh_manifest_hash(
+        release_dir,
+        filename="calibration_diagnostics.json",
+        artifact_key="calibration_diagnostics",
+        payload=_schema_9_calibration_diagnostics(),
+    )
+
+    validate_release_dir(release_dir)
+
+
+def test_schema_9_always_uses_shared_validation(release_dir: Path) -> None:
+    diagnostics = _schema_9_calibration_diagnostics()
+    diagnostics["targets"][0]["hierarchy"]["geography_id"] = "0400000US06"
+    _write_json_and_refresh_manifest_hash(
+        release_dir,
+        filename="calibration_diagnostics.json",
+        artifact_key="calibration_diagnostics",
+        payload=diagnostics,
+    )
+
+    with pytest.raises(ReleaseContractError) as excinfo:
+        validate_release_dir(release_dir)
+    failures = "\n".join(excinfo.value.failures)
+    assert "does not satisfy the shared schema" in failures
+    assert "geography 0400000US06 is not in hierarchy_catalogs" in failures
+
+
+@pytest.mark.parametrize("schema_version", [8, 9])
+def test_available_diagnostics_declare_either_hierarchy_schema(
+    release_dir: Path, schema_version: int
+) -> None:
+    # A release published before schema 9 declares 8; the writer now
+    # publishes 9.
+    if schema_version == 9:
+        _write_json_and_refresh_manifest_hash(
+            release_dir,
+            filename="calibration_diagnostics.json",
+            artifact_key="calibration_diagnostics",
+            payload=_schema_9_calibration_diagnostics(),
+        )
+    manifest_path = release_dir / "release_manifest.json"
+    manifest = json.loads(manifest_path.read_text())
+    manifest["calibration_diagnostics"] = {
+        "status": "available",
+        "schema_version": schema_version,
+        "sha256": manifest["artifacts"]["calibration_diagnostics"]["sha256"],
+    }
+    manifest_path.write_text(json.dumps(manifest, indent=1))
+
+    validate_release_dir(release_dir)
+
+    manifest["calibration_diagnostics"]["schema_version"] = 7
+    manifest_path.write_text(json.dumps(manifest, indent=1))
+    with pytest.raises(ReleaseContractError) as excinfo:
+        validate_release_dir(release_dir)
+    assert (
+        "release_manifest.json available calibration diagnostics must declare "
+        "schema_version 8 or 9."
+    ) in excinfo.value.failures
+
+
+def test_failed_diagnostics_may_expect_the_published_schema_9(
+    release_dir: Path,
+) -> None:
+    (release_dir / "calibration_diagnostics.json").unlink()
+    manifest_path = release_dir / "release_manifest.json"
+    manifest = json.loads(manifest_path.read_text())
+    manifest["artifacts"].pop("calibration_diagnostics")
+    manifest["calibration_diagnostics"] = {
+        "status": "failed",
+        "expected_schema_version": 9,
+        "error_code": "label_conflict",
+        "message": "Geography 0100000US has two labels.",
+    }
+    manifest_path.write_text(json.dumps(manifest, indent=1))
 
     validate_release_dir(release_dir)
 

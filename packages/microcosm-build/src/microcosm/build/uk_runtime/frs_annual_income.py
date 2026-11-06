@@ -111,7 +111,7 @@ leaver):
 
 The receipt is build output and follows UKDS disclosure control
 (:mod:`receipt_counts`): every cell gives its support as a band of distinct
-source households, and a weighted figure only where ten or more carry it.
+source households, and a weighted figure only where three or more carry it.
 """
 
 from __future__ import annotations
@@ -141,6 +141,8 @@ from microcosm.build.uk_runtime.national_frame import (
     validate_uk_national_frame,
 )
 from microcosm.build.uk_runtime.receipt_counts import (
+    UK_DISCLOSURE_FLOOR,
+    UK_WITHHELD,
     distinct_carriers,
     extreme_count,
     small_cell_share,
@@ -225,6 +227,10 @@ EARNINGS_INDEX_TO = "2024-01-01"
 MAXIMUM_UPRATING_MONTHS = 24
 #: The ratio check: the job-level DV-to-usual pay ratio must lie in this range.
 PAY_CONCEPT_RATIO_BOUNDS = (0.95, 1.10)
+#: The households the ratio needs before its bounds are judged: on fewer, a
+#: ratio past them is noise, so it is held to them and its gate reads it
+#: unmeasured. A statistical floor, not the disclosure floor.
+PAY_CONCEPT_RATIO_MINIMUM_SUPPORT = 10
 
 _ADULT_COLUMNS = (
     "sernum",
@@ -796,8 +802,8 @@ def pay_concept_ratio(
     dv = _numeric(jobs, "ugrspay")
     support = distinct_carriers(jobs["household_id"].to_numpy(), job_weights)
     denominator = float(np.nansum(job_weights * usual))
-    # Fewer than ten reporting households only flags: the receipt prints the
-    # ratio "<10" and the gate reads it unmeasured, since a small-cell rule
+    # Fewer than three reporting households only flags: the receipt prints the
+    # ratio "<3" and the gate reads it unmeasured, since a small-cell rule
     # never stops a build (María's ruling of 2026-10-26).
     if support == 0 or denominator <= 0:
         raise ValueError(
@@ -806,11 +812,12 @@ def pay_concept_ratio(
         )
     ratio = float(np.nansum(job_weights * dv)) / denominator
     lower, upper = PAY_CONCEPT_RATIO_BOUNDS
-    if support < 10:
+    if support < PAY_CONCEPT_RATIO_MINIMUM_SUPPORT:
         # The bounds are a plausibility check on the two pay concepts. On one
         # to nine households a ratio past them is noise, so it is held to
-        # them rather than stopping the build, and it stays flagged as above
-        # (Vahid's second review of #1396).
+        # them rather than stopping the build (Vahid's second review of
+        # #1396), and the gate reads a ratio whose support band is under ten
+        # as unmeasured, whether or not the receipt prints it.
         return min(max(ratio, lower), upper), support
     if not lower <= ratio <= upper:
         raise ValueError(
@@ -928,36 +935,50 @@ def _receipt(
     }
     # Structural checks the stage gate reads: each is zero by construction,
     # and a count of rows that break one is banded as the other stages band
-    # theirs (zero exact), so a failing build never records 1 to 9.
+    # theirs (zero exact), so a failing build never records a small count.
     full_year = source == SOURCE_FULL_YEAR
     return {
         "window_months": WINDOW_MONTHS,
         "weights": "household weights at the stage, carried by each person",
-        "pay_concept_ratio": ratio if ratio_support >= 10 else "<10",
+        "pay_concept_ratio": (
+            ratio if ratio_support >= UK_DISCLOSURE_FLOOR else UK_WITHHELD
+        ),
         "pay_concept_ratio_support": support_band(ratio_support),
+        # Whether the stage moved the ratio onto its bounds (pay_concept_ratio
+        # holds one past them on fewer than ten households, and holds it to a
+        # bound exactly); withheld beside a withheld ratio.
+        "pay_concept_ratio_held": (
+            UK_WITHHELD
+            if ratio_support < UK_DISCLOSURE_FLOOR
+            else bool(
+                ratio_support < PAY_CONCEPT_RATIO_MINIMUM_SUPPORT
+                and ratio in PAY_CONCEPT_RATIO_BOUNDS
+            )
+        ),
         "earnings_growth": float(earnings_growth),
         "spell_sources": sources,
         "donor_cells": dict(donor_cells),
         "annual_employee_earners": weighted(np.ones(len(pay)), annual_earner),
         "current_employee_earners": weighted(np.ones(len(pay)), pay),
         "annual_over_current_earners": (
-            "<10"
-            if carriers(annual_earner) < 10 or carriers(pay) < 10
+            UK_WITHHELD
+            if carriers(annual_earner) < UK_DISCLOSURE_FLOOR
+            or carriers(pay) < UK_DISCLOSURE_FLOOR
             else float(weights[annual_earner].sum()) / float(weights[pay].sum())
         ),
         "annual_over_current_employment_income": (
             float((weights * annual).sum()) / float((weights * current).sum())
-            if carriers(pay) >= 10
-            else "<10"
+            if carriers(pay) >= UK_DISCLOSURE_FLOOR
+            else UK_WITHHELD
         ),
         "annual_over_current_self_employment_income": (
             float((weights * se_annual).sum()) / float((weights * se_current).sum())
-            if carriers(se_current > 0) >= 10
-            else "<10"
+            if carriers(se_current > 0) >= UK_DISCLOSURE_FLOOR
+            else UK_WITHHELD
         ),
         "other_spells_pay_observed_share": (
-            "<10"
-            if carriers(outside) < 10
+            UK_WITHHELD
+            if carriers(outside) < UK_DISCLOSURE_FLOOR
             else float(weights[outside & observed].sum())
             / float(weights[outside].sum())
         ),

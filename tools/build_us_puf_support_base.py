@@ -4,6 +4,16 @@ This diagnostic builder starts from an existing Microcosm US H5, clones the
 frame into ASEC and PUF-tax-detail support channels, imputes PUF-observed
 inputs onto the PUF channel with Microcosm's weighted QRF, and writes a fresh
 base H5 for the fiscal refresh calibration builder.
+
+Telemetry: after parsing its arguments the builder starts the emitter
+(``microcosm.build.program_telemetry``, pipeline ``us_puf_support_base``) and
+records completion, or failure with the error. With
+``MICROCOSM_TELEMETRY_REQUIRED=1``, which the Modal stage runner sets, an
+emitter that cannot be used stops the builder before it reads any input. A
+checkpointed ``--stage all`` run records a stage change before each child
+interpreter and fails with the first child that exits nonzero; the children
+start no emitter. The compatibility path records the single stage ``all``,
+and a named ``--stage`` run by hand records that stage.
 """
 
 from __future__ import annotations
@@ -34,12 +44,18 @@ from microcosm.build.outer_stage_runtime import (
     assert_unchanged_identity,
     frame_identity,
 )
+from microcosm.build.program_telemetry import (
+    child_stage_environment,
+    program_telemetry,
+    telemetry_recorded_by_parent,
+)
 from microcosm.build.source_manifest import (
     SupportSpineSpec,
     load_support_spine_manifest,
 )
 from microcosm.build.source_runtime import SourceRuntimeConfig, run_source_stage
 from microcosm.build.stage_profile import profile_stage
+from microcosm.build.telemetry_emitter import LocalTelemetryEmitter
 from microcosm.build.us_runtime import (
     ASEC_2023_WEEKS_UNEMPLOYED_MEMBER,
     ASEC_2023_WEEKS_UNEMPLOYED_MEMBER_SHA256,
@@ -87,9 +103,11 @@ from microcosm.build.us_runtime import (
     load_asec_raw_stage_checkpoint,
     load_congressional_district_vintage_crosswalk,
     load_us_block_ladder,
+    processed_puf_tax_unit_partnership_s_corp_income,
     puf_tax_unit_donor_from_arrays,
     resolve_asec_spm_role_source_paths,
     source_year_puf_adjusted_gross_income,
+    source_year_puf_partnership_s_corp_income,
     support_channel_column,
     transfer_puf_capital_gains_tail,
     translate_congressional_district_facts_to_current_vintage,
@@ -648,10 +666,29 @@ def _verify_asec_source_digests(args: argparse.Namespace) -> None:
             )
 
 
+#: The telemetry pipeline this builder reports under.
+TELEMETRY_PIPELINE = "us_puf_support_base"
+
+
 def main(argv: list[str] | None = None) -> None:
-    """Dispatch the byte-identical legacy path or checkpoint scaffolding."""
+    """Dispatch the byte-identical legacy path or checkpoint scaffolding.
+
+    A child stage of a checkpointed ``--stage all`` run starts no emitter:
+    its parent records its stage and outcome. Every other run starts one.
+    """
 
     args = _parse_args() if argv is None else _parse_args(argv)
+    if telemetry_recorded_by_parent():
+        _dispatch(args, None)
+        return
+    with program_telemetry(pipeline=TELEMETRY_PIPELINE) as telemetry:
+        _dispatch(args, telemetry)
+
+
+def _dispatch(
+    args: argparse.Namespace, telemetry: LocalTelemetryEmitter | None
+) -> None:
+    """Run the parsed command, recording stage changes on ``telemetry`` if any."""
 
     _verify_asec_source_digests(args)
     stage = getattr(args, "stage", "all")
@@ -667,12 +704,18 @@ def main(argv: list[str] | None = None) -> None:
                 "Named staged builds require an explicit PYTHONHASHSEED; use "
                 "--stage all to default fresh child processes to 0."
             )
+        if telemetry is not None:
+            telemetry.transition_stage(stage)
         _run_configured_stage(args)
         return
     if checkpoint_dir is None:
         # This is intentionally a direct call with no profiler, checkpoint
-        # directory creation, or other side effect.  It is the pre-refactor
-        # pipeline and remains the byte-for-byte compatibility path.
+        # directory creation, or other side effect, except telemetry: the
+        # emitter started in main() and the one stage change below, which
+        # change no output byte. It is the pre-refactor pipeline and remains
+        # the byte-for-byte compatibility path.
+        if telemetry is not None:
+            telemetry.transition_stage("all")
         boundary_dir = getattr(args, "equivalence_boundary_dir", None)
         observer = (
             None if boundary_dir is None else _EquivalenceBoundaryObserver(boundary_dir)
@@ -683,11 +726,18 @@ def main(argv: list[str] | None = None) -> None:
             _run_all(args, boundary_observer=observer)
             observer.assert_complete()
         return
-    _run_staged_all(args)
+    _run_staged_all(args, telemetry)
 
 
-def _run_staged_all(args: argparse.Namespace) -> None:
-    """Run every outer boundary in a fresh interpreter, resuming by prefix."""
+def _run_staged_all(
+    args: argparse.Namespace, telemetry: LocalTelemetryEmitter | None = None
+) -> None:
+    """Run every outer boundary in a fresh interpreter, resuming by prefix.
+
+    Before each child, ``telemetry`` (the parent's, if any) records that
+    child's stage; a child that exits nonzero stops the run, which main()
+    records as that stage's failure. The children start no emitter.
+    """
 
     runtime = StageRuntime(
         args.checkpoint_dir,
@@ -701,6 +751,8 @@ def _run_staged_all(args: argparse.Namespace) -> None:
         # export and stage_all alias after a crash in the post-context window.
         remaining = ("final_export",)
     for stage in remaining:
+        if telemetry is not None:
+            telemetry.transition_stage(stage)
         completed = subprocess.run(
             [
                 sys.executable,
@@ -783,7 +835,8 @@ def _append_path_argument(command: list[str], flag: str, value: Path | None) -> 
 def _staged_subprocess_environment() -> dict[str, str]:
     environment = os.environ.copy()
     environment.setdefault("PYTHONHASHSEED", "0")
-    return environment
+    # The child starts no emitter: this process records its telemetry.
+    return child_stage_environment(environment)
 
 
 def _asec_education_source_paths(
@@ -3486,11 +3539,21 @@ def _puf_tax_unit_donor_from_h5(
         processed_tax_unit_ids=arrays["tax_unit_id"],
         processed_tax_unit_weights=arrays["household_weight"],
     )
-    return puf_tax_unit_donor_from_arrays(
+    schedule_e_receipt: dict[str, object] = {}
+    schedule_e = _source_year_puf_partnership_s_corp_income(
+        source_puf_csv,
+        arrays,
+        receipt=schedule_e_receipt,
+    )
+    donor = puf_tax_unit_donor_from_arrays(
         arrays,
         adjusted_gross_income=adjusted_gross_income,
+        schedule_e_partnership_s_corp=schedule_e,
         donor_build_summary=donor_build_summary,
     )
+    if donor_build_summary is not None:
+        donor_build_summary["schedule_e_line_32"] = schedule_e_receipt
+    return donor
 
 
 def _puf_e01000_reconciliation_basis(
@@ -3539,6 +3602,25 @@ def _source_year_puf_adjusted_gross_income(
         source_puf_csv,
         processed_tax_unit_ids=processed_tax_unit_ids,
         processed_tax_unit_weights=processed_tax_unit_weights,
+    )
+
+
+def _source_year_puf_partnership_s_corp_income(
+    source_puf_csv: Path,
+    arrays: Mapping[str, Sequence[object]],
+    *,
+    receipt: dict[str, object] | None = None,
+) -> dict[str, np.ndarray]:
+    """Load Schedule E line 32 by entity through the same narrow seam."""
+
+    return source_year_puf_partnership_s_corp_income(
+        source_puf_csv,
+        processed_tax_unit_ids=arrays["tax_unit_id"],
+        processed_tax_unit_weights=arrays["household_weight"],
+        processed_nonpassive_partnership_s_corp_income=(
+            processed_puf_tax_unit_partnership_s_corp_income(arrays)
+        ),
+        receipt=receipt,
     )
 
 
