@@ -445,8 +445,9 @@ def test_the_command_refuses_a_repository_with_pointer_files_before_an_emitter(
     pointer_file: str,
     promote: bool,
 ) -> None:
-    """Until a repository switches to releases.json, its releases publish
-    and promote through its pointer files, with tools/publish_release.sh."""
+    """The emitter publishes only into a repository without pointer files.
+    After the UK switch the tagged publisher refuses these releases, so the
+    advice is to remove the pointer files, not to publish through them."""
     started, repository = _start_emitters(monkeypatch)
     hub_listing.files.extend(["README.md", pointer_file])
     argv = (
@@ -462,7 +463,8 @@ def test_the_command_refuses_a_repository_with_pointer_files_before_an_emitter(
     assert output is None
     assert hub_listing.listed == [UK_REPO_ID]
     assert "refusing to publish" in error and pointer_file in error
-    assert "tools/publish_release.sh" in error
+    assert "tools/publish_release.sh" not in error
+    assert "remove the file(s) that appeared" in error
     assert repository == {}
 
 
