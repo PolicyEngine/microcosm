@@ -47,6 +47,9 @@ TAGGED_ARTIFACT = b"certified release artifact"
 MUTABLE_ROOT_ARTIFACT = b"uncertified in-flight root artifact"
 UK_REPO_ID = "policyengine/populace-uk-private"
 UK_2023_RELEASE_ID = "populace-uk-2023-dd68c73-4aa4b14-20260619T023711Z"
+#: The UK switch moves the June 2023 build into this release, as its only and
+#: current build, named by its old release ID.
+UK_2023_RELEASE = "populace-uk-2023"
 UK_NATIONAL_RELEASE_ID = "microcosm-uk-2024-25-national"
 UK_LOCAL_RELEASE_ID = "microcosm-uk-2024-25-local-k15"
 UK_TAGGED_ARTIFACT = b"certified UK line artifact"
@@ -422,11 +425,12 @@ def _patch_engine(
 
 def test_resolve_uk_default_is_the_national_release():
     """The national release is the default UK load, read through
-    releases.json; the June 2023 release stays at its year and latest.json."""
+    releases.json; the June 2023 release stays at its year, read through
+    releases.json too once its repository has one, latest.json until then."""
     assert latest_year("uk") == 2025
     assert resolve("uk").key == ("uk", 2025, DEFAULT_VARIANT)
     assert resolve("uk").release == UK_NATIONAL_RELEASE_ID
-    assert resolve("uk", 2023).release is None
+    assert resolve("uk", 2023).release == UK_2023_RELEASE
     assert resolve("uk", 2023).pointer_path == "latest.json"
     with pytest.raises(ValueError, match="variant 'national'"):
         resolve("uk", 2025, variant="national")
@@ -640,7 +644,9 @@ def test_download_verifies_the_build_folder_dataset(
         download("uk", 2025)
 
 
-def test_resolve_uk_2023_still_uses_latest_json(tmp_path: Path) -> None:
+def test_uk_2023_follows_latest_json_until_its_repository_has_releases_json(
+    tmp_path: Path,
+) -> None:
     spec = resolve("uk", 2023)
     manifest = _uk_release_manifest(
         release_id=UK_2023_RELEASE_ID,
@@ -668,8 +674,46 @@ def test_resolve_uk_2023_still_uses_latest_json(tmp_path: Path) -> None:
     assert certified.release_id == UK_2023_RELEASE_ID
     assert certified.artifact_revision == UK_2023_RELEASE_ID
     assert hub.calls == [
+        (UK_REPO_ID, "releases.json", None),
         (UK_REPO_ID, LATEST_POINTER_PATH, None),
         (UK_REPO_ID, manifest_path, UK_2023_RELEASE_ID),
+    ]
+
+
+def test_uk_2023_loads_the_june_build_from_its_folder_after_the_switch(
+    tmp_path: Path,
+) -> None:
+    """The UK switch moves the June 2023 build into release populace-uk-2023,
+    as its current build under its old release ID, and deletes latest.json."""
+    spec = resolve("uk", 2023)
+    assert spec.release == UK_2023_RELEASE
+    manifest = _uk_build_folder_manifest(
+        release=UK_2023_RELEASE,
+        build=UK_2023_RELEASE_ID,
+        filename="populace_uk_2023.h5",
+        artifact_key="populace_uk_2023",
+        dataset_role=None,
+    )
+    hub = _build_folder_hub(
+        tmp_path,
+        manifest=manifest,
+        record=_releases_record(
+            UK_2023_RELEASE,
+            current=UK_2023_RELEASE_ID,
+            builds={UK_2023_RELEASE_ID: False},
+        ),
+    )
+
+    certified = loader._resolve_certified_release(spec, hub_download=hub)
+
+    folder = f"releases/{UK_2023_RELEASE}/{UK_2023_RELEASE_ID}"
+    assert certified.release_id == UK_2023_RELEASE
+    assert certified.build == UK_2023_RELEASE_ID
+    assert certified.artifact_path == f"{folder}/populace_uk_2023.h5"
+    assert certified.artifact_revision is None
+    assert hub.calls == [
+        (UK_REPO_ID, "releases.json", None),
+        (UK_REPO_ID, f"{folder}/release_manifest.json", None),
     ]
 
 
