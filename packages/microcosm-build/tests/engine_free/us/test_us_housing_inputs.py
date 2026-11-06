@@ -467,7 +467,28 @@ class _OneDrawPerHouseholdQRF:
         return _OneDrawPerHouseholdFitted()
 
 
-def _frame_with_members(extra_members: list[int], *, order_seed: int) -> Frame:
+def test_rent_drawn_for_owner_and_no_cash_rent_heads_is_zeroed(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # The stub draws positive rent for every household, as the real QRF can for
+    # owners: its zero-or-positive classifier never gives them probability 0.
+    monkeypatch.setattr(module, "QRF", _OneDrawPerHouseholdQRF)
+
+    result = with_us_housing_inputs(
+        _frame(), seed=0, time_period=2024, acs_rent_donor=_donor()
+    )
+
+    rent = result.table("person").set_index("person_household_id")["pre_subsidy_rent"]
+    assert rent.loc[[1, 2, 3, 4]].tolist() == [1_000.0, 2_000.0, 3_000.0, 4_000.0]
+    assert (rent.drop([1, 2, 3, 4]) == 0.0).all()
+    gate = us_housing_inputs_signal_gate(result)
+    assert gate.details["positive_rent_nonrenter"] == 0
+    assert gate.passed, gate.failures
+
+
+def _frame_with_members(
+    extra_members: list[int], *, order_seed: int, shuffle: bool = True
+) -> Frame:
     frame = derive_us_housing_inputs(_frame())
     tables = {entity: frame.table(entity).copy() for entity in frame.entities}
     heads = tables["person"]
@@ -476,7 +497,12 @@ def _frame_with_members(extra_members: list[int], *, order_seed: int) -> Frame:
     members["is_household_head"] = False
     members["tax_unit_role_input"] = "DEPENDENT"
     person = pd.concat([heads, members], ignore_index=True)
-    order = np.random.default_rng(order_seed).permutation(len(person))
+    # Unshuffled, heads come first in household order.
+    order = (
+        np.random.default_rng(order_seed).permutation(len(person))
+        if shuffle
+        else np.arange(len(person))
+    )
     tables["person"] = person.iloc[order].reset_index(drop=True)
     return Frame(
         tables,
@@ -490,7 +516,7 @@ def _frame_with_members(extra_members: list[int], *, order_seed: int) -> Frame:
     extra_members=st.lists(st.integers(0, 3), min_size=20, max_size=20),
     order_seed=st.integers(0, 2**32 - 1),
 )
-def test_each_head_holds_its_households_draw_under_any_person_order(
+def test_each_renter_head_holds_its_households_draw_under_any_person_order(
     extra_members: list[int], order_seed: int
 ) -> None:
     frame = _frame_with_members(extra_members, order_seed=order_seed)
@@ -499,9 +525,11 @@ def test_each_head_holds_its_households_draw_under_any_person_order(
         rent = module.impute_us_pre_subsidy_rent(frame, _donor(), seed=0)
 
     person = frame.table("person")
+    household = frame.table("household")
+    renter = household["tenure_type"].eq("RENTED").to_numpy()
     draws = pd.Series(
-        1_000.0 * np.arange(1, frame.n("household") + 1),
-        index=frame.table("household")["household_id"].to_numpy(),
+        np.where(renter, 1_000.0 * np.arange(1, frame.n("household") + 1), 0.0),
+        index=household["household_id"].to_numpy(),
     )
     is_head = person["is_household_head"].to_numpy()
     assert (
@@ -516,12 +544,15 @@ def test_each_head_holds_its_households_draw_under_any_person_order(
 @given(
     extra_members=st.lists(st.integers(0, 3), min_size=20, max_size=20),
     order_seed=st.integers(0, 2**32 - 1),
+    shuffle=st.booleans(),
 )
 def test_gate_flags_exactly_the_draws_person_order_moves_off_renters(
-    extra_members: list[int], order_seed: int
+    extra_members: list[int], order_seed: int, shuffle: bool
 ) -> None:
-    frame = _frame_with_members(extra_members, order_seed=order_seed)
+    frame = _frame_with_members(extra_members, order_seed=order_seed, shuffle=shuffle)
     misplaced, moved = _with_rent_in_person_order(frame)
+    if not shuffle:
+        assert moved == 0
 
     gate = us_housing_inputs_signal_gate(misplaced)
 
@@ -536,12 +567,12 @@ def test_gate_flags_exactly_the_draws_person_order_moves_off_renters(
     extra_members=st.lists(st.integers(0, 3), min_size=20, max_size=20),
     order_seed=st.integers(0, 2**32 - 1),
 )
-def test_drawn_rent_passes_the_renter_check_under_any_person_order(
+def test_drawn_rent_passes_the_renter_check_when_the_model_gives_owners_rent(
     extra_members: list[int], order_seed: int
 ) -> None:
     frame = _frame_with_members(extra_members, order_seed=order_seed)
     with pytest.MonkeyPatch.context() as patch:
-        patch.setattr(module, "QRF", _RentQRF)
+        patch.setattr(module, "QRF", _OneDrawPerHouseholdQRF)
         result = with_us_housing_inputs(
             frame, seed=0, time_period=2024, acs_rent_donor=_donor()
         )
