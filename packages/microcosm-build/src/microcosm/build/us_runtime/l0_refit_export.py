@@ -12,7 +12,6 @@ from typing import Any
 
 import numpy as np
 
-from microcosm.build.gates import input_mass_parity_gate
 from microcosm.build.us_runtime.adult_care import (
     US_ADULT_CARE_OUTPUT_COLUMNS,
 )
@@ -77,8 +76,8 @@ from microcosm.build.us_runtime.immigration import (
     US_IMMIGRATION_NONCONSTANT_PERSON_COLUMNS,
 )
 from microcosm.build.us_runtime.input_mass import (
+    us_input_mass_parity_gate,
     us_input_mass_totals,
-    us_line_32_on_reference_terms,
 )
 from microcosm.build.us_runtime.medicare_take_up import (
     US_MEDICARE_TAKE_UP_NONCONSTANT_PERSON_COLUMNS,
@@ -610,14 +609,9 @@ def export_us_l0_refit_h5(
     reference_frame = (
         load_us_frame(reference_h5) if reference_h5 is not None else base_frame
     )
-    reference_mass_totals = us_input_mass_totals(reference_frame)
-    input_mass_gate = input_mass_parity_gate(
-        us_line_32_on_reference_terms(
-            us_input_mass_totals(export_frame),
-            reference_mass_totals,
-            minimum_reference_total=input_mass_minimum_reference_total,
-        ),
-        reference_mass_totals,
+    input_mass_gate = us_input_mass_parity_gate(
+        us_input_mass_totals(export_frame),
+        us_input_mass_totals(reference_frame),
         candidate_name="l0_refit_export",
         reference_name="reference_h5" if reference_h5 is not None else "base_h5",
         relative_tolerance=input_mass_relative_tolerance,

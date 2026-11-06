@@ -1097,7 +1097,6 @@ def run_preflight(
         pool_totals = us_line_32_on_reference_terms(
             us_input_mass_totals(base_frame, columns=engine_input_variables),
             reference_totals,
-            minimum_reference_total=minimum_reference_total,
         )
         checks.append(
             check_export_mass_parity_risk(

@@ -204,7 +204,7 @@ AT-RISK only, `0` clean):
    weights against its reference band, honoring the release tool's
    `US_EXPORT_INPUT_MASS_REVIEWED_EXCLUSIONS` register (reused, never
    re-declared). A column out of band pre-solve is flagged for review. Against
-   a reference with no `s_corp_income` mass, the pool's `partnership_income`
+   a reference with a zero `s_corp_income` total, the pool's `partnership_income`
    counts both columns, as the export gate's candidate does.
 4. **Smoke-probe support audit** — every reform-coverage probe leaf's pool vs
    *selected* nonzero support and pool sign-leg decomposition. A leaf with pool
@@ -309,10 +309,12 @@ never as a release refusal. The checks:
 - **`export_input_mass`** runs the export input-mass gate with the staged
   frame standing in for the export. It classifies the
   `US_EXPORT_INPUT_MASS_REVIEWED_EXCLUSIONS` register as the gate does: `used`,
-  `below_reference_floor` or `unused`. Against a reference with no
-  `s_corp_income` mass, built before microcosm#1261 split Schedule E line 32,
+  `below_reference_floor` or `unused`. Against a reference with a zero
+  `s_corp_income` total, built before microcosm#1261 split Schedule E line 32,
   the gate and this check count `partnership_income` plus `s_corp_income` as
-  the candidate's `partnership_income`.
+  the candidate's `partnership_income`, and the gate's details name both
+  columns. A candidate with no `partnership_income` mass stays refused, and such
+  a reference can't show a wrong division of the income between the columns.
 - **`degenerate_input_register`**, **`ecps_parity_register`**,
   **`input_coverage_register`**, **`stored_inputs`**, **`spm_composition`**,
   **`zero_support_preview`** and **`pre_solve_battery`** grade the remaining
