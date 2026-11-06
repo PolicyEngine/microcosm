@@ -383,7 +383,70 @@ chained to the next row). So the dashboard keeps
 showing such a run without its bundle. An identical remote bundle the manifest
 does not know about is recorded as `already_staged` with the bundle's own
 commit; a different bundle
-under the same run id is refused (`REMOTE_DIFFERS`). Fetch a bundle for a scorecard, an evaluation leg or the
+under the same run id is refused (`REMOTE_DIFFERS`).
+
+No UK program is registered with the Modal runner yet; the runner's
+programs are all US builds today (`tools/modal_us_stage_plan.py`), and none of
+them writes a staged-dataset bundle. A UK build run there would stage nothing
+from its container: the runner sets `HF_HUB_OFFLINE=1` for every tool, so the
+build would record its bundle as `local_only` (see above). After `modal volume
+get` has copied such a run back
+([the Modal runbook](us-modal-stage-runbook.md#commands), step 5), you would
+stage it from the workstation, with your own emitter and Hub credential, by
+naming the stage's receipt:
+
+```bash
+uv run python tools/stage_uk_rowwise_candidate.py \
+  --run-dir ./modal-runs/<run_id>/state/<output directory> \
+  --modal-receipt ./modal-runs/<run_id>/receipts/<stage>-<utc>.json
+```
+
+Before it reads any output, the command checks that the receipt is of a
+stage that finished (`COMPLETED`, and not stopped at its budget) and that the
+run directory, wherever a link or `..` in its path leads, is inside the run's
+state directory: `state/` beside the receipt's `receipts/` directory, or the
+directory `--modal-state-root` names, either resolved the same way. The
+receipt must list the build manifest and every output it registers, at their
+paths under the state directory. An output the stage hashed but never copied
+to the runs volume (the receipt's `outputs_not_mirrored`) is named as such.
+Unless the build manifest's `staged_dataset` record is `local_and_remote`,
+the manifest must have the receipt's SHA-256 and size, so a manifest edited to
+register another file the stage wrote, rename a role or change any other field
+is refused. An attempt to hand the directory over from the workstation that
+records its outcome in the manifest writes a `local_and_remote` record,
+whether the bundle landed, failed or was refused, so after such an attempt the
+manifest is not compared. A bundle the emitter queued without copying the
+manifest leaves the manifest as handed over, with the receipt's bytes and the
+build's record, and it is then still compared. The command reads that mode from the manifest
+itself, so it cannot tell a record a hand-over wrote from one edited to say
+`local_and_remote`: such an edit also ends the manifest's comparison, and the
+edits above are then not caught. Every output must have the receipt's SHA-256
+and size whatever the record says, so an output whose bytes differ from the
+receipt's is always refused. Every refusal comes before an emitter starts.
+`staged_manifest.json` and `sha256sums.txt` are not compared, because staging
+writes them again. Then the command stages the directory as above, under the
+build's own run id: the hand-over, the records, a re-stage after a failed
+attempt and a second run on a landed bundle work as they do for a directory
+built on the workstation. Unset `HF_HUB_OFFLINE` first if your shell sets it:
+the command refuses to stage while it is set. With `--local-only` it checks
+the directory against the receipt and writes `staged_manifest.json` and
+`sha256sums.txt`, but leaves the build manifest as it is, so a manifest that
+still holds the build's record is still compared by later runs with the
+receipt.
+
+> **Warning:** on a copied-back directory, always pass `--modal-receipt` with
+> `--local-only`. Without the receipt, `--local-only` writes a `local_only`
+> record into the build manifest. Whenever that record differs from the
+> build's own (a build that disabled its staged dataset, another `--run-id`, a
+> national build, or a hand-over that did not land), every later run with the
+> receipt refuses the directory as "not the build manifest the Modal stage
+> wrote". If that has happened, fetch the run again with `modal volume get`.
+
+Nothing here submits the bundle to the collector: the command's emitter runs its Hugging Face module only, and builds do not submit
+artifacts to the collector's artifact intake yet
+(PolicyEngine/microcosm-collector#12).
+
+Fetch a bundle for a scorecard, an evaluation leg or the
 dashboard's local-directory mode with:
 
 ```bash

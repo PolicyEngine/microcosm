@@ -16,7 +16,7 @@ nothing in the spine reads its outputs.
 The `was_lisa` stage also anchors Lifetime ISA holders to HMRC's payers (below,
 and [the LISA notes](uk-lisa-1003.md)).
 
-The pinned policyengine-uk 2.165.1 reads all five:
+The pinned policyengine-uk 2.174.1 reads all five:
 
 - `lifetime_isa_payments`, whose 25% bonus is `lifetime_isa_bonus`;
 - the subscriptions, against the limits of policyengine-uk#2712
@@ -26,8 +26,10 @@ The pinned policyengine-uk 2.165.1 reads all five:
   `stocks_and_shares_isa` sum.
 
 The release does not store those household totals. A stored total would
-override the sum, so the means tests, which count the household `cash_isa`,
-read the sum of the person balances.
+override the sum. From policyengine-uk 2.174.0 the means tests count each
+person balance in its holder's own benefit unit and take it out of the
+household totals first, so with no stored total no part of the household
+`cash_isa` is left to share between benefit units.
 
 ## Sources
 
@@ -191,7 +193,7 @@ HMRC's national totals, so it is a population fact check.
 The fields support the subscriptions a limit leaves out: the overall £20,000
 limit and a separate cash limit (the £12,000 under-65 setting is a reform in
 policyengine-uk), through `isa_subscriptions_above_limit` and
-`cash_isa_subscriptions_above_limit`. policyengine-uk 2.165.1 reads neither in
+`cash_isa_subscriptions_above_limit`. policyengine-uk 2.174.1 reads neither in
 any tax or spending variable, so a limit reform changes those amounts but costs
 nothing until the engine models where the excess goes. The subscriptions are
 flows the engine does not uprate, so a later year reads 2024-25 amounts. In

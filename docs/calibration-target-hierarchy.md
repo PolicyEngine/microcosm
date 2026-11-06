@@ -89,6 +89,14 @@ metadata, not hints for constructing display text.
   exactly one non-empty `dimension_labels` entry and one non-empty
   `dimension_value_labels` entry for each selected dimension and value.
   Missing or conflicting labels fail compilation.
+- A `chronicle.consumer_fact.v5` row (PolicyEngine/chronicle#377) may also
+  carry `package_dimension_value_labels`: a source package's own wording of a
+  value, present only where it differs from the label the row exports.
+  Microcosm never takes a label from it, so each value keeps the one label
+  Chronicle gives it in `dimension_value_labels` and
+  `layout.groupby_value_label`. When the field is present on a selected fact
+  it must map each dimension id to an object of value id to non-empty text,
+  as the v5 schema requires; any other shape fails compilation.
 - A layout dimension and a fact dimension merge only when their identifiers
   are exactly equal. Similar labels do not establish identity.
 - A multi-fact aggregate inherits only dimensions present with the same value

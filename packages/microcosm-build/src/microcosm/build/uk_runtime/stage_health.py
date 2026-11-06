@@ -124,6 +124,10 @@ def uk_stage_health_gate(
         return _was_lisa_anchor_gate(stage, evidence, parameters)
     if check == "company_cars":
         return _company_cars_gate(stage, evidence, parameters)
+    if check == "occupation_redraw":
+        return _occupation_redraw_gate(stage, evidence, parameters)
+    if check == "sub_major_draw":
+        return _sub_major_draw_gate(stage, evidence, parameters)
     return GateResult(
         name="stage_health",
         passed=False,
@@ -5257,13 +5261,15 @@ def _company_cars_gate(
     it or set for an electric car, private fuel on an electric car, contributions
     above the list price, an electric range on a car outside 1 to 50 g/km, an SPI
     benefit above its EPB, a tape row's employee pension contribution above its
-    carved pay). It also fails when, on any tape row, pay plus the car and fuel
-    benefits the engine computes again on the stage's output misses the pay the
-    row brought in by more than ``maximum_pay_identity_error_gbp``: the carve-out
-    assumes how the engine prices a car, so an engine that prices it otherwise
-    fails here. How far holders, fuels, CO2 bands and list prices sit from HMRC's
-    tables after calibration is not a gate (María's ruling of 28 October 2026 on
-    the ISA facts), and comparing them is a manual step for now.
+    carved pay, a tape row's PAY below zero or its PAY + EPB moved by the benefits
+    a row without EPB moves between them). It also fails when, on any tape row,
+    pay plus the car and fuel benefits the engine computes again on the stage's
+    output misses the pay the row brought in by more than
+    ``maximum_pay_identity_error_gbp``: the carve-out assumes how the engine
+    prices a car, so an engine that prices it otherwise fails here. How far
+    the calibrated holders, taxable value and fuels sit from HMRC's tables is
+    the target-fit gate's, which binds them (María's ruling of 3 November
+    2026); the CO2 bands and list prices are compared by hand.
     """
 
     check = "company_cars"
@@ -5295,4 +5301,241 @@ def _company_cars_gate(
         passed=not failures,
         failures=tuple(failures),
         details={"stage": stage, "check": check, "holders": dict(holders)},
+    )
+
+
+def _occupation_redraw_gate(
+    stage: str,
+    evidence: Mapping[str, object],
+    parameters: Mapping[str, object],
+) -> GateResult:
+    """The occupation redraw's held-out evidence (microcosm#1490).
+
+    Fails when the evidence was not measured; when the model's out-of-fold log
+    loss is not ``minimum_log_loss_gain`` below the constant's; when the blend
+    loses more than ``maximum_blend_log_loss_excess`` to its better learner;
+    when the calibration slope leaves ``calibration_slope_bounds`` or the Platt
+    fit fell back to class rates; or when the occupation shares miss the
+    observed ones by more than ``maximum_pay_band_share_gap`` (weighted mean
+    over the pay bands) or ``maximum_status_group_share_gap`` (largest status
+    group).
+    """
+
+    check = "occupation_redraw"
+    minimum_gain = _finite_number(
+        parameters["minimum_log_loss_gain"], label=f"{stage}.minimum_log_loss_gain"
+    )
+    low, high = (
+        _finite_number(bound, label=f"{stage}.calibration_slope_bounds")
+        for bound in parameters["calibration_slope_bounds"]
+    )
+    maximum_pay = _finite_number(
+        parameters["maximum_pay_band_share_gap"],
+        label=f"{stage}.maximum_pay_band_share_gap",
+    )
+    maximum_status = _finite_number(
+        parameters["maximum_status_group_share_gap"],
+        label=f"{stage}.maximum_status_group_share_gap",
+    )
+    maximum_excess = _finite_number(
+        parameters["maximum_blend_log_loss_excess"],
+        label=f"{stage}.maximum_blend_log_loss_excess",
+    )
+    held_out = _mapping(evidence.get("held_out"), label=f"{stage}.held_out")
+    details: dict[str, object] = {"stage": stage, "check": check}
+    if held_out.get("status") != "measured":
+        return GateResult(
+            name="stage_health",
+            passed=False,
+            failures=(
+                f"{stage}: the held-out evidence was not measured "
+                f"({held_out.get('reason')}).",
+            ),
+            details=details,
+        )
+    failures: list[str] = []
+    losses = _mapping(held_out.get("log_loss"), label=f"{stage}.held_out.log_loss")
+    model = _finite_number(losses.get("model"), label=f"{stage}.log_loss.model")
+    constant = _finite_number(
+        losses.get("marginal"), label=f"{stage}.log_loss.marginal"
+    )
+    if constant - model < minimum_gain:
+        failures.append(
+            f"{stage}: the model's log loss ({model:.4f}) is less than "
+            f"{minimum_gain} below the constant's ({constant:.4f})."
+        )
+    learners = {
+        name: _finite_number(losses[name], label=f"{stage}.log_loss.{name}")
+        for name in ("boosted", "spline_logit")
+        if name in losses
+    }
+    if len(learners) == 2 and model > min(learners.values()) + maximum_excess:
+        failures.append(
+            f"{stage}: the blend's log loss ({model:.4f}) exceeds its better "
+            f"learner's ({min(learners.values()):.4f}) by more than {maximum_excess}."
+        )
+    slope = held_out.get("calibration_slope")
+    if slope is None or held_out.get("calibration_outcome") != "cross_fitted":
+        failures.append(f"{stage}: the calibration slope could not be fitted.")
+    else:
+        value = _finite_number(slope, label=f"{stage}.calibration_slope")
+        if not low <= value <= high:
+            failures.append(
+                f"{stage}: the calibration slope {value:.3f} is outside [{low}, {high}]."
+            )
+    pay_gap = _finite_number(
+        held_out.get("pay_band_share_gap_mean"),
+        label=f"{stage}.pay_band_share_gap_mean",
+    )
+    if pay_gap > maximum_pay:
+        failures.append(
+            f"{stage}: occupation shares miss within the pay bands by {pay_gap:.4f} "
+            f"on average, above {maximum_pay}."
+        )
+    status_gap = _finite_number(
+        held_out.get("status_group_share_gap_max"),
+        label=f"{stage}.status_group_share_gap_max",
+    )
+    if status_gap > maximum_status:
+        failures.append(
+            f"{stage}: occupation shares miss within a status group by {status_gap:.4f}, "
+            f"above {maximum_status}."
+        )
+    details.update({"log_loss": dict(losses), "calibration_slope": slope})
+    return GateResult(
+        name="stage_health",
+        passed=not failures,
+        failures=tuple(failures),
+        details=details,
+    )
+
+
+def _sub_major_draw_gate(
+    stage: str,
+    evidence: Mapping[str, object],
+    parameters: Mapping[str, object],
+) -> GateResult:
+    """The APS sub-major draw's held-out and frame evidence (microcosm#1490).
+
+    Fails when the evidence was not measured; when the model's out-of-fold log
+    loss, pooled over the major groups, is not ``minimum_log_loss_gain`` below
+    the constant's; when the blend loses more than
+    ``maximum_blend_log_loss_excess`` to its better learner; when a major
+    group's calibration slope leaves ``calibration_slope_bounds`` or its Platt
+    fit fell back to class rates; when the pooled sub-major share gaps exceed
+    ``maximum_pay_band_share_gap`` within pay bands or
+    ``maximum_region_share_gap`` within regions; or when the FRS rows'
+    expected shares miss the donors' in some major group by more than
+    ``maximum_frame_share_gap``.
+    """
+
+    check = "sub_major_draw"
+    minimum_gain = _finite_number(
+        parameters["minimum_log_loss_gain"], label=f"{stage}.minimum_log_loss_gain"
+    )
+    low, high = (
+        _finite_number(bound, label=f"{stage}.calibration_slope_bounds")
+        for bound in parameters["calibration_slope_bounds"]
+    )
+    maximum_pay = _finite_number(
+        parameters["maximum_pay_band_share_gap"],
+        label=f"{stage}.maximum_pay_band_share_gap",
+    )
+    maximum_region = _finite_number(
+        parameters["maximum_region_share_gap"],
+        label=f"{stage}.maximum_region_share_gap",
+    )
+    maximum_excess = _finite_number(
+        parameters["maximum_blend_log_loss_excess"],
+        label=f"{stage}.maximum_blend_log_loss_excess",
+    )
+    maximum_frame = _finite_number(
+        parameters["maximum_frame_share_gap"],
+        label=f"{stage}.maximum_frame_share_gap",
+    )
+    held_out = _mapping(evidence.get("held_out"), label=f"{stage}.held_out")
+    details: dict[str, object] = {"stage": stage, "check": check}
+    if held_out.get("status") != "measured":
+        return GateResult(
+            name="stage_health",
+            passed=False,
+            failures=(
+                f"{stage}: the held-out evidence was not measured "
+                f"({held_out.get('reason')}).",
+            ),
+            details=details,
+        )
+    failures: list[str] = []
+    losses = _mapping(held_out.get("log_loss"), label=f"{stage}.held_out.log_loss")
+    model = _finite_number(losses.get("model"), label=f"{stage}.log_loss.model")
+    constant = _finite_number(
+        losses.get("marginal"), label=f"{stage}.log_loss.marginal"
+    )
+    if constant - model < minimum_gain:
+        failures.append(
+            f"{stage}: the model's pooled log loss ({model:.4f}) is less than "
+            f"{minimum_gain} below the constant's ({constant:.4f})."
+        )
+    learners = {
+        name: _finite_number(losses[name], label=f"{stage}.log_loss.{name}")
+        for name in ("boosted", "spline_logit")
+        if name in losses
+    }
+    if len(learners) == 2 and model > min(learners.values()) + maximum_excess:
+        failures.append(
+            f"{stage}: the blend's pooled log loss ({model:.4f}) exceeds its better "
+            f"learner's ({min(learners.values()):.4f}) by more than {maximum_excess}."
+        )
+    groups = _mapping(held_out.get("major_groups"), label=f"{stage}.major_groups")
+    slopes: dict[str, object] = {}
+    for group, entry in groups.items():
+        entry = _mapping(entry, label=f"{stage}.major_groups.{group}")
+        slope = entry.get("calibration_slope")
+        slopes[str(group)] = slope
+        if slope is None or entry.get("calibration_outcome") != "cross_fitted":
+            failures.append(
+                f"{stage}: the calibration slope of {group} could not be fitted."
+            )
+            continue
+        value = _finite_number(slope, label=f"{stage}.{group}.calibration_slope")
+        if not low <= value <= high:
+            failures.append(
+                f"{stage}: the calibration slope of {group} ({value:.3f}) is "
+                f"outside [{low}, {high}]."
+            )
+    for key, maximum, label in (
+        ("pay_band_share_gap", maximum_pay, "pay bands"),
+        ("region_share_gap", maximum_region, "regions"),
+    ):
+        gap = _finite_number(held_out.get(key), label=f"{stage}.{key}")
+        if gap > maximum:
+            failures.append(
+                f"{stage}: sub-major shares miss within the {label} by {gap:.4f} "
+                f"on average, above {maximum}."
+            )
+    frame = _mapping(
+        evidence.get("frame_against_donors"), label=f"{stage}.frame_against_donors"
+    )
+    frame_gap = frame.get("share_gap_max")
+    if frame_gap is None:
+        failures.append(f"{stage}: no major group compares the FRS rows with donors.")
+    else:
+        value = _finite_number(frame_gap, label=f"{stage}.frame_share_gap_max")
+        if value > maximum_frame:
+            failures.append(
+                f"{stage}: the FRS rows' expected sub-major shares miss the donors' "
+                f"by {value:.4f} in a major group, above {maximum_frame}."
+            )
+    details.update(
+        {
+            "log_loss": dict(losses),
+            "calibration_slopes": slopes,
+            "frame_share_gap_max": frame_gap,
+        }
+    )
+    return GateResult(
+        name="stage_health",
+        passed=not failures,
+        failures=tuple(failures),
+        details=details,
     )

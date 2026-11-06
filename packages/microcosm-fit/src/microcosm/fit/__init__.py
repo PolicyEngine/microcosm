@@ -73,6 +73,23 @@ from microcosm.fit.cache import (  # noqa: E402 - after the compatibility gate
     load_fitted_qrf_cache,
     save_fitted_qrf_cache,
 )
+from microcosm.fit.categorical import (  # noqa: E402 - after the compatibility gate
+    BoostedClassifierSettings,
+    CategoricalClassifier,
+    FittedCategoricalClassifier,
+    SplineLogitSettings,
+    inverse_cdf_draw,
+)
+from microcosm.fit.donors import (  # noqa: E402 - after the compatibility gate
+    donor_distance_features,
+    keyed_nearest_donors,
+)
+from microcosm.fit.held_out import (  # noqa: E402 - after the compatibility gate
+    can_deal_folds,
+    categorical_scores,
+    out_of_fold_proba,
+    stratified_folds,
+)
 from microcosm.fit.model import (  # noqa: E402 - after the compatibility gate
     DESIGN_WEIGHTS,
     EXPLICIT_WEIGHTS,
@@ -162,6 +179,17 @@ __all__ = [
     "save_fitted_qrf_cache",
     "DEFAULT_N_ESTIMATORS",
     "DEFAULT_ZERO_ATOL",
+    "CategoricalClassifier",
+    "FittedCategoricalClassifier",
+    "BoostedClassifierSettings",
+    "SplineLogitSettings",
+    "inverse_cdf_draw",
+    "stratified_folds",
+    "can_deal_folds",
+    "out_of_fold_proba",
+    "categorical_scores",
+    "donor_distance_features",
+    "keyed_nearest_donors",
     "fit",
     "__version__",
 ]

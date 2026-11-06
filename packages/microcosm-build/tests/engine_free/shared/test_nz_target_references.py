@@ -420,7 +420,7 @@ def test_ageing_profiles_scale_the_24_coarse_rows_and_keep_them_parked(profile):
     assert scaled["scaling"]["factor_id"] == f"ird_ty2024_to_ty2027_{profile}"
     before = {row["name"]: row for row in base["target_references"]}
     after = {row["name"]: row for row in effective["target_references"]}
-    factor = {"low": 1.115056, "central": 1.117109, "high": 1.119158}[profile]
+    factor = {"low": 1.117460, "central": 1.118491, "high": 1.119519}[profile]
     for count_name, money_name in zip(_COARSE_COUNTS, _COARSE_MONEY, strict=True):
         for field in ("ledger_selector", "measure", "filter", "period"):
             assert after[count_name][field] == before[count_name][field]
@@ -445,7 +445,7 @@ def test_ageing_profiles_scale_the_24_coarse_rows_and_keep_them_parked(profile):
     assert receipt["selection"]["aging_index"] == profile
 
 
-def test_the_central_first_coarse_cut_is_4468436_cents():
+def test_the_central_first_coarse_cut_is_4473964_cents():
     effective, intervals, _ = resolve_reference_profiles(
         _document("target_references.json"),
         _document("reference_profiles.json"),
@@ -455,7 +455,7 @@ def test_the_central_first_coarse_cut_is_4468436_cents():
     )
     (scaled,) = [table for table in intervals["tables"] if "scaling" in table]
     assert scaled["first_lower_cut_cents"] == {
-        "numerator": 4_468_436,
+        "numerator": 4_473_964,
         "denominator": 1,
     }
     assert scaled["source_first_lower_cut_cents"] == 4_000_000
@@ -503,7 +503,7 @@ def test_coarse_amounts_equal_the_aged_sum_of_their_native_rows(artifact, facts_
         if row["metadata"]["reference_value_kind"] == "count":
             assert target.value == pytest.approx(math.fsum(values), rel=1e-15)
         else:
-            aged = math.fsum(value * 1.117109 for value in values)
+            aged = math.fsum(value * 1.118491 for value in values)
             assert target.value == pytest.approx(aged, rel=1e-12)
 
 
@@ -841,7 +841,7 @@ def test_generation_reproduces_committed_resources_with_exact_feed_identity(arti
     for filename, document in generated.items():
         assert document == _document(filename), filename
     assert artifact.fact_row_count == _document("chronicle_feed.json")["fact_row_count"]
-    assert artifact.fact_schema_versions == ("chronicle.consumer_fact.v4",)
+    assert artifact.fact_schema_versions == ("chronicle.consumer_fact.v5",)
 
 
 @pytest.mark.parametrize("existing_output", [False, True])

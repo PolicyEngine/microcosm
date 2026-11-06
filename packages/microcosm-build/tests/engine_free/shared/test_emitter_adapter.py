@@ -273,8 +273,10 @@ def _start_build_emitter(monkeypatch, tmp_path):
 @pytest.mark.parametrize(
     ("version_answer", "reported"),
     [
-        # The release just before the minimum.
-        (_version_answer("0.11.8"), "reports version 0.11.8"),
+        # The release just before the minimum, 0.13.0.
+        (_version_answer("0.12.5"), "reports version 0.12.5"),
+        # The minimum until 2026-11-05, without the `status` command.
+        (_version_answer("0.11.9"), "reports version 0.11.9"),
         # Releases before 0.10.0 send telemetry to the collector's Cloud Run
         # address, which changes when the collector moves to another project.
         (_version_answer("0.9.0"), "reports version 0.9.0"),
@@ -287,7 +289,8 @@ def _start_build_emitter(monkeypatch, tmp_path):
         ("not JSON", "reports no version"),
     ],
     ids=[
-        "0.11.8",
+        "0.12.5",
+        "0.11.9",
         "0.9.0",
         "0.6.0",
         "0.5.1",
@@ -297,7 +300,7 @@ def _start_build_emitter(monkeypatch, tmp_path):
         "not-json",
     ],
 )
-def test_an_emitter_older_than_0_11_9_is_never_started_and_the_build_continues(
+def test_an_emitter_older_than_the_minimum_is_never_started_and_the_build_continues(
     monkeypatch, capsys, tmp_path, version_answer, reported
 ):
     # The emitter's telemetry module records the run's start as soon as the
@@ -314,7 +317,7 @@ def test_an_emitter_older_than_0_11_9_is_never_started_and_the_build_continues(
     assert not emitter.available
     warning = capsys.readouterr().err
     assert f"The installed microcosm-emitter {reported};" in warning
-    assert "this build needs 0.11.9 or later" in warning
+    assert "this build needs 0.13.0 or later" in warning
     # The warning says what the build loses without the emitter, including
     # the one option that then fails the build.
     assert (
@@ -322,7 +325,7 @@ def test_an_emitter_older_than_0_11_9_is_never_started_and_the_build_continues(
         "and queues no Orrery graph publication; a UK build given "
         "--staging-read-back will fail at the read-back." in warning
     )
-    assert "uv tool install --upgrade 'microcosm-emitter>=0.11.9'" in warning
+    assert "uv tool install --upgrade 'microcosm-emitter>=0.13.0'" in warning
     # It also says that a remote stage of the dataset bundle is refused, so
     # the pre-flight's later refusal does not contradict it.
     assert "will continue without it" not in warning
@@ -346,10 +349,11 @@ def test_the_fake_client_reports_a_release_builds_start():
 
 @pytest.mark.parametrize(
     "installed_version",
-    # 0.11.10 is compared by number, not as text, where it sorts before 0.11.9.
-    ["0.11.9", "0.11.10", "0.12.0", "1.0.0"],
+    # Compared by number, not as text: as text, 0.9.0, which is refused,
+    # sorts after 0.13.0.
+    ["0.13.0", "0.13.10", "0.14.0", "1.0.0"],
 )
-def test_an_emitter_from_0_11_9_on_starts(
+def test_an_emitter_from_the_minimum_on_starts(
     monkeypatch, capsys, tmp_path, installed_version
 ):
     client = FakeEmitterClient()
@@ -367,7 +371,7 @@ def test_an_emitter_from_0_11_9_on_starts(
 
 
 @pytest.mark.parametrize("operation", ["inventory", "publish"])
-def test_a_short_lived_graph_emitter_older_than_0_11_9_is_never_started(
+def test_a_short_lived_graph_emitter_older_than_the_minimum_is_never_started(
     monkeypatch, capsys, tmp_path, operation
 ):
     client = FakeEmitterClient(modules={"orrery"})
@@ -386,7 +390,7 @@ def test_a_short_lived_graph_emitter_older_than_0_11_9_is_never_started(
     assert starts == []
     assert not started.exists()
     assert client.calls == []
-    assert "this build needs 0.11.9 or later" in capsys.readouterr().err
+    assert "this build needs 0.13.0 or later" in capsys.readouterr().err
 
 
 @pytest.mark.parametrize("failure", ["default_spool_path", "runtime_identity"])
