@@ -419,3 +419,35 @@ EFO editions, so a later EFO moves them: once Chronicle keeps a newer edition's 
 October's number leaves the feed and the windows refuse until their maps name the new table. The
 high-value home stock still names `735820c`: its inputs are the same on `08962f1` (the feed-gated
 fingerprint check passes), so it was not rebuilt.
+
+The `6475380` re-pin (PolicyEngine/microcosm#1490's occupation targets, the merge of
+PolicyEngine/chronicle#411 on top of `08962f1`) brought the UK facts of
+PolicyEngine/chronicle#407 (73,039 rows): the ONS Annual Population Survey's people in employment
+by SOC 2020 major and sub-major group (Nomis APS218, for April 2024 to March 2025, January to
+December 2025 and April 2025 to March 2026) and ASHE Table 2's gross weekly and annual pay by
+occupation (the 2024 and 2025 revised editions and the 2026 provisional one). It also moved the
+rows to `chronicle.consumer_fact.v5` (PolicyEngine/chronicle#377, one label per dimension value):
+where Chronicle's register of dimension value labels carries a value, `dimension_value_labels`
+and `layout.groupby_value_label` carry the register's label, and the source package's own wording
+moves to an optional `package_dimension_value_labels`. Microcosm declares the v5 row contract
+beside v1 to v4; the per-row id is carried, never gated on, and labels never enter a fact key
+(1,585,295 rows; the schema digest moves to `acd33a09…`). A row-by-row diff of the two artifacts
+finds no row dropped and no value moved: 183,848 rows change display labels only, mostly the sex
+(155,088) and property type (27,697) labels. The merge commit's tree differs from the pull request
+head's, so the artifact was built from the merge commit itself.
+
+No compiled value moves on either surface. The national and local reference files and both
+compile-parity receipts are byte-identical. The national membership moves only its feed label,
+and the local membership its feed label and the 1,263 DESNZ constituency keys, whose derived fact
+keys hash the feed identity. The vendored resources carry the same rows under the new feed
+identity, as does the DESNZ constituency resource (the same 2,526 rows and values, matched on
+their source record ids); the census restates the pin, and the charter-H2 fixture moves the
+parameters of the 19 stages that bind vendored resources. Both surfaces were regenerated from cuts
+of the pinned artifact, as for `200bf6d` (national 1,014,028 rows, local 885,543).
+
+The national register version was not recompiled for this entry: it hashes each spec's metadata
+and hierarchy, so the v5 labels may move it on display metadata alone, and the occupation
+targets that follow this pin move it in any case. The uk-candidate-eval scoring register is
+therefore re-frozen before the next national solve. The high-value home stock still names
+`735820c`: its inputs are the same on `6475380` (the feed-gated fingerprint check passes), so it
+was not rebuilt.
