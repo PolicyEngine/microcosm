@@ -65,6 +65,12 @@ UC_CAPITAL_INVESTMENT_INCOME = (
 #: GBP 6,000, 16,000, 50,000 and 200,000 of capital yield at 4%, then above.
 UC_CAPITAL_INCOME_BAND_EDGES = (0.0, 240.0, 640.0, 2_000.0, 8_000.0)
 UC_CAPITAL_IMPLIED_YIELD = 0.04
+#: The donors a cell needs before it stops widening. It counts the cell's
+#: donor benefit-unit rows after the geographic fold, so a high-value
+#: support copy counts as a donor of its own. It is a row threshold, not a
+#: disclosure floor. Whether it should count true sources is for the
+#: geography-first move's audit of K-sensitive constants (microcosm#931),
+#: since switching it can move outputs.
 UC_CAPITAL_MINIMUM_CELL_DONORS = 20
 #: The declared order in which a cell short of donors widens; reporter status
 #: is never coarsened.

@@ -181,6 +181,12 @@ NOTES = (
     "England and Wales band weights read each area's LSOA mix as committed (shares to "
     "6 dp ending at exactly 1), so households x share x 10^6 is exact. Scotland's read "
     "its council's chargeable dwellings, rounded half to even per band.",
+    "Scotland's band mix is its council's, so a band moves mass only between councils: "
+    "within a council a household is placed in proportion to households, where England "
+    "and Wales use each LSOA's mix. A mix by 2022 data zone, in which the 2022 output "
+    "areas nest (such as NRS's small area statistics on households and dwellings), "
+    "would give Scotland the same within-council resolution. No such source is "
+    "registered in Chronicle yet.",
 )
 
 
