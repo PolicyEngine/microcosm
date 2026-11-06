@@ -43,6 +43,7 @@ from microcosm.build.uk_runtime.national_frame import (
     uk_build_identifier_frame,
     uk_time_period,
 )
+from microcosm.build.uk_runtime.receipt_counts import own_source_households
 from microcosm.build.uk_runtime.regional_uprating import (
     load_regional_land_values_resource,
     uprate_household_property_by_region,
@@ -152,6 +153,9 @@ def e4_identity_receipt(
             person_weights=person_t["person_household_id"]
             .map(weight_by_household)
             .to_numpy(dtype=float),
+            # Only the draws are compared, never the receipt's support
+            # counts, so each row's household stands as its source.
+            person_sources=own_source_households(person_t),
         )
         person_draws[UK_UNDER_TWO_USAGE_OUTPUT] = derive_under_two_childcare_usage(
             person_t, claiming=claiming, contract=contract

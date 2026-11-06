@@ -145,7 +145,6 @@ from microcosm.build.uk_runtime.receipt_counts import (
     UK_WITHHELD,
     distinct_carriers,
     extreme_count,
-    own_source_households,
     record_source_households,
     small_cell_share,
     support_band,
@@ -460,7 +459,7 @@ def derive_frs_annual_income_spells(
     job: pd.DataFrame,
     interview: pd.Series,
     earnings_growth: float,
-    person_sources: np.ndarray | None = None,
+    person_sources: np.ndarray,
 ) -> tuple[pd.DataFrame, dict[str, object]]:
     """Person-aligned descriptors and their aggregate receipt.
 
@@ -470,9 +469,9 @@ def derive_frs_annual_income_spells(
     by ``household_id``. ``person_weights`` are the household weights each
     person row carries, and ``person_sources`` each person's true source
     household, which the receipt counts support by
-    (``receipt_counts.record_source_households``); without them each person's
-    household is its own source, as every household is before the SPI support
-    channel.
+    (``receipt_counts.record_source_households``). A caller without the
+    frame's lineage passes ``own_source_households`` itself, so no table is
+    counted by its rows unawares (microcosm#931).
     """
 
     person_ids = person["person_id"].to_numpy()
@@ -480,11 +479,7 @@ def derive_frs_annual_income_spells(
     weights = np.asarray(person_weights, dtype=float)
     if weights.shape != (rows,):
         raise ValueError("person weights must align with the person table.")
-    household_sources = (
-        own_source_households(person)
-        if person_sources is None
-        else np.asarray(person_sources)
-    )
+    household_sources = np.asarray(person_sources)
     if household_sources.shape != (rows,):
         raise ValueError("person sources must align with the person table.")
     raw = adult.drop_duplicates("person_id").set_index("person_id")

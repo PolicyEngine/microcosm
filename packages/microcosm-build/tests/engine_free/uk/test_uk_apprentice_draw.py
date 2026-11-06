@@ -18,7 +18,17 @@ from microcosm.build.uk_runtime.frs_person_draws import (
     derive_is_apprentice,
 )
 from microcosm.build.uk_runtime.national_frame import uk_national_frame
+from microcosm.build.uk_runtime.receipt_counts import own_source_households
 from test_support.microcosm_build.uk_frs_stochastic import _Contract
+
+
+def _apprentices(person, **options):
+    """The draw on a raw frame, where each household is its own source."""
+
+    return derive_is_apprentice(
+        person, person_sources=own_source_households(person), **options
+    )
+
 
 _STATUSES = ("FT_EMPLOYED", "PT_EMPLOYED", "FT_SELF_EMPLOYED", "STUDENT")
 
@@ -51,7 +61,7 @@ def _small(ages, statuses, *, households=None) -> pd.DataFrame:
 def test_only_employees_aged_21_to_24_are_flagged() -> None:
     person = _people()
 
-    flags = derive_is_apprentice(person, rate=0.06).flags
+    flags = _apprentices(person, rate=0.06).flags
 
     age = person["age"].to_numpy()
     employee = person["employment_status"].isin(["FT_EMPLOYED", "PT_EMPLOYED"])
@@ -67,7 +77,7 @@ def test_flagged_weight_is_nearest_the_per_head_target() -> None:
     weights = rng.uniform(100.0, 3000.0, len(person))
     rate = 0.06
 
-    draw = derive_is_apprentice(person, rate=rate, person_weights=weights)
+    draw = _apprentices(person, rate=rate, person_weights=weights)
 
     age = person["age"].to_numpy()
     in_ages = (age >= 21) & (age <= 24)
@@ -101,7 +111,7 @@ def test_people_are_flagged_in_the_order_of_their_identity_uniform() -> None:
     )
     weights = np.array([1.0, 1.0, 1.0, 1.0, 5.0, 1.0])
     # Five people aged 21 to 24 at 0.4 a head: a target of two people.
-    draw = derive_is_apprentice(person, rate=0.4, person_weights=weights)
+    draw = _apprentices(person, rate=0.4, person_weights=weights)
 
     draws = stable_identity_uniforms(
         person["person_id"].to_numpy(), seed=0, salt=APPRENTICE_OUTPUT
@@ -111,7 +121,7 @@ def test_people_are_flagged_in_the_order_of_their_identity_uniform() -> None:
     expected = np.zeros(len(person), dtype=bool)
     expected[first_two] = True
     np.testing.assert_array_equal(draw.flags, expected)
-    reordered = derive_is_apprentice(
+    reordered = _apprentices(
         person.iloc[::-1].reset_index(drop=True),
         rate=0.4,
         person_weights=weights[::-1],
@@ -123,7 +133,7 @@ def test_nobody_is_flagged_when_the_target_is_nearer_zero() -> None:
     person = _small([22, 30], ["FT_EMPLOYED", "STUDENT"])
 
     # A target of 0.1 people sits nearer zero than the one employee's weight.
-    draw = derive_is_apprentice(person, rate=0.1, person_weights=np.ones(2))
+    draw = _apprentices(person, rate=0.1, person_weights=np.ones(2))
 
     assert not draw.flags.any()
     assert draw.receipt["realized_mass"] == 0.0
@@ -133,7 +143,7 @@ def test_nobody_is_flagged_when_the_target_is_nearer_zero() -> None:
 def test_a_short_eligible_weight_flags_every_eligible_employee() -> None:
     person = _small([21, 22, 23], ["FT_EMPLOYED", "UNEMPLOYED", "UNEMPLOYED"])
 
-    draw = derive_is_apprentice(person, rate=0.9)
+    draw = _apprentices(person, rate=0.9)
 
     np.testing.assert_array_equal(draw.flags, [True, False, False])
     assert draw.receipt["cap_bound"] is True
@@ -142,7 +152,7 @@ def test_a_short_eligible_weight_flags_every_eligible_employee() -> None:
 def test_no_eligible_employee_flags_nobody() -> None:
     person = _small([22, 30], ["STUDENT", "FT_EMPLOYED"])
 
-    draw = derive_is_apprentice(person, rate=0.06)
+    draw = _apprentices(person, rate=0.06)
 
     assert not draw.flags.any()
     assert draw.receipt["eligible_support"] == 0
@@ -152,7 +162,7 @@ def test_no_eligible_employee_flags_nobody() -> None:
 def test_receipt_withholds_a_flagged_weight_on_fewer_than_three_households() -> None:
     person = _small([22] * 20, ["FT_EMPLOYED"] * 20)
 
-    draw = derive_is_apprentice(person, rate=0.1)
+    draw = _apprentices(person, rate=0.1)
 
     assert int(draw.flags.sum()) == 2
     assert draw.receipt["flagged_support"] == "<3"
@@ -169,7 +179,7 @@ def test_receipt_withholds_a_population_on_fewer_than_three_households() -> None
         households=[1, 1, 1, 2, 2, 2],
     )
 
-    draw = derive_is_apprentice(person, rate=1 / 6)
+    draw = _apprentices(person, rate=1 / 6)
 
     receipt = draw.receipt
     assert receipt["population_support"] == "<3"
@@ -187,12 +197,12 @@ def test_refuses_a_frame_without_employment_status() -> None:
     person = pd.DataFrame({"person_id": [1], "person_household_id": [1], "age": [22]})
 
     with pytest.raises(ValueError, match="employment_status"):
-        derive_is_apprentice(person, rate=0.06)
+        _apprentices(person, rate=0.06)
 
 
 def test_refuses_a_rate_outside_the_unit_interval() -> None:
     with pytest.raises(ValueError, match=r"\[0, 1\]"):
-        derive_is_apprentice(_people(1), rate=1.5)
+        _apprentices(_people(1), rate=1.5)
 
 
 def _two_household_frame(**extra_person_columns):
@@ -275,7 +285,7 @@ def test_receipt_records_the_relief_the_flags_imply() -> None:
     person = _small([22] * 12, ["FT_EMPLOYED"] * 12).assign(employment_income=pay)
 
     # Every employee is flagged: a rate of one a head is cap-bound.
-    draw = derive_is_apprentice(person, rate=1.0, relief_schedule=_SCHEDULE)
+    draw = _apprentices(person, rate=1.0, relief_schedule=_SCHEDULE)
 
     assert draw.flags.all()
     relieved = np.clip(np.minimum(pay, 50_270.0) - 9_100.0, 0.0, None)
@@ -286,7 +296,7 @@ def test_receipt_records_the_relief_the_flags_imply() -> None:
 def test_receipt_withholds_a_relief_on_fewer_than_three_households() -> None:
     person = _small([22] * 2, ["FT_EMPLOYED"] * 2).assign(employment_income=20_000.0)
 
-    draw = derive_is_apprentice(person, rate=1.0, relief_schedule=_SCHEDULE)
+    draw = _apprentices(person, rate=1.0, relief_schedule=_SCHEDULE)
 
     assert draw.receipt["implied_relief"] == "<3"
 
@@ -294,7 +304,7 @@ def test_receipt_withholds_a_relief_on_fewer_than_three_households() -> None:
 def test_receipt_records_no_relief_without_a_schedule() -> None:
     person = _small([22] * 12, ["FT_EMPLOYED"] * 12).assign(employment_income=1.0)
 
-    assert "implied_relief" not in derive_is_apprentice(person, rate=0.5).receipt
+    assert "implied_relief" not in _apprentices(person, rate=0.5).receipt
 
 
 def test_the_graph_node_reads_every_person_column_the_draw_needs() -> None:

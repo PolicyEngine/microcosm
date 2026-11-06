@@ -59,7 +59,6 @@ from microcosm.build.uk_runtime.receipt_counts import (
     UK_DISCLOSURE_FLOOR,
     UK_WITHHELD,
     distinct_count,
-    own_source_households,
     record_source_households,
     support_band,
 )
@@ -202,7 +201,7 @@ def derive_frs_person_draws(
     contract: UKTakeUpContract,
     person_weights: np.ndarray,
     relief_schedule: Mapping[str, float] | None = None,
-    person_sources: np.ndarray | None = None,
+    person_sources: np.ndarray,
 ) -> pd.DataFrame:
     """Return the stage's person draws.
 
@@ -226,7 +225,7 @@ def derive_frs_person_draws_with_receipt(
     contract: UKTakeUpContract,
     person_weights: np.ndarray,
     relief_schedule: Mapping[str, float] | None = None,
-    person_sources: np.ndarray | None = None,
+    person_sources: np.ndarray,
 ) -> tuple[pd.DataFrame, Mapping[str, object]]:
     """The stage's person draws and the receipt of its ``is_apprentice`` draw."""
 
@@ -279,7 +278,7 @@ def derive_is_apprentice(
     rate: float,
     person_weights: np.ndarray | None = None,
     relief_schedule: Mapping[str, float] | None = None,
-    person_sources: np.ndarray | None = None,
+    person_sources: np.ndarray,
 ) -> UKApprenticeDraw:
     """Draw ``is_apprentice`` for employees aged 21 to 24.
 
@@ -298,9 +297,9 @@ def derive_is_apprentice(
     so it is an estimate of the s.9B relief, not the engine's figure.
 
     The receipt counts support in ``person_sources``, each person's true
-    source household (``receipt_counts.record_source_households``). Without
-    them each person's household is its own source, as every household is
-    before the SPI support channel.
+    source household (``receipt_counts.record_source_households``). A caller
+    without the frame's lineage passes ``own_source_households`` itself, so
+    no table is counted by its rows unawares (microcosm#931).
     """
 
     if "employment_status" not in person.columns:
@@ -335,11 +334,7 @@ def derive_is_apprentice(
     )
     flags = eligible & (draws < threshold)
     realized = float(weights[flags].sum())
-    sources = (
-        own_source_households(person)
-        if person_sources is None
-        else np.asarray(person_sources)
-    )
+    sources = np.asarray(person_sources)
     if sources.shape != (len(person),):
         raise ValueError("person_sources must hold one source per person.")
     population_support = distinct_count(sources, in_ages, weights)

@@ -130,6 +130,7 @@ def _derive(people: dict[str, dict], *, growth: float = 0.0):
         job=job,
         interview=interview,
         earnings_growth=growth,
+        person_sources=own_source_households(person),
     )
     descriptors.index = person["person_id"].to_numpy()
     return descriptors, receipt, index
