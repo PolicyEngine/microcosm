@@ -103,6 +103,59 @@ def test_full_time_education_reads_fted_where_a_vintage_carries_it() -> None:
     assert result["current_education"].tolist() == ["TERTIARY", "NOT_IN_EDUCATION"]
 
 
+def test_full_time_education_reads_each_tables_own_column() -> None:
+    """A vintage with FTED on one table and EDUCFT on the other keeps both.
+
+    After the concat a row holds a blank in the column its tab lacks, so each
+    row reads its own tab's answer (Vahid's review of microcosm#1535).
+    """
+
+    person = pd.DataFrame({"person_id": [1, 2, 3, 4], "age": [20, 20, 14, 14]})
+    raw = pd.DataFrame(
+        {
+            "person_id": [1, 2, 3, 4],
+            "educft": [1, 2, np.nan, np.nan],
+            "fted": [np.nan, np.nan, 1, 2],
+            "typeed2": [9, 9, 6, 6],
+            "educqual": [17, 17, 86, 86],
+            "trainee": [2, 2, 2, 2],
+            "_frs_table": ["adult", "adult", "child", "child"],
+            "slos": [2, 2, np.nan, np.nan],
+            "educleft": [np.nan, np.nan, np.nan, np.nan],
+        }
+    )
+
+    result = derive_frs_education(person, raw)
+
+    assert result["is_in_full_time_education"].tolist() == [True, False, True, False]
+    assert result["current_education"].tolist() == [
+        "TERTIARY",
+        "NOT_IN_EDUCATION",
+        "LOWER_SECONDARY",
+        "NOT_IN_EDUCATION",
+    ]
+
+
+def test_full_time_education_refuses_rows_without_fted_or_educft() -> None:
+    """Neither column refuses; it never reads as nobody in full-time education."""
+
+    person = pd.DataFrame({"person_id": [1], "age": [20]})
+    raw = pd.DataFrame(
+        {
+            "person_id": [1],
+            "typeed2": [9],
+            "educqual": [17],
+            "trainee": [2],
+            "_frs_table": ["adult"],
+            "slos": [2],
+            "educleft": [np.nan],
+        }
+    )
+
+    with pytest.raises(KeyError, match="full-time education cannot be derived"):
+        derive_frs_education(person, raw)
+
+
 def test_educqual_map_pins_the_corrected_frs_value_labels() -> None:
     # Signed difference vs the incumbent, whose map was inverted (it read
     # low codes as school-level and 17-21 as degrees). Labels verified
@@ -289,22 +342,22 @@ def test_approved_training_refuses_rows_without_its_columns(column: str) -> None
         derive_frs_education(person, raw.drop(columns=[column]))
 
 
-@pytest.mark.parametrize("table", ["adult", "child"])
-def test_the_stage_refuses_a_tab_without_trainee(tmp_path, table: str) -> None:
-    """Each tab is checked on its own, before the two are concatenated.
-
-    After the concat a tab without TRAINEE would read as blanks beside the
-    other tab's answers, which is a silent "nobody on this table trains".
-    """
+def _write_stage_tabs(tmp_path, *, table: str, drop: str) -> list[dict[str, object]]:
+    """Write one-row adult and child tabs, leaving ``drop`` off ``table``'s."""
 
     artifacts = []
     for name in ("adult", "child"):
-        columns = ["SERNUM", "BENUNIT", "PERSON", "TRAINEE"]
+        row = {
+            "SERNUM": "1",
+            "BENUNIT": "1",
+            "PERSON": "1" if name == "adult" else "2",
+            "EDUCFT": "2",
+            "TRAINEE": "2",
+        }
         if name == table:
-            columns.remove("TRAINEE")
-        row = ["1", "1", "1" if name == "adult" else "2", "2"][: len(columns)]
+            del row[drop]
         path = tmp_path / f"{name}.tab"
-        path.write_text("\t".join(columns) + "\n" + "\t".join(row) + "\n")
+        path.write_text("\t".join(row) + "\n" + "\t".join(row.values()) + "\n")
         artifacts.append(
             {
                 "table": name,
@@ -313,8 +366,37 @@ def test_the_stage_refuses_a_tab_without_trainee(tmp_path, table: str) -> None:
                 "size_bytes": path.stat().st_size,
             }
         )
+    return artifacts
+
+
+@pytest.mark.parametrize("table", ["adult", "child"])
+def test_the_stage_refuses_a_tab_without_trainee(tmp_path, table: str) -> None:
+    """Each tab is checked on its own, before the two are concatenated.
+
+    After the concat a tab without TRAINEE would read as blanks beside the
+    other tab's answers, which is a silent "nobody on this table trains".
+    """
+
+    artifacts = _write_stage_tabs(tmp_path, table=table, drop="TRAINEE")
 
     with pytest.raises(KeyError, match=f"The FRS {table} tab has no TRAINEE column"):
+        add_frs_education(None, tmp_path, stage=SimpleNamespace(artifacts=artifacts))
+
+
+@pytest.mark.parametrize("table", ["adult", "child"])
+def test_the_stage_refuses_a_tab_without_fted_or_educft(tmp_path, table: str) -> None:
+    """A tab with neither full-time education column refuses on its own.
+
+    After the concat its rows would read as blanks, a silent "nobody on this
+    table is in full-time education" that lets its claimants meet Universal
+    Credit's condition of not receiving education.
+    """
+
+    artifacts = _write_stage_tabs(tmp_path, table=table, drop="EDUCFT")
+
+    with pytest.raises(
+        KeyError, match=f"The FRS {table} tab has neither FTED nor EDUCFT"
+    ):
         add_frs_education(None, tmp_path, stage=SimpleNamespace(artifacts=artifacts))
 
 
