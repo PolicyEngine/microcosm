@@ -289,15 +289,18 @@ borrower is a person whose federal balance is positive.
   adult in someone else's household unless the family reports the loan as one
   for a child's education; an adult who lives alone is the household's
   reference person and draws. The host holds about half of FSA's borrowers
-  ($0.86T and 21.2M at the published weights, against $1,679.1B and 44.31M),
-  and these receipts don't separate the causes of that shortfall. Calibration
-  closes it by reweighting, so borrower households' share of household weight
-  about doubles from 16.4%, against 18.2% of SCF families. Routing child loans
-  to adult children moved balances between people in the same households, not
-  into new ones, so it did not shrink that doubling; it did give the host
-  young borrowers (1,246 borrower records under 25, from 561). The Parent PLUS
-  share is diagnostic: 10.7% of the host's balance at the published weights,
-  against FSA's 6.8%, a likely lower bound (above).
+  ($858.4B and 21.10M at the published weights, against $1,679.1B and
+  44.31M), and these receipts don't separate the causes of that shortfall.
+  Calibration closes it by reweighting, so the share of households with debt
+  about doubles: from 16.4% to 33.9% when the 130 targets bind with no
+  penalty, 32.4% with the record concentration penalty and 28.0% with the
+  chi-square one, against 18.2% of SCF families (receipt run
+  `20261106T142002Z-8a9d335a7`). Routing child loans to adult children moved
+  balances between people in the same households, not into new ones, so it
+  did not shrink that doubling; it did give the host young borrowers (1,262
+  borrower records under 25). The Parent PLUS share is diagnostic: 10.7% of
+  the host's balance at the published weights and 10.2% after the unpenalized
+  fit, against FSA's 6.8%, a likely lower bound (above).
 - **The pin.** microcosm#1506 moved the US pin to Chronicle `41b2fb2b`
   (40,642 rows, sha256 `1d45a89c…`), which carries the six `packages/ed_fsa`
   packages. Their (record set, period) pairs are in
