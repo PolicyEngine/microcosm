@@ -468,13 +468,16 @@ def test_each_step_refuses_a_repository_that_has_releases_json(hub, capsys, step
     assert "already has releases.json" in error_output
 
 
-def test_the_tool_refuses_to_run_offline(capsys):
-    # The autouse fixture sets HF_HUB_OFFLINE and fails the test if the tool
-    # builds a Hub client.
+@pytest.mark.parametrize("variable", ["HF_HUB_OFFLINE", "TRANSFORMERS_OFFLINE"])
+def test_the_tool_refuses_to_run_offline(capsys, monkeypatch, variable):
+    # The autouse fixture fails the test if the tool builds a Hub client.
+    monkeypatch.delenv("HF_HUB_OFFLINE", raising=False)
+    monkeypatch.setenv(variable, "1")
+
     exit_code = build_folder_switch.main(["copy", UK_REPOSITORY, "--write"])
 
     assert exit_code == 1
-    assert "HF_HUB_OFFLINE" in capsys.readouterr().err
+    assert variable in capsys.readouterr().err
 
 
 def test_copy_keeps_both_metadata_objects_of_the_june_2023_build(hub, capsys):
@@ -594,3 +597,105 @@ def test_an_annotated_tag_moves_from_the_commit_it_names(hub, capsys):
         copied_file(hub, f"{DENSE_FOLDER}/release_manifest.json") or b"{}"
     )
     assert manifest.get("migrated_from", {}).get("commit") == commit
+
+
+def test_copy_reports_a_release_name_the_interface_refuses_without_writing(hub, capsys):
+    exit_code, report, _ = run(
+        hub, capsys, "copy", "--include", f"{JUNE_2023_TAG}=populace uk 2023"
+    )
+
+    assert exit_code == 1
+    assert any(JUNE_2023_TAG in problem for problem in report.get("problems", []))
+    assert hub.made == []
+
+
+def test_copy_refuses_a_release_role_conflict_before_any_commit(hub, capsys):
+    # The June 2023 build is a national build; the dense release's builds are
+    # local-area builds, so one release cannot hold both.
+    exit_code, _, error_output = run(
+        hub, capsys, "copy", "--write", "--include", f"{JUNE_2023_TAG}={DENSE}"
+    )
+
+    assert exit_code == 1
+    assert "has role" in error_output
+    assert hub.made == []
+
+
+def test_switch_refuses_a_build_folder_that_it_does_not_list(hub, capsys):
+    run(hub, capsys, "copy", "--write", *INCLUDE_JUNE_2023)
+
+    # The June 2023 build was copied, but this switch neither moves it nor
+    # keeps the pointer file that names it.
+    exit_code, _, error_output = run(
+        hub, capsys, "switch", "--write", "--retire-pointer", "latest.json"
+    )
+
+    assert exit_code == 1
+    assert f"{JUNE_2023_FOLDER}/" in error_output
+    assert "releases.json" not in hub.files_at()
+
+
+def test_switch_refuses_when_a_tag_appears_while_it_reads(hub, capsys, monkeypatch):
+    run(hub, capsys, "copy", "--write", *INCLUDE_JUNE_2023)
+    list_repo_refs = hub.list_repo_refs
+    listings = []
+
+    def a_tag_lands_after_the_first_listing(*args, **kwargs):
+        refs = list_repo_refs(*args, **kwargs)
+        listings.append(refs)
+        if len(listings) == 1:
+            # A tag-only publication lands while the switch reads the builds:
+            # it tags a commit that is not on main, so main does not move.
+            hub.seed(
+                {}, date=LATER, tag=f"{DENSE}-20261106T120000Z-0badf00d", on_main=False
+            )
+        return refs
+
+    monkeypatch.setattr(hub, "list_repo_refs", a_tag_lands_after_the_first_listing)
+
+    exit_code, _, error_output = run(
+        hub, capsys, "switch", "--write", *INCLUDE_JUNE_2023
+    )
+
+    assert exit_code == 1
+    assert "tags changed" in error_output
+    assert "releases.json" not in hub.files_at()
+
+
+def test_switch_refuses_a_current_build_that_conflicts_with_a_pointer_file(hub, capsys):
+    run(hub, capsys, "copy", "--write", *INCLUDE_JUNE_2023)
+
+    exit_code, report, _ = run(
+        hub,
+        capsys,
+        "switch",
+        *INCLUDE_JUNE_2023,
+        "--current",
+        f"{NATIONAL}={NEWER_NATIONAL_BUILD}",
+    )
+
+    assert exit_code == 1
+    assert any(
+        "conflicts with the pointer files' current build" in problem
+        for problem in report.get("problems", [])
+    )
+
+
+def test_switch_can_choose_the_default_release(hub, capsys):
+    run(hub, capsys, "copy", "--write", *INCLUDE_JUNE_2023)
+
+    exit_code, _, _ = run(
+        hub,
+        capsys,
+        "switch",
+        "--write",
+        *INCLUDE_JUNE_2023,
+        "--current",
+        f"{DENSE}={DENSE_BUILD}",
+        "--default",
+        DENSE,
+    )
+
+    assert exit_code == 0
+    record = json.loads(copied_file(hub, "releases.json") or b"{}")
+    assert record.get("default") == DENSE
