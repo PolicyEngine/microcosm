@@ -619,9 +619,9 @@ def test_assembler_stages_a_contract_valid_dense_release(
         shipped["reviewed_exclusions_stood_on"]
         == coverage["signed_deferrals"]["reviewed_exclusions"]
     )
-    # While the repository keeps its latest*.json pointer files, the emitter
-    # refuses any change to a current build, so the printed publication lists
-    # the build and the promotion makes it current once those files are gone.
+    # The printed publication lists the build and the printed promotion makes
+    # it current; --make-current on the publication would do both in one
+    # commit.
     assert shlex.split(summary["publish_command"]) == [
         "uv",
         "run",

@@ -579,9 +579,10 @@ def test_the_command_refuses_a_tagged_uk_release(
     hub_listing: HubListing,
     promote: bool,
 ) -> None:
-    """Today's UK assemblers write the tagged layout, whose release manifest
-    describes the build in a ``build`` object; the command refuses it before
-    it lists the repository or starts an emitter."""
+    """A UK build that the assemblers wrote in the tagged layout, before the
+    switch, describes the build in a ``build`` object in its release
+    manifest; the command refuses it before it lists the repository or
+    starts an emitter."""
     tagged = _as_uk_national_line_release(release_dir)
     started, _ = _start_emitters(monkeypatch)
     argv = (

@@ -48,12 +48,15 @@ class DatasetSpec:
             ImportError when the engine is absent.
         pointer_path: The repository-root release pointer followed by the
             certified loader while the repository has no ``releases.json``.
-        release: The release whose builds can publish into their own folders,
-            ``releases/<release>/<build>/``. Where the repository has
-            ``releases.json``, the loader reads the release's current build
-            there and loads ``filename`` from that build's folder; until the
-            repository switches to it, the loader follows ``pointer_path``.
-            ``None`` for a release that keeps the tagged layout.
+        release: The release the loader reads through ``releases.json``,
+            whose builds are in ``releases/<release>/<build>/``: one whose
+            builds publish into their own folders, or ``populace-uk-2023``,
+            whose one build the switch moved into a folder. Where the
+            repository has ``releases.json``, the loader reads the release's
+            current build there and loads ``filename`` from that build's
+            folder; until the repository switches to it, the loader follows
+            ``pointer_path``. ``None`` for a release that keeps the tagged
+            layout.
     """
 
     country: str
@@ -154,8 +157,9 @@ register(
         # microcosm#762 A18: the dense joint national + local UK build is
         # tag-only; no pointer. It carries every constituency and local
         # authority at K=15 clones per spine household. Once the repository
-        # switches to releases.json, each new dense build becomes current when
-        # it is published, and the loader reads it there.
+        # switches to releases.json, a new dense build becomes current when it
+        # is promoted, or published with --make-current, through
+        # microcosm-publish-release-build, and the loader reads it there.
         country="uk",
         year=2025,
         variant="dense",

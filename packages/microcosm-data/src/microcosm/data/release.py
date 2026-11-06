@@ -7,10 +7,11 @@ call (``microcosm-publish-release-build``, in ``microcosm-build``), and the
 repository's ``releases.json`` records which build is current.
 :func:`prepare_build_folder_release` checks such a build and lists its files
 with their roles; :func:`prepare_release` and :func:`publish_release` refuse
-it. Everything below describes the tagged layout the other releases keep:
-every US release, until the stable releases US builds publish under are
-agreed, and the June 2023 UK release and ``populace-uk-<year>-<tier>-k<N>``
-releases.
+it. Everything below describes the tagged layout that every US release
+keeps until the stable releases US builds publish under are agreed. The
+June 2023 UK release and ``populace-uk-<year>-<tier>-k<N>`` releases take no
+new builds: :func:`publish_release` refuses any repository that records its
+builds in ``releases.json``, as the UK repository does after its switch.
 
 The Hub repo publishes builds under ``releases/<build_id>/``, but nothing
 identified which release is *current*: a consumer had to list the tree and

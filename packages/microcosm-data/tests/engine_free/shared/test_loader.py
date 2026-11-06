@@ -852,10 +852,10 @@ def test_loader_refuses_an_unknown_dataset_role(tmp_path: Path) -> None:
 
 
 # Before the switch: a repository without releases.json -----------------------
-# A UK release keeps publishing with tags and latest-<line>.json pointer files
-# until its repository switches to releases.json. A registry entry that names
-# a release reads releases.json where the repository has one, and otherwise
-# follows its pointer file exactly as before.
+# Until its repository switches to releases.json, a UK release's current
+# build is the one its latest*.json pointer file names. A registry entry that
+# names a release reads releases.json where the repository has one, and
+# otherwise follows its pointer file exactly as before.
 
 
 def _uk_national_line_manifest() -> dict:
