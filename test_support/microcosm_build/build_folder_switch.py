@@ -126,10 +126,18 @@ class FakeDatasetRepository:
         return commit
 
     def annotate(self, tag: str) -> str:
-        """Make ``tag`` an annotated tag: the Hub lists its tag object's ID."""
-        tag_object = sha256(f"tag object {tag}".encode())[:40]
+        """Make ``tag`` an annotated tag: the Hub lists its tag object's ID,
+        which, like git's, depends on the commit it names."""
+        tag_object = sha256(f"tag object {tag} {self.tags[tag]}".encode())[:40]
         self.tag_objects[tag] = tag_object
         return tag_object
+
+    def move_tag(self, tag: str, commit: str) -> None:
+        """Point ``tag`` at another commit, as deleting and creating it again
+        does; an annotated tag gets a new tag object."""
+        self.tags[tag] = commit
+        if tag in self.tag_objects:
+            self.annotate(tag)
 
     def files_at(self, revision: str | None = None) -> dict[str, bytes]:
         """Every file at a revision (``main`` by default), by path."""

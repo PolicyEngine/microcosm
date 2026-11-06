@@ -755,7 +755,7 @@ def test_switch_refuses_when_a_tagged_publication_starts_while_it_reads(
     assert "releases.json" not in hub.files_at()
 
 
-@pytest.mark.parametrize("change", ["deleted", "moved"])
+@pytest.mark.parametrize("change", ["deleted", "moved", "annotated tag moved"])
 def test_switch_refuses_when_a_tag_is_deleted_or_moved_while_it_reads(
     hub, capsys, monkeypatch, change
 ):
@@ -768,7 +768,11 @@ def test_switch_refuses_when_a_tag_is_deleted_or_moved_while_it_reads(
             if change == "deleted":
                 del hub.tags[OLDER_NATIONAL_TAG]
             else:
-                hub.tags[DENSE_TAG] = hub.seed({}, date=LATER, on_main=False)
+                # The dense tag is annotated; the older national one is not.
+                tag = (
+                    DENSE_TAG if change == "annotated tag moved" else OLDER_NATIONAL_TAG
+                )
+                hub.move_tag(tag, hub.seed({}, date=LATER, on_main=False))
         refs = list_repo_refs(*args, **kwargs)
         listings.append(refs)
         return refs
@@ -828,3 +832,48 @@ def test_the_tool_finds_build_folders_by_the_interfaces_rule(path):
     assert build_folder_switch._build_folder_of(
         path
     ) == interface_releases._build_folder_of(path)
+
+
+def test_the_switch_reads_tags_and_branches_again_in_one_request(
+    hub, capsys, monkeypatch
+):
+    """Just before its commit the switch compares one listing of the tags and
+    branches with its first read's, and asks the Hub nothing else, so a tag
+    made or deleted after that listing cannot fall between its requests."""
+    run(hub, capsys, "copy", "--write", *INCLUDE_JUNE_2023)
+    requests: list[str] = []
+    list_repo_refs, repo_info = hub.list_repo_refs, hub.repo_info
+
+    def listing(*args, **kwargs):
+        requests.append("list_repo_refs")
+        return list_repo_refs(*args, **kwargs)
+
+    def resolution(*args, **kwargs):
+        requests.append("repo_info")
+        return repo_info(*args, **kwargs)
+
+    monkeypatch.setattr(hub, "list_repo_refs", listing)
+    monkeypatch.setattr(hub, "repo_info", resolution)
+
+    exit_code, _, error_output = run(
+        hub, capsys, "switch", "--write", *INCLUDE_JUNE_2023
+    )
+
+    assert exit_code == 0, error_output
+    second_listing = [
+        index for index, request in enumerate(requests) if request == "list_repo_refs"
+    ][1]
+    assert requests[second_listing + 1 :] == []
+
+
+def test_switch_ignores_branches_that_are_not_the_tagged_publishers(hub, capsys):
+    run(hub, capsys, "copy", "--write", *INCLUDE_JUNE_2023)
+    hub.branches["draft-notes"] = hub.main
+    hub.branches["release-staging-notes"] = hub.main
+
+    exit_code, _, error_output = run(
+        hub, capsys, "switch", "--write", *INCLUDE_JUNE_2023
+    )
+
+    assert exit_code == 0, error_output
+    assert "releases.json" in hub.files_at()
