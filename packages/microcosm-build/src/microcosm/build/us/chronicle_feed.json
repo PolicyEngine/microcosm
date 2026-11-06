@@ -3,15 +3,15 @@
   "country": "us",
   "scope": "us_fiscal_targets",
   "source_repo": "PolicyEngine/chronicle",
-  "source_commit": "41b2fb2b864a28c0eda03322b77a97ef147dfa3c",
-  "build": "tools/build_us_chronicle_feed.py --skip-artifact: one `chronicle build-bundle --year Y --source <package>` per build year in chronicle_feed_scope.json, rows kept for exactly the scope's (record set, period) pairs and sorted by aggregate_fact_key. The commit is c5e5bf8 plus the TY2023 Historic Table 2 state AGI-band package (51aa40f, tag microcosm-us-feed-940-v1, chronicle#291), the digit-text guard match from chronicle main's aa3e4de3, the BEA NIPA Table 7.8 line 17 (B4923C) package as chronicle#331 merged it (cf9ece2, branch feed/us-51aa40f-esi-b4923c, tag microcosm-us-feed-454-v1, microcosm#454), three label-only commits that give adjusted gross income under_1 and all and age 85_plus one label each (a9026cc, branch feed/us-cf9ece2-agi-age-labels, tag microcosm-us-feed-1343-v1, microcosm#1343), and chronicle#347's commit 4448a7c96 cherry-picked, which adds the six packages/ed_fsa Federal Student Aid loan portfolio packages (41b2fb2b, branch feed/us-a9026cc-ed-fsa-1103, tag microcosm-us-feed-1074-v1, microcosm#1074). Bare feed: `chronicle build-consumer-artifact` refuses it at this commit; see docs/us-chronicle-feed-repin.md.",
+  "source_commit": "e86a83bbdb6194b7d871171005ce8c80cba6ebce",
+  "build": "tools/build_us_chronicle_feed.py --skip-artifact: one `chronicle build-bundle --year Y --source <package>` per build year in chronicle_feed_scope.json, rows kept for exactly the scope's (record set, period) pairs and sorted by aggregate_fact_key. The commit is c5e5bf8 plus the TY2023 Historic Table 2 state AGI-band package (51aa40f, tag microcosm-us-feed-940-v1, chronicle#291), the digit-text guard match from chronicle main's aa3e4de3, the BEA NIPA Table 7.8 line 17 (B4923C) package as chronicle#331 merged it (cf9ece2, branch feed/us-51aa40f-esi-b4923c, tag microcosm-us-feed-454-v1, microcosm#454), three label-only commits that give adjusted gross income under_1 and all and age 85_plus one label each (a9026cc, branch feed/us-cf9ece2-agi-age-labels, tag microcosm-us-feed-1343-v1, microcosm#1343), chronicle#347's commit 4448a7c96 cherry-picked, which adds the six packages/ed_fsa Federal Student Aid loan portfolio packages (41b2fb2b, branch feed/us-a9026cc-ed-fsa-1103, tag microcosm-us-feed-1074-v1, microcosm#1074), and chronicle#417's commit 13205dc7 cherry-picked, which adds the Census Vintage 2025 state population by age group package (e86a83bb, branch feed/us-41b2fb2-pep-2025-state-age, tag microcosm-us-feed-1528-v1, microcosm#1528). Bare feed: `chronicle build-consumer-artifact` refuses it at this commit; see docs/us-chronicle-feed-repin.md.",
   "artifact_schema_version": null,
   "consumer_fact_schema_versions": [
     "chronicle.consumer_fact.v3"
   ],
   "consumer_fact_schema_sha256": "bdb51e2a8115634633ba7448c4005930fd9c0bfbade5e1b079b6bc24da485d3d",
-  "fact_row_count": 40642,
-  "facts_sha256": "1d45a89c28177a95371b4cc4068d3657c7bf12bd8edad7c82fe25bf453f9ea07",
+  "fact_row_count": 41458,
+  "facts_sha256": "24c64c99159bf517e41c66bc2de2ea84d1f84a998fcd7b4f650f5320e2f443f5",
   "manifest_sha256": null,
-  "scope_sha256": "73a39c166a8f78c8a8a1ae711515e5d2e6b76a74952e67d7783cf974a4615633"
+  "scope_sha256": "46f85fee811836b7a7c23733f30d251bb2cfa955b39edd27166015c1fd8cbe1f"
 }

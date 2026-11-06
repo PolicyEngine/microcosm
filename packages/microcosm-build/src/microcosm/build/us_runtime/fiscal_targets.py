@@ -66,9 +66,12 @@ __all__ = [
     "US_SOI_FISCAL_TARGET_REFERENCES",
     "US_STATE_INCOME_TAX_TARGET_SPECS",
     "US_STATE_INCOME_TAX_TARGET_REFERENCES",
+    "US_STATE_AGE_BAND_RECORD_SET_SPEC_ID",
     "SimpleTaxExpenditureReform",
     "compile_us_fiscal_target_registry",
+    "is_us_state_age_band_fact",
     "us_fiscal_target_exclusion_receipt",
+    "us_state_age_band_population_totals",
 ]
 
 TaxExpenditureReformKind = Literal["neutralize_variable"]
@@ -1025,6 +1028,69 @@ def _load_us_fiscal_target_manifest() -> dict[str, Any]:
     return payload
 
 
+#: Census Vintage 2025 state resident population by age group
+#: (PolicyEngine/chronicle#417): single years 0 to 5, then 6 to 11, 12 to 17,
+#: 18 to 24, ten-year groups to 64, 65 to 74, and 75 and over, for every state
+#: and DC at July 1, 2024. The ACS local-area release calibrates each state's
+#: age mix to them (microcosm#1528). The default compile keeps the Vintage 2024
+#: five-year state groups, so these bind only with ``state_age_band_targets``.
+US_STATE_AGE_BAND_RECORD_SET_SPEC_ID = (
+    "census_pep.v2025.state_resident_population_age_bands.v1"
+)
+
+
+def is_us_state_age_band_fact(fact: object) -> bool:
+    """Whether ``fact`` is a Census Vintage 2025 state age-group count."""
+
+    return (
+        _str_at(fact, "layout", "record_set_spec_id")
+        == US_STATE_AGE_BAND_RECORD_SET_SPEC_ID
+    )
+
+
+def us_state_age_band_population_totals(
+    facts: Iterable[object], *, period: int | str
+) -> dict[str, float]:
+    """Each state's all-ages total from the Vintage 2025 age-group package.
+
+    Beside its fifteen age groups, the package gives every state and DC its
+    resident population at all ages (``groupby_value_id`` ``all``). The
+    compile turns no such row into a target, because it carries no age
+    bound; the ACS local-area release reads the totals here to replace its
+    PUMA ladder's 2020 state populations (microcosm#1528). Keys are two-digit
+    state FIPS codes. Raises ``ValueError`` on a total that names no state,
+    is not a positive finite number, or repeats a state.
+    """
+
+    totals: dict[str, float] = {}
+    for fact in facts:
+        if not is_us_state_age_band_fact(fact):
+            continue
+        if _str_at(fact, "layout", "groupby_value_id") != "all":
+            continue
+        if str(_period_value(fact)) != str(period):
+            continue
+        source_record_id = _source_record_id(fact)
+        state_fips = _state_fips(fact)
+        if _geography_level(fact) != "state" or state_fips is None:
+            raise ValueError(f"{source_record_id} names no US state.")
+        try:
+            value = float(_at(fact, "value"))
+        except (TypeError, ValueError):
+            value = math.nan
+        if not math.isfinite(value) or value <= 0:
+            raise ValueError(
+                f"{source_record_id} is not a positive population: "
+                f"{_at(fact, 'value')!r}."
+            )
+        if state_fips in totals:
+            raise ValueError(
+                f"State {state_fips} has two Vintage 2025 all-ages totals for {period}."
+            )
+        totals[state_fips] = value
+    return totals
+
+
 def compile_us_fiscal_target_registry(
     facts: object,
     *,
@@ -1032,6 +1098,7 @@ def compile_us_fiscal_target_registry(
     congressional_district_vintage_crosswalk: object | None = None,
     age_targets: bool = False,
     allow_unaged_dollar_targets: bool = False,
+    state_age_band_targets: bool = False,
 ) -> TargetRegistry:
     """Resolve US fiscal targets from an external Ledger fact feed.
 
@@ -1053,6 +1120,11 @@ def compile_us_fiscal_target_registry(
             unless aging transformed it. Set this to record an explicit,
             auditable waiver instead of raising; every waived target carries
             ``period_contract_waiver`` metadata in diagnostics.
+        state_age_band_targets: Compile the Census Vintage 2025 state age-group
+            counts (``US_STATE_AGE_BAND_RECORD_SET_SPEC_ID``) as
+            ``census_population`` targets. The ACS local-area release sets it
+            (microcosm#1528); without it the compile drops those facts before
+            it selects references, so the default surface stays the same.
     """
     materialized_facts = tuple(facts)
     if congressional_district_vintage_crosswalk is not None:
@@ -1060,9 +1132,16 @@ def compile_us_fiscal_target_registry(
             materialized_facts,
             congressional_district_vintage_crosswalk,
         )
+    reference_facts = (
+        materialized_facts
+        if state_age_band_targets
+        else tuple(
+            fact for fact in materialized_facts if not is_us_state_age_band_fact(fact)
+        )
+    )
     references = (
         *_dynamic_us_fiscal_target_references(
-            materialized_facts,
+            reference_facts,
             target_period=target_period,
         ),
         *_references_for_target_period(

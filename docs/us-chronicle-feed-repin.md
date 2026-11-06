@@ -39,6 +39,63 @@ ids (the 118th-Congress district, or the state row's value), not the derived
 row's. No code reads the field, so no label, value or refusal changes; v4's
 `geography.publisher_name` is copied the same way.
 
+## The 2026-11-05 re-pin: Census Vintage 2025 state age groups (microcosm#1528)
+
+microcosm#1528 binds the Census Vintage 2025 state population by age group as
+ACS local-area calibration targets
+([the state age groups note](us-acs-local-state-age.md)). Its compile reads
+them from the pinned feed, so the feed has to carry them.
+PolicyEngine/chronicle#417 adds the package
+`packages/census/pep_2025_state_age_bands` (`census-pep-2025-state-age-bands`).
+The pin moved from `41b2fb2b` to `e86a83bbdb6194b7d871171005ce8c80cba6ebce`
+(Chronicle branch `feed/us-41b2fb2-pep-2025-state-age`, tag
+`microcosm-us-feed-1528-v1`), which adds one cherry-pick to `41b2fb2b`:
+chronicle#417's commit `13205dc7`, and nothing else. That commit adds the
+package, its source file `sc-est2025-alldata6.csv`, one line in
+`chronicle/source_package.py` and tests.
+
+The scope adds 51 pairs, one per state and DC, each the record set
+`census_pep.v2025.cy2024.state_resident_population_age_bands.<ff>` at period
+2024 and built at 2024, the package's own year. The scope has 757 pairs and
+73 package runs; the package joins the 2024 runs.
+
+Built at `e86a83bb` with `tools/build_us_chronicle_feed.py --skip-artifact`
+(41,458 rows, 183,273,668 bytes, `facts_sha256` `24c64c99…`), and compared
+with the `41b2fb2` feed by `experiments/us-feed-agi-age-labels/compare_feeds.py`
+(report in `experiments/us-feed-census-age-bands/compare.json`; the added
+rows, with their source, in `added_rows.json`):
+
+- the feed keeps all 40,642 `41b2fb2` rows: the same keys, and no field of
+  any of them changes. Dropping the 816 new rows leaves the `41b2fb2` feed
+  byte for byte and in order (`1d45a89c…`);
+- it adds 816 rows, every one from source `census_pep`, in the 51 new pairs:
+  sixteen per state, the fifteen age groups and the all-ages total;
+- compiled at 2024 as the release does, both feeds give the same 33,250
+  targets in the same order, with no changed field, the same registry
+  version (`b8d571e91c22`) and the same `national_state` surface (6,102
+  targets, `3aa2a0830e7d`). No `census_pep.v2025` fact compiles by default:
+  `state_age_band_targets=True` binds the 765 age groups, adds no other
+  target and changes none, and the ACS local release reads the 51 all-ages
+  rows as state totals;
+- the parity resources change in the feed name and digest, and the feed
+  carries one new family (`census_pep.v2025`, 94 feed families). The
+  generator declares it an `off_by_default` reviewed exclusion, so the
+  manifest counts 32 compiled families and 65 reviewed exclusions. The feed's
+  label variants do not change (only `age` = `age_20` and `age_21`).
+
+The schema stamp stays v3: every row, old and new, carries
+`chronicle.consumer_fact.v3`, and Chronicle's
+`policyengine_chronicle/schemas/consumer_fact.v3.schema.json` keeps the same
+bytes at `41b2fb2b` and `e86a83bb` (`bdb51e2a…`), so the pin keeps both
+fields.
+
+The B4923C anchor test (`test_us_esi_premiums.py`) follows this report too:
+it names its listing, the source `census_pep` and the namespace
+`census_pep.v2025.cy2024.state_resident_population_age_bands.`.
+
+The feed lives on the build machine at
+`~/PolicyEngine/_buildh-runtime/inputs/consumer_facts_us_e86a83b.jsonl`.
+
 ## The 2026-11-03 re-pin: Federal Student Aid loan portfolio tables (microcosm#1074)
 
 microcosm#1357 binds Federal Student Aid's loan portfolio tables as
@@ -295,14 +352,17 @@ the first labelled US export.
 
 | Field | Value |
 |---|---|
-| Chronicle commit | `41b2fb2b864a28c0eda03322b77a97ef147dfa3c` (`a9026cc` plus chronicle#347's `4448a7c96`; branch `feed/us-a9026cc-ed-fsa-1103`, tag `microcosm-us-feed-1074-v1`) |
-| Feed file | `consumer_facts_us_41b2fb2.jsonl`, 40,642 rows, 171,661,396 bytes |
-| `facts_sha256` | `1d45a89c28177a95371b4cc4068d3657c7bf12bd8edad7c82fe25bf453f9ea07` |
-| Consumer fact schema | `chronicle.consumer_fact.v3`, schema file sha256 `bdb51e2a…` (the same file at `a9026cc` and `41b2fb2b`) |
-| Scope | 706 (record set, period) pairs; 72 package runs over build years 2020 to 2029 |
+| Chronicle commit | `e86a83bbdb6194b7d871171005ce8c80cba6ebce` (`41b2fb2b` plus chronicle#417's `13205dc7`; branch `feed/us-41b2fb2-pep-2025-state-age`, tag `microcosm-us-feed-1528-v1`) |
+| Feed file | `consumer_facts_us_e86a83b.jsonl`, 41,458 rows, 183,273,668 bytes |
+| `facts_sha256` | `24c64c99159bf517e41c66bc2de2ea84d1f84a998fcd7b4f650f5320e2f443f5` |
+| Consumer fact schema | `chronicle.consumer_fact.v3`, schema file sha256 `bdb51e2a…` (the same file at `a9026cc`, `41b2fb2b` and `e86a83bb`) |
+| Scope | 757 (record set, period) pairs; 73 package runs over build years 2020 to 2029 |
 | Consumer artifact | none: refused at this commit, see below |
 
-The previous pins were `a9026cc8f80307af0c4527fdb3779fab32ffad9f`
+The previous pins were `41b2fb2b864a28c0eda03322b77a97ef147dfa3c`
+(`consumer_facts_us_41b2fb2.jsonl`, 40,642 rows, 171,661,396 bytes,
+`facts_sha256` `1d45a89c…`, 706 pairs, 72 runs; tag
+`microcosm-us-feed-1074-v1`), `a9026cc8f80307af0c4527fdb3779fab32ffad9f`
 (`consumer_facts_us_a9026cc.jsonl`, 40,181 rows, 169,056,411 bytes,
 `facts_sha256` `4d89e4a4…`, 640 pairs, 66 runs; tag
 `microcosm-us-feed-1343-v1`), `cf9ece2e7be11158c21fdc4dd38b44d92db552f6`
@@ -317,7 +377,7 @@ The previous pins were `a9026cc8f80307af0c4527fdb3779fab32ffad9f`
 this document describes the 2026-09-18 rebuild unless it says otherwise.
 
 The feed is too large for the repository. Its home on the build machine is
-`~/PolicyEngine/_buildh-runtime/inputs/consumer_facts_us_41b2fb2.jsonl`,
+`~/PolicyEngine/_buildh-runtime/inputs/consumer_facts_us_e86a83b.jsonl`,
 beside the previous pins; `tools/build_us_target_parity_manifest.py` reads it
 there by default. A holder of the Chronicle commit regenerates it byte for
 byte with the commands below.

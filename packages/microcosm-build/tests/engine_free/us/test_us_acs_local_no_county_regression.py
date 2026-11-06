@@ -364,6 +364,10 @@ def test_no_county_materialization_matches_pre_county_surface(
             soi_mode,
             "--geographies",
             geographies,
+            # The oracle predates the Census state age family (microcosm#1528);
+            # test_us_acs_local_state_age.py covers the materialize stage with it.
+            "--families",
+            "snap,medicaid,soi",
         ]
     )
     module.do_materialize(args)

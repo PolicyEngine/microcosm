@@ -2,9 +2,9 @@
  "version": 1,
  "country": "us",
  "source_repo": "PolicyEngine/chronicle",
- "source_commit": "41b2fb2b864a28c0eda03322b77a97ef147dfa3c",
- "rule": "The (record_set_id, period) pairs of the pinned feed consumer_facts_buildn_v9_4.jsonl, plus the 51 TY2023 Historic Table 2 state AGI-band record sets (irs_soi.ty2023.historic_table_2.state_agi.<st>, microcosm#940), plus the three BEA NIPA Table 7.8 line 17 (B4923C) record sets (bea_nipa.cy<year>.private_group_health_insurance, 2023 to 2025, microcosm#454), plus the 66 Federal Student Aid loan portfolio record sets of the six packages/ed_fsa packages (ed_fsa.*, chronicle#347, microcosm#1357), each one quarter-end month from 2025-12 to 2026-06 and built at 2026, the only year their manifests carry a file for; each built from the named package with `chronicle build-bundle --year <build_year> --source <package>`.",
- "pair_count": 706,
+ "source_commit": "e86a83bbdb6194b7d871171005ce8c80cba6ebce",
+ "rule": "The (record_set_id, period) pairs of the pinned feed consumer_facts_buildn_v9_4.jsonl, plus the 51 TY2023 Historic Table 2 state AGI-band record sets (irs_soi.ty2023.historic_table_2.state_agi.<st>, microcosm#940), plus the three BEA NIPA Table 7.8 line 17 (B4923C) record sets (bea_nipa.cy<year>.private_group_health_insurance, 2023 to 2025, microcosm#454), plus the 66 Federal Student Aid loan portfolio record sets of the six packages/ed_fsa packages (ed_fsa.*, chronicle#347, microcosm#1357), each one quarter-end month from 2025-12 to 2026-06 and built at 2026, the only year their manifests carry a file for, plus the 51 Census PEP Vintage 2025 state age-group record sets (census_pep.v2025.cy2024.state_resident_population_age_bands.<ff>, chronicle#417, microcosm#1528), each the July 1, 2024 estimate and built at 2024; each built from the named package with `chronicle build-bundle --year <build_year> --source <package>`.",
+ "pair_count": 757,
  "runs": {
   "2020": [
    "packages/bea/nipa_total_wages_salaries",
@@ -60,6 +60,7 @@
    "packages/cbo/revenue_projections_income_by_source_2026_02",
    "packages/census/pep_2024_national_age_sex",
    "packages/census/pep_2024_state_age_sex",
+   "packages/census/pep_2025_state_age_bands",
    "packages/cms_aca/oep_state_level",
    "packages/cms_medicaid/chip_monthly_enrollment_december_2024",
    "packages/cms_medicare/medicare_trustees_report_2025",
@@ -2138,6 +2139,414 @@
    "period_value": "2024",
    "package_id": "census-pep-2024-state-age-sex",
    "package": "packages/census/pep_2024_state_age_sex",
+   "build_year": 2024
+  },
+  {
+   "record_set_id": "census_pep.v2025.cy2024.state_resident_population_age_bands.01",
+   "period_type": "calendar_year",
+   "period_value": "2024",
+   "package_id": "census-pep-2025-state-age-bands",
+   "package": "packages/census/pep_2025_state_age_bands",
+   "build_year": 2024
+  },
+  {
+   "record_set_id": "census_pep.v2025.cy2024.state_resident_population_age_bands.02",
+   "period_type": "calendar_year",
+   "period_value": "2024",
+   "package_id": "census-pep-2025-state-age-bands",
+   "package": "packages/census/pep_2025_state_age_bands",
+   "build_year": 2024
+  },
+  {
+   "record_set_id": "census_pep.v2025.cy2024.state_resident_population_age_bands.04",
+   "period_type": "calendar_year",
+   "period_value": "2024",
+   "package_id": "census-pep-2025-state-age-bands",
+   "package": "packages/census/pep_2025_state_age_bands",
+   "build_year": 2024
+  },
+  {
+   "record_set_id": "census_pep.v2025.cy2024.state_resident_population_age_bands.05",
+   "period_type": "calendar_year",
+   "period_value": "2024",
+   "package_id": "census-pep-2025-state-age-bands",
+   "package": "packages/census/pep_2025_state_age_bands",
+   "build_year": 2024
+  },
+  {
+   "record_set_id": "census_pep.v2025.cy2024.state_resident_population_age_bands.06",
+   "period_type": "calendar_year",
+   "period_value": "2024",
+   "package_id": "census-pep-2025-state-age-bands",
+   "package": "packages/census/pep_2025_state_age_bands",
+   "build_year": 2024
+  },
+  {
+   "record_set_id": "census_pep.v2025.cy2024.state_resident_population_age_bands.08",
+   "period_type": "calendar_year",
+   "period_value": "2024",
+   "package_id": "census-pep-2025-state-age-bands",
+   "package": "packages/census/pep_2025_state_age_bands",
+   "build_year": 2024
+  },
+  {
+   "record_set_id": "census_pep.v2025.cy2024.state_resident_population_age_bands.09",
+   "period_type": "calendar_year",
+   "period_value": "2024",
+   "package_id": "census-pep-2025-state-age-bands",
+   "package": "packages/census/pep_2025_state_age_bands",
+   "build_year": 2024
+  },
+  {
+   "record_set_id": "census_pep.v2025.cy2024.state_resident_population_age_bands.10",
+   "period_type": "calendar_year",
+   "period_value": "2024",
+   "package_id": "census-pep-2025-state-age-bands",
+   "package": "packages/census/pep_2025_state_age_bands",
+   "build_year": 2024
+  },
+  {
+   "record_set_id": "census_pep.v2025.cy2024.state_resident_population_age_bands.11",
+   "period_type": "calendar_year",
+   "period_value": "2024",
+   "package_id": "census-pep-2025-state-age-bands",
+   "package": "packages/census/pep_2025_state_age_bands",
+   "build_year": 2024
+  },
+  {
+   "record_set_id": "census_pep.v2025.cy2024.state_resident_population_age_bands.12",
+   "period_type": "calendar_year",
+   "period_value": "2024",
+   "package_id": "census-pep-2025-state-age-bands",
+   "package": "packages/census/pep_2025_state_age_bands",
+   "build_year": 2024
+  },
+  {
+   "record_set_id": "census_pep.v2025.cy2024.state_resident_population_age_bands.13",
+   "period_type": "calendar_year",
+   "period_value": "2024",
+   "package_id": "census-pep-2025-state-age-bands",
+   "package": "packages/census/pep_2025_state_age_bands",
+   "build_year": 2024
+  },
+  {
+   "record_set_id": "census_pep.v2025.cy2024.state_resident_population_age_bands.15",
+   "period_type": "calendar_year",
+   "period_value": "2024",
+   "package_id": "census-pep-2025-state-age-bands",
+   "package": "packages/census/pep_2025_state_age_bands",
+   "build_year": 2024
+  },
+  {
+   "record_set_id": "census_pep.v2025.cy2024.state_resident_population_age_bands.16",
+   "period_type": "calendar_year",
+   "period_value": "2024",
+   "package_id": "census-pep-2025-state-age-bands",
+   "package": "packages/census/pep_2025_state_age_bands",
+   "build_year": 2024
+  },
+  {
+   "record_set_id": "census_pep.v2025.cy2024.state_resident_population_age_bands.17",
+   "period_type": "calendar_year",
+   "period_value": "2024",
+   "package_id": "census-pep-2025-state-age-bands",
+   "package": "packages/census/pep_2025_state_age_bands",
+   "build_year": 2024
+  },
+  {
+   "record_set_id": "census_pep.v2025.cy2024.state_resident_population_age_bands.18",
+   "period_type": "calendar_year",
+   "period_value": "2024",
+   "package_id": "census-pep-2025-state-age-bands",
+   "package": "packages/census/pep_2025_state_age_bands",
+   "build_year": 2024
+  },
+  {
+   "record_set_id": "census_pep.v2025.cy2024.state_resident_population_age_bands.19",
+   "period_type": "calendar_year",
+   "period_value": "2024",
+   "package_id": "census-pep-2025-state-age-bands",
+   "package": "packages/census/pep_2025_state_age_bands",
+   "build_year": 2024
+  },
+  {
+   "record_set_id": "census_pep.v2025.cy2024.state_resident_population_age_bands.20",
+   "period_type": "calendar_year",
+   "period_value": "2024",
+   "package_id": "census-pep-2025-state-age-bands",
+   "package": "packages/census/pep_2025_state_age_bands",
+   "build_year": 2024
+  },
+  {
+   "record_set_id": "census_pep.v2025.cy2024.state_resident_population_age_bands.21",
+   "period_type": "calendar_year",
+   "period_value": "2024",
+   "package_id": "census-pep-2025-state-age-bands",
+   "package": "packages/census/pep_2025_state_age_bands",
+   "build_year": 2024
+  },
+  {
+   "record_set_id": "census_pep.v2025.cy2024.state_resident_population_age_bands.22",
+   "period_type": "calendar_year",
+   "period_value": "2024",
+   "package_id": "census-pep-2025-state-age-bands",
+   "package": "packages/census/pep_2025_state_age_bands",
+   "build_year": 2024
+  },
+  {
+   "record_set_id": "census_pep.v2025.cy2024.state_resident_population_age_bands.23",
+   "period_type": "calendar_year",
+   "period_value": "2024",
+   "package_id": "census-pep-2025-state-age-bands",
+   "package": "packages/census/pep_2025_state_age_bands",
+   "build_year": 2024
+  },
+  {
+   "record_set_id": "census_pep.v2025.cy2024.state_resident_population_age_bands.24",
+   "period_type": "calendar_year",
+   "period_value": "2024",
+   "package_id": "census-pep-2025-state-age-bands",
+   "package": "packages/census/pep_2025_state_age_bands",
+   "build_year": 2024
+  },
+  {
+   "record_set_id": "census_pep.v2025.cy2024.state_resident_population_age_bands.25",
+   "period_type": "calendar_year",
+   "period_value": "2024",
+   "package_id": "census-pep-2025-state-age-bands",
+   "package": "packages/census/pep_2025_state_age_bands",
+   "build_year": 2024
+  },
+  {
+   "record_set_id": "census_pep.v2025.cy2024.state_resident_population_age_bands.26",
+   "period_type": "calendar_year",
+   "period_value": "2024",
+   "package_id": "census-pep-2025-state-age-bands",
+   "package": "packages/census/pep_2025_state_age_bands",
+   "build_year": 2024
+  },
+  {
+   "record_set_id": "census_pep.v2025.cy2024.state_resident_population_age_bands.27",
+   "period_type": "calendar_year",
+   "period_value": "2024",
+   "package_id": "census-pep-2025-state-age-bands",
+   "package": "packages/census/pep_2025_state_age_bands",
+   "build_year": 2024
+  },
+  {
+   "record_set_id": "census_pep.v2025.cy2024.state_resident_population_age_bands.28",
+   "period_type": "calendar_year",
+   "period_value": "2024",
+   "package_id": "census-pep-2025-state-age-bands",
+   "package": "packages/census/pep_2025_state_age_bands",
+   "build_year": 2024
+  },
+  {
+   "record_set_id": "census_pep.v2025.cy2024.state_resident_population_age_bands.29",
+   "period_type": "calendar_year",
+   "period_value": "2024",
+   "package_id": "census-pep-2025-state-age-bands",
+   "package": "packages/census/pep_2025_state_age_bands",
+   "build_year": 2024
+  },
+  {
+   "record_set_id": "census_pep.v2025.cy2024.state_resident_population_age_bands.30",
+   "period_type": "calendar_year",
+   "period_value": "2024",
+   "package_id": "census-pep-2025-state-age-bands",
+   "package": "packages/census/pep_2025_state_age_bands",
+   "build_year": 2024
+  },
+  {
+   "record_set_id": "census_pep.v2025.cy2024.state_resident_population_age_bands.31",
+   "period_type": "calendar_year",
+   "period_value": "2024",
+   "package_id": "census-pep-2025-state-age-bands",
+   "package": "packages/census/pep_2025_state_age_bands",
+   "build_year": 2024
+  },
+  {
+   "record_set_id": "census_pep.v2025.cy2024.state_resident_population_age_bands.32",
+   "period_type": "calendar_year",
+   "period_value": "2024",
+   "package_id": "census-pep-2025-state-age-bands",
+   "package": "packages/census/pep_2025_state_age_bands",
+   "build_year": 2024
+  },
+  {
+   "record_set_id": "census_pep.v2025.cy2024.state_resident_population_age_bands.33",
+   "period_type": "calendar_year",
+   "period_value": "2024",
+   "package_id": "census-pep-2025-state-age-bands",
+   "package": "packages/census/pep_2025_state_age_bands",
+   "build_year": 2024
+  },
+  {
+   "record_set_id": "census_pep.v2025.cy2024.state_resident_population_age_bands.34",
+   "period_type": "calendar_year",
+   "period_value": "2024",
+   "package_id": "census-pep-2025-state-age-bands",
+   "package": "packages/census/pep_2025_state_age_bands",
+   "build_year": 2024
+  },
+  {
+   "record_set_id": "census_pep.v2025.cy2024.state_resident_population_age_bands.35",
+   "period_type": "calendar_year",
+   "period_value": "2024",
+   "package_id": "census-pep-2025-state-age-bands",
+   "package": "packages/census/pep_2025_state_age_bands",
+   "build_year": 2024
+  },
+  {
+   "record_set_id": "census_pep.v2025.cy2024.state_resident_population_age_bands.36",
+   "period_type": "calendar_year",
+   "period_value": "2024",
+   "package_id": "census-pep-2025-state-age-bands",
+   "package": "packages/census/pep_2025_state_age_bands",
+   "build_year": 2024
+  },
+  {
+   "record_set_id": "census_pep.v2025.cy2024.state_resident_population_age_bands.37",
+   "period_type": "calendar_year",
+   "period_value": "2024",
+   "package_id": "census-pep-2025-state-age-bands",
+   "package": "packages/census/pep_2025_state_age_bands",
+   "build_year": 2024
+  },
+  {
+   "record_set_id": "census_pep.v2025.cy2024.state_resident_population_age_bands.38",
+   "period_type": "calendar_year",
+   "period_value": "2024",
+   "package_id": "census-pep-2025-state-age-bands",
+   "package": "packages/census/pep_2025_state_age_bands",
+   "build_year": 2024
+  },
+  {
+   "record_set_id": "census_pep.v2025.cy2024.state_resident_population_age_bands.39",
+   "period_type": "calendar_year",
+   "period_value": "2024",
+   "package_id": "census-pep-2025-state-age-bands",
+   "package": "packages/census/pep_2025_state_age_bands",
+   "build_year": 2024
+  },
+  {
+   "record_set_id": "census_pep.v2025.cy2024.state_resident_population_age_bands.40",
+   "period_type": "calendar_year",
+   "period_value": "2024",
+   "package_id": "census-pep-2025-state-age-bands",
+   "package": "packages/census/pep_2025_state_age_bands",
+   "build_year": 2024
+  },
+  {
+   "record_set_id": "census_pep.v2025.cy2024.state_resident_population_age_bands.41",
+   "period_type": "calendar_year",
+   "period_value": "2024",
+   "package_id": "census-pep-2025-state-age-bands",
+   "package": "packages/census/pep_2025_state_age_bands",
+   "build_year": 2024
+  },
+  {
+   "record_set_id": "census_pep.v2025.cy2024.state_resident_population_age_bands.42",
+   "period_type": "calendar_year",
+   "period_value": "2024",
+   "package_id": "census-pep-2025-state-age-bands",
+   "package": "packages/census/pep_2025_state_age_bands",
+   "build_year": 2024
+  },
+  {
+   "record_set_id": "census_pep.v2025.cy2024.state_resident_population_age_bands.44",
+   "period_type": "calendar_year",
+   "period_value": "2024",
+   "package_id": "census-pep-2025-state-age-bands",
+   "package": "packages/census/pep_2025_state_age_bands",
+   "build_year": 2024
+  },
+  {
+   "record_set_id": "census_pep.v2025.cy2024.state_resident_population_age_bands.45",
+   "period_type": "calendar_year",
+   "period_value": "2024",
+   "package_id": "census-pep-2025-state-age-bands",
+   "package": "packages/census/pep_2025_state_age_bands",
+   "build_year": 2024
+  },
+  {
+   "record_set_id": "census_pep.v2025.cy2024.state_resident_population_age_bands.46",
+   "period_type": "calendar_year",
+   "period_value": "2024",
+   "package_id": "census-pep-2025-state-age-bands",
+   "package": "packages/census/pep_2025_state_age_bands",
+   "build_year": 2024
+  },
+  {
+   "record_set_id": "census_pep.v2025.cy2024.state_resident_population_age_bands.47",
+   "period_type": "calendar_year",
+   "period_value": "2024",
+   "package_id": "census-pep-2025-state-age-bands",
+   "package": "packages/census/pep_2025_state_age_bands",
+   "build_year": 2024
+  },
+  {
+   "record_set_id": "census_pep.v2025.cy2024.state_resident_population_age_bands.48",
+   "period_type": "calendar_year",
+   "period_value": "2024",
+   "package_id": "census-pep-2025-state-age-bands",
+   "package": "packages/census/pep_2025_state_age_bands",
+   "build_year": 2024
+  },
+  {
+   "record_set_id": "census_pep.v2025.cy2024.state_resident_population_age_bands.49",
+   "period_type": "calendar_year",
+   "period_value": "2024",
+   "package_id": "census-pep-2025-state-age-bands",
+   "package": "packages/census/pep_2025_state_age_bands",
+   "build_year": 2024
+  },
+  {
+   "record_set_id": "census_pep.v2025.cy2024.state_resident_population_age_bands.50",
+   "period_type": "calendar_year",
+   "period_value": "2024",
+   "package_id": "census-pep-2025-state-age-bands",
+   "package": "packages/census/pep_2025_state_age_bands",
+   "build_year": 2024
+  },
+  {
+   "record_set_id": "census_pep.v2025.cy2024.state_resident_population_age_bands.51",
+   "period_type": "calendar_year",
+   "period_value": "2024",
+   "package_id": "census-pep-2025-state-age-bands",
+   "package": "packages/census/pep_2025_state_age_bands",
+   "build_year": 2024
+  },
+  {
+   "record_set_id": "census_pep.v2025.cy2024.state_resident_population_age_bands.53",
+   "period_type": "calendar_year",
+   "period_value": "2024",
+   "package_id": "census-pep-2025-state-age-bands",
+   "package": "packages/census/pep_2025_state_age_bands",
+   "build_year": 2024
+  },
+  {
+   "record_set_id": "census_pep.v2025.cy2024.state_resident_population_age_bands.54",
+   "period_type": "calendar_year",
+   "period_value": "2024",
+   "package_id": "census-pep-2025-state-age-bands",
+   "package": "packages/census/pep_2025_state_age_bands",
+   "build_year": 2024
+  },
+  {
+   "record_set_id": "census_pep.v2025.cy2024.state_resident_population_age_bands.55",
+   "period_type": "calendar_year",
+   "period_value": "2024",
+   "package_id": "census-pep-2025-state-age-bands",
+   "package": "packages/census/pep_2025_state_age_bands",
+   "build_year": 2024
+  },
+  {
+   "record_set_id": "census_pep.v2025.cy2024.state_resident_population_age_bands.56",
+   "period_type": "calendar_year",
+   "period_value": "2024",
+   "package_id": "census-pep-2025-state-age-bands",
+   "package": "packages/census/pep_2025_state_age_bands",
    "build_year": 2024
   },
   {

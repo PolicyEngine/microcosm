@@ -70,7 +70,7 @@ US_PACKAGE_DIR = (
 MANIFEST_PATH = US_PACKAGE_DIR / "target_parity_manifest.json"
 FEED_FAMILIES_PATH = US_PACKAGE_DIR / "target_parity_feed_families.json"
 
-DEFAULT_FEED_NAME = "consumer_facts_us_41b2fb2.jsonl"
+DEFAULT_FEED_NAME = "consumer_facts_us_e86a83b.jsonl"
 DEFAULT_FEED_PATH = (
     Path.home() / "PolicyEngine" / "_buildh-runtime" / "inputs" / DEFAULT_FEED_NAME
 )
@@ -625,6 +625,48 @@ _FAMILY_EXCLUSIONS: dict[str, tuple[str, str, str, dict[str, str]]] = {
     # 6.04M-return Box 7 class; the count target waits for support widening,
     # microcosm#451 item 3), at every vintage since decision d179
     # (US_FISCAL_TARGET_ALL_VINTAGE_SUPPORT_EXCLUSIONS, microcosm#956).
+    # microcosm#1528: Census Vintage 2025 state population by age group
+    # (chronicle#417) enters the feed at e86a83bb. The ACS local-area release
+    # binds it (its default ``age`` family sets state_age_band_targets=True);
+    # the default compile drops those facts before it selects references.
+    "census_pep.v2025": (
+        "off_by_default",
+        "Census Vintage 2025 state resident population by age group "
+        "(chronicle#417): single years 0 to 5, then 6 to 11, 12 to 17, 18 to "
+        "24, ten-year groups to 64, 65 to 74, and 75 and over, for every state "
+        "and DC at July 1, 2024, beside each state's all-ages total. The ACS "
+        "local-area release binds the age groups and reads the totals "
+        "(compile_us_fiscal_target_registry(state_age_band_targets=True), set "
+        "by its default age family); the default compile, which this "
+        "manifest describes, turns none of them into a target.",
+        "compile_us_fiscal_target_registry(age_targets=True) + "
+        "apply_us_medicaid_enrollment_substitutions on the e86a83bb feed: "
+        "33,250 targets, none from the feed's 816 census_pep.v2025 facts; "
+        "with state_age_band_targets=True the same compile adds 765 targets, "
+        "one per age-group fact, and changes no other; sample fact "
+        "census_pep.v2025.cy2024.state_resident_population_age_bands.18."
+        "age_0.population",
+        _fence(
+            origin=(
+                "microcosm#1528 (re-pin to chronicle#417's package): a Census "
+                "vintage new to the feed, bound by the ACS local-area release "
+                "to hold each state's age mix to Census. This re-pin did not "
+                "search the retired us-data pipeline for a state single-year "
+                "age target."
+            ),
+            purpose=(
+                "the opt-in leaves the default registry every other US release "
+                "compiles exactly as it was (the same 33,250 targets) while "
+                "the ACS local-area release binds the new groups."
+            ),
+            verdict_basis=(
+                "off by default; the ACS local-area release "
+                "(tools/build_us_acs_local_release.py, family age) binds all "
+                "765 age-group facts. Promote the family to compiled if the "
+                "default compile ever binds it."
+            ),
+        ),
+    ),
     "kff.marketplace_effectuated_enrollment": (
         "superseded",
         "Kaiser Family Foundation state marketplace enrollment — a secondary "

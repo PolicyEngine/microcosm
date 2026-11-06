@@ -1126,6 +1126,8 @@ def test_target_registry_is_identical_across_artifact_record_counts() -> None:
         "congressional_district_vintage_crosswalk",
         "age_targets",
         "allow_unaged_dollar_targets",
+        # microcosm#1528: a fence on one record-set family, not a scale knob.
+        "state_age_band_targets",
     }
 
 

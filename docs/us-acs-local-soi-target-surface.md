@@ -2,7 +2,9 @@
 
 `tools/build_us_acs_local_release.py --stage materialize` calibrates the ACS
 local-area artifact to an administrative surface: USDA SNAP, CMS Medicaid
-enrollment and IRS SOI, plus PUMA-ladder population marginals. `--soi-mode`
+enrollment and IRS SOI, plus state and district population marginals and,
+with the default `age` family, Census Vintage 2025 state age groups (see
+[the state age groups note](us-acs-local-state-age.md)). `--soi-mode`
 decides which SOI specs it keeps.
 
 | `--soi-mode` | What it keeps | Status |
@@ -79,6 +81,10 @@ their role is `soi_fiscal_distribution`, so `totals` is unchanged:
 | **Admin specs** | **4,380** | **760** | **31,474** |
 
 With the 487 population marginals `state` now calibrates to 4,867 targets.
+With the `age` family, in `--families` by default since microcosm#1528, it
+calibrates to 5,632 on the e86a83bb feed: the 765 state age groups join, and
+the 487 marginals take Census Vintage 2025 levels
+([the state age groups note](us-acs-local-state-age.md)).
 The rest of this section describes the 2026-09-22 measurement.
 
 The 487 population marginals (51 states and 436 congressional districts) are
