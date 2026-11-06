@@ -917,6 +917,7 @@ _STAGE_CELLS: Mapping[str, tuple[_Cell, ...]] = {
         _Cell("person", "receives_benefits_in_own_right", "bool"),
         _Cell("person", "reports_outstanding_student_loan", "bool"),
         _Cell("person", "age_left_full_time_education", "int64"),
+        _Cell("person", "is_in_full_time_education", "bool"),
     ),
     "frs_legacy_proxies": _cells(
         "person",

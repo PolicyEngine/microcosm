@@ -454,27 +454,21 @@ UK_ENGINE_DEFAULT_INPUTS: dict[str, str] = {
         "microcosm#1439 stores the status and retires the encoding (for María's "
         "signature)."
     ),
-    "is_in_full_time_education": (
-        "Whether the person is on a full-time course (policyengine-uk 2.173.2), "
-        "which Universal Credit's condition that a claimant is not receiving "
-        "education reads (UC Regs 2013 regs. 12 and 13). The build leaves it "
-        "false, so no claimant receives education and every claimant meets the "
-        "condition, as before 2.173.2: Universal Credit eligibility is "
-        "overstated for a full-time student whom no exception covers. "
-        "frs_education reads FTED, so a later change can set it, with its own "
-        "measurement of the Universal Credit rows (microcosm#1095; for María's "
-        "signature)."
-    ),
     "has_education_maintenance_funding": (
         "Whether the person has a student loan or grant for their maintenance "
         "(policyengine-uk 2.173.2), which makes a full-time course that is not "
         "advanced education count as education for Universal Credit (UC Regs "
-        "2013 reg. 12(2)(b)). It matters only where is_in_full_time_education "
-        "is true, which the build never sets, so it stays false and changes "
-        "nothing. The FRS has no clean source for it: a payment under a scheme "
-        "that helps people under 21 finish such courses does not count (reg. "
-        "68(7)), and the FRS does not say what a grant or loan pays for "
-        "(microcosm#1095; for María's signature)."
+        "2013 reg. 12(2)(b)). It matters where is_in_full_time_education is "
+        "true, which frs_education sets from the FRS full-time education "
+        "answer (EDUCFT on 2024-25). The FRS has no clean source for it: a "
+        "payment under a scheme that helps people under 21 finish such courses "
+        "does not count (reg. 68(7)), and the FRS does not say what a grant or "
+        "loan pays for. So it stays false, and a full-time student on a course "
+        "below advanced level receives education only as a qualifying young "
+        "person (reg. 12(1A)): Universal Credit eligibility is overstated for "
+        "such a student who is not a qualifying young person, has maintenance "
+        "funding and whom no exception covers (microcosm#1095; for María's "
+        "signature)."
     ),
 }
 
