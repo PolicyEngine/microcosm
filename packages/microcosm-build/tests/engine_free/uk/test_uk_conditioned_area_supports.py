@@ -51,7 +51,10 @@ _SHA = re.compile(r"[0-9a-f]{64}")
 #: The vintage authorities each conditioned support adds to its base's.
 CONDITIONING_VINTAGES = {
     EW: {"uk_iod_wimd_2019": "2019_iod_wimd", "uk_ctsop_2025": "2025_ctsop"},
-    SCOT: {"uk_simd_2020v2": "2020v2_simd", "uk_ctaxbase_2025": "2025_ctaxbase"},
+    SCOT: {
+        "uk_simd_2020v2": "2020v2_simd",
+        "uk_nrs_dz_dwellings_2024": "2024_nrs_dz_dwellings",
+    },
     NI: {"uk_nimdm_2017": "2017_nimdm_soa"},
 }
 #: The authority behind each system's decile column.
@@ -257,9 +260,15 @@ def test_column_metadata_names_every_input_and_its_vintage(provenance, system) -
         item = entry["column_metadata"][column]
         assert item["kind"] == "weight" and item["basis"].endswith("_x1e6")
         publisher, _, resource = item["source"].partition("#")
+        package, _, publisher_digest = publisher.partition("@sha256:")
+        if system == SCOT:
+            # Scotland reads one sheet of the registered NRS workbook itself.
+            assert package == "nrs-dwellings-data-zone-2025"
+            assert sha_by_package[package] == publisher_digest
+            assert resource == "sheet-2024"
+            continue
         name, _, digest = resource.partition("@sha256:")
         assert resources[name]["sha256"] == digest
-        package, _, publisher_digest = publisher.partition("@sha256:")
         assert (
             resources[name]["publisher_package"],
             resources[name]["publisher_sha256"],
@@ -386,13 +395,11 @@ def test_mounted_conditioned_support_extends_the_registered_support(
     )
 
 
-def test_mounted_scottish_band_weights_move_mass_only_between_councils(
-    provenance,
-) -> None:
+def test_mounted_scottish_band_weights_follow_each_data_zone(provenance) -> None:
     support = decode_atomic_support(_mounted(SCOT))
     frame = pd.DataFrame(
         {
-            "council": np.asarray(support.arrays["local_authority_code"]),
+            "zone": np.asarray(support.arrays["lsoa_code"]),
             "households": np.asarray(support.arrays["households"], dtype=np.int64),
             **{
                 c: np.asarray(support.arrays[c], dtype=np.int64)
@@ -400,9 +407,9 @@ def test_mounted_scottish_band_weights_move_mass_only_between_councils(
             },
         }
     )
-    totals = frame.groupby("council").sum()
+    totals = frame.groupby("zone").sum()
     for column in BAND_WEIGHT_COLUMNS[SCOT]:
-        # Within a council every area holds the council's band share of its
+        # Within a data zone every area holds the zone's band share of its
         # households, so its weight is that share times households, rounded.
-        share = frame["council"].map(totals[column] / totals["households"])
+        share = frame["zone"].map(totals[column] / totals["households"])
         assert np.all(np.abs(frame[column] - frame["households"] * share) <= 1.0)

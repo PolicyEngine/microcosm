@@ -197,8 +197,8 @@ sources:
     value: 2025_ctsop
 - id: uk_scotland_output_area_2022_conditioned_support
   role: uk_atomic_area_conditioned_support
-  sha256: a5e994ae0a460126af99787cca37043ef08d659362a5fa9c4bbd752a9b198499
-  byte_size: 1028760
+  sha256: 0c7d78263c5db96d8f6dce06ac22c8e45f5fc4272297a4d16e073c964e797fea
+  byte_size: 1607702
   loader: kernel:load_uk_atomic_area_support
   vintages:
   - vintage:uk_oa_2022
@@ -207,14 +207,14 @@ sources:
   - vintage:uk_pcon_2024
   - vintage:uk_itl_2025
   - vintage:uk_simd_2020v2
-  - vintage:uk_ctaxbase_2025
+  - vintage:uk_nrs_dz_dwellings_2024
   vintage_authorities:
   - id: uk_simd_2020v2
     kind: geography_vintage
     value: 2020v2_simd
-  - id: uk_ctaxbase_2025
+  - id: uk_nrs_dz_dwellings_2024
     kind: geography_vintage
-    value: 2025_ctaxbase
+    value: 2024_nrs_dz_dwellings
 - id: uk_ni_data_zone_2021_conditioned_support
   role: uk_atomic_area_conditioned_support
   sha256: 6d71f2a98f26f80d80a4671b7e37389dd92f8ff9b9a02ee35c09819763b3b450

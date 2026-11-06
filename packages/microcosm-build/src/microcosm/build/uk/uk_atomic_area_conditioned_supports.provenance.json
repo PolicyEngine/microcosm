@@ -7,6 +7,7 @@
     "pull_request": "PolicyEngine/chronicle#413"
   },
   "issues": {
+    "chronicle_band_facts": "PolicyEngine/chronicle#419",
     "chronicle_registration": "PolicyEngine/chronicle#412",
     "umbrella": "PolicyEngine/microcosm#931"
   },
@@ -15,8 +16,8 @@
     "imd_decile is the 2019 vintage of each nation's index (IoD 2019, WIMD 2019, SIMD 2020v2, NIMDM 2017): the FRS 2024-25 variables IMDE, IMDW, IMDS and IMDN carry no change note from 2023-24, which predates the 2025 indices, and on an internal comparison England's FRS decile shares by region fit IoD 2019 better than IoD 2025, as the 2023-24 FRS does. The vintage is still to be confirmed with DWP.",
     "An area's decile is the one most of its live small-user postcodes carry in the May 2026 NSPL (oa21cd: the 2021 output area in England and Wales, the 2022 output area in Scotland, the 2021 data zone in Northern Ireland). Ranks are within-nation only.",
     "Northern Ireland's SOAs (2001) do not nest in its 2021 data zones, so many data zones' postcodes span deciles; the modal decile is recorded with relation inferred_modal and the counts below.",
-    "England and Wales band weights read each area's LSOA mix as committed (shares to 6 dp ending at exactly 1), so households x share x 10^6 is exact. Scotland's read its council's chargeable dwellings, rounded half to even per band.",
-    "Scotland's band mix is its council's, so a band moves mass only between councils: within a council a household is placed in proportion to households, where England and Wales use each LSOA's mix. A mix by 2022 data zone, in which the 2022 output areas nest (such as NRS's small area statistics on households and dwellings), would give Scotland the same within-council resolution. No such source is registered in Chronicle yet."
+    "England and Wales band weights read each area's LSOA mix as committed (shares to 6 dp ending at exactly 1), so households x share x 10^6 is exact. Scotland's read its 2022 data zone's dwellings by band, rounded half to even per band.",
+    "Scotland's band mix is its 2022 data zone's, in which its 2022 output areas nest, from NRS's December 2024 sheet: nearest the FRS 2024-25 year and VOA's stock at 31 March 2025. NRS counts dwellings on the valuation list, as VOA does in England and Wales. Chronicle registers the workbook (nrs-dwellings-data-zone-2025) with only its total as facts; until chronicle#419 adds the band columns, this tool reads them from the registered bytes."
   ],
   "publisher_files": {
     "iod2019": {
@@ -40,6 +41,17 @@
       "sha256": "3738edf2d264491301b41cc7b64967373d49b09a6f5719225a0e4f7d789af9d3",
       "size_bytes": 1772032,
       "url": "https://www.nisra.gov.uk/files/nisra/publications/NIMDM17_SOAresults.xls"
+    },
+    "nrs_dz_dwellings": {
+      "chronicle_package_id": "nrs-dwellings-data-zone-2025",
+      "chronicle_source_id": "nrs",
+      "chronicle_year": 2025,
+      "filename": "dwelling-estimates-by-2022-data-zones-24-25.xlsx",
+      "product": "Dwelling estimates by 2022 data zone, December 2024 and 2025",
+      "publisher": "NRS",
+      "sha256": "5d61db5faf7e81451d838e5d394b8e0682bbf501341c1220aea4a78082ceb033",
+      "size_bytes": 1223284,
+      "url": "https://nrscotland.gov.uk/media/43tfx3zo/dwelling-estimates-by-2022-data-zones-24-25.xlsx"
     },
     "nspl": {
       "chronicle_package_id": "ons-nspl-may-2026",
@@ -76,14 +88,6 @@
     }
   },
   "resources": {
-    "scotgov_chargeable_dwellings_by_band.json": {
-      "as_at": "2025-09",
-      "publisher_file": "CTAXBASE_2025_Tables_Chargeable_Dwellings.xlsx",
-      "publisher_package": "scotgov-council-tax-bands-2025",
-      "publisher_sha256": "8e431837aa37ee298c9a2b9b010b8ecbc7e3a817573a3a84f6251e6db00a591f",
-      "resource": "scotgov_chargeable_dwellings_by_band.json",
-      "sha256": "53580ea7693563938d06ae448fe671dc2bd80aa0b51b9ed28f444292b0c3261a"
-    },
     "voa_council_tax_band_mix_lsoa.json": {
       "as_at": "2025-03-31",
       "publisher_file": "CTSOP1.1.zip",
@@ -830,21 +834,21 @@
     },
     "uk_scotland_output_area_2022": {
       "band_weights": {
-        "areas_with_rounding": 24812,
+        "areas_with_rounding": 19887,
         "column_totals": {
-          "households_band_a": 477656371974,
-          "households_band_b": 558484112506,
-          "households_band_c": 407475622303,
-          "households_band_d": 353516527279,
-          "households_band_e": 350498043811,
-          "households_band_f": 211364523185,
-          "households_band_g": 135864913826,
-          "households_band_h": 13854884024
+          "households_band_a": 495138998397,
+          "households_band_b": 563897865725,
+          "households_band_c": 406542930927,
+          "households_band_d": 347792158855,
+          "households_band_e": 345917815311,
+          "households_band_f": 205185630632,
+          "households_band_g": 130816965379,
+          "households_band_h": 13422634794
         },
         "largest_area_deviation": 3,
         "rounding": "round_half_even",
         "scale": 1000000,
-        "total_deviation": -1092
+        "total_deviation": 20
       },
       "base": {
         "sha256": "1649fa831315e6fac80caa4af7f68e837fd985b7f59c2831bb0db8cbfeeee443",
@@ -852,44 +856,44 @@
       },
       "column_metadata": {
         "households_band_a": {
-          "basis": "census_2022_occupied_households_postcode_index_cell_key_perturbed_x_ctaxbase_2025_council_band_a_share_round_half_even_x1e6",
+          "basis": "census_2022_occupied_households_postcode_index_cell_key_perturbed_x_nrs_dz2022_2024_band_a_share_round_half_even_x1e6",
           "kind": "weight",
-          "source": "scotgov-council-tax-bands-2025@sha256:8e431837aa37ee298c9a2b9b010b8ecbc7e3a817573a3a84f6251e6db00a591f#scotgov_chargeable_dwellings_by_band.json@sha256:53580ea7693563938d06ae448fe671dc2bd80aa0b51b9ed28f444292b0c3261a"
+          "source": "nrs-dwellings-data-zone-2025@sha256:5d61db5faf7e81451d838e5d394b8e0682bbf501341c1220aea4a78082ceb033#sheet-2024"
         },
         "households_band_b": {
-          "basis": "census_2022_occupied_households_postcode_index_cell_key_perturbed_x_ctaxbase_2025_council_band_b_share_round_half_even_x1e6",
+          "basis": "census_2022_occupied_households_postcode_index_cell_key_perturbed_x_nrs_dz2022_2024_band_b_share_round_half_even_x1e6",
           "kind": "weight",
-          "source": "scotgov-council-tax-bands-2025@sha256:8e431837aa37ee298c9a2b9b010b8ecbc7e3a817573a3a84f6251e6db00a591f#scotgov_chargeable_dwellings_by_band.json@sha256:53580ea7693563938d06ae448fe671dc2bd80aa0b51b9ed28f444292b0c3261a"
+          "source": "nrs-dwellings-data-zone-2025@sha256:5d61db5faf7e81451d838e5d394b8e0682bbf501341c1220aea4a78082ceb033#sheet-2024"
         },
         "households_band_c": {
-          "basis": "census_2022_occupied_households_postcode_index_cell_key_perturbed_x_ctaxbase_2025_council_band_c_share_round_half_even_x1e6",
+          "basis": "census_2022_occupied_households_postcode_index_cell_key_perturbed_x_nrs_dz2022_2024_band_c_share_round_half_even_x1e6",
           "kind": "weight",
-          "source": "scotgov-council-tax-bands-2025@sha256:8e431837aa37ee298c9a2b9b010b8ecbc7e3a817573a3a84f6251e6db00a591f#scotgov_chargeable_dwellings_by_band.json@sha256:53580ea7693563938d06ae448fe671dc2bd80aa0b51b9ed28f444292b0c3261a"
+          "source": "nrs-dwellings-data-zone-2025@sha256:5d61db5faf7e81451d838e5d394b8e0682bbf501341c1220aea4a78082ceb033#sheet-2024"
         },
         "households_band_d": {
-          "basis": "census_2022_occupied_households_postcode_index_cell_key_perturbed_x_ctaxbase_2025_council_band_d_share_round_half_even_x1e6",
+          "basis": "census_2022_occupied_households_postcode_index_cell_key_perturbed_x_nrs_dz2022_2024_band_d_share_round_half_even_x1e6",
           "kind": "weight",
-          "source": "scotgov-council-tax-bands-2025@sha256:8e431837aa37ee298c9a2b9b010b8ecbc7e3a817573a3a84f6251e6db00a591f#scotgov_chargeable_dwellings_by_band.json@sha256:53580ea7693563938d06ae448fe671dc2bd80aa0b51b9ed28f444292b0c3261a"
+          "source": "nrs-dwellings-data-zone-2025@sha256:5d61db5faf7e81451d838e5d394b8e0682bbf501341c1220aea4a78082ceb033#sheet-2024"
         },
         "households_band_e": {
-          "basis": "census_2022_occupied_households_postcode_index_cell_key_perturbed_x_ctaxbase_2025_council_band_e_share_round_half_even_x1e6",
+          "basis": "census_2022_occupied_households_postcode_index_cell_key_perturbed_x_nrs_dz2022_2024_band_e_share_round_half_even_x1e6",
           "kind": "weight",
-          "source": "scotgov-council-tax-bands-2025@sha256:8e431837aa37ee298c9a2b9b010b8ecbc7e3a817573a3a84f6251e6db00a591f#scotgov_chargeable_dwellings_by_band.json@sha256:53580ea7693563938d06ae448fe671dc2bd80aa0b51b9ed28f444292b0c3261a"
+          "source": "nrs-dwellings-data-zone-2025@sha256:5d61db5faf7e81451d838e5d394b8e0682bbf501341c1220aea4a78082ceb033#sheet-2024"
         },
         "households_band_f": {
-          "basis": "census_2022_occupied_households_postcode_index_cell_key_perturbed_x_ctaxbase_2025_council_band_f_share_round_half_even_x1e6",
+          "basis": "census_2022_occupied_households_postcode_index_cell_key_perturbed_x_nrs_dz2022_2024_band_f_share_round_half_even_x1e6",
           "kind": "weight",
-          "source": "scotgov-council-tax-bands-2025@sha256:8e431837aa37ee298c9a2b9b010b8ecbc7e3a817573a3a84f6251e6db00a591f#scotgov_chargeable_dwellings_by_band.json@sha256:53580ea7693563938d06ae448fe671dc2bd80aa0b51b9ed28f444292b0c3261a"
+          "source": "nrs-dwellings-data-zone-2025@sha256:5d61db5faf7e81451d838e5d394b8e0682bbf501341c1220aea4a78082ceb033#sheet-2024"
         },
         "households_band_g": {
-          "basis": "census_2022_occupied_households_postcode_index_cell_key_perturbed_x_ctaxbase_2025_council_band_g_share_round_half_even_x1e6",
+          "basis": "census_2022_occupied_households_postcode_index_cell_key_perturbed_x_nrs_dz2022_2024_band_g_share_round_half_even_x1e6",
           "kind": "weight",
-          "source": "scotgov-council-tax-bands-2025@sha256:8e431837aa37ee298c9a2b9b010b8ecbc7e3a817573a3a84f6251e6db00a591f#scotgov_chargeable_dwellings_by_band.json@sha256:53580ea7693563938d06ae448fe671dc2bd80aa0b51b9ed28f444292b0c3261a"
+          "source": "nrs-dwellings-data-zone-2025@sha256:5d61db5faf7e81451d838e5d394b8e0682bbf501341c1220aea4a78082ceb033#sheet-2024"
         },
         "households_band_h": {
-          "basis": "census_2022_occupied_households_postcode_index_cell_key_perturbed_x_ctaxbase_2025_council_band_h_share_round_half_even_x1e6",
+          "basis": "census_2022_occupied_households_postcode_index_cell_key_perturbed_x_nrs_dz2022_2024_band_h_share_round_half_even_x1e6",
           "kind": "weight",
-          "source": "scotgov-council-tax-bands-2025@sha256:8e431837aa37ee298c9a2b9b010b8ecbc7e3a817573a3a84f6251e6db00a591f#scotgov_chargeable_dwellings_by_band.json@sha256:53580ea7693563938d06ae448fe671dc2bd80aa0b51b9ed28f444292b0c3261a"
+          "source": "nrs-dwellings-data-zone-2025@sha256:5d61db5faf7e81451d838e5d394b8e0682bbf501341c1220aea4a78082ceb033#sheet-2024"
         },
         "imd_decile": {
           "kind": "code",
@@ -924,8 +928,8 @@
         "postcodes_without_rank": 0,
         "records": 156932
       },
-      "sha256": "a5e994ae0a460126af99787cca37043ef08d659362a5fa9c4bbd752a9b198499",
-      "size_bytes": 1028760,
+      "sha256": "0c7d78263c5db96d8f6dce06ac22c8e45f5fc4272297a4d16e073c964e797fea",
+      "size_bytes": 1607702,
       "zero_mass_cells": [
         {
           "cells": [],
