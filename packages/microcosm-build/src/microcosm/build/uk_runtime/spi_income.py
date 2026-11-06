@@ -74,6 +74,7 @@ from microcosm.build.uk_runtime.spi_rank_transport import (
     SPI_TRANSPORT_FOLDS,
     SPI_TRANSPORT_KEY_COLUMN,
     SPI_TRANSPORT_SEED_OFFSET,
+    analogue_source_columns,
     analogue_targets,
     assert_analogue_map_covers,
     cell_fold_ids,
@@ -1464,14 +1465,17 @@ def impute_uk_spi_income_support(
     if not training_people.any():
         raise ValueError("FRS-only stage has no canonical base training rows.")
     # Both forests train on each survey record once: its geographic clones
-    # fold into its first row with their weight, and every other copy stays
-    # its own row; a frame without geographic clones keeps every row and
-    # weight (household_lineage.collapse_geographic_clones, microcosm#931).
+    # that agree on what the forests read fold into its first row with their
+    # weight, clones that differ stay rows of their own, and every other
+    # copy stays its own row; a frame without geographic clones keeps every
+    # row and weight (household_lineage.collapse_geographic_clones,
+    # microcosm#931).
     kept, training_weight_values = collapse_geographic_clones(
         {"person": person, "household": household},
         "person",
         training_people.to_numpy(dtype=bool),
         person_weights.to_numpy(dtype=np.float64),
+        inputs=_forest_inputs(person, household),
     )
     training_people = pd.Series(kept, index=person.index)
     training_weights = pd.Series(training_weight_values, index=person.index)
@@ -3063,6 +3067,41 @@ def _hmrc_auxiliary_row_mask(
     if len(mask) != len(person):
         raise ValueError("HMRC auxiliary row mask must align to the person table.")
     return mask
+
+
+def _forest_inputs(person: pd.DataFrame, household: pd.DataFrame) -> pd.DataFrame:
+    """What the reference and stage-2 forests read of each person, one row each.
+
+    The columns their predictors derive from, the reference rows' rule, and
+    both forests' targets: a record's geographic clones fold where they
+    agree on these (microcosm#931). The stage's later steps derive the fit
+    frames from them deterministically, so clones that agree here agree
+    there.
+    """
+
+    columns = [
+        column
+        for column in dict.fromkeys(
+            (
+                "age",
+                "gender",
+                SPI_RECIPIENT_ROLE_COLUMN,
+                ISA_INTEREST_COLUMN,
+                *FRS_ONLY_SPI_FILL_INCOME_PREDICTOR_COLUMNS,
+                *_BRIDGE_PERSON_COLUMNS,
+                *_UNEARNED_INCOME_COLUMNS,
+                *analogue_source_columns(),
+                *FRS_ONLY_SPI_FILL_PERSON_COLUMNS,
+            )
+        )
+        if column in person.columns
+    ]
+    region = household.set_index("household_id")["region"]
+    return (
+        person[columns]
+        .reset_index(drop=True)
+        .assign(household_region=person["person_household_id"].map(region).to_numpy())
+    )
 
 
 def _person_predictors(

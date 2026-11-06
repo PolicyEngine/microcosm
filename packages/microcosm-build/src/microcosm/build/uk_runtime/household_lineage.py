@@ -159,6 +159,8 @@ def collapse_geographic_clones(
     entity: str,
     rows: np.ndarray,
     weights: np.ndarray,
+    *,
+    inputs: pd.DataFrame,
 ) -> tuple[np.ndarray, np.ndarray]:
     """A fit's training rows with each record's geographic clones folded in.
 
@@ -169,7 +171,13 @@ def collapse_geographic_clones(
     without the geographic branch, through the shared reader
     (``microcosm.build.source_lineage``); a frame without geographic clones,
     as every spine is today, keeps ``rows`` and ``weights`` value for value.
-    Returns the kept rows and the weights over every row of ``entity``.
+
+    ``inputs`` is what the fit reads, one row per row of ``entity``. Clones
+    fold only where they agree on it. Clones that differ, through a draw
+    keyed on their own ids or a stage run per area, stay rows of their own,
+    each variant with its clones' summed weight, so the fit sees each
+    clone's value at its share. Returns the kept rows and the weights over
+    every row of ``entity``.
     """
 
     keys = replica_keys(
@@ -179,7 +187,7 @@ def collapse_geographic_clones(
         UK_COPY_LINEAGE,
         merge=(GEOGRAPHIC_SUPPORT_BRANCH,),
     )
-    return collapse_replicas(keys, rows, weights)
+    return collapse_replicas(keys, rows, weights, inputs=inputs)
 
 
 def without_geographic_branch(

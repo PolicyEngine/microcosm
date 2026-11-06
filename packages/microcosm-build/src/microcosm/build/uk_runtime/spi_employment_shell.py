@@ -554,11 +554,25 @@ def impute_spi_employment_shell(
     if not training.any():
         raise ValueError(f"{stage} needs FRS adults with an occupation to train on.")
     # The fit and the donors see each survey record once: its geographic
-    # clones fold into its first row with their weight, and every other copy
-    # stays its own row; a frame without geographic clones keeps every row
-    # and weight (household_lineage.collapse_geographic_clones, microcosm#931).
+    # clones that agree on the predictors, the occupation and the industry it
+    # donates fold into its first row with their weight, clones that differ
+    # stay rows of their own, and every other copy stays its own row; a frame
+    # without geographic clones keeps every row and weight
+    # (household_lineage.collapse_geographic_clones, microcosm#931).
     training, fit_weights = collapse_geographic_clones(
-        {"person": person, "household": household}, "person", training, weights
+        {"person": person, "household": household},
+        "person",
+        training,
+        weights,
+        inputs=pd.concat(
+            [
+                table[[*OCCUPATION_PREDICTORS, OCCUPATION_COLUMN]].reset_index(
+                    drop=True
+                ),
+                person[list(INDUSTRY_COLUMNS)].reset_index(drop=True),
+            ],
+            axis=1,
+        ),
     )
 
     # The training rows in person_id order, so neither the fit (the early

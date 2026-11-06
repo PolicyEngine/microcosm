@@ -651,10 +651,11 @@ def _redraw_spi_capital(
     dependent-children band. A cell with fewer than ``minimum_cell_donors``
     donors widens in the declared ``UC_CAPITAL_COARSENING`` order; reporter
     status is never coarsened, and an empty reporter-status pool refuses.
-    Each survey benefit unit donates once, its geographic clones folded into
-    its first row with their weight, so a cell's donor count does not grow
-    with the clones (``household_lineage.collapse_geographic_clones``,
-    microcosm#931). Returns the number of redrawn units drawn at each level.
+    Each survey benefit unit donates once, its geographic clones that agree
+    on its cell and capital folded into its first row with their weight, so
+    a cell's donor count does not grow with identical clones
+    (``household_lineage.collapse_geographic_clones``, microcosm#931).
+    Returns the number of redrawn units drawn at each level.
     """
 
     if not isinstance(minimum_cell_donors, int) or minimum_cell_donors <= 0:
@@ -663,12 +664,23 @@ def _redraw_spi_capital(
     couple = frs_uc_couple_mask(person, benunit)
     income_band = _investment_income_band(investment)
     last_band = len(UC_CAPITAL_INCOME_BAND_EDGES)
-    # Domain-validated upstream: every non-sentinel value is >= 0.
+    # Domain-validated upstream: every non-sentinel value is >= 0. A donor's
+    # clones fold where they agree on its cell and the capital it donates;
+    # clones that differ donate apart, each with its clones' weight.
     donor, donor_weight = collapse_geographic_clones(
         {"person": person, "benunit": benunit, "household": household},
         "benunit",
         base & (capital >= 0.0) & (weights > 0.0),
         weights,
+        inputs=pd.DataFrame(
+            {
+                "reporter": np.asarray(reporter),
+                "income_band": np.asarray(income_band),
+                "couple": np.asarray(couple),
+                "child_band": np.asarray(child_band),
+                "capital": np.asarray(capital),
+            }
+        ),
     )
     target_ids = benunit["benunit_id"].to_numpy()
     draws = stable_identity_uniforms(

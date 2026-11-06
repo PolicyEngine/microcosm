@@ -330,7 +330,11 @@ def replica_keys(
 
 
 def collapse_replicas(
-    keys: np.ndarray, rows: np.ndarray, weights: np.ndarray
+    keys: np.ndarray,
+    rows: np.ndarray,
+    weights: np.ndarray,
+    *,
+    inputs: pd.DataFrame | None = None,
 ) -> tuple[np.ndarray, np.ndarray]:
     """Keep the first of each key's ``rows``, carrying the key's summed weight.
 
@@ -341,6 +345,14 @@ def collapse_replicas(
     replicas leave the selection. Weights off the selection are returned
     unchanged. When no two selected records share a key, the selection and
     weights are returned as they were, value for value.
+
+    ``inputs`` holds, one row per record, what the fit reads: its predictors
+    and targets, or the columns they derive from. Replicas then fold only
+    where they agree on every one of those columns. Replicas that differ stay
+    rows of their own: each distinct variant keeps its first record, with
+    the summed weight of the replicas that share it, so the fit sees every
+    variant at its share and nothing is dropped (microcosm#931). A missing
+    value agrees only with a missing value.
     """
 
     keys = np.asarray(keys, dtype=object)
@@ -349,11 +361,32 @@ def collapse_replicas(
     if not (len(keys) == len(selected) == len(values)):
         raise ValueError("Replica keys, rows and weights must align.")
     positions = np.flatnonzero(selected)
-    codes, uniques = pd.factorize(pd.Series(keys[positions], dtype=object), sort=False)
-    if len(uniques) == len(positions):
+    if inputs is None:
+        codes, uniques = pd.factorize(
+            pd.Series(keys[positions], dtype=object), sort=False
+        )
+        groups = len(uniques)
+    else:
+        if not isinstance(inputs, pd.DataFrame) or len(inputs) != len(keys):
+            raise ValueError("Replica inputs must be a frame with one row per record.")
+        if not inputs.columns.is_unique:
+            raise ValueError("Replica inputs must name each column once.")
+        table = inputs.iloc[positions].reset_index(drop=True)
+        table.columns = [f"input:{index}" for index in range(table.shape[1])]
+        for column in table.columns:
+            if isinstance(table[column].dtype, pd.CategoricalDtype):
+                table[column] = table[column].astype(object)
+        table.insert(0, "key", pd.Series(keys[positions], dtype=object))
+        codes = (
+            table.groupby(list(table.columns), sort=False, dropna=False, observed=True)
+            .ngroup()
+            .to_numpy()
+        )
+        groups = int(codes.max()) + 1 if len(codes) else 0
+    if groups == len(positions):
         return selected, values
-    first = np.full(len(uniques), -1, dtype=np.int64)
-    members: list[list[float]] = [[] for _ in range(len(uniques))]
+    first = np.full(groups, -1, dtype=np.int64)
+    members: list[list[float]] = [[] for _ in range(groups)]
     for position, code in zip(positions.tolist(), codes.tolist(), strict=True):
         if first[code] < 0:
             first[code] = position

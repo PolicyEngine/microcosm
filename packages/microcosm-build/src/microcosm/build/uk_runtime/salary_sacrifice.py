@@ -614,14 +614,17 @@ def impute_salary_sacrifice(
     )
     person_weights = person_households.map(household_weights).to_numpy(dtype=float)
     # The forest trains on each asked respondent once: their geographic
-    # clones fold into their first row with their weight, and every other copy
-    # stays its own row; a frame without geographic clones keeps every row and
-    # weight (household_lineage.collapse_geographic_clones, microcosm#931).
+    # clones that agree on the predictors and the sacrifice fold into their
+    # first row with their weight, clones that differ stay rows of their own,
+    # and every other copy stays its own row; a frame without geographic
+    # clones keeps every row and weight
+    # (household_lineage.collapse_geographic_clones, microcosm#931).
     kept, fit_weights = collapse_geographic_clones(
         {"person": person, "household": household},
         "person",
         training_mask.to_numpy(dtype=bool),
         person_weights,
+        inputs=numeric[[*SALSAC_PREDICTORS, SALSAC_OUTPUT]].reset_index(drop=True),
     )
     training_mask = pd.Series(kept, index=training_mask.index)
     training = numeric.loc[training_mask, [*SALSAC_PREDICTORS, SALSAC_OUTPUT]].copy()
