@@ -1,16 +1,23 @@
 """Assemble the dense joint UK line's release directory (microcosm#762 A18).
 
 Mirrors ``assemble_uk_release_dir.py`` for the ``microcosm-uk-2024-25-dense``
-line: verify the complete hash join over a finished ``--release-candidate``
-run of ``build_uk_rowwise_candidate.py`` (its manifest, signed gate report,
-full gate report and diagnostics, plus the spine, ladder and Ledger artifact
-it stood on), run the release-candidate pre-flight, mint the per-cut tag from
-the run's attempt id, stage the bundle under the non-default local-area role
-with UK evidence, validate it with the release contract, and only then rename
-it into place. The candidate H5 is cloned beside itself under the published
-filename; nothing is uploaded — the summary prints the exact ``publish_cli``
-command for the human step (``--no-latest --tag-only``, per-cut tag, private
-repo).
+release: verify the complete hash join over a finished
+``--release-candidate`` run of ``build_uk_rowwise_candidate.py`` (its
+manifest, its signed ``local_gate_report`` and ``full_gate_report`` outputs
+and its diagnostics, plus the spine, ladder and Ledger artifact it stood
+on), run the release-candidate
+pre-flight, stage the bundle under the non-default local-area role with UK
+evidence, validate it with the release contract, and only then rename it
+into place. The candidate H5 is cloned beside itself under the published
+filename; nothing is uploaded. The release publishes each build into its own
+folder through the emitter: the build is the run's attempt ID, both manifests
+name the release and the build, and nothing is tagged. The summary prints the
+exact ``microcosm-publish-release-build`` commands for the human step
+(private repository): ``publish_command`` lists the build, and
+``promote_command`` makes it the release's current build. Each new dense
+build becomes current; while the repository still has its ``latest*.json``
+pointer files, the emitter refuses every change to a current build, so the
+promotion waits until those files are deleted.
 
 The rotated holdout and the incumbent comparison are opt-in diagnostics
 (microcosm#1301). The manifest's reviewed limitations say what the release
@@ -55,6 +62,7 @@ from microcosm.build.uk_runtime.spi_dependency import (
 from microcosm.data.contract import (
     _UK_DENSE_SIGNED_EXCLUSION_GATES,
     _check_uk_incumbent_surface_evaluation,
+    release_artifact_role,
     validate_release_dir,
 )
 from microcosm.diagnostics import (
@@ -70,7 +78,6 @@ _NAMESPACE = "uk_dense"
 # pins the two.
 _DATASET_KEY = "microcosm_uk_2024_25_dense"
 _DATASET_FILENAME = f"{_DATASET_KEY}.h5"
-_ATTEMPT_SUFFIX = re.compile(r"[0-9]{8}T[0-9]{6}Z-[0-9a-f]{8}")
 _RUNTIME_PACKAGES = ("policyengine-core", "policyengine-uk", "microcosm-data")
 _GIT_COMMIT = re.compile(r"^[0-9a-f]{40}$")
 #: The gates whose reviewed exclusions the manifest names, each with its
@@ -186,24 +193,6 @@ def _preflight_module():
     assert spec.loader is not None
     spec.loader.exec_module(module)
     return module
-
-
-def _cut_tag(attempt_id: str, override: str | None) -> str:
-    prefix = UK_DENSE_RELEASE_ID + "-"
-    if override is not None:
-        if not override.startswith(prefix) or not _ATTEMPT_SUFFIX.fullmatch(
-            override[len(prefix) :]
-        ):
-            raise SystemExit(
-                f"error: --cut-tag must be {prefix}<YYYYMMDDTHHMMSSZ>-<uuid8>"
-            )
-        return override
-    match = re.search(r"([0-9]{8}T[0-9]{6}Z-[0-9a-f]{8})$", attempt_id)
-    if match is None:
-        raise SystemExit(
-            "error: the run's build id must end with <YYYYMMDDTHHMMSSZ>-<uuid8>"
-        )
-    return f"{UK_DENSE_RELEASE_ID}-{match.group(1)}"
 
 
 def _holdout_limitation(fit: Mapping[str, object]) -> dict[str, object]:
@@ -743,7 +732,6 @@ def _assemble(args: argparse.Namespace) -> dict[str, object]:
         raise SystemExit(
             "error: manifest.identity.code.git_commit must be a 40-hex commit"
         )
-    cut_tag = _cut_tag(attempt_id, args.cut_tag)
     parameters = _mapping(manifest.get("parameters"), "manifest.parameters")
     if parameters.get("release_candidate") is not True:
         raise SystemExit("error: the run was not a --release-candidate run")
@@ -776,7 +764,6 @@ def _assemble(args: argparse.Namespace) -> dict[str, object]:
             incumbent=incumbent,
             measured=measured,
             attempt_id=attempt_id,
-            cut_tag=cut_tag,
             runtime=runtime,
             code_pin=code_pin,
             report_path=report_path,
@@ -812,7 +799,6 @@ def _stage_and_finalize(
     incumbent: _IncumbentAttachment | None,
     measured: Mapping[str, str],
     attempt_id: str,
-    cut_tag: str,
     runtime: Mapping[str, str],
     code_pin: str,
     report_path: Path,
@@ -973,8 +959,11 @@ def _stage_and_finalize(
         "git_dirty"
     )
     git_dirty = recorded_dirty if isinstance(recorded_dirty, bool) else None
+    # The build is the calibration attempt: both manifests name it, and the
+    # release, so the emitter can publish it into its own folder.
     build_manifest = {
-        "build_id": UK_DENSE_RELEASE_ID,
+        "release": UK_DENSE_RELEASE_ID,
+        "build": attempt_id,
         "build_sha": code_pin[:7],
         "code": {
             "repository": "PolicyEngine/microcosm",
@@ -1001,20 +990,18 @@ def _stage_and_finalize(
             for gate_id, entry in gates.items()
             if isinstance(entry, Mapping)
         },
-        "attempt_id": attempt_id,
-        "cut_tag": cut_tag,
         "created_at": created_at,
         "staging": dict(staging_delivery),
     }
     _write_json(release_dir / "build_manifest.json", build_manifest)
 
-    def artifact(kind: str, path: str, sha256: str) -> dict[str, str]:
+    def artifact(key: str, kind: str, path: str, sha256: str) -> dict[str, str]:
         return {
             "kind": kind,
             "path": path,
             "repo_id": _REPO_ID,
-            "revision": cut_tag,
             "sha256": sha256,
+            "role": release_artifact_role(key, kind),
         }
 
     evidence_files = (
@@ -1051,19 +1038,16 @@ def _stage_and_finalize(
         "is_default": False,
         "default_datasets": {},
         "namespace": _NAMESPACE,
-        "build": {
-            "build_id": UK_DENSE_RELEASE_ID,
-            "built_at": created_at,
-            "built_with_core_package": {
-                "name": "policyengine-core",
-                "version": runtime["policyengine-core"],
-            },
-            "built_with_model_package": {
-                "name": "policyengine-uk",
-                "version": runtime["policyengine-uk"],
-            },
-            "attempt_id": attempt_id,
-            "cut_tag": cut_tag,
+        "release": UK_DENSE_RELEASE_ID,
+        "build": attempt_id,
+        "built_at": created_at,
+        "built_with_core_package": {
+            "name": "policyengine-core",
+            "version": runtime["policyengine-core"],
+        },
+        "built_with_model_package": {
+            "name": "policyengine-uk",
+            "version": runtime["policyengine-uk"],
         },
         "compatible_core_packages": [
             {
@@ -1076,18 +1060,25 @@ def _stage_and_finalize(
         ],
         "artifacts": {
             _DATASET_KEY: {
-                **artifact("microdata", _DATASET_FILENAME, measured["candidate"]),
+                **artifact(
+                    _DATASET_KEY, "microdata", _DATASET_FILENAME, measured["candidate"]
+                ),
                 "spi_public_use_tape_dependent": bool(spi_marker["dependent"]),
             },
             **{
-                Path(name).stem: artifact("diagnostics", name, evidence_sha[name])
+                Path(name).stem: artifact(
+                    Path(name).stem, "diagnostics", name, evidence_sha[name]
+                )
                 for name in evidence_files
                 if name != "build_manifest.json"
             },
         },
         "reviewed_limitations": gate_summary["reviewed_limitations"],
         "area_support": _area_support_block(solve),
-        "description": f"UK dense joint national + local line assembled from attempt {attempt_id} at immutable cut {cut_tag}; inspect lane, never the default slot.",
+        "description": (
+            "UK dense joint national + local release build assembled from "
+            f"attempt {attempt_id}; never the default release."
+        ),
         "publisher_labels": {
             "obr": "Office for Budget Responsibility",
             "hmrc": "HM Revenue and Customs",
@@ -1112,34 +1103,46 @@ def _stage_and_finalize(
     for contract_warning in contract_warnings:
         print(f"warning: {contract_warning}", file=sys.stderr)
     release_dir.rename(destination)
+    # Each new dense build becomes current. While the repository keeps its
+    # latest*.json pointer files the emitter refuses any change to a current
+    # build, a publication with --make-current included (after the upload's
+    # hashing), so the build is listed first and promoted once those files are
+    # deleted. Without them, --make-current publishes it as current at once.
     publish_command = shlex.join(
         [
             "uv",
             "run",
-            "python",
-            "-m",
-            "microcosm.data.publish_cli",
+            "microcosm-publish-release-build",
             str(destination),
             "--repo-id",
             _REPO_ID,
             "--artifact-root",
             str(artifact_root),
-            "--no-latest",
-            "--tag-only",
-            "--tag-name",
-            cut_tag,
+        ]
+    )
+    promote_command = shlex.join(
+        [
+            "uv",
+            "run",
+            "microcosm-publish-release-build",
+            str(destination),
+            "--repo-id",
+            _REPO_ID,
+            "--promote",
         ]
     )
     return {
         "release_id": UK_DENSE_RELEASE_ID,
+        "release": UK_DENSE_RELEASE_ID,
+        "build": attempt_id,
         "release_dir": str(destination),
-        "cut_tag": cut_tag,
         "dataset": {
             "path": str(artifact_root / _DATASET_FILENAME),
             "sha256": measured["candidate"],
         },
         "evidence": {name: _sha256(destination / name) for name in evidence_files},
         "publish_command": publish_command,
+        "promote_command": promote_command,
         "warnings": contract_warnings,
     }
 
@@ -1170,7 +1173,6 @@ def _parse_args(argv: list[str] | None) -> argparse.Namespace:
         type=Path,
         help="where the published H5 is cloned (default: beside the candidate)",
     )
-    parser.add_argument("--cut-tag")
     parser.add_argument(
         "--allow-missing-staging",
         action="store_true",
