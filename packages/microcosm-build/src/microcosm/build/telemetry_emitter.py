@@ -39,6 +39,7 @@ import re
 import subprocess
 import sys
 from collections.abc import Mapping, Sequence
+from importlib import resources as importlib_resources
 from pathlib import Path
 from typing import Any, Literal, Protocol
 
@@ -98,15 +99,46 @@ SETUP_WARNING = (
 #: The emitter took about four seconds to become ready on an M1 Max; this is
 #: only a ceiling on the wait.
 STARTUP_TIMEOUT_SECONDS = 15.0
-#: The oldest emitter release a build starts, and the newest release on
-#: 2026-11-02, when it was chosen. Since 0.10.0 the emitter sends to the
-#: collector's hostname by default, which stays the same when the collector
-#: moves to another Google Cloud project; earlier releases send to its Cloud
-#: Run address, which changes with the move. 0.11.1 fixed two cases in which
-#: the telemetry module stopped; 0.11.2 to 0.11.9 change no emitter behaviour.
-#: 0.10.0 would have been enough for the hostname. The newest release was
-#: required instead because practically no machine ran the separately
-#: installed emitter yet, so refusing 0.10.0 to 0.11.8 cost nothing then. A
+#: The package data file that holds the oldest emitter release a build
+#: starts, ``MINIMUM_EMITTER_VERSION``. It is the one place the release is
+#: written: the Modal stage runner (``tools/modal_us_stage_plan.py``), which
+#: imports nothing from the workspace, reads the same file by its path in the
+#: checkout that launches it, and installs at least that release in its image.
+MINIMUM_EMITTER_VERSION_RESOURCE = "minimum_emitter_version.json"
+_RELEASE_NUMBER = re.compile(r"(\d+)\.(\d+)\.(\d+)")
+
+
+def _packaged_minimum_emitter_version() -> str:
+    """The release ``MINIMUM_EMITTER_VERSION_RESOURCE`` names, as ``X.Y.Z``.
+
+    A file without exactly that is a packaging defect, so importing this
+    module fails rather than start an emitter of any release.
+    """
+    resource = importlib_resources.files("microcosm.build").joinpath(
+        MINIMUM_EMITTER_VERSION_RESOURCE
+    )
+    data = json.loads(resource.read_text(encoding="utf-8"))
+    version = data.get("minimum_emitter_version") if isinstance(data, dict) else None
+    if not isinstance(version, str) or _RELEASE_NUMBER.fullmatch(version) is None:
+        raise ValueError(
+            f"microcosm/build/{MINIMUM_EMITTER_VERSION_RESOURCE} must hold "
+            '{"minimum_emitter_version": "X.Y.Z"}'
+        )
+    return version
+
+
+#: The oldest emitter release a build starts: 0.13.0 since 2026-11-05, the
+#: newest release then. 0.13.0 added ``microcosm-emitter status``, which the
+#: Modal stage runner runs in the container after a stage's tool to record how
+#: many telemetry events each run left undelivered, so the image needs it; a
+#: build requires the same release, so that the release is written once
+#: (``MINIMUM_EMITTER_VERSION_RESOURCE``). Practically no machine ran the
+#: separately installed emitter yet, so refusing 0.11.9 to 0.12.5 cost
+#: nothing then. Earlier floors: 0.11.9 from 2026-11-02, because since 0.10.0
+#: the emitter sends to the collector's hostname by default, which stays the
+#: same when the collector moves to another Google Cloud project, while
+#: earlier releases send to its Cloud Run address, which changes with the
+#: move; 0.11.1 fixed two cases in which the telemetry module stopped. A
 #: refused emitter costs a build its hosted telemetry, its staging hand-overs
 #: and its Orrery graph publication, fails a UK build given
 #: ``--staging-read-back``, and refuses a UK build that asks for remote
@@ -117,9 +149,8 @@ STARTUP_TIMEOUT_SECONDS = 15.0
 #: ``stage_dataset_bundle``, ``dataset_bundle_receipt`` and
 #: ``check_write_access`` for staged dataset bundles) and its queue in
 #: ``events.handovers.sqlite3``; releases 0.4.0 to 0.5.1 accept the same
-#: protocol version but start without that module. ``IMAGE_EMITTER_REQUIREMENT``
-#: in ``tools/modal_us_stage_plan.py`` repeats this release.
-MINIMUM_EMITTER_VERSION = "0.11.9"
+#: protocol version but start without that module.
+MINIMUM_EMITTER_VERSION = _packaged_minimum_emitter_version()
 UPGRADE_EMITTER_COMMAND = (
     f"uv tool install --upgrade 'microcosm-emitter>={MINIMUM_EMITTER_VERSION}'"
 )
@@ -142,7 +173,6 @@ OUTDATED_EMITTER_WARNING = (
     "Upgrade it with `{upgrade}`, or point MICROCOSM_EMITTER_COMMAND at a "
     "newer one."
 )
-_RELEASE_NUMBER = re.compile(r"(\d+)\.(\d+)\.(\d+)")
 _MINIMUM_RELEASE = tuple(int(part) for part in MINIMUM_EMITTER_VERSION.split("."))
 
 #: ``1``: this build must send telemetry, so it stops when its emitter cannot

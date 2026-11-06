@@ -92,7 +92,7 @@ can be rebuilt from it later. This does not hold for:
 | `MICROCOSM_EMITTER_COMMAND` | Optional path of the `microcosm-emitter` command, read by the interface in the build; without it the interface searches `PATH` | Operator's shell; the Modal image sets it |
 | Collector origin | Built into the installed emitter; the build sends no address unless a caller passes a loopback development address in the module settings | No producer variable or destination override |
 | Runs origin | Tracked `DEFAULT_GRAPH_PUBLICATION_ORIGIN` | No new producer variable |
-| `XDG_CACHE_HOME` | Optional existing cache-location setting, read by the interface in the build; the build passes the spool path (`microcosm/telemetry/events.sqlite3`) and the hand-over database beside it (`events.handovers.sqlite3`) to the emitter on its standard input | Defaults to the user's cache directory |
+| `XDG_CACHE_HOME` | Optional existing cache-location setting, read by the interface in the build; the build passes the path of the emitter's event queue file (`microcosm/telemetry/events.sqlite3`) and the hand-over database beside it (`events.handovers.sqlite3`) to the emitter on its standard input. On Modal, the stage runner's `microcosm-emitter status` reads it, with `HOME`, in the tool's environment after the tool, so it reads the file the build's emitter used | Defaults to the user's cache directory; on Modal, the container's defaults (the runner sets neither variable, and a plan may not) |
 | `MICROCOSM_TELEMETRY_REQUIRED` | Optional, read by the build adapter (`microcosm.build.telemetry_emitter`) each time a build starts its emitter; only builds that start the adapter read it. `1`: the build stops with `TelemetryRequiredError` if the emitter cannot be prepared or is missing, its `version` times out or fails, it is older than `MINIMUM_EMITTER_VERSION`, it lists no protocol version 1, its `hello` fails, it exits or times out before it is ready, or it starts without its telemetry module (for a failure the interface reports, its line saying the build will continue does not apply); unset or `0`: it continues without the emitter; any other value: `ValueError` | Whoever starts the build. The Modal stage runner sets `1` unless the plan sets `0`; workstations: the operator's shell. Leaving it off (unset or `0`) exists only for people outside PolicyEngine who run Microcosm without access to the collector; PolicyEngine's own builds keep telemetry required. Not a credential |
 | `MICROCOSM_TELEMETRY_RUN_ID` | Optional, read by the US build programs that open a run through `microcosm.build.program_telemetry`: the telemetry run ID they report under; the part before its last `.` becomes the run's candidate ID. Unset, each attempt makes its own ID (`<pipeline>-<UTC time>-<8 hex digits>`); a value the collector would refuse stops the program with `ValueError` before any work | The Modal stage runner sets `<plan run_id>.<stage>`, and a plan may not set it; workstations: the operator's shell, usually unset. Not a credential |
 | `MICROCOSM_TELEMETRY_PARENT_PID` | Read by the same programs: when it equals the process's parent's ID, the process is a child stage whose parent records its telemetry, and it starts no emitter | Set by `build_us_puf_support_base.py --stage all` for the child interpreters it starts; a plan may not set it. Not a credential |
@@ -162,12 +162,18 @@ versions interfaces still send, and an emitter that lacks a module the build
 asks for starts without it.
 
 A build does not start an emitter older than `MINIMUM_EMITTER_VERSION` in
-`microcosm.build.telemetry_emitter`, now 0.11.9, and the Modal image installs
-at least the same release (`IMAGE_EMITTER_REQUIREMENT` in
-`tools/modal_us_stage_plan.py`, `microcosm-emitter>=0.11.9`). A test checks
-that the two agree in one checkout; at a Modal launch the install step comes
-from the launching checkout and the minimum from the commit the plan pins
-(see the [US Modal stage runbook](us-modal-stage-runbook.md)). Releases
+`microcosm.build.telemetry_emitter`, now 0.13.0, and the Modal image installs
+at least the same release (`image_emitter_requirement()` in
+`tools/modal_us_stage_plan.py`, `microcosm-emitter>=0.13.0`). The release is
+written once, in microcosm-build's package data,
+`packages/microcosm-build/src/microcosm/build/minimum_emitter_version.json`:
+the adapter reads it as package data, and the runner, which imports nothing
+from the workspace, reads it by its path in the checkout that launches the
+app. The image adds that checkout's file beside the runner's copy of the
+plan module, so the check, which runs in the container, reads the same
+file. At a Modal launch the install step therefore comes from the launching
+checkout and the minimum from the commit the plan pins (see the
+[US Modal stage runbook](us-modal-stage-runbook.md)). Releases
 before 0.10.0 send telemetry to the collector's Cloud Run address, which
 changes when the collector moves to another Google Cloud project. From 0.10.0
 on, the emitter's default collector address is the collector's hostname,
@@ -175,10 +181,14 @@ which stays the same. Microcosm passes the emitter no collector address: the
 adapter's `development_collector_url` parameter, which no build command sets,
 accepts only a loopback address.
 
-0.10.0 would be enough for the hostname. The minimum is 0.11.9, the newest
-release on 2026-11-02, because practically no machine ran the separately
-installed emitter then, so refusing 0.10.0 to 0.11.8 cost nothing. A refused
-emitter does cost the build:
+The minimum is 0.13.0, the newest release on 2026-11-05. 0.13.0 added
+`microcosm-emitter status`, which the US Modal stage runner runs after each
+stage to record how many telemetry events the stage's emitter left
+undelivered; builds require the same release so that it is written once.
+Practically no machine ran the separately installed emitter then, so
+refusing 0.11.9 to 0.12.5 cost nothing; the minimum before it, 0.11.9, came
+from the collector's hostname, for which 0.10.0 would have been enough. A
+refused emitter does cost the build:
 
 - no hosted telemetry, and no staging hand-overs (the staging run files are
   still written locally);
@@ -190,9 +200,12 @@ emitter does cost the build:
   do by default, is refused before it starts, and the refusal gives the
   upgrade command built from the minimum.
 
-The build's warning says so. Raise the minimum and the image's floor
-together, and before raising them while machines still run older emitters,
-weigh these losses against having each such machine upgrade first.
+The build's warning says so. Raising the minimum in that one file raises
+the image's floor too; before raising it while machines still run older
+emitters, weigh these losses against having each such machine upgrade
+first. Raise the installed-emitter job's pin
+(`tools/installed-emitter/requirements.txt`) with it, so that the job never
+tests a release older than the minimum.
 
 To adopt a new interface release, regenerate `uv.lock`, update
 `APPROVED_UV_LOCK_SHA256` in `microcosm.build.us_runtime.worker_identity` to
@@ -200,7 +213,7 @@ the new lockfile digest and rerun the tests and wheel checks.
 
 ## Migrating an existing workstation
 
-Install the emitter once with `uv tool install microcosm-emitter` (0.11.9 or
+Install the emitter once with `uv tool install microcosm-emitter` (0.13.0 or
 later; a build does not start an older emitter, says how to upgrade it and
 continues without it). It keeps using the existing spool database,
 `$XDG_CACHE_HOME/microcosm/telemetry/events.sqlite3`, at the same Alembic
@@ -213,7 +226,7 @@ modification. The emitter's README describes the repair for a machine that
 ran an earlier, unreleased build of the hand-over queue. No new credential,
 hosted service or infrastructure is required by this migration.
 
-To upgrade a machine whose emitter is older than 0.11.9, run
-`uv tool install --upgrade 'microcosm-emitter>=0.11.9'`; it also replaces a
+To upgrade a machine whose emitter is older than 0.13.0, run
+`uv tool install --upgrade 'microcosm-emitter>=0.13.0'`; it also replaces a
 version constraint given at install time, which `uv tool upgrade` keeps.
 `microcosm-emitter version` prints the installed release.
