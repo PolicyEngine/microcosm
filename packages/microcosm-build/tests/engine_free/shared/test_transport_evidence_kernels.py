@@ -143,6 +143,9 @@ BINDING_MODULES_ADDED_AFTER_BASE = frozenset(
         "microcosm.fit.categorical",
         "microcosm.fit.donors",
         "microcosm.fit.held_out",
+        # microcosm#1074: us_runtime.fiscal_targets imports the FSA student
+        # loan targets.
+        "microcosm.build.us_runtime.fsa_student_loan_targets",
     ]
 )
 BATTERY = "toy.gates.terminal"
