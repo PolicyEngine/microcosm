@@ -378,10 +378,17 @@ def test_a_cell_is_counted_by_the_same_rule() -> None:
 _ROW_IDENTITY_COLUMNS = frozenset(
     {"household_id", "person_household_id", "household_source_id"}
 )
-#: Counts of those columns that are no floor: structural checks that every
-#: benefit unit sits in one household. Each entry names the phrase holding the
-#: count and how many counts it covers in its file.
+#: Counts of those columns that are no floor: structural checks over rows,
+#: that every benefit unit sits in one household and every SPI band donor
+#: holds exactly one carrier. Each entry names the phrase holding the count
+#: and how many counts it covers in its file.
 _KEPT_ROW_COUNTS: dict[str, tuple[tuple[str, int], ...]] = {
+    "tools/verify_uk_identity_stability.py": (
+        (
+            'person.loc[carriers, "person_household_id"].value_counts().to_dict()',
+            1,
+        ),
+    ),
     "uk_runtime/uc_reporter_redraw.py": (
         (
             'counts = placements.groupby("person_benunit_id", sort=False)[ '
@@ -419,15 +426,33 @@ def _call_name(node) -> str | None:
     return None
 
 
-def _row_identity(node, names: set[str]) -> bool:
-    """Whether ``node`` holds a row identity column's values."""
+def _names_identity_column(node, constants: frozenset[str]) -> bool:
+    """Whether ``node`` names a row identity column: a literal, a constant
+    holding one, or a list or tuple containing either."""
 
     import ast
 
+    if isinstance(node, (ast.List, ast.Tuple)):
+        return any(_names_identity_column(item, constants) for item in node.elts)
+    if isinstance(node, ast.Constant):
+        return node.value in _ROW_IDENTITY_COLUMNS
+    return isinstance(node, ast.Name) and node.id in constants
+
+
+def _row_identity(
+    node, names: set[str], constants: frozenset[str] = frozenset()
+) -> bool:
+    """Whether ``node`` holds a row identity column's values, or names one."""
+
+    import ast
+
+    if isinstance(node, (ast.Constant, ast.List, ast.Tuple)) or (
+        isinstance(node, ast.Name) and node.id in constants
+    ):
+        return _names_identity_column(node, constants)
     while True:
         if isinstance(node, ast.Subscript):
-            key = node.slice
-            if isinstance(key, ast.Constant) and key.value in _ROW_IDENTITY_COLUMNS:
+            if _names_identity_column(node.slice, constants):
                 return True
             node = node.value
         elif isinstance(node, ast.Attribute):
@@ -448,11 +473,27 @@ def _row_identity(node, names: set[str]) -> bool:
             return isinstance(node, ast.Name) and node.id in names
 
 
+def _key_argument(call, keyword: str):
+    """A call's first positional argument, or its ``keyword`` argument."""
+
+    if call.args:
+        return call.args[0]
+    return next((kw.value for kw in call.keywords if kw.arg == keyword), None)
+
+
 def _counted_keys(node):
     """The keys a distinct count counts, or None for any other node."""
 
     import ast
 
+    # groupby(key).ngroups counts the distinct keys.
+    if (
+        isinstance(node, ast.Attribute)
+        and node.attr == "ngroups"
+        and isinstance(node.value, ast.Call)
+        and _call_name(node.value) == "groupby"
+    ):
+        return _key_argument(node.value, "by")
     if not isinstance(node, ast.Call):
         return None
     name = _call_name(node)
@@ -465,9 +506,12 @@ def _counted_keys(node):
         inner_name = _call_name(inner)
         if inner_name in {"set", "unique"} and inner.args:
             return inner.args[0]
-        if inner_name in {"unique", "drop_duplicates"} and isinstance(
-            inner.func, ast.Attribute
-        ):
+        if inner_name == "groupby" and isinstance(inner.func, ast.Attribute):
+            return _key_argument(inner, "by")
+        if inner_name == "drop_duplicates" and isinstance(inner.func, ast.Attribute):
+            # The key may be the receiver or the subset argument.
+            return _key_argument(inner, "subset") or inner.func.value
+        if inner_name == "unique" and isinstance(inner.func, ast.Attribute):
             return inner.func.value
     return None
 
@@ -482,6 +526,16 @@ def _row_identity_counts(tree) -> list[int]:
     import ast
 
     found: list[int] = []
+    # Module-level names bound to an identity column's name, e.g.
+    # ``HOUSEHOLD_ID_COLUMN = "household_id"``.
+    constants = frozenset(
+        target.id
+        for node in tree.body
+        if isinstance(node, ast.Assign)
+        and _names_identity_column(node.value, frozenset())
+        for target in node.targets
+        if isinstance(target, ast.Name)
+    )
 
     def own_nodes(scope):
         stack = list(ast.iter_child_nodes(scope))
@@ -505,7 +559,11 @@ def _row_identity_counts(tree) -> list[int]:
         while grew:
             grew = False
             for node in assignments:
-                if not _row_identity(node.value, names):
+                value = node.value
+                # A bare column name is not a column's values.
+                if isinstance(value, (ast.Constant, ast.List, ast.Tuple)):
+                    continue
+                if not _row_identity(value, names, constants):
                     continue
                 targets = (
                     node.targets if isinstance(node, ast.Assign) else [node.target]
@@ -516,7 +574,7 @@ def _row_identity_counts(tree) -> list[int]:
                         grew = True
         for node in nodes:
             keys = _counted_keys(node)
-            if keys is not None and _row_identity(keys, names):
+            if keys is not None and _row_identity(keys, names, constants):
                 found.append(node.lineno)
             if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
                 scan(node, names)
@@ -599,3 +657,40 @@ def test_no_uk_floor_counts_rows_by_their_household_ids() -> None:
         for suffix, phrase in expected
     }
     assert seen == expected
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        'n = households["household_id"].nunique()',
+        'n = len(set(person["person_household_id"]))',
+        'n = len(households.drop_duplicates("household_id"))',
+        'n = len(households.drop_duplicates(subset=["household_id", "region"]))',
+        'n = households.groupby("household_id").ngroups',
+        'n = len(person.groupby(by="person_household_id"))',
+        'KEY = "household_source_id"\nn = households[KEY].nunique()',
+        'KEY = "household_id"\nn = households.groupby(KEY).ngroups',
+        'ids = households["household_id"].to_numpy()\nn = distinct_count(ids)',
+    ],
+)
+def test_the_static_scan_sees_every_form_of_a_row_count(source) -> None:
+    """Each form counts distinct household rows (#1519 review)."""
+
+    import ast
+
+    assert _row_identity_counts(ast.parse(source)) != []
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        'n = households.groupby("region").ngroups',
+        'n = len(households.drop_duplicates("region"))',
+        'n = distinct_count(record_source_households(tables, "household", stage=s))',
+        'KEY = "household_id"\nn = len(households)',
+    ],
+)
+def test_the_static_scan_passes_counts_of_other_keys(source) -> None:
+    import ast
+
+    assert _row_identity_counts(ast.parse(source)) == []
