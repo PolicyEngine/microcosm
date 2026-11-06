@@ -1446,6 +1446,31 @@ def _geographic_clones_of(support):
     )
 
 
+def test_a_household_table_carrying_the_artifact_clone_index_is_refused(
+    monkeypatch, tmp_path
+) -> None:
+    """No spine stage writes the artifact's bare clone_index, and a table
+    carrying it would train clone 0 at its own weight rather than the fold's
+    (microcosm#931)."""
+
+    support = _dead_support()
+    donor_path = tmp_path / SPI_DONOR_FILENAME
+    _write_donor(donor_path)
+    monkeypatch.setattr(spi_income, "QRF", _FakeQRF)
+    _bypass_reviewed_donor_identity(monkeypatch)
+    with pytest.raises(ValueError, match="artifact's clone_index"):
+        impute_uk_spi_income_support(
+            _replace(support, household=support.household.assign(clone_index=0)),
+            donor_path,
+            seed=9,
+            n_estimators=3,
+            donor_sample_size=None,
+            state_pension_age=66,
+            allow_in_sample_reference=True,
+            stage1_gate_calibration="cross_fitted",
+        )
+
+
 def test_geographic_clones_train_the_frs_forests_as_their_survey_records(
     monkeypatch, tmp_path
 ) -> None:
@@ -1454,8 +1479,6 @@ def test_geographic_clones_train_the_frs_forests_as_their_survey_records(
     them alone (microcosm#931)."""
 
     support = _dead_support()
-    # The legacy artifact clone filter would drop rows the pool does not.
-    support = _replace(support, household=support.household.drop(columns="clone_index"))
     donor_path = tmp_path / SPI_DONOR_FILENAME
     _write_donor(donor_path)
     monkeypatch.setattr(spi_income, "QRF", _FakeQRF)

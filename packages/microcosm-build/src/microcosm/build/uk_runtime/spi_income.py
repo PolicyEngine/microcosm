@@ -1447,9 +1447,16 @@ def impute_uk_spi_income_support(
         if SPI_STAGE1_ANALOGUE_COLUMNS.get(column) == column and column not in person:
             person[column] = 0.0
 
-    base_household = household[household_channel] == BASE_FRS_SUPPORT_CHANNEL
+    # The spine never carries the artifact's bare clone_index: geographic
+    # clones are read from the lineage and folded below, so a table that
+    # carried it would train clone 0 at clone 0's own weight (microcosm#931).
     if "clone_index" in household:
-        base_household &= household["clone_index"] == 0
+        raise ValueError(
+            "The SPI income stage refuses a household table carrying the "
+            "artifact's clone_index; geographic clones are read from the "
+            "household lineage and folded into their survey records."
+        )
+    base_household = household[household_channel] == BASE_FRS_SUPPORT_CHANNEL
     training_household_ids = set(household.loc[base_household, "household_id"])
     training_people = base_people & person["person_household_id"].isin(
         training_household_ids
