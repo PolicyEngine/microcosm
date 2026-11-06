@@ -463,24 +463,59 @@ and `calibration_diagnostics.v8.schema.json` beside it, for consumers that check
 the file without importing them, such as the collector. Its description lists the model rules a JSON Schema cannot express;
 see the [package README](packages/microcosm-diagnostics/README.md).
 
-Standard publication uploads the locally built `releases/<id>/` artifacts to
-the Hugging Face dataset, tags the release, and updates `latest.json`. It runs
-on the build machine (it needs the freshly built H5), so it isn't a CI step:
+Publication runs on the build machine (it needs the freshly built H5), so it
+isn't a CI step. Releases use one of two layouts.
+
+**The UK national, dense and local-area releases publish each build into its
+own folder.** These releases (`microcosm.data.contract.publishes_to_build_folder`)
+hand each build to the separately installed emitter, whose release writer
+puts it in `releases/<release>/<build>/` and records it in the repository's
+`releases.json`, the only record of each release's builds and which one is
+current, in one commit. The build is the calibration attempt id. Both
+manifests name the release and the build as strings; the release manifest
+records `built_at`, `built_with_model_package` and `built_with_core_package`
+at its top level and each file's `role`, and pins no revision. Nothing is
+tagged and no pointer file is written:
+
+```bash
+uv run microcosm-publish-release-build releases/<release> \
+  --repo-id policyengine/populace-uk-private --artifact-root <candidate-dir> \
+  [--make-current]
+uv run microcosm-publish-release-build releases/<release> --promote
+```
+
+The first command publishes a build, and makes it current with
+`--make-current`; the second makes a published build current. A build counts
+as current only when the emitter's receipt is `published` and names it as
+`current`. While the older `latest*.json` pointer files exist, the emitter
+refuses every change to a release's current build, so until they are deleted
+a build is published without `--make-current` and promoted afterwards. The
+command refuses before it starts an emitter when `HF_HUB_OFFLINE` or
+`TRANSFORMERS_OFFLINE` is set, and hands nothing over unless the emitter's
+write-access check passes. These publications send no Slack alert: release
+alerts for them stop until the dashboard posts them from `releases.json`.
+The UK assemblers print the exact commands, and the
+[national](docs/uk-national-release-assembly-runbook-806.md) and
+[dense](docs/uk-dense-release-assembly-runbook-762.md) runbooks describe them.
+`microcosm.data.load` reads the current build of such a release from
+`releases.json`, or the listed build `build=` names.
+
+**Every other release keeps tags and `latest.json`:** every US release,
+until the stable releases US builds publish under are agreed with the US data
+builder, and the UK releases outside those three, namely the June 2023 release
+and `populace-uk-<year>-<tier>-k<N>` releases. Publication uploads the locally
+built `releases/<id>/` artifacts to the Hugging Face dataset, tags the release,
+and updates `latest.json`:
 
 ```bash
 tools/publish_release.sh releases/<id> --repo-id policyengine/populace-us
 ```
 
 `tools/publish_release.sh` is a thin wrapper around `microcosm-publish-release`
-(all arguments pass straight through). The moment `latest.json` goes live, the
-publish CLI posts a release alert to Slack — `#populace-us` or `#populace-uk`,
-chosen from the repo id.
-
-Promotable UK release lines use pointers named `latest-<line>.json`. Publish a
-cut for inspection with `--no-latest --tag-name <cut-tag>`, then promote the
-reviewed cut with `--promote-line <line> --tag-name <cut-tag>`. Promotion moves
-only that line pointer; the UK repository-global `latest.json` remains frozen
-on the June 2023 release. Promotion reuses the immutable cut tag the inspect publication created (it checks the tagged manifest is byte-identical) and writes only the pointer commit, so the two-step sequence and a retry after a failed pointer commit both work. A line's registry entry is registered off the default variant until its first promotion; the default flips in a follow-up after the pointer exists.
+(all arguments pass straight through), which refuses the releases that
+publish into build folders. The moment `latest.json` goes live, the publish
+CLI posts a release alert to the country's channel: `#populace-us`, or
+`#populace-uk` for a UK release published this way.
 
 **Build folders, after a repository's switch.** A UK national, dense or
 local-area build can also be published into its own folder,
@@ -635,8 +670,9 @@ cp tools/release.env.example tools/release.env   # then paste the webhook URLs
 
 `tools/release.env` is gitignored; the wrapper loads it (or you can just export
 `SLACK_WEBHOOK_POPULACE_US` / `SLACK_WEBHOOK_POPULACE_UK` in your shell) and
-warns if neither is set. After that, every release publishes with an automatic
-Slack alert.
+warns if neither is set. After that, every release published with tags and
+`latest.json` publishes with an automatic Slack alert. The releases that
+publish into build folders read neither variable.
 
 Canonical UK exact-k builds also require a stable, base64-encoded 32-byte
 release key. Source `tools/release.env` before the national build as well as

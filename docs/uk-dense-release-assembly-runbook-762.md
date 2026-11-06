@@ -5,10 +5,14 @@ through the atomic output-area assignment and calibrated to the national and loc
 target surfaces in one solve (`microcosm-build-uk --release-role dense`, the
 graph driver `tools/build_uk_full.py`; `tools/build_uk_rowwise_candidate.py`
 is a stub over it). It ships
-on the **inspect lane only**: a constant release id, an immutable per-cut tag,
-`dataset_role: non_default_local_area`, an empty `default_datasets` map, and
-`--no-latest` at publication, so it can never displace the default artifact.
-It is registered as `("uk", 2025, "dense")` in the private repo
+as its own release, never the default one: a constant release id,
+`dataset_role: non_default_local_area` (the role `local_area` in
+`releases.json`) and an empty `default_datasets` map. Each build is published
+once into its own folder, `releases/microcosm-uk-2024-25-dense/<build>/`,
+through the emitter, and becomes the dense release's current build: by a
+promotion once the older `latest*.json` pointer files are deleted, and when it
+is published after that (see [§5](#5-publish-human-step)); `releases.json`
+keeps the national release as the repository's default. It is registered as `("uk", 2025, "dense")` in the private repo
 `policyengine/populace-uk-private`. Publication is a separate human step.
 Since microcosm#1124 (ruling of 2026-10-13, amended for microcosm#1301) the
 line may ship the 150,000-household exact-k selection from that pool instead
@@ -527,9 +531,11 @@ id, and the full gate report `outputs.full_gate_report` against its digest),
 requires the manifest's `staging_delivery` receipt (the run's version 2 staging
 telemetry evidence, copied into `build_manifest.json` as `staging` so
 publication can apply its undelivered-staging refusal, as on the national
-lane), re-runs the candidate pre-flight, mints the cut tag
-`microcosm-uk-2024-25-dense-<YYYYMMDDTHHMMSSZ>-<uuid8>` from the run's attempt
-id, clones the H5 beside itself as `microcosm_uk_2024_25_dense.h5`, stages
+lane), re-runs the candidate pre-flight, names the build after the run's
+attempt id in both manifests (`release` and `build`; the release manifest
+also records `built_at` and the built-with packages at its top level and each
+file's `role`, and no artifact pins a revision), clones the H5 beside itself
+as `microcosm_uk_2024_25_dense.h5`, stages
 `build_manifest.json`, `release_manifest.json`, `calibration_diagnostics.json`,
 `gate_summary.json`, `uk_source_coverage.json`, the signed `uk_local_gates.json`,
 the original `rowwise_candidate_manifest.json`,
@@ -584,30 +590,59 @@ repeats its warnings. Separate support
 and binding adjudications keep their own policies. The gate thresholds and
 existing approvals have not been widened or renewed.
 
-## 5. Publish for inspection (human step)
+## 5. Publish (human step)
 
-Run the printed command. Its shape is:
+The assembler prints two commands. Run its `publish_command` first. Its shape
+is:
 
 ```bash
-uv run python -m microcosm.data.publish_cli releases/microcosm-uk-2024-25-dense \
-  --repo-id policyengine/populace-uk-private --artifact-root <candidate-dir> \
-  --no-latest --tag-only --tag-name microcosm-uk-2024-25-dense-<timestamp>-<uuid8>
+uv run microcosm-publish-release-build releases/microcosm-uk-2024-25-dense \
+  --repo-id policyengine/populace-uk-private --artifact-root <candidate-dir>
 ```
 
-`--no-latest` is mandatory and enforced: publication refuses to move
-`latest.json` for a non-default role. `--tag-only` publishes the immutable tag
-revision without a main-branch commit. The artifact is reachable by its tag and
-by the registry key `("uk", 2025, "dense")` only.
+It refuses at once, before it starts an emitter, when `HF_HUB_OFFLINE` or
+`TRANSFORMERS_OFFLINE` is set, since the emitter inherits them and could not
+reach the Hub. It checks the build against the release contract again, starts
+the emitter, and hands nothing over unless the emitter's write-access check
+finds a credential that can write the repository. It then hands every file to
+the emitter with its role and SHA-256. The emitter writes the build's folder
+and `releases.json` in one commit, listing the build without making it
+current. The command prints the receipt: `status` is `published`, `pending`
+(the emitter is still trying, and keeps the change queued for an hour),
+`refused` with an `error_code`, or `unavailable` (no emitter answered). It
+succeeds only on `published`. Running the same command again is safe: an
+already published build with the same release manifest is reported
+`published`.
 
-A contract warning reaches the publisher's JSON output as well as stderr:
-`--preflight-only` adds it to its verdict under `contract_warnings`, and
-publication lists it the same way beside the pointer it prints. Neither
-refuses on one. The immutable tag's message records that the release was
-published past them and how many there were, never what they say. No dense
+Each new dense build then becomes the dense release's current build with the
+assembler's `promote_command`:
+
+```bash
+uv run microcosm-publish-release-build releases/microcosm-uk-2024-25-dense \
+  --repo-id policyengine/populace-uk-private --promote
+```
+
+While the repository still holds the older `latest*.json` pointer files, the
+emitter refuses every change to a release's current build
+(`POINTER_FILES_PRESENT`), so that the pointer files and `releases.json`
+cannot disagree. Until they are deleted, the promotion is refused at once,
+changes nothing and says to run it again; the published build stays listed.
+Run `promote_command` once they are deleted. The promotion succeeds only when
+the receipt is `published` and names this build as `current`; a change to the
+dense release's current build requested after this one can land first and
+leave another build current.
+
+Once the pointer files are deleted, a new dense build can instead be published
+as current in one commit by adding `--make-current` to `publish_command`. Do
+not add it before then: the emitter refuses the whole publication, after the
+dataset is hashed on both sides, and nothing is published.
+
+A contract warning reaches the command's stderr, and `--preflight-only` adds
+it to its verdict under `contract_warnings`. Neither refuses on one. No dense
 release raises any since the disclosure walk was dropped.
 
 ## Promotion is a separate change
 
-Making the dense line (or a sparse successor via the L0 penalty, #762 I10) a
-default dataset is a registry and contract change with its own review; nothing
-in this runbook promotes anything.
+Making the dense release (or a sparse successor via the L0 penalty, #762 I10)
+the default dataset is a registry and contract change with its own review;
+nothing in this runbook changes the repository's default release.
