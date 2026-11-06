@@ -274,7 +274,10 @@ from microcosm.build.us_runtime.h5_io import (
     require_authenticated_us_multispine_pool_h5,
     us_multispine_pool_release_receipt,
 )
-from microcosm.build.us_runtime.input_mass import us_input_mass_totals
+from microcosm.build.us_runtime.input_mass import (
+    us_input_mass_totals,
+    us_line_32_on_reference_terms,
+)
 from microcosm.build.us_runtime.l0_refit_export import (
     attach_l0_refit_entity_weights,
     load_us_frame,
@@ -7618,9 +7621,16 @@ def _input_mass_reference_gate(
     if reference_h5 is None:
         return None
     input_variables = _engine_input_variables()
+    reference_totals = us_input_mass_totals(
+        load_us_frame(reference_h5), columns=input_variables
+    )
     return input_mass_parity_gate(
-        us_input_mass_totals(base_frame, columns=input_variables),
-        us_input_mass_totals(load_us_frame(reference_h5), columns=input_variables),
+        us_line_32_on_reference_terms(
+            us_input_mass_totals(base_frame, columns=input_variables),
+            reference_totals,
+            minimum_reference_total=minimum_reference_total,
+        ),
+        reference_totals,
         candidate_name="base_frame",
         reference_name=reference_h5.name,
         relative_tolerance=relative_tolerance,
@@ -7991,9 +8001,14 @@ def _export_input_mass_gate(
     """
     input_variables = _engine_input_variables()
     reference = reference_frame if reference_frame is not None else base_frame
+    reference_totals = us_input_mass_totals(reference, columns=input_variables)
     return input_mass_parity_gate(
-        us_input_mass_totals(export_frame, columns=input_variables),
-        us_input_mass_totals(reference, columns=input_variables),
+        us_line_32_on_reference_terms(
+            us_input_mass_totals(export_frame, columns=input_variables),
+            reference_totals,
+            minimum_reference_total=minimum_reference_total,
+        ),
+        reference_totals,
         candidate_name="export_frame",
         reference_name=reference_name,
         relative_tolerance=relative_tolerance,
@@ -12137,15 +12152,20 @@ def _release_dry_run_checks(
         )
         input_variables = _engine_input_variables()
         candidate_totals = us_input_mass_totals(base_frame, columns=input_variables)
+        reference_totals = (
+            candidate_totals
+            if reference_frame is None
+            else us_input_mass_totals(reference_frame, columns=input_variables)
+        )
         check = export_input_mass_check(
             gate_failures=gate.failures,
             gate_details=gate.details,
-            candidate_totals=candidate_totals,
-            reference_totals=(
-                candidate_totals
-                if reference_frame is None
-                else us_input_mass_totals(reference_frame, columns=input_variables)
+            candidate_totals=us_line_32_on_reference_terms(
+                candidate_totals,
+                reference_totals,
+                minimum_reference_total=args.input_mass_minimum_reference_total,
             ),
+            reference_totals=reference_totals,
             candidate_nonzero_shares=us_nonzero_shares(
                 base_frame, columns=input_variables
             ),

@@ -421,6 +421,50 @@ def test_export_us_l0_refit_h5_fails_when_selection_zeroes_input_mass(
     assert not output.exists()
 
 
+def test_export_us_l0_refit_h5_reads_line_32_on_the_reference_terms(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    frame = _us_frame()
+    base_h5 = tmp_path / "base.h5"
+    base_h5.write_text("base")
+    output = tmp_path / "populace_us_2024.h5"
+
+    monkeypatch.setattr(l0_refit_export, "load_us_frame", lambda path: frame)
+    monkeypatch.setattr(
+        l0_refit_export,
+        "copy_microcosm_root_attrs",
+        lambda source, destination: (),
+    )
+    # A reference built before microcosm#1261 holds all of Schedule E line 32
+    # in partnership_income; the export splits it between the two columns.
+    monkeypatch.setattr(
+        l0_refit_export,
+        "us_input_mass_totals",
+        lambda bundle: (
+            {"partnership_income": 8.5e11, "s_corp_income": 0.0}
+            if bundle is frame
+            else {"partnership_income": 3.9e11, "s_corp_income": 6.6e11}
+        ),
+    )
+
+    class FakeEngine:
+        def write_dataset(self, bundle, path, period):
+            Path(path).write_text("sentinel")
+
+    monkeypatch.setattr(l0_refit_export, "PolicyEngineUSEngine", FakeEngine)
+
+    summary = export_us_l0_refit_h5(
+        base_h5=base_h5,
+        weights_npz=_l0_refit_npz(tmp_path),
+        output_h5=output,
+        input_mass_relative_tolerance=0.5,
+        require_geography_ladder=False,
+    )
+
+    assert summary["input_mass_parity"]["passed"] is True
+
+
 def test_export_us_l0_refit_h5_records_input_mass_drift_when_allowed(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
