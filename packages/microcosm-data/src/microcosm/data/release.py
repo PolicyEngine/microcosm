@@ -1,11 +1,16 @@
 """Publish a release and move its approved repository pointer.
 
-It also checks a build of a release that can publish into its own
-folder, ``releases/<release>/<build>/``, and lists its files with their
-roles (:func:`prepare_build_folder_release`), for
-``microcosm-publish-release-build``, which hands it to the emitter. UK
-releases still publish here, with tags and pointer files, until their
-repository switches to ``releases.json``.
+**The UK national, dense and local-area releases no longer publish
+here.** They publish each build into its own folder,
+``releases/<release>/<build>/``, through the emitter's ``publish_release``
+call (``microcosm-publish-release-build``, in ``microcosm-build``), and the
+repository's ``releases.json`` records which build is current.
+:func:`prepare_build_folder_release` checks such a build and lists its files
+with their roles; :func:`prepare_release` and :func:`publish_release` refuse
+it. Everything below describes the tagged layout the other releases keep:
+every US release, until the stable releases US builds publish under are
+agreed, and the June 2023 UK release and ``populace-uk-<year>-<tier>-k<N>``
+releases.
 
 The Hub repo publishes builds under ``releases/<build_id>/``, but nothing
 identified which release is *current*: a consumer had to list the tree and
@@ -26,9 +31,12 @@ Two sides of the pointer live here:
   returns the typed pointer, the one-call answer to "which release is
   current?" for dashboards and scorers.
 
-Approved UK lines coexist through ``latest-<line>.json``. Those schema-1
-pointers add ``line`` and ``revision`` so a line can name an immutable cut tag
-without changing the frozen repository-global ``latest.json``.
+The UK national and local-area releases were made current through pointer
+files named ``latest-<line>.json``. Those schema-1 pointers add the fields
+``line`` and ``revision``, so each could name an immutable per-build tag
+without changing the frozen repository-global ``latest.json``. Nothing
+writes them any more;
+:func:`latest_line_release` still reads them until they are deleted.
 
 The EVIDENCE tier (microcosm#506) publishes through the same producer with
 ``evidence=True``: identical immutable-tag mechanics, but the pointer that
@@ -62,7 +70,6 @@ from microcosm.data.contract import (
     RELEASE_MANIFEST_FILE_ROLE,
     RELEASE_ROLES,
     _uk_line_cut_tag_re,
-    dataset_role_for_line,
     line_for_release_id,
     publishes_to_build_folder,
     release_dataset_role,
@@ -74,6 +81,7 @@ from microcosm.data.releases_record import RELEASES_RECORD_PATH
 from microcosm.data.slack import notify_release
 
 __all__ = [
+    "BUILD_FOLDER_PUBLICATION_COMMAND",
     "BuildFolderFile",
     "BuildFolderRelease",
     "LATEST_EVIDENCE_POINTER_PATH",
@@ -290,10 +298,24 @@ class PreparedRelease:
     tag: str
     filenames: list[str]
     root_artifacts: dict[str, str]
-    line: str | None
     pointer_path: str
     calibration_diagnostics_available: bool
     contract_warnings: tuple[str, ...] = ()
+
+
+#: Where a build-folder release publishes from: the workspace command that
+#: hands each build to the emitter (``microcosm.build.release_publication``).
+BUILD_FOLDER_PUBLICATION_COMMAND = "microcosm-publish-release-build"
+
+
+def _refuse_build_folder_release(release_id: str) -> None:
+    if publishes_to_build_folder(release_id):
+        raise ValueError(
+            f"release {release_id!r} publishes each build into its own folder "
+            "through the emitter, which also records it in releases.json; "
+            f"publish it with `{BUILD_FOLDER_PUBLICATION_COMMAND}`. This "
+            "publisher commits, tags and writes latest*.json pointer files."
+        )
 
 
 @dataclass(frozen=True)
@@ -473,7 +495,6 @@ def prepare_release(
     update_latest: bool = True,
     tag_only: bool = False,
     evidence: bool = False,
-    line: str | None = None,
 ) -> PreparedRelease:
     """Run every local publisher guard and collect the files to upload.
 
@@ -482,8 +503,10 @@ def prepare_release(
     replays any required source-enrichment compatibility checks. No Hub client
     is constructed, no Hub activity occurs, and no release alert is sent.
     Publication must prepare again so preflight cannot authorize stale inputs.
+    A release that publishes into build folders is refused first.
     """
     release_dir = Path(release_dir)
+    _refuse_build_folder_release(release_dir.name)
     if parent_h5 is not None or compatibility_wheels:
         from microcosm.data.compatibility_recertification import (
             RECERTIFICATION_RELEASE_TYPE,
@@ -526,29 +549,8 @@ def prepare_release(
         warnings.warn(f"release contract: {contract_warning}", stacklevel=2)
     release_id = release_dir.name
     role = release_dataset_role(release_dir)
-    if line is not None:
-        pointer_path = line_pointer_path(line)
-        if evidence:
-            raise ValueError("line promotion cannot publish at the evidence tier.")
-        if not update_latest:
-            raise ValueError("line promotion requires update_latest=True.")
-        if tag_only:
-            raise ValueError("line promotion cannot use tag_only=True.")
-        expected_line = line_for_release_id(release_id)
-        if line != expected_line:
-            raise ValueError(
-                f"release {release_id!r} belongs to line {expected_line!r}, "
-                f"not {line!r}."
-            )
-        expected_role = dataset_role_for_line(line)
-        if role != expected_role:
-            raise ValueError(
-                f"release {release_id!r} declares dataset_role {role!r}; line "
-                f"{line!r} publishes only {expected_role!r} releases."
-            )
-    else:
-        pointer_path = LATEST_EVIDENCE_POINTER_PATH if evidence else LATEST_POINTER_PATH
-    if role != NATIONAL_DEFAULT_DATASET_ROLE and update_latest and line is None:
+    pointer_path = LATEST_EVIDENCE_POINTER_PATH if evidence else LATEST_POINTER_PATH
+    if role != NATIONAL_DEFAULT_DATASET_ROLE and update_latest:
         # microcosm#398 defense in depth beyond --no-latest: a non-default
         # release can never move the global default pointer, even if a
         # caller asks.
@@ -700,13 +702,12 @@ def prepare_release(
             "match the release id or uniform per-cut artifact revision."
         )
     # The repository-global pointer may only name a release whose immutable tag
-    # IS the release id. Approved line pointers have their own reader contract
-    # and may follow a per-cut tag; latest.json still may not.
-    if update_latest and tag != release_id and line is None:
+    # IS the release id.
+    if update_latest and tag != release_id:
         raise ValueError(
             f"latest.json may not name per-cut tag {tag!r} for release "
-            f"{release_id!r}; without an approved line pointer, per-cut tags "
-            "publish inspect-only. Pass update_latest=False (--no-latest)."
+            f"{release_id!r}; a tag other than the release id publishes "
+            "inspect-only. Pass update_latest=False (--no-latest)."
         )
     if root_artifacts and artifact_root is None:
         raise ValueError(
@@ -735,7 +736,6 @@ def prepare_release(
         tag=tag,
         filenames=filenames,
         root_artifacts=root_artifacts,
-        line=line,
         pointer_path=pointer_path,
         calibration_diagnostics_available=calibration_diagnostics_available,
         contract_warnings=tuple(contract_warnings),
@@ -758,9 +758,12 @@ def publish_release(
     tag_only: bool = False,
     notify: bool = True,
     evidence: bool = False,
-    line: str | None = None,
 ) -> dict:
     """Publish a release directory and optionally point ``latest.json`` at it.
+
+    A release that publishes into build folders (the UK national, dense
+    and local-area releases) is refused before any check or Hub call; see
+    the module docstring.
 
     The order is the guarantee: the release contract is validated first (an
     invalid release never reaches the Hub), then an immutable branch commit is
@@ -822,20 +825,17 @@ def publish_release(
             the certified default or feed pe.py certification. Tag and upload
             mechanics are otherwise identical. ``update_latest`` then governs
             the evidence pointer.
-        line: Promote an approved release line through ``latest-<line>.json``.
-            Line promotion requires ``update_latest=True``, a matching line
-            release id, the line's dataset role, and artifact revisions
-            pinned to the selected tag. A cut published for inspection
-            earlier (``update_latest=False`` under the same tag) is promoted
-            by the same call: the publisher recognises the existing tag that
-            already describes this release, creates no second immutable
-            revision, and writes only the main commit carrying the pointer.
-            The same recognition makes a retry after a failure between tag
-            creation and the pointer commit safe.
+
+    A release published earlier without the pointer (``update_latest=False``
+    under the same tag) is pointed to by a later call: the publisher
+    recognises the existing tag that already describes this release, creates
+    no second immutable revision, and writes only the main commit carrying
+    the pointer. The same recognition makes a retry after a failure between
+    tag creation and the pointer commit safe.
 
     Returns:
         The release's pointer payload (``latest.json`` shape, plus ``tier`` at
-        the evidence tier or ``line`` and ``revision`` for a line promotion).
+        the evidence tier).
         It is uploaded only when ``update_latest=True``. When the release
         contract warned, the returned payload also lists the warnings under
         ``contract_warnings``; the uploaded pointer never carries them, and
@@ -858,7 +858,6 @@ def publish_release(
         update_latest=update_latest,
         tag_only=tag_only,
         evidence=evidence,
-        line=line,
     )
     release_id = prepared.release_id
 
@@ -888,17 +887,6 @@ def publish_release(
             ),
         )
         pointer_label = "evidence release"
-    elif prepared.line is not None:
-        payload = line_pointer_payload(
-            release_id,
-            line=prepared.line,
-            revision=prepared.tag,
-            updated_at=updated_at,
-            calibration_diagnostics_available=(
-                prepared.calibration_diagnostics_available
-            ),
-        )
-        pointer_label = f"{prepared.line} line"
     else:
         payload = latest_pointer_payload(
             release_id,
@@ -955,9 +943,6 @@ def publish_release(
         if evidence:
             # The alert must never read as a certified release announcement.
             notify_kwargs["tier"] = RELEASE_TIER_EVIDENCE
-        if prepared.line is not None:
-            notify_kwargs["line"] = prepared.line
-            notify_kwargs["revision"] = prepared.tag
         notify_release(repo_id, release_id, payload.get("updated_at"), **notify_kwargs)
     if prepared.contract_warnings:
         return {**payload, "contract_warnings": list(prepared.contract_warnings)}
