@@ -332,9 +332,10 @@ def _refuse_pointer_files(repository: str) -> None:
             f"{repository} has not switched to releases.json: it has no "
             f"releases.json and has the pointer file(s) {', '.join(pointer_files)}, "
             "which the loader follows and the switch reads. Its builds publish "
-            "here only after the switch (`python -m "
-            "microcosm.build.build_folder_switch`); keep the files in place and "
-            "run the command again once the switch has run"
+            "here only after the switch, which the `copy` and then `switch` "
+            "steps of `python -m microcosm.build.build_folder_switch` make with "
+            "--write; keep the files in place and run the command again once "
+            "the switch has run"
         )
     if pointer_files:
         raise ValueError(

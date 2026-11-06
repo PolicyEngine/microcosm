@@ -154,9 +154,10 @@ register(
 
 register(
     DatasetSpec(
-        # microcosm#762 A18: the dense joint national + local UK build is
-        # tag-only; no pointer. It carries every constituency and local
-        # authority at K=15 clones per spine household. Once the repository
+        # microcosm#762 A18: the dense joint national + local UK build. Before
+        # the switch its builds were tags only, with no pointer file. It
+        # carries every constituency and local authority at K=15 clones per
+        # spine household. Once the repository
         # switches to releases.json, a new dense build becomes current when it
         # is promoted, or published with --make-current, through
         # microcosm-publish-release-build, and the loader reads it there.

@@ -789,8 +789,8 @@ def test_the_command_refuses_a_release_that_still_publishes_with_tags(
 def test_the_command_says_the_other_uk_releases_take_no_new_builds(
     tmp_path: Path, capsys
 ) -> None:
-    """The June 2023 UK release keeps the tagged layout, but the tagged
-    publisher refuses the UK repository once it records its builds in
+    """The June 2023 UK release does not publish into build folders, and the
+    tagged publisher refuses the UK repository once it records its builds in
     releases.json, so the refusal says it takes no new builds instead of
     sending it there."""
     june = tmp_path / "populace-uk-2023-dd68c73-4aa4b14-20260619T023711Z"

@@ -891,9 +891,9 @@ def dataset_role_for_line(line: str) -> str:
     raise ValueError(f"{line!r} is not a publication line.")
 
 
-# The dense joint national + local line (microcosm#762 A18, ruling
-# 2026-09-03): the same constant-id approach, published on the inspect lane
-# under the non-default local-area role. Mirrored from
+# The dense joint national + local release (microcosm#762 A18, ruling
+# 2026-09-03): the same constant-id approach, published as a non-default
+# local-area release, each build into its own folder. Mirrored from
 # microcosm.build.uk_runtime.release_identity.UK_DENSE_RELEASE_ID; lockstep-
 # tested in test_gate_battery_contract_pins.py.
 _UK_DENSE_RELEASE_ID = "microcosm-uk-2024-25-dense"
@@ -971,10 +971,11 @@ _UK_DENSE_SIGNED_EXCLUSION_GATES = (
     "uk_local_target_fit",
     "uk_input_mass_parity",
 )
-# The per-cut tag grammar the assembler mints from the calibration attempt id
-# (tools/assemble_uk_release_dir.py). The contract validates the same shape so
-# a hand-edited or stale revision cannot claim a cut the attempt chain never
-# produced.
+# The per-build tag shape UK national and local-area builds were tagged with
+# before the switch: the release, then the calibration attempt's time and
+# digest. The pointer-file reader and writer in microcosm.data.release check a
+# latest-<line>.json revision against it, so a hand-edited or stale pointer
+# cannot name a tag outside the release's builds.
 _UK_NATIONAL_REVISION_SUFFIX_RE = re.compile(r"[0-9]{8}T[0-9]{6}Z-[0-9a-f]{8}")
 
 

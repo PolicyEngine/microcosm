@@ -309,9 +309,10 @@ class PreparedRelease:
 #: hands each build to the emitter (``microcosm.build.release_publication``).
 BUILD_FOLDER_PUBLICATION_COMMAND = "microcosm-publish-release-build"
 #: Where a release that does not publish into build folders goes. Every US
-#: release publishes with tags and ``latest.json``; the other UK releases keep
-#: that layout too, but no publisher takes their builds once the UK
-#: repository records its builds in ``releases.json``.
+#: release publishes with tags and ``latest.json``. No publisher takes builds
+#: of the other UK releases once the UK repository records its builds in
+#: ``releases.json``; its switch moves the June 2023 build into a build
+#: folder of release ``populace-uk-2023``.
 TAGGED_RELEASE_ADVICE = (
     "US releases publish with tags and latest.json through "
     "tools/publish_release.sh; the June 2023 UK release and "

@@ -16,12 +16,17 @@ publication consume licensed data and operator credentials.
 Before starting, export:
 
 - `MICROCOSM_UK_TERMINAL_GATE_SIGNING_KEY`, containing the stable release key
-  as base64-encoded 32 bytes. Certification signs with it and assembly uses it
-  to re-verify the copied certification.
+  as base64-encoded 32 bytes. Certification signs with it, and assembly and
+  the publication command's release-contract check use it to re-verify the
+  copied certification.
 - `HF_TOKEN` (or `HUGGINGFACE_TOKEN`, or a token saved by `hf auth login`),
   with write access to `policyengine/populace-uk-private`. The publication
   command starts the separately installed `microcosm-emitter` (0.13.0 or
   later) as its child process, and the emitter uses the token it inherits.
+
+These come from your shell: the publication command does not read
+`tools/release.env`, so if you keep the values there, `source
+tools/release.env` first.
 
 The publication command sends no Slack alert. The calibration diagnostics
 dashboard announces new and current builds, comparing `releases.json` before

@@ -34,7 +34,15 @@ the gates stood on. See [Optional diagnostics](#optional-diagnostics-microcosm13
 ## Prerequisites
 
 - The four pins the run stood on (`spine`, `ladder`, `facts`, `manifest`) and
-  the signing key in `MICROCOSM_UK_TERMINAL_GATE_SIGNING_KEY` (base64, 32 bytes).
+  the signing key in `MICROCOSM_UK_TERMINAL_GATE_SIGNING_KEY` (base64, 32
+  bytes), which the publication command's release-contract check also reads.
+- For publication: `HF_TOKEN` (or `HUGGINGFACE_TOKEN`, or a token saved by
+  `hf auth login`) with write access to `policyengine/populace-uk-private`,
+  and the separately installed `microcosm-emitter` 0.13.0 or later, which the
+  publication command starts as its child process and which uses the token it
+  inherits. These come from your shell: the command does not read
+  `tools/release.env`, so if you keep the values there, `source
+  tools/release.env` first.
 - The Ledger consumer artifact, the spine H5 with its sidecar, the OA ladder.
 - Optionally, the incumbent extraction
   (`tools/extract_uk_local_incumbent_surface.py`), only for the opt-in
