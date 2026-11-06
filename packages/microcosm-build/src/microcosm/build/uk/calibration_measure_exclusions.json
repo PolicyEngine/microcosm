@@ -504,6 +504,24 @@
       "adjudication": "María's ruling of 2026-11-03 on #1426's Phase B (item B4, microcosm#1288 item 10): add HMRC's HICBC liability count and revenue as measured diagnostics first, using 2024-25's figures for the model's 2025.",
       "approved_on": "2026-11-03",
       "expires_on": "2027-02-03"
+    },
+    {
+      "name": "hmrc.pris.rental_income.scotland",
+      "reason": "Diagnostic first, not yet a weight question: PRIS stays a diagnostic since María's ruling of 2026-10-08 (microcosm#1106), when every UK PRIS receipts or count target moved weight across the SPI's total-income bands, pushed the SPI property amounts off their bound and failed uk_weight_ratio. Scotland's receipts (Table 9) are measured on every evaluation for the Scottish property rate costing. The published total counts partnerships as well as individuals while the spine carries individuals, so part of any gap is definitional. Bind only if a calibrate-only solve with the row bound keeps uk_weight_ratio at or below 1,151.25 and the SPI property rows within 10 percent; never the landlord counts, which conflict with the SPI's (microcosm#1145).",
+      "tracking": "microcosm#1095",
+      "approved_by": "juaristi22",
+      "adjudication": "María's approval of 2026-11-06 of the plan for the November event data (PR1, item S1): measure PRIS 2024-25's Scottish receipts and expenses on every build and hold both out of the solve; the receipts row binds only after a bound-variant solve passes.",
+      "approved_on": "2026-11-06",
+      "expires_on": "2027-02-06"
+    },
+    {
+      "name": "hmrc.pris.expenses.scotland",
+      "reason": "Diagnostic, not a weight question: Table 11 counts residential finance costs among Scotland's expenses, which policyengine-uk relieves as a tax reduction rather than deducts, so the row measures receipts less profit plus property_finance_costs on a frame that stores no expenses column. It shares the receipts row's limits (partnerships in the published total, a spine of individuals) and misses loss-making landlords' expenses, since landlords without profit carry neither receipts nor expenses on the spine. Measured on every evaluation for the Scottish property rate costing; bind only with the receipts row, after the same bound-variant solve, and never the landlord counts (microcosm#1145).",
+      "tracking": "microcosm#1095",
+      "approved_by": "juaristi22",
+      "adjudication": "María's approval of 2026-11-06 of the plan for the November event data (PR1, item S1): measure PRIS 2024-25's Scottish receipts and expenses on every build and hold both out of the solve; the receipts row binds only after a bound-variant solve passes.",
+      "approved_on": "2026-11-06",
+      "expires_on": "2027-02-06"
     }
   ]
 }

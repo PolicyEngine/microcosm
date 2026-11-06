@@ -1078,6 +1078,9 @@ _STAGE_CELLS: Mapping[str, tuple[_Cell, ...]] = {
         ),
         _Cell("household", "has_fuel_consumption", "bool"),
         _Cell("household", "uses_energy_prepayment_meter", "bool"),
+        # The annual kWh the stored spend is priced from, for the energy
+        # dashboards; no policyengine-uk input reads them.
+        *_cells("household", ("electricity_kwh", "gas_kwh")),
         # The excise step's policyengine-uk inputs (microcosm#1359).
         *_cells(
             "household",

@@ -275,8 +275,10 @@ def test_uk_population_targets_shape_order_and_registry_accounting() -> None:
     # over the region tier, and by sub-major group and sex, 50 UK rows (not
     # community and civil enforcement, the thinnest group); Y5 of the November
     # event-data plan (microcosm#1095) binds the single years 16 to 24 by sex
-    # in place of the 16-17, 18-19 and 20-24 sex bands, eighteen rows for six.
-    assert len(resource["targets"]) == 538
+    # in place of the 16-17, 18-19 and 20-24 sex bands, eighteen rows for six;
+    # and the November event data adds PRIS 2026's Scottish landlords' receipts
+    # and expenses, two national rows held as measured diagnostics.
+    assert len(resource["targets"]) == 540
 
     providers = resource["hierarchy"]["providers"]
     categories = resource["hierarchy"]["categories"]
@@ -290,10 +292,10 @@ def test_uk_population_targets_shape_order_and_registry_accounting() -> None:
     target_ids = [target["target_id"] for target in resource["targets"]]
     registry_scope = resource["registry_parity"]["scope_target_ids"]
     profile_scope = resource["profile_parity"]["scope_target_ids"]
-    assert len(registry_scope) == 476
+    assert len(registry_scope) == 478
     assert len(profile_scope) == 62
-    assert target_ids[:476] == registry_scope
-    assert target_ids[476:] == profile_scope
+    assert target_ids[:478] == registry_scope
+    assert target_ids[478:] == profile_scope
 
     parity = resource["registry_parity"]
     assert parity["pinned_ref"] == "12a1e028afeef08d8b2d74ee03fd9de3a78b2dd3"
@@ -325,12 +327,13 @@ def test_uk_population_targets_shape_order_and_registry_accounting() -> None:
     # the incumbent's three devolved SLC
     # repayment metrics one to one, to three nation rows in place of one
     # devolved row. microcosm#1426's two HICBC rows have no uk-data metric either,
-    # nor microcosm#1490's 59 APS occupation rows. Y5 of the November
-    # event-data plan moves the two incumbent 20_24 sex bands from mapped to
-    # excluded, and its eighteen single years 16 to 24 have no uk-data metric,
-    # in place of the four 16-17 and 18-19 rows (microcosm#1095).
+    # nor microcosm#1490's 59 APS occupation rows, nor the November event data's
+    # two Scottish PRIS rows. Y5 of the November event-data plan moves the two
+    # incumbent 20_24 sex bands from mapped to excluded, and its eighteen single
+    # years 16 to 24 have no uk-data metric, in place of the four 16-17 and
+    # 18-19 rows (microcosm#1095).
     assert len(mapped_target_ids) == 183
-    assert len(unmapped_declarations) == 293
+    assert len(unmapped_declarations) == 295
     suppressed_ancestors = parity["suppressed_ancestors"]
     assert len(suppressed_ancestors) == 5
     assert set(suppressed_ancestors).isdisjoint(parity["mapped"])
@@ -855,7 +858,7 @@ def test_uk_population_targets_have_unique_target_ids() -> None:
     resource = _load()
 
     target_ids = [target["target_id"] for target in resource["targets"]]
-    assert len(target_ids) == 538
+    assert len(target_ids) == 540
     assert len(target_ids) == len(set(target_ids))
 
 
@@ -1358,7 +1361,7 @@ def test_uc_payment_bands_share_administrative_family_but_keep_source_window() -
 
 def test_paid_joint_diagnostics_do_not_add_active_targets() -> None:
     targets = _load()["targets"]
-    assert len(targets) == 538
+    assert len(targets) == 540
     assert not any(
         f.get("variable") == "uc_calibration_child_entitlement"
         for target in targets

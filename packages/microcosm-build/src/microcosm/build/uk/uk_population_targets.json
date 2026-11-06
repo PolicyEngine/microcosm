@@ -977,7 +977,9 @@
       "ons.occupation.female_elementary_trades_and_related": "New declaration backed by Nomis APS218 Jan 2025-Dec 2025 in Chronicle (ons-aps218-occupation-jan-dec-2025, PolicyEngine/chronicle#411); no uk-data metric holds employment by occupation and sex (microcosm#1490).",
       "ons.occupation.male_elementary_trades_and_related": "New declaration backed by Nomis APS218 Jan 2025-Dec 2025 in Chronicle (ons-aps218-occupation-jan-dec-2025, PolicyEngine/chronicle#411); no uk-data metric holds employment by occupation and sex (microcosm#1490).",
       "ons.occupation.female_elementary_administration_and_service": "New declaration backed by Nomis APS218 Jan 2025-Dec 2025 in Chronicle (ons-aps218-occupation-jan-dec-2025, PolicyEngine/chronicle#411); no uk-data metric holds employment by occupation and sex (microcosm#1490).",
-      "ons.occupation.male_elementary_administration_and_service": "New declaration backed by Nomis APS218 Jan 2025-Dec 2025 in Chronicle (ons-aps218-occupation-jan-dec-2025, PolicyEngine/chronicle#411); no uk-data metric holds employment by occupation and sex (microcosm#1490)."
+      "ons.occupation.male_elementary_administration_and_service": "New declaration backed by Nomis APS218 Jan 2025-Dec 2025 in Chronicle (ons-aps218-occupation-jan-dec-2025, PolicyEngine/chronicle#411); no uk-data metric holds employment by occupation and sex (microcosm#1490).",
+      "hmrc.pris.rental_income.scotland": "No incumbent target: uk-data binds no PRIS row, and its registry used PRIS only for the x1.9 scaling of the SPI net amounts, retired in microcosm#1106. PRIS 2026's Scottish landlords' receipts (Table 9) join as a measured diagnostic for the Scottish Budget 2027-28 property rate costing.",
+      "hmrc.pris.expenses.scotland": "No incumbent target: uk-data binds no PRIS row, and its registry used PRIS only for the x1.9 scaling of the SPI net amounts, retired in microcosm#1106. PRIS 2026's Scottish landlords' expenses (Table 11) join as a measured diagnostic for the Scottish Budget 2027-28 property rate costing."
     },
     "suppressed_ancestors": {
       "hmrc/salary_sacrifice_it_relief_basic_rate": {
@@ -1059,6 +1061,8 @@
       "hmrc.spi.dividend_income.count_by_total_income_band",
       "hmrc.spi.property_income.amount_by_total_income_band",
       "hmrc.spi.property_income.count_by_total_income_band",
+      "hmrc.pris.rental_income.scotland",
+      "hmrc.pris.expenses.scotland",
       "hmrc.spi.private_pension_income.amount_by_total_income_band",
       "hmrc.spi.private_pension_income.count_by_total_income_band",
       "hmrc.spi.state_pension.amount_by_total_income_band",
@@ -4496,6 +4500,110 @@
       "label": "Count by total income band",
       "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band",
       "selector_note": "Uprated from the SPI 2023-24 fact to the 2025 calibration period by HMRC's own projected growth in Income Tax payers for the Table 2.5 band containing this band (Income Tax liabilities statistics, July 2026): the calendar-2025 window of the 2024-25 and 2025-26 projections (3/12 and 9/12) over the 2023-24 outturn, from the vendored hmrc_itl_taxpayer_counts.json. Ruled by María on 2026-09-22 (PolicyEngine/chronicle#280 lane): calendar 2025, months to the end of the year for fiscal- and tax-year facts. Taxpayers only (income_tax_annual > 0, the tax on each person's income over the 12 months before their interview, a proxy for the tax year), as SPI Table 3.6 and the area Tables 3.14 and 3.15 are: the tables cover individuals liable to UK income tax (microcosm#1123, taxpayer basis everywhere)."
+    },
+    {
+      "target_id": "hmrc.pris.rental_income.scotland",
+      "family": "hmrc_pris",
+      "geography_levels": [
+        "country"
+      ],
+      "measurement": {
+        "entity": "person",
+        "map_to": "household",
+        "concept": "uk.income.property_rental.amount",
+        "filters": [
+          {
+            "concept": "uk.geography.country",
+            "equals": "SCOTLAND"
+          }
+        ]
+      },
+      "bindings": {
+        "policyengine": {
+          "metric_name": "hmrc/pris_rental_income/scotland",
+          "value_variable": "property_rental_income",
+          "from_entity": "person",
+          "map_to": "household",
+          "notes": "HMRC Property Rental Income Statistics 2026, Table 9: UK property income declared by landlords in Scotland, 2024-25, the gross rents and other receipts before expenses on the Self Assessment property pages of every unincorporated landlord, taxpayers or not. The regional tables count all tax entities, individuals and partnerships, and HMRC splits no region by entity type, while the spine carries individuals: the row compares individuals' receipts with a total that includes partnerships' (across the UK, partnerships declare 15.6 percent of receipts: Table 2, £9.18bn of £58.99bn). The table also places 4.8 percent of UK receipts in an unknown region, which no nation's row counts. property_rental_income is the receipts the property_components stage gives every landlord with a profit (microcosm#1106); landlords without profit carry none. Held as a measured diagnostic (calibration_measure_exclusions.json), since PRIS stays a diagnostic (María's ruling of 2026-10-08, microcosm#1106), for the Scottish property rate costing (PolicyEngine/uk-scottish-budget-2027-28#2). Never the landlord counts: they conflict with the SPI's (microcosm#1145).",
+          "filters": [
+            {
+              "variable": "country",
+              "equals": "SCOTLAND"
+            }
+          ]
+        },
+        "axiom": {
+          "metric_name": "hmrc/pris_rental_income/scotland",
+          "status": "pending",
+          "value_rule": "uk.income.property_rental.amount"
+        }
+      },
+      "ledger_selector": {
+        "source_name": "hmrc",
+        "source_concept": "hmrc.property_income_amount",
+        "record_set_spec_id": "hmrc.property_rental_2026.table_9.ty2024.v1",
+        "source_measure_id": "property_income_amount",
+        "entity_name": "tax_unit",
+        "geography_id": "S92000003",
+        "period_type": "tax_year",
+        "period_value": 2024
+      },
+      "category_id": "hmrc.tax_statistics",
+      "label": "Landlords' rental receipts before expenses, Scotland",
+      "uprating_index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.per_capita.gdp",
+      "selector_note": "HMRC Property Rental Income Statistics 2026 (28 August 2026), Table 9, Scotland, 2024-25. Uprated from the 2024-25 fact to the 2025 calibration period by the pinned engine's gov.economic_assumptions.indices.obr.per_capita.gdp between 1 January 2024 and 1 January 2025: the index the engine uprates property_rental_income and property_income by."
+    },
+    {
+      "target_id": "hmrc.pris.expenses.scotland",
+      "family": "hmrc_pris",
+      "geography_levels": [
+        "country"
+      ],
+      "measurement": {
+        "entity": "person",
+        "map_to": "household",
+        "concept": "uk.income.property_expenses.amount",
+        "filters": [
+          {
+            "concept": "uk.geography.country",
+            "equals": "SCOTLAND"
+          }
+        ]
+      },
+      "bindings": {
+        "policyengine": {
+          "metric_name": "hmrc/pris_expenses/scotland",
+          "value_expression": "property_rental_income - property_income + property_finance_costs",
+          "from_entity": "person",
+          "map_to": "household",
+          "notes": "HMRC Property Rental Income Statistics 2026, Table 11: UK property expenses declared by landlords in Scotland, 2024-25, the allowable expenses as declared, residential finance costs included. Since 2020-21 those costs are not deducted from property profits but relieved as a tax reduction (ITTOIA 2005 ss. 272A and 274A), yet PRIS counts them among the expenses: across the UK they are £12.82bn of the £34.75bn total (Table 8). The frame stores no expenses column. Receipts less profit (property_rental_income less property_income, the profit policyengine-uk measures before those costs) are the deductible expenses, and property_finance_costs holds the residential finance costs, so the row measures their sum; receipts less profit alone leave the finance costs out. As with the receipts row, the regional table counts all tax entities, partnerships included (across the UK, 13.6 percent of expenses: Table 6, £4.72bn of £34.75bn), while the spine carries individuals; the unknown region holds 4.3 percent of UK expenses; and landlords without profit carry neither receipts nor expenses on the spine. The engine uprates property_finance_costs by its OBR mortgage interest index, not by per-capita GDP as the fact is uprated, so the measured 2025 value moves with both indices. Held as a measured diagnostic with the receipts row (calibration_measure_exclusions.json; PolicyEngine/uk-scottish-budget-2027-28#2). Never the landlord counts: they conflict with the SPI's (microcosm#1145).",
+          "filters": [
+            {
+              "variable": "country",
+              "equals": "SCOTLAND"
+            }
+          ]
+        },
+        "axiom": {
+          "metric_name": "hmrc/pris_expenses/scotland",
+          "status": "pending",
+          "value_rule": "uk.income.property_expenses.amount"
+        }
+      },
+      "ledger_selector": {
+        "source_name": "hmrc",
+        "source_concept": "hmrc.property_expenses_amount",
+        "record_set_spec_id": "hmrc.property_rental_2026.table_11.ty2024.v1",
+        "source_measure_id": "property_expenses_amount",
+        "entity_name": "tax_unit",
+        "geography_id": "S92000003",
+        "period_type": "tax_year",
+        "period_value": 2024
+      },
+      "category_id": "hmrc.tax_statistics",
+      "label": "Landlords' allowable expenses, residential finance costs included, Scotland",
+      "uprating_index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.per_capita.gdp",
+      "selector_note": "HMRC Property Rental Income Statistics 2026 (28 August 2026), Table 11, Scotland, 2024-25. Uprated from the 2024-25 fact to the 2025 calibration period by the pinned engine's gov.economic_assumptions.indices.obr.per_capita.gdp between 1 January 2024 and 1 January 2025: the index the engine uprates property_rental_income and property_income by."
     },
     {
       "target_id": "hmrc.spi.private_pension_income.amount_by_total_income_band",
