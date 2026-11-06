@@ -36,8 +36,12 @@ The switch is two steps, each a separate run of this tool:
     pointer file. It refuses unless each moving build's folder holds a copy
     of it: exactly its files, a release manifest naming the release, the
     build and the tagged manifest it was rewritten from, and every declared
-    file with the SHA-256 it had at the tag. The record lists every moved
-    build, with the date of its tagged commit as ``published_at``. The build
+    file with the SHA-256 it had at the tag. It also refuses a build folder
+    on ``main`` that the record would not list, and a change to the
+    repository's tags between its first read and its commit (a tagged
+    publication that does not commit to ``main`` would otherwise be lost).
+    The record lists every moved build, with the date of its tagged commit
+    as ``published_at``. The build
     each pointer file names becomes its release's current build, and
     ``default`` is the release of ``latest-national.json``'s build, or else
     of ``latest.json``'s. The
@@ -618,6 +622,8 @@ def _describe(hub: _Hub, candidate: _Candidate) -> BuildMove:
 class _Survey:
     """The builds that move, and every tag that does not, with the reason."""
 
+    #: Every tag the survey read, and the commit it names.
+    tags: dict[str, str]
     moves: list[BuildMove]
     skipped: list[dict[str, str]]
     not_moved: list[str]
@@ -627,7 +633,7 @@ class _Survey:
 def _survey(hub: _Hub, selection: Selection) -> _Survey:
     """Find the builds that move and read each one."""
     tags = dict(hub.tags())
-    survey = _Survey(moves=[], skipped=[], not_moved=[], problems=[])
+    survey = _Survey(tags=tags, moves=[], skipped=[], not_moved=[], problems=[])
     unknown = sorted({*selection.include, *selection.exclude} - set(tags))
     survey.problems.extend(f"{tag} is not a tag of {hub.repository}" for tag in unknown)
     for tag, commit in sorted(tags.items()):
@@ -656,7 +662,7 @@ def _survey(hub: _Hub, selection: Selection) -> _Survey:
             )
         try:
             survey.moves.append(_describe(hub, candidate))
-        except (SwitchRefusedError, ValueError, KeyError) as error:
+        except (ValueError, KeyError) as error:
             survey.problems.append(f"{tag} cannot move: {error}")
     seen: dict[tuple[str, str], str] = {}
     for move in survey.moves:
@@ -680,7 +686,8 @@ def _folder_state(
     build and the tagged manifest it was rewritten from, and every file the
     manifest declares has the SHA-256 it had at the tag; ``occupied``
     otherwise, with the reason. The rewritten manifests' bytes are not
-    compared, so a folder copied by an earlier version of this tool still
+    compared, and the build manifest and the checksum ledger at ``head`` are
+    not read, so a folder copied by an earlier version of this tool still
     counts as copied.
     """
     folder = move.folder
@@ -732,6 +739,15 @@ def _folder_state(
                 f"{folder}/{name} does not match the SHA-256 its manifest records"
             )
     return "copied", None
+
+
+def _build_folder_of(path: str) -> str | None:
+    """The build folder ``releases/<release>/<build>`` a path is inside, if
+    any, as the emitter interface's ``check_commit`` finds it."""
+    parts = path.split("/")
+    if len(parts) >= 4 and parts[0] == "releases":
+        return "/".join(parts[:3])
+    return None
 
 
 def _refuse_switched(head_files: Sequence[str], repository: str) -> None:
@@ -794,8 +810,10 @@ def copy_builds(
 ) -> dict[str, Any]:
     """The ``copy`` step: add each moving build's folder, one commit per build.
 
-    Without ``write`` it only reads. With it, it refuses before any commit
-    when a build cannot move or a folder holds something else.
+    Without ``write`` it only reads, and reports every problem, the emitter
+    interface's checks on the record the moving builds make and on each copy
+    commit included. With it, it refuses before any commit when the report
+    has a problem.
     """
     hub = _Hub(api, repository)
     head = hub.head()
@@ -814,6 +832,20 @@ def copy_builds(
         elif state == "missing":
             to_copy.append(move)
         builds.append({**move.summary(), "status": _COPY_STATUS[state]})
+    # Every moving build, copied or not, goes into one record at the switch,
+    # so a name or role the interface refuses is a problem now, before any
+    # folder is written.
+    record_problems: list[str] = []
+    _switch_record(survey.moves, {}, None, record_problems)
+    survey.problems.extend(record_problems)
+    if not record_problems:
+        planned_files = list(head_files)
+        for move in to_copy:
+            survey.problems.extend(
+                f"{move.tag} cannot be copied: {violation}"
+                for violation in _copy_violations(move, planned_files)
+            )
+            planned_files.extend(move.paths())
     report: dict[str, Any] = {
         "step": "copy",
         "repository": repository,
@@ -830,11 +862,6 @@ def copy_builds(
     if survey.problems:
         raise SwitchRefusedError("nothing was copied: " + "; ".join(survey.problems))
     for move in to_copy:
-        violations = _copy_violations(move, head_files)
-        if violations:
-            raise SwitchRefusedError(
-                f"{move.tag} was not copied: " + "; ".join(violations)
-            )
         try:
             head = hub.commit(
                 _copy_operations(move),
@@ -853,7 +880,6 @@ def copy_builds(
                 f"copied before it in this run: {copied or 'none'}; run the step "
                 "again to copy the rest"
             ) from error
-        head_files = [*head_files, *move.paths()]
         report["commits"].append(
             {"tag": move.tag, "folder": move.folder, "commit": head}
         )
@@ -994,6 +1020,17 @@ def switch_repository(
     )
     default = selection.default if selection.default is not None else pointer_default
     record = _switch_record(survey.moves, currents, default, problems)
+    listed = {
+        build_folder(release, build)
+        for release, entry in record.releases.items()
+        for build in entry.builds
+    }
+    unlisted = sorted({_build_folder_of(path) for path in head_files} - listed - {None})
+    problems.extend(
+        f"{folder}/ is a build folder that this switch would not list: move its "
+        "tag with this switch, as the copy step did, or delete the folder first"
+        for folder in unlisted
+    )
     if not problems:
         remaining = [path for path in head_files if path not in pointer_files]
         violations = [
@@ -1034,6 +1071,16 @@ def switch_repository(
         return report
     if problems:
         raise SwitchRefusedError("nothing was written: " + "; ".join(problems))
+    # A tagged publication creates its tag before any commit to main, and a
+    # tag-only one never commits to main, so parent_commit would not notice a
+    # build tagged after the survey; read the tags again just before the
+    # commit.
+    if dict(hub.tags()) != survey.tags:
+        raise SwitchRefusedError(
+            "nothing was written: the repository's tags changed while the switch "
+            "read it, so a build may be missing from the record; run the step "
+            "again once nobody is publishing"
+        )
     from huggingface_hub import CommitOperationAdd, CommitOperationDelete
 
     content = record.serialize()

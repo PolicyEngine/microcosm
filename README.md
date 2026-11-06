@@ -536,10 +536,12 @@ uv run python -m microcosm.build.build_folder_switch switch <owner/repository> \
 The copy step moves every tag of a release that publishes into build folders
 whose manifest names that tag, and each release-per-build tag that
 `--include` names (the June 2023 UK release, or a US release), and refuses a
-build any of whose files does not match its manifest. The switch refuses
-unless every such build's folder holds exactly its copied files, every
-pointer file's build moves or `--retire-pointer` deletes that pointer file,
-and the emitter interface's checks pass. Each build keeps the date of its
+build any of whose files does not match its manifest, or whose release, build
+or role the emitter interface refuses; it reports both without `--write`. The
+switch refuses unless every such build's folder holds exactly its copied
+files, every pointer file's build moves or `--retire-pointer` deletes that
+pointer file, no other build folder is on `main`, the repository's tags did
+not change while it read them, and the emitter interface's checks pass. Each build keeps the date of its
 tagged commit as `published_at`, and each pointer file's build becomes its
 release's current build. The module's docstring describes both steps in full.
 
