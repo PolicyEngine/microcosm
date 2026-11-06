@@ -131,6 +131,9 @@ __all__ = [
 ]
 
 _DATASET = "dataset"
+#: The branch the tagged publisher (``microcosm.data.release``) makes for each
+#: publication: from before it uploads the build until after it tags it.
+_STAGING_BRANCH_PREFIX = "release-staging/"
 _BUILD_MANIFEST_NAME = "build_manifest.json"
 #: A tag of a release that publishes into build folders: the release, then
 #: the calibration attempt's time and digest.
@@ -280,14 +283,23 @@ class _Hub:
         )
         return Path(local).read_bytes()
 
-    def tags(self) -> list[tuple[str, str]]:
-        """Each tag and the commit it names.
+    def refs(self) -> tuple[dict[str, str], list[str]]:
+        """Each tag and the commit it names, and the tagged publisher's
+        staging branches, from one listing.
 
         The Hub lists an annotated tag with the ID of its tag object, not of
-        its commit, so each tag is resolved to its commit.
+        its commit, so each tag is resolved to its commit. A staging branch
+        means a tagged publication has started and not yet tagged its build,
+        or failed before deleting the branch.
         """
         refs = self.api.list_repo_refs(self.repository, repo_type=_DATASET)
-        return sorted((tag.name, self.resolve(tag.name)) for tag in refs.tags)
+        tags = {tag.name: self.resolve(tag.name) for tag in refs.tags}
+        staging = sorted(
+            branch.name
+            for branch in refs.branches
+            if branch.name.startswith(_STAGING_BRANCH_PREFIX)
+        )
+        return tags, staging
 
     def commit_date(self, commit: str) -> str:
         """The commit's date, in UTC to the second, as ``published_at``."""
@@ -624,6 +636,8 @@ class _Survey:
 
     #: Every tag the survey read, and the commit it names.
     tags: dict[str, str]
+    #: The tagged publisher's staging branches the survey's listing showed.
+    staging_branches: list[str]
     moves: list[BuildMove]
     skipped: list[dict[str, str]]
     not_moved: list[str]
@@ -632,8 +646,15 @@ class _Survey:
 
 def _survey(hub: _Hub, selection: Selection) -> _Survey:
     """Find the builds that move and read each one."""
-    tags = dict(hub.tags())
-    survey = _Survey(tags=tags, moves=[], skipped=[], not_moved=[], problems=[])
+    tags, staging_branches = hub.refs()
+    survey = _Survey(
+        tags=tags,
+        staging_branches=staging_branches,
+        moves=[],
+        skipped=[],
+        not_moved=[],
+        problems=[],
+    )
     unknown = sorted({*selection.include, *selection.exclude} - set(tags))
     survey.problems.extend(f"{tag} is not a tag of {hub.repository}" for tag in unknown)
     for tag, commit in sorted(tags.items()):
@@ -987,6 +1008,15 @@ def _switch_record(
     return replace(record, default=default)
 
 
+def _publication_in_progress(branch: str) -> str:
+    return (
+        f"branch {branch} exists, so a tagged publication is in progress: its "
+        "build would be in neither releases.json nor a build folder; run the "
+        "step again once it has finished, or, if that publication failed, "
+        "delete the branch first"
+    )
+
+
 def switch_repository(
     api: Any, repository: str, selection: Selection, *, write: bool
 ) -> dict[str, Any]:
@@ -1002,6 +1032,9 @@ def switch_repository(
     _refuse_switched(head_files, repository)
     survey = _survey(hub, selection)
     problems = survey.problems
+    problems.extend(
+        _publication_in_progress(branch) for branch in survey.staging_branches
+    )
     for move in survey.moves:
         state, reason = _folder_state(hub, move, head=head, head_files=head_files)
         if state == "missing":
@@ -1074,8 +1107,15 @@ def switch_repository(
     # A tagged publication creates its tag before any commit to main, and a
     # tag-only one never commits to main, so parent_commit would not notice a
     # build tagged after the survey; read the tags again just before the
-    # commit.
-    if dict(hub.tags()) != survey.tags:
+    # commit. A publication that has checked for releases.json but not yet
+    # tagged its build has a staging branch, so refuse that too.
+    tags, staging_branches = hub.refs()
+    if staging_branches:
+        raise SwitchRefusedError(
+            "nothing was written: "
+            + "; ".join(_publication_in_progress(branch) for branch in staging_branches)
+        )
+    if tags != survey.tags:
         raise SwitchRefusedError(
             "nothing was written: the repository's tags changed while the switch "
             "read it, so a build may be missing from the record; run the step "
