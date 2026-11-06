@@ -20,15 +20,15 @@ counted, which is how the stage assigns those balances.
 - **By debt size** (``portfolio_by_debt_size``): balance and borrowers in each
   band of the person's federal balance (lower edge inclusive, upper exclusive,
   as FSA's Definitions sheet states).
-- **By loan type** (``portfolio_by_loan_type``): the Parent PLUS balance, and
-  the balance of every other loan type, against the two person columns. FSA
-  files a consolidated Parent PLUS loan under "Consolidation", so its Parent
-  PLUS row is a lower bound on the stage's concept (every loan for a child's
-  education, consolidated or not).
 
-Repayment plans, the portfolio summary and the loan-type recipient counts stay
-diagnostic only: :data:`FSA_DIAGNOSTIC_TABLES` and the row rules in
-:func:`plan_fsa_student_loan_targets` give each reason.
+Repayment plans, the portfolio summary and the loan-type table stay out of the
+loss: :data:`FSA_DIAGNOSTIC_TABLES` and the row rules in
+:func:`plan_fsa_student_loan_targets` give each reason. Under 34 CFR 685.220(f), the
+Secretary pays off each loan that a Direct Consolidation Loan consolidates, and
+FSA's notes don't say whether its Parent PLUS row leaves those loans out. The
+stage's column holds every loan for a child's education, consolidated or not, so
+the row and the column may measure different loans. Every other family pins the
+total, so a target on either side of FSA's split would still constrain the split.
 
 Reference period. The build's period is the H5's (2024), but the balances are
 stocks that the student-debt analysis reads as they stand (its reference year
@@ -40,24 +40,26 @@ alignment. The reference date is the latest quarter that every bound table
 publishes (FY2026 Q2, 31 March 2026, at chronicle#347): the location workbook
 publishes only that date, and holding the other tables to it keeps every family
 a statement about one portfolio on one day. Later quarters of the age,
-debt-size and loan-type tables stay in the receipt.
+debt-size and loan-type tables stay in the receipt. The age bands read the
+frame's ``age`` column as age at that date: the stage draws on the same column,
+and the student-debt analysis reads it, with no shift.
 
 One control total. FSA's borrower tables do not agree exactly with one another
 or with its recipient tables, and the location table holds rows the host
 cannot carry:
 
-- "Not Reported" (FFEL and Perkins loans whose commercial lenders need not
-  report an address) is allocated to every reported location in proportion to
-  its reported balance, or its reported borrowers for the count.
+- "Not Reported" (which includes FFEL and Perkins loans whose commercial
+  lenders need not report an address) is allocated to every reported location in
+  proportion to its reported balance, or its reported borrowers for the count.
 - Puerto Rico and "Other" (an address outside the states and territories the
   table lists) are outside the host's universe, which is the 50 states and DC
   that the CPS samples. They leave, with their share of "Not Reported".
 
 The 51 allocated state levels sum to the in-scope control. The age and
-debt-size bands, and the two loan-type rows, bind as their table's shares of
-that control (``control x row / partition``, the microcosm#940 pattern), so all
-four families describe one in-scope total. A table's own "not reported" age row
-is in no partition, which allocates it across the reported bands the same way.
+debt-size bands bind as their table's shares of that control
+(``control x row / partition``, the microcosm#940 pattern), so all three families
+describe one in-scope total. A table's own "not reported" age row is in no
+partition, which allocates it across the reported bands the same way.
 """
 
 from __future__ import annotations
@@ -150,6 +152,8 @@ _LOCATION = "portfolio_by_location"
 _AGE = "portfolio_by_age"
 _DEBT_SIZE = "portfolio_by_debt_size"
 _LOAN_TYPE = "portfolio_by_loan_type"
+#: The tables a feed must carry, each at the reference quarter. The loan-type
+#: table binds no target, and the receipt reports its rows at that quarter.
 FSA_BOUND_TABLES: tuple[str, ...] = (_LOCATION, _AGE, _DEBT_SIZE, _LOAN_TYPE)
 _DOLLARS = "dollars_outstanding"
 _BORROWER_COUNT = "borrowers"
@@ -163,6 +167,36 @@ _OTHER_LOCATION = "other"
 _PUERTO_RICO_FIPS = "72"
 _AGE_VARIABLE = "age"
 _BALANCE_VARIABLE = "federal_student_loan_balance"
+
+#: The rows FSA publishes per measure at the reference quarter, beyond the 51
+#: states the location check already requires. A table with any other set
+#: refuses, since each row here sets a share or the control.
+_LOCATION_SCOPE_ROWS = frozenset({"pr", _OTHER_LOCATION, _NOT_REPORTED_LOCATION})
+_BAND_ROWS = {
+    _AGE: frozenset(
+        {
+            "age_24_and_younger",
+            "age_25_to_34",
+            "age_35_to_49",
+            "age_50_to_61",
+            "age_62_and_older",
+            "age_not_reported",
+        }
+    ),
+    _DEBT_SIZE: frozenset(
+        {
+            "debt_less_than_5k",
+            "debt_5k_to_10k",
+            "debt_10k_to_20k",
+            "debt_20k_to_40k",
+            "debt_40k_to_60k",
+            "debt_60k_to_80k",
+            "debt_80k_to_100k",
+            "debt_100k_to_200k",
+            "debt_200k_plus",
+        }
+    ),
+}
 
 #: Every other FSA record-set table, with why it stays diagnostic only.
 FSA_DIAGNOSTIC_TABLES: Mapping[str, str] = {
@@ -225,12 +259,13 @@ _REASON_LOAN_TYPE_RECIPIENTS = (
     "Loan-type recipient counts are loan-level (a borrower with two loan types "
     "counts twice), so they are not counts of people."
 )
-_REASON_LOAN_TYPE_MEMBER = (
-    "A member of the balance-excluding-Parent-PLUS target: the build records "
-    "own and Parent PLUS balances, not loan types."
+_REASON_LOAN_TYPE_DOLLARS = (
+    "FSA's notes don't say whether its Parent PLUS row leaves out loans the Secretary "
+    "paid off through consolidation (34 CFR 685.220(f)), the stage's column holds "
+    "every loan for a child's education, and every other family pins the total."
 )
 _REASON_STAFFORD_SUBTOTAL = (
-    "Stafford (Combined) is a subtotal of rows the loan-type targets already count."
+    "Stafford (Combined) is a subtotal of rows the table already lists."
 )
 _REASON_UNREVIEWED_TABLE = (
     "An FSA table with no reviewed binding: inert until one is added."
@@ -343,7 +378,7 @@ def plan_fsa_student_loan_targets(
     controls = _plan_locations(at_reference[_LOCATION], builder, dispose)
     for table in (_AGE, _DEBT_SIZE):
         _plan_bands(table, at_reference[table], controls, builder, dispose)
-    _plan_loan_types(at_reference[_LOAN_TYPE], controls, builder, dispose)
+    _plan_loan_types(at_reference[_LOAN_TYPE], dispose)
     for fact in fsa_facts:
         if id(fact) not in dispositions:
             raise AssertionError(
@@ -659,6 +694,12 @@ def _plan_locations(
             )
         if len(not_reported) > 1:
             raise ValueError("FSA location table has more than one Not Reported row.")
+        _require_reviewed_rows(
+            _LOCATION,
+            source_measure,
+            [*not_reported, *(fact for fact, _ in out_of_scope)],
+            _LOCATION_SCOPE_ROWS,
+        )
         state_sum = math.fsum(_value(fact) for fact in states.values())
         out_of_scope_sum = math.fsum(_value(fact) for fact, _ in out_of_scope)
         not_reported_value = math.fsum(_value(fact) for fact in not_reported)
@@ -710,6 +751,23 @@ def _plan_locations(
     return controls
 
 
+def _require_reviewed_rows(
+    table: str,
+    source_measure: str,
+    rows: Iterable[object],
+    reviewed: frozenset[str],
+) -> None:
+    found = [_str_at(fact, "layout", "groupby_value_id") for fact in rows]
+    if sorted(found) != sorted(reviewed):
+        values = set(found)
+        repeated = sorted({value for value in found if found.count(value) > 1})
+        raise ValueError(
+            f"FSA {table} {source_measure} rows changed at the reference quarter: "
+            f"missing {sorted(reviewed - values)}, unreviewed "
+            f"{sorted(values - reviewed)}, repeated {repeated}."
+        )
+
+
 def _band_lower_bound(band: tuple[float, float, object]) -> float:
     """A (lower, upper, fact) band's lower edge, its sort key."""
 
@@ -750,6 +808,7 @@ def _plan_bands(
                     f"FSA {table} {source_measure} bands are not contiguous at "
                     f"{upper!r} / {lower!r}."
                 )
+        _require_reviewed_rows(table, source_measure, rows, _BAND_ROWS[table])
         partition = math.fsum(_value(fact) for _, _, fact in bands)
         if partition <= 0:
             raise ValueError(f"FSA {table} {source_measure} partition is empty.")
@@ -788,18 +847,12 @@ def _plan_bands(
             dispose(fact, "bound", "Band share of the in-scope control.", target=name)
 
 
-def _plan_loan_types(
-    facts: list[object],
-    controls: Mapping[str, Mapping[str, float]],
-    builder: _PlanBuilder,
-    dispose: Any,
-) -> None:
-    rows = []
+def _plan_loan_types(facts: list[object], dispose: Any) -> None:
     for fact in facts:
         measure = _measure_id(fact)
         kind = _str_at(fact, "layout", "table_record_kind")
         if measure == _DOLLARS and kind in {"detail", ""}:
-            rows.append(fact)
+            dispose(fact, "diagnostic", _REASON_LOAN_TYPE_DOLLARS)
         elif kind == "subtotal" or measure.startswith("stafford_combined"):
             dispose(fact, "excluded", _REASON_STAFFORD_SUBTOTAL)
         elif "recipients" in measure:
@@ -809,67 +862,6 @@ def _plan_loan_types(
                 f"FSA loan-type row {_source_record_id(fact)!r} has no reviewed "
                 "disposition."
             )
-    parent_plus = [
-        fact
-        for fact in rows
-        if _str_at(fact, "layout", "groupby_value_id") == _PARENT_PLUS_LOAN_TYPE
-    ]
-    if len(parent_plus) != 1:
-        raise ValueError("FSA loan-type table needs exactly one Parent PLUS row.")
-    others = tuple(
-        sorted(
-            (fact for fact in rows if fact is not parent_plus[0]),
-            key=_source_record_id,
-        )
-    )
-    if not others:
-        raise ValueError("FSA loan-type table has no loan type besides Parent PLUS.")
-    keys = [_str_at(fact, "layout", "groupby_value_id") for fact in rows]
-    if len(keys) != len(set(keys)):
-        raise ValueError("FSA loan-type table repeats a loan type.")
-    partition = math.fsum(_value(fact) for fact in rows)
-    control = controls[FSA_TOTAL_BALANCE]["in_scope_control"]
-    record_set = _str_at(parent_plus[0], "layout", "record_set_id")
-    for measure, members, name in (
-        (
-            FSA_PARENT_PLUS_BALANCE,
-            (parent_plus[0],),
-            _source_record_id(parent_plus[0]),
-        ),
-        (
-            FSA_BALANCE_EXCLUDING_PARENT_PLUS,
-            others,
-            f"{record_set}.excluding_parent_plus.{_DOLLARS}",
-        ),
-    ):
-        published = math.fsum(_value(fact) for fact in members)
-        share = published / partition
-        builder.add(
-            name=name,
-            measure=measure,
-            target_role=f"fsa_{measure}",
-            source_measure_id=_DOLLARS,
-            value=control * share,
-            label=_measure_label(measure),
-            compiled={},
-            reconciliation={
-                "fsa_reconciliation": "share_of_in_scope_location_control",
-                "fsa_share": _format_float(share),
-                "fsa_partition_value": _format_float(partition),
-                "fsa_control_value": _format_float(control),
-            },
-            facts=members,
-        )
-        for fact in members:
-            if measure == FSA_PARENT_PLUS_BALANCE:
-                dispose(
-                    fact,
-                    "bound",
-                    "Parent PLUS share of the in-scope control.",
-                    target=name,
-                )
-            else:
-                dispose(fact, "bound", _REASON_LOAN_TYPE_MEMBER, target=name)
 
 
 def _hierarchy_seed(category_id: str, *, target_label: str) -> CalibrationHierarchySeed:
