@@ -47,6 +47,9 @@ JUNE_2023_FOLDER = f"releases/{JUNE_2023_RELEASE}/{JUNE_2023_TAG}"
 JUNE_2023_MANIFEST = f"releases/{JUNE_2023_TAG}/release_manifest.json"
 #: When a test changes the repository after the copy step.
 LATER = datetime(2026, 11, 6, 12, 0, tzinfo=UTC)
+#: The branch the tagged publisher (``microcosm.data.release``) keeps while it
+#: publishes a dense build: from before its upload until after it tags it.
+DENSE_STAGING_BRANCH = f"release-staging/{DENSE}"
 
 
 @pytest.fixture(autouse=True)
@@ -699,3 +702,129 @@ def test_switch_can_choose_the_default_release(hub, capsys):
     assert exit_code == 0
     record = json.loads(copied_file(hub, "releases.json") or b"{}")
     assert record.get("default") == DENSE
+
+
+def test_switch_refuses_while_a_tagged_publication_is_in_progress(hub, capsys):
+    run(hub, capsys, "copy", "--write", *INCLUDE_JUNE_2023)
+    # A dense publication has made its staging branch and not yet its tag;
+    # a switch now would leave its build in neither the record nor a folder.
+    hub.branches[DENSE_STAGING_BRANCH] = hub.main
+
+    exit_code, report, _ = run(hub, capsys, "switch", *INCLUDE_JUNE_2023)
+
+    assert exit_code == 1
+    assert any(
+        DENSE_STAGING_BRANCH in problem for problem in report.get("problems", [])
+    )
+
+    exit_code, _, error_output = run(
+        hub, capsys, "switch", "--write", *INCLUDE_JUNE_2023
+    )
+
+    assert exit_code == 1
+    assert DENSE_STAGING_BRANCH in error_output
+    assert "releases.json" not in hub.files_at()
+
+
+def test_switch_refuses_when_a_tagged_publication_starts_while_it_reads(
+    hub, capsys, monkeypatch
+):
+    run(hub, capsys, "copy", "--write", *INCLUDE_JUNE_2023)
+    list_repo_refs = hub.list_repo_refs
+    listings = []
+
+    def a_publication_starts_after_the_first_listing(*args, **kwargs):
+        refs = list_repo_refs(*args, **kwargs)
+        listings.append(refs)
+        if len(listings) == 1:
+            # The publisher checked for releases.json before the switch
+            # commit and makes its staging branch while the switch reads.
+            hub.branches[DENSE_STAGING_BRANCH] = hub.main
+        return refs
+
+    monkeypatch.setattr(
+        hub, "list_repo_refs", a_publication_starts_after_the_first_listing
+    )
+
+    exit_code, _, error_output = run(
+        hub, capsys, "switch", "--write", *INCLUDE_JUNE_2023
+    )
+
+    assert exit_code == 1
+    assert DENSE_STAGING_BRANCH in error_output
+    assert "releases.json" not in hub.files_at()
+
+
+@pytest.mark.parametrize("change", ["deleted", "moved"])
+def test_switch_refuses_when_a_tag_is_deleted_or_moved_while_it_reads(
+    hub, capsys, monkeypatch, change
+):
+    run(hub, capsys, "copy", "--write", *INCLUDE_JUNE_2023)
+    list_repo_refs = hub.list_repo_refs
+    listings = []
+
+    def a_tag_changes_before_the_second_listing(*args, **kwargs):
+        if len(listings) == 1:
+            if change == "deleted":
+                del hub.tags[OLDER_NATIONAL_TAG]
+            else:
+                hub.tags[DENSE_TAG] = hub.seed({}, date=LATER, on_main=False)
+        refs = list_repo_refs(*args, **kwargs)
+        listings.append(refs)
+        return refs
+
+    monkeypatch.setattr(hub, "list_repo_refs", a_tag_changes_before_the_second_listing)
+
+    exit_code, _, error_output = run(
+        hub, capsys, "switch", "--write", *INCLUDE_JUNE_2023
+    )
+
+    assert exit_code == 1
+    assert "tags changed" in error_output
+    assert "releases.json" not in hub.files_at()
+
+
+def test_switch_refuses_a_folder_copied_earlier_and_left_out_with_exclude(hub, capsys):
+    run(hub, capsys, "copy", "--write", *INCLUDE_JUNE_2023)
+
+    exit_code, _, error_output = run(
+        hub, capsys, "switch", "--write", *INCLUDE_JUNE_2023, "--exclude", DENSE_TAG
+    )
+
+    assert exit_code == 1
+    assert f"{DENSE_FOLDER}/ is a build folder that this switch would not list" in (
+        error_output
+    )
+    assert "releases.json" not in hub.files_at()
+
+
+def test_copy_reports_a_release_role_conflict_without_writing(hub, capsys):
+    exit_code, report, _ = run(
+        hub, capsys, "copy", "--include", f"{JUNE_2023_TAG}={DENSE}"
+    )
+
+    assert exit_code == 1
+    assert any("has role" in problem for problem in report.get("problems", []))
+    assert hub.made == []
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        "releases/a-release/a-build/release_manifest.json",
+        "releases/a-release/a-build/nested/file.json",
+        "releases/a-release/release_manifest.json",
+        "releases/a-release",
+        "elsewhere/a-release/a-build/file.json",
+        "latest.json",
+        "releases.json",
+    ],
+)
+def test_the_tool_finds_build_folders_by_the_interfaces_rule(path):
+    """The switch refuses build folders it would not list by the same rule
+    that the interface's ``check_commit`` uses, which is private to it."""
+    from microcosm_emitter_interface import releases as interface_releases
+
+    assert build_folder_switch._build_folder_of(
+        path
+    ) == interface_releases._build_folder_of(path)

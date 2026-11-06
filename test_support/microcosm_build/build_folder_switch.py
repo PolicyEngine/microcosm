@@ -86,6 +86,9 @@ class FakeDatasetRepository:
     tags: dict[str, str] = field(default_factory=dict)
     #: The tag object of each annotated tag, by tag name.
     tag_objects: dict[str, str] = field(default_factory=dict)
+    #: Every branch other than ``main``, such as the tagged publisher's
+    #: ``release-staging/<release>``, and the commit it names.
+    branches: dict[str, str] = field(default_factory=dict)
     main: str = ""
     #: Every commit the tool made, with its operations, in order.
     made: list[dict[str, Any]] = field(default_factory=list)
@@ -159,12 +162,16 @@ class FakeDatasetRepository:
     def list_repo_refs(self, repo_id: str, *, repo_type: str | None = None) -> Any:
         self._check(repo_id, repo_type)
         return SimpleNamespace(
+            branches=[
+                SimpleNamespace(name=name, target_commit=commit)
+                for name, commit in {"main": self.main, **self.branches}.items()
+            ],
             tags=[
                 SimpleNamespace(
                     name=name, target_commit=self.tag_objects.get(name, commit)
                 )
                 for name, commit in self.tags.items()
-            ]
+            ],
         )
 
     def list_repo_files(
