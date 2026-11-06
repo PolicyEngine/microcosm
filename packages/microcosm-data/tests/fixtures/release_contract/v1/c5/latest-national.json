@@ -1,0 +1,13 @@
+{
+ "schema_version": 1,
+ "release_id": "microcosm-uk-2024-25-national",
+ "updated_at": "2026-01-01T00:00:00+00:00",
+ "paths": {
+  "build_manifest": "releases/microcosm-uk-2024-25-national/build_manifest.json",
+  "release_manifest": "releases/microcosm-uk-2024-25-national/release_manifest.json",
+  "calibration_diagnostics": "releases/microcosm-uk-2024-25-national/calibration_diagnostics.json",
+  "release_certification": "releases/microcosm-uk-2024-25-national/release_certification.json"
+ },
+ "line": "national",
+ "revision": "microcosm-uk-2024-25-national-20260101T000000Z-00000000"
+}

@@ -1,0 +1,11 @@
+{
+ "schema_version": 1,
+ "release_id": "populace-us-2024-0000000-20260101",
+ "updated_at": "2026-01-01T00:00:00+00:00",
+ "paths": {
+  "build_manifest": "releases/populace-us-2024-0000000-20260101/build_manifest.json",
+  "release_manifest": "releases/populace-us-2024-0000000-20260101/release_manifest.json",
+  "calibration_diagnostics": "releases/populace-us-2024-0000000-20260101/calibration_diagnostics.json",
+  "us_source_coverage": "releases/populace-us-2024-0000000-20260101/us_source_coverage.json"
+ }
+}

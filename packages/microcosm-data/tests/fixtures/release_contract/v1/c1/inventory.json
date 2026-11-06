@@ -1,0 +1,58 @@
+{
+  "certification": {
+    "file": "release_certification.json",
+    "gate_battery_phases": [
+      "preflight",
+      "assembled",
+      "transferred",
+      "terminal"
+    ],
+    "kind": "uk_release_certification",
+    "part_evidence_files": {
+      "calibration_seam": "terminal_gates.json",
+      "release_cut": "release_cut_gates.json",
+      "spine": "spine_gates.json"
+    },
+    "required_fields": [
+      "attestation",
+      "candidate",
+      "country",
+      "diagnostics_sha256",
+      "doctrine",
+      "exclusions_evaluated_on",
+      "kind",
+      "parent_spine",
+      "parts",
+      "release_id",
+      "schema_version",
+      "score_receipt",
+      "shippable",
+      "spec"
+    ],
+    "schema_version": 1,
+    "score_receipt_file": "score_vs_enhanced_frs.json",
+    "signing_key_env": "MICROCOSM_UK_TERMINAL_GATE_SIGNING_KEY"
+  },
+  "dataset_role": "national_default",
+  "line": "national",
+  "release_directory_files": [
+    "build_manifest.json",
+    "calibration_diagnostics.json",
+    "release_certification.json",
+    "release_cut_gates.json",
+    "release_manifest.json",
+    "score_vs_enhanced_frs.json",
+    "spine_gates.json",
+    "terminal_gates.json"
+  ],
+  "release_id": "microcosm-uk-2024-25-national",
+  "release_manifest_schema_version": 1,
+  "required_release_files": [
+    "build_manifest.json",
+    "release_manifest.json",
+    "calibration_diagnostics.json",
+    "release_certification.json"
+  ],
+  "schema_name": "microcosm.release-contract.c1-inventory",
+  "schema_version": 1
+}
