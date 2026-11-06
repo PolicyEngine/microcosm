@@ -1164,9 +1164,9 @@ def with_us_housing_inputs(
 ) -> Frame:
     """Materialize source-backed housing and tenure inputs on a US frame.
 
-    A frame that already passes the signal gate returns unchanged. Rent outside
-    renter households fails the gate, so a frame whose rent sits on the wrong
-    heads gets its rent drawn again.
+    A frame that already passes the signal gate returns unchanged. Positive rent
+    on anyone outside a renter household fails the gate, so a frame carrying
+    such rent gets its rent drawn again.
     """
 
     if frame.schema != US_SCHEMA:
@@ -1296,8 +1296,9 @@ def us_housing_inputs_summary(frame: Frame) -> dict[str, object]:
 def us_housing_inputs_signal_gate(frame: Frame) -> GateResult:
     """Require plausible non-default signal for all five restored inputs.
 
-    Positive rent may sit only on the head of a renter household, so rent
-    drawn for one household and written to another household's head fails.
+    Positive rent may sit only on the head of a renter household. Rent written
+    to anyone in an owner or no-cash-rent household fails; rent moved from one
+    renter household's head to another's passes.
     """
 
     missing: list[str] = []
