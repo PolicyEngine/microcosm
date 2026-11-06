@@ -7,6 +7,10 @@ area using identified, versioned mappings. Distinct clones may receive different
 areas subject to their observed source constraints. The assigned location then
 remains fixed through subsequent enrichment, calibration and analysis views.
 
+> These US passages describe the work of PolicyEngine/microcosm#893, which
+> closed unmerged on 9 October 2026. Its modules, graphs and receipts never
+> reached main.
+
 The earlier block-before-clone implementation and its passing controls remain
 historical evidence. They do not demonstrate this corrected ordering. Geographic
 assignment must use a stable post-clone identity, including a clone discriminator
@@ -164,6 +168,10 @@ checks mapping integrity, while the executor and build own structural lineage
 and population-quality acceptance. The country's chosen identity still needs
 verification across actual sampling rungs.
 
+> These US passages describe the work of PolicyEngine/microcosm#893, which
+> closed unmerged on 9 October 2026. Its modules, graphs and receipts never
+> reached main.
+
 The US development composed graph attaches geography after harmonization, but
 `us_runtime/graph_geography.py` selects a joint tract/congressional-district cell
 and emits PUMA, county and district. It does not assign a Census block. Its prior
@@ -225,6 +233,10 @@ using the modal active-postcode constituency. Review the official
 [NISRA constituency aggregation and lookup resources](https://www.nisra.gov.uk/publications/census-2021-output-geography-information-papers)
 before choosing or replacing that approximation. Source existence is not
 acceptance of a particular lookup or its application to the population.
+
+> These US passages describe the work of PolicyEngine/microcosm#893, which
+> closed unmerged on 9 October 2026. Its modules, graphs and receipts never
+> reached main.
 
 The US block adapter in `us_runtime/atomic_block_support.py` now preserves each
 supplied block, leading zeroes, population weight and the source-labeled
