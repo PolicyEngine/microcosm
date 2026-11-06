@@ -221,7 +221,9 @@ UK_ALLOWED_EXTRA_EXPORT_COLUMNS: tuple[str, ...] = (
     "household.data_zone_code",
     "household.district_electoral_area_code",
     "household.electricity_consumption",
+    "household.electricity_kwh",
     "household.gas_consumption",
+    "household.gas_kwh",
     "household.geography_household_key",
     "household.has_fuel_consumption",
     # The LCFS prepayment-meter flag (microcosm#1110): policyengine-uk reads it
@@ -332,6 +334,7 @@ UK_ALLOWED_EXTRA_EXPORT_COLUMNS: tuple[str, ...] = (
     "person.is_claimant_or_partner",
     "person.is_engaged_in_owned_company_trade",
     "person.is_hbai_dependent_child",
+    "person.is_in_full_time_education",
     "person.is_in_non_advanced_education",
     "person.is_parent",
     "person.is_uc_claimant",
