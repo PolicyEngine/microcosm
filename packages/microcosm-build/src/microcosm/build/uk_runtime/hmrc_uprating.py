@@ -234,13 +234,17 @@ UK_HMRC_STATE_PENSION_AGE_GROWTH_BASIS = (
     "United Kingdom growth times the resident share"
 )
 #: The SPI savings interest amount by band (microcosm#1095, uk-data#541).
-#: policyengine-uk's dataset projection grows ``savings_interest_income`` by
+#: policyengine-uk's dataset projection grew ``savings_interest_income`` by
 #: GDP per head, but the variable's own index, ONS household interest income,
 #: is what records its history: x1.99 from 2022 to 2023 as rates rose, against
 #: GDP per head's x1.05. The frame holds survey-year values (the SPI donors are
 #: rebased to that year by the history index) and the engine projects them to
 #: the calibration year. So a fact moves to the survey year by the history
-#: index and from there by the projection's, the path the data takes.
+#: index and from there by the projection's, the path the data takes. No SPI
+#: target follows this concept since microcosm#1418, and from policyengine-uk
+#: 2.165.2 the engine projects savings interest by the OBR's savings income per
+#: person in 2022 to 2025 under the rule the producer declares, so its GDP per
+#: head leg is the projection only of a dataset that declares no rule.
 UK_SPI_SAVINGS_INTEREST_INDEX_CONCEPT = (
     "policyengine_uk.household_interest_income_to_dataset_year_then_per_capita_gdp"
 )
@@ -533,8 +537,8 @@ def assert_installed_engine_is_pinned() -> str:
     jobs and the H2 parity run them on the lock.
 
     Three things must hold. The distribution's version is the pinned one,
-    exactly, so a post-release or a local build of it (``2.165.1.post1``,
-    ``2.165.1+local``) is refused. ``policyengine_uk`` imports from that
+    exactly, so a post-release or a local build of it (``2.174.1.post1``,
+    ``2.174.1+local``) is refused. ``policyengine_uk`` imports from that
     distribution's own files, so a copy earlier on ``sys.path`` or an editable
     install is refused. And its ``__init__.py`` matches the distribution's
     RECORD, so a stale record beside other files is refused where the files

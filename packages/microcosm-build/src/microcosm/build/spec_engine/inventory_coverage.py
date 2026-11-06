@@ -350,12 +350,12 @@ EXPECTED_HASHES = {
     "acs_person_predictors": "878c788a6f037d7aca12b3586ea034eff04f3034ffa11935a736493042551f25",
     "authority": "bf681aedc859fd6398ef72da68f584069b7d25b3085c549bf99f82e8324c4eef",
     "early_families": "4aa9f736fd76e83955477ad1667e58f48f264783f05bdc7f0102cd32d61323bd",
-    "full_checkpoint": "0d3f476a6ce9026fee35c321102f086a0898a1a6bfffc6146e59e67ab79bd740",
+    "full_checkpoint": "ecf64f2bfbb59ffaaa717d8a09d38e56a38d6d43c1aa0a209d57492b038fb19a",
     "gap_fill_schedule": "1c31f9868f7884347cc19cf1ff65da43f950b9114941a715bab168246db414a7",
     "graph_nodes": "1b208fff4f6d878c522147fee617177544bda8963c940f98a4bfc37507cb955f",
     "geography_assignment": "44e7f5f6cd7ceeef85d532c3d46306d03de4f4ee811376e6d29920742746b65c",
     "late_families": "7857518a5327a816acae80d55a04f43e7445a5e47be822d3ccb747bcb375e199",
-    "late_resource_semantics": "77d780d0f40dbe06bc5230e4413828d0d22e96235cd9ef8f15368a7246048895",
+    "late_resource_semantics": "4464b646c45dff39a500e07bf60a8505d45725712fc27dcfc6de1e839fd6b0c3",
     "late_schedule": "f1fb754e6ade602be394837bc0d7d091f2fba4b4b83fb00f59a0258fe56eb5da",
     "ownership": "5f64f0aac49e2313177564f71876bffc8c81b3ded4df701e70930e60e9c98356",
     "primary_tuples": "6655e37f15befe053f8de2583c216f97098e4c2bde526f315299c2858c97f055",
@@ -380,9 +380,9 @@ EXPECTED_HASHES = {
     # microcosm#1259's recipient-share bound in puf_support moves both again.
     # microcosm#1261 moves both again: the PUF donor carries partnership and
     # S-corp line-32 shares as separate leaves.
-    "seed_map": "488846129a3c47e89d54538515e6bdbd7ce849e4081ab8a4ad40c9ce2a1e1391",
-    "seed_protocol": "87f44e60621c45d2fc1448fda11cd446960d6bab7cb51b346367339e2e751e1f",
-    "source_manifest": "3ca4045710cf69f462e9e6d037e6539a983cad90678c5e9244a0c0fabe44ea97",
+    "seed_map": "2ca5e0a6c53617cc6e025086e883eab8209f153547dfdb09ea220d2ff35dfe60",
+    "seed_protocol": "d8217ce7f319cebdbcf8125e1313ae951fc7f03bcad7ed3550f498c4cc31e269",
+    "source_manifest": "dc3879886d2a69f20fb982a675d7fb322c0e4017afef6471be54b0ee3cbd2af6",
     "take_up": "9522ce40f7dea569312dd7a7beb474e5a5afadd2f1e10cb5876534c3ef623d35",
     "tail": "565f0ceeadab69d3e96a886a00dd0305f7425fa3acde24d12ba48db2b37d5fc0",
 }

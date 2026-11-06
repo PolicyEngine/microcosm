@@ -25,6 +25,10 @@ from microcosm.build.transport.compose import (
     compose_transport_graph,
     load_transport_spec,
 )
+from microcosm.build.transport.evidence_contract import (
+    unreached_refs,
+    without_unreached,
+)
 from microcosm.build.transport.money_kernels import MONEY_MINOR_UNITS
 from microcosm.frame import Frame, WeightKind, Weights
 from microcosm.frame.adapters.axiom import NZ_SCHEMA, axiom_concept_mapping
@@ -128,7 +132,14 @@ def test_schedule_binding_is_compiled_and_taxable_income_is_solver_owned():
     assert surface.modules[tax["rulespec_path"]].status == "compiled"
     assert surface.modules[tax["rulespec_path"]].sha256 == tax["sha256"]
     closure = InputClosure.from_dict(_load("axiom_input_closure"))
-    assert closure.check(axiom_concept_mapping("nz"), surface) == ()
+    bindings = _load("axiom_rules_bindings")
+    checked_surface, checked_mapping = without_unreached(
+        surface,
+        axiom_concept_mapping("nz"),
+        unreached_refs(bindings["bindings"]),
+        bindings["entity_names"].values(),
+    )
+    assert closure.check(checked_mapping, checked_surface) == ()
     (entry,) = closure.entries_for(tax["rulespec_path"])
     assert entry.input == "taxable_income"
     assert entry.closure_class is ClosureClass.ENCODED
@@ -253,7 +264,12 @@ def test_direct_annual_cents_exposure_and_super_before_tax_are_explicit():
     ]
     assert all(column["rounding"] == "exact" for column in annual["columns"])
     super_node = nodes["nz.gross_up.super_cents"]
-    assert "engine_ref" not in super_node["params"]
+    # R2C-2: the NZS cents name the nz_super S5 stage, as net_cents names rates.
+    assert super_node["params"]["engine_ref"] == {
+        "binding": "nz_super",
+        "field": "engine_ref",
+    }
+    assert super_node["params"]["period"] == {"binding": "nz_super", "field": "period"}
     (super_column,) = json.loads(super_node["params"]["declaration"])["columns"]
     assert super_column["source_column"] == "nz_super_weekly_amount_before_tax"
     assert super_column["source_tax_basis"] == "before_tax"
@@ -294,7 +310,8 @@ def composed_gross_up(tmp_path):
     fixture = make_composed_fixture(tmp_path / "gross-up-composition")
     spec = copy.deepcopy(fixture.spec)
     nodes = _load("benefit_gross_up")["nodes"]
-    wanted = {"main_benefits_rates", "income_tax_schedule_1"}
+    # The nz_super stage (R2C-2) names its binding through super_cents.
+    wanted = {"main_benefits_rates", "income_tax_schedule_1", "nz_super"}
     bindings = [
         row for row in _load("axiom_rules_bindings")["bindings"] if row["id"] in wanted
     ]

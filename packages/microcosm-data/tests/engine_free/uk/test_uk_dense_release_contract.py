@@ -20,6 +20,8 @@ from microcosm.data.contract import (
 
 DENSE_ID = "microcosm-uk-2024-25-dense"
 CUT_TAG = f"{DENSE_ID}-20260903T105422Z-ca611e43"
+#: The calibration attempt the signed report is bound to: the dense build.
+DENSE_BUILD = "uk-local-candidate-f100-s42-20260903T105422Z-ca611e43"
 KEY = base64.b64encode(b"\x07" * 32).decode()
 KEY_BYTES = base64.b64decode(KEY)
 
@@ -117,17 +119,18 @@ def write_dense_bundle(
     root: Path,
     *,
     release_id: str = DENSE_ID,
-    revision: str = CUT_TAG,
+    revision: str | None = None,
     namespace: str = "uk_dense",
     default_datasets: dict | None = None,
     report: dict | None = None,
     drop_coverage_key: str | None = None,
     drop_households: bool = False,
-    attempt_id: str | None = None,
+    build: str | None = None,
     with_incumbent: bool = False,
     holdout: str = "skipped",
     sized: bool = False,
     national_exclusions: tuple[str, ...] = (),
+    build_folder: bool = False,
 ) -> Path:
     """A synthetic dense release directory.
 
@@ -141,6 +144,14 @@ def write_dense_bundle(
     coverage and the manifest's limitations, the areas in ``area_support``;
     the candidate manifest records the target-fit and input-mass names under
     ``reviewed_exclusions_stood_on``, as the build does.
+
+    By default it is in the tagged layout the dense assembler writes until
+    the repository switches to releases.json: the build manifest names the
+    signed report's attempt (``build`` names another) as ``attempt_id``, and
+    each artifact is pinned to ``revision`` or the per-build tag. With
+    ``build_folder`` it is in the layout the emitter's publication uses: both
+    manifests name the release and the build, and no artifact pins a
+    ``revision`` unless ``revision`` asks for one.
     """
     release_dir = root / "releases" / release_id
     release_dir.mkdir(parents=True)
@@ -257,12 +268,15 @@ def write_dense_bundle(
     }
     if drop_coverage_key:
         del coverage[drop_coverage_key]
-    build_manifest = {
-        "build_id": release_id,
-        "build_sha": "abc1234",
-        "code": {"git_commit": "a" * 40, "git_dirty": False},
-        "attempt_id": attempt_id if attempt_id is not None else report["release_id"],
-    }
+    build_name = build if build is not None else report["release_id"]
+    build_manifest = (
+        {"release": release_id, "build": build_name}
+        if build_folder
+        else {"build_id": release_id, "attempt_id": build_name}
+    )
+    build_manifest.update(
+        build_sha="abc1234", code={"git_commit": "a" * 40, "git_dirty": False}
+    )
     score = {
         "candidate_fitted_surface_loss": 0.01,
         "incumbent_fitted_surface_loss": 0.2,
@@ -387,15 +401,44 @@ def write_dense_bundle(
     h5_bytes = b"dense-h5-stand-in"
     (root / "microcosm_uk_2024_25_dense.h5").write_bytes(h5_bytes)
 
-    def artifact(kind, path, sha):
-        return {
+    pinned = revision if revision is not None or build_folder else CUT_TAG
+
+    def artifact(kind, path, sha, role):
+        entry = {
             "kind": kind,
             "path": path,
             "repo_id": "policyengine/populace-uk-private",
-            "revision": revision,
             "sha256": sha,
         }
+        if build_folder:
+            entry["role"] = role
+        if pinned is not None:
+            entry["revision"] = pinned
+        return entry
 
+    identity = (
+        {
+            "release": release_id,
+            "build": build_name,
+            "built_at": "2026-09-03T12:00:00+00:00",
+            "built_with_core_package": {
+                "name": "policyengine-core",
+                "version": "3.33.3",
+            },
+            "built_with_model_package": {
+                "name": "policyengine-uk",
+                "version": "2.165.1",
+            },
+            "compatible_core_packages": [
+                {"name": "policyengine-core", "specifier": "==3.33.3"}
+            ],
+            "compatible_model_packages": [
+                {"name": "policyengine-uk", "specifier": "==2.165.1"}
+            ],
+        }
+        if build_folder
+        else {"build": {"build_id": release_id}}
+    )
     manifest = {
         "schema_version": 1,
         "data_package": {"name": "microcosm-data", "version": "0.1.0"},
@@ -403,13 +446,15 @@ def write_dense_bundle(
         "is_default": False,
         "default_datasets": default_datasets if default_datasets is not None else {},
         "namespace": namespace,
-        "build": {"build_id": release_id},
+        **identity,
         "artifacts": {
             "microcosm_uk_2024_25_dense": artifact(
-                "microdata", "microcosm_uk_2024_25_dense.h5", _sha(h5_bytes)
+                "microdata", "microcosm_uk_2024_25_dense.h5", _sha(h5_bytes), "dataset"
             ),
             **{
-                Path(name).stem: artifact("diagnostics", name, _sha(payload))
+                Path(name).stem: artifact(
+                    "diagnostics", name, _sha(payload), Path(name).stem
+                )
                 for name, payload in payloads.items()
                 if name != "build_manifest.json"
             },
@@ -754,6 +799,16 @@ def test_dense_bundle_accepts_the_release_id_as_revision(tmp_path: Path) -> None
     validate_release_dir(write_dense_bundle(tmp_path, revision=DENSE_ID))
 
 
+def test_dense_bundle_names_its_release_and_build_in_both_manifests(
+    tmp_path: Path,
+) -> None:
+    release_dir = write_dense_bundle(tmp_path, build_folder=True)
+    for name in ("build_manifest.json", "release_manifest.json"):
+        manifest = json.loads((release_dir / name).read_text())
+        assert (manifest["release"], manifest["build"]) == (DENSE_ID, DENSE_BUILD)
+    validate_release_dir(release_dir)
+
+
 def _failures(release_dir: Path) -> str:
     with pytest.raises(ReleaseContractError) as excinfo:
         validate_release_dir(release_dir)
@@ -762,6 +817,12 @@ def _failures(release_dir: Path) -> str:
 
 def test_unpinned_revision_is_rejected(tmp_path: Path) -> None:
     assert "not pinned" in _failures(write_dense_bundle(tmp_path, revision="main"))
+
+
+@pytest.mark.parametrize("revision", ["main", DENSE_ID])
+def test_a_pinned_revision_is_rejected(tmp_path: Path, revision: str) -> None:
+    text = _failures(write_dense_bundle(tmp_path, revision=revision, build_folder=True))
+    assert f"pins revision {revision!r}" in text
 
 
 def test_wrong_namespace_is_rejected(tmp_path: Path) -> None:
@@ -841,7 +902,7 @@ def test_other_local_area_ids_keep_the_generic_contract(tmp_path: Path) -> None:
 
 def test_report_from_another_attempt_is_rejected(tmp_path: Path) -> None:
     release_dir = write_dense_bundle(
-        tmp_path, attempt_id="uk-local-candidate-f100-s42-20260101T000000Z-00000000"
+        tmp_path, build="uk-local-candidate-f100-s42-20260101T000000Z-00000000"
     )
     assert "does not belong to this run" in _failures(release_dir)
 
@@ -854,6 +915,69 @@ def test_build_manifest_without_attempt_id_is_rejected(tmp_path: Path) -> None:
         json.dumps(build_manifest, indent=1)
     )
     assert "must carry the calibration 'attempt_id'" in _failures(release_dir)
+
+
+def test_build_manifest_without_its_build_is_rejected(tmp_path: Path) -> None:
+    release_dir = write_dense_bundle(tmp_path, build_folder=True)
+    build_manifest = json.loads((release_dir / "build_manifest.json").read_text())
+    del build_manifest["build"]
+    (release_dir / "build_manifest.json").write_text(
+        json.dumps(build_manifest, indent=1)
+    )
+    text = _failures(release_dir)
+    assert "build_manifest.json 'build' must be the build's name" in text
+
+
+@pytest.mark.parametrize("field", ["attempt_id", "cut_tag", "build_id"])
+def test_a_build_manifest_with_a_retired_build_field_is_rejected(
+    tmp_path: Path, field: str
+) -> None:
+    release_dir = write_dense_bundle(tmp_path, build_folder=True)
+    build_manifest = json.loads((release_dir / "build_manifest.json").read_text())
+    build_manifest[field] = DENSE_BUILD
+    (release_dir / "build_manifest.json").write_text(
+        json.dumps(build_manifest, indent=1)
+    )
+    assert f"build_manifest.json carries {field!r}" in _failures(release_dir)
+
+
+def test_a_release_manifest_naming_another_build_is_rejected(tmp_path: Path) -> None:
+    release_dir = write_dense_bundle(tmp_path, build_folder=True)
+    manifest = json.loads((release_dir / "release_manifest.json").read_text())
+    manifest["build"] = "uk-local-candidate-f100-s42-20260101T000000Z-00000000"
+    (release_dir / "release_manifest.json").write_text(json.dumps(manifest, indent=1))
+    text = _failures(release_dir)
+    assert "name different builds" in text
+
+
+def test_a_dense_release_keeps_the_local_area_package_checks(tmp_path: Path) -> None:
+    """The build details moved to the top level, but the local-area contract
+    still checks only that they are there, as it did inside ``build``: a
+    build run where the engines were not installed, whose versions read
+    ``unavailable``, validates as before."""
+    release_dir = write_dense_bundle(tmp_path, build_folder=True)
+    manifest = json.loads((release_dir / "release_manifest.json").read_text())
+    for field in ("built_with_core_package", "built_with_model_package"):
+        manifest[field]["version"] = "unavailable"
+    for field in ("compatible_core_packages", "compatible_model_packages"):
+        manifest[field][0]["specifier"] = "==unavailable"
+    (release_dir / "release_manifest.json").write_text(json.dumps(manifest, indent=1))
+    _refresh_packaging_checksums(release_dir)
+
+    validate_release_dir(release_dir)
+
+
+@pytest.mark.parametrize(
+    "field", ["built_at", "built_with_core_package", "built_with_model_package"]
+)
+def test_a_dense_release_records_its_build_details_at_the_top_level(
+    tmp_path: Path, field: str
+) -> None:
+    release_dir = write_dense_bundle(tmp_path, build_folder=True)
+    manifest = json.loads((release_dir / "release_manifest.json").read_text())
+    del manifest[field]
+    (release_dir / "release_manifest.json").write_text(json.dumps(manifest, indent=1))
+    assert field in _failures(release_dir)
 
 
 @pytest.mark.parametrize("dirty", [True, None, "false", 0, "missing"])

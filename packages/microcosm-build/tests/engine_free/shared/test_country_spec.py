@@ -527,6 +527,7 @@ class TestBelgianPackage:
             "target_references.json",
             "precal_references.json",
             "holdout_references.json",
+            "quantile_surfaces.json",
             "reference_aging.json",
             "reference_intervals.json",
             "reference_inventory.json",
@@ -1074,6 +1075,8 @@ class TestUKCountryPackage:
             "hmrc_stamp_tax_facts.json",
             "hmrc_isa_statistics_facts.json",
             "hmrc_benefits_in_kind_facts.json",
+            # microcosm#1095: dense builds only, uk_runtime.property_localisation.
+            "scotgov_chargeable_dwellings_by_band.json",
             "dwp_move_to_uc_facts.json",
             "dwp_uc_award_band_facts.json",
             "obr_hvcts_costing_facts.json",
@@ -1190,13 +1193,14 @@ class TestUKCountryPackage:
         # microcosm#1240 high_value_home_support between them, microcosm#1112
         # regional_home_values after it, and microcosm#1095 property_purchases
         # after property_components and uc_legacy_closure_take_up after
-        # uc_capital_coherence; microcosm#1319 carers_allowance_take_up after
-        # child_benefit_take_up; childcare_copy_take_up last, after every copy
+        # uc_capital_coherence; microcosm#1319 carers_allowance_take_up, after
+        # salary_sacrifice since microcosm#1095 B5; childcare_copy_take_up last, after every copy
         # stage; microcosm#1334 uc_take_up after uc_capital_coherence and
         # frs_annual_income_spells after frs_hmrc_spine_leaves; microcosm#1428
         # trading_allowance_receipts last; company_cars right after
-        # hmrc_spi_income_spine (PolicyEngine/uk-autumn-budget-dashboard-2026#316).
-        assert len(spec.sources.stages) == 52
+        # hmrc_spi_income_spine (PolicyEngine/uk-autumn-budget-dashboard-2026#316);
+        # microcosm#1490 spi_employment_shell after it and aps_occupation next.
+        assert len(spec.sources.stages) == 54
         assert not {"frs_hmrc_retained_leaves", "hmrc_spi_income"}.intersection(
             stage.stage for stage in spec.sources.stages
         )
@@ -1241,6 +1245,8 @@ class TestExistingPackagesGeneralize:
             "hmrc_stamp_tax_facts.json",
             "hmrc_isa_statistics_facts.json",
             "hmrc_benefits_in_kind_facts.json",
+            # microcosm#1095: dense builds only, uk_runtime.property_localisation.
+            "scotgov_chargeable_dwellings_by_band.json",
             "dwp_move_to_uc_facts.json",
             "dwp_uc_award_band_facts.json",
             "obr_hvcts_costing_facts.json",
@@ -1608,6 +1614,7 @@ class TestUKGatesManifest:
             "uk_stage_frs_annual_income_spells",
             "uk_stage_spi_support_channel_mass",
             "uk_stage_hmrc_spi_income_spine_identity",
+            "uk_stage_hmrc_spi_income_spine_hourly_pay",
             "uk_stage_spi_benefit_coherence",
             "uk_stage_uc_take_up",
             "uk_stage_pension_credit_take_up",
@@ -1635,6 +1642,8 @@ class TestUKGatesManifest:
             "uk_stage_isa_subscriptions_invariants",
             "uk_stage_isa_subscriptions",
             "uk_stage_company_cars_invariants",
+            "uk_stage_spi_employment_shell_fit",
+            "uk_stage_aps_occupation_fit",
             "uk_release_input_coverage",
             "uk_degenerate_release_surface",
             "uk_zero_weight_strata",
@@ -1653,6 +1662,8 @@ class TestUKGatesManifest:
             "uk_council_tax_band_domain",
             "uk_uc_deduction_combination_enum_domain",
             "uk_student_loan_plan_enum_domain",
+            "uk_soc2020_major_group_enum_domain",
+            "uk_soc2020_sub_major_group_enum_domain",
             "uk_council_tax_band_domain_terminal",
             "uk_calibration_reference_coverage",
             "uk_target_surface",
@@ -1747,6 +1758,7 @@ class TestUKGatesManifest:
             "uk_stage_frs_annual_income_spells",
             "uk_stage_spi_support_channel_mass",
             "uk_stage_hmrc_spi_income_spine_identity",
+            "uk_stage_hmrc_spi_income_spine_hourly_pay",
             "uk_stage_spi_benefit_coherence",
             "uk_stage_uc_take_up",
             "uk_stage_pension_credit_take_up",
@@ -1774,6 +1786,8 @@ class TestUKGatesManifest:
             "uk_stage_isa_subscriptions_invariants",
             "uk_stage_isa_subscriptions",
             "uk_stage_company_cars_invariants",
+            "uk_stage_spi_employment_shell_fit",
+            "uk_stage_aps_occupation_fit",
             "uk_weights_audit",
             # The #970 projection fence: a seam that cannot project cannot
             # certify the candidate's sub-exempt gainers.

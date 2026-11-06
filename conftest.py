@@ -85,6 +85,22 @@ def fake_telemetry_emitters(monkeypatch, tmp_path):
 
     for name in ("HF_TOKEN", "HUGGING_FACE_HUB_TOKEN", "HUGGINGFACE_TOKEN"):
         monkeypatch.delenv(name, raising=False)
+    # Whether a build must send telemetry, the telemetry run a build program
+    # reports under, and a collector token given to its emitter: a shell that
+    # exports them must not change what a test sees.
+    for name in (
+        "MICROCOSM_TELEMETRY_REQUIRED",
+        "MICROCOSM_TELEMETRY_RUN_ID",
+        "MICROCOSM_TELEMETRY_PARENT_PID",
+        "MICROCOSM_COLLECTOR_TOKEN",
+        "MICROCOSM_COLLECTOR_TOKEN_EXPIRES_AT",
+        "MICROCOSM_COLLECTOR_ORIGIN",
+        # The Modal runner's own names for the same three values.
+        "MICROCOSM_MODAL_TELEMETRY_TOKEN",
+        "MICROCOSM_MODAL_TELEMETRY_TOKEN_EXPIRES_AT",
+        "MICROCOSM_MODAL_TELEMETRY_ORIGIN",
+    ):
+        monkeypatch.delenv(name, raising=False)
     isolated_hf = tmp_path / "telemetry-hf"
     token_path = isolated_hf / "token"
     monkeypatch.setenv("HF_HOME", str(isolated_hf))

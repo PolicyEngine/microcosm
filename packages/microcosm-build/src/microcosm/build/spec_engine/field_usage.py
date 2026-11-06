@@ -26,9 +26,9 @@ from .resolver import (
 )
 from .schemas import load_schema_registry
 
-EXPECTED_AUTHORED_FIELD_COUNT = 32_704
+EXPECTED_AUTHORED_FIELD_COUNT = 32609
 EXPECTED_RESOLVED_BINDING_FIELD_COUNT = 9_785
-EXPECTED_CONFIGURATION_FIELD_COUNT = 42_489
+EXPECTED_CONFIGURATION_FIELD_COUNT = 42394
 
 
 class FieldUsageError(AssertionError):
@@ -365,12 +365,8 @@ _PINS: dict[str, tuple[int, str]] = {
         "49a153b065b59950d910f9e2bcfcd7005e5babaecf9b41b1cc9704a7f20dcc5b",
     ),
     "catalog_columns": (
-        1_683,
-        "e43651deeb21fd914443862e0c8689c2a0c86631a00e2a7dcf5ddb3b03dd1370",
-    ),
-    "catalog_metadata_waivers": (
-        5,
-        "64182b6be1ea6d95bff345b30a2aa046b6fa7e8ee61a282b225dfa49c28fbfdc",
+        1_593,
+        "bdd9e79157590fade42d28cc2b5d5c8b58e13903af75375a0e3235c94d2a8339",
     ),
     "country_manifest": (
         104,
@@ -646,14 +642,6 @@ def default_usage_claims() -> tuple[UsageClaim, ...]:
                 "/calibration_tail_contracts",
             ),
             relative_sink_prefix="/calibration_contract",
-        ),
-        _claim(
-            "catalog_metadata_waivers",
-            f"{_A}/spec~1catalogs.yaml/metadata_waivers",
-            UsageMode.FRONT_END_VALIDATION,
-            _NO_EFFECT,
-            "typed_closure.metadata_waiver_validation",
-            "catalog_waivers",
         ),
         _claim(
             "catalog_columns",
@@ -1287,22 +1275,6 @@ def _verify_catalog_columns(context: _VerificationContext, claim: UsageClaim) ->
         raise FieldUsageError("catalog_columns: typed column projection differs")
 
 
-def _verify_catalog_waivers(context: _VerificationContext, claim: UsageClaim) -> None:
-    _verify_compiled_domain(context, claim)
-    _, waivers = _pointer_value(context.sources, claim.source_prefix)
-    if not isinstance(waivers, (list, tuple)):
-        raise FieldUsageError("catalog_metadata_waivers: array required")
-    waiver_ids = {
-        str(waiver["id"])
-        for waiver in waivers
-        if isinstance(waiver, Mapping) and "id" in waiver
-    }
-    used = {column.unit_waiver for column in context.spec.columns}
-    used.discard(None)
-    if waiver_ids != used:
-        raise FieldUsageError("catalog_metadata_waivers: typed closure differs")
-
-
 def _verify_imputation_validation(
     context: _VerificationContext,
     claim: UsageClaim,
@@ -1471,7 +1443,6 @@ def _verify_claim(context: _VerificationContext, claim: UsageClaim) -> None:
             context, claim
         ),
         "catalog_columns": lambda: _verify_catalog_columns(context, claim),
-        "catalog_waivers": lambda: _verify_catalog_waivers(context, claim),
         "imputation_validation": lambda: _verify_imputation_validation(context, claim),
         "imputation_graph": lambda: _verify_imputation_graph(context, claim),
         "seed_protocol": lambda: _verify_seed_protocol(context, claim),

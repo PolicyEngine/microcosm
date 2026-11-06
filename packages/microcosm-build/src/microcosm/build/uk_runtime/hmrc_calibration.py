@@ -24,6 +24,7 @@ from microcosm.build.uk_runtime.hmrc_income import (
 from microcosm.build.uk_runtime.national_frame import (
     uk_household_weight_kind,
     uk_isa_income_contract,
+    uk_savings_income_projection,
     uk_time_period,
 )
 from microcosm.build.uk_runtime.spi_income import derive_hmrc_income_auxiliaries
@@ -463,6 +464,7 @@ def _uk_single_year_dataset(frame: Frame) -> Any:
         household=tables["household"],
         fiscal_year=int(uk_time_period(frame)),
         isa_income_contract=uk_isa_income_contract(frame),
+        savings_income_projection=uk_savings_income_projection(frame),
     )
 
 

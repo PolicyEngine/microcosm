@@ -252,6 +252,8 @@ def test_a_cgt_measure_dated_by_its_name_holds_its_own_year():
     assert adapter.value_period("person", "employment_income") == "2024"
     assert adapter.value_period("person", "cgt_2024_tax") == "2024"
     assert adapter.value_period("person", "cgt_2025_gains") == "2025"
+    assert adapter.value_period("person", "company_car_benefit_2024") == "2024"
+    assert adapter.value_period("person", "company_car_benefit") is None
     assert adapter.value_period("person", "income_tax") is None
 
     # The guard lets the dated measure through: the provider computes it at
@@ -461,6 +463,9 @@ REVIEWED_PLAIN_COLUMN_POPULATION_VARIABLES = frozenset(
         "attends_private_school",
         "benefit_cap_reduction",
         "benunit_tenure_type",
+        # Engine-computed at the calibration period: the High Income Child
+        # Benefit Charge, which the HICBC count reads (microcosm#1426).
+        "CB_HITC",
         # Engine-computed at the calibration period: the Child Benefit paid and
         # the children it is paid for (microcosm#1095).
         "child_benefit",
@@ -468,6 +473,11 @@ REVIEWED_PLAIN_COLUMN_POPULATION_VARIABLES = frozenset(
         "council_tax_band",
         # Engine-computed from the household's adults (pe-uk#1864; microcosm#953).
         "council_tax_discount_rate",
+        # The company car rows (microcosm#1418): the stored list price as a sign
+        # filter, which keeps its sign at any period, and the stored fuel type,
+        # which nothing uprates.
+        "company_car_fuel_type",
+        "company_car_list_price",
         "country",
         "dfe_age_at_31_december",
         "dfe_spring_early_learning_2",
@@ -477,6 +487,9 @@ REVIEWED_PLAIN_COLUMN_POPULATION_VARIABLES = frozenset(
         "eldest_adult_age",
         "employment_income",
         "employment_sector",
+        # Stored inputs the occupation rows filter on (microcosm#1490): who is
+        # in work and the SOC 2020 major group, which nothing uprates.
+        "employment_status",
         "esa",
         "esa_contrib",
         "esa_income",
@@ -509,6 +522,8 @@ REVIEWED_PLAIN_COLUMN_POPULATION_VARIABLES = frozenset(
         # (microcosm#1095).
         "savings_interest_income_outside_isas",
         "self_employment_income_after_loss_relief",
+        "soc2020_major_group",
+        "soc2020_sub_major_group",
         "state_pension",
         "state_pension_type",
         "student_loan_plan",

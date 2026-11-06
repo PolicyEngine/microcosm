@@ -21,6 +21,10 @@ from microcosm.build.uk_runtime.national_frame import (
     uk_time_period,
     validate_uk_national_frame,
 )
+from microcosm.build.uk_runtime.occupation_constants import (
+    UK_FRS_SOC2020_MAJOR_GROUP,
+    UK_SOC2020_NO_OCCUPATION,
+)
 from microcosm.frame import Frame
 
 # Adult-table EMPSTATI ("Adult - Employment Status - ILO definition") value
@@ -53,6 +57,7 @@ FRS_EMPLOYMENT_OUTPUT_COLUMNS = (
     "employment_status",
     "employment_sector",
     "sic_industry_division",
+    "soc2020_major_group",
 )
 
 
@@ -74,7 +79,7 @@ class UKFRSEmploymentStageTransform:
 def add_frs_employment(
     frame: Frame, raw_dir: str | Path, *, stage: SourceStageSpec
 ) -> Frame:
-    """Add employment status, sector, and SIC from pinned ``adult.tab``."""
+    """Add employment status, sector, SIC and SOC from pinned ``adult.tab``."""
 
     artifacts = _artifact_by_table(stage)
     adult = normalize_ids(
@@ -102,17 +107,18 @@ def add_frs_employment(
 def derive_frs_employment(person: pd.DataFrame, adult: pd.DataFrame) -> pd.DataFrame:
     """Return person-indexed employment derivations.
 
-    ``empstati``, ``mjobsect``, and ``sic`` are intentionally direct-indexed
-    so missing source columns fail loudly, matching the incumbent FRS port.
-    A person is an adult record when their ``person_id`` is in ``adult.tab``;
-    everyone else is CHILD.
+    ``empstati``, ``mjobsect``, ``sic`` and ``soc2020`` are intentionally
+    direct-indexed so missing source columns fail loudly, matching the
+    incumbent FRS port. A person is an adult record when their ``person_id`` is
+    in ``adult.tab``; everyone else is CHILD, with no occupation.
     """
 
     raw = adult.set_index("person_id")
     aligned = raw.reindex(person["person_id"])
+    is_adult = person["person_id"].isin(adult["person_id"])
     values = pd.DataFrame(index=person.index)
     values["employment_status"] = derive_employment_status_from_frs(
-        aligned["empstati"], person["person_id"].isin(adult["person_id"])
+        aligned["empstati"], is_adult
     )
     sector = pd.to_numeric(aligned["mjobsect"], errors="coerce").fillna(0)
     values["employment_sector"] = (
@@ -124,6 +130,9 @@ def derive_frs_employment(person: pd.DataFrame, adult: pd.DataFrame) -> pd.DataF
         .clip(lower=0)
         .astype(int)
         .to_numpy()
+    )
+    values["soc2020_major_group"] = derive_soc2020_major_group_from_frs(
+        aligned["soc2020"], is_adult
     )
     return values
 
@@ -162,6 +171,40 @@ def derive_employment_status_from_frs(empstati, is_adult_record) -> np.ndarray:
             "release's data dictionary."
         )
     return np.where(adult, adult_status, CHILD_EMPLOYMENT_STATUS).astype(object)
+
+
+def derive_soc2020_major_group_from_frs(soc2020, is_adult_record) -> np.ndarray:
+    """Map FRS SOC2020 codes to ``soc2020_major_group``.
+
+    The code is the main job, or the last job for an adult not in work: the FRS
+    asks the employment questions of everyone who has ever worked (2024-25
+    question instructions, details of employment, p. 183; PDF p. 184).
+    Child-table people are NONE whatever their code. Every adult must carry a
+    code in ``UK_FRS_SOC2020_MAJOR_GROUP``: a blank or unknown adult code
+    refuses the build, as EMPSTATI's does, naming the codes but never a count.
+    """
+
+    codes = pd.Series(
+        np.asarray(pd.to_numeric(soc2020, errors="coerce"), dtype="float64")
+    )
+    adult = np.asarray(is_adult_record, dtype=bool)
+    if adult.shape != codes.shape:
+        raise ValueError(
+            "FRS SOC2020 codes and adult-record flags must have the same length."
+        )
+    adult_group = codes.map(UK_FRS_SOC2020_MAJOR_GROUP).to_numpy(dtype=object)
+    unknown = adult & pd.isna(adult_group)
+    if unknown.any():
+        bad = codes[unknown]
+        labels = [_code_label(code) for code in sorted(bad.dropna().unique())]
+        if bad.isna().any():
+            labels.append("blank or non-numeric")
+        raise ValueError(
+            "FRS adult.tab carries adults with SOC2020 code(s) "
+            f"{labels} outside UK_FRS_SOC2020_MAJOR_GROUP; map them from the "
+            "release's data dictionary."
+        )
+    return np.where(adult, adult_group, UK_SOC2020_NO_OCCUPATION).astype(object)
 
 
 def _code_label(code: float) -> str:

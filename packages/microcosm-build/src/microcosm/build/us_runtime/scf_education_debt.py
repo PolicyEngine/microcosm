@@ -59,33 +59,76 @@ X7951). Loans beyond the sixth are one total, X7179, with none of these items.
   file folds grandchild and other relative into it). The survey asks about
   the loans of the family living in the household, and the screener (X7801)
   leaves out loans of people who live elsewhere, so a code-3 loan is a
-  co-resident child's own loan or the parent's Parent PLUS loan. It is the
+  co-resident child's own loan or a loan the parent holds. It is the
   child's own (the child's ``federal_student_loan_balance``) when the
   household listing (persons 3-12, X108-X226) has a child (code 4) aged 18 or
   over who could have been in school when it was borrowed (16 or older in
   that year, at the oldest age the child's public-file age band allows: the
   file bands listed ages, so 18-27 all read 25), unless only a parent could
-  have borrowed it: an undergraduate or certificate loan whose amount
-  borrowed exceeds the $31,000 aggregate limit on a dependent undergraduate's
-  own Direct Loans (34 CFR 685.203(e)(1)), borrowed while the child could
-  still have been under 24, and so dependent (20 U.S.C. 1087vv(d)(1)(A)).
-  Parent PLUS finances only a dependent undergraduate (34 CFR
-  685.200(c)(2)(i)), so a graduate loan, or one borrowed after every fitting
-  child turned 24, is never Parent PLUS. Every other code-3 loan is the
-  head's ``federal_parent_plus_loan_balance``: no listed adult child could
-  have borrowed it, so the student lives elsewhere and only the parent's loan
-  is reported, or it exceeds the dependent limit. An undergraduate loan
-  within the limit for a child of dependent age could be either, and is read
-  as the child's own, the household member the listing names; the receipt
-  reports the Parent PLUS share under the other reading too.
+  have borrowed it: a loan for an associate's or bachelor's degree (programs
+  10-12) or a professional certification or license (program 16) that
+  exceeds the aggregate limit on a dependent undergraduate's own subsidized
+  and unsubsidized loans in its loan year, borrowed while the child could
+  still have been under 24, and so dependent (20 U.S.C. 1087vv(d)(1)). The
+  codebook lists no other program code (0 is inapplicable), and a loan coded
+  otherwise is never parents-only. The limit caps the student's own loans in
+  total. When exactly one listed child fits the family's federal
+  undergraduate loans for a child, they are read year by year, oldest
+  first: a year's loans within the limit on their own stay the child's
+  while the child's total borrowed through that year stays within that
+  year's limit, and are otherwise the parent's, which do not count toward
+  the child's total; a loan over the limit on its own is the parent's
+  anyway. The SCF records only the year, so one year's loans go together.
+  With two or more fitting children the loans could be split among them,
+  each with a limit of their own, so each loan is compared with the limit
+  alone. That limit is $31,000 for loans from July 1, 2008 (Pub. L.
+  110-227; 34 CFR 685.203(e)(1)), $23,000 from July 1, 1993 (Higher
+  Education Amendments of 1992, Pub. L. 102-325) and $17,250 before
+  (:data:`_DEPENDENT_UNDERGRADUATE_AGGREGATE_LIMITS`). The SCF records only
+  the year borrowed, so a loan from 2008 or 1993 counts as borrowed on or
+  after July 1, since most of a year's disbursements come in the fall, as
+  the IBR rule below reads 2014. Parent PLUS finances only a dependent
+  undergraduate (34 CFR 685.200(c)(2)(i)), so a graduate loan (programs
+  13-15) is never Parent PLUS: it is the child's own when a listed child
+  fits, and otherwise the head's own ``federal_student_loan_balance``, as
+  codes 6, 7 and -7 are. A loan borrowed after every fitting child turned 24
+  is the child's own too. Every other code-3 loan is the head's
+  ``federal_parent_plus_loan_balance``: no listed adult child could have
+  borrowed it, so the student lives elsewhere and only the parent's loan is
+  reported, or it exceeds the dependent limit. An undergraduate loan within
+  the limit for a child of dependent age could be either, and is read as the
+  child's own, the household member the listing names, except for an only
+  fitting child whose total through that year exceeds that year's limit
+  (above); the receipt reports the Parent PLUS share under the other reading
+  too.
+- **The over-the-limit rule leans toward Parent PLUS.** A dependent student
+  whose parent cannot get a PLUS loan (after adverse credit, for example) may
+  borrow up to $57,500 of their own (34 CFR 685.203(c)(1)(iii) and (e)(2);
+  $46,000 before July 1, 2008, in the 2007 edition's (e)(2)), and some
+  students under 24 are independent (20 U.S.C. 1087vv(d): married students,
+  veterans, students with dependents, orphans, emancipated minors and
+  unaccompanied homeless youth, among others). The rule still reads every
+  undergraduate loan over the dependent limit, for a child who could have
+  been under 24, as the parent's, and reads one year's loans together, so a
+  year that takes an only child over the limit is the parent's whole. The
+  receipt sizes the other reading, which gives such loans to the child up to
+  $46,000 or $57,500. The SCF also lists Perkins loans among its federal
+  student loans (X7879-X7994), while 34 CFR 685.203(e) caps only Direct,
+  Stafford and SLS loans, so when an only child's loans include a Perkins
+  loan, the stage can read loans the child could have borrowed under the
+  limit as Parent PLUS. **With two or more fitting children it leans toward
+  the child:** each loan is compared with the limit alone, so loans that
+  sum above one child's limit all read as the child's. The receipt counts
+  those loans.
 - **IBR new-borrower status** is true when the person holds a federal loan and
   every federal loan the person holds (own, and for the head Parent PLUS too,
   since 34 CFR 685.209(b)(13)(ii) looks at any outstanding Direct or FFEL
   balance) was borrowed in 2014 or later. The item records a year only, so
-  2014 counts as after July 1, 2014. The share is an upper bound: the SCF sees
-  only loans still owed, so a borrower whose pre-2014 loans have been paid
-  off reads as new, and a consolidated loan is dated by its most recent
-  underlying loan, so a consolidation of pre-2014 loans can read as new too.
+  2014 counts as on or after July 1, 2014. The share is an upper bound: the
+  SCF sees only loans still owed, so a borrower whose pre-2014 loans have
+  been paid off reads as new, and a consolidated loan is dated by its most
+  recent underlying loan, so a consolidation of pre-2014 loans can read as
+  new too.
 - **Graduate share** is the share of the original amount of the person's own
   federal loans (Parent PLUS excluded) that financed a master's, professional
   or doctoral program (codes 13-15), weighted by the amount borrowed (falling
@@ -128,9 +171,16 @@ a mixed-sex couple or else the older partner: the SCF's ordering of its
 economically dominant couple. ``is_married`` counts a cohabiting partner, as
 SCF ``MARRIED`` does, and children count those of the reference person or
 partner, as SCF ``KIDS`` does; adult children are the ones aged 18 or over,
-as listing code 4 aged 18 or over counts them. Incomes sum over the reference
-person, spouse or partner and their children: the SCF primary economic unit,
-which leaves out a financially independent co-resident relative or roommate.
+as listing code 4 aged 18 or over counts them. Listing code 4 also holds
+children-in-law ("CHILD (in-law)"), and the public file has no item that
+separates them, while the CPS parent pointers (``PEPAR1``/``PEPAR2``) name
+only children: so the SCF's adult-children count can include a son- or
+daughter-in-law that the host's never does. The receipt counts the host
+households this misses (a spouse or cohabiting partner of an adult child
+present). Incomes sum
+over the reference person, spouse or partner and their children: the SCF
+primary economic unit, which leaves out a financially independent co-resident
+relative or roommate.
 The spouse is the member whose line number is the reference person's
 ``A_SPOUSE``, or else its ``PECOHAB`` partner when that column is present. A
 household drawn with a spouse's balance but no spouse or partner present
@@ -138,8 +188,10 @@ gives that balance to the reference person, whose graduate share becomes the
 balance-weighted mean of the two and whose new-borrower flag requires both.
 The child's draw goes to the youngest child of the reference person or
 partner aged 18 or over (``PEPAR1``/``PEPAR2``). A household without one
-cannot use it, and the draw makes it the head's Parent PLUS loan, the SCF
-side's rule for a loan whose student lives elsewhere. Everyone else gets zero.
+cannot use it: as the SCF side reads a loan whose student lives elsewhere,
+the draw gives the share's graduate part (by the drawn child graduate share)
+to the head's own balance, as graduate debt, and the rest to the head's
+Parent PLUS loan. Everyone else gets zero.
 :data:`SCF_EDUCATION_DEBT_FIRST_RECEIPT_DEFINITION` keeps the first receipt's
 construction (oldest adult, ``A_MARITL`` marriage, own children, whole
 household) for its before/after table.
@@ -383,18 +435,39 @@ _SCF_SURVEY_YEAR = 2025
 #: Youngest age at which a loan can have financed a listed child's schooling.
 _EARLIEST_STUDENT_AGE = 16.0
 #: A student 24 or older by December 31 of the award year is independent
-#: (20 U.S.C. 1087vv(d)(1)(A)), so a parent cannot borrow Parent PLUS for them.
+#: (20 U.S.C. 1087vv(d)(1)), so a parent cannot borrow Parent PLUS for them.
 _INDEPENDENT_STUDENT_AGE = 24.0
-#: Aggregate limit on a dependent undergraduate's own Direct Subsidized and
-#: Unsubsidized Loans (34 CFR 685.203(e)(1)).
-_DEPENDENT_UNDERGRADUATE_AGGREGATE_LIMIT = 31_000.0
+#: Aggregate limit on a dependent undergraduate's own subsidized and
+#: unsubsidized loans, as (first loan year, limit): $17,250 before July 1,
+#: 1993; $23,000 from July 1, 1993 (Higher Education Amendments of 1992, Pub.
+#: L. 102-325); $31,000 from July 1, 2008 (Pub. L. 110-227; today 34 CFR
+#: 685.203(e)(1)). The SCF records only the year borrowed, so a loan from 1993
+#: or 2008 counts as borrowed on or after July 1, since most of a year's
+#: disbursements come in the fall term; the IBR new-borrower year below reads
+#: 2014 the same way.
+_DEPENDENT_UNDERGRADUATE_AGGREGATE_LIMITS: tuple[tuple[float, float], ...] = (
+    (-np.inf, 17_250.0),
+    (1993.0, 23_000.0),
+    (2008.0, 31_000.0),
+)
+
+#: Whether the dependent limit caps the sum of an only fitting child's loans
+#: (the build) rather than each loan alone (the receipt's per-loan reading).
+_DEPENDENT_LIMIT_SUMS_AN_ONLY_CHILDS_LOANS = True
 
 _FEDERAL_LOAN_YES = 1
 #: Programs counted as graduate or professional: master's (13), professional
 #: school (14) and doctorate (15).
 _GRADUATE_PROGRAM_CODES = frozenset({13, 14, 15})
-#: First year counted as a new IBR borrower (20 U.S.C. 1098e(e): no
-#: outstanding balance on July 1, 2014). The SCF records only the year.
+#: Programs counted as undergraduate, the only ones Parent PLUS can finance:
+#: associate's degrees (10, 11), bachelor's degrees (12) and professional
+#: certifications or licenses (16). The codebook lists no other program code
+#: for a loan (0 is inapplicable), so a loan coded otherwise is neither: it is
+#: never Parent PLUS for being over the dependent limit.
+_UNDERGRADUATE_PROGRAM_CODES = frozenset({10, 11, 12, 16})
+#: First year counted as a new IBR borrower (34 CFR 685.209(b)(13)(ii): no
+#: outstanding balance on July 1, 2014). The SCF records only the year, so a
+#: 2014 loan counts as borrowed on or after July 1, 2014.
 _IBR_NEW_BORROWER_FIRST_YEAR = 2014
 
 _HEAD = "head"
@@ -762,6 +835,154 @@ def _scf_adult_children(full: pd.DataFrame) -> tuple[np.ndarray, np.ndarray]:
     return adult_child, age_code
 
 
+def _per_loan(full: pd.DataFrame, columns: Sequence[str]) -> np.ndarray:
+    """One loan item as a (rows x 6) array, blanks as zero."""
+
+    return np.column_stack([_numeric(full, c) for c in columns]).reshape(
+        len(full), len(columns)
+    )
+
+
+def _dependent_undergraduate_limit(year: np.ndarray) -> np.ndarray:
+    """The dependent undergraduate aggregate limit for each loan's year."""
+
+    year = np.asarray(year, dtype=np.float64)
+    limit = np.full(year.shape, np.nan)
+    for first_year, amount in _DEPENDENT_UNDERGRADUATE_AGGREGATE_LIMITS:
+        limit = np.where(year >= first_year, amount, limit)
+    return limit
+
+
+@dataclass(frozen=True)
+class _LoanHolders:
+    """Who holds each of loans 1-6, and what the child rule read (rows x 6).
+
+    ``holder`` is ``head``, ``spouse``, ``child`` or ``parent_plus`` for every
+    loan, federal or not. ``fits`` marks, for each listed person 3-12, an
+    adult child who could have been in school when the loan was borrowed
+    (rows x 10 x 6). ``could_be_dependent``: a fitting child could still have
+    been under 24 then. ``pooled``: a federal code-3 undergraduate loan some
+    listed child fits, the loans the dependent limit sums. ``over_the_total``:
+    a pooled loan within the limit on its own that the running total of the
+    family's pooled loans through its year cannot take (the running rule in
+    the module docstring), read for every family although it moves a loan
+    only where ``one_fitting_child``, whose total it then is.
+    """
+
+    holder: np.ndarray
+    fits: np.ndarray
+    could_be_dependent: np.ndarray
+    undergraduate: np.ndarray
+    pooled: np.ndarray
+    over_the_total: np.ndarray
+    one_fitting_child: np.ndarray
+
+
+def _over_the_childs_total(
+    pooled: np.ndarray,
+    could_be_dependent: np.ndarray,
+    year: np.ndarray,
+    borrowed: np.ndarray,
+) -> np.ndarray:
+    """Pooled loans that a child's own running total cannot take.
+
+    Loan years are read oldest first. A year's pooled loans that are within
+    their year's limit on their own stay the child's while the child's total
+    borrowed through that year stays within that year's limit; otherwise
+    they are the parent's and do not count toward the child's total. A loan
+    over the limit on its own is the parent's in any case, so it never
+    counts. The SCF records only the year, so one year's loans go together.
+    """
+
+    limit = _dependent_undergraduate_limit(year)
+    counted = pooled & (borrowed <= limit)
+    over = np.zeros(year.shape, dtype=bool)
+    running = np.zeros(year.shape[0], dtype=np.float64)
+    for loan_year in np.unique(year[counted]):
+        group = counted & (year == loan_year)
+        amount = np.where(group, borrowed, 0.0).sum(axis=1)
+        year_limit = _dependent_undergraduate_limit(np.array([loan_year]))[0]
+        exceeds = (group & could_be_dependent).any(axis=1) & (
+            running + amount > year_limit
+        )
+        over |= group & exceeds[:, None]
+        running += np.where(exceeds, 0.0, amount)
+    return over
+
+
+def _scf_education_loan_holders(full: pd.DataFrame) -> _LoanHolders:
+    """Who holds each of loans 1-6 in the build, and what the child rule read.
+
+    The rules are the module docstring's; see :class:`_LoanHolders`.
+    """
+
+    whose = _scf_whose_education_codes(full)
+    year = _per_loan(full, SCF_EDUCATION_LOAN_YEAR_COLUMNS)
+    program = _per_loan(full, SCF_EDUCATION_LOAN_PROGRAM_COLUMNS)
+    borrowed = np.maximum(
+        _per_loan(full, SCF_EDUCATION_LOAN_AMOUNT_BORROWED_COLUMNS), 0
+    )
+    balance = np.maximum(_per_loan(full, SCF_EDUCATION_LOAN_BALANCE_COLUMNS), 0)
+    federal = (balance > 0) & (
+        _per_loan(full, SCF_EDUCATION_LOAN_FEDERAL_COLUMNS) == _FEDERAL_LOAN_YES
+    )
+    holder = np.full(whose.shape, _HEAD, dtype=object)
+    for code, role in SCF_WHOSE_EDUCATION_HOLDER.items():
+        holder[whose == code] = role
+    graduate = np.isin(program, list(_GRADUATE_PROGRAM_CODES))
+    undergraduate = np.isin(program, list(_UNDERGRADUATE_PROGRAM_CODES))
+
+    # A loan for a child's education is a co-resident child's own loan when a
+    # listed child aged 18 or over could have been in school when it was
+    # borrowed, unless only a parent could have borrowed it: an undergraduate
+    # amount above a dependent student's own aggregate limit in that loan
+    # year (for an only fitting child, above what the child's own total
+    # through that year leaves), borrowed while the child could still have
+    # been dependent. Ages
+    # are the public file's bands; the arrays are (rows x 10 listed persons x
+    # 6 loans).
+    adult_child, age_code = _scf_adult_children(full)
+    youngest_age, oldest_age = _listing_age_range(age_code)
+    years_ago = (_SCF_SURVEY_YEAR - year)[:, None, :]
+    # NaN ages (no such person) compare false, and adult_child excludes them.
+    fits = adult_child[:, :, None] & (
+        oldest_age[:, :, None] - years_ago >= _EARLIEST_STUDENT_AGE
+    )
+    could_be_dependent = (
+        fits & (youngest_age[:, :, None] - years_ago < _INDEPENDENT_STUDENT_AGE)
+    ).any(axis=1)
+    child_education = holder == _CHILD_EDUCATION
+    fits_a_child = fits.any(axis=1)
+    # The limit caps a student's own loans in total. With one listed child
+    # who fits the family's federal undergraduate loans for a child, those
+    # loans are that child's to sum; with two or more, they could be split
+    # among the children, each with a limit of their own, so each loan is
+    # compared alone.
+    pooled = child_education & undergraduate & federal & fits_a_child
+    one_fitting_child = (fits & pooled[:, None, :]).any(axis=2).sum(axis=1) == 1
+    over_the_total = _over_the_childs_total(pooled, could_be_dependent, year, borrowed)
+    over_the_limit = borrowed > _dependent_undergraduate_limit(year)
+    if _DEPENDENT_LIMIT_SUMS_AN_ONLY_CHILDS_LOANS:
+        over_the_limit = over_the_limit | (over_the_total & one_fitting_child[:, None])
+    parents_only = could_be_dependent & undergraduate & over_the_limit
+    # With no listed child who fits, the student lives elsewhere: the loan is
+    # the head's Parent PLUS loan, unless it financed a graduate program,
+    # which Parent PLUS cannot (34 CFR 685.200(c)(2)(i)); that one is the
+    # head's own loan, as codes 6, 7 and -7 are.
+    holder[child_education] = _PARENT_PLUS
+    holder[child_education & ~fits_a_child & graduate] = _HEAD
+    holder[child_education & fits_a_child & ~parents_only] = _CHILD
+    return _LoanHolders(
+        holder=holder,
+        fits=fits,
+        could_be_dependent=could_be_dependent,
+        undergraduate=undergraduate,
+        pooled=pooled,
+        over_the_total=over_the_total,
+        one_fitting_child=one_fitting_child,
+    )
+
+
 def derive_scf_education_debt_targets(full: pd.DataFrame) -> pd.DataFrame:
     """Derive household federal education-debt targets from per-loan items.
 
@@ -812,28 +1033,16 @@ def derive_scf_education_debt_targets(full: pd.DataFrame) -> pd.DataFrame:
         raise ValueError(f"SCF education-debt derivation missing column(s): {missing}.")
 
     n = len(full)
-    balances = np.column_stack(
-        [np.maximum(_numeric(full, c), 0.0) for c in SCF_EDUCATION_LOAN_BALANCE_COLUMNS]
-    ).reshape(n, len(SCF_EDUCATION_LOAN_BALANCE_COLUMNS))
+    balances = np.maximum(_per_loan(full, SCF_EDUCATION_LOAN_BALANCE_COLUMNS), 0.0)
     remaining = np.maximum(
         _numeric(full, SCF_EDUCATION_LOAN_REMAINING_BALANCE_COLUMN), 0.0
     )
-    federal_code = np.column_stack(
-        [_numeric(full, c) for c in SCF_EDUCATION_LOAN_FEDERAL_COLUMNS]
-    ).reshape(balances.shape)
-    whose = _scf_whose_education_codes(full)
-    year = np.column_stack(
-        [_numeric(full, c) for c in SCF_EDUCATION_LOAN_YEAR_COLUMNS]
-    ).reshape(balances.shape)
-    program = np.column_stack(
-        [_numeric(full, c) for c in SCF_EDUCATION_LOAN_PROGRAM_COLUMNS]
-    ).reshape(balances.shape)
-    borrowed = np.column_stack(
-        [
-            np.maximum(_numeric(full, c), 0.0)
-            for c in SCF_EDUCATION_LOAN_AMOUNT_BORROWED_COLUMNS
-        ]
-    ).reshape(balances.shape)
+    federal_code = _per_loan(full, SCF_EDUCATION_LOAN_FEDERAL_COLUMNS)
+    year = _per_loan(full, SCF_EDUCATION_LOAN_YEAR_COLUMNS)
+    program = _per_loan(full, SCF_EDUCATION_LOAN_PROGRAM_COLUMNS)
+    borrowed = np.maximum(
+        _per_loan(full, SCF_EDUCATION_LOAN_AMOUNT_BORROWED_COLUMNS), 0
+    )
 
     has_balance = balances > 0
     federal = has_balance & (federal_code == _FEDERAL_LOAN_YES)
@@ -845,36 +1054,10 @@ def derive_scf_education_debt_targets(full: pd.DataFrame) -> pd.DataFrame:
     )
     federal_balance = np.where(federal, balances, 0.0) * gross_up[:, None]
 
-    holder = np.full(balances.shape, _HEAD, dtype=object)
-    for code, role in SCF_WHOSE_EDUCATION_HOLDER.items():
-        holder[whose == code] = role
+    holders = _scf_education_loan_holders(full)
+    holder, fits = holders.holder, holders.fits
     graduate = np.isin(program, list(_GRADUATE_PROGRAM_CODES))
-
-    # A loan for a child's education is a co-resident child's own loan when a
-    # listed child aged 18 or over could have been in school when it was
-    # borrowed, unless only a parent could have borrowed it: an undergraduate
-    # amount above a dependent student's own aggregate limit, borrowed while
-    # the child could still have been dependent. Ages are the public file's
-    # bands; the arrays are (families x 10 listed persons x 6 loans).
     adult_child, age_code = _scf_adult_children(full)
-    youngest_age, oldest_age = _listing_age_range(age_code)
-    years_ago = (_SCF_SURVEY_YEAR - year)[:, None, :]
-    # NaN ages (no such person) compare false, and adult_child excludes them.
-    fits = adult_child[:, :, None] & (
-        oldest_age[:, :, None] - years_ago >= _EARLIEST_STUDENT_AGE
-    )
-    could_be_dependent = (
-        fits & (youngest_age[:, :, None] - years_ago < _INDEPENDENT_STUDENT_AGE)
-    ).any(axis=1)
-    parents_only = (
-        could_be_dependent
-        & ~graduate
-        & (borrowed > _DEPENDENT_UNDERGRADUATE_AGGREGATE_LIMIT)
-    )
-    child_education = holder == _CHILD_EDUCATION
-    childs_own = child_education & fits.any(axis=1) & ~parents_only
-    holder[child_education] = _PARENT_PLUS
-    holder[childs_own] = _CHILD
 
     held = {
         role: federal & (holder == role)
@@ -952,18 +1135,46 @@ def derive_scf_education_debt_targets(full: pd.DataFrame) -> pd.DataFrame:
     return result
 
 
+def _verify_member_digest(
+    path: str | Path, public_file: ScfPublicFile | None, *, label: str
+) -> None:
+    """Refuse a local SCF member whose SHA-256 is not the pinned one."""
+
+    if public_file is None:
+        return
+    import hashlib
+
+    digest = hashlib.sha256()
+    with Path(path).open("rb") as handle:
+        for block in iter(lambda: handle.read(1 << 20), b""):
+            digest.update(block)
+    observed = digest.hexdigest()
+    if observed != public_file.member_sha256:
+        raise ValueError(
+            f"SCF 2025 {label} {Path(path).name} failed sha-256 verification "
+            f"against the pinned {public_file.member}: expected "
+            f"{public_file.member_sha256}, got {observed}."
+        )
+
+
 def load_scf_2025_education_debt_donor(
     summary_extract_path: str | Path,
     full_extract_path: str | Path,
     *,
     expected_rows: int | None = SCF_2025_FULL_EXTRACT.rows,
+    summary_pin: ScfPublicFile | None = SCF_2025_SUMMARY_EXTRACT,
+    full_pin: ScfPublicFile | None = SCF_2025_FULL_EXTRACT,
 ) -> pd.DataFrame:
     """Join the 2025 summary and full files and derive the donor table.
 
-    The two files must join one-to-one on ``(y1, yy1)`` across all five
-    implicates, each must have ``expected_rows`` rows (``None`` skips that
-    check, for test fixtures), and the per-loan balances must reproduce the
-    summary extract's ``edn_inst``. Returns one row per (family, implicate)
+    Each file's SHA-256 must match its pinned member (``summary_pin``,
+    ``full_pin``; ``None`` skips the check, for test fixtures), so a local
+    file passed to the release tool is held to the same bytes as a fetched
+    one; the X8000 correction rests on those bytes. The two files must join
+    one-to-one on ``(y1, yy1)`` across all five implicates, each must have
+    ``expected_rows`` rows (``None`` skips that check, for test fixtures), and
+    the per-loan balances must reproduce the summary extract's ``edn_inst``.
+    Returns one row per (family, implicate)
     with a positive weight: the predictors, the targets of
     :func:`derive_scf_education_debt_targets` (which include the second QRF's
     ``adult_children_in_household``), the ``scf_weight`` donor weight and the
@@ -1002,6 +1213,8 @@ def load_scf_2025_education_debt_donor(
         *SCF_HOUSEHOLD_LISTING_RELATIONSHIP_COLUMNS,
         *SCF_HOUSEHOLD_LISTING_AGE_COLUMNS,
     )
+    _verify_member_digest(summary_extract_path, summary_pin, label="summary extract")
+    _verify_member_digest(full_extract_path, full_pin, label="full file")
     summary = _read_stata_columns(
         summary_extract_path, summary_columns, label="2025 summary extract"
     )
@@ -1482,6 +1695,20 @@ def _split_whole_dollars(total: np.ndarray, shares: np.ndarray) -> np.ndarray:
     return parts
 
 
+def _part_of_drawn_total(
+    part: np.ndarray, sums: np.ndarray, total: np.ndarray
+) -> np.ndarray:
+    """A share's part of the drawn total, before the shares are normalized.
+
+    Each part is at most its row's share sum, so ``part / sums`` stays finite
+    even when the shares sum to a subnormal number, where ``total / sums``
+    would overflow (and give NaN where the part is zero). A zero sum gives 0.
+    """
+
+    fraction = np.divide(part, sums, out=np.zeros_like(part), where=sums > 0)
+    return fraction * total
+
+
 def draw_scf_education_debt_households(
     features: pd.DataFrame,
     donor: pd.DataFrame,
@@ -1503,9 +1730,13 @@ def draw_scf_education_debt_households(
     The four holder shares are drawn in turn (Parent PLUS first, so a family
     unlike any Parent PLUS donor draws none) and normalized to sum to one; a
     borrower whose every share is drawn zero holds its own loan. A child's
-    share drawn for a household without an adult child is the head's Parent
-    PLUS loan: as on the SCF side, a loan for a child who is not in the
-    household is the parent's.
+    share drawn for a household without an adult child is a loan for a child
+    who is not in the household, as on the SCF side: its graduate part (the
+    drawn child graduate share of it) is the head's own balance, raising the
+    head's graduate share by its weight, and the rest is the head's Parent
+    PLUS loan. ``child_graduate_balance_moved_to_head`` and
+    ``child_undergraduate_balance_moved_to_parent_plus`` record those two
+    parts in dollars.
     """
 
     from microcosm.fit import QRF
@@ -1584,18 +1815,46 @@ def draw_scf_education_debt_households(
     )
     child_new = result["child_is_ibr_new_borrower"].to_numpy() >= 0.5
     head_new = result["head_is_ibr_new_borrower"].to_numpy() >= 0.5
+    # A child's share drawn for a household without an adult child is a loan
+    # for a student who lives elsewhere, as on the SCF side. Its graduate part
+    # cannot be Parent PLUS, which finances only a dependent undergraduate
+    # (34 CFR 685.200(c)(2)(i)), so it joins the head's own balance as
+    # graduate debt; the undergraduate part is the head's Parent PLUS loan.
+    # The drawn graduate share weights original principal, and stands in for
+    # the graduate part of the balance.
     moved = no_adult_child & (shares[:, child] > 0)
-    # The head then holds Parent PLUS for that child too: new only when every
-    # loan the head holds is.
+    child_graduate = result["child_graduate_share"].clip(0.0, 1.0).to_numpy()
+    head_graduate = result["head_graduate_share"].clip(0.0, 1.0).to_numpy()
+    moved_graduate = np.where(moved, shares[:, child] * child_graduate, 0.0)
+    moved_undergraduate = np.where(moved, shares[:, child], 0.0) - moved_graduate
+    # The head then holds that loan too: new only when every loan it holds is.
     head_held = (shares[:, head] + shares[:, plus]) > 0
     head_new = np.where(
         moved, np.where(head_held, head_new, True) & child_new, head_new
     )
-    shares[moved, plus] += shares[moved, child]
+    head_own = shares[:, head] + moved_graduate
+    result["head_graduate_share"] = np.where(
+        moved,
+        np.divide(
+            shares[:, head] * head_graduate + moved_graduate,
+            head_own,
+            out=np.zeros_like(head_own),
+            where=head_own > 0,
+        ),
+        head_graduate,
+    )
+    shares[:, head] = head_own
+    shares[:, plus] += moved_undergraduate
     shares[moved, child] = 0.0
     sums = shares.sum(axis=1)
     shares = np.divide(
         shares, sums[:, None], out=np.zeros_like(shares), where=sums[:, None] > 0
+    )
+    result["child_graduate_balance_moved_to_head"] = _part_of_drawn_total(
+        moved_graduate, sums, drawn_total
+    )
+    result["child_undergraduate_balance_moved_to_parent_plus"] = _part_of_drawn_total(
+        moved_undergraduate, sums, drawn_total
     )
     parts = _split_whole_dollars(drawn_total, shares)
     result["head_federal_student_loan_balance"] = parts[:, head]

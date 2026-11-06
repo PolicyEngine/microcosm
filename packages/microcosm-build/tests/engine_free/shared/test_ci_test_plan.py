@@ -83,6 +83,14 @@ from tools import ci_test_plan
             "policyengine_uk",
             True,
         ),
+        (
+            "installed_emitter/shared/test_one.py",
+            "installed-emitter-shared",
+            "installed-emitter",
+            "shared",
+            None,
+            True,
+        ),
     ],
 )
 def test_registry_is_the_only_test_directory_and_job_authority(

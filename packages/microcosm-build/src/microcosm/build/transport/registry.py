@@ -9,6 +9,8 @@ Kernel implementation identity binds adapter classes,
 never spec data, so adding a binding of an existing class leaves it unchanged.
 Counterfactual and zero-cutout bridges share the same prepared engine mapping.
 Gap and scenario-band kernels are registered with the other transport kernels.
+The evidence producers share the prepared engine mapping too; their
+implementation hashes exclude the adapters.
 """
 
 from __future__ import annotations
@@ -27,6 +29,8 @@ from microcosm.frame.adapters.axiom import (
     AxiomEngine,
     AxiomPeriod,
     AxiomRelation,
+    AxiomView,
+    _outside_values,
     assert_no_relations,
     axiom_engine_ref,
     rulespec_tree_digest,
@@ -44,12 +48,15 @@ from microcosm.graph.codecs import SourceCodecRegistry
 
 from .codecs import register_transport_codecs
 from .column_kernels import register_column_kernels
+from .evidence_kernels import register_evidence_kernels
 from .gate_bindings import TRANSPORT_GATE_REGISTRY
 from .gate_kernels import register_gate_kernel
 from .geography_kernels import register_geography_kernels
+from .measure_kernels import register_measure_kernels
 from .money_kernels import register_money_kernels
 from .person_location_kernels import register_person_location_kernels
 from .population_kernels import register_population_kernels
+from .quantile_kernels import register_quantile_kernels
 from .reporting_kernels import register_reporting_kernels
 from .takeup_kernels import register_takeup_kernels
 from .target_kernels import register_target_kernels
@@ -59,6 +66,7 @@ __all__ = [
     "PYTHON_ENGINE_REF_FORMAT",
     "TransportRegistry",
     "binding_relation_dependencies",
+    "binding_view_dependencies",
     "build_transport_registry",
     "register_transport_population_kernels",
     "transport_entity_schema",
@@ -181,7 +189,9 @@ def _binding_semantics(
         "variables": variables,
     }
     if "views" in row:
-        raise NotImplementedError(f"{label}.views are not supported.")
+        semantics["views"] = tuple(
+            view.to_dict() for view in _binding_views(row, entity_names, schema)
+        )
     if "relations" in row:
         semantics["relations"] = tuple(
             relation.to_dict()
@@ -198,7 +208,8 @@ def _binding_relations(
     """Parse explicit partition relations without inventing absent declarations.
 
     These are person members of a declared group partition. Arbitrary links
-    and binding-local logical views require a separate declaration contract.
+    require a separate declaration contract; binding-local views have their
+    own (:func:`_binding_views`).
     Compiled key, slot orientation and input surfaces are checked after the
     adapter is pinned to its RuleSpec bytes.
     """
@@ -271,6 +282,101 @@ def _binding_relations(
     return tuple(relations)
 
 
+def _binding_views(
+    row: Mapping,
+    entity_names: Mapping[str, str],
+    schema: EntitySchema,
+) -> tuple[AxiomView, ...]:
+    """Parse a binding's binding-local views, in declaration order.
+
+    Each view names its ``logical_entity``, a ``selector`` holding one bool
+    person ``column``, and an ``outside`` value for each of its outputs. The
+    binding keeps its person entity. Checks that need the compiled module
+    (the outside keys against the binding's variables on the logical entity,
+    and view inputs against the binding entity's root inputs) run after the
+    adapter is pinned to its RuleSpec bytes.
+    """
+    label = f"rules binding {row['id']!r}.views"
+    values = row["views"]
+    if isinstance(values, str | bytes) or not isinstance(values, Sequence):
+        raise TypeError(f"{label} must be a list of view declarations.")
+    if not values:
+        raise ValueError(f"{label} must declare at least one view; omit it for none.")
+    if "relations" in row:
+        raise ValueError(f"{label} and relations cannot share a binding.")
+    if row["entity"] != schema.person_entity:
+        raise ValueError(
+            f"{label} require a binding on the person entity {schema.person_entity!r}."
+        )
+    structural = {schema.person_id_column} | {
+        schema.membership_column(group) for group in schema.group_entities
+    }
+    variables = set(row.get("variables", ()))
+    views = []
+    for value in values:
+        manifest = _mapping(value, f"{label} declaration")
+        if set(manifest) != {"logical_entity", "selector", "outside"}:
+            raise ValueError(
+                f"{label} declarations hold exactly logical_entity, selector and "
+                "outside."
+            )
+        selector = _mapping(manifest["selector"], f"{label}.selector")
+        if set(selector) != {"column"}:
+            raise ValueError(
+                f"{label}.selector names exactly one bool person column, "
+                "as {'column': name}."
+            )
+        logical = _text(manifest["logical_entity"], f"{label}.logical_entity")
+        if logical in set(entity_names.values()):
+            raise ValueError(
+                f"{label}.logical_entity {logical!r} names a mapped engine entity."
+            )
+        column = _text(selector["column"], f"{label}.selector.column")
+        if column in structural:
+            raise ValueError(f"{label}.selector {column!r} names a structural column.")
+        if column in variables:
+            raise ValueError(
+                f"{label}.selector {column!r} names an output of the binding."
+            )
+        outside = dict(_mapping(manifest["outside"], f"{label}.outside"))
+        unknown = sorted(set(outside) - variables)
+        if unknown:
+            raise ValueError(f"{label}.outside names non-binding variables {unknown}.")
+        views.append(AxiomView(logical, column, outside))
+    logical_entities = [view.logical_entity for view in views]
+    if len(logical_entities) != len(set(logical_entities)):
+        raise ValueError(f"{label} repeats a logical entity.")
+    outputs = {name for view in views for name in view.outside}
+    if outputs & {view.selector for view in views}:
+        raise ValueError(f"{label} selects on a view output.")
+    return tuple(views)
+
+
+def binding_view_dependencies(
+    binding: Mapping,
+    *,
+    entity_names: Mapping[str, str],
+    schema: EntitySchema,
+) -> tuple[tuple[str, str], ...]:
+    """The whole-table person slices a binding's views read: each selector.
+
+    Composition uses the same parser as preparation, and
+    ``AxiomEngine.relation_dependencies`` reports the same columns to the
+    rules kernels. A view's root inputs are not dependencies. No declaration
+    contributes no columns.
+    """
+    if "views" not in binding:
+        return ()
+    return tuple(
+        sorted(
+            {
+                (schema.person_entity, view.selector)
+                for view in _binding_views(binding, entity_names, schema)
+            }
+        )
+    )
+
+
 def binding_relation_dependencies(
     binding: Mapping,
     *,
@@ -334,6 +440,13 @@ def _check_engine(
         )
         if engine._relations != expected_relations:
             raise ValueError(f"{label} engine relations do not match the binding.")
+        expected_views = (
+            None
+            if "views" not in semantics
+            else _binding_views(semantics, entity_names, schema)
+        )
+        if engine._views != expected_views:
+            raise ValueError(f"{label} engine views do not match the binding.")
     else:
         declared_root = getattr(engine, "rulespec_root", None)
         if (
@@ -351,6 +464,52 @@ def _check_engine(
             raise TypeError(f"{label} injected engine must expose cache_identity().")
         if "relations" in semantics:
             raise TypeError(f"{label} relation manifests require an AxiomEngine.")
+        if "views" in semantics:
+            raise TypeError(f"{label} views require an AxiomEngine.")
+
+
+def _check_views(engine: AxiomEngine, semantics: Mapping) -> None:
+    """Check a view binding against its compiled module.
+
+    Each view's program must declare no relations, and the binding entity's
+    program, when the module has one, too. A view's outside keys must equal
+    the binding's variables on its logical entity, and no view input may
+    share its name with a root input of the binding entity's program: both
+    would read one person column. Each outside value must cast losslessly to
+    its output's graph dtype before a registry can pin it.
+    """
+    label = f"rules binding {semantics['id']!r}.views"
+    entity = semantics["entity"]
+    binding_program = engine._program(entity, missing_ok=True)
+    if binding_program is not None:
+        assert_no_relations(engine, entity)
+    derived = engine._derived_metadata()
+    variables = semantics["variables"]
+    for view in engine._views:
+        assert_no_relations(engine, view.logical_entity)
+        on_view = {
+            name
+            for name in variables
+            if name in derived and derived[name].entity == view.logical_entity
+        }
+        if set(view.outside) != on_view:
+            raise ValueError(
+                f"{label} {view.logical_entity!r} outside keys "
+                f"{sorted(view.outside)} differ from the binding's variables on "
+                f"it {sorted(on_view)}."
+            )
+        for name, value in view.outside.items():
+            _outside_values(name, derived[name].dtype, value, 0)
+    if binding_program is not None:
+        shared = sorted(
+            {name for inputs in engine.view_root_inputs().values() for name in inputs}
+            & set(binding_program.root_inputs)
+        )
+        if shared:
+            raise ValueError(
+                f"{label} inputs {shared} share their names with "
+                f"{semantics['engine_entity']!r} root inputs of the same module."
+            )
 
 
 def build_transport_registry(
@@ -459,6 +618,11 @@ def build_transport_registry(
                     if "relations" in semantics
                     else {}
                 ),
+                **(
+                    {"views": _binding_views(semantics, entity_names, schema)}
+                    if "views" in semantics
+                    else {}
+                ),
             )
             if engines_by_binding is None
             else engines_by_binding[row["id"]]
@@ -470,6 +634,8 @@ def build_transport_registry(
             reference = axiom_engine_ref(engine, rulespec_root=root, **pins)
             if "relations" in semantics:
                 engine.assert_declared_relations(semantics["entity"])
+            elif "views" in semantics:
+                _check_views(engine, semantics)
             else:
                 assert_no_relations(engine, semantics["entity"])
         else:
@@ -521,20 +687,23 @@ def build_transport_registry(
     kernels.register(SimulateSolveZeroKernel(engine_mapping, dependencies))
     register_takeup_kernels(kernels)
     register_reporting_kernels(kernels)
+    register_evidence_kernels(kernels, engine_mapping)
     return TransportRegistry(
         kernels, codecs, engine_mapping, MappingProxyType(refs), schema, nesting
     )
 
 
 def register_transport_population_kernels(registry: KernelRegistry) -> KernelRegistry:
-    """Install the thirteen population kernels without import-time side effects.
+    """Install the sixteen population kernels without import-time side effects.
 
     Source codecs are separately installed with ``register_transport_codecs``;
     target, solver and terminal kernels keep their own registration functions.
     Repeating registration with the same kernel objects is idempotent.
     """
     register_population_kernels(registry)
+    register_quantile_kernels(registry)
     register_column_kernels(registry)
     register_geography_kernels(registry)
     register_money_kernels(registry)
+    register_measure_kernels(registry)
     return registry

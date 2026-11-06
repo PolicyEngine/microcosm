@@ -57,15 +57,20 @@
       }
     },
     "precal_references.json": {
-      "total": 565,
+      "total": 596,
       "by_family": {
-        "geography_support": 565
+        "geography_support": 565,
+        "wage_distribution": 5,
+        "pension_distribution": 26
       },
       "by_contract": {
-        "statbel_population_by_commune": 565
+        "statbel_population_by_commune": 565,
+        "rsz_employed_workers_by_daily_wage_class": 5,
+        "sfpd_legal_pension_recipients_by_monthly_amount_band": 26
       },
       "by_activation_status": {
-        "active": 565
+        "active": 570,
+        "requires_pension_route_d1902": 26
       }
     },
     "holdout_references.json": {
@@ -1163,7 +1168,8 @@
     "Eurostat D62 social benefits received contain the calibrated unemployment and GRAPA aggregates.",
     "Eurostat D61 social contributions paid contain the calibrated ONSS worker contributions.",
     "Eurostat D51A_C1 and D5 measure the same personal income tax that B.1 would calibrate once active.",
-    "The A.1 stand-in is 98% net professional income, and its amount pair, FPB T11 total resources, contains gross wages, the wage holdout's own series."
+    "The A.1 stand-in is 98% net professional income, and its amount pair, FPB T11 total resources, contains gross wages, the wage holdout's own series.",
+    "RSZ T7's daily-wage cells at 2026-Q1 sum to the same class counts as the T17 wage surface, under different facts and semantic keys: a holdout on T7 would share the surface's information."
   ],
   "grammar_gaps": [
     "A national row composed from commune facts refuses for Belgium: the composed-geography path labels only UK areas (ledger_targets._geography_fallback_label), so CREATE's single national mass reference cannot be the commune sum.",
@@ -1173,8 +1179,305 @@
     "rolled_forward_by_ratio refuses a negative base, so signed targets (B.1 low deciles) cannot be aged by it.",
     "rolled_forward_by_ratio's series key treats every FPB annex row of one table as one series (same concept, entity, geography and empty dimensions); the generator and tests enforce row identity themselves.",
     "The typed vintage alias set admits only a layer's full id, its country-shortened id and its authority value, so Chronicle's NUTS_2024 label cannot be an alias of vintage:be_nuts1_2025; geography_vintage_bindings carries the mapping instead.",
-    "The schema-1 target_profile drops B1's required_families, basis_periods, tolerance tiers and subnational vintage rule. Package tests restore required families, the vintage rule and each row's periods. Caseload tolerance moves from B1's 15% to BE-MC6's 5%, and the ONSS contribution row moves from B1's standard_admin_release 10% to 5%."
+    "The schema-1 target_profile drops B1's required_families, basis_periods, tolerance tiers and subnational vintage rule. Package tests restore required families, the vintage rule and each row's periods. Caseload tolerance moves from B1's 15% to BE-MC6's 5%, and the ONSS contribution row moves from B1's standard_admin_release 10% to 5%.",
+    "A selector cannot pair a record set with a dimension value, and T17 holds each daily-wage class in one record set per sex. Each wage row lists both record sets beside an age and a sex roster, so the package tests' cell check expands their product: 24 cells that exist and 24 that cannot. A list of the members' aggregate keys would bind each member without the artifact, but the package scan admits fact keys only as single strings, so the rosters stay key-free and the feed audit proves their members.",
+    "No shared code reads a rank-only input. Transport drops the donor's public_pension_income (TransportRule.DROP), and transport.quantile_map@1 ranks one column and overwrites that same column with the mapped amounts. So the SFPD surface rows are kept non-executable only by activation_status, and each one is a named activation gap.",
+    "Uniform interpolation refuses an open top band, and both surfaces' top bands are open; Pareto interpolation needs a declared alpha, and no shared mode scales the donor's own tail."
   ],
+  "quantile_surfaces": {
+    "resource": "quantile_surfaces.json",
+    "wages": {
+      "record_set_spec_id": "rsz.t17.daily_wage_class.v1",
+      "period": "2026-Q1",
+      "measure": "employed_workers",
+      "age_classes": [
+        "-20",
+        "20-24",
+        "25-29",
+        "30-34",
+        "35-39",
+        "40-44",
+        "45-49",
+        "50-54",
+        "55-59",
+        "60-64",
+        "65-69",
+        "70+"
+      ],
+      "sexes": [
+        "Man-Homme",
+        "Vrouw-Femme"
+      ],
+      "members_per_class": 24,
+      "classes": [
+        {
+          "label": "<100",
+          "reference": "rsz_employed_workers_by_daily_wage_class__lt100",
+          "workers": 100457.0
+        },
+        {
+          "label": "100 - 149",
+          "reference": "rsz_employed_workers_by_daily_wage_class__100_149",
+          "workers": 1218251.0
+        },
+        {
+          "label": "150 - 199",
+          "reference": "rsz_employed_workers_by_daily_wage_class__150_199",
+          "workers": 1182699.0
+        },
+        {
+          "label": "200 - 299",
+          "reference": "rsz_employed_workers_by_daily_wage_class__200_299",
+          "workers": 1066243.0
+        },
+        {
+          "label": ">= 300",
+          "reference": "rsz_employed_workers_by_daily_wage_class__300_plus",
+          "workers": 369203.0
+        }
+      ],
+      "unknown_pay": {
+        "label": "Onbekend-Inconnu",
+        "workers": 191700.0,
+        "facts": [
+          {
+            "aggregate_fact_key": "ledger.aggregate_fact.v2:0173ec9c898e96ff38f14951"
+          },
+          {
+            "aggregate_fact_key": "ledger.aggregate_fact.v2:1be9e0086c49f0fff813a753"
+          },
+          {
+            "aggregate_fact_key": "ledger.aggregate_fact.v2:2712c746489ebdd43985341f"
+          },
+          {
+            "aggregate_fact_key": "ledger.aggregate_fact.v2:28b0d96b85d86aa978abab76"
+          },
+          {
+            "aggregate_fact_key": "ledger.aggregate_fact.v2:2fff356dbb2cfe4bd30d75ee"
+          },
+          {
+            "aggregate_fact_key": "ledger.aggregate_fact.v2:37a10351a60c5b16681118df"
+          },
+          {
+            "aggregate_fact_key": "ledger.aggregate_fact.v2:3998e698370c40a8ccbb8145"
+          },
+          {
+            "aggregate_fact_key": "ledger.aggregate_fact.v2:4709675c96209c2898ec18bf"
+          },
+          {
+            "aggregate_fact_key": "ledger.aggregate_fact.v2:52c1457134d2220fdd33131f"
+          },
+          {
+            "aggregate_fact_key": "ledger.aggregate_fact.v2:6ae2c5f8676fc254d3ffbd49"
+          },
+          {
+            "aggregate_fact_key": "ledger.aggregate_fact.v2:74a90f184fa1ab55dc0f254c"
+          },
+          {
+            "aggregate_fact_key": "ledger.aggregate_fact.v2:79dfe462a53520e7994a7a2c"
+          },
+          {
+            "aggregate_fact_key": "ledger.aggregate_fact.v2:7bf2f2611c80bafaa9c7ea41"
+          },
+          {
+            "aggregate_fact_key": "ledger.aggregate_fact.v2:9a408c0d622818048b3c3d44"
+          },
+          {
+            "aggregate_fact_key": "ledger.aggregate_fact.v2:a64dd4cdec47eacdd213da5f"
+          },
+          {
+            "aggregate_fact_key": "ledger.aggregate_fact.v2:af2049af6481da82d2827255"
+          },
+          {
+            "aggregate_fact_key": "ledger.aggregate_fact.v2:b1d3adeb80c0df368fe21b61"
+          },
+          {
+            "aggregate_fact_key": "ledger.aggregate_fact.v2:b6f055b85a80a6cf8340bd7e"
+          },
+          {
+            "aggregate_fact_key": "ledger.aggregate_fact.v2:cf479a753463a8ec1479ad6f"
+          },
+          {
+            "aggregate_fact_key": "ledger.aggregate_fact.v2:d6a3facfd37f85a75c56d8f9"
+          },
+          {
+            "aggregate_fact_key": "ledger.aggregate_fact.v2:dd27d7fb24a3a4927aaa0d15"
+          },
+          {
+            "aggregate_fact_key": "ledger.aggregate_fact.v2:f0eaa914354aa9c57bf2e337"
+          },
+          {
+            "aggregate_fact_key": "ledger.aggregate_fact.v2:f2f7414540b05d2ba3a2bfa4"
+          },
+          {
+            "aggregate_fact_key": "ledger.aggregate_fact.v2:f90986bb293c8813e5e91377"
+          }
+        ]
+      },
+      "known_pay_workers": 3936853.0,
+      "table_workers": 4128553.0,
+      "known_plus_unknown_equals_table": true,
+      "unknown_share_of_table": 0.04643273321185413,
+      "t7_cross_check": {
+        "record_set_spec_id": "rsz.t7.daily_wage_class.v1",
+        "workers_by_class": {
+          "100 - 149": 1218251.0,
+          "150 - 199": 1182699.0,
+          "200 - 299": 1066243.0,
+          "<100": 100457.0,
+          ">= 300": 369203.0,
+          "Onbekend-Inconnu": 191700.0
+        },
+        "equals_t17_by_class": true,
+        "use": "Diagnostic only: T7 crosses NACE 2025 activity, worker status and sex; no reference reads it."
+      },
+      "measure_pin": "employed_workers, never jobs: T17's jobs measure shares the person entity, the count unit and the classes, so _surface_bands cannot tell them apart; the generator and the package tests pin the measure."
+    },
+    "legal_pensions": {
+      "record_set_id": "sfpd.amount_bands.jan2025.group1.recipients",
+      "period": "2025-01",
+      "bands": [
+        {
+          "label": "0,01 - 124,99",
+          "reference": "sfpd_legal_pension_recipients_by_monthly_amount_band__0_01_to_125",
+          "recipients": 281092.0
+        },
+        {
+          "label": "125,00 - 249,99",
+          "reference": "sfpd_legal_pension_recipients_by_monthly_amount_band__125_to_250",
+          "recipients": 112943.0
+        },
+        {
+          "label": "250,00 - 374,99",
+          "reference": "sfpd_legal_pension_recipients_by_monthly_amount_band__250_to_375",
+          "recipients": 68579.0
+        },
+        {
+          "label": "375,00 - 499,99",
+          "reference": "sfpd_legal_pension_recipients_by_monthly_amount_band__375_to_500",
+          "recipients": 53494.0
+        },
+        {
+          "label": "500,00 - 624,99",
+          "reference": "sfpd_legal_pension_recipients_by_monthly_amount_band__500_to_625",
+          "recipients": 52925.0
+        },
+        {
+          "label": "625,00 - 749,99",
+          "reference": "sfpd_legal_pension_recipients_by_monthly_amount_band__625_to_750",
+          "recipients": 49474.0
+        },
+        {
+          "label": "750,00 - 874,99",
+          "reference": "sfpd_legal_pension_recipients_by_monthly_amount_band__750_to_875",
+          "recipients": 44861.0
+        },
+        {
+          "label": "875,00 - 999,99",
+          "reference": "sfpd_legal_pension_recipients_by_monthly_amount_band__875_to_1000",
+          "recipients": 39229.0
+        },
+        {
+          "label": "1.000,00 - 1.124,99",
+          "reference": "sfpd_legal_pension_recipients_by_monthly_amount_band__1000_to_1125",
+          "recipients": 38226.0
+        },
+        {
+          "label": "1.125,00 - 1.249,99",
+          "reference": "sfpd_legal_pension_recipients_by_monthly_amount_band__1125_to_1250",
+          "recipients": 43057.0
+        },
+        {
+          "label": "1.250,00 - 1.374,99",
+          "reference": "sfpd_legal_pension_recipients_by_monthly_amount_band__1250_to_1375",
+          "recipients": 50885.0
+        },
+        {
+          "label": "1.375,00 - 1.499,99",
+          "reference": "sfpd_legal_pension_recipients_by_monthly_amount_band__1375_to_1500",
+          "recipients": 61147.0
+        },
+        {
+          "label": "1.500,00 - 1.624,99",
+          "reference": "sfpd_legal_pension_recipients_by_monthly_amount_band__1500_to_1625",
+          "recipients": 80839.0
+        },
+        {
+          "label": "1.625,00 - 1.749,99",
+          "reference": "sfpd_legal_pension_recipients_by_monthly_amount_band__1625_to_1750",
+          "recipients": 222464.0
+        },
+        {
+          "label": "1.750,00 - 1.874,99",
+          "reference": "sfpd_legal_pension_recipients_by_monthly_amount_band__1750_to_1875",
+          "recipients": 415308.0
+        },
+        {
+          "label": "1.875,00 - 1.999,99",
+          "reference": "sfpd_legal_pension_recipients_by_monthly_amount_band__1875_to_2000",
+          "recipients": 189369.0
+        },
+        {
+          "label": "2.000,00 - 2.124,99",
+          "reference": "sfpd_legal_pension_recipients_by_monthly_amount_band__2000_to_2125",
+          "recipients": 108687.0
+        },
+        {
+          "label": "2.125,00 - 2.249,99",
+          "reference": "sfpd_legal_pension_recipients_by_monthly_amount_band__2125_to_2250",
+          "recipients": 139867.0
+        },
+        {
+          "label": "2.250,00 - 2.374,99",
+          "reference": "sfpd_legal_pension_recipients_by_monthly_amount_band__2250_to_2375",
+          "recipients": 88870.0
+        },
+        {
+          "label": "2.375,00 - 2.499,99",
+          "reference": "sfpd_legal_pension_recipients_by_monthly_amount_band__2375_to_2500",
+          "recipients": 81395.0
+        },
+        {
+          "label": "2.500,00 - 2.624,99",
+          "reference": "sfpd_legal_pension_recipients_by_monthly_amount_band__2500_to_2625",
+          "recipients": 67760.0
+        },
+        {
+          "label": "2.625,00 - 2.749,99",
+          "reference": "sfpd_legal_pension_recipients_by_monthly_amount_band__2625_to_2750",
+          "recipients": 54626.0
+        },
+        {
+          "label": "2.750,00 - 2.874,99",
+          "reference": "sfpd_legal_pension_recipients_by_monthly_amount_band__2750_to_2875",
+          "recipients": 37484.0
+        },
+        {
+          "label": "2.875,00 - 2.999,99",
+          "reference": "sfpd_legal_pension_recipients_by_monthly_amount_band__2875_to_3000",
+          "recipients": 21993.0
+        },
+        {
+          "label": "3.000,00 - 3.124,99",
+          "reference": "sfpd_legal_pension_recipients_by_monthly_amount_band__3000_to_3125",
+          "recipients": 13845.0
+        },
+        {
+          "label": "3.125,00 en >",
+          "reference": "sfpd_legal_pension_recipients_by_monthly_amount_band__3125_plus",
+          "recipients": 30814.0
+        }
+      ],
+      "band_recipients": 2449233.0,
+      "total_fact": {
+        "aggregate_fact_key": "ledger.aggregate_fact.v2:f9dc8ab69a3b6cbcc0db3f68",
+        "label": "Totaal",
+        "recipients": 2449233.0
+      },
+      "bands_sum_to_total": true,
+      "excluded": "The Totaal row, which the bands sum to, and every monthly_expenditure_eur fact. SFPD's other groups are not stacked: groups 2 to 164 split group 1's population by career, pension category and sex, and the FPD-beneficiary and IGO groups count other beneficiary populations."
+    }
+  },
   "exclusions": [
     {
       "id": "jrc_euromod_be_statistics",
@@ -1186,7 +1489,7 @@
     },
     {
       "id": "legal_pensions",
-      "reason": "FPB pension amounts and SFPD beneficiary counts and bands: legal pensions are not modelled until d1902 settles BE-MC3's pension route; the SFPD bands are B4's quantile-map surface."
+      "reason": "FPB pension amounts and SFPD's other beneficiary tables: legal pensions are not modelled until d1902 settles BE-MC3's pension route. SFPD group 1's 26 amount bands are B4a's parked legal-pension surface rows in precal; its Totaal row and expenditure measure are not bands. Groups 2 to 164 split group 1's population, and the FPD-beneficiary and IGO groups count other beneficiary populations, so none is stacked on group 1."
     },
     {
       "id": "family_allowances",
@@ -1194,7 +1497,7 @@
     },
     {
       "id": "rsz_wage_classes",
-      "reason": "RSZ daily-wage classes (B2f) are B4's wage quantile-map input under d1902, not a reference."
+      "reason": "RSZ daily-wage classes (B2f): B4a's wage surface reads only T17's five known-pay classes of employed workers at 2026-Q1, as precal rows. Earlier quarters, the jobs and FTE measures, the unknown-pay class and T7 (a diagnostic in quantile_surfaces) are not read."
     },
     {
       "id": "usd_eur_rate",
@@ -12871,6 +13174,1270 @@
           "semantic_fact_key": "ledger.semantic_fact.v2:60771efacc702a59d614f841"
         }
       ]
+    },
+    {
+      "name": "rsz_employed_workers_by_daily_wage_class__lt100",
+      "reference_set": "precal",
+      "selector_sha256": "57179952ce20e428059b209eda9774b6788d1f674a887e1ca2bdcd9be45432c5",
+      "base_facts": [
+        {
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:03e97f8fc1e4c02a24b05b6b"
+        },
+        {
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:1261db14ee06d08798a76f04"
+        },
+        {
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:2d0299ef587a1600a1b358c1"
+        },
+        {
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:50f9154b6d3715b290565355"
+        },
+        {
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:529b2713570e6af3aabc59a9"
+        },
+        {
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:659473480a49f6d772adbe8b"
+        },
+        {
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:68e69de1a41b5e86fd61bf1c"
+        },
+        {
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:6c85bb41111599aa187a507f"
+        },
+        {
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:70c3068ee232c8f09bda69cd"
+        },
+        {
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:7a2eeb0da5579c5a736dcdbe"
+        },
+        {
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:84ef3b510a851883c9687d6a"
+        },
+        {
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:94148bb5467a5822ca353085"
+        },
+        {
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:9a831cb818590895f0ceb4ff"
+        },
+        {
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:b1cc475453a46b74714e040a"
+        },
+        {
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:bd245c8955f315a856a6314c"
+        },
+        {
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:c614c4738c22af8c439521d5"
+        },
+        {
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:c8cea3dd961ef5a4686a13b0"
+        },
+        {
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:cb9b4ce06bd6c736c25b6c61"
+        },
+        {
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:d0e8ab515e49c34870dc73e4"
+        },
+        {
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:d212cfb30dc71bbd8777897b"
+        },
+        {
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:dcd594d43f4cd0f0615bd541"
+        },
+        {
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:ed8c8a5530aec0aeb993314c"
+        },
+        {
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:f988cb24a141941956ad7dca"
+        },
+        {
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:fb1cd1c7422cf3d68edc526f"
+        }
+      ],
+      "operand_facts": [],
+      "semantic_facts": [
+        {
+          "semantic_fact_key": "ledger.semantic_fact.v2:042a3c23cb3d202c1e67079c"
+        },
+        {
+          "semantic_fact_key": "ledger.semantic_fact.v2:0ee658ba457f879edca04d97"
+        },
+        {
+          "semantic_fact_key": "ledger.semantic_fact.v2:22742eedeccb6ff9634e34a0"
+        },
+        {
+          "semantic_fact_key": "ledger.semantic_fact.v2:22acaaac1eeeca6210758e22"
+        },
+        {
+          "semantic_fact_key": "ledger.semantic_fact.v2:2528868e38478b65c024a717"
+        },
+        {
+          "semantic_fact_key": "ledger.semantic_fact.v2:399710cdca1b3a7fa76e2ca7"
+        },
+        {
+          "semantic_fact_key": "ledger.semantic_fact.v2:3e21500e6b03f0bb742306ea"
+        },
+        {
+          "semantic_fact_key": "ledger.semantic_fact.v2:4fce14147d60815fc3c1be72"
+        },
+        {
+          "semantic_fact_key": "ledger.semantic_fact.v2:5a6f4e38bc635b2170e2bf45"
+        },
+        {
+          "semantic_fact_key": "ledger.semantic_fact.v2:5ab4aff6377599702ce90f9d"
+        },
+        {
+          "semantic_fact_key": "ledger.semantic_fact.v2:5dfa34c587637f82e54b2c6e"
+        },
+        {
+          "semantic_fact_key": "ledger.semantic_fact.v2:7400f2510388a20d349e6a3d"
+        },
+        {
+          "semantic_fact_key": "ledger.semantic_fact.v2:83ebe615ecfb6557fa7e94c9"
+        },
+        {
+          "semantic_fact_key": "ledger.semantic_fact.v2:89945407d524d6824da91dca"
+        },
+        {
+          "semantic_fact_key": "ledger.semantic_fact.v2:93b79a11d9feb04143fee601"
+        },
+        {
+          "semantic_fact_key": "ledger.semantic_fact.v2:9c6dc28e4c93546b3fa2cf8a"
+        },
+        {
+          "semantic_fact_key": "ledger.semantic_fact.v2:9c87f408fe388c815ea9ee29"
+        },
+        {
+          "semantic_fact_key": "ledger.semantic_fact.v2:a6029079ed87cb08e4ca442e"
+        },
+        {
+          "semantic_fact_key": "ledger.semantic_fact.v2:b5fe6428639500b38e3a12be"
+        },
+        {
+          "semantic_fact_key": "ledger.semantic_fact.v2:ce9d0bb53bb41376780f9c92"
+        },
+        {
+          "semantic_fact_key": "ledger.semantic_fact.v2:e430177fc25dae326a1c0f43"
+        },
+        {
+          "semantic_fact_key": "ledger.semantic_fact.v2:e56a55c0c115f7a65e2529f2"
+        },
+        {
+          "semantic_fact_key": "ledger.semantic_fact.v2:e993e850492609a44aafbde3"
+        },
+        {
+          "semantic_fact_key": "ledger.semantic_fact.v2:feb06742b0412392852cb737"
+        }
+      ]
+    },
+    {
+      "name": "rsz_employed_workers_by_daily_wage_class__100_149",
+      "reference_set": "precal",
+      "selector_sha256": "b2866a7f7a84df0f3ca4dbf346c304d4ad3dff797f5bad7fefec940156ee19c8",
+      "base_facts": [
+        {
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:1b2013b4ce29079c03390bc4"
+        },
+        {
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:1c8dc2113784eac50a0b5d21"
+        },
+        {
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:1e7f44d49d33c4f69e53aa84"
+        },
+        {
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:293d8c1d1c71f2edd1c69454"
+        },
+        {
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:2d38f11676e2a380f8b6ef86"
+        },
+        {
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:2ec86c8648f3fb9d0bf12572"
+        },
+        {
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:40a369f7fc9063e5d6ffa905"
+        },
+        {
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:41c070d07e587a5ee002d5f2"
+        },
+        {
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:44500332cfcd54c6c8bb9e60"
+        },
+        {
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:616d5828259fa12e9d3bc9d7"
+        },
+        {
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:637876c7923f43c29349d61c"
+        },
+        {
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:6991cfd3783dbf80a68d2a72"
+        },
+        {
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:72e29f3313e9211f9f0d9d70"
+        },
+        {
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:7e952b013d7700c75365f3e9"
+        },
+        {
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:849b71345621b0cf7ceb0f55"
+        },
+        {
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:90f5c1ef687108e233fbc19e"
+        },
+        {
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:9afc61a953de3e4e71912652"
+        },
+        {
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:a32e1c5b0541eb00ff5c089a"
+        },
+        {
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:ac9021160a84a605f78175d1"
+        },
+        {
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:b1b578a5d21c13d35ef5b777"
+        },
+        {
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:d14c400d8a2e85f5604d8eab"
+        },
+        {
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:d3d93228dce58dbb50d7cd7a"
+        },
+        {
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:e341099fc1c7236f341294af"
+        },
+        {
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:eabc0966bc3f85e0fdef8966"
+        }
+      ],
+      "operand_facts": [],
+      "semantic_facts": [
+        {
+          "semantic_fact_key": "ledger.semantic_fact.v2:069f3faeab4186992f0ed70f"
+        },
+        {
+          "semantic_fact_key": "ledger.semantic_fact.v2:06dc17789888fb94a8ac7c55"
+        },
+        {
+          "semantic_fact_key": "ledger.semantic_fact.v2:097aca9e016f6e89434ec506"
+        },
+        {
+          "semantic_fact_key": "ledger.semantic_fact.v2:0dc23259df61a979ad0dc8f8"
+        },
+        {
+          "semantic_fact_key": "ledger.semantic_fact.v2:13cbafabf268dcccc9635ac1"
+        },
+        {
+          "semantic_fact_key": "ledger.semantic_fact.v2:1571a88e76d21d7011f764c9"
+        },
+        {
+          "semantic_fact_key": "ledger.semantic_fact.v2:3b211c6085f787e61aa00728"
+        },
+        {
+          "semantic_fact_key": "ledger.semantic_fact.v2:3e65b09331241059345fe275"
+        },
+        {
+          "semantic_fact_key": "ledger.semantic_fact.v2:4502ef11ee77e4286ed0cc3e"
+        },
+        {
+          "semantic_fact_key": "ledger.semantic_fact.v2:4c47fb2c22d14973b9c5e20d"
+        },
+        {
+          "semantic_fact_key": "ledger.semantic_fact.v2:4f5c76c8534591f0ed5c8b28"
+        },
+        {
+          "semantic_fact_key": "ledger.semantic_fact.v2:62d603bb49415ea945088d34"
+        },
+        {
+          "semantic_fact_key": "ledger.semantic_fact.v2:73b66e88f8ad5583e9ac50be"
+        },
+        {
+          "semantic_fact_key": "ledger.semantic_fact.v2:7f9f66aeede255ef14dfb935"
+        },
+        {
+          "semantic_fact_key": "ledger.semantic_fact.v2:9984ed019b844c010f72627a"
+        },
+        {
+          "semantic_fact_key": "ledger.semantic_fact.v2:ac8579771d84363b7782123b"
+        },
+        {
+          "semantic_fact_key": "ledger.semantic_fact.v2:d11e258ef93658e9a53698ad"
+        },
+        {
+          "semantic_fact_key": "ledger.semantic_fact.v2:d84aa246ebdc38ea1ba258d7"
+        },
+        {
+          "semantic_fact_key": "ledger.semantic_fact.v2:dda7c4b939e26efde20893ce"
+        },
+        {
+          "semantic_fact_key": "ledger.semantic_fact.v2:e263b860311b501e4b40f66b"
+        },
+        {
+          "semantic_fact_key": "ledger.semantic_fact.v2:e7f6d8339878ad2b0f9c3590"
+        },
+        {
+          "semantic_fact_key": "ledger.semantic_fact.v2:ed47e810a572b61aa3516906"
+        },
+        {
+          "semantic_fact_key": "ledger.semantic_fact.v2:eebb37226840d592a1adee6c"
+        },
+        {
+          "semantic_fact_key": "ledger.semantic_fact.v2:ef2dc50fbfb53542dad75fac"
+        }
+      ]
+    },
+    {
+      "name": "rsz_employed_workers_by_daily_wage_class__150_199",
+      "reference_set": "precal",
+      "selector_sha256": "1d49f7cbe45c3de3195e5bad46e9167c29773c4ca56bb5e23652cecf0103a3db",
+      "base_facts": [
+        {
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:16efb031e221b13396e0dcfd"
+        },
+        {
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:2dbe14e7b5889ad6b0ab881c"
+        },
+        {
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:49c5b2543929f536bbead792"
+        },
+        {
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:4aaea2769b8e0173bd87b707"
+        },
+        {
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:61add12bfe0f9367a6035f7f"
+        },
+        {
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:6d42881d8a85a5133ee9c24f"
+        },
+        {
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:7454c2c704d076cb4d273e5e"
+        },
+        {
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:75288557ab45cc6d109e5807"
+        },
+        {
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:76d41b0fc939c79c352bf99d"
+        },
+        {
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:7a38f2d85944b9bb22561bb6"
+        },
+        {
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:805c1ff4834f6cfd45dd7637"
+        },
+        {
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:935d073912194bd062726dfd"
+        },
+        {
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:97bcd7a4df4a0a246c9ff861"
+        },
+        {
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:b2825e3893b1e25beee2b0e2"
+        },
+        {
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:b4d769f6247238801c92a6f1"
+        },
+        {
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:b8de02ddd99328a0dc5710da"
+        },
+        {
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:bb537782cfeac55fe6dd7947"
+        },
+        {
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:bda30f52d9e0a7685e407b7a"
+        },
+        {
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:c92f72c2479c7397df47fd12"
+        },
+        {
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:d37cfaaf3e61f022d975bd5a"
+        },
+        {
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:e13caefedc2529d7805b4e5f"
+        },
+        {
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:f70015a435a29661aaf62029"
+        },
+        {
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:f7ea076bde5ec859effc8a49"
+        },
+        {
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:fe721a833b17972ece4f86e0"
+        }
+      ],
+      "operand_facts": [],
+      "semantic_facts": [
+        {
+          "semantic_fact_key": "ledger.semantic_fact.v2:009ee56bacca814d6fe5647a"
+        },
+        {
+          "semantic_fact_key": "ledger.semantic_fact.v2:00d1458a17b4ec2c58f2f4db"
+        },
+        {
+          "semantic_fact_key": "ledger.semantic_fact.v2:07b7b8c93de39fb84ed413d9"
+        },
+        {
+          "semantic_fact_key": "ledger.semantic_fact.v2:10a850976620c203e59a9077"
+        },
+        {
+          "semantic_fact_key": "ledger.semantic_fact.v2:1b4733d4b74274cb19b71c26"
+        },
+        {
+          "semantic_fact_key": "ledger.semantic_fact.v2:1f66c43e2e13f5e76c01dec0"
+        },
+        {
+          "semantic_fact_key": "ledger.semantic_fact.v2:2b6bbaaeb6cdde7a8599f2a1"
+        },
+        {
+          "semantic_fact_key": "ledger.semantic_fact.v2:365ccb644a5d518ce3b1e18d"
+        },
+        {
+          "semantic_fact_key": "ledger.semantic_fact.v2:404a12167129e1701cec0653"
+        },
+        {
+          "semantic_fact_key": "ledger.semantic_fact.v2:591283b17b6077d261ab1dcd"
+        },
+        {
+          "semantic_fact_key": "ledger.semantic_fact.v2:60688fb9ec237fdfa2579675"
+        },
+        {
+          "semantic_fact_key": "ledger.semantic_fact.v2:72d9dd747844fc540d2ebb70"
+        },
+        {
+          "semantic_fact_key": "ledger.semantic_fact.v2:7775b964b3972604b24cc24e"
+        },
+        {
+          "semantic_fact_key": "ledger.semantic_fact.v2:815cb676ae391d21b7a7ad1c"
+        },
+        {
+          "semantic_fact_key": "ledger.semantic_fact.v2:afee3f88777754bb09a42086"
+        },
+        {
+          "semantic_fact_key": "ledger.semantic_fact.v2:b1886532de40fff1eed0917f"
+        },
+        {
+          "semantic_fact_key": "ledger.semantic_fact.v2:be3ab92b3297135b12b63fb6"
+        },
+        {
+          "semantic_fact_key": "ledger.semantic_fact.v2:c7555176b05414636d8c94bc"
+        },
+        {
+          "semantic_fact_key": "ledger.semantic_fact.v2:cf31652e47b6241dc4536f80"
+        },
+        {
+          "semantic_fact_key": "ledger.semantic_fact.v2:d0089a94f951695d3cd687e4"
+        },
+        {
+          "semantic_fact_key": "ledger.semantic_fact.v2:d38148f4517292e3f354b1b9"
+        },
+        {
+          "semantic_fact_key": "ledger.semantic_fact.v2:dd4186ae98291ac604785b60"
+        },
+        {
+          "semantic_fact_key": "ledger.semantic_fact.v2:e26465f94edc54ef042f2ca5"
+        },
+        {
+          "semantic_fact_key": "ledger.semantic_fact.v2:ee0864d1d03e1dd2016cab0d"
+        }
+      ]
+    },
+    {
+      "name": "rsz_employed_workers_by_daily_wage_class__200_299",
+      "reference_set": "precal",
+      "selector_sha256": "250c3c13d2340d7483da39338091f65f056fff9c4468f62c5c416de73ee32d3a",
+      "base_facts": [
+        {
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:1164b27d63e71eef04c6f7e9"
+        },
+        {
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:20599d015944c1544b0c796a"
+        },
+        {
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:385d6f411a159fb4314a540a"
+        },
+        {
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:48a6c510f843f594cfa24d6e"
+        },
+        {
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:56e28bfb8a761305fa45a31a"
+        },
+        {
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:5e9b655c7276ffba6c5ec14e"
+        },
+        {
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:753c01b951c930bf2d527295"
+        },
+        {
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:7644e3034d6ab601c767f44e"
+        },
+        {
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:78629cc1c66c902561fe6bbe"
+        },
+        {
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:80ef1a28bb4b0502ec8a23fb"
+        },
+        {
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:b44cfddef5dfadf33b79f6ce"
+        },
+        {
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:bf4f711de6ad8645a4341ae9"
+        },
+        {
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:c33cc9e02016c7b21e515ca5"
+        },
+        {
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:cb9cf1016f21c33956e9f52e"
+        },
+        {
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:cd13629a55ae463a5a01c29e"
+        },
+        {
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:d630f7f329402549e9b42c38"
+        },
+        {
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:d6f9204bf15574234c6cd8c2"
+        },
+        {
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:dd58e2c067ac816ae9538a14"
+        },
+        {
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:dd816886e887358c4f708326"
+        },
+        {
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:e8347a88af037ab724f9ec04"
+        },
+        {
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:f2a7a55883cda24990120beb"
+        },
+        {
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:f4c07e7552a8a6869c62a78e"
+        },
+        {
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:f7e7b3792a720307f26b0f79"
+        },
+        {
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:fd198a56b5f547840da09ac9"
+        }
+      ],
+      "operand_facts": [],
+      "semantic_facts": [
+        {
+          "semantic_fact_key": "ledger.semantic_fact.v2:070d0aa598de2b9b0beaadd5"
+        },
+        {
+          "semantic_fact_key": "ledger.semantic_fact.v2:082ec0f9c06a3b703f6d5695"
+        },
+        {
+          "semantic_fact_key": "ledger.semantic_fact.v2:0fec1aad40666590fe3dae2d"
+        },
+        {
+          "semantic_fact_key": "ledger.semantic_fact.v2:11782628a8d595bbf8b98c6a"
+        },
+        {
+          "semantic_fact_key": "ledger.semantic_fact.v2:336ee0466347ad4e41a05900"
+        },
+        {
+          "semantic_fact_key": "ledger.semantic_fact.v2:35c8c27df5e59c2588771982"
+        },
+        {
+          "semantic_fact_key": "ledger.semantic_fact.v2:432591d9e2b343a803640d36"
+        },
+        {
+          "semantic_fact_key": "ledger.semantic_fact.v2:4f8d863006fdaaae4ac10099"
+        },
+        {
+          "semantic_fact_key": "ledger.semantic_fact.v2:512dce4f54d4250b0332f0ba"
+        },
+        {
+          "semantic_fact_key": "ledger.semantic_fact.v2:7a48a41c4f687637b823f938"
+        },
+        {
+          "semantic_fact_key": "ledger.semantic_fact.v2:8acad313c803b27fed6d76f1"
+        },
+        {
+          "semantic_fact_key": "ledger.semantic_fact.v2:8d74e0cc6fcec6850e5c0408"
+        },
+        {
+          "semantic_fact_key": "ledger.semantic_fact.v2:9757d6d577bfcd7c85a1410c"
+        },
+        {
+          "semantic_fact_key": "ledger.semantic_fact.v2:a8ac53d32bb7a1160dd14b90"
+        },
+        {
+          "semantic_fact_key": "ledger.semantic_fact.v2:bb630d5a616c7dc71e493553"
+        },
+        {
+          "semantic_fact_key": "ledger.semantic_fact.v2:c390fd33d46b63f727510f4e"
+        },
+        {
+          "semantic_fact_key": "ledger.semantic_fact.v2:c48d26c27236427559f70180"
+        },
+        {
+          "semantic_fact_key": "ledger.semantic_fact.v2:c99df1ab459ae8a8f2d8f78a"
+        },
+        {
+          "semantic_fact_key": "ledger.semantic_fact.v2:cf602f25fcaadb9d39ba5ef7"
+        },
+        {
+          "semantic_fact_key": "ledger.semantic_fact.v2:cf69458c73dfbff8afda293d"
+        },
+        {
+          "semantic_fact_key": "ledger.semantic_fact.v2:d710aef35360c9b67f662a6d"
+        },
+        {
+          "semantic_fact_key": "ledger.semantic_fact.v2:e9a76e5f9e68d9db7858d6b8"
+        },
+        {
+          "semantic_fact_key": "ledger.semantic_fact.v2:fb1335d09d4561af019a74fb"
+        },
+        {
+          "semantic_fact_key": "ledger.semantic_fact.v2:fbb607f2d28f3bfaec399f18"
+        }
+      ]
+    },
+    {
+      "name": "rsz_employed_workers_by_daily_wage_class__300_plus",
+      "reference_set": "precal",
+      "selector_sha256": "ce69ccf09df2b2954f8f8a5c6e0395892b422e393d49fd3a275ba4c0f9c55b00",
+      "base_facts": [
+        {
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:0cc0ee48cb81f3a5022ef88a"
+        },
+        {
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:24eef123d5c905c39d55e687"
+        },
+        {
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:2ce76145c124902b2be53748"
+        },
+        {
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:359aeee94cd7fbd7586ab5e9"
+        },
+        {
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:374153bbc3188810a177e36a"
+        },
+        {
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:40f4d4fcea91db96c787434a"
+        },
+        {
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:57b8a09e64c86714f3d1acef"
+        },
+        {
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:5a8f91955a3b80ee5f965c5d"
+        },
+        {
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:5fc29eee205d514528473729"
+        },
+        {
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:650bc2b667a618ed2dc51d72"
+        },
+        {
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:763752208de5b781732c0f27"
+        },
+        {
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:7ec2582739b37236b7bd71bb"
+        },
+        {
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:860a60aac0e08865f9de8d16"
+        },
+        {
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:968eb1aa7844898a4611ef54"
+        },
+        {
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:a0f5e795263a5cbcf86e0faa"
+        },
+        {
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:ae117ccb0cec2bb0dcfef43c"
+        },
+        {
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:aef42c64e6d768ef76de0160"
+        },
+        {
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:b419ba31b7dd59fc277c35c4"
+        },
+        {
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:baf0a81d04cc49b8c208ca8b"
+        },
+        {
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:dbd005c82666f8ad3b79bb95"
+        },
+        {
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:ddce3f173f9f72b7c3b2d79a"
+        },
+        {
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:ecd82521a5b05bf2d05ae835"
+        },
+        {
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:f8ad3413c045256d7b611be9"
+        },
+        {
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:f951db2f6a4a1d1fc1f134f1"
+        }
+      ],
+      "operand_facts": [],
+      "semantic_facts": [
+        {
+          "semantic_fact_key": "ledger.semantic_fact.v2:034a9ae265b076dc273f521f"
+        },
+        {
+          "semantic_fact_key": "ledger.semantic_fact.v2:065b6dd4cc2f79a6d682ac26"
+        },
+        {
+          "semantic_fact_key": "ledger.semantic_fact.v2:11ce358fc394f7d665f751f8"
+        },
+        {
+          "semantic_fact_key": "ledger.semantic_fact.v2:1340b71c283754a109dce05f"
+        },
+        {
+          "semantic_fact_key": "ledger.semantic_fact.v2:212552df641a21349507ec94"
+        },
+        {
+          "semantic_fact_key": "ledger.semantic_fact.v2:25860822f7c3e82ba3723a6d"
+        },
+        {
+          "semantic_fact_key": "ledger.semantic_fact.v2:2cea89fd2f1a09ef0859a9cb"
+        },
+        {
+          "semantic_fact_key": "ledger.semantic_fact.v2:45b83717eaf0a78524f2a369"
+        },
+        {
+          "semantic_fact_key": "ledger.semantic_fact.v2:5f2f69cce991fcda25a8f459"
+        },
+        {
+          "semantic_fact_key": "ledger.semantic_fact.v2:6b6821d2bb4123779377c406"
+        },
+        {
+          "semantic_fact_key": "ledger.semantic_fact.v2:79717cb65830f038c387d12b"
+        },
+        {
+          "semantic_fact_key": "ledger.semantic_fact.v2:8b92af9ff69b2e4a3a4146fb"
+        },
+        {
+          "semantic_fact_key": "ledger.semantic_fact.v2:8f6f9a9d836738637b08ed5c"
+        },
+        {
+          "semantic_fact_key": "ledger.semantic_fact.v2:9ca9820520cfef83387e0a6a"
+        },
+        {
+          "semantic_fact_key": "ledger.semantic_fact.v2:a1777f358bc8e2643d873796"
+        },
+        {
+          "semantic_fact_key": "ledger.semantic_fact.v2:b1d1bbe4ddb7e160cd04ab63"
+        },
+        {
+          "semantic_fact_key": "ledger.semantic_fact.v2:bb9000334cf7a218b4004600"
+        },
+        {
+          "semantic_fact_key": "ledger.semantic_fact.v2:c85d5db814d7a3ea047e0955"
+        },
+        {
+          "semantic_fact_key": "ledger.semantic_fact.v2:c9ff54344484b746f0cbe47b"
+        },
+        {
+          "semantic_fact_key": "ledger.semantic_fact.v2:d33f773b53c0f3fbe44e0638"
+        },
+        {
+          "semantic_fact_key": "ledger.semantic_fact.v2:d533ea752daf6bcbd6ae0855"
+        },
+        {
+          "semantic_fact_key": "ledger.semantic_fact.v2:e8619c0cfa118aad4124467b"
+        },
+        {
+          "semantic_fact_key": "ledger.semantic_fact.v2:eeacabbb622efbdfe8d86a6e"
+        },
+        {
+          "semantic_fact_key": "ledger.semantic_fact.v2:f2a6de60349a3247510287ad"
+        }
+      ]
+    },
+    {
+      "name": "sfpd_legal_pension_recipients_by_monthly_amount_band__0_01_to_125",
+      "reference_set": "precal",
+      "selector_sha256": "5c050e8f207d63eaa192564d6fe004da0a12ad23bc711cb577b74749949e4b38",
+      "base_facts": [
+        {
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:9a329f9e88fe6b479b5346f9"
+        }
+      ],
+      "operand_facts": [],
+      "semantic_facts": [
+        {
+          "semantic_fact_key": "ledger.semantic_fact.v2:be6709ec1b831b78f2a14bb4"
+        }
+      ],
+      "partition_total": {
+        "semantic_fact_key": "ledger.semantic_fact.v2:16b6cd878e9094b556058639"
+      }
+    },
+    {
+      "name": "sfpd_legal_pension_recipients_by_monthly_amount_band__125_to_250",
+      "reference_set": "precal",
+      "selector_sha256": "b82f07c306f88948458ec70c2761bf8d8025027b44dbe46bbc82af6fb10850ea",
+      "base_facts": [
+        {
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:fb8dadc18d74f570c4a83e2f"
+        }
+      ],
+      "operand_facts": [],
+      "semantic_facts": [
+        {
+          "semantic_fact_key": "ledger.semantic_fact.v2:d8e0c5ae15b3c230fb61d47b"
+        }
+      ],
+      "partition_total": {
+        "semantic_fact_key": "ledger.semantic_fact.v2:16b6cd878e9094b556058639"
+      }
+    },
+    {
+      "name": "sfpd_legal_pension_recipients_by_monthly_amount_band__250_to_375",
+      "reference_set": "precal",
+      "selector_sha256": "66b020d69d3d858930d49b16057631c45dbe93290e40bacd860832eeba548cb2",
+      "base_facts": [
+        {
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:a376ab9878e45b4b7f088ea8"
+        }
+      ],
+      "operand_facts": [],
+      "semantic_facts": [
+        {
+          "semantic_fact_key": "ledger.semantic_fact.v2:dba1674357b43756a07b825a"
+        }
+      ],
+      "partition_total": {
+        "semantic_fact_key": "ledger.semantic_fact.v2:16b6cd878e9094b556058639"
+      }
+    },
+    {
+      "name": "sfpd_legal_pension_recipients_by_monthly_amount_band__375_to_500",
+      "reference_set": "precal",
+      "selector_sha256": "5e22dcc3ddcc94c41815fe04cba4a5b6bb4a29fdf091a67d2ed412f7c67e5bb0",
+      "base_facts": [
+        {
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:b879e38f2b030f73f297e1a9"
+        }
+      ],
+      "operand_facts": [],
+      "semantic_facts": [
+        {
+          "semantic_fact_key": "ledger.semantic_fact.v2:fae9664702ad3699c64c74d4"
+        }
+      ],
+      "partition_total": {
+        "semantic_fact_key": "ledger.semantic_fact.v2:16b6cd878e9094b556058639"
+      }
+    },
+    {
+      "name": "sfpd_legal_pension_recipients_by_monthly_amount_band__500_to_625",
+      "reference_set": "precal",
+      "selector_sha256": "dee2c61d57830269033551270c4e836ef2253cccf9a8e27b5b6503379bec6854",
+      "base_facts": [
+        {
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:6b4e263d9ba2114a7e1a466b"
+        }
+      ],
+      "operand_facts": [],
+      "semantic_facts": [
+        {
+          "semantic_fact_key": "ledger.semantic_fact.v2:f81afada37df91658533152e"
+        }
+      ],
+      "partition_total": {
+        "semantic_fact_key": "ledger.semantic_fact.v2:16b6cd878e9094b556058639"
+      }
+    },
+    {
+      "name": "sfpd_legal_pension_recipients_by_monthly_amount_band__625_to_750",
+      "reference_set": "precal",
+      "selector_sha256": "a77434c590669411c2db5d383365490478f8f9e29ce4971c986951a2cc5e2b79",
+      "base_facts": [
+        {
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:a6bf6bc78e0aeda1fc8254c9"
+        }
+      ],
+      "operand_facts": [],
+      "semantic_facts": [
+        {
+          "semantic_fact_key": "ledger.semantic_fact.v2:30043d3b3a96691a0502f6f1"
+        }
+      ],
+      "partition_total": {
+        "semantic_fact_key": "ledger.semantic_fact.v2:16b6cd878e9094b556058639"
+      }
+    },
+    {
+      "name": "sfpd_legal_pension_recipients_by_monthly_amount_band__750_to_875",
+      "reference_set": "precal",
+      "selector_sha256": "4951f89f8d9415bbcbd7e956c402911384835cd009df9458207b4bac6ed1ce10",
+      "base_facts": [
+        {
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:0f5fe0471cc0653d926831f2"
+        }
+      ],
+      "operand_facts": [],
+      "semantic_facts": [
+        {
+          "semantic_fact_key": "ledger.semantic_fact.v2:f50bed8289f84fc488e80ef6"
+        }
+      ],
+      "partition_total": {
+        "semantic_fact_key": "ledger.semantic_fact.v2:16b6cd878e9094b556058639"
+      }
+    },
+    {
+      "name": "sfpd_legal_pension_recipients_by_monthly_amount_band__875_to_1000",
+      "reference_set": "precal",
+      "selector_sha256": "77239ec81f2d21685b5bb1ddfedf1348a810138c21c258cbd090b7cbdfa43096",
+      "base_facts": [
+        {
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:20497043bfbb6136b245fab5"
+        }
+      ],
+      "operand_facts": [],
+      "semantic_facts": [
+        {
+          "semantic_fact_key": "ledger.semantic_fact.v2:611e64e8916986374364382d"
+        }
+      ],
+      "partition_total": {
+        "semantic_fact_key": "ledger.semantic_fact.v2:16b6cd878e9094b556058639"
+      }
+    },
+    {
+      "name": "sfpd_legal_pension_recipients_by_monthly_amount_band__1000_to_1125",
+      "reference_set": "precal",
+      "selector_sha256": "7e9cbba9169a25c12d779b58e73d42e297da8f7087e8e645a20e5e7987967287",
+      "base_facts": [
+        {
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:06d79289f4647a9d753a768d"
+        }
+      ],
+      "operand_facts": [],
+      "semantic_facts": [
+        {
+          "semantic_fact_key": "ledger.semantic_fact.v2:9cb448d09f72c0212aa71c61"
+        }
+      ],
+      "partition_total": {
+        "semantic_fact_key": "ledger.semantic_fact.v2:16b6cd878e9094b556058639"
+      }
+    },
+    {
+      "name": "sfpd_legal_pension_recipients_by_monthly_amount_band__1125_to_1250",
+      "reference_set": "precal",
+      "selector_sha256": "483f2ee982cd00a6725a2a87a531bd1dd7b8c7dfaba51dea016e63cd959eb645",
+      "base_facts": [
+        {
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:242d02ac50fb3deb7796a77e"
+        }
+      ],
+      "operand_facts": [],
+      "semantic_facts": [
+        {
+          "semantic_fact_key": "ledger.semantic_fact.v2:9c2b32dfde8a275a2c4fabaf"
+        }
+      ],
+      "partition_total": {
+        "semantic_fact_key": "ledger.semantic_fact.v2:16b6cd878e9094b556058639"
+      }
+    },
+    {
+      "name": "sfpd_legal_pension_recipients_by_monthly_amount_band__1250_to_1375",
+      "reference_set": "precal",
+      "selector_sha256": "55215ad7df0c42c87d8007d92267801194b77f707de22493bb4f22fa3eac15a9",
+      "base_facts": [
+        {
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:6195ce9ba617b7ef577d5f90"
+        }
+      ],
+      "operand_facts": [],
+      "semantic_facts": [
+        {
+          "semantic_fact_key": "ledger.semantic_fact.v2:524afde2d1414dd0d3d2a234"
+        }
+      ],
+      "partition_total": {
+        "semantic_fact_key": "ledger.semantic_fact.v2:16b6cd878e9094b556058639"
+      }
+    },
+    {
+      "name": "sfpd_legal_pension_recipients_by_monthly_amount_band__1375_to_1500",
+      "reference_set": "precal",
+      "selector_sha256": "615ad79b46a23af287619cce730fc0d64faac4637978873504a018e73526a2d9",
+      "base_facts": [
+        {
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:97059482c7e937bff0c1277c"
+        }
+      ],
+      "operand_facts": [],
+      "semantic_facts": [
+        {
+          "semantic_fact_key": "ledger.semantic_fact.v2:3b62734e68edbdbb084b5721"
+        }
+      ],
+      "partition_total": {
+        "semantic_fact_key": "ledger.semantic_fact.v2:16b6cd878e9094b556058639"
+      }
+    },
+    {
+      "name": "sfpd_legal_pension_recipients_by_monthly_amount_band__1500_to_1625",
+      "reference_set": "precal",
+      "selector_sha256": "a22bc9d839c75ff594ec406fea9399297eb4fa207b15ff0d710c94501ae30c48",
+      "base_facts": [
+        {
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:fa180f8491839a0ed146217a"
+        }
+      ],
+      "operand_facts": [],
+      "semantic_facts": [
+        {
+          "semantic_fact_key": "ledger.semantic_fact.v2:4c0ecbfc487521a39af7862b"
+        }
+      ],
+      "partition_total": {
+        "semantic_fact_key": "ledger.semantic_fact.v2:16b6cd878e9094b556058639"
+      }
+    },
+    {
+      "name": "sfpd_legal_pension_recipients_by_monthly_amount_band__1625_to_1750",
+      "reference_set": "precal",
+      "selector_sha256": "83c16ef41bfe2d227eb7ae22a892c7ceeaa38d985fb097585937a4392614c10c",
+      "base_facts": [
+        {
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:d95796c3e08766039aa7349c"
+        }
+      ],
+      "operand_facts": [],
+      "semantic_facts": [
+        {
+          "semantic_fact_key": "ledger.semantic_fact.v2:abbe32cacfe6de1b7ebb099e"
+        }
+      ],
+      "partition_total": {
+        "semantic_fact_key": "ledger.semantic_fact.v2:16b6cd878e9094b556058639"
+      }
+    },
+    {
+      "name": "sfpd_legal_pension_recipients_by_monthly_amount_band__1750_to_1875",
+      "reference_set": "precal",
+      "selector_sha256": "4d85c8bc54eb8b85f12a728a21cca581e5b1044cdf9b1293701b543b8a5306c9",
+      "base_facts": [
+        {
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:54681db12c3293b12d2daab5"
+        }
+      ],
+      "operand_facts": [],
+      "semantic_facts": [
+        {
+          "semantic_fact_key": "ledger.semantic_fact.v2:31d9295c9ce68497c23f9269"
+        }
+      ],
+      "partition_total": {
+        "semantic_fact_key": "ledger.semantic_fact.v2:16b6cd878e9094b556058639"
+      }
+    },
+    {
+      "name": "sfpd_legal_pension_recipients_by_monthly_amount_band__1875_to_2000",
+      "reference_set": "precal",
+      "selector_sha256": "0fab11070866738dcec55a3abac47d8c3d42c882ff9c381f6ef52b2c4612ad2a",
+      "base_facts": [
+        {
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:4a2eea074941d7a54a2e789d"
+        }
+      ],
+      "operand_facts": [],
+      "semantic_facts": [
+        {
+          "semantic_fact_key": "ledger.semantic_fact.v2:c874dbefe339f0f500faf8a8"
+        }
+      ],
+      "partition_total": {
+        "semantic_fact_key": "ledger.semantic_fact.v2:16b6cd878e9094b556058639"
+      }
+    },
+    {
+      "name": "sfpd_legal_pension_recipients_by_monthly_amount_band__2000_to_2125",
+      "reference_set": "precal",
+      "selector_sha256": "8d77623ca1f1c95bf3fdcaef00387fe2c9d564c9c8a841274af9f94059d0b518",
+      "base_facts": [
+        {
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:eea5796f87538354facdc49c"
+        }
+      ],
+      "operand_facts": [],
+      "semantic_facts": [
+        {
+          "semantic_fact_key": "ledger.semantic_fact.v2:2bb964ecd26b22c65a49a90a"
+        }
+      ],
+      "partition_total": {
+        "semantic_fact_key": "ledger.semantic_fact.v2:16b6cd878e9094b556058639"
+      }
+    },
+    {
+      "name": "sfpd_legal_pension_recipients_by_monthly_amount_band__2125_to_2250",
+      "reference_set": "precal",
+      "selector_sha256": "69b3ee08da0d0759e6465a28d4f4ebb01d1ca6efbb3a42f79e76bd7ab51fab2d",
+      "base_facts": [
+        {
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:9e87df8e8f8b31d2eff11469"
+        }
+      ],
+      "operand_facts": [],
+      "semantic_facts": [
+        {
+          "semantic_fact_key": "ledger.semantic_fact.v2:5464f96f2cd307a3de7fa784"
+        }
+      ],
+      "partition_total": {
+        "semantic_fact_key": "ledger.semantic_fact.v2:16b6cd878e9094b556058639"
+      }
+    },
+    {
+      "name": "sfpd_legal_pension_recipients_by_monthly_amount_band__2250_to_2375",
+      "reference_set": "precal",
+      "selector_sha256": "2f06224b8cfc0f0dedec3930704fcdcb5bcdbfffbeff0751f62d2b361bd0093a",
+      "base_facts": [
+        {
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:1820ed9cb42638dc4170b2d7"
+        }
+      ],
+      "operand_facts": [],
+      "semantic_facts": [
+        {
+          "semantic_fact_key": "ledger.semantic_fact.v2:ea0e6c59a925fdec3941184b"
+        }
+      ],
+      "partition_total": {
+        "semantic_fact_key": "ledger.semantic_fact.v2:16b6cd878e9094b556058639"
+      }
+    },
+    {
+      "name": "sfpd_legal_pension_recipients_by_monthly_amount_band__2375_to_2500",
+      "reference_set": "precal",
+      "selector_sha256": "f5eb5a827bdfb972650cda9633eb34a9dd046bb673f415a2e4a93dceda88f2ec",
+      "base_facts": [
+        {
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:591410af854a557f89f7edf5"
+        }
+      ],
+      "operand_facts": [],
+      "semantic_facts": [
+        {
+          "semantic_fact_key": "ledger.semantic_fact.v2:c3643a868d0ef4f00802aa0d"
+        }
+      ],
+      "partition_total": {
+        "semantic_fact_key": "ledger.semantic_fact.v2:16b6cd878e9094b556058639"
+      }
+    },
+    {
+      "name": "sfpd_legal_pension_recipients_by_monthly_amount_band__2500_to_2625",
+      "reference_set": "precal",
+      "selector_sha256": "f5137c51b44fc1eb79a00a02c50a8559ed7a5f0604e24c1eef93c33e1d5a38b9",
+      "base_facts": [
+        {
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:4667449d76329b02866aba0e"
+        }
+      ],
+      "operand_facts": [],
+      "semantic_facts": [
+        {
+          "semantic_fact_key": "ledger.semantic_fact.v2:b6516651f04a3723302fdf46"
+        }
+      ],
+      "partition_total": {
+        "semantic_fact_key": "ledger.semantic_fact.v2:16b6cd878e9094b556058639"
+      }
+    },
+    {
+      "name": "sfpd_legal_pension_recipients_by_monthly_amount_band__2625_to_2750",
+      "reference_set": "precal",
+      "selector_sha256": "95130d0b1398ea4281cd0301a1a135ff15e0ddde24783c6ab2a991d075797d98",
+      "base_facts": [
+        {
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:c7ef88029d3ce938688d7b96"
+        }
+      ],
+      "operand_facts": [],
+      "semantic_facts": [
+        {
+          "semantic_fact_key": "ledger.semantic_fact.v2:2f9d9cb22515b7942efc622c"
+        }
+      ],
+      "partition_total": {
+        "semantic_fact_key": "ledger.semantic_fact.v2:16b6cd878e9094b556058639"
+      }
+    },
+    {
+      "name": "sfpd_legal_pension_recipients_by_monthly_amount_band__2750_to_2875",
+      "reference_set": "precal",
+      "selector_sha256": "d33b930d1cf08d571ca846167347f63e5c7df6727efe3a87261e66176a0f7fef",
+      "base_facts": [
+        {
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:267a02529de98c41d5818c2a"
+        }
+      ],
+      "operand_facts": [],
+      "semantic_facts": [
+        {
+          "semantic_fact_key": "ledger.semantic_fact.v2:857ba1ed3307b3505b7613dd"
+        }
+      ],
+      "partition_total": {
+        "semantic_fact_key": "ledger.semantic_fact.v2:16b6cd878e9094b556058639"
+      }
+    },
+    {
+      "name": "sfpd_legal_pension_recipients_by_monthly_amount_band__2875_to_3000",
+      "reference_set": "precal",
+      "selector_sha256": "29fe5b5afd13fbf1258043282c58a75345ce9a88555827c7004354ada7cc1929",
+      "base_facts": [
+        {
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:635528f21094a6f8c4386fdd"
+        }
+      ],
+      "operand_facts": [],
+      "semantic_facts": [
+        {
+          "semantic_fact_key": "ledger.semantic_fact.v2:f3061ffffea3a4830fb4cbca"
+        }
+      ],
+      "partition_total": {
+        "semantic_fact_key": "ledger.semantic_fact.v2:16b6cd878e9094b556058639"
+      }
+    },
+    {
+      "name": "sfpd_legal_pension_recipients_by_monthly_amount_band__3000_to_3125",
+      "reference_set": "precal",
+      "selector_sha256": "b1567bc038f8d45e5e6aae0113a907a6a6010a4308ea29e5c9a8393e0da94b8d",
+      "base_facts": [
+        {
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:5be67e88e151d6c1fdd42281"
+        }
+      ],
+      "operand_facts": [],
+      "semantic_facts": [
+        {
+          "semantic_fact_key": "ledger.semantic_fact.v2:002a3ceabfc93b0513d2669a"
+        }
+      ],
+      "partition_total": {
+        "semantic_fact_key": "ledger.semantic_fact.v2:16b6cd878e9094b556058639"
+      }
+    },
+    {
+      "name": "sfpd_legal_pension_recipients_by_monthly_amount_band__3125_plus",
+      "reference_set": "precal",
+      "selector_sha256": "181eb00abfef5ea51e9112e6bb3e2a80d9e94202678763f12207bd2ac5d18e01",
+      "base_facts": [
+        {
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:e547cd6cf676ae86f66208e8"
+        }
+      ],
+      "operand_facts": [],
+      "semantic_facts": [
+        {
+          "semantic_fact_key": "ledger.semantic_fact.v2:122f36e25bd8df9c429e75d6"
+        }
+      ],
+      "partition_total": {
+        "semantic_fact_key": "ledger.semantic_fact.v2:16b6cd878e9094b556058639"
+      }
     },
     {
       "name": "eurostat_d51a_c1_individual_income_tax",

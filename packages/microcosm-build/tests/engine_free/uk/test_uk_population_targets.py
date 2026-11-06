@@ -266,8 +266,15 @@ def test_uk_population_targets_shape_order_and_registry_accounting() -> None:
     # amounts by self-employment band and the counts with employment income
     # among them, and DWP's income-based Jobseeker's Allowance spending;
     # microcosm#1095 R4 splits SLC's devolved repayments into one row per
-    # nation, three rows for one.
-    assert len(resource["targets"]) == 460
+    # nation, three rows for one; microcosm#1418 binds HMRC's 2024-25 company
+    # cars, five national rows: Table 1's recipients and taxable value and
+    # Table 2C's recipients by fuel; microcosm#1426 adds HMRC's Table 16 count
+    # of taxpayers liable to the High Income Child Benefit Charge and its
+    # revenue, two national rows held as measured diagnostics; microcosm#1490
+    # adds the APS's people in employment by SOC 2020 major group, nine rows
+    # over the region tier, and by sub-major group and sex, 50 UK rows (not
+    # community and civil enforcement, the thinnest group).
+    assert len(resource["targets"]) == 526
 
     providers = resource["hierarchy"]["providers"]
     categories = resource["hierarchy"]["categories"]
@@ -281,10 +288,10 @@ def test_uk_population_targets_shape_order_and_registry_accounting() -> None:
     target_ids = [target["target_id"] for target in resource["targets"]]
     registry_scope = resource["registry_parity"]["scope_target_ids"]
     profile_scope = resource["profile_parity"]["scope_target_ids"]
-    assert len(registry_scope) == 398
+    assert len(registry_scope) == 464
     assert len(profile_scope) == 62
-    assert target_ids[:398] == registry_scope
-    assert target_ids[398:] == profile_scope
+    assert target_ids[:464] == registry_scope
+    assert target_ids[464:] == profile_scope
 
     parity = resource["registry_parity"]
     assert parity["pinned_ref"] == "12a1e028afeef08d8b2d74ee03fd9de3a78b2dd3"
@@ -311,12 +318,14 @@ def test_uk_population_targets_shape_order_and_registry_accounting() -> None:
     # OBR excise rows have no uk-data metric (uk-data never measured excise
     # duty), nor microcosm#1069's two Income Tax payer by age rows, nor
     # microcosm#1418's three Income Tax on savings rows, its SPI other income
-    # row or its three Table 3.10 rows, nor microcosm#1428's income-based JSA
-    # spending row. microcosm#1095 R4 maps the incumbent's three devolved SLC
+    # row or its three Table 3.10 rows, nor its five company car rows, nor
+    # microcosm#1428's income-based JSA spending row. microcosm#1095 R4 maps
+    # the incumbent's three devolved SLC
     # repayment metrics one to one, to three nation rows in place of one
-    # devolved row.
+    # devolved row. microcosm#1426's two HICBC rows have no uk-data metric either,
+    # nor microcosm#1490's 59 APS occupation rows.
     assert len(mapped_target_ids) == 185
-    assert len(unmapped_declarations) == 213
+    assert len(unmapped_declarations) == 279
     suppressed_ancestors = parity["suppressed_ancestors"]
     assert len(suppressed_ancestors) == 5
     assert set(suppressed_ancestors).isdisjoint(parity["mapped"])
@@ -828,7 +837,7 @@ def test_uk_population_targets_have_unique_target_ids() -> None:
     resource = _load()
 
     target_ids = [target["target_id"] for target in resource["targets"]]
-    assert len(target_ids) == 460
+    assert len(target_ids) == 526
     assert len(target_ids) == len(set(target_ids))
 
 
@@ -1331,7 +1340,7 @@ def test_uc_payment_bands_share_administrative_family_but_keep_source_window() -
 
 def test_paid_joint_diagnostics_do_not_add_active_targets() -> None:
     targets = _load()["targets"]
-    assert len(targets) == 460
+    assert len(targets) == 526
     assert not any(
         f.get("variable") == "uc_calibration_child_entitlement"
         for target in targets

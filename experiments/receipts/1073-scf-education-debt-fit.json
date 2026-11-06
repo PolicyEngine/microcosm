@@ -1,10 +1,10 @@
 {
   "schema_version": 1,
   "issue": "PolicyEngine/microcosm#1073",
-  "generated_at": "2026-11-02",
+  "generated_at": "2026-11-04",
   "provenance": {
-    "commit": "3297aefd8998d6c8f968d84f0110c40c77a54833",
-    "run": "20261102T172355Z-3297aefd8"
+    "commit": "63776f2ce39e68bd88b47e7a8a3bb3137c30a8ba",
+    "run": "20261104T190152Z-63776f2ce"
   },
   "scf_files": {
     "rscfp2025.dta": {
@@ -117,8 +117,101 @@
         "consistent_with_coded_person": 0,
         "discriminating_implicate_1": 1,
         "consistent_implicate_1": 0
+      },
+      {
+        "loans": "4",
+        "x8000": "not reversed",
+        "code": 1,
+        "discriminating": 15,
+        "consistent_with_coded_person": 15,
+        "discriminating_implicate_1": 3,
+        "consistent_implicate_1": 3
+      },
+      {
+        "loans": "4",
+        "x8000": "not reversed",
+        "code": 2,
+        "discriminating": 5,
+        "consistent_with_coded_person": 5,
+        "discriminating_implicate_1": 1,
+        "consistent_implicate_1": 1
+      },
+      {
+        "loans": "4",
+        "x8000": "reversed",
+        "code": 1,
+        "discriminating": 34,
+        "consistent_with_coded_person": 0,
+        "discriminating_implicate_1": 6,
+        "consistent_implicate_1": 0
+      },
+      {
+        "loans": "4",
+        "x8000": "reversed",
+        "code": 2,
+        "discriminating": 5,
+        "consistent_with_coded_person": 0,
+        "discriminating_implicate_1": 1,
+        "consistent_implicate_1": 0
+      },
+      {
+        "loans": "6",
+        "x8000": "not reversed",
+        "code": 1,
+        "discriminating": 5,
+        "consistent_with_coded_person": 5,
+        "discriminating_implicate_1": 1,
+        "consistent_implicate_1": 1
+      },
+      {
+        "loans": "6",
+        "x8000": "not reversed",
+        "code": 2,
+        "discriminating": 0,
+        "consistent_with_coded_person": 0,
+        "discriminating_implicate_1": 0,
+        "consistent_implicate_1": 0
+      },
+      {
+        "loans": "6",
+        "x8000": "reversed",
+        "code": 1,
+        "discriminating": 15,
+        "consistent_with_coded_person": 0,
+        "discriminating_implicate_1": 3,
+        "consistent_implicate_1": 0
+      },
+      {
+        "loans": "6",
+        "x8000": "reversed",
+        "code": 2,
+        "discriminating": 0,
+        "consistent_with_coded_person": 0,
+        "discriminating_implicate_1": 0,
+        "consistent_implicate_1": 0
       }
     ],
+    "x8000_swap": {
+      "loans_pooled": 80,
+      "loans_implicate_1": 16,
+      "weighted_loans": 503672.32931360684,
+      "federal_dollars": 2781387399.901968,
+      "share_of_federal": 0.002765108123905565,
+      "loan_4": {
+        "loans_pooled": 60,
+        "loans_implicate_1": 12,
+        "weighted_loans": 398799.39041900134,
+        "federal_dollars": 2338513767.6727667,
+        "share_of_federal": 0.0023248266016754394
+      },
+      "loan_6": {
+        "loans_pooled": 20,
+        "loans_implicate_1": 4,
+        "weighted_loans": 104872.93889460556,
+        "federal_dollars": 442873632.22920185,
+        "share_of_federal": 0.00044028152223012627
+      }
+    },
     "child_education_readings": {
       "before": {
         "parent_plus_share_of_federal": 0.13750075307389345,
@@ -137,20 +230,176 @@
         "child_borrowers": 0.0
       },
       "build": {
-        "parent_plus_share_of_federal": 0.09068330207742185,
-        "child_own_share_of_federal": 0.046817450996471596,
-        "parent_plus_dollars": 91217190242.59724,
+        "parent_plus_share_of_federal": 0.09364174204902424,
+        "child_own_share_of_federal": 0.04304471559735487,
+        "parent_plus_dollars": 94193047710.60786,
         "borrowers": 27237098.83004764,
-        "parent_plus_holders": 2116082.8804507507,
+        "parent_plus_holders": 2194610.2018054067,
+        "child_borrowers": 2242955.369200499
+      },
+      "per_loan_limit": {
+        "parent_plus_share_of_federal": 0.08986900664990752,
+        "child_own_share_of_federal": 0.046817450996471596,
+        "parent_plus_dollars": 90398100738.53577,
+        "borrowers": 27237098.83004764,
+        "parent_plus_holders": 2085557.8571337734,
         "child_borrowers": 2347267.516216494
       },
       "within_limit_parent_plus": {
-        "parent_plus_share_of_federal": 0.11789995879009205,
+        "parent_plus_share_of_federal": 0.1170856633625777,
         "child_own_share_of_federal": 0.019600794283801418,
-        "parent_plus_dollars": 118594082087.66403,
+        "parent_plus_dollars": 117774992583.60254,
         "borrowers": 27076002.732565746,
-        "parent_plus_holders": 4144863.2081744918,
+        "parent_plus_holders": 4114338.1848575147,
         "child_borrowers": 388291.15397783055
+      },
+      "dependent_limit_31000_every_year": {
+        "parent_plus_share_of_federal": 0.09364174204902424,
+        "child_own_share_of_federal": 0.04304471559735487,
+        "parent_plus_dollars": 94193047710.60786,
+        "borrowers": 27237098.83004764,
+        "parent_plus_holders": 2194610.2018054067,
+        "child_borrowers": 2242955.369200499
+      },
+      "limit_when_a_parent_cannot_get_plus": {
+        "parent_plus_share_of_federal": 0.08592012522775196,
+        "child_own_share_of_federal": 0.05076633241862717,
+        "parent_plus_dollars": 86425970702.70302,
+        "borrowers": 27226729.825054932,
+        "parent_plus_holders": 1951397.7343788804,
+        "child_borrowers": 2471058.633978675
+      },
+      "loans_moved": {
+        "graduate_loans_without_a_fitting_child_to_head_own": {
+          "loans_pooled": 15,
+          "loans_implicate_1": 3,
+          "weighted_loans": 30525.023316976884,
+          "federal_dollars": 819089504.0614743,
+          "share_of_federal": 0.0008142954275143369
+        },
+        "loan_year_limit_child_to_parent_plus": {
+          "loans_pooled": 0,
+          "loans_implicate_1": 0,
+          "weighted_loans": 0.0,
+          "federal_dollars": 0.0,
+          "share_of_federal": 0.0
+        },
+        "loan_year_limit_parent_plus_to_child": {
+          "loans_pooled": 0,
+          "loans_implicate_1": 0,
+          "weighted_loans": 0.0,
+          "federal_dollars": 0.0,
+          "share_of_federal": 0.0
+        },
+        "over_the_limit_parent_plus_with_a_fitting_child": {
+          "loans_pooled": 121,
+          "loans_implicate_1": 24,
+          "weighted_loans": 716437.053328101,
+          "federal_dollars": 29977987384.120205,
+          "share_of_federal": 0.02980252821203221
+        },
+        "limit_without_plus_parent_plus_to_child": {
+          "loans_pooled": 73,
+          "loans_implicate_1": 14,
+          "weighted_loans": 407767.3246264824,
+          "federal_dollars": 7767077007.904856,
+          "share_of_federal": 0.007721616821272294
+        },
+        "summed_over_the_limit_each_within": {
+          "loans_pooled": 49,
+          "loans_implicate_1": 9,
+          "weighted_loans": 408473.73878243804,
+          "federal_dollars": 5311539397.101843,
+          "share_of_federal": 0.005280451309259697
+        },
+        "summed_over_the_limit_parent_plus_in_build": {
+          "loans_pooled": 27,
+          "loans_implicate_1": 5,
+          "weighted_loans": 270979.28511474316,
+          "federal_dollars": 3794946972.07209,
+          "share_of_federal": 0.003772735399116718
+        },
+        "summed_over_the_limit_child_in_build": {
+          "loans_pooled": 22,
+          "loans_implicate_1": 4,
+          "weighted_loans": 137494.45366769494,
+          "federal_dollars": 1516592425.0297534,
+          "share_of_federal": 0.00150771591014298
+        },
+        "summed_over_the_limit_parent_plus_per_loan": {
+          "loans_pooled": 0,
+          "loans_implicate_1": 0,
+          "weighted_loans": 0.0,
+          "federal_dollars": 0.0,
+          "share_of_federal": 0.0
+        },
+        "summed_over_the_limit_child_per_loan": {
+          "loans_pooled": 49,
+          "loans_implicate_1": 9,
+          "weighted_loans": 408473.73878243804,
+          "federal_dollars": 5311539397.101843,
+          "share_of_federal": 0.005280451309259697
+        },
+        "per_loan_child_to_parent_plus": {
+          "loans_pooled": 27,
+          "loans_implicate_1": 5,
+          "weighted_loans": 270979.28511474316,
+          "federal_dollars": 3794946972.07209,
+          "share_of_federal": 0.003772735399116718
+        },
+        "undergraduate_before_2008_dependent_age": {
+          "loans_pooled": 0,
+          "loans_implicate_1": 0,
+          "weighted_loans": 0.0,
+          "federal_dollars": 0.0,
+          "share_of_federal": 0.0
+        },
+        "undergraduate_before_2008_within_their_tier": {
+          "loans_pooled": 0,
+          "loans_implicate_1": 0,
+          "weighted_loans": 0.0,
+          "federal_dollars": 0.0,
+          "share_of_federal": 0.0
+        },
+        "undergraduate_before_2008_over_their_tier_within_31000": {
+          "loans_pooled": 0,
+          "loans_implicate_1": 0,
+          "weighted_loans": 0.0,
+          "federal_dollars": 0.0,
+          "share_of_federal": 0.0
+        },
+        "undergraduate_before_2008_over_31000": {
+          "loans_pooled": 0,
+          "loans_implicate_1": 0,
+          "weighted_loans": 0.0,
+          "federal_dollars": 0.0,
+          "share_of_federal": 0.0
+        },
+        "borrowed_before_1993": {
+          "loans_pooled": 5,
+          "loans_implicate_1": 1,
+          "weighted_loans": 62470.199153573805,
+          "federal_dollars": 156175497.8839345,
+          "share_of_federal": 0.0001552614130520201
+        },
+        "borrowed_1993_to_2007": {
+          "loans_pooled": 52,
+          "loans_implicate_1": 10,
+          "weighted_loans": 366000.243301588,
+          "federal_dollars": 12600678348.666279,
+          "share_of_federal": 0.012526927413939577
+        },
+        "borrowed_2008_or_later": {
+          "loans_pooled": 938,
+          "loans_implicate_1": 188,
+          "weighted_loans": 5994996.169241423,
+          "federal_dollars": 125553420088.26404,
+          "share_of_federal": 0.12481856424690184
+        },
+        "earliest_years": {
+          "loan_for_a_child": 1989.0,
+          "any_federal_loan": 1983.0
+        }
       }
     },
     "consolidated_share_of_federal_balances_dated_2014_or_later": 0.2928368593828854
@@ -210,7 +459,7 @@
       "median_among_borrowers": 25000.0,
       "total_household_weight": 134963690.69015205,
       "federal_education_debt_total": 1005887392198.3959,
-      "parent_plus_share_of_total": 0.09068330207742185
+      "parent_plus_share_of_total": 0.09364174204902424
     },
     "household_balance_bands": {
       "under_5k": 0.09639294713632403,
@@ -314,28 +563,28 @@
       }
     },
     "borrowers": {
-      "borrower_weight": 27237098.830047637,
-      "mean_balance": 36930.783211342365,
+      "borrower_weight": 27237098.830047645,
+      "mean_balance": 36930.78321134235,
       "median_balance": 21000.0,
       "balance_bands": {
-        "under_5k": 0.11858724248854419,
-        "5k_to_10k": 0.15545017628617694,
-        "10k_to_20k": 0.18221344662589709,
-        "20k_to_40k": 0.22815323048913974,
-        "40k_to_60k": 0.12964994896026388,
-        "60k_to_80k": 0.07784527443403214,
-        "80k_to_100k": 0.03718546813313425,
-        "100k_to_200k": 0.04901089121852003,
-        "200k_plus": 0.021904321364291858
+        "under_5k": 0.11858724248854415,
+        "5k_to_10k": 0.1553628072898475,
+        "10k_to_20k": 0.18230081562222647,
+        "20k_to_40k": 0.22824059948546913,
+        "40k_to_60k": 0.12956257996393442,
+        "60k_to_80k": 0.07784527443403211,
+        "80k_to_100k": 0.03718546813313424,
+        "100k_to_200k": 0.049010891218520015,
+        "200k_plus": 0.02190432136429185
       },
       "age_bands": {
-        "24_and_younger": 0.10943214673515073,
-        "25_to_34": 0.3533895334655874,
-        "35_to_49": 0.37160638234348325,
-        "50_to_61": 0.11180436490051585,
-        "62_and_older": 0.05376757255526285
+        "24_and_younger": 0.10675129943321106,
+        "25_to_34": 0.35224059890761317,
+        "35_to_49": 0.373721688154378,
+        "50_to_61": 0.11351884094953484,
+        "62_and_older": 0.053767572555262835
       },
-      "graduate_share_of_own_original_principal": 0.47206971539270537,
+      "graduate_share_of_own_original_principal": 0.4743991269876184,
       "ibr_new_borrower_share": 0.5952213780001776
     }
   },
@@ -500,7 +749,7 @@
             "median_among_borrowers": 24000.0,
             "total_household_weight": 134963690.69015205,
             "federal_education_debt_total": 975115394166.3627,
-            "parent_plus_share_of_total": 0.06206739011401021
+            "parent_plus_share_of_total": 0.061340730252925954
           },
           "household_balance_bands": {
             "under_5k": 0.10118107773912553,
@@ -604,29 +853,29 @@
             }
           },
           "borrowers": {
-            "borrower_weight": 25895695.700705215,
-            "mean_balance": 37655.50095415307,
+            "borrower_weight": 25816180.510858502,
+            "mean_balance": 37771.48187185246,
             "median_balance": 23000.0,
             "balance_bands": {
-              "under_5k": 0.11923381414468255,
-              "5k_to_10k": 0.13703997807327198,
-              "10k_to_20k": 0.18638889289819083,
-              "20k_to_40k": 0.21794950848449265,
-              "40k_to_60k": 0.1381837484113108,
-              "60k_to_80k": 0.09092222085828328,
-              "80k_to_100k": 0.03949213571886882,
-              "100k_to_200k": 0.0528776909925517,
-              "200k_plus": 0.017912010418347366
+              "under_5k": 0.11756411881372623,
+              "5k_to_10k": 0.13673315421047663,
+              "10k_to_20k": 0.1840776321602201,
+              "20k_to_40k": 0.21930628729244886,
+              "40k_to_60k": 0.1417993221438858,
+              "60k_to_80k": 0.08899460940298044,
+              "80k_to_100k": 0.04027262342046507,
+              "100k_to_200k": 0.053332475942185306,
+              "200k_plus": 0.017919776613611552
             },
             "age_bands": {
-              "24_and_younger": 0.12221762793944202,
-              "25_to_34": 0.2714652723519627,
-              "35_to_49": 0.3314329221489056,
-              "50_to_61": 0.17835091169774608,
-              "62_and_older": 0.09653326586194358
+              "24_and_younger": 0.11830190599483059,
+              "25_to_34": 0.27059841702203136,
+              "35_to_49": 0.330840507806767,
+              "50_to_61": 0.18243080930103345,
+              "62_and_older": 0.09782835987533768
             },
-            "graduate_share_of_own_original_principal": 0.4503453183190179,
-            "ibr_new_borrower_share": 0.5833971357123033
+            "graduate_share_of_own_original_principal": 0.45570123396488255,
+            "ibr_new_borrower_share": 0.5797688795708348
           }
         },
         "metrics": {
@@ -637,10 +886,19 @@
           "head_age_band_share_mae_pp": 4.81151166418894,
           "race_share_mae_pp": 0.6479835836438199,
           "income_quintile_share_mae_pp": 0.6721955334843016,
-          "borrower_balance_band_tvd": 0.03260623116349648,
-          "borrower_age_band_tvd": 0.1220977213082023,
+          "borrower_balance_band_tvd": 0.03257163369788941,
+          "borrower_age_band_tvd": 0.12452336223319291,
           "household_rank_correlation": 0.15376716764930412,
-          "parent_plus_drawn_without_observed_parent_plus": 0.04628009643969982
+          "parent_plus_drawn_without_observed_parent_plus": 0.04757938764001308
+        },
+        "child_share_moves": {
+          "households": 0.0,
+          "share_of_borrower_households": 0.0,
+          "graduate_to_head_own_dollars": 0.0,
+          "undergraduate_to_parent_plus_dollars": 0.0,
+          "graduate_to_head_own_share_of_total": 0.0,
+          "undergraduate_to_parent_plus_share_of_total": 0.0,
+          "drawn_total": 975115394166.3627
         }
       },
       "shared_8": {
@@ -662,7 +920,7 @@
             "median_among_borrowers": 23000.0,
             "total_household_weight": 134963690.69015205,
             "federal_education_debt_total": 936377498601.3939,
-            "parent_plus_share_of_total": 0.07131444648553982
+            "parent_plus_share_of_total": 0.07347661802155074
           },
           "household_balance_bands": {
             "under_5k": 0.09351058185138737,
@@ -766,29 +1024,29 @@
             }
           },
           "borrowers": {
-            "borrower_weight": 25088578.38062776,
-            "mean_balance": 37322.86000407346,
-            "median_balance": 22000.0,
+            "borrower_weight": 25192099.824958824,
+            "mean_balance": 37169.4898443395,
+            "median_balance": 21000.0,
             "balance_bands": {
-              "under_5k": 0.10677077633314812,
-              "5k_to_10k": 0.16632579551387022,
-              "10k_to_20k": 0.17454470788079757,
-              "20k_to_40k": 0.2286739571526593,
-              "40k_to_60k": 0.12048695309434337,
-              "60k_to_80k": 0.09765459818108711,
-              "80k_to_100k": 0.03345947236099234,
-              "100k_to_200k": 0.05493773460369269,
-              "200k_plus": 0.017146004879409302
+              "under_5k": 0.10868060023568167,
+              "5k_to_10k": 0.16746597280580397,
+              "10k_to_20k": 0.17705447058994292,
+              "20k_to_40k": 0.22556074516987348,
+              "40k_to_60k": 0.11817215804482026,
+              "60k_to_80k": 0.09843600754140064,
+              "80k_to_100k": 0.032226635114962945,
+              "100k_to_200k": 0.0547372257814488,
+              "200k_plus": 0.017666184716065413
             },
             "age_bands": {
-              "24_and_younger": 0.11420848773987989,
-              "25_to_34": 0.3588039745460583,
-              "35_to_49": 0.3516343204975256,
-              "50_to_61": 0.11346958485303148,
-              "62_and_older": 0.061883632363504804
+              "24_and_younger": 0.11082598930958666,
+              "25_to_34": 0.36147533987815805,
+              "35_to_49": 0.35500890035643207,
+              "50_to_61": 0.11146956981121131,
+              "62_and_older": 0.061220200644611936
             },
-            "graduate_share_of_own_original_principal": 0.49107247959697303,
-            "ibr_new_borrower_share": 0.570162419212365
+            "graduate_share_of_own_original_principal": 0.48824893164591426,
+            "ibr_new_borrower_share": 0.5740741619169084
           }
         },
         "metrics": {
@@ -799,10 +1057,19 @@
           "head_age_band_share_mae_pp": 1.1934803926439914,
           "race_share_mae_pp": 1.077772642699106,
           "income_quintile_share_mae_pp": 0.8762098127830446,
-          "borrower_balance_band_tvd": 0.03713251302344053,
-          "borrower_age_band_tvd": 0.019972061845957664,
+          "borrower_balance_band_tvd": 0.03842023318625367,
+          "borrower_age_band_tvd": 0.020762058936269527,
           "household_rank_correlation": 0.17266749563083275,
-          "parent_plus_drawn_without_observed_parent_plus": 0.02526658514008899
+          "parent_plus_drawn_without_observed_parent_plus": 0.024069733201004976
+        },
+        "child_share_moves": {
+          "households": 0.0,
+          "share_of_borrower_households": 0.0,
+          "graduate_to_head_own_dollars": 0.0,
+          "undergraduate_to_parent_plus_dollars": 0.0,
+          "graduate_to_head_own_share_of_total": 0.0,
+          "undergraduate_to_parent_plus_share_of_total": 0.0,
+          "drawn_total": 936377498601.3939
         }
       },
       "shared_8_plus_household_income": {
@@ -825,7 +1092,7 @@
             "median_among_borrowers": 23000.0,
             "total_household_weight": 134963690.69015205,
             "federal_education_debt_total": 915580080877.1456,
-            "parent_plus_share_of_total": 0.05994039956977076
+            "parent_plus_share_of_total": 0.06824874516334814
           },
           "household_balance_bands": {
             "under_5k": 0.08974701999643789,
@@ -929,29 +1196,29 @@
             }
           },
           "borrowers": {
-            "borrower_weight": 24592745.901716128,
-            "mean_balance": 37229.68083906623,
+            "borrower_weight": 24814888.870775856,
+            "mean_balance": 36896.40061033726,
             "median_balance": 22000.0,
             "balance_bands": {
-              "under_5k": 0.10360174630285794,
-              "5k_to_10k": 0.1504219956091371,
-              "10k_to_20k": 0.18311213927672274,
-              "20k_to_40k": 0.23971269075178334,
-              "40k_to_60k": 0.12279030310946719,
-              "60k_to_80k": 0.09669836723100285,
-              "80k_to_100k": 0.03608342021771613,
-              "100k_to_200k": 0.05000127236763974,
-              "200k_plus": 0.017578065133672955
+              "under_5k": 0.10588584814475625,
+              "5k_to_10k": 0.15300535623515282,
+              "10k_to_20k": 0.18469790921299759,
+              "20k_to_40k": 0.24140656044208256,
+              "40k_to_60k": 0.12221844578960174,
+              "60k_to_80k": 0.09279048297053404,
+              "80k_to_100k": 0.03377233245335822,
+              "100k_to_200k": 0.04758498775222054,
+              "200k_plus": 0.018638076999296267
             },
             "age_bands": {
-              "24_and_younger": 0.10880795012149283,
-              "25_to_34": 0.35906309742386944,
-              "35_to_49": 0.36721906946956695,
-              "50_to_61": 0.10788831666800004,
-              "62_and_older": 0.057021566317070796
+              "24_and_younger": 0.10978782883474592,
+              "25_to_34": 0.3564125922460447,
+              "35_to_49": 0.3678732447534476,
+              "50_to_61": 0.10689803527871798,
+              "62_and_older": 0.059028298887043806
             },
-            "graduate_share_of_own_original_principal": 0.4592646793399743,
-            "ibr_new_borrower_share": 0.5760474012257303
+            "graduate_share_of_own_original_principal": 0.4547903814193212,
+            "ibr_new_borrower_share": 0.5634170778200912
           }
         },
         "metrics": {
@@ -962,10 +1229,19 @@
           "head_age_band_share_mae_pp": 1.350870233998188,
           "race_share_mae_pp": 1.3585851825102468,
           "income_quintile_share_mae_pp": 0.9228331015688831,
-          "borrower_balance_band_tvd": 0.032301626859559736,
-          "borrower_age_band_tvd": 0.008927557720090004,
+          "borrower_balance_band_tvd": 0.0305082630838864,
+          "borrower_age_band_tvd": 0.012469249071747304,
           "household_rank_correlation": 0.17512968016954317,
-          "parent_plus_drawn_without_observed_parent_plus": 0.02654694891508374
+          "parent_plus_drawn_without_observed_parent_plus": 0.024751199275854754
+        },
+        "child_share_moves": {
+          "households": 0.0,
+          "share_of_borrower_households": 0.0,
+          "graduate_to_head_own_dollars": 0.0,
+          "undergraduate_to_parent_plus_dollars": 0.0,
+          "graduate_to_head_own_share_of_total": 0.0,
+          "undergraduate_to_parent_plus_share_of_total": 0.0,
+          "drawn_total": 915580080877.1456
         }
       },
       "plus_household_income_and_education": {
@@ -989,7 +1265,7 @@
             "median_among_borrowers": 23796.0,
             "total_household_weight": 134963690.69015205,
             "federal_education_debt_total": 872611659274.6003,
-            "parent_plus_share_of_total": 0.07414637298387527
+            "parent_plus_share_of_total": 0.06883224056159967
           },
           "household_balance_bands": {
             "under_5k": 0.08808431892789516,
@@ -1093,29 +1369,29 @@
             }
           },
           "borrowers": {
-            "borrower_weight": 23714170.340499215,
-            "mean_balance": 36797.056221880484,
+            "borrower_weight": 23859607.660197034,
+            "mean_balance": 36572.75809821067,
             "median_balance": 23000.0,
             "balance_bands": {
-              "under_5k": 0.09699471892619613,
-              "5k_to_10k": 0.1394638892424441,
-              "10k_to_20k": 0.18911050663109966,
-              "20k_to_40k": 0.2551113824446505,
-              "40k_to_60k": 0.12484286667522601,
-              "60k_to_80k": 0.09515433282795518,
-              "80k_to_100k": 0.03559212688986377,
-              "100k_to_200k": 0.049877581326660494,
-              "200k_plus": 0.013852595035904155
+              "under_5k": 0.09960450052658358,
+              "5k_to_10k": 0.1377932066393544,
+              "10k_to_20k": 0.19310739858824455,
+              "20k_to_40k": 0.25634932333611427,
+              "40k_to_60k": 0.12064974378975629,
+              "60k_to_80k": 0.09242943668413214,
+              "80k_to_100k": 0.03483410061027147,
+              "100k_to_200k": 0.05155513068238394,
+              "200k_plus": 0.013677159143159482
             },
             "age_bands": {
-              "24_and_younger": 0.10242792997260068,
-              "25_to_34": 0.3760811152011804,
-              "35_to_49": 0.3477655420020849,
-              "50_to_61": 0.11573428915655427,
-              "62_and_older": 0.05799112366757967
+              "24_and_younger": 0.10200998416918304,
+              "25_to_34": 0.3774009033697289,
+              "35_to_49": 0.3453021921393939,
+              "50_to_61": 0.1154082384412663,
+              "62_and_older": 0.05987868188042784
             },
-            "graduate_share_of_own_original_principal": 0.42101441159117403,
-            "ibr_new_borrower_share": 0.564984415474899
+            "graduate_share_of_own_original_principal": 0.43163831398751107,
+            "ibr_new_borrower_share": 0.5621331698929593
           }
         },
         "metrics": {
@@ -1126,10 +1402,19 @@
           "head_age_band_share_mae_pp": 1.3212277078973742,
           "race_share_mae_pp": 2.067159177073093,
           "income_quintile_share_mae_pp": 1.4743162952521935,
-          "borrower_balance_band_tvd": 0.052030960462776894,
-          "borrower_age_band_tvd": 0.030845057103948335,
+          "borrower_balance_band_tvd": 0.05604370853062705,
+          "borrower_age_band_tvd": 0.03316081127901217,
           "household_rank_correlation": 0.20793128913160808,
-          "parent_plus_drawn_without_observed_parent_plus": 0.01636273473995983
+          "parent_plus_drawn_without_observed_parent_plus": 0.017571560568756542
+        },
+        "child_share_moves": {
+          "households": 0.0,
+          "share_of_borrower_households": 0.0,
+          "graduate_to_head_own_dollars": 0.0,
+          "undergraduate_to_parent_plus_dollars": 0.0,
+          "graduate_to_head_own_share_of_total": 0.0,
+          "undergraduate_to_parent_plus_share_of_total": 0.0,
+          "drawn_total": 872611659274.6003
         }
       },
       "build_without_interest_and_ss_pension": {
@@ -1150,7 +1435,7 @@
             "median_among_borrowers": 23000.0,
             "total_household_weight": 134963690.69015205,
             "federal_education_debt_total": 919295632615.862,
-            "parent_plus_share_of_total": 0.06816282381081624
+            "parent_plus_share_of_total": 0.06759954255977012
           },
           "household_balance_bands": {
             "under_5k": 0.09126324438556496,
@@ -1254,29 +1539,29 @@
             }
           },
           "borrowers": {
-            "borrower_weight": 25810010.594911456,
-            "mean_balance": 35617.79369424609,
+            "borrower_weight": 25830175.23900121,
+            "mean_balance": 35589.98822539188,
             "median_balance": 21000.0,
             "balance_bands": {
-              "under_5k": 0.10504821975483239,
-              "5k_to_10k": 0.1612084637239687,
-              "10k_to_20k": 0.1835278083390002,
-              "20k_to_40k": 0.2403341878392152,
-              "40k_to_60k": 0.1258185662605132,
-              "60k_to_80k": 0.08586155919483465,
-              "80k_to_100k": 0.03690144692037484,
-              "100k_to_200k": 0.04425676441601652,
-              "200k_plus": 0.01704298355124438
+              "under_5k": 0.10709977543761513,
+              "5k_to_10k": 0.16108054367716587,
+              "10k_to_20k": 0.18246285123385975,
+              "20k_to_40k": 0.24064360022603112,
+              "40k_to_60k": 0.12877110892798685,
+              "60k_to_80k": 0.082748884077048,
+              "80k_to_100k": 0.03666558302447325,
+              "100k_to_200k": 0.042947383111577475,
+              "200k_plus": 0.01758027028424265
             },
             "age_bands": {
-              "24_and_younger": 0.10884214784928073,
-              "25_to_34": 0.3590396433749492,
-              "35_to_49": 0.36321220703040163,
-              "50_to_61": 0.10958470645086948,
-              "62_and_older": 0.05932129529449908
+              "24_and_younger": 0.10488807984052471,
+              "25_to_34": 0.3620008990758533,
+              "35_to_49": 0.3662878463298597,
+              "50_to_61": 0.10878316454573692,
+              "62_and_older": 0.05804001020802544
             },
-            "graduate_share_of_own_original_principal": 0.4472065188684173,
-            "ibr_new_borrower_share": 0.5842486917589438
+            "graduate_share_of_own_original_principal": 0.4461038618099535,
+            "ibr_new_borrower_share": 0.5797884959277542
           }
         },
         "metrics": {
@@ -1287,10 +1572,19 @@
           "head_age_band_share_mae_pp": 1.2596405967540016,
           "race_share_mae_pp": 1.069077118976515,
           "income_quintile_share_mae_pp": 0.6750791601254419,
-          "borrower_balance_band_tvd": 0.027269891261772868,
-          "borrower_age_band_tvd": 0.011203832648598016,
+          "borrower_balance_band_tvd": 0.023186382382529423,
+          "borrower_age_band_tvd": 0.014032737821002648,
           "household_rank_correlation": 0.1678412360138977,
-          "parent_plus_drawn_without_observed_parent_plus": 0.030096797445698646
+          "parent_plus_drawn_without_observed_parent_plus": 0.02714013747313379
+        },
+        "child_share_moves": {
+          "households": 0.0,
+          "share_of_borrower_households": 0.0,
+          "graduate_to_head_own_dollars": 0.0,
+          "undergraduate_to_parent_plus_dollars": 0.0,
+          "graduate_to_head_own_share_of_total": 0.0,
+          "undergraduate_to_parent_plus_share_of_total": 0.0,
+          "drawn_total": 919295632615.862
         }
       },
       "build_plus_education": {
@@ -1312,7 +1606,7 @@
             "median_among_borrowers": 23000.0,
             "total_household_weight": 134963690.69015205,
             "federal_education_debt_total": 887316977419.0054,
-            "parent_plus_share_of_total": 0.0610214959298925
+            "parent_plus_share_of_total": 0.05916860534132554
           },
           "household_balance_bands": {
             "under_5k": 0.094500931393709,
@@ -1416,29 +1710,29 @@
             }
           },
           "borrowers": {
-            "borrower_weight": 24629278.168691896,
-            "mean_balance": 36026.91769290015,
-            "median_balance": 20713.0,
+            "borrower_weight": 24594650.207045753,
+            "mean_balance": 36077.64168017365,
+            "median_balance": 21000.0,
             "balance_bands": {
-              "under_5k": 0.11003236440751846,
-              "5k_to_10k": 0.1438146762421388,
-              "10k_to_20k": 0.1980177667743084,
-              "20k_to_40k": 0.2357539379328877,
-              "40k_to_60k": 0.13243383736799277,
-              "60k_to_80k": 0.08655648338436131,
-              "80k_to_100k": 0.030271579819877544,
-              "100k_to_200k": 0.048972446522624176,
-              "200k_plus": 0.014146907548290621
+              "under_5k": 0.10578053317224281,
+              "5k_to_10k": 0.14459880111913515,
+              "10k_to_20k": 0.20108022834870362,
+              "20k_to_40k": 0.23835735182437268,
+              "40k_to_60k": 0.13053309290633808,
+              "60k_to_80k": 0.08486826843845444,
+              "80k_to_100k": 0.031243779548538086,
+              "100k_to_200k": 0.04875641797045123,
+              "200k_plus": 0.014781526671763995
             },
             "age_bands": {
-              "24_and_younger": 0.10435819675485504,
-              "25_to_34": 0.384565596966415,
-              "35_to_49": 0.34123822245830965,
-              "50_to_61": 0.10931470172073098,
-              "62_and_older": 0.060523282099689185
+              "24_and_younger": 0.10250553121559293,
+              "25_to_34": 0.3820426436708212,
+              "35_to_49": 0.3454920420813939,
+              "50_to_61": 0.11070548002785491,
+              "62_and_older": 0.05925430300433726
             },
-            "graduate_share_of_own_original_principal": 0.4374325644888308,
-            "ibr_new_borrower_share": 0.5785380464302201
+            "graduate_share_of_own_original_principal": 0.4448537996995324,
+            "ibr_new_borrower_share": 0.5682508485750027
           }
         },
         "metrics": {
@@ -1449,10 +1743,19 @@
           "head_age_band_share_mae_pp": 1.7487117716451235,
           "race_share_mae_pp": 1.7889316725003699,
           "income_quintile_share_mae_pp": 0.920292137753204,
-          "borrower_balance_band_tvd": 0.034900124950217506,
-          "borrower_age_band_tvd": 0.037931773045254066,
+          "borrower_balance_band_tvd": 0.03688967201220659,
+          "borrower_age_band_tvd": 0.03528877521228231,
           "household_rank_correlation": 0.20717780916045597,
-          "parent_plus_drawn_without_observed_parent_plus": 0.02425600966419175
+          "parent_plus_drawn_without_observed_parent_plus": 0.01994699659012892
+        },
+        "child_share_moves": {
+          "households": 0.0,
+          "share_of_borrower_households": 0.0,
+          "graduate_to_head_own_dollars": 0.0,
+          "undergraduate_to_parent_plus_dollars": 0.0,
+          "graduate_to_head_own_share_of_total": 0.0,
+          "undergraduate_to_parent_plus_share_of_total": 0.0,
+          "drawn_total": 887316977419.0054
         }
       }
     }
@@ -1485,7 +1788,7 @@
           "median_among_borrowers": 25000.0,
           "total_household_weight": 122537091.8856833,
           "federal_education_debt_total": 785628046119.6727,
-          "parent_plus_share_of_total": 0.13018594263257258
+          "parent_plus_share_of_total": 0.11058619493936991
         },
         "household_balance_bands": {
           "under_5k": 0.09597901426395242,
@@ -1589,29 +1892,29 @@
           }
         },
         "borrowers": {
-          "borrower_weight": 18782588.57019364,
-          "mean_balance": 41827.46394000224,
-          "median_balance": 24700.0,
+          "borrower_weight": 18639693.721055888,
+          "mean_balance": 42148.11991423478,
+          "median_balance": 25000.0,
           "balance_bands": {
-            "under_5k": 0.11010465011675885,
-            "5k_to_10k": 0.15766080070087685,
-            "10k_to_20k": 0.15145555688552018,
-            "20k_to_40k": 0.23876632487497312,
-            "40k_to_60k": 0.10328337810598322,
-            "60k_to_80k": 0.09709706504826032,
-            "80k_to_100k": 0.04973601963818461,
-            "100k_to_200k": 0.06276278750614343,
-            "200k_plus": 0.029133417123299275
+            "under_5k": 0.10621557260390146,
+            "5k_to_10k": 0.1611130099856963,
+            "10k_to_20k": 0.15178887013867562,
+            "20k_to_40k": 0.23817841077749008,
+            "40k_to_60k": 0.10698414706541264,
+            "60k_to_80k": 0.09315657862339012,
+            "80k_to_100k": 0.04950259630329654,
+            "100k_to_200k": 0.06431649304839841,
+            "200k_plus": 0.02874432145373877
           },
           "age_bands": {
-            "24_and_younger": 0.11708185382308234,
-            "25_to_34": 0.30330802369313054,
-            "35_to_49": 0.3722441005630567,
-            "50_to_61": 0.13909573807362918,
-            "62_and_older": 0.06827028384710118
+            "24_and_younger": 0.12167606267181798,
+            "25_to_34": 0.3033321140861197,
+            "35_to_49": 0.3747887670676335,
+            "50_to_61": 0.13621651678389593,
+            "62_and_older": 0.06398653939053295
           },
-          "graduate_share_of_own_original_principal": 0.5079846787675674,
-          "ibr_new_borrower_share": 0.5790424319437123
+          "graduate_share_of_own_original_principal": 0.508826677327947,
+          "ibr_new_borrower_share": 0.5881840934699741
         }
       },
       "metrics_vs_scf": {
@@ -1622,8 +1925,8 @@
         "head_age_band_share_mae_pp": 3.5543373606609885,
         "race_share_mae_pp": 2.8343426729118955,
         "income_quintile_share_mae_pp": 4.2522526924143715,
-        "borrower_balance_band_tvd": 0.06560705296644279,
-        "borrower_age_band_tvd": 0.050081509772456775
+        "borrower_balance_band_tvd": 0.06546204826671535,
+        "borrower_age_band_tvd": 0.04890848482149353
       }
     },
     "scf_codings_all_candidates": {
@@ -1653,7 +1956,7 @@
           "median_among_borrowers": 25000.0,
           "total_household_weight": 122537091.8856833,
           "federal_education_debt_total": 746948718213.9073,
-          "parent_plus_share_of_total": 0.10695080788545275
+          "parent_plus_share_of_total": 0.11281271285347493
         },
         "household_balance_bands": {
           "under_5k": 0.10775015906187184,
@@ -1757,29 +2060,29 @@
           }
         },
         "borrowers": {
-          "borrower_weight": 18644433.43176055,
-          "mean_balance": 40062.82738211235,
-          "median_balance": 24000.0,
+          "borrower_weight": 18437189.925879873,
+          "mean_balance": 40513.154185466854,
+          "median_balance": 25000.0,
           "balance_bands": {
-            "under_5k": 0.11847637897193393,
-            "5k_to_10k": 0.15215298880238085,
-            "10k_to_20k": 0.15903005076767437,
-            "20k_to_40k": 0.24355676444848492,
-            "40k_to_60k": 0.11418906569388854,
-            "60k_to_80k": 0.09072876578657417,
-            "80k_to_100k": 0.035563245230000456,
-            "100k_to_200k": 0.05657395317657679,
-            "200k_plus": 0.02972878712248597
+            "under_5k": 0.11598044667159409,
+            "5k_to_10k": 0.15473171287588444,
+            "10k_to_20k": 0.15748018059865657,
+            "20k_to_40k": 0.23895499500824893,
+            "40k_to_60k": 0.11868550968218909,
+            "60k_to_80k": 0.08741702233400374,
+            "80k_to_100k": 0.037165307407536506,
+            "100k_to_200k": 0.060095411257980985,
+            "200k_plus": 0.029489414163905783
           },
           "age_bands": {
-            "24_and_younger": 0.11887683513812723,
-            "25_to_34": 0.31829496102827626,
-            "35_to_49": 0.3727342252269422,
-            "50_to_61": 0.13256885684078035,
-            "62_and_older": 0.057525121765873946
+            "24_and_younger": 0.1207559671455566,
+            "25_to_34": 0.3186302456781187,
+            "35_to_49": 0.37400562155025047,
+            "50_to_61": 0.1323895498621854,
+            "62_and_older": 0.054218615763888915
           },
-          "graduate_share_of_own_original_principal": 0.4878619324532848,
-          "ibr_new_borrower_share": 0.5971032517443657
+          "graduate_share_of_own_original_principal": 0.47769655159115393,
+          "ibr_new_borrower_share": 0.6068727053045385
         }
       },
       "metrics_vs_scf": {
@@ -1790,8 +2093,8 @@
         "head_age_band_share_mae_pp": 4.169585550417035,
         "race_share_mae_pp": 2.569878492307957,
         "income_quintile_share_mae_pp": 4.567500727054615,
-        "borrower_balance_band_tvd": 0.04367455302813815,
-        "borrower_age_band_tvd": 0.035094572437311095
+        "borrower_balance_band_tvd": 0.03895575626182621,
+        "borrower_age_band_tvd": 0.03361035322949456
       }
     },
     "build": {
@@ -1819,7 +2122,7 @@
           "median_among_borrowers": 23000.0,
           "total_household_weight": 122537091.8856833,
           "federal_education_debt_total": 858421208954.9309,
-          "parent_plus_share_of_total": 0.10691085971286082
+          "parent_plus_share_of_total": 0.10734044870508595
         },
         "household_balance_bands": {
           "under_5k": 0.1179407532730876,
@@ -1923,29 +2226,29 @@
           }
         },
         "borrowers": {
-          "borrower_weight": 21177503.938145176,
-          "mean_balance": 40534.57912047568,
+          "borrower_weight": 21097849.865317073,
+          "mean_balance": 40687.615772927486,
           "median_balance": 22224.0,
           "balance_bands": {
-            "under_5k": 0.12755450607386423,
-            "5k_to_10k": 0.13657317586234458,
-            "10k_to_20k": 0.18059640738658841,
-            "20k_to_40k": 0.2390426854563625,
-            "40k_to_60k": 0.10720974798612737,
-            "60k_to_80k": 0.09004176213429058,
-            "80k_to_100k": 0.034401838885435285,
-            "100k_to_200k": 0.051526234839151065,
-            "200k_plus": 0.03305364137583606
+            "under_5k": 0.12779694723535592,
+            "5k_to_10k": 0.13313270659515017,
+            "10k_to_20k": 0.1840781343598157,
+            "20k_to_40k": 0.24067884715158067,
+            "40k_to_60k": 0.10741326198206429,
+            "60k_to_80k": 0.08553250666936148,
+            "80k_to_100k": 0.03355211669233094,
+            "100k_to_200k": 0.054986664301463456,
+            "200k_plus": 0.032828815012877356
           },
           "age_bands": {
-            "24_and_younger": 0.12191368948550384,
-            "25_to_34": 0.3111513455503956,
-            "35_to_49": 0.37171601251334024,
-            "50_to_61": 0.13719732675785898,
-            "62_and_older": 0.05802162569290144
+            "24_and_younger": 0.12753491216099028,
+            "25_to_34": 0.31065128502792644,
+            "35_to_49": 0.3701956015083001,
+            "50_to_61": 0.13608446446902972,
+            "62_and_older": 0.05553373683375335
           },
-          "graduate_share_of_own_original_principal": 0.49950844685345347,
-          "ibr_new_borrower_share": 0.6132625665271612
+          "graduate_share_of_own_original_principal": 0.48153851172133694,
+          "ibr_new_borrower_share": 0.6177863789304218
         }
       },
       "metrics_vs_scf": {
@@ -1956,8 +2259,8 @@
         "head_age_band_share_mae_pp": 2.3908244112012222,
         "race_share_mae_pp": 0.9415277758683394,
         "income_quintile_share_mae_pp": 2.865766910648814,
-        "borrower_balance_band_tvd": 0.0457178698849765,
-        "borrower_age_band_tvd": 0.04223818791519181
+        "borrower_balance_band_tvd": 0.04801277011737082,
+        "borrower_age_band_tvd": 0.045115400525764626
       }
     }
   },
@@ -2007,7 +2310,7 @@
         "median_among_borrowers": 23000.0,
         "total_household_weight": 122537091.8856833,
         "federal_education_debt_total": 858421208954.9309,
-        "parent_plus_share_of_total": 0.10691085971286082
+        "parent_plus_share_of_total": 0.10734044870508595
       },
       "household_balance_bands": {
         "under_5k": 0.1179407532730876,
@@ -2111,29 +2414,29 @@
         }
       },
       "borrowers": {
-        "borrower_weight": 21177503.938145176,
-        "mean_balance": 40534.57912047568,
+        "borrower_weight": 21097849.865317073,
+        "mean_balance": 40687.615772927486,
         "median_balance": 22224.0,
         "balance_bands": {
-          "under_5k": 0.12755450607386423,
-          "5k_to_10k": 0.13657317586234458,
-          "10k_to_20k": 0.18059640738658841,
-          "20k_to_40k": 0.2390426854563625,
-          "40k_to_60k": 0.10720974798612737,
-          "60k_to_80k": 0.09004176213429058,
-          "80k_to_100k": 0.034401838885435285,
-          "100k_to_200k": 0.051526234839151065,
-          "200k_plus": 0.03305364137583606
+          "under_5k": 0.12779694723535592,
+          "5k_to_10k": 0.13313270659515017,
+          "10k_to_20k": 0.1840781343598157,
+          "20k_to_40k": 0.24067884715158067,
+          "40k_to_60k": 0.10741326198206429,
+          "60k_to_80k": 0.08553250666936148,
+          "80k_to_100k": 0.03355211669233094,
+          "100k_to_200k": 0.054986664301463456,
+          "200k_plus": 0.032828815012877356
         },
         "age_bands": {
-          "24_and_younger": 0.12191368948550384,
-          "25_to_34": 0.3111513455503956,
-          "35_to_49": 0.37171601251334024,
-          "50_to_61": 0.13719732675785898,
-          "62_and_older": 0.05802162569290144
+          "24_and_younger": 0.12753491216099028,
+          "25_to_34": 0.31065128502792644,
+          "35_to_49": 0.3701956015083001,
+          "50_to_61": 0.13608446446902972,
+          "62_and_older": 0.05553373683375335
         },
-        "graduate_share_of_own_original_principal": 0.49950844685345347,
-        "ibr_new_borrower_share": 0.6132625665271612
+        "graduate_share_of_own_original_principal": 0.48153851172133694,
+        "ibr_new_borrower_share": 0.6177863789304218
       }
     },
     "metrics_vs_scf": {
@@ -2144,8 +2447,29 @@
       "head_age_band_share_mae_pp": 2.3908244112012222,
       "race_share_mae_pp": 0.9415277758683394,
       "income_quintile_share_mae_pp": 2.865766910648814,
-      "borrower_balance_band_tvd": 0.0457178698849765,
-      "borrower_age_band_tvd": 0.04223818791519181
+      "borrower_balance_band_tvd": 0.04801277011737082,
+      "borrower_age_band_tvd": 0.045115400525764626
+    },
+    "child_share_moves": {
+      "households": 0.0,
+      "share_of_borrower_households": 0.0,
+      "graduate_to_head_own_dollars": 0.0,
+      "undergraduate_to_parent_plus_dollars": 0.0,
+      "graduate_to_head_own_share_of_total": 0.0,
+      "undergraduate_to_parent_plus_share_of_total": 0.0,
+      "drawn_total": 858421208954.9309,
+      "drawn_total_matches_build": true,
+      "own_balances_match_build": true,
+      "parent_plus_balances_match_build": true
+    },
+    "children_in_law": {
+      "share_of_households_with_an_adult_child": 0.20566407672242387,
+      "share_of_households_with_a_child_in_law": 0.009686629605151582,
+      "adult_children": 33631283.89483699,
+      "children_in_law": 1267712.2280473283,
+      "named_as_spouse": 1122731.980034447,
+      "named_as_cohabiting_partner": 144980.24801288123,
+      "pecohab_present": true
     }
   }
 }
