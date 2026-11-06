@@ -11,11 +11,15 @@ from importlib import resources as importlib_resources
 from pathlib import Path
 from typing import Any
 
+from microcosm.build.ledger_artifact import consumer_fact_schema_versions_of
 from microcosm.build.target_reference_authoring import (
     AreaSignedDeferral,
     AreaTargetReferenceAuthoringConfig,
     author_area_target_references,
     target_references_resource,
+)
+from microcosm.build.uk_runtime.chronicle_feed import (
+    require_uk_chronicle_feed_subset_row_contracts,
 )
 from microcosm.build.uk_runtime.desnz_constituency_energy import (
     FACTS_RESOURCE as DESNZ_CONSTITUENCY_ENERGY_RESOURCE,
@@ -83,6 +87,12 @@ HIGH_VALUE_HOMES_LOCAL_TARGET_IDS: tuple[str, ...] = (
 
 def main() -> None:
     args = _parser().parse_args()
+    facts = list(_read_jsonl(args.ledger_facts))
+    # The rows of a subset of the pinned feed: each row contract must be one
+    # the committed pin lists and chronicle_epoch declares.
+    require_uk_chronicle_feed_subset_row_contracts(
+        consumer_fact_schema_versions_of(facts)
+    )
     contract = _filter_contract_by_geography_levels(
         json.loads(args.contract.read_text(encoding="utf-8")),
         allowed_levels=LOCAL_GEOGRAPHY_LEVELS,
@@ -113,7 +123,6 @@ def main() -> None:
         source_fact_feed=args.source_fact_feed
         or f"{args.ledger_facts.resolve().parent.name}/{args.ledger_facts.name}",
     )
-    facts = list(_read_jsonl(args.ledger_facts))
     derived_resources: list[dict[str, Any]] = []
     if not args.no_derived_facts:
         # microcosm#1240: the high-value homes family selects Microcosm-derived

@@ -12,6 +12,7 @@ import collections
 import copy
 import dataclasses
 import hashlib
+import importlib.util
 import inspect
 import json
 import math
@@ -22,7 +23,7 @@ import sys
 import time
 import uuid
 from datetime import UTC, datetime
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
@@ -39,6 +40,7 @@ from test_support.microcosm_build.us_modal_stage_plan_tool import (
     DUMMY_COLLECTOR_TOKEN,
     FEED_SHA,
     LADDER_SHA,
+    RECORDED_EMITTER_STATUS,
     RECORDED_EMITTER_VERSION,
     ROOT,
     RUNNER_TOKEN_SECRET,
@@ -46,8 +48,18 @@ from test_support.microcosm_build.us_modal_stage_plan_tool import (
     TEST_COLLECTOR_ORIGIN,
     TEST_TOKEN_EXPIRES_AT,
     base_plan_data,
+    install_fake_runner,
     load_app,
     plan_lib,
+)
+from test_support.microcosm_build.us_modal_stage_plan_tool import (
+    FAKE_PAYLOAD as _FAKE_PAYLOAD,
+)
+from test_support.microcosm_build.us_modal_stage_plan_tool import (
+    fake_plan as _fake_plan,
+)
+from test_support.microcosm_build.us_modal_stage_plan_tool import (
+    fake_tool as _fake_tool,
 )
 from test_support.microcosm_build.us_modal_stage_plan_tool import (
     plan_data as _plan_data,
@@ -405,9 +417,11 @@ def test_image_installs_the_emitter_command_on_its_own(app) -> None:
     plan = plan_lib.parse_plan(_plan_data())
     commands = plan_lib.image_build_commands(plan)
     sync = next(index for index, command in enumerate(commands) if "uv sync" in command)
-    install = commands.index(
-        "UV_TOOL_BIN_DIR=/usr/local/bin uv tool install 'microcosm-emitter>=0.11.9'"
+    install_command = (
+        "UV_TOOL_BIN_DIR=/usr/local/bin uv tool install 'microcosm-emitter>=0.13.0'"
     )
+    assert install_command in commands
+    install = commands.index(install_command)
     # Outside the build's environment, after it is synced and before the
     # clean-tree check. The image does not build unless the command runs.
     assert sync < install < len(commands) - 1
@@ -428,24 +442,181 @@ def test_image_installs_the_emitter_command_on_its_own(app) -> None:
     assert "MICROCOSM_EMITTER_COMMAND" not in removed
 
 
-def test_the_image_installs_no_emitter_older_than_a_build_starts() -> None:
-    """The image's emitter floor is the build adapter's minimum release.
+#: The one file that holds the oldest emitter release builds start and the
+#: image installs: microcosm-build's package data.
+MINIMUM_EMITTER_VERSION_FILE = (
+    ROOT
+    / "packages"
+    / "microcosm-build"
+    / "src"
+    / "microcosm"
+    / "build"
+    / "minimum_emitter_version.json"
+)
 
-    ``tools/modal_us_stage_plan.py`` imports nothing from the workspace, so it
-    repeats the version. This compares the two values of one checkout only.
-    At launch they can come from two trees: the install step from the
-    checkout that launches the app, and the minimum from the commit the plan
-    pins. So a launch can still combine an older checkout's floor with a
-    newer commit's minimum; that floor has no upper bound, so it resolves to
-    the newest release when the image is built.
+
+def _image_emitter_install(plan: plan_lib.Plan) -> str:
+    (install,) = [
+        command
+        for command in plan_lib.image_build_commands(plan)
+        if "uv tool install" in command
+    ]
+    return install
+
+
+def test_builds_and_the_image_take_the_oldest_emitter_from_one_file() -> None:
+    """The build adapter and the image's install step read one packaged file.
+
+    The adapter reads it as package data of microcosm-build. The runner,
+    which imports nothing from the workspace, reads it by its path in the
+    checkout that launches the app. At launch the two can still come from
+    two trees: the install step from the launching checkout, the minimum
+    from the commit the plan pins.
     """
 
     from microcosm.build.telemetry_emitter import MINIMUM_EMITTER_VERSION
 
-    assert MINIMUM_EMITTER_VERSION == "0.11.9"
-    assert plan_lib.IMAGE_EMITTER_REQUIREMENT == (
-        f"microcosm-emitter>={MINIMUM_EMITTER_VERSION}"
+    assert MINIMUM_EMITTER_VERSION_FILE.is_file()
+    assert json.loads(MINIMUM_EMITTER_VERSION_FILE.read_text(encoding="utf-8")) == {
+        "minimum_emitter_version": MINIMUM_EMITTER_VERSION
+    }
+    plan = plan_lib.parse_plan(_plan_data())
+    assert _image_emitter_install(plan).endswith(
+        f"uv tool install 'microcosm-emitter>={MINIMUM_EMITTER_VERSION}'"
     )
+    # The runner runs the image emitter's `status`, which 0.13.0 added.
+    release = tuple(int(part) for part in MINIMUM_EMITTER_VERSION.split("."))
+    assert release >= (0, 13, 0)
+
+
+def test_the_image_installs_the_release_the_file_names_when_the_app_is_defined(
+    monkeypatch, tmp_path: Path
+) -> None:
+    version_file = tmp_path / "minimum_emitter_version.json"
+    version_file.write_text('{"minimum_emitter_version": "9.8.7"}\n')
+    monkeypatch.setattr(
+        plan_lib, "MINIMUM_EMITTER_VERSION_FILE", version_file, raising=False
+    )
+
+    plan = plan_lib.parse_plan(_plan_data())
+
+    assert _image_emitter_install(plan) == (
+        "UV_TOOL_BIN_DIR=/usr/local/bin uv tool install 'microcosm-emitter>=9.8.7'"
+    )
+
+
+@pytest.mark.parametrize(
+    "content",
+    [
+        None,
+        "0.13.0\n",
+        '{"minimum_emitter_version": "0.13"}\n',
+        '{"minimum_emitter_version": 13}\n',
+        '{"minimum": "0.13.0"}\n',
+        '["0.13.0"]\n',
+    ],
+    ids=["missing", "not JSON", "not X.Y.Z", "a number", "another key", "a list"],
+)
+def test_the_image_is_not_defined_without_a_usable_emitter_floor(
+    monkeypatch, tmp_path: Path, content: str | None
+) -> None:
+    version_file = tmp_path / "minimum_emitter_version.json"
+    if content is not None:
+        version_file.write_text(content)
+    monkeypatch.setattr(
+        plan_lib, "MINIMUM_EMITTER_VERSION_FILE", version_file, raising=False
+    )
+    plan = plan_lib.parse_plan(_plan_data())
+
+    with pytest.raises(plan_lib.PlanError, match="minimum_emitter_version.json"):
+        plan_lib.image_build_commands(plan)
+
+
+def _import_plan_module_copy(path: Path, monkeypatch):
+    """Import the plan module at ``path`` as the container imports its copy."""
+
+    name = "modal_us_stage_plan_image_copy"
+    spec = importlib.util.spec_from_file_location(name, path)
+    module = importlib.util.module_from_spec(spec)
+    assert spec.loader is not None
+    # dataclasses resolve string annotations through sys.modules.
+    monkeypatch.setitem(sys.modules, name, module)
+    spec.loader.exec_module(module)
+    return module
+
+
+def test_the_check_in_the_container_reports_the_emitter_floor_the_image_was_built_with(
+    app, monkeypatch, tmp_path: Path
+) -> None:
+    """The container's plan module is the copy the image adds, without a checkout.
+
+    The check (``check_stage``) runs there and calls ``summarize``, which
+    builds the image's install step. That must name the release the image
+    was built with: the launching checkout's, as the app defined the image.
+    """
+
+    version_file = tmp_path / "launching-checkout" / "minimum_emitter_version.json"
+    version_file.parent.mkdir()
+    version_file.write_text('{"minimum_emitter_version": "9.8.7"}\n')
+    monkeypatch.setattr(plan_lib, "MINIMUM_EMITTER_VERSION_FILE", version_file)
+    data = _plan_data()
+    monkeypatch.setattr(app, "_LOADED", (data, plan_lib.parse_plan(data)))
+    modal = sys.modules["modal"]
+    modal.reset_mock()
+    app._image()
+
+    # What the image adds, all of it beside the plan module's copy, copied
+    # into a directory with no checkout around it.
+    container_root = tmp_path / "container-root"
+    container_root.mkdir()
+    beside = PurePosixPath(app.PLAN_MODULE_REMOTE).parent
+    added = [
+        entry.args for entry in modal.mock_calls if entry[0].endswith("add_local_file")
+    ]
+    for local, remote in added:
+        assert PurePosixPath(remote).parent == beside
+        shutil.copyfile(local, container_root / PurePosixPath(remote).name)
+    copy_of_the_module = _import_plan_module_copy(
+        container_root / PurePosixPath(app.PLAN_MODULE_REMOTE).name, monkeypatch
+    )
+
+    summary = copy_of_the_module.summarize(copy_of_the_module.parse_plan(data))
+
+    assert [
+        command
+        for command in summary["image_build_commands"]
+        if "uv tool install" in command
+    ] == ["UV_TOOL_BIN_DIR=/usr/local/bin uv tool install 'microcosm-emitter>=9.8.7'"]
+
+
+def test_the_package_s_version_file_wins_over_a_stray_one_beside_the_plan_module(
+    monkeypatch, tmp_path: Path
+) -> None:
+    """In a checkout, a file left beside the plan module changes nothing.
+
+    Only the container, which has no checkout around the plan module's copy,
+    reads the copy of the file the image adds beside it.
+    """
+
+    checkout = tmp_path / "checkout"
+    (checkout / "tools").mkdir(parents=True)
+    shutil.copyfile(
+        ROOT / "tools" / "modal_us_stage_plan.py",
+        checkout / "tools" / "modal_us_stage_plan.py",
+    )
+    (checkout / "tools" / "minimum_emitter_version.json").write_text(
+        '{"minimum_emitter_version": "9.9.9"}\n'
+    )
+    package = checkout / "packages" / "microcosm-build" / "src" / "microcosm" / "build"
+    package.mkdir(parents=True)
+    (package / "minimum_emitter_version.json").write_text(
+        '{"minimum_emitter_version": "1.2.3"}\n'
+    )
+    copy_in_a_checkout = _import_plan_module_copy(
+        checkout / "tools" / "modal_us_stage_plan.py", monkeypatch
+    )
+
+    assert copy_in_a_checkout.image_emitter_requirement() == "microcosm-emitter>=1.2.3"
 
 
 def test_the_app_never_runs_an_emitter_installed_where_the_image_puts_it(
@@ -464,12 +635,13 @@ def test_the_app_never_runs_an_emitter_installed_where_the_image_puts_it(
     monkeypatch.setattr(plan_lib, "IMAGE_REPO_ROOT", str(tmp_path / "repo"))
 
     recorded = {
-        "emitter_version": "0.11.9",
+        "emitter_version": "0.13.0",
         "protocol_versions": [1],
         "collector_origin": "https://collector.invalid",
     }
     assert app._emitter_version() == recorded
     assert app._runner_identity()["microcosm_emitter"] == recorded
+    assert app._emitter_status(dict(os.environ)) == RECORDED_EMITTER_STATUS
     assert not ran.exists()
 
 
@@ -1893,102 +2065,12 @@ def test_push_copy_only_applies_to_a_clean_exit_of_a_resume_state_stage() -> Non
 # The run path end to end, against local directories                          #
 # --------------------------------------------------------------------------- #
 
-# A stand-in for a resumable tool: its first run writes a checkpoint, a
-# later run of the same state finds it and only rewrites the output.
-_FAKE_TOOL = """\
-import os, pathlib, sys, time
-state, data = pathlib.Path(sys.argv[1]), pathlib.Path(sys.argv[2])
-ckpt = state / "ckpt" / "step1.bin"
-resumed = ckpt.exists()
-if not resumed:
-    ckpt.parent.mkdir(parents=True, exist_ok=True)
-    ckpt.write_bytes(data.read_bytes() * 3)
-(state / "out").mkdir(parents=True, exist_ok=True)
-(state / "out" / "result.txt").write_text(f"resumed={resumed}\\n")
-print("fake tool", "resumed" if resumed else "fresh", flush=True)
-time.sleep(float(os.environ.get("MICROCOSM_FAKE_SLEEP", "0")))
-"""
-_FAKE_PAYLOAD = b"fake input"
-_FAKE_SHA = hashlib.sha256(_FAKE_PAYLOAD).hexdigest()
-
-
-def _fake_tool(
-    timeout_s: int = 3600, overhead: int = 60, **stage: object
-) -> plan_lib.ToolSpec:
-    resources = plan_lib.Resources("check", 2.0, 8 * 1024, timeout_s=timeout_s)
-    return plan_lib.ToolSpec(
-        name="fake-stage",
-        script=None,
-        inputs=("data",),
-        stages={
-            "run": plan_lib.StageSpec(
-                "run",
-                resources,
-                ("data",),
-                runner_overhead_seconds=overhead,
-                **stage,  # type: ignore[arg-type]
-            )
-        },
-        options={},
-        owned_flags=frozenset(),
-        argv_builder=lambda plan, paths, state: [
-            "-c",
-            _FAKE_TOOL,
-            state,
-            paths["data"],
-        ],
-    )
-
-
-def _fake_plan(**overrides) -> dict:
-    data = {
-        "schema": plan_lib.PLAN_SCHEMA,
-        "tool": "fake-stage",
-        "stage": "run",
-        "run_id": "fake-run",
-        "source": {"commit": "a" * 40, "branch": "main"},
-        "inputs": {
-            "data": {
-                "uri": f"volume://cas/sha256/{_FAKE_SHA}/data.bin",
-                "sha256": _FAKE_SHA,
-            }
-        },
-    }
-    data.update(overrides)
-    return data
-
 
 @pytest.fixture
 def fake_runner(app, tmp_path: Path, monkeypatch):
     """The app with its mounts, clone and venv pointed at local directories."""
 
-    def install(tool: plan_lib.ToolSpec):
-        monkeypatch.setitem(plan_lib.TOOLS, tool.name, tool)
-        return app
-
-    for name in ("inputs", "runs", "work", "repo", "venv/bin"):
-        (tmp_path / name).mkdir(parents=True)
-    (tmp_path / "venv" / "bin" / "python").symlink_to(sys.executable)
-    cas = tmp_path / "inputs" / "cas" / "sha256" / _FAKE_SHA
-    cas.mkdir(parents=True)
-    (cas / "data.bin").write_bytes(_FAKE_PAYLOAD)
-    monkeypatch.setattr(plan_lib, "INPUTS_MOUNT", str(tmp_path / "inputs"))
-    monkeypatch.setattr(plan_lib, "RUNS_MOUNT", str(tmp_path / "runs"))
-    monkeypatch.setattr(plan_lib, "WORK_ROOT", str(tmp_path / "work"))
-    monkeypatch.setattr(plan_lib, "IMAGE_REPO_ROOT", str(tmp_path / "repo"))
-    monkeypatch.setattr(plan_lib, "IMAGE_VENV", str(tmp_path / "venv"))
-    monkeypatch.setattr(
-        app,
-        "_git_state",
-        lambda plan: {
-            "head_matches_plan": True,
-            "tree_clean": True,
-            "branch_verified": True,
-            "tool_present": True,
-            "tree_files_verified": True,
-        },
-    )
-    return install
+    return install_fake_runner(app, tmp_path, monkeypatch)
 
 
 def _new_container(tmp_path: Path) -> None:
@@ -2167,6 +2249,73 @@ def test_a_stopped_stage_pushes_its_whole_state_first_paths_first(
     assert receipt["outputs"] == plan_lib.hash_tree(volume_state)
 
 
+# A stand-in tool that finishes at once but leaves a process holding its
+# output open for a few seconds. With ``own_session`` that process is outside
+# the tool's process group, like the emitter a build starts (the interface
+# starts it with ``start_new_session=True`` and no ``stderr=``, so it holds
+# the tool's output while it delivers its last events). Without it, the
+# process stays in the tool's group, like a child stage its parent left.
+_HOLDER_TOOL = """\
+import pathlib, subprocess, sys
+state = pathlib.Path(sys.argv[1])
+(state / "out").mkdir(parents=True, exist_ok=True)
+(state / "out" / "result.txt").write_text("done\\n")
+hold = "import sys, time; time.sleep(float(sys.argv[1]))"
+subprocess.Popen(
+    [sys.executable, "-c", hold, sys.argv[2]],
+    start_new_session=sys.argv[3] == "own_session",
+)
+print("tool done", flush=True)
+"""
+
+
+def _holder_tool(hold_seconds: float, placement: str) -> plan_lib.ToolSpec:
+    return dataclasses.replace(
+        _fake_tool(timeout_s=8, overhead=5),
+        argv_builder=lambda plan, paths, state: [
+            "-c",
+            _HOLDER_TOOL,
+            state,
+            str(hold_seconds),
+            placement,
+        ],
+    )
+
+
+def test_a_tool_that_exits_before_its_budget_is_not_stopped_while_its_emitter_holds_its_output(
+    fake_runner, tmp_path: Path, monkeypatch, capsys
+) -> None:
+    # The tool exits 0 at once; a process in its own session (the emitter's
+    # place) holds the output past the tool's budget of about 3 s. The runner
+    # waits for the output to end, so the emitter can deliver, but the stage
+    # finished before its budget and is not recorded as stopped at it.
+    monkeypatch.setattr(plan_lib, "MIN_ATTEMPT_SECONDS", 1)
+    app = fake_runner(_holder_tool(5, "own_session"))
+    started = time.monotonic()
+    receipt = app._run_stage(_fake_plan())
+    assert time.monotonic() - started >= 4.5
+    assert receipt["runner"]["tool_budget"]["seconds"] <= 3
+    assert (receipt["status"], receipt["stopped_at_budget"], receipt["returncode"]) == (
+        "COMPLETED",
+        False,
+        0,
+    )
+    assert "BUDGET: stopping the tool" not in capsys.readouterr().out
+
+
+def test_a_tool_that_exits_but_leaves_its_group_running_is_still_stopped_at_its_budget(
+    fake_runner, tmp_path: Path, monkeypatch
+) -> None:
+    # A process left in the tool's group (a child stage whose parent died)
+    # would hold the output until it finished: the budget still stops it.
+    monkeypatch.setattr(plan_lib, "MIN_ATTEMPT_SECONDS", 1)
+    app = fake_runner(_holder_tool(60, "tool_group"))
+    started = time.monotonic()
+    receipt = app._run_stage(_fake_plan())
+    assert time.monotonic() - started < 8
+    assert (receipt["status"], receipt["stopped_at_budget"]) == ("FAILED", True)
+
+
 # --------------------------------------------------------------------------- #
 # The hash seed and the disk floor, through the app                           #
 # --------------------------------------------------------------------------- #
@@ -2215,8 +2364,8 @@ def test_a_forced_hash_seed_is_refused_before_anything_is_staged(
     app = fake_runner(_seed_tool())
     real = plan_lib.tool_environment
 
-    def forced(base, plan_env):
-        env, removed = real(base, plan_env)
+    def forced(base, plan_env, **options):
+        env, removed = real(base, plan_env, **options)
         return {**env, "PYTHONHASHSEED": _PROBE_SEED}, removed
 
     monkeypatch.setattr(plan_lib, "tool_environment", forced)
@@ -2269,8 +2418,8 @@ def test_check_stage_fails_when_the_run_would_refuse(
     monkeypatch.setattr(
         plan_lib,
         "tool_environment",
-        lambda base, plan_env: (
-            {**real(base, plan_env)[0], "PYTHONHASHSEED": _PROBE_SEED},
+        lambda base, plan_env, **options: (
+            {**real(base, plan_env, **options)[0], "PYTHONHASHSEED": _PROBE_SEED},
             [],
         ),
     )
@@ -2363,6 +2512,101 @@ def test_a_plan_that_opts_out_runs_its_tool_without_a_collector_token() -> None:
     )
     assert env["MICROCOSM_TELEMETRY_REQUIRED"] == "0"
     assert not set(COLLECTOR_TOKEN_NAMES) & set(env)
+
+
+#: The variables a build program reads for its telemetry run
+#: (``microcosm.build.program_telemetry``); the runner and the programs set
+#: them, a plan never does.
+TELEMETRY_RUN_NAMES = ("MICROCOSM_TELEMETRY_RUN_ID", "MICROCOSM_TELEMETRY_PARENT_PID")
+
+
+def test_each_stage_reports_under_the_plan_s_run_and_its_stage() -> None:
+    from microcosm.build import program_telemetry
+
+    assert plan_lib.TELEMETRY_RUN_ID_ENV == program_telemetry.TELEMETRY_RUN_ID_VARIABLE
+    assert (
+        plan_lib.TELEMETRY_PARENT_PID_ENV
+        == program_telemetry.TELEMETRY_PARENT_PID_VARIABLE
+    )
+    plan = plan_lib.parse_plan(_plan_data(stage="calibrate"))
+    run_id = plan_lib.telemetry_run_id(plan)
+    assert run_id == "acs-local-20260923.calibrate"
+    # The program names the plan's run as the telemetry run's candidate.
+    assert program_telemetry.telemetry_run_identity(
+        "us_acs_local_release", environ={"MICROCOSM_TELEMETRY_RUN_ID": run_id}
+    ) == (run_id, "acs-local-20260923")
+    # Only from the runner: a value anywhere else in the container is removed.
+    env, removed = plan_lib.tool_environment(
+        {"PATH": "/usr/bin", "MICROCOSM_TELEMETRY_RUN_ID": "elsewhere.run"},
+        {},
+        telemetry_run_id=run_id,
+    )
+    assert env["MICROCOSM_TELEMETRY_RUN_ID"] == run_id
+    assert removed == ["MICROCOSM_TELEMETRY_RUN_ID"]
+
+
+def test_every_registered_stage_s_telemetry_run_id_is_one_the_collector_accepts() -> (
+    None
+):
+    from microcosm.build import program_telemetry
+
+    longest_run_id = "r" * 80
+    for tool in plan_lib.TOOLS.values():
+        for stage in tool.stages:
+            assert "." not in stage, (tool.name, stage)
+            data = _plan_data(stage="materialize", run_id=longest_run_id)
+            plan = dataclasses.replace(
+                plan_lib.parse_plan(data), tool=tool, stage=stage
+            )
+            run_id = plan_lib.telemetry_run_id(plan)
+            assert program_telemetry.telemetry_run_identity(
+                "pipeline", environ={"MICROCOSM_TELEMETRY_RUN_ID": run_id}
+            ) == (run_id, longest_run_id)
+
+
+def test_the_runner_removes_the_telemetry_run_variables_from_the_container() -> None:
+    base = {
+        "PATH": "/usr/bin",
+        "MICROCOSM_TELEMETRY_RUN_ID": "elsewhere.run",
+        "MICROCOSM_TELEMETRY_PARENT_PID": "1",
+    }
+    env, removed = plan_lib.tool_environment(base, {})
+    # Without a run ID from the runner the tool makes its own; a parent ID
+    # from the container would make a build program start no emitter.
+    assert not set(TELEMETRY_RUN_NAMES) & set(env)
+    assert removed == sorted(TELEMETRY_RUN_NAMES)
+    env, removed = plan_lib.tool_environment(base, {}, telemetry_run_id="plan.run")
+    assert env["MICROCOSM_TELEMETRY_RUN_ID"] == "plan.run"
+    assert "MICROCOSM_TELEMETRY_PARENT_PID" not in env
+    assert removed == sorted(TELEMETRY_RUN_NAMES)
+
+
+def test_the_check_probes_the_tool_in_the_environment_with_its_telemetry_run(
+    fake_runner, monkeypatch
+) -> None:
+    app = fake_runner(_seed_tool())
+    clone = app._git_state(None)
+    monkeypatch.setattr(app, "_git_state", lambda plan: {**clone, "tree_files": []})
+    real = plan_lib.tool_environment
+    seen: list[str | None] = []
+
+    def spy(base, plan_env, **options):
+        env, removed = real(base, plan_env, **options)
+        seen.append(env.get("MICROCOSM_TELEMETRY_RUN_ID"))
+        return env, removed
+
+    monkeypatch.setattr(plan_lib, "tool_environment", spy)
+    app.check_stage(_fake_plan())
+    assert seen == ["fake-run.run"]
+
+
+@pytest.mark.parametrize("key", TELEMETRY_RUN_NAMES)
+def test_a_plan_may_not_choose_the_stage_s_telemetry_run(key: str) -> None:
+    with pytest.raises(plan_lib.PlanError, match="the runner and the build") as refused:
+        plan_lib.parse_plan(_plan_data(env={key: "chosen-by-the-plan"}))
+    assert key in str(refused.value)
+    with pytest.raises(plan_lib.PlanError, match="may not be passed"):
+        plan_lib.tool_environment({}, {key: "chosen-by-the-plan"})
 
 
 def test_the_image_emitter_s_version_runs_without_credentials_or_the_token(
@@ -2840,10 +3084,49 @@ def test_a_stage_passes_its_token_to_the_tool_and_records_only_its_expiry_and_or
         "origin": TEST_COLLECTOR_ORIGIN,
     }
     assert telemetry["image_emitter_collector_origin"] == TEST_COLLECTOR_ORIGIN
-    assert telemetry["undelivered_events"] is None
+    # What the image emitter's `status` reported after the tool.
+    assert telemetry["undelivered_events"] == RECORDED_EMITTER_STATUS
     run_dir = tmp_path / "runs" / "runs" / "fake-run"
     for path in [*run_dir.rglob("*.json"), *run_dir.rglob("*.log")]:
         assert DUMMY_COLLECTOR_TOKEN not in path.read_text(), path
+
+
+# A stand-in tool that records the telemetry run its environment names.
+_TELEMETRY_RUN_TOOL = """\
+import json, os, pathlib, sys
+state = pathlib.Path(sys.argv[1])
+(state / "out").mkdir(parents=True, exist_ok=True)
+(state / "out" / "telemetry-run.json").write_text(json.dumps({
+    name: os.environ.get(name)
+    for name in ("MICROCOSM_TELEMETRY_RUN_ID", "MICROCOSM_TELEMETRY_REQUIRED")
+}))
+"""
+
+
+@pytest.mark.parametrize("env", [{}, {"MICROCOSM_TELEMETRY_REQUIRED": "0"}])
+def test_a_stage_gives_its_tool_the_plan_s_run_and_stage_as_its_telemetry_run(
+    fake_runner, tmp_path: Path, env: dict
+) -> None:
+    app = fake_runner(
+        dataclasses.replace(
+            _fake_tool(),
+            argv_builder=lambda plan, paths, state: [
+                "-c",
+                _TELEMETRY_RUN_TOOL,
+                state,
+            ],
+        )
+    )
+    receipt = app._run_stage(_fake_plan(max_wall_seconds=600, env=env))
+    assert receipt["status"] == "COMPLETED"
+    state = tmp_path / "runs" / "runs" / "fake-run" / "state"
+    seen = json.loads((state / "out" / "telemetry-run.json").read_text())
+    # A plan that opts out still names the run: its build's emitter, if one
+    # starts, keeps its events under it in the container.
+    assert seen == {
+        "MICROCOSM_TELEMETRY_RUN_ID": "fake-run.run",
+        "MICROCOSM_TELEMETRY_REQUIRED": env.get("MICROCOSM_TELEMETRY_REQUIRED", "1"),
+    }
 
 
 @pytest.mark.parametrize("problem", ["missing", "expires-too-soon", "other-origin"])
@@ -2903,6 +3186,360 @@ def test_a_stage_whose_plan_opts_out_runs_without_a_token(
     assert (telemetry["required"], telemetry["collector_token"]) == (False, None)
     # The opt-out is recorded with the plan, as every plan variable is.
     assert receipt["plan"]["env"] == {"MICROCOSM_TELEMETRY_REQUIRED": "0"}
+
+
+# The image emitter's `status`, after the tool ----------------------------- #
+
+# A stand-in tool that finishes at once and leaves, in its own session, a
+# process that holds its standard error for 2 s and then writes a marker
+# file: the place of the emitter a build starts, which delivers its last
+# events after the build exits.
+_EMITTER_HOLDER_TOOL = """\
+import pathlib, subprocess, sys
+state, marker = pathlib.Path(sys.argv[1]), sys.argv[2]
+(state / "out").mkdir(parents=True, exist_ok=True)
+(state / "out" / "result.txt").write_text("done\\n")
+hold = (
+    "import pathlib, sys, time; time.sleep(2); "
+    "pathlib.Path(sys.argv[1]).write_text('finished')"
+)
+# Like the emitter host the interface starts: in its own session, with its
+# standard output sent nowhere, so it holds the runner's pipe only through
+# the standard error it inherits.
+subprocess.Popen(
+    [sys.executable, "-c", hold, marker],
+    start_new_session=True,
+    stdout=subprocess.DEVNULL,
+)
+print("tool done", flush=True)
+"""
+
+
+def test_the_runner_asks_the_image_emitter_for_its_status_once_the_tool_and_its_emitter_finish(
+    fake_runner, tmp_path: Path, monkeypatch
+) -> None:
+    marker = tmp_path / "emitter-finished"
+    app = fake_runner(
+        dataclasses.replace(
+            _fake_tool(),
+            argv_builder=lambda plan, paths, state: [
+                "-c",
+                _EMITTER_HOLDER_TOOL,
+                state,
+                str(marker),
+            ],
+        )
+    )
+    answer = {
+        "runs": [
+            {
+                "run_id": "fake-run.run",
+                "producer_id": "the-build",
+                "upload_state": "local_only",
+                "reason": "missing_huggingface_credential",
+                "undelivered_events": 4,
+            }
+        ],
+        "problem": None,
+    }
+    asked = []
+
+    def status(env: dict[str, str]) -> dict:
+        asked.append((marker.exists(), dict(env)))
+        return copy.deepcopy(answer)
+
+    monkeypatch.setattr(app, "_emitter_status", status, raising=False)
+    receipt = app._run_stage(_fake_plan(max_wall_seconds=600))
+
+    assert receipt["status"] == "COMPLETED"
+    # Asked once, after the process holding the tool's output had finished.
+    assert [finished for finished, _ in asked] == [True]
+    # In the tool's environment, from which the build's emitter took the
+    # path of its event queue file.
+    ((_, env),) = asked
+    assert env["MICROCOSM_TELEMETRY_RUN_ID"] == "fake-run.run"
+    assert env["MICROCOSM_TELEMETRY_REQUIRED"] == "1"
+    assert env["XDG_CACHE_HOME"] == os.environ["XDG_CACHE_HOME"]
+    assert receipt["runner"]["telemetry"]["undelivered_events"] == answer
+
+
+def _install_status_emitter(
+    monkeypatch,
+    directory: Path,
+    *,
+    stdout: str = "",
+    stderr: str = "",
+    exit_code: int = 0,
+    sleep_seconds: float = 0,
+) -> Path:
+    """A stand-in for the image's emitter, at ``plan_lib.IMAGE_EMITTER_COMMAND``.
+
+    It writes its arguments and environment as JSON to the returned file,
+    waits ``sleep_seconds``, prints ``stdout`` and ``stderr`` and exits with
+    ``exit_code``.
+    """
+
+    log = directory / "status-call.json"
+    command = directory / "microcosm-emitter"
+    command.write_text(
+        f"#!{sys.executable}\n"
+        "import json, os, sys, time\n"
+        f"with open({str(log)!r}, 'w') as log:\n"
+        "    json.dump({'argv': sys.argv[1:], 'env': dict(os.environ)}, log)\n"
+        f"time.sleep({sleep_seconds!r})\n"
+        f"sys.stdout.write({stdout!r})\n"
+        f"sys.stderr.write({stderr!r})\n"
+        f"sys.exit({exit_code!r})\n"
+    )
+    command.chmod(0o755)
+    monkeypatch.setattr(plan_lib, "IMAGE_EMITTER_COMMAND", str(command))
+    return log
+
+
+@pytest.fixture
+def status_runner(tmp_path: Path, monkeypatch):
+    """The fake runner with the app's own ``_emitter_status``."""
+
+    app = load_app(monkeypatch, real_emitter_status=True)
+    return install_fake_runner(app, tmp_path, monkeypatch)(_fake_tool())
+
+
+_PRINTED_RUNS = [
+    {
+        "run_id": "fake-run.run",
+        "producer_id": "the-build",
+        "upload_state": "local_only",
+        "reason": "run_registration_rejected",
+        "undelivered_events": 2,
+    },
+    {
+        "run_id": "fake-run.run",
+        "producer_id": "the-child-stage",
+        "upload_state": "pending",
+        "reason": None,
+        "undelivered_events": 0,
+    },
+]
+_NO_STATUS_COMMAND = (
+    "usage: microcosm-emitter [-h] {host,version,telemetry-token} ...\n"
+    "microcosm-emitter: error: argument command: invalid choice: 'status' "
+    "(choose from host, version, telemetry-token)\n"
+)
+
+
+@pytest.mark.parametrize(
+    ("answer", "recorded"),
+    [
+        (
+            {"stdout": json.dumps({"runs": _PRINTED_RUNS}) + "\n"},
+            {"runs": _PRINTED_RUNS, "problem": None},
+        ),
+        ({"stdout": '{"runs": []}\n'}, {"runs": [], "problem": None}),
+        (
+            {
+                "stderr": "No event queue file exists at /root/.cache/microcosm/"
+                "telemetry/events.sqlite3; nothing was read.\n",
+                "exit_code": 8,
+            },
+            {"runs": [], "problem": None},
+        ),
+        (
+            {
+                "stderr": "The file at /root/.cache/microcosm/telemetry/"
+                "events.sqlite3 is not an event queue file.\n",
+                "exit_code": 9,
+            },
+            {
+                "runs": None,
+                "problem": "`microcosm-emitter status` exited 9: The file at "
+                "/root/.cache/microcosm/telemetry/events.sqlite3 is not an event "
+                "queue file.",
+            },
+        ),
+        (
+            {"stderr": _NO_STATUS_COMMAND, "exit_code": 2},
+            {
+                "runs": None,
+                "problem": "`microcosm-emitter status` exited 2: microcosm-emitter: "
+                "error: argument command: invalid choice: 'status' (choose from "
+                "host, version, telemetry-token)",
+            },
+        ),
+        (
+            {"exit_code": 1},
+            {
+                "runs": None,
+                "problem": "`microcosm-emitter status` exited 1 without a message",
+            },
+        ),
+        (
+            {"stdout": "runs: 2\n"},
+            {
+                "runs": None,
+                "problem": "`microcosm-emitter status` exited 0 but did not print "
+                "its JSON list of runs",
+            },
+        ),
+        (
+            {
+                "stdout": json.dumps(
+                    {"runs": [{**_PRINTED_RUNS[0], "undelivered_events": "2"}]}
+                )
+            },
+            {
+                "runs": None,
+                "problem": "`microcosm-emitter status` exited 0 but did not print "
+                "its JSON list of runs",
+            },
+        ),
+        (
+            {"stdout": json.dumps({"runs": [{"run_id": "fake-run.run"}]})},
+            {
+                "runs": None,
+                "problem": "`microcosm-emitter status` exited 0 but did not print "
+                "its JSON list of runs",
+            },
+        ),
+    ],
+    ids=[
+        "runs",
+        "no runs",
+        "no event queue file",
+        "an unusable file",
+        "an emitter without status",
+        "a failure without a message",
+        "not JSON",
+        "a count that is not a number",
+        "a run without its fields",
+    ],
+)
+def test_the_receipt_records_what_the_image_emitter_s_status_answered(
+    status_runner, tmp_path: Path, monkeypatch, answer: dict, recorded: dict
+) -> None:
+    _install_status_emitter(monkeypatch, tmp_path, **answer)
+
+    receipt = status_runner._run_stage(_fake_plan(max_wall_seconds=600))
+
+    assert receipt["runner"]["telemetry"]["undelivered_events"] == recorded
+    # Whatever `status` answered, the stage's result is the tool's.
+    assert receipt["status"] == "COMPLETED"
+    assert [item["outcome"] for item in _records(tmp_path)] == ["receipt"]
+
+
+def test_a_problem_line_is_one_bounded_line(
+    status_runner, tmp_path: Path, monkeypatch
+) -> None:
+    message = "The emitter\tsays " + "x" * 2000 + "\r\n"
+    _install_status_emitter(monkeypatch, tmp_path, stderr=message, exit_code=9)
+
+    receipt = status_runner._run_stage(_fake_plan(max_wall_seconds=600))
+
+    undelivered = receipt["runner"]["telemetry"]["undelivered_events"]
+    assert isinstance(undelivered, dict)
+    problem = undelivered["problem"]
+    assert problem.startswith("`microcosm-emitter status` exited 9: The emitter says x")
+    assert len(problem) == 300
+    assert problem.endswith("…")
+    assert not {"\n", "\r", "\t"} & set(problem)
+
+
+def _status_output_with_an_extra_field(depth: int) -> str:
+    """``status``'s output for one run with an extra field, objects ``depth`` deep."""
+
+    printed = json.dumps({"runs": [_PRINTED_RUNS[0]]})
+    assert printed.endswith("}]}")
+    nested = '{"a": ' * depth + "0" + "}" * depth
+    return f'{printed[:-3]}, "extra": {nested}}}]}}'
+
+
+@pytest.mark.parametrize(("depth", "recorded"), [(32, True), (33, False)])
+def test_runs_with_a_field_nested_deeper_than_32_levels_are_recorded_as_a_problem(
+    depth: int, recorded: bool
+) -> None:
+    """The runs are kept as printed, but none nested more than 32 levels deep.
+
+    The receipt holds the runs six levels deeper and is written with indented
+    JSON, whose memory grows with the square of the depth: a field nested
+    tens of thousands of levels deep, which the parser accepts, would take
+    gigabytes to write, or fail to and leave no receipt. ``status`` prints
+    flat fields, so a bound of 32 refuses nothing it prints.
+    """
+
+    stdout = _status_output_with_an_extra_field(depth)
+
+    record = plan_lib.undelivered_events_from_status(0, stdout, "")
+
+    if recorded:
+        assert record == {"runs": json.loads(stdout)["runs"], "problem": None}
+    else:
+        assert record == {
+            "runs": None,
+            "problem": "`microcosm-emitter status` exited 0 but printed runs "
+            "nested more than 32 levels deep",
+        }
+
+
+def test_deeply_nested_output_is_recorded_as_a_problem(
+    status_runner, tmp_path: Path, monkeypatch
+) -> None:
+    # Nested deeper than Python's JSON parser recurses (RecursionError).
+    depth = 1_000_000
+    _install_status_emitter(monkeypatch, tmp_path, stdout="[" * depth + "]" * depth)
+
+    try:
+        receipt = status_runner._run_stage(_fake_plan(max_wall_seconds=600))
+    except RecursionError:
+        pytest.fail("deeply nested output from status ended the attempt")
+
+    assert receipt["runner"]["telemetry"]["undelivered_events"] == {
+        "runs": None,
+        "problem": "`microcosm-emitter status` exited 0 but did not print its "
+        "JSON list of runs",
+    }
+    assert receipt["status"] == "COMPLETED"
+
+
+def test_the_receipt_records_a_status_that_hangs_or_cannot_start(
+    status_runner, tmp_path: Path, monkeypatch
+) -> None:
+    monkeypatch.setattr(plan_lib, "EMITTER_STATUS_TIMEOUT_SECONDS", 1, raising=False)
+    _install_status_emitter(
+        monkeypatch, tmp_path, stdout='{"runs": []}', sleep_seconds=5
+    )
+    hung = status_runner._run_stage(_fake_plan(max_wall_seconds=600))
+    monkeypatch.setattr(plan_lib, "IMAGE_EMITTER_COMMAND", str(tmp_path / "absent"))
+    _new_container(tmp_path)
+    absent = status_runner._run_stage(_fake_plan(max_wall_seconds=600))
+
+    assert hung["runner"]["telemetry"]["undelivered_events"] == {
+        "runs": None,
+        "problem": "`microcosm-emitter status` did not answer within 1 s",
+    }
+    assert absent["runner"]["telemetry"]["undelivered_events"] == {
+        "runs": None,
+        "problem": "`microcosm-emitter status` could not run (FileNotFoundError)",
+    }
+    assert (hung["status"], absent["status"]) == ("COMPLETED", "COMPLETED")
+
+
+def test_the_image_emitter_s_status_gets_the_tool_s_environment_without_credentials(
+    status_runner, tmp_path: Path, monkeypatch
+) -> None:
+    monkeypatch.setenv("HF_TOKEN", "hf_secret_not_a_credential")
+    log = _install_status_emitter(monkeypatch, tmp_path, stdout='{"runs": []}')
+
+    status_runner._run_stage(_fake_plan(max_wall_seconds=600))
+
+    assert log.is_file(), "the image emitter's status did not run"
+    call = json.loads(log.read_text())
+    # The emitter's own default path, from the tool's environment.
+    assert call["argv"] == ["status"]
+    env = call["env"]
+    assert env["MICROCOSM_TELEMETRY_RUN_ID"] == "fake-run.run"
+    assert env["XDG_CACHE_HOME"] == os.environ["XDG_CACHE_HOME"]
+    assert env["PATH"] == os.environ["PATH"]
+    assert not {"HF_TOKEN", *RUNNER_TOKEN_SECRET, *COLLECTOR_TOKEN_NAMES} & set(env)
+    assert not any(DUMMY_COLLECTOR_TOKEN in value for value in env.values())
 
 
 def test_check_stage_reports_whether_the_image_s_emitter_can_take_a_token(
@@ -2989,18 +3626,29 @@ def test_a_plan_may_not_choose_the_emitter_the_build_starts() -> None:
         )
 
 
-def test_every_telemetry_record_has_the_same_fields() -> None:
+def test_every_telemetry_record_has_the_same_fields(fake_runner) -> None:
     plan = plan_lib.parse_plan(_smoke_plan_data())
     fields = set(plan_lib.TelemetryRecord.__annotations__)
     summary = plan_lib.summarize(plan)["telemetry"]
     check, _ = plan_lib.telemetry_check_report(plan, RECORDED_EMITTER_VERSION)
-    receipt, _ = plan_lib.telemetry_check(
+    before_the_tool, _ = plan_lib.telemetry_check(
         plan,
         _telemetry_environment(),
         RECORDED_EMITTER_VERSION,
         container_started=time.time(),
     )
-    assert set(summary) == set(check) == set(receipt) == fields
+    receipt = fake_runner(_fake_tool())._run_stage(_fake_plan(max_wall_seconds=600))
+    after_the_tool = receipt["runner"]["telemetry"]
+    assert set(summary) == set(check) == set(before_the_tool) == set(after_the_tool)
+    assert set(after_the_tool) == fields
+    # No emitter has been asked before the tool runs; the receipt holds what
+    # the image emitter's `status` answered after it.
+    assert summary["undelivered_events"] is None
+    assert check["undelivered_events"] is None
+    assert before_the_tool["undelivered_events"] is None
+    undelivered = after_the_tool["undelivered_events"]
+    assert isinstance(undelivered, dict)
+    assert set(undelivered) == {"runs", "problem"}
 
 
 def test_the_tool_gets_the_runner_s_token_values_stripped() -> None:

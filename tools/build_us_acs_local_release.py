@@ -91,6 +91,14 @@ package; each is separately resumable):
                 a separate reviewed step (``microcosm-publish-release
                 <dir> --no-latest``); this tool never uploads and never
                 touches latest.json.
+
+Telemetry: after parsing its arguments the tool starts the emitter
+(``microcosm.build.program_telemetry``, pipeline ``us_acs_local_release``),
+records each stage it runs and then completion, or failure with the error.
+With ``MICROCOSM_TELEMETRY_REQUIRED=1``, which the Modal stage runner sets, an
+emitter that cannot be used stops the tool before any stage. The runner also
+names the telemetry run (``MICROCOSM_TELEMETRY_RUN_ID``); run by hand, the tool
+makes its own attempt ID.
 """
 
 from __future__ import annotations
@@ -112,6 +120,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
+from microcosm.build.program_telemetry import program_telemetry
 from microcosm.build.us_runtime import target_loss_weights as loss_weighting
 from microcosm.build.us_runtime.acs_inputs import acs_self_employment_identity_gate
 from microcosm.build.us_runtime.acs_local_hours import acs_local_hours_signal_gate
@@ -6153,30 +6162,40 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     return args
 
 
+#: The telemetry pipeline this tool reports under.
+TELEMETRY_PIPELINE = "us_acs_local_release"
+
+
 def main(argv: list[str] | None = None) -> int:
     args = _parse_args(argv)
-    args.checkpoint_dir.mkdir(parents=True, exist_ok=True)
-    sampler = RssSampler()
-    sampler.start()
-    started = time.time()
-    try:
-        if "materialize" in args.stages:
-            do_materialize(args)
-        if "calibrate" in args.stages:
-            do_calibrate(args)
-        if "qa" in args.stages:
-            do_qa(args)
-        if "finalize" in args.stages:
-            do_finalize(args)
-        if "package" in args.stages:
-            do_package(args)
-    finally:
-        sampler.stop()
-        sampler.join(timeout=5)
-        (args.checkpoint_dir / "rss_samples.json").write_text(
-            json.dumps(sampler.samples[-2000:])
-        )
-    log(f"DONE stages={args.stages} ({time.time() - started:.1f}s)")
+    with program_telemetry(pipeline=TELEMETRY_PIPELINE) as telemetry:
+        args.checkpoint_dir.mkdir(parents=True, exist_ok=True)
+        sampler = RssSampler()
+        sampler.start()
+        started = time.time()
+        try:
+            if "materialize" in args.stages:
+                telemetry.transition_stage("materialize")
+                do_materialize(args)
+            if "calibrate" in args.stages:
+                telemetry.transition_stage("calibrate")
+                do_calibrate(args)
+            if "qa" in args.stages:
+                telemetry.transition_stage("qa")
+                do_qa(args)
+            if "finalize" in args.stages:
+                telemetry.transition_stage("finalize")
+                do_finalize(args)
+            if "package" in args.stages:
+                telemetry.transition_stage("package")
+                do_package(args)
+        finally:
+            sampler.stop()
+            sampler.join(timeout=5)
+            (args.checkpoint_dir / "rss_samples.json").write_text(
+                json.dumps(sampler.samples[-2000:])
+            )
+        log(f"DONE stages={args.stages} ({time.time() - started:.1f}s)")
     return 0
 
 

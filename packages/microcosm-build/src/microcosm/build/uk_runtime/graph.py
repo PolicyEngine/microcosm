@@ -119,6 +119,11 @@ _STRUCTURAL_WEIGHT_KIND = {
 # units without an observed FRS capital answer.
 _READER_ISOLATION_BOUNDARIES = frozenset(
     {
+        # The employment shell rewrites the root person cells
+        # soc2020_major_group, sic_industry_division and employment_sector after
+        # the open-surface SPI income stage and the company cars, which would
+        # otherwise bind them (microcosm#1490).
+        "spi_employment_shell",
         # The housing shell rewrites root household cells after the
         # open-surface SPI income stage and the company cars, which would
         # otherwise bind them.
@@ -204,6 +209,7 @@ _SPLIT_STAGE_SOURCES: Mapping[str, tuple[str, ...]] = {
     ),
     "etb_vat": ("etb",),
     "etb_services": ("etb",),
+    "aps_occupation": ("aps",),
     "frs_hmrc_spine_leaves": ("frs",),
     "frs_annual_income_spells": ("frs",),
     "spi_income_band_donors": ("spi",),
@@ -223,6 +229,7 @@ _SPLIT_SOURCE_DESCRIPTIONS = {
     "lcfs_household": "Pinned local LCFS household donor table.",
     "lcfs_person": "Pinned local LCFS person donor table.",
     "etb": "Pinned local ETB household donor table.",
+    "aps": "Pinned local APS person donor table.",
     "spi": "Pinned local SPI donor table.",
     "hmrc_income": "Pinned local HMRC income facts workbook.",
 }
@@ -380,6 +387,44 @@ _STAGE_CONSUMES: Mapping[str, frozenset[tuple[str, str]] | None] = {
     "spi_support_channel": None,
     "spi_income_band_donors": None,
     "hmrc_spi_income_spine": None,
+    # Engine-free: the occupation predictors, the drawn-row rule and the channel
+    # split. The rewritten occupation, industry and sector cells arrive as the
+    # rewrite's incumbents (microcosm#1490).
+    "spi_employment_shell": frozenset(
+        {
+            ("person", "age"),
+            ("person", "gender"),
+            ("person", "employment_status"),
+            ("person", "employment_income"),
+            ("person", "self_employment_income"),
+            ("person", "savings_interest_income"),
+            ("person", "dividend_income"),
+            ("person", "private_pension_income"),
+            ("person", "person_is_spi_income_recipient"),
+            ("person", "hmrc_spi_pay"),
+            ("household", "region"),
+            ("household", "household_support_channel"),
+            ("household", "household_source_id"),
+        }
+    ),
+    # Engine-free: the sub-major predictors, the major group it nests in, the
+    # draw keys and the channel split (microcosm#1490).
+    "aps_occupation": frozenset(
+        {
+            ("person", "age"),
+            ("person", "gender"),
+            ("person", "employment_status"),
+            ("person", "employment_income"),
+            ("person", "sic_industry_division"),
+            ("person", "soc2020_major_group"),
+            ("person", "person_is_spi_income_recipient"),
+            ("person", "hmrc_spi_pay"),
+            ("person", "person_source_id"),
+            ("household", "region"),
+            ("household", "household_support_channel"),
+            ("household", "household_source_id"),
+        }
+    ),
     # Engine-free: the housing predictors and the channel split. The rewritten
     # housing and benefit cells arrive as the rewrite's incumbents.
     "spi_housing_shell": frozenset(
@@ -827,6 +872,7 @@ _STAGE_CELLS: Mapping[str, tuple[_Cell, ...]] = {
         _Cell("person", "employment_status", "string"),
         _Cell("person", "employment_sector", "string"),
         _Cell("person", "sic_industry_division", "int64"),
+        _Cell("person", "soc2020_major_group", "string"),
     ),
     "frs_council_tax": (_Cell("household", "council_tax", "float64"),),
     "frs_disability": (
@@ -1147,6 +1193,12 @@ _STAGE_CELLS: Mapping[str, tuple[_Cell, ...]] = {
         _Cell("person", "person_is_spi_income_band_carrier", "bool"),
     ),
     "hmrc_spi_income_spine": (),  # populated below from typed groups
+    "spi_employment_shell": (
+        _Cell("person", "soc2020_major_group", "string"),
+        _Cell("person", "sic_industry_division", "int64"),
+        _Cell("person", "employment_sector", "string"),
+    ),
+    "aps_occupation": (_Cell("person", "soc2020_sub_major_group", "string"),),
     "spi_housing_shell": (
         *_cells(
             "household",
@@ -1303,9 +1355,12 @@ _STAGE_CELLS: Mapping[str, tuple[_Cell, ...]] = {
         _Cell("person", "company_car_capital_contributions", "float64"),
         _Cell("person", "company_car_private_fuel_provided", "bool"),
         # A tape row's pay gives up the benefits carved out of it, and its UC
-        # gainful self-employment follows the carved pay.
+        # gainful self-employment follows the carved pay. On a tape row without
+        # EPB the benefits move from its PAY into its EPB.
         _Cell("person", "employment_income", "float64"),
         _Cell("person", "uc_is_in_gainful_self_employment", "bool"),
+        _Cell("person", "hmrc_spi_pay", "float64"),
+        _Cell("person", "hmrc_spi_employment_benefits", "float64"),
     ),
     "childcare_copy_take_up": (
         *_cells(

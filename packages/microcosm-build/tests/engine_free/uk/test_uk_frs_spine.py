@@ -292,6 +292,7 @@ def _fixture_tables() -> dict[str, list[dict[str, object]]]:
         "CONVBL": 2,
         "MJOBSECT": 1,
         "SIC": 84,
+        "SOC2020": 4000,
         "FTED": 2,
         "TYPEED2": 0,
         "EDUCQUAL": 17,
@@ -3982,6 +3983,7 @@ def test_input_artifact_pins_bind_spi_donor_and_ods() -> None:
     pins = tool._input_artifact_pins(stages)
 
     assert set(pins) == {
+        "aps_person_tab",
         "etb_household_tab",
         "lcfs_household_tab",
         "lcfs_person_tab",
@@ -4013,6 +4015,7 @@ def test_input_artifact_pins_bind_spi_donor_and_ods() -> None:
             "lcfs_consumption",
             "etb_vat",
             "etb_services",
+            "aps_occupation",
             "hmrc_spi_income_spine",
             "hmrc_cgt_gains_spine",
         )
@@ -4072,6 +4075,10 @@ def test_e8_manifest_seeds_all_reach_the_build_sidecar_harvester() -> None:
         "student_loan_plan_5": 42,
         "student_loan_plan_2": 42,
     }
+    # microcosm#1490: the employment shell's keyed draws under its stage name,
+    # the APS draw under the column it writes.
+    assert declared["spi_employment_shell"] == {"spi_employment_shell": 0}
+    assert declared["aps_occupation"] == {"soc2020_sub_major_group": 0}
 
 
 def test_spine_sidecar_collects_stage_evidence_by_duck_type() -> None:

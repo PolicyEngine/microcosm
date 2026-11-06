@@ -42,11 +42,15 @@ import json
 from collections import Counter
 from pathlib import Path
 
+from microcosm.build.ledger_artifact import consumer_fact_schema_versions_of
 from microcosm.build.us_runtime import (
     default_congressional_district_vintage_crosswalk_path,
     load_congressional_district_vintage_crosswalk,
 )
-from microcosm.build.us_runtime.chronicle_feed import load_us_chronicle_feed
+from microcosm.build.us_runtime.chronicle_feed import (
+    load_us_chronicle_feed,
+    require_us_chronicle_feed_row_contracts,
+)
 from microcosm.build.us_runtime.fiscal_targets import compile_us_fiscal_target_registry
 from microcosm.build.us_runtime.medicaid_take_up import (
     apply_us_medicaid_enrollment_substitutions,
@@ -910,6 +914,14 @@ def main() -> None:
             f"{EXPECTED_FEED_SHA256}; refusing to regenerate against an "
             "unexpected feed."
         )
+    # The digest says these are the committed feed's rows; their own
+    # schema_version values must also be exactly the pin's declared row
+    # contracts, as the release tool requires.
+    require_us_chronicle_feed_row_contracts(
+        consumer_fact_schema_versions_of(facts),
+        facts_sha256=feed_sha256,
+        pin=load_us_chronicle_feed(),
+    )
 
     manifest, feed_families = build_manifest(facts, feed_sha256, args.feed_name)
 

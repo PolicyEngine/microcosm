@@ -79,6 +79,7 @@ ALLOWED_SOURCE_OPERATION_KINDS = frozenset(
         "clone_records",
         "clean_nts_travel_tables",
         "clean_was_lisa_donor",
+        "clean_aps_occupation_table",
         # microcosm#1415: ISA subscriptions per adult and the Lifetime ISA anchor.
         "allocate_isa_subscribers",
         "anchor_lifetime_isa_ownership",
@@ -165,6 +166,8 @@ ALLOWED_SOURCE_OPERATION_KINDS = frozenset(
         "impute_energy_subsidy_to_puf_support",
         "impute_cell_means",
         "impute_spi_housing_shell",
+        "impute_spi_employment_shell",
+        "impute_soc2020_sub_major_group",
         "impute_housing_assistance_to_puf_support",
         "impute_other_health_insurance_premiums_to_puf_support",
         "impute_prior_year_income_to_puf_support",

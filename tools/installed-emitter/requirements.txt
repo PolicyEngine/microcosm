@@ -4,4 +4,4 @@
 # it, and tools/run_installed_emitter_tests.sh installs exactly this release and
 # warns when the package index has a newer one. Raise it in a pull request when
 # the emitter publishes a release.
-microcosm-emitter==0.12.0
+microcosm-emitter==0.13.0
