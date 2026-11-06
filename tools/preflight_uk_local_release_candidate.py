@@ -36,6 +36,8 @@ import sys
 from datetime import date
 from pathlib import Path
 
+from microcosm.data.gate_signing_keys import unregistered_gate_signing_key_problem
+
 SIGNING_KEY_ENV = "MICROCOSM_UK_TERMINAL_GATE_SIGNING_KEY"
 PIN_NAMES = ("spine", "ladder", "facts", "manifest")
 RELEASE_BLOCKING = "release_blocking"
@@ -73,6 +75,12 @@ def check_env(
                     f"{SIGNING_KEY_ENV} decodes to {len(raw)} bytes; the gate "
                     "battery signs only with exactly 32."
                 )
+            else:
+                problem = unregistered_gate_signing_key_problem(
+                    "uk", raw, purpose="sign"
+                )
+                if problem is not None:
+                    failures.append(f"{SIGNING_KEY_ENV}: {problem}")
         except Exception:
             failures.append(f"{SIGNING_KEY_ENV} is not valid base64.")
     if not pins_path.exists():

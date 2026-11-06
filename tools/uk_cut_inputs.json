@@ -1,0 +1,158 @@
+{
+  "version": 1,
+  "about": "Where tools/run_uk_cut.py fetches each input of a Microcosm UK national cut. This file says only where; every expected sha256 and size is read from the committed pins (uk/source_stages.json, uk/frs_release.json, uk/chronicle_feed.json, uk/gates.json, weighted_integrity.py), so a file is accepted only if it is byte-identical to what the build itself will check. revision null means not yet uploaded: the runner then reads the repository's main branch and still verifies every file against its pin (docs/uk-cut-anyone.md).",
+  "sources": [
+    {
+      "key": "frs_2024_25",
+      "kind": "hf_zip_members",
+      "repo_id": "policyengine/policyengine-uk-data-private",
+      "repo_type": "model",
+      "revision": "a2039519d3b92aecc06c66dfd175cb46ac24cada",
+      "filename": "frs_2024_25.zip",
+      "archive_sha256_pin": "frs_release",
+      "directory": "frs_2024_25",
+      "members": [
+        "accounts.tab",
+        "adult.tab",
+        "benefits.tab",
+        "benunit.tab",
+        "child.tab",
+        "chldcare.tab",
+        "extchild.tab",
+        "househol.tab",
+        "job.tab",
+        "maint.tab",
+        "mortgage.tab",
+        "oddjob.tab",
+        "penprov.tab",
+        "pension.tab"
+      ]
+    },
+    {
+      "key": "spi_2022_23",
+      "kind": "hf_zip_members",
+      "repo_id": "policyengine/policyengine-uk-data-private",
+      "repo_type": "model",
+      "revision": "a2039519d3b92aecc06c66dfd175cb46ac24cada",
+      "filename": "spi_2022_23.zip",
+      "archive_sha256": "2c7a779797ed3accfc04d2c6401867665af216f810141f7639f3e2164edc4517",
+      "directory": "spi_2022_23",
+      "members": [
+        "put2223uk.tab"
+      ]
+    },
+    {
+      "key": "was_round_8",
+      "kind": "hf_zip_members",
+      "repo_id": "policyengine/policyengine-uk-data-private",
+      "repo_type": "model",
+      "revision": "a2039519d3b92aecc06c66dfd175cb46ac24cada",
+      "filename": "was_2006_22.zip",
+      "archive_sha256": "df5e8be49e51aa70f4bf686b98ab44ef11ee1eb260cbaf51308f89dc62449ae1",
+      "directory": "was_round_8",
+      "members": [
+        "was_round_8_hhold_eul_may_2025_230525.tab",
+        "was_round_8_person_eul_may_2025_230525.tab"
+      ]
+    },
+    {
+      "key": "etb_1977_2024",
+      "kind": "hf_zip_members",
+      "repo_id": "policyengine/policyengine-uk-data-private",
+      "repo_type": "model",
+      "revision": "a2039519d3b92aecc06c66dfd175cb46ac24cada",
+      "filename": "etb_1977_24.zip",
+      "archive_sha256": "96fff4868745a2a9bb1169dcecdaf9958c1179d81f9ef67494c1f29622c7d405",
+      "directory": "etb_1977_2024",
+      "members": [
+        "householdv2_1977-2024.tab"
+      ]
+    },
+    {
+      "key": "nts_2002_2024",
+      "kind": "hf_zip_members",
+      "repo_id": "policyengine/policyengine-uk-data-private",
+      "repo_type": "model",
+      "revision": null,
+      "filename": "nts_2002_24.zip",
+      "archive_sha256": null,
+      "directory": "nts_2002_2024",
+      "members": [
+        "household_eul_2002-2024.tab",
+        "individual_eul_2002-2024.tab",
+        "trip_eul_2002-2024.tab",
+        "stage_eul_2002-2024.tab",
+        "ticket_eul_2002-2024.tab"
+      ],
+      "upload_note": "UKDS SN 5340, 19th edition, TAB format. Upload the UKDS download zip unchanged as nts_2002_24.zip; any folder layout inside it is fine, the members are found by file name and checked against their pins."
+    },
+    {
+      "key": "lcfs_2024_25",
+      "kind": "hf_zip_members",
+      "repo_id": "policyengine/policyengine-uk-data-private",
+      "repo_type": "model",
+      "revision": null,
+      "filename": "lcfs_2024_25.zip",
+      "archive_sha256": null,
+      "directory": "lcfs_2024_25",
+      "members": [
+        "dvhh_uk_anon_v3_2024.tab",
+        "dvper_uk_anon_2024.tab"
+      ],
+      "upload_note": "UKDS SN 9603, TAB format. Upload the UKDS download zip unchanged as lcfs_2024_25.zip, alongside lcfs_2021_22.zip and lcfs_2023_24.zip."
+    },
+    {
+      "key": "hmrc_personal_incomes_ods",
+      "kind": "url",
+      "url_pin": "source_stages:Collated_Tables_3_1_to_3_11_2324.ods",
+      "directory": "hmrc",
+      "members": [
+        "Collated_Tables_3_1_to_3_11_2324.ods"
+      ]
+    },
+    {
+      "key": "chronicle_uk",
+      "kind": "hf_files",
+      "repo_id": "policyengine/microcosm-uk-build-inputs",
+      "repo_type": "dataset",
+      "revision": "d4c8b1917ee6e0b38fae4c6a03568f094fc682cc",
+      "path_in_repo": "chronicle-uk/abf0921b896d29ee0745ed2aefde8d6337ed7164",
+      "directory": "chronicle_uk",
+      "members": [
+        "manifest.json",
+        "consumer_facts.jsonl"
+      ]
+    },
+    {
+      "key": "input_mass_reference",
+      "kind": "hf_files",
+      "repo_id": "policyengine/microcosm-uk-build-inputs",
+      "repo_type": "dataset",
+      "revision": "95e0cb20fb37811c3f9009854d882a7415194926",
+      "path_in_repo": "input-mass-reference/fd41cb5f6cf6c4ef812320f21d1942173d49ce6f8725b21fbc9d9ca5423d298c",
+      "directory": "input_mass_reference",
+      "members": [
+        "uk_input_mass_reference.json"
+      ]
+    },
+    {
+      "key": "incumbent_efrs",
+      "kind": "hf_files",
+      "repo_id": "policyengine/policyengine-uk-data-private",
+      "repo_type": "model",
+      "revision_pin": "gates:input_mass_parity",
+      "path_in_repo": "",
+      "directory": "incumbent",
+      "members": [
+        "enhanced_frs_2024_25.h5"
+      ]
+    }
+  ],
+  "file_pins": {
+    "uk_input_mass_reference.json": {
+      "sha256": "b3490f5bbc46581f2b5f81560a249b8983e37f80c67f00988cd3ed960a7f81c4",
+      "canonical_evidence_sha256": "fd41cb5f6cf6c4ef812320f21d1942173d49ce6f8725b21fbc9d9ca5423d298c",
+      "note": "Byte pin of the hosted file; the build's own loader checks the canonical evidence digest. Regenerated at microcosm 0eac9bbbd (policyengine-uk 2.89.0); see the receipt beside it."
+    }
+  }
+}
