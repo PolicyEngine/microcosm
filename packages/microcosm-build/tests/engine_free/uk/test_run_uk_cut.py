@@ -39,6 +39,7 @@ def test_every_declared_input_resolves_to_a_committed_pin():
         "etb_1977_2024",
         "nts_2002_2024",
         "lcfs_2024_25",
+        "aps_2024_25",
         "hmrc_personal_incomes_ods",
         "chronicle_uk",
         "input_mass_reference",
@@ -82,7 +83,15 @@ def test_the_runner_pins_are_the_build_pins():
     assert incumbent.revision == identity["revision"]
     assert incumbent.files[0].sha256 == identity["sha256"]
     stage_pins = cut.committed_source_pins()
-    for key in ("frs_2024_25", "spi_2022_23", "was_round_8", "etb_1977_2024"):
+    for key in (
+        "frs_2024_25",
+        "spi_2022_23",
+        "was_round_8",
+        "etb_1977_2024",
+        "nts_2002_2024",
+        "lcfs_2024_25",
+        "aps_2024_25",
+    ):
         for pin in sources[key].files:
             assert pin.sha256 == stage_pins[pin.name]["sha256"]
             assert pin.size_bytes == stage_pins[pin.name]["size_bytes"]
@@ -143,6 +152,31 @@ def test_every_spine_tab_flag_has_a_pinned_input():
     assert values
     for value in values:
         assert value in fetched or value == str(paths.inputs / "frs_2024_25")
+
+
+def test_every_pinned_microdata_tab_reaches_the_spine():
+    """A tab a stage pins is fetched and passed, so a new one cannot be missed.
+
+    The spine refuses a scheduled stage whose tab is absent, but only after
+    preflight and the fetch; this catches it before anyone starts a cut.
+    """
+
+    stages = json.loads((cut.UK_DIR / "source_stages.json").read_text())
+    pinned = {
+        str(artifact["filename"])
+        for artifact in cut._walk_artifacts(stages)
+        if artifact.get("kind") == "private_microdata"
+    }
+    assert pinned
+    paths = cut.CutPaths(Path("/w"), "t", "0" * 40)
+    passed = {
+        Path(a).name
+        for a in cut.spine_argv(paths, python="py", staging_local_only=True)[2:]
+        if a.startswith("/w/inputs/")
+    }
+    fetched = {pin.name for s in cut.load_input_sources() for pin in s.files}
+    assert pinned <= fetched, sorted(pinned - fetched)
+    assert pinned <= passed, sorted(pinned - passed)
 
 
 # --------------------------------------------------------------------------- #

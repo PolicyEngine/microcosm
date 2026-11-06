@@ -82,7 +82,8 @@
         "individual_eul_2002-2024.tab",
         "trip_eul_2002-2024.tab",
         "stage_eul_2002-2024.tab",
-        "ticket_eul_2002-2024.tab"
+        "ticket_eul_2002-2024.tab",
+        "vehicle_eul_2002-2024.tab"
       ],
       "upload_note": "UKDS SN 5340, 19th edition, TAB format: the UKDS download zip, unchanged (its sha256 is the one UKDS puts in the download's file name). The members are found by file name and checked against their pins; if the file is ever lost, a UKDS licence holder re-uploads the same download."
     },
@@ -100,6 +101,20 @@
         "dvper_uk_anon_2024.tab"
       ],
       "upload_note": "UKDS SN 9603, 2nd edition, TAB format: a repack of the extracted files (all seven tabs and the two mrdoc workbooks, under lcfs_2024_25/), because the original download zip was no longer available. The members are found by file name and checked against their pins."
+    },
+    {
+      "key": "aps_2024_25",
+      "kind": "hf_zip_members",
+      "repo_id": "policyengine/policyengine-uk-data-private",
+      "repo_type": "model",
+      "revision": "ebebd1e051688b5c6ad08f0677c34ab574cbd793",
+      "filename": "aps_2024_25.zip",
+      "archive_sha256": "e37a7cd8617f0c6ef4b7a3ec58f30083b40a1eb3aece4a4efe1316d616232ebd",
+      "directory": "aps_2024_25",
+      "members": [
+        "apsp_a24m25_eul_pwta22.tab"
+      ],
+      "upload_note": "UKDS SN 9408, 1st edition (APS April 2024-March 2025), TAB format: a repack of the extracted files (the person tab, the file information, read9408.htm and the mrdoc folder, under aps_2024_25/), because the original download zip was no longer available. The member is found by file name and checked against its pin."
     },
     {
       "key": "hmrc_personal_incomes_ods",

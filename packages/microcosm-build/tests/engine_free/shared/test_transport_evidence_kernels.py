@@ -143,6 +143,27 @@ BINDING_MODULES_ADDED_AFTER_BASE = frozenset(
         "microcosm.fit.categorical",
         "microcosm.fit.donors",
         "microcosm.fit.held_out",
+        # microcosm#1405: the gate battery refuses a signing key the committed
+        # registry does not let sign, so it imports
+        # microcosm.data.gate_signing_keys, and with it the microcosm.data
+        # package, whose __init__ imports contract, loader, registry and
+        # release, and through them the rest.
+        "microcosm.data",
+        "microcosm.data.annual_projections",
+        "microcosm.data.compatibility_recertification",
+        "microcosm.data.contract",
+        "microcosm.data.denied_pools",
+        "microcosm.data.gate_signing_keys",
+        "microcosm.data.h5_boolean_append",
+        "microcosm.data.h5_enrichment",
+        "microcosm.data.loader",
+        "microcosm.data.registry",
+        "microcosm.data.release",
+        "microcosm.data.releases_record",
+        "microcosm.data.slack",
+        "microcosm.data.source_enrichment",
+        "microcosm.data.stored_inputs",
+        "microcosm.data.us_critical_targets",
     ]
 )
 BATTERY = "toy.gates.terminal"

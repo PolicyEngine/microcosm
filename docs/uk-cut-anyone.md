@@ -20,7 +20,7 @@ on for a re-cut; until then the hand-run launchers stay the fallback.
 | A clean checkout of `main` locked at the policyengine-uk you want | a "Lock policyengine-uk X" PR merged to main | `tools/run_uk_cut.py preflight` |
 | `HF_TOKEN` | write access to `policyengine/populace-uk-private` and `policyengine/populace-uk-staging`, and read access to the input repos below | preflight |
 | `MICROCOSM_UK_TERMINAL_GATE_SIGNING_KEY` | a key registered **active** in `microcosm.data.gate_signing_keys` (see [Signing keys](#signing-keys)) | `python -m microcosm.data.gate_signing_keys check` |
-| Cover under the UK Data Service licences for the FRS, SPI, WAS, LCFS, NTS and ETB | the licence holders | access to the input repositories (below) |
+| Cover under the UK Data Service licences for the FRS, SPI, WAS, LCFS, NTS, ETB and APS | the licence holders | access to the input repositories (below) |
 | About 60 GB of free disk, AC power, a quiet host | the machine | preflight |
 
 ## One command
@@ -169,27 +169,37 @@ is what admits a builder to the licensed inputs.
 | HMRC personal incomes ODS | gov.uk URL pinned in `source_stages.json` | fetched, matches |
 | Incumbent enhanced FRS | `policyengine-uk-data-private` `enhanced_frs_2024_25.h5` @ `a9e52499` | fetched, matches |
 | Input-mass reference | `policyengine/microcosm-uk-build-inputs` (private) `input-mass-reference/fd41cb5f…/` | fetched, matches |
-| Chronicle UK consumer artifact (about 7.4 GB) | `policyengine/microcosm-uk-build-inputs` `chronicle-uk/<the feed's source commit>/`, read at main | fetched, both files match the feed pin. The path follows `chronicle_feed.json`, so each re-pin needs its artifact hosted (below). 272c987's (main's pin) was uploaded on 2026-10-26 from the build #1359 pinned; abf0921's was rebuilt on Modal and reproduced the pin byte for byte |
-| NTS 2002-2024 (5 tabs) | `policyengine-uk-data-private` `nts_2002_24.zip` @ `559b69e9` | fetched, every member matches its pin |
+| Chronicle UK consumer artifact (about 8 GB) | `policyengine/microcosm-uk-build-inputs` `chronicle-uk/<the feed's source commit>/`, read at main | fetched, both files match the feed pin. The path follows `chronicle_feed.json`, so each re-pin needs its artifact hosted (below). 64753803's (main's pin since PolicyEngine/chronicle#411) was uploaded on 2026-11-06 from a local build that matches both digests; 272c987's on 2026-10-26 from the build #1359 pinned; abf0921's was rebuilt on Modal and reproduced the pin byte for byte |
+| NTS 2002-2024 (6 tabs) | `policyengine-uk-data-private` `nts_2002_24.zip` @ `559b69e9` | fetched, every member matches its pin |
 | LCFS 2024-25 (2 tabs) | `policyengine-uk-data-private` `lcfs_2024_25.zip` @ `11051052` (a repack of the extracted files) | fetched, every member matches its pin |
+| APS April 2024-March 2025 (1 tab) | `policyengine-uk-data-private` `aps_2024_25.zip` @ `ebebd1e0` (a repack of the extracted files) | fetched, the member matches its pin |
 
-### NTS and LCFS
+### NTS, LCFS and APS
 
-Both were uploaded once by a UKDS licence holder (2026-10-25) and are pinned
-by revision and archive sha256 in `tools/uk_cut_inputs.json`:
+Each was uploaded once by a UKDS licence holder (NTS and LCFS on 2026-10-25,
+APS on 2026-11-06) and is pinned by revision and archive sha256 in
+`tools/uk_cut_inputs.json`:
 
 - `nts_2002_24.zip` is the UK Data Service TAB download of SN 5340 (19th
   edition), unchanged.
 - `lcfs_2024_25.zip` (SN 9603, 2nd edition, TAB) is a repack of the
   extracted files: all seven tabs and the two mrdoc workbooks, under
   `lcfs_2024_25/`. The original download zip was no longer available.
+- `aps_2024_25.zip` (SN 9408, 1st edition, TAB) is a repack of the
+  extracted files for the same reason: the person tab, the file information,
+  `read9408.htm` and the mrdoc folder, under `aps_2024_25/`.
+
+The NTS vehicle tab, which `lcfs_consumption` reads since #1426, and the APS
+tab, which `aps_occupation` reads since #1511 (#1490), are fetched like the
+others. The vehicle tab is in the NTS download already, so it needed no
+upload.
 
 The runner finds each tab by name inside the zip and checks it against its
-pin, so the folder layout inside does not matter. To check both without
+pin, so the folder layout inside does not matter. To check them without
 building anything:
 
 ```bash
-uv run --no-sync python tools/run_uk_cut.py fetch --only nts_2002_2024 --only lcfs_2024_25
+uv run --no-sync python tools/run_uk_cut.py fetch --only nts_2002_2024 --only lcfs_2024_25 --only aps_2024_25
 ```
 
 A tab that differs from its pin is refused by name: that upload is a

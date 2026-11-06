@@ -654,9 +654,11 @@ def spine_argv(paths: CutPaths, *, python: str, staging_local_only: bool) -> lis
         "--nts-trip-tab", tab("nts_2002_2024", "trip_eul_2002-2024.tab"),
         "--nts-stage-tab", tab("nts_2002_2024", "stage_eul_2002-2024.tab"),
         "--nts-ticket-tab", tab("nts_2002_2024", "ticket_eul_2002-2024.tab"),
+        "--nts-vehicle-tab", tab("nts_2002_2024", "vehicle_eul_2002-2024.tab"),
         "--lcfs-hh-tab", tab("lcfs_2024_25", "dvhh_uk_anon_v3_2024.tab"),
         "--lcfs-person-tab", tab("lcfs_2024_25", "dvper_uk_anon_2024.tab"),
         "--etb-tab", tab("etb_1977_2024", "householdv2_1977-2024.tab"),
+        "--aps-tab", tab("aps_2024_25", "apsp_a24m25_eul_pwta22.tab"),
         "--release-candidate",
         "--spine-h5", str(paths.spine_h5),
     ]  # fmt: skip
