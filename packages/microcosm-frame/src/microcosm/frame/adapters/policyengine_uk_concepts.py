@@ -469,7 +469,13 @@ UK_ENGINE_DEFAULT_INPUTS: dict[str, str] = {
         "below advanced level receives education only as a qualifying young "
         "person (reg. 12(1A)): Universal Credit eligibility is overstated for "
         "such a student who is not a qualifying young person, has maintenance "
-        "funding and whom no exception covers (microcosm#1095; for María's "
+        "funding and whom no exception covers. It is understated for an 18- or "
+        "19-year-old on the FRS adult table on such a course who reports no "
+        "Universal Credit, JSA or ESA of their own and is without parental "
+        "support: policyengine-uk 2.174.1 has no input for parental support, "
+        "so it doesn't apply reg. 14(1)(a), and such a person counts as a "
+        "qualifying young person. Such records are mostly young people living "
+        "away from their parents (microcosm#1095, microcosm#1535; for María's "
         "signature)."
     ),
 }
