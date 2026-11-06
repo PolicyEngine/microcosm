@@ -562,9 +562,12 @@ record one of the four modes, before any release directory exists.
   calibrate stage's peak is the artifact write.
 - A checkpoint written before the sparse matrix (measures as dense H5
   columns) is refused by `--stage calibrate`; re-run `--stage materialize`.
-- To reproduce the 2026-09-22 hours rebuild (#974), pass `--soi-mode totals`.
-  To reproduce a build that ran as `full` after `b7922b089`, pass
-  `--soi-mode full`.
+- To reproduce the 2026-09-22 hours rebuild (#974), pass
+  `--families snap,medicaid,soi --soi-mode totals`. To reproduce a build that
+  ran as `full` after `b7922b089`, pass
+  `--families snap,medicaid,soi --soi-mode full`. Both builds predate the `age`
+  family, which `--families` now includes by default
+  ([the state age groups note](us-acs-local-state-age.md)).
 - A checkpoint materialized under an earlier default records its own mode and
   packages as that mode.
 - `--soi-mode` only matters when `soi` is in `--families`. `state_cd` is

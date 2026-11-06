@@ -15,6 +15,8 @@ Properties these tests check for generated inputs:
   one target per age-group fact, at that fact's count, and changes no other.
 - A state's fifteen groups tile ``[0, inf)`` and sum to its total, and the
   surface check names every state that breaks either.
+- A household counts its members in a group's half-open age range, and only
+  in its own state, so the fifteen groups count each person once.
 - Moving to new state totals sets each state's level, keeps each district's
   share of its state, and makes each state's districts (and, on the county
   rung, its counties) sum to its total.
@@ -371,6 +373,115 @@ def test_the_surface_check_names_each_broken_state(surface, data) -> None:
         assert all(f"state {state}" in problem for problem in problems), problems
 
 
+# --- What each household counts toward a group ------------------------------
+
+
+@lru_cache
+def _fiscal_tool():
+    path = (
+        paths_for("microcosm-build").repository
+        / "tools"
+        / "build_us_fiscal_refresh_release.py"
+    )
+    spec = importlib.util.spec_from_file_location(
+        "build_us_fiscal_refresh_release", path
+    )
+    module = importlib.util.module_from_spec(spec)
+    assert spec.loader is not None
+    spec.loader.exec_module(module)
+    return module
+
+
+@lru_cache
+def _indiana_age_specs() -> tuple:
+    registry = _compile(_state_facts("18", _values(0)), state_age_band_targets=True)
+    return tuple(spec for spec in registry.specs if _is_age_spec(spec))
+
+
+def _spec_for_group(value_id: str):
+    matches = [spec for spec in _indiana_age_specs() if f".{value_id}." in spec.name]
+    assert len(matches) == 1
+    return matches[0]
+
+
+def _household_values(person_households, ages, household_ids, state_fips, metadata):
+    """The materializer's helper, on a frame holding only the columns it reads."""
+
+    household = pd.DataFrame({"household_id": household_ids, "state_fips": state_fips})
+    person = pd.DataFrame({"person_household_id": person_households})
+    tables = {"household": household, "person": person}
+    return _fiscal_tool()._population_age_household_values(
+        frame=SimpleNamespace(table=tables.__getitem__),
+        household=household,
+        age=np.asarray(ages),
+        metadata=metadata,
+    )
+
+
+@pytest.mark.parametrize(("value_id", "lower", "upper"), AGE_GROUPS)
+def test_a_group_counts_its_first_age_and_stops_before_the_next_group(
+    value_id, lower, upper
+) -> None:
+    last = 120 if upper is None else upper - 1
+    inside = sorted({lower, last})
+    outside = [
+        age
+        for age in (lower - 1, None if upper is None else upper)
+        if age is not None and age >= 0
+    ]
+    ages = [*inside, *outside]
+    ids = list(range(10, 10 + len(ages)))
+
+    values = _household_values(
+        ids, ages, ids, [18] * len(ages), _spec_for_group(value_id).metadata
+    )
+
+    assert values.tolist() == [1.0] * len(inside) + [0.0] * len(outside)
+
+
+def test_a_group_counts_nobody_outside_its_state() -> None:
+    values = _household_values(
+        [1, 2],
+        [5, 5],
+        [1, 2],
+        [18, 6],
+        _spec_for_group("age_5").metadata,
+    )
+
+    assert values.tolist() == [1.0, 0.0]
+
+
+@_SETTINGS
+@given(
+    st.lists(st.tuples(st.integers(0, 3), st.integers(0, 120)), min_size=1, max_size=60)
+)
+def test_the_groups_count_each_person_once(people) -> None:
+    members, ages = zip(*people, strict=True)
+    household_ids = [40, 30, 20, 10]
+    person_households = [household_ids[member] for member in members]
+    state_fips = np.asarray([18, 18, 6, 18])
+
+    counted = {
+        spec.name: _household_values(
+            person_households, ages, household_ids, state_fips, spec.metadata
+        )
+        for spec in _indiana_age_specs()
+    }
+
+    sizes = np.bincount(members, minlength=4).astype(float)
+    assert len(counted) == len(AGE_GROUPS)
+    np.testing.assert_array_equal(sum(counted.values()), sizes * (state_fips == 18))
+    for spec in _indiana_age_specs():
+        lower = float(spec.metadata["age_lower_bound"])
+        upper = float(spec.metadata["age_upper_bound"])
+        direct = [
+            sum(lower <= age < upper for member, age in people if member == index)
+            * float(state_fips[index] == 18)
+            for index in range(4)
+        ]
+        assert counted[spec.name].tolist() == direct
+
+
 # --- State totals, districts and counties -----------------------------------
 
 
@@ -414,14 +525,33 @@ def test_new_state_totals_keep_each_districts_share(case) -> None:
     assert set(moved["cd"]) == set(districts)
     for state, total in totals.items():
         block = [code for code in districts if code // 100 == state]
-        assert math.fsum(moved["cd"][code] for code in block) == pytest.approx(
-            total, rel=1e-12
-        )
+        assert math.fsum(moved["cd"][code] for code in block) == total
         for code in block:
             assert moved["cd"][code] > 0
             assert moved["cd"][code] / total == pytest.approx(
                 districts[code] / ladder_states[state], rel=1e-9
             )
+
+
+def test_the_largest_district_takes_the_rounding_residual() -> None:
+    module = _tool()
+    districts = {601: 696906.0, 602: 493818.0, 603: 2667697.0}
+    ladder_states = {6: math.fsum(districts.values())}
+    total = 55186284.0
+    scaled = {
+        code: total * value / ladder_states[6] for code, value in districts.items()
+    }
+    # Plain scaling leaves these districts summing to 55186283.99999999.
+    assert math.fsum(scaled.values()) != total
+
+    moved = module.with_state_population_totals(
+        {"state": ladder_states, "cd": districts}, ladder_states, {6: total}
+    )
+
+    assert math.fsum(moved["cd"].values()) == total
+    assert moved["cd"][601] == scaled[601]
+    assert moved["cd"][602] == scaled[602]
+    assert moved["cd"][603] != scaled[603]
 
 
 @_SETTINGS

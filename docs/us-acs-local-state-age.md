@@ -36,7 +36,8 @@ Census counts directly, and the 12-to-17 and 18-to-24 groups split at 18.
 one `census_population` target per age-group fact and none for the all-ages
 rows. Without the flag, the default, the compile drops every Vintage 2025
 age-group fact before it builds targets, so every other build keeps its
-targets: on the e86a83bb feed, the default compile gives the same 33,250
+targets: on the e86a83bb feed, `compile_us_fiscal_target_registry(age_targets=True)`
+followed by `apply_us_medicaid_enrollment_substitutions` gives the same 33,250
 targets as the previous feed, and opening the fence adds the 765 age groups
 (51 x 15) and changes no other target. Only the ACS local release opens it.
 The target-parity manifest declares the `census_pep.v2025` family an
@@ -133,8 +134,8 @@ scaled to its state's Vintage 2025 estimate.
 Census resident population counts people in group quarters. The staging frame
 keeps each group-quarters person as a one-person household weighted by PWGTP,
 except children under 15: the staging builder drops 1,946 of them (51,806
-weighted, 0.037% of the frame's household weight) and records the reviewed
-limitation `acs_group_quarters_children_outside_spm_universe` (see
+weighted, 0.037% of the raw ACS household weight before removal) and records
+the reviewed limitation `acs_group_quarters_children_outside_spm_universe` (see
 [the ACS SPM role note](us-acs-spm-role.md)). Census's 0-to-5, 6-to-11 and
 12-to-17 counts include those children, so calibration spreads their weight
 over household children of the same state and age group. Nationally they make
@@ -145,13 +146,21 @@ up 0.07% of the 72,548,879 children under 18 that Census counts.
 `--families snap,medicaid,soi` builds the surface from before microcosm#1528:
 no age targets, and state and district populations from the 2020 ladder.
 `materialize_rss.json` records each checkpoint's families, and the package
-stage's refresh recipe names them with `--families`, so an older release's
-recipe rebuilds its own surface; a record that names no families reads as
-`snap,medicaid,soi`, the default until microcosm#1528.
+stage's refresh recipe names them with `--families`; a record that names no
+families reads as `snap,medicaid,soi`, the default until microcosm#1528.
+Command lines stored before microcosm#1528, such as the release recipes in
+`experiments/us-acs-local-hours-rebuild-20260922/`, name no `--families`, so
+they take the new default: they add age targets on this feed and refuse a feed
+without the age groups. Add `--families snap,medicaid,soi` to replay one.
 
 ## What the family leaves out
 
 The family adds no sex, race or Hispanic-origin dimension and no age targets
 for counties or districts, and the release still has no household-count
-target (microcosm#880). The pull request for microcosm#1528 reports the
-rebuilt release's age fit by state and the dashboard's state audit.
+target (microcosm#880).
+
+As of 2026-11-06 no release has fit this surface. PolicyEngine/microcosm#1531
+reports the current slices' age fit and a projection of this family onto them,
+from the state audit in PolicyEngine/child-poverty-impact-dashboard#129. A
+rebuild needs a national donor that passes the staging build's donor checks,
+which the default donor `populace-us-2024-spm-20260915` fails.
