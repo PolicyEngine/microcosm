@@ -252,13 +252,16 @@ def _dead_support(
         selected_household_ids=(1, 2, 3, 4),
         source_year=2023,
     )
-    return replace_uk_spi_support_tables(
+    support = replace_uk_spi_support_tables(
         person=dead.person,
         benunit=dead.benunit,
         household=dead.household,
         seed=7,
         source_year=2023,
     )
+    # The SPI income stage refuses the artifact's bare clone_index, which no
+    # spine stage writes (microcosm#931).
+    return replace(support, household=support.household.drop(columns="clone_index"))
 
 
 def _write_donor(path: Path, *, drop: str | None = None) -> None:
