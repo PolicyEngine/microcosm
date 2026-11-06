@@ -256,6 +256,7 @@ def test_the_tagged_publisher_refuses_a_repository_with_releases_json(
         )
 
     assert "microcosm-publish-release-build" in str(refusal.value)
+    assert "takes no new builds there" in str(refusal.value)
     assert hub.tags == []
     assert hub.uploads == []
     assert [event for event, _ in hub.events] == []
@@ -384,6 +385,21 @@ def test_prepare_build_folder_release_publishes_the_checksum_ledger(
     assert roles["sha256sums.txt"] == "checksums"
     assert roles["populace_us_2024_acs_local.h5"] == "dataset"
     assert prepared.release_role == "local_area"
+
+
+def test_build_folder_identity_says_where_a_tagged_release_publishes(
+    release_dir: Path,
+) -> None:
+    """A US release publishes with tags through tools/publish_release.sh; the
+    other UK releases take no new builds once the UK repository records its
+    builds in releases.json."""
+    with pytest.raises(
+        ValueError, match="does not publish into build folders"
+    ) as refusal:
+        release_module.build_folder_identity(release_dir)
+
+    assert "tools/publish_release.sh" in str(refusal.value)
+    assert "take no new builds" in str(refusal.value)
 
 
 def test_prepare_build_folder_release_refuses_a_tagged_release(
