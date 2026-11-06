@@ -273,8 +273,10 @@ Builds, calibrations, and releases run outside PR CI, need gated Hugging Face
 data and credentials, and cannot run from forks. Release publication is a
 deliberate human step. A US release publishes with tags and `latest.json`
 (`tools/publish_release.sh` → `microcosm-publish-release`), checked by
-`tools/preflight_us_release_gates.py`; so do the June 2023 UK release and
-`populace-uk-<year>-<tier>-k<N>` releases. The UK national, dense and
+`tools/preflight_us_release_gates.py`. The UK repository's switch moved the
+June 2023 UK build into release `populace-uk-2023`, which takes no new builds,
+and `populace-uk-<year>-<tier>-k<N>` releases have no publication path there.
+The UK national, dense and
 local-area releases publish each build into its own folder through the
 emitter (`microcosm-publish-release-build`, from
 `microcosm.build.release_publication`), which records it in the repository's

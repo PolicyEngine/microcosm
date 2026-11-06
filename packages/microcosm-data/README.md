@@ -31,8 +31,10 @@ own folder, `releases/<release>/<build>/`, and the repository's
 the current build's `release_manifest.json`, then the dataset it names, all
 from the build's folder, and check the SHA-256 and engine versions the same
 way. `load("uk", build="<build>")` loads a listed build instead (a withdrawn
-one with a warning). An entry whose repository has no `releases.json` follows
-its pointer file, as US releases do. `available()` lists
+one with a warning). `load("uk", 2023)` reads release `populace-uk-2023` the
+same way: the UK repository's switch moved the June 2023 build into it as its
+only and current build. An entry whose repository has no `releases.json`
+follows its pointer file, as US releases do. `available()` lists
 the default-variant `(country, year)` pairs (the ones a bare ``load(country, year)``
 resolves); `available_variants()` lists every published
 `(country, year, variant)`, non-default lines included.

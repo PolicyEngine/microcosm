@@ -107,6 +107,12 @@ def register(spec: DatasetSpec) -> DatasetSpec:
 
 register(
     DatasetSpec(
+        # The June 2023 build, populace-uk-2023-dd68c73-4aa4b14-20260619T023711Z.
+        # Until its repository switches to releases.json, the loader follows
+        # latest.json, which names it. The switch moves it into its own folder
+        # as the only and current build of release populace-uk-2023, under its
+        # old release ID, and deletes latest.json; the loader then reads it
+        # there. No new builds publish to this release.
         country="uk",
         year=2023,
         variant=DEFAULT_VARIANT,
@@ -115,6 +121,7 @@ register(
         engine_module="policyengine_uk.data",
         engine_class="UKSingleYearDataset",
         engine_package="policyengine-uk",
+        release="populace-uk-2023",
     )
 )
 

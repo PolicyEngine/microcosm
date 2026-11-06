@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 #
 # Publish a Microcosm release that keeps tags and latest.json (every US
-# release, the June 2023 UK release and populace-uk-<year>-<tier>-k<N>
-# releases) and fire its Slack alert, in one tracked path.
+# release) and fire its Slack alert, in one tracked path. It refuses any
+# repository that records its builds in releases.json, as the UK repository
+# does since its switch.
 #
 # The UK national, dense and local-area releases publish each build into its
 # own folder through the emitter with `microcosm-publish-release-build`

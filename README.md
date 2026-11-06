@@ -515,10 +515,13 @@ publish into build folders and any repository that has `releases.json`. The
 moment `latest.json` goes live, the publish CLI posts a release alert to the
 country's channel, `#populace-us`.
 
-The UK repository's other releases, the June 2023 release and
-`populace-uk-<year>-<tier>-k<N>` releases, have no publication path since its
-switch: the emitter command takes only the three releases above, and the
-tagged publisher refuses a repository that has `releases.json`.
+The UK repository's switch moved the June 2023 build, which `latest.json`
+named, into its own folder as the only and current build of release
+`populace-uk-2023`; `microcosm.data.load("uk", 2023)` reads it there, and no
+new builds publish to that release. `populace-uk-<year>-<tier>-k<N>` releases
+have no publication path in the UK repository since its switch: the emitter
+command takes only the three releases above, and the tagged publisher refuses
+a repository that has `releases.json`.
 
 The publisher uploads only the contract files, the release manifest's
 artifacts and any `--extra-file`. The US fiscal-refresh tool therefore binds

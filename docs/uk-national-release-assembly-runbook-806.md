@@ -236,5 +236,6 @@ again: remove it, then run the command again.
 The 2025 national release is the default UK load (microcosm#823):
 `microcosm.data.load("uk")` and `microcosm.data.load("uk", 2025)` read its
 current build from `releases.json`, and `load(..., build=<build>)` loads a
-listed build instead. An explicit `microcosm.data.load("uk", 2023)`
-continues to follow `latest.json`.
+listed build instead. An explicit `microcosm.data.load("uk", 2023)` reads
+the current build of release `populace-uk-2023`, the June 2023 build that the
+switch moved there from `latest.json`.
