@@ -517,6 +517,32 @@ release (whose pointer is `latest.json`) and `populace-uk-<year>-<tier>-k<N>`
 releases, have no publication path after its switch yet; that is open for
 the switch.
 
+**The switch.** `microcosm.build.build_folder_switch` moves a repository over,
+once, in two steps. Each step only reads the repository and prints, as JSON,
+what it would do, unless given `--write`:
+
+```bash
+# 1. Copy each tagged build into its folder, one commit per build; run it
+#    again later to copy builds published since. Hugging Face copies the
+#    files on its own servers.
+uv run python -m microcosm.build.build_folder_switch copy <owner/repository> \
+  [--include <tag>=<release>] [--exclude <tag>] [--write]
+# 2. In one commit, write releases.json and delete every latest*.json file.
+uv run python -m microcosm.build.build_folder_switch switch <owner/repository> \
+  [--include <tag>=<release>] [--retire-pointer <latest file>] \
+  [--current <release>=<build>] [--default <release>] [--write]
+```
+
+The copy step moves every tag of a release that publishes into build folders
+whose manifest names that tag, and each release-per-build tag that
+`--include` names (the June 2023 UK release, or a US release), and refuses a
+build any of whose files does not match its manifest. The switch refuses
+unless every such build's folder holds exactly its copied files, every
+pointer file's build moves or `--retire-pointer` deletes that pointer file,
+and the emitter interface's checks pass. Each build keeps the date of its
+tagged commit as `published_at`, and each pointer file's build becomes its
+release's current build. The module's docstring describes both steps in full.
+
 The publisher uploads only the contract files, the release manifest's
 artifacts and any `--extra-file`. The US fiscal-refresh tool therefore binds
 its terminal gate verdicts as manifest artifacts: `input_coverage.json`,
