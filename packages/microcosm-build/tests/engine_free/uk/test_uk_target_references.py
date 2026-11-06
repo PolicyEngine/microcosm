@@ -134,8 +134,10 @@ _TEST_PATHS = paths_for("microcosm-build")
 # measured diagnostics; microcosm#1490: the APS's people in employment by SOC
 # 2020 major group, nine groups over the twelve region-tier areas, and by
 # sub-major group and sex, 50 UK rows; the November event data: PRIS 2026's
-# Scottish landlords' receipts and expenses, measured diagnostics
-ACTIVE_REFERENCE_COUNT = 1585
+# Scottish landlords' receipts and expenses, measured diagnostics, and ONS's
+# single years 16 to 24 by sex in place of the 16-17, 18-19 and 20-24 sex
+# bands (eighteen rows for six)
+ACTIVE_REFERENCE_COUNT = 1597
 REGION_TIER_LEVEL = {code: level for level, code in UK_REGION_TIER}
 
 
