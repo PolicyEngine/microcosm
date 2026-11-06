@@ -201,9 +201,12 @@ def test_pointer_files_refuse_a_build_made_current(
     assert outcome.receipt["status"] == "refused"
     assert outcome.receipt["error_code"] == "POINTER_FILES_PRESENT"
     # The command refuses such a repository before handing anything over;
-    # this is a pointer file that appeared after that check.
-    assert "tools/publish_release.sh" in outcome.explanation()
-    assert "without --make-current" not in outcome.explanation()
+    # this is a pointer file that appeared after that check. The tagged
+    # publisher refuses these releases, so the advice is to remove the file.
+    explanation = outcome.explanation()
+    assert "tools/publish_release.sh" not in explanation
+    assert "remove it, then run the command again" in explanation
+    assert "without --make-current" not in explanation
     assert (UK_REPO_ID, "releases.json") not in client.hub_files
 
 
