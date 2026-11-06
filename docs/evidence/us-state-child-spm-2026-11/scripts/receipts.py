@@ -100,7 +100,7 @@ ext["populace_us_2024_calibration.npz, revision 15cefac4"] = digest[
     "15cefac4/populace_us_2024_calibration.npz"
 ]
 r = {
-    "purpose": "Receipts for the state child SPM diagnosis. Aggregates by state and national totals only; no household rows.",
+    "purpose": "Receipts for the state child SPM note. Aggregates by state and national totals only; no household rows.",
     "date": "2026-11-01",
     "model": {
         "policyengine_us": v[0],

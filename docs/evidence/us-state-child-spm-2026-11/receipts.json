@@ -1,5 +1,5 @@
 {
-  "purpose": "Receipts for the state child SPM diagnosis. Aggregates by state and national totals only; no household rows.",
+  "purpose": "Receipts for the state child SPM note. Aggregates by state and national totals only; no household rows.",
   "date": "2026-11-01",
   "model": {
     "policyengine_us": "2.90.2",
@@ -544,8 +544,8 @@
       "bytes": 1789
     },
     "scripts/receipts.py": {
-      "sha256": "463e6a2b67a62031fe2af04378ee40f98e63d657ea0611d0ebb468cdf367530d",
-      "bytes": 4236
+      "sha256": "59b70392fd0c2548c137e9832d3c62a21571d4fa7df027ba6331993ad37862a3",
+      "bytes": 4231
     },
     "scripts/rent2.py": {
       "sha256": "4bc02b7765cd72883e1cd76b9a84c06ff913afa71b1561cf2bc9bab86d5b99e9",
