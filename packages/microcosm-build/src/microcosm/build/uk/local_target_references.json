@@ -255,6 +255,10 @@
       "dft.local_bus_journeys": {
         "provider_id": "dft",
         "label": "Local bus passenger journeys"
+      },
+      "hmrc.benefits_in_kind": {
+        "provider_id": "hmrc",
+        "label": "Benefits in kind"
       }
     },
     "target_categories": {

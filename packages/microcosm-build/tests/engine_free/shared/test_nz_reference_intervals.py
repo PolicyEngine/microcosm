@@ -320,7 +320,7 @@ def test_shared_endpoint_labels_resolve_to_the_ordered_cuts(table, rows, endpoin
 
 
 def test_central_ageing_keeps_fractional_cent_cuts_exactly():
-    """The coarse table scales exactly: the central first cut is 4,468,436 cents."""
+    """The coarse table scales exactly: the central first cut is 4,473,964 cents."""
     _, intervals, receipt = resolve_reference_profiles(
         _document("target_references.json"),
         _document("reference_profiles.json"),
@@ -331,7 +331,7 @@ def test_central_ageing_keeps_fractional_cent_cuts_exactly():
     tables = {table["id"]: table for table in intervals["tables"]}
     coarse = tables[COARSE]
     first = coarse["first_lower_cut_cents"]
-    assert Fraction(first["numerator"], first["denominator"]) == 4_468_436
+    assert Fraction(first["numerator"], first["denominator"]) == 4_473_964
     by_id = {band["id"]: band for band in coarse["bands"]}
     cuts = {
         band: Fraction(
@@ -340,11 +340,12 @@ def test_central_ageing_keeps_fractional_cent_cuts_exactly():
         )
         for band in ("b01", "b06")
     }
-    # $50,000 and $125,000 at the central factor 1.117109 (design 80, section 3).
-    assert cuts == {"b01": Fraction(5_585_545), "b06": Fraction("13963862.5")}
+    # $50,000 and $125,000 at the September 2026 central factor 1.118491 (design 80,
+    # section 3, works the same cuts at its 1.117109).
+    assert cuts == {"b01": Fraction(5_592_455), "b06": Fraction("13981137.5")}
     parsed = interval_table(coarse)
     positions = classify_records(
-        parsed, [4_468_437, 13_963_862, 13_963_863], ["included"] * 3
+        parsed, [4_473_965, 13_981_137, 13_981_138], ["included"] * 3
     )
     assert [parsed.band_ids[index] for index in positions] == ["b01", "b06", "b07"]
     # The national and age tables stay unscaled.

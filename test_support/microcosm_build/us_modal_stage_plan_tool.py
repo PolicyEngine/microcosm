@@ -3,9 +3,12 @@
 from __future__ import annotations
 
 import copy
+import hashlib
 import importlib.util
 import json
 import sys
+from collections.abc import Callable
+from pathlib import Path
 
 from test_support.paths import paths_for
 
@@ -39,9 +42,24 @@ TEST_COLLECTOR_ORIGIN = "https://collector.invalid"
 #: What the image's emitter answers to ``microcosm-emitter version``. Tests
 #: get this answer instead of running a command at the image's emitter path.
 RECORDED_EMITTER_VERSION = {
-    "emitter_version": "0.11.9",
+    "emitter_version": "0.13.0",
     "protocol_versions": [1],
     "collector_origin": TEST_COLLECTOR_ORIGIN,
+}
+#: What the runner records of the image emitter's ``microcosm-emitter status``
+#: after the tool. Tests get this record instead of running a command at the
+#: image's emitter path.
+RECORDED_EMITTER_STATUS = {
+    "runs": [
+        {
+            "run_id": "fake-run.run",
+            "producer_id": "recorded-producer",
+            "upload_state": "pending",
+            "reason": "collector_token_expired",
+            "undelivered_events": 3,
+        }
+    ],
+    "problem": None,
 }
 #: A made-up collector token. Tests never use a real credential.
 DUMMY_COLLECTOR_TOKEN = "dummy-collector-token-not-a-credential"
@@ -56,7 +74,12 @@ RUNNER_TOKEN_SECRET = {
 }
 
 
-def load_app(monkeypatch, *, real_emitter_version: bool = False):
+def load_app(
+    monkeypatch,
+    *,
+    real_emitter_version: bool = False,
+    real_emitter_status: bool = False,
+):
     """``tools/modal_us_stage.py`` imported against a stub ``modal`` module.
 
     The stub answers ``is_local()`` with False, so the module defines its
@@ -64,10 +87,12 @@ def load_app(monkeypatch, *, real_emitter_version: bool = False):
     calls (commit, reload) are recorded, not performed. Each
     ``@app.function`` keeps its function and records its Modal options as
     ``modal_options``. ``_emitter_version`` answers
-    ``RECORDED_EMITTER_VERSION``, so no test runs an emitter installed at the
+    ``RECORDED_EMITTER_VERSION`` and ``_emitter_status`` answers
+    ``RECORDED_EMITTER_STATUS``, so no test runs an emitter installed at the
     image's path (``/usr/local/bin/microcosm-emitter``) on the test machine;
-    ``real_emitter_version`` keeps the module's own, for a test that replaces
-    what it runs. The environment holds ``RUNNER_TOKEN_SECRET``, as a
+    ``real_emitter_version`` and ``real_emitter_status`` keep the module's
+    own, for a test that replaces what they run. The environment holds
+    ``RUNNER_TOKEN_SECRET``, as a
     container launched with ``--run`` does; a test of a container without
     the token removes it.
     """
@@ -96,6 +121,12 @@ def load_app(monkeypatch, *, real_emitter_version: bool = False):
             module,
             "_emitter_version",
             lambda: copy.deepcopy(RECORDED_EMITTER_VERSION),
+        )
+    if not real_emitter_status:
+        monkeypatch.setattr(
+            module,
+            "_emitter_status",
+            lambda env: copy.deepcopy(RECORDED_EMITTER_STATUS),
         )
     for name, value in RUNNER_TOKEN_SECRET.items():
         monkeypatch.setenv(name, value)
@@ -169,3 +200,113 @@ def smoke_plan_data() -> dict:
             },
         },
     }
+
+
+# --------------------------------------------------------------------------- #
+# The run path end to end, against local directories                          #
+# --------------------------------------------------------------------------- #
+
+#: A stand-in for a resumable tool: its first run writes a checkpoint, a
+#: later run of the same state finds it and only rewrites the output.
+FAKE_TOOL_SCRIPT = """\
+import os, pathlib, sys, time
+state, data = pathlib.Path(sys.argv[1]), pathlib.Path(sys.argv[2])
+ckpt = state / "ckpt" / "step1.bin"
+resumed = ckpt.exists()
+if not resumed:
+    ckpt.parent.mkdir(parents=True, exist_ok=True)
+    ckpt.write_bytes(data.read_bytes() * 3)
+(state / "out").mkdir(parents=True, exist_ok=True)
+(state / "out" / "result.txt").write_text(f"resumed={resumed}\\n")
+print("fake tool", "resumed" if resumed else "fresh", flush=True)
+time.sleep(float(os.environ.get("MICROCOSM_FAKE_SLEEP", "0")))
+"""
+FAKE_PAYLOAD = b"fake input"
+FAKE_SHA = hashlib.sha256(FAKE_PAYLOAD).hexdigest()
+
+
+def fake_tool(
+    timeout_s: int = 3600, overhead: int = 60, **stage: object
+) -> plan_lib.ToolSpec:
+    """A registered tool whose one stage, ``run``, runs ``FAKE_TOOL_SCRIPT``."""
+
+    resources = plan_lib.Resources("check", 2.0, 8 * 1024, timeout_s=timeout_s)
+    return plan_lib.ToolSpec(
+        name="fake-stage",
+        script=None,
+        inputs=("data",),
+        stages={
+            "run": plan_lib.StageSpec(
+                "run",
+                resources,
+                ("data",),
+                runner_overhead_seconds=overhead,
+                **stage,  # type: ignore[arg-type]
+            )
+        },
+        options={},
+        owned_flags=frozenset(),
+        argv_builder=lambda plan, paths, state: [
+            "-c",
+            FAKE_TOOL_SCRIPT,
+            state,
+            paths["data"],
+        ],
+    )
+
+
+def fake_plan(**overrides) -> dict:
+    """A plan for ``fake_tool``'s stage, run ``fake-run``, with top-level overrides."""
+
+    data = {
+        "schema": plan_lib.PLAN_SCHEMA,
+        "tool": "fake-stage",
+        "stage": "run",
+        "run_id": "fake-run",
+        "source": {"commit": "a" * 40, "branch": "main"},
+        "inputs": {
+            "data": {
+                "uri": f"volume://cas/sha256/{FAKE_SHA}/data.bin",
+                "sha256": FAKE_SHA,
+            }
+        },
+    }
+    data.update(overrides)
+    return data
+
+
+def install_fake_runner(app, tmp_path: Path, monkeypatch) -> Callable:
+    """Point ``app``'s mounts, clone and venv at local directories under ``tmp_path``.
+
+    Returns ``install(tool)``, which registers ``tool`` and returns ``app``.
+    The venv's Python is this interpreter, and the clone's git state is a
+    stand-in that passes every check.
+    """
+
+    def install(tool: plan_lib.ToolSpec):
+        monkeypatch.setitem(plan_lib.TOOLS, tool.name, tool)
+        return app
+
+    for name in ("inputs", "runs", "work", "repo", "venv/bin"):
+        (tmp_path / name).mkdir(parents=True)
+    (tmp_path / "venv" / "bin" / "python").symlink_to(sys.executable)
+    cas = tmp_path / "inputs" / "cas" / "sha256" / FAKE_SHA
+    cas.mkdir(parents=True)
+    (cas / "data.bin").write_bytes(FAKE_PAYLOAD)
+    monkeypatch.setattr(plan_lib, "INPUTS_MOUNT", str(tmp_path / "inputs"))
+    monkeypatch.setattr(plan_lib, "RUNS_MOUNT", str(tmp_path / "runs"))
+    monkeypatch.setattr(plan_lib, "WORK_ROOT", str(tmp_path / "work"))
+    monkeypatch.setattr(plan_lib, "IMAGE_REPO_ROOT", str(tmp_path / "repo"))
+    monkeypatch.setattr(plan_lib, "IMAGE_VENV", str(tmp_path / "venv"))
+    monkeypatch.setattr(
+        app,
+        "_git_state",
+        lambda plan: {
+            "head_matches_plan": True,
+            "tree_clean": True,
+            "branch_verified": True,
+            "tool_present": True,
+            "tree_files_verified": True,
+        },
+    )
+    return install

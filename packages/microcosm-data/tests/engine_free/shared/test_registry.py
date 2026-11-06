@@ -146,6 +146,8 @@ def test_uk_2025_dense_is_registered_off_the_default_variant() -> None:
     assert spec.filename == "microcosm_uk_2024_25_dense.h5"
     assert spec.engine_class == "UKSingleYearDataset"
     assert spec.engine_package == "policyengine-uk"
+    # Each new dense build becomes current when it is published.
+    assert spec.release == "microcosm-uk-2024-25-dense"
     assert ("uk", 2025, DEFAULT_VARIANT) in REGISTRY
 
 
@@ -153,9 +155,32 @@ def test_uk_2025_national_line_is_the_default_variant_after_promotion():
     """microcosm#823: the line's first certified cut was promoted on
     2026-10-26, so the line moved to the default variant (Max's #823
     ruling) and its own variant key retired; the June 2023 line stays
-    addressable at its year."""
+    addressable at its year. Until its repository switches to
+    releases.json, the loader follows latest-national.json."""
     spec = REGISTRY[("uk", 2025, DEFAULT_VARIANT)]
     assert spec.pointer_path == "latest-national.json"
     assert spec.filename == "microcosm_uk_2024_25.h5"
     assert ("uk", 2025, "national") not in REGISTRY
     assert REGISTRY[("uk", 2023, DEFAULT_VARIANT)].filename == "populace_uk_2023.h5"
+
+
+def test_uk_2025_national_release_is_the_default_variant():
+    """The national release is the default UK 2025 load: its current build in
+    releases.json, not a pointer file; the June 2023 release stays
+    addressable at its year through latest.json."""
+    spec = REGISTRY[("uk", 2025, DEFAULT_VARIANT)]
+    assert spec.release == "microcosm-uk-2024-25-national"
+    assert spec.filename == "microcosm_uk_2024_25.h5"
+    assert ("uk", 2025, "national") not in REGISTRY
+    june = REGISTRY[("uk", 2023, DEFAULT_VARIANT)]
+    assert june.filename == "populace_uk_2023.h5"
+    assert (june.release, june.pointer_path) == (None, LATEST_POINTER_PATH)
+
+
+def test_only_the_uk_registry_entries_name_a_release():
+    """Every US entry keeps latest.json until the US stable releases are
+    agreed with the US data builder."""
+    assert {spec.key: spec.release for spec in REGISTRY.values() if spec.release} == {
+        ("uk", 2025, DEFAULT_VARIANT): "microcosm-uk-2024-25-national",
+        ("uk", 2025, "dense"): "microcosm-uk-2024-25-dense",
+    }

@@ -2193,6 +2193,20 @@ UK_GATE_REGISTRY: Mapping[str, GateBinding] = {
                 # The company_cars check (dashboard #316): how far SPI-channel
                 # pay plus its carved benefits may miss the tape's total.
                 "maximum_pay_identity_error_gbp",
+                # The occupation_redraw check (microcosm#1490): the held-out
+                # log-loss gain over the constant, the calibration slope's
+                # bounds, the occupation-share gaps within pay bands and status
+                # groups, and the blend's allowance over its better learner.
+                "minimum_log_loss_gain",
+                "calibration_slope_bounds",
+                "maximum_pay_band_share_gap",
+                "maximum_status_group_share_gap",
+                "maximum_blend_log_loss_excess",
+                # The sub_major_draw check (microcosm#1490) shares those and adds
+                # the sub-major share gap within regions and the FRS rows' gap
+                # from the APS donors within a major group.
+                "maximum_region_share_gap",
+                "maximum_frame_share_gap",
                 # #1113 road_fuel_incidence check: the ceiling on the chain's
                 # zero share among flagged fuel-car households.
                 "maximum_flagged_zero_share",

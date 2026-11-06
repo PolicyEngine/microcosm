@@ -2143,6 +2143,108 @@ def test_builder_exact_k_parser_enforces_charter_and_explicit_seed(capsys) -> No
     assert parsed.no_staging is True
 
 
+def test_scf_education_debt_stage_is_opt_in_and_follows_auto_loans() -> None:
+    """microcosm#1073: the 2025 SCF stage runs only when asked, after auto loans.
+
+    The pinned engine does not define the four federal student loan inputs
+    yet, so a default release must not fetch the 2025 SCF or carry them.
+    """
+
+    builder = _load_builder_module()
+    base_argv = ["--ledger-facts", "facts.jsonl", "--out", "release"]
+    parsed = builder._parse_args(base_argv)
+    assert parsed.scf_education_debt is False
+    assert parsed.scf_2025_summary_extract is None
+    assert parsed.scf_2025_full_extract is None
+
+    parsed = builder._parse_args(
+        [
+            *base_argv,
+            "--scf-education-debt",
+            "--scf-2025-summary-extract",
+            "rscfp2025.dta",
+            "--scf-2025-full-extract",
+            "p25i6.dta",
+        ]
+    )
+    assert parsed.scf_education_debt is True
+    assert parsed.scf_2025_summary_extract == Path("rscfp2025.dta")
+    assert parsed.scf_2025_full_extract == Path("p25i6.dta")
+
+    source = inspect.getsource(builder._main)
+    gate = source.index("if args.scf_education_debt:")
+    assert source.index("with_us_scf_auto_loan_inputs(") < gate
+    assert gate < source.index("_with_scf_education_debt_stage(")
+    assert source.index("join_acs_release_predictors(") < gate
+
+
+def test_scf_education_debt_stage_runs_its_gate_and_writes_its_fit(
+    tmp_path, monkeypatch
+) -> None:
+    builder = _load_builder_module()
+    calls: list[str] = []
+    frame = object()
+
+    monkeypatch.setattr(
+        builder,
+        "load_scf_2025_education_debt_donor",
+        lambda summary, full: calls.append(f"load:{summary}:{full}") or "donor",
+    )
+
+    def fake_with_inputs(base_frame, *, seed, time_period, scf_education_debt_donor):
+        assert base_frame is frame
+        assert scf_education_debt_donor == "donor"
+        calls.append(f"impute:{seed}:{time_period}")
+        return base_frame
+
+    monkeypatch.setattr(builder, "with_us_scf_education_debt_inputs", fake_with_inputs)
+    monkeypatch.setattr(
+        builder,
+        "us_scf_education_debt_signal_gate",
+        lambda base_frame: builder.GateResult(
+            name="scf_education_debt_signal", passed=True
+        ),
+    )
+    monkeypatch.setattr(
+        builder,
+        "us_scf_education_debt_fit_table",
+        lambda base_frame: {"households": {"share_with_federal_education_debt": 0.2}},
+    )
+    args = SimpleNamespace(
+        seed=7,
+        scf_2025_summary_extract=Path("rscfp2025.dta"),
+        scf_2025_full_extract=Path("p25i6.dta"),
+    )
+    fit_path = tmp_path / "artifacts" / "us_scf_education_debt_fit.json"
+    assert (
+        builder._with_scf_education_debt_stage(
+            frame, args=args, telemetry=None, fit_path=fit_path
+        )
+        is frame
+    )
+    assert calls == [
+        f"load:{Path('rscfp2025.dta')}:{Path('p25i6.dta')}",
+        f"impute:7:{builder.PERIOD}",
+    ]
+    payload = json.loads(fit_path.read_text(encoding="utf-8"))
+    assert payload["weights"] == "pre_calibration_household_weights"
+    assert payload["fit"]["households"]["share_with_federal_education_debt"] == 0.2
+
+    monkeypatch.setattr(
+        builder,
+        "us_scf_education_debt_signal_gate",
+        lambda base_frame: builder.GateResult(
+            name="scf_education_debt_signal",
+            passed=False,
+            failures=("constant column",),
+        ),
+    )
+    with pytest.raises(RuntimeError, match="SCF education-debt signal failed"):
+        builder._with_scf_education_debt_stage(
+            frame, args=args, telemetry=None, fit_path=None
+        )
+
+
 def test_builder_gate_failed_base_pool_override_is_explicit(capsys) -> None:
     builder = _load_builder_module()
 
@@ -7310,6 +7412,7 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
             facts=({"fact": 1},),
             facts_sha256="facts-sha",
             manifest_sha256=None,
+            fact_schema_versions=(),
             provenance=lambda: {
                 "path_name": "facts.jsonl",
                 "fact_row_count": 1,
@@ -16791,6 +16894,54 @@ def test_committed_feed_pin_is_waived_only_by_the_flag() -> None:
         ).allow_unpinned_feed
         is True
     )
+
+
+@pytest.mark.parametrize(
+    ("facts_sha256", "rows", "message"),
+    [
+        ("a" * 64, ("chronicle.consumer_fact.v6",), "['chronicle.consumer_fact.v6']"),
+        ("a" * 64, ("chronicle.consumer_fact.v5",), "consumer_fact_schema_versions"),
+        ("a" * 64, (), "consumer_fact_schema_versions"),
+        ("f" * 64, ("chronicle.consumer_fact.v6",), "['chronicle.consumer_fact.v6']"),
+    ],
+    ids=["undeclared", "not_in_the_pin", "unstamped", "undeclared_unpinned_feed"],
+)
+def test_feed_row_contract_check_refuses_rows_the_pin_or_epoch_lacks(
+    facts_sha256, rows, message
+) -> None:
+    """The release build holds the rows' row contracts, not only the pin's list.
+
+    On the committed feed (its facts digest) the rows must carry exactly the
+    pin's list, which a re-pin types by hand; a feed admitted by
+    ``--allow-unpinned-feed`` is held only to the declared row contracts.
+    """
+    builder = _load_builder_module()
+    check = getattr(builder, "_check_us_ledger_feed_row_contracts", None)
+    assert callable(check)
+    bare = _feed_pin(bare=True)
+    assert bare.consumer_fact_schema_versions == ("chronicle.consumer_fact.v3",)
+    check(("chronicle.consumer_fact.v3",), facts_sha256="a" * 64, pin=bare)
+    check(("chronicle.consumer_fact.v5",), facts_sha256="f" * 64, pin=bare)
+
+    with pytest.raises(ValueError) as refusal:
+        check(rows, facts_sha256=facts_sha256, pin=bare)
+
+    assert message in str(refusal.value)
+
+
+def test_main_checks_the_feed_row_contracts_before_compiling_targets() -> None:
+    builder = _load_builder_module()
+    source = inspect.getsource(builder._main)
+    call = (
+        "_check_us_ledger_feed_row_contracts(\n"
+        "        ledger_artifact.fact_schema_versions,"
+    )
+    assert call in source
+    assert source.count("_check_us_ledger_feed_row_contracts(") == 1
+    pinned = source.index("_check_committed_us_ledger_feed_pin(")
+    checked = source.index(call)
+    compiled = source.index("target_registry = compile_us_fiscal_target_registry(")
+    assert pinned < checked < compiled
 
 
 def _minimal_pin_argv() -> list[str]:

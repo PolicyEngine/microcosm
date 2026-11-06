@@ -51,6 +51,7 @@ def test_spi_band_targets_move_by_the_engines_dataset_projection() -> None:
     from microcosm.build.uk_runtime.hmrc_uprating import (
         UK_OBR_SAVINGS_INCOME_GROWTH_INDEX_CONCEPT,
         UK_SPI_SAVINGS_INTEREST_HISTORY_PARAMETER,
+        UK_SPI_SAVINGS_INTEREST_INDEX_CONCEPT,
         UK_SPI_SAVINGS_INTEREST_PROJECTION_PARAMETER,
         UK_SPI_SELF_EMPLOYMENT_BAND_AMOUNT_INDEX_CONCEPT,
         UK_SPI_SELF_EMPLOYMENT_PROFIT_PARAMETER,
@@ -75,12 +76,18 @@ def test_spi_band_targets_move_by_the_engines_dataset_projection() -> None:
     }
     variables = policyengine_uk.CountryTaxBenefitSystem().variables
     assert SPI_HISTORY_INDEX_DIFFERS_FROM_PROJECTION == {
-        "savings_interest_income": UK_SPI_SAVINGS_INTEREST_PROJECTION_PARAMETER,
+        "savings_interest_income": projection["savings_interest_income"],
         "other_investment_income": projection["other_investment_income"],
     }
-    assert (
-        UK_SPI_SAVINGS_INTEREST_PROJECTION_PARAMETER
-        == (projection["savings_interest_income"])
+    # From policyengine-uk 2.165.2 the projection grows savings interest by the
+    # OBR's savings income per person under the rule the producer declares, and
+    # by GDP per head where a dataset declares none. The two-leg concept keeps
+    # GDP per head as its projection leg, and no SPI target follows it.
+    assert projection["savings_interest_income"] == (
+        "gov.economic_assumptions.indices.obr.per_capita.savings_income"
+    )
+    assert UK_SPI_SAVINGS_INTEREST_PROJECTION_PARAMETER == (
+        "gov.economic_assumptions.indices.obr.per_capita.gdp"
     )
     assert UK_SPI_SAVINGS_INTEREST_HISTORY_PARAMETER == (
         variables["savings_interest_income"].uprating
@@ -95,6 +102,7 @@ def test_spi_band_targets_move_by_the_engines_dataset_projection() -> None:
         variable = family["bindings"]["policyengine"].get("value_variable")
         if family.get("family") != "hmrc_spi":
             continue
+        assert index != UK_SPI_SAVINGS_INTEREST_INDEX_CONCEPT, family["target_id"]
         if index == UK_OBR_SAVINGS_INCOME_GROWTH_INDEX_CONCEPT:
             on_savings_path.add(family["target_id"])
             continue
