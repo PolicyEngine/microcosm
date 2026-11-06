@@ -15,9 +15,8 @@ name the release and the build, and nothing is tagged. The summary prints the
 exact ``microcosm-publish-release-build`` commands for the human step
 (private repository): ``publish_command`` lists the build, and
 ``promote_command`` makes it the release's current build. Each new dense
-build becomes current; while the repository still has its ``latest*.json``
-pointer files, the emitter refuses every change to a current build, so the
-promotion waits until those files are deleted.
+build becomes current, by that promotion or by adding ``--make-current`` to
+``publish_command``, which does both in one commit.
 
 The rotated holdout and the incumbent comparison are opt-in diagnostics
 (microcosm#1301). The manifest's reviewed limitations say what the release
@@ -1103,11 +1102,11 @@ def _stage_and_finalize(
     for contract_warning in contract_warnings:
         print(f"warning: {contract_warning}", file=sys.stderr)
     release_dir.rename(destination)
-    # Each new dense build becomes current. While the repository keeps its
-    # latest*.json pointer files the emitter refuses any change to a current
-    # build, a publication with --make-current included (after the upload's
-    # hashing), so the build is listed first and promoted once those files are
-    # deleted. Without them, --make-current publishes it as current at once.
+    # Each new dense build becomes current: the publication lists it and the
+    # promotion makes it current, or --make-current on the publication does
+    # both in one commit. The emitter refuses either while a latest*.json
+    # pointer file is in the repository; its switch to releases.json deleted
+    # them.
     publish_command = shlex.join(
         [
             "uv",

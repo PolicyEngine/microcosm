@@ -487,25 +487,23 @@ uv run microcosm-publish-release-build releases/<release> --promote
 The first command publishes a build, and makes it current with
 `--make-current`; the second makes a published build current. A build counts
 as current only when the emitter's receipt is `published` and names it as
-`current`. While the older `latest*.json` pointer files exist, the emitter
-refuses every change to a release's current build, so until they are deleted
-a build is published without `--make-current` and promoted afterwards. The
-command refuses before it starts an emitter when `HF_HUB_OFFLINE` or
-`TRANSFORMERS_OFFLINE` is set, and hands nothing over unless the emitter's
-write-access check passes. These publications send no Slack alert: release
-alerts for them stop until the dashboard posts them from `releases.json`.
+`current`. The emitter changes no current build while any `latest*.json`
+pointer file exists; the UK repository's switch to `releases.json` deleted
+them, so the command lists the repository's files and refuses, before it
+starts an emitter, while one is there again. It also refuses when
+`HF_HUB_OFFLINE` or `TRANSFORMERS_OFFLINE` is set, and hands nothing over
+unless the emitter's write-access check passes. The calibration diagnostics
+dashboard posts these releases' Slack alerts from changes to `releases.json`.
 The UK assemblers print the exact commands, and the
 [national](docs/uk-national-release-assembly-runbook-806.md) and
 [dense](docs/uk-dense-release-assembly-runbook-762.md) runbooks describe them.
 `microcosm.data.load` reads the current build of such a release from
 `releases.json`, or the listed build `build=` names.
 
-**Every other release keeps tags and `latest.json`:** every US release,
-until the stable releases US builds publish under are agreed with the US data
-builder, and the UK releases outside those three, namely the June 2023 release
-and `populace-uk-<year>-<tier>-k<N>` releases. Publication uploads the locally
-built `releases/<id>/` artifacts to the Hugging Face dataset, tags the release,
-and updates `latest.json`:
+**Every US release keeps tags and `latest.json`,** until the stable releases
+US builds publish under are agreed with the US data builder. Publication
+uploads the locally built `releases/<id>/` artifacts to the Hugging Face
+dataset, tags the release, and updates `latest.json`:
 
 ```bash
 tools/publish_release.sh releases/<id> --repo-id policyengine/populace-us
@@ -513,44 +511,14 @@ tools/publish_release.sh releases/<id> --repo-id policyengine/populace-us
 
 `tools/publish_release.sh` is a thin wrapper around `microcosm-publish-release`
 (all arguments pass straight through), which refuses the releases that
-publish into build folders. The moment `latest.json` goes live, the publish
-CLI posts a release alert to the country's channel: `#populace-us`, or
-`#populace-uk` for a UK release published this way.
+publish into build folders and any repository that has `releases.json`. The
+moment `latest.json` goes live, the publish CLI posts a release alert to the
+country's channel, `#populace-us`.
 
-**Build folders, after a repository's switch.** A UK national, dense or
-local-area build can also be published into its own folder,
-`releases/<release>/<build>/`, through the separately installed emitter,
-whose release writer records it in the repository's `releases.json`, the
-only record of each release's builds and which one is current:
-
-```bash
-uv run microcosm-publish-release-build releases/<release> \
-  --repo-id <owner/repository> --artifact-root <candidate-dir> [--make-current]
-uv run microcosm-publish-release-build releases/<release> --promote
-```
-
-A build counts as current only when the emitter's receipt is `published` and
-names it as `current`. Each path refuses a repository in the other's layout,
-so the UK national, dense and local-area releases always have one way to
-change their current build:
-
-- `microcosm-publish-release-build` lists the repository's files and refuses,
-  before any emitter starts, while any `latest*.json` pointer file is there.
-  It also refuses with `HF_HUB_OFFLINE` or `TRANSFORMERS_OFFLINE` set, and
-  hands nothing over unless the emitter's write-access check passes.
-- `microcosm-publish-release` (and `tools/publish_release.sh`) refuses a
-  repository that has `releases.json`.
-
-So UK releases keep publishing, promoting and sending their Slack alerts
-through the pointer files, as above, until their repository's switch, one
-commit that writes `releases.json` and deletes the pointer files. Release
-alerts do not stop: the switch waits until the dashboard posts them from
-changes to `releases.json`. `microcosm.data.load` reads a release's current
-build from `releases.json` where the repository has one, and follows its
-pointer file otherwise. The UK repository's other releases, the June 2023
-release (whose pointer is `latest.json`) and `populace-uk-<year>-<tier>-k<N>`
-releases, have no publication path after its switch yet; that is open for
-the switch.
+The UK repository's other releases, the June 2023 release and
+`populace-uk-<year>-<tier>-k<N>` releases, have no publication path since its
+switch: the emitter command takes only the three releases above, and the
+tagged publisher refuses a repository that has `releases.json`.
 
 The publisher uploads only the contract files, the release manifest's
 artifacts and any `--extra-file`. The US fiscal-refresh tool therefore binds

@@ -279,8 +279,9 @@ local-area releases publish each build into its own folder through the
 emitter (`microcosm-publish-release-build`, from
 `microcosm.build.release_publication`), which records it in the repository's
 `releases.json`; making a published build current is a separate deliberate
-call to the same command with `--promote`. The emitter refuses that while the
-older `latest*.json` pointer files exist. Tests hand release changes to the
+call to the same command with `--promote`. The emitter refuses that while any
+`latest*.json` pointer file exists; the UK repository's switch to
+`releases.json` deleted them. Tests hand release changes to the
 in-memory client (`client.release_requests`), which applies them to
 `hub_files` with the interface's shared `releases.json` checks. See README
 "Releasing & alerts". Before launching a US

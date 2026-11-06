@@ -23,9 +23,9 @@ Before starting, export:
   command starts the separately installed `microcosm-emitter` (0.11.9 or
   later) as its child process, and the emitter uses the token it inherits.
 
-Publication sends no Slack alert. Alerts for new and current builds will come
-from the dashboard, which compares `releases.json` before and after each
-change; until that is in place, announce a build by hand.
+The publication command sends no Slack alert. The calibration diagnostics
+dashboard announces new and current builds, comparing `releases.json` before
+and after each change.
 
 Keep the spine H5, its sibling `.build.json` and `.spine_gates.json`, the
 Ledger consumer artifact and manifest digest, and the licensed input-mass
@@ -226,13 +226,12 @@ in §4. The emitter sets the national release's `current` in `releases.json`
 to this build. The command succeeds only when the receipt is `published` and
 names this build as `current`.
 
-While the repository still holds the older `latest*.json` pointer files, the
-emitter refuses every change to a release's current build
-(`POINTER_FILES_PRESENT`), so that the pointer files and `releases.json`
-cannot disagree. Until those files are deleted, a build can be published but
-not made current: the promotion is refused at once, changes nothing and says
-to run it again, and the published build stays listed. Run `promote_command`
-again once they are deleted.
+The emitter refuses every change to a release's current build while any
+`latest*.json` pointer file is in the repository (`POINTER_FILES_PRESENT`),
+so that pointer files and `releases.json` cannot disagree. The repository's
+switch to `releases.json` deleted them and nothing writes them, so the
+command refuses, before it starts an emitter, only if one has appeared
+again: remove it, then run the command again.
 
 The 2025 national release is the default UK load (microcosm#823):
 `microcosm.data.load("uk")` and `microcosm.data.load("uk", 2025)` read its

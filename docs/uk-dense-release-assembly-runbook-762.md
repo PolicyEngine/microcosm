@@ -9,9 +9,9 @@ as its own release, never the default one: a constant release id,
 `dataset_role: non_default_local_area` (the role `local_area` in
 `releases.json`) and an empty `default_datasets` map. Each build is published
 once into its own folder, `releases/microcosm-uk-2024-25-dense/<build>/`,
-through the emitter, and becomes the dense release's current build: by a
-promotion once the older `latest*.json` pointer files are deleted, and when it
-is published after that (see [§5](#5-publish-human-step)); `releases.json`
+through the emitter, and becomes the dense release's current build, by a
+promotion after it is published or by publishing it with `--make-current`
+(see [§5](#5-publish-human-step)); `releases.json`
 keeps the national release as the repository's default. It is registered as `("uk", 2025, "dense")` in the private repo
 `policyengine/populace-uk-private`. Publication is a separate human step.
 Since microcosm#1124 (ruling of 2026-10-13, amended for microcosm#1301) the
@@ -622,20 +622,18 @@ uv run microcosm-publish-release-build releases/microcosm-uk-2024-25-dense \
   --repo-id policyengine/populace-uk-private --promote
 ```
 
-While the repository still holds the older `latest*.json` pointer files, the
-emitter refuses every change to a release's current build
-(`POINTER_FILES_PRESENT`), so that the pointer files and `releases.json`
-cannot disagree. Until they are deleted, the promotion is refused at once,
-changes nothing and says to run it again; the published build stays listed.
-Run `promote_command` once they are deleted. The promotion succeeds only when
+The emitter refuses every change to a release's current build while any
+`latest*.json` pointer file is in the repository (`POINTER_FILES_PRESENT`),
+so that pointer files and `releases.json` cannot disagree. The repository's
+switch to `releases.json` deleted them and nothing writes them, so the
+command refuses, before it starts an emitter, only if one has appeared
+again: remove it, then run the command again. The promotion succeeds only when
 the receipt is `published` and names this build as `current`; a change to the
 dense release's current build requested after this one can land first and
 leave another build current.
 
-Once the pointer files are deleted, a new dense build can instead be published
-as current in one commit by adding `--make-current` to `publish_command`. Do
-not add it before then: the emitter refuses the whole publication, after the
-dataset is hashed on both sides, and nothing is published.
+A new dense build can instead be published as current in one commit by
+adding `--make-current` to `publish_command`.
 
 A contract warning reaches the command's stderr, and `--preflight-only` adds
 it to its verdict under `contract_warnings`. Neither refuses on one. No dense
