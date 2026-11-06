@@ -201,9 +201,12 @@ def test_pointer_files_refuse_a_build_made_current(
     assert outcome.receipt["status"] == "refused"
     assert outcome.receipt["error_code"] == "POINTER_FILES_PRESENT"
     # The command refuses such a repository before handing anything over;
-    # this is a pointer file that appeared after that check.
-    assert "tools/publish_release.sh" in outcome.explanation()
-    assert "without --make-current" not in outcome.explanation()
+    # this is a pointer file that appeared after that check. The tagged
+    # publisher refuses these releases, so the advice is to remove the file.
+    explanation = outcome.explanation()
+    assert "tools/publish_release.sh" not in explanation
+    assert "remove it, then run the command again" in explanation
+    assert "without --make-current" not in explanation
     assert (UK_REPO_ID, "releases.json") not in client.hub_files
 
 
@@ -442,10 +445,12 @@ def test_the_command_refuses_a_repository_with_pointer_files_before_an_emitter(
     pointer_file: str,
     promote: bool,
 ) -> None:
-    """Until a repository switches to releases.json, its releases publish
-    and promote through its pointer files, with tools/publish_release.sh."""
+    """The emitter publishes only into a repository without pointer files.
+    In a repository that has switched to releases.json, a pointer file
+    appeared after the switch; the tagged publisher refuses these releases,
+    so the advice is to remove it, not to publish through it."""
     started, repository = _start_emitters(monkeypatch)
-    hub_listing.files.extend(["README.md", pointer_file])
+    hub_listing.files.extend(["README.md", "releases.json", pointer_file])
     argv = (
         [str(national), "--promote"]
         if promote
@@ -459,7 +464,41 @@ def test_the_command_refuses_a_repository_with_pointer_files_before_an_emitter(
     assert output is None
     assert hub_listing.listed == [UK_REPO_ID]
     assert "refusing to publish" in error and pointer_file in error
-    assert "tools/publish_release.sh" in error
+    assert "tools/publish_release.sh" not in error
+    assert "remove the file(s) that appeared" in error
+    assert repository == {}
+
+
+@pytest.mark.parametrize("promote", [False, True], ids=["publish", "promote"])
+def test_the_command_refuses_a_repository_that_has_not_switched_without_advising_removal(
+    national: Path,
+    artifact_root: Path,  # noqa: F811
+    monkeypatch,
+    capsys,
+    hub_listing: HubListing,
+    promote: bool,
+) -> None:
+    """Before its switch a repository has no releases.json, the loader
+    follows its pointer files and the switch reads them to choose each
+    release's current build, so the refusal says the repository has not
+    switched and does not advise removing them."""
+    started, repository = _start_emitters(monkeypatch)
+    hub_listing.files.extend(["README.md", "latest.json", "latest-national.json"])
+    argv = (
+        [str(national), "--promote"]
+        if promote
+        else [str(national), "--artifact-root", str(artifact_root)]
+    )
+
+    code, output, error = _run(argv, capsys)
+
+    assert code == 1
+    assert started == []
+    assert output is None
+    assert "has not switched to releases.json" in error
+    assert "latest-national.json" in error
+    assert "microcosm.build.build_folder_switch" in error
+    assert "remove" not in error
     assert repository == {}
 
 
@@ -540,9 +579,10 @@ def test_the_command_refuses_a_tagged_uk_release(
     hub_listing: HubListing,
     promote: bool,
 ) -> None:
-    """Today's UK assemblers write the tagged layout, whose release manifest
-    describes the build in a ``build`` object; the command refuses it before
-    it lists the repository or starts an emitter."""
+    """A UK build that the assemblers wrote in the tagged layout, before the
+    switch, describes the build in a ``build`` object in its release
+    manifest; the command refuses it before it lists the repository or
+    starts an emitter."""
     tagged = _as_uk_national_line_release(release_dir)
     started, _ = _start_emitters(monkeypatch)
     argv = (
@@ -744,6 +784,22 @@ def test_the_command_refuses_a_release_that_still_publishes_with_tags(
             [str(release_dir), "--artifact-root", str(artifact_root)]
         )
     assert "tools/publish_release.sh" in capsys.readouterr().err
+
+
+def test_the_command_says_the_other_uk_releases_take_no_new_builds(
+    tmp_path: Path, capsys
+) -> None:
+    """The June 2023 UK release does not publish into build folders, and the
+    tagged publisher refuses the UK repository once it records its builds in
+    releases.json, so the refusal says it takes no new builds instead of
+    sending it there."""
+    june = tmp_path / "populace-uk-2023-dd68c73-4aa4b14-20260619T023711Z"
+    june.mkdir()
+
+    with pytest.raises(SystemExit):
+        release_publication.main([str(june)])
+
+    assert "take no new builds" in capsys.readouterr().err
 
 
 def test_the_command_refuses_a_build_whose_staging_never_arrived(
