@@ -295,22 +295,23 @@ class _Hub:
         return Path(local).read_bytes()
 
     def refs(self) -> tuple[dict[str, str], list[str]]:
-        """Each tag and the commit it names, and the tagged publisher's
-        staging branches, from one listing.
+        """Each tag with the ID the Hub lists for it, and the tagged
+        publisher's staging branches, from one request.
 
         The Hub lists an annotated tag with the ID of its tag object, not of
-        its commit, so each tag is resolved to its commit. A staging branch
-        means a tagged publication has started and not yet tagged its build,
-        or failed before deleting the branch.
+        its commit (:meth:`resolve` gives the commit); a tag that moves gets
+        another ID either way. A staging branch means a tagged publication
+        has started and not yet tagged its build, or failed before deleting
+        the branch.
         """
         refs = self.api.list_repo_refs(self.repository, repo_type=_DATASET)
-        tags = {tag.name: self.resolve(tag.name) for tag in refs.tags}
+        listed = {tag.name: str(tag.target_commit) for tag in refs.tags}
         staging = sorted(
             branch.name
             for branch in refs.branches
             if branch.name.startswith(_STAGING_BRANCH_PREFIX)
         )
-        return tags, staging
+        return listed, staging
 
     def commit_date(self, commit: str) -> str:
         """The commit's date, in UTC to the second, as ``published_at``."""
@@ -647,6 +648,8 @@ class _Survey:
 
     #: Every tag the survey read, and the commit it names.
     tags: dict[str, str]
+    #: Every tag the survey read, with the ID the Hub listed for it.
+    listed_tags: dict[str, str]
     #: The tagged publisher's staging branches the survey's listing showed.
     staging_branches: list[str]
     moves: list[BuildMove]
@@ -657,9 +660,11 @@ class _Survey:
 
 def _survey(hub: _Hub, selection: Selection) -> _Survey:
     """Find the builds that move and read each one."""
-    tags, staging_branches = hub.refs()
+    listed_tags, staging_branches = hub.refs()
+    tags = {tag: hub.resolve(tag) for tag in listed_tags}
     survey = _Survey(
         tags=tags,
+        listed_tags=listed_tags,
         staging_branches=staging_branches,
         moves=[],
         skipped=[],
@@ -1117,16 +1122,17 @@ def switch_repository(
         raise SwitchRefusedError("nothing was written: " + "; ".join(problems))
     # A tagged publication creates its tag before any commit to main, and a
     # tag-only one never commits to main, so parent_commit would not notice a
-    # build tagged after the survey; read the tags again just before the
-    # commit. A publication that has checked for releases.json but not yet
-    # tagged its build has a staging branch, so refuse that too.
-    tags, staging_branches = hub.refs()
+    # build tagged after the survey; list the tags again just before the
+    # commit, in one request, and compare the IDs the Hub lists. A
+    # publication that has checked for releases.json but not yet tagged its
+    # build has a staging branch, so refuse that too.
+    listed_tags, staging_branches = hub.refs()
     if staging_branches:
         raise SwitchRefusedError(
             "nothing was written: "
             + "; ".join(_publication_in_progress(branch) for branch in staging_branches)
         )
-    if tags != survey.tags:
+    if listed_tags != survey.listed_tags:
         raise SwitchRefusedError(
             "nothing was written: the repository's tags changed while the switch "
             "read it, so a build may be missing from the record; run the step "
