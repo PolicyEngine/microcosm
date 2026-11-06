@@ -412,7 +412,12 @@ def _mass_log_payload(before: Frame, after: Frame) -> list[dict[str, object]]:
 
 
 def _stage_artifacts(
-    stage: str, transform: object | None, before: Frame | None, after: Frame
+    stage: str,
+    transform: object | None,
+    before: Frame | None,
+    after: Frame,
+    *,
+    release: bool = False,
 ) -> dict[str, bytes]:
     document = stage_evidence.snapshot_stage_evidence(stage, transform)
     document["frame_mass_log_append"] = (
@@ -431,7 +436,12 @@ def _stage_artifacts(
     )
     if before is None:
         document["frame_context"] = {"metadata": dict(after.metadata)}
-    return {"stage_evidence": stage_evidence.encode_stage_evidence(document)}
+    artifacts = {"stage_evidence": stage_evidence.encode_stage_evidence(document)}
+    if release:
+        # The bytes above are all that later steps read of this stage, so the
+        # result it kept, output Frame included, need not live for the run.
+        stage_evidence.release_stage_results(transform)
+    return artifacts
 
 
 def _invoke_transform(transform: object, frame: Frame, context: KernelContext):
@@ -1143,8 +1153,14 @@ class UKCreateKernel(KernelBase):
     ref = "uk.create@1"
     capabilities = _CREATE
 
-    def __init__(self, transform: object | None = None) -> None:
+    def __init__(
+        self,
+        transform: object | None = None,
+        *,
+        release_stage_results: bool = False,
+    ) -> None:
         self.transform = transform
+        self.release_stage_results = release_stage_results
 
     def implementation_hash(self) -> str:
         return _implementation_hash(self, "frs_spine", self.transform)
@@ -1165,7 +1181,13 @@ class UKCreateKernel(KernelBase):
             )
         return KernelResult(
             frame=_normalize_create_frame(frame, context),
-            artifacts=_stage_artifacts("frs_spine", self.transform, None, frame),
+            artifacts=_stage_artifacts(
+                "frs_spine",
+                self.transform,
+                None,
+                frame,
+                release=self.release_stage_results,
+            ),
         )
 
 
@@ -1219,10 +1241,13 @@ class UKStageKernel(KernelBase):
         stage: str,
         transform: object | None = None,
         fixture_resolver: _FixtureTransformResolver | None = None,
+        *,
+        release_stage_results: bool = False,
     ) -> None:
         self.stage = stage
         self.transform = transform
         self.fixture_resolver = fixture_resolver
+        self.release_stage_results = release_stage_results
         self.ref = f"uk.stage.{stage}@1"
 
     def implementation_hash(self) -> str:
@@ -1254,7 +1279,13 @@ class UKStageKernel(KernelBase):
         }
         return KernelResult(
             columns=MappingProxyType(columns),
-            artifacts=_stage_artifacts(self.stage, transform, before, after),
+            artifacts=_stage_artifacts(
+                self.stage,
+                transform,
+                before,
+                after,
+                release=self.release_stage_results,
+            ),
             receipt={
                 "stage": self.stage,
                 "frame_mass_log_append": _mass_log_payload(before, after),
@@ -1346,10 +1377,13 @@ class UKExpandStageKernel(KernelBase):
         stage: str,
         transform: object | None = None,
         fixture_resolver: _FixtureTransformResolver | None = None,
+        *,
+        release_stage_results: bool = False,
     ) -> None:
         self.stage = stage
         self.transform = transform
         self.fixture_resolver = fixture_resolver
+        self.release_stage_results = release_stage_results
         self.ref = f"uk.stage.expand.{stage}@1"
 
     def implementation_hash(self) -> str:
@@ -1425,7 +1459,13 @@ class UKExpandStageKernel(KernelBase):
             columns=MappingProxyType(columns),
             expand=MappingProxyType(expand),
             weights=after_weights,
-            artifacts=_stage_artifacts(self.stage, transform, before, after),
+            artifacts=_stage_artifacts(
+                self.stage,
+                transform,
+                before,
+                after,
+                release=self.release_stage_results,
+            ),
             receipt=receipt,
         )
 
@@ -1478,8 +1518,18 @@ def _declared_mass_receipt(
 def build_uk_registry(
     graph: Graph,
     implementations: Mapping[str, object],
+    *,
+    release_stage_results: bool = False,
 ) -> KernelRegistry:
-    """Bind graph refs to supplied transforms or the hermetic H2 descriptor."""
+    """Bind graph refs to supplied transforms or the hermetic H2 descriptor.
+
+    With ``release_stage_results``, each stage kernel drops the result its
+    transform kept as soon as the stage's evidence is captured
+    (:func:`~microcosm.build.stage_evidence.release_stage_results`). The
+    default keeps it, for a caller that reads ``last_result`` after the run.
+    The setting enters no key: it changes what a live transform holds, never
+    what a node computes or stores.
+    """
 
     stage_names = {
         str(node.params["stage"]) for node in graph.nodes if "stage" in node.params
@@ -1495,7 +1545,12 @@ def build_uk_registry(
             )
 
     registry = KernelRegistry()
-    registry.register(UKCreateKernel(implementations.get("frs_spine")))
+    registry.register(
+        UKCreateKernel(
+            implementations.get("frs_spine"),
+            release_stage_results=release_stage_results,
+        )
+    )
     registry.register(UKIdentityKernel())
     registry.register(UKClaimKernel())
     fixture_resolver = _FixtureTransformResolver()
@@ -1510,9 +1565,23 @@ def build_uk_registry(
             "cgt_incidence_anchor",
             "cgt_residential_split",
         }:
-            registry.register(UKExpandStageKernel(stage, transform, fixture_resolver))
+            registry.register(
+                UKExpandStageKernel(
+                    stage,
+                    transform,
+                    fixture_resolver,
+                    release_stage_results=release_stage_results,
+                )
+            )
         else:
-            registry.register(UKStageKernel(stage, transform, fixture_resolver))
+            registry.register(
+                UKStageKernel(
+                    stage,
+                    transform,
+                    fixture_resolver,
+                    release_stage_results=release_stage_results,
+                )
+            )
 
     # Gate bindings carry the live rules engine and are registered separately
     # after population-stage construction by the composing build.

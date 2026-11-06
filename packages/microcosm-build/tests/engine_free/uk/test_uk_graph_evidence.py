@@ -1,9 +1,11 @@
 """Spine evidence survives cached execution and a completely fresh process."""
 
+import gc
 import json
 import subprocess
 import sys
-from dataclasses import replace
+import weakref
+from dataclasses import dataclass, field, replace
 from types import SimpleNamespace
 
 import pytest
@@ -94,6 +96,245 @@ print(json.dumps(load_spine_stage_artifacts(manifest, store, stage_names=('frs_s
     sidecar = spine_sidecar_evidence(expected)
     assert sidecar["sampling"] == {"fraction": 0.1, "seed": 7}
     assert sidecar["fit_weight_records"]["frs_spine"][0]["weight_kind"] == "design"
+
+
+def _with_outputs(frame, outputs):
+    """``frame`` with a zero in each declared output it does not yet carry."""
+
+    from microcosm.frame import Frame
+
+    tables = {entity: frame.table(entity).copy() for entity in frame.entities}
+    for owned in outputs:
+        if owned.column not in tables[owned.entity]:
+            tables[owned.entity][owned.column] = 0
+    return Frame(
+        tables,
+        frame.schema,
+        {entity: frame.weights_for(entity) for entity in frame.weighted_entities},
+        frame.strata,
+        mass_log=frame.mass_log,
+        metadata=frame.metadata,
+    )
+
+
+def _object_bytes(store):
+    """Every file the store holds, by its path under the store's objects."""
+
+    return {
+        path.relative_to(store.objects).as_posix(): path.read_bytes()
+        for path in sorted(store.objects.rglob("*"))
+        if path.is_file()
+    }
+
+
+def _result_keeping_stages(graph):
+    """Fresh transforms of each shape that keeps a result, with their holders.
+
+    The root and the age stage are frozen dataclasses written through
+    ``object.__setattr__``, as the UK stages are. A graph source transform
+    builds the relationships stage. The employment stage reads its fit-weight
+    records from its result, as the SPI income stage does. The council tax
+    stage has no checkpoint hook, so the snapshot reads its result itself.
+    Every stage but that one sits behind an observation wrapper. A weak
+    reference to each result a stage keeps shows whether anything holds it.
+    """
+
+    from microcosm.build.observation import ObservedTransform
+    from microcosm.build.uk_runtime.spine_build import _GraphSourceTransform
+
+    record = SimpleNamespace(fit_name="fixture-fit", weight_kind="design")
+    outputs = {node.id: node.outputs for node in graph.nodes}
+    results = []
+
+    class Result(SimpleNamespace):
+        """A stage's result. Unlike a bare namespace, it takes a weak reference."""
+
+    def kept(**fields):
+        result = Result(**fields)
+        results.append(weakref.ref(result))
+        return result
+
+    def unrun():
+        return RuntimeError("checkpoint metadata requires a completed stage run.")
+
+    @dataclass(frozen=True)
+    class Root:
+        sampling = {"fraction": 1.0, "seed": 7}
+        last_result: object | None = field(default=None, init=False)
+
+        def run_with_sources(self, frame, sources):
+            loaded = load_source("csv-tables", sources["frs"])
+            object.__setattr__(self, "last_result", kept(frame=loaded))
+            return loaded
+
+        def checkpoint_metadata(self):
+            if self.last_result is None:
+                raise unrun()
+            households = len(self.last_result.frame.table("household"))
+            return {"evidence": {"households": households}}
+
+    @dataclass(frozen=True)
+    class Stage:
+        outputs: tuple
+        last_result: object | None = field(default=None, init=False)
+
+        def __call__(self, frame):
+            result = kept(frame=_with_outputs(frame, self.outputs))
+            object.__setattr__(self, "last_result", result)
+            return result.frame
+
+        def checkpoint_metadata(self):
+            if self.last_result is None:
+                raise unrun()
+            return {"evidence": {"people": len(self.last_result.frame.person)}}
+
+    @dataclass
+    class ResultRecords:
+        outputs: tuple
+        last_result: object | None = None
+
+        @property
+        def fit_weight_records(self):
+            return () if self.last_result is None else self.last_result.records
+
+        def __call__(self, frame):
+            self.last_result = kept(
+                frame=_with_outputs(frame, self.outputs), records=(record,)
+            )
+            return self.last_result.frame
+
+        def checkpoint_metadata(self):
+            if self.last_result is None:
+                raise unrun()
+            return {"evidence": {"fits": len(self.last_result.records)}}
+
+    class ResultEvidence:
+        def __init__(self, outputs):
+            self.outputs = outputs
+            self.last_result = None
+
+        def __call__(self, frame):
+            result = _with_outputs(frame, self.outputs)
+            households = len(result.table("household"))
+            self.last_result = kept(
+                frame=result, evidence=lambda: {"households": households}
+            )
+            return result
+
+    def observed(transform, stage):
+        return ObservedTransform(
+            transform, stage_id=stage, produced_column_count=1, observer=None
+        )
+
+    built = []
+
+    def build_relationships(sources):
+        built.append(ResultRecords(outputs["frs_relationships"]))
+        return built[-1]
+
+    root = Root()
+    age = Stage(outputs["age_tail"])
+    relationships = _GraphSourceTransform(build_relationships)
+    employment = ResultRecords(outputs["frs_employment"])
+    council_tax = ResultEvidence(outputs["frs_council_tax"])
+    implementations = {
+        "frs_spine": observed(root, "frs_spine"),
+        "age_tail": observed(age, "age_tail"),
+        "frs_relationships": observed(relationships, "frs_relationships"),
+        "frs_employment": observed(employment, "frs_employment"),
+        "frs_council_tax": council_tax,
+    }
+
+    def holders():
+        # The relationships stage is the one the source transform built.
+        [relationships_stage] = built
+        return {
+            "frs_spine": root,
+            "age_tail": age,
+            "frs_relationships": relationships_stage,
+            "frs_employment": employment,
+            "frs_council_tax": council_tax,
+        }
+
+    return implementations, holders, relationships, results
+
+
+def test_released_stage_results_leave_every_stored_byte_and_no_result(tmp_path):
+    """A run that frees each stage's kept result once its evidence is captured
+    stores what a run that keeps them stores, byte for byte, and each result
+    it frees dies at once (microcosm#931)."""
+
+    country = load_country_spec("uk")
+    country = replace(
+        country, sources=replace(country.sources, stages=country.sources.stages[:5])
+    )
+    graph = uk_spine_graph(country)
+    compiled = compile_graph(graph)
+    source = (
+        paths_for("microcosm-graph").tests
+        / "fixtures"
+        / "parity"
+        / "uk_spine"
+        / "sources"
+    )
+    runs = {}
+    for release in (False, True):
+        stages = _result_keeping_stages(graph)
+        implementations, result_holders, source_built, results = stages
+        run_store = ContentStore(tmp_path / f"release-{release}")
+        # No garbage collection runs, so a result is dead only once nothing
+        # references it, not after some collection.
+        collecting = gc.isenabled()
+        gc.disable()
+        try:
+            manifest = run_graph(
+                compiled,
+                sources={"frs": source},
+                store=run_store,
+                kernels=uk_registry(
+                    implementations, graph=graph, release_stage_results=release
+                ),
+                resume="forbid",
+            )
+            alive = [result() is not None for result in results]
+        finally:
+            if collecting:
+                gc.enable()
+        runs[release] = (manifest, run_store, result_holders(), source_built, alive)
+    kept, kept_store, kept_holders, _, kept_alive = runs[False]
+    released, store, holders, relationships, released_alive = runs[True]
+
+    # Both runs store the same objects under the same keys, byte for byte.
+    assert released.key == kept.key
+    assert released.nodes.keys() == kept.nodes.keys()
+    for node_id, receipt in kept.nodes.items():
+        assert released.nodes[node_id].key == receipt.key
+    assert _object_bytes(store) == _object_bytes(kept_store)
+    # Each stage keeps its result unless the run frees it, frozen ones too.
+    # A freed result dies at once, so no wrapper holds it either.
+    assert all(holder.last_result is not None for holder in kept_holders.values())
+    assert all(holder.last_result is None for holder in holders.values())
+    assert len(kept_alive) == len(released_alive) == len(implementations)
+    assert all(kept_alive)
+    assert not any(released_alive)
+    # The source transform keeps the stage it built and the records it read
+    # from it; only the result goes.
+    assert relationships.transform is holders["frs_relationships"]
+    assert relationships.fit_weight_records
+    # The fit-weight records were captured before the release, including
+    # those the employment stage could read only from its result.
+    stored = load_spine_stage_artifacts(
+        released, store, stage_names=uk_spine_endpoint(graph).stage_names
+    )
+    for stage in ("frs_relationships", "frs_employment"):
+        assert stored[stage]["fit_weight_records"] == [
+            {"fit_name": "fixture-fit", "weight_kind": "design"}
+        ]
+        assert stored[stage]["fit_weight_records_status"] == "present"
+    assert holders["frs_employment"].fit_weight_records == ()
+    assert stored["frs_council_tax"]["evidence"] == {
+        "households": stored["frs_spine"]["evidence"]["households"]
+    }
 
 
 def test_spine_inventory_is_roster_derived_and_gates_bind_checkpoint_versions():

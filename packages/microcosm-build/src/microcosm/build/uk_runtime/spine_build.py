@@ -2072,7 +2072,10 @@ def prepare_uk_spine_execution(
         release_candidate=args.release_candidate,
         synthetic_smoke=args.synthetic_fixture_dir is not None,
     )
-    kernels = uk_registry(implementations, graph=graph)
+    # The spine and the full build read each stage's evidence from the store,
+    # never from a live transform, so each stage frees its result once its
+    # evidence is captured.
+    kernels = uk_registry(implementations, graph=graph, release_stage_results=True)
     register_spine_gate_kernel(
         kernels, spec=spec, engine=engine, engine_identity=engine_identity
     )
