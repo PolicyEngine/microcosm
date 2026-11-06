@@ -670,7 +670,7 @@ def test_assemble_refuses_missing_score_receipt(assembler_inputs) -> None:
         _load_driver_module().main(assembler_inputs["argv"])
 
 
-def test_assemble_takes_no_cut_tag(assembler_inputs) -> None:
+def test_assemble_takes_no_cut_tag(assembler_inputs, capsys) -> None:
     """A build in its own folder has no tag to name."""
     with pytest.raises(SystemExit):
         _load_driver_module().main(
@@ -680,6 +680,7 @@ def test_assemble_takes_no_cut_tag(assembler_inputs) -> None:
                 f"{UK_NATIONAL_RELEASE_ID}-20260828T101112Z-1a2b3c4d",
             ]
         )
+    assert "unrecognized arguments: --cut-tag" in capsys.readouterr().err
 
 
 def test_assemble_refuses_substituted_spine(assembler_inputs) -> None:

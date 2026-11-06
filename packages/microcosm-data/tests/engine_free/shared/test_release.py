@@ -214,7 +214,7 @@ def test_the_tagged_publisher_refuses_every_build_folder_release(
     assert uk_hub.uploads == []
 
 
-def test_the_tagged_publisher_has_no_pointer_promotion_option() -> None:
+def test_the_tagged_publisher_has_no_pointer_promotion_option(capsys) -> None:
     """Only UK releases were made current through latest-<line>.json pointer
     files, and they no longer publish here."""
     import inspect
@@ -223,6 +223,7 @@ def test_the_tagged_publisher_has_no_pointer_promotion_option() -> None:
     assert "line" not in inspect.signature(release_module.prepare_release).parameters
     with pytest.raises(SystemExit):
         publish_cli.main(["releases/x", "--promote-line", "national"])
+    assert "unrecognized arguments: --promote-line" in capsys.readouterr().err
 
 
 #: A releases.json that the switch to build folders writes; its contents do

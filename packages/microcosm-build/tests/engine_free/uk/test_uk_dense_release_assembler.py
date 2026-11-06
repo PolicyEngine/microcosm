@@ -713,6 +713,75 @@ def test_assembler_stages_a_contract_valid_dense_release(
     assert preflight.main(["--release-dir", str(release_dir)]) == 0
 
 
+def test_an_assembled_dense_build_publishes_through_the_emitter(
+    tmp_path: Path, monkeypatch, capsys
+) -> None:
+    """The publication checks the assembled dense directory with the release
+    contract itself, not a replaced one, and hands every file over as a
+    build of the dense release."""
+    from microcosm.build import release_publication
+    from microcosm.data.contract import (
+        BUILD_MANIFEST_FILE_ROLE,
+        CHECKSUMS_FILE_ROLE,
+        RELEASE_MANIFEST_FILE_ROLE,
+    )
+    from test_support.microcosm_build.emitter import FakeEmitterClient
+
+    monkeypatch.setenv("MICROCOSM_UK_TERMINAL_GATE_SIGNING_KEY", KEY)
+    # The command lists the repository's files to refuse one that still has
+    # latest*.json pointer files; here the list is in memory, as after the
+    # switch, so the test never queries the private UK repository.
+    listed: list[str] = []
+
+    def switched_repository_files(repository: str) -> list[str]:
+        listed.append(repository)
+        return ["releases.json"]
+
+    monkeypatch.setattr(
+        release_publication,
+        "_repository_files",
+        switched_repository_files,
+        raising=False,
+    )
+    assembler = _load("assemble_uk_dense_release_dir")
+    candidate, spine, _ = _candidate_dir(tmp_path)
+    out = tmp_path / "releases"
+    assert assembler.main(_assemble_args(candidate, spine, None, out)) == 0
+    capsys.readouterr()
+    release_dir = out / UK_DENSE_RELEASE_ID
+    manifest = json.loads((release_dir / "release_manifest.json").read_text())
+    client = FakeEmitterClient()
+
+    outcome = release_publication.publish_release_build(
+        release_dir, artifact_root=candidate, client=client
+    )
+
+    assert outcome.published and outcome.succeeded and not outcome.current
+    (request,) = client.release_requests
+    assert (request.release, request.build, request.release_role) == (
+        UK_DENSE_RELEASE_ID,
+        ATTEMPT,
+        "local_area",
+    )
+    assert {item.name: item.role for item in request.files} == {
+        "release_manifest.json": RELEASE_MANIFEST_FILE_ROLE,
+        "build_manifest.json": BUILD_MANIFEST_FILE_ROLE,
+        # The dense assembler also writes a checksum ledger of the files.
+        "sha256sums.txt": CHECKSUMS_FILE_ROLE,
+        **{entry["path"]: entry["role"] for entry in manifest["artifacts"].values()},
+    }
+    published_dataset = client.hub_files[
+        (
+            "policyengine/populace-uk-private",
+            f"releases/{UK_DENSE_RELEASE_ID}/{ATTEMPT}/microcosm_uk_2024_25_dense.h5",
+        )
+    ]
+    assert (
+        published_dataset == (candidate / "microcosm_uk_2024_25_dense.h5").read_bytes()
+    )
+    assert listed == ["policyengine/populace-uk-private"]
+
+
 def test_assembler_ships_a_per_area_support_figure_without_a_warning(
     tmp_path: Path, monkeypatch, capsys
 ) -> None:
