@@ -1,0 +1,5 @@
+populace_us_2024.h5, read with pandas from its person table, weighted by each person's
+household_weight (person_household_id to household_id), measured 2026-11-06:
+  partnership_income     $847.756B  (7,234 nonzero person records)
+  s_corp_income          $0.0       (0 nonzero person records)
+  student_loan_interest  $10.428B   (2,883 nonzero person records)

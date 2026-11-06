@@ -1,0 +1,690 @@
+diff --git a/README.md b/README.md
+index b5b4adac0..f644d94ad 100644
+--- a/README.md
++++ b/README.md
+@@ -203,7 +203,9 @@ AT-RISK only, `0` clean):
+ 3. **Export-mass parity risk** — each export-mass column's pool mass at *base*
+    weights against its reference band, honoring the release tool's
+    `US_EXPORT_INPUT_MASS_REVIEWED_EXCLUSIONS` register (reused, never
+-   re-declared). A column out of band pre-solve is flagged for review.
++   re-declared). A column out of band pre-solve is flagged for review. Against
++   a reference with no `s_corp_income` mass, the pool's `partnership_income`
++   counts both columns, as the export gate's candidate does.
+ 4. **Smoke-probe support audit** — every reform-coverage probe leaf's pool vs
+    *selected* nonzero support and pool sign-leg decomposition. A leaf with pool
+    support but zero selected support **fails** (the input the frozen selection
+@@ -307,7 +309,10 @@ never as a release refusal. The checks:
+ - **`export_input_mass`** runs the export input-mass gate with the staged
+   frame standing in for the export. It classifies the
+   `US_EXPORT_INPUT_MASS_REVIEWED_EXCLUSIONS` register as the gate does: `used`,
+-  `below_reference_floor` or `unused`.
++  `below_reference_floor` or `unused`. Against a reference with no
++  `s_corp_income` mass, built before microcosm#1261 split Schedule E line 32,
++  the gate and this check count `partnership_income` plus `s_corp_income` as
++  the candidate's `partnership_income`.
+ - **`degenerate_input_register`**, **`ecps_parity_register`**,
+   **`input_coverage_register`**, **`stored_inputs`**, **`spm_composition`**,
+   **`zero_support_preview`** and **`pre_solve_battery`** grade the remaining
+diff --git a/changelog.d/us-input-mass-line-32-pre-split-reference.fixed.md b/changelog.d/us-input-mass-line-32-pre-split-reference.fixed.md
+new file mode 100644
+index 000000000..d98d34c3f
+--- /dev/null
++++ b/changelog.d/us-input-mass-line-32-pre-split-reference.fixed.md
+@@ -0,0 +1 @@
++The US input-mass gate now counts `partnership_income` plus `s_corp_income` when its reference carries no `s_corp_income` mass, and the release preflight and dry run read the line the same way. A reference built before #1261 holds all of Schedule E line 32 in `partnership_income`, so a build that kept the line still failed the gate once the split left less than half of it in that column. A reference that carries the split gets each column compared alone.
+diff --git a/packages/microcosm-build/src/microcosm/build/us_runtime/input_mass.py b/packages/microcosm-build/src/microcosm/build/us_runtime/input_mass.py
+index 2aa0ba66f..b30475381 100644
+--- a/packages/microcosm-build/src/microcosm/build/us_runtime/input_mass.py
++++ b/packages/microcosm-build/src/microcosm/build/us_runtime/input_mass.py
+@@ -3,13 +3,46 @@
+ The implementation was promoted to :mod:`microcosm.build.input_mass` when the
+ UK terminal battery adopted the same #278 input-mass parity gate (#609); the
+ computation is schema-driven and never carried US-specific logic. This module
+-remains so existing US call sites keep their import path.
++remains so existing US call sites keep their import path, and it holds the one
++US comparison rule the shared gate can't know: how to read Schedule E line 32
++against a reference built before the entity split.
+ """
+ 
+ from __future__ import annotations
+ 
++from collections.abc import Mapping
++
+ from microcosm.build.input_mass import input_mass_totals
+ 
+-__all__ = ["us_input_mass_totals"]
++__all__ = ["us_input_mass_totals", "us_line_32_on_reference_terms"]
+ 
+ us_input_mass_totals = input_mass_totals
++
++
++def us_line_32_on_reference_terms(
++    candidate_totals: Mapping[str, float],
++    reference_totals: Mapping[str, float],
++    *,
++    minimum_reference_total: float,
++) -> dict[str, float]:
++    """Return candidate totals that read Schedule E line 32 as the reference does.
++
++    A reference built before microcosm#1261 holds all of line 32 in
++    ``partnership_income`` and carries no ``s_corp_income`` mass. A candidate
++    built after it splits the same income between the two columns, so its
++    ``partnership_income`` alone falls short of that reference however well the
++    build keeps line 32. Against such a reference, the candidate's
++    ``partnership_income`` counts both columns.
++
++    A reference with ``s_corp_income`` mass above ``minimum_reference_total``
++    gets each column compared alone, so the rule stops applying once the
++    reference carries the split. A candidate without ``partnership_income``
++    stays without it, and the input-mass gate refuses the absent column.
++    """
++    totals = dict(candidate_totals)
++    if (
++        "partnership_income" in totals
++        and abs(reference_totals.get("s_corp_income", 0.0)) <= minimum_reference_total
++    ):
++        totals["partnership_income"] += totals.get("s_corp_income", 0.0)
++    return totals
+diff --git a/packages/microcosm-build/src/microcosm/build/us_runtime/l0_refit_export.py b/packages/microcosm-build/src/microcosm/build/us_runtime/l0_refit_export.py
+index 10cd209e3..dae437c07 100644
+--- a/packages/microcosm-build/src/microcosm/build/us_runtime/l0_refit_export.py
++++ b/packages/microcosm-build/src/microcosm/build/us_runtime/l0_refit_export.py
+@@ -76,7 +76,10 @@ from microcosm.build.us_runtime.housing_inputs import (
+ from microcosm.build.us_runtime.immigration import (
+     US_IMMIGRATION_NONCONSTANT_PERSON_COLUMNS,
+ )
+-from microcosm.build.us_runtime.input_mass import us_input_mass_totals
++from microcosm.build.us_runtime.input_mass import (
++    us_input_mass_totals,
++    us_line_32_on_reference_terms,
++)
+ from microcosm.build.us_runtime.medicare_take_up import (
+     US_MEDICARE_TAKE_UP_NONCONSTANT_PERSON_COLUMNS,
+ )
+@@ -607,9 +610,14 @@ def export_us_l0_refit_h5(
+     reference_frame = (
+         load_us_frame(reference_h5) if reference_h5 is not None else base_frame
+     )
++    reference_mass_totals = us_input_mass_totals(reference_frame)
+     input_mass_gate = input_mass_parity_gate(
+-        us_input_mass_totals(export_frame),
+-        us_input_mass_totals(reference_frame),
++        us_line_32_on_reference_terms(
++            us_input_mass_totals(export_frame),
++            reference_mass_totals,
++            minimum_reference_total=input_mass_minimum_reference_total,
++        ),
++        reference_mass_totals,
+         candidate_name="l0_refit_export",
+         reference_name="reference_h5" if reference_h5 is not None else "base_h5",
+         relative_tolerance=input_mass_relative_tolerance,
+diff --git a/packages/microcosm-build/src/microcosm/build/us_runtime/release_gate_preflight.py b/packages/microcosm-build/src/microcosm/build/us_runtime/release_gate_preflight.py
+index f1e2978a4..ff16cbfbe 100644
+--- a/packages/microcosm-build/src/microcosm/build/us_runtime/release_gate_preflight.py
++++ b/packages/microcosm-build/src/microcosm/build/us_runtime/release_gate_preflight.py
+@@ -33,7 +33,9 @@ Five checks, each mirroring a live release gate but evaluated pre-solve:
+    weights is an AT-RISK signal: the solve optimizes the target surface, not
+    this untargeted column, so a pre-solve out-of-band mass usually stays out.
+    The band math is reused verbatim via
+-   :func:`microcosm.build.gates.input_mass_parity_gate`.
++   :func:`microcosm.build.gates.input_mass_parity_gate`, and the pool reads
++   Schedule E line 32 as the gate's candidate does
++   (:func:`microcosm.build.us_runtime.input_mass.us_line_32_on_reference_terms`).
+ 
+ 4. **Smoke-probe support audit** — for every reform-coverage probe, for every
+    ``binding_inputs`` leaf: pool nonzero support, *selected* nonzero support
+@@ -100,7 +102,10 @@ from microcosm.build.us_runtime.h5_io import (
+     require_authenticated_us_multispine_pool_h5,
+     us_multispine_pool_release_receipt,
+ )
+-from microcosm.build.us_runtime.input_mass import us_input_mass_totals
++from microcosm.build.us_runtime.input_mass import (
++    us_input_mass_totals,
++    us_line_32_on_reference_terms,
++)
+ from microcosm.build.us_runtime.puf_capital_gains_tail import (
+     assert_puf_capital_gains_tail_survives_selection,
+ )
+@@ -1086,10 +1091,14 @@ def run_preflight(
+                     release.US_EXPORT_INPUT_MASS_REVIEWED_EXCLUSIONS
+                 )
+         reference_frame = load_us_frame(Path(export_input_mass_reference_h5))
+-        pool_totals = us_input_mass_totals(base_frame, columns=engine_input_variables)
+         reference_totals = us_input_mass_totals(
+             reference_frame, columns=engine_input_variables
+         )
++        pool_totals = us_line_32_on_reference_terms(
++            us_input_mass_totals(base_frame, columns=engine_input_variables),
++            reference_totals,
++            minimum_reference_total=minimum_reference_total,
++        )
+         checks.append(
+             check_export_mass_parity_risk(
+                 pool_totals,
+diff --git a/packages/microcosm-build/tests/engine_free/us/test_us_input_mass_line_32.py b/packages/microcosm-build/tests/engine_free/us/test_us_input_mass_line_32.py
+new file mode 100644
+index 000000000..5c3ea4e79
+--- /dev/null
++++ b/packages/microcosm-build/tests/engine_free/us/test_us_input_mass_line_32.py
+@@ -0,0 +1,245 @@
++"""Schedule E line 32 against a reference built before the entity split.
++
++microcosm#1261 split line 32 between ``partnership_income`` and
++``s_corp_income``. A reference built before it holds the whole line in
++``partnership_income``, so the input-mass gate counts both candidate columns
++against that one until the reference carries the split.
++"""
++
++from __future__ import annotations
++
++import importlib.util
++from types import SimpleNamespace
++
++import pytest
++from hypothesis import given
++from hypothesis import strategies as st
++
++from microcosm.build.gates import input_mass_parity_gate
++from microcosm.build.us_runtime import release_gate_dry_run as dry
++from microcosm.build.us_runtime.input_mass import us_line_32_on_reference_terms
++from test_support.paths import paths_for
++
++_TEST_PATHS = paths_for("microcosm-build")
++
++FLOOR = 1e9
++TOLERANCE = 0.5
++
++# Weighted totals from release attempt
++# populace-us-2024-65671e1-9434c504ba2a-20261103T095117Z: its export and its
++# reference, populace_us_2024.h5, which carries no s_corp_income record.
++REFERENCE = {"partnership_income": 847.756e9, "s_corp_income": 0.0}
++EXPORT = {"partnership_income": 391.947e9, "s_corp_income": 664.150e9}
++
++_mass = st.floats(min_value=-2e12, max_value=2e12, allow_nan=False)
++_share = st.floats(min_value=0.0, max_value=1.0, allow_nan=False)
++
++
++def _gate(candidate, reference):
++    return input_mass_parity_gate(
++        us_line_32_on_reference_terms(
++            candidate, reference, minimum_reference_total=FLOOR
++        ),
++        reference,
++        relative_tolerance=TOLERANCE,
++        minimum_reference_total=FLOOR,
++    )
++
++
++@pytest.fixture(scope="module")
++def builder():
++    path = _TEST_PATHS.repository / "tools" / "build_us_fiscal_refresh_release.py"
++    spec = importlib.util.spec_from_file_location(
++        "build_us_fiscal_refresh_release_line_32", path
++    )
++    module = importlib.util.module_from_spec(spec)
++    assert spec.loader is not None
++    spec.loader.exec_module(module)
++    return module
++
++
++def test_the_export_that_keeps_line_32_passes_a_pre_split_reference() -> None:
++    alone = input_mass_parity_gate(
++        EXPORT,
++        REFERENCE,
++        relative_tolerance=TOLERANCE,
++        minimum_reference_total=FLOOR,
++    )
++    assert not alone.passed
++    assert alone.failures[0].startswith("partnership_income:")
++
++    gate = _gate(EXPORT, REFERENCE)
++    assert gate.passed, gate.failures
++    assert gate.details["worst_drifts"]["partnership_income"] == pytest.approx(
++        (391.947 + 664.150 - 847.756) / 847.756
++    )
++
++
++def test_a_pre_split_reference_still_refuses_lost_line_32_mass() -> None:
++    gate = _gate({"partnership_income": 2e11, "s_corp_income": 1e11}, REFERENCE)
++    assert not gate.passed
++    assert gate.failures[0].startswith("partnership_income:")
++
++
++def test_a_reference_with_the_split_compares_each_column_alone() -> None:
++    reference = {"partnership_income": 450e9, "s_corp_income": 600e9}
++    gate = _gate({"partnership_income": 100e9, "s_corp_income": 400e9}, reference)
++    assert not gate.passed
++    assert [line.split(":", 1)[0] for line in gate.failures] == [
++        "partnership_income",
++    ]
++
++
++def test_a_candidate_without_partnership_income_stays_refused() -> None:
++    candidate = {"s_corp_income": 5e11}
++    assert "partnership_income" not in us_line_32_on_reference_terms(
++        candidate, REFERENCE, minimum_reference_total=FLOOR
++    )
++    gate = _gate(candidate, REFERENCE)
++    assert not gate.passed
++    assert "absent" in gate.failures[0]
++
++
++def test_a_candidate_without_s_corp_income_keeps_its_partnership_income() -> None:
++    assert us_line_32_on_reference_terms(
++        {"partnership_income": 8e11}, REFERENCE, minimum_reference_total=FLOOR
++    ) == {"partnership_income": 8e11}
++
++
++@given(
++    partnership=_mass,
++    s_corp=_mass,
++    other=_mass,
++    reference_s_corp=_mass,
++)
++def test_only_partnership_income_moves_and_only_on_a_pre_split_reference(
++    partnership: float, s_corp: float, other: float, reference_s_corp: float
++) -> None:
++    candidate = {
++        "partnership_income": partnership,
++        "s_corp_income": s_corp,
++        "other": other,
++    }
++    before = dict(candidate)
++    totals = us_line_32_on_reference_terms(
++        candidate,
++        {"s_corp_income": reference_s_corp},
++        minimum_reference_total=FLOOR,
++    )
++    assert candidate == before
++    assert totals["s_corp_income"] == s_corp
++    assert totals["other"] == other
++    expected = partnership + s_corp if abs(reference_s_corp) <= FLOOR else partnership
++    assert totals["partnership_income"] == expected
++
++
++@given(
++    line_32=st.floats(min_value=1e9, max_value=2e12, allow_nan=False),
++    partnership_share=_share,
++)
++def test_the_split_never_changes_the_verdict_on_a_pre_split_reference(
++    line_32: float, partnership_share: float
++) -> None:
++    # Moving income between the entity columns keeps the total to rounding, so
++    # the gate's verdict tracks the total alone.
++    partnership = line_32 * partnership_share
++    candidate = {
++        "partnership_income": partnership,
++        "s_corp_income": line_32 - partnership,
++    }
++    drift = abs(line_32 - REFERENCE["partnership_income"]) / abs(
++        REFERENCE["partnership_income"]
++    )
++    if abs(drift - TOLERANCE) < 1e-9:
++        return
++    assert _gate(candidate, REFERENCE).passed is (drift <= TOLERANCE)
++
++
++@given(partnership=_mass, s_corp=_mass, reference_s_corp=_mass)
++def test_the_dry_run_preview_agrees_with_the_gate(
++    partnership: float, s_corp: float, reference_s_corp: float
++) -> None:
++    # The preview raises when its own arithmetic disagrees with the gate's lines.
++    reference = {"partnership_income": 8e11, "s_corp_income": reference_s_corp}
++    candidate = {"partnership_income": partnership, "s_corp_income": s_corp}
++    gate = _gate(candidate, reference)
++    check = dry.export_input_mass_check(
++        gate_failures=gate.failures,
++        gate_details=gate.details,
++        candidate_totals=us_line_32_on_reference_terms(
++            candidate, reference, minimum_reference_total=FLOOR
++        ),
++        reference_totals=reference,
++        candidate_nonzero_shares={"partnership_income": 0.02, "s_corp_income": 0.02},
++        reviewed_exclusions={},
++        relative_tolerance=TOLERANCE,
++        minimum_reference_total=FLOOR,
++        margin=0.1,
++        allow_drift=False,
++        reference_is_candidate=False,
++        reference_label="reference.h5",
++    )
++    rows = {row["column"]: row for row in check.rows}
++    assert "partnership_income" in rows
++
++
++def _sentinel_totals(monkeypatch, builder, **totals_by_label):
++    frames = {label: SimpleNamespace(label=label) for label in totals_by_label}
++    monkeypatch.setattr(builder, "_engine_input_variables", lambda: ())
++    monkeypatch.setattr(
++        builder,
++        "us_input_mass_totals",
++        lambda frame, columns=None: totals_by_label[frame.label],
++    )
++    return frames
++
++
++def test_the_release_export_gate_reads_line_32_on_the_reference_terms(
++    builder, monkeypatch
++) -> None:
++    frames = _sentinel_totals(
++        monkeypatch, builder, export=EXPORT, base=EXPORT, reference=REFERENCE
++    )
++    gate = builder._export_input_mass_gate(
++        frames["export"],
++        frames["base"],
++        relative_tolerance=TOLERANCE,
++        minimum_reference_total=FLOOR,
++        reference_frame=frames["reference"],
++        reference_name="populace_us_2024.h5",
++    )
++    assert gate.passed, gate.failures
++
++
++def test_the_release_export_gate_refuses_lost_line_32_mass(
++    builder, monkeypatch
++) -> None:
++    lost = {"partnership_income": 2e11, "s_corp_income": 1e11}
++    frames = _sentinel_totals(
++        monkeypatch, builder, export=lost, base=EXPORT, reference=REFERENCE
++    )
++    gate = builder._export_input_mass_gate(
++        frames["export"],
++        frames["base"],
++        relative_tolerance=TOLERANCE,
++        minimum_reference_total=FLOOR,
++        reference_frame=frames["reference"],
++        reference_name="populace_us_2024.h5",
++    )
++    assert not gate.passed
++    assert gate.failures[0].startswith("partnership_income:")
++
++
++def test_the_release_base_gate_reads_line_32_on_the_reference_terms(
++    builder, monkeypatch, tmp_path
++) -> None:
++    frames = _sentinel_totals(monkeypatch, builder, base=EXPORT, reference=REFERENCE)
++    monkeypatch.setattr(builder, "load_us_frame", lambda path: frames["reference"])
++    gate = builder._input_mass_reference_gate(
++        frames["base"],
++        reference_h5=tmp_path / "populace_us_2024.h5",
++        relative_tolerance=TOLERANCE,
++        minimum_reference_total=FLOOR,
++    )
++    assert gate is not None
++    assert gate.passed, gate.failures
+diff --git a/packages/microcosm-build/tests/engine_free/us/test_us_l0_refit_export.py b/packages/microcosm-build/tests/engine_free/us/test_us_l0_refit_export.py
+index 5aa49ccc9..10678d6cf 100644
+--- a/packages/microcosm-build/tests/engine_free/us/test_us_l0_refit_export.py
++++ b/packages/microcosm-build/tests/engine_free/us/test_us_l0_refit_export.py
+@@ -421,6 +421,50 @@ def test_export_us_l0_refit_h5_fails_when_selection_zeroes_input_mass(
+     assert not output.exists()
+ 
+ 
++def test_export_us_l0_refit_h5_reads_line_32_on_the_reference_terms(
++    monkeypatch: pytest.MonkeyPatch,
++    tmp_path: Path,
++) -> None:
++    frame = _us_frame()
++    base_h5 = tmp_path / "base.h5"
++    base_h5.write_text("base")
++    output = tmp_path / "populace_us_2024.h5"
++
++    monkeypatch.setattr(l0_refit_export, "load_us_frame", lambda path: frame)
++    monkeypatch.setattr(
++        l0_refit_export,
++        "copy_microcosm_root_attrs",
++        lambda source, destination: (),
++    )
++    # A reference built before microcosm#1261 holds all of Schedule E line 32
++    # in partnership_income; the export splits it between the two columns.
++    monkeypatch.setattr(
++        l0_refit_export,
++        "us_input_mass_totals",
++        lambda bundle: (
++            {"partnership_income": 8.5e11, "s_corp_income": 0.0}
++            if bundle is frame
++            else {"partnership_income": 3.9e11, "s_corp_income": 6.6e11}
++        ),
++    )
++
++    class FakeEngine:
++        def write_dataset(self, bundle, path, period):
++            Path(path).write_text("sentinel")
++
++    monkeypatch.setattr(l0_refit_export, "PolicyEngineUSEngine", FakeEngine)
++
++    summary = export_us_l0_refit_h5(
++        base_h5=base_h5,
++        weights_npz=_l0_refit_npz(tmp_path),
++        output_h5=output,
++        input_mass_relative_tolerance=0.5,
++        require_geography_ladder=False,
++    )
++
++    assert summary["input_mass_parity"]["passed"] is True
++
++
+ def test_export_us_l0_refit_h5_records_input_mass_drift_when_allowed(
+     monkeypatch: pytest.MonkeyPatch,
+     tmp_path: Path,
+diff --git a/packages/microcosm-build/tests/engine_free/us/test_us_release_gate_dry_run.py b/packages/microcosm-build/tests/engine_free/us/test_us_release_gate_dry_run.py
+index c0c8a2c27..6c94b51b1 100644
+--- a/packages/microcosm-build/tests/engine_free/us/test_us_release_gate_dry_run.py
++++ b/packages/microcosm-build/tests/engine_free/us/test_us_release_gate_dry_run.py
+@@ -1435,9 +1435,7 @@ def test_checkpoint_status_reads_only_the_identity(builder, tmp_path) -> None:
+     assert not builder._dry_run_checkpoint_status(path, "def")["identity_matches"]
+ 
+ 
+-def test_release_dry_run_checks_run_the_release_gates(
+-    builder, tail_frame, monkeypatch
+-) -> None:
++def _release_dry_run_checks(builder, tail_frame, monkeypatch, *extra_args):
+     """The stop point's check assembly, on a real frame.
+ 
+     Engine-backed pieces (input defaults, input coverage) are stubbed because
+@@ -1461,6 +1459,7 @@ def test_release_dry_run_checks_run_the_release_gates(
+             "--dense-default-dataset",
+             "--dry-run-gates-report",
+             "r.json",
++            *extra_args,
+         ]
+     )
+     early = ["Retirement-distribution signal failed: fixture early failure"]
+@@ -1498,6 +1497,13 @@ def test_release_dry_run_checks_run_the_release_gates(
+         ),
+         ecps_parity_gate=GateResult(name="parity", passed=True),
+     )
++    return early, checks
++
++
++def test_release_dry_run_checks_run_the_release_gates(
++    builder, tail_frame, monkeypatch
++) -> None:
++    early, checks = _release_dry_run_checks(builder, tail_frame, monkeypatch)
+     by_name = {check.name: check for check in checks}
+     assert list(by_name) == [
+         "pre_solve_battery",
+@@ -1534,6 +1540,44 @@ def test_release_dry_run_checks_run_the_release_gates(
+     )
+ 
+ 
++def test_release_dry_run_reads_line_32_as_the_gate_does(
++    builder, tail_frame, monkeypatch
++) -> None:
++    """The preview raises if it reads partnership_income alone here.
++
++    A reference built before microcosm#1261 holds all of Schedule E line 32 in
++    partnership_income, so the gate counts both candidate columns against it.
++    """
++    reference = SimpleNamespace(label="reference")
++    monkeypatch.setattr(builder, "load_us_frame", lambda path: reference)
++    monkeypatch.setattr(
++        builder,
++        "us_input_mass_totals",
++        lambda frame, columns=None: (
++            {"partnership_income": 8.5e11, "s_corp_income": 0.0}
++            if frame is reference
++            else {"partnership_income": 3.9e11, "s_corp_income": 6.6e11}
++        ),
++    )
++    monkeypatch.setattr(
++        builder,
++        "us_nonzero_shares",
++        lambda frame, columns=None: {"partnership_income": 0.02, "s_corp_income": 0.02},
++    )
++    _, checks = _release_dry_run_checks(
++        builder,
++        tail_frame,
++        monkeypatch,
++        "--export-input-mass-reference-h5",
++        "populace_us_2024.h5",
++    )
++    check = {item.name: item for item in checks}["export_input_mass"]
++    assert not check.details.get("evaluation_error")
++    row = {row["column"]: row for row in check.rows}["partnership_income"]
++    assert row["mass_at_base_weights"] == pytest.approx(1.05e12)
++    assert row["verdict"] == "in_band"
++
++
+ def test_release_dry_run_checks_evidence_tier_missing_register_and_l0(
+     builder, tail_frame, monkeypatch, tmp_path
+ ) -> None:
+diff --git a/packages/microcosm-build/tests/engine_free/us/test_us_release_gate_preflight.py b/packages/microcosm-build/tests/engine_free/us/test_us_release_gate_preflight.py
+index 3ae713582..22baf25c1 100644
+--- a/packages/microcosm-build/tests/engine_free/us/test_us_release_gate_preflight.py
++++ b/packages/microcosm-build/tests/engine_free/us/test_us_release_gate_preflight.py
+@@ -1939,7 +1939,9 @@ def _whole_pool_selection(pool: list[dict[str, object]]) -> SelectionSource:
+     )
+ 
+ 
+-def _run_synthetic_preflight(monkeypatch, tmp_path, *, frame: Frame, **mode):
++def _run_synthetic_preflight(
++    monkeypatch, tmp_path, *, frame: Frame, reference_frame: Frame | None = None, **mode
++):
+     """``run_preflight`` over a synthetic base, with every optional input given.
+ 
+     The base loader, the Ledger target compiler and the reference-H5 loader are
+@@ -1964,7 +1966,11 @@ def _run_synthetic_preflight(monkeypatch, tmp_path, *, frame: Frame, **mode):
+         "_load_ledger_target_specs",
+         lambda path, *, target_period, ledger_facts_sha256, **kwargs: (spec,),
+     )
+-    monkeypatch.setattr(l0_refit_export, "load_us_frame", lambda path: frame)
++    monkeypatch.setattr(
++        l0_refit_export,
++        "load_us_frame",
++        lambda path: frame if reference_frame is None else reference_frame,
++    )
+     return preflight_module.run_preflight(
+         base_h5=tmp_path / "base.h5",
+         export_input_mass_reference_h5=tmp_path / "reference.h5",
+@@ -1977,6 +1983,32 @@ def _run_synthetic_preflight(monkeypatch, tmp_path, *, frame: Frame, **mode):
+     )
+ 
+ 
++def test__run_preflight__reads_line_32_on_the_reference_terms(
++    monkeypatch, tmp_path
++) -> None:
++    base = _new_lineage_frame()
++    reference = _new_lineage_frame()
++    monkeypatch.setattr(
++        preflight_module,
++        "us_input_mass_totals",
++        lambda frame, columns=None: (
++            {"partnership_income": 8.5e11, "s_corp_income": 0.0}
++            if frame is reference
++            else {"partnership_income": 3.9e11, "s_corp_income": 6.6e11}
++        ),
++    )
++
++    report = _run_synthetic_preflight(
++        monkeypatch, tmp_path, frame=base, reference_frame=reference, new_lineage=True
++    )
++
++    check = next(c for c in report.checks if c.name == "export_mass_parity_risk")
++    assert check.status == "PASS"
++    row = next(r for r in check.rows if r["column"] == "partnership_income")
++    assert row["pool_mass_at_base_weights"] == pytest.approx(1.05e12)
++    assert row["verdict"] == "in_band"
++
++
+ def test__run_preflight__new_lineage_skips_only_carryover_and_records_why(
+     monkeypatch, tmp_path
+ ) -> None:
+diff --git a/tools/build_us_fiscal_refresh_release.py b/tools/build_us_fiscal_refresh_release.py
+index 4a52f0c5f..702df02c5 100644
+--- a/tools/build_us_fiscal_refresh_release.py
++++ b/tools/build_us_fiscal_refresh_release.py
+@@ -274,7 +274,10 @@ from microcosm.build.us_runtime.h5_io import (
+     require_authenticated_us_multispine_pool_h5,
+     us_multispine_pool_release_receipt,
+ )
+-from microcosm.build.us_runtime.input_mass import us_input_mass_totals
++from microcosm.build.us_runtime.input_mass import (
++    us_input_mass_totals,
++    us_line_32_on_reference_terms,
++)
+ from microcosm.build.us_runtime.l0_refit_export import (
+     attach_l0_refit_entity_weights,
+     load_us_frame,
+@@ -7618,9 +7621,16 @@ def _input_mass_reference_gate(
+     if reference_h5 is None:
+         return None
+     input_variables = _engine_input_variables()
++    reference_totals = us_input_mass_totals(
++        load_us_frame(reference_h5), columns=input_variables
++    )
+     return input_mass_parity_gate(
+-        us_input_mass_totals(base_frame, columns=input_variables),
+-        us_input_mass_totals(load_us_frame(reference_h5), columns=input_variables),
++        us_line_32_on_reference_terms(
++            us_input_mass_totals(base_frame, columns=input_variables),
++            reference_totals,
++            minimum_reference_total=minimum_reference_total,
++        ),
++        reference_totals,
+         candidate_name="base_frame",
+         reference_name=reference_h5.name,
+         relative_tolerance=relative_tolerance,
+@@ -7991,9 +8001,14 @@ def _export_input_mass_gate(
+     """
+     input_variables = _engine_input_variables()
+     reference = reference_frame if reference_frame is not None else base_frame
++    reference_totals = us_input_mass_totals(reference, columns=input_variables)
+     return input_mass_parity_gate(
+-        us_input_mass_totals(export_frame, columns=input_variables),
+-        us_input_mass_totals(reference, columns=input_variables),
++        us_line_32_on_reference_terms(
++            us_input_mass_totals(export_frame, columns=input_variables),
++            reference_totals,
++            minimum_reference_total=minimum_reference_total,
++        ),
++        reference_totals,
+         candidate_name="export_frame",
+         reference_name=reference_name,
+         relative_tolerance=relative_tolerance,
+@@ -12137,15 +12152,20 @@ def _release_dry_run_checks(
+         )
+         input_variables = _engine_input_variables()
+         candidate_totals = us_input_mass_totals(base_frame, columns=input_variables)
++        reference_totals = (
++            candidate_totals
++            if reference_frame is None
++            else us_input_mass_totals(reference_frame, columns=input_variables)
++        )
+         check = export_input_mass_check(
+             gate_failures=gate.failures,
+             gate_details=gate.details,
+-            candidate_totals=candidate_totals,
+-            reference_totals=(
+-                candidate_totals
+-                if reference_frame is None
+-                else us_input_mass_totals(reference_frame, columns=input_variables)
++            candidate_totals=us_line_32_on_reference_terms(
++                candidate_totals,
++                reference_totals,
++                minimum_reference_total=args.input_mass_minimum_reference_total,
+             ),
++            reference_totals=reference_totals,
+             candidate_nonzero_shares=us_nonzero_shares(
+                 base_frame, columns=input_variables
+             ),

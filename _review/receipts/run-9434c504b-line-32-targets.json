@@ -1,0 +1,129 @@
+{
+ "$.targets[5213]": {
+  "name": "irs_soi.ty2022.historic_table_2.us.all.partnership_scorp_income_amount@2024",
+  "target_name": "irs_soi.ty2022.historic_table_2.us.all.partnership_scorp_income_amount",
+  "period": 2024,
+  "entity": "household",
+  "measure": {
+   "kind": "column",
+   "name": "irs_soi.ty2022.historic_table_2.us.all.partnership_scorp_income_amount"
+  },
+  "filter": null,
+  "source": "irs_soi | Historic Table 2 | 22in55cmcsv.csv | tax_year_2022 | https://www.irs.gov/pub/irs-soi/22in55cmcsv.csv",
+  "metadata": {
+   "ledger_source": "policyengine-ledger-data",
+   "ledger_fact_key": "ledger.aggregate_fact.v2:d6dc0422426bd8d9a93260be",
+   "ledger_source_record_id": "irs_soi.ty2022.historic_table_2.us.all.partnership_scorp_income_amount",
+   "ledger_aggregate_fact_key": "ledger.aggregate_fact.v2:d6dc0422426bd8d9a93260be",
+   "ledger_semantic_fact_key": "ledger.semantic_fact.v2:c35a5981de3bff6252d189dc",
+   "ledger_legacy_fact_key": "ledger.fact.v1:7445a1903c540f986c68ddb6",
+   "ledger_observed_measure_key": "ledger.observed_measure.v2:f81add6f66bf83fb0a45aba7",
+   "ledger_dimension_set_key": "ledger.dimension_set.v2:a55266d8b1d53a8a7e49927d",
+   "ledger_universe_constraint_set_key": "ledger.universe_constraint_set.v2:18df86d027cde55a3f217b77",
+   "ledger_measure_concept": "irs_soi.partnership_scorp_income",
+   "ledger_measure_unit": "usd",
+   "ledger_source_concept": "irs_soi.partnership_scorp_income",
+   "ledger_period_type": "tax_year",
+   "ledger_fact_period": "2022",
+   "ledger_assertion": "observation",
+   "ledger_geography_level": "country",
+   "ledger_geography_id": "0100000US",
+   "ledger_geography_name": "United States",
+   "ledger_geography_vintage": "2020_census",
+   "ledger_fact_label": "United States 2022 tax year sum irs soi partnership scorp income for tax unit (filing status=all, income range=all) [irs_soi Historic Table 2 22in55cmcsv.csv tax_year_2022]",
+   "ledger_entity_name": "tax_unit",
+   "ledger_entity_role": "filing_unit",
+   "ledger_domain": "all_individual_income_tax_returns",
+   "ledger_layout_record_set_id": "irs_soi.ty2022.historic_table_2.us",
+   "ledger_layout_record_set_spec_id": "irs_soi.historic_table_2.us.v1",
+   "ledger_layout_groupby_dimension": "us:statutes/26/62#adjusted_gross_income",
+   "ledger_layout_groupby_value_id": "all",
+   "ledger_layout_groupby_value_label": "All returns",
+   "ledger_layout_measure_id": "partnership_scorp_income_amount",
+   "ledger_aggregation_method": "sum",
+   "ledger_filter_filing_status": "all",
+   "ledger_filter_income_range": "all",
+   "ledger_resolved_assertion": "observation",
+   "source_measure_id": "partnership_scorp_income_amount",
+   "source_variable": "partnership_and_s_corp_income",
+   "source_period": "2022",
+   "target_period": "2024",
+   "target_role": "soi_fiscal_distribution",
+   "variable": "partnership_and_s_corp_income",
+   "materializer": "irs_soi_slice",
+   "measure_mode": "sum",
+   "agi_lower_bound": "-inf",
+   "agi_upper_bound": "inf",
+   "filing_status": "All",
+   "soi_return_universe": "all_returns",
+   "base_variable": "tax_unit_partnership_s_corp_income",
+   "ledger_value_operation": "identity",
+   "ledger_assertion_policy": "observed_only",
+   "ledger_period_match_policy": "latest_not_after",
+   "basis": "projection",
+   "aged_to": "2024",
+   "aging_factor": "1.12034597479376",
+   "aging_factor_source": "chained:irs_soi.ty2023.table_1_1.all.adjusted_gross_income+cbo.revenue_projection.ty2024.income_by_source.adjusted_gross_income.projected_amount",
+   "alignment_model_id": "cbo_growth_factor_aging",
+   "alignment_model_version": "1.2.0"
+  },
+  "target": 1157602275777.119,
+  "compiled_target": 1157602275777.119,
+  "initial_estimate": 482949188902.0093,
+  "final_estimate": 1147225598606.6729,
+  "relative_error": -0.008963939850135487,
+  "within_tolerance": null,
+  "hierarchy": {
+   "provider": {
+    "id": "irs_soi",
+    "label": "IRS Statistics of Income"
+   },
+   "category": {
+    "id": "irs_soi.partnership_and_s_corp_income",
+    "label": "Partnership and S corporation income",
+    "provider_id": "irs_soi"
+   },
+   "geography": {
+    "id": "0100000US",
+    "label": "United States",
+    "level": "country"
+   },
+   "dimensions": [
+    {
+     "id": "us:statutes/26/62#adjusted_gross_income",
+     "label": "Adjusted gross income",
+     "value_id": "all",
+     "value_label": "All returns"
+    },
+    {
+     "id": "filing_status",
+     "label": "Filing status",
+     "value_id": "all",
+     "value_label": "All filing statuses"
+    },
+    {
+     "id": "income_range",
+     "label": "Income range",
+     "value_id": "all",
+     "value_label": "All income ranges"
+    }
+   ],
+   "target": {
+    "id": "irs_soi.ty2022.historic_table_2.us.all.partnership_scorp_income_amount",
+    "label": "Partnership and S corporation income"
+   }
+  },
+  "registry": {
+   "family": "irs_soi",
+   "se": null,
+   "signed": false,
+   "notes": ""
+  },
+  "target_loss_weight": 10.103865563460275,
+  "target_loss_weight_share": 0.0016558285092527487,
+  "target_loss_scale": 1157602275777.119,
+  "final_capped_scaled_error": 0.008963939850135487,
+  "final_loss_contribution": 1.484274715908115e-05
+ },
+ "$.build.target_profile_coverage.details.matches_by_requirement.irs_partnership_s_corp_distribution#index": 60
+}
