@@ -15387,21 +15387,23 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
         )
     else:
         export_frame = _with_l0_refit_weights(base_frame, result)
-    if args.scf_education_debt:
-        # microcosm#1074: the stage's fit table at the weights the release
-        # ships, before any scoring or terminal gate, so a build that binds
-        # the FSA family reports the borrower-household share it moved.
-        _write_us_scf_education_debt_fit(
-            artifact_root / US_SCF_EDUCATION_DEBT_CALIBRATED_FIT_FILENAME,
-            export_frame,
-            weights="calibrated_household_weights",
-        )
     result = _without_calibrated_frames(
         result,
         export_frame=export_frame if ladder_outcome is not None else None,
     )
     if isinstance(ladder_outcome, ExactKLadderCalibration):
         ladder_outcome = dataclasses.replace(ladder_outcome, result=result)
+    if args.scf_education_debt:
+        # microcosm#1074: the stage's fit table at the weights the release
+        # ships, before any scoring or terminal gate, so a build that binds
+        # the FSA family reports the borrower-household share it moved. It
+        # follows the export and cleanup statements, which
+        # test_us_post_export_scoring runs on their own.
+        _write_us_scf_education_debt_fit(
+            artifact_root / US_SCF_EDUCATION_DEBT_CALIBRATED_FIT_FILENAME,
+            export_frame,
+            weights="calibrated_household_weights",
+        )
     compilation = dict(compilation)
     final_uncapped_ssi = _ssi_person_uncapped_amount(
         export_frame,

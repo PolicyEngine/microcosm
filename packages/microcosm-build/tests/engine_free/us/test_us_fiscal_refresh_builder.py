@@ -2314,7 +2314,16 @@ def test_scf_education_debt_fit_is_written_at_calibrated_weights_before_scoring(
         )
     )
     scoring = position(lambda stmt: calls(stmt, "_record_post_export_scoring_plan"))
-    assert export < write < scoring
+    # test_us_post_export_scoring executes the export and cleanup statements
+    # on their own, without args, so the write follows the ladder cleanup.
+    cleanup = position(
+        lambda stmt: (
+            isinstance(stmt, ast.If)
+            and ast.unparse(stmt.test)
+            == "isinstance(ladder_outcome, ExactKLadderCalibration)"
+        )
+    )
+    assert export < cleanup < write < scoring
 
 
 def test_builder_gate_failed_base_pool_override_is_explicit(capsys) -> None:
