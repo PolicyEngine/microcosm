@@ -11,11 +11,12 @@ contract; the emitter's release writer puts the files in
 rules in ``microcosm_emitter_interface.releases``. Nothing here commits,
 tags or writes a pointer file.
 
-Until a repository switches to ``releases.json``, its releases still publish
-and promote through their ``latest*.json`` pointer files with
-``tools/publish_release.sh``. So the command lists the repository's files
-first and refuses, before any emitter starts, while any pointer file is
-there; the tagged publisher refuses a repository that has ``releases.json``.
+A repository's switch to ``releases.json`` deletes its ``latest*.json``
+pointer files in the same commit, and the emitter changes no current build
+while one exists. So the command lists the repository's files first and
+refuses, before any emitter starts, while any pointer file is there; the
+tagged publisher refuses these releases, and any repository that has
+``releases.json``.
 
 A build is current only when the emitter's receipt says so: ``status`` is
 ``published`` and ``current`` is the build. A publication with
@@ -90,9 +91,11 @@ PROMOTION_WAIT_SECONDS = 300.0
 #: message does not say what to do next.
 _REFUSAL_ADVICE = {
     "POINTER_FILES_PRESENT": (
-        "The repository has latest*.json pointer files again, so its releases "
-        "publish and promote through them with tools/publish_release.sh until "
-        "it switches to releases.json; nothing was changed."
+        "A latest*.json pointer file appeared in the repository after this "
+        "command checked it. Nothing writes those files once a repository "
+        "records its builds in releases.json, and the emitter changes no "
+        "current build while one exists, so find the commit that added it, "
+        "remove it, then run the command again; nothing was changed."
     ),
     "BUILD_FOLDER_EXISTS": (
         "Another build with this name was published already, with a different "
@@ -298,12 +301,11 @@ def _listing_errors() -> tuple[type[BaseException], ...]:
 
 
 def _refuse_pointer_files(repository: str) -> None:
-    """Refuse a repository whose releases still publish through pointer files.
+    """Refuse a repository that has any ``latest*.json`` pointer file.
 
-    While any ``latest*.json`` file is in the repository (the interface's
-    ``is_pointer_file`` rule, which the emitter applies too), its releases
-    publish and are made current with tools/publish_release.sh, and only its
-    switch to ``releases.json`` moves them here. A repository whose files
+    The interface's ``is_pointer_file`` rule says which files those are, and
+    the emitter applies it too. A repository's switch to ``releases.json``
+    deletes them, and nothing writes them after it. A repository whose files
     cannot be listed is refused too.
     """
     try:
@@ -318,10 +320,10 @@ def _refuse_pointer_files(repository: str) -> None:
     pointer_files = sorted(path for path in paths if is_pointer_file(path))
     if pointer_files:
         raise ValueError(
-            f"{repository} still has the pointer file(s) "
-            f"{', '.join(pointer_files)}, so its releases publish and are made "
-            "current through them with tools/publish_release.sh until it "
-            "switches to releases.json"
+            f"{repository} has the pointer file(s) {', '.join(pointer_files)}. "
+            "Its builds publish here only once its switch to releases.json has "
+            "deleted them, and nothing writes them after it, so remove the "
+            "file(s) that appeared, then run the command again"
         )
 
 
