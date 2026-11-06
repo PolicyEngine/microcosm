@@ -498,6 +498,9 @@ def test_finalize_reviewed_limitations_carries_staging_and_dedupes() -> None:
         "microcosm#1023",
         "microcosm#1061",
         "microcosm#1353",
+        "roommate or housemate (RELSHIPP 34)",
+        "once a split is restored",
+        "one-unit roommate error",
     ):
         assert fragment in anchor["reason"], fragment
     assert "acs_snap_receipt_anchor" in (by_id["acs_take_up_engine_defaults"]["reason"])

@@ -37,10 +37,14 @@ buys and prepares food apart, a SNAP household of their own
 recipient's unit. When ``FS == 1`` that combined unit is anchored as
 receiving SNAP and takes it up, so the roommate's income and size enter the
 recipient's SNAP test, which can change its eligibility and benefit. This is
-the loader's household fallback (microcosm#1023). The adult-nonrelative
-split that would separate such roommates (microcosm#1061) is on hold, a
-data-driven version is microcosm#1353, and the effect's size is unmeasured
-(microcosm#1093).
+the loader's household fallback (microcosm#1023). The held adult-nonrelative
+split (microcosm#1061) would give every roommate or housemate (``RELSHIPP``
+34) aged 15+ a unit of their own, and an other nonrelative (36) one too
+unless an unmarried partner is present and the two are at least 15 years
+apart. microcosm#1353 would replace that age-gap rule for code-36 adults in
+partner households with an ASEC-estimated probability once a split is
+restored. The size of this one-unit roommate error is unmeasured;
+microcosm#1093 lists it.
 
 - ``FS == 2``: every SPM unit of the household is ``False`` (hard).
 - Group quarters (``TYPEHUGQ`` 2/3) are ``False``. FS is a housing-unit item,
