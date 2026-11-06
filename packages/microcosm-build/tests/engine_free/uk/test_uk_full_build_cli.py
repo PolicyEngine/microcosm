@@ -500,6 +500,62 @@ def test_cli_cold_and_required_replay_recreate_dataset_and_sidecars(
     assert not (out / "microcosm_uk_2025.h5").exists()
 
 
+@pytest.mark.parametrize("sized", (False, True), ids=("unsized", "sized"))
+def test_each_graph_phase_keeps_only_the_versions_it_reads(
+    tmp_path, monkeypatch, sized
+):
+    """Only the export phase keeps a population: the one the H5 is written from.
+
+    A graph run frees every version its caller does not name (#931). A sized
+    request writes the size checkpoint, but this graph runs no size search, so
+    the numerical phase keeps no pool.
+    """
+    pytest.importorskip("tables")
+    extra = ("--dataset-households", "2") if sized else ()
+    args = arguments(tmp_path, *extra)
+    build = prepared(tmp_path, size_households=2 if sized else None)
+    runs = []
+    run_graph = cli.run_graph
+
+    def recorded(compiled, **kwargs):
+        manifest = run_graph(compiled, **kwargs)
+        runs.append((kwargs["retain_populations"], set(manifest.populations)))
+        return manifest
+
+    monkeypatch.setattr(cli, "run_graph", recorded)
+    assert cli.execute_full_build(build, args) == 0
+    assert cli._writes_size_checkpoint(args) is sized
+    # The preflight, the numerical phase, the export and the certification run.
+    assert [retained for retained, _ in runs] == [
+        (),
+        (),
+        (build.full.population,),
+        (),
+    ]
+    assert all(set(retained) == attached for retained, attached in runs)
+
+
+@pytest.mark.parametrize(
+    ("extra", "searched", "kept"),
+    [
+        (("--dataset-households", "2"), True, ("uk.full.pool",)),
+        (("--dataset-households", "2"), False, ()),
+        (("--dataset-households", "2", "--no-size-checkpoint"), True, ()),
+        ((), True, ()),
+    ],
+    ids=("checkpointed", "no-size-search", "no-checkpoint", "unsized"),
+)
+def test_the_numerical_phase_keeps_the_pool_only_for_the_size_checkpoint(
+    tmp_path, extra, searched, kept
+):
+    """The size checkpoint reads the pool, so that phase keeps it when it runs."""
+    args = arguments(tmp_path, *extra)
+    compiled = SimpleNamespace(
+        order=("uk.full.pool", *(("uk.full.size_search",) if searched else ()))
+    )
+    assert cli._size_checkpoint_populations(args, compiled) == kept
+
+
 def test_the_dense_gate_replay_signs_a_bound_attempt_the_contract_accepts(
     tmp_path, monkeypatch
 ):

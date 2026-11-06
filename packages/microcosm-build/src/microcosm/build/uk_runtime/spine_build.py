@@ -2223,6 +2223,9 @@ def _main(argv: list[str] | None = None) -> int:
             else args.spine_h5.parent / f".{args.spine_h5.stem}.checkpoints"
         )
         compiled_graph = compile_graph(graph)
+        # The spine reads only its final version from the manifest, so the run
+        # frees every other version once nothing reads it.
+        final_version = compiled_graph.versions[stage_names[-1]]
         graph_store = ContentStore(checkpoint_root / "node-graph")
         graph_manifest = run_graph(
             compiled_graph,
@@ -2231,6 +2234,7 @@ def _main(argv: list[str] | None = None) -> int:
             kernels=prepared.kernels,
             resume="auto",
             decisions=(),
+            retain_populations=(final_version,),
             _population_observer=_graph_progress_observer(
                 _ACTIVE_EMITTER, total=len(compiled_graph.order)
             ),
@@ -2279,7 +2283,6 @@ def _main(argv: list[str] | None = None) -> int:
         graph_schema_path = save_uk_graph_schema(
             graph, graph_evidence_path.parent, scope="raw_spine", spec=spec
         )
-        final_version = compiled_graph.versions[stage_names[-1]]
         frame = graph_manifest.population(final_version)
         records = _graph_stage_records(
             manifest=graph_manifest,

@@ -8,7 +8,7 @@ import pickle
 import socket
 import stat
 import time
-from collections.abc import Callable, Iterable, Mapping
+from collections.abc import Callable, Collection, Iterable, Mapping
 from copy import deepcopy
 from dataclasses import dataclass, fields, replace
 from datetime import UTC, datetime
@@ -2502,6 +2502,60 @@ def _preflight_expand_declarations(compiled: CompiledGraph) -> None:
             ) from error
 
 
+def _retained_versions(
+    compiled: CompiledGraph, retain_populations: Collection[str] | None
+) -> frozenset[str] | None:
+    """Check ``run_graph``'s ``retain_populations`` before the run does any work.
+
+    ``None`` keeps every version, as before. A bare string is refused rather
+    than read as a collection of one-letter names, and so is a name that is
+    not a population version of this graph.
+    """
+
+    if retain_populations is None:
+        return None
+    if isinstance(retain_populations, str | bytes) or not isinstance(
+        retain_populations, Collection
+    ):
+        raise TypeError("retain_populations must be a collection of version names.")
+    names = tuple(retain_populations)
+    if not all(isinstance(name, str) for name in names):
+        raise TypeError("retain_populations must name each version as a string.")
+    unknown = sorted(set(names) - set(compiled.versions.values()))
+    if unknown:
+        raise ValueError(
+            f"retain_populations names {unknown!r}, which are not population "
+            "versions of this graph."
+        )
+    return frozenset(names)
+
+
+def _population_releases(
+    compiled: CompiledGraph, retained: frozenset[str]
+) -> dict[str, tuple[str, ...]]:
+    """Map each node to the versions it is the last to use.
+
+    The node that creates a version writes it. Each ordinary member reads the
+    version as its incumbent and writes its successor, and each structural
+    node built on it reads it as its base. Nothing else in a run reads a
+    version, so once the last of these nodes has run the executor holds the
+    version only for the manifest. A version that is not retained can go then.
+    """
+
+    last: dict[str, str] = {}
+    for node_id in compiled.order:
+        node = compiled.graph.node(node_id)
+        last[compiled.versions[node_id]] = node_id
+        if node.structural not in (StructuralDelta.NONE, StructuralDelta.CREATE):
+            assert node.base is not None
+            last[node.base] = node_id
+    releases: dict[str, list[str]] = {}
+    for version, node_id in last.items():
+        if version not in retained:
+            releases.setdefault(node_id, []).append(version)
+    return {node_id: tuple(versions) for node_id, versions in releases.items()}
+
+
 def _evict_run_writes(store: ContentStore, written: Iterable[str]) -> list[str]:
     """Take back every object a refusing run published, and report what stayed.
 
@@ -2609,11 +2663,22 @@ def run_graph(
     kernels: KernelRegistry,
     resume: ResumePolicy = "auto",
     decisions: tuple[Decision, ...] = (),
+    retain_populations: Collection[str] | None = None,
     _population_observer: Callable[[str, Population], None] | None = None,
     _population_observer_detach: bool = True,
     _verification_epoch: Mapping[str, object] | None = None,
 ) -> RunManifest:
     """Execute a compiled graph with content-addressed reuse and receipts.
+
+    ``retain_populations`` names the population versions the caller will read
+    from the manifest. The default, ``None``, keeps every version until the
+    run ends and attaches all of them. Given a collection, the run drops each
+    version it does not name once the last node that reads that version has
+    run, so its frame can be freed, and attaches only the named versions and
+    their mass ledgers. A version is read by its ordinary members and by every
+    structural node built on it. A name that is not a version of the graph is
+    refused before any work. Each node reads the same population with or
+    without the keyword, and it enters no key, no receipt and no cache record.
 
     The private population observer exposes a detached snapshot of each node's
     admitted population, design anchors included, to an integrating verifier.
@@ -2676,6 +2741,7 @@ def run_graph(
                 kernels=kernels,
                 resume=resume,
                 decisions=decisions,
+                retain_populations=retain_populations,
                 written=written,
                 run_sources=run_sources,
                 _population_observer=_population_observer,
@@ -2695,6 +2761,7 @@ def _execute_graph(
     kernels: KernelRegistry,
     resume: ResumePolicy,
     decisions: tuple[Decision, ...],
+    retain_populations: Collection[str] | None,
     written: set[str],
     run_sources: _RunSources,
     _population_observer: Callable[[str, Population], None] | None,
@@ -2712,6 +2779,7 @@ def _execute_graph(
         raise ValueError("resume must be 'auto', 'require', or 'forbid'.")
     if type(_population_observer_detach) is not bool:
         raise TypeError("_population_observer_detach must be a bool.")
+    retained = _retained_versions(compiled, retain_populations)
     normalized_decisions: list[Decision] = []
     for decision in decisions:
         if isinstance(decision, Decision):
@@ -2742,6 +2810,10 @@ def _execute_graph(
     if resume == "require":
         _preflight_require(compiled, store, keys, implementations, kernels)
 
+    # Node id to the versions it is the last to use. Each leaves
+    # ``populations`` once that node has run, so its frame can be freed.
+    # Without ``retain_populations`` none leaves, and the manifest attaches all.
+    releases = {} if retained is None else _population_releases(compiled, retained)
     populations: dict[str, Population] = {}
     # Each structural version's ``Frame`` mass log as that version was
     # admitted.  ``populations`` cannot answer this: an ordinary member
@@ -2777,6 +2849,11 @@ def _execute_graph(
                 resume=resume,
             )
             receipt_payloads[node_id] = receipts[node_id].receipt
+            # An unreached node reads nothing, but it can still be a version's
+            # last reader. That version may never have been admitted, so its
+            # absence is not an error here.
+            for version in releases.get(node_id, ()):
+                populations.pop(version, None)
             continue
 
         if node.structural is StructuralDelta.CREATE:
@@ -3114,6 +3191,8 @@ def _execute_graph(
             opaque_artifacts=MappingProxyType(receipt_opaque),
         )
         receipt_payloads[node_id] = receipts[node_id].receipt
+        for version in releases.get(node_id, ()):
+            del populations[version]
 
     # Every source is re-derived in full, cache bypassed, before any caller
     # receives a manifest. This closes the two cases a stat signature cannot

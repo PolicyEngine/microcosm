@@ -3073,6 +3073,59 @@ def test_driver_writes_payload_identical_h5s(
         )
 
 
+def test_driver_keeps_only_the_final_graph_version(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The spine reads one version from its graph manifest and keeps only it.
+
+    The graph run frees every other version once nothing reads it (#931), so
+    the manifest attaches the final stage's version and nothing else.
+    """
+    pytest.importorskip("tables")
+    raw_dir = tmp_path / "raw"
+    stage = _write_fixture(raw_dir)
+    output = tmp_path / "spine.h5"
+    tool = _load_tool()
+    monkeypatch.setattr(
+        tool, "load_country_spec", lambda country: _synthetic_spec(stage)
+    )
+    monkeypatch.setattr(tool, "_rules_engine", lambda: _FakeUKEngine())
+    _stub_policy_readers(monkeypatch)
+    spi_tab, hmrc_ods = _patch_spi_spine_driver_runtime(tool, monkeypatch, tmp_path)
+    runs = []
+    run_graph = tool.run_graph
+
+    def recorded(compiled, **kwargs):
+        manifest = run_graph(compiled, **kwargs)
+        runs.append((compiled, kwargs["retain_populations"], manifest))
+        return manifest
+
+    monkeypatch.setattr(tool, "run_graph", recorded)
+
+    assert (
+        tool.main(
+            [
+                "--frs-raw-dir",
+                str(raw_dir),
+                "--spine-h5",
+                str(output),
+                "--spi-tab",
+                str(spi_tab),
+                "--hmrc-ods",
+                str(hmrc_ods),
+                "--no-staging",
+            ]
+        )
+        == 0
+    )
+    [(compiled, retained, manifest)] = runs
+    stage_names = tool._uk_spine_stage_names(_synthetic_spec(stage))
+    final = compiled.versions[stage_names[-1]]
+    assert retained == (final,)
+    assert set(manifest.populations) == set(manifest.mass_ledgers) == {final}
+    assert len(set(compiled.versions.values())) > 1
+
+
 def test_driver_refuses_missing_spi_tab(tmp_path: Path) -> None:
     tool = _load_tool()
     raw_dir = tmp_path / "raw"
