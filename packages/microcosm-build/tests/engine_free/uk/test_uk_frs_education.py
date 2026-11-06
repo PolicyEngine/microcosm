@@ -33,6 +33,76 @@ def test_current_education_cascade_keeps_dead_post_secondary_shadowed() -> None:
     ]
 
 
+def test_full_time_education_is_a_yes_to_educft_on_either_table() -> None:
+    """EDUCFT = 1 sets is_in_full_time_education on adult and child records.
+
+    A no, a blank (nobody aged 75 or over is asked) and a person with no raw
+    record read as not in full-time education (microcosm#1095).
+    """
+
+    person = pd.DataFrame(
+        {"person_id": [1, 2, 3, 4, 5, 6], "age": [20, 14, 25, 30, 80, 40]}
+    )
+    raw = pd.DataFrame(
+        {
+            "person_id": [1, 2, 3, 4, 5],
+            # 2024-25 names the answer EDUCFT; there is no FTED column.
+            "educft": [1, 1, 1, 2, np.nan],
+            "typeed2": [9, 6, 7, 0, 0],
+            "educqual": [17, 86, 17, 3, 86],
+            "trainee": [2, 2, 2, 2, np.nan],
+            "_frs_table": ["adult", "child", "adult", "adult", "adult"],
+            "slos": [2, np.nan, 2, 1, np.nan],
+            "educleft": [np.nan, np.nan, np.nan, 21, 15],
+        }
+    )
+
+    result = derive_frs_education(person, raw)
+
+    assert result["is_in_full_time_education"].tolist() == [
+        True,
+        True,
+        True,
+        False,
+        False,
+        False,
+    ]
+    assert result["is_in_full_time_education"].dtype == bool
+    # The course's level is current_education's, read from the same answer.
+    assert result["current_education"].tolist() == [
+        "TERTIARY",
+        "LOWER_SECONDARY",
+        "UPPER_SECONDARY",
+        "NOT_IN_EDUCATION",
+        "NOT_IN_EDUCATION",
+        "NOT_IN_EDUCATION",
+    ]
+
+
+def test_full_time_education_reads_fted_where_a_vintage_carries_it() -> None:
+    """An earlier vintage's FTED is the answer whenever the tab carries it."""
+
+    person = pd.DataFrame({"person_id": [1, 2], "age": [20, 20]})
+    raw = pd.DataFrame(
+        {
+            "person_id": [1, 2],
+            "fted": [1, 2],
+            "educft": [2, 1],
+            "typeed2": [9, 9],
+            "educqual": [17, 17],
+            "trainee": [2, 2],
+            "_frs_table": ["adult", "adult"],
+            "slos": [2, 2],
+            "educleft": [np.nan, np.nan],
+        }
+    )
+
+    result = derive_frs_education(person, raw)
+
+    assert result["is_in_full_time_education"].tolist() == [True, False]
+    assert result["current_education"].tolist() == ["TERTIARY", "NOT_IN_EDUCATION"]
+
+
 def test_educqual_map_pins_the_corrected_frs_value_labels() -> None:
     # Signed difference vs the incumbent, whose map was inverted (it read
     # low codes as school-level and 17-21 as degrees). Labels verified

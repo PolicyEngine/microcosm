@@ -44,6 +44,17 @@ NON_ADVANCED_EDUCATION_LEVELS = (
 #: dependant.
 FRS_TRAINEE_COLUMN = "trainee"
 FRS_TRAINEE_YES = 1
+#: FRS EDUCFT, "Whether presently in full time education" (1 yes, 2 no), on the
+#: adult and child tables of FRS 2024-25 (SN 9563); earlier vintages name it
+#: FTED. Its question, FtEd, is asked of everyone over 3 and under 75: a
+#: student registered full-time at an educational establishment answers yes,
+#: one registered part-time no, and an apprentice is never coded as in
+#: full-time education. A yes sets policyengine-uk's
+#: ``is_in_full_time_education``, which 2.174.1 reads only for Universal
+#: Credit's condition that a claimant is not receiving education (UC Regs 2013
+#: regs 12 and 13); the course's level comes from ``current_education``, which
+#: reads the same answer.
+FRS_FULL_TIME_EDUCATION_YES = 1
 #: FRS SLOS, "Do you have an outstanding student loan?" (1 yes, 2 no), adult
 #: table of FRS 2024-25 (SN 9563). Adults who answer SLREPAY ("Whether making
 #: student loan repayments") no answer it, so it carries the borrowers below the
@@ -136,6 +147,7 @@ FRS_EDUCATION_OUTPUT_COLUMNS = (
     "receives_benefits_in_own_right",
     "reports_outstanding_student_loan",
     "age_left_full_time_education",
+    "is_in_full_time_education",
 )
 
 
@@ -210,6 +222,9 @@ def derive_frs_education(
     typeed2 = _num(raw, "typeed2").to_numpy()
     current = derive_current_education(fted=fted, typeed2=typeed2, age=age)
     values["current_education"] = current
+    # Only a yes counts: a no, a blank (nobody aged 75 or over is asked) and
+    # an absent record read as not in full-time education.
+    values["is_in_full_time_education"] = fted == FRS_FULL_TIME_EDUCATION_YES
     values["highest_education"] = (
         _num(raw, "educqual").astype(int).map(EDUCQUAL_MAP).fillna("UPPER_SECONDARY")
     ).to_numpy()
