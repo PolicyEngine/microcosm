@@ -1162,7 +1162,12 @@ def with_us_housing_inputs(
     acs_rent_donor: pd.DataFrame,
     n_estimators: int = _DEFAULT_N_ESTIMATORS,
 ) -> Frame:
-    """Materialize source-backed housing and tenure inputs on a US frame."""
+    """Materialize source-backed housing and tenure inputs on a US frame.
+
+    A frame that already passes the signal gate returns unchanged. Rent outside
+    renter households fails the gate, so a frame whose rent sits on the wrong
+    heads gets its rent drawn again.
+    """
 
     if frame.schema != US_SCHEMA:
         raise ValueError("US housing inputs require the US schema.")
@@ -1289,7 +1294,11 @@ def us_housing_inputs_summary(frame: Frame) -> dict[str, object]:
 
 
 def us_housing_inputs_signal_gate(frame: Frame) -> GateResult:
-    """Require plausible non-default signal for all five restored inputs."""
+    """Require plausible non-default signal for all five restored inputs.
+
+    Positive rent may sit only on the head of a renter household, so rent
+    drawn for one household and written to another household's head fails.
+    """
 
     missing: list[str] = []
     for entity, columns in (
@@ -1354,6 +1363,7 @@ def us_housing_inputs_signal_gate(frame: Frame) -> GateResult:
         ("nonfinite_rent", "nonfinite pre_subsidy_rent"),
         ("negative_rent", "negative pre_subsidy_rent"),
         ("positive_rent_nonhead", "positive rent on non-head people"),
+        ("positive_rent_nonrenter", "positive rent outside renter households"),
     ):
         count = int(summary[key])
         if count:
