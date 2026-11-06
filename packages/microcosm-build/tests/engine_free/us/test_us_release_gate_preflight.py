@@ -1939,7 +1939,9 @@ def _whole_pool_selection(pool: list[dict[str, object]]) -> SelectionSource:
     )
 
 
-def _run_synthetic_preflight(monkeypatch, tmp_path, *, frame: Frame, **mode):
+def _run_synthetic_preflight(
+    monkeypatch, tmp_path, *, frame: Frame, reference_frame: Frame | None = None, **mode
+):
     """``run_preflight`` over a synthetic base, with every optional input given.
 
     The base loader, the Ledger target compiler and the reference-H5 loader are
@@ -1964,7 +1966,11 @@ def _run_synthetic_preflight(monkeypatch, tmp_path, *, frame: Frame, **mode):
         "_load_ledger_target_specs",
         lambda path, *, target_period, ledger_facts_sha256, **kwargs: (spec,),
     )
-    monkeypatch.setattr(l0_refit_export, "load_us_frame", lambda path: frame)
+    monkeypatch.setattr(
+        l0_refit_export,
+        "load_us_frame",
+        lambda path: frame if reference_frame is None else reference_frame,
+    )
     return preflight_module.run_preflight(
         base_h5=tmp_path / "base.h5",
         export_input_mass_reference_h5=tmp_path / "reference.h5",
@@ -1975,6 +1981,32 @@ def _run_synthetic_preflight(monkeypatch, tmp_path, *, frame: Frame, **mode):
         minimum_reference_total=0.0,
         **mode,
     )
+
+
+def test__run_preflight__reads_line_32_on_the_reference_terms(
+    monkeypatch, tmp_path
+) -> None:
+    base = _new_lineage_frame()
+    reference = _new_lineage_frame()
+    monkeypatch.setattr(
+        preflight_module,
+        "us_input_mass_totals",
+        lambda frame, columns=None: (
+            {"partnership_income": 8.5e11, "s_corp_income": 0.0}
+            if frame is reference
+            else {"partnership_income": 3.9e11, "s_corp_income": 6.6e11}
+        ),
+    )
+
+    report = _run_synthetic_preflight(
+        monkeypatch, tmp_path, frame=base, reference_frame=reference, new_lineage=True
+    )
+
+    check = next(c for c in report.checks if c.name == "export_mass_parity_risk")
+    assert check.status == "PASS"
+    row = next(r for r in check.rows if r["column"] == "partnership_income")
+    assert row["pool_mass_at_base_weights"] == pytest.approx(1.05e12)
+    assert row["verdict"] == "in_band"
 
 
 def test__run_preflight__new_lineage_skips_only_carryover_and_records_why(

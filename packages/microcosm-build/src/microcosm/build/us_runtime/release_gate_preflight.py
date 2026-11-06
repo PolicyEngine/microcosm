@@ -33,7 +33,9 @@ Five checks, each mirroring a live release gate but evaluated pre-solve:
    weights is an AT-RISK signal: the solve optimizes the target surface, not
    this untargeted column, so a pre-solve out-of-band mass usually stays out.
    The band math is reused verbatim via
-   :func:`microcosm.build.gates.input_mass_parity_gate`.
+   :func:`microcosm.build.gates.input_mass_parity_gate`, and the pool reads
+   Schedule E line 32 as the gate's candidate does
+   (:func:`microcosm.build.us_runtime.input_mass.us_line_32_on_reference_terms`).
 
 4. **Smoke-probe support audit** — for every reform-coverage probe, for every
    ``binding_inputs`` leaf: pool nonzero support, *selected* nonzero support
@@ -100,7 +102,10 @@ from microcosm.build.us_runtime.h5_io import (
     require_authenticated_us_multispine_pool_h5,
     us_multispine_pool_release_receipt,
 )
-from microcosm.build.us_runtime.input_mass import us_input_mass_totals
+from microcosm.build.us_runtime.input_mass import (
+    us_input_mass_totals,
+    us_line_32_on_reference_terms,
+)
 from microcosm.build.us_runtime.puf_capital_gains_tail import (
     assert_puf_capital_gains_tail_survives_selection,
 )
@@ -1086,9 +1091,13 @@ def run_preflight(
                     release.US_EXPORT_INPUT_MASS_REVIEWED_EXCLUSIONS
                 )
         reference_frame = load_us_frame(Path(export_input_mass_reference_h5))
-        pool_totals = us_input_mass_totals(base_frame, columns=engine_input_variables)
         reference_totals = us_input_mass_totals(
             reference_frame, columns=engine_input_variables
+        )
+        pool_totals = us_line_32_on_reference_terms(
+            us_input_mass_totals(base_frame, columns=engine_input_variables),
+            reference_totals,
+            minimum_reference_total=minimum_reference_total,
         )
         checks.append(
             check_export_mass_parity_risk(

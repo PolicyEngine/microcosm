@@ -203,7 +203,9 @@ AT-RISK only, `0` clean):
 3. **Export-mass parity risk** — each export-mass column's pool mass at *base*
    weights against its reference band, honoring the release tool's
    `US_EXPORT_INPUT_MASS_REVIEWED_EXCLUSIONS` register (reused, never
-   re-declared). A column out of band pre-solve is flagged for review.
+   re-declared). A column out of band pre-solve is flagged for review. Against
+   a reference with no `s_corp_income` mass, the pool's `partnership_income`
+   counts both columns, as the export gate's candidate does.
 4. **Smoke-probe support audit** — every reform-coverage probe leaf's pool vs
    *selected* nonzero support and pool sign-leg decomposition. A leaf with pool
    support but zero selected support **fails** (the input the frozen selection
