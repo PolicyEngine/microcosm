@@ -22,9 +22,10 @@ The switch is two steps, each a separate run of this tool:
     - its checksum ledger, when the build has one, with the two manifests'
       lines changed to the rewritten manifests' digests;
     - every other file the build's release manifest declares, copied from the
-      tagged commit on the Hub's own servers (``CommitOperationCopy``), so
-      nothing large is downloaded. Each must match the SHA-256 the manifest
-      records.
+      tagged commit with ``CommitOperationCopy``: the Hub copies an LFS file,
+      which every large file is, on its own servers, and ``huggingface_hub``
+      downloads a small regular file and sends it in the commit, so nothing
+      large is downloaded. Each must match the SHA-256 the manifest records.
 
     A folder that already holds a copy of the same tagged build is skipped,
     so the step can run again for builds published since. It writes no
@@ -37,9 +38,12 @@ The switch is two steps, each a separate run of this tool:
     of it: exactly its files, a release manifest naming the release, the
     build and the tagged manifest it was rewritten from, and every declared
     file with the SHA-256 it had at the tag. It also refuses a build folder
-    on ``main`` that the record would not list, and a change to the
+    on ``main`` that the record would not list, a change to the
     repository's tags between its first read and its commit (a tagged
-    publication that does not commit to ``main`` would otherwise be lost).
+    publication that does not commit to ``main`` would otherwise be lost),
+    and, at its first read or just before its commit, any
+    ``release-staging/`` branch, which the tagged publisher keeps from
+    before it uploads a build until after it tags it.
     The record lists every moved build, with the date of its tagged commit
     as ``published_at``. The build
     each pointer file names becomes its release's current build, and
@@ -69,6 +73,13 @@ with the ID of its tag object instead.
 names one, and ``--default RELEASE`` chooses the default. The switch refuses
 a pointer file whose build does not move, unless ``--retire-pointer PATH``
 says that the switch should delete it with nothing in its place.
+
+Run the ``switch`` step only while nobody publishes to the repository. The
+tagged publisher checks for ``releases.json`` only when it starts, so a
+publication that starts just before the switch commit, and makes its staging
+branch after the switch's last read, would still be in neither the record nor
+a folder. A build tagged while ``copy`` runs is safe: the switch refuses until
+``copy`` runs again.
 
 Both steps read the Hub and print, as JSON, what they would do. They change
 nothing without ``--write``. They read and write with ``HF_TOKEN``, then

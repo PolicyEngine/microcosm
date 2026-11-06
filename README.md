@@ -524,14 +524,18 @@ what it would do, unless given `--write`:
 ```bash
 # 1. Copy each tagged build into its folder, one commit per build; run it
 #    again later to copy builds published since. Hugging Face copies the
-#    files on its own servers.
+#    large (LFS) files on its own servers.
 uv run python -m microcosm.build.build_folder_switch copy <owner/repository> \
   [--include <tag>=<release>] [--exclude <tag>] [--write]
 # 2. In one commit, write releases.json and delete every latest*.json file.
 uv run python -m microcosm.build.build_folder_switch switch <owner/repository> \
-  [--include <tag>=<release>] [--retire-pointer <latest file>] \
-  [--current <release>=<build>] [--default <release>] [--write]
+  [--include <tag>=<release>] [--exclude <tag>] \
+  [--retire-pointer <latest file>] [--current <release>=<build>] \
+  [--default <release>] [--write]
 ```
+
+Run the switch step only while nobody publishes to the repository, and give
+it the same `--include` and `--exclude` options as the copy step.
 
 The copy step moves every tag of a release that publishes into build folders
 whose manifest names that tag, and each release-per-build tag that
@@ -541,7 +545,8 @@ or role the emitter interface refuses; it reports both without `--write`. The
 switch refuses unless every such build's folder holds exactly its copied
 files, every pointer file's build moves or `--retire-pointer` deletes that
 pointer file, no other build folder is on `main`, the repository's tags did
-not change while it read them, and the emitter interface's checks pass. Each build keeps the date of its
+not change while it read them, no `release-staging/` branch shows a tagged
+publication in progress, and the emitter interface's checks pass. Each build keeps the date of its
 tagged commit as `published_at`, and each pointer file's build becomes its
 release's current build. The module's docstring describes both steps in full.
 
