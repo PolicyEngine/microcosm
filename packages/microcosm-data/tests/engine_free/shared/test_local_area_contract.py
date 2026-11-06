@@ -324,6 +324,31 @@ def test_uk_local_area_bundle_refuses_the_tagged_layout(tmp_path: Path) -> None:
     )
 
 
+def test_uk_local_area_bundle_refuses_a_tagged_release_manifest(
+    tmp_path: Path,
+) -> None:
+    """A tagged release manifest describes the build in an object and pins
+    each artifact to the build's tag; a UK local-area build publishes into
+    its own folder, so the contract refuses both."""
+    release_dir = _write_local_bundle(tmp_path, release_id=UK_LOCAL_RELEASE_ID)
+    manifest_path = release_dir / "release_manifest.json"
+    manifest = json.loads(manifest_path.read_text())
+    tag = f"{UK_LOCAL_RELEASE_ID}-20260920T120000Z-deadbeef"
+    manifest["build"] = {"build_id": UK_LOCAL_RELEASE_ID, "cut_tag": tag}
+    for artifact in manifest["artifacts"].values():
+        artifact["revision"] = tag
+    manifest_path.write_text(json.dumps(manifest))
+
+    failures = _failures(release_dir)
+
+    assert any("'build' must be the build's name" in failure for failure in failures)
+    assert any(
+        f"pins revision {tag!r}; a build folder's files are found through "
+        "releases.json" in failure
+        for failure in failures
+    )
+
+
 def test_valid_local_area_bundle_passes(tmp_path: Path) -> None:
     release_dir = _write_local_bundle(tmp_path)
 
