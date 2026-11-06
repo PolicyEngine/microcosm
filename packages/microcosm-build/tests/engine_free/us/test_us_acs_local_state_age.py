@@ -17,9 +17,10 @@ Properties these tests check for generated inputs:
   surface check names every state that breaks either.
 - A household counts its members in a group's half-open age range, and only
   in its own state, so the fifteen groups count each person once.
-- Moving to new state totals sets each state's level, keeps each district's
-  share of its state, and makes each state's districts (and, on the county
-  rung, its counties) sum to its total.
+- Moving to new state totals sets each state's level and keeps each district's
+  share of its state. A state's districts sum exactly to a whole-number total,
+  the only kind Census publishes, and on the county rung its counties sum to
+  that total within rounding.
 """
 
 from __future__ import annotations
@@ -154,6 +155,13 @@ def _is_age_spec(spec) -> bool:
     )
 
 
+@lru_cache
+def _baseline_targets() -> dict[str, dict]:
+    """The packaged feed's targets, with no Vintage 2025 fact."""
+
+    return _by_name(_compile([]))
+
+
 # --- Ledger facts and the compile fence -------------------------------------
 
 
@@ -227,16 +235,20 @@ def test_compile_binds_the_age_groups_only_when_asked() -> None:
 
 @_COMPILE_SETTINGS
 @given(st.lists(st.integers(1, 5_000_000), min_size=15, max_size=15))
-def test_compiled_age_groups_carry_their_facts_counts(values) -> None:
+def test_the_flag_adds_each_age_group_and_changes_no_other_target(values) -> None:
     facts = _state_facts("18", [float(value) for value in values])
     counts = {fact["lineage"]["source_record_id"]: fact["value"] for fact in facts}
+    baseline = _baseline_targets()
 
-    specs = [
-        spec
-        for spec in _compile(facts, state_age_band_targets=True).specs
-        if _is_age_spec(spec)
-    ]
+    assert _by_name(_compile(facts)) == baseline
 
+    registry = _compile(facts, state_age_band_targets=True)
+    specs = [spec for spec in registry.specs if _is_age_spec(spec)]
+    others = {
+        spec.name: spec.to_dict() for spec in registry.specs if not _is_age_spec(spec)
+    }
+
+    assert others == baseline
     assert len(specs) == len(AGE_GROUPS)
     for spec in specs:
         assert spec.value == counts[spec.name]
@@ -441,14 +453,14 @@ def test_a_group_counts_its_first_age_and_stops_before_the_next_group(
 
 def test_a_group_counts_nobody_outside_its_state() -> None:
     values = _household_values(
-        [1, 2],
-        [5, 5],
-        [1, 2],
-        [18, 6],
+        [1, 2, 3],
+        [5, 5, 5],
+        [1, 2, 3],
+        [18, 6, 36],
         _spec_for_group("age_5").metadata,
     )
 
-    assert values.tolist() == [1.0, 0.0]
+    assert values.tolist() == [1.0, 0.0, 0.0]
 
 
 @_SETTINGS
@@ -459,7 +471,7 @@ def test_the_groups_count_each_person_once(people) -> None:
     members, ages = zip(*people, strict=True)
     household_ids = [40, 30, 20, 10]
     person_households = [household_ids[member] for member in members]
-    state_fips = np.asarray([18, 18, 6, 18])
+    state_fips = np.asarray([18, 36, 6, 18])
 
     counted = {
         spec.name: _household_values(

@@ -93,6 +93,14 @@ The B4923C anchor test (`test_us_esi_premiums.py`) follows this report too:
 it names its listing, the source `census_pep` and the namespace
 `census_pep.v2025.cy2024.state_resident_population_age_bands.`.
 
+Chronicle's main drops Vintage 2024's 51 state totals
+(PolicyEngine/chronicle#417), since Vintage 2025 publishes the same line
+(PolicyEngine/chronicle#397). This feed keeps them: the compile skips rows
+without age bounds, and the state totals read Vintage 2025's record set spec. A
+re-pin past that drop regenerates `census_pep.v2024` from 969 rows to 918 and
+moves `record_set_spec_hash` on those 918. The B4923C anchor test needs its own
+check there, since it fails a re-pin that drops rows.
+
 The feed lives on the build machine at
 `~/PolicyEngine/_buildh-runtime/inputs/consumer_facts_us_e86a83b.jsonl`.
 

@@ -36,10 +36,11 @@ Census counts directly, and the 12-to-17 and 18-to-24 groups split at 18.
 one `census_population` target per age-group fact and none for the all-ages
 rows. Without the flag, the default, the compile drops every Vintage 2025
 age-group fact before it builds targets, so every other build keeps its
-targets: on the e86a83bb feed, `compile_us_fiscal_target_registry(age_targets=True)`
-followed by `apply_us_medicaid_enrollment_substitutions` gives the same 33,250
-targets as the previous feed, and opening the fence adds the 765 age groups
-(51 x 15) and changes no other target. Only the ACS local release opens it.
+targets: on the e86a83bb feed, the release's compile (`age_targets=True` with
+the congressional district crosswalk, then
+`apply_us_medicaid_enrollment_substitutions`) gives the same 33,250 targets as
+the previous feed, and opening the fence adds the 765 age groups (51 x 15) and
+changes no other target. Only the ACS local release opens it.
 The target-parity manifest declares the `census_pep.v2025` family an
 `off_by_default` reviewed exclusion.
 
@@ -151,7 +152,10 @@ families reads as `snap,medicaid,soi`, the default until microcosm#1528.
 Command lines stored before microcosm#1528, such as the release recipes in
 `experiments/us-acs-local-hours-rebuild-20260922/`, name no `--families`, so
 they take the new default: they add age targets on this feed and refuse a feed
-without the age groups. Add `--families snap,medicaid,soi` to replay one.
+without the age groups. To replay one, add `--families snap,medicaid,soi` and,
+when the command names no `--soi-mode`, the build's recorded mode. That
+experiment's recipes name none and its manifest records `totals`
+([the SOI surface note](us-acs-local-soi-target-surface.md) gives the command).
 
 ## What the family leaves out
 
@@ -163,4 +167,5 @@ As of 2026-11-06 no release has fit this surface. PolicyEngine/microcosm#1531
 reports the current slices' age fit and a projection of this family onto them,
 from the state audit in PolicyEngine/child-poverty-impact-dashboard#129. A
 rebuild needs a national donor that passes the staging build's donor checks,
-which the default donor `populace-us-2024-spm-20260915` fails.
+which the default donor `populace-us-2024-spm-20260915` and its child
+`populace-us-2024-spm-receipts-20260923` both fail.

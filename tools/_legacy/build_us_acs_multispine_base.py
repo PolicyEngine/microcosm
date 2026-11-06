@@ -1375,8 +1375,9 @@ def _group_quarters_children_limitation(
         "treatment": (
             "Remove these records from the staged population before the "
             "transfer. They leave every fiscal total as well as SPM "
-            "measurement; calibration to the PUMA-ladder population marginals "
-            "re-spreads their weight. Every other group-quarters record stays."
+            "measurement; calibration to the state and district population "
+            "marginals re-spreads their weight. Every other group-quarters "
+            "record stays."
         ),
         "flip_condition": receipt.get("flip_condition"),
         "counts": {

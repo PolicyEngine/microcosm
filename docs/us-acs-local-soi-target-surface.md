@@ -506,8 +506,10 @@ identical calibrated weights.
   (finalize), which `build_manifest.json` also embeds under `gates`.
 - `build_manifest.json`, under `materialize.soi_mode` (package).
 - The `refresh_recipe.release` command in `build_manifest.json` and
-  `release_manifest.json`, which names `--soi-mode <mode>`, so re-running it
-  reproduces the recorded surface even if the default changes again.
+  `release_manifest.json`. A recipe written since microcosm#1528 names
+  `--families` and `--soi-mode <mode>`, so re-running it reproduces the recorded
+  surface even if a default changes again. An older recipe may name neither, so
+  pass the recorded values, as this note's last section does for #974.
 
 `--stage package` refuses a checkpoint whose `materialize_rss.json` does not
 record one of the four modes, before any release directory exists.

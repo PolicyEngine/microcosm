@@ -1598,7 +1598,8 @@ def with_state_population_totals(populations, ladder_states, state_totals):
     total. Each congressional district (district code // 100 is its state's
     FIPS) keeps its share of its state's district populations, so a state's
     districts sum to the state's total; the rounding residual goes to the
-    state's largest district. Other geographies pass through unchanged.
+    state's largest district, and the sum comes out exact for a whole-number
+    total. Other geographies pass through unchanged.
     """
 
     expected = set(ladder_states)
