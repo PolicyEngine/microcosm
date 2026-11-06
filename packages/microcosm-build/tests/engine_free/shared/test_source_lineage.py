@@ -263,3 +263,56 @@ def test_a_selection_without_replicas_keeps_its_rows_and_weights() -> None:
     assert summed.tobytes() == weights.tobytes()
     with pytest.raises(ValueError, match="align"):
         collapse_replicas(keys, rows[:2], weights)
+
+
+def test_replicas_fold_only_where_they_agree_on_the_inputs() -> None:
+    """Each distinct variant keeps its first record and its replicas' weight
+    (microcosm#931)."""
+
+    keys = np.asarray(["a", "a", "a", "a", "b", "b"], dtype=object)
+    rows = np.ones(6, dtype=bool)
+    weights = np.asarray([0.1, 0.2, 0.3, 0.4, 0.5, 0.5])
+    inputs = pd.DataFrame(
+        {
+            "income": [3.0, 0.0, 3.0, np.nan, 7.0, 7.0],
+            "band": pd.Categorical(["x", "x", "x", "x", "y", "y"]),
+        }
+    )
+    kept, summed = collapse_replicas(keys, rows, weights, inputs=inputs)
+    # a holds three variants (3.0 twice, 0.0, missing); b agrees and folds.
+    assert kept.tolist() == [True, True, False, True, True, False]
+    assert summed[kept].tolist() == [
+        pytest.approx(0.4),
+        0.2,
+        0.4,
+        1.0,
+    ]
+    # The record's weight is kept whole across its variants.
+    assert np.isclose(summed[kept][:3].sum(), 1.0)
+    # A missing value agrees only with a missing value.
+    both_missing = inputs.assign(income=[np.nan, np.nan, 3.0, 3.0, 7.0, 7.0])
+    kept, _ = collapse_replicas(keys, rows, weights, inputs=both_missing)
+    assert kept.tolist() == [True, False, True, False, True, False]
+
+
+def test_agreeing_inputs_fold_as_the_keys_alone_do() -> None:
+    keys = np.asarray(["a", "b", "a", "c", "b", "a"], dtype=object)
+    rows = np.asarray([True, True, True, False, True, True])
+    weights = np.asarray([0.1, 0.2, 0.2, 9.0, 0.3, 0.7])
+    alone = collapse_replicas(keys, rows, weights)
+    agreeing = collapse_replicas(
+        keys, rows, weights, inputs=pd.DataFrame({"value": np.ones(6)})
+    )
+    assert alone[0].tolist() == agreeing[0].tolist()
+    assert alone[1].tobytes() == agreeing[1].tobytes()
+
+
+def test_inputs_must_align_and_name_each_column_once() -> None:
+    keys = np.asarray(["a", "a"], dtype=object)
+    rows = np.ones(2, dtype=bool)
+    weights = np.ones(2)
+    with pytest.raises(ValueError, match="one row per record"):
+        collapse_replicas(keys, rows, weights, inputs=pd.DataFrame({"x": [1.0]}))
+    duplicated = pd.DataFrame([[1.0, 2.0], [1.0, 2.0]], columns=["x", "x"])
+    with pytest.raises(ValueError, match="each column once"):
+        collapse_replicas(keys, rows, weights, inputs=duplicated)

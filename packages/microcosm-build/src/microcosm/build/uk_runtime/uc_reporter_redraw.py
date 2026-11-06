@@ -320,15 +320,21 @@ def redraw_spi_reported_uc(
             "UC reporter redraw has no screened canonical FRS training rows."
         )
     # The forest trains on each screened benefit unit once: its geographic
-    # clones fold into its first row with their weight, and every other copy
-    # stays its own row; a frame without geographic clones keeps every row
-    # and weight (household_lineage.collapse_geographic_clones, microcosm#931).
-    # The screen is each row's own engine output, so the fold follows it.
+    # clones that agree on the predictors and the reported amount fold into
+    # its first row with their weight, clones that differ (a member's
+    # property income drawn on its own id, say) stay rows of their own, and
+    # every other copy stays its own row; a frame without geographic clones
+    # keeps every row and weight (household_lineage.collapse_geographic_clones,
+    # microcosm#931). The screen is each row's own engine output, so the fold
+    # follows it.
     training, fit_weights = collapse_geographic_clones(
         {"person": person, "benunit": benunit, "household": household},
         "benunit",
         training,
         weights,
+        inputs=predictors.reset_index(drop=True).assign(
+            **{UC_REPORTER_TARGET: np.asarray(reported_before)}
+        ),
     )
     if float(fit_weights[training].sum()) <= 0.0:
         raise ValueError("UC reporter redraw training weights must have positive mass.")

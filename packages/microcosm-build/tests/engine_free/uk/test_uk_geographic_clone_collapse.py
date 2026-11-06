@@ -59,13 +59,19 @@ def _tables(frame):
     return {name: frame.table(name) for name in ("person", "benunit", "household")}
 
 
+def _agreeing(n: int) -> pd.DataFrame:
+    """Inputs every clone shares: the fit reads the same values on each."""
+
+    return pd.DataFrame({"value": np.zeros(n)})
+
+
 def test_only_geographic_clones_fold_into_their_survey_record() -> None:
     frame = _copies_frame()
     weights = frame.weights_for("household").values
     rows = np.ones(4, dtype=bool)
     # Without clones every copy is a row of its own, value for value.
     kept, summed = collapse_geographic_clones(
-        _tables(frame), "household", rows, weights
+        _tables(frame), "household", rows, weights, inputs=_agreeing(4)
     )
     assert kept.tolist() == rows.tolist()
     assert summed.tobytes() == np.asarray(weights).tobytes()
@@ -74,16 +80,49 @@ def test_only_geographic_clones_fold_into_their_survey_record() -> None:
     for entity in ("household", "person", "benunit"):
         n = pool.n(entity)
         kept, summed = collapse_geographic_clones(
-            _tables(pool), entity, np.ones(n, dtype=bool), np.full(n, 0.5)
+            _tables(pool),
+            entity,
+            np.ones(n, dtype=bool),
+            np.full(n, 0.5),
+            inputs=_agreeing(n),
         )
         clone = pool.table(entity)[ladder_clone_index_column(entity)].to_numpy()
         # Each copy keeps its first clone, which carries both clones' weight.
         assert kept.tolist() == (clone == 0).tolist()
         assert summed[kept].tolist() == [1.0] * 4
     kept, summed = collapse_geographic_clones(
-        _tables(pool), "household", np.ones(8, dtype=bool), pool_weights
+        _tables(pool),
+        "household",
+        np.ones(8, dtype=bool),
+        pool_weights,
+        inputs=_agreeing(8),
     )
     assert summed[kept].tolist() == list(weights)
+
+
+def test_clones_that_differ_on_what_the_fit_reads_stay_rows_of_their_own() -> None:
+    """A record's clones fold only where they agree on the fit's inputs: a
+    clone that differs (a draw keyed on its own id, say) keeps its own row at
+    its own weight, so nothing it carries is dropped (microcosm#931)."""
+
+    pool = with_geographic_clones(_copies_frame())
+    clone = pool.table("household")[ladder_clone_index_column("household")]
+    values = np.zeros(8)
+    differs = int(np.flatnonzero(clone.to_numpy() == 1)[0])
+    values[differs] = 1.0
+    kept, summed = collapse_geographic_clones(
+        _tables(pool),
+        "household",
+        np.ones(8, dtype=bool),
+        np.full(8, 0.5),
+        inputs=pd.DataFrame({"value": values}),
+    )
+    # Three records fold to one row each; the fourth keeps both clones.
+    assert int(kept.sum()) == 5
+    assert kept[differs]
+    assert sorted(summed[kept].tolist()) == [0.5, 0.5, 1.0, 1.0, 1.0]
+    assert summed[differs] == 0.5
+    assert np.isclose(summed[kept].sum(), 4.0)
 
 
 #: The stages whose fits collapse clones, and the module each one's call is
