@@ -197,8 +197,8 @@ sources:
     value: 2025_ctsop
 - id: uk_scotland_output_area_2022_conditioned_support
   role: uk_atomic_area_conditioned_support
-  sha256: 648e1a88dce6ad246aca5d09c9209f82646f48d0c3f4778955b51dcae907941a
-  byte_size: 1028754
+  sha256: a5e994ae0a460126af99787cca37043ef08d659362a5fa9c4bbd752a9b198499
+  byte_size: 1028760
   loader: kernel:load_uk_atomic_area_support
   vintages:
   - vintage:uk_oa_2022

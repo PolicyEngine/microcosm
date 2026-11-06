@@ -1,6 +1,6 @@
 {
   "band_weight_scale": 1000000,
-  "built_on": "2026-11-05",
+  "built_on": "2026-11-06",
   "chronicle": {
     "commit": "c51f40d2bdaa66315dd63f334ede5790a8891e27",
     "merged": true,
@@ -81,7 +81,7 @@
       "publisher_package": "scotgov-council-tax-bands-2025",
       "publisher_sha256": "8e431837aa37ee298c9a2b9b010b8ecbc7e3a817573a3a84f6251e6db00a591f",
       "resource": "scotgov_chargeable_dwellings_by_band.json",
-      "sha256": "7a2c01e0d1f4504b92858552108acb3ae65a3ad779b5dbea1c9055941f98827a"
+      "sha256": "53580ea7693563938d06ae448fe671dc2bd80aa0b51b9ed28f444292b0c3261a"
     },
     "voa_council_tax_band_mix_lsoa.json": {
       "as_at": "2025-03-31",
@@ -853,42 +853,42 @@
         "households_band_a": {
           "basis": "census_2022_occupied_households_postcode_index_cell_key_perturbed_x_ctaxbase_2025_council_band_a_share_round_half_even_x1e6",
           "kind": "weight",
-          "source": "scotgov-council-tax-bands-2025@sha256:8e431837aa37ee298c9a2b9b010b8ecbc7e3a817573a3a84f6251e6db00a591f#scotgov_chargeable_dwellings_by_band.json@sha256:7a2c01e0d1f4504b92858552108acb3ae65a3ad779b5dbea1c9055941f98827a"
+          "source": "scotgov-council-tax-bands-2025@sha256:8e431837aa37ee298c9a2b9b010b8ecbc7e3a817573a3a84f6251e6db00a591f#scotgov_chargeable_dwellings_by_band.json@sha256:53580ea7693563938d06ae448fe671dc2bd80aa0b51b9ed28f444292b0c3261a"
         },
         "households_band_b": {
           "basis": "census_2022_occupied_households_postcode_index_cell_key_perturbed_x_ctaxbase_2025_council_band_b_share_round_half_even_x1e6",
           "kind": "weight",
-          "source": "scotgov-council-tax-bands-2025@sha256:8e431837aa37ee298c9a2b9b010b8ecbc7e3a817573a3a84f6251e6db00a591f#scotgov_chargeable_dwellings_by_band.json@sha256:7a2c01e0d1f4504b92858552108acb3ae65a3ad779b5dbea1c9055941f98827a"
+          "source": "scotgov-council-tax-bands-2025@sha256:8e431837aa37ee298c9a2b9b010b8ecbc7e3a817573a3a84f6251e6db00a591f#scotgov_chargeable_dwellings_by_band.json@sha256:53580ea7693563938d06ae448fe671dc2bd80aa0b51b9ed28f444292b0c3261a"
         },
         "households_band_c": {
           "basis": "census_2022_occupied_households_postcode_index_cell_key_perturbed_x_ctaxbase_2025_council_band_c_share_round_half_even_x1e6",
           "kind": "weight",
-          "source": "scotgov-council-tax-bands-2025@sha256:8e431837aa37ee298c9a2b9b010b8ecbc7e3a817573a3a84f6251e6db00a591f#scotgov_chargeable_dwellings_by_band.json@sha256:7a2c01e0d1f4504b92858552108acb3ae65a3ad779b5dbea1c9055941f98827a"
+          "source": "scotgov-council-tax-bands-2025@sha256:8e431837aa37ee298c9a2b9b010b8ecbc7e3a817573a3a84f6251e6db00a591f#scotgov_chargeable_dwellings_by_band.json@sha256:53580ea7693563938d06ae448fe671dc2bd80aa0b51b9ed28f444292b0c3261a"
         },
         "households_band_d": {
           "basis": "census_2022_occupied_households_postcode_index_cell_key_perturbed_x_ctaxbase_2025_council_band_d_share_round_half_even_x1e6",
           "kind": "weight",
-          "source": "scotgov-council-tax-bands-2025@sha256:8e431837aa37ee298c9a2b9b010b8ecbc7e3a817573a3a84f6251e6db00a591f#scotgov_chargeable_dwellings_by_band.json@sha256:7a2c01e0d1f4504b92858552108acb3ae65a3ad779b5dbea1c9055941f98827a"
+          "source": "scotgov-council-tax-bands-2025@sha256:8e431837aa37ee298c9a2b9b010b8ecbc7e3a817573a3a84f6251e6db00a591f#scotgov_chargeable_dwellings_by_band.json@sha256:53580ea7693563938d06ae448fe671dc2bd80aa0b51b9ed28f444292b0c3261a"
         },
         "households_band_e": {
           "basis": "census_2022_occupied_households_postcode_index_cell_key_perturbed_x_ctaxbase_2025_council_band_e_share_round_half_even_x1e6",
           "kind": "weight",
-          "source": "scotgov-council-tax-bands-2025@sha256:8e431837aa37ee298c9a2b9b010b8ecbc7e3a817573a3a84f6251e6db00a591f#scotgov_chargeable_dwellings_by_band.json@sha256:7a2c01e0d1f4504b92858552108acb3ae65a3ad779b5dbea1c9055941f98827a"
+          "source": "scotgov-council-tax-bands-2025@sha256:8e431837aa37ee298c9a2b9b010b8ecbc7e3a817573a3a84f6251e6db00a591f#scotgov_chargeable_dwellings_by_band.json@sha256:53580ea7693563938d06ae448fe671dc2bd80aa0b51b9ed28f444292b0c3261a"
         },
         "households_band_f": {
           "basis": "census_2022_occupied_households_postcode_index_cell_key_perturbed_x_ctaxbase_2025_council_band_f_share_round_half_even_x1e6",
           "kind": "weight",
-          "source": "scotgov-council-tax-bands-2025@sha256:8e431837aa37ee298c9a2b9b010b8ecbc7e3a817573a3a84f6251e6db00a591f#scotgov_chargeable_dwellings_by_band.json@sha256:7a2c01e0d1f4504b92858552108acb3ae65a3ad779b5dbea1c9055941f98827a"
+          "source": "scotgov-council-tax-bands-2025@sha256:8e431837aa37ee298c9a2b9b010b8ecbc7e3a817573a3a84f6251e6db00a591f#scotgov_chargeable_dwellings_by_band.json@sha256:53580ea7693563938d06ae448fe671dc2bd80aa0b51b9ed28f444292b0c3261a"
         },
         "households_band_g": {
           "basis": "census_2022_occupied_households_postcode_index_cell_key_perturbed_x_ctaxbase_2025_council_band_g_share_round_half_even_x1e6",
           "kind": "weight",
-          "source": "scotgov-council-tax-bands-2025@sha256:8e431837aa37ee298c9a2b9b010b8ecbc7e3a817573a3a84f6251e6db00a591f#scotgov_chargeable_dwellings_by_band.json@sha256:7a2c01e0d1f4504b92858552108acb3ae65a3ad779b5dbea1c9055941f98827a"
+          "source": "scotgov-council-tax-bands-2025@sha256:8e431837aa37ee298c9a2b9b010b8ecbc7e3a817573a3a84f6251e6db00a591f#scotgov_chargeable_dwellings_by_band.json@sha256:53580ea7693563938d06ae448fe671dc2bd80aa0b51b9ed28f444292b0c3261a"
         },
         "households_band_h": {
           "basis": "census_2022_occupied_households_postcode_index_cell_key_perturbed_x_ctaxbase_2025_council_band_h_share_round_half_even_x1e6",
           "kind": "weight",
-          "source": "scotgov-council-tax-bands-2025@sha256:8e431837aa37ee298c9a2b9b010b8ecbc7e3a817573a3a84f6251e6db00a591f#scotgov_chargeable_dwellings_by_band.json@sha256:7a2c01e0d1f4504b92858552108acb3ae65a3ad779b5dbea1c9055941f98827a"
+          "source": "scotgov-council-tax-bands-2025@sha256:8e431837aa37ee298c9a2b9b010b8ecbc7e3a817573a3a84f6251e6db00a591f#scotgov_chargeable_dwellings_by_band.json@sha256:53580ea7693563938d06ae448fe671dc2bd80aa0b51b9ed28f444292b0c3261a"
         },
         "imd_decile": {
           "kind": "code",
@@ -923,8 +923,8 @@
         "postcodes_without_rank": 0,
         "records": 156932
       },
-      "sha256": "648e1a88dce6ad246aca5d09c9209f82646f48d0c3f4778955b51dcae907941a",
-      "size_bytes": 1028754,
+      "sha256": "a5e994ae0a460126af99787cca37043ef08d659362a5fa9c4bbd752a9b198499",
+      "size_bytes": 1028760,
       "zero_mass_cells": [
         {
           "cells": [],
