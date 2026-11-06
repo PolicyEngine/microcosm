@@ -341,10 +341,12 @@ UK_ENGINE_DEFAULT_INPUTS: dict[str, str] = {
         ),
         "Northern Ireland's Energy Price Guarantee discounts (policyengine-uk "
         "2.161.1) read each month's kWh and an assertion that the full rates "
-        "apply. The frame stores annual spend, not monthly kWh, so the kWh stay "
-        "unknown (-1), the full rates are not asserted and the discounts are not "
-        "calculated. The guarantee applied in 2022-23 only, so the calibration "
-        "year is unaffected (microcosm#1095; for María's signature).",
+        "apply. The frame stores annual spend and, for the energy dashboards, "
+        "the annual kWh that spend is priced from (electricity_kwh and gas_kwh, "
+        "which the engine does not read), but no month's kWh, so these inputs "
+        "stay unknown (-1), the full rates are not asserted and the discounts are "
+        "not calculated. The guarantee applied in 2022-23 only, so the "
+        "calibration year is unaffected (microcosm#1095; for María's signature).",
     ),
     **dict.fromkeys(
         (
