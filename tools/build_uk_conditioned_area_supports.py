@@ -17,15 +17,16 @@ them; today's build binds the registered supports.
   Ireland's are its 890 SOA ranks in tenths of 89.
 - ``households_band_a`` ... : the area's households by council-tax band, times
   10^6. England and Wales use the VOA CTSOP1.1 mix of the area's LSOA
-  (``voa_council_tax_band_mix_lsoa.json``); Scotland uses its council's
-  CTAXBASE 2025 chargeable dwellings (``scotgov_chargeable_dwellings_by_band.json``),
-  so there the band moves mass only between councils. Northern Ireland has
-  domestic rates and no bands.
+  (``voa_council_tax_band_mix_lsoa.json``); Scotland uses the dwellings by
+  band of the area's 2022 data zone, in which its 2022 output areas nest, from
+  NRS's December 2024 sheet. Northern Ireland has domestic rates and no bands.
 
-The publisher files are chronicle#412's raw-only registrations (PR
-chronicle#413), pinned here by sha256; the band mixes are committed package
-resources. The provenance register records every input's identity, each
-nation's decile rule counts, the rounding, and every zero-mass draw cell.
+The publisher files are pinned here by sha256: chronicle#412's raw-only
+registrations (PR chronicle#413), and NRS's dwelling estimates by 2022 data
+zone, which Chronicle registers with only their total as facts (chronicle#419
+asks for the band columns). The VOA band mix is a committed package resource.
+The provenance register records every input's identity, each nation's decile
+rule counts, the rounding, and every zero-mass draw cell.
 
 Example (odfpy reads the Welsh Government's ODS; nothing else here needs it):
     uv run --no-sync --with odfpy python tools/build_uk_conditioned_area_supports.py \\
@@ -79,13 +80,13 @@ _REPOSITORY_ROOT = _TOOLS.parent
 _UK_PACKAGE = _REPOSITORY_ROOT / "packages/microcosm-build/src/microcosm/build/uk"
 _DEFAULT_PROVENANCE = _UK_PACKAGE / CONDITIONED_PROVENANCE_RESOURCE
 VOA_BAND_MIX = "voa_council_tax_band_mix_lsoa.json"
-SCOTLAND_BAND_COUNTS = "scotgov_chargeable_dwellings_by_band.json"
 
 PROVENANCE_SCHEMA_VERSION = 1
 PROVENANCE_KIND = "uk_atomic_area_conditioned_supports_provenance"
 EW, SCOT, NI = SYSTEMS
 
-#: chronicle#412's raw-only registrations, as PR chronicle#413 pins them.
+#: chronicle#412's raw-only registrations, as PR chronicle#413 pins them, and
+#: NRS's dwellings by 2022 data zone, registered with its total as facts.
 SOURCES: dict[str, dict[str, str | int]] = {
     "nspl": {
         "chronicle_source_id": "ons",
@@ -142,9 +143,21 @@ SOURCES: dict[str, dict[str, str | int]] = {
         "publisher": "NISRA",
         "product": "NIMDM 2017 results by Super Output Area",
     },
+    "nrs_dz_dwellings": {
+        "chronicle_source_id": "nrs",
+        "chronicle_package_id": "nrs-dwellings-data-zone-2025",
+        "chronicle_year": 2025,
+        "filename": "dwelling-estimates-by-2022-data-zones-24-25.xlsx",
+        "url": "https://nrscotland.gov.uk/media/43tfx3zo/dwelling-estimates-by-2022-data-zones-24-25.xlsx",
+        "sha256": "5d61db5faf7e81451d838e5d394b8e0682bbf501341c1220aea4a78082ceb033",
+        "size_bytes": 1_223_284,
+        "publisher": "NRS",
+        "product": "Dwelling estimates by 2022 data zone, December 2024 and 2025",
+    },
 }
-#: The Chronicle commit that registers these files: chronicle#413's merge. The
-#: supports were first built at its head; the file digests did not move.
+#: The Chronicle commit that registers these files: chronicle#413's merge, which
+#: also carries the NRS registration. The supports were first built at #413's
+#: head; the file digests did not move.
 CHRONICLE = {
     "pull_request": "PolicyEngine/chronicle#413",
     "commit": "c51f40d2bdaa66315dd63f334ede5790a8891e27",
@@ -153,6 +166,7 @@ CHRONICLE = {
 ISSUES = {
     "umbrella": "PolicyEngine/microcosm#931",
     "chronicle_registration": "PolicyEngine/chronicle#412",
+    "chronicle_band_facts": "PolicyEngine/chronicle#419",
 }
 NSPL_MEMBER = "Data/NSPL_MAY_2026_UK.csv"
 #: Small areas each index ranks, within its own nation only.
@@ -162,9 +176,17 @@ NATION_INDEX = {"E": "iod2019", "W": "wimd2019", "S": "simd2020v2", "N": "nimdm2
 NATION_PREFIXES = {EW: ("E", "W"), SCOT: ("S",), NI: ("N",)}
 #: The vintage each system's decile column declares.
 DECILE_VINTAGES = {EW: "2019_iod_wimd", SCOT: "2020v2_simd", NI: "2017_nimdm_soa"}
-BAND_VINTAGES = {EW: "2025_ctsop", SCOT: "2025_ctaxbase"}
+BAND_VINTAGES = {EW: "2025_ctsop", SCOT: "2024_nrs_dz_dwellings"}
 #: Each area's parent for ties and areas without a residential postcode.
 PARENT_COLUMNS = {EW: "lsoa_code", SCOT: "lsoa_code", NI: "msoa_code"}
+#: NRS's December 2024 sheet: nearest the FRS 2024-25 year and VOA's stock at
+#: 31 March 2025. Its header is row 5.
+NRS_SHEET = "2024"
+NRS_HEADER_ROW = 4
+NRS_DATA_ZONES = 7_392
+NRS_ZONE_COLUMN = "Data Zone code"
+NRS_TOTAL_COLUMN = "Total number of dwellings"
+NRS_BAND_COLUMNS = {band.lower(): f"Council Tax band:\n{band}" for band in "ABCDEFGH"}
 
 NOTES = (
     "imd_decile is the 2019 vintage of each nation's index (IoD 2019, WIMD 2019, "
@@ -180,13 +202,13 @@ NOTES = (
     "inferred_modal and the counts below.",
     "England and Wales band weights read each area's LSOA mix as committed (shares to "
     "6 dp ending at exactly 1), so households x share x 10^6 is exact. Scotland's read "
-    "its council's chargeable dwellings, rounded half to even per band.",
-    "Scotland's band mix is its council's, so a band moves mass only between councils: "
-    "within a council a household is placed in proportion to households, where England "
-    "and Wales use each LSOA's mix. A mix by 2022 data zone, in which the 2022 output "
-    "areas nest (such as NRS's small area statistics on households and dwellings), "
-    "would give Scotland the same within-council resolution. No such source is "
-    "registered in Chronicle yet.",
+    "its 2022 data zone's dwellings by band, rounded half to even per band.",
+    "Scotland's band mix is its 2022 data zone's, in which its 2022 output areas nest, "
+    "from NRS's December 2024 sheet: nearest the FRS 2024-25 year and VOA's stock at "
+    "31 March 2025. NRS counts dwellings on the valuation list, as VOA does in England "
+    "and Wales. Chronicle registers the workbook (nrs-dwellings-data-zone-2025) with "
+    "only its total as facts; until chronicle#419 adds the band columns, this tool "
+    "reads them from the registered bytes.",
 )
 
 
@@ -307,6 +329,33 @@ def _postcodes(path: Path) -> pd.DataFrame:
     return frame.loc[live, ["oa21cd", "imd20ind"]].reset_index(drop=True)
 
 
+def _nrs_band_counts(path: Path) -> dict[str, dict[str, int]]:
+    """Each 2022 data zone's dwellings by band a to h; bands must sum to its total."""
+    frame = pd.read_excel(path, sheet_name=NRS_SHEET, header=NRS_HEADER_ROW)
+    columns = [NRS_ZONE_COLUMN, NRS_TOTAL_COLUMN, *NRS_BAND_COLUMNS.values()]
+    missing = [column for column in columns if column not in frame.columns]
+    if missing:
+        raise ValueError(f"NRS sheet {NRS_SHEET} lacks columns {missing}.")
+    zones = frame.loc[
+        frame[NRS_ZONE_COLUMN].astype(str).str.fullmatch(r"S01\d{6}"), columns
+    ]
+    if len(zones) != NRS_DATA_ZONES or zones[NRS_ZONE_COLUMN].duplicated().any():
+        raise ValueError(
+            f"NRS sheet {NRS_SHEET}: {len(zones):,} data zones, "
+            f"expected {NRS_DATA_ZONES:,}."
+        )
+    counts = zones[columns[1:]].apply(pd.to_numeric, errors="coerce").to_numpy(float)
+    if not np.all(np.isfinite(counts) & (counts >= 0) & (counts == np.floor(counts))):
+        raise ValueError(f"NRS sheet {NRS_SHEET} has a count that is not one count.")
+    counts = counts.astype(np.int64)
+    if not np.array_equal(counts[:, 1:].sum(axis=1), counts[:, 0]):
+        raise ValueError(f"NRS sheet {NRS_SHEET}: a zone's bands miss its total.")
+    return {
+        str(zone): dict(zip(NRS_BAND_COLUMNS, map(int, row[1:]), strict=True))
+        for zone, row in zip(zones[NRS_ZONE_COLUMN], counts, strict=True)
+    }
+
+
 def decile_column(
     support,
     postcodes: pd.DataFrame,
@@ -369,28 +418,19 @@ def _voa_numerators(support, mix: Mapping) -> tuple[dict[str, np.ndarray], np.nd
 
 
 def _scotland_numerators(
-    support, counts: Mapping
+    support, counts: Mapping[str, Mapping[str, int]]
 ) -> tuple[dict[str, np.ndarray], np.ndarray]:
-    """Each Scottish area's council chargeable dwellings by band A to H."""
+    """Each Scottish area's 2022 data zone dwellings by band A to H."""
     bands = {column: column.rsplit("_", 1)[1] for column in BAND_WEIGHT_COLUMNS[SCOT]}
-    by_council: dict[str, dict[str, int]] = {}
-    for row in counts["rows"]:
-        council = str(row["geography"]["id"])
-        band = str(row["measure_id"]).removeprefix("band_")
-        value = row["value"]
-        if type(value) is not int or value < 0 or band in by_council.get(council, {}):
-            raise ValueError(f"Scottish band count {council} {band} is not one count.")
-        by_council.setdefault(council, {})[band] = value
-    councils = np.asarray(support.arrays["local_authority_code"])
-    missing = sorted(set(councils.tolist()) - set(by_council))
-    if missing or any(set(v) != set(bands.values()) for v in by_council.values()):
+    # The Scottish support's lsoa_code is the area's 2022 data zone.
+    zones = np.asarray(support.arrays["lsoa_code"]).tolist()
+    missing = sorted(set(zones) - set(counts))
+    if missing or any(set(row) != set(bands.values()) for row in counts.values()):
         raise ValueError(
-            f"Scottish band counts do not cover each council A to H: {missing[:5]}."
+            f"Scottish band counts do not cover each data zone A to H: {missing[:5]}."
         )
     numerators = {
-        column: np.asarray(
-            [by_council[c][band] for c in councils.tolist()], dtype=np.int64
-        )
+        column: np.asarray([counts[zone][band] for zone in zones], dtype=np.int64)
         for column, band in bands.items()
     }
     return numerators, sum(numerators.values())
@@ -416,30 +456,25 @@ def _metadata(system: str, support, resources: Mapping[str, dict]) -> dict:
         band = column.rsplit("_", 1)[1]
         if system == EW:
             resource = resources[VOA_BAND_MIX]
-            share = f"voa_ctsop1_1_2025_lsoa_band_{band}_share_6dp"
-        else:
-            resource = resources[SCOTLAND_BAND_COUNTS]
-            share = f"ctaxbase_2025_council_band_{band}_share_round_half_even"
-        metadata[column] = {
-            "kind": "weight",
-            "source": (
+            source = (
                 f"{resource['publisher_package']}@sha256:{resource['publisher_sha256']}"
                 f"#{resource['resource']}@sha256:{resource['sha256']}"
-            ),
+            )
+            share = f"voa_ctsop1_1_2025_lsoa_band_{band}_share_6dp"
+        else:
+            source = f"{_source_tag('nrs_dz_dwellings')}#sheet-{NRS_SHEET}"
+            share = f"nrs_dz2022_{NRS_SHEET}_band_{band}_share_round_half_even"
+        metadata[column] = {
+            "kind": "weight",
+            "source": source,
             "basis": f"{households}_x_{share}_x1e6",
         }
     return metadata
 
 
-def _resources(directory: Path) -> tuple[dict, dict, dict[str, dict]]:
+def _resources(directory: Path) -> tuple[dict, dict[str, dict]]:
     voa_path = directory / VOA_BAND_MIX
-    scot_path = directory / SCOTLAND_BAND_COUNTS
     voa = json.loads(voa_path.read_text(encoding="utf-8"))
-    scot = json.loads(scot_path.read_text(encoding="utf-8"))
-    raw_keys = {row["source"]["raw_r2_key"] for row in scot["rows"]}
-    shas = {row["source"]["source_sha256"] for row in scot["rows"]}
-    if len(raw_keys) != 1 or len(shas) != 1:
-        raise ValueError("Scottish band counts must come from one publisher file.")
     identities = {
         VOA_BAND_MIX: {
             "resource": VOA_BAND_MIX,
@@ -449,16 +484,8 @@ def _resources(directory: Path) -> tuple[dict, dict, dict[str, dict]]:
             "publisher_file": voa["source"]["filename"],
             "as_at": voa["source"]["as_at"],
         },
-        SCOTLAND_BAND_COUNTS: {
-            "resource": SCOTLAND_BAND_COUNTS,
-            "sha256": _sha256(scot_path),
-            "publisher_package": next(iter(raw_keys)).split("/")[2],
-            "publisher_sha256": next(iter(shas)),
-            "publisher_file": scot["rows"][0]["source"]["source_file"],
-            "as_at": scot["rows"][0]["period"]["value"],
-        },
     }
-    return voa, scot, identities
+    return voa, identities
 
 
 def condition_supports(
@@ -467,7 +494,7 @@ def condition_supports(
     deciles: Mapping[str, Mapping[int, str]],
     *,
     voa_mix: Mapping,
-    scotland_counts: Mapping,
+    scotland_counts: Mapping[str, Mapping[str, int]],
     resources: Mapping[str, dict],
 ) -> tuple[dict[str, bytes], dict[str, dict]]:
     """The three conditioned supports and each one's receipts."""
@@ -558,13 +585,13 @@ def main(argv: list[str] | None = None) -> None:
     }
     _log("  reading the NSPL")
     postcodes = _postcodes(paths["nspl"])
-    voa, scot, resources = _resources(args.resource_dir)
+    voa, resources = _resources(args.resource_dir)
     payloads, entries = condition_supports(
         bases,
         postcodes,
         deciles,
         voa_mix=voa,
-        scotland_counts=scot,
+        scotland_counts=_nrs_band_counts(paths["nrs_dz_dwellings"]),
         resources=resources,
     )
     args.out_dir.mkdir(parents=True, exist_ok=True)

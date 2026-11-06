@@ -39,7 +39,7 @@ def tool():
 
 
 def _invented_inputs(bases: dict[str, bytes]):
-    """Three postcodes per area, two of them at rank 1; band mixes per LSOA and council."""
+    """Three postcodes per area, two of them at rank 1; band mixes per LSOA and zone."""
     postcodes = []
     for payload in bases.values():
         for area in decode_atomic_support(payload).arrays["area"].tolist():
@@ -58,28 +58,17 @@ def _invented_inputs(bases: dict[str, bytes]):
         )
         lsoa[code] = {"all_properties": 40, "cumulative": cumulative}
     voa = {"bands": list("ABCDEFGHI"), "lsoa": lsoa}
-    council = decode_atomic_support(bases[SCOT]).arrays["local_authority_code"][0]
     scot = {
-        "rows": [
-            {
-                "geography": {"id": str(council)},
-                "measure_id": f"band_{band}",
-                "value": value,
-            }
-            for band, value in zip("abcdefgh", (1, 2, 1, 1, 1, 1, 1, 1), strict=True)
-        ]
+        str(zone): dict(zip("abcdefgh", (1, 2, 1, 1, 1, 1, 1, 1), strict=True))
+        for zone in decode_atomic_support(bases[SCOT]).arrays["lsoa_code"].tolist()
     }
     resources = {
-        name: {
-            "resource": name,
+        "voa_council_tax_band_mix_lsoa.json": {
+            "resource": "voa_council_tax_band_mix_lsoa.json",
             "sha256": "1" * 64,
             "publisher_package": "invented-package",
             "publisher_sha256": "2" * 64,
         }
-        for name in (
-            "voa_council_tax_band_mix_lsoa.json",
-            "scotgov_chargeable_dwellings_by_band.json",
-        )
     }
     return frame, deciles, voa, scot, resources
 
@@ -147,6 +136,55 @@ def test_rank_deciles_refuse_a_split_tie_and_a_short_index(tool, monkeypatch) ->
         tool._rank_deciles(pd.Series([1, 1, 3]), pd.Series([1, 2, 2]), nation="E")
     with pytest.raises(ValueError, match="expected 3"):
         tool._rank_deciles(pd.Series([1, 2]), pd.Series([1, 2]), nation="E")
+
+
+def _nrs_workbook(tool, path, rows):
+    """NRS's layout: four title rows, the header on row 5, zones, then a footnote."""
+    openpyxl = pytest.importorskip("openpyxl")
+    workbook = openpyxl.Workbook()
+    sheet = workbook.active
+    sheet.title = tool.NRS_SHEET
+    for _ in range(tool.NRS_HEADER_ROW):
+        sheet.append(["Dwelling estimates by 2022 Data Zone"])
+    sheet.append(
+        [
+            tool.NRS_ZONE_COLUMN,
+            "Data zone name",
+            tool.NRS_TOTAL_COLUMN,
+            *tool.NRS_BAND_COLUMNS.values(),
+        ]
+    )
+    for zone, total, *bands in rows:
+        sheet.append([zone, f"{zone} name", total, *bands])
+    sheet.append(["Source: Scottish Assessors' Portal data"])
+    workbook.save(path)
+    return path
+
+
+def test_nrs_band_counts_read_each_zone_and_refuse_a_broken_sum(
+    tool, tmp_path, monkeypatch
+) -> None:
+    monkeypatch.setattr(tool, "NRS_DATA_ZONES", 2)
+    rows = [
+        ["S01013482", 9, 1, 2, 1, 1, 1, 1, 1, 1],
+        ["S01013483", 8, 0, 0, 0, 0, 0, 0, 0, 8],
+    ]
+    path = tmp_path / "zones.xlsx"
+    assert tool._nrs_band_counts(_nrs_workbook(tool, path, rows)) == {
+        "S01013482": dict(zip("abcdefgh", (1, 2, 1, 1, 1, 1, 1, 1), strict=True)),
+        "S01013483": {**dict.fromkeys("abcdefg", 0), "h": 8},
+    }
+    with pytest.raises(ValueError, match="expected 2"):
+        tool._nrs_band_counts(_nrs_workbook(tool, path, rows[:1]))
+    rows[1][1] = 9
+    with pytest.raises(ValueError, match="miss its total"):
+        tool._nrs_band_counts(_nrs_workbook(tool, path, rows))
+
+
+def test_scotland_numerators_refuse_a_zone_without_counts(tool) -> None:
+    support = decode_atomic_support(toy_support_payloads()[SCOT])
+    with pytest.raises(ValueError, match="each data zone A to H"):
+        tool._scotland_numerators(support, {"S01999999": dict.fromkeys("abcdefgh", 1)})
 
 
 def test_northern_ireland_deciles_are_tenths_of_its_soas(tool) -> None:

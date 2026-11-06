@@ -21,7 +21,6 @@ records:
     source: source:uk_scotland_output_area_2022_support
     authority: uk_ca_2019
   compatible_with:
-  - vintage:uk_ctaxbase_2025
   - vintage:uk_ctsop_2025
   - vintage:uk_dea_2014
   - vintage:uk_dz_2021
@@ -30,29 +29,7 @@ records:
   - vintage:uk_lad_2023
   - vintage:uk_lgd_2014
   - vintage:uk_nimdm_2017
-  - vintage:uk_oa_2021
-  - vintage:uk_oa_2022
-  - vintage:uk_pcon_2024
-  - vintage:uk_rgn_2024
-  - vintage:uk_scotland_ew_2022
-  - vintage:uk_simd_2020v2
-  - vintage:uk_wd_2024
-- id: uk_ctaxbase_2025
-  kind: geography_vintage_ref
-  authority_ref:
-    kind: source_record
-    source: source:uk_scotland_output_area_2022_conditioned_support
-    authority: uk_ctaxbase_2025
-  compatible_with:
-  - vintage:uk_ca_2019
-  - vintage:uk_ctsop_2025
-  - vintage:uk_dea_2014
-  - vintage:uk_dz_2021
-  - vintage:uk_iod_wimd_2019
-  - vintage:uk_itl_2025
-  - vintage:uk_lad_2023
-  - vintage:uk_lgd_2014
-  - vintage:uk_nimdm_2017
+  - vintage:uk_nrs_dz_dwellings_2024
   - vintage:uk_oa_2021
   - vintage:uk_oa_2022
   - vintage:uk_pcon_2024
@@ -68,7 +45,6 @@ records:
     authority: uk_ctsop_2025
   compatible_with:
   - vintage:uk_ca_2019
-  - vintage:uk_ctaxbase_2025
   - vintage:uk_dea_2014
   - vintage:uk_dz_2021
   - vintage:uk_iod_wimd_2019
@@ -76,6 +52,7 @@ records:
   - vintage:uk_lad_2023
   - vintage:uk_lgd_2014
   - vintage:uk_nimdm_2017
+  - vintage:uk_nrs_dz_dwellings_2024
   - vintage:uk_oa_2021
   - vintage:uk_oa_2022
   - vintage:uk_pcon_2024
@@ -91,7 +68,6 @@ records:
     authority: uk_dea_2014
   compatible_with:
   - vintage:uk_ca_2019
-  - vintage:uk_ctaxbase_2025
   - vintage:uk_ctsop_2025
   - vintage:uk_dz_2021
   - vintage:uk_iod_wimd_2019
@@ -99,6 +75,7 @@ records:
   - vintage:uk_lad_2023
   - vintage:uk_lgd_2014
   - vintage:uk_nimdm_2017
+  - vintage:uk_nrs_dz_dwellings_2024
   - vintage:uk_oa_2021
   - vintage:uk_oa_2022
   - vintage:uk_pcon_2024
@@ -114,7 +91,6 @@ records:
     authority: uk_dz_2021
   compatible_with:
   - vintage:uk_ca_2019
-  - vintage:uk_ctaxbase_2025
   - vintage:uk_ctsop_2025
   - vintage:uk_dea_2014
   - vintage:uk_iod_wimd_2019
@@ -122,6 +98,7 @@ records:
   - vintage:uk_lad_2023
   - vintage:uk_lgd_2014
   - vintage:uk_nimdm_2017
+  - vintage:uk_nrs_dz_dwellings_2024
   - vintage:uk_oa_2021
   - vintage:uk_oa_2022
   - vintage:uk_pcon_2024
@@ -137,7 +114,6 @@ records:
     authority: uk_iod_wimd_2019
   compatible_with:
   - vintage:uk_ca_2019
-  - vintage:uk_ctaxbase_2025
   - vintage:uk_ctsop_2025
   - vintage:uk_dea_2014
   - vintage:uk_dz_2021
@@ -145,6 +121,7 @@ records:
   - vintage:uk_lad_2023
   - vintage:uk_lgd_2014
   - vintage:uk_nimdm_2017
+  - vintage:uk_nrs_dz_dwellings_2024
   - vintage:uk_oa_2021
   - vintage:uk_oa_2022
   - vintage:uk_pcon_2024
@@ -160,7 +137,6 @@ records:
     authority: uk_itl_2025
   compatible_with:
   - vintage:uk_ca_2019
-  - vintage:uk_ctaxbase_2025
   - vintage:uk_ctsop_2025
   - vintage:uk_dea_2014
   - vintage:uk_dz_2021
@@ -168,6 +144,7 @@ records:
   - vintage:uk_lad_2023
   - vintage:uk_lgd_2014
   - vintage:uk_nimdm_2017
+  - vintage:uk_nrs_dz_dwellings_2024
   - vintage:uk_oa_2021
   - vintage:uk_oa_2022
   - vintage:uk_pcon_2024
@@ -183,7 +160,6 @@ records:
     authority: uk_lad_2023
   compatible_with:
   - vintage:uk_ca_2019
-  - vintage:uk_ctaxbase_2025
   - vintage:uk_ctsop_2025
   - vintage:uk_dea_2014
   - vintage:uk_dz_2021
@@ -191,6 +167,7 @@ records:
   - vintage:uk_itl_2025
   - vintage:uk_lgd_2014
   - vintage:uk_nimdm_2017
+  - vintage:uk_nrs_dz_dwellings_2024
   - vintage:uk_oa_2021
   - vintage:uk_oa_2022
   - vintage:uk_pcon_2024
@@ -206,7 +183,6 @@ records:
     authority: uk_lgd_2014
   compatible_with:
   - vintage:uk_ca_2019
-  - vintage:uk_ctaxbase_2025
   - vintage:uk_ctsop_2025
   - vintage:uk_dea_2014
   - vintage:uk_dz_2021
@@ -214,6 +190,7 @@ records:
   - vintage:uk_itl_2025
   - vintage:uk_lad_2023
   - vintage:uk_nimdm_2017
+  - vintage:uk_nrs_dz_dwellings_2024
   - vintage:uk_oa_2021
   - vintage:uk_oa_2022
   - vintage:uk_pcon_2024
@@ -229,7 +206,6 @@ records:
     authority: uk_nimdm_2017
   compatible_with:
   - vintage:uk_ca_2019
-  - vintage:uk_ctaxbase_2025
   - vintage:uk_ctsop_2025
   - vintage:uk_dea_2014
   - vintage:uk_dz_2021
@@ -237,6 +213,30 @@ records:
   - vintage:uk_itl_2025
   - vintage:uk_lad_2023
   - vintage:uk_lgd_2014
+  - vintage:uk_nrs_dz_dwellings_2024
+  - vintage:uk_oa_2021
+  - vintage:uk_oa_2022
+  - vintage:uk_pcon_2024
+  - vintage:uk_rgn_2024
+  - vintage:uk_scotland_ew_2022
+  - vintage:uk_simd_2020v2
+  - vintage:uk_wd_2024
+- id: uk_nrs_dz_dwellings_2024
+  kind: geography_vintage_ref
+  authority_ref:
+    kind: source_record
+    source: source:uk_scotland_output_area_2022_conditioned_support
+    authority: uk_nrs_dz_dwellings_2024
+  compatible_with:
+  - vintage:uk_ca_2019
+  - vintage:uk_ctsop_2025
+  - vintage:uk_dea_2014
+  - vintage:uk_dz_2021
+  - vintage:uk_iod_wimd_2019
+  - vintage:uk_itl_2025
+  - vintage:uk_lad_2023
+  - vintage:uk_lgd_2014
+  - vintage:uk_nimdm_2017
   - vintage:uk_oa_2021
   - vintage:uk_oa_2022
   - vintage:uk_pcon_2024
@@ -252,7 +252,6 @@ records:
     authority: uk_oa_2021
   compatible_with:
   - vintage:uk_ca_2019
-  - vintage:uk_ctaxbase_2025
   - vintage:uk_ctsop_2025
   - vintage:uk_dea_2014
   - vintage:uk_dz_2021
@@ -261,6 +260,7 @@ records:
   - vintage:uk_lad_2023
   - vintage:uk_lgd_2014
   - vintage:uk_nimdm_2017
+  - vintage:uk_nrs_dz_dwellings_2024
   - vintage:uk_oa_2022
   - vintage:uk_pcon_2024
   - vintage:uk_rgn_2024
@@ -275,7 +275,6 @@ records:
     authority: uk_oa_2022
   compatible_with:
   - vintage:uk_ca_2019
-  - vintage:uk_ctaxbase_2025
   - vintage:uk_ctsop_2025
   - vintage:uk_dea_2014
   - vintage:uk_dz_2021
@@ -284,6 +283,7 @@ records:
   - vintage:uk_lad_2023
   - vintage:uk_lgd_2014
   - vintage:uk_nimdm_2017
+  - vintage:uk_nrs_dz_dwellings_2024
   - vintage:uk_oa_2021
   - vintage:uk_pcon_2024
   - vintage:uk_rgn_2024
@@ -298,7 +298,6 @@ records:
     authority: uk_pcon_2024
   compatible_with:
   - vintage:uk_ca_2019
-  - vintage:uk_ctaxbase_2025
   - vintage:uk_ctsop_2025
   - vintage:uk_dea_2014
   - vintage:uk_dz_2021
@@ -307,6 +306,7 @@ records:
   - vintage:uk_lad_2023
   - vintage:uk_lgd_2014
   - vintage:uk_nimdm_2017
+  - vintage:uk_nrs_dz_dwellings_2024
   - vintage:uk_oa_2021
   - vintage:uk_oa_2022
   - vintage:uk_rgn_2024
@@ -321,7 +321,6 @@ records:
     authority: uk_rgn_2024
   compatible_with:
   - vintage:uk_ca_2019
-  - vintage:uk_ctaxbase_2025
   - vintage:uk_ctsop_2025
   - vintage:uk_dea_2014
   - vintage:uk_dz_2021
@@ -330,6 +329,7 @@ records:
   - vintage:uk_lad_2023
   - vintage:uk_lgd_2014
   - vintage:uk_nimdm_2017
+  - vintage:uk_nrs_dz_dwellings_2024
   - vintage:uk_oa_2021
   - vintage:uk_oa_2022
   - vintage:uk_pcon_2024
@@ -344,7 +344,6 @@ records:
     authority: uk_scotland_ew_2022
   compatible_with:
   - vintage:uk_ca_2019
-  - vintage:uk_ctaxbase_2025
   - vintage:uk_ctsop_2025
   - vintage:uk_dea_2014
   - vintage:uk_dz_2021
@@ -353,6 +352,7 @@ records:
   - vintage:uk_lad_2023
   - vintage:uk_lgd_2014
   - vintage:uk_nimdm_2017
+  - vintage:uk_nrs_dz_dwellings_2024
   - vintage:uk_oa_2021
   - vintage:uk_oa_2022
   - vintage:uk_pcon_2024
@@ -367,7 +367,6 @@ records:
     authority: uk_simd_2020v2
   compatible_with:
   - vintage:uk_ca_2019
-  - vintage:uk_ctaxbase_2025
   - vintage:uk_ctsop_2025
   - vintage:uk_dea_2014
   - vintage:uk_dz_2021
@@ -376,6 +375,7 @@ records:
   - vintage:uk_lad_2023
   - vintage:uk_lgd_2014
   - vintage:uk_nimdm_2017
+  - vintage:uk_nrs_dz_dwellings_2024
   - vintage:uk_oa_2021
   - vintage:uk_oa_2022
   - vintage:uk_pcon_2024
@@ -390,7 +390,6 @@ records:
     authority: uk_wd_2024
   compatible_with:
   - vintage:uk_ca_2019
-  - vintage:uk_ctaxbase_2025
   - vintage:uk_ctsop_2025
   - vintage:uk_dea_2014
   - vintage:uk_dz_2021
@@ -399,6 +398,7 @@ records:
   - vintage:uk_lad_2023
   - vintage:uk_lgd_2014
   - vintage:uk_nimdm_2017
+  - vintage:uk_nrs_dz_dwellings_2024
   - vintage:uk_oa_2021
   - vintage:uk_oa_2022
   - vintage:uk_pcon_2024
