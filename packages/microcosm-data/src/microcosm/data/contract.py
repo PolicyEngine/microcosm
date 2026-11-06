@@ -40,7 +40,7 @@ import json
 import math
 import os
 import re
-from collections.abc import Callable, Mapping
+from collections.abc import Mapping
 from datetime import date
 from pathlib import Path
 from types import MappingProxyType
@@ -244,23 +244,6 @@ def publishes_to_build_folder(release_id: str) -> bool:
     return (
         release_id in {_UK_NATIONAL_RELEASE_ID, _UK_DENSE_RELEASE_ID}
         or _UK_LOCAL_LINE_RELEASE_ID_RE.fullmatch(release_id) is not None
-    )
-
-
-def _build_folder_layout(release_id: str, release_manifest: object) -> bool:
-    """Whether a release directory is in the build-folder layout.
-
-    Until its repository switches to ``releases.json``, a UK release is
-    assembled and published in the tagged layout, so the contract checks a
-    UK release in whichever layout its release manifest uses: a tagged
-    manifest describes the build in a ``build`` object, and a build-folder
-    one names it as a string there (anything else is checked, and refused,
-    as a build-folder manifest). Every other release is always tagged.
-    """
-    return (
-        publishes_to_build_folder(release_id)
-        and isinstance(release_manifest, Mapping)
-        and not isinstance(release_manifest.get("build"), Mapping)
     )
 
 
@@ -893,12 +876,13 @@ def line_for_release_id(release_id: str) -> str | None:
 def dataset_role_for_line(line: str) -> str:
     """The one dataset role a publication line may carry.
 
-    The national line publishes national-default releases; every local-area
-    line publishes non-default local-area releases. The publisher refuses a
-    line promotion whose manifest declares another role, and the loader
-    refuses a manifest that reached a line pointer with the wrong role, so a
-    local-area release can never ride the national pointer (or the reverse)
-    on the strength of its release id alone.
+    The national line carries national-default releases; every local-area
+    line carries non-default local-area releases. The loader refuses a
+    manifest that reached a ``latest-<line>.json`` pointer with the wrong
+    role, so a local-area release can never ride the national pointer (or
+    the reverse) on the strength of its release id alone. Nothing writes
+    those pointers any more; the loader still follows them in a repository
+    that has no ``releases.json``.
     """
     if line == "national":
         return NATIONAL_DEFAULT_DATASET_ROLE
@@ -913,9 +897,6 @@ def dataset_role_for_line(line: str) -> str:
 # microcosm.build.uk_runtime.release_identity.UK_DENSE_RELEASE_ID; lockstep-
 # tested in test_gate_battery_contract_pins.py.
 _UK_DENSE_RELEASE_ID = "microcosm-uk-2024-25-dense"
-_UK_DENSE_CUT_TAG_RE = re.compile(
-    re.escape(_UK_DENSE_RELEASE_ID) + r"-[0-9]{8}T[0-9]{6}Z-[0-9a-f]{8}"
-)
 #: The dense line's published microdata filename; mirrors
 #: ``tools/assemble_uk_dense_release_dir.py::_DATASET_FILENAME`` (lockstep test
 #: in the build shard's contract-pin suite).
@@ -1518,14 +1499,10 @@ def _check_build_folder_artifacts(artifacts: Mapping, failures: list[str]) -> No
 
 
 def _check_build_manifest(
-    manifest: Mapping,
-    release_id: str,
-    failures: list[str],
-    *,
-    build_folder: bool = False,
+    manifest: Mapping, release_id: str, failures: list[str]
 ) -> None:
     _check_base_pool_not_denied(manifest, failures)
-    if build_folder:
+    if publishes_to_build_folder(release_id):
         _check_build_folder_identity(
             manifest, release_id, filename="build_manifest.json", failures=failures
         )
@@ -1735,7 +1712,7 @@ def _check_release_manifest(
             f"this library publishes version "
             f"{expected_schema_version!r}."
         )
-    build_folder = _build_folder_layout(release_id, manifest)
+    build_folder = publishes_to_build_folder(release_id)
     build = manifest.get("build")
     if build_folder:
         _check_build_folder_identity(
@@ -1807,7 +1784,6 @@ def _check_release_manifest(
         _check_build_folder_artifacts(artifacts, failures)
         _check_default_dataset_artifact(default_datasets, artifacts, failures)
     else:
-        line_cut_tag_re = _uk_line_cut_tag_re(release_id)
         _check_calibration_diagnostics_declaration(manifest, artifacts, failures)
         for key, entry in artifacts.items():
             if not isinstance(entry, Mapping):
@@ -1821,14 +1797,8 @@ def _check_release_manifest(
                         f"release_manifest.json artifact {key!r} is missing {field!r}."
                     )
             revision = entry.get("revision")
-            revision_matches_release = (
-                revision == release_id
-                or (annual_revision is not None and revision == annual_revision)
-                or (
-                    line_cut_tag_re is not None
-                    and isinstance(revision, str)
-                    and line_cut_tag_re.fullmatch(revision) is not None
-                )
+            revision_matches_release = revision == release_id or (
+                annual_revision is not None and revision == annual_revision
             )
             # A present-but-non-string revision must fail here rather than
             # slide past the isinstance guard: publish collects only string
@@ -1837,15 +1807,9 @@ def _check_release_manifest(
             if revision and (
                 not isinstance(revision, str) or not revision_matches_release
             ):
-                expected = (
-                    f"the release id {release_id!r} or a "
-                    f"'{release_id}-<YYYYMMDDTHHMMSSZ>-<uuid8>' per-cut tag"
-                    if line_cut_tag_re is not None
-                    else f"the release id {release_id!r}"
-                )
                 failures.append(
                     f"release_manifest.json artifact {key!r} revision is "
-                    f"{revision!r}, expected {expected}."
+                    f"{revision!r}, expected the release id {release_id!r}."
                 )
             if isinstance(entry, Mapping):
                 _check_sha256_field(
@@ -4803,9 +4767,7 @@ def _validate_local_area_release_dir(release_dir: Path, release_id: str) -> None
     build_manifest_path = release_dir / "build_manifest.json"
     if build_manifest_path.is_file():
         build_manifest = _load_json(build_manifest_path, failures)
-        if build_manifest is not None and _build_folder_layout(
-            release_id, release_manifest
-        ):
+        if build_manifest is not None and publishes_to_build_folder(release_id):
             _check_build_folder_identity(
                 build_manifest,
                 release_id,
@@ -4940,17 +4902,8 @@ def _validate_uk_dense_release_dir(release_dir: Path, release_id: str) -> list[s
     incumbent_attached = _uk_dense_incumbent_attached(
         release_dir, release_manifest or {}, failures
     )
-    build_folder = _build_folder_layout(release_id, release_manifest)
     if release_manifest is not None:
-        _check_local_area_release_manifest(
-            release_manifest,
-            release_id,
-            failures,
-            revision_ok=lambda revision: (
-                revision == release_id
-                or _UK_DENSE_CUT_TAG_RE.fullmatch(revision) is not None
-            ),
-        )
+        _check_local_area_release_manifest(release_manifest, release_id, failures)
         namespace = release_manifest.get("namespace")
         if namespace != _UK_DENSE_NAMESPACE:
             failures.append(
@@ -4968,38 +4921,16 @@ def _validate_uk_dense_release_dir(release_dir: Path, release_id: str) -> list[s
                 failures.append(
                     "build_manifest.json code.git_dirty must be false for release."
                 )
-            if build_folder:
-                _check_build_folder_identity(
-                    build_manifest,
-                    release_id,
-                    filename="build_manifest.json",
-                    failures=failures,
-                )
-                _check_build_folder_builds_agree(
-                    build_manifest, release_manifest, failures
-                )
-                build = build_manifest.get("build")
-                if isinstance(build, str) and build:
-                    attempt_id = build
-            else:
-                candidate_attempt = build_manifest.get("attempt_id")
-                if isinstance(candidate_attempt, str) and candidate_attempt:
-                    attempt_id = candidate_attempt
-                else:
-                    failures.append(
-                        "build_manifest.json must carry the calibration "
-                        "'attempt_id' the signed gate report is bound to."
-                    )
-        if (
-            not build_folder
-            and build_manifest is not None
-            and build_manifest.get("build_id") != release_id
-        ):
-            failures.append(
-                "build_manifest.json 'build_id' is "
-                f"{build_manifest.get('build_id')!r} but the release directory "
-                f"is named {release_id!r}."
+            _check_build_folder_identity(
+                build_manifest,
+                release_id,
+                filename="build_manifest.json",
+                failures=failures,
             )
+            _check_build_folder_builds_agree(build_manifest, release_manifest, failures)
+            build = build_manifest.get("build")
+            if isinstance(build, str) and build:
+                attempt_id = build
     gate_path = release_dir / "gate_summary.json"
     if gate_path.is_file():
         gate_summary = _load_json(gate_path, failures)
@@ -5763,8 +5694,6 @@ def _check_local_area_release_manifest(
     manifest: Mapping,
     release_id: str,
     failures: list[str],
-    *,
-    revision_ok: Callable[[str], bool] | None = None,
 ) -> None:
     schema_version = manifest.get("schema_version")
     if schema_version != RELEASE_MANIFEST_SCHEMA_VERSION:
@@ -5772,7 +5701,7 @@ def _check_local_area_release_manifest(
             f"release_manifest.json 'schema_version' is {schema_version!r}; "
             f"this library publishes version {RELEASE_MANIFEST_SCHEMA_VERSION}."
         )
-    build_folder = _build_folder_layout(release_id, manifest)
+    build_folder = publishes_to_build_folder(release_id)
     build = manifest.get("build")
     if build_folder:
         _check_build_folder_identity(
@@ -5856,11 +5785,7 @@ def _check_local_area_release_manifest(
                     f"release_manifest.json artifact {name!r} is missing {field!r}."
                 )
         revision = entry.get("revision")
-        pinned = (
-            revision == release_id
-            if revision_ok is None
-            else bool(revision_ok(str(revision)))
-        )
+        pinned = revision == release_id
         if revision is not None and not pinned:
             failures.append(
                 f"release_manifest.json artifact {name!r} revision "
@@ -7187,12 +7112,7 @@ def validate_release_dir(
         manifest = _load_json(build_manifest_path, failures)
         if manifest is not None:
             build_manifest = manifest
-            _check_build_manifest(
-                manifest,
-                release_id,
-                failures,
-                build_folder=_build_folder_layout(release_id, manifest_probe),
-            )
+            _check_build_manifest(manifest, release_id, failures)
 
     release_manifest_path = release_dir / "release_manifest.json"
     if release_manifest_path.is_file():
@@ -7323,7 +7243,7 @@ def validate_release_dir(
                 failures,
             )
 
-    if _build_folder_layout(release_id, release_manifest):
+    if publishes_to_build_folder(release_id):
         _check_build_folder_builds_agree(build_manifest, release_manifest, failures)
     _check_cross_manifest_consistency(
         build_manifest,
@@ -7691,12 +7611,7 @@ def validate_evidence_release_dir(release_dir: Path | str) -> None:
         manifest = _load_json(build_manifest_path, failures)
         if manifest is not None:
             build_manifest = manifest
-            _check_build_manifest(
-                manifest,
-                release_id,
-                failures,
-                build_folder=_build_folder_layout(release_id, manifest_probe),
-            )
+            _check_build_manifest(manifest, release_id, failures)
 
     release_manifest_path = release_dir / "release_manifest.json"
     if release_manifest_path.is_file():
@@ -8384,18 +8299,7 @@ def _check_uk_dense_surface_files(
                         "calibration_diagnostics.json changed original evaluated "
                         "diagnostic values."
                     )
-        # A build-folder manifest names the attempt as its build; a tagged
-        # one, as its attempt_id.
-        if (
-            build
-            and report
-            and report.get("release_id")
-            != (
-                build.get("build")
-                if isinstance(build.get("build"), str)
-                else build.get("attempt_id")
-            )
-        ):
+        if build and report and report.get("release_id") != build.get("build"):
             failures.append(
                 "the signed gate report is not bound to the released attempt."
             )
