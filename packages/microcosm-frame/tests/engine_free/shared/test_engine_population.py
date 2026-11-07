@@ -10,9 +10,11 @@ tests share. Everything is synthetic.
 
 from __future__ import annotations
 
+import gc
 import math
 import sys
 import types
+import weakref
 from types import SimpleNamespace
 
 import numpy as np
@@ -21,6 +23,7 @@ import pytest
 
 from microcosm.frame import EntitySchema, Frame, WeightKind, Weights
 from microcosm.frame.adapters.engine_population import (
+    BATCH_FACTOR_AGREEMENT,
     FLOAT32_UNIT_ROUNDOFF,
     MEASURE_PASS,
     SPINE_BATCHED_PASS,
@@ -42,9 +45,11 @@ from microcosm.frame.adapters.engine_population import (
     derived_watched_periods,
     factor_spread,
     float32_sum_roundings,
+    frame_key_sums,
     household_batches,
     inject_pool_shares,
     judge,
+    materialize_in_batches,
     pool_share_atol,
     pool_share_rtol,
     pool_shares,
@@ -58,9 +63,11 @@ from test_support.microcosm_frame.engine_population_fakes import (
     FAKE_ENGINE,
     GROWTH,
     KEY_A,
+    KEY_B,
     WEIGHT,
     D,
     FakeSimulation,
+    FakeVariable,
     N,
     P,
     install_fake_engine,
@@ -1717,3 +1724,271 @@ def test_scatter_refuses_missing_repeated_or_mistyped_rows():
             "household",
             [(ids[:3], values[:3]), (ids[3:], values[3:].astype(np.float64))],
         )
+
+
+# ---------------------------------------------------------------------------
+# One call in batches
+# ---------------------------------------------------------------------------
+
+#: Two clones of the fakes' six households, interleaved by id, so a batch's
+#: rows are never a run of the frame's.
+_CLONE_OF = np.array([0, 1, 0, 1, 1, 0])
+_IDS = np.arange(10, 10 + N, dtype=np.int64)
+
+
+def _batched_frame(*, store=("months", "attendance"), keys=("key_a", "key_b")):
+    """The fakes' households under two interleaved clones, one person each,
+    the people listed out of id order. The fake engine's variables are all
+    household ones, so the household table holds what it loads."""
+
+    household = pd.DataFrame({"household_id": _IDS, "clone": _CLONE_OF})
+    if "key_a" in keys:
+        household["key_a"] = KEY_A
+    if "key_b" in keys:
+        household["key_b"] = KEY_B
+    if "months" in store:
+        household["months"] = np.full(N, 3.0)
+    if "attendance" in store:
+        household["attendance"] = np.zeros(N, dtype=bool)
+    order = np.array([4, 0, 5, 2, 1, 3])
+    person = pd.DataFrame(
+        {
+            "person_id": _IDS[order] * 10,
+            "person_benunit_id": _IDS[order],
+            "person_household_id": _IDS[order],
+        }
+    )
+    return Frame(
+        {
+            "person": person,
+            "benunit": pd.DataFrame({"benunit_id": _IDS}),
+            "household": household,
+        },
+        EntitySchema(group_entities=("benunit", "household")),
+        {"household": Weights(WEIGHT.copy(), kind=WeightKind.DESIGN)},
+    )
+
+
+def _engine_of(frame, *, system=None, growth=GROWTH, key_scale=1.0):
+    """A fake engine over a frame: its keys at the dataset's year and grown
+    by ``growth`` a year on, the frame's own weights, and what it stores."""
+
+    household = frame.table("household")
+    inputs = {}
+    for period, factor in ((D, 1.0), (P, growth)):
+        for name, scale in (("key_a", key_scale), ("key_b", 1.0)):
+            if name in household:
+                inputs[(name, period)] = household[name].to_numpy() * factor * scale
+        inputs[("weight", period)] = frame.weights_for("household").values
+        for name in ("months", "attendance"):
+            if name in household:
+                inputs[(name, period)] = household[name].to_numpy()
+    return FakeSimulation(
+        _fake_system() if system is None else system, inputs, rows=len(household)
+    )
+
+
+def _in_batches(frame, names, *, period=P, build=None, policy=SPINE_BATCHED_PASS):
+    return materialize_in_batches(
+        frame,
+        names,
+        period,
+        batches=household_batches(frame, "clone"),
+        declaration=_declaration(),
+        policy=policy,
+        dataset_year=D,
+        build=_engine_of if build is None else build,
+        entity_of=lambda name: "household",
+    )
+
+
+@pytest.mark.parametrize("period", [D, P])
+def test_a_call_in_batches_gives_one_engines_values_in_the_frames_order(
+    fake_engine, period
+):
+    frame = _batched_frame()
+    built = []
+
+    def build(batch_frame):
+        # One engine alive at a time: the last batch's is gone.
+        assert all(reference() is None for reference in built)
+        ids = batch_frame.table("household")["household_id"].to_numpy()
+        assert len(set(_CLONE_OF[np.isin(_IDS, ids)])) == 1
+        simulation = _engine_of(batch_frame)
+        # A reference cycle, as policyengine-uk's system keeps to its
+        # simulation: only a collection frees it.
+        simulation.tax_benefit_system = SimpleNamespace(
+            variables=simulation.tax_benefit_system.variables,
+            parameters=simulation.tax_benefit_system.parameters,
+            simulation=simulation,
+        )
+        built.append(weakref.ref(simulation))
+        return simulation
+
+    automatic = gc.isenabled()
+    gc.disable()
+    try:
+        values = _in_batches(
+            frame, ["share", "local", "rates"], period=period, build=build
+        )
+    finally:
+        if automatic:
+            gc.enable()
+    assert len(built) == 2
+    pool = _engine_of(frame)
+    # The corrected share is the pool's to float32 rounding; a household-local
+    # value is the pool engine's, bitwise; both in the frame's household order.
+    np.testing.assert_allclose(
+        values["share"], pool.calculate("share", period), rtol=1e-6
+    )
+    np.testing.assert_allclose(
+        values["rates"], pool.calculate("rates", period), rtol=1e-6
+    )
+    np.testing.assert_array_equal(values["local"], pool.calculate("local", period))
+    assert values["share"].dtype == pool.calculate("share", period).dtype
+    # Uncorrected, the clones' own shares are not the pool's.
+    own = np.empty(N)
+    for batch in household_batches(frame, "clone"):
+        own[batch.households] = _engine_of(frame.select(batch.persons)).calculate(
+            "share", period
+        )
+    assert not np.allclose(own, pool.calculate("share", period), rtol=1e-3)
+
+
+def test_frame_key_sums_read_the_declared_inputs_at_the_frames_weights():
+    frame = _batched_frame()
+    batches = household_batches(frame, "clone")
+    sums = frame_key_sums(frame, _declaration(), batches)
+    for batch in batches:
+        rows = batch.households
+        assert sums[batch.key] == {
+            "share": pytest.approx(float(np.sum((KEY_A + KEY_B)[rows] * WEIGHT[rows])))
+        }
+    # An input the frame does not carry is the engine's default, zero.
+    sums = frame_key_sums(_batched_frame(keys=("key_a",)), _declaration(), batches)
+    for batch in batches:
+        rows = batch.households
+        expected = float(np.sum(KEY_A[rows] * WEIGHT[rows]))
+        assert sums[batch.key]["share"] == pytest.approx(expected)
+
+
+def _refused(frame, names, *, period=P, store_check=None):
+    calls = []
+
+    def build(batch_frame):
+        calls.append(batch_frame)
+        return _engine_of(batch_frame)
+
+    with pytest.raises(PopulationGuardError) as raised:
+        _in_batches(frame, names, period=period, build=build)
+    assert calls == []
+    verdict = raised.value.verdict
+    assert numbers_are_years([str(raised.value)])
+    return {(v.kind, v.name, v.period) for v in verdict.violations}
+
+
+def test_a_call_in_batches_is_judged_before_any_engine_is_built(fake_engine):
+    frame = _batched_frame()
+    assert ("refused_request", "decile", str(P)) in _refused(frame, ["local", "decile"])
+    late = _refused(frame, ["local"], period=2026)
+    assert ("window_period", None, "2026") in late
+    assert ("window_request", "local", "2026") in late
+    # A stored formula the frame does not supply cannot be the pool's.
+    unstored = _refused(_batched_frame(store=("attendance",)), ["local"])
+    assert ("stored_not_input", "months", str(D)) in unstored
+    assert ("stored_not_input", "months", str(P)) in unstored
+    # Attendance may stay unstored under the spine's inert rule, but neither
+    # it, its levels nor its carriers may be asked for then.
+    for name in ("attendance", "vat", "baseline_vat", "tax_total"):
+        kinds = _refused(_batched_frame(store=("months",)), ["local", name])
+        assert kinds == {("inert_request", name, str(P))}
+    unstored_attendance = _batched_frame(store=("months",))
+    values = _in_batches(unstored_attendance, ["local"])
+    np.testing.assert_array_equal(
+        values["local"], _engine_of(unstored_attendance).calculate("local", P)
+    )
+
+
+def test_a_batch_that_runs_what_only_the_pool_defines_raises(fake_engine):
+    frame = _batched_frame()
+
+    def build(batch_frame):
+        return _engine_of(batch_frame, system=_fake_system(budget=5.0))
+
+    with pytest.raises(PopulationGuardError) as raised:
+        _in_batches(frame, ["budget_change"], build=build)
+    kinds = {(v.kind, v.name) for v in raised.value.verdict.violations}
+    assert kinds == {("zero_at_policy", "budget_change")}
+
+
+def test_batches_whose_engines_grow_a_key_apart_are_refused(fake_engine):
+    frame = _batched_frame()
+
+    def build(batch_frame):
+        first = _IDS[0] in set(batch_frame.table("household")["household_id"])
+        return _engine_of(batch_frame, growth=GROWTH if first else GROWTH * 1.001)
+
+    with pytest.raises(PoolShareError, match=r"grow \['key'\] by different"):
+        _in_batches(frame, ["share"], build=build)
+    assert 1.001 - 1 > BATCH_FACTOR_AGREEMENT
+
+
+def test_a_batch_engine_whose_key_total_is_not_the_frames_is_refused(fake_engine):
+    def build(batch_frame):
+        return _engine_of(batch_frame, key_scale=1.1)
+
+    with pytest.raises(PoolShareError, match="not the block's frame total"):
+        _in_batches(_batched_frame(), ["share"], build=build)
+
+
+def test_text_whose_batches_differ_in_width_takes_the_widest(fake_engine):
+    system = _fake_system()
+    system.variables["size"] = FakeVariable(
+        "size",
+        formula=lambda simulation, period: np.where(
+            simulation.calculate("key_a", period) > 20, "large", "s"
+        ),
+        dtype=str,
+    )
+    values = _in_batches(
+        _batched_frame(),
+        ["size"],
+        build=lambda batch_frame: _engine_of(batch_frame, system=system),
+    )
+    expected = np.where(KEY_A * GROWTH > 20, "large", "s")
+    np.testing.assert_array_equal(values["size"], expected)
+    assert values["size"].dtype == expected.dtype
+
+
+def test_a_call_in_batches_needs_a_raising_pass_two_batches_and_no_back_cast(
+    fake_engine,
+):
+    frame = _batched_frame()
+    with pytest.raises(ValueError, match="runs under a pass that raises"):
+        _in_batches(frame, ["local"], policy=MEASURE_PASS)
+    single = household_batches(frame, "clone")[:1]
+    with pytest.raises(ValueError, match="two batches or more"):
+        materialize_in_batches(
+            frame,
+            ["local"],
+            P,
+            batches=single,
+            declaration=_declaration(),
+            policy=SPINE_BATCHED_PASS,
+            dataset_year=D,
+            build=_engine_of,
+            entity_of=lambda name: "household",
+        )
+    with pytest.raises(ValueError, match="projects a dataset forward only"):
+        materialize_in_batches(
+            frame,
+            ["local"],
+            D,
+            batches=household_batches(frame, "clone"),
+            declaration=_declaration(),
+            policy=SPINE_BATCHED_PASS,
+            dataset_year=P,
+            build=_engine_of,
+            entity_of=lambda name: "household",
+        )
+    gc.collect()

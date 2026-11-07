@@ -54,7 +54,13 @@ judges them all. A country's caller passes its declaration and a pass.
 Batches. :func:`household_batches` splits a frame by a household column
 (whole households, groups nested in households) and
 :func:`scatter_by_entity_ids` puts each batch's results back in the order one
-engine over the frame returns them.
+engine over the frame returns them. :func:`materialize_in_batches` runs one
+call that way: it judges the call's requests before any engine is built,
+forms each batch's share from the frame's own totals
+(:func:`frame_key_sums`, ``c_b = S_b / S`` at unscaled weights), runs an
+:class:`EngineBlock` on each batch's engine under a pass that raises, holds
+the batches to one growth factor per key, and releases each engine before the
+next is built.
 
 Simulations are duck-typed policyengine-core simulations (``calculate``,
 ``set_input``, ``get_holder``, ``baseline``, ``branches``, ``branch_name``,
@@ -67,6 +73,7 @@ declaration is checked against its engine only when a caller asks
 from __future__ import annotations
 
 import functools
+import gc
 import hashlib
 import importlib
 import importlib.util
@@ -87,6 +94,7 @@ import numpy as np
 import pandas as pd
 
 __all__ = [
+    "BATCH_FACTOR_AGREEMENT",
     "FLOAT32_UNIT_ROUNDOFF",
     "MEASURE_PASS",
     "SPINE_BATCHED_PASS",
@@ -116,9 +124,11 @@ __all__ = [
     "derived_watched_periods",
     "factor_spread",
     "float32_sum_roundings",
+    "frame_key_sums",
     "household_batches",
     "inject_pool_shares",
     "judge",
+    "materialize_in_batches",
     "pool_share_atol",
     "pool_share_rtol",
     "pool_shares",
@@ -2300,3 +2310,291 @@ def scatter_by_entity_ids(
     result = np.empty(len(target), dtype=values.dtype)
     result[slots] = values
     return result
+
+
+# ---------------------------------------------------------------------------
+# One call in batches
+# ---------------------------------------------------------------------------
+
+#: How far each allocation key's and the weights' growth factors may spread
+#: across the batches of one call, relative to their mean. They are the
+#: engine's parameter-driven growth, equal in every batch to float32
+#: rounding, far inside this.
+BATCH_FACTOR_AGREEMENT = 1e-6
+
+
+def frame_key_sums(
+    bundle: Any,
+    declaration: PopulationDeclaration,
+    batches: Sequence[HouseholdBatch],
+    *,
+    household: str = "household",
+) -> dict[Any, dict[str, float]]:
+    """Each batch's ``sum(x * w)`` for every formula the declaration corrects.
+
+    ``x`` is the formula's allocation key, the sum of its declared inputs
+    (``declaration.key_adds``) as the frame's ``household`` table holds
+    them, and ``w`` the frame's own weights for that entity: unscaled, as a
+    batch's engine reads them, so :func:`pool_shares` gives each batch
+    ``c_b = S_b / S``. An input the table does not carry counts as zero, the
+    engine's default. Check (a) holds every batch's engine to these totals
+    (:func:`check_key_sums`), so a key the engine reads otherwise is refused
+    there.
+    """
+
+    table = bundle.table(household)
+    weights = np.asarray(bundle.weights_for(household).values, dtype=np.float64)
+    products: dict[str, np.ndarray] = {}
+    for key, inputs in declaration.key_adds.items():
+        values = np.zeros(len(table), dtype=np.float64)
+        for column in inputs:
+            if column in table.columns:
+                values = values + table[column].to_numpy(dtype=np.float64)
+        products[key] = values * weights
+    return {
+        batch.key: {
+            formula: float(np.sum(products[key][batch.households]))
+            for formula, key in sorted(declaration.corrected.items())
+        }
+        for batch in batches
+    }
+
+
+def _frame_stores(bundle: Any, name: str, entity: str) -> bool:
+    """Whether the frame supplies ``name``: a column of its entity's table,
+    which the engine loads as an input at every year it projects to."""
+
+    return entity in bundle.entities and name in bundle.table(entity).columns
+
+
+def _judge_requests(
+    declaration: PopulationDeclaration,
+    policy: PassPolicy,
+    *,
+    requested: Sequence[str],
+    period: int,
+    periods: Sequence[int],
+    stored: Callable[[str], bool],
+) -> PopulationVerdict:
+    """What :func:`judge` would find at every batch's end that the call
+    itself shows, judged before any engine is built: a period the batches
+    compute at, or the one asked for, in the window; a refused formula asked
+    for; a stored formula the frame does not supply, where the pass has no
+    inert rule for it; and, where it has one, a request for the formula, its
+    levels or its carriers."""
+
+    window = declaration.window
+    violations: list[Violation] = []
+
+    def flag(kind: str, name: str | None = None, at: Any = None) -> None:
+        violation = Violation(kind, name, None if at is None else _period_key(at))
+        if violation not in violations:
+            violations.append(violation)
+
+    for at in sorted(set(periods)):
+        if window.contains(at):
+            flag("window_period", None, at)
+    for name in requested:
+        if window.contains(period):
+            flag("window_request", name, period)
+        if name in declaration.refused:
+            flag("refused_request", name, period)
+    for name in sorted(declaration.stored):
+        if stored(name):
+            continue
+        rule = declaration.inert.get(name) if policy.inert_allowed else None
+        if rule is None:
+            for at in sorted(set(periods)):
+                flag("stored_not_input", name, at)
+            continue
+        unrequestable = rule.unrequestable(name)
+        for requested_name in requested:
+            if requested_name in unrequestable:
+                flag("inert_request", requested_name, period)
+    verdict = PopulationVerdict(
+        pass_name=policy.name,
+        violations=tuple(violations[:_VIOLATION_LIMIT]),
+        truncated=len(violations) > _VIOLATION_LIMIT,
+        classes={
+            name: () for name in ("corrected", "stored", "zero_at_policy", "inert")
+        },
+        window_first_year=window.first_year,
+        declaration_sha256=declaration.sha256,
+        engine=declaration.distribution,
+        engine_version=_engine_version(declaration.distribution),
+    )
+    if not verdict.clean and policy.on_violation == "raise":
+        raise PopulationGuardError(verdict)
+    return verdict
+
+
+def _engine_rows(frame: Any, entity: str) -> np.ndarray:
+    """The ids of ``entity``'s rows in the order a policyengine-core engine
+    built from ``frame`` returns them: people as the frame holds them, and
+    groups by ascending id, as a frame keeps its group tables."""
+
+    return frame.table(entity)[frame.schema.entity_id_column(entity)].to_numpy()
+
+
+def _run_batch(
+    frame: Any,
+    shares: Mapping[str, PoolShare],
+    names: Sequence[str],
+    *,
+    period: int,
+    dataset_year: int,
+    declaration: PopulationDeclaration,
+    policy: PassPolicy,
+    build: Callable[[Any], Any],
+) -> tuple[dict[str, np.ndarray], dict[str, float | None]]:
+    """One batch: its engine, an :class:`EngineBlock` on it, the requested
+    values and the block's verdict, and the engine released on the way out,
+    whether the batch passed or raised."""
+
+    simulation = build(frame)
+    block = None
+    try:
+        block = EngineBlock(
+            simulation,
+            shares,
+            declaration=declaration,
+            policy=policy,
+            periods=(dataset_year, period),
+            dataset_year=dataset_year,
+        )
+        values: dict[str, np.ndarray] = {}
+        for name in names:
+            block.note_request(name, period)
+            values[name] = np.asarray(simulation.calculate(name, period))
+        block.close()
+        return values, dict(block.growth_factors.get(str(period), {}))
+    finally:
+        # One engine alive at a time: nothing here holds this one once the
+        # batch is done, and the collector frees its cycles before the next
+        # is built.
+        del simulation, block
+        gc.collect()
+
+
+def _refuse_unequal_growth(
+    growth_by_batch: Mapping[Any, Mapping[str, float | None]],
+) -> None:
+    spread = factor_spread(growth_by_batch)
+    apart = sorted(
+        name for name, value in spread.items() if not value <= BATCH_FACTOR_AGREEMENT
+    )
+    if apart:
+        raise PoolShareError(
+            f"The batches' engines grow {apart} by different factors, so the "
+            "shares formed from the dataset year's totals do not hold at the "
+            "period asked for."
+        )
+
+
+def _alike(parts: list[tuple[np.ndarray, np.ndarray]]) -> list[tuple[Any, Any]]:
+    """The batches' values in one type: text whose batches differ only in
+    width takes the widest, as one engine's array would; anything else is
+    left for :func:`scatter_by_entity_ids` to refuse."""
+
+    dtypes = {values.dtype for _ids, values in parts}
+    if len(dtypes) > 1 and all(dtype.kind == "U" for dtype in dtypes):
+        common = np.result_type(*dtypes)
+        return [(ids, values.astype(common)) for ids, values in parts]
+    return parts
+
+
+def materialize_in_batches(
+    bundle: Any,
+    variables: Sequence[str],
+    period: int,
+    *,
+    batches: Sequence[HouseholdBatch],
+    declaration: PopulationDeclaration,
+    policy: PassPolicy,
+    dataset_year: int,
+    build: Callable[[Any], Any],
+    entity_of: Callable[[str], str],
+    household: str = "household",
+) -> dict[str, np.ndarray]:
+    """``variables`` at ``period`` over ``bundle``, one engine per batch.
+
+    ``batches`` partition the bundle's households (:func:`household_batches`),
+    ``build`` makes an engine from a batch's frame, ``entity_of`` names a
+    variable's entity, and the bundle's values are ``dataset_year`` inputs
+    the engine projects to ``period``. Before any engine is built, the call's
+    requests are judged (a period in the window, a refused formula, a stored
+    formula the frame does not supply) and every batch's
+    :class:`PoolShare` is formed from the frame, ``c_b = S_b / S`` at its
+    own weights (:func:`frame_key_sums`). Then, batch by batch in the
+    batches' order: the batch's frame (``bundle.select``), its engine, an
+    :class:`EngineBlock` on it at ``dataset_year`` and ``period`` (checks
+    (a) and (b), the pool's shares injected, the recorder armed), the
+    requested values, the block's verdict, and the engine released before
+    the next is built. Every batch's engine must grow each key and the
+    weights by one factor (:data:`BATCH_FACTOR_AGREEMENT`), or the
+    dataset-year shares would not hold at ``period``.
+
+    The values come back as one engine over the bundle returns them: people
+    in the bundle's order and groups by ascending id
+    (:func:`scatter_by_entity_ids`). They are plain arrays, with nothing to
+    mark them inexact, so the pass must raise: a refusal or a violation in
+    any batch stops the call.
+    """
+
+    if policy.on_violation != "raise":
+        raise ValueError(
+            "A batched call returns its values as one engine's, with nothing to "
+            "mark them inexact, so it runs under a pass that raises."
+        )
+    if len(batches) < 2:
+        raise ValueError(
+            "A batched call needs two batches or more; one batch is the frame."
+        )
+    year, dataset = int(period), int(dataset_year)
+    if dataset > year:
+        raise ValueError(
+            f"The dataset's year {dataset} is after {year}; the engine projects "
+            "a dataset forward only."
+        )
+    names = tuple(dict.fromkeys(str(name) for name in variables))
+    entities = {name: str(entity_of(name)) for name in names}
+    _judge_requests(
+        declaration,
+        policy,
+        requested=names,
+        period=year,
+        periods=(dataset, year),
+        stored=lambda name: _frame_stores(bundle, name, str(entity_of(name))),
+    )
+    shares = pool_shares(
+        frame_key_sums(bundle, declaration, batches, household=household),
+        key_variables=dict(declaration.corrected),
+    )
+    parts: dict[str, list[tuple[np.ndarray, np.ndarray]]] = {name: [] for name in names}
+    growth: dict[Any, dict[str, float | None]] = {}
+    for batch in batches:
+        frame = bundle.select(batch.persons)
+        values, growth[batch.key] = _run_batch(
+            frame,
+            shares[batch.key],
+            names,
+            period=year,
+            dataset_year=dataset,
+            declaration=declaration,
+            policy=policy,
+            build=build,
+        )
+        _refuse_unequal_growth(growth)
+        for name in names:
+            ids = _engine_rows(frame, entities[name])
+            if values[name].shape != ids.shape:
+                raise ValueError(
+                    f"A batch's engine returns {name!r} for other rows than its "
+                    f"{entities[name]} table's."
+                )
+            parts[name].append((ids, values[name]))
+        del frame, values
+    return {
+        name: scatter_by_entity_ids(bundle, entities[name], _alike(parts[name]))
+        for name in names
+    }
