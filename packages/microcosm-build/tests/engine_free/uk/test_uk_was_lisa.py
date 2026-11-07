@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+from collections.abc import Mapping
 from types import SimpleNamespace
 
 import numpy as np
@@ -16,6 +17,10 @@ from microcosm.build.uk_runtime.hmrc_isa_statistics import (
     HMRCISAStatisticsError,
     load_hmrc_isa_statistics,
 )
+from microcosm.build.uk_runtime.household_income import (
+    UK_HBAI_NET_INCOME_PREDICTOR,
+    UK_HBAI_NET_INCOME_VARIABLE,
+)
 from microcosm.build.uk_runtime.national_frame import (
     uk_national_frame,
     uk_time_period,
@@ -24,8 +29,11 @@ from microcosm.build.uk_runtime.stage_health import uk_stage_health_gate
 from microcosm.build.uk_runtime.was_lisa import (
     BALANCE_COLUMN,
     HOUSEHOLD_BALANCE_COLUMN,
+    HOUSEHOLD_PREDICTORS,
     OWNERSHIP_COLUMN,
+    PERSON_ENGINE_PREDICTORS,
     RULE_IMPOSSIBLE_HOLDER,
+    UK_WAS_LISA_ENGINE_PREDICTORS,
     UK_WAS_LISA_MASS_CONSERVATION_REASON,
     UK_WAS_LISA_OUTPUT_COLUMNS,
     UK_WAS_LISA_STAGE_NAME,
@@ -42,7 +50,13 @@ from microcosm.build.uk_runtime.was_lisa import (
     impute_lifetime_isa_ownership,
     recipient_predictors,
 )
-from microcosm.build.uk_runtime.was_wealth import UK_WAS_ENGINE_PREDICTOR_ENTITIES
+from microcosm.build.uk_runtime.was_wealth import (
+    UK_WAS_ENGINE_PREDICTOR_ENTITIES,
+    UK_WAS_ENGINE_PREDICTORS,
+)
+from microcosm.build.uk_runtime.was_wealth import (
+    recipient_predictors as was_household_predictors,
+)
 from test_support.microcosm_build.uk_isa_statistics import (
     ISA_FACTS_VERIFY_OPERATION,
     LISA_ANCHOR_OPERATION,
@@ -78,7 +92,7 @@ CLEAN = {
     "sentinel_codes": [-9, -8, -7, -6],
     "sentinel_recode_columns": ["employment_income"],
     "household_predictors": [
-        "household_net_income",
+        "hbai_household_net_income",
         "num_adults",
         "num_children",
         "gross_financial_wealth",
@@ -103,7 +117,7 @@ OWNERSHIP = {
     "age_group_lower_bounds": [0, 25, 35, 45, 55],
     "log1p_predictors": [
         "employment_income",
-        "household_net_income",
+        "hbai_household_net_income",
         "gross_financial_wealth",
         "cash_isa",
         "stocks_and_shares_isa",
@@ -125,7 +139,7 @@ BALANCE = {
         "age_band",
         "is_female",
         "employment_income",
-        "household_net_income",
+        "hbai_household_net_income",
         "gross_financial_wealth",
         "savings",
         "cash_isa",
@@ -278,7 +292,9 @@ def _recipient_frame(households: int = 64, time_period: str = "2024"):
                 "num_bedrooms": 1 + household % 4,
                 "council_tax": 1_000.0 + 10.0 * household,
                 "council_tax_rebate": 0.0,
-                "household_net_income": 20_000.0 + 1_000.0 * (household % 60),
+                UK_HBAI_NET_INCOME_VARIABLE: 20_000.0 + 1_000.0 * (household % 60),
+                # The engine's other net income, which the stage never reads.
+                "household_net_income": 1_000_000.0 + household,
                 "is_renting": bool(household % 4 == 0),
                 "tenure_type": tenures[household % 4],
                 "gross_financial_wealth": wealth,
@@ -391,9 +407,16 @@ def test_clean_refuses_an_undeclared_column() -> None:
 
 
 def test_declaration_drift_is_refused() -> None:
+    # The engine's household_net_income in place of the HBAI income.
     with pytest.raises(WASLISAError, match="household_predictors drifted"):
         WASLISAColumns.from_parameters(
-            {**CLEAN, "household_predictors": ["household_net_income"]}
+            {
+                **CLEAN,
+                "household_predictors": [
+                    "household_net_income",
+                    *CLEAN["household_predictors"][1:],
+                ],
+            }
         )
     with pytest.raises(WASLISAError, match="weighted_ridge_logistic"):
         OwnershipModelSpec.from_parameters(
@@ -747,6 +770,95 @@ def test_committed_declaration_carries_the_tested_parameters() -> None:
         for artifact in was_wealth.artifacts
         if artifact["role"] == "was_qrf_donor"
     )
+
+
+def _declared_names(value: object):
+    """Every string a declaration holds, keys included."""
+
+    if isinstance(value, str):
+        yield value
+    elif isinstance(value, Mapping):
+        for key, item in value.items():
+            yield str(key)
+            yield from _declared_names(item)
+    elif isinstance(value, list | tuple):
+        for item in value:
+            yield from _declared_names(item)
+
+
+def test_household_income_is_the_was_wealth_survey_concept() -> None:
+    """The stage reads household net income as ``was_wealth`` does.
+
+    The donor's is the WAS household tab's ``DVTotinc_bhcR8`` and the
+    recipient's the engine's HBAI net income before the reset to zero, both
+    under the name ``household_income`` gives that income; the engine's
+    ``household_net_income`` is never read (microcosm#931). The declared
+    engine reads are what the stage materializes, and the realised profile's
+    income tertiles carry the same name.
+    """
+
+    assert HOUSEHOLD_PREDICTORS[0] == UK_HBAI_NET_INCOME_PREDICTOR
+    assert UK_WAS_LISA_ENGINE_PREDICTORS == tuple(
+        dict.fromkeys((*UK_WAS_ENGINE_PREDICTORS, *PERSON_ENGINE_PREDICTORS))
+    )
+    assert UK_HBAI_NET_INCOME_VARIABLE in UK_WAS_LISA_ENGINE_PREDICTORS
+    committed = load_country_spec("uk").sources.stage_map()[UK_WAS_LISA_STAGE_NAME]
+    by_kind = {
+        operation.kind: dict(operation.parameters) for operation in committed.operations
+    }
+    engine_reads = by_kind["materialize_rules_engine_predictors"]["predictors"]
+    assert tuple(engine_reads) == UK_WAS_LISA_ENGINE_PREDICTORS
+    logged = by_kind["impute_lifetime_isa_ownership"]["log1p_predictors"]
+    assert UK_HBAI_NET_INCOME_PREDICTOR in logged
+    assert (
+        UK_HBAI_NET_INCOME_PREDICTOR
+        in by_kind["impute_lifetime_isa_balance"]["predictors"]
+    )
+    declared = {
+        name
+        for operation in committed.operations
+        for name in _declared_names(operation.parameters)
+    }
+    assert "household_net_income" not in declared
+
+    # The recipient's income is the WAS stage's predictor, the engine's HBAI
+    # income; the frame's household_net_income decoy is never read.
+    frame = _recipient_frame()
+    recipient = recipient_predictors(
+        frame, _FakeEngine(), age_band_edges=CLEAN["age_band_edges"]
+    )
+    household = frame.table("household")
+    was = pd.Series(
+        was_household_predictors(frame, _FakeEngine())[
+            UK_HBAI_NET_INCOME_PREDICTOR
+        ].to_numpy(dtype=float),
+        index=household["household_id"].to_numpy(),
+    )
+    np.testing.assert_array_equal(
+        recipient[UK_HBAI_NET_INCOME_PREDICTOR].to_numpy(dtype=float),
+        was.reindex(recipient["person_household_id"].to_numpy()).to_numpy(),
+    )
+    np.testing.assert_array_equal(
+        was.to_numpy(),
+        household[UK_HBAI_NET_INCOME_VARIABLE].to_numpy(dtype=float),
+    )
+    assert "household_net_income" not in recipient
+
+    # The donor's is DVTotinc_bhcR8, through the WAS household cleaning.
+    donor = _donor().person
+    raw = _was_donor().set_index("CASER8")["DVTotinc_bhcR8"]
+    np.testing.assert_array_equal(
+        donor[UK_HBAI_NET_INCOME_PREDICTOR].to_numpy(dtype=float),
+        raw.reindex(donor["household_key"].to_numpy()).to_numpy(dtype=float),
+    )
+
+    # The realised profile's income tertiles carry the predictor's name.
+    transform = _transform()
+    transform(frame)
+    realised = transform.checkpoint_metadata()["evidence"]["realised"]
+    for side in ("recipient", "donor"):
+        assert f"by_{UK_HBAI_NET_INCOME_PREDICTOR}_tertile" in realised[side]
+        assert "by_household_net_income_tertile" not in realised[side]
 
 
 def _bounds_tool():
