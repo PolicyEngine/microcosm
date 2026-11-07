@@ -46,7 +46,9 @@ def test_no_unit_record_value_is_ever_emitted() -> None:
     values = np.array([1.0, 2.0, 3.0, 4_000_000.0] * 10)
     weights = np.ones(values.size)
 
-    measured = MEASUREMENT._tail_measurements(values, weights, (10,))
+    measured = MEASUREMENT._tail_measurements(
+        values, weights, (10,), sources=np.arange(values.size)
+    )
 
     assert "max_abs_value" not in measured
     assert not any("max" in key or "min" in key for key in measured)
@@ -58,7 +60,9 @@ def test_thin_column_suppresses_concentration_and_carrier_count() -> None:
     values = np.array([5.0, 7.0, 0.0, 0.0])
     weights = np.ones(4)
 
-    measured = MEASUREMENT._tail_measurements(values, weights, (10,))
+    measured = MEASUREMENT._tail_measurements(
+        values, weights, (10,), sources=np.arange(4)
+    )
 
     assert measured["disclosure_suppressed"] is True
     assert measured["carriers"] is None
@@ -74,6 +78,7 @@ def test_column_at_the_threshold_reports_its_statistics() -> None:
         values,
         weights,
         (10,),
+        sources=np.arange(values.size),
         minimum_count=10,
     )
 
@@ -88,10 +93,25 @@ def test_concentration_is_still_measurable_above_the_threshold() -> None:
     values = np.concatenate([[1_000.0], np.ones(99)])
     weights = np.ones(values.size)
 
-    measured = MEASUREMENT._tail_measurements(values, weights, (10,))
+    measured = MEASUREMENT._tail_measurements(
+        values, weights, (10,), sources=np.arange(values.size)
+    )
 
     assert measured["disclosure_suppressed"] is False
     assert measured["top_shares"]["10"] > 0.9
+
+
+def test_carriers_are_counted_in_true_source_households() -> None:
+    """Four carrier rows copied from two source households are a thin column:
+    the copies count once (microcosm#931)."""
+
+    values = np.array([5.0, 5.0, 7.0, 7.0, 0.0])
+    measured = MEASUREMENT._tail_measurements(
+        values, np.ones(values.size), (10,), sources=np.array([1, 1, 2, 2, 3])
+    )
+
+    assert measured["disclosure_suppressed"] is True
+    assert measured["carriers"] is None
 
 
 def test_top_k_below_the_minimum_count_is_refused(monkeypatch, tmp_path) -> None:

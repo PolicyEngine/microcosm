@@ -350,7 +350,7 @@ _STAGE_CONSUMES: Mapping[str, frozenset[tuple[str, str]] | None] = {
             ("household", "main_residence_value"),
             ("household", "property_wealth"),
             ("household", "household_is_high_value_support_copy"),
-            ("household", "household_source_id"),
+            ("household", "source_household_id"),
         }
     ),
     # Engine-free: each kind's stock, the region that marks where SDLT
@@ -361,7 +361,7 @@ _STAGE_CONSUMES: Mapping[str, frozenset[tuple[str, str]] | None] = {
             ("household", "region"),
             ("household", "other_residential_property_value"),
             ("household", "non_residential_property_value"),
-            ("household", "household_source_id"),
+            ("household", "source_household_id"),
         }
     ),
     # The NTS band model materializes an engine predictor (household gross
@@ -389,7 +389,9 @@ _STAGE_CONSUMES: Mapping[str, frozenset[tuple[str, str]] | None] = {
     "hmrc_spi_income_spine": None,
     # Engine-free: the occupation predictors, the drawn-row rule and the channel
     # split. The rewritten occupation, industry and sector cells arrive as the
-    # rewrite's incumbents (microcosm#1490).
+    # rewrite's incumbents (microcosm#1490). The lineage live here lets the fit
+    # fold geographic clones into each survey record, and the receipt count
+    # true sources (microcosm#931).
     "spi_employment_shell": frozenset(
         {
             ("person", "age"),
@@ -404,7 +406,8 @@ _STAGE_CONSUMES: Mapping[str, frozenset[tuple[str, str]] | None] = {
             ("person", "hmrc_spi_pay"),
             ("household", "region"),
             ("household", "household_support_channel"),
-            ("household", "household_source_id"),
+            ("household", "household_support_clone_index"),
+            ("household", "source_household_id"),
         }
     ),
     # Engine-free: the sub-major predictors, the major group it nests in, the
@@ -422,13 +425,17 @@ _STAGE_CONSUMES: Mapping[str, frozenset[tuple[str, str]] | None] = {
             ("person", "person_source_id"),
             ("household", "region"),
             ("household", "household_support_channel"),
-            ("household", "household_source_id"),
+            ("household", "source_household_id"),
         }
     ),
     # Engine-free: the housing predictors and the channel split. The rewritten
-    # housing and benefit cells arrive as the rewrite's incumbents.
+    # housing and benefit cells arrive as the rewrite's incumbents. The
+    # lineage live here lets the model fold geographic clones into each survey
+    # household (microcosm#931).
     "spi_housing_shell": frozenset(
         {
+            ("household", "source_household_id"),
+            ("household", "household_support_clone_index"),
             ("person", "age"),
             ("person", "is_household_head"),
             ("person", "employment_income"),
@@ -512,13 +519,20 @@ _STAGE_CONSUMES: Mapping[str, frozenset[tuple[str, str]] | None] = {
                 )
             ),
             # The receipt counts support by source household.
-            ("household", "household_source_id"),
+            ("household", "source_household_id"),
             ("benunit", "benunit_support_channel"),
             ("benunit", "would_claim_uc"),
         }
     ),
     "uc_capital_coherence": frozenset(
         {
+            # The lineage live here lets the donor pool fold geographic clones
+            # into each survey benefit unit (microcosm#931).
+            ("household", "source_household_id"),
+            ("household", "household_support_channel"),
+            ("household", "household_support_clone_index"),
+            ("household", "household_is_high_value_support_copy"),
+            ("household", "high_value_support_copy_index"),
             ("person", "is_benunit_head"),
             ("person", "is_parent"),
             ("person", "person_support_channel"),
@@ -559,7 +573,7 @@ _STAGE_CONSUMES: Mapping[str, frozenset[tuple[str, str]] | None] = {
             ("person", "jsa_income_reported"),
             ("person", "universal_credit_reported"),
             ("benunit", "would_claim_uc"),
-            ("household", "household_source_id"),
+            ("household", "source_household_id"),
         }
     ),
     "uc_deduction_attributes": frozenset({("household", "region")}),
@@ -699,7 +713,7 @@ _STAGE_CONSUMES: Mapping[str, frozenset[tuple[str, str]] | None] = {
     # profit, and the receipt counts support by source household
     # (microcosm#1428).
     "trading_allowance_receipts": frozenset(
-        {("person", "self_employment_income"), ("household", "household_source_id")}
+        {("person", "self_employment_income"), ("household", "source_household_id")}
     ),
     # The copies' childcare re-draw reads every household's clone path (the
     # lineage columns of each copy stage) and keeps the native units' cells:

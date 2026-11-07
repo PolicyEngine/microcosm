@@ -37,13 +37,18 @@ import numpy as np
 import pandas as pd
 
 from microcosm.build.uk_runtime.diagnostics import UK_DIAGNOSTIC_MIN_SOURCE_HOUSEHOLDS
+from microcosm.build.uk_runtime.receipt_counts import (
+    SOURCE_HOUSEHOLD_COLUMN,
+    distinct_count,
+    source_household_ids,
+)
 
 #: The engine's two council tax liabilities, each compared with the stored bill.
 SIMULATED = ("simulated_council_tax", "simulated_council_tax_less_discounts")
 STORED = "council_tax"
 _MEASURES = (STORED, *SIMULATED)
 #: The stored household columns the comparison is cut by.
-_STORED_COLUMNS = ("household_id", "la_code_oa", "household_source_id")
+_STORED_COLUMNS = ("household_id", "la_code_oa", SOURCE_HOUSEHOLD_COLUMN)
 
 
 def household_table(dataset: str, year: int) -> pd.DataFrame:
@@ -82,9 +87,13 @@ def household_table(dataset: str, year: int) -> pd.DataFrame:
 
 
 def _support(rows: pd.DataFrame) -> int:
-    """Distinct source households with a positive weight among ``rows``."""
+    """Distinct true source households with a positive weight among ``rows``."""
 
-    return int(rows.loc[rows["household_weight"] > 0, "household_source_id"].nunique())
+    return distinct_count(
+        source_household_ids(rows, stage="The council-tax comparison"),
+        np.ones(len(rows), dtype=bool),
+        rows["household_weight"].to_numpy(dtype=float),
+    )
 
 
 def _ratios(numerators: Mapping[str, float], stored: float) -> dict[str, float | None]:

@@ -369,3 +369,328 @@ def test_a_cell_is_counted_by_the_same_rule() -> None:
     cell = np.array([True, True, True, True, False])
     assert distinct_count(ids, cell) == 3
     assert distinct_count(ids, cell, np.array([1.0, 0.0, 0.0, 2.0, 1.0])) == 2
+
+
+#: The columns no UK floor counts directly (microcosm#931): a household row
+#: or a person's household is a row, not a survey household, once copies and
+#: clones exist, and ``household_source_id`` is the support channel's
+#: immediate parent. Floors count true sources through receipt_counts.
+_ROW_IDENTITY_COLUMNS = frozenset(
+    {"household_id", "person_household_id", "household_source_id"}
+)
+#: Counts of those columns that are no floor: structural checks over rows,
+#: that every benefit unit sits in one household and every SPI band donor
+#: holds exactly one carrier. Each entry names the phrase holding the count
+#: and how many counts it covers in its file.
+_KEPT_ROW_COUNTS: dict[str, tuple[tuple[str, int], ...]] = {
+    "tools/verify_uk_identity_stability.py": (
+        (
+            'person.loc[carriers, "person_household_id"].value_counts().to_dict()',
+            1,
+        ),
+    ),
+    "uk_runtime/uc_reporter_redraw.py": (
+        (
+            'counts = placements.groupby("person_benunit_id", sort=False)[ '
+            '"person_household_id" ].nunique()',
+            1,
+        ),
+    ),
+    "tools/preflight_uk_frame_linkage.py": (
+        (
+            'households_per_benunit = person.groupby("person_benunit_id")[ '
+            '"person_household_id" ].nunique()',
+            1,
+        ),
+    ),
+}
+#: Calls that keep an identity's values, so a count of their result counts it.
+_VALUE_KEEPING_METHODS = frozenset(
+    {"to_numpy", "unique", "astype", "tolist", "to_list", "dropna"}
+    | {"drop_duplicates", "copy", "sort_values"}
+)
+_VALUE_KEEPING_ATTRIBUTES = frozenset({"values", "loc", "iloc", "array"})
+_VALUE_KEEPING_CALLS = frozenset(
+    {"asarray", "array", "unique", "list", "set", "Series", "Index", "sorted"}
+    | {"tuple"}
+)
+
+
+def _call_name(node) -> str | None:
+    import ast
+
+    if isinstance(node.func, ast.Name):
+        return node.func.id
+    if isinstance(node.func, ast.Attribute):
+        return node.func.attr
+    return None
+
+
+def _names_identity_column(node, constants: frozenset[str]) -> bool:
+    """Whether ``node`` names a row identity column: a literal, a constant
+    holding one, or a list or tuple containing either."""
+
+    import ast
+
+    if isinstance(node, (ast.List, ast.Tuple)):
+        return any(_names_identity_column(item, constants) for item in node.elts)
+    if isinstance(node, ast.Constant):
+        return node.value in _ROW_IDENTITY_COLUMNS
+    return isinstance(node, ast.Name) and node.id in constants
+
+
+def _row_identity(
+    node, names: set[str], constants: frozenset[str] = frozenset()
+) -> bool:
+    """Whether ``node`` holds a row identity column's values, or names one."""
+
+    import ast
+
+    if isinstance(node, (ast.Constant, ast.List, ast.Tuple)) or (
+        isinstance(node, ast.Name) and node.id in constants
+    ):
+        return _names_identity_column(node, constants)
+    while True:
+        if isinstance(node, ast.Subscript):
+            if _names_identity_column(node.slice, constants):
+                return True
+            node = node.value
+        elif isinstance(node, ast.Attribute):
+            if node.attr in _ROW_IDENTITY_COLUMNS:
+                return True
+            if node.attr not in _VALUE_KEEPING_ATTRIBUTES:
+                return False
+            node = node.value
+        elif isinstance(node, ast.Call):
+            name = _call_name(node)
+            if isinstance(node.func, ast.Attribute) and name in _VALUE_KEEPING_METHODS:
+                node = node.func.value
+            elif name in _VALUE_KEEPING_CALLS and node.args:
+                node = node.args[0]
+            else:
+                return False
+        else:
+            return isinstance(node, ast.Name) and node.id in names
+
+
+def _key_argument(call, keyword: str):
+    """A call's first positional argument, or its ``keyword`` argument."""
+
+    if call.args:
+        return call.args[0]
+    return next((kw.value for kw in call.keywords if kw.arg == keyword), None)
+
+
+def _counted_keys(node):
+    """The keys a distinct count counts, or None for any other node."""
+
+    import ast
+
+    # groupby(key).ngroups counts the distinct keys.
+    if (
+        isinstance(node, ast.Attribute)
+        and node.attr == "ngroups"
+        and isinstance(node.value, ast.Call)
+        and _call_name(node.value) == "groupby"
+    ):
+        return _key_argument(node.value, "by")
+    if not isinstance(node, ast.Call):
+        return None
+    name = _call_name(node)
+    if name in {"distinct_count", "distinct_carriers"} and node.args:
+        return node.args[0]
+    if name in {"nunique", "value_counts"} and isinstance(node.func, ast.Attribute):
+        return node.func.value
+    if name == "len" and node.args and isinstance(node.args[0], ast.Call):
+        inner = node.args[0]
+        inner_name = _call_name(inner)
+        if inner_name in {"set", "unique"} and inner.args:
+            return inner.args[0]
+        if inner_name == "groupby" and isinstance(inner.func, ast.Attribute):
+            return _key_argument(inner, "by")
+        if inner_name == "drop_duplicates" and isinstance(inner.func, ast.Attribute):
+            # The key may be the receiver or the subset argument.
+            return _key_argument(inner, "subset") or inner.func.value
+        if inner_name == "unique" and isinstance(inner.func, ast.Attribute):
+            return inner.func.value
+    return None
+
+
+def _row_identity_counts(tree) -> list[int]:
+    """Lines that count a row identity column, scope by scope.
+
+    A name holds an identity where it is assigned one in its own function or
+    an enclosing one; a ``map`` through it holds what it maps to.
+    """
+
+    import ast
+
+    found: list[int] = []
+    # Module-level names bound to an identity column's name, e.g.
+    # ``HOUSEHOLD_ID_COLUMN = "household_id"``.
+    constants = frozenset(
+        target.id
+        for node in tree.body
+        if isinstance(node, ast.Assign)
+        and _names_identity_column(node.value, frozenset())
+        for target in node.targets
+        if isinstance(target, ast.Name)
+    )
+
+    def own_nodes(scope):
+        stack = list(ast.iter_child_nodes(scope))
+        while stack:
+            node = stack.pop()
+            yield node
+            if not isinstance(
+                node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda, ast.ClassDef)
+            ):
+                stack.extend(ast.iter_child_nodes(node))
+
+    def scan(scope, inherited: set[str]) -> None:
+        names = set(inherited)
+        nodes = list(own_nodes(scope))
+        assignments = [
+            node
+            for node in nodes
+            if isinstance(node, (ast.Assign, ast.AnnAssign)) and node.value is not None
+        ]
+        grew = True
+        while grew:
+            grew = False
+            for node in assignments:
+                value = node.value
+                # A bare column name is not a column's values.
+                if isinstance(value, (ast.Constant, ast.List, ast.Tuple)):
+                    continue
+                if not _row_identity(value, names, constants):
+                    continue
+                targets = (
+                    node.targets if isinstance(node, ast.Assign) else [node.target]
+                )
+                for target in targets:
+                    if isinstance(target, ast.Name) and target.id not in names:
+                        names.add(target.id)
+                        grew = True
+        for node in nodes:
+            keys = _counted_keys(node)
+            if keys is not None and _row_identity(keys, names, constants):
+                found.append(node.lineno)
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                scan(node, names)
+            elif isinstance(node, ast.ClassDef):
+                scan(node, set())
+
+    scan(tree, set())
+    return sorted(set(found))
+
+
+def test_no_uk_floor_counts_rows_by_their_household_ids() -> None:
+    """Every UK floor counts true source households (microcosm#931).
+
+    Once support copies or geographic clones exist, ``household_id`` and
+    ``person_household_id`` name rows, and ``household_source_id`` names the
+    support channel's immediate parent, so a count of any of them reads a
+    household's copies as sources of their own. Over the UK runtime and the UK
+    tools, a distinct count (``distinct_count``, ``distinct_carriers``,
+    ``nunique``, ``value_counts``, or ``len`` of a ``set`` or ``unique``) of
+    such a column, or of a name holding one, must be named in
+    ``_KEPT_ROW_COUNTS``; floors count through
+    ``receipt_counts.record_source_households`` instead.
+    """
+
+    import ast
+
+    root = paths_for("microcosm-build").repository
+    build = paths_for("microcosm-build").package / "src" / "microcosm" / "build"
+    uk_tool = re.compile(r"(?:^|_)uk(?:_|$)")
+    paths = (
+        *(build / "uk_runtime").rglob("*.py"),
+        *(path for path in (root / "tools").rglob("*.py") if uk_tool.search(path.stem)),
+    )
+    found = []
+    covered: dict[tuple[str, str], int] = {}
+    for path in sorted(paths):
+        text = path.read_text(encoding="utf-8")
+        name = path.relative_to(root).as_posix()
+        kept = next(
+            (
+                entries
+                for suffix, entries in _KEPT_ROW_COUNTS.items()
+                if name.endswith(suffix)
+            ),
+            (),
+        )
+        lines = text.splitlines()
+        for line in _row_identity_counts(ast.parse(text)):
+            start = sum(len(row) + 1 for row in lines[: line - 1])
+            end = start + len(lines[line - 1])
+            phrase = next(
+                (
+                    phrase
+                    for phrase, _ in kept
+                    if any(
+                        at.start() <= end and at.end() >= start
+                        for at in re.finditer(
+                            r"\s*".join(map(re.escape, phrase.split())), text
+                        )
+                    )
+                ),
+                None,
+            )
+            if phrase is None:
+                found.append(f"{name}:{line}: {lines[line - 1].strip()[:120]}")
+            else:
+                covered[(name, phrase)] = covered.get((name, phrase), 0) + 1
+    assert found == []
+    expected = {
+        (suffix, phrase): count
+        for suffix, entries in _KEPT_ROW_COUNTS.items()
+        for phrase, count in entries
+    }
+    seen = {
+        (suffix, phrase): sum(
+            hits
+            for (name, kept_phrase), hits in covered.items()
+            if name.endswith(suffix) and kept_phrase == phrase
+        )
+        for suffix, phrase in expected
+    }
+    assert seen == expected
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        'n = households["household_id"].nunique()',
+        'n = len(set(person["person_household_id"]))',
+        'n = len(households.drop_duplicates("household_id"))',
+        'n = len(households.drop_duplicates(subset=["household_id", "region"]))',
+        'n = households.groupby("household_id").ngroups',
+        'n = len(person.groupby(by="person_household_id"))',
+        'KEY = "household_source_id"\nn = households[KEY].nunique()',
+        'KEY = "household_id"\nn = households.groupby(KEY).ngroups',
+        'ids = households["household_id"].to_numpy()\nn = distinct_count(ids)',
+    ],
+)
+def test_the_static_scan_sees_every_form_of_a_row_count(source) -> None:
+    """Each form counts distinct household rows (#1519 review)."""
+
+    import ast
+
+    assert _row_identity_counts(ast.parse(source)) != []
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        'n = households.groupby("region").ngroups',
+        'n = len(households.drop_duplicates("region"))',
+        'n = distinct_count(record_source_households(tables, "household", stage=s))',
+        'KEY = "household_id"\nn = len(households)',
+    ],
+)
+def test_the_static_scan_passes_counts_of_other_keys(source) -> None:
+    import ast
+
+    assert _row_identity_counts(ast.parse(source)) == []

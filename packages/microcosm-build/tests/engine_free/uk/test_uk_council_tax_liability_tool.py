@@ -35,7 +35,7 @@ def _households(
             "simulated_council_tax": simulated,
             "simulated_council_tax_less_discounts": less_discounts,
             "la_code_oa": code,
-            "household_source_id": source,
+            "source_household_id": source,
         }
         for source in sources
     ]

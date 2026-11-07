@@ -1,0 +1,1082 @@
+{
+  "band_weight_scale": 1000000,
+  "built_on": "2026-11-06",
+  "chronicle": {
+    "commit": "80a3482905843d447f8811b500a56dbf3b5f47fa",
+    "merged": true,
+    "pull_request": "PolicyEngine/chronicle#421"
+  },
+  "feed_facts": {
+    "nrs_dwellings_by_band": {
+      "data_zones": 7392,
+      "fingerprint_sha256": "e1917f2b191c0af847fefd346e99e6fe115292112a94e69fbede8c22543256fe",
+      "period": {
+        "type": "calendar_year",
+        "value": "2024"
+      },
+      "record_set_id": "nrs.dwellings_data_zone_2025.2024",
+      "rows": 66528,
+      "source_file": "dwelling-estimates-by-2022-data-zones-24-25.xlsx",
+      "source_sha256": "5d61db5faf7e81451d838e5d394b8e0682bbf501341c1220aea4a78082ceb033"
+    }
+  },
+  "issues": {
+    "chronicle_band_facts": "PolicyEngine/chronicle#419",
+    "chronicle_registration": "PolicyEngine/chronicle#412",
+    "umbrella": "PolicyEngine/microcosm#931"
+  },
+  "kind": "uk_atomic_area_conditioned_supports_provenance",
+  "ledger_feed": {
+    "fact_row_count": 2030062,
+    "facts_sha256": "cb3342c3f59ff961a0ae369ca489293ddd6d021fdeb5cfafb89f6d125329bdfe",
+    "manifest_sha256": "d2323e7bddb30043fafecc2249fca0ee1506dae8ff20bc5f4db8575dc2ec1b73",
+    "source_commit": "80a3482905843d447f8811b500a56dbf3b5f47fa"
+  },
+  "notes": [
+    "imd_decile is the 2019 vintage of each nation's index (IoD 2019, WIMD 2019, SIMD 2020v2, NIMDM 2017): the FRS 2024-25 variables IMDE, IMDW, IMDS and IMDN carry no change note from 2023-24, which predates the 2025 indices, and on an internal comparison England's FRS decile shares by region fit IoD 2019 better than IoD 2025, as the 2023-24 FRS does. The vintage is still to be confirmed with DWP.",
+    "An area's decile is the one most of its live small-user postcodes carry in the May 2026 NSPL (oa21cd: the 2021 output area in England and Wales, the 2022 output area in Scotland, the 2021 data zone in Northern Ireland). Ranks are within-nation only.",
+    "Northern Ireland's SOAs (2001) do not nest in its 2021 data zones, so many data zones' postcodes span deciles; the modal decile is recorded with relation inferred_modal and the counts below.",
+    "England and Wales band weights read each area's LSOA mix as committed (shares to 6 dp ending at exactly 1), so households x share x 10^6 is exact. Scotland's read its 2022 data zone's dwellings by band, rounded half to even per band.",
+    "Scotland's band mix is its 2022 data zone's, in which its 2022 output areas nest, at December 2024: nearest the FRS 2024-25 year and VOA's stock at 31 March 2025. NRS counts dwellings on the valuation list, as VOA does in England and Wales. Chronicle emits the zones' totals and bands A to H as facts (record set nrs.dwellings_data_zone_2025.2024, chronicle#421); this tool reads them from the pinned UK feed and records their fingerprint."
+  ],
+  "publisher_files": {
+    "iod2019": {
+      "chronicle_package_id": "mhclg-english-indices-of-deprivation-2019-file-1",
+      "chronicle_source_id": "mhclg",
+      "chronicle_year": 2019,
+      "filename": "File_1_-_IMD2019_Index_of_Multiple_Deprivation.xlsx",
+      "product": "English indices of deprivation 2019, File 1: index of multiple deprivation",
+      "publisher": "MHCLG",
+      "sha256": "b95ca12952c3a8ebdb2e5c3bb03d5b0e56b76ede3fcf45205db26f280b912d9d",
+      "size_bytes": 1433347,
+      "url": "https://assets.publishing.service.gov.uk/media/5d8b3abded915d0373d3540f/File_1_-_IMD2019_Index_of_Multiple_Deprivation.xlsx"
+    },
+    "nimdm2017": {
+      "chronicle_package_id": "nisra-nimdm-2017-soa-results",
+      "chronicle_source_id": "nisra",
+      "chronicle_year": 2017,
+      "filename": "NIMDM17_SOAresults.xls",
+      "product": "NIMDM 2017 results by Super Output Area",
+      "publisher": "NISRA",
+      "sha256": "3738edf2d264491301b41cc7b64967373d49b09a6f5719225a0e4f7d789af9d3",
+      "size_bytes": 1772032,
+      "url": "https://www.nisra.gov.uk/files/nisra/publications/NIMDM17_SOAresults.xls"
+    },
+    "nspl": {
+      "chronicle_package_id": "ons-nspl-may-2026",
+      "chronicle_source_id": "ons",
+      "chronicle_year": 2026,
+      "filename": "NSPL_MAY_2026.zip",
+      "product": "National Statistics Postcode Lookup, May 2026",
+      "publisher": "ONS",
+      "sha256": "e0ccd5b3d90fdb537c29afc85b33c6c7ff8647e89e390f2e9ae48530f85f42c1",
+      "size_bytes": 187209017,
+      "url": "https://www.arcgis.com/sharing/rest/content/items/7668e0d35cab4f6db6f15f03be610fb0/data"
+    },
+    "simd2020v2": {
+      "chronicle_package_id": "scotgov-simd-2020v2-data-zone-lookup",
+      "chronicle_source_id": "scotgov",
+      "chronicle_year": 2020,
+      "filename": "SIMD_2020v2_datazone_lookup_updated_2025.xlsx",
+      "product": "SIMD 2020v2 data zone lookup (updated 2025)",
+      "publisher": "Scottish Government",
+      "sha256": "0a64937af60fb339a1be85cd2f65b6a3d410a38dc5b6c7f25a72ba2d7060a03e",
+      "size_bytes": 1339239,
+      "url": "https://www.gov.scot/binaries/content/documents/govscot/publications/statistics/2020/01/scottish-index-of-multiple-deprivation-2020-data-zone-look-up-file/documents/scottish-index-of-multiple-deprivation-data-zone-look-up/scottish-index-of-multiple-deprivation-data-zone-look-up/govscot%3Adocument/SIMD%2B2020v2%2B-%2Bdatazone%2Blookup%2B-%2Bupdated%2B2025.xlsx"
+    },
+    "wimd2019": {
+      "chronicle_package_id": "welshgov-wimd-2019-ranks-by-small-area",
+      "chronicle_source_id": "welshgov",
+      "chronicle_year": 2019,
+      "filename": "welsh-index-multiple-deprivation-2019-index-and-domain-ranks-by-small-area.ods",
+      "product": "WIMD 2019 index and domain ranks by small area",
+      "publisher": "Welsh Government",
+      "sha256": "2e7b65a3a276e31a10d4bf24a7d26e5cd9d2d95a796ab65e894fcd4e4b159430",
+      "size_bytes": 232940,
+      "url": "https://www.gov.wales/sites/default/files/statistics-and-research/2022-02/welsh-index-multiple-deprivation-2019-index-and-domain-ranks-by-small-area.ods"
+    }
+  },
+  "resources": {
+    "voa_council_tax_band_mix_lsoa.json": {
+      "as_at": "2025-03-31",
+      "publisher_file": "CTSOP1.1.zip",
+      "publisher_package": "voa-council-tax-stock-by-lad-2025",
+      "publisher_sha256": "e1979a4196e23207489a6e049ddb10197cd127ab775be5828ee662743fe4fbe7",
+      "resource": "voa_council_tax_band_mix_lsoa.json",
+      "sha256": "0e2e5b37f500f2deaaf8bf4ca857b7ce6c6db3a5cc9d138f4e11992e07d9f498"
+    }
+  },
+  "schema_version": 1,
+  "supports": {
+    "uk_ew_output_area_2021": {
+      "band_weights": {
+        "areas_with_rounding": 0,
+        "column_totals": {
+          "households_band_a": 5735445835501,
+          "households_band_b": 4886113564804,
+          "households_band_c": 5471412148929,
+          "households_band_d": 3897798904448,
+          "households_band_e": 2475397052263,
+          "households_band_f": 1319848671029,
+          "households_band_g": 860712399159,
+          "households_band_h": 132108737264,
+          "households_band_i": 4466686603
+        },
+        "largest_area_deviation": 0,
+        "rounding": "round_half_even",
+        "scale": 1000000,
+        "total_deviation": 0
+      },
+      "base": {
+        "sha256": "1b0dec268be0141f03ec05dc3b55c13733cc2bb20be5e403d76d73c8e27dc797",
+        "source": "uk_ew_output_area_2021_support"
+      },
+      "column_metadata": {
+        "households_band_a": {
+          "basis": "census_2021_households_x_voa_ctsop1_1_2025_lsoa_band_a_share_6dp_x1e6",
+          "kind": "weight",
+          "source": "voa-council-tax-stock-by-lad-2025@sha256:e1979a4196e23207489a6e049ddb10197cd127ab775be5828ee662743fe4fbe7#voa_council_tax_band_mix_lsoa.json@sha256:0e2e5b37f500f2deaaf8bf4ca857b7ce6c6db3a5cc9d138f4e11992e07d9f498"
+        },
+        "households_band_b": {
+          "basis": "census_2021_households_x_voa_ctsop1_1_2025_lsoa_band_b_share_6dp_x1e6",
+          "kind": "weight",
+          "source": "voa-council-tax-stock-by-lad-2025@sha256:e1979a4196e23207489a6e049ddb10197cd127ab775be5828ee662743fe4fbe7#voa_council_tax_band_mix_lsoa.json@sha256:0e2e5b37f500f2deaaf8bf4ca857b7ce6c6db3a5cc9d138f4e11992e07d9f498"
+        },
+        "households_band_c": {
+          "basis": "census_2021_households_x_voa_ctsop1_1_2025_lsoa_band_c_share_6dp_x1e6",
+          "kind": "weight",
+          "source": "voa-council-tax-stock-by-lad-2025@sha256:e1979a4196e23207489a6e049ddb10197cd127ab775be5828ee662743fe4fbe7#voa_council_tax_band_mix_lsoa.json@sha256:0e2e5b37f500f2deaaf8bf4ca857b7ce6c6db3a5cc9d138f4e11992e07d9f498"
+        },
+        "households_band_d": {
+          "basis": "census_2021_households_x_voa_ctsop1_1_2025_lsoa_band_d_share_6dp_x1e6",
+          "kind": "weight",
+          "source": "voa-council-tax-stock-by-lad-2025@sha256:e1979a4196e23207489a6e049ddb10197cd127ab775be5828ee662743fe4fbe7#voa_council_tax_band_mix_lsoa.json@sha256:0e2e5b37f500f2deaaf8bf4ca857b7ce6c6db3a5cc9d138f4e11992e07d9f498"
+        },
+        "households_band_e": {
+          "basis": "census_2021_households_x_voa_ctsop1_1_2025_lsoa_band_e_share_6dp_x1e6",
+          "kind": "weight",
+          "source": "voa-council-tax-stock-by-lad-2025@sha256:e1979a4196e23207489a6e049ddb10197cd127ab775be5828ee662743fe4fbe7#voa_council_tax_band_mix_lsoa.json@sha256:0e2e5b37f500f2deaaf8bf4ca857b7ce6c6db3a5cc9d138f4e11992e07d9f498"
+        },
+        "households_band_f": {
+          "basis": "census_2021_households_x_voa_ctsop1_1_2025_lsoa_band_f_share_6dp_x1e6",
+          "kind": "weight",
+          "source": "voa-council-tax-stock-by-lad-2025@sha256:e1979a4196e23207489a6e049ddb10197cd127ab775be5828ee662743fe4fbe7#voa_council_tax_band_mix_lsoa.json@sha256:0e2e5b37f500f2deaaf8bf4ca857b7ce6c6db3a5cc9d138f4e11992e07d9f498"
+        },
+        "households_band_g": {
+          "basis": "census_2021_households_x_voa_ctsop1_1_2025_lsoa_band_g_share_6dp_x1e6",
+          "kind": "weight",
+          "source": "voa-council-tax-stock-by-lad-2025@sha256:e1979a4196e23207489a6e049ddb10197cd127ab775be5828ee662743fe4fbe7#voa_council_tax_band_mix_lsoa.json@sha256:0e2e5b37f500f2deaaf8bf4ca857b7ce6c6db3a5cc9d138f4e11992e07d9f498"
+        },
+        "households_band_h": {
+          "basis": "census_2021_households_x_voa_ctsop1_1_2025_lsoa_band_h_share_6dp_x1e6",
+          "kind": "weight",
+          "source": "voa-council-tax-stock-by-lad-2025@sha256:e1979a4196e23207489a6e049ddb10197cd127ab775be5828ee662743fe4fbe7#voa_council_tax_band_mix_lsoa.json@sha256:0e2e5b37f500f2deaaf8bf4ca857b7ce6c6db3a5cc9d138f4e11992e07d9f498"
+        },
+        "households_band_i": {
+          "basis": "census_2021_households_x_voa_ctsop1_1_2025_lsoa_band_i_share_6dp_x1e6",
+          "kind": "weight",
+          "source": "voa-council-tax-stock-by-lad-2025@sha256:e1979a4196e23207489a6e049ddb10197cd127ab775be5828ee662743fe4fbe7#voa_council_tax_band_mix_lsoa.json@sha256:0e2e5b37f500f2deaaf8bf4ca857b7ce6c6db3a5cc9d138f4e11992e07d9f498"
+        },
+        "imd_decile": {
+          "kind": "code",
+          "relation": "inferred_modal",
+          "source": "ons-nspl-may-2026@sha256:e0ccd5b3d90fdb537c29afc85b33c6c7ff8647e89e390f2e9ae48530f85f42c1+mhclg-english-indices-of-deprivation-2019-file-1@sha256:b95ca12952c3a8ebdb2e5c3bb03d5b0e56b76ede3fcf45205db26f280b912d9d+welshgov-wimd-2019-ranks-by-small-area@sha256:2e7b65a3a276e31a10d4bf24a7d26e5cd9d2d95a796ab65e894fcd4e4b159430#modal-live-small-user-postcode",
+          "vintage": "2019_iod_wimd"
+        }
+      },
+      "filename": "uk_ew_output_area_2021_conditioned_support.npz",
+      "households_by_imd_decile": {
+        "1": 2451219,
+        "10": 2329796,
+        "2": 2468558,
+        "3": 2517420,
+        "4": 2531210,
+        "5": 2520779,
+        "6": 2563141,
+        "7": 2492141,
+        "8": 2478349,
+        "9": 2430691
+      },
+      "imd_decile": {
+        "areas": 188880,
+        "areas_by_rule": {
+          "area": 188841,
+          "area_tie_parent": 4,
+          "parent": 35
+        },
+        "areas_whose_records_span_codes": 357,
+        "postcodes_in_areas": 1518234,
+        "postcodes_without_rank": 0,
+        "records": 1518234
+      },
+      "sha256": "0b0f80ea6be84ffbede290e0bcb71c82fbf8c7574658583e0be896ce426f1ea8",
+      "size_bytes": 6357835,
+      "zero_mass_cells": [
+        {
+          "cells": [],
+          "constraints": [
+            "frs_region",
+            "imd_decile"
+          ],
+          "weight": "households"
+        },
+        {
+          "cells": [],
+          "constraints": [
+            "frs_region",
+            "imd_decile"
+          ],
+          "weight": "households_band_a"
+        },
+        {
+          "cells": [],
+          "constraints": [
+            "frs_region",
+            "imd_decile"
+          ],
+          "weight": "households_band_b"
+        },
+        {
+          "cells": [],
+          "constraints": [
+            "frs_region",
+            "imd_decile"
+          ],
+          "weight": "households_band_c"
+        },
+        {
+          "cells": [],
+          "constraints": [
+            "frs_region",
+            "imd_decile"
+          ],
+          "weight": "households_band_d"
+        },
+        {
+          "cells": [],
+          "constraints": [
+            "frs_region",
+            "imd_decile"
+          ],
+          "weight": "households_band_e"
+        },
+        {
+          "cells": [],
+          "constraints": [
+            "frs_region",
+            "imd_decile"
+          ],
+          "weight": "households_band_f"
+        },
+        {
+          "cells": [],
+          "constraints": [
+            "frs_region",
+            "imd_decile"
+          ],
+          "weight": "households_band_g"
+        },
+        {
+          "cells": [
+            [
+              "EAST_MIDLANDS",
+              "1"
+            ],
+            [
+              "EAST_OF_ENGLAND",
+              "1"
+            ],
+            [
+              "NORTH_EAST",
+              "2"
+            ],
+            [
+              "NORTH_WEST",
+              "1"
+            ],
+            [
+              "SOUTH_EAST",
+              "1"
+            ],
+            [
+              "YORKSHIRE",
+              "1"
+            ],
+            [
+              "YORKSHIRE",
+              "2"
+            ]
+          ],
+          "constraints": [
+            "frs_region",
+            "imd_decile"
+          ],
+          "weight": "households_band_h"
+        },
+        {
+          "cells": [
+            [
+              "EAST_MIDLANDS",
+              "1"
+            ],
+            [
+              "EAST_MIDLANDS",
+              "2"
+            ],
+            [
+              "EAST_MIDLANDS",
+              "3"
+            ],
+            [
+              "EAST_MIDLANDS",
+              "4"
+            ],
+            [
+              "EAST_MIDLANDS",
+              "5"
+            ],
+            [
+              "EAST_MIDLANDS",
+              "6"
+            ],
+            [
+              "EAST_MIDLANDS",
+              "7"
+            ],
+            [
+              "EAST_MIDLANDS",
+              "8"
+            ],
+            [
+              "EAST_MIDLANDS",
+              "9"
+            ],
+            [
+              "EAST_MIDLANDS",
+              "10"
+            ],
+            [
+              "EAST_OF_ENGLAND",
+              "1"
+            ],
+            [
+              "EAST_OF_ENGLAND",
+              "2"
+            ],
+            [
+              "EAST_OF_ENGLAND",
+              "3"
+            ],
+            [
+              "EAST_OF_ENGLAND",
+              "4"
+            ],
+            [
+              "EAST_OF_ENGLAND",
+              "5"
+            ],
+            [
+              "EAST_OF_ENGLAND",
+              "6"
+            ],
+            [
+              "EAST_OF_ENGLAND",
+              "7"
+            ],
+            [
+              "EAST_OF_ENGLAND",
+              "8"
+            ],
+            [
+              "EAST_OF_ENGLAND",
+              "9"
+            ],
+            [
+              "EAST_OF_ENGLAND",
+              "10"
+            ],
+            [
+              "LONDON",
+              "1"
+            ],
+            [
+              "LONDON",
+              "2"
+            ],
+            [
+              "LONDON",
+              "3"
+            ],
+            [
+              "LONDON",
+              "4"
+            ],
+            [
+              "LONDON",
+              "5"
+            ],
+            [
+              "LONDON",
+              "6"
+            ],
+            [
+              "LONDON",
+              "7"
+            ],
+            [
+              "LONDON",
+              "8"
+            ],
+            [
+              "LONDON",
+              "9"
+            ],
+            [
+              "LONDON",
+              "10"
+            ],
+            [
+              "NORTH_EAST",
+              "1"
+            ],
+            [
+              "NORTH_EAST",
+              "2"
+            ],
+            [
+              "NORTH_EAST",
+              "3"
+            ],
+            [
+              "NORTH_EAST",
+              "4"
+            ],
+            [
+              "NORTH_EAST",
+              "5"
+            ],
+            [
+              "NORTH_EAST",
+              "6"
+            ],
+            [
+              "NORTH_EAST",
+              "7"
+            ],
+            [
+              "NORTH_EAST",
+              "8"
+            ],
+            [
+              "NORTH_EAST",
+              "9"
+            ],
+            [
+              "NORTH_EAST",
+              "10"
+            ],
+            [
+              "NORTH_WEST",
+              "1"
+            ],
+            [
+              "NORTH_WEST",
+              "2"
+            ],
+            [
+              "NORTH_WEST",
+              "3"
+            ],
+            [
+              "NORTH_WEST",
+              "4"
+            ],
+            [
+              "NORTH_WEST",
+              "5"
+            ],
+            [
+              "NORTH_WEST",
+              "6"
+            ],
+            [
+              "NORTH_WEST",
+              "7"
+            ],
+            [
+              "NORTH_WEST",
+              "8"
+            ],
+            [
+              "NORTH_WEST",
+              "9"
+            ],
+            [
+              "NORTH_WEST",
+              "10"
+            ],
+            [
+              "SOUTH_EAST",
+              "1"
+            ],
+            [
+              "SOUTH_EAST",
+              "2"
+            ],
+            [
+              "SOUTH_EAST",
+              "3"
+            ],
+            [
+              "SOUTH_EAST",
+              "4"
+            ],
+            [
+              "SOUTH_EAST",
+              "5"
+            ],
+            [
+              "SOUTH_EAST",
+              "6"
+            ],
+            [
+              "SOUTH_EAST",
+              "7"
+            ],
+            [
+              "SOUTH_EAST",
+              "8"
+            ],
+            [
+              "SOUTH_EAST",
+              "9"
+            ],
+            [
+              "SOUTH_EAST",
+              "10"
+            ],
+            [
+              "SOUTH_WEST",
+              "1"
+            ],
+            [
+              "SOUTH_WEST",
+              "2"
+            ],
+            [
+              "SOUTH_WEST",
+              "3"
+            ],
+            [
+              "SOUTH_WEST",
+              "4"
+            ],
+            [
+              "SOUTH_WEST",
+              "5"
+            ],
+            [
+              "SOUTH_WEST",
+              "6"
+            ],
+            [
+              "SOUTH_WEST",
+              "7"
+            ],
+            [
+              "SOUTH_WEST",
+              "8"
+            ],
+            [
+              "SOUTH_WEST",
+              "9"
+            ],
+            [
+              "SOUTH_WEST",
+              "10"
+            ],
+            [
+              "WEST_MIDLANDS",
+              "1"
+            ],
+            [
+              "WEST_MIDLANDS",
+              "2"
+            ],
+            [
+              "WEST_MIDLANDS",
+              "3"
+            ],
+            [
+              "WEST_MIDLANDS",
+              "4"
+            ],
+            [
+              "WEST_MIDLANDS",
+              "5"
+            ],
+            [
+              "WEST_MIDLANDS",
+              "6"
+            ],
+            [
+              "WEST_MIDLANDS",
+              "7"
+            ],
+            [
+              "WEST_MIDLANDS",
+              "8"
+            ],
+            [
+              "WEST_MIDLANDS",
+              "9"
+            ],
+            [
+              "WEST_MIDLANDS",
+              "10"
+            ],
+            [
+              "YORKSHIRE",
+              "1"
+            ],
+            [
+              "YORKSHIRE",
+              "2"
+            ],
+            [
+              "YORKSHIRE",
+              "3"
+            ],
+            [
+              "YORKSHIRE",
+              "4"
+            ],
+            [
+              "YORKSHIRE",
+              "5"
+            ],
+            [
+              "YORKSHIRE",
+              "6"
+            ],
+            [
+              "YORKSHIRE",
+              "7"
+            ],
+            [
+              "YORKSHIRE",
+              "8"
+            ],
+            [
+              "YORKSHIRE",
+              "9"
+            ],
+            [
+              "YORKSHIRE",
+              "10"
+            ]
+          ],
+          "constraints": [
+            "frs_region",
+            "imd_decile"
+          ],
+          "weight": "households_band_i"
+        },
+        {
+          "cells": [],
+          "constraints": [
+            "frs_region"
+          ],
+          "weight": "households"
+        },
+        {
+          "cells": [],
+          "constraints": [
+            "frs_region"
+          ],
+          "weight": "households_band_a"
+        },
+        {
+          "cells": [],
+          "constraints": [
+            "frs_region"
+          ],
+          "weight": "households_band_b"
+        },
+        {
+          "cells": [],
+          "constraints": [
+            "frs_region"
+          ],
+          "weight": "households_band_c"
+        },
+        {
+          "cells": [],
+          "constraints": [
+            "frs_region"
+          ],
+          "weight": "households_band_d"
+        },
+        {
+          "cells": [],
+          "constraints": [
+            "frs_region"
+          ],
+          "weight": "households_band_e"
+        },
+        {
+          "cells": [],
+          "constraints": [
+            "frs_region"
+          ],
+          "weight": "households_band_f"
+        },
+        {
+          "cells": [],
+          "constraints": [
+            "frs_region"
+          ],
+          "weight": "households_band_g"
+        },
+        {
+          "cells": [],
+          "constraints": [
+            "frs_region"
+          ],
+          "weight": "households_band_h"
+        },
+        {
+          "cells": [
+            [
+              "EAST_MIDLANDS"
+            ],
+            [
+              "EAST_OF_ENGLAND"
+            ],
+            [
+              "LONDON"
+            ],
+            [
+              "NORTH_EAST"
+            ],
+            [
+              "NORTH_WEST"
+            ],
+            [
+              "SOUTH_EAST"
+            ],
+            [
+              "SOUTH_WEST"
+            ],
+            [
+              "WEST_MIDLANDS"
+            ],
+            [
+              "YORKSHIRE"
+            ]
+          ],
+          "constraints": [
+            "frs_region"
+          ],
+          "weight": "households_band_i"
+        }
+      ]
+    },
+    "uk_ni_data_zone_2021": {
+      "band_weights": null,
+      "base": {
+        "sha256": "facb9923f589cb68eefa8fad37911e618b6137964ff58a231976ef62584b669f",
+        "source": "uk_ni_data_zone_2021_support"
+      },
+      "column_metadata": {
+        "imd_decile": {
+          "kind": "code",
+          "relation": "inferred_modal",
+          "source": "ons-nspl-may-2026@sha256:e0ccd5b3d90fdb537c29afc85b33c6c7ff8647e89e390f2e9ae48530f85f42c1+nisra-nimdm-2017-soa-results@sha256:3738edf2d264491301b41cc7b64967373d49b09a6f5719225a0e4f7d789af9d3#modal-live-small-user-postcode",
+          "vintage": "2017_nimdm_soa"
+        }
+      },
+      "filename": "uk_ni_data_zone_2021_conditioned_support.npz",
+      "households_by_imd_decile": {
+        "1": 75618,
+        "10": 71900,
+        "2": 81335,
+        "3": 75402,
+        "4": 81218,
+        "5": 77642,
+        "6": 76098,
+        "7": 80406,
+        "8": 75574,
+        "9": 73620
+      },
+      "imd_decile": {
+        "areas": 3780,
+        "areas_by_rule": {
+          "area": 3691,
+          "area_tie_order": 1,
+          "area_tie_parent": 88
+        },
+        "areas_whose_records_span_codes": 1607,
+        "postcodes_in_areas": 48276,
+        "postcodes_without_rank": 0,
+        "records": 48276
+      },
+      "sha256": "6d71f2a98f26f80d80a4671b7e37389dd92f8ff9b9a02ee35c09819763b3b450",
+      "size_bytes": 47473,
+      "zero_mass_cells": [
+        {
+          "cells": [],
+          "constraints": [
+            "frs_region",
+            "imd_decile"
+          ],
+          "weight": "households"
+        },
+        {
+          "cells": [],
+          "constraints": [
+            "frs_region"
+          ],
+          "weight": "households"
+        }
+      ]
+    },
+    "uk_scotland_output_area_2022": {
+      "band_weights": {
+        "areas_with_rounding": 19887,
+        "column_totals": {
+          "households_band_a": 495138998397,
+          "households_band_b": 563897865725,
+          "households_band_c": 406542930927,
+          "households_band_d": 347792158855,
+          "households_band_e": 345917815311,
+          "households_band_f": 205185630632,
+          "households_band_g": 130816965379,
+          "households_band_h": 13422634794
+        },
+        "largest_area_deviation": 3,
+        "rounding": "round_half_even",
+        "scale": 1000000,
+        "total_deviation": 20
+      },
+      "base": {
+        "sha256": "1649fa831315e6fac80caa4af7f68e837fd985b7f59c2831bb0db8cbfeeee443",
+        "source": "uk_scotland_output_area_2022_support"
+      },
+      "column_metadata": {
+        "households_band_a": {
+          "basis": "census_2022_occupied_households_postcode_index_cell_key_perturbed_x_nrs_dz2022_2024_band_a_share_round_half_even_x1e6",
+          "kind": "weight",
+          "source": "chronicle:nrs.dwellings_data_zone_2025.2024@sha256:e1917f2b191c0af847fefd346e99e6fe115292112a94e69fbede8c22543256fe"
+        },
+        "households_band_b": {
+          "basis": "census_2022_occupied_households_postcode_index_cell_key_perturbed_x_nrs_dz2022_2024_band_b_share_round_half_even_x1e6",
+          "kind": "weight",
+          "source": "chronicle:nrs.dwellings_data_zone_2025.2024@sha256:e1917f2b191c0af847fefd346e99e6fe115292112a94e69fbede8c22543256fe"
+        },
+        "households_band_c": {
+          "basis": "census_2022_occupied_households_postcode_index_cell_key_perturbed_x_nrs_dz2022_2024_band_c_share_round_half_even_x1e6",
+          "kind": "weight",
+          "source": "chronicle:nrs.dwellings_data_zone_2025.2024@sha256:e1917f2b191c0af847fefd346e99e6fe115292112a94e69fbede8c22543256fe"
+        },
+        "households_band_d": {
+          "basis": "census_2022_occupied_households_postcode_index_cell_key_perturbed_x_nrs_dz2022_2024_band_d_share_round_half_even_x1e6",
+          "kind": "weight",
+          "source": "chronicle:nrs.dwellings_data_zone_2025.2024@sha256:e1917f2b191c0af847fefd346e99e6fe115292112a94e69fbede8c22543256fe"
+        },
+        "households_band_e": {
+          "basis": "census_2022_occupied_households_postcode_index_cell_key_perturbed_x_nrs_dz2022_2024_band_e_share_round_half_even_x1e6",
+          "kind": "weight",
+          "source": "chronicle:nrs.dwellings_data_zone_2025.2024@sha256:e1917f2b191c0af847fefd346e99e6fe115292112a94e69fbede8c22543256fe"
+        },
+        "households_band_f": {
+          "basis": "census_2022_occupied_households_postcode_index_cell_key_perturbed_x_nrs_dz2022_2024_band_f_share_round_half_even_x1e6",
+          "kind": "weight",
+          "source": "chronicle:nrs.dwellings_data_zone_2025.2024@sha256:e1917f2b191c0af847fefd346e99e6fe115292112a94e69fbede8c22543256fe"
+        },
+        "households_band_g": {
+          "basis": "census_2022_occupied_households_postcode_index_cell_key_perturbed_x_nrs_dz2022_2024_band_g_share_round_half_even_x1e6",
+          "kind": "weight",
+          "source": "chronicle:nrs.dwellings_data_zone_2025.2024@sha256:e1917f2b191c0af847fefd346e99e6fe115292112a94e69fbede8c22543256fe"
+        },
+        "households_band_h": {
+          "basis": "census_2022_occupied_households_postcode_index_cell_key_perturbed_x_nrs_dz2022_2024_band_h_share_round_half_even_x1e6",
+          "kind": "weight",
+          "source": "chronicle:nrs.dwellings_data_zone_2025.2024@sha256:e1917f2b191c0af847fefd346e99e6fe115292112a94e69fbede8c22543256fe"
+        },
+        "imd_decile": {
+          "kind": "code",
+          "relation": "inferred_modal",
+          "source": "ons-nspl-may-2026@sha256:e0ccd5b3d90fdb537c29afc85b33c6c7ff8647e89e390f2e9ae48530f85f42c1+scotgov-simd-2020v2-data-zone-lookup@sha256:0a64937af60fb339a1be85cd2f65b6a3d410a38dc5b6c7f25a72ba2d7060a03e#modal-live-small-user-postcode",
+          "vintage": "2020v2_simd"
+        }
+      },
+      "filename": "uk_scotland_output_area_2022_conditioned_support.npz",
+      "households_by_imd_decile": {
+        "1": 261091,
+        "10": 228333,
+        "2": 260145,
+        "3": 253334,
+        "4": 255698,
+        "5": 249831,
+        "6": 251195,
+        "7": 254221,
+        "8": 255818,
+        "9": 239049
+      },
+      "imd_decile": {
+        "areas": 46363,
+        "areas_by_rule": {
+          "area": 45780,
+          "area_tie_order": 5,
+          "area_tie_parent": 485,
+          "parent": 93
+        },
+        "areas_whose_records_span_codes": 2363,
+        "postcodes_in_areas": 156932,
+        "postcodes_without_rank": 0,
+        "records": 156932
+      },
+      "sha256": "a8ca096bb0eafef90f4149f7e2ec6be302483f5b4c21a02f9c085ab20b597384",
+      "size_bytes": 1607718,
+      "zero_mass_cells": [
+        {
+          "cells": [],
+          "constraints": [
+            "frs_region",
+            "imd_decile"
+          ],
+          "weight": "households"
+        },
+        {
+          "cells": [],
+          "constraints": [
+            "frs_region",
+            "imd_decile"
+          ],
+          "weight": "households_band_a"
+        },
+        {
+          "cells": [],
+          "constraints": [
+            "frs_region",
+            "imd_decile"
+          ],
+          "weight": "households_band_b"
+        },
+        {
+          "cells": [],
+          "constraints": [
+            "frs_region",
+            "imd_decile"
+          ],
+          "weight": "households_band_c"
+        },
+        {
+          "cells": [],
+          "constraints": [
+            "frs_region",
+            "imd_decile"
+          ],
+          "weight": "households_band_d"
+        },
+        {
+          "cells": [],
+          "constraints": [
+            "frs_region",
+            "imd_decile"
+          ],
+          "weight": "households_band_e"
+        },
+        {
+          "cells": [],
+          "constraints": [
+            "frs_region",
+            "imd_decile"
+          ],
+          "weight": "households_band_f"
+        },
+        {
+          "cells": [],
+          "constraints": [
+            "frs_region",
+            "imd_decile"
+          ],
+          "weight": "households_band_g"
+        },
+        {
+          "cells": [],
+          "constraints": [
+            "frs_region",
+            "imd_decile"
+          ],
+          "weight": "households_band_h"
+        },
+        {
+          "cells": [],
+          "constraints": [
+            "frs_region"
+          ],
+          "weight": "households"
+        },
+        {
+          "cells": [],
+          "constraints": [
+            "frs_region"
+          ],
+          "weight": "households_band_a"
+        },
+        {
+          "cells": [],
+          "constraints": [
+            "frs_region"
+          ],
+          "weight": "households_band_b"
+        },
+        {
+          "cells": [],
+          "constraints": [
+            "frs_region"
+          ],
+          "weight": "households_band_c"
+        },
+        {
+          "cells": [],
+          "constraints": [
+            "frs_region"
+          ],
+          "weight": "households_band_d"
+        },
+        {
+          "cells": [],
+          "constraints": [
+            "frs_region"
+          ],
+          "weight": "households_band_e"
+        },
+        {
+          "cells": [],
+          "constraints": [
+            "frs_region"
+          ],
+          "weight": "households_band_f"
+        },
+        {
+          "cells": [],
+          "constraints": [
+            "frs_region"
+          ],
+          "weight": "households_band_g"
+        },
+        {
+          "cells": [],
+          "constraints": [
+            "frs_region"
+          ],
+          "weight": "households_band_h"
+        }
+      ]
+    }
+  },
+  "tool": "tools/build_uk_conditioned_area_supports.py"
+}

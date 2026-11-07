@@ -64,7 +64,7 @@ def test_the_table_holds_the_engine_liabilities_beside_the_stored_bill(
         _frame(
             local_authority=["MAIDSTONE", "CARDIFF"],
             la_code_oa=["E07000110", "W06000015"],
-            household_source_id=np.asarray([7, 8], dtype="int64"),
+            source_household_id=np.asarray([7, 8], dtype="int64"),
         ),
         tmp_path / "dense.h5",
     )
@@ -81,7 +81,7 @@ def test_the_table_holds_the_engine_liabilities_beside_the_stored_bill(
     assert table.loc[12, "council_tax_band"] == "B"
     assert table.loc[12, "country"] == "WALES"
     assert table["la_code_oa"].tolist() == ["E07000110", "W06000015"]
-    assert table["household_source_id"].tolist() == [7, 8]
+    assert table["source_household_id"].tolist() == [7, 8]
 
 
 def test_a_file_without_authorities_is_refused(tmp_path: Path) -> None:

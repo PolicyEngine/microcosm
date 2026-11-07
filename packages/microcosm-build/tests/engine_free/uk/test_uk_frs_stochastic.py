@@ -1,6 +1,7 @@
 """Tests split from packages/microcosm-build/tests/test_uk_frs_stochastic.py."""
 
 # ruff: noqa: F403, F405
+from microcosm.build.uk_runtime.receipt_counts import own_source_households
 from test_support.microcosm_build.uk_frs_stochastic import *
 
 
@@ -93,7 +94,10 @@ def test_person_draws_pin_scp_age_six_boundary_and_uniform_draw() -> None:
     person = _frame().table("person")
 
     derived = derive_frs_person_draws(
-        person, contract=_Contract(), person_weights=np.ones(len(person))
+        person,
+        contract=_Contract(),
+        person_weights=np.ones(len(person)),
+        person_sources=own_source_households(person),
     )
 
     draws = stable_identity_uniforms(

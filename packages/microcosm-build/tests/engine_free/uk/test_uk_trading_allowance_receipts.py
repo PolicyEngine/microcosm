@@ -32,7 +32,7 @@ def _frame(profit: np.ndarray):
     household = pd.DataFrame(
         {
             "household_id": ids,
-            "household_source_id": ids,
+            "source_household_id": ids,
             "household_weight": 2.0,
             "region": "LONDON",
         }

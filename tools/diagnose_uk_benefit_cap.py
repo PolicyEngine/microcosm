@@ -194,12 +194,12 @@ def _support(
 
     The join is positional: the engine's household population keeps the spine
     household table's row order, so each benefit unit's household position
-    (through its first member) indexes the spine's ``household_source_id``
+    (through its first member) indexes the spine's ``source_household_id``
     directly. No id is cast, so no two households can collide.
     """
 
     household = pd.read_hdf(spine, "/household")
-    if "household_source_id" not in household.columns:
+    if "source_household_id" not in household.columns:
         return {"available": False}
     household_population = simulation.populations["household"]
     person_household_position = np.asarray(
@@ -218,7 +218,7 @@ def _support(
             "spine_households": int(len(household)),
             "engine_households": int(household_population.count),
         }
-    source = household["household_source_id"].to_numpy()[positions]
+    source = household["source_household_id"].to_numpy()[positions]
     out = {
         "available": True,
         "join": "positional (engine household order is spine table order)",
@@ -241,7 +241,7 @@ def main() -> None:
     parser.add_argument("--dataset", required=True, help="an H5 the engine loads")
     parser.add_argument(
         "--spine",
-        help="the spine H5 whose household table carries household_source_id "
+        help="the spine H5 whose household table carries source_household_id "
         "(support counts; only meaningful when --dataset is that spine)",
     )
     parser.add_argument("--year", type=int, default=2025)

@@ -362,6 +362,7 @@ def test_brma_cell_distribution_masks_small_counts_and_reports_z() -> None:
             "region": ["LONDON"] * 4,
             "LHA_category": ["A"] * 4,
             "brma": ["CENTRAL", "CENTRAL", "CENTRAL", "OUTER"],
+            "source_household": [1, 2, 3, 4],
         }
     )
     resource = {"cells": {"LONDON": {"A": {"CENTRAL": 1, "OUTER": 1}}}}
@@ -390,6 +391,7 @@ def test_brma_cell_distribution_fails_closed_on_missing_cell() -> None:
             "region": ["LONDON"],
             "LHA_category": ["B"],
             "brma": ["CENTRAL"],
+            "source_household": [1],
         }
     )
     resource = {"cells": {"LONDON": {"A": {"CENTRAL": 1}}}}

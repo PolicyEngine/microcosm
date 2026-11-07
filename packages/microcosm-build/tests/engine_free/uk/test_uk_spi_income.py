@@ -1,6 +1,10 @@
 """Tests split from packages/microcosm-build/tests/test_uk_spi_income.py."""
 
 # ruff: noqa: F403, F405
+from dataclasses import replace as _replace
+
+from microcosm.build.uk_runtime.national_frame import uk_national_frame as _uk_frame
+from test_support.microcosm_build.uk_geographic_clones import with_geographic_clones
 from test_support.microcosm_build.uk_spi_income import *
 
 
@@ -1100,6 +1104,7 @@ def _pay_floor_frames(
         {
             "household_id": np.arange(1, len(rows) + 1),
             "household_source_id": [row.get("source", i) for i, row in enumerate(rows)],
+            "source_household_id": [row.get("source", i) for i, row in enumerate(rows)],
         }
     )
     rows_mask = pd.Series([row.get("drawn", True) for row in rows], index=person.index)
@@ -1414,3 +1419,107 @@ def test_each_spi_fit_takes_its_operations_gate_calibration(
             spi_income.SPI_TRANSPORT_FIT_NAME,
         }
         assert set(result.gate_outcomes.values()) == {"cross_fitted"}
+
+
+def _geographic_clones_of(support):
+    """The support's tables as two geographic clones at half the weight."""
+
+    household = support.household.drop(columns="household_weight")
+    pool = with_geographic_clones(
+        _uk_frame(
+            person=support.person,
+            benunit=support.benunit,
+            household=household,
+            household_weights=support.household["household_weight"].to_numpy(),
+            weight_kind=support.household_weight_kind,
+            time_period="2023",
+            mass_log=support.mass_log,
+        )
+    )
+    cloned = pool.table("household").copy()
+    cloned["household_weight"] = pool.weights_for("household").values
+    return _replace(
+        support,
+        person=pool.table("person"),
+        benunit=pool.table("benunit"),
+        household=cloned,
+    )
+
+
+def test_a_household_table_carrying_the_artifact_clone_index_is_refused(
+    monkeypatch, tmp_path
+) -> None:
+    """No spine stage writes the artifact's bare clone_index, and a table
+    carrying it would train clone 0 at its own weight rather than the fold's
+    (microcosm#931)."""
+
+    support = _dead_support()
+    donor_path = tmp_path / SPI_DONOR_FILENAME
+    _write_donor(donor_path)
+    monkeypatch.setattr(spi_income, "QRF", _FakeQRF)
+    _bypass_reviewed_donor_identity(monkeypatch)
+    with pytest.raises(ValueError, match="artifact's clone_index"):
+        impute_uk_spi_income_support(
+            _replace(support, household=support.household.assign(clone_index=0)),
+            donor_path,
+            seed=9,
+            n_estimators=3,
+            donor_sample_size=None,
+            state_pension_age=66,
+            allow_in_sample_reference=True,
+            stage1_gate_calibration="cross_fitted",
+        )
+
+
+def test_geographic_clones_train_the_frs_forests_as_their_survey_records(
+    monkeypatch, tmp_path
+) -> None:
+    """Two geographic clones of every household at half its weight hand the
+    reference and stage-2 forests the rows and weights the households hand
+    them alone (microcosm#931)."""
+
+    support = _dead_support()
+    donor_path = tmp_path / SPI_DONOR_FILENAME
+    _write_donor(donor_path)
+    monkeypatch.setattr(spi_income, "QRF", _FakeQRF)
+    _bypass_reviewed_donor_identity(monkeypatch)
+    real_cross_fit = spi_income.cross_fit_transport
+    monkeypatch.setattr(
+        spi_income,
+        "cross_fit_transport",
+        lambda *args, **kwargs: real_cross_fit(
+            *args, **{**kwargs, "allow_in_sample": True}
+        ),
+    )
+
+    def frs_fits(frame):
+        monkeypatch.setattr(_FakeQRF, "fit_gates", [])
+        monkeypatch.setattr(_FakeQRF, "fit_weight_values", [])
+        try:
+            impute_uk_spi_income_support(
+                frame,
+                donor_path,
+                seed=9,
+                n_estimators=3,
+                donor_sample_size=None,
+                state_pension_age=66,
+                allow_in_sample_reference=True,
+                stage1_gate_calibration="cross_fitted",
+            )
+        except ImportError:
+            pass
+        # The tape forest trains on the tape, not on the frame.
+        return list(
+            zip(_FakeQRF.fit_gates[1:], _FakeQRF.fit_weight_values[1:], strict=True)
+        )
+
+    alone = frs_fits(support)
+    cloned = frs_fits(_geographic_clones_of(support))
+    assert alone and len(cloned) == len(alone)
+    for ((kind, gate, groups), weights), (
+        (cloned_kind, cloned_gate, cloned_groups),
+        cloned_weights,
+    ) in zip(alone, cloned, strict=True):
+        assert (cloned_kind, cloned_gate) == (kind, gate)
+        np.testing.assert_array_equal(cloned_groups, groups)
+        np.testing.assert_array_equal(cloned_weights, weights)

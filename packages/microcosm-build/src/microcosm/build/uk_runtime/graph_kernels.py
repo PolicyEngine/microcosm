@@ -47,7 +47,7 @@ from microcosm.graph import (
 )
 from microcosm.graph.population import dtype_for_token
 
-from .. import stage_evidence, stochastic_assignment
+from .. import source_lineage, stage_evidence, stochastic_assignment
 from . import (
     bus_use_incidence,
     cgt_imputation,
@@ -70,6 +70,7 @@ from . import (
     receipt_counts,
     rowwise_geography,
     spi_income,
+    spi_rank_transport,
     spi_support,
     uc_capital_coherence,
     uc_deduction_attributes,
@@ -164,8 +165,9 @@ _STAGE_HELPER_MODULES = {
     # (microcosm#1164).
     "frs_annual_income_spells": (receipt_counts,),
     # The SPI income stage's imputation, band-donor resample and receipt live
-    # in spi_income, so an edit there moves the stage's hash (microcosm#1278).
-    "hmrc_spi_income_spine": (spi_income,),
+    # in spi_income, so an edit there moves the stage's hash (microcosm#1278),
+    # and its twin transport in spi_rank_transport (microcosm#840).
+    "hmrc_spi_income_spine": (spi_income, spi_rank_transport),
     "frs_spine": (uc_relationships,),
     "frs_legacy_proxies": (uk_engine_adapter,),
     "frs_education_grant_split": (uk_engine_adapter,),
@@ -295,6 +297,46 @@ _STAGE_HELPER_MODULES = {
     ),
 }
 
+# The receipts' counting rules and the shared lineage readers: every floor
+# counts true source households through receipt_counts, and the FRS-trained
+# fits fold geographic clones through household_lineage, both reading
+# source_lineage on household_lineage's declaration (microcosm#931). An edit
+# to any of the three moves the hash of every stage whose module or helpers
+# import one of them; test_uk_graph derives this set from the imports.
+_COUNTING_MODULES = (receipt_counts, household_lineage, source_lineage)
+_COUNTING_STAGES = frozenset(
+    {
+        "frs_take_up",
+        "frs_person_draws",
+        "frs_household_draws",
+        "frs_annual_income_spells",
+        "hmrc_spi_income_spine",
+        "company_cars",
+        "spi_housing_shell",
+        "high_value_home_support",
+        "regional_home_values",
+        "property_components",
+        "property_purchases",
+        "nts_bus_travel",
+        "lcfs_consumption",
+        "etb_vat",
+        "uc_reporter_redraw",
+        "spi_benefit_coherence",
+        "uc_capital_coherence",
+        "uc_take_up",
+        "uc_legacy_closure_take_up",
+        "pension_credit_take_up",
+        "child_benefit_take_up",
+        "salary_sacrifice",
+        "carers_allowance_take_up",
+        "childcare_copy_take_up",
+        "isa_subscriptions",
+        "trading_allowance_receipts",
+        "spi_employment_shell",
+        "aps_occupation",
+    }
+)
+
 _COMPUTE = Capabilities(
     determinism=Determinism.DETERMINISTIC,
     numeric=Numeric.BITWISE,
@@ -348,6 +390,7 @@ def _implementation_hash(kernel: object, stage: str, transform: object | None) -
         _mass_log_payload,
         _stage_module(stage),
         *_STAGE_HELPER_MODULES.get(stage, ()),
+        *(_COUNTING_MODULES if stage in _COUNTING_STAGES else ()),
         *(dependencies() if callable(dependencies) else ()),
     )
 

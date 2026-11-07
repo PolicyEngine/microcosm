@@ -80,7 +80,7 @@ def _frame(n: int = 200, seed: int = 5, *, source_ids=None, lineage: bool = True
         }
     )
     if lineage:
-        household["household_source_id"] = (
+        household["source_household_id"] = (
             household["household_id"].to_numpy()
             if source_ids is None
             else np.asarray(source_ids, dtype="int64")
@@ -344,21 +344,21 @@ def test_the_cap_cell_is_banded_on_its_source_households(monkeypatch) -> None:
     # UKDS disclosure control: twelve rows past ten, but three sources, so the
     # cell reads the sources' band "3-9", not the rows' "10-29", directly and
     # through the production node as a graph build runs it (the node declares
-    # household_source_id).
+    # source_household_id).
     frame = _london_copies_at_the_cap(monkeypatch)
     assert rhv.assign_regional_home_values(frame).receipt["sources_at_cap"] == "3-9"
     assert _graph_evidence(frame)["sources_at_cap"] == "3-9"
 
 
 def test_the_stage_refuses_a_frame_without_lineage() -> None:
-    with pytest.raises(ValueError, match="household_source_id"):
+    with pytest.raises(ValueError, match="source_household_id"):
         rhv.assign_regional_home_values(_frame(lineage=False))
     # A null would drop out of the distinct count: the cap cell would read 0
     # with rows in it.
     frame = _frame()
-    sources = frame.table("household")["household_source_id"].astype("Int64")
+    sources = frame.table("household")["source_household_id"].astype("Int64")
     sources.iloc[0] = None
-    frame.table("household")["household_source_id"] = sources
+    frame.table("household")["source_household_id"] = sources
     with pytest.raises(ValueError, match="null"):
         rhv.assign_regional_home_values(frame)
 

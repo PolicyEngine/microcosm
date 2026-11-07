@@ -32,6 +32,7 @@ from microcosm.build.uk_runtime.salary_sacrifice import (
     load_bonus_sacrifice_anchor,
     load_salary_sacrifice_anchor,
 )
+from test_support.microcosm_build.uk_geographic_clones import with_geographic_clones
 
 
 class _Fitted:
@@ -105,9 +106,15 @@ def _frame(
         {
             "household_id": ids,
             "household_source_id": ids,
+            "source_household_id": ids,
             "household_support_channel": channels,
+            # The copy steps' ordinals beside their flags, as on the spine.
+            "household_support_clone_index": np.where(
+                np.asarray(channels) == "spi", 1, 0
+            ),
             HOUSEHOLD_IS_CGT_CLONE: clones,
             HOUSEHOLD_IS_CGT_SUPPORT_COPY: donors,
+            "cgt_support_copy_index": np.asarray(donors, dtype=np.int64),
         }
     )
     return uk_national_frame(
@@ -515,9 +522,12 @@ def test_draws_move_only_for_the_people_whose_inputs_move(
                 {
                     "household_id": groups,
                     "household_support_channel": "frs",
+                    "household_support_clone_index": 0,
                     HOUSEHOLD_IS_CGT_CLONE: False,
                     HOUSEHOLD_IS_CGT_SUPPORT_COPY: False,
+                    "cgt_support_copy_index": 0,
                     "household_source_id": groups,
+                    "source_household_id": groups,
                 }
             ),
             household_weights=np.ones(len(ids)),
@@ -935,3 +945,25 @@ def test_the_hmrc_salary_sacrifice_rows_bind_the_salary_route_alone() -> None:
     for row in rows:
         text = json.dumps(row)
         assert BONUS_SACRIFICE_OUTPUT not in text, row["target_id"]
+
+
+def test_geographic_clones_train_each_respondent_once_at_their_whole_weight(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Two geographic clones of every household at half its weight hand the
+    forest the respondents and weights they hand it alone (microcosm#931)."""
+
+    monkeypatch.setattr(salary_sacrifice, "QRF", _FakeQRF)
+    _Fitted.value = 5.0
+    frame = _frame(
+        asked=[1, 1, 1, 0, 0],
+        salary_sacrifice_values=[10.0, 20.0, 30.0, 0.0, 0.0],
+        employee_pension=[0.0] * 5,
+        channels=["frs", "frs", "frs", "frs", "spi"],
+        weights=np.asarray([2.0, 4.0, 6.0, 8.0, 10.0]),
+    )
+    _FakeQRF.training_frames = []
+    impute_salary_sacrifice(frame)
+    impute_salary_sacrifice(with_geographic_clones(frame))
+    alone, cloned = _FakeQRF.training_frames
+    pd.testing.assert_frame_equal(cloned, alone)

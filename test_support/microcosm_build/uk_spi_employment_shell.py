@@ -55,7 +55,10 @@ def employment_shell_tables(n_frs: int = 1500, n_spi: int = 300, seed: int = 0):
         {
             "household_id": household_id,
             "household_support_channel": channel,
+            "household_support_clone_index": np.where(channel == "spi", 1, 0),
             "household_source_id": source,
+            # A copy's true source is the FRS household it copies.
+            "source_household_id": source,
             "region": region,
         }
     )

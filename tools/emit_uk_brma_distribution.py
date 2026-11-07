@@ -29,6 +29,14 @@ from microcosm.build.uk_runtime.national_frame import (
     load_uk_national_frame,
     uk_time_period,
 )
+from microcosm.build.uk_runtime.receipt_counts import (
+    distinct_carriers,
+    record_source_households,
+)
+
+#: Each benefit unit's true source household, which the small-count mask
+#: counts by (receipt_counts), so a household's copies count once.
+SOURCE_COLUMN = "source_household"
 
 
 def brma_cell_distribution(
@@ -37,9 +45,13 @@ def brma_cell_distribution(
     count_resource: Mapping[str, object],
     minimum_count: int = 3,
 ) -> dict[str, object]:
-    """Compare built benunit BRMA shares per (region, LHA category) cell."""
+    """Compare built benunit BRMA shares per (region, LHA category) cell.
 
-    required = {"region", "LHA_category", "brma"}
+    A BRMA's count is withheld where one or two source households carry it
+    (``SOURCE_COLUMN``), however many benefit units they hold.
+    """
+
+    required = {"region", "LHA_category", "brma", SOURCE_COLUMN}
     missing = required - set(benunit.columns)
     if missing:
         raise ValueError(f"benunit table is missing column(s): {sorted(missing)}.")
@@ -57,10 +69,15 @@ def brma_cell_distribution(
             )
         expected_total = float(sum(expected_counts.values()))
         built_counts = group["brma"].astype(str).value_counts().to_dict()
+        built_sources = {
+            str(brma): distinct_carriers(sources)
+            for brma, sources in group.groupby(group["brma"].astype(str))[SOURCE_COLUMN]
+        }
         cell_n = int(len(group))
         for brma, expected_count in sorted(expected_counts.items()):
             expected_share = float(expected_count) / expected_total
             built_count = int(built_counts.get(brma, 0))
+            carried = int(built_sources.get(str(brma), 0))
             row: dict[str, object] = {
                 "region": str(region),
                 "lha_category": str(category),
@@ -68,7 +85,7 @@ def brma_cell_distribution(
                 "cell_n": cell_n,
                 "expected_share": expected_share,
             }
-            if 0 < built_count < minimum_count:
+            if 0 < carried < minimum_count:
                 row["built_count"] = f"<{minimum_count}"
                 row["built_share"] = None
                 row["z"] = None
@@ -113,6 +130,9 @@ def main() -> None:
     benunit["LHA_category"] = [_enum_name(value) for value in lha_category]
     benunit["region"] = _benunit_regions(
         frame.table("person"), frame.table("household"), benunit
+    )
+    benunit[SOURCE_COLUMN] = record_source_households(
+        frame, "benunit", stage="The BRMA distribution diagnostics"
     )
     count_resource = load_brma_count_resource()
     # Deterministic re-derivation of the benunit-level assignment that fed the

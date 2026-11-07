@@ -106,8 +106,8 @@ from microcosm.build.uk_runtime.receipt_counts import (
     UK_DISCLOSURE_FLOOR,
     UK_WITHHELD,
     distinct_count,
+    record_source_households,
     small_cell_share,
-    source_household_ids,
     support_band,
 )
 from microcosm.build.uk_runtime.take_up_contract import (
@@ -724,9 +724,10 @@ def redraw_carers_allowance_take_up(
         )
     # The graph node is an open surface, so the lineage arrives with every
     # other live cell; the receipt counts support by it.
-    household_sources = pd.Series(
-        source_household_ids(household, stage="The Carer's Allowance take-up stage"),
-        index=household["household_id"].to_numpy(),
+    source_ids = record_source_households(
+        {"person": person, "household": household},
+        "person",
+        stage="The Carer's Allowance take-up stage",
     )
     reported = (
         pd.to_numeric(person[CARERS_ALLOWANCE_REPORTED], errors="coerce")
@@ -864,8 +865,6 @@ def redraw_carers_allowance_take_up(
         mass_log=frame.mass_log,
     )
     validate_uk_national_frame(result)
-
-    source_ids = person_households.map(household_sources).to_numpy()
 
     # Weighted aggregates only; a figure one or two source households carry
     # is "<3" (UKDS disclosure control).

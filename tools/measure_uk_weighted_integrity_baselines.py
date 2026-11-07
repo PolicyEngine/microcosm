@@ -49,7 +49,11 @@ from microcosm.build.uk_runtime.hmrc_source_contract import (
     uk_hmrc_weighted_qrf_output_columns,
 )
 from microcosm.build.uk_runtime.national_frame import load_uk_national_frame
-from microcosm.build.uk_runtime.receipt_counts import UK_DISCLOSURE_FLOOR
+from microcosm.build.uk_runtime.receipt_counts import (
+    UK_DISCLOSURE_FLOOR,
+    distinct_carriers,
+    record_source_households,
+)
 from microcosm.build.uk_runtime.was_wealth import UK_WAS_WEALTH_HOUSEHOLD_OUTPUT_COLUMNS
 from microcosm.build.uk_runtime.weighted_integrity import (
     uk_input_mass_totals,
@@ -133,6 +137,7 @@ def _tail_measurements(
     weights: np.ndarray,
     top_k_grid: tuple[int, ...],
     *,
+    sources: np.ndarray,
     minimum_count: int = DEFAULT_SDC_MINIMUM_COUNT,
 ) -> dict[str, object]:
     """Concentration statistics under the UKDS output-disclosure standard.
@@ -149,13 +154,17 @@ def _tail_measurements(
     share times the total recovers the mean of a handful of records. So a
     column with fewer than `minimum_count` carriers reports no shares at all,
     and `top_k` values below `minimum_count` are refused. No maximum,
-    minimum, or other unit-record value is ever emitted.
+    minimum, or other unit-record value is ever emitted. Carriers are the
+    true source households behind the column's carrier rows (`sources`, one
+    per value), so a household's copies count once (microcosm#931).
     """
 
     finite = np.isfinite(values) & np.isfinite(weights)
     mass = np.abs(values[finite]) * weights[finite]
-    mass = mass[mass > 0.0]
-    carriers = int(mass.size)
+    carried = mass > 0.0
+    mass = mass[carried]
+    carriers = distinct_carriers(np.asarray(sources)[finite][carried])
+    carrier_rows = int(mass.size)
     total = float(mass.sum())
     records = int(values.size)
     suppressed = carriers > 0 and carriers < minimum_count
@@ -164,7 +173,7 @@ def _tail_measurements(
         for top_k in top_k_grid:
             if carriers == 0 or total == 0.0:
                 top_shares[str(top_k)] = None
-            elif carriers <= top_k:
+            elif carrier_rows <= top_k:
                 # Every carrier is in the tail: the share is 1.0 by
                 # construction and says nothing about individual records.
                 top_shares[str(top_k)] = 1.0
@@ -177,7 +186,7 @@ def _tail_measurements(
         # frequency, so it is withheld rather than reported.
         "carriers": None if suppressed else carriers,
         "nonzero_share": (
-            None if suppressed else ((carriers / records) if records else 0.0)
+            None if suppressed else ((carrier_rows / records) if records else 0.0)
         ),
         "total_weighted_abs_mass": total,
         "top_shares": top_shares,
@@ -198,21 +207,30 @@ def _measure(
         frame,
         output_columns=declared,
     )
+    person_sources = record_source_households(
+        frame, "person", stage="The weighted-integrity baselines"
+    )
     qrf_tail = {
         column: _tail_measurements(
             values[column],
             weights[column],
             top_k_grid,
+            # An absent or non-numeric column measures no rows.
+            sources=person_sources if len(values[column]) else values[column],
             minimum_count=minimum_count,
         )
         for column in sorted(values)
     }
     household_values, household_weights = household_tail_concentration_columns(frame)
+    household_sources = record_source_households(
+        frame, "household", stage="The weighted-integrity baselines"
+    )
     household_tail = {
         column: _tail_measurements(
             household_values[column],
             household_weights[column],
             top_k_grid,
+            sources=household_sources,
             minimum_count=minimum_count,
         )
         for column in sorted(household_values)

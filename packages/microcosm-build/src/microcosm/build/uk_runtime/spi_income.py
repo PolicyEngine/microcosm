@@ -48,6 +48,7 @@ from microcosm.build.uk_runtime.hmrc_income import (
     LOSS_RELIEF_COLUMN,
     self_employment_income_after_loss_relief,
 )
+from microcosm.build.uk_runtime.household_lineage import collapse_geographic_clones
 from microcosm.build.uk_runtime.pension_coherence import (
     cap_net_pay_contributions,
     coherence_receipt,
@@ -63,9 +64,9 @@ from microcosm.build.uk_runtime.receipt_counts import (
     UK_WITHHELD,
     distinct_count,
     extreme_count,
+    record_source_households,
     rounded_count,
     small_cell_share,
-    source_household_ids,
 )
 from microcosm.build.uk_runtime.spi_rank_transport import (
     SPI_STAGE1_ANALOGUE_COLUMNS,
@@ -73,6 +74,7 @@ from microcosm.build.uk_runtime.spi_rank_transport import (
     SPI_TRANSPORT_FOLDS,
     SPI_TRANSPORT_KEY_COLUMN,
     SPI_TRANSPORT_SEED_OFFSET,
+    analogue_source_columns,
     analogue_targets,
     assert_analogue_map_covers,
     cell_fold_ids,
@@ -968,13 +970,12 @@ def _floor_employment_pay_at_minimum_wage(
         floored
     ]
 
-    household_sources = pd.Series(
-        source_household_ids(household, stage="The SPI employment pay floor"),
-        index=household["household_id"].to_numpy(),
-    )
-
     def sources_of(frame: pd.DataFrame) -> np.ndarray:
-        return frame["person_household_id"].map(household_sources).to_numpy()
+        return record_source_households(
+            {"person": frame, "household": household},
+            "person",
+            stage="The SPI employment pay floor",
+        )
 
     weights = person_weights.loc[candidates.index].to_numpy(dtype=np.float64)
     sources = sources_of(candidates)
@@ -1447,15 +1448,37 @@ def impute_uk_spi_income_support(
         if SPI_STAGE1_ANALOGUE_COLUMNS.get(column) == column and column not in person:
             person[column] = 0.0
 
-    base_household = household[household_channel] == BASE_FRS_SUPPORT_CHANNEL
+    # The spine never carries the artifact's bare clone_index: geographic
+    # clones are read from the lineage and folded below, so a table that
+    # carried it would train clone 0 at clone 0's own weight (microcosm#931).
     if "clone_index" in household:
-        base_household &= household["clone_index"] == 0
+        raise ValueError(
+            "The SPI income stage refuses a household table carrying the "
+            "artifact's clone_index; geographic clones are read from the "
+            "household lineage and folded into their survey records."
+        )
+    base_household = household[household_channel] == BASE_FRS_SUPPORT_CHANNEL
     training_household_ids = set(household.loc[base_household, "household_id"])
     training_people = base_people & person["person_household_id"].isin(
         training_household_ids
     )
     if not training_people.any():
         raise ValueError("FRS-only stage has no canonical base training rows.")
+    # Both forests train on each survey record once: its geographic clones
+    # that agree on what the forests read fold into its first row with their
+    # weight, clones that differ stay rows of their own, and every other
+    # copy stays its own row; a frame without geographic clones keeps every
+    # row and weight (household_lineage.collapse_geographic_clones,
+    # microcosm#931).
+    kept, training_weight_values = collapse_geographic_clones(
+        {"person": person, "household": household},
+        "person",
+        training_people.to_numpy(dtype=bool),
+        person_weights.to_numpy(dtype=np.float64),
+        inputs=_forest_inputs(person, household),
+    )
+    training_people = pd.Series(kept, index=person.index)
+    training_weights = pd.Series(training_weight_values, index=person.index)
     # The reference forest's population mirrors the draw's: FRS claimants and
     # partners aged 16 and over with taxable income under the same rule.
     reference_people = (
@@ -1514,7 +1537,7 @@ def impute_uk_spi_income_support(
     # from the stage seed like stage 2's and the band resample's; changing the
     # offset edits the derivation convention.
     assert_analogue_map_covers(SPI_INCOME_QRF_OUTPUT_COLUMNS)
-    reference_weights = person_weights.loc[reference_people]
+    reference_weights = training_weights.loc[reference_people]
     reference_targets = list(analogue_targets(SPI_INCOME_QRF_OUTPUT_COLUMNS))
     reference_weight_kind: dict[str, str] = {}
     reference_fits: list[Any] = []
@@ -1756,11 +1779,10 @@ def impute_uk_spi_income_support(
     _require_finite_numeric(training_targets, label="FRS-only training outputs")
     if (training_targets.to_numpy(dtype=np.float64) < 0.0).any():
         raise ValueError("FRS-only training outputs must be non-negative.")
-    person_weights = _person_household_weights(person, household)
     stage2_frame = _person_fit_frame(
         predictors=encoded_train,
         targets=training_targets,
-        weights=person_weights.loc[training_people].to_numpy(dtype=np.float64),
+        weights=training_weights.loc[training_people].to_numpy(dtype=np.float64),
         weight_kind=WeightKind.IMPORTANCE,
     )
     # Stage 2 deliberately derives a distinct RNG stream from the single
@@ -3047,6 +3069,41 @@ def _hmrc_auxiliary_row_mask(
     return mask
 
 
+def _forest_inputs(person: pd.DataFrame, household: pd.DataFrame) -> pd.DataFrame:
+    """What the reference and stage-2 forests read of each person, one row each.
+
+    The columns their predictors derive from, the reference rows' rule, and
+    both forests' targets: a record's geographic clones fold where they
+    agree on these (microcosm#931). The stage's later steps derive the fit
+    frames from them deterministically, so clones that agree here agree
+    there.
+    """
+
+    columns = [
+        column
+        for column in dict.fromkeys(
+            (
+                "age",
+                "gender",
+                SPI_RECIPIENT_ROLE_COLUMN,
+                ISA_INTEREST_COLUMN,
+                *FRS_ONLY_SPI_FILL_INCOME_PREDICTOR_COLUMNS,
+                *_BRIDGE_PERSON_COLUMNS,
+                *_UNEARNED_INCOME_COLUMNS,
+                *analogue_source_columns(),
+                *FRS_ONLY_SPI_FILL_PERSON_COLUMNS,
+            )
+        )
+        if column in person.columns
+    ]
+    region = household.set_index("household_id")["region"]
+    return (
+        person[columns]
+        .reset_index(drop=True)
+        .assign(household_region=person["person_household_id"].map(region).to_numpy())
+    )
+
+
 def _person_predictors(
     person: pd.DataFrame,
     household: pd.DataFrame,
@@ -3411,11 +3468,11 @@ def _spi_pension_coherence(
     rows = spi_people.to_numpy(dtype=bool)
     pay = person.loc[spi_people, "employment_income"].to_numpy(dtype=np.float64)
     weights = _person_household_weights(person, household).to_numpy(dtype=float)[rows]
-    sources = (
-        person["person_household_id"]
-        .map(household.set_index("household_id")["household_source_id"])
-        .to_numpy()[rows]
-    )
+    sources = record_source_households(
+        {"person": person, "household": household},
+        "person",
+        stage="The SPI pension coherence",
+    )[rows]
     employee_before = person.loc[spi_people, "employee_pension_contributions"].to_numpy(
         dtype=np.float64
     )

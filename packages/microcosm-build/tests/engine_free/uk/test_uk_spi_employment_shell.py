@@ -10,6 +10,7 @@ import pandas as pd
 import pytest
 
 from microcosm.build import load_country_spec
+from microcosm.build.uk_runtime.national_frame import uk_national_frame
 from microcosm.build.uk_runtime.spi_employment_shell import (
     UK_SPI_EMPLOYMENT_SHELL_OPERATION,
     UK_SPI_EMPLOYMENT_SHELL_REWRITES,
@@ -18,6 +19,7 @@ from microcosm.build.uk_runtime.spi_employment_shell import (
     impute_spi_employment_shell,
 )
 from microcosm.build.uk_runtime.stage_health import uk_stage_health_gate
+from test_support.microcosm_build.uk_geographic_clones import with_geographic_clones
 from test_support.microcosm_build.uk_spi_employment_shell import employment_shell_tables
 
 STAGE = "spi_employment_shell"
@@ -313,3 +315,41 @@ def test_each_bound_fails_the_gate(overrides, message) -> None:
     result = _gate(_evidence(**overrides))
     assert not result.passed
     assert any(message in failure for failure in result.failures)
+
+
+def test_geographic_clones_fold_into_each_survey_record(tables, shell) -> None:
+    """Two production geographic clones train the shell on the frame's own
+    rows and weights, so clone 0 draws what the frame draws alone
+    (microcosm#931)."""
+
+    person, household, weights = tables
+    person_out, receipt = shell
+    pool = with_geographic_clones(
+        uk_national_frame(
+            person=person.assign(person_benunit_id=person["person_household_id"]),
+            benunit=pd.DataFrame({"benunit_id": household["household_id"].to_numpy()}),
+            household=household,
+            household_weights=weights,
+            time_period="2024",
+        )
+    )
+    cloned, cloned_receipt = impute_spi_employment_shell(
+        pool.table("person"),
+        pool.table("household"),
+        pool.weights_for("household").values,
+        boosted_max_iter=60,
+    )
+    # Clone 0 keeps every id, so its rows are the frame's own.
+    first = cloned["person_id"].isin(person["person_id"])
+    columns = list(UK_SPI_EMPLOYMENT_SHELL_REWRITES)
+    pd.testing.assert_frame_equal(
+        cloned.loc[first].set_index("person_id")[columns],
+        person_out.set_index("person_id")[columns],
+        check_dtype=False,
+    )
+    assert cloned_receipt["training"] == receipt["training"]
+    assert cloned_receipt["fit"] == receipt["fit"]
+    assert (
+        cloned_receipt["category_shares"]["training"]
+        == receipt["category_shares"]["training"]
+    )

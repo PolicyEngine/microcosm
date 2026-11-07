@@ -569,7 +569,7 @@ def _stage_frame(seed: int = 1, households: int = 600, order=None, sources=None)
     household = pd.DataFrame(
         {
             "household_id": ids,
-            "household_source_id": ids if sources is None else sources(ids),
+            "source_household_id": ids if sources is None else sources(ids),
         }
     )
     rows = []
@@ -1113,8 +1113,9 @@ def test_salary_sacrifice_runs_on_the_stage_s_output(
     household = pd.DataFrame(
         {
             "household_id": ids,
-            "household_source_id": ids,
+            "source_household_id": ids,
             "household_support_channel": np.where(spi, "spi", "frs"),
+            "household_support_clone_index": np.where(spi, 1, 0),
         }
     )
     frame = uk_national_frame(

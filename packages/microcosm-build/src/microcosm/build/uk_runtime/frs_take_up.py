@@ -28,6 +28,7 @@ from microcosm.build.uk_runtime.national_frame import (
 from microcosm.build.uk_runtime.receipt_counts import (
     distinct_count,
     extreme_count,
+    record_source_households,
     small_cell_share,
     support_band,
 )
@@ -829,7 +830,11 @@ def uk_take_up_signal_receipt(
             flags.append(row)
             continue
         if entity not in sources:
-            sources[entity] = _row_source_households(frame, entity)
+            # Before the SPI support channel each household is its own source,
+            # so its id serves until ``source_household_id`` exists.
+            sources[entity] = record_source_households(
+                frame, entity, stage="The take-up signal receipt", before_copies=True
+            )
         support = distinct_count(sources[entity], measured.population, measured.weights)
         row["population_support"] = support_band(support)
         row["target"] = small_cell_share(measured.target, support)
@@ -844,35 +849,6 @@ def uk_take_up_signal_receipt(
         "weights": "household weights at the stage, before calibration",
         "flags": flags,
     }
-
-
-def _row_source_households(frame: Frame, entity: str) -> np.ndarray:
-    """Each row's source household, the key a receipt counts support by.
-
-    Before the SPI support channel each household row is its own FRS source
-    household, so its id serves until ``household_source_id`` exists.
-    """
-
-    household = frame.table("household")
-    column = (
-        "household_source_id"
-        if "household_source_id" in household.columns
-        else "household_id"
-    )
-    by_household = pd.Series(
-        household[column].to_numpy(), index=household["household_id"].to_numpy()
-    )
-    if entity == "household":
-        return by_household.to_numpy()
-    person = frame.table("person")
-    person_sources = person["person_household_id"].map(by_household)
-    if entity == "person":
-        return person_sources.to_numpy()
-    by_benunit = pd.Series(
-        person_sources.to_numpy(), index=person["person_benunit_id"].to_numpy()
-    )
-    by_benunit = by_benunit[~by_benunit.index.duplicated()]
-    return frame.table("benunit")["benunit_id"].map(by_benunit).to_numpy()
 
 
 def _target_share(

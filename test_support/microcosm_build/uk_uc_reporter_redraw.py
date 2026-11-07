@@ -223,6 +223,8 @@ def _frame(*, child_only: bool = False):
     household = pd.DataFrame(
         {
             "household_id": [row[1] for row in benunit_rows],
+            # Each household is its own survey source here.
+            "source_household_id": [row[1] for row in benunit_rows],
             "region": ["LONDON" if row[1] % 2 else "SCOTLAND" for row in benunit_rows],
             "household_is_capital_gains_clone": [row[4] for row in benunit_rows],
         }

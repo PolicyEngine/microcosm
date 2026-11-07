@@ -1,6 +1,8 @@
 """Tests split from packages/microcosm-build/tests/test_uk_uc_reporter_redraw.py."""
 
 # ruff: noqa: F403, F405
+from microcosm.build.uk_runtime.national_frame import uk_national_frame
+from test_support.microcosm_build.uk_geographic_clones import with_geographic_clones
 from test_support.microcosm_build.uk_uc_reporter_redraw import *
 
 
@@ -467,3 +469,61 @@ def test_landing_invariants_refuse_base_writes_and_double_landings() -> None:
         _assert_landing_invariants(
             wrong_total, benunit, spi=spi, draws=draws, base_before=base_before
         )
+
+
+def test_geographic_clones_fit_each_benefit_unit_once_at_its_whole_weight() -> None:
+    """Two geographic clones of every unit at half its weight hand the forest
+    the rows and weights the units hand it alone (microcosm#931)."""
+
+    alone = _StubQRFFactory()
+    redraw_spi_reported_uc(_frame(), engine=_StubEngine(), qrf_factory=alone)
+    cloned = _StubQRFFactory()
+    redraw_spi_reported_uc(
+        with_geographic_clones(_frame()), engine=_StubEngine(), qrf_factory=cloned
+    )
+    assert cloned.record["fit_index"] == alone.record["fit_index"]
+    np.testing.assert_array_equal(
+        cloned.record["fit_weights"], alone.record["fit_weights"]
+    )
+    np.testing.assert_array_equal(
+        cloned.record["fit_groups"], alone.record["fit_groups"]
+    )
+    pd.testing.assert_frame_equal(cloned.record["fit_table"], alone.record["fit_table"])
+
+
+def test_clones_that_differ_on_a_predictor_train_as_variants_at_their_share() -> None:
+    """A landlord's clones whose property income was drawn apart (on their own
+    person ids, as property_components draws it) reach the forest as two rows
+    at half the unit's weight each; clones that agree still fold, and the
+    unit's weight is kept whole (microcosm#931)."""
+
+    alone = _StubQRFFactory()
+    redraw_spi_reported_uc(_frame(), engine=_StubEngine(), qrf_factory=alone)
+    pool = with_geographic_clones(_frame())
+    person = pool.table("person").copy()
+    # Clone 1 of training unit 101's first member: ids move by 10,000 per clone.
+    landlord = person["person_id"] == 11011
+    assert landlord.sum() == 1
+    person.loc[landlord, "property_income"] += 500.0
+    differing = uk_national_frame(
+        person=person,
+        benunit=pool.table("benunit"),
+        household=pool.table("household"),
+        household_weights=pool.weights_for("household").values,
+        weight_kind=pool.weights_for("household").kind,
+        time_period="2024",
+    )
+    cloned = _StubQRFFactory()
+    redraw_spi_reported_uc(differing, engine=_StubEngine(), qrf_factory=cloned)
+
+    weights = np.asarray(cloned.record["fit_weights"])
+    table = cloned.record["fit_table"].reset_index(drop=True)
+    assert len(weights) == len(alone.record["fit_weights"]) + 1
+    assert np.isclose(weights.sum(), np.asarray(alone.record["fit_weights"]).sum())
+    # Unit 101 trains as its two variants, 200 and 700 of investment income,
+    # at half its weight of 2 each; the other units fold to one row each.
+    unit = table["universal_credit_reported_amount"] == 100.0
+    assert sorted(
+        zip(table.loc[unit, "benunit_investment_income"], weights[unit], strict=True)
+    ) == [(200.0, 1.0), (700.0, 1.0)]
+    assert sorted(weights[~unit].tolist()) == [3.0, 4.0, 5.0]

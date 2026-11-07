@@ -552,7 +552,7 @@ def _frame(time_period: str = "2024"):
         {
             "household_id": [1, 2, 3, 4],
             "region": ["WALES", "WALES", "WALES", "NORTHERN_IRELAND"],
-            "household_source_id": [101, 102, 103, 104],
+            "source_household_id": [101, 102, 103, 104],
         }
     )
     return uk_national_frame(

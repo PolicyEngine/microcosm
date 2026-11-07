@@ -195,7 +195,7 @@ def _frame():
             "council_tax": [0.0] * 5,
             "tenure_type": ["OWNED_OUTRIGHT"] * 5,
             "rent": [0.0] * 5,
-            "household_source_id": [1, 2, 3, 4, 5],
+            "source_household_id": [1, 2, 3, 4, 5],
         }
     )
     return uk_national_frame(

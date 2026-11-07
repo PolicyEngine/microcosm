@@ -97,6 +97,19 @@ compares it with the fingerprint recorded there for the feed the provenance
 names. A stock rebuilt on a new feed records that feed's fingerprint beside it;
 the test reports it.
 
+The conditioned atomic-area supports (microcosm#931) read feed facts too: the
+Scottish support's band weights come from NRS's dwellings by council-tax band
+and 2022 data zone at December 2024 (record set
+`nrs.dwellings_data_zone_2025.2024`, chronicle#421). Their provenance
+(`uk/uk_atomic_area_conditioned_supports.provenance.json`) names the feed they
+were built from and fingerprints the counts read. The feed-gated
+`test_the_pinned_feed_carries_the_band_facts_the_supports_were_built_from`
+(`tests/engine_free/uk/test_uk_conditioned_area_supports.py`) reads those facts
+on the new pin and compares them with the provenance. If they moved, rebuild
+the supports with `tools/build_uk_conditioned_area_supports.py` and update
+their digests in `sources.yaml`; if not, the supports and their provenance stay
+as built.
+
 The constituency domestic energy resource (`uk/desnz_constituency_energy_facts.json`,
 microcosm#1095) is built from feed facts too: DESNZ's authority and LSOA / data
 zone consumption and meter counts. Its loader refuses a resource built on
@@ -450,4 +463,33 @@ and hierarchy, so the v5 labels may move it on display metadata alone, and the o
 targets that follow this pin move it in any case. The uk-candidate-eval scoring register is
 therefore re-frozen before the next national solve. The high-value home stock still names
 `735820c`: its inputs are the same on `6475380` (the feed-gated fingerprint check passes), so it
+was not rebuilt.
+
+The `80a3482` re-pin (PolicyEngine/microcosm#1519, the merge of PolicyEngine/chronicle#421 on top
+of `6475380`) brought NRS's dwellings by council-tax band A to H for each 2022 data zone at
+December 2024 and 2025 (118,272 rows), which the Scottish conditioned support's band weights read.
+It also brought what Chronicle merged in between:
+- PolicyEngine/chronicle#413's raw-only registrations, which add no rows;
+- PolicyEngine/chronicle#414, which writes the bundle one package at a time, with the same rows;
+- PolicyEngine/chronicle#415's UK land-value inputs (326,495 rows), which nothing reads yet.
+
+The feed has 2,030,062 rows; the row contract and the schema digest are unchanged. The merge
+commit's tree is the pull request head's, so the artifact was built from the head; its
+consumer-artifact step peaked at 22.5 GB.
+
+No compiled value moves on either surface: the national and local reference files and both
+compile-parity receipts are byte-identical. The national reference file is unchanged, so the
+national register version and the uk-candidate-eval scoring register do not move.
+- The national membership moves its feed label and the matched-fact counts of the nine MHCLG
+  council-tax stock targets (81 regional candidates). Their selectors also match the MHCLG
+  council-tax rows chronicle#415 adds, and each still resolves to the same fact and value.
+- The local membership moves its feed label and the 1,263 DESNZ constituency keys.
+- The vendored resources and the DESNZ constituency resource carry the same rows under the new
+  feed identity (the same 2,526 DESNZ rows and values).
+- The census restates the pin, and the charter-H2 fixture moves the parameters of the 19 stages
+  that bind vendored resources.
+
+Both surfaces were regenerated from cuts of the pinned artifact: national 1,435,885 rows, local
+1,178,050. The national reference generator peaked at 25.7 GB and the national parity receipt at
+23.4 GB. The high-value home stock's inputs are unchanged (the feed-gated check passes), so it
 was not rebuilt.

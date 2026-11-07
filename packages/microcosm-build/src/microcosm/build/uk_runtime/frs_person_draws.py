@@ -59,6 +59,7 @@ from microcosm.build.uk_runtime.receipt_counts import (
     UK_DISCLOSURE_FLOOR,
     UK_WITHHELD,
     distinct_count,
+    record_source_households,
     support_band,
 )
 from microcosm.build.uk_runtime.take_up_contract import UKTakeUpContract
@@ -175,6 +176,9 @@ def add_frs_person_draws_with_receipt(
         contract=contract,
         person_weights=uk_person_household_weights(frame),
         relief_schedule=schedule,
+        person_sources=record_source_households(
+            frame, "person", stage="frs_person_draws", before_copies=True
+        ),
     )
     for column in FRS_PERSON_DRAW_OUTPUT_COLUMNS:
         person[column] = derived[column].to_numpy()
@@ -197,11 +201,13 @@ def derive_frs_person_draws(
     contract: UKTakeUpContract,
     person_weights: np.ndarray,
     relief_schedule: Mapping[str, float] | None = None,
+    person_sources: np.ndarray,
 ) -> pd.DataFrame:
     """Return the stage's person draws.
 
     ``person_weights`` are each person's household weight, which set
-    ``is_apprentice``'s target.
+    ``is_apprentice``'s target; ``person_sources`` are each person's true
+    source household, which its receipt counts support by.
     """
 
     return derive_frs_person_draws_with_receipt(
@@ -209,6 +215,7 @@ def derive_frs_person_draws(
         contract=contract,
         person_weights=person_weights,
         relief_schedule=relief_schedule,
+        person_sources=person_sources,
     )[0]
 
 
@@ -218,6 +225,7 @@ def derive_frs_person_draws_with_receipt(
     contract: UKTakeUpContract,
     person_weights: np.ndarray,
     relief_schedule: Mapping[str, float] | None = None,
+    person_sources: np.ndarray,
 ) -> tuple[pd.DataFrame, Mapping[str, object]]:
     """The stage's person draws and the receipt of its ``is_apprentice`` draw."""
 
@@ -250,6 +258,7 @@ def derive_frs_person_draws_with_receipt(
         rate=contract.rate(APPRENTICE_RATE_KEY, contract.build_year),
         person_weights=person_weights,
         relief_schedule=relief_schedule,
+        person_sources=person_sources,
     )
     values[APPRENTICE_OUTPUT] = apprentices.flags
     return values, {"build_year": contract.build_year, **apprentices.receipt}
@@ -269,6 +278,7 @@ def derive_is_apprentice(
     rate: float,
     person_weights: np.ndarray | None = None,
     relief_schedule: Mapping[str, float] | None = None,
+    person_sources: np.ndarray,
 ) -> UKApprenticeDraw:
     """Draw ``is_apprentice`` for employees aged 21 to 24.
 
@@ -285,6 +295,11 @@ def derive_is_apprentice(
     records the relief the flags imply: the rate on each flagged employee's
     pay between the two thresholds, weighted. Pay stands in for NIC earnings,
     so it is an estimate of the s.9B relief, not the engine's figure.
+
+    The receipt counts support in ``person_sources``, each person's true
+    source household (``receipt_counts.record_source_households``). A caller
+    without the frame's lineage passes ``own_source_households`` itself, so
+    no table is counted by its rows unawares (microcosm#931).
     """
 
     if "employment_status" not in person.columns:
@@ -319,11 +334,12 @@ def derive_is_apprentice(
     )
     flags = eligible & (draws < threshold)
     realized = float(weights[flags].sum())
-    # Before the support channels every household is its own source household.
-    households = person["person_household_id"].to_numpy()
-    population_support = distinct_count(households, in_ages, weights)
-    eligible_support = distinct_count(households, eligible, weights)
-    flagged_support = distinct_count(households, flags, weights)
+    sources = np.asarray(person_sources)
+    if sources.shape != (len(person),):
+        raise ValueError("person_sources must hold one source per person.")
+    population_support = distinct_count(sources, in_ages, weights)
+    eligible_support = distinct_count(sources, eligible, weights)
+    flagged_support = distinct_count(sources, flags, weights)
     receipt: dict[str, object] = {
         "output": APPRENTICE_OUTPUT,
         "rate_key": APPRENTICE_RATE_KEY,

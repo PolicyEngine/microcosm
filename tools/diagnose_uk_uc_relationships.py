@@ -107,12 +107,12 @@ def summarize_group(table: pd.DataFrame, mask: np.ndarray) -> dict:
     result = {
         "benefit_unit_rows": len(rows),
         "unique_source_benefit_units": int(rows["benunit_source_id"].nunique()),
-        "unique_source_households": int(rows["household_source_id"].nunique()),
+        "unique_source_households": int(rows["source_household_id"].nunique()),
         "positive_uc_rows": int(claim.sum()),
     }
     for weight in ("prior_weight", "fixed_calibrated_weight"):
         w = rows[weight]
-        source_mass = rows.loc[claim].groupby("household_source_id")[weight].sum()
+        source_mass = rows.loc[claim].groupby("source_household_id")[weight].sum()
         result[weight] = {
             "benefit_units": float(w.sum()),
             "positive_uc": float(w[claim].sum()),
@@ -203,7 +203,7 @@ def main() -> None:
         )
     result = benunit.copy()
     result["household_id"] = hh_ids.to_numpy()
-    for name in ("region", "household_source_id", "household_support_channel", "rent"):
+    for name in ("region", "source_household_id", "household_support_channel", "rent"):
         result[name] = hh_ids.map(household.set_index("household_id")[name]).to_numpy()
     result["prior_weight"] = hh_ids.map(prior).to_numpy()
     result["fixed_calibrated_weight"] = hh_ids.map(weights).to_numpy()

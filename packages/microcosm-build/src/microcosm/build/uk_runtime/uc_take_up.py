@@ -94,9 +94,9 @@ from microcosm.build.uk_runtime.receipt_counts import (
     UK_WITHHELD,
     distinct_count,
     extreme_count,
+    record_source_households,
     rounded_count,
     small_cell_share,
-    source_household_ids,
     support_band,
 )
 from microcosm.build.uk_runtime.uc_capital_coherence import (
@@ -192,7 +192,7 @@ UC_AWARD_BAND_LABELS: tuple[str, ...] = (
 UC_TAKE_UP_MINIMUM_POOL_SOURCES = 30
 UC_TAKE_UP_POOLING = (
     "adjacent bands within a family type, lowest first, until the drawn units "
-    "rest on minimum_pool_sources distinct household_source_id values; a short "
+    "rest on minimum_pool_sources distinct source_household_id values; a short "
     "last pool joins the one before it. Then, lowest first, a pool that cannot "
     "meet DWP's count (its undrawn entitled units' expected claims exceed the "
     "count, or the count exceeds them plus the weight of every drawn unit) is "
@@ -818,12 +818,11 @@ def redraw_uc_take_up(
     if regions.isna().any():
         raise ValueError("Every benefit unit's household must carry a region.")
     great_britain = regions.astype(str).ne(_OUTSIDE_SOLVE_REGION).to_numpy(dtype=bool)
-    source_ids = unit_households.map(
-        pd.Series(
-            source_household_ids(household, stage="The UC take-up stage"),
-            index=household["household_id"].to_numpy(),
-        )
-    ).to_numpy()
+    source_ids = record_source_households(
+        {"person": person, "benunit": benunit, "household": household},
+        "benunit",
+        stage="The UC take-up stage",
+    )
     # A unit the engine moves off its legacy benefits claims at the closure
     # with the probability ``uc_legacy_closure_take_up`` gives it; this stage
     # leaves its flag alone, so the closure's share already claiming, and so

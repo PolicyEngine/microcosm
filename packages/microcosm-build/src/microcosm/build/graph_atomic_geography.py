@@ -217,6 +217,9 @@ def atomic_geography_nodes(
     for system in spec["systems"]:
         inputs.update(system["selector"])
         inputs.update(c["input"] for c in system["constraints"])
+        inputs.update(
+            s["weight_by"]["input"] for s in system["stages"] if "weight_by" in s
+        )
         if system["observed_area"]:
             inputs.add(system["observed_area"])
     assignment = tuple(spec["outputs"].values())
