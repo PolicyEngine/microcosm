@@ -19,10 +19,11 @@ Two parts, both drawn from uniforms keyed on ``person_id`` so that adding or
 reordering rows never moves a draw:
 
 * Who holds: a weighted logistic regression with a light ridge penalty on age
-  group, the log of the person's earnings and of household net income (on
-  HBAI's concept, as ``was_wealth`` reads it), gross financial wealth, cash
-  ISA, stocks-and-shares ISA and savings, private renting, sex and the number
-  of children. The intercept is unpenalised, so the model's weighted mean
+  group, the log of the person's earnings and of household net income (as
+  ``was_wealth`` reads it: WAS's on the donor, the engine's closest concept,
+  its HBAI net income, on the recipient), gross financial wealth, cash ISA,
+  stocks-and-shares ISA and savings, private renting, sex and the number of
+  children. The intercept is unpenalised, so the model's weighted mean
   probability on the donor equals the donor's weighted ownership share. A
   person holds when their uniform falls below their probability. The house
   regime gate (a gradient-boosting classifier) is miscalibrated for an outcome
@@ -163,8 +164,9 @@ UK_WAS_LISA_FIT_NAME = "uk_was_round_8_lifetime_isa"
 #: The household columns of the cleaned WAS household tab that condition the
 #: person imputation (``clean_was_household_table`` names; ``is_renting`` there
 #: is the private-renter flag ``DVPriRntR8 == 1``). The income is the household's
-#: net income on HBAI's concept, as ``was_wealth`` reads it on both sides
-#: (``DVTotinc_bhcR8``; the engine's HBAI net income before the reset to zero).
+#: net income as ``was_wealth`` reads it: ``DVTotinc_bhcR8`` on the donor, and
+#: on the recipient the engine's closest concept, its HBAI net income before the
+#: reset to zero.
 HOUSEHOLD_PREDICTORS: tuple[str, ...] = (
     UK_HBAI_NET_INCOME_PREDICTOR,
     "num_adults",
