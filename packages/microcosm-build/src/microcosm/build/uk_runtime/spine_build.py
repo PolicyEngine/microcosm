@@ -67,6 +67,7 @@ from microcosm.build.telemetry_emitter import (
 )
 from microcosm.build.termination import BuildTerminatedError, raise_on_sigterm
 from microcosm.build.uk_runtime.age_tail import UKAgeTailStageTransform
+from microcosm.build.uk_runtime.aps_occupation import UKAPSOccupationStageTransform
 from microcosm.build.uk_runtime.battery_bindings import UK_GATE_REGISTRY
 from microcosm.build.uk_runtime.calibration_run import (
     UK_SPINE_GATE_SCOPE,
@@ -92,6 +93,9 @@ from microcosm.build.uk_runtime.child_benefit_take_up import (
 )
 from microcosm.build.uk_runtime.childcare_copy_take_up import (
     UKChildcareCopyTakeUpStageTransform,
+)
+from microcosm.build.uk_runtime.company_cars import (
+    UKCompanyCarsStageTransform,
 )
 from microcosm.build.uk_runtime.content_identity import uk_frame_content_identity
 from microcosm.build.uk_runtime.etb_services import UKETBServicesStageTransform
@@ -192,6 +196,9 @@ from microcosm.build.uk_runtime.spi_dependency import (
     UK_SPI_PUBLIC_USE_TAPE_KEY,
     uk_spi_public_use_tape_marker,
 )
+from microcosm.build.uk_runtime.spi_employment_shell import (
+    UKSPIEmploymentShellStageTransform,
+)
 from microcosm.build.uk_runtime.spi_housing_shell import (
     UKSPIHousingShellStageTransform,
 )
@@ -203,6 +210,9 @@ from microcosm.build.uk_runtime.spi_spine import (
 from microcosm.build.uk_runtime.staging import UK_STAGING_REPOSITORY
 from microcosm.build.uk_runtime.student_loans import UKStudentLoansStageTransform
 from microcosm.build.uk_runtime.take_up_contract import load_uk_take_up_contract
+from microcosm.build.uk_runtime.trading_allowance_receipts import (
+    UKTradingAllowanceReceiptsStageTransform,
+)
 from microcosm.build.uk_runtime.uc_capital_coherence import (
     UKUCCapitalCoherenceStageTransform,
 )
@@ -356,8 +366,8 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         "--was-person-tab",
         type=Path,
         help=(
-            "Caller-supplied private WAS round-8 person tab for was_lisa and "
-            "isa_subscriptions (with --was-tab)."
+            "Caller-supplied private WAS round-8 person tab for was_lisa, "
+            "isa_subscriptions and company_cars (with --was-tab)."
         ),
     )
     parser.add_argument(
@@ -386,6 +396,14 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="Caller-supplied private NTS ticket tab for nts_bus_travel.",
     )
     parser.add_argument(
+        "--nts-vehicle-tab",
+        type=Path,
+        help=(
+            "Caller-supplied private NTS vehicle tab for lcfs_consumption's "
+            "zero-emission share by income fifth and household-paid road-fuel mix."
+        ),
+    )
+    parser.add_argument(
         "--lcfs-hh-tab",
         type=Path,
         help="Caller-supplied private LCFS 2024-25 household tab for lcfs_consumption.",
@@ -399,6 +417,14 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         "--etb-tab",
         type=Path,
         help="Caller-supplied private ETB 1977-2024 household tab for ETB stages.",
+    )
+    parser.add_argument(
+        "--aps-tab",
+        type=Path,
+        help=(
+            "Caller-supplied private APS April 2024-March 2025 person tab for "
+            "aps_occupation."
+        ),
     )
     parser.add_argument(
         "--emit-nonzero-shares",
@@ -444,9 +470,11 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
                 ("--nts-trip-tab", args.nts_trip_tab),
                 ("--nts-stage-tab", args.nts_stage_tab),
                 ("--nts-ticket-tab", args.nts_ticket_tab),
+                ("--nts-vehicle-tab", args.nts_vehicle_tab),
                 ("--lcfs-hh-tab", args.lcfs_hh_tab),
                 ("--lcfs-person-tab", args.lcfs_person_tab),
                 ("--etb-tab", args.etb_tab),
+                ("--aps-tab", args.aps_tab),
             )
             if value is not None
         )
@@ -552,9 +580,11 @@ def _synthetic_graph_sources(source: Path) -> dict[str, Path]:
         "nts_trip": "nts_trip",
         "nts_stage": "nts_stage",
         "nts_ticket": "nts_ticket",
+        "nts_vehicle": "nts_vehicle",
         "lcfs_household": "lcfs_household",
         "lcfs_person": "lcfs_person",
         "etb": "etb",
+        "aps": "aps",
         "spi": "spi_donor",
         "hmrc_income": "hmrc_income_targets",
     }
@@ -828,7 +858,10 @@ def _declared_seeds(stages) -> dict[str, dict[str, int]]:
                     # Identity-keyed draws: the seed is declared under the
                     # salt it is hashed with (microcosm#1063).
                     stage_seeds[str(operation.parameters["salt"])] = seed
-                elif operation.kind == "impute_spi_housing_shell":
+                elif operation.kind in (
+                    "impute_spi_employment_shell",
+                    "impute_spi_housing_shell",
+                ):
                     stage_seeds[stage.stage] = seed
                 elif operation.kind == "price_domestic_energy":
                     stage_seeds["gas_disconnection"] = seed
@@ -848,6 +881,9 @@ def _declared_seeds(stages) -> dict[str, dict[str, int]]:
                     "allocate_isa_subscribers",
                     "draw_isa_subscription_amounts",
                     "draw_lifetime_isa_payments",
+                    "assign_company_car_fuel_types",
+                    "draw_company_car_list_prices",
+                    "draw_company_car_co2_emissions",
                 ):
                     # Identity-keyed draws: the seed is declared under the salt
                     # it is hashed with (microcosm#1415).
@@ -1456,6 +1492,10 @@ def _create_staging_run_bundle(
         delivery_mode="local_only" if local_only else "local_and_remote",
         repo_id=None if local_only else args.staging_repo_id,
         upload_interval_seconds=args.staging_upload_interval_seconds,
+        # The build's emitter commits the run files with its own credential.
+        emitter_client=(
+            None if local_only or _ACTIVE_EMITTER is None else _ACTIVE_EMITTER.client
+        ),
     )
 
 
@@ -1558,7 +1598,7 @@ def prepare_uk_spine_execution(
         raise ValueError(
             "--was-tab is required when the was_wealth stage is scheduled."
         )
-    for was_person_stage in ("was_lisa", "isa_subscriptions"):
+    for was_person_stage in ("was_lisa", "isa_subscriptions", "company_cars"):
         if (
             args.synthetic_fixture_dir is not None
             or was_person_stage not in stage_names
@@ -1600,6 +1640,8 @@ def prepare_uk_spine_execution(
             for flag, value in (
                 ("--lcfs-hh-tab", args.lcfs_hh_tab),
                 ("--lcfs-person-tab", args.lcfs_person_tab),
+                ("--nts-household-tab", args.nts_household_tab),
+                ("--nts-vehicle-tab", args.nts_vehicle_tab),
             )
             if value is None
         ]
@@ -1616,6 +1658,12 @@ def prepare_uk_spine_execution(
         raise ValueError(
             "--etb-tab is required when etb_vat or etb_services is scheduled."
         )
+    if (
+        args.synthetic_fixture_dir is None
+        and "aps_occupation" in stage_names
+        and args.aps_tab is None
+    ):
+        raise ValueError("--aps-tab is required when aps_occupation is scheduled.")
     stages = [stages_by_name[name] for name in stage_names]
     synthetic_fixture = _synthetic_fixture_evidence(args.synthetic_fixture_dir)
     engine = _rules_engine()
@@ -1719,6 +1767,14 @@ def prepare_uk_spine_execution(
                 was_person_tab_path=sources["was_person"],
             )
         )
+    if "company_cars" in stage_names:
+        implementations["company_cars"] = _GraphSourceTransform(
+            lambda sources: UKCompanyCarsStageTransform(
+                stage=stages_by_name["company_cars"],
+                engine=engine,
+                was_person_tab_path=sources["was_person"],
+            )
+        )
     if "nts_bus_travel" in stage_names:
         implementations["nts_bus_travel"] = _GraphSourceTransform(
             lambda sources: UKNTSBusTravelStageTransform(
@@ -1759,6 +1815,8 @@ def prepare_uk_spine_execution(
                 engine=engine,
                 lcfs_hh_tab_path=sources["lcfs_household"],
                 lcfs_person_tab_path=sources["lcfs_person"],
+                nts_household_tab_path=sources["nts_household"],
+                nts_vehicle_tab_path=sources["nts_vehicle"],
             )
         )
     if "etb_vat" in stage_names:
@@ -1804,6 +1862,17 @@ def prepare_uk_spine_execution(
             )
         )
     implementations["hmrc_spi_income_spine"] = hmrc_spine_transform
+    if "spi_employment_shell" in stage_names:
+        implementations["spi_employment_shell"] = UKSPIEmploymentShellStageTransform(
+            stage=stages_by_name["spi_employment_shell"]
+        )
+    if "aps_occupation" in stage_names:
+        implementations["aps_occupation"] = _GraphSourceTransform(
+            lambda sources: UKAPSOccupationStageTransform(
+                stage=stages_by_name["aps_occupation"],
+                aps_tab_path=sources["aps"],
+            )
+        )
     if "spi_housing_shell" in stage_names:
         implementations["spi_housing_shell"] = UKSPIHousingShellStageTransform(
             stage=stages_by_name["spi_housing_shell"]
@@ -1910,6 +1979,12 @@ def prepare_uk_spine_execution(
             contract=stochastic_contract,
             stage=stages_by_name["childcare_copy_take_up"],
         )
+    if "trading_allowance_receipts" in stage_names:
+        implementations["trading_allowance_receipts"] = (
+            UKTradingAllowanceReceiptsStageTransform(
+                stage=stages_by_name["trading_allowance_receipts"]
+            )
+        )
     if "age_tail" in stage_names:
         implementations["age_tail"] = UKAgeTailStageTransform(
             stage=stages_by_name["age_tail"]
@@ -1956,7 +2031,11 @@ def prepare_uk_spine_execution(
         graph_sources = _synthetic_graph_sources(args.synthetic_fixture_dir)
     else:
         graph_sources = {"frs": args.frs_raw_dir}
-        was_person_stages = {"was_lisa", "isa_subscriptions"} & set(stage_names)
+        was_person_stages = {
+            "was_lisa",
+            "isa_subscriptions",
+            "company_cars",
+        } & set(stage_names)
         if "was_wealth" in stage_names or was_person_stages:
             graph_sources["was"] = args.was_tab
         if was_person_stages:
@@ -1970,8 +2049,12 @@ def prepare_uk_spine_execution(
         if "lcfs_consumption" in stage_names:
             graph_sources["lcfs_household"] = args.lcfs_hh_tab
             graph_sources["lcfs_person"] = args.lcfs_person_tab
+            graph_sources["nts_household"] = args.nts_household_tab
+            graph_sources["nts_vehicle"] = args.nts_vehicle_tab
         if "etb_vat" in stage_names or "etb_services" in stage_names:
             graph_sources["etb"] = args.etb_tab
+        if "aps_occupation" in stage_names:
+            graph_sources["aps"] = args.aps_tab
         if "spi_income_band_donors" in stage_names:
             graph_sources["spi"] = args.spi_tab
         if "property_components" in stage_names:

@@ -221,7 +221,9 @@ UK_ALLOWED_EXTRA_EXPORT_COLUMNS: tuple[str, ...] = (
     "household.data_zone_code",
     "household.district_electoral_area_code",
     "household.electricity_consumption",
+    "household.electricity_kwh",
     "household.gas_consumption",
+    "household.gas_kwh",
     "household.geography_household_key",
     "household.has_fuel_consumption",
     # The LCFS prepayment-meter flag (microcosm#1110): policyengine-uk reads it
@@ -315,6 +317,12 @@ UK_ALLOWED_EXTRA_EXPORT_COLUMNS: tuple[str, ...] = (
     "person.private_pension_income_annual_share",
     "person.self_employment_income_annual_share",
     "person.self_employment_income_other_spells",
+    # The self-employed's gross receipts for the trading allowance, which the
+    # enhanced FRS leaves at the engine's zero (microcosm#1428).
+    "person.self_employment_gross_receipts",
+    # The annuity and trust part of private_pension_income, a calibration-only
+    # descriptor no engine input reads (microcosm#1428).
+    "person.annuity_and_trust_income",
     "person.esa_health_condition_proxy",
     "person.esa_includes_support_component",
     "person.esa_support_group_proxy",
@@ -326,6 +334,7 @@ UK_ALLOWED_EXTRA_EXPORT_COLUMNS: tuple[str, ...] = (
     "person.is_claimant_or_partner",
     "person.is_engaged_in_owned_company_trade",
     "person.is_hbai_dependent_child",
+    "person.is_in_full_time_education",
     "person.is_in_non_advanced_education",
     "person.is_parent",
     "person.is_uc_claimant",
@@ -336,6 +345,21 @@ UK_ALLOWED_EXTRA_EXPORT_COLUMNS: tuple[str, ...] = (
     "person.stocks_and_shares_isa_balance",
     "person.cash_isa_subscriptions",
     "person.stocks_and_shares_isa_subscriptions",
+    # policyengine-uk 2.165.0's company car inputs, which the company_cars stage
+    # writes (PolicyEngine/uk-autumn-budget-dashboard-2026#316).
+    "person.company_car_list_price",
+    "person.company_car_co2_emissions",
+    "person.company_car_fuel_type",
+    "person.company_car_electric_range",
+    "person.company_car_capital_contributions",
+    "person.company_car_private_fuel_provided",
+    # policyengine-uk's vehicle excise duty inputs for households' own cars,
+    # which the lcfs_consumption stage's NTS car step writes (microcosm#1095 B3).
+    "person.car_fuel_type",
+    "person.car_co2_emissions",
+    "person.car_engine_size",
+    "person.car_first_registration_date",
+    "person.car_is_ved_exempt",
     "person.individual_savings_account_interest_income",
     "person.local_bus_single_fare_share",
     "person.local_bus_trips",
@@ -363,6 +387,8 @@ UK_ALLOWED_EXTRA_EXPORT_COLUMNS: tuple[str, ...] = (
     "person.salary_sacrifice_asked",
     "person.salary_sacrifice_reported",
     "person.sic_industry_division",
+    "person.soc2020_major_group",
+    "person.soc2020_sub_major_group",
     "person.stands_as_sole_owner_or_partner_of_company",
     "person.statutory_paternity_pay",
     "person.student_loan_balance",
@@ -373,6 +399,7 @@ UK_ALLOWED_EXTRA_EXPORT_COLUMNS: tuple[str, ...] = (
     "person.uc_is_in_startup_period",
     "person.uc_is_in_gainful_self_employment",
     "person.is_looked_after_by_local_authority",
+    "person.child_limit_non_parental_caring_exception",
     "person.would_claim_carers_allowance",
     "person.would_claim_marriage_allowance",
     "person.would_claim_scp",

@@ -330,6 +330,9 @@ class SimulateCounterfactualKernel(SimulateRulesByRefKernel):
             if schema is not None and schema != engine_schema:
                 raise ValueError("Bridge components must share an entity schema.")
             schema = engine_schema
+            SimulateRulesKernel._require_relation_inputs(
+                context.node, self._delegates[ref]._engine
+            )
         tables = SimulateRulesKernel._tables(context, schema)
         frame = Frame(
             tables=tables,
@@ -448,6 +451,7 @@ class SimulateCounterfactualKernel(SimulateRulesByRefKernel):
             engine = self._delegates[ref]._engine
             tables = {entity: frame.table(entity).copy() for entity in frame.entities}
             inputs = set(engine.variables())
+            validate_override = getattr(engine, "validate_input_override", None)
             overridden = set()
             for override in component["input_overrides"]:
                 _fields(
@@ -458,6 +462,8 @@ class SimulateCounterfactualKernel(SimulateRulesByRefKernel):
                 )
                 entity, column = override["entity"], override["column"]
                 frame.schema.entity_id_column(entity)
+                if callable(validate_override):
+                    validate_override(entity, column)
                 if column not in inputs or (entity, column) in overridden:
                     raise ValueError(
                         "Overrides must name distinct engine input columns."
@@ -502,6 +508,8 @@ class SimulateCounterfactualKernel(SimulateRulesByRefKernel):
                 tables[entity][column] = values
             if trial is not None and solve_input["engine_ref"] == ref:
                 entity, column = solve_input["entity"], solve_input["column"]
+                if callable(validate_override):
+                    validate_override(entity, column)
                 if column not in inputs:
                     raise ValueError("solve_input must name an engine input column.")
                 tables[entity][column] = _map_values(

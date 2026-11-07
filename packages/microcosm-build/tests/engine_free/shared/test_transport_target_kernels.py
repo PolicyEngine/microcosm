@@ -501,6 +501,20 @@ def test_compile_emits_a_traced_surface_bound_to_facts_not_paths(tmp_path) -> No
     assert again.artifacts["surface"] == payload
 
 
+def test_calibration_preparation_attests_the_framework_roster_source(
+    tmp_path, monkeypatch
+):
+    import microcosm.frame.unit_construction as units
+
+    before = CALIBRATION_PREPARE.implementation_hash()
+    changed = tmp_path / "unit_construction.py"
+    changed.write_bytes(
+        Path(units.__file__).read_bytes() + b"\n# changed roster implementation\n"
+    )
+    monkeypatch.setattr(units, "__file__", str(changed))
+    assert CALIBRATION_PREPARE.implementation_hash() != before
+
+
 def test_compile_values_are_the_fact_values(tmp_path) -> None:
     surface = decode_target_surface(_surface(tmp_path))
     facts = {fact["label"]: fact["value"] for fact in toy_facts(CALIBRATION_TARGETS)}
@@ -792,6 +806,33 @@ def test_target_kernels_enforce_full_feed_pin(tmp_path, kernel) -> None:
     manifest_path.write_bytes(manifest_path.read_bytes() + b"\n")
     with pytest.raises(ChronicleFeedPinMismatchError, match="manifest_sha256"):
         kernel.run(_context(node, facts=facts, frame=toy_frame()))
+
+
+@pytest.mark.parametrize(
+    "kernel", [TARGETS_COMPILE, TAKEUP_COMPARE], ids=lambda k: k.ref
+)
+def test_target_kernels_refuse_an_undeclared_row_contract(tmp_path, kernel) -> None:
+    """A feed whose rows and pin agree on an undeclared row contract is refused."""
+    rows = [
+        {**row, "schema_version": "chronicle.consumer_fact.v6"}
+        for row in toy_facts(ALL_TARGETS)
+    ]
+    facts, pin = write_pinned_artifact(tmp_path / "artifact", rows)
+    original = (
+        _compile_node(references_for(CALIBRATION_TARGETS))
+        if kernel is TARGETS_COMPILE
+        else _compare_node()
+    )
+    node = replace(
+        original, params={**original.params, "chronicle_feed_pin": canonical_text(pin)}
+    )
+
+    with pytest.raises(ValueError) as refusal:
+        kernel.run(_context(node, facts=facts, frame=toy_frame()))
+
+    assert not isinstance(refusal.value, ChronicleFeedPinMismatchError)
+    assert "['chronicle.consumer_fact.v6']" in str(refusal.value)
+    assert "microcosm.build.chronicle_epoch" in str(refusal.value)
 
 
 def test_compile_refuses_unmatched_duplicate_and_noncanonical_input(tmp_path) -> None:

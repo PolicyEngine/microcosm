@@ -2143,6 +2143,108 @@ def test_builder_exact_k_parser_enforces_charter_and_explicit_seed(capsys) -> No
     assert parsed.no_staging is True
 
 
+def test_scf_education_debt_stage_is_opt_in_and_follows_auto_loans() -> None:
+    """microcosm#1073: the 2025 SCF stage runs only when asked, after auto loans.
+
+    The pinned engine does not define the four federal student loan inputs
+    yet, so a default release must not fetch the 2025 SCF or carry them.
+    """
+
+    builder = _load_builder_module()
+    base_argv = ["--ledger-facts", "facts.jsonl", "--out", "release"]
+    parsed = builder._parse_args(base_argv)
+    assert parsed.scf_education_debt is False
+    assert parsed.scf_2025_summary_extract is None
+    assert parsed.scf_2025_full_extract is None
+
+    parsed = builder._parse_args(
+        [
+            *base_argv,
+            "--scf-education-debt",
+            "--scf-2025-summary-extract",
+            "rscfp2025.dta",
+            "--scf-2025-full-extract",
+            "p25i6.dta",
+        ]
+    )
+    assert parsed.scf_education_debt is True
+    assert parsed.scf_2025_summary_extract == Path("rscfp2025.dta")
+    assert parsed.scf_2025_full_extract == Path("p25i6.dta")
+
+    source = inspect.getsource(builder._main)
+    gate = source.index("if args.scf_education_debt:")
+    assert source.index("with_us_scf_auto_loan_inputs(") < gate
+    assert gate < source.index("_with_scf_education_debt_stage(")
+    assert source.index("join_acs_release_predictors(") < gate
+
+
+def test_scf_education_debt_stage_runs_its_gate_and_writes_its_fit(
+    tmp_path, monkeypatch
+) -> None:
+    builder = _load_builder_module()
+    calls: list[str] = []
+    frame = object()
+
+    monkeypatch.setattr(
+        builder,
+        "load_scf_2025_education_debt_donor",
+        lambda summary, full: calls.append(f"load:{summary}:{full}") or "donor",
+    )
+
+    def fake_with_inputs(base_frame, *, seed, time_period, scf_education_debt_donor):
+        assert base_frame is frame
+        assert scf_education_debt_donor == "donor"
+        calls.append(f"impute:{seed}:{time_period}")
+        return base_frame
+
+    monkeypatch.setattr(builder, "with_us_scf_education_debt_inputs", fake_with_inputs)
+    monkeypatch.setattr(
+        builder,
+        "us_scf_education_debt_signal_gate",
+        lambda base_frame: builder.GateResult(
+            name="scf_education_debt_signal", passed=True
+        ),
+    )
+    monkeypatch.setattr(
+        builder,
+        "us_scf_education_debt_fit_table",
+        lambda base_frame: {"households": {"share_with_federal_education_debt": 0.2}},
+    )
+    args = SimpleNamespace(
+        seed=7,
+        scf_2025_summary_extract=Path("rscfp2025.dta"),
+        scf_2025_full_extract=Path("p25i6.dta"),
+    )
+    fit_path = tmp_path / "artifacts" / "us_scf_education_debt_fit.json"
+    assert (
+        builder._with_scf_education_debt_stage(
+            frame, args=args, telemetry=None, fit_path=fit_path
+        )
+        is frame
+    )
+    assert calls == [
+        f"load:{Path('rscfp2025.dta')}:{Path('p25i6.dta')}",
+        f"impute:7:{builder.PERIOD}",
+    ]
+    payload = json.loads(fit_path.read_text(encoding="utf-8"))
+    assert payload["weights"] == "pre_calibration_household_weights"
+    assert payload["fit"]["households"]["share_with_federal_education_debt"] == 0.2
+
+    monkeypatch.setattr(
+        builder,
+        "us_scf_education_debt_signal_gate",
+        lambda base_frame: builder.GateResult(
+            name="scf_education_debt_signal",
+            passed=False,
+            failures=("constant column",),
+        ),
+    )
+    with pytest.raises(RuntimeError, match="SCF education-debt signal failed"):
+        builder._with_scf_education_debt_stage(
+            frame, args=args, telemetry=None, fit_path=None
+        )
+
+
 def test_builder_gate_failed_base_pool_override_is_explicit(capsys) -> None:
     builder = _load_builder_module()
 
@@ -6045,25 +6147,22 @@ def test_release_calibration_diagnostics_writes_nan_final_loss_as_null(
     written = _write_release_diagnostics_with_nan_final_loss(small_frame, tmp_path)
 
     diagnostics = json.loads(written.read_text())
-    assert diagnostics["schema_version"] == 8
+    # Published as schema 9: the labels sit in catalogs, the row refers to them.
+    assert diagnostics["schema_version"] == 9
     assert diagnostics["targets"][0]["source"] == "fixture"
     assert diagnostics["targets"][0]["hierarchy"] == {
-        "provider": {
-            "id": "irs_soi",
-            "label": "IRS Statistics of Income",
-        },
-        "category": {
-            "id": "irs_soi.income",
-            "label": "Income",
-            "provider_id": "irs_soi",
-        },
-        "geography": {
-            "id": "0400000US06",
-            "label": "California",
-            "level": "state",
-        },
+        "category_id": "irs_soi.income",
+        "geography_id": "0400000US06",
         "dimensions": [],
         "target": {"id": "income", "label": "Income"},
+    }
+    assert diagnostics["hierarchy_catalogs"] == {
+        "providers": [{"id": "irs_soi", "label": "IRS Statistics of Income"}],
+        "categories": [
+            {"id": "irs_soi.income", "label": "Income", "provider_id": "irs_soi"}
+        ],
+        "geographies": [{"id": "0400000US06", "label": "California", "level": "state"}],
+        "dimensions": [],
     }
     assert diagnostics["final_loss"] is None
     assert diagnostics["build"]["default_dataset"]["final_loss"] is None
@@ -7313,6 +7412,7 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
             facts=({"fact": 1},),
             facts_sha256="facts-sha",
             manifest_sha256=None,
+            fact_schema_versions=(),
             provenance=lambda: {
                 "path_name": "facts.jsonl",
                 "fact_row_count": 1,
@@ -13849,6 +13949,8 @@ def test_us_release_id_guard() -> None:
 
 class _TestEmitter:
     available = True
+    #: No emitter process: a staging writer built with this one hands nothing over.
+    client = None
 
     def __init__(self) -> None:
         self.events = []
@@ -13921,6 +14023,57 @@ def test_staging_bundle_defaults_on_and_no_staging_disables_files(
     )
     assert progress.staging_bundle is None
     assert progress.staging_opt_out_reason == "--no-staging"
+
+
+def test_build_progress_hands_staging_files_to_the_build_emitter(
+    tmp_path, monkeypatch
+) -> None:
+    from microcosm.build import staging_storage
+    from microcosm.build.telemetry_emitter import TelemetryRun
+    from test_support.microcosm_build.telemetry import FakeTelemetryEmitter
+
+    module = _load_builder_module()
+    monkeypatch.setattr(
+        staging_storage.HuggingFaceDatasetStorage,
+        "_api",
+        lambda storage: pytest.fail("the build contacted the Hub itself"),
+    )
+    emitter = FakeTelemetryEmitter(TelemetryRun("rel-1", "US", "us_fiscal_refresh"))
+    args = SimpleNamespace(
+        no_staging=False,
+        staging_dir=tmp_path / "stage",
+        staging_repo_id="policyengine/populace-us-staging",
+        staging_run_id=None,
+        staging_prefix="runs",
+        staging_upload_interval_seconds=60.0,
+        epochs=module.DEFAULT_US_FISCAL_CALIBRATION_EPOCHS,
+        dense_default_dataset=False,
+    )
+
+    progress = module._build_progress(
+        args, release_root=tmp_path, release_id="rel-1", emitter=emitter
+    )
+    progress.stage("target_compilation", force_upload=True)
+    progress.fail(RuntimeError("build exploded"))
+
+    client = emitter.client
+    assert progress.staging_bundle.emitter_client is client
+    assert {request.repository for request in client.run_file_requests} == {
+        "policyengine/populace-us-staging"
+    }
+    # The failed state reaches the emitter before the build's telemetry
+    # outcome shuts the emitter down.
+    last_hand_over = max(
+        index for index, call in enumerate(client.calls) if call == "stage_run_files"
+    )
+    assert last_hand_over < client.calls.index("close")
+    remote = client.hub_json(
+        "policyengine/populace-us-staging", "runs/rel-1/progress.json"
+    )
+    assert remote["status"] == "failed"
+    assert [
+        event["status"] for event in emitter.events if event["event_type"] == "run"
+    ] == ["failed"]
 
 
 def test_hosted_progress_survives_staging_bundle_failure() -> None:
@@ -16743,6 +16896,54 @@ def test_committed_feed_pin_is_waived_only_by_the_flag() -> None:
     )
 
 
+@pytest.mark.parametrize(
+    ("facts_sha256", "rows", "message"),
+    [
+        ("a" * 64, ("chronicle.consumer_fact.v6",), "['chronicle.consumer_fact.v6']"),
+        ("a" * 64, ("chronicle.consumer_fact.v5",), "consumer_fact_schema_versions"),
+        ("a" * 64, (), "consumer_fact_schema_versions"),
+        ("f" * 64, ("chronicle.consumer_fact.v6",), "['chronicle.consumer_fact.v6']"),
+    ],
+    ids=["undeclared", "not_in_the_pin", "unstamped", "undeclared_unpinned_feed"],
+)
+def test_feed_row_contract_check_refuses_rows_the_pin_or_epoch_lacks(
+    facts_sha256, rows, message
+) -> None:
+    """The release build holds the rows' row contracts, not only the pin's list.
+
+    On the committed feed (its facts digest) the rows must carry exactly the
+    pin's list, which a re-pin types by hand; a feed admitted by
+    ``--allow-unpinned-feed`` is held only to the declared row contracts.
+    """
+    builder = _load_builder_module()
+    check = getattr(builder, "_check_us_ledger_feed_row_contracts", None)
+    assert callable(check)
+    bare = _feed_pin(bare=True)
+    assert bare.consumer_fact_schema_versions == ("chronicle.consumer_fact.v3",)
+    check(("chronicle.consumer_fact.v3",), facts_sha256="a" * 64, pin=bare)
+    check(("chronicle.consumer_fact.v5",), facts_sha256="f" * 64, pin=bare)
+
+    with pytest.raises(ValueError) as refusal:
+        check(rows, facts_sha256=facts_sha256, pin=bare)
+
+    assert message in str(refusal.value)
+
+
+def test_main_checks_the_feed_row_contracts_before_compiling_targets() -> None:
+    builder = _load_builder_module()
+    source = inspect.getsource(builder._main)
+    call = (
+        "_check_us_ledger_feed_row_contracts(\n"
+        "        ledger_artifact.fact_schema_versions,"
+    )
+    assert call in source
+    assert source.count("_check_us_ledger_feed_row_contracts(") == 1
+    pinned = source.index("_check_committed_us_ledger_feed_pin(")
+    checked = source.index(call)
+    compiled = source.index("target_registry = compile_us_fiscal_target_registry(")
+    assert pinned < checked < compiled
+
+
 def _minimal_pin_argv() -> list[str]:
     return [
         "--base-h5",
@@ -17702,3 +17903,51 @@ def test_esi_premium_signal_evidence_keeps_a_waived_failure_on_the_record() -> N
         "failures": ["ESI premiums: 100 employer premium(s) outside employed ..."],
     }
     assert builder._esi_premiums_signal_evidence(None) == {"evaluated": False}
+
+
+def test_a_build_that_must_send_telemetry_stops_before_any_input_without_an_emitter(
+    monkeypatch, tmp_path
+) -> None:
+    """MICROCOSM_TELEMETRY_REQUIRED=1 and no emitter: the build's first call raises.
+
+    The build starts its emitter right after reading its arguments, so with
+    the real adapter (not the shared fixture's in-memory one) it stops before
+    its first check, download or write.
+    """
+
+    from microcosm.build import telemetry_emitter
+    from test_support.microcosm_build.telemetry import ADAPTER_START
+
+    builder = _load_builder_module()
+    monkeypatch.setattr(
+        telemetry_emitter.LocalTelemetryEmitter, "start", classmethod(ADAPTER_START)
+    )
+    monkeypatch.setenv("MICROCOSM_TELEMETRY_REQUIRED", "1")
+    monkeypatch.setenv(
+        "MICROCOSM_EMITTER_COMMAND", str(tmp_path / "missing" / "microcosm-emitter")
+    )
+    output = tmp_path / "out"
+    monkeypatch.setattr(
+        builder,
+        "_parse_args",
+        lambda argv: SimpleNamespace(
+            staging_run_id="observed-run",
+            release_id="release-id",
+            dry_run_gates_report=None,
+            out=output,
+        ),
+    )
+
+    def went_on(*args, **kwargs):
+        pytest.fail("the build went on without the emitter it must use")
+
+    # The build's next steps after starting its emitter.
+    monkeypatch.setattr(builder._ReleaseDryRun, "start", went_on)
+    monkeypatch.setattr(builder, "_git_dirty", went_on)
+
+    with pytest.raises(telemetry_emitter.TelemetryRequiredError) as raised:
+        builder.main([])
+
+    assert raised.value.reason == "command_not_found"
+    assert builder._ACTIVE_EMITTER is None
+    assert not output.exists()

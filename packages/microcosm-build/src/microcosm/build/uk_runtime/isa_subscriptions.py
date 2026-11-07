@@ -1,8 +1,8 @@
 """ISA subscriptions per adult, imputed from HMRC's ISA tables (microcosm#1415).
 
 The FRS and the Wealth and Assets Survey record ISA balances, not what people pay
-in during a year, so no survey donor exists for subscriptions. This stage, the
-last in the UK roster, draws them from HMRC's published tables and writes five
+in during a year, so no survey donor exists for subscriptions. This stage, run
+on final incomes, draws them from HMRC's published tables and writes five
 person inputs policyengine-uk reads: ``cash_isa_balance``,
 ``stocks_and_shares_isa_balance``, ``cash_isa_subscriptions``,
 ``stocks_and_shares_isa_subscriptions`` and ``lifetime_isa_payments``. It rewrites
@@ -60,7 +60,6 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
-from microcosm.build.gates import FitWeightRecord
 from microcosm.build.source_manifest import SourceStageSpec
 from microcosm.build.stochastic_assignment import stable_identity_uniforms
 from microcosm.build.uk_runtime.cgt_imputation import (
@@ -1642,10 +1641,6 @@ class UKISASubscriptionsStageTransform:
     #: Supplied facts (tests and the synthetic fixture); else the vendored resource.
     statistics: HMRCISAStatistics | None = None
     last_receipt: Mapping[str, Any] | None = field(default=None, init=False)
-
-    @property
-    def fit_weight_records(self) -> tuple[FitWeightRecord, ...]:
-        return ()
 
     def _table(
         self,

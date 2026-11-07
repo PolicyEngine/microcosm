@@ -107,15 +107,19 @@ def test_the_stage_needs_the_stored_draw_and_writes_attendance_once():
         store_private_school_attendance(stored, engine=engine, calibration_year=2025)
 
 
-def test_only_the_isa_subscriptions_follow_the_stage():
+def test_only_the_isa_subscriptions_and_receipts_follow_the_stage():
     """No later stage copies or re-keys a person, so the stored flags reach
-    the release as the engine set them. Only the ISA subscriptions follow it,
-    writing person ISA columns on the rows they are given (microcosm#1415)."""
+    the release as the engine set them. Only the ISA subscriptions and the
+    self-employed's gross receipts follow it, each writing person columns on
+    the rows they are given (microcosm#1415, microcosm#1428)."""
 
     stages = load_country_spec("uk").sources.stages
     names = [stage.stage for stage in stages]
     later = stages[names.index("private_school_attendance") + 1 :]
-    assert [stage.stage for stage in later] == ["isa_subscriptions"]
+    assert [stage.stage for stage in later] == [
+        "isa_subscriptions",
+        "trading_allowance_receipts",
+    ]
     for stage in later:
         assert PRIVATE_SCHOOL_ATTENDANCE_OUTPUT not in {
             *stage.outputs,

@@ -2089,6 +2089,7 @@ UK_GATE_REGISTRY: Mapping[str, GateBinding] = {
                 "minimum_entitled_units",
                 # microcosm#1334 uc_take_up stage-health check.
                 "maximum_caseload_deviation",
+                "maximum_reachable_pool_deviation",
                 # frs_annual_income_spells stage-health check.
                 "pay_concept_ratio_bounds",
                 "annual_over_current_earners_bounds",
@@ -2096,6 +2097,7 @@ UK_GATE_REGISTRY: Mapping[str, GateBinding] = {
                 # microcosm#1095 spi_benefit_coherence stage-health check.
                 "zeroed_columns",
                 "restored_columns",
+                "restored_within_earnings_limit_columns",
                 # microcosm#1063 child_benefit_take_up stage-health check.
                 "maximum_claim_rate_deviation",
                 "maximum_age_claim_rate_deviation",
@@ -2188,6 +2190,23 @@ UK_GATE_REGISTRY: Mapping[str, GateBinding] = {
                 # household draws they split.
                 "maximum_relative_total_deviation",
                 "maximum_household_sum_error_gbp",
+                # The company_cars check (dashboard #316): how far SPI-channel
+                # pay plus its carved benefits may miss the tape's total.
+                "maximum_pay_identity_error_gbp",
+                # The occupation_redraw check (microcosm#1490): the held-out
+                # log-loss gain over the constant, the calibration slope's
+                # bounds, the occupation-share gaps within pay bands and status
+                # groups, and the blend's allowance over its better learner.
+                "minimum_log_loss_gain",
+                "calibration_slope_bounds",
+                "maximum_pay_band_share_gap",
+                "maximum_status_group_share_gap",
+                "maximum_blend_log_loss_excess",
+                # The sub_major_draw check (microcosm#1490) shares those and adds
+                # the sub-major share gap within regions and the FRS rows' gap
+                # from the APS donors within a major group.
+                "maximum_region_share_gap",
+                "maximum_frame_share_gap",
                 # #1113 road_fuel_incidence check: the ceiling on the chain's
                 # zero share among flagged fuel-car households.
                 "maximum_flagged_zero_share",
@@ -2217,6 +2236,9 @@ UK_GATE_REGISTRY: Mapping[str, GateBinding] = {
                 "rate_key",
                 "maximum_relative_realization_deviation",
                 "maximum_implied_relief",
+                # uk-data#629 spi_hourly_pay check: the drawn employees' share
+                # below the minimum wage may exceed the FRS rows' by this much.
+                "maximum_share_above_frs",
             }
         ),
         artifact_keys=frozenset({"stage_evidence"}),

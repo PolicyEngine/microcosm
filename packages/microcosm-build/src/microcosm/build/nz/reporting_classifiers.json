@@ -66,26 +66,26 @@
       },
       {
         "entity": "person",
-        "column": "jobseeker_support_gross_weekly_payment",
+        "column": "jobseeker_support_annual_gross",
         "kind": "benefit",
         "tax_basis": "before_tax",
-        "annualisation_factor": 52,
+        "annualisation_factor": 1,
         "receipt_column": "receives_jobseeker_support"
       },
       {
         "entity": "person",
-        "column": "sole_parent_support_gross_weekly_payment",
+        "column": "sole_parent_support_annual_gross",
         "kind": "benefit",
         "tax_basis": "before_tax",
-        "annualisation_factor": 52,
+        "annualisation_factor": 1,
         "receipt_column": "receives_sole_parent_support"
       },
       {
         "entity": "person",
-        "column": "supported_living_payment_gross_weekly_payment",
+        "column": "supported_living_payment_annual_gross",
         "kind": "benefit",
         "tax_basis": "before_tax",
-        "annualisation_factor": 52,
+        "annualisation_factor": 1,
         "receipt_column": "receives_supported_living_payment"
       },
       {
@@ -168,7 +168,11 @@
       "V1",
       "V2",
       "V3",
-      "V4"
+      "V4",
+      "VHF",
+      "VSI",
+      "VEX",
+      "VPT"
     ],
     "join_column": "family_id",
     "variant_rule": "carry_baseline_cell_by_unit_id",
@@ -205,8 +209,8 @@
   ],
   "disclosures": [
     {
-      "note": "NZ Super is overstated for single people who share a home because the shares-residence input defaults false; this moves their deciles upward.",
-      "evidence": "axiom_input_closure.json#/entries[input=nz_super_shares_residence_with_person_at_least_adult_age]",
+      "note": "The model understates NZ Super for single people whose only co-resident adults are exempt dependent children or temporary visitors: the shares-residence input reads household composition, but the exempt-adults input defaults false, so they get the sharing rate. This moves their deciles downward.",
+      "evidence": "axiom_input_closure.json#/entries[input=nz_super_shares_residence_with_person_at_least_adult_age]; axiom_input_closure.json#/entries[input=nz_super_all_shared_adults_are_exempt_dependent_children_or_temporary_visitors]",
       "citation": {
         "item": "A1",
         "source": "docs/nz-reporting-classifiers-method.md#a1-income-decile-provisional"
@@ -248,6 +252,38 @@
     },
     {
       "scenario": "S3",
+      "cell": "beneficiary_superannuitant_other/superannuitant"
+    },
+    {
+      "scenario": "V1",
+      "cell": "beneficiary_superannuitant_other/superannuitant"
+    },
+    {
+      "scenario": "V2",
+      "cell": "beneficiary_superannuitant_other/superannuitant"
+    },
+    {
+      "scenario": "V3",
+      "cell": "beneficiary_superannuitant_other/superannuitant"
+    },
+    {
+      "scenario": "V4",
+      "cell": "beneficiary_superannuitant_other/superannuitant"
+    },
+    {
+      "scenario": "VHF",
+      "cell": "beneficiary_superannuitant_other/superannuitant"
+    },
+    {
+      "scenario": "VSI",
+      "cell": "beneficiary_superannuitant_other/superannuitant"
+    },
+    {
+      "scenario": "VEX",
+      "cell": "beneficiary_superannuitant_other/superannuitant"
+    },
+    {
+      "scenario": "VPT",
       "cell": "beneficiary_superannuitant_other/superannuitant"
     }
   ],

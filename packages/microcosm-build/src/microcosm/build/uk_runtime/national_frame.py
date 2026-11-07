@@ -68,6 +68,7 @@ __all__ = [
     "uk_household_weight_kind",
     "uk_identifier_range_failures",
     "uk_isa_income_contract",
+    "uk_savings_income_projection",
     "uk_national_frame",
     "uk_release_identifier_tables",
     "uk_household_mass_conservation_receipt",
@@ -251,6 +252,49 @@ def _write_isa_income_contract(path: Path, contract: Mapping[str, object]) -> No
         )
 
 
+def _write_savings_income_projection(path: Path, rule: str) -> None:
+    """Declare the path the H5's savings income was calibrated to grow by.
+
+    policyengine-uk 2.165.2 reads the rule from this root attribute and grows
+    savings interest, other investment income and ISA interest by it in the
+    years it covers (microcosm#1095, microcosm#1418).
+    """
+
+    from microcosm.frame.adapters.policyengine_uk import (
+        UK_SAVINGS_INCOME_PROJECTION_ATTR,
+        uk_savings_income_projection_from,
+    )
+
+    try:
+        import h5py
+    except ImportError as exc:  # pragma: no cover - UK H5 runtime dependency
+        raise RuntimeError("h5py is required to write UK national metadata.") from exc
+    with h5py.File(path, mode="r+") as file:
+        file.attrs[UK_SAVINGS_INCOME_PROJECTION_ATTR] = (
+            uk_savings_income_projection_from(rule)
+        )
+
+
+def _read_savings_income_projection(path: Path) -> str:
+    """The H5's declared rule; a file declaring none reads as GDP per head."""
+
+    from microcosm.frame.adapters.policyengine_uk import (
+        UK_DEFAULT_SAVINGS_INCOME_PROJECTION,
+        UK_SAVINGS_INCOME_PROJECTION_ATTR,
+        uk_savings_income_projection_from,
+    )
+
+    try:
+        import h5py
+    except ImportError as exc:  # pragma: no cover - UK H5 runtime dependency
+        raise RuntimeError("h5py is required to read UK national metadata.") from exc
+    with h5py.File(path, mode="r") as file:
+        stored = file.attrs.get(UK_SAVINGS_INCOME_PROJECTION_ATTR)
+    if stored is None:
+        return UK_DEFAULT_SAVINGS_INCOME_PROJECTION
+    return uk_savings_income_projection_from(stored)
+
+
 def _read_isa_income_contract(path: Path) -> dict[str, object]:
     """The H5's declared contract; a file declaring none reads as legacy gross."""
 
@@ -369,6 +413,7 @@ def _read_uk_national_tables(
     fingerprint_before = _uk_source_file_fingerprint(input_path)
     stored_kind, stored_mass_log = _read_weight_metadata(input_path)
     isa_income_contract = _read_isa_income_contract(input_path)
+    savings_income_projection = _read_savings_income_projection(input_path)
     with pd.HDFStore(input_path, mode="r") as store:
         keys = {key.lstrip("/") for key in store.keys()}
         missing = sorted(set(UK_NATIONAL_H5_TABLES) - keys)
@@ -387,6 +432,7 @@ def _read_uk_national_tables(
             "household_weight_kind": _weight_kind_from_stored(stored_kind),
             "mass_log": _mass_log_from_stored(stored_mass_log),
             "isa_income_contract": isa_income_contract,
+            "savings_income_projection": savings_income_projection,
         }
     fingerprint_after = _uk_source_file_fingerprint(input_path)
     if fingerprint_after != fingerprint_before:
@@ -411,6 +457,7 @@ def load_uk_national_frame(
         weight_kind=payload["household_weight_kind"],
         mass_log=payload["mass_log"],
         isa_income_contract=payload["isa_income_contract"],
+        savings_income_projection=payload["savings_income_projection"],
     )
     validate_uk_national_frame(frame)
     return frame, UKStagingProvenance(source_h5=input_path, fingerprint=fingerprint)
@@ -426,12 +473,16 @@ def uk_national_frame(
     household_weights: Sequence[float] | np.ndarray | pd.Series | None = None,
     mass_log: tuple[MassChangeRecord, ...] = (),
     isa_income_contract: Mapping[str, object] | None = None,
+    savings_income_projection: str | None = None,
 ) -> Frame:
     """Assemble the UK national tables into a validated Frame.
 
     ``isa_income_contract`` is how the savings columns hold ISA interest; the
     producer's own contract unless the tables came from a file declaring
-    another (``load_uk_national_frame``).
+    another (``load_uk_national_frame``). ``savings_income_projection`` is the
+    path their savings income was calibrated to grow by, the producer's unless
+    a file declared another or none; only a rule other than the producer's is
+    kept in the frame's metadata.
 
     The typed household weights are built from ``household_weights`` when
     supplied, otherwise from a legacy input ``household_weight`` column. The
@@ -465,23 +516,31 @@ def uk_national_frame(
     from microcosm.frame.adapters.policyengine_uk import (
         UK_ISA_INCOME_CONTRACT,
         UK_ISA_INCOME_CONTRACT_ATTR,
+        UK_SAVINGS_INCOME_PROJECTION,
+        UK_SAVINGS_INCOME_PROJECTION_ATTR,
         uk_isa_income_contract_from,
+        uk_savings_income_projection_from,
     )
 
     contract = uk_isa_income_contract_from(
         UK_ISA_INCOME_CONTRACT if isa_income_contract is None else isa_income_contract
     )
+    # The contract travels as the H5 attribute's JSON, which the graph's
+    # frame-metadata store serialises as it is.
+    metadata = {
+        UK_TIME_PERIOD_METADATA_KEY: period,
+        UK_ISA_INCOME_CONTRACT_ATTR: json.dumps(contract, sort_keys=True),
+    }
+    if savings_income_projection is not None:
+        rule = uk_savings_income_projection_from(savings_income_projection)
+        if rule != UK_SAVINGS_INCOME_PROJECTION:
+            metadata[UK_SAVINGS_INCOME_PROJECTION_ATTR] = rule
     return Frame(
         tables={"person": person, "benunit": benunit, "household": carrier_household},
         schema=UK_NATIONAL_SCHEMA,
         weights={"household": weights},
         mass_log=mass_log,
-        # The contract travels as the H5 attribute's JSON, which the graph's
-        # frame-metadata store serialises as it is.
-        metadata={
-            UK_TIME_PERIOD_METADATA_KEY: period,
-            UK_ISA_INCOME_CONTRACT_ATTR: json.dumps(contract, sort_keys=True),
-        },
+        metadata=metadata,
     )
 
 
@@ -491,6 +550,19 @@ def uk_isa_income_contract(frame: Frame) -> dict[str, object]:
     from microcosm.frame.adapters.policyengine_uk import frame_isa_income_contract
 
     return frame_isa_income_contract(frame)
+
+
+def uk_savings_income_projection(frame: Frame) -> str:
+    """The path the frame's savings income was calibrated to grow by.
+
+    policyengine-uk 2.165.2 reads it from the H5 (microcosm#1095).
+    """
+
+    from microcosm.frame.adapters.policyengine_uk import (
+        frame_savings_income_projection,
+    )
+
+    return frame_savings_income_projection(frame)
 
 
 def require_uk_producer_isa_income_contract(frame: Frame, *, label: str) -> None:
@@ -557,8 +629,14 @@ def _write_uk_single_year_tables(
     mass_log: tuple[MassChangeRecord, ...],
     isa_income_contract: Mapping[str, object],
     path: Path,
+    savings_income_projection: str | None = None,
 ) -> Path:
-    """The one physical writer for every UK single-year H5."""
+    """The one physical writer for every UK single-year H5.
+
+    ``savings_income_projection`` defaults to the producer's rule.
+    """
+
+    from microcosm.frame.adapters.policyengine_uk import UK_SAVINGS_INCOME_PROJECTION
 
     path.parent.mkdir(parents=True, exist_ok=True)
     temporary_path = path.with_name(f".{path.name}.{uuid.uuid4().hex}.tmp.h5")
@@ -596,6 +674,12 @@ def _write_uk_single_year_tables(
         )
         _write_energy_price_basis(temporary_path, household)
         _write_isa_income_contract(temporary_path, isa_income_contract)
+        _write_savings_income_projection(
+            temporary_path,
+            UK_SAVINGS_INCOME_PROJECTION
+            if savings_income_projection is None
+            else savings_income_projection,
+        )
         temporary_path.replace(path)
     finally:
         temporary_path.unlink(missing_ok=True)
@@ -648,6 +732,14 @@ UK_RELEASE_EXPORT_DROPPED_COLUMNS: Mapping[str, tuple[str, ...]] = {
         # (frs_spine.FRS_IN_HOUSEHOLD_CARE_HOURS_COLUMN) the Carer's Allowance
         # draw reads (microcosm#1418); it is no engine input.
         "frs_care_hours_in_household",
+        # The company car carriers (frs_spine.FRS_COMPANY_CAR_CARRIER_COLUMNS)
+        # the company_cars stage reads to set policyengine-uk's company car
+        # inputs (PolicyEngine/uk-autumn-budget-dashboard-2026#316); they are
+        # no engine inputs.
+        "frs_company_car_price_band",
+        "frs_company_car_fuel_code",
+        "frs_company_car_private_fuel",
+        "frs_company_car_contribution",
         # policyengine-uk's sum of the ISA interest parts (microcosm#1360). The
         # producer stores individual_savings_account_interest_income instead,
         # so no stage writes it; a persisted copy would override the sum and
@@ -945,6 +1037,7 @@ def uk_release_export_frame(frame: Frame) -> Frame:
         household_weights=frame.weights_for("household").values,
         mass_log=frame.mass_log,
         isa_income_contract=uk_isa_income_contract(frame),
+        savings_income_projection=uk_savings_income_projection(frame),
     )
 
 
@@ -965,6 +1058,7 @@ def write_uk_national_frame(frame: Frame, path: str | Path) -> Path:
         mass_log=frame.mass_log,
         isa_income_contract=uk_isa_income_contract(frame),
         path=output_path,
+        savings_income_projection=uk_savings_income_projection(frame),
     )
 
 

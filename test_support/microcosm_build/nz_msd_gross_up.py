@@ -115,7 +115,14 @@ def _node(row, spec, engine_ref):
             for item in row["outputs"]
         ),
         params={
-            key: _param(spec, value, {"income_tax_schedule_1": engine_ref})
+            key: _param(
+                spec,
+                value,
+                {
+                    "income_tax_schedule_1": engine_ref,
+                    "main_benefits_rates": engine_ref,
+                },
+            )
             for key, value in row["params"].items()
         },
     )

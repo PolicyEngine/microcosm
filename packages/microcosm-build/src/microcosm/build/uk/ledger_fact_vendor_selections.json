@@ -1729,6 +1729,33 @@
       ]
     },
     {
+      "resource": "hmrc_spi_table_3_7_savings_rows.json",
+      "purpose": "HMRC Survey of Personal Incomes 2023-24, Table 3.7 (income by source and range of total income, taxpayers): the United Kingdom interest from banks and building societies and other income amounts in each of the 13 total-income bands. Consumed by the SPI income stage, which rebases each donor's interest and other income from the 2022-23 tape to these 2023-24 amounts band by band before the OBR's savings income growth carries them to the frame's year (microcosm#1418 savings follow-up).",
+      "consumers": [
+        "uk_runtime.spi_income"
+      ],
+      "planned_consumers": [],
+      "selections": [
+        {
+          "label": "spi_2023_24_table_3_7_savings_rows",
+          "selector": {
+            "source_name": "hmrc",
+            "source_concept": [
+              "hmrc.spi_savings_interest_income_amount",
+              "hmrc.spi_other_income_amount"
+            ],
+            "groupby_dimension": "hmrc.total_income_band",
+            "geography_id": "K02000001",
+            "period_type": "tax_year",
+            "period_value": [
+              2023
+            ]
+          },
+          "expected_row_count": 26
+        }
+      ]
+    },
+    {
       "resource": "hmrc_isa_statistics_facts.json",
       "purpose": "HMRC Annual savings statistics (September 2026 release), the rows the ISA subscriptions stage draws subscribers and amounts from and the Lifetime ISA anchor counts payers against (microcosm#1415): Table 9.7 2023-24 subscribers by total income and size of subscription, and the holders who made no further subscription, for all subscribers and each type paid into; Table 9.8 subscribers by age and sex; Table 9.9 subscribers by region; Table 9.4 accounts and amounts subscribed by component for 2023-24 and 2024-25 (the latest year provisional); Table 9.6 market values at 5 April 2025; the cash ISA limit reduction impact note's shares of under-65 cash subscribers either side of GBP 12,000 in 2022-23; and Lifetime ISA Table 1a withdrawals for 2024-25 and 2025-26. Tables 9.7 to 9.9 count individuals and Table 9.4 accounts. None is a calibration target: the stage's reviewed fence keeps them measured only. No value is derived here.",
       "consumers": [
@@ -1818,6 +1845,112 @@
             ]
           },
           "expected_row_count": 10
+        }
+      ]
+    },
+    {
+      "resource": "hmrc_benefits_in_kind_facts.json",
+      "purpose": "HMRC Benefits in kind statistics (July 2026 release), the 2024-25 provisional rows the company cars stage draws fuel types and CO2 bands to, and that the calibrated file is compared with by hand (PolicyEngine/uk-autumn-budget-dashboard-2026#316): Table 1 car and car fuel benefit recipients, taxable value, income tax and Class 1A NICs liabilities, with their total; Table 2A car benefit recipients by CO2 band; Table 2C car benefit recipients by fuel type; Tables 3A and 3B car and car fuel benefit recipients and taxable value by total income range; Table 4 car benefit recipients and taxable value by country and English region. They count individuals and pounds, rounded as HMRC publishes them; a cell HMRC marks instead of printing carries no fact. None is a calibration target: the stage's reviewed fence keeps them measured only. No value is derived here.",
+      "consumers": [
+        "uk_runtime.hmrc_company_car_statistics"
+      ],
+      "planned_consumers": [],
+      "selections": [
+        {
+          "label": "table1_ty2024_car_and_fuel_benefits",
+          "selector": {
+            "source_name": "hmrc",
+            "record_set_id": [
+              "hmrc.benefits_in_kind_july_2026.table1.recipients.ty2024",
+              "hmrc.benefits_in_kind_july_2026.table1.taxable_value.ty2024",
+              "hmrc.benefits_in_kind_july_2026.table1.income_tax_liability.ty2024",
+              "hmrc.benefits_in_kind_july_2026.table1.class_1a_nic_liability.ty2024"
+            ]
+          },
+          "expected_row_count": 12
+        },
+        {
+          "label": "table2a_ty2024_car_recipients_by_co2_band",
+          "selector": {
+            "source_name": "hmrc",
+            "record_set_id": "hmrc.benefits_in_kind_july_2026.table2a.recipients.ty2024"
+          },
+          "expected_row_count": 20
+        },
+        {
+          "label": "table2c_ty2024_car_recipients_by_fuel_type",
+          "selector": {
+            "source_name": "hmrc",
+            "record_set_id": "hmrc.benefits_in_kind_july_2026.table2c.recipients.ty2024"
+          },
+          "expected_row_count": 3
+        },
+        {
+          "label": "table3a_ty2024_car_benefit_by_income_range",
+          "selector": {
+            "source_name": "hmrc",
+            "record_set_id": [
+              "hmrc.benefits_in_kind_july_2026.table3a.recipients.ty2024",
+              "hmrc.benefits_in_kind_july_2026.table3a.taxable_value.ty2024"
+            ]
+          },
+          "expected_row_count": 22
+        },
+        {
+          "label": "table3b_ty2024_fuel_benefit_by_income_range",
+          "selector": {
+            "source_name": "hmrc",
+            "record_set_id": [
+              "hmrc.benefits_in_kind_july_2026.table3b.recipients.ty2024",
+              "hmrc.benefits_in_kind_july_2026.table3b.taxable_value.ty2024"
+            ]
+          },
+          "expected_row_count": 13
+        },
+        {
+          "label": "table4_ty2024_car_benefit_by_region",
+          "selector": {
+            "source_name": "hmrc",
+            "record_set_id": [
+              "hmrc.benefits_in_kind_july_2026.table4.recipients.ty2024",
+              "hmrc.benefits_in_kind_july_2026.table4.taxable_value.ty2024"
+            ]
+          },
+          "expected_row_count": 26
+        }
+      ]
+    },
+    {
+      "resource": "scotgov_chargeable_dwellings_by_band.json",
+      "purpose": "The Scottish Government's chargeable dwellings by council-tax band, A to H, for each of the 32 council areas at September 2025 (CTAXBASE 2025). Consumed by the post-geography band node, which draws each Scottish owner clone's band from its council area's mix at the clone's rank among Scotland's owners (microcosm#1095 B12).",
+      "consumers": [
+        "uk_runtime.property_localisation"
+      ],
+      "planned_consumers": [],
+      "selections": [
+        {
+          "label": "ctaxbase_2025_chargeable_dwellings_by_band",
+          "selector": {
+            "source_name": "scotgov",
+            "source_concept": [
+              "scotgov.chargeable_dwellings_band_a",
+              "scotgov.chargeable_dwellings_band_b",
+              "scotgov.chargeable_dwellings_band_c",
+              "scotgov.chargeable_dwellings_band_d",
+              "scotgov.chargeable_dwellings_band_e",
+              "scotgov.chargeable_dwellings_band_f",
+              "scotgov.chargeable_dwellings_band_g",
+              "scotgov.chargeable_dwellings_band_h"
+            ],
+            "period_type": "month",
+            "period_value": [
+              "2025-09"
+            ],
+            "geography_level": [
+              "local_authority"
+            ]
+          },
+          "expected_row_count": 256
         }
       ]
     }

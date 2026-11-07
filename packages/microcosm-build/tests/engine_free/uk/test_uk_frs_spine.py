@@ -45,6 +45,13 @@ from microcosm.build.uk_runtime.frs_relationships import (
 from microcosm.build.uk_runtime.frs_spine import (
     BENEFIT_CODES,
     BSP_MONTHLY_RATES,
+    FRS_COMPANY_CAR_CARRIER_COLUMNS,
+    FRS_COMPANY_CAR_FUEL_CODES,
+    FRS_COMPANY_CAR_FUEL_ELECTRIC,
+    FRS_COMPANY_CAR_FUEL_HYBRID,
+    FRS_COMPANY_CAR_PRICE_BAND_BOUNDS,
+    FRS_COMPANY_CAR_PRICE_BAND_OPEN,
+    FRS_COMPANY_CAR_PRICE_BANDS,
     FRS_SPINE_TABLES,
     OWNER_MANAGER_COLUMNS,
     REGION_MAP,
@@ -285,6 +292,7 @@ def _fixture_tables() -> dict[str, list[dict[str, object]]]:
         "CONVBL": 2,
         "MJOBSECT": 1,
         "SIC": 84,
+        "SOC2020": 4000,
         "FTED": 2,
         "TYPEED2": 0,
         "EDUCQUAL": 17,
@@ -393,13 +401,29 @@ def _fixture_tables() -> dict[str, list[dict[str, object]]]:
                 "SERNUM": 1,
                 "BENUNIT": 1,
                 "PERSON": 1,
+                "PENTYPE": 1,
                 "PENPAY": 10.0,
                 "PTAMT": 2.0,
                 "PTINC": 2,
                 "POAMT": 3.0,
                 "POINC": 2,
                 "PENOTH": 0,
-            }
+            },
+            # Income from a trust (PENTYPE 5) stays private pension income,
+            # where the engine's means tests read it; its part is stored for
+            # SPI Table 3.7's other income (microcosm#1428).
+            {
+                "SERNUM": 2,
+                "BENUNIT": 1,
+                "PERSON": 1,
+                "PENTYPE": 5,
+                "PENPAY": 6.0,
+                "PTAMT": 0.0,
+                "PTINC": 0,
+                "POAMT": 0.0,
+                "POINC": 0,
+                "PENOTH": 0,
+            },
         ],
         "oddjob": [{"SERNUM": 1, "BENUNIT": 1, "PERSON": 1, "OJAMT": 4.0, "OJNOW": 1}],
         "accounts": [
@@ -430,8 +454,9 @@ def _fixture_tables() -> dict[str, list[dict[str, object]]]:
                 "ACCTAX": 0,
                 "INVTAX": 0,
             },
-            # Other interest (microcosm#1418): an NS&I Direct Saver paid after
-            # tax and a gilt paid after tax, both grossed up at the basic rate.
+            # An NS&I Direct Saver paid after tax, deposit interest since
+            # microcosm#1428 (SPI Table 3.7 note 4), and a gilt paid after tax,
+            # other interest (microcosm#1418), both grossed up at the basic rate.
             {
                 "SERNUM": 1,
                 "BENUNIT": 1,
@@ -479,6 +504,14 @@ def _fixture_tables() -> dict[str, list[dict[str, object]]]:
                 "NATURE": 4,
                 "DIRPERC": -1,
                 "DIVIDEND": 0.0,
+                # No company car and no fuel for private use (EXPBEN 2), so the
+                # car's questions are not asked.
+                "EXPBEN01": 2,
+                "EXPBEN03": 2,
+                "CARVAL": "",
+                "FUELTYP": "",
+                "CARCON": "",
+                "CARAMT": "",
                 # Two bonuses (#1340): 1,000 before tax, and 500 after a weekly
                 # imputed tax of 2.
                 **{
@@ -1247,12 +1280,20 @@ def test_direct_person_mapping_values_are_ported(tmp_path: Path) -> None:
     assert adult["individual_savings_account_interest_income"] == pytest.approx(
         1 * WEEKS_IN_YEAR
     )
-    assert adult["savings_interest_income"] == pytest.approx(2.5 * WEEKS_IN_YEAR)
+    # The current account (2 x 1.25) and the NS&I Direct Saver (2 x 1.25),
+    # deposit interest since microcosm#1428 (SPI Table 3.7 note 4).
+    assert adult["savings_interest_income"] == pytest.approx(5.0 * WEEKS_IN_YEAR)
     assert "tax_free_savings_income" not in adult
     # The gilt is other interest, no longer a dividend (microcosm#1418).
     assert adult["dividend_income"] == pytest.approx(3 * WEEKS_IN_YEAR)
-    assert adult["other_investment_income"] == pytest.approx(7.5 * WEEKS_IN_YEAR)
+    assert adult["other_investment_income"] == pytest.approx(5.0 * WEEKS_IN_YEAR)
+    # Household 2's trust income stays private pension, where the engine's
+    # means tests and household income read it, and its part is stored as
+    # the descriptor SPI Table 3.7's other-income measure adds (microcosm#1428).
     assert other["other_investment_income"] == 0.0
+    assert other["private_pension_income"] == pytest.approx(6.0 * WEEKS_IN_YEAR)
+    assert other["annuity_and_trust_income"] == pytest.approx(6.0 * WEEKS_IN_YEAR)
+    assert adult["annuity_and_trust_income"] == 0.0
     # ROYYR1 2 only: CVPAY (1 a week) is rent the adult pays as a lodger
     # (rent_paid_as_lodger, pe-uk#2006), not their own income, and household 1
     # does not sub-let.
@@ -1561,6 +1602,21 @@ def test_frs_spine_refuses_an_adult_tab_without_alimony(
         row.pop(column)
     stage = _write_fixture(tmp_path, tables)
     with pytest.raises(KeyError, match=column):
+        build_uk_frs_spine_frame(tmp_path, stage=stage)
+
+
+def test_frs_spine_refuses_a_pension_tab_without_pentype(tmp_path: Path) -> None:
+    """A vintage without PENTYPE refuses; it never reads every annuity and
+    trust payment as a pension (microcosm#1428)."""
+
+    tables = _fixture_tables()
+    tables["pension"] = [
+        {key: value for key, value in row.items() if key != "PENTYPE"}
+        for row in tables["pension"]
+    ]
+    stage = _write_fixture(tmp_path, tables)
+
+    with pytest.raises(ValueError, match="PENTYPE"):
         build_uk_frs_spine_frame(tmp_path, stage=stage)
 
 
@@ -2254,6 +2310,100 @@ def test_frs_spine_refuses_a_job_tab_without_the_bonus_fields(
         row.pop(column)
     stage = _write_fixture(tmp_path, tables)
     with pytest.raises(KeyError, match=column.lower()):
+        build_uk_frs_spine_frame(tmp_path, stage=stage)
+
+
+def _company_car_carriers(tmp_path: Path, tables: dict) -> pd.DataFrame:
+    frame = build_uk_frs_spine_frame(tmp_path, stage=_write_fixture(tmp_path, tables))
+    return frame.table("person").set_index("person_id")[
+        list(FRS_COMPANY_CAR_CARRIER_COLUMNS)
+    ]
+
+
+@pytest.mark.parametrize(
+    ("answers", "expected"),
+    [
+        # A diesel listed at GBP 30,001 to 40,000, with fuel for private use and
+        # a contribution to its cost.
+        (
+            {
+                "EXPBEN01": 1,
+                "EXPBEN03": 1,
+                "CARVAL": 8,
+                "FUELTYP": 2,
+                "CARCON": 1,
+                "CARAMT": 1_500.0,
+            },
+            (8, 2, True, 1_500.0),
+        ),
+        # "Don't know" for the band and the fuel; no contribution.
+        (
+            {"EXPBEN01": 1, "CARVAL": 10, "FUELTYP": 6, "CARCON": 2},
+            (10, 6, False, 0.0),
+        ),
+        # A car whose band and fuel are unanswered carries the unknown codes.
+        ({"EXPBEN01": 1}, (10, 6, False, 0.0)),
+        # A contribution with a missing-value amount counts as none.
+        (
+            {"EXPBEN01": 1, "CARVAL": 5, "FUELTYP": 1, "CARCON": 1, "CARAMT": -9},
+            (5, 1, False, 0.0),
+        ),
+        # A van's list price is asked too, but without EXPBEN01 there is no car.
+        ({"CARVAL": 7, "CARCON": 1, "CARAMT": 900.0}, (0, 0, False, 0.0)),
+    ],
+)
+def test_company_car_carriers_come_from_the_job_tab(
+    tmp_path: Path, answers: dict, expected: tuple
+) -> None:
+    """The company_cars stage's carriers (dashboard #316)."""
+
+    tables = _fixture_tables()
+    tables["job"][0].update(answers)
+    carriers = _company_car_carriers(tmp_path, tables)
+    assert tuple(carriers.loc[1001]) == expected
+    assert carriers["frs_company_car_price_band"].dtype == "int64"
+    assert carriers["frs_company_car_fuel_code"].dtype == "int64"
+    # Nobody else in the fixture holds a job, so nobody else has a car.
+    others = carriers.drop(index=1001)
+    assert not others.to_numpy(dtype=float).any()
+
+
+def test_the_company_car_code_views_follow_their_definitions() -> None:
+    """CARVAL's bands and FUELTYP's codes are defined once here and the
+    company_cars stage reads them (docs/shared-constants.md)."""
+
+    assert FRS_COMPANY_CAR_PRICE_BANDS == tuple(range(1, 10))
+    assert FRS_COMPANY_CAR_PRICE_BAND_OPEN == 9
+    bounds = list(FRS_COMPANY_CAR_PRICE_BAND_BOUNDS.values())
+    # The bands tile from zero, each opening where the last closes; the top is open.
+    assert bounds[0][0] == 0.0 and bounds[-1][1] is None
+    assert [low for low, _ in bounds[1:]] == [high for _, high in bounds[:-1]]
+    assert FRS_COMPANY_CAR_FUEL_CODES == tuple(range(1, 6))
+    assert (FRS_COMPANY_CAR_FUEL_HYBRID, FRS_COMPANY_CAR_FUEL_ELECTRIC) == (3, 4)
+
+
+def test_a_persons_main_job_car_is_their_company_car(tmp_path: Path) -> None:
+    """One car per person, as in the engine: the lowest JOBTYPE's, whatever the
+    tab's order."""
+
+    tables = _fixture_tables()
+    main = tables["job"][0]
+    second = {**main, "JOBTYPE": 2, "EXPBEN01": 1, "CARVAL": 3, "FUELTYP": 1}
+    main.update({"EXPBEN01": 1, "CARVAL": 9, "FUELTYP": 4})
+    tables["job"] = [second, main]
+    carriers = _company_car_carriers(tmp_path, tables)
+    assert tuple(carriers.loc[1001]) == (9, 4, False, 0.0)
+
+
+@pytest.mark.parametrize("column", ["EXPBEN01", "CARVAL", "CARAMT"])
+def test_frs_spine_refuses_a_job_tab_without_the_company_car_answers(
+    tmp_path: Path, column: str
+) -> None:
+    tables = _fixture_tables()
+    for row in tables["job"]:
+        row.pop(column)
+    stage = _write_fixture(tmp_path, tables)
+    with pytest.raises(KeyError, match="company cars cannot be set"):
         build_uk_frs_spine_frame(tmp_path, stage=stage)
 
 
@@ -3192,6 +3342,44 @@ def test_driver_refuses_synthetic_fixture_without_smoke(tmp_path: Path) -> None:
         )
 
 
+def test_remote_spine_staging_hands_its_run_files_to_the_build_emitter(
+    tmp_path: Path, fake_telemetry_emitters
+) -> None:
+    from microcosm.build.uk_runtime import spine_build
+
+    tool = _load_tool()
+    args = tool._parse_args(
+        [
+            "--frs-raw-dir",
+            str(tmp_path),
+            "--spine-h5",
+            str(tmp_path / "spine.h5"),
+            "--spi-tab",
+            str(tmp_path / "put2223uk.tab"),
+            "--hmrc-ods",
+            str(tmp_path / "hmrc.ods"),
+            "--staging-upload-interval-seconds",
+            "0",
+        ]
+    )
+    state = SimpleNamespace(build_id="uk-spine-attempt-fixture")
+    emitter = spine_build._start_telemetry_emitter(args, state=state)
+    bundle = spine_build._create_staging_run_bundle(args, state=state)
+
+    assert bundle.emitter_client is emitter.client
+    bundle.stage("input_verification", force_upload=True)
+    request = emitter.client.run_file_requests[-1]
+    assert (request.repository, request.run_id, request.prefix) == (
+        "policyengine/populace-uk-staging",
+        "uk-spine-attempt-fixture",
+        "runs",
+    )
+    assert "runs/uk-spine-attempt-fixture/progress.json" in emitter.client.paths(
+        "policyengine/populace-uk-staging"
+    )
+    emitter.close()
+
+
 def test_driver_exposes_all_staging_modes_and_rejects_empty_remote(
     tmp_path: Path,
 ) -> None:
@@ -3795,6 +3983,7 @@ def test_input_artifact_pins_bind_spi_donor_and_ods() -> None:
     pins = tool._input_artifact_pins(stages)
 
     assert set(pins) == {
+        "aps_person_tab",
         "etb_household_tab",
         "lcfs_household_tab",
         "lcfs_person_tab",
@@ -3803,6 +3992,7 @@ def test_input_artifact_pins_bind_spi_donor_and_ods() -> None:
         "nts_trip_tab",
         "nts_stage_tab",
         "nts_ticket_tab",
+        "nts_vehicle_tab",
         "published_fact_surface",
         "qrf_donor",
         "was_person_tab",
@@ -3825,6 +4015,7 @@ def test_input_artifact_pins_bind_spi_donor_and_ods() -> None:
             "lcfs_consumption",
             "etb_vat",
             "etb_services",
+            "aps_occupation",
             "hmrc_spi_income_spine",
             "hmrc_cgt_gains_spine",
         )
@@ -3884,6 +4075,10 @@ def test_e8_manifest_seeds_all_reach_the_build_sidecar_harvester() -> None:
         "student_loan_plan_5": 42,
         "student_loan_plan_2": 42,
     }
+    # microcosm#1490: the employment shell's keyed draws under its stage name,
+    # the APS draw under the column it writes.
+    assert declared["spi_employment_shell"] == {"spi_employment_shell": 0}
+    assert declared["aps_occupation"] == {"soc2020_sub_major_group": 0}
 
 
 def test_spine_sidecar_collects_stage_evidence_by_duck_type() -> None:
@@ -4624,3 +4819,51 @@ def test_collect_fit_weight_records_sees_through_the_run_proxies():
     expected = [{"fit_name": "uk_was_2018_20_wealth:savings", "weight_kind": "design"}]
     assert records == {"was_wealth": expected, "etb_vat": expected}
     assert "frs_spine" not in records
+
+
+def test_a_spine_build_that_must_send_telemetry_stops_before_any_input_without_an_emitter(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """MICROCOSM_TELEMETRY_REQUIRED=1 and no emitter: the spine build stops first.
+
+    It starts its emitter right after reading its arguments, so with the real
+    adapter (not the shared fixture's in-memory one) it stops before it
+    resolves its Logbook predecessor, reads an input or writes anything.
+    """
+    from microcosm.build import telemetry_emitter
+    from microcosm.build.uk_runtime import spine_build
+    from test_support.microcosm_build.telemetry import ADAPTER_START
+
+    monkeypatch.setattr(
+        telemetry_emitter.LocalTelemetryEmitter, "start", classmethod(ADAPTER_START)
+    )
+    monkeypatch.setenv("MICROCOSM_TELEMETRY_REQUIRED", "1")
+    monkeypatch.setenv(
+        "MICROCOSM_EMITTER_COMMAND", str(tmp_path / "missing" / "microcosm-emitter")
+    )
+
+    def went_on(*args, **kwargs):
+        pytest.fail("the build went on without the emitter it must use")
+
+    # The build's first step after starting its emitter.
+    monkeypatch.setattr(spine_build, "resolve_predecessor", went_on)
+    raw_dir = tmp_path / "raw"
+    raw_dir.mkdir()
+
+    with pytest.raises(telemetry_emitter.TelemetryRequiredError) as raised:
+        spine_build.main(
+            [
+                "--frs-raw-dir",
+                str(raw_dir),
+                "--spine-h5",
+                str(tmp_path / "out" / "spine.h5"),
+                "--spi-tab",
+                str(tmp_path / "put2223uk.tab"),
+                "--hmrc-ods",
+                str(tmp_path / "Collated_Tables_3_1_to_3_11_2324.ods"),
+                "--no-staging",
+            ]
+        )
+
+    assert raised.value.reason == "command_not_found"
+    assert sorted(path.name for path in tmp_path.iterdir()) == ["raw"]

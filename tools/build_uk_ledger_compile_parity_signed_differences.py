@@ -11,6 +11,10 @@ from pathlib import Path
 import numpy as np
 
 from microcosm.build.gates import ledger_compile_parity_signed_differences
+from microcosm.build.ledger_artifact import consumer_fact_schema_versions_of
+from microcosm.build.uk_runtime.chronicle_feed import (
+    require_uk_chronicle_feed_subset_row_contracts,
+)
 from microcosm.build.uk_runtime.derived_facts import uk_derived_fact_rows
 from microcosm.build.uk_runtime.ledger_targets import (
     LOCAL_REGISTRY_PARITY_FIXTURE_RESOURCE,
@@ -107,10 +111,21 @@ _SPI_REGION_LEDGER_ONLY_RATIONALE = (
 _OBR_WINDOW_DRIFT_RATIONALE = (
     "Period basis (PolicyEngine/chronicle#280 lane, María's rule of 2026-09-22 that "
     "fiscal-year facts take only the months to the end of the calibration "
-    "calendar year): ours binds the OBR March 2026 line at the calendar-2025 "
-    "window, three twelfths of FY2024-25 and nine twelfths of FY2025-26, on "
-    "the same series; the frozen incumbent fixture holds the FY2025-26 value "
-    "alone."
+    "calendar year): ours binds the OBR line at the calendar-2025 window, three "
+    "twelfths of FY2024-25 from the March 2026 EFO and nine twelfths of "
+    "FY2025-26 from the October 2026 EFO, each year's latest edition "
+    "(PolicyEngine/chronicle#397, María's ruling of 2026-10-31); the frozen "
+    "incumbent fixture holds the FY2025-26 value alone."
+)
+
+#: Winter Fuel binds FY2025-26 alone (María's ruling of 2026-10-26), so no
+#: window explains its move: PolicyEngine/chronicle#397 replaced the March
+#: projection the incumbent froze with October's outturn.
+_OBR_WINTER_FUEL_EDITION_RATIONALE = (
+    "Edition basis (PolicyEngine/chronicle#397): ours binds FY2025-26 alone "
+    "(María's ruling of 2026-10-26), now the October 2026 EFO's outturn, the "
+    "latest number Chronicle keeps for the year; the frozen incumbent fixture "
+    "holds the March 2026 EFO's FY2025-26 projection."
 )
 
 _OBR_COUNCIL_TAX_GB_RECEIPTS_RATIONALE = (
@@ -127,11 +142,31 @@ _OBR_COUNCIL_TAX_GB_RECEIPTS_RATIONALE = (
     "high-value council tax surcharge."
 )
 
+#: The nation rows sum to obr.council_tax, so they take its main-residence
+#: scaling (the review of microcosm#1422; the second review of microcosm#1430).
+_OBR_COUNCIL_TAX_NATION_ROWS = frozenset(
+    {"obr.council_tax_england", "obr.council_tax_scotland", "obr.council_tax_wales"}
+)
+
+_OBR_COUNCIL_TAX_NATION_RATIONALE = (
+    "Series and period basis (microcosm#1095): ours measures the nation's OBR "
+    "table 4.1 council tax receipts at the calendar-2025 window, three twelfths "
+    "of FY2024-25 from the March 2026 EFO and nine twelfths of FY2025-26 from "
+    "the October 2026 EFO, each year's latest edition (María's rule of "
+    "2026-09-22, PolicyEngine/chronicle#280 lane, and her ruling of 2026-10-31), "
+    "scaled to main residences by the share obr.council_tax takes, England's "
+    "chargeable dwellings less its second homes and empty dwellings, over its "
+    "chargeable dwellings (MHCLG Council Taxbase, October 2025; María's ruling "
+    "of 2026-10-29, microcosm#1095 D14f), so the three nation rows sum to the "
+    "bound one; the frozen incumbent fixture holds the FY2025-26 value alone."
+)
+
 _OBR_SDLT_HOUSEHOLDS_RATIONALE = (
     "Payer and period basis (uk-data#564, microcosm#1095): ours binds households' "
-    "SDLT, the OBR March 2026 line at the calendar-2025 window (three twelfths of "
-    "FY2024-25 and nine twelfths of FY2025-26, María's rule of 2026-09-22, "
-    "PolicyEngine/chronicle#280 lane) times individuals' share of HMRC's 2024-25 "
+    "SDLT, the OBR line at the calendar-2025 window (three twelfths of FY2024-25 "
+    "from the March 2026 EFO and nine twelfths of FY2025-26 from the October "
+    "2026 EFO, María's rule of 2026-09-22, PolicyEngine/chronicle#280 lane, and "
+    "her ruling of 2026-10-31) times individuals' share of HMRC's 2024-25 "
     "SDLT receipts, residential (Table 8a) and non-residential (Table 8b) "
     "together; the frozen incumbent fixture holds the FY2025-26 value of the "
     "whole line alone, which companies, partnerships and collective investment "
@@ -154,22 +189,24 @@ _ESA_CUBE_ROWS = (
 )
 
 #: microcosm#1069: the resident State Pension level replaces the OBR line in
-#: the fit (ruling R4); the exact OBR forecast stays as diagnostic provenance.
+#: the fit (ruling R4); the exact OBR figure stays as diagnostic provenance.
 _OBR_STATE_PENSION_DIAGNOSTIC_RATIONALE = (
-    "microcosm#1069 (ruling R4) moves the OBR FY2025-26 State Pension forecast "
-    "out of the fit: it counts Great Britain plus pensioners paid abroad and "
-    "leaves out Northern Ireland, a different quantity from the resident level "
-    "the DWP Stat-Xplore and DfC rows bind. The exact forecast is retained as "
-    "diagnostic provenance on dwp.state_pension.amount, so the frozen fixture's "
-    "fitted row is fixture-only on the current surface."
+    "microcosm#1069 (ruling R4) moves the OBR FY2025-26 State Pension line out "
+    "of the fit: it counts Great Britain plus pensioners paid abroad and leaves "
+    "out Northern Ireland, a different quantity from the resident level the DWP "
+    "Stat-Xplore and DfC rows bind. The exact figure, the October 2026 EFO's "
+    "outturn since PolicyEngine/chronicle#397, is retained as diagnostic "
+    "provenance on dwp.state_pension.amount, so the frozen fixture's fitted row "
+    "is fixture-only on the current surface."
 )
 _OBR_NI_DIAGNOSTIC_RATIONALE = (
     "microcosm#1095 (María's ruling of 2026-10-09; uk-data#537 drops the row) moves "
     "OBR's total NICs receipts out of the fit: a cash total against the three "
-    "accrued class rows, carrying statutory-payment recoveries, Class 1A, 1B and 3 "
-    "and settlements that no household carries. The exact FY2025-26 figure is "
-    "retained as diagnostic provenance on obr.ni_employee, so the frozen fixture's "
-    "fitted row is fixture-only on the current surface."
+    "accrued class rows, carrying statutory-payment recoveries, Class 1A on "
+    "benefits other than the company cars and fuel the build carries, Class 1B "
+    "and 3, and settlements that no household carries. The exact FY2025-26 "
+    "figure is retained as diagnostic provenance on obr.ni_employee, so the frozen "
+    "fixture's fitted row is fixture-only on the current surface."
 )
 #: The next policyengine-uk bump (microcosm#1095, María's ruling of
 #: 2026-10-22) retires these rows from the targets to registry_parity.excluded.
@@ -290,8 +327,9 @@ _CGT_OBSERVED_RATIONALES = {
         "observation, not a cash-receipts reconciliation."
     ),
     "obr.capital_gains_tax": (
-        "PR #889 retains the exact March 2026 OBR FY2025-26 cash forecast "
-        "as diagnostic provenance outside the FY2024-25 observation fit. "
+        "PR #889 retains the exact OBR FY2025-26 cash figure, the October "
+        "2026 EFO's outturn since PolicyEngine/chronicle#397, as diagnostic "
+        "provenance outside the FY2024-25 observation fit. "
         "The frozen incumbent fixture keeps its fitted cash row, so it is "
         "fixture-only on the current surface. This scoped change does not "
         "settle the general liability-to-cash translation tracked by #875."
@@ -381,25 +419,50 @@ _ONS_TERMINAL_BAND_RATIONALES = {
 
 _ONS_15_19_BAND_SPLIT_FIXTURE_ONLY_RATIONALE = (
     "microcosm#1095 (María's ruling of 2026-10-13; uk-data#563): the five-year "
-    "15_19 sex band is split into ages 15, 16-17 and 18-19, because a fit to the "
-    "band left the ages inside it free to drift. The three rows partition this "
-    "row's population and read the same ONS mid-year estimate by single year of "
-    "age, so they sum to it. No single current row has this definition, so the "
-    "frozen fixture's row is fixture-only on the current surface."
+    "15_19 sex band is split, into ages 15, 16-17 and 18-19 by that ruling and "
+    "into the single years 15 to 19 by Y5 of the November event-data plan "
+    "(approved by María on 2026-11-06), because a fit to the band left the ages "
+    "inside it free to drift. The five rows partition this row's population and "
+    "read the same ONS mid-year estimate by single year of age, so they sum to "
+    "it. No single current row has this definition, so the frozen fixture's row "
+    "is fixture-only on the current surface."
 )
 _ONS_15_19_BAND_SPLIT_LEDGER_ONLY_RATIONALE = (
-    "microcosm#1095 (María's ruling of 2026-10-13; uk-data#563): one of the three "
-    "rows (ages 15, 16-17 and 18-19) that partition the incumbent five-year 15_19 "
-    "sex band, bound so the fit holds the age mix inside the band. The incumbent "
-    "binds only the band, so this row has no fixture counterpart."
+    "microcosm#1095 (María's ruling of 2026-10-13; uk-data#563; single years since "
+    "Y5 of the November event-data plan, approved by María on 2026-11-06): one of "
+    "the five rows (the single years 15 to 19) that partition the incumbent "
+    "five-year 15_19 sex band, bound so the fit holds the age mix inside the "
+    "band. The incumbent binds only the band, so this row has no fixture "
+    "counterpart."
 )
 _ONS_15_19_BAND_ROWS = frozenset(
     f"ons.population.{sex}_15_19" for sex in ("female", "male")
 )
 _ONS_15_19_BAND_SPLIT_ROWS = frozenset(
-    f"ons.population.{sex}_{ages}"
-    for sex in ("female", "male")
-    for ages in ("15", "16_17", "18_19")
+    f"ons.population.{sex}_{age}" for sex in ("female", "male") for age in range(15, 20)
+)
+_ONS_20_24_BAND_SPLIT_FIXTURE_ONLY_RATIONALE = (
+    "microcosm#1095 (Y5 of the November event-data plan, approved by María on "
+    "2026-11-06): the five-year 20_24 sex band is split into the single years 20 "
+    "to 24, because the single ages inside the fitted band drifted from ONS "
+    "around the ages at which the young people and work review's measures "
+    "change (21, 22 and 25). The five rows partition this row's population and "
+    "read the same ONS mid-year estimate by single year of age, so they sum to "
+    "it. No single current row has this definition, so the frozen fixture's row "
+    "is fixture-only on the current surface."
+)
+_ONS_20_24_BAND_SPLIT_LEDGER_ONLY_RATIONALE = (
+    "microcosm#1095 (Y5 of the November event-data plan, approved by María on "
+    "2026-11-06): one of the five rows (the single years 20 to 24) that partition "
+    "the incumbent five-year 20_24 sex band, bound so the fit holds the age mix "
+    "inside the band. The incumbent binds only the band, so this row has no "
+    "fixture counterpart."
+)
+_ONS_20_24_BAND_ROWS = frozenset(
+    f"ons.population.{sex}_20_24" for sex in ("female", "male")
+)
+_ONS_20_24_BAND_SPLIT_ROWS = frozenset(
+    f"ons.population.{sex}_{age}" for sex in ("female", "male") for age in range(20, 25)
 )
 _ONS_SINGLE_YEAR_AGE_LEDGER_ONLY_RATIONALE = (
     "microcosm#1278 (the pre-Budget PR's plan, approved by María on 2026-10-20; "
@@ -930,8 +993,18 @@ def _add_signed_rationale_notes(
             row["reason"] = _SPI_REGION_LEDGER_ONLY_RATIONALE
         elif name == "obr.council_tax" and row.get("kind") == "calibration_drift":
             row["reason"] = _OBR_COUNCIL_TAX_GB_RECEIPTS_RATIONALE
+        elif (
+            name in _OBR_COUNCIL_TAX_NATION_ROWS
+            and row.get("kind") == "calibration_drift"
+        ):
+            row["reason"] = _OBR_COUNCIL_TAX_NATION_RATIONALE
         elif name == "obr.sdlt" and row.get("kind") == "calibration_drift":
             row["reason"] = _OBR_SDLT_HOUSEHOLDS_RATIONALE
+        elif (
+            name == "obr.winter_fuel_allowance"
+            and row.get("kind") == "calibration_drift"
+        ):
+            row["reason"] = _OBR_WINTER_FUEL_EDITION_RATIONALE
         elif (
             name.startswith("obr.")
             and row.get("kind") == "calibration_drift"
@@ -953,6 +1026,10 @@ def _add_signed_rationale_notes(
             row["reason"] = _ONS_15_19_BAND_SPLIT_FIXTURE_ONLY_RATIONALE
         elif name in _ONS_15_19_BAND_SPLIT_ROWS and row.get("kind") == "ledger_only":
             row["reason"] = _ONS_15_19_BAND_SPLIT_LEDGER_ONLY_RATIONALE
+        elif name in _ONS_20_24_BAND_ROWS and row.get("kind") == "fixture_only":
+            row["reason"] = _ONS_20_24_BAND_SPLIT_FIXTURE_ONLY_RATIONALE
+        elif name in _ONS_20_24_BAND_SPLIT_ROWS and row.get("kind") == "ledger_only":
+            row["reason"] = _ONS_20_24_BAND_SPLIT_LEDGER_ONLY_RATIONALE
         elif name in _ONS_SINGLE_YEAR_AGE_ROWS and row.get("kind") == "ledger_only":
             row["reason"] = _ONS_SINGLE_YEAR_AGE_LEDGER_ONLY_RATIONALE
         elif name in _ONS_SINGLE_YEAR_AGE_0_6_ROWS and row.get("kind") == "ledger_only":
@@ -1140,6 +1217,11 @@ def _fixture_for_receipt(spec: ParityReceiptSpec) -> dict:
 def main() -> None:
     args = _parse_args()
     facts = _load_jsonl(args.ledger_facts)
+    # The rows of a subset of the pinned feed: each row contract must be one
+    # the committed pin lists and chronicle_epoch declares.
+    require_uk_chronicle_feed_subset_row_contracts(
+        consumer_fact_schema_versions_of(facts)
+    )
     args.output_dir.mkdir(parents=True, exist_ok=True)
     for spec in RECEIPTS:
         if args.surface != "all" and spec.surface != args.surface:

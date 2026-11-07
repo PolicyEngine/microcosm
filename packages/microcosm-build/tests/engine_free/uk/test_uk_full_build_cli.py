@@ -3,10 +3,12 @@
 # ruff: noqa: F403, F405
 import base64
 import os
+import shutil
 import signal
 from types import SimpleNamespace
 
 import test_support.microcosm_build.uk_full_build_cli as support  # noqa: E402
+from microcosm.build import staging_dataset
 from test_support.microcosm_build.uk_full_build_cli import *
 
 
@@ -1293,16 +1295,6 @@ def _drive_epochs(args, telemetry, epochs: int = 2) -> None:
         )
 
 
-def _remote_hub(monkeypatch, **kwargs):
-    from microcosm.build.uk_runtime import rowwise_staging
-    from test_support.microcosm_build.uk_rowwise_candidate import _FakeHub
-
-    hub = _FakeHub(**kwargs)
-    monkeypatch.setattr(rowwise_staging, "_hub_api", lambda: hub)
-    monkeypatch.setattr(rowwise_staging, "_hub_token", lambda: "hf_test_token")
-    return hub
-
-
 def test_no_staging_records_both_opt_outs(tmp_path, monkeypatch):
     pytest.importorskip("tables")
     status, out = run_dense_main(tmp_path, monkeypatch, staging="--no-staging")
@@ -1437,7 +1429,7 @@ def test_telemetry_content_refusal_never_aborts_the_solve(
 
 
 def test_remote_staging_uploads_telemetry_and_the_bundle_in_one_commit(
-    tmp_path, monkeypatch, capsys
+    tmp_path, monkeypatch, capsys, fake_telemetry_emitters
 ):
     pytest.importorskip("tables")
     hub = _remote_hub(monkeypatch)
@@ -1455,7 +1447,9 @@ def test_remote_staging_uploads_telemetry_and_the_bundle_in_one_commit(
     manifest = json.loads((out / cli.MANIFEST_FILENAME).read_text())
 
     # Telemetry went to runs/<run_id>/ of the staging repository, artifacts
-    # included, under the fixed prefix and nothing else.
+    # included, under the fixed prefix and nothing else. The build's emitter
+    # committed it: the build itself uploaded nothing to the Hub.
+    assert hub.uploads == []
     telemetry_paths = hub.paths("policyengine/populace-uk-staging")
     assert telemetry_paths == sorted(
         f"runs/{run_id}/{name}"
@@ -1522,6 +1516,55 @@ def test_remote_staging_uploads_telemetry_and_the_bundle_in_one_commit(
     assert "dataset_staged" in rows[0].phases_reached
     assert rows[0].disposition == "iterating"
 
+    # The build handed the bundle to its own emitter: every file by path,
+    # with its role, and with the SHA-256 and size of the bytes committed.
+    (client,) = [emitter.client for emitter in fake_telemetry_emitters]
+    (request,) = client.bundle_requests
+    assert (request.repository, request.run_id, request.prefix) == (
+        "policyengine/populace-uk-private",
+        run_id,
+        "staged",
+    )
+    from microcosm.build.staging_dataset import output_role
+
+    roles = {item.name: item.role for item in request.files}
+    assert roles == {
+        **{
+            Path(entry["path"]).name: output_role(key)
+            for key, entry in manifest["outputs"].items()
+        },
+        cli.MANIFEST_FILENAME: "build_manifest",
+        "staged_manifest.json": "staged_manifest",
+        "sha256sums.txt": "checksums",
+    }
+    assert roles[dataset_name] == "dataset"
+    for item in request.files:
+        assert Path(item.local_path) == out / item.name
+        committed = hub.files[
+            ("policyengine/populace-uk-private", f"staged/{run_id}/{item.name}")
+        ]
+        assert (item.sha256, item.bytes) == (
+            hashlib.sha256(committed).hexdigest(),
+            len(committed),
+        )
+    # The files the build rewrote after staging were all copied at hand-over.
+    copied = set(next(iter(client.copied_bundle_files.values())))
+    assert {cli.MANIFEST_FILENAME, "sha256sums.txt"} <= copied
+    # The manifest names the hand-over, so a re-stage can ask for its outcome.
+    assert manifest["staged_dataset_handover"] == {
+        "handover_id": request.handover_id(),
+        "repository": "policyengine/populace-uk-private",
+        "run_id": run_id,
+        "run_dir": str(out.resolve()),
+        "files": staged["files"],
+    }
+    # What the build recorded in its staging run, which re-stages keep.
+    assert manifest["staged_dataset_at_build"] == {
+        "mode": "local_and_remote",
+        "status": "uploaded",
+        "error_code": None,
+    }
+
     def sums_verify() -> None:
         for line in (out / "sha256sums.txt").read_text().splitlines():
             digest, name = line.split("  ")
@@ -1531,7 +1574,7 @@ def test_remote_staging_uploads_telemetry_and_the_bundle_in_one_commit(
     # uploaded touches nothing: the driver's record and revision stand, the
     # sidecars keep their bytes, and no commit is made.
     stager = load_tool("stage_uk_rowwise_candidate")
-    monkeypatch.setattr(stager, "_hub_api", lambda: hub)
+    monkeypatch.setattr(stager, "_start_bundle_emitter", _bundle_emitter_for(hub))
     sidecar_bytes = (out / "staged_manifest.json").read_bytes()
     capsys.readouterr()
     assert stager.main(["--run-dir", str(out)]) == 0
@@ -1620,6 +1663,366 @@ def test_remote_staging_failure_is_recorded_and_the_build_still_succeeds(
     ).is_file()
 
 
+def test_a_bundle_file_the_emitter_did_not_copy_stays_as_handed_over(
+    tmp_path, monkeypatch, capsys
+):
+    """The emitter uploads an uncopied file from disk later, so the build
+    leaves it unchanged: here the manifest keeps its handed-over bytes and
+    the sums still verify, and the delivery record is printed instead."""
+    pytest.importorskip("tables")
+    hub = _remote_hub(
+        monkeypatch, client_options={"never_copy": {cli.MANIFEST_FILENAME}}
+    )
+    status, out = run_dense_main(tmp_path, monkeypatch, staging=None)
+    assert status == 0
+    captured = capsys.readouterr()
+    run_id = single_run_id(out)
+    remote_manifest = hub.files[
+        ("policyengine/populace-uk-private", f"staged/{run_id}/{cli.MANIFEST_FILENAME}")
+    ]
+    assert (out / cli.MANIFEST_FILENAME).read_bytes() == remote_manifest
+    assert "staged_dataset" not in json.loads(remote_manifest)
+    assert f"{cli.MANIFEST_FILENAME} stays as handed over" in captured.err
+    printed = json.loads(captured.out[captured.out.index("{") :])
+    assert printed["staged_dataset"]["status"] == "uploaded"
+    for line in (out / "sha256sums.txt").read_text().splitlines():
+        digest, name = line.split("  ")
+        assert hashlib.sha256((out / name).read_bytes()).hexdigest() == digest, name
+    assert "dataset_staged" in spool_rows(out)[0].phases_reached
+
+
+def test_a_build_with_the_hub_switched_off_hands_its_emitter_no_bundle(
+    tmp_path, monkeypatch, capsys, fake_telemetry_emitters
+):
+    """The Modal runner sets ``HF_HUB_OFFLINE=1`` for every build it runs, so
+    a build there uploads nothing from its container: the bundle is verified,
+    its sidecars are written, and it is recorded as local, to be staged from
+    the workstation once the outputs are copied back."""
+    pytest.importorskip("tables")
+    monkeypatch.setenv("HF_HUB_OFFLINE", "1")
+    hub = _remote_hub(monkeypatch)
+    status, out = run_dense_main(tmp_path, monkeypatch, staging=None)
+    assert status == 0
+    (client,) = [emitter.client for emitter in fake_telemetry_emitters]
+    assert "stage_dataset_bundle" not in client.calls
+    assert "check_write_access" not in client.calls
+    assert hub.paths("policyengine/populace-uk-private") == []
+    staged = json.loads((out / cli.MANIFEST_FILENAME).read_text())["staged_dataset"]
+    assert (staged["mode"], staged["status"], staged["repository"]) == (
+        "local_only",
+        "skipped",
+        None,
+    )
+    assert staged["prefix"] == f"staged/{single_run_id(out)}"
+    assert (out / "staged_manifest.json").is_file()
+    assert (out / "sha256sums.txt").is_file()
+    assert "HF_HUB_OFFLINE" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize(
+    ("error_code", "says", "never_says"),
+    [
+        ("UPLOAD_PENDING", "keeps the bundle queued", "stay local"),
+        ("CREDENTIAL_MISSING", "keeps the bundle queued", "stay local"),
+        ("REMOTE_DIFFERS", "another run id", "can be re-staged"),
+        ("EMITTER_UNAVAILABLE", "stay local", "queued"),
+        ("RECEIPT_UNRECOGNIZED", "stay local", "queued"),
+    ],
+)
+def test_the_staged_dataset_status_says_where_a_failed_bundle_is(
+    error_code, says, never_says
+):
+    from microcosm.build.uk_runtime import rowwise_staging
+
+    line = rowwise_staging._staged_dataset_line(
+        {
+            "status": "failed",
+            "error_code": error_code,
+            "repository": "policyengine/populace-uk-private",
+            "prefix": "staged/uk-attempt",
+            "mode": "local_and_remote",
+            "revision": None,
+        }
+    )
+    assert error_code in line
+    assert says in line
+    assert never_says not in line
+
+
+def test_the_restage_tool_hands_the_bundle_to_its_own_emitter(
+    tmp_path, monkeypatch, capsys
+):
+    """The re-stage command starts a short-lived emitter, refuses a stage
+    that emitter could not complete, and always closes it."""
+    from test_support.microcosm_build.emitter import FakeEmitterClient
+    from test_support.microcosm_build.uk_rowwise_candidate import _FakeHub
+
+    run_dir = tmp_path / "run"
+    run_dir.mkdir()
+    dataset = run_dir / "microcosm_uk_2024_25_local.h5"
+    dataset.write_bytes(b"synthetic rows")
+    manifest = {
+        "outputs": {
+            "dataset": {
+                "path": str(dataset),
+                "sha256": hashlib.sha256(dataset.read_bytes()).hexdigest(),
+                "bytes": dataset.stat().st_size,
+            }
+        }
+    }
+    (run_dir / cli.MANIFEST_FILENAME).write_text(json.dumps(manifest))
+    stager = load_tool("stage_uk_rowwise_candidate")
+    argv = ["--run-dir", str(run_dir), "--run-id", "uk-attempt"]
+    started: list[FakeEmitterClient] = []
+
+    def emitter(**options):
+        def start():
+            started.append(FakeEmitterClient(**options))
+            return started[-1]
+
+        return start
+
+    monkeypatch.setenv("HF_HUB_OFFLINE", "1")
+    monkeypatch.setattr(stager, "_start_bundle_emitter", emitter())
+    with pytest.raises(SystemExit, match="HF_HUB_OFFLINE"):
+        stager.main(argv)
+    assert started == []
+    monkeypatch.delenv("HF_HUB_OFFLINE")
+
+    read_only = {
+        "status": "checked",
+        "credential": "present",
+        "reachable": True,
+        "can_write": False,
+        "error_type": None,
+    }
+    monkeypatch.setattr(
+        stager, "_start_bundle_emitter", emitter(write_access=read_only)
+    )
+    with pytest.raises(SystemExit, match="read-only"):
+        stager.main(argv)
+    assert started[-1].closed and started[-1].bundle_requests == []
+
+    hub = _FakeHub()
+    monkeypatch.setattr(
+        stager, "_start_bundle_emitter", emitter(hub_files=hub.files, hub_api=hub)
+    )
+    waits: list[float] = []
+    real_stage_bundle = stager.stage_bundle
+
+    def stage_bundle(*args, **options):
+        waits.append(options["wait_seconds"])
+        return real_stage_bundle(*args, **options)
+
+    monkeypatch.setattr(stager, "stage_bundle", stage_bundle)
+    capsys.readouterr()
+    assert stager.main(argv) == 0
+    # The command waits longer than a build: finishing the upload is its job.
+    assert waits == [staging_dataset.RESTAGE_WAIT_SECONDS]
+    assert started[-1].closed
+    (request,) = started[-1].bundle_requests
+    assert {item.name: item.role for item in request.files}[dataset.name] == "dataset"
+    staged = json.loads((run_dir / cli.MANIFEST_FILENAME).read_text())["staged_dataset"]
+    assert staged["status"] == "uploaded" and staged["revision"] == hub.sha
+    assert json.loads(capsys.readouterr().out) == staged
+    for line in (run_dir / "sha256sums.txt").read_text().splitlines():
+        digest, name = line.split("  ")
+        assert hashlib.sha256((run_dir / name).read_bytes()).hexdigest() == digest
+
+
+def _pending_dense_build(tmp_path, monkeypatch, queue):
+    """A remote dense build whose emitter takes the hand-over and stops.
+
+    The emitter leaves the H5 on disk, as it does a real one of hundreds of
+    megabytes, and uploads it from there.
+    """
+    hub = _remote_hub(
+        monkeypatch,
+        client_options={
+            "queue": queue,
+            "deliver": False,
+            "answer_receipts": False,
+            "never_copy": {f"{STEM}.h5"},
+        },
+    )
+    status, out = run_dense_main(tmp_path, monkeypatch, staging=None)
+    assert status == 0
+    staged = json.loads((out / cli.MANIFEST_FILENAME).read_text())["staged_dataset"]
+    assert staged["error_code"] == "UPLOAD_PENDING"
+    return hub, out
+
+
+def test_a_moved_run_directory_is_handed_over_again_not_resumed(
+    tmp_path, monkeypatch, capsys
+):
+    """The build's queued job names its files at their old paths and can
+    never finish there, so the re-stage hands the moved directory over as a
+    new job; the emitter keeps retrying the old one."""
+    from test_support.microcosm_build.emitter import (
+        FakeEmitterClient,
+        FakeHandoverQueue,
+    )
+
+    queue = FakeHandoverQueue()
+    hub, out = _pending_dense_build(tmp_path, monkeypatch, queue)
+    (first,) = queue.jobs
+    moved = tmp_path / "moved"
+    shutil.move(str(out), str(moved))
+    stager = load_tool("stage_uk_rowwise_candidate")
+    monkeypatch.setattr(
+        stager,
+        "_start_bundle_emitter",
+        lambda: FakeEmitterClient(hub_files=hub.files, hub_api=hub, queue=queue),
+    )
+    capsys.readouterr()
+    assert stager.main(["--run-dir", str(moved)]) == 0
+    manifest = json.loads((moved / cli.MANIFEST_FILENAME).read_text())
+    assert manifest["staged_dataset"]["status"] == "uploaded"
+    assert manifest["staged_dataset"]["revision"] == hub.sha
+    record = manifest["staged_dataset_handover"]
+    assert record["handover_id"] != first
+    assert record["run_dir"] == str(moved.resolve())
+    assert manifest["staged_dataset_at_build"]["error_code"] == "UPLOAD_PENDING"
+    assert len(hub.commits) == 1
+    assert queue.jobs[first]["receipt"]["status"] == "pending"
+
+
+def test_the_restage_note_names_the_code_the_build_recorded(
+    tmp_path, monkeypatch, capsys
+):
+    """An earlier re-stage replaced the manifest's code; the build's staging
+    run and Logbook row still hold the build's own record."""
+    from test_support.microcosm_build.emitter import (
+        FakeEmitterClient,
+        FakeHandoverQueue,
+    )
+
+    queue = FakeHandoverQueue()
+    hub, out = _pending_dense_build(tmp_path, monkeypatch, queue)
+    stager = load_tool("stage_uk_rowwise_candidate")
+    # A first re-stage, by a user whose emitter finds no credential.
+    monkeypatch.setattr(
+        stager,
+        "_start_bundle_emitter",
+        lambda: FakeEmitterClient(hub_files=hub.files, queue=queue),
+    )
+    assert stager.main(["--run-dir", str(out)]) == 1
+    staged = json.loads((out / cli.MANIFEST_FILENAME).read_text())["staged_dataset"]
+    assert staged["error_code"] == "CREDENTIAL_MISSING"
+    monkeypatch.setattr(
+        stager,
+        "_start_bundle_emitter",
+        lambda: FakeEmitterClient(hub_files=hub.files, hub_api=hub, queue=queue),
+    )
+    capsys.readouterr()
+    assert stager.main(["--run-dir", str(out), "--wait-seconds", "60"]) == 0
+    err = capsys.readouterr().err
+    assert "still records failed (UPLOAD_PENDING)" in err
+    assert "CREDENTIAL_MISSING" not in err
+    assert "phase dataset_stage_failed" in err
+
+
+def _landed_dense_build(tmp_path, monkeypatch):
+    hub = _remote_hub(monkeypatch)
+    status, out = run_dense_main(tmp_path, monkeypatch, staging=None)
+    assert status == 0
+    manifest = json.loads((out / cli.MANIFEST_FILENAME).read_text())
+    assert manifest["staged_dataset"]["status"] == "uploaded"
+    return hub, out
+
+
+@pytest.mark.parametrize(
+    ("case", "expected_status"),
+    [
+        ("an output edited after landing", 1),
+        ("a stage to another repository that fails", 1),
+        ("a local-only re-stage", 0),
+    ],
+)
+def test_a_landed_record_stays_and_a_failed_attempt_still_exits_1(
+    tmp_path, monkeypatch, capsys, case, expected_status
+):
+    """A landed record is never replaced, but only an attempt that changed
+    nothing exits 0: a directory whose bytes differ from the remote bundle, or
+    a stage elsewhere that fails, is a failure the operator must see."""
+    from test_support.microcosm_build.emitter import FakeEmitterClient
+
+    pytest.importorskip("tables")
+    hub, out = _landed_dense_build(tmp_path, monkeypatch)
+    manifest_path = out / cli.MANIFEST_FILENAME
+    landed = json.loads(manifest_path.read_text())["staged_dataset"]
+    stager = load_tool("stage_uk_rowwise_candidate")
+    argv = ["--run-dir", str(out), "--wait-seconds", "60"]
+    if case == "an output edited after landing":
+        _edit_an_output(out)
+        monkeypatch.setattr(stager, "_start_bundle_emitter", _bundle_emitter_for(hub))
+    elif case == "a stage to another repository that fails":
+        argv += ["--repo-id", "policyengine/another-private"]
+        monkeypatch.setattr(
+            stager,
+            "_start_bundle_emitter",
+            lambda: FakeEmitterClient(hub_files=hub.files),
+        )
+    else:
+        argv += ["--local-only"]
+    capsys.readouterr()
+    assert stager.main(argv) == expected_status
+    assert json.loads(manifest_path.read_text())["staged_dataset"] == landed
+    assert "record stays" in capsys.readouterr().err
+    assert len(hub.commits) == 1
+
+
+def test_the_restage_note_names_what_a_local_only_build_recorded(
+    tmp_path, monkeypatch, capsys
+):
+    """A build that kept its bundle local recorded a skipped stage and the
+    phase dataset_stage_skipped; a re-stage's own failure never takes their
+    place in the note."""
+    from test_support.microcosm_build.emitter import (
+        FakeEmitterClient,
+        FakeHandoverQueue,
+    )
+    from test_support.microcosm_build.uk_rowwise_candidate import _FakeHub
+
+    pytest.importorskip("tables")
+    status, out = run_dense_main(tmp_path, monkeypatch, staging="--staging-local-only")
+    assert status == 0
+    hub = _FakeHub()
+    queue = FakeHandoverQueue()
+    stager = load_tool("stage_uk_rowwise_candidate")
+    # A first re-stage, by a user whose emitter finds no credential.
+    monkeypatch.setattr(
+        stager,
+        "_start_bundle_emitter",
+        lambda: FakeEmitterClient(hub_files=hub.files, queue=queue),
+    )
+    assert stager.main(["--run-dir", str(out), "--wait-seconds", "0"]) == 1
+    monkeypatch.setattr(
+        stager,
+        "_start_bundle_emitter",
+        lambda: FakeEmitterClient(hub_files=hub.files, hub_api=hub, queue=queue),
+    )
+    capsys.readouterr()
+    assert stager.main(["--run-dir", str(out), "--wait-seconds", "60"]) == 0
+    err = capsys.readouterr().err
+    assert "still records skipped" in err
+    assert "phase dataset_stage_skipped" in err
+    assert "CREDENTIAL_MISSING" not in err and "dataset_stage_failed" not in err
+
+
+def test_the_restage_tool_waits_three_hours_unless_told_otherwise():
+    """At 2 Mbit/s a 2.4 GB bundle takes about 2 hours 40 minutes."""
+    stager = load_tool("stage_uk_rowwise_candidate")
+    assert staging_dataset.RESTAGE_WAIT_SECONDS == 10_800.0
+    assert staging_dataset.RESTAGE_WAIT_SECONDS > (2.4e9 * 8 / 2e6)
+    parse = stager._parse_args
+    assert parse(["--run-dir", "run"]).wait_seconds == 10_800.0
+    assert parse(["--run-dir", "run", "--wait-seconds", "60"]).wait_seconds == 60.0
+    for value in ("-1", "nan", "soon"):
+        with pytest.raises(SystemExit):
+            parse(["--run-dir", "run", "--wait-seconds", value])
+
+
 def test_a_failed_refresh_after_a_passed_read_back_still_records_the_attempt(
     tmp_path, monkeypatch, capsys
 ):
@@ -1631,27 +2034,28 @@ def test_a_failed_refresh_after_a_passed_read_back_still_records_the_attempt(
     """
 
     pytest.importorskip("tables")
-    from microcosm.build.uk_runtime import rowwise_staging
-    from test_support.microcosm_build.uk_rowwise_candidate import _FakeHub
+    from test_support.microcosm_build import telemetry as telemetry_support
+    from test_support.microcosm_build.emitter import FakeEmitterClient
 
-    class RefreshFailsHub(_FakeHub):
+    class RefreshFails(FakeEmitterClient):
+        """The emitter stops accepting run files once read-back has passed."""
+
         read_back_started = False
 
-        def hf_hub_download(self, *, repo_id, filename, repo_type, **kwargs):
-            if filename.startswith("runs/"):
-                self.read_back_started = True
-            return super().hf_hub_download(
-                repo_id=repo_id, filename=filename, repo_type=repo_type, **kwargs
+        def read_back_run_files(self, repository, run_id, *, wait_seconds=30.0):
+            answer = super().read_back_run_files(
+                repository, run_id, wait_seconds=wait_seconds
             )
+            RefreshFails.read_back_started = True
+            self.accept_run_files = False
+            return answer
 
-        def upload_file(self, **kwargs):
-            if self.read_back_started:
-                raise RuntimeError("503 token=do-not-record")
-            super().upload_file(**kwargs)
-
-    hub = RefreshFailsHub()
-    monkeypatch.setattr(rowwise_staging, "_hub_api", lambda: hub)
-    monkeypatch.setattr(rowwise_staging, "_hub_token", lambda: "hf_test_token")
+    hub = _remote_hub(monkeypatch)
+    monkeypatch.setattr(
+        telemetry_support,
+        "client_factory",
+        lambda: RefreshFails(hub_files=hub.files, hub_api=hub),
+    )
     status, out = run_dense_main(
         tmp_path,
         monkeypatch,
@@ -1662,10 +2066,9 @@ def test_a_failed_refresh_after_a_passed_read_back_still_records_the_attempt(
     )
 
     assert status == 0
-    assert hub.read_back_started
+    assert RefreshFails.read_back_started
     assert not (out / "failure.json").exists()
-    err = capsys.readouterr().err
-    assert "staging upload failed" in err and "do-not-record" not in err
+    assert "staging hand-over failed" in capsys.readouterr().err
     delivery = json.loads((out / cli.MANIFEST_FILENAME).read_text())["staging_delivery"]
     assert delivery["read_back"] == "passed"
     assert delivery["last_error_code"] is None
@@ -3366,3 +3769,39 @@ def test_the_orrery_publication_is_off_unless_asked(tmp_path):
     assert not publication_enabled(arguments(tmp_path))
     assert not publication_enabled(arguments(tmp_path, "--no-publish-orrery"))
     assert publication_enabled(arguments(tmp_path, "--publish-orrery"))
+
+
+def test_a_dense_build_that_must_send_telemetry_stops_before_any_input_without_an_emitter(
+    tmp_path, monkeypatch
+):
+    """MICROCOSM_TELEMETRY_REQUIRED=1 and no emitter: the full build stops first.
+
+    It starts its emitter after reading and checking its arguments, so with
+    the real adapter (not the shared fixture's in-memory one) it stops before
+    its attempt reads an input or writes anything.
+    """
+    from microcosm.build import telemetry_emitter
+    from test_support.microcosm_build.telemetry import ADAPTER_START
+
+    monkeypatch.setattr(
+        telemetry_emitter.LocalTelemetryEmitter, "start", classmethod(ADAPTER_START)
+    )
+    monkeypatch.setenv("MICROCOSM_TELEMETRY_REQUIRED", "1")
+    monkeypatch.setenv(
+        "MICROCOSM_EMITTER_COMMAND", str(tmp_path / "missing" / "microcosm-emitter")
+    )
+    args = arguments(tmp_path)
+    monkeypatch.setattr(cli, "parse_args", lambda argv: args)
+
+    def went_on(*positional, **named):
+        pytest.fail("the build went on without the emitter it must use")
+
+    # The build's next step after starting its emitter.
+    monkeypatch.setattr(cli, "_dense_attempt", went_on)
+    before = sorted(tmp_path.rglob("*"))
+
+    with pytest.raises(telemetry_emitter.TelemetryRequiredError) as raised:
+        cli.main([])
+
+    assert raised.value.reason == "command_not_found"
+    assert sorted(tmp_path.rglob("*")) == before

@@ -6,7 +6,12 @@ it moves the node key and authenticates nothing. The kernels never load a
 country package. ``unit_rule`` is the resolved :class:`BenefitUnitRule`
 representation, rather than an unresolved country proposal. ``mapping`` is a
 :class:`ConceptMapping` representation; ``rulespec_paths`` selects its
-bindings and the closure's defaults.
+bindings and the closure's defaults. With a closure, each selected path names
+a module the closure lists, which may bind nothing, since a module may default
+every input it reads; without one, each names a module the mapping binds.
+``concepts.encode@1`` writes the defaults of the mapping's ``person_role``
+entities on the person table, beside their bindings, and the group kernels
+refuse such an entity.
 
 The encode and scenario kernels derive no take-up draws: they refuse
 ``take_up_rates``, so the encoder refuses any selected take-up-threshold
@@ -54,9 +59,11 @@ from microcosm.frame.input_closure import (
     resolve_judgments,
 )
 from microcosm.frame.unit_construction import (
+    MULTI_UNIT_RULE_FORMAT,
     BenefitUnitRule,
-    benefit_unit_attributes,
+    MultiUnitRule,
     benefit_unit_membership,
+    declared_unit_attributes,
     units_per_household,
 )
 from microcosm.graph import (
@@ -138,8 +145,11 @@ def _document(context: KernelContext, ref: str, name: str):
     return canonical_document_param(context, ref, name)
 
 
-def _rule(context: KernelContext, ref: str) -> BenefitUnitRule:
-    return BenefitUnitRule.from_spec(_document(context, ref, "unit_rule"))
+def _unit_declaration(context: KernelContext, ref: str) -> MultiUnitRule:
+    document = _document(context, ref, "unit_rule")
+    if document.get("format") == MULTI_UNIT_RULE_FORMAT:
+        return MultiUnitRule.from_dict(document)
+    return MultiUnitRule.from_benefit_unit(BenefitUnitRule.from_spec(document))
 
 
 def _paths(context: KernelContext, ref: str) -> tuple[str, ...] | None:
@@ -157,19 +167,30 @@ def _paths(context: KernelContext, ref: str) -> tuple[str, ...] | None:
 
 
 def _full_mapping(context: KernelContext, ref: str) -> ConceptMapping:
-    """The whole declared mapping, after checking its selected paths exist."""
+    """The whole declared mapping, after checking its selected paths exist.
+
+    Each selected path names a module the mapping binds or the closure lists.
+    With a closure, :func:`_closure` also refuses a path the closure lacks,
+    so there each path names a module the closure lists, which may bind
+    nothing: a module may default every input it reads.
+    """
     mapping = ConceptMapping.from_dict(_document(context, ref, "mapping"))
     paths = _paths(context, ref)
     if paths is not None:
-        unknown = set(paths) - {binding.module for binding in mapping.bindings}
+        known = {binding.module for binding in mapping.bindings}
+        if "closure" in context.params:
+            closure = InputClosure.from_dict(_document(context, ref, "closure"))
+            known |= set(closure.modules)
+        unknown = set(paths) - known
         if unknown:
             raise ValueError(f"{ref} has unknown mapping paths {sorted(unknown)}.")
     return mapping
 
 
-def _mapping(context: KernelContext, ref: str) -> ConceptMapping:
-    """The mapping restricted to the selected paths, for person encoding."""
-    mapping = _full_mapping(context, ref)
+def _mapping(
+    context: KernelContext, ref: str, mapping: ConceptMapping
+) -> ConceptMapping:
+    """``mapping`` restricted to the selected paths, for person encoding."""
     paths = _paths(context, ref)
     if paths is None:
         return mapping
@@ -209,20 +230,30 @@ def _defaults(
     ref: str,
     tables: Mapping[str, pd.DataFrame],
     closure: InputClosure | None,
-    engine_entities: Mapping[str, str],
+    engine_entities: Mapping[str, tuple[str, ...]],
 ) -> dict[str, pd.DataFrame]:
+    """``tables`` with the closure's defaults for the selected paths.
+
+    ``engine_entities`` maps each frame entity to the engine entities whose
+    inputs its table holds. Their defaults merge into one set per table, so
+    two defaults that name one input must agree.
+    """
     out = dict(tables)
     if closure is None:
         return out
-    for frame_entity, engine_entity in engine_entities.items():
+    for frame_entity, entities in engine_entities.items():
         defaults: dict[str, bool | int | float] = {}
         for path in _paths(context, ref):
-            for name, value in closure.defaults(path, engine_entity).items():
-                if name in defaults and (
-                    type(defaults[name]) is not type(value) or defaults[name] != value
-                ):
-                    raise ValueError(f"{ref} has conflicting defaults for {name!r}.")
-                defaults[name] = value
+            for engine_entity in entities:
+                for name, value in closure.defaults(path, engine_entity).items():
+                    if name in defaults and (
+                        type(defaults[name]) is not type(value)
+                        or defaults[name] != value
+                    ):
+                        raise ValueError(
+                            f"{ref} has conflicting defaults for {name!r}."
+                        )
+                    defaults[name] = value
         out[frame_entity] = apply_defaults(out[frame_entity], defaults)
     return out
 
@@ -314,31 +345,35 @@ class UnitAttributesKernel(_ColumnKernel):
         require_params(
             context, self.ref, required=frozenset({"unit_rule", "unit_rule_sha256"})
         )
-        rule = _rule(context, self.ref)
-        tables = _whole_tables(context, self.ref, ("person", "household", rule.entity))
-        person, household, units = (
-            tables["person"],
-            tables["household"],
-            tables[rule.entity],
-        )
-        attributes = benefit_unit_attributes(
-            person, units, person[rule.membership_column], rule
-        )
-        # These are aliases used by input-bridge declarations, with the same
-        # adult composition as the wrapped function's is_couple attribute.
-        attributes["is_partnered"] = attributes["is_couple"]
-        attributes["is_single"] = ~attributes["is_couple"]
+        declaration = _unit_declaration(context, self.ref)
+        entities = tuple(item.entity for item in declaration.units)
+        tables = _whole_tables(context, self.ref, ("person", "household", *entities))
+        person, household = tables["person"], tables["household"]
         household_attributes = household.loc[:, ["household_id"]].copy()
-        household_attributes[f"n_{rule.entity}_units"] = units_per_household(
-            household, units, rule
-        )
+        person_attributes = person.loc[:, ["person_id"]].copy()
+        outputs = {"household": household_attributes, "person": person_attributes}
+        counts = {}
+        for item in declaration.units:
+            rule, units = item.rule, tables[item.entity]
+            attributes = declared_unit_attributes(
+                person, units, person[rule.membership_column], item
+            )
+            attributes["is_partnered"] = attributes["is_couple"]
+            attributes["is_single"] = ~attributes["is_couple"]
+            household_attributes[f"n_{rule.entity}_units"] = units_per_household(
+                household, units, rule
+            )
+            outputs[item.entity] = attributes
+            membership = benefit_unit_membership(
+                person, units, person[rule.membership_column], rule
+            )
+            person_attributes[f"{item.entity}_role"] = membership.person_role
+            counts[item.entity] = len(units)
         return KernelResult(
-            columns=_columns(
-                context,
-                self.ref,
-                {rule.entity: attributes, "household": household_attributes},
-            ),
-            receipt={"entity": rule.entity, "n_units": len(units)},
+            columns=_columns(context, self.ref, outputs),
+            receipt={"entity": entities[0], "n_units": counts[entities[0]]}
+            if len(entities) == 1
+            else {"units": counts},
         )
 
 
@@ -390,17 +425,25 @@ class ConceptsEncodeKernel(_ColumnKernel):
             context, self.ref, required=_ENCODE_REQUIRED, optional=_ENCODE_OPTIONAL
         )
         tables = _whole_tables(context, self.ref, ("person", "household"))
-        mapping = _mapping(context, self.ref)
+        full = _full_mapping(context, self.ref)
+        mapping = _mapping(context, self.ref, full)
         encoded = mapping.encode(
             tables,
             shares=_optional_resource_document(context, self.ref, "shares"),
         )
+        # A person_role entity (Axiom's Child) has one row per person in the
+        # role, so its defaults go on the person table, as its bindings do.
+        # The whole mapping names these entities: a selected module may
+        # default every input of an entity that only other modules bind.
+        # Only person_role bindings add an entity here: this kernel writes no
+        # defaults for an engine entity outside the correspondence that no
+        # person_role binding names, even when the closure defaults its inputs.
+        entities = {
+            frame: (engine,) for frame, engine in full.entity_correspondence.items()
+        }
+        entities["person"] += full.person_role_entities()
         outputs = _defaults(
-            context,
-            self.ref,
-            encoded.tables,
-            _closure(context, self.ref),
-            mapping.entity_correspondence,
+            context, self.ref, encoded.tables, _closure(context, self.ref), entities
         )
         return KernelResult(
             columns=_columns(context, self.ref, outputs),
@@ -411,15 +454,38 @@ class ConceptsEncodeKernel(_ColumnKernel):
 _GROUP_REQUIRED = _ENCODE_REQUIRED | frozenset(
     {"unit_rule", "unit_rule_sha256", "engine_entity"}
 )
-_GROUP_OPTIONAL = _ENCODE_OPTIONAL | frozenset({"knobs", "scenario_sha256"})
+_GROUP_OPTIONAL = _ENCODE_OPTIONAL | frozenset(
+    {"knobs", "scenario_sha256", "unit_entity"}
+)
 
 
 def _group_inputs(context: KernelContext, ref: str):
-    rule = _rule(context, ref)
-    tables = _whole_tables(context, ref, ("person", "household", rule.entity))
     # The whole mapping: encode_groups selects modules itself and checks
     # state bindings against every concept binding's input name.
     mapping = _full_mapping(context, ref)
+    entity = string_param(context, ref, "engine_entity")
+    # concepts.encode@1 writes a person_role entity's bindings and defaults
+    # on the person table. Here its defaults would land on a unit table too.
+    if entity in mapping.person_role_entities():
+        raise ValueError(
+            f"{ref} engine_entity {entity!r} holds persons in a role, not built "
+            "units; concepts.encode@1 writes its inputs on the person table."
+        )
+    declaration = _unit_declaration(context, ref)
+    physical = context.params.get("unit_entity")
+    if physical is None:
+        if len(declaration.units) != 1:
+            raise ValueError(
+                f"{ref} requires unit_entity when several units are declared."
+            )
+        matches = list(declaration.units)
+    else:
+        physical = string_param(context, ref, "unit_entity")
+        matches = [item for item in declaration.units if item.entity == physical]
+    if len(matches) != 1:
+        raise ValueError(f"{ref} needs exactly one declared unit for {physical!r}.")
+    rule = matches[0].rule
+    tables = _whole_tables(context, ref, ("person", "household", rule.entity))
     closure = _closure(context, ref)
     knobs = _optional_document(context, ref, "knobs")
     if knobs and closure is None:
@@ -428,7 +494,6 @@ def _group_inputs(context: KernelContext, ref: str):
         sha256_param(context, ref, "scenario_sha256")
     elif "scenario_sha256" in context.params:
         sha256_param(context, ref, "scenario_sha256")
-    entity = string_param(context, ref, "engine_entity")
     membership = benefit_unit_membership(
         tables["person"],
         tables[rule.entity],
@@ -443,7 +508,7 @@ def _group_inputs(context: KernelContext, ref: str):
         state_bindings=() if closure is None else closure.state_bindings(),
         shares=_optional_resource_document(context, ref, "shares"),
     )
-    outputs = _defaults(context, ref, encoded.tables, closure, {rule.entity: entity})
+    outputs = _defaults(context, ref, encoded.tables, closure, {rule.entity: (entity,)})
     return mapping, encoded, outputs
 
 

@@ -1,4 +1,5 @@
 import json
+from copy import deepcopy
 from dataclasses import asdict, replace
 
 import pytest
@@ -12,6 +13,7 @@ from microcosm.build.ledger_artifact import (
     load_ledger_consumer_artifact,
 )
 from microcosm.build.ledger_targets import (
+    LedgerHierarchyMetadataError,
     LedgerTargetMapping,
     LedgerTargetReference,
     _shift_period_years,
@@ -36,6 +38,12 @@ from microcosm.calibrate import (
     HierarchyNode,
     TargetRegistry,
     TargetSpec,
+)
+from test_support.microcosm_build.chronicle_feed import (
+    MALFORMED_PACKAGE_DIMENSION_VALUE_LABELS,
+    PACKAGE_DIMENSION_VALUE_LABELS,
+    chronicle_v4_fact_rows,
+    chronicle_v5_fact_rows,
 )
 
 _FISCAL_MONTHS = [f"2025-{month:02d}" for month in range(4, 13)] + [
@@ -3903,6 +3911,153 @@ def test_hierarchy_rejects_conflicting_chronicle_dimension_value_labels() -> Non
         )
 
 
+_AGI_DIMENSION = "us:statutes/26/62#adjusted_gross_income"
+
+
+def _chronicle_agi_row(rows):
+    (row,) = (
+        row
+        for row in rows
+        if row["observed_measure"]["source_measure_id"] == "adjusted_gross_income"
+    )
+    return row
+
+
+def _strings(value):
+    if isinstance(value, str):
+        yield value
+    elif isinstance(value, dict):
+        for key, child in value.items():
+            yield from _strings(key)
+            yield from _strings(child)
+    elif isinstance(value, (list, tuple)):
+        for child in value:
+            yield from _strings(child)
+
+
+def _compiled_agi_target(rows):
+    (spec,) = compile_ledger_target_references(
+        rows, [_exact_agi_reference()], country="us"
+    ).specs
+    assert spec.hierarchy is not None
+    return spec
+
+
+def test_chronicle_v5_fact_hierarchy_takes_chronicle_label_not_package_wording():
+    """Each value keeps Chronicle's one label (chronicle#377).
+
+    Chronicle's v5 sample row labels the AGI value ``all`` "All returns,
+    total" and keeps the IRS package's "All returns" in
+    ``package_dimension_value_labels``. The compiled target carries only
+    Chronicle's label.
+    """
+    rows = chronicle_v5_fact_rows()
+    v5_row = _chronicle_agi_row(rows)
+    package_wording = v5_row[PACKAGE_DIMENSION_VALUE_LABELS][_AGI_DIMENSION]["all"]
+    chronicle_label = v5_row["dimension_value_labels"][_AGI_DIMENSION]["all"]
+    assert (package_wording, chronicle_label) == ("All returns", "All returns, total")
+
+    spec = _compiled_agi_target(rows)
+
+    groupby = spec.hierarchy.dimensions[0]
+    assert (groupby.id, groupby.value_id, groupby.value_label) == (
+        _AGI_DIMENSION,
+        "all",
+        chronicle_label,
+    )
+    assert spec.metadata["ledger_layout_groupby_value_label"] == chronicle_label
+    assert package_wording not in set(_strings(asdict(spec)))
+
+
+def test_chronicle_v4_fact_hierarchy_keeps_v4_label():
+    """A real v4 row still compiles, with the label its own v4 row carries.
+
+    Chronicle's sample row from just before chronicle#377 labels the AGI value
+    ``all`` "All returns" in ``dimension_value_labels`` and
+    ``layout.groupby_value_label``. The same fact as a v5 row compiles to the
+    same target except that label.
+    """
+    v4_rows = chronicle_v4_fact_rows()
+    v4_label = _chronicle_agi_row(v4_rows)["dimension_value_labels"][_AGI_DIMENSION][
+        "all"
+    ]
+    assert v4_label == "All returns"
+
+    v4_spec = _compiled_agi_target(v4_rows)
+    v5_spec = _compiled_agi_target(chronicle_v5_fact_rows())
+
+    groupby = v4_spec.hierarchy.dimensions[0]
+    assert (groupby.id, groupby.value_id, groupby.value_label) == (
+        _AGI_DIMENSION,
+        "all",
+        v4_label,
+    )
+    assert v4_spec.metadata["ledger_layout_groupby_value_label"] == v4_label
+    assert v4_spec.value == v5_spec.value
+    assert v4_spec.metadata["ledger_fact_key"] == v5_spec.metadata["ledger_fact_key"]
+    assert v5_spec.hierarchy.dimensions[0].value_label == "All returns, total"
+
+
+@pytest.mark.parametrize(
+    "malformed",
+    [value for _case, value in MALFORMED_PACKAGE_DIMENSION_VALUE_LABELS],
+    ids=[case for case, _value in MALFORMED_PACKAGE_DIMENSION_VALUE_LABELS],
+)
+def test_hierarchy_refuses_malformed_package_dimension_value_labels(
+    malformed,
+) -> None:
+    """A selected v5 fact's package wording must be shaped as the v5 schema says.
+
+    The v5 schema gives ``package_dimension_value_labels`` the shape it gives
+    ``dimension_value_labels``: dimension id, then value id, then non-empty
+    text. Compilation refuses any other shape.
+    """
+    rows = chronicle_v5_fact_rows()
+    _chronicle_agi_row(rows)[PACKAGE_DIMENSION_VALUE_LABELS] = deepcopy(malformed)
+
+    with pytest.raises(
+        LedgerHierarchyMetadataError, match="package_dimension_value_labels"
+    ):
+        compile_ledger_target_references(rows, [_exact_agi_reference()], country="us")
+
+
+def test_hierarchy_refuses_malformed_package_wording_under_an_unselected_dimension():
+    """Every entry is checked, not only the selected dimension's.
+
+    Microcosm reads ``dimension_value_labels`` only at the dimensions and
+    values a target selects; the package-wording check walks the whole field,
+    because nothing reads it at any one entry.
+    """
+    rows = chronicle_v5_fact_rows()
+    agi_row = _chronicle_agi_row(rows)
+    agi_row[PACKAGE_DIMENSION_VALUE_LABELS] = {
+        **agi_row[PACKAGE_DIMENSION_VALUE_LABELS],
+        "unselected.dimension": {"some_value": "   "},
+    }
+    assert "unselected.dimension" not in agi_row["dimensions"]
+
+    with pytest.raises(
+        LedgerHierarchyMetadataError,
+        match="dimension 'unselected.dimension' value 'some_value'",
+    ):
+        compile_ledger_target_references(rows, [_exact_agi_reference()], country="us")
+
+
+@pytest.mark.parametrize(
+    "empty",
+    [{}, {_AGI_DIMENSION: {}}],
+    ids=["no_dimensions", "dimension_without_values"],
+)
+def test_hierarchy_accepts_empty_package_dimension_value_labels(empty) -> None:
+    """The v5 schema accepts an empty object at either level, and so does Microcosm."""
+    rows = chronicle_v5_fact_rows()
+    _chronicle_agi_row(rows)[PACKAGE_DIMENSION_VALUE_LABELS] = deepcopy(empty)
+
+    spec = _compiled_agi_target(rows)
+
+    assert spec.hierarchy.dimensions[0].value_label == "All returns, total"
+
+
 def test_multi_fact_hierarchy_requires_explicit_microcosm_target_label() -> None:
     first = _consumer_fact_row(value=10.0)
     second = _consumer_fact_row(
@@ -5386,6 +5541,205 @@ def test__given_a_year_to_measure_map_outside_a_window__then_reference_refuses()
         )
 
 
+_EFO_EDITIONS = {
+    "march": ("EFO March 2026 detailed forecast tables: receipts", "2026_03"),
+    "october": ("EFO October 2026 detailed forecast tables: receipts", "2026_10"),
+}
+
+
+def _edition_fact(
+    *,
+    opening_year: int,
+    value: float,
+    edition: str,
+    concept: str = "obr.income_tax",
+    assertion: str = "observation",
+) -> dict:
+    # OBR's EFO since PolicyEngine/chronicle#397: each line and year keeps its
+    # latest edition's number, so a window's two years sit in two tables.
+    table, month = _EFO_EDITIONS[edition]
+    line = concept.removeprefix("obr.")
+    fact = _cy_window_fact(
+        key=f"{line}_{edition}_fy{opening_year}",
+        value=value,
+        opening_year=opening_year,
+        measure_id="amount",
+        assertion=assertion,
+        period_type="fiscal_year",
+    )
+    fact["source"] = {**fact["source"], "source_name": "obr", "source_table": table}
+    fact["observed_measure"] = {
+        **fact["observed_measure"],
+        "source_name": "obr",
+        "source_table": table,
+        "source_concept": concept,
+    }
+    fact["layout"] = {
+        **fact["layout"],
+        "record_set_id": f"obr.efo_{month}.receipts.{line}.fy{opening_year}",
+        "groupby_value_id": line,
+    }
+    return fact
+
+
+def _two_edition_facts() -> list[dict]:
+    return [
+        _edition_fact(opening_year=2024, value=305.9, edition="march"),
+        _edition_fact(opening_year=2025, value=329.3, edition="october"),
+        _edition_fact(
+            opening_year=2026,
+            value=365.4,
+            edition="october",
+            assertion="source_projection",
+        ),
+    ]
+
+
+_TWO_EDITION_SELECTOR = {
+    "source_name": "obr",
+    "source_concept": "obr.income_tax",
+    "geography_level": "country",
+    "geography_id": "0100000US",
+    "source_table_by_opening_year": {
+        "2024": _EFO_EDITIONS["march"][0],
+        "2025": _EFO_EDITIONS["october"][0],
+    },
+}
+
+
+def test__given_a_year_to_table_map__then_calendar_year_window_reads_two_editions_as_one_series() -> (
+    None
+):
+    # A stale March projection of FY2025-26 matches no entry of the map.
+    facts = [
+        *_two_edition_facts(),
+        _edition_fact(
+            opening_year=2025,
+            value=327.0,
+            edition="march",
+            assertion="source_projection",
+        ),
+    ]
+    registry = compile_ledger_target_references(
+        facts,
+        [_cy_window_reference(ledger_selector=_TWO_EDITION_SELECTOR)],
+        country="uk",
+    )
+
+    spec = registry.specs[0]
+    assert spec.value == pytest.approx(0.25 * 305.9 + 0.75 * 329.3)
+    assert spec.metadata["ledger_calendar_year_window_series"] == "1"
+    members = json.loads(spec.metadata["ledger_calendar_year_window_members"])
+    assert {year: member["fact_key"] for year, member in members.items()} == {
+        "2024": "ledger.aggregate_fact.v2:income_tax_march_fy2024",
+        "2025": "ledger.aggregate_fact.v2:income_tax_october_fy2025",
+    }
+    assert spec.metadata["ledger_resolved_assertion"] == "observation"
+
+
+def test__given_two_editions_without_the_table_map__then_calendar_year_window_refuses() -> (
+    None
+):
+    # Each edition's record set is its own series, so neither carries both years.
+    selector = {
+        key: value
+        for key, value in _TWO_EDITION_SELECTOR.items()
+        if key != "source_table_by_opening_year"
+    }
+
+    with pytest.raises(ValueError, match="from one series; found \\[2024, 2025\\]"):
+        compile_ledger_target_references(
+            _two_edition_facts(),
+            [_cy_window_reference(ledger_selector=selector)],
+            country="uk",
+        )
+
+
+def test__given_a_year_to_table_map__then_a_fact_matches_only_its_own_year() -> None:
+    march_2024, october_2025, october_2026 = _two_edition_facts()
+    march_2025 = _edition_fact(opening_year=2025, value=327.0, edition="march")
+
+    assert selector_field_is_supported("source_table_by_opening_year")
+    assert fact_matches_selector(march_2024, _TWO_EDITION_SELECTOR)
+    assert fact_matches_selector(october_2025, _TWO_EDITION_SELECTOR)
+    assert not fact_matches_selector(march_2025, _TWO_EDITION_SELECTOR)
+    assert not fact_matches_selector(october_2026, _TWO_EDITION_SELECTOR)
+
+
+def test__given_a_year_to_table_map_over_two_concepts__then_each_is_windowed_across_editions() -> (
+    None
+):
+    # OBR's two universal credit cells, inside and outside the welfare cap.
+    facts = [
+        _edition_fact(opening_year=year, value=value, edition=edition, concept=concept)
+        for concept, values in (
+            ("obr.universal_credit_in_cap", (40.0, 45.0)),
+            ("obr.universal_credit_outside_cap", (30.0, 33.0)),
+        )
+        for year, edition, value in zip(
+            (2024, 2025), ("march", "october"), values, strict=True
+        )
+    ]
+    reference = _cy_window_reference(
+        ledger_selector={
+            **_TWO_EDITION_SELECTOR,
+            "source_concept": [
+                "obr.universal_credit_in_cap",
+                "obr.universal_credit_outside_cap",
+            ],
+        }
+    )
+    registry = compile_ledger_target_references(facts, [reference], country="uk")
+
+    spec = registry.specs[0]
+    assert spec.value == pytest.approx(0.25 * (40.0 + 30.0) + 0.75 * (45.0 + 33.0))
+    assert spec.metadata["ledger_calendar_year_window_series"] == "2"
+
+
+@pytest.mark.parametrize(
+    ("overrides", "message"),
+    [
+        (
+            {"source_table": _EFO_EDITIONS["october"][0]},
+            "declares both 'source_table'",
+        ),
+        (
+            {
+                "source_table_by_opening_year": {
+                    "FY2024": _EFO_EDITIONS["march"][0],
+                    "2025": _EFO_EDITIONS["october"][0],
+                }
+            },
+            "four-digit opening year",
+        ),
+        ({"source_table_by_opening_year": {}}, "non-empty mapping"),
+        (
+            {
+                "source_measure_id_by_opening_year": {
+                    "2024": "amount",
+                    "2025": "amount",
+                }
+            },
+            "by measure or by table, not both",
+        ),
+    ],
+)
+def test__given_a_malformed_year_to_table_map__then_the_window_refuses(
+    overrides, message
+) -> None:
+    with pytest.raises(ValueError, match=message):
+        _cy_window_reference(ledger_selector={**_TWO_EDITION_SELECTOR, **overrides})
+
+
+def test__given_a_year_to_table_map_outside_a_window__then_reference_refuses() -> None:
+    with pytest.raises(
+        ValueError, match="composes the years of a calendar_year_window"
+    ):
+        _cy_window_reference(
+            ledger_selector=_TWO_EDITION_SELECTOR, value_operation="identity"
+        )
+
+
 @pytest.mark.parametrize(
     ("value", "normalized"),
     [
@@ -5764,6 +6118,40 @@ def test__given_a_window_and_a_pinned_quotient__then_the_window_is_translated() 
     # The window's latest year carries the identity; the operands only
     # translate it.
     assert metadata["ledger_aggregate_fact_key"] == "ledger.aggregate_fact.v2:fy2025"
+
+
+def test__given_a_year_to_table_map__then_the_scaled_window_reads_two_editions() -> (
+    None
+):
+    # The OBR's SDLT line since PolicyEngine/chronicle#397: FY2024-25 in the
+    # March edition, FY2025-26 on in October's.
+    facts = _window_ratio_facts()
+    for fact in facts[:3]:
+        year = fact["period"]["value"]
+        table, month = _EFO_EDITIONS["march" if year == 2024 else "october"]
+        fact["source"] = {**fact["source"], "source_table": table}
+        fact["observed_measure"] = {**fact["observed_measure"], "source_table": table}
+        fact["layout"] = {
+            **fact["layout"],
+            "record_set_id": f"obr.efo_{month}.receipts.sdlt.fy{year}",
+        }
+    reference = _window_ratio_reference(
+        ledger_selector={
+            "source_name": "irs_soi",
+            "source_measure_id": "total_tax_amount",
+            "geography_level": "country",
+            "geography_id": "0100000US",
+            "source_table_by_opening_year": {
+                "2024": _EFO_EDITIONS["march"][0],
+                "2025": _EFO_EDITIONS["october"][0],
+            },
+        }
+    )
+    registry = compile_ledger_target_references(facts, [reference], country="uk")
+
+    assert registry.specs[0].value == pytest.approx(
+        (0.25 * 304.0 + 0.75 * 329.0) * 60.0 / 80.0
+    )
 
 
 def test__given_a_complement_numerator__then_its_cells_come_off_the_universe() -> None:

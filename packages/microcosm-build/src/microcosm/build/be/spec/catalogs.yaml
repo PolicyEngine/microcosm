@@ -10,9 +10,8 @@ columns:
     domain: frame_identity
     public_stability: internal
   docs:
-    description: Non-monetary catalog only. Monetary columns arrive with the Belgian target
-      references, in the shared eur unit; no USD or placeholder money unit is used for
-      Belgian amounts.
+    description: Monetary columns use the shared eur unit; no USD or placeholder money unit
+      is used for Belgian amounts.
 - key: household.household_weight
   contract:
     entity: household
@@ -163,3 +162,32 @@ columns:
     nullable: false
     domain: target_assigned_geography
     public_stability: internal
+- key: person.employment_income
+  contract:
+    entity: person
+    dtype: float64
+    unit: eur
+    definition_period: year
+    vintage: vintage:be_target_2026
+    nullable: false
+    domain: donor_transported_money
+    public_stability: internal
+  docs:
+    description: Donor wages and salaries in euros of the 2026 policy year, converted once
+      from USD at the ECB annual reference rate for the donor year and then uprated (BE-MC3,
+      proposed pending d1902). No producer until B4's currency bridge. The FPB gross-wage
+      holdout in holdout_references.json measures it.
+- key: person.nonfarm_self_employment_income
+  contract:
+    entity: person
+    dtype: float64
+    unit: eur
+    definition_period: year
+    vintage: vintage:be_target_2026
+    nullable: false
+    domain: donor_transported_money
+    public_stability: internal
+  docs:
+    description: Donor non-farm self-employment profit in euros of the 2026 policy year, with
+      FX and uprating only (BE-MC3, proposed pending d1902). No producer until B4's currency
+      bridge. The FPB net mixed income reference in target_references.json measures it.

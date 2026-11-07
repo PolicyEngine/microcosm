@@ -32,7 +32,7 @@ import microcosm.frame.schema as schema_module
 import microcosm.frame.transport as transport_module
 import microcosm.frame.unit_construction as units_module
 import microcosm.frame.weights as weights_module
-from microcosm.frame import EntitySchema, Frame, WeightKind, Weights
+from microcosm.frame import Frame, WeightKind, Weights
 from microcosm.frame.concepts import (
     concept_for_column,
     concept_schema_sha256,
@@ -45,9 +45,8 @@ from microcosm.frame.transport import (
     read_populace_us_donor,
 )
 from microcosm.frame.unit_construction import (
-    BenefitUnitRule,
     benefit_unit_diagnostics,
-    build_benefit_units,
+    build_declared_units,
 )
 from microcosm.graph import (
     ROWS_ALL,
@@ -64,7 +63,7 @@ from microcosm.graph import (
 )
 from microcosm.graph.population import dtype_for_token
 
-from . import graph_inputs, target_kernels
+from . import graph_inputs, target_kernels, unit_declarations
 from .artifact_types import TARGET_SURFACE_TYPE
 from .graph_inputs import (
     canonical_document_param,
@@ -73,17 +72,21 @@ from .graph_inputs import (
     string_param,
 )
 from .target_kernels import compile_target_surface, decode_target_surface
+from .unit_declarations import CREATE_V1_REF, CREATE_V2_REF, create_unit_declaration
 
 __all__ = [
     "TRANSPORT_BOUNDARY",
     "TRANSPORT_CREATE",
+    "TRANSPORT_CREATE_DECLARED",
     "TRANSPORT_CURRENCY",
     "TRANSPORT_QUANTILE_MAP",
     "TransportBoundaryKernel",
     "TransportCreateKernel",
+    "TransportCreateDeclaredKernel",
     "TransportCurrencyKernel",
     "TransportQuantileMapKernel",
     "register_population_kernels",
+    "create_unit_declaration",
 ]
 
 
@@ -114,7 +117,7 @@ def _column_result(
 class TransportCreateKernel(KernelBase):
     """``transport.create@1``: verified support records at destination mass."""
 
-    ref = "transport.create@1"
+    ref = CREATE_V1_REF
     capabilities = Capabilities(
         Determinism.DETERMINISTIC,
         numeric=Numeric.BITWISE,
@@ -144,6 +147,7 @@ class TransportCreateKernel(KernelBase):
             type(self),
             graph_inputs,
             target_kernels,
+            unit_declarations,
             transport_module,
             units_module,
             concepts_module,
@@ -227,17 +231,17 @@ class TransportCreateKernel(KernelBase):
                 item = concept_for_column(entity, column)
                 if item is not None and item.dtype == "str":
                     table[column] = table[column].astype(text)
-        rule = BenefitUnitRule.from_spec(
-            canonical_document_param(context, self.ref, "unit_rule")
+        declaration = create_unit_declaration(
+            self.ref, canonical_document_param(context, self.ref, "unit_rule")
         )
-        if rule.entity != "family":
-            raise ValueError("CREATE's declared schema requires family benefit units.")
-        family, membership = build_benefit_units(
-            tables["person"], tables["household"], rule
+        partitions = build_declared_units(
+            tables["person"], tables["household"], declaration
         )
-        tables["family"] = family
         person, household = tables["person"], tables["household"]
-        person[rule.membership_column] = membership
+        for unit in declaration.units:
+            membership = partitions[unit.rule.entity]
+            tables[unit.rule.entity] = membership.units
+            person[unit.rule.membership_column] = membership.person_unit
         person["take_up_seed"] = derive_transport_seed(
             donor.source_person_ids, string_param(context, self.ref, "seed_stream")
         )
@@ -261,11 +265,9 @@ class TransportCreateKernel(KernelBase):
             dtype=object,
         )
         surface = decode_target_surface(surface_bytes)
-        # The persons, their households and the rule's benefit units: the
-        # entity check above makes this the destination's declared schema.
         frame = Frame(
             tables,
-            EntitySchema(group_entities=("household", rule.entity)),
+            declaration.entity_schema()[0],
             {"household": weights},
             strata,
             metadata={
@@ -276,6 +278,17 @@ class TransportCreateKernel(KernelBase):
                 "donor_time_period": donor.time_period,
             },
         )
+        diagnostics = {
+            unit.rule.entity: benefit_unit_diagnostics(
+                person,
+                household,
+                partitions[unit.rule.entity].units,
+                partitions[unit.rule.entity].person_unit,
+                unit.rule,
+            )
+            for unit in declaration.units
+            if unit.kind == "benefit_unit"
+        }
         return KernelResult(
             frame=frame,
             receipt={
@@ -292,14 +305,22 @@ class TransportCreateKernel(KernelBase):
                 "design_scale": scale,
                 "n_persons": len(person),
                 "n_households": len(household),
-                "n_units": len(family),
-                "unit_construction": benefit_unit_diagnostics(
-                    person, household, family, membership, rule
+                "n_units": sum(
+                    len(partition.units) for partition in partitions.values()
                 ),
+                "unit_construction": next(iter(diagnostics.values()))
+                if len(declaration.units) == 1 and diagnostics
+                else diagnostics,
                 "mass_reference": registry.specs[0].name,
                 "facts": dict(surface.facts),
             },
         )
+
+
+class TransportCreateDeclaredKernel(TransportCreateKernel):
+    """Versioned, typed declarations; the legacy CREATE lifts one benefit unit."""
+
+    ref = CREATE_V2_REF
 
 
 class TransportBoundaryKernel(KernelBase):
@@ -586,6 +607,7 @@ class TransportQuantileMapKernel(KernelBase):
 
 
 TRANSPORT_CREATE = TransportCreateKernel()
+TRANSPORT_CREATE_DECLARED = TransportCreateDeclaredKernel()
 TRANSPORT_BOUNDARY = TransportBoundaryKernel()
 TRANSPORT_CURRENCY = TransportCurrencyKernel()
 TRANSPORT_QUANTILE_MAP = TransportQuantileMapKernel()
@@ -595,6 +617,7 @@ def register_population_kernels(registry: KernelRegistry) -> KernelRegistry:
     """Register the population kernels explicitly and idempotently."""
     for kernel in (
         TRANSPORT_CREATE,
+        TRANSPORT_CREATE_DECLARED,
         TRANSPORT_BOUNDARY,
         TRANSPORT_CURRENCY,
         TRANSPORT_QUANTILE_MAP,

@@ -9,12 +9,20 @@ from microcosm.build.ledger_artifact import (
 )
 from microcosm.build.reference_factors import resolve_reference_factor
 from microcosm.build.reference_profiles import (
-    reference_document_sha256,
     resolve_reference_profiles,
 )
 from test_support.microcosm_build.chronicle_feed import write_pinned_artifact
 from test_support.microcosm_build.reference_factors import factor_fixture
 from test_support.microcosm_build.transport_graph import reference_document
+
+#: The proof composition returns for one ``reviewed_measurement`` producer.
+REVIEWED_MEASUREMENT_PROOF = {
+    "reviewed_measurement": {
+        "measurement_id": "reviewed_measurement",
+        "producers": {"toy.calibrate": "toy.measure"},
+        "columns": [],
+    }
+}
 
 
 def factor_transport_fixture(
@@ -146,17 +154,17 @@ def factor_transport_fixture(
     base["hierarchy"]["target_labels"] = {
         row["name"]: f"Aged toy {row['name']}" for row in references
     }
+    # A test-only measurement proof (what composition's measurement_proofs
+    # returns for one producer upstream of calibration) lets the compiler test
+    # its own replay and arithmetic independently of this lane's parked
+    # country declarations.
     document, _, resolution = resolve_reference_profiles(
-        base, profiles, {}, factor_context=context
+        base,
+        profiles,
+        {},
+        factor_context=context,
+        measurement_proofs=REVIEWED_MEASUREMENT_PROOF if activate else None,
     )
-    if activate:
-        # Test-only future measurement closure lets the compiler test its own replay
-        # and arithmetic independently of this lane's parked country declarations.
-        for row in document["target_references"]:
-            row["metadata"]["activation_status"] = "active"
-        resolution["effective_references_sha256"] = reference_document_sha256(document)
-        resolution.pop("receipt_sha256")
-        resolution["receipt_sha256"] = reference_document_sha256(resolution)
     spec = {
         "country": "xx",
         "resources": {

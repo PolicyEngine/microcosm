@@ -1561,12 +1561,15 @@ def test_bus_pricing_gate_recomputes_every_price_from_the_vendored_rows() -> Non
 def test_road_fuel_level_gate_recomputes_the_level_from_the_vendored_row() -> None:
     """The lcfs road_fuel_level receipt is fact-checked at stage time (microcosm#1113)."""
 
+    import copy
+
     import pandas as pd
 
     from microcosm.build.country_spec import load_country_spec
     from microcosm.build.uk_runtime.calibration_run import UK_SPINE_GATE_SCOPE
     from microcosm.build.uk_runtime.lcfs_consumption import (
         level_road_fuel,
+        road_fuel_household_mix,
         road_fuel_level,
         road_fuel_level_operation,
     )
@@ -1575,17 +1578,40 @@ def test_road_fuel_level_gate_recomputes_the_level_from_the_vendored_row() -> No
     assert gate_id in UK_SPINE_GATE_SCOPE
     parameters = _gate_parameters(gate_id)
     assert parameters["check"] == "road_fuel_level"
-    declared = road_fuel_level_operation(
-        load_country_spec("uk").sources.stage_map()["lcfs_consumption"]
-    )
+    stage = load_country_spec("uk").sources.stage_map()["lcfs_consumption"]
+    declared = road_fuel_level_operation(stage)
     draws = pd.DataFrame(
         {"petrol_spending": [900.0, 0.0, 400.0], "diesel_spending": [0.0, 700.0, 0.0]}
     )
+    # The declaration levels each fuel to its household-paid share
+    # (microcosm#1095 B3, K): the receipt carries the NTS shares it used.
+    paid = {"petrol_spending": 0.94, "diesel_spending": 0.89}
+    mix, mix_receipt = road_fuel_household_mix(stage, paid)
     _, receipt = level_road_fuel(
         draws,
         level=road_fuel_level(declared, other_fuels_share=0.004),
         weights=np.array([1.0e7, 1.5e7, 2.0e7]),
+        mix=mix,
+        mix_receipt={
+            **mix_receipt,
+            "nts": {
+                "fuels": {
+                    column: {"household_paid_share": share}
+                    for column, share in paid.items()
+                }
+            },
+        },
     )
+
+    def with_mix(**changes):
+        tampered = copy.deepcopy(receipt)
+        for path, value in changes.items():
+            node = tampered["mix"]
+            *parents, leaf = path.split("__")
+            for key in parents:
+                node = node[key]
+            node[leaf] = value
+        return tampered
 
     def run(ev):
         return uk_stage_health_gate(
@@ -1613,6 +1639,22 @@ def test_road_fuel_level_gate_recomputes_the_level_from_the_vendored_row() -> No
     failing({**receipt, "factor": receipt["factor"] * 1.01}, "does not reproduce")
     failing({**receipt, "source_record_id": "elsewhere"}, "declared row")
     failing({**receipt, "other_fuels_share": 0.2}, "other-fuels share")
+    assert passed.details["household_mix"] == pytest.approx(mix)
+    petrol_after = receipt["mix"]["frame_after"]["petrol_spending"]
+    failing(
+        with_mix(frame_after__petrol_spending=petrol_after * 1.01),
+        "levelled petrol_spending total",
+    )
+    failing(
+        with_mix(fuels__diesel_spending__mix=mix["diesel_spending"] * 1.01),
+        "recomputed",
+    )
+    failing(
+        with_mix(nts__fuels__petrol_spending__household_paid_share=1.2),
+        "outside (0, 1]",
+    )
+    with pytest.raises(ValueError, match="mix must be an object"):
+        run({key: value for key, value in receipt.items() if key != "mix"})
     with pytest.raises(ValueError, match="road_fuel_level must be an object"):
         run(None)
 
@@ -2322,14 +2364,20 @@ def test_uc_take_up_gate_holds_each_family_type_to_dwp() -> None:
             "reachable_pools_caseload_after": realized,
         }
 
-    # 0.05 until microcosm#1418.
+    # 0.05 until microcosm#1418, and 0.055 after it: the savings follow-up
+    # (microcosm#1428) joins unmet pools instead of widening it. The caseload's
+    # was 0.12 for the SPI pay floor (uk-data#629) from María's ruling of
+    # 2026-10-29 until the pool joining brought every family type closer to
+    # DWP's count (her ruling of 2026-11-02). The reachable pools have a
+    # tolerance of their own (Vahid's review of #1426).
     parameters = {
         "stage": "uc_take_up",
         "check": "uc_take_up",
         "maximum_caseload_deviation": 0.055,
+        "maximum_reachable_pool_deviation": 0.055,
     }
 
-    def gate(families, **counts):
+    def gate(families, parameters=parameters, **counts):
         return uk_stage_health_gate(
             evidence={
                 "stage": "uc_take_up",
@@ -2353,11 +2401,25 @@ def test_uc_take_up_gate_holds_each_family_type_to_dwp() -> None:
     assert not gate(good, outside="<3").passed
     # The reachable pools miss DWP's count by more than the tolerance.
     assert not gate(
-        {**good, "SINGLE": family(3_000.0, 3_300.0, 3_020.0, 2_500.0, 2_700.0)}
+        {**good, "SINGLE": family(3_000.0, 3_300.0, 3_020.0, 2_500.0, 2_900.0)}
+    ).passed
+    # The pools keep their own tolerance: 8% off fails even where the caseload's
+    # allows more.
+    assert not gate(
+        {**good, "SINGLE": family(3_000.0, 3_300.0, 3_020.0, 2_500.0, 2_700.0)},
+        parameters={**parameters, "maximum_caseload_deviation": 0.12},
     ).passed
     # The family type moves further from DWP than before.
     assert not gate(
         {**good, "LONE_PARENT": family(2_100.0, 1_400.0, 1_100.0, 0.0, 0.0)}
+    ).passed
+    # A caseload at DWP's before the redraw may end up to 0.055 of DWP's count
+    # from it after, not 0.1.
+    assert _passed(
+        gate({**good, "SINGLE": family(3_000.0, 3_000.0, 2_850.0, 2_500.0, 2_510.0)})
+    )
+    assert not gate(
+        {**good, "SINGLE": family(3_000.0, 3_000.0, 2_700.0, 2_500.0, 2_510.0)}
     ).passed
     # A caseload resting on fewer than three sources cannot be checked: it is
     # flagged, never failed (María's ruling of 2026-10-26); one missing fails.
@@ -2395,6 +2457,10 @@ def test_spi_benefit_coherence_gate_holds_the_structural_zeros() -> None:
                 column: {"rows_differing_from_twin_after": 0}
                 for column in parameters["restored_columns"]
             },
+            "restored_within_earnings_limit": {
+                column: {"rows_breaking_rule_after": 0}
+                for column in parameters["restored_within_earnings_limit_columns"]
+            },
             "benefits_in_own_right": {"mismatches_after": 0, "spi_rows_changed": 2},
             "universal_credit_take_up": {
                 "reporters_not_claiming": 0,
@@ -2423,6 +2489,14 @@ def test_spi_benefit_coherence_gate_holds_the_structural_zeros() -> None:
     broken.append(payload)
     payload = evidence()
     payload["restored"]["iidb_reported"]["rows_differing_from_twin_after"] = 2
+    broken.append(payload)
+    payload = evidence()
+    payload["restored_within_earnings_limit"]["esa_contrib_reported"][
+        "rows_breaking_rule_after"
+    ] = 1
+    broken.append(payload)
+    payload = evidence()
+    del payload["restored_within_earnings_limit"]["jsa_contrib_reported"]
     broken.append(payload)
     payload = evidence()
     payload["benefits_in_own_right"]["mismatches_after"] = 1
@@ -2777,6 +2851,50 @@ def test_property_purchases_gate_flags_a_kind_on_fewer_than_three_buyers() -> No
     assert result.details["kinds_unchecked_small_cells"] == [name]
     clean = _gate("uk_stage_property_purchases_fit", _purchases_receipt())
     assert clean.details["kinds_unchecked_small_cells"] == []
+
+
+def _hourly_pay_receipt(after=0.10, frs=0.15, below_floor=0) -> dict:
+    return {
+        "stage": "hmrc_spi_income_spine",
+        "employment_pay_floor": {
+            "hourly_pay_check": {
+                "spi_drawn_employees": {
+                    "source_households": "30+",
+                    "below_minimum_wage_share_before": 0.37,
+                    "below_minimum_wage_share_after": after,
+                },
+                "frs_employees": {
+                    "source_households": "30+",
+                    "below_minimum_wage_share": frs,
+                },
+                "eligible_rows_below_their_floor_after": below_floor,
+            }
+        },
+    }
+
+
+def test_spi_hourly_pay_gate_holds_drawn_employees_to_their_floor() -> None:
+    gate_id = "uk_stage_hmrc_spi_income_spine_hourly_pay"
+    passed = _gate(gate_id, _hourly_pay_receipt())
+    assert _passed(passed)
+    # The details give the verdicts, never the shares.
+    assert passed.details == {
+        "stage": "hmrc_spi_income_spine",
+        "check": "spi_hourly_pay",
+        "eligible_rows_below_their_floor_after": 0,
+        "share_judged": True,
+        "share_within_margin": True,
+    }
+    assert _passed(_gate(gate_id, _hourly_pay_receipt(after=0.17, frs=0.15)))
+    above = _gate(gate_id, _hourly_pay_receipt(after=0.18, frs=0.15))
+    assert "more often than FRS employees" in above.failures[0]
+    below_floor = _gate(gate_id, _hourly_pay_receipt(below_floor="<3"))
+    assert "below their pay floor" in below_floor.failures[0]
+    # A withheld share is not judged; the floor invariant still is.
+    withheld = _gate(gate_id, _hourly_pay_receipt(after="<3"))
+    assert _passed(withheld) and withheld.details["share_judged"] is False
+    missing = _gate(gate_id, {"stage": "hmrc_spi_income_spine"})
+    assert "no employment pay floor" in missing.failures[0]
 
 
 def _home_values_receipt() -> dict:

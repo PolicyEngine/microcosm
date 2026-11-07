@@ -87,27 +87,33 @@ UK_TAKE_UP_DECLARED_SEEDS = {
     for output in (*FRS_TAKE_UP_OUTPUT_COLUMNS, *FRS_TAKE_UP_PERSON_OUTPUT_COLUMNS)
 }
 # Universal Credit is claimable only by a benefit unit whose claimant or
-# partner meets its age conditions: policyengine-uk 2.165.1's ``is_uc_eligible``
+# partner meets its age conditions: policyengine-uk 2.174.1's ``is_uc_eligible``
 # (capital aside) needs a single or joint claimant, taken from
 # ``is_uc_claimant``, who meets UC's minimum age and has not reached Pension
-# Credit qualifying age. The draw's population is therefore the units with a
-# UC claimant or partner aged 18 or over and under that age; any other unit is
-# never drawn (#882, microcosm#867, microcosm#1095). The bounds come from the
-# engine at the build instant through
+# Credit qualifying age. From 2.173.2 that claimant must also meet the
+# condition of not receiving education (``meets_uc_education_condition``),
+# which reads ``is_in_full_time_education``: ``frs_education`` sets it from the
+# FRS full-time education answer (microcosm#1095). The draw's population is
+# the units with a UC claimant or partner aged 18 or over and under that age;
+# any other unit is never drawn (#882, microcosm#867, microcosm#1095). The
+# bounds come from the engine at the build instant through
 # ``uk_take_up_population_policy``: the qualifying age is the State Pension age
 # the ``gov.dwp.state_pension.age`` timetable sets for the cohort reaching it
 # in the build year, which equals the engine's Pension Credit qualifying age at
-# 2024 and 2025, and the minimum age is UC's 18. Three engine cases are not
+# 2024 and 2025, and the minimum age is UC's 18. Four engine cases are not
 # mirrored, and the lockstep test names them: 16- and 17-year-old claimants
 # under the UC Regs 2013 reg 8 exceptions, whom the engine includes; mixed-age
-# couples on the Pension Credit route, whom it excludes; and, from 2.128.0, a
+# couples on the Pension Credit route, whom it excludes; from 2.128.0, a
 # pension-age family moved onto Universal Credit when its legacy benefit
 # closes, whom it includes (SI 2014/1230 reg 60A; whether such a family
 # claims is ``would_claim_uc_at_legacy_closure``, which
-# ``uc_legacy_closure_take_up`` draws, microcosm#1095). The stage
-# manifest declares the same population on the ``would_claim_uc`` operation;
-# ``assert_take_up_stage_population_declaration`` refuses a manifest that stops
-# saying so, so the declaration and the code cannot drift apart.
+# ``uc_legacy_closure_take_up`` draws, microcosm#1095); and a unit whose
+# working-age claimants all receive education with no exception, whom it
+# excludes. Such a unit's flag moves nothing while it is ineligible:
+# ``uc_take_up`` redraws only units the engine entitles (microcosm#1334).
+# The stage manifest declares the same population on the ``would_claim_uc``
+# operation; ``assert_take_up_stage_population_declaration`` refuses a manifest
+# that stops saying so, so the declaration and the code cannot drift apart.
 UK_ENGINE_ADULT_AGE = 18
 UK_UC_AGE_ELIGIBLE_AGGREGATE = "uc_age_eligible"
 UK_UC_AGE_ELIGIBLE_METHOD = "any_uc_claimant_aged_18_under_pension_credit_age"

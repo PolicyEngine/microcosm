@@ -35,10 +35,11 @@ def test_spi_band_targets_move_by_the_engines_dataset_projection() -> None:
     (microcosm#1418); Table 3.10's amounts move by their count index times the
     engine's index for self-employment income (the independent review of
     microcosm#1420); and a measure derived from an input moves by the input's
-    index. The SPI donors still reach the dataset's year by savings interest's
-    own history index and run on the projection's from there
-    (``spi_income.SPI_HISTORY_INDEX_DIFFERS_FROM_PROJECTION``), so both are
-    held to the engine's."""
+    index. The SPI donors reach the dataset's year with interest and other
+    income on SPI's 2023-24 bands and the OBR's savings income growth (the
+    microcosm#1418 savings follow-up) and run on the projection's index from
+    there (``spi_income.SPI_HISTORY_INDEX_DIFFERS_FROM_PROJECTION``), so the
+    projection's index is held to the engine's."""
 
     import json
     from importlib.resources import files
@@ -50,6 +51,7 @@ def test_spi_band_targets_move_by_the_engines_dataset_projection() -> None:
     from microcosm.build.uk_runtime.hmrc_uprating import (
         UK_OBR_SAVINGS_INCOME_GROWTH_INDEX_CONCEPT,
         UK_SPI_SAVINGS_INTEREST_HISTORY_PARAMETER,
+        UK_SPI_SAVINGS_INTEREST_INDEX_CONCEPT,
         UK_SPI_SAVINGS_INTEREST_PROJECTION_PARAMETER,
         UK_SPI_SELF_EMPLOYMENT_BAND_AMOUNT_INDEX_CONCEPT,
         UK_SPI_SELF_EMPLOYMENT_PROFIT_PARAMETER,
@@ -74,11 +76,18 @@ def test_spi_band_targets_move_by_the_engines_dataset_projection() -> None:
     }
     variables = policyengine_uk.CountryTaxBenefitSystem().variables
     assert SPI_HISTORY_INDEX_DIFFERS_FROM_PROJECTION == {
-        "savings_interest_income": UK_SPI_SAVINGS_INTEREST_PROJECTION_PARAMETER
+        "savings_interest_income": projection["savings_interest_income"],
+        "other_investment_income": projection["other_investment_income"],
     }
-    assert (
-        UK_SPI_SAVINGS_INTEREST_PROJECTION_PARAMETER
-        == (projection["savings_interest_income"])
+    # From policyengine-uk 2.165.2 the projection grows savings interest by the
+    # OBR's savings income per person under the rule the producer declares, and
+    # by GDP per head where a dataset declares none. The two-leg concept keeps
+    # GDP per head as its projection leg, and no SPI target follows it.
+    assert projection["savings_interest_income"] == (
+        "gov.economic_assumptions.indices.obr.per_capita.savings_income"
+    )
+    assert UK_SPI_SAVINGS_INTEREST_PROJECTION_PARAMETER == (
+        "gov.economic_assumptions.indices.obr.per_capita.gdp"
     )
     assert UK_SPI_SAVINGS_INTEREST_HISTORY_PARAMETER == (
         variables["savings_interest_income"].uprating
@@ -93,6 +102,7 @@ def test_spi_band_targets_move_by_the_engines_dataset_projection() -> None:
         variable = family["bindings"]["policyengine"].get("value_variable")
         if family.get("family") != "hmrc_spi":
             continue
+        assert index != UK_SPI_SAVINGS_INTEREST_INDEX_CONCEPT, family["target_id"]
         if index == UK_OBR_SAVINGS_INCOME_GROWTH_INDEX_CONCEPT:
             on_savings_path.add(family["target_id"])
             continue
@@ -120,11 +130,13 @@ def test_spi_band_targets_move_by_the_engines_dataset_projection() -> None:
     assert len(checked) > 1
 
 
-def test_savings_interest_targets_take_the_donors_path() -> None:
-    """The SPI donors reach 2025 by the history index to the frame's year,
-    then the engine's projection. The band targets took the same path until
-    they moved to the OBR's savings income forecast (microcosm#1418), so the
-    gap between the two is now the calibration's to close."""
+def test_the_two_leg_savings_interest_factor() -> None:
+    """Savings interest outside SPI Table 3.7's rows reaches 2025 by the history
+    index to the frame's year, then the engine's projection (microcosm#1095).
+    The SPI donors and Table 3.7's rows took the same path until
+    microcosm#1418, when they moved to the published 2023-24 bands and the
+    OBR's savings income growth; the earlier start below pins only the
+    history index's 2022-23 step (the #1428 review, finding 13)."""
 
     history = "gov.economic_assumptions.indices.ons.household_interest_income"
     projection = "gov.economic_assumptions.indices.obr.per_capita.gdp"
@@ -135,13 +147,13 @@ def test_savings_interest_targets_take_the_donors_path() -> None:
         )
 
     target_factor = ratio(history, 2023, 2024) * ratio(projection, 2024, 2025)
-    donor_path = ratio(history, 2022, 2024) * ratio(projection, 2024, 2025)
+    earlier_start = ratio(history, 2022, 2024) * ratio(projection, 2024, 2025)
 
     # 1.1920 until policyengine-uk 2.155.0 took population from the OBR's
     # March 2026 long-term determinants (PolicyEngine/policyengine-uk#2611),
     # and 1.1961 until 2.164.1's October 2026 outlook (microcosm#1415).
     assert target_factor == pytest.approx(1.1932, abs=1e-4)
-    # The donors start a year earlier and so carry one more year of history.
-    assert donor_path / target_factor == pytest.approx(
+    # A path starting a year earlier carries one more year of history.
+    assert earlier_start / target_factor == pytest.approx(
         ratio(history, 2022, 2023), rel=1e-12
     )

@@ -6,6 +6,7 @@ import copy
 import json
 import math
 import os
+import re
 from collections import Counter
 from dataclasses import replace
 from pathlib import Path
@@ -132,8 +133,9 @@ def test_inventory_has_exact_contract_counts_and_named_parking_reasons():
         "stats_nz_census_households_by_size_region": 136,
         "stats_nz_census_families_by_type_region": 51,
         "stats_nz_census_households_by_tenure_region": 34,
-        "ird_taxable_income_people_by_band": 237,
-        "ird_taxable_income_total_by_band": 237,
+        # R2C-4: 24 coarse stand-in rows replace the 474 native IRD rows.
+        "ird_taxable_income_standin_people_by_band": 12,
+        "ird_taxable_income_standin_total_by_band": 12,
         "msd_main_benefit_recipients_by_program_age": 12,
         "msd_nz_super_recipients": 1,
         "msd_veterans_pension_recipients": 1,
@@ -141,7 +143,8 @@ def test_inventory_has_exact_contract_counts_and_named_parking_reasons():
     assert len(_rows("precal_references.json")) == 318
     for filename, active in (
         ("target_references.json", 77),
-        ("precal_references.json", 80),
+        # G8-r2c E activates the 235 P1 wage rows.
+        ("precal_references.json", 315),
     ):
         rows = _rows(filename)
         assert (
@@ -297,10 +300,18 @@ def test_full_nz_resource_resolves_directly_to_the_strict_compiler_document(prof
     assert receipt["base_intervals_sha256"] == reference_document_sha256(
         _document("reference_intervals.json")
     )
-    assert ["scaling" in table for table in intervals["tables"]] == [True, False]
+    # R2C-4: only the coarse stand-in table scales; the national, age and wage
+    # tables stay declared and validated only.
+    assert ["scaling" in table for table in intervals["tables"]] == [
+        False,
+        False,
+        False,
+        True,
+    ]
     assert set(effective) == set(raw) & REFERENCE_DOCUMENT_KEYS
     references = parse_reference_document(effective, country="nz")
-    assert len(references) == 773
+    # 773 - 474 native rows + 24 coarse rows.
+    assert len(references) == 323
     active = [
         row for row in references if row.metadata["activation_status"] == "active"
     ]
@@ -308,7 +319,7 @@ def test_full_nz_resource_resolves_directly_to_the_strict_compiler_document(prof
         row for row in references if row.metadata["activation_status"] != "active"
     ]
     assert len(active) == 109
-    assert len(parked) == 664
+    assert len(parked) == 214
     assert receipt["base_references_sha256"] == reference_document_sha256(raw)
     assert receipt["effective_references_sha256"] == reference_document_sha256(
         effective
@@ -373,25 +384,29 @@ def test_v4_changes_only_the_residual_knob_and_prior_variants_keep_their_meaning
         )
 
 
+_BANDS = tuple(f"b{index:02d}" for index in range(1, 13))
+_COARSE_COUNTS = [f"ird_taxable_income_standin_people_by_band__{b}" for b in _BANDS]
+_COARSE_MONEY = [f"ird_taxable_income_standin_total_by_band__{b}" for b in _BANDS]
+
+
 @pytest.mark.parametrize("profile", ["low", "central", "high"])
-def test_ageing_profiles_have_237_explicit_companions_and_keep_b4_parked(profile):
+def test_ageing_profiles_scale_the_24_coarse_rows_and_keep_them_parked(profile):
+    """F: the aging_index transform names the 12 coarse pairs and the coarse table.
+
+    R2C-17: each summed count row keeps sum with no operands; each identity
+    amount row becomes one weighted operand over its pinned member list.
+    """
     profiles = _document("reference_profiles.json")
     (transformation,) = profiles["dimensions"]["aging_index"]["profiles"][profile][
         "transformations"
     ]
-    expected_counts = [
-        f"ird_taxable_income_people_by_band__row_{row}" for row in range(8, 245)
-    ]
-    expected_money = [
-        f"ird_taxable_income_total_by_band__row_{row}" for row in range(8, 245)
-    ]
-    assert transformation["count_reference_names"] == expected_counts
-    assert transformation["reference_names"] == expected_money
-    assert transformation["interval_table_ids"] == [
-        "ird_taxable_income_national_ty2024"
-    ]
+    assert transformation["count_reference_names"] == _COARSE_COUNTS
+    assert transformation["reference_names"] == _COARSE_MONEY
+    assert transformation["interval_table_ids"] == ["ird_taxable_income_standin_ty2024"]
     assert transformation["factor_id"] == f"ird_ty2024_to_ty2027_{profile}"
-    assert not any("246" in name for name in expected_counts + expected_money)
+    assert transformation["required_measurement_binding"] == (
+        "ird_taxable_income_ty2027_v1"
+    )
     base = _document("target_references.json")
     effective, intervals, receipt = resolve_reference_profiles(
         base,
@@ -400,28 +415,24 @@ def test_ageing_profiles_have_237_explicit_companions_and_keep_b4_parked(profile
         _document("reference_intervals.json"),
         factor_context=_document("reference_aging.json"),
     )
-    assert intervals["tables"][0]["scaling"]["factor_id"] == (
-        f"ird_ty2024_to_ty2027_{profile}"
-    )
+    (scaled,) = [table for table in intervals["tables"] if "scaling" in table]
+    assert scaled["id"] == "ird_taxable_income_standin_ty2024"
+    assert scaled["scaling"]["factor_id"] == f"ird_ty2024_to_ty2027_{profile}"
     before = {row["name"]: row for row in base["target_references"]}
     after = {row["name"]: row for row in effective["target_references"]}
-    factor = {"low": 1.115056, "central": 1.117109, "high": 1.119158}[profile]
-    for count_name, money_name in zip(expected_counts, expected_money, strict=True):
+    factor = {"low": 1.117460, "central": 1.118491, "high": 1.119519}[profile]
+    for count_name, money_name in zip(_COARSE_COUNTS, _COARSE_MONEY, strict=True):
         for field in ("ledger_selector", "measure", "filter", "period"):
             assert after[count_name][field] == before[count_name][field]
-        assert after[count_name].get("value_operation") == before[count_name].get(
-            "value_operation"
-        )
-        assert after[count_name].get("value_operands") == before[count_name].get(
-            "value_operands"
-        )
+        assert after[count_name]["value_operation"] == "sum"
+        assert "value_operands" not in after[count_name]
         assert after[money_name]["value_operation"] == "linear_combination"
         assert after[money_name]["value_operands"] == [
             {
-                "aggregate_fact_key": before[money_name]["ledger_selector"][
-                    "aggregate_fact_key"
+                "dimension_values": before[money_name]["ledger_selector"][
+                    "dimension_values"
                 ],
-                "expected_member_count": 1,
+                "expected_member_count": before[money_name]["expected_member_count"],
                 "weight": factor,
             }
         ]
@@ -434,25 +445,66 @@ def test_ageing_profiles_have_237_explicit_companions_and_keep_b4_parked(profile
     assert receipt["selection"]["aging_index"] == profile
 
 
-def test_resolved_money_uses_the_verified_factor_once_and_count_values_are_unchanged(
-    artifact, facts_by_key
-):
+def test_the_central_first_coarse_cut_is_4473964_cents():
+    effective, intervals, _ = resolve_reference_profiles(
+        _document("target_references.json"),
+        _document("reference_profiles.json"),
+        {"census_residual_allocation": "mar", "aging_index": "central"},
+        _document("reference_intervals.json"),
+        factor_context=_document("reference_aging.json"),
+    )
+    (scaled,) = [table for table in intervals["tables"] if "scaling" in table]
+    assert scaled["first_lower_cut_cents"] == {
+        "numerator": 4_473_964,
+        "denominator": 1,
+    }
+    assert scaled["source_first_lower_cut_cents"] == 4_000_000
+
+
+def test_coarse_amounts_equal_the_aged_sum_of_their_native_rows(artifact, facts_by_key):
+    """Differential: each aged coarse row equals the sum of its native rows' aged values.
+
+    The coarse rows compile through A's summed path; the native rows are the
+    474 diagnostic selectors, aged one by one with the same central factor.
+    """
     rows = [row for row in _effective_rows() if row["family"] == "income"]
-    # This numerical operation check supplies activation only to its copies;
-    # the committed and resolved declarations remain parked on B4.
+    assert [row["name"] for row in rows] == [
+        name
+        for pair in zip(_COARSE_COUNTS, _COARSE_MONEY, strict=True)
+        for name in pair
+    ]
+    # Activation is supplied to these copies only; the committed rows stay parked.
     executable = copy.deepcopy(rows)
     for row in executable:
         row["metadata"]["activation_status"] = "active"
     registry = compile_ledger_target_references(
         artifact.facts, _parsed(executable), country="nz"
     )
-    assert len(registry.specs) == 474
+    assert len(registry.specs) == 24
+    native = {
+        row["name"]: row
+        for row in _document("income_diagnostic_references.json")[
+            "diagnostic_references"
+        ]
+    }
     for row, target in zip(rows, registry.specs, strict=True):
-        source = facts_by_key[row["ledger_selector"]["aggregate_fact_key"]]["value"]
+        members = row["metadata"]["native_rows"].split(",")
+        prefix = (
+            "ird_taxable_income_people_by_band"
+            if row["metadata"]["reference_value_kind"] == "count"
+            else "ird_taxable_income_total_by_band"
+        )
+        values = [
+            facts_by_key[
+                native[f"{prefix}__{member}"]["ledger_selector"]["aggregate_fact_key"]
+            ]["value"]
+            for member in members
+        ]
         if row["metadata"]["reference_value_kind"] == "count":
-            assert target.value == source
+            assert target.value == pytest.approx(math.fsum(values), rel=1e-15)
         else:
-            assert target.value == pytest.approx(source * 1.117109, rel=1e-12)
+            aged = math.fsum(value * 1.118491 for value in values)
+            assert target.value == pytest.approx(aged, rel=1e-12)
 
 
 @pytest.mark.parametrize("profile", ["mar", "small_households"])
@@ -685,7 +737,7 @@ def test_grouped_tenure_family_multiplicities_and_parked_definitions():
                 "reference_profile:aging_index",
                 "measurement:ird_taxable_income_ty2027_v1",
             ]
-            assert row["metadata"]["parking_reason"].startswith("B4:")
+            assert row["metadata"]["parking_reason"].startswith("G8-r2c:")
 
 
 def test_receipt_snapshots_activate_thirteen_cells_and_keep_vp_unsupported():
@@ -740,10 +792,16 @@ def test_receipt_snapshots_activate_thirteen_cells_and_keep_vp_unsupported():
         and row.get("filter") is None
         for row in wages
     )
+    # G8-r2c E activates P1 for transport.quantile_map@2 and drops its exemptions.
+    assert all(row["metadata"]["activation_status"] == "active" for row in wages)
     assert all(
-        row["metadata"]["activation_status"] == "requires_g8r2c_wage_quantile_producer"
+        row["metadata"]["quantile_producer"] == "transport.quantile_map@2"
         for row in wages
     )
+    exempt = _document("reference_selection.json")["resources"]["precal_references"]
+    assert not {row["name"] for row in exempt["exempt"]} & {
+        row["name"] for row in wages
+    }
 
 
 @pytest.fixture(scope="module")
@@ -783,7 +841,7 @@ def test_generation_reproduces_committed_resources_with_exact_feed_identity(arti
     for filename, document in generated.items():
         assert document == _document(filename), filename
     assert artifact.fact_row_count == _document("chronicle_feed.json")["fact_row_count"]
-    assert artifact.fact_schema_versions == ("chronicle.consumer_fact.v4",)
+    assert artifact.fact_schema_versions == ("chronicle.consumer_fact.v5",)
 
 
 @pytest.mark.parametrize("existing_output", [False, True])
@@ -818,7 +876,7 @@ def test_h1_count_and_h2_historical_annual_dollars_pin_distinct_source_cells(art
     h1, h2 = rows
     assert h1["measure"] == "accommodation_supplement_positive_payment_indicator"
     assert h1["metadata"]["indicator_input_column"] == (
-        "accommodation_supplement_rounded_weekly_payment"
+        "accommodation_supplement_entitled_weekly_payment"
     )
     assert h1["metadata"]["indicator_operator"] == "positive"
     assert h1["metadata"]["indicator_threshold"] == "0"
@@ -826,7 +884,7 @@ def test_h1_count_and_h2_historical_annual_dollars_pin_distinct_source_cells(art
     assert h1["ledger_selector"]["geography_level"] == "country"
     assert h1["ledger_selector"]["geography_id"] == "NZ"
     assert h1["period"] == "2026-06"
-    assert h2["measure"] == "accommodation_supplement_rounded_weekly_payment"
+    assert h2["measure"] == "accommodation_supplement_entitled_weekly_payment"
     assert h2["metadata"]["annualisation_factor"] == "52"
     assert h2["ledger_selector"]["record_set_id"] == "msd.benefit_expenses.fy2024"
     assert h2["ledger_selector"]["dimension_values"] == {
@@ -1116,3 +1174,260 @@ def test_wrong_source_pins_and_wrong_snapshot_refuse_even_with_matching_fact_key
         compile_ledger_target_references(
             artifact.facts, _parsed([receipt]), country="nz"
         )
+
+
+def test_wage_cuts_match_the_feed_labels_and_the_committed_table(artifact):
+    """G8-r2c E: every wage cut is its pinned feed label's upper bound."""
+    import re
+    from decimal import Decimal
+
+    from tools.generate_nz_target_references import WAGE_TABLE
+
+    generated = build_reference_documents(artifact)["reference_intervals.json"]
+    (table,) = [row for row in generated["tables"] if row["id"] == WAGE_TABLE]
+    (committed,) = [
+        row
+        for row in _document("reference_intervals.json")["tables"]
+        if row["id"] == WAGE_TABLE
+    ]
+    assert table == committed
+    labels = {
+        fact["layout"]["source_row_id"]: fact["dimensions"][
+            "wage_salary_band_source_label"
+        ]
+        for fact in artifact.facts
+        if fact.get("layout", {}).get("record_set_id")
+        == "ird_wage_salary_distribution.ty2026.income_bands"
+        and fact["layout"]["table_record_kind"] == "detail"
+    }
+    assert [band["id"] for band in table["bands"]] == [
+        f"row_{row}" for row in range(7, 242)
+    ]
+    previous = 0
+    for band in table["bands"]:
+        label = " ".join(labels[band["id"]].split())
+        assert band["source_label"] == labels[band["id"]]
+        if band["upper_cent"] is None:
+            assert label == "Over $1 million"
+            assert previous == 100_000_000
+            continue
+        lower, upper = re.fullmatch(
+            r"\$([\d,]+) - \$([\d,]+|1 million)", label
+        ).groups()
+        upper = 1_000_000 if upper == "1 million" else int(upper.replace(",", ""))
+        assert band["upper_cent"] == upper * 100
+        lower = Decimal(lower.replace(",", "")) * 100
+        # Right closure: a label that repeats the previous upper endpoint
+        # leaves that endpoint in the lower band; every other label starts $1 on.
+        if band["id"] in {"row_27", "row_57", "row_87"}:
+            assert lower == previous
+        else:
+            assert lower == previous + 100
+        previous = band["upper_cent"]
+
+
+def test_activated_wage_rows_compile_with_count_metadata_from_the_feed(artifact):
+    """Each P1 row resolves to one unfiltered person count fact (the map's shares)."""
+    wages = [
+        row for row in _rows("precal_references.json") if row["family"] == "earnings"
+    ]
+    keys = {fact["aggregate_fact_key"]: fact for fact in artifact.facts}
+    for row in wages:
+        fact = keys[row["ledger_selector"]["aggregate_fact_key"]]
+        assert fact["observed_measure"]["source_measure_id"] == "individuals"
+        assert fact["value"] >= 0
+
+
+_EXECUTABLE = (
+    "target_references.json",
+    "precal_references.json",
+    "holdout_references.json",
+    "mass_references.json",
+)
+
+
+def test_no_native_ird_taxable_row_sits_in_an_executable_document():
+    """R2C-4: the 474 native rows live only in the non-executable diagnostic file."""
+    native = {
+        f"{contract}__row_{row}"
+        for contract in (
+            "ird_taxable_income_people_by_band",
+            "ird_taxable_income_total_by_band",
+        )
+        for row in range(8, 245)
+    }
+    for filename in _EXECUTABLE:
+        names = {row["name"] for row in _rows(filename)}
+        assert not names & native, filename
+        assert all(
+            "ird_taxable_income_distribution.ty2024.income_bands"
+            != row.get("ledger_selector", {}).get("record_set_id")
+            or row["name"].startswith("ird_taxable_income_standin_")
+            for row in _rows(filename)
+        ), filename
+    diagnostic = _document("income_diagnostic_references.json")
+    assert diagnostic["executable"] is False
+    assert "target_references" not in diagnostic
+    assert {row["name"] for row in diagnostic["diagnostic_references"]} == native
+    selection = json.dumps(_document("reference_selection.json"))
+    assert "ird_taxable_income_people_by_band__" not in selection
+    assert "ird_taxable_income_total_by_band__" not in selection
+    profiles = json.dumps(_document("reference_profiles.json"))
+    assert "ird_taxable_income_people_by_band__" not in profiles
+
+
+def test_the_24_coarse_rows_stay_parked_unexempt_without_a_producer():
+    rows = [row for row in _rows() if row["family"] == "income"]
+    assert len(rows) == 24
+    exempt = {
+        row["name"]
+        for row in _document("reference_selection.json")["resources"][
+            "target_references"
+        ]["exempt"]
+    }
+    for row in rows:
+        metadata = row["metadata"]
+        assert metadata["activation_status"] == "requires_prerequisites"
+        assert row["name"] not in exempt
+        assert json.loads(metadata["reference_prerequisites"]) == [
+            "reference_profile:aging_index",
+            "measurement:ird_taxable_income_ty2027_v1",
+        ]
+        assert row["measure"] in {"people", "ird_taxable_income_proxy_nzd"}
+        assert row["measure"] != "taxable_income_nzd"
+        assert row["entity"] == "person"
+        assert "aggregate_fact_key" not in row["ledger_selector"]
+        (labels,) = row["ledger_selector"]["dimension_values"].values()
+        assert row["expected_member_count"] == len(labels)
+        if metadata["reference_value_kind"] == "count":
+            assert row["value_operation"] == "sum"
+            assert "value_operands" not in row
+        else:
+            assert "value_operation" not in row
+    for reference in _parsed(rows):
+        with pytest.raises(ValueError, match="non-executable placeholder"):
+            compile_ledger_target_references([], [reference], country="nz")
+
+
+def test_each_coarse_band_lists_exactly_its_native_rows_labels(artifact):
+    """Feed audit (R2C-16): each coarse band's member labels are its native rows'."""
+    labels = {
+        (
+            fact["observed_measure"]["source_measure_id"],
+            fact["layout"]["source_row_id"],
+        ): (fact["dimensions"]["taxable_income_band_source_label"])
+        for fact in artifact.facts
+        if fact.get("layout", {}).get("record_set_id")
+        == "ird_taxable_income_distribution.ty2024.income_bands"
+        and fact["layout"]["table_record_kind"] == "detail"
+    }
+    expected_rows = {
+        "b01": (50, 59),
+        "b02": (60, 69),
+        "b03": (70, 79),
+        "b04": (80, 89),
+        "b05": (90, 109),
+        "b06": (110, 134),
+        "b07": (135, 159),
+        "b08": (160, 209),
+        "b09": (210, 229),
+        "b10": (230, 233),
+        "b11": (234, 243),
+        "b12": (244, 244),
+    }
+    for row in (row for row in _rows() if row["family"] == "income"):
+        band = row["name"].rsplit("__", 1)[1]
+        low, high = expected_rows[band]
+        members = [f"row_{n}" for n in range(low, high + 1)]
+        assert row["metadata"]["native_rows"] == ",".join(members)
+        measure = row["ledger_selector"]["source_measure_id"]
+        assert row["ledger_selector"]["dimension_values"] == {
+            "taxable_income_band_source_label": [
+                labels[measure, member] for member in members
+            ]
+        }
+
+
+# The native income rows whose label repeats the previous row's upper endpoint
+# ($50,000, $80,000 and $300,000). Each opens a coarse band, and right closure
+# leaves the shared endpoint in the band below.
+_INCOME_SHARED_ENDPOINT_ROWS = {"row_60", "row_90", "row_230"}
+
+
+def _label_cents(label):
+    """The cents at each end of a "$a - $b" label."""
+    lower, upper = re.fullmatch(
+        r"\$([\d,]+) - \$([\d,]+)", " ".join(label.split())
+    ).groups()
+    return 100 * int(lower.replace(",", "")), 100 * int(upper.replace(",", ""))
+
+
+def test_each_coarse_row_selects_its_native_rows_committed_labels():
+    """R2C-16 without the feed: membership checked against committed rows.
+
+    Each coarse row's label list equals, in order, the committed labels of the
+    native rows its ``metadata.native_rows`` names, and its selector otherwise
+    equals theirs. For each measure the 12 bands' native rows tile rows 50 to
+    244 once, in order. The feed audit above checks the same labels against the
+    feed, which CI doesn't load.
+
+    Each finite band's first label starts $1 above the band's lower cut (at the
+    cut, for the three pinned rows) and its last label ends at its
+    ``upper_cent``, so no native row can move to a neighbouring band in both
+    lists unnoticed. The open tail's one label is "Over $1,000,000".
+    """
+    native = {
+        row["name"]: row
+        for row in _document("income_diagnostic_references.json")[
+            "diagnostic_references"
+        ]
+    }
+    prefixes = {
+        "count": "ird_taxable_income_people_by_band",
+        "money": "ird_taxable_income_total_by_band",
+    }
+    tiled = {kind: [] for kind in prefixes}
+    for row in (row for row in _rows() if row["family"] == "income"):
+        kind = row["metadata"]["reference_value_kind"]
+        members = row["metadata"]["native_rows"].split(",")
+        tiled[kind] += members
+        selector = dict(row["ledger_selector"])
+        (labels,) = selector.pop("dimension_values").values()
+        expected = []
+        for member in members:
+            member_selector = dict(
+                native[f"{prefixes[kind]}__{member}"]["ledger_selector"]
+            )
+            del member_selector["aggregate_fact_key"]
+            (label,) = member_selector.pop("dimension_values").values()
+            assert selector == member_selector, (row["name"], member)
+            expected.append(label)
+        assert labels == expected, row["name"]
+    for kind, members in tiled.items():
+        assert members == [f"row_{n}" for n in range(50, 245)], kind
+    (table,) = (
+        table
+        for table in _document("reference_intervals.json")["tables"]
+        if table["id"] == "ird_taxable_income_standin_ty2024"
+    )
+    coarse = {row["name"]: row for row in _rows()}
+    cut, shared = table["first_lower_cut_cents"], set()
+    for band in table["bands"]:
+        for name in (band["count_reference"], band["amount_reference"]):
+            row = coarse[name]
+            (labels,) = row["ledger_selector"]["dimension_values"].values()
+            if band["upper_cent"] is None:
+                assert [" ".join(label.split()) for label in labels] == [
+                    "Over $1,000,000"
+                ], name
+                assert cut == 100_000_000, name
+                continue
+            lower, _ = _label_cents(labels[0])
+            _, upper = _label_cents(labels[-1])
+            if lower == cut:
+                shared.add(row["metadata"]["native_rows"].split(",")[0])
+            else:
+                assert lower == cut + 100, name
+            assert upper == band["upper_cent"], name
+        cut = band["upper_cent"]
+    assert shared == _INCOME_SHARED_ENDPOINT_ROWS

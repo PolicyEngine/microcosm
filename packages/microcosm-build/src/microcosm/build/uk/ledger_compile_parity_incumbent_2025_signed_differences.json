@@ -1,11 +1,11 @@
 {
- "compiled_count": 1409,
+ "compiled_count": 1597,
  "counts_by_kind": {
   "calibration_drift": 564,
-  "fixture_only": 42,
-  "ledger_only": 814
+  "fixture_only": 44,
+  "ledger_only": 1004
  },
- "difference_count": 1420,
+ "difference_count": 1612,
  "differences": [
   {
    "fixture_value": 1608000.0,
@@ -124,7 +124,7 @@
    "kind": "fixture_only",
    "name": "obr.capital_gains_tax",
    "period": 2025,
-   "reason": "PR #889 retains the exact March 2026 OBR FY2025-26 cash forecast as diagnostic provenance outside the FY2024-25 observation fit. The frozen incumbent fixture keeps its fitted cash row, so it is fixture-only on the current surface. This scoped change does not settle the general liability-to-cash translation tracked by #875."
+   "reason": "PR #889 retains the exact OBR FY2025-26 cash figure, the October 2026 EFO's outturn since PolicyEngine/chronicle#397, as diagnostic provenance outside the FY2024-25 observation fit. The frozen incumbent fixture keeps its fitted cash row, so it is fixture-only on the current surface. This scoped change does not settle the general liability-to-cash translation tracked by #875."
   },
   {
    "fixture_value": 24241874775.213375,
@@ -138,14 +138,14 @@
    "kind": "fixture_only",
    "name": "obr.ni",
    "period": 2025,
-   "reason": "microcosm#1095 (María's ruling of 2026-10-09; uk-data#537 drops the row) moves OBR's total NICs receipts out of the fit: a cash total against the three accrued class rows, carrying statutory-payment recoveries, Class 1A, 1B and 3 and settlements that no household carries. The exact FY2025-26 figure is retained as diagnostic provenance on obr.ni_employee, so the frozen fixture's fitted row is fixture-only on the current surface."
+   "reason": "microcosm#1095 (María's ruling of 2026-10-09; uk-data#537 drops the row) moves OBR's total NICs receipts out of the fit: a cash total against the three accrued class rows, carrying statutory-payment recoveries, Class 1A on benefits other than the company cars and fuel the build carries, Class 1B and 3, and settlements that no household carries. The exact FY2025-26 figure is retained as diagnostic provenance on obr.ni_employee, so the frozen fixture's fitted row is fixture-only on the current surface."
   },
   {
    "fixture_value": 146185954351.57382,
    "kind": "fixture_only",
    "name": "obr.state_pension",
    "period": 2025,
-   "reason": "microcosm#1069 (ruling R4) moves the OBR FY2025-26 State Pension forecast out of the fit: it counts Great Britain plus pensioners paid abroad and leaves out Northern Ireland, a different quantity from the resident level the DWP Stat-Xplore and DfC rows bind. The exact forecast is retained as diagnostic provenance on dwp.state_pension.amount, so the frozen fixture's fitted row is fixture-only on the current surface."
+   "reason": "microcosm#1069 (ruling R4) moves the OBR FY2025-26 State Pension line out of the fit: it counts Great Britain plus pensioners paid abroad and leaves out Northern Ireland, a different quantity from the resident level the DWP Stat-Xplore and DfC rows bind. The exact figure, the October 2026 EFO's outturn since PolicyEngine/chronicle#397, is retained as diagnostic provenance on dwp.state_pension.amount, so the frozen fixture's fitted row is fixture-only on the current surface."
   },
   {
    "fixture_value": 66410800011.47837,
@@ -166,14 +166,28 @@
    "kind": "fixture_only",
    "name": "ons.population.female_15_19",
    "period": 2025,
-   "reason": "microcosm#1095 (María's ruling of 2026-10-13; uk-data#563): the five-year 15_19 sex band is split into ages 15, 16-17 and 18-19, because a fit to the band left the ages inside it free to drift. The three rows partition this row's population and read the same ONS mid-year estimate by single year of age, so they sum to it. No single current row has this definition, so the frozen fixture's row is fixture-only on the current surface."
+   "reason": "microcosm#1095 (María's ruling of 2026-10-13; uk-data#563): the five-year 15_19 sex band is split, into ages 15, 16-17 and 18-19 by that ruling and into the single years 15 to 19 by Y5 of the November event-data plan (approved by María on 2026-11-06), because a fit to the band left the ages inside it free to drift. The five rows partition this row's population and read the same ONS mid-year estimate by single year of age, so they sum to it. No single current row has this definition, so the frozen fixture's row is fixture-only on the current surface."
+  },
+  {
+   "fixture_value": 2033478.0,
+   "kind": "fixture_only",
+   "name": "ons.population.female_20_24",
+   "period": 2025,
+   "reason": "microcosm#1095 (Y5 of the November event-data plan, approved by María on 2026-11-06): the five-year 20_24 sex band is split into the single years 20 to 24, because the single ages inside the fitted band drifted from ONS around the ages at which the young people and work review's measures change (21, 22 and 25). The five rows partition this row's population and read the same ONS mid-year estimate by single year of age, so they sum to it. No single current row has this definition, so the frozen fixture's row is fixture-only on the current surface."
   },
   {
    "fixture_value": 2149930.0,
    "kind": "fixture_only",
    "name": "ons.population.male_15_19",
    "period": 2025,
-   "reason": "microcosm#1095 (María's ruling of 2026-10-13; uk-data#563): the five-year 15_19 sex band is split into ages 15, 16-17 and 18-19, because a fit to the band left the ages inside it free to drift. The three rows partition this row's population and read the same ONS mid-year estimate by single year of age, so they sum to it. No single current row has this definition, so the frozen fixture's row is fixture-only on the current surface."
+   "reason": "microcosm#1095 (María's ruling of 2026-10-13; uk-data#563): the five-year 15_19 sex band is split, into ages 15, 16-17 and 18-19 by that ruling and into the single years 15 to 19 by Y5 of the November event-data plan (approved by María on 2026-11-06), because a fit to the band left the ages inside it free to drift. The five rows partition this row's population and read the same ONS mid-year estimate by single year of age, so they sum to it. No single current row has this definition, so the frozen fixture's row is fixture-only on the current surface."
+  },
+  {
+   "fixture_value": 2136737.0,
+   "kind": "fixture_only",
+   "name": "ons.population.male_20_24",
+   "period": 2025,
+   "reason": "microcosm#1095 (Y5 of the November event-data plan, approved by María on 2026-11-06): the five-year 20_24 sex band is split into the single years 20 to 24, because the single ages inside the fitted band drifted from ONS around the ages at which the young people and work review's measures change (21, 22 and 25). The five rows partition this row's population and read the same ONS mid-year estimate by single year of age, so they sum to it. No single current row has this definition, so the frozen fixture's row is fixture-only on the current surface."
   },
   {
    "fixture_value": 82000.0,
@@ -634,6 +648,13 @@
    "kind": "ledger_only",
    "ledger_value": 1381089.75,
    "name": "dwp.hb.households_social_rented",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 23377178.788788605,
+   "name": "dwp.jsa.amount_income_based",
    "period": 2025,
    "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
   },
@@ -1290,6 +1311,41 @@
   },
   {
    "kind": "ledger_only",
+   "ledger_value": 60000.0,
+   "name": "hmrc.benefits_in_kind.company_car_fuel.diesel_including_hybrids",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 465000.0,
+   "name": "hmrc.benefits_in_kind.company_car_fuel.fully_electric",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 390000.0,
+   "name": "hmrc.benefits_in_kind.company_car_fuel.petrol_including_hybrids",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 920000.0,
+   "name": "hmrc.benefits_in_kind.company_car_recipients",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 3070000000.0,
+   "name": "hmrc.benefits_in_kind.company_car_taxable_value",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
    "ledger_value": 32000000.0,
    "name": "hmrc.cgt.badr_ir_qualifying_gains_by_band.gain_0_to_9999",
    "period": 2025,
@@ -1873,6 +1929,20 @@
    "kind": "ledger_only",
    "ledger_value": 70030.0,
    "name": "hmrc.child_benefit.families_in_payment.children_5_plus",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 310000.0,
+   "name": "hmrc.child_benefit.hicbc_liable_taxpayers",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 360000000.0,
+   "name": "hmrc.child_benefit.hicbc_revenue",
    "period": 2025,
    "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
   },
@@ -2466,6 +2536,20 @@
   },
   {
    "kind": "ledger_only",
+   "ledger_value": 1349596177.814707,
+   "name": "hmrc.pris.expenses.scotland",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 2950280016.618197,
+   "name": "hmrc.pris.rental_income.scotland",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
    "ledger_value": 1800000000.0,
    "name": "hmrc.salary_sacrifice.it_relief_additional_rate",
    "period": 2025,
@@ -2482,6 +2566,62 @@
    "kind": "ledger_only",
    "ledger_value": 5500000000.0,
    "name": "hmrc.salary_sacrifice.it_relief_higher_rate",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 136689.37329700272,
+   "name": "hmrc.spi.employment_income.count_by_self_employment_income_band.band_1000_2000",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 72111.7166212534,
+   "name": "hmrc.spi.employment_income.count_by_self_employment_income_band.band_1_500",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 110858.310626703,
+   "name": "hmrc.spi.employment_income.count_by_self_employment_income_band.band_2000_3000",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 96866.48501362398,
+   "name": "hmrc.spi.employment_income.count_by_self_employment_income_band.band_3000_4000",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 82874.65940054496,
+   "name": "hmrc.spi.employment_income.count_by_self_employment_income_band.band_4000_5000",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 159291.553133515,
+   "name": "hmrc.spi.employment_income.count_by_self_employment_income_band.band_5000_7500",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 68882.83378746595,
+   "name": "hmrc.spi.employment_income.count_by_self_employment_income_band.band_500_1000",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 121621.25340599455,
+   "name": "hmrc.spi.employment_income.count_by_self_employment_income_band.band_7500_10000",
    "period": 2025,
    "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
   },
@@ -5707,7 +5847,7 @@
   },
   {
    "kind": "ledger_only",
-   "ledger_value": 76054754387.77309,
+   "ledger_value": 76615715797.65996,
    "name": "obr.universal_credit",
    "period": 2025,
    "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
@@ -5800,6 +5940,1112 @@
    "kind": "ledger_only",
    "ledger_value": 2565000.0,
    "name": "ons.households.english_regions@E12000009",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 118200.0,
+   "name": "ons.occupation.administrative_and_secretarial_by_region@E12000001",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 334300.0,
+   "name": "ons.occupation.administrative_and_secretarial_by_region@E12000002",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 251100.0,
+   "name": "ons.occupation.administrative_and_secretarial_by_region@E12000003",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 227100.0,
+   "name": "ons.occupation.administrative_and_secretarial_by_region@E12000004",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 276000.0,
+   "name": "ons.occupation.administrative_and_secretarial_by_region@E12000005",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 326400.0,
+   "name": "ons.occupation.administrative_and_secretarial_by_region@E12000006",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 395700.0,
+   "name": "ons.occupation.administrative_and_secretarial_by_region@E12000007",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 426000.0,
+   "name": "ons.occupation.administrative_and_secretarial_by_region@E12000008",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 235700.0,
+   "name": "ons.occupation.administrative_and_secretarial_by_region@E12000009",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 111900.0,
+   "name": "ons.occupation.administrative_and_secretarial_by_region@N92000002",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 232800.0,
+   "name": "ons.occupation.administrative_and_secretarial_by_region@S92000003",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 136300.0,
+   "name": "ons.occupation.administrative_and_secretarial_by_region@W92000004",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 168800.0,
+   "name": "ons.occupation.associate_professional_by_region@E12000001",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 496100.0,
+   "name": "ons.occupation.associate_professional_by_region@E12000002",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 358600.0,
+   "name": "ons.occupation.associate_professional_by_region@E12000003",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 353300.0,
+   "name": "ons.occupation.associate_professional_by_region@E12000004",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 411500.0,
+   "name": "ons.occupation.associate_professional_by_region@E12000005",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 471800.0,
+   "name": "ons.occupation.associate_professional_by_region@E12000006",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 810900.0,
+   "name": "ons.occupation.associate_professional_by_region@E12000007",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 737500.0,
+   "name": "ons.occupation.associate_professional_by_region@E12000008",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 423200.0,
+   "name": "ons.occupation.associate_professional_by_region@E12000009",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 92000.0,
+   "name": "ons.occupation.associate_professional_by_region@N92000002",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 403400.0,
+   "name": "ons.occupation.associate_professional_by_region@S92000003",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 225900.0,
+   "name": "ons.occupation.associate_professional_by_region@W92000004",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 114800.0,
+   "name": "ons.occupation.caring_leisure_and_other_service_by_region@E12000001",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 330100.0,
+   "name": "ons.occupation.caring_leisure_and_other_service_by_region@E12000002",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 234900.0,
+   "name": "ons.occupation.caring_leisure_and_other_service_by_region@E12000003",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 207800.0,
+   "name": "ons.occupation.caring_leisure_and_other_service_by_region@E12000004",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 263700.0,
+   "name": "ons.occupation.caring_leisure_and_other_service_by_region@E12000005",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 264100.0,
+   "name": "ons.occupation.caring_leisure_and_other_service_by_region@E12000006",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 352000.0,
+   "name": "ons.occupation.caring_leisure_and_other_service_by_region@E12000007",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 393700.0,
+   "name": "ons.occupation.caring_leisure_and_other_service_by_region@E12000008",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 235500.0,
+   "name": "ons.occupation.caring_leisure_and_other_service_by_region@E12000009",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 86900.0,
+   "name": "ons.occupation.caring_leisure_and_other_service_by_region@N92000002",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 268000.0,
+   "name": "ons.occupation.caring_leisure_and_other_service_by_region@S92000003",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 142300.0,
+   "name": "ons.occupation.caring_leisure_and_other_service_by_region@W92000004",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 113000.0,
+   "name": "ons.occupation.elementary_by_region@E12000001",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 330000.0,
+   "name": "ons.occupation.elementary_by_region@E12000002",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 295500.0,
+   "name": "ons.occupation.elementary_by_region@E12000003",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 261000.0,
+   "name": "ons.occupation.elementary_by_region@E12000004",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 293900.0,
+   "name": "ons.occupation.elementary_by_region@E12000005",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 268300.0,
+   "name": "ons.occupation.elementary_by_region@E12000006",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 299000.0,
+   "name": "ons.occupation.elementary_by_region@E12000007",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 377200.0,
+   "name": "ons.occupation.elementary_by_region@E12000008",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 267600.0,
+   "name": "ons.occupation.elementary_by_region@E12000009",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 79600.0,
+   "name": "ons.occupation.elementary_by_region@N92000002",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 270500.0,
+   "name": "ons.occupation.elementary_by_region@S92000003",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 143200.0,
+   "name": "ons.occupation.elementary_by_region@W92000004",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 1807200.0,
+   "name": "ons.occupation.female_administrative",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 1180100.0,
+   "name": "ons.occupation.female_business_and_public_service_associate_professionals",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 1318500.0,
+   "name": "ons.occupation.female_business_media_and_public_service_professionals",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 1861000.0,
+   "name": "ons.occupation.female_caring_personal_service",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 972700.0,
+   "name": "ons.occupation.female_corporate_managers_and_directors",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 354000.0,
+   "name": "ons.occupation.female_culture_media_and_sports",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 277500.0,
+   "name": "ons.occupation.female_customer_service",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 1345800.0,
+   "name": "ons.occupation.female_elementary_administration_and_service",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 91100.0,
+   "name": "ons.occupation.female_elementary_trades_and_related",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 629200.0,
+   "name": "ons.occupation.female_health_and_social_care_associate_professionals",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 1281200.0,
+   "name": "ons.occupation.female_health_professionals",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 398800.0,
+   "name": "ons.occupation.female_leisure_travel_and_related_personal_service",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 466100.0,
+   "name": "ons.occupation.female_other_managers_and_proprietors",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 149200.0,
+   "name": "ons.occupation.female_process_plant_and_machine_operatives",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 120100.0,
+   "name": "ons.occupation.female_protective_service",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 853800.0,
+   "name": "ons.occupation.female_sales",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 155900.0,
+   "name": "ons.occupation.female_science_engineering_and_technology_associate_professionals",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 679600.0,
+   "name": "ons.occupation.female_science_research_engineering_and_technology_professionals",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 428200.0,
+   "name": "ons.occupation.female_secretarial_and_related",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 60200.0,
+   "name": "ons.occupation.female_skilled_agricultural_and_related_trades",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 23400.0,
+   "name": "ons.occupation.female_skilled_construction_and_building_trades",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 35300.0,
+   "name": "ons.occupation.female_skilled_metal_electrical_and_electronic_trades",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 1155900.0,
+   "name": "ons.occupation.female_teaching_and_other_educational_professionals",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 215700.0,
+   "name": "ons.occupation.female_textiles_printing_and_other_skilled_trades",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 77400.0,
+   "name": "ons.occupation.female_transport_and_mobile_machine_drivers_and_operatives",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 791600.0,
+   "name": "ons.occupation.male_administrative",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 1227600.0,
+   "name": "ons.occupation.male_business_and_public_service_associate_professionals",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 1505100.0,
+   "name": "ons.occupation.male_business_media_and_public_service_professionals",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 430400.0,
+   "name": "ons.occupation.male_caring_personal_service",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 1647200.0,
+   "name": "ons.occupation.male_corporate_managers_and_directors",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 419300.0,
+   "name": "ons.occupation.male_culture_media_and_sports",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 170300.0,
+   "name": "ons.occupation.male_customer_service",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 1267000.0,
+   "name": "ons.occupation.male_elementary_administration_and_service",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 295000.0,
+   "name": "ons.occupation.male_elementary_trades_and_related",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 136700.0,
+   "name": "ons.occupation.male_health_and_social_care_associate_professionals",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 452100.0,
+   "name": "ons.occupation.male_health_professionals",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 180400.0,
+   "name": "ons.occupation.male_leisure_travel_and_related_personal_service",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 723900.0,
+   "name": "ons.occupation.male_other_managers_and_proprietors",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 526900.0,
+   "name": "ons.occupation.male_process_plant_and_machine_operatives",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 295500.0,
+   "name": "ons.occupation.male_protective_service",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 603600.0,
+   "name": "ons.occupation.male_sales",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 434700.0,
+   "name": "ons.occupation.male_science_engineering_and_technology_associate_professionals",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 1978200.0,
+   "name": "ons.occupation.male_science_research_engineering_and_technology_professionals",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 44600.0,
+   "name": "ons.occupation.male_secretarial_and_related",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 274200.0,
+   "name": "ons.occupation.male_skilled_agricultural_and_related_trades",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 893000.0,
+   "name": "ons.occupation.male_skilled_construction_and_building_trades",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 901400.0,
+   "name": "ons.occupation.male_skilled_metal_electrical_and_electronic_trades",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 594700.0,
+   "name": "ons.occupation.male_teaching_and_other_educational_professionals",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 368500.0,
+   "name": "ons.occupation.male_textiles_printing_and_other_skilled_trades",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 1093900.0,
+   "name": "ons.occupation.male_transport_and_mobile_machine_drivers_and_operatives",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 107500.0,
+   "name": "ons.occupation.managers_directors_and_senior_officials_by_region@E12000001",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 342900.0,
+   "name": "ons.occupation.managers_directors_and_senior_officials_by_region@E12000002",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 254900.0,
+   "name": "ons.occupation.managers_directors_and_senior_officials_by_region@E12000003",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 247700.0,
+   "name": "ons.occupation.managers_directors_and_senior_officials_by_region@E12000004",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 278100.0,
+   "name": "ons.occupation.managers_directors_and_senior_officials_by_region@E12000005",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 413400.0,
+   "name": "ons.occupation.managers_directors_and_senior_officials_by_region@E12000006",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 732600.0,
+   "name": "ons.occupation.managers_directors_and_senior_officials_by_region@E12000007",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 620600.0,
+   "name": "ons.occupation.managers_directors_and_senior_officials_by_region@E12000008",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 339200.0,
+   "name": "ons.occupation.managers_directors_and_senior_officials_by_region@E12000009",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 81100.0,
+   "name": "ons.occupation.managers_directors_and_senior_officials_by_region@N92000002",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 247500.0,
+   "name": "ons.occupation.managers_directors_and_senior_officials_by_region@S92000003",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 144400.0,
+   "name": "ons.occupation.managers_directors_and_senior_officials_by_region@W92000004",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 85900.0,
+   "name": "ons.occupation.process_plant_and_machine_operatives_by_region@E12000001",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 201800.0,
+   "name": "ons.occupation.process_plant_and_machine_operatives_by_region@E12000002",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 179300.0,
+   "name": "ons.occupation.process_plant_and_machine_operatives_by_region@E12000003",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 165600.0,
+   "name": "ons.occupation.process_plant_and_machine_operatives_by_region@E12000004",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 193800.0,
+   "name": "ons.occupation.process_plant_and_machine_operatives_by_region@E12000005",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 188200.0,
+   "name": "ons.occupation.process_plant_and_machine_operatives_by_region@E12000006",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 171400.0,
+   "name": "ons.occupation.process_plant_and_machine_operatives_by_region@E12000007",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 216300.0,
+   "name": "ons.occupation.process_plant_and_machine_operatives_by_region@E12000008",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 154600.0,
+   "name": "ons.occupation.process_plant_and_machine_operatives_by_region@E12000009",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 59100.0,
+   "name": "ons.occupation.process_plant_and_machine_operatives_by_region@N92000002",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 141400.0,
+   "name": "ons.occupation.process_plant_and_machine_operatives_by_region@S92000003",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 90000.0,
+   "name": "ons.occupation.process_plant_and_machine_operatives_by_region@W92000004",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 290200.0,
+   "name": "ons.occupation.professional_by_region@E12000001",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 963500.0,
+   "name": "ons.occupation.professional_by_region@E12000002",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 651200.0,
+   "name": "ons.occupation.professional_by_region@E12000003",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 532400.0,
+   "name": "ons.occupation.professional_by_region@E12000004",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 699800.0,
+   "name": "ons.occupation.professional_by_region@E12000005",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 816100.0,
+   "name": "ons.occupation.professional_by_region@E12000006",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 1655600.0,
+   "name": "ons.occupation.professional_by_region@E12000007",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 1309100.0,
+   "name": "ons.occupation.professional_by_region@E12000008",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 755200.0,
+   "name": "ons.occupation.professional_by_region@E12000009",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 227400.0,
+   "name": "ons.occupation.professional_by_region@N92000002",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 722700.0,
+   "name": "ons.occupation.professional_by_region@S92000003",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 342000.0,
+   "name": "ons.occupation.professional_by_region@W92000004",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 79300.0,
+   "name": "ons.occupation.sales_and_customer_service_by_region@E12000001",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 205200.0,
+   "name": "ons.occupation.sales_and_customer_service_by_region@E12000002",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 154000.0,
+   "name": "ons.occupation.sales_and_customer_service_by_region@E12000003",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 155300.0,
+   "name": "ons.occupation.sales_and_customer_service_by_region@E12000004",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 168600.0,
+   "name": "ons.occupation.sales_and_customer_service_by_region@E12000005",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 168200.0,
+   "name": "ons.occupation.sales_and_customer_service_by_region@E12000006",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 209500.0,
+   "name": "ons.occupation.sales_and_customer_service_by_region@E12000007",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 263000.0,
+   "name": "ons.occupation.sales_and_customer_service_by_region@E12000008",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 164000.0,
+   "name": "ons.occupation.sales_and_customer_service_by_region@E12000009",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 75800.0,
+   "name": "ons.occupation.sales_and_customer_service_by_region@N92000002",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 172800.0,
+   "name": "ons.occupation.sales_and_customer_service_by_region@S92000003",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 89500.0,
+   "name": "ons.occupation.sales_and_customer_service_by_region@W92000004",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 124000.0,
+   "name": "ons.occupation.skilled_trades_by_region@E12000001",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 298100.0,
+   "name": "ons.occupation.skilled_trades_by_region@E12000002",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 231300.0,
+   "name": "ons.occupation.skilled_trades_by_region@E12000003",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 214200.0,
+   "name": "ons.occupation.skilled_trades_by_region@E12000004",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 240900.0,
+   "name": "ons.occupation.skilled_trades_by_region@E12000005",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 271300.0,
+   "name": "ons.occupation.skilled_trades_by_region@E12000006",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 232000.0,
+   "name": "ons.occupation.skilled_trades_by_region@E12000007",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 393300.0,
+   "name": "ons.occupation.skilled_trades_by_region@E12000008",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 275500.0,
+   "name": "ons.occupation.skilled_trades_by_region@E12000009",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 103000.0,
+   "name": "ons.occupation.skilled_trades_by_region@N92000002",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 240200.0,
+   "name": "ons.occupation.skilled_trades_by_region@S92000003",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 147800.0,
+   "name": "ons.occupation.skilled_trades_by_region@W92000004",
    "period": 2025,
    "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
   },
@@ -5906,21 +7152,70 @@
    "ledger_value": 408119.0,
    "name": "ons.population.female_15",
    "period": 2025,
-   "reason": "microcosm#1095 (María's ruling of 2026-10-13; uk-data#563): one of the three rows (ages 15, 16-17 and 18-19) that partition the incumbent five-year 15_19 sex band, bound so the fit holds the age mix inside the band. The incumbent binds only the band, so this row has no fixture counterpart."
+   "reason": "microcosm#1095 (María's ruling of 2026-10-13; uk-data#563; single years since Y5 of the November event-data plan, approved by María on 2026-11-06): one of the five rows (the single years 15 to 19) that partition the incumbent five-year 15_19 sex band, bound so the fit holds the age mix inside the band. The incumbent binds only the band, so this row has no fixture counterpart."
   },
   {
    "kind": "ledger_only",
-   "ledger_value": 812522.0,
-   "name": "ons.population.female_16_17",
+   "ledger_value": 404224.0,
+   "name": "ons.population.female_16",
    "period": 2025,
-   "reason": "microcosm#1095 (María's ruling of 2026-10-13; uk-data#563): one of the three rows (ages 15, 16-17 and 18-19) that partition the incumbent five-year 15_19 sex band, bound so the fit holds the age mix inside the band. The incumbent binds only the band, so this row has no fixture counterpart."
+   "reason": "microcosm#1095 (María's ruling of 2026-10-13; uk-data#563; single years since Y5 of the November event-data plan, approved by María on 2026-11-06): one of the five rows (the single years 15 to 19) that partition the incumbent five-year 15_19 sex band, bound so the fit holds the age mix inside the band. The incumbent binds only the band, so this row has no fixture counterpart."
   },
   {
    "kind": "ledger_only",
-   "ledger_value": 781458.0,
-   "name": "ons.population.female_18_19",
+   "ledger_value": 408298.0,
+   "name": "ons.population.female_17",
    "period": 2025,
-   "reason": "microcosm#1095 (María's ruling of 2026-10-13; uk-data#563): one of the three rows (ages 15, 16-17 and 18-19) that partition the incumbent five-year 15_19 sex band, bound so the fit holds the age mix inside the band. The incumbent binds only the band, so this row has no fixture counterpart."
+   "reason": "microcosm#1095 (María's ruling of 2026-10-13; uk-data#563; single years since Y5 of the November event-data plan, approved by María on 2026-11-06): one of the five rows (the single years 15 to 19) that partition the incumbent five-year 15_19 sex band, bound so the fit holds the age mix inside the band. The incumbent binds only the band, so this row has no fixture counterpart."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 391816.0,
+   "name": "ons.population.female_18",
+   "period": 2025,
+   "reason": "microcosm#1095 (María's ruling of 2026-10-13; uk-data#563; single years since Y5 of the November event-data plan, approved by María on 2026-11-06): one of the five rows (the single years 15 to 19) that partition the incumbent five-year 15_19 sex band, bound so the fit holds the age mix inside the band. The incumbent binds only the band, so this row has no fixture counterpart."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 389642.0,
+   "name": "ons.population.female_19",
+   "period": 2025,
+   "reason": "microcosm#1095 (María's ruling of 2026-10-13; uk-data#563; single years since Y5 of the November event-data plan, approved by María on 2026-11-06): one of the five rows (the single years 15 to 19) that partition the incumbent five-year 15_19 sex band, bound so the fit holds the age mix inside the band. The incumbent binds only the band, so this row has no fixture counterpart."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 394268.0,
+   "name": "ons.population.female_20",
+   "period": 2025,
+   "reason": "microcosm#1095 (Y5 of the November event-data plan, approved by María on 2026-11-06): one of the five rows (the single years 20 to 24) that partition the incumbent five-year 20_24 sex band, bound so the fit holds the age mix inside the band. The incumbent binds only the band, so this row has no fixture counterpart."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 396247.0,
+   "name": "ons.population.female_21",
+   "period": 2025,
+   "reason": "microcosm#1095 (Y5 of the November event-data plan, approved by María on 2026-11-06): one of the five rows (the single years 20 to 24) that partition the incumbent five-year 20_24 sex band, bound so the fit holds the age mix inside the band. The incumbent binds only the band, so this row has no fixture counterpart."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 405384.0,
+   "name": "ons.population.female_22",
+   "period": 2025,
+   "reason": "microcosm#1095 (Y5 of the November event-data plan, approved by María on 2026-11-06): one of the five rows (the single years 20 to 24) that partition the incumbent five-year 20_24 sex band, bound so the fit holds the age mix inside the band. The incumbent binds only the band, so this row has no fixture counterpart."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 418166.0,
+   "name": "ons.population.female_23",
+   "period": 2025,
+   "reason": "microcosm#1095 (Y5 of the November event-data plan, approved by María on 2026-11-06): one of the five rows (the single years 20 to 24) that partition the incumbent five-year 20_24 sex band, bound so the fit holds the age mix inside the band. The incumbent binds only the band, so this row has no fixture counterpart."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 422699.0,
+   "name": "ons.population.female_24",
+   "period": 2025,
+   "reason": "microcosm#1095 (Y5 of the November event-data plan, approved by María on 2026-11-06): one of the five rows (the single years 20 to 24) that partition the incumbent five-year 20_24 sex band, bound so the fit holds the age mix inside the band. The incumbent binds only the band, so this row has no fixture counterpart."
   },
   {
    "kind": "ledger_only",
@@ -5934,21 +7229,70 @@
    "ledger_value": 427529.0,
    "name": "ons.population.male_15",
    "period": 2025,
-   "reason": "microcosm#1095 (María's ruling of 2026-10-13; uk-data#563): one of the three rows (ages 15, 16-17 and 18-19) that partition the incumbent five-year 15_19 sex band, bound so the fit holds the age mix inside the band. The incumbent binds only the band, so this row has no fixture counterpart."
+   "reason": "microcosm#1095 (María's ruling of 2026-10-13; uk-data#563; single years since Y5 of the November event-data plan, approved by María on 2026-11-06): one of the five rows (the single years 15 to 19) that partition the incumbent five-year 15_19 sex band, bound so the fit holds the age mix inside the band. The incumbent binds only the band, so this row has no fixture counterpart."
   },
   {
    "kind": "ledger_only",
-   "ledger_value": 856296.0,
-   "name": "ons.population.male_16_17",
+   "ledger_value": 425827.0,
+   "name": "ons.population.male_16",
    "period": 2025,
-   "reason": "microcosm#1095 (María's ruling of 2026-10-13; uk-data#563): one of the three rows (ages 15, 16-17 and 18-19) that partition the incumbent five-year 15_19 sex band, bound so the fit holds the age mix inside the band. The incumbent binds only the band, so this row has no fixture counterpart."
+   "reason": "microcosm#1095 (María's ruling of 2026-10-13; uk-data#563; single years since Y5 of the November event-data plan, approved by María on 2026-11-06): one of the five rows (the single years 15 to 19) that partition the incumbent five-year 15_19 sex band, bound so the fit holds the age mix inside the band. The incumbent binds only the band, so this row has no fixture counterpart."
   },
   {
    "kind": "ledger_only",
-   "ledger_value": 823183.0,
-   "name": "ons.population.male_18_19",
+   "ledger_value": 430469.0,
+   "name": "ons.population.male_17",
    "period": 2025,
-   "reason": "microcosm#1095 (María's ruling of 2026-10-13; uk-data#563): one of the three rows (ages 15, 16-17 and 18-19) that partition the incumbent five-year 15_19 sex band, bound so the fit holds the age mix inside the band. The incumbent binds only the band, so this row has no fixture counterpart."
+   "reason": "microcosm#1095 (María's ruling of 2026-10-13; uk-data#563; single years since Y5 of the November event-data plan, approved by María on 2026-11-06): one of the five rows (the single years 15 to 19) that partition the incumbent five-year 15_19 sex band, bound so the fit holds the age mix inside the band. The incumbent binds only the band, so this row has no fixture counterpart."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 413685.0,
+   "name": "ons.population.male_18",
+   "period": 2025,
+   "reason": "microcosm#1095 (María's ruling of 2026-10-13; uk-data#563; single years since Y5 of the November event-data plan, approved by María on 2026-11-06): one of the five rows (the single years 15 to 19) that partition the incumbent five-year 15_19 sex band, bound so the fit holds the age mix inside the band. The incumbent binds only the band, so this row has no fixture counterpart."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 409498.0,
+   "name": "ons.population.male_19",
+   "period": 2025,
+   "reason": "microcosm#1095 (María's ruling of 2026-10-13; uk-data#563; single years since Y5 of the November event-data plan, approved by María on 2026-11-06): one of the five rows (the single years 15 to 19) that partition the incumbent five-year 15_19 sex band, bound so the fit holds the age mix inside the band. The incumbent binds only the band, so this row has no fixture counterpart."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 415442.0,
+   "name": "ons.population.male_20",
+   "period": 2025,
+   "reason": "microcosm#1095 (Y5 of the November event-data plan, approved by María on 2026-11-06): one of the five rows (the single years 20 to 24) that partition the incumbent five-year 20_24 sex band, bound so the fit holds the age mix inside the band. The incumbent binds only the band, so this row has no fixture counterpart."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 419104.0,
+   "name": "ons.population.male_21",
+   "period": 2025,
+   "reason": "microcosm#1095 (Y5 of the November event-data plan, approved by María on 2026-11-06): one of the five rows (the single years 20 to 24) that partition the incumbent five-year 20_24 sex band, bound so the fit holds the age mix inside the band. The incumbent binds only the band, so this row has no fixture counterpart."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 423728.0,
+   "name": "ons.population.male_22",
+   "period": 2025,
+   "reason": "microcosm#1095 (Y5 of the November event-data plan, approved by María on 2026-11-06): one of the five rows (the single years 20 to 24) that partition the incumbent five-year 20_24 sex band, bound so the fit holds the age mix inside the band. The incumbent binds only the band, so this row has no fixture counterpart."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 432421.0,
+   "name": "ons.population.male_23",
+   "period": 2025,
+   "reason": "microcosm#1095 (Y5 of the November event-data plan, approved by María on 2026-11-06): one of the five rows (the single years 20 to 24) that partition the incumbent five-year 20_24 sex band, bound so the fit holds the age mix inside the band. The incumbent binds only the band, so this row has no fixture counterpart."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 436367.0,
+   "name": "ons.population.male_24",
+   "period": 2025,
+   "reason": "microcosm#1095 (Y5 of the November event-data plan, approved by María on 2026-11-06): one of the five rows (the single years 20 to 24) that partition the incumbent five-year 20_24 sex band, bound so the fit holds the age mix inside the band. The incumbent binds only the band, so this row has no fixture counterpart."
   },
   {
    "kind": "ledger_only",
@@ -9002,31 +10346,31 @@
   {
    "fixture_value": 8492497075.074617,
    "kind": "calibration_drift",
-   "ledger_value": 8309942303.358463,
+   "ledger_value": 8303914528.200001,
    "name": "obr.attendance_allowance",
    "period": 2025,
-   "reason": "Period basis (PolicyEngine/chronicle#280 lane, María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year): ours binds the OBR March 2026 line at the calendar-2025 window, three twelfths of FY2024-25 and nine twelfths of FY2025-26, on the same series; the frozen incumbent fixture holds the FY2025-26 value alone."
+   "reason": "Period basis (PolicyEngine/chronicle#280 lane, María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year): ours binds the OBR line at the calendar-2025 window, three twelfths of FY2024-25 from the March 2026 EFO and nine twelfths of FY2025-26 from the October 2026 EFO, each year's latest edition (PolicyEngine/chronicle#397, María's ruling of 2026-10-31); the frozen incumbent fixture holds the FY2025-26 value alone."
   },
   {
    "fixture_value": 4569403813.760573,
    "kind": "calibration_drift",
-   "ledger_value": 4487029829.347929,
+   "ledger_value": 4491957194.999996,
    "name": "obr.carers_allowance",
    "period": 2025,
-   "reason": "Period basis (PolicyEngine/chronicle#280 lane, María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year): ours binds the OBR March 2026 line at the calendar-2025 window, three twelfths of FY2024-25 and nine twelfths of FY2025-26, on the same series; the frozen incumbent fixture holds the FY2025-26 value alone."
+   "reason": "Period basis (PolicyEngine/chronicle#280 lane, María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year): ours binds the OBR line at the calendar-2025 window, three twelfths of FY2024-25 from the March 2026 EFO and nine twelfths of FY2025-26 from the October 2026 EFO, each year's latest edition (PolicyEngine/chronicle#397, María's ruling of 2026-10-31); the frozen incumbent fixture holds the FY2025-26 value alone."
   },
   {
    "fixture_value": 13389272724.45089,
    "kind": "calibration_drift",
-   "ledger_value": 13368730968.878168,
+   "ledger_value": 13409122425.539997,
    "name": "obr.child_benefit",
    "period": 2025,
-   "reason": "Period basis (PolicyEngine/chronicle#280 lane, María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year): ours binds the OBR March 2026 line at the calendar-2025 window, three twelfths of FY2024-25 and nine twelfths of FY2025-26, on the same series; the frozen incumbent fixture holds the FY2025-26 value alone."
+   "reason": "Period basis (PolicyEngine/chronicle#280 lane, María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year): ours binds the OBR line at the calendar-2025 window, three twelfths of FY2024-25 from the March 2026 EFO and nine twelfths of FY2025-26 from the October 2026 EFO, each year's latest edition (PolicyEngine/chronicle#397, María's ruling of 2026-10-31); the frozen incumbent fixture holds the FY2025-26 value alone."
   },
   {
    "fixture_value": 50925163826.30539,
    "kind": "calibration_drift",
-   "ledger_value": 47197225993.12901,
+   "ledger_value": 47197574984.19505,
    "name": "obr.council_tax",
    "period": 2025,
    "reason": "Series and period basis (microcosm#1095, María's ruling of 2026-10-09): ours binds OBR table 4.1 row 15, the council tax receipts of England, Scotland and Wales, over Great Britain's households, at the calendar-2025 window (three twelfths of FY2024-25 and nine twelfths of FY2025-26, María's rule of 2026-09-22, PolicyEngine/chronicle#280 lane), scaled to main residences by England's chargeable dwellings less its second homes and empty dwellings, over its chargeable dwellings (MHCLG Council Taxbase, October 2025; María's ruling of 2026-10-29, microcosm#1095 D14f); the frozen incumbent fixture holds the FY2025-26 value of row 19 alone, which adds Northern Ireland domestic rates, the council tax accruals adjustment and the high-value council tax surcharge."
@@ -9034,18 +10378,18 @@
   {
    "fixture_value": 44117237614.71528,
    "kind": "calibration_drift",
-   "ledger_value": 41990496408.172676,
+   "ledger_value": 41990323959.26737,
    "name": "obr.council_tax_england",
    "period": 2025,
-   "reason": "Period basis (PolicyEngine/chronicle#280 lane, María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year): ours binds the OBR March 2026 line at the calendar-2025 window, three twelfths of FY2024-25 and nine twelfths of FY2025-26, on the same series; the frozen incumbent fixture holds the FY2025-26 value alone."
+   "reason": "Series and period basis (microcosm#1095): ours measures the nation's OBR table 4.1 council tax receipts at the calendar-2025 window, three twelfths of FY2024-25 from the March 2026 EFO and nine twelfths of FY2025-26 from the October 2026 EFO, each year's latest edition (María's rule of 2026-09-22, PolicyEngine/chronicle#280 lane, and her ruling of 2026-10-31), scaled to main residences by the share obr.council_tax takes, England's chargeable dwellings less its second homes and empty dwellings, over its chargeable dwellings (MHCLG Council Taxbase, October 2025; María's ruling of 2026-10-29, microcosm#1095 D14f), so the three nation rows sum to the bound one; the frozen incumbent fixture holds the FY2025-26 value alone."
   },
   {
    "fixture_value": 3051227494.93594,
    "kind": "calibration_drift",
-   "ledger_value": 2925273094.855295,
+   "ledger_value": 2925794534.826645,
    "name": "obr.council_tax_scotland",
    "period": 2025,
-   "reason": "Period basis (PolicyEngine/chronicle#280 lane, María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year): ours binds the OBR March 2026 line at the calendar-2025 window, three twelfths of FY2024-25 and nine twelfths of FY2025-26, on the same series; the frozen incumbent fixture holds the FY2025-26 value alone."
+   "reason": "Series and period basis (microcosm#1095): ours measures the nation's OBR table 4.1 council tax receipts at the calendar-2025 window, three twelfths of FY2024-25 from the March 2026 EFO and nine twelfths of FY2025-26 from the October 2026 EFO, each year's latest edition (María's rule of 2026-09-22, PolicyEngine/chronicle#280 lane, and her ruling of 2026-10-31), scaled to main residences by the share obr.council_tax takes, England's chargeable dwellings less its second homes and empty dwellings, over its chargeable dwellings (MHCLG Council Taxbase, October 2025; María's ruling of 2026-10-29, microcosm#1095 D14f), so the three nation rows sum to the bound one; the frozen incumbent fixture holds the FY2025-26 value alone."
   },
   {
    "fixture_value": 2400769752.36827,
@@ -9053,111 +10397,127 @@
    "ledger_value": 2281456490.1010394,
    "name": "obr.council_tax_wales",
    "period": 2025,
-   "reason": "Period basis (PolicyEngine/chronicle#280 lane, María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year): ours binds the OBR March 2026 line at the calendar-2025 window, three twelfths of FY2024-25 and nine twelfths of FY2025-26, on the same series; the frozen incumbent fixture holds the FY2025-26 value alone."
+   "reason": "Series and period basis (microcosm#1095): ours measures the nation's OBR table 4.1 council tax receipts at the calendar-2025 window, three twelfths of FY2024-25 from the March 2026 EFO and nine twelfths of FY2025-26 from the October 2026 EFO, each year's latest edition (María's rule of 2026-09-22, PolicyEngine/chronicle#280 lane, and her ruling of 2026-10-31), scaled to main residences by the share obr.council_tax takes, England's chargeable dwellings less its second homes and empty dwellings, over its chargeable dwellings (MHCLG Council Taxbase, October 2025; María's ruling of 2026-10-29, microcosm#1095 D14f), so the three nation rows sum to the bound one; the frozen incumbent fixture holds the FY2025-26 value alone."
+  },
+  {
+   "fixture_value": 494000000.0,
+   "kind": "calibration_drift",
+   "ledger_value": 509814031.9020381,
+   "name": "obr.domestic_rates",
+   "period": 2025,
+   "reason": "Period basis (PolicyEngine/chronicle#280 lane, María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year): ours binds the OBR line at the calendar-2025 window, three twelfths of FY2024-25 from the March 2026 EFO and nine twelfths of FY2025-26 from the October 2026 EFO, each year's latest edition (PolicyEngine/chronicle#397, María's ruling of 2026-10-31); the frozen incumbent fixture holds the FY2025-26 value alone."
   },
   {
    "fixture_value": 7206287181.538654,
    "kind": "calibration_drift",
-   "ledger_value": 8507979735.87899,
+   "ledger_value": 8545802862.489966,
    "name": "obr.esa",
    "period": 2025,
-   "reason": "Period basis (PolicyEngine/chronicle#280 lane, María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year): ours binds the OBR March 2026 line at the calendar-2025 window, three twelfths of FY2024-25 and nine twelfths of FY2025-26, on the same series; the frozen incumbent fixture holds the FY2025-26 value alone."
+   "reason": "Period basis (PolicyEngine/chronicle#280 lane, María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year): ours binds the OBR line at the calendar-2025 window, three twelfths of FY2024-25 from the March 2026 EFO and nine twelfths of FY2025-26 from the October 2026 EFO, each year's latest edition (PolicyEngine/chronicle#397, María's ruling of 2026-10-31); the frozen incumbent fixture holds the FY2025-26 value alone."
   },
   {
    "fixture_value": 12103254163.788864,
    "kind": "calibration_drift",
-   "ledger_value": 12725786027.543839,
+   "ledger_value": 12812461092.718086,
    "name": "obr.housing_benefit",
    "period": 2025,
-   "reason": "Period basis (PolicyEngine/chronicle#280 lane, María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year): ours binds the OBR March 2026 line at the calendar-2025 window, three twelfths of FY2024-25 and nine twelfths of FY2025-26, on the same series; the frozen incumbent fixture holds the FY2025-26 value alone."
+   "reason": "Period basis (PolicyEngine/chronicle#280 lane, María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year): ours binds the OBR line at the calendar-2025 window, three twelfths of FY2024-25 from the March 2026 EFO and nine twelfths of FY2025-26 from the October 2026 EFO, each year's latest edition (PolicyEngine/chronicle#397, María's ruling of 2026-10-31); the frozen incumbent fixture holds the FY2025-26 value alone."
   },
   {
    "fixture_value": 331437583074.4429,
    "kind": "calibration_drift",
-   "ledger_value": 325054437305.83215,
+   "ledger_value": 323479750000.0,
    "name": "obr.income_tax",
    "period": 2025,
-   "reason": "Period basis (PolicyEngine/chronicle#280 lane, María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year): ours binds the OBR March 2026 line at the calendar-2025 window, three twelfths of FY2024-25 and nine twelfths of FY2025-26, on the same series; the frozen incumbent fixture holds the FY2025-26 value alone."
+   "reason": "Period basis (PolicyEngine/chronicle#280 lane, María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year): ours binds the OBR line at the calendar-2025 window, three twelfths of FY2024-25 from the March 2026 EFO and nine twelfths of FY2025-26 from the October 2026 EFO, each year's latest edition (PolicyEngine/chronicle#397, María's ruling of 2026-10-31); the frozen incumbent fixture holds the FY2025-26 value alone."
   },
   {
    "fixture_value": 280558748.04472804,
    "kind": "calibration_drift",
-   "ledger_value": 288407204.431046,
+   "ledger_value": 281300678.72749996,
    "name": "obr.jobseekers_allowance",
    "period": 2025,
-   "reason": "Period basis (PolicyEngine/chronicle#280 lane, María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year): ours binds the OBR March 2026 line at the calendar-2025 window, three twelfths of FY2024-25 and nine twelfths of FY2025-26, on the same series; the frozen incumbent fixture holds the FY2025-26 value alone."
+   "reason": "Period basis (PolicyEngine/chronicle#280 lane, María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year): ours binds the OBR line at the calendar-2025 window, three twelfths of FY2024-25 from the March 2026 EFO and nine twelfths of FY2025-26 from the October 2026 EFO, each year's latest edition (PolicyEngine/chronicle#397, María's ruling of 2026-10-31); the frozen incumbent fixture holds the FY2025-26 value alone."
   },
   {
    "fixture_value": 49544363784.26465,
    "kind": "calibration_drift",
-   "ledger_value": 49002029830.141045,
+   "ledger_value": 48913873680.1126,
    "name": "obr.ni_employee",
    "period": 2025,
-   "reason": "Period basis (PolicyEngine/chronicle#280 lane, María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year): ours binds the OBR March 2026 line at the calendar-2025 window, three twelfths of FY2024-25 and nine twelfths of FY2025-26, on the same series; the frozen incumbent fixture holds the FY2025-26 value alone."
+   "reason": "Period basis (PolicyEngine/chronicle#280 lane, María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year): ours binds the OBR line at the calendar-2025 window, three twelfths of FY2024-25 from the March 2026 EFO and nine twelfths of FY2025-26 from the October 2026 EFO, each year's latest edition (PolicyEngine/chronicle#397, María's ruling of 2026-10-31); the frozen incumbent fixture holds the FY2025-26 value alone."
   },
   {
    "fixture_value": 145324007512.71753,
    "kind": "calibration_drift",
-   "ledger_value": 137854706939.8949,
+   "ledger_value": 137917887236.63586,
    "name": "obr.ni_employer",
    "period": 2025,
-   "reason": "Period basis (PolicyEngine/chronicle#280 lane, María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year): ours binds the OBR March 2026 line at the calendar-2025 window, three twelfths of FY2024-25 and nine twelfths of FY2025-26, on the same series; the frozen incumbent fixture holds the FY2025-26 value alone."
+   "reason": "Period basis (PolicyEngine/chronicle#280 lane, María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year): ours binds the OBR line at the calendar-2025 window, three twelfths of FY2024-25 from the March 2026 EFO and nine twelfths of FY2025-26 from the October 2026 EFO, each year's latest edition (PolicyEngine/chronicle#397, María's ruling of 2026-10-31); the frozen incumbent fixture holds the FY2025-26 value alone."
   },
   {
    "fixture_value": 2902816090.4147716,
    "kind": "calibration_drift",
-   "ledger_value": 2876506585.4950743,
+   "ledger_value": 2900120957.4244957,
    "name": "obr.ni_self_employed",
    "period": 2025,
-   "reason": "Period basis (PolicyEngine/chronicle#280 lane, María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year): ours binds the OBR March 2026 line at the calendar-2025 window, three twelfths of FY2024-25 and nine twelfths of FY2025-26, on the same series; the frozen incumbent fixture holds the FY2025-26 value alone."
+   "reason": "Period basis (PolicyEngine/chronicle#280 lane, María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year): ours binds the OBR line at the calendar-2025 window, three twelfths of FY2024-25 from the March 2026 EFO and nine twelfths of FY2025-26 from the October 2026 EFO, each year's latest edition (PolicyEngine/chronicle#397, María's ruling of 2026-10-31); the frozen incumbent fixture holds the FY2025-26 value alone."
   },
   {
    "fixture_value": 6146422389.476461,
    "kind": "calibration_drift",
-   "ledger_value": 6112217133.109846,
+   "ledger_value": 6251379463.922147,
    "name": "obr.pension_credit",
    "period": 2025,
-   "reason": "Period basis (PolicyEngine/chronicle#280 lane, María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year): ours binds the OBR March 2026 line at the calendar-2025 window, three twelfths of FY2024-25 and nine twelfths of FY2025-26, on the same series; the frozen incumbent fixture holds the FY2025-26 value alone."
+   "reason": "Period basis (PolicyEngine/chronicle#280 lane, María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year): ours binds the OBR line at the calendar-2025 window, three twelfths of FY2024-25 from the March 2026 EFO and nine twelfths of FY2025-26 from the October 2026 EFO, each year's latest edition (PolicyEngine/chronicle#397, María's ruling of 2026-10-31); the frozen incumbent fixture holds the FY2025-26 value alone."
   },
   {
    "fixture_value": 36910059270.5278,
    "kind": "calibration_drift",
-   "ledger_value": 36103194307.639694,
+   "ledger_value": 36016311327.49647,
    "name": "obr.pip",
    "period": 2025,
-   "reason": "Period basis (PolicyEngine/chronicle#280 lane, María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year): ours binds the OBR March 2026 line at the calendar-2025 window, three twelfths of FY2024-25 and nine twelfths of FY2025-26, on the same series; the frozen incumbent fixture holds the FY2025-26 value alone."
+   "reason": "Period basis (PolicyEngine/chronicle#280 lane, María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year): ours binds the OBR line at the calendar-2025 window, three twelfths of FY2024-25 from the March 2026 EFO and nine twelfths of FY2025-26 from the October 2026 EFO, each year's latest edition (PolicyEngine/chronicle#397, María's ruling of 2026-10-31); the frozen incumbent fixture holds the FY2025-26 value alone."
   },
   {
    "fixture_value": 15406516698.785578,
    "kind": "calibration_drift",
-   "ledger_value": 10161716337.860817,
+   "ledger_value": 10043490497.643122,
    "name": "obr.sdlt",
    "period": 2025,
-   "reason": "Payer and period basis (uk-data#564, microcosm#1095): ours binds households' SDLT, the OBR March 2026 line at the calendar-2025 window (three twelfths of FY2024-25 and nine twelfths of FY2025-26, María's rule of 2026-09-22, PolicyEngine/chronicle#280 lane) times individuals' share of HMRC's 2024-25 SDLT receipts, residential (Table 8a) and non-residential (Table 8b) together; the frozen incumbent fixture holds the FY2025-26 value of the whole line alone, which companies, partnerships and collective investment schemes pay about a third of."
+   "reason": "Payer and period basis (uk-data#564, microcosm#1095): ours binds households' SDLT, the OBR line at the calendar-2025 window (three twelfths of FY2024-25 from the March 2026 EFO and nine twelfths of FY2025-26 from the October 2026 EFO, María's rule of 2026-09-22, PolicyEngine/chronicle#280 lane, and her ruling of 2026-10-31) times individuals' share of HMRC's 2024-25 SDLT receipts, residential (Table 8a) and non-residential (Table 8b) together; the frozen incumbent fixture holds the FY2025-26 value of the whole line alone, which companies, partnerships and collective investment schemes pay about a third of."
   },
   {
    "fixture_value": 3194800881.520547,
    "kind": "calibration_drift",
-   "ledger_value": 3179100661.1404104,
+   "ledger_value": 3186824700.5054927,
    "name": "obr.statutory_maternity_pay",
    "period": 2025,
-   "reason": "Period basis (PolicyEngine/chronicle#280 lane, María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year): ours binds the OBR March 2026 line at the calendar-2025 window, three twelfths of FY2024-25 and nine twelfths of FY2025-26, on the same series; the frozen incumbent fixture holds the FY2025-26 value alone."
+   "reason": "Period basis (PolicyEngine/chronicle#280 lane, María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year): ours binds the OBR line at the calendar-2025 window, three twelfths of FY2024-25 from the March 2026 EFO and nine twelfths of FY2025-26 from the October 2026 EFO, each year's latest edition (PolicyEngine/chronicle#397, María's ruling of 2026-10-31); the frozen incumbent fixture holds the FY2025-26 value alone."
   },
   {
    "fixture_value": 3872000000.0,
    "kind": "calibration_drift",
-   "ledger_value": 3858750000.0,
+   "ledger_value": 3887250000.0,
    "name": "obr.tv_licence_fee",
    "period": 2025,
-   "reason": "Period basis (PolicyEngine/chronicle#280 lane, María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year): ours binds the OBR March 2026 line at the calendar-2025 window, three twelfths of FY2024-25 and nine twelfths of FY2025-26, on the same series; the frozen incumbent fixture holds the FY2025-26 value alone."
+   "reason": "Period basis (PolicyEngine/chronicle#280 lane, María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year): ours binds the OBR line at the calendar-2025 window, three twelfths of FY2024-25 from the March 2026 EFO and nine twelfths of FY2025-26 from the October 2026 EFO, each year's latest edition (PolicyEngine/chronicle#397, María's ruling of 2026-10-31); the frozen incumbent fixture holds the FY2025-26 value alone."
   },
   {
    "fixture_value": 180168938685.41794,
    "kind": "calibration_drift",
-   "ledger_value": 177875204014.06345,
+   "ledger_value": 177644250000.0,
    "name": "obr.vat",
    "period": 2025,
-   "reason": "Period basis (PolicyEngine/chronicle#280 lane, María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year): ours binds the OBR March 2026 line at the calendar-2025 window, three twelfths of FY2024-25 and nine twelfths of FY2025-26, on the same series; the frozen incumbent fixture holds the FY2025-26 value alone."
+   "reason": "Period basis (PolicyEngine/chronicle#280 lane, María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year): ours binds the OBR line at the calendar-2025 window, three twelfths of FY2024-25 from the March 2026 EFO and nine twelfths of FY2025-26 from the October 2026 EFO, each year's latest edition (PolicyEngine/chronicle#397, María's ruling of 2026-10-31); the frozen incumbent fixture holds the FY2025-26 value alone."
+  },
+  {
+   "fixture_value": 1911040880.4619167,
+   "kind": "calibration_drift",
+   "ledger_value": 1911453982.8600001,
+   "name": "obr.winter_fuel_allowance",
+   "period": 2025,
+   "reason": "Edition basis (PolicyEngine/chronicle#397): ours binds FY2025-26 alone (María's ruling of 2026-10-26), now the October 2026 EFO's outturn, the latest number Chronicle keeps for the year; the frozen incumbent fixture holds the March 2026 EFO's FY2025-26 projection."
   },
   {
    "fixture_value": 2057128451236.5015,
@@ -10064,14 +11424,6 @@
    "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
   },
   {
-   "fixture_value": 2033478.0,
-   "kind": "calibration_drift",
-   "ledger_value": 2036764.0,
-   "name": "ons.population.female_20_24",
-   "period": 2025,
-   "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
-  },
-  {
    "fixture_value": 2258028.0,
    "kind": "calibration_drift",
    "ledger_value": 2269669.0,
@@ -10196,14 +11548,6 @@
    "kind": "calibration_drift",
    "ledger_value": 2115846.0,
    "name": "ons.population.male_10_14",
-   "period": 2025,
-   "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
-  },
-  {
-   "fixture_value": 2136737.0,
-   "kind": "calibration_drift",
-   "ledger_value": 2127062.0,
-   "name": "ons.population.male_20_24",
    "period": 2025,
    "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
   },

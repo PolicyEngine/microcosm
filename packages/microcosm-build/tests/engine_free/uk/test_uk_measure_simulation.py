@@ -13,6 +13,7 @@ from microcosm.build.uk_runtime import measure_simulation
 from microcosm.build.uk_runtime.income_tax_rate_classes import UK_RATE_CLASS_ALLOCATION
 from microcosm.build.uk_runtime.measure_simulation import (
     UK_SAVINGS_INTEREST_OUTSIDE_ISAS,
+    UK_SPI_OTHER_INVESTMENT_INCOME,
     UKMeasureResolver,
     apply_uk_calibration_measure_exclusions,
     compute_uk_measure_input,
@@ -304,6 +305,37 @@ def test_resolver_rejects_amount_threshold_year_mismatch(
         )
 
 
+@pytest.mark.parametrize("measurement_period", [None, 2023, 2025])
+def test_resolver_rejects_a_dated_company_car_benefit_at_another_year(
+    monkeypatch, tmp_path, measurement_period
+):
+    """A company car benefit dated 2024 is priced at 2024-25's percentages, so a
+    binding that measures it at any other period, or at none, is refused, as a
+    dated CGT measure is (the review of microcosm#1491, item 7)."""
+
+    binding = {"value_variable": "company_car_benefit_2024"}
+    if measurement_period is not None:
+        binding["measurement_period"] = measurement_period
+    monkeypatch.setattr(
+        measure_simulation,
+        "_policyengine_uk_module",
+        lambda: SimpleNamespace(__version__="test"),
+    )
+    monkeypatch.setattr(
+        measure_simulation,
+        "_uk_contract_targets",
+        lambda: {"cars": {"bindings": {"policyengine": binding}}},
+    )
+    with pytest.raises(ValueError, match="company car benefit year/period mismatch"):
+        UKMeasureResolver(
+            simulation_source=tmp_path / "input.h5",
+            scratch_dir=tmp_path,
+            frame=FrameStub(),
+            year=2025,
+            microsimulation_factory=lambda **_: SimulationStub({}),
+        )
+
+
 def test_dated_cgt_measure_uses_disposal_year_with_later_calibration_year():
     sim = SimulationStub(
         {"capital_gains": ("person", np.array([3000.0, 5000.0, 20000.0]))}
@@ -314,6 +346,32 @@ def test_dated_cgt_measure_uses_disposal_year_with_later_calibration_year():
     assert sim.calls == [("capital_gains", 2024, None)]
     assert route == "engine_period:2024:capital_gains:native"
     assert (values > 3000).tolist() == [False, True, True]
+
+
+def test_dated_company_car_benefit_is_priced_in_its_own_tax_year(
+    monkeypatch, tmp_path: Path
+):
+    """HMRC's Table 1 taxable value is 2024-25's, so the national row reads the
+    engine's company car benefit in 2024, whatever the calibration year
+    (microcosm#1418)."""
+
+    sim = SimulationStub(
+        {"company_car_benefit": ("person", np.array([0.0, 900.0, 3_000.0]))}
+    )
+    values, route = compute_uk_measure_input(
+        FrameStub(), sim, "person", "company_car_benefit_2024", 2025
+    )
+    assert sim.calls == [("company_car_benefit", 2024, None)]
+    assert route == "engine_period:2024:company_car_benefit:native"
+    assert values.tolist() == [0.0, 900.0, 3_000.0]
+    with pytest.raises(KeyError, match="person-only"):
+        compute_uk_measure_input(
+            FrameStub(), sim, "household", "company_car_benefit_2024", 2025
+        )
+    resolver = _resolver_over(sim, monkeypatch, tmp_path)
+    assert resolver.knows("person", "company_car_benefit_2024")
+    assert not resolver.knows("household", "company_car_benefit_2024")
+    assert resolver.entity_for("company_car_benefit_2024") == "person"
 
 
 @pytest.mark.parametrize("precomputed", [False, True])
@@ -608,6 +666,9 @@ _PACKAGED_EXCLUSION_CENSUS = {
     # the devolved repayments by nation and holds Scotland's and Northern
     # Ireland's (ruling R4: Wales only binds).
     "_1_000_000_to_inf": 10,
+    # The SPI Table 3.7 £1m-and-over interest amount row, held on the savings
+    # follow-up's measured distortion (microcosm#1428, 2026-10-30).
+    "hmrc.spi.savings_interest_income.amount_by_total_income_band.band_1000000": 1,
     "slc.": 5,
     # microcosm#1095 (2026-10-07): two bands whose few supporting awards
     # policyengine-uk 2.122.2 moves out join the uk-data#452 class.
@@ -739,8 +800,13 @@ def test_packaged_exclusions_load():
     # 2024 duty (microcosm#1420). microcosm#1095 holds the three OBR council
     # tax nation rows, pinned to the UK as measured diagnostics (ruling D14e),
     # and SLC's Scottish and Northern Irish repayment rows (ruling R4: Wales
-    # only binds).
-    assert len(names) == len(set(names)) == 44
+    # only binds). The savings follow-up holds the SPI £1m-and-over interest
+    # amount row on its measured distortion (microcosm#1428, María's ruling of
+    # 2026-10-30). microcosm#1426 holds HMRC's High Income Child Benefit Charge count
+    # and revenue as measured diagnostics (María's ruling of 2026-11-03). The
+    # November event data holds PRIS 2026's Scottish receipts and expenses as
+    # measured diagnostics (María's approval of 2026-11-06).
+    assert len(names) == len(set(names)) == 49
     (gas,) = [
         entry
         for entry in exclusions
@@ -2075,6 +2141,62 @@ def test_the_resolver_routes_interest_outside_isas_to_persons(
         )
 
 
+def _annuity_frame() -> FrameStub:
+    """A pensioner with a purchased annuity inside the stored pension, a
+    gilt holder, and a person with no stored pension (microcosm#1428)."""
+
+    frame = FrameStub()
+    frame._tables["person"] = frame._tables["person"].assign(
+        private_pension_income=[4_000.0, 0.0, 0.0],
+        annuity_and_trust_income=[1_000.0, 0.0, 0.0],
+    )
+    return frame
+
+
+def test_spi_other_income_adds_the_annuity_and_trust_part_of_pensions():
+    """SPI Table 3.7's other income counts purchased-annuity and trust
+    payments, which FRS rows keep in private pension for the engine's means
+    tests: the measure adds their share of the engine's pension, so they grow
+    on its private pension path (microcosm#1428)."""
+
+    simulation = SimulationStub(
+        {
+            "other_investment_income": ("person", np.array([0.0, 500.0, 0.0])),
+            "private_pension_income": ("person", np.array([4_400.0, 0.0, 0.0])),
+        }
+    )
+    values, route = compute_uk_measure_input(
+        _annuity_frame(), simulation, "person", UK_SPI_OTHER_INVESTMENT_INCOME, 2025
+    )
+    # A quarter of the stored pension, grown by the engine's 10%.
+    np.testing.assert_allclose(values, [1_100.0, 500.0, 0.0])
+    assert route.startswith("engine_components:other_investment_income")
+    # A frame without the descriptor (the enhanced FRS reference) reads the
+    # engine's other income alone.
+    np.testing.assert_allclose(
+        compute_uk_measure_input(
+            FrameStub(), simulation, "person", UK_SPI_OTHER_INVESTMENT_INCOME, 2025
+        )[0],
+        [0.0, 500.0, 0.0],
+    )
+    with pytest.raises(KeyError, match="person-only"):
+        compute_uk_measure_input(
+            _annuity_frame(),
+            simulation,
+            "household",
+            UK_SPI_OTHER_INVESTMENT_INCOME,
+            2025,
+        )
+
+
+def test_the_spi_other_income_rows_read_the_annuity_measure():
+    targets = measure_simulation._uk_contract_targets()
+    binding = targets["hmrc.spi.other_investment_income.amount_by_total_income_band"][
+        "bindings"
+    ]["policyengine"]
+    assert binding["value_variable"] == UK_SPI_OTHER_INVESTMENT_INCOME
+
+
 def _stub_engine_term_calendar(monkeypatch) -> None:
     """policyengine-uk's year of terms, without the engine installed."""
 
@@ -2275,6 +2397,8 @@ class _AnnualSimulation:
             "higher_rate_savings_income",
             "add_rate_savings_income",
             "total_pension_income",
+            "benefits_in_kind",
+            "company_car_availability",
         )
         variables = {
             name: SimpleNamespace(
@@ -2314,6 +2438,17 @@ class _AnnualSimulation:
             # The engine's sum of the two pensions (microcosm#1418).
             return self.calculate("private_pension_income", year) + self.calculate(
                 "state_pension", year
+            )
+        if variable == "company_car_availability":
+            # The engine's default: a car available all year.
+            return np.ones(3)
+        if variable == "benefits_in_kind":
+            # The first and third stub people have a company car; the engine
+            # computes its benefit from the car, not from pay, for the share of
+            # the year it is available
+            # (PolicyEngine/uk-autumn-budget-dashboard-2026#316).
+            return np.array([3_000.0, 0.0, 2_000.0]) * self.calculate(
+                "company_car_availability", year
             )
         total = sum(
             self.calculate(name, year)
@@ -2376,6 +2511,16 @@ def test_annual_measures_read_each_persons_year(monkeypatch, tmp_path):
     # The engine carries the year's pay from 2024 at its own index.
     np.testing.assert_allclose(pay, [31_500.0, 9_450.0, 10_500.0])
     assert route == "annual_income_simulation:native"
+    # HMRC's employment income: the year's pay plus the company car benefits,
+    # the third person's car available for the half year their pay covers.
+    with_cars, route = resolver.compute(
+        "person", "employment_income_with_benefits_in_kind_annual"
+    )
+    np.testing.assert_allclose(with_cars, [34_500.0, 9_450.0, 11_500.0])
+    assert route == (
+        "annual_income_simulation:engine_components:"
+        "employment_income_with_benefits_in_kind"
+    )
     profit, route = resolver.compute(
         "person", "self_employment_income_after_loss_relief_annual"
     )
