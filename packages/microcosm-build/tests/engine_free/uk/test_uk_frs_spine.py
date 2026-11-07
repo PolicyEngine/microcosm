@@ -780,6 +780,9 @@ def _synthetic_spec(stage: SourceStageSpec) -> SimpleNamespace:
                         "adult_ema",
                         "child_ema",
                         "receives_benefits_in_own_right",
+                        # frs_person_draws never draws a full-time student as
+                        # an apprentice (nit 3 of #1535's review).
+                        "is_in_full_time_education",
                     ),
                     nonnegative_outputs=(
                         "adult_ema",

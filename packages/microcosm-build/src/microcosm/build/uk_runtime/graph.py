@@ -295,11 +295,17 @@ _STAGE_CONSUMES: Mapping[str, frozenset[tuple[str, str]] | None] = {
     )
     | frozenset({("benunit", "is_married")}),
     # is_apprentice draws employees aged 21 to 24 at a rate set by the
-    # frame's weights (microcosm#1372), and its receipt reads their pay for
+    # frame's weights (microcosm#1372), outside full-time education (Vahid's
+    # review of microcosm#1535, nit 3), and its receipt reads their pay for
     # the relief the flags imply (microcosm#1373).
     "frs_person_draws": frozenset(
         ("person", column)
-        for column in ("age", "employment_status", "employment_income")
+        for column in (
+            "age",
+            "employment_status",
+            "is_in_full_time_education",
+            "employment_income",
+        )
     ),
     "frs_household_draws": frozenset(),
     "frs_brma": None,

@@ -33,10 +33,11 @@ def _people(n_per_cell: int = 2000) -> pd.DataFrame:
     frame = pd.DataFrame(rows, columns=["age", "employment_status"])
     frame.insert(0, "person_id", np.arange(1, len(frame) + 1))
     frame.insert(1, "person_household_id", frame["person_id"])
+    frame["is_in_full_time_education"] = False
     return frame
 
 
-def _small(ages, statuses, *, households=None) -> pd.DataFrame:
+def _small(ages, statuses, *, households=None, full_time=None) -> pd.DataFrame:
     ids = np.arange(11, 11 + len(ages))
     return pd.DataFrame(
         {
@@ -44,6 +45,9 @@ def _small(ages, statuses, *, households=None) -> pd.DataFrame:
             "person_household_id": ids if households is None else households,
             "age": ages,
             "employment_status": statuses,
+            "is_in_full_time_education": (
+                np.zeros(len(ages), dtype=bool) if full_time is None else full_time
+            ),
         }
     )
 
@@ -59,6 +63,39 @@ def test_only_employees_aged_21_to_24_are_flagged() -> None:
     assert flags.dtype == bool
     assert not flags[~eligible].any()
     assert flags[eligible].any()
+
+
+def test_full_time_students_are_never_flagged() -> None:
+    """The FRS codes no apprentice as in full-time education, so a full-time
+    student is never drawn; the target still counts everyone aged 21 to 24
+    (Vahid's review of microcosm#1535, nit 3)."""
+
+    person = _people()
+    full_time = person["person_id"].to_numpy() % 2 == 0
+    person["is_in_full_time_education"] = full_time
+    weights = np.ones(len(person))
+
+    draw = derive_is_apprentice(person, rate=0.06, person_weights=weights)
+
+    age = person["age"].to_numpy()
+    in_ages = (age >= 21) & (age <= 24)
+    assert not draw.flags[full_time].any()
+    assert draw.flags[~full_time].any()
+    assert draw.receipt["population_mass"] == pytest.approx(weights[in_ages].sum())
+    assert draw.receipt["target"] == pytest.approx(0.06 * weights[in_ages].sum())
+    assert draw.receipt["excluded_flag"] == "is_in_full_time_education"
+    # Half the employees aged 21 to 24 are students, so the eligible weight
+    # halves while the target does not.
+    employee = person["employment_status"].isin(["FT_EMPLOYED", "PT_EMPLOYED"])
+    eligible = in_ages & employee.to_numpy() & ~full_time
+    assert draw.receipt["eligible_mass"] == pytest.approx(weights[eligible].sum())
+
+
+def test_refuses_a_frame_without_the_full_time_education_flag() -> None:
+    person = _small([22], ["FT_EMPLOYED"]).drop(columns="is_in_full_time_education")
+
+    with pytest.raises(ValueError, match="is_in_full_time_education"):
+        derive_is_apprentice(person, rate=0.06)
 
 
 def test_flagged_weight_is_nearest_the_per_head_target() -> None:
@@ -203,6 +240,7 @@ def _two_household_frame(**extra_person_columns):
             "person_household_id": np.repeat([1, 2], 2000),
             "age": np.tile([22, 23], 2000),
             "employment_status": np.repeat(["FT_EMPLOYED", "STUDENT"], 2000),
+            "is_in_full_time_education": False,
             **extra_person_columns,
         }
     )
@@ -311,6 +349,7 @@ def test_the_graph_node_reads_every_person_column_the_draw_needs() -> None:
     assert {
         ("person", "age"),
         ("person", "employment_status"),
+        ("person", "is_in_full_time_education"),
         ("person", "employment_income"),
     } <= inputs
 
