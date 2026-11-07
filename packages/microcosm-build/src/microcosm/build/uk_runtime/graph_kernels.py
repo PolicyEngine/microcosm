@@ -55,6 +55,8 @@ from .. import source_lineage, stage_evidence, stochastic_assignment
 from . import (
     bus_use_incidence,
     cgt_imputation,
+    cgt_support,
+    copy_id_table,
     energy_pricing,
     frs_disability,
     frs_education,
@@ -82,7 +84,6 @@ from . import (
     was_wealth,
 )
 from .national_frame import UK_NATIONAL_SCHEMA
-from .rowwise_geography import id_multiplier_for_values
 
 if TYPE_CHECKING:
     from microcosm.build.source_manifest import SourceStageSpec
@@ -184,7 +185,20 @@ _STAGE_HELPER_MODULES = {
     # in spi_income, so an edit there moves the stage's hash (microcosm#1278),
     # and its twin transport in spi_rank_transport (microcosm#840).
     "hmrc_spi_income_spine": (spi_income, spi_rank_transport),
-    "frs_spine": (uc_relationships,),
+    # The spine's raw ids sit below the copy-id table's first field, and every
+    # copy layer mints its ids in its own field of the table; the two SPI
+    # support stages mint through the support channel's clone helper, and the
+    # high-value split weighs its copies through the CGT split's exact-total
+    # correction (microcosm#931). The executor reads each id-offset stage's
+    # declared radix from the table too.
+    "frs_spine": (uc_relationships, copy_id_table),
+    "spi_support_channel": (spi_support, copy_id_table),
+    "spi_income_band_donors": (spi_support, copy_id_table),
+    "high_value_home_support": (cgt_support, copy_id_table),
+    "cgt_support_split": (copy_id_table,),
+    "cgt_incidence_clone": (rowwise_geography, copy_id_table),
+    "cgt_incidence_anchor": (rowwise_geography, copy_id_table),
+    "cgt_residential_split": (copy_id_table,),
     "frs_legacy_proxies": (*_ENGINE_MODULES,),
     "frs_education_grant_split": (*_ENGINE_MODULES,),
     "frs_brma": (*_ENGINE_MODULES,),
@@ -1316,6 +1330,56 @@ def _expand_cells(context: KernelContext) -> tuple[tuple[str, str, str], ...]:
     return tuple(tuple(str(part) for part in item) for item in raw)  # type: ignore[arg-type]
 
 
+#: The copy-id field each id-offset structural stage mints (microcosm#931):
+#: copy ``k`` takes ``source + k x radix(field)`` on every id column, and
+#: every incumbent id lies below the field's radix, so the copy index is the
+#: integer quotient. The SPI support stages name each copy's source in
+#: ``{entity}_source_id`` instead.
+_COPY_ID_FIELDS = MappingProxyType(
+    {
+        "high_value_home_support": "high_value_support",
+        "cgt_support_split": "cgt_support_split",
+        "cgt_incidence_clone": "cgt_incidence_clone",
+        "cgt_residential_split": "cgt_residential_split",
+    }
+)
+
+
+def _declared_copy_radix(stage: str, before: Frame) -> int | None:
+    """The declared radix an id-offset stage mints at, or None for the others.
+
+    Every incumbent id and membership must sit below it, or the quotient
+    would name the wrong parent; the refusal prints counts only.
+    """
+
+    field = _COPY_ID_FIELDS.get(stage)
+    if field is None:
+        return None
+    person = before.table(before.schema.person_entity)
+    columns = [
+        (before.table(entity), before.schema.entity_id_column(entity))
+        for entity in before.entities
+    ] + [
+        (person, before.schema.membership_column(group))
+        for group in before.schema.group_entities
+    ]
+    for table, column in columns:
+        copy_id_table.require_below(
+            table[column],
+            field,
+            what=f"UK stage {stage!r} incumbent {column} values",
+        )
+    return copy_id_table.radix(field)
+
+
+def _exact_ids(values: pd.Series, *, label: str) -> np.ndarray:
+    """An id column as exact int64: ids reach 2**53 and above (microcosm#931)."""
+
+    if not pd.api.types.is_integer_dtype(values.dtype):
+        raise TypeError(f"{label} must be an integer id column, not {values.dtype}.")
+    return values.to_numpy(dtype=np.int64)
+
+
 def _source_lineage(
     before: Frame,
     after: Frame,
@@ -1323,62 +1387,64 @@ def _source_lineage(
     *,
     id_offset: int | None,
 ) -> pd.Series:
-    """Derive new target-to-immediate-source ids from a structural result."""
+    """Derive new target-to-immediate-source ids from a structural result.
+
+    Vectorised on exact int64 ids: a row-by-row walk would upcast an
+    all-numeric row to float64, which is inexact above 2**53. The refusals
+    print counts, never an id.
+    """
 
     id_column = before.schema.entity_id_column(entity)
     before_table = before.table(entity)
     after_table = after.table(entity)
+    dtype = before_table[id_column].dtype
     before_ids = pd.Index(before_table[id_column])
+    after_ids = _exact_ids(after_table[id_column], label=f"{entity}.{id_column}")
+    new = ~pd.Index(after_ids).isin(before_ids)
     # A weights-only structural stage (the #970 incidence anchor) adds no
-    # row: every target is an incumbent, so the lineage is empty without
-    # walking the table row by row.
-    if pd.Index(after_table[id_column]).isin(before_ids).all():
+    # row: every target is an incumbent, so the lineage is empty.
+    if not new.any():
         return pd.Series(
             [],
-            index=pd.Index([], name=id_column, dtype=before_table[id_column].dtype),
-            dtype=before_table[id_column].dtype,
+            index=pd.Index([], name=id_column, dtype=dtype),
+            dtype=dtype,
             name=id_column,
         )
-    targets: list[object] = []
-    values: list[object] = []
+    targets = after_ids[new]
     source_column = f"{entity}_source_id"
-    for _, row in after_table.iterrows():
-        target = row[id_column]
-        if target in before_ids:
-            continue
-
-        # CGT stages retain long-lived source-id provenance from the SPI
-        # support stage, so their immediate clone lineage is the stage's
-        # reviewed ID offset, not that older provenance column.  Copy ``k``
-        # of a CGT structural stage takes ``source + k * offset`` (the clone
-        # stage mints one copy, the support split up to ``ceil(w / cap)``,
-        # microcosm#1045), and every incumbent id lies below the offset, so
-        # the copy index is the integer quotient.
-        if id_offset is not None:
-            copy_index = int(target) // int(id_offset)
-            candidate = target - copy_index * id_offset
-            if copy_index >= 1 and candidate in before_ids:
-                targets.append(target)
-                values.append(candidate)
-                continue
+    if id_offset is not None:
+        # CGT and high-value stages retain long-lived source-id provenance
+        # from the SPI support stage, so their immediate lineage is the
+        # stage's declared copy-id radix, not that older provenance column.
+        copy_index = targets // int(id_offset)
+        sources = targets - copy_index * int(id_offset)
+        unmatched = int(((copy_index < 1) | ~pd.Index(sources).isin(before_ids)).sum())
+        if unmatched:
             raise ValueError(
-                f"UK stage produced {entity!r} target id {target!r} whose "
-                f"offset lineage {candidate!r} is not an incumbent id."
+                f"UK stage produced {unmatched} new {entity!r} row(s) whose id "
+                "less its copy ordinal times the stage's declared copy-id radix "
+                "is not an incumbent id."
             )
-
-        if source_column in after_table and row[source_column] in before_ids:
-            targets.append(target)
-            values.append(row[source_column])
-            continue
-
+    elif source_column in after_table:
+        # Only the new rows' sources are read, as the row walk read them.
+        sources = _exact_ids(
+            after_table[source_column][new], label=f"{entity}.{source_column}"
+        )
+        unmatched = int((~pd.Index(sources).isin(before_ids)).sum())
+        if unmatched:
+            raise ValueError(
+                f"UK stage produced {unmatched} new {entity!r} row(s) whose "
+                f"{source_column!r} is not an incumbent id."
+            )
+    else:
         raise ValueError(
-            f"UK stage produced {entity!r} target id {target!r} without an "
-            f"explicit {source_column!r} or a declared ID-offset lineage rule."
+            f"UK stage produced {int(new.sum())} new {entity!r} row(s) without an "
+            f"explicit {source_column!r} or a declared copy-id lineage rule."
         )
     return pd.Series(
-        values,
-        index=pd.Index(targets, name=id_column, dtype=before_table[id_column].dtype),
-        dtype=before_table[id_column].dtype,
+        sources,
+        index=pd.Index(targets, name=id_column, dtype=dtype),
+        dtype=dtype,
         name=id_column,
     )
 
@@ -1424,25 +1490,7 @@ class UKExpandStageKernel(KernelBase):
                 f"UK stage {self.stage!r} returned {type(after).__name__}, not Frame."
             )
         cells = _expand_cells(context)
-        id_offset = None
-        if self.stage in {
-            "high_value_home_support",
-            "cgt_support_split",
-            "cgt_incidence_clone",
-            "cgt_residential_split",
-        }:
-            id_offset = id_multiplier_for_values(
-                *(
-                    before.table(entity)[before.schema.entity_id_column(entity)]
-                    for entity in before.entities
-                ),
-                *(
-                    before.table(before.schema.person_entity)[
-                        before.schema.membership_column(group)
-                    ]
-                    for group in before.schema.group_entities
-                ),
-            )
+        id_offset = _declared_copy_radix(self.stage, before)
         expand: dict[str, pd.Series] = {}
         for entity in before.entities:
             expand[entity] = _source_lineage(

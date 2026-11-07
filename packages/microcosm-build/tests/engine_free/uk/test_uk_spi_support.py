@@ -25,6 +25,9 @@ from microcosm.build.uk_runtime import (
 )
 from microcosm.build.uk_runtime.terminal_gates import UKZeroWeightStratumDeclaration
 from microcosm.frame import MassChangeRecord, WeightKind
+from test_support.microcosm_build.uk_clone_first_frames import (
+    assert_copy_ids_follow_lineage,
+)
 
 
 def household_frame() -> pd.DataFrame:
@@ -66,15 +69,17 @@ def test_spi_support_creates_zero_weight_copy_with_lineage_and_remapped_ids() ->
         source_year=2023,
     )
 
-    assert result.id_multiplier == 10_000
+    # The SPI copies take the copy-id table's spi_support_channel radix, not
+    # a power of ten above the frame's largest id (microcosm#931).
+    assert result.id_multiplier == 10**11
     assert result.n_spi_households == 3
     assert result.household["household_id"].tolist() == [
         1,
         2,
         3,
-        10001,
-        10002,
-        10003,
+        10**11 + 1,
+        10**11 + 2,
+        10**11 + 3,
     ]
     assert result.household["household_weight"].tolist() == [
         10.0,
@@ -132,32 +137,88 @@ def test_spi_support_creates_zero_weight_copy_with_lineage_and_remapped_ids() ->
         2001,
         2002,
         3001,
-        11001,
-        12001,
-        12002,
-        13001,
+        10**11 + 1001,
+        10**11 + 2001,
+        10**11 + 2002,
+        10**11 + 3001,
     ]
     assert result.person["person_household_id"].tolist() == [
         1,
         2,
         2,
         3,
-        10001,
-        10002,
-        10002,
-        10003,
+        10**11 + 1,
+        10**11 + 2,
+        10**11 + 2,
+        10**11 + 3,
     ]
     assert result.person["person_benunit_id"].tolist() == [
         101,
         201,
         201,
         301,
-        10101,
-        10201,
-        10201,
-        10301,
+        10**11 + 101,
+        10**11 + 201,
+        10**11 + 201,
+        10**11 + 301,
     ]
-    assert result.benunit["benunit_id"].tolist() == [101, 201, 301, 10101, 10201, 10301]
+    assert result.benunit["benunit_id"].tolist() == [
+        101,
+        201,
+        301,
+        10**11 + 101,
+        10**11 + 201,
+        10**11 + 301,
+    ]
+
+
+def test_spi_copies_take_their_roots_ids_plus_the_declared_radix() -> None:
+    # Roots come from the input by lineage (region names one household here),
+    # never from the copy's id (microcosm#931).
+    before = {
+        "person": person_frame(),
+        "benunit": benunit_frame(),
+        "household": household_frame(),
+    }
+    result = create_uk_spi_support_tables(
+        **before, spi_household_count=None, source_year=2023
+    )
+    after = {
+        "person": result.person,
+        "benunit": result.benunit,
+        "household": result.household,
+    }
+
+    assert (
+        assert_copy_ids_follow_lineage(
+            before,
+            after,
+            field="spi_support_channel",
+            key_columns=("region",),
+            ordinal_column=support_clone_index_column("household"),
+        )
+        == 3
+    )
+
+
+def test_spi_support_refuses_incoming_ids_that_reach_its_copy_id_field() -> None:
+    household = household_frame()
+    household.loc[2, "household_id"] = 10**11 + 3
+    person = person_frame()
+    person.loc[3, "person_household_id"] = 10**11 + 3
+
+    with pytest.raises(
+        ValueError, match=r"^1 of the incoming household_id values reach"
+    ) as caught:
+        create_uk_spi_support_tables(
+            person=person,
+            benunit=benunit_frame(),
+            household=household,
+            spi_household_count=None,
+            source_year=2023,
+        )
+    # A count, never the id.
+    assert str(10**11 + 3) not in str(caught.value)
 
 
 def test_spi_support_can_subsample_without_rescaling_or_reordering_base() -> None:

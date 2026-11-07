@@ -25,8 +25,9 @@ residential taxpayers and gains (``hmrc.cgt.residential_property_taxpayers``
 and ``_gains``; the by-band rows stay fenced), decides between the arms
 afterwards exactly as it decides between the incidence clone's halves. Every household's mass and composition and the
 total household mass are conserved; arm ``j`` takes every entity id plus
-``j`` times the frame's id multiplier, the lineage rule the executor and the
-geography identity kernel read for the support split and the clone.
+``j`` times the declared radix of the copy-id table's top field,
+``cgt_residential_split`` (microcosm#931), the lineage rule the executor
+reads for the support split and the clone too.
 """
 
 from __future__ import annotations
@@ -39,6 +40,7 @@ import numpy as np
 import pandas as pd
 
 from microcosm.build.source_manifest import SourceStageSpec
+from microcosm.build.uk_runtime import copy_id_table
 from microcosm.build.uk_runtime.cgt_asset_type import (
     CGT_RESIDENTIAL_GAINS_COLUMN,
     CGT_RESIDENTIAL_STOCK_SIGNAL,
@@ -64,7 +66,6 @@ from microcosm.build.uk_runtime.national_frame import (
     uk_time_period,
     validate_uk_national_frame,
 )
-from microcosm.build.uk_runtime.rowwise_geography import id_multiplier_for_values
 from microcosm.build.uk_runtime.spi_support import (
     _exact_total_correction,
     _importance_weights_with_exact_total,
@@ -86,6 +87,9 @@ CGT_RESIDENTIAL_PROBABILITY_COLUMN = "cgt_residential_probability"
 #: A household with more liable gainers than this would need more than eight
 #: arms; none exists on the FRS spine, so the stage refuses rather than grows.
 CGT_RESIDENTIAL_MAXIMUM_LIABLE_GAINERS = 3
+#: The copy-id field arm ``j`` takes ``j`` in: the table's top field, so every
+#: arm id exceeds every incoming id (microcosm#931).
+CGT_RESIDENTIAL_COPY_ID_FIELD = "cgt_residential_split"
 #: Concentration diagnostic: the share of the residential gains mass on the
 #: largest residential arm stakes (arm weight times gain).
 CGT_RESIDENTIAL_TOP_ARM_ROWS = 10
@@ -227,7 +231,8 @@ def split_cgt_residential_households(
     shift); a household with ``k`` liable gainers becomes ``2 ** k`` arms at
     product weights, the arm with no residential gainer keeping the
     household's ids and every other arm ``j`` taking every entity id plus
-    ``j`` times the frame's id multiplier. The exact-total correction lands on
+    ``j`` times the declared radix of the copy-id table's
+    ``cgt_residential_split`` field. The exact-total correction lands on
     the heaviest unsplit incumbent so every arm weight stays bitwise its
     product. Refuses a frame the stage has already split, one the asset-type
     stage has already classified, or a household with more liable gainers
@@ -321,13 +326,17 @@ def split_cgt_residential_households(
             f"{CGT_RESIDENTIAL_MAXIMUM_LIABLE_GAINERS} liable gainers; the "
             "residential split refuses to enumerate their arms."
         )
-    multiplier = id_multiplier_for_values(
-        person["person_id"],
-        person["person_household_id"],
-        person["person_benunit_id"],
-        benunit["benunit_id"],
-        household["household_id"],
-    )
+    for table, columns in (
+        (person, _PERSON_ID_COLUMNS),
+        (benunit, ("benunit_id",)),
+        (household, ("household_id",)),
+    ):
+        for column in columns:
+            copy_id_table.require_below(
+                table[column],
+                CGT_RESIDENTIAL_COPY_ID_FIELD,
+                what=f"incoming {column} values",
+            )
     household_position = pd.Series(np.arange(len(household)), index=household_ids)
     incumbent_weights = weights.copy()
     arm_person: list[pd.DataFrame] = []
@@ -365,10 +374,11 @@ def split_cgt_residential_households(
         member_positions = np.flatnonzero(members)
         member_rank = rank_by_position.reindex(member_positions).to_numpy()
         for j in range(1, 2**k):
-            id_offset = j * multiplier
             copy_person = family_person.copy()
             for column in _PERSON_ID_COLUMNS:
-                copy_person[column] = copy_person[column].astype("int64") + id_offset
+                copy_person[column] = copy_id_table.mint(
+                    copy_person[column], CGT_RESIDENTIAL_COPY_ID_FIELD, j
+                )
             residential = np.zeros(len(copy_person), dtype=bool)
             for m in range(k):
                 if (j >> m) & 1:
@@ -377,12 +387,12 @@ def split_cgt_residential_households(
                 residential, gains[member_positions], 0.0
             )
             copy_benunit = family_benunit.copy()
-            copy_benunit["benunit_id"] = (
-                copy_benunit["benunit_id"].astype("int64") + id_offset
+            copy_benunit["benunit_id"] = copy_id_table.mint(
+                copy_benunit["benunit_id"], CGT_RESIDENTIAL_COPY_ID_FIELD, j
             )
             copy_household = family_household.copy()
-            copy_household["household_id"] = (
-                copy_household["household_id"].astype("int64") + id_offset
+            copy_household["household_id"] = copy_id_table.mint(
+                copy_household["household_id"], CGT_RESIDENTIAL_COPY_ID_FIELD, j
             )
             copy_household[HOUSEHOLD_IS_CGT_RESIDENTIAL_CLONE] = True
             copy_household[CGT_RESIDENTIAL_CLONE_INDEX_COLUMN] = np.full(
@@ -392,10 +402,10 @@ def split_cgt_residential_households(
             arm_benunit.append(copy_benunit)
             arm_household.append(copy_household)
             arm_weights.append(weights[positions] * factors[:, j])
-    # Every arm id exceeds every incoming id (the multiplier is larger than
-    # any id), so the arms follow the incumbents; within the arms the rows are
-    # ordered by id so the group tables stay sorted whatever the household
-    # order the arms were built in.
+    # Every arm id exceeds every incoming id (the arms' field is the copy-id
+    # table's top field, above every incoming id), so the arms follow the
+    # incumbents; within the arms the rows are ordered by id so the group
+    # tables stay sorted whatever the household order the arms were built in.
     arms_person = pd.concat(arm_person, ignore_index=True) if arm_person else None
     arms_benunit = pd.concat(arm_benunit, ignore_index=True) if arm_benunit else None
     arms_household = (
@@ -716,9 +726,9 @@ def cgt_residential_split_operation_parameters() -> tuple[
                 ),
                 "gainer_order": "person_id ascending within the household",
                 "id_remapping": (
-                    "id_multiplier_for_values; arm j takes every entity id + j x "
-                    "multiplier, bit m of j marking the household's m-th liable "
-                    "gainer residential"
+                    "copy-id table field cgt_residential_split, the top field; arm "
+                    "j takes every entity id + j x the field's radix (10**18), bit "
+                    "m of j marking the household's m-th liable gainer residential"
                 ),
                 "flag_column": HOUSEHOLD_IS_CGT_RESIDENTIAL_CLONE,
                 "index_column": CGT_RESIDENTIAL_CLONE_INDEX_COLUMN,
@@ -782,6 +792,7 @@ def _assert_cgt_residential_split_stage_parameters(stage: SourceStageSpec) -> No
 
 __all__ = [
     "CGT_RESIDENTIAL_CLONE_INDEX_COLUMN",
+    "CGT_RESIDENTIAL_COPY_ID_FIELD",
     "CGT_RESIDENTIAL_MAXIMUM_LIABLE_GAINERS",
     "CGT_RESIDENTIAL_PROBABILITY_COLUMN",
     "CGT_RESIDENTIAL_SPLIT_MASS_CHANGE_REASON",

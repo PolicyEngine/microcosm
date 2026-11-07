@@ -31,6 +31,7 @@ import numpy as np
 import pandas as pd
 
 from microcosm.build.source_manifest import SourceStageSpec
+from microcosm.build.uk_runtime import copy_id_table
 from microcosm.build.uk_runtime.cgt_structure import _assert_closed_world_operations
 from microcosm.build.uk_runtime.cgt_support import _exact_support_weights
 from microcosm.build.uk_runtime.household_lineage import (
@@ -46,12 +47,12 @@ from microcosm.build.uk_runtime.property_localisation import (
     SUPPORT_STRATUM_LOWER,
     owner_mask,
 )
-from microcosm.build.uk_runtime.rowwise_geography import id_multiplier_for_values
 from microcosm.frame import Frame, MassChangeRecord, WeightKind
 
 __all__ = [
     "HIGH_VALUE_SUPPORT_COPIES",
     "HIGH_VALUE_SUPPORT_COPIES_COLUMN",
+    "HIGH_VALUE_SUPPORT_COPY_ID_FIELD",
     "HIGH_VALUE_SUPPORT_MASS_CHANGE_REASON",
     "HIGH_VALUE_SUPPORT_OPERATION_KIND",
     "HIGH_VALUE_SUPPORT_STAGE_NAME",
@@ -73,6 +74,8 @@ HIGH_VALUE_SUPPORT_COPIES_COLUMN = "high_value_support_copies"
 HIGH_VALUE_SUPPORT_STRATUM_LOWER = SUPPORT_STRATUM_LOWER
 #: Copies per stratum household, root included (ruled six).
 HIGH_VALUE_SUPPORT_COPIES = 6
+#: The copy-id field copy ``k`` takes ``k`` in (microcosm#931).
+HIGH_VALUE_SUPPORT_COPY_ID_FIELD = "high_value_support"
 HIGH_VALUE_SUPPORT_MASS_CHANGE_REASON = (
     "High-value home support divides every owner household in the top value "
     "stratum of its region into light copies at equal weight; every household's "
@@ -145,7 +148,8 @@ def high_value_support_operation_parameters() -> tuple[
                 ),
                 "copy_rule": "every selected household becomes copies rows at weight / copies",
                 "id_remapping": (
-                    "id_multiplier_for_values; copy k takes every entity id + k x multiplier"
+                    "copy-id table field high_value_support; copy k takes every "
+                    "entity id + k x the field's radix (10**12)"
                 ),
                 "flag_column": HIGH_VALUE_SUPPORT_COPY_COLUMN,
                 "copies_column": HIGH_VALUE_SUPPORT_COPIES_COLUMN,
@@ -235,11 +239,12 @@ def split_high_value_support_households(
 
     Each selected household of weight ``w`` becomes ``copies`` rows at
     ``w / copies``; the root keeps its ids, copy ``k`` takes every entity id
-    plus ``k`` times the frame's id multiplier, records ``k`` in
-    ``high_value_support_copy_index`` and carries a full copy of its person
-    and benefit-unit rows. The exact-total correction lands on the heaviest
-    unselected incumbent so every copy weight stays bitwise ``w / copies``.
-    Refuses a frame this stage has already split.
+    plus ``k`` times the declared radix of the copy-id table's
+    ``high_value_support`` field (so every incoming id must sit below it),
+    records ``k`` in ``high_value_support_copy_index`` and carries a full copy
+    of its person and benefit-unit rows. The exact-total correction lands on
+    the heaviest unselected incumbent so every copy weight stays bitwise
+    ``w / copies``. Refuses a frame this stage has already split.
     """
     if isinstance(copies, bool) or copies < 2:
         raise ValueError("High-value support copies must be an integer of at least 2.")
@@ -275,13 +280,17 @@ def split_high_value_support_households(
     )
     copy_counts = np.ones(len(household), dtype="int64")
     copy_counts[selected] = int(copies)
-    multiplier = id_multiplier_for_values(
-        person["person_id"],
-        person["person_household_id"],
-        person["person_benunit_id"],
-        benunit["benunit_id"],
-        household["household_id"],
-    )
+    for table, columns in (
+        (person, _PERSON_ID_COLUMNS),
+        (benunit, ("benunit_id",)),
+        (household, ("household_id",)),
+    ):
+        for column in columns:
+            copy_id_table.require_below(
+                table[column],
+                HIGH_VALUE_SUPPORT_COPY_ID_FIELD,
+                what=f"incoming {column} values",
+            )
     household[HIGH_VALUE_SUPPORT_COPY_COLUMN] = False
     household[HIGH_VALUE_SUPPORT_COPIES_COLUMN] = copy_counts
     household[HIGH_VALUE_SUPPORT_INDEX_COLUMN] = np.zeros(len(household), dtype="int64")
@@ -299,14 +308,15 @@ def split_high_value_support_households(
             benunit["benunit_id"].isin(set(family_person["person_benunit_id"]))
         ].copy()
         family_household = household.loc[family].copy()
-        offset = k * multiplier
         for column in _PERSON_ID_COLUMNS:
-            family_person[column] = family_person[column].astype("int64") + offset
-        family_benunit["benunit_id"] = (
-            family_benunit["benunit_id"].astype("int64") + offset
+            family_person[column] = copy_id_table.mint(
+                family_person[column], HIGH_VALUE_SUPPORT_COPY_ID_FIELD, k
+            )
+        family_benunit["benunit_id"] = copy_id_table.mint(
+            family_benunit["benunit_id"], HIGH_VALUE_SUPPORT_COPY_ID_FIELD, k
         )
-        family_household["household_id"] = (
-            family_household["household_id"].astype("int64") + offset
+        family_household["household_id"] = copy_id_table.mint(
+            family_household["household_id"], HIGH_VALUE_SUPPORT_COPY_ID_FIELD, k
         )
         family_household[HIGH_VALUE_SUPPORT_COPY_COLUMN] = True
         family_household[HIGH_VALUE_SUPPORT_INDEX_COLUMN] = np.full(

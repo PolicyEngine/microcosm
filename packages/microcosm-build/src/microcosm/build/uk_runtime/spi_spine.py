@@ -114,6 +114,7 @@ from microcosm.build.uk_runtime.spi_support import (
     SPI_HMRC_TOTAL_EARNED_INCOME_COLUMN,
     SPI_HMRC_TOTAL_INVESTMENT_INCOME_COLUMN,
     SPI_INCOME_QRF_OUTPUT_COLUMNS,
+    SPI_SUPPORT_ID_REMAPPING,
     SPI_SYNTHETIC_SUPPORT_CHANNEL,
     UKSPISupportResult,
     build_uk_spi_support_channel,
@@ -1175,6 +1176,11 @@ def _support_stage_parameters(
         raise ValueError("SPI support manifest seed drifted from the reviewed value.")
     if stack.parameters.get("draw") != "uniform_without_replacement":
         raise ValueError("SPI support manifest must declare a uniform donor draw.")
+    if stack.parameters.get("id_remapping") != SPI_SUPPORT_ID_REMAPPING:
+        raise ValueError(
+            "SPI support manifest id_remapping drifted from the copy-id table's "
+            "spi_support_channel rule."
+        )
     if stack.parameters.get("flag_column") != HOUSEHOLD_IS_SPI_SYNTHETIC_COLUMN:
         raise ValueError("SPI support manifest flag column drifted.")
     if dict(stack.parameters.get("channels", {})) != SPI_SPINE_SUPPORT_CHANNELS:

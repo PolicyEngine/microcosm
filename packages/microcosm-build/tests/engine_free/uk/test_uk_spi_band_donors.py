@@ -42,13 +42,18 @@ from microcosm.build.uk_runtime.spi_income import (
     prepare_spi_donor_table,
 )
 from microcosm.build.uk_runtime.spi_support import (
+    BASE_FRS_SUPPORT_CHANNEL,
     HOUSEHOLD_IS_SPI_SYNTHETIC_COLUMN,
     SPI_PROPERTY_FINANCE_COSTS_COLUMN,
     SPI_SYNTHETIC_SUPPORT_CHANNEL,
     build_uk_spi_support_channel,
     support_channel_column,
+    support_clone_index_column,
 )
 from microcosm.frame import WeightKind
+from test_support.microcosm_build.uk_clone_first_frames import (
+    assert_copy_ids_follow_lineage,
+)
 from test_support.paths import paths_for
 
 _IDENTITY_TOOL_PATH = (
@@ -366,6 +371,41 @@ def test_stack_reserves_band_rows_and_conserves_every_region_mass() -> None:
         rows = (regions == region).to_numpy() & positive
         assert ratio[rows].to_numpy() == pytest.approx(factor, rel=1e-9)
     assert (weights.to_numpy()[:incumbents][~positive] == 0.0).all()
+
+
+def test_spi_copies_and_donors_take_their_base_roots_ids_plus_the_radix() -> None:
+    # Every SPI-channel household copies a base household, which its
+    # household_source_id names: the SPI copy at 1 and the income band donor at
+    # 2 times the spi_support_channel radix, on every id column (microcosm#931).
+    frame = _support_frame(200)
+    result = _stack_small(frame)
+    channel = support_channel_column("household")
+    household = frame.table("household")
+    base = household.loc[household[channel] == BASE_FRS_SUPPORT_CHANNEL]
+    person = frame.table("person")
+    before = {
+        "household": base,
+        "person": person.loc[person["person_household_id"].isin(base["household_id"])],
+        "benunit": frame.table("benunit"),
+    }
+
+    checked = assert_copy_ids_follow_lineage(
+        before,
+        result.frame,
+        field="spi_support_channel",
+        key_columns=("household_source_id",),
+        ordinal_column=support_clone_index_column("household"),
+    )
+    donors = result.frame.table("household")[HOUSEHOLD_IS_SPI_INCOME_BAND_DONOR]
+    after_channel = result.frame.table("household")[channel]
+    assert checked == int((after_channel == SPI_SYNTHETIC_SUPPORT_CHANNEL).sum())
+    assert int(donors.sum()) > 0
+    assert (
+        result.frame.table("household")
+        .loc[donors, support_clone_index_column("household")]
+        .eq(SPI_INCOME_BAND_DONOR_CLONE_INDEX)
+        .all()
+    )
 
 
 def test_stack_scales_seats_then_mass_on_a_frame_too_small_for_the_plan() -> None:

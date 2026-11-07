@@ -314,8 +314,13 @@ class UKGeographicExpansionKernel(_PopulationKernel):
             table = after.table(entity)
             id_column = before.schema.entity_id_column(entity)
             added = table.iloc[before.n(entity) :]
+            # One clone adds no row. A spine whose copy ids reach the copy-id
+            # table's top fields (microcosm#931) has a multiplier above int64,
+            # and multiplying even an empty int64 column by it raises.
             source_ids = (
-                added[id_column].to_numpy()
+                np.empty(0, dtype=np.int64)
+                if added.empty
+                else added[id_column].to_numpy()
                 - added[ladder_clone_index_column(entity)].to_numpy()
                 * pool.id_multiplier
             )

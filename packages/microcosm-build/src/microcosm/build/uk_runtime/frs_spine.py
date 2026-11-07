@@ -13,6 +13,7 @@ import pandas as pd
 from microcosm.build.source_manifest import SourceStageSpec
 from microcosm.build.stochastic_assignment import stable_identity_uniforms
 from microcosm.build.trace import sha256_file
+from microcosm.build.uk_runtime import copy_id_table
 from microcosm.build.uk_runtime.birth_month import (
     UK_BIRTH_MONTH_COLUMN,
     uk_months_since_last_birthday,
@@ -457,7 +458,30 @@ def build_uk_frs_spine_frame(
     normalized = {name: _normalize_ids(table) for name, table in tables.items()}
     frame = _assemble_frame(normalized, evidence=evidence)
     validate_uk_national_frame(frame)
+    _require_raw_ids_below_copy_fields(frame)
     return frame
+
+
+def _require_raw_ids_below_copy_fields(frame: Frame) -> None:
+    """Refuse raw ids that reach the first copy-id field (microcosm#931).
+
+    Every copy layer adds its ordinal times a declared radix to its copies'
+    ids, the lowest radix being the reserved ``vintage`` field's, so a raw
+    id (person_id is sernum x 1000 + p) must sit below it.
+    """
+
+    person = frame.table("person")
+    for entity, column in (
+        ("person", "person_id"),
+        ("person", "person_household_id"),
+        ("person", "person_benunit_id"),
+        ("benunit", "benunit_id"),
+        ("household", "household_id"),
+    ):
+        table = person if entity == "person" else frame.table(entity)
+        copy_id_table.require_below(
+            table[column], "vintage", what=f"raw FRS {column} values"
+        )
 
 
 def _artifact_by_table(stage: SourceStageSpec) -> dict[str, Mapping[str, Any]]:

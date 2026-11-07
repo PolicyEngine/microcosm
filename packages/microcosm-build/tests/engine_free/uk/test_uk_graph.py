@@ -300,6 +300,79 @@ def test_counting_module_changes_invalidate_every_stage_that_counts(monkeypatch)
             assert registry.implementation_hash(control) == before[control]
 
 
+#: The two SPI support stages mint their copies' ids through the support
+#: channel's clone helper (``spi_support``), which reads the copy-id table;
+#: every other minting stage's module reads the table itself (microcosm#931).
+_SPI_COPY_ID_STAGES = frozenset({"spi_support_channel", "spi_income_band_donors"})
+
+
+def test_every_stage_that_mints_or_bounds_copy_ids_binds_the_copy_id_table() -> None:
+    """``source_hash`` does not follow imports, so every stage whose module
+    reads the copy-id table, and the two SPI support stages, whose minting
+    runs in spi_support, bind it; no other stage does (microcosm#931)."""
+    from microcosm.build.uk_runtime import copy_id_table, graph_kernels, spi_support
+
+    assert "copy_id_table" in _imported_module_names(spi_support)
+    reading = {
+        stage
+        for stage in graph_kernels._STAGE_MODULES
+        if "copy_id_table" in _imported_module_names(graph_kernels._stage_module(stage))
+    }
+    assert reading == {
+        "frs_spine",
+        "high_value_home_support",
+        "cgt_support_split",
+        "cgt_incidence_clone",
+        "cgt_incidence_anchor",
+        "cgt_residential_split",
+    }
+    binding = {
+        stage
+        for stage, helpers in graph_kernels._STAGE_HELPER_MODULES.items()
+        if copy_id_table in helpers
+    }
+    assert binding == reading | _SPI_COPY_ID_STAGES
+    for stage in _SPI_COPY_ID_STAGES:
+        assert spi_support in graph_kernels._STAGE_HELPER_MODULES[stage]
+
+
+def test_copy_id_table_changes_invalidate_every_stage_that_reads_it(monkeypatch):
+    from microcosm.build.uk_runtime import copy_id_table, graph_kernels
+
+    graph = uk_spine_graph()
+    registry = uk_registry(graph=graph)
+    stages = sorted(
+        stage
+        for stage, helpers in graph_kernels._STAGE_HELPER_MODULES.items()
+        if copy_id_table in helpers
+    )
+    # The root stage's node is the CREATE kernel.
+    affected = [
+        graph.node("create_uk_frs" if stage == "frs_spine" else stage).kernel
+        for stage in stages
+    ]
+    controls = [
+        graph.node(stage).kernel
+        for stage in ("frs_council_tax", "hmrc_spi_income_spine", "isa_subscriptions")
+    ]
+    before = {ref: registry.implementation_hash(ref) for ref in affected + controls}
+    helper_path = Path(copy_id_table.__file__).resolve()
+    original = Path.read_bytes
+
+    def changed_helper_bytes(path: Path) -> bytes:
+        content = original(path)
+        if path.resolve() == helper_path:
+            return content + b"\n# A helper-only source change.\n"
+        return content
+
+    monkeypatch.setattr(Path, "read_bytes", changed_helper_bytes)
+    assert len(affected) == 8
+    for ref in affected:
+        assert registry.implementation_hash(ref) != before[ref], ref
+    for ref in controls:
+        assert registry.implementation_hash(ref) == before[ref], ref
+
+
 def test_isa_statistics_source_changes_invalidate_the_stages_that_read_them(
     monkeypatch,
 ):

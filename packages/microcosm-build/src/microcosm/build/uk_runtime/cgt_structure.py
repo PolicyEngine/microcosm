@@ -19,6 +19,7 @@ import pandas as pd
 
 from microcosm.build.source_manifest import SourceStageSpec
 from microcosm.build.stochastic_assignment import stable_identity_uniforms
+from microcosm.build.uk_runtime import copy_id_table
 from microcosm.build.uk_runtime.advani_summers import (
     ADVANI_SUMMERS_RESOURCE,
     CGT_QUANTILE_POINTS,
@@ -46,16 +47,20 @@ from microcosm.build.uk_runtime.national_frame import (
     uk_time_period,
     validate_uk_national_frame,
 )
-from microcosm.build.uk_runtime.rowwise_geography import (
-    clone_entity_frame,
-    id_multiplier_for_values,
-)
+from microcosm.build.uk_runtime.rowwise_geography import clone_entity_frame
 from microcosm.build.uk_runtime.spi_support import (
     _importance_weights_with_exact_total,
 )
 from microcosm.frame import Frame, MassChangeRecord, WeightKind
 
 CGT_CLONE_MASS_SPLIT = 0.5
+#: The copy-id field the incidence twin takes ordinal 1 in (microcosm#931).
+CGT_CLONE_COPY_ID_FIELD = "cgt_incidence_clone"
+#: The id rule the clone and anchor manifests restate.
+CGT_CLONE_ID_REMAPPING = (
+    "copy-id table field cgt_incidence_clone; the twin takes every entity id + "
+    "the field's radix (10**17)"
+)
 CGT_PRIOR_SEED = 0
 CGT_PRIOR_SALT = "cgt_prior_amount"
 CGT_ADULT_MINIMUM_AGE = 16
@@ -249,13 +254,19 @@ def clone_cgt_incidence(
     person = frame.table("person").copy()
     benunit = frame.table("benunit").copy()
     household = frame.table("household").copy()
-    multiplier = id_multiplier_for_values(
-        person["person_id"],
-        person["person_household_id"],
-        person["person_benunit_id"],
-        benunit["benunit_id"],
-        household["household_id"],
-    )
+    # The twin takes every id plus the declared radix of the copy-id table's
+    # cgt_incidence_clone field, which sits above every field filled before
+    # it (microcosm#931).
+    for table, columns in (
+        (person, ("person_id", "person_household_id", "person_benunit_id")),
+        (benunit, ("benunit_id",)),
+        (household, ("household_id",)),
+    ):
+        for column in columns:
+            copy_id_table.require_below(
+                table[column], CGT_CLONE_COPY_ID_FIELD, what=f"incoming {column} values"
+            )
+    multiplier = copy_id_table.radix(CGT_CLONE_COPY_ID_FIELD)
     cloned_person = clone_entity_frame(
         person,
         id_columns=("person_id", "person_household_id", "person_benunit_id"),
@@ -343,12 +354,14 @@ def pair_clone_households(
 ) -> tuple[np.ndarray, np.ndarray, int]:
     """Positions of every clone household and of its paired original.
 
-    The clone stage offsets ids by ``id_multiplier_for_values`` over the rows
-    it saw; those rows are exactly the households whose clone flag is false,
-    the support split's copies included (they are pre-clone rows with their
-    own clones, microcosm#1045). Recomputing the multiplier from them
-    reproduces the executor's lineage rule, and the pairing must be a
-    bijection: an unpaired clone or original fails closed.
+    The clone stage offsets ids by the declared radix of the copy-id table's
+    ``cgt_incidence_clone`` field over the rows it saw; those rows are exactly
+    the households whose clone flag is false, the support split's copies
+    included (they are pre-clone rows with their own clones, microcosm#1045).
+    A clone's original is its id less that radix, the executor's lineage rule,
+    whatever the frame's largest id (microcosm#931), and the pairing must be
+    a bijection: an unpaired clone or original fails closed, printing counts
+    only.
     """
 
     if HOUSEHOLD_IS_CGT_CLONE not in household.columns:
@@ -365,31 +378,22 @@ def pair_clone_households(
     )
     if len(np.unique(household_ids)) != len(household_ids):
         raise ValueError("CGT incidence anchor requires unique household ids.")
-    original_ids = set(household_ids[original].tolist())
-    person_original = person["person_household_id"].isin(original_ids).to_numpy()
-    benunit_original = (
-        benunit["benunit_id"]
-        .isin(set(person.loc[person_original, "person_benunit_id"].tolist()))
-        .to_numpy()
-    )
-    multiplier = id_multiplier_for_values(
-        person.loc[person_original, "person_id"],
-        person.loc[person_original, "person_household_id"],
-        person.loc[person_original, "person_benunit_id"],
-        benunit.loc[benunit_original, "benunit_id"],
-        household_ids[original],
-    )
+    multiplier = copy_id_table.radix(CGT_CLONE_COPY_ID_FIELD)
     position_by_id = {int(value): index for index, value in enumerate(household_ids)}
     clone_positions = np.flatnonzero(clone)
     original_positions = np.empty(len(clone_positions), dtype=np.int64)
+    unpaired = 0
     for slot, position in enumerate(clone_positions):
         source = position_by_id.get(int(household_ids[position]) - multiplier)
         if source is None or not original[source]:
-            raise ValueError(
-                "CGT incidence anchor found a clone household without a paired "
-                f"original: household_id {int(household_ids[position])}."
-            )
+            unpaired += 1
+            continue
         original_positions[slot] = source
+    if unpaired:
+        raise ValueError(
+            f"CGT incidence anchor found {unpaired} clone household(s) without a "
+            "paired original at the cgt_incidence_clone field's radix."
+        )
     if len(np.unique(original_positions)) != len(original_positions):
         raise ValueError(
             "CGT incidence anchor found two clone households paired to one original."
@@ -808,7 +812,7 @@ def _assert_cgt_incidence_stage_parameters(stage: SourceStageSpec) -> None:
                     "mass_split": CGT_CLONE_MASS_SPLIT,
                     "weight_kind_out": WeightKind.IMPORTANCE.value,
                     "conservation": "exact_total",
-                    "id_remapping": "id_multiplier_for_values",
+                    "id_remapping": CGT_CLONE_ID_REMAPPING,
                     "declared_factor": 1.0,
                     "reason": CGT_CLONE_MASS_CHANGE_REASON,
                 },
@@ -845,12 +849,11 @@ def cgt_incidence_anchor_operation_parameters() -> tuple[
             "pair_clone_households_to_originals",
             {
                 "clone_flag_column": HOUSEHOLD_IS_CGT_CLONE,
-                "id_remapping": "id_multiplier_for_values",
+                "id_remapping": CGT_CLONE_ID_REMAPPING,
                 "pairing": (
-                    "clone household_id minus the clone stage's id multiplier, "
-                    "recomputed from the pre-clone rows (clone flag false; the "
-                    "support split's copies are pre-clone rows with their own "
-                    "clones)"
+                    "clone household_id minus the cgt_incidence_clone field's "
+                    "declared radix (the support split's copies are pre-clone "
+                    "rows with their own clones)"
                 ),
                 "requirement": (
                     "bijection between clone and original households; an "
