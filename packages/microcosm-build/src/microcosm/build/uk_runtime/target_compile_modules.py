@@ -70,6 +70,11 @@ UK_TARGET_COMPILE_MODULE_NAMES: tuple[str, ...] = (
     "microcosm.calibrate.hierarchy",
     "microcosm.calibrate.registry",
     "microcosm.calibrate.target",
+    # The dense measure step corrects each per-clone engine block to the
+    # pool's share denominator and judges the whole-population formulas it
+    # runs with these, against the UK declaration (microcosm#931).
+    "microcosm.frame.adapters.engine_population",
+    "microcosm.frame.adapters.policyengine_uk_population",
 )
 
 EXCLUDED_DIRECT_IMPORTS: Mapping[str, str] = MappingProxyType(
