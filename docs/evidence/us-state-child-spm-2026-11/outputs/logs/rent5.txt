@@ -1,0 +1,16 @@
+rent cols ['SPM_WNEWPARENT', 'rental_income', 'pre_subsidy_rent', 'farm_rent_income', 'farm_rent_income_would_be_qualified', 'rental_income_would_be_qualified', 'acs_interest_dividend_rental_income'] ['H_TENURE', 'tenure_type', 'RNTP', 'GRNTP', 'acs_monthly_contract_rent', 'acs_monthly_gross_rent']
+hh tenure {'OWNED_WITH_MORTGAGE': 0.371, 'OWNED_OUTRIGHT': 0.277, 'RENTED': 0.222, 'NONE': 0.129}
+                                                    w  any_rent   mean_pos  any_ret         n
+household_support_channel tenure_type                                                        
+acs_2024_1yr              NONE                  1.287     0.130  14765.803    0.000  204874.0
+                          OWNED_OUTRIGHT       10.345     0.300  14843.534    0.939  440126.0
+                          OWNED_WITH_MORTGAGE  15.305     0.299  15142.983    0.964  548558.0
+                          RENTED               11.746     0.396  15073.924    0.000  336110.0
+asec                      NONE                  0.326     0.327  12393.766    0.000     237.0
+                          OWNED_WITH_MORTGAGE  23.651     0.285  13839.141    0.000   15407.0
+                          RENTED               12.740     0.431  14457.648    0.000    6556.0
+puf_tax_detail            NONE                  0.439     0.426  12868.287    0.312     330.0
+                          OWNED_WITH_MORTGAGE  33.105     0.312  14183.404    0.513   25180.0
+                          RENTED               13.593     0.394  14713.438    0.328    9530.0
+same position household/head (1405648, 1586908)
+{'receives_housing_assistance': 0.0008, 'takes_up_housing_assistance_if_eligible': 0.0252}

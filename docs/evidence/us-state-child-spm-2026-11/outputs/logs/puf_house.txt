@@ -1,0 +1,8 @@
+['spm_unit_source_id', 'spm_unit_support_channel', 'spm_unit_support_clone_index']
+unweighted rate asec 0.0373 puf clone 0.0205 units 176039 176039
+puf    False  True 
+asec               
+False  0.982  0.018
+True   0.904  0.096
+rate of puf given asec=1 0.096 given asec=0 0.018
+{('asec', False): 0.0005, ('asec', True): 0.0775, ('puf_tax_detail', False): 0.0039, ('puf_tax_detail', True): 0.0282}

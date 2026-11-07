@@ -1,0 +1,8 @@
+['receives_housing_assistance', 'takes_up_housing_assistance_if_eligible', 'takes_up_tanf_if_eligible', 'takes_up_snap_if_eligible']
+{'receives_housing_assistance': 0.0207, 'takes_up_housing_assistance_if_eligible': 0.0207}
+census recipient share of child weight 0.0623 PE subsidy>0 share 0.0161
+receives_housing_assistance among census recipients 1.0 among others 0.0
+takes_up_housing_assistance_if_eligible among census recipients 1.0 among others 0.0
+census recipients with PE subsidy>0 0.259
+mean subsidy among census recipients: census 8614 PE 1704
+mean among both: census 8083 PE 6579
