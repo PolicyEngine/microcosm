@@ -22,6 +22,8 @@ from hypothesis import strategies as st
 
 from microcosm.fit import (
     CategoricalClassifier,
+    GateCalibration,
+    GateOutcome,
     QRFChainState,
     RegimeGatedQRF,
     donor_distance_features,
@@ -48,6 +50,10 @@ FITTING_PROPERTY = settings(
 
 EMPTY_BATCH = pd.DataFrame({"x": pd.Series([], dtype=float)})
 
+#: Both sign-gate calibrations, so the empty-batch tests reach both gate types:
+#: one boosted classifier, and the cross-fitted gate that averages fold gates.
+CALIBRATIONS = (GateCalibration.IN_SAMPLE, GateCalibration.CROSS_FITTED)
+
 
 def _gated_donors() -> pd.DataFrame:
     """Donors for every regime, three of them gated."""
@@ -64,16 +70,22 @@ def _gated_donors() -> pd.DataFrame:
     )
 
 
-def _fit_gated(seed: int = 7):
+def _fit_gated(seed: int = 7, calibration: str = GateCalibration.IN_SAMPLE):
     donors = _gated_donors()
-    return fit(
+    model = fit(
         donors,
         ["x"],
         list(donors.columns[1:]),
         weights="none",
         n_estimators=2,
         seed=seed,
+        gate_calibration=calibration,
     )
+    if calibration == GateCalibration.CROSS_FITTED:
+        # Every class has a row in every fold, so no gate falls back in-sample.
+        gated = [outcome for outcome in model.gate_outcomes().values() if outcome]
+        assert gated and set(gated) == {GateOutcome.CROSS_FITTED}
+    return model
 
 
 # ----------------------------------------------------------------------------
@@ -524,9 +536,10 @@ def test_a_chain_refuses_an_empty_training_table() -> None:
 # ----------------------------------------------------------------------------
 
 
-def test_predict_on_an_empty_batch_returns_an_empty_frame() -> None:
+@pytest.mark.parametrize("calibration", CALIBRATIONS)
+def test_predict_on_an_empty_batch_returns_an_empty_frame(calibration) -> None:
     """A gated target's sign gate refused a zero-row predict."""
-    model = _fit_gated()
+    model = _fit_gated(calibration=calibration)
     drawn = model.predict(EMPTY_BATCH)
     assert list(drawn.columns) == model.targets
     assert drawn.empty
@@ -549,10 +562,10 @@ def test_predict_from_uniforms_on_an_empty_batch_is_empty() -> None:
 
 
 @FITTING_PROPERTY
-@given(seed=st.integers(0, 2**32))
-def test_an_empty_batch_consumes_no_draws(seed) -> None:
+@given(seed=st.integers(0, 2**32), calibration=st.sampled_from(CALIBRATIONS))
+def test_an_empty_batch_consumes_no_draws(seed, calibration) -> None:
     """The next batch draws exactly as if the empty one had never run."""
-    used, fresh = _fit_gated(seed), _fit_gated(seed)
+    used, fresh = _fit_gated(seed, calibration), _fit_gated(seed, calibration)
     used.predict(EMPTY_BATCH)
     recipients = pd.DataFrame({"x": np.arange(6, dtype=float)})
     pd.testing.assert_frame_equal(used.predict(recipients), fresh.predict(recipients))
@@ -565,8 +578,9 @@ def test_an_empty_batch_still_releases_the_forests() -> None:
         model.predict(pd.DataFrame({"x": [1.0]}))
 
 
-def test_conditional_uniforms_on_an_empty_batch_are_empty() -> None:
-    model = _fit_gated()
+@pytest.mark.parametrize("calibration", CALIBRATIONS)
+def test_conditional_uniforms_on_an_empty_batch_are_empty(calibration) -> None:
+    model = _fit_gated(calibration=calibration)
     observed = pd.DataFrame(
         {column: pd.Series([], dtype=float) for column in ["x", *model.targets]}
     )
@@ -578,10 +592,11 @@ def test_conditional_uniforms_on_an_empty_batch_are_empty() -> None:
     assert all(len(values) == 0 for values in located.sign_uniforms.values())
 
 
+@pytest.mark.parametrize("calibration", CALIBRATIONS)
 @pytest.mark.parametrize("keyed", [False, True], ids=["positional", "keyed"])
-def test_a_chain_step_on_an_empty_batch_draws_nothing(keyed) -> None:
+def test_a_chain_step_on_an_empty_batch_draws_nothing(keyed, calibration) -> None:
     donors = _gated_donors()
-    model = RegimeGatedQRF(n_estimators=2, seed=7)
+    model = RegimeGatedQRF(n_estimators=2, seed=7, gate_calibration=calibration)
     state = model.start_chain(donors, ["x"], ["mixed"], weights="none")
     uniforms = {"quantiles": np.zeros(0), "sign_uniforms": np.zeros(0)} if keyed else {}
     step = model.fit_draw_next(
