@@ -8,7 +8,7 @@ import pickle
 import socket
 import stat
 import time
-from collections.abc import Callable, Iterable, Mapping
+from collections.abc import Callable, Collection, Iterable, Iterator, Mapping
 from copy import deepcopy
 from dataclasses import dataclass, fields, replace
 from datetime import UTC, datetime
@@ -1637,15 +1637,44 @@ def _apply_result(
         raise NodeRejected(f"Node {node.id!r} patch rejected: {error}") from error
 
 
-def _series_for_column(frame: Frame, entity: str, column: str) -> pd.Series:
-    table = frame.table(entity)
-    id_column = frame.schema.entity_id_column(entity)
+def _series_for_column(table: pd.DataFrame, column: str, ids: pd.Index) -> pd.Series:
     return pd.Series(
         table[column].array.copy(),
-        index=pd.Index(table[id_column].to_numpy(copy=True), name=id_column),
+        index=ids,
         name=column,
         dtype=table[column].dtype,
     )
+
+
+def _version_series(
+    frame: Frame,
+) -> Iterator[tuple[tuple[str, str], tuple[pd.Series, str]]]:
+    """Yield the columns a structural version stores, one copy at a time.
+
+    They come sorted by entity and then by column, the order of the node's
+    record. Each column is copied only when it is reached. Each entity's ids
+    are copied once and shared by its columns: the store only reads them, so
+    sharing them changes no stored byte. Holding every copy at once, each
+    with its own ids, would cost about twice the frame at every structural
+    write. Every dtype token is taken first, so an unsupported dtype is
+    still refused before anything is written.
+    """
+
+    tokens = {
+        entity: {
+            column: _dtype_token(frame.table(entity)[column])
+            for column in frame.table(entity).columns
+        }
+        for entity in frame.entities
+    }
+    for entity in sorted(tokens):
+        table = frame.table(entity)
+        id_column = frame.schema.entity_id_column(entity)
+        ids = pd.Index(table[id_column].to_numpy(copy=True), name=id_column)
+        for column, token in sorted(tokens[entity].items()):
+            # The copy is never bound to a name here, so once the write lets
+            # it go nothing holds it.
+            yield (entity, column), (_series_for_column(table, column, ids), token)
 
 
 def _write_node(
@@ -1662,20 +1691,21 @@ def _write_node(
     verify_existing: bool,
     typed_artifacts: Mapping[str, object] | None = None,
 ) -> tuple[dict[tuple[str, str], str], dict[str, object]]:
-    columns: dict[tuple[str, str], tuple[pd.Series, str]] = {}
+    written: Iterable[tuple[tuple[str, str], tuple[pd.Series, str]]]
     if node.structural is StructuralDelta.NONE:
         declared = {(owned.entity, owned.column): owned for owned in node.outputs}
+        columns: dict[tuple[str, str], tuple[pd.Series, str]] = {}
         for coordinate, series in result.columns.items():
             columns[coordinate] = (series, declared[coordinate].dtype)
+        written = sorted(columns.items())
     else:
-        for entity in population.frame.entities:
-            for column in population.frame.table(entity).columns:
-                series = _series_for_column(population.frame, entity, column)
-                columns[(entity, column)] = (series, _dtype_token(series))
+        # A structural version stores every column it carries, so they are
+        # copied and written one at a time rather than all held at once.
+        written = _version_series(population.frame)
 
     column_entries: list[dict[str, str]] = []
     manifest_artifacts: dict[tuple[str, str], str] = {}
-    for (entity, column), (series, token) in sorted(columns.items()):
+    for (entity, column), (series, token) in written:
         output_key = artifact_key(key, entity, column)
         store.put_column(
             output_key,
@@ -1687,6 +1717,8 @@ def _write_node(
         )
         column_entries.append({"entity": entity, "column": column, "key": output_key})
         manifest_artifacts[(entity, column)] = output_key
+        # A structural column's copy goes before the next one is made.
+        del series
 
     stored_frame_key: str | None = None
     if node.structural is not StructuralDelta.NONE:
@@ -2024,9 +2056,14 @@ def _load_cached_result(
         except KeyError as error:
             raise StoreCorrupt("Cached node column entry is malformed.") from error
         coordinate = (entity, column)
-        if coordinate in stored_columns:
+        if coordinate in manifest_artifacts:
             raise StoreCorrupt(f"Cached node repeats column {entity}.{column}.")
-        stored_columns[coordinate] = store.load_column(output_key)
+        if node.structural is StructuralDelta.NONE:
+            stored_columns[coordinate] = store.load_column(output_key)
+        else:
+            # A structural version comes back whole from its frame below, so
+            # each of its columns is only checked here and none is kept.
+            store.load_column(output_key)
         manifest_artifacts[coordinate] = output_key
 
     result_columns: dict[tuple[str, str], pd.Series] = {}
@@ -2502,6 +2539,61 @@ def _preflight_expand_declarations(compiled: CompiledGraph) -> None:
             ) from error
 
 
+def _retained_versions(
+    compiled: CompiledGraph, retain_populations: Collection[str] | None
+) -> frozenset[str] | None:
+    """Check ``run_graph``'s ``retain_populations`` before the run does any work.
+
+    ``None`` keeps every version, as before. A bare string is refused rather
+    than read as a collection of one-letter names, and so is a name that is
+    not a population version of this graph.
+    """
+
+    if retain_populations is None:
+        return None
+    if isinstance(retain_populations, str | bytes) or not isinstance(
+        retain_populations, Collection
+    ):
+        raise TypeError("retain_populations must be a collection of version names.")
+    names = tuple(retain_populations)
+    if not all(isinstance(name, str) for name in names):
+        raise TypeError("retain_populations must name each version as a string.")
+    unknown = sorted(set(names) - set(compiled.versions.values()))
+    if unknown:
+        raise ValueError(
+            f"retain_populations names {unknown!r}, which are not population "
+            "versions of this graph."
+        )
+    return frozenset(names)
+
+
+def _population_releases(
+    compiled: CompiledGraph, retained: frozenset[str]
+) -> dict[str, tuple[str, ...]]:
+    """Map each node to the versions it is the last to use.
+
+    The node that creates a version writes it. Each ordinary member reads the
+    version as its incumbent and writes its successor, and each structural
+    node built on it reads it as its base. Nothing else in a run reads a
+    version, so once the last of these nodes has applied its result the
+    executor holds the version only for the manifest. A version that is not
+    retained can go then.
+    """
+
+    last: dict[str, str] = {}
+    for node_id in compiled.order:
+        node = compiled.graph.node(node_id)
+        last[compiled.versions[node_id]] = node_id
+        if node.structural not in (StructuralDelta.NONE, StructuralDelta.CREATE):
+            assert node.base is not None
+            last[node.base] = node_id
+    releases: dict[str, list[str]] = {}
+    for version, node_id in last.items():
+        if version not in retained:
+            releases.setdefault(node_id, []).append(version)
+    return {node_id: tuple(versions) for node_id, versions in releases.items()}
+
+
 def _evict_run_writes(store: ContentStore, written: Iterable[str]) -> list[str]:
     """Take back every object a refusing run published, and report what stayed.
 
@@ -2609,11 +2701,24 @@ def run_graph(
     kernels: KernelRegistry,
     resume: ResumePolicy = "auto",
     decisions: tuple[Decision, ...] = (),
+    retain_populations: Collection[str] | None = None,
     _population_observer: Callable[[str, Population], None] | None = None,
     _population_observer_detach: bool = True,
     _verification_epoch: Mapping[str, object] | None = None,
 ) -> RunManifest:
     """Execute a compiled graph with content-addressed reuse and receipts.
+
+    ``retain_populations`` names the population versions the caller will read
+    from the manifest. The default, ``None``, keeps every version until the
+    run ends and attaches all of them. Given a collection, the run drops each
+    version it does not name once the last node that reads that version has
+    applied its result, before that node is observed or written, so its frame
+    can be freed. It attaches only the named versions and their mass ledgers.
+    A version is read by its ordinary members and by every structural node
+    built on it, and its last reader frees it even when that reader is not
+    reached. A name that is not a version of the graph is refused before any
+    work. Each node reads the same population with or without the keyword,
+    and it enters no key, no receipt and no cache record.
 
     The private population observer exposes a detached snapshot of each node's
     admitted population, design anchors included, to an integrating verifier.
@@ -2676,6 +2781,7 @@ def run_graph(
                 kernels=kernels,
                 resume=resume,
                 decisions=decisions,
+                retain_populations=retain_populations,
                 written=written,
                 run_sources=run_sources,
                 _population_observer=_population_observer,
@@ -2695,6 +2801,7 @@ def _execute_graph(
     kernels: KernelRegistry,
     resume: ResumePolicy,
     decisions: tuple[Decision, ...],
+    retain_populations: Collection[str] | None,
     written: set[str],
     run_sources: _RunSources,
     _population_observer: Callable[[str, Population], None] | None,
@@ -2712,6 +2819,7 @@ def _execute_graph(
         raise ValueError("resume must be 'auto', 'require', or 'forbid'.")
     if type(_population_observer_detach) is not bool:
         raise TypeError("_population_observer_detach must be a bool.")
+    retained = _retained_versions(compiled, retain_populations)
     normalized_decisions: list[Decision] = []
     for decision in decisions:
         if isinstance(decision, Decision):
@@ -2742,6 +2850,11 @@ def _execute_graph(
     if resume == "require":
         _preflight_require(compiled, store, keys, implementations, kernels)
 
+    # Node id to the versions it is the last to use. Each leaves
+    # ``populations`` once that node has applied its result, so its frame can
+    # be freed. Without ``retain_populations`` none leaves, and the manifest
+    # attaches all.
+    releases = {} if retained is None else _population_releases(compiled, retained)
     populations: dict[str, Population] = {}
     # Each structural version's ``Frame`` mass log as that version was
     # admitted.  ``populations`` cannot answer this: an ordinary member
@@ -2777,6 +2890,11 @@ def _execute_graph(
                 resume=resume,
             )
             receipt_payloads[node_id] = receipts[node_id].receipt
+            # An unreached node reads nothing, but it can still be a version's
+            # last reader. That version may never have been admitted, so its
+            # absence is not an error here.
+            for version in releases.get(node_id, ()):
+                populations.pop(version, None)
             continue
 
         if node.structural is StructuralDelta.CREATE:
@@ -2926,6 +3044,10 @@ def _execute_graph(
             after = _context_digest(context)
             if before != after:
                 raise NodeRejected(f"Node {node.id!r} mutated its input context.")
+            # The context copies every column this node projected, and its
+            # artifacts are decoded payloads. Nothing below reads either, so
+            # they go now, not when the next cold node replaces them.
+            del context, artifact_values
             for name in node.sources:
                 # A stat signature that still matches the one taken across this
                 # source's own read reuses that read's key; a rewrite that moves
@@ -3056,6 +3178,14 @@ def _execute_graph(
             # Captured at admission, so cold execution and a restored cache
             # hit record the same boundary: both reach this line.
             boundary_mass_logs[node.id] = updated.frame.mass_log
+        # Nothing else in this iteration reads the incumbent or
+        # ``populations``: the observer and the write take ``updated``. So the
+        # incumbent, and each version this node is the last to use, go before
+        # them. A structural node's base is then freed before its own frame
+        # is written.
+        incumbent = None
+        for version in releases.get(node_id, ()):
+            del populations[version]
 
         if _population_observer is not None:
             _population_observer(
@@ -3114,6 +3244,11 @@ def _execute_graph(
             opaque_artifacts=MappingProxyType(receipt_opaque),
         )
         receipt_payloads[node_id] = receipts[node_id].receipt
+        # A version this node made and released lives on only in ``updated``,
+        # and a restored frame or an opaque payload in ``result`` and
+        # ``opaque``. They go here, so neither a later node nor the run-end
+        # pass holds them.
+        del updated, result, opaque
 
     # Every source is re-derived in full, cache bypassed, before any caller
     # receives a manifest. This closes the two cases a stat signature cannot

@@ -2072,7 +2072,10 @@ def prepare_uk_spine_execution(
         release_candidate=args.release_candidate,
         synthetic_smoke=args.synthetic_fixture_dir is not None,
     )
-    kernels = uk_registry(implementations, graph=graph)
+    # The spine and the full build read each stage's evidence from the store,
+    # never from a live transform, so each stage frees its result once its
+    # evidence is captured.
+    kernels = uk_registry(implementations, graph=graph, release_stage_results=True)
     register_spine_gate_kernel(
         kernels, spec=spec, engine=engine, engine_identity=engine_identity
     )
@@ -2223,6 +2226,9 @@ def _main(argv: list[str] | None = None) -> int:
             else args.spine_h5.parent / f".{args.spine_h5.stem}.checkpoints"
         )
         compiled_graph = compile_graph(graph)
+        # The spine reads only its final version from the manifest, so the run
+        # frees every other version once nothing reads it.
+        final_version = compiled_graph.versions[stage_names[-1]]
         graph_store = ContentStore(checkpoint_root / "node-graph")
         graph_manifest = run_graph(
             compiled_graph,
@@ -2231,6 +2237,7 @@ def _main(argv: list[str] | None = None) -> int:
             kernels=prepared.kernels,
             resume="auto",
             decisions=(),
+            retain_populations=(final_version,),
             _population_observer=_graph_progress_observer(
                 _ACTIVE_EMITTER, total=len(compiled_graph.order)
             ),
@@ -2279,7 +2286,6 @@ def _main(argv: list[str] | None = None) -> int:
         graph_schema_path = save_uk_graph_schema(
             graph, graph_evidence_path.parent, scope="raw_spine", spec=spec
         )
-        final_version = compiled_graph.versions[stage_names[-1]]
         frame = graph_manifest.population(final_version)
         records = _graph_stage_records(
             manifest=graph_manifest,

@@ -303,6 +303,29 @@ def test_national_graph_composes_the_bound_checkpoint_line():
     assert national.population == "uk.full.calibrated"
 
 
+def test_each_version_the_national_build_keeps_is_a_version_of_its_phase():
+    """The national build's input and gates phases keep versions they run.
+
+    ``run_graph`` refuses any other name, but only when that phase starts. The
+    input phase keeps the bound checkpoint, and the gates phase the calibrated
+    population the H5 is written from.
+    """
+    from microcosm.build.uk_runtime.full_build_cli import _through
+
+    national = uk_national_graph(
+        _config(),
+        spine=bound_spine_graph(seam._frame()),
+        spine_population="uk.full.spine_checkpoint",
+        review_date=REVIEW_DATE,
+    )
+    for endpoint, kept in (
+        ("uk.full.spine_checkpoint", "uk.full.spine_checkpoint"),
+        (NATIONAL_GATES_NODE, national.population),
+    ):
+        compiled = compile_graph(_through(national.graph, endpoint))
+        assert kept in set(compiled.versions.values())
+
+
 def test_national_graph_refuses_a_population_without_bound_provenance():
     frame = seam._frame()
     spine = bound_spine_graph(frame)

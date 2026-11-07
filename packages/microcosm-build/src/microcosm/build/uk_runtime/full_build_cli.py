@@ -62,6 +62,7 @@ from microcosm.build.run_outcome import (
 from microcosm.build.termination import BuildTerminatedError, raise_on_sigterm
 from microcosm.graph import (
     ArtifactInput,
+    CompiledGraph,
     ContentStore,
     Graph,
     KernelRegistry,
@@ -290,8 +291,12 @@ _SUPPORT_ARGUMENTS = dict(
 )
 
 
-def _run_graph_with_progress(compiled, *, execution=None, **kwargs):
+def _run_graph_with_progress(compiled, *, retain_populations, execution=None, **kwargs):
     """Run a graph and emit one lightweight update per completed node.
+
+    ``retain_populations`` names the versions the caller reads from the
+    returned manifest, often none. The run frees every other version once
+    nothing reads it, so each phase says what it keeps.
 
     ``execution`` (node id to cache hit) collects how this attempt reached each
     node. The first run to reach a node decides: a later run in the same
@@ -316,6 +321,7 @@ def _run_graph_with_progress(compiled, *, execution=None, **kwargs):
 
     manifest = run_graph(
         compiled,
+        retain_populations=retain_populations,
         _population_observer=observe,
         _population_observer_detach=False,
         **kwargs,
@@ -2281,6 +2287,35 @@ def _close_staging(
         )
 
 
+#: The size search, and the pool version it reads. The size checkpoint is
+#: materialized from both, so the numerical phase keeps that pool for it.
+_SIZE_SEARCH = "uk.full.size_search"
+_SIZE_SEARCH_POOL = "uk.full.pool"
+
+
+def _writes_size_checkpoint(args: argparse.Namespace) -> bool:
+    """Whether the build may write the size checkpoint after the solve."""
+    return (
+        args.dataset_households is not None
+        and not args.no_size_checkpoint
+        and args.resume_size_checkpoint is None
+    )
+
+
+def _size_checkpoint_populations(
+    args: argparse.Namespace, compiled: CompiledGraph
+) -> tuple[str, ...]:
+    """The versions :func:`_materialize_size_checkpoint` may read from this run.
+
+    It may read the pool, and only when the build may write the checkpoint and
+    the graph runs the size search. A full-pool search writes none, and then
+    the pool is kept for nothing.
+    """
+    if _writes_size_checkpoint(args) and _SIZE_SEARCH in compiled.order:
+        return (_SIZE_SEARCH_POOL,)
+    return ()
+
+
 def _materialize_size_checkpoint(
     manifest, store, *, args: argparse.Namespace, pins: dict, source_year: int
 ) -> dict | None:
@@ -2301,14 +2336,12 @@ def _materialize_size_checkpoint(
     from .dataset_size import UKSizeSelection
     from .size_checkpoint import write_uk_size_checkpoint
 
-    if "uk.full.size_search" not in manifest.nodes:
+    if _SIZE_SEARCH not in manifest.nodes:
         return None
-    selection_meta = json.loads(
-        _payload(manifest, store, "uk.full.size_search", "selection")
-    )
+    selection_meta = json.loads(_payload(manifest, store, _SIZE_SEARCH, "selection"))
     if selection_meta.get("method") != "contribution_informed_l0":
         return None
-    pool = manifest.population("uk.full.pool")
+    pool = manifest.population(_SIZE_SEARCH_POOL)
     problem = decode_problem(_payload(manifest, store, "uk.full.problem", "problem"))
     initial = Frame(
         {entity: pool.table(entity) for entity in pool.entities},
@@ -2324,7 +2357,7 @@ def _materialize_size_checkpoint(
         problem=problem,
     )
     search = decode_calibration_result(
-        _payload(manifest, store, "uk.full.size_search", "result"),
+        _payload(manifest, store, _SIZE_SEARCH, "result"),
         frame=initial,
         problem=problem,
     )
@@ -2346,9 +2379,7 @@ def _materialize_size_checkpoint(
         provenance={
             "graph_artifacts": {
                 "dense": manifest.nodes["uk.full.dense"].opaque_artifacts["result"],
-                "search": manifest.nodes["uk.full.size_search"].opaque_artifacts[
-                    "result"
-                ],
+                "search": manifest.nodes[_SIZE_SEARCH].opaque_artifacts["result"],
             }
         },
     )
@@ -2406,6 +2437,7 @@ def _execute_full_build(
         checkpoint = _run_solve_phase(
             compile_graph(_through(graph, endpoint)),
             required=reuse,
+            retain_populations=(),
             sources=sources,
             store=store,
             kernels=kernels,
@@ -2422,6 +2454,7 @@ def _execute_full_build(
     preflight = _run_solve_phase(
         compile_graph(preflight_graph),
         required=reuse,
+        retain_populations=(),
         sources=sources,
         store=store,
         kernels=kernels,
@@ -2478,6 +2511,7 @@ def _execute_full_build(
         _run_solve_phase(
             compile_graph(_solve_subgraph(graph)),
             required=True,
+            retain_populations=(),
             sources=sources,
             store=store,
             kernels=kernels,
@@ -2493,8 +2527,10 @@ def _execute_full_build(
         epoch_every=staging_epoch_every(args),
         resumed_from_checkpoint=args.resume_size_checkpoint is not None,
     )
+    numerical = compile_graph(_through(graph, "uk.full.gates.calibrated"))
     manifest = _run_graph_with_progress(
-        compile_graph(_through(graph, "uk.full.gates.calibrated")),
+        numerical,
+        retain_populations=_size_checkpoint_populations(args, numerical),
         sources=sources,
         store=store,
         kernels=kernels,
@@ -2537,11 +2573,7 @@ def _execute_full_build(
         n_nonzero=diagnostics.get("n_nonzero"),
         realized_households=diagnostics.get("n_records"),
     )
-    if (
-        args.dataset_households is not None
-        and not args.no_size_checkpoint
-        and args.resume_size_checkpoint is None
-    ):
+    if _writes_size_checkpoint(args):
         receipt = _materialize_size_checkpoint(
             manifest,
             store,
@@ -2551,6 +2583,9 @@ def _execute_full_build(
         )
         if receipt is not None and state is not None:
             append_phase(state, "size_selection_checkpointed")
+    # The numerical manifest can hold the pool, and nothing reads it again.
+    # It goes now, so the pool is not resident through the export run.
+    del manifest
     _, enforcement = decode_full_gate_report(gate_report_bytes)
     gate_document = json.loads(gate_report_bytes)
     # The signed local battery report, written before any refusal so a
@@ -2611,6 +2646,7 @@ def _execute_full_build(
     stage(telemetry, "output_bundle", "started")
     manifest = _run_graph_with_progress(
         compile_graph(graph),
+        retain_populations=(full.population,),
         sources=sources,
         store=store,
         kernels=kernels,
@@ -2693,6 +2729,7 @@ def _execute_full_build(
     )
     final = _run_graph_with_progress(
         compile_graph(graph),
+        retain_populations=(),
         sources={
             **sources,
             "exported_dataset": dataset,
@@ -3120,6 +3157,7 @@ def _execute_national_build(
     stage(telemetry, "input_loading", "started")
     checkpoint = _run_graph_with_progress(
         compile_graph(_through(graph, "uk.full.spine_checkpoint")),
+        retain_populations=("uk.full.spine_checkpoint",),
         sources=sources,
         store=store,
         kernels=kernels,
@@ -3144,10 +3182,14 @@ def _execute_national_build(
             for entity in spine_frame.entities
         },
     )
+    # Nothing reads the loaded checkpoint again: each later run loads its own.
+    # It goes now, so the targets run and the solve do not hold a second spine.
+    del spine_frame, checkpoint
     # 2. The register: compiled inside the graph, frozen beside the outputs.
     stage(telemetry, "target_compilation", "started")
     targets = _run_graph_with_progress(
         compile_graph(_through(graph, NATIONAL_TARGETS_NODE)),
+        retain_populations=(),
         sources=sources,
         store=store,
         kernels=kernels,
@@ -3205,6 +3247,7 @@ def _execute_national_build(
     )
     manifest = _run_graph_with_progress(
         compile_graph(_through(graph, NATIONAL_GATES_NODE)),
+        retain_populations=(national.population,),
         sources=sources,
         store=store,
         kernels=kernels,
@@ -3398,6 +3441,7 @@ def _execute_national_build(
     )
     final = _run_graph_with_progress(
         compile_graph(continued),
+        retain_populations=(),
         sources={**sources, "exported_dataset": paths["dataset"]},
         store=store,
         kernels=kernels,

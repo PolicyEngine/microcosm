@@ -1903,14 +1903,20 @@ def uk_registry(
     implementations: Mapping[str, object] | None = None,
     *,
     graph: Graph | None = None,
+    release_stage_results: bool = False,
 ) -> KernelRegistry:
-    """Return kernels for ``graph``, optionally bound to real stage transforms."""
+    """Return kernels for ``graph``, optionally bound to real stage transforms.
+
+    ``release_stage_results`` has each stage drop its retained result once
+    its evidence is captured; the default keeps it.
+    """
 
     from .graph_kernels import build_uk_registry
 
     return build_uk_registry(
         uk_spine_graph() if graph is None else graph,
         {} if implementations is None else implementations,
+        release_stage_results=release_stage_results,
     )
 
 
