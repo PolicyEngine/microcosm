@@ -39,7 +39,7 @@ _DEPRECATION_MESSAGE = (
 def _load_legacy_module() -> ModuleType:
     """Load the moved implementation without making ``tools`` a package."""
 
-    module_name = "_populace_legacy_us_acs_multispine_base"
+    module_name = "_microcosm_legacy_us_acs_multispine_base"
     existing = sys.modules.get(module_name)
     if existing is not None:
         return existing

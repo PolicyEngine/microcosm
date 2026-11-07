@@ -204,7 +204,7 @@ DEADLINE_WARNING_DAYS = 2
 #: bare ``#N`` is no citation: it could number anything.
 #:
 #: The repositories a citation may name, as ``PolicyEngine/<repo>#N`` or in a
-#: GitHub URL: this project's own (``microcosm``, once ``populace``) and those
+#: GitHub URL: this project's own (``microcosm``, and its former name) and those
 #: it cites. GitHub matches owner and repository names in any case, and so
 #: does :func:`figure_free`; a name outside the list (``PolicyEngine/rows#7``)
 #: is no citation.
