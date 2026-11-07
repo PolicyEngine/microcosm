@@ -1414,9 +1414,14 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         type=int,
         default=DEFAULT_US_FISCAL_CALIBRATION_EPOCHS,
         help=(
-            "Optimization epochs for each calibration stage. The default "
-            "matches the current L0+refit release run: L0 selection for 1,500 "
-            "epochs followed by a 1,500-epoch ordinary refit."
+            "Optimization epochs for each calibration stage (default "
+            f"{DEFAULT_US_FISCAL_CALIBRATION_EPOCHS:,}). --dense-default-dataset "
+            "and the full-pool --exact-k point run one stage; the L0+refit arm "
+            "and smaller --exact-k points run an L0 selection stage and then a "
+            "refit stage, each this long. The US national calibrations "
+            "PolicyEngine has tagged on Hugging Face since 2026-07-01 ran the "
+            "dense arm for 1,500 to 6,000 epochs; Build P, the parent of "
+            "populace-us-2024-spm-20260915, ran 6,000."
         ),
     )
     parser.add_argument("--learning-rate", type=float, default=0.02)
@@ -1441,11 +1446,21 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         type=float,
         default=DEFAULT_L0_REFIT_LAMBDA_SHARE,
         help=(
-            "Default national dataset sparsity control. The builder divides "
-            "this value by the candidate household count and uses the result "
-            "as the fixed L0 penalty before refitting ordinary calibration on "
-            "the selected support. The default 0.8 reproduces the current "
-            "57k-household US fiscal surface run from the 337k support."
+            "L0 penalty share for the L0+refit arm, which runs when the caller "
+            "sets neither --dense-default-dataset nor --exact-k, and for the "
+            "selection stage of an --exact-k point below the full pool "
+            f"(default {DEFAULT_L0_REFIT_LAMBDA_SHARE}). The builder divides "
+            "it by the candidate household count and uses the result as a "
+            "fixed L0 penalty; the L0+refit arm then refits ordinary "
+            "calibration on the households the gates keep. "
+            "--dense-default-dataset ignores it. None of the US national builds "
+            "PolicyEngine has tagged on Hugging Face since 2026-07-01 ran an L0 "
+            "stage. The 2026-07-01 release calibrated 57,240 households that "
+            "an unpublished run chose (microcosm#328). Builds I through P "
+            "matched that list by source identity with "
+            "--selection-source-manifest; Build I's list swaps 100 of those "
+            "households (microcosm#359), and Build M's swaps 9 more "
+            "(microcosm#434)."
         ),
     )
     parser.add_argument(
@@ -1477,10 +1492,17 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         "--dense-default-dataset",
         action="store_true",
         help=(
-            "Diagnostic only: publish the dense no-L0 calibrated frame as the "
-            "default national dataset. Release builds should leave this unset "
-            "so populace_us_2024.h5 is the sparse L0+refit dataset that runs "
-            "on standard machines."
+            "Calibrate every candidate household in one solve with no L0 term "
+            "and write that frame as the default national dataset, "
+            "populace_us_2024.h5; the build manifest records "
+            "dataset.default.method: dense_no_l0. Every US national calibration "
+            "PolicyEngine has tagged on Hugging Face since 2026-07-01 came from "
+            "this arm. A selection source (--selection-source-manifest or "
+            "--selection-source-h5) first cuts the candidates to the households "
+            "it names, 57,240 in Builds I through P. Without one, the solve "
+            "covers every household the builder loads: 352,932 in the "
+            "2026-09-30 and 2026-10-24 builds. Leave it unset for the L0+refit "
+            "arm; the builder refuses it together with --exact-k."
         ),
     )
     parser.add_argument(
