@@ -106,7 +106,9 @@ US_CALIBRATION_VARIABLE_LABELS: Mapping[str, Mapping[str, str]] = _immutable_reg
             "estate_income": "Estate income",
             "estate_losses": "Estate losses",
             "income": "Income",
-            "income_tax": "Income tax",
+            "income_tax_after_nonrefundable_credits": (
+                "Income tax after nonrefundable credits"
+            ),
             "income_tax_before_credits": "Income tax before credits",
             "interest_deduction": "Interest deduction",
             "ira_distributions": "IRA distributions",

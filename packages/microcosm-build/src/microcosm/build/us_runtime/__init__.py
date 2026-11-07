@@ -296,6 +296,7 @@ from microcosm.build.us_runtime.farm_business_income import (
     us_farm_business_income_summary,
 )
 from microcosm.build.us_runtime.fiscal_targets import (
+    SOI_DIFFERENCE_CONCEPTS,
     SOI_VARIABLE_MAP,
     US_FISCAL_LEDGER_PARITY_REGISTRY,
     US_FISCAL_LEDGER_PARITY_REPORT,
@@ -317,6 +318,7 @@ from microcosm.build.us_runtime.fiscal_targets import (
     US_STATE_INCOME_TAX_TARGET_SPECS,
     SimpleTaxExpenditureReform,
     compile_us_fiscal_target_registry,
+    soi_difference_concept_values,
     us_fiscal_target_exclusion_receipt,
 )
 from microcosm.build.us_runtime.form_4952 import (
@@ -1211,6 +1213,7 @@ __all__ = [
     "US_JCT_TAX_EXPENDITURE_REFORMS",
     "US_JCT_TAX_EXPENDITURE_TARGET_SPECS",
     "US_JCT_TAX_EXPENDITURE_TARGET_REFERENCES",
+    "SOI_DIFFERENCE_CONCEPTS",
     "SOI_VARIABLE_MAP",
     "IMMIGRATION_STATUS_VALUES",
     "SSN_CARD_TYPE_VALUES",
@@ -1957,6 +1960,7 @@ __all__ = [
     "US_STATE_INCOME_TAX_TARGET_SPECS",
     "US_STATE_INCOME_TAX_TARGET_REFERENCES",
     "compile_us_fiscal_target_registry",
+    "soi_difference_concept_values",
     "us_fiscal_target_exclusion_receipt",
     "assign_congressional_districts_to_households",
     "assert_operator_free_source_frame",

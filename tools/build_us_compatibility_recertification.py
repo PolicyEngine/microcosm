@@ -474,14 +474,7 @@ class _BatchScorer:
 
         entity = metric["entity"]
         arrays = [self._at(variable, entity) for variable in metric["variables"]]
-        if metric["combine"] == "nonrefundable_ctc":
-            ctc, limit = arrays
-            values = np.maximum(np.minimum(ctc, limit), 0.0)
-        elif metric["combine"] == "part_b_irmaa":
-            gross, base, enrolled = arrays
-            values = (gross - base) * enrolled
-        else:
-            values = np.sum(arrays, axis=0)
+        values = recert.combine_metric_values(metric["combine"], arrays)
         if metric["itemizers_only"]:
             values = values * self._at("tax_unit_itemizes", "tax_unit")
         statistic = metric["statistic"]

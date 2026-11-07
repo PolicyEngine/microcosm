@@ -3,6 +3,8 @@
 # ruff: noqa: F403, F405
 import dataclasses
 
+import numpy as np
+
 from test_support.microcosm_build.us_fiscal_targets import *
 
 
@@ -895,15 +897,19 @@ def test_pinned_feed_national_state_surface_restores_the_fences(
 ) -> None:
     """The release surface on the pinned feed: 33,250 compiled targets after
     Medicaid substitution, 6,102 national_state targets at registry
-    3aa2a0830e7d, 32 CHIP rows none of them for an M-CHIP state, no
-    other-income row and no tips return count. microcosm#1343 moved the
-    version from 3fad14f85468 by re-pinning to a feed that gives three
-    dimension values one label each (the version hashes hierarchy labels);
-    microcosm#1227 moved it from e1f9906bf0e0 by doubling the eight Table
-    2.5 EITC child total rows, whose uprating source sum had counted each
-    split twice; microcosm#1206 moved it from f96be9f41781 by binding the
-    Part B premium target to gross_medicare_part_b_premium_if_enrolled.
-    None of the three changed the counts.
+    0b0bf1cae197, 32 CHIP rows none of them for an M-CHIP state, no
+    other-income row and no tips return count. microcosm#1539 moved the
+    version from 3aa2a0830e7d by binding SOI's income tax after credits rows
+    (A06500, N06500) to income_tax_before_credits less
+    income_tax_capped_non_refundable_credits instead of income_tax.
+    microcosm#1343 moved it from 3fad14f85468 by re-pinning to a feed that
+    gives three dimension values one label each (the version hashes
+    hierarchy labels); microcosm#1227 moved it from e1f9906bf0e0 by doubling
+    the eight Table 2.5 EITC child total rows, whose uprating source sum had
+    counted each split twice; microcosm#1206 moved it from f96be9f41781 by
+    binding the Part B premium target to
+    gross_medicare_part_b_premium_if_enrolled. None of the four changed the
+    counts.
     The 408 state AGI-band rows of
     microcosm#940 (51 states x 4 bands x 2 measures) took it from 32,842 /
     5,694 at d315c75804ef on the c5e5bf8 feed; before microcosm#956 it was
@@ -913,7 +919,7 @@ def test_pinned_feed_national_state_surface_restores_the_fences(
     registry, surface, _ = pinned_feed_national_state_surface
     assert len(registry.specs) == 33_250
     assert len(surface.specs) == 6_102
-    assert surface.version == "3aa2a0830e7d"
+    assert surface.version == "0b0bf1cae197"
     chip = [
         spec
         for spec in surface.specs
@@ -2198,10 +2204,118 @@ def test_soi_income_tax_liability_supplies_federal_income_tax_target() -> None:
     assert spec.family == "irs_soi"
     assert spec.measure == "irs_soi.ty2023.table_3_3.us.all.income_tax_liability_amount"
     assert spec.metadata["target_role"] == "federal_income_tax_total"
-    assert spec.metadata["variable"] == "income_tax"
+    # SOI's income tax after credits (Form 1040 line 22), not the engine's
+    # income_tax: it reads tax before credits less the capped nonrefundable
+    # credits.
+    assert spec.metadata["source_variable"] == "income_tax_after_nonrefundable_credits"
+    assert spec.metadata["variable"] == "income_tax_after_nonrefundable_credits"
     assert spec.metadata["materializer"] == "irs_soi_slice"
     assert spec.metadata["measure_mode"] == "sum"
-    assert spec.metadata["base_variable"] == "income_tax"
+    assert "base_variable" not in spec.metadata
+    assert spec.metadata["base_variables"] == (
+        "income_tax_before_credits,income_tax_capped_non_refundable_credits"
+    )
+
+
+def test_soi_income_tax_after_credits_binds_line_22_not_income_tax() -> None:
+    """A06500 and N06500 bind tax before credits less capped nonrefundable credits.
+
+    SOI's guides put "income tax after credits" at Form 1040 line 22 for
+    TY2021-TY2023, before every refundable credit and without the Schedule 2
+    Part II taxes. The engine's ``income_tax`` subtracts the refundable
+    credits and adds the net investment income tax, so no SOI income tax
+    column reads it, and a SOI row that bound it again would fail here.
+    """
+
+    concept = "income_tax_after_nonrefundable_credits"
+    assert (
+        fiscal_targets.SOI_AMOUNT_MEASURE_VARIABLES["income_tax_liability_amount"]
+        == concept
+    )
+    assert (
+        fiscal_targets.SOI_RETURN_MEASURE_VARIABLES["income_tax_liability_returns"]
+        == concept
+    )
+    assert fiscal_targets.SOI_DIFFERENCE_CONCEPTS[concept] == (
+        "income_tax_before_credits",
+        "income_tax_capped_non_refundable_credits",
+    )
+    assert concept not in fiscal_targets.SOI_VARIABLE_MAP
+    assert fiscal_targets._soi_base_variables(concept) == (
+        "income_tax_before_credits",
+        "income_tax_capped_non_refundable_credits",
+    )
+    bound = {
+        variable
+        for concept_name in (
+            *fiscal_targets.SOI_AMOUNT_MEASURE_VARIABLES.values(),
+            *fiscal_targets.SOI_RETURN_MEASURE_VARIABLES.values(),
+        )
+        if concept_name != "count"
+        for variable in fiscal_targets._soi_base_variables(concept_name)
+    }
+    assert "income_tax" not in bound
+
+
+def test_soi_amount_and_return_rows_of_one_column_share_a_concept() -> None:
+    """``X_amount`` and ``X_returns`` (or ``X_claims``, ``X_count``) bind one
+    concept, so a returns row counts the units whose amount it sums."""
+
+    amounts = {
+        measure.removesuffix("_amount"): concept
+        for measure, concept in fiscal_targets.SOI_AMOUNT_MEASURE_VARIABLES.items()
+        if measure.endswith("_amount")
+    }
+    pairs = {}
+    for measure, concept in fiscal_targets.SOI_RETURN_MEASURE_VARIABLES.items():
+        stem = next(
+            measure.removesuffix(suffix)
+            for suffix in ("_returns", "_claims", "_count")
+            if measure.endswith(suffix)
+        )
+        if stem in amounts:
+            pairs[measure] = (amounts[stem], concept)
+    assert len(pairs) >= 41
+    assert {
+        measure: concepts
+        for measure, concepts in pairs.items()
+        if concepts[0] != concepts[1]
+    } == {}
+
+
+def test_every_reachable_soi_concept_resolves_in_exactly_one_register() -> None:
+    """A concept is one engine variable (``SOI_VARIABLE_MAP``) or one engine
+    variable less another (``SOI_DIFFERENCE_CONCEPTS``), never both."""
+
+    reachable = {
+        *fiscal_targets.SOI_AMOUNT_MEASURE_VARIABLES.values(),
+        *fiscal_targets.SOI_RETURN_MEASURE_VARIABLES.values(),
+        # _soi_layout_variable_override's concepts.
+        "eitc",
+        "tip_income",
+    } - {"count"}
+    single = set(fiscal_targets.SOI_VARIABLE_MAP)
+    difference = set(fiscal_targets.SOI_DIFFERENCE_CONCEPTS)
+    assert not single & difference
+    assert {
+        concept
+        for concept in reachable
+        if (concept in single) + (concept in difference) != 1
+    } == set()
+    for concept in difference:
+        assert len(fiscal_targets._soi_base_variables(concept)) == 2
+
+
+@pytest.mark.parametrize(
+    ("shape_a", "shape_b"), [((3,), (2,)), ((2, 1), (2,)), ((0,), (1,))]
+)
+def test_soi_difference_concept_values_refuses_misaligned_units(
+    shape_a, shape_b
+) -> None:
+    with pytest.raises(ValueError, match="per tax unit"):
+        fiscal_targets.soi_difference_concept_values(
+            np.zeros(shape_a), np.zeros(shape_b)
+        )
 
 
 def test_state_income_tax_target_exposes_policyengine_variable() -> None:

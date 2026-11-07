@@ -126,7 +126,11 @@ from the H5, so both engines weigh the same rows identically. The rules:
 
 - **Critical rows** use the release tool's SOI semantics: the signed
   component (positive part, except the identity and loss sources), the
-  nonrefundable-CTC rule and the itemizer mask.
+  nonrefundable-CTC rule, the difference rule for `SOI_DIFFERENCE_CONCEPTS`
+  (income tax after credits is `income_tax_before_credits` less
+  `income_tax_capped_non_refundable_credits`) and the itemizer mask.
+  `combine_metric_values` evaluates every combine mode and refuses an
+  unknown one.
 - **Population aggregates are refused.** A batch engine that computed one of
   the release tool's population-aggregate formulas refuses
   (`POPULATION_AGGREGATE_VARIABLES`).
