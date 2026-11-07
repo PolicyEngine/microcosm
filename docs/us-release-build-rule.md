@@ -406,11 +406,12 @@ python tools/check_us_census_smoke.py launch-record --stage build --phase start 
   --run-id <run> --launch-dir <launch> --python <the build's interpreter> \
   --dataset <out>/artifacts/<national H5> --out-dir <out>
 # 3. Record around the smoke with the same --run-id and interpreter, and set
-#    all six thread-pool variables to the values the build ran with.
+#    all six thread-pool variables to the values the build ran with. Run the
+#    probe with that interpreter, not through uv run.
 python tools/check_us_census_smoke.py launch-record --stage smoke --phase start \
   --run-id <run> --launch-dir <launch> --python <the build's interpreter> \
   --dataset <out>/artifacts/<national H5> --out-dir <probe>
-uv run --no-sync python tools/probe_us_post_export.py --census \
+<the build's interpreter> -B tools/probe_us_post_export.py --census \
   --stages reform_coverage_smoke --batch-size <the build's maximum batch size> \
   --export <out>/artifacts/<national H5> --out <probe>
 python tools/check_us_census_smoke.py launch-record --stage smoke --phase end \

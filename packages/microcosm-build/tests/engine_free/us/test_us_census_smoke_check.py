@@ -6,7 +6,9 @@ tag-only publish carries. These tests build one faithful set of inputs (a
 throwaway repository holding the release tool's source, launch records taken
 by the tool itself, a release directory and the probe's output), confirm the
 check accepts it, and confirm it refuses each departure without writing
-anything. Differential tests hold each mirror in the check (the probe
+anything. One test runs the probe itself, through its command line on an
+engine-free stand-in for policyengine-us, and confirms the check accepts what
+it writes. Differential tests hold each mirror in the check (the probe
 manifest parse, the gate's verdict, the baseline plan, the pass log, batching,
 the runtime and inventory scripts) to the code it mirrors.
 """
@@ -38,14 +40,26 @@ from hypothesis import HealthCheck, given, settings
 from hypothesis import strategies as st
 
 from microcosm.build.us_runtime import reform_coverage_smoke as smoke_module
+from microcosm.build.us_runtime import release_input_coverage as coverage_module
 from microcosm.build.us_runtime.release_input_coverage import (
     ReformCoverageProbe,
     load_release_input_coverage_manifest,
 )
 from test_support.git_repositories import NO_BACKGROUND_MAINTENANCE
-from test_support.microcosm_build.us_export_subsample import probe_tool  # noqa: F401
+from test_support.microcosm_build.us_export_subsample import (  # noqa: F401
+    load_table_h5,
+    probe_tool,
+    synthetic_export_frame,
+    write_table_h5,
+)
+from test_support.microcosm_build.us_post_export_probe import (
+    fixture_engine,
+    fixture_engine_probes,
+    float32_engine,
+)
 from test_support.microcosm_build.us_post_export_scoring import (  # noqa: F401
     _EngineLog,
+    _native_entity,
     _nested_frame,
     _scorer,
     builder,
@@ -128,13 +142,19 @@ def _current_pins(tool) -> tuple[dict, dict]:
     return definitions, files
 
 
-def _source_repository(tool, root: Path) -> tuple[Path, str]:
-    """A committed repository holding this checkout's release-tool source."""
+def _source_repository(
+    tool, root: Path, *, manifest: bytes | None = None
+) -> tuple[Path, str]:
+    """A committed repository holding this checkout's release-tool source and
+    ``.gitignore`` (so the caches a run writes leave the tree clean), with
+    ``manifest`` in place of the probe manifest when given."""
     repo = root / "repo"
-    for path in (*tool.SOURCE_PATHS, "uv.lock", "pyproject.toml"):
+    for path in (*tool.SOURCE_PATHS, "uv.lock", "pyproject.toml", ".gitignore"):
         target = repo / path
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_bytes((_ROOT / path).read_bytes())
+    if manifest is not None:
+        (repo / tool.MANIFEST_PATH).write_bytes(manifest)
     # Namespace portions, put first on PYTHONPATH for the launch records, so
     # the records see microcosm import from this repository.
     for package, module in _NAMESPACE_PACKAGES:
@@ -400,6 +420,112 @@ def _probe_outputs(tool, expectation, *, repo, commit, runtime, dataset, scoring
     return report, gate, passes
 
 
+def _record(
+    tool,
+    *,
+    repo: Path,
+    launch_dir: Path,
+    dataset: Path,
+    stage: str,
+    phase: str,
+    at: datetime,
+    out_dir: Path | None = None,
+    exit_code: int | None = None,
+) -> dict:
+    """A launch record taken by the tool itself, stamped ``at``."""
+    snapshot = tool.snapshot(
+        stage=stage,
+        phase=phase,
+        run_id="test-run",
+        repo=repo,
+        python=sys.executable,
+        dataset=dataset,
+        out_dir=out_dir,
+        exit_code=exit_code,
+        now=lambda: at,
+    )
+    path = launch_dir / tool.LAUNCH_FILES[(stage, phase)]
+    path.write_text(tool.strict_dumps(snapshot))
+    return snapshot
+
+
+#: What a skipped-smoke build still scores after export.
+_DEMOGRAPHICS_CONSUMER = {
+    "baseline_plan": {
+        "keys": [{"variable": "age", "period": 2024, "map_to": None}],
+        "period_order": [2024],
+    },
+    "baseline_passes": 1,
+    "reform_passes": 0,
+    "reform_systems": 0,
+}
+_EVIDENCE = {
+    "esi_premiums": "bound",
+    "input_coverage": "bound",
+    "input_mass_parity": "bound",
+    "qrf_tail_concentration": "bound",
+    "reform_coverage_smoke": "skipped",
+    "stored_inputs": "bound",
+}
+
+
+def _write_manifests(
+    release_dir: Path,
+    *,
+    release_id: str,
+    commit: str,
+    runtime: dict,
+    scoring: dict,
+    created_at: str,
+) -> None:
+    """The build and release manifests of a skipped-smoke build."""
+    dataset_sha = scoring["dataset_sha256"]
+    build_manifest = {
+        "build_id": release_id,
+        "build_sha": commit[:7],
+        "created_at": created_at,
+        "staging": None,
+        "code": {
+            "repository": "PolicyEngine/microcosm",
+            "git_commit": commit,
+            "git_dirty": False,
+        },
+        "runtime": runtime,
+        "gate_evidence": _EVIDENCE,
+        "post_export_scoring": scoring,
+        "dataset": {
+            "filename": _DATASET_FILE,
+            "sha256": dataset_sha,
+            "default": None,
+        },
+    }
+    release_manifest = {
+        "schema_version": 1,
+        "default_datasets": {"national": _DATASET_KEY},
+        "artifacts": {
+            _DATASET_KEY: {
+                "kind": "microdata",
+                "path": _DATASET_FILE,
+                "repo_id": _REPO_ID,
+                "revision": release_id,
+                "sha256": dataset_sha,
+            }
+        },
+        "build": {
+            "build_id": release_id,
+            "built_at": created_at,
+            "gate_evidence": _EVIDENCE,
+            "post_export_scoring": scoring,
+        },
+    }
+    (release_dir / "build_manifest.json").write_text(
+        json.dumps(build_manifest, indent=1, allow_nan=False)
+    )
+    (release_dir / "release_manifest.json").write_text(
+        json.dumps(release_manifest, indent=2, allow_nan=False)
+    )
+
+
 @dataclass
 class Layout:
     repo: Path
@@ -472,20 +598,17 @@ def layout(tool, tmp_path_factory) -> Layout:
             patch.setenv(name, _THREADS)
 
         def record(stage, phase, *, out_dir=None, exit_code=None):
-            snapshot = tool.snapshot(
+            return _record(
+                tool,
+                repo=repo,
+                launch_dir=launch_dir,
+                dataset=dataset,
                 stage=stage,
                 phase=phase,
-                run_id="test-run",
-                repo=repo,
-                python=sys.executable,
-                dataset=dataset,
+                at=_TIMES[f"{stage}-{phase}"],
                 out_dir=out_dir,
                 exit_code=exit_code,
-                now=lambda: _TIMES[f"{stage}-{phase}"],
             )
-            path = launch_dir / tool.LAUNCH_FILES[(stage, phase)]
-            path.write_text(tool.strict_dumps(snapshot))
-            return snapshot
 
         build_start = record("build", "start", out_dir=out)
         runtime = build_start["runtime"]
@@ -502,70 +625,15 @@ def layout(tool, tmp_path_factory) -> Layout:
             "n_batches": n_batches,
             "max_batch_households": _BATCH,
             "spm": {"geography_kind": "county"},
-            "consumers": {
-                "demographics": {
-                    "baseline_plan": {
-                        "keys": [{"variable": "age", "period": 2024, "map_to": None}],
-                        "period_order": [2024],
-                    },
-                    "baseline_passes": 1,
-                    "reform_passes": 0,
-                    "reform_systems": 0,
-                }
-            },
+            "consumers": {"demographics": _DEMOGRAPHICS_CONSUMER},
         }
-        evidence = {
-            "esi_premiums": "bound",
-            "input_coverage": "bound",
-            "input_mass_parity": "bound",
-            "qrf_tail_concentration": "bound",
-            "reform_coverage_smoke": "skipped",
-            "stored_inputs": "bound",
-        }
-        created_at = _TIMES["manifests"].isoformat()
-        build_manifest = {
-            "build_id": release_id,
-            "build_sha": commit[:7],
-            "created_at": created_at,
-            "staging": None,
-            "code": {
-                "repository": "PolicyEngine/microcosm",
-                "git_commit": commit,
-                "git_dirty": False,
-            },
-            "runtime": runtime["runtime_versions"],
-            "gate_evidence": evidence,
-            "post_export_scoring": scoring,
-            "dataset": {
-                "filename": _DATASET_FILE,
-                "sha256": dataset_sha,
-                "default": None,
-            },
-        }
-        release_manifest = {
-            "schema_version": 1,
-            "default_datasets": {"national": _DATASET_KEY},
-            "artifacts": {
-                _DATASET_KEY: {
-                    "kind": "microdata",
-                    "path": _DATASET_FILE,
-                    "repo_id": _REPO_ID,
-                    "revision": release_id,
-                    "sha256": dataset_sha,
-                }
-            },
-            "build": {
-                "build_id": release_id,
-                "built_at": created_at,
-                "gate_evidence": evidence,
-                "post_export_scoring": scoring,
-            },
-        }
-        (release_dir / "build_manifest.json").write_text(
-            json.dumps(build_manifest, indent=1, allow_nan=False)
-        )
-        (release_dir / "release_manifest.json").write_text(
-            json.dumps(release_manifest, indent=2, allow_nan=False)
+        _write_manifests(
+            release_dir,
+            release_id=release_id,
+            commit=commit,
+            runtime=runtime["runtime_versions"],
+            scoring=scoring,
+            created_at=_TIMES["manifests"].isoformat(),
         )
         record("build", "end", exit_code=0)
         record("smoke", "start", out_dir=probe_dir)
@@ -768,6 +836,193 @@ def test_a_failed_write_leaves_no_attachment(quick, layout, monkeypatch) -> None
     with pytest.raises(OSError):
         quick.write_attachments(accepted, inputs)
     assert _attachments(quick, layout) == []
+
+
+def _fixture_manifest(tool) -> bytes:
+    """The release's probe manifest with the probe tests' three engine probes
+    (:func:`fixture_engine_probes`) in place of its own."""
+    payload = json.loads((_ROOT / tool.MANIFEST_PATH).read_text())
+    payload["reform_coverage_probes"] = [
+        {
+            **_probe_fields(probe),
+            "parameter_changes": dict(probe.parameter_changes),
+            "binding_inputs": list(probe.binding_inputs),
+        }
+        for probe in fixture_engine_probes()
+    ]
+    return (json.dumps(payload, indent=2) + "\n").encode()
+
+
+def test_the_probes_own_census_run_is_accepted(
+    tool, fake_reforms, tmp_path, monkeypatch
+) -> None:
+    """The probe's own command line, run with the documented smoke arguments
+    on a written H5, writes files the check accepts.
+
+    A throwaway repository holds this checkout's source, with the probe tests'
+    three engine probes as its shipped probe set. The probe loads from it and
+    loads the release tool and sampler from it with its own loader, as its
+    command line does, so its report hashes them "at load". It runs the
+    release's own smoke consumer on the shipped set. Only the engine boundary
+    differs from a real run. The post-export scoring tests' float32 fake
+    engine, a pandas reader of the H5 and their variable-entity map stand in
+    for policyengine-us, and the in-process package reads the throwaway's
+    manifest. The build's manifests carry the release tool's own runtime
+    record, batching and SPM selection. The tool itself takes the four launch
+    records, the build's at past times and the smoke's at the real times
+    around the run.
+    """
+    root = tmp_path.resolve()
+    manifest = _fixture_manifest(tool)
+    repo, commit = _source_repository(tool, root, manifest=manifest)
+    pins = _current_pins(tool)
+    monkeypatch.setattr(tool, "MIRRORED_DEFINITIONS", pins[0])
+    monkeypatch.setattr(tool, "PINNED_FILES", pins[1])
+    out = root / "build-out"
+    release_id = f"microcosm-us-2024-{commit[:12]}-20261001T103000Z"
+    release_dir = out / "releases" / release_id
+    artifact_root = out / "artifacts"
+    dataset = artifact_root / _DATASET_FILE
+    probe_dir = root / "smoke-out"
+    launch_dir = root / "launch"
+    launch_dir.mkdir()
+    monkeypatch.chdir(repo)
+    monkeypatch.setenv(
+        "PYTHONPATH",
+        os.pathsep.join(
+            str(repo / "packages" / package / "src")
+            for package, _ in _NAMESPACE_PACKAGES
+        ),
+    )
+    for name in tool.THREAD_VARIABLES:
+        monkeypatch.setenv(name, _THREADS)
+
+    def record(stage: str, phase: str, at: datetime, **extra) -> dict:
+        return _record(
+            tool,
+            repo=repo,
+            launch_dir=launch_dir,
+            dataset=dataset,
+            stage=stage,
+            phase=phase,
+            at=at,
+            **extra,
+        )
+
+    # Load the tools as the probe's command line loads them. Other tests may
+    # have registered the release tool or sampler, and the probe's loader
+    # would reuse those, so they leave sys.modules for this test.
+    probe_name = "probe_us_post_export_census_check"
+    spec = importlib.util.spec_from_file_location(probe_name, repo / tool.PROBE_PATH)
+    assert spec is not None and spec.loader is not None
+    probe = importlib.util.module_from_spec(spec)
+    monkeypatch.setitem(sys.modules, probe_name, probe)
+    for name in ("build_us_fiscal_refresh_release", "sample_us_export_households"):
+        monkeypatch.setitem(sys.modules, name, None)
+        monkeypatch.delitem(sys.modules, name)
+    spec.loader.exec_module(probe)
+    release_tool = probe.load_builder()
+
+    # The engine boundary.
+    frame = synthetic_export_frame(48, seed=5, rare_households=(3, 30))
+    monkeypatch.setattr(release_tool, "_collect_family_garbage", lambda: None)
+    monkeypatch.setattr(
+        release_tool, "installed_us_engine", lambda: fixture_engine(frame)
+    )
+    shipped_text = coverage_module._resource_text
+    monkeypatch.setattr(
+        coverage_module,
+        "_resource_text",
+        lambda resource: (
+            manifest.decode()
+            if resource == coverage_module.US_RELEASE_INPUT_COVERAGE_RESOURCE
+            else shipped_text(resource)
+        ),
+    )
+    # This environment lacks the engine, and the probe records an absent
+    # package as None where the release tool records "not-installed". A real
+    # run has both installed.
+    package_versions = probe._package_versions
+    monkeypatch.setattr(
+        probe,
+        "_package_versions",
+        lambda: {
+            name: "not-installed" if version is None else version
+            for name, version in package_versions().items()
+        },
+    )
+    export_probe = probe.ExportProbe
+
+    def engine_free_probe(export_path, out_dir, **options):
+        return export_probe(
+            export_path,
+            out_dir,
+            scorer_options={
+                "microsimulation_cls": float32_engine(_EngineLog()),
+                "dataset_from_frame": lambda batch_frame: batch_frame,
+            },
+            load_frame=load_table_h5,
+            measure_entity=_native_entity,
+            **options,
+        )
+
+    monkeypatch.setattr(probe, "ExportProbe", engine_free_probe)
+
+    # The build, stamped in the past.
+    started = datetime.now(UTC)
+    record("build", "start", started - timedelta(hours=3), out_dir=out)
+    artifact_root.mkdir(parents=True)
+    release_dir.mkdir(parents=True)
+    write_table_h5(frame, dataset)
+    n_households = int(frame.n("household"))
+    batches = list(release_tool._household_position_batches(n_households, 16))
+    _write_manifests(
+        release_dir,
+        release_id=release_id,
+        commit=commit,
+        runtime=release_tool._runtime_versions(),
+        scoring={
+            "method": release_tool.POST_EXPORT_SCORING_METHOD,
+            "dataset_sha256": hashlib.sha256(dataset.read_bytes()).hexdigest(),
+            "maximum_batch_size": 16,
+            "n_households": n_households,
+            "n_batches": len(batches),
+            "max_batch_households": max(len(batch) for batch in batches),
+            "spm": dict(release_tool.US_RELEASE_SPM_SELECTION),
+            "consumers": {"demographics": _DEMOGRAPHICS_CONSUMER},
+        },
+        created_at=(started - timedelta(hours=2)).isoformat(),
+    )
+    record("build", "end", started - timedelta(hours=1), exit_code=0)
+
+    # The smoke, with the documented arguments.
+    record("smoke", "start", datetime.now(UTC), out_dir=probe_dir)
+    argv = ["--census", "--stages", "reform_coverage_smoke", "--batch-size", "16"]
+    argv += ["--export", str(dataset), "--out", str(probe_dir)]
+    assert probe.main(argv) == 0
+    record("smoke", "end", datetime.now(UTC), exit_code=0)
+
+    accepted = tool.check(
+        tool.Inputs(
+            release_dir=release_dir,
+            artifact_root=artifact_root,
+            probe_dir=probe_dir,
+            launch_dir=launch_dir,
+            repo=repo,
+            authorization="the test ruling",
+            dedicated_worktree=True,
+            probe_count=len(fixture_engine_probes()),
+        )
+    )
+    report = json.loads((probe_dir / tool.PROBE_REPORT).read_text())
+    rows = report["stages"]["reform_coverage_smoke"]["probes"]
+    assert [row["probe"] for row in rows] == [
+        shipped.id for shipped in fixture_engine_probes()
+    ]
+    assert report["tool_source"]["tools"][tool.BUILDER_PATH]["hashed"] == "at load"
+    assert len(batches) == 3
+    assert accepted.smoke_summary["probes"] == 3
+    assert accepted.smoke_summary["analysis"] == {"decomposed": 3, "other": {}}
 
 
 # ---------------------------------------------------------------------------
