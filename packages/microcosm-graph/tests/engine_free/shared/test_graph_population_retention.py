@@ -4,34 +4,43 @@
 versions it will read from the manifest. The default, ``None``, keeps every
 version to the end of the run and attaches all of them, as before. Given a
 collection, each version it does not name leaves the executor once the last
-node that reads it has run, so its frame can be freed. These tests pin that
-contract:
+node that reads it has applied its result, so its frame can be freed. These
+tests pin that contract:
 
 - the store, the node keys, the receipts and the portable manifest are the
-  same with and without the keyword, cold, warm and under ``resume="require"``;
+  same with and without the keyword, cold, warm and under ``resume="require"``,
+  over CREATE, FILTER, EXPAND and REWEIGHT versions, a gate and a release;
 - only the named versions, and their mass ledgers, are attached;
-- a dead version's tables are released after its last reader, and not before;
+- a dead version's tables are freed by its last reader, before that reader is
+  observed or writes its own frame, and nothing a node held outlives it into
+  the run-end pass;
 - a version read by several members and several structural nodes is kept
-  until the last of them has run;
+  until the last of them has run, and a version nothing reads goes with the
+  node that made it;
 - an unreached last reader still releases its version;
 - a name that is not a version of the graph is refused before the run reads a
   source, runs a kernel or writes to the store.
 
-Synthetic toy graph only: no data file, no country package, no engine.
+Synthetic graphs only: the small graphs below and the toy country's fixture
+tables. No data file, no country package, no engine.
 """
 
 from __future__ import annotations
 
+import gc
 import hashlib
+import importlib.util
 import json
+import sys
 import weakref
-from collections.abc import Collection
+from collections.abc import Callable, Collection, Iterator
 from pathlib import Path
 
 import numpy as np
 import pandas as pd
 import pytest
 
+import microcosm.graph.executor as graph_executor
 from microcosm.frame import EntitySchema, Frame, WeightKind, Weights
 from microcosm.graph.decl import (
     ArtifactInput,
@@ -57,6 +66,18 @@ from microcosm.graph.kernel import (
 from microcosm.graph.manifest import NodeReceipt, PopulationView, RunManifest
 from microcosm.graph.population import Population
 from microcosm.graph.store import ContentStore
+from test_support.paths import paths_for
+
+_TEST_PATHS = paths_for("microcosm-graph")
+
+if "_toy" not in sys.modules:
+    _SPEC = importlib.util.spec_from_file_location(
+        "_toy", _TEST_PATHS.tests / "_toy.py"
+    )
+    assert _SPEC is not None and _SPEC.loader is not None
+    sys.modules["_toy"] = importlib.util.module_from_spec(_SPEC)
+    _SPEC.loader.exec_module(sys.modules["_toy"])
+toy = sys.modules["_toy"]
 
 SOURCE = SourceRef("survey", "csv-tables")
 EVIDENCE = ArtifactType("gate.evidence", 1)
@@ -228,11 +249,12 @@ def _chain() -> Graph:
 
 
 def _shared_base() -> Graph:
-    """``survey`` read by two members and by two structural nodes.
+    """``survey`` read by two members and by three structural nodes.
 
-    ``first`` and ``second`` both build on ``survey`` at one depth, so
-    ``second`` is the last of its four readers. The run order is survey, a, b,
-    first, second, c, d.
+    ``first``, ``leaf`` and ``second`` all build on ``survey`` at one depth, so
+    ``second`` is the last of its five readers. Nothing reads ``leaf``'s own
+    version, so ``leaf`` is the last to use it. The run order is survey, a, b,
+    first, leaf, second, c, d.
     """
 
     return Graph(
@@ -244,6 +266,7 @@ def _shared_base() -> Graph:
             _member("b", "survey", "age"),
             _boundary("first", "survey", "a"),
             _boundary("second", "survey", "selected", keep_selected=True),
+            _boundary("leaf", "survey", "age"),
             _member("c", "first", "a"),
             _member("d", "second", "b"),
         ),
@@ -288,20 +311,41 @@ def _unreached_reader() -> Graph:
     )
 
 
+def _toy_expand() -> Graph:
+    """The toy country's entrant EXPAND on ``survey``, and the claim of its cells."""
+
+    return toy.small_graph(nodes=(toy.CREATE, *toy.entrant_expand_node()))
+
+
+#: Each graph the neutrality test runs: how to build it, write its source and
+#: register its kernels. The chain has CREATE and FILTER versions. The toy
+#: country adds two REWEIGHT versions, a gate and a release, and its entrant
+#: graph an EXPAND version.
+_GRAPHS: dict[
+    str,
+    tuple[Callable[[], Graph], Callable[[Path], Path], Callable[[], KernelRegistry]],
+] = {
+    "chain": (_chain, _source_path, _registry),
+    "toy": (toy.full_graph, toy.copy_source, toy.toy_registry),
+    "toy-expand": (_toy_expand, toy.copy_source, toy.toy_registry),
+}
+
+
 class _Liveness:
     """An observer that records which versions' tables are still alive.
 
     It holds only weak references, to the tables of the latest population
-    admitted in each version, so it never keeps a version alive itself. At each
-    node it first records which of the versions seen so far are alive. By then
-    the executor has made its releases for every earlier node, and the node
-    being admitted still holds its own incumbent. The executor must hand it the
-    live population (``_population_observer_detach=False``): a detached
-    snapshot is a copy that dies at once.
+    admitted in each version, so it never keeps a version alive itself. At
+    each node it first takes the population just admitted as its version's
+    latest, then records which of the versions seen so far are alive. By then
+    the executor has made that node's releases and dropped its incumbent, so a
+    version the node was the last to read is already dead. The executor must
+    hand it the live population (``_population_observer_detach=False``): a
+    detached snapshot is a copy that dies at once.
 
-    It runs no garbage collection. A released version's tables die by
-    reference counting alone, so they are freed at once, not at some later
-    collection.
+    It runs no garbage collection, and the tests that use it turn the cyclic
+    collector off (``no_cyclic_collector``). So a released version's tables
+    die by reference counting alone, at once, not at some later collection.
     """
 
     def __init__(self) -> None:
@@ -309,17 +353,36 @@ class _Liveness:
         self.alive: dict[str, dict[str, bool]] = {}
 
     def __call__(self, node_id: str, population: Population) -> None:
-        self.alive[node_id] = self.alive_now()
         self.tables[population.version] = {
             entity: weakref.ref(population.frame.table(entity))
             for entity in population.frame.entities
         }
+        self.alive[node_id] = self.alive_now()
 
     def alive_now(self) -> dict[str, bool]:
         return {
             version: any(table() is not None for table in tables.values())
             for version, tables in self.tables.items()
         }
+
+
+@pytest.fixture
+def no_cyclic_collector() -> Iterator[None]:
+    """Turn the cyclic garbage collector off for one test.
+
+    A released version must be freed by reference counting alone. With the
+    collector on, a version kept alive only by a reference cycle could be
+    freed by an incidental collection, and a liveness test would pass for the
+    wrong reason.
+    """
+
+    enabled = gc.isenabled()
+    gc.disable()
+    try:
+        yield
+    finally:
+        if enabled:
+            gc.enable()
 
 
 def _run(
@@ -389,9 +452,27 @@ def _assert_same_version(actual: PopulationView, expected: PopulationView) -> No
 
 
 @pytest.mark.parametrize(
-    "retain",
-    [("final",), ("survey", "final"), frozenset({"kept"}), ()],
-    ids=("final", "survey-and-final", "kept", "none"),
+    ("graph", "retain"),
+    [
+        ("chain", ("final",)),
+        ("chain", ("survey", "final")),
+        ("chain", frozenset({"kept"})),
+        ("chain", ()),
+        ("toy", ("calibrated",)),
+        ("toy", ()),
+        ("toy-expand", ("survey",)),
+        ("toy-expand", ()),
+    ],
+    ids=(
+        "chain-final",
+        "chain-survey-and-final",
+        "chain-kept",
+        "chain-none",
+        "toy-calibrated",
+        "toy-none",
+        "toy-expand-survey",
+        "toy-expand-none",
+    ),
 )
 @pytest.mark.parametrize(
     ("warm", "resume"),
@@ -399,18 +480,26 @@ def _assert_same_version(actual: PopulationView, expected: PopulationView) -> No
     ids=("cold", "warm", "require"),
 )
 def test_retention_moves_no_store_object_key_receipt_or_manifest_field(
-    tmp_path: Path, warm: bool, resume: str, retain: Collection[str]
+    tmp_path: Path, warm: bool, resume: str, graph: str, retain: Collection[str]
 ) -> None:
     """Two runs of one graph, with and without the keyword, into two stores."""
 
-    source = _source_path(tmp_path / "source")
+    build, write_source, registry = _GRAPHS[graph]
+    source = write_source(tmp_path / "source")
     every_store = ContentStore(tmp_path / "every")
     named_store = ContentStore(tmp_path / "named")
     if warm:
         for store in (every_store, named_store):
-            _run(_chain(), source, store)
-    every = _run(_chain(), source, every_store, resume=resume)
-    named = _run(_chain(), source, named_store, resume=resume, retain=retain)
+            _run(build(), source, store, registry=registry())
+    every = _run(build(), source, every_store, resume=resume, registry=registry())
+    named = _run(
+        build(),
+        source,
+        named_store,
+        resume=resume,
+        retain=retain,
+        registry=registry(),
+    )
 
     assert _object_bytes(named_store) == _object_bytes(every_store)
     assert all(receipt.hit is warm for receipt in named.nodes.values())
@@ -418,6 +507,7 @@ def test_retention_moves_no_store_object_key_receipt_or_manifest_field(
     assert _portable(named) == _portable(every)
     assert dict(named.source_identities) == dict(every.source_identities)
     assert dict(named.verification_epoch) == dict(every.verification_epoch) == {}
+    assert set(named.populations) == set(named.mass_ledgers) == set(retain)
 
 
 @pytest.mark.parametrize(
@@ -452,15 +542,18 @@ def test_only_the_named_versions_and_their_mass_ledgers_are_attached(
 # --------------------------------------------------------------------------
 
 
+@pytest.mark.usefixtures("no_cyclic_collector")
 @pytest.mark.parametrize("warm", (False, True), ids=("cold", "warm"))
-def test_a_dead_version_is_released_after_its_last_reader(
+def test_a_dead_version_is_released_by_its_last_reader(
     tmp_path: Path, warm: bool
 ) -> None:
-    """On a structural chain each version goes once the next boundary has run.
+    """On a structural chain each version goes with the boundary built on it.
 
     ``survey`` is last read by ``kept`` and ``kept`` by ``final``. With
-    ``final`` retained, ``survey`` is gone by the time ``b`` is admitted and
-    ``kept`` by the time ``c`` is. The default run keeps both to the end.
+    ``final`` retained, ``survey`` is dead by the time ``kept`` is observed,
+    and ``kept`` by the time ``final`` is. Each was still there for its last
+    reader to read, or the run would have failed. The default run keeps both
+    to the end.
     """
 
     source = _source_path(tmp_path / "source")
@@ -477,10 +570,11 @@ def test_a_dead_version_is_released_after_its_last_reader(
 
     assert all(receipt.hit is warm for receipt in manifest.nodes.values())
     assert list(named.alive) == list(compile_graph(_chain()).order)
-    assert named.alive["kept"] == {"survey": True}
+    assert named.alive["kept"] == {"survey": False, "kept": True}
     assert named.alive["b"] == {"survey": False, "kept": True}
-    assert named.alive["final"] == {"survey": False, "kept": True}
+    assert named.alive["final"] == {"survey": False, "kept": False, "final": True}
     assert named.alive["c"] == {"survey": False, "kept": False, "final": True}
+    assert every.alive["kept"] == {"survey": True, "kept": True}
     assert every.alive["c"] == {"survey": True, "kept": True, "final": True}
     assert named.alive_now() == {"survey": False, "kept": False, "final": True}
     # What is still alive is the attached version itself.
@@ -489,14 +583,16 @@ def test_a_dead_version_is_released_after_its_last_reader(
         assert table() is attached.table(entity)
 
 
+@pytest.mark.usefixtures("no_cyclic_collector")
 @pytest.mark.parametrize("warm", (False, True), ids=("cold", "warm"))
 def test_a_version_read_by_several_nodes_is_kept_until_the_last(
     tmp_path: Path, warm: bool
 ) -> None:
-    """Two members and two structural nodes read ``survey``; it waits for all four.
+    """Two members and three structural nodes read ``survey``; it waits for all.
 
-    Dropping it after a member or after ``first`` would leave ``second`` with
-    no base, and the run would fail.
+    Dropping it after a member, after ``first`` or after ``leaf`` would leave
+    ``second`` with no base, and the run would fail. Nothing reads ``leaf``'s
+    own version, so it goes with ``leaf``: it is dead by the next node.
     """
 
     source = _source_path(tmp_path / "source")
@@ -507,7 +603,7 @@ def test_a_version_read_by_several_nodes_is_kept_until_the_last(
             _run(_shared_base(), source, store)
 
     every = _Liveness()
-    _run(_shared_base(), source, every_store, observer=every)
+    every_manifest = _run(_shared_base(), source, every_store, observer=every)
     named = _Liveness()
     manifest = _run(
         _shared_base(), source, named_store, observer=named, retain=("first", "second")
@@ -516,15 +612,102 @@ def test_a_version_read_by_several_nodes_is_kept_until_the_last(
     assert all(receipt.hit is warm for receipt in manifest.nodes.values())
     assert list(named.alive) == list(compile_graph(_shared_base()).order)
     assert named.alive["first"]["survey"] is True
-    assert named.alive["second"]["survey"] is True
-    assert named.alive["c"]["survey"] is False
-    assert named.alive["d"] == {"survey": False, "first": True, "second": True}
-    assert every.alive["d"]["survey"] is True
+    assert named.alive["leaf"] == {"survey": True, "first": True, "leaf": True}
+    assert named.alive["second"] == {
+        "survey": False,
+        "first": True,
+        "leaf": False,
+        "second": True,
+    }
+    assert named.alive["d"] == named.alive["second"]
+    assert every.alive["d"] == {
+        "survey": True,
+        "first": True,
+        "leaf": True,
+        "second": True,
+    }
+    assert set(every_manifest.populations) == {"survey", "first", "leaf", "second"}
     assert set(manifest.populations) == {"first", "second"}
     assert manifest.population("second").table("person")["person_id"].tolist() == [
         1,
         3,
     ]
+
+
+@pytest.mark.usefixtures("no_cyclic_collector")
+@pytest.mark.parametrize(
+    ("retain", "alive"), [(None, True), (("final",), False)], ids=("every", "final")
+)
+def test_a_dead_base_is_freed_before_its_last_reader_writes(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    retain: Collection[str] | None,
+    alive: bool,
+) -> None:
+    """``kept`` writes with ``survey`` already gone, and ``final`` with ``kept``.
+
+    A structural write copies every column of the node's own frame. A base
+    still held there would add a whole version to that copy's peak. The
+    default run keeps both bases, so they are alive there.
+    """
+
+    liveness = _Liveness()
+    writes: dict[str, dict[str, bool]] = {}
+    write = graph_executor._write_node
+
+    def observed(store, node, **kwargs):
+        writes[node.id] = liveness.alive_now()
+        return write(store, node, **kwargs)
+
+    monkeypatch.setattr(graph_executor, "_write_node", observed)
+    source = _source_path(tmp_path / "source")
+    store = ContentStore(tmp_path / "store")
+    _run(_chain(), source, store, observer=liveness, retain=retain)
+
+    assert list(writes) == list(compile_graph(_chain()).order)
+    assert writes["kept"] == {"survey": alive, "kept": True}
+    assert writes["final"] == {"survey": alive, "kept": alive, "final": True}
+
+
+@pytest.mark.usefixtures("no_cyclic_collector")
+@pytest.mark.parametrize(
+    ("graph", "retain", "alive"),
+    [
+        (_chain, ("final",), {"survey": False, "kept": False, "final": True}),
+        (_chain, (), {"survey": False, "kept": False, "final": False}),
+        (_unreached_reader, (), {"survey": False}),
+    ],
+    ids=("chain-final", "chain-none", "unreached-none"),
+)
+def test_nothing_a_node_held_outlives_it_into_the_run_end_pass(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    graph: Callable[[], Graph],
+    retain: Collection[str],
+    alive: dict[str, bool],
+) -> None:
+    """The run-end source pass finds only the versions the caller retains.
+
+    That pass re-reads every source in full. ``final``'s last user is its
+    member ``c``, the last node to run. ``survey``'s, in the unreached graph,
+    is a boundary that never runs, after the gate that last admitted it.
+    Neither leaves its population behind for the pass.
+    """
+
+    liveness = _Liveness()
+    passes: list[dict[str, bool]] = []
+    derive = graph_executor._SourceIdentities.derive
+
+    def observed(self, name, path):
+        passes.append(liveness.alive_now())
+        return derive(self, name, path)
+
+    monkeypatch.setattr(graph_executor._SourceIdentities, "derive", observed)
+    source = _source_path(tmp_path / "source")
+    store = ContentStore(tmp_path / "store")
+    _run(graph(), source, store, observer=liveness, retain=retain)
+
+    assert passes == [alive]
 
 
 @pytest.mark.parametrize(
