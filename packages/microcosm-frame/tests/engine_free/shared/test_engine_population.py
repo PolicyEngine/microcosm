@@ -41,6 +41,7 @@ from microcosm.frame.adapters.engine_population import (
     any_of,
     assert_groups_nest_in_households,
     check_key_sums,
+    check_restated_parameters,
     check_uniform_growth,
     derived_watched_periods,
     factor_spread,
@@ -1308,6 +1309,12 @@ def test_pool_shares_are_one_blocks_for_the_declared_formulas():
         ({"stored": ("months",)}, "inert formula must also be declared stored"),
         ({"corrected": {"share": "other_key"}}, "name no inputs"),
         ({"refused": ("decile", "decile")}, "repeat"),
+        (
+            {"restated": {"decile": ("gov.vat_rate",)}},
+            "restated formula must also be declared stored",
+        ),
+        ({"restated": {"attendance": ()}}, "names the parameters it reads"),
+        ({"restated": {"attendance": ("gov.vat_rate",) * 2}}, "repeat"),
     ],
 )
 def test_a_declaration_refuses_overlapping_or_incomplete_classes(changes, message):
@@ -1318,6 +1325,9 @@ def test_a_declaration_refuses_overlapping_or_incomplete_classes(changes, messag
 def test_the_declaration_digest_follows_its_content():
     assert _declaration().sha256 == _declaration().sha256
     assert _declaration().sha256 != _declaration(observed=()).sha256
+    restating = _declaration(restated={"attendance": ("gov.vat_rate",)})
+    assert restating.sha256 != _declaration().sha256
+    assert restating.to_json()["restated"] == {"attendance": ["gov.vat_rate"]}
     assert _declaration().classified() == {
         "share",
         "months",
@@ -1400,6 +1410,7 @@ def test_validation_fails_closed_on_every_kind_of_drift(fake_engine, pinned_pack
         digests={"fake_pinned_engine/share.py": digest},
         constructor_factories=(f"{FAKE_ENGINE}:WINDOW",),
         zero_at_policy={"budget_change": ParameterTest("gov.missing", "eq", 0)},
+        restated={"attendance": ("gov.vat_rate", "gov.no_rate")},
     )
     fake_engine.WHOLE_POPULATION = fake_engine.WHOLE_POPULATION | {"extra"}
     fake_engine.WINDOW = range(2027, 2033)
@@ -1416,8 +1427,10 @@ def test_validation_fails_closed_on_every_kind_of_drift(fake_engine, pinned_pack
         "no longer starts the window at 2026",
         "is not callable",
         "no parameter gov.missing",
+        "attendance: the engine has no parameter gov.no_rate",
     ):
         assert fragment in message, message
+    assert "gov.vat_rate" not in message
 
 
 def test_validation_requires_formulas_over_plain_inputs(fake_engine):
@@ -1788,17 +1801,27 @@ def _engine_of(frame, *, system=None, growth=GROWTH, key_scale=1.0):
     )
 
 
-def _in_batches(frame, names, *, period=P, build=None, policy=SPINE_BATCHED_PASS):
+def _in_batches(
+    frame,
+    names,
+    *,
+    period=P,
+    build=None,
+    policy=SPINE_BATCHED_PASS,
+    declaration=None,
+    reference=None,
+):
     return materialize_in_batches(
         frame,
         names,
         period,
         batches=household_batches(frame, "clone"),
-        declaration=_declaration(),
+        declaration=_declaration() if declaration is None else declaration,
         policy=policy,
         dataset_year=D,
         build=_engine_of if build is None else build,
         entity_of=lambda name: "household",
+        reference_parameters=reference,
     )
 
 
@@ -1992,3 +2015,104 @@ def test_a_call_in_batches_needs_a_raising_pass_two_batches_and_no_back_cast(
             entity_of=lambda name: "household",
         )
     gc.collect()
+
+
+# ---------------------------------------------------------------------------
+# Restated formulas: each batch's engine holds the caller's parameters
+# ---------------------------------------------------------------------------
+
+#: The fake attendance restated over the pool from the VAT rate.
+_RESTATING = {"restated": {"attendance": ("gov.vat_rate",)}}
+
+
+def test_a_call_that_restates_needs_the_callers_tree(fake_engine):
+    built = []
+
+    def build(batch_frame):
+        built.append(batch_frame)
+        return _engine_of(batch_frame)
+
+    with pytest.raises(ValueError, match="needs the caller's tree"):
+        _in_batches(
+            _batched_frame(),
+            ["local"],
+            build=build,
+            declaration=_declaration(**_RESTATING),
+        )
+    assert built == []
+
+
+def test_each_batch_is_held_to_the_callers_parameters_before_it_computes(
+    fake_engine,
+):
+    frame = _batched_frame()
+    declaration = _declaration(**_RESTATING)
+    values = _in_batches(
+        frame,
+        ["local"],
+        declaration=declaration,
+        reference=_fake_system().parameters,
+    )
+    np.testing.assert_array_equal(
+        values["local"], _engine_of(frame).calculate("local", P)
+    )
+    # The first batch's engine holds another rate than the caller's tree: the
+    # call stops there, before that engine computes any value asked for.
+    built = []
+
+    def build(batch_frame):
+        simulation = _engine_of(batch_frame)
+        built.append(simulation.holders["local"])
+        return simulation
+
+    with pytest.raises(ValueError, match=r"\['gov.vat_rate'\] at 2025") as raised:
+        _in_batches(
+            frame,
+            ["local"],
+            build=build,
+            declaration=declaration,
+            reference=_fake_system(vat_rate=0.25).parameters,
+        )
+    assert numbers_are_years([str(raised.value)])
+    (holder,) = built
+    assert holder.arrays == {}
+    # A declaration that restates nothing reads no parameters at all.
+    check_restated_parameters(object(), None, _declaration(), P)
+
+
+class _CoreNode:
+    """A parameter node at an instant as policyengine-core holds one: its
+    children in ``_children``, each also an attribute."""
+
+    def __init__(self, **children):
+        self._children = children
+        for name, child in children.items():
+            setattr(self, name, child)
+
+
+def _school_tree(*, rate=0.025, extra=False, factor=0.85):
+    rates = {"0": 0.0, "5": rate, **({"10": 0.01} if extra else {})}
+    return _CoreNode(
+        gov=_CoreNode(school=_CoreNode(rates=_CoreNode(**rates), factor=factor))
+    )
+
+
+def test_restated_parameters_are_compared_value_by_value_under_a_node():
+    declaration = _declaration(
+        restated={"attendance": ("gov.school.rates", "gov.school.factor")}
+    )
+    simulation = SimpleNamespace(
+        tax_benefit_system=SimpleNamespace(parameters=lambda period: _school_tree())
+    )
+    check_restated_parameters(simulation, lambda period: _school_tree(), declaration, P)
+    for moved, paths in (
+        (_school_tree(rate=0.03), r"\['gov.school.rates'\]"),
+        (_school_tree(extra=True), r"\['gov.school.rates'\]"),
+        (_school_tree(factor=0.8), r"\['gov.school.factor'\]"),
+        (_CoreNode(gov=_CoreNode()), r"\['gov.school.factor', 'gov.school.rates'\]"),
+    ):
+        with pytest.raises(ValueError, match=paths) as raised:
+            check_restated_parameters(
+                simulation, lambda period, tree=moved: tree, declaration, P
+            )
+        assert numbers_are_years([str(raised.value)])
