@@ -11897,23 +11897,31 @@ def test_soi_income_tax_after_credits_targets_materialize_line_22(
 
     builder = _load_builder_module()
     _installed_variable_metadata_index(builder)
+    amount_fact = _soi_income_tax_fact(2023, value=2_100_000_000_000)
+    returns_fact = json.loads(json.dumps(amount_fact))
+    for key in ("aggregate_fact_key", "semantic_fact_key", "legacy_fact_key"):
+        returns_fact[key] = f"{returns_fact[key]}-returns"
+    returns_fact["label"] = "Returns with income tax after credits"
+    returns_fact["lineage"]["source_record_id"] = returns_fact["lineage"][
+        "source_record_id"
+    ].replace("_amount", "_returns")
+    returns_fact["value"] = 113_000_000
+    returns_fact["layout"]["measure_id"] = "income_tax_liability_returns"
+    returns_fact["observed_measure"].update(
+        source_measure_id="income_tax_liability_returns",
+        source_concept="irs_soi.income_tax_liability_returns",
+        unit="count",
+    )
     compiled = {
         spec.metadata["ledger_source_record_id"]: spec
         for spec in compile_us_fiscal_target_registry(
-            [
-                *packaged_reference_facts(),
-                _soi_income_tax_fact(2023, value=2_100_000_000_000),
-            ],
+            [*packaged_reference_facts(), amount_fact, returns_fact],
             allow_unaged_dollar_targets=True,
         ).specs
     }
     amount = compiled["irs_soi.ty2023.table_3_3.us.all.income_tax_liability_amount"]
-    returns = replace(
-        amount,
-        name=f"{amount.name}.returns",
-        measure=f"{amount.measure}.returns",
-        metadata={**amount.metadata, "measure_mode": "indicator_sum"},
-    )
+    returns = compiled["irs_soi.ty2023.table_3_3.us.all.income_tax_liability_returns"]
+    assert returns.metadata["measure_mode"] == "indicator_sum"
     frame = Frame(
         {
             "person": pd.DataFrame(

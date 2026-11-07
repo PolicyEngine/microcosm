@@ -898,9 +898,9 @@ def test_pinned_feed_national_state_surface_restores_the_fences(
     """The release surface on the pinned feed: 33,250 compiled targets after
     Medicaid substitution, 6,102 national_state targets at registry
     0b0bf1cae197, 32 CHIP rows none of them for an M-CHIP state, no
-    other-income row and no tips return count. The SOI income-tax-concept
-    change moved the version from 3aa2a0830e7d by binding SOI's income tax
-    after credits rows (A06500, N06500) to income_tax_before_credits less
+    other-income row and no tips return count. microcosm#1539 moved the
+    version from 3aa2a0830e7d by binding SOI's income tax after credits rows
+    (A06500, N06500) to income_tax_before_credits less
     income_tax_capped_non_refundable_credits instead of income_tax.
     microcosm#1343 moved it from 3fad14f85468 by re-pinning to a feed that
     gives three dimension values one label each (the version hashes

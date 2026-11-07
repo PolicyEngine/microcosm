@@ -366,8 +366,9 @@ SOI_VARIABLE_MAP: dict[str, str] = {
 #: refundable credits. The engine scenario test
 #: ``test_us_soi_income_tax_concept`` pins both identities. The
 #: engine has no variable for the excess advance premium tax credit
-#: repayment, which SOI's income tax before credits includes ($6.93B in
-#: TY2022), so both income tax rows miss that amount.
+#: repayment (A05780, $6.93B in TY2022), which SOI's income tax before
+#: credits includes with the AMT (Schedule 2 line 3), so both income tax
+#: rows miss that amount.
 SOI_DIFFERENCE_CONCEPTS: dict[str, tuple[str, str]] = {
     "income_tax_after_nonrefundable_credits": (
         "income_tax_before_credits",
