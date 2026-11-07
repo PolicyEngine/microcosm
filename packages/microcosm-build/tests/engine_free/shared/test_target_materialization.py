@@ -733,6 +733,40 @@ def test_bands_slice_the_population_and_partition_it():
     assert list(total) == [1.0, 1.0, 1.0]
 
 
+def test_band_measures_leave_the_full_relief_group_out():
+    """A declarer-only band row filters on the trading allowance carrier
+    (microcosm#1439): a fully relieved trader counts in no band, and the bands
+    still partition everyone else."""
+
+    adapter = StubAdapter()
+    adapter.tables["person"]["trading_allowance_full_relief"] = np.array(
+        [False, True, False]
+    )
+    binding = _BANDED_CONTRACT["spi.income_by_band"]["bindings"]["policyengine"]
+    contract = {
+        "spi.income_by_band": {
+            "bindings": {
+                "policyengine": {
+                    **binding,
+                    "filters": [
+                        {"variable": "trading_allowance_full_relief", "equals": False}
+                    ],
+                }
+            }
+        }
+    }
+
+    result = materialize_target_bindings(
+        adapter, _banded_registry(), contract, period=2025
+    )
+
+    assert result.skipped == ()
+    # income is [10, 20, 30]; the second person is fully relieved.
+    assert list(adapter.tables["person"]["income_band_0"]) == [1.0, 0.0, 0.0]
+    assert list(adapter.tables["person"]["income_band_20"]) == [0.0, 0.0, 1.0]
+    assert list(adapter.tables["person"]["income_band_40"]) == [0.0, 0.0, 0.0]
+
+
 def test_band_measures_are_roster_invariant_under_sibling_exclusion():
     registry = _banded_registry()
     full_adapter = StubAdapter()

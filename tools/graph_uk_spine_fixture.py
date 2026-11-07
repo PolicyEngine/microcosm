@@ -251,6 +251,8 @@ _NORMALIZED_STRING_COLUMNS: Mapping[str, tuple[str, ...]] = {
         # (microcosm#1095 B3).
         "car_fuel_type",
         "car_first_registration_date",
+        # policyengine-uk's trading allowance claim status (microcosm#1439).
+        "trading_allowance_claim_status",
     ),
     "benunit": ("benunit_support_channel", "uc_deduction_combination"),
     "household": (
@@ -2171,8 +2173,8 @@ def _normalize_legacy_strings(frame: Frame) -> Frame:
         for entity, columns in _NORMALIZED_STRING_COLUMNS.items()
         for column in columns
     ]
-    if observed != expected_order or len(observed) != 31:
-        raise RuntimeError("The legacy normalization audit is not exactly 31 cells.")
+    if observed != expected_order or len(observed) != 32:
+        raise RuntimeError("The legacy normalization audit is not exactly 32 cells.")
     return Frame(
         tables,
         frame.schema,

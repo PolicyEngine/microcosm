@@ -8396,50 +8396,59 @@
    "survey": "HMRC Annual savings statistics (September 2026 release); Wealth and Assets Survey round 8"
   },
   {
-   "stage": "trading_allowance_receipts",
-   "survey": "The self-employed's own profit on the final spine, and HMRC's policy paper on the Budget 2026 trading allowance raise (calibration)",
-   "source": "self_employment_income after the SPI income stage; HMRC's published gainers of the raise to GBP 3,000, about 400,000 taxpayers with a lower bill by about GBP 380 on average",
    "grain": "person",
+   "notes": "The last spine stage (microcosm#1428, microcosm#1439). policyengine-uk applies the trading allowance against gross receipts, which neither the FRS nor the SPI tape records, so the stage stores each trader's trading_allowance_claim_status (policyengine-uk 2.172.0, policyengine-uk#2765) and leaves self_employment_gross_receipts at the engine's zero. Each trader with a positive profit is CLAIMANT at their profit band's rate, drawn on their own person_id: their profit is receipts less the 2024-25 allowance of GBP 1,000, so a raise to GBP 3,000 relieves min(profit, GBP 2,000) more, with no drift as profits are uprated. Every other trader with a positive profit is NON_CLAIMANT, relieved at no allowance (the costing books switchers as behaviour), and is treated as filing, as SPI Table 3.10's counts, which bind the frame's traders, are of declarers. A person with no positive profit is UNKNOWN, which the engine reads whatever is stored. Of the FRS respondents (household_is_spi_synthetic false) with a profit of GBP 1,000 or less who are not drawn claimants, a share drawn on person_id forms the full-relief group: UNKNOWN, relieved in full without an election (ITTOIA 2005 s. 783AE), as the engine's documentation asks of a person whose receipts lie within the allowance, and marked by trading_allowance_full_relief, which the release keeps, so that the bound SPI rows of self-employment, which count declarers, leave it out. The share is María's ruling: the read of 6 November 2026 (M10) found the frame's small traders below SPI's declarers even before any full relief, so it is zero and the group is empty. SPI rows and their copies are never in it, since SPI counts the people HMRC holds a self-employment source for and receipts within the allowance need not be declared. The claimant rates are #1428's, calibrated on the receipts encoding to HMRC's policy paper (about 400,000 gainers by about GBP 380 at 2028-29 prices); tools/measure_uk_trading_allowance_gainers.py re-fits them to the statuses on a release before each arm (María's answer of 2026-11-06), until HMRC publishes claimant counts.",
    "operations": [
     {
-     "kind": "assign_trading_allowance_receipts",
-     "output": "self_employment_gross_receipts",
-     "profit": "self_employment_income",
-     "draw": "trading_allowance_claimant",
-     "seed": 0,
+     "calibration": "HMRC's policy paper on the Budget 2026 trading allowance raise: about 400,000 taxpayers with a lower bill, by about GBP 380 on average, measured on policyengine-uk for the microcosm#1428 national from 9f70c71e7 at 2028-29 prices on the receipts encoding; tools/measure_uk_trading_allowance_gainers.py re-fits them to the claim statuses on a release before each arm (microcosm#1439), until HMRC publishes claimant counts (María's choices of 2026-10-31, 2026-11-01 and 2026-11-06)",
+     "carrier": "trading_allowance_full_relief",
      "claimant_bands": [
       {
-       "upper_inclusive": 4500.0,
-       "rate": 0.72
+       "rate": 0.72,
+       "upper_inclusive": 4500
       },
       {
-       "upper_inclusive": 9000.0,
-       "rate": 0.14
+       "rate": 0.14,
+       "upper_inclusive": 9000
       },
       {
-       "rate": 0.0
+       "rate": 0
       }
      ],
-     "claimant_expenses": 1000.0,
-     "other_expenses": 3000.0,
-     "calibration": "HMRC's policy paper on the Budget 2026 trading allowance raise: about 400,000 taxpayers with a lower bill, by about GBP 380 on average, measured on policyengine-uk for the microcosm#1428 national from 9f70c71e7 at 2028-29 prices; the rates drift with each national (microcosm#1439), until HMRC publishes claimant counts (María's choices of 2026-10-31 and 2026-11-01)",
-     "rule": "a person with a positive self_employment_income claims the allowance where their uniform falls below their profit band's rate; a claimant's receipts are their profit plus claimant_expenses, any other trader's their profit plus other_expenses, and a person with no positive profit keeps zero"
+     "draw": "trading_allowance_claimant",
+     "full_relief": {
+      "draw": "trading_allowance_full_relief",
+      "population": "FRS respondents (household_is_spi_synthetic false) with a positive self_employment_income of at most profit_upper_inclusive who are not drawn claimants; SPI rows and their copies are never in it",
+      "profit_upper_inclusive": 1000,
+      "rate": 0
+     },
+     "kind": "assign_trading_allowance_receipts",
+     "output": "trading_allowance_claim_status",
+     "profit": "self_employment_income",
+     "rule": "a person with a positive self_employment_income claims the allowance where their uniform falls below their profit band's rate and is CLAIMANT; of the full-relief population, those whose full-relief uniform falls below full_relief.rate are UNKNOWN and carry trading_allowance_full_relief; every other trader with a positive profit is NON_CLAIMANT, and a person with no positive profit is UNKNOWN; self_employment_gross_receipts is not written",
+     "seed": 0,
+     "statuses": {
+      "claimant": "CLAIMANT",
+      "full_relief": "UNKNOWN",
+      "no_profit": "UNKNOWN",
+      "other_trader": "NON_CLAIMANT"
+     }
     },
     {
-     "kind": "record_mass_conservation_receipt",
+     "declared_factor": 1,
      "entity": "household",
-     "reason": "Self-employed gross receipts stored on the source spine: household weights pass through unchanged and total household mass is conserved.",
-     "declared_factor": 1.0,
-     "gate_coupling": "The terminal family gate requires a valid mass-conserving MassChangeRecord carrying exactly this stage-specific reason."
+     "gate_coupling": "The terminal family gate requires a valid mass-conserving MassChangeRecord carrying exactly this stage-specific reason.",
+     "kind": "record_mass_conservation_receipt",
+     "reason": "Trading allowance claim statuses stored on the source spine: household weights pass through unchanged and total household mass is conserved."
     }
    ],
    "outputs": [
-    "self_employment_gross_receipts"
+    "trading_allowance_claim_status",
+    "trading_allowance_full_relief"
    ],
-   "nonnegative_outputs": [
-    "self_employment_gross_receipts"
-   ],
-   "notes": "The last spine stage (microcosm#1428). policyengine-uk applies the trading allowance against self_employment_gross_receipts, which neither the FRS nor the SPI tape records; without receipts a rise in the allowance relieves only profits up to the new allowance, in full, and misses its main base, the traders who already claim the GBP 1,000 allowance against larger receipts. Under current law a claimant's receipts are their profit plus GBP 1,000 exactly. Each trader with a positive profit is flagged a claimant at their profit band's rate, drawn on their own person_id: a claimant's receipts are their profit plus GBP 1,000, any other trader's their profit plus GBP 3,000 (expenses at the raised allowance, so the raise does not relieve them; the costing books switchers as behaviour), and a person with no positive profit keeps zero, which the engine reads as unknown. Every trader with a positive profit is treated as filing, as SPI Table 3.10's counts, which bind the frame's traders, are of filers, so a profit of GBP 1,000 or less is now taxed where the engine used to relieve it in full. The rates are calibrated to HMRC's policy paper until HMRC publishes claimant counts. The engine uprates receipts with profit, so a claimant's GBP 1,000 grows with the mixed income index while the allowance is nominal: the raise relieves GBP 1,932 more in 2027-28, falling to GBP 1,758 by 2031-32, 3.4% to 12.1% below GBP 2,000. The other traders' stored GBP 3,000 grows the same way, so an allowance above GBP 3,000 times that index relieves them from the stored expense, not from data: allowances above GBP 3,000 are mis-scored until policyengine-uk#2765 lets the stage store the claim status (microcosm#1439; María's ruling of 2026-11-01)."
+   "source": "self_employment_income after the SPI income stage, and household_is_spi_synthetic for the full-relief group; HMRC's published gainers of the raise to GBP 3,000, about 400,000 taxpayers with a lower bill by about GBP 380 on average",
+   "stage": "trading_allowance_receipts",
+   "survey": "The self-employed's own profit on the final spine, and HMRC's policy paper on the Budget 2026 trading allowance raise (calibration)"
   }
  ]
 }

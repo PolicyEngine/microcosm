@@ -1,53 +1,48 @@
-"""Self-employed gross receipts for the trading allowance (microcosm#1428).
+"""The self-employed's trading allowance claim status (microcosm#1428, #1439).
 
 policyengine-uk applies the trading allowance (ITTOIA 2005 Part 7A) against a
-trader's gross receipts, ``self_employment_gross_receipts``. Neither the FRS
-nor the SPI tape records turnover. Without receipts the engine treats a profit
-within the allowance as receipts within it (full relief) and a larger profit
-as already reflecting the better of expenses and the allowance (no relief). A
-rise in the allowance then relieves only profits up to the new allowance, in
-full, and misses its main base: traders who already claim the GBP 1,000
-allowance against larger receipts and gain the larger deduction.
+trader's gross receipts. Neither the FRS nor the SPI tape records turnover, so
+from policyengine-uk 2.172.0 (policyengine-uk#2765) the build stores which
+receipts lie behind each positive profit instead, the engine's input
+``trading_allowance_claim_status``, and leaves ``self_employment_gross_receipts``
+at the engine's zero. The statuses, as the engine reads them
+(``utils/trading_allowance.py``):
 
-Under current law a trader who claims the allowance deducts GBP 1,000 from
-receipts in place of expenses, so their receipts are their profit plus
-GBP 1,000 exactly; a trader who deducts actual expenses has expenses above
-GBP 1,000. This stage, the last of the spine, flags each trader with a
+* CLAIMANT: the profit is receipts less the 2024-25 allowance of GBP 1,000
+  (partial relief, ITTOIA s. 783AI). A raise to GBP 3,000 relieves
+  ``min(profit, GBP 2,000)`` more, with no drift as profits are uprated.
+* NON_CLAIMANT: the profit is receipts less actual expenses above the
+  allowance. With no supplied receipts the engine relieves them at no
+  allowance; the costing books the traders who would switch as behaviour.
+* UNKNOWN: anyone with no positive profit, whom the engine reads as UNKNOWN
+  whatever is stored, and the full-relief group: FRS respondents whose receipts
+  lie within the allowance, relieved in full without an election (s. 783AE).
+  The engine's own documentation asks that such a person stay UNKNOWN.
+
+The stage, the last of the spine, flags each trader with a
 positive profit as a claimant with a probability by profit band, drawn on
-their own ``person_id``, and stores their receipts:
+their own ``person_id`` (seed 0, salt ``trading_allowance_claimant``), as
+#1428 did. Of the FRS respondents (not the SPI channel's rows) with a profit of
+GBP 1,000 or less who are not drawn claimants, it then places a share in the
+full-relief group, drawn on ``person_id`` (salt
+``trading_allowance_full_relief``). The share is María's ruling. The read of
+6 November 2026 (M10 of the November event-data plan) found the frame's small
+traders below SPI's declarers even before any full relief, so the share is
+zero and the group is empty. SPI rows and their copies stay CLAIMANT or
+NON_CLAIMANT: SPI counts the people HMRC holds a self-employment source for,
+and receipts within the allowance need not be declared. Every other trader
+with a positive profit is treated as filing, as #1428 did.
 
-* a claimant's are their profit plus GBP 1,000;
-* any other trader's are their profit plus GBP 3,000, expenses at the raised
-  allowance, so that the raise does not relieve them (the costing books the
-  traders who would switch to the allowance as behaviour);
-* a person with no positive profit keeps zero, which the engine reads as
-  unknown.
+``trading_allowance_full_relief`` marks the group, so that HMRC's SPI rows of
+self-employment, which count declarers (Table 3.10 by self-employment band,
+Table 3.6 by total income), leave it out. The release keeps the column, so a
+bound row re-measured on a built file reads the same population.
 
-The engine then gives a claimant nothing more at GBP 1,000 and up to
-GBP 2,000 more at GBP 3,000, and any other trader nothing at either. Every
-trader with a positive profit is treated as filing, as SPI Table 3.10's
-counts, which bind the frame's traders, are of filers. So a profit of GBP 1,000
-or less is now taxed where the engine used to relieve it in full.
-
-Until HMRC publishes claimant counts, the rates are calibrated to HMRC's
-policy paper on the Budget 2026 raise (about 400,000 taxpayers with a lower
-bill, by about GBP 380 on average), measured on policyengine-uk for the
-#1428 national from 9f70c71e7 at 2028-29 prices (María's choices of
-2026-10-31 and 2026-11-01). The rates drift with each national, as its
-small traders and their other incomes move, so microcosm#1439 re-measures
-them after each build.
-
-Two limits of encoding the claim in receipts (#1428 review, findings 2 and 8;
-María's ruling of 2026-11-01 keeps them, documented, until policyengine-uk#2765
-lets the stage store the claim status itself, microcosm#1439):
-
-* The engine uprates receipts with profit, so a claimant's GBP 1,000 grows with
-  the mixed income index while the allowance is nominal: the raise relieves
-  GBP 1,932 more in 2027-28, falling to GBP 1,758 by 2031-32, 3.4% to 12.1%
-  below GBP 2,000.
-* The other traders' stored GBP 3,000 grows the same way, so an allowance above
-  GBP 3,000 times that index relieves them from the stored expense, not from
-  data. Allowances above GBP 3,000 are mis-scored on this encoding.
+The claimant rates are #1428's, calibrated to HMRC's policy paper on the Budget
+2026 raise (about 400,000 taxpayers with a lower bill, by about GBP 380 on
+average) on the receipts encoding. ``tools/measure_uk_trading_allowance_gainers.py``
+re-fits them to the statuses on a release before PR2's arm (María's answer of
+6 November 2026, microcosm#1439), until HMRC publishes claimant counts.
 """
 
 from __future__ import annotations
@@ -77,24 +72,33 @@ from microcosm.frame import Frame, MassChangeRecord
 
 __all__ = [
     "TRADING_ALLOWANCE_CLAIMANT_BANDS",
-    "TRADING_ALLOWANCE_RECEIPTS_OUTPUT",
+    "TRADING_ALLOWANCE_FULL_RELIEF_OUTPUT",
     "TRADING_ALLOWANCE_RECEIPTS_STAGE_NAME",
+    "TRADING_ALLOWANCE_STATUS_OUTPUT",
     "UKTradingAllowanceReceiptsStageTransform",
-    "assign_trading_allowance_receipts",
+    "assign_trading_allowance_claim_status",
     "claimant_rates",
-    "store_trading_allowance_receipts",
+    "store_trading_allowance_claim_status",
 ]
 
 TRADING_ALLOWANCE_RECEIPTS_STAGE_NAME = "trading_allowance_receipts"
-TRADING_ALLOWANCE_RECEIPTS_OUTPUT = "self_employment_gross_receipts"
+TRADING_ALLOWANCE_STATUS_OUTPUT = "trading_allowance_claim_status"
+TRADING_ALLOWANCE_FULL_RELIEF_OUTPUT = "trading_allowance_full_relief"
 TRADING_ALLOWANCE_PROFIT = "self_employment_income"
+TRADING_ALLOWANCE_SPI_ROW = "household_is_spi_synthetic"
 TRADING_ALLOWANCE_CLAIMANT_DRAW = "trading_allowance_claimant"
 TRADING_ALLOWANCE_CLAIMANT_SEED = 0
-#: The allowance a claimant deducts in place of expenses (2024-25).
-TRADING_ALLOWANCE_CLAIMANT_EXPENSES = 1_000.0
-#: Any other trader's expenses: at the raised allowance, which then gives them
-#: nothing.
-TRADING_ALLOWANCE_OTHER_EXPENSES = 3_000.0
+#: policyengine-uk's TradingAllowanceClaimStatus members, by the trader they
+#: describe.
+CLAIMANT = "CLAIMANT"
+NON_CLAIMANT = "NON_CLAIMANT"
+UNKNOWN = "UNKNOWN"
+TRADING_ALLOWANCE_STATUSES = {
+    "claimant": CLAIMANT,
+    "full_relief": UNKNOWN,
+    "no_profit": UNKNOWN,
+    "other_trader": NON_CLAIMANT,
+}
 #: The claimant probability by the person's profit, upper bounds inclusive,
 #: over profits above zero; the last band has no upper bound.
 TRADING_ALLOWANCE_CLAIMANT_BANDS: tuple[tuple[float | None, float], ...] = (
@@ -102,16 +106,31 @@ TRADING_ALLOWANCE_CLAIMANT_BANDS: tuple[tuple[float | None, float], ...] = (
     (9_000.0, 0.14),
     (None, 0.0),
 )
+TRADING_ALLOWANCE_FULL_RELIEF_DRAW = "trading_allowance_full_relief"
+#: The share of the group's population placed in it: María's ruling. M10 of the
+#: November event-data plan found no FRS surplus over SPI's declarers, so it
+#: is zero.
+TRADING_ALLOWANCE_FULL_RELIEF_RATE = 0.0
+#: The 2024-25 allowance: a profit above it cannot come from receipts within it.
+TRADING_ALLOWANCE_FULL_RELIEF_PROFIT_LIMIT = 1_000.0
+TRADING_ALLOWANCE_FULL_RELIEF_POPULATION = (
+    "FRS respondents (household_is_spi_synthetic false) with a positive "
+    "self_employment_income of at most profit_upper_inclusive who are not drawn "
+    "claimants; SPI rows and their copies are never in it"
+)
 TRADING_ALLOWANCE_CALIBRATION = (
     "HMRC's policy paper on the Budget 2026 trading allowance raise: about "
     "400,000 taxpayers with a lower bill, by about GBP 380 on average, measured "
     "on policyengine-uk for the microcosm#1428 national from 9f70c71e7 at "
-    "2028-29 prices; the rates drift with each national (microcosm#1439), until "
-    "HMRC publishes claimant counts (María's choices of 2026-10-31 and 2026-11-01)"
+    "2028-29 prices on the receipts encoding; "
+    "tools/measure_uk_trading_allowance_gainers.py re-fits them to the claim "
+    "statuses on a release before each arm (microcosm#1439), until HMRC "
+    "publishes claimant counts (María's choices of 2026-10-31, 2026-11-01 and "
+    "2026-11-06)"
 )
 TRADING_ALLOWANCE_RECEIPTS_MASS_CHANGE_REASON = (
-    "Self-employed gross receipts stored on the source spine: household weights "
-    "pass through unchanged and total household mass is conserved."
+    "Trading allowance claim statuses stored on the source spine: household "
+    "weights pass through unchanged and total household mass is conserved."
 )
 _MASS_GATE_COUPLING = (
     "The terminal family gate requires a valid mass-conserving MassChangeRecord "
@@ -119,9 +138,11 @@ _MASS_GATE_COUPLING = (
 )
 TRADING_ALLOWANCE_RECEIPTS_RULE = (
     "a person with a positive self_employment_income claims the allowance "
-    "where their uniform falls below their profit band's rate; a claimant's "
-    "receipts are their profit plus claimant_expenses, any other trader's their "
-    "profit plus other_expenses, and a person with no positive profit keeps zero"
+    "where their uniform falls below their profit band's rate and is CLAIMANT; "
+    "of the full-relief population, those whose full-relief uniform falls below "
+    "full_relief.rate are UNKNOWN and carry trading_allowance_full_relief; every "
+    "other trader with a positive profit is NON_CLAIMANT, and a person with no "
+    "positive profit is UNKNOWN; self_employment_gross_receipts is not written"
 )
 
 
@@ -136,13 +157,19 @@ def _expected_operations() -> tuple[tuple[str, Mapping[str, object]], ...]:
         (
             "assign_trading_allowance_receipts",
             {
-                "output": TRADING_ALLOWANCE_RECEIPTS_OUTPUT,
+                "output": TRADING_ALLOWANCE_STATUS_OUTPUT,
+                "carrier": TRADING_ALLOWANCE_FULL_RELIEF_OUTPUT,
                 "profit": TRADING_ALLOWANCE_PROFIT,
                 "draw": TRADING_ALLOWANCE_CLAIMANT_DRAW,
                 "seed": TRADING_ALLOWANCE_CLAIMANT_SEED,
                 "claimant_bands": bands,
-                "claimant_expenses": TRADING_ALLOWANCE_CLAIMANT_EXPENSES,
-                "other_expenses": TRADING_ALLOWANCE_OTHER_EXPENSES,
+                "statuses": dict(TRADING_ALLOWANCE_STATUSES),
+                "full_relief": {
+                    "draw": TRADING_ALLOWANCE_FULL_RELIEF_DRAW,
+                    "rate": TRADING_ALLOWANCE_FULL_RELIEF_RATE,
+                    "profit_upper_inclusive": TRADING_ALLOWANCE_FULL_RELIEF_PROFIT_LIMIT,
+                    "population": TRADING_ALLOWANCE_FULL_RELIEF_POPULATION,
+                },
                 "calibration": TRADING_ALLOWANCE_CALIBRATION,
                 "rule": TRADING_ALLOWANCE_RECEIPTS_RULE,
             },
@@ -176,41 +203,76 @@ def claimant_rates(profit: np.ndarray) -> np.ndarray:
     return rates
 
 
-def assign_trading_allowance_receipts(
+@dataclass(frozen=True)
+class UKTradingAllowanceStatuses:
+    """Each person's claim status, and the draws behind it."""
+
+    status: np.ndarray
+    claimant: np.ndarray
+    full_relief: np.ndarray
+
+
+def assign_trading_allowance_claim_status(
     person_ids: np.ndarray,
     profit: np.ndarray,
     *,
+    spi_row: np.ndarray,
+    full_relief_rate: float = TRADING_ALLOWANCE_FULL_RELIEF_RATE,
     seed: int = TRADING_ALLOWANCE_CLAIMANT_SEED,
-    salt: str = TRADING_ALLOWANCE_CLAIMANT_DRAW,
-) -> tuple[np.ndarray, np.ndarray]:
-    """Each person's gross receipts and claimant flag."""
+) -> UKTradingAllowanceStatuses:
+    """Each person's claim status, claimant flag and full-relief flag."""
 
     profit = np.asarray(profit, dtype=np.float64)
     ids = np.asarray(person_ids)
-    if ids.shape != profit.shape:
-        raise ValueError("Trading allowance person ids must align to the profits.")
+    spi_row = np.asarray(spi_row, dtype=bool)
+    if ids.shape != profit.shape or spi_row.shape != profit.shape:
+        raise ValueError(
+            "Trading allowance person ids and SPI flags must align to the profits."
+        )
     if not np.isfinite(profit).all():
         raise ValueError("Trading allowance profits must be finite.")
+    if not 0.0 <= float(full_relief_rate) <= 1.0:
+        raise ValueError(
+            f"The full-relief rate must lie in [0, 1]; got {full_relief_rate}."
+        )
     trader = profit > 0.0
     claimant = np.zeros(profit.shape, dtype=bool)
     if trader.any():
-        uniforms = stable_identity_uniforms(ids[trader], seed=seed, salt=salt)
+        uniforms = stable_identity_uniforms(
+            ids[trader], seed=seed, salt=TRADING_ALLOWANCE_CLAIMANT_DRAW
+        )
         claimant[trader] = uniforms < claimant_rates(profit[trader])
-    receipts = np.where(
-        claimant,
-        profit + TRADING_ALLOWANCE_CLAIMANT_EXPENSES,
-        np.where(trader, profit + TRADING_ALLOWANCE_OTHER_EXPENSES, 0.0),
+    population = (
+        trader
+        & ~claimant
+        & ~spi_row
+        & (profit <= TRADING_ALLOWANCE_FULL_RELIEF_PROFIT_LIMIT)
     )
-    return receipts, claimant
+    full_relief = np.zeros(profit.shape, dtype=bool)
+    if population.any() and full_relief_rate > 0.0:
+        uniforms = stable_identity_uniforms(
+            ids[population], seed=seed, salt=TRADING_ALLOWANCE_FULL_RELIEF_DRAW
+        )
+        full_relief[population] = uniforms < float(full_relief_rate)
+    status = np.where(
+        claimant,
+        CLAIMANT,
+        np.where(trader & ~full_relief, NON_CLAIMANT, UNKNOWN),
+    ).astype(object)
+    return UKTradingAllowanceStatuses(
+        status=status, claimant=claimant, full_relief=full_relief
+    )
 
 
 @dataclass(frozen=True)
 class UKTradingAllowanceReceiptsResult:
-    """The frame with the stored receipts, and the stage's receipt."""
+    """The frame with the stored claim statuses, and the stage's receipt."""
 
     frame: Frame
     traders: int
     claimants: int
+    full_relief: int
+    full_relief_support: str
     bands: tuple[Mapping[str, object], ...]
 
     def evidence(self) -> dict[str, object]:
@@ -221,13 +283,19 @@ class UKTradingAllowanceReceiptsResult:
             # Record counts are rounded, never exact (UKDS CD137 cl. 8).
             "traders": rounded_count(self.traders),
             "claimants": rounded_count(self.claimants),
+            "full_relief": {
+                "draw": TRADING_ALLOWANCE_FULL_RELIEF_DRAW,
+                "rate": TRADING_ALLOWANCE_FULL_RELIEF_RATE,
+                "records": rounded_count(self.full_relief),
+                "support": self.full_relief_support,
+            },
             "bands": [dict(band) for band in self.bands],
         }
 
 
 @dataclass(frozen=True)
 class UKTradingAllowanceReceiptsStageTransform:
-    """Whole-stage callable storing the self-employed's gross receipts."""
+    """Whole-stage callable storing the self-employed's claim status."""
 
     stage: SourceStageSpec
     last_result: UKTradingAllowanceReceiptsResult | None = field(
@@ -236,13 +304,13 @@ class UKTradingAllowanceReceiptsStageTransform:
 
     def __call__(self, frame: Frame) -> Frame:
         _assert_stage_parameters(self.stage)
-        result = store_trading_allowance_receipts(frame)
+        result = store_trading_allowance_claim_status(frame)
         object.__setattr__(self, "last_result", result)
         return result.frame
 
     @staticmethod
     def output_columns() -> tuple[str, ...]:
-        return (TRADING_ALLOWANCE_RECEIPTS_OUTPUT,)
+        return (TRADING_ALLOWANCE_STATUS_OUTPUT, TRADING_ALLOWANCE_FULL_RELIEF_OUTPUT)
 
     def checkpoint_metadata(self) -> dict[str, object]:
         if self.last_result is None:
@@ -250,31 +318,52 @@ class UKTradingAllowanceReceiptsStageTransform:
         return {"evidence": self.last_result.evidence()}
 
 
-def store_trading_allowance_receipts(frame: Frame) -> UKTradingAllowanceReceiptsResult:
-    """Store each person's gross receipts; nothing else moves."""
+def store_trading_allowance_claim_status(
+    frame: Frame,
+) -> UKTradingAllowanceReceiptsResult:
+    """Store each person's claim status and full-relief flag; nothing else moves."""
 
     validate_uk_national_frame(frame)
     person = frame.table("person").copy()
     household = frame.table("household").copy()
-    if TRADING_ALLOWANCE_RECEIPTS_OUTPUT in person.columns:
-        raise ValueError(
-            f"{TRADING_ALLOWANCE_RECEIPTS_OUTPUT!r} is already stored: this stage "
-            "is its only writer."
-        )
+    for column in (
+        TRADING_ALLOWANCE_STATUS_OUTPUT,
+        TRADING_ALLOWANCE_FULL_RELIEF_OUTPUT,
+    ):
+        if column in person.columns:
+            raise ValueError(
+                f"{column!r} is already stored: this stage is its only writer."
+            )
     if TRADING_ALLOWANCE_PROFIT not in person.columns:
         raise KeyError(
-            f"person.{TRADING_ALLOWANCE_PROFIT} is missing; the receipts are "
+            f"person.{TRADING_ALLOWANCE_PROFIT} is missing; the statuses are "
             "drawn on the final self-employment profit."
+        )
+    if TRADING_ALLOWANCE_SPI_ROW not in household.columns:
+        raise KeyError(
+            f"household.{TRADING_ALLOWANCE_SPI_ROW} is missing; SPI rows never "
+            "join the full-relief group."
         )
     if pd.Series(person["person_id"]).duplicated().any():
         raise ValueError(
-            "person_id must be unique: the trading allowance draw is keyed on it."
+            "person_id must be unique: the trading allowance draws are keyed on it."
         )
     profit = pd.to_numeric(person[TRADING_ALLOWANCE_PROFIT], errors="raise")
-    receipts, claimant = assign_trading_allowance_receipts(
-        person["person_id"].to_numpy(), profit.to_numpy(dtype=np.float64)
+    spi_by_household = dict(
+        zip(
+            household["household_id"].to_numpy(),
+            household[TRADING_ALLOWANCE_SPI_ROW].to_numpy(dtype=bool),
+            strict=True,
+        )
     )
-    person[TRADING_ALLOWANCE_RECEIPTS_OUTPUT] = receipts
+    spi_row = person["person_household_id"].map(spi_by_household).to_numpy(bool)
+    statuses = assign_trading_allowance_claim_status(
+        person["person_id"].to_numpy(),
+        profit.to_numpy(dtype=np.float64),
+        spi_row=spi_row,
+    )
+    person[TRADING_ALLOWANCE_STATUS_OUTPUT] = statuses.status
+    person[TRADING_ALLOWANCE_FULL_RELIEF_OUTPUT] = statuses.full_relief
 
     household_weights = frame.weights_for("household")
     weight_by_household = dict(
@@ -297,6 +386,7 @@ def store_trading_allowance_receipts(frame: Frame) -> UKTradingAllowanceReceipts
     sources = person["person_household_id"].map(source_by_household).to_numpy()
     rates = claimant_rates(profit.to_numpy(dtype=np.float64))
     trader = profit.to_numpy(dtype=np.float64) > 0.0
+    claimant = statuses.claimant
     bands: list[dict[str, object]] = []
     for rate in sorted(set(rates[trader].tolist()), reverse=True):
         in_band = trader & (rates == rate)
@@ -337,6 +427,10 @@ def store_trading_allowance_receipts(frame: Frame) -> UKTradingAllowanceReceipts
         frame=result,
         traders=int(trader.sum()),
         claimants=int(claimant.sum()),
+        full_relief=int(statuses.full_relief.sum()),
+        full_relief_support=support_band(
+            distinct_count(sources, statuses.full_relief, weights)
+        ),
         bands=tuple(bands),
     )
 
@@ -364,10 +458,14 @@ def _assert_stage_parameters(stage: SourceStageSpec) -> None:
                 f"trading_allowance_receipts {kind} parameters drifted: "
                 f"{dict(operation.parameters)!r} != {dict(parameters)!r}."
             )
-    if tuple(stage.outputs) != (TRADING_ALLOWANCE_RECEIPTS_OUTPUT,):
+    if tuple(stage.outputs) != (
+        TRADING_ALLOWANCE_STATUS_OUTPUT,
+        TRADING_ALLOWANCE_FULL_RELIEF_OUTPUT,
+    ):
         raise ValueError(
             f"{TRADING_ALLOWANCE_RECEIPTS_STAGE_NAME} must declare exactly the "
-            f"{TRADING_ALLOWANCE_RECEIPTS_OUTPUT} output."
+            f"{TRADING_ALLOWANCE_STATUS_OUTPUT} and "
+            f"{TRADING_ALLOWANCE_FULL_RELIEF_OUTPUT} outputs."
         )
     if stage.grain != "person":
         raise ValueError(

@@ -444,17 +444,20 @@ UK_ENGINE_DEFAULT_INPUTS: dict[str, str] = {
         "machine category in Chronicle (microcosm#1418, item 5; for María's "
         "signature)."
     ),
-    "trading_allowance_claim_status": (
-        "Whether a trader's stored profit already deducts the trading allowance "
-        "(policyengine-uk 2.172.0, policyengine-uk#2765). Neither the FRS nor "
-        "the SPI tape records turnover or the claim, so the input stays UNKNOWN, "
-        "the engine's current treatment, and the trading_allowance_receipts "
-        "stage keeps the claim in self_employment_gross_receipts "
-        "(microcosm#1428), with the two limits its notes give: an allowance "
-        "above GBP 3,000 relieves every non-claimant, and a claimant's extra "
-        "relief from a raise falls below the raise as profit grows. "
-        "microcosm#1439 stores the status and retires the encoding (for María's "
-        "signature)."
+    "self_employment_gross_receipts": (
+        "A trader's gross receipts, against which policyengine-uk applies the "
+        "trading allowance. Neither the FRS nor the SPI tape records turnover, "
+        "so the input stays at the engine's zero, and the "
+        "trading_allowance_receipts stage stores which receipts lie behind each "
+        "positive profit as trading_allowance_claim_status instead "
+        "(policyengine-uk 2.172.0, policyengine-uk#2765; microcosm#1439). With "
+        "no receipts the engine relieves a CLAIMANT from the allowance less the "
+        "GBP 1,000 their profit already deducts, a NON_CLAIMANT at no allowance, "
+        "and an UNKNOWN trader in full where the profit lies within the "
+        "allowance. So the build cannot score a reform that turns on receipts "
+        "themselves, such as a turnover threshold, and a NON_CLAIMANT whose "
+        "receipts lie within a raised allowance gains nothing from it (for "
+        "María's signature)."
     ),
     "has_education_maintenance_funding": (
         "Whether the person has a student loan or grant for their maintenance "

@@ -4056,14 +4056,18 @@
           "map_to": "household",
           "groupby_variable": "total_income_after_loss_relief_annual",
           "band_filter_dimension": "total_income",
-          "notes": "Banded by person-level total income; band edges come from the fact dimension (uk-data targets/compute/income.py:8-20 at 12a1e028afeef08d8b2d74ee03fd9de3a78b2dd3). HMRC counts the profit after losses brought forward, which the spine keeps apart in loss_relief, so the value and the band read it after that relief (microcosm#1095).",
           "filters": [
             {
               "variable": "income_tax_before_winter_fuel_payment_charge_annual",
               "operator": ">",
               "value": 0
+            },
+            {
+              "variable": "trading_allowance_full_relief",
+              "equals": false
             }
-          ]
+          ],
+          "notes": "Banded by person-level total income; band edges come from the fact dimension (uk-data targets/compute/income.py:8-20 at 12a1e028afeef08d8b2d74ee03fd9de3a78b2dd3). HMRC counts the profit after losses brought forward, which the spine keeps apart in loss_relief, so the value and the band read it after that relief (microcosm#1095). Counted over declarers only (microcosm#1439; for María's signature): the filter on trading_allowance_full_relief leaves out the full-relief group, FRS traders whose receipts lie within the allowance and who need not declare them, whom SPI does not count. The group is empty while its share is zero (M10 of the November event-data plan, 6 November 2026), so no row moves until María rules otherwise."
         },
         "axiom": {
           "metric_name": "hmrc/self_employment_income_income_band",
@@ -4111,6 +4115,9 @@
           "metric_name": "hmrc/self_employment_income_count_income_band",
           "groupby_variable": "total_income_after_loss_relief_annual",
           "band_filter_dimension": "total_income",
+          "value_variable": "person_count",
+          "from_entity": "person",
+          "map_to": "household",
           "filters": [
             {
               "variable": "self_employment_income_after_loss_relief_annual",
@@ -4121,11 +4128,13 @@
               "variable": "income_tax_before_winter_fuel_payment_charge_annual",
               "operator": ">",
               "value": 0
+            },
+            {
+              "variable": "trading_allowance_full_relief",
+              "equals": false
             }
           ],
-          "value_variable": "person_count",
-          "from_entity": "person",
-          "map_to": "household"
+          "notes": "Counted over declarers only (microcosm#1439; for María's signature): the filter on trading_allowance_full_relief leaves out the full-relief group, FRS traders whose receipts lie within the allowance and who need not declare them, whom SPI does not count. The group is empty while its share is zero (M10 of the November event-data plan, 6 November 2026), so no row moves until María rules otherwise."
         },
         "axiom": {
           "metric_name": "hmrc/self_employment_income_count_income_band",
@@ -4165,7 +4174,13 @@
           "band_filter_dimension": "self_employment_income",
           "band_upper_bound": 10000,
           "band_upper_bound_inclusive": false,
-          "notes": "SPI 2023-24 Table 3.10: every individual with a self-employment source, taxpayer or not (the table's scope), by range of self-employment income, the small-profit end of the Budget's trading allowance measures (Table 6.1 line 15). Bound for the eight bands from GBP 1 to GBP 10,000 (María's ruling of 2026-10-29, microcosm#1418): the target fans out over every published band and target_reference_signed_exclusions.json signs out the others; the bands above stay with Table 3.6's self-employment rows by total income, so the two tables do not pull against each other. Banded by the person's own self-employment income after loss relief, half-open, with the top bound band closed at GBP 10,000 (band_upper_bound)."
+          "filters": [
+            {
+              "variable": "trading_allowance_full_relief",
+              "equals": false
+            }
+          ],
+          "notes": "SPI 2023-24 Table 3.10: every individual with a self-employment source, taxpayer or not (the table's scope), by range of self-employment income, the small-profit end of the Budget's trading allowance measures (Table 6.1 line 15). Bound for the eight bands from GBP 1 to GBP 10,000 (María's ruling of 2026-10-29, microcosm#1418): the target fans out over every published band and target_reference_signed_exclusions.json signs out the others; the bands above stay with Table 3.6's self-employment rows by total income, so the two tables do not pull against each other. Banded by the person's own self-employment income after loss relief, half-open, with the top bound band closed at GBP 10,000 (band_upper_bound). Counted over declarers only (microcosm#1439; for María's signature): the filter on trading_allowance_full_relief leaves out the full-relief group, FRS traders whose receipts lie within the allowance and who need not declare them, whom SPI does not count. The group is empty while its share is zero (M10 of the November event-data plan, 6 November 2026), so no row moves until María rules otherwise."
         },
         "axiom": {
           "metric_name": "hmrc/self_employment_income_count_self_employment_income_band",
@@ -4206,7 +4221,13 @@
           "band_filter_dimension": "self_employment_income",
           "band_upper_bound": 10000,
           "band_upper_bound_inclusive": false,
-          "notes": "SPI 2023-24 Table 3.10: every individual with a self-employment source, taxpayer or not (the table's scope), by range of self-employment income, the small-profit end of the Budget's trading allowance measures (Table 6.1 line 15). Bound for the eight bands from GBP 1 to GBP 10,000 (María's ruling of 2026-10-29, microcosm#1418): the target fans out over every published band and target_reference_signed_exclusions.json signs out the others; the bands above stay with Table 3.6's self-employment rows by total income, so the two tables do not pull against each other. Banded by the person's own self-employment income after loss relief, half-open, with the top bound band closed at GBP 10,000 (band_upper_bound)."
+          "filters": [
+            {
+              "variable": "trading_allowance_full_relief",
+              "equals": false
+            }
+          ],
+          "notes": "SPI 2023-24 Table 3.10: every individual with a self-employment source, taxpayer or not (the table's scope), by range of self-employment income, the small-profit end of the Budget's trading allowance measures (Table 6.1 line 15). Bound for the eight bands from GBP 1 to GBP 10,000 (María's ruling of 2026-10-29, microcosm#1418): the target fans out over every published band and target_reference_signed_exclusions.json signs out the others; the bands above stay with Table 3.6's self-employment rows by total income, so the two tables do not pull against each other. Banded by the person's own self-employment income after loss relief, half-open, with the top bound band closed at GBP 10,000 (band_upper_bound). Counted over declarers only (microcosm#1439; for María's signature): the filter on trading_allowance_full_relief leaves out the full-relief group, FRS traders whose receipts lie within the allowance and who need not declare them, whom SPI does not count. The group is empty while its share is zero (M10 of the November event-data plan, 6 November 2026), so no row moves until María rules otherwise."
         },
         "axiom": {
           "metric_name": "hmrc/self_employment_income_self_employment_income_band",
@@ -4252,9 +4273,13 @@
               "variable": "employment_income_with_benefits_in_kind_annual",
               "operator": "!=",
               "value": 0
+            },
+            {
+              "variable": "trading_allowance_full_relief",
+              "equals": false
             }
           ],
-          "notes": "SPI 2023-24 Table 3.10: the individuals with a self-employment source, taxpayer or not, who also have employment income, by range of self-employment income. Bound for the eight bands from GBP 1 to GBP 10,000 beside the self-employment counts (María's rulings of 2026-10-29 and 2026-10-30, microcosm#1418): the counts alone let the solve meet each band with traders who have no pay, where more than half of Table 3.10's traders below GBP 3,000 have employment income too, and the trading allowance measures (Table 6.1 line 15) reach the ones who pay Income Tax. The target fans out over every published band and target_reference_signed_exclusions.json signs out the others. Banded by the person's own self-employment income after loss relief, half-open, with the top bound band closed at GBP 10,000 (band_upper_bound). Employment income is the year's pay with its company car and car fuel benefits, employment_income_with_benefits_in_kind_annual, the term every HMRC employment income row reads (microcosm#1430)."
+          "notes": "SPI 2023-24 Table 3.10: the individuals with a self-employment source, taxpayer or not, who also have employment income, by range of self-employment income. Bound for the eight bands from GBP 1 to GBP 10,000 beside the self-employment counts (María's rulings of 2026-10-29 and 2026-10-30, microcosm#1418): the counts alone let the solve meet each band with traders who have no pay, where more than half of Table 3.10's traders below GBP 3,000 have employment income too, and the trading allowance measures (Table 6.1 line 15) reach the ones who pay Income Tax. The target fans out over every published band and target_reference_signed_exclusions.json signs out the others. Banded by the person's own self-employment income after loss relief, half-open, with the top bound band closed at GBP 10,000 (band_upper_bound). Employment income is the year's pay with its company car and car fuel benefits, employment_income_with_benefits_in_kind_annual, the term every HMRC employment income row reads (microcosm#1430). Counted over declarers only (microcosm#1439; for María's signature): the filter on trading_allowance_full_relief leaves out the full-relief group, FRS traders whose receipts lie within the allowance and who need not declare them, whom SPI does not count. The group is empty while its share is zero (M10 of the November event-data plan, 6 November 2026), so no row moves until María rules otherwise."
         },
         "axiom": {
           "metric_name": "hmrc/employment_income_count_self_employment_income_band",

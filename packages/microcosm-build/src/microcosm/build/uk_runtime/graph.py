@@ -701,11 +701,15 @@ _STAGE_CONSUMES: Mapping[str, frozenset[tuple[str, str]] | None] = {
             ("household", "stocks_and_shares_isa"),
         }
     ),
-    # The gross receipts are drawn on each person's final self-employment
-    # profit, and the receipt counts support by source household
-    # (microcosm#1428).
+    # The claim statuses are drawn on each person's final self-employment
+    # profit, the full-relief group leaves the SPI rows out, and the receipt
+    # counts support by source household (microcosm#1428, microcosm#1439).
     "trading_allowance_receipts": frozenset(
-        {("person", "self_employment_income"), ("household", "household_source_id")}
+        {
+            ("person", "self_employment_income"),
+            ("household", "household_source_id"),
+            ("household", "household_is_spi_synthetic"),
+        }
     ),
     # The copies' childcare re-draw reads every household's clone path (the
     # lineage columns of each copy stage) and keeps the native units' cells:
@@ -1355,7 +1359,8 @@ _STAGE_CELLS: Mapping[str, tuple[_Cell, ...]] = {
         ),
     ),
     "trading_allowance_receipts": (
-        _Cell("person", "self_employment_gross_receipts", "float64"),
+        _Cell("person", "trading_allowance_claim_status", "string"),
+        _Cell("person", "trading_allowance_full_relief", "bool"),
     ),
     "company_cars": (
         _Cell("person", "company_car_list_price", "float64"),

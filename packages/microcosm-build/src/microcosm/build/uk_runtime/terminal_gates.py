@@ -317,9 +317,11 @@ UK_ALLOWED_EXTRA_EXPORT_COLUMNS: tuple[str, ...] = (
     "person.private_pension_income_annual_share",
     "person.self_employment_income_annual_share",
     "person.self_employment_income_other_spells",
-    # The self-employed's gross receipts for the trading allowance, which the
-    # enhanced FRS leaves at the engine's zero (microcosm#1428).
-    "person.self_employment_gross_receipts",
+    # The self-employed's trading allowance claim status, which the enhanced
+    # FRS leaves at the engine's UNKNOWN, and the full-relief group's carrier,
+    # which the bound SPI self-employment rows read (microcosm#1439).
+    "person.trading_allowance_claim_status",
+    "person.trading_allowance_full_relief",
     # The annuity and trust part of private_pension_income, a calibration-only
     # descriptor no engine input reads (microcosm#1428).
     "person.annuity_and_trust_income",

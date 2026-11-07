@@ -6728,9 +6728,10 @@
       "profit",
       "draw",
       "seed",
+      "carrier",
       "claimant_bands",
-      "claimant_expenses",
-      "other_expenses",
+      "statuses",
+      "full_relief",
       "calibration",
       "rule"
      ],
@@ -6772,13 +6773,67 @@
         }
        }
       },
-      "claimant_expenses": {
-       "type": "number",
-       "minimum": 0
+      "carrier": {
+       "type": "string"
       },
-      "other_expenses": {
-       "type": "number",
-       "minimum": 0
+      "statuses": {
+       "type": "object",
+       "additionalProperties": false,
+       "required": [
+        "claimant",
+        "full_relief",
+        "no_profit",
+        "other_trader"
+       ],
+       "properties": {
+        "claimant": {
+         "enum": [
+          "CLAIMANT"
+         ]
+        },
+        "full_relief": {
+         "enum": [
+          "UNKNOWN"
+         ]
+        },
+        "no_profit": {
+         "enum": [
+          "UNKNOWN"
+         ]
+        },
+        "other_trader": {
+         "enum": [
+          "NON_CLAIMANT"
+         ]
+        }
+       }
+      },
+      "full_relief": {
+       "type": "object",
+       "additionalProperties": false,
+       "required": [
+        "draw",
+        "rate",
+        "profit_upper_inclusive",
+        "population"
+       ],
+       "properties": {
+        "draw": {
+         "type": "string"
+        },
+        "rate": {
+         "type": "number",
+         "minimum": 0,
+         "maximum": 1
+        },
+        "profit_upper_inclusive": {
+         "type": "number",
+         "exclusiveMinimum": 0
+        },
+        "population": {
+         "type": "string"
+        }
+       }
       },
       "calibration": {
        "type": "string"
