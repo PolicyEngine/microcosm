@@ -459,12 +459,18 @@ def test_the_holdout_record_must_match_the_request(
     assert any(needle in failure for failure in failures), failures
 
 
-def _per_clone(exact: bool = True, blocks: int = 15) -> dict:
+def _per_clone(
+    exact: bool = True,
+    blocks: int = 15,
+    *,
+    mode: str = "block_weights_scaled_to_pool",
+    represented_blocks: int | None = None,
+) -> dict:
     return {
         "blocks": blocks,
         "engine_population_representation": {
-            "mode": "block_weights_scaled_to_pool",
-            "blocks": blocks,
+            "mode": mode,
+            "blocks": blocks if represented_blocks is None else represented_blocks,
             "exact": exact,
         },
     }
@@ -478,6 +484,10 @@ def _per_clone(exact: bool = True, blocks: int = 15) -> dict:
         # One block per clone, so the count must be the run's K.
         (_per_clone(blocks=5), False),
         ({"blocks": 15}, False),
+        # A representation of another kind, or of another block count, is not
+        # this resolution's, however exact it says it is.
+        (_per_clone(mode="single_block"), False),
+        (_per_clone(represented_blocks=5), False),
     ],
 )
 def test_one_engine_block_per_clone_passes_only_when_recorded_exact(
