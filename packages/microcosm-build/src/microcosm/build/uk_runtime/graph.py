@@ -917,6 +917,7 @@ _STAGE_CELLS: Mapping[str, tuple[_Cell, ...]] = {
         _Cell("person", "receives_benefits_in_own_right", "bool"),
         _Cell("person", "reports_outstanding_student_loan", "bool"),
         _Cell("person", "age_left_full_time_education", "int64"),
+        _Cell("person", "is_in_full_time_education", "bool"),
     ),
     "frs_legacy_proxies": _cells(
         "person",
@@ -1077,6 +1078,9 @@ _STAGE_CELLS: Mapping[str, tuple[_Cell, ...]] = {
         ),
         _Cell("household", "has_fuel_consumption", "bool"),
         _Cell("household", "uses_energy_prepayment_meter", "bool"),
+        # The annual kWh the stored spend is priced from, for the energy
+        # dashboards; no policyengine-uk input reads them.
+        *_cells("household", ("electricity_kwh", "gas_kwh")),
         # The excise step's policyengine-uk inputs (microcosm#1359).
         *_cells(
             "household",

@@ -341,10 +341,12 @@ UK_ENGINE_DEFAULT_INPUTS: dict[str, str] = {
         ),
         "Northern Ireland's Energy Price Guarantee discounts (policyengine-uk "
         "2.161.1) read each month's kWh and an assertion that the full rates "
-        "apply. The frame stores annual spend, not monthly kWh, so the kWh stay "
-        "unknown (-1), the full rates are not asserted and the discounts are not "
-        "calculated. The guarantee applied in 2022-23 only, so the calibration "
-        "year is unaffected (microcosm#1095; for María's signature).",
+        "apply. The frame stores annual spend and, for the energy dashboards, "
+        "the annual kWh that spend is priced from (electricity_kwh and gas_kwh, "
+        "which the engine does not read), but no month's kWh, so these inputs "
+        "stay unknown (-1), the full rates are not asserted and the discounts are "
+        "not calculated. The guarantee applied in 2022-23 only, so the "
+        "calibration year is unaffected (microcosm#1095; for María's signature).",
     ),
     **dict.fromkeys(
         (
@@ -454,27 +456,27 @@ UK_ENGINE_DEFAULT_INPUTS: dict[str, str] = {
         "microcosm#1439 stores the status and retires the encoding (for María's "
         "signature)."
     ),
-    "is_in_full_time_education": (
-        "Whether the person is on a full-time course (policyengine-uk 2.173.2), "
-        "which Universal Credit's condition that a claimant is not receiving "
-        "education reads (UC Regs 2013 regs. 12 and 13). The build leaves it "
-        "false, so no claimant receives education and every claimant meets the "
-        "condition, as before 2.173.2: Universal Credit eligibility is "
-        "overstated for a full-time student whom no exception covers. "
-        "frs_education reads FTED, so a later change can set it, with its own "
-        "measurement of the Universal Credit rows (microcosm#1095; for María's "
-        "signature)."
-    ),
     "has_education_maintenance_funding": (
         "Whether the person has a student loan or grant for their maintenance "
         "(policyengine-uk 2.173.2), which makes a full-time course that is not "
         "advanced education count as education for Universal Credit (UC Regs "
-        "2013 reg. 12(2)(b)). It matters only where is_in_full_time_education "
-        "is true, which the build never sets, so it stays false and changes "
-        "nothing. The FRS has no clean source for it: a payment under a scheme "
-        "that helps people under 21 finish such courses does not count (reg. "
-        "68(7)), and the FRS does not say what a grant or loan pays for "
-        "(microcosm#1095; for María's signature)."
+        "2013 reg. 12(2)(b)). It matters where is_in_full_time_education is "
+        "true, which frs_education sets from the FRS full-time education "
+        "answer (EDUCFT on 2024-25). The FRS has no clean source for it: a "
+        "payment under a scheme that helps people under 21 finish such courses "
+        "does not count (reg. 68(7)), and the FRS does not say what a grant or "
+        "loan pays for. So it stays false, and a full-time student on a course "
+        "below advanced level receives education only as a qualifying young "
+        "person (reg. 12(1A)): Universal Credit eligibility is overstated for "
+        "such a student who is not a qualifying young person, has maintenance "
+        "funding and whom no exception covers. It is understated for an 18- or "
+        "19-year-old on the FRS adult table on such a course who reports no "
+        "Universal Credit, JSA or ESA of their own and is without parental "
+        "support: policyengine-uk 2.174.1 has no input for parental support, "
+        "so it doesn't apply reg. 14(1)(a), and such a person counts as a "
+        "qualifying young person. Such records are mostly young people living "
+        "away from their parents (microcosm#1095, microcosm#1535; for María's "
+        "signature)."
     ),
 }
 
