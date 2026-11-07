@@ -709,7 +709,7 @@ def _request(
             time_module.sleep(_BACKOFF_BASE_SECONDS * (2 ** (attempt - 1)))
         try:
             request = urllib.request.Request(
-                url, headers={"User-Agent": "populace-us-trade-ingest"}
+                url, headers={"User-Agent": "microcosm-us-trade-ingest"}
             )
             with urllib.request.urlopen(request, timeout=timeout) as response:
                 status = response.status

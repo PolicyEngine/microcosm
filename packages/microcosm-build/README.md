@@ -112,7 +112,7 @@ Build the row-wise local-geography H5 from a compact Microcosm UK H5 with:
 uv run --project packages/microcosm-build --extra uk python \
   tools/build_uk_rowwise_dataset.py \
   --input-h5 /path/to/populace_uk_2023.h5 \
-  --out /tmp/populace-uk-rowwise \
+  --out /tmp/microcosm-uk-rowwise \
   --n-clones 2 \
   --constituency-codes /path/to/constituencies_2024.csv \
   --la-codes /path/to/local_authorities_2021.csv

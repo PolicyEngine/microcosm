@@ -138,7 +138,7 @@ class TestContractLoads:
             "65_plus": "age >= 65",
         }
         # The SSA recipient counts live in the ledger and bind through the
-        # calibration registry (populace#469/#470) — the contract must not
+        # calibration registry (microcosm#469/#470) — the contract must not
         # carry a hardcoded copy, and the semantics must describe seeded
         # Bernoulli priors, not flag count-matching.
         assert "target_values" not in calibration

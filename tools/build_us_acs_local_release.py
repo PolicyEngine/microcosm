@@ -243,7 +243,7 @@ LEGACY_STAGING_REFRESH_RECIPE = (
 #: Table 2 state tables (broad totals, AGI bands, EITC by qualifying
 #: children). Build O selected it as ``full`` with congressional-district
 #: targets switched off (``include_congressional_district_targets=False`` at
-#: populace@77e2061); commit b7922b089 removed that switch, so no mode
+#: microcosm@77e2061); commit b7922b089 removed that switch, so no mode
 #: reproduced it until this one.
 #:
 #: ``totals`` keeps only the specs whose ``target_role`` is not

@@ -671,7 +671,7 @@ COMMENT ON SCHEMA logbook IS
 COMMENT ON TABLE logbook.builds IS
     'Immutable build attempts linked in one advisory-locked SHA-256 chain.';
 COMMENT ON TABLE logbook.predictions IS
-    'Prediction ledger rows matching the populace prediction JSONL schema.';
+    'Prediction ledger rows matching the Microcosm prediction JSONL schema.';
 COMMENT ON VIEW logbook.builds_public IS
     'Public-safe build projection without cost or gate/failure diagnostics.';
 COMMENT ON FUNCTION logbook.canonical_json_text(jsonb) IS
