@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 import warnings
-from collections.abc import Mapping
+from collections.abc import Iterable, Mapping
 from datetime import date
 from importlib import resources as importlib_resources
 from pathlib import Path
@@ -85,10 +85,17 @@ from microcosm.build.uk_runtime.weighted_integrity import (
 )
 from microcosm.calibrate import TargetRegistry
 from microcosm.frame import Frame, MassChangeRecord, Weights
+from microcosm.frame.adapters.engine_population import (
+    MEASURE_PASS,
+    EngineBlock,
+    PoolShare,
+    validate_pool_shares,
+)
 from microcosm.frame.adapters.policyengine_uk import (
     frame_isa_income_contract,
     validate_uc_claimant_input,
 )
+from microcosm.frame.adapters.policyengine_uk_population import UK_ENGINE_POPULATION
 
 _ENTITY_LINK = {"benunit": "person_benunit_id", "household": "person_household_id"}
 _ENTITY_ID = {
@@ -416,6 +423,24 @@ _ANNUAL_INCOME_INPUTS: tuple[tuple[str, str, str | None], ...] = (
     ("jsa_contrib_reported", CONTRIBUTORY_BENEFITS_ANNUAL_SHARE, None),
     ("esa_contrib_reported", CONTRIBUTORY_BENEFITS_ANNUAL_SHARE, None),
     ("incapacity_benefit_reported", CONTRIBUTORY_BENEFITS_ANNUAL_SHARE, None),
+)
+#: The growth series policyengine-uk's dataset projection carries each input
+#: with other spells by (its ``data/uprating_indices.yaml``: pay, stored as
+#: ``employment_income``, by average earnings; profit by mixed income per
+#: head). The other spells grow from the dataset's year by the product of the
+#: engine's own rates in that series, read from its parameters, so the factor
+#: is the same in every per-clone engine block and in one engine over the pool
+#: (María's ruling of 2026-11-06, microcosm#931; it was the median of the
+#: engine's own year-on-year ratios, a statistic of whichever block ran).
+_ANNUAL_INCOME_OTHER_SPELLS_GROWTH: Mapping[str, str] = MappingProxyType(
+    {
+        "employment_income_before_lsr": (
+            "gov.economic_assumptions.yoy_growth.obr.average_earnings"
+        ),
+        "self_employment_income": (
+            "gov.economic_assumptions.yoy_growth.obr.per_capita.mixed_income"
+        ),
+    }
 )
 #: Taxable benefits whose entitlement reads earnings, held at their baseline
 #: values: a carer was paid in the year at the earnings of the time, which the
@@ -903,9 +928,11 @@ def _engine_scratch_frame(
     (and only those: the resolver's own frame keeps the block's true mass).
     A per-clone engine block carries a K-th of the pool, so a formula that
     allocates a national total by weighted share would hand every block the
-    whole total; scaled to the pool's mass the block's weighted sums equal
-    the pool's and the formula is exact for identical clone copies. The
-    scaling is declared on the engine frame's mass log.
+    whole total; scaled to the pool's mass each block hands out a share of it
+    instead. That share is the pool's for identical clone copies; for clones
+    that differ, the resolver's pool-share correction (``engine_pool_shares``)
+    sets each share formula to the pool's value. The scaling is declared on
+    the engine frame's mass log.
 
     The identifiers leave as the release's too (microcosm#1194,
     ``national_frame.uk_release_identifier_tables``): policyengine-uk stores
@@ -1038,7 +1065,19 @@ def engine_bus_pricing_parameters(tax_benefit_system: Any, year: int) -> dict[st
 
 
 class UKMeasureResolver:
-    """B2 measure provider backed by a policyengine-uk Microsimulation."""
+    """B2 measure provider backed by a policyengine-uk Microsimulation.
+
+    ``engine_pool_shares`` makes the resolver one per-clone engine block of
+    the dense measure step (microcosm#931): a :class:`PoolShare` for each of
+    policyengine-uk's share formulas (``UK_ENGINE_POPULATION.corrected``),
+    carrying the block's ``engine_weight_scale``. Right after its simulation
+    is built the resolver opens the shared :class:`EngineBlock` on it, with
+    the UK declaration and the measure pass, which records and never raises
+    (María's ruling of 2026-11-06). Every simulation the resolver builds then
+    reads the pool's shares, and :meth:`receipt` says how;
+    :meth:`close_engine_block` judges what the block computed, once it has
+    computed everything. Scratch mode only.
+    """
 
     def __init__(
         self,
@@ -1050,11 +1089,25 @@ class UKMeasureResolver:
         microsimulation_factory: Any | None = None,
         engine_weight_scale: float | None = None,
         engine_identifier_universe: Any | None = None,
+        engine_pool_shares: Mapping[str, PoolShare] | None = None,
     ):
         self.year = int(year)
         self._engine_weight_scale = (
             None if engine_weight_scale is None else float(engine_weight_scale)
         )
+        self._engine_pool_block: EngineBlock | None = None
+        if engine_pool_shares is not None:
+            # A block's shares carry the factor its engine weights do (1 when
+            # unscaled); checked before any engine is built.
+            validate_pool_shares(
+                UK_ENGINE_POPULATION,
+                engine_pool_shares,
+                weight_scale=(
+                    1.0
+                    if self._engine_weight_scale is None
+                    else self._engine_weight_scale
+                ),
+            )
         policyengine_uk = _policyengine_uk_module()
         factory = (
             microsimulation_factory
@@ -1083,6 +1136,11 @@ class UKMeasureResolver:
                 raise ValueError(
                     "an identifier universe needs scratch-mode resolution; a direct "
                     "H5 source carries its own identifiers."
+                )
+            if engine_pool_shares is not None:
+                raise ValueError(
+                    "pool shares need scratch-mode resolution; a direct H5 source "
+                    "carries its own weights and is no engine block of a pool."
                 )
             dropped = ()
             source_path = Path(simulation_source)
@@ -1141,6 +1199,9 @@ class UKMeasureResolver:
         validate_uc_claimant_input(self.simulation, frame.table("person"), self.year)
         self.contract_targets = _uk_contract_targets()
         bound_cgt_periods = {}
+        # The years a dated measure is computed at besides this one: an engine
+        # block's shares are corrected at each (microcosm#931).
+        bound_years: set[int] = set()
         for target_id, target in self.contract_targets.items():
             binding = target["bindings"]["policyengine"]
             for name in _binding_variable_names(binding):
@@ -1153,6 +1214,8 @@ class UKMeasureResolver:
                     raise ValueError(
                         f"company car benefit year/period mismatch: {target_id}"
                     )
+                if benefit_year is not None:
+                    bound_years.add(int(benefit_year))
                 cgt_measure = _cgt_model_measure(name, self.year)
                 if cgt_measure is None:
                     continue
@@ -1165,6 +1228,7 @@ class UKMeasureResolver:
                     "model_variable": model_variable,
                     "measurement_period": measure_year,
                 }
+                bound_years.add(int(measure_year))
         self._receipt = {
             "mode": mode,
             "source_path": str(source_path),
@@ -1202,6 +1266,47 @@ class UKMeasureResolver:
         self._annual_income_fallback: str | None = None
         self._annual_income_simulation_cache: Any | None = None
         self._annual_income_factors: dict[str, float] = {}
+        if engine_pool_shares is not None:
+            # After the simulation is built and its roles validated, before
+            # anything reads it: the dataset's year, this year and every
+            # dated measure's year are the periods the block computes at.
+            dataset_year = self._dataset_year()
+            self._engine_pool_block = EngineBlock(
+                self.simulation,
+                engine_pool_shares,
+                declaration=UK_ENGINE_POPULATION,
+                policy=MEASURE_PASS,
+                periods=(dataset_year, self.year, *bound_years),
+                dataset_year=dataset_year,
+            )
+            self._factory = self._engine_pool_block.wrap(self._factory)
+
+    def close_engine_block(self) -> None:
+        """Judge what this engine block's simulations computed (microcosm#931).
+
+        The dense measure step calls it once the block has resolved every
+        measure and local metric, before reading :meth:`receipt`; the
+        receipt then carries the verdict (``engine_population_reach``). A
+        resolver that is no engine block has nothing to judge.
+        """
+
+        block = getattr(self, "_engine_pool_block", None)
+        if block is not None:
+            block.close()
+
+    def _note_engine_request(self, variable: str) -> None:
+        block = getattr(self, "_engine_pool_block", None)
+        if block is not None:
+            block.note_request(variable, self.year)
+
+    def _refuse_pool_share_substitution(
+        self, names: Iterable[str | None], route: str
+    ) -> None:
+        """Refuse a sibling that would change what the block's correction read."""
+
+        block = getattr(self, "_engine_pool_block", None)
+        if block is not None:
+            block.refuse_substitution(names, route)
 
     def use_current_income_for_annual_measures(self, *, reason: str) -> None:
         """Let a frame without annual income descriptors read current values.
@@ -1341,6 +1446,7 @@ class UKMeasureResolver:
         return str(definition.entity.key)
 
     def compute(self, entity: str, variable: str) -> tuple[np.ndarray, str]:
+        self._note_engine_request(variable)
         if variable in UK_ANNUAL_INCOME_MEASURES:
             return self._annual_income_measure(entity, variable)
         if variable in UK_HOUSEHOLD_ENERGY_MEASURES:
@@ -1397,6 +1503,7 @@ class UKMeasureResolver:
         ):
             raise ValueError(f"unsupported output_delta {direction!r}")
         metric = str(binding.get("metric_name") or output)
+        self._note_engine_request(output)
         allocation = binding.get("allocation")
         if allocation is not None:
             rate_class = _declared_rate_class(allocation, output, direction, entity)
@@ -1648,6 +1755,15 @@ class UKMeasureResolver:
 
         if self._annual_income_simulation_cache is not None:
             return self._annual_income_simulation_cache
+        self._refuse_pool_share_substitution(
+            (
+                *(name for name, _share, _other in _ANNUAL_INCOME_INPUTS),
+                "state_pension",
+                _COMPANY_CAR_AVAILABILITY,
+                *_ANNUAL_INCOME_HELD_VARIABLES,
+            ),
+            "the annual-income simulation",
+        )
         person = self.frame.table("person")
         simulation = self._factory(dataset=str(self._source_path))
         annual_inputs: dict[str, np.ndarray] = {}
@@ -1705,32 +1821,53 @@ class UKMeasureResolver:
     def _engine_projection_factor(self, name: str) -> float:
         """The factor the engine carries ``name`` by from the dataset's year.
 
-        Read off the engine's own projection, so the other spells grow by the
-        series the current amount grows by; a projection that is not one
-        factor for every row refuses, since no single factor then carries the
-        other spells as the engine carries pay.
+        The product, over each year after the dataset's up to this one, of
+        one plus the engine's own growth rate in the series its dataset
+        projection carries ``name`` by (``_ANNUAL_INCOME_OTHER_SPELLS_GROWTH``),
+        read from the simulation's parameters as the projection reads them.
+        A parameter, not a statistic of the rows, so every engine block and
+        one engine over the pool carry the other spells alike (microcosm#931).
+        The engine's own arrays must agree with it, within 1e-5, on every row
+        that carries ``name``; otherwise no single factor carries the other
+        spells as the engine carries pay, and it refuses.
         """
 
+        series = _ANNUAL_INCOME_OTHER_SPELLS_GROWTH.get(name)
+        if series is None:
+            raise ValueError(
+                f"No engine growth series is declared for {name}, so its other "
+                "spells cannot be carried to the measurement year."
+            )
         dataset_year = self._dataset_year()
+        if self.year < dataset_year:
+            raise ValueError(
+                f"The engine projects the dataset from {dataset_year} forward, so "
+                f"the other spells of {name} cannot be carried back to {self.year}."
+            )
+        growth = self.simulation.tax_benefit_system.parameters.get_child(series)
+        factor = 1.0
+        for year in range(dataset_year + 1, self.year + 1):
+            factor *= 1.0 + float(growth(str(year)))
         then = _values(self.simulation.calculate(name, dataset_year)).astype(float)
         now = _values(self.simulation.calculate(name, self.year)).astype(float)
         carried = np.abs(then) > 0
         if not carried.any():
             raise ValueError(
                 f"No row carries {name} in {dataset_year}, so the engine's factor "
-                f"to {self.year} for the other spells cannot be read."
+                f"to {self.year} for the other spells cannot be checked."
             )
         factors = now[carried] / then[carried]
-        factor = float(np.median(factors))
         if (np.abs(factors - factor) > 1e-5 * max(abs(factor), 1.0)).any():
             raise ValueError(
                 f"The engine does not carry {name} from {dataset_year} to "
-                f"{self.year} by one factor, so the other spells cannot follow it."
+                f"{self.year} by one factor, its growth series {series}, so the "
+                "other spells cannot follow it."
             )
         self._annual_income_factors[name] = factor
         return factor
 
     def _counterfactual_simulation(self, zeroed: str, folded: str | None) -> Any:
+        self._refuse_pool_share_substitution((zeroed, folded), "a counterfactual")
         key = (zeroed, folded)
         if key in self._counterfactuals:
             return self._counterfactuals[key]
@@ -1837,6 +1974,12 @@ class UKMeasureResolver:
             }
         if getattr(self, "_annual_income_measures_used", None):
             receipt["annual_income_measures"] = self._annual_income_receipt()
+        block = getattr(self, "_engine_pool_block", None)
+        if block is not None:
+            # Only an engine block of the dense measure step carries these
+            # (engine_pool_shares, and engine_population_reach once judged),
+            # so a single-block receipt keeps its bytes (microcosm#931).
+            receipt.update(block.receipt_entries())
         return receipt
 
     def _annual_income_receipt(self) -> dict[str, Any]:

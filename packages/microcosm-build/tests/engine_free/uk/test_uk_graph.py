@@ -328,45 +328,150 @@ def test_isa_statistics_source_changes_invalidate_the_stages_that_read_them(
     assert registry.implementation_hash(control) == before[control]
 
 
-def test_uk_adapter_source_changes_invalidate_all_consuming_stages(monkeypatch):
-    from microcosm.frame.adapters import policyengine_uk
+#: What calls a rules engine, whatever it is called on: ``materialize`` (the
+#: RulesEngine protocol), the shared batch driver, and the predictor
+#: materialization of ``microcosm.frame.rules``, which calls it.
+_ENGINE_CALLS = frozenset(
+    {"materialize", "materialize_in_batches", "materialize_rules_engine_predictors"}
+)
 
+#: Stages whose transform takes the engine without computing through it, each
+#: with why. The ISA subscriptions only check that the engine is the UK's
+#: (assert_rules_engine_country).
+_ENGINE_TAKEN_FOR_ITS_COUNTRY_ONLY = frozenset({"isa_subscriptions"})
+
+
+def _calls_the_engine(module) -> bool:
+    """Whether a module calls a rules engine: any call named in
+    ``_ENGINE_CALLS``, on any receiver (``engine``, ``self.engine``,
+    ``self._engine``, ``rules_engine`` ...) or as a bare name."""
+    import ast
+    import inspect
+
+    tree = ast.parse(Path(inspect.getfile(module)).read_text(encoding="utf-8"))
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call):
+            continue
+        function = node.func
+        if isinstance(function, ast.Attribute) and function.attr in _ENGINE_CALLS:
+            return True
+        if isinstance(function, ast.Name) and function.id in _ENGINE_CALLS:
+            return True
+    return False
+
+
+def _takes_an_engine(module) -> bool:
+    """Whether a class the module defines (a stage transform) takes an
+    ``engine`` when it is built."""
+    import inspect
+
+    for _name, member in inspect.getmembers(module, inspect.isclass):
+        if member.__module__ != module.__name__:
+            continue
+        try:
+            parameters = inspect.signature(member).parameters
+        except (TypeError, ValueError):
+            continue
+        if "engine" in parameters:
+            return True
+    return False
+
+
+def test_every_stage_that_calls_the_engine_binds_the_engine_modules() -> None:
+    """How an engine call runs, and clone by clone once a frame carries more
+    than one clone, is the adapter's, the shared engine-block machinery's and
+    the UK declaration's (microcosm#931). ``source_hash`` does not follow
+    imports, so every stage whose module calls the engine, or whose transform
+    takes one, binds all three, and no other stage binds any. The one
+    exception takes the engine only to check its country and computes
+    nothing through it."""
+    from microcosm.build.uk_runtime import graph_kernels
+
+    engine_modules = set(graph_kernels._ENGINE_MODULES)
+    modules = {
+        stage: graph_kernels._stage_module(stage)
+        for stage in graph_kernels._STAGE_MODULES
+    }
+    calling = {stage for stage, module in modules.items() if _calls_the_engine(module)}
+    taking = {stage for stage, module in modules.items() if _takes_an_engine(module)}
+    assert {
+        "frs_legacy_proxies",
+        "frs_brma",
+        "was_lisa",
+        "uc_take_up",
+        "private_school_attendance",
+        "company_cars",
+    } <= calling
+    # The exception is still one: it takes the engine and never calls it.
+    assert _ENGINE_TAKEN_FOR_ITS_COUNTRY_ONLY <= taking - calling
+    computing = calling | (taking - _ENGINE_TAKEN_FOR_ITS_COUNTRY_ONLY)
+    for stage in graph_kernels._STAGE_MODULES:
+        bound = set(graph_kernels._STAGE_HELPER_MODULES.get(stage, ()))
+        if stage in computing:
+            assert engine_modules <= bound, stage
+        else:
+            assert not engine_modules & bound, stage
+
+
+def test_the_engine_call_scan_sees_any_receiver(tmp_path) -> None:
+    import types
+
+    for source, calls in (
+        ("rules_engine.materialize(frame, names, period)", True),
+        ("self._engine.materialize(frame, names, period)", True),
+        ("helpers.materialize_in_batches(frame, names, period)", True),
+        ("materialize_rules_engine_predictors(frame)", True),
+        ("frame.select(rows)", False),
+    ):
+        path = tmp_path / "stage.py"
+        path.write_text(f"def transform(self, frame):\n    {source}\n")
+        module = types.ModuleType("stage")
+        module.__file__ = str(path)
+        assert _calls_the_engine(module) is calls, source
+
+
+@pytest.mark.parametrize(
+    "module_name",
+    ["policyengine_uk", "engine_population", "policyengine_uk_population"],
+)
+def test_engine_module_changes_invalidate_every_stage_that_calls_the_engine(
+    monkeypatch, module_name
+):
+    import importlib
+
+    from microcosm.build.uk_runtime import graph_kernels
+
+    module = importlib.import_module(f"microcosm.frame.adapters.{module_name}")
     graph = uk_spine_graph()
     registry = uk_registry(graph=graph)
-    stages = (
-        "frs_legacy_proxies",
-        "frs_education_grant_split",
-        "frs_brma",
-        "was_wealth",
-        "was_lisa",
-        "nts_bus_travel",
-        "lcfs_consumption",
-        "etb_vat",
-        "etb_services",
-        "uc_reporter_redraw",
+    stages = sorted(
+        stage
+        for stage, helpers in graph_kernels._STAGE_HELPER_MODULES.items()
+        if module in helpers
     )
+    assert "frs_legacy_proxies" in stages and "private_school_attendance" in stages
     affected = [graph.node(stage).kernel for stage in stages]
     controls = [
         graph.node(stage).kernel
-        for stage in ("frs_council_tax", "uc_capital_coherence")
+        for stage in ("frs_council_tax", "uc_capital_coherence", "isa_subscriptions")
     ]
     before = {ref: registry.implementation_hash(ref) for ref in affected + controls}
-    adapter_path = Path(policyengine_uk.__file__).resolve()
+    module_path = Path(module.__file__).resolve()
     original = Path.read_bytes
 
-    def changed_adapter_bytes(path):
+    def changed_module_bytes(path):
         content = original(path)
         return (
-            content + b"\n# adapter-only change\n"
-            if path.resolve() == adapter_path
+            content + b"\n# engine-module-only change\n"
+            if path.resolve() == module_path
             else content
         )
 
-    monkeypatch.setattr(Path, "read_bytes", changed_adapter_bytes)
+    monkeypatch.setattr(Path, "read_bytes", changed_module_bytes)
     for ref in affected:
-        assert registry.implementation_hash(ref) != before[ref]
+        assert registry.implementation_hash(ref) != before[ref], ref
     for ref in controls:
-        assert registry.implementation_hash(ref) == before[ref]
+        assert registry.implementation_hash(ref) == before[ref], ref
 
 
 def test_uk_graph_json_round_trip_is_canonical() -> None:

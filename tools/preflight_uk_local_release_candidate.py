@@ -9,7 +9,7 @@ Two postures, both fail-closed and both printing every failure by name:
            say what a publishable release candidate must say — release
            posture attested, shippable, every release-blocking gate passed,
            an exact engine population (one block, or one block per clone
-           whose identical copies are scaled to the pool), doctrine values
+           that the build recorded exact), doctrine values
            (and, for a sized run, the size doctrine: 150,000 households under
            the doctrine's draw, floor and refit penalty, selected by a size
            search in the doctrine's L0 bracket), the A15 census household
@@ -281,9 +281,15 @@ def check_candidate_dir(candidate_dir: Path, *, today: date | None = None) -> li
     resolution = solve.get("measure_resolution", {})
     blocks = resolution.get("blocks")
     representation = resolution.get("engine_population_representation") or {}
-    # One block per clone measures the pool exactly when the blocks are
-    # identical copies scaled to the pool (rowwise_cli.release_verdict); the
-    # build records that check, and nothing else stands in for it.
+    # One block per clone stands for the pool when the build recorded it exact
+    # (rowwise_cli.release_verdict): every block scaled to the pool's mass and
+    # corrected to its share denominator, with a clean guard, so the measures
+    # equal one engine over the pool to float32 rounding (exact_basis
+    # pool_share_injection_with_population_guard, microcosm#931). The build
+    # decides exact once its blocks ran, and nothing else stands in for it.
+    # The check does not require exact_basis, so a receipt from before the
+    # correction, when exact meant identical copies, passes too; whether it
+    # should is open for Max's review.
     per_clone_exact = (
         type(blocks) is int
         and blocks > 1

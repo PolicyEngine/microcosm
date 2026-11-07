@@ -1363,13 +1363,18 @@ def release_verdict(
     normalised formulas (a national total allocated by weighted share) saw one
     block's denominator and each block reproduced the whole aggregate, the
     ``K`` times land-value artefact behind the #736 erratum. The measures loop
-    now scales every block's engine weights to the pool and records whether the
-    blocks are identical copies with identical allocation keys for the named
-    weight-share formulas (``engine_population_representation.exact``; the
-    formulas and their inputs are ``UK_WEIGHT_SHARE_FORMULA_INPUTS``); a single
-    block is exact by construction. ``engine_population_exact`` is that
-    record; left unset, a multi-block run is treated as inexact. The posture is
-    written beside the verdict so a reader sees which leg failed.
+    now scales every block's engine weights to the pool, sets each block's
+    share formulas to the pool's value in every simulation it builds, and
+    judges every whole-population formula the block ran against the UK
+    declaration (``engine_population_representation.exact``, with
+    ``exact_basis`` ``pool_share_injection_with_population_guard``: corrected
+    blocks with their checks holding and a clean guard, equal to one engine
+    over the pool to float32 rounding; microcosm#931). A receipt without
+    ``exact_basis`` predates the correction, when exact meant blocks that were
+    identical copies with identical allocation keys. A single block is exact
+    by construction. ``engine_population_exact`` is that record; left unset, a
+    multi-block run is treated as inexact. The posture is written beside the
+    verdict so a reader sees which leg failed.
     """
 
     single_block = int(engine_blocks) == 1

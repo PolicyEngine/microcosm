@@ -750,7 +750,27 @@ def _rules_engine() -> PolicyEngineUKEngine:
     )
 
     assert_installed_engine_is_pinned()
+    # Whether a stage's call runs clone by clone is decided from its frame,
+    # never set here (microcosm#931), so nothing about batching enters the
+    # engine identity hashed from _rules_engine_provenance.
     return PolicyEngineUKEngine()
+
+
+def _rules_engine_record(engine: object, frame) -> dict[str, object]:
+    """The sidecar's ``rules_engine``: the engine's provenance and, only when
+    the spine's final frame carries more than one clone, how the adapter
+    runs a call over it clone by clone (``engine_batches``, its
+    :meth:`batch_record`). Read from the final frame, never from the calls
+    this process ran: a resumed spine's stages that hit their checkpoints
+    run no call, and it records what a fresh run does. The engine identity is
+    hashed from the provenance alone, so it does not move with batching."""
+
+    record = _rules_engine_provenance()
+    batch_record = getattr(engine, "batch_record", None)
+    batches = batch_record(frame) if callable(batch_record) else None
+    if batches is not None:
+        record["engine_batches"] = dict(batches)
+    return record
 
 
 def _rules_engine_provenance() -> dict[str, object]:
@@ -910,6 +930,7 @@ def _build_sidecar(
     synthetic_fixture: Mapping[str, object] | None = None,
     staging_delivery: Mapping[str, object] | None = None,
     spine_gate_report: dict[str, object] | None = None,
+    engine: object | None = None,
 ) -> dict[str, object]:
     household_weight = frame.weights_for("household")
     return {
@@ -953,7 +974,7 @@ def _build_sidecar(
         "staging_delivery": dict(staging_delivery or {}),
         "spine_gate_report": spine_gate_report,
         "stochastic_contract_sha256": stochastic_contract_sha256,
-        "rules_engine": _rules_engine_provenance(),
+        "rules_engine": _rules_engine_record(engine, frame),
         # Which stages read the SPI Public Use Tape, whose Special Conditions
         # reach every output built on them (microcosm#1095).
         UK_SPI_PUBLIC_USE_TAPE_KEY: uk_spi_public_use_tape_marker(stages),
@@ -2402,6 +2423,7 @@ def _main(argv: list[str] | None = None) -> int:
                 if spine_gate_path.is_file()
                 else None
             ),
+            engine=prepared.engine,
         )
         sidecar["operation_inventory"] = list(uk_spine_operation_inventory(graph, spec))
 

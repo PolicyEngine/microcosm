@@ -30,7 +30,11 @@ from microcosm.fit import categorical as fit_categorical
 from microcosm.fit import donors as fit_donors
 from microcosm.fit import held_out as fit_held_out
 from microcosm.frame import Frame, MassChangeRecord, WeightKind
+from microcosm.frame.adapters import engine_population
 from microcosm.frame.adapters import policyengine_uk as uk_engine_adapter
+from microcosm.frame.adapters import (
+    policyengine_uk_population as uk_engine_population_declaration,
+)
 from microcosm.graph import (
     Capabilities,
     Determinism,
@@ -151,6 +155,18 @@ _STAGE_MODULES = {
     "age_tail": "age_tail",
 }
 
+# What every stage that calls the engine computes through: the adapter, which
+# runs a call whose frame carries several clones one clone at a time, and the
+# shared engine-block machinery with the UK declaration it judges each batch
+# against (microcosm#931). An edit to any of them moves the hash of every such
+# stage; test_uk_graph derives the stages from their engine calls and from
+# their transforms' engine parameter.
+_ENGINE_MODULES = (
+    uk_engine_adapter,
+    engine_population,
+    uk_engine_population_declaration,
+)
+
 # Imported modules are not traversed by ``source_hash``. Bind relationship
 # helpers and the adapter's input-retention checks into every consuming stage.
 _STAGE_HELPER_MODULES = {
@@ -169,14 +185,14 @@ _STAGE_HELPER_MODULES = {
     # and its twin transport in spi_rank_transport (microcosm#840).
     "hmrc_spi_income_spine": (spi_income, spi_rank_transport),
     "frs_spine": (uc_relationships,),
-    "frs_legacy_proxies": (uk_engine_adapter,),
-    "frs_education_grant_split": (uk_engine_adapter,),
-    "frs_brma": (uk_engine_adapter,),
-    "was_wealth": (uk_engine_adapter,),
+    "frs_legacy_proxies": (*_ENGINE_MODULES,),
+    "frs_education_grant_split": (*_ENGINE_MODULES,),
+    "frs_brma": (*_ENGINE_MODULES,),
+    "was_wealth": (*_ENGINE_MODULES,),
     # The LISA stage reads its household donor through the WAS cleaning and its
     # household predictors through the WAS recipient surface; the anchor counts
     # HMRC's payers through the typed ISA facts (microcosm#1415).
-    "was_lisa": (uk_engine_adapter, was_wealth, hmrc_isa_statistics),
+    "was_lisa": (*_ENGINE_MODULES, was_wealth, hmrc_isa_statistics),
     # Landlords' receipts read the vendored PRIS rows through their typed
     # loader, the tape through the income stage's preparation and uprating,
     # and the support channel's names (microcosm#1106).
@@ -187,14 +203,14 @@ _STAGE_HELPER_MODULES = {
     # The purchases read the vendored HMRC Stamp Tax rows through the feed-pinned
     # reader and mark SDLT's regions from the FRS region map (microcosm#1095).
     "property_purchases": (ledger_fact_vendoring, rowwise_geography),
-    "nts_bus_travel": (uk_engine_adapter, bus_use_incidence),
+    "nts_bus_travel": (*_ENGINE_MODULES, bus_use_incidence),
     # The energy level and prices are energy_pricing's (microcosm#1418): a
     # code-only change to them must re-key the stage (the independent review
     # of microcosm#1420, finding 5).
-    "lcfs_consumption": (uk_engine_adapter, energy_pricing),
-    "etb_vat": (uk_engine_adapter,),
-    "etb_services": (uk_engine_adapter,),
-    "uc_reporter_redraw": (uc_relationships, uk_engine_adapter),
+    "lcfs_consumption": (*_ENGINE_MODULES, energy_pricing),
+    "etb_vat": (*_ENGINE_MODULES,),
+    "etb_services": (*_ENGINE_MODULES,),
+    "uc_reporter_redraw": (uc_relationships, *_ENGINE_MODULES),
     # The SPI benefit pass restores from the FRS twin through the support
     # channel's lineage, re-derives the disability flags and the own-right
     # rule, draws over the take-up population and maps household weights to
@@ -212,7 +228,7 @@ _STAGE_HELPER_MODULES = {
     # attributes, the take-up population and the family-type roles, and counts
     # its pools and receipt on the source lineage (microcosm#1334).
     "uc_take_up": (
-        uk_engine_adapter,
+        *_ENGINE_MODULES,
         ledger_fact_vendoring,
         legacy_closure_take_up,
         uc_deduction_attributes,
@@ -226,20 +242,20 @@ _STAGE_HELPER_MODULES = {
     "uc_legacy_closure_take_up": (uc_capital_coherence, ledger_fact_vendoring),
     # The Pension Credit redraw reuses the UC stage's household-to-benefit-unit
     # weight mapping and the adapter's engine materialization.
-    "pension_credit_take_up": (uc_capital_coherence, uk_engine_adapter),
+    "pension_credit_take_up": (uc_capital_coherence, *_ENGINE_MODULES),
     # The Child Benefit redraw shares the weight mapping and the adapter.
-    "child_benefit_take_up": (uc_capital_coherence, uk_engine_adapter),
+    "child_benefit_take_up": (uc_capital_coherence, *_ENGINE_MODULES),
     # The Carer's Allowance draw reads the earnings test through the adapter's
     # engine materialization and counts its receipt's support on the source
     # lineage (microcosm#1319), and balances its draws through the shared
     # placement helper (microcosm#1418).
     "carers_allowance_take_up": (
-        uk_engine_adapter,
+        *_ENGINE_MODULES,
         receipt_counts,
         stochastic_assignment,
     ),
     # The stored attendance is one engine materialization (microcosm#1095).
-    "private_school_attendance": (uk_engine_adapter,),
+    "private_school_attendance": (*_ENGINE_MODULES,),
     # The subscriptions walk the CGT bands on its income proxy (with the
     # proxy's loss relief), read HMRC's ISA tables through their typed loader
     # and round their receipts' support (microcosm#1415).
@@ -266,7 +282,7 @@ _STAGE_HELPER_MODULES = {
         spi_income,
         spi_support,
         stochastic_assignment,
-        uk_engine_adapter,
+        *_ENGINE_MODULES,
     ),
     # The copies' childcare re-draw draws through frs_take_up's childcare
     # helper, reads each household's clone path, and measures its flags for
