@@ -8,7 +8,7 @@ import pickle
 import socket
 import stat
 import time
-from collections.abc import Callable, Collection, Iterable, Mapping
+from collections.abc import Callable, Collection, Iterable, Iterator, Mapping
 from copy import deepcopy
 from dataclasses import dataclass, fields, replace
 from datetime import UTC, datetime
@@ -1637,15 +1637,44 @@ def _apply_result(
         raise NodeRejected(f"Node {node.id!r} patch rejected: {error}") from error
 
 
-def _series_for_column(frame: Frame, entity: str, column: str) -> pd.Series:
-    table = frame.table(entity)
-    id_column = frame.schema.entity_id_column(entity)
+def _series_for_column(table: pd.DataFrame, column: str, ids: pd.Index) -> pd.Series:
     return pd.Series(
         table[column].array.copy(),
-        index=pd.Index(table[id_column].to_numpy(copy=True), name=id_column),
+        index=ids,
         name=column,
         dtype=table[column].dtype,
     )
+
+
+def _version_series(
+    frame: Frame,
+) -> Iterator[tuple[tuple[str, str], tuple[pd.Series, str]]]:
+    """Yield the columns a structural version stores, one copy at a time.
+
+    They come sorted by entity and then by column, the order of the node's
+    record. Each column is copied only when it is reached. Each entity's ids
+    are copied once and shared by its columns: the store only reads them, so
+    sharing them changes no stored byte. Holding every copy at once, each
+    with its own ids, would cost about twice the frame at every structural
+    write. Every dtype token is taken first, so an unsupported dtype is
+    still refused before anything is written.
+    """
+
+    tokens = {
+        entity: {
+            column: _dtype_token(frame.table(entity)[column])
+            for column in frame.table(entity).columns
+        }
+        for entity in frame.entities
+    }
+    for entity in sorted(tokens):
+        table = frame.table(entity)
+        id_column = frame.schema.entity_id_column(entity)
+        ids = pd.Index(table[id_column].to_numpy(copy=True), name=id_column)
+        for column, token in sorted(tokens[entity].items()):
+            # The copy is never bound to a name here, so once the write lets
+            # it go nothing holds it.
+            yield (entity, column), (_series_for_column(table, column, ids), token)
 
 
 def _write_node(
@@ -1662,20 +1691,21 @@ def _write_node(
     verify_existing: bool,
     typed_artifacts: Mapping[str, object] | None = None,
 ) -> tuple[dict[tuple[str, str], str], dict[str, object]]:
-    columns: dict[tuple[str, str], tuple[pd.Series, str]] = {}
+    written: Iterable[tuple[tuple[str, str], tuple[pd.Series, str]]]
     if node.structural is StructuralDelta.NONE:
         declared = {(owned.entity, owned.column): owned for owned in node.outputs}
+        columns: dict[tuple[str, str], tuple[pd.Series, str]] = {}
         for coordinate, series in result.columns.items():
             columns[coordinate] = (series, declared[coordinate].dtype)
+        written = sorted(columns.items())
     else:
-        for entity in population.frame.entities:
-            for column in population.frame.table(entity).columns:
-                series = _series_for_column(population.frame, entity, column)
-                columns[(entity, column)] = (series, _dtype_token(series))
+        # A structural version stores every column it carries, so they are
+        # copied and written one at a time rather than all held at once.
+        written = _version_series(population.frame)
 
     column_entries: list[dict[str, str]] = []
     manifest_artifacts: dict[tuple[str, str], str] = {}
-    for (entity, column), (series, token) in sorted(columns.items()):
+    for (entity, column), (series, token) in written:
         output_key = artifact_key(key, entity, column)
         store.put_column(
             output_key,
@@ -1687,6 +1717,8 @@ def _write_node(
         )
         column_entries.append({"entity": entity, "column": column, "key": output_key})
         manifest_artifacts[(entity, column)] = output_key
+        # A structural column's copy goes before the next one is made.
+        del series
 
     stored_frame_key: str | None = None
     if node.structural is not StructuralDelta.NONE:
@@ -2024,9 +2056,14 @@ def _load_cached_result(
         except KeyError as error:
             raise StoreCorrupt("Cached node column entry is malformed.") from error
         coordinate = (entity, column)
-        if coordinate in stored_columns:
+        if coordinate in manifest_artifacts:
             raise StoreCorrupt(f"Cached node repeats column {entity}.{column}.")
-        stored_columns[coordinate] = store.load_column(output_key)
+        if node.structural is StructuralDelta.NONE:
+            stored_columns[coordinate] = store.load_column(output_key)
+        else:
+            # A structural version comes back whole from its frame below, so
+            # each of its columns is only checked here and none is kept.
+            store.load_column(output_key)
         manifest_artifacts[coordinate] = output_key
 
     result_columns: dict[tuple[str, str], pd.Series] = {}
