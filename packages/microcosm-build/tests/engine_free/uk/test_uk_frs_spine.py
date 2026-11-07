@@ -36,7 +36,8 @@ from microcosm.build.uk_runtime.birth_month import (
 )
 from microcosm.build.uk_runtime.content_identity import uk_frame_content_identity
 from microcosm.build.uk_runtime.frs_council_tax import (
-    frs_council_tax_operation_parameters,
+    frs_council_tax_operations,
+    frs_council_tax_resource_artifact,
 )
 from microcosm.build.uk_runtime.frs_relationships import (
     FRS_RELATIONSHIPS_OUTPUT_COLUMNS,
@@ -736,10 +737,12 @@ def _synthetic_spec(stage: SourceStageSpec) -> SimpleNamespace:
                     tables=("househol",),
                     operations=[
                         {"kind": "read_tables"},
-                        frs_council_tax_operation_parameters(),
+                        *frs_council_tax_operations(),
                     ],
                     outputs=("council_tax",),
                     nonnegative_outputs=("council_tax",),
+                    # S2(a) levels the Scottish bills to the vendored Band D facts.
+                    extra_artifacts=(frs_council_tax_resource_artifact(),),
                 ),
                 source_stage(
                     "frs_disability",
@@ -1116,7 +1119,11 @@ def _synthetic_spec(stage: SourceStageSpec) -> SimpleNamespace:
             ),
         ),
         geography_spine=None,
-        resource_hashes={"brma_private_rented_households.json": "f" * 64},
+        resource_hashes={
+            "brma_private_rented_households.json": "f" * 64,
+            # S2(a): frs_council_tax levels the Scottish bills to these facts.
+            "scotgov_band_d_liability_facts.json": "f" * 64,
+        },
     )
 
 
@@ -2993,7 +3000,10 @@ def test_driver_writes_spine_h5_sidecars_and_logbook(
         "sha256": hashlib.sha256(replay_bytes).hexdigest(),
     }
     assert len(sidecar["stochastic_contract_sha256"]) == 64
-    assert sidecar["resource_pins"] == {"brma_private_rented_households.json": "f" * 64}
+    assert sidecar["resource_pins"] == {
+        "brma_private_rented_households.json": "f" * 64,
+        "scotgov_band_d_liability_facts.json": "f" * 64,
+    }
     # Resolve the expected version the way the driver does, so the assertion
     # holds in the engine-hermetic lane too: the real version where
     # policyengine-uk is installed, the documented fallback where it is not.

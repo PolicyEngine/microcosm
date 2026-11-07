@@ -595,6 +595,10 @@ class TestE3ManifestLockstep:
 
         for stage_name in E3_STAGE_NAMES:
             for artifact in stages[stage_name].artifacts:
+                # frs_council_tax also reads a vendored public resource (S2(a)),
+                # which is no raw tab and carries no tab pin.
+                if artifact.get("kind") == "public_aggregate_reference":
+                    continue
                 assert (
                     artifact["locator"],
                     artifact["sha256"],
@@ -612,6 +616,8 @@ class TestE3ManifestLockstep:
         assert [op.kind for op in stages["frs_council_tax"].operations] == [
             "read_tables",
             "impute_cell_means",
+            "verify_vendored_fact_resource",
+            "level_scottish_council_tax",
         ]
         assert [op.kind for op in stages["frs_disability"].operations] == [
             "derive",

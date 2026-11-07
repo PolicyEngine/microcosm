@@ -6560,6 +6560,42 @@
      "type": "object",
      "additionalProperties": false,
      "required": [
+      "kind",
+      "output",
+      "households",
+      "level",
+      "stored",
+      "factor",
+      "weights"
+     ],
+     "properties": {
+      "kind": {
+       "const": "level_scottish_council_tax"
+      },
+      "output": {
+       "const": "council_tax"
+      },
+      "households": {
+       "type": "string"
+      },
+      "level": {
+       "type": "string"
+      },
+      "stored": {
+       "type": "string"
+      },
+      "factor": {
+       "type": "string"
+      },
+      "weights": {
+       "const": "spine_design_weights"
+      }
+     }
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "required": [
       "kind"
      ],
      "properties": {

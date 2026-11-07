@@ -755,7 +755,7 @@
   {
    "stage": "frs_council_tax",
    "survey": "Family Resources Survey 2024-25",
-   "source": "Department for Work and Pensions Family Resources Survey 2024-25, UK Data Service SN 9563, DOI 10.5255/UKDA-SN-9563-1; local licensed 2024_25 tabs.",
+   "source": "Department for Work and Pensions Family Resources Survey 2024-25, UK Data Service SN 9563, DOI 10.5255/UKDA-SN-9563-1; local licensed 2024_25 tabs.; the Scottish Government's CTAXBASE 2025 Band D equivalents and CTAS 2026 average Band D council tax by council area, via the vendored facts (scotgov_band_d_liability_facts.json)",
    "grain": "household",
    "artifacts": [
     {
@@ -771,6 +771,13 @@
      "tax_year_start": 2024,
      "ukds_study_number": 9563,
      "doi": "10.5255/UKDA-SN-9563-1"
+    },
+    {
+     "role": "scotgov_band_d_liability_facts",
+     "kind": "public_aggregate_reference",
+     "resource": "scotgov_band_d_liability_facts.json",
+     "format": "json",
+     "runtime_sha256_required": true
     }
    ],
    "operations": [
@@ -792,6 +799,31 @@
      "donor_filter": "raw ctreb != 1 and ctannual > 0",
      "missing": "raw ctannual < 0 or NaN, or ctannual == 0 with ctpaid == 1 and ctreb != 1",
      "value": "council tax before council tax reduction: CTANNUAL net of the Scottish water and sewerage charges ((CWATAMT1 + CSEWAMT1) x 52, at 0.65 where CTREB is 1; CWATAMTD where CWATAMT1 is not positive), plus CTREBAMT x 52 where CTREB is 1 and CTREBAMT > 0; a CTREB 1 household without a positive CTREBAMT takes the larger of its netted CTANNUAL and its cell mean"
+    },
+    {
+     "kind": "verify_vendored_fact_resource",
+     "artifact_role": "scotgov_band_d_liability_facts",
+     "resource": "scotgov_band_d_liability_facts.json",
+     "feed_pin": "chronicle_feed.json",
+     "record_sets": [
+      "scotgov.ctaxbase2025.band_d_equivalents.y2024",
+      "scotgov.ctas2026.band_d.fy2024"
+     ],
+     "source_vintage": "CTAXBASE 2025 Band D equivalents at September 2024; CTAS 2026 average Band D for 2024-25",
+     "mapped_build_period": 2024,
+     "period_mapping": "september_base_within_and_band_d_of_the_build_tax_year",
+     "require_before_source_read": true,
+     "runtime_sha256_required": true,
+     "fail_on_mismatch": true
+    },
+    {
+     "kind": "level_scottish_council_tax",
+     "output": "council_tax",
+     "households": "raw gvtregno == 12 (Scotland)",
+     "level": "the sum over Scotland's 32 council areas of CTAXBASE 2025's Band D equivalent dwellings before council tax reduction at September 2024 times CTAS 2026's average Band D council tax for 2024-25",
+     "stored": "the Scottish households' council_tax after impute_cell_means, at the spine design weights",
+     "factor": "level / stored, one factor on every Scottish household's council_tax; a frame with no Scottish bill to level keeps its bills as derived",
+     "weights": "spine_design_weights"
     }
    ],
    "outputs": [
@@ -800,7 +832,7 @@
    "nonnegative_outputs": [
     "council_tax"
    ],
-   "notes": "Re-reads raw househol.tab because spine council_tax_reported clips missing values. FRS 2024-25 CTANNUAL is the bill after discounts and council tax reduction, and the engine reads council_tax before the reduction, so a household reporting a reduction gets its CTREBAMT added back and the cells pool non-recipients only (uk-data#496/#499, microcosm#1095). Scottish water and sewerage charges are netted before cell means at the shares DWP's CTANNUAL carries (the gross charges in full for non-recipients, 65% for reduction recipients); no-donor cells impute zero. A household where someone pays council tax (CTPAID 1) with no reported reduction and a zero CTANNUAL owes a bill, so it takes its cell mean as a missing bill does (microcosm#1278). The dead ct_mean.replace(-1, ...) branch is intentionally dropped."
+   "notes": "Re-reads raw househol.tab because spine council_tax_reported clips missing values. FRS 2024-25 CTANNUAL is the bill after discounts and council tax reduction, and the engine reads council_tax before the reduction, so a household reporting a reduction gets its CTREBAMT added back and the cells pool non-recipients only (uk-data#496/#499, microcosm#1095). Scottish water and sewerage charges are netted before cell means at the shares DWP's CTANNUAL carries (the gross charges in full for non-recipients, 65% for reduction recipients); no-donor cells impute zero. A household where someone pays council tax (CTPAID 1) with no reported reduction and a zero CTANNUAL owes a bill, so it takes its cell mean as a missing bill does (microcosm#1278). The dead ct_mean.replace(-1, ...) branch is intentionally dropped. Last, the Scottish bills are levelled with one factor to the Scottish Government's own measure of the 2024-25 liability before council tax reduction (S2(a) of the November event-data plan, microcosm#1095; for María's signature): the sum over the 32 council areas of CTAXBASE 2025's Band D equivalent dwellings before council tax reduction at September 2024, the middle of 2024-25, times CTAS 2026's average Band D council tax for 2024-25, over the Scottish households' bills at the spine design weights. Band D equivalents count dwellings after discounts and exemptions, as the bills do. The bound Scottish band stock (scotgov.council_tax_stock) already gives the household mix, so the level moves the bills' amounts and no weight; obr.council_tax_scotland stays a held-out diagnostic. A frame with no Scottish bill to level keeps its bills as derived, and the stage receipt says so."
   },
   {
    "stage": "frs_disability",

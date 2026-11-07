@@ -1,0 +1,2808 @@
+{
+  "schema_version": 1,
+  "country": "uk",
+  "kind": "uk_vendored_ledger_facts",
+  "resource": "scotgov_band_d_liability_facts.json",
+  "purpose": "The Scottish Government's Band D equivalent dwellings before council tax reduction at September 2024 (CTAXBASE 2025) and average Band D council tax for 2024-25 (CTAS 2026), for each of the 32 council areas. Consumed by the FRS council tax stage, which levels the Scottish bills to the sum over the councils of their products (S2(a) of the November event-data plan, microcosm#1095).",
+  "consumers": [
+    "uk_runtime.frs_council_tax"
+  ],
+  "planned_consumers": [],
+  "policy": "Rows are copied verbatim from the pinned Chronicle consumer feed named in source_fact_feed; every value is a publisher-stated fact. Consumers declare their own arithmetic on these rows and never edit this file by hand: regenerate it with tools/vendor_uk_ledger_facts.py.",
+  "generator": {
+    "tool": "tools/vendor_uk_ledger_facts.py",
+    "version": 1
+  },
+  "source_fact_feed": {
+    "source_repo": "PolicyEngine/chronicle",
+    "source_commit": "8045b138355b196846f633f31323fd129908e751",
+    "build": "build-bundle --suite uk -> build-consumer-artifact",
+    "artifact_schema_version": "policyengine_ledger.consumer_artifact.v2",
+    "fact_row_count": 2091616,
+    "facts_sha256": "0856f17072b09ed17d231d862b66d004729409a128fd1b3bf7b545f4e585d267",
+    "manifest_sha256": "559106a03970962cb7293af8664f69594d9aa64f5aa7f9c21e0f609838f96fef"
+  },
+  "selections": [
+    {
+      "label": "ctaxbase_2025_band_d_equivalents_september_2024",
+      "selector": {
+        "source_name": "scotgov",
+        "record_set_id": [
+          "scotgov.ctaxbase2025.band_d_equivalents.y2024"
+        ],
+        "geography_level": [
+          "local_authority"
+        ]
+      },
+      "row_count": 32
+    },
+    {
+      "label": "ctas_2026_average_band_d_2024_25",
+      "selector": {
+        "source_name": "scotgov",
+        "record_set_id": [
+          "scotgov.ctas2026.band_d.fy2024"
+        ],
+        "geography_level": [
+          "local_authority"
+        ]
+      },
+      "row_count": 32
+    }
+  ],
+  "row_count": 64,
+  "rows": [
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_e5b027466338127c8d996197",
+      "semantic_fact_key": "ledger_semantic_fact_v2_ce6622454612d5c116ebc9ef",
+      "source_record_id": "scotgov.ctas2026.band_d.fy2024.s12000005.average_band_d",
+      "concept": "scotgov.council_tax.average_band_d",
+      "measure_id": "average_band_d",
+      "unit": "gbp",
+      "aggregation": "mean",
+      "entity": {
+        "name": "dwelling",
+        "role": "chargeable_dwelling"
+      },
+      "geography": {
+        "id": "S12000005",
+        "level": "local_authority",
+        "vintage": "ca_2019"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "scotgov.ctas2026.band_d.fy2024",
+        "groupby_dimension": "geography",
+        "groupby_value_id": "s12000005",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {},
+      "source": {
+        "source_name": "scotgov",
+        "source_table": "CTAS 2026 Council Tax Assumptions: Band D council tax rates by year, 1996-97 to 2026-27",
+        "source_file": "CTAS_2026_Band_D_Council_Tax_rates_1996_97_to_2026_27.xlsx",
+        "source_sha256": "4e56c333178733c63d8729608740fbf7bf3b3d62ae58c3ad9ea297ad8188cf16",
+        "vintage": "ctas_2026",
+        "raw_r2_key": "raw/scotgov/scotgov-band-d-council-tax-rates-2026-27/2026/4e56c333178733c63d8729608740fbf7bf3b3d62ae58c3ad9ea297ad8188cf16/CTAS_2026_Band_D_Council_Tax_rates_1996_97_to_2026_27.xlsx"
+      },
+      "value": 1410.96
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_9fde92ee1d701cf48fdb1a00",
+      "semantic_fact_key": "ledger_semantic_fact_v2_58eac4215aad04160c211f0a",
+      "source_record_id": "scotgov.ctas2026.band_d.fy2024.s12000006.average_band_d",
+      "concept": "scotgov.council_tax.average_band_d",
+      "measure_id": "average_band_d",
+      "unit": "gbp",
+      "aggregation": "mean",
+      "entity": {
+        "name": "dwelling",
+        "role": "chargeable_dwelling"
+      },
+      "geography": {
+        "id": "S12000006",
+        "level": "local_authority",
+        "vintage": "ca_2019"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "scotgov.ctas2026.band_d.fy2024",
+        "groupby_dimension": "geography",
+        "groupby_value_id": "s12000006",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {},
+      "source": {
+        "source_name": "scotgov",
+        "source_table": "CTAS 2026 Council Tax Assumptions: Band D council tax rates by year, 1996-97 to 2026-27",
+        "source_file": "CTAS_2026_Band_D_Council_Tax_rates_1996_97_to_2026_27.xlsx",
+        "source_sha256": "4e56c333178733c63d8729608740fbf7bf3b3d62ae58c3ad9ea297ad8188cf16",
+        "vintage": "ctas_2026",
+        "raw_r2_key": "raw/scotgov/scotgov-band-d-council-tax-rates-2026-27/2026/4e56c333178733c63d8729608740fbf7bf3b3d62ae58c3ad9ea297ad8188cf16/CTAS_2026_Band_D_Council_Tax_rates_1996_97_to_2026_27.xlsx"
+      },
+      "value": 1334.85
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_b351a8ab07764f59f4cfcd3b",
+      "semantic_fact_key": "ledger_semantic_fact_v2_dddabc4fa7a2953688feabad",
+      "source_record_id": "scotgov.ctas2026.band_d.fy2024.s12000008.average_band_d",
+      "concept": "scotgov.council_tax.average_band_d",
+      "measure_id": "average_band_d",
+      "unit": "gbp",
+      "aggregation": "mean",
+      "entity": {
+        "name": "dwelling",
+        "role": "chargeable_dwelling"
+      },
+      "geography": {
+        "id": "S12000008",
+        "level": "local_authority",
+        "vintage": "ca_2019"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "scotgov.ctas2026.band_d.fy2024",
+        "groupby_dimension": "geography",
+        "groupby_value_id": "s12000008",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {},
+      "source": {
+        "source_name": "scotgov",
+        "source_table": "CTAS 2026 Council Tax Assumptions: Band D council tax rates by year, 1996-97 to 2026-27",
+        "source_file": "CTAS_2026_Band_D_Council_Tax_rates_1996_97_to_2026_27.xlsx",
+        "source_sha256": "4e56c333178733c63d8729608740fbf7bf3b3d62ae58c3ad9ea297ad8188cf16",
+        "vintage": "ctas_2026",
+        "raw_r2_key": "raw/scotgov/scotgov-band-d-council-tax-rates-2026-27/2026/4e56c333178733c63d8729608740fbf7bf3b3d62ae58c3ad9ea297ad8188cf16/CTAS_2026_Band_D_Council_Tax_rates_1996_97_to_2026_27.xlsx"
+      },
+      "value": 1487.44
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_e5a34949c6a32d60ae0a0e1d",
+      "semantic_fact_key": "ledger_semantic_fact_v2_60471a28cb0c9f788c0e40e9",
+      "source_record_id": "scotgov.ctas2026.band_d.fy2024.s12000010.average_band_d",
+      "concept": "scotgov.council_tax.average_band_d",
+      "measure_id": "average_band_d",
+      "unit": "gbp",
+      "aggregation": "mean",
+      "entity": {
+        "name": "dwelling",
+        "role": "chargeable_dwelling"
+      },
+      "geography": {
+        "id": "S12000010",
+        "level": "local_authority",
+        "vintage": "ca_2019"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "scotgov.ctas2026.band_d.fy2024",
+        "groupby_dimension": "geography",
+        "groupby_value_id": "s12000010",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {},
+      "source": {
+        "source_name": "scotgov",
+        "source_table": "CTAS 2026 Council Tax Assumptions: Band D council tax rates by year, 1996-97 to 2026-27",
+        "source_file": "CTAS_2026_Band_D_Council_Tax_rates_1996_97_to_2026_27.xlsx",
+        "source_sha256": "4e56c333178733c63d8729608740fbf7bf3b3d62ae58c3ad9ea297ad8188cf16",
+        "vintage": "ctas_2026",
+        "raw_r2_key": "raw/scotgov/scotgov-band-d-council-tax-rates-2026-27/2026/4e56c333178733c63d8729608740fbf7bf3b3d62ae58c3ad9ea297ad8188cf16/CTAS_2026_Band_D_Council_Tax_rates_1996_97_to_2026_27.xlsx"
+      },
+      "value": 1435.62
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_c5692eb4dd27c0d9a6df3da5",
+      "semantic_fact_key": "ledger_semantic_fact_v2_c18e1672cc3f2d77a01886ec",
+      "source_record_id": "scotgov.ctas2026.band_d.fy2024.s12000011.average_band_d",
+      "concept": "scotgov.council_tax.average_band_d",
+      "measure_id": "average_band_d",
+      "unit": "gbp",
+      "aggregation": "mean",
+      "entity": {
+        "name": "dwelling",
+        "role": "chargeable_dwelling"
+      },
+      "geography": {
+        "id": "S12000011",
+        "level": "local_authority",
+        "vintage": "ca_2019"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "scotgov.ctas2026.band_d.fy2024",
+        "groupby_dimension": "geography",
+        "groupby_value_id": "s12000011",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {},
+      "source": {
+        "source_name": "scotgov",
+        "source_table": "CTAS 2026 Council Tax Assumptions: Band D council tax rates by year, 1996-97 to 2026-27",
+        "source_file": "CTAS_2026_Band_D_Council_Tax_rates_1996_97_to_2026_27.xlsx",
+        "source_sha256": "4e56c333178733c63d8729608740fbf7bf3b3d62ae58c3ad9ea297ad8188cf16",
+        "vintage": "ctas_2026",
+        "raw_r2_key": "raw/scotgov/scotgov-band-d-council-tax-rates-2026-27/2026/4e56c333178733c63d8729608740fbf7bf3b3d62ae58c3ad9ea297ad8188cf16/CTAS_2026_Band_D_Council_Tax_rates_1996_97_to_2026_27.xlsx"
+      },
+      "value": 1415.22
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_b49c066ce3f70db5f3a6512d",
+      "semantic_fact_key": "ledger_semantic_fact_v2_625252b269bf997000cb86c6",
+      "source_record_id": "scotgov.ctas2026.band_d.fy2024.s12000013.average_band_d",
+      "concept": "scotgov.council_tax.average_band_d",
+      "measure_id": "average_band_d",
+      "unit": "gbp",
+      "aggregation": "mean",
+      "entity": {
+        "name": "dwelling",
+        "role": "chargeable_dwelling"
+      },
+      "geography": {
+        "id": "S12000013",
+        "level": "local_authority",
+        "vintage": "ca_2019"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "scotgov.ctas2026.band_d.fy2024",
+        "groupby_dimension": "geography",
+        "groupby_value_id": "s12000013",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {},
+      "source": {
+        "source_name": "scotgov",
+        "source_table": "CTAS 2026 Council Tax Assumptions: Band D council tax rates by year, 1996-97 to 2026-27",
+        "source_file": "CTAS_2026_Band_D_Council_Tax_rates_1996_97_to_2026_27.xlsx",
+        "source_sha256": "4e56c333178733c63d8729608740fbf7bf3b3d62ae58c3ad9ea297ad8188cf16",
+        "vintage": "ctas_2026",
+        "raw_r2_key": "raw/scotgov/scotgov-band-d-council-tax-rates-2026-27/2026/4e56c333178733c63d8729608740fbf7bf3b3d62ae58c3ad9ea297ad8188cf16/CTAS_2026_Band_D_Council_Tax_rates_1996_97_to_2026_27.xlsx"
+      },
+      "value": 1290.75
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_2ac60f5492d6c668cb20293f",
+      "semantic_fact_key": "ledger_semantic_fact_v2_862f8aa9f493ad4877af0d8a",
+      "source_record_id": "scotgov.ctas2026.band_d.fy2024.s12000014.average_band_d",
+      "concept": "scotgov.council_tax.average_band_d",
+      "measure_id": "average_band_d",
+      "unit": "gbp",
+      "aggregation": "mean",
+      "entity": {
+        "name": "dwelling",
+        "role": "chargeable_dwelling"
+      },
+      "geography": {
+        "id": "S12000014",
+        "level": "local_authority",
+        "vintage": "ca_2019"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "scotgov.ctas2026.band_d.fy2024",
+        "groupby_dimension": "geography",
+        "groupby_value_id": "s12000014",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {},
+      "source": {
+        "source_name": "scotgov",
+        "source_table": "CTAS 2026 Council Tax Assumptions: Band D council tax rates by year, 1996-97 to 2026-27",
+        "source_file": "CTAS_2026_Band_D_Council_Tax_rates_1996_97_to_2026_27.xlsx",
+        "source_sha256": "4e56c333178733c63d8729608740fbf7bf3b3d62ae58c3ad9ea297ad8188cf16",
+        "vintage": "ctas_2026",
+        "raw_r2_key": "raw/scotgov/scotgov-band-d-council-tax-rates-2026-27/2026/4e56c333178733c63d8729608740fbf7bf3b3d62ae58c3ad9ea297ad8188cf16/CTAS_2026_Band_D_Council_Tax_rates_1996_97_to_2026_27.xlsx"
+      },
+      "value": 1363.82
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_65354727c38acd6aff3a75b3",
+      "semantic_fact_key": "ledger_semantic_fact_v2_b05659bbfa37505ab94bf62a",
+      "source_record_id": "scotgov.ctas2026.band_d.fy2024.s12000017.average_band_d",
+      "concept": "scotgov.council_tax.average_band_d",
+      "measure_id": "average_band_d",
+      "unit": "gbp",
+      "aggregation": "mean",
+      "entity": {
+        "name": "dwelling",
+        "role": "chargeable_dwelling"
+      },
+      "geography": {
+        "id": "S12000017",
+        "level": "local_authority",
+        "vintage": "ca_2019"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "scotgov.ctas2026.band_d.fy2024",
+        "groupby_dimension": "geography",
+        "groupby_value_id": "s12000017",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {},
+      "source": {
+        "source_name": "scotgov",
+        "source_table": "CTAS 2026 Council Tax Assumptions: Band D council tax rates by year, 1996-97 to 2026-27",
+        "source_file": "CTAS_2026_Band_D_Council_Tax_rates_1996_97_to_2026_27.xlsx",
+        "source_sha256": "4e56c333178733c63d8729608740fbf7bf3b3d62ae58c3ad9ea297ad8188cf16",
+        "vintage": "ctas_2026",
+        "raw_r2_key": "raw/scotgov/scotgov-band-d-council-tax-rates-2026-27/2026/4e56c333178733c63d8729608740fbf7bf3b3d62ae58c3ad9ea297ad8188cf16/CTAS_2026_Band_D_Council_Tax_rates_1996_97_to_2026_27.xlsx"
+      },
+      "value": 1427.19
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_f4cb297d02e2ce4056affbf0",
+      "semantic_fact_key": "ledger_semantic_fact_v2_ed0b5d12a8908c0f5cd95ce3",
+      "source_record_id": "scotgov.ctas2026.band_d.fy2024.s12000018.average_band_d",
+      "concept": "scotgov.council_tax.average_band_d",
+      "measure_id": "average_band_d",
+      "unit": "gbp",
+      "aggregation": "mean",
+      "entity": {
+        "name": "dwelling",
+        "role": "chargeable_dwelling"
+      },
+      "geography": {
+        "id": "S12000018",
+        "level": "local_authority",
+        "vintage": "ca_2019"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "scotgov.ctas2026.band_d.fy2024",
+        "groupby_dimension": "geography",
+        "groupby_value_id": "s12000018",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {},
+      "source": {
+        "source_name": "scotgov",
+        "source_table": "CTAS 2026 Council Tax Assumptions: Band D council tax rates by year, 1996-97 to 2026-27",
+        "source_file": "CTAS_2026_Band_D_Council_Tax_rates_1996_97_to_2026_27.xlsx",
+        "source_sha256": "4e56c333178733c63d8729608740fbf7bf3b3d62ae58c3ad9ea297ad8188cf16",
+        "vintage": "ctas_2026",
+        "raw_r2_key": "raw/scotgov/scotgov-band-d-council-tax-rates-2026-27/2026/4e56c333178733c63d8729608740fbf7bf3b3d62ae58c3ad9ea297ad8188cf16/CTAS_2026_Band_D_Council_Tax_rates_1996_97_to_2026_27.xlsx"
+      },
+      "value": 1547.01
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_99ba7285f0e7b5355efb8d4d",
+      "semantic_fact_key": "ledger_semantic_fact_v2_a4e2fb625754100b7c7a009f",
+      "source_record_id": "scotgov.ctas2026.band_d.fy2024.s12000019.average_band_d",
+      "concept": "scotgov.council_tax.average_band_d",
+      "measure_id": "average_band_d",
+      "unit": "gbp",
+      "aggregation": "mean",
+      "entity": {
+        "name": "dwelling",
+        "role": "chargeable_dwelling"
+      },
+      "geography": {
+        "id": "S12000019",
+        "level": "local_authority",
+        "vintage": "ca_2019"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "scotgov.ctas2026.band_d.fy2024",
+        "groupby_dimension": "geography",
+        "groupby_value_id": "s12000019",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {},
+      "source": {
+        "source_name": "scotgov",
+        "source_table": "CTAS 2026 Council Tax Assumptions: Band D council tax rates by year, 1996-97 to 2026-27",
+        "source_file": "CTAS_2026_Band_D_Council_Tax_rates_1996_97_to_2026_27.xlsx",
+        "source_sha256": "4e56c333178733c63d8729608740fbf7bf3b3d62ae58c3ad9ea297ad8188cf16",
+        "vintage": "ctas_2026",
+        "raw_r2_key": "raw/scotgov/scotgov-band-d-council-tax-rates-2026-27/2026/4e56c333178733c63d8729608740fbf7bf3b3d62ae58c3ad9ea297ad8188cf16/CTAS_2026_Band_D_Council_Tax_rates_1996_97_to_2026_27.xlsx"
+      },
+      "value": 1514.73
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_e31ccd67436606f472dad55f",
+      "semantic_fact_key": "ledger_semantic_fact_v2_3cea117c5de768f1d3dda801",
+      "source_record_id": "scotgov.ctas2026.band_d.fy2024.s12000020.average_band_d",
+      "concept": "scotgov.council_tax.average_band_d",
+      "measure_id": "average_band_d",
+      "unit": "gbp",
+      "aggregation": "mean",
+      "entity": {
+        "name": "dwelling",
+        "role": "chargeable_dwelling"
+      },
+      "geography": {
+        "id": "S12000020",
+        "level": "local_authority",
+        "vintage": "ca_2019"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "scotgov.ctas2026.band_d.fy2024",
+        "groupby_dimension": "geography",
+        "groupby_value_id": "s12000020",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {},
+      "source": {
+        "source_name": "scotgov",
+        "source_table": "CTAS 2026 Council Tax Assumptions: Band D council tax rates by year, 1996-97 to 2026-27",
+        "source_file": "CTAS_2026_Band_D_Council_Tax_rates_1996_97_to_2026_27.xlsx",
+        "source_sha256": "4e56c333178733c63d8729608740fbf7bf3b3d62ae58c3ad9ea297ad8188cf16",
+        "vintage": "ctas_2026",
+        "raw_r2_key": "raw/scotgov/scotgov-band-d-council-tax-rates-2026-27/2026/4e56c333178733c63d8729608740fbf7bf3b3d62ae58c3ad9ea297ad8188cf16/CTAS_2026_Band_D_Council_Tax_rates_1996_97_to_2026_27.xlsx"
+      },
+      "value": 1430.69
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_979bc7e96ae8481c208f6432",
+      "semantic_fact_key": "ledger_semantic_fact_v2_3264f6c7d32c1509bcd40d61",
+      "source_record_id": "scotgov.ctas2026.band_d.fy2024.s12000021.average_band_d",
+      "concept": "scotgov.council_tax.average_band_d",
+      "measure_id": "average_band_d",
+      "unit": "gbp",
+      "aggregation": "mean",
+      "entity": {
+        "name": "dwelling",
+        "role": "chargeable_dwelling"
+      },
+      "geography": {
+        "id": "S12000021",
+        "level": "local_authority",
+        "vintage": "ca_2019"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "scotgov.ctas2026.band_d.fy2024",
+        "groupby_dimension": "geography",
+        "groupby_value_id": "s12000021",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {},
+      "source": {
+        "source_name": "scotgov",
+        "source_table": "CTAS 2026 Council Tax Assumptions: Band D council tax rates by year, 1996-97 to 2026-27",
+        "source_file": "CTAS_2026_Band_D_Council_Tax_rates_1996_97_to_2026_27.xlsx",
+        "source_sha256": "4e56c333178733c63d8729608740fbf7bf3b3d62ae58c3ad9ea297ad8188cf16",
+        "vintage": "ctas_2026",
+        "raw_r2_key": "raw/scotgov/scotgov-band-d-council-tax-rates-2026-27/2026/4e56c333178733c63d8729608740fbf7bf3b3d62ae58c3ad9ea297ad8188cf16/CTAS_2026_Band_D_Council_Tax_rates_1996_97_to_2026_27.xlsx"
+      },
+      "value": 1452.12
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_a982ef4bc6799a707d6960ad",
+      "semantic_fact_key": "ledger_semantic_fact_v2_4e17161f32f0cc671e8ea92a",
+      "source_record_id": "scotgov.ctas2026.band_d.fy2024.s12000023.average_band_d",
+      "concept": "scotgov.council_tax.average_band_d",
+      "measure_id": "average_band_d",
+      "unit": "gbp",
+      "aggregation": "mean",
+      "entity": {
+        "name": "dwelling",
+        "role": "chargeable_dwelling"
+      },
+      "geography": {
+        "id": "S12000023",
+        "level": "local_authority",
+        "vintage": "ca_2019"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "scotgov.ctas2026.band_d.fy2024",
+        "groupby_dimension": "geography",
+        "groupby_value_id": "s12000023",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {},
+      "source": {
+        "source_name": "scotgov",
+        "source_table": "CTAS 2026 Council Tax Assumptions: Band D council tax rates by year, 1996-97 to 2026-27",
+        "source_file": "CTAS_2026_Band_D_Council_Tax_rates_1996_97_to_2026_27.xlsx",
+        "source_sha256": "4e56c333178733c63d8729608740fbf7bf3b3d62ae58c3ad9ea297ad8188cf16",
+        "vintage": "ctas_2026",
+        "raw_r2_key": "raw/scotgov/scotgov-band-d-council-tax-rates-2026-27/2026/4e56c333178733c63d8729608740fbf7bf3b3d62ae58c3ad9ea297ad8188cf16/CTAS_2026_Band_D_Council_Tax_rates_1996_97_to_2026_27.xlsx"
+      },
+      "value": 1369.21
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_e18688659086da3b5d48e8c1",
+      "semantic_fact_key": "ledger_semantic_fact_v2_212d85515430615920429600",
+      "source_record_id": "scotgov.ctas2026.band_d.fy2024.s12000026.average_band_d",
+      "concept": "scotgov.council_tax.average_band_d",
+      "measure_id": "average_band_d",
+      "unit": "gbp",
+      "aggregation": "mean",
+      "entity": {
+        "name": "dwelling",
+        "role": "chargeable_dwelling"
+      },
+      "geography": {
+        "id": "S12000026",
+        "level": "local_authority",
+        "vintage": "ca_2019"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "scotgov.ctas2026.band_d.fy2024",
+        "groupby_dimension": "geography",
+        "groupby_value_id": "s12000026",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {},
+      "source": {
+        "source_name": "scotgov",
+        "source_table": "CTAS 2026 Council Tax Assumptions: Band D council tax rates by year, 1996-97 to 2026-27",
+        "source_file": "CTAS_2026_Band_D_Council_Tax_rates_1996_97_to_2026_27.xlsx",
+        "source_sha256": "4e56c333178733c63d8729608740fbf7bf3b3d62ae58c3ad9ea297ad8188cf16",
+        "vintage": "ctas_2026",
+        "raw_r2_key": "raw/scotgov/scotgov-band-d-council-tax-rates-2026-27/2026/4e56c333178733c63d8729608740fbf7bf3b3d62ae58c3ad9ea297ad8188cf16/CTAS_2026_Band_D_Council_Tax_rates_1996_97_to_2026_27.xlsx"
+      },
+      "value": 1356.11
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_71bc45a01917dae95785e3f9",
+      "semantic_fact_key": "ledger_semantic_fact_v2_ac69c9a19a4f0ebde0f0d86e",
+      "source_record_id": "scotgov.ctas2026.band_d.fy2024.s12000027.average_band_d",
+      "concept": "scotgov.council_tax.average_band_d",
+      "measure_id": "average_band_d",
+      "unit": "gbp",
+      "aggregation": "mean",
+      "entity": {
+        "name": "dwelling",
+        "role": "chargeable_dwelling"
+      },
+      "geography": {
+        "id": "S12000027",
+        "level": "local_authority",
+        "vintage": "ca_2019"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "scotgov.ctas2026.band_d.fy2024",
+        "groupby_dimension": "geography",
+        "groupby_value_id": "s12000027",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {},
+      "source": {
+        "source_name": "scotgov",
+        "source_table": "CTAS 2026 Council Tax Assumptions: Band D council tax rates by year, 1996-97 to 2026-27",
+        "source_file": "CTAS_2026_Band_D_Council_Tax_rates_1996_97_to_2026_27.xlsx",
+        "source_sha256": "4e56c333178733c63d8729608740fbf7bf3b3d62ae58c3ad9ea297ad8188cf16",
+        "vintage": "ctas_2026",
+        "raw_r2_key": "raw/scotgov/scotgov-band-d-council-tax-rates-2026-27/2026/4e56c333178733c63d8729608740fbf7bf3b3d62ae58c3ad9ea297ad8188cf16/CTAS_2026_Band_D_Council_Tax_rates_1996_97_to_2026_27.xlsx"
+      },
+      "value": 1260.61
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_274f1ec6f3aed02c8c81cfb3",
+      "semantic_fact_key": "ledger_semantic_fact_v2_924afe20c8841cbab99ce81e",
+      "source_record_id": "scotgov.ctas2026.band_d.fy2024.s12000028.average_band_d",
+      "concept": "scotgov.council_tax.average_band_d",
+      "measure_id": "average_band_d",
+      "unit": "gbp",
+      "aggregation": "mean",
+      "entity": {
+        "name": "dwelling",
+        "role": "chargeable_dwelling"
+      },
+      "geography": {
+        "id": "S12000028",
+        "level": "local_authority",
+        "vintage": "ca_2019"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "scotgov.ctas2026.band_d.fy2024",
+        "groupby_dimension": "geography",
+        "groupby_value_id": "s12000028",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {},
+      "source": {
+        "source_name": "scotgov",
+        "source_table": "CTAS 2026 Council Tax Assumptions: Band D council tax rates by year, 1996-97 to 2026-27",
+        "source_file": "CTAS_2026_Band_D_Council_Tax_rates_1996_97_to_2026_27.xlsx",
+        "source_sha256": "4e56c333178733c63d8729608740fbf7bf3b3d62ae58c3ad9ea297ad8188cf16",
+        "vintage": "ctas_2026",
+        "raw_r2_key": "raw/scotgov/scotgov-band-d-council-tax-rates-2026-27/2026/4e56c333178733c63d8729608740fbf7bf3b3d62ae58c3ad9ea297ad8188cf16/CTAS_2026_Band_D_Council_Tax_rates_1996_97_to_2026_27.xlsx"
+      },
+      "value": 1453.16
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_e60e8a9e1691072a7ad22f7c",
+      "semantic_fact_key": "ledger_semantic_fact_v2_869968cb3e769a2343fc5355",
+      "source_record_id": "scotgov.ctas2026.band_d.fy2024.s12000029.average_band_d",
+      "concept": "scotgov.council_tax.average_band_d",
+      "measure_id": "average_band_d",
+      "unit": "gbp",
+      "aggregation": "mean",
+      "entity": {
+        "name": "dwelling",
+        "role": "chargeable_dwelling"
+      },
+      "geography": {
+        "id": "S12000029",
+        "level": "local_authority",
+        "vintage": "ca_2019"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "scotgov.ctas2026.band_d.fy2024",
+        "groupby_dimension": "geography",
+        "groupby_value_id": "s12000029",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {},
+      "source": {
+        "source_name": "scotgov",
+        "source_table": "CTAS 2026 Council Tax Assumptions: Band D council tax rates by year, 1996-97 to 2026-27",
+        "source_file": "CTAS_2026_Band_D_Council_Tax_rates_1996_97_to_2026_27.xlsx",
+        "source_sha256": "4e56c333178733c63d8729608740fbf7bf3b3d62ae58c3ad9ea297ad8188cf16",
+        "vintage": "ctas_2026",
+        "raw_r2_key": "raw/scotgov/scotgov-band-d-council-tax-rates-2026-27/2026/4e56c333178733c63d8729608740fbf7bf3b3d62ae58c3ad9ea297ad8188cf16/CTAS_2026_Band_D_Council_Tax_rates_1996_97_to_2026_27.xlsx"
+      },
+      "value": 1300.81
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_d69bd9b0c3df6fbcb123f273",
+      "semantic_fact_key": "ledger_semantic_fact_v2_c46f39808dcfd405dac7a4aa",
+      "source_record_id": "scotgov.ctas2026.band_d.fy2024.s12000030.average_band_d",
+      "concept": "scotgov.council_tax.average_band_d",
+      "measure_id": "average_band_d",
+      "unit": "gbp",
+      "aggregation": "mean",
+      "entity": {
+        "name": "dwelling",
+        "role": "chargeable_dwelling"
+      },
+      "geography": {
+        "id": "S12000030",
+        "level": "local_authority",
+        "vintage": "ca_2019"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "scotgov.ctas2026.band_d.fy2024",
+        "groupby_dimension": "geography",
+        "groupby_value_id": "s12000030",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {},
+      "source": {
+        "source_name": "scotgov",
+        "source_table": "CTAS 2026 Council Tax Assumptions: Band D council tax rates by year, 1996-97 to 2026-27",
+        "source_file": "CTAS_2026_Band_D_Council_Tax_rates_1996_97_to_2026_27.xlsx",
+        "source_sha256": "4e56c333178733c63d8729608740fbf7bf3b3d62ae58c3ad9ea297ad8188cf16",
+        "vintage": "ctas_2026",
+        "raw_r2_key": "raw/scotgov/scotgov-band-d-council-tax-rates-2026-27/2026/4e56c333178733c63d8729608740fbf7bf3b3d62ae58c3ad9ea297ad8188cf16/CTAS_2026_Band_D_Council_Tax_rates_1996_97_to_2026_27.xlsx"
+      },
+      "value": 1481.5
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_20bf78770e2a51eefad84777",
+      "semantic_fact_key": "ledger_semantic_fact_v2_b207fde24b573fc931d63bac",
+      "source_record_id": "scotgov.ctas2026.band_d.fy2024.s12000033.average_band_d",
+      "concept": "scotgov.council_tax.average_band_d",
+      "measure_id": "average_band_d",
+      "unit": "gbp",
+      "aggregation": "mean",
+      "entity": {
+        "name": "dwelling",
+        "role": "chargeable_dwelling"
+      },
+      "geography": {
+        "id": "S12000033",
+        "level": "local_authority",
+        "vintage": "ca_2019"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "scotgov.ctas2026.band_d.fy2024",
+        "groupby_dimension": "geography",
+        "groupby_value_id": "s12000033",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {},
+      "source": {
+        "source_name": "scotgov",
+        "source_table": "CTAS 2026 Council Tax Assumptions: Band D council tax rates by year, 1996-97 to 2026-27",
+        "source_file": "CTAS_2026_Band_D_Council_Tax_rates_1996_97_to_2026_27.xlsx",
+        "source_sha256": "4e56c333178733c63d8729608740fbf7bf3b3d62ae58c3ad9ea297ad8188cf16",
+        "vintage": "ctas_2026",
+        "raw_r2_key": "raw/scotgov/scotgov-band-d-council-tax-rates-2026-27/2026/4e56c333178733c63d8729608740fbf7bf3b3d62ae58c3ad9ea297ad8188cf16/CTAS_2026_Band_D_Council_Tax_rates_1996_97_to_2026_27.xlsx"
+      },
+      "value": 1489.55
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_a5ba88c9fee7e6fc2fdd2bcd",
+      "semantic_fact_key": "ledger_semantic_fact_v2_26d23e1779498a349cb288bf",
+      "source_record_id": "scotgov.ctas2026.band_d.fy2024.s12000034.average_band_d",
+      "concept": "scotgov.council_tax.average_band_d",
+      "measure_id": "average_band_d",
+      "unit": "gbp",
+      "aggregation": "mean",
+      "entity": {
+        "name": "dwelling",
+        "role": "chargeable_dwelling"
+      },
+      "geography": {
+        "id": "S12000034",
+        "level": "local_authority",
+        "vintage": "ca_2019"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "scotgov.ctas2026.band_d.fy2024",
+        "groupby_dimension": "geography",
+        "groupby_value_id": "s12000034",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {},
+      "source": {
+        "source_name": "scotgov",
+        "source_table": "CTAS 2026 Council Tax Assumptions: Band D council tax rates by year, 1996-97 to 2026-27",
+        "source_file": "CTAS_2026_Band_D_Council_Tax_rates_1996_97_to_2026_27.xlsx",
+        "source_sha256": "4e56c333178733c63d8729608740fbf7bf3b3d62ae58c3ad9ea297ad8188cf16",
+        "vintage": "ctas_2026",
+        "raw_r2_key": "raw/scotgov/scotgov-band-d-council-tax-rates-2026-27/2026/4e56c333178733c63d8729608740fbf7bf3b3d62ae58c3ad9ea297ad8188cf16/CTAS_2026_Band_D_Council_Tax_rates_1996_97_to_2026_27.xlsx"
+      },
+      "value": 1393.42
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_71c119c2bd8bcaab95fff07e",
+      "semantic_fact_key": "ledger_semantic_fact_v2_cd900811a7f08ab24fbd7279",
+      "source_record_id": "scotgov.ctas2026.band_d.fy2024.s12000035.average_band_d",
+      "concept": "scotgov.council_tax.average_band_d",
+      "measure_id": "average_band_d",
+      "unit": "gbp",
+      "aggregation": "mean",
+      "entity": {
+        "name": "dwelling",
+        "role": "chargeable_dwelling"
+      },
+      "geography": {
+        "id": "S12000035",
+        "level": "local_authority",
+        "vintage": "ca_2019"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "scotgov.ctas2026.band_d.fy2024",
+        "groupby_dimension": "geography",
+        "groupby_value_id": "s12000035",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {},
+      "source": {
+        "source_name": "scotgov",
+        "source_table": "CTAS 2026 Council Tax Assumptions: Band D council tax rates by year, 1996-97 to 2026-27",
+        "source_file": "CTAS_2026_Band_D_Council_Tax_rates_1996_97_to_2026_27.xlsx",
+        "source_sha256": "4e56c333178733c63d8729608740fbf7bf3b3d62ae58c3ad9ea297ad8188cf16",
+        "vintage": "ctas_2026",
+        "raw_r2_key": "raw/scotgov/scotgov-band-d-council-tax-rates-2026-27/2026/4e56c333178733c63d8729608740fbf7bf3b3d62ae58c3ad9ea297ad8188cf16/CTAS_2026_Band_D_Council_Tax_rates_1996_97_to_2026_27.xlsx"
+      },
+      "value": 1479.2
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_8444167691d7981838375213",
+      "semantic_fact_key": "ledger_semantic_fact_v2_83535a9dd310ba291b09999b",
+      "source_record_id": "scotgov.ctas2026.band_d.fy2024.s12000036.average_band_d",
+      "concept": "scotgov.council_tax.average_band_d",
+      "measure_id": "average_band_d",
+      "unit": "gbp",
+      "aggregation": "mean",
+      "entity": {
+        "name": "dwelling",
+        "role": "chargeable_dwelling"
+      },
+      "geography": {
+        "id": "S12000036",
+        "level": "local_authority",
+        "vintage": "ca_2019"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "scotgov.ctas2026.band_d.fy2024",
+        "groupby_dimension": "geography",
+        "groupby_value_id": "s12000036",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {},
+      "source": {
+        "source_name": "scotgov",
+        "source_table": "CTAS 2026 Council Tax Assumptions: Band D council tax rates by year, 1996-97 to 2026-27",
+        "source_file": "CTAS_2026_Band_D_Council_Tax_rates_1996_97_to_2026_27.xlsx",
+        "source_sha256": "4e56c333178733c63d8729608740fbf7bf3b3d62ae58c3ad9ea297ad8188cf16",
+        "vintage": "ctas_2026",
+        "raw_r2_key": "raw/scotgov/scotgov-band-d-council-tax-rates-2026-27/2026/4e56c333178733c63d8729608740fbf7bf3b3d62ae58c3ad9ea297ad8188cf16/CTAS_2026_Band_D_Council_Tax_rates_1996_97_to_2026_27.xlsx"
+      },
+      "value": 1447.69
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_74733a9cabec879c5c8ec7ca",
+      "semantic_fact_key": "ledger_semantic_fact_v2_c8dbfd54b0acdcf6b5d77838",
+      "source_record_id": "scotgov.ctas2026.band_d.fy2024.s12000038.average_band_d",
+      "concept": "scotgov.council_tax.average_band_d",
+      "measure_id": "average_band_d",
+      "unit": "gbp",
+      "aggregation": "mean",
+      "entity": {
+        "name": "dwelling",
+        "role": "chargeable_dwelling"
+      },
+      "geography": {
+        "id": "S12000038",
+        "level": "local_authority",
+        "vintage": "ca_2019"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "scotgov.ctas2026.band_d.fy2024",
+        "groupby_dimension": "geography",
+        "groupby_value_id": "s12000038",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {},
+      "source": {
+        "source_name": "scotgov",
+        "source_table": "CTAS 2026 Council Tax Assumptions: Band D council tax rates by year, 1996-97 to 2026-27",
+        "source_file": "CTAS_2026_Band_D_Council_Tax_rates_1996_97_to_2026_27.xlsx",
+        "source_sha256": "4e56c333178733c63d8729608740fbf7bf3b3d62ae58c3ad9ea297ad8188cf16",
+        "vintage": "ctas_2026",
+        "raw_r2_key": "raw/scotgov/scotgov-band-d-council-tax-rates-2026-27/2026/4e56c333178733c63d8729608740fbf7bf3b3d62ae58c3ad9ea297ad8188cf16/CTAS_2026_Band_D_Council_Tax_rates_1996_97_to_2026_27.xlsx"
+      },
+      "value": 1436.17
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_05eec422e83a45552e81d90b",
+      "semantic_fact_key": "ledger_semantic_fact_v2_79740a105b3b3fde8b9173eb",
+      "source_record_id": "scotgov.ctas2026.band_d.fy2024.s12000039.average_band_d",
+      "concept": "scotgov.council_tax.average_band_d",
+      "measure_id": "average_band_d",
+      "unit": "gbp",
+      "aggregation": "mean",
+      "entity": {
+        "name": "dwelling",
+        "role": "chargeable_dwelling"
+      },
+      "geography": {
+        "id": "S12000039",
+        "level": "local_authority",
+        "vintage": "ca_2019"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "scotgov.ctas2026.band_d.fy2024",
+        "groupby_dimension": "geography",
+        "groupby_value_id": "s12000039",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {},
+      "source": {
+        "source_name": "scotgov",
+        "source_table": "CTAS 2026 Council Tax Assumptions: Band D council tax rates by year, 1996-97 to 2026-27",
+        "source_file": "CTAS_2026_Band_D_Council_Tax_rates_1996_97_to_2026_27.xlsx",
+        "source_sha256": "4e56c333178733c63d8729608740fbf7bf3b3d62ae58c3ad9ea297ad8188cf16",
+        "vintage": "ctas_2026",
+        "raw_r2_key": "raw/scotgov/scotgov-band-d-council-tax-rates-2026-27/2026/4e56c333178733c63d8729608740fbf7bf3b3d62ae58c3ad9ea297ad8188cf16/CTAS_2026_Band_D_Council_Tax_rates_1996_97_to_2026_27.xlsx"
+      },
+      "value": 1398.98
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_81e31b5d9ac130f0956a63db",
+      "semantic_fact_key": "ledger_semantic_fact_v2_310fbc780806e0b8a5cbfc6c",
+      "source_record_id": "scotgov.ctas2026.band_d.fy2024.s12000040.average_band_d",
+      "concept": "scotgov.council_tax.average_band_d",
+      "measure_id": "average_band_d",
+      "unit": "gbp",
+      "aggregation": "mean",
+      "entity": {
+        "name": "dwelling",
+        "role": "chargeable_dwelling"
+      },
+      "geography": {
+        "id": "S12000040",
+        "level": "local_authority",
+        "vintage": "ca_2019"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "scotgov.ctas2026.band_d.fy2024",
+        "groupby_dimension": "geography",
+        "groupby_value_id": "s12000040",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {},
+      "source": {
+        "source_name": "scotgov",
+        "source_table": "CTAS 2026 Council Tax Assumptions: Band D council tax rates by year, 1996-97 to 2026-27",
+        "source_file": "CTAS_2026_Band_D_Council_Tax_rates_1996_97_to_2026_27.xlsx",
+        "source_sha256": "4e56c333178733c63d8729608740fbf7bf3b3d62ae58c3ad9ea297ad8188cf16",
+        "vintage": "ctas_2026",
+        "raw_r2_key": "raw/scotgov/scotgov-band-d-council-tax-rates-2026-27/2026/4e56c333178733c63d8729608740fbf7bf3b3d62ae58c3ad9ea297ad8188cf16/CTAS_2026_Band_D_Council_Tax_rates_1996_97_to_2026_27.xlsx"
+      },
+      "value": 1390.96
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_11c81cf724405027636e0a51",
+      "semantic_fact_key": "ledger_semantic_fact_v2_3b4123305c2ece5b26ab3b23",
+      "source_record_id": "scotgov.ctas2026.band_d.fy2024.s12000041.average_band_d",
+      "concept": "scotgov.council_tax.average_band_d",
+      "measure_id": "average_band_d",
+      "unit": "gbp",
+      "aggregation": "mean",
+      "entity": {
+        "name": "dwelling",
+        "role": "chargeable_dwelling"
+      },
+      "geography": {
+        "id": "S12000041",
+        "level": "local_authority",
+        "vintage": "ca_2019"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "scotgov.ctas2026.band_d.fy2024",
+        "groupby_dimension": "geography",
+        "groupby_value_id": "s12000041",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {},
+      "source": {
+        "source_name": "scotgov",
+        "source_table": "CTAS 2026 Council Tax Assumptions: Band D council tax rates by year, 1996-97 to 2026-27",
+        "source_file": "CTAS_2026_Band_D_Council_Tax_rates_1996_97_to_2026_27.xlsx",
+        "source_sha256": "4e56c333178733c63d8729608740fbf7bf3b3d62ae58c3ad9ea297ad8188cf16",
+        "vintage": "ctas_2026",
+        "raw_r2_key": "raw/scotgov/scotgov-band-d-council-tax-rates-2026-27/2026/4e56c333178733c63d8729608740fbf7bf3b3d62ae58c3ad9ea297ad8188cf16/CTAS_2026_Band_D_Council_Tax_rates_1996_97_to_2026_27.xlsx"
+      },
+      "value": 1316.68
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_78391a9b41040e9f52833fd9",
+      "semantic_fact_key": "ledger_semantic_fact_v2_a667eb8dfa63618fba66d88f",
+      "source_record_id": "scotgov.ctas2026.band_d.fy2024.s12000042.average_band_d",
+      "concept": "scotgov.council_tax.average_band_d",
+      "measure_id": "average_band_d",
+      "unit": "gbp",
+      "aggregation": "mean",
+      "entity": {
+        "name": "dwelling",
+        "role": "chargeable_dwelling"
+      },
+      "geography": {
+        "id": "S12000042",
+        "level": "local_authority",
+        "vintage": "ca_2019"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "scotgov.ctas2026.band_d.fy2024",
+        "groupby_dimension": "geography",
+        "groupby_value_id": "s12000042",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {},
+      "source": {
+        "source_name": "scotgov",
+        "source_table": "CTAS 2026 Council Tax Assumptions: Band D council tax rates by year, 1996-97 to 2026-27",
+        "source_file": "CTAS_2026_Band_D_Council_Tax_rates_1996_97_to_2026_27.xlsx",
+        "source_sha256": "4e56c333178733c63d8729608740fbf7bf3b3d62ae58c3ad9ea297ad8188cf16",
+        "vintage": "ctas_2026",
+        "raw_r2_key": "raw/scotgov/scotgov-band-d-council-tax-rates-2026-27/2026/4e56c333178733c63d8729608740fbf7bf3b3d62ae58c3ad9ea297ad8188cf16/CTAS_2026_Band_D_Council_Tax_rates_1996_97_to_2026_27.xlsx"
+      },
+      "value": 1486.43
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_9d9efa3a05e6397c2fc599b6",
+      "semantic_fact_key": "ledger_semantic_fact_v2_998c67e39a8381e07ca4ebf5",
+      "source_record_id": "scotgov.ctas2026.band_d.fy2024.s12000045.average_band_d",
+      "concept": "scotgov.council_tax.average_band_d",
+      "measure_id": "average_band_d",
+      "unit": "gbp",
+      "aggregation": "mean",
+      "entity": {
+        "name": "dwelling",
+        "role": "chargeable_dwelling"
+      },
+      "geography": {
+        "id": "S12000045",
+        "level": "local_authority",
+        "vintage": "ca_2019"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "scotgov.ctas2026.band_d.fy2024",
+        "groupby_dimension": "geography",
+        "groupby_value_id": "s12000045",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {},
+      "source": {
+        "source_name": "scotgov",
+        "source_table": "CTAS 2026 Council Tax Assumptions: Band D council tax rates by year, 1996-97 to 2026-27",
+        "source_file": "CTAS_2026_Band_D_Council_Tax_rates_1996_97_to_2026_27.xlsx",
+        "source_sha256": "4e56c333178733c63d8729608740fbf7bf3b3d62ae58c3ad9ea297ad8188cf16",
+        "vintage": "ctas_2026",
+        "raw_r2_key": "raw/scotgov/scotgov-band-d-council-tax-rates-2026-27/2026/4e56c333178733c63d8729608740fbf7bf3b3d62ae58c3ad9ea297ad8188cf16/CTAS_2026_Band_D_Council_Tax_rates_1996_97_to_2026_27.xlsx"
+      },
+      "value": 1415.66
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_e967bc101cae0f416da7a47a",
+      "semantic_fact_key": "ledger_semantic_fact_v2_28e092a0bbc3ecc690d422a7",
+      "source_record_id": "scotgov.ctas2026.band_d.fy2024.s12000047.average_band_d",
+      "concept": "scotgov.council_tax.average_band_d",
+      "measure_id": "average_band_d",
+      "unit": "gbp",
+      "aggregation": "mean",
+      "entity": {
+        "name": "dwelling",
+        "role": "chargeable_dwelling"
+      },
+      "geography": {
+        "id": "S12000047",
+        "level": "local_authority",
+        "vintage": "ca_2019"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "scotgov.ctas2026.band_d.fy2024",
+        "groupby_dimension": "geography",
+        "groupby_value_id": "s12000047",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {},
+      "source": {
+        "source_name": "scotgov",
+        "source_table": "CTAS 2026 Council Tax Assumptions: Band D council tax rates by year, 1996-97 to 2026-27",
+        "source_file": "CTAS_2026_Band_D_Council_Tax_rates_1996_97_to_2026_27.xlsx",
+        "source_sha256": "4e56c333178733c63d8729608740fbf7bf3b3d62ae58c3ad9ea297ad8188cf16",
+        "vintage": "ctas_2026",
+        "raw_r2_key": "raw/scotgov/scotgov-band-d-council-tax-rates-2026-27/2026/4e56c333178733c63d8729608740fbf7bf3b3d62ae58c3ad9ea297ad8188cf16/CTAS_2026_Band_D_Council_Tax_rates_1996_97_to_2026_27.xlsx"
+      },
+      "value": 1385.18
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_0598ae4ac535b6f09abb0ef1",
+      "semantic_fact_key": "ledger_semantic_fact_v2_8015c33b482cafbf82186906",
+      "source_record_id": "scotgov.ctas2026.band_d.fy2024.s12000048.average_band_d",
+      "concept": "scotgov.council_tax.average_band_d",
+      "measure_id": "average_band_d",
+      "unit": "gbp",
+      "aggregation": "mean",
+      "entity": {
+        "name": "dwelling",
+        "role": "chargeable_dwelling"
+      },
+      "geography": {
+        "id": "S12000048",
+        "level": "local_authority",
+        "vintage": "ca_2019"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "scotgov.ctas2026.band_d.fy2024",
+        "groupby_dimension": "geography",
+        "groupby_value_id": "s12000048",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {},
+      "source": {
+        "source_name": "scotgov",
+        "source_table": "CTAS 2026 Council Tax Assumptions: Band D council tax rates by year, 1996-97 to 2026-27",
+        "source_file": "CTAS_2026_Band_D_Council_Tax_rates_1996_97_to_2026_27.xlsx",
+        "source_sha256": "4e56c333178733c63d8729608740fbf7bf3b3d62ae58c3ad9ea297ad8188cf16",
+        "vintage": "ctas_2026",
+        "raw_r2_key": "raw/scotgov/scotgov-band-d-council-tax-rates-2026-27/2026/4e56c333178733c63d8729608740fbf7bf3b3d62ae58c3ad9ea297ad8188cf16/CTAS_2026_Band_D_Council_Tax_rates_1996_97_to_2026_27.xlsx"
+      },
+      "value": 1403.69
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_b57a9c50541fcfcc1eb5694e",
+      "semantic_fact_key": "ledger_semantic_fact_v2_a67c60b16f2faf6e4e333193",
+      "source_record_id": "scotgov.ctas2026.band_d.fy2024.s12000049.average_band_d",
+      "concept": "scotgov.council_tax.average_band_d",
+      "measure_id": "average_band_d",
+      "unit": "gbp",
+      "aggregation": "mean",
+      "entity": {
+        "name": "dwelling",
+        "role": "chargeable_dwelling"
+      },
+      "geography": {
+        "id": "S12000049",
+        "level": "local_authority",
+        "vintage": "ca_2019"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "scotgov.ctas2026.band_d.fy2024",
+        "groupby_dimension": "geography",
+        "groupby_value_id": "s12000049",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {},
+      "source": {
+        "source_name": "scotgov",
+        "source_table": "CTAS 2026 Council Tax Assumptions: Band D council tax rates by year, 1996-97 to 2026-27",
+        "source_file": "CTAS_2026_Band_D_Council_Tax_rates_1996_97_to_2026_27.xlsx",
+        "source_sha256": "4e56c333178733c63d8729608740fbf7bf3b3d62ae58c3ad9ea297ad8188cf16",
+        "vintage": "ctas_2026",
+        "raw_r2_key": "raw/scotgov/scotgov-band-d-council-tax-rates-2026-27/2026/4e56c333178733c63d8729608740fbf7bf3b3d62ae58c3ad9ea297ad8188cf16/CTAS_2026_Band_D_Council_Tax_rates_1996_97_to_2026_27.xlsx"
+      },
+      "value": 1499
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_1bb76588162b6aa7db1b8715",
+      "semantic_fact_key": "ledger_semantic_fact_v2_2b7a7b534ae2876e01d7faa1",
+      "source_record_id": "scotgov.ctas2026.band_d.fy2024.s12000050.average_band_d",
+      "concept": "scotgov.council_tax.average_band_d",
+      "measure_id": "average_band_d",
+      "unit": "gbp",
+      "aggregation": "mean",
+      "entity": {
+        "name": "dwelling",
+        "role": "chargeable_dwelling"
+      },
+      "geography": {
+        "id": "S12000050",
+        "level": "local_authority",
+        "vintage": "ca_2019"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "scotgov.ctas2026.band_d.fy2024",
+        "groupby_dimension": "geography",
+        "groupby_value_id": "s12000050",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {},
+      "source": {
+        "source_name": "scotgov",
+        "source_table": "CTAS 2026 Council Tax Assumptions: Band D council tax rates by year, 1996-97 to 2026-27",
+        "source_file": "CTAS_2026_Band_D_Council_Tax_rates_1996_97_to_2026_27.xlsx",
+        "source_sha256": "4e56c333178733c63d8729608740fbf7bf3b3d62ae58c3ad9ea297ad8188cf16",
+        "vintage": "ctas_2026",
+        "raw_r2_key": "raw/scotgov/scotgov-band-d-council-tax-rates-2026-27/2026/4e56c333178733c63d8729608740fbf7bf3b3d62ae58c3ad9ea297ad8188cf16/CTAS_2026_Band_D_Council_Tax_rates_1996_97_to_2026_27.xlsx"
+      },
+      "value": 1320.78
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_c9dfe550363ab85cfa486f2b",
+      "semantic_fact_key": "ledger_semantic_fact_v2_5ad95bc226d1a574af815475",
+      "source_record_id": "scotgov.ctaxbase2025.band_d_equivalents.y2024.s12000005.band_d_equivalents",
+      "concept": "scotgov.council_tax.band_d_equivalents",
+      "measure_id": "band_d_equivalents",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "dwelling",
+        "role": "chargeable_dwelling"
+      },
+      "geography": {
+        "id": "S12000005",
+        "level": "local_authority",
+        "vintage": "ca_2019"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "scotgov.ctaxbase2025.band_d_equivalents.y2024",
+        "groupby_dimension": "geography",
+        "groupby_value_id": "s12000005",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {},
+      "source": {
+        "source_name": "scotgov",
+        "source_table": "CTAXBASE 2025 Tables: Band D equivalents",
+        "source_file": "CTAXBASE_2025_Tables_Band_D_equivalents.xlsx",
+        "source_sha256": "469f0f0e91aed5cfcd9cb07fd44c50919ae6d7281b178780508343d084f241b5",
+        "vintage": "ctaxbase_2025",
+        "raw_r2_key": "raw/scotgov/scotgov-band-d-equivalents-2025/2025/469f0f0e91aed5cfcd9cb07fd44c50919ae6d7281b178780508343d084f241b5/CTAXBASE_2025_Tables_Band_D_equivalents.xlsx"
+      },
+      "value": 21666.42
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_2b9efcb748f73cd2544635c6",
+      "semantic_fact_key": "ledger_semantic_fact_v2_1c7dde2096bd9e50f7a46368",
+      "source_record_id": "scotgov.ctaxbase2025.band_d_equivalents.y2024.s12000006.band_d_equivalents",
+      "concept": "scotgov.council_tax.band_d_equivalents",
+      "measure_id": "band_d_equivalents",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "dwelling",
+        "role": "chargeable_dwelling"
+      },
+      "geography": {
+        "id": "S12000006",
+        "level": "local_authority",
+        "vintage": "ca_2019"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "scotgov.ctaxbase2025.band_d_equivalents.y2024",
+        "groupby_dimension": "geography",
+        "groupby_value_id": "s12000006",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {},
+      "source": {
+        "source_name": "scotgov",
+        "source_table": "CTAXBASE 2025 Tables: Band D equivalents",
+        "source_file": "CTAXBASE_2025_Tables_Band_D_equivalents.xlsx",
+        "source_sha256": "469f0f0e91aed5cfcd9cb07fd44c50919ae6d7281b178780508343d084f241b5",
+        "vintage": "ctaxbase_2025",
+        "raw_r2_key": "raw/scotgov/scotgov-band-d-equivalents-2025/2025/469f0f0e91aed5cfcd9cb07fd44c50919ae6d7281b178780508343d084f241b5/CTAXBASE_2025_Tables_Band_D_equivalents.xlsx"
+      },
+      "value": 65638.5
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_2f0300d451550018a61e97bc",
+      "semantic_fact_key": "ledger_semantic_fact_v2_d3d7f8bef7a899d3a03a2d1c",
+      "source_record_id": "scotgov.ctaxbase2025.band_d_equivalents.y2024.s12000008.band_d_equivalents",
+      "concept": "scotgov.council_tax.band_d_equivalents",
+      "measure_id": "band_d_equivalents",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "dwelling",
+        "role": "chargeable_dwelling"
+      },
+      "geography": {
+        "id": "S12000008",
+        "level": "local_authority",
+        "vintage": "ca_2019"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "scotgov.ctaxbase2025.band_d_equivalents.y2024",
+        "groupby_dimension": "geography",
+        "groupby_value_id": "s12000008",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {},
+      "source": {
+        "source_name": "scotgov",
+        "source_table": "CTAXBASE 2025 Tables: Band D equivalents",
+        "source_file": "CTAXBASE_2025_Tables_Band_D_equivalents.xlsx",
+        "source_sha256": "469f0f0e91aed5cfcd9cb07fd44c50919ae6d7281b178780508343d084f241b5",
+        "vintage": "ctaxbase_2025",
+        "raw_r2_key": "raw/scotgov/scotgov-band-d-equivalents-2025/2025/469f0f0e91aed5cfcd9cb07fd44c50919ae6d7281b178780508343d084f241b5/CTAXBASE_2025_Tables_Band_D_equivalents.xlsx"
+      },
+      "value": 48052.06
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_2c78226d94d4c2dca6aabc38",
+      "semantic_fact_key": "ledger_semantic_fact_v2_10453027d1ee55658cab49b9",
+      "source_record_id": "scotgov.ctaxbase2025.band_d_equivalents.y2024.s12000010.band_d_equivalents",
+      "concept": "scotgov.council_tax.band_d_equivalents",
+      "measure_id": "band_d_equivalents",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "dwelling",
+        "role": "chargeable_dwelling"
+      },
+      "geography": {
+        "id": "S12000010",
+        "level": "local_authority",
+        "vintage": "ca_2019"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "scotgov.ctaxbase2025.band_d_equivalents.y2024",
+        "groupby_dimension": "geography",
+        "groupby_value_id": "s12000010",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {},
+      "source": {
+        "source_name": "scotgov",
+        "source_table": "CTAXBASE 2025 Tables: Band D equivalents",
+        "source_file": "CTAXBASE_2025_Tables_Band_D_equivalents.xlsx",
+        "source_sha256": "469f0f0e91aed5cfcd9cb07fd44c50919ae6d7281b178780508343d084f241b5",
+        "vintage": "ctaxbase_2025",
+        "raw_r2_key": "raw/scotgov/scotgov-band-d-equivalents-2025/2025/469f0f0e91aed5cfcd9cb07fd44c50919ae6d7281b178780508343d084f241b5/CTAXBASE_2025_Tables_Band_D_equivalents.xlsx"
+      },
+      "value": 54879.03999999999
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_1ce08bf99e7a2af4e345798f",
+      "semantic_fact_key": "ledger_semantic_fact_v2_05875a8454a61094bc2b4935",
+      "source_record_id": "scotgov.ctaxbase2025.band_d_equivalents.y2024.s12000011.band_d_equivalents",
+      "concept": "scotgov.council_tax.band_d_equivalents",
+      "measure_id": "band_d_equivalents",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "dwelling",
+        "role": "chargeable_dwelling"
+      },
+      "geography": {
+        "id": "S12000011",
+        "level": "local_authority",
+        "vintage": "ca_2019"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "scotgov.ctaxbase2025.band_d_equivalents.y2024",
+        "groupby_dimension": "geography",
+        "groupby_value_id": "s12000011",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {},
+      "source": {
+        "source_name": "scotgov",
+        "source_table": "CTAXBASE 2025 Tables: Band D equivalents",
+        "source_file": "CTAXBASE_2025_Tables_Band_D_equivalents.xlsx",
+        "source_sha256": "469f0f0e91aed5cfcd9cb07fd44c50919ae6d7281b178780508343d084f241b5",
+        "vintage": "ctaxbase_2025",
+        "raw_r2_key": "raw/scotgov/scotgov-band-d-equivalents-2025/2025/469f0f0e91aed5cfcd9cb07fd44c50919ae6d7281b178780508343d084f241b5/CTAXBASE_2025_Tables_Band_D_equivalents.xlsx"
+      },
+      "value": 49029.22
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_d2a1b5869fbf7b7fa4c3d84c",
+      "semantic_fact_key": "ledger_semantic_fact_v2_bdd6bc3e8ed58faf0eef76d2",
+      "source_record_id": "scotgov.ctaxbase2025.band_d_equivalents.y2024.s12000013.band_d_equivalents",
+      "concept": "scotgov.council_tax.band_d_equivalents",
+      "measure_id": "band_d_equivalents",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "dwelling",
+        "role": "chargeable_dwelling"
+      },
+      "geography": {
+        "id": "S12000013",
+        "level": "local_authority",
+        "vintage": "ca_2019"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "scotgov.ctaxbase2025.band_d_equivalents.y2024",
+        "groupby_dimension": "geography",
+        "groupby_value_id": "s12000013",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {},
+      "source": {
+        "source_name": "scotgov",
+        "source_table": "CTAXBASE 2025 Tables: Band D equivalents",
+        "source_file": "CTAXBASE_2025_Tables_Band_D_equivalents.xlsx",
+        "source_sha256": "469f0f0e91aed5cfcd9cb07fd44c50919ae6d7281b178780508343d084f241b5",
+        "vintage": "ctaxbase_2025",
+        "raw_r2_key": "raw/scotgov/scotgov-band-d-equivalents-2025/2025/469f0f0e91aed5cfcd9cb07fd44c50919ae6d7281b178780508343d084f241b5/CTAXBASE_2025_Tables_Band_D_equivalents.xlsx"
+      },
+      "value": 10790.02
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_5e1a09a58ea9e4d3edb12797",
+      "semantic_fact_key": "ledger_semantic_fact_v2_c06cf508e4e34379aa92ce9f",
+      "source_record_id": "scotgov.ctaxbase2025.band_d_equivalents.y2024.s12000014.band_d_equivalents",
+      "concept": "scotgov.council_tax.band_d_equivalents",
+      "measure_id": "band_d_equivalents",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "dwelling",
+        "role": "chargeable_dwelling"
+      },
+      "geography": {
+        "id": "S12000014",
+        "level": "local_authority",
+        "vintage": "ca_2019"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "scotgov.ctaxbase2025.band_d_equivalents.y2024",
+        "groupby_dimension": "geography",
+        "groupby_value_id": "s12000014",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {},
+      "source": {
+        "source_name": "scotgov",
+        "source_table": "CTAXBASE 2025 Tables: Band D equivalents",
+        "source_file": "CTAXBASE_2025_Tables_Band_D_equivalents.xlsx",
+        "source_sha256": "469f0f0e91aed5cfcd9cb07fd44c50919ae6d7281b178780508343d084f241b5",
+        "vintage": "ctaxbase_2025",
+        "raw_r2_key": "raw/scotgov/scotgov-band-d-equivalents-2025/2025/469f0f0e91aed5cfcd9cb07fd44c50919ae6d7281b178780508343d084f241b5/CTAXBASE_2025_Tables_Band_D_equivalents.xlsx"
+      },
+      "value": 66116
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_18744d41b1985a806c254061",
+      "semantic_fact_key": "ledger_semantic_fact_v2_164c55b2fbca3f68c2fb1bf6",
+      "source_record_id": "scotgov.ctaxbase2025.band_d_equivalents.y2024.s12000017.band_d_equivalents",
+      "concept": "scotgov.council_tax.band_d_equivalents",
+      "measure_id": "band_d_equivalents",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "dwelling",
+        "role": "chargeable_dwelling"
+      },
+      "geography": {
+        "id": "S12000017",
+        "level": "local_authority",
+        "vintage": "ca_2019"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "scotgov.ctaxbase2025.band_d_equivalents.y2024",
+        "groupby_dimension": "geography",
+        "groupby_value_id": "s12000017",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {},
+      "source": {
+        "source_name": "scotgov",
+        "source_table": "CTAXBASE 2025 Tables: Band D equivalents",
+        "source_file": "CTAXBASE_2025_Tables_Band_D_equivalents.xlsx",
+        "source_sha256": "469f0f0e91aed5cfcd9cb07fd44c50919ae6d7281b178780508343d084f241b5",
+        "vintage": "ctaxbase_2025",
+        "raw_r2_key": "raw/scotgov/scotgov-band-d-equivalents-2025/2025/469f0f0e91aed5cfcd9cb07fd44c50919ae6d7281b178780508343d084f241b5/CTAXBASE_2025_Tables_Band_D_equivalents.xlsx"
+      },
+      "value": 110131.01000000001
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_89f17946b87d025c7507fabb",
+      "semantic_fact_key": "ledger_semantic_fact_v2_e6b0455ec17d20e4e85923dc",
+      "source_record_id": "scotgov.ctaxbase2025.band_d_equivalents.y2024.s12000018.band_d_equivalents",
+      "concept": "scotgov.council_tax.band_d_equivalents",
+      "measure_id": "band_d_equivalents",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "dwelling",
+        "role": "chargeable_dwelling"
+      },
+      "geography": {
+        "id": "S12000018",
+        "level": "local_authority",
+        "vintage": "ca_2019"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "scotgov.ctaxbase2025.band_d_equivalents.y2024",
+        "groupby_dimension": "geography",
+        "groupby_value_id": "s12000018",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {},
+      "source": {
+        "source_name": "scotgov",
+        "source_table": "CTAXBASE 2025 Tables: Band D equivalents",
+        "source_file": "CTAXBASE_2025_Tables_Band_D_equivalents.xlsx",
+        "source_sha256": "469f0f0e91aed5cfcd9cb07fd44c50919ae6d7281b178780508343d084f241b5",
+        "vintage": "ctaxbase_2025",
+        "raw_r2_key": "raw/scotgov/scotgov-band-d-equivalents-2025/2025/469f0f0e91aed5cfcd9cb07fd44c50919ae6d7281b178780508343d084f241b5/CTAXBASE_2025_Tables_Band_D_equivalents.xlsx"
+      },
+      "value": 30551.9
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_a5c94260997f1a93a37d71c6",
+      "semantic_fact_key": "ledger_semantic_fact_v2_8a1b64cdcd6dbcad7c534e05",
+      "source_record_id": "scotgov.ctaxbase2025.band_d_equivalents.y2024.s12000019.band_d_equivalents",
+      "concept": "scotgov.council_tax.band_d_equivalents",
+      "measure_id": "band_d_equivalents",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "dwelling",
+        "role": "chargeable_dwelling"
+      },
+      "geography": {
+        "id": "S12000019",
+        "level": "local_authority",
+        "vintage": "ca_2019"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "scotgov.ctaxbase2025.band_d_equivalents.y2024",
+        "groupby_dimension": "geography",
+        "groupby_value_id": "s12000019",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {},
+      "source": {
+        "source_name": "scotgov",
+        "source_table": "CTAXBASE 2025 Tables: Band D equivalents",
+        "source_file": "CTAXBASE_2025_Tables_Band_D_equivalents.xlsx",
+        "source_sha256": "469f0f0e91aed5cfcd9cb07fd44c50919ae6d7281b178780508343d084f241b5",
+        "vintage": "ctaxbase_2025",
+        "raw_r2_key": "raw/scotgov/scotgov-band-d-equivalents-2025/2025/469f0f0e91aed5cfcd9cb07fd44c50919ae6d7281b178780508343d084f241b5/CTAXBASE_2025_Tables_Band_D_equivalents.xlsx"
+      },
+      "value": 43394.969999999994
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_366435537f833a95dfcfa2af",
+      "semantic_fact_key": "ledger_semantic_fact_v2_e3f53f1cfcfafe368c4d5853",
+      "source_record_id": "scotgov.ctaxbase2025.band_d_equivalents.y2024.s12000020.band_d_equivalents",
+      "concept": "scotgov.council_tax.band_d_equivalents",
+      "measure_id": "band_d_equivalents",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "dwelling",
+        "role": "chargeable_dwelling"
+      },
+      "geography": {
+        "id": "S12000020",
+        "level": "local_authority",
+        "vintage": "ca_2019"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "scotgov.ctaxbase2025.band_d_equivalents.y2024",
+        "groupby_dimension": "geography",
+        "groupby_value_id": "s12000020",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {},
+      "source": {
+        "source_name": "scotgov",
+        "source_table": "CTAXBASE 2025 Tables: Band D equivalents",
+        "source_file": "CTAXBASE_2025_Tables_Band_D_equivalents.xlsx",
+        "source_sha256": "469f0f0e91aed5cfcd9cb07fd44c50919ae6d7281b178780508343d084f241b5",
+        "vintage": "ctaxbase_2025",
+        "raw_r2_key": "raw/scotgov/scotgov-band-d-equivalents-2025/2025/469f0f0e91aed5cfcd9cb07fd44c50919ae6d7281b178780508343d084f241b5/CTAXBASE_2025_Tables_Band_D_equivalents.xlsx"
+      },
+      "value": 38131.88
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_f627a548e9d239da1a299792",
+      "semantic_fact_key": "ledger_semantic_fact_v2_e665fe19b4c79a660e39fe51",
+      "source_record_id": "scotgov.ctaxbase2025.band_d_equivalents.y2024.s12000021.band_d_equivalents",
+      "concept": "scotgov.council_tax.band_d_equivalents",
+      "measure_id": "band_d_equivalents",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "dwelling",
+        "role": "chargeable_dwelling"
+      },
+      "geography": {
+        "id": "S12000021",
+        "level": "local_authority",
+        "vintage": "ca_2019"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "scotgov.ctaxbase2025.band_d_equivalents.y2024",
+        "groupby_dimension": "geography",
+        "groupby_value_id": "s12000021",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {},
+      "source": {
+        "source_name": "scotgov",
+        "source_table": "CTAXBASE 2025 Tables: Band D equivalents",
+        "source_file": "CTAXBASE_2025_Tables_Band_D_equivalents.xlsx",
+        "source_sha256": "469f0f0e91aed5cfcd9cb07fd44c50919ae6d7281b178780508343d084f241b5",
+        "vintage": "ctaxbase_2025",
+        "raw_r2_key": "raw/scotgov/scotgov-band-d-equivalents-2025/2025/469f0f0e91aed5cfcd9cb07fd44c50919ae6d7281b178780508343d084f241b5/CTAXBASE_2025_Tables_Band_D_equivalents.xlsx"
+      },
+      "value": 55878.02
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_d38aab311a62258ea0426886",
+      "semantic_fact_key": "ledger_semantic_fact_v2_3971906e1554c7191ccccad5",
+      "source_record_id": "scotgov.ctaxbase2025.band_d_equivalents.y2024.s12000023.band_d_equivalents",
+      "concept": "scotgov.council_tax.band_d_equivalents",
+      "measure_id": "band_d_equivalents",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "dwelling",
+        "role": "chargeable_dwelling"
+      },
+      "geography": {
+        "id": "S12000023",
+        "level": "local_authority",
+        "vintage": "ca_2019"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "scotgov.ctaxbase2025.band_d_equivalents.y2024",
+        "groupby_dimension": "geography",
+        "groupby_value_id": "s12000023",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {},
+      "source": {
+        "source_name": "scotgov",
+        "source_table": "CTAXBASE 2025 Tables: Band D equivalents",
+        "source_file": "CTAXBASE_2025_Tables_Band_D_equivalents.xlsx",
+        "source_sha256": "469f0f0e91aed5cfcd9cb07fd44c50919ae6d7281b178780508343d084f241b5",
+        "vintage": "ctaxbase_2025",
+        "raw_r2_key": "raw/scotgov/scotgov-band-d-equivalents-2025/2025/469f0f0e91aed5cfcd9cb07fd44c50919ae6d7281b178780508343d084f241b5/CTAXBASE_2025_Tables_Band_D_equivalents.xlsx"
+      },
+      "value": 9210.17
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_4ce5c654f62620e2f870365b",
+      "semantic_fact_key": "ledger_semantic_fact_v2_9d72f4dea86d78a5d327b558",
+      "source_record_id": "scotgov.ctaxbase2025.band_d_equivalents.y2024.s12000026.band_d_equivalents",
+      "concept": "scotgov.council_tax.band_d_equivalents",
+      "measure_id": "band_d_equivalents",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "dwelling",
+        "role": "chargeable_dwelling"
+      },
+      "geography": {
+        "id": "S12000026",
+        "level": "local_authority",
+        "vintage": "ca_2019"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "scotgov.ctaxbase2025.band_d_equivalents.y2024",
+        "groupby_dimension": "geography",
+        "groupby_value_id": "s12000026",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {},
+      "source": {
+        "source_name": "scotgov",
+        "source_table": "CTAXBASE 2025 Tables: Band D equivalents",
+        "source_file": "CTAXBASE_2025_Tables_Band_D_equivalents.xlsx",
+        "source_sha256": "469f0f0e91aed5cfcd9cb07fd44c50919ae6d7281b178780508343d084f241b5",
+        "vintage": "ctaxbase_2025",
+        "raw_r2_key": "raw/scotgov/scotgov-band-d-equivalents-2025/2025/469f0f0e91aed5cfcd9cb07fd44c50919ae6d7281b178780508343d084f241b5/CTAXBASE_2025_Tables_Band_D_equivalents.xlsx"
+      },
+      "value": 53415
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_61a583c3f2dbf58d24a73543",
+      "semantic_fact_key": "ledger_semantic_fact_v2_6734d5148a685bf02c6116f8",
+      "source_record_id": "scotgov.ctaxbase2025.band_d_equivalents.y2024.s12000027.band_d_equivalents",
+      "concept": "scotgov.council_tax.band_d_equivalents",
+      "measure_id": "band_d_equivalents",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "dwelling",
+        "role": "chargeable_dwelling"
+      },
+      "geography": {
+        "id": "S12000027",
+        "level": "local_authority",
+        "vintage": "ca_2019"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "scotgov.ctaxbase2025.band_d_equivalents.y2024",
+        "groupby_dimension": "geography",
+        "groupby_value_id": "s12000027",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {},
+      "source": {
+        "source_name": "scotgov",
+        "source_table": "CTAXBASE 2025 Tables: Band D equivalents",
+        "source_file": "CTAXBASE_2025_Tables_Band_D_equivalents.xlsx",
+        "source_sha256": "469f0f0e91aed5cfcd9cb07fd44c50919ae6d7281b178780508343d084f241b5",
+        "vintage": "ctaxbase_2025",
+        "raw_r2_key": "raw/scotgov/scotgov-band-d-equivalents-2025/2025/469f0f0e91aed5cfcd9cb07fd44c50919ae6d7281b178780508343d084f241b5/CTAXBASE_2025_Tables_Band_D_equivalents.xlsx"
+      },
+      "value": 9232.920000000002
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_e623198253ba3ba88f000495",
+      "semantic_fact_key": "ledger_semantic_fact_v2_142df00e75af941e691af8bb",
+      "source_record_id": "scotgov.ctaxbase2025.band_d_equivalents.y2024.s12000028.band_d_equivalents",
+      "concept": "scotgov.council_tax.band_d_equivalents",
+      "measure_id": "band_d_equivalents",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "dwelling",
+        "role": "chargeable_dwelling"
+      },
+      "geography": {
+        "id": "S12000028",
+        "level": "local_authority",
+        "vintage": "ca_2019"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "scotgov.ctaxbase2025.band_d_equivalents.y2024",
+        "groupby_dimension": "geography",
+        "groupby_value_id": "s12000028",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {},
+      "source": {
+        "source_name": "scotgov",
+        "source_table": "CTAXBASE 2025 Tables: Band D equivalents",
+        "source_file": "CTAXBASE_2025_Tables_Band_D_equivalents.xlsx",
+        "source_sha256": "469f0f0e91aed5cfcd9cb07fd44c50919ae6d7281b178780508343d084f241b5",
+        "vintage": "ctaxbase_2025",
+        "raw_r2_key": "raw/scotgov/scotgov-band-d-equivalents-2025/2025/469f0f0e91aed5cfcd9cb07fd44c50919ae6d7281b178780508343d084f241b5/CTAXBASE_2025_Tables_Band_D_equivalents.xlsx"
+      },
+      "value": 53310.799999999996
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_527267ea3e3691539679eaa8",
+      "semantic_fact_key": "ledger_semantic_fact_v2_e7860fb81ae3b7fec8151cc9",
+      "source_record_id": "scotgov.ctaxbase2025.band_d_equivalents.y2024.s12000029.band_d_equivalents",
+      "concept": "scotgov.council_tax.band_d_equivalents",
+      "measure_id": "band_d_equivalents",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "dwelling",
+        "role": "chargeable_dwelling"
+      },
+      "geography": {
+        "id": "S12000029",
+        "level": "local_authority",
+        "vintage": "ca_2019"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "scotgov.ctaxbase2025.band_d_equivalents.y2024",
+        "groupby_dimension": "geography",
+        "groupby_value_id": "s12000029",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {},
+      "source": {
+        "source_name": "scotgov",
+        "source_table": "CTAXBASE 2025 Tables: Band D equivalents",
+        "source_file": "CTAXBASE_2025_Tables_Band_D_equivalents.xlsx",
+        "source_sha256": "469f0f0e91aed5cfcd9cb07fd44c50919ae6d7281b178780508343d084f241b5",
+        "vintage": "ctaxbase_2025",
+        "raw_r2_key": "raw/scotgov/scotgov-band-d-equivalents-2025/2025/469f0f0e91aed5cfcd9cb07fd44c50919ae6d7281b178780508343d084f241b5/CTAXBASE_2025_Tables_Band_D_equivalents.xlsx"
+      },
+      "value": 142511.7
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_46b26b2ab7a6fad578d53704",
+      "semantic_fact_key": "ledger_semantic_fact_v2_6fbeca0f03f8cb627b1ca72a",
+      "source_record_id": "scotgov.ctaxbase2025.band_d_equivalents.y2024.s12000030.band_d_equivalents",
+      "concept": "scotgov.council_tax.band_d_equivalents",
+      "measure_id": "band_d_equivalents",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "dwelling",
+        "role": "chargeable_dwelling"
+      },
+      "geography": {
+        "id": "S12000030",
+        "level": "local_authority",
+        "vintage": "ca_2019"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "scotgov.ctaxbase2025.band_d_equivalents.y2024",
+        "groupby_dimension": "geography",
+        "groupby_value_id": "s12000030",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {},
+      "source": {
+        "source_name": "scotgov",
+        "source_table": "CTAXBASE 2025 Tables: Band D equivalents",
+        "source_file": "CTAXBASE_2025_Tables_Band_D_equivalents.xlsx",
+        "source_sha256": "469f0f0e91aed5cfcd9cb07fd44c50919ae6d7281b178780508343d084f241b5",
+        "vintage": "ctaxbase_2025",
+        "raw_r2_key": "raw/scotgov/scotgov-band-d-equivalents-2025/2025/469f0f0e91aed5cfcd9cb07fd44c50919ae6d7281b178780508343d084f241b5/CTAXBASE_2025_Tables_Band_D_equivalents.xlsx"
+      },
+      "value": 44062.45
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_cf1f87fac1bd92a7b2cf2d5c",
+      "semantic_fact_key": "ledger_semantic_fact_v2_4c8207380c3cf2926d881679",
+      "source_record_id": "scotgov.ctaxbase2025.band_d_equivalents.y2024.s12000033.band_d_equivalents",
+      "concept": "scotgov.council_tax.band_d_equivalents",
+      "measure_id": "band_d_equivalents",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "dwelling",
+        "role": "chargeable_dwelling"
+      },
+      "geography": {
+        "id": "S12000033",
+        "level": "local_authority",
+        "vintage": "ca_2019"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "scotgov.ctaxbase2025.band_d_equivalents.y2024",
+        "groupby_dimension": "geography",
+        "groupby_value_id": "s12000033",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {},
+      "source": {
+        "source_name": "scotgov",
+        "source_table": "CTAXBASE 2025 Tables: Band D equivalents",
+        "source_file": "CTAXBASE_2025_Tables_Band_D_equivalents.xlsx",
+        "source_sha256": "469f0f0e91aed5cfcd9cb07fd44c50919ae6d7281b178780508343d084f241b5",
+        "vintage": "ctaxbase_2025",
+        "raw_r2_key": "raw/scotgov/scotgov-band-d-equivalents-2025/2025/469f0f0e91aed5cfcd9cb07fd44c50919ae6d7281b178780508343d084f241b5/CTAXBASE_2025_Tables_Band_D_equivalents.xlsx"
+      },
+      "value": 106078.64
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_14708a22cd4cac67fcd47f8c",
+      "semantic_fact_key": "ledger_semantic_fact_v2_dd17a78fccadbbc7c4e6d1df",
+      "source_record_id": "scotgov.ctaxbase2025.band_d_equivalents.y2024.s12000034.band_d_equivalents",
+      "concept": "scotgov.council_tax.band_d_equivalents",
+      "measure_id": "band_d_equivalents",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "dwelling",
+        "role": "chargeable_dwelling"
+      },
+      "geography": {
+        "id": "S12000034",
+        "level": "local_authority",
+        "vintage": "ca_2019"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "scotgov.ctaxbase2025.band_d_equivalents.y2024",
+        "groupby_dimension": "geography",
+        "groupby_value_id": "s12000034",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {},
+      "source": {
+        "source_name": "scotgov",
+        "source_table": "CTAXBASE 2025 Tables: Band D equivalents",
+        "source_file": "CTAXBASE_2025_Tables_Band_D_equivalents.xlsx",
+        "source_sha256": "469f0f0e91aed5cfcd9cb07fd44c50919ae6d7281b178780508343d084f241b5",
+        "vintage": "ctaxbase_2025",
+        "raw_r2_key": "raw/scotgov/scotgov-band-d-equivalents-2025/2025/469f0f0e91aed5cfcd9cb07fd44c50919ae6d7281b178780508343d084f241b5/CTAXBASE_2025_Tables_Band_D_equivalents.xlsx"
+      },
+      "value": 125700.13
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_18bba163ae9991c0839eddf3",
+      "semantic_fact_key": "ledger_semantic_fact_v2_06f53f0585675df06a39c1dd",
+      "source_record_id": "scotgov.ctaxbase2025.band_d_equivalents.y2024.s12000035.band_d_equivalents",
+      "concept": "scotgov.council_tax.band_d_equivalents",
+      "measure_id": "band_d_equivalents",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "dwelling",
+        "role": "chargeable_dwelling"
+      },
+      "geography": {
+        "id": "S12000035",
+        "level": "local_authority",
+        "vintage": "ca_2019"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "scotgov.ctaxbase2025.band_d_equivalents.y2024",
+        "groupby_dimension": "geography",
+        "groupby_value_id": "s12000035",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {},
+      "source": {
+        "source_name": "scotgov",
+        "source_table": "CTAXBASE 2025 Tables: Band D equivalents",
+        "source_file": "CTAXBASE_2025_Tables_Band_D_equivalents.xlsx",
+        "source_sha256": "469f0f0e91aed5cfcd9cb07fd44c50919ae6d7281b178780508343d084f241b5",
+        "vintage": "ctaxbase_2025",
+        "raw_r2_key": "raw/scotgov/scotgov-band-d-equivalents-2025/2025/469f0f0e91aed5cfcd9cb07fd44c50919ae6d7281b178780508343d084f241b5/CTAXBASE_2025_Tables_Band_D_equivalents.xlsx"
+      },
+      "value": 43795.560000000005
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_118ad4bf803c3cbce7d69d5f",
+      "semantic_fact_key": "ledger_semantic_fact_v2_6d046c006412f35f8e151a46",
+      "source_record_id": "scotgov.ctaxbase2025.band_d_equivalents.y2024.s12000036.band_d_equivalents",
+      "concept": "scotgov.council_tax.band_d_equivalents",
+      "measure_id": "band_d_equivalents",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "dwelling",
+        "role": "chargeable_dwelling"
+      },
+      "geography": {
+        "id": "S12000036",
+        "level": "local_authority",
+        "vintage": "ca_2019"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "scotgov.ctaxbase2025.band_d_equivalents.y2024",
+        "groupby_dimension": "geography",
+        "groupby_value_id": "s12000036",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {},
+      "source": {
+        "source_name": "scotgov",
+        "source_table": "CTAXBASE 2025 Tables: Band D equivalents",
+        "source_file": "CTAXBASE_2025_Tables_Band_D_equivalents.xlsx",
+        "source_sha256": "469f0f0e91aed5cfcd9cb07fd44c50919ae6d7281b178780508343d084f241b5",
+        "vintage": "ctaxbase_2025",
+        "raw_r2_key": "raw/scotgov/scotgov-band-d-equivalents-2025/2025/469f0f0e91aed5cfcd9cb07fd44c50919ae6d7281b178780508343d084f241b5/CTAXBASE_2025_Tables_Band_D_equivalents.xlsx"
+      },
+      "value": 253765.15
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_ccd302a4c3a136a7ff125183",
+      "semantic_fact_key": "ledger_semantic_fact_v2_65a967a9ca59a9c6f6f143cf",
+      "source_record_id": "scotgov.ctaxbase2025.band_d_equivalents.y2024.s12000038.band_d_equivalents",
+      "concept": "scotgov.council_tax.band_d_equivalents",
+      "measure_id": "band_d_equivalents",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "dwelling",
+        "role": "chargeable_dwelling"
+      },
+      "geography": {
+        "id": "S12000038",
+        "level": "local_authority",
+        "vintage": "ca_2019"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "scotgov.ctaxbase2025.band_d_equivalents.y2024",
+        "groupby_dimension": "geography",
+        "groupby_value_id": "s12000038",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {},
+      "source": {
+        "source_name": "scotgov",
+        "source_table": "CTAXBASE 2025 Tables: Band D equivalents",
+        "source_file": "CTAXBASE_2025_Tables_Band_D_equivalents.xlsx",
+        "source_sha256": "469f0f0e91aed5cfcd9cb07fd44c50919ae6d7281b178780508343d084f241b5",
+        "vintage": "ctaxbase_2025",
+        "raw_r2_key": "raw/scotgov/scotgov-band-d-equivalents-2025/2025/469f0f0e91aed5cfcd9cb07fd44c50919ae6d7281b178780508343d084f241b5/CTAXBASE_2025_Tables_Band_D_equivalents.xlsx"
+      },
+      "value": 80041.19
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_49c901319c131e80b13ec88a",
+      "semantic_fact_key": "ledger_semantic_fact_v2_b70c4e7bc54b70c8e0b815ce",
+      "source_record_id": "scotgov.ctaxbase2025.band_d_equivalents.y2024.s12000039.band_d_equivalents",
+      "concept": "scotgov.council_tax.band_d_equivalents",
+      "measure_id": "band_d_equivalents",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "dwelling",
+        "role": "chargeable_dwelling"
+      },
+      "geography": {
+        "id": "S12000039",
+        "level": "local_authority",
+        "vintage": "ca_2019"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "scotgov.ctaxbase2025.band_d_equivalents.y2024",
+        "groupby_dimension": "geography",
+        "groupby_value_id": "s12000039",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {},
+      "source": {
+        "source_name": "scotgov",
+        "source_table": "CTAXBASE 2025 Tables: Band D equivalents",
+        "source_file": "CTAXBASE_2025_Tables_Band_D_equivalents.xlsx",
+        "source_sha256": "469f0f0e91aed5cfcd9cb07fd44c50919ae6d7281b178780508343d084f241b5",
+        "vintage": "ctaxbase_2025",
+        "raw_r2_key": "raw/scotgov/scotgov-band-d-equivalents-2025/2025/469f0f0e91aed5cfcd9cb07fd44c50919ae6d7281b178780508343d084f241b5/CTAXBASE_2025_Tables_Band_D_equivalents.xlsx"
+      },
+      "value": 37187.590000000004
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_6f6e64286de065ef70d1890a",
+      "semantic_fact_key": "ledger_semantic_fact_v2_27be8efa169e63fbfe193923",
+      "source_record_id": "scotgov.ctaxbase2025.band_d_equivalents.y2024.s12000040.band_d_equivalents",
+      "concept": "scotgov.council_tax.band_d_equivalents",
+      "measure_id": "band_d_equivalents",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "dwelling",
+        "role": "chargeable_dwelling"
+      },
+      "geography": {
+        "id": "S12000040",
+        "level": "local_authority",
+        "vintage": "ca_2019"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "scotgov.ctaxbase2025.band_d_equivalents.y2024",
+        "groupby_dimension": "geography",
+        "groupby_value_id": "s12000040",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {},
+      "source": {
+        "source_name": "scotgov",
+        "source_table": "CTAXBASE 2025 Tables: Band D equivalents",
+        "source_file": "CTAXBASE_2025_Tables_Band_D_equivalents.xlsx",
+        "source_sha256": "469f0f0e91aed5cfcd9cb07fd44c50919ae6d7281b178780508343d084f241b5",
+        "vintage": "ctaxbase_2025",
+        "raw_r2_key": "raw/scotgov/scotgov-band-d-equivalents-2025/2025/469f0f0e91aed5cfcd9cb07fd44c50919ae6d7281b178780508343d084f241b5/CTAXBASE_2025_Tables_Band_D_equivalents.xlsx"
+      },
+      "value": 75334.33000000002
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_13a62705d1f02bb5ff397d0f",
+      "semantic_fact_key": "ledger_semantic_fact_v2_d748403165f126f8c424477d",
+      "source_record_id": "scotgov.ctaxbase2025.band_d_equivalents.y2024.s12000041.band_d_equivalents",
+      "concept": "scotgov.council_tax.band_d_equivalents",
+      "measure_id": "band_d_equivalents",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "dwelling",
+        "role": "chargeable_dwelling"
+      },
+      "geography": {
+        "id": "S12000041",
+        "level": "local_authority",
+        "vintage": "ca_2019"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "scotgov.ctaxbase2025.band_d_equivalents.y2024",
+        "groupby_dimension": "geography",
+        "groupby_value_id": "s12000041",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {},
+      "source": {
+        "source_name": "scotgov",
+        "source_table": "CTAXBASE 2025 Tables: Band D equivalents",
+        "source_file": "CTAXBASE_2025_Tables_Band_D_equivalents.xlsx",
+        "source_sha256": "469f0f0e91aed5cfcd9cb07fd44c50919ae6d7281b178780508343d084f241b5",
+        "vintage": "ctaxbase_2025",
+        "raw_r2_key": "raw/scotgov/scotgov-band-d-equivalents-2025/2025/469f0f0e91aed5cfcd9cb07fd44c50919ae6d7281b178780508343d084f241b5/CTAXBASE_2025_Tables_Band_D_equivalents.xlsx"
+      },
+      "value": 48989.759999999995
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_3a0a2d4924158d75085d1713",
+      "semantic_fact_key": "ledger_semantic_fact_v2_966f1fd36226e8bf4a283167",
+      "source_record_id": "scotgov.ctaxbase2025.band_d_equivalents.y2024.s12000042.band_d_equivalents",
+      "concept": "scotgov.council_tax.band_d_equivalents",
+      "measure_id": "band_d_equivalents",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "dwelling",
+        "role": "chargeable_dwelling"
+      },
+      "geography": {
+        "id": "S12000042",
+        "level": "local_authority",
+        "vintage": "ca_2019"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "scotgov.ctaxbase2025.band_d_equivalents.y2024",
+        "groupby_dimension": "geography",
+        "groupby_value_id": "s12000042",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {},
+      "source": {
+        "source_name": "scotgov",
+        "source_table": "CTAXBASE 2025 Tables: Band D equivalents",
+        "source_file": "CTAXBASE_2025_Tables_Band_D_equivalents.xlsx",
+        "source_sha256": "469f0f0e91aed5cfcd9cb07fd44c50919ae6d7281b178780508343d084f241b5",
+        "vintage": "ctaxbase_2025",
+        "raw_r2_key": "raw/scotgov/scotgov-band-d-equivalents-2025/2025/469f0f0e91aed5cfcd9cb07fd44c50919ae6d7281b178780508343d084f241b5/CTAXBASE_2025_Tables_Band_D_equivalents.xlsx"
+      },
+      "value": 54691.86
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_47a1cb6f807b155d165b2f9c",
+      "semantic_fact_key": "ledger_semantic_fact_v2_1e5799b155a99cb144b71d6f",
+      "source_record_id": "scotgov.ctaxbase2025.band_d_equivalents.y2024.s12000045.band_d_equivalents",
+      "concept": "scotgov.council_tax.band_d_equivalents",
+      "measure_id": "band_d_equivalents",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "dwelling",
+        "role": "chargeable_dwelling"
+      },
+      "geography": {
+        "id": "S12000045",
+        "level": "local_authority",
+        "vintage": "ca_2019"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "scotgov.ctaxbase2025.band_d_equivalents.y2024",
+        "groupby_dimension": "geography",
+        "groupby_value_id": "s12000045",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {},
+      "source": {
+        "source_name": "scotgov",
+        "source_table": "CTAXBASE 2025 Tables: Band D equivalents",
+        "source_file": "CTAXBASE_2025_Tables_Band_D_equivalents.xlsx",
+        "source_sha256": "469f0f0e91aed5cfcd9cb07fd44c50919ae6d7281b178780508343d084f241b5",
+        "vintage": "ctaxbase_2025",
+        "raw_r2_key": "raw/scotgov/scotgov-band-d-equivalents-2025/2025/469f0f0e91aed5cfcd9cb07fd44c50919ae6d7281b178780508343d084f241b5/CTAXBASE_2025_Tables_Band_D_equivalents.xlsx"
+      },
+      "value": 56108.37
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_fb89f06bd90f27c476ae51ac",
+      "semantic_fact_key": "ledger_semantic_fact_v2_1eee297c58745b8e00c03df2",
+      "source_record_id": "scotgov.ctaxbase2025.band_d_equivalents.y2024.s12000047.band_d_equivalents",
+      "concept": "scotgov.council_tax.band_d_equivalents",
+      "measure_id": "band_d_equivalents",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "dwelling",
+        "role": "chargeable_dwelling"
+      },
+      "geography": {
+        "id": "S12000047",
+        "level": "local_authority",
+        "vintage": "ca_2019"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "scotgov.ctaxbase2025.band_d_equivalents.y2024",
+        "groupby_dimension": "geography",
+        "groupby_value_id": "s12000047",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {},
+      "source": {
+        "source_name": "scotgov",
+        "source_table": "CTAXBASE 2025 Tables: Band D equivalents",
+        "source_file": "CTAXBASE_2025_Tables_Band_D_equivalents.xlsx",
+        "source_sha256": "469f0f0e91aed5cfcd9cb07fd44c50919ae6d7281b178780508343d084f241b5",
+        "vintage": "ctaxbase_2025",
+        "raw_r2_key": "raw/scotgov/scotgov-band-d-equivalents-2025/2025/469f0f0e91aed5cfcd9cb07fd44c50919ae6d7281b178780508343d084f241b5/CTAXBASE_2025_Tables_Band_D_equivalents.xlsx"
+      },
+      "value": 155996.57
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_6332b1cfc7dad11be165ac59",
+      "semantic_fact_key": "ledger_semantic_fact_v2_6a4a337e95beba3491ab3857",
+      "source_record_id": "scotgov.ctaxbase2025.band_d_equivalents.y2024.s12000048.band_d_equivalents",
+      "concept": "scotgov.council_tax.band_d_equivalents",
+      "measure_id": "band_d_equivalents",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "dwelling",
+        "role": "chargeable_dwelling"
+      },
+      "geography": {
+        "id": "S12000048",
+        "level": "local_authority",
+        "vintage": "ca_2019"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "scotgov.ctaxbase2025.band_d_equivalents.y2024",
+        "groupby_dimension": "geography",
+        "groupby_value_id": "s12000048",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {},
+      "source": {
+        "source_name": "scotgov",
+        "source_table": "CTAXBASE 2025 Tables: Band D equivalents",
+        "source_file": "CTAXBASE_2025_Tables_Band_D_equivalents.xlsx",
+        "source_sha256": "469f0f0e91aed5cfcd9cb07fd44c50919ae6d7281b178780508343d084f241b5",
+        "vintage": "ctaxbase_2025",
+        "raw_r2_key": "raw/scotgov/scotgov-band-d-equivalents-2025/2025/469f0f0e91aed5cfcd9cb07fd44c50919ae6d7281b178780508343d084f241b5/CTAXBASE_2025_Tables_Band_D_equivalents.xlsx"
+      },
+      "value": 74922.95000000001
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_01ea6f09f54432de95b0af98",
+      "semantic_fact_key": "ledger_semantic_fact_v2_ef5d7b911030d4a175bedc17",
+      "source_record_id": "scotgov.ctaxbase2025.band_d_equivalents.y2024.s12000049.band_d_equivalents",
+      "concept": "scotgov.council_tax.band_d_equivalents",
+      "measure_id": "band_d_equivalents",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "dwelling",
+        "role": "chargeable_dwelling"
+      },
+      "geography": {
+        "id": "S12000049",
+        "level": "local_authority",
+        "vintage": "ca_2019"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "scotgov.ctaxbase2025.band_d_equivalents.y2024",
+        "groupby_dimension": "geography",
+        "groupby_value_id": "s12000049",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {},
+      "source": {
+        "source_name": "scotgov",
+        "source_table": "CTAXBASE 2025 Tables: Band D equivalents",
+        "source_file": "CTAXBASE_2025_Tables_Band_D_equivalents.xlsx",
+        "source_sha256": "469f0f0e91aed5cfcd9cb07fd44c50919ae6d7281b178780508343d084f241b5",
+        "vintage": "ctaxbase_2025",
+        "raw_r2_key": "raw/scotgov/scotgov-band-d-equivalents-2025/2025/469f0f0e91aed5cfcd9cb07fd44c50919ae6d7281b178780508343d084f241b5/CTAXBASE_2025_Tables_Band_D_equivalents.xlsx"
+      },
+      "value": 243356.28
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_0bbb343be3fb39a77aacef10",
+      "semantic_fact_key": "ledger_semantic_fact_v2_3e0051e67a823d067c8a73ef",
+      "source_record_id": "scotgov.ctaxbase2025.band_d_equivalents.y2024.s12000050.band_d_equivalents",
+      "concept": "scotgov.council_tax.band_d_equivalents",
+      "measure_id": "band_d_equivalents",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "dwelling",
+        "role": "chargeable_dwelling"
+      },
+      "geography": {
+        "id": "S12000050",
+        "level": "local_authority",
+        "vintage": "ca_2019"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "scotgov.ctaxbase2025.band_d_equivalents.y2024",
+        "groupby_dimension": "geography",
+        "groupby_value_id": "s12000050",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {},
+      "source": {
+        "source_name": "scotgov",
+        "source_table": "CTAXBASE 2025 Tables: Band D equivalents",
+        "source_file": "CTAXBASE_2025_Tables_Band_D_equivalents.xlsx",
+        "source_sha256": "469f0f0e91aed5cfcd9cb07fd44c50919ae6d7281b178780508343d084f241b5",
+        "vintage": "ctaxbase_2025",
+        "raw_r2_key": "raw/scotgov/scotgov-band-d-equivalents-2025/2025/469f0f0e91aed5cfcd9cb07fd44c50919ae6d7281b178780508343d084f241b5/CTAXBASE_2025_Tables_Band_D_equivalents.xlsx"
+      },
+      "value": 130494.25000000001
+    }
+  ]
+}

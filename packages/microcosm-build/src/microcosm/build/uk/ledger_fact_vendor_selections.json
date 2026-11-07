@@ -1953,6 +1953,42 @@
           "expected_row_count": 256
         }
       ]
+    },
+    {
+      "resource": "scotgov_band_d_liability_facts.json",
+      "purpose": "The Scottish Government's Band D equivalent dwellings before council tax reduction at September 2024 (CTAXBASE 2025) and average Band D council tax for 2024-25 (CTAS 2026), for each of the 32 council areas. Consumed by the FRS council tax stage, which levels the Scottish bills to the sum over the councils of their products (S2(a) of the November event-data plan, microcosm#1095).",
+      "consumers": [
+        "uk_runtime.frs_council_tax"
+      ],
+      "planned_consumers": [],
+      "selections": [
+        {
+          "label": "ctaxbase_2025_band_d_equivalents_september_2024",
+          "selector": {
+            "source_name": "scotgov",
+            "record_set_id": [
+              "scotgov.ctaxbase2025.band_d_equivalents.y2024"
+            ],
+            "geography_level": [
+              "local_authority"
+            ]
+          },
+          "expected_row_count": 32
+        },
+        {
+          "label": "ctas_2026_average_band_d_2024_25",
+          "selector": {
+            "source_name": "scotgov",
+            "record_set_id": [
+              "scotgov.ctas2026.band_d.fy2024"
+            ],
+            "geography_level": [
+              "local_authority"
+            ]
+          },
+          "expected_row_count": 32
+        }
+      ]
     }
   ]
 }

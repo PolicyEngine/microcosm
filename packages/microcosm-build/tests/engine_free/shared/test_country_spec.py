@@ -1077,6 +1077,8 @@ class TestUKCountryPackage:
             "hmrc_benefits_in_kind_facts.json",
             # microcosm#1095: dense builds only, uk_runtime.property_localisation.
             "scotgov_chargeable_dwellings_by_band.json",
+            # microcosm#1095 S2(a): frs_council_tax's Scottish level.
+            "scotgov_band_d_liability_facts.json",
             "dwp_move_to_uc_facts.json",
             "dwp_uc_award_band_facts.json",
             "obr_hvcts_costing_facts.json",
@@ -1247,6 +1249,8 @@ class TestExistingPackagesGeneralize:
             "hmrc_benefits_in_kind_facts.json",
             # microcosm#1095: dense builds only, uk_runtime.property_localisation.
             "scotgov_chargeable_dwellings_by_band.json",
+            # microcosm#1095 S2(a): frs_council_tax's Scottish level.
+            "scotgov_band_d_liability_facts.json",
             "dwp_move_to_uc_facts.json",
             "dwp_uc_award_band_facts.json",
             "obr_hvcts_costing_facts.json",
