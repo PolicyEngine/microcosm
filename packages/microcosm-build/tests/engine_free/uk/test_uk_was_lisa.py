@@ -786,12 +786,13 @@ def _declared_names(value: object):
             yield from _declared_names(item)
 
 
-def test_household_income_is_the_was_wealth_survey_concept() -> None:
+def test_household_income_is_the_was_wealth_predictor() -> None:
     """The stage reads household net income as ``was_wealth`` does.
 
     The donor's is the WAS household tab's ``DVTotinc_bhcR8`` and the
-    recipient's the engine's HBAI net income before the reset to zero, both
-    under the name ``household_income`` gives that income; the engine's
+    recipient's the engine's closest concept, its HBAI net income before the
+    reset to zero, both under the name ``household_income`` gives that income
+    (the LCFS and ETB services stages give it the same name); the engine's
     ``household_net_income`` is never read (microcosm#931). The declared
     engine reads are what the stage materializes, and the realised profile's
     income tertiles carry the same name.

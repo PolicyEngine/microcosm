@@ -71,8 +71,8 @@ UK_WAS_TENURE_PREDICTORS = tuple(
     f"tenure_{category}" for category in UK_TENURE_CATEGORIES[1:]
 )
 UK_WAS_WEALTH_PREDICTORS = (
-    # The household's net income on the survey's concept on both sides
-    # (``UK_WAS_ENGINE_PREDICTOR_NAMES``; microcosm#1164).
+    # The household's net income: the donor's WAS income against the engine's
+    # closest concept (``UK_WAS_ENGINE_PREDICTOR_NAMES``; microcosm#1164).
     UK_HBAI_NET_INCOME_PREDICTOR,
     "num_adults",
     "num_children",
@@ -101,13 +101,20 @@ UK_WAS_ENGINE_PREDICTORS = (
 )
 #: Engine variables read under another predictor name. The donor's income is
 #: WAS ``DVTotinc_bhcR8``, net regular household income before housing costs
-#: less council tax, so the recipient's is the engine's HBAI net income before
-#: the reset to zero, under the name the LCFS, ETB services and NTS stages give
-#: it (``household_income``; microcosm#1164). The engine's
+#: less council tax, so the recipient's is the engine's closest concept, its
+#: HBAI net income before the reset to zero, under the name the LCFS and ETB
+#: services stages give it; NTS reads the same engine variable to build gross
+#: income (``household_income``; microcosm#1164). The engine's
 #: ``household_net_income`` it replaces also takes off stamp duty, the TV
 #: licence and the business rates and corporate stamp duty that
 #: ``shareholding`` spreads over the households the engine simulates, and adds
-#: benefits in kind, none of which the donor's income counts (microcosm#931).
+#: the imputed value of NHS, education and transport spending, none of which
+#: the donor's income counts (microcosm#931). The two are still not the same:
+#: the HBAI income also counts HBAI's in-kind items (free school meals, the
+#: free TV licence's value and the like) and the Warm Home Discount, which
+#: WAS's regular income is not documented to include, and how WAS treats
+#: pension contributions, maintenance paid, student loan repayments and
+#: negative incomes is not verified.
 UK_WAS_ENGINE_PREDICTOR_NAMES: Mapping[str, str] = MappingProxyType(
     {UK_HBAI_NET_INCOME_VARIABLE: UK_HBAI_NET_INCOME_PREDICTOR}
 )
@@ -371,9 +378,9 @@ _RAW_TO_CLEAN = {
     "DVHseDebtR8_sum": "other_houses_secured_debt",
     "DVBLtDebtR8_sum": "buy_to_let_secured_debt",
     "DVBldDebtR8_sum": "non_residential_property_secured_debt",
-    # Net regular household income before housing costs less council tax:
-    # HBAI's concept, under the recipient's predictor name
-    # (``UK_WAS_ENGINE_PREDICTOR_NAMES``).
+    # Net regular household income before housing costs less council tax,
+    # under the name of the recipient's closest engine concept, its HBAI net
+    # income (``UK_WAS_ENGINE_PREDICTOR_NAMES``).
     "DVTotinc_bhcR8": UK_HBAI_NET_INCOME_PREDICTOR,
     "DVSaValR8_aggr": "savings",
     "vcarnr8": "num_vehicles",
