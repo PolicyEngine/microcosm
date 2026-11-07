@@ -57,6 +57,8 @@ from __future__ import annotations
 import copy
 import hashlib
 import json
+import math
+import numbers
 import os
 from collections.abc import Callable, Mapping, Sequence
 from concurrent.futures import ThreadPoolExecutor
@@ -71,10 +73,12 @@ from microcosm.fit.model import (
     DESIGN_WEIGHTS,
     WeightSpec,
     dataframe_fit_columns,
+    duplicated_column_labels,
     predictors_targets_entity,
     resolve_dataframe_fit_weights,
     resolve_fit_weights,
     resolved_weight_kind,
+    validated_integer,
 )
 from microcosm.frame import Frame
 
@@ -192,6 +196,37 @@ class Regime:
     DEGENERATE_ZERO = "degenerate_zero"
 
 
+def _validated_zero_atol(value: object) -> float:
+    """Return a zero tolerance as a float, refusing anything but finite ``>= 0``.
+
+    Every sign comparison reads the tolerance (``|y| <= zero_atol`` is zero,
+    ``y > zero_atol`` positive, ``y < -zero_atol`` negative), so a bad one
+    silently changes the regime: NaN makes all three comparisons false, which
+    detects positive data as degenerate zero and draws zeros; infinity calls
+    every finite value zero; a negative tolerance calls no value zero and puts
+    every value within its magnitude of zero in both sign classes, so all-zero
+    data detects as sign-only and the sign labels call 0 and 0.5 negative at a
+    tolerance of -1.
+
+    Raises:
+        TypeError: If ``value`` is not a real number, or is a boolean.
+        ValueError: If ``value`` is NaN, infinite or negative.
+    """
+    if isinstance(value, (bool, np.bool_)) or not isinstance(value, numbers.Real):
+        raise TypeError(
+            f"zero_atol must be a real number, got {value!r} ({type(value).__name__})."
+        )
+    tolerance = float(value)
+    if not math.isfinite(tolerance) or tolerance < 0.0:
+        raise ValueError(
+            f"zero_atol must be finite and >= 0, got {tolerance!r}: every sign "
+            "comparison reads it, so a NaN, infinite or negative tolerance "
+            "silently changes which values count as zero (NaN or infinity "
+            "would fit positive data as degenerate zero and draw zeros)."
+        )
+    return tolerance
+
+
 def detect_regime(y: np.ndarray, *, zero_atol: float) -> str:
     """Classify a target's training support into a :class:`Regime`.
 
@@ -201,11 +236,15 @@ def detect_regime(y: np.ndarray, *, zero_atol: float) -> str:
 
     Args:
         y: Training target values.
-        zero_atol: Magnitudes at or below this are zeros.
+        zero_atol: Magnitudes at or below this are zeros; finite and ``>= 0``.
 
     Returns:
         One of the :class:`Regime` label constants.
+
+    Raises:
+        TypeError, ValueError: If ``zero_atol`` is not a finite real ``>= 0``.
     """
+    zero_atol = _validated_zero_atol(zero_atol)
     if y.size == 0:
         return Regime.DEGENERATE_ZERO
     has_zero = bool((np.abs(y) <= zero_atol).any())
@@ -285,10 +324,20 @@ def _weighted_bootstrap(
 
     Returns:
         ``(x_resampled, y_resampled)`` with the same row count as the input.
+
+    Raises:
+        ValueError: If the weights carry no positive mass, so there is no
+            distribution to resample from (``_fit_target`` refuses that case
+            first, naming the target and its sign).
     """
     if weights is None:
         return x, y
     total = float(weights.sum())
+    if not total > 0.0:
+        raise ValueError(
+            "A weighted forest needs rows with positive weight to resample; "
+            f"these {len(x)} rows carry a total weight of {total!r}."
+        )
     probabilities = weights / total
     selected = rng.choice(len(x), size=len(x), replace=True, p=probabilities)
     return x[selected], y[selected]
@@ -1147,6 +1196,12 @@ def _resolve_groups(table: pd.DataFrame, groups: object) -> np.ndarray | None:
     if isinstance(groups, str):
         if groups not in table.columns:
             raise ValueError(f"groups column {groups!r} is not in the fit input.")
+        if duplicated_column_labels(table, [groups]):
+            raise ValueError(
+                f"groups column label {groups!r} names more than one column, so "
+                "the fit cannot tell which column holds the groups. Rename or "
+                "drop the duplicate before fitting."
+            )
         values = table[groups]
     else:
         values = pd.Series(np.asarray(groups))
@@ -1286,6 +1341,12 @@ class QRFChainState:
                 "QRF chain max_samples_leaf kind/value mismatch: "
                 f"{self.max_samples_leaf_kind!r} vs {self.max_samples_leaf!r}."
             )
+        # JSON reads NaN and Infinity back as floats, so a checkpoint can carry
+        # a tolerance the constructor would refuse.
+        try:
+            _validated_zero_atol(self.zero_atol)
+        except (TypeError, ValueError) as error:
+            raise ValueError(f"QRF chain zero_atol is invalid: {error}") from None
         if self.gate_calibration not in _GATE_CALIBRATIONS:
             raise ValueError(
                 f"QRF chain gate_calibration {self.gate_calibration!r} is not one "
@@ -1515,24 +1576,43 @@ class _ResolvedFitInput:
     weight_kind: str
 
 
+def _require_fit_rows(table: pd.DataFrame, entity: str | None) -> None:
+    """Refuse a fit table with no rows, as the graph's QRF kernel does."""
+    if len(table) == 0:
+        where = "the DataFrame" if entity is None else f"entity {entity!r}"
+        raise ValueError(
+            f"A QRF fit needs at least one donor row; {where} has none. With no "
+            "donors every target would fit as degenerate zero and impute 0 for "
+            "every recipient."
+        )
+
+
 def _resolve_qrf_fit_input(
     frame_or_df: Frame | pd.DataFrame,
     predictors: list[str],
     targets: list[str],
     weights: WeightSpec,
 ) -> _ResolvedFitInput:
-    """Resolve the two QRF front doors identically for all fit modes."""
+    """Resolve the two QRF front doors identically for all fit modes.
+
+    Raises:
+        ValueError: Beyond the column and weight checks, if the fit table has
+            no rows: an empty donor table would otherwise fit every target as
+            degenerate zero and impute 0 for every recipient.
+    """
     if isinstance(frame_or_df, Frame):
         entity = predictors_targets_entity(frame_or_df, predictors, targets)
-        weight_values = resolve_fit_weights(frame_or_df, entity, weights)
         table = frame_or_df.table(entity)
+        _require_fit_rows(table, entity)
+        weight_values = resolve_fit_weights(frame_or_df, entity, weights)
     else:
         entity = None
         dataframe_fit_columns(frame_or_df, predictors, targets)
+        table = frame_or_df
+        _require_fit_rows(table, entity)
         weight_values = resolve_dataframe_fit_weights(
             frame_or_df, weights, predictors=predictors, targets=targets
         )
-        table = frame_or_df
     weight_kind = resolved_weight_kind(frame_or_df, entity, weight_values)
     _validate_targets_finite(table, targets)
     return _ResolvedFitInput(entity, table, weight_values, weight_kind)
@@ -1574,6 +1654,20 @@ def _validate_uniform_mapping(
     return arrays
 
 
+def _gate_proba(
+    gate: HistGradientBoostingClassifier | _CrossFittedGate, x: np.ndarray
+) -> np.ndarray:
+    """The gate's class probabilities, one row per feature row.
+
+    sklearn refuses a predict on zero rows, so an empty batch gets an empty
+    ``(0, n_classes)`` matrix here and flows through every draw path like any
+    other batch: it consumes no uniforms and still honours released forests.
+    """
+    if len(x) == 0:
+        return np.zeros((0, len(gate.classes_)), dtype=np.float64)
+    return np.asarray(gate.predict_proba(x))
+
+
 def _gate_draw_with_rng(
     gate: HistGradientBoostingClassifier | _CrossFittedGate,
     features: pd.DataFrame,
@@ -1582,7 +1676,7 @@ def _gate_draw_with_rng(
 ) -> np.ndarray:
     """Draw sign classes from a fitted gate using the supplied RNG stream."""
     x = features.loc[:, list(columns)].to_numpy(dtype=np.float64)
-    proba = np.asarray(gate.predict_proba(x))
+    proba = _gate_proba(gate, x)
     cumulative = np.cumsum(proba, axis=1)
     u = rng.random(len(x))
     chosen = (cumulative >= u[:, None]).argmax(axis=1)
@@ -1681,7 +1775,7 @@ def _draw_target_from_uniforms(
     if model.regime == Regime.NEGATIVE_ONLY:
         return model.negative.draw(features, quantiles)
     x = features.loc[:, list(model.columns)].to_numpy(dtype=np.float64)
-    cumulative = np.cumsum(model.gate.predict_proba(x), axis=1)
+    cumulative = np.cumsum(_gate_proba(model.gate, x), axis=1)
     # Uniforms occupy [0, 1): strict comparison skips zero-probability classes
     # even at u=0. Close the final CDF bin against floating-point roundoff.
     cumulative[:, -1] = 1.0
@@ -1729,7 +1823,12 @@ class RegimeGatedQRF:
             the gates' probabilities move.
 
     Raises:
-        ValueError: If ``gate_calibration`` names no :class:`GateCalibration`.
+        ValueError: If ``gate_calibration`` names no :class:`GateCalibration`,
+            ``n_estimators`` falls short of 1, ``seed`` is negative, or
+            ``zero_atol`` is not finite or is negative.
+        TypeError: If ``n_estimators`` or ``seed`` is not an integer (a bool
+            or a float such as ``1.9`` would otherwise alias to another seed),
+            or ``zero_atol`` is not a real number.
     """
 
     def __init__(
@@ -1746,10 +1845,12 @@ class RegimeGatedQRF:
                 f"gate_calibration {gate_calibration!r} is not one of "
                 f"{sorted(_GATE_CALIBRATIONS)}."
             )
-        self.n_estimators = int(n_estimators)
-        self.zero_atol = float(zero_atol)
+        self.n_estimators = validated_integer(
+            n_estimators, name="n_estimators", minimum=1
+        )
+        self.zero_atol = _validated_zero_atol(zero_atol)
         self.max_samples_leaf = max_samples_leaf
-        self.seed = int(seed)
+        self.seed = validated_integer(seed, name="seed", minimum=0)
         self.gate_calibration = gate_calibration
 
     def fit(
@@ -1805,6 +1906,7 @@ class RegimeGatedQRF:
             y = resolved.table[target].to_numpy(dtype=np.float64)
             features = resolved.table.loc[:, list(chained)].to_numpy(dtype=np.float64)
             target_models[target] = self._fit_target(
+                target=target,
                 features=features,
                 y=y,
                 columns=chained,
@@ -1938,6 +2040,7 @@ class RegimeGatedQRF:
         fit_rng = _rng_from_state_json(state.fit_rng_state_json, stream="fit")
         draw_rng = _rng_from_state_json(state.draw_rng_state_json, stream="draw")
         target_model = self._fit_target(
+            target=target,
             features=resolved.table.loc[:, list(chained)].to_numpy(dtype=np.float64),
             y=resolved.table[target].to_numpy(dtype=np.float64),
             columns=chained,
@@ -2107,6 +2210,7 @@ class RegimeGatedQRF:
     def _fit_target(
         self,
         *,
+        target: str,
         features: np.ndarray,
         y: np.ndarray,
         columns: tuple[str, ...],
@@ -2114,8 +2218,34 @@ class RegimeGatedQRF:
         rng: np.random.Generator,
         groups: np.ndarray | None = None,
     ) -> _TargetModel:
-        """Fit the gate and per-sign forests for one numeric target."""
+        """Fit the gate and per-sign forests for one numeric target.
+
+        Regimes are structural (unweighted): the fit models every sign the
+        donors show, even one the weights give no mass. A weighted forest
+        cannot resample a sign whose every row carries zero weight, and the
+        weighted gate still keeps that sign among its classes at a vanishing
+        probability, so the fit refuses such a target by name before it fits
+        anything.
+
+        Raises:
+            ValueError: If an observed positive or negative sign carries zero
+                total weight.
+        """
         regime = detect_regime(y, zero_atol=self.zero_atol)
+        if weights is not None:
+            for sign, mask in (
+                ("positive", y > self.zero_atol),
+                ("negative", y < -self.zero_atol),
+            ):
+                rows = int(mask.sum())
+                if rows and not float(weights[mask].sum()) > 0.0:
+                    raise ValueError(
+                        f"Target {target!r} has {rows} {sign} donor row(s) and "
+                        "every one carries zero weight, so a weighted fit has no "
+                        f"{sign} amounts to resample, yet the sign gate would "
+                        f"still draw the {sign} sign. Give those rows positive "
+                        "weight, drop them, or fit with weights='none'."
+                    )
 
         def forest(mask: np.ndarray) -> _Forest:
             sub_weights = None if weights is None else weights[mask]
@@ -2533,7 +2663,7 @@ class FittedRegimeGatedQRF:
                         f"absent from the fitted gate's classes {classes.tolist()}."
                     )
                 x = augmented.loc[:, list(model.columns)].to_numpy(dtype=np.float64)
-                proba = np.asarray(model.gate.predict_proba(x))
+                proba = _gate_proba(model.gate, x)
                 rows = np.arange(n)
                 mass = proba[rows, index]
                 before = np.cumsum(proba, axis=1)[rows, index] - mass

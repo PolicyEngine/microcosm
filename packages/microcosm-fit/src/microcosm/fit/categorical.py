@@ -47,6 +47,7 @@ from microcosm.fit.model import (
     resolve_dataframe_fit_weights,
     resolve_fit_weights,
     resolved_weight_kind,
+    validated_integer,
 )
 from microcosm.frame import Frame
 
@@ -145,7 +146,9 @@ class CategoricalClassifier:
             ``arcsinh(x / scale)`` for these before the spline basis, which
             tames long-tailed amounts such as incomes. The boosted classifier,
             which splits on ranks, always sees the raw values.
-        seed: Seeds the boosted classifier and the :meth:`predict` draws.
+        seed: Seeds the boosted classifier and the :meth:`predict` draws: an
+            integer ``>= 0``. The constructor refuses a bool or a float such as
+            ``1.9``, since converting it would alias another seed.
         unseen_categories: ``"refuse"`` (the default) raises when a row to
             predict holds a category the fit never saw; ``"ignore"`` sets none
             of that predictor's indicators for it.
@@ -163,6 +166,9 @@ class CategoricalClassifier:
         weight = float(self.boosted_weight)
         if not 0.0 <= weight <= 1.0:
             raise ValueError("boosted_weight must be in [0, 1].")
+        object.__setattr__(
+            self, "seed", validated_integer(self.seed, name="seed", minimum=0)
+        )
         if self.unseen_categories not in _UNSEEN_CATEGORY_RULES:
             raise ValueError(
                 f"unseen_categories must be one of {list(_UNSEEN_CATEGORY_RULES)}."

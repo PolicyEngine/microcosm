@@ -18,7 +18,13 @@ import numpy as np
 import pandas as pd
 from sklearn.neighbors import NearestNeighbors
 
+from microcosm.fit.model import duplicated_column_labels
+
 __all__ = ["donor_distance_features", "keyed_nearest_donors"]
+
+#: What :func:`donor_distance_features` does with a recipient category no
+#: donor holds; the rules :class:`~microcosm.fit.CategoricalClassifier` names.
+_UNSEEN_CATEGORY_RULES = ("refuse", "ignore")
 
 
 def _reference_ranks(values: np.ndarray, reference: np.ndarray) -> np.ndarray:
@@ -28,6 +34,33 @@ def _reference_ranks(values: np.ndarray, reference: np.ndarray) -> np.ndarray:
     return np.searchsorted(ordered, values, side="right") / len(ordered)
 
 
+def _finite_values(frame: pd.DataFrame, column: str, side: str) -> np.ndarray:
+    """A rank column as floats, refusing a missing or non-finite value by name."""
+    values = frame[column].to_numpy(np.float64, na_value=np.nan)
+    bad = int((~np.isfinite(values)).sum())
+    if bad:
+        raise ValueError(
+            f"Distance column {column!r} has {bad} missing or non-finite "
+            f"value(s) among the {side}. A rank cannot place them (a missing "
+            "recipient value would rank above every donor); fill or drop them "
+            "before building distances."
+        )
+    return values
+
+
+def _category_values(frame: pd.DataFrame, column: str, side: str) -> np.ndarray:
+    """A categorical column's values, refusing a missing one by name."""
+    values = frame[column].to_numpy()
+    absent = int(pd.isna(values).sum())
+    if absent:
+        raise ValueError(
+            f"Categorical distance column {column!r} has {absent} missing "
+            f"value(s) among the {side}, and a missing value matches no level. "
+            "Give missing values a level of their own, or drop those rows."
+        )
+    return values
+
+
 def donor_distance_features(
     recipients: pd.DataFrame,
     donors: pd.DataFrame,
@@ -35,6 +68,7 @@ def donor_distance_features(
     rank_columns: Sequence[str] = (),
     presence_rank_columns: Sequence[str] = (),
     scaled_categoricals: Mapping[str, float] | None = None,
+    unseen_categories: str = "refuse",
 ) -> tuple[np.ndarray, np.ndarray]:
     """Recipient and donor coordinates for :func:`keyed_nearest_donors`.
 
@@ -45,9 +79,31 @@ def donor_distance_features(
     - ``scaled_categoricals``: column -> scale; a one-hot on the donors'
       levels times the scale, so a level mismatch costs that much distance.
 
+    Every rank and presence-rank value must be finite, and no categorical
+    value may be missing, among recipients and donors alike: a rank has no
+    place for a missing value. ``unseen_categories`` says what happens to a
+    recipient whose category no donor holds. ``"refuse"`` (the default, as in
+    :class:`~microcosm.fit.CategoricalClassifier`) raises, naming the column
+    and the categories. ``"ignore"`` sets none of that column's indicators,
+    which puts the recipient ``scale`` from every donor on that column: nearer
+    than a recipient of another seen level, at ``scale * sqrt(2)``.
+
     Returns:
         ``(recipient_features, donor_features)``.
+
+    Raises:
+        ValueError: If ``unseen_categories`` is neither ``"refuse"`` nor
+            ``"ignore"``, a column is missing from either table or names more
+            than one of its columns, a rank or presence-rank value is missing
+            or non-finite, a categorical value is missing, a recipient holds a
+            category no donor holds under ``"refuse"``, or the call names no
+            column.
     """
+    if unseen_categories not in _UNSEEN_CATEGORY_RULES:
+        raise ValueError(
+            f"unseen_categories must be one of {list(_UNSEEN_CATEGORY_RULES)}, "
+            f"got {unseen_categories!r}."
+        )
     scaled = dict(scaled_categoricals or {})
     columns = [*rank_columns, *presence_rank_columns, *scaled]
     missing = [c for c in columns if c not in recipients or c not in donors]
@@ -55,19 +111,54 @@ def donor_distance_features(
         raise ValueError(
             f"Distance columns missing from recipients or donors: {missing}."
         )
+    tables = {"recipients": recipients, "donors": donors}
+    for side, frame in tables.items():
+        repeated = duplicated_column_labels(frame, columns)
+        if repeated:
+            raise ValueError(
+                f"Distance column label(s) {repeated} each name more than one "
+                f"column among the {side}; drop or rename the duplicates."
+            )
+    numeric = list(dict.fromkeys([*rank_columns, *presence_rank_columns]))
+    numbers = {
+        side: {column: _finite_values(frame, column, side) for column in numeric}
+        for side, frame in tables.items()
+    }
+    categories = {
+        side: {column: _category_values(frame, column, side) for column in scaled}
+        for side, frame in tables.items()
+    }
+    levels = {column: np.unique(categories["donors"][column]) for column in scaled}
+    indicators = {
+        side: {
+            column: values[:, None] == levels[column][None, :]
+            for column, values in categories[side].items()
+        }
+        for side in tables
+    }
+    if unseen_categories == "refuse":
+        for column, held in indicators["recipients"].items():
+            seen = held.any(axis=1)
+            if not seen.all():
+                unseen = sorted(
+                    {str(v) for v in categories["recipients"][column][~seen]}
+                )
+                raise ValueError(
+                    f"Categorical distance column {column!r}: {int((~seen).sum())} "
+                    f"recipient row(s) hold categories no donor holds: "
+                    f"{unseen[:5]}. Pass unseen_categories='ignore' to place them "
+                    "the same distance from every donor."
+                )
 
-    def coordinates(frame: pd.DataFrame) -> np.ndarray:
+    def coordinates(side: str) -> np.ndarray:
         parts = []
         for column in rank_columns:
             parts.append(
-                _reference_ranks(
-                    frame[column].to_numpy(np.float64),
-                    donors[column].to_numpy(np.float64),
-                )
+                _reference_ranks(numbers[side][column], numbers["donors"][column])
             )
         for column in presence_rank_columns:
-            values = frame[column].to_numpy(np.float64)
-            reference = donors[column].to_numpy(np.float64)
+            values = numbers[side][column]
+            reference = numbers["donors"][column]
             positive = values > 0
             parts.append(positive.astype(np.float64))
             parts.append(
@@ -76,14 +167,12 @@ def donor_distance_features(
                 )
             )
         for column, scale in scaled.items():
-            levels = np.unique(donors[column].to_numpy())
-            one_hot = frame[column].to_numpy()[:, None] == levels[None, :]
-            parts.extend(scale * one_hot.astype(np.float64).T)
+            parts.extend(scale * indicators[side][column].astype(np.float64).T)
         if not parts:
             raise ValueError("donor_distance_features needs at least one column.")
         return np.column_stack(parts)
 
-    return coordinates(recipients), coordinates(donors)
+    return coordinates("recipients"), coordinates("donors")
 
 
 def keyed_nearest_donors(

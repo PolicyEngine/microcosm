@@ -36,6 +36,9 @@ __all__ = [
 #: cannot make the loss infinite.
 LOG_LOSS_FLOOR = 1e-4
 
+#: How far from 1 a row of probabilities may sum for the scorer to accept it.
+PROBABILITY_SUM_TOLERANCE = 1e-6
+
 
 def _group_codes(
     groups: Sequence[object] | np.ndarray | None, n: int
@@ -135,6 +138,63 @@ def _share_gap(proba: np.ndarray, observed: np.ndarray, w: np.ndarray) -> float:
     return float(0.5 * np.abs((w @ proba - w @ observed) / total).sum())
 
 
+def _scored_inputs(
+    proba: np.ndarray,
+    labels: Sequence[object] | np.ndarray,
+    classes: np.ndarray,
+    weights: np.ndarray,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Validated ``(proba, class_positions, weights)`` for :func:`categorical_scores`.
+
+    Each label maps to its column by the supplied class order, so the classes
+    may come in any order. A sorted search would misplace labels among
+    unsorted classes.
+    """
+    proba = np.asarray(proba, dtype=np.float64)
+    labels = np.asarray(labels)
+    classes = np.asarray(classes)
+    w = np.asarray(weights, dtype=np.float64)
+    if classes.ndim != 1 or not len(classes):
+        raise ValueError("classes must list at least one category.")
+    order = pd.Index(classes)
+    if not order.is_unique:
+        repeated = sorted({str(c) for c in order[order.duplicated()]})
+        raise ValueError(f"classes must be distinct; {repeated} repeat.")
+    if labels.ndim != 1:
+        raise ValueError("labels must hold one category per row.")
+    n = len(labels)
+    if proba.shape != (n, len(classes)):
+        raise ValueError(
+            f"proba has shape {proba.shape}; it needs one row per label and one "
+            f"column per class, {(n, len(classes))}."
+        )
+    if not np.isfinite(proba).all() or ((proba < 0.0) | (proba > 1.0)).any():
+        raise ValueError(
+            "proba must hold probabilities in [0, 1]: a value outside it makes "
+            "the scores meaningless (a probability of 2 scores a negative log "
+            "loss)."
+        )
+    off = np.abs(proba.sum(axis=1) - 1.0) > PROBABILITY_SUM_TOLERANCE
+    if off.any():
+        raise ValueError(
+            f"{int(off.sum())} row(s) of proba do not sum to 1 (within "
+            f"{PROBABILITY_SUM_TOLERANCE:g}); each row must be a distribution "
+            "over the classes. A row of zeros usually means a learner was not "
+            "fitted for that row's fold."
+        )
+    if w.shape != (n,):
+        raise ValueError(f"weights need one value per label ({n}), got {w.shape}.")
+    if not np.isfinite(w).all() or (w < 0.0).any() or not float(w.sum()) > 0.0:
+        raise ValueError(
+            "weights must be finite and non-negative, with a positive total."
+        )
+    positions = order.get_indexer(labels)
+    if (positions < 0).any():
+        unknown = sorted({str(label) for label in labels[positions < 0]})
+        raise ValueError(f"Every label must be one of classes; {unknown[:5]} are not.")
+    return proba, positions, w
+
+
 def categorical_scores(
     proba: np.ndarray,
     labels: Sequence[object] | np.ndarray,
@@ -146,10 +206,12 @@ def categorical_scores(
     """Log loss, calibration slope and class-share gaps of probabilities.
 
     Args:
-        proba: Class probabilities (out of fold), one column per ``classes``.
+        proba: Class probabilities (out of fold), one column per ``classes``:
+            each in ``[0, 1]``, each row summing to 1 (within
+            :data:`PROBABILITY_SUM_TOLERANCE`).
         labels: Each row's observed category.
-        classes: The categories in column order.
-        weights: Per-row weights.
+        classes: The distinct categories in column order, sorted or not.
+        weights: Per-row weights: finite, non-negative, positive in total.
         strata: Name -> one stratum label per row. Share gaps (total
             variation between the weighted predicted and observed class
             shares) are reported within each level.
@@ -161,16 +223,22 @@ def categorical_scores(
         ``calibration_outcome``, and ``strata``: name -> level ->
         ``{"rows", "weight", "share_gap"}``. Counts are raw: a caller that
         publishes them bands them first.
+
+    Raises:
+        ValueError: If ``proba`` is not one probability distribution per row
+            over ``classes``, ``classes`` repeat, a label is not one of
+            ``classes``, the weights are not finite and non-negative with a
+            positive total, or a stratum does not label every row.
     """
-    proba = np.asarray(proba, dtype=np.float64)
-    labels = np.asarray(labels)
-    w = np.asarray(weights, dtype=np.float64)
-    index = np.searchsorted(classes, labels)
-    if (index >= len(classes)).any() or (
-        classes[np.minimum(index, len(classes) - 1)] != labels
-    ).any():
-        raise ValueError("Every label must be one of classes.")
-    rows = np.arange(len(labels))
+    proba, index, w = _scored_inputs(proba, labels, classes, weights)
+    strata = {name: np.asarray(stratum) for name, stratum in (strata or {}).items()}
+    for name, stratum in strata.items():
+        if stratum.shape != index.shape:
+            raise ValueError(
+                f"strata[{name!r}] needs one label per row ({len(index)}), got "
+                f"shape {stratum.shape}."
+            )
+    rows = np.arange(len(index))
     observed = np.zeros_like(proba)
     observed[rows, index] = 1.0
     true_class = np.maximum(proba[rows, index], LOG_LOSS_FLOOR)
@@ -184,8 +252,7 @@ def categorical_scores(
         "calibration_outcome": str(outcome),
         "strata": {},
     }
-    for name, stratum in (strata or {}).items():
-        stratum = np.asarray(stratum)
+    for name, stratum in strata.items():
         levels: dict[object, dict[str, float | int]] = {}
         for level in np.unique(stratum):
             mask = stratum == level
