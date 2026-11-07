@@ -88,6 +88,45 @@ UK_SINGLE_YEAR_TABLES = ("person", "benunit", "household", "time_period")
 #: the legacy single-year schema, unchanged by the Frame carrier).
 ARTIFACT_CLONE_INDEX_COLUMN = "clone_index"
 
+_INT64_MAX = int(np.iinfo(np.int64).max)
+
+
+def refuse_dense_clone_id_overflow(
+    *,
+    n_clones: int,
+    id_multiplier: int,
+    ids: tuple[object, ...],
+) -> None:
+    """Refuse dense clones whose ids int64 cannot hold, in one clear message.
+
+    Dense clone ``c`` offsets every id by ``c`` times a multiplier above the
+    spine's largest id. Since microcosm#931 the spine mints its copies' ids in
+    fixed fields of the copy-id table, up to the CGT incidence twins at
+    10**17 and the residential arms at 10**18, so a production spine leaves no
+    room for a second clone above its ids. Dense builds with more than one
+    clone wait for the clone-first spine, which mints the geographic clones at
+    its start (#931 group (c)); one clone, and a spine without copy rows,
+    expand as before. The message names no id.
+    """
+
+    if type(n_clones) is not int or n_clones <= 1:
+        return
+    largest = 0
+    for values in ids:
+        array = np.asarray(values)
+        if array.size:
+            largest = max(largest, int(np.abs(array.astype(np.int64)).max()))
+    if (n_clones - 1) * int(id_multiplier) + largest > _INT64_MAX:
+        raise ValueError(
+            f"Dense geographic clones of this spine at n_clones={n_clones} would "
+            "overflow int64: since microcosm#931 the spine mints its copy ids in "
+            "the copy-id table's fixed fields, up to 10**18, and every dense "
+            "clone is offset above the spine's largest id. Dense builds with "
+            "more than one clone wait for the clone-first spine of microcosm#931, "
+            "which mints the geographic clones at its start; n_clones=1 still "
+            "expands."
+        )
+
 
 def ladder_clone_index_column(entity: str) -> str:
     """The in-memory, per-entity clone-index column on the ladder frame.
@@ -226,6 +265,15 @@ def clone_uk_dataset_tables_with_rowwise_geography(
             person_frame["person_benunit_id"],
             benunit_frame["benunit_id"],
         )
+    refuse_dense_clone_id_overflow(
+        n_clones=n_clones,
+        id_multiplier=id_multiplier,
+        ids=(
+            household_frame[household_id_column],
+            *(person_frame[column] for column in PERSON_ID_COLUMNS),
+            benunit_frame["benunit_id"],
+        ),
+    )
     assignment = assign_household_geography(
         household_frame,
         crosswalk,
@@ -415,6 +463,15 @@ def expand_uk_geographic_pool(
             person_frame["person_benunit_id"],
             benunit_frame["benunit_id"],
         )
+    refuse_dense_clone_id_overflow(
+        n_clones=n_clones,
+        id_multiplier=id_multiplier,
+        ids=(
+            household_frame["household_id"],
+            *(person_frame[column] for column in PERSON_ID_COLUMNS),
+            benunit_frame["benunit_id"],
+        ),
+    )
     cloned_household = clone_entity_frame(
         household_frame,
         id_columns=HOUSEHOLD_ID_COLUMNS,
@@ -1125,10 +1182,12 @@ def apply_uk_source_lineage_modulus(
     layer*, leaving any immediate-layer ``source_household_id`` or
     ``source_household_key`` untouched.
 
-    Spine inputs use a different scheme: ``household_id = sernum +
-    1{spi} * 10**d + k{support_copy} * 10**(d+1) + 1{cgt_clone} * 10**(d+2)``.
-    Their explicit spine lineage columns are the source of truth, so applying
-    the pool modulus would mint a false second lineage layer and is refused.
+    Spine inputs use a different scheme, the copy-id table's fixed fields
+    (microcosm#931): ``household_id = sernum + ordinal{spi} * 10**11 +
+    k{high_value_copy} * 10**12 + k{support_copy} * 10**13 +
+    1{cgt_clone} * 10**17 + j{residential_arm} * 10**18``. Their explicit spine
+    lineage columns are the source of truth, so applying the pool modulus
+    would mint a false second lineage layer and is refused.
 
     The mapping is refused when it would be ambiguous (the pool column
     already exists) or vacuous (no id reaches the modulus, making it the

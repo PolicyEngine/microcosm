@@ -21,6 +21,7 @@ from microcosm.build.uk_runtime.cgt_structure import HOUSEHOLD_IS_CGT_CLONE
 from microcosm.build.uk_runtime.cgt_support import (
     CGT_SUPPORT_CLONE_SPLIT_FACTOR,
     CGT_SUPPORT_COPIES_COLUMN,
+    CGT_SUPPORT_COPY_BOUND_REFUSAL,
     CGT_SUPPORT_COPY_INDEX_COLUMN,
     CGT_SUPPORT_EXPECTED_MASS,
     CGT_SUPPORT_HEADROOM,
@@ -42,12 +43,12 @@ from microcosm.build.uk_runtime.cgt_support import (
     select_cgt_support_households,
     split_cgt_support_households,
 )
+from microcosm.build.uk_runtime.copy_id_table import radix
 from microcosm.build.uk_runtime.hmrc_capital_gains import (
     HMRC_CGT_INCOME_BAND_LOWER_BOUNDS,
     load_hmrc_cgt_joint_distribution,
 )
 from microcosm.build.uk_runtime.national_frame import uk_national_frame
-from microcosm.build.uk_runtime.rowwise_geography import id_multiplier_for_values
 from microcosm.frame import WeightKind
 from test_support.microcosm_build.uk_cgt_support import (
     BAND_INCOMES,
@@ -58,10 +59,13 @@ from test_support.microcosm_build.uk_cgt_support import (
     support_stage,
     support_tables,
 )
+from test_support.microcosm_build.uk_clone_first_frames import (
+    assert_copy_ids_follow_lineage,
+)
 
 # --- the reference scenario -------------------------------------------------
 #
-# Seven one-person households (ids 1-7, multiplier 10). Band 0 (income
+# Seven one-person households (ids 1-7; copies at k x 10**13). Band 0 (income
 # 20,000): ids 1-4 and the zero-weight id 7; band 37,700 (income 60,000):
 # ids 5-6. The synthetic joint publishes 60 top-band taxpayers in band 0
 # (support mass 2 x 2 x 60 = 240, one suppressed cell) and 10 in band 37,700
@@ -92,6 +96,10 @@ SCENARIO_SUPPORT = {0: 240.0, 37_700: 40.0}
 #: The reference scenario's support masses (2 x 2 x published) were tuned to a
 #: headroom of 2.0; the packaged headroom is asserted separately.
 SCENARIO_HEADROOM = 2.0
+
+
+#: The copy-id table's cgt_support_split radix (microcosm#931).
+COPY_RADIX = radix("cgt_support_split")
 
 
 def _scenario_frame(**overrides):
@@ -463,9 +471,9 @@ def test_split_conserves_mass_bitwise_and_corrects_only_an_unselected_incumbent(
     assert len(result.frame.mass_log) == len(frame.mass_log) + 1
     weights = _household_weights(result.frame)
     # Roots and copies carry bitwise w / n: id 2 (130) in three, id 3 (121)
-    # in three, id 6 (61) in two, ids offset by k x 10.
+    # in three, id 6 (61) in two, ids offset by k x the declared radix.
     for household_id, weight, copies in ((2, 130.0, 3), (3, 121.0, 3), (6, 61.0, 2)):
-        family = [household_id + k * 10 for k in range(copies)]
+        family = [household_id + k * COPY_RADIX for k in range(copies)]
         assert weights.loc[family].tolist() == [weight / copies] * copies
         assert (weights.loc[family] <= CGT_SUPPORT_MAXIMUM_COPY_WEIGHT).all()
     # The uncorrected vector drifts by rounding (that is why this scenario was
@@ -478,7 +486,7 @@ def test_split_conserves_mass_bitwise_and_corrects_only_an_unselected_incumbent(
     assert result.new_total == old
 
 
-def test_split_offsets_every_entity_id_by_k_times_the_multiplier():
+def test_split_offsets_every_entity_id_by_k_times_the_declared_radix():
     frame = _scenario_frame(
         ages=[(45,), (50, 30, 8), (45,), (45,), (45,), (60, 58), (45,)],
         benunits=[(0,), (0, 1, 1), (0,), (0,), (0,), (0, 1), (0,)],
@@ -486,14 +494,10 @@ def test_split_offsets_every_entity_id_by_k_times_the_multiplier():
     person = frame.table("person")
     benunit = frame.table("benunit")
     household = frame.table("household")
-    multiplier = id_multiplier_for_values(
-        person["person_id"],
-        person["person_household_id"],
-        person["person_benunit_id"],
-        benunit["benunit_id"],
-        household["household_id"],
-    )
-    assert multiplier == 100
+    # The copy-id table's field, not a power of ten above the frame's largest
+    # id (microcosm#931).
+    multiplier = COPY_RADIX
+    assert multiplier == 10**13
 
     result = split_cgt_support_households(
         frame,
@@ -540,6 +544,46 @@ def test_split_offsets_every_entity_id_by_k_times_the_multiplier():
     assert out_household["household_id"].dtype == np.dtype("int64")
 
 
+def test_split_copies_take_their_roots_ids_plus_k_times_the_declared_radix():
+    # Roots come from the input by lineage (each household's council tax is
+    # its own here, and copies carry it unchanged), never from the copy's id
+    # (microcosm#931).
+    frame = _scenario_frame(
+        ages=[(45,), (50, 30, 8), (45,), (45,), (45,), (60, 58), (45,)],
+        benunits=[(0,), (0, 1, 1), (0,), (0,), (0,), (0, 1), (0,)],
+    )
+    result = split_cgt_support_households(
+        frame,
+        distribution=support_distribution(SCENARIO_TOP_CELLS),
+        parameters=PARAMETERS,
+        headroom=SCENARIO_HEADROOM,
+    )
+
+    checked = assert_copy_ids_follow_lineage(
+        frame,
+        result.frame,
+        field="cgt_support_split",
+        key_columns=("council_tax",),
+        ordinal_column=CGT_SUPPORT_COPY_INDEX_COLUMN,
+    )
+    assert checked == result.copies_created == 5
+
+
+def test_split_refuses_a_household_beyond_the_copy_id_field_with_a_fixed_message():
+    # Id 2 would need 10,001 copies of at most 60, one more than the
+    # cgt_support_split field's ordinals hold (microcosm#931). The refusal is
+    # a fixed sentence: never the household, its weight or its copy count.
+    weights = list(SCENARIO_WEIGHTS)
+    weights[1] = CGT_SUPPORT_MAXIMUM_COPY_WEIGHT * 10_000 + 1.0
+
+    with pytest.raises(ValueError) as caught:
+        _scenario_split(weights=weights)
+
+    assert str(caught.value) == CGT_SUPPORT_COPY_BOUND_REFUSAL
+    assert "10001" not in str(caught.value)
+    assert "10,001" not in str(caught.value)
+
+
 def test_split_flags_only_copies_and_writes_the_family_copy_count():
     result = _scenario_split()
     household = result.frame.table("household").set_index("household_id")
@@ -547,11 +591,11 @@ def test_split_flags_only_copies_and_writes_the_family_copy_count():
     assert household[HOUSEHOLD_IS_CGT_SUPPORT_COPY].dtype == np.dtype(bool)
     assert household[CGT_SUPPORT_COPIES_COLUMN].dtype == np.dtype("int64")
     assert household.index[household[HOUSEHOLD_IS_CGT_SUPPORT_COPY]].tolist() == [
-        12,
-        13,
-        16,
-        22,
-        23,
+        2 + COPY_RADIX,
+        3 + COPY_RADIX,
+        6 + COPY_RADIX,
+        2 + 2 * COPY_RADIX,
+        3 + 2 * COPY_RADIX,
     ]
     assert household[CGT_SUPPORT_COPIES_COLUMN].to_dict() == {
         1: 1,
@@ -561,11 +605,11 @@ def test_split_flags_only_copies_and_writes_the_family_copy_count():
         5: 1,
         6: 2,
         7: 1,
-        12: 3,
-        13: 3,
-        16: 2,
-        22: 3,
-        23: 3,
+        2 + COPY_RADIX: 3,
+        3 + COPY_RADIX: 3,
+        6 + COPY_RADIX: 2,
+        2 + 2 * COPY_RADIX: 3,
+        3 + 2 * COPY_RADIX: 3,
     }
     assert result.households_before == 7
     assert result.households_after == 12
@@ -601,7 +645,7 @@ def test_split_copies_every_column_and_membership_unchanged():
             benunit.benunit_id.isin(root_people.person_benunit_id)
         ].reset_index(drop=True)
         for k in range(1, copies):
-            offset = k * 100
+            offset = k * COPY_RADIX
             copy = household.loc[household.household_id == household_id + offset]
             # The explicit lineage: the root at 0, copy k at k.
             assert root[CGT_SUPPORT_COPY_INDEX_COLUMN].item() == 0

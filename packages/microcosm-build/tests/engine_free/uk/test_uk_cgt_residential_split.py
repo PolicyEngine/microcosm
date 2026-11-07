@@ -35,8 +35,12 @@ from microcosm.build.uk_runtime.cgt_residential_split import (
     residential_arm_factors,
     split_cgt_residential_households,
 )
+from microcosm.build.uk_runtime.copy_id_table import radix
 from microcosm.build.uk_runtime.national_frame import uk_national_frame
 from microcosm.frame import WeightKind
+from test_support.microcosm_build.uk_clone_first_frames import (
+    assert_copy_ids_follow_lineage,
+)
 
 PARAMETERS = UKCGTPolicyParameters(
     personal_allowance=12_570.0,
@@ -178,13 +182,10 @@ def test_split_carries_table_8a_as_identities_and_conserves_mass_bitwise() -> No
     liable = gains > PARAMETERS.annual_exempt_amount
     assert int(arms.sum()) == int(liable.sum()) == evidence["arms_created"]
     assert evidence["households_by_liable_gainers"] == {"1": int(liable.sum())}
-    multiplier = cgt_residential_split.id_multiplier_for_values(
-        frame.table("person")["person_id"],
-        frame.table("person")["person_household_id"],
-        frame.table("person")["person_benunit_id"],
-        frame.table("benunit")["benunit_id"],
-        frame.table("household")["household_id"],
-    )
+    # Arm j sits at j times the copy-id table's top-field radix
+    # (microcosm#931), above every incoming id.
+    multiplier = radix(cgt_residential_split.CGT_RESIDENTIAL_COPY_ID_FIELD)
+    assert multiplier == 10**18
     probability = person.set_index("person_id")[CGT_RESIDENTIAL_PROBABILITY_COLUMN]
     for source in np.flatnonzero(liable):
         p = float(probability.loc[source])
@@ -225,16 +226,15 @@ def test_households_with_several_liable_gainers_become_product_arms() -> None:
     )
     probability = person.set_index("person_id")[CGT_RESIDENTIAL_PROBABILITY_COLUMN]
     p0, p1 = float(probability.loc[0]), float(probability.loc[1])
-    multiplier = 10
+    multiplier = radix("cgt_residential_split")
     assert weights.loc[0] == pytest.approx(10.0 * (1 - p0) * (1 - p1))
     assert weights.loc[0 + multiplier] == pytest.approx(10.0 * p0 * (1 - p1))
     assert weights.loc[0 + 2 * multiplier] == pytest.approx(10.0 * (1 - p0) * p1)
     assert weights.loc[0 + 3 * multiplier] == pytest.approx(10.0 * p0 * p1)
-    assert household.loc[[10, 20, 30], CGT_RESIDENTIAL_CLONE_INDEX_COLUMN].tolist() == [
-        1,
-        2,
-        3,
-    ]
+    assert household.loc[
+        [multiplier, 2 * multiplier, 3 * multiplier],
+        CGT_RESIDENTIAL_CLONE_INDEX_COLUMN,
+    ].tolist() == [1, 2, 3]
     by_person = person.set_index("person_id")[CGT_RESIDENTIAL_GAINS_COLUMN]
     # Arm 1: gainer 0 residential; arm 2: gainer 1; arm 3: both.
     assert by_person.loc[[0 + multiplier, 1 + multiplier]].tolist() == [50_000.0, 0.0]
@@ -250,6 +250,37 @@ def test_households_with_several_liable_gainers_become_product_arms() -> None:
     assert household.loc[2, HOUSEHOLD_IS_CGT_RESIDENTIAL_CLONE] is np.False_
     assert float(result.frame.weights_for("household").total) == 60.0
     assert weights.loc[2] == pytest.approx(30.0)
+
+
+def test_arms_take_their_households_ids_plus_j_times_the_declared_radix() -> None:
+    # Households come from the input by lineage (a marker column names each
+    # one), never from the arm's id: every id column of arm j sits at its
+    # household's plus j x 10**18, the copy-id table's top field
+    # (microcosm#931).
+    plain = _frame(
+        [50_000.0, 80_000.0, 90_000.0, 0.0, 1_000.0, 0.0],
+        weights=[10.0, 20.0, 30.0],
+        people_per_household=2,
+    )
+    frame = uk_national_frame(
+        person=plain.table("person"),
+        benunit=plain.table("benunit"),
+        household=plain.table("household").assign(marker=[11, 12, 13]),
+        household_weights=plain.weights_for("household").values,
+        time_period="2024",
+    )
+    result = split_cgt_residential_households(
+        frame, facts=_facts(frame), parameters=PARAMETERS
+    )
+
+    checked = assert_copy_ids_follow_lineage(
+        frame,
+        result.frame,
+        field=cgt_residential_split.CGT_RESIDENTIAL_COPY_ID_FIELD,
+        key_columns=("marker",),
+        ordinal_column=CGT_RESIDENTIAL_CLONE_INDEX_COLUMN,
+    )
+    assert checked == result.evidence()["arms_created"] == 4
 
 
 def test_split_refuses_too_many_gainers_an_already_split_or_classified_frame() -> None:

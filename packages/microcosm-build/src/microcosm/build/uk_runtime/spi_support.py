@@ -16,10 +16,10 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
+from microcosm.build.uk_runtime import copy_id_table
 from microcosm.build.uk_runtime.hmrc_income import (
     HMRC_SPI_ASSESSABLE_INCOME_COLUMN,
 )
-from microcosm.build.uk_runtime.rowwise_geography import id_multiplier_for_values
 from microcosm.build.uk_runtime.terminal_gates import (
     UKZeroWeightStratumDeclaration,
     uk_zero_weight_strata_gate,
@@ -33,6 +33,14 @@ from microcosm.frame import (
 BASE_FRS_SUPPORT_CHANNEL = "frs"
 SPI_SYNTHETIC_SUPPORT_CHANNEL = "spi"
 UK_SPI_SUPPORT_STAGE_NAME = "spi_support_channel"
+#: The copy-id field the SPI copies (ordinal 1) and the income band donors
+#: (ordinal 2) take (microcosm#931).
+SPI_SUPPORT_COPY_ID_FIELD = "spi_support_channel"
+#: The id rule the stage manifest restates.
+SPI_SUPPORT_ID_REMAPPING = (
+    "copy-id table field spi_support_channel; the SPI copy takes every entity "
+    "id + 1 x the field's radix (10**11)"
+)
 DEFAULT_SPI_SUPPORT_HOUSEHOLDS = 10_000
 DEFAULT_SPI_PRIOR_MASS_SHARE = 0.5
 HOUSEHOLD_IS_SPI_SYNTHETIC_COLUMN = "household_is_spi_synthetic"
@@ -257,7 +265,6 @@ def create_uk_spi_support_tables(
     spi_household_count: int | None = DEFAULT_SPI_SUPPORT_HOUSEHOLDS,
     seed: int = 42,
     source_year: int | None = None,
-    id_multiplier: int | None = None,
     selected_household_ids: Sequence[Any] | None = None,
 ) -> UKSPISupportResult:
     """Create a zero-weight SPI support copy from UK single-year tables.
@@ -268,6 +275,10 @@ def create_uk_spi_support_tables(
     columns that deliberately point back to the original FRS household. Keeping
     that lineage stable prevents long local-geography support summaries from
     counting the SPI copy as additional independent FRS support.
+
+    Each copy's five id columns take ``id + radix``, the declared radix of the
+    copy-id table's ``spi_support_channel`` field (:data:`SPI_SUPPORT_ID_REMAPPING`),
+    so every incoming id must sit below it (microcosm#931).
     """
 
     person_frame = person.copy()
@@ -279,16 +290,16 @@ def create_uk_spi_support_tables(
     _validate_uk_support_inputs(person_frame, benunit_frame, household_frame)
     _reject_metadata_collisions(person_frame, benunit_frame, household_frame)
 
-    if id_multiplier is None:
-        id_multiplier = id_multiplier_for_values(
-            household_frame["household_id"],
-            person_frame["person_id"],
-            person_frame["person_household_id"],
-            person_frame["person_benunit_id"],
-            benunit_frame["benunit_id"],
+    for column, values in (
+        ("household_id", household_frame["household_id"]),
+        ("person_id", person_frame["person_id"]),
+        ("person_household_id", person_frame["person_household_id"]),
+        ("person_benunit_id", person_frame["person_benunit_id"]),
+        ("benunit_id", benunit_frame["benunit_id"]),
+    ):
+        copy_id_table.require_below(
+            values, SPI_SUPPORT_COPY_ID_FIELD, what=f"incoming {column} values"
         )
-    elif id_multiplier <= 0:
-        raise ValueError("id_multiplier must be positive.")
 
     if selected_household_ids is None:
         selected_household_ids = _sample_spi_household_ids(
@@ -316,7 +327,6 @@ def create_uk_spi_support_tables(
         id_columns=_HOUSEHOLD_ID_COLUMNS,
         channel=BASE_FRS_SUPPORT_CHANNEL,
         clone_index=0,
-        id_multiplier=id_multiplier,
     )
     base_household[HOUSEHOLD_IS_SPI_SYNTHETIC_COLUMN] = False
 
@@ -326,7 +336,6 @@ def create_uk_spi_support_tables(
         id_columns=_HOUSEHOLD_ID_COLUMNS,
         channel=SPI_SYNTHETIC_SUPPORT_CHANNEL,
         clone_index=1,
-        id_multiplier=id_multiplier,
     )
     spi_household["household_weight"] = 0.0
     spi_household[HOUSEHOLD_IS_SPI_SYNTHETIC_COLUMN] = True
@@ -337,7 +346,6 @@ def create_uk_spi_support_tables(
         id_columns=_PERSON_ID_COLUMNS,
         channel=BASE_FRS_SUPPORT_CHANNEL,
         clone_index=0,
-        id_multiplier=id_multiplier,
     )
     spi_person = _clone_support_frame(
         selected_person,
@@ -345,7 +353,6 @@ def create_uk_spi_support_tables(
         id_columns=_PERSON_ID_COLUMNS,
         channel=SPI_SYNTHETIC_SUPPORT_CHANNEL,
         clone_index=1,
-        id_multiplier=id_multiplier,
     )
 
     base_benunit = _clone_support_frame(
@@ -354,7 +361,6 @@ def create_uk_spi_support_tables(
         id_columns=_BENUNIT_ID_COLUMNS,
         channel=BASE_FRS_SUPPORT_CHANNEL,
         clone_index=0,
-        id_multiplier=id_multiplier,
     )
     spi_benunit = _clone_support_frame(
         selected_benunit,
@@ -362,14 +368,13 @@ def create_uk_spi_support_tables(
         id_columns=_BENUNIT_ID_COLUMNS,
         channel=SPI_SYNTHETIC_SUPPORT_CHANNEL,
         clone_index=1,
-        id_multiplier=id_multiplier,
     )
 
     result = UKSPISupportResult(
         person=pd.concat([base_person, spi_person], ignore_index=True),
         benunit=pd.concat([base_benunit, spi_benunit], ignore_index=True),
         household=pd.concat([base_household, spi_household], ignore_index=True),
-        id_multiplier=id_multiplier,
+        id_multiplier=copy_id_table.radix(SPI_SUPPORT_COPY_ID_FIELD),
         spi_household_ids=selected_household_ids,
     )
     _validate_uk_support_outputs(result.person, result.benunit, result.household)
@@ -401,6 +406,13 @@ def replace_uk_spi_support_tables(
     weights to ``IMPORTANCE`` and records a deliberate, factor-one
     :class:`MassChangeRecord`; national and stratum mass never double or
     disappear.
+
+    The rebuilt copies mint their ids in the copy-id table's
+    ``spi_support_channel`` field, as the spine stage does, so a base whose
+    surviving ids already reach that field (a compact whose ids carry other
+    copy or clone offsets) is refused by count rather than given colliding
+    ids (microcosm#931). No build calls this path; its tests run on
+    synthetic bases.
     """
 
     if not isinstance(input_weight_kind, WeightKind):
@@ -734,19 +746,22 @@ def _clone_support_frame(
     id_columns: tuple[str, ...],
     channel: str,
     clone_index: int,
-    id_multiplier: int,
 ) -> pd.DataFrame:
+    """Copy rows into a support channel; clone ``k >= 1`` mints its ids.
+
+    The copy's id columns take ``id + k x radix`` in the copy-id table's
+    ``spi_support_channel`` field (the SPI copy at 1, the income band donor at
+    2), which refuses an ordinal outside the field, an id already carrying
+    one and an int64 overflow; ``{entity}_source_id`` keeps the row's own id.
+    """
+
     clone = frame.copy()
     source_id = support_source_id_column(entity)
     clone[source_id] = clone[_entity_id_column(entity)].to_numpy()
     clone[support_channel_column(entity)] = channel
     clone[support_clone_index_column(entity)] = clone_index
     for column in id_columns:
-        clone[column] = _remap_ids(
-            clone[column].to_numpy(),
-            clone_index=clone_index,
-            id_multiplier=id_multiplier,
-        )
+        clone[column] = _remap_ids(clone[column].to_numpy(), clone_index=clone_index)
     return clone
 
 
@@ -1274,16 +1289,11 @@ def _source_household_keys(
     return keys
 
 
-def _remap_ids(
-    ids: Sequence[Any],
-    *,
-    clone_index: int,
-    id_multiplier: int,
-) -> np.ndarray:
+def _remap_ids(ids: Sequence[Any], *, clone_index: int) -> np.ndarray:
     values = pd.to_numeric(pd.Series(ids), errors="raise").astype("int64").to_numpy()
     if clone_index == 0:
         return values.copy()
-    return values + clone_index * id_multiplier
+    return copy_id_table.mint(values, SPI_SUPPORT_COPY_ID_FIELD, clone_index)
 
 
 def _entity_id_column(entity: str) -> str:
@@ -1335,6 +1345,8 @@ __all__ = [
     "SPI_PROFIT_BEFORE_LOSSES_DRAW_COLUMN",
     "SPI_PROPERTY_FINANCE_COSTS_COLUMN",
     "SPI_REPLACEMENT_STRATA_COLUMNS",
+    "SPI_SUPPORT_COPY_ID_FIELD",
+    "SPI_SUPPORT_ID_REMAPPING",
     "UKSPISupportResult",
     "UK_SPI_SUPPORT_STAGE_NAME",
     "build_uk_spi_support_channel",

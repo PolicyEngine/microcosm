@@ -35,6 +35,7 @@ import numpy as np
 import pandas as pd
 
 from microcosm.build.source_manifest import SourceStageSpec
+from microcosm.build.uk_runtime import copy_id_table
 from microcosm.build.uk_runtime.cgt_imputation import (
     UK_CGT_INVESTABLE_WEALTH_COLUMNS,
     UK_CGT_TAXABLE_INCOME_PROXY_COMPONENTS,
@@ -61,7 +62,6 @@ from microcosm.build.uk_runtime.national_frame import (
     uk_time_period,
     validate_uk_national_frame,
 )
-from microcosm.build.uk_runtime.rowwise_geography import id_multiplier_for_values
 from microcosm.build.uk_runtime.spi_support import (
     _exact_total_correction,
     _importance_weights_with_exact_total,
@@ -88,6 +88,18 @@ CGT_SUPPORT_HEADROOM = 1.25
 #: A copy weighs at most this before the clone (half of it after), so the
 #: GBP 5m+ band seats at least a hundred rows.
 CGT_SUPPORT_MAXIMUM_COPY_WEIGHT = 60.0
+#: The copy-id field copy ``k`` takes ``k`` in: ordinals 1 to 9,999, so a
+#: household is divided into at most 10,000 rows, root included
+#: (microcosm#931).
+CGT_SUPPORT_COPY_ID_FIELD = "cgt_support_split"
+#: The refusal when a household needs more copies than the field holds. It is
+#: fixed: it never names the household, its weight or its copy count.
+CGT_SUPPORT_COPY_BOUND_REFUSAL = (
+    "The CGT support split would divide a household into more copies than the "
+    "copy-id table's cgt_support_split field holds (ordinals up to 9,999; "
+    "microcosm#931). The field is declared, never sized to the frame: a "
+    "household this heavy needs a reviewed wider field."
+)
 #: The Table 3 bands of gains the support is sized on.
 CGT_SUPPORT_MINIMUM_GAIN_BAND_LOWER = 250_000
 #: The redraw's income bands, so classification matches its walk.
@@ -436,7 +448,9 @@ def split_cgt_support_households(
     Deterministic and mass-conserving: no draw, no seed, no salt. Each
     selected household of weight ``w`` becomes ``n = ceil(w / 60)`` copies at
     ``w / n``; the root keeps its ids, copy ``k`` takes every entity id plus
-    ``k`` times the frame's id multiplier, records ``k`` in
+    ``k`` times the declared radix of the copy-id table's
+    ``cgt_support_split`` field (so every incoming id must sit below it, and
+    ``n`` is at most the field's bound of 10,000), records ``k`` in
     ``cgt_support_copy_index`` and carries a full copy of the household's
     person and benefit-unit rows. The exact-total correction lands on the
     heaviest unselected incumbent so every copy weight stays bitwise
@@ -486,13 +500,19 @@ def split_cgt_support_households(
     copies[selected] = cgt_support_copy_counts(
         weights[selected], CGT_SUPPORT_MAXIMUM_COPY_WEIGHT
     )
-    multiplier = id_multiplier_for_values(
-        person["person_id"],
-        person["person_household_id"],
-        person["person_benunit_id"],
-        benunit["benunit_id"],
-        household["household_id"],
-    )
+    if int(copies.max()) > copy_id_table.ordinal_bound(CGT_SUPPORT_COPY_ID_FIELD):
+        raise ValueError(CGT_SUPPORT_COPY_BOUND_REFUSAL)
+    for table, columns in (
+        (person, _PERSON_ID_COLUMNS),
+        (benunit, ("benunit_id",)),
+        (household, ("household_id",)),
+    ):
+        for column in columns:
+            copy_id_table.require_below(
+                table[column],
+                CGT_SUPPORT_COPY_ID_FIELD,
+                what=f"incoming {column} values",
+            )
     household[HOUSEHOLD_IS_CGT_SUPPORT_COPY] = False
     household[CGT_SUPPORT_COPIES_COLUMN] = copies
     household[CGT_SUPPORT_COPY_INDEX_COLUMN] = np.zeros(len(household), dtype="int64")
@@ -510,14 +530,15 @@ def split_cgt_support_households(
             benunit["benunit_id"].isin(set(family_person["person_benunit_id"]))
         ].copy()
         family_household = household.loc[family].copy()
-        offset = k * multiplier
         for column in _PERSON_ID_COLUMNS:
-            family_person[column] = family_person[column].astype("int64") + offset
-        family_benunit["benunit_id"] = (
-            family_benunit["benunit_id"].astype("int64") + offset
+            family_person[column] = copy_id_table.mint(
+                family_person[column], CGT_SUPPORT_COPY_ID_FIELD, k
+            )
+        family_benunit["benunit_id"] = copy_id_table.mint(
+            family_benunit["benunit_id"], CGT_SUPPORT_COPY_ID_FIELD, k
         )
-        family_household["household_id"] = (
-            family_household["household_id"].astype("int64") + offset
+        family_household["household_id"] = copy_id_table.mint(
+            family_household["household_id"], CGT_SUPPORT_COPY_ID_FIELD, k
         )
         family_household[HOUSEHOLD_IS_CGT_SUPPORT_COPY] = True
         family_household[CGT_SUPPORT_COPY_INDEX_COLUMN] = np.full(
@@ -684,8 +705,9 @@ def cgt_support_split_operation_parameters() -> tuple[
                     "copy carries weight / copies"
                 ),
                 "id_remapping": (
-                    "id_multiplier_for_values; copy k takes every entity id + k x "
-                    "multiplier"
+                    "copy-id table field cgt_support_split; copy k takes every "
+                    "entity id + k x the field's radix (10**13), k up to 9,999, "
+                    "and a household needing more copies is refused"
                 ),
                 "flag_column": HOUSEHOLD_IS_CGT_SUPPORT_COPY,
                 "copies_column": CGT_SUPPORT_COPIES_COLUMN,

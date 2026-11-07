@@ -42,7 +42,6 @@ from microcosm.build.uk_runtime.national_frame import (
     uk_time_period,
     validate_uk_national_frame,
 )
-from microcosm.build.uk_runtime.rowwise_geography import id_multiplier_for_values
 from microcosm.build.uk_runtime.spi_income import (
     SPI_MINIMUM_RECIPIENT_AGE,
     SPI_RECIPIENT_ROLE_COLUMN,
@@ -62,6 +61,7 @@ from microcosm.build.uk_runtime.spi_support import (
     _clone_support_frame,
     _exact_total_correction,
     support_channel_column,
+    support_source_id_column,
 )
 from microcosm.frame import Frame, MassChangeRecord, WeightKind, engine_tables
 
@@ -101,8 +101,15 @@ SPI_INCOME_BAND_DONOR_TAPE_PREPARATION = (
     "draw_spi_donor_ages_by_population"
 )
 SPI_INCOME_BAND_DONOR_DRAW_SALT = "spi_income_band_donor_draw"
-#: The support channel copies at clone index 1; the reserved copies sit at 2.
+#: The support channel copies at clone index 1; the reserved copies sit at 2,
+#: the ordinal they take in the copy-id table's spi_support_channel field.
 SPI_INCOME_BAND_DONOR_CLONE_INDEX = 2
+#: The id rule the stage manifest restates (microcosm#931).
+SPI_INCOME_BAND_DONOR_ID_REMAPPING = (
+    "copy-id table field spi_support_channel; a donor takes every entity id + "
+    "2 x the field's radix (10**11), and its source is read from its source-id "
+    "columns, never from the id"
+)
 HOUSEHOLD_IS_SPI_INCOME_BAND_DONOR = "household_is_spi_income_band_donor"
 SPI_INCOME_BAND_DONOR_LOWER_BOUND_COLUMN = "spi_income_band_donor_lower_bound"
 PERSON_IS_SPI_INCOME_BAND_CARRIER = "person_is_spi_income_band_carrier"
@@ -620,20 +627,15 @@ def stack_spi_income_band_donors(
             )
 
     selected_ids = set(selected_household)
-    multiplier = id_multiplier_for_values(
-        person["person_id"],
-        person["person_household_id"],
-        person["person_benunit_id"],
-        benunit["benunit_id"],
-        household["household_id"],
-    )
+    # The donors are copies of base households, minted at ordinal 2 of the
+    # copy-id table's spi_support_channel field; each donor's source is the
+    # {entity}_source_id the copy carries (microcosm#931).
     donor_household = _clone_support_frame(
         household.loc[household["household_id"].isin(selected_ids)],
         entity="household",
         id_columns=_HOUSEHOLD_ID_COLUMNS,
         channel=SPI_SYNTHETIC_SUPPORT_CHANNEL,
         clone_index=SPI_INCOME_BAND_DONOR_CLONE_INDEX,
-        id_multiplier=multiplier,
     )
     donor_person = _clone_support_frame(
         person.loc[person["person_household_id"].isin(selected_ids)],
@@ -641,7 +643,6 @@ def stack_spi_income_band_donors(
         id_columns=_PERSON_ID_COLUMNS,
         channel=SPI_SYNTHETIC_SUPPORT_CHANNEL,
         clone_index=SPI_INCOME_BAND_DONOR_CLONE_INDEX,
-        id_multiplier=multiplier,
     )
     selected_benunits = set(
         person.loc[
@@ -654,10 +655,9 @@ def stack_spi_income_band_donors(
         id_columns=_BENUNIT_ID_COLUMNS,
         channel=SPI_SYNTHETIC_SUPPORT_CHANNEL,
         clone_index=SPI_INCOME_BAND_DONOR_CLONE_INDEX,
-        id_multiplier=multiplier,
     )
-    source_household = donor_household["household_id"].to_numpy() - (
-        SPI_INCOME_BAND_DONOR_CLONE_INDEX * multiplier
+    source_household = donor_household[support_source_id_column("household")].to_numpy(
+        dtype="int64"
     )
     donor_band = np.asarray(
         [selected_household[int(value)] for value in source_household], dtype=float
@@ -668,8 +668,8 @@ def stack_spi_income_band_donors(
     donor_household[HOUSEHOLD_IS_SPI_INCOME_BAND_DONOR] = True
     donor_household[SPI_INCOME_BAND_DONOR_LOWER_BOUND_COLUMN] = donor_band
     person[PERSON_IS_SPI_INCOME_BAND_CARRIER] = False
-    source_person = donor_person["person_id"].to_numpy() - (
-        SPI_INCOME_BAND_DONOR_CLONE_INDEX * multiplier
+    source_person = donor_person[support_source_id_column("person")].to_numpy(
+        dtype="int64"
     )
     donor_person[PERSON_IS_SPI_INCOME_BAND_CARRIER] = np.isin(
         source_person, np.asarray(list(carrier_person), dtype="int64")
@@ -994,6 +994,7 @@ def spi_income_band_donor_operation_parameters(
             "seed": seed,
             "salt": SPI_INCOME_BAND_DONOR_DRAW_SALT,
             "clone_index": SPI_INCOME_BAND_DONOR_CLONE_INDEX,
+            "id_remapping": SPI_INCOME_BAND_DONOR_ID_REMAPPING,
             "flag_column": HOUSEHOLD_IS_SPI_INCOME_BAND_DONOR,
             "band_column": SPI_INCOME_BAND_DONOR_LOWER_BOUND_COLUMN,
             "carrier_column": PERSON_IS_SPI_INCOME_BAND_CARRIER,
@@ -1047,6 +1048,7 @@ __all__ = [
     "PERSON_IS_SPI_INCOME_BAND_CARRIER",
     "SPI_INCOME_BAND_DONOR_CLONE_INDEX",
     "SPI_INCOME_BAND_DONOR_DRAW_SALT",
+    "SPI_INCOME_BAND_DONOR_ID_REMAPPING",
     "SPI_INCOME_BAND_DONOR_LOWER_BOUNDS",
     "SPI_INCOME_BAND_DONOR_LOWER_BOUND_COLUMN",
     "SPI_INCOME_BAND_DONOR_MASS_CHANGE_REASON",
