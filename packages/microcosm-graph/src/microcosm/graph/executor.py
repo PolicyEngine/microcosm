@@ -2575,8 +2575,9 @@ def _population_releases(
     The node that creates a version writes it. Each ordinary member reads the
     version as its incumbent and writes its successor, and each structural
     node built on it reads it as its base. Nothing else in a run reads a
-    version, so once the last of these nodes has run the executor holds the
-    version only for the manifest. A version that is not retained can go then.
+    version, so once the last of these nodes has applied its result the
+    executor holds the version only for the manifest. A version that is not
+    retained can go then.
     """
 
     last: dict[str, str] = {}
@@ -2711,11 +2712,13 @@ def run_graph(
     from the manifest. The default, ``None``, keeps every version until the
     run ends and attaches all of them. Given a collection, the run drops each
     version it does not name once the last node that reads that version has
-    run, so its frame can be freed, and attaches only the named versions and
-    their mass ledgers. A version is read by its ordinary members and by every
-    structural node built on it. A name that is not a version of the graph is
-    refused before any work. Each node reads the same population with or
-    without the keyword, and it enters no key, no receipt and no cache record.
+    applied its result, before that node is observed or written, so its frame
+    can be freed. It attaches only the named versions and their mass ledgers.
+    A version is read by its ordinary members and by every structural node
+    built on it, and its last reader frees it even when that reader is not
+    reached. A name that is not a version of the graph is refused before any
+    work. Each node reads the same population with or without the keyword,
+    and it enters no key, no receipt and no cache record.
 
     The private population observer exposes a detached snapshot of each node's
     admitted population, design anchors included, to an integrating verifier.
@@ -2848,8 +2851,9 @@ def _execute_graph(
         _preflight_require(compiled, store, keys, implementations, kernels)
 
     # Node id to the versions it is the last to use. Each leaves
-    # ``populations`` once that node has run, so its frame can be freed.
-    # Without ``retain_populations`` none leaves, and the manifest attaches all.
+    # ``populations`` once that node has applied its result, so its frame can
+    # be freed. Without ``retain_populations`` none leaves, and the manifest
+    # attaches all.
     releases = {} if retained is None else _population_releases(compiled, retained)
     populations: dict[str, Population] = {}
     # Each structural version's ``Frame`` mass log as that version was
@@ -3040,6 +3044,10 @@ def _execute_graph(
             after = _context_digest(context)
             if before != after:
                 raise NodeRejected(f"Node {node.id!r} mutated its input context.")
+            # The context copies every column this node projected, and its
+            # artifacts are decoded payloads. Nothing below reads either, so
+            # they go now, not when the next cold node replaces them.
+            del context, artifact_values
             for name in node.sources:
                 # A stat signature that still matches the one taken across this
                 # source's own read reuses that read's key; a rewrite that moves
@@ -3170,6 +3178,14 @@ def _execute_graph(
             # Captured at admission, so cold execution and a restored cache
             # hit record the same boundary: both reach this line.
             boundary_mass_logs[node.id] = updated.frame.mass_log
+        # Nothing else in this iteration reads the incumbent or
+        # ``populations``: the observer and the write take ``updated``. So the
+        # incumbent, and each version this node is the last to use, go before
+        # them. A structural node's base is then freed before its own frame
+        # is written.
+        incumbent = None
+        for version in releases.get(node_id, ()):
+            del populations[version]
 
         if _population_observer is not None:
             _population_observer(
@@ -3228,8 +3244,11 @@ def _execute_graph(
             opaque_artifacts=MappingProxyType(receipt_opaque),
         )
         receipt_payloads[node_id] = receipts[node_id].receipt
-        for version in releases.get(node_id, ()):
-            del populations[version]
+        # A version this node made and released lives on only in ``updated``,
+        # and a restored frame or an opaque payload in ``result`` and
+        # ``opaque``. They go here, so neither a later node nor the run-end
+        # pass holds them.
+        del updated, result, opaque
 
     # Every source is re-derived in full, cache bypassed, before any caller
     # receives a manifest. This closes the two cases a stat signature cannot

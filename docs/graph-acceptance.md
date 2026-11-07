@@ -685,6 +685,26 @@ lock unchanged:
     this validation changes no graph computation key. `decl.py` is re-locked.
     Adopted during the Orrery export review in #888.
 
+29. **A caller may name the versions it retains.** `run_graph(...,
+    retain_populations=...)` names the population versions the caller will
+    read from the manifest. `None`, the default, keeps every version to the
+    end of the run and attaches all of them, as before. Given a collection,
+    the executor drops each version it does not name once its last reader
+    has applied its result, before that reader is observed or written. A
+    last reader that is not reached drops it at its turn in the run order.
+    Ordinary members read a version as their incumbent and structural nodes
+    as their base; nothing else does, so a version nothing reads goes with
+    the node that made it. Only the named versions and their mass ledgers
+    are attached, and `RunManifest.population` refuses any other with the
+    error it gives a manifest restored from JSON. An unknown name, an
+    ordinary member's id, a name that is not a string, a bare `str` or
+    `bytes`, and anything that is not a collection are refused before any
+    source is read. Each node reads the same population with or without the
+    keyword, and it enters no node key, receipt, cache record or portable
+    manifest field. Runtime-only, the interface lock is unchanged. Adopted
+    2026-11-06 for the 15-clone UK spine (#931), which cannot hold every
+    version it builds in 32 GiB.
+
 
 Adding a normative field with a default changes the canonical projection
 of every node that carries it, so node keys moved with amendments 11 and

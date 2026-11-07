@@ -2,9 +2,11 @@
 
 # ruff: noqa: F403, F405
 import base64
+import gc
 import os
 import shutil
 import signal
+import weakref
 from types import SimpleNamespace
 
 import test_support.microcosm_build.uk_full_build_cli as support  # noqa: E402
@@ -508,31 +510,43 @@ def test_each_graph_phase_keeps_only_the_versions_it_reads(
 
     A graph run frees every version its caller does not name (#931). A sized
     request writes the size checkpoint, but this graph runs no size search, so
-    the numerical phase keeps no pool.
+    the numerical phase keeps no pool. The build drops the numerical manifest,
+    which can hold the pool, before the export run starts.
     """
     pytest.importorskip("tables")
     extra = ("--dataset-households", "2") if sized else ()
     args = arguments(tmp_path, *extra)
     build = prepared(tmp_path, size_households=2 if sized else None)
     runs = []
+    manifests = []
     run_graph = cli.run_graph
 
     def recorded(compiled, **kwargs):
+        alive = [manifest() is not None for manifest in manifests]
         manifest = run_graph(compiled, **kwargs)
-        runs.append((kwargs["retain_populations"], set(manifest.populations)))
+        runs.append((kwargs["retain_populations"], set(manifest.populations), alive))
+        manifests.append(weakref.ref(manifest))
         return manifest
 
     monkeypatch.setattr(cli, "run_graph", recorded)
-    assert cli.execute_full_build(build, args) == 0
+    # Reference counting alone must free the manifest; no collection may help.
+    gc.disable()
+    try:
+        assert cli.execute_full_build(build, args) == 0
+    finally:
+        gc.enable()
     assert cli._writes_size_checkpoint(args) is sized
     # The preflight, the numerical phase, the export and the certification run.
-    assert [retained for retained, _ in runs] == [
+    assert [retained for retained, _, _ in runs] == [
         (),
         (),
         (build.full.population,),
         (),
     ]
-    assert all(set(retained) == attached for retained, attached in runs)
+    assert all(set(retained) == attached for retained, attached, _ in runs)
+    # The export run, the third, starts with the second run's manifest gone.
+    _, _, alive_at_export = runs[2]
+    assert alive_at_export[1] is False
 
 
 @pytest.mark.parametrize(
@@ -554,6 +568,49 @@ def test_the_numerical_phase_keeps_the_pool_only_for_the_size_checkpoint(
         order=("uk.full.pool", *(("uk.full.size_search",) if searched else ()))
     )
     assert cli._size_checkpoint_populations(args, compiled) == kept
+
+
+def test_the_kept_pool_is_the_version_the_declared_size_search_reads(tmp_path):
+    """The name the numerical phase keeps is a version of that phase's graph.
+
+    ``run_graph`` refuses a name that is not, but only when the numerical
+    phase starts, after the preflight. So the real dense declarations are
+    checked here: the size search reads the pool the checkpoint is built from.
+    """
+    from microcosm.build.country_spec import load_country_spec
+    from microcosm.build.uk_runtime.graph import uk_spine_endpoint, uk_spine_graph
+    from microcosm.build.uk_runtime.graph_build import UKFullBuildConfig, uk_full_graph
+    from microcosm.build.uk_runtime.graph_calibration import UKGraphCalibrationConfig
+    from microcosm.build.uk_runtime.graph_evidence import add_uk_spine_gate_nodes
+    from microcosm.build.uk_runtime.graph_terminal import append_uk_full_gate_nodes
+    from microcosm.graph import compile_graph
+
+    spine = add_uk_spine_gate_nodes(
+        uk_spine_graph(source_mode="split"),
+        spec=load_country_spec("uk"),
+        engine_identity="declaration-only",
+    )
+    full = uk_full_graph(
+        UKFullBuildConfig(
+            calibration_year=2025,
+            geography_assignment="legacy",
+            calibration=UKGraphCalibrationConfig(dataset_households=100),
+        ),
+        spine=spine,
+    )
+    graph = append_uk_full_gate_nodes(
+        full.graph,
+        calibration=full.calibration,
+        spine_stage_names=uk_spine_endpoint(spine).stage_names,
+        engine_identity="declaration-only",
+        review_date="2026-10-08",
+    )
+    numerical = compile_graph(cli._through(graph, "uk.full.gates.calibrated"))
+    kept = cli._size_checkpoint_populations(
+        arguments(tmp_path, "--dataset-households", "100"), numerical
+    )
+    assert kept == (numerical.versions[cli._SIZE_SEARCH],)
+    assert set(kept) <= set(numerical.versions.values())
 
 
 def test_the_dense_gate_replay_signs_a_bound_attempt_the_contract_accepts(

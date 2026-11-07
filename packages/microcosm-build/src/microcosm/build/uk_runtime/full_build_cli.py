@@ -2287,8 +2287,14 @@ def _close_staging(
         )
 
 
+#: The size search, and the pool version it reads. The size checkpoint is
+#: materialized from both, so the numerical phase keeps that pool for it.
+_SIZE_SEARCH = "uk.full.size_search"
+_SIZE_SEARCH_POOL = "uk.full.pool"
+
+
 def _writes_size_checkpoint(args: argparse.Namespace) -> bool:
-    """Whether the build writes the size checkpoint after the solve."""
+    """Whether the build may write the size checkpoint after the solve."""
     return (
         args.dataset_households is not None
         and not args.no_size_checkpoint
@@ -2299,13 +2305,14 @@ def _writes_size_checkpoint(args: argparse.Namespace) -> bool:
 def _size_checkpoint_populations(
     args: argparse.Namespace, compiled: CompiledGraph
 ) -> tuple[str, ...]:
-    """The versions :func:`_materialize_size_checkpoint` reads from this run.
+    """The versions :func:`_materialize_size_checkpoint` may read from this run.
 
-    It reads the pool, and only when the build writes the checkpoint and the
-    graph runs the size search.
+    It may read the pool, and only when the build may write the checkpoint and
+    the graph runs the size search. A full-pool search writes none, and then
+    the pool is kept for nothing.
     """
-    if _writes_size_checkpoint(args) and "uk.full.size_search" in compiled.order:
-        return ("uk.full.pool",)
+    if _writes_size_checkpoint(args) and _SIZE_SEARCH in compiled.order:
+        return (_SIZE_SEARCH_POOL,)
     return ()
 
 
@@ -2329,14 +2336,12 @@ def _materialize_size_checkpoint(
     from .dataset_size import UKSizeSelection
     from .size_checkpoint import write_uk_size_checkpoint
 
-    if "uk.full.size_search" not in manifest.nodes:
+    if _SIZE_SEARCH not in manifest.nodes:
         return None
-    selection_meta = json.loads(
-        _payload(manifest, store, "uk.full.size_search", "selection")
-    )
+    selection_meta = json.loads(_payload(manifest, store, _SIZE_SEARCH, "selection"))
     if selection_meta.get("method") != "contribution_informed_l0":
         return None
-    pool = manifest.population("uk.full.pool")
+    pool = manifest.population(_SIZE_SEARCH_POOL)
     problem = decode_problem(_payload(manifest, store, "uk.full.problem", "problem"))
     initial = Frame(
         {entity: pool.table(entity) for entity in pool.entities},
@@ -2352,7 +2357,7 @@ def _materialize_size_checkpoint(
         problem=problem,
     )
     search = decode_calibration_result(
-        _payload(manifest, store, "uk.full.size_search", "result"),
+        _payload(manifest, store, _SIZE_SEARCH, "result"),
         frame=initial,
         problem=problem,
     )
@@ -2374,9 +2379,7 @@ def _materialize_size_checkpoint(
         provenance={
             "graph_artifacts": {
                 "dense": manifest.nodes["uk.full.dense"].opaque_artifacts["result"],
-                "search": manifest.nodes["uk.full.size_search"].opaque_artifacts[
-                    "result"
-                ],
+                "search": manifest.nodes[_SIZE_SEARCH].opaque_artifacts["result"],
             }
         },
     )
@@ -2580,6 +2583,9 @@ def _execute_full_build(
         )
         if receipt is not None and state is not None:
             append_phase(state, "size_selection_checkpointed")
+    # The numerical manifest can hold the pool, and nothing reads it again.
+    # It goes now, so the pool is not resident through the export run.
+    del manifest
     _, enforcement = decode_full_gate_report(gate_report_bytes)
     gate_document = json.loads(gate_report_bytes)
     # The signed local battery report, written before any refusal so a
@@ -3176,6 +3182,9 @@ def _execute_national_build(
             for entity in spine_frame.entities
         },
     )
+    # Nothing reads the loaded checkpoint again: each later run loads its own.
+    # It goes now, so the targets run and the solve do not hold a second spine.
+    del spine_frame, checkpoint
     # 2. The register: compiled inside the graph, frozen beside the outputs.
     stage(telemetry, "target_compilation", "started")
     targets = _run_graph_with_progress(
