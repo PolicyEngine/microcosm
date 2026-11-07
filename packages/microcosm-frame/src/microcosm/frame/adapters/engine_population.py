@@ -44,6 +44,13 @@ run's own period covers), and no structural reform the engine's
 constructor applies is switched on. The verdict carries names, periods and
 booleans only.
 
+One block's life. :class:`EngineBlock` runs these on a block's own engine,
+in order: it validates the declaration, refuses work in the window, runs
+checks (a) and (b), injects the shares and arms the recorder; it gives every
+simulation the caller builds afterwards the same arrays and recorder, and at
+the block's end checks that each still holds the block's keys and weights and
+judges them all. A country's caller passes its declaration and a pass.
+
 Batches. :func:`household_batches` splits a frame by a household column
 (whole households, groups nested in households) and
 :func:`scatter_by_entity_ids` puts each batch's results back in the order one
@@ -69,7 +76,7 @@ import math
 import operator
 import types
 import weakref
-from collections.abc import Iterable, Iterator, Mapping, Sequence
+from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
 from dataclasses import dataclass, field
 from importlib import metadata
 from pathlib import Path
@@ -85,6 +92,7 @@ __all__ = [
     "SPINE_BATCHED_PASS",
     "AllOf",
     "AnyOf",
+    "EngineBlock",
     "FormulaRun",
     "FormulaRunRecorder",
     "HouseholdBatch",
@@ -117,6 +125,7 @@ __all__ = [
     "scatter_by_entity_ids",
     "source_sha256",
     "validate_declaration",
+    "validate_pool_shares",
 ]
 
 
@@ -1068,6 +1077,20 @@ class PopulationDeclaration:
             names |= {rule.sink, *rule.levels, *rule.carriers}
         return frozenset(names)
 
+    def correction_reads(self) -> frozenset[str]:
+        """What a pool-share correction reads: the corrected formulas, their
+        keys, the keys' inputs and the weight variable. No simulation a block
+        builds may set any of them (:meth:`EngineBlock.refuse_substitution`)."""
+
+        return frozenset(
+            {
+                *self.corrected,
+                *self.corrected.values(),
+                *(add for adds in self.key_adds.values() for add in adds),
+                self.weight_variable,
+            }
+        )
+
     def run_predicates(self) -> dict[str, Predicate]:
         """The predicate checked at every run of each formula that has one."""
 
@@ -1837,6 +1860,322 @@ def _judge_inert(
     for requested_name, period in requested:
         if requested_name in unrequestable:
             flag("inert_request", requested_name, period)
+
+
+# ---------------------------------------------------------------------------
+# One block's life
+# ---------------------------------------------------------------------------
+
+
+def validate_pool_shares(
+    declaration: PopulationDeclaration,
+    shares: Mapping[str, PoolShare],
+    *,
+    weight_scale: float | None = None,
+) -> None:
+    """Refuse pool shares that are not one block's, for the declared formulas.
+
+    One :class:`PoolShare` per formula the declaration corrects, over its
+    declared key. With ``weight_scale`` (the factor the block's engine
+    weights carry, 1 when they are unscaled) every share must carry it too.
+    A caller's error, so it raises under any pass.
+    """
+
+    expected = dict(declaration.corrected)
+    if set(shares) != set(expected):
+        raise ValueError(
+            f"engine pool shares must cover exactly {sorted(expected)}; got "
+            f"{sorted(shares)}."
+        )
+    for formula, share in shares.items():
+        if not isinstance(share, PoolShare):
+            raise TypeError(f"{formula}: engine pool shares must be PoolShare records.")
+        if share.formula != formula or share.key_variable != expected[formula]:
+            raise ValueError(
+                f"{formula}: the pool share is for {share.formula} over "
+                f"{share.key_variable}, not over {expected[formula]}."
+            )
+        if weight_scale is not None and share.weight_scale != float(weight_scale):
+            raise ValueError(
+                f"{formula}: the pool share's weight factor is not the block's "
+                "engine weight scale."
+            )
+
+
+class EngineBlock:
+    """One engine block or batch standing for the pool, over its life.
+
+    Built right after the block's simulation, before anything reads it, from
+    the block's :class:`PoolShare` records (:func:`validate_pool_shares`),
+    the declaration of the engine's whole-population formulas and the pass.
+    ``periods`` are the years the block computes at and ``dataset_year`` the
+    year its data is for. In order, on the block's own engine:
+
+    - the declaration is validated against the simulation's tax-benefit
+      system (:func:`validate_declaration`), here and never on one engine
+      over the whole pool;
+    - a period in the declaration's position window is refused, as the
+      verdict will be: a block computing there is not the pool, corrected
+      or not;
+    - a period before the dataset's year is refused: the engine does not
+      project back to it, so a correction from that year's totals does not
+      hold there;
+    - check (a) at the dataset's year (:func:`check_key_sums`);
+    - check (b) from the dataset's year to every later period, on each key
+      and on the weight variable (:func:`check_uniform_growth`);
+    - every corrected formula is set at every period in the simulation and
+      its baseline (:func:`inject_pool_shares`);
+    - a :class:`FormulaRunRecorder` for the declaration is armed on both.
+
+    Every simulation the caller builds afterwards takes the same arrays and
+    the recorder through :meth:`wrap`; one that would set what the
+    correction reads is refused by :meth:`refuse_substitution`.
+    :meth:`note_request` records what the caller asks for. :meth:`close`, at
+    the block's end, checks that every simulation still holds the block's
+    keys and weights, bitwise, judges them all under the pass and disarms.
+    Work after that is refused: nothing would judge it.
+
+    Under a ``record`` pass a refusal leaves the block uncorrected or not
+    judged, and says why (:attr:`refusals`), so the caller's result is not
+    exact; under ``raise`` it raises. :meth:`receipt` holds names, periods,
+    booleans, the corrections and the growth factors: ratios of
+    block-weighted totals and parameter-driven factors, no record's value.
+    """
+
+    def __init__(
+        self,
+        simulation: Any,
+        shares: Mapping[str, PoolShare],
+        *,
+        declaration: PopulationDeclaration,
+        policy: PassPolicy,
+        periods: Iterable[int],
+        dataset_year: int,
+    ) -> None:
+        validate_pool_shares(declaration, shares)
+        self.main = simulation
+        self.shares = dict(shares)
+        self.declaration = declaration
+        self.policy = policy
+        self.dataset_year = int(dataset_year)
+        self.periods = tuple(sorted({int(period) for period in periods}))
+        self.declaration_valid = False
+        self.injected: InjectedShares | None = None
+        self.recorder: FormulaRunRecorder | None = None
+        self.key_sum_gaps: dict[str, float] = {}
+        self.key_sums_verified = False
+        self.growth_factors: dict[str, dict[str, float | None]] = {}
+        self.uniform_growth_verified = False
+        self.siblings: list[Any] = []
+        self.siblings_match: bool | None = None
+        self.requested: set[tuple[str, int]] = set()
+        self.refusals: list[str] = []
+        self.verdict: PopulationVerdict | None = None
+        self.closed = False
+        try:
+            validate_declaration(declaration, simulation.tax_benefit_system)
+        except PopulationDeclarationError as error:
+            self._refuse(error)
+            return
+        self.declaration_valid = True
+        window = declaration.window
+        inside = [period for period in self.periods if window.contains(period)]
+        if inside:
+            self._refuse(
+                PoolShareError(
+                    f"the block computes at {inside}, from {window.first_year} "
+                    f"on, where {window.reason}."
+                )
+            )
+        try:
+            self._correct(simulation)
+        except PoolShareError as error:
+            self._refuse(error)
+        self.recorder = FormulaRunRecorder.for_declaration(declaration)
+        self.recorder.arm(simulation)
+
+    def _refuse(self, error: Exception) -> None:
+        if self.policy.on_violation == "raise":
+            raise error
+        self.refusals.append(str(error))
+
+    def _correct(self, simulation: Any) -> None:
+        weight = self.declaration.weight_variable
+        early = [period for period in self.periods if period < self.dataset_year]
+        if early:
+            raise PoolShareError(
+                f"the block computes at {early}, before the dataset's year "
+                f"{self.dataset_year}, which the engine does not project to, so "
+                "a correction from that year's totals does not hold there."
+            )
+        self.key_sum_gaps = check_key_sums(
+            simulation, self.shares, self.dataset_year, weight_variable=weight
+        )
+        self.key_sums_verified = True
+        carried = (*sorted(set(self.declaration.corrected.values())), weight)
+        for period in self.periods:
+            if period == self.dataset_year:
+                continue
+            factors = check_uniform_growth(
+                simulation, carried, self.dataset_year, period
+            )
+            for name, factor in factors.items():
+                if factor is not None and not (math.isfinite(factor) and factor > 0):
+                    raise PoolShareError(
+                        f"The engine does not carry {name} from "
+                        f"{self.dataset_year} to {period}."
+                    )
+            self.growth_factors[str(period)] = factors
+        self.uniform_growth_verified = True
+        self.injected = inject_pool_shares(
+            simulation, self.shares, self.periods, weight_variable=weight
+        )
+
+    def wrap(self, factory: Callable[..., Any]) -> Callable[..., Any]:
+        """``factory``, giving each simulation it builds the block's arrays
+        and recorder before the caller sets any input on it."""
+
+        def build(*args: Any, **kwargs: Any) -> Any:
+            sibling = factory(*args, **kwargs)
+            if self.closed:
+                # Not armed: arming would record again, and nothing judges it.
+                self._refuse(
+                    PoolShareError(
+                        "A simulation was built after the block was judged, "
+                        "so nothing judges what it computes."
+                    )
+                )
+                return sibling
+            if self.injected is not None:
+                try:
+                    self.injected.apply(sibling)
+                except PoolShareError as error:
+                    self._refuse(error)
+            if self.recorder is not None:
+                self.recorder.arm(sibling)
+            self.siblings.append(sibling)
+            return sibling
+
+        return build
+
+    def note_request(self, name: str, period: int) -> None:
+        """Record that the caller asked for ``name`` at ``period``, which
+        the verdict judges (a refused formula, the window)."""
+
+        if self.closed:
+            self._refuse(
+                PoolShareError(
+                    f"{name} was asked for at {int(period)} after the block was "
+                    "judged, so nothing judges it."
+                )
+            )
+            return
+        self.requested.add((str(name), int(period)))
+
+    def refuse_substitution(self, names: Iterable[str | None], route: str) -> None:
+        """Refuse a simulation that would set what the block's correction
+        reads (:meth:`PopulationDeclaration.correction_reads`): its shares
+        would no longer be the pool's. Raises under any pass, before the
+        simulation is built."""
+
+        reads = self.declaration.correction_reads()
+        touched = sorted({str(name) for name in names if name} & reads)
+        if touched:
+            raise ValueError(
+                f"{route} would set {touched}, which the block's pool-share "
+                "correction reads (the share formulas, their allocation keys "
+                "and the keys' inputs, and the weights), so its shares would no "
+                "longer be the pool's."
+            )
+
+    def close(self) -> PopulationVerdict | None:
+        """Judge the block's simulations once, at its end, and disarm.
+
+        Returns the verdict, None when the declaration did not validate (so
+        nothing was armed). Under a ``raise`` pass a simulation that no
+        longer holds the block's keys or weights raises
+        :class:`PoolShareError`, and a verdict that is not clean
+        :class:`PopulationGuardError`.
+        """
+
+        if self.closed:
+            return self.verdict
+        self.closed = True
+        if self.recorder is None:
+            return None
+        simulations = [self.main, *self.siblings]
+        try:
+            if self.injected is not None:
+                self.siblings_match = all(
+                    self.injected.matches(simulation) for simulation in simulations
+                )
+                if not self.siblings_match:
+                    self._refuse_moved_keys()
+            self.verdict = judge(
+                self.declaration,
+                self.policy,
+                self.recorder,
+                simulations,
+                self.periods,
+                sorted(self.requested),
+            )
+        finally:
+            self.recorder.disarm()
+        return self.verdict
+
+    def _refuse_moved_keys(self) -> None:
+        # Recorded by siblings_match under a record pass.
+        if self.policy.on_violation == "raise":
+            raise PoolShareError(
+                "A simulation the block built no longer holds the block's keys "
+                "or weights, so its shares are not the pool's."
+            )
+
+    def _corrections(self) -> dict[str, float | None]:
+        corrections: dict[str, float | None] = {}
+        for formula, share in sorted(self.shares.items()):
+            try:
+                corrections[formula] = share.factor()
+            except PoolShareError:
+                corrections[formula] = None
+        return corrections
+
+    def receipt(self) -> dict[str, Any]:
+        """The correction: names, periods, booleans, ratios of block-weighted
+        totals and parameter-driven growth factors."""
+
+        return {
+            "periods": [str(period) for period in self.periods],
+            "dataset_year": self.dataset_year,
+            "formulas": {
+                formula: share.key_variable
+                for formula, share in sorted(self.shares.items())
+            },
+            "corrections": self._corrections(),
+            "declaration_valid": self.declaration_valid,
+            "key_sums_verified": self.key_sums_verified,
+            "largest_key_sum_gap": (
+                max(self.key_sum_gaps.values()) if self.key_sum_gaps else None
+            ),
+            "uniform_growth_verified": self.uniform_growth_verified,
+            "growth_factors": {
+                period: dict(sorted(factors.items()))
+                for period, factors in sorted(self.growth_factors.items())
+            },
+            "applied": self.injected is not None,
+            "siblings_match": self.siblings_match,
+            "refusals": list(self.refusals),
+        }
+
+    def receipt_entries(self) -> dict[str, Any]:
+        """What the block adds to its caller's receipt: ``engine_pool_shares``
+        (:meth:`receipt`) and, once judged, ``engine_population_reach`` (the
+        verdict)."""
+
+        entries: dict[str, Any] = {"engine_pool_shares": self.receipt()}
+        if self.verdict is not None:
+            entries["engine_population_reach"] = self.verdict.as_receipt()
+        return entries
 
 
 # ---------------------------------------------------------------------------

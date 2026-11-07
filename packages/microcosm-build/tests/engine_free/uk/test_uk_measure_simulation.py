@@ -1831,6 +1831,173 @@ def test_resolver_writes_the_scaled_engine_frame_and_records_the_scale(
         )
 
 
+def _block_pool_shares(scale=4.0, **overrides):
+    from microcosm.frame.adapters.engine_population import PoolShare
+    from microcosm.frame.adapters.policyengine_uk_population import (
+        UK_ENGINE_POPULATION,
+    )
+
+    shares = {
+        formula: PoolShare(
+            formula=formula,
+            key_variable=key,
+            block_key_sum=1.0e6,
+            pool_key_sum=4.2e6,
+            weight_scale=scale,
+        )
+        for formula, key in UK_ENGINE_POPULATION.corrected.items()
+    }
+    shares.update(overrides)
+    return shares
+
+
+def _fake_engine_resolver(monkeypatch, tmp_path, *, year=2025, **kwargs):
+    class FakeMicrosimulation:
+        def __init__(self, *, dataset):
+            self.tax_benefit_system = SimpleNamespace(variables={})
+
+    monkeypatch.setitem(
+        sys.modules,
+        "policyengine_uk",
+        SimpleNamespace(__version__="9.9.9", Microsimulation=FakeMicrosimulation),
+    )
+    monkeypatch.setattr(
+        measure_simulation, "write_uk_national_frame", lambda frame, path: path
+    )
+    monkeypatch.setattr(
+        measure_simulation, "validate_uc_claimant_input", lambda *args, **kw: None
+    )
+    return UKMeasureResolver(
+        simulation_source=None,
+        scratch_dir=tmp_path,
+        year=year,
+        frame=_tiny_national_frame([250.0, 125.0]),
+        **kwargs,
+    )
+
+
+def test_pool_shares_need_scratch_mode_and_one_blocks_shares(monkeypatch, tmp_path):
+    """An engine block's pool shares cover exactly the declared share formulas
+    over their keys, at the block's own weight scale, and need a scratch
+    export: a direct H5 is no block of a pool (microcosm#931)."""
+    from microcosm.frame.adapters.engine_population import PoolShare
+
+    monkeypatch.setitem(
+        sys.modules,
+        "policyengine_uk",
+        SimpleNamespace(__version__="9.9.9", Microsimulation=lambda *, dataset: None),
+    )
+    with pytest.raises(ValueError, match="pool shares need scratch-mode"):
+        UKMeasureResolver(
+            simulation_source=tmp_path / "input.h5",
+            scratch_dir=tmp_path,
+            year=2025,
+            frame=FrameStub(),
+            engine_pool_shares=_block_pool_shares(scale=1.0),
+        )
+    shares = _block_pool_shares()
+    shares.pop("consumption_shareholding")
+    with pytest.raises(ValueError, match="must cover exactly"):
+        _fake_engine_resolver(
+            monkeypatch, tmp_path, engine_weight_scale=4.0, engine_pool_shares=shares
+        )
+    with pytest.raises(ValueError, match="engine weight scale"):
+        _fake_engine_resolver(
+            monkeypatch,
+            tmp_path,
+            engine_weight_scale=2.0,
+            engine_pool_shares=_block_pool_shares(),
+        )
+    misdeclared = _block_pool_shares(
+        shareholding=PoolShare(
+            formula="shareholding",
+            key_variable="consumption",
+            block_key_sum=1.0,
+            pool_key_sum=2.0,
+            weight_scale=4.0,
+        )
+    )
+    with pytest.raises(ValueError, match="not over corporate_sector_wealth"):
+        _fake_engine_resolver(
+            monkeypatch,
+            tmp_path,
+            engine_weight_scale=4.0,
+            engine_pool_shares=misdeclared,
+        )
+
+
+def test_an_engine_the_declaration_no_longer_matches_is_recorded_not_corrected(
+    monkeypatch, tmp_path
+):
+    """The measure pass records (María's ruling of 2026-11-06): an engine the
+    UK declaration does not validate against leaves the block uncorrected and
+    unjudged, says why, and raises nothing."""
+    resolver = _fake_engine_resolver(
+        monkeypatch,
+        tmp_path,
+        engine_weight_scale=4.0,
+        engine_pool_shares=_block_pool_shares(),
+    )
+    resolver.close_engine_block()
+    receipt = resolver.receipt()
+    shares = receipt["engine_pool_shares"]
+    assert shares["declaration_valid"] is False
+    assert shares["applied"] is False
+    assert shares["key_sums_verified"] is False
+    assert shares["siblings_match"] is None
+    assert shares["periods"] == ["2024", "2025"]
+    assert shares["corrections"] == {
+        formula: pytest.approx(4.0 * 1.0e6 / 4.2e6) for formula in shares["formulas"]
+    }
+    assert len(shares["refusals"]) == 1
+    assert "no longer matches the installed engine" in shares["refusals"][0]
+    assert "engine_population_reach" not in receipt
+
+
+@pytest.mark.parametrize("year", [2025, 2026])
+def test_only_an_engine_block_records_its_correction(monkeypatch, tmp_path, year):
+    """A resolver that is no engine block (the national line, scoring, tools)
+    keeps its receipt's keys, and the position window does not apply to it,
+    in a rebalancing year too (microcosm#931)."""
+    resolver = _fake_engine_resolver(
+        monkeypatch, tmp_path, year=year, engine_weight_scale=4.0
+    )
+    resolver.close_engine_block()
+    receipt = resolver.receipt()
+    assert "engine_pool_shares" not in receipt
+    assert "engine_population_reach" not in receipt
+    resolver._note_engine_request("household_income_decile")
+    assert resolver._engine_pool_block is None
+
+
+def test_an_engine_block_refuses_a_sibling_that_moves_what_its_correction_reads(
+    monkeypatch, tmp_path
+):
+    resolver = _fake_engine_resolver(
+        monkeypatch,
+        tmp_path,
+        engine_weight_scale=4.0,
+        engine_pool_shares=_block_pool_shares(),
+    )
+    for zeroed, folded in (
+        ("corporate_wealth", None),
+        ("salary_sacrifice", "household_weight"),
+        ("transport_consumption", None),
+    ):
+        with pytest.raises(ValueError, match="pool-share correction reads"):
+            resolver._counterfactual_simulation(zeroed, folded)
+    monkeypatch.setattr(
+        measure_simulation,
+        "_ANNUAL_INCOME_HELD_VARIABLES",
+        (*measure_simulation._ANNUAL_INCOME_HELD_VARIABLES, "private_pension_wealth"),
+    )
+    with pytest.raises(ValueError, match="annual-income simulation would set"):
+        resolver._annual_income_simulation()
+    # Outside an engine block nothing is refused for it.
+    plain = _fake_engine_resolver(monkeypatch, tmp_path, engine_weight_scale=4.0)
+    plain._refuse_pool_share_substitution(["corporate_wealth"], "a counterfactual")
+
+
 def test_the_other_spells_factor_is_the_engines_growth_parameters(
     monkeypatch, tmp_path
 ):

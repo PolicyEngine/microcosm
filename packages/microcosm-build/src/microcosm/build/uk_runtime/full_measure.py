@@ -7,6 +7,7 @@ consumers receive compiled numerical contributions, never injected engine state.
 from __future__ import annotations
 
 import gc
+import math
 from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
@@ -29,24 +30,55 @@ from microcosm.build.uk_runtime.measure_simulation import UKMeasureResolver
 from microcosm.build.uk_runtime.national_frame import uk_time_period
 from microcosm.calibrate.matrix import CalibrationProblem, build_constraint_matrix
 from microcosm.frame import Frame, MassChangeRecord
-
-UK_BLOCK_SENSITIVE_MEASURE_COLUMNS = (
-    "ons/corporate_land_value",
-    "ons/land_value",
-    "slc/student_loan_repayment/england",
+from microcosm.frame.adapters.engine_population import (
+    MEASURE_PASS,
+    PoolShare,
+    PoolShareError,
+    factor_spread,
+    pool_shares,
 )
+from microcosm.frame.adapters.policyengine_uk_population import UK_ENGINE_POPULATION
+
+#: The engine variables the national targets bind that read policyengine-uk's
+#: share formulas (``ons.land.corporate_land_value`` and ``ons.land.land_value``),
+#: matched against the run's measure inputs.
+UK_BLOCK_SENSITIVE_MEASURE_COLUMNS = ("corporate_land_value", "land_value")
+
+#: What ``engine_population_representation.exact`` certifies for per-clone
+#: engine blocks (María's ruling of 2026-11-06, microcosm#931). A receipt
+#: without it predates the correction, when exact meant identical copies.
+UK_ENGINE_BLOCK_EXACT_BASIS = "pool_share_injection_with_population_guard"
+UK_ENGINE_BLOCK_EXACT_SCOPE = (
+    "per-clone engine blocks stand for the pool: each block's household weights "
+    "are scaled to the pool's mass, and in every simulation the block builds "
+    "shareholding, corporate_land_value and consumption_shareholding are set at "
+    "each period it computes to the block's own value times its pool-mass "
+    "factor times its allocation-key total over the pool's, the engine carrying "
+    "each key and the weights by one factor per year (checked per block); "
+    "months_since_last_birthday and attends_private_school are stored inputs, "
+    "every other policyengine-uk whole-population formula that ran was zero "
+    "under the parameters checked, and nothing the block computed fell in the "
+    "Universal Credit rebalancing years (2026 on), where policyengine-uk draws "
+    "new-claimant status by benefit-unit position; the result equals one "
+    "engine over the pool to float32 rounding, not bitwise, at the measure "
+    "step's starting weights, and the annual-income simulation carries other "
+    "spells by the engine's own growth parameters, the same in every block"
+)
+#: How far the blocks' parameter-driven factors (the engine's growth of each
+#: key and of the weights, and the annual-income factor) may spread, relative
+#: to their mean: float32 rounding, far inside it.
+_BLOCK_FACTOR_AGREEMENT = 1e-6
 
 #: policyengine-uk's weight-share formulas (a national total or a share
 #: allocated by ``x * w / sum(x * w)``) and the frame columns their allocation
 #: key ``x`` reads (microcosm#1115 review). Scaling a block's engine weights by
-#: pool mass / block mass makes such a formula exact only when every block
-#: carries the same ``sum(x * w)``; identical (source household, weight)
-#: multisets guarantee that only while ``x`` is copied into every clone, which
-#: holds for these keys (spine wealth and consumption inputs) and would not for
-#: anything drawn per clone. The representation check therefore records each
-#: block's ``sum(x * w)`` for every key here and requires them to agree; a
-#: formula of this shape that reads a per-clone input must be added here so
-#: the check sees it, never assumed exact.
+#: pool mass / block mass leaves such a formula exact only while every block
+#: carries the same ``sum(x * w)``, which clones that differ do not. The
+#: representation therefore records each block's ``sum(x * w)`` for every key
+#: here, and each block's resolver sets the formula to its own value times
+#: ``f_b * S_b / S`` (microcosm#931). The columns are the adds the UK
+#: declaration names for each key (``UK_ENGINE_POPULATION.key_adds``), which a
+#: test holds them to, and which the engine's own adds are held to.
 UK_WEIGHT_SHARE_FORMULA_INPUTS: Mapping[str, tuple[str, ...]] = {
     # corporate_land_value and shareholding allocate by corporate_sector_wealth.
     "corporate_land_value": ("corporate_wealth", "private_pension_wealth"),
@@ -171,17 +203,19 @@ _SOURCE_IDENTITY_COLUMNS = (
 
 
 def _engine_population_representation(frame, block_frames) -> dict[str, Any]:
-    """How each engine block stands for the pool, and whether exactly.
+    """How each engine block stands for the pool, before the blocks run.
 
     A weight-share formula (a national total allocated by ``x*w / sum(x*w)``,
     policyengine-uk's corporate land value among them) sees only its block's
     denominator, so each block would reproduce the whole national total: the
     ``K`` times artefact behind the #736 erratum. Every block's engine weights
-    are therefore scaled by ``pool mass / block mass``. For blocks that are
-    identical copies of one another (the clone expansion's contract) every
-    weighted sum then equals the pool's and the formula is exact; the checks
-    record whether the blocks are such copies. A pool that is not leaves the
-    scaling approximate, and the measures receipt keeps its caveat.
+    are therefore scaled by ``pool mass / block mass``, and each block's
+    resolver corrects the share formulas to the pool's denominator from the
+    allocation-key totals recorded here (:func:`_block_pool_shares`). Whether
+    that made the blocks exact is known only once they ran: ``exact`` is
+    provisional until :func:`_finalize_representation`. The checks of whether
+    the blocks are identical copies stay as diagnostics; a block that lacks a
+    key column gets no correction, and the representation stays inexact.
     """
 
     if len(block_frames) == 1 and block_frames[0][0] is None:
@@ -209,11 +243,14 @@ def _engine_population_representation(frame, block_frames) -> dict[str, Any]:
                 "represent the pool."
             )
         factors[str(clone_index)] = pool_mass / block_mass
-        # Blocks are compared as multisets of (source household, weight): the
-        # clone expansion copies every spine household into every clone, so
-        # identical copies have identical multisets whatever geography each
-        # clone drew. Without a source identity the comparison is weights
-        # only, which cannot establish copies, so the result is never exact.
+        # A diagnostic (microcosm#931): blocks are compared as multisets of
+        # (source household, weight). The clone expansion copies every spine
+        # household into every clone, so identical copies have identical
+        # multisets whatever geography each clone drew. Without a source
+        # identity the comparison is weights only, which cannot establish
+        # copies, so the identical-copies diagnostic never holds. Whether the
+        # blocks stand for the pool is decided once they ran
+        # (_finalize_representation).
         key = next((c for c in _SOURCE_IDENTITY_COLUMNS if c in household), None)
         if key is None:
             identity_present = False
@@ -275,29 +312,25 @@ def _engine_population_representation(frame, block_frames) -> dict[str, Any]:
         }
     return {
         "mode": "block_weights_scaled_to_pool",
-        "exact": bool(
-            identity_present
-            and identical
-            and equal_households
-            and equal_persons
-            and inputs_match
-        ),
+        # Provisional: _finalize_representation decides it from what every
+        # block's resolver recorded.
+        "exact": False,
+        "exact_basis": UK_ENGINE_BLOCK_EXACT_BASIS,
         "blocks": blocks,
-        # What ``exact`` certifies, and what it does not: on a slice of the
-        # K=25 pool, per-clone and single-block resolution matched on every
-        # household column and constituency metric but differed on a small
-        # share of person records (state pension type, pension credit, SLC
-        # repayment), so engine draws that depend on a record's position in
-        # the simulation are outside it (microcosm#1124). A dense release
-        # states this in its engine_measurement limitation; re-measuring the
-        # released file on one engine is the incumbent-surface evaluation's,
-        # an opt-in diagnostic since microcosm#1301.
-        "exact_scope": (
-            "weight-share formulas see the pool's denominator in every block: "
-            "identical clone copies, pool-scaled block weights and equal "
-            "allocation-key sums; engine draws that depend on a record's "
-            "position in the simulation are not covered"
-        ),
+        # What ``exact`` certifies, and what it does not. A slice of the K=25
+        # pool once differed between per-clone and single-block resolution on
+        # a few person records (microcosm#1124), through draws a record's
+        # position or a block's own identifiers decided. The identifiers are
+        # the release's since microcosm#1194; the one draw policyengine-uk
+        # still makes by position, which Universal Credit claimants count as
+        # new claimants in the rebalancing years from 2026
+        # (scenarios/uc_reform.py, REBALANCING_YEARS), is outside it, and the
+        # guard refuses any block work in those years rather than certify it.
+        # A dense release states this in its engine_measurement limitation;
+        # re-measuring the released file on one engine is the
+        # incumbent-surface evaluation's, an opt-in diagnostic since
+        # microcosm#1301.
+        "exact_scope": UK_ENGINE_BLOCK_EXACT_SCOPE,
         "factor_by_block": factors,
         "checks": {
             "identity_key": identity_key,
@@ -314,6 +347,227 @@ def _engine_population_representation(frame, block_frames) -> dict[str, Any]:
     }
 
 
+def _block_pool_shares(
+    representation: Mapping[str, Any],
+) -> dict[str, dict[str, PoolShare]] | None:
+    """Each block's :class:`PoolShare` for every share formula, or None.
+
+    From the representation's own frame totals: ``S_b``, each block's
+    ``sum(x * w)`` at unscaled weights, the pool's ``S`` as their sum, and the
+    block's pool-mass factor ``f_b``, so ``c_b = f_b * S_b / S``. None for a
+    single block, and when a block lacks a key column or a total is not
+    finite: no block is then corrected, and the representation stays inexact.
+    """
+
+    if representation.get("mode") != "block_weights_scaled_to_pool":
+        return None
+    factors = representation["factor_by_block"]
+    inputs = representation["checks"]["weight_share_inputs"]
+    formulas = dict(UK_ENGINE_POPULATION.corrected)
+    if set(inputs) != set(formulas):
+        return None
+    for formula in formulas:
+        entry = inputs[formula]
+        if entry["missing_columns"] or set(entry["sum_by_block"]) != set(factors):
+            return None
+    try:
+        return pool_shares(
+            {
+                block: {
+                    formula: float(inputs[formula]["sum_by_block"][block])
+                    for formula in formulas
+                }
+                for block in factors
+            },
+            {block: float(factor) for block, factor in factors.items()},
+            key_variables=formulas,
+        )
+    except PoolShareError:
+        return None
+
+
+def _finite_or_none(value: float) -> float | None:
+    return float(value) if math.isfinite(value) else None
+
+
+def _finalize_representation(
+    representation: Mapping[str, Any],
+    resolver_receipts: list[Mapping[str, Any]],
+    *,
+    shares_built: bool,
+) -> dict[str, Any]:
+    """Whether the per-clone engine blocks stood for the pool, once they ran.
+
+    Read from each block's resolver receipt (``engine_pool_shares`` and
+    ``engine_population_reach``). ``exact`` holds only if every block's
+    resolver validated the declaration, passed checks (a) and (b), applied
+    the correction in every simulation it built, refused nothing, and still
+    held the block's keys and weights in each at the end; the blocks computed
+    at the same periods; their growth factors and annual-income factors
+    agree within ``_BLOCK_FACTOR_AGREEMENT``; and every block's verdict under
+    the measure pass is clean, so nothing reached a refused rank or median,
+    nothing a stored input stands for was derived, and nothing ran in the
+    rebalancing years. A single block is returned as it is.
+    """
+
+    finalized = dict(representation)
+    if representation.get("mode") != "block_weights_scaled_to_pool":
+        return finalized
+    blocks = [str(block) for block in representation["factor_by_block"]]
+    receipts = list(resolver_receipts)
+    by_block = dict(zip(blocks, receipts, strict=False))
+    complete = shares_built and len(receipts) == len(blocks)
+    shares = {
+        block: receipt.get("engine_pool_shares") for block, receipt in by_block.items()
+    }
+    shares = {
+        block: entry for block, entry in shares.items() if isinstance(entry, Mapping)
+    }
+    complete = complete and len(shares) == len(blocks)
+
+    def every(field: str) -> bool:
+        return complete and all(entry.get(field) is True for entry in shares.values())
+
+    periods = {tuple(entry.get("periods") or ()) for entry in shares.values()}
+    growth = {
+        block: dict(entry.get("growth_factors") or {})
+        for block, entry in shares.items()
+    }
+    growth_periods = sorted(
+        {period for factors in growth.values() for period in factors}
+    )
+    growth_complete = all(
+        set(factors) == set(growth_periods) for factors in growth.values()
+    )
+    growth_spread = 0.0
+    for period in growth_periods:
+        spread = factor_spread(
+            {
+                block: factors[period]
+                for block, factors in growth.items()
+                if period in factors
+            }
+        )
+        growth_spread = max(growth_spread, *spread.values(), 0.0)
+    growth_agree = growth_complete and growth_spread <= _BLOCK_FACTOR_AGREEMENT
+    annual = {
+        block: dict(
+            (receipt.get("annual_income_measures") or {}).get(
+                "other_spells_engine_factors"
+            )
+            or {}
+        )
+        for block, receipt in by_block.items()
+    }
+    annual_spread = max(factor_spread(annual).values(), default=0.0)
+    annual_agree = annual_spread <= _BLOCK_FACTOR_AGREEMENT
+
+    verdicts = {
+        block: receipt.get("engine_population_reach")
+        for block, receipt in by_block.items()
+    }
+    verdicts = {
+        block: verdict
+        for block, verdict in verdicts.items()
+        if isinstance(verdict, Mapping)
+    }
+    clean = (
+        complete
+        and len(verdicts) == len(blocks)
+        and all(
+            verdict.get("clean") is True and verdict.get("pass") == MEASURE_PASS.name
+            for verdict in verdicts.values()
+        )
+    )
+    digests = {verdict.get("declaration_sha256") for verdict in verdicts.values()}
+    engines = {
+        tuple(sorted(dict(verdict.get("engine") or {}).items()))
+        for verdict in verdicts.values()
+    }
+    classes: dict[str, set[str]] = {}
+    refused: set[str] = set()
+    window_violations: dict[tuple[str, str, str], dict[str, Any]] = {}
+    for verdict in verdicts.values():
+        for name, members in dict(verdict.get("classes") or {}).items():
+            classes.setdefault(str(name), set()).update(map(str, members))
+        refused.update(map(str, verdict.get("refused") or ()))
+        for violation in dict(verdict.get("window") or {}).get("violations") or ():
+            violation = dict(violation)
+            key = tuple(
+                str(violation.get(field)) for field in ("kind", "name", "period")
+            )
+            window_violations[key] = violation
+    refusals = {
+        block: list(entry["refusals"])
+        for block, entry in shares.items()
+        if entry.get("refusals")
+    }
+    exact = bool(
+        complete
+        and every("declaration_valid")
+        and every("applied")
+        and every("key_sums_verified")
+        and every("uniform_growth_verified")
+        and every("siblings_match")
+        and not refusals
+        and len(periods) == 1
+        and growth_agree
+        and annual_agree
+        and clean
+        and len(digests) == 1
+        and not window_violations
+    )
+    finalized["exact"] = exact
+    finalized["share_correction"] = {
+        "formulas": dict(UK_ENGINE_POPULATION.corrected),
+        "keys_complete": bool(shares_built),
+        "periods": sorted({period for entry in periods for period in entry}),
+        "corrections_by_block": {
+            block: dict(entry.get("corrections") or {})
+            for block, entry in shares.items()
+        },
+        "applied_in_every_block": every("applied"),
+        "key_sums_verified": every("key_sums_verified"),
+        "largest_key_sum_gap": max(
+            (
+                float(entry["largest_key_sum_gap"])
+                for entry in shares.values()
+                if entry.get("largest_key_sum_gap") is not None
+            ),
+            default=None,
+        ),
+        "uniform_growth_verified": every("uniform_growth_verified"),
+        "growth_factors_by_block": growth,
+        "growth_factors_agree_across_blocks": growth_agree,
+        "max_growth_factor_spread": _finite_or_none(growth_spread),
+        "siblings_match": every("siblings_match"),
+        "refusals_by_block": refusals,
+    }
+    finalized["population_reach"] = {
+        "pass": MEASURE_PASS.name,
+        "declaration_valid": every("declaration_valid"),
+        "declaration_sha256": next(iter(digests)) if len(digests) == 1 else None,
+        "engine": dict(next(iter(engines))) if len(engines) == 1 else None,
+        "clean_in_every_block": clean,
+        "classes": {name: sorted(members) for name, members in sorted(classes.items())},
+        "refused": sorted(refused),
+        "window": {
+            "first_year": UK_ENGINE_POPULATION.window.first_year,
+            "violations": [window_violations[key] for key in sorted(window_violations)],
+        },
+        "violations_by_block": {
+            block: list(verdict.get("violations") or ())
+            for block, verdict in verdicts.items()
+            if verdict.get("clean") is not True
+        },
+    }
+    finalized["annual_income_projection_factors"] = {
+        "agree_across_blocks": annual_agree,
+        "max_rel_spread": _finite_or_none(annual_spread),
+    }
+    return finalized
+
+
 def _run_engine_blocks(
     block_frames,
     national_registry,
@@ -324,6 +578,7 @@ def _run_engine_blocks(
     local_grains: tuple[str, ...],
     on_block,
     engine_weight_scales: Mapping[str, float] | None = None,
+    engine_pool_shares: Mapping[str, Mapping[str, PoolShare]] | None = None,
     identifier_universe=None,
 ) -> tuple[
     dict[str, list[pd.DataFrame]],
@@ -352,6 +607,12 @@ def _run_engine_blocks(
             resolver_kwargs["engine_weight_scale"] = float(
                 engine_weight_scales[str(clone_index)]
             )
+        block_shares = None
+        if engine_pool_shares is not None and clone_index is not None:
+            # The block's share formulas take the pool's denominator in every
+            # simulation its resolver builds (microcosm#931).
+            block_shares = engine_pool_shares[str(clone_index)]
+            resolver_kwargs["engine_pool_shares"] = block_shares
         if identifier_universe is not None and clone_index is not None:
             # A block's rows take the identifiers they have in the release,
             # which numbers the whole frame (microcosm#1194).
@@ -385,6 +646,12 @@ def _run_engine_blocks(
                     input_period=int(uk_time_period(block_frame)),
                 )
             )
+        if block_shares is not None:
+            # Everything the block computes is computed: judge it while its
+            # engine is alive, so the receipt below carries the verdict.
+            close = getattr(resolver, "close_engine_block", None)
+            if callable(close):
+                close()
         resolver_receipts.append(
             _without_scratch_paths(dict(resolver.receipt()), scratch_dir)
         )
@@ -479,37 +746,45 @@ def _measures_receipt(
             receipt["engine_population_representation"] = dict(representation)
         exact = bool(representation and representation.get("exact"))
         receipt["deviation"] = "per_clone_block_engine_resolution"
+        # The engine variables the measures read, matched by name: the
+        # measure inputs are keyed (entity, engine variable).
+        measured = {variable for _, variable in national_input_keys}
         present = sorted(
             column
             for column in UK_BLOCK_SENSITIVE_MEASURE_COLUMNS
-            if column in {variable for _, variable in national_input_keys}
+            if column in measured
         )
         receipt["block_sensitivity"] = {
             "known_population_normalised_measures": list(
                 UK_BLOCK_SENSITIVE_MEASURE_COLUMNS
             ),
             "present_in_this_run": present,
+            "corrected_formulas": dict(UK_ENGINE_POPULATION.corrected),
             "weight_share_formulas": {
                 formula: list(columns)
                 for formula, columns in UK_WEIGHT_SHARE_FORMULA_INPUTS.items()
             },
             "mitigation": (
                 "each block's engine household weights are scaled by pool mass / "
-                "block mass, so weight-share formulas see the pool's denominator; "
-                "exact only while the blocks are identical copies and every "
-                "allocation key named in weight_share_formulas carries the same "
-                "sum(x * w) in every block"
+                "block mass, and every simulation the block builds sets the "
+                "corrected formulas, at each period it computes, to the block's "
+                "own value times its pool-mass factor times its allocation-key "
+                "total over the pool's, so they see the pool's denominator; "
+                "exact only when every block applied the correction with its "
+                "checks holding and every whole-population formula it ran is one "
+                "the declaration allows (engine_population_representation)"
             ),
             "exact": exact,
             "caveat": (
                 None
                 if exact
                 else (
-                    "the engine blocks are not identical copies of one another, so "
-                    "the scaling is approximate and per-block engine resolution "
-                    "may mis-measure population-normalised formulas; rows on these "
-                    "measures are not evidence for adjudication from this run. "
-                    "Resolve in a single block before ruling on them."
+                    "the engine blocks are not certified to stand for the pool "
+                    "(see engine_population_representation), so per-block engine "
+                    "resolution may mis-measure population-normalised formulas; "
+                    "rows on these measures are not evidence for adjudication "
+                    "from this run. Resolve in a single block before ruling on "
+                    "them."
                 )
             ),
         }
@@ -547,6 +822,7 @@ def resolve_uk_full_measures(
 
     block_frames = _engine_block_frames(frame, blocks)
     representation = _engine_population_representation(frame, block_frames)
+    block_shares = _block_pool_shares(representation)
     measure_parts: dict[tuple[str, str], list[pd.Series]] = {}
 
     def collect(block_frame, block_inputs):
@@ -567,9 +843,13 @@ def resolve_uk_full_measures(
         scratch_dir=scratch_dir,
         resolver_factory=resolver_factory,
         engine_weight_scales=representation.get("factor_by_block"),
+        engine_pool_shares=block_shares,
         identifier_universe=frame,
         local_grains=local_grains,
         on_block=collect,
+    )
+    representation = _finalize_representation(
+        representation, resolver_receipts, shares_built=block_shares is not None
     )
 
     measure_inputs: dict[tuple[str, str], np.ndarray] = {}
@@ -767,6 +1047,7 @@ def resolve_uk_full_national_problem(
 
     block_frames = _engine_block_frames(frame, blocks)
     representation = _engine_population_representation(frame, block_frames)
+    block_shares = _block_pool_shares(representation)
     targets = national_registry.to_target_set()
     band_edges = national_registry if band_edge_registry is None else band_edge_registry
     block_problems: list[tuple[CalibrationProblem, np.ndarray]] = []
@@ -795,10 +1076,14 @@ def resolve_uk_full_national_problem(
             scratch_dir=scratch_dir,
             resolver_factory=resolver_factory,
             engine_weight_scales=representation.get("factor_by_block"),
+            engine_pool_shares=block_shares,
             identifier_universe=frame,
             local_grains=local_grains,
             on_block=materialize,
         )
+    )
+    representation = _finalize_representation(
+        representation, resolver_receipts, shares_built=block_shares is not None
     )
     if any(report != reports[0] for report in reports[1:]):
         raise RuntimeError(
