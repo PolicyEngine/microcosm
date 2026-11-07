@@ -1,4 +1,4 @@
--- Seed the Logbook prediction history harvested for microcosm#628.
+-- Seed the Logbook prediction history harvested for populace#628.
 --
 -- Keep the source records as JSON so heterogeneous predicted and actual
 -- values retain their original JSON types.  The timestamp fields are cast to
