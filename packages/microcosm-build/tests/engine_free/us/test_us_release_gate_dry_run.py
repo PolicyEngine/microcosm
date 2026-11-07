@@ -45,6 +45,7 @@ from microcosm.build.gates import (
     parity_gate,
 )
 from microcosm.build.us_runtime import release_gate_dry_run as dry
+from microcosm.build.us_runtime.input_mass import UsLine32Carriers
 from microcosm.build.us_runtime.release_gate_preflight import PreflightReport
 from microcosm.build.us_runtime.spm_composition import CheckResult
 from microcosm.calibrate.registry import TargetSpec
@@ -1545,11 +1546,23 @@ def test_release_dry_run_reads_line_32_as_the_gate_does(
 ) -> None:
     """The preview raises if it reads partnership_income alone here.
 
-    A reference built before microcosm#1261 holds all of Schedule E line 32 in
-    partnership_income, so the gate counts both candidate columns against it.
+    A reference built before microcosm#1261 holds partnership and S corporation
+    income together in partnership_income, so the gate counts both candidate
+    columns against it.
     """
     reference = SimpleNamespace(label="reference")
     monkeypatch.setattr(builder, "load_us_frame", lambda path: reference)
+
+    def carriers(candidate, reference_frame):
+        # The gate and the preview read carriers from the frames whose totals
+        # they compare.
+        assert candidate is tail_frame
+        assert reference_frame is reference
+        return UsLine32Carriers(
+            candidate_partnership_income=True, reference_s_corp_income=False
+        )
+
+    monkeypatch.setattr(builder, "us_line_32_carriers", carriers)
     monkeypatch.setattr(
         builder,
         "us_input_mass_totals",

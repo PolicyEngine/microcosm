@@ -78,6 +78,7 @@ from microcosm.build.us_runtime.immigration import (
 from microcosm.build.us_runtime.input_mass import (
     us_input_mass_parity_gate,
     us_input_mass_totals,
+    us_line_32_carriers,
 )
 from microcosm.build.us_runtime.medicare_take_up import (
     US_MEDICARE_TAKE_UP_NONCONSTANT_PERSON_COLUMNS,
@@ -612,6 +613,7 @@ def export_us_l0_refit_h5(
     input_mass_gate = us_input_mass_parity_gate(
         us_input_mass_totals(export_frame),
         us_input_mass_totals(reference_frame),
+        carriers=us_line_32_carriers(export_frame, reference_frame),
         candidate_name="l0_refit_export",
         reference_name="reference_h5" if reference_h5 is not None else "base_h5",
         relative_tolerance=input_mass_relative_tolerance,

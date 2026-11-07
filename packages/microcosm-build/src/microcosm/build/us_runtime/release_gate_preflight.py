@@ -36,6 +36,8 @@ Five checks, each mirroring a live release gate but evaluated pre-solve:
    :func:`microcosm.build.gates.input_mass_parity_gate`, and the pool reads
    Schedule E line 32 as the gate's candidate does
    (:func:`microcosm.build.us_runtime.input_mass.us_line_32_on_reference_terms`).
+   When the pool's ``partnership_income`` counts both columns, the check's
+   details name them, as the gate's do.
 
 4. **Smoke-probe support audit** — for every reform-coverage probe, for every
    ``binding_inputs`` leaf: pool nonzero support, *selected* nonzero support
@@ -88,7 +90,7 @@ from __future__ import annotations
 import hashlib
 import sys
 from collections.abc import Iterable, Mapping, Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any
 
@@ -103,7 +105,10 @@ from microcosm.build.us_runtime.h5_io import (
     us_multispine_pool_release_receipt,
 )
 from microcosm.build.us_runtime.input_mass import (
+    US_LINE_32_COLUMNS,
     us_input_mass_totals,
+    us_line_32_carriers,
+    us_line_32_counts_both,
     us_line_32_on_reference_terms,
 )
 from microcosm.build.us_runtime.puf_capital_gains_tail import (
@@ -1094,19 +1099,24 @@ def run_preflight(
         reference_totals = us_input_mass_totals(
             reference_frame, columns=engine_input_variables
         )
-        pool_totals = us_line_32_on_reference_terms(
-            us_input_mass_totals(base_frame, columns=engine_input_variables),
+        base_totals = us_input_mass_totals(base_frame, columns=engine_input_variables)
+        carriers = us_line_32_carriers(base_frame, reference_frame)
+        mass_check = check_export_mass_parity_risk(
+            us_line_32_on_reference_terms(base_totals, reference_totals, carriers),
             reference_totals,
+            relative_tolerance=relative_tolerance,
+            minimum_reference_total=minimum_reference_total,
+            reviewed_exclusions=export_mass_reviewed_exclusions,
         )
-        checks.append(
-            check_export_mass_parity_risk(
-                pool_totals,
-                reference_totals,
-                relative_tolerance=relative_tolerance,
-                minimum_reference_total=minimum_reference_total,
-                reviewed_exclusions=export_mass_reviewed_exclusions,
+        if us_line_32_counts_both(base_totals, reference_totals, carriers):
+            mass_check = replace(
+                mass_check,
+                details={
+                    **mass_check.details,
+                    "partnership_income_counts": list(US_LINE_32_COLUMNS),
+                },
             )
-        )
+        checks.append(mass_check)
     else:
         checks.append(
             CheckResult(

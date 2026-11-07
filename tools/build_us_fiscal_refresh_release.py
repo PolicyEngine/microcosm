@@ -276,6 +276,7 @@ from microcosm.build.us_runtime.h5_io import (
 from microcosm.build.us_runtime.input_mass import (
     us_input_mass_parity_gate,
     us_input_mass_totals,
+    us_line_32_carriers,
     us_line_32_on_reference_terms,
 )
 from microcosm.build.us_runtime.l0_refit_export import (
@@ -7621,9 +7622,11 @@ def _input_mass_reference_gate(
     if reference_h5 is None:
         return None
     input_variables = _engine_input_variables()
+    reference_frame = load_us_frame(reference_h5)
     return us_input_mass_parity_gate(
         us_input_mass_totals(base_frame, columns=input_variables),
-        us_input_mass_totals(load_us_frame(reference_h5), columns=input_variables),
+        us_input_mass_totals(reference_frame, columns=input_variables),
+        carriers=us_line_32_carriers(base_frame, reference_frame),
         candidate_name="base_frame",
         reference_name=reference_h5.name,
         relative_tolerance=relative_tolerance,
@@ -7997,6 +8000,7 @@ def _export_input_mass_gate(
     return us_input_mass_parity_gate(
         us_input_mass_totals(export_frame, columns=input_variables),
         us_input_mass_totals(reference, columns=input_variables),
+        carriers=us_line_32_carriers(export_frame, reference),
         candidate_name="export_frame",
         reference_name=reference_name,
         relative_tolerance=relative_tolerance,
@@ -12149,7 +12153,12 @@ def _release_dry_run_checks(
             gate_failures=gate.failures,
             gate_details=gate.details,
             candidate_totals=us_line_32_on_reference_terms(
-                candidate_totals, reference_totals
+                candidate_totals,
+                reference_totals,
+                us_line_32_carriers(
+                    base_frame,
+                    base_frame if reference_frame is None else reference_frame,
+                ),
             ),
             reference_totals=reference_totals,
             candidate_nonzero_shares=us_nonzero_shares(

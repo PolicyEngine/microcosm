@@ -33,6 +33,7 @@ from microcosm.build.us_runtime.congressional_district_vintage import (
     load_congressional_district_vintage_crosswalk,
 )
 from microcosm.build.us_runtime.h5_io import AuthenticatedPoolH5
+from microcosm.build.us_runtime.input_mass import UsLine32Carriers
 from microcosm.build.us_runtime.release_gate_preflight import (
     MAX_REPORTED_SPM_UNITS_HARD_CAP,
     PreflightReport,
@@ -1983,9 +1984,12 @@ def _run_synthetic_preflight(
     )
 
 
-def test__run_preflight__reads_line_32_on_the_reference_terms(
-    monkeypatch, tmp_path
-) -> None:
+def _line_32_preflight_check(monkeypatch, tmp_path, *, reference_s_corp_income):
+    """The preflight's mass check on line 32 totals rounded from an 11/03 export.
+
+    The reference's ``s_corp_income`` total is zero either way; the carriers
+    say whether a reference record holds an amount, as records that cancel do.
+    """
     base = _new_lineage_frame()
     reference = _new_lineage_frame()
     monkeypatch.setattr(
@@ -1998,15 +2002,53 @@ def test__run_preflight__reads_line_32_on_the_reference_terms(
         ),
     )
 
+    def carriers(candidate, reference_frame):
+        # The check reads carriers from the frames whose totals it compares.
+        assert candidate is base
+        assert reference_frame is reference
+        return UsLine32Carriers(
+            candidate_partnership_income=True,
+            reference_s_corp_income=reference_s_corp_income,
+        )
+
+    monkeypatch.setattr(preflight_module, "us_line_32_carriers", carriers)
     report = _run_synthetic_preflight(
         monkeypatch, tmp_path, frame=base, reference_frame=reference, new_lineage=True
     )
+    return next(c for c in report.checks if c.name == "export_mass_parity_risk")
 
-    check = next(c for c in report.checks if c.name == "export_mass_parity_risk")
+
+def test__run_preflight__reads_line_32_on_the_reference_terms(
+    monkeypatch, tmp_path
+) -> None:
+    check = _line_32_preflight_check(
+        monkeypatch, tmp_path, reference_s_corp_income=False
+    )
+
     assert check.status == "PASS"
     row = next(r for r in check.rows if r["column"] == "partnership_income")
     assert row["pool_mass_at_base_weights"] == pytest.approx(1.05e12)
     assert row["verdict"] == "in_band"
+    # The row's mass measures both columns, so the details say so, as the
+    # gate's do.
+    assert check.details["partnership_income_counts"] == [
+        "partnership_income",
+        "s_corp_income",
+    ]
+
+
+def test__run_preflight__compares_each_line_32_column_against_a_split_reference(
+    monkeypatch, tmp_path
+) -> None:
+    check = _line_32_preflight_check(
+        monkeypatch, tmp_path, reference_s_corp_income=True
+    )
+
+    assert check.status == "AT_RISK"
+    row = next(r for r in check.rows if r["column"] == "partnership_income")
+    assert row["pool_mass_at_base_weights"] == pytest.approx(3.9e11)
+    assert row["verdict"] == "out_of_band_at_base_weights"
+    assert "partnership_income_counts" not in check.details
 
 
 def test__run_preflight__new_lineage_skips_only_carryover_and_records_why(
