@@ -210,13 +210,25 @@ def _no_engine(monkeypatch, engine):
     monkeypatch.setattr(engine, "_import_policyengine_uk", refuse)
 
 
+def _record(batches):
+    return {
+        "by": UK_SPINE_ENGINE_BATCH_COLUMN,
+        "batches": batches,
+        "pass": SPINE_BATCHED_PASS.name,
+        "declaration_sha256": UK_ENGINE_POPULATION.sha256,
+    }
+
+
 def test_whether_a_call_batches_is_decided_from_the_frame(monkeypatch):
     engine = PolicyEngineUKEngine()
     _no_engine(monkeypatch, engine)
     assert engine.simulation_batches(_clone_frame(column=False)) == 1
     assert engine.simulation_batches(_clone_frame((0,))) == 1
     assert engine.simulation_batches(_clone_frame((0, 1, 2))) == 3
-    assert engine.batch_record() is None
+    # The record is the frame's, with no call run: names and the clone count.
+    assert engine.batch_record(_clone_frame(column=False)) is None
+    assert engine.batch_record(_clone_frame((0,))) is None
+    assert engine.batch_record(_clone_frame((0, 1, 2))) == _record(3)
 
 
 @pytest.mark.parametrize(
@@ -252,10 +264,19 @@ def test_the_spines_clone_count_refuses_any_other_frame(
         engine.materialize(frame, ["age"], 2025)
 
 
-@pytest.mark.parametrize("clones", [0, -1, True, 2.0, "3"])
+@pytest.mark.parametrize("clones", [0, -1, True, np.bool_(True), 2.0, "3"])
 def test_the_spines_clone_count_is_a_positive_whole_number(clones):
     with pytest.raises(ValueError, match="positive whole number"):
         PolicyEngineUKEngine(clones=clones)
+
+
+@pytest.mark.parametrize("clones", [3, np.int64(3), np.int32(3)])
+def test_the_spines_clone_count_may_be_any_whole_number_type(monkeypatch, clones):
+    engine = PolicyEngineUKEngine(clones=clones)
+    _no_engine(monkeypatch, engine)
+    assert engine.simulation_batches(_clone_frame((0, 1, 2))) == 3
+    with pytest.raises(ValueError, match="no engine call runs per clone"):
+        engine.simulation_batches(_clone_frame((0, 1)))
 
 
 def test_a_clone_index_with_missing_households_is_refused(monkeypatch):
@@ -309,7 +330,7 @@ def test_a_frame_with_one_clone_takes_one_simulation(monkeypatch, clones):
     values = engine.materialize(frame, ["age"], 2025)
     assert len(built) == 1 and len(built[0]) == frame.n("person")
     np.testing.assert_array_equal(values["age"], np.arange(frame.n("person")))
-    assert engine.batch_record() is None
+    assert engine.batch_record(frame) is None
 
 
 def test_a_frame_with_clones_runs_through_the_shared_batches(monkeypatch):
@@ -336,22 +357,21 @@ def test_a_frame_with_clones_runs_through_the_shared_batches(monkeypatch):
     assert kwargs["dataset_year"] == 2023
     assert [batch.key for batch in kwargs["batches"]] == [0, 1, 2]
     assert kwargs["entity_of"]("age") == "person"
+    # Every batch is held to the adapter's own parameters wherever the UK
+    # declaration's restatements read them.
+    assert kwargs["reference_parameters"] == engine.parameters
     # Each batch's engine is built from the batch's own frame, at the
     # dataset's year, and its roles are checked against the batch's people.
     batch = frame.select(kwargs["batches"][1].persons)
     kwargs["build"](batch)
     assert built == [list(range(batch.n("person")))]
     assert roles == [(batch.n("person"), 2025)]
-    assert engine.batch_record() == {
-        "by": UK_SPINE_ENGINE_BATCH_COLUMN,
-        "batched_calls": 1,
-        "batches": [3],
-        "pass": SPINE_BATCHED_PASS.name,
-        "declaration_sha256": UK_ENGINE_POPULATION.sha256,
-    }
     engine.materialize(frame, ["age"], 2025)
     assert calls[-1][3]["dataset_year"] == 2025
-    assert engine.batch_record()["batched_calls"] == 2
+    # The calls this adapter ran leave no trace in the record: it is the
+    # frame's, as a fresh adapter reads it.
+    assert engine.batch_record(frame) == _record(3)
+    assert PolicyEngineUKEngine().batch_record(frame) == _record(3)
     with pytest.raises(ValueError, match="projects a dataset forward only"):
         engine.materialize(frame, ["age"], 2023, dataset_period=2025)
 

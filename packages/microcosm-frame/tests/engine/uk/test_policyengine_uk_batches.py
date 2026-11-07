@@ -10,12 +10,16 @@ dataset's year and projected a year on: the share formulas within the valid
 float32 bound, household taxes within its per-row form, household-local
 values bitwise, people in the frame's order and groups by id. What only the
 pool defines is refused before any simulation is built, and a frame with one
-clone takes the single simulation it always has. Every household here is made
-up.
+clone takes the single simulation it always has. A frame that carries none of
+the allocation keys' inputs (a call before the wealth and consumption stages
+write them) gives the pool's values bitwise, its shares all zero, and a batch
+whose own tree moved a parameter a restatement reads is refused. Every
+household here is made up.
 """
 
 from __future__ import annotations
 
+import re
 import warnings
 from types import SimpleNamespace
 
@@ -28,6 +32,7 @@ from microcosm.frame.adapters import policyengine_uk as adapter_module
 from microcosm.frame.adapters.engine_population import (
     SPINE_BATCHED_PASS,
     PopulationGuardError,
+    check_restated_parameters,
     frame_key_sums,
     household_batches,
     pool_share_atol,
@@ -74,6 +79,11 @@ LOCAL = (
     "household_weight",
 )
 REQUESTED = (*SHARES, "household_tax", *LOCAL)
+#: The allocation keys' inputs, which no frame carries before the stages that
+#: write wealth and consumption.
+KEY_INPUTS = tuple(
+    column for adds in UK_ENGINE_POPULATION.key_adds.values() for column in adds
+)
 
 
 def _tables(store):
@@ -135,13 +145,15 @@ def _tables(store):
     )
 
 
-def _frame(*, clones=True, single=False, store=(MONTHS,)):
+def _frame(*, clones=True, single=False, store=(MONTHS,), keys=True):
     person, benunit, household = _tables(store)
     weights = household.pop("weight").to_numpy()
     if single:
         household[UK_SPINE_ENGINE_BATCH_COLUMN] = 0
     if not clones:
         household = household.drop(columns=[UK_SPINE_ENGINE_BATCH_COLUMN])
+    if not keys:
+        household = household.drop(columns=list(KEY_INPUTS))
     return Frame(
         tables={"person": person, "benunit": benunit, "household": household},
         schema=UK_SCHEMA,
@@ -289,12 +301,11 @@ def test_people_come_back_in_the_frames_order_and_groups_by_id(runs):
     assert not np.array_equal(people, np.sort(people))
 
 
-def test_the_call_ran_in_three_judged_batches(runs):
+def test_the_frame_runs_in_three_judged_batches(runs):
     assert runs.engine.simulation_batches(runs.frame) == CLONES
-    assert runs.engine.batch_record() == {
+    assert runs.engine.batch_record(runs.frame) == {
         "by": UK_SPINE_ENGINE_BATCH_COLUMN,
-        "batched_calls": 1,
-        "batches": [CLONES],
+        "batches": CLONES,
         "pass": SPINE_BATCHED_PASS.name,
         "declaration_sha256": UK_ENGINE_POPULATION.sha256,
     }
@@ -321,7 +332,41 @@ def test_a_frame_with_one_clone_takes_one_simulation_bitwise(monkeypatch):
         assert one[name].dtype == plain[name].dtype, name
         np.testing.assert_array_equal(one[name], plain[name], err_msg=name)
     assert engine.simulation_batches(_frame(single=True)) == 1
-    assert engine.batch_record() is None
+    assert engine.batch_record(_frame(single=True)) is None
+
+
+@pytest.mark.parametrize(
+    ("period", "dataset_period"), [(D, None), (P, D)], ids=["dataset_year", "projected"]
+)
+def test_a_frame_without_the_keys_inputs_gives_the_pools_values_bitwise(
+    period, dataset_period
+):
+    # The earliest calls once the clones exist (the WAS stage's read before it
+    # writes wealth, the HBAI reads before the LCFS stage writes consumption)
+    # carry no allocation key input: every batch's total and the pool's are
+    # zero, so each batch takes zero shares, as the pool does.
+    names = (*REQUESTED, "household_net_income")
+    batched = _quiet(
+        PolicyEngineUKEngine().materialize,
+        _frame(keys=False),
+        names,
+        period,
+        dataset_period=dataset_period,
+    )
+    single = _quiet(
+        PolicyEngineUKEngine().materialize,
+        _frame(clones=False, keys=False),
+        names,
+        period,
+        dataset_period=dataset_period,
+    )
+    for name in names:
+        assert type(batched[name]) is type(single[name]), name
+        assert batched[name].dtype == single[name].dtype, name
+        np.testing.assert_array_equal(batched[name], single[name], err_msg=name)
+    for name in UK_ENGINE_POPULATION.corrected:
+        assert not np.any(single[name]), name
+    assert np.any(single["income_tax"] != 0)
 
 
 def test_stored_attendance_may_be_asked_for_in_batches():
@@ -399,7 +444,6 @@ def test_what_only_the_pool_defines_is_refused_before_any_simulation(
         engine.materialize(_frame(store=store), names, period, dataset_period=D)
     found = {(v.kind, v.name, v.period) for v in raised.value.verdict.violations}
     assert found == expected
-    assert engine.batch_record() is None
 
 
 def test_a_frame_with_fewer_clones_than_the_spine_is_refused(monkeypatch, system):
@@ -410,8 +454,65 @@ def test_a_frame_with_fewer_clones_than_the_spine_is_refused(monkeypatch, system
         engine.simulation_batches(_frame(single=True))
 
 
-def test_the_adapters_parameters_are_the_engines(system):
+def test_the_adapters_parameters_are_each_simulations_where_restated(system):
+    from policyengine_uk import Microsimulation
+
     engine = PolicyEngineUKEngine()
     node = engine.parameters(P).gov.simulation.private_school_vat
     expected = system.parameters(P).gov.simulation.private_school_vat
     assert node.private_school_factor == expected.private_school_factor
+    # A simulation builds and edits its own tree; where a restatement reads
+    # it, it still holds the adapter's.
+    simulation = _quiet(
+        Microsimulation, dataset=engine._build_dataset(_frame(clones=False), D)
+    )
+    assert simulation.tax_benefit_system is not engine._tax_benefit_system()
+    check_restated_parameters(simulation, engine.parameters, UK_ENGINE_POPULATION, P)
+
+
+#: For each parameter path a restatement reads, a value under it (a child, or
+#: the parameter itself) and where a batch engine's own edit moves it.
+MOVES = {
+    "gov.simulation.private_school_vat.private_school_attendance_rate": ("50", 0.5),
+    "gov.simulation.private_school_vat.private_school_factor": (None, 0.5),
+}
+
+
+def test_every_restated_parameter_has_a_move():
+    restated = UK_ENGINE_POPULATION.restated.values()
+    assert set(MOVES) == {path for paths in restated for path in paths}
+
+
+@pytest.mark.parametrize("path", sorted(MOVES))
+def test_a_batch_whose_own_tree_moved_a_restated_parameter_is_refused(
+    monkeypatch, system, path
+):
+    from policyengine_uk import Microsimulation
+
+    child, value = MOVES[path]
+    built = []
+
+    class Moved(Microsimulation):
+        """policyengine-uk's simulation, editing its own tree once built."""
+
+        def __init__(self, *args, **kwargs):
+            super().__init__(*args, **kwargs)
+            node = self.tax_benefit_system.parameters
+            for part in path.split("."):
+                node = getattr(node, part)
+            (node if child is None else node.children[child]).update(value=value)
+            self.tax_benefit_system.reset_parameter_caches()
+            built.append(self)
+
+    engine = PolicyEngineUKEngine()
+    engine._system = system
+    monkeypatch.setattr(
+        engine,
+        "_import_policyengine_uk",
+        lambda: SimpleNamespace(Microsimulation=Moved),
+    )
+    with pytest.raises(ValueError, match=re.escape(f"['{path}'] at {P}")):
+        _quiet(engine.materialize, _frame(), ["income_tax"], P, dataset_period=D)
+    # The first batch's engine is refused before it computes what was asked.
+    (simulation,) = built
+    assert not simulation.get_holder("income_tax").get_known_periods()

@@ -328,10 +328,23 @@ def test_isa_statistics_source_changes_invalidate_the_stages_that_read_them(
     assert registry.implementation_hash(control) == before[control]
 
 
+#: What calls a rules engine, whatever it is called on: ``materialize`` (the
+#: RulesEngine protocol), the shared batch driver, and the predictor
+#: materialization of ``microcosm.frame.rules``, which calls it.
+_ENGINE_CALLS = frozenset(
+    {"materialize", "materialize_in_batches", "materialize_rules_engine_predictors"}
+)
+
+#: Stages whose transform takes the engine without computing through it, each
+#: with why. The ISA subscriptions only check that the engine is the UK's
+#: (assert_rules_engine_country).
+_ENGINE_TAKEN_FOR_ITS_COUNTRY_ONLY = frozenset({"isa_subscriptions"})
+
+
 def _calls_the_engine(module) -> bool:
-    """Whether a module calls a rules engine: ``engine.materialize`` or
-    ``self.engine.materialize``, or the predictor materialization of
-    ``microcosm.frame.rules``, which calls it."""
+    """Whether a module calls a rules engine: any call named in
+    ``_ENGINE_CALLS``, on any receiver (``engine``, ``self.engine``,
+    ``self._engine``, ``rules_engine`` ...) or as a bare name."""
     import ast
     import inspect
 
@@ -340,14 +353,26 @@ def _calls_the_engine(module) -> bool:
         if not isinstance(node, ast.Call):
             continue
         function = node.func
-        if isinstance(function, ast.Attribute) and function.attr == "materialize":
-            target = function.value
-            if (isinstance(target, ast.Name) and target.id == "engine") or (
-                isinstance(target, ast.Attribute) and target.attr == "engine"
-            ):
-                return True
-        name = getattr(function, "id", None) or getattr(function, "attr", None)
-        if name == "materialize_rules_engine_predictors":
+        if isinstance(function, ast.Attribute) and function.attr in _ENGINE_CALLS:
+            return True
+        if isinstance(function, ast.Name) and function.id in _ENGINE_CALLS:
+            return True
+    return False
+
+
+def _takes_an_engine(module) -> bool:
+    """Whether a class the module defines (a stage transform) takes an
+    ``engine`` when it is built."""
+    import inspect
+
+    for _name, member in inspect.getmembers(module, inspect.isclass):
+        if member.__module__ != module.__name__:
+            continue
+        try:
+            parameters = inspect.signature(member).parameters
+        except (TypeError, ValueError):
+            continue
+        if "engine" in parameters:
             return True
     return False
 
@@ -356,17 +381,19 @@ def test_every_stage_that_calls_the_engine_binds_the_engine_modules() -> None:
     """How an engine call runs, and clone by clone once a frame carries more
     than one clone, is the adapter's, the shared engine-block machinery's and
     the UK declaration's (microcosm#931). ``source_hash`` does not follow
-    imports, so every stage whose module calls the engine binds all three,
-    and no other stage binds any: one that only checks the engine's country
-    (isa_subscriptions) computes nothing through it."""
+    imports, so every stage whose module calls the engine, or whose transform
+    takes one, binds all three, and no other stage binds any. The one
+    exception takes the engine only to check its country and computes
+    nothing through it."""
     from microcosm.build.uk_runtime import graph_kernels
 
     engine_modules = set(graph_kernels._ENGINE_MODULES)
-    calling = {
-        stage
+    modules = {
+        stage: graph_kernels._stage_module(stage)
         for stage in graph_kernels._STAGE_MODULES
-        if _calls_the_engine(graph_kernels._stage_module(stage))
     }
+    calling = {stage for stage, module in modules.items() if _calls_the_engine(module)}
+    taking = {stage for stage, module in modules.items() if _takes_an_engine(module)}
     assert {
         "frs_legacy_proxies",
         "frs_brma",
@@ -375,13 +402,32 @@ def test_every_stage_that_calls_the_engine_binds_the_engine_modules() -> None:
         "private_school_attendance",
         "company_cars",
     } <= calling
-    assert "isa_subscriptions" not in calling
+    # The exception is still one: it takes the engine and never calls it.
+    assert _ENGINE_TAKEN_FOR_ITS_COUNTRY_ONLY <= taking - calling
+    computing = calling | (taking - _ENGINE_TAKEN_FOR_ITS_COUNTRY_ONLY)
     for stage in graph_kernels._STAGE_MODULES:
         bound = set(graph_kernels._STAGE_HELPER_MODULES.get(stage, ()))
-        if stage in calling:
+        if stage in computing:
             assert engine_modules <= bound, stage
         else:
             assert not engine_modules & bound, stage
+
+
+def test_the_engine_call_scan_sees_any_receiver(tmp_path) -> None:
+    import types
+
+    for source, calls in (
+        ("rules_engine.materialize(frame, names, period)", True),
+        ("self._engine.materialize(frame, names, period)", True),
+        ("helpers.materialize_in_batches(frame, names, period)", True),
+        ("materialize_rules_engine_predictors(frame)", True),
+        ("frame.select(rows)", False),
+    ):
+        path = tmp_path / "stage.py"
+        path.write_text(f"def transform(self, frame):\n    {source}\n")
+        module = types.ModuleType("stage")
+        module.__file__ = str(path)
+        assert _calls_the_engine(module) is calls, source
 
 
 @pytest.mark.parametrize(

@@ -156,10 +156,11 @@ _STAGE_MODULES = {
 }
 
 # What every stage that calls the engine computes through: the adapter, which
-# runs a call over more than one clone clone by clone, and the shared
-# engine-block machinery with the UK declaration it judges each batch against
-# (microcosm#931). An edit to any of them moves the hash of every such stage;
-# test_uk_graph derives the stages from their engine calls.
+# runs a call whose frame carries several clones one clone at a time, and the
+# shared engine-block machinery with the UK declaration it judges each batch
+# against (microcosm#931). An edit to any of them moves the hash of every such
+# stage; test_uk_graph derives the stages from their engine calls and from
+# their transforms' engine parameter.
 _ENGINE_MODULES = (
     uk_engine_adapter,
     engine_population,

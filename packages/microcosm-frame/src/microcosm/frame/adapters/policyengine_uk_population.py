@@ -22,7 +22,12 @@ reviewed against policyengine-uk 2.174.1:
   rate equals its baseline's;
 - refused: the household income and wealth deciles and the relative poverty
   flags rank or take a median over the simulated population, which no factor
-  corrects.
+  corrects;
+- restated: attendance ranks household net income over the simulated
+  population, so a stage whose call runs in batches may compute it over the
+  pool from household-local engine values instead; every batch's engine must
+  then hold the attendance rates and the population factor the formula reads
+  as the adapter's own tree does.
 
 The window: policyengine-uk's constructor draws which Universal Credit
 claimants are new claimants by benefit-unit position for the rebalancing
@@ -184,6 +189,15 @@ UK_ENGINE_POPULATION = PopulationDeclaration(
         "policyengine_uk.reforms.scotland.scottish_child_payment_reform:"
         "create_scottish_child_payment_reform",
     ),
+    # attends_private_school.py reads these two under
+    # gov.simulation.private_school_vat: the rates at the 21 percentile
+    # breakpoints and the population adjustment factor.
+    restated={
+        "attends_private_school": (
+            "gov.simulation.private_school_vat.private_school_attendance_rate",
+            "gov.simulation.private_school_vat.private_school_factor",
+        ),
+    },
     digests={
         "policyengine_uk/variables/household/wealth/shareholding.py": (
             "95fae830757b8db478cab62c1e84b093af268abd8d0ed21a518c65b0d635a52b"

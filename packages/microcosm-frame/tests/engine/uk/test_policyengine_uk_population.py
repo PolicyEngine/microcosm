@@ -187,6 +187,19 @@ def test_the_inert_predicate_gives_the_engines_rate_equality(system, year):
     }
 
 
+def test_the_restated_parameters_are_all_the_attendance_formula_reads(system):
+    # A stage whose call runs in batches may restate attendance over the pool
+    # from the parameters the declaration names, which every batch's engine
+    # is held to (microcosm#931), so they are every parameter the engine's
+    # formula reads.
+    source = inspect.getsource(type(system.variables["attends_private_school"]))
+    assert source.count("parameters(period)") == 1
+    ((name, base),) = re.findall(r"(\w+) = parameters\(period\)\.([a-z_.]+)", source)
+    read = {f"{base}.{leaf}" for leaf in re.findall(rf"\b{name}\.([a-z_]+)", source)}
+    assert read == set(UK_ENGINE_POPULATION.restated["attends_private_school"])
+    assert set(UK_ENGINE_POPULATION.restated) == {"attends_private_school"}
+
+
 _LSR = "gov.simulation.labour_supply_responses"
 _EMPLOYER_NI = "gov.contrib.policyengine.employer_ni"
 _BUDGET = "gov.contrib.policyengine.budget"

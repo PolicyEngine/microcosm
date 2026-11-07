@@ -59,8 +59,10 @@ call that way: it judges the call's requests before any engine is built,
 forms each batch's share from the frame's own totals
 (:func:`frame_key_sums`, ``c_b = S_b / S`` at unscaled weights), runs an
 :class:`EngineBlock` on each batch's engine under a pass that raises, holds
-the batches to one growth factor per key, and releases each engine before the
-next is built.
+each engine to the caller's parameters wherever a formula the caller
+restates over the pool reads them (:func:`check_restated_parameters`) and
+the batches to one growth factor per key, and releases each engine before
+the next is built.
 
 Simulations are duck-typed policyengine-core simulations (``calculate``,
 ``set_input``, ``get_holder``, ``baseline``, ``branches``, ``branch_name``,
@@ -120,6 +122,7 @@ __all__ = [
     "any_of",
     "assert_groups_nest_in_households",
     "check_key_sums",
+    "check_restated_parameters",
     "check_uniform_growth",
     "derived_watched_periods",
     "factor_spread",
@@ -1013,9 +1016,13 @@ class PopulationDeclaration:
     the classes must cover exactly; ``observed`` names formulas recorded for
     receipts but not judged; ``constructor_factories`` names the structural
     reform factories the engine's constructor applies, which must each return
-    None; ``digests`` pins the sources the classification rests on
-    (:func:`source_sha256`). ``reviewed_version`` is the engine release the
-    classification was reviewed against; validation rests on the digests.
+    None; ``restated`` maps stored formulas a caller may compute over the
+    pool itself, from household-local engine values, to the parameter paths
+    that computation reads, which every batch's engine must hold as the
+    caller's tree does (:func:`check_restated_parameters`); ``digests`` pins
+    the sources the classification rests on (:func:`source_sha256`).
+    ``reviewed_version`` is the engine release the classification was
+    reviewed against; validation rests on the digests.
     """
 
     engine: str
@@ -1032,6 +1039,7 @@ class PopulationDeclaration:
     window: PositionWindow
     observed: tuple[str, ...] = ()
     constructor_factories: tuple[str, ...] = ()
+    restated: Mapping[str, tuple[str, ...]] = field(default_factory=dict)
     digests: Mapping[str, str] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
@@ -1045,6 +1053,13 @@ class PopulationDeclaration:
         )
         object.__setattr__(self, "zero_at_policy", _frozen_mapping(self.zero_at_policy))
         object.__setattr__(self, "inert", _frozen_mapping(self.inert))
+        object.__setattr__(
+            self,
+            "restated",
+            _frozen_mapping(
+                {name: _names(paths) for name, paths in dict(self.restated).items()}
+            ),
+        )
         object.__setattr__(self, "digests", _frozen_mapping(self.digests))
         for name in ("stored", "refused", "observed", "constructor_factories"):
             object.__setattr__(self, name, _names(getattr(self, name)))
@@ -1063,6 +1078,10 @@ class PopulationDeclaration:
                     )
         if not set(self.inert) <= set(self.stored):
             raise ValueError("An inert formula must also be declared stored.")
+        if not set(self.restated) <= set(self.stored):
+            raise ValueError("A restated formula must also be declared stored.")
+        if not all(self.restated.values()):
+            raise ValueError("A restated formula names the parameters it reads.")
         missing_keys = set(self.corrected.values()) - set(self.key_adds)
         if missing_keys:
             raise ValueError(f"Keys {sorted(missing_keys)} name no inputs.")
@@ -1129,6 +1148,7 @@ class PopulationDeclaration:
             "observed": sorted(self.observed),
             "window": self.window.to_json(),
             "constructor_factories": sorted(self.constructor_factories),
+            "restated": {name: list(paths) for name, paths in self.restated.items()},
             "digests": dict(self.digests),
         }
 
@@ -1189,8 +1209,9 @@ def validate_declaration(declaration: PopulationDeclaration, system: Any) -> Non
     every share formula is a formula over its key, every key a sum of plain
     inputs of the key's entity exactly as declared; the pinned sources are
     unchanged; the window's source starts at the window; every constructor
-    factory resolves; every predicate's parameters exist. Callers validate
-    when they first need the declaration, never at import.
+    factory resolves; every predicate's and every restatement's parameters
+    exist. Callers validate when they first need the declaration, never at
+    import.
     """
 
     problems: list[str] = []
@@ -1283,8 +1304,14 @@ def validate_declaration(declaration: PopulationDeclaration, system: Any) -> Non
             continue
         if not callable(factory):
             problems.append(f"{reference} is not callable.")
-    for name, predicate in sorted(declaration.run_predicates().items()):
-        for path in predicate.paths():
+    parameter_reads = {
+        name: predicate.paths()
+        for name, predicate in declaration.run_predicates().items()
+    }
+    for name, paths in declaration.restated.items():
+        parameter_reads[name] = (*parameter_reads.get(name, ()), *paths)
+    for name, paths in sorted(parameter_reads.items()):
+        for path in paths:
             try:
                 _parameter_value(system.parameters, path)
             except AttributeError:
@@ -2436,6 +2463,70 @@ def _engine_rows(frame: Any, entity: str) -> np.ndarray:
     return frame.table(entity)[frame.schema.entity_id_column(entity)].to_numpy()
 
 
+def _parameter_leaves(node: Any, path: str) -> dict[str, Any]:
+    """The values under a parameter at an instant, by path. A
+    policyengine-core node keeps its children in ``_children``; anything
+    else is one value."""
+
+    children = getattr(node, "_children", None)
+    if isinstance(children, Mapping):
+        leaves: dict[str, Any] = {}
+        for name in sorted(children, key=str):
+            leaves.update(_parameter_leaves(children[name], f"{path}.{name}"))
+        return leaves
+    return {path: node}
+
+
+def _same_parameter(left: Any, right: Any, path: str) -> bool:
+    try:
+        ours = _parameter_leaves(_parameter_value(left, path), path)
+        theirs = _parameter_leaves(_parameter_value(right, path), path)
+    except AttributeError:
+        return False
+    if set(ours) != set(theirs):
+        return False
+    for leaf, value in ours.items():
+        try:
+            if not np.array_equal(np.asarray(value), np.asarray(theirs[leaf])):
+                return False
+        except Exception:
+            # A value that cannot be compared is not known to be the same.
+            return False
+    return True
+
+
+def check_restated_parameters(
+    simulation: Any,
+    reference: Callable[[Any], Any],
+    declaration: PopulationDeclaration,
+    period: Any,
+) -> None:
+    """Refuse an engine whose parameters at ``period`` are not the caller's
+    wherever a restatement reads them (:attr:`PopulationDeclaration.restated`).
+
+    A caller that restates a formula over the pool reads its parameters
+    from its own tree, ``reference`` (called with ``period``), while every
+    engine builds its own tree and may edit it while it is constructed. So
+    each batch's engine is held to the caller's, value by value under every
+    restated path, before it computes any value the call asks for. Raises
+    :class:`ValueError` naming the paths, never their values.
+    """
+
+    paths = sorted({path for paths in declaration.restated.values() for path in paths})
+    if not paths:
+        return
+    own = simulation.tax_benefit_system.parameters(period)
+    expected = reference(period)
+    moved = [path for path in paths if not _same_parameter(own, expected, path)]
+    if moved:
+        raise ValueError(
+            f"A batch's engine holds other parameters at {moved} at {period} "
+            f"than the tree the restatement of {sorted(declaration.restated)} "
+            "over the pool reads, so that restatement would not be what the "
+            "engine computes."
+        )
+
+
 def _run_batch(
     frame: Any,
     shares: Mapping[str, PoolShare],
@@ -2446,10 +2537,13 @@ def _run_batch(
     declaration: PopulationDeclaration,
     policy: PassPolicy,
     build: Callable[[Any], Any],
+    reference_parameters: Callable[[Any], Any] | None,
 ) -> tuple[dict[str, np.ndarray], dict[str, float | None]]:
-    """One batch: its engine, an :class:`EngineBlock` on it, the requested
-    values and the block's verdict, and the engine released on the way out,
-    whether the batch passed or raised."""
+    """One batch: its engine, an :class:`EngineBlock` on it (which validates
+    the declaration first), the engine held to the caller's parameters where
+    a restatement reads them, the requested values and the block's verdict,
+    and the engine released on the way out, whether the batch passed or
+    raised."""
 
     simulation = build(frame)
     block = None
@@ -2462,6 +2556,10 @@ def _run_batch(
             periods=(dataset_year, period),
             dataset_year=dataset_year,
         )
+        if reference_parameters is not None:
+            check_restated_parameters(
+                simulation, reference_parameters, declaration, period
+            )
         values: dict[str, np.ndarray] = {}
         for name in names:
             block.note_request(name, period)
@@ -2515,24 +2613,30 @@ def materialize_in_batches(
     build: Callable[[Any], Any],
     entity_of: Callable[[str], str],
     household: str = "household",
+    reference_parameters: Callable[[Any], Any] | None = None,
 ) -> dict[str, np.ndarray]:
     """``variables`` at ``period`` over ``bundle``, one engine per batch.
 
     ``batches`` partition the bundle's households (:func:`household_batches`),
     ``build`` makes an engine from a batch's frame, ``entity_of`` names a
     variable's entity, and the bundle's values are ``dataset_year`` inputs
-    the engine projects to ``period``. Before any engine is built, the call's
-    requests are judged (a period in the window, a refused formula, a stored
-    formula the frame does not supply) and every batch's
-    :class:`PoolShare` is formed from the frame, ``c_b = S_b / S`` at its
-    own weights (:func:`frame_key_sums`). Then, batch by batch in the
-    batches' order: the batch's frame (``bundle.select``), its engine, an
-    :class:`EngineBlock` on it at ``dataset_year`` and ``period`` (checks
-    (a) and (b), the pool's shares injected, the recorder armed), the
-    requested values, the block's verdict, and the engine released before
-    the next is built. Every batch's engine must grow each key and the
-    weights by one factor (:data:`BATCH_FACTOR_AGREEMENT`), or the
-    dataset-year shares would not hold at ``period``.
+    the engine projects to ``period``. ``reference_parameters`` is the
+    caller's parameter tree at a period, which a declaration that restates
+    formulas over the pool (:attr:`PopulationDeclaration.restated`)
+    requires. Before any engine is built, the call's requests are judged (a
+    period in the window, a refused formula, a stored formula the frame does
+    not supply) and every batch's :class:`PoolShare` is formed from the
+    frame, ``c_b = S_b / S`` at its own weights (:func:`frame_key_sums`).
+    Then, batch by batch in the batches' order: the batch's frame
+    (``bundle.select``), its engine, an :class:`EngineBlock` on it at
+    ``dataset_year`` and ``period`` (checks (a) and (b), the pool's shares
+    injected, the recorder armed), the engine held to the caller's
+    parameters at ``period`` wherever a restatement reads them
+    (:func:`check_restated_parameters`), the requested values, the block's
+    verdict, and the engine released before the next is built. Every
+    batch's engine must grow each key and the weights by one factor
+    (:data:`BATCH_FACTOR_AGREEMENT`), or the dataset-year shares would not
+    hold at ``period``.
 
     The values come back as one engine over the bundle returns them: people
     in the bundle's order and groups by ascending id
@@ -2555,6 +2659,13 @@ def materialize_in_batches(
         raise ValueError(
             f"The dataset's year {dataset} is after {year}; the engine projects "
             "a dataset forward only."
+        )
+    if declaration.restated and reference_parameters is None:
+        raise ValueError(
+            f"The declaration restates {sorted(declaration.restated)} over the "
+            "pool from parameters every batch's engine must hold as the caller "
+            "does, so a batched call needs the caller's tree "
+            "(reference_parameters)."
         )
     names = tuple(dict.fromkeys(str(name) for name in variables))
     entities = {name: str(entity_of(name)) for name in names}
@@ -2583,6 +2694,7 @@ def materialize_in_batches(
             declaration=declaration,
             policy=policy,
             build=build,
+            reference_parameters=reference_parameters,
         )
         _refuse_unequal_growth(growth)
         for name in names:
