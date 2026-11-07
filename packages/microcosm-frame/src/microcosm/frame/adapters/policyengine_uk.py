@@ -3,6 +3,11 @@
 The PolicyEngine-UK import is deferred until a method needs engine metadata or
 simulation. Importing this module therefore keeps ``microcosm-frame`` usable
 without the UK extra.
+
+A frame whose households carry more than one clone of the dense spine's
+geography (``UK_SPINE_ENGINE_BATCH_COLUMN``) is computed clone by clone, one
+simulation per clone, through the shared engine-block machinery
+(microcosm#931); every other frame takes one simulation, as it always has.
 """
 
 from __future__ import annotations
@@ -16,8 +21,18 @@ from typing import Any, Protocol
 
 import numpy as np
 
+from microcosm.frame.adapters.engine_population import (
+    SPINE_BATCHED_PASS,
+    HouseholdBatch,
+    household_batches,
+    materialize_in_batches,
+)
 from microcosm.frame.adapters.policyengine_uk_concepts import (
     POLICYENGINE_UK_CONCEPT_MAPPING,
+)
+from microcosm.frame.adapters.policyengine_uk_population import (
+    UK_ENGINE_POPULATION,
+    UK_SPINE_ENGINE_BATCH_COLUMN,
 )
 from microcosm.frame.bundle import Frame
 from microcosm.frame.concept_mapping import ConceptMapping
@@ -208,12 +223,30 @@ class ProjectingRulesEngine(RulesEngine, Protocol):
 
 
 class PolicyEngineUKEngine:
-    """RulesEngine adapter backed by ``policyengine_uk``."""
+    """RulesEngine adapter backed by ``policyengine_uk``.
+
+    Whether a call runs in batches is decided from the frame, never set
+    here: one whose household table carries ``UK_SPINE_ENGINE_BATCH_COLUMN``
+    with more than one clone is computed clone by clone
+    (:meth:`simulation_batches`), since one simulation over a dense spine's
+    pool does not fit in memory (microcosm#931). ``clones``, the spine's
+    clone count when known, only refuses: a frame carrying the column with
+    any other number of clones is part of a pool, or not this spine's, and
+    an engine over it would read its policyengine-uk shares over the wrong
+    population.
+    """
 
     country = "uk"
 
-    def __init__(self) -> None:
+    def __init__(self, *, clones: int | None = None) -> None:
+        if clones is not None and (
+            isinstance(clones, bool) or not isinstance(clones, int) or clones < 1
+        ):
+            raise ValueError("clones is a positive whole number of clones, or None.")
         self._system: Any = None
+        self._clones = clones
+        # The batch count of each call that ran in batches (batch_record).
+        self._batch_counts: list[int] = []
 
     def variable_metadata(self, name: str) -> VariableMetadata:
         """Return entity, dtype kind, and period semantics for a UK variable."""
@@ -261,6 +294,13 @@ class PolicyEngineUKEngine:
         ``dataset_period`` where they belong to an earlier year: the dataset is
         then stamped with that year and policyengine-uk projects it forward to
         ``period`` as it does a released file (``extend_single_year_dataset``).
+
+        A bundle carrying more than one clone (:meth:`simulation_batches`) is
+        computed clone by clone (:func:`materialize_in_batches`): each clone's
+        simulation reads the pool's shares (``c_b = S_b / S`` at the frame's
+        own weights), the UK declaration's guard judges what it ran under the
+        spine's pass, which raises on anything only the pool defines, and the
+        values come back as one simulation over the bundle returns them.
         """
 
         microsimulation_class = self._import_policyengine_uk().Microsimulation
@@ -268,6 +308,16 @@ class PolicyEngineUKEngine:
             raise ValueError(
                 f"dataset_period {dataset_period} is after period {period}; "
                 "policyengine-uk projects a dataset forward only."
+            )
+        batches = self._clone_batches(bundle)
+        if batches is not None:
+            return self._materialize_in_batches(
+                bundle,
+                variables,
+                period,
+                dataset_period=dataset_period,
+                batches=batches,
+                microsimulation_class=microsimulation_class,
             )
         dataset = self._build_dataset(
             bundle, period if dataset_period is None else dataset_period
@@ -285,6 +335,110 @@ class PolicyEngineUKEngine:
                     f"but entity {entity!r} has {expected} row(s)."
                 )
             results[name] = values
+        return results
+
+    def simulation_batches(self, bundle: Frame) -> int:
+        """How many simulations :meth:`materialize` runs for ``bundle``.
+
+        One, or one per clone where the bundle's households carry more than
+        one; the same decision, and the same refusals, as materialize's. No
+        engine is built.
+        """
+
+        batches = self._clone_batches(bundle)
+        return 1 if batches is None else len(batches)
+
+    def parameters(self, period: int | str) -> Any:
+        """The engine's own parameters at ``period``.
+
+        Read from the tax-benefit system every simulation this adapter builds
+        starts from, so a stage that restates an engine formula over the pool
+        takes the engine's parameters rather than a copy (microcosm#931).
+        """
+
+        return self._tax_benefit_system().parameters(period)
+
+    def batch_record(self) -> dict[str, object] | None:
+        """How this adapter's calls ran in batches, or None when none did.
+
+        The column the batches follow, how many calls ran in batches, the
+        batch counts they ran in, and the pass and declaration every batch
+        was judged under (each was clean: a violation raises). Names and
+        counts of calls and clones only, never a record's value or a count
+        of records.
+        """
+
+        if not self._batch_counts:
+            return None
+        return {
+            "by": UK_SPINE_ENGINE_BATCH_COLUMN,
+            "batched_calls": len(self._batch_counts),
+            "batches": sorted(set(self._batch_counts)),
+            "pass": SPINE_BATCHED_PASS.name,
+            "declaration_sha256": UK_ENGINE_POPULATION.sha256,
+        }
+
+    def _clone_batches(self, bundle: Frame) -> tuple[HouseholdBatch, ...] | None:
+        """The clone batches a call over ``bundle`` runs in, or None for one
+        simulation: a bundle without the clone column, or with one clone,
+        runs as it always has."""
+
+        entities = getattr(bundle, "entities", None)
+        if entities is not None and "household" not in entities:
+            return None
+        household = bundle.table("household")
+        column = UK_SPINE_ENGINE_BATCH_COLUMN
+        if column not in household.columns:
+            return None
+        values = household[column]
+        if values.isna().any():
+            raise ValueError(
+                f"{column!r} is missing for some households, so the clone each "
+                "belongs to is not known."
+            )
+        clones = int(values.nunique())
+        if self._clones is not None and clones != self._clones:
+            raise ValueError(
+                f"The frame carries {clones} clone(s) of the spine's {self._clones}. "
+                "A call over part of the pool would read policyengine-uk's "
+                "shares over that part, so no engine call runs per clone or "
+                "over a sub-pool."
+            )
+        if clones < 2:
+            return None
+        return household_batches(bundle, column)
+
+    def _materialize_in_batches(
+        self,
+        bundle: Frame,
+        variables: Sequence[str],
+        period: int | str,
+        *,
+        dataset_period: int | str | None,
+        batches: tuple[HouseholdBatch, ...],
+        microsimulation_class: Any,
+    ) -> dict[str, np.ndarray]:
+        dataset_year = int(period if dataset_period is None else dataset_period)
+
+        def build(frame: Frame) -> Any:
+            simulation = microsimulation_class(
+                dataset=self._build_dataset(frame, dataset_year)
+            )
+            validate_uc_claimant_input(simulation, frame.table("person"), period)
+            return simulation
+
+        results = materialize_in_batches(
+            bundle,
+            variables,
+            int(period),
+            batches=batches,
+            declaration=UK_ENGINE_POPULATION,
+            policy=SPINE_BATCHED_PASS,
+            dataset_year=dataset_year,
+            build=build,
+            entity_of=lambda name: self.variable_metadata(name).entity,
+        )
+        self._batch_counts.append(len(batches))
         return results
 
     def export_contract(self) -> ExportContract:
