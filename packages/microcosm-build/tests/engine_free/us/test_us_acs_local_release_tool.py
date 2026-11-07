@@ -1975,7 +1975,7 @@ def test_materialize_refuses_a_pre_anchor_staging_before_hashing_it(
     monkeypatch.setattr(
         module,
         "state_admin_surface",
-        lambda *a, **k: SimpleNamespace(registry=[], ri_substitutions=[]),
+        lambda *a, **k: module.AdminSurface([], [], {}),
     )
     # microcosm#1335: the stage reads the ladder and checks geography labels
     # before the staging summary.

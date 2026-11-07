@@ -845,6 +845,7 @@ def test_materialize_binds_age_groups_and_census_state_totals(
         "_require_local_work_disability",
         "_require_local_income_transfer",
         "_require_local_ssi_disability",
+        "_require_local_receipt_anchors",
         "log",
     ):
         monkeypatch.setattr(module, name, lambda *_a, **_k: None)
