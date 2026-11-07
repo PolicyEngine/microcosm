@@ -3,12 +3,13 @@
 A fake simulation stands in for a policyengine-core one: holders that know
 which periods hold inputs, formulas run through ``_run_formula``, a
 parameter tree read at a period, and a ``clone`` that rebinds the methods
-bound to the original, as core's does. Everything is synthetic.
+bound to the original, as core's does. The fake engine lives in
+``test_support.microcosm_frame.engine_population_fakes``, which the build
+tests share. Everything is synthetic.
 """
 
 from __future__ import annotations
 
-import copy
 import math
 import sys
 import types
@@ -23,13 +24,13 @@ from microcosm.frame.adapters.engine_population import (
     FLOAT32_UNIT_ROUNDOFF,
     MEASURE_PASS,
     SPINE_BATCHED_PASS,
+    EngineBlock,
     FormulaRunRecorder,
     InertRule,
     ParameterTest,
     PassPolicy,
     PoolShare,
     PoolShareError,
-    PopulationDeclaration,
     PopulationDeclarationError,
     PopulationGuardError,
     PositionWindow,
@@ -50,352 +51,52 @@ from microcosm.frame.adapters.engine_population import (
     scatter_by_entity_ids,
     source_sha256,
     validate_declaration,
+    validate_pool_shares,
 )
-
-D, P = 2024, 2025
-N = 6
-FAKE_ENGINE = "fake_population_engine"
-
-
-# ---------------------------------------------------------------------------
-# A fake engine
-# ---------------------------------------------------------------------------
-
-
-def _namespace(tree):
-    if isinstance(tree, dict):
-        return SimpleNamespace(
-            **{key: _namespace(value) for key, value in tree.items()}
-        )
-    return tree
-
-
-class FakeParameters:
-    """A parameter tree: called with a period it gives that period's values,
-    and its root's children are reachable as attributes, as core's are."""
-
-    def __init__(self, tree, overrides=None):
-        self.tree = tree
-        self.overrides = overrides or {}
-
-    def __call__(self, period):
-        tree = copy.deepcopy(self.tree)
-        for path, value in self.overrides.get(int(str(period)[:4]), {}).items():
-            *parents, leaf = path.split(".")
-            node = tree
-            for parent in parents:
-                node = node[parent]
-            node[leaf] = value
-        return _namespace(tree)
-
-    def __getattr__(self, name):
-        tree = self.__dict__["tree"]
-        if name in tree:
-            return _namespace(tree[name])
-        raise AttributeError(name)
-
-
-class FakeVariable:
-    def __init__(self, name, *, formula=None, adds=None, dtype=np.float32):
-        self.name = name
-        self.entity = SimpleNamespace(key="household")
-        self.formula = formula
-        self.formulas = {"0000-01-01": formula} if formula is not None else {}
-        self.adds = adds
-        self.subtracts = None
-        self.dtype = dtype
-
-
-class FakeHolder:
-    def __init__(self, variable):
-        self.variable = variable
-        self.arrays: dict[str, np.ndarray] = {}
-        self.inputs: set[str] = set()
-
-    def get_known_periods(self):
-        return list(self.arrays)
-
-    def get_input_periods(self, branch_name="default"):
-        return [period for period in self.arrays if period in self.inputs]
-
-    def get_array(self, period, branch_name="default"):
-        return self.arrays.get(str(period))
-
-    def copy(self):
-        holder = FakeHolder(self.variable)
-        holder.arrays = {key: value.copy() for key, value in self.arrays.items()}
-        holder.inputs = set(self.inputs)
-        return holder
-
-
-class FakeSimulation:
-    def __init__(self, system, inputs, *, rows=N, baseline=True):
-        self.tax_benefit_system = system
-        self.rows = rows
-        self.branch_name = "default"
-        self.branches = {}
-        self.holders = {
-            name: FakeHolder(variable) for name, variable in system.variables.items()
-        }
-        for (name, period), values in inputs.items():
-            self.set_input(name, period, values)
-        if baseline:
-            self.baseline = self.clone()
-
-    def get_holder(self, name):
-        return self.holders[name]
-
-    def set_input(self, name, period, values):
-        holder = self.holders[name]
-        holder.arrays[str(period)] = np.array(values, dtype=holder.variable.dtype)
-        holder.inputs.add(str(period))
-
-    def calculate(self, name, period):
-        holder = self.holders[name]
-        cached = holder.arrays.get(str(period))
-        if cached is not None:
-            return cached
-        variable = holder.variable
-        result = self._run_formula(variable, None, period)
-        if result is None:
-            values = np.zeros(self.rows, dtype=variable.dtype)
-        else:
-            values = np.broadcast_to(
-                np.asarray(result).astype(variable.dtype), (self.rows,)
-            ).copy()
-        holder.arrays[str(period)] = values
-        return values
-
-    def _run_formula(self, variable, population, period):
-        if variable.formula is not None:
-            return variable.formula(self, period)
-        if variable.adds:
-            total = 0
-            for name in variable.adds:
-                total = total + self.calculate(name, period)
-            return total
-        return None
-
-    def clone(self):
-        """Copy as policyengine-core does: every attribute but the branches,
-        with the methods bound to the original bound to the copy."""
-
-        new = object.__new__(type(self))
-        for key, value in self.__dict__.items():
-            if key != "branches":
-                new.__dict__[key] = value
-        for key, value in list(new.__dict__.items()):
-            if isinstance(value, types.MethodType) and value.__self__ is self:
-                new.__dict__[key] = types.MethodType(value.__func__, new)
-        new.holders = {name: holder.copy() for name, holder in self.holders.items()}
-        new.branches = {}
-        return new
-
-    def get_branch(self, name):
-        if name not in self.branches:
-            branch = self.clone()
-            branch.branch_name = name
-            branch.parent_branch = self
-            self.branches[name] = branch
-        return self.branches[name]
-
-
-def _share(simulation, period):
-    key = simulation.calculate("key", period).astype(np.float64)
-    weight = simulation.calculate("weight", period).astype(np.float64)
-    total = float(np.sum(key * weight))
-    return key / total if total else np.zeros_like(key)
-
-
-def _rates(simulation, period):
-    return simulation.calculate("share", period) * 1_000.0
-
-
-def _budget_change(simulation, period):
-    budget = simulation.tax_benefit_system.parameters(period).gov.budget
-    if budget == 0:
-        return 0
-    weight = simulation.calculate("weight", period)
-    return budget / weight.sum() + 0 * weight
-
-
-def _months(simulation, period):
-    return np.full(simulation.rows, 6.0)
-
-
-def _attendance(simulation, period):
-    income = simulation.calculate("local", period)
-    return income > np.median(income)
-
-
-def _vat(rate_path):
-    def formula(simulation, period):
-        node = simulation.tax_benefit_system.parameters(period)
-        for part in rate_path.split("."):
-            node = getattr(node, part)
-        return simulation.calculate("attendance", period).astype(np.float64) * node
-
-    return formula
-
-
-def _vat_change(simulation, period):
-    return simulation.calculate("vat", period) - simulation.calculate(
-        "baseline_vat", period
-    )
-
-
-def _tax_total(simulation, period):
-    return simulation.calculate("vat", period) + simulation.calculate("rates", period)
-
-
-def _decile(simulation, period):
-    income = simulation.calculate("local", period)
-    return np.argsort(np.argsort(income)) % 10
-
-
-def _local(simulation, period):
-    return simulation.calculate("key_a", period) * 2.0
-
-
-def _fake_system(*, budget=0.0, vat_rate=0.2, baseline_vat_rate=0.2):
-    names = {
-        "weight": FakeVariable("weight"),
-        "key_a": FakeVariable("key_a"),
-        "key_b": FakeVariable("key_b"),
-        "key": FakeVariable("key", adds=["key_a", "key_b"]),
-        "share": FakeVariable("share", formula=_share),
-        "rates": FakeVariable("rates", formula=_rates),
-        "months": FakeVariable("months", formula=_months),
-        "attendance": FakeVariable("attendance", formula=_attendance, dtype=bool),
-        "vat": FakeVariable("vat", formula=_vat("gov.vat_rate")),
-        "baseline_vat": FakeVariable(
-            "baseline_vat", formula=_vat("baseline.gov.vat_rate")
-        ),
-        "vat_change": FakeVariable("vat_change", formula=_vat_change),
-        "tax_total": FakeVariable("tax_total", formula=_tax_total),
-        "budget_change": FakeVariable("budget_change", formula=_budget_change),
-        "decile": FakeVariable("decile", formula=_decile, dtype=np.int64),
-        "local": FakeVariable("local", formula=_local),
-    }
-    tree = {
-        "gov": {"budget": budget, "vat_rate": vat_rate},
-        "baseline": {"gov": {"vat_rate": baseline_vat_rate}},
-    }
-    return SimpleNamespace(variables=names, parameters=FakeParameters(tree))
-
-
-def _quiet_reform(parameters, period):
-    return None
-
-
-def _loud_reform(parameters, period):
-    return object()
-
-
-def _late_reform(parameters, period):
-    return object() if int(str(period)[:4]) == P else None
+from test_support.microcosm_frame.engine_population_fakes import (
+    BLOCKS,
+    FAKE_ENGINE,
+    GROWTH,
+    KEY_A,
+    WEIGHT,
+    D,
+    FakeSimulation,
+    N,
+    P,
+    install_fake_engine,
+    numbers_are_years,
+)
+from test_support.microcosm_frame.engine_population_fakes import (
+    block_shares as _block_shares,
+)
+from test_support.microcosm_frame.engine_population_fakes import (
+    fake_block as _block,
+)
+from test_support.microcosm_frame.engine_population_fakes import (
+    fake_declaration as _declaration,
+)
+from test_support.microcosm_frame.engine_population_fakes import (
+    fake_inputs as _inputs,
+)
+from test_support.microcosm_frame.engine_population_fakes import (
+    fake_pool as _pool,
+)
+from test_support.microcosm_frame.engine_population_fakes import (
+    fake_system as _fake_system,
+)
+from test_support.microcosm_frame.engine_population_fakes import (
+    frame_sum as _frame_sum,
+)
+from test_support.microcosm_frame.engine_population_fakes import (
+    local_formula as _local,
+)
 
 
 @pytest.fixture
 def fake_engine(monkeypatch):
     """The engine's own module: its list, its window and its reform factories."""
 
-    module = types.ModuleType(FAKE_ENGINE)
-    module.WHOLE_POPULATION = frozenset(
-        {"share", "months", "attendance", "budget_change", "decile"}
-    )
-    module.WINDOW = range(2026, 2033)
-    module.quiet_reform = _quiet_reform
-    module.loud_reform = _loud_reform
-    module.late_reform = _late_reform
-    monkeypatch.setitem(sys.modules, FAKE_ENGINE, module)
-    return module
-
-
-def _declaration(**changes):
-    fields = {
-        "engine": FAKE_ENGINE,
-        "distribution": "fake-population-engine",
-        "reviewed_version": "1.0.0",
-        "list_source": f"{FAKE_ENGINE}:WHOLE_POPULATION",
-        "weight_variable": "weight",
-        "corrected": {"share": "key"},
-        "key_adds": {"key": ("key_a", "key_b")},
-        "stored": ("months", "attendance"),
-        "zero_at_policy": {"budget_change": ParameterTest("gov.budget", "eq", 0)},
-        "inert": {
-            "attendance": InertRule(
-                sink="vat_change",
-                levels=("vat", "baseline_vat"),
-                carriers=("tax_total",),
-                predicate=all_of(
-                    ParameterTest("gov.vat_rate", "eq_path", "baseline.gov.vat_rate")
-                ),
-            )
-        },
-        "refused": ("decile",),
-        "window": PositionWindow(2026, f"{FAKE_ENGINE}:WINDOW", "positional draws"),
-        "observed": ("rates",),
-        "constructor_factories": (f"{FAKE_ENGINE}:quiet_reform",),
-    }
-    fields.update(changes)
-    return PopulationDeclaration(**fields)
-
-
-# Two clones of three households each: the first block's keys are larger.
-KEY_A = np.array([10.0, 0.0, 30.0, 1.0, 2.0, 3.0])
-KEY_B = np.array([5.0, 5.0, 0.0, 1.0, 0.0, 2.0])
-WEIGHT = np.array([100.0, 200.0, 300.0, 150.0, 150.0, 150.0])
-BLOCKS = {"0": np.array([0, 1, 2]), "1": np.array([3, 4, 5])}
-GROWTH = 1.03
-
-
-def _inputs(rows, *, weight_scale=1.0, store=("months", "attendance")):
-    inputs = {}
-    for period, factor in ((D, 1.0), (P, GROWTH)):
-        inputs[("key_a", period)] = KEY_A[rows] * factor
-        inputs[("key_b", period)] = KEY_B[rows] * factor
-        inputs[("weight", period)] = WEIGHT[rows] * weight_scale
-        if "months" in store:
-            inputs[("months", period)] = np.full(len(rows), 3.0)
-        if "attendance" in store:
-            inputs[("attendance", period)] = np.zeros(len(rows), dtype=bool)
-    return inputs
-
-
-def _frame_sum(rows):
-    return float(np.sum((KEY_A[rows] + KEY_B[rows]) * WEIGHT[rows]))
-
-
-def _block_shares(*, scaled):
-    pool_mass = float(WEIGHT.sum())
-    scales = (
-        {block: pool_mass / float(WEIGHT[rows].sum()) for block, rows in BLOCKS.items()}
-        if scaled
-        else None
-    )
-    shares = pool_shares(
-        {block: {"share": _frame_sum(rows)} for block, rows in BLOCKS.items()},
-        scales,
-        key_variables={"share": "key"},
-    )
-    return shares, scales
-
-
-def _block(block, *, scaled=True, store=("months", "attendance"), system=None):
-    rows = BLOCKS[block]
-    scale = 1.0
-    if scaled:
-        scale = float(WEIGHT.sum()) / float(WEIGHT[rows].sum())
-    return FakeSimulation(
-        system or _fake_system(),
-        _inputs(rows, weight_scale=scale, store=store),
-        rows=len(rows),
-    )
-
-
-def _pool():
-    return FakeSimulation(_fake_system(), _inputs(np.arange(N)))
+    return install_fake_engine(monkeypatch)
 
 
 # ---------------------------------------------------------------------------
@@ -1312,6 +1013,280 @@ def test_a_verdict_carries_names_periods_and_booleans_only(fake_engine):
     for leaf in leaves(verdict.as_receipt()):
         assert leaf is None or isinstance(leaf, (str, bool, int)), leaf
         assert not isinstance(leaf, float)
+
+
+# ---------------------------------------------------------------------------
+# One block's life
+# ---------------------------------------------------------------------------
+
+
+def _open_block(
+    block="0",
+    *,
+    simulation=None,
+    shares=None,
+    policy=MEASURE_PASS,
+    periods=(D, P),
+):
+    scaled, _scales = _block_shares(scaled=True)
+    return EngineBlock(
+        _block(block) if simulation is None else simulation,
+        scaled[block] if shares is None else shares,
+        declaration=_declaration(),
+        policy=policy,
+        periods=periods,
+        dataset_year=D,
+    )
+
+
+def _off_frame_total(block="0"):
+    """The block's share with a key total 1% off the engine's."""
+
+    shares, _scales = _block_shares(scaled=True)
+    share = shares[block]["share"]
+    return {
+        "share": PoolShare(
+            "share",
+            "key",
+            block_key_sum=share.block_key_sum * 1.01,
+            pool_key_sum=share.pool_key_sum,
+            weight_scale=share.weight_scale,
+        )
+    }
+
+
+def test_an_engine_block_corrects_wraps_and_judges_what_it_builds(fake_engine):
+    pool = _pool()
+    block = _open_block()
+    receipt = block.receipt()
+    assert receipt["declaration_valid"] is True
+    assert receipt["key_sums_verified"] is True
+    assert receipt["uniform_growth_verified"] is True
+    assert receipt["applied"] is True
+    assert receipt["refusals"] == []
+    assert receipt["periods"] == [str(D), str(P)]
+    assert receipt["growth_factors"] == {
+        str(P): {"key": pytest.approx(GROWTH, rel=1e-6), "weight": 1.0}
+    }
+    assert receipt["siblings_match"] is None
+    sibling = block.wrap(lambda: _block("0"))()
+    for simulation in (block.main, sibling, sibling.baseline):
+        np.testing.assert_allclose(
+            simulation.calculate("share", P),
+            pool.calculate("share", P)[BLOCKS["0"]],
+            rtol=1e-6,
+        )
+    block.note_request("tax_total", P)
+    sibling.calculate("tax_total", P)
+    verdict = block.close()
+    assert verdict is block.verdict and verdict.clean, verdict.describe()
+    assert block.receipt()["siblings_match"] is True
+    assert block.receipt_entries() == {
+        "engine_pool_shares": block.receipt(),
+        "engine_population_reach": verdict.as_receipt(),
+    }
+    # Disarmed, and judged once.
+    assert "_run_formula" not in vars(block.main)
+    assert "_run_formula" not in vars(sibling)
+    assert block.close() is verdict
+
+
+def test_a_block_whose_engine_key_total_is_not_the_frames_stays_uncorrected(
+    fake_engine,
+):
+    """Check (a) fails: recorded, the shares are never set, and the verdict
+    then finds the share formula no input where the block computes."""
+
+    block = _open_block(shares=_off_frame_total())
+    receipt = block.receipt()
+    assert receipt["declaration_valid"] is True
+    assert receipt["key_sums_verified"] is False
+    assert receipt["uniform_growth_verified"] is False
+    assert receipt["applied"] is False
+    (refusal,) = receipt["refusals"]
+    assert "frame total" in refusal
+    assert numbers_are_years(receipt["refusals"])
+    verdict = block.close()
+    assert ("corrected_not_input", "share", str(D)) in _kinds(verdict)
+    assert block.receipt()["siblings_match"] is None
+
+
+def _grows_by_row(inputs):
+    # The third row's key grows by 1.0 where the others grow by 1.03.
+    inputs[("key_a", P)] = inputs[("key_a", D)] * np.array([GROWTH, GROWTH, 1.0])
+
+
+def _weights_grow_by_row(inputs):
+    inputs[("weight", P)] = inputs[("weight", D)] * np.array([1.0, 1.0, 1.1])
+
+
+def _a_zero_row_turns_nonzero(inputs):
+    # The second row carries no key in the dataset's year, and does later.
+    inputs[("key_b", D)] = np.array([5.0, 0.0, 0.0])
+    inputs[("key_b", P)] = np.array([5.0 * GROWTH, 4.0, 0.0])
+
+
+@pytest.mark.parametrize(
+    "change, message",
+    [
+        pytest.param(_grows_by_row, "one factor per row", id="a key by row"),
+        pytest.param(_weights_grow_by_row, "one factor per row", id="weights by row"),
+        pytest.param(_a_zero_row_turns_nonzero, "zero at", id="a zero row"),
+    ],
+)
+def test_a_block_its_engine_does_not_carry_by_one_factor_stays_uncorrected(
+    fake_engine, change, message
+):
+    """Check (b) fails: the dataset-year correction would not hold later."""
+
+    inputs = _inputs(BLOCKS["0"])
+    change(inputs)
+    simulation = FakeSimulation(_fake_system(), inputs, rows=3)
+    # The shares are the block's own at the dataset's year, so check (a)
+    # holds and check (b) is what refuses.
+    total = float(
+        np.sum((inputs[("key_a", D)] + inputs[("key_b", D)]) * inputs[("weight", D)])
+    )
+    shares = {
+        "share": PoolShare("share", "key", block_key_sum=total, pool_key_sum=3 * total)
+    }
+    block = _open_block(simulation=simulation, shares=shares)
+    receipt = block.receipt()
+    assert receipt["key_sums_verified"] is True
+    assert receipt["uniform_growth_verified"] is False
+    assert receipt["growth_factors"] == {}
+    assert receipt["applied"] is False
+    (refusal,) = receipt["refusals"]
+    assert message in refusal
+    assert numbers_are_years(receipt["refusals"])
+
+
+@pytest.mark.parametrize(
+    "move",
+    [
+        pytest.param(lambda s: s.set_input("weight", D, np.ones(3)), id="weights"),
+        pytest.param(lambda s: s.set_input("key", P, np.zeros(3)), id="a key"),
+        pytest.param(
+            lambda s: s.baseline.set_input("weight", P, np.ones(3)),
+            id="its baseline's weights",
+        ),
+    ],
+)
+def test_a_sibling_that_moves_the_keys_or_weights_once_built_fails_the_block(
+    fake_engine, move
+):
+    block = _open_block()
+    sibling = block.wrap(lambda: _block("0"))()
+    move(sibling)
+    block.close()
+    assert block.receipt()["siblings_match"] is False
+    assert block.receipt()["applied"] is True
+
+
+def test_a_block_computing_in_the_window_or_before_its_data_is_refused(fake_engine):
+    late = _open_block(periods=(D, 2026))
+    assert "from 2026 on" in late.refusals[0]
+    assert ("window_period", None, "2026") in _kinds(late.close())
+    early = _open_block(periods=(2023, D))
+    receipt = early.receipt()
+    assert receipt["applied"] is False and receipt["key_sums_verified"] is False
+    (refusal,) = receipt["refusals"]
+    assert "before the dataset's year" in refusal
+    assert numbers_are_years([*late.refusals, *early.refusals])
+
+
+def test_an_engine_its_declaration_does_not_describe_is_recorded_never_armed():
+    # Without the fake engine's module the declaration's own list cannot be
+    # read, so it does not validate.
+    block = _open_block()
+    receipt = block.receipt()
+    assert receipt["declaration_valid"] is False
+    assert receipt["applied"] is False
+    (refusal,) = receipt["refusals"]
+    assert "no longer matches the installed engine" in refusal
+    assert block.recorder is None and "_run_formula" not in vars(block.main)
+    assert block.close() is None and block.verdict is None
+    assert set(block.receipt_entries()) == {"engine_pool_shares"}
+
+
+def test_a_raising_pass_raises_what_the_measure_pass_records(fake_engine):
+    with pytest.raises(PoolShareError, match="frame total"):
+        _open_block(shares=_off_frame_total(), policy=SPINE_BATCHED_PASS)
+    with pytest.raises(PoolShareError, match="from 2026 on"):
+        _open_block(periods=(D, 2026), policy=SPINE_BATCHED_PASS)
+    block = _open_block(policy=SPINE_BATCHED_PASS)
+    block.main.calculate("decile", P)
+    with pytest.raises(PopulationGuardError, match="decile"):
+        block.close()
+    assert "_run_formula" not in vars(block.main)
+    block = _open_block(policy=SPINE_BATCHED_PASS)
+    sibling = block.wrap(lambda: _block("0"))()
+    sibling.set_input("weight", D, np.ones(3))
+    with pytest.raises(PoolShareError, match="no longer holds"):
+        block.close()
+    assert "_run_formula" not in vars(sibling)
+
+
+def test_a_raising_pass_raises_on_an_engine_its_declaration_does_not_describe():
+    with pytest.raises(PopulationDeclarationError):
+        _open_block(policy=SPINE_BATCHED_PASS)
+
+
+def test_a_block_refuses_a_simulation_that_sets_what_its_correction_reads(
+    fake_engine,
+):
+    assert _declaration().correction_reads() == {
+        "share",
+        "key",
+        "key_a",
+        "key_b",
+        "weight",
+    }
+    block = _open_block()
+    for names in (["key_a"], [None, "weight"], ["share"], ["key"]):
+        with pytest.raises(ValueError, match="pool-share correction reads"):
+            block.refuse_substitution(names, "a counterfactual")
+    block.refuse_substitution(["local", None], "a counterfactual")
+
+
+def test_work_after_the_block_is_judged_is_refused_and_never_armed(fake_engine):
+    block = _open_block()
+    build = block.wrap(lambda: _block("0"))
+    verdict = block.close()
+    assert verdict.clean
+    late = build()
+    block.note_request("tax_total", P)
+    assert len(block.refusals) == 2
+    assert all("after the block was judged" in text for text in block.refusals)
+    assert numbers_are_years(block.refusals)
+    assert "_run_formula" not in vars(late)
+    assert block.siblings == [] and block.requested == set()
+    assert block.close() is verdict
+
+
+def test_pool_shares_are_one_blocks_for_the_declared_formulas():
+    shares, scales = _block_shares(scaled=True)
+    declaration = _declaration()
+    validate_pool_shares(declaration, shares["0"])
+    validate_pool_shares(declaration, shares["0"], weight_scale=scales["0"])
+    with pytest.raises(ValueError, match="engine weight scale"):
+        validate_pool_shares(declaration, shares["0"], weight_scale=1.0)
+    with pytest.raises(ValueError, match="must cover exactly"):
+        validate_pool_shares(declaration, {})
+    with pytest.raises(TypeError, match="PoolShare records"):
+        validate_pool_shares(declaration, {"share": 1.0})
+    over_weights = PoolShare("share", "weight", block_key_sum=1.0, pool_key_sum=2.0)
+    with pytest.raises(ValueError, match="not over key"):
+        validate_pool_shares(declaration, {"share": over_weights})
+    with pytest.raises(ValueError, match="must cover exactly"):
+        EngineBlock(
+            _block("0"),
+            {},
+            declaration=declaration,
+            policy=MEASURE_PASS,
+            periods=(D,),
+            dataset_year=D,
+        )
 
 
 # ---------------------------------------------------------------------------
