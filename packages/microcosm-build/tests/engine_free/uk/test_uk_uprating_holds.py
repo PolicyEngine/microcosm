@@ -278,6 +278,31 @@ def test_no_committed_hold_is_about_to_lapse():
     )
 
 
+def test_the_scottish_outturn_taxpayer_count_is_a_signed_hold():
+    # S4 reads HMRC's 2024-25 Scottish NSND taxpayer count at the 2025 calibration
+    # period with no index (its revenue row is uprated). Only the feed-backed
+    # compile, which CI skips, checks the register against the real targets, and
+    # it refuses the row unless a signed hold declares it.
+    target_id = "hmrc.scottish_income_tax.nsnd_taxpayers"
+    entries = [
+        entry
+        for entry in load_uk_uprating_holds()["holds"]
+        if target_id in entry["target_ids"]
+    ]
+    assert [(entry["scope"], entry["kind"]) for entry in entries] == [
+        ("national", "reviewed_no_index")
+    ]
+    assert uk_hold_is_signed(entries[0])
+    receipt = assert_uk_uprating_holds_declared(
+        TargetRegistry([_spec(target_id, "2024")], country="uk"),
+        calibration_period=2025,
+        evaluated_on=date.fromisoformat(entries[0]["approved_on"]),
+        scope="national",
+        holds=_holds(*entries),
+    )
+    assert receipt["by_kind"] == {"reviewed_no_index": [target_id]}
+
+
 def test_the_committed_declarations_are_well_formed():
     payload = load_uk_uprating_holds()
     seen: set[str] = set()

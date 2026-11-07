@@ -1108,7 +1108,19 @@ def test_prefix_geography_pins_carry_scotgov_and_england_scoped_slc_families() -
         for target_id, pin in pins.items()
         if pin["geography_id"] == "S92000003" and target_id in national_target_ids
     }
-    assert scotland_pinned == scotgov_ids | substring_scotland
+    # HMRC's Scottish income tax outturn rows name Scotland in neither the id
+    # nor the concept; their selectors declare S92000003, which wins over every
+    # inferred pin (microcosm#1095 R8; S4 of the November event-data plan).
+    declared_scotland = {
+        "hmrc.scottish_income_tax.nsnd_outturn",
+        "hmrc.scottish_income_tax.nsnd_taxpayers",
+    }
+    targets_by_id = {str(target["target_id"]): target for target in contract["targets"]}
+    assert all(
+        targets_by_id[target_id]["ledger_selector"]["geography_id"] == "S92000003"
+        for target_id in declared_scotland
+    )
+    assert scotland_pinned == scotgov_ids | substring_scotland | declared_scotland
 
     membership = _load_uk_resource("target_reference_membership.json")
     for target_id in sorted(scotgov_ids):

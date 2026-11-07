@@ -979,7 +979,9 @@
       "ons.occupation.female_elementary_administration_and_service": "New declaration backed by Nomis APS218 Jan 2025-Dec 2025 in Chronicle (ons-aps218-occupation-jan-dec-2025, PolicyEngine/chronicle#411); no uk-data metric holds employment by occupation and sex (microcosm#1490).",
       "ons.occupation.male_elementary_administration_and_service": "New declaration backed by Nomis APS218 Jan 2025-Dec 2025 in Chronicle (ons-aps218-occupation-jan-dec-2025, PolicyEngine/chronicle#411); no uk-data metric holds employment by occupation and sex (microcosm#1490).",
       "hmrc.pris.rental_income.scotland": "No incumbent target: uk-data binds no PRIS row, and its registry used PRIS only for the x1.9 scaling of the SPI net amounts, retired in microcosm#1106. PRIS 2026's Scottish landlords' receipts (Table 9) join as a measured diagnostic for the Scottish Budget 2027-28 property rate costing.",
-      "hmrc.pris.expenses.scotland": "No incumbent target: uk-data binds no PRIS row, and its registry used PRIS only for the x1.9 scaling of the SPI net amounts, retired in microcosm#1106. PRIS 2026's Scottish landlords' expenses (Table 11) join as a measured diagnostic for the Scottish Budget 2027-28 property rate costing."
+      "hmrc.pris.expenses.scotland": "No incumbent target: uk-data binds no PRIS row, and its registry used PRIS only for the x1.9 scaling of the SPI net amounts, retired in microcosm#1106. PRIS 2026's Scottish landlords' expenses (Table 11) join as a measured diagnostic for the Scottish Budget 2027-28 property rate costing.",
+      "hmrc.scottish_income_tax.nsnd_outturn": "No incumbent target: uk-data binds no Scottish outturn row. HMRC's Scottish income tax outturn 2024-25 (Table 1, NSND revenue) joins as a measured diagnostic for the Scottish Budget 2027-28 income tax costing.",
+      "hmrc.scottish_income_tax.nsnd_taxpayers": "No incumbent target: uk-data binds no Scottish outturn row. HMRC's Scottish income tax outturn 2024-25 (Table 2, NSND taxpayers) joins as a measured diagnostic beside the revenue row."
     },
     "suppressed_ancestors": {
       "hmrc/salary_sacrifice_it_relief_basic_rate": {
@@ -1063,6 +1065,8 @@
       "hmrc.spi.property_income.count_by_total_income_band",
       "hmrc.pris.rental_income.scotland",
       "hmrc.pris.expenses.scotland",
+      "hmrc.scottish_income_tax.nsnd_outturn",
+      "hmrc.scottish_income_tax.nsnd_taxpayers",
       "hmrc.spi.private_pension_income.amount_by_total_income_band",
       "hmrc.spi.private_pension_income.count_by_total_income_band",
       "hmrc.spi.state_pension.amount_by_total_income_band",
@@ -4629,6 +4633,123 @@
       "label": "Landlords' allowable expenses, residential finance costs included, Scotland",
       "uprating_index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.per_capita.gdp",
       "selector_note": "HMRC Property Rental Income Statistics 2026 (28 August 2026), Table 11, Scotland, 2024-25. Uprated from the 2024-25 fact to the 2025 calibration period by the pinned engine's gov.economic_assumptions.indices.obr.per_capita.gdp between 1 January 2024 and 1 January 2025: the index the engine uprates property_rental_income and property_income by."
+    },
+    {
+      "target_id": "hmrc.scottish_income_tax.nsnd_outturn",
+      "family": "hmrc_scottish_income_tax",
+      "geography_levels": [
+        "country"
+      ],
+      "measurement": {
+        "entity": "person",
+        "map_to": "household",
+        "concept": "uk.tax.income_tax.amount",
+        "filters": [
+          {
+            "concept": "uk.geography.country",
+            "equals": "SCOTLAND"
+          }
+        ]
+      },
+      "bindings": {
+        "policyengine": {
+          "metric_name": "hmrc/scottish_income_tax/nsnd_outturn",
+          "value_expression": "earned_income_tax + property_income_tax",
+          "from_entity": "person",
+          "map_to": "household",
+          "notes": "HMRC Scottish Income Tax Outturn Statistics 2024-25 (9 July 2026), Table 1: the final non-savings, non-dividend (NSND) income tax revenue of Scottish taxpayers in 2024-25, the base the Scottish rates apply to: established Self Assessment and PAYE liabilities and estimated further liabilities, less uncollectable amounts, relief at source and Gift Aid. The measure is earned_income_tax plus property_income_tax, policyengine-uk's tax on non-savings income, over the people it taxes at the Scottish rates (pays_scottish_income_tax). The bound SPI rows for Scotland hold tax on all income, not its NSND split, so this row shows the split's fit for the Scottish Budget 2027-28's income tax costing (PolicyEngine/uk-scottish-budget-2027-28#7). Held as a measured diagnostic (calibration_measure_exclusions.json); a target only if the outturn gap passes the plan's 3 percent rule and a calibrate-only solve keeps uk_weight_ratio within its fence.",
+          "filters": [
+            {
+              "variable": "pays_scottish_income_tax",
+              "equals": true
+            }
+          ]
+        },
+        "axiom": {
+          "metric_name": "hmrc/scottish_income_tax/nsnd_outturn",
+          "status": "pending",
+          "value_rule": "uk.tax.income_tax.amount"
+        }
+      },
+      "ledger_selector": {
+        "source_name": "hmrc",
+        "source_concept": "hmrc.nsnd_income_tax_outturn",
+        "record_set_spec_id": "hmrc.scottish_income_tax_2024_25.table1.scottish.ty2024.v1",
+        "source_measure_id": "all",
+        "entity_name": "person",
+        "geography_id": "S92000003",
+        "period_type": "tax_year",
+        "period_value": 2024,
+        "dimension_values": {
+          "nsnd_outturn_component": "all"
+        }
+      },
+      "category_id": "hmrc.tax_statistics",
+      "label": "Non-savings, non-dividend income tax of Scottish taxpayers, Scotland",
+      "uprating_index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.average_earnings",
+      "selector_note": "HMRC Scottish Income Tax Outturn Statistics 2024-25 (9 July 2026), Table 1, Scotland, 2024-25 (GBP 18,635m). Uprated from the 2024-25 fact to the 2025 calibration period by the pinned engine's gov.economic_assumptions.indices.obr.average_earnings between 1 January 2024 and 1 January 2025, since NSND income is mostly earnings: tax grows faster than income while the thresholds are frozen, so the uprated figure sits slightly low."
+    },
+    {
+      "target_id": "hmrc.scottish_income_tax.nsnd_taxpayers",
+      "family": "hmrc_scottish_income_tax",
+      "geography_levels": [
+        "country"
+      ],
+      "measurement": {
+        "entity": "person",
+        "map_to": "household",
+        "concept": "uk.person.count",
+        "filters": [
+          {
+            "concept": "uk.geography.country",
+            "equals": "SCOTLAND"
+          },
+          {
+            "concept": "uk.tax.income_tax.amount",
+            "operator": ">",
+            "value": 0
+          }
+        ]
+      },
+      "bindings": {
+        "policyengine": {
+          "metric_name": "hmrc/scottish_income_tax/nsnd_taxpayers",
+          "value_variable": "person_count",
+          "from_entity": "person",
+          "map_to": "household",
+          "notes": "HMRC Scottish Income Tax Outturn Statistics 2024-25 (9 July 2026), Table 2: the Scottish taxpayers with NSND income tax in 2024-25, the All rates row, which HMRC rounds to the nearest hundred. The measure counts the people policyengine-uk taxes at the Scottish rates whose earned_income_tax is above zero, so a taxpayer with tax on property income alone is missed. Held as a measured diagnostic beside the NSND revenue row (calibration_measure_exclusions.json; PolicyEngine/uk-scottish-budget-2027-28#7).",
+          "filters": [
+            {
+              "variable": "pays_scottish_income_tax",
+              "equals": true
+            },
+            {
+              "variable": "earned_income_tax",
+              "operator": ">",
+              "value": 0
+            }
+          ]
+        },
+        "axiom": {
+          "metric_name": "hmrc/scottish_income_tax/nsnd_taxpayers",
+          "status": "pending",
+          "value_rule": "uk.person.count"
+        }
+      },
+      "ledger_selector": {
+        "source_name": "hmrc",
+        "source_concept": "hmrc.nsnd_income_taxpayers",
+        "record_set_spec_id": "hmrc.scottish_income_tax_2024_25.table2.scottish.ty2024.taxpayers.v1",
+        "source_measure_id": "taxpayers",
+        "entity_name": "person",
+        "geography_id": "S92000003",
+        "period_type": "tax_year",
+        "period_value": 2024,
+        "layout_groupby_value_id": "all"
+      },
+      "category_id": "hmrc.tax_statistics",
+      "label": "Scottish taxpayers with non-savings, non-dividend income tax, Scotland",
+      "selector_note": "HMRC Scottish Income Tax Outturn Statistics 2024-25 (9 July 2026), Table 2, Scotland, 2024-25, All rates (3,036,400). The selector pins the layout's all value: the six rows by marginal rate share the record set and measure. The 2024-25 count is read at the 2025 calibration period without uprating, as the latest fact not after it."
     },
     {
       "target_id": "hmrc.spi.private_pension_income.amount_by_total_income_band",

@@ -805,8 +805,9 @@ def test_packaged_exclusions_load():
     # 2026-10-30). microcosm#1426 holds HMRC's High Income Child Benefit Charge count
     # and revenue as measured diagnostics (María's ruling of 2026-11-03). The
     # November event data holds PRIS 2026's Scottish receipts and expenses as
-    # measured diagnostics (María's approval of 2026-11-06).
-    assert len(names) == len(set(names)) == 49
+    # measured diagnostics (María's approval of 2026-11-06), and PR2 holds HMRC's
+    # Scottish NSND outturn and taxpayers for 2024-25 (S4).
+    assert len(names) == len(set(names)) == 51
     (gas,) = [
         entry
         for entry in exclusions

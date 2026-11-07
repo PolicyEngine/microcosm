@@ -522,6 +522,24 @@
       "adjudication": "María's approval of 2026-11-06 of the plan for the November event data (PR1, item S1): measure PRIS 2024-25's Scottish receipts and expenses on every build and hold both out of the solve; the receipts row binds only after a bound-variant solve passes.",
       "approved_on": "2026-11-06",
       "expires_on": "2027-02-06"
+    },
+    {
+      "name": "hmrc.scottish_income_tax.nsnd_outturn",
+      "reason": "Diagnostic first, not yet a weight question: the bound SPI rows hold Scotland's tax on all income, and the NSND revenue shows how the build splits it. Vahid's runs put NSND at -4.9 percent and +3.1 percent of the outturn on two recent builds while the bound SPI total moved about 2 percent. Bind only if the measured gap exceeds about 3 percent and a calibrate-only solve with the row bound keeps uk_weight_ratio at or below 1,151.25 and the Scottish SPI rows within 10 percent; the row nests inside the SPI all-income tax rows, which would need a cross-grain declaration.",
+      "tracking": "microcosm#1095",
+      "approved_by": "juaristi22",
+      "adjudication": "María's approval of 2026-11-06 of the plan for the November event data (PR2, item S4): measure HMRC's Scottish NSND outturn and taxpayers on every build and hold both out of the solve; they bind only if the measured gap exceeds about 3 percent and a calibrate-only solve passes (for María's signature).",
+      "approved_on": "2026-11-07",
+      "expires_on": "2027-02-07"
+    },
+    {
+      "name": "hmrc.scottish_income_tax.nsnd_taxpayers",
+      "reason": "Diagnostic, not a weight question: the count of Scottish NSND taxpayers measured beside the revenue row, read at 2025 without uprating, and missing taxpayers with tax on property income alone. Bind only with the revenue row, after the same calibrate-only solve.",
+      "tracking": "microcosm#1095",
+      "approved_by": "juaristi22",
+      "adjudication": "María's approval of 2026-11-06 of the plan for the November event data (PR2, item S4): measure HMRC's Scottish NSND outturn and taxpayers on every build and hold both out of the solve; they bind only if the measured gap exceeds about 3 percent and a calibrate-only solve passes (for María's signature).",
+      "approved_on": "2026-11-07",
+      "expires_on": "2027-02-07"
     }
   ]
 }
