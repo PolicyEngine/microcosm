@@ -14,7 +14,9 @@ package; each is separately resumable):
                 exactly like the production path
                 (``compile_us_fiscal_target_registry`` -> RI Medicaid
                 substitution -> state {usda_snap, cms_medicaid[enrollment],
-                irs_soi}; ``--soi-mode state`` by default -- Build O's
+                irs_soi} and, with the default ``age`` family, the Census
+                Vintage 2025 state age groups for July 1, 2024
+                (microcosm#1528); ``--soi-mode state`` by default -- Build O's
                 state-geography SOI contract -- with ``totals``, ``full`` and
                 ``state_cd`` (district SOI rows, one vintage per state
                 concept) as explicit opt-ins), refuse a staging run that
@@ -37,7 +39,9 @@ package; each is separately resumable):
                 household-chunked
                 engine pass under the nullable-artifact contract (input-schema
                 projection + reviewed-null fill), add PUMA-ladder population
-                marginals (state + congressional district), assign the CD
+                marginals (state + congressional district; with ``age``, the
+                states at the Vintage 2025 totals and each state's districts
+                scaled to match), assign the CD
                 holdout, and write the lean checkpoint: a structure-only H5,
                 target_registry.json, a sparse (targets x households) float32
                 CSR target matrix row-aligned with it (target_matrix.npz) and
@@ -107,7 +111,9 @@ import argparse
 import gc
 import hashlib
 import json
+import math
 import resource
+import shlex
 import shutil
 import subprocess
 import sys
@@ -276,6 +282,30 @@ DEFAULT_SOI_MODE = SOI_MODE_STATE
 #: ``state`` mode excludes them, which is what Build O's switch did.
 CONGRESSIONAL_DISTRICT_RECORD_SET_SPEC_PREFIX = "irs_soi.congressional_district_"
 
+#: The ``--families`` member that binds the Census Vintage 2025 state age
+#: groups (microcosm#1528): single years 0 to 5, then 6 to 11, 12 to 17, 18 to
+#: 24, ten-year groups to 64, 65 to 74, and 75 and over, in every state and DC
+#: at July 1, 2024. With it, each state's population target becomes the same
+#: estimates' state total and the state's district targets scale with it, so
+#: a state's age groups, its total and its districts all agree.
+AGE_FAMILY = "age"
+DEFAULT_FAMILIES = f"snap,medicaid,soi,{AGE_FAMILY}"
+#: The families every build used before microcosm#1528 added ``age``: the
+#: parser default from microcosm#528 until then. A record that names no
+#: families was built with these.
+LEGACY_FAMILIES = "snap,medicaid,soi"
+STATE_AGE_STATE_COUNT = 51
+STATE_AGE_GROUPS_PER_STATE = 15
+#: ``source`` of the population targets, by where their levels come from.
+LADDER_POPULATION_SOURCE = "US Census Bureau 2020 PUMA population ladder"
+CENSUS_STATE_POPULATION_SOURCE = (
+    "US Census Bureau Vintage 2025 state population estimates (July 1, 2024)"
+)
+CENSUS_SCALED_DISTRICT_POPULATION_SOURCE = (
+    "US Census Bureau 2020 PUMA population ladder district shares, scaled to "
+    "Vintage 2025 state population estimates (July 1, 2024)"
+)
+
 #: The kernel's ``l2_basis`` and ``mass_parametrization`` values
 #: (``microcosm.calibrate.L2_BASES`` / ``MASS_PARAMETRIZATIONS``), spelled here
 #: so parsing arguments never imports torch; a test pins them equal.
@@ -304,6 +334,7 @@ def release_refresh_recipe(
     cd_holdout_fraction: float | None = None,
     penalty: dict | None = None,
     target_family_loss_multipliers: dict | None = None,
+    families: str | list[str] | tuple[str, ...] | None = None,
 ) -> str:
     """The one-command release refresh, pinned to the SOI surface it built.
 
@@ -316,10 +347,17 @@ def release_refresh_recipe(
     that records none reads as the historical solve) for the same reason: the
     recipe rebuilds the recorded solve even after a default changes. Each
     recorded target family loss multiplier is one
-    ``--target-family-loss-multiplier`` (none by default, as recorded).
+    ``--target-family-loss-multiplier`` (none by default, as recorded). It
+    names ``--families`` at the recorded target families too, since
+    microcosm#1528 added ``age`` to the default: a record that names none reads
+    as ``LEGACY_FAMILIES``, the only default before then.
     """
 
     _require_soi_mode(soi_mode)
+    if families is None:
+        families = LEGACY_FAMILIES
+    if not isinstance(families, str):
+        families = ",".join(families)
     holdout = (
         f"--cd-holdout-fraction {float(cd_holdout_fraction)!r} "
         if soi_mode == SOI_MODE_STATE_CD and cd_holdout_fraction is not None
@@ -350,6 +388,7 @@ def release_refresh_recipe(
         "uv run tools/build_us_acs_local_release.py --stage all "
         "--staging-h5 <run>/acs_multispine_staging.h5 "
         "--feed <ledger-facts.jsonl> --feed-sha256 <sha> "
+        f"--families {shlex.quote(families)} "
         f"--soi-mode {soi_mode} "
         f"{holdout}"
         f"{solve}"
@@ -507,12 +546,27 @@ def state_admin_specs(
 
 
 class AdminSurface:
-    """The compiled admin registry plus how its SOI slice was chosen."""
+    """The compiled admin registry plus how its SOI slice was chosen.
 
-    def __init__(self, registry, ri_substitutions, soi_receipt: dict) -> None:
+    With the ``age`` family it also carries each state's Census Vintage 2025
+    total (``state_population_totals``, keyed by integer state FIPS) and a
+    receipt of the age surface (``age_receipt``); both are ``None`` without it.
+    """
+
+    def __init__(
+        self,
+        registry,
+        ri_substitutions,
+        soi_receipt: dict,
+        *,
+        state_population_totals: dict[int, float] | None = None,
+        age_receipt: dict | None = None,
+    ) -> None:
         self.registry = registry
         self.ri_substitutions = ri_substitutions
         self.soi_receipt = soi_receipt
+        self.state_population_totals = state_population_totals
+        self.age_receipt = age_receipt
 
 
 def state_admin_surface(
@@ -525,7 +579,9 @@ def state_admin_surface(
     {usda_snap, cms_medicaid[enrollment], irs_soi}. The SOI slice follows
     :func:`soi_surface_predicate` for ``state`` (the default), ``totals`` and
     ``full``; ``state_cd`` adds the reconciled congressional-district rows
-    (:func:`us_acs_local_cd_surface.state_cd_soi_surface`).
+    (:func:`us_acs_local_cd_surface.state_cd_soi_surface`). The ``age`` family
+    compiles the Census Vintage 2025 state age groups as well and adds them
+    with their state totals (:func:`state_age_surface`).
     """
 
     # Refuse an unknown mode before loading the feed and compiling the registry.
@@ -552,6 +608,7 @@ def state_admin_surface(
         target_period=PERIOD,
         congressional_district_vintage_crosswalk=crosswalk,
         age_targets=True,
+        state_age_band_targets=AGE_FAMILY in families,
     )
     registry, ri_substitutions = apply_us_medicaid_enrollment_substitutions(registry)
 
@@ -586,9 +643,156 @@ def state_admin_surface(
         else:
             picked += candidates
             soi_receipt["counts"] = {"total": len(candidates)}
+    state_population_totals = None
+    age_receipt = None
+    if AGE_FAMILY in families:
+        age_specs, state_population_totals, age_receipt = state_age_surface(
+            registry, artifact.facts
+        )
+        picked += age_specs
     return AdminSurface(
-        TargetRegistry(list(picked), country="us"), ri_substitutions, soi_receipt
+        TargetRegistry(list(picked), country="us"),
+        ri_substitutions,
+        soi_receipt,
+        state_population_totals=state_population_totals,
+        age_receipt=age_receipt,
     )
+
+
+def state_age_surface(registry, facts, *, period: int | str = PERIOD):
+    """The Census Vintage 2025 state age-group targets and their state totals.
+
+    Selects the compiled ``census_population`` targets of the Vintage 2025
+    state age-group package (PolicyEngine/chronicle#417), reads each state's
+    all-ages total from the same package, and refuses a surface that
+    :func:`state_age_surface_problems` faults. Returns ``(specs, totals by
+    integer state FIPS, receipt)``.
+    """
+
+    from microcosm.build.us_runtime.fiscal_targets import (
+        US_STATE_AGE_BAND_RECORD_SET_SPEC_ID,
+        us_state_age_band_population_totals,
+    )
+
+    specs = registry.select(
+        family="census_population",
+        predicate=lambda spec: (
+            spec.metadata.get("ledger_layout_record_set_spec_id")
+            == US_STATE_AGE_BAND_RECORD_SET_SPEC_ID
+        ),
+    ).specs
+    try:
+        totals = us_state_age_band_population_totals(facts, period=period)
+    except ValueError as error:
+        raise SystemExit(
+            f"The ledger feed's Census Vintage 2025 state totals are unusable "
+            f"(microcosm#1528): {error}"
+        ) from error
+    problems = state_age_surface_problems(specs, totals, period=period)
+    if problems:
+        shown = "; ".join(problems[:10])
+        more = f"; and {len(problems) - 10} more" if len(problems) > 10 else ""
+        raise SystemExit(
+            "The ledger feed cannot supply the Census Vintage 2025 state age "
+            f"surface (microcosm#1528): {shown}{more}."
+        )
+    receipt = {
+        "record_set_spec_id": US_STATE_AGE_BAND_RECORD_SET_SPEC_ID,
+        "period": str(period),
+        "states": len(totals),
+        "age_groups_per_state": STATE_AGE_GROUPS_PER_STATE,
+        "targets": len(specs),
+        "population": math.fsum(totals.values()),
+    }
+    return (
+        tuple(specs),
+        {int(state): total for state, total in sorted(totals.items())},
+        receipt,
+    )
+
+
+def state_age_surface_problems(specs, totals, *, period: int | str = PERIOD):
+    """Why ``specs`` cannot be the state age surface for ``totals``.
+
+    ``totals`` maps two-digit state FIPS codes to all-ages populations. It
+    must name the 50 states and DC; each of them needs exactly fifteen age
+    groups from ``period``, whose ``[lower, upper)`` age bounds tile
+    ``[0, inf)`` with no gap or overlap and whose values sum to the state's
+    total; and no age group may name a state outside ``totals``. Returns the
+    problems found, empty when there are none.
+    """
+
+    def bound(spec, key: str) -> float:
+        try:
+            return float(spec.metadata.get(key, "nan"))
+        except (TypeError, ValueError):
+            return math.nan
+
+    problems: list[str] = []
+    if len(totals) != STATE_AGE_STATE_COUNT:
+        problems.append(
+            f"{len(totals)} state totals, not {STATE_AGE_STATE_COUNT} (50 states "
+            "and DC)"
+        )
+    by_state: dict[str, list] = defaultdict(list)
+    for spec in specs:
+        by_state[str(spec.metadata.get("state_fips", ""))].append(spec)
+    for state in sorted(set(by_state) - set(totals)):
+        problems.append(f"age groups name state {state!r}, which has no total")
+    for state, total in sorted(totals.items()):
+        group = by_state.get(state, [])
+        if len(group) != STATE_AGE_GROUPS_PER_STATE:
+            problems.append(
+                f"state {state} has {len(group)} age groups, not "
+                f"{STATE_AGE_GROUPS_PER_STATE}"
+            )
+            continue
+        stale = sorted(
+            {
+                str(spec.metadata.get("source_period"))
+                for spec in group
+                if str(spec.metadata.get("source_period")) != str(period)
+            }
+        )
+        if stale:
+            problems.append(f"state {state} has age groups from {stale}, not {period}")
+        bounds = sorted(
+            (bound(spec, "age_lower_bound"), bound(spec, "age_upper_bound"))
+            for spec in group
+        )
+        tiles = (
+            bounds[0][0] == 0
+            and bounds[-1][1] == math.inf
+            and all(lower < upper for lower, upper in bounds)
+            and all(
+                bounds[index][1] == bounds[index + 1][0]
+                for index in range(len(bounds) - 1)
+            )
+        )
+        if not tiles:
+            problems.append(f"state {state}'s age groups {bounds} do not tile [0, inf)")
+        group_total = math.fsum(float(spec.value) for spec in group)
+        if group_total != total:
+            problems.append(
+                f"state {state}'s age groups sum to {group_total:,.0f}, but its "
+                f"total is {total:,.0f}"
+            )
+    return problems
+
+
+def state_population_receipt(surface: AdminSurface) -> dict:
+    """Where a run's state and district population levels come from."""
+
+    if surface.state_population_totals is None:
+        return {
+            "source": LADDER_POPULATION_SOURCE,
+            "district_source": LADDER_POPULATION_SOURCE,
+        }
+    return {
+        "source": CENSUS_STATE_POPULATION_SOURCE,
+        "district_source": CENSUS_SCALED_DISTRICT_POPULATION_SOURCE,
+        **(surface.age_receipt or {}),
+    }
 
 
 def acs_local_ssi_medicaid_take_up_targets(feed: str | Path) -> dict[str, object]:
@@ -1378,17 +1582,31 @@ PERSON_STRUCT = [
 ]
 
 
-def ladder_population(ladder_path: Path, geographies: list[str]):
+def ladder_population(
+    ladder_path: Path,
+    geographies: list[str],
+    *,
+    state_totals: dict[int, float] | None = None,
+):
+    """Population marginals by geography, ``{"state": {fips: people}, ...}``.
+
+    The PUMA ladder gives 2020 Census populations. With ``state_totals``
+    (integer state FIPS to people), the states take those levels and each
+    state's districts scale with it (:func:`with_state_population_totals`)
+    before the county rung reconciles its counties to the same state levels.
+    """
+
     from microcosm.build.us_runtime.puma_ladder import load_us_puma_ladder
 
     ladder = load_us_puma_ladder(ladder_path)
     puma_states = (ladder.puma // 100_000).astype(int)
+    ladder_states = {
+        int(state): float(ladder.puma_population[puma_states == state].sum())
+        for state in np.unique(puma_states)
+    }
     populations: dict[str, dict[int, float]] = {}
     if "state" in geographies or "county" in geographies:
-        populations["state"] = {
-            int(state): float(ladder.puma_population[puma_states == state].sum())
-            for state in np.unique(puma_states)
-        }
+        populations["state"] = dict(ladder_states)
     if "cd" in geographies:
         populations["cd"] = {
             int(cd): float(
@@ -1396,7 +1614,59 @@ def ladder_population(ladder_path: Path, geographies: list[str]):
             )
             for cd in np.unique(ladder.cd_overlap_cd)
         }
+    if state_totals is not None:
+        populations = with_state_population_totals(
+            populations, ladder_states, state_totals
+        )
     return county_surface.with_county_populations(ladder, populations, geographies)
+
+
+def with_state_population_totals(populations, ladder_states, state_totals):
+    """Move ladder population marginals to new state totals.
+
+    ``state_totals`` must name exactly the ladder's states (``ladder_states``),
+    each with a positive finite population. A state's population becomes its
+    total. Each congressional district (district code // 100 is its state's
+    FIPS) keeps its share of its state's district populations, so a state's
+    districts sum to the state's total; the rounding residual goes to the
+    state's largest district, and the sum comes out exact for a whole-number
+    total. Other geographies pass through unchanged.
+    """
+
+    expected = set(ladder_states)
+    if set(state_totals) != expected:
+        raise ValueError(
+            f"State population totals must name the ladder's {len(expected)} "
+            f"states; missing {sorted(expected - set(state_totals))}, extra "
+            f"{sorted(set(state_totals) - expected)}."
+        )
+    for state, total in sorted(state_totals.items()):
+        if not (math.isfinite(total) and total > 0):
+            raise ValueError(f"State {state} has no positive population: {total!r}.")
+    result = {key: dict(value) for key, value in populations.items()}
+    if "state" in result:
+        result["state"] = {
+            state: float(state_totals[state]) for state in sorted(result["state"])
+        }
+    if "cd" in result:
+        districts = result["cd"]
+        scaled: dict[int, float] = {}
+        for state in sorted({district // 100 for district in districts}):
+            if state not in state_totals:
+                raise ValueError(f"Districts of state {state} have no state total.")
+            block = sorted(
+                district for district in districts if district // 100 == state
+            )
+            base = math.fsum(districts[district] for district in block)
+            if not (math.isfinite(base) and base > 0):
+                raise ValueError(f"State {state}'s districts have no population.")
+            target = float(state_totals[state])
+            values = [target * districts[district] / base for district in block]
+            largest = max(range(len(block)), key=lambda index: values[index])
+            values[largest] += target - math.fsum(values)
+            scaled.update(zip(block, values, strict=True))
+        result["cd"] = scaled
+    return result
 
 
 def household_sizes(frame) -> np.ndarray:
@@ -1430,15 +1700,30 @@ def population_targets(
     )
 
 
-def population_target_specs(names, values):
+def population_target_specs(names, values, *, census_state_totals: bool = False):
     """Declare ladder population targets with the shared diagnostics hierarchy.
 
     Each geography carries the label the release's other targets give the
     same id: a state its Census name, the name the ledger targets take from
     their facts ("Maine"), and a district the Census Bureau's name, which
     the IRS SOI district rows carry too. A registry refuses one US geography
-    with two labels (microcosm#1335).
+    with two labels (microcosm#1335). ``census_state_totals`` says the
+    values come from :func:`with_state_population_totals`, so the state and
+    district targets name the Census Vintage 2025 estimates as their source.
     """
+
+    sources = {
+        "state": (
+            CENSUS_STATE_POPULATION_SOURCE
+            if census_state_totals
+            else LADDER_POPULATION_SOURCE
+        ),
+        "congressional_district": (
+            CENSUS_SCALED_DISTRICT_POPULATION_SOURCE
+            if census_state_totals
+            else LADDER_POPULATION_SOURCE
+        ),
+    }
 
     from microcosm.build.us_runtime.congressional_district_vintage import (
         CURRENT_CONGRESSIONAL_DISTRICT_PREFIX,
@@ -1489,7 +1774,7 @@ def population_target_specs(names, values):
                 measure=name,
                 value=value,
                 period=PERIOD,
-                source="US Census Bureau 2020 PUMA population ladder",
+                source=sources[geography.level],
                 family="census_population",
                 metadata={"geography_level": geography.level},
                 hierarchy=CalibrationHierarchy(
@@ -1504,7 +1789,9 @@ def population_target_specs(names, values):
     return tuple(specs)
 
 
-def ladder_population_target_specs(ladder_populations, geographies):
+def ladder_population_target_specs(
+    ladder_populations, geographies, *, census_state_totals: bool = False
+):
     """Every population target the ladder declares, before a household is read.
 
     :func:`population_targets` later drops a ladder cell no staged household
@@ -1519,10 +1806,17 @@ def ladder_population_target_specs(ladder_populations, geographies):
     return population_target_specs(
         [name for name, _population in cells],
         [population for _name, population in cells],
+        census_state_totals=census_state_totals,
     )
 
 
-def require_one_label_per_geography(admin_registry, ladder_populations, geographies):
+def require_one_label_per_geography(
+    admin_registry,
+    ladder_populations,
+    geographies,
+    *,
+    census_state_totals: bool = False,
+):
     """Refuse admin and population targets that label one geography two ways.
 
     The two first share a registry in the lean checkpoint, after the engine
@@ -1536,7 +1830,11 @@ def require_one_label_per_geography(admin_registry, ladder_populations, geograph
     return TargetRegistry(
         (
             *admin_registry.specs,
-            *ladder_population_target_specs(ladder_populations, geographies),
+            *ladder_population_target_specs(
+                ladder_populations,
+                geographies,
+                census_state_totals=census_state_totals,
+            ),
         ),
         country="us",
     )
@@ -2065,9 +2363,23 @@ def do_materialize(args) -> None:
         f"admin specs: {len(registry)} ({families}, soi_mode={args.soi_mode}); "
         f"RI substitution records={len(surface.ri_substitutions)}"
     )
-    populations = ladder_population(args.ladder, sorted(set(geographies) | {"cd"}))
+    # microcosm#1528: with the age family, states take the Census Vintage 2025
+    # totals their age groups sum to, and districts scale with their state.
+    census_state_totals = surface.state_population_totals is not None
+    populations = ladder_population(
+        args.ladder,
+        sorted(set(geographies) | {"cd"}),
+        state_totals=surface.state_population_totals,
+    )
+    state_population = state_population_receipt(surface)
+    log(f"state populations: {state_population['source']}")
     county_surface.prepare_run(args, geographies, populations, surface=surface)
-    require_one_label_per_geography(registry, populations, geographies)
+    require_one_label_per_geography(
+        registry,
+        populations,
+        geographies,
+        census_state_totals=census_state_totals,
+    )
     summary_path = _staging_summary_path(args)
     if not summary_path.exists():
         raise SystemExit(
@@ -2187,6 +2499,7 @@ def do_materialize(args) -> None:
     pop_specs = population_target_specs(
         [record["name"] for record in pop_roles],
         [record["value"] for record in pop_roles],
+        census_state_totals=census_state_totals,
     )
     log(f"population measures: {len(pop_specs)} ({geographies})")
     roles = admin_roles + pop_roles
@@ -2243,6 +2556,7 @@ def do_materialize(args) -> None:
                 "declared_admin_specs": len(registry),
                 "compiled_admin_specs": len(compiled_specs),
                 "population_cells_dropped": pop_dropped,
+                "state_population": state_population,
                 "soi_mode": args.soi_mode,
                 "cd_holdout": holdout_identity,
                 **county_surface.run_metadata(args, county_holdout),
@@ -2266,6 +2580,7 @@ def do_materialize(args) -> None:
                 "target_matrix": {"shape": matrix_shape, "nnz": matrix_nnz},
                 "carrier_check": materialized.carrier_check,
                 "soi_surface": surface.soi_receipt,
+                "state_population": state_population,
                 "cd_holdout": holdout,
                 **county_surface.run_metadata(args, county_holdout),
                 "sampling": sampling,
@@ -3711,19 +4026,50 @@ def _acs_wic_takeup_limitation(consumer_export: dict | None) -> dict | None:
     }
 
 
+def _cd_population_marginal_limitation(materialize_rss: dict | None) -> dict:
+    """How the run's district population marginals date, from its receipt."""
+
+    state_population = (materialize_rss or {}).get("state_population") or {}
+    if state_population.get("source") == CENSUS_STATE_POPULATION_SOURCE:
+        reason = (
+            "Congressional-district population marginals keep each "
+            "119th-boundary district's 2020 Census share of its state's "
+            "population from the PUMA ladder and scale it to the state's "
+            "Census Vintage 2025 estimate for July 1, 2024 (microcosm#1528): "
+            "a district's level moves with its state, but growth that differs "
+            "across a state's districts since 2020 is not captured. "
+            "Boundaries are 2020-census-drawn."
+        )
+    else:
+        reason = (
+            "Congressional-district population marginals use "
+            "119th-boundary / 2020-apportionment Census populations from "
+            "the PUMA ladder; the build period is 2024. Boundaries are "
+            "2020-census-drawn (honest v1)."
+        )
+    return {
+        "id": "cd_population_marginal_vintage_2020",
+        "status": "reviewed_vintage",
+        "reason": reason,
+        "calibration_blocker": False,
+    }
+
+
 def finalize_reviewed_limitations(
     staging_summary: dict,
     diagnostics: dict,
     spine_qa: dict,
     *,
     consumer_export: dict | None = None,
+    materialize_rss: dict | None = None,
 ) -> list[dict]:
     """The reviewed-limitations register for the buildo-acs-local lineage.
 
     Carries the staging summary's reviewed limitations (GQ housing universe,
     native source-universe blanks, sub-PUMA precision) and adds the
     lineage-level entries, id-deduped so re-running finalize never
-    duplicates.
+    duplicates. ``materialize_rss`` (the materialize stage's receipt) says
+    where the district population marginals' levels come from.
     """
 
     donor_release = (staging_summary.get("base") or {}).get("donor_release") or {}
@@ -4261,17 +4607,7 @@ def finalize_reviewed_limitations(
             "known_bias": register["known_bias"],
             "calibration_blocker": False,
         },
-        {
-            "id": "cd_population_marginal_vintage_2020",
-            "status": "reviewed_vintage",
-            "reason": (
-                "Congressional-district population marginals use "
-                "119th-boundary / 2020-apportionment Census populations from "
-                "the PUMA ladder; the build period is 2024. Boundaries are "
-                "2020-census-drawn (honest v1)."
-            ),
-            "calibration_blocker": False,
-        },
+        _cd_population_marginal_limitation(materialize_rss),
         _ess_concentration_limitation(diagnostics),
         {
             "id": "donor_sparse_selection_training_set",
@@ -5152,7 +5488,11 @@ def do_finalize(args) -> None:
     }
 
     limitations = finalize_reviewed_limitations(
-        staging_summary, diagnostics, spine_qa, consumer_export=consumer_export
+        staging_summary,
+        diagnostics,
+        spine_qa,
+        consumer_export=consumer_export,
+        materialize_rss=materialize_rss,
     )
     limitations += state_cd_reviewed_limitations(materialize_rss)
     hard_failures = [
@@ -5680,6 +6020,7 @@ def do_package(args) -> dict:
             target_family_loss_multipliers=(diagnostics.get("target_loss") or {}).get(
                 "family_multipliers"
             ),
+            families=materialize_rss.get("families"),
         ),
         "publish": (
             "tools/publish_release.sh <release_dir> --no-latest "
@@ -5960,7 +6301,15 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         type=Path,
         default=_REPO_ROOT / "build" / "us" / "us_puma_ladder_2020.npz",
     )
-    parser.add_argument("--families", default="snap,medicaid,soi")
+    parser.add_argument(
+        "--families",
+        default=DEFAULT_FAMILIES,
+        help=(
+            "Comma-separated admin target families: snap, medicaid, soi, and "
+            f"{AGE_FAMILY} (Census Vintage 2025 state age groups, with state "
+            "population targets at the same estimates' totals; microcosm#1528)."
+        ),
+    )
     parser.add_argument("--geographies", default="state,cd", help="state, cd, county")
     county_surface.add_arguments(parser)
     parser.add_argument(

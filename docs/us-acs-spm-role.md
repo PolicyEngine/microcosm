@@ -138,9 +138,10 @@ engine scopes SPM by that declaration (policyengine-us#9462).
   (`_drop_acs_group_quarters_children`). That is the ruling's flip condition,
   in code.
 - **The cost.** The records leave every fiscal total, not only SPM
-  measurement: 1,946 households and persons in the 2024 PUMS, about 0.005% of
-  the ACS spine's weight. Calibration to the PUMA-ladder population marginals
-  re-spreads their weight. Every other group-quarters record stays.
+  measurement: 1,946 households and persons in the 2024 PUMS, with 51,806
+  weighted, 0.037% of the raw ACS household weight before removal. Calibration
+  to the state and district population marginals re-spreads their weight. Every
+  other group-quarters record stays.
 - **The disclosure.** The receipt rides the staging provenance as
   `acs_group_quarters_children`, and the summary's `reviewed_limitations`
   carries `acs_group_quarters_children_outside_spm_universe` with its counts,

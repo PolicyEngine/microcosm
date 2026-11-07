@@ -433,7 +433,10 @@ calibrates to the SOI `state` surface by default, the 4,459-target contract of
 Build O and Build P; `--soi-mode totals` and `--soi-mode full` are explicit
 opt-ins. See
 [the ACS local-area SOI target surface](docs/us-acs-local-soi-target-surface.md)
-for what each mode contains and where the build records it. Its
+for what each mode contains and where the build records it. Its default
+`--families` also binds the Census Vintage 2025 state age groups and moves
+the state population targets to the same estimates (microcosm#1528); see
+[the ACS local-area state age groups](docs/us-acs-local-state-age.md). Its
 `--l2-basis chi_square` and `--mass-parametrization softmax` options (defaults:
 the historical `record` and `projection`) penalize distance from the design
 weights; see [penalized calibration toward the design weights](docs/calibration-l2-basis.md)

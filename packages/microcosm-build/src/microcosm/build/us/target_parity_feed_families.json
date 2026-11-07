@@ -1,6 +1,6 @@
 {
- "feed": "consumer_facts_us_41b2fb2.jsonl",
- "feed_sha256": "1d45a89c28177a95371b4cc4068d3657c7bf12bd8edad7c82fe25bf453f9ea07",
+ "feed": "consumer_facts_us_e86a83b.jsonl",
+ "feed_sha256": "24c64c99159bf517e41c66bc2de2ea84d1f84a998fcd7b4f650f5320e2f443f5",
  "families": {
   "bea_nipa.business_current_transfer_receipts": 1,
   "bea_nipa.defined_contribution_actual_contributions": 1,
@@ -44,6 +44,7 @@
   "census_acs.acs1_2023": 468,
   "census_pep.national_resident_population_age": 19,
   "census_pep.v2024": 969,
+  "census_pep.v2025": 816,
   "census_stc.individual_income_tax_collections": 46,
   "cms_aca.oep2024": 153,
   "cms_medicaid.state_enrollment": 515,

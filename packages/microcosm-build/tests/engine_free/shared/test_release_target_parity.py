@@ -323,8 +323,9 @@ class TestShippedManifest:
             manifest.reviewed_exclusions
         )
         assert len(manifest.compiled_families) == 32
-        # 53, plus the 11 ed_fsa families of the 41b2fb2b feed (microcosm#1074).
-        assert len(manifest.reviewed_exclusions) == 64
+        # 53, plus the 11 ed_fsa families of the 41b2fb2b feed (microcosm#1074),
+        # plus census_pep.v2025 of the e86a83bb feed (microcosm#1528).
+        assert len(manifest.reviewed_exclusions) == 65
 
     def test_wired_nipa_and_liheap_families_are_compiled(self) -> None:
         manifest = load_target_parity_manifest()
@@ -367,6 +368,19 @@ class TestShippedManifest:
             assert family.classification == "off_by_default"
             assert "--scf-education-debt" in family.reason
             assert "microcosm#1074" in family.fence.origin
+
+    def test_census_v2025_state_age_family_is_off_by_default(self) -> None:
+        """microcosm#1528: the default compile drops the Census Vintage 2025
+        state age-group facts, which only the ACS local-area release binds
+        (``state_age_band_targets``), so the family is a fenced reviewed
+        exclusion while the Vintage 2024 state groups stay compiled."""
+        manifest = load_target_parity_manifest()
+        family = manifest.by_name["census_pep.v2025"]
+        assert family.status == REVIEWED_EXCLUSION_STATUS
+        assert family.classification == "off_by_default"
+        assert "state_age_band_targets=True" in family.reason
+        assert "microcosm#1528" in family.fence.origin
+        assert manifest.by_name["census_pep.v2024"].status == COMPILED_STATUS
 
     def test_ssi_state_payments_family_is_compiled(self) -> None:
         manifest = load_target_parity_manifest()
