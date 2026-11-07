@@ -1234,6 +1234,165 @@ def test_the_corporate_and_total_land_rows_are_measured_diagnostics():
     assert "households_and_npish" not in note
 
 
+def test_the_two_land_diagnostics_are_measured_but_not_fitted():
+    """The packaged register's two land entries take their rows out of the
+    national solve and leave them measured (the #931 move, María's ruling of
+    2026-11-06).
+
+    Both target loaders (load_uk_national_target_inputs and
+    load_uk_full_target_inputs) apply the register to the reconciled register:
+    the solve surface loses the corporate and total-economy rows, the run's
+    exclusion receipt carries their review, and the compiled register kept
+    beside the solve surface (the band-edge register; a national run writes it
+    as national_contract_registry.json) still holds all three. So the national
+    problem binds the household row alone, while the compiled register
+    materializes and scores the other two on the same frame. Synthetic weights
+    and land values.
+    """
+
+    from datetime import date
+
+    from microcosm.build.country_spec import load_country_spec
+    from microcosm.build.uk_runtime.graph_national import encode_uk_national_problem
+    from microcosm.build.uk_runtime.ledger_surface import (
+        _validate_band_edge_registry,
+    )
+    from microcosm.build.uk_runtime.ledger_targets import (
+        materialize_uk_ledger_targets,
+    )
+    from microcosm.build.uk_runtime.national_calibration import (
+        CalibrationFrameAdapter,
+    )
+    from microcosm.build.uk_runtime.national_frame import uk_national_frame
+    from microcosm.calibrate import score_targets
+    from microcosm.calibrate.artifacts import decode_problem
+    from microcosm.frame import WeightKind
+
+    land = (
+        "ons.land.corporate_land_value",
+        "ons.land.household_land_value",
+        "ons.land.land_value",
+    )
+    references = {
+        reference.name: reference
+        for reference in load_country_spec("uk").target_references
+    }
+    # The three committed land references, compiled with stand-in values.
+    compiled = TargetRegistry(
+        [
+            TargetSpec(
+                name=name,
+                entity=references[name].entity,
+                measure=references[name].measure,
+                value=1_000.0,
+                source="test",
+                family=references[name].family,
+                period=references[name].period,
+                metadata=dict(references[name].metadata),
+            )
+            for name in land
+        ],
+        country="uk",
+    )
+    entries = tuple(
+        entry
+        for entry in load_uk_calibration_measure_exclusions()
+        if entry["name"] in land
+    )
+    evaluated_on = max(date.fromisoformat(entry["approved_on"]) for entry in entries)
+    approved, receipt = apply_uk_calibration_measure_exclusions(
+        compiled, entries, now=evaluated_on
+    )
+    assert [spec.name for spec in approved.specs] == ["ons.land.household_land_value"]
+    assert receipt == {
+        entry["name"]: {
+            **{field: value for field, value in entry.items() if field != "name"},
+            "evaluated_on": evaluated_on.isoformat(),
+        }
+        for entry in entries
+    }
+    assert sorted(receipt) == ["ons.land.corporate_land_value", "ons.land.land_value"]
+    # The compiled register is the solve surface plus the receipt, as both
+    # loaders require before the solve.
+    _validate_band_edge_registry(
+        register_registry=approved,
+        band_edge_registry=compiled,
+        exclusion_receipt=receipt,
+    )
+
+    ids = np.arange(4, dtype="int64")
+    weights = np.array([10.0, 20.0, 30.0, 40.0])
+    household_land = np.array([100.0, 200.0, 0.0, 50.0])
+    corporate_land = np.array([5.0, 0.0, 15.0, 30.0])
+    frame = uk_national_frame(
+        person=pd.DataFrame(
+            {
+                "person_id": ids,
+                "person_benunit_id": ids,
+                "person_household_id": ids,
+            }
+        ),
+        benunit=pd.DataFrame({"benunit_id": ids}),
+        household=pd.DataFrame(
+            {
+                "household_id": ids,
+                "source_household_id": ids,
+                "region": "LONDON",
+                "household_weight": weights,
+                "household_land_value": household_land,
+                "corporate_land_value": corporate_land,
+                "land_value": household_land + corporate_land,
+            }
+        ),
+        time_period="2025",
+        weight_kind=WeightKind.DESIGN,
+    )
+
+    # Not fitted: the national problem holds the household row alone and
+    # binds the receipt and the compiled register beside it.
+    problem = decode_problem(
+        encode_uk_national_problem(
+            frame,
+            national_registry=approved,
+            band_edge_registry=compiled,
+            period=2025,
+            doctrine={
+                "target_weight_rule": "family_equal",
+                "target_loss_cap": 10.0,
+                "max_weight_ratio": 10.0,
+                "l0_lambda": 0.0,
+                "mass_rule": "free",
+                "scale_rule": "default_target_loss_scales",
+            },
+            measure_exclusions=receipt,
+            resolver_factory=None,
+        )
+    )
+    assert problem.problem.names == ("ons.land.household_land_value@2025",)
+    np.testing.assert_array_equal(problem.problem.matrix.toarray(), [household_land])
+    assert problem.bindings["measure_exclusions"] == receipt
+    assert problem.bindings["register_sha256"] == approved.version
+    assert problem.bindings["band_edge_register_sha256"] == compiled.version
+
+    # Measured: the compiled register materializes on the same frame, and
+    # scoring it gives every land row its weighted estimate.
+    adapter = CalibrationFrameAdapter(frame)
+    materialized = materialize_uk_ledger_targets(
+        adapter, compiled, period=2025, band_edge_registry=compiled
+    )
+    assert materialized.skipped == ()
+    scored = score_targets(adapter.prepared_frame(), compiled.to_target_set())
+    assert {row.name: row.final_estimate for row in scored.diagnostics} == (
+        pytest.approx(
+            {
+                "ons.land.corporate_land_value@2025": weights @ corporate_land,
+                "ons.land.household_land_value@2025": weights @ household_land,
+                "ons.land.land_value@2025": weights @ (household_land + corporate_land),
+            }
+        )
+    )
+
+
 def test_measure_resolver_direct_and_scratch_receipts(monkeypatch, tmp_path: Path):
     created = []
 
