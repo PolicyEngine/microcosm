@@ -27,8 +27,8 @@ The capital gains values come from HMRC ``cgt_statistics`` Ledger facts. The
 three Table 1 totals measure the prepared person columns
 ``hmrc/capital_gains_total``, ``hmrc/cgt_taxpayers`` and ``hmrc/cgt_liability``,
 which ``uk_runtime.ledger_targets.materialize_uk_ledger_targets`` builds from
-the bindings in ``uk/uk_population_targets.json``; the banded families measure
-columns of their own. All of them follow the UK convention of
+the bindings in ``uk/uk_population_targets.json``; the other capital gains
+facts measure columns of their own. All of them follow the UK convention of
 ``uk_runtime.hmrc_calibration``: the constraint rows live on the person table
 while the calibrated weights stay on the household table through the frame's
 household ``Weights``. The registry refuses callables so that it can serialize,
