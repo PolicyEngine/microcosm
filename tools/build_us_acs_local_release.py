@@ -27,9 +27,11 @@ package; each is separately resumable):
                 stage (microcosm#1022), seed ACS-row SNAP/TANF take-up on
                 the full staging frame (microcosm#1019) and fill the ACS
                 rows' discretionary ABAWD exemption (a cap-based
-                upper-bound proxy), housing-assistance receipt and
-                Medicare take-up without the engine (microcosm#1022; the
-                consumer export re-derives the same values), assign the
+                upper-bound proxy), housing-assistance receipt, Medicare
+                take-up and Head Start take-up without the engine (native
+                VEH is recorded as vehicle availability only)
+                (microcosm#1022; the consumer export re-derives the same
+                values), assign the
                 ACS rows' SSI and Medicaid take-up after a
                 household-batched engine pre-pass over the drawn rung's
                 ACS households (microcosm#1022; the consumer export
@@ -68,7 +70,11 @@ package; each is separately resumable):
                 register for this lineage (inherited #507 SSI aged-band
                 collapse, #393 miscellaneous-income defect, CD marginal
                 vintage, ESS concentration, sparse-selection donor, mixed
-                sub-PUMA coverage), and flip the summary simulation-ready.
+                sub-PUMA coverage), grade the reviewed default fills both
+                engine passes applied against their means-tested consumer
+                register (microcosm#1022,
+                ``acs_local_reviewed_fill_consumers.yaml``), and flip the
+                summary simulation-ready.
   package     : refuse a calibrated H5 that stores a model input the
                 installed policyengine-us does not define (microcosm#1026;
                 ``microcosm.data.stored_inputs``) or on which that engine's
@@ -79,7 +85,9 @@ package; each is separately resumable):
                 inputs on any person (microcosm#719), refuse ACS persons
                 made SSI-criteria-positive while the run records no SSI
                 take-up handling for ACS rows (the SSI take-up release
-                block, microcosm#1022), then
+                block, microcosm#1022), re-grade the packaged fill manifests
+                against the reviewed-fill consumer register (microcosm#1022),
+                then
                 assemble releases/<id>/ with the non-default local-area
                 manifest shape (dataset_role ``non_default_local_area``,
                 namespace ``buildo_acs_local``, donor identity chain, the
@@ -138,6 +146,19 @@ from microcosm.build.us_runtime.acs_local_income import (
     ACS_LOCAL_INCOME_TRANSFER_METHOD,
     acs_local_income_transfer_signal_gate,
 )
+from microcosm.build.us_runtime.acs_local_receipt_anchors import (
+    ACS_LOCAL_RECEIPT_ANCHOR_GATE_NAME,
+    ACS_LOCAL_RECEIPT_ANCHOR_ISSUE,
+    ACS_LOCAL_RECEIPT_ANCHOR_METHOD,
+    acs_local_receipt_anchor_signal_gate,
+)
+from microcosm.build.us_runtime.acs_local_reviewed_fill_consumers import (
+    ACS_LOCAL_REVIEWED_FILL_CONSUMER_GATE_NAME,
+    ACS_LOCAL_REVIEWED_FILL_CONSUMERS_ISSUE,
+    acs_local_reviewed_fill_consumer_gate,
+    load_reviewed_fill_consumer_register,
+    reviewed_fill_register_summary,
+)
 from microcosm.build.us_runtime.acs_local_ssi_disability import (
     ACS_LOCAL_SSI_DISABILITY_COLUMN,
     ACS_LOCAL_SSI_DISABILITY_GATE_NAME,
@@ -160,8 +181,13 @@ from microcosm.build.us_runtime.acs_local_take_up import (
     ACS_LOCAL_ENGINE_FREE_FILLS_ISSUE,
     ACS_LOCAL_TAKE_UP_COLUMNS,
     ACS_LOCAL_TAKE_UP_GATE_NAME,
+    ACS_VEHICLES_AVAILABLE_RECEIPT,
     acs_local_take_up_signal_gate,
     with_acs_local_take_up_inputs,
+)
+from microcosm.build.us_runtime.acs_local_vehicles_head_start import (
+    US_VEHICLES_OWNED_COLUMN,
+    US_VEHICLES_VALUE_COLUMN,
 )
 from microcosm.build.us_runtime.acs_local_work_disability import (
     ACS_LOCAL_DISABILITY_COLUMNS,
@@ -845,8 +871,11 @@ _NEVER_DEFAULT_FILLED_REASONS: dict[tuple[str, str], str] = {
         )
         for column in ACS_LOCAL_DISABILITY_COLUMNS
     },
-    # microcosm#1022: each default biases SNAP on ACS rows; this tool's ACS
-    # take-up stage fills them first, without the engine.
+    # microcosm#1022: the first three defaults bias SNAP on ACS rows and the
+    # last ignores donor evidence; this tool's ACS take-up stage fills them
+    # first, without the engine. household_vehicles_owned is not one: ACS
+    # VEH counts vehicles available, not owned, so the owned count keeps
+    # its reviewed default (microcosm#1064 review).
     **{
         key: f"{reason} ({ACS_LOCAL_ENGINE_FREE_FILLS_ISSUE}); run the ACS local "
         "take-up stage first"
@@ -860,6 +889,8 @@ _NEVER_DEFAULT_FILLED_REASONS: dict[tuple[str, str], str] = {
                 "recipient the transferred take-up flag records",
                 "the engine default True enrolls every Medicare-eligible ACS "
                 "person regardless of measured HINS3 coverage",
+                "the engine default True enrolls every Head Start-eligible ACS "
+                "child aged 3-5",
             ),
             strict=True,
         )
@@ -1983,6 +2014,14 @@ def _with_local_take_up(frame, *, seed: int):
         )
     for column, entry in receipt["engine_free_fills"]["columns"].items():
         log(f"ACS engine-free fill {column}: filled {entry['filled_rows']:,} rows")
+    available = receipt["engine_free_fills"][ACS_VEHICLES_AVAILABLE_RECEIPT]
+    log(
+        "ACS VEH (vehicle availability; written to no engine input): "
+        f"{available['housing_units']:,} housing units, "
+        f"{available['top_coded_rows']:,} top-coded, weighted share with a "
+        "vehicle available "
+        f"{available['weighted_housing_unit_share_with_vehicle_available']:.3f}"
+    )
     audit = receipt["engine_free_fills"]["columns"]["takes_up_medicare_if_eligible"][
         "hins3_audit"
     ]
@@ -2002,7 +2041,14 @@ def _recorded_take_up(identity: dict) -> dict:
     The consumer export re-derives the flags with the recorded seed and must
     reproduce the recorded digest, so both engine passes see the same flags.
     A receipt without the engine-free fills is a pre-#1022 checkpoint, whose
-    ACS rows reached the engine pass with three SNAP-relevant defaults.
+    ACS rows reached the engine pass with three SNAP-relevant defaults; one
+    whose fills omit a column (Head Start take-up) predates that fill. One
+    whose fills record ``household_vehicles_owned``, or carry no ACS ``VEH``
+    availability receipt, wrote ``VEH`` (vehicles available, leased and
+    employer-provided ones included) as the owned count, which the #1064
+    review withdrew. Its engine pass and digest cover counts this build no
+    longer writes, so it is refused here, before calibration, rather than at
+    the export's digest check.
     """
 
     receipt = identity.get("acs_local_take_up")
@@ -2028,6 +2074,28 @@ def _recorded_take_up(identity: dict) -> dict:
             "materialized with every ACS row's discretionary ABAWD exemption, "
             "housing-assistance receipt and Medicare take-up at the engine "
             "default. Re-run --stage materialize."
+        )
+    columns = fills.get("columns")
+    if not isinstance(columns, dict) or any(
+        column not in columns for _, column in ACS_LOCAL_ENGINE_FREE_FILL_COLUMNS
+    ):
+        raise SystemExit(
+            "run_identity.json records ACS engine-free fills without Head Start "
+            f"take-up ({ACS_LOCAL_ENGINE_FREE_FILLS_ISSUE}): the checkpoint was "
+            "materialized with every Head Start-eligible ACS child taking Head "
+            "Start up. Re-run --stage materialize."
+        )
+    if US_VEHICLES_OWNED_COLUMN in columns or not isinstance(
+        fills.get(ACS_VEHICLES_AVAILABLE_RECEIPT), dict
+    ):
+        raise SystemExit(
+            "run_identity.json records ACS VEH written as the owned vehicle "
+            f"count ({ACS_LOCAL_ENGINE_FREE_FILLS_ISSUE}, #1064 review): VEH "
+            "counts vehicles available, leased and employer-provided ones "
+            "included, and the checkpoint was materialized with it as "
+            f"{US_VEHICLES_OWNED_COLUMN}, which San Francisco CAAP, Los "
+            "Angeles General Relief and lives_in_vehicle read as an owned "
+            "count. Re-run --stage materialize."
         )
     return receipt
 
@@ -2320,12 +2388,14 @@ def do_materialize(args) -> None:
             "reviewed_engine_input_nulls register."
         )
     staging_summary = _load_json(summary_path)
-    # microcosm#1020/#1021/#1022: refuse a pre-change staging run before
-    # hashing or loading.
+    # microcosm#1020/#1021/#1022: refuse a pre-change staging run
+    # (including one without the native SNAP receipt anchor) before hashing
+    # or loading.
     _require_local_immigration(staging_summary)
     _require_local_work_disability(staging_summary)
     _require_local_income_transfer(staging_summary)
     _require_local_ssi_disability(staging_summary)
+    _require_local_receipt_anchors(staging_summary)
     # microcosm#1022: the SSI and Medicaid take-up counts, from the same feed
     # and compile path, before the staging frame is loaded.
     ssi_medicaid_targets = acs_local_ssi_medicaid_take_up_targets(args.feed)
@@ -2992,6 +3062,7 @@ def do_calibrate(args) -> None:
     _require_local_work_disability(staging_summary)
     _require_local_income_transfer(staging_summary)
     _require_local_ssi_disability(staging_summary)
+    _require_local_receipt_anchors(staging_summary)
     # microcosm#1022: and a checkpoint without the recorded ACS SSI/Medicaid
     # take-up the export must apply.
     _recorded_ssi_medicaid_take_up(identity, args.checkpoint_dir)
@@ -3337,6 +3408,7 @@ def _write_calibrated_artifact(
     _require_local_work_disability(staging_summary)
     _require_local_income_transfer(staging_summary)
     _require_local_ssi_disability(staging_summary)
+    _require_local_receipt_anchors(staging_summary)
     ssi_medicaid, ssi_medicaid_path = _recorded_ssi_medicaid_take_up(
         identity, args.checkpoint_dir
     )
@@ -4003,6 +4075,7 @@ def finalize_reviewed_limitations(
     donor_release = (staging_summary.get("base") or {}).get("donor_release") or {}
     limitations = list(staging_summary.get("reviewed_limitations", []))
     aged_ssi = (spine_qa or {}).get("per_spine", {})
+    register = reviewed_fill_register_summary(load_reviewed_fill_consumer_register())
     limitations += [
         {
             "id": "ssi_aged_band_collapse_inherited",
@@ -4060,13 +4133,18 @@ def finalize_reviewed_limitations(
             "reason": (
                 "SNAP and TANF take-up on ACS rows are seeded by the local "
                 "runtime and gated by acs_local_take_up_signal "
-                "(microcosm#1019), Medicare take-up is native ACS HINS3 "
+                "(microcosm#1019; its SNAP reporters are the native household "
+                "FS anchor, acs_snap_receipt_anchor), Medicare take-up is "
+                "native ACS HINS3 and Head Start take-up a keyed draw at the "
+                "donor spine's share among ages 3-5 "
                 "(acs_engine_free_default_fills), and SSI and Medicaid "
                 "take-up are assigned after an engine pre-pass "
                 "(acs_local_ssi_medicaid_take_up). The other runtime-owned "
-                "takes_up_* flags (EITC, ACA, Head Start and the rest) are "
-                "neither transferred nor seeded on ACS rows, so they ship at "
-                "the engine default, universal take-up. The QA "
+                "takes_up_* flags (EITC, ACA, Early Head Start and the rest) "
+                "are neither transferred nor seeded on ACS rows, so they ship "
+                "at the engine default, universal take-up; the reviewed-fill "
+                "consumer register records their known biases "
+                "(acs_reviewed_default_fill_consumers). The QA "
                 "probe's SNAP take-up table is a December-eligible snapshot "
                 "(unit- and person-weighted), informational and never "
                 "graded; it is not the FNS fiscal-year participation rate, "
@@ -4081,9 +4159,10 @@ def finalize_reviewed_limitations(
             "affected_spines": ["acs_2024_1yr"],
             "columns": [column for _, column in ACS_LOCAL_ENGINE_FREE_FILL_COLUMNS],
             "reason": (
-                "Three SNAP-relevant inputs are filled on ACS rows without the "
-                f"engine ({ACS_LOCAL_ENGINE_FREE_FILLS_ISSUE}) instead of taking "
-                "their engine defaults. is_snap_abawd_discretionary_exempt "
+                "Four inputs are filled on ACS rows without the engine "
+                f"({ACS_LOCAL_ENGINE_FREE_FILLS_ISSUE}) instead of taking their "
+                "engine defaults; the first three bias SNAP. "
+                "is_snap_abawd_discretionary_exempt "
                 "mirrors the donor seeding: every person aged 18-64 draws "
                 "against the snap_abawd_discretionary_exemption manifest rate "
                 "(the statutory cap), keyed on acs_2024_1yr:SERIALNO:SPORDER. "
@@ -4097,16 +4176,99 @@ def finalize_reviewed_limitations(
                 "whose transferred take-up flag is the open transfer-side fix "
                 "microcosm#975. takes_up_medicare_if_eligible is ACS HINS3 == 1 "
                 "(coverage at interview), as the donor maps ASEC MCARE == 1; a "
-                "blank or invalid HINS3 reads as not covered."
+                "blank or invalid HINS3 reads as not covered. "
+                "takes_up_head_start_if_eligible is True for a person aged 3-5 "
+                "whose stable draw, keyed on acs_2024_1yr:SERIALNO:SPORDER, "
+                "falls below the donor spine's weighted take-up share at those "
+                "ages, the output of the donor's measured SIPP model "
+                "(sipp_head_start) at its population rate but without its "
+                "household and earnings conditioning; it is False at every "
+                "other age, as on the donor, and the engine applies Head Start "
+                "eligibility. ACS VEH is not filled into household_vehicles_owned "
+                "(microcosm#1064 review): it counts vehicles available, long-term "
+                "leased and employer-provided ones included, while the donor's "
+                "SIPP TVEH_NUM counts vehicles owned, so the receipt records it "
+                "as availability only and both vehicle columns keep their "
+                "default (acs_household_vehicle_value_default)."
             ),
             "treatment": (
                 "Filled by the release tool before both reviewed-null fills, "
                 "digested in run_identity.json and re-derived at export; gated "
                 "by acs_local_take_up_signal (exempt share of ages 18-64 around "
                 "the manifest rate, receipt equal to the transferred take-up, "
-                "Medicare equal to HINS3 with a high share at 65+). Blank and "
-                "invalid HINS3 counts (unweighted, weighted and at 65+) are "
-                "reported in the receipt and the gate detail, not graded."
+                "Medicare equal to HINS3 with a high share at 65+, no ACS "
+                "owned vehicle count but the default, Head Start "
+                "take-up only at ages 3-5 and within half to one and a half "
+                "times the donor spine's share there). Blank and invalid HINS3 "
+                "counts (unweighted, weighted and at 65+) are reported in the "
+                "receipt and the gate detail, not graded."
+            ),
+            "calibration_blocker": False,
+        },
+        {
+            "id": "acs_household_vehicle_value_default",
+            "status": "reviewed_modeling_decision",
+            "affected_spines": ["acs_2024_1yr"],
+            "columns": [US_VEHICLES_OWNED_COLUMN, US_VEHICLES_VALUE_COLUMN],
+            "reason": (
+                "Both ACS vehicle columns stay at the reviewed engine default, "
+                f"0, on ACS rows ({ACS_LOCAL_ENGINE_FREE_FILLS_ISSUE}). The ACS "
+                "asks how many vehicles a household keeps (VEH) but not what "
+                f"they are worth, so {US_VEHICLES_VALUE_COLUMN} has no ACS "
+                f"source. {US_VEHICLES_OWNED_COLUMN} is not taken from VEH "
+                "either (microcosm#1064 review): VEH counts the vehicles kept "
+                "at home and available to the household, long-term leased and "
+                "employer-provided ones included, while the donor's SIPP "
+                "TVEH_NUM and the engine count vehicles owned. policyengine-us "
+                "2.2.1 reads the owned count on its own in San Francisco CAAP's "
+                "one-vehicle limit for a single person "
+                "(ca_sf_caap_vehicle_eligible), Los Angeles General Relief's "
+                "vehicle cap (la_general_relief_motor_vehicle_value_eligible) "
+                "and lives_in_vehicle, which Los Angeles and Marin General "
+                "Relief read, so VEH as the owned count would deny a single San "
+                "Francisco applicant who leases two cars and owns none. The "
+                "engine has no vehicles-available input, so VEH is recorded in "
+                "the take-up receipt as availability only. A zero count always "
+                "passes the San Francisco CAAP and Los Angeles General Relief "
+                "count caps, so they overstate eligibility for households that "
+                "own more vehicles than the cap, the same direction as the zero "
+                "value; lives_in_vehicle is never true on ACS rows, which only "
+                "picks Los Angeles's value limit and Marin's vehicle exemption, "
+                "both applied to the zero value. In policyengine-us 2.2.1 the "
+                "value's only SNAP consumer is Texas's broad-based categorical "
+                "eligibility asset test (meets_tanf_non_cash_asset_test), which "
+                "counts vehicle value above $22,500 for the first vehicle and "
+                "$8,700 for each other against a $5,000 limit; SNAP's own asset "
+                "test reads no vehicle, and the count there only scales the "
+                "per-vehicle exclusions, so a zero count is harmless for SNAP. "
+                "The value also feeds the TANF resource tests of Texas, "
+                "Washington, Montana, Tennessee, California and Wisconsin (TANF "
+                "is SNAP unearned income), Illinois AABD, California CAPI and "
+                "California county general assistance. A zero value counts no "
+                "vehicle equity, so those tests pass more often on ACS rows "
+                "than on donor rows, whose count and value are the SIPP model's "
+                "(sipp_vehicles). Through Illinois AABD it also passes the asset "
+                "test of Illinois's Medicaid buy-in for workers with "
+                "disabilities (HBWD), so modeled Medicaid eligibility is "
+                "overstated there and, because Medicaid eligibility bars the "
+                "premium tax credit (pays_aca_premium), the PTC is understated: "
+                "an otherwise eligible Illinois Marketplace adult it reaches "
+                "loses the whole credit (microcosm#1071 review)."
+            ),
+            "treatment": (
+                "Reviewed-null fill to 0 for both, recorded in the consumer fill "
+                "manifest; their per-program notes are in the reviewed-fill "
+                "consumer register (acs_reviewed_default_fill_consumers). "
+                "acs_local_take_up_signal fails on an ACS owned count other "
+                "than 0, and the take-up receipt keeps VEH as "
+                f"availability (engine_free_fills.{ACS_VEHICLES_AVAILABLE_RECEIPT}: "
+                "code counts, top-coded rows and the weighted share of housing "
+                "units with a vehicle available). If the count-limited county "
+                "programs or the Texas asset test matter, the follow-up is the "
+                "donor stage's SIPP vehicle model run at staging on the ACS rows "
+                "for the owned count and value, with VEH as a predictor rather "
+                "than the count, after reviewing the available-to-owned "
+                "crosswalk and the 6-or-more top code."
             ),
             "calibration_blocker": False,
         },
@@ -4339,6 +4501,110 @@ def finalize_reviewed_limitations(
                 "reported, not failed. The consumer export applies the "
                 "recorded assignment and must reproduce its digest."
             ),
+            "calibration_blocker": False,
+        },
+        {
+            "id": "acs_snap_receipt_anchor",
+            "status": "reviewed_modeling_decision",
+            "affected_spines": ["acs_2024_1yr"],
+            "columns": ["receives_snap", "receives_tanf"],
+            "reason": (
+                "receives_snap on ACS rows is anchored by native household FS "
+                "(anyone in the household received SNAP in the past 12 "
+                "months), not left to the QRF transfer, whose predictors carry "
+                f"no receipt signal ({ACS_LOCAL_RECEIPT_ANCHOR_ISSUE}). FS "
+                "names the housing unit, not the SNAP household, so FS == 1 "
+                "is a constraint that at least one SPM unit of the housing "
+                "unit received SNAP (microcosm#1062 review): the only SPM "
+                "unit of a single-unit housing unit is True. The ACS loader "
+                "makes each ACS housing unit one SPM unit, so in this build "
+                "FS decides that unit directly. Known limitation: that unit "
+                "also holds any unrelated adult roommate (RELSHIPP 34/36) who "
+                "buys and prepares food apart, a SNAP household of their own "
+                "(7 U.S.C. 2012(m)(1)) and a separate Census SPM unit, so when "
+                "FS == 1 the combined unit is anchored as receiving SNAP and "
+                "takes it up, and the roommate's income and size enter the "
+                "recipient's SNAP test, which can change its eligibility and "
+                "benefit. This is the loader's household fallback "
+                "(microcosm#1023). The held adult-nonrelative split (microcosm#1061) "
+                "would give every roommate or housemate (RELSHIPP 34) aged 15+ a unit "
+                "of their own, and an other nonrelative (36) one too unless an "
+                "unmarried partner is present and the two are at least 15 years apart. "
+                "microcosm#1353 would replace that age-gap rule for code-36 adults in "
+                "partner households with an ASEC-estimated probability once a split is "
+                "restored. The size of this one-unit roommate error is unmeasured; "
+                "microcosm#1093 lists it. If a reconstructed SPM "
+                "partition puts several SPM units in a housing unit (a "
+                "roommate's own unit, say), each unit keeps its transferred "
+                "QRF value, which is conditioned on the unit's own size, "
+                "ages, income and tenure, and the reference person's unit is "
+                "set True when the QRF names none, so a roommate who buys and "
+                "prepares food apart is not forced to report the family's "
+                "receipt. Census "
+                "prorates a household SNAP amount to every SPM unit (the "
+                "donor's SPM_SNAPSUB > 0) to measure poverty resources, which "
+                "does not establish that every unit enrolled. FS == 2 marks "
+                "none; group quarters, outside the FS universe, are False. FS "
+                "under-reports administrative SNAP, so the anchor is a floor "
+                "the take-up draw (microcosm#1019) fills to the FNS rate. "
+                "receives_tanf keeps its QRF transfer: ACS PAP covers TANF and "
+                "general assistance together, and PAP > 0 is not TANF receipt "
+                "(microcosm#591); PAP is loaded and its overlap with the "
+                "transferred receives_tanf is recorded, not applied, and the "
+                "SNAP x TANF cross-tab of ACS units before and after the "
+                "override is recorded beside the donor spine's."
+            ),
+            "treatment": (
+                "Applied at staging after the transfer, whose declared plan "
+                "is unchanged, and before pooling, so donor rows keep their "
+                "ASEC receipt. Gated by acs_local_receipt_anchor_signal at "
+                "staging and finalize: no unit of an FS == 2 housing unit or "
+                "of group quarters reports SNAP, the only SPM unit of an FS "
+                "== 1 housing unit does, every FS == 1 housing unit with "
+                "several SPM units has at least one reporting unit, every ACS "
+                "housing unit carries FS 1 or 2, and the staging receipt "
+                "counts the households, units, anchors, non-reference "
+                "reporters, resolution paths and PAP recipients the packaged "
+                "ACS rows hold. The "
+                "weighted FS == 1 share of ACS housing units is reported "
+                "against the 2023 ACS figure (12.2%), not graded."
+            ),
+            "calibration_blocker": False,
+        },
+        {
+            "id": "acs_reviewed_default_fill_consumers",
+            "status": "reviewed_modeling_decision",
+            "register": register["register"],
+            "register_sha256": register["sha256"],
+            "reason": (
+                "The engine inputs the lane still fills with their "
+                f"policyengine-us defaults are listed in {register['register']} "
+                f"({register['entries']} entries, reviewed against "
+                "policyengine-us "
+                f"{register['reviewed_against']['policyengine_us']}; "
+                f"{ACS_LOCAL_REVIEWED_FILL_CONSUMERS_ISSUE}), each with the "
+                "means-tested programs that read it in the engine's static "
+                "dependency graph and, for every one of them, a note that the "
+                "default is harmless there (and why) or biases it in a stated "
+                "direction. Known biases: "
+                + "; ".join(
+                    f"{column} ({', '.join(programs)})"
+                    for column, programs in register["known_bias"].items()
+                )
+                + "."
+            ),
+            "treatment": (
+                "Gated by acs_local_reviewed_fill_consumers at finalize and "
+                "package: a fill either engine pass applied without an entry, "
+                "an entry whose fill value or spines differ from the fill "
+                "manifests, a declared consumer without a note, a Medicaid, "
+                "CHIP, SSI or TANF known bias that leaves the PTC or SNAP "
+                "harmless, and a policyengine-us other than the one the "
+                "register was reviewed against fail; an entry the release did "
+                "not use is reported. The engine-tier test recomputes every "
+                "entry's consumers from the installed engine."
+            ),
+            "known_bias": register["known_bias"],
             "calibration_blocker": False,
         },
         _cd_population_marginal_limitation(materialize_rss),
@@ -4640,6 +4906,82 @@ def _require_local_ssi_disability(staging_summary: dict) -> dict:
     return receipt
 
 
+def _require_local_receipt_anchors(staging_summary: dict) -> dict:
+    """The staging ACS receipt-anchor receipt (microcosm#1022), or refuse it.
+
+    Staging constrains the transferred ``receives_snap`` on ACS SPM units by
+    native household ``FS`` (at least one unit of an FS == 1 housing unit,
+    none of an FS == 2 one) and gates it before writing the H5. A summary
+    without a passing receipt and gate is a pre-change staging run, whose ACS
+    SNAP reporters are the QRF transfer's; one with an earlier method marked
+    every SPM unit of an FS == 1 housing unit, not at least one.
+    """
+
+    receipt = staging_summary.get("acs_local_receipt_anchors")
+    gate = staging_summary.get("acs_local_receipt_anchors_gate")
+    snap = receipt.get("snap") if isinstance(receipt, dict) else None
+    counted = isinstance(snap, dict) and all(
+        type(snap.get(key)) is int for key in ("fs_yes_households", "units_anchored")
+    )
+    if (
+        not counted
+        or receipt.get("issue") != ACS_LOCAL_RECEIPT_ANCHOR_ISSUE
+        or receipt.get("method") != ACS_LOCAL_RECEIPT_ANCHOR_METHOD
+        or not isinstance(gate, dict)
+        or gate.get("passed") is not True
+    ):
+        raise SystemExit(
+            "The staging summary records no passing native SNAP receipt anchor "
+            f"({ACS_LOCAL_RECEIPT_ANCHOR_ISSUE}): the ACS rows' receives_snap "
+            "would be the QRF transfer, not household FS. Re-run staging "
+            "(tools/build_us_acs_multispine_base.py) with the current builder."
+        )
+    return receipt
+
+
+#: The fill manifests of the two engine passes: materialize's (the calibrated
+#: surface) and the consumer export's (the published H5).
+REVIEWED_FILL_MANIFESTS = (
+    "reviewed_null_fills.json",
+    "consumer_reviewed_null_fills.json",
+)
+
+
+def _installed_engine_version() -> str:
+    try:
+        from importlib.metadata import version
+
+        return version("policyengine-us")
+    except Exception:
+        return "unknown"
+
+
+def _reviewed_fill_consumer_gate(
+    manifests: dict[str, object], document: object | None = None
+):
+    """microcosm#1022: grade the reviewed default fills the manifests record.
+
+    Every fill an engine pass applied must have an entry in the packaged
+    register ``acs_local_reviewed_fill_consumers.yaml`` (or ``document``) whose
+    fill value and spines match, and every means-tested consumer the entry
+    declares must carry a harmless or known-bias note. The installed
+    policyengine-us, the engine the release runs and records as
+    ``built_with_model_package``, must be the register's ``reviewed_against``
+    (microcosm#1071 review). Engine-free otherwise.
+    """
+
+    return acs_local_reviewed_fill_consumer_gate(
+        manifests,
+        document=document,
+        never_default_filled=NEVER_DEFAULT_FILLED,
+        installed_engine_version=_installed_engine_version(),
+    )
+
+
+def _checkpoint_fill_manifests(checkpoint_dir: Path) -> dict[str, object]:
+    return {name: _load_json(checkpoint_dir / name) for name in REVIEWED_FILL_MANIFESTS}
+
+
 def _recorded_ssi_take_up_handling(identity: dict, checkpoint_dir: Path) -> dict | None:
     """The run's recorded SSI take-up handling for ACS rows, or ``None``.
 
@@ -4865,6 +5207,12 @@ def do_finalize(args) -> None:
     ssi_medicaid_gate = acs_local_ssi_medicaid_take_up_signal_gate(
         frame, receipt=identity.get("acs_local_ssi_medicaid_take_up")
     )
+    # microcosm#1022: refuse ACS SNAP reporters that are not the native
+    # household FS on the packaged bytes, or a staging receipt that counts
+    # other households, units or anchors.
+    receipt_anchor_gate = acs_local_receipt_anchor_signal_gate(
+        frame, receipt=staging_summary.get("acs_local_receipt_anchors")
+    )
     del frame
     gc.collect()
     if _sha256(args.out_h5) != hours_artifact_sha:
@@ -4872,6 +5220,13 @@ def do_finalize(args) -> None:
             "The calibrated H5 changed during hours_worked_signal validation. "
             "Re-run --stage qa and --stage finalize against the current artifact."
         )
+
+    # microcosm#1022: refuse a reviewed default fill either engine pass applied
+    # without a register entry, or a declared means-tested consumer of one
+    # without a harmless or known-bias note.
+    reviewed_fill_gate = _reviewed_fill_consumer_gate(
+        _checkpoint_fill_manifests(args.checkpoint_dir)
+    )
 
     breakdown: dict[str, int] = {}
     for target in targets:
@@ -4953,6 +5308,18 @@ def do_finalize(args) -> None:
             "detail": dict(ssi_medicaid_gate.details),
             "artifact_sha256": hours_artifact_sha,
         },
+        ACS_LOCAL_RECEIPT_ANCHOR_GATE_NAME: {
+            "passed": bool(receipt_anchor_gate.passed),
+            "failures": list(receipt_anchor_gate.failures),
+            "detail": dict(receipt_anchor_gate.details),
+            "artifact_sha256": hours_artifact_sha,
+        },
+        ACS_LOCAL_REVIEWED_FILL_CONSUMER_GATE_NAME: {
+            "passed": bool(reviewed_fill_gate.passed),
+            "failures": list(reviewed_fill_gate.failures),
+            "detail": dict(reviewed_fill_gate.details),
+            "artifact_sha256": hours_artifact_sha,
+        },
         "calibration": {
             # The cap criterion alone is near-tautological (the solver clips
             # per-row losses at the same cap); the solve must also have
@@ -5026,11 +5393,16 @@ def do_finalize(args) -> None:
                 "(a cap-based proxy: the donor's seeded 18-64 draw at the "
                 "statutory-cap manifest rate, not an observed assignment), "
                 "housing-assistance receipt (the transferred housing take-up "
-                "flag; False in group quarters) and Medicare take-up (native "
-                "HINS3) without the engine, gated by the same gate "
-                f"({ACS_LOCAL_ENGINE_FREE_FILLS_ISSUE}; reviewed limitation "
-                "acs_engine_free_default_fills); the other ACS take-up flags "
-                "are the reviewed limitation acs_take_up_engine_defaults. "
+                "flag; False in group quarters), Medicare take-up (native "
+                "HINS3) and Head Start take-up (a keyed draw at the donor "
+                "spine's share among ages 3-5) without the engine, gated by the "
+                f"same gate ({ACS_LOCAL_ENGINE_FREE_FILLS_ISSUE}; reviewed "
+                "limitation acs_engine_free_default_fills); ACS VEH is recorded "
+                "as vehicle availability only and the ACS vehicle count and "
+                "value keep their default, 0 (reviewed limitation "
+                "acs_household_vehicle_value_default); the other ACS "
+                "take-up flags are the reviewed limitation "
+                "acs_take_up_engine_defaults. "
                 "Immigration "
                 "labels are not transferred either: staging derives ACS "
                 "ssn_card_type/immigration_status_str from native ACS fields "
@@ -5063,7 +5435,18 @@ def do_finalize(args) -> None:
                 "band and CMS state counts scaled to the ACS rows' weight "
                 "share, gated by acs_local_ssi_medicaid_take_up_signal "
                 f"({ACS_LOCAL_SSI_MEDICAID_TAKE_UP_ISSUE}; reviewed limitation "
-                "acs_local_ssi_medicaid_take_up)."
+                "acs_local_ssi_medicaid_take_up). ACS receives_snap is not "
+                "the transfer's either: staging replaces it with native "
+                "household FS on every ACS SPM unit before pooling, gated by "
+                "acs_local_receipt_anchor_signal "
+                f"({ACS_LOCAL_RECEIPT_ANCHOR_ISSUE}; reviewed limitation "
+                "acs_snap_receipt_anchor). The inputs that remain reviewed "
+                "engine-default fills are listed, with each means-tested "
+                "consumer and a harmless or known-bias note, in "
+                "acs_local_reviewed_fill_consumers.yaml, gated by "
+                "acs_local_reviewed_fill_consumers "
+                f"({ACS_LOCAL_REVIEWED_FILL_CONSUMERS_ISSUE}; reviewed limitation "
+                "acs_reviewed_default_fill_consumers)."
             ),
         },
         "spine_composition": {
@@ -5124,6 +5507,8 @@ def do_finalize(args) -> None:
             ACS_LOCAL_INCOME_TRANSFER_GATE_NAME,
             ACS_LOCAL_SSI_DISABILITY_GATE_NAME,
             ACS_LOCAL_SSI_MEDICAID_TAKE_UP_GATE_NAME,
+            ACS_LOCAL_RECEIPT_ANCHOR_GATE_NAME,
+            ACS_LOCAL_REVIEWED_FILL_CONSUMER_GATE_NAME,
             "calibration",
             "consumer_ready",
         )
@@ -5481,6 +5866,14 @@ def do_package(args) -> dict:
     _require_bound_finalize_gate(
         gates, ACS_LOCAL_SSI_MEDICAID_TAKE_UP_GATE_NAME, h5_sha
     )
+    # microcosm#1022: nor, before the receipt-anchor gate existed, for the
+    # packaged ACS SNAP reporters.
+    _require_bound_finalize_gate(gates, ACS_LOCAL_RECEIPT_ANCHOR_GATE_NAME, h5_sha)
+    # microcosm#1022: nor, before the reviewed-fill consumer gate existed, for
+    # the notes on the packaged fills.
+    _require_bound_finalize_gate(
+        gates, ACS_LOCAL_REVIEWED_FILL_CONSUMER_GATE_NAME, h5_sha
+    )
     # Old summaries can say simulation_ready despite #765. Recheck the
     # actual artifact and the source-null evidence before packaging it, and
     # bind that result to the bytes being packaged: the finalize-time report
@@ -5518,6 +5911,31 @@ def do_package(args) -> dict:
     if not package_hours_gate.passed:
         raise SystemExit(
             "Local hours coverage failed: " + "; ".join(package_hours_gate.failures)
+        )
+    consumer_fills = _load_json(
+        args.checkpoint_dir / "consumer_reviewed_null_fills.json"
+    )
+    if not consumer_fills:
+        raise SystemExit(
+            "The per-column consumer fill ledger "
+            "(consumer_reviewed_null_fills.json) is missing; the published "
+            "fills must ship with their evidence."
+        )
+    # microcosm#1022: re-grade the manifests being packaged against the
+    # register being packaged; the finalize verdict covered earlier copies.
+    fill_register = load_reviewed_fill_consumer_register()
+    package_fill_gate = _reviewed_fill_consumer_gate(
+        {
+            "reviewed_null_fills.json": null_fills,
+            "consumer_reviewed_null_fills.json": consumer_fills,
+        },
+        fill_register,
+    )
+    if not package_fill_gate.passed:
+        raise SystemExit(
+            "Refusing to package: reviewed default fills without their "
+            f"means-tested consumer notes ({ACS_LOCAL_REVIEWED_FILL_CONSUMER_GATE_NAME}): "
+            + "; ".join(package_fill_gate.failures)
         )
     gate_report = {
         **gate_report,
@@ -5559,6 +5977,13 @@ def do_package(args) -> dict:
                 **spm_measurement_gate,
                 "artifact_sha256": h5_sha,
                 "checked_at_stage": US_LOCAL_AREA_SPM_MEASUREMENT_STAGE,
+            },
+            ACS_LOCAL_REVIEWED_FILL_CONSUMER_GATE_NAME: {
+                "passed": True,
+                "failures": [],
+                "detail": dict(package_fill_gate.details),
+                "artifact_sha256": h5_sha,
+                "checked_at_stage": "package",
             },
         },
     }
@@ -5681,6 +6106,9 @@ def do_package(args) -> dict:
         "run_identity": identity,
         "staging_orchestration": staging_orchestration,
         "ssi_take_up_release_block": ssi_take_up_block,
+        "reviewed_fill_consumer_register": reviewed_fill_register_summary(
+            fill_register
+        ),
         "refresh_recipe": refresh_recipe,
     }
 
@@ -5711,16 +6139,9 @@ def do_package(args) -> dict:
     contract_files["spine_qa.json"] = spine_qa
     county_surface.package_reports(contract_files, args.checkpoint_dir, identity)
     contract_files["consumer_export.json"] = consumer_export
-    consumer_fills = _load_json(
-        args.checkpoint_dir / "consumer_reviewed_null_fills.json"
-    )
-    if not consumer_fills:
-        raise SystemExit(
-            "The per-column consumer fill ledger "
-            "(consumer_reviewed_null_fills.json) is missing; the published "
-            "fills must ship with their evidence."
-        )
     contract_files["consumer_reviewed_null_fills.json"] = consumer_fills
+    # microcosm#1022: the notes the fills were graded against ship beside them.
+    contract_files["reviewed_fill_consumer_register.json"] = fill_register
     # Created only after every gate above has passed, so a refused artifact
     # leaves no release directory behind.
     release_dir.mkdir(parents=True, exist_ok=True)
