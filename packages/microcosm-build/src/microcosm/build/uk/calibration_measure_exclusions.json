@@ -504,6 +504,24 @@
       "adjudication": "María's ruling of 2026-11-03 on #1426's Phase B (item B4, microcosm#1288 item 10): add HMRC's HICBC liability count and revenue as measured diagnostics first, using 2024-25's figures for the model's 2025.",
       "approved_on": "2026-11-03",
       "expires_on": "2027-02-03"
+    },
+    {
+      "name": "ons.land.corporate_land_value",
+      "reason": "Diagnostic by design, not a weight question: policyengine-uk's corporate_land_value gives each household aggregate_corporate_land_value times its share of the weighted corporate_sector_wealth (corporate and private pension wealth), so a released file's weighted total equals that parameter whatever the weights (policyengine-uk's test_corporate_land_value.py), and the row is met or missed by the parameter alone. The solve fits the column the engine measured at the spine's starting weights, so, bound, the row only pins the weighted mass of the corporate and private pension wealth the was_wealth stage draws, which no other row targets, and says nothing about land. Its fact, ONS's preliminary end-2025 national balance sheet E43B, non-financial corporations' land (£2,063,534m), is also not the engine's parameter, which policyengine-uk labels the land of non-financial and financial corporations. Measured on every evaluation; workstream 2 of microcosm#1521 settles the parameter's source.",
+      "tracking": "microcosm#1521",
+      "approved_by": "juaristi22",
+      "adjudication": "María's ruling of 2026-11-06 on the #931 move (microcosm#931), in line with workstream 2 of microcosm#1521 and the first must item of Vahid's review there (record the corporate row as met by construction and keep it out of the weight question): hold the corporate and total-economy land rows as measured diagnostics, keep ons.land.household_land_value bound and correct its note (E44N is the households sector alone, not households and NPISH). A calibrate-only rerun on the move's spine attributes the change.",
+      "approved_on": "2026-11-06",
+      "expires_on": "2027-02-06"
+    },
+    {
+      "name": "ons.land.land_value",
+      "reason": "Diagnostic by design, not a weight question: ONS's preliminary end-2025 total-economy land (E44R, £6,872,455m) counts the land of financial corporations, general government and NPISH, which policyengine-uk's land_value, household_land_value plus corporate_land_value, does not represent. Bound beside the household row (E44N, households alone, £4,485,171m) and the corporate row (E43B, £2,063,534m), the three could not all be met: E44R less E44N less E43B is £323,750m, 4.7 percent of the total, which the solve could close only by raising property-weighted and corporate-wealth-weighted mass. Beside the bound household row, the rest of this row is the corporate column, which pins corporate-wealth mass rather than land (ons.land.corporate_land_value). The household row stays bound. Measured on every evaluation; workstream 2 of microcosm#1521 decides whether the engine gets the missing sectors as aggregates.",
+      "tracking": "microcosm#1521",
+      "approved_by": "juaristi22",
+      "adjudication": "María's ruling of 2026-11-06 on the #931 move (microcosm#931), in line with workstream 2 of microcosm#1521 and the first must item of Vahid's review there (record the corporate row as met by construction and keep it out of the weight question): hold the corporate and total-economy land rows as measured diagnostics, keep ons.land.household_land_value bound and correct its note (E44N is the households sector alone, not households and NPISH). A calibrate-only rerun on the move's spine attributes the change.",
+      "approved_on": "2026-11-06",
+      "expires_on": "2027-02-06"
     }
   ]
 }

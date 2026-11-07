@@ -754,6 +754,11 @@ _PACKAGED_EXCLUSION_CENSUS = {
     "obr.spirits_duties": 1,
     "obr.tobacco_duties": 1,
     "obr.betting_and_gaming_duties": 1,
+    # The #931 move (2026-11-06, microcosm#1521 workstream 2): the corporate
+    # row is met by construction, so bound it pins corporate-wealth mass, not
+    # land, and the total-economy row counts sectors the engine does not hold.
+    # Both are measured diagnostics; the household row stays bound.
+    "ons.land.": 2,
 }
 
 # The carer and childcare rows were retired on 2026-09-16 with the repairs
@@ -803,8 +808,10 @@ def test_packaged_exclusions_load():
     # only binds). The savings follow-up holds the SPI £1m-and-over interest
     # amount row on its measured distortion (microcosm#1428, María's ruling of
     # 2026-10-30). microcosm#1426 holds HMRC's High Income Child Benefit Charge count
-    # and revenue as measured diagnostics (María's ruling of 2026-11-03).
-    assert len(names) == len(set(names)) == 47
+    # and revenue as measured diagnostics (María's ruling of 2026-11-03). The
+    # #931 move holds the corporate and total-economy ONS land rows as measured
+    # diagnostics (María's ruling of 2026-11-06, microcosm#1521 workstream 2).
+    assert len(names) == len(set(names)) == 49
     (gas,) = [
         entry
         for entry in exclusions
@@ -1150,6 +1157,81 @@ def test_employer_nics_are_a_measured_diagnostic():
     assert "policyengine-uk#2459" in entry["adjudication"]
     assert "obr.ni_employee" not in exclusions
     assert "obr.ni_self_employed" not in exclusions
+
+
+def test_the_corporate_and_total_land_rows_are_measured_diagnostics():
+    """The #931 move holds two ONS land rows out of the solve (María's ruling
+    of 2026-11-06, microcosm#1521 workstream 2).
+
+    policyengine-uk's corporate_land_value hands out its aggregate by each
+    household's share of the weighted corporate-sector wealth, so a released
+    file meets it at any weights and, bound, the row pins only that wealth's
+    mass. The total-economy row counts sectors the engine's land_value does
+    not hold, so the three land rows cannot all be met. The household row stays
+    bound, and its note names the one sector its series covers.
+    """
+
+    from importlib import resources as importlib_resources
+
+    def resource(name: str) -> dict:
+        return json.loads(
+            importlib_resources.files("microcosm.build.uk")
+            .joinpath(name)
+            .read_text(encoding="utf-8")
+        )
+
+    exclusions = {e["name"]: e for e in load_uk_calibration_measure_exclusions()}
+    corporate = exclusions["ons.land.corporate_land_value"]
+    total = exclusions["ons.land.land_value"]
+    for entry in (corporate, total):
+        assert entry["tracking"] == "microcosm#1521", entry["name"]
+        assert entry["approved_by"] == "juaristi22", entry["name"]
+        # Three months, as the OBR council tax nation rows' window.
+        assert (entry["approved_on"], entry["expires_on"]) == (
+            "2026-11-06",
+            "2027-02-06",
+        ), entry["name"]
+        assert entry["reason"].startswith("Diagnostic by design"), entry["name"]
+        assert "Measured on every evaluation" in entry["reason"], entry["name"]
+        assert "2026-11-06" in entry["adjudication"], entry["name"]
+        assert "workstream 2 of microcosm#1521" in entry["adjudication"]
+    assert "ons.land.household_land_value" not in exclusions
+    assert "corporate_sector_wealth" in corporate["reason"]
+    assert "was_wealth" in corporate["reason"]
+
+    # The reasons quote the registry's published ONS series and their gap.
+    candidates = resource("target_reference_membership.json")["targets"]
+
+    def published_millions(name: str) -> int:
+        (candidate,) = candidates[name]["candidates"]
+        return round(candidate["resolved_value"] / 1e6)
+
+    series = {
+        "E44R": published_millions("ons.land.land_value"),
+        "E44N": published_millions("ons.land.household_land_value"),
+        "E43B": published_millions("ons.land.corporate_land_value"),
+    }
+    assert series == {"E44R": 6_872_455, "E44N": 4_485_171, "E43B": 2_063_534}
+    gap = series["E44R"] - series["E44N"] - series["E43B"]
+    assert gap == 323_750
+    assert f"£{gap:,}m" in total["reason"]
+    for code, millions in series.items():
+        assert code in total["reason"], code
+        assert f"£{millions:,}m" in total["reason"], code
+    assert "E43B" in corporate["reason"]
+    assert f"£{series['E43B']:,}m" in corporate["reason"]
+
+    # The household row binds E44N, the households sector alone, and its note
+    # says so (it said households_and_npish).
+    contract = {
+        target["target_id"]: target
+        for target in resource("uk_population_targets.json")["targets"]
+    }
+    household = contract["ons.land.household_land_value"]
+    assert household["ledger_selector"]["source_concept"] == "ons.e44n"
+    note = household["bindings"]["policyengine"]["notes"]
+    assert "households sector (ONS E44N, households alone" in note
+    assert "households_and_npish" not in note
 
 
 def test_measure_resolver_direct_and_scratch_receipts(monkeypatch, tmp_path: Path):

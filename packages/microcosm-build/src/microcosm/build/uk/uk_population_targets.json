@@ -15332,7 +15332,7 @@
         "policyengine": {
           "metric_name": "ons/household_land_value",
           "value_variable": "household_land_value",
-          "notes": "National balance sheet land series for the households_and_npish sector; uk-data carries the last estimate flat to later years (populace-side declaration, uk-data targets/sources/_land.py:54-59 at 12a1e028afeef08d8b2d74ee03fd9de3a78b2dd3)."
+          "notes": "National balance sheet land series for the households sector (ONS E44N, households alone: NPISH land, like financial corporations' and government's, counts only in the total-economy row, ons.land.land_value); uk-data carries the last estimate flat to later years (populace-side declaration, uk-data targets/sources/_land.py:54-59 at 12a1e028afeef08d8b2d74ee03fd9de3a78b2dd3)."
         },
         "axiom": {
           "metric_name": "ons/household_land_value",
