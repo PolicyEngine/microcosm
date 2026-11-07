@@ -797,6 +797,127 @@ def test_signed_component_scores_soi_rows_as_the_release_tool_does():
     ]
 
 
+def _national_soi_target(source_variable: str, base: str, *, mode: str = "sum"):
+    return {
+        "name": f"irs_soi.ty2022.historic_table_2.us.all.{source_variable}@2024",
+        "metadata": {
+            "materializer": "irs_soi_slice",
+            "source_variable": source_variable,
+            "variable": source_variable,
+            ("base_variables" if "," in base else "base_variable"): base,
+            "measure_mode": mode,
+            "agi_lower_bound": "-inf",
+            "agi_upper_bound": "inf",
+            "filing_status": "All",
+        },
+    }
+
+
+@pytest.mark.parametrize(
+    ("mode", "statistic"),
+    [
+        ("sum", recert.STATISTIC_POSITIVE_SUM),
+        ("indicator_sum", recert.STATISTIC_POSITIVE_COUNT),
+    ],
+)
+def test_income_tax_after_credits_rows_score_as_a_difference(mode, statistic):
+    """SOI's income tax after credits (A06500, N06500) is Form 1040 line 22:
+    tax before credits less the capped nonrefundable credits, as the release
+    tool builds it."""
+
+    metric = recert._soi_row_metric(
+        _national_soi_target(
+            "income_tax_after_nonrefundable_credits",
+            "income_tax_before_credits,income_tax_capped_non_refundable_credits",
+            mode=mode,
+        ),
+        "federal_income_tax_total",
+    )
+
+    assert metric.combine == "difference"
+    assert metric.variables == (
+        "income_tax_before_credits",
+        "income_tax_capped_non_refundable_credits",
+    )
+    assert metric.statistic == statistic
+    assert metric.source_variable == "income_tax_after_nonrefundable_credits"
+
+
+def test_a_difference_row_built_from_other_variables_is_not_scored():
+    target = _national_soi_target(
+        "income_tax_after_nonrefundable_credits",
+        "income_tax_before_credits,income_tax_non_refundable_credits",
+    )
+
+    assert recert._soi_row_metric(target, None) is None
+
+
+def test_a_release_built_on_income_tax_scores_its_own_concept():
+    """Diagnostics written before the change name ``income_tax`` and add it
+    alone, as that release's tool did."""
+
+    metric = recert._soi_row_metric(
+        _national_soi_target("income_tax", "income_tax"), "federal_income_tax_total"
+    )
+
+    assert metric.combine == "add"
+    assert metric.variables == ("income_tax",)
+
+
+def test_combine_metric_values_evaluates_every_mode():
+    import numpy as np
+
+    a = np.array([5.0, 1.0, -2.0])
+    b = np.array([2.0, 3.0, 1.0])
+    enrolled = np.array([1.0, 0.0, 1.0])
+
+    assert set(recert.COMBINE_MODES) == {
+        "add",
+        "difference",
+        "nonrefundable_ctc",
+        "part_b_irmaa",
+    }
+    assert recert.combine_metric_values("add", [a]).tolist() == [5.0, 1.0, -2.0]
+    assert recert.combine_metric_values("add", [a, b]).tolist() == [7.0, 4.0, -1.0]
+    assert recert.combine_metric_values("difference", [a, b]).tolist() == [
+        3.0,
+        -2.0,
+        -3.0,
+    ]
+    assert recert.combine_metric_values("nonrefundable_ctc", [a, b]).tolist() == [
+        2.0,
+        1.0,
+        0.0,
+    ]
+    assert recert.combine_metric_values("part_b_irmaa", [a, b, enrolled]).tolist() == [
+        3.0,
+        0.0,
+        -3.0,
+    ]
+
+
+@pytest.mark.parametrize(
+    ("combine", "count"),
+    [
+        ("add", 0),
+        ("difference", 1),
+        ("difference", 3),
+        ("nonrefundable_ctc", 1),
+        ("part_b_irmaa", 2),
+    ],
+)
+def test_combine_metric_values_refuses_the_wrong_number_of_variables(combine, count):
+    with pytest.raises(ValueError, match="reads"):
+        recert.combine_metric_values(combine, [[1.0]] * count)
+
+
+def test_combine_metric_values_refuses_an_unknown_mode():
+    """A scorer never adds the variables of a row its tool combined otherwise."""
+
+    with pytest.raises(ValueError, match="unknown"):
+        recert.combine_metric_values("subtract", [[1.0], [2.0]])
+
+
 # ---------------------------------------------------------------------------
 # Publication.
 # ---------------------------------------------------------------------------

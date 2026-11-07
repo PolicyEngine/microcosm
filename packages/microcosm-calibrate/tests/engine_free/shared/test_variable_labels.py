@@ -56,7 +56,7 @@ irs_soi|eitc
 irs_soi|employment_income
 irs_soi|estate_income
 irs_soi|estate_losses
-irs_soi|income_tax
+irs_soi|income_tax_after_nonrefundable_credits
 irs_soi|income_tax_before_credits
 irs_soi|interest_deduction
 irs_soi|ira_distributions

@@ -1331,9 +1331,12 @@ class DriftMetric:
     ``variables`` are summed per unit of ``entity`` (a person variable over a
     tax-unit metric is first summed to the tax unit), except ``combine =
     "nonrefundable_ctc"``, which is ``max(min(ctc, ctc_limiting_tax_liability),
-    0)`` as the release tool scores the SOI CTC rows, and ``combine =
+    0)`` as the release tool scores the SOI CTC rows, ``combine =
+    "difference"``, which is the first variable less the second, as the
+    release tool scores a ``SOI_DIFFERENCE_CONCEPTS`` row, and ``combine =
     "part_b_irmaa"``, which is ``(gross_medicare_part_b_premium_if_enrolled -
-    base_part_b_premium) * medicare_enrolled``. ``entity =
+    base_part_b_premium) * medicare_enrolled``. :func:`combine_metric_values`
+    evaluates every mode. ``entity =
     "household_members"`` sums a person variable over each household, as the
     release tool's ``policyengine_variable`` rows do. ``itemizers_only`` masks
     by ``tax_unit_itemizes``. The weight is the H5's household weight of the
@@ -1499,6 +1502,60 @@ _LOSS_SOURCES = frozenset(
 )
 
 
+#: SOI concepts the release tool scores as one engine variable less another,
+#: per tax unit. Copied from
+#: ``microcosm.build.us_runtime.fiscal_targets.SOI_DIFFERENCE_CONCEPTS`` (a
+#: build test holds them equal), whose comment gives each concept's SOI
+#: definition. A release built before a concept joined this register names
+#: its own ``source_variable`` and scores as that row's release tool did.
+SOI_DIFFERENCE_CONCEPTS: dict[str, tuple[str, str]] = {
+    "income_tax_after_nonrefundable_credits": (
+        "income_tax_before_credits",
+        "income_tax_capped_non_refundable_credits",
+    ),
+}
+#: The values :attr:`DriftMetric.combine` takes, each with the number of
+#: variables it reads (``None`` for any number).
+COMBINE_MODES: dict[str, int | None] = {
+    "add": None,
+    "difference": 2,
+    "nonrefundable_ctc": 2,
+    "part_b_irmaa": 3,
+}
+
+
+def combine_metric_values(combine: str, arrays: Sequence):
+    """One value per unit from a metric's per-unit variable arrays.
+
+    ``arrays`` holds one array per entry of :attr:`DriftMetric.variables`, in
+    that order, each already summed to the metric's entity. An unknown mode or
+    the wrong number of arrays raises, so a scorer never adds the variables of
+    a row whose release tool combined them some other way.
+    """
+
+    import numpy as np
+
+    if combine not in COMBINE_MODES:
+        raise ValueError(f"unknown drift metric combine mode {combine!r}")
+    arrays = [np.asarray(array, dtype=np.float64) for array in arrays]
+    expected = COMBINE_MODES[combine]
+    if not arrays or (expected is not None and len(arrays) != expected):
+        raise ValueError(
+            f"combine mode {combine!r} reads {expected or 'at least one'} "
+            f"variables, not {len(arrays)}"
+        )
+    if combine == "nonrefundable_ctc":
+        ctc, limit = arrays
+        return np.maximum(np.minimum(ctc, limit), 0.0)
+    if combine == "difference":
+        minuend, subtrahend = arrays
+        return minuend - subtrahend
+    if combine == "part_b_irmaa":
+        gross, base, enrolled = arrays
+        return (gross - base) * enrolled
+    return np.sum(arrays, axis=0)
+
+
 def signed_component(values, source_variable: str):
     """The part of a signed SOI value its row scores, as the release tool does."""
 
@@ -1582,6 +1639,13 @@ def _soi_row_metric(target: Mapping, requirement_id: str | None) -> DriftMetric 
     combine = "add"
     if source_variable == "ctc":
         combine, variables = "nonrefundable_ctc", ("ctc", "ctc_limiting_tax_liability")
+    elif source_variable in SOI_DIFFERENCE_CONCEPTS:
+        # The row names the variables its release tool subtracted. A row whose
+        # variables differ from this register's pair came from another build,
+        # which this module does not reproduce.
+        if variables != SOI_DIFFERENCE_CONCEPTS[source_variable]:
+            return None
+        combine = "difference"
     return DriftMetric(
         f"target:{name}",
         str(metadata.get("diagnostic_target_label") or name),

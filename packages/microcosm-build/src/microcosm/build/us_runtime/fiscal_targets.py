@@ -60,6 +60,7 @@ __all__ = [
     "US_JCT_TAX_EXPENDITURE_REFORMS",
     "US_JCT_TAX_EXPENDITURE_TARGET_SPECS",
     "US_JCT_TAX_EXPENDITURE_TARGET_REFERENCES",
+    "SOI_DIFFERENCE_CONCEPTS",
     "SOI_VARIABLE_MAP",
     "US_SOI_STATE_AGI_BAND_MINIMUM_LOWER_BOUND",
     "US_SOI_FISCAL_TARGET_SPECS",
@@ -68,6 +69,7 @@ __all__ = [
     "US_STATE_INCOME_TAX_TARGET_REFERENCES",
     "SimpleTaxExpenditureReform",
     "compile_us_fiscal_target_registry",
+    "soi_difference_concept_values",
     "us_fiscal_target_exclusion_receipt",
 ]
 
@@ -121,7 +123,13 @@ SOI_AMOUNT_MEASURE_VARIABLES: dict[str, str] = {
     "eitc_total": "eitc",
     "eitc_two_children_amount": "eitc",
     "income_tax_before_credits_amount": "income_tax_before_credits",
-    "income_tax_liability_amount": "income_tax",
+    # SOI's "income tax after credits" (A06500 in Historic Table 2 and the
+    # district file): tax before credits less the nonrefundable credits, before
+    # any refundable credit and without the Schedule 2 Part II taxes. No single
+    # locked-engine variable carries it, so the release tool computes it from
+    # two (SOI_DIFFERENCE_CONCEPTS). The engine's income_tax differs: it nets
+    # refundable credits and adds the net investment income tax.
+    "income_tax_liability_amount": "income_tax_after_nonrefundable_credits",
     "interest_paid_deduction_amount": "interest_deduction",
     "itemized_deductions_amount": "itemized_taxable_income_deductions",
     "limited_state_local_taxes_amount": "salt_deduction",
@@ -215,7 +223,9 @@ SOI_RETURN_MEASURE_VARIABLES: dict[str, str] = {
     "eitc_three_or_more_children_claims": "eitc",
     "eitc_two_children_claims": "eitc",
     "income_tax_before_credits_returns": "income_tax_before_credits",
-    "income_tax_liability_returns": "income_tax",
+    # N06500, returns with income tax after credits: the same concept as the
+    # A06500 amount row above.
+    "income_tax_liability_returns": "income_tax_after_nonrefundable_credits",
     "interest_paid_deduction_returns": "interest_deduction",
     "limited_state_local_taxes_returns": "salt_deduction",
     "medical_dental_expense_returns": "medical_expense_deduction",
@@ -296,7 +306,6 @@ SOI_VARIABLE_MAP: dict[str, str] = {
     # the Schedule-A universe.
     "deductible_mortgage_interest": "deductible_mortgage_interest_tax_unit",
     "exempt_interest": "tax_exempt_interest_income",
-    "income_tax": "income_tax",
     "income_tax_before_credits": "income_tax_before_credits",
     "interest_deduction": "interest_deduction",
     "ira_distributions": "taxable_ira_distributions",
@@ -330,6 +339,64 @@ SOI_VARIABLE_MAP: dict[str, str] = {
     "total_social_security": "tax_unit_social_security",
     "unemployment_compensation": "unemployment_compensation",
 }
+
+#: SOI concepts that no single locked PolicyEngine-US variable carries. Each
+#: is ``minuend - subtrahend`` per tax unit. The release tool
+#: (``tools/build_us_fiscal_refresh_release.py``) materializes the difference
+#: and takes its positive part as for every SOI column, and
+#: ``microcosm.data.compatibility_recertification`` scores the same
+#: difference from its own copy of this register, which a build test holds
+#: equal to this one. A concept here is never also a SOI_VARIABLE_MAP key.
+#:
+#: ``income_tax_after_nonrefundable_credits`` is SOI's "income tax after
+#: credits", A06500 and N06500 in Historic Table 2 and the district file.
+#: SOI's guides place it at Form 1040 line 22 for TY2021 through TY2023, line
+#: 13 for TY2018 and line 56 for TY2017: income tax before credits (A05800) less
+#: total tax credits (A07100), which leave out the earned income credit and
+#: the refundable education credit. In the TY2022 Historic Table 2 file,
+#: A05800 - A07100 falls short of A06500 by $1.75M of $2,105B nationally, by
+#: at most $0.38M in any AGI class and by at most $0.33M in any state; line
+#: 22's zero floor accounts for the sign. So the concept comes before every
+#: refundable credit and leaves out the Schedule 2 Part II taxes (line 23).
+#: In policyengine-us 2.2.1 the same quantity is ``income_tax_before_credits``
+#: less ``income_tax_capped_non_refundable_credits``:
+#: ``income_tax_before_refundable_credits`` adds the net investment income
+#: tax, the recapture of investment credit, unreported payroll tax and the
+#: qualified retirement penalty to it, and ``income_tax`` then subtracts the
+#: refundable credits. The engine scenario test
+#: ``test_us_soi_income_tax_concept`` pins both identities. The
+#: engine has no variable for the excess advance premium tax credit
+#: repayment, which SOI's income tax before credits includes ($6.93B in
+#: TY2022), so both income tax rows miss that amount.
+SOI_DIFFERENCE_CONCEPTS: dict[str, tuple[str, str]] = {
+    "income_tax_after_nonrefundable_credits": (
+        "income_tax_before_credits",
+        "income_tax_capped_non_refundable_credits",
+    ),
+}
+
+
+def soi_difference_concept_values(minuend, subtrahend):
+    """A ``SOI_DIFFERENCE_CONCEPTS`` concept per tax unit: ``minuend - subtrahend``.
+
+    Both arguments hold one value per tax unit, in the same order. The release
+    tool takes the positive part of the result, as for every SOI column, and
+    ``microcosm.data.compatibility_recertification.combine_metric_values``
+    evaluates the same difference for ``combine = "difference"``; a build test
+    holds the two equal.
+    """
+
+    import numpy as np
+
+    minuend = np.asarray(minuend, dtype=np.float64)
+    subtrahend = np.asarray(subtrahend, dtype=np.float64)
+    if minuend.shape != subtrahend.shape:
+        raise ValueError(
+            "A SOI difference concept takes one minuend and one subtrahend value "
+            f"per tax unit; got shapes {minuend.shape} and {subtrahend.shape}."
+        )
+    return minuend - subtrahend
+
 
 _SOI_BASE_VARIABLE_OVERRIDES: dict[str, tuple[str, ...]] = {
     "ctc": ("ctc", "ctc_limiting_tax_liability"),
@@ -3296,6 +3363,8 @@ def _soi_display_variable(variable: str) -> str:
 def _soi_base_variables(variable: str) -> tuple[str, ...]:
     if variable == "count":
         return ()
+    if variable in SOI_DIFFERENCE_CONCEPTS:
+        return SOI_DIFFERENCE_CONCEPTS[variable]
     return _SOI_BASE_VARIABLE_OVERRIDES.get(variable, (SOI_VARIABLE_MAP[variable],))
 
 

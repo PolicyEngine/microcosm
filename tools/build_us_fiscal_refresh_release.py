@@ -97,6 +97,7 @@ from microcosm.build.us_runtime import (
     SIPP_2023_VEHICLE_DONOR_SIZE_BYTES,
     SIPP_2023_VOLUNTARY_FILING_DONOR_SHA256,
     SIPP_2023_VOLUNTARY_FILING_DONOR_SIZE_BYTES,
+    SOI_DIFFERENCE_CONCEPTS,
     SOI_VARIABLE_MAP,
     US_FISCAL_TARGET_COVERAGE_REQUIREMENTS,
     US_FISCAL_TARGET_SUPPORT_EXCLUSIONS,
@@ -132,6 +133,7 @@ from microcosm.build.us_runtime import (
     load_sipp_2023_tip_donor,
     load_sipp_2023_vehicle_donor,
     load_sipp_2023_voluntary_filing_donor,
+    soi_difference_concept_values,
     ssi_take_up_prior_basis_from_artifact,
     ssi_take_up_prior_basis_from_diagnostics,
     us_alimony_signal_gate,
@@ -6112,6 +6114,18 @@ def _person_variable_to_tax_unit(*, frame: Frame, values: np.ndarray) -> np.ndar
     return out
 
 
+def _soi_tax_unit_values(*, frame: Frame, simulation, system, variable: str):
+    """``variable`` per tax unit: a tax-unit variable as is, a person one summed."""
+
+    entity = _variable_entity(system, variable)
+    raw = _calculate_array(simulation, variable)
+    if entity == "tax_unit":
+        return raw.astype(np.float64)
+    if entity == "person":
+        return _person_variable_to_tax_unit(frame=frame, values=raw)
+    raise ValueError(f"SOI variable {variable!r} has unsupported entity {entity!r}.")
+
+
 def _make_zero_variable_reform(system, variable_name: str):
     from policyengine_us.model_api import Reform, Variable
 
@@ -6482,19 +6496,20 @@ def _base_simulation_household_columns(
             continue
         if pe_name not in system.variables:
             continue
-        entity = _variable_entity(system, pe_name)
-        raw = _calculate_array(simulation, pe_name)
-        if entity == "tax_unit":
-            variable_cache[source_name] = raw.astype(np.float64)
-        elif entity == "person":
-            variable_cache[source_name] = _person_variable_to_tax_unit(
-                frame=frame,
-                values=raw,
-            )
-        else:
-            raise ValueError(
-                f"SOI variable {pe_name!r} has unsupported entity {entity!r}."
-            )
+        variable_cache[source_name] = _soi_tax_unit_values(
+            frame=frame, simulation=simulation, system=system, variable=pe_name
+        )
+    for source_name, (minuend, subtrahend) in SOI_DIFFERENCE_CONCEPTS.items():
+        if minuend not in system.variables or subtrahend not in system.variables:
+            continue
+        variable_cache[source_name] = soi_difference_concept_values(
+            _soi_tax_unit_values(
+                frame=frame, simulation=simulation, system=system, variable=minuend
+            ),
+            _soi_tax_unit_values(
+                frame=frame, simulation=simulation, system=system, variable=subtrahend
+            ),
+        )
 
     for spec in target_specs:
         if spec.family != "irs_soi":

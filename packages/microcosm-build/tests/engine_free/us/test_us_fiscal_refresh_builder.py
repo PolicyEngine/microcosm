@@ -11874,6 +11874,178 @@ def test_soi_ctc_targets_materialize_nonrefundable_credit(
     assert compilation["dropped_target_names"] == []
 
 
+def test_soi_income_tax_after_credits_targets_materialize_line_22(
+    monkeypatch,
+) -> None:
+    """SOI's income tax after credits binds Form 1040 line 22, not income_tax.
+
+    Each tax unit contributes ``income_tax_before_credits`` less
+    ``income_tax_capped_non_refundable_credits``. The engine's ``income_tax``,
+    which also subtracts the refundable credits and adds the net investment
+    income tax, moves nothing: on these units it would give 281,400 weighted
+    dollars and 3 weighted returns. The compiled row goes in as the registry
+    writes it, and the recertification scorer, reading that row's metadata,
+    scores the same weighted totals from the same tax-unit values.
+    """
+
+    from microcosm.build.us_runtime import compile_us_fiscal_target_registry
+    from microcosm.data import compatibility_recertification as recert
+    from test_support.microcosm_build.us_fiscal_targets import (
+        _soi_income_tax_fact,
+        packaged_reference_facts,
+    )
+
+    builder = _load_builder_module()
+    _installed_variable_metadata_index(builder)
+    compiled = {
+        spec.metadata["ledger_source_record_id"]: spec
+        for spec in compile_us_fiscal_target_registry(
+            [
+                *packaged_reference_facts(),
+                _soi_income_tax_fact(2023, value=2_100_000_000_000),
+            ],
+            allow_unaged_dollar_targets=True,
+        ).specs
+    }
+    amount = compiled["irs_soi.ty2023.table_3_3.us.all.income_tax_liability_amount"]
+    returns = replace(
+        amount,
+        name=f"{amount.name}.returns",
+        measure=f"{amount.measure}.returns",
+        metadata={**amount.metadata, "measure_mode": "indicator_sum"},
+    )
+    frame = Frame(
+        {
+            "person": pd.DataFrame(
+                {
+                    "person_id": np.asarray([1, 2, 3], dtype="int64"),
+                    "person_household_id": np.asarray([1, 1, 2], dtype="int64"),
+                    "person_tax_unit_id": np.asarray([10, 20, 30], dtype="int64"),
+                    "person_spm_unit_id": np.asarray([100, 100, 200], dtype="int64"),
+                    "person_family_id": np.asarray([1000, 1000, 2000], dtype="int64"),
+                    "person_marital_unit_id": np.asarray(
+                        [10000, 20000, 30000], dtype="int64"
+                    ),
+                }
+            ),
+            "household": pd.DataFrame(
+                {
+                    "household_id": np.asarray([1, 2], dtype="int64"),
+                    "state_fips": np.asarray([6, 6], dtype="int64"),
+                }
+            ),
+            "tax_unit": pd.DataFrame(
+                {"tax_unit_id": np.asarray([10, 20, 30], dtype="int64")}
+            ),
+            "spm_unit": pd.DataFrame({"spm_unit_id": np.asarray([100, 200])}),
+            "family": pd.DataFrame({"family_id": np.asarray([1000, 2000])}),
+            "marital_unit": pd.DataFrame(
+                {"marital_unit_id": np.asarray([10000, 20000, 30000])}
+            ),
+        },
+        builder.US_SCHEMA,
+        {
+            "household": builder.Weights(
+                values=np.asarray([2.0, 3.0]), kind=WeightKind.DESIGN
+            )
+        },
+    )
+    tax_unit_arrays = {
+        "income_tax_before_credits": np.asarray([5_000.0, 1_000.0, 90_000.0]),
+        "income_tax_capped_non_refundable_credits": np.asarray([2_000.0, 1_000.0, 0.0]),
+        # Unit 10's refundable credits exceed its line 22 tax, and unit 30
+        # owes 3,800 of net investment income tax.
+        "income_tax": np.asarray([-1_200.0, -3_000.0, 93_800.0]),
+    }
+
+    class FakeVariable:
+        entity = SimpleNamespace(key="tax_unit")
+
+    class FakeSystem:
+        variables = {
+            name: FakeVariable()
+            for name in (
+                "income_tax",
+                "taxable_income",
+                "adjusted_gross_income",
+                "filing_status",
+                "state_income_tax",
+                "income_tax_before_credits",
+                "income_tax_capped_non_refundable_credits",
+            )
+        }
+
+        def __init__(self, reform=None):
+            self.reform = reform
+
+    class FakeMicrosimulation:
+        default_tax_benefit_system = FakeSystem
+
+        def __init__(self, *, dataset, reform=None, tax_benefit_system=None):
+            self.dataset = dataset
+            self.reform = reform
+            self.tax_benefit_system = tax_benefit_system
+
+        def calculate(self, variable, *, period, **kwargs):
+            assert period == builder.PERIOD
+            assert kwargs == {}
+            arrays = {
+                **tax_unit_arrays,
+                "taxable_income": np.asarray([0.0, 0.0, 0.0]),
+                "adjusted_gross_income": np.asarray([60_000.0, 30_000.0, 400_000.0]),
+                "filing_status": np.asarray(["SINGLE", "SINGLE", "SINGLE"]),
+                "state_income_tax": np.asarray([0.0, 0.0, 0.0]),
+            }
+            return arrays[variable]
+
+        def _invalidate_all_caches(self):
+            return None
+
+    monkeypatch.setitem(
+        sys.modules,
+        "policyengine_us",
+        SimpleNamespace(
+            CountryTaxBenefitSystem=FakeSystem,
+            Microsimulation=FakeMicrosimulation,
+        ),
+    )
+    monkeypatch.setattr(builder, "_dataset_from_frame", lambda *args, **kwargs: {})
+    monkeypatch.setattr(builder, "SOI_VARIABLE_MAP", {})
+    monkeypatch.setattr(builder, "US_JCT_TAX_EXPENDITURE_REFORMS", ())
+
+    target_frame, registry, compilation = builder._materialize_target_frame(
+        frame, (amount, returns)
+    )
+
+    household = target_frame.table("household")
+    assert np.array_equal(household[amount.measure], np.asarray([3_000.0, 90_000.0]))
+    assert np.array_equal(household[returns.measure], np.asarray([1.0, 1.0]))
+    assert len(registry) == 2
+    assert compilation["dropped_target_names"] == []
+
+    household_weights = np.asarray([2.0, 3.0])
+    tax_unit_weights = np.asarray([2.0, 2.0, 3.0])
+    for spec, built_total in (
+        (amount, 276_000.0),
+        (returns, 5.0),
+    ):
+        assert np.dot(household_weights, household[spec.measure]) == built_total
+        metric = recert._soi_row_metric(
+            {"name": spec.name, "metadata": dict(spec.metadata)}, None
+        )
+        assert metric is not None
+        assert metric.combine == "difference"
+        values = recert.signed_component(
+            recert.combine_metric_values(
+                metric.combine, [tax_unit_arrays[name] for name in metric.variables]
+            ),
+            metric.source_variable,
+        )
+        if metric.statistic == recert.STATISTIC_POSITIVE_COUNT:
+            values = (values > 0).astype(np.float64)
+        assert np.dot(tax_unit_weights, values) == built_total
+
+
 @pytest.mark.parametrize("restatement", ["none", "agreeing", "disagreeing"])
 def test_population_age_targets_materialize_person_age_counts(
     monkeypatch,
