@@ -7,6 +7,7 @@ import pandas as pd
 import pytest
 
 from microcosm.build.us_runtime import l0_refit_export
+from microcosm.build.us_runtime.input_mass import UsLine32Carriers
 from microcosm.build.us_runtime.l0_refit_export import (
     assert_required_us_release_source_columns,
     attach_l0_refit_entity_weights,
@@ -419,6 +420,62 @@ def test_export_us_l0_refit_h5_fails_when_selection_zeroes_input_mass(
             require_geography_ladder=False,
         )
     assert not output.exists()
+
+
+def test_export_us_l0_refit_h5_reads_line_32_on_the_reference_terms(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    frame = _us_frame()
+    base_h5 = tmp_path / "base.h5"
+    base_h5.write_text("base")
+    output = tmp_path / "populace_us_2024.h5"
+
+    monkeypatch.setattr(l0_refit_export, "load_us_frame", lambda path: frame)
+    monkeypatch.setattr(
+        l0_refit_export,
+        "copy_microcosm_root_attrs",
+        lambda source, destination: (),
+    )
+    # A reference built before microcosm#1261 holds partnership and S
+    # corporation income together in partnership_income; the export splits the
+    # income between the two columns.
+    monkeypatch.setattr(
+        l0_refit_export,
+        "us_input_mass_totals",
+        lambda bundle: (
+            {"partnership_income": 8.5e11, "s_corp_income": 0.0}
+            if bundle is frame
+            else {"partnership_income": 3.9e11, "s_corp_income": 6.6e11}
+        ),
+    )
+
+    def carriers(candidate, reference):
+        # The gate reads carriers from the frames whose totals it compares: the
+        # reweighted export, then the base frame that stands in as reference.
+        assert candidate is not frame
+        assert reference is frame
+        return UsLine32Carriers(
+            candidate_partnership_income=True, reference_s_corp_income=False
+        )
+
+    monkeypatch.setattr(l0_refit_export, "us_line_32_carriers", carriers)
+
+    class FakeEngine:
+        def write_dataset(self, bundle, path, period):
+            Path(path).write_text("sentinel")
+
+    monkeypatch.setattr(l0_refit_export, "PolicyEngineUSEngine", FakeEngine)
+
+    summary = export_us_l0_refit_h5(
+        base_h5=base_h5,
+        weights_npz=_l0_refit_npz(tmp_path),
+        output_h5=output,
+        input_mass_relative_tolerance=0.5,
+        require_geography_ladder=False,
+    )
+
+    assert summary["input_mass_parity"]["passed"] is True
 
 
 def test_export_us_l0_refit_h5_records_input_mass_drift_when_allowed(

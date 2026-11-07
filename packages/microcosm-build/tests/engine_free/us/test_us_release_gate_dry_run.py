@@ -45,6 +45,7 @@ from microcosm.build.gates import (
     parity_gate,
 )
 from microcosm.build.us_runtime import release_gate_dry_run as dry
+from microcosm.build.us_runtime.input_mass import UsLine32Carriers
 from microcosm.build.us_runtime.release_gate_preflight import PreflightReport
 from microcosm.build.us_runtime.spm_composition import CheckResult
 from microcosm.calibrate.registry import TargetSpec
@@ -1435,9 +1436,7 @@ def test_checkpoint_status_reads_only_the_identity(builder, tmp_path) -> None:
     assert not builder._dry_run_checkpoint_status(path, "def")["identity_matches"]
 
 
-def test_release_dry_run_checks_run_the_release_gates(
-    builder, tail_frame, monkeypatch
-) -> None:
+def _release_dry_run_checks(builder, tail_frame, monkeypatch, *extra_args):
     """The stop point's check assembly, on a real frame.
 
     Engine-backed pieces (input defaults, input coverage) are stubbed because
@@ -1461,6 +1460,7 @@ def test_release_dry_run_checks_run_the_release_gates(
             "--dense-default-dataset",
             "--dry-run-gates-report",
             "r.json",
+            *extra_args,
         ]
     )
     early = ["Retirement-distribution signal failed: fixture early failure"]
@@ -1498,6 +1498,13 @@ def test_release_dry_run_checks_run_the_release_gates(
         ),
         ecps_parity_gate=GateResult(name="parity", passed=True),
     )
+    return early, checks
+
+
+def test_release_dry_run_checks_run_the_release_gates(
+    builder, tail_frame, monkeypatch
+) -> None:
+    early, checks = _release_dry_run_checks(builder, tail_frame, monkeypatch)
     by_name = {check.name: check for check in checks}
     assert list(by_name) == [
         "pre_solve_battery",
@@ -1532,6 +1539,56 @@ def test_release_dry_run_checks_run_the_release_gates(
         for check in checks
         if check.name != "stored_inputs"
     )
+
+
+def test_release_dry_run_reads_line_32_as_the_gate_does(
+    builder, tail_frame, monkeypatch
+) -> None:
+    """The preview raises if it reads partnership_income alone here.
+
+    A reference built before microcosm#1261 holds partnership and S corporation
+    income together in partnership_income, so the gate counts both candidate
+    columns against it.
+    """
+    reference = SimpleNamespace(label="reference")
+    monkeypatch.setattr(builder, "load_us_frame", lambda path: reference)
+
+    def carriers(candidate, reference_frame):
+        # The gate and the preview read carriers from the frames whose totals
+        # they compare.
+        assert candidate is tail_frame
+        assert reference_frame is reference
+        return UsLine32Carriers(
+            candidate_partnership_income=True, reference_s_corp_income=False
+        )
+
+    monkeypatch.setattr(builder, "us_line_32_carriers", carriers)
+    monkeypatch.setattr(
+        builder,
+        "us_input_mass_totals",
+        lambda frame, columns=None: (
+            {"partnership_income": 8.5e11, "s_corp_income": 0.0}
+            if frame is reference
+            else {"partnership_income": 3.9e11, "s_corp_income": 6.6e11}
+        ),
+    )
+    monkeypatch.setattr(
+        builder,
+        "us_nonzero_shares",
+        lambda frame, columns=None: {"partnership_income": 0.02, "s_corp_income": 0.02},
+    )
+    _, checks = _release_dry_run_checks(
+        builder,
+        tail_frame,
+        monkeypatch,
+        "--export-input-mass-reference-h5",
+        "populace_us_2024.h5",
+    )
+    check = {item.name: item for item in checks}["export_input_mass"]
+    assert not check.details.get("evaluation_error")
+    row = {row["column"]: row for row in check.rows}["partnership_income"]
+    assert row["mass_at_base_weights"] == pytest.approx(1.05e12)
+    assert row["verdict"] == "in_band"
 
 
 def test_release_dry_run_checks_evidence_tier_missing_register_and_l0(

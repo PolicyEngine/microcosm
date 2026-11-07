@@ -208,7 +208,11 @@ AT-RISK only, `0` clean):
 3. **Export-mass parity risk** — each export-mass column's pool mass at *base*
    weights against its reference band, honoring the release tool's
    `US_EXPORT_INPUT_MASS_REVIEWED_EXCLUSIONS` register (reused, never
-   re-declared). A column out of band pre-solve is flagged for review.
+   re-declared). A column out of band pre-solve is flagged for review. Against
+   a reference where no record holds `s_corp_income`, the pool's
+   `partnership_income` counts both columns when a pool record with nonzero
+   weight holds it, as the export gate's candidate does, and the check's
+   details then name both columns.
 4. **Smoke-probe support audit** — every reform-coverage probe leaf's pool vs
    *selected* nonzero support and pool sign-leg decomposition. A leaf with pool
    support but zero selected support **fails** (the input the frozen selection
@@ -312,7 +316,16 @@ never as a release refusal. The checks:
 - **`export_input_mass`** runs the export input-mass gate with the staged
   frame standing in for the export. It classifies the
   `US_EXPORT_INPUT_MASS_REVIEWED_EXCLUSIONS` register as the gate does: `used`,
-  `below_reference_floor` or `unused`.
+  `below_reference_floor` or `unused`. The gate and this check read a reference
+  where no record holds `s_corp_income` as one from before microcosm#1261 split
+  Schedule E line 32: they count `partnership_income` plus `s_corp_income` as
+  the candidate's `partnership_income`, and the gate's details name both
+  columns. Any reference record that holds `s_corp_income` marks the split, even
+  when those amounts cancel, and the gate then compares each column alone.
+  Without a record of nonzero weight that holds `partnership_income`, the
+  candidate's column counts alone, so S corporation income can't stand in for a
+  lost column. A reference without the split can't show a wrong division of the
+  income between the columns.
 - **`degenerate_input_register`**, **`ecps_parity_register`**,
   **`input_coverage_register`**, **`stored_inputs`**, **`spm_composition`**,
   **`zero_support_preview`** and **`pre_solve_battery`** grade the remaining
