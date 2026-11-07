@@ -19,6 +19,10 @@ from microcosm.build.stochastic_assignment import (
 )
 from microcosm.build.uk_runtime.frs_brma import _benunit_household_map
 from microcosm.build.uk_runtime.frs_spine import read_pinned_tab
+from microcosm.build.uk_runtime.household_income import (
+    UK_HBAI_NET_INCOME_PREDICTOR,
+    UK_HBAI_NET_INCOME_VARIABLE,
+)
 from microcosm.build.uk_runtime.national_frame import (
     uk_household_mass_conservation_receipt,
     uk_household_weight_kind,
@@ -67,7 +71,9 @@ UK_WAS_TENURE_PREDICTORS = tuple(
     f"tenure_{category}" for category in UK_TENURE_CATEGORIES[1:]
 )
 UK_WAS_WEALTH_PREDICTORS = (
-    "household_net_income",
+    # The household's net income on the survey's concept on both sides
+    # (``UK_WAS_ENGINE_PREDICTOR_NAMES``; microcosm#1164).
+    UK_HBAI_NET_INCOME_PREDICTOR,
     "num_adults",
     "num_children",
     "private_pension_income",
@@ -87,11 +93,23 @@ UK_WAS_WEALTH_PREDICTORS = (
 #: (``uc_relationships.household_family_role_counts``), matching the donor's
 #: NumAdultR8 and NumChildR8.
 UK_WAS_ENGINE_PREDICTORS = (
-    "household_net_income",
+    UK_HBAI_NET_INCOME_VARIABLE,
     "private_pension_income",
     "employment_income",
     "self_employment_income",
     "capital_income",
+)
+#: Engine variables read under another predictor name. The donor's income is
+#: WAS ``DVTotinc_bhcR8``, net regular household income before housing costs
+#: less council tax, so the recipient's is the engine's HBAI net income before
+#: the reset to zero, under the name the LCFS, ETB services and NTS stages give
+#: it (``household_income``; microcosm#1164). The engine's
+#: ``household_net_income`` it replaces also takes off stamp duty, the TV
+#: licence and the business rates and corporate stamp duty that
+#: ``shareholding`` spreads over the households the engine simulates, and adds
+#: benefits in kind, none of which the donor's income counts (microcosm#931).
+UK_WAS_ENGINE_PREDICTOR_NAMES: Mapping[str, str] = MappingProxyType(
+    {UK_HBAI_NET_INCOME_VARIABLE: UK_HBAI_NET_INCOME_PREDICTOR}
 )
 UK_WAS_DEBT_OUTPUT_COLUMNS = ("mortgage_debt", "consumer_debt")
 #: Columns drawn only inside a tenure stratum and zero by rule outside it
@@ -255,7 +273,7 @@ REGIONS: Mapping[int, str] = {
 }
 REGION_REMAP = {"NORTHERN_IRELAND": "WALES"}
 UK_WAS_ENGINE_PREDICTOR_ENTITIES: Mapping[str, str] = {
-    "household_net_income": "household",
+    UK_HBAI_NET_INCOME_VARIABLE: "household",
     "private_pension_income": "person",
     "employment_income": "person",
     "self_employment_income": "person",
@@ -353,7 +371,10 @@ _RAW_TO_CLEAN = {
     "DVHseDebtR8_sum": "other_houses_secured_debt",
     "DVBLtDebtR8_sum": "buy_to_let_secured_debt",
     "DVBldDebtR8_sum": "non_residential_property_secured_debt",
-    "DVTotinc_bhcR8": "household_net_income",
+    # Net regular household income before housing costs less council tax:
+    # HBAI's concept, under the recipient's predictor name
+    # (``UK_WAS_ENGINE_PREDICTOR_NAMES``).
+    "DVTotinc_bhcR8": UK_HBAI_NET_INCOME_PREDICTOR,
     "DVSaValR8_aggr": "savings",
     "vcarnr8": "num_vehicles",
     "Tot_LosR8_aggr": "total_loans",
@@ -732,7 +753,9 @@ def recipient_predictors(frame: Frame, engine: object) -> pd.DataFrame:
 
     Engine variables live at their native entity; person- and benunit-level
     predictors are summed to household grain, reproducing the incumbent's
-    ``map_to="household"`` semantics.
+    ``map_to="household"`` semantics. Each takes its predictor name from
+    ``UK_WAS_ENGINE_PREDICTOR_NAMES``, so the HBAI net income before the reset
+    to zero is the household income predictor.
     """
 
     materialized = engine.materialize(
@@ -743,26 +766,27 @@ def recipient_predictors(frame: Frame, engine: object) -> pd.DataFrame:
     benunit = frame.table("benunit")
     household_ids = pd.Index(household["household_id"])
     result = pd.DataFrame(index=household.index)
-    for predictor in UK_WAS_ENGINE_PREDICTORS:
-        entity = UK_WAS_ENGINE_PREDICTOR_ENTITIES[predictor]
-        declared = str(engine.variable_metadata(predictor).entity)
+    for variable in UK_WAS_ENGINE_PREDICTORS:
+        predictor = UK_WAS_ENGINE_PREDICTOR_NAMES.get(variable, variable)
+        entity = UK_WAS_ENGINE_PREDICTOR_ENTITIES[variable]
+        declared = str(engine.variable_metadata(variable).entity)
         if declared != entity:
             raise ValueError(
-                f"engine declares {predictor!r} at entity {declared!r}; "
+                f"engine declares {variable!r} at entity {declared!r}; "
                 f"the WAS wealth stage expects {entity!r}."
             )
-        values = np.asarray(materialized[predictor])
+        values = np.asarray(materialized[variable])
         if entity == "household":
             if values.shape != (len(household),):
                 raise ValueError(
-                    f"materialized {predictor!r} has shape {values.shape}; "
+                    f"materialized {variable!r} has shape {values.shape}; "
                     f"expected ({len(household)},)."
                 )
             result[predictor] = values
         elif entity == "benunit":
             if values.shape != (len(benunit),):
                 raise ValueError(
-                    f"materialized {predictor!r} has shape {values.shape}; "
+                    f"materialized {variable!r} has shape {values.shape}; "
                     f"expected ({len(benunit)},)."
                 )
             groups = benunit["benunit_id"].map(_benunit_household_map(person))
@@ -771,7 +795,7 @@ def recipient_predictors(frame: Frame, engine: object) -> pd.DataFrame:
         else:
             if values.shape != (len(person),):
                 raise ValueError(
-                    f"materialized {predictor!r} has shape {values.shape}; "
+                    f"materialized {variable!r} has shape {values.shape}; "
                     f"expected ({len(person)},)."
                 )
             summed = (
@@ -1677,7 +1701,12 @@ def _donor_artifact(stage: SourceStageSpec) -> Mapping[str, Any]:
 
 
 def _assert_chain_declaration(stage: SourceStageSpec) -> None:
-    """The chain op must declare the strata and the derived totals the run uses."""
+    """Refuse a declaration that drifts from what the run uses.
+
+    The chain's strata, predictors, derived totals and appended draws, the
+    engine reads and the donor columns the cleaning step names must all be the
+    runtime's.
+    """
 
     operation = next(
         op for op in stage.operations if op.kind == "fit_weighted_qrf_chain"
@@ -1709,6 +1738,23 @@ def _assert_chain_declaration(stage: SourceStageSpec) -> None:
         raise ValueError(
             "was_wealth engine predictors drifted: manifest declares "
             f"{declared_engine!r}, runtime materializes {UK_WAS_ENGINE_PREDICTORS!r}."
+        )
+    # Every donor column the cleaning step declares is one the cleaning reads
+    # under that name (matched in lower case, as the cleaning matches them),
+    # so the household income's donor column is declared beside its engine
+    # variable.
+    cleaned_from = {target: source.lower() for source, target in _RAW_TO_CLEAN.items()}
+    drifted_maps = {
+        str(target): str(source)
+        for op in stage.operations
+        if op.kind == "derive"
+        for target, source in dict(op.parameters.get("direct_maps", {})).items()
+        if cleaned_from.get(str(target)) != str(source).lower()
+    }
+    if drifted_maps:
+        raise ValueError(
+            "was_wealth direct_maps drifted: manifest maps "
+            f"{drifted_maps!r}, which the donor cleaning does not read."
         )
     declared_totals = {
         str(total): tuple(components)

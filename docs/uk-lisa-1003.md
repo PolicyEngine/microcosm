@@ -106,7 +106,11 @@ and its own WAS financial draws before the LISA draw.
    weight each person carries. Predictors: five age groups (the public file has
    five-year age bands only), the logarithm of the person's earnings, household
    net income, gross financial wealth, cash ISA, stocks-and-shares ISA and
-   savings, private renting, sex and the number of children. The intercept is
+   savings, private renting, sex and the number of children. Household net
+   income is HBAI's concept on both sides, as in `was_wealth`: WAS
+   `DVTotinc_bhcR8` (net income before housing costs, less council tax) on the
+   donor, and policyengine-uk's HBAI net income before negative incomes are
+   reset to zero on the recipient (microcosm#931). The intercept is
    unpenalised, so the model's weighted mean probability on the donor equals the
    donor's weighted ownership share. A recipient aged 18 or over holds when a
    uniform keyed on the person id falls below their probability, so adding or

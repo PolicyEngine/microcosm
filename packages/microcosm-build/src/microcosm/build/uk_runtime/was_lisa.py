@@ -19,14 +19,15 @@ Two parts, both drawn from uniforms keyed on ``person_id`` so that adding or
 reordering rows never moves a draw:
 
 * Who holds: a weighted logistic regression with a light ridge penalty on age
-  group, the log of the person's earnings and of household net income, gross
-  financial wealth, cash ISA, stocks-and-shares ISA and savings, private
-  renting, sex and the number of children. The intercept is unpenalised, so the
-  model's weighted mean probability on the donor equals the donor's weighted
-  ownership share. A person holds when their uniform falls below their
-  probability. The house regime gate (a gradient-boosting classifier) is
-  miscalibrated for an outcome held by under one per cent of adults with about
-  120 donor holders, which is why this part is a logistic.
+  group, the log of the person's earnings and of household net income (on
+  HBAI's concept, as ``was_wealth`` reads it), gross financial wealth, cash
+  ISA, stocks-and-shares ISA and savings, private renting, sex and the number
+  of children. The intercept is unpenalised, so the model's weighted mean
+  probability on the donor equals the donor's weighted ownership share. A
+  person holds when their uniform falls below their probability. The house
+  regime gate (a gradient-boosting classifier) is miscalibrated for an outcome
+  held by under one per cent of adults with about 120 donor holders, which is
+  why this part is a logistic.
 * How much: the regime-gated QRF fitted on the holders alone and drawn at the
   owner's keyed quantile (``predict_positive_from_uniforms``), so a balance is
   positive exactly when the person holds.
@@ -75,6 +76,7 @@ from microcosm.build.uk_runtime.hmrc_isa_statistics import (
     lifetime_isa_paying_ages,
     load_hmrc_isa_statistics,
 )
+from microcosm.build.uk_runtime.household_income import UK_HBAI_NET_INCOME_PREDICTOR
 from microcosm.build.uk_runtime.national_frame import (
     uk_household_mass_conservation_receipt,
     uk_household_weight_kind,
@@ -87,6 +89,7 @@ from microcosm.build.uk_runtime.support_clip import (
     support_clip_to_donor_with_receipt,
 )
 from microcosm.build.uk_runtime.was_wealth import (
+    UK_WAS_ENGINE_PREDICTORS,
     clean_was_household_table,
 )
 from microcosm.build.uk_runtime.was_wealth import (
@@ -159,9 +162,11 @@ UK_WAS_LISA_FIT_NAME = "uk_was_round_8_lifetime_isa"
 
 #: The household columns of the cleaned WAS household tab that condition the
 #: person imputation (``clean_was_household_table`` names; ``is_renting`` there
-#: is the private-renter flag ``DVPriRntR8 == 1``).
+#: is the private-renter flag ``DVPriRntR8 == 1``). The income is the household's
+#: net income on HBAI's concept, as ``was_wealth`` reads it on both sides
+#: (``DVTotinc_bhcR8``; the engine's HBAI net income before the reset to zero).
 HOUSEHOLD_PREDICTORS: tuple[str, ...] = (
-    "household_net_income",
+    UK_HBAI_NET_INCOME_PREDICTOR,
     "num_adults",
     "num_children",
     "gross_financial_wealth",
@@ -173,6 +178,12 @@ PRIVATE_RENTER_COLUMN = "is_private_renter"
 #: Engine inputs read at person grain on the recipients (the models use earnings
 #: only; self-employment income is not read, microcosm#1059 review round 1).
 PERSON_ENGINE_PREDICTORS: tuple[str, ...] = ("employment_income",)
+#: Every engine variable the stage materializes, which its
+#: ``materialize_rules_engine_predictors`` declares: the WAS household
+#: predictors (``was_wealth.recipient_predictors``), then the person earnings.
+UK_WAS_LISA_ENGINE_PREDICTORS: tuple[str, ...] = tuple(
+    dict.fromkeys((*UK_WAS_ENGINE_PREDICTORS, *PERSON_ENGINE_PREDICTORS))
+)
 PRIVATE_RENTER_TENURE = "RENT_PRIVATELY"
 
 #: Donor response classes (evidence only; never predictors).
@@ -835,8 +846,8 @@ def recipient_predictors(
     household_predictors = was_household_predictors(frame, engine)
     by_household = pd.DataFrame(
         {
-            "household_net_income": household_predictors[
-                "household_net_income"
+            UK_HBAI_NET_INCOME_PREDICTOR: household_predictors[
+                UK_HBAI_NET_INCOME_PREDICTOR
             ].to_numpy(dtype=float),
             "num_adults": household_predictors["num_adults"].to_numpy(dtype=float),
             "num_children": household_predictors["num_children"].to_numpy(dtype=float),
@@ -1402,7 +1413,9 @@ def _profile(
     labels = spec.group_labels()
     female = frame["is_female"].to_numpy(dtype=float) == 1.0
     renter = frame[PRIVATE_RENTER_COLUMN].to_numpy(dtype=float) == 1.0
-    tertile = _tertiles(frame["household_net_income"].to_numpy(dtype=float), weights)
+    tertile = _tertiles(
+        frame[UK_HBAI_NET_INCOME_PREDICTOR].to_numpy(dtype=float), weights
+    )
 
     def share(mask: np.ndarray) -> float | None:
         return _weighted_share(holds[mask], weights[mask]) if mask.any() else None
@@ -1417,7 +1430,7 @@ def _profile(
             "private_renter": share(renter),
             "other": share(~renter),
         },
-        "by_household_net_income_tertile": {
+        f"by_{UK_HBAI_NET_INCOME_PREDICTOR}_tertile": {
             str(index + 1): share(tertile == index) for index in range(3)
         },
         "adults": int(len(frame)),

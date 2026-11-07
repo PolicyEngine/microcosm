@@ -6,7 +6,12 @@ import numpy as np
 import pandas as pd
 import pytest
 
+from microcosm.build.country_spec import load_country_spec
 from microcosm.build.source_manifest import SourceStageSpec
+from microcosm.build.uk_runtime.household_income import (
+    UK_HBAI_NET_INCOME_PREDICTOR,
+    UK_HBAI_NET_INCOME_VARIABLE,
+)
 from microcosm.build.uk_runtime.national_frame import uk_national_frame
 from microcosm.build.uk_runtime.tenure_constants import UK_TENURE_CATEGORIES
 from microcosm.build.uk_runtime.was_wealth import (
@@ -17,6 +22,7 @@ from microcosm.build.uk_runtime.was_wealth import (
     UK_WAS_DIRECT_SHARE_FRACTION_COLUMN,
     UK_WAS_DRAWN_ONLY_COLUMNS,
     UK_WAS_ENGINE_PREDICTOR_ENTITIES,
+    UK_WAS_ENGINE_PREDICTOR_NAMES,
     UK_WAS_ENGINE_PREDICTORS,
     UK_WAS_HOLDER_STRATA,
     UK_WAS_NET_FINANCIAL_LIABILITIES,
@@ -228,7 +234,9 @@ def _frame() -> object:
             "num_bedrooms": [3, 4],
             "council_tax": [1000.0, 1200.0],
             "council_tax_rebate": [250.0, 0.0],
-            "household_net_income": [50000.0, 60000.0],
+            UK_HBAI_NET_INCOME_VARIABLE: [50000.0, 60000.0],
+            # The engine's other net income, which the stage must never read.
+            "household_net_income": [1_000_000.0, 2_000_000.0],
             "tenure_type": ["OWNED_WITH_MORTGAGE", "OWNED_OUTRIGHT"],
         }
     )
@@ -433,7 +441,7 @@ def test_recipient_predictors_sum_person_and_benunit_variables_to_household() ->
     assert predictors["num_adults"].tolist() == [2.0, 1.0]
     assert predictors["num_children"].tolist() == [0.0, 1.0]
     assert predictors["rental_income"].tolist() == [100.0, 50.0]
-    assert predictors["household_net_income"].tolist() == [50000.0, 60000.0]
+    assert predictors[UK_HBAI_NET_INCOME_PREDICTOR].tolist() == [50000.0, 60000.0]
     # The donor records the bill paid, so the reduction comes off the
     # liability before council tax reduction (microcosm#1095).
     assert predictors["council_tax"].tolist() == [750.0, 1200.0]
@@ -458,6 +466,57 @@ def test_recipient_predictors_fail_loud_on_entity_mismatch() -> None:
 
     with pytest.raises(ValueError, match="employment_income"):
         recipient_predictors(_frame(), _WrongEntityEngine())
+
+
+def test_household_income_is_the_survey_concept_on_both_sides() -> None:
+    """Donor and recipient read household net income on HBAI's concept.
+
+    The donor's ``DVTotinc_bhcR8`` (net income before housing costs, less
+    council tax) and the recipient's HBAI net income before the reset to zero
+    both carry the predictor name ``household_income`` gives that income, the
+    one the LCFS, ETB services and NTS stages read (microcosm#1164). The
+    engine's ``household_net_income``, which also takes off taxes and adds
+    benefits in kind the survey's income leaves out, is never read
+    (microcosm#931).
+    """
+
+    import microcosm.build.uk_runtime.was_wealth as module
+
+    assert UK_WAS_WEALTH_PREDICTORS[0] == UK_HBAI_NET_INCOME_PREDICTOR
+    assert UK_WAS_ENGINE_PREDICTORS[0] == UK_HBAI_NET_INCOME_VARIABLE
+    assert dict(UK_WAS_ENGINE_PREDICTOR_NAMES) == {
+        UK_HBAI_NET_INCOME_VARIABLE: UK_HBAI_NET_INCOME_PREDICTOR
+    }
+    assert UK_WAS_ENGINE_PREDICTOR_ENTITIES[UK_HBAI_NET_INCOME_VARIABLE] == "household"
+    for names in (
+        UK_WAS_WEALTH_PREDICTORS,
+        UK_WAS_ENGINE_PREDICTORS,
+        UK_WAS_ENGINE_PREDICTOR_ENTITIES,
+    ):
+        assert "household_net_income" not in names
+
+    # The recipient's predictor is the engine's HBAI income; the frame's
+    # household_net_income decoy holds other values and is never read.
+    predictors = recipient_predictors(_frame(), _FakeEngine())
+    assert predictors[UK_HBAI_NET_INCOME_PREDICTOR].tolist() == [50000.0, 60000.0]
+    assert "household_net_income" not in predictors
+
+    # The donor's DVTotinc_bhcR8 under the same name.
+    assert module._RAW_TO_CLEAN["DVTotinc_bhcR8"] == UK_HBAI_NET_INCOME_PREDICTOR
+    donor = clean_was_household_table(_raw_was())
+    assert donor[UK_HBAI_NET_INCOME_PREDICTOR].tolist() == [50000.0, 60000.0]
+    assert "household_net_income" not in donor
+
+    # The packaged declaration names both sides, and the stage accepts it.
+    stage = load_country_spec("uk").sources.stage_map()["was_wealth"]
+    declared = {operation.kind: operation.parameters for operation in stage.operations}
+    direct_maps = declared["derive"]["direct_maps"]
+    assert direct_maps[UK_HBAI_NET_INCOME_PREDICTOR] == "DVTotinc_bhcR8"
+    engine_reads = declared["materialize_rules_engine_predictors"]["predictors"]
+    assert tuple(engine_reads) == UK_WAS_ENGINE_PREDICTORS
+    chain_predictors = declared["fit_weighted_qrf_chain"]["predictors"]
+    assert tuple(chain_predictors) == UK_WAS_WEALTH_PREDICTORS
+    module._assert_chain_declaration(stage)
 
 
 def test_student_loan_waterfall_uses_household_ids_not_positions() -> None:
@@ -894,6 +953,49 @@ def test_chain_declaration_drift_is_refused() -> None:
     with pytest.raises(ValueError, match="predictors drifted"):
         module._assert_chain_declaration(stage)
 
+    def stage_with(*operations: dict[str, object]) -> SourceStageSpec:
+        return SourceStageSpec.from_mapping(
+            {
+                "stage": "was_wealth",
+                "survey": "test",
+                "source": "test",
+                "grain": "household",
+                "artifacts": [],
+                "operations": list(operations),
+                "outputs": list(UK_WAS_WEALTH_OUTPUT_COLUMNS),
+            }
+        )
+
+    # The engine's household_net_income in place of the HBAI income.
+    materialize = _materialize_operation()
+    materialize["predictors"] = [
+        "household_net_income",
+        *UK_WAS_ENGINE_PREDICTORS[1:],
+    ]
+    with pytest.raises(ValueError, match="engine predictors drifted"):
+        module._assert_chain_declaration(stage_with(materialize, _chain_operation()))
+    # A declared donor column the cleaning does not read under that name: the
+    # donor's income under the engine's household_net_income, and the right
+    # name read from another column.
+    for direct_maps in (
+        {"household_net_income": "DVTotinc_bhcR8"},
+        {UK_HBAI_NET_INCOME_PREDICTOR: "DVGIEMPR8_AGGR"},
+    ):
+        derive = {"kind": "derive", "scope": "test", "direct_maps": direct_maps}
+        with pytest.raises(ValueError, match="direct_maps drifted"):
+            module._assert_chain_declaration(
+                stage_with(derive, _materialize_operation(), _chain_operation())
+            )
+    # Matched in lower case, as the cleaning matches the donor's columns.
+    derive = {
+        "kind": "derive",
+        "scope": "test",
+        "direct_maps": {UK_HBAI_NET_INCOME_PREDICTOR: "dvtotinc_bhcr8"},
+    }
+    module._assert_chain_declaration(
+        stage_with(derive, _materialize_operation(), _chain_operation())
+    )
+
 
 def test_private_pension_wealth_split_preserves_the_old_corporate_wealth_identity() -> (
     None
@@ -961,7 +1063,7 @@ def _synthetic_recipients(n: int = 80, seed: int = 1063) -> pd.DataFrame:
     category = np.resize(np.asarray(UK_TENURE_CATEGORIES), n)
     recipient = pd.DataFrame(
         {
-            "household_net_income": rng.uniform(5_000, 90_000, n),
+            UK_HBAI_NET_INCOME_PREDICTOR: rng.uniform(5_000, 90_000, n),
             "num_adults": rng.integers(1, 4, n),
             "num_children": rng.integers(0, 3, n),
             "private_pension_income": rng.uniform(0, 20_000, n),
@@ -1215,6 +1317,6 @@ def test_was_draws_move_only_for_the_households_whose_inputs_move() -> None:
         draw,
         recipient,
         _ids(recipient),
-        perturbed_column="household_net_income",
+        perturbed_column=UK_HBAI_NET_INCOME_PREDICTOR,
         perturbed_value=12_345.0,
     )
