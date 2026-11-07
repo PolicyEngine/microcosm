@@ -238,7 +238,7 @@ def test_wrong_fact_count_refuses_before_either_compiler(prepared):
 def test_current_national_and_local_pins_share_one_reviewed_identity():
     # main (#904) reads one committed pin, ``uk/chronicle_feed.json``, for the
     # national feed and the local census; the full build checks they agree.
-    # The identity is the 6475380 merge of PolicyEngine/chronicle#411
+    # The identity is the 80a3482 merge of PolicyEngine/chronicle#421
     # (PolicyEngine/chronicle#407: the APS's people in employment by SOC 2020
     # group and ASHE Table 2, for microcosm#1490), whose rows are
     # chronicle.consumer_fact.v5 (PolicyEngine/chronicle#377: one label per
@@ -266,19 +266,19 @@ def test_current_national_and_local_pins_share_one_reviewed_identity():
     assert (
         national.facts_sha256
         == local["facts_sha256"]
-        == ("bcb226fd07a1eba8970a69b13e87ab20c3bd90e96e02509894a65799dbd9482a")
+        == ("cb3342c3f59ff961a0ae369ca489293ddd6d021fdeb5cfafb89f6d125329bdfe")
     )
     assert (
         national.manifest_sha256
         == local["manifest_sha256"]
-        == ("801d3e5e9d7039f877a12fc45afdd2d6b52ddbb46eecc91d7bd5ff843ea5efb8")
+        == ("d2323e7bddb30043fafecc2249fca0ee1506dae8ff20bc5f4db8575dc2ec1b73")
     )
     assert (
         national.source_commit
         == local["source_commit"]
-        == "64753803f9b22944a3ee8b24ba6d1fa6c26fef50"
+        == "80a3482905843d447f8811b500a56dbf3b5f47fa"
     )
-    assert national.fact_row_count == local["fact_row_count"] == 1585295
+    assert national.fact_row_count == local["fact_row_count"] == 2030062
 
 
 def test_chronicle_source_codec_validates_directory_manifest(tmp_path):
