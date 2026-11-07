@@ -336,6 +336,13 @@ describes (`tools/sample_us_export_households.py`,
 certification. Its sampler tests must stay off `microcosm.build.us_runtime`:
 importing that package builds the policyengine-us tax-benefit system wherever
 the engine is installed.
+When a reviewed decision lets a build that skipped its reform-coverage smoke
+publish as a tag-only release, `tools/check_us_census_smoke.py` decides whether
+a separate census smoke on the build's own H5 stands in for it;
+[the release build rule](us-release-build-rule.md#accepting-a-separate-census-smoke-before-a-tag-only-publish)
+has the steps. It writes the tag's attachments only when it accepts, and it
+never publishes. Its acceptance covers that smoke for that tag, never reform
+validation or promotion.
 
 The US native-SPM-role source-enrichment lane is a separate release type:
 `tools/build_us_spm_role_enrichment.py` creates a local candidate from the exact

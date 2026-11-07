@@ -381,6 +381,110 @@ things that do not depend on the data: the probe's baseline plans and reform
 pass counts equal the build manifest's, and the source export's QRF tail
 result equals the release's `qrf_tail_concentration.json`.
 
+## Accepting a separate census smoke before a tag-only publish
+
+A build that runs with `--skip-reform-coverage-smoke` writes no
+`reform_coverage_smoke.json`, and both of its manifests record
+`gate_evidence.reform_coverage_smoke` as `"skipped"`. When a reviewed decision
+lets such a build publish as a tag-only release on the strength of a separate
+full-population smoke on its own H5, `tools/check_us_census_smoke.py` decides
+whether that smoke stands in for the build's. It never publishes, and it
+uses only the standard library.
+
+Run every step from a clean worktree at the build commit that serves nothing
+else, with the repository root as the working directory. Keep `<out>`,
+`<probe>` and `<launch>` outside the worktree, because a start record counts
+an untracked file in the worktree as an uncommitted change.
+
+```bash
+# 1. Before the build, write what a faithful smoke of this commit records.
+python tools/check_us_census_smoke.py expect --commit <build commit> \
+  --out <launch>/expectation.json
+# 2. Record the build's start. After the build exits, record
+#    --phase end --exit-code <status> with the same --run-id.
+python tools/check_us_census_smoke.py launch-record --stage build --phase start \
+  --run-id <run> --launch-dir <launch> --python <the build's interpreter> \
+  --dataset <out>/artifacts/<national H5> --out-dir <out>
+# 3. Record around the smoke with the same --run-id and interpreter, and set
+#    all six thread-pool variables to the values the build ran with.
+python tools/check_us_census_smoke.py launch-record --stage smoke --phase start \
+  --run-id <run> --launch-dir <launch> --python <the build's interpreter> \
+  --dataset <out>/artifacts/<national H5> --out-dir <probe>
+uv run --no-sync python tools/probe_us_post_export.py --census \
+  --stages reform_coverage_smoke --batch-size <the build's maximum batch size> \
+  --export <out>/artifacts/<national H5> --out <probe>
+python tools/check_us_census_smoke.py launch-record --stage smoke --phase end \
+  --exit-code <status> --run-id <run> --launch-dir <launch> \
+  --python <the build's interpreter> --dataset <out>/artifacts/<national H5>
+# 4. Run the check. It writes the attachments only if it accepts.
+python tools/check_us_census_smoke.py check \
+  --release-dir <out>/releases/<release id> --artifact-root <out>/artifacts \
+  --probe-dir <probe> --launch-dir <launch> \
+  --authorization "<the decision that allows this publish>" \
+  --attest-dedicated-worktree
+```
+
+A start record refuses, and writes nothing, when the tree has uncommitted
+changes or the output directory already holds files. It also refuses when the
+working directory differs from the repository root or holds a file the release
+tool's loaders would read before the package's own. An end record always
+writes, and the
+check judges it. Leave out every `--reference-*` flag: the check accepts only a
+smoke that compared nothing.
+
+`expect` and `check` read the build commit's source with `git cat-file` and
+refuse a commit whose probe-manifest loader, smoke gate, scoring plan or probe
+departs from the source the check mirrors (`REVIEWED_COMMIT` in the tool).
+Review the mirror against the new source before you move that pin;
+`test_us_census_smoke_check.py` holds each mirror to the code it mirrors on the
+current tree.
+
+The check reports every failure it finds, not only the first, and accepts only
+when it finds none:
+
+- **The release.** The directory name, both manifests' build ids and the build
+  time agree, and the build recorded a clean tree of `PolicyEngine/microcosm`.
+  The national artifact records `microdata` as its kind, the build's dataset
+  filename as its path, the build id as its revision, and a repo id. A fresh
+  sha256 of the H5 under `--artifact-root` equals the artifact's, the build
+  dataset's and the scoring record's. Both manifests record the smoke as
+  skipped and agree on gate evidence and scoring. The build scored neither the
+  smoke nor reform validation, wrote neither file, and scored in three or more
+  batches.
+- **The report.** The report records a census run of the smoke stage alone
+  that compared no references and completed every stage. It lists no failure
+  of any kind and an authoritative pass for every probe. Its scored digest,
+  household and batch counts, four package versions and Python match the
+  build's. It records the probe's own source as clean, at the build commit and
+  unchanged since the probe loaded it.
+- **The gate file.** The gate passed with no failures, and each probe's
+  definition equals the manifest's at the build commit. The check recomputes
+  each effect from its recorded totals, and the result must equal the recorded
+  effect and reach its floor. The scoring record equals the build's.
+- **The pass log.** The log holds one baseline pass, then one pass per probe in
+  manifest order, and each pass scored as many batches as the build did.
+- **The launch records.** All four name one run, the build commit, a clean
+  tree and the repository root as the working directory, and they agree on the
+  interpreter, installed distributions, lockfile and tool. The microcosm
+  packages import from the worktree. The smoke ran with the build's effective
+  thread pools and the build's `PYTHONPATH`, `PYTHONHASHSEED`,
+  `PYTHONSAFEPATH` and `PYTHONNOUSERSITE`. Both stages started with an absent
+  or empty output directory and exited 0. The release directory and artifact
+  root sit inside the build's output directory, the smoke wrote to the probe
+  directory, and the report names the H5 path the smoke records hold. The H5
+  hashes the same at the build's
+  end, at both smoke records and at the check. The times follow the run, from
+  the build's start through the manifests, the build's end, the smoke's start
+  and the report to the smoke's end.
+
+On acceptance it writes five files into the release directory, the receipt
+last: the probe's report, gate file and pass log under `post_export_smoke_*`
+names, a note, and `post_export_smoke_acceptance.json`. It then prints the
+publisher's `--preflight-only` command (`--no-latest --tag-only`, with the five
+files as `--extra-file`) and, separately, the publish command. The manifests
+keep `"skipped"`. Reform validation never runs on this path, and nothing in
+these files certifies it or allows promotion to the default release.
+
 ## Measured stage times
 
 From the September attempt, on one 128 GiB machine, under policyengine-us
