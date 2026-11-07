@@ -181,24 +181,24 @@
       "bytes": 9218
     },
     "outputs/acsrent_eval.csv": {
-      "sha256": "02400416f37d7dabd7b666fcb75f140566c7cebfee8cf3fa7b2554ca639da7db",
-      "bytes": 10853
+      "sha256": "545d2a50f5485e40f054cc19d3b97b908231194074fa1685e2a7e07c13f1f4c4",
+      "bytes": 12164
     },
     "outputs/acsrent_eval_fill_minus1.csv": {
       "sha256": "02400416f37d7dabd7b666fcb75f140566c7cebfee8cf3fa7b2554ca639da7db",
       "bytes": 10853
     },
     "outputs/acsrent_reform.csv": {
-      "sha256": "42e443027f04b30f71d14aa239588637c2a647420724a62c4756abca2ca67a2d",
-      "bytes": 1621
+      "sha256": "787f32b2e12e8381c4aefe8cce16765f326cee6b02338a0b751e38e489e8c09d",
+      "bytes": 5207
     },
     "outputs/acsrent_reform_fill_minus1.csv": {
       "sha256": "42e443027f04b30f71d14aa239588637c2a647420724a62c4756abca2ca67a2d",
       "bytes": 1621
     },
     "outputs/acsrent_solves.csv": {
-      "sha256": "fef3ba85d72e2389f2f5d0545ea21f843ba1226384991f666db2e1c5c17a8037",
-      "bytes": 3024
+      "sha256": "08033201ae932adf3ecf0b880c8e1dd3150e74fabb32ef70aef327c7a1704787",
+      "bytes": 3422
     },
     "outputs/acsrent_solves_fill_minus1.csv": {
       "sha256": "fef3ba85d72e2389f2f5d0545ea21f843ba1226384991f666db2e1c5c17a8037",
@@ -300,6 +300,10 @@
       "sha256": "6e1d4a6f7b8aee03362d9c023a4e35943a8f5264472e739aaf64deb0db1bafbb",
       "bytes": 14122
     },
+    "outputs/fill_moves.csv": {
+      "sha256": "53c4108af4b728d929fb49b64aa4e603085b8272536b17e816de3a67023d09db",
+      "bytes": 945
+    },
     "outputs/initial_fit.csv": {
       "sha256": "120ce86c3602dbf68c32561bb544162f842ae123bda2ce74970e8e186becbd7d",
       "bytes": 2578
@@ -325,8 +329,8 @@
       "bytes": 127
     },
     "outputs/logs/acs_reform_cmp.txt": {
-      "sha256": "69bb8f2efb82b96b53f8b6713c3c84e8413197156aca4821c128367fae643b0e",
-      "bytes": 1486
+      "sha256": "44523e263eac60944c8ca81848440a65ed170892158643ebfe5329498c3cf89a",
+      "bytes": 3861
     },
     "outputs/logs/acs_rerun_check.txt": {
       "sha256": "2bcb97f67ae25fe522a1104a1bbf9e60077cef1bf427b25d74e4487977a3bac4",
@@ -337,8 +341,8 @@
       "bytes": 4096
     },
     "outputs/logs/acsrent_eval.txt": {
-      "sha256": "fdb5e7770a817328981f4ef471bb13ac15c98db5bfdbeb16116c3953442b066f",
-      "bytes": 9939
+      "sha256": "001683fd8833e1596d9d32efaa3e42fb4cd90e8d49ece2a3fa6f4ff6e8fe3620",
+      "bytes": 9940
     },
     "outputs/logs/blank_holders.txt": {
       "sha256": "18d8d4a7d2e4a29ad7764e2e622bc1bc512f80c86d375161e9fb48146bebeb7e",
@@ -356,9 +360,25 @@
       "sha256": "9349ae893019dd6700f544b1286479b2d01ac9b3b93392df807d61a2cc1b2d1b",
       "bytes": 1632
     },
+    "outputs/logs/fill_cmp.txt": {
+      "sha256": "567549d7f3820727125488fed0d60d3f2f4fb074ce6612ab2812d4a867729e18",
+      "bytes": 3722
+    },
+    "outputs/logs/fill_trace_CA.txt": {
+      "sha256": "182344c4b4ffc4cc92d09a17e52135e8d0f09d636b55e8089e9ae0ff38d3a017",
+      "bytes": 339
+    },
+    "outputs/logs/fill_trace_DE.txt": {
+      "sha256": "8cb45f930c2a30918df58bef976042ad1f307fec7d0657827014404665ddac19",
+      "bytes": 338
+    },
+    "outputs/logs/fill_trace_SD.txt": {
+      "sha256": "f4d8bc6cf61704705f7bc6b1a4d3ab00edda5aa31530269173dd1465b3fa9c5d",
+      "bytes": 486
+    },
     "outputs/logs/fl_reform.txt": {
-      "sha256": "a8d06e96ccf726bdec27183aea630682728257bc244636aec3742f6f28c3dc9d",
-      "bytes": 2508
+      "sha256": "5aff90ea017735b7d656283422dd13dee552f7d0b4f8cee0be0ea0e3f260dd4a",
+      "bytes": 8511
     },
     "outputs/logs/house.txt": {
       "sha256": "6ffde97ab4ad0fd8d62f08bd0aa64025f72af56b3ecc897ccb46164f33f29cab",
@@ -593,8 +613,8 @@
       "bytes": 3321
     },
     "scripts/fl_reform.py": {
-      "sha256": "ee1cff431fd9f323e0705d0911b41247d1a42cddd6d7575d8146d9d2468d3d1a",
-      "bytes": 2670
+      "sha256": "c968b86b2f571c9874163ee3917a79169f5bd64637d76ec47f99c5fbbeb49a9e",
+      "bytes": 4529
     },
     "scripts/flip.py": {
       "sha256": "90a35ab5c4d615a387738ebb5f6a71f7ef0d0b3c96f77f7f1ab7ea6d3f0b4ee6",

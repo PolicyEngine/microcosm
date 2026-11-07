@@ -10,6 +10,54 @@ donor:142132  -0.34    0.00  -0.34  17436.68                0.34
 donor:28044   -0.29    0.00  -0.29  14637.61                0.29
 donor:141933  -0.28    0.00  -0.28  14004.03                0.28
   top 1, 5, 10, 25 clusters of gross change [31, 69, 90, 95] gross 3.89 n 182
+NH baseline -0.14 reform world -1.75 effect change -1.61
+  by channel {'acs': {'d_base': -0.14, 'd_ref': -0.06, 'd_eff': 0.08}, 'donor': {'d_base': 0.0, 'd_ref': -1.69, 'd_eff': -1.69}}
+  units whose status changes: baseline 3 reform world 3
+              d_ref  d_base  d_eff        W  share_child_weight
+src                                                            
+donor:112881  -1.69    0.00  -1.69  7706.82                2.78
+acs:1340205    0.00   -0.09   0.09   238.42                0.09
+acs:449727    -0.06    0.00  -0.06   160.52                0.06
+acs:583161     0.00   -0.05   0.05   147.62                0.05
+acs:730408     0.00    0.00   0.00    40.41                0.01
+acs:740137     0.00    0.00   0.00    39.34                0.01
+  top 1, 5, 10, 25 clusters of gross change [90, 100, 100, 100] gross 1.89 n 4
+WI baseline -1.68 reform world -0.21 effect change 1.47
+  by channel {'acs': {'d_base': -0.08, 'd_ref': -0.21, 'd_eff': -0.13}, 'donor': {'d_base': -1.6, 'd_ref': 0.0, 'd_eff': 1.6}}
+  units whose status changes: baseline 18 reform world 10
+              d_ref  d_base  d_eff         W  share_child_weight
+src                                                             
+donor:14028    0.00   -1.02   1.02  13569.20                1.02
+donor:126408   0.00   -0.58   0.58   7774.69                0.58
+acs:869225    -0.14    0.00  -0.14   1927.19                0.14
+acs:210751     0.00    0.03  -0.03    346.71                0.03
+acs:247161     0.00   -0.02   0.02    315.37                0.02
+acs:1224443    0.00   -0.02   0.02    218.96                0.02
+  top 1, 5, 10, 25 clusters of gross change [55, 97, 100, 100] gross 1.85 n 16
+VA baseline -1.35 reform world -2.76 effect change -1.41
+  by channel {'acs': {'d_base': -0.07, 'd_ref': -0.14, 'd_eff': -0.07}, 'donor': {'d_base': -1.28, 'd_ref': -2.62, 'd_eff': -1.34}}
+  units whose status changes: baseline 29 reform world 30
+              d_ref  d_base  d_eff         W  share_child_weight
+src                                                             
+donor:22241   -1.58    0.00  -1.58  32750.80                1.58
+donor:134670   0.00   -1.28   1.28  26542.64                1.28
+donor:77909   -0.66    0.00  -0.66  13754.67                0.66
+donor:21852   -0.37    0.00  -0.37   7721.94                0.37
+acs:1087037   -0.04    0.00  -0.04    775.35                0.04
+acs:901407    -0.02    0.00  -0.02    385.34                0.02
+  top 1, 5, 10, 25 clusters of gross change [38, 95, 97, 99] gross 4.15 n 47
+NV baseline -0.13 reform world -1.41 effect change -1.28
+  by channel {'acs': {'d_base': -0.13, 'd_ref': 0.07, 'd_eff': 0.19}, 'donor': {'d_base': -0.0, 'd_ref': -1.48, 'd_eff': -1.48}}
+  units whose status changes: baseline 28 reform world 27
+              d_ref  d_base  d_eff        W  share_child_weight
+src                                                            
+donor:103329  -1.28    0.00  -1.28  9598.61                1.28
+donor:103308  -0.20    0.00  -0.20  1465.61                0.20
+acs:771720     0.14    0.00   0.14  1020.24                0.14
+acs:953518     0.00    0.12  -0.12   896.20                0.12
+acs:1334295    0.00   -0.08   0.08   624.10                0.08
+acs:347172     0.00    0.04  -0.04   315.30                0.04
+  top 1, 5, 10, 25 clusters of gross change [57, 81, 89, 99] gross 2.24 n 37
 DE baseline -0.85 reform world 0.36 effect change 1.21
   by channel {'acs': {'d_base': 0.0, 'd_ref': -0.06, 'd_eff': -0.06}, 'donor': {'d_base': -0.85, 'd_ref': 0.42, 'd_eff': 1.27}}
   units whose status changes: baseline 1 reform world 4
@@ -22,15 +70,50 @@ acs:1291737  -0.06    0.00  -0.06   151.08                0.06
 acs:1317990   0.01    0.00   0.01    12.15                0.01
 acs:895203    0.00    0.00   0.00     4.66                0.00
   top 1, 5, 10, 25 clusters of gross change [43, 100, 100, 100] gross 3.37 n 5
-MO baseline -0.08 reform world 0.63 effect change 0.71
-  by channel {'acs': {'d_base': -0.08, 'd_ref': -0.11, 'd_eff': -0.04}, 'donor': {'d_base': -0.0, 'd_ref': 0.75, 'd_eff': 0.75}}
-  units whose status changes: baseline 16 reform world 13
+AZ baseline -0.84 reform world -1.95 effect change -1.11
+  by channel {'acs': {'d_base': -0.13, 'd_ref': -0.18, 'd_eff': -0.04}, 'donor': {'d_base': -0.71, 'd_ref': -1.77, 'd_eff': -1.06}}
+  units whose status changes: baseline 28 reform world 35
               d_ref  d_base  d_eff         W  share_child_weight
 src                                                             
-donor:128440   1.10    0.00   1.10  31233.87                2.08
-donor:72371   -0.36    0.00  -0.36   5337.34                0.36
-acs:1394201   -0.05    0.00  -0.05    779.10                0.05
-acs:1312521   -0.03    0.00  -0.03    488.80                0.03
-acs:839262     0.00   -0.02   0.02    367.23                0.02
-acs:502807    -0.02    0.00  -0.02    344.29                0.02
-  top 1, 5, 10, 25 clusters of gross change [66, 94, 98, 100] gross 1.67 n 23
+donor:101472  -1.06    0.00  -1.06  48031.32                2.70
+acs:1526131   -0.04    0.00  -0.04    668.30                0.04
+acs:585840    -0.04    0.00  -0.04    644.03                0.04
+acs:462053     0.00   -0.02   0.02    362.74                0.02
+acs:461647    -0.02    0.00  -0.02    361.49                0.02
+acs:1119898   -0.02    0.00  -0.02    333.43                0.02
+  top 1, 5, 10, 25 clusters of gross change [77, 85, 90, 98] gross 1.39 n 49
+GA baseline -0.19 reform world 0.91 effect change 1.11
+  by channel {'acs': {'d_base': -0.19, 'd_ref': -0.09, 'd_eff': 0.1}, 'donor': {'d_base': -0.0, 'd_ref': 1.0, 'd_eff': 1.0}}
+  units whose status changes: baseline 49 reform world 52
+             d_ref  d_base  d_eff         W  share_child_weight
+src                                                            
+donor:27015   1.00    0.00   1.00  27026.46                1.00
+acs:784945    0.00   -0.04   0.04   1176.15                0.04
+acs:321041    0.00   -0.02   0.02    459.03                0.02
+acs:1157122   0.00   -0.02   0.02    427.60                0.02
+acs:776683    0.01    0.00   0.01    352.09                0.01
+acs:915226    0.00   -0.01   0.01    338.76                0.01
+  top 1, 5, 10, 25 clusters of gross change [77, 84, 88, 95] gross 1.31 n 76
+NJ baseline 0.79 reform world -0.24 effect change -1.03
+  by channel {'acs': {'d_base': -0.15, 'd_ref': -0.24, 'd_eff': -0.09}, 'donor': {'d_base': 0.94, 'd_ref': -0.0, 'd_eff': -0.94}}
+  units whose status changes: baseline 47 reform world 53
+              d_ref  d_base  d_eff         W  share_child_weight
+src                                                             
+donor:62246    0.00    1.09  -1.09  22935.49                1.09
+donor:118609   0.00   -0.15   0.15  11507.36                0.55
+acs:730891     0.00    0.07  -0.07   1467.97                0.07
+acs:753183    -0.05    0.00  -0.05    976.13                0.05
+acs:1132592   -0.03    0.00  -0.03    538.38                0.03
+acs:556394     0.00   -0.03   0.03    538.13                0.03
+  top 1, 5, 10, 25 clusters of gross change [60, 76, 82, 90] gross 1.82 n 80
+
+state  effect_change  donor_part  acs_part  gross  clusters  top1_pct  top10_pct  donor_gross_pct
+   FL          -2.74       -2.71     -0.03   3.89       182        31         90               89
+   NH          -1.61       -1.69      0.08   1.89         4        90        100               90
+   WI           1.47        1.60     -0.13   1.85        16        55        100               87
+   VA          -1.41       -1.34     -0.07   4.15        47        38         97               94
+   NV          -1.28       -1.48      0.19   2.24        37        57         89               66
+   DE           1.21        1.27     -0.06   3.37         5        43        100               98
+   AZ          -1.11       -1.06     -0.04   1.39        49        77         90               77
+   GA           1.11        1.00      0.10   1.31        76        77         88               77
+   NJ          -1.03       -0.94     -0.09   1.82        80        60         82               68
