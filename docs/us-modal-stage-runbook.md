@@ -3,7 +3,7 @@
 Epic #956 acceleration item E: heavy US stages should not have to queue on
 the one 128 GiB build machine. This runbook covers the smallest working path:
 a registered tool run on Modal from a pinned commit, with inputs fetched by
-digest and outputs listed with sha256 receipts. Five tools are registered
+digest and outputs listed with sha256 receipts. Six tools are registered
 (`TOOLS` in the plan module): `tools/build_us_acs_local_release.py` (tool
 `us-acs-local-release`, stages `materialize`, `calibrate`, `qa`,
 `finalize`, `package`, or `all`), Route A's PUF-support base,
@@ -11,6 +11,8 @@ digest and outputs listed with sha256 receipts. Five tools are registered
 `all`; see "Route A's base stage"), its current-main rerun registration
 `us-puf-support-base-rerun` (same script and stage, with the reviewed current
 district crosswalk; see [the 18 October rerun](us-route-a-rerun-20261018.md)),
+its default-pool registration `us-puf-support-base-income-2023-2025` (the
+rerun's command on income years 2023-2025; see "The default-pool template"),
 the ACS multispine staging builder,
 `tools/build_us_acs_multispine_base.py` (tool `us-acs-multispine-staging`,
 stage `all`; see "ACS multispine staging"), and `runner-smoke` (stage
@@ -742,11 +744,60 @@ across containers would let preemption lose one chunk instead of the run.
 
 For Max's d1386 rerun on **18 October 2026**, use
 [the rerun preparation and launch sequence](us-route-a-rerun-20261018.md) and
-`us-modal-stage-route-a-rerun-base-plan.json`. Its commit is intentionally
-unresolved. That procedure separates the historical base feed from main's
-new release feed, pins the current in-tree crosswalk with a scoped registration,
-and requires fresh local 000/001 evidence for the selected commit and CT ladder.
-The historical plan/reference below cannot qualify that rerun.
+`us-modal-stage-route-a-rerun-base-plan.json` as it stood at `9b7a4544b`
+(see "The default-pool template" for what the file holds now). Its commit is
+intentionally unresolved. That procedure separates the historical base feed
+from main's new release feed, pins the current in-tree crosswalk with a scoped
+registration, and requires fresh local 000/001 evidence for the selected
+commit and CT ladder. The historical plan/reference below cannot qualify that
+rerun.
+
+### The default-pool template
+
+Max's d2603 (7 November 2026) moves Route A to main's default ASEC pool, income
+years 2023-2025, from the first certified build after November 2026.
+`us-modal-stage-route-a-rerun-base-plan.json` is now the template for that
+build. It names `us-puf-support-base-income-2023-2025`, which runs the rerun
+registration's command, crosswalk pin and resources on the default pool, with
+the years newest first as `route_a.sh` passes them. Its commit,
+`PICK_MAIN_COMMIT_FOR_THE_NEXT_CERTIFIED_BUILD`, refuses validation until an
+operator fills it, and the run id needs the commit as the rerun's did.
+
+It takes twelve inputs, one more than the rerun:
+
+- the 2025, 2024 and 2023 ASEC H5s;
+- `puf_2024.h5`, `puf_2015.csv` and `acs_2022.h5`;
+- the archives `asecpub24csv.zip` to `asecpub26csv.zip`;
+- the Ledger feed and the CT block ladder;
+- `asec_weeks_unemployed_zip`, the 2023 ASEC archive `asecpub23csv.zip`.
+
+The pool has no income-2022 education archive to seed the tool's LKWEEKS cache
+from, so the runner seeds it from this input of its own. No flag names it.
+`census_cps_2025.h5` and `asecpub26csv.zip` must reach the inputs volume before
+the check; `upload-commands` hashes them with the rest:
+
+```bash
+python3 tools/modal_us_stage_plan.py upload-commands "$PLAN" --shell \
+  "asec_2025_h5=$STORAGE/census_cps_2025.h5" \
+  "asec_2024_h5=$STORAGE/census_cps_2024.h5" \
+  "asec_2023_h5=$STORAGE/census_cps_2023.h5" \
+  "puf_2024_h5=$STORAGE/puf_2024.h5" "puf_2015_csv=$STORAGE/puf_2015.csv" \
+  "acs_2022_h5=$STORAGE/acs_2022.h5" \
+  "asec_education_2023_zip=$EDU/asecpub24csv.zip" \
+  "asec_education_2024_zip=$EDU/asecpub25csv.zip" \
+  "asec_education_2025_zip=$EDU/asecpub26csv.zip" \
+  "asec_weeks_unemployed_zip=$HOME/.cache/microcosm/cps/asec_2023/asecpub23csv.zip" \
+  "base_ledger_facts=$BASE_LEDGER_FACTS" "block_ladder_npz=$LADDER" \
+  > upload-route-a-base.sh && bash upload-route-a-base.sh
+```
+
+`tools/route_a/make_local_reference.py` accepts the registration. It hashes
+the seeded archive in the home cache the local tool read it from.
+`test_route_a_asec_pool.py` holds the template and the driver to the default
+pool and the registries' pins. It also checks that the driver's base command
+is this registration's, flag for flag.
+
+### The historical base plan
 
 On 29 September 2026 Max ruled to run only Route A's base stage on Modal:
 non-preemptible, capped at 4 hours of wall, about $15. The release, its
@@ -878,7 +929,9 @@ The plan is `docs/us-modal-stage-route-a-base-plan.json` (run
   same file: the tool pins both to `d2e00025…`, and a plan with another
   digest for that input is refused), so the stage makes no Census request.
   The tool still verifies the archive itself. The receipt lists the copy
-  under `runner.home_seeds`.
+  under `runner.home_seeds`. The default-pool registration has no income-2022
+  education archive, so it seeds the same cache from its own
+  `asec_weeks_unemployed_zip` input.
 - **Environment.** The plan sets only `PYTHONUNBUFFERED=1`, as the local
   run did. It sets no thread counts, because the local run set none;
   Modal's container defaults apply, and the receipt records them

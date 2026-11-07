@@ -10,6 +10,8 @@ for input findings, all uncertain settings, lineage requirements and commands.
 
 - `docs/us-modal-stage-route-a-rerun-base-plan.json`: refuses validation until
   the commit placeholder is filled; CT ladder and ten historical base inputs.
+  (Since d2603, 7 November 2026, the file holds the default-pool template for
+  the next certified build; this report's version is at `9b7a4544b`.)
 - `docs/us-route-a-rerun-20261018.env.example`: reproducible settings, with new
   release feed, independent old base feed, new crosswalk, staging and d490.
 - `docs/us-route-a-rerun-20261018.md`: exact launch-day commands and decisions.

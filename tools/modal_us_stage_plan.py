@@ -851,13 +851,44 @@ PUF_SUPPORT_BASE_MIRROR_FIRST = (
 )
 PUF_SUPPORT_BASE_ARTIFACT = "base_populace_us_2024_puf_support.h5"
 PUF_SUPPORT_BASE_TARGET_YEAR = 2024
-# The pooled ASEC order is Route A's: the tool hands the --asec-h5 values to
-# the pooling in the order given and records them in that order in the run
-# context it locks, so the order is part of the build.
-PUF_SUPPORT_BASE_ASEC_YEARS = (2024, 2023, 2022)
-# Income years of the ASEC Census person archives (income year YYYY is the
-# survey-year YYYY+1 archive, asecpubYY+1csv.zip).
-PUF_SUPPORT_BASE_EDUCATION_YEARS = (2022, 2023, 2024)
+
+
+@dataclass(frozen=True)
+class AsecPool:
+    """The CPS ASEC income years one base registration pools.
+
+    ``asec_years`` is the ``--asec-h5`` order, Route A's newest first: the
+    tool hands the values to the pooling in the order given and records them
+    in that order in the run context it locks, so the order is part of the
+    build. ``education_years`` are the same income years' ASEC Census person
+    archives (income year YYYY is the survey-year YYYY+1 archive,
+    asecpubYY+1csv.zip), oldest first.
+    """
+
+    asec_years: tuple[int, ...]
+    education_years: tuple[int, ...]
+
+    def __post_init__(self) -> None:
+        repeated = len(set(self.asec_years)) != len(self.asec_years)
+        unmatched = self.education_years != tuple(sorted(self.asec_years))
+        if repeated or unmatched:
+            raise ValueError(
+                f"an ASEC pool names each year once and gives every pooled year "
+                f"its archive, oldest first: {self.asec_years}, "
+                f"{self.education_years}"
+            )
+
+
+#: Route A's pool through the November 2026 certified build: income years
+#: 2022-2024 (ASEC 2023-2025).
+PUF_SUPPORT_BASE_POOL_2022_2024 = AsecPool((2024, 2023, 2022), (2022, 2023, 2024))
+#: Main's default pool, income years 2023-2025 (ASEC 2024-2026;
+#: asec_sources.ASEC_DEFAULT_POOL_INCOME_YEARS), which Route A builds from
+#: the first certified build after November 2026 (d2603, Max 2026-11-07).
+PUF_SUPPORT_BASE_POOL_2023_2025 = AsecPool((2025, 2024, 2023), (2023, 2024, 2025))
+# The historical and rerun registrations' years, as their readers name them.
+PUF_SUPPORT_BASE_ASEC_YEARS = PUF_SUPPORT_BASE_POOL_2022_2024.asec_years
+PUF_SUPPORT_BASE_EDUCATION_YEARS = PUF_SUPPORT_BASE_POOL_2022_2024.education_years
 PUF_SUPPORT_BASE_SEED = 0
 PUF_SUPPORT_BASE_N_ESTIMATORS = 32
 PUF_SUPPORT_BASE_CD_SEED = 0
@@ -881,64 +912,83 @@ ASEC_2023_ARCHIVE_SEED = HomeSeed(
     path=".cache/microcosm/cps/asec_2023/asecpub23csv.zip",
     sha256="d2e000250782adfbdd7f29c82b66d866591a30f0d330496698ec19f9c784ce11",
 )
-PUF_SUPPORT_BASE_INPUTS = (
-    *(f"asec_{year}_h5" for year in PUF_SUPPORT_BASE_ASEC_YEARS),
-    "puf_2024_h5",
-    "puf_2015_csv",
-    "acs_2022_h5",
-    *(f"asec_education_{year}_zip" for year in PUF_SUPPORT_BASE_EDUCATION_YEARS),
-    "base_ledger_facts",
-    "block_ladder_npz",
-)
 
 
-def _puf_support_base_argv(
-    plan: Plan, input_paths: Mapping[str, str], state_dir: str
-) -> list[str]:
-    state = PurePosixPath(state_dir)
-    argv = [
-        "--stage",
-        plan.stage,
-        "--checkpoint-dir",
-        str(state / PUF_SUPPORT_BASE_CHECKPOINTS),
-    ]
-    for year in PUF_SUPPORT_BASE_ASEC_YEARS:
-        argv += ["--asec-h5", f"{year}={input_paths[f'asec_{year}_h5']}"]
-    for year in PUF_SUPPORT_BASE_ASEC_YEARS:
-        argv += ["--asec-h5-sha256", f"{year}={plan.inputs[f'asec_{year}_h5'].sha256}"]
-    argv += [
-        "--puf-h5",
-        input_paths["puf_2024_h5"],
-        "--puf-source-year-csv",
-        input_paths["puf_2015_csv"],
-        "--acs-h5",
-        input_paths["acs_2022_h5"],
-    ]
-    for year in PUF_SUPPORT_BASE_EDUCATION_YEARS:
-        argv += [
-            "--asec-education-source",
-            f"{year}={input_paths[f'asec_education_{year}_zip']}",
+def puf_support_base_inputs(pool: AsecPool) -> tuple[str, ...]:
+    """The input roles of the base command for ``pool``, in command order."""
+
+    return (
+        *(f"asec_{year}_h5" for year in pool.asec_years),
+        "puf_2024_h5",
+        "puf_2015_csv",
+        "acs_2022_h5",
+        *(f"asec_education_{year}_zip" for year in pool.education_years),
+        "base_ledger_facts",
+        "block_ladder_npz",
+    )
+
+
+PUF_SUPPORT_BASE_INPUTS = puf_support_base_inputs(PUF_SUPPORT_BASE_POOL_2022_2024)
+
+
+def puf_support_base_argv_builder(
+    pool: AsecPool,
+) -> Callable[[Plan, Mapping[str, str], str], list[str]]:
+    """Route A's base command for ``pool``; only the pooled years vary."""
+
+    def build(plan: Plan, input_paths: Mapping[str, str], state_dir: str) -> list[str]:
+        state = PurePosixPath(state_dir)
+        argv = [
+            "--stage",
+            plan.stage,
+            "--checkpoint-dir",
+            str(state / PUF_SUPPORT_BASE_CHECKPOINTS),
         ]
-    argv += [
-        "--target-year",
-        str(PUF_SUPPORT_BASE_TARGET_YEAR),
-        "--seed",
-        str(PUF_SUPPORT_BASE_SEED),
-        "--n-estimators",
-        str(PUF_SUPPORT_BASE_N_ESTIMATORS),
-        "--ledger-facts",
-        input_paths["base_ledger_facts"],
-        "--assign-congressional-districts",
-        "--congressional-district-vintage-crosswalk",
-        str(PurePosixPath(IMAGE_REPO_ROOT) / CD_VINTAGE_CROSSWALK.path),
-        "--congressional-district-seed",
-        str(PUF_SUPPORT_BASE_CD_SEED),
-        "--block-ladder-artifact",
-        input_paths["block_ladder_npz"],
-        "--out",
-        str(state / PUF_SUPPORT_BASE_OUT),
-    ]
-    return argv
+        for year in pool.asec_years:
+            argv += ["--asec-h5", f"{year}={input_paths[f'asec_{year}_h5']}"]
+        for year in pool.asec_years:
+            argv += [
+                "--asec-h5-sha256",
+                f"{year}={plan.inputs[f'asec_{year}_h5'].sha256}",
+            ]
+        argv += [
+            "--puf-h5",
+            input_paths["puf_2024_h5"],
+            "--puf-source-year-csv",
+            input_paths["puf_2015_csv"],
+            "--acs-h5",
+            input_paths["acs_2022_h5"],
+        ]
+        for year in pool.education_years:
+            argv += [
+                "--asec-education-source",
+                f"{year}={input_paths[f'asec_education_{year}_zip']}",
+            ]
+        argv += [
+            "--target-year",
+            str(PUF_SUPPORT_BASE_TARGET_YEAR),
+            "--seed",
+            str(PUF_SUPPORT_BASE_SEED),
+            "--n-estimators",
+            str(PUF_SUPPORT_BASE_N_ESTIMATORS),
+            "--ledger-facts",
+            input_paths["base_ledger_facts"],
+            "--assign-congressional-districts",
+            "--congressional-district-vintage-crosswalk",
+            str(PurePosixPath(IMAGE_REPO_ROOT) / CD_VINTAGE_CROSSWALK.path),
+            "--congressional-district-seed",
+            str(PUF_SUPPORT_BASE_CD_SEED),
+            "--block-ladder-artifact",
+            input_paths["block_ladder_npz"],
+            "--out",
+            str(state / PUF_SUPPORT_BASE_OUT),
+        ]
+        return argv
+
+    return build
+
+
+_puf_support_base_argv = puf_support_base_argv_builder(PUF_SUPPORT_BASE_POOL_2022_2024)
 
 
 #: Every flag _puf_support_base_argv emits.
@@ -1023,6 +1073,42 @@ US_PUF_SUPPORT_BASE_RERUN = replace(
     name="us-puf-support-base-rerun",
     tree_files={"cd_vintage_crosswalk": CD_VINTAGE_CROSSWALK_RERUN},
 )
+
+# d2603 (Max, 2026-11-07): Route A's next certified build pools main's default
+# ASEC years, income years 2023-2025, with the rerun's current crosswalk and
+# the same resources. The two registrations above keep the 2022-2024 pool, so
+# the plans of the 10/18 rerun and the November 2026 build still validate.
+# This pool has no income-2022 education archive, so the 2023 ASEC archive
+# that the tool still reads in every mode for LKWEEKS is an input of its own,
+# staged only to seed the tool's cache (the same file and pin as above).
+LKWEEKS_ARCHIVE_SEED = HomeSeed(
+    input="asec_weeks_unemployed_zip",
+    path=ASEC_2023_ARCHIVE_SEED.path,
+    sha256=ASEC_2023_ARCHIVE_SEED.sha256,
+)
+PUF_SUPPORT_BASE_INPUTS_2023_2025 = (
+    *puf_support_base_inputs(PUF_SUPPORT_BASE_POOL_2023_2025),
+    LKWEEKS_ARCHIVE_SEED.input,
+)
+US_PUF_SUPPORT_BASE_2023_2025 = replace(
+    US_PUF_SUPPORT_BASE_RERUN,
+    name="us-puf-support-base-income-2023-2025",
+    inputs=PUF_SUPPORT_BASE_INPUTS_2023_2025,
+    stages={
+        "all": replace(
+            US_PUF_SUPPORT_BASE.stages["all"],
+            required_inputs=PUF_SUPPORT_BASE_INPUTS_2023_2025,
+        )
+    },
+    argv_builder=puf_support_base_argv_builder(PUF_SUPPORT_BASE_POOL_2023_2025),
+    home_seeds=(LKWEEKS_ARCHIVE_SEED,),
+)
+#: The pool each PUF-support base registration builds from.
+PUF_SUPPORT_BASE_POOLS: dict[str, AsecPool] = {
+    US_PUF_SUPPORT_BASE.name: PUF_SUPPORT_BASE_POOL_2022_2024,
+    US_PUF_SUPPORT_BASE_RERUN.name: PUF_SUPPORT_BASE_POOL_2022_2024,
+    US_PUF_SUPPORT_BASE_2023_2025.name: PUF_SUPPORT_BASE_POOL_2023_2025,
+}
 
 # --- The retained ACS local-release staging builder -----------------------
 # The shim delegates to tools/_legacy/build_us_acs_multispine_base.py. It
@@ -1148,6 +1234,7 @@ TOOLS: dict[str, ToolSpec] = {
         RUNNER_SMOKE,
         US_PUF_SUPPORT_BASE,
         US_PUF_SUPPORT_BASE_RERUN,
+        US_PUF_SUPPORT_BASE_2023_2025,
         US_ACS_MULTISPINE_STAGING,
     )
 }

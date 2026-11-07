@@ -56,6 +56,25 @@ Income year 2022 left the default on 27 September 2026, for two reasons:
 2022 stays pinned, fetchable and accepted by every registry, so a historical
 income-2022..2024 build remains byte-reproducible. Pass its years explicitly.
 
+### Route A
+
+Route A pools the default years from the first certified build after November
+2026 (Max's d2603, 7 November 2026). The pool covers the driver,
+`tools/route_a/route_a.sh`, and its Modal base template,
+`docs/us-modal-stage-route-a-rerun-base-plan.json` (registration
+`us-puf-support-base-income-2023-2025`). Both pass the years newest first and
+write every year and pin out. `test_route_a_asec_pool.py` fails when their
+years leave the default pool or a pin leaves its registry, so the PR that pins
+a 2026 file moves Route A too, or must say why not.
+
+Until then Route A pooled 2022-2024. That covers the 10/24 build published
+under d2181 and the November 2026 certified build. Each keeps the driver of
+its own commit, and main keeps their Modal registrations, `us-puf-support-base`
+and `us-puf-support-base-rerun`, so their plans still validate. The pull
+request that set the default pool said Route A was not affected because it
+passes explicit paths. That held for the driver of that time, which named
+2022-2024; it no longer holds.
+
 A default-pool base build passes the three processed files with their pins
 and, for offline runs, the three Census archives:
 
@@ -205,7 +224,10 @@ The `source_construction` and `pre_clone_enrichment` stages ran on the real
   `LKWEEKS` source pin. For a pool without 2022 the repair fills no rows,
   because every other file carries `LKWEEKS`. The raw-stage checkpoint
   validator requires a non-empty `LKWEEKS` pin list, so the sidecar cannot
-  simply be dropped. Pass the local archive when building offline.
+  simply be dropped. Pass the local archive when building offline. Route A
+  passes no path: its prefetch stage fills the fetcher's cache, and its Modal
+  template stages the archive as `asec_weeks_unemployed_zip` to seed that
+  cache, so a local and a Modal base lock the same run config.
 - **The generated spec.** `us/spec/sources.yaml` `asec_raw_stage` still pins
   the income-2022..2024 raw-stage checkpoint (`51e9fafc…`) and its
   `asec_2022/2023/2024` authorities. That checkpoint is the certified lineage

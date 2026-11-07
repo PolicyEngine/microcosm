@@ -18,6 +18,7 @@ import pytest
 from test_support.microcosm_build.route_a_driver import (
     ROUTE_A_TOOLS,
     SECRET_ALIASES,
+    run_driver_settings,
     write_executable,
 )
 from test_support.paths import paths_for
@@ -104,37 +105,6 @@ def _example_extra_args() -> str:
     return result.stdout.decode()
 
 
-def _input_settings_result(
-    tmp_path: Path, overrides: dict[str, str], commands: str
-) -> subprocess.CompletedProcess[bytes]:
-    source = (ROUTE_A_TOOLS / "route_a.sh").read_text(encoding="utf-8")
-    prefix, delimiter, _ = source.partition("FETCH_OK=1\n")
-    assert delimiter
-    # Only initialize settings and define functions. The remainder fetches
-    # refs and may launch stages, so this harness never executes it.
-    script = tmp_path / "input-settings-check.sh"
-    script.write_text(prefix + commands, encoding="utf-8")
-    required = (
-        "PE MAIN WT_ROOT RUN_ROOT CHAIN_ROOT CHAIN_LOG DISK_PATH UV PYTHON "
-        "STORAGE EDU FEED LADDER SSI SCF AGENT_SECRET"
-    ).split()
-    settings = {key: str(tmp_path / key.lower()) for key in required}
-    settings.update(PYTHON=sys.executable, **overrides)
-    settings_path = tmp_path / "route_a.env"
-    settings_path.write_text(
-        "\n".join(f"{key}={shlex.quote(value)}" for key, value in settings.items())
-        + "\n",
-        encoding="utf-8",
-    )
-    return subprocess.run(
-        ["bash", str(script)],
-        env={"PATH": os.environ["PATH"], "ROUTE_A_ENV": str(settings_path)},
-        capture_output=True,
-        check=False,
-        timeout=20,
-    )
-
-
 @pytest.mark.parametrize("override", [False, True])
 def test_feed_and_crosswalk_pins_keep_defaults_or_settings_overrides(
     tmp_path: Path, override: bool
@@ -154,7 +124,7 @@ def test_feed_and_crosswalk_pins_keep_defaults_or_settings_overrides(
         if override
         else {}
     )
-    result = _input_settings_result(
+    result = run_driver_settings(
         tmp_path,
         overrides,
         '\ninput_rows\nprintf "crosswalk|%s\\n" "$CROSSWALK_SHA"\n',
@@ -181,7 +151,7 @@ def test_overridden_feed_pin_still_verifies_digest_and_size(
     feed = tmp_path / "new-feed.jsonl"
     payload = b'{"fixture": "new release feed"}\n'
     feed.write_bytes(payload)
-    result = _input_settings_result(
+    result = run_driver_settings(
         tmp_path,
         {
             "FEED": str(feed),

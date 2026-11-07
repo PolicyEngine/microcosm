@@ -1,8 +1,10 @@
 """Record existing local stage 000/001 evidence; never launch a build.
 
 The checkpoint context supplies the actual config, pipeline and recorded frame
-digests. Every configured input is hashed again against the filled Modal plan.
-The recorded code identity must equal the chosen commit's committed sources.
+digests. Every configured input is hashed again against the filled Modal plan,
+and so is a seeded input that no flag names, in the home cache the tool read it
+from. The registration's pool sets the ASEC years and their order. The
+recorded code identity must equal the chosen commit's committed sources.
 This creates comparison evidence, never an exception or an ACCEPTED marker.
 """
 
@@ -117,10 +119,8 @@ def make_reference(plan_path: Path, checkpoint_root: Path, repo_root: Path) -> d
     """Refuse mismatched evidence and return a reference for the actual files."""
 
     raw_plan, plan = stage_plan.load_plan(plan_path)
-    if (
-        plan.tool.name not in {"us-puf-support-base", "us-puf-support-base-rerun"}
-        or plan.stage != "all"
-    ):
+    pool = stage_plan.PUF_SUPPORT_BASE_POOLS.get(plan.tool.name)
+    if pool is None or plan.stage != "all":
         raise ValueError("a Route A PUF-support base all-stage plan is required")
     context_path = checkpoint_root / "stage_run_context.json"
     context = json.loads(context_path.read_text())
@@ -176,6 +176,10 @@ def make_reference(plan_path: Path, checkpoint_root: Path, repo_root: Path) -> d
         raise ValueError("local crosswalk differs from the registered tree pin")
 
     paths = _input_paths(config)
+    # A seeded input that no flag names (the 2023-2025 pool's LKWEEKS archive)
+    # was read from the tool's home cache, where the Modal runner seeds it.
+    for seed in plan.tool.home_seeds:
+        paths.setdefault(seed.input, Path.home() / seed.path)
     if set(paths) != set(plan.inputs):
         raise ValueError("local input roles differ from the plan")
     inputs = {}
@@ -187,7 +191,7 @@ def make_reference(plan_path: Path, checkpoint_root: Path, repo_root: Path) -> d
         if digest != ref.sha256:
             raise ValueError(f"local {role} sha256 differs from the plan")
         inputs[role] = digest
-    for year in stage_plan.PUF_SUPPORT_BASE_ASEC_YEARS:
+    for year in pool.asec_years:
         if config["asec_h5_sha256"].get(str(year)) != inputs[f"asec_{year}_h5"]:
             raise ValueError(f"local ASEC {year} recorded pin differs from its bytes")
     for key, role in {
@@ -197,7 +201,7 @@ def make_reference(plan_path: Path, checkpoint_root: Path, repo_root: Path) -> d
         if config.get(key) != inputs[role]:
             raise ValueError(f"local {key} recorded pin differs from its bytes")
     if [item.split("=", 1)[0] for item in config["asec_h5"]] != [
-        str(year) for year in stage_plan.PUF_SUPPORT_BASE_ASEC_YEARS
+        str(year) for year in pool.asec_years
     ]:
         raise ValueError("local ASEC order differs from the registered command")
 
@@ -212,9 +216,7 @@ def make_reference(plan_path: Path, checkpoint_root: Path, repo_root: Path) -> d
     for role, digest in source_digests.items():
         if inputs.get(role) != digest:
             raise ValueError(f"local {role} source-stage digest differs from its bytes")
-    if set(source_digests) != {
-        f"asec_{year}_h5" for year in stage_plan.PUF_SUPPORT_BASE_ASEC_YEARS
-    }:
+    if set(source_digests) != {f"asec_{year}_h5" for year in pool.asec_years}:
         raise ValueError("local source-stage ASEC roles differ from the plan")
     if records[1]["metadata"]["acs_sha256"] != inputs["acs_2022_h5"]:
         raise ValueError("local ACS enrichment-stage digest differs from its bytes")
