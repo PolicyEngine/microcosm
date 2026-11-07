@@ -8,7 +8,7 @@ Each conditioned support extends its system's registered support byte for byte, 
   - Scotland takes bands A to H from its 2022 data zone's dwellings by band in NRS's December 2024 estimates, rounded half to even; its output areas nest in those zones.
   - Northern Ireland is unbanded.
 
-`tools/build_uk_conditioned_area_supports.py` builds them from publisher files pinned by sha256: chronicle#412's raw-only registrations (PR chronicle#413), and NRS's dwellings by 2022 data zone, which Chronicle registers with only their total as facts (chronicle#419 asks for the bands). `uk/uk_atomic_area_conditioned_supports.provenance.json` records every input, the decile rule counts, the rounding and a precomputed table of zero-mass draw cells.
+`tools/build_uk_conditioned_area_supports.py` builds them from chronicle#412's raw-only registrations (PR chronicle#413), pinned by sha256, and from NRS's dwellings by band and 2022 data zone, which it reads from the pinned UK Chronicle feed (chronicle#421). `uk/uk_atomic_area_conditioned_supports.provenance.json` records every input, the fingerprint of the NRS facts, the decile rule counts, the rounding and a precomputed table of zero-mass draw cells. A feed-gated test checks that the pinned feed still carries the facts the supports were built from.
 
 `sources.yaml` declares the supports under the new role `uk_atomic_area_conditioned_support`, with five new geography vintages. `spine.yaml` declares the FRS channel's `observed_constraints: [imd_decile]`, an optional field the shared spine schema now admits. `validate_uk_country_source_projection` refuses a spec in which the supports, their conditioned forms and that declaration disagree.
 
