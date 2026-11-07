@@ -308,8 +308,9 @@ def test_full_measure_resolves_real_per_clone_blocks(
     }
     assert receipt["deviation"] == "per_clone_block_engine_resolution"
     sensitivity = receipt["block_sensitivity"]
-    # The engine variables the land rows bind, matched against the measure
-    # inputs (keyed by engine variable), not the rows' metric names.
+    # The engine variables the two share-formula land rows read, matched
+    # against the measure inputs (keyed by engine variable), not the rows'
+    # metric names.
     assert sensitivity["known_population_normalised_measures"] == [
         "corporate_land_value",
         "land_value",
