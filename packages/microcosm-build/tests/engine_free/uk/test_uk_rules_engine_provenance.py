@@ -155,3 +155,80 @@ def test_a_missing_engine_still_records_unavailable(
         "package": "policyengine-uk",
         "version": "unavailable",
     }
+
+
+class _BatchingEngine:
+    def __init__(self, record: dict | None) -> None:
+        self.record = record
+
+    def batch_record(self) -> dict | None:
+        return self.record
+
+
+_BATCHES = {
+    "by": "household_clone_index",
+    "batched_calls": 3,
+    "batches": [15],
+    "pass": "spine_batched",
+    "declaration_sha256": "ab" * 32,
+}
+
+
+def _sidecar(engine: object | None) -> dict:
+    import pandas as pd
+
+    from microcosm.build.uk_runtime.national_frame import uk_national_frame
+    from microcosm.frame import WeightKind
+
+    frame = uk_national_frame(
+        person=pd.DataFrame(
+            {
+                "person_id": [1, 2],
+                "person_benunit_id": [1, 2],
+                "person_household_id": [1, 2],
+                "age": [30.0, 40.0],
+            }
+        ),
+        benunit=pd.DataFrame({"benunit_id": [1, 2]}),
+        household=pd.DataFrame(
+            {"household_id": [1, 2], "household_weight": [1.0, 2.0]}
+        ),
+        time_period=2023,
+        weight_kind=WeightKind.DESIGN,
+    )
+    return spine_build._build_sidecar(
+        frame=frame,
+        stages=[],
+        records=[],
+        artifact_pins={},
+        resource_pins={},
+        input_artifact_pins={},
+        hmrc_replay={},
+        stochastic_contract_sha256="0" * 64,
+        frs_vintage="synthetic",
+        sampling=None,
+        engine=engine,
+    )
+
+
+def test_the_sidecar_records_batches_only_once_a_call_batched(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # National never batches, and today no spine frame carries the clone
+    # index, so the sidecar's rules engine stays the provenance; a spine whose
+    # calls ran clone by clone adds how (microcosm#931).
+    _install(monkeypatch, None)
+    provenance = spine_build._rules_engine_provenance()
+    for engine in (None, object(), _BatchingEngine(None)):
+        assert spine_build._rules_engine_record(engine) == provenance
+        assert _sidecar(engine)["rules_engine"] == provenance
+    batched = _BatchingEngine(dict(_BATCHES))
+    assert spine_build._rules_engine_record(batched) == {
+        **provenance,
+        "engine_batches": _BATCHES,
+    }
+    assert _sidecar(batched)["rules_engine"]["engine_batches"] == _BATCHES
+    # The engine identity is hashed from the provenance alone.
+    assert _identity(spine_build._rules_engine_provenance()) == _identity(
+        {"package": "policyengine-uk", "version": VERSION}
+    )
