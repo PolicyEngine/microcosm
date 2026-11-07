@@ -1183,7 +1183,7 @@
       "covers": [
         "policyengine_uk_data.targets.sources.ons_land_values"
       ],
-      "evidence": "uk-data targets/sources/ons_land_values.py and _land.py; Microcosm target ids ons.land.{land_value,household_land_value,corporate_land_value}.",
+      "evidence": "uk-data targets/sources/ons_land_values.py and _land.py; Microcosm target ids ons.land.{land_value,household_land_value,corporate_land_value}, of which ons.land.land_value and ons.land.corporate_land_value are measure exclusions tracking microcosm#1521 since the #931 move.",
       "status": "ported_national"
     },
     {

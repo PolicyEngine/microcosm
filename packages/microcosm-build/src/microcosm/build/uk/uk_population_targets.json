@@ -15298,7 +15298,7 @@
         "policyengine": {
           "metric_name": "ons/land_value",
           "value_variable": "land_value",
-          "notes": "National balance sheet land series for the total_economy sector; uk-data carries the last estimate flat to later years (populace-side declaration, uk-data targets/sources/_land.py:48-52 at 12a1e028afeef08d8b2d74ee03fd9de3a78b2dd3)."
+          "notes": "National balance sheet land series for the total_economy sector; uk-data carries the last estimate flat to later years (populace-side declaration, uk-data targets/sources/_land.py:48-52 at 12a1e028afeef08d8b2d74ee03fd9de3a78b2dd3). Held as a measured diagnostic (calibration_measure_exclusions.json, María's ruling of 2026-11-06, microcosm#1521 workstream 2): E44R also counts the land of financial corporations, government and NPISH, which neither ons.land.household_land_value (E44N) nor ons.land.corporate_land_value (E43B) covers, and land_value is the sum of the two columns those rows read, so the three rows could not all be met."
         },
         "axiom": {
           "metric_name": "ons/land_value",
@@ -15366,7 +15366,7 @@
         "policyengine": {
           "metric_name": "ons/corporate_land_value",
           "value_variable": "corporate_land_value",
-          "notes": "National balance sheet land series for the non_financial_corporations sector; uk-data carries the last estimate flat to later years (populace-side declaration, uk-data targets/sources/_land.py:60-65 at 12a1e028afeef08d8b2d74ee03fd9de3a78b2dd3)."
+          "notes": "National balance sheet land series for the non_financial_corporations sector; uk-data carries the last estimate flat to later years (populace-side declaration, uk-data targets/sources/_land.py:60-65 at 12a1e028afeef08d8b2d74ee03fd9de3a78b2dd3). Held as a measured diagnostic (calibration_measure_exclusions.json, María's ruling of 2026-11-06, microcosm#1521 workstream 2): policyengine-uk's corporate_land_value spreads the engine's own aggregate by each household's share of the weighted corporate-sector wealth, so the column meets that aggregate at any weights and, bound, the row pins corporate-wealth mass, not land."
         },
         "axiom": {
           "metric_name": "ons/corporate_land_value",

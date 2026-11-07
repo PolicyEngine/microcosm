@@ -755,9 +755,10 @@ _PACKAGED_EXCLUSION_CENSUS = {
     "obr.tobacco_duties": 1,
     "obr.betting_and_gaming_duties": 1,
     # The #931 move (2026-11-06, microcosm#1521 workstream 2): the corporate
-    # row is met by construction, so bound it pins corporate-wealth mass, not
-    # land, and the total-economy row counts sectors the engine does not hold.
-    # Both are measured diagnostics; the household row stays bound.
+    # column meets the engine's own aggregate at any weights, so bound it pins
+    # corporate-wealth mass, not land, and the total-economy row also counts
+    # sectors neither the household nor the corporate row covers. Both are
+    # measured diagnostics; the household row stays bound.
     "ons.land.": 2,
 }
 
@@ -1166,9 +1167,11 @@ def test_the_corporate_and_total_land_rows_are_measured_diagnostics():
     policyengine-uk's corporate_land_value hands out its aggregate by each
     household's share of the weighted corporate-sector wealth, so a released
     file meets it at any weights and, bound, the row pins only that wealth's
-    mass. The total-economy row counts sectors the engine's land_value does
-    not hold, so the three land rows cannot all be met. The household row stays
-    bound, and its note names the one sector its series covers.
+    mass. The total-economy row also counts sectors neither the household nor
+    the corporate row covers, and the engine's land_value is the sum of the two
+    columns those rows read, so the three land rows cannot all be met. The
+    household row stays bound, and its note names the one sector its series
+    covers; the two held rows' notes record the hold.
     """
 
     from importlib import resources as importlib_resources
@@ -1215,6 +1218,7 @@ def test_the_corporate_and_total_land_rows_are_measured_diagnostics():
     gap = series["E44R"] - series["E44N"] - series["E43B"]
     assert gap == 323_750
     assert f"£{gap:,}m" in total["reason"]
+    assert f"{100 * gap / series['E44R']:.1f} percent of the total" in total["reason"]
     for code, millions in series.items():
         assert code in total["reason"], code
         assert f"£{millions:,}m" in total["reason"], code
@@ -1232,6 +1236,14 @@ def test_the_corporate_and_total_land_rows_are_measured_diagnostics():
     note = household["bindings"]["policyengine"]["notes"]
     assert "households sector (ONS E44N, households alone" in note
     assert "households_and_npish" not in note
+    assert "Held as a measured diagnostic" not in note
+    # The two held rows' notes record the hold, as the other held rows' do.
+    for name in ("ons.land.corporate_land_value", "ons.land.land_value"):
+        held = contract[name]["bindings"]["policyengine"]["notes"]
+        assert (
+            "Held as a measured diagnostic (calibration_measure_exclusions.json, "
+            "María's ruling of 2026-11-06, microcosm#1521 workstream 2)"
+        ) in held, name
 
 
 def test_the_two_land_diagnostics_are_measured_but_not_fitted():
@@ -1239,15 +1251,18 @@ def test_the_two_land_diagnostics_are_measured_but_not_fitted():
     national solve and leave them measured (the #931 move, María's ruling of
     2026-11-06).
 
-    Both target loaders (load_uk_national_target_inputs and
-    load_uk_full_target_inputs) apply the register to the reconciled register:
-    the solve surface loses the corporate and total-economy rows, the run's
-    exclusion receipt carries their review, and the compiled register kept
-    beside the solve surface (the band-edge register; a national run writes it
-    as national_contract_registry.json) still holds all three. So the national
-    problem binds the household row alone, while the compiled register
-    materializes and scores the other two on the same frame. Synthetic weights
-    and land values.
+    The test applies the register's land entries to the compiled rows as both
+    target loaders (load_uk_national_target_inputs and
+    load_uk_full_target_inputs) apply the register to the reconciled register,
+    without calling either: the solve surface loses the corporate and
+    total-economy rows, the run's exclusion receipt carries their review, and
+    the compiled register kept beside the solve surface (the band-edge
+    register; a national run writes it as national_contract_registry.json)
+    still holds all three. So the national problem binds the household row as
+    the ons_land family's only row, with the family's whole share of the
+    objective, while the compiled register materializes and scores the other
+    two on the same frame. A bound row of another family (obr.tv_licence_fee)
+    stands beside them and keeps its share. Synthetic weights and values.
     """
 
     from datetime import date
@@ -1263,6 +1278,9 @@ def test_the_two_land_diagnostics_are_measured_but_not_fitted():
     from microcosm.build.uk_runtime.national_calibration import (
         CalibrationFrameAdapter,
     )
+    from microcosm.build.uk_runtime.national_doctrine import (
+        uk_national_target_loss_weights,
+    )
     from microcosm.build.uk_runtime.national_frame import uk_national_frame
     from microcosm.calibrate import score_targets
     from microcosm.calibrate.artifacts import decode_problem
@@ -1273,11 +1291,13 @@ def test_the_two_land_diagnostics_are_measured_but_not_fitted():
         "ons.land.household_land_value",
         "ons.land.land_value",
     )
+    other = "obr.tv_licence_fee"
     references = {
         reference.name: reference
         for reference in load_country_spec("uk").target_references
     }
-    # The three committed land references, compiled with stand-in values.
+    # The three committed land references and one bound row of another
+    # family, compiled with stand-in values.
     compiled = TargetRegistry(
         [
             TargetSpec(
@@ -1290,7 +1310,7 @@ def test_the_two_land_diagnostics_are_measured_but_not_fitted():
                 period=references[name].period,
                 metadata=dict(references[name].metadata),
             )
-            for name in land
+            for name in (*land, other)
         ],
         country="uk",
     )
@@ -1303,7 +1323,10 @@ def test_the_two_land_diagnostics_are_measured_but_not_fitted():
     approved, receipt = apply_uk_calibration_measure_exclusions(
         compiled, entries, now=evaluated_on
     )
-    assert [spec.name for spec in approved.specs] == ["ons.land.household_land_value"]
+    assert [spec.name for spec in approved.specs] == [
+        "ons.land.household_land_value",
+        other,
+    ]
     assert receipt == {
         entry["name"]: {
             **{field: value for field, value in entry.items() if field != "name"},
@@ -1324,6 +1347,7 @@ def test_the_two_land_diagnostics_are_measured_but_not_fitted():
     weights = np.array([10.0, 20.0, 30.0, 40.0])
     household_land = np.array([100.0, 200.0, 0.0, 50.0])
     corporate_land = np.array([5.0, 0.0, 15.0, 30.0])
+    tv_licence = np.array([170.0, 170.0, 0.0, 170.0])
     frame = uk_national_frame(
         person=pd.DataFrame(
             {
@@ -1342,14 +1366,15 @@ def test_the_two_land_diagnostics_are_measured_but_not_fitted():
                 "household_land_value": household_land,
                 "corporate_land_value": corporate_land,
                 "land_value": household_land + corporate_land,
+                "tv_licence": tv_licence,
             }
         ),
         time_period="2025",
         weight_kind=WeightKind.DESIGN,
     )
 
-    # Not fitted: the national problem holds the household row alone and
-    # binds the receipt and the compiled register beside it.
+    # Not fitted: the national problem holds the household row as the only
+    # land row and binds the receipt and the compiled register beside it.
     problem = decode_problem(
         encode_uk_national_problem(
             frame,
@@ -1368,14 +1393,37 @@ def test_the_two_land_diagnostics_are_measured_but_not_fitted():
             resolver_factory=None,
         )
     )
-    assert problem.problem.names == ("ons.land.household_land_value@2025",)
-    np.testing.assert_array_equal(problem.problem.matrix.toarray(), [household_land])
+    assert problem.problem.names == (
+        "ons.land.household_land_value@2025",
+        f"{other}@2025",
+    )
+    np.testing.assert_array_equal(
+        problem.problem.matrix.toarray(), [household_land, tv_licence]
+    )
     assert problem.bindings["measure_exclusions"] == receipt
     assert problem.bindings["register_sha256"] == approved.version
     assert problem.bindings["band_edge_register_sha256"] == compiled.version
+    # family_equal splits each family's equal share over its bound rows, so the
+    # household row, now the ons_land family's only one, carries the whole
+    # share: three times its weight beside the other two land rows. The other
+    # family's row keeps its weight.
+    beside = dict(
+        zip(
+            [spec.name for spec in compiled.specs],
+            uk_national_target_loss_weights(
+                [spec.family for spec in compiled.specs], rule="family_equal"
+            ),
+            strict=True,
+        )
+    )
+    assert problem.bindings["target_loss_weights"] == pytest.approx(
+        [3 * beside["ons.land.household_land_value"], beside[other]]
+    )
+    assert problem.bindings["target_loss_weights"] == pytest.approx([0.5, 0.5])
 
     # Measured: the compiled register materializes on the same frame, and
-    # scoring it gives every land row its weighted estimate.
+    # scoring it gives every row, the two held land rows included, its
+    # weighted estimate.
     adapter = CalibrationFrameAdapter(frame)
     materialized = materialize_uk_ledger_targets(
         adapter, compiled, period=2025, band_edge_registry=compiled
@@ -1388,6 +1436,7 @@ def test_the_two_land_diagnostics_are_measured_but_not_fitted():
                 "ons.land.corporate_land_value@2025": weights @ corporate_land,
                 "ons.land.household_land_value@2025": weights @ household_land,
                 "ons.land.land_value@2025": weights @ (household_land + corporate_land),
+                f"{other}@2025": weights @ tv_licence,
             }
         )
     )
