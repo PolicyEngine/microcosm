@@ -1,1 +1,1 @@
-Correct the module docstring of `uk_runtime.fiscal_targets`: UK national targets compile from `uk/target_references.json`, not from policyengine-uk-data through `specs_from_pe_surface`, which no build path calls.
+Correct the module docstring of `uk_runtime.fiscal_targets`: UK national targets compile from `uk/target_references.json`, not from policyengine-uk-data, and the compiled capital gains facts measure `hmrc/` columns, not `UK_CGT_REQUIRED_COLUMNS`.
