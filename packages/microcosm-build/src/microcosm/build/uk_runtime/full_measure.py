@@ -39,9 +39,11 @@ from microcosm.frame.adapters.engine_population import (
 )
 from microcosm.frame.adapters.policyengine_uk_population import UK_ENGINE_POPULATION
 
-#: The engine variables the national targets bind that read policyengine-uk's
-#: share formulas (``ons.land.corporate_land_value`` and ``ons.land.land_value``),
-#: matched against the run's measure inputs.
+#: The engine variables of the national rows that read policyengine-uk's share
+#: formulas (``ons.land.corporate_land_value`` and ``ons.land.land_value``),
+#: matched against the run's measure inputs. Both rows have been held out of
+#: the solve since the #931 move (calibration_measure_exclusions.json), so a
+#: run on the packaged register resolves neither variable.
 UK_BLOCK_SENSITIVE_MEASURE_COLUMNS = ("corporate_land_value", "land_value")
 
 #: What ``engine_population_representation.exact`` certifies for per-clone
