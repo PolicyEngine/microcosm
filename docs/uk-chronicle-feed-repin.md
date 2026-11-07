@@ -451,3 +451,35 @@ targets that follow this pin move it in any case. The uk-candidate-eval scoring 
 therefore re-frozen before the next national solve. The high-value home stock still names
 `735820c`: its inputs are the same on `6475380` (the feed-gated fingerprint check passes), so it
 was not rebuilt.
+
+The `8045b13` re-pin (PR2 of the November event-data plan, microcosm#1095) is Chronicle main
+after PolicyEngine/chronicle#423, #424 and #425, PolicyEngine/chronicle#420's facts for the
+November UK events: the young people batch (ONS NEET, the LFS A06 tables, PAYE RTI by age, ASHE
+Table 6, HMRC's employer NICs age reliefs, DWP's UC people by age and conditionality regime), the
+PIP batch (DWP's Pathways to Work PIP points and PIP cases with entitlement) and the Scottish
+batch (HMRC's Scottish income tax outturn statistics 2024-25, the Scottish Government's social
+security caseloads and spending). It also carries what main merged after `6475380`:
+PolicyEngine/chronicle#413's UK area inputs, #415's land value inputs (VOA's council tax stock of
+properties 2026, MHCLG's council tax collection and QRC4 for 2025-26, EPC, land value estimates,
+dwelling density and the market value survey, ONS land under buildings) and #421's NRS data zone
+dwelling bands (2,091,616 rows). The rows stay `chronicle.consumer_fact.v5`. A row-by-row diff of
+the two artifacts finds no row dropped and no value moved: 506,321 rows are new, and 14,784 NRS
+data zone rows change only their record-set spec hash.
+
+No compiled value moves on either surface. The national and local reference files and both
+compile-parity receipts are byte-identical. The national membership moves its feed label and the
+candidate counts of MHCLG's council tax band stock by region, where VOA's 2026 stock adds
+candidate facts and no resolution changes; the local membership moves its feed label and the
+1,263 DESNZ constituency keys. The vendored resources carry the same rows under the new feed
+identity, as does the DESNZ constituency resource (the same 2,526 rows and values, matched on
+their source record ids); the census restates the pin, and the charter-H2 fixture moves the
+`stage_contract_sha256` of the 19 stages that bind vendored resources. Both surfaces were regenerated from
+cuts of the pinned artifact (national 1,496,807 rows, local 1,179,396). The high-value home stock
+still names `735820c`: its inputs are the same on `8045b13` (the feed-gated fingerprint check
+passes), so it was not rebuilt.
+
+On the 24 GiB Mac this feed was built with CPython's cyclic garbage collector off for the
+consumer-artifact step, and the regeneration ran its Python steps the same way: both hold every
+row in memory (about 50 GB footprint for the artifact), and the collector's passes over the
+swapped heap stalled the first artifact run for an hour. The rows are acyclic, so the outputs are
+the same.
