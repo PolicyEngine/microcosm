@@ -423,6 +423,7 @@ class Layout:
             "repo": self.repo,
             "authorization": "the test ruling",
             "dedicated_worktree": True,
+            "probe_count": len(self.expectation["probes"]),
         }
         values.update(overrides)
         return tool.Inputs(**values)
@@ -678,6 +679,7 @@ def test_a_faithful_census_smoke_is_accepted(tool, layout, monkeypatch) -> None:
         assert receipt["build_commit"] == layout.commit
         assert receipt["run_id"] == "test-run"
         assert receipt["authorization"] == "the test ruling"
+        assert receipt["required_probes"] == len(layout.expectation["probes"])
         assert receipt["status"] == {
             "build_smoke": "skipped",
             "external_smoke": "passed-before-publish",
@@ -737,6 +739,8 @@ def test_main_accepts_and_prints_the_commands(quick, layout, capsys) -> None:
         str(layout.repo),
         "--authorization",
         "the test ruling",
+        "--probe-count",
+        str(len(layout.expectation["probes"])),
         "--attest-dedicated-worktree",
     ]
     try:
@@ -1332,6 +1336,18 @@ def test_the_operator_must_name_the_ruling_and_attest(quick, layout) -> None:
     assert "--attest-dedicated-worktree" in _refusal(
         quick, layout, dedicated_worktree=False
     )
+
+
+def test_the_probe_count_must_be_the_rulings(quick, layout) -> None:
+    # The ruling names how many probes must pass; a build commit whose manifest
+    # lists more or fewer is not the build it allowed.
+    n = len(layout.expectation["probes"])
+    for wrong in (n - 1, n + 1):
+        message = _refusal(quick, layout, probe_count=wrong)
+        assert "the build commit's probe count (--probe-count)" in message
+    for invalid in (0, -1, True):
+        message = _refusal(quick, layout, probe_count=invalid)
+        assert "--probe-count must be the ruling's positive probe count" in message
 
 
 def test_a_source_departure_refuses_the_expectation(tool, layout, monkeypatch) -> None:

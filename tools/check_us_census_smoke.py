@@ -1244,6 +1244,8 @@ class Inputs:
     repo: Path
     authorization: str
     dedicated_worktree: bool
+    #: How many probes the ruling requires, every one present and passing.
+    probe_count: int
 
 
 @dataclass
@@ -1281,6 +1283,12 @@ def check(inputs: Inputs, *, now: Callable[[], datetime] = _utc_now) -> Accepted
             "--attest-dedicated-worktree is required: launch records cannot see a "
             "change made and undone between two snapshots"
         )
+    if (
+        not isinstance(inputs.probe_count, int)
+        or isinstance(inputs.probe_count, bool)
+        or inputs.probe_count < 1
+    ):
+        findings.fail("--probe-count must be the ruling's positive probe count")
 
     build, build_bytes = _load_json(release_dir / "build_manifest.json", findings)
     release, release_bytes = _load_json(release_dir / "release_manifest.json", findings)
@@ -1429,6 +1437,11 @@ def check(inputs: Inputs, *, now: Callable[[], datetime] = _utc_now) -> Accepted
     probes = expectation["probes"]
     n_probes = len(probes)
     plan = expectation["baseline_plan"]
+    # The ruling names a probe count; a build commit whose manifest lists more
+    # or fewer probes is not the build the ruling allowed.
+    findings.equal(
+        n_probes, inputs.probe_count, "the build commit's probe count (--probe-count)"
+    )
 
     # -- the report ------------------------------------------------------------
     _check_report(
@@ -2031,6 +2044,7 @@ def receipt(
         "build_commit": accepted.commit,
         "run_id": accepted.run_id,
         "authorization": inputs.authorization,
+        "required_probes": inputs.probe_count,
         "operator_attestations": {"dedicated_worktree": inputs.dedicated_worktree},
         "dataset": {
             "key": accepted.dataset_key,
@@ -2150,6 +2164,12 @@ def main(argv: Sequence[str] | None = None) -> int:
         help="the ruling that allows this publish, recorded in the receipt",
     )
     run.add_argument(
+        "--probe-count",
+        type=int,
+        required=True,
+        help="how many probes the ruling requires, every one present and passing",
+    )
+    run.add_argument(
         "--attest-dedicated-worktree",
         action="store_true",
         help="attest that nothing but this run used the worktree",
@@ -2177,6 +2197,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             launch_dir=args.launch_dir,
             repo=args.repo,
             authorization=args.authorization,
+            probe_count=args.probe_count,
             dedicated_worktree=args.attest_dedicated_worktree,
         )
         accepted = check(inputs)

@@ -421,6 +421,7 @@ python tools/check_us_census_smoke.py check \
   --release-dir <out>/releases/<release id> --artifact-root <out>/artifacts \
   --probe-dir <probe> --launch-dir <launch> \
   --authorization "<the decision that allows this publish>" \
+  --probe-count <the number of probes the decision requires> \
   --attest-dedicated-worktree
 ```
 
@@ -457,7 +458,8 @@ when it finds none:
   household and batch counts, four package versions and Python match the
   build's. It records the probe's own source as clean, at the build commit and
   unchanged since the probe loaded it.
-- **The gate file.** The gate passed with no failures, and each probe's
+- **The gate file.** The build commit's manifest lists as many probes as
+  `--probe-count` names. The gate passed with no failures, and each probe's
   definition equals the manifest's at the build commit. The check recomputes
   each effect from its recorded totals, and the result must equal the recorded
   effect and reach its floor. The scoring record equals the build's.
