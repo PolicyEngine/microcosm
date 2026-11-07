@@ -118,10 +118,36 @@ migrated to it yet.
 
 ### microcosm-calibrate: representation
 
-- The only place calibrated weights are produced. Sparse target-matrix
-  compilation + APG / L0 (`target_records`) pruning as the core, not an option
+- Only `microcosm-calibrate` produces calibrated weights. Sparse target-matrix
+  compilation + L0 (`target_records`) pruning as the core, not an option
   — generate-big-then-prune is the intended asymptotic design (300k → 3M → 30M
   pools).
+- **US national calibrations since 2026-07-01 have run without L0.**
+  `calibrate()` defaults to `l0_lambda=0.0` and `target_records=None`, and
+  turns on its hard-concrete L0 gates only when a caller sets one of them
+  (`solve.py`). A default solve therefore keeps every record, and
+  `method="apg"` survives only as a deprecated alias for Adam. PolicyEngine has
+  tagged nine calibrations of the US national file, `populace_us_2024.h5`, in
+  the `policyengine/populace-us` Hugging Face repository since 2026-07-01: the
+  2026-07-01 release, Builds I, J, M, N, O (sparse) and P, and the 2026-09-30
+  and 2026-10-24 builds. All nine came from the US builder's
+  `--dense-default-dataset` arm (`tools/build_us_fiscal_refresh_release.py`),
+  and their build manifests record `dataset.default.method: dense_no_l0`. The
+  first seven calibrated 57,240 households from a list that an unpublished run
+  chose before the 2026-07-01 release, a run microcosm#328 calls the
+  informed-L0 step. Builds I, J, M, N, O and P matched that list onto a
+  337,704-household pool by source identity
+  (`calibration.selection_source.mode: frozen_support`). Build I's list swaps
+  100 of those households (microcosm#359), and Build M's swaps 9 more
+  (microcosm#434). The 2026-09-30 and 2026-10-24 builds calibrated their whole
+  352,932-household pools. The five `acs-local` tags from the same months hold
+  a separate local-area file, `populace_us_2024_acs_local.h5`, and their
+  release manifests record `dataset_role: non_default_local_area`. The US
+  default dataset in policyengine.py's bundle, `populace-us-2024-spm-20260915`,
+  adds one SPM input to Build P and inherits its calibration. microcosm#578
+  tracks the plan to publish every size from one pool, calibrating the full
+  pool densely as k = N and drawing each smaller file from it by exact-k L0
+  selection (`--exact-k`).
 - **Longitudinal rule: one weight per trajectory.** Multi-period targets stack
   as (target, period) constraint rows over the same weight vector. Calibrating
   cross-sections independently destroys panels and is a kernel-level error.
@@ -270,8 +296,8 @@ composition, not dependency resolution or installed import behavior.
 2. Behavioral contract suite + CI.
 3. `microcosm-fit` canonical model (weighted-bootstrap QRF, regime gates,
    chaining).
-4. `microcosm-calibrate` (APG/L0 over bundle weights, multi-period constraint
-   stacking).
+4. `microcosm-calibrate` (weight solves over bundle weights with optional L0
+   pruning, multi-period constraint stacking).
 5. `microcosm-build` country stages and release manifests.
 6. Dynamics operator + SIPP/PSID donors (social-security-model proving
    ground).

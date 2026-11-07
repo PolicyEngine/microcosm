@@ -3262,8 +3262,8 @@ def calibrate_l0_refit(
 ) -> L0RefitResult:
     """Select a sparse support with L0 gates, then refit ordinary calibration.
 
-    This is the production "generate big, then prune" path when the final
-    artifact should be a sparse calibrated frame rather than the raw gated L0
+    It implements the "generate big, then prune" path for a final artifact
+    that should be a sparse calibrated frame rather than the raw gated L0
     weights. The first stage is exactly :func:`calibrate` with L0 pruning
     enabled by ``target_records`` or a positive fixed ``l0_lambda``. The second
     stage delegates to :func:`refit_l0_selection`.
