@@ -8,24 +8,28 @@ import pandas as pd
 
 SP = os.path.dirname(os.path.abspath(__file__))
 pd.set_option("display.width", 200)
-d = {}
-for tag, f in (
-    ("p24", "state_audit_buildp_v2_2024_raw.json"),
-    ("p25", "state_audit_buildp_v2_y25_2025_raw.json"),
-    ("o24", "state_audit_o1017_2301_2024_raw.json"),
-    ("o25", "state_audit_o1017_2301_y25_2025_raw.json"),
-    ("o25_18252", "state_audit_o1017_18252_2025_raw.json"),
-    ("o24_221", "state_audit_o1017_221_2024_raw.json"),
-):
-    x = json.load(open(f"{SP}/dash/{f}"))
-    if tag == "p24":
-        print(list(x[0].keys())[:20])
-    key = [k for k in x[0] if k in ("state", "state_code", "state_abbr")][0]
-    d[tag] = pd.Series(
-        {r[key]: r.get("ref_ctc2021_child_pov_change_pp_measured") for r in x},
-        dtype=float,
-    )
-t = pd.DataFrame(d)
+if os.path.isdir(f"{SP}/dash"):
+    d = {}
+    for tag, f in (
+        ("p24", "state_audit_buildp_v2_2024_raw.json"),
+        ("p25", "state_audit_buildp_v2_y25_2025_raw.json"),
+        ("o24", "state_audit_o1017_2301_2024_raw.json"),
+        ("o25", "state_audit_o1017_2301_y25_2025_raw.json"),
+        ("o25_18252", "state_audit_o1017_18252_2025_raw.json"),
+        ("o24_221", "state_audit_o1017_221_2024_raw.json"),
+    ):
+        x = json.load(open(f"{SP}/dash/{f}"))
+        if tag == "p24":
+            print(list(x[0].keys())[:20])
+        key = [k for k in x[0] if k in ("state", "state_code", "state_abbr")][0]
+        d[tag] = pd.Series(
+            {r[key]: r.get("ref_ctc2021_child_pov_change_pp_measured") for r in x},
+            dtype=float,
+        )
+    t = pd.DataFrame(d)
+else:
+    # A host restart wiped the stored audits; dash_swing.csv holds the same columns, written from them.
+    t = pd.read_csv(f"{SP}/run/dash_swing.csv", index_col=0)
 print(t.isna().sum().to_dict(), len(t))
 for a, b in (("p24", "o24"), ("p25", "o25")):
     e = (t[a] - t[b]).dropna()

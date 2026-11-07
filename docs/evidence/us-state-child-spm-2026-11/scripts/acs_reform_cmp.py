@@ -47,7 +47,7 @@ base = a[[key, "acs_local"]].merge(
 base["move"] = (base.acs_local_rent - base.acs_local_pub).abs()
 same = base[base[key].isin(m[key])]
 print(
-    "baseline move, same 15: mean",
+    f"baseline move, the {len(same)} states with reform runs: mean",
     same.move.mean().round(3),
     "median",
     same.move.median().round(3),
@@ -57,7 +57,7 @@ print(
     base.move.median().round(3),
 )
 print(
-    "reform move, 15: mean",
+    f"reform move, {len(m)} states: mean",
     m["diff"].abs().mean().round(3),
     "median",
     m["diff"].abs().median().round(3),

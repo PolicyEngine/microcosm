@@ -43,10 +43,10 @@ def cut(h5, d):
 
 
 def fix(frame):
-    """Blank parent links stored in the ACS-local file fail integer casts from pe-us 2.30.2; -1 means no parent."""
+    """Blank parent links fail integer casts from pe-us 2.30.2, and the model reads 0 as unknown. The default and dense files store no blanks, so this leaves them unchanged."""
     for c in frame.columns:
         if c.startswith("parent_") and c.endswith("_id__2024"):
-            frame[c] = frame[c].fillna(-1).astype(np.int64)
+            frame[c] = frame[c].fillna(0).astype(np.int64)
     return frame
 
 

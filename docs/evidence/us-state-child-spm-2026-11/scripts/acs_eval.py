@@ -86,7 +86,7 @@ if rf:
     )
 if "poor_r" not in u:
     u["poor_r"] = np.nan
-# acsrent_r covers 15 states, so the rest carry no reform delta.
+# A state with no reform run carries no reform delta.
 u["poor_r_ran"] = u.poor_r.notna()
 u["poor_r"] = u.poor_r.fillna(u.poor)
 u = (

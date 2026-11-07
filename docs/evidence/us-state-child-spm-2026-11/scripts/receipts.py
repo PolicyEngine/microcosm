@@ -22,7 +22,8 @@ for f in glob.glob(E + "/outputs/logs/*"):
     os.remove(f)
 for f in sorted(glob.glob(SP + "/run/*.csv")):
     shutil.copy(f, E + "/outputs")
-shutil.copy(SP + "/run/noise_ci.json", E + "/outputs")
+for f in sorted(glob.glob(SP + "/run/noise_ci*.json")):
+    shutil.copy(f, E + "/outputs")
 for f in sorted(glob.glob(SP + "/run/logs/*.txt")):
     shutil.copy(f, E + "/outputs/logs")
 for f in ("census_child_spm.json", "state_baseline.json"):
@@ -38,34 +39,15 @@ def sha(p):
     return h.hexdigest()
 
 
-H = os.path.expanduser(
-    "~/.cache/huggingface/hub/datasets--policyengine--populace-us/snapshots/"
-)
-digest = {
-    l.split()[1].split("/snapshots/")[1].split("/")[0][:8]
-    + "/"
-    + os.path.basename(l.split()[1]): l.split()[0]
-    for l in open(SP + "/run/input_sha256.txt")  # noqa: E741
+# A host restart wiped some inputs on 2026-11-05. Inputs this host no longer holds keep the digests already recorded;
+# inputs it still holds must match them. The rerun checked the refetched ACS-local file against its recorded digest.
+old = json.load(open(E + "/receipts.json"))
+data = old["data"]
+data["acs_local"]["rerun"] = {
+    "read": "2026-11-06, by acs_split.py through HTTP range requests (remote_fixed.py), with no local copy",
+    "identity": "the Hub's x-linked-etag and x-linked-size for the pinned revision matched sha256 and bytes above",
+    "blank_parent_links": "fill 0, which the model reads as unknown; outputs/*_fill_minus1.* keep the earlier -1 fill's figures",
 }
-data = {}
-for tag, rev, name in (
-    ("default", "9a814a3b", "populace_us_2024.h5"),
-    ("dense", "15cefac4", None),
-    ("acs_local", "725d8999", "populace_us_2024_acs_local.h5"),
-):
-    d = glob.glob(H + rev + "*")[0]
-    p = glob.glob(d + "/*.h5")
-    p = [
-        x for x in p if (name and x.endswith(name)) or (not name and "calib" not in x)
-    ][0]
-    t = os.path.realpath(p)
-    data[tag] = {
-        "repo": "policyengine/populace-us",
-        "revision": os.path.basename(d),
-        "file": os.path.basename(p),
-        "sha256": digest[os.path.basename(d)[:8] + "/" + os.path.basename(p)],
-        "bytes": os.path.getsize(t),
-    }
 v = subprocess.run(
     [
         SP + "/env/.venv/bin/python",
@@ -75,13 +57,23 @@ v = subprocess.run(
     capture_output=True,
     text=True,
 ).stdout.split()
-ext = {}
+ext = dict(old["external_inputs"])
+
+
+def check(key, path):
+    if os.path.exists(path):
+        d = sha(path)
+        assert ext.get(key, d) == d, key
+        ext[key] = d
+
+
 BR = os.path.expanduser(
     "~/PolicyEngine/_build_artifacts/acs-local-l2-basis-20260928/runs/"
 )
 for n in sorted(pd.read_csv(SP + "/run/acs_solves.csv").run):
-    ext["_build_artifacts/acs-local-l2-basis-20260928/runs/" + n + "/weights.npz"] = (
-        sha(BR + n + "/weights.npz")
+    check(
+        "_build_artifacts/acs-local-l2-basis-20260928/runs/" + n + "/weights.npz",
+        BR + n + "/weights.npz",
     )
 for f in sorted(
     glob.glob(
@@ -89,19 +81,14 @@ for f in sorted(
     )
 ):
     if os.path.isfile(f):
-        ext[
+        check(
             "reviews/pe30-population-2026-09-27/out/calib_resolve/"
-            + os.path.basename(f)
-        ] = sha(f)
-ext["asec/raw_asec_2022_2025.parquet"] = sha(SP + "/asec/raw_asec_2022_2025.parquet")
-for f in sorted(glob.glob(SP + "/dash/*.json")):
-    ext["dash/" + os.path.basename(f)] = sha(f)
-ext["populace_us_2024_calibration.npz, revision 15cefac4"] = digest[
-    "15cefac4/populace_us_2024_calibration.npz"
-]
+            + os.path.basename(f),
+            f,
+        )
 r = {
     "purpose": "Receipts for the state child SPM note. Aggregates by state and national totals only; no household rows.",
-    "date": "2026-11-01",
+    "date": "2026-11-07",
     "model": {
         "policyengine_us": v[0],
         "policyengine_us_commit": "469ad12cb957",

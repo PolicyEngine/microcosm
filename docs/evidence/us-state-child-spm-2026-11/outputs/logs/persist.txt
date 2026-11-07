@@ -1,0 +1,17 @@
+gap corr dense initial, ACS rows 0.30; p 0.031
+  Census noise alone would give about 0.16
+gap corr dense published, ACS rows 0.42
+  Census noise alone would give about 0.09
+|z|>1.28: 6 states ['DE', 'IL', 'LA', 'MS', 'OH', 'WA'], permutation mean 3.03, p 0.049
+|z|>1.645: 2 states ['DE', 'LA'], permutation mean 1.37, p 0.412
+|z|>1.96: 1 states ['LA'], permutation mean 0.68, p 0.533
+largest joint z 2.796, permutation median 2.59, p 0.185
+    dense_initial  acs_rows  z_dense  z_acs  joint_z
+LA          -6.95     -6.40    -3.39  -2.80     2.80
+DE           5.35      6.26     2.28   1.91     1.91
+OH          -4.41     -2.04    -2.82  -1.40     1.40
+IL          -1.84     -3.29    -1.39  -2.74     1.39
+MS          -5.19     -3.18    -2.72  -1.38     1.38
+WA           4.70      2.06     2.95   1.31     1.31
+ID           1.36      3.02     1.23   1.75     1.23
+AZ           3.84      2.12     1.93   1.18     1.18
