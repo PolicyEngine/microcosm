@@ -1831,6 +1831,53 @@ def test_resolver_writes_the_scaled_engine_frame_and_records_the_scale(
         )
 
 
+def test_the_other_spells_factor_is_the_engines_growth_parameters(
+    monkeypatch, tmp_path
+):
+    """The factor the other spells grow by is the product of the engine's own
+    rates in the input's growth series over the years after the dataset's,
+    not a statistic of whichever block ran (microcosm#931); the engine's rows
+    must agree with it."""
+
+    rates = {2023: 0.06, 2024: 0.04, 2025: 0.03}
+    then = np.array([100.0, 0.0, 50.0])
+    factor = (1 + rates[2023]) * (1 + rates[2024]) * (1 + rates[2025])
+    arrays = {2022: then, 2025: then * factor * (1 + 4e-6)}
+    resolver = UKMeasureResolver.__new__(UKMeasureResolver)
+    resolver.year = 2025
+    resolver.frame = SimpleNamespace(metadata={"time_period": "2022"})
+    resolver._annual_income_factors = {}
+    read = []
+
+    def get_child(path):
+        read.append(path)
+        return lambda year: rates[int(year)]
+
+    resolver.simulation = SimpleNamespace(
+        tax_benefit_system=SimpleNamespace(
+            parameters=SimpleNamespace(get_child=get_child)
+        ),
+        calculate=lambda name, year: arrays[int(year)],
+    )
+    # Every carrier is off the parameter by 4e-6, inside the tolerance: the
+    # factor is the parameter, which a median of the rows would not be.
+    assert resolver._engine_projection_factor("employment_income_before_lsr") == (
+        pytest.approx(factor, rel=1e-15)
+    )
+    assert read == ["gov.economic_assumptions.yoy_growth.obr.average_earnings"]
+    assert resolver._annual_income_factors == {
+        "employment_income_before_lsr": pytest.approx(factor, rel=1e-15)
+    }
+    arrays[2025] = then * factor * (1 + 2e-5)
+    with pytest.raises(ValueError, match="by one factor"):
+        resolver._engine_projection_factor("self_employment_income")
+    with pytest.raises(ValueError, match="No engine growth series"):
+        resolver._engine_projection_factor("private_pension_income")
+    resolver.year = 2021
+    with pytest.raises(ValueError, match="cannot be carried back"):
+        resolver._engine_projection_factor("employment_income_before_lsr")
+
+
 def _bus_frame() -> FrameStub:
     """Three households: North East, London and Wales, with NTS trips."""
 
@@ -2353,6 +2400,21 @@ class _AnnualFrameStub(FrameStub):
             self._tables["person"][column] = values
 
 
+class _AnnualGrowthParameters:
+    """The stub engine's parameters: only the growth series its projection
+    carries pay and profit by (no dated tree, so no bus pricing)."""
+
+    def __init__(self, engine):
+        self._engine = engine
+
+    def get_child(self, path):
+        variable = self._engine.growth_series[path]
+        return lambda year: self._engine.uprating[variable] - 1.0
+
+    def __call__(self, period):
+        raise AttributeError("the stub engine carries no dated parameters")
+
+
 class _AnnualSimulation:
     """A stub engine that uprates stored inputs and taxes total income."""
 
@@ -2364,6 +2426,17 @@ class _AnnualSimulation:
         "jsa_contrib_reported": 1.02,
         "esa_contrib_reported": 1.02,
         "incapacity_benefit_reported": 1.02,
+    }
+    #: The growth series the stub's projection carries pay and profit by, as
+    #: policyengine-uk's parameters hold them: the other spells grow by the
+    #: series' rate (microcosm#931).
+    growth_series = {
+        "gov.economic_assumptions.yoy_growth.obr.average_earnings": (
+            "employment_income_before_lsr"
+        ),
+        "gov.economic_assumptions.yoy_growth.obr.per_capita.mixed_income": (
+            "self_employment_income"
+        ),
     }
     extra_inputs: dict = {}
 
@@ -2407,7 +2480,9 @@ class _AnnualSimulation:
         variables["tax_band"] = SimpleNamespace(
             entity=SimpleNamespace(key="person"), value_type=str
         )
-        self.tax_benefit_system = SimpleNamespace(variables=variables)
+        self.tax_benefit_system = SimpleNamespace(
+            variables=variables, parameters=_AnnualGrowthParameters(type(self))
+        )
 
     def set_input(self, variable, year, values):
         self.stored[(variable, int(year))] = np.asarray(values, dtype=float)

@@ -417,6 +417,24 @@ _ANNUAL_INCOME_INPUTS: tuple[tuple[str, str, str | None], ...] = (
     ("esa_contrib_reported", CONTRIBUTORY_BENEFITS_ANNUAL_SHARE, None),
     ("incapacity_benefit_reported", CONTRIBUTORY_BENEFITS_ANNUAL_SHARE, None),
 )
+#: The growth series policyengine-uk's dataset projection carries each input
+#: with other spells by (its ``data/uprating_indices.yaml``: pay, stored as
+#: ``employment_income``, by average earnings; profit by mixed income per
+#: head). The other spells grow from the dataset's year by the product of the
+#: engine's own rates in that series, read from its parameters, so the factor
+#: is the same in every per-clone engine block and in one engine over the pool
+#: (María's ruling of 2026-11-06, microcosm#931; it was the median of the
+#: engine's own year-on-year ratios, a statistic of whichever block ran).
+_ANNUAL_INCOME_OTHER_SPELLS_GROWTH: Mapping[str, str] = MappingProxyType(
+    {
+        "employment_income_before_lsr": (
+            "gov.economic_assumptions.yoy_growth.obr.average_earnings"
+        ),
+        "self_employment_income": (
+            "gov.economic_assumptions.yoy_growth.obr.per_capita.mixed_income"
+        ),
+    }
+)
 #: Taxable benefits whose entitlement reads earnings, held at their baseline
 #: values: a carer was paid in the year at the earnings of the time, which the
 #: current concept records, not at the year's total.
@@ -1705,27 +1723,47 @@ class UKMeasureResolver:
     def _engine_projection_factor(self, name: str) -> float:
         """The factor the engine carries ``name`` by from the dataset's year.
 
-        Read off the engine's own projection, so the other spells grow by the
-        series the current amount grows by; a projection that is not one
-        factor for every row refuses, since no single factor then carries the
-        other spells as the engine carries pay.
+        The product, over each year after the dataset's up to this one, of
+        one plus the engine's own growth rate in the series its dataset
+        projection carries ``name`` by (``_ANNUAL_INCOME_OTHER_SPELLS_GROWTH``),
+        read from the simulation's parameters as the projection reads them.
+        A parameter, not a statistic of the rows, so every engine block and
+        one engine over the pool carry the other spells alike (microcosm#931).
+        The engine's own arrays must agree with it, within 1e-5, on every row
+        that carries ``name``; otherwise no single factor carries the other
+        spells as the engine carries pay, and it refuses.
         """
 
+        series = _ANNUAL_INCOME_OTHER_SPELLS_GROWTH.get(name)
+        if series is None:
+            raise ValueError(
+                f"No engine growth series is declared for {name}, so its other "
+                "spells cannot be carried to the measurement year."
+            )
         dataset_year = self._dataset_year()
+        if self.year < dataset_year:
+            raise ValueError(
+                f"The engine projects the dataset from {dataset_year} forward, so "
+                f"the other spells of {name} cannot be carried back to {self.year}."
+            )
+        growth = self.simulation.tax_benefit_system.parameters.get_child(series)
+        factor = 1.0
+        for year in range(dataset_year + 1, self.year + 1):
+            factor *= 1.0 + float(growth(str(year)))
         then = _values(self.simulation.calculate(name, dataset_year)).astype(float)
         now = _values(self.simulation.calculate(name, self.year)).astype(float)
         carried = np.abs(then) > 0
         if not carried.any():
             raise ValueError(
                 f"No row carries {name} in {dataset_year}, so the engine's factor "
-                f"to {self.year} for the other spells cannot be read."
+                f"to {self.year} for the other spells cannot be checked."
             )
         factors = now[carried] / then[carried]
-        factor = float(np.median(factors))
         if (np.abs(factors - factor) > 1e-5 * max(abs(factor), 1.0)).any():
             raise ValueError(
                 f"The engine does not carry {name} from {dataset_year} to "
-                f"{self.year} by one factor, so the other spells cannot follow it."
+                f"{self.year} by one factor, its growth series {series}, so the "
+                "other spells cannot follow it."
             )
         self._annual_income_factors[name] = factor
         return factor
