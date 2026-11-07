@@ -201,8 +201,9 @@ Each support also has a conditioned form for the geography-first draw
 the support it extends, and recorded in
 `uk/uk_atomic_area_conditioned_supports.provenance.json`;
 `tools/build_uk_conditioned_area_supports.py` builds it from the registered
-support's bytes, chronicle#412's raw-only registrations and NRS's dwellings by
-2022 data zone. It adds two kinds of column:
+support's bytes, chronicle#412's raw-only registrations and, from the pinned UK
+Chronicle feed, NRS's dwellings by band and 2022 data zone (chronicle#421). It
+adds two kinds of column:
 
 - **`imd_decile`**, an exact-match constraint code. It is the area's
   deprivation decile within its own nation, at the 2019 vintage the FRS
@@ -217,7 +218,8 @@ support's bytes, chronicle#412's raw-only registrations and NRS's dwellings by
   - England and Wales take bands A to I from the area's LSOA mix in VOA
     CTSOP1.1. Only Wales has band I.
   - Scotland takes bands A to H from its 2022 data zone's dwellings by band in
-    NRS's December 2024 estimates; its output areas nest in those zones.
+    NRS's December 2024 estimates, as Chronicle emits them; its output areas
+    nest in those zones.
   - Northern Ireland has domestic rates, so its support carries no bands.
 
 The provenance lists every zero-mass draw cell (FRS region by decile, and

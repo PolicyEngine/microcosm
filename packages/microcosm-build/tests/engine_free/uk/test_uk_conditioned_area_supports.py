@@ -10,8 +10,11 @@ and ``vintages.yaml`` must agree; when the support bytes are mounted under
 from __future__ import annotations
 
 import hashlib
+import importlib.util
 import json
+import os
 import re
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
@@ -39,6 +42,7 @@ from microcosm.build.uk_runtime.atomic_area_support import (
     assemble_uk_conditioned_area_support,
     uk_conditioned_support_base,
 )
+from microcosm.build.uk_runtime.chronicle_feed import load_uk_chronicle_feed
 from microcosm.build.uk_runtime.country_adapter import uk_atomic_support_register
 from test_support.microcosm_build.uk_atomic_support_fixtures import toy_support_payloads
 from test_support.paths import paths_for
@@ -214,13 +218,18 @@ def bundle():
     return compile_spec(load_bundle("uk"))
 
 
-def test_provenance_pins_chronicle_registrations_and_resources(provenance) -> None:
-    import importlib.util
-
+@pytest.fixture(scope="module")
+def tool():
     path = _REPOSITORY / "tools/build_uk_conditioned_area_supports.py"
     spec = importlib.util.spec_from_file_location("uk_conditioned_tool_pins", path)
-    tool = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(tool)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def test_provenance_pins_chronicle_registrations_and_resources(
+    provenance, tool
+) -> None:
     assert provenance["kind"] == "uk_atomic_area_conditioned_supports_provenance"
     assert provenance["publisher_files"] == tool.SOURCES
     assert provenance["chronicle"] == tool.CHRONICLE
@@ -228,6 +237,18 @@ def test_provenance_pins_chronicle_registrations_and_resources(provenance) -> No
         provenance["issues"]["chronicle_registration"] == "PolicyEngine/chronicle#412"
     )
     assert provenance["band_weight_scale"] == BAND_WEIGHT_SCALE
+    assert set(provenance["ledger_feed"]) == {
+        "source_commit",
+        "facts_sha256",
+        "manifest_sha256",
+        "fact_row_count",
+    }
+    facts = provenance["feed_facts"]["nrs_dwellings_by_band"]
+    assert facts["record_set_id"] == tool.NRS_RECORD_SET
+    # Each zone's total and bands A to H.
+    assert facts["data_zones"] == tool.NRS_DATA_ZONES
+    assert facts["rows"] == 9 * tool.NRS_DATA_ZONES
+    assert _SHA.fullmatch(facts["fingerprint_sha256"])
     for name, resource in provenance["resources"].items():
         # A regenerated band mix must regenerate the conditioned supports.
         assert (
@@ -259,14 +280,16 @@ def test_column_metadata_names_every_input_and_its_vintage(provenance, system) -
     for column in BAND_WEIGHT_COLUMNS[system]:
         item = entry["column_metadata"][column]
         assert item["kind"] == "weight" and item["basis"].endswith("_x1e6")
+        if system == SCOT:
+            # Scotland reads NRS's band facts from the pinned feed.
+            facts = provenance["feed_facts"]["nrs_dwellings_by_band"]
+            assert item["source"] == (
+                f"chronicle:{facts['record_set_id']}"
+                f"@sha256:{facts['fingerprint_sha256']}"
+            )
+            continue
         publisher, _, resource = item["source"].partition("#")
         package, _, publisher_digest = publisher.partition("@sha256:")
-        if system == SCOT:
-            # Scotland reads one sheet of the registered NRS workbook itself.
-            assert package == "nrs-dwellings-data-zone-2025"
-            assert sha_by_package[package] == publisher_digest
-            assert resource == "sheet-2024"
-            continue
         name, _, digest = resource.partition("@sha256:")
         assert resources[name]["sha256"] == digest
         assert (
@@ -276,6 +299,44 @@ def test_column_metadata_names_every_input_and_its_vintage(provenance, system) -
             package,
             publisher_digest,
         )
+
+
+def test_the_pinned_feed_carries_the_band_facts_the_supports_were_built_from(
+    provenance, tool
+) -> None:
+    """The re-pin procedure's check of Scotland's band facts.
+
+    A re-pin whose feed carries NRS's December 2024 band facts unchanged
+    leaves the supports as built, and their provenance keeps naming the feed
+    they were built from; one that moves them needs the supports rebuilt
+    (docs/uk-chronicle-feed-repin.md).
+    """
+
+    configured = os.environ.get("CHRONICLE_UK_FACTS")
+    feed = (
+        Path(configured)
+        if configured
+        else _REPOSITORY / ".codex-work/consumer_facts_uk.jsonl"
+    )
+    if feed.is_dir():
+        feed = feed / "consumer_facts.jsonl"
+    if not feed.is_file():
+        pytest.skip("pinned UK Chronicle consumer feed is not present")
+    pin = load_uk_chronicle_feed()
+    facts = tool._read_feed(
+        feed,
+        markers=(tool.NRS_RECORD_SET.encode(),),
+        identity={
+            "facts_sha256": pin.facts_sha256,
+            "fact_row_count": pin.fact_row_count,
+        },
+    )
+    _, receipt = tool._nrs_band_counts(facts)
+    assert receipt == provenance["feed_facts"]["nrs_dwellings_by_band"], (
+        "NRS's band facts differ on the pinned feed from those the conditioned "
+        "supports were built from: rebuild them with "
+        "tools/build_uk_conditioned_area_supports.py (docs/uk-chronicle-feed-repin.md)."
+    )
 
 
 def test_spec_declares_the_conditioned_bytes_and_their_vintages(

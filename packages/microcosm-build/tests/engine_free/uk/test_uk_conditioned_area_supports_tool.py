@@ -70,12 +70,13 @@ def _invented_inputs(bases: dict[str, bytes]):
             "publisher_sha256": "2" * 64,
         }
     }
-    return frame, deciles, voa, scot, resources
+    nrs = {"record_set_id": "invented.record_set", "fingerprint_sha256": "3" * 64}
+    return frame, deciles, voa, scot, resources, nrs
 
 
 def test_tool_conditions_each_registered_support(tool) -> None:
     bases = toy_support_payloads()
-    postcodes, deciles, voa, scot, resources = _invented_inputs(bases)
+    postcodes, deciles, voa, scot, resources, nrs = _invented_inputs(bases)
     payloads, entries = tool.condition_supports(
         bases,
         postcodes,
@@ -83,6 +84,7 @@ def test_tool_conditions_each_registered_support(tool) -> None:
         voa_mix=voa,
         scotland_counts=scot,
         resources=resources,
+        nrs_facts=nrs,
     )
     for system in SYSTEMS:
         assert uk_conditioned_support_base(payloads[system]) == bases[system]
@@ -109,13 +111,15 @@ def test_tool_conditions_each_registered_support(tool) -> None:
             # A ninth in band A, rounded half to even.
             ninth = [round(int(h) * BAND_WEIGHT_SCALE / 9) for h in households]
             assert weights["households_band_a"].tolist() == ninth
+            source = entries[system]["column_metadata"]["households_band_a"]["source"]
+            assert source == f"chronicle:invented.record_set@sha256:{'3' * 64}"
         if system == NI:
             assert not weights and entries[system]["band_weights"] is None
 
 
 def test_tool_refuses_a_rank_outside_its_nation_index(tool) -> None:
     bases = toy_support_payloads()
-    postcodes, deciles, voa, scot, resources = _invented_inputs(bases)
+    postcodes, deciles, voa, scot, resources, nrs = _invented_inputs(bases)
     postcodes.loc[0, "imd20ind"] = "77"
     with pytest.raises(ValueError, match="not in the E index"):
         tool.condition_supports(
@@ -125,6 +129,7 @@ def test_tool_refuses_a_rank_outside_its_nation_index(tool) -> None:
             voa_mix=voa,
             scotland_counts=scot,
             resources=resources,
+            nrs_facts=nrs,
         )
 
 
@@ -138,47 +143,104 @@ def test_rank_deciles_refuse_a_split_tie_and_a_short_index(tool, monkeypatch) ->
         tool._rank_deciles(pd.Series([1, 2]), pd.Series([1, 2]), nation="E")
 
 
-def _nrs_workbook(tool, path, rows):
-    """NRS's layout: four title rows, the header on row 5, zones, then a footnote."""
-    openpyxl = pytest.importorskip("openpyxl")
-    workbook = openpyxl.Workbook()
-    sheet = workbook.active
-    sheet.title = tool.NRS_SHEET
-    for _ in range(tool.NRS_HEADER_ROW):
-        sheet.append(["Dwelling estimates by 2022 Data Zone"])
-    sheet.append(
-        [
-            tool.NRS_ZONE_COLUMN,
-            "Data zone name",
-            tool.NRS_TOTAL_COLUMN,
-            *tool.NRS_BAND_COLUMNS.values(),
-        ]
-    )
+def _nrs_facts(tool, rows, *, record_set=None):
+    """Feed rows as Chronicle emits NRS's: each zone's total, then bands A to H."""
+    facts = []
     for zone, total, *bands in rows:
-        sheet.append([zone, f"{zone} name", total, *bands])
-    sheet.append(["Source: Scottish Assessors' Portal data"])
-    workbook.save(path)
-    return path
+        values = {tool.NRS_TOTAL_CONCEPT: total}
+        values.update(zip(tool.NRS_BAND_CONCEPTS, bands, strict=True))
+        for concept, value in values.items():
+            facts.append(
+                {
+                    "observed_measure": {"source_concept": concept},
+                    "value": value,
+                    "geography": {
+                        "id": zone,
+                        "level": "statistical_scope",
+                        "vintage": "dz_2022",
+                    },
+                    "period": {"type": "calendar_year", "value": 2024},
+                    "layout": {"record_set_id": record_set or tool.NRS_RECORD_SET},
+                    "source": {"source_file": "zones.xlsx", "source_sha256": "4" * 64},
+                }
+            )
+    return facts
 
 
 def test_nrs_band_counts_read_each_zone_and_refuse_a_broken_sum(
-    tool, tmp_path, monkeypatch
+    tool, monkeypatch
 ) -> None:
     monkeypatch.setattr(tool, "NRS_DATA_ZONES", 2)
     rows = [
         ["S01013482", 9, 1, 2, 1, 1, 1, 1, 1, 1],
         ["S01013483", 8, 0, 0, 0, 0, 0, 0, 0, 8],
     ]
-    path = tmp_path / "zones.xlsx"
-    assert tool._nrs_band_counts(_nrs_workbook(tool, path, rows)) == {
+    # Rows of another record set, such as December 2025's, are not read.
+    other = _nrs_facts(tool, [["S01013482", 1, 1, 0, 0, 0, 0, 0, 0, 0]], record_set="x")
+    facts = _nrs_facts(tool, rows)
+    counts, receipt = tool._nrs_band_counts([*other, *facts])
+    assert counts == {
         "S01013482": dict(zip("abcdefgh", (1, 2, 1, 1, 1, 1, 1, 1), strict=True)),
         "S01013483": {**dict.fromkeys("abcdefg", 0), "h": 8},
     }
+    assert (receipt["rows"], receipt["data_zones"]) == (18, 2)
+    assert receipt["source_sha256"] == "4" * 64
+    # The fingerprint is of the counts, whatever order the rows come in.
+    _, reordered = tool._nrs_band_counts(facts[::-1])
+    assert reordered["fingerprint_sha256"] == receipt["fingerprint_sha256"]
     with pytest.raises(ValueError, match="expected 2"):
-        tool._nrs_band_counts(_nrs_workbook(tool, path, rows[:1]))
+        tool._nrs_band_counts(facts[:9])
+    with pytest.raises(ValueError, match="twice"):
+        tool._nrs_band_counts([*facts, facts[0]])
+    with pytest.raises(ValueError, match="lacks a band"):
+        tool._nrs_band_counts(facts[:-1])
+    fractional = [dict(fact) for fact in facts]
+    fractional[1]["value"] = 0.5
+    with pytest.raises(ValueError, match="not one count"):
+        tool._nrs_band_counts(fractional)
+    shifted = [dict(fact) for fact in facts]
+    shifted[0]["period"] = {"type": "calendar_year", "value": "2025"}
+    with pytest.raises(ValueError, match="December 2024 total or band"):
+        tool._nrs_band_counts(shifted)
     rows[1][1] = 9
     with pytest.raises(ValueError, match="miss its total"):
-        tool._nrs_band_counts(_nrs_workbook(tool, path, rows))
+        tool._nrs_band_counts(_nrs_facts(tool, rows))
+
+
+def test_read_feed_checks_the_whole_feed_against_its_pin(tool, tmp_path) -> None:
+    lines = [
+        json.dumps({"concept": "other", "value": 1}),
+        json.dumps({"layout": {"record_set_id": tool.NRS_RECORD_SET}, "value": 2}),
+    ]
+    feed = tmp_path / "consumer_facts.jsonl"
+    feed.write_text("\n".join(lines) + "\n")
+    facts_sha256 = hashlib.sha256(feed.read_bytes()).hexdigest()
+    manifest = tmp_path / "manifest.json"
+    manifest.write_text(json.dumps({"facts_sha256": facts_sha256}))
+    pin = tmp_path / "chronicle_feed.json"
+    identity = {
+        "source_commit": "c" * 40,
+        "facts_sha256": facts_sha256,
+        "manifest_sha256": hashlib.sha256(manifest.read_bytes()).hexdigest(),
+        "fact_row_count": 2,
+    }
+    pin.write_text(json.dumps(identity))
+    assert tool._feed_identity(pin, manifest) == identity
+    markers = (tool.NRS_RECORD_SET.encode(),)
+    assert tool._read_feed(feed, markers=markers, identity=identity) == [
+        json.loads(lines[1])
+    ]
+    with pytest.raises(ValueError, match="carries 2 rows"):
+        tool._read_feed(
+            feed, markers=markers, identity={**identity, "fact_row_count": 3}
+        )
+    with pytest.raises(ValueError, match="is not the feed"):
+        tool._read_feed(
+            feed, markers=markers, identity={**identity, "facts_sha256": "0" * 64}
+        )
+    pin.write_text(json.dumps({**identity, "manifest_sha256": "0" * 64}))
+    with pytest.raises(ValueError, match="is not the manifest"):
+        tool._feed_identity(pin, manifest)
 
 
 def test_scotland_numerators_refuse_a_zone_without_counts(tool) -> None:

@@ -2,9 +2,23 @@
   "band_weight_scale": 1000000,
   "built_on": "2026-11-06",
   "chronicle": {
-    "commit": "c51f40d2bdaa66315dd63f334ede5790a8891e27",
+    "commit": "80a3482905843d447f8811b500a56dbf3b5f47fa",
     "merged": true,
-    "pull_request": "PolicyEngine/chronicle#413"
+    "pull_request": "PolicyEngine/chronicle#421"
+  },
+  "feed_facts": {
+    "nrs_dwellings_by_band": {
+      "data_zones": 7392,
+      "fingerprint_sha256": "e1917f2b191c0af847fefd346e99e6fe115292112a94e69fbede8c22543256fe",
+      "period": {
+        "type": "calendar_year",
+        "value": "2024"
+      },
+      "record_set_id": "nrs.dwellings_data_zone_2025.2024",
+      "rows": 66528,
+      "source_file": "dwelling-estimates-by-2022-data-zones-24-25.xlsx",
+      "source_sha256": "5d61db5faf7e81451d838e5d394b8e0682bbf501341c1220aea4a78082ceb033"
+    }
   },
   "issues": {
     "chronicle_band_facts": "PolicyEngine/chronicle#419",
@@ -12,12 +26,18 @@
     "umbrella": "PolicyEngine/microcosm#931"
   },
   "kind": "uk_atomic_area_conditioned_supports_provenance",
+  "ledger_feed": {
+    "fact_row_count": 2030062,
+    "facts_sha256": "cb3342c3f59ff961a0ae369ca489293ddd6d021fdeb5cfafb89f6d125329bdfe",
+    "manifest_sha256": "d2323e7bddb30043fafecc2249fca0ee1506dae8ff20bc5f4db8575dc2ec1b73",
+    "source_commit": "80a3482905843d447f8811b500a56dbf3b5f47fa"
+  },
   "notes": [
     "imd_decile is the 2019 vintage of each nation's index (IoD 2019, WIMD 2019, SIMD 2020v2, NIMDM 2017): the FRS 2024-25 variables IMDE, IMDW, IMDS and IMDN carry no change note from 2023-24, which predates the 2025 indices, and on an internal comparison England's FRS decile shares by region fit IoD 2019 better than IoD 2025, as the 2023-24 FRS does. The vintage is still to be confirmed with DWP.",
     "An area's decile is the one most of its live small-user postcodes carry in the May 2026 NSPL (oa21cd: the 2021 output area in England and Wales, the 2022 output area in Scotland, the 2021 data zone in Northern Ireland). Ranks are within-nation only.",
     "Northern Ireland's SOAs (2001) do not nest in its 2021 data zones, so many data zones' postcodes span deciles; the modal decile is recorded with relation inferred_modal and the counts below.",
     "England and Wales band weights read each area's LSOA mix as committed (shares to 6 dp ending at exactly 1), so households x share x 10^6 is exact. Scotland's read its 2022 data zone's dwellings by band, rounded half to even per band.",
-    "Scotland's band mix is its 2022 data zone's, in which its 2022 output areas nest, from NRS's December 2024 sheet: nearest the FRS 2024-25 year and VOA's stock at 31 March 2025. NRS counts dwellings on the valuation list, as VOA does in England and Wales. Chronicle registers the workbook (nrs-dwellings-data-zone-2025) with only its total as facts; until chronicle#419 adds the band columns, this tool reads them from the registered bytes."
+    "Scotland's band mix is its 2022 data zone's, in which its 2022 output areas nest, at December 2024: nearest the FRS 2024-25 year and VOA's stock at 31 March 2025. NRS counts dwellings on the valuation list, as VOA does in England and Wales. Chronicle emits the zones' totals and bands A to H as facts (record set nrs.dwellings_data_zone_2025.2024, chronicle#421); this tool reads them from the pinned UK feed and records their fingerprint."
   ],
   "publisher_files": {
     "iod2019": {
@@ -41,17 +61,6 @@
       "sha256": "3738edf2d264491301b41cc7b64967373d49b09a6f5719225a0e4f7d789af9d3",
       "size_bytes": 1772032,
       "url": "https://www.nisra.gov.uk/files/nisra/publications/NIMDM17_SOAresults.xls"
-    },
-    "nrs_dz_dwellings": {
-      "chronicle_package_id": "nrs-dwellings-data-zone-2025",
-      "chronicle_source_id": "nrs",
-      "chronicle_year": 2025,
-      "filename": "dwelling-estimates-by-2022-data-zones-24-25.xlsx",
-      "product": "Dwelling estimates by 2022 data zone, December 2024 and 2025",
-      "publisher": "NRS",
-      "sha256": "5d61db5faf7e81451d838e5d394b8e0682bbf501341c1220aea4a78082ceb033",
-      "size_bytes": 1223284,
-      "url": "https://nrscotland.gov.uk/media/43tfx3zo/dwelling-estimates-by-2022-data-zones-24-25.xlsx"
     },
     "nspl": {
       "chronicle_package_id": "ons-nspl-may-2026",
@@ -858,42 +867,42 @@
         "households_band_a": {
           "basis": "census_2022_occupied_households_postcode_index_cell_key_perturbed_x_nrs_dz2022_2024_band_a_share_round_half_even_x1e6",
           "kind": "weight",
-          "source": "nrs-dwellings-data-zone-2025@sha256:5d61db5faf7e81451d838e5d394b8e0682bbf501341c1220aea4a78082ceb033#sheet-2024"
+          "source": "chronicle:nrs.dwellings_data_zone_2025.2024@sha256:e1917f2b191c0af847fefd346e99e6fe115292112a94e69fbede8c22543256fe"
         },
         "households_band_b": {
           "basis": "census_2022_occupied_households_postcode_index_cell_key_perturbed_x_nrs_dz2022_2024_band_b_share_round_half_even_x1e6",
           "kind": "weight",
-          "source": "nrs-dwellings-data-zone-2025@sha256:5d61db5faf7e81451d838e5d394b8e0682bbf501341c1220aea4a78082ceb033#sheet-2024"
+          "source": "chronicle:nrs.dwellings_data_zone_2025.2024@sha256:e1917f2b191c0af847fefd346e99e6fe115292112a94e69fbede8c22543256fe"
         },
         "households_band_c": {
           "basis": "census_2022_occupied_households_postcode_index_cell_key_perturbed_x_nrs_dz2022_2024_band_c_share_round_half_even_x1e6",
           "kind": "weight",
-          "source": "nrs-dwellings-data-zone-2025@sha256:5d61db5faf7e81451d838e5d394b8e0682bbf501341c1220aea4a78082ceb033#sheet-2024"
+          "source": "chronicle:nrs.dwellings_data_zone_2025.2024@sha256:e1917f2b191c0af847fefd346e99e6fe115292112a94e69fbede8c22543256fe"
         },
         "households_band_d": {
           "basis": "census_2022_occupied_households_postcode_index_cell_key_perturbed_x_nrs_dz2022_2024_band_d_share_round_half_even_x1e6",
           "kind": "weight",
-          "source": "nrs-dwellings-data-zone-2025@sha256:5d61db5faf7e81451d838e5d394b8e0682bbf501341c1220aea4a78082ceb033#sheet-2024"
+          "source": "chronicle:nrs.dwellings_data_zone_2025.2024@sha256:e1917f2b191c0af847fefd346e99e6fe115292112a94e69fbede8c22543256fe"
         },
         "households_band_e": {
           "basis": "census_2022_occupied_households_postcode_index_cell_key_perturbed_x_nrs_dz2022_2024_band_e_share_round_half_even_x1e6",
           "kind": "weight",
-          "source": "nrs-dwellings-data-zone-2025@sha256:5d61db5faf7e81451d838e5d394b8e0682bbf501341c1220aea4a78082ceb033#sheet-2024"
+          "source": "chronicle:nrs.dwellings_data_zone_2025.2024@sha256:e1917f2b191c0af847fefd346e99e6fe115292112a94e69fbede8c22543256fe"
         },
         "households_band_f": {
           "basis": "census_2022_occupied_households_postcode_index_cell_key_perturbed_x_nrs_dz2022_2024_band_f_share_round_half_even_x1e6",
           "kind": "weight",
-          "source": "nrs-dwellings-data-zone-2025@sha256:5d61db5faf7e81451d838e5d394b8e0682bbf501341c1220aea4a78082ceb033#sheet-2024"
+          "source": "chronicle:nrs.dwellings_data_zone_2025.2024@sha256:e1917f2b191c0af847fefd346e99e6fe115292112a94e69fbede8c22543256fe"
         },
         "households_band_g": {
           "basis": "census_2022_occupied_households_postcode_index_cell_key_perturbed_x_nrs_dz2022_2024_band_g_share_round_half_even_x1e6",
           "kind": "weight",
-          "source": "nrs-dwellings-data-zone-2025@sha256:5d61db5faf7e81451d838e5d394b8e0682bbf501341c1220aea4a78082ceb033#sheet-2024"
+          "source": "chronicle:nrs.dwellings_data_zone_2025.2024@sha256:e1917f2b191c0af847fefd346e99e6fe115292112a94e69fbede8c22543256fe"
         },
         "households_band_h": {
           "basis": "census_2022_occupied_households_postcode_index_cell_key_perturbed_x_nrs_dz2022_2024_band_h_share_round_half_even_x1e6",
           "kind": "weight",
-          "source": "nrs-dwellings-data-zone-2025@sha256:5d61db5faf7e81451d838e5d394b8e0682bbf501341c1220aea4a78082ceb033#sheet-2024"
+          "source": "chronicle:nrs.dwellings_data_zone_2025.2024@sha256:e1917f2b191c0af847fefd346e99e6fe115292112a94e69fbede8c22543256fe"
         },
         "imd_decile": {
           "kind": "code",
@@ -928,8 +937,8 @@
         "postcodes_without_rank": 0,
         "records": 156932
       },
-      "sha256": "0c7d78263c5db96d8f6dce06ac22c8e45f5fc4272297a4d16e073c964e797fea",
-      "size_bytes": 1607702,
+      "sha256": "a8ca096bb0eafef90f4149f7e2ec6be302483f5b4c21a02f9c085ab20b597384",
+      "size_bytes": 1607718,
       "zero_mass_cells": [
         {
           "cells": [],

@@ -18,20 +18,24 @@ them; today's build binds the registered supports.
 - ``households_band_a`` ... : the area's households by council-tax band, times
   10^6. England and Wales use the VOA CTSOP1.1 mix of the area's LSOA
   (``voa_council_tax_band_mix_lsoa.json``); Scotland uses the dwellings by
-  band of the area's 2022 data zone, in which its 2022 output areas nest, from
-  NRS's December 2024 sheet. Northern Ireland has domestic rates and no bands.
+  band of the area's 2022 data zone, in which its 2022 output areas nest, at
+  December 2024: NRS's estimates, which Chronicle emits as facts
+  (chronicle#421). Northern Ireland has domestic rates and no bands.
 
-The publisher files are pinned here by sha256: chronicle#412's raw-only
-registrations (PR chronicle#413), and NRS's dwelling estimates by 2022 data
-zone, which Chronicle registers with only their total as facts (chronicle#419
-asks for the band columns). The VOA band mix is a committed package resource.
-The provenance register records every input's identity, each nation's decile
-rule counts, the rounding, and every zero-mass draw cell.
+The publisher files are chronicle#412's raw-only registrations (PR
+chronicle#413), pinned here by sha256. The NRS facts are streamed from the
+pinned UK Chronicle feed (``uk/chronicle_feed.json``), which is checked whole
+against the pin. The VOA band mix is a committed package resource. The
+provenance register records every input's identity, the fingerprint of the
+facts read, each nation's decile rule counts, the rounding, and every
+zero-mass draw cell.
 
 Example (odfpy reads the Welsh Government's ODS; nothing else here needs it):
     uv run --no-sync --with odfpy python tools/build_uk_conditioned_area_supports.py \\
         --supports-dir build/uk/supports \\
         --source-manifest build/uk/conditioned_sources.json \\
+        --ledger-facts .codex-work/uk-artifact/consumer_facts.jsonl \\
+        --ledger-manifest .codex-work/uk-artifact/manifest.json \\
         --out-dir build/uk/supports
 
 ``--source-manifest`` names exact local files (path/url/sha256/bytes per
@@ -45,9 +49,11 @@ import argparse
 import datetime as dt
 import hashlib
 import json
+import math
+import re
 import sys
 import zipfile
-from collections.abc import Mapping
+from collections.abc import Iterable, Mapping
 from pathlib import Path
 
 import numpy as np
@@ -59,6 +65,7 @@ from microcosm.build.atomic_support_conditioning import (
     modal_area_codes,
     zero_mass_cells,
 )
+from microcosm.build.ledger_artifact import consumer_fact_schema_versions_of
 from microcosm.build.uk_runtime.atomic_area_support import (
     BAND_WEIGHT_COLUMNS,
     BAND_WEIGHT_SCALE,
@@ -73,20 +80,23 @@ from microcosm.build.uk_runtime.atomic_area_support import (
 from microcosm.build.uk_runtime.atomic_area_support import (
     SOURCES as SUPPORT_SOURCES,
 )
+from microcosm.build.uk_runtime.chronicle_feed import (
+    require_uk_chronicle_feed_subset_row_contracts,
+)
 from microcosm.graph.codecs import RAW_BYTES_MAX_BYTES
 
 _TOOLS = Path(__file__).resolve().parent
 _REPOSITORY_ROOT = _TOOLS.parent
 _UK_PACKAGE = _REPOSITORY_ROOT / "packages/microcosm-build/src/microcosm/build/uk"
 _DEFAULT_PROVENANCE = _UK_PACKAGE / CONDITIONED_PROVENANCE_RESOURCE
+DEFAULT_FEED_PIN = _UK_PACKAGE / "chronicle_feed.json"
 VOA_BAND_MIX = "voa_council_tax_band_mix_lsoa.json"
 
 PROVENANCE_SCHEMA_VERSION = 1
 PROVENANCE_KIND = "uk_atomic_area_conditioned_supports_provenance"
 EW, SCOT, NI = SYSTEMS
 
-#: chronicle#412's raw-only registrations, as PR chronicle#413 pins them, and
-#: NRS's dwellings by 2022 data zone, registered with its total as facts.
+#: chronicle#412's raw-only registrations, as PR chronicle#413 pins them.
 SOURCES: dict[str, dict[str, str | int]] = {
     "nspl": {
         "chronicle_source_id": "ons",
@@ -143,24 +153,13 @@ SOURCES: dict[str, dict[str, str | int]] = {
         "publisher": "NISRA",
         "product": "NIMDM 2017 results by Super Output Area",
     },
-    "nrs_dz_dwellings": {
-        "chronicle_source_id": "nrs",
-        "chronicle_package_id": "nrs-dwellings-data-zone-2025",
-        "chronicle_year": 2025,
-        "filename": "dwelling-estimates-by-2022-data-zones-24-25.xlsx",
-        "url": "https://nrscotland.gov.uk/media/43tfx3zo/dwelling-estimates-by-2022-data-zones-24-25.xlsx",
-        "sha256": "5d61db5faf7e81451d838e5d394b8e0682bbf501341c1220aea4a78082ceb033",
-        "size_bytes": 1_223_284,
-        "publisher": "NRS",
-        "product": "Dwelling estimates by 2022 data zone, December 2024 and 2025",
-    },
 }
-#: The Chronicle commit that registers these files: chronicle#413's merge, which
-#: also carries the NRS registration. The supports were first built at #413's
-#: head; the file digests did not move.
+#: The Chronicle commit the UK feed pins: chronicle#421's merge, which emits
+#: NRS's band facts and registers these files as chronicle#413 did. The
+#: supports were first built at #413's head; the file digests did not move.
 CHRONICLE = {
-    "pull_request": "PolicyEngine/chronicle#413",
-    "commit": "c51f40d2bdaa66315dd63f334ede5790a8891e27",
+    "pull_request": "PolicyEngine/chronicle#421",
+    "commit": "80a3482905843d447f8811b500a56dbf3b5f47fa",
     "merged": True,
 }
 ISSUES = {
@@ -179,14 +178,15 @@ DECILE_VINTAGES = {EW: "2019_iod_wimd", SCOT: "2020v2_simd", NI: "2017_nimdm_soa
 BAND_VINTAGES = {EW: "2025_ctsop", SCOT: "2024_nrs_dz_dwellings"}
 #: Each area's parent for ties and areas without a residential postcode.
 PARENT_COLUMNS = {EW: "lsoa_code", SCOT: "lsoa_code", NI: "msoa_code"}
-#: NRS's December 2024 sheet: nearest the FRS 2024-25 year and VOA's stock at
-#: 31 March 2025. Its header is row 5.
-NRS_SHEET = "2024"
-NRS_HEADER_ROW = 4
+#: NRS's dwellings by council-tax band and 2022 data zone at December 2024
+#: (chronicle#421): nearest the FRS 2024-25 year and VOA's stock at 31 March
+#: 2025. Each zone carries its total and bands A to H.
+NRS_RECORD_SET = "nrs.dwellings_data_zone_2025.2024"
+NRS_PERIOD = ("calendar_year", "2024")
+NRS_ZONE_VINTAGE = "dz_2022"
 NRS_DATA_ZONES = 7_392
-NRS_ZONE_COLUMN = "Data Zone code"
-NRS_TOTAL_COLUMN = "Total number of dwellings"
-NRS_BAND_COLUMNS = {band.lower(): f"Council Tax band:\n{band}" for band in "ABCDEFGH"}
+NRS_TOTAL_CONCEPT = "nrs.dwellings_total"
+NRS_BAND_CONCEPTS = {f"nrs.dwellings_band_{band}": band for band in "abcdefgh"}
 
 NOTES = (
     "imd_decile is the 2019 vintage of each nation's index (IoD 2019, WIMD 2019, "
@@ -204,11 +204,11 @@ NOTES = (
     "6 dp ending at exactly 1), so households x share x 10^6 is exact. Scotland's read "
     "its 2022 data zone's dwellings by band, rounded half to even per band.",
     "Scotland's band mix is its 2022 data zone's, in which its 2022 output areas nest, "
-    "from NRS's December 2024 sheet: nearest the FRS 2024-25 year and VOA's stock at "
-    "31 March 2025. NRS counts dwellings on the valuation list, as VOA does in England "
-    "and Wales. Chronicle registers the workbook (nrs-dwellings-data-zone-2025) with "
-    "only its total as facts; until chronicle#419 adds the band columns, this tool "
-    "reads them from the registered bytes.",
+    "at December 2024: nearest the FRS 2024-25 year and VOA's stock at 31 March 2025. "
+    "NRS counts dwellings on the valuation list, as VOA does in England and Wales. "
+    "Chronicle emits the zones' totals and bands A to H as facts (record set "
+    "nrs.dwellings_data_zone_2025.2024, chronicle#421); this tool reads them from the "
+    "pinned UK feed and records their fingerprint.",
 )
 
 
@@ -228,10 +228,82 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--supports-dir", required=True, type=Path)
     parser.add_argument("--source-manifest", required=True, type=Path)
+    parser.add_argument(
+        "--ledger-facts",
+        required=True,
+        type=Path,
+        help="consumer_facts.jsonl of the pinned feed",
+    )
+    parser.add_argument(
+        "--ledger-manifest",
+        required=True,
+        type=Path,
+        help="manifest.json of the pinned feed",
+    )
+    parser.add_argument("--feed-pin", type=Path, default=DEFAULT_FEED_PIN)
     parser.add_argument("--out-dir", required=True, type=Path)
     parser.add_argument("--provenance-json", type=Path, default=_DEFAULT_PROVENANCE)
     parser.add_argument("--resource-dir", type=Path, default=_UK_PACKAGE)
     return parser.parse_args(argv)
+
+
+def _feed_identity(pin_path: Path, manifest_path: Path) -> dict[str, object]:
+    """The pin, after the manifest's bytes and its facts digest are checked."""
+
+    pin = json.loads(pin_path.read_text(encoding="utf-8"))
+    manifest_bytes = manifest_path.read_bytes()
+    if hashlib.sha256(manifest_bytes).hexdigest() != pin["manifest_sha256"]:
+        raise ValueError(
+            f"{manifest_path} is not the manifest uk/chronicle_feed.json pins."
+        )
+    if json.loads(manifest_bytes).get("facts_sha256") != pin["facts_sha256"]:
+        raise ValueError("The feed manifest names other facts than the pin.")
+    return {
+        key: pin[key]
+        for key in (
+            "source_commit",
+            "facts_sha256",
+            "manifest_sha256",
+            "fact_row_count",
+        )
+    }
+
+
+def _pinned_row_contracts(pin_path: Path) -> list[str]:
+    """The row contracts the feed pin lists, refusing a pin that lists none."""
+
+    versions = json.loads(pin_path.read_text(encoding="utf-8")).get(
+        "consumer_fact_schema_versions"
+    )
+    if not isinstance(versions, list) or not versions:
+        raise ValueError(
+            f"{pin_path} lists no consumer_fact_schema_versions for the feed's rows."
+        )
+    return versions
+
+
+def _read_feed(
+    path: Path, *, markers: tuple[bytes, ...], identity: Mapping[str, object]
+) -> list[dict]:
+    """Every row carrying a marker; the whole file's digest and rows are checked."""
+
+    digest = hashlib.sha256()
+    count = 0
+    facts = []
+    with path.open("rb") as stream:
+        for line in stream:
+            digest.update(line)
+            if line.strip():
+                count += 1
+            if any(marker in line for marker in markers):
+                facts.append(json.loads(line))
+    if digest.hexdigest() != identity["facts_sha256"]:
+        raise ValueError(f"{path} is not the feed uk/chronicle_feed.json pins.")
+    if count != identity["fact_row_count"]:
+        raise ValueError(
+            f"{path} carries {count} rows; the pin records {identity['fact_row_count']}."
+        )
+    return facts
 
 
 def _pinned_sources(path: Path) -> dict[str, Path]:
@@ -329,31 +401,82 @@ def _postcodes(path: Path) -> pd.DataFrame:
     return frame.loc[live, ["oa21cd", "imd20ind"]].reset_index(drop=True)
 
 
-def _nrs_band_counts(path: Path) -> dict[str, dict[str, int]]:
-    """Each 2022 data zone's dwellings by band a to h; bands must sum to its total."""
-    frame = pd.read_excel(path, sheet_name=NRS_SHEET, header=NRS_HEADER_ROW)
-    columns = [NRS_ZONE_COLUMN, NRS_TOTAL_COLUMN, *NRS_BAND_COLUMNS.values()]
-    missing = [column for column in columns if column not in frame.columns]
-    if missing:
-        raise ValueError(f"NRS sheet {NRS_SHEET} lacks columns {missing}.")
-    zones = frame.loc[
-        frame[NRS_ZONE_COLUMN].astype(str).str.fullmatch(r"S01\d{6}"), columns
-    ]
-    if len(zones) != NRS_DATA_ZONES or zones[NRS_ZONE_COLUMN].duplicated().any():
+def _nrs_band_counts(
+    facts: Iterable[Mapping],
+) -> tuple[dict[str, dict[str, int]], dict[str, object]]:
+    """Each 2022 data zone's dwellings by band a to h, and the facts' receipt.
+
+    Reads NRS's December 2024 record set only. Every row of it must be one
+    data zone's total or band, each zone must carry all nine once, and its
+    bands must sum to its total. The receipt fingerprints the counts read.
+    """
+    concepts = {NRS_TOTAL_CONCEPT: "total", **NRS_BAND_CONCEPTS}
+    cells: dict[str, dict[str, int]] = {}
+    files = set()
+    rows = 0
+    for fact in facts:
+        if (fact.get("layout") or {}).get("record_set_id") != NRS_RECORD_SET:
+            continue
+        rows += 1
+        geography = fact.get("geography") or {}
+        period = fact.get("period") or {}
+        zone = str(geography.get("id", ""))
+        # A feed row names its concept as the source measure it observes.
+        concept = (fact.get("observed_measure") or {}).get("source_concept")
+        key = concepts.get(concept)
+        if (
+            key is None
+            or geography.get("vintage") != NRS_ZONE_VINTAGE
+            or re.fullmatch(r"S01\d{6}", zone) is None
+            or (period.get("type"), str(period.get("value"))) != NRS_PERIOD
+        ):
+            raise ValueError(
+                f"NRS record set {NRS_RECORD_SET} carries a row that is not a data "
+                f"zone's December 2024 total or band: {zone} {concept}."
+            )
+        value = fact.get("value")
+        if (
+            isinstance(value, bool)
+            or not isinstance(value, (int, float))
+            or not math.isfinite(value)
+            or value < 0
+            or value != int(value)
+        ):
+            raise ValueError(f"NRS zone {zone} has a {key} that is not one count.")
+        if key in cells.setdefault(zone, {}):
+            raise ValueError(f"NRS zone {zone} carries its {key} twice.")
+        cells[zone][key] = int(value)
+        source = fact.get("source") or {}
+        files.add((source.get("source_file"), source.get("source_sha256")))
+    if len(cells) != NRS_DATA_ZONES:
         raise ValueError(
-            f"NRS sheet {NRS_SHEET}: {len(zones):,} data zones, "
+            f"NRS record set {NRS_RECORD_SET}: {len(cells):,} data zones, "
             f"expected {NRS_DATA_ZONES:,}."
         )
-    counts = zones[columns[1:]].apply(pd.to_numeric, errors="coerce").to_numpy(float)
-    if not np.all(np.isfinite(counts) & (counts >= 0) & (counts == np.floor(counts))):
-        raise ValueError(f"NRS sheet {NRS_SHEET} has a count that is not one count.")
-    counts = counts.astype(np.int64)
-    if not np.array_equal(counts[:, 1:].sum(axis=1), counts[:, 0]):
-        raise ValueError(f"NRS sheet {NRS_SHEET}: a zone's bands miss its total.")
-    return {
-        str(zone): dict(zip(NRS_BAND_COLUMNS, map(int, row[1:]), strict=True))
-        for zone, row in zip(zones[NRS_ZONE_COLUMN], counts, strict=True)
+    bands = tuple(NRS_BAND_CONCEPTS.values())
+    if any(set(row) != {"total", *bands} for row in cells.values()):
+        raise ValueError(f"NRS record set {NRS_RECORD_SET}: a zone lacks a band.")
+    if any(sum(row[band] for band in bands) != row["total"] for row in cells.values()):
+        raise ValueError(
+            f"NRS record set {NRS_RECORD_SET}: a zone's bands miss its total."
+        )
+    if len(files) != 1:
+        raise ValueError(
+            f"NRS record set {NRS_RECORD_SET} names {len(files)} source files."
+        )
+    ((source_file, source_sha256),) = files
+    canonical = json.dumps(cells, sort_keys=True, separators=(",", ":")).encode()
+    receipt = {
+        "record_set_id": NRS_RECORD_SET,
+        "period": dict(zip(("type", "value"), NRS_PERIOD, strict=True)),
+        "rows": rows,
+        "data_zones": len(cells),
+        "source_file": source_file,
+        "source_sha256": source_sha256,
+        "fingerprint_sha256": hashlib.sha256(canonical).hexdigest(),
     }
+    counts = {zone: {band: row[band] for band in bands} for zone, row in cells.items()}
+    return counts, receipt
 
 
 def decile_column(
@@ -441,7 +564,12 @@ def _source_tag(name: str) -> str:
     return f"{spec['chronicle_package_id']}@sha256:{spec['sha256']}"
 
 
-def _metadata(system: str, support, resources: Mapping[str, dict]) -> dict:
+def _metadata(
+    system: str,
+    support,
+    resources: Mapping[str, dict],
+    nrs_facts: Mapping[str, object],
+) -> dict:
     indices = "+".join(_source_tag(NATION_INDEX[p]) for p in NATION_PREFIXES[system])
     metadata = {
         IMD_DECILE_COLUMN: {
@@ -462,8 +590,11 @@ def _metadata(system: str, support, resources: Mapping[str, dict]) -> dict:
             )
             share = f"voa_ctsop1_1_2025_lsoa_band_{band}_share_6dp"
         else:
-            source = f"{_source_tag('nrs_dz_dwellings')}#sheet-{NRS_SHEET}"
-            share = f"nrs_dz2022_{NRS_SHEET}_band_{band}_share_round_half_even"
+            source = (
+                f"chronicle:{nrs_facts['record_set_id']}"
+                f"@sha256:{nrs_facts['fingerprint_sha256']}"
+            )
+            share = f"nrs_dz2022_{NRS_PERIOD[1]}_band_{band}_share_round_half_even"
         metadata[column] = {
             "kind": "weight",
             "source": source,
@@ -496,6 +627,7 @@ def condition_supports(
     voa_mix: Mapping,
     scotland_counts: Mapping[str, Mapping[str, int]],
     resources: Mapping[str, dict],
+    nrs_facts: Mapping[str, object],
 ) -> tuple[dict[str, bytes], dict[str, dict]]:
     """The three conditioned supports and each one's receipts."""
     payloads, entries = {}, {}
@@ -521,7 +653,7 @@ def condition_supports(
             base=base,
             imd_decile=decile,
             band_weights=weights,
-            column_metadata=_metadata(system, support, resources),
+            column_metadata=_metadata(system, support, resources, nrs_facts),
         )
         if uk_conditioned_support_base(payload) != base:
             raise ValueError(f"{system}: conditioned support does not extend its base.")
@@ -586,13 +718,24 @@ def main(argv: list[str] | None = None) -> None:
     _log("  reading the NSPL")
     postcodes = _postcodes(paths["nspl"])
     voa, resources = _resources(args.resource_dir)
+    identity = _feed_identity(args.feed_pin, args.ledger_manifest)
+    _log("  streaming the pinned feed")
+    facts = _read_feed(
+        args.ledger_facts, markers=(NRS_RECORD_SET.encode(),), identity=identity
+    )
+    require_uk_chronicle_feed_subset_row_contracts(
+        consumer_fact_schema_versions_of(facts),
+        pinned_versions=_pinned_row_contracts(args.feed_pin),
+    )
+    scotland_counts, nrs_facts = _nrs_band_counts(facts)
     payloads, entries = condition_supports(
         bases,
         postcodes,
         deciles,
         voa_mix=voa,
-        scotland_counts=_nrs_band_counts(paths["nrs_dz_dwellings"]),
+        scotland_counts=scotland_counts,
         resources=resources,
+        nrs_facts=nrs_facts,
     )
     args.out_dir.mkdir(parents=True, exist_ok=True)
     supports = {}
@@ -617,6 +760,8 @@ def main(argv: list[str] | None = None) -> None:
         "issues": ISSUES,
         "chronicle": CHRONICLE,
         "publisher_files": {name: dict(spec) for name, spec in SOURCES.items()},
+        "ledger_feed": identity,
+        "feed_facts": {"nrs_dwellings_by_band": nrs_facts},
         "resources": resources,
         "band_weight_scale": BAND_WEIGHT_SCALE,
         "supports": supports,
