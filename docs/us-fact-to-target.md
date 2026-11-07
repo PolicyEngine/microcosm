@@ -216,9 +216,9 @@ borrower is a person whose federal balance is positive.
   stage's draw does not read consolidation status. Since the Parent PLUS loan
   is paid off, FSA likely files the new loan under "Consolidation"; if so, its
   Parent PLUS row ($117.9B, 6.8% of the loan-type dollar rows) is a lower
-  bound on the stage's `federal_parent_plus_loan_balance`, which holds every
-  loan for a child's education, consolidated or not. That is an inference,
-  not FSA's statement. Every other family pins the total, so a target on
+  bound on the stage's `federal_parent_plus_loan_balance`, which holds the
+  balances the stage classifies as Parent PLUS, consolidated or not. That is
+  an inference, not FSA's statement. Every other family pins the total, so a target on
   either side of FSA's split (Parent PLUS, or every other loan type) would
   still constrain the split. Both rows stay diagnostic, and the receipt compares the host's
   Parent PLUS share with FSA's.
@@ -277,8 +277,8 @@ borrower is a person whose federal balance is positive.
   (`us_scf_education_debt_fit.json`), and at the weights it ships, on the
   frame it exports, before any post-export scoring or terminal gate
   (`us_scf_education_debt_calibrated_fit.json`). The second reports the share
-  of households with debt, by age, race and income quintile, that the FSA
-  family moved on the release's own support.
+  of households with debt, by age, race and income quintile, at the weights
+  the release ships.
 - **Known limits, measured.** The receipt
   (`experiments/1074-fsa-calibration-receipts.md`) refits the published
   default with and without the family. The stage gives balances to reference

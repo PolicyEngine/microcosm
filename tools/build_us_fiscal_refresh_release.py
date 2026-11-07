@@ -15396,7 +15396,7 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
     if args.scf_education_debt:
         # microcosm#1074: the stage's fit table at the weights the release
         # ships, before any scoring or terminal gate, so a build that binds
-        # the FSA family reports the borrower-household share it moved. It
+        # the FSA family reports the borrower-household share at those weights. It
         # follows the export and cleanup statements, which
         # test_us_post_export_scoring runs on their own.
         _write_us_scf_education_debt_fit(

@@ -28,10 +28,9 @@ Secretary pays off each loan that a Direct Consolidation Loan consolidates, and
 FSA's notes don't say whether its Parent PLUS row leaves those loans out. A
 consolidated Parent PLUS loan has been paid off, so FSA likely files the new
 loan under "Consolidation", and its Parent PLUS row would then be a lower bound
-on the stage's column, which holds every loan for a child's education,
-consolidated or not. That is an inference, not FSA's statement. Every other
-family pins the total, so a target on either side of FSA's split would still
-constrain the split.
+on the balances the stage classifies as Parent PLUS, consolidated or not.
+That is an inference, not FSA's statement. Every other family pins the total,
+so a target on either side of FSA's split would still constrain the split.
 
 Reference period. The build's period is the H5's (2024), but the balances are
 stocks that the student-debt analysis reads as they stand (its reference year
@@ -277,7 +276,7 @@ _REASON_LOAN_TYPE_RECIPIENTS = (
 _REASON_LOAN_TYPE_DOLLARS = (
     "FSA's notes don't say whether its Parent PLUS row leaves out loans the Secretary "
     "paid off through consolidation (34 CFR 685.220(f)), the stage's column holds "
-    "every loan for a child's education, and every other family pins the total."
+    "the balances it classifies as Parent PLUS, and every other family pins the total."
 )
 _REASON_STAFFORD_SUBTOTAL = (
     "Stafford (Combined) is a subtotal of rows the table already lists."
