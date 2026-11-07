@@ -468,16 +468,17 @@ def test_recipient_predictors_fail_loud_on_entity_mismatch() -> None:
         recipient_predictors(_frame(), _WrongEntityEngine())
 
 
-def test_household_income_is_the_survey_concept_on_both_sides() -> None:
-    """Donor and recipient read household net income on HBAI's concept.
+def test_household_income_is_the_engine_hbai_income_under_one_name() -> None:
+    """The recipient reads the engine's closest concept to the donor's income.
 
     The donor's ``DVTotinc_bhcR8`` (net income before housing costs, less
     council tax) and the recipient's HBAI net income before the reset to zero
     both carry the predictor name ``household_income`` gives that income, the
-    one the LCFS, ETB services and NTS stages read (microcosm#1164). The
-    engine's ``household_net_income``, which also takes off taxes and adds
-    benefits in kind the survey's income leaves out, is never read
-    (microcosm#931).
+    name the LCFS and ETB services stages give it; NTS reads the same engine
+    variable to build gross income (microcosm#1164). The engine's
+    ``household_net_income``, which also takes off taxes the survey's income
+    leaves out and adds the imputed value of NHS, education and transport
+    spending, is never read (microcosm#931).
     """
 
     import microcosm.build.uk_runtime.was_wealth as module
