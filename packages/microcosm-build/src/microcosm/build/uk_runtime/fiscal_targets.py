@@ -1,12 +1,12 @@
 """UK fiscal target coverage declarations.
 
-The UK national calibration surface is currently ingested from
-policyengine-uk-data via :func:`microcosm.calibrate.specs_from_pe_surface`, whose
-docstring calls that "the transitional path from harness-extracted surfaces to
-declared facts". This module starts the declared-fact side for the UK, following
+UK national targets compile at build time from ``uk/target_references.json``,
+the Ledger target references generated from the national rows of
+``uk/uk_population_targets.json``. This module declares the coverage requirement
+and the prepared columns for the capital gains facts among them, following
 ``us_runtime.fiscal_targets``.
 
-The first facts declared here are capital gains, because their absence is
+Capital gains carry a coverage requirement because their absence is
 measurable. The published ``populace-uk`` release (``populace-uk-2023-dd68c73``)
 carries 149 targets and none of them constrain capital gains, so the calibrated
 weights leave the gains distribution unanchored: reading ``capital_gains``
