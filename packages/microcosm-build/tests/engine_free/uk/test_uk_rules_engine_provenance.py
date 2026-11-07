@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+from types import SimpleNamespace
 
 import pytest
 
@@ -160,44 +161,56 @@ def test_a_missing_engine_still_records_unavailable(
 class _BatchingEngine:
     def __init__(self, record: dict | None) -> None:
         self.record = record
+        self.frames: list = []
 
-    def batch_record(self) -> dict | None:
+    def batch_record(self, frame) -> dict | None:
+        self.frames.append(frame)
         return self.record
 
 
 _BATCHES = {
     "by": "household_clone_index",
-    "batched_calls": 3,
-    "batches": [15],
+    "batches": 15,
     "pass": "spine_batched",
     "declaration_sha256": "ab" * 32,
 }
 
 
-def _sidecar(engine: object | None) -> dict:
+def _final_frame(clones: tuple[int, ...] | None = None):
+    """A made-up final spine frame: one household per clone, or two
+    households without the clone index."""
+
     import pandas as pd
 
     from microcosm.build.uk_runtime.national_frame import uk_national_frame
     from microcosm.frame import WeightKind
 
-    frame = uk_national_frame(
+    households = 2 if clones is None else len(clones)
+    ids = list(range(1, households + 1))
+    household = pd.DataFrame(
+        {"household_id": ids, "household_weight": [1.0 + i for i in ids]}
+    )
+    if clones is not None:
+        household["household_clone_index"] = list(clones)
+    return uk_national_frame(
         person=pd.DataFrame(
             {
-                "person_id": [1, 2],
-                "person_benunit_id": [1, 2],
-                "person_household_id": [1, 2],
-                "age": [30.0, 40.0],
+                "person_id": ids,
+                "person_benunit_id": ids,
+                "person_household_id": ids,
+                "age": [30.0 + i for i in ids],
             }
         ),
-        benunit=pd.DataFrame({"benunit_id": [1, 2]}),
-        household=pd.DataFrame(
-            {"household_id": [1, 2], "household_weight": [1.0, 2.0]}
-        ),
+        benunit=pd.DataFrame({"benunit_id": ids}),
+        household=household,
         time_period=2023,
         weight_kind=WeightKind.DESIGN,
     )
+
+
+def _sidecar(engine: object | None, frame=None) -> dict:
     return spine_build._build_sidecar(
-        frame=frame,
+        frame=_final_frame() if frame is None else frame,
         stages=[],
         records=[],
         artifact_pins={},
@@ -211,24 +224,78 @@ def _sidecar(engine: object | None) -> dict:
     )
 
 
-def test_the_sidecar_records_batches_only_once_a_call_batched(
+def test_the_sidecar_records_batches_only_for_a_final_frame_that_batches(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     # National never batches, and today no spine frame carries the clone
-    # index, so the sidecar's rules engine stays the provenance; a spine whose
-    # calls ran clone by clone adds how (microcosm#931).
+    # index, so the sidecar's rules engine stays the provenance; a spine
+    # whose final frame carries more than one clone adds how the adapter runs
+    # a call over it (microcosm#931).
     _install(monkeypatch, None)
     provenance = spine_build._rules_engine_provenance()
+    frame = _final_frame()
     for engine in (None, object(), _BatchingEngine(None)):
-        assert spine_build._rules_engine_record(engine) == provenance
-        assert _sidecar(engine)["rules_engine"] == provenance
+        assert spine_build._rules_engine_record(engine, frame) == provenance
+        assert _sidecar(engine, frame)["rules_engine"] == provenance
     batched = _BatchingEngine(dict(_BATCHES))
-    assert spine_build._rules_engine_record(batched) == {
+    assert spine_build._rules_engine_record(batched, frame) == {
         **provenance,
         "engine_batches": _BATCHES,
     }
-    assert _sidecar(batched)["rules_engine"]["engine_batches"] == _BATCHES
+    assert _sidecar(batched, frame)["rules_engine"]["engine_batches"] == _BATCHES
+    # The record is asked of the final frame the sidecar describes.
+    assert batched.frames == [frame, frame]
     # The engine identity is hashed from the provenance alone.
     assert _identity(spine_build._rules_engine_provenance()) == _identity(
         {"package": "policyengine-uk", "version": VERSION}
     )
+
+
+def test_a_resumed_spine_records_the_batches_a_fresh_run_does(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # A resumed spine's engine stages that hit their checkpoints run no call,
+    # so the record is read from the final frame, never from the calls this
+    # process ran: an adapter that ran a batched call and one that ran none
+    # (every engine stage a cache hit) write the same sidecar (microcosm#931).
+    import numpy as np
+
+    from microcosm.frame.adapters import policyengine_uk as adapter_module
+    from microcosm.frame.adapters.engine_population import SPINE_BATCHED_PASS
+    from microcosm.frame.adapters.policyengine_uk import PolicyEngineUKEngine
+    from microcosm.frame.adapters.policyengine_uk_population import (
+        UK_ENGINE_POPULATION,
+        UK_SPINE_ENGINE_BATCH_COLUMN,
+    )
+
+    _install(monkeypatch, None)
+    frame = _final_frame((0, 1, 2))
+    monkeypatch.setattr(
+        adapter_module,
+        "materialize_in_batches",
+        lambda bundle, variables, period, **kwargs: {
+            name: np.zeros(bundle.n("person")) for name in variables
+        },
+    )
+    fresh, ran = PolicyEngineUKEngine(), PolicyEngineUKEngine()
+    for engine in (fresh, ran):
+        monkeypatch.setattr(
+            engine,
+            "_import_policyengine_uk",
+            lambda: SimpleNamespace(Microsimulation=None),
+        )
+    ran.materialize(frame, ["age"], 2023)
+    expected = {
+        **spine_build._rules_engine_provenance(),
+        "engine_batches": {
+            "by": UK_SPINE_ENGINE_BATCH_COLUMN,
+            "batches": 3,
+            "pass": SPINE_BATCHED_PASS.name,
+            "declaration_sha256": UK_ENGINE_POPULATION.sha256,
+        },
+    }
+    assert _sidecar(fresh, frame)["rules_engine"] == expected
+    assert _sidecar(ran, frame)["rules_engine"] == expected
+    # One clone, or no clone index (a national spine), records no batches.
+    for final in (_final_frame((0,)), _final_frame()):
+        assert "engine_batches" not in _sidecar(fresh, final)["rules_engine"]
