@@ -35,9 +35,13 @@ from microcosm.build.uk_runtime.cgt_structure import (
     pair_clone_households,
     reporter_composition_quantiles,
 )
+from microcosm.build.uk_runtime.copy_id_table import radix
 from microcosm.build.uk_runtime.national_frame import uk_national_frame
-from microcosm.build.uk_runtime.rowwise_geography import id_multiplier_for_values
 from microcosm.frame import MassChangeRecord, WeightKind
+from test_support.microcosm_build.uk_cgt_support import support_frame
+from test_support.microcosm_build.uk_clone_first_frames import (
+    assert_copy_ids_follow_lineage,
+)
 
 
 def _distribution(*, negative: bool = False) -> dict[str, object]:
@@ -156,8 +160,33 @@ def test_clone_splits_exact_mass_and_uses_oldest_adult_carriers() -> None:
         == 1
     )
     assert result.carrier_count == 2
-    assert result.negative_prior_count == 1
+    # The priors key on each twin's own person_id, minted at the copy-id
+    # table's cgt_incidence_clone radix (microcosm#931); the receipt counts
+    # the negative ones the draw kept.
+    assert result.negative_prior_count == int((gainers.capital_gains < 0.0).sum())
     assert (gainers.capital_gains < 0.0).any()
+
+
+def test_twins_take_their_originals_ids_plus_the_declared_radix() -> None:
+    # Originals come from the input by lineage (each household's council tax
+    # is its own here), never from the twin's id: every id column of a twin
+    # sits at its original's plus 10**17 (microcosm#931).
+    frame = support_frame(
+        weights=[10.0, 20.0, 30.0],
+        wealth=[0.0, 0.0, 0.0],
+        incomes=[20_000.0, 40_000.0, 60_000.0],
+        ages=[(45,), (50, 30, 8), (60, 58)],
+        benunits=[(0,), (0, 1, 1), (0, 1)],
+    )
+    result = clone_cgt_incidence(frame, distribution=_distribution())
+
+    checked = assert_copy_ids_follow_lineage(
+        frame,
+        result.frame,
+        field="cgt_incidence_clone",
+        key_columns=("council_tax",),
+    )
+    assert checked == 3
 
 
 def test_prior_spline_keeps_negative_values_and_extrapolates_linearly() -> None:
@@ -326,13 +355,9 @@ def _anchor_input(
     full_pattern = list(pattern)
     mass_log: tuple[MassChangeRecord, ...] = ()
     if support_copies:
-        multiplier = id_multiplier_for_values(
-            person["person_id"],
-            person["person_household_id"],
-            person["person_benunit_id"],
-            benunit["benunit_id"],
-            household["household_id"],
-        )
+        # The support split's copies, as the stage mints them: copy k at k
+        # times the copy-id table's cgt_support_split radix (microcosm#931).
+        multiplier = radix("cgt_support_split")
         family = SUPPORT_COPY_COUNT + 1
         old_total = float(source_weights.sum())
         source_weights[0] = source_weights[0] / family
@@ -417,8 +442,12 @@ def test_pairing_is_a_bijection_and_pairs_support_copies_with_their_clones() -> 
         person, benunit, household
     )
 
-    # The split copies' ids (1 + k x 100) push the clone multiplier to 1,000.
-    assert multiplier == 1_000
+    # The twin's radix is declared (microcosm#931): the split copies' largest
+    # ordinal has one digit, so ten to the frame's digit count (10**14) would
+    # miss every original, and the pairing still finds each one.
+    assert multiplier == radix("cgt_incidence_clone") == 10**17
+    originals = household.loc[~household[HOUSEHOLD_IS_CGT_CLONE], "household_id"]
+    assert 10 ** len(str(int(originals.max()))) == 10**14
     assert len(clone_positions) == len(ANCHOR_PATTERN) + SUPPORT_COPY_COUNT
     ids = household["household_id"].to_numpy()
     assert (ids[clone_positions] - multiplier == ids[original_positions]).all()

@@ -9,18 +9,18 @@
     "services_including_wages": 67.81449346944132
   },
   "expenses": {
-    "all": 35559.82465181411,
-    "individual": 35204.226405295965,
-    "partnership": 355.59824651814415
+    "all": 32757.922728603626,
+    "individual": 32430.343501317588,
+    "partnership": 327.5792272860381
   },
   "expenses_by_type": {
-    "legal_management_and_professional_fees": 4256.9459151524225,
-    "non_residential_finance_costs": 1360.994727680943,
-    "other_allowable_expenses": 4686.7337238937735,
-    "rent_rates_and_insurance": 3898.789407867964,
-    "repairs_and_maintenance": 6559.3806048382285,
-    "residential_finance_costs": 13118.761209676457,
-    "services_including_wages": 1678.2190627043205
+    "legal_management_and_professional_fees": 3921.52398707888,
+    "non_residential_finance_costs": 1253.756467022815,
+    "other_allowable_expenses": 4317.44708192819,
+    "rent_rates_and_insurance": 3591.588074704455,
+    "repairs_and_maintenance": 6042.540566628755,
+    "residential_finance_costs": 12085.08113325751,
+    "services_including_wages": 1545.98541798302
   },
   "landlords": {
     "all": 135.62898693888263,
@@ -28,9 +28,9 @@
     "partnership": 1.3562898693888314
   },
   "receipts": {
-    "all": 56895.71944290258,
-    "individual": 56326.76224847355,
-    "partnership": 568.9571944290292
+    "all": 52412.6763657658,
+    "individual": 51888.54960210814,
+    "partnership": 524.1267636576595
   },
   "receipts_bands": [
     {

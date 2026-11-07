@@ -8527,6 +8527,7 @@
       "count",
       "draw",
       "flag_column",
+      "id_remapping",
       "seed"
      ],
      "properties": {
@@ -8537,6 +8538,9 @@
        "type": "integer"
       },
       "draw": {
+       "type": "string"
+      },
+      "id_remapping": {
        "type": "string"
       },
       "flag_column": {
@@ -10955,6 +10959,7 @@
       "seed",
       "salt",
       "clone_index",
+      "id_remapping",
       "flag_column",
       "band_column",
       "carrier_column",
@@ -11033,6 +11038,9 @@
       },
       "clone_index": {
        "type": "integer"
+      },
+      "id_remapping": {
+       "type": "string"
       },
       "flag_column": {
        "type": "string"

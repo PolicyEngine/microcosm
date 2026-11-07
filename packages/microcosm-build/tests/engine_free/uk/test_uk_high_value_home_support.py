@@ -17,6 +17,9 @@ from microcosm.build.uk_runtime.national_frame import uk_national_frame
 from microcosm.build.uk_runtime.property_localisation import SUPPORT_STRATUM_LOWER
 from microcosm.build.uk_runtime.stage_health import uk_stage_health_gate
 from microcosm.frame import WeightKind
+from test_support.microcosm_build.uk_clone_first_frames import (
+    assert_copy_ids_follow_lineage,
+)
 
 
 def _frame(n: int = 40):
@@ -116,6 +119,40 @@ def test_split_copies_whole_households_and_conserves_mass() -> None:
     assert branches == {(("high_value_support", 1),), (("high_value_support", 2),)}
     with pytest.raises(ValueError, match="already ran"):
         hv.split_high_value_support_households(out)
+
+
+def test_copies_take_their_roots_ids_plus_k_times_the_declared_radix() -> None:
+    # Roots come from the input by lineage, never from the copy's id: every
+    # id column of copy k sits at its root's plus k x 10**12 (microcosm#931).
+    frame = _frame()
+    result = hv.split_high_value_support_households(frame, stratum_lower=0.9)
+
+    checked = assert_copy_ids_follow_lineage(
+        frame,
+        result.frame,
+        field=hv.HIGH_VALUE_SUPPORT_COPY_ID_FIELD,
+        key_columns=("source_household_id",),
+        ordinal_column=HIGH_VALUE_SUPPORT_INDEX_COLUMN,
+    )
+    assert checked == result.copies_created == 4 * (hv.HIGH_VALUE_SUPPORT_COPIES - 1)
+
+
+def test_the_split_refuses_incoming_ids_at_its_copy_id_radix() -> None:
+    frame = _frame()
+    household = frame.table("household").copy()
+    person = frame.table("person").copy()
+    household.loc[household.index[-1], "household_id"] = 10**12 + 40
+    person.loc[person.index[-1], "person_household_id"] = 10**12 + 40
+    shifted = uk_national_frame(
+        person=person,
+        benunit=frame.table("benunit"),
+        household=household,
+        time_period="2024",
+        weight_kind=WeightKind.IMPORTANCE,
+        household_weights=frame.weights_for("household").values,
+    )
+    with pytest.raises(ValueError, match=r"^1 of the incoming person_household_id"):
+        hv.split_high_value_support_households(shifted)
 
 
 def test_evidence_matches_the_gate_and_the_committed_declaration() -> None:
