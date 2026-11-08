@@ -195,7 +195,7 @@ EXPECTED_RUNGS = [
 
 LEGACY_COMPATIBILITY_SHA256 = {
     "source_stages.json": (
-        "d11d99fdb310e8f983e2bd8f81db6b2145d884d735284145794aa6b4e071d72c"
+        "17cf0c2e0039c85f670b1ce9c325e9d90eca5d76be6f7c712433083ee72d8e8a"
     ),
     "support_spine.json": (
         "68f37dc6ae6e0cde7ebccb53f88dd4a800e63456f838fa214ff98d1db8d815be"

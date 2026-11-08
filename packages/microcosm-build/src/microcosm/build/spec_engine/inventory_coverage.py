@@ -351,12 +351,12 @@ EXPECTED_HASHES = {
     "acs_person_predictors": "878c788a6f037d7aca12b3586ea034eff04f3034ffa11935a736493042551f25",
     "authority": "b9ce079f1f8c76436d92f0adfa92757c3317c0e321a62f088a0dfd19a01e9fbe",
     "early_families": "4aa9f736fd76e83955477ad1667e58f48f264783f05bdc7f0102cd32d61323bd",
-    "full_checkpoint": "087f5caccf3662d4d2fc4b03e27cae593245a125fd1d36e6965e2dbf2f571008",
+    "full_checkpoint": "451ed2931109fa658204919613681c0801b4c8aeb7c9edd0ded8350c11c20194",
     "gap_fill_schedule": "1c31f9868f7884347cc19cf1ff65da43f950b9114941a715bab168246db414a7",
     "graph_nodes": "584ae6d4e01bd3b5da31e76cabf740798e331f1d5bb8082732a7426c32bcdf7b",
     "geography_assignment": "44e7f5f6cd7ceeef85d532c3d46306d03de4f4ee811376e6d29920742746b65c",
     "late_families": "e9c7ab7019ee115a0dd700a182f41a020df4a47f7acd6bd6d53a22d21a415d00",
-    "late_resource_semantics": "a96358962542ad09f3c1e94b256897ef4e9d902c1a7b7302b5b8ae6b291e3fee",
+    "late_resource_semantics": "f7ab2d1d2e5c68410c224a1193426bcb2075e770f5bc769f9dfdfd41bb93d162",
     "late_schedule": "3b9801f845400e77aaef28f1d4315b8a329f159ff3fade66255ce9a35b9c6bdc",
     "ownership": "5f64f0aac49e2313177564f71876bffc8c81b3ded4df701e70930e60e9c98356",
     "primary_tuples": "6655e37f15befe053f8de2583c216f97098e4c2bde526f315299c2858c97f055",
@@ -383,11 +383,11 @@ EXPECTED_HASHES = {
     # S-corp line-32 shares as separate leaves. microcosm#776 moves both
     # again: the immigration stage's arrival-year draw joins the protocol
     # as the immigration_arrival_year_draw site.
-    "seed_map": "4db18a3a4807145fc1ac6e437c649c5da6cdb0995d966884463c215d6fdc9e3d",
-    "seed_protocol": "897893142e36459da5e7baa4ed481bbac8f813940b210443e5deb1dec27dd275",
-    "source_manifest": "c0bc66a5b13ce36943e486b224c0175ab27729a0879d5bbf08dc99bc6faeea55",
+    "seed_map": "973d058a896a1196d437602e4f684f82d8de59f93a05ee778472f6c143ee357a",
+    "seed_protocol": "c6df821ce6e8fcd2646726159b52b4425b4dcf8133ed59e23013e4532443b667",
+    "source_manifest": "ee208024a8be0e5f4f0094c76230ff53cc84a6cc662e14bd58bd8f653881f673",
     "take_up": "9522ce40f7dea569312dd7a7beb474e5a5afadd2f1e10cb5876534c3ef623d35",
-    "tail": "071d418bb49976f4682c320d2ad07097c177de3a645d2524f235e1ff33ac83f9",
+    "tail": "565f0ceeadab69d3e96a886a00dd0305f7425fa3acde24d12ba48db2b37d5fc0",
 }
 
 INVENTORY_REPORT_SCHEMA_VERSION = 1
@@ -457,7 +457,7 @@ EXPECTED_INVENTORY_COUNTS: Mapping[str, int] = {
     "producer_nodes": 38,
     "producer_virtual_resources": 75,
     "release_rungs": 5,
-    "resolved_references": 336,
+    "resolved_references": 338,
     "seed_owner_bindings": 113,
     "seed_owner_rows": 54,
     "seed_sites": 54,
@@ -467,7 +467,7 @@ EXPECTED_INVENTORY_COUNTS: Mapping[str, int] = {
     "stacked_checkpoint_full_components": 13,
     "stacked_checkpoint_pool_code_components": 19,
     "stacked_checkpoint_static_components": 10,
-    "tail_control_fields": 938,
+    "tail_control_fields": 942,
     "take_up_pipeline_steps": 28,
     "take_up_programs": 17,
     "typed_artifacts": 84,
@@ -1435,7 +1435,7 @@ def build_inventory_coverage(
     add(
         "capital_gains_tail_contract_exact",
         clauses={
-            "tail terminal field count differs": tail_count == 938,
+            "tail terminal field count differs": tail_count == 942,
             "resolved calibration tails differ": _json_equal(
                 legacy.get("calibration_tail_contracts"),
                 expected_legacy["calibration_tail_contracts"],
@@ -1463,7 +1463,7 @@ def build_inventory_coverage(
             "legacy_adapter.stacked_checkpoint_static_components",
         ),
         observed={"terminal_fields": tail_count, "sha256": sha256_json(tail_bundle)},
-        expected={"terminal_fields": 938, "sha256": EXPECTED_HASHES["tail"]},
+        expected={"terminal_fields": 942, "sha256": EXPECTED_HASHES["tail"]},
     )
 
     add(

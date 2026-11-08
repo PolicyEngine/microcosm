@@ -63,7 +63,7 @@ change:
 ```bash
 uv tool install microcosm-emitter   # once per machine
 uv tool upgrade microcosm-emitter   # to take a new release
-microcosm-emitter version           # the installed release; builds need 0.11.9 or later
+microcosm-emitter version           # the installed release; builds need 0.13.0 or later
 ```
 
 The build finds the `microcosm-emitter` command through
@@ -76,15 +76,20 @@ no remote staging, and queues no Orrery graph publication; a UK build given
 its dataset bundle remotely, as it is by default, is refused before it
 starts, since the emitter uploads the bundle. Before it starts the emitter,
 the build reads its version from `microcosm-emitter version` and does not
-start one older than 0.11.9. Releases before 0.10.0 send telemetry to the
+start one older than 0.13.0, the release that added `microcosm-emitter
+status`, which the US Modal stage runner runs after each stage to record how
+many telemetry events the stage's emitter left undelivered. The release is
+written once, in `packages/microcosm-build/src/microcosm/build/minimum_emitter_version.json`,
+which builds read as package data and the Modal image's install step reads
+from the launching checkout. Releases before 0.10.0 send telemetry to the
 collector's Cloud Run address, which changes when the collector moves to
 another Google Cloud project; from 0.10.0 on, releases send to the
-collector's hostname, which stays the same. 0.10.0 would be enough for that;
-0.11.9 was the newest release when practically no machine ran the emitter
-yet, so requiring it cost nothing (see
+collector's hostname, which stays the same. 0.13.0 was the newest release
+when practically no machine ran the emitter yet, so requiring it cost
+nothing (see
 [graph publication](docs/orrery-publication.md#emitter-dependency)). The
 build prints the installed and required versions, what it loses and the
-upgrade command, `uv tool install --upgrade 'microcosm-emitter>=0.11.9'`,
+upgrade command, `uv tool install --upgrade 'microcosm-emitter>=0.13.0'`,
 and continues as it does without the command. `uv tool upgrade` keeps any
 version constraint given at install time, such as `==0.7.0`; that
 `uv tool install --upgrade` command replaces it. Microcosm supplies build
@@ -94,6 +99,40 @@ The telemetry module reports live progress to the hosted collector when the
 operator's Hugging Face login is accepted; otherwise it retains the events
 locally and the build continues. This live event path is independent of the
 staging run files described below.
+
+A build that must send telemetry runs with `MICROCOSM_TELEMETRY_REQUIRED=1`.
+Only builds that start the emitter adapter read it: the UK full build, the
+UK spine build, the US fiscal refresh build and the three registered US
+Modal programs (`build_us_acs_local_release.py`,
+`build_us_puf_support_base.py`, `build_us_acs_multispine_base.py`), which
+record each of their stages. Every other build ignores it. A build that
+reads it stops with
+`TelemetryRequiredError` when it starts its emitter, before doing any work,
+if the emitter cannot be prepared or is missing, its
+`microcosm-emitter version` times out or fails, it is older than the
+minimum, it lists no protocol version 1, its `hello` fails, it exits or
+times out before it is ready, or it starts without its telemetry module.
+Every emitter a build starts (0.13.0 and later, the minimum) reads a given
+collector token, and exits at that point when the collector-token
+variables it inherits (`MICROCOSM_COLLECTOR_TOKEN`,
+`MICROCOSM_COLLECTOR_TOKEN_EXPIRES_AT`, `MICROCOSM_COLLECTOR_ORIGIN`) are set
+only in part, cannot be read, or name another collector; with none of them
+set, the emitter uses the Hugging Face credential. Whether the collector
+later accepts the credential is not visible to the build. For a failure the
+interface reports itself, interface 0.7.0 first prints its own line saying
+the build will continue; the error that follows says that line does not
+apply. Unset or `0`, a build continues without the emitter as above; any
+other value stops it with a `ValueError`. Leaving the requirement off
+(unset or `0`) exists only for the convenience of people outside
+PolicyEngine who run Microcosm without access to the collector;
+PolicyEngine's own builds keep telemetry required. The Modal stage runner
+sets it to `1` for the stage it runs, unless the plan sets `0`, and passes
+that stage a telemetry-only collector token. It also names the stage's
+telemetry run, `MICROCOSM_TELEMETRY_RUN_ID=<plan run_id>.<stage>`, so every
+attempt of a stage reports under one run; started by hand, the US programs
+make their own attempt ID (see
+[the Modal stage runbook](docs/us-modal-stage-runbook.md#how-a-run-works),
+item 6).
 
 US fiscal refresh builds also write pre-release staging run files **by
 default**. The build hands its progress JSON to the emitter, which commits it
@@ -442,6 +481,41 @@ cut for inspection with `--no-latest --tag-name <cut-tag>`, then promote the
 reviewed cut with `--promote-line <line> --tag-name <cut-tag>`. Promotion moves
 only that line pointer; the UK repository-global `latest.json` remains frozen
 on the June 2023 release. Promotion reuses the immutable cut tag the inspect publication created (it checks the tagged manifest is byte-identical) and writes only the pointer commit, so the two-step sequence and a retry after a failed pointer commit both work. A line's registry entry is registered off the default variant until its first promotion; the default flips in a follow-up after the pointer exists.
+
+**Build folders, after a repository's switch.** A UK national, dense or
+local-area build can also be published into its own folder,
+`releases/<release>/<build>/`, through the separately installed emitter,
+whose release writer records it in the repository's `releases.json`, the
+only record of each release's builds and which one is current:
+
+```bash
+uv run microcosm-publish-release-build releases/<release> \
+  --repo-id <owner/repository> --artifact-root <candidate-dir> [--make-current]
+uv run microcosm-publish-release-build releases/<release> --promote
+```
+
+A build counts as current only when the emitter's receipt is `published` and
+names it as `current`. Each path refuses a repository in the other's layout,
+so the UK national, dense and local-area releases always have one way to
+change their current build:
+
+- `microcosm-publish-release-build` lists the repository's files and refuses,
+  before any emitter starts, while any `latest*.json` pointer file is there.
+  It also refuses with `HF_HUB_OFFLINE` or `TRANSFORMERS_OFFLINE` set, and
+  hands nothing over unless the emitter's write-access check passes.
+- `microcosm-publish-release` (and `tools/publish_release.sh`) refuses a
+  repository that has `releases.json`.
+
+So UK releases keep publishing, promoting and sending their Slack alerts
+through the pointer files, as above, until their repository's switch, one
+commit that writes `releases.json` and deletes the pointer files. Release
+alerts do not stop: the switch waits until the dashboard posts them from
+changes to `releases.json`. `microcosm.data.load` reads a release's current
+build from `releases.json` where the repository has one, and follows its
+pointer file otherwise. The UK repository's other releases, the June 2023
+release (whose pointer is `latest.json`) and `populace-uk-<year>-<tier>-k<N>`
+releases, have no publication path after its switch yet; that is open for
+the switch.
 
 The publisher uploads only the contract files, the release manifest's
 artifacts and any `--extra-file`. The US fiscal-refresh tool therefore binds

@@ -292,6 +292,7 @@ def _fixture_tables() -> dict[str, list[dict[str, object]]]:
         "CONVBL": 2,
         "MJOBSECT": 1,
         "SIC": 84,
+        "SOC2020": 4000,
         "FTED": 2,
         "TYPEED2": 0,
         "EDUCQUAL": 17,
@@ -3982,6 +3983,7 @@ def test_input_artifact_pins_bind_spi_donor_and_ods() -> None:
     pins = tool._input_artifact_pins(stages)
 
     assert set(pins) == {
+        "aps_person_tab",
         "etb_household_tab",
         "lcfs_household_tab",
         "lcfs_person_tab",
@@ -3990,6 +3992,7 @@ def test_input_artifact_pins_bind_spi_donor_and_ods() -> None:
         "nts_trip_tab",
         "nts_stage_tab",
         "nts_ticket_tab",
+        "nts_vehicle_tab",
         "published_fact_surface",
         "qrf_donor",
         "was_person_tab",
@@ -4012,6 +4015,7 @@ def test_input_artifact_pins_bind_spi_donor_and_ods() -> None:
             "lcfs_consumption",
             "etb_vat",
             "etb_services",
+            "aps_occupation",
             "hmrc_spi_income_spine",
             "hmrc_cgt_gains_spine",
         )
@@ -4071,6 +4075,10 @@ def test_e8_manifest_seeds_all_reach_the_build_sidecar_harvester() -> None:
         "student_loan_plan_5": 42,
         "student_loan_plan_2": 42,
     }
+    # microcosm#1490: the employment shell's keyed draws under its stage name,
+    # the APS draw under the column it writes.
+    assert declared["spi_employment_shell"] == {"spi_employment_shell": 0}
+    assert declared["aps_occupation"] == {"soc2020_sub_major_group": 0}
 
 
 def test_spine_sidecar_collects_stage_evidence_by_duck_type() -> None:
@@ -4811,3 +4819,51 @@ def test_collect_fit_weight_records_sees_through_the_run_proxies():
     expected = [{"fit_name": "uk_was_2018_20_wealth:savings", "weight_kind": "design"}]
     assert records == {"was_wealth": expected, "etb_vat": expected}
     assert "frs_spine" not in records
+
+
+def test_a_spine_build_that_must_send_telemetry_stops_before_any_input_without_an_emitter(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """MICROCOSM_TELEMETRY_REQUIRED=1 and no emitter: the spine build stops first.
+
+    It starts its emitter right after reading its arguments, so with the real
+    adapter (not the shared fixture's in-memory one) it stops before it
+    resolves its Logbook predecessor, reads an input or writes anything.
+    """
+    from microcosm.build import telemetry_emitter
+    from microcosm.build.uk_runtime import spine_build
+    from test_support.microcosm_build.telemetry import ADAPTER_START
+
+    monkeypatch.setattr(
+        telemetry_emitter.LocalTelemetryEmitter, "start", classmethod(ADAPTER_START)
+    )
+    monkeypatch.setenv("MICROCOSM_TELEMETRY_REQUIRED", "1")
+    monkeypatch.setenv(
+        "MICROCOSM_EMITTER_COMMAND", str(tmp_path / "missing" / "microcosm-emitter")
+    )
+
+    def went_on(*args, **kwargs):
+        pytest.fail("the build went on without the emitter it must use")
+
+    # The build's first step after starting its emitter.
+    monkeypatch.setattr(spine_build, "resolve_predecessor", went_on)
+    raw_dir = tmp_path / "raw"
+    raw_dir.mkdir()
+
+    with pytest.raises(telemetry_emitter.TelemetryRequiredError) as raised:
+        spine_build.main(
+            [
+                "--frs-raw-dir",
+                str(raw_dir),
+                "--spine-h5",
+                str(tmp_path / "out" / "spine.h5"),
+                "--spi-tab",
+                str(tmp_path / "put2223uk.tab"),
+                "--hmrc-ods",
+                str(tmp_path / "Collated_Tables_3_1_to_3_11_2324.ods"),
+                "--no-staging",
+            ]
+        )
+
+    assert raised.value.reason == "command_not_found"
+    assert sorted(path.name for path in tmp_path.iterdir()) == ["raw"]

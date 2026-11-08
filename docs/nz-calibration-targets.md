@@ -156,14 +156,17 @@ rulings 2, section 1):
   $180,000);
 - the ordered right-closed cuts give each shared endpoint to the lower band.
 
-`build/nz/reference_intervals.json` holds the two tables: the national table
-(237 bands, rows 8–244, each naming its parked count and amount references)
-and the age table (183 bands, rows 6–188, no references and no fit rows).
-`tools/generate_nz_target_references.py` generates both from the row formulas
-and checks every cut against the pinned feed's own band labels. Ageing scales
-the national cuts exactly by the selected factor and keeps fractional cents:
-under the central factor 1.117109, $100 becomes 11,171.09 cents and $1,000
-becomes 111,710.9 cents. Before matrix construction the calibration problem
+`build/nz/reference_intervals.json` holds four tables. The national table
+(237 bands, rows 8–244) and the age table (183 bands, rows 6–188) are declared
+and validated only, with no references and no fit rows. The TY2026 wage table
+(235 bands, rows 7–241) supplies the cuts for the P1 wage map (G8-r2c E). The
+coarse stand-in table `ird_taxable_income_standin_ty2024` (G8-r2c F) carries
+the calibration rows. `tools/generate_nz_target_references.py` generates all
+four from the row formulas and checks every cut against the pinned feed's own
+band labels. Ageing scales the coarse cuts exactly by the selected factor and
+keeps fractional cents: under the September 2026 central factor 1.118491, the
+first cut of $40,000 becomes 4,473,964 cents and $125,000 becomes 13,981,137.5
+cents. Before matrix construction the calibration problem
 reports, for every cut, the weighted mass within $1, and for every band the
 fixed-weight change under the left-closed alternative. These diagnostics never
 change a target, and publisher reclassification is unavailable, because the
@@ -177,8 +180,31 @@ changes on these unfitted records remains G8-r2c/G8-x work.
 
 The income and universe columns (`ird_taxable_income_proxy_cents`,
 `ird_taxable_income_proxy_universe_status`) name the d1952 stand-in measure
-rather than IRD's definition. No producer exists yet (G8-r2c), no active row
-requests them, and all 474 IRD rows stay parked.
+rather than IRD's definition.
+
+### I1 coarse stand-in rows (G8-r2c F, R2C-4)
+
+Twenty-four coarse rows replace the 474 native IRD rows in
+`build/nz/target_references.json`. The coarse table has no nil band, a first
+lower cut of $40,000, cuts at $50k, $60k, $70k, $80k, $100k, $125k, $150k,
+$200k, $300k, $500k and $1m, and an open tail: 12 bands, each the sum of whole
+native rows 50–244. Each band names one count row (`value_operation: sum`, no
+operands) and one amount row (`identity`, measure
+`ird_taxable_income_proxy_nzd`), both pinning the band's native labels and
+their `expected_member_count` (R2C-17). The `aging_index` profiles scale the
+12 amount rows and the coarse table. Every row keeps the prerequisites
+`reference_profile:aging_index` and `measurement:ird_taxable_income_ty2027_v1`
+and stays `requires_prerequisites`, with no exemption, until composition
+proves the measurement's single producer (R2C-1, R2C-15). The table opts into
+per-band source-household support (`support_household_entity: household`),
+which the `measurement_prefit` gate requires.
+
+The 474 native rows move to the non-executable
+`build/nz/income_diagnostic_references.json` (key `diagnostic_references`),
+which no compiler, profile or gate reads; the G8-x native-band report compares
+each coarse band with them. Records at or below the aged first cut stay
+visible as below-first-cut in the boundary diagnostics; IRD's published nil
+count stays a displayed comparator, not a target.
 
 ## 3. MSD
 

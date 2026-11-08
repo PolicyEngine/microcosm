@@ -26,7 +26,12 @@ database or network request:
   ``deliver=False`` and ``answer_receipts=False`` stand for an emitter that
   took the hand-over and then stopped; ``bundle_receipts`` scripts the
   answers instead, and ``never_copy`` names files the emitter leaves on
-  disk.
+  disk;
+- a release change (``publish_release``, ``promote_build``) lands at once in
+  ``hub_files`` as the emitter's release writer documents it: the build
+  folder and ``releases.json`` in one commit, after the interface's shared
+  checks, or a ``refused`` receipt naming the first broken rule.
+  ``release_receipts`` scripts the answers instead.
 
 The emitter's own tests cover the process, its queues and the Hub.
 """
@@ -57,6 +62,27 @@ from microcosm_emitter_interface.orrery import (
     publication_id_of,
     unavailable_receipt,
 )
+from microcosm_emitter_interface.publication import (
+    PromoteBuild,
+    PublishRelease,
+    ReleaseChange,
+    ReleaseReceipt,
+    WithdrawBuild,
+    unavailable_release_receipt,
+)
+from microcosm_emitter_interface.releases import (
+    RELEASE_MANIFEST_NAME,
+    RELEASES_RECORD_PATH,
+    ReleaseRecordError,
+    ReleasesRecord,
+    add_build,
+    build_folder,
+    check_change,
+    check_commit,
+    check_repository,
+    make_current,
+    withdraw_build,
+)
 from microcosm_emitter_interface.staging import (
     ReadBackResult,
     RunFilesReceipt,
@@ -76,6 +102,8 @@ RUNS_INDEX_PATH = "runs.json"
 #: together at most 64 MiB, before it answers the hand-over.
 MAX_COPIED_FILE_BYTES = 32 * 1024 * 1024
 MAX_COPIED_BYTES = 64 * 1024 * 1024
+#: When the fake release writer records each build as published.
+PUBLISHED_AT = "2026-11-04T12:00:00+00:00"
 #: What ``check_write_access`` answers for a credential that can write.
 WRITABLE = {
     "status": "checked",
@@ -150,7 +178,7 @@ class FakeEmitterClient:
     as the interface does after a timeout.
     """
 
-    emitter_version = "0.11.9"
+    emitter_version = "0.13.0"
 
     def __init__(
         self,
@@ -165,6 +193,7 @@ class FakeEmitterClient:
         queue: FakeHandoverQueue | None = None,
         deliver: bool = True,
         answer_receipts: bool = True,
+        release_receipts: Sequence[Mapping[str, Any]] | None = None,
     ) -> None:
         self._modules = frozenset(modules)
         self.accept_run_files = accept_run_files
@@ -200,6 +229,14 @@ class FakeEmitterClient:
         self.hub_files = hub_files if hub_files is not None else {}
         #: Override for ``read_back_run_files``, when a test needs one.
         self.read_back_answer: ReadBackResult | None = None
+        #: Scripted release receipts: the change's answer, then each receipt
+        #: asked for (the last one repeats).
+        self.release_receipts = (
+            None if release_receipts is None else list(release_receipts)
+        )
+        #: Each release change handed over, and its latest receipt by ID.
+        self.release_requests: list[ReleaseChange] = []
+        self._release_answers: dict[str, list[dict[str, Any]]] = {}
         self._committed: dict[tuple[str, str], tuple[str, str]] = {}
         self._deliveries: dict[tuple[str, str], dict[str, Any]] = {}
         self.telemetry = TelemetryRecorder(self)
@@ -591,6 +628,143 @@ class FakeEmitterClient:
                 return entry.last_commit.oid
         return api.repo_info(repo_id=repository, repo_type="dataset").sha
 
+    # Release changes ----------------------------------------------------------
+
+    def publish_release(
+        self, request: PublishRelease, *, wait_seconds: float = 300.0
+    ) -> ReleaseReceipt:
+        self.calls.append("publish_release")
+        return self._release_change(request)
+
+    def promote_build(
+        self, request: PromoteBuild, *, wait_seconds: float = 60.0
+    ) -> ReleaseReceipt:
+        self.calls.append("promote_build")
+        return self._release_change(request)
+
+    def withdraw_build(
+        self, request: WithdrawBuild, *, wait_seconds: float = 60.0
+    ) -> ReleaseReceipt:
+        self.calls.append("withdraw_build")
+        return self._release_change(request)
+
+    def release_receipt(self, handover_id: str) -> ReleaseReceipt | None:
+        self.calls.append("release_receipt")
+        answers = self._release_answers.get(handover_id)
+        if "huggingface" not in self.modules or not answers:
+            return None
+        return dict(answers.pop(0) if len(answers) > 1 else answers[0])  # type: ignore[return-value]
+
+    def _release_change(self, request: ReleaseChange) -> ReleaseReceipt:
+        self.release_requests.append(request)
+        if "huggingface" not in self.modules:
+            return unavailable_release_receipt(request)
+        handover_id = request.handover_id()
+        base = {
+            "handover_id": handover_id,
+            "status": "published",
+            "error_code": None,
+            "message": None,
+            "commit": None,
+            "repository": request.repository,
+            "release": request.release,
+            "build": request.build,
+            "attempts": 1,
+            "current": None,
+        }
+        if self.release_receipts is not None:
+            answers = [{**base, **dict(receipt)} for receipt in self.release_receipts]
+        else:
+            answers = [{**base, **self._apply_release_change(request)}]
+        self._release_answers[handover_id] = answers[1:] or answers
+        return answers[0]  # type: ignore[return-value]
+
+    def _apply_release_change(self, request: ReleaseChange) -> dict[str, Any]:
+        """One commit as the release writer makes it, or why it is refused."""
+        repository = request.repository
+        files = self.paths(repository)
+        record_bytes = self.hub_files.get((repository, RELEASES_RECORD_PATH))
+        try:
+            before = (
+                None if record_bytes is None else ReleasesRecord.parse(record_bytes)
+            )
+        except ReleaseRecordError as error:
+            return _refused_release(error.violations)
+        record = before or ReleasesRecord.empty()
+        folder = build_folder(request.release, request.build)
+        new_files: dict[str, bytes] = {}
+        if isinstance(request, PublishRelease):
+            new_files = {
+                f"{folder}/{item.name}": Path(item.local_path).read_bytes()
+                for item in request.files
+            }
+            if any(path.startswith(folder + "/") for path in files):
+                manifest = f"{folder}/{RELEASE_MANIFEST_NAME}"
+                entry = record.releases.get(request.release)
+                if (
+                    entry is not None
+                    and request.build in entry.builds
+                    and self.hub_files.get((repository, manifest))
+                    == new_files[manifest]
+                ):
+                    return {"current": entry.current}
+                return {
+                    "status": "refused",
+                    "error_code": "BUILD_FOLDER_EXISTS",
+                    "message": f"{folder}/ already exists.",
+                }
+        try:
+            if isinstance(request, PublishRelease):
+                after = add_build(
+                    record,
+                    release=request.release,
+                    build=request.build,
+                    release_role=request.release_role,
+                    published_at=PUBLISHED_AT,
+                    make_current=request.make_current,
+                )
+            elif isinstance(request, PromoteBuild):
+                after = make_current(
+                    record, release=request.release, build=request.build
+                )
+            else:
+                after = withdraw_build(
+                    record, release=request.release, build=request.build
+                )
+        except ReleaseRecordError as error:
+            return _refused_release(error.violations)
+        added = [*new_files, RELEASES_RECORD_PATH]
+        violations = [
+            *check_change(before, after),
+            *check_commit(
+                before_files=files,
+                added_paths=added,
+                deleted_paths=[],
+                before=before,
+                after=after,
+            ),
+            *check_repository(
+                after,
+                [*files, *added],
+                lambda path: new_files.get(path) or self.hub_files[(repository, path)],
+            ),
+        ]
+        if violations:
+            return _refused_release(violations)
+        for path, content in new_files.items():
+            self.hub_files[(repository, path)] = content
+        self.hub_files[(repository, RELEASES_RECORD_PATH)] = after.serialize()
+        commit = hashlib.sha1(str(len(self.release_requests)).encode()).hexdigest()
+        return {"commit": commit, "current": after.releases[request.release].current}
+
     def close(self) -> None:
         self.calls.append("close")
         self.closed = True
+
+
+def _refused_release(violations: Sequence[Any]) -> dict[str, Any]:
+    return {
+        "status": "refused",
+        "error_code": violations[0].code,
+        "message": "; ".join(item.message for item in violations),
+    }

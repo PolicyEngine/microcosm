@@ -7,8 +7,10 @@ for each sex and each single year of age (0 to 89, and 90 and over), the
 file's weighted persons beside ONS's mid-2025 UK estimate (MYE2, vendored in
 ``ons_mid2025_single_year_age_by_sex.json``) and their ratio, and the same for
 uk-data#600's tail bands (80 to 84, 85 to 89, 90 and over) and for 80 and
-over. The estimates are report-only: no stage reads them and no target binds
-them.
+over. The vendored estimates are report-only: no stage reads them and no
+target binds them. The national contract binds the same ONS series from the
+feed at some single years (all persons at 0 to 6, and each sex at 15 to 24,
+microcosm#1095), so the report shows the fit there.
 
 ONS counts usual residents, communal establishments included; the frame holds
 private households, so the file runs below ONS where many people live in care

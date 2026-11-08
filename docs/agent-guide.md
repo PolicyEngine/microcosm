@@ -41,7 +41,7 @@ or `uv sync --all-packages --all-extras`. To keep both countries set up, point
 `UV_PROJECT_ENVIRONMENT` at a separate directory outside the checkout for each.
 
 PR CI (`.github/workflows/test.yml`) has `lint`, `engine-free`, `engine-us`,
-`engine-uk`, `integration-uk`, and `wheels` jobs, plus the
+`engine-uk`, `integration-uk`, `wheels`, and `installed-emitter` jobs, plus the
 `select-countries` orchestration job.
 `tools/ci_test_plan.py` is the only authority for test-directory ownership, CI
 job assignment, country ownership, US timing-report categories, and
@@ -117,6 +117,39 @@ hand-over and stopped). Emitter process, persistence and
 HTTP-delivery tests belong in microcosm-emitter; do not copy them into
 Microcosm.
 
+The `installed-emitter` job is the one place that starts the real emitter.
+`tools/run_installed_emitter_tests.sh` installs `microcosm-emitter` at each
+release `tools/installed_emitter_releases.py` names (`MINIMUM_EMITTER_VERSION`,
+then the newest release pinned in `tools/installed-emitter/requirements.txt`),
+each into its own uv tool directory, and runs `installed_emitter/shared/` once
+for each; it tests every release even when an earlier one fails. Those tests
+start the installed command with `start_bundle_emitter()`, as the UK re-stage
+command does (the Hugging Face module only), and send its Hugging Face Hub
+requests through `HF_ENDPOINT` to a loopback stand-in server
+(`test_support/microcosm_build/stand_in_hub.py`), so the job needs no secret.
+With Xet turned off, the stand-in takes the dataset through the LFS upload a
+real Hub requires for it, with the single-part `basic` transfer. It does not
+model Xet, which machines with `hf_xet` use, or the multipart transfer a real
+Hub can choose for a large object, so the tested path is that of machines
+without `hf_xet`, or with it turned off, for files sent in one part. A request
+it has no route for, or that its handler fails on, fails the test. The tests check
+what builds rely on in the hand-over (one commit per bundle on the head it
+names, `copied_files`, `already_staged`, the recorded error codes and the
+version check), not the emitter's own queue or delivery.
+`test_installed_emitter_status.py` runs a stage through the US Modal runner's
+`_run_stage` against local directories, with the installed command at the
+image's emitter path: its tool starts the emitter's telemetry module through
+the interface, with no credential, no collector token and a closed loopback
+collector address, so the emitter keeps its events and sends nothing, and the
+test checks what the runner records from the emitter's `status`, and that the
+emitter host has exited before the runner runs it. The runner warns when
+the package index has a newer release than the pin; raise the pin in a pull
+request then. `tools/installed-emitter/constraints.txt` pins the
+`huggingface_hub` release whose requests the stand-in answers; the runner also
+warns when a newer 1.x release, which a new emitter install takes, is
+published. Change the constraint only together with the stand-in. Run the job's tests locally with
+`bash tools/run_installed_emitter_tests.sh <directory for the tool installs>`.
+
 The UK full-build caller sets `close_service_on_finish=False`: reporting an outcome
 leaves the emitter running for graph and staging hand-overs, and that caller's
 existing `finally` cleanup closes it. Other callers close automatically when they
@@ -157,6 +190,9 @@ of these directories below its package's `tests/` directory:
 - `engine/uk/`: imports or executes the UK engine.
 - `integration/uk/`: runs serially through the `integration-uk` job with the
   explicit `--run-integration` option.
+- `installed_emitter/shared/`: starts the separately installed
+  `microcosm-emitter`; runs through the `installed-emitter` job, once per
+  installed release, with the explicit `--run-integration` option.
 
 Classify a mixed US module by its most resource-intensive test, or split it when
 the tests already have cleanly separable helpers. The directory is the execution

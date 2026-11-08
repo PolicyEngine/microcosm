@@ -26,9 +26,9 @@ from .resolver import (
 )
 from .schemas import load_schema_registry
 
-EXPECTED_AUTHORED_FIELD_COUNT = 32467
-EXPECTED_RESOLVED_BINDING_FIELD_COUNT = 9_800
-EXPECTED_CONFIGURATION_FIELD_COUNT = 42267
+EXPECTED_AUTHORED_FIELD_COUNT = 32647
+EXPECTED_RESOLVED_BINDING_FIELD_COUNT = 9_804
+EXPECTED_CONFIGURATION_FIELD_COUNT = 42451
 
 
 class FieldUsageError(AssertionError):
@@ -361,8 +361,8 @@ _PINS: dict[str, tuple[int, str]] = {
         "36564747627fb0058bb99e8e8c4397e41d8ecc472a20c49d4b6d7df1003a80ec",
     ),
     "calibration": (
-        316,
-        "0212e52e2bf1e5996fe6b4785b2d74f2fb5680ec38b258c6ad4dbeadbd181a1b",
+        320,
+        "49a153b065b59950d910f9e2bcfcd7005e5babaecf9b41b1cc9704a7f20dcc5b",
     ),
     "catalog_columns": (
         1602,
@@ -457,8 +457,8 @@ _PINS: dict[str, tuple[int, str]] = {
         "1f88dfbe50cabf8e57c36f717b0cc952b5c423c1c2d62ac4219ec3c3872ead9f",
     ),
     "resolved_vintage_authorities": (
-        63,
-        "5f2edfe9826e1200e2b8706780c9f53b7c61f01aad8cab5907f08c37a0b1ead2",
+        67,
+        "3f49902e745368ce8df0ad338a1697b76fd3299d35959977d36a8c09690ffb10",
     ),
     "selection": (
         87,
@@ -481,8 +481,8 @@ _PINS: dict[str, tuple[int, str]] = {
         "d6782c5de5bbed1bdc6bf653c4a6d4aadcad4ccc72d35e1092e130fcb04680a3",
     ),
     "source_stages": (
-        1759,
-        "bc2e043ffce760f7f2d8280e2cb2c74e8bc240da954e065230bf04c93aa6d376",
+        1927,
+        "0fb7787befe8f7c45d3df08a1e9020ea7320bb0ea2f6b35f261ae1d64434c675",
     ),
     "spine_assembly_household_mass_shares": (
         2,
@@ -529,8 +529,8 @@ _PINS: dict[str, tuple[int, str]] = {
         "d53096196db4c34da260cce2f35af8e7ba67f978448656c602ee5e17529dc4e0",
     ),
     "vintage_records": (
-        112,
-        "c69a923e893fde8a929ca087d29ded607fa9c04fd14a39d0a401ad1db845e6de",
+        120,
+        "825b4ab09602353fc4d6c24b6f7654f7582502c7acf963b7ff6c117b07208eb4",
     ),
 }
 

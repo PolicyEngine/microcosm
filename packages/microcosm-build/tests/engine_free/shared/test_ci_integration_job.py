@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import re
+from pathlib import Path
+
 import yaml
 
 from test_support.paths import paths_for
@@ -18,6 +21,8 @@ _ENGINE_FREE_SCRIPT = _ROOT / "tools/run_engine_free_tests.sh"
 _ENGINE_US_SCRIPT = _ROOT / "tools/run_engine_us_tests.sh"
 _ENGINE_US_SUMMARY_SCRIPT = _ROOT / "tools/add_engine_us_timing_summary.sh"
 _ENGINE_UK_SCRIPT = _ROOT / "tools/run_engine_uk_tests.sh"
+_INSTALLED_EMITTER_SCRIPT = _ROOT / "tools/run_installed_emitter_tests.sh"
+_INSTALLED_EMITTER_PINS = _ROOT / "tools/installed-emitter"
 _LEGACY_CI_RESULTS_SCRIPT = _ROOT / "tools/require_ci_results.sh"
 _AGENT_GUIDE = _ROOT / "docs/agent-guide.md"
 _AGENT_POINTERS = (_ROOT / "AGENTS.md", _ROOT / "CLAUDE.md")
@@ -33,6 +38,7 @@ _WORKFLOW_SCRIPTS = (
     _ENGINE_US_SUMMARY_SCRIPT,
     _ENGINE_UK_SCRIPT,
     _INTEGRATION_SCRIPT,
+    _INSTALLED_EMITTER_SCRIPT,
 )
 
 
@@ -69,6 +75,36 @@ def test_integration_job_is_uk_selected_and_read_only() -> None:
     assert "head.repo.full_name" not in integration
     assert "HF_STAGING_READ_TOKEN: ${{ secrets.HF_STAGING_READ_TOKEN }}" in integration
     assert "run: bash tools/run_integration_tests.sh" in integration
+
+
+def test_installed_emitter_job_tests_two_releases_without_secrets() -> None:
+    """One job, without a matrix or secrets, runs the installed-emitter runner.
+
+    Which releases it installs, and how it runs them, is tested in
+    ``test_installed_emitter_releases``."""
+    job = yaml.safe_load(_TEST_WORKFLOW.read_text(encoding="utf-8"))["jobs"][
+        "installed-emitter"
+    ]
+    constrained = _requirement_lines(_INSTALLED_EMITTER_PINS / "constraints.txt")
+
+    assert "strategy" not in job
+    assert "needs" not in job
+    assert "environment" not in job
+    assert job["permissions"] == {"contents": "read"}
+    assert "secrets." not in yaml.safe_dump(job)
+    assert {"persist-credentials": False} in [step.get("with") for step in job["steps"]]
+    assert [step["run"] for step in job["steps"] if "run" in step] == [
+        "uv sync --all-packages --locked",
+        f"bash {_INSTALLED_EMITTER_SCRIPT.relative_to(_ROOT)}",
+    ]
+    assert any(line.startswith("huggingface-hub==") for line in constrained)
+    for line in constrained:
+        assert re.fullmatch(r"[a-z0-9-]+==\d+(\.\d+)*", line), line
+
+
+def _requirement_lines(path: Path) -> list[str]:
+    lines = path.read_text(encoding="utf-8").splitlines()
+    return [line.strip() for line in lines if line.strip() and not line.startswith("#")]
 
 
 def test_every_workflow_job_caps_its_runtime() -> None:

@@ -119,6 +119,11 @@ _STRUCTURAL_WEIGHT_KIND = {
 # units without an observed FRS capital answer.
 _READER_ISOLATION_BOUNDARIES = frozenset(
     {
+        # The employment shell rewrites the root person cells
+        # soc2020_major_group, sic_industry_division and employment_sector after
+        # the open-surface SPI income stage and the company cars, which would
+        # otherwise bind them (microcosm#1490).
+        "spi_employment_shell",
         # The housing shell rewrites root household cells after the
         # open-surface SPI income stage and the company cars, which would
         # otherwise bind them.
@@ -159,6 +164,10 @@ _READER_ISOLATION_BOUNDARIES = frozenset(
         # open-surface SPI income stage, which would otherwise bind the cells
         # they rewrite (PolicyEngine/uk-autumn-budget-dashboard-2026#316).
         "company_cars",
+        # The student-loan stage moves each household's balance to its
+        # borrowers, rewriting was_wealth's ``student_loan_balance``, which the
+        # open-surface readers before it bind (microcosm#1095 B9).
+        "student_loans",
     }
 )
 # ``age_tail`` needs no isolation entry: it is declared immediately after the
@@ -190,9 +199,17 @@ _SPLIT_STAGE_SOURCES: Mapping[str, tuple[str, ...]] = {
         "nts_stage",
         "nts_ticket",
     ),
-    "lcfs_consumption": ("lcfs_household", "lcfs_person"),
+    # The zero-emission share by income fifth and the household-paid road-fuel
+    # mix read the NTS private cars (microcosm#1095 B3, J2 and K).
+    "lcfs_consumption": (
+        "lcfs_household",
+        "lcfs_person",
+        "nts_household",
+        "nts_vehicle",
+    ),
     "etb_vat": ("etb",),
     "etb_services": ("etb",),
+    "aps_occupation": ("aps",),
     "frs_hmrc_spine_leaves": ("frs",),
     "frs_annual_income_spells": ("frs",),
     "spi_income_band_donors": ("spi",),
@@ -208,9 +225,11 @@ _SPLIT_SOURCE_DESCRIPTIONS = {
     "nts_trip": "Pinned local NTS trip donor table.",
     "nts_stage": "Pinned local NTS stage donor table.",
     "nts_ticket": "Pinned local NTS ticket donor table.",
+    "nts_vehicle": "Pinned local NTS vehicle donor table.",
     "lcfs_household": "Pinned local LCFS household donor table.",
     "lcfs_person": "Pinned local LCFS person donor table.",
     "etb": "Pinned local ETB household donor table.",
+    "aps": "Pinned local APS person donor table.",
     "spi": "Pinned local SPI donor table.",
     "hmrc_income": "Pinned local HMRC income facts workbook.",
 }
@@ -368,6 +387,44 @@ _STAGE_CONSUMES: Mapping[str, frozenset[tuple[str, str]] | None] = {
     "spi_support_channel": None,
     "spi_income_band_donors": None,
     "hmrc_spi_income_spine": None,
+    # Engine-free: the occupation predictors, the drawn-row rule and the channel
+    # split. The rewritten occupation, industry and sector cells arrive as the
+    # rewrite's incumbents (microcosm#1490).
+    "spi_employment_shell": frozenset(
+        {
+            ("person", "age"),
+            ("person", "gender"),
+            ("person", "employment_status"),
+            ("person", "employment_income"),
+            ("person", "self_employment_income"),
+            ("person", "savings_interest_income"),
+            ("person", "dividend_income"),
+            ("person", "private_pension_income"),
+            ("person", "person_is_spi_income_recipient"),
+            ("person", "hmrc_spi_pay"),
+            ("household", "region"),
+            ("household", "household_support_channel"),
+            ("household", "household_source_id"),
+        }
+    ),
+    # Engine-free: the sub-major predictors, the major group it nests in, the
+    # draw keys and the channel split (microcosm#1490).
+    "aps_occupation": frozenset(
+        {
+            ("person", "age"),
+            ("person", "gender"),
+            ("person", "employment_status"),
+            ("person", "employment_income"),
+            ("person", "sic_industry_division"),
+            ("person", "soc2020_major_group"),
+            ("person", "person_is_spi_income_recipient"),
+            ("person", "hmrc_spi_pay"),
+            ("person", "person_source_id"),
+            ("household", "region"),
+            ("household", "household_support_channel"),
+            ("household", "household_source_id"),
+        }
+    ),
     # Engine-free: the housing predictors and the channel split. The rewritten
     # housing and benefit cells arrive as the rewrite's incumbents.
     "spi_housing_shell": frozenset(
@@ -445,8 +502,17 @@ _STAGE_CONSUMES: Mapping[str, frozenset[tuple[str, str]] | None] = {
                     "receives_benefits_in_own_right",
                     # The UC draw's population (frs_take_up's rule).
                     "is_uc_claimant",
+                    # The work tests of the contributory awards: the copy's
+                    # earnings and its twin's hours (microcosm#1095 B10).
+                    "employment_income",
+                    "self_employment_income",
+                    "hours_worked",
+                    # The pension payments the receipt reads beside them.
+                    "private_pension_income",
                 )
             ),
+            # The receipt counts support by source household.
+            ("household", "household_source_id"),
             ("benunit", "benunit_support_channel"),
             ("benunit", "would_claim_uc"),
         }
@@ -644,6 +710,9 @@ _STAGE_CONSUMES: Mapping[str, frozenset[tuple[str, str]] | None] = {
             ("person", "age"),
             ("person", "student_loans"),
             ("person", "student_loan_repayments"),
+            # Re-split to the borrowers once the plans are set (microcosm#1095
+            # B9).
+            ("person", "student_loan_balance"),
             ("person", "current_education"),
             ("person", "highest_education"),
             ("person", "reports_outstanding_student_loan"),
@@ -796,12 +865,14 @@ _STAGE_CELLS: Mapping[str, tuple[_Cell, ...]] = {
         _Cell("person", "ons_family_role", "string"),
         _Cell("person", "ons_family_index", "int64"),
         _Cell("person", "is_looked_after_by_local_authority", "bool"),
+        _Cell("person", "child_limit_non_parental_caring_exception", "bool"),
         _Cell("household", "ons_household_type", "string"),
     ),
     "frs_employment": (
         _Cell("person", "employment_status", "string"),
         _Cell("person", "employment_sector", "string"),
         _Cell("person", "sic_industry_division", "int64"),
+        _Cell("person", "soc2020_major_group", "string"),
     ),
     "frs_council_tax": (_Cell("household", "council_tax", "float64"),),
     "frs_disability": (
@@ -846,6 +917,7 @@ _STAGE_CELLS: Mapping[str, tuple[_Cell, ...]] = {
         _Cell("person", "receives_benefits_in_own_right", "bool"),
         _Cell("person", "reports_outstanding_student_loan", "bool"),
         _Cell("person", "age_left_full_time_education", "int64"),
+        _Cell("person", "is_in_full_time_education", "bool"),
     ),
     "frs_legacy_proxies": _cells(
         "person",
@@ -1006,6 +1078,9 @@ _STAGE_CELLS: Mapping[str, tuple[_Cell, ...]] = {
         ),
         _Cell("household", "has_fuel_consumption", "bool"),
         _Cell("household", "uses_energy_prepayment_meter", "bool"),
+        # The annual kWh the stored spend is priced from, for the energy
+        # dashboards; no policyengine-uk input reads them.
+        *_cells("household", ("electricity_kwh", "gas_kwh")),
         # The excise step's policyengine-uk inputs (microcosm#1359).
         *_cells(
             "household",
@@ -1036,6 +1111,13 @@ _STAGE_CELLS: Mapping[str, tuple[_Cell, ...]] = {
                 "horse_and_dog_pool_betting_net_losses",
             ),
         ),
+        # The vehicle excise duty inputs of the households' own cars
+        # (microcosm#1095 B3); the registration date is an ISO date.
+        _Cell("person", "car_fuel_type", "string"),
+        _Cell("person", "car_co2_emissions", "float64"),
+        _Cell("person", "car_engine_size", "float64"),
+        _Cell("person", "car_first_registration_date", "string"),
+        _Cell("person", "car_is_ved_exempt", "bool"),
     ),
     "etb_vat": (_Cell("household", "full_rate_vat_expenditure_rate", "float64"),),
     "etb_services": (
@@ -1115,6 +1197,12 @@ _STAGE_CELLS: Mapping[str, tuple[_Cell, ...]] = {
         _Cell("person", "person_is_spi_income_band_carrier", "bool"),
     ),
     "hmrc_spi_income_spine": (),  # populated below from typed groups
+    "spi_employment_shell": (
+        _Cell("person", "soc2020_major_group", "string"),
+        _Cell("person", "sic_industry_division", "int64"),
+        _Cell("person", "employment_sector", "string"),
+    ),
+    "aps_occupation": (_Cell("person", "soc2020_sub_major_group", "string"),),
     "spi_housing_shell": (
         *_cells(
             "household",
@@ -1145,7 +1233,6 @@ _STAGE_CELLS: Mapping[str, tuple[_Cell, ...]] = {
         *_cells(
             "person",
             (
-                "jsa_contrib_reported",
                 "jsa_income_reported",
                 "esa_income_reported",
                 "income_support_reported",
@@ -1158,6 +1245,8 @@ _STAGE_CELLS: Mapping[str, tuple[_Cell, ...]] = {
                 "bsp_reported",
                 "war_widows_pension_reported",
                 "widowed_parents_allowance_reported",
+                "jsa_contrib_reported",
+                "esa_contrib_reported",
             ),
         ),
         *_cells(
@@ -1244,7 +1333,10 @@ _STAGE_CELLS: Mapping[str, tuple[_Cell, ...]] = {
             "salary_sacrifice_pre_conversion_pay",
         ),
     ),
-    "student_loans": (_Cell("person", "student_loan_plan", "string"),),
+    "student_loans": (
+        _Cell("person", "student_loan_plan", "string"),
+        _Cell("person", "student_loan_balance", "float64"),
+    ),
     "private_school_attendance": (_Cell("person", "attends_private_school", "bool"),),
     "isa_subscriptions": _cells(
         "person",
@@ -1267,9 +1359,12 @@ _STAGE_CELLS: Mapping[str, tuple[_Cell, ...]] = {
         _Cell("person", "company_car_capital_contributions", "float64"),
         _Cell("person", "company_car_private_fuel_provided", "bool"),
         # A tape row's pay gives up the benefits carved out of it, and its UC
-        # gainful self-employment follows the carved pay.
+        # gainful self-employment follows the carved pay. On a tape row without
+        # EPB the benefits move from its PAY into its EPB.
         _Cell("person", "employment_income", "float64"),
         _Cell("person", "uc_is_in_gainful_self_employment", "bool"),
+        _Cell("person", "hmrc_spi_pay", "float64"),
+        _Cell("person", "hmrc_spi_employment_benefits", "float64"),
     ),
     "childcare_copy_take_up": (
         *_cells(

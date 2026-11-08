@@ -137,6 +137,15 @@ BINDING_MODULES_ADDED_AFTER_BASE = frozenset(
     [
         "microcosm.calibrate.hierarchy_labels",
         "microcosm.diagnostics.catalogs",
+        # microcosm#1490: microcosm.fit exports its categorical classifier,
+        # held-out scores and keyed donors, so a binding that imports the
+        # package reaches them.
+        "microcosm.fit.categorical",
+        "microcosm.fit.donors",
+        "microcosm.fit.held_out",
+        # microcosm#1074: us_runtime.fiscal_targets imports the FSA student
+        # loan targets.
+        "microcosm.build.us_runtime.fsa_student_loan_targets",
     ]
 )
 BATTERY = "toy.gates.terminal"
@@ -539,6 +548,8 @@ class TestImplementationHashes:
         # At base 25c8cc14 the battery's binding identity held 197 modules;
         # w4 adds the leaf and exactly the modules it imports that the
         # bindings did not already reach (the graph package among them).
+        # microcosm#1073 adds us_runtime.scf_education_debt, which the
+        # us_runtime package imports, so the base now holds 198.
         # Modules the bindings later reach without the leaf are listed in
         # BINDING_MODULES_ADDED_AFTER_BASE.
         modules = set()
@@ -546,7 +557,7 @@ class TestImplementationHashes:
             _, digests = binding_identity.describe(binding, path=name)
             modules |= set(digests)
         assert len(modules) == (
-            197 + len(BINDING_MODULES_ADDED_AFTER_BASE) + len(LEAF_ADDED_MODULES)
+            198 + len(BINDING_MODULES_ADDED_AFTER_BASE) + len(LEAF_ADDED_MODULES)
         )
         assert BINDING_MODULES_ADDED_AFTER_BASE <= modules
         assert LEAF_ADDED_MODULES <= modules
@@ -824,7 +835,7 @@ class TestClosurePartition:
         assert counts == {
             "main_benefits_entitlement": {**zero, "encoded": 13, "defaulted": 47},
             "main_benefits_rates": {**zero, "encoded": 13, "defaulted": 15},
-            "nz_super": {**zero, "encoded": 2, "defaulted": 11},
+            "nz_super": {**zero, "encoded": 3, "defaulted": 10},
             "accommodation_supplement": {
                 **zero,
                 "encoded": 17,
@@ -943,12 +954,41 @@ class TestClosurePartition:
         )
         assert not evidence_contract.module_declares_imports(b"rules:\n  imports: 1\n")
 
-    def test_a_binding_local_view_is_refused_with_the_reserved_message(self) -> None:
-        _, bindings, *_ = _nz()
+    def test_a_binding_local_view_partitions_its_logical_entity_roots(self) -> None:
+        closure, bindings, surface, mapping = _nz()
+        base = _nz_partition()
         bindings = copy.deepcopy(bindings)
-        bindings["bindings"][0]["views"] = [{"name": "child"}]
-        with pytest.raises(ValueError, match="reserved for binding-local views"):
-            _nz_partition(bindings=bindings)
+        row = bindings["bindings"][0]
+        row["views"] = [
+            {
+                "logical_entity": "Child",
+                "selector": {"column": "is_child"},
+                "outside": {},
+            }
+        ]
+        rows = bindings["bindings"]
+        roots = {
+            r["id"]: dict(surface.modules[r["rulespec_path"]].inputs) for r in rows
+        }
+        roots[row["id"]]["Child"] = ("child_age",)
+        result = closure_partition(
+            closure,
+            mapping,
+            rows,
+            roots,
+            module_sha256={
+                r["id"]: surface.modules[r["rulespec_path"]].sha256 for r in rows
+            },
+            module_imports={},
+            mapped_entities=bindings["entity_names"].values(),
+        )
+        # The view binding's Child root is live (an unclosed gap here); every
+        # other row partitions as without the view.
+        assert result["modules"][0]["gap"] == sorted(
+            [*base["modules"][0]["gap"], "Child.child_age"]
+        )
+        assert result["modules"][0]["unmapped_entity"] == []
+        assert result["modules"][1:] == base["modules"][1:]
 
     def test_be_multi_entity_modules_keep_every_root_on_its_entity(self) -> None:
         surface = load_axiom_input_surface(BE_SURFACE)
@@ -2748,17 +2788,17 @@ class TestSupportRoster:
         for row in roster:
             counts[row["class"]] = counts.get(row["class"], 0) + 1
         assert counts == {
-            "closure_default": 93,
-            "derived": 307,
+            "closure_default": 92,
+            "derived": 323,
             "normalized": 10,
             "copied": 3,
             "pending": 1,
+            "quantile_mapped": 1,
             "structural": 6,
         }
         derived = [row for row in roster if row["class"] == "derived"]
         pending = {
             "household.rent",
-            "person.employment_income",
             "person.liquid_financial_assets",
         }
         for row in derived:
