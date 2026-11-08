@@ -405,7 +405,7 @@ def _spi_support_on_clone_first_tables(base: IdTables, n_clones: int):
         household=tables.household[
             ["household_id", "source_household_id", "household_clone_index"]
         ].assign(household_weight=1.0),
-        spi_household_count=None,
+        expected_spi_households=None,
         selected_household_ids=tuple(
             source + clone * GEOGRAPHIC_RADIX
             for clone in range(n_clones)

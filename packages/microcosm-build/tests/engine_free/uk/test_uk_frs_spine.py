@@ -1042,15 +1042,19 @@ def _synthetic_spec(stage: SourceStageSpec) -> SimpleNamespace:
                             "kind": "stack_zero_weight_donors",
                             "count": 10000,
                             "seed": 42,
-                            "draw": "uniform_without_replacement",
+                            "salt": "spi_support_channel:inclusion",
+                            "draw": "keyed_bernoulli_share",
                         },
                         {
                             "kind": "gate_zero_weight_strata",
                             "declarations": [
                                 {
-                                    "name": "e7_spi_synthetic_preclone",
+                                    "name": "e7_spi_synthetic_share",
                                     "selector": {"household_is_spi_synthetic": True},
-                                    "maximum_zero_weight_rows": 10000,
+                                    "maximum_zero_weight_rows_rule": {
+                                        "rule": "binomial_share_band",
+                                        "sigma": 4,
+                                    },
                                     "reason": "synthetic driver fixture",
                                 }
                             ],
@@ -1851,7 +1855,7 @@ def test_birth_months_are_spread_at_the_frs_weights_and_kept_by_copies(
         person=tables_with_weights["person"],
         benunit=tables_with_weights["benunit"],
         household=tables_with_weights["household"],
-        spi_household_count=None,
+        expected_spi_households=None,
     )
     copies = support.person[
         support.person[support_channel_column("person")]

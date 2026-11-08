@@ -348,8 +348,9 @@ _STAGE_HELPER_MODULES = {
         trace,
         stochastic_assignment,
     ),
-    # The support channel reads the take-up population's ages and gates its
-    # zero-weight strata (microcosm#931).
+    # The support channel draws its keyed share and bounds its zero-weight
+    # gate through the keyed-draw helpers, reads the take-up population's ages
+    # and gates its zero-weight strata (microcosm#931).
     "spi_support_channel": (
         spi_support,
         copy_id_table,
@@ -370,13 +371,16 @@ _STAGE_HELPER_MODULES = {
     ),
     # The exact-total correction the CGT split hands the high-value split is
     # spi_support's, and the support stratum is property_localisation's, whose
-    # owners are the tenure map's (microcosm#931).
+    # owners are the tenure map's (microcosm#931). spi_support draws the SPI
+    # share through the keyed-draw helpers, so the stages that bind it bind
+    # them too.
     "high_value_home_support": (
         cgt_support,
         copy_id_table,
         property_localisation,
         spi_support,
         tenure_constants,
+        stochastic_assignment,
     ),
     # The CGT stages read HMRC's CGT tables as vendored facts and the
     # Advani-Summers tail from advani_summers, take the CGT policy parameters
@@ -420,6 +424,7 @@ _STAGE_HELPER_MODULES = {
         cgt_imputation,
         hmrc_capital_gains,
         spi_support,
+        stochastic_assignment,
     ),
     "hmrc_cgt_gains_spine": (
         *_FEED_FACT_MODULES,
@@ -763,6 +768,9 @@ _COUNTING_STAGES = frozenset(
         "frs_take_up",
         "frs_person_draws",
         "frs_household_draws",
+        # spi_spine, stage 14's module, rounds the support channel's receipt
+        # (microcosm#931).
+        "frs_hmrc_spine_leaves",
         "frs_annual_income_spells",
         "hmrc_spi_income_spine",
         "spi_support_channel",

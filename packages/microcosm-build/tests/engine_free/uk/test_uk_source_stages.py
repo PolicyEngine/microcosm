@@ -1121,6 +1121,12 @@ class TestE3ManifestLockstep:
         stages = {stage.stage: stage for stage in spec.sources.stages}
 
         assert stages["spi_support_channel"].operations[0].parameters["seed"] == 42
+        # The share's inclusion uniforms are keyed under their own salt
+        # (microcosm#931).
+        assert (
+            stages["spi_support_channel"].operations[0].parameters["salt"]
+            == "spi_support_channel:inclusion"
+        )
         assert stages["hmrc_spi_income_spine"].operations[3].parameters["seed"] == 42
         # The reserved carriers' resample draws at stage seed + 2 (PolicyEngine/chronicle#280 lane).
         assert stages["hmrc_spi_income_spine"].operations[4].parameters["seed"] == 44

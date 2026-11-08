@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import math
+
 import numpy as np
 import pytest
 
@@ -269,3 +271,44 @@ def test_a_weightless_stratum_keeps_its_draws_and_misalignment_is_refused() -> N
         weight_balanced_uniforms(np.zeros(2), np.zeros(3), np.zeros(3))
     with pytest.raises(ValueError, match="finite"):
         weight_balanced_uniforms(np.zeros(2), np.zeros(2), np.array([1.0, np.nan]))
+
+
+def test_binomial_share_tolerance_is_sigma_standard_errors_floored_and_capped() -> None:
+    from microcosm.build.stochastic_assignment import binomial_share_tolerance
+
+    assert binomial_share_tolerance(target=0.3, rows=1_000, sigma=4.0) == (
+        4.0 * (0.3 * 0.7 / 1_000) ** 0.5
+    )
+    assert binomial_share_tolerance(target=0.3, rows=1_000, sigma=2.0) == (
+        2.0 * (0.3 * 0.7 / 1_000) ** 0.5
+    )
+    # Floored at one row's worth, capped at one, and one without rows.
+    assert binomial_share_tolerance(target=1.0, rows=50, sigma=4.0) == 1.0 / 50
+    assert binomial_share_tolerance(target=0.5, rows=1, sigma=4.0) == 1.0
+    assert binomial_share_tolerance(target=0.5, rows=0, sigma=4.0) == 1.0
+
+
+def test_the_latent_attribute_band_is_the_shared_band_at_four_sigma() -> None:
+    # The stage-health name stays an alias of the moved band (microcosm#931).
+    from microcosm.build.stochastic_assignment import binomial_share_tolerance
+    from microcosm.build.uk_runtime.stage_health import (
+        LATENT_ATTRIBUTE_SIGMA,
+        latent_attribute_tolerance,
+    )
+
+    assert LATENT_ATTRIBUTE_SIGMA == 4.0
+    for target in (0.0, 0.01, 0.3, 0.5, 0.97, 1.0):
+        for rows in (0, 1, 7, 250, 40_000):
+            # The band as stage_health computed it before the move.
+            before = (
+                1.0
+                if rows <= 0
+                else min(
+                    1.0,
+                    max(1.0 / rows, 4.0 * math.sqrt(target * (1.0 - target) / rows)),
+                )
+            )
+            assert latent_attribute_tolerance(target=target, rows=rows) == before
+            assert binomial_share_tolerance(target=target, rows=rows, sigma=4.0) == (
+                before
+            )

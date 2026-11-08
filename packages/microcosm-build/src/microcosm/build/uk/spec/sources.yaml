@@ -1456,31 +1456,35 @@ stages:
   notes: 'Describes each FRS adult''s 12 months before the interview beside the current income columns, which it never changes, so the HMRC income-band measures can read annual income while poverty, benefits and the published engine tax keep current income. HMRC counts income received over a tax year: a person who started, left or changed a job, or had a gap, sits in another HMRC band than current pay puts them in, or in none. Outputs: the share of the year paid at today''s employee pay and annual pay from other spells (chiefly a recent leaver''s last job), the same pair for self-employment, and the shares of the year a private pension started on retiring and contributory JSA, ESA and Incapacity Benefit started on leaving work were in payment; an annual amount is the current amount times its share plus the other spells. The State Pension needs none: policyengine-uk''s months_since_state_pension_age gives its share. Months come from CURRJOBM and JOB.WRKPREV for people in work (a person in work is never a leaver), the SAMESIT/SDEMP calendar only where it records a change, and LSTYR, LSTWRK1/2 or RETIRE1 for people out of work who worked in the last 12 months (NUMJOB2 and their last-job JOB rows); a leaving date 12 months or more before the interview gives none. A leaver''s pay is the last job''s usual gross pay (JOB.UGROSS, asked of people out of work who last worked in the previous 12 months, in respect of that job), scaled to the DV concept by the weighted job-level UGRSPAY/UGROSS ratio on current employees who report both and uprated by the pinned OBR average earnings index for the months since leaving; otherwise a donor''s weekly pay, drawn by GROSS4 weight from current employees in their first 24 months in the job within age band x sex x full- or part-time cells (sex dropped below 30 donors), on an identity-keyed uniform (seed 0, salt employment_income_other_spells). Self-employment keeps the whole year where SEJBLONG is one or more, (SEJBMTHS + 1)/12 under a year and at most the calendar''s self-employed months where self-employment is the activity today (the calendar records the main activity only, so a side business beside a job keeps its whole year); a ceased self-employed last job pays SEINCAMT (else PROFIT1, a loss as zero) for its SELWKS weeks; SEINCAM2 is already uprated to the interview by the FRS, so it is not uprated again. The receipt gives each source''s support as a band of distinct households, ratios only where three or more households carry them, and the exact zeros its stage gate reads.'
 - stage: spi_support_channel
   survey: Family Resources Survey 2024-25
-  source: Synthetic SPI support channel sampled uniformly without replacement from the raw FRS spine before cloning.
+  source: Synthetic SPI support channel drawn from the raw FRS spine as a keyed Bernoulli share, each household on its own identity-keyed uniform.
   grain: household
   artifacts: []
   operations:
   - kind: stack_zero_weight_donors
     count: 10000
     seed: 42
+    salt: spi_support_channel:inclusion
     flag_column: household_is_spi_synthetic
     channels:
       base: frs
       synthetic: spi
-    draw: uniform_without_replacement
+    draw: 'keyed_bernoulli_share: stable_identity_uniforms(household_id, seed, salt) < min(1, count x sample fraction / distinct source households)'
     id_remapping: copy-id table field spi_support_channel; the SPI copy takes every entity id + 1 x the field's radix (10**11)
   - kind: gate_zero_weight_strata
     gate: uk_zero_weight_strata_gate
     declarations:
-    - name: e7_spi_synthetic_preclone
+    - name: e7_spi_synthetic_share
       selector:
         household_is_spi_synthetic: true
-      maximum_zero_weight_rows: 10000
-      reason: E7 stacks exactly 10,000 zero-weight SPI-synthetic households on the raw pre-clone UK FRS spine.
+      maximum_zero_weight_rows_rule:
+        rule: binomial_share_band
+        sigma: 4
+      reason: E7 stacks a keyed Bernoulli share of the raw UK FRS spine's households as zero-weight SPI-synthetic households, so their count is binomial; it may exceed the share of the household rows entering the stage by at most the repo's four-sigma binomial band, floored at one row.
   - kind: allocate_zero_weight_prior_mass
     share: 0.5
     strata:
     - region
+    geographic_clone_stratum: household_clone_index
     pension_age_share: 0.2
     pension_age_stratum: any_member_at_or_over_state_pension_age
     weight_kind_out: importance
@@ -1508,7 +1512,7 @@ stages:
   - household_source_id
   - source_household_id
   - source_year
-  notes: "Stacks the pre-clone SPI support channel, gates the 10,000 zero-weight synthetic households under a stage-local declaration, and allocates prior mass with exact national conservation within each region, split by whether the household has a member at or over State Pension age (the engine's at the build instant): the SPI channel takes 50 percent of the stratum mass of households without one and pension_age_share of those with one. The channel's households are drawn unweighted with one weight per stratum and every adult in them carries a taxpayer's income, so a region-only allocation gave the channel more pension-age mass than the FRS design gives pension-age households (microcosm#1069)."
+  notes: "Stacks the SPI support channel as a keyed Bernoulli share (microcosm#931): a household is copied when its uniform, keyed on its own household id under the stage's seed and salt, falls below min(1, 10,000 times the sample fraction over the distinct source households entering the stage). Each household's draw depends on its own id alone. The denominator counts a source once however many geographic clones carry it, so every clone draws at the same probability on its own ids, and each clone's copy count is binomial with mean min(10,000 times the sample fraction, its source households). A stage-local declaration gates the zero-weight synthetic households at the share of the household rows entering the stage plus the repo's four-sigma binomial band. The stage then allocates prior mass with exact national conservation within each region, and within each geographic clone where the frame carries household_clone_index, split by whether the household has a member at or over State Pension age (the engine's at the build instant): the SPI channel takes 50 percent of the stratum mass of households without one and pension_age_share of those with one. The channel's households are drawn unweighted with one weight per stratum and every adult in them carries a taxpayer's income, so a region-only allocation gave the channel more pension-age mass than the FRS design gives pension-age households (microcosm#1069)."
 - stage: spi_income_band_donors
   survey: Survey of Personal Incomes Public Use Tape 2022-23 and HMRC Income Tax liabilities statistics July 2026 Table 2.5
   source: Reserved SPI support households for the HMRC Table 2.5 total-income bands from GBP 200,000, stacked at the published band taxpayer count over the donors per band (PolicyEngine/chronicle#280 lane).

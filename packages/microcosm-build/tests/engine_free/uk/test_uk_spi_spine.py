@@ -30,6 +30,7 @@ from microcosm.build.uk_runtime.spi_income import (
 from microcosm.build.uk_runtime.spi_spine import (
     EMPLOYER_PENSION_CONTRIBUTIONS_COLUMN,
     SPI_SPINE_PENSION_AGE_PRIOR_MASS_SHARE,
+    SPI_SPINE_SUPPORT_DRAW,
     UKFRSHMRCSpineLeavesStageTransform,
     UKSPIIncomeSpineStageTransform,
     UKSPISupportChannelStageTransform,
@@ -46,6 +47,7 @@ from microcosm.build.uk_runtime.spi_support import (
 )
 from microcosm.build.uk_runtime.terminal_gates import UKZeroWeightStratumDeclaration
 from microcosm.frame import WeightKind
+from test_support.microcosm_build.uk_clone_first_frames import clone_first_frame
 
 
 def _base_frame(*, time_period: str = "2023") -> object:
@@ -253,15 +255,19 @@ def _support_stage() -> SourceStageSpec:
                     "kind": "stack_zero_weight_donors",
                     "count": 10000,
                     "seed": 42,
-                    "draw": "uniform_without_replacement",
+                    "salt": "spi_support_channel:inclusion",
+                    "draw": SPI_SPINE_SUPPORT_DRAW,
                 },
                 {
                     "kind": "gate_zero_weight_strata",
                     "declarations": [
                         {
-                            "name": "e7_spi_synthetic_preclone",
+                            "name": "e7_spi_synthetic_share",
                             "selector": {HOUSEHOLD_IS_SPI_SYNTHETIC_COLUMN: True},
-                            "maximum_zero_weight_rows": 10000,
+                            "maximum_zero_weight_rows_rule": {
+                                "rule": "binomial_share_band",
+                                "sigma": 4,
+                            },
                             "reason": "synthetic fixture",
                         }
                     ],
@@ -297,7 +303,7 @@ def test_support_transform_refuses_manifest_code_drift() -> None:
         UKSPISupportChannelStageTransform(stage=stage)(_base_frame())
 
 
-def test_preclone_support_gate_passes_at_limit_and_fails_above() -> None:
+def test_share_support_gate_fails_above_its_maximum() -> None:
     household = pd.DataFrame(
         {
             "household_id": [1, 2],
@@ -306,17 +312,18 @@ def test_preclone_support_gate_passes_at_limit_and_fails_above() -> None:
         }
     )
     declaration = UKZeroWeightStratumDeclaration(
-        name="e7_spi_synthetic_preclone",
+        name="e7_spi_synthetic_share",
         selector={HOUSEHOLD_IS_SPI_SYNTHETIC_COLUMN: True},
         maximum_zero_weight_rows=1,
         reason="synthetic fixture",
     )
+    # An expected count of 2 over 2 households copies both.
     with pytest.raises(ValueError, match="exceed"):
         build_uk_spi_support_channel(
             person=_base_frame().table("person"),
             benunit=_base_frame().table("benunit"),
             household=household,
-            spi_household_count=2,
+            expected_spi_households=2,
             zero_weight_declarations=(declaration,),
         )
 
@@ -478,10 +485,10 @@ def test_spi_income_zero_initializes_frs_charity_and_keeps_frs_dividends(
                 "region": ["LONDON", "SCOTLAND"],
             }
         ),
-        spi_household_count=2,
+        expected_spi_households=2,
         zero_weight_declarations=(
             UKZeroWeightStratumDeclaration(
-                name="e7_spi_synthetic_preclone",
+                name="e7_spi_synthetic_share",
                 selector={HOUSEHOLD_IS_SPI_SYNTHETIC_COLUMN: True},
                 maximum_zero_weight_rows=2,
                 reason="synthetic fixture",
@@ -563,10 +570,10 @@ def test_reviewed_absent_incapacity_signal_raises(tmp_path: Path) -> None:
                 "region": ["LONDON", "SCOTLAND"],
             }
         ),
-        spi_household_count=2,
+        expected_spi_households=2,
         zero_weight_declarations=(
             UKZeroWeightStratumDeclaration(
-                name="e7_spi_synthetic_preclone",
+                name="e7_spi_synthetic_share",
                 selector={HOUSEHOLD_IS_SPI_SYNTHETIC_COLUMN: True},
                 maximum_zero_weight_rows=2,
                 reason="synthetic fixture",
@@ -851,8 +858,59 @@ def test_support_stage_parameters_accept_the_committed_manifest() -> None:
     assert count == 10000
     assert share == 0.5
     assert strata == ("region",)
-    assert len(declarations) == 1
+    # The one share gate, bounded by the four-sigma binomial band rather than
+    # a fixed maximum (microcosm#931).
+    (declaration,) = declarations
+    assert declaration["name"] == "e7_spi_synthetic_share"
+    assert declaration["selector"] == {HOUSEHOLD_IS_SPI_SYNTHETIC_COLUMN: True}
+    assert declaration["maximum_zero_weight_rows_rule"] == {
+        "rule": "binomial_share_band",
+        "sigma": 4.0,
+    }
+    assert "maximum_zero_weight_rows" not in declaration
     assert pension_age_share == SPI_SPINE_PENSION_AGE_PRIOR_MASS_SHARE
+
+
+@pytest.mark.parametrize(
+    ("kind", "changes", "message"),
+    [
+        (
+            "stack_zero_weight_donors",
+            {"draw": "uniform_without_replacement"},
+            "keyed Bernoulli share draw",
+        ),
+        ("stack_zero_weight_donors", {"salt": "spi_support_channel"}, "salt drifted"),
+        ("stack_zero_weight_donors", {"salt": None}, "salt drifted"),
+        (
+            "allocate_zero_weight_prior_mass",
+            {"geographic_clone_stratum": "clone_index"},
+            "by geographic clone",
+        ),
+        (
+            "allocate_zero_weight_prior_mass",
+            {"geographic_clone_stratum": None},
+            "by geographic clone",
+        ),
+    ],
+)
+def test_support_stage_parameters_refuse_draw_salt_and_clone_stratum_drift(
+    kind: str, changes: dict, message: str
+) -> None:
+    committed = _committed_stage("spi_support_channel")
+    operations = []
+    for operation in committed.operations:
+        payload = {"kind": operation.kind, **dict(operation.parameters)}
+        if operation.kind == kind:
+            payload.update(changes)
+            payload = {
+                key: value for key, value in payload.items() if value is not None
+            }
+        operations.append(payload)
+    stage = SourceStageSpec.from_mapping(
+        {**committed.__dict__, "operations": operations}
+    )
+    with pytest.raises(ValueError, match=message):
+        _support_stage_parameters(stage, seed=42)
 
 
 @pytest.mark.parametrize(
@@ -914,15 +972,30 @@ def test_support_transform_refuses_missing_builder_weight_kind(monkeypatch) -> N
         transform(frame)
 
 
-def test_support_stage_parameters_refuse_gate_declaration_drift() -> None:
+@pytest.mark.parametrize(
+    "changes",
+    [
+        {"name": "e7_spi_synthetic_preclone"},
+        {"selector": {HOUSEHOLD_IS_SPI_SYNTHETIC_COLUMN: False}},
+        {"maximum_zero_weight_rows": 20000},
+        {"maximum_zero_weight_rows_rule": None, "maximum_zero_weight_rows": 10000},
+        {"maximum_zero_weight_rows_rule": {"rule": "normal_band", "sigma": 4}},
+        {"maximum_zero_weight_rows_rule": {"rule": "binomial_share_band", "sigma": 3}},
+        {"maximum_zero_weight_rows_rule": {"rule": "binomial_share_band"}},
+        {"reason": " "},
+    ],
+)
+def test_support_stage_parameters_refuse_gate_declaration_drift(changes: dict) -> None:
     committed = _committed_stage("spi_support_channel")
     gate = next(
         operation
         for operation in committed.operations
         if operation.kind == "gate_zero_weight_strata"
     )
-    declaration = dict(gate.parameters["declarations"][0])
-    declaration["maximum_zero_weight_rows"] = 20000
+    declaration = {**dict(gate.parameters["declarations"][0]), **changes}
+    declaration = {
+        key: value for key, value in declaration.items() if value is not None
+    }
     stage = _with_mutated_operation(
         committed, "gate_zero_weight_strata", declarations=[declaration]
     )
@@ -967,3 +1040,143 @@ def test_readers_of_the_support_record_take_the_declared_allocation_reason() -> 
     manifest = load_uk_release_input_coverage_manifest()
     family = manifest.family_coverage["hmrc_spi_income"]
     assert family["required_mass_change_reason"] == reason
+
+
+# The keyed Bernoulli share at the stage (microcosm#931). Every frame below is
+# synthetic.
+
+_SHARE_REGIONS = np.asarray(["LONDON", "WALES", "SCOTLAND", "NORTH_EAST"])
+
+
+def _share_frame(n_households: int = 400) -> object:
+    """One-person households over four regions, some at State Pension age."""
+
+    rng = np.random.default_rng(11)
+    ids = np.arange(1, n_households + 1, dtype="int64")
+    return uk_national_frame(
+        person=pd.DataFrame(
+            {
+                "person_id": ids * 1_000 + 1,
+                "person_household_id": ids,
+                "person_benunit_id": ids * 100 + 1,
+                "age": 25 + ids % 60,
+            }
+        ),
+        benunit=pd.DataFrame({"benunit_id": ids * 100 + 1}),
+        household=pd.DataFrame(
+            {
+                "household_id": ids,
+                "household_weight": rng.uniform(50.0, 500.0, n_households),
+                "region": _SHARE_REGIONS[ids % 4],
+            }
+        ),
+        time_period="2024",
+        weight_kind=WeightKind.DESIGN,
+    )
+
+
+def _share_stage(frame, *, sample_fraction: float = 0.01):
+    transform = UKSPISupportChannelStageTransform(
+        stage=_committed_stage("spi_support_channel"),
+        sample_fraction=sample_fraction,
+        state_pension_age=66,
+    )
+    out = transform(frame)
+    return out, transform.checkpoint_metadata()["evidence"]
+
+
+def test_the_stage_draws_the_declared_count_times_the_sample_fraction() -> None:
+    from microcosm.build.stochastic_assignment import binomial_share_tolerance
+
+    out, evidence = _share_stage(_share_frame())
+    copies = int(
+        out.table("household")["household_support_channel"]
+        .eq(SPI_SYNTHETIC_SUPPORT_CHANNEL)
+        .sum()
+    )
+
+    # 10,000 x 0.01 = 100 expected copies over 400 sources: a share of 1/4.
+    assert evidence["expected_spi_households"] == 100.0
+    assert evidence["inclusion_probability"] == 0.25
+    assert evidence["source_households"] == 400
+    assert evidence["spi_households"] == copies
+    assert abs(copies - 100) <= 400 * binomial_share_tolerance(
+        target=0.25, rows=400, sigma=4.0
+    )
+    # The gate is recorded by its rule, not the maximum it resolved to.
+    assert evidence["zero_weight_gate"] == {
+        "name": "e7_spi_synthetic_share",
+        "rule": "binomial_share_band",
+        "sigma": 4.0,
+    }
+    # The receipt rounds the source count and floors the share.
+    _, rounded = _share_stage(_share_frame(397), sample_fraction=0.0101)
+    assert rounded["source_households"] == 400
+    assert rounded["inclusion_probability"] == 0.25
+
+
+def test_an_expected_count_at_the_source_count_copies_every_household() -> None:
+    # As in the H2 fixture: 10,000 x (135 / 10,000) is 135.0 in float, so the
+    # share is one and every household is copied, as the count did before.
+    fraction = 135 / 10_000
+    assert 10_000 * fraction == 135.0
+    out, evidence = _share_stage(_share_frame(135), sample_fraction=fraction)
+    household = out.table("household")
+    spi = household["household_support_channel"].eq(SPI_SYNTHETIC_SUPPORT_CHANNEL)
+
+    assert evidence["inclusion_probability"] == 1.0
+    assert evidence["spi_households"] == 135
+    assert household.loc[spi, "household_source_id"].tolist() == list(range(1, 136))
+
+
+@pytest.mark.parametrize("clone_count", [3, 7])
+def test_clone_zero_of_a_cloned_spine_is_the_one_clone_share(clone_count: int) -> None:
+    from microcosm.build.stochastic_assignment import binomial_share_tolerance
+
+    one, one_evidence = _share_stage(clone_first_frame(_share_frame(), 1))
+    many, many_evidence = _share_stage(clone_first_frame(_share_frame(), clone_count))
+    one_household = one.table("household")
+    many_household = many.table("household")
+
+    def copied(household, clone: int) -> set[int]:
+        rows = household["household_clone_index"].eq(clone) & household[
+            "household_support_channel"
+        ].eq(SPI_SYNTHETIC_SUPPORT_CHANNEL)
+        return set(household.loc[rows, "source_household_id"].tolist())
+
+    # The share divides by the sources, not the rows, so it is the same at
+    # every clone count, and clone 0, whose ids are the one-clone ids, draws
+    # exactly the one-clone copies. The other clones draw on their own ids.
+    assert many_evidence["inclusion_probability"] == 0.25
+    assert many_evidence["source_households"] == one_evidence["source_households"]
+    reference = copied(one_household, 0)
+    assert copied(many_household, 0) == reference
+    for clone in range(1, clone_count):
+        assert copied(many_household, clone) != reference
+    rows = clone_count * 400
+    copies = many_evidence["spi_households"]
+    assert abs(copies - rows * 0.25) <= rows * binomial_share_tolerance(
+        target=0.25, rows=rows, sigma=4.0
+    )
+
+    # Nested weights: K x every clone-0 row is the one-clone row. The
+    # exact-total correction lands on clone 0's rows, so to rtol 1e-12, not
+    # bit for bit.
+    one_weights = pd.Series(
+        np.asarray(one.weights_for("household").values),
+        index=one_household["household_id"].to_numpy(),
+    )
+    many_weights = pd.Series(
+        np.asarray(many.weights_for("household").values),
+        index=many_household["household_id"].to_numpy(),
+    )
+    clone_zero = many_household.loc[
+        many_household["household_clone_index"].eq(0), "household_id"
+    ].to_numpy()
+    assert set(clone_zero) == set(one_weights.index)
+    np.testing.assert_allclose(
+        clone_count * many_weights.loc[clone_zero].to_numpy(),
+        one_weights.loc[clone_zero].to_numpy(),
+        rtol=1e-12,
+        atol=0.0,
+    )

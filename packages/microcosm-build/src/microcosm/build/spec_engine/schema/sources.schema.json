@@ -7956,6 +7956,7 @@
       "draw",
       "flag_column",
       "id_remapping",
+      "salt",
       "seed"
      ],
      "properties": {
@@ -7972,6 +7973,9 @@
        "type": "string"
       },
       "flag_column": {
+       "type": "string"
+      },
+      "salt": {
        "type": "string"
       },
       "seed": {
@@ -8019,8 +8023,19 @@
         "required": [
          "name",
          "selector",
-         "maximum_zero_weight_rows",
          "reason"
+        ],
+        "oneOf": [
+         {
+          "required": [
+           "maximum_zero_weight_rows"
+          ]
+         },
+         {
+          "required": [
+           "maximum_zero_weight_rows_rule"
+          ]
+         }
         ],
         "properties": {
          "name": {
@@ -8031,6 +8046,23 @@
          },
          "maximum_zero_weight_rows": {
           "type": "integer"
+         },
+         "maximum_zero_weight_rows_rule": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+           "rule",
+           "sigma"
+          ],
+          "properties": {
+           "rule": {
+            "const": "binomial_share_band"
+           },
+           "sigma": {
+            "type": "number",
+            "exclusiveMinimum": 0
+           }
+          }
          },
          "selector": {
           "type": "object",
@@ -8063,6 +8095,9 @@
        "const": "allocate_zero_weight_prior_mass"
       },
       "conservation": {
+       "type": "string"
+      },
+      "geographic_clone_stratum": {
        "type": "string"
       },
       "pension_age_share": {

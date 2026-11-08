@@ -53,6 +53,7 @@ from microcosm.build.uk_runtime.qrf_gates import (
     UK_GATE_OUTCOMES_EVIDENCE,
     declared_gate_calibration,
 )
+from microcosm.build.uk_runtime.receipt_counts import floored_share, rounded_count
 from microcosm.build.uk_runtime.release_input_coverage import (
     DEFAULT_MINIMUM_NONDEFAULT_MASS_SHARE,
 )
@@ -103,6 +104,7 @@ from microcosm.build.uk_runtime.spi_support import (
     DEFAULT_SPI_SUPPORT_HOUSEHOLDS,
     FRS_ONLY_SPI_FILL_INCOME_PREDICTOR_COLUMNS,
     HOUSEHOLD_IS_SPI_SYNTHETIC_COLUMN,
+    SPI_GEOGRAPHIC_CLONE_INDEX_COLUMN,
     SPI_HMRC_DERIVED_AUXILIARY_COLUMNS,
     SPI_HMRC_EMPLOYMENT_BENEFITS_COLUMN,
     SPI_HMRC_EMPLOYMENT_EXPENSES_COLUMN,
@@ -114,7 +116,9 @@ from microcosm.build.uk_runtime.spi_support import (
     SPI_HMRC_TOTAL_EARNED_INCOME_COLUMN,
     SPI_HMRC_TOTAL_INVESTMENT_INCOME_COLUMN,
     SPI_INCOME_QRF_OUTPUT_COLUMNS,
+    SPI_SHARE_GATE_RULE,
     SPI_SUPPORT_ID_REMAPPING,
+    SPI_SUPPORT_INCLUSION_SALT,
     SPI_SYNTHETIC_SUPPORT_CHANNEL,
     UKSPISupportResult,
     build_uk_spi_support_channel,
@@ -124,9 +128,6 @@ from microcosm.build.uk_runtime.spi_support import (
 )
 from microcosm.build.uk_runtime.spi_support import (
     _spi_prior_mass_change_reason as _support_mass_change_reason,
-)
-from microcosm.build.uk_runtime.terminal_gates import (
-    UKZeroWeightStratumDeclaration,
 )
 from microcosm.frame import Frame, WeightKind, engine_tables
 
@@ -392,7 +393,16 @@ SPI_SPINE_FRS_CHANNEL_INITIALIZATION = {
     "charitable_investment_gifts": 0.0,
 }
 SPI_SPINE_SUPPORT_CHANNELS = {"base": "frs", "synthetic": SPI_SYNTHETIC_SUPPORT_CHANNEL}
-SPI_SPINE_PRECLONE_GATE_NAME = "e7_spi_synthetic_preclone"
+#: The support channel's draw, as the manifest restates it: a keyed Bernoulli
+#: share whose numerator is the declared count (microcosm#931).
+SPI_SPINE_SUPPORT_DRAW = (
+    "keyed_bernoulli_share: stable_identity_uniforms(household_id, seed, salt) "
+    "< min(1, count x sample fraction / distinct source households)"
+)
+SPI_SPINE_SHARE_GATE_NAME = "e7_spi_synthetic_share"
+#: The share gate's bound: the repo's four-sigma binomial band above the
+#: share (the latent-attribute receipts' sigma; ruled 2026-11-07).
+SPI_SPINE_SHARE_GATE_RULE = {"rule": SPI_SHARE_GATE_RULE, "sigma": 4.0}
 #: The reviewed SPI-channel prior share of households with a member at or over
 #: State Pension age, and the stratum rule the manifest declares beside it
 #: (microcosm#1069 c6). The channel's households are drawn unweighted with one
@@ -637,9 +647,9 @@ class UKFRSHMRCSpineLeavesStageTransform:
 class UKSPISupportChannelStageTransform:
     stage: SourceStageSpec
     seed: int = 42
-    # A #627 scale-ladder receipt build: scale the declared synthetic stack
-    # by the survey-side sample fraction so the prior-mass pairing holds at
-    # every rung (f100 keeps the declared count exactly).
+    # A #627 scale-ladder receipt build: the declared count times the
+    # survey-side sample fraction is the share's expected copy count, so the
+    # prior-mass pairing holds at every rung in expectation (microcosm#931).
     sample_fraction: float = 1.0
     # The engine's State Pension age at the build instant; None reads it from
     # policyengine-uk (tests without the engine pass it).
@@ -653,8 +663,10 @@ class UKSPISupportChannelStageTransform:
         count, share, strata, declarations, pension_age_share = (
             _support_stage_parameters(self.stage, seed=self.seed)
         )
-        if self.sample_fraction != 1.0 and count is not None:
-            count = max(1, int(round(count * self.sample_fraction)))
+        # The declared count is the share's numerator: each household is
+        # copied with probability min(1, count x sample fraction / distinct
+        # source households), computed by the builder (microcosm#931).
+        expected = float(count) * float(self.sample_fraction)
         state_pension_age = None
         if pension_age_share is not None:
             state_pension_age = (
@@ -668,7 +680,7 @@ class UKSPISupportChannelStageTransform:
             tables["person"],
             tables["benunit"],
             tables["household"],
-            spi_household_count=count,
+            expected_spi_households=expected,
             seed=self.seed,
             source_year=int(uk_time_period(frame)),
             spi_prior_mass_share=share,
@@ -711,23 +723,46 @@ class UKSPISupportChannelStageTransform:
     def checkpoint_metadata(self) -> dict[str, object]:
         if self.last_result is None:
             raise RuntimeError("checkpoint metadata requires a completed stage run.")
+        result = self.last_result
+        if (
+            result.spi_inclusion_probability is None
+            or result.spi_source_households is None
+        ):
+            raise RuntimeError("The SPI support stage records a drawn share.")
         return {
             "evidence": {
                 "stage": "spi_support_channel",
-                "spi_households": self.last_result.n_spi_households,
-                "spi_prior_mass_share": self.last_result.spi_prior_mass_share,
-                "pension_age_spi_prior_mass_share": (
-                    self.last_result.pension_age_spi_prior_mass_share
+                # The copy count is exact: the stage gate reads it, and it
+                # counts a draw over every household, not an attribute cell.
+                "spi_households": result.n_spi_households,
+                # The share (microcosm#931): its expected count is the declared
+                # count times the sample fraction; the probability and the
+                # source households it divides by follow the receipts'
+                # disclosure rules, since an exact probability gives the
+                # source count back; and the gate's bound is recorded as its
+                # rule, not the maximum it resolved to.
+                "expected_spi_households": result.expected_spi_households,
+                "inclusion_probability": floored_share(
+                    result.spi_inclusion_probability
                 ),
-                "state_pension_age": self.last_result.state_pension_age,
+                "source_households": rounded_count(result.spi_source_households),
+                "zero_weight_gate": {
+                    "name": SPI_SPINE_SHARE_GATE_NAME,
+                    **SPI_SPINE_SHARE_GATE_RULE,
+                },
+                "spi_prior_mass_share": result.spi_prior_mass_share,
+                "pension_age_spi_prior_mass_share": (
+                    result.pension_age_spi_prior_mass_share
+                ),
+                "state_pension_age": result.state_pension_age,
                 "pension_age_allocation": (
                     None
-                    if self.last_result.pension_age_allocation is None
-                    else dict(self.last_result.pension_age_allocation)
+                    if result.pension_age_allocation is None
+                    else dict(result.pension_age_allocation)
                 ),
                 "household_weight_kind": (
-                    self.last_result.household_weight_kind.value
-                    if self.last_result.household_weight_kind is not None
+                    result.household_weight_kind.value
+                    if result.household_weight_kind is not None
                     else None
                 ),
             }
@@ -1164,9 +1199,17 @@ def _support_stage_parameters(
     int,
     float,
     tuple[str, ...],
-    tuple[UKZeroWeightStratumDeclaration, ...],
+    tuple[Mapping[str, object], ...],
     float | None,
 ]:
+    """The support stage's reviewed parameters, checked against the code.
+
+    Returns the declared count (the share's numerator), the prior-mass share,
+    the allocation strata, the zero-weight gate's one declaration with its
+    maximum rule (resolved after the draw, microcosm#931) and the pension-age
+    share.
+    """
+
     stack = _operation(stage, "stack_zero_weight_donors")
     gate = _operation(stage, "gate_zero_weight_strata")
     allocation = _operation(stage, "allocate_zero_weight_prior_mass")
@@ -1174,8 +1217,12 @@ def _support_stage_parameters(
         raise ValueError("SPI support manifest count drifted from the reviewed value.")
     if stack.parameters.get("seed") != seed:
         raise ValueError("SPI support manifest seed drifted from the reviewed value.")
-    if stack.parameters.get("draw") != "uniform_without_replacement":
-        raise ValueError("SPI support manifest must declare a uniform donor draw.")
+    if stack.parameters.get("draw") != SPI_SPINE_SUPPORT_DRAW:
+        raise ValueError(
+            "SPI support manifest must declare the keyed Bernoulli share draw."
+        )
+    if stack.parameters.get("salt") != SPI_SUPPORT_INCLUSION_SALT:
+        raise ValueError("SPI support manifest salt drifted from the reviewed value.")
     if stack.parameters.get("id_remapping") != SPI_SUPPORT_ID_REMAPPING:
         raise ValueError(
             "SPI support manifest id_remapping drifted from the copy-id table's "
@@ -1196,6 +1243,14 @@ def _support_stage_parameters(
     strata = tuple(allocation.parameters.get("strata", ()))
     if strata != ("region",):
         raise ValueError("SPI support spine allocation must use strata ['region'].")
+    if (
+        allocation.parameters.get("geographic_clone_stratum")
+        != SPI_GEOGRAPHIC_CLONE_INDEX_COLUMN
+    ):
+        raise ValueError(
+            "SPI support allocation must split its strata by geographic clone "
+            f"on {SPI_GEOGRAPHIC_CLONE_INDEX_COLUMN!r}."
+        )
     pension_age_share = allocation.parameters.get("pension_age_share")
     if pension_age_share is not None:
         if pension_age_share != SPI_SPINE_PENSION_AGE_PRIOR_MASS_SHARE:
@@ -1212,24 +1267,39 @@ def _support_stage_parameters(
             )
     elif "pension_age_stratum" in allocation.parameters:
         raise ValueError("SPI support pension-age stratum declared without a share.")
-    declarations = _coerce_declarations(gate.parameters.get("declarations", ()))
-    if len(declarations) != 1:
-        raise ValueError("SPI support gate must declare exactly one pre-clone stratum.")
-    declaration = declarations[0]
+    declarations = gate.parameters.get("declarations", ())
     if (
-        declaration.name != SPI_SPINE_PRECLONE_GATE_NAME
-        or dict(declaration.selector) != {HOUSEHOLD_IS_SPI_SYNTHETIC_COLUMN: True}
-        or declaration.maximum_zero_weight_rows != DEFAULT_SPI_SUPPORT_HOUSEHOLDS
+        not isinstance(declarations, Sequence)
+        or isinstance(declarations, str | bytes)
+        or len(declarations) != 1
+        or not isinstance(declarations[0], Mapping)
+    ):
+        raise ValueError("SPI support gate must declare exactly one share stratum.")
+    declaration = dict(declarations[0])
+    rule = declaration.get("maximum_zero_weight_rows_rule")
+    reason = declaration.get("reason")
+    if (
+        set(declaration)
+        != {"name", "selector", "maximum_zero_weight_rows_rule", "reason"}
+        or declaration["name"] != SPI_SPINE_SHARE_GATE_NAME
+        or not isinstance(declaration["selector"], Mapping)
+        or dict(declaration["selector"]) != {HOUSEHOLD_IS_SPI_SYNTHETIC_COLUMN: True}
+        or not isinstance(rule, Mapping)
+        or dict(rule) != SPI_SPINE_SHARE_GATE_RULE
+        or not isinstance(reason, str)
+        or not reason.strip()
     ):
         raise ValueError(
-            "SPI support pre-clone gate declaration drifted from the reviewed "
-            "name/selector/maximum."
+            "SPI support share gate declaration drifted from the reviewed "
+            "name/selector/maximum rule."
         )
+    declaration["selector"] = dict(declaration["selector"])
+    declaration["maximum_zero_weight_rows_rule"] = dict(rule)
     return (
         int(stack.parameters["count"]),
         float(allocation.parameters["share"]),
         strata,
-        declarations,
+        (declaration,),
         None if pension_age_share is None else float(pension_age_share),
     )
 
@@ -1491,19 +1561,6 @@ def _assert_identity_matches_artifact(
             f"FRS tab {artifact['locator']!r} is {evidence['size_bytes']} bytes, "
             f"not the pinned {artifact['size_bytes']}."
         )
-
-
-def _coerce_declarations(
-    values: object,
-) -> tuple[UKZeroWeightStratumDeclaration, ...]:
-    if not isinstance(values, Sequence) or isinstance(values, str | bytes):
-        raise ValueError("zero-weight declarations must be a sequence.")
-    declarations = []
-    for value in values:
-        if not isinstance(value, Mapping):
-            raise ValueError("zero-weight declarations must be mappings.")
-        declarations.append(UKZeroWeightStratumDeclaration(**dict(value)))
-    return tuple(declarations)
 
 
 __all__ = [

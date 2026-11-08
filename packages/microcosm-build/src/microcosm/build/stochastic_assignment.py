@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import math
 from collections.abc import Mapping, Sequence
 from typing import Any
 
@@ -12,6 +13,7 @@ from scipy.stats import norm
 __all__ = [
     "assign_binary_from_rate",
     "assign_binary_with_anchored_residual",
+    "binomial_share_tolerance",
     "clipped_normal_from_uniforms",
     "integer_record_keys",
     "sample_categorical_from_counts",
@@ -123,6 +125,24 @@ def integer_record_keys(
     if np.unique(keys).size != keys.size:
         raise ValueError(f"{label} must name each record once.")
     return keys
+
+
+def binomial_share_tolerance(*, target: float, rows: int, sigma: float) -> float:
+    """Binomial band for a share realized over ``rows`` identity-keyed draws.
+
+    ``sigma`` standard errors of a share whose rows are each drawn at
+    ``target``, ``sigma x sqrt(target x (1 - target) / rows)``, floored at one
+    row's worth and capped at one; one when there are no rows. Moved here
+    from the UK stage-health gates, which keep their four-sigma band under
+    their own name (microcosm#931).
+    """
+
+    if rows <= 0:
+        return 1.0
+    return min(
+        1.0,
+        max(1.0 / rows, sigma * math.sqrt(target * (1.0 - target) / rows)),
+    )
 
 
 def assign_binary_from_rate(

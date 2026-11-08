@@ -115,6 +115,42 @@ def test_official_hmrc_sources_and_sampling_weights_remain_bound():
             0,
             "count drifted",
         ),
+        # The keyed Bernoulli share and its gate (microcosm#931).
+        (
+            "spi_support_channel",
+            "stack_zero_weight_donors",
+            "draw",
+            "uniform_without_replacement",
+            "keyed Bernoulli share draw",
+        ),
+        (
+            "spi_support_channel",
+            "stack_zero_weight_donors",
+            "salt",
+            "spi_support_channel",
+            "salt drifted",
+        ),
+        (
+            "spi_support_channel",
+            "gate_zero_weight_strata",
+            "declarations",
+            [
+                {
+                    "name": "e7_spi_synthetic_share",
+                    "selector": {"household_is_spi_synthetic": True},
+                    "maximum_zero_weight_rows": 10000,
+                    "reason": "an exact count",
+                }
+            ],
+            "share gate declaration drifted",
+        ),
+        (
+            "spi_support_channel",
+            "allocate_zero_weight_prior_mass",
+            "geographic_clone_stratum",
+            "clone_index",
+            "by geographic clone",
+        ),
         (INCOME, "strict_read_private_table", "weight", "uniform", "strict.weight"),
         (
             INCOME,
