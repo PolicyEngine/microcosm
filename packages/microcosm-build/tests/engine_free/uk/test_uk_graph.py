@@ -304,36 +304,76 @@ def test_counting_module_changes_invalidate_every_stage_that_counts(monkeypatch)
 #: channel's clone helper (``spi_support``), which reads the copy-id table;
 #: every other minting stage's module reads the table itself (microcosm#931).
 _SPI_COPY_ID_STAGES = frozenset({"spi_support_channel", "spi_income_band_donors"})
+#: Stages that bind ``spi_support`` or ``frs_spine``, which read the copy-id
+#: table, for names that never mint, decode or bound a copy id: constants,
+#: the support channel's column names and source fill, and frs_spine's tab
+#: reader and self-employment rule. They need not bind the table.
+_COPY_ID_TABLE_NAME_ONLY_STAGES = frozenset(
+    {"company_cars", "property_components", "spi_benefit_coherence"}
+)
+#: The functions those stages may import from the two helpers.
+_COPY_ID_TABLE_FREE_HELPER_FUNCTIONS = frozenset(
+    {
+        "fill_support_channel_from_source",
+        "read_pinned_tab",
+        "support_channel_column",
+        "support_source_id_column",
+        "uc_gainful_self_employment",
+    }
+)
+
+
+def _names_imported_from(module, helpers: set[str]) -> set[str]:
+    import ast
+    import inspect
+
+    tree = ast.parse(Path(inspect.getfile(module)).read_text(encoding="utf-8"))
+    return {
+        alias.name
+        for node in ast.walk(tree)
+        if isinstance(node, ast.ImportFrom)
+        and node.module
+        and node.module.rsplit(".", 1)[-1] in helpers
+        for alias in node.names
+    }
 
 
 def test_every_stage_that_mints_or_bounds_copy_ids_binds_the_copy_id_table() -> None:
-    """``source_hash`` does not follow imports, so every stage whose module
-    reads the copy-id table, and the two SPI support stages, whose minting
-    runs in spi_support, bind it; no other stage does (microcosm#931)."""
+    """``source_hash`` does not follow imports, so every stage whose module or
+    bound helpers read the copy-id table binds it, save the stages that bind
+    a reading helper for table-free names alone (microcosm#931)."""
     from microcosm.build.uk_runtime import copy_id_table, graph_kernels, spi_support
 
-    assert "copy_id_table" in _imported_module_names(spi_support)
     reading = {
         stage
         for stage in graph_kernels._STAGE_MODULES
-        if "copy_id_table" in _imported_module_names(graph_kernels._stage_module(stage))
-    }
-    assert reading == {
-        "frs_spine",
-        "high_value_home_support",
-        "cgt_support_split",
-        "cgt_incidence_clone",
-        "cgt_incidence_anchor",
-        "cgt_residential_split",
+        if any(
+            "copy_id_table" in _imported_module_names(module)
+            for module in (
+                graph_kernels._stage_module(stage),
+                *graph_kernels._STAGE_HELPER_MODULES.get(stage, ()),
+            )
+        )
     }
     binding = {
         stage
         for stage, helpers in graph_kernels._STAGE_HELPER_MODULES.items()
         if copy_id_table in helpers
     }
-    assert binding == reading | _SPI_COPY_ID_STAGES
+    assert _COPY_ID_TABLE_NAME_ONLY_STAGES <= reading
+    assert binding == reading - _COPY_ID_TABLE_NAME_ONLY_STAGES
+    assert _SPI_COPY_ID_STAGES <= binding
     for stage in _SPI_COPY_ID_STAGES:
         assert spi_support in graph_kernels._STAGE_HELPER_MODULES[stage]
+    for stage in _COPY_ID_TABLE_NAME_ONLY_STAGES:
+        module = graph_kernels._stage_module(stage)
+        assert "copy_id_table" not in _imported_module_names(module), stage
+        functions = {
+            name
+            for name in _names_imported_from(module, {"spi_support", "frs_spine"})
+            if not name.isupper()
+        }
+        assert functions <= _COPY_ID_TABLE_FREE_HELPER_FUNCTIONS, stage
 
 
 def test_copy_id_table_changes_invalidate_every_stage_that_reads_it(monkeypatch):

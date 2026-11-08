@@ -1389,8 +1389,10 @@ def _source_lineage(
 ) -> pd.Series:
     """Derive new target-to-immediate-source ids from a structural result.
 
-    Vectorised on exact int64 ids: a row-by-row walk would upcast an
-    all-numeric row to float64, which is inexact above 2**53. The refusals
+    Vectorised on exact int64 ids, so it is exact on any frame. A row-by-row
+    walk reads a row whose columns hold only integers and floats as float64,
+    which is inexact above 2**53 (an all-integer row stays int64, and a row
+    with a string or boolean column comes back as objects). The refusals
     print counts, never an id.
     """
 

@@ -927,6 +927,18 @@ def test_support_stage_parameters_refuse_gate_declaration_drift() -> None:
         _support_stage_parameters(stage, seed=42)
 
 
+def test_support_stage_parameters_refuse_id_remapping_drift() -> None:
+    # The manifest restates the copy-id table's spi_support_channel rule
+    # (microcosm#931); a drifted restatement is refused.
+    stage = _with_mutated_operation(
+        _committed_stage("spi_support_channel"),
+        "stack_zero_weight_donors",
+        id_remapping="__drift__",
+    )
+    with pytest.raises(ValueError, match="id_remapping drifted"):
+        _support_stage_parameters(stage, seed=42)
+
+
 def test_readers_of_the_support_record_take_the_declared_allocation_reason() -> None:
     """microcosm#1069 c6: the stratified sentence, not the 50% constant."""
 

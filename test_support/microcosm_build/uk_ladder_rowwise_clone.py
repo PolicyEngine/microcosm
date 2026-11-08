@@ -174,13 +174,19 @@ def _load_builder_module():
     return module
 
 
-def _write_seam_h5(path, *, household: pd.DataFrame | None = None) -> None:
+def _write_seam_h5(
+    path,
+    *,
+    household: pd.DataFrame | None = None,
+    person: pd.DataFrame | None = None,
+    benunit: pd.DataFrame | None = None,
+) -> None:
     from microcosm.build.uk_runtime import write_uk_national_frame
     from microcosm.build.uk_runtime.national_frame import uk_national_frame
 
     dataset = uk_national_frame(
-        person=_person_frame(),
-        benunit=_benunit_frame(),
+        person=_person_frame() if person is None else person,
+        benunit=_benunit_frame() if benunit is None else benunit,
         household=_household_frame() if household is None else household,
         time_period="2023",
         weight_kind=WeightKind.IMPORTANCE,

@@ -626,6 +626,41 @@ def test_exact_mass_correction_handles_one_ulp_bounce() -> None:
     assert weights.total == 0.6
 
 
+def test_replace_spi_support_refuses_a_base_whose_ids_reach_the_spi_field() -> None:
+    # The rebuilt copies mint in the spi_support_channel field, so a surviving
+    # base household already at or above its radix (here a synthetic id at a
+    # high-value copy's offset) is refused by count, never given colliding
+    # ids (microcosm#931).
+    dead = _certified_like_dead_spi_support()
+    person, benunit, household = (
+        dead.person.copy(),
+        dead.benunit.copy(),
+        dead.household.copy(),
+    )
+    shift = 10**12
+    members = person["person_household_id"] == 2
+    units = set(person.loc[members, "person_benunit_id"])
+    household.loc[household["household_id"] == 2, "household_id"] += shift
+    person.loc[members, ["person_id", "person_household_id", "person_benunit_id"]] += (
+        shift
+    )
+    benunit.loc[benunit["benunit_id"].isin(units), "benunit_id"] += shift
+
+    with pytest.raises(
+        ValueError,
+        match=r"^1 of the incoming household_id values reach the "
+        r"'spi_support_channel' copy-id field",
+    ) as caught:
+        replace_uk_spi_support_tables(
+            person=person,
+            benunit=benunit,
+            household=household,
+            seed=7,
+            source_year=2023,
+        )
+    assert str(2 + shift) not in str(caught.value)
+
+
 def test_replace_spi_support_refuses_to_discard_positive_spi_mass() -> None:
     dead = _certified_like_dead_spi_support()
     household = dead.household.copy()

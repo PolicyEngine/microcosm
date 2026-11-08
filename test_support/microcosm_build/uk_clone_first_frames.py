@@ -13,10 +13,11 @@ frame. ``rule="table"`` mints every copy through the copy-id table, as the
 stages do; ``rule="retired"`` replays the rule the table replaced (ten to the
 digit count of the largest id the layer sees), for comparison.
 
-:func:`assert_copy_ids_follow_lineage` checks a real stage's output: every new
-household is matched to its root in the stage's input by lineage columns, never
-by id arithmetic, and all five id columns must equal the root's plus the copy's
-ordinal times the field's declared radix.
+:func:`assert_copy_ids_follow_lineage` checks a stage's output on a synthetic
+frame: every new household is matched to its root in the stage's input by
+lineage columns, never by id arithmetic, and all five id columns must equal the
+root's plus the copy's ordinal times the field's declared radix. Its failures
+print counts, never an id or a key.
 """
 
 from __future__ import annotations
@@ -40,6 +41,7 @@ __all__ = [
     "copy_chain",
     "copy_households",
     "id_frame",
+    "with_last_household_moved",
 ]
 
 GEOGRAPHIC_RADIX = copy_id_table.radix("geographic_support")
@@ -141,6 +143,31 @@ def id_frame(tables: IdTables, *, time_period: str = "2024") -> Frame:
         household=tables.household,
         household_weights=np.ones(len(tables.household)),
         time_period=time_period,
+    )
+
+
+def with_last_household_moved(frame: Frame, offset: int) -> Frame:
+    """``frame`` with its last household's id, and its members', up ``offset``.
+
+    For the stages' incoming-id refusals: the moved household reaches a copy
+    field its stage must find empty. Weights, strata and the mass log are
+    kept; only ``household_id`` and the members' ``person_household_id``
+    move.
+    """
+
+    tables = {entity: frame.table(entity).copy() for entity in frame.entities}
+    household, person = tables["household"], tables["person"]
+    last = int(household["household_id"].iloc[-1])
+    household.loc[household.index[-1], "household_id"] = last + offset
+    members = person["person_household_id"] == last
+    person.loc[members, "person_household_id"] = last + offset
+    return Frame(
+        tables,
+        frame.schema,
+        {"household": frame.weights_for("household")},
+        frame.strata,
+        mass_log=frame.mass_log,
+        metadata=frame.metadata,
     )
 
 
@@ -294,7 +321,9 @@ def assert_copy_ids_follow_lineage(
     id. The copy's ordinal is ``ordinal_column`` on the new row, or 1 for a
     single-copy layer. Members pair up in person_id order, and each copy's
     benefit units are its root's at the same offset. Ids are read as Python
-    integers, exact above 2**53. Returns the number of copies checked.
+    integers, exact above 2**53. For synthetic frames: a failure counts the
+    copies off each rule and names no id or key. Returns the number of
+    copies checked.
     """
 
     radix = copy_id_table.radix(field)
@@ -314,20 +343,35 @@ def assert_copy_ids_follow_lineage(
     root_person = before_tables["person"]
     benunit_ids = set(after_tables["benunit"]["benunit_id"].tolist())
     copy_keys = zip(*(new[c].tolist() for c in keys), strict=True)
+    failures = {
+        "without a root": 0,
+        "off the root's household id": 0,
+        "off the root's members": 0,
+        "off the root's benefit units": 0,
+    }
     for copy, key, ordinal in zip(
         new["household_id"].tolist(), copy_keys, ordinals, strict=True
     ):
-        root = roots[key]
+        root = roots.get(key)
+        if root is None:
+            failures["without a root"] += 1
+            continue
         offset = int(ordinal) * radix
-        assert copy == root + offset, (copy, root, ordinal)
+        if copy != root + offset:
+            failures["off the root's household id"] += 1
         members = person.loc[person["person_household_id"] == copy]
         root_members = root_person.loc[root_person["person_household_id"] == root]
-        assert len(members) == len(root_members)
-        for column in _PERSON_ID_COLUMNS:
-            assert sorted(members[column].tolist()) == sorted(
-                value + offset for value in root_members[column].tolist()
-            ), column
-        assert {
-            value + offset for value in root_members["person_benunit_id"].tolist()
-        } <= benunit_ids
+        if len(members) != len(root_members) or any(
+            sorted(members[column].tolist())
+            != sorted(value + offset for value in root_members[column].tolist())
+            for column in _PERSON_ID_COLUMNS
+        ):
+            failures["off the root's members"] += 1
+        root_units = root_members["person_benunit_id"].tolist()
+        if not {value + offset for value in root_units} <= benunit_ids:
+            failures["off the root's benefit units"] += 1
+    problems = {rule: count for rule, count in failures.items() if count}
+    assert not problems, (
+        f"Of {len(new)} {field!r} copies, these many break each rule: {problems}."
+    )
     return len(new)

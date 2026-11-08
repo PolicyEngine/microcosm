@@ -1634,6 +1634,29 @@ def test_frs_spine_refuses_an_adult_tab_without_sppadj(tmp_path: Path) -> None:
         build_uk_frs_spine_frame(tmp_path, stage=stage)
 
 
+def test_frs_spine_refuses_raw_ids_that_reach_the_first_copy_id_field(
+    tmp_path: Path,
+) -> None:
+    """A synthetic sernum of 100,000 puts its person ids (sernum x 1000 + p)
+    at the copy-id table's first radix, 10**8, which the copy layers' fields
+    sit above; the spine refuses it by count, never naming the id
+    (microcosm#931)."""
+
+    tables = _fixture_tables()
+    for rows in tables.values():
+        for row in rows:
+            if row.get("SERNUM") == 2:
+                row["SERNUM"] = 100_000
+    stage = _write_fixture(tmp_path, tables)
+
+    with pytest.raises(
+        ValueError,
+        match=r"^1 of the raw FRS person_id values reach the 'vintage' copy-id field",
+    ) as caught:
+        build_uk_frs_spine_frame(tmp_path, stage=stage)
+    assert "100000001" not in str(caught.value)
+
+
 @pytest.mark.parametrize(
     ("job", "sic", "expected"),
     [

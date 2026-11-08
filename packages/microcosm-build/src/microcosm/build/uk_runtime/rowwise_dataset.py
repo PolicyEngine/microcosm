@@ -101,12 +101,14 @@ def refuse_dense_clone_id_overflow(
 
     Dense clone ``c`` offsets every id by ``c`` times a multiplier above the
     spine's largest id. Since microcosm#931 the spine mints its copies' ids in
-    fixed fields of the copy-id table, up to the CGT incidence twins at
-    10**17 and the residential arms at 10**18, so a production spine leaves no
-    room for a second clone above its ids. Dense builds with more than one
-    clone wait for the clone-first spine, which mints the geographic clones at
-    its start (#931 group (c)); one clone, and a spine without copy rows,
-    expand as before. The message names no id.
+    fixed fields of the copy-id table, the CGT incidence twins at 10**17 and
+    the residential arms at multiples of 10**18, so a spine carrying arms, as
+    a production national spine does, leaves no int64 room for a second
+    clone. This refuses wherever the dense offset would overflow int64; one
+    clone, and any spine whose ids leave room (one without copy rows, say),
+    expand as before. Dense builds with more than one clone of such a spine
+    wait for the clone-first spine, which mints the geographic clones at its
+    start (#931 group (c)). The message names no id.
     """
 
     if type(n_clones) is not int or n_clones <= 1:
@@ -120,11 +122,11 @@ def refuse_dense_clone_id_overflow(
         raise ValueError(
             f"Dense geographic clones of this spine at n_clones={n_clones} would "
             "overflow int64: since microcosm#931 the spine mints its copy ids in "
-            "the copy-id table's fixed fields, up to 10**18, and every dense "
-            "clone is offset above the spine's largest id. Dense builds with "
-            "more than one clone wait for the clone-first spine of microcosm#931, "
-            "which mints the geographic clones at its start; n_clones=1 still "
-            "expands."
+            "the copy-id table's fixed fields, with residential arms at "
+            "multiples of 10**18, and every dense clone is offset above the "
+            "spine's largest id. Dense builds with more than one clone of such a "
+            "spine wait for the clone-first spine of microcosm#931, which mints "
+            "the geographic clones at its start; n_clones=1 still expands."
         )
 
 

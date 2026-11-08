@@ -41,6 +41,7 @@ from microcosm.frame import MassChangeRecord, WeightKind
 from test_support.microcosm_build.uk_cgt_support import support_frame
 from test_support.microcosm_build.uk_clone_first_frames import (
     assert_copy_ids_follow_lineage,
+    with_last_household_moved,
 )
 
 
@@ -161,10 +162,11 @@ def test_clone_splits_exact_mass_and_uses_oldest_adult_carriers() -> None:
     )
     assert result.carrier_count == 2
     # The priors key on each twin's own person_id, minted at the copy-id
-    # table's cgt_incidence_clone radix (microcosm#931); the receipt counts
-    # the negative ones the draw kept.
+    # table's cgt_incidence_clone radix (microcosm#931): on this synthetic
+    # frame both carriers draw a negative prior (one did under the retired
+    # ids), and the receipt counts the negative ones the draw kept.
+    assert result.negative_prior_count == 2
     assert result.negative_prior_count == int((gainers.capital_gains < 0.0).sum())
-    assert (gainers.capital_gains < 0.0).any()
 
 
 def test_twins_take_their_originals_ids_plus_the_declared_radix() -> None:
@@ -187,6 +189,18 @@ def test_twins_take_their_originals_ids_plus_the_declared_radix() -> None:
         key_columns=("council_tax",),
     )
     assert checked == 3
+
+
+def test_clone_refuses_incoming_ids_at_its_copy_id_radix_by_count() -> None:
+    frame = with_last_household_moved(_adult_frame(), radix("cgt_incidence_clone"))
+
+    with pytest.raises(
+        ValueError,
+        match=r"^2 of the incoming person_household_id values reach the "
+        r"'cgt_incidence_clone' copy-id field",
+    ) as caught:
+        clone_cgt_incidence(frame, distribution=_distribution())
+    assert str(2 + radix("cgt_incidence_clone")) not in str(caught.value)
 
 
 def test_prior_spline_keeps_negative_values_and_extrapolates_linearly() -> None:
