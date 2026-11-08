@@ -1140,7 +1140,7 @@ class TestSupportSplitRecomputeAcrossGeographicClones:
     The stage reads ``K`` from its input and counts ``ceil(K x w / 60)``
     copies (microcosm#931); the tool reads ``K`` from the pre-split table the
     same way. At one clone its receipt is the one the rule before ``K`` gave.
-    At ``K > 1`` its count check holds the stored count to the family
+    At every ``K`` its count check holds the stored count to the family
     weights' relative tolerance of 1e-9, since the fold re-sums the copies.
     """
 
@@ -1256,28 +1256,51 @@ class TestSupportSplitRecomputeAcrossGeographicClones:
 
             assert problems["support_split_copies_stored"] == 1, moved
 
-    def test_at_one_clone_the_count_check_stays_exact(self) -> None:
-        # Household 1 (900: 15 copies) moved to 16. At one clone the count
-        # check reports it, as before the clone count. At three, 3 x w / 60
-        # is exactly 15 and the tolerance cannot tell 15 from 16; the flags
-        # and the family weights report the family instead.
-        for clone_count, counted in ((1, True), (3, False)):
-            _, frame = _clone_first_split_then_cloned(clone_count, _NESTING_SCENARIO)
-            household = frame.table("household").copy()
-            household.loc[household["household_id"] == 1, CGT_SUPPORT_COPIES_COLUMN] = (
-                16
-            )
+    @pytest.mark.parametrize("clone_count", [1, 3])
+    def test_a_count_moved_on_an_exact_multiple_is_left_to_the_flags(
+        self, clone_count: int
+    ) -> None:
+        # Household 1 (900: 15 copies) moved to 16. K x w / 60 is exactly 15
+        # at one clone and at three, and at every clone count the tolerance
+        # cannot tell 15 from 16 (microcosm#931 review), so the count check
+        # passes; the flags and the family weights report the family instead.
+        _, frame = _clone_first_split_then_cloned(clone_count, _NESTING_SCENARIO)
+        household = frame.table("household").copy()
+        household.loc[household["household_id"] == 1, CGT_SUPPORT_COPIES_COLUMN] = 16
 
-            _, problems = _exhausting_receipt(
-                _rebuild(frame, household=household), _NESTING_SCENARIO
-            )
+        _, problems = _exhausting_receipt(
+            _rebuild(frame, household=household), _NESTING_SCENARIO
+        )
 
-            assert ("support_split_copies_stored" in problems) is counted
-            assert problems["support_split_flags"] == {
-                "copies_disagreeing_with_root": 14,
-                "families_with_missing_or_extra_copies": 1,
-            }
-            assert problems["support_split_family_weights"] == 15
+        assert "support_split_copies_stored" not in problems
+        assert problems["support_split_flags"] == {
+            "copies_disagreeing_with_root": 14,
+            "families_with_missing_or_extra_copies": 1,
+        }
+        assert problems["support_split_family_weights"] == 15
+
+    def test_at_one_clone_a_family_folded_just_above_a_multiple_is_green(
+        self,
+    ) -> None:
+        # One copy of household 1 (900: 15 copies of 60) carries a rounding
+        # amount more, as where the stage's exact-total correction falls on a
+        # copy, so the family folds to just above 900, where an exact recount
+        # gives 16. The count check holds the stage's 15 to the tolerance at
+        # one clone too (microcosm#931 review), so the receipt is green; its
+        # exact recount still records the extra copy.
+        split, frame = _clone_first_split_then_cloned(1, _NESTING_SCENARIO)
+        ids = frame.table("household")["household_id"].to_numpy()
+        weights = np.asarray(frame.weights_for("household").values, dtype=float).copy()
+        (copy,) = copy_id_table.mint([1], "cgt_support_split", [1])
+        weights[ids == copy] *= 1.0 + 1e-12
+
+        receipt, problems = _exhausting_receipt(
+            _rebuild(frame, household_weights=weights), _NESTING_SCENARIO
+        )
+
+        assert problems == {}
+        assert receipt["copies"] == split.copies_created == 259
+        assert receipt["copies_recomputed"] == 260
 
 
 # --- copy ids at the copy-id table's declared radices (microcosm#931) ----------
