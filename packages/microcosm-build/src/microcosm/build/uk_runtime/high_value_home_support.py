@@ -244,7 +244,10 @@ def split_high_value_support_households(
     records ``k`` in ``high_value_support_copy_index`` and carries a full copy
     of its person and benefit-unit rows. The exact-total correction lands on
     the heaviest unselected incumbent so every copy weight stays bitwise
-    ``w / copies``. Refuses a frame this stage has already split.
+    ``w / copies``, unless that household cannot carry it: then spi_support's
+    shared fallback places it, and that row can be a root or copy
+    (:func:`microcosm.build.uk_runtime.cgt_support._exact_support_weights`).
+    Refuses a frame this stage has already split.
     """
     if isinstance(copies, bool) or copies < 2:
         raise ValueError("High-value support copies must be an integer of at least 2.")

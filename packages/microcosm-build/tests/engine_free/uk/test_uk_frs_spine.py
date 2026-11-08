@@ -3589,8 +3589,11 @@ def test_driver_records_sampled_spine_sidecar(
     monkeypatch.setattr(tool, "_rules_engine", lambda: _FakeUKEngine())
     _stub_policy_readers(monkeypatch)
     spi_tab, hmrc_ods = _patch_spi_spine_driver_runtime(tool, monkeypatch, tmp_path)
+    # The root's rung sampler lives in national_sampling (microcosm#931).
+    from microcosm.build.uk_runtime import national_sampling
+
     monkeypatch.setattr(
-        tool,
+        national_sampling,
         "sample_frame_households",
         lambda frame, **kwargs: (
             frame,
@@ -3598,7 +3601,7 @@ def test_driver_records_sampled_spine_sidecar(
         ),
     )
     monkeypatch.setattr(
-        tool,
+        national_sampling,
         "normalize_sampled_household_mass",
         lambda frame, **kwargs: (frame, 1.0),
     )
@@ -3974,7 +3977,10 @@ def test_driver_sampled_named_edge_aborts_with_receipt(
     def _raise_named_edge(*args, **kwargs):
         raise ValueError(tool._RUNG_NAMED_EDGE_SIGNATURE)
 
-    monkeypatch.setattr(tool, "sample_frame_households", _raise_named_edge)
+    # The root's rung sampler lives in national_sampling (microcosm#931).
+    from microcosm.build.uk_runtime import national_sampling
+
+    monkeypatch.setattr(national_sampling, "sample_frame_households", _raise_named_edge)
 
     assert (
         tool.main(

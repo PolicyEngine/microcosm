@@ -447,7 +447,7 @@ _STOCHASTIC_ASSIGNMENT = "microcosm.build.stochastic_assignment"
 #: bind them: the stage's transform, the drawing names its module imports, and
 #: why the transform never calls them. None at present: the support channel,
 #: the one stage listed before, binds frs_take_up, which imports the helpers,
-#: and so binds them too (microcosm#931).
+#: so it must list them too, and does (microcosm#931).
 _STOCHASTIC_ASSIGNMENT_UNBOUND: dict[str, tuple[str, frozenset[str], str]] = {}
 
 
@@ -879,9 +879,16 @@ def test_engine_module_changes_invalidate_every_stage_that_calls_the_engine(
 #: The package the rule follows: microcosm.build holds every UK stage and its
 #: helpers. The workspace's other packages stay outside it. microcosm.graph
 #: and microcosm.frame are the executor and the Frame that every node runs
-#: on, so binding them would re-key every node of every graph on any edit to
-#: them; microcosm.fit's fitters, shared by every country, are bound by hand
-#: (the employment shells above) and not derived here.
+#: on, so binding them by rule would re-key every node of every graph on any
+#: edit to them. Value-computing code out there is bound only by hand:
+#: microcosm.fit's categorical, donor and held-out fitters in
+#: spi_employment_shell and aps_occupation, and the engine adapter in the
+#: stages that call the engine. The rest is not bound yet: microcosm.fit.qrf
+#: and fit.model, which the QRF donor stages and those two fit through;
+#: microcosm.frame.rules and frame.materialize; the engine adapter's helpers
+#: in stages that call no engine; microcosm.graph.randomness, which
+#: regional_home_values draws through; and
+#: microcosm.calibrate.geography_constants.
 _HELPER_SCOPE = "microcosm.build."
 #: Where the rule stops. What a stage reads from these is its own
 #: declaration, which its node key already hashes as the stage contract: its
@@ -892,8 +899,9 @@ _DECLARATION_MODULES = (
     "microcosm.build.spec_engine",
 )
 #: Checks that read values only to decide whether to refuse, each with why it
-#: cannot change what its caller computes. The rule does not follow them; the
-#: test checks that each returns nothing and writes nothing.
+#: cannot change what its caller computes. The rule does not follow them, and
+#: a definition that names nothing else of value needs no binding for them;
+#: test_the_refusal_only_helpers_return_and_write_nothing checks each one.
 _REFUSAL_ONLY_HELPERS: dict[tuple[str, str], str] = {
     (
         "microcosm.build.uk_runtime.graph_evidence",
@@ -902,24 +910,76 @@ _REFUSAL_ONLY_HELPERS: dict[tuple[str, str], str] = {
         "refuses a node unless the spine gates admitted its input; the dense "
         "sample node calls it before it computes anything"
     ),
+    ("microcosm.build.uk_runtime.cgt_structure", "_assert_closed_world_operations"): (
+        "compares a stage's declared operations with the reviewed mapping, in "
+        "order and in full, and refuses on any difference; the stages' "
+        "parameter checks call it"
+    ),
+    ("microcosm.build.uk_runtime.spi_support", "_require_entity"): (
+        "returns its argument unchanged and refuses anything but person, "
+        "benunit or household; the support channel's column names call it"
+    ),
 }
-#: Method names that change their receiver in place.
+#: Names a stage reads from a module that neither its node nor any node
+#: upstream of it hashes, each with why an edit to them cannot leave the
+#: stage's output stale. A name hashed upstream needs no entry: node keys
+#: chain on their predecessors' keys, so an edit there re-keys the stage too.
+#: Only a single string, a function returning one column name, or a record
+#: can be listed (``_helper_kind``); the tests hold the table to exactly what
+#: they find, so a new one is bound or listed here with its reason.
+_STAGE_UNBOUND_NAMES: dict[tuple[str, str], str] = {
+    ("microcosm.build.uk_runtime.rowwise_dataset", "ladder_clone_index_column"): (
+        "names the geographic clone index columns, which only the dense "
+        "expand writes; no spine stage writes them (checked), so a spine "
+        "frame never carries them and their name moves no spine value"
+    ),
+}
+#: The same for the dense population kernels, which run outside the spine
+#: graph.
+_DENSE_UNBOUND_NAMES: dict[tuple[str, str], str] = {
+    ("microcosm.build.uk_runtime.geography_sources", name): (
+        "the LAD23 names lookup's pinned URL and digest: local_authority_input "
+        "refuses an input whose declared source differs from them, and reads "
+        "nothing through them"
+    )
+    for name in ("LAD23_NAMES_SHA256", "LAD23_NAMES_URL")
+}
+#: Method and function names that change their receiver or an argument in
+#: place.
 _IN_PLACE_CALLS = frozenset(
     {
+        "__delitem__",
         "__setattr__",
         "__setitem__",
         "add",
         "append",
+        "appendleft",
+        "at",
         "clear",
+        "copyto",
+        "difference_update",
         "discard",
         "extend",
+        "extendleft",
         "fill",
+        "fill_diagonal",
         "insert",
+        "intersection_update",
+        "itemset",
+        "place",
         "pop",
         "popitem",
+        "put",
+        "putmask",
         "remove",
+        "resize",
+        "reverse",
+        "rotate",
         "setdefault",
+        "setflags",
+        "shuffle",
         "sort",
+        "symmetric_difference_update",
         "update",
     }
 )
@@ -1061,8 +1121,11 @@ def _named(module: str, node, scope: str) -> set[tuple[str, str]]:
 
 
 def _writes_nothing(node) -> bool:
-    """Whether a function returns nothing but None or an argument it never
-    rebinds, and writes through no subscript, attribute or in-place call."""
+    """Whether a function can only refuse: it returns nothing but None, or its
+    sole parameter unrebound, and writes nothing: no store through a
+    subscript or attribute, no augmented assignment, no ``out=`` or
+    ``inplace=`` argument, and no call by a name that changes its receiver or
+    an argument in place."""
 
     import ast
 
@@ -1081,17 +1144,20 @@ def _writes_nothing(node) -> bool:
         for sub in ast.walk(node)
         if isinstance(sub, ast.Name) and isinstance(sub.ctx, ast.Store | ast.Del)
     }
+    returnable = parameters - rebound if len(parameters) == 1 else set()
     for sub in ast.walk(node):
         if isinstance(sub, ast.Return) and sub.value is not None:
             value = sub.value
             if not (
                 (isinstance(value, ast.Constant) and value.value is None)
-                or (isinstance(value, ast.Name) and value.id in parameters - rebound)
+                or (isinstance(value, ast.Name) and value.id in returnable)
             ):
                 return False
-        elif isinstance(sub, ast.Yield | ast.YieldFrom | ast.Global | ast.Nonlocal):
+        elif isinstance(
+            sub, ast.AugAssign | ast.Yield | ast.YieldFrom | ast.Global | ast.Nonlocal
+        ):
             return False
-        elif isinstance(sub, ast.Assign | ast.AugAssign | ast.AnnAssign | ast.Delete):
+        elif isinstance(sub, ast.Assign | ast.AnnAssign | ast.Delete):
             targets = (
                 sub.targets
                 if isinstance(sub, ast.Assign | ast.Delete)
@@ -1103,13 +1169,14 @@ def _writes_nothing(node) -> bool:
                 for part in ast.walk(target)
             ):
                 return False
-        elif isinstance(sub, ast.keyword) and sub.arg == "inplace":
+        elif isinstance(sub, ast.keyword) and sub.arg in {"inplace", "out"}:
             return False
         elif isinstance(sub, ast.Call):
             function = sub.func
             if isinstance(function, ast.Attribute) and function.attr in _IN_PLACE_CALLS:
                 return False
             if isinstance(function, ast.Name) and function.id in {
+                *_IN_PLACE_CALLS,
                 "delattr",
                 "eval",
                 "exec",
@@ -1142,50 +1209,24 @@ def _string_expression(node) -> bool:
     return True
 
 
-def _only_strings(node) -> bool:
-    """Whether an expression is built of string literals, None, and names,
-    in literal collections: a name, a code, or a collection of them."""
-
-    import ast
-
-    collections = {"MappingProxyType", "dict", "frozenset", "list", "set", "tuple"}
-    for sub in ast.walk(node):
-        if isinstance(sub, ast.Constant):
-            if not (sub.value is None or isinstance(sub.value, str)):
-                return False
-        elif isinstance(sub, ast.Call):
-            if not (isinstance(sub.func, ast.Name) and sub.func.id in collections):
-                return False
-        elif not isinstance(
-            sub,
-            ast.Name
-            | ast.Attribute
-            | ast.Tuple
-            | ast.List
-            | ast.Set
-            | ast.Dict
-            | ast.JoinedStr
-            | ast.FormattedValue
-            | ast.expr_context,
-        ):
-            return False
-    return True
-
-
 _HELPER_KINDS: dict[tuple[str, str, str], str | None] = {}
 
 
 def _helper_kind(module: str, name: str, scope: str) -> str:
     """How a top-level definition can bear on a value.
 
-    ``value`` unless it is provably one of: a ``check`` (a function that
-    writes nothing and names only definitions of these kinds, so it can only
-    refuse); a ``column name`` (a function returning one string built from
-    its arguments); a ``record`` (a class of undefaulted fields, no methods);
-    ``names`` (a constant of strings: a column name, a code, or a collection
-    of them). A numeric constant is a value. A cycle reads as ``value``.
+    ``value`` unless it is a listed refusal-only ``check``
+    (``_REFUSAL_ONLY_HELPERS``) or provably one of: a ``name`` (one string: a
+    literal, an f-string or concatenation of names, or another name of these
+    kinds); a ``column name`` (a function returning one such string built
+    from its arguments); a ``record`` (a class of undefaulted fields whose
+    types are of these kinds, no methods). A collection of strings is a
+    value, since it selects rows, columns or codes, as is a number. A cycle
+    reads as ``value``.
     """
 
+    if (module, name) in _REFUSAL_ONLY_HELPERS:
+        return "check"
     key = (module, name, scope)
     if key in _HELPER_KINDS:
         return _HELPER_KINDS[key] or "value"
@@ -1208,12 +1249,16 @@ def _classify_helper(module: str, name: str, scope: str) -> str:
     node = _module_definitions(module, scope).definitions[name]
     if isinstance(node, ast.Assign | ast.AnnAssign):
         if node.value is None or (
-            _only_strings(node.value)
+            (
+                isinstance(node.value, ast.Name | ast.Attribute)
+                or _string_expression(node.value)
+            )
             and _names_only_harmless(module, node.value, scope)
         ):
-            return "names"
+            return "name"
         return "value"
     if isinstance(node, ast.ClassDef):
+        fields = [item for item in node.body if isinstance(item, ast.AnnAssign)]
         fields_only = all(
             (isinstance(item, ast.Expr) and isinstance(item.value, ast.Constant))
             or isinstance(item, ast.Pass)
@@ -1222,7 +1267,12 @@ def _classify_helper(module: str, name: str, scope: str) -> str:
         )
         if fields_only and all(
             _names_only_harmless(module, item, scope)
-            for item in (*node.bases, *node.keywords, *node.decorator_list)
+            for item in (
+                *node.bases,
+                *node.keywords,
+                *node.decorator_list,
+                *(field.annotation for field in fields),
+            )
         ):
             return "record"
         return "value"
@@ -1240,20 +1290,23 @@ def _classify_helper(module: str, name: str, scope: str) -> str:
         and _names_only_harmless(module, body[0].value, scope)
     ):
         return "column name"
-    if _writes_nothing(node) and _names_only_harmless(module, node, scope):
-        return "check"
     return "value"
 
 
-def _helper_reach(
+def _helper_walk(
     root: tuple[str, str], scope: str = _HELPER_SCOPE
-) -> dict[str, frozenset[str]]:
-    """Every module holding a definition that can change what ``root``
-    computes, with those definitions: ``root`` itself, and each ``value``
-    definition it names, and they name, to a fixed point. The declaration
-    modules and the refusal-only checks are not followed."""
+) -> tuple[dict[str, frozenset[str]], frozenset[tuple[str, str]]]:
+    """What ``root`` can compute through, and where the rule stops.
+
+    The first part maps every module holding a definition that can change
+    what ``root`` computes to those definitions: ``root`` itself, and each
+    ``value`` definition it names, and they name, to a fixed point. The second
+    is every ``name``, ``column name`` or ``record`` those definitions name,
+    which the rule does not follow. The declaration modules and the listed
+    refusal-only checks are neither followed nor returned."""
 
     reached: dict[str, set[str]] = {}
+    stops: set[tuple[str, str]] = set()
     pending, seen = [root], set()
     while pending:
         item = pending.pop()
@@ -1261,14 +1314,30 @@ def _helper_reach(
             continue
         seen.add(item)
         module, name = item
-        if module.startswith(_DECLARATION_MODULES) or item in _REFUSAL_ONLY_HELPERS:
+        if module.startswith(_DECLARATION_MODULES):
             continue
-        if item != root and _helper_kind(module, name, scope) != "value":
-            continue
+        if item != root:
+            kind = _helper_kind(module, name, scope)
+            if kind != "value":
+                if kind != "check":
+                    stops.add(item)
+                continue
         reached.setdefault(module, set()).add(name)
         node = _module_definitions(module, scope).definitions[name]
         pending.extend(_named(module, node, scope))
-    return {module: frozenset(names) for module, names in reached.items()}
+    return (
+        {module: frozenset(names) for module, names in reached.items()},
+        frozenset(stops),
+    )
+
+
+def _helper_reach(
+    root: tuple[str, str], scope: str = _HELPER_SCOPE
+) -> dict[str, frozenset[str]]:
+    """Every module holding a definition that can change what ``root``
+    computes, with those definitions (``_helper_walk``)."""
+
+    return _helper_walk(root, scope)[0]
 
 
 def _stage_transforms() -> dict[str, tuple[str, str]]:
@@ -1313,6 +1382,27 @@ def _stage_transforms() -> dict[str, tuple[str, str]]:
     return transforms
 
 
+@functools.cache
+def _stage_walks() -> dict[str, tuple[str, frozenset[str], tuple]]:
+    """Each spine stage's node id, the modules its node hashes, and the
+    walk from its transform (``_helper_walk``)."""
+
+    from microcosm.build.uk_runtime import graph_kernels
+
+    graph = uk_spine_graph()
+    registry = uk_registry(graph=graph)
+    walks = {}
+    for stage, transform in sorted(_stage_transforms().items()):
+        assert transform[0] == graph_kernels._stage_module(stage).__name__, stage
+        # The root stage's node is the CREATE kernel.
+        node = graph.node("create_uk_frs" if stage == "frs_spine" else stage)
+        hashed = frozenset(
+            hashed_module_names(registry.get(node.kernel), graph_kernels)
+        )
+        walks[stage] = (node.id, hashed, _helper_walk(transform))
+    return walks
+
+
 def test_every_stage_hashes_each_helper_its_transform_computes_through() -> None:
     """A stage's hash names every module holding code its transform can run
     to compute a value, so an edit to any of them re-keys the stage instead
@@ -1321,33 +1411,78 @@ def test_every_stage_hashes_each_helper_its_transform_computes_through() -> None
     The rule starts at the transform graph_kernels builds for the stage and
     follows every definition it names, annotations included (an injected
     contract or table is called through them), into the module defining it.
-    It needs no binding, and does not follow, a definition that cannot change
-    a value: a check, a column name, a record, a constant of strings (see
-    ``_helper_kind``), or a stage declaration. A numeric constant needs its
-    module bound. The rule starts at the transform, not at the kernel that
-    runs it: the kernel's code, in graph_kernels, which every stage hashes,
-    builds every stage's transform for the hermetic registry, so following it
-    would bind every helper into every stage.
+    It does not follow a listed refusal-only check or a stage declaration,
+    and stops at a single string, a column-name function or a record (see
+    ``_helper_kind``), whose module the next test accounts for. Anything
+    else is a value, a collection of strings and a number included, and
+    needs its module bound. The rule starts at the transform, not at the
+    kernel that runs it: the kernel's code, in graph_kernels, which every
+    stage hashes, builds every stage's transform for the hermetic registry,
+    so following it would bind every helper into every stage.
 
     What the rule cannot see: a call through an object whose class the code
     never names, a name looked up by string, and data files read by path.
     """
     from microcosm.build.uk_runtime import graph_kernels
 
-    graph = uk_spine_graph()
-    registry = uk_registry(graph=graph)
-    transforms = _stage_transforms()
-    assert set(transforms) == set(graph_kernels._STAGE_MODULES)
-    unhashed = {}
-    for stage, transform in sorted(transforms.items()):
-        assert transform[0] == graph_kernels._stage_module(stage).__name__, stage
-        # The root stage's node is the CREATE kernel.
-        node = graph.node("create_uk_frs" if stage == "frs_spine" else stage)
-        hashed = hashed_module_names(registry.get(node.kernel), graph_kernels)
-        missing = sorted(set(_helper_reach(transform)) - hashed)
-        if missing:
-            unhashed[stage] = missing
+    walks = _stage_walks()
+    assert set(walks) == set(graph_kernels._STAGE_MODULES)
+    unhashed = {
+        stage: sorted(set(reach) - hashed)
+        for stage, (_, hashed, (reach, _)) in walks.items()
+        if set(reach) - hashed
+    }
     assert not unhashed, unhashed
+
+
+def test_every_name_a_stage_reads_is_hashed_with_it_upstream_or_listed() -> None:
+    """Where the rule stops at a name, the name's module is hashed by the
+    stage's node or by a node upstream of it, whose key the stage's key
+    chains on, or the name is listed in ``_STAGE_UNBOUND_NAMES`` with its
+    reason; the table lists nothing else (microcosm#931)."""
+    from microcosm.build.uk_runtime import graph_kernels, rowwise_dataset
+    from microcosm.graph.decl import compile_graph
+
+    graph = uk_spine_graph()
+    compiled = compile_graph(graph)
+    walks = _stage_walks()
+    hashed_by_node = {node_id: hashed for node_id, hashed, _ in walks.values()}
+    registry = uk_registry(graph=graph)
+    for node in graph.nodes:
+        if node.id not in hashed_by_node:
+            hashed_by_node[node.id] = frozenset(
+                hashed_module_names(registry.get(node.kernel), graph_kernels)
+            )
+
+    def upstream(node_id: str) -> set[str]:
+        seen, pending = set(), list(compiled.predecessors[node_id])
+        while pending:
+            item = pending.pop()
+            if item not in seen:
+                seen.add(item)
+                pending.extend(compiled.predecessors[item])
+        return seen
+
+    unlisted: dict[tuple[str, str], list[str]] = {}
+    for stage, (node_id, hashed, (_, stops)) in walks.items():
+        covered = set(hashed).union(
+            *(hashed_by_node[item] for item in upstream(node_id))
+        )
+        for module, name in stops:
+            if module not in covered:
+                unlisted.setdefault((module, name), []).append(stage)
+    assert set(unlisted) == set(_STAGE_UNBOUND_NAMES), sorted(
+        set(unlisted) ^ set(_STAGE_UNBOUND_NAMES)
+    )
+    # The geographic clone index columns' reason: no spine node writes them.
+    written = {
+        (owned.entity, owned.column) for node in graph.nodes for owned in node.outputs
+    }
+    for entity in ("person", "benunit", "household"):
+        assert (
+            entity,
+            rowwise_dataset.ladder_clone_index_column(entity),
+        ) not in written
 
 
 def test_the_refusal_only_helpers_return_and_write_nothing() -> None:
@@ -1356,14 +1491,48 @@ def test_the_refusal_only_helpers_return_and_write_nothing() -> None:
         assert _writes_nothing(node), (module, name)
 
 
+def test_the_refusal_check_sees_each_way_a_function_writes() -> None:
+    """Control for ``_writes_nothing``: a function that only refuses, or
+    returns its sole argument, passes; one that writes through any of these
+    shapes, or returns one of several arguments, does not."""
+    import ast
+
+    refusing = {
+        "raise": "def f(frame):\n    if frame is None:\n        raise ValueError('x')\n",
+        "identity": (
+            "def f(entity):\n"
+            "    if entity not in {'person'}:\n"
+            "        raise ValueError('x')\n"
+            "    return entity\n"
+        ),
+    }
+    writing = {
+        "copyto": "def f(values, mask):\n    np.copyto(values, 0.0, where=mask)\n",
+        "out": "def f(values):\n    np.clip(values, 0, 1, out=values)\n",
+        "add_at": "def f(w, roots, copies):\n    np.add.at(w, roots, w[copies])\n",
+        "shuffle": "def f(rng, values):\n    rng.shuffle(values)\n",
+        "reverse": "def f(items):\n    items.reverse()\n",
+        "augmented": "def f(values):\n    values *= 2.0\n",
+        "subscript": "def f(values):\n    values[0] = 1.0\n",
+        "inplace": "def f(table):\n    table.drop(columns=['a'], inplace=True)\n",
+        "pick": "def f(left, right):\n    return left\n",
+        "computed": "def f(values):\n    return values + 1\n",
+    }
+    for label, source in {**refusing, **writing}.items():
+        function = ast.parse(source).body[0]
+        assert _writes_nothing(function) is (label in refusing), label
+
+
 def test_the_helper_rule_follows_each_way_a_stage_names_a_helper(
     tmp_path, monkeypatch
 ) -> None:
     """Control: a helper called by name, through a re-export, by attribute on
     its module, through an alias or a computed constant, or held only in an
-    annotation is reached, as is a numeric constant; a check, a column name,
-    a record, a constant of strings, and a helper the root never names are
-    not."""
+    annotation (a record's field type included) is reached, as are a numeric
+    constant, a collection of strings and a function that writes in place or
+    only refuses but is not listed; a listed check, a single string, a column
+    name, a record of plain fields, and a helper the root never names are
+    not, and the walk returns the names it stopped at."""
     import uuid
 
     scratch = f"helper_rule_{uuid.uuid4().hex[:8]}"
@@ -1381,10 +1550,28 @@ def test_the_helper_rule_follows_each_way_a_stage_names_a_helper(
         "collaborator": (
             "class Contract:\n    def rate(self, key):\n        return 0.5\n"
         ),
+        "fielded": (
+            "from typing import NamedTuple\n\n"
+            "class Rate:\n    def value(self):\n        return 0.1\n\n"
+            "class Inputs(NamedTuple):\n    rate: Rate\n"
+        ),
         "numeric": "FLOOR = 10\n",
+        "codes": (
+            "CODES = frozenset({'A', 'B'})\n"
+            "OWNER = {'OWNED': 'owner', 'RENTED': 'renter'}\n"
+        ),
+        "inplace": (
+            "import numpy as np\n\n"
+            "def fold(weights, roots, copies):\n"
+            "    np.add.at(weights, roots, weights[copies])\n"
+        ),
+        "guard": (
+            "def guard(frame):\n"
+            "    if frame is None:\n"
+            "        raise ValueError('no frame')\n"
+        ),
         "harmless": (
-            "COLUMN = 'household_weight'\n"
-            "CODES = frozenset({'A', 'B'})\n\n"
+            "COLUMN = 'household_weight'\n\n"
             "def check(frame):\n"
             "    if frame is None:\n"
             "        raise ValueError('no frame')\n\n"
@@ -1397,21 +1584,30 @@ def test_the_helper_rule_follows_each_way_a_stage_names_a_helper(
         "stage": (
             "from . import attribute\n"
             "from .alias import scale\n"
+            "from .codes import CODES, OWNER\n"
             "from .collaborator import Contract\n"
             "from .computed import TABLE\n"
             "from .direct import draw\n"
-            "from .harmless import CODES, COLUMN, Record, check, column\n"
+            "from .fielded import Inputs\n"
+            "from .guard import guard\n"
+            "from .harmless import COLUMN, Record, check, column\n"
+            "from .inplace import fold\n"
             "from .numeric import FLOOR\n"
             "from .reexport import total\n"
             "from .unused import never\n\n"
             "class Transform:\n"
-            "    contract: Contract\n\n"
+            "    contract: Contract\n"
+            "    inputs: Inputs\n\n"
             "    def __call__(self, frame):\n"
             "        check(frame)\n"
+            "        guard(frame)\n"
+            "        fold(frame, [0], [1])\n"
             "        record = Record(value=draw(1) + total([1]))\n"
             "        rate = self.contract.rate(column('household'))\n"
+            "        rate += self.inputs.rate.value()\n"
+            "        owners = [OWNER[code] for code in CODES]\n"
             "        return attribute.share(scale(rate)) + TABLE['a'] + FLOOR, (\n"
-            "            record, COLUMN, CODES\n"
+            "            record, COLUMN, owners\n"
             "        )\n\n"
             "def helper():\n"
             "    return never(1)\n"
@@ -1420,7 +1616,10 @@ def test_the_helper_rule_follows_each_way_a_stage_names_a_helper(
     for module, source in sources.items():
         (package / f"{module}.py").write_text(source)
     prefix = f"microcosm.{scratch}."
-    reach = _helper_reach((f"{prefix}stage", "Transform"), scope=prefix)
+    monkeypatch.setitem(
+        _REFUSAL_ONLY_HELPERS, (f"{prefix}harmless", "check"), "control"
+    )
+    reach, stops = _helper_walk((f"{prefix}stage", "Transform"), scope=prefix)
     assert {module.removeprefix(prefix): names for module, names in reach.items()} == {
         "stage": {"Transform"},
         "direct": {"draw"},
@@ -1429,7 +1628,16 @@ def test_the_helper_rule_follows_each_way_a_stage_names_a_helper(
         "alias": {"scale", "_scale"},
         "computed": {"TABLE", "_build"},
         "collaborator": {"Contract"},
+        "fielded": {"Inputs", "Rate"},
         "numeric": {"FLOOR"},
+        "codes": {"CODES", "OWNER"},
+        "inplace": {"fold"},
+        "guard": {"guard"},
+    }
+    assert {(module.removeprefix(prefix), name) for module, name in stops} == {
+        ("harmless", "COLUMN"),
+        ("harmless", "Record"),
+        ("harmless", "column"),
     }
 
 
@@ -1437,9 +1645,11 @@ def test_the_dense_population_kernels_hash_each_helper_they_compute_through() ->
     """The same rule for the dense population kernels that share
     ``_PopulationKernel``'s hash (sample, normalize, expand, locations,
     geography mapping, pool and gate): every module holding code one of them
-    can run to compute a value is in the hash they share (microcosm#931).
-    The rule starts at each kernel's class; the spine gate admission check
-    the sample kernel calls is refusal-only and is not followed."""
+    can run to compute a value is in the hash they share, and every name the
+    rule stops at outside it is listed in ``_DENSE_UNBOUND_NAMES`` with its
+    reason (microcosm#931). The rule starts at each kernel's class; the spine
+    gate admission check the sample kernel calls is refusal-only and is not
+    followed."""
     import inspect
 
     from microcosm.build.uk_runtime import graph_population, rowwise_geography
@@ -1459,16 +1669,147 @@ def test_the_dense_population_kernels_hash_each_helper_they_compute_through() ->
         "uk.full.geography_gate@1",
     }
     unhashed = {}
+    unlisted = set()
     for kernel in kernels:
         hashed = hashed_module_names(kernel.__new__(kernel), graph_population)
         # The dense clones are minted by rowwise_geography's helpers.
         assert rowwise_geography.__name__ in hashed
-        missing = sorted(
-            set(_helper_reach((graph_population.__name__, kernel.__name__))) - hashed
-        )
+        reach, stops = _helper_walk((graph_population.__name__, kernel.__name__))
+        missing = sorted(set(reach) - hashed)
         if missing:
             unhashed[kernel.ref] = missing
+        unlisted.update(item for item in stops if item[0] not in hashed)
     assert not unhashed, unhashed
+    assert unlisted == set(_DENSE_UNBOUND_NAMES), sorted(
+        unlisted ^ set(_DENSE_UNBOUND_NAMES)
+    )
+
+
+#: Adapters the spine build installs around a stage's own transform, each with
+#: why it computes no value.
+_SPINE_BUILD_ADAPTERS: dict[tuple[str, str], str] = {
+    ("microcosm.build.uk_runtime.spine_build", "_GraphSourceTransform"): (
+        "builds the stage's own transform from the node's declared sources and calls it"
+    ),
+    ("microcosm.build.observation", "ObservedTransform"): (
+        "times the wrapped transform's call and records its frames' sizes"
+    ),
+}
+
+
+def _spine_build_installs() -> list[tuple[str | None, tuple[str, str]]]:
+    """Each class or factory the production spine build installs as a
+    stage's transform, as ``(stage, (module, name))``, seen through the
+    adapters above and the local names it assigns; ``None`` for a wrapper it
+    installs around every stage."""
+
+    import ast
+
+    from microcosm.build.uk_runtime import spine_build
+
+    module = spine_build.__name__
+    tree = ast.parse(Path(spine_build.__file__).read_text(encoding="utf-8"))
+    function = next(
+        node
+        for node in tree.body
+        if isinstance(node, ast.FunctionDef)
+        and node.name == "prepare_uk_spine_execution"
+    )
+    local: dict[str, list] = {}
+    for sub in ast.walk(function):
+        if (
+            isinstance(sub, ast.Assign)
+            and len(sub.targets) == 1
+            and isinstance(sub.targets[0], ast.Name)
+        ):
+            local.setdefault(sub.targets[0].id, []).append(sub.value)
+    installs: list[tuple[str | None, tuple[str, str]]] = []
+
+    def follow(expression, stage, seen=frozenset()) -> None:
+        if isinstance(expression, ast.Lambda):
+            follow(expression.body, stage, seen)
+        elif isinstance(expression, ast.Name) and expression.id not in seen:
+            for value in local.get(expression.id, ()):
+                follow(value, stage, seen | {expression.id})
+        elif isinstance(expression, ast.Call) and isinstance(expression.func, ast.Name):
+            found = _resolve(module, expression.func.id, _HELPER_SCOPE)
+            if found is None:
+                return
+            installs.append((stage, found))
+            if found in _SPINE_BUILD_ADAPTERS and stage and expression.args:
+                follow(expression.args[0], stage, seen)
+
+    for sub in ast.walk(function):
+        if isinstance(sub, ast.Assign) and len(sub.targets) == 1:
+            target = sub.targets[0]
+            if isinstance(target, ast.Name) and target.id == "implementations":
+                if isinstance(sub.value, ast.Dict):
+                    for key, value in zip(
+                        sub.value.keys, sub.value.values, strict=True
+                    ):
+                        follow(value, key.value)
+                elif isinstance(sub.value, ast.DictComp):
+                    follow(sub.value.value, None)
+            elif (
+                isinstance(target, ast.Subscript)
+                and isinstance(target.value, ast.Name)
+                and target.value.id == "implementations"
+                and isinstance(target.slice, ast.Constant)
+            ):
+                follow(sub.value, target.slice.value)
+    return installs
+
+
+def test_every_transform_the_spine_build_installs_is_hashed_with_its_stage() -> None:
+    """The production spine builds its stages' transforms in spine_build, not
+    in graph_kernels, so the rule above, which starts at graph_kernels'
+    transforms, does not see them. Each class or factory spine_build
+    installs for a stage is defined in the stage's module, declares the
+    modules it computes through (``graph_implementation_dependencies``, which
+    the stage's node hashes), or is an adapter listed with why it computes no
+    value (microcosm#931)."""
+    import importlib
+
+    from microcosm.build.uk_runtime import graph_kernels
+
+    installs = _spine_build_installs()
+    assert {stage for stage, _ in installs if stage} == set(
+        graph_kernels._STAGE_MODULES
+    )
+    assert {found for stage, found in installs if stage is None} == {
+        ("microcosm.build.observation", "ObservedTransform")
+    }
+    unhashed = []
+    for stage, (module, name) in installs:
+        if (module, name) in _SPINE_BUILD_ADAPTERS or (
+            stage and module == graph_kernels._stage_module(stage).__name__
+        ):
+            continue
+        declared = getattr(
+            getattr(importlib.import_module(module), name),
+            "graph_implementation_dependencies",
+            None,
+        )
+        if not callable(declared):
+            unhashed.append((stage, f"{module}.{name}"))
+    assert not unhashed, unhashed
+
+
+def test_the_sampled_spine_root_hashes_what_it_samples_through() -> None:
+    """The spine build wraps the root's transform in the rung sampler, which
+    samples the root below f100 and whose code lives in national_sampling and
+    the shared core; the root node then hashes every module the rule finds
+    the sampler computing through (microcosm#931)."""
+    from microcosm.build import frame_sampling
+    from microcosm.build.uk_runtime import graph_kernels, national_sampling
+
+    sampler = national_sampling.UKSampledSpineRootTransform(None, fraction=0.1, seed=1)
+    plain = hashed_module_names(graph_kernels.UKCreateKernel(), graph_kernels)
+    hashed = hashed_module_names(graph_kernels.UKCreateKernel(sampler), graph_kernels)
+    assert hashed - plain == {national_sampling.__name__, frame_sampling.__name__}
+    reach = _helper_reach((national_sampling.__name__, type(sampler).__name__))
+    assert {national_sampling.__name__, frame_sampling.__name__} <= set(reach)
+    assert set(reach) <= hashed, sorted(set(reach) - hashed)
 
 
 def test_uk_graph_json_round_trip_is_canonical() -> None:

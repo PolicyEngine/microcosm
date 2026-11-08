@@ -1110,8 +1110,9 @@ _SPLIT_SCENARIO = {
 #: for the exact-total correction, and the zero-weight household is outside
 #: every pool. At 7 and 13 clones that household's clone 0 has no
 #: representable correction, so the shared fallback puts it on the last copy
-#: of the 7,620 family's last clone, a few ulps off w / n and within the
-#: 1e-12 tolerances; at 1, 3, 11 and 15 clones no correction is needed.
+#: of the 7,620 family's last clone, off w / n by about an ulp of the frame's
+#: total weight (a relative error below 1e-12, within the 1e-12 tolerances);
+#: at 1, 3, 11 and 15 clones no correction is needed.
 _NESTING_SCENARIO = {
     "weights": [
         900.0,
@@ -1175,6 +1176,10 @@ class TestSupportSplitRecomputeAcrossGeographicClones:
     same way. At one clone its receipt is the one the rule before ``K`` gave.
     At every ``K`` its count check holds the stored count to the family
     weights' relative tolerance of 1e-9, since the fold re-sums the copies.
+    Within that tolerance of a multiple of 60 it cannot tell ``n`` copies
+    from ``n + 1``: a stored count moved on its own is left to the flags and
+    the family weights, and a family split consistently into one copy more
+    goes unreported.
     """
 
     def test_at_one_clone_the_receipt_is_the_rule_before_the_clone_count(
@@ -1311,6 +1316,38 @@ class TestSupportSplitRecomputeAcrossGeographicClones:
             "families_with_missing_or_extra_copies": 1,
         }
         assert problems["support_split_family_weights"] == 15
+
+    @pytest.mark.parametrize("clone_count", [1, 3])
+    def test_a_family_split_into_one_more_copy_on_a_multiple_goes_unreported(
+        self, clone_count: int, monkeypatch
+    ) -> None:
+        # The blind spot the tolerance leaves (microcosm#931 review). A stage
+        # that counted floor(q) + 1 copies for q = K x w / 60 instead of
+        # ceil(q) differs only where q is an integer: here the four exact
+        # multiples (900, 1,800, 4,020 and 7,620), each split in full into one
+        # copy more, every member at w / (n + 1). No check reports it at any
+        # clone count; only the exact recount records the gap.
+        from microcosm.build.uk_runtime import cgt_support
+
+        def floor_plus_one(weights, maximum_copy_weight, *, clone_count):
+            quotient = (
+                clone_count
+                * np.asarray(weights, dtype=float)
+                / float(maximum_copy_weight)
+            )
+            return np.maximum(np.floor(quotient).astype("int64") + 1, 1)
+
+        with monkeypatch.context() as patched:
+            patched.setattr(cgt_support, "cgt_support_copy_counts", floor_plus_one)
+            split, frame = _clone_first_split_then_cloned(
+                clone_count, _NESTING_SCENARIO
+            )
+
+        receipt, problems = _exhausting_receipt(frame, _NESTING_SCENARIO)
+
+        assert problems == {}
+        assert receipt["copies"] == split.copies_created == clone_count * (259 + 4)
+        assert receipt["copies_recomputed"] < receipt["copies"]
 
     def test_at_one_clone_a_family_folded_just_above_a_multiple_is_green(
         self,
@@ -1908,6 +1945,25 @@ class TestHighValueCopiesAndRegionalHomeValues:
         assert tool._pre_regional_home_values_frame(reversed_frame) is reversed_frame
         assert tool._pre_regional_home_values_frame(chain.split) is chain.split
 
+    @pytest.mark.parametrize("key", ["outputs", "rewrites"])
+    def test_the_reversal_refuses_a_later_writer_of_the_values(
+        self, key: str, monkeypatch
+    ) -> None:
+        # The reversal assumes stage 27 writes the two columns last. A roster
+        # where a later stage declares one of them fails closed, instead of
+        # hiding that stage's rewrite from E5.
+        tool = _load_tool()
+        stages = tool._source_stage_roster()
+        names = [stage["stage"] for stage in stages]
+        later = names.index("regional_home_values") + 1
+        edited = [dict(stage) for stage in stages]
+        edited[later][key] = [*edited[later].get(key, ()), "main_residence_value"]
+        valued = _home_values_chain(cgt=False).valued
+        assert tool._pre_regional_home_values_frame(valued) is not valued
+        monkeypatch.setattr(tool, "_source_stage_roster", lambda: edited)
+        with pytest.raises(ValueError, match=r"^1 stage\(s\) after regional_home"):
+            tool._pre_regional_home_values_frame(valued)
+
     def test_dropping_the_copies_under_a_kept_cgt_layer_is_refused(self) -> None:
         tool = _load_tool()
         final = _home_values_chain(cgt=True).final
@@ -1961,3 +2017,56 @@ class TestHighValueCopiesAndRegionalHomeValues:
                 tool._high_value_copy_lineage(tampered)
             assert str(caught.value) == message
             assert not any(str(int(value)) in str(caught.value) for value in copy_ids)
+
+
+#: Row-creating stages whose declared flag the tool's stacking map has no
+#: entry for, with why it needs none (microcosm#931 review).
+_STACKING_MAP_EXCEPTIONS = {
+    "spi_income_band_donors": (
+        "its donors are rewritten onto household_is_spi_synthetic too, so the "
+        "support channel's entry drops them"
+    ),
+    "cgt_incidence_anchor": (
+        "declares only the incidence clone's flag, which it pairs on, and "
+        "creates no rows"
+    ),
+}
+
+
+def test_the_stacking_map_names_every_structural_stage_flag() -> None:
+    """The map's own comment says a new stacking stage must add its flag; this
+    holds it to the roster. Each structural stage's declared flag maps to
+    that stage, or the stage is an exception listed with its reason."""
+    from microcosm.build.uk_runtime.graph import UK_SPINE_STRUCTURAL_STAGES
+
+    tool = _load_tool()
+    stages = {
+        stage["stage"]: stage
+        for stage in tool._source_stage_roster()
+        if stage["stage"] in UK_SPINE_STRUCTURAL_STAGES
+    }
+    assert set(stages) == set(UK_SPINE_STRUCTURAL_STAGES)
+    declared = {
+        name: [
+            operation["flag_column"]
+            for operation in stage.get("operations", ())
+            if "flag_column" in operation
+        ]
+        for name, stage in stages.items()
+    }
+    mapped = {}
+    for name, flags in declared.items():
+        if name in _STACKING_MAP_EXCEPTIONS:
+            continue
+        (flag,) = flags
+        mapped[flag] = name
+    assert mapped == tool._STACKING_STAGE_BY_FLAG
+    # The exceptions' reasons, as the roster declares them.
+    assert "household_is_spi_synthetic" in stages["spi_income_band_donors"].get(
+        "rewrites", ()
+    )
+    assert declared["cgt_incidence_anchor"] == []
+    assert {
+        operation.get("clone_flag_column")
+        for operation in stages["cgt_incidence_anchor"]["operations"]
+    } - {None} == {"household_is_capital_gains_clone"}

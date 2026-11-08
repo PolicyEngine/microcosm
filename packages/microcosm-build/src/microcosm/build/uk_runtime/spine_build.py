@@ -20,10 +20,6 @@ from microcosm.build.country_spec import (
     GatesManifest,
     load_country_spec,
 )
-from microcosm.build.frame_sampling import (
-    normalize_sampled_household_mass,
-    sample_frame_households,
-)
 from microcosm.build.gate_battery import (
     BlockingMode,
     EvidenceContext,
@@ -160,6 +156,8 @@ from microcosm.build.uk_runtime.national_frame import (
 from microcosm.build.uk_runtime.national_sampling import (
     UK_SAMPLE_RUNG_TOKENS,
     UK_SAMPLE_SEED_DEFAULT,
+    UKSampledSpineRootTransform,
+    sample_uk_spine_root,
 )
 from microcosm.build.uk_runtime.nts_bus_travel import UKNTSBusTravelStageTransform
 from microcosm.build.uk_runtime.orrery_contract import (
@@ -225,7 +223,6 @@ from microcosm.build.uk_runtime.uc_reporter_redraw import (
 from microcosm.build.uk_runtime.uc_take_up import UKUCTakeUpStageTransform
 from microcosm.build.uk_runtime.was_lisa import UKWASLISAStageTransform
 from microcosm.build.uk_runtime.was_wealth import UKWASWealthStageTransform
-from microcosm.frame import Frame
 from microcosm.frame.adapters.policyengine_uk import PolicyEngineUKEngine
 from microcosm.graph import (
     ContentStore,
@@ -1155,103 +1152,6 @@ def _record_attempt(
     )
 
 
-def _sample_spine_frame(
-    frame,
-    *,
-    fraction: float,
-    seed: int,
-) -> tuple[object, dict[str, object] | None]:
-    if fraction == 1.0:
-        return frame, None
-    household_weight = frame.weights_for("household")
-    pre_households = int(len(frame.table("household")))
-    sampled, receipt = sample_frame_households(
-        frame,
-        fraction=fraction,
-        seed=seed,
-        source_name="UK FRS spine",
-    )
-    normalized, factor = normalize_sampled_household_mass(
-        sampled,
-        target_mass=float(household_weight.total),
-        source_name="UK FRS spine",
-    )
-    return normalized, {
-        "fraction": float(fraction),
-        "seed": int(seed),
-        "rung_token": UK_SAMPLE_RUNG_TOKENS[fraction],
-        "pre_household_count": pre_households,
-        "post_household_count": int(len(normalized.table("household"))),
-        "normalization_factor": float(factor),
-        "receipt": dict(receipt),
-    }
-
-
-class _SampledGraphRootTransform:
-    """CREATE-stage adapter applying the declared sampling rung at ingest."""
-
-    def __init__(
-        self,
-        transform,
-        *,
-        fraction: float,
-        seed: int,
-    ) -> None:
-        self.transform = transform
-        self.fraction = fraction
-        self.seed = seed
-        self.sampling: dict[str, object] | None = None
-
-    def _sample(self, assembled):
-        sampled, self.sampling = _sample_spine_frame(
-            assembled,
-            fraction=self.fraction,
-            seed=self.seed,
-        )
-        # Graph populations use row positions as their internal alignment
-        # index. Frame sampling preserves source DataFrame indexes by design,
-        # so normalize those indexes at this adapter boundary.
-        tables = {
-            entity: sampled.table(entity).reset_index(drop=True)
-            for entity in sampled.entities
-        }
-        tables.update(
-            {name: sampled.link(name).reset_index(drop=True) for name in sampled.links}
-        )
-        return Frame(
-            tables,
-            sampled.schema,
-            {
-                entity: sampled.weights_for(entity)
-                for entity in sampled.weighted_entities
-            },
-            sampled.strata.reset_index(drop=True),
-            mass_log=sampled.mass_log,
-            metadata=sampled.metadata,
-        )
-
-    def effective_fraction(self) -> float:
-        """Return the configured input sampling fraction."""
-
-        return float(self.fraction)
-
-    def __call__(self, frame):
-        return self._sample(self.transform(frame))
-
-    def run_with_sources(self, frame, sources):
-        runner = getattr(self.transform, "run_with_sources", None)
-        assembled = (
-            runner(frame, sources) if callable(runner) else self.transform(frame)
-        )
-        return self._sample(assembled)
-
-    def checkpoint_metadata(self) -> dict[str, object]:
-        hook = getattr(self.transform, "checkpoint_metadata", None)
-        if not callable(hook):
-            raise RuntimeError("FRS root transform exposes no checkpoint metadata.")
-        return dict(hook())
-
-
 def _stage_observer(
     staging_bundle: StagingRunBundleWriterV2 | None,
     emitter: LocalTelemetryEmitter | None,
@@ -1354,7 +1254,7 @@ def _run_plan_with_spine_sampling(
     spine_frame, spine_records = StagePlan(plan.stages[:1]).run(
         uk_frs_spine_seed_frame()
     )
-    spine_frame, sampling = _sample_spine_frame(
+    spine_frame, sampling = sample_uk_spine_root(
         spine_frame,
         fraction=sample_fraction,
         seed=sample_seed,
@@ -2031,7 +1931,7 @@ def prepare_uk_spine_execution(
             stage=fixture_by_name["frs_hmrc_spine_leaves"],
             sampled_rung=True,
         )
-    sampled_root = _SampledGraphRootTransform(
+    sampled_root = UKSampledSpineRootTransform(
         implementations["frs_spine"],
         fraction=args.sample_fraction,
         seed=args.sample_seed,
