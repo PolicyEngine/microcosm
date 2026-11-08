@@ -197,11 +197,15 @@ def _support_frame(
             "region": np.where(ids % 3 == 0, "SOUTH_EAST", "LONDON"),
         }
     )
+    # The SPI copies are a keyed Bernoulli share at 10 / n (microcosm#931), so
+    # their count is binomial. At seed 42 both regions keep copies at the 60
+    # and 200 households these tests build (11 copies, 2 in SOUTH_EAST, at
+    # 60; 13, 5 in SOUTH_EAST, at 200), so every funding stratum has SPI mass.
     support = build_uk_spi_support_channel(
         person,
         benunit,
         household,
-        spi_household_count=10,
+        expected_spi_households=10,
         seed=42,
         source_year=2024,
         zero_weight_declarations=(),
@@ -493,11 +497,16 @@ def test_stack_follows_weight_times_propensity_not_the_sample() -> None:
     # seats follow household weight: the heavier half of the frame is seated
     # more often than its half share of the rows across many seeds.
     frame = _support_frame(200)
+    household = frame.table("household")
     weight = pd.Series(
         frame.weights_for("household").values,
-        index=frame.table("household")["household_id"].to_numpy(),
+        index=household["household_id"].to_numpy(),
     )
-    heavy = weight > weight[weight > 0.0].median()
+    # The heavier half of the FRS base, the households seats are drawn from:
+    # a median over every row would count the SPI copies, whose number is
+    # binomial (microcosm#931), and leave the heavy set short of half.
+    base = household[support_channel_column("household")].eq(BASE_FRS_SUPPORT_CHANNEL)
+    heavy = weight > weight[base.to_numpy()].median()
     heavy_seats = seats = 0
     propensity = _propensity()
     for seed in range(40):
