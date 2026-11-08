@@ -844,15 +844,18 @@ def _e8_support_split(
     flagged copies (the pre-clone rows carrying ``cgt_support_copies`` above
     one), each family's count is ``ceil(K x w / maximum_copy_weight)``, ``K``
     the geographic clone count the stage read from the frame (microcosm#931;
-    the recompute reads it from the pre-split table the same way), every
-    member of a family carries ``w / n`` at stage time (its clone pair sum,
-    since the clone runs afterwards), the copies of each root are indexed
-    ``1..n-1`` without gaps and carry the root's count, no count is below
-    one, and the stage's mass record conserves the total. The recompute is
-    repeated on permuted person and household tables and must reproduce the
-    divided set and the counts exactly. A selected household light enough
-    for a single copy leaves no trace in the artifact, so only families are
-    compared. Problems land under ``support_split_*`` keys.
+    the recompute reads it from the pre-split table the same way), exactly at
+    ``K = 1`` and at ``K > 1`` to the family weights' relative tolerance of
+    1e-9 (the fold re-sums ``n`` copies of a clone's share, which drifts by
+    more ulps than the count's snap absorbs), every member of a family
+    carries ``w / n`` at stage time (its clone pair sum, since the clone runs
+    afterwards), the copies of each root are indexed ``1..n-1`` without gaps
+    and carry the root's count, no count is below one, and the stage's mass
+    record conserves the total. The recompute is repeated on permuted person
+    and household tables and must reproduce the divided set and the counts
+    exactly. A selected household light enough for a single copy leaves no
+    trace in the artifact, so only families are compared. Problems land under
+    ``support_split_*`` keys.
     """
 
     from microcosm.build.uk_runtime.cgt_support import (
@@ -1044,9 +1047,26 @@ def _e8_support_split(
             "extra": extra_families,
         }
     agreed = (recomputed_family & stored_family).to_numpy()
-    count_off = int(
-        (original["copies"].to_numpy()[agreed] != stored_count.to_numpy()[agreed]).sum()
-    )
+    stored_agreed = stored_count.to_numpy()[agreed]
+    if clone_count == 1:
+        count_off = int((original["copies"].to_numpy()[agreed] != stored_agreed).sum())
+    else:
+        # At K > 1 the fold re-sums n copies of a K-th share, which drifts by
+        # more ulps than the count's K-ulp snap absorbs, so an exact recount
+        # would flag a family the stage counted right (an exact multiple of 60
+        # at K = 11, for one). The count is held to the family weights'
+        # tolerance instead: the stored n must lie between the counts at the
+        # folded weight times 1 - 1e-9 and 1 + 1e-9 (microcosm#931 review).
+        agreed_weights = pre_weights[agreed]
+        lowest, highest = (
+            cgt_support_copy_counts(
+                agreed_weights * factor,
+                CGT_SUPPORT_MAXIMUM_COPY_WEIGHT,
+                clone_count=clone_count,
+            )
+            for factor in (1.0 - 1e-9, 1.0 + 1e-9)
+        )
+        count_off = int(((stored_agreed < lowest) | (stored_agreed > highest)).sum())
     if count_off:
         problems["support_split_copies_stored"] = count_off
 

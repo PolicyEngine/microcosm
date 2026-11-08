@@ -1062,20 +1062,51 @@ class TestE8SupportSplitRecompute:
 #: Both income bands of the split scenario ask for far more than their pools,
 #: so every positive-weight household is selected at every clone count.
 _EXHAUSTING_TOP_CELLS = {0: {250_000: 1e6}, 37_700: {250_000: 1e6}}
+_SPLIT_SCENARIO = {
+    "weights": _SPLIT_WEIGHTS,
+    "wealth": _SPLIT_WEALTH,
+    "incomes": _SPLIT_INCOMES,
+    "top_cells": _EXHAUSTING_TOP_CELLS,
+}
+#: The nesting scenario of the CGT support tests (test_uk_cgt_support.py),
+#: nine one-person households. Band 0 holds exact multiples of 60 (900,
+#: 1,800, 4,020 and 7,620: 15, 30, 67 and 127 copies), a weight one ulp below
+#: 300 (5 copies), a light one (40, uncopied) and a non-multiple (1,234.5, id
+#: 7, 21 copies); band 0's pool is exhausted at every clone count, band
+#: 37,700 asks for nothing, so its household (9,000) takes the exact-total
+#: correction, and the zero-weight household is outside every pool.
+_NESTING_SCENARIO = {
+    "weights": [
+        900.0,
+        1_800.0,
+        4_020.0,
+        7_620.0,
+        float(np.nextafter(300.0, 0.0)),
+        40.0,
+        1_234.5,
+        9_000.0,
+        0.0,
+    ],
+    "wealth": [7e3, 6e3, 5e3, 4e3, 3e3, 2e3, 1e3, 1.0, 1e6],
+    "incomes": [BAND_INCOMES[0]] * 7 + [BAND_INCOMES[37_700], BAND_INCOMES[0]],
+    "top_cells": {0: {250_000: 1_000_000.0}},
+}
 
 
-def _clone_first_split_then_cloned(clone_count: int):
-    """The split scenario as ``clone_count`` geographic clones, split then cloned."""
+def _clone_first_split_then_cloned(clone_count: int, scenario=_SPLIT_SCENARIO):
+    """A scenario as ``clone_count`` geographic clones, split then cloned."""
 
     frame = clone_first_frame(
         support_frame(
-            weights=_SPLIT_WEIGHTS, wealth=_SPLIT_WEALTH, incomes=_SPLIT_INCOMES
+            weights=scenario["weights"],
+            wealth=scenario["wealth"],
+            incomes=scenario["incomes"],
         ),
         clone_count,
     )
     split = split_cgt_support_households(
         frame,
-        distribution=support_distribution(_EXHAUSTING_TOP_CELLS),
+        distribution=support_distribution(scenario["top_cells"]),
         parameters=PARAMETERS,
         clone_count=geographic_clone_count(frame.table("household")),
     )
@@ -1085,12 +1116,14 @@ def _clone_first_split_then_cloned(clone_count: int):
     return split, cloned.frame
 
 
-def _exhausting_receipt(frame) -> tuple[dict[str, object], dict[str, object]]:
+def _exhausting_receipt(
+    frame, scenario=_SPLIT_SCENARIO
+) -> tuple[dict[str, object], dict[str, object]]:
     problems: dict[str, object] = {}
     receipt = _load_tool()._e8_support_split(
         frame,
         problems,
-        distribution=support_distribution(_EXHAUSTING_TOP_CELLS),
+        distribution=support_distribution(scenario["top_cells"]),
         parameters=PARAMETERS,
         permutation_seed=7,
     )
@@ -1103,6 +1136,8 @@ class TestSupportSplitRecomputeAcrossGeographicClones:
     The stage reads ``K`` from its input and counts ``ceil(K x w / 60)``
     copies (microcosm#931); the tool reads ``K`` from the pre-split table the
     same way. At one clone its receipt is the one the rule before ``K`` gave.
+    At ``K > 1`` its count check holds the stored count to the family
+    weights' relative tolerance of 1e-9, since the fold re-sums the copies.
     """
 
     def test_at_one_clone_the_receipt_is_the_rule_before_the_clone_count(
@@ -1175,6 +1210,68 @@ class TestSupportSplitRecomputeAcrossGeographicClones:
         assert problems == {
             "support_split_selection_stored": {"missing": 15, "extra": 0}
         }
+
+    @pytest.mark.parametrize("clone_count", [7, 11, 13, 15])
+    def test_exact_multiples_of_60_receipt_green_at_any_clone_count(
+        self, clone_count: int
+    ) -> None:
+        # At 11 and 13 clones the fold re-sums the 7,620 family's 127 copies
+        # to a weight whose K x w / 60 sits more ulps above 127 than the
+        # count's snap absorbs, so an exact recount would count 128 in every
+        # clone; the tolerance accepts the stage's 127.
+        one_split, one = _clone_first_split_then_cloned(1, _NESTING_SCENARIO)
+        split, many = _clone_first_split_then_cloned(clone_count, _NESTING_SCENARIO)
+
+        one_receipt, one_problems = _exhausting_receipt(one, _NESTING_SCENARIO)
+        receipt, problems = _exhausting_receipt(many, _NESTING_SCENARIO)
+
+        assert one_problems == problems == {}
+        assert one_receipt["families"] == 6
+        assert one_receipt["copies"] == one_split.copies_created == 259
+        assert receipt["families"] == clone_count * 6
+        assert receipt["copies"] == split.copies_created == clone_count * 259
+
+    @pytest.mark.parametrize("clone_count", [1, 3, 11])
+    def test_a_count_moved_off_a_non_multiple_is_reported(
+        self, clone_count: int
+    ) -> None:
+        # Household 7 (1,234.5: 21 copies, K x w / 60 = 20.575) lies far
+        # from an integer, so a count of 20 or 22 is outside the tolerance.
+        _, frame = _clone_first_split_then_cloned(clone_count, _NESTING_SCENARIO)
+        for moved in (20, 22):
+            household = frame.table("household").copy()
+            household.loc[household["household_id"] == 7, CGT_SUPPORT_COPIES_COLUMN] = (
+                moved
+            )
+
+            _, problems = _exhausting_receipt(
+                _rebuild(frame, household=household), _NESTING_SCENARIO
+            )
+
+            assert problems["support_split_copies_stored"] == 1, moved
+
+    def test_at_one_clone_the_count_check_stays_exact(self) -> None:
+        # Household 1 (900: 15 copies) moved to 16. At one clone the count
+        # check reports it, as before the clone count. At three, 3 x w / 60
+        # is exactly 15 and the tolerance cannot tell 15 from 16; the flags
+        # and the family weights report the family instead.
+        for clone_count, counted in ((1, True), (3, False)):
+            _, frame = _clone_first_split_then_cloned(clone_count, _NESTING_SCENARIO)
+            household = frame.table("household").copy()
+            household.loc[household["household_id"] == 1, CGT_SUPPORT_COPIES_COLUMN] = (
+                16
+            )
+
+            _, problems = _exhausting_receipt(
+                _rebuild(frame, household=household), _NESTING_SCENARIO
+            )
+
+            assert ("support_split_copies_stored" in problems) is counted
+            assert problems["support_split_flags"] == {
+                "copies_disagreeing_with_root": 14,
+                "families_with_missing_or_extra_copies": 1,
+            }
+            assert problems["support_split_family_weights"] == 15
 
 
 # --- copy ids at the copy-id table's declared radices (microcosm#931) ----------
