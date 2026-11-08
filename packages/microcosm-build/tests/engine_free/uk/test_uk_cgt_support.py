@@ -1577,7 +1577,9 @@ def test_operation_dictionary_restates_the_reviewed_design():
     assert payload["maximum_copy_weight"] == 60.0
     assert payload["copy_rule"] == (
         "copies = ceil(geographic clone count x household weight / "
-        "maximum_copy_weight); every copy carries weight / copies"
+        "maximum_copy_weight), the quotient snapped to the nearest integer "
+        "within clone-count ulps when the clone count exceeds one; every copy "
+        "carries weight / copies"
     )
     assert payload["flag_column"] == HOUSEHOLD_IS_CGT_SUPPORT_COPY
     assert payload["copies_column"] == CGT_SUPPORT_COPIES_COLUMN

@@ -584,9 +584,11 @@ def split_cgt_support_households(
     ``k`` in ``cgt_support_copy_index`` and carries a full copy of the
     household's person and benefit-unit rows. The exact-total correction
     lands on the heaviest unselected incumbent so every copy weight stays
-    bitwise ``w / n``. Refuses a frame the incidence clone stage
-    (``cgt_incidence_clone``) has already seen or one this stage has already
-    split.
+    bitwise ``w / n``, unless that household cannot carry it: then
+    spi_support's shared fallback places it, and that row can be a root or
+    copy (:func:`_exact_support_weights`). Refuses a frame the incidence
+    clone stage (``cgt_incidence_clone``) has already seen or one this stage
+    has already split.
     """
 
     validate_uk_national_frame(frame)
@@ -766,8 +768,11 @@ def _exact_support_weights(
     """Importance weights summing bitwise to ``target``.
 
     The correction lands on the heaviest unselected incumbent so every split
-    weight stays exactly ``w / n``; a frame with no unselected positive
-    incumbent falls back to the shared multi-candidate correction.
+    weight stays exactly ``w / n``. When that correction is not representable,
+    or no unselected incumbent is positive, it falls back to spi_support's
+    shared multi-candidate correction, whose candidates (the heaviest, last,
+    first, lightest and middle positive rows) can be a root or copy of a
+    split household.
     """
 
     if unselected.size:
@@ -834,7 +839,9 @@ def cgt_support_split_operation_parameters() -> tuple[
                 "maximum_copy_weight": CGT_SUPPORT_MAXIMUM_COPY_WEIGHT,
                 "copy_rule": (
                     "copies = ceil(geographic clone count x household weight / "
-                    "maximum_copy_weight); every copy carries weight / copies"
+                    "maximum_copy_weight), the quotient snapped to the nearest "
+                    "integer within clone-count ulps when the clone count "
+                    "exceeds one; every copy carries weight / copies"
                 ),
                 "id_remapping": (
                     "copy-id table field cgt_support_split; copy k takes every "
