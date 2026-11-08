@@ -12895,6 +12895,102 @@ def test_build_manifests_selects_ssi_social_security_holdout_for_publication(
     assert failures == []
 
 
+@pytest.mark.parametrize("staged", (True, False), ids=("staged", "not_staged"))
+def test_build_manifests_lists_scf_education_debt_fits_for_publication(
+    monkeypatch, tmp_path, staged
+) -> None:
+    from microcosm.data.contract import (
+        _check_local_artifact_hashes,
+        _check_release_manifest,
+    )
+    from microcosm.data.release import _release_manifest_root_artifacts
+
+    builder = _load_builder_module()
+    release_id, release_dir, artifact_root = _gate_evidence_release_dir(
+        builder, monkeypatch, tmp_path, coverage={}
+    )
+    # Both tables sit under artifact_root in either case, so a run without the
+    # stage must leave out what an earlier attempt wrote there.
+    tables = {
+        key: artifact_root / filename
+        for key, filename in builder.US_SCF_EDUCATION_DEBT_FIT_ARTIFACTS.items()
+    }
+    assert len(tables) == 2
+    assert len({path.name for path in tables.values()}) == 2
+    for key, path in tables.items():
+        path.write_text(json.dumps({"table": key}))
+
+    builder._build_manifests(
+        **_minimal_manifest_kwargs(builder, release_id, release_dir, artifact_root),
+        scf_education_debt_fit=staged,
+    )
+
+    manifest = json.loads((release_dir / "release_manifest.json").read_text())
+    root_artifacts = _release_manifest_root_artifacts(release_dir)
+    for key, path in tables.items():
+        if staged:
+            sha = hashlib.sha256(path.read_bytes()).hexdigest()
+            assert manifest["artifacts"][key] == {
+                "kind": "diagnostics",
+                "path": path.name,
+                "repo_id": builder.REPO_ID,
+                "revision": release_id,
+                "sha256": sha,
+            }
+            # A publish with --artifact-root uploads root artifacts beside the H5.
+            assert root_artifacts[path.name] == sha
+        else:
+            assert key not in manifest["artifacts"]
+            assert path.name not in root_artifacts
+    failures: list[str] = []
+    _check_release_manifest(manifest, release_id, failures)
+    _check_local_artifact_hashes(release_dir, manifest, failures)
+    assert failures == []
+
+
+def test_build_manifests_refuses_a_staged_run_missing_a_fit_table(
+    monkeypatch, tmp_path
+) -> None:
+    import re
+
+    builder = _load_builder_module()
+    release_id, release_dir, artifact_root = _gate_evidence_release_dir(
+        builder, monkeypatch, tmp_path, coverage={}
+    )
+    (artifact_root / builder.US_SCF_EDUCATION_DEBT_FIT_FILENAME).write_text("{}")
+    missing = builder.US_SCF_EDUCATION_DEBT_CALIBRATED_FIT_FILENAME
+
+    with pytest.raises(FileNotFoundError, match=re.escape(missing)):
+        builder._build_manifests(
+            **_minimal_manifest_kwargs(builder, release_id, release_dir, artifact_root),
+            scf_education_debt_fit=True,
+        )
+    assert not (release_dir / "release_manifest.json").exists()
+
+
+def test_main_lists_the_fit_tables_exactly_when_it_stages_them() -> None:
+    import ast
+
+    builder = _load_builder_module()
+    tree = ast.parse(Path(builder.__file__).read_text(encoding="utf-8"))
+    main = next(
+        node
+        for node in ast.walk(tree)
+        if isinstance(node, ast.FunctionDef) and node.name == "_main"
+    )
+    (call,) = [
+        node
+        for node in ast.walk(main)
+        if isinstance(node, ast.Call)
+        and getattr(node.func, "id", "") == "_build_manifests"
+    ]
+    assert {
+        kw.arg: ast.unparse(kw.value)
+        for kw in call.keywords
+        if kw.arg == "scf_education_debt_fit"
+    } == {"scf_education_debt_fit": "args.scf_education_debt"}
+
+
 @pytest.mark.parametrize(
     "scoring_available", (True, False), ids=("available", "unavailable")
 )

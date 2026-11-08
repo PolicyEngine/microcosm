@@ -1057,6 +1057,15 @@ US_SCF_EDUCATION_DEBT_FIT_FILENAME = "us_scf_education_debt_fit.json"
 US_SCF_EDUCATION_DEBT_CALIBRATED_FIT_FILENAME = (
     "us_scf_education_debt_calibrated_fit.json"
 )
+#: Both fit tables, keyed by release-manifest artifact key. A
+#: ``--scf-education-debt`` build lists them in its release manifest, so a
+#: publish with ``--artifact-root`` uploads them beside the H5 (microcosm#1074).
+US_SCF_EDUCATION_DEBT_FIT_ARTIFACTS: dict[str, str] = {
+    "us_scf_education_debt_fit": US_SCF_EDUCATION_DEBT_FIT_FILENAME,
+    "us_scf_education_debt_calibrated_fit": (
+        US_SCF_EDUCATION_DEBT_CALIBRATED_FIT_FILENAME
+    ),
+}
 US_ACA_APTC_TARGET_TABLE = "cms_aca_aptc_recipients_by_state"
 US_ACA_TARGET_ROLE_TABLES = {
     "aca_ptc_recipients": US_ACA_APTC_TARGET_TABLE,
@@ -10620,6 +10629,7 @@ def _build_manifests(
     scored_dataset_sha256: str | None = None,
     post_export_scoring: Mapping[str, object] | None = None,
     diagnostics_outcome: DiagnosticsWriteOutcome | None = None,
+    scf_education_debt_fit: bool = False,
 ) -> None:
     dataset_path = artifact_root / dataset_filename
     calibration_path = artifact_root / calibration_filename
@@ -11159,6 +11169,23 @@ def _build_manifests(
                 _sha256(release_dir / "us_ssi_take_up.json"),
                 kind="diagnostics",
                 revision=release_id,
+            ),
+            # microcosm#1074: a run that stages the SCF education debt writes
+            # both fit tables under artifact_root, so it lists both, and a
+            # run without the stage lists neither, whatever an earlier
+            # attempt left there.
+            **(
+                {
+                    key: _artifact_entry(
+                        filename,
+                        _sha256(artifact_root / filename),
+                        kind="diagnostics",
+                        revision=release_id,
+                    )
+                    for key, filename in US_SCF_EDUCATION_DEBT_FIT_ARTIFACTS.items()
+                }
+                if scf_education_debt_fit
+                else {}
             ),
             **(
                 {
@@ -16648,6 +16675,7 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
         scored_dataset_sha256=scored_dataset_sha256,
         post_export_scoring=post_export_scoring,
         diagnostics_outcome=diagnostics_outcome,
+        scf_education_debt_fit=args.scf_education_debt,
     )
     if telemetry is not None:
         telemetry.attach_artifact("build_manifest", release_dir / "build_manifest.json")
