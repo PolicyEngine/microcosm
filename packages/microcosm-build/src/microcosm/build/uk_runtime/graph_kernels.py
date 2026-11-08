@@ -80,6 +80,8 @@ from . import (
     donor_uprating,
     employer_pension_contributions,
     energy_pricing,
+    etb_vat,
+    frs_annual_income,
     frs_brma,
     frs_disability,
     frs_education,
@@ -94,6 +96,7 @@ from . import (
     hmrc_isa_statistics,
     hmrc_property_rental,
     hmrc_replay,
+    hmrc_source_contract,
     hmrc_uprating,
     household_income,
     household_lineage,
@@ -115,6 +118,7 @@ from . import (
     stage_health,
     support_clip,
     take_up_contract,
+    tenure_constants,
     terminal_gates,
     uc_capital_coherence,
     uc_deduction_attributes,
@@ -212,10 +216,15 @@ _ENGINE_MODULES = (
 )
 
 # Imported modules are not traversed by ``source_hash``, so each stage binds
-# every module holding code its transform computes through, beyond its own
-# module (microcosm#931). test_uk_graph derives that set: it follows what the
-# transform names into the module defining it, to a fixed point, and needs no
-# binding for a check, a column name, a record or a constant of strings.
+# every module in microcosm.build holding code its transform computes
+# through, beyond its own module (microcosm#931). test_uk_graph derives that
+# set: it follows what the transform names into the module defining it, to a
+# fixed point, and needs no binding for a listed refusal-only check. Where it
+# stops at a single string, a column-name function or a record, the module is
+# hashed by the stage or a stage upstream of it, or the name is listed with
+# its reason; a collection of strings, like a number, is a value. Modules in
+# the other workspace packages are bound by hand, and test_uk_graph names
+# the ones that are not yet.
 # Every stage whose module or bound helpers import the shared keyed-draw
 # helpers (``microcosm.build.stochastic_assignment``), or import another
 # module's function that draws through them, binds them as well, so an edit
@@ -299,13 +308,16 @@ _STAGE_HELPER_MODULES = {
     # vendored facts and HMRC tables; the stage's parameters bound the band
     # donors and the coverage floor, and its result carries the fits' weight
     # kinds, gate outcomes and the HMRC replay report (microcosm#931). It
-    # binds the copy-id table as the leaves do.
+    # binds the copy-id table as the leaves do. The imputation refreshes the
+    # annual income descriptors on frs_annual_income's share columns, and the
+    # evidence shares iterate HMRC's distributional inputs.
     "hmrc_spi_income_spine": (
         spi_income,
         spi_rank_transport,
         copy_id_table,
         employer_pension_contributions,
         *_FEED_FACT_MODULES,
+        frs_annual_income,
         frs_disability,
         frs_release,
         frs_spine,
@@ -313,6 +325,7 @@ _STAGE_HELPER_MODULES = {
         gates,
         hmrc_income,
         hmrc_replay,
+        hmrc_source_contract,
         hmrc_uprating,
         pension_coherence,
         qrf_gates,
@@ -328,12 +341,14 @@ _STAGE_HELPER_MODULES = {
     # high-value split weighs its copies through the CGT split's exact-total
     # correction (microcosm#931). The executor reads each id-offset stage's
     # declared radix from the table too. The root reads its tabs through
-    # trace's digest, ages people by birth month, and caps pension
-    # contributions with their receipt (microcosm#931).
+    # trace's digest, ages people by birth month, caps pension contributions
+    # with their receipt, and codes council tax bands in the shared band order
+    # (microcosm#931).
     "frs_spine": (
         uc_relationships,
         copy_id_table,
         birth_month,
+        council_tax_constants,
         pension_coherence,
         receipt_counts,
         trace,
@@ -360,13 +375,14 @@ _STAGE_HELPER_MODULES = {
         stochastic_assignment,
     ),
     # The exact-total correction the CGT split hands the high-value split is
-    # spi_support's, and the support stratum is property_localisation's
-    # (microcosm#931).
+    # spi_support's, and the support stratum is property_localisation's, whose
+    # owners are the tenure map's (microcosm#931).
     "high_value_home_support": (
         cgt_support,
         copy_id_table,
         property_localisation,
         spi_support,
+        tenure_constants,
     ),
     # The CGT stages read HMRC's CGT tables as vendored facts and the
     # Advani-Summers tail from advani_summers, take the CGT policy parameters
@@ -374,7 +390,8 @@ _STAGE_HELPER_MODULES = {
     # term), and weigh their copies through spi_support's exact-total
     # correction; the support split also takes the adult age and oldest-adult
     # rule from cgt_structure, and the residential split its logistic from
-    # cgt_asset_type (microcosm#931).
+    # cgt_asset_type; the incidence clone sums cgt_imputation's income proxy
+    # components into the income behind its propensity (microcosm#931).
     "cgt_support_split": (
         copy_id_table,
         *_FEED_FACT_MODULES,
@@ -390,6 +407,7 @@ _STAGE_HELPER_MODULES = {
         rowwise_geography,
         copy_id_table,
         advani_summers,
+        cgt_imputation,
         spi_support,
         stochastic_assignment,
     ),
@@ -433,14 +451,17 @@ _STAGE_HELPER_MODULES = {
     # The donor stages read their donor tabs through frs_spine, record each
     # fit's weight kind, gate the fits and clip donor support to the donor's
     # range (microcosm#931); the WAS recipients' predictors map benefit units to
-    # households and count family roles.
+    # households, count family roles, group tenure by the shared tenure map and
+    # name the HBAI income predictor.
     "was_wealth": (
         *_ENGINE_MODULES,
         *_PINNED_TAB_MODULES,
         frs_brma,
         gates,
+        household_income,
         qrf_gates,
         support_clip,
+        tenure_constants,
         uc_relationships,
         stochastic_assignment,
     ),
@@ -455,7 +476,9 @@ _STAGE_HELPER_MODULES = {
         *_FEED_FACT_MODULES,
         frs_brma,
         gates,
+        household_income,
         support_clip,
+        tenure_constants,
         uc_relationships,
         stochastic_assignment,
     ),
@@ -476,8 +499,12 @@ _STAGE_HELPER_MODULES = {
         stochastic_assignment,
     ),
     # The regional values rank as the dense node does and read its knots
-    # (microcosm#1112).
-    "regional_home_values": (property_localisation, rowwise_geography),
+    # (microcosm#1112), over the tenure map's owners (microcosm#931).
+    "regional_home_values": (
+        property_localisation,
+        rowwise_geography,
+        tenure_constants,
+    ),
     # The purchases read the vendored HMRC Stamp Tax rows through the feed-pinned
     # reader and mark SDLT's regions from the FRS region map (microcosm#1095).
     "property_purchases": (
@@ -504,7 +531,8 @@ _STAGE_HELPER_MODULES = {
     # through donor_uprating on vendored indices, the recipients' household
     # income and family roles are predictors, and bus fares are priced over
     # calendar and fiscal-year windows; the LCFS stage also rakes its energy,
-    # assigns car attributes and tops up gambling (microcosm#931). The
+    # assigns car attributes, tops up gambling and reads the DfT boardings of
+    # each recipient's region through the FRS region map (microcosm#931). The
     # spending draws through microcosm.fit's forest neighbourhoods and keyed
     # donors (microcosm#1717).
     "lcfs_consumption": (
@@ -522,6 +550,7 @@ _STAGE_HELPER_MODULES = {
         nts_car_attributes,
         qrf_gates,
         raking,
+        rowwise_geography,
         support_clip,
         stochastic_assignment,
     ),
@@ -536,6 +565,8 @@ _STAGE_HELPER_MODULES = {
         uc_relationships,
         stochastic_assignment,
     ),
+    # The services stage counts its recipients' family roles as the VAT stage
+    # does, from etb_vat's role table (microcosm#931).
     "etb_services": (
         *_ENGINE_MODULES,
         *_PINNED_TAB_MODULES,
@@ -544,6 +575,7 @@ _STAGE_HELPER_MODULES = {
         bus_support_pricing,
         donor_uprating,
         energy_pricing,
+        etb_vat,
         gates,
         ledger_targets,
         qrf_gates,
@@ -787,6 +819,7 @@ _COUNTING_STAGES = frozenset(
         "nts_bus_travel",
         "lcfs_consumption",
         "etb_vat",
+        "etb_services",
         "uc_reporter_redraw",
         "spi_benefit_coherence",
         "uc_capital_coherence",

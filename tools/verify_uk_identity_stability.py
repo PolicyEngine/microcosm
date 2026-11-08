@@ -853,11 +853,16 @@ def _e8_support_split(
     re-sums the ``n`` copies, which can land ulps from ``w``: at ``K = 1``
     for a weight a few ulps above a multiple of the maximum, or where the
     stage's exact-total correction fell on a copy, and at ``K > 1`` by more
-    than the count's snap absorbs. So on an exact multiple the check accepts
-    ``n`` or ``n + 1``, and a count moved there is left to the flag and
-    family-weight checks. The receipt's ``copies_recomputed`` stays the exact
-    recount, so it can differ from ``copies`` by one for each family whose
-    re-summed weight lands across a multiple, while the count check passes.
+    than the count's snap absorbs. So for a family whose weight lies within
+    that tolerance of a multiple of the maximum, the check accepts ``n`` or
+    ``n + 1``. A stored count moved there on its own is still reported, by
+    the flag and family-weight checks, but a family the stage split
+    consistently into one copy more there, every member at ``w / (n + 1)``
+    and indexed in full, is reported by no check at any ``K``. The receipt's
+    ``copies_recomputed`` stays the exact recount, so it can differ from
+    ``copies`` by one for each family whose re-summed weight lands across a
+    multiple, or that was split into one copy more, while the count check
+    passes.
     Every member of a family carries ``w / n`` at stage time (its clone pair
     sum, since the clone runs afterwards), the copies of each root are
     indexed ``1..n-1`` without gaps and carry the root's count, no count is
@@ -1065,7 +1070,9 @@ def _e8_support_split(
     # recount would flag a family the stage counted right, so at every K the
     # count is held to the family weights' tolerance instead: the stored n
     # must lie between the counts at the folded weight times 1 - 1e-9 and
-    # 1 + 1e-9 (microcosm#931 review).
+    # 1 + 1e-9 (microcosm#931 review). Within that tolerance of a multiple it
+    # cannot tell n from n + 1, so a family split consistently into one copy
+    # more there goes unreported.
     agreed_weights = pre_weights[agreed]
     lowest, highest = (
         cgt_support_copy_counts(
@@ -1791,7 +1798,9 @@ def e8_identity_receipt(
             "the anchor each cost one float rounding generation); "
             "support-split mass record: new_total against old_total at rtol "
             "1e-9; support-split copy counts: between the counts at the "
-            "folded family weight times 1 - 1e-9 and 1 + 1e-9; support-split "
+            "folded family weight times 1 - 1e-9 and 1 + 1e-9, so within that "
+            "tolerance of a multiple of the maximum copy weight a family split "
+            "consistently into one copy more is not reported; support-split "
             "families, flags and student_loan_plan: exact equality; "
             "band-donor seats, bands and "
             "carriers: exact equality; band-donor weights within a band and "
@@ -2088,7 +2097,8 @@ def main() -> int:
 #: is stored there — that value was drawn for the source id, not this one.
 #: A new stacking stage MUST add its flag here, or these receipts silently
 #: start comparing inherited values against fresh draws and report a spine
-#: defect that is really an instrument defect.
+#: defect that is really an instrument defect; a receipts test holds the map
+#: to the structural stages' declared flags.
 _STACKING_STAGE_BY_FLAG = {
     # #717 SPI support channel; the #1006 income band donors carry the same flag.
     "household_is_spi_synthetic": "spi_support_channel",
@@ -2864,6 +2874,42 @@ def _pre_salary_sacrifice_frame(frame):
 
 #: The stage that rewrites owners' home values in place (microcosm#1112).
 _REGIONAL_HOME_VALUES_STAGE = "regional_home_values"
+#: The household columns that stage rewrites, which the reversal restores.
+_REGIONAL_HOME_VALUE_COLUMNS = ("main_residence_value", "property_wealth")
+
+
+def _source_stage_roster() -> list[dict[str, object]]:
+    """The committed source-stage roster's stages, in order."""
+
+    from importlib.resources import files as _files
+
+    spec = json.loads(
+        _files("microcosm.build.uk")
+        .joinpath("source_stages.json")
+        .read_text(encoding="utf-8")
+    )
+    return list(spec["stages"])
+
+
+def _require_regional_home_values_last_writer() -> None:
+    """Refuse when a stage after ``regional_home_values`` declares a column
+    the reversal restores: the reversal would then hide that stage's rewrite
+    from every receipt scoped before stage 27, instead of failing on it."""
+
+    stages = _source_stage_roster()
+    names = [str(stage["stage"]) for stage in stages]
+    later = [
+        stage
+        for stage in stages[names.index(_REGIONAL_HOME_VALUES_STAGE) + 1 :]
+        if set(_REGIONAL_HOME_VALUE_COLUMNS)
+        & {*stage.get("outputs", ()), *stage.get("rewrites", ())}
+    ]
+    if later:
+        raise ValueError(
+            f"{len(later)} stage(s) after {_REGIONAL_HOME_VALUES_STAGE} declare "
+            "main_residence_value or property_wealth, so the reversal of its "
+            "rewrite no longer gives the values an earlier stage saw."
+        )
 
 
 def _pre_regional_home_values_frame(frame):
@@ -2882,7 +2928,9 @@ def _pre_regional_home_values_frame(frame):
     largest wealth the floor allows. The rank basis is dropped, since no
     earlier stage had it. An artifact without it (built before the stage, or
     a release, whose boundary drops it with ``property_wealth``) is returned
-    as it is.
+    as it is. The reversal holds only while stage 27 is the last stage to
+    write either column, so it refuses a roster where a later stage declares
+    one of them.
     """
 
     from microcosm.build.uk_runtime.national_frame import (
@@ -2894,6 +2942,7 @@ def _pre_regional_home_values_frame(frame):
     household = frame.table("household")
     if RANK_BASIS_COLUMN not in household.columns:
         return frame
+    _require_regional_home_values_last_writer()
     household = household.copy()
     basis = pd.to_numeric(household[RANK_BASIS_COLUMN], errors="raise").to_numpy(
         dtype=float

@@ -60,6 +60,7 @@ from . import (
     rfdr_area_layer,
     rowwise_dataset,
     rowwise_geography,
+    spi_support,
 )
 from .geography_ladder import (
     UK_GEOGRAPHY_LADDER_COLUMNS,
@@ -208,10 +209,11 @@ class _PopulationKernel(KernelBase):
 
         # The dense population nodes also compute through what these call:
         # the sample's household draw and mass normalisation (frame_sampling),
-        # the clones' minted ids and copied tables (rowwise_geography), the
-        # national frame they rebuild, the local authority names the geography
-        # resolves, and the gate's results (microcosm#931); test_uk_graph
-        # derives the set from what the kernels name.
+        # its strata columns (spi_support's replacement strata), the clones'
+        # minted ids and copied tables (rowwise_geography), the national frame
+        # they rebuild, the local authority names the geography resolves, and
+        # the gate's results (microcosm#931); test_uk_graph derives the set
+        # from what the kernels name.
         return source_hash(
             type(self),
             geography_ladder,
@@ -223,6 +225,7 @@ class _PopulationKernel(KernelBase):
             local_authority_input,
             national_frame,
             rowwise_geography,
+            spi_support,
             # context_frame copies the kernel's inputs with copy_table.
             table_copies,
         )

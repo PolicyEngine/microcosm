@@ -283,3 +283,41 @@ def test_spine_sampling_counts_the_families_a_sample_left_incomplete(
     assert str(caught.value) == (
         "UK spine sample retained 1 incomplete source family(ies)."
     )
+
+
+def test_the_sample_node_calls_no_sampler_at_f100(monkeypatch) -> None:
+    """At f100 ``uk.full.sample`` keeps the spine whole and calls no sampler
+    (experiments/901-uk-main-rebase-receipts.md, row 4)."""
+    import json
+    from types import SimpleNamespace
+
+    from microcosm.build import frame_sampling
+    from microcosm.build.uk_runtime import graph_population, national_sampling
+
+    def no_sampler(*args, **kwargs):
+        raise AssertionError("uk.full.sample called a sampler at f100")
+
+    monkeypatch.setattr(national_sampling, "sample_uk_spine_frame", no_sampler)
+    monkeypatch.setattr(national_sampling, "sample_frame_households", no_sampler)
+    monkeypatch.setattr(frame_sampling, "sample_frame_households", no_sampler)
+    frame = _spine_family_frame()
+    context = SimpleNamespace(
+        tables={entity: frame.table(entity) for entity in frame.entities},
+        frame_column_order={},
+        weights={"household": frame.weights_for("household")},
+        strata=frame.strata,
+        params={"fraction": 1.0, "seed": 578, "time_period": "2023"},
+        artifacts={},
+        node=SimpleNamespace(artifact_inputs=()),
+        frame_mass_log=frame.mass_log,
+        frame_metadata=frame.metadata,
+    )
+
+    result = graph_population.UKFamilySampleKernel().run(context)
+
+    payload = json.loads(result.artifacts["sampling"])
+    assert payload["receipt"]["sampled"] is False
+    assert payload["receipt"]["rung_token"] == "f100"
+    assert bool(result.keep.all())
+    assert payload["household_ids"] == frame.table("household")["household_id"].tolist()
+    assert payload["mass_log_append"] == []
