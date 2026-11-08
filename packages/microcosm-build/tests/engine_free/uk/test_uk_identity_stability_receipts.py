@@ -33,6 +33,7 @@ from microcosm.build.uk_runtime.cgt_structure import (
 from microcosm.build.uk_runtime.cgt_support import (
     CGT_SUPPORT_COPIES_COLUMN,
     HOUSEHOLD_IS_CGT_SUPPORT_COPY,
+    geographic_clone_count,
     split_cgt_support_households,
 )
 from microcosm.build.uk_runtime.etb_services import (
@@ -48,6 +49,7 @@ from test_support.microcosm_build.uk_cgt_support import (
     support_distribution,
     support_frame,
 )
+from test_support.microcosm_build.uk_clone_first_frames import clone_first_frame
 from test_support.paths import paths_for
 
 _TEST_PATHS = paths_for("microcosm-build")
@@ -755,6 +757,7 @@ def _split_then_cloned():
         ),
         distribution=support_distribution(_SPLIT_TOP_CELLS),
         parameters=PARAMETERS,
+        clone_count=1,
     )
     cloned = clone_cgt_incidence(
         split.frame, distribution=load_advani_summers_distribution()
@@ -1056,6 +1059,124 @@ class TestE8SupportSplitRecompute:
             self._receipt(frame)
 
 
+#: Both income bands of the split scenario ask for far more than their pools,
+#: so every positive-weight household is selected at every clone count.
+_EXHAUSTING_TOP_CELLS = {0: {250_000: 1e6}, 37_700: {250_000: 1e6}}
+
+
+def _clone_first_split_then_cloned(clone_count: int):
+    """The split scenario as ``clone_count`` geographic clones, split then cloned."""
+
+    frame = clone_first_frame(
+        support_frame(
+            weights=_SPLIT_WEIGHTS, wealth=_SPLIT_WEALTH, incomes=_SPLIT_INCOMES
+        ),
+        clone_count,
+    )
+    split = split_cgt_support_households(
+        frame,
+        distribution=support_distribution(_EXHAUSTING_TOP_CELLS),
+        parameters=PARAMETERS,
+        clone_count=geographic_clone_count(frame.table("household")),
+    )
+    cloned = clone_cgt_incidence(
+        split.frame, distribution=load_advani_summers_distribution()
+    )
+    return split, cloned.frame
+
+
+def _exhausting_receipt(frame) -> tuple[dict[str, object], dict[str, object]]:
+    problems: dict[str, object] = {}
+    receipt = _load_tool()._e8_support_split(
+        frame,
+        problems,
+        distribution=support_distribution(_EXHAUSTING_TOP_CELLS),
+        parameters=PARAMETERS,
+        permutation_seed=7,
+    )
+    return receipt, problems
+
+
+class TestSupportSplitRecomputeAcrossGeographicClones:
+    """The recompute counts copies on the frame's geographic clone count.
+
+    The stage reads ``K`` from its input and counts ``ceil(K x w / 60)``
+    copies (microcosm#931); the tool reads ``K`` from the pre-split table the
+    same way. At one clone its receipt is the one the rule before ``K`` gave.
+    """
+
+    def test_at_one_clone_the_receipt_is_the_rule_before_the_clone_count(
+        self, monkeypatch
+    ) -> None:
+        from microcosm.build.uk_runtime import cgt_support
+
+        _, frame = _split_then_cloned()
+        receipt, problems = TestE8SupportSplitRecompute._receipt(frame)
+
+        def ceiling_before_the_clone_count(
+            weights, maximum_copy_weight, *, clone_count
+        ):
+            assert clone_count == 1
+            values = np.asarray(weights, dtype=float)
+            return np.maximum(
+                np.ceil(values / float(maximum_copy_weight)).astype("int64"), 1
+            )
+
+        monkeypatch.setattr(
+            cgt_support, "cgt_support_copy_counts", ceiling_before_the_clone_count
+        )
+        before, before_problems = TestE8SupportSplitRecompute._receipt(frame)
+
+        assert problems == before_problems == {}
+        assert receipt == before
+        # No key is new: the clone count is a stage receipt key only.
+        assert set(receipt) == {
+            "mass",
+            "id_multiplier",
+            "pre_split_households",
+            "copies",
+            "copy_index_column_stored",
+            "families",
+            "max_abs_family_weight_diff",
+            "bands",
+            "support_mass",
+            "households_selected",
+            "copies_recomputed",
+        }
+
+    def test_at_three_clones_the_recompute_matches_the_stored_layer(self) -> None:
+        one_split, one = _clone_first_split_then_cloned(1)
+        three_split, three = _clone_first_split_then_cloned(3)
+        assert one_split.evidence()["parameters"]["clone_count"] == 1
+        assert three_split.evidence()["parameters"]["clone_count"] == 3
+
+        one_receipt, one_problems = _exhausting_receipt(one)
+        three_receipt, three_problems = _exhausting_receipt(three)
+
+        assert one_problems == three_problems == {}
+        # Five of the six households are divided at one clone (30 is not);
+        # each of their three clones is divided the same way.
+        assert one_receipt["families"] == 5
+        for key in ("families", "copies", "copies_recomputed", "pre_split_households"):
+            assert three_receipt[key] == 3 * one_receipt[key], key
+
+    def test_a_recompute_that_ignored_the_clone_count_would_report_it(
+        self, monkeypatch
+    ) -> None:
+        from microcosm.build.uk_runtime import cgt_support
+
+        _, three = _clone_first_split_then_cloned(3)
+        monkeypatch.setattr(cgt_support, "geographic_clone_count", lambda household: 1)
+
+        _, problems = _exhausting_receipt(three)
+
+        # At one third of their weight no clone needs a copy, so none of the
+        # 15 stored families is recomputed.
+        assert problems == {
+            "support_split_selection_stored": {"missing": 15, "extra": 0}
+        }
+
+
 # --- copy ids at the copy-id table's declared radices (microcosm#931) ----------
 #
 # The decoders read every copy id at its field's declared radix, never at a
@@ -1316,6 +1437,7 @@ def _residentially_split():
         ),
         distribution=support_distribution(_SPLIT_TOP_CELLS),
         parameters=PARAMETERS,
+        clone_count=1,
     )
     twinned = clone_cgt_incidence(
         split.frame, distribution=load_advani_summers_distribution()
