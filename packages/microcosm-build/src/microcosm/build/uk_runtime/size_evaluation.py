@@ -495,19 +495,90 @@ def fit_tables(run: RowwiseRun) -> dict[str, Any]:
     }
 
 
+_INT64_MAX = int(np.iinfo(np.int64).max)
+
+
+def _integer_ids(values: pd.Series, *, label: str) -> np.ndarray:
+    """An id column as exact int64; a non-integer column is refused, not cast."""
+
+    if not pd.api.types.is_integer_dtype(values.dtype):
+        raise TypeError(f"{label} must be an integer column, not {values.dtype}.")
+    return values.to_numpy(dtype=np.int64)
+
+
 def _source_multiplier(
     weights: pd.DataFrame,
     spine_weights: pd.DataFrame | None,
+    recorded: int | None = None,
 ) -> tuple[int, str]:
+    """The dense clone multiplier of ``weights``' ids, and where it was read.
+
+    The dense expand offsets clone ``c`` of a spine household by ``c`` times
+    ten to the digit count of the spine's largest id (the dense line's own
+    rule, ``id_multiplier_for_values``, until microcosm#931 (c) re-bases it
+    onto the clone-first spine). A multiplier the dataset recorded (the
+    expansion artifact's or the row-wise manifest's ``id_multiplier``) is
+    taken as it is; otherwise it is read off the spine, or off the clone-0
+    ids. A Python integer: a K=1 expansion of a spine minted from the copy-id
+    table records 10**19, which int64 cannot hold.
+    """
+
+    if recorded is not None:
+        if isinstance(recorded, bool) or not isinstance(recorded, int | np.integer):
+            raise TypeError("a recorded dense id multiplier must be an integer")
+        if int(recorded) < 1:
+            raise ValueError("a recorded dense id multiplier must be positive")
+        return int(recorded), "recorded"
     if spine_weights is not None:
-        return (
-            id_multiplier_for_values(spine_weights["household_id"].tolist()),
-            "spine",
+        spine_ids = _integer_ids(
+            spine_weights["household_id"], label="spine household_id"
         )
-    originals = weights.loc[weights["clone_index"] == 0, "household_id"]
-    if originals.empty:
+        return id_multiplier_for_values(spine_ids), "spine"
+    ids = _integer_ids(weights["household_id"], label="household_id")
+    clone_index = _integer_ids(weights["clone_index"], label="clone_index")
+    originals = ids[clone_index == 0]
+    if originals.size == 0:
         raise ValueError("cannot infer source-id multiplier without clone_index == 0")
-    return 10 ** len(str(int(originals.max()))), "inferred_from_clone_zero_ids"
+    return id_multiplier_for_values(originals), "inferred_from_clone_zero_ids"
+
+
+def _spine_ids(weights: pd.DataFrame, multiplier: int) -> np.ndarray:
+    """Each dense row's spine household id: its id less clone_index x multiplier.
+
+    Exact int64, with the multiplier a Python integer. Dense clone ``c`` of
+    spine household ``s`` carries ``s + c x multiplier``, ``s`` below the
+    multiplier, so a row that does not decode to such an ``s`` is refused by
+    count: the multiplier is not the dataset's. At one clone every index is
+    zero and every id is its spine id, whatever the multiplier, 10**19
+    included. The refusals print counts, never an id.
+    """
+
+    ids = _integer_ids(weights["household_id"], label="household_id")
+    clone_index = _integer_ids(weights["clone_index"], label="clone_index")
+    negative = int((clone_index < 0).sum())
+    if negative:
+        raise ValueError(f"{negative} dense row(s) carry a negative clone_index")
+    # The largest clone index whose offset int64 holds; zero when the
+    # multiplier is itself beyond int64.
+    largest_clone = _INT64_MAX // multiplier
+    beyond = int((clone_index > largest_clone).sum())
+    if beyond:
+        raise ValueError(
+            f"{beyond} dense row(s) carry a clone_index whose offset int64 cannot "
+            "hold at the dense id multiplier; the multiplier is not this dataset's"
+        )
+    if largest_clone:
+        spine_ids = ids - clone_index * np.int64(multiplier)
+    else:
+        spine_ids = ids.copy()
+    off = int(((spine_ids < 0) | (spine_ids >= multiplier)).sum())
+    if off:
+        raise ValueError(
+            f"{off} dense row(s) do not sit at their clone_index times the dense "
+            "id multiplier above a spine id below it; the multiplier is not this "
+            "dataset's (pass the id_multiplier its expansion recorded)"
+        )
+    return spine_ids
 
 
 def _ratio_summary(ratios: Sequence[float] | np.ndarray) -> dict[str, float]:
@@ -528,8 +599,14 @@ def weight_tables(
     *,
     spine_weights: pd.DataFrame | None = None,
     n_clones: int | None = None,
+    id_multiplier: int | None = None,
 ) -> dict[str, Any]:
-    """Summarize shipped weights, source support, and design stretch."""
+    """Summarize shipped weights, source support, and design stretch.
+
+    Dense ids decode back to spine ids at the dense clone multiplier: the one
+    ``id_multiplier`` names (what the dataset's expansion recorded), else the
+    spine's, else the one the clone-0 ids give (``_source_multiplier``).
+    """
 
     manifest_weights = _mapping(run.manifest.get("weights"))
     reference = manifest_weights.get("stretch_reference", "pool_design")
@@ -552,6 +629,7 @@ def weight_tables(
         weight_frame = run.selection[
             ["household_id", "refit_weight", "clone_index"]
         ].rename(columns={"refit_weight": "household_weight"})
+    spine_ids = None
     if weight_frame is not None:
         values = weight_frame["household_weight"].to_numpy(dtype=np.float64)
         result["summary"] = uk_weight_summary(values)
@@ -565,11 +643,11 @@ def weight_tables(
         else:
             # Without the column only the geographic clones fold back: the id
             # arithmetic recovers each spine household, copies apart.
-            multiplier, basis = _source_multiplier(weight_frame, spine_weights)
-            base_ids = (
-                weight_frame["household_id"].to_numpy(dtype=np.int64)
-                - weight_frame["clone_index"].to_numpy(dtype=np.int64) * multiplier
+            multiplier, basis = _source_multiplier(
+                weight_frame, spine_weights, id_multiplier
             )
+            spine_ids = _spine_ids(weight_frame, multiplier)
+            base_ids = spine_ids
         result["distinct_source_households"] = int(np.unique(base_ids).size)
         result["source_id_multiplier"] = multiplier
         result["source_id_multiplier_basis"] = basis
@@ -600,14 +678,16 @@ def weight_tables(
         clones = n_clones or int(
             _mapping(run.manifest.get("parameters")).get("n_clones")
         )
-        multiplier = int(result["source_id_multiplier"])
+        if spine_ids is None:
+            # A file that keeps its true sources still decodes its dense ids to
+            # the spine households the spine weights are keyed on.
+            multiplier, _ = _source_multiplier(
+                weight_frame, spine_weights, id_multiplier
+            )
+            spine_ids = _spine_ids(weight_frame, multiplier)
         source_map = spine_weights.set_index("household_id")["household_weight"]
-        base_ids = (
-            weight_frame["household_id"].to_numpy(dtype=np.int64)
-            - weight_frame["clone_index"].to_numpy(dtype=np.int64) * multiplier
-        )
         try:
-            design = source_map.loc[base_ids].to_numpy(dtype=np.float64) / clones
+            design = source_map.loc[spine_ids].to_numpy(dtype=np.float64) / clones
         except KeyError as exc:
             raise ValueError(
                 "spine weights do not cover every source household"
