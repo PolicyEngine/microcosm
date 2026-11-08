@@ -102,8 +102,8 @@ TRADING_ALLOWANCE_STATUSES = {
 #: The claimant probability by the person's profit, upper bounds inclusive,
 #: over profits above zero; the last band has no upper bound.
 TRADING_ALLOWANCE_CLAIMANT_BANDS: tuple[tuple[float | None, float], ...] = (
-    (4_500.0, 0.72),
-    (9_000.0, 0.14),
+    (4_500.0, 0.6364),
+    (9_000.0, 0.1532),
     (None, 0.0),
 )
 TRADING_ALLOWANCE_FULL_RELIEF_DRAW = "trading_allowance_full_relief"
@@ -123,10 +123,11 @@ TRADING_ALLOWANCE_CALIBRATION = (
     "400,000 taxpayers with a lower bill, by about GBP 380 on average, measured "
     "on policyengine-uk for the microcosm#1428 national from 9f70c71e7 at "
     "2028-29 prices on the receipts encoding; "
-    "tools/measure_uk_trading_allowance_gainers.py re-fits them to the claim "
-    "statuses on a release before each arm (microcosm#1439), until HMRC "
-    "publishes claimant counts (María's choices of 2026-10-31, 2026-11-01 and "
-    "2026-11-06)"
+    "tools/measure_uk_trading_allowance_gainers.py re-fitted them to the claim "
+    "statuses on control C2's release (0dff7773e, feed 8045b13; "
+    "docs/evidence/uk-trading-allowance-1439/fit-ctl2-0dff7.json) before PR2's "
+    "arm (microcosm#1439), until HMRC publishes claimant counts (María's "
+    "choices of 2026-10-31, 2026-11-01 and 2026-11-06)"
 )
 TRADING_ALLOWANCE_RECEIPTS_MASS_CHANGE_REASON = (
     "Trading allowance claim statuses stored on the source spine: household "

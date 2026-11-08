@@ -58,7 +58,15 @@ def _frame(profit: np.ndarray, *, spi=None):
 
 def test_claimant_rates_follow_the_profit_bands_with_inclusive_upper_bounds() -> None:
     profit = np.asarray([-500.0, 0.0, 0.01, 4_500.0, 4_500.01, 9_000.0, 9_000.01])
-    assert claimant_rates(profit).tolist() == [0.0, 0.0, 0.72, 0.72, 0.14, 0.14, 0.0]
+    assert claimant_rates(profit).tolist() == [
+        0.0,
+        0.0,
+        0.6364,
+        0.6364,
+        0.1532,
+        0.1532,
+        0.0,
+    ]
 
 
 def test_drawn_claimants_claim_and_other_traders_do_not() -> None:
@@ -86,8 +94,8 @@ def test_drawn_claimants_claim_and_other_traders_do_not() -> None:
         == (uniforms < claimant_rates(profit[trader])).tolist()
     )
     # Two hundred draws per band land near the band's rate.
-    assert claimant[profit == 800.0].mean() == pytest.approx(0.72, abs=0.1)
-    assert claimant[profit == 6_000.0].mean() == pytest.approx(0.14, abs=0.1)
+    assert claimant[profit == 800.0].mean() == pytest.approx(0.6364, abs=0.1)
+    assert claimant[profit == 6_000.0].mean() == pytest.approx(0.1532, abs=0.1)
 
 
 def test_the_full_relief_group_holds_only_small_frs_traders_who_do_not_claim() -> None:
@@ -189,7 +197,7 @@ def test_the_receipt_rounds_counts_and_bands_shares() -> None:
         "records": 0,
         "support": 0,
     }
-    assert [band["rate"] for band in evidence["bands"]] == [0.72, 0.14, 0.0]
+    assert [band["rate"] for band in evidence["bands"]] == [0.6364, 0.1532, 0.0]
     assert all(band["support"] == "30+" for band in evidence["bands"])
     assert evidence["bands"][0]["weighted_traders"] == pytest.approx(100.0)
     # Fewer than ten source households behind a band print the small-cell

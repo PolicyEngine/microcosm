@@ -8432,15 +8432,15 @@
    "notes": "The last spine stage (microcosm#1428, microcosm#1439). policyengine-uk applies the trading allowance against gross receipts, which neither the FRS nor the SPI tape records, so the stage stores each trader's trading_allowance_claim_status (policyengine-uk 2.172.0, policyengine-uk#2765) and leaves self_employment_gross_receipts at the engine's zero. Each trader with a positive profit is CLAIMANT at their profit band's rate, drawn on their own person_id: their profit is receipts less the 2024-25 allowance of GBP 1,000, so a raise to GBP 3,000 relieves min(profit, GBP 2,000) more, with no drift as profits are uprated. Every other trader with a positive profit is NON_CLAIMANT, relieved at no allowance (the costing books switchers as behaviour), and is treated as filing, as SPI Table 3.10's counts, which bind the frame's traders, are of declarers. A person with no positive profit is UNKNOWN, which the engine reads whatever is stored. Of the FRS respondents (household_is_spi_synthetic false) with a profit of GBP 1,000 or less who are not drawn claimants, a share drawn on person_id forms the full-relief group: UNKNOWN, relieved in full without an election (ITTOIA 2005 s. 783AE), as the engine's documentation asks of a person whose receipts lie within the allowance, and marked by trading_allowance_full_relief, which the release keeps, so that the bound SPI rows of self-employment, which count declarers, leave it out. The share is María's ruling: the read of 6 November 2026 (M10) found the frame's small traders below SPI's declarers even before any full relief, so it is zero and the group is empty. SPI rows and their copies are never in it, since SPI counts the people HMRC holds a self-employment source for and receipts within the allowance need not be declared. The claimant rates are #1428's, calibrated on the receipts encoding to HMRC's policy paper (about 400,000 gainers by about GBP 380 at 2028-29 prices); tools/measure_uk_trading_allowance_gainers.py re-fits them to the statuses on a release before each arm (María's answer of 2026-11-06), until HMRC publishes claimant counts.",
    "operations": [
     {
-     "calibration": "HMRC's policy paper on the Budget 2026 trading allowance raise: about 400,000 taxpayers with a lower bill, by about GBP 380 on average, measured on policyengine-uk for the microcosm#1428 national from 9f70c71e7 at 2028-29 prices on the receipts encoding; tools/measure_uk_trading_allowance_gainers.py re-fits them to the claim statuses on a release before each arm (microcosm#1439), until HMRC publishes claimant counts (María's choices of 2026-10-31, 2026-11-01 and 2026-11-06)",
+     "calibration": "HMRC's policy paper on the Budget 2026 trading allowance raise: about 400,000 taxpayers with a lower bill, by about GBP 380 on average, measured on policyengine-uk for the microcosm#1428 national from 9f70c71e7 at 2028-29 prices on the receipts encoding; tools/measure_uk_trading_allowance_gainers.py re-fitted them to the claim statuses on control C2's release (0dff7773e, feed 8045b13; docs/evidence/uk-trading-allowance-1439/fit-ctl2-0dff7.json) before PR2's arm (microcosm#1439), until HMRC publishes claimant counts (María's choices of 2026-10-31, 2026-11-01 and 2026-11-06)",
      "carrier": "trading_allowance_full_relief",
      "claimant_bands": [
       {
-       "rate": 0.72,
+       "rate": 0.6364,
        "upper_inclusive": 4500
       },
       {
-       "rate": 0.14,
+       "rate": 0.1532,
        "upper_inclusive": 9000
       },
       {
