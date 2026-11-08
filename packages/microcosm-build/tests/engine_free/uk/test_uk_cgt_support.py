@@ -41,6 +41,7 @@ from microcosm.build.uk_runtime.cgt_support import (
     cgt_support_income_band,
     cgt_support_mass_by_income_band,
     cgt_support_split_operation_parameters,
+    geographic_clone_count,
     select_cgt_support_households,
     split_cgt_support_households,
 )
@@ -50,6 +51,7 @@ from microcosm.build.uk_runtime.hmrc_capital_gains import (
     load_hmrc_cgt_joint_distribution,
 )
 from microcosm.build.uk_runtime.national_frame import uk_national_frame
+from microcosm.build.uk_runtime.stage_health import uk_stage_health_gate
 from microcosm.frame import WeightKind
 from test_support.microcosm_build.uk_cgt_support import (
     BAND_INCOMES,
@@ -62,6 +64,7 @@ from test_support.microcosm_build.uk_cgt_support import (
 )
 from test_support.microcosm_build.uk_clone_first_frames import (
     assert_copy_ids_follow_lineage,
+    clone_first_frame,
     with_last_household_moved,
 )
 
@@ -120,6 +123,7 @@ def _scenario_split(**overrides):
         _scenario_frame(**overrides),
         distribution=support_distribution(SCENARIO_TOP_CELLS),
         parameters=PARAMETERS,
+        clone_count=1,
         headroom=SCENARIO_HEADROOM,
     )
 
@@ -445,18 +449,228 @@ def test_selection_refuses_inconsistent_inputs():
 
 def test_copy_counts_are_integer_ceilings_of_at_least_one():
     counts = cgt_support_copy_counts(
-        [0.0, 1.0, 60.0, 60.0001, 120.0, 121.0, 600.0], 60.0
+        [0.0, 1.0, 60.0, 60.0001, 120.0, 121.0, 600.0], 60.0, clone_count=1
     )
 
     assert counts.tolist() == [1, 1, 1, 2, 2, 3, 10]
     assert counts.dtype == np.dtype("int64")
-    assert cgt_support_copy_counts([59.0]).tolist() == [
+    assert cgt_support_copy_counts([59.0], clone_count=1).tolist() == [
         math.ceil(59.0 / CGT_SUPPORT_MAXIMUM_COPY_WEIGHT)
     ]
     with pytest.raises(ValueError, match="maximum copy weight"):
-        cgt_support_copy_counts([1.0], 0.0)
+        cgt_support_copy_counts([1.0], 0.0, clone_count=1)
     with pytest.raises(ValueError, match="finite"):
-        cgt_support_copy_counts([np.nan], 60.0)
+        cgt_support_copy_counts([np.nan], 60.0, clone_count=1)
+
+
+# --- geographic clones (microcosm#931) -----------------------------------------
+#
+# A geographic clone of the clone-first spine carries 1/K of its source
+# household's weight, so the copy count reads K x the row's weight: every
+# clone of a household gets the count its source gets at K = 1, and each copy
+# weighs at most 60 / K. Every weight here is synthetic.
+
+
+def _todays_copy_counts(weights) -> np.ndarray:
+    """The rule before the clone count, spelled out: ceil(w / 60), at least 1."""
+
+    values = np.asarray(weights, dtype=float)
+    return np.maximum(
+        np.ceil(values / CGT_SUPPORT_MAXIMUM_COPY_WEIGHT).astype("int64"), 1
+    )
+
+
+def _edge_weights() -> np.ndarray:
+    """Exact multiples of 60, one ulp either side, tiny, large and random."""
+
+    multiples = CGT_SUPPORT_MAXIMUM_COPY_WEIGHT * np.arange(1.0, 20_001.0)
+    rng = np.random.default_rng(931)
+    return np.concatenate(
+        [
+            [0.0, 5e-324, 1e-300, 1e-12, 0.5, 59.999999, 60.0, 60.000001],
+            multiples,
+            np.nextafter(multiples, np.inf),
+            np.nextafter(multiples, 0.0),
+            CGT_SUPPORT_MAXIMUM_COPY_WEIGHT * np.asarray([10_000.0, 1e6, 1e9, 1e12]),
+            rng.uniform(0.0, 600_000.0, 200_000),
+            rng.lognormal(5.0, 2.0, 200_000),
+        ]
+    )
+
+
+def test_copy_counts_at_one_clone_are_todays_ceiling_bit_for_bit():
+    weights = _edge_weights()
+
+    counts = cgt_support_copy_counts(weights, clone_count=1)
+
+    assert counts.dtype == np.dtype("int64")
+    np.testing.assert_array_equal(counts, _todays_copy_counts(weights))
+    # The edges the snap would have moved: one ulp above a multiple of 60 is
+    # rounded up at one clone, as before.
+    above = np.nextafter(CGT_SUPPORT_MAXIMUM_COPY_WEIGHT * 2.0, np.inf)
+    assert cgt_support_copy_counts([above], clone_count=1).tolist() == [3]
+
+
+@pytest.mark.parametrize("clone_count", [3, 7, 15])
+def test_copy_counts_of_clone_replicas_are_their_sources_counts(clone_count: int):
+    # Exact multiples of 60, one ulp below them and random weights: each
+    # replica at W / K gets the count its source W gets at one clone.
+    multiples = CGT_SUPPORT_MAXIMUM_COPY_WEIGHT * np.arange(1.0, 20_001.0)
+    rng = np.random.default_rng(clone_count)
+    sources = np.concatenate(
+        [
+            multiples,
+            np.nextafter(multiples, 0.0),
+            rng.uniform(0.0, 600_000.0, 200_000),
+            rng.lognormal(5.0, 2.0, 200_000),
+        ]
+    )
+    replicas = sources / clone_count
+
+    counts = cgt_support_copy_counts(replicas, clone_count=clone_count)
+
+    np.testing.assert_array_equal(
+        counts, cgt_support_copy_counts(sources, clone_count=1)
+    )
+    # Every copy of a replica weighs at most 60 / K, to the gate's tolerance.
+    assert (
+        clone_count * (replicas / counts)
+        <= CGT_SUPPORT_MAXIMUM_COPY_WEIGHT * (1.0 + 1e-12)
+    ).all()
+
+
+def test_the_snap_keeps_exact_multiples_exact_at_seven_clones():
+    # At K = 7 the replica 60m / 7 times 7 lands an ulp above 60m for some m
+    # (the verifier's case): the unsnapped ceiling adds a copy there.
+    multiples = CGT_SUPPORT_MAXIMUM_COPY_WEIGHT * np.arange(1.0, 20_001.0)
+    replicas = multiples / 7
+    unsnapped = np.ceil((7 * replicas) / CGT_SUPPORT_MAXIMUM_COPY_WEIGHT)
+    rounded_up = unsnapped != np.arange(1.0, 20_001.0)
+    assert rounded_up.sum() > 0
+    assert (
+        cgt_support_copy_counts(replicas[rounded_up], clone_count=7).tolist()
+        == np.arange(1, 20_001)[rounded_up].tolist()
+    )
+
+
+def test_the_snap_counts_a_quotient_ulps_above_an_integer_as_that_integer():
+    # The case the snap gives up, as documented: a source one ulp above 120
+    # makes 3 copies at one clone, but its replicas count 2 at K > 1.
+    source = np.nextafter(2.0 * CGT_SUPPORT_MAXIMUM_COPY_WEIGHT, np.inf)
+    assert cgt_support_copy_counts([source], clone_count=1).tolist() == [3]
+    for clone_count in (2, 3, 7):
+        replica = source / clone_count
+        assert cgt_support_copy_counts([replica], clone_count=clone_count).tolist() == [
+            2
+        ]
+
+
+@pytest.mark.parametrize("clone_count", [0, -1, True, 1.0, 2.5, None, "3"])
+def test_copy_counts_refuse_a_clone_count_that_is_not_a_positive_integer(
+    clone_count,
+):
+    with pytest.raises(ValueError, match="positive integer geographic clone count"):
+        cgt_support_copy_counts([1.0], clone_count=clone_count)
+    with pytest.raises(ValueError, match="positive integer geographic clone count"):
+        _scenario_split_at(clone_count)
+
+
+def _scenario_split_at(clone_count):
+    return split_cgt_support_households(
+        _scenario_frame(),
+        distribution=support_distribution(SCENARIO_TOP_CELLS),
+        parameters=PARAMETERS,
+        clone_count=clone_count,
+        headroom=SCENARIO_HEADROOM,
+    )
+
+
+def test_the_clone_index_column_is_the_lineages_geographic_branch():
+    from microcosm.build.uk_runtime.cgt_support import _GEOGRAPHIC_CLONE_INDEX_COLUMN
+    from microcosm.build.uk_runtime.household_lineage import (
+        GEOGRAPHIC_SUPPORT_BRANCH,
+        UK_COPY_LINEAGE,
+    )
+    from microcosm.build.uk_runtime.rowwise_dataset import ladder_clone_index_column
+
+    (branch,) = [
+        branch
+        for branch in UK_COPY_LINEAGE.branches
+        if branch.name == GEOGRAPHIC_SUPPORT_BRANCH
+    ]
+    assert (
+        _GEOGRAPHIC_CLONE_INDEX_COLUMN
+        == ladder_clone_index_column("household")
+        == branch.index
+        == "household_clone_index"
+    )
+
+
+def test_geographic_clone_count_is_one_more_than_the_largest_index():
+    assert geographic_clone_count(pd.DataFrame({"household_id": [1, 2]})) == 1
+    for indices, expected in (([0, 0], 1), ([0, 1, 2, 1, 0], 3), ([2, 0, 1], 3)):
+        household = pd.DataFrame(
+            {"household_clone_index": np.asarray(indices, dtype="int64")}
+        )
+        assert geographic_clone_count(household) == expected
+    empty = pd.DataFrame({"household_clone_index": np.zeros(0, dtype="int64")})
+    assert geographic_clone_count(empty) == 1
+
+
+@pytest.mark.parametrize(
+    "values,message",
+    [
+        (
+            np.asarray([0, 2, 2, 0], dtype="int64"),
+            "1 of the 3 indices from 0 to the largest are carried by no household; "
+            "the CGT support split counts K geographic clones as the "
+            "'household_clone_index' values 0 to K - 1 (microcosm#931).",
+        ),
+        (
+            np.asarray([0, 3], dtype="int64"),
+            "2 of the 4 indices from 0 to the largest are carried by no household; "
+            "the CGT support split counts K geographic clones as the "
+            "'household_clone_index' values 0 to K - 1 (microcosm#931).",
+        ),
+        (
+            np.asarray([0, -1, 1, -2], dtype="int64"),
+            "2 household(s) carry a negative 'household_clone_index'; the CGT "
+            "support split counts K geographic clones as the "
+            "'household_clone_index' values 0 to K - 1 (microcosm#931).",
+        ),
+        (
+            pd.array([0, None, 1], dtype="Int64"),
+            "1 household(s) carry no 'household_clone_index'; the CGT support "
+            "split counts K geographic clones as the 'household_clone_index' "
+            "values 0 to K - 1 (microcosm#931).",
+        ),
+        (
+            np.asarray([0.0, 1.0]),
+            "The CGT support split counts geographic clones on an integer "
+            "'household_clone_index' column; it has dtype float64.",
+        ),
+        (
+            np.asarray([False, True]),
+            "The CGT support split counts geographic clones on an integer "
+            "'household_clone_index' column; it has dtype bool.",
+        ),
+    ],
+)
+def test_geographic_clone_count_refuses_indices_other_than_0_to_k_by_count(
+    values, message: str
+):
+    household = pd.DataFrame(
+        {
+            "household_id": 1_000_003 + np.arange(len(values)),
+            "household_clone_index": values,
+        }
+    )
+
+    with pytest.raises(ValueError) as caught:
+        geographic_clone_count(household)
+
+    assert str(caught.value) == message
+    assert "1000003" not in str(caught.value)
 
 
 # --- the split ----------------------------------------------------------------
@@ -509,6 +723,7 @@ def test_split_offsets_every_entity_id_by_k_times_the_declared_radix():
         frame,
         distribution=support_distribution(SCENARIO_TOP_CELLS),
         parameters=PARAMETERS,
+        clone_count=1,
         headroom=SCENARIO_HEADROOM,
     )
     out_person = result.frame.table("person")
@@ -562,6 +777,7 @@ def test_split_copies_take_their_roots_ids_plus_k_times_the_declared_radix():
         frame,
         distribution=support_distribution(SCENARIO_TOP_CELLS),
         parameters=PARAMETERS,
+        clone_count=1,
         headroom=SCENARIO_HEADROOM,
     )
 
@@ -634,6 +850,7 @@ def test_split_copies_of_spi_rows_take_their_parents_ids_plus_k_times_the_radix(
         frame,
         distribution=support_distribution(SCENARIO_TOP_CELLS),
         parameters=PARAMETERS,
+        clone_count=1,
         headroom=SCENARIO_HEADROOM,
     )
 
@@ -677,6 +894,7 @@ def test_a_household_of_exactly_the_fields_bound_in_rows_fits():
     copies = cgt_support_copy_counts(
         [CGT_SUPPORT_MAXIMUM_COPY_WEIGHT * bound, 1.0],
         CGT_SUPPORT_MAXIMUM_COPY_WEIGHT,
+        clone_count=1,
     )
     assert copies.tolist() == [bound, 1]
     _refuse_copies_beyond_the_copy_id_field(copies)
@@ -698,6 +916,7 @@ def test_split_refuses_incoming_ids_at_its_copy_id_radix_by_count():
             frame,
             distribution=support_distribution(SCENARIO_TOP_CELLS),
             parameters=PARAMETERS,
+            clone_count=1,
             headroom=SCENARIO_HEADROOM,
         )
     assert str(7 + radix("cgt_support_split")) not in str(caught.value)
@@ -749,6 +968,7 @@ def test_split_copies_every_column_and_membership_unchanged():
         frame,
         distribution=support_distribution(SCENARIO_TOP_CELLS),
         parameters=PARAMETERS,
+        clone_count=1,
         headroom=SCENARIO_HEADROOM,
     )
     person = result.frame.table("person")
@@ -855,6 +1075,7 @@ def test_split_records_pool_exhaustion_and_empty_bands_without_refusing():
             {0: {250_000: 1_000.0}, 125_140: {250_000: 10.0}}
         ),
         parameters=PARAMETERS,
+        clone_count=1,
         headroom=SCENARIO_HEADROOM,
     )
     bands = {row["income_lower_bound"]: row for row in result.band_rows}
@@ -894,6 +1115,7 @@ def test_split_falls_back_when_every_incumbent_is_selected():
         frame,
         distribution=support_distribution({0: {250_000: 1_000.0}}),
         parameters=PARAMETERS,
+        clone_count=1,
         headroom=SCENARIO_HEADROOM,
     )
 
@@ -912,6 +1134,7 @@ def test_split_counts_suppressed_cells_and_reports_channels_when_present():
             {0: {250_000: None, 500_000: None, 1_000_000: 5.0}}
         ),
         parameters=PARAMETERS,
+        clone_count=1,
         headroom=SCENARIO_HEADROOM,
     )
 
@@ -947,6 +1170,7 @@ def test_split_refuses_a_cloned_or_already_split_frame():
                 frame,
                 distribution=support_distribution(SCENARIO_TOP_CELLS),
                 parameters=PARAMETERS,
+                clone_count=1,
             )
 
 
@@ -967,6 +1191,7 @@ def test_split_refuses_missing_or_non_finite_wealth_and_missing_income():
             frame,
             distribution=support_distribution(SCENARIO_TOP_CELLS),
             parameters=PARAMETERS,
+            clone_count=1,
         )
 
     with pytest.raises(ValueError, match="lacks"):
@@ -1006,10 +1231,13 @@ def test_evidence_is_json_serialisable_with_plain_scalars():
         "zero_weight_excluded": 1,
     }
     assert evidence["mass"] == {"old_total": 502.0, "new_total": 502.0}
+    # The geographic clone count is the one new receipt key (microcosm#931);
+    # a frame without the clone index is one clone.
     assert evidence["parameters"] == {
         "clone_split_factor": 2,
         "headroom": 2.0,
         "maximum_copy_weight": 60.0,
+        "clone_count": 1,
     }
     assert evidence["support_channel_split"] == {"frs": 2, "spi": 1}
     assert [row["income_lower_bound"] for row in evidence["bands"]] == list(
@@ -1044,6 +1272,210 @@ def test_evidence_is_json_serialisable_with_plain_scalars():
     assert all(
         type(leaf) in {int, float, bool, str, type(None)} for leaf in _leaves(evidence)
     )
+
+
+# --- the split on clone-first frames (microcosm#931) ----------------------------
+#
+# Nine one-person households. Band 0 holds exact multiples of 60 that the
+# unsnapped rule overcounts at seven clones (900, 1,800, 4,020 and 7,620: 15,
+# 30, 67 and 127 copies), a weight one ulp below 300 (5 copies), a light one
+# (40, uncopied) and a non-multiple (1,234.5, 21 copies); the zero-weight
+# household is outside every pool. The synthetic joint asks band 0 for far
+# more than its pool, so the whole pool is selected at every clone count and
+# the selection nests exactly; band 37,700 asks for nothing, so its household
+# takes the exact-total correction (on clone 0, the first heaviest), heavy
+# enough (9,000) that the correction moves it far less than the weights'
+# nesting tolerance.
+
+NESTING_WEIGHTS = [
+    900.0,
+    1_800.0,
+    4_020.0,
+    7_620.0,
+    float(np.nextafter(300.0, 0.0)),
+    40.0,
+    1_234.5,
+    9_000.0,
+    0.0,
+]
+NESTING_WEALTH = [7e3, 6e3, 5e3, 4e3, 3e3, 2e3, 1e3, 1.0, 1e6]
+NESTING_INCOMES = [BAND_INCOMES[0]] * 7 + [BAND_INCOMES[37_700], BAND_INCOMES[0]]
+NESTING_TOP_CELLS = {0: {250_000: 1_000_000.0}}
+NESTING_COPIES = [15, 30, 67, 127, 5, 1, 21, 1, 1]
+
+
+def _clone_first_split(clone_count: int, *, weights=NESTING_WEIGHTS):
+    """The transform on the nesting scenario as ``clone_count`` clones."""
+
+    frame = clone_first_frame(
+        support_frame(weights=weights, wealth=NESTING_WEALTH, incomes=NESTING_INCOMES),
+        clone_count,
+    )
+    transform = UKCGTSupportSplitStageTransform(
+        stage=support_stage(),
+        distribution=support_distribution(NESTING_TOP_CELLS),
+        parameters=PARAMETERS,
+    )
+    return transform(frame), transform.last_result
+
+
+def _families(frame) -> pd.DataFrame:
+    household = frame.table("household")
+    return pd.DataFrame(
+        {
+            "source": household["source_household_id"].to_numpy(),
+            "clone": household["household_clone_index"].to_numpy(),
+            "copies": household[CGT_SUPPORT_COPIES_COLUMN].to_numpy(),
+            "weight": np.asarray(frame.weights_for("household").values),
+        }
+    )
+
+
+def test_split_at_one_indexed_clone_is_the_split_without_the_index():
+    plain = _scenario_split()
+    indexed = split_cgt_support_households(
+        clone_first_frame(_scenario_frame(), 1),
+        distribution=support_distribution(SCENARIO_TOP_CELLS),
+        parameters=PARAMETERS,
+        clone_count=1,
+        headroom=SCENARIO_HEADROOM,
+    )
+    _, through_transform = _clone_first_split(1)
+
+    assert indexed.evidence() == plain.evidence()
+    assert indexed.frame.weights_for("household").values.tolist() == (
+        plain.frame.weights_for("household").values.tolist()
+    )
+    assert through_transform.evidence()["parameters"]["clone_count"] == 1
+
+
+@pytest.mark.parametrize("clone_count", [3, 7])
+def test_split_gives_every_geographic_clone_its_sources_copies(clone_count: int):
+    one_frame, one = _clone_first_split(1)
+    many_frame, many = _clone_first_split(clone_count)
+    reference = _families(one_frame)
+    families = _families(many_frame)
+
+    # The transform read K from the frame, and every count scales by K.
+    assert many.evidence()["parameters"]["clone_count"] == clone_count
+    assert one.copies_created == sum(n - 1 for n in NESTING_COPIES) == 259
+    assert (
+        many.households_selected
+        == clone_count * one.households_selected
+        == (clone_count * 7)
+    )
+    assert many.copies_created == clone_count * one.copies_created
+    rows = families.groupby(["source", "clone"]).size()
+    expected = dict(zip(range(1, 10), NESTING_COPIES, strict=True))
+    for (source, clone), count in rows.items():
+        # Each clone of a household is divided as its source is at K = 1.
+        assert count == expected[source], (source, clone)
+    assert sorted(set(families["clone"])) == list(range(clone_count))
+    for source, n in expected.items():
+        member = families["source"] == source
+        assert (families.loc[member, "copies"] == n).all()
+        # Nested weights: K x every clone's rows is the source's rows.
+        source_weights = np.sort(
+            reference.loc[reference["source"] == source, "weight"].to_numpy()
+        )
+        for clone in range(clone_count):
+            clone_weights = np.sort(
+                families.loc[member & (families["clone"] == clone), "weight"]
+            )
+            np.testing.assert_allclose(
+                clone_count * clone_weights, source_weights, rtol=1e-12, atol=0.0
+            )
+    # Every copy, root included, weighs at most 60 / K.
+    split = families["copies"] > 1
+    assert (
+        clone_count * families.loc[split, "weight"]
+        <= CGT_SUPPORT_MAXIMUM_COPY_WEIGHT * (1.0 + 1e-12)
+    ).all()
+    assert many_frame.weights_for("household").total == pytest.approx(
+        one_frame.weights_for("household").total, rel=1e-12
+    )
+    if clone_count == 7:
+        # Without the snap, the four multiples of 60 would gain a copy here.
+        replicas = np.asarray(NESTING_WEIGHTS[:4]) / 7
+        unsnapped = np.ceil((7 * replicas) / CGT_SUPPORT_MAXIMUM_COPY_WEIGHT)
+        assert unsnapped.tolist() == [n + 1 for n in NESTING_COPIES[:4]]
+
+
+def test_the_transform_refuses_a_gap_in_the_clone_indices_by_count():
+    frame = clone_first_frame(_scenario_frame(), 2)
+    household = frame.table("household").copy()
+    household.loc[household["household_clone_index"] == 1, "household_clone_index"] = 2
+    gapped = uk_national_frame(
+        person=frame.table("person"),
+        benunit=frame.table("benunit"),
+        household=household,
+        household_weights=frame.weights_for("household").values,
+        time_period="2024",
+    )
+    transform = UKCGTSupportSplitStageTransform(
+        stage=support_stage(),
+        distribution=support_distribution(SCENARIO_TOP_CELLS),
+        parameters=PARAMETERS,
+    )
+
+    with pytest.raises(ValueError) as caught:
+        transform(gapped)
+
+    # A count and the rule, never a household.
+    assert str(caught.value) == (
+        "1 of the 3 indices from 0 to the largest are carried by no household; "
+        "the CGT support split counts K geographic clones as the "
+        "'household_clone_index' values 0 to K - 1 (microcosm#931)."
+    )
+    assert transform.last_result is None
+
+
+def _packaged_split_gate_parameters() -> dict[str, object]:
+    from importlib.resources import files
+
+    gates = json.loads(
+        files("microcosm.build.uk").joinpath("gates.json").read_text(encoding="utf-8")
+    )["gates"]
+    (gate,) = [g for g in gates if g["id"] == "uk_stage_cgt_support_split_mass"]
+    return dict(gate["parameters"])
+
+
+def test_the_stage_gate_reads_the_receipts_clone_count():
+    # Three clones of households at 150, 120 and 100: every clone weighs at
+    # most 60 (50, 40 and 33.3), but three times its weight does not, so the
+    # copies are made. The packaged gate passes the receipt and would fail it
+    # if it ignored the clone count.
+    weights = [150.0, 120.0, 100.0, 0.0, 0.0, 0.0, 0.0, 90.0, 0.0]
+    frame, result = _clone_first_split(3, weights=weights)
+    evidence = result.evidence()
+    parameters = _packaged_split_gate_parameters()
+    assert evidence["parameters"]["clone_count"] == 3
+    assert max(row["heaviest_selected_weight"] for row in evidence["bands"]) == 50.0
+    assert evidence["totals"]["copies_created"] == 3 * (2 + 1 + 1)
+
+    passed = uk_stage_health_gate(
+        evidence=evidence,
+        stage="cgt_support_split",
+        check="cgt_support_split",
+        parameters=parameters,
+    )
+    ignored = uk_stage_health_gate(
+        evidence={
+            **evidence,
+            "parameters": {**evidence["parameters"], "clone_count": 1},
+        },
+        stage="cgt_support_split",
+        check="cgt_support_split",
+        parameters=parameters,
+    )
+
+    assert passed.passed, passed.failures
+    assert ignored.passed is False
+    assert ignored.failures == (
+        "cgt_support_split: column from 0.0 created 12 copies although no selected "
+        "household exceeds the maximum weight.",
+    )
+    assert frame.weights_for("household").total == pytest.approx(460.0, rel=1e-12)
 
 
 # --- the closed-world dictionary and the transform ------------------------------
@@ -1083,6 +1515,10 @@ def test_operation_dictionary_restates_the_reviewed_design():
         UK_CGT_INVESTABLE_WEALTH_COLUMNS
     )
     assert payload["maximum_copy_weight"] == 60.0
+    assert payload["copy_rule"] == (
+        "copies = ceil(geographic clone count x household weight / "
+        "maximum_copy_weight); every copy carries weight / copies"
+    )
     assert payload["flag_column"] == HOUSEHOLD_IS_CGT_SUPPORT_COPY
     assert payload["copies_column"] == CGT_SUPPORT_COPIES_COLUMN
     assert payload["copy_index_column"] == CGT_SUPPORT_COPY_INDEX_COLUMN

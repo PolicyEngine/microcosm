@@ -12,6 +12,8 @@ source id alone, so a K=1 frame's copies are exactly its clone 0's in a K=3
 frame. ``rule="table"`` mints every copy through the copy-id table, as the
 stages do; ``rule="retired"`` replays the rule the table replaced (ten to the
 digit count of the largest id the layer sees), for comparison.
+:func:`clone_first_frame` clones a whole synthetic frame the same way, each
+clone at an equal share of its household's weight.
 
 :func:`assert_copy_ids_follow_lineage` checks a stage's output on a synthetic
 frame: every new household is matched to its root in the stage's input by
@@ -37,6 +39,7 @@ __all__ = [
     "IdTables",
     "assert_copy_ids_follow_lineage",
     "base_id_tables",
+    "clone_first_frame",
     "clone_first_tables",
     "copy_chain",
     "copy_households",
@@ -129,6 +132,63 @@ def clone_first_tables(tables: IdTables, n_clones: int) -> IdTables:
         person=pd.concat(persons, ignore_index=True),
         benunit=pd.concat(benunits, ignore_index=True),
         household=pd.concat(households, ignore_index=True),
+    )
+
+
+def clone_first_frame(frame: Frame, n_clones: int) -> Frame:
+    """``frame`` as ``n_clones`` geographic clones of every household, clone-major.
+
+    Clone ``k`` repeats every person, benefit unit and household row with
+    each id plus ``k x 10**9`` (the copy-id table's ``geographic_support``
+    field), ``household_clone_index`` ``k`` and ``source_household_id`` the
+    clone-0 id (added when the frame has none), at the weight ``w /
+    n_clones`` of its household (the same float in every clone), as the
+    clone-first spine will (#931 (b)). Every other column is copied
+    unchanged; the clones carry the frame's weight kind and time period, and
+    no mass record.
+    """
+
+    from microcosm.build.uk_runtime.national_frame import (
+        uk_national_frame,
+        uk_time_period,
+    )
+
+    person = frame.table("person")
+    benunit = frame.table("benunit")
+    household = frame.table("household").copy()
+    if "source_household_id" not in household.columns:
+        household["source_household_id"] = household["household_id"].astype("int64")
+    household["household_clone_index"] = np.zeros(len(household), dtype=np.int64)
+    persons, benunits, households = [person], [benunit], [household]
+    for k in range(1, n_clones):
+        clone_person = person.copy()
+        for column in _PERSON_ID_COLUMNS:
+            clone_person[column] = copy_id_table.mint(
+                clone_person[column], "geographic_support", k
+            )
+        clone_benunit = benunit.copy()
+        clone_benunit["benunit_id"] = copy_id_table.mint(
+            clone_benunit["benunit_id"], "geographic_support", k
+        )
+        clone_household = household.copy()
+        clone_household["household_id"] = copy_id_table.mint(
+            clone_household["household_id"], "geographic_support", k
+        )
+        clone_household["household_clone_index"] = np.full(
+            len(household), k, dtype=np.int64
+        )
+        persons.append(clone_person)
+        benunits.append(clone_benunit)
+        households.append(clone_household)
+    weights = frame.weights_for("household")
+    clone_weights = np.asarray(weights.values, dtype=float) / n_clones
+    return uk_national_frame(
+        person=pd.concat(persons, ignore_index=True),
+        benunit=pd.concat(benunits, ignore_index=True),
+        household=pd.concat(households, ignore_index=True),
+        household_weights=np.tile(clone_weights, n_clones),
+        weight_kind=weights.kind,
+        time_period=uk_time_period(frame),
     )
 
 

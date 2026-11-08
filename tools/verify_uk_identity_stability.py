@@ -842,7 +842,9 @@ def _e8_support_split(
     ``parameters``, and the stored wealth columns. The stored layer must
     agree: the households the rule divides are exactly the roots of the
     flagged copies (the pre-clone rows carrying ``cgt_support_copies`` above
-    one), each family's count is ``ceil(w / maximum_copy_weight)``, every
+    one), each family's count is ``ceil(K x w / maximum_copy_weight)``, ``K``
+    the geographic clone count the stage read from the frame (microcosm#931;
+    the recompute reads it from the pre-split table the same way), every
     member of a family carries ``w / n`` at stage time (its clone pair sum,
     since the clone runs afterwards), the copies of each root are indexed
     ``1..n-1`` without gaps and carry the root's count, no count is below
@@ -866,6 +868,7 @@ def _e8_support_split(
         cgt_support_household_wealth,
         cgt_support_income_band,
         cgt_support_mass_by_income_band,
+        geographic_clone_count,
         select_cgt_support_households,
     )
 
@@ -996,6 +999,9 @@ def _e8_support_split(
     pre_person = person.loc[
         person["person_household_id"].isin(set(pre_ids.tolist()))
     ].reset_index(drop=True)
+    # The geographic clone count the copies were counted on, read from the
+    # pre-split table as the stage read it from its input (microcosm#931).
+    clone_count = geographic_clone_count(pre_household)
 
     def recompute(person_t, household_t, weights_t):
         ids_t = (
@@ -1012,7 +1018,9 @@ def _e8_support_split(
         )
         copies = np.ones(len(ids_t), dtype="int64")
         copies[selected] = cgt_support_copy_counts(
-            weights_t[selected], CGT_SUPPORT_MAXIMUM_COPY_WEIGHT
+            weights_t[selected],
+            CGT_SUPPORT_MAXIMUM_COPY_WEIGHT,
+            clone_count=clone_count,
         )
         return (
             pd.DataFrame({"selected": selected, "copies": copies}, index=ids_t),
@@ -1578,7 +1586,8 @@ def e8_identity_receipt(
     frame with the stage's own helpers - the wealthiest households of each
     Table 3 income band (bands from the stored income components under the
     policy parameters, wealth from the stored columns, support masses from
-    the vendored joint) divided into ``ceil(w / 60)`` copies at ``w / n`` -
+    the vendored joint) divided into ``ceil(K x w / 60)`` copies at ``w / n``,
+    ``K`` the geographic clone count -
     in original and permuted row order, against the stored copies, counts,
     family weights, flags and mass record; (3) the student-loan plan column
     recomputed in full (identity-keyed top-ups at the release calibration
@@ -2505,8 +2514,9 @@ def _stage_time_weight_divisor(*, after_stages: Sequence[str]) -> float:
     still has to be added here. The capital-gains clone is not uniform once
     the #970 anchor has run, so its mass is restored by pair sum instead,
     and the capital-gains support split (microcosm#1045) is not a divisor at
-    all - it divides each selected household's weight among ``ceil(w / 60)``
-    copies at conserved mass - so its mass is restored by folding each copy
+    all - it divides each selected household's weight among
+    ``ceil(K x w / 60)`` copies (``K`` the geographic clone count) at
+    conserved mass - so its mass is restored by folding each copy
     onto its root after the clone fold (``_pre_split_household_weights``).
 
     ``after_stages`` names only the stages that actually ran in the artifact

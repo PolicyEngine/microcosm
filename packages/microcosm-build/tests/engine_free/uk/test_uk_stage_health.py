@@ -410,6 +410,7 @@ def _support_split_receipt() -> dict[str, object]:
             "clone_split_factor": 2,
             "headroom": 2.0,
             "maximum_copy_weight": 60.0,
+            "clone_count": 1,
         },
     }
 
@@ -515,6 +516,88 @@ def test_cgt_support_split_gate_refuses_a_missing_field() -> None:
     del evidence["bands"][0]["heaviest_copy_weight"]
 
     with pytest.raises(ValueError, match="heaviest_copy_weight"):
+        _support_split_gate(evidence)
+
+
+def test_cgt_support_split_gate_messages_are_unchanged_at_one_clone() -> None:
+    """At one geographic clone both weight checks read as before microcosm#931."""
+
+    copy_over = _support_split_receipt()
+    copy_over["bands"][0]["heaviest_copy_weight"] = 60.5
+    light = _support_split_receipt()
+    light["bands"][0]["heaviest_selected_weight"] = 59.0
+
+    assert _support_split_gate(copy_over).failures == (
+        "cgt_support_split: column from 0.0 copy weight 60.5 exceeds the maximum 60.0.",
+    )
+    assert _support_split_gate(light).failures == (
+        "cgt_support_split: column from 0.0 created 1120 copies although no "
+        "selected household exceeds the maximum weight.",
+    )
+
+
+def _three_clone_receipt() -> dict[str, object]:
+    """The receipt at three geographic clones (microcosm#931).
+
+    The split counts copies on three times each row's weight: every selected
+    row here weighs at most 60 while three times it does not, so copies were
+    made, and every copy weighs at most 20.
+    """
+
+    evidence = _support_split_receipt()
+    evidence["parameters"]["clone_count"] = 3
+    for row in evidence["bands"]:
+        row["heaviest_selected_weight"] = 30.0
+        row["heaviest_copy_weight"] = 18.0
+    return evidence
+
+
+def test_cgt_support_split_gate_scales_both_weight_checks_by_the_clone_count() -> None:
+    assert _passed(_support_split_gate(_three_clone_receipt()))
+
+    # Read at one clone, the same rows would need no copy: ignoring the count
+    # fails every column falsely.
+    ignored = _three_clone_receipt()
+    ignored["parameters"]["clone_count"] = 1
+    result = _support_split_gate(ignored)
+    assert result.passed is False
+    assert len(result.failures) == 4
+    assert all(
+        failure.endswith(
+            "created 1120 copies although no selected household exceeds the "
+            "maximum weight."
+        )
+        for failure in result.failures
+    )
+
+    # A copy of 25 is within 60 but not within 60 / 3.
+    heavy = _three_clone_receipt()
+    heavy["bands"][0]["heaviest_copy_weight"] = 25.0
+    assert _support_split_gate(heavy).failures == (
+        "cgt_support_split: column from 0.0 copy weight 25.0 exceeds the maximum "
+        "60.0 divided by the geographic clone count 3.",
+    )
+    # Three times a selected row of 20 is the maximum, which needs no copy.
+    light = _three_clone_receipt()
+    light["bands"][1]["heaviest_selected_weight"] = 20.0
+    assert _support_split_gate(light).failures == (
+        "cgt_support_split: column from 37700.0 created 1120 copies although no "
+        "selected household exceeds the maximum weight divided by the geographic "
+        "clone count 3.",
+    )
+
+
+@pytest.mark.parametrize("clone_count", ["absent", 0, -3, True, 3.0, "3", None])
+def test_cgt_support_split_gate_refuses_a_receipt_without_a_clone_count(
+    clone_count,
+) -> None:
+    evidence = _support_split_receipt()
+    if clone_count == "absent":
+        del evidence["parameters"]["clone_count"]
+    else:
+        evidence["parameters"]["clone_count"] = clone_count
+
+    with pytest.raises(ValueError, match=r"parameters\.clone_count must be a positive"):
         _support_split_gate(evidence)
 
 

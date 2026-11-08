@@ -1812,6 +1812,11 @@ def _cgt_support_split_gate(
     Exhaustion is a recorded regime, not a failure (microcosm#1045): a column
     whose pool is lighter than its support mass selects the whole pool and
     says so. The split assigns no value, so nothing distributional is held.
+    The split counts copies on the receipt's geographic clone count ``K``
+    times each household's weight (microcosm#931), so both weight checks
+    compare ``K`` times the receipted weight with the maximum: every copy
+    weighs at most the maximum over ``K``. At ``K = 1`` the checks and their
+    messages are unchanged.
     """
 
     check = "cgt_support_split"
@@ -1840,6 +1845,18 @@ def _cgt_support_split_gate(
             failures.append(
                 f"{stage}: receipt {key} {value} differs from the gate's {expected}."
             )
+    clone_count = declared.get("clone_count")
+    if (
+        not isinstance(clone_count, int)
+        or isinstance(clone_count, bool)
+        or clone_count < 1
+    ):
+        raise ValueError(f"{stage}.parameters.clone_count must be a positive integer.")
+    over_clones = (
+        ""
+        if clone_count == 1
+        else f" divided by the geographic clone count {clone_count}"
+    )
 
     mass = _mapping(evidence.get("mass"), label=f"{stage}.mass")
     old_total = _finite_number(mass.get("old_total"), label=f"{stage}.mass.old_total")
@@ -1902,10 +1919,10 @@ def _cgt_support_split_gate(
                 f"{stage}: column from {lower} support mass {support} differs from "
                 f"{clone_split_factor} x {headroom} x {published}."
             )
-        if row_heaviest_copy > maximum_copy_weight * (1.0 + 1e-12):
+        if clone_count * row_heaviest_copy > maximum_copy_weight * (1.0 + 1e-12):
             failures.append(
                 f"{stage}: column from {lower} copy weight {row_heaviest_copy} "
-                f"exceeds the maximum {maximum_copy_weight}."
+                f"exceeds the maximum {maximum_copy_weight}{over_clones}."
             )
         if pool_exhausted:
             exhausted.append(lower)
@@ -1921,10 +1938,14 @@ def _cgt_support_split_gate(
                 f"{stage}: column from {lower} selected mass {selected} falls short "
                 f"of its support mass {support} without recording exhaustion."
             )
-        if heaviest_selected <= maximum_copy_weight and counts["copies_created"]:
+        if (
+            clone_count * heaviest_selected <= maximum_copy_weight
+            and counts["copies_created"]
+        ):
             failures.append(
                 f"{stage}: column from {lower} created {counts['copies_created']} "
-                "copies although no selected household exceeds the maximum weight."
+                "copies although no selected household exceeds the maximum weight"
+                f"{over_clones}."
             )
         sums["support_mass"] += support
         sums["selected_mass"] += selected
