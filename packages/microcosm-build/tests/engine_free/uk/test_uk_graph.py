@@ -418,9 +418,11 @@ def test_copy_id_table_changes_invalidate_every_stage_that_reads_it(monkeypatch)
 _STOCHASTIC_ASSIGNMENT = "microcosm.build.stochastic_assignment"
 #: Stages that import a function drawing through the keyed-draw helpers
 #: (``microcosm.build.stochastic_assignment``) but never call it, so need not
-#: bind them: the drawing names each imports, and why it never calls them.
-_STOCHASTIC_ASSIGNMENT_UNBOUND: dict[str, tuple[frozenset[str], str]] = {
+#: bind them: the stage's transform, the drawing names its module imports, and
+#: why the transform never calls them.
+_STOCHASTIC_ASSIGNMENT_UNBOUND: dict[str, tuple[str, frozenset[str], str]] = {
     "spi_support_channel": (
+        "UKSPISupportChannelStageTransform",
         frozenset(
             {
                 "employer_pension_contributions.draw_employer_pension_contributions",
@@ -620,9 +622,13 @@ def test_every_stage_that_draws_through_stochastic_assignment_binds_it() -> None
     assert reach["frs_hmrc_spine_leaves"] >= {
         "employer_pension_contributions.draw_employer_pension_contributions"
     }
-    # An exempt stage imports exactly the drawing names its reason covers.
-    for stage, (names, _) in _STOCHASTIC_ASSIGNMENT_UNBOUND.items():
+    # An exempt stage imports exactly the drawing names its reason covers, and
+    # its transform names none of them, directly or through its module.
+    for stage, (transform, names, _) in _STOCHASTIC_ASSIGNMENT_UNBOUND.items():
         assert reach.get(stage) == names, stage
+        module = graph_kernels._stage_module(stage).__name__
+        assert transform in _draw_facts(module).references, stage
+        assert transform not in _drawing_names([module])[module], stage
 
 
 def test_stochastic_assignment_changes_invalidate_every_stage_that_draws(
