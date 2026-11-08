@@ -1286,9 +1286,10 @@ def test_evidence_is_json_serialisable_with_plain_scalars():
 # (9,000) is the first candidate for the exact-total correction (on clone 0,
 # the first heaviest). At seven (and 13) clones its clone 0 has no
 # representable correction, so the shared fallback puts it on the last copy
-# of the 7,620 family's last clone, a few ulps off w / n and within the
-# weights' nesting tolerance and the gate's; at one, three, 11 and 15 clones
-# no correction is needed.
+# of the 7,620 family's last clone. That copy is then off w / n by about an
+# ulp of the frame's total weight (thousands of ulps of its own, a relative
+# error below 1e-12), within the weights' nesting tolerance and the gate's;
+# at one, three, 11 and 15 clones no correction is needed.
 
 NESTING_WEIGHTS = [
     900.0,
