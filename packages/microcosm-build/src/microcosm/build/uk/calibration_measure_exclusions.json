@@ -540,6 +540,33 @@
       "adjudication": "María's approval of 2026-11-06 of the plan for the November event data (PR2, item S4): measure HMRC's Scottish NSND outturn and taxpayers on every build and hold both out of the solve; they bind only if the measured gap exceeds about 3 percent and a calibrate-only solve passes (for María's signature).",
       "approved_on": "2026-11-07",
       "expires_on": "2027-02-07"
+    },
+    {
+      "name": "dwp.uc.people_aged_16_to_24",
+      "reason": "Diagnostic, not a weight question: the young people work review (chronicle#420 item 3) reads the model's UC claimants and partners by age against DWP's people on UC. With Y2's education flag the model's 16 to 24 count still runs well above DWP's: once Y2 takes full-time students off UC, the take-up redraw (uc_take_up) restores the single caseload by award band, not by age. So the rows stay held out. The 16 to 17 count never appears alone or by difference.",
+      "tracking": "microcosm#1095",
+      "approved_by": "juaristi22",
+      "adjudication": "María's calls of 2026-11-08 on the plan for the November event data (PR2, item Y4): measure DWP's people on Universal Credit aged 16 to 24, 16 to 21 and 22 to 24, every regime, on the four quarterly points of 2025, and hold them out of the solve (for María's signature).",
+      "approved_on": "2026-11-08",
+      "expires_on": "2027-02-08"
+    },
+    {
+      "name": "dwp.uc.people_aged_16_to_21",
+      "reason": "Diagnostic, not a weight question: the young people work review (chronicle#420 item 3) reads the model's UC claimants and partners by age against DWP's people on UC. With Y2's education flag the model's 16 to 24 count still runs well above DWP's: once Y2 takes full-time students off UC, the take-up redraw (uc_take_up) restores the single caseload by award band, not by age. So the rows stay held out. The 16 to 17 count never appears alone or by difference.",
+      "tracking": "microcosm#1095",
+      "approved_by": "juaristi22",
+      "adjudication": "María's calls of 2026-11-08 on the plan for the November event data (PR2, item Y4): measure DWP's people on Universal Credit aged 16 to 24, 16 to 21 and 22 to 24, every regime, on the four quarterly points of 2025, and hold them out of the solve (for María's signature).",
+      "approved_on": "2026-11-08",
+      "expires_on": "2027-02-08"
+    },
+    {
+      "name": "dwp.uc.people_aged_22_to_24",
+      "reason": "Diagnostic, not a weight question: the young people work review (chronicle#420 item 3) reads the model's UC claimants and partners by age against DWP's people on UC. With Y2's education flag the model's 16 to 24 count still runs well above DWP's: once Y2 takes full-time students off UC, the take-up redraw (uc_take_up) restores the single caseload by award band, not by age. So the rows stay held out. The 16 to 17 count never appears alone or by difference.",
+      "tracking": "microcosm#1095",
+      "approved_by": "juaristi22",
+      "adjudication": "María's calls of 2026-11-08 on the plan for the November event data (PR2, item Y4): measure DWP's people on Universal Credit aged 16 to 24, 16 to 21 and 22 to 24, every regime, on the four quarterly points of 2025, and hold them out of the solve (for María's signature).",
+      "approved_on": "2026-11-08",
+      "expires_on": "2027-02-08"
     }
   ]
 }

@@ -807,7 +807,7 @@ def test_packaged_exclusions_load():
     # November event data holds PRIS 2026's Scottish receipts and expenses as
     # measured diagnostics (María's approval of 2026-11-06), and PR2 holds HMRC's
     # Scottish NSND outturn and taxpayers for 2024-25 (S4).
-    assert len(names) == len(set(names)) == 51
+    assert len(names) == len(set(names)) == 54
     (gas,) = [
         entry
         for entry in exclusions

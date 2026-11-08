@@ -908,6 +908,15 @@ UC_ELEMENT_TARGET_IDS = frozenset(
         "dwp.uc.households_childcare_element",
     }
 )
+#: Y4 of the November event-data plan: DWP's people on UC by age, every
+#: regime (María's bands of 2026-11-08, so 16 to 17 is never shown alone).
+UC_PEOPLE_BY_AGE_TARGET_IDS = frozenset(
+    {
+        "dwp.uc.people_aged_16_to_24",
+        "dwp.uc.people_aged_16_to_21",
+        "dwp.uc.people_aged_22_to_24",
+    }
+)
 
 
 def test_uc_composition_targets_pin_paid_cells_and_explicit_month_windows() -> None:
@@ -969,6 +978,31 @@ def test_uc_composition_targets_pin_paid_cells_and_explicit_month_windows() -> N
             assert selector["period_value"] == [
                 f"2025-{month:02d}" for month in range(1, 13)
             ]
+            continue
+        elif target_id in UC_PEOPLE_BY_AGE_TARGET_IDS:
+            # People, not benefit units: the single years of age of every
+            # regime, summed at the four quarterly points of 2025 and averaged.
+            assert selector["dimensions"] == [
+                "age_bands_and_single_year",
+                "conditionality_regime",
+            ]
+            assert pins["conditionality_regime"] == "all"
+            assert selector["source_measure_id"] == "people"
+            assert operations[target_id] == "monthly_window_sum_average"
+            assert target["period_match_policy"] == "source_window"
+            assert target_id in sum_target_ids
+            assert selector["period_value"] == [
+                "2025-02",
+                "2025-05",
+                "2025-08",
+                "2025-11",
+            ]
+            low, high = (
+                int(age) for age in target_id.rsplit("_aged_", 1)[1].split("_to_")
+            )
+            # Chronicle's single years of age are integers, as the State
+            # Pension rows by age read them.
+            assert pins["age_bands_and_single_year"] == list(range(low, high + 1))
             continue
         else:
             # Merely naming a dimension set still does not request a sum.
@@ -1561,7 +1595,7 @@ def test_uk_generator_averages_paid_monthly_sums_and_preserves_other_uc_operatio
         "dwp.uc.households_single_with_children",
         "dwp.uc.households_couple_no_children",
         "dwp.uc.households_couple_with_children",
-    }
+    } | UC_PEOPLE_BY_AGE_TARGET_IDS
     monthly_average_ids = {
         f"dwp.uc.households_children_{children}" for children in ("1", "2", "3", "4")
     } | {

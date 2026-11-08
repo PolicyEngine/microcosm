@@ -722,6 +722,9 @@
       "dwp.uc.households_housing_element_private_rented": "#882 UC element target from the chronicle#260 Payment Indicator crosses; the incumbent registry has no element rows.",
       "dwp.uc.households_childcare_element": "#882 UC element target from the chronicle#260 Payment Indicator crosses; the incumbent registry has no element rows.",
       "dwp.uc.households_with_deduction": "#882 UC element target from the chronicle#260 Payment Indicator crosses; the incumbent registry has no element rows.",
+      "dwp.uc.people_aged_16_to_24": "No incumbent target: uk-data binds no UC row by age. DWP's People on Universal Credit by age (PolicyEngine/chronicle#420 item 3) joins as a measured diagnostic (Y4 of the November event-data plan).",
+      "dwp.uc.people_aged_16_to_21": "No incumbent target: uk-data binds no UC row by age. DWP's People on Universal Credit by age (PolicyEngine/chronicle#420 item 3) joins as a measured diagnostic (Y4 of the November event-data plan).",
+      "dwp.uc.people_aged_22_to_24": "No incumbent target: uk-data binds no UC row by age. DWP's People on Universal Credit by age (PolicyEngine/chronicle#420 item 3) joins as a measured diagnostic (Y4 of the November event-data plan).",
       "obr.universal_credit": "#882 UC expenditure total over the two OBR welfare-cap cells; the incumbent binds only the split, which is excluded.",
       "welshgov.council_tax_stock.band_i": "No incumbent target: uk-data's VOA council-tax rows stop at band H; microcosm#929 binds the Welsh band I stock from StatsWales CT1 (Wales is the only nation with a band I).",
       "dwp.hb.households": "#882 Housing Benefit caseload diagnostic from the Stat-Xplore client-type-by-tenure cube (asked in PolicyEngine/chronicle#259, delivered by PolicyEngine/chronicle#260); the incumbent registry binds only the OBR spend line.",
@@ -1303,6 +1306,9 @@
       "dwp.uc.households_housing_element_private_rented",
       "dwp.uc.households_childcare_element",
       "dwp.uc.households_with_deduction",
+      "dwp.uc.people_aged_16_to_24",
+      "dwp.uc.people_aged_16_to_21",
+      "dwp.uc.people_aged_22_to_24",
       "obr.universal_credit",
       "dwp.hb.households",
       "dwp.hb.households_social_rented",
@@ -20507,6 +20513,540 @@
       "period_match_policy": "source_window",
       "category_id": "dwp.universal_credit",
       "label": "Households with a deduction"
+    },
+    {
+      "target_id": "dwp.uc.people_aged_16_to_24",
+      "family": "dwp_universal_credit",
+      "geography_levels": [
+        "country"
+      ],
+      "measurement": {
+        "entity": "person",
+        "map_to": "household",
+        "concept": "uk.person.count",
+        "filters": [
+          {
+            "concept": "uk.benefits.universal_credit.amount",
+            "operator": ">",
+            "value": 0
+          },
+          {
+            "concept": "uk.benefits.universal_credit.claimant_or_partner",
+            "equals": true
+          },
+          {
+            "concept": "uk.demographics.age",
+            "operator": ">=",
+            "value": 16
+          },
+          {
+            "concept": "uk.demographics.age",
+            "operator": "<=",
+            "value": 24
+          },
+          {
+            "concept": "uk.geography.country",
+            "operator": "in",
+            "value": [
+              "england",
+              "scotland",
+              "wales"
+            ]
+          }
+        ],
+        "source_months": [
+          "2025-02",
+          "2025-05",
+          "2025-08",
+          "2025-11"
+        ]
+      },
+      "bindings": {
+        "policyengine": {
+          "from_entity": "person",
+          "map_to": "household",
+          "metric_name": "dwp/uc/people_aged_16_to_24",
+          "value_variable": "person_count",
+          "filters": [
+            {
+              "variable": "universal_credit",
+              "operator": ">",
+              "value": 0
+            },
+            {
+              "variable": "is_claimant_or_partner",
+              "equals": true
+            },
+            {
+              "variable": "age",
+              "operator": ">=",
+              "value": 16
+            },
+            {
+              "variable": "age",
+              "operator": "<=",
+              "value": 24
+            }
+          ],
+          "household_conditions": [
+            {
+              "variable": "region",
+              "entity": "household",
+              "reduce": "any",
+              "operator": "in",
+              "value": [
+                "NORTH_EAST",
+                "NORTH_WEST",
+                "YORKSHIRE",
+                "EAST_MIDLANDS",
+                "WEST_MIDLANDS",
+                "EAST_OF_ENGLAND",
+                "LONDON",
+                "SOUTH_EAST",
+                "SOUTH_WEST",
+                "WALES",
+                "SCOTLAND"
+              ],
+              "map_to": "person"
+            }
+          ],
+          "notes": "DWP Stat-Xplore People on Universal Credit (UC_Monthly), Great Britain residents (PolicyEngine/chronicle#420 item 3): people with an open claim on the count date aged 16 to 24, every conditionality regime, summed over the published single years of age at each quarterly point inside calendar 2025 (February, May, August, November) and averaged. DWP counts both partners of a joint claim; the model counts claimants and partners (is_claimant_or_partner) in benefit units with positive annual Universal Credit, a proxy for an open claim on the count date. Only the Great Britain regions count, matching K03000001. A held-out diagnostic (Y4 of the November event-data plan): the rows are 16 to 24, 16 to 21 and 22 to 24, so 16 to 17 is never shown alone or by difference (María, 2026-11-08). The split by conditionality regime waits for her mapping of DWP's regimes to uc_work_related_group_apart_from_earnings."
+        },
+        "axiom": {
+          "metric_name": "dwp/uc/people_aged_16_to_24",
+          "status": "pending",
+          "value_rule": "uk.person.count"
+        }
+      },
+      "ledger_selector": {
+        "source_name": "dwp",
+        "source_concept": [
+          "dwp.people_on_universal_credit"
+        ],
+        "source_measure_id": "people",
+        "groupby_dimension": "dwp.uc_people_country_age_conditionality_regime",
+        "dimensions": [
+          "age_bands_and_single_year",
+          "conditionality_regime"
+        ],
+        "dimension_values": {
+          "age_bands_and_single_year": [
+            16,
+            17,
+            18,
+            19,
+            20,
+            21,
+            22,
+            23,
+            24
+          ],
+          "conditionality_regime": "all"
+        },
+        "entity_name": "person",
+        "period_type": "month",
+        "period_value": [
+          "2025-02",
+          "2025-05",
+          "2025-08",
+          "2025-11"
+        ]
+      },
+      "category_id": "dwp.universal_credit",
+      "label": "Universal Credit people aged 16 to 24",
+      "value_operation": "monthly_window_sum_average",
+      "period_match_policy": "source_window",
+      "value_operands": [
+        {
+          "dimension_values": {
+            "age_bands_and_single_year": 16,
+            "conditionality_regime": "all"
+          }
+        },
+        {
+          "dimension_values": {
+            "age_bands_and_single_year": 17,
+            "conditionality_regime": "all"
+          }
+        },
+        {
+          "dimension_values": {
+            "age_bands_and_single_year": 18,
+            "conditionality_regime": "all"
+          }
+        },
+        {
+          "dimension_values": {
+            "age_bands_and_single_year": 19,
+            "conditionality_regime": "all"
+          }
+        },
+        {
+          "dimension_values": {
+            "age_bands_and_single_year": 20,
+            "conditionality_regime": "all"
+          }
+        },
+        {
+          "dimension_values": {
+            "age_bands_and_single_year": 21,
+            "conditionality_regime": "all"
+          }
+        },
+        {
+          "dimension_values": {
+            "age_bands_and_single_year": 22,
+            "conditionality_regime": "all"
+          }
+        },
+        {
+          "dimension_values": {
+            "age_bands_and_single_year": 23,
+            "conditionality_regime": "all"
+          }
+        },
+        {
+          "dimension_values": {
+            "age_bands_and_single_year": 24,
+            "conditionality_regime": "all"
+          }
+        }
+      ]
+    },
+    {
+      "target_id": "dwp.uc.people_aged_16_to_21",
+      "family": "dwp_universal_credit",
+      "geography_levels": [
+        "country"
+      ],
+      "measurement": {
+        "entity": "person",
+        "map_to": "household",
+        "concept": "uk.person.count",
+        "filters": [
+          {
+            "concept": "uk.benefits.universal_credit.amount",
+            "operator": ">",
+            "value": 0
+          },
+          {
+            "concept": "uk.benefits.universal_credit.claimant_or_partner",
+            "equals": true
+          },
+          {
+            "concept": "uk.demographics.age",
+            "operator": ">=",
+            "value": 16
+          },
+          {
+            "concept": "uk.demographics.age",
+            "operator": "<=",
+            "value": 21
+          },
+          {
+            "concept": "uk.geography.country",
+            "operator": "in",
+            "value": [
+              "england",
+              "scotland",
+              "wales"
+            ]
+          }
+        ],
+        "source_months": [
+          "2025-02",
+          "2025-05",
+          "2025-08",
+          "2025-11"
+        ]
+      },
+      "bindings": {
+        "policyengine": {
+          "from_entity": "person",
+          "map_to": "household",
+          "metric_name": "dwp/uc/people_aged_16_to_21",
+          "value_variable": "person_count",
+          "filters": [
+            {
+              "variable": "universal_credit",
+              "operator": ">",
+              "value": 0
+            },
+            {
+              "variable": "is_claimant_or_partner",
+              "equals": true
+            },
+            {
+              "variable": "age",
+              "operator": ">=",
+              "value": 16
+            },
+            {
+              "variable": "age",
+              "operator": "<=",
+              "value": 21
+            }
+          ],
+          "household_conditions": [
+            {
+              "variable": "region",
+              "entity": "household",
+              "reduce": "any",
+              "operator": "in",
+              "value": [
+                "NORTH_EAST",
+                "NORTH_WEST",
+                "YORKSHIRE",
+                "EAST_MIDLANDS",
+                "WEST_MIDLANDS",
+                "EAST_OF_ENGLAND",
+                "LONDON",
+                "SOUTH_EAST",
+                "SOUTH_WEST",
+                "WALES",
+                "SCOTLAND"
+              ],
+              "map_to": "person"
+            }
+          ],
+          "notes": "DWP Stat-Xplore People on Universal Credit (UC_Monthly), Great Britain residents (PolicyEngine/chronicle#420 item 3): people with an open claim on the count date aged 16 to 21, every conditionality regime, summed over the published single years of age at each quarterly point inside calendar 2025 (February, May, August, November) and averaged. DWP counts both partners of a joint claim; the model counts claimants and partners (is_claimant_or_partner) in benefit units with positive annual Universal Credit, a proxy for an open claim on the count date. Only the Great Britain regions count, matching K03000001. A held-out diagnostic (Y4 of the November event-data plan): the rows are 16 to 24, 16 to 21 and 22 to 24, so 16 to 17 is never shown alone or by difference (María, 2026-11-08). The split by conditionality regime waits for her mapping of DWP's regimes to uc_work_related_group_apart_from_earnings."
+        },
+        "axiom": {
+          "metric_name": "dwp/uc/people_aged_16_to_21",
+          "status": "pending",
+          "value_rule": "uk.person.count"
+        }
+      },
+      "ledger_selector": {
+        "source_name": "dwp",
+        "source_concept": [
+          "dwp.people_on_universal_credit"
+        ],
+        "source_measure_id": "people",
+        "groupby_dimension": "dwp.uc_people_country_age_conditionality_regime",
+        "dimensions": [
+          "age_bands_and_single_year",
+          "conditionality_regime"
+        ],
+        "dimension_values": {
+          "age_bands_and_single_year": [
+            16,
+            17,
+            18,
+            19,
+            20,
+            21
+          ],
+          "conditionality_regime": "all"
+        },
+        "entity_name": "person",
+        "period_type": "month",
+        "period_value": [
+          "2025-02",
+          "2025-05",
+          "2025-08",
+          "2025-11"
+        ]
+      },
+      "category_id": "dwp.universal_credit",
+      "label": "Universal Credit people aged 16 to 21",
+      "value_operation": "monthly_window_sum_average",
+      "period_match_policy": "source_window",
+      "value_operands": [
+        {
+          "dimension_values": {
+            "age_bands_and_single_year": 16,
+            "conditionality_regime": "all"
+          }
+        },
+        {
+          "dimension_values": {
+            "age_bands_and_single_year": 17,
+            "conditionality_regime": "all"
+          }
+        },
+        {
+          "dimension_values": {
+            "age_bands_and_single_year": 18,
+            "conditionality_regime": "all"
+          }
+        },
+        {
+          "dimension_values": {
+            "age_bands_and_single_year": 19,
+            "conditionality_regime": "all"
+          }
+        },
+        {
+          "dimension_values": {
+            "age_bands_and_single_year": 20,
+            "conditionality_regime": "all"
+          }
+        },
+        {
+          "dimension_values": {
+            "age_bands_and_single_year": 21,
+            "conditionality_regime": "all"
+          }
+        }
+      ]
+    },
+    {
+      "target_id": "dwp.uc.people_aged_22_to_24",
+      "family": "dwp_universal_credit",
+      "geography_levels": [
+        "country"
+      ],
+      "measurement": {
+        "entity": "person",
+        "map_to": "household",
+        "concept": "uk.person.count",
+        "filters": [
+          {
+            "concept": "uk.benefits.universal_credit.amount",
+            "operator": ">",
+            "value": 0
+          },
+          {
+            "concept": "uk.benefits.universal_credit.claimant_or_partner",
+            "equals": true
+          },
+          {
+            "concept": "uk.demographics.age",
+            "operator": ">=",
+            "value": 22
+          },
+          {
+            "concept": "uk.demographics.age",
+            "operator": "<=",
+            "value": 24
+          },
+          {
+            "concept": "uk.geography.country",
+            "operator": "in",
+            "value": [
+              "england",
+              "scotland",
+              "wales"
+            ]
+          }
+        ],
+        "source_months": [
+          "2025-02",
+          "2025-05",
+          "2025-08",
+          "2025-11"
+        ]
+      },
+      "bindings": {
+        "policyengine": {
+          "from_entity": "person",
+          "map_to": "household",
+          "metric_name": "dwp/uc/people_aged_22_to_24",
+          "value_variable": "person_count",
+          "filters": [
+            {
+              "variable": "universal_credit",
+              "operator": ">",
+              "value": 0
+            },
+            {
+              "variable": "is_claimant_or_partner",
+              "equals": true
+            },
+            {
+              "variable": "age",
+              "operator": ">=",
+              "value": 22
+            },
+            {
+              "variable": "age",
+              "operator": "<=",
+              "value": 24
+            }
+          ],
+          "household_conditions": [
+            {
+              "variable": "region",
+              "entity": "household",
+              "reduce": "any",
+              "operator": "in",
+              "value": [
+                "NORTH_EAST",
+                "NORTH_WEST",
+                "YORKSHIRE",
+                "EAST_MIDLANDS",
+                "WEST_MIDLANDS",
+                "EAST_OF_ENGLAND",
+                "LONDON",
+                "SOUTH_EAST",
+                "SOUTH_WEST",
+                "WALES",
+                "SCOTLAND"
+              ],
+              "map_to": "person"
+            }
+          ],
+          "notes": "DWP Stat-Xplore People on Universal Credit (UC_Monthly), Great Britain residents (PolicyEngine/chronicle#420 item 3): people with an open claim on the count date aged 22 to 24, every conditionality regime, summed over the published single years of age at each quarterly point inside calendar 2025 (February, May, August, November) and averaged. DWP counts both partners of a joint claim; the model counts claimants and partners (is_claimant_or_partner) in benefit units with positive annual Universal Credit, a proxy for an open claim on the count date. Only the Great Britain regions count, matching K03000001. A held-out diagnostic (Y4 of the November event-data plan): the rows are 16 to 24, 16 to 21 and 22 to 24, so 16 to 17 is never shown alone or by difference (María, 2026-11-08). The split by conditionality regime waits for her mapping of DWP's regimes to uc_work_related_group_apart_from_earnings."
+        },
+        "axiom": {
+          "metric_name": "dwp/uc/people_aged_22_to_24",
+          "status": "pending",
+          "value_rule": "uk.person.count"
+        }
+      },
+      "ledger_selector": {
+        "source_name": "dwp",
+        "source_concept": [
+          "dwp.people_on_universal_credit"
+        ],
+        "source_measure_id": "people",
+        "groupby_dimension": "dwp.uc_people_country_age_conditionality_regime",
+        "dimensions": [
+          "age_bands_and_single_year",
+          "conditionality_regime"
+        ],
+        "dimension_values": {
+          "age_bands_and_single_year": [
+            22,
+            23,
+            24
+          ],
+          "conditionality_regime": "all"
+        },
+        "entity_name": "person",
+        "period_type": "month",
+        "period_value": [
+          "2025-02",
+          "2025-05",
+          "2025-08",
+          "2025-11"
+        ]
+      },
+      "category_id": "dwp.universal_credit",
+      "label": "Universal Credit people aged 22 to 24",
+      "value_operation": "monthly_window_sum_average",
+      "period_match_policy": "source_window",
+      "value_operands": [
+        {
+          "dimension_values": {
+            "age_bands_and_single_year": 22,
+            "conditionality_regime": "all"
+          }
+        },
+        {
+          "dimension_values": {
+            "age_bands_and_single_year": 23,
+            "conditionality_regime": "all"
+          }
+        },
+        {
+          "dimension_values": {
+            "age_bands_and_single_year": 24,
+            "conditionality_regime": "all"
+          }
+        }
+      ]
     },
     {
       "target_id": "obr.universal_credit",
