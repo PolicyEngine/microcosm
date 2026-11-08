@@ -844,22 +844,24 @@ def _e8_support_split(
     flagged copies (the pre-clone rows carrying ``cgt_support_copies`` above
     one), each family's count is ``ceil(K x w / maximum_copy_weight)``, ``K``
     the geographic clone count the stage read from the frame (microcosm#931;
-    the recompute reads it from the pre-split table the same way), exactly at
-    ``K = 1`` and at ``K > 1`` to the family weights' relative tolerance of
-    1e-9 (the fold re-sums ``n`` copies of a clone's share, which drifts by
-    more ulps than the count's snap absorbs; the receipt's
-    ``copies_recomputed`` stays the exact recount, so at ``K > 1`` it can
-    exceed ``copies`` by one for each family at an exact multiple whose
-    re-summed weight lands above it, while the count check passes), every
-    member of a family
-    carries ``w / n`` at stage time (its clone pair sum, since the clone runs
-    afterwards), the copies of each root are indexed ``1..n-1`` without gaps
-    and carry the root's count, no count is below one, and the stage's mass
-    record conserves the total. The recompute is repeated on permuted person
-    and household tables and must reproduce the divided set and the counts
-    exactly. A selected household light enough for a single copy leaves no
-    trace in the artifact, so only families are compared. Problems land under
-    ``support_split_*`` keys.
+    the recompute reads it from the pre-split table the same way), to the
+    family weights' relative tolerance of 1e-9 at every ``K``. The fold
+    re-sums the ``n`` copies, which can land ulps from ``w``: at ``K = 1``
+    for a weight a few ulps above a multiple of the maximum, or where the
+    stage's exact-total correction fell on a copy, and at ``K > 1`` by more
+    than the count's snap absorbs. So on an exact multiple the check accepts
+    ``n`` or ``n + 1``, and a count moved there is left to the flag and
+    family-weight checks. The receipt's ``copies_recomputed`` stays the exact
+    recount, so it can differ from ``copies`` by one for each family whose
+    re-summed weight lands across a multiple, while the count check passes.
+    Every member of a family carries ``w / n`` at stage time (its clone pair
+    sum, since the clone runs afterwards), the copies of each root are
+    indexed ``1..n-1`` without gaps and carry the root's count, no count is
+    below one, and the stage's mass record conserves the total. The
+    recompute is repeated on permuted person and household tables and must
+    reproduce the divided set and the counts exactly. A selected household
+    light enough for a single copy leaves no trace in the artifact, so only
+    families are compared. Problems land under ``support_split_*`` keys.
     """
 
     from microcosm.build.uk_runtime.cgt_support import (
@@ -1052,25 +1054,24 @@ def _e8_support_split(
         }
     agreed = (recomputed_family & stored_family).to_numpy()
     stored_agreed = stored_count.to_numpy()[agreed]
-    if clone_count == 1:
-        count_off = int((original["copies"].to_numpy()[agreed] != stored_agreed).sum())
-    else:
-        # At K > 1 the fold re-sums n copies of a K-th share, which drifts by
-        # more ulps than the count's K-ulp snap absorbs, so an exact recount
-        # would flag a family the stage counted right (an exact multiple of 60
-        # at K = 11, for one). The count is held to the family weights'
-        # tolerance instead: the stored n must lie between the counts at the
-        # folded weight times 1 - 1e-9 and 1 + 1e-9 (microcosm#931 review).
-        agreed_weights = pre_weights[agreed]
-        lowest, highest = (
-            cgt_support_copy_counts(
-                agreed_weights * factor,
-                CGT_SUPPORT_MAXIMUM_COPY_WEIGHT,
-                clone_count=clone_count,
-            )
-            for factor in (1.0 - 1e-9, 1.0 + 1e-9)
+    # The fold re-sums the n copies, which can land ulps from w: at K = 1 for
+    # a weight a few ulps above a multiple of 60, or where the exact-total
+    # correction fell on a copy, and at K > 1 by more than the count's K-ulp
+    # snap absorbs (an exact multiple of 60 at K = 11, for one). An exact
+    # recount would flag a family the stage counted right, so at every K the
+    # count is held to the family weights' tolerance instead: the stored n
+    # must lie between the counts at the folded weight times 1 - 1e-9 and
+    # 1 + 1e-9 (microcosm#931 review).
+    agreed_weights = pre_weights[agreed]
+    lowest, highest = (
+        cgt_support_copy_counts(
+            agreed_weights * factor,
+            CGT_SUPPORT_MAXIMUM_COPY_WEIGHT,
+            clone_count=clone_count,
         )
-        count_off = int(((stored_agreed < lowest) | (stored_agreed > highest)).sum())
+        for factor in (1.0 - 1e-9, 1.0 + 1e-9)
+    )
+    count_off = int(((stored_agreed < lowest) | (stored_agreed > highest)).sum())
     if count_off:
         problems["support_split_copies_stored"] = count_off
 
@@ -1785,8 +1786,10 @@ def e8_identity_receipt(
             "pair sum against w / n at rtol 1e-9 / atol 1e-6 (the fold and "
             "the anchor each cost one float rounding generation); "
             "support-split mass record: new_total against old_total at rtol "
-            "1e-9; support-split families, copy counts, flags and "
-            "student_loan_plan: exact equality; band-donor seats, bands and "
+            "1e-9; support-split copy counts: between the counts at the "
+            "folded family weight times 1 - 1e-9 and 1 + 1e-9; support-split "
+            "families, flags and student_loan_plan: exact equality; "
+            "band-donor seats, bands and "
             "carriers: exact equality; band-donor weights within a band and "
             "against the rerun: rtol 1e-9 / atol 1e-6; band-donor mass "
             "record: new_total against old_total at rtol 1e-9 with declared "
