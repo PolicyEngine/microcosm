@@ -3791,7 +3791,10 @@ def _ordinal_fact(ordinal: object, *, key: str = "first", **overrides) -> dict:
             "source_row_keys": [],
         },
         dimensions={"filing_status": "single"},
-        dimension_labels={"filing_status": "Filing status"},
+        dimension_labels={
+            "us:statutes/26/62#adjusted_gross_income": "Adjusted gross income band",
+            "filing_status": "Filing status",
+        },
         dimension_value_labels={"filing_status": {"single": "Single return"}},
         **overrides,
     )

@@ -855,8 +855,9 @@ class HierarchyDimensionValueEntry(DiagnosticsModel):
     """One value of a catalog dimension.
 
     ``rank`` is the rows' ``value_rank`` for the value, from 0 in the order
-    its source lists the dimension's values; absent when no row ranks it or
-    the rows rank one of the dimension's values two ways
+    its source lists the dimension's values. It is absent when no row ranks
+    the value, and for every value of a dimension whose rows rank a value two
+    ways or give two values in one category the same rank
     (``catalog_calibration_diagnostics``). Readers sort by it.
     """
 

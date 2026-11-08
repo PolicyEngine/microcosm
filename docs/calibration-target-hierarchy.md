@@ -202,8 +202,10 @@ A catalog value may carry a `rank`, the `value_rank` its schema 8 rows give
 it, for example `{"id": "debt_less_than_5k", "label": "Less than 5K",
 "rank": 0}`. A rank orders values within one source table, and two tables can
 place one value differently: the IRS SOI tables list the AGI band `50k_to_75k`
-at rows 5, 9 and 10. So the writer ranks a dimension's values only when no
-value is ranked two ways, and leaves every value of any other dimension
+at rows 5, 9 and 10, and the USDA SNAP tables list states by region, so
+one category's rows give several states the same rank. So the writer ranks a
+dimension's values only when no value is ranked two ways and no category
+gives two values one rank, and leaves every value of any other dimension
 unranked. The rows' dimension references stay `{id, value_id}`; a reader
 sorts a dimension's values by `rank` where every value has one.
 

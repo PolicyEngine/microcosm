@@ -18,8 +18,9 @@ label. :func:`expand_calibration_diagnostics` rebuilds the schema 8 document.
 A row's dimension may carry ``value_rank``, its value's position in the order
 the source lists the dimension's values. The catalog gives each value that
 rank (``rank``) when every row that ranks it agrees, and expansion gives it
-back to each row. Ranks order values within one source's list, so when the
-rows rank any value of a dimension two ways, none of its values is ranked.
+back to each row. Ranks order values within one source's list, so a dimension
+gets no ranks when the rows rank any of its values two ways, or when one
+category's rows give two of its values the same rank.
 """
 
 from __future__ import annotations
@@ -229,6 +230,7 @@ def catalog_calibration_diagnostics(
     dimensions = _Observed()
     dimension_values = _Observed()
     value_ranks: dict[tuple[str, str], set[int]] = {}
+    ranked_values: dict[tuple[str, str, int], set[str]] = {}
     for row in diagnostics.targets:
         hierarchy = row.hierarchy
         providers.record(hierarchy.provider.id, hierarchy.provider.label, row.name)
@@ -249,6 +251,9 @@ def catalog_calibration_diagnostics(
                 value_ranks.setdefault((dimension.id, dimension.value_id), set()).add(
                     dimension.value_rank
                 )
+                ranked_values.setdefault(
+                    (hierarchy.category.id, dimension.id, dimension.value_rank), set()
+                ).add(dimension.value_id)
 
     conflicts: list[HierarchyLabelConflict] = []
     resolved: list[tuple[HierarchyLabelConflict, str]] = []
@@ -324,12 +329,18 @@ def catalog_calibration_diagnostics(
         )
 
     # A rank orders values within one source's list. When the rows rank one
-    # value two ways, two lists place it differently and their ranks are not
-    # comparable, so none of that dimension's values is ranked.
+    # value two ways, two lists place it differently; when one category gives
+    # two values one rank, it lists values from two lists side by side. Either
+    # way the ranks do not order the values a reader shows together, so none
+    # of that dimension's values is ranked.
     unranked_dimensions = {
         dimension_id
         for (dimension_id, _), ranks in value_ranks.items()
         if len(ranks) > 1
+    } | {
+        dimension_id
+        for (_, dimension_id, _), value_ids in ranked_values.items()
+        if len(value_ids) > 1
     }
     values_by_dimension: dict[str, list[dict[str, object]]] = {}
     for dimension_id, value_id in dimension_values.keys():

@@ -299,6 +299,51 @@ def test_a_value_ranked_two_ways_leaves_its_dimension_unranked() -> None:
     ]
 
 
+def _snap_state(category: str, value_id: str, label: str, rank: int) -> dict:
+    return _target(
+        f"usda_snap.{category}.{value_id}",
+        geography=UNITED_STATES,
+        category={
+            "id": f"usda_snap.{category}",
+            "label": category,
+            "provider_id": "irs_soi",
+        },
+        dimensions=[
+            {
+                "id": "usda_snap.state_or_territory",
+                "label": "State or territory",
+                "value_id": value_id,
+                "value_label": label,
+                "value_rank": rank,
+            }
+        ],
+    )
+
+
+@pytest.mark.parametrize(
+    ("categories", "ranked"),
+    [(("households", "households"), False), (("households", "benefits"), True)],
+)
+def test_two_values_one_category_ranks_alike_leave_the_dimension_unranked(
+    categories: tuple[str, str], ranked: bool
+) -> None:
+    # Regional tables each list their first state at row 0. Shown together in
+    # one category, row 0 no longer orders Alaska and Alabama.
+    model = _model(
+        _payload(
+            [
+                _snap_state(categories[0], "ak", "Alaska", 0),
+                _snap_state(categories[1], "al", "Alabama", 0),
+            ]
+        )
+    )
+    (dimension,) = catalog_calibration_diagnostics(model).hierarchy_catalogs.dimensions
+
+    assert [value.rank for value in dimension.values] == (
+        [0, 0] if ranked else [None, None]
+    )
+
+
 def test_an_unranked_row_does_not_unrank_its_value() -> None:
     model = _model(
         _ranked_payload(
