@@ -41,6 +41,10 @@ from microcosm.build.uk_runtime.etb_services import (
     UKETBServicesStageTransform,
     allocate_nhs_by_age_gender,
 )
+from microcosm.build.uk_runtime.household_lineage import (
+    HIGH_VALUE_SUPPORT_COPY_COLUMN,
+    HIGH_VALUE_SUPPORT_INDEX_COLUMN,
+)
 from microcosm.build.uk_runtime.national_frame import uk_national_frame
 from microcosm.frame import WeightKind
 from test_support.microcosm_build.uk_cgt_support import (
@@ -687,6 +691,35 @@ class TestRosterOrderedScoping:
             *expected_later,
         ]
 
+    def test_the_high_value_copies_are_stripped_from_the_stages_before_them(
+        self,
+    ) -> None:
+        # Stage 26's copies (microcosm#1240) are stacked after the wealth
+        # stages and before the travel block.
+        tool = _load_tool()
+        household = pd.DataFrame(
+            {
+                "household_is_spi_synthetic": [False],
+                HIGH_VALUE_SUPPORT_COPY_COLUMN: [False],
+                "household_is_capital_gains_clone": [False],
+                "household_is_cgt_support_copy": [False],
+            }
+        )
+        cgt_layers = [
+            "household_is_capital_gains_clone",
+            "household_is_cgt_support_copy",
+        ]
+        assert tool._flags_stacked_after("was_wealth", household) == [
+            HIGH_VALUE_SUPPORT_COPY_COLUMN,
+            *cgt_layers,
+        ]
+        assert tool._flags_stacked_after("nts_bus_travel", household) == cgt_layers
+        assert tool._flags_stacked_after("frs_take_up", household) == [
+            "household_is_spi_synthetic",
+            HIGH_VALUE_SUPPORT_COPY_COLUMN,
+            *cgt_layers,
+        ]
+
     def test_e5_receipt_covers_the_spi_rows_the_stage_imputed(self) -> None:
         from microcosm.build.uk_runtime.regional_uprating import (
             uprate_household_property_by_region,
@@ -1318,10 +1351,6 @@ def _lineage_household(household: pd.DataFrame) -> pd.DataFrame:
         HOUSEHOLD_IS_CGT_RESIDENTIAL_CLONE,
     )
     from microcosm.build.uk_runtime.cgt_support import CGT_SUPPORT_COPY_INDEX_COLUMN
-    from microcosm.build.uk_runtime.household_lineage import (
-        HIGH_VALUE_SUPPORT_COPY_COLUMN,
-        HIGH_VALUE_SUPPORT_INDEX_COLUMN,
-    )
     from test_support.microcosm_build.uk_clone_first_frames import COPY_PATH_COLUMNS
 
     lineage = household.drop(columns=list(COPY_PATH_COLUMNS))
@@ -1380,10 +1409,6 @@ class TestCopyIdsAtTheDeclaredTable:
         # The SPI channel's ordinal (copy 1, band donor 2) and the high-value
         # copy's are checked against the id only here; a nonzero-marker reading
         # would pass a band donor recorded as the SPI copy.
-        from microcosm.build.uk_runtime.household_lineage import (
-            HIGH_VALUE_SUPPORT_INDEX_COLUMN,
-        )
-
         tool = _load_tool()
         household = _lineage_household(_chain("table").household)
         for column, stored, tampered_to in (
@@ -1670,3 +1695,269 @@ class TestReceiptsOnFramesTheStagesBuilt:
         assert problems == {}
         assert pairs["anchored"] is True and pairs["pairs"] == 11
         assert support["copies"] == 5 and support["families"] == 3
+
+
+# --- the high-value home copies and the regional home values -----------------
+#
+# The split scenario's six one-person households, all FRS-base owners, through
+# the real stages from the regional uprating on. The uprating (stage 25) sets
+# each region's unweighted mean of base owners' values to its public price;
+# the high-value home support (stage 26, microcosm#1240) divides the top of
+# each region, at stratum 0.6, into three rows at a third of the weight (id 5
+# in Wales, ids 4 and 6 in London); the regional home values (stage 27,
+# microcosm#1112) read every value off the region's knots and keep the value
+# they replaced. With ``cgt`` the CGT support split and the clone follow.
+
+_HOME_VALUES = [100_000.0, 200_000.0, 300_000.0, 400_000.0, 500_000.0, 600_000.0]
+_OTHER_PROPERTY = [0.0, 50_000.0, 10_000.0, 0.0, 120_000.0, 30_000.0]
+
+
+def _home_values_chain(*, cgt: bool, tamper: bool = False) -> SimpleNamespace:
+    """The scenario before stage 26, after it, after stage 27, and at the end.
+
+    With ``tamper`` the first household's uprated value and wealth move off
+    the uprating's factor before stage 26, as an uprating that stored a value
+    off its fixed point would leave them.
+    """
+
+    from microcosm.build.uk_runtime.high_value_home_support import (
+        split_high_value_support_households,
+    )
+    from microcosm.build.uk_runtime.regional_home_values import (
+        assign_regional_home_values,
+    )
+    from microcosm.build.uk_runtime.regional_uprating import (
+        load_regional_land_values_resource,
+        uprate_household_property_by_region,
+    )
+    from test_support.microcosm_build.uk_cgt_support import support_tables
+
+    person, benunit, household, weights = support_tables(
+        weights=_SPLIT_WEIGHTS, wealth=_SPLIT_WEALTH, incomes=_SPLIT_INCOMES
+    )
+    household["tenure_type"] = "OWNED_OUTRIGHT"
+    household["main_residence_value"] = _HOME_VALUES
+    household["property_wealth"] = np.add(_HOME_VALUES, _OTHER_PROPERTY)
+    household["source_household_id"] = household["household_id"]
+    uprated = uprate_household_property_by_region(
+        household, load_regional_land_values_resource()
+    )
+    if tamper:
+        uprated.loc[0, ["main_residence_value", "property_wealth"]] *= 1.25
+    pre_split = uk_national_frame(
+        person=person,
+        benunit=benunit,
+        household=uprated,
+        household_weights=weights,
+        time_period="2024",
+    )
+    split = split_high_value_support_households(
+        pre_split, stratum_lower=0.6, copies=3
+    ).frame
+    valued = assign_regional_home_values(split).frame
+    final = valued
+    if cgt:
+        final = clone_cgt_incidence(
+            split_cgt_support_households(
+                valued,
+                distribution=support_distribution(_SPLIT_TOP_CELLS),
+                parameters=PARAMETERS,
+                clone_count=1,
+            ).frame,
+            distribution=load_advani_summers_distribution(),
+        ).frame
+    return SimpleNamespace(pre_split=pre_split, split=split, valued=valued, final=final)
+
+
+def _cgt_layers(frame) -> list[str]:
+    household = frame.table("household")
+    return [
+        flag
+        for flag in (HOUSEHOLD_IS_CGT_CLONE, HOUSEHOLD_IS_CGT_SUPPORT_COPY)
+        if flag in household.columns
+    ]
+
+
+class TestHighValueCopiesAndRegionalHomeValues:
+    """E5 reads the uprating where stage 25 left it, on the rows it saw."""
+
+    @pytest.mark.parametrize("cgt", [False, True])
+    def test_the_wealth_scope_folds_every_copy_onto_its_root(self, cgt: bool) -> None:
+        tool = _load_tool()
+        chain = _home_values_chain(cgt=cgt)
+        pre_split = chain.pre_split.weights_for("household").values
+        # The split leaves each root a third of its weight, its two copies
+        # the other thirds.
+        split_household = chain.split.table("household")
+        families = split_household["high_value_support_copies"].to_numpy()
+        assert families.tolist() == [1, 1, 1, 3, 3, 3] + [3] * 6
+        np.testing.assert_allclose(
+            chain.split.weights_for("household").values[:6],
+            pre_split / families[:6],
+            rtol=1e-12,
+        )
+        for scoped in (
+            tool._frame_as_stage_saw(chain.final, "was_wealth"),
+            tool._frs_only_frame(chain.final),
+        ):
+            household = scoped.table("household")
+            assert household["household_id"].tolist() == [1, 2, 3, 4, 5, 6]
+            assert not household[HIGH_VALUE_SUPPORT_COPY_COLUMN].any()
+            assert scoped.table("person")["person_id"].tolist() == [1, 2, 3, 4, 5, 6]
+            # Each root's copies add their thirds back: its pre-split mass.
+            np.testing.assert_allclose(
+                scoped.weights_for("household").values, pre_split, rtol=1e-12
+            )
+        # The travel block runs after the split: its scope keeps the copies.
+        travel = tool._frame_as_stage_saw(chain.final, "nts_bus_travel")
+        assert int(travel.table("household")[HIGH_VALUE_SUPPORT_COPY_COLUMN].sum()) == 6
+
+    @pytest.mark.parametrize("cgt", [False, True])
+    def test_e5_holds_the_uprating_where_it_left_the_values(self, cgt: bool) -> None:
+        tool = _load_tool()
+        final = _home_values_chain(cgt=cgt).final
+        receipt = tool.e5_identity_receipt(
+            tool._frame_as_stage_saw(final, "was_wealth"), permutation_seed=7
+        )
+        assert receipt["columns_by_entity"]["household"] == [
+            "main_residence_value",
+            "property_wealth",
+        ]
+        assert receipt["identical_under_permutation"] is True
+        assert receipt["matches_stored_columns"] is True
+        # Either half of the scope alone stays red: the values stage 27
+        # stored, or the copies, FRS-base owners that enter the uprating's
+        # mean when they stay in scope.
+        stored_values = tool._drop_stacked_layers(
+            final, [HIGH_VALUE_SUPPORT_COPY_COLUMN, *_cgt_layers(final)]
+        )
+        copies_kept = tool._drop_stacked_layers(
+            tool._pre_regional_home_values_frame(final), _cgt_layers(final)
+        )
+        for partial in (stored_values, copies_kept):
+            red = tool.e5_identity_receipt(partial, permutation_seed=7)
+            assert red["matches_stored_columns"] is False
+            assert red["stored_column_mismatches"] == {
+                "household": ["main_residence_value", "property_wealth"]
+            }
+
+    @pytest.mark.parametrize("cgt", [False, True])
+    def test_e5_reports_an_uprated_value_off_its_fixed_point(self, cgt: bool) -> None:
+        tool = _load_tool()
+        final = _home_values_chain(cgt=cgt, tamper=True).final
+        receipt = tool.e5_identity_receipt(
+            tool._frame_as_stage_saw(final, "was_wealth"), permutation_seed=7
+        )
+        assert receipt["identical_under_permutation"] is True
+        assert receipt["matches_stored_columns"] is False
+        assert receipt["stored_column_mismatches"] == {
+            "household": ["main_residence_value", "property_wealth"]
+        }
+
+    @pytest.mark.parametrize("tamper", [False, True])
+    def test_the_tool_entry_point_receipts_e5(
+        self, tamper: bool, monkeypatch, tmp_path
+    ) -> None:
+        import json
+        import sys
+
+        tool = _load_tool()
+        final = _home_values_chain(cgt=True, tamper=tamper).final
+        monkeypatch.setattr(tool, "load_uk_national_frame", lambda path: (final, {}))
+        output = tmp_path / "receipt.json"
+        monkeypatch.setattr(
+            sys,
+            "argv",
+            [
+                "verify_uk_identity_stability.py",
+                "--input-h5",
+                str(tmp_path / "spine.h5"),
+                "--output",
+                str(output),
+                "--check",
+                "e5",
+            ],
+        )
+        assert tool.main() == (1 if tamper else 0)
+        assert json.loads(output.read_text())["matches_stored_columns"] is not tamper
+
+    def test_the_reversal_restores_what_stage_27_replaced(self) -> None:
+        from microcosm.build.uk_runtime.regional_home_values import RANK_BASIS_COLUMN
+
+        tool = _load_tool()
+        chain = _home_values_chain(cgt=False)
+        before = chain.split.table("household")
+        after = chain.valued.table("household")
+        assert (
+            after["main_residence_value"].to_numpy()
+            != before["main_residence_value"].to_numpy()
+        ).all()
+        reversed_frame = tool._pre_regional_home_values_frame(chain.valued)
+        restored = reversed_frame.table("household")
+        assert RANK_BASIS_COLUMN not in restored.columns
+        np.testing.assert_array_equal(
+            restored["main_residence_value"].to_numpy(),
+            before["main_residence_value"].to_numpy(),
+        )
+        np.testing.assert_allclose(
+            restored["property_wealth"].to_numpy(),
+            before["property_wealth"].to_numpy(),
+            rtol=1e-12,
+        )
+        # Nothing to take back on a frame without the rank basis.
+        assert tool._pre_regional_home_values_frame(reversed_frame) is reversed_frame
+        assert tool._pre_regional_home_values_frame(chain.split) is chain.split
+
+    def test_dropping_the_copies_under_a_kept_cgt_layer_is_refused(self) -> None:
+        tool = _load_tool()
+        final = _home_values_chain(cgt=True).final
+        with pytest.raises(ValueError, match="requires dropping the CGT layers"):
+            tool._drop_stacked_layers(final, [HIGH_VALUE_SUPPORT_COPY_COLUMN])
+
+    def test_a_copy_off_its_lineage_fails_closed_by_count(self) -> None:
+        tool = _load_tool()
+        household = _home_values_chain(cgt=True).final.table("household")
+        lineage = tool._high_value_copy_lineage(household)
+        assert len(lineage.copy_positions) == 6
+        ids = household["household_id"].to_numpy()
+        # The roots' ids are single digits, like the counts; every copy's is
+        # long enough to show if a message printed it.
+        copy_ids = ids[ids >= copy_id_table.UK_COPY_ID_BASE_RADIX]
+        first_copy = int(lineage.copy_positions[0])
+        root = int(lineage.root_positions[0])
+
+        index_moved = household.copy()
+        index_moved.loc[first_copy, HIGH_VALUE_SUPPORT_INDEX_COLUMN] = 3 - int(
+            lineage.copy_index[0]
+        )
+        unflagged = household.copy()
+        unflagged.loc[first_copy, HIGH_VALUE_SUPPORT_COPY_COLUMN] = False
+        copy_missing = household.drop(index=first_copy).reset_index(drop=True)
+        root_missing = household.drop(index=root).reset_index(drop=True)
+        for tampered, message in (
+            (
+                index_moved,
+                "High-value home copy index stored on 1 copy(ies) disagrees with "
+                "the id scheme (the id's ordinal in the copy-id table's "
+                "'high_value_support' field).",
+            ),
+            (
+                unflagged,
+                "High-value home copy flag and stored copy index disagree on 1 "
+                "household(s).",
+            ),
+            (
+                copy_missing,
+                "'high_value_support_copies' stored on 1 household(s) disagrees "
+                "with the copies their ids decode to.",
+            ),
+            (
+                root_missing,
+                "2 high-value home copy(ies) without a root household at the "
+                "declared radix of the copy-id table's 'high_value_support' field.",
+            ),
+        ):
+            with pytest.raises(ValueError) as caught:
+                tool._high_value_copy_lineage(tampered)
+            assert str(caught.value) == message
+            assert not any(str(int(value)) in str(caught.value) for value in copy_ids)
