@@ -32,6 +32,9 @@ EXPECTED_SOURCE_MONTHS = "uk_uc_expected_source_months"
 # the State Pension, Pension Credit and Attendance Allowance Stat-Xplore cubes
 # bind on the same four calendar-2025 points (PolicyEngine/chronicle#302 via
 # #305).
+# The PIP cases cube (PolicyEngine/chronicle#420 item 6) is measured, held out
+# of the solve, on its four quarter-end points inside calendar 2025 (January,
+# April, July, October).
 SOURCE_MONTH_FAMILIES = frozenset(
     {
         "dwp_universal_credit",
@@ -40,6 +43,7 @@ SOURCE_MONTH_FAMILIES = frozenset(
         "dwp_state_pension",
         "dwp_pension_credit",
         "dwp_attendance_allowance",
+        "dwp_pip",
     }
 )
 #: Operations over an explicit month list; they may cross calendar years.

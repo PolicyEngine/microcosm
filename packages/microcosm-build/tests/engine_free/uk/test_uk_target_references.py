@@ -1060,8 +1060,11 @@ def test_prefix_geography_pins_carry_scotgov_and_england_scoped_slc_families() -
     construction — while the GB default pin could never match.
     SLC's devolved repayments are one row per nation, each declaring its
     nation's geography in its selector (microcosm#1095 R4). The dwp.pip
-    claimant counts are no targets now: they are England-and-Wales diagnostics
-    on obr.pip, pinned K04000001 in their own declarations (microcosm#1095).
+    claimant counts of FOI2025/24990 are no targets: they are England-and-Wales
+    diagnostics on obr.pip, pinned K04000001 in their own declarations
+    (microcosm#1095). DWP's PIP cases (P3 of the November event-data plan) are
+    held-out rows per country and English region, each declaring its own
+    geography in its selector.
     """
     contract = _load_uk_resource("uk_population_targets.json")
     pins = _geography_pins(contract)
@@ -1107,7 +1110,34 @@ def test_prefix_geography_pins_carry_scotgov_and_england_scoped_slc_families() -
         "slc.repayments.scotland_total": "S92000003",
         "slc.repayments.northern_ireland_total": "N92000002",
     }
-    assert not [target_id for target_id in pins if target_id.startswith("dwp.pip.")]
+    regions = {
+        "north_east": "E12000001",
+        "north_west": "E12000002",
+        "yorkshire": "E12000003",
+        "east_midlands": "E12000004",
+        "west_midlands": "E12000005",
+        "east_of_england": "E12000006",
+        "london": "E12000007",
+        "south_east": "E12000008",
+        "south_west": "E12000009",
+    }
+    nations = {"england": "E92000001", "wales": "W92000004"}
+
+    def pip_area(target_id: str) -> str:
+        rest = target_id.removeprefix("dwp.pip.cases_")
+        area = next(
+            name
+            for name in sorted({**regions, **nations}, key=len, reverse=True)
+            if rest == name or rest.startswith(f"{name}_")
+        )
+        return {**regions, **nations}[area]
+
+    pip_ids = {target_id for target_id in pins if target_id.startswith("dwp.pip.")}
+    assert len(pip_ids) == 94
+    assert all(target_id.startswith("dwp.pip.cases_") for target_id in pip_ids)
+    assert {target_id: pins[target_id]["geography_id"] for target_id in pip_ids} == {
+        target_id: pip_area(target_id) for target_id in pip_ids
+    }
 
     def haystack(target: dict) -> str:
         selector = target.get("ledger_selector") or {}
