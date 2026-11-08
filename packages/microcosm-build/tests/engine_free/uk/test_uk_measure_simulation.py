@@ -1246,10 +1246,12 @@ def test_the_corporate_and_total_land_rows_are_measured_diagnostics():
         ) in held, name
 
 
-def test_the_two_land_diagnostics_are_measured_but_not_fitted():
+def test_the_two_land_diagnostics_leave_the_solve_but_stay_on_the_compiled_register():
     """The packaged register's two land entries take their rows out of the
-    national solve and leave them measured (the #931 move, María's ruling of
-    2026-11-06).
+    national solve and keep them on the compiled register (the #931 move,
+    María's ruling of 2026-11-06). No build step reports a held row's
+    estimate; a tool that scores the un-excluded register, such as
+    tools/evaluate_uk_incumbent_surface.py, measures them.
 
     The test applies the register's land entries to the compiled rows as both
     target loaders (load_uk_national_target_inputs and
@@ -1421,9 +1423,9 @@ def test_the_two_land_diagnostics_are_measured_but_not_fitted():
     )
     assert problem.bindings["target_loss_weights"] == pytest.approx([0.5, 0.5])
 
-    # Measured: the compiled register materializes on the same frame, and
-    # scoring it gives every row, the two held land rows included, its
-    # weighted estimate.
+    # Scoreable: the compiled register materializes on the same frame, and
+    # scoring it, as a tool that scores the un-excluded register does, gives
+    # every row, the two held land rows included, its weighted estimate.
     adapter = CalibrationFrameAdapter(frame)
     materialized = materialize_uk_ledger_targets(
         adapter, compiled, period=2025, band_edge_registry=compiled
