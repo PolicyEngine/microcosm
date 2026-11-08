@@ -272,13 +272,17 @@ borrower is a person whose federal balance is positive.
   materializer. While the stage is opt-in the family stays off the one-surface
   target-parity contract (`_without_opt_in_student_loan_targets`).
 - **The release's own fit table.** A `--scf-education-debt` build writes the
-  stage's fit table (`us_scf_education_debt_fit_table`) twice in its artifacts
+  stage's fit table (`us_scf_education_debt_fit_table`) twice in its release
   directory: at the staged frame's pre-calibration weights
   (`us_scf_education_debt_fit.json`), and at the weights it ships, on the
   frame it exports, before any post-export scoring or terminal gate
   (`us_scf_education_debt_calibrated_fit.json`). The second reports the share
   of households with debt, by age, race and income quintile, at the weights
-  the release ships.
+  the release ships. The release manifest lists both as `diagnostics`
+  artifacts (`us_scf_education_debt_fit` and
+  `us_scf_education_debt_calibrated_fit`), so the publisher uploads them under
+  `releases/<id>/` without `--extra-file`. A build without the flag writes
+  neither and lists neither.
 - **Known limits, measured.** The receipt
   (`experiments/1074-fsa-calibration-receipts.md`) refits the published
   default with and without the family. The stage gives balances to reference

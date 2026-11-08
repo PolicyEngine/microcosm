@@ -2215,7 +2215,7 @@ def test_scf_education_debt_stage_runs_its_gate_and_writes_its_fit(
         scf_2025_summary_extract=Path("rscfp2025.dta"),
         scf_2025_full_extract=Path("p25i6.dta"),
     )
-    fit_path = tmp_path / "artifacts" / "us_scf_education_debt_fit.json"
+    fit_path = tmp_path / "release" / "us_scf_education_debt_fit.json"
     assert (
         builder._with_scf_education_debt_stage(
             frame, args=args, telemetry=None, fit_path=fit_path
@@ -2262,7 +2262,7 @@ def test_scf_education_debt_fit_is_written_at_calibrated_weights_before_scoring(
         lambda base_frame: seen.append(base_frame) or fit,
     )
     name = builder.US_SCF_EDUCATION_DEBT_CALIBRATED_FIT_FILENAME
-    path = tmp_path / "artifacts" / name
+    path = tmp_path / "release" / name
     builder._write_us_scf_education_debt_fit(
         path, frame, weights="calibrated_household_weights"
     )
@@ -2301,7 +2301,7 @@ def test_scf_education_debt_fit_is_written_at_calibrated_weights_before_scoring(
     assert ast.unparse(statement.test) == "args.scf_education_debt"
     (call,) = calls(statement, "_write_us_scf_education_debt_fit")
     assert [ast.unparse(arg) for arg in call.args] == [
-        "artifact_root / US_SCF_EDUCATION_DEBT_CALIBRATED_FIT_FILENAME",
+        "release_dir / US_SCF_EDUCATION_DEBT_CALIBRATED_FIT_FILENAME",
         "export_frame",
     ]
     assert {kw.arg: ast.unparse(kw.value) for kw in call.keywords} == {
@@ -12956,6 +12956,128 @@ def test_build_manifests_selects_medicare_irmaa_holdout_for_publication(
     _check_release_manifest(manifest, release_id, failures)
     _check_local_artifact_hashes(release_dir, manifest, failures)
     assert failures == []
+
+
+def _write_scf_education_debt_fits(builder, monkeypatch, release_dir, filenames):
+    monkeypatch.setattr(
+        builder,
+        "us_scf_education_debt_fit_table",
+        lambda frame: {"households": {"share_with_federal_education_debt": 0.2}},
+    )
+    for filename in filenames:
+        builder._write_us_scf_education_debt_fit(
+            release_dir / filename, object(), weights="calibrated_household_weights"
+        )
+
+
+SCF_EDUCATION_DEBT_FIT_ARTIFACT_PATHS = {
+    "us_scf_education_debt_fit": "us_scf_education_debt_fit.json",
+    "us_scf_education_debt_calibrated_fit": "us_scf_education_debt_calibrated_fit.json",
+}
+
+
+@pytest.mark.parametrize("flag", (True, False), ids=("flag", "no_flag"))
+def test_build_manifests_lists_scf_education_debt_fits_only_with_the_flag(
+    monkeypatch, tmp_path, flag
+) -> None:
+    """microcosm#1074: a --scf-education-debt build's two fit tables are
+    diagnostics artifacts of its release, so the publisher uploads them under
+    releases/<id>/. A build without the flag lists neither, even beside stray
+    copies in its release directory."""
+    from microcosm.data.contract import (
+        _check_local_artifact_hashes,
+        _check_release_manifest,
+    )
+    from microcosm.data.release import (
+        _release_manifest_release_artifacts,
+        _release_manifest_root_artifacts,
+    )
+
+    builder = _load_builder_module()
+    assert builder.US_SCF_EDUCATION_DEBT_FIT_ARTIFACTS == (
+        SCF_EDUCATION_DEBT_FIT_ARTIFACT_PATHS
+    )
+    release_id, release_dir, artifact_root = _gate_evidence_release_dir(
+        builder, monkeypatch, tmp_path, coverage={}
+    )
+    filenames = set(SCF_EDUCATION_DEBT_FIT_ARTIFACT_PATHS.values())
+    _write_scf_education_debt_fits(builder, monkeypatch, release_dir, filenames)
+    builder._build_manifests(
+        **_minimal_manifest_kwargs(builder, release_id, release_dir, artifact_root),
+        scf_education_debt=flag,
+    )
+
+    manifest = json.loads((release_dir / "release_manifest.json").read_text())
+    listed = {
+        key: entry
+        for key, entry in manifest["artifacts"].items()
+        if entry["path"] in filenames
+    }
+    published = set(_release_manifest_release_artifacts(release_dir))
+    assert not filenames & set(_release_manifest_root_artifacts(release_dir))
+    if not flag:
+        assert listed == {}
+        assert not filenames & published
+        return
+    assert listed == {
+        key: {
+            "kind": "diagnostics",
+            "path": filename,
+            "repo_id": builder.REPO_ID,
+            "revision": release_id,
+            "sha256": hashlib.sha256((release_dir / filename).read_bytes()).hexdigest(),
+        }
+        for key, filename in SCF_EDUCATION_DEBT_FIT_ARTIFACT_PATHS.items()
+    }
+    assert filenames <= published
+    failures: list[str] = []
+    _check_release_manifest(manifest, release_id, failures)
+    _check_local_artifact_hashes(release_dir, manifest, failures)
+    assert failures == []
+
+
+def test_build_manifests_refuses_a_scf_education_debt_build_missing_a_fit(
+    monkeypatch, tmp_path
+) -> None:
+    builder = _load_builder_module()
+    release_id, release_dir, artifact_root = _gate_evidence_release_dir(
+        builder, monkeypatch, tmp_path, coverage={}
+    )
+    _write_scf_education_debt_fits(
+        builder, monkeypatch, release_dir, [builder.US_SCF_EDUCATION_DEBT_FIT_FILENAME]
+    )
+    with pytest.raises(RuntimeError, match="us_scf_education_debt_calibrated_fit"):
+        builder._build_manifests(
+            **_minimal_manifest_kwargs(builder, release_id, release_dir, artifact_root),
+            scf_education_debt=True,
+        )
+    assert not (release_dir / "build_manifest.json").exists()
+    assert not (release_dir / "release_manifest.json").exists()
+
+
+def test_main_writes_scf_education_debt_fits_where_its_manifest_lists_them() -> None:
+    """_main writes the pre-calibration fit into the release directory (the
+    calibrated one is pinned above) and lists both only under the flag."""
+    import ast
+    import inspect
+
+    builder = _load_builder_module()
+    tree = ast.parse(inspect.getsource(builder._main))
+
+    def keywords(function: str) -> dict[str, str]:
+        (call,) = [
+            node
+            for node in ast.walk(tree)
+            if isinstance(node, ast.Call) and getattr(node.func, "id", "") == function
+        ]
+        return {kw.arg: ast.unparse(kw.value) for kw in call.keywords}
+
+    assert keywords("_with_scf_education_debt_stage")["fit_path"] == (
+        "release_dir / US_SCF_EDUCATION_DEBT_FIT_FILENAME if dry_run is None else None"
+    )
+    assert keywords("_build_manifests")["scf_education_debt"] == (
+        "args.scf_education_debt"
+    )
 
 
 def test_build_manifests_binds_gate_evidence_and_the_qrf_tail_register(

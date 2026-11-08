@@ -608,7 +608,9 @@ fi
 
 # --- 8. Publisher preflight, offline: publish_cli.py returns after
 # prepare_release when --preflight-only is set (:325-331 on origin/main), and
-# builds no Hub client. Secrets are stripped as overnight_chain.sh does. ---
+# builds no Hub client. Secrets are stripped as overnight_chain.sh does. It
+# passes no --extra-file: the publisher uploads every file the release manifest
+# lists, a --scf-education-debt build's two fit tables included. ---
 if ! stage_done publisher-preflight; then
   write_config publisher-preflight 24 16 22 7200 14400 "$W" "$PF_ENV" -- "${NOSECRETS[@]}" \
     "PATH=$W/.venv/bin:/usr/bin:/bin:/usr/sbin:/sbin" "$W/.venv/bin/microcosm-publish-release" \

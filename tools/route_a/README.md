@@ -93,7 +93,7 @@ overnight chain is alive, unless `EARLY_START_AFTER_HEAVY=1` and its log records
 | `preflight-base` | Runs `preflight_us_release_gates.py` on that H5 and the pinned feed, with the configured new-lineage mode and optional export-mass reference. Accepts 0 (clean) or 2 (AT-RISK); `RELEASE_DESPITE_PREFLIGHT_FAIL=1` also accepts 1 here. |
 | `release` | Runs `build_us_fiscal_refresh_release.py --base-h5` with the feed, SSI basis, SCF extract and configured release arguments. Requires exit 0 and `release_manifest.json`. Staging telemetry is enabled for this stage. |
 | `preflight-release` | Repeats the release-gate preflight with the candidate's release manifest. Accepts 0 or 2. |
-| `publisher-preflight` | Runs `microcosm-publish-release --preflight-only` against the local release directory and artifacts. Requires exit 0. The publisher calls `prepare_release` and returns before its publishing call. |
+| `publisher-preflight` | Runs `microcosm-publish-release --preflight-only` against the local release directory and artifacts. Requires exit 0. The publisher calls `prepare_release` and returns before its publishing call. It takes no `--extra-file`: the publisher uploads every file the release manifest lists, including the two SCF education-debt fit tables of a release run with `--scf-education-debt` in `RELEASE_EXTRA_ARGS`. |
 
 Both gate preflights and the publisher preflight remove the HF credential
 variables and Slack webhook variables, set `POPULACE_RELEASE_ENV=/dev/null` and

@@ -1049,7 +1049,7 @@ US_ACA_REPORTED_SUBSIDIZED_ANCHOR = (
     "reported_has_subsidized_marketplace_health_coverage_at_interview"
 )
 US_ACA_REPORTED_MARKETPLACE_COVERAGE = "has_marketplace_health_coverage_at_interview"
-#: The SCF education-debt fit table (microcosm#1073), in the artifacts
+#: The SCF education-debt fit table (microcosm#1073), in the release
 #: directory of a ``--scf-education-debt`` build: at the staged frame's
 #: pre-calibration weights, and at the release's calibrated weights before any
 #: post-export scoring (microcosm#1074).
@@ -1057,6 +1057,16 @@ US_SCF_EDUCATION_DEBT_FIT_FILENAME = "us_scf_education_debt_fit.json"
 US_SCF_EDUCATION_DEBT_CALIBRATED_FIT_FILENAME = (
     "us_scf_education_debt_calibrated_fit.json"
 )
+#: Both fit tables, keyed by their release-manifest artifact key. Only a
+#: ``--scf-education-debt`` build writes them, so only its manifest lists
+#: them, and the publisher uploads them under ``releases/<id>/`` with the
+#: other diagnostics, without ``--extra-file``.
+US_SCF_EDUCATION_DEBT_FIT_ARTIFACTS: dict[str, str] = {
+    "us_scf_education_debt_fit": US_SCF_EDUCATION_DEBT_FIT_FILENAME,
+    "us_scf_education_debt_calibrated_fit": (
+        US_SCF_EDUCATION_DEBT_CALIBRATED_FIT_FILENAME
+    ),
+}
 US_ACA_APTC_TARGET_TABLE = "cms_aca_aptc_recipients_by_state"
 US_ACA_TARGET_ROLE_TABLES = {
     "aca_ptc_recipients": US_ACA_APTC_TARGET_TABLE,
@@ -10227,6 +10237,35 @@ def _gate_evidence_artifacts(release_dir: Path, *, revision: str) -> dict[str, d
     }
 
 
+def _scf_education_debt_fit_artifacts(
+    release_dir: Path, *, revision: str
+) -> dict[str, dict]:
+    """Release-manifest entries for a ``--scf-education-debt`` build's fit tables.
+
+    The build writes both into the release directory before its manifests, so
+    a missing table fails the build instead of shipping without it.
+    """
+    missing = sorted(
+        filename
+        for filename in US_SCF_EDUCATION_DEBT_FIT_ARTIFACTS.values()
+        if not (release_dir / filename).is_file()
+    )
+    if missing:
+        raise RuntimeError(
+            "A --scf-education-debt build must write its fit tables before its "
+            f"manifests; {release_dir} is missing {missing}."
+        )
+    return {
+        key: _artifact_entry(
+            filename,
+            _sha256(release_dir / filename),
+            kind="diagnostics",
+            revision=revision,
+        )
+        for key, filename in US_SCF_EDUCATION_DEBT_FIT_ARTIFACTS.items()
+    }
+
+
 def _gate_evidence_status(
     gate_evidence_artifacts: Mapping[str, object],
     *,
@@ -10620,6 +10659,7 @@ def _build_manifests(
     scored_dataset_sha256: str | None = None,
     post_export_scoring: Mapping[str, object] | None = None,
     diagnostics_outcome: DiagnosticsWriteOutcome | None = None,
+    scf_education_debt: bool = False,
 ) -> None:
     dataset_path = artifact_root / dataset_filename
     calibration_path = artifact_root / calibration_filename
@@ -10660,6 +10700,13 @@ def _build_manifests(
     # rather than only in loose diagnostics that never ship. The same blocks
     # ride build_manifest.json and release_manifest.json's build section.
     gate_evidence_artifacts = _gate_evidence_artifacts(release_dir, revision=release_id)
+    # microcosm#1074: checked before either manifest is written, so a build
+    # missing a fit table leaves no manifest behind.
+    scf_education_debt_fit_artifacts = (
+        _scf_education_debt_fit_artifacts(release_dir, revision=release_id)
+        if scf_education_debt
+        else {}
+    )
     qrf_tail_register = _qrf_tail_register_manifest_block(release_dir)
     stored_inputs = _stored_inputs_manifest_block(
         release_dir, dataset_sha256=dataset_sha
@@ -11208,6 +11255,7 @@ def _build_manifests(
                 if (release_dir / "demographics.json").exists()
                 else {}
             ),
+            **scf_education_debt_fit_artifacts,
             **gate_evidence_artifacts,
         },
     }
@@ -14477,7 +14525,7 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
             args=args,
             telemetry=telemetry,
             fit_path=(
-                artifact_root / US_SCF_EDUCATION_DEBT_FIT_FILENAME
+                release_dir / US_SCF_EDUCATION_DEBT_FIT_FILENAME
                 if dry_run is None
                 else None
             ),
@@ -15400,7 +15448,7 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
         # follows the export and cleanup statements, which
         # test_us_post_export_scoring runs on their own.
         _write_us_scf_education_debt_fit(
-            artifact_root / US_SCF_EDUCATION_DEBT_CALIBRATED_FIT_FILENAME,
+            release_dir / US_SCF_EDUCATION_DEBT_CALIBRATED_FIT_FILENAME,
             export_frame,
             weights="calibrated_household_weights",
         )
@@ -16648,6 +16696,7 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
         scored_dataset_sha256=scored_dataset_sha256,
         post_export_scoring=post_export_scoring,
         diagnostics_outcome=diagnostics_outcome,
+        scf_education_debt=args.scf_education_debt,
     )
     if telemetry is not None:
         telemetry.attach_artifact("build_manifest", release_dir / "build_manifest.json")
