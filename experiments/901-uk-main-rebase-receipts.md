@@ -131,7 +131,10 @@ closed on 2026-09-28 by restoring the tool's behaviour on the driver.
 4. `candidate_f100_does_not_call_any_sampler`: covered by
    `test_uk_national_sampling.py::test_full_fraction_is_a_structural_no_op` and
    `::test_source_sampling_cannot_be_reapplied_as_pool_sampling`; the compact national sampler
-   is not reachable from the graph's population node.
+   is not reachable from the graph's population node. (Note of 2026-11-08: microcosm#931
+   retired the compact national sampler, `sample_uk_national_frame`, which no build or tool
+   had called since 8adc836b9, together with that test. The second test and
+   `uk.full.sample`'s f100 branch, which calls no sampler, remain.)
 5. `candidate_engine_surface_reuses_one_resolver`: covered by
    `test_uk_full_measure.py::test_full_measure_reuses_one_resolver` (direct port).
 6. `candidate_engine_surface_resolves_real_per_clone_blocks`: covered by
