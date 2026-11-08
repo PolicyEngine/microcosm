@@ -104,6 +104,8 @@ def _write_toy_h5(
     path: Path,
     *,
     household: pd.DataFrame | None = None,
+    person: pd.DataFrame | None = None,
+    benunit: pd.DataFrame | None = None,
     fmt: str = "table",
 ) -> None:
     with pd.HDFStore(path) as store:
@@ -113,8 +115,18 @@ def _write_toy_h5(
             format=fmt,
             data_columns=fmt == "table",
         )
-        store.put("person", _person_frame(), format=fmt, data_columns=fmt == "table")
-        store.put("benunit", _benunit_frame(), format=fmt, data_columns=fmt == "table")
+        store.put(
+            "person",
+            _person_frame() if person is None else person,
+            format=fmt,
+            data_columns=fmt == "table",
+        )
+        store.put(
+            "benunit",
+            _benunit_frame() if benunit is None else benunit,
+            format=fmt,
+            data_columns=fmt == "table",
+        )
         store.put(
             "time_period",
             pd.Series(["2023"]),
@@ -272,6 +284,48 @@ def test_driver_dry_run_writes_plan_only(monkeypatch, tmp_path) -> None:
     assert plan["source_lineage"]["pool_modulus"] is None
     assert plan["source_lineage"]["pool"] is None
     assert plan["source_lineage"]["explicit"] is None
+
+
+def test_driver_dry_run_refuses_dense_clones_of_a_table_minted_spine(
+    monkeypatch, tmp_path
+) -> None:
+    """A plan refuses what the build would (microcosm#931).
+
+    Every synthetic id sits at a residential arm plus a twin of the copy-id
+    table, so a second dense clone has no int64 room.
+    """
+    pytest.importorskip("tables")
+    pytest.importorskip("h5py")
+    builder = _load_builder_module()
+    offset = 10**18 + 10**17
+    person = _person_frame()
+    for column in ("person_id", "person_household_id", "person_benunit_id"):
+        person[column] = person[column] + offset
+    input_h5 = tmp_path / "populace_uk_2023.h5"
+    crosswalk_path = tmp_path / "crosswalk.csv.gz"
+    output_dir = tmp_path / "out"
+    _write_toy_h5(
+        input_h5,
+        household=_household_frame().assign(
+            household_id=lambda table: table["household_id"] + offset
+        ),
+        person=person,
+        benunit=_benunit_frame().assign(
+            benunit_id=lambda table: table["benunit_id"] + offset
+        ),
+    )
+    _crosswalk_frame().to_csv(crosswalk_path, index=False)
+
+    monkeypatch.setattr(
+        sys, "argv", _dry_run_argv(input_h5, output_dir, crosswalk_path)
+    )
+    with pytest.raises(
+        ValueError, match="clone-first spine of microcosm#931"
+    ) as caught:
+        builder.main()
+    assert "n_clones=2" in str(caught.value)
+    assert str(offset + 1001) not in str(caught.value)
+    assert not (output_dir / builder.DRY_RUN_PLAN_FILENAME).exists()
 
 
 def test_crosswalk_dry_run_reports_candidate_k_rows_bytes_and_support(

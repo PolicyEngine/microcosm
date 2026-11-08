@@ -436,6 +436,19 @@ def cgt_support_copy_counts(
     return np.maximum(counts, 1)
 
 
+def _refuse_copies_beyond_the_copy_id_field(copies: np.ndarray) -> None:
+    """Refuse a household divided into more rows than its copy-id field holds.
+
+    ``copies`` counts each household's rows, root included, so a household
+    of ``bound`` rows takes ordinals up to ``bound - 1`` and fits; one more
+    row does not. The refusal is the fixed :data:`CGT_SUPPORT_COPY_BOUND_REFUSAL`.
+    """
+
+    bound = copy_id_table.ordinal_bound(CGT_SUPPORT_COPY_ID_FIELD)
+    if len(copies) and int(np.max(copies)) > bound:
+        raise ValueError(CGT_SUPPORT_COPY_BOUND_REFUSAL)
+
+
 def split_cgt_support_households(
     frame: Frame,
     *,
@@ -500,8 +513,7 @@ def split_cgt_support_households(
     copies[selected] = cgt_support_copy_counts(
         weights[selected], CGT_SUPPORT_MAXIMUM_COPY_WEIGHT
     )
-    if int(copies.max()) > copy_id_table.ordinal_bound(CGT_SUPPORT_COPY_ID_FIELD):
-        raise ValueError(CGT_SUPPORT_COPY_BOUND_REFUSAL)
+    _refuse_copies_beyond_the_copy_id_field(copies)
     for table, columns in (
         (person, _PERSON_ID_COLUMNS),
         (benunit, ("benunit_id",)),

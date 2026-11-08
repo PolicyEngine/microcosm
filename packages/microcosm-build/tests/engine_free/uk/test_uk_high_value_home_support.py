@@ -137,6 +137,78 @@ def test_copies_take_their_roots_ids_plus_k_times_the_declared_radix() -> None:
     assert checked == result.copies_created == 4 * (hv.HIGH_VALUE_SUPPORT_COPIES - 1)
 
 
+def _frame_with_spi_copies():
+    """The owner frame in FRS id spaces, with SPI copies of its top owners.
+
+    Households keep their sernum, benefit units take sernum x 100 + 1 and
+    people sernum x 1000 + 1. Each of the four most valuable owners also has
+    an SPI copy at every id plus 10**11, whose provenance names its root, so
+    a copy's immediate parent and its provenance differ. ``marker`` names
+    each row: lineage never leans on an id or on the provenance column.
+    """
+    base = _frame()
+    household = base.table("household").copy()
+    benunit = base.table("benunit").copy()
+    person = base.table("person").copy()
+    benunit["benunit_id"] = benunit["benunit_id"] * 100 + 1
+    person["person_benunit_id"] = person["person_benunit_id"] * 100 + 1
+    person["person_id"] = person["person_id"] * 1000 + 1
+    household["marker"] = np.arange(1, len(household) + 1)
+    spi = 10**11
+    top = household.loc[household["tenure_type"] != "RENT_PRIVATELY"].tail(4)
+    copies = top.assign(
+        household_id=top["household_id"] + spi,
+        household_support_channel=pd.array(["spi"] * len(top), dtype="string"),
+        household_support_clone_index=1,
+        marker=top["marker"] + 1_000,
+    )
+    members = person.loc[person["person_household_id"].isin(top["household_id"])]
+    member_units = benunit.loc[benunit["benunit_id"].isin(members["person_benunit_id"])]
+    return uk_national_frame(
+        person=pd.concat(
+            [
+                person,
+                members.assign(
+                    person_id=members["person_id"] + spi,
+                    person_household_id=members["person_household_id"] + spi,
+                    person_benunit_id=members["person_benunit_id"] + spi,
+                ),
+            ],
+            ignore_index=True,
+        ),
+        benunit=pd.concat(
+            [benunit, member_units.assign(benunit_id=member_units["benunit_id"] + spi)],
+            ignore_index=True,
+        ),
+        household=pd.concat([household, copies], ignore_index=True),
+        time_period="2024",
+        weight_kind=WeightKind.IMPORTANCE,
+        household_weights=np.full(len(household) + len(copies), 10.0),
+    )
+
+
+def test_copies_of_spi_copies_take_their_parents_ids_plus_k_times_the_radix() -> None:
+    # Separate id spaces and SPI copies, whose provenance differs from their
+    # immediate parent: a stage that minted from the provenance column, or one
+    # id column from another, would miss here (microcosm#931).
+    frame = _frame_with_spi_copies()
+    result = hv.split_high_value_support_households(frame, stratum_lower=0.9)
+
+    checked = assert_copy_ids_follow_lineage(
+        frame,
+        result.frame,
+        field=hv.HIGH_VALUE_SUPPORT_COPY_ID_FIELD,
+        key_columns=("marker",),
+        ordinal_column=HIGH_VALUE_SUPPORT_INDEX_COLUMN,
+    )
+    assert checked == result.copies_created > 0
+    household = result.frame.table("household")
+    copied = household.loc[household[HIGH_VALUE_SUPPORT_COPY_COLUMN]]
+    # Some copies are of SPI copies, and some of base households.
+    assert (copied["marker"] > 1_000).any()
+    assert (copied["marker"] < 1_000).any()
+
+
 def test_the_split_refuses_incoming_ids_at_its_copy_id_radix() -> None:
     frame = _frame()
     household = frame.table("household").copy()

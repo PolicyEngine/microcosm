@@ -12,6 +12,7 @@ from __future__ import annotations
 import ast
 import inspect
 import json
+import re
 from pathlib import Path
 
 import numpy as np
@@ -19,7 +20,14 @@ import pandas as pd
 import pytest
 
 import microcosm.build as build
-from microcosm.build.uk_runtime import copy_id_table, graph_kernels
+from microcosm.build.uk_runtime import (
+    cgt_residential_split,
+    cgt_structure,
+    cgt_support,
+    copy_id_table,
+    graph_kernels,
+    high_value_home_support,
+)
 from microcosm.build.uk_runtime.cgt_residential_split import (
     CGT_RESIDENTIAL_MAXIMUM_LIABLE_GAINERS,
 )
@@ -40,18 +48,27 @@ from microcosm.build.uk_runtime.high_value_home_support import (
 )
 from microcosm.build.uk_runtime.household_lineage import UK_COPY_LINEAGE
 from microcosm.build.uk_runtime.rowwise_dataset import (
+    clone_uk_dataset_tables_with_rowwise_geography,
     expand_uk_geographic_pool,
     refuse_dense_clone_id_overflow,
 )
 from microcosm.build.uk_runtime.spi_band_donors import (
     SPI_INCOME_BAND_DONOR_CLONE_INDEX,
+    SPI_INCOME_BAND_DONOR_ID_REMAPPING,
+)
+from microcosm.build.uk_runtime.spi_support import (
+    SPI_SUPPORT_ID_REMAPPING,
+    create_uk_spi_support_tables,
+    support_channel_column,
 )
 from test_support.microcosm_build.uk_clone_first_frames import (
     COPY_PATH_COLUMNS,
     GEOGRAPHIC_RADIX,
+    IdTables,
     base_id_tables,
     clone_first_tables,
     copy_chain,
+    copy_households,
     id_frame,
 )
 
@@ -155,6 +172,65 @@ def test_a_malformed_table_is_refused() -> None:
         radix("clone_index")
 
 
+def _declared_id_remapping(operations, kind: str) -> str:
+    return next(
+        parameters["id_remapping"]
+        for operation_kind, parameters in operations
+        if operation_kind == kind
+    )
+
+
+@pytest.mark.parametrize(
+    ("field", "remapping", "ordinal_text"),
+    [
+        ("spi_support_channel", SPI_SUPPORT_ID_REMAPPING, "1 x the field's radix"),
+        (
+            "spi_support_channel",
+            SPI_INCOME_BAND_DONOR_ID_REMAPPING,
+            f"{SPI_INCOME_BAND_DONOR_CLONE_INDEX} x the field's radix",
+        ),
+        (
+            high_value_home_support.HIGH_VALUE_SUPPORT_COPY_ID_FIELD,
+            _declared_id_remapping(
+                high_value_home_support.high_value_support_operation_parameters(),
+                high_value_home_support.HIGH_VALUE_SUPPORT_OPERATION_KIND,
+            ),
+            "k x the field's radix",
+        ),
+        (
+            cgt_support.CGT_SUPPORT_COPY_ID_FIELD,
+            _declared_id_remapping(
+                cgt_support.cgt_support_split_operation_parameters(),
+                "split_top_wealth_support_households",
+            ),
+            f"k up to {ordinal_bound('cgt_support_split') - 1:,}",
+        ),
+        (
+            cgt_structure.CGT_CLONE_COPY_ID_FIELD,
+            cgt_structure.CGT_CLONE_ID_REMAPPING,
+            "the field's radix",
+        ),
+        (
+            cgt_residential_split.CGT_RESIDENTIAL_COPY_ID_FIELD,
+            _declared_id_remapping(
+                cgt_residential_split.cgt_residential_split_operation_parameters(),
+                "split_liable_gainers_by_residential_probability",
+            ),
+            "j x the field's radix",
+        ),
+    ],
+)
+def test_each_declared_id_remapping_restates_its_fields_radix(
+    field, remapping, ordinal_text
+) -> None:
+    # The manifests restate these strings verbatim (closed-world checks); the
+    # numbers they quote must be the table's, so neither goes stale alone.
+    assert remapping.startswith(f"copy-id table field {field}")
+    powers = [int(power) for power in re.findall(r"\(10\*\*(\d+)\)", remapping)]
+    assert [10**power for power in powers] == [radix(field)]
+    assert ordinal_text in remapping
+
+
 # --- the helpers ----------------------------------------------------------------
 
 
@@ -233,6 +309,14 @@ def test_the_frs_spine_refuses_raw_ids_that_reach_the_first_copy_field() -> None
 
 
 def test_k1_ids_sort_as_the_retired_rule_sorted_them_and_base_ids_keep() -> None:
+    """The table orders ids at K=1 as the retired rule did.
+
+    This catches a table whose fields run out of stage order below the twin,
+    but not every misordering: swapping the twin and arm fields leaves every
+    K=1 sort unchanged, because arms are copies of twins. The exact pin of
+    the fields (``test_the_fields_bounds_and_radices_are_the_declared_ones``)
+    and each stage's ``require_below`` carry that order.
+    """
     base = base_id_tables()
     table = copy_chain(base, rule="table")
     retired = copy_chain(base, rule="retired")
@@ -302,6 +386,69 @@ def test_clone_zero_and_its_copies_keep_the_k1_ids_on_clone_first_frames() -> No
     )
 
 
+def _spi_support_on_clone_first_tables(base: IdTables, n_clones: int):
+    """The real SPI support stage on ``n_clones`` geographic clones of ``base``.
+
+    Every clone of the same base households is selected, so only the stage's
+    id minting can tell K=1 from K=3 apart.
+    """
+
+    tables = clone_first_tables(base, n_clones)
+    sources = [
+        int(source)
+        for source in base.household["household_id"].tolist()
+        if source % 3 != 0
+    ]
+    return create_uk_spi_support_tables(
+        person=tables.person,
+        benunit=tables.benunit,
+        household=tables.household[
+            ["household_id", "source_household_id", "household_clone_index"]
+        ].assign(household_weight=1.0),
+        spi_household_count=None,
+        selected_household_ids=tuple(
+            source + clone * GEOGRAPHIC_RADIX
+            for clone in range(n_clones)
+            for source in sources
+        ),
+        source_year=2024,
+    )
+
+
+def test_the_spi_stage_mints_clone_zero_copies_at_their_k1_ids() -> None:
+    """Stage 16, where the retired rule grew with K, run on clone-first frames.
+
+    Clone 0's rows and SPI copies keep the K=1 ids exactly, and clone ``k``'s
+    are K=1's plus ``k x 10**9``. An offset sized from the ids the stage sees
+    would put K=3's copies a digit higher. The later copy stages' selections,
+    copy counts and draws move with K until group (a)'s later commits and (b)
+    make them per clone, so (b) owns their stage-level nesting tests.
+    """
+
+    base = base_id_tables(12)
+    k1 = _spi_support_on_clone_first_tables(base, 1)
+    k3 = _spi_support_on_clone_first_tables(base, 3)
+    channel = support_channel_column("household")
+    assert int((k1.household[channel] == "spi").sum()) > 0
+    for entity, column in (
+        ("household", "household_id"),
+        ("benunit", "benunit_id"),
+        ("person", "person_id"),
+        ("person", "person_household_id"),
+        ("person", "person_benunit_id"),
+    ):
+        k1_ids = getattr(k1, entity)[column].to_numpy(dtype=np.int64)
+        k3_ids = getattr(k3, entity)[column].to_numpy(dtype=np.int64)
+        np.testing.assert_array_equal(
+            np.sort(k3_ids),
+            np.sort(
+                np.concatenate(
+                    [k1_ids + clone * GEOGRAPHIC_RADIX for clone in range(3)]
+                )
+            ),
+        )
+
+
 # --- the executor ---------------------------------------------------------------
 
 
@@ -333,20 +480,130 @@ def test_the_executor_recovers_each_copy_parent_at_the_declared_radix(
         )
 
 
-def test_the_executor_stays_exact_above_2_53_on_all_integer_tables() -> None:
-    # The person table carries integer columns only, which a row-by-row walk
-    # would have read back as float64.
+@pytest.mark.parametrize(
+    ("stage", "field", "layers", "path_column"),
+    [
+        # No SPI layer below: the frame's largest id has five digits.
+        ("high_value_home_support", "high_value_support", 0, "hv"),
+        # SPI copies but no high-value copies: twelve digits, not thirteen.
+        ("cgt_support_split", "cgt_support_split", 2, "cgt"),
+    ],
+)
+def test_the_executor_takes_the_declared_radix_where_the_frame_maximum_differs(
+    stage, field, layers, path_column
+) -> None:
     base = base_id_tables()
-    before = id_frame(copy_chain(base, layers=5))
-    after = id_frame(copy_chain(base))
+    before_tables = copy_chain(base, layers=layers)
+    after_tables = copy_households(
+        before_tables,
+        field=field,
+        path_column=path_column,
+        ordinals={0: (1, 2), 7: (1,), 11: (3,)},
+        rule="table",
+    )
+    before = id_frame(before_tables)
+    largest = max(int(before_tables.ids(entity).max()) for entity in before.entities)
+    assert 10 ** len(str(largest)) != radix(field)
+    offset = graph_kernels._declared_copy_radix(stage, before)
+    assert offset == radix(field)
+    for entity in before.entities:
+        lineage = graph_kernels._source_lineage(
+            before, id_frame(after_tables), entity, id_offset=offset
+        )
+        targets = lineage.index.to_numpy(dtype=np.int64)
+        assert len(targets) > 0
+        np.testing.assert_array_equal(lineage.to_numpy(), parent(targets, field))
+
+
+def test_the_executor_names_each_stages_own_copy_id_field() -> None:
+    assert dict(graph_kernels._COPY_ID_FIELDS) == {
+        "high_value_home_support": high_value_home_support.HIGH_VALUE_SUPPORT_COPY_ID_FIELD,
+        "cgt_support_split": cgt_support.CGT_SUPPORT_COPY_ID_FIELD,
+        "cgt_incidence_clone": cgt_structure.CGT_CLONE_COPY_ID_FIELD,
+        "cgt_residential_split": cgt_residential_split.CGT_RESIDENTIAL_COPY_ID_FIELD,
+    }
+
+
+def test_the_executor_stays_exact_above_2_53_on_integer_and_float_tables() -> None:
+    # The person table holds integer ids and one float column and nothing
+    # else, so a row-by-row walk (iterrows) reads each row as float64, inexact
+    # above 2**53: the retired walk named parents that are not incumbents here.
+    # The vectorised read is exact.
+    base = base_id_tables()
+
+    def with_income(tables: IdTables) -> IdTables:
+        person = tables.person.assign(employment_income=1_500.5)
+        return IdTables(
+            person=person, benunit=tables.benunit, household=tables.household
+        )
+
+    before = id_frame(with_income(copy_chain(base, layers=5)))
+    after = id_frame(with_income(copy_chain(base)))
+    person = after.table("person")
+    assert set(person.dtypes.map(lambda dtype: dtype.kind)) == {"i", "f"}
     lineage = graph_kernels._source_lineage(
         before, after, "person", id_offset=radix("cgt_residential_split")
     )
     targets = lineage.index.to_numpy(dtype=np.int64)
     assert int(targets.min()) > 2**53
+    assert lineage.dtype == np.dtype("int64")
     np.testing.assert_array_equal(
         lineage.to_numpy(), targets % radix("cgt_residential_split")
     )
+
+
+def test_the_executor_refuses_new_rows_without_an_incumbent_parent_by_count() -> None:
+    base = base_id_tables()
+    before_tables = copy_chain(base, layers=2)
+    stray = 10**12 + 99_999
+    after_tables = copy_households(
+        before_tables,
+        field="high_value_support",
+        path_column="hv",
+        ordinals={0: (1,)},
+        rule="table",
+    )
+    after_tables = IdTables(
+        person=pd.concat(
+            [
+                after_tables.person,
+                pd.DataFrame(
+                    {
+                        "person_id": [10**12 + 99_999_001],
+                        "person_household_id": [stray],
+                        "person_benunit_id": [10**12 + 9_999_901],
+                    }
+                ),
+            ],
+            ignore_index=True,
+        ),
+        benunit=pd.concat(
+            [after_tables.benunit, pd.DataFrame({"benunit_id": [10**12 + 9_999_901]})],
+            ignore_index=True,
+        ),
+        household=pd.concat(
+            [
+                after_tables.household,
+                after_tables.household.iloc[[0]].assign(household_id=stray),
+            ],
+            ignore_index=True,
+        ),
+    )
+    before, after = id_frame(before_tables), id_frame(after_tables)
+    with pytest.raises(
+        ValueError, match=r"^UK stage produced 1 new 'household' row\(s\) whose id"
+    ) as caught:
+        graph_kernels._source_lineage(
+            before, after, "household", id_offset=radix("high_value_support")
+        )
+    assert str(stray) not in str(caught.value)
+    # Without a declared radix or a source-id column, new rows are refused by
+    # count too.
+    with pytest.raises(
+        ValueError, match=r"^UK stage produced 2 new 'household' row\(s\) without"
+    ) as caught:
+        graph_kernels._source_lineage(before, after, "household", id_offset=None)
+    assert str(stray) not in str(caught.value)
 
 
 def test_the_executor_refuses_an_incumbent_id_at_its_radix_by_count() -> None:
@@ -414,10 +671,52 @@ def _pool_inputs(tables):
     }
 
 
-def test_dense_clones_of_a_table_minted_spine_are_refused_in_one_message() -> None:
+def _crosswalk_clone(*, n_clones, person, benunit, household, source_year, **_):
+    """The crosswalk clone route, on a one-area England crosswalk."""
+
+    crosswalk = pd.DataFrame(
+        [
+            {
+                "oa_code": "E0001",
+                "lsoa_code": "E0101",
+                "msoa_code": "E0201",
+                "la_code": "E06000063",
+                "constituency_code": "E14000001",
+                "region_code": "E12000007",
+                "country": "England",
+                "population": 75,
+            }
+        ]
+    )
+    result = clone_uk_dataset_tables_with_rowwise_geography(
+        person=person,
+        benunit=benunit,
+        household=household,
+        crosswalk=crosswalk,
+        n_clones=n_clones,
+        source_year=source_year,
+        require_all_countries=False,
+    )
+    return result.household, result.person
+
+
+def _pool_expand(*, n_clones, **inputs):
+    """The dense expand both the ladder clone route and uk.full.expand run."""
+
+    pool = expand_uk_geographic_pool(n_clones=n_clones, **inputs)
+    return pool.frame.table("household"), pool.frame.table("person")
+
+
+@pytest.mark.parametrize("route", [_pool_expand, _crosswalk_clone])
+def test_dense_clones_of_a_table_minted_spine_are_refused_in_one_message(
+    route,
+) -> None:
+    # The row-wise tool's two dry-run plans are refused the same way
+    # (test_uk_rowwise_dry_run.py and test_uk_ladder_rowwise_clone.py), and
+    # the graph's uk.full.expand in test_uk_full_population_graph.py.
     spine = copy_chain(base_id_tables())
     with pytest.raises(ValueError) as caught:
-        expand_uk_geographic_pool(n_clones=2, **_pool_inputs(spine))
+        route(n_clones=2, **_pool_inputs(spine))
     message = str(caught.value)
     assert "microcosm#931" in message
     assert "clone-first spine" in message
@@ -429,16 +728,15 @@ def test_dense_clones_of_a_table_minted_spine_are_refused_in_one_message() -> No
         )
 
 
-def test_one_dense_clone_of_a_table_minted_spine_still_expands() -> None:
+@pytest.mark.parametrize("route", [_pool_expand, _crosswalk_clone])
+def test_one_dense_clone_of_a_table_minted_spine_still_expands(route) -> None:
     spine = copy_chain(base_id_tables())
-    pool = expand_uk_geographic_pool(n_clones=1, **_pool_inputs(spine))
+    household, person = route(n_clones=1, **_pool_inputs(spine))
+    assert household["household_id"].dtype == np.dtype("int64")
     np.testing.assert_array_equal(
-        pool.frame.table("household")["household_id"].to_numpy(),
-        spine.ids("household"),
+        household["household_id"].to_numpy(), spine.ids("household")
     )
-    np.testing.assert_array_equal(
-        pool.frame.table("person")["person_id"].to_numpy(), spine.ids("person")
-    )
+    np.testing.assert_array_equal(person["person_id"].to_numpy(), spine.ids("person"))
 
 
 def test_a_spine_without_copy_rows_still_expands_into_dense_clones() -> None:

@@ -40,6 +40,7 @@ from microcosm.build.uk_runtime.national_frame import uk_national_frame
 from microcosm.frame import WeightKind
 from test_support.microcosm_build.uk_clone_first_frames import (
     assert_copy_ids_follow_lineage,
+    with_last_household_moved,
 )
 
 PARAMETERS = UKCGTPolicyParameters(
@@ -281,6 +282,25 @@ def test_arms_take_their_households_ids_plus_j_times_the_declared_radix() -> Non
         ordinal_column=CGT_RESIDENTIAL_CLONE_INDEX_COLUMN,
     )
     assert checked == result.evidence()["arms_created"] == 4
+
+
+def test_split_refuses_incoming_ids_at_its_copy_id_radix_by_count() -> None:
+    plain = _frame(
+        [50_000.0, 80_000.0, 90_000.0, 0.0, 1_000.0, 0.0],
+        weights=[10.0, 20.0, 30.0],
+        people_per_household=2,
+    )
+    frame = with_last_household_moved(plain, radix("cgt_residential_split"))
+
+    with pytest.raises(
+        ValueError,
+        match=r"^2 of the incoming person_household_id values reach the "
+        r"'cgt_residential_split' copy-id field",
+    ) as caught:
+        split_cgt_residential_households(
+            frame, facts=_facts(frame), parameters=PARAMETERS
+        )
+    assert str(2 + radix("cgt_residential_split")) not in str(caught.value)
 
 
 def test_split_refuses_too_many_gainers_an_already_split_or_classified_frame() -> None:
