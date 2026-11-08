@@ -769,13 +769,66 @@ def test_spi_fill_rejects_missing_source_ids() -> None:
         }
     )
 
-    with pytest.raises(ValueError, match="missing source ID"):
+    with pytest.raises(ValueError, match="missing source ID") as caught:
         fill_support_channel_from_source(
             result.person,
             donor,
             entity="person",
             columns=["employment_income"],
         )
+    # Person 2002's copy names a source the donor lacks; the refusal counts
+    # the copy rows and names no id (microcosm#931).
+    assert str(caught.value).endswith("1 channel row(s) name a source it lacks.")
+    assert "2002" not in str(caught.value)
+
+    repeated = pd.concat([donor, donor.iloc[[0]]], ignore_index=True)
+    with pytest.raises(ValueError, match="must be unique") as caught:
+        fill_support_channel_from_source(
+            result.person,
+            repeated,
+            entity="person",
+            columns=["employment_income"],
+        )
+    assert "1 row(s) repeat" in str(caught.value)
+    assert "1001" not in str(caught.value)
+
+
+def test_spi_support_input_refusals_count_rows_and_name_no_id() -> None:
+    """The support stage's uniqueness, link and selection refusals print counts
+    (microcosm#931); every id here is synthetic."""
+
+    person = person_frame()
+    person.loc[3, "person_household_id"] = 777_777
+    with pytest.raises(ValueError, match="absent from household") as caught:
+        create_uk_spi_support_tables(
+            person=person,
+            benunit=benunit_frame(),
+            household=household_frame(),
+            spi_household_count=None,
+        )
+    assert "on 1 person row(s)" in str(caught.value)
+    assert "777777" not in str(caught.value)
+
+    household = household_frame()
+    household.loc[2, "household_id"] = 2
+    with pytest.raises(ValueError, match="must be unique") as caught:
+        create_uk_spi_support_tables(
+            person=person_frame(),
+            benunit=benunit_frame(),
+            household=household,
+            spi_household_count=None,
+        )
+    assert "1 row(s) repeat" in str(caught.value)
+
+    with pytest.raises(ValueError, match="absent from household") as caught:
+        create_uk_spi_support_tables(
+            person=person_frame(),
+            benunit=benunit_frame(),
+            household=household_frame(),
+            selected_household_ids=(1, 888_888),
+        )
+    assert "contains 1 value(s)" in str(caught.value)
+    assert "888888" not in str(caught.value)
 
 
 def _pension_age_frames():

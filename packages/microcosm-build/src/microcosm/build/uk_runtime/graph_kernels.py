@@ -170,61 +170,79 @@ _ENGINE_MODULES = (
 
 # Imported modules are not traversed by ``source_hash``. Bind relationship
 # helpers and the adapter's input-retention checks into every consuming stage.
+# Every stage whose module or bound helpers draw through the shared keyed-draw
+# helpers (``microcosm.build.stochastic_assignment``) binds them, so an edit to
+# how a uniform is keyed or a binary is placed re-keys every stage it moves
+# (microcosm#931); test_uk_graph derives the set from the imports.
 _STAGE_HELPER_MODULES = {
     # The three FRS draw stages' receipts measure their take-up flags through
     # frs_take_up's signal measurement and count support by the shared
     # disclosure rules (microcosm#1095).
-    "frs_take_up": (receipt_counts,),
-    "frs_person_draws": (frs_take_up, receipt_counts),
-    "frs_household_draws": (frs_take_up, receipt_counts),
+    "frs_take_up": (receipt_counts, stochastic_assignment),
+    "frs_person_draws": (frs_take_up, receipt_counts, stochastic_assignment),
+    "frs_household_draws": (frs_take_up, receipt_counts, stochastic_assignment),
     "frs_hmrc_spine_leaves": (frs_hmrc_source,),
     # The annual income descriptors' receipt follows the shared disclosure rules
     # (microcosm#1164).
-    "frs_annual_income_spells": (receipt_counts,),
+    "frs_annual_income_spells": (receipt_counts, stochastic_assignment),
     # The SPI income stage's imputation, band-donor resample and receipt live
     # in spi_income, so an edit there moves the stage's hash (microcosm#1278),
     # and its twin transport in spi_rank_transport (microcosm#840).
-    "hmrc_spi_income_spine": (spi_income, spi_rank_transport),
+    "hmrc_spi_income_spine": (spi_income, spi_rank_transport, stochastic_assignment),
     # The spine's raw ids sit below the copy-id table's first field, and every
     # copy layer mints its ids in its own field of the table; the two SPI
     # support stages mint through the support channel's clone helper, and the
     # high-value split weighs its copies through the CGT split's exact-total
     # correction (microcosm#931). The executor reads each id-offset stage's
     # declared radix from the table too.
-    "frs_spine": (uc_relationships, copy_id_table),
+    "frs_spine": (uc_relationships, copy_id_table, stochastic_assignment),
     "spi_support_channel": (spi_support, copy_id_table),
-    "spi_income_band_donors": (spi_support, copy_id_table),
+    "spi_income_band_donors": (spi_support, copy_id_table, stochastic_assignment),
     "high_value_home_support": (cgt_support, copy_id_table),
     "cgt_support_split": (copy_id_table,),
-    "cgt_incidence_clone": (rowwise_geography, copy_id_table),
-    "cgt_incidence_anchor": (rowwise_geography, copy_id_table),
+    "cgt_incidence_clone": (rowwise_geography, copy_id_table, stochastic_assignment),
+    "cgt_incidence_anchor": (rowwise_geography, copy_id_table, stochastic_assignment),
     "cgt_residential_split": (copy_id_table,),
     "frs_legacy_proxies": (*_ENGINE_MODULES,),
     "frs_education_grant_split": (*_ENGINE_MODULES,),
-    "frs_brma": (*_ENGINE_MODULES,),
-    "was_wealth": (*_ENGINE_MODULES,),
+    "frs_brma": (*_ENGINE_MODULES, stochastic_assignment),
+    "was_wealth": (*_ENGINE_MODULES, stochastic_assignment),
     # The LISA stage reads its household donor through the WAS cleaning and its
     # household predictors through the WAS recipient surface; the anchor counts
     # HMRC's payers through the typed ISA facts (microcosm#1415).
-    "was_lisa": (*_ENGINE_MODULES, was_wealth, hmrc_isa_statistics),
+    "was_lisa": (
+        *_ENGINE_MODULES,
+        was_wealth,
+        hmrc_isa_statistics,
+        stochastic_assignment,
+    ),
     # Landlords' receipts read the vendored PRIS rows through their typed
     # loader, the tape through the income stage's preparation and uprating,
     # and the support channel's names (microcosm#1106).
-    "property_components": (hmrc_property_rental, spi_income, spi_support),
+    "property_components": (
+        hmrc_property_rental,
+        spi_income,
+        spi_support,
+        stochastic_assignment,
+    ),
     # The regional values rank as the dense node does and read its knots
     # (microcosm#1112).
     "regional_home_values": (property_localisation, rowwise_geography),
     # The purchases read the vendored HMRC Stamp Tax rows through the feed-pinned
     # reader and mark SDLT's regions from the FRS region map (microcosm#1095).
-    "property_purchases": (ledger_fact_vendoring, rowwise_geography),
-    "nts_bus_travel": (*_ENGINE_MODULES, bus_use_incidence),
+    "property_purchases": (
+        ledger_fact_vendoring,
+        rowwise_geography,
+        stochastic_assignment,
+    ),
+    "nts_bus_travel": (*_ENGINE_MODULES, bus_use_incidence, stochastic_assignment),
     # The energy level and prices are energy_pricing's (microcosm#1418): a
     # code-only change to them must re-key the stage (the independent review
     # of microcosm#1420, finding 5).
-    "lcfs_consumption": (*_ENGINE_MODULES, energy_pricing),
-    "etb_vat": (*_ENGINE_MODULES,),
-    "etb_services": (*_ENGINE_MODULES,),
-    "uc_reporter_redraw": (uc_relationships, *_ENGINE_MODULES),
+    "lcfs_consumption": (*_ENGINE_MODULES, energy_pricing, stochastic_assignment),
+    "etb_vat": (*_ENGINE_MODULES, stochastic_assignment),
+    "etb_services": (*_ENGINE_MODULES, stochastic_assignment),
+    "uc_reporter_redraw": (uc_relationships, *_ENGINE_MODULES, stochastic_assignment),
     # The SPI benefit pass restores from the FRS twin through the support
     # channel's lineage, re-derives the disability flags and the own-right
     # rule, draws over the take-up population and maps household weights to
@@ -235,8 +253,9 @@ _STAGE_HELPER_MODULES = {
         frs_education,
         frs_take_up,
         uc_capital_coherence,
+        stochastic_assignment,
     ),
-    "uc_capital_coherence": (uc_relationships,),
+    "uc_capital_coherence": (uc_relationships, stochastic_assignment),
     # The Universal Credit redraw reads the award through the adapter, the
     # vendored DWP counts, the closure stage's rule and rates, the deduction
     # attributes, the take-up population and the family-type roles, and counts
@@ -250,15 +269,28 @@ _STAGE_HELPER_MODULES = {
         uc_relationships,
         uc_capital_coherence,
         receipt_counts,
+        stochastic_assignment,
     ),
     # The Move to UC claim draw reuses the UC stage's household-to-benefit-unit
     # weight mapping and reads the vendored DWP rows (microcosm#1095).
-    "uc_legacy_closure_take_up": (uc_capital_coherence, ledger_fact_vendoring),
+    "uc_legacy_closure_take_up": (
+        uc_capital_coherence,
+        ledger_fact_vendoring,
+        stochastic_assignment,
+    ),
     # The Pension Credit redraw reuses the UC stage's household-to-benefit-unit
     # weight mapping and the adapter's engine materialization.
-    "pension_credit_take_up": (uc_capital_coherence, *_ENGINE_MODULES),
+    "pension_credit_take_up": (
+        uc_capital_coherence,
+        *_ENGINE_MODULES,
+        stochastic_assignment,
+    ),
     # The Child Benefit redraw shares the weight mapping and the adapter.
-    "child_benefit_take_up": (uc_capital_coherence, *_ENGINE_MODULES),
+    "child_benefit_take_up": (
+        uc_capital_coherence,
+        *_ENGINE_MODULES,
+        stochastic_assignment,
+    ),
     # The Carer's Allowance draw reads the earnings test through the adapter's
     # engine materialization and counts its receipt's support on the source
     # lineage (microcosm#1319), and balances its draws through the shared
@@ -270,6 +302,12 @@ _STAGE_HELPER_MODULES = {
     ),
     # The stored attendance is one engine materialization (microcosm#1095).
     "private_school_attendance": (*_ENGINE_MODULES,),
+    # These four stages draw through the keyed-draw helpers and bind nothing
+    # else (microcosm#931).
+    "spi_housing_shell": (stochastic_assignment,),
+    "uc_deduction_attributes": (stochastic_assignment,),
+    "salary_sacrifice": (stochastic_assignment,),
+    "student_loans": (stochastic_assignment,),
     # The subscriptions walk the CGT bands on its income proxy (with the
     # proxy's loss relief), read HMRC's ISA tables through their typed loader
     # and round their receipts' support (microcosm#1415).
@@ -278,6 +316,7 @@ _STAGE_HELPER_MODULES = {
         hmrc_income,
         hmrc_isa_statistics,
         receipt_counts,
+        stochastic_assignment,
     ),
     # The claimant draw is keyed on identity and its receipt rounds its
     # support (microcosm#1428).
@@ -301,7 +340,12 @@ _STAGE_HELPER_MODULES = {
     # The copies' childcare re-draw draws through frs_take_up's childcare
     # helper, reads each household's clone path, and measures its flags for
     # the stage-time signal gate by the shared disclosure rules (microcosm#1095).
-    "childcare_copy_take_up": (frs_take_up, household_lineage, receipt_counts),
+    "childcare_copy_take_up": (
+        frs_take_up,
+        household_lineage,
+        receipt_counts,
+        stochastic_assignment,
+    ),
     # The employment shell fits, scores and draws through microcosm.fit's
     # categorical classifier, held-out scores and keyed donors, reads the
     # shared occupation codes, and counts its receipt's support by the shared

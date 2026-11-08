@@ -18,6 +18,7 @@ from typing import NamedTuple
 import numpy as np
 import pandas as pd
 
+from microcosm.build.uk_runtime import copy_id_table
 from microcosm.build.uk_runtime.frs_brma import (
     UK_BRMA_DECLARED_SEEDS,
     _benunit_regions,
@@ -38,6 +39,7 @@ from microcosm.build.uk_runtime.frs_take_up import (
     uc_age_eligible_benunits,
     uk_take_up_population_policy,
 )
+from microcosm.build.uk_runtime.household_lineage import UK_COPY_LINEAGE
 from microcosm.build.uk_runtime.national_frame import (
     load_uk_national_frame,
     uk_build_identifier_frame,
@@ -868,7 +870,6 @@ def _e8_support_split(
     )
 
     person = frame.table("person")
-    benunit = frame.table("benunit")
     household = frame.table("household")
     missing = [
         column
@@ -905,7 +906,7 @@ def _e8_support_split(
                 float(record.new_total),
             ]
     try:
-        lineage = _support_copy_lineage(person, benunit, household)
+        lineage = _support_copy_lineage(household)
     except ValueError as error:
         problems["support_split_lineage"] = str(error)
         return receipt
@@ -916,7 +917,9 @@ def _e8_support_split(
         .astype("int64")
         .to_numpy()
     )
-    receipt["id_multiplier"] = int(lineage.multiplier)
+    # The declared radix of the split's copy-id field (microcosm#931), no
+    # longer one read off the frame's largest id.
+    receipt["id_multiplier"] = int(lineage.radix)
     receipt["pre_split_households"] = int(pre_split.sum())
     receipt["copies"] = int(len(lineage.copy_positions))
     # The explicit copy index (microcosm#1045 review): present on artifacts
@@ -1125,11 +1128,12 @@ def _e8_residential_split(
                 record.declared_factor,
             ]
     try:
-        lineage = _residential_arm_lineage(person, frame.table("benunit"), household)
+        lineage = _residential_arm_lineage(household)
     except ValueError as error:
         problems["residential_split_lineage"] = str(error)
         return receipt
-    receipt["id_multiplier"] = int(lineage.multiplier)
+    # The declared radix of the arms' copy-id field (microcosm#931).
+    receipt["id_multiplier"] = int(lineage.radix)
     receipt["arms"] = int(len(lineage.arm_positions))
     receipt["households_split"] = int(np.unique(lineage.source_positions).size)
     receipt["largest_arm_index"] = (
@@ -1944,6 +1948,10 @@ def main() -> int:
     # Every draw these receipts replay is keyed on the build's identifiers; a
     # release carries them beside its renumbered ones (microcosm#1194).
     frame = uk_build_identifier_frame(frame)
+    # The receipts decode copy ids at the copy-id table's declared radices
+    # (microcosm#931); a spine minted by the rule the table replaced is
+    # refused once, here, before any receipt reads it.
+    _require_copy_ids_on_the_declared_table(frame.table("household"))
     if args.check == "e4":
         from microcosm.build.uk_runtime.take_up_contract import load_uk_take_up_contract
         from microcosm.frame.adapters.policyengine_uk import PolicyEngineUKEngine
@@ -2142,11 +2150,112 @@ def _pre_residential_household_weights(frame) -> np.ndarray:
     weights = np.asarray(frame.weights_for("household").values, dtype=float).copy()
     if HOUSEHOLD_IS_CGT_RESIDENTIAL_CLONE not in household.columns:
         return weights
-    lineage = _residential_arm_lineage(
-        frame.table("person"), frame.table("benunit"), household
-    )
+    lineage = _residential_arm_lineage(household)
     np.add.at(weights, lineage.source_positions, weights[lineage.arm_positions])
     return weights
+
+
+# --- copy ids at the copy-id table's declared radices (microcosm#931) --------
+#
+# Every UK copy layer mints its copies' ids in a decimal field of its own,
+# declared in ``uk_runtime.copy_id_table``: copy ``k`` of a row in field ``f``
+# carries the row's ids plus ``k`` times ``f``'s radix. The receipts decode a
+# copy id only through ``_copy_ordinals_and_parents``. A spine built before
+# the table offset each layer's copies by a power of ten above the largest id
+# the layer saw; ``_require_copy_ids_on_the_declared_table`` refuses such a
+# spine, which is receipted with the tool at the commit that built it.
+# Decoding that retired rule as well would mean changing these two functions,
+# and nothing else.
+
+#: The old-spine refusal, after its count of household rows.
+_OFF_TABLE_REFUSAL = (
+    "household row(s) carry ids that do not follow the declared copy-id table "
+    "(microcosm#931): each copy field of an id must hold the ordinal its row's "
+    "lineage columns give. A spine built before the table follows the rule the "
+    "table replaced; receipt it with this tool at the commit that built it."
+)
+
+
+def _exact_household_ids(household: pd.DataFrame, *, what: str) -> np.ndarray:
+    """``household_id`` as exact int64; a non-integer column is refused, not cast."""
+
+    values = household["household_id"]
+    if not pd.api.types.is_integer_dtype(values.dtype):
+        raise TypeError(f"{what} requires integer household ids, not {values.dtype}.")
+    return values.to_numpy(dtype=np.int64)
+
+
+def _copy_id_rows_off_the_declared_table(household: pd.DataFrame) -> int:
+    """How many household rows' ids disagree with their copy lineage.
+
+    Each field of the copy-id table holds the ordinal of one copying step of
+    the UK's copy lineage (``household_lineage.UK_COPY_LINEAGE``): the step's
+    ordinal column where the artifact carries it, else whether the step's
+    marker flags the row, else zero, the step not having run. The ``vintage``
+    field, which nothing mints yet, holds zero. A row follows the table when
+    its id holds exactly those ordinals.
+    """
+
+    ids = _exact_household_ids(household, what="The copy-id table check")
+    branches = {branch.name: branch for branch in UK_COPY_LINEAGE.branches}
+    off = np.zeros(len(ids), dtype=bool)
+    for field in copy_id_table.UK_COPY_ID_FIELDS:
+        held = copy_id_table.ordinal(ids, field.name)
+        branch = branches.get(field.name)
+        index = None if branch is None else branch.index
+        marker = None if branch is None else branch.marker
+        if index is not None and index in household.columns:
+            ordinals = household[index]
+            if not pd.api.types.is_integer_dtype(ordinals.dtype):
+                raise TypeError(
+                    f"The copy-id table check requires integer {index!r} ordinals."
+                )
+            off |= held != ordinals.to_numpy(dtype=np.int64)
+        elif marker is not None and marker in household.columns:
+            flagged = household[marker].eq(branch.copy).to_numpy(dtype=bool)
+            off |= (held != 0) != flagged
+        else:
+            off |= held != 0
+    return int(off.sum())
+
+
+def _require_copy_ids_on_the_declared_table(household: pd.DataFrame) -> None:
+    """Refuse a frame whose copy ids are off the declared table, by count."""
+
+    off = _copy_id_rows_off_the_declared_table(household)
+    if off:
+        raise ValueError(f"{off} {_OFF_TABLE_REFUSAL}")
+
+
+def _copy_ordinals_and_parents(
+    ids: np.ndarray, field: str
+) -> tuple[np.ndarray, np.ndarray]:
+    """Each copy id's ordinal in ``field`` and the id it was copied from.
+
+    Read at the field's declared radix in the copy-id table, on exact int64.
+    """
+
+    return copy_id_table.ordinal(ids, field), copy_id_table.parent(ids, field)
+
+
+def _parent_positions(
+    household_ids: np.ndarray,
+    ordinals: np.ndarray,
+    parents: np.ndarray,
+    *,
+    eligible: np.ndarray,
+) -> tuple[np.ndarray, int]:
+    """Each copy's parent's position, and how many copies have none.
+
+    A copy without one has ordinal zero, or a parent id absent from the frame
+    or outside ``eligible`` (the rows the stage copied).
+    """
+
+    positions = pd.Index(household_ids).get_indexer(parents)
+    found = positions >= 0
+    orphaned = (ordinals < 1) | ~found
+    orphaned[found] |= ~eligible[positions[found]]
+    return positions, int(orphaned.sum())
 
 
 class _ResidentialArmLineage(NamedTuple):
@@ -2157,34 +2266,29 @@ class _ResidentialArmLineage(NamedTuple):
     arm_positions: np.ndarray
     source_positions: np.ndarray
     arm_index: np.ndarray
-    multiplier: int
+    radix: int
 
 
-def _residential_arm_lineage(
-    person: pd.DataFrame, benunit: pd.DataFrame, household: pd.DataFrame
-) -> _ResidentialArmLineage:
+def _residential_arm_lineage(household: pd.DataFrame) -> _ResidentialArmLineage:
     """Every residential arm's position, its source's position and its index.
 
-    The split offsets ids by ``id_multiplier_for_values`` over the rows it
-    saw, every household of the frame before it ran: the households whose
-    arm flag is false. Arm ``j`` of source ``r`` carries ``r + j * M``, so
-    ``j = id // M`` and ``r = id - j * M``. An arm without a source, or with
-    index zero, fails closed, and the stored ``cgt_residential_clone_index``
-    must agree with the id scheme on every row.
+    Arm ``j`` of source ``r`` carries ``r + j x R`` on every id, ``R`` the
+    declared radix of the copy-id table's ``cgt_residential_split`` field
+    (microcosm#931), so ``j`` is the id's ordinal in that field and ``r`` the
+    id with the field cleared; the split's sources are the households whose
+    arm flag is false. An arm without a source, or with index zero, fails
+    closed, and the stored ``cgt_residential_clone_index`` must agree with the
+    id on every arm. The refusals print counts, never an id.
     """
 
     from microcosm.build.uk_runtime.cgt_residential_split import (
         CGT_RESIDENTIAL_CLONE_INDEX_COLUMN,
+        CGT_RESIDENTIAL_COPY_ID_FIELD,
         HOUSEHOLD_IS_CGT_RESIDENTIAL_CLONE,
     )
-    from microcosm.build.uk_runtime.rowwise_geography import id_multiplier_for_values
 
-    household_ids = (
-        pd.to_numeric(household["household_id"], errors="raise")
-        .astype("int64")
-        .to_numpy()
-    )
-    if len(np.unique(household_ids)) != len(household_ids):
+    household_ids = _exact_household_ids(household, what="CGT residential-arm lineage")
+    if not pd.Index(household_ids).is_unique:
         raise ValueError("CGT residential-arm lineage requires unique household ids.")
     is_arm = household[HOUSEHOLD_IS_CGT_RESIDENTIAL_CLONE].to_numpy(dtype=bool)
     if CGT_RESIDENTIAL_CLONE_INDEX_COLUMN not in household.columns:
@@ -2203,41 +2307,25 @@ def _residential_arm_lineage(
             f"{flag_disagreements} household(s)."
         )
     pre_split = ~is_arm
-    pre_split_ids = set(household_ids[pre_split].tolist())
-    person_pre_split = person["person_household_id"].isin(pre_split_ids).to_numpy()
-    benunit_pre_split = (
-        benunit["benunit_id"]
-        .isin(set(person.loc[person_pre_split, "person_benunit_id"].tolist()))
-        .to_numpy()
-    )
-    multiplier = id_multiplier_for_values(
-        person.loc[person_pre_split, "person_id"],
-        person.loc[person_pre_split, "person_household_id"],
-        person.loc[person_pre_split, "person_benunit_id"],
-        benunit.loc[benunit_pre_split, "benunit_id"],
-        household_ids[pre_split],
-    )
     arm_positions = np.flatnonzero(is_arm)
-    arm_ids = household_ids[arm_positions]
-    arm_index = arm_ids // multiplier
-    source_ids = arm_ids - arm_index * multiplier
-    position_by_id = {int(value): index for index, value in enumerate(household_ids)}
-    source_positions = np.empty(len(arm_positions), dtype=np.int64)
-    for slot, (arm_id, index, source_id) in enumerate(
-        zip(arm_ids.tolist(), arm_index.tolist(), source_ids.tolist(), strict=True)
-    ):
-        source = position_by_id.get(int(source_id))
-        if index < 1 or source is None or not pre_split[source]:
-            raise ValueError(
-                "CGT residential arm without a source household: household_id "
-                f"{arm_id} (id multiplier {multiplier})."
-            )
-        source_positions[slot] = source
+    arm_index, source_ids = _copy_ordinals_and_parents(
+        household_ids[arm_positions], CGT_RESIDENTIAL_COPY_ID_FIELD
+    )
+    source_positions, orphaned = _parent_positions(
+        household_ids, arm_index, source_ids, eligible=pre_split
+    )
+    if orphaned:
+        raise ValueError(
+            f"{orphaned} CGT residential arm(s) without a source household at the "
+            "declared radix of the copy-id table's "
+            f"{CGT_RESIDENTIAL_COPY_ID_FIELD!r} field."
+        )
     scheme_disagreements = int((stored_index[arm_positions] != arm_index).sum())
     if scheme_disagreements:
         raise ValueError(
             f"CGT residential arm index stored on {scheme_disagreements} arm(s) "
-            f"disagrees with the id scheme (id // {multiplier})."
+            "disagrees with the id scheme (the id's ordinal in the copy-id "
+            f"table's {CGT_RESIDENTIAL_COPY_ID_FIELD!r} field)."
         )
     return _ResidentialArmLineage(
         household_ids=household_ids,
@@ -2245,7 +2333,7 @@ def _residential_arm_lineage(
         arm_positions=arm_positions,
         source_positions=source_positions,
         arm_index=arm_index,
-        multiplier=multiplier,
+        radix=copy_id_table.radix(CGT_RESIDENTIAL_COPY_ID_FIELD),
     )
 
 
@@ -2257,45 +2345,41 @@ class _SupportCopyLineage(NamedTuple):
     copy_positions: np.ndarray
     root_positions: np.ndarray
     copy_index: np.ndarray
-    multiplier: int
+    radix: int
 
 
-def _support_copy_lineage(
-    person: pd.DataFrame, benunit: pd.DataFrame, household: pd.DataFrame
-) -> _SupportCopyLineage:
+def _support_copy_lineage(household: pd.DataFrame) -> _SupportCopyLineage:
     """Every support copy's position, its root's position and its index ``k``.
 
-    The split offsets ids by ``id_multiplier_for_values`` over the rows it
-    saw, and those rows are recoverable from the artifact: the households
-    whose copy flag is false, the clone stage's rows excluded (the split runs
-    before the clone, so a clone of a copy carries the copy flag but is not a
-    pre-clone row). Copy ``k`` of root ``r`` carries ``r + k * M1``, so ``k =
-    id // M1`` and ``r = id - k * M1``. A copy without a root, or with index
-    zero, fails closed. An artifact that carries the split's explicit
+    Copy ``k`` of root ``r`` carries ``r + k x R`` on every id, ``R`` the
+    declared radix of the copy-id table's ``cgt_support_split`` field
+    (microcosm#931), so ``k`` is the id's ordinal in that field and ``r`` the
+    id with the field cleared. The split's roots are recoverable from the
+    artifact: the households whose copy flag is false, the clone stage's rows
+    excluded (the split runs before the clone, so a clone of a copy carries
+    the copy flag but is not a pre-clone row). A copy without a root, or with
+    index zero, fails closed. An artifact that carries the split's explicit
     ``cgt_support_copy_index`` (0 on roots and unsplit households, ``k`` on
     copy ``k``; the lineage the geography identity keys on) must agree with
-    the id scheme on every row, or the lineage fails closed too.
+    the id on every copy, or the lineage fails closed too. The refusals print
+    counts, never an id.
     """
 
     from microcosm.build.uk_runtime.cgt_structure import HOUSEHOLD_IS_CGT_CLONE
     from microcosm.build.uk_runtime.cgt_support import (
+        CGT_SUPPORT_COPY_ID_FIELD,
         CGT_SUPPORT_COPY_INDEX_COLUMN,
         HOUSEHOLD_IS_CGT_SUPPORT_COPY,
     )
-    from microcosm.build.uk_runtime.rowwise_geography import id_multiplier_for_values
 
-    household_ids = (
-        pd.to_numeric(household["household_id"], errors="raise")
-        .astype("int64")
-        .to_numpy()
-    )
-    if len(np.unique(household_ids)) != len(household_ids):
+    household_ids = _exact_household_ids(household, what="CGT support-copy lineage")
+    if not pd.Index(household_ids).is_unique:
         raise ValueError("CGT support-copy lineage requires unique household ids.")
     is_copy = household[HOUSEHOLD_IS_CGT_SUPPORT_COPY].to_numpy(dtype=bool)
     stored_index = None
     if CGT_SUPPORT_COPY_INDEX_COLUMN in household.columns:
         # The explicit lineage is authoritative: the flag and the stored index
-        # must agree before any id arithmetic is read.
+        # must agree before any id is decoded.
         stored_index = (
             pd.to_numeric(household[CGT_SUPPORT_COPY_INDEX_COLUMN], errors="raise")
             .astype("int64")
@@ -2313,42 +2397,26 @@ def _support_copy_lineage(
         else np.ones(len(household), dtype=bool)
     )
     pre_split = pre_clone & ~is_copy
-    pre_split_ids = set(household_ids[pre_split].tolist())
-    person_pre_split = person["person_household_id"].isin(pre_split_ids).to_numpy()
-    benunit_pre_split = (
-        benunit["benunit_id"]
-        .isin(set(person.loc[person_pre_split, "person_benunit_id"].tolist()))
-        .to_numpy()
-    )
-    multiplier = id_multiplier_for_values(
-        person.loc[person_pre_split, "person_id"],
-        person.loc[person_pre_split, "person_household_id"],
-        person.loc[person_pre_split, "person_benunit_id"],
-        benunit.loc[benunit_pre_split, "benunit_id"],
-        household_ids[pre_split],
-    )
     copy_positions = np.flatnonzero(pre_clone & is_copy)
-    copy_ids = household_ids[copy_positions]
-    copy_index = copy_ids // multiplier
-    root_ids = copy_ids - copy_index * multiplier
-    position_by_id = {int(value): index for index, value in enumerate(household_ids)}
-    root_positions = np.empty(len(copy_positions), dtype=np.int64)
-    for slot, (copy_id, index, root_id) in enumerate(
-        zip(copy_ids.tolist(), copy_index.tolist(), root_ids.tolist(), strict=True)
-    ):
-        root = position_by_id.get(int(root_id))
-        if index < 1 or root is None or not pre_split[root]:
-            raise ValueError(
-                "CGT support copy without a root household: household_id "
-                f"{copy_id} (id multiplier {multiplier})."
-            )
-        root_positions[slot] = root
+    copy_index, root_ids = _copy_ordinals_and_parents(
+        household_ids[copy_positions], CGT_SUPPORT_COPY_ID_FIELD
+    )
+    root_positions, orphaned = _parent_positions(
+        household_ids, copy_index, root_ids, eligible=pre_split
+    )
+    if orphaned:
+        raise ValueError(
+            f"{orphaned} CGT support copy(ies) without a root household at the "
+            "declared radix of the copy-id table's "
+            f"{CGT_SUPPORT_COPY_ID_FIELD!r} field."
+        )
     if stored_index is not None:
         scheme_disagreements = int((stored_index[copy_positions] != copy_index).sum())
         if scheme_disagreements:
             raise ValueError(
                 f"CGT support copy index stored on {scheme_disagreements} "
-                f"copy(ies) disagrees with the id scheme (id // {multiplier})."
+                "copy(ies) disagrees with the id scheme (the id's ordinal in the "
+                f"copy-id table's {CGT_SUPPORT_COPY_ID_FIELD!r} field)."
             )
     return _SupportCopyLineage(
         household_ids=household_ids,
@@ -2356,7 +2424,7 @@ def _support_copy_lineage(
         copy_positions=copy_positions,
         root_positions=root_positions,
         copy_index=copy_index,
-        multiplier=multiplier,
+        radix=copy_id_table.radix(CGT_SUPPORT_COPY_ID_FIELD),
     )
 
 
@@ -2381,9 +2449,7 @@ def _pre_split_household_weights(frame) -> np.ndarray:
     household = frame.table("household")
     if HOUSEHOLD_IS_CGT_SUPPORT_COPY not in household.columns:
         return weights
-    lineage = _support_copy_lineage(
-        frame.table("person"), frame.table("benunit"), household
-    )
+    lineage = _support_copy_lineage(household)
     np.add.at(weights, lineage.root_positions, weights[lineage.copy_positions])
     return weights
 

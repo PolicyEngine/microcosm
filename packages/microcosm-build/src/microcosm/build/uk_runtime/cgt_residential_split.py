@@ -27,7 +27,7 @@ afterwards exactly as it decides between the incidence clone's halves. Every hou
 total household mass are conserved; arm ``j`` takes every entity id plus
 ``j`` times the declared radix of the copy-id table's top field,
 ``cgt_residential_split`` (microcosm#931), the lineage rule the executor
-reads for the support split and the clone too.
+and the identity tool read for the support split and the clone too.
 """
 
 from __future__ import annotations

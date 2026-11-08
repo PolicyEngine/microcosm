@@ -727,21 +727,24 @@ def validate_uk_ladder_rowwise_dataset_tables(
     _require_unique(person, "person_id", label="person")
     _require_unique(benunit, "benunit_id", label="benunit")
     _require_unique(household, "household_id", label="household")
+    _require_person_links(person, benunit, household)
 
-    household_ids = set(household["household_id"])
-    missing_households = sorted(set(person["person_household_id"]) - household_ids)
-    if missing_households:
-        raise ValueError(
-            "person.person_household_id contains value(s) absent from household: "
-            f"{missing_households[:5]}."
-        )
-    benunit_ids = set(benunit["benunit_id"])
-    missing_benunits = sorted(set(person["person_benunit_id"]) - benunit_ids)
-    if missing_benunits:
-        raise ValueError(
-            "person.person_benunit_id contains value(s) absent from benunit: "
-            f"{missing_benunits[:5]}."
-        )
+
+def _require_person_links(
+    person: pd.DataFrame, benunit: pd.DataFrame, household: pd.DataFrame
+) -> None:
+    """Refuse a person whose household or benefit unit is absent, by count."""
+
+    for column, table, id_column, label in (
+        ("person_household_id", household, "household_id", "household"),
+        ("person_benunit_id", benunit, "benunit_id", "benunit"),
+    ):
+        unlinked = int((~person[column].isin(table[id_column])).sum())
+        if unlinked:
+            raise ValueError(
+                f"person.{column} names a {label} absent from {label} on "
+                f"{unlinked} person row(s)."
+            )
 
 
 def _assert_clone_link_alignment(
@@ -1021,22 +1024,7 @@ def validate_uk_rowwise_dataset_tables(
     _require_unique(person, "person_id", label="person")
     _require_unique(benunit, "benunit_id", label="benunit")
     _require_unique(household, "household_id", label="household")
-
-    household_ids = set(household["household_id"])
-    missing_households = sorted(set(person["person_household_id"]) - household_ids)
-    if missing_households:
-        raise ValueError(
-            "person.person_household_id contains value(s) absent from household: "
-            f"{missing_households[:5]}."
-        )
-
-    benunit_ids = set(benunit["benunit_id"])
-    missing_benunits = sorted(set(person["person_benunit_id"]) - benunit_ids)
-    if missing_benunits:
-        raise ValueError(
-            "person.person_benunit_id contains value(s) absent from benunit: "
-            f"{missing_benunits[:5]}."
-        )
+    _require_person_links(person, benunit, household)
 
 
 def read_uk_single_year_weight_metadata(
@@ -1281,11 +1269,11 @@ def _require_columns(
 def _require_unique(frame: pd.DataFrame, column: str, *, label: str) -> None:
     if frame[column].isna().any():
         raise ValueError(f"{label}.{column} contains missing values.")
-    if frame[column].duplicated().any():
-        duplicates = frame.loc[frame[column].duplicated(), column].unique()
+    repeated = int(frame[column].duplicated().sum())
+    if repeated:
         raise ValueError(
-            f"{label}.{column} must be unique; duplicate value(s): "
-            f"{list(map(str, duplicates[:5]))}."
+            f"{label}.{column} must be unique; {repeated} row(s) repeat an "
+            "earlier row's value."
         )
 
 

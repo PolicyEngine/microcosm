@@ -413,6 +413,90 @@ def test_copy_id_table_changes_invalidate_every_stage_that_reads_it(monkeypatch)
         assert registry.implementation_hash(ref) == before[ref], ref
 
 
+#: Stages whose module or bound helpers import the keyed-draw helpers
+#: (``microcosm.build.stochastic_assignment``) but need not bind them, each with
+#: its reason. None today: every stage that imports them draws through them.
+_STOCHASTIC_ASSIGNMENT_UNBOUND: dict[str, str] = {}
+
+
+def _stages_drawing_through_stochastic_assignment() -> set[str]:
+    from microcosm.build.uk_runtime import graph_kernels
+
+    return {
+        stage
+        for stage in graph_kernels._STAGE_MODULES
+        if any(
+            "stochastic_assignment" in _imported_module_names(module)
+            for module in (
+                graph_kernels._stage_module(stage),
+                *graph_kernels._STAGE_HELPER_MODULES.get(stage, ()),
+            )
+        )
+    }
+
+
+def test_every_stage_that_draws_through_stochastic_assignment_binds_it() -> None:
+    """``source_hash`` does not follow imports, so every stage whose module or
+    bound helpers import the keyed-draw helpers binds them, or an edit to how a
+    uniform is keyed would replay the stage's stale output (microcosm#931),
+    save the stages ``_STOCHASTIC_ASSIGNMENT_UNBOUND`` names with a reason."""
+    from microcosm.build import stochastic_assignment
+    from microcosm.build.uk_runtime import graph_kernels
+
+    drawing = _stages_drawing_through_stochastic_assignment()
+    binding = {
+        stage
+        for stage, helpers in graph_kernels._STAGE_HELPER_MODULES.items()
+        if stochastic_assignment in helpers
+    }
+    assert set(_STOCHASTIC_ASSIGNMENT_UNBOUND) <= drawing
+    assert binding == drawing - set(_STOCHASTIC_ASSIGNMENT_UNBOUND)
+
+
+def test_stochastic_assignment_changes_invalidate_every_stage_that_draws(
+    monkeypatch,
+):
+    from microcosm.build import stochastic_assignment
+    from microcosm.build.uk_runtime import graph_kernels
+
+    graph = uk_spine_graph()
+    registry = uk_registry(graph=graph)
+    stages = sorted(
+        stage
+        for stage, helpers in graph_kernels._STAGE_HELPER_MODULES.items()
+        if stochastic_assignment in helpers
+    )
+    # The root stage's node is the CREATE kernel.
+    affected = [
+        graph.node("create_uk_frs" if stage == "frs_spine" else stage).kernel
+        for stage in stages
+    ]
+    # Three stages that draw through nothing of it.
+    control_stages = (
+        "frs_council_tax",
+        "cgt_support_split",
+        "hmrc_cgt_asset_type_spine",
+    )
+    assert not set(control_stages) & _stages_drawing_through_stochastic_assignment()
+    controls = [graph.node(stage).kernel for stage in control_stages]
+    before = {ref: registry.implementation_hash(ref) for ref in affected + controls}
+    helper_path = Path(stochastic_assignment.__file__).resolve()
+    original = Path.read_bytes
+
+    def changed_helper_bytes(path: Path) -> bytes:
+        content = original(path)
+        if path.resolve() == helper_path:
+            return content + b"\n# A helper-only source change.\n"
+        return content
+
+    monkeypatch.setattr(Path, "read_bytes", changed_helper_bytes)
+    assert len(affected) == len(_stages_drawing_through_stochastic_assignment())
+    for ref in affected:
+        assert registry.implementation_hash(ref) != before[ref], ref
+    for ref in controls:
+        assert registry.implementation_hash(ref) == before[ref], ref
+
+
 def test_isa_statistics_source_changes_invalidate_the_stages_that_read_them(
     monkeypatch,
 ):

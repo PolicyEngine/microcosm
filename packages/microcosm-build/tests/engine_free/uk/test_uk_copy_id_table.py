@@ -10,7 +10,6 @@ the static guard against the retired rule and the dense line's refusal.
 from __future__ import annotations
 
 import ast
-import inspect
 import json
 import re
 from pathlib import Path
@@ -71,6 +70,7 @@ from test_support.microcosm_build.uk_clone_first_frames import (
     copy_households,
     id_frame,
 )
+from test_support.paths import paths_for
 
 _FIELD_NAMES = (
     "vintage",
@@ -604,6 +604,33 @@ def test_the_executor_refuses_new_rows_without_an_incumbent_parent_by_count() ->
     ) as caught:
         graph_kernels._source_lineage(before, after, "household", id_offset=None)
     assert str(stray) not in str(caught.value)
+    # The SPI support stages name each new row's parent in household_source_id:
+    # the copy names an incumbent, the stray a household the frame never held.
+    orphan_source = 10**11 + 77_777
+    household = after_tables.household.copy()
+    incumbent = household["household_id"].isin(before_tables.household["household_id"])
+    sources = household["household_id"].where(
+        incumbent, int(before_tables.household["household_id"].iloc[0])
+    )
+    sources[household["household_id"] == stray] = orphan_source
+    household["household_source_id"] = sources.astype("int64")
+    sourced = id_frame(
+        IdTables(
+            person=after_tables.person,
+            benunit=after_tables.benunit,
+            household=household,
+        )
+    )
+    with pytest.raises(
+        ValueError,
+        match=(
+            r"^UK stage produced 1 new 'household' row\(s\) whose "
+            r"'household_source_id' is not an incumbent id\.$"
+        ),
+    ) as caught:
+        graph_kernels._source_lineage(before, sourced, "household", id_offset=None)
+    assert str(stray) not in str(caught.value)
+    assert str(orphan_source) not in str(caught.value)
 
 
 def test_the_executor_refuses_an_incumbent_id_at_its_radix_by_count() -> None:
@@ -622,34 +649,117 @@ def test_the_executor_refuses_an_incumbent_id_at_its_radix_by_count() -> None:
 
 # --- no UK spine module keeps the retired rule ------------------------------------
 
-
-@pytest.mark.parametrize(
-    "module",
-    [
-        "spi_support",
-        "spi_band_donors",
-        "high_value_home_support",
-        "cgt_support",
-        "cgt_structure",
-        "cgt_residential_split",
-        "graph_kernels",
-    ],
+#: The rule the table replaced: ten to the digit count of the largest id seen.
+_RETIRED_RULE = "id_multiplier_for_values"
+#: The modules that keep the dense line's own clone multiplier, the retired
+#: rule over the spine's ids, until #931 (c) re-bases the dense line onto the
+#: clone-first spine, each with what it uses it for. Nothing else may name it.
+_DENSE_RULE_MODULES = {
+    "packages/microcosm-build/src/microcosm/build/uk_runtime/rowwise_geography.py": (
+        "defines the dense clone multiplier and clones linked frames at it"
+    ),
+    "packages/microcosm-build/src/microcosm/build/uk_runtime/rowwise_dataset.py": (
+        "the dense expand and the crosswalk clone route offset dense clones by it"
+    ),
+    "packages/microcosm-build/src/microcosm/build/uk_runtime/__init__.py": (
+        "re-exports the dense helper"
+    ),
+    "packages/microcosm-build/src/microcosm/build/uk_runtime/size_evaluation.py": (
+        "decodes dense clone ids back to spine ids"
+    ),
+    "tools/build_uk_rowwise_dataset.py": (
+        "the row-wise tool's dry-run plans size the dense clone's ids by it"
+    ),
+}
+#: Every module that mints, bounds or decodes spine copy ids; none may also
+#: name the retired rule. Each reads the copy-id table, save the band
+#: donors, which mint through the support channel's clone helper.
+_COPY_ID_MODULES = frozenset(
+    {
+        *(
+            f"packages/microcosm-build/src/microcosm/build/uk_runtime/{module}.py"
+            for module in (
+                "cgt_residential_split",
+                "cgt_structure",
+                "cgt_support",
+                "frs_spine",
+                "graph_kernels",
+                "high_value_home_support",
+                "spi_band_donors",
+                "spi_support",
+            )
+        ),
+        "tools/verify_uk_identity_stability.py",
+    }
 )
-def test_no_uk_spine_stage_module_imports_the_retired_id_rule(module) -> None:
-    import importlib
+_MINTS_THROUGH_SPI_SUPPORT = frozenset(
+    {"packages/microcosm-build/src/microcosm/build/uk_runtime/spi_band_donors.py"}
+)
 
-    source = Path(
-        inspect.getfile(importlib.import_module(f"microcosm.build.uk_runtime.{module}"))
-    ).read_text(encoding="utf-8")
+
+def _uk_python_sources() -> dict[str, str]:
+    """The UK runtime's and the UK tools' sources by repository path."""
+
+    paths = paths_for("microcosm-build")
+    root = paths.repository
+    runtime = paths.package / "src" / "microcosm" / "build" / "uk_runtime"
+    uk_tool = re.compile(r"(?:^|_)uk(?:_|$)")
+    sources = (
+        *runtime.rglob("*.py"),
+        *(path for path in (root / "tools").glob("*.py") if uk_tool.search(path.stem)),
+    )
+    return {
+        path.relative_to(root).as_posix(): path.read_text(encoding="utf-8")
+        for path in sources
+    }
+
+
+def _source_names(source: str) -> set[str]:
+    """Every name a source imports, reads or reaches by attribute."""
+
     names = set()
     for node in ast.walk(ast.parse(source)):
         if isinstance(node, ast.ImportFrom):
             names.update(alias.name for alias in node.names)
+            if node.module:
+                names.add(node.module.rsplit(".", 1)[-1])
+        elif isinstance(node, ast.Import):
+            names.update(alias.name.rsplit(".", 1)[-1] for alias in node.names)
         elif isinstance(node, ast.Attribute):
             names.add(node.attr)
         elif isinstance(node, ast.Name):
             names.add(node.id)
-    assert "id_multiplier_for_values" not in names
+    return names
+
+
+def test_only_the_dense_line_names_the_retired_id_rule() -> None:
+    """The retired rule survives only where the dense line keeps its own
+    multiplier until #931 (c); a stale entry fails as well as a new user."""
+
+    names = {
+        path: _source_names(source) for path, source in _uk_python_sources().items()
+    }
+    assert {path for path, found in names.items() if _RETIRED_RULE in found} == set(
+        _DENSE_RULE_MODULES
+    )
+
+
+def test_no_module_that_mints_or_decodes_copy_ids_names_the_retired_rule() -> None:
+    """Each module that mints, bounds or decodes spine copy ids reads the
+    copy-id table, the identity tool among them, and none names the rule the
+    table replaced; the readers of the table are exactly these modules."""
+
+    names = {
+        path: _source_names(source) for path, source in _uk_python_sources().items()
+    }
+    readers = {path for path, found in names.items() if "copy_id_table" in found}
+    readers.discard(
+        "packages/microcosm-build/src/microcosm/build/uk_runtime/copy_id_table.py"
+    )
+    assert readers == _COPY_ID_MODULES - _MINTS_THROUGH_SPI_SUPPORT
+    for path in sorted(_COPY_ID_MODULES):
+        assert _RETIRED_RULE not in names[path], path
+    assert not _COPY_ID_MODULES & set(_DENSE_RULE_MODULES)
 
 
 # --- the dense line ---------------------------------------------------------------

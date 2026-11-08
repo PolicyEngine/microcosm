@@ -19,6 +19,7 @@ import pandas as pd
 import pytest
 
 from microcosm.build.source_manifest import SourceOperationSpec, SourceStageSpec
+from microcosm.build.uk_runtime import copy_id_table
 from microcosm.build.uk_runtime.age_tail import (
     UK_AGE_TOP_CODE,
     disaggregate_uk_age_top_code,
@@ -736,7 +737,8 @@ class TestRosterOrderedScoping:
 # walks by wealth descending then id ascending: id 2 (130) then id 3 (121)
 # cross 240, so both split into three copies; band 37,700 takes id 6 (61) at
 # once, two copies. Ids 1, 4 and 5 stay whole; id 5 is the heaviest unselected
-# incumbent and takes the exact-total correction. Pre-split multiplier 10.
+# incumbent and takes the exact-total correction. Copy k of root r carries
+# r + k x 10**13, the copy-id table's cgt_support_split field (microcosm#931).
 
 _SPLIT_WEIGHTS = [70.0, 130.0, 121.0, 30.0, 90.0, 61.0]
 _SPLIT_WEALTH = [100.0, 500.0, 500.0, 200.0, 10.0, 20.0]
@@ -781,20 +783,25 @@ def _rebuild(frame, *, household=None, household_weights=None, mass_log=None):
 def _hand_split_frame(*, cloned: bool = True, anchored: bool = False):
     """Three source households, the first split into three at a third each.
 
-    Pre-split ids 1..3 (persons and benunits alike, multiplier 10) at source
-    weights 90 / 20 / 40: root 1 and its copies 11 and 21 carry 30 each,
-    flagged and counted as the stage leaves them. With ``cloned`` the clone
-    layer follows (multiplier 100) at equal halves, or with ``anchored`` at
-    an uneven pair split whose pair sums are still the pre-clone weights, as
-    the #970 anchor leaves them.
+    Pre-split ids 1..3 (persons and benunits alike) at source weights 90 / 20
+    / 40: root 1 and its copies 1 + 10**13 and 1 + 2 x 10**13, minted in the
+    copy-id table's ``cgt_support_split`` field as the stage mints them,
+    carry 30 each, flagged and counted as the stage leaves them. With
+    ``cloned`` the clone layer follows in the ``cgt_incidence_clone`` field
+    (10**17) at equal halves, or with ``anchored`` at an uneven pair split
+    whose pair sums are still the pre-clone weights, as the #970 anchor
+    leaves them.
     """
 
-    ids = np.array([1, 2, 3, 11, 21], dtype="int64")
+    ids = np.r_[
+        np.array([1, 2, 3], dtype="int64"),
+        copy_id_table.mint([1, 1], "cgt_support_split", [1, 2]),
+    ]
     flags = [False, False, False, True, True]
     copies = [3, 1, 1, 3, 3]
     pre_clone = np.array([30.0, 20.0, 40.0, 30.0, 30.0])
     if cloned:
-        ids = np.r_[ids, ids + 100]
+        ids = np.r_[ids, copy_id_table.mint(ids, "cgt_incidence_clone", 1)]
         flags = flags + flags
         copies = copies + copies
         if anchored:
@@ -886,7 +893,8 @@ class TestPreSplitFold:
         tool = _load_tool()
         frame = _hand_split_frame(cloned=False)
         household = frame.table("household").copy()
-        # Flagging id 2 as a copy gives it index 2 // 10 = 0: no root.
+        # Flagging id 2 as a copy gives it ordinal 0 in the cgt_support_split
+        # field: no root.
         household.loc[household["household_id"] == 2, HOUSEHOLD_IS_CGT_SUPPORT_COPY] = (
             True
         )
@@ -902,9 +910,7 @@ class TestPreSplitFold:
         tool = _load_tool()
         _, frame = _split_then_cloned()
         household = frame.table("household")
-        lineage = tool._support_copy_lineage(
-            frame.table("person"), frame.table("benunit"), household
-        )
+        lineage = tool._support_copy_lineage(household)
         stored = household[CGT_SUPPORT_COPY_INDEX_COLUMN].to_numpy()
         np.testing.assert_array_equal(
             stored[lineage.copy_positions], lineage.copy_index
@@ -955,7 +961,8 @@ class TestE8SupportSplitRecompute:
         assert receipt["copies_recomputed"] == 5
         assert receipt["households_selected"] == 3
         assert receipt["pre_split_households"] == 6
-        assert receipt["id_multiplier"] == 10
+        # The receipt records the split field's declared radix.
+        assert receipt["id_multiplier"] == copy_id_table.radix("cgt_support_split")
         # 2 x 1.25 x (60 + 10) published in the two bands.
         assert receipt["support_mass"] == 175.0
         assert receipt["mass"]["old_total"] == receipt["mass"]["new_total"]
@@ -975,8 +982,9 @@ class TestE8SupportSplitRecompute:
         weights = np.asarray(frame.weights_for("household").values, dtype=float).copy()
         # A unit of mass moves between root 2's two copies: the family total
         # holds, so the selection stands, but two members leave w / n.
-        weights[ids == 12] += 1.0
-        weights[ids == 22] -= 1.0
+        first, second = copy_id_table.mint([2, 2], "cgt_support_split", [1, 2])
+        weights[ids == first] += 1.0
+        weights[ids == second] -= 1.0
         _, problems = self._receipt(_rebuild(frame, household_weights=weights))
         assert problems == {"support_split_family_weights": 2}
 
@@ -1026,3 +1034,190 @@ class TestE8SupportSplitRecompute:
         )
         with pytest.raises(ValueError, match="support-split layer is absent"):
             self._receipt(frame)
+
+
+# --- copy ids at the copy-id table's declared radices (microcosm#931) ----------
+#
+# The decoders read every copy id at its field's declared radix, never at a
+# power of ten above the frame's largest id, and the tool refuses a spine whose
+# copy ids follow the rule the table replaced. Every frame here is synthetic.
+
+
+def _lineage_household(household: pd.DataFrame) -> pd.DataFrame:
+    """A copy chain's path columns as the spine's own lineage columns."""
+
+    from microcosm.build.uk_runtime.cgt_residential_split import (
+        CGT_RESIDENTIAL_CLONE_INDEX_COLUMN,
+        HOUSEHOLD_IS_CGT_RESIDENTIAL_CLONE,
+    )
+    from microcosm.build.uk_runtime.cgt_support import CGT_SUPPORT_COPY_INDEX_COLUMN
+    from microcosm.build.uk_runtime.household_lineage import (
+        HIGH_VALUE_SUPPORT_COPY_COLUMN,
+        HIGH_VALUE_SUPPORT_INDEX_COLUMN,
+    )
+    from test_support.microcosm_build.uk_clone_first_frames import COPY_PATH_COLUMNS
+
+    lineage = household.drop(columns=list(COPY_PATH_COLUMNS))
+    lineage["household_support_clone_index"] = household["spi"]
+    lineage["household_support_channel"] = np.where(household["spi"] > 0, "spi", "frs")
+    lineage[HIGH_VALUE_SUPPORT_INDEX_COLUMN] = household["hv"]
+    lineage[HIGH_VALUE_SUPPORT_COPY_COLUMN] = household["hv"] > 0
+    lineage[CGT_SUPPORT_COPY_INDEX_COLUMN] = household["cgt"]
+    lineage[HOUSEHOLD_IS_CGT_SUPPORT_COPY] = household["cgt"] > 0
+    lineage[HOUSEHOLD_IS_CGT_CLONE] = household["twin"] > 0
+    lineage[CGT_RESIDENTIAL_CLONE_INDEX_COLUMN] = household["arm"]
+    lineage[HOUSEHOLD_IS_CGT_RESIDENTIAL_CLONE] = household["arm"] > 0
+    return lineage
+
+
+def _chain(rule: str):
+    """The six copy layers on synthetic sernums, minted by ``rule``."""
+
+    from test_support.microcosm_build.uk_clone_first_frames import (
+        base_id_tables,
+        copy_chain,
+    )
+
+    return copy_chain(base_id_tables(), rule=rule)
+
+
+class TestCopyIdsAtTheDeclaredTable:
+    def test_a_spine_the_table_minted_follows_it(self) -> None:
+        tool = _load_tool()
+        household = _lineage_household(_chain("table").household)
+        assert tool._copy_id_rows_off_the_declared_table(household) == 0
+        tool._require_copy_ids_on_the_declared_table(household)
+
+    def test_a_spine_minted_by_the_retired_rule_is_refused_by_count(self) -> None:
+        tool = _load_tool()
+        household = _lineage_household(_chain("retired").household)
+        off = tool._copy_id_rows_off_the_declared_table(household)
+        # Every copy row: the retired rule put each layer's copies a power of
+        # ten above the largest id the layer saw, never in the layer's field.
+        copies = int((household["household_id"] >= 10**5).sum())
+        assert off == copies > 0
+        with pytest.raises(ValueError) as caught:
+            tool._require_copy_ids_on_the_declared_table(household)
+        assert str(caught.value) == f"{off} {tool._OFF_TABLE_REFUSAL}"
+        assert "commit that built it" in str(caught.value)
+
+    def test_a_copy_whose_lineage_disagrees_with_its_id_is_refused(self) -> None:
+        tool = _load_tool()
+        household = _lineage_household(_chain("table").household)
+        # One twin loses its flag; its id still holds the twin field's ordinal.
+        twin = int(np.flatnonzero(household[HOUSEHOLD_IS_CGT_CLONE].to_numpy())[0])
+        household.loc[twin, HOUSEHOLD_IS_CGT_CLONE] = False
+        assert tool._copy_id_rows_off_the_declared_table(household) == 1
+
+    def test_the_tool_refuses_a_spine_built_before_the_table(
+        self, monkeypatch, tmp_path
+    ) -> None:
+        import sys
+
+        from test_support.microcosm_build.uk_clone_first_frames import (
+            IdTables,
+            id_frame,
+        )
+
+        tool = _load_tool()
+        tables = _chain("retired")
+        frame = id_frame(
+            IdTables(
+                person=tables.person,
+                benunit=tables.benunit,
+                household=_lineage_household(tables.household),
+            )
+        )
+        off = tool._copy_id_rows_off_the_declared_table(frame.table("household"))
+        monkeypatch.setattr(tool, "load_uk_national_frame", lambda path: (frame, {}))
+        output = tmp_path / "receipt.json"
+        monkeypatch.setattr(
+            sys,
+            "argv",
+            [
+                "verify_uk_identity_stability.py",
+                "--input-h5",
+                str(tmp_path / "spine.h5"),
+                "--output",
+                str(output),
+                "--check",
+                "e7",
+            ],
+        )
+        with pytest.raises(ValueError) as caught:
+            tool.main()
+        assert str(caught.value) == f"{off} {tool._OFF_TABLE_REFUSAL}"
+        assert not output.exists()
+
+    def test_the_arms_decode_at_the_declared_radix_above_2_53(self) -> None:
+        tool = _load_tool()
+        tables = _chain("table")
+        path = ["source_household_id", "spi", "hv", "cgt", "twin"]
+        lineage = tool._residential_arm_lineage(_lineage_household(tables.household))
+        household = tables.household
+        arms = household.iloc[lineage.arm_positions]
+        assert len(arms) > 0
+        assert int(arms["household_id"].min()) > 2**53
+        assert lineage.radix == copy_id_table.radix("cgt_residential_split")
+        np.testing.assert_array_equal(lineage.arm_index, arms["arm"].to_numpy())
+        # Each arm's source is the row with its copy path and no arm, found by
+        # lineage, never by id arithmetic.
+        sources = household.loc[household["arm"] == 0, path]
+        position_by_path = {
+            tuple(row): position
+            for position, row in zip(
+                sources.index, sources.itertuples(index=False), strict=True
+            )
+        }
+        expected = [
+            position_by_path[tuple(row)] for row in arms[path].itertuples(index=False)
+        ]
+        np.testing.assert_array_equal(lineage.source_positions, expected)
+
+    def test_a_stored_arm_index_off_the_id_and_an_orphan_arm_are_refused(
+        self,
+    ) -> None:
+        from microcosm.build.uk_runtime.cgt_residential_split import (
+            CGT_RESIDENTIAL_CLONE_INDEX_COLUMN,
+        )
+
+        tool = _load_tool()
+        household = _lineage_household(_chain("table").household)
+        arm = int(np.flatnonzero(household[CGT_RESIDENTIAL_CLONE_INDEX_COLUMN] > 0)[0])
+        tampered = household.copy()
+        tampered.loc[arm, CGT_RESIDENTIAL_CLONE_INDEX_COLUMN] = 7
+        with pytest.raises(ValueError, match="disagrees with the id scheme") as caught:
+            tool._residential_arm_lineage(tampered)
+        assert str(household["household_id"].iloc[arm]) not in str(caught.value)
+        orphan = household.copy()
+        source = int(orphan["household_id"].iloc[arm]) - int(
+            orphan[CGT_RESIDENTIAL_CLONE_INDEX_COLUMN].iloc[arm]
+        ) * copy_id_table.radix("cgt_residential_split")
+        orphan = orphan.loc[orphan["household_id"] != source].reset_index(drop=True)
+        with pytest.raises(ValueError, match="without a source household") as caught:
+            tool._residential_arm_lineage(orphan)
+        assert str(source) not in str(caught.value)
+
+    def test_a_support_copy_decodes_exactly_above_2_53(self) -> None:
+        from microcosm.build.uk_runtime.cgt_support import (
+            CGT_SUPPORT_COPY_INDEX_COLUMN,
+        )
+
+        tool = _load_tool()
+        # The field's largest ordinal: 1 + 9,999 x 10**13 has no float64 twin,
+        # so a float read would name a root the frame does not hold.
+        copy = int(copy_id_table.mint(1, "cgt_support_split", 9_999))
+        assert copy > 2**53 and float(copy) != copy
+        household = pd.DataFrame(
+            {
+                "household_id": np.array([1, 2, copy], dtype=np.int64),
+                HOUSEHOLD_IS_CGT_SUPPORT_COPY: [False, False, True],
+                CGT_SUPPORT_COPY_INDEX_COLUMN: np.array([0, 0, 9_999], dtype=np.int64),
+            }
+        )
+        lineage = tool._support_copy_lineage(household)
+        assert lineage.copy_index.tolist() == [9_999]
+        assert lineage.root_positions.tolist() == [0]
+        floated = household.assign(household_id=household["household_id"].astype(float))
+        with pytest.raises(TypeError, match="integer household ids"):
+            tool._support_copy_lineage(floated)

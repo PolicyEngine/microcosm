@@ -558,8 +558,8 @@ class UKFRSHMRCSpineLeavesStageTransform:
         missing_ids = sorted(set(source_leaves.index) - set(person["person_id"]))
         if missing_ids and not self.sampled_rung:
             raise ValueError(
-                "Raw FRS retained leaves contain person identity value(s) absent "
-                f"from the raw spine: {missing_ids[:5]}."
+                f"Raw FRS retained leaves contain {len(missing_ids)} person "
+                "identity value(s) absent from the raw spine."
             )
         if missing_ids:
             # A rung sample deliberately drops most source people; restrict
