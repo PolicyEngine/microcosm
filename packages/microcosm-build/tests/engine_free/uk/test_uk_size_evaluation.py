@@ -748,6 +748,98 @@ def test_a_file_that_keeps_its_sources_still_decodes_its_spine_stretch(
     assert result["stretch"]["vs_pool_design"]["max"] == pytest.approx(1.0)
 
 
+def test_an_older_dense_run_above_2_53_decodes_exactly_at_every_basis(
+    tmp_path: Path,
+) -> None:
+    # A spine minted by the retired rule reaches 16 digits and its dense
+    # clones 18 at K=15. Odd ids above 2**53 have no float64 twin, so a
+    # subtraction through float would land off the spine ids.
+    spine_ids = np.array([2**53 + 1, 2**53 + 3, 2**53 + 5, 10**16 - 1], dtype=np.int64)
+    assert all(float(value) != value for value in spine_ids.tolist())
+    clones, multiplier = 15, 10**16
+    clone_index = np.repeat(np.arange(clones, dtype=np.int64), len(spine_ids))
+    dense_ids = np.tile(spine_ids, clones) + clone_index * multiplier
+    weights = np.array([10.0, 20.0, 30.0, 40.0])
+    run = load_run(
+        _with_households(
+            _write_run_dir(tmp_path, "dense", size_run=False),
+            pd.DataFrame(
+                {
+                    "household_id": dense_ids,
+                    "household_weight": np.tile(weights, clones) / clones,
+                    "clone_index": clone_index,
+                }
+            ),
+        ),
+        label="dense",
+    )
+    spine = pd.DataFrame({"household_id": spine_ids, "household_weight": weights})
+    for kwargs, basis in (
+        (
+            {"id_multiplier": multiplier, "spine_weights": spine, "n_clones": clones},
+            "recorded",
+        ),
+        ({"spine_weights": spine, "n_clones": clones}, "spine"),
+        ({}, "inferred_from_clone_zero_ids"),
+    ):
+        result = weight_tables(run, **kwargs)
+        assert result["source_id_multiplier"] == multiplier
+        assert result["source_id_multiplier_basis"] == basis
+        assert result["distinct_source_households"] == len(spine_ids)
+        if kwargs:
+            # Every clone carries a fifteenth of its spine household: exact.
+            assert result["stretch"]["vs_pool_design"]["max"] == pytest.approx(1.0)
+
+
+def test_spine_weights_without_a_dense_rows_household_are_refused_by_count(
+    tmp_path: Path,
+) -> None:
+    import traceback
+
+    ids = np.array([1, 2, 3, 424_242], dtype=np.int64)
+    run = load_run(
+        _with_households(
+            _write_run_dir(tmp_path, "dense", size_run=False),
+            pd.DataFrame(
+                {
+                    "household_id": ids,
+                    "household_weight": np.full(len(ids), 5.0),
+                    "clone_index": np.zeros(len(ids), dtype=np.int64),
+                }
+            ),
+        ),
+        label="dense",
+    )
+    spine = pd.DataFrame({"household_id": ids[:3], "household_weight": [5.0] * 3})
+    with pytest.raises(ValueError) as caught:
+        weight_tables(run, spine_weights=spine, n_clones=1, id_multiplier=10**6)
+    assert str(caught.value) == (
+        "spine weights do not cover the spine household of 1 dense row(s)"
+    )
+    # Counted before the lookup: no pandas KeyError listing the id is chained.
+    assert caught.value.__cause__ is None and caught.value.__context__ is None
+    assert "424242" not in "".join(traceback.format_exception(caught.value))
+
+
+def test_a_negative_clone_index_is_refused_by_count(tmp_path: Path) -> None:
+    run = load_run(
+        _with_households(
+            _write_run_dir(tmp_path, "dense", size_run=False),
+            pd.DataFrame(
+                {
+                    "household_id": np.array([1, 2, 535_353], dtype=np.int64),
+                    "household_weight": np.full(3, 5.0),
+                    "clone_index": np.array([0, 0, -1], dtype=np.int64),
+                }
+            ),
+        ),
+        label="dense",
+    )
+    with pytest.raises(ValueError) as caught:
+        weight_tables(run)
+    assert str(caught.value) == "1 dense row(s) carry a negative clone_index"
+
+
 def test_area_support_and_gate_tables(tmp_path: Path) -> None:
     run = load_run(
         _write_run_dir(tmp_path, "candidate", size_run=True), label="candidate"

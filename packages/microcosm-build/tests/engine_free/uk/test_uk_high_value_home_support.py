@@ -207,6 +207,26 @@ def test_copies_of_spi_copies_take_their_parents_ids_plus_k_times_the_radix() ->
     # Some copies are of SPI copies, and some of base households.
     assert (copied["marker"] > 1_000).any()
     assert (copied["marker"] < 1_000).any()
+    # The identity tool's old-spine gate reads the stage's copies as on the
+    # table (microcosm#931).
+    assert _identity_tool()._copy_id_rows_off_the_declared_table(household) == 0
+
+
+def _identity_tool():
+    import importlib.util
+
+    from test_support.paths import paths_for
+
+    path = (
+        paths_for("microcosm-build").repository
+        / "tools"
+        / "verify_uk_identity_stability.py"
+    )
+    spec = importlib.util.spec_from_file_location("verify_uk_identity_stability", path)
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
 
 
 def test_the_split_refuses_incoming_ids_at_its_copy_id_radix() -> None:

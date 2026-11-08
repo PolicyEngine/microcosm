@@ -73,6 +73,8 @@ from microcosm.build.uk_runtime import (
 from microcosm.build.uk_runtime.rowwise_dataset import (
     UK_SPINE_LINEAGE_COLUMNS,
     _refuse_preassigned_geography,
+    _require_person_links,
+    _require_unique,
     refuse_dense_clone_id_overflow,
 )
 from microcosm.frame import engine_tables
@@ -1462,38 +1464,18 @@ def _validate_dry_run_input(
     benunit_ids: pd.DataFrame,
 ) -> None:
     """Mirror the real build's input refusals so a plan cannot bless an
-    input the build would reject."""
+    input the build would reject.
+
+    The build's own checks run here, so the plan's refusals are the build's:
+    they print counts, never an id (microcosm#931).
+    """
 
     if input_h5.suffix != ".h5":
         raise ValueError("UK single-year dataset path must end with '.h5'.")
-    for frame, column, label in (
-        (household, "household_id", "household"),
-        (person_ids, "person_id", "person"),
-        (benunit_ids, "benunit_id", "benunit"),
-    ):
-        if frame[column].isna().any():
-            raise ValueError(f"{label}.{column} contains missing values.")
-        if frame[column].duplicated().any():
-            duplicates = frame.loc[frame[column].duplicated(), column].unique()
-            raise ValueError(
-                f"{label}.{column} must be unique; duplicate value(s): "
-                f"{list(map(str, duplicates[:5]))}."
-            )
-    household_ids = set(household["household_id"])
-    missing_households = sorted(set(person_ids["person_household_id"]) - household_ids)
-    if missing_households:
-        raise ValueError(
-            "person.person_household_id contains value(s) absent from "
-            f"household: {missing_households[:5]}."
-        )
-    missing_benunits = sorted(
-        set(person_ids["person_benunit_id"]) - set(benunit_ids["benunit_id"])
-    )
-    if missing_benunits:
-        raise ValueError(
-            "person.person_benunit_id contains value(s) absent from benunit: "
-            f"{missing_benunits[:5]}."
-        )
+    _require_unique(household, "household_id", label="household")
+    _require_unique(person_ids, "person_id", label="person")
+    _require_unique(benunit_ids, "benunit_id", label="benunit")
+    _require_person_links(person_ids, benunit_ids, household)
 
 
 def _realized_area_support(

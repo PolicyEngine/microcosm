@@ -2159,13 +2159,19 @@ def _pre_residential_household_weights(frame) -> np.ndarray:
 #
 # Every UK copy layer mints its copies' ids in a decimal field of its own,
 # declared in ``uk_runtime.copy_id_table``: copy ``k`` of a row in field ``f``
-# carries the row's ids plus ``k`` times ``f``'s radix. The receipts decode a
-# copy id only through ``_copy_ordinals_and_parents``. A spine built before
-# the table offset each layer's copies by a power of ten above the largest id
-# the layer saw; ``_require_copy_ids_on_the_declared_table`` refuses such a
-# spine, which is receipted with the tool at the commit that built it.
-# Decoding that retired rule as well would mean changing these two functions,
-# and nothing else.
+# carries the row's ids plus ``k`` times ``f``'s radix. The receipts decode
+# the CGT support copies and the residential arms through
+# ``_copy_ordinals_and_parents``, and pair the incidence twins through
+# ``cgt_structure.pair_clone_households``, which pairs at the twin field's
+# radix too. A spine built before the table offset each layer's copies by a
+# power of ten above the largest of the five id columns of the rows the layer
+# saw; ``_require_copy_ids_on_the_declared_table`` refuses such a spine, which
+# is receipted with the tool at the commit that built it. The refusal is one
+# small function. Decoding the retired rule as well would take more: the
+# person and benefit-unit tables threaded back through
+# ``_support_copy_lineage`` and ``_residential_arm_lineage`` (which read the
+# household table only) and their four callers, and a tool-local twin pairing
+# at the three ``pair_clone_households`` call sites.
 
 #: The old-spine refusal, after its count of household rows.
 _OFF_TABLE_REFUSAL = (
