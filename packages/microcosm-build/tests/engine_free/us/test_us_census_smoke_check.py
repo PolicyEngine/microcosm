@@ -29,14 +29,14 @@ import os
 import subprocess
 import sys
 from collections.abc import Callable, Iterator
-from contextlib import contextmanager
+from contextlib import ExitStack, contextmanager
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
 import pytest
-from hypothesis import HealthCheck, given, settings
+from hypothesis import example, given, settings
 from hypothesis import strategies as st
 
 from microcosm.build.us_runtime import reform_coverage_smoke as smoke_module
@@ -431,8 +431,12 @@ def _record(
     at: datetime,
     out_dir: Path | None = None,
     exit_code: int | None = None,
+    command: list[str] | None = None,
+    runtime_environment: dict | None = None,
 ) -> dict:
-    """A launch record taken by the tool itself, stamped ``at``."""
+    """A launch record taken by the tool itself, stamped ``at``: a start
+    record names the command it would become, and an end record measures the
+    runtime with its start's environment."""
     snapshot = tool.snapshot(
         stage=stage,
         phase=phase,
@@ -442,11 +446,49 @@ def _record(
         dataset=dataset,
         out_dir=out_dir,
         exit_code=exit_code,
+        command=command,
+        runtime_environment=runtime_environment,
         now=lambda: at,
     )
     path = launch_dir / tool.LAUNCH_FILES[(stage, phase)]
     path.write_text(tool.strict_dumps(snapshot))
     return snapshot
+
+
+def _build_command(out: Path) -> list[str]:
+    """The build's launch, as a start record execs it."""
+    return [
+        sys.executable,
+        "-B",
+        "tools/build_us_fiscal_refresh_release.py",
+        "--out",
+        str(out),
+    ]
+
+
+def _smoke_command(dataset: Path, probe_dir: Path, batch_size: int) -> list[str]:
+    """The documented census smoke, as a start record execs it."""
+    return [
+        sys.executable,
+        "-B",
+        "tools/probe_us_post_export.py",
+        "--census",
+        "--stages",
+        "reform_coverage_smoke",
+        "--batch-size",
+        str(batch_size),
+        "--export",
+        str(dataset),
+        "--out",
+        str(probe_dir),
+    ]
+
+
+def _clear_git_environment(patch: pytest.MonkeyPatch) -> None:
+    """Run without the caller's ``GIT_*`` variables (a git hook sets some),
+    which a start record would refuse."""
+    for name in [name for name in os.environ if name.startswith("GIT_")]:
+        patch.delenv(name)
 
 
 #: What a skipped-smoke build still scores after export.
@@ -477,9 +519,16 @@ def _write_manifests(
     runtime: dict,
     scoring: dict,
     created_at: str,
+    calibration_runtime: dict | None = None,
 ) -> None:
     """The build and release manifests of a skipped-smoke build."""
     dataset_sha = scoring["dataset_sha256"]
+    if calibration_runtime is None:
+        calibration_runtime = {
+            "torch": "2.12.0",
+            "torch_num_threads": int(_THREADS),
+            "omp_num_threads": _THREADS,
+        }
     build_manifest = {
         "build_id": release_id,
         "build_sha": commit[:7],
@@ -491,6 +540,7 @@ def _write_manifests(
             "git_dirty": False,
         },
         "runtime": runtime,
+        "calibration_runtime": calibration_runtime,
         "gate_evidence": _EVIDENCE,
         "post_export_scoring": scoring,
         "dataset": {
@@ -514,6 +564,7 @@ def _write_manifests(
         "build": {
             "build_id": release_id,
             "built_at": created_at,
+            "calibration_runtime": calibration_runtime,
             "gate_evidence": _EVIDENCE,
             "post_export_scoring": scoring,
         },
@@ -596,8 +647,9 @@ def layout(tool, tmp_path_factory) -> Layout:
         )
         for name in tool.THREAD_VARIABLES:
             patch.setenv(name, _THREADS)
+        _clear_git_environment(patch)
 
-        def record(stage, phase, *, out_dir=None, exit_code=None):
+        def record(stage, phase, **extra):
             return _record(
                 tool,
                 repo=repo,
@@ -606,11 +658,10 @@ def layout(tool, tmp_path_factory) -> Layout:
                 stage=stage,
                 phase=phase,
                 at=_TIMES[f"{stage}-{phase}"],
-                out_dir=out_dir,
-                exit_code=exit_code,
+                **extra,
             )
 
-        build_start = record("build", "start", out_dir=out)
+        build_start = record("build", "start", out_dir=out, command=_build_command(out))
         runtime = build_start["runtime"]
         artifact_root.mkdir(parents=True)
         release_dir.mkdir(parents=True)
@@ -635,8 +686,18 @@ def layout(tool, tmp_path_factory) -> Layout:
             scoring=scoring,
             created_at=_TIMES["manifests"].isoformat(),
         )
-        record("build", "end", exit_code=0)
-        record("smoke", "start", out_dir=probe_dir)
+        record(
+            "build",
+            "end",
+            exit_code=0,
+            runtime_environment=build_start["environment"],
+        )
+        smoke_start = record(
+            "smoke",
+            "start",
+            out_dir=probe_dir,
+            command=_smoke_command(dataset, probe_dir, _BATCH),
+        )
         probe_dir.mkdir()
         report, gate, passes = _probe_outputs(
             tool,
@@ -656,7 +717,12 @@ def layout(tool, tmp_path_factory) -> Layout:
         (probe_dir / "passes.jsonl").write_text(
             "".join(json.dumps(row) + "\n" for row in passes)
         )
-        record("smoke", "end", exit_code=0)
+        record(
+            "smoke",
+            "end",
+            exit_code=0,
+            runtime_environment=smoke_start["environment"],
+        )
     return Layout(
         repo=repo,
         commit=commit,
@@ -752,16 +818,17 @@ def test_a_faithful_census_smoke_is_accepted(tool, layout, monkeypatch) -> None:
             "build_smoke": "skipped",
             "external_smoke": "passed-before-publish",
             "reform_validation": "not-run-not-certified",
-            "default_promotion_allowed": False,
         }
-        assert receipt["publication"]["tag_only"] is True
-        assert receipt["publication"]["updates_latest"] is False
+        # The receipt names the flags it printed; nothing reads it to enforce
+        # them.
+        assert receipt["publication"]["printed_flags"] == ["--no-latest", "--tag-only"]
+        assert receipt["publication"]["publisher_checks_these_files"] is False
         assert receipt["expectation"] == layout.expectation
         assert (
             receipt["dataset"]["sha256"] == hashlib.sha256(_DATASET_BYTES).hexdigest()
         )
         assert receipt["smoke"]["probes"] == len(layout.expectation["probes"])
-        assert receipt["smoke"]["analysis"]["decomposed"] == len(
+        assert receipt["smoke"]["diagnostic_analysis"]["decomposed"] == len(
             layout.expectation["probes"]
         )
         assert set(receipt["launches"]) == {
@@ -780,6 +847,8 @@ def test_a_faithful_census_smoke_is_accepted(tool, layout, monkeypatch) -> None:
         note = (layout.release_dir / tool.ATTACHMENTS["note"]).read_text()
         assert layout.release_id in note
         assert "not for promotion to the default release" in note
+        assert "uploads this note and the receipt but checks nothing in them" in note
+        assert "with the build's runtime" not in note
         preflight, publish = tool.publish_commands(accepted, inputs)
         assert preflight.endswith("--preflight-only")
         assert "--no-latest --tag-only" in publish
@@ -896,6 +965,7 @@ def test_the_probes_own_census_run_is_accepted(
     )
     for name in tool.THREAD_VARIABLES:
         monkeypatch.setenv(name, _THREADS)
+    _clear_git_environment(monkeypatch)
 
     def record(stage: str, phase: str, at: datetime, **extra) -> dict:
         return _record(
@@ -970,7 +1040,13 @@ def test_the_probes_own_census_run_is_accepted(
 
     # The build, stamped in the past.
     started = datetime.now(UTC)
-    record("build", "start", started - timedelta(hours=3), out_dir=out)
+    build_start = record(
+        "build",
+        "start",
+        started - timedelta(hours=3),
+        out_dir=out,
+        command=_build_command(out),
+    )
     artifact_root.mkdir(parents=True)
     release_dir.mkdir(parents=True)
     write_table_h5(frame, dataset)
@@ -993,14 +1069,28 @@ def test_the_probes_own_census_run_is_accepted(
         },
         created_at=(started - timedelta(hours=2)).isoformat(),
     )
-    record("build", "end", started - timedelta(hours=1), exit_code=0)
+    record(
+        "build",
+        "end",
+        started - timedelta(hours=1),
+        exit_code=0,
+        runtime_environment=build_start["environment"],
+    )
 
-    # The smoke, with the documented arguments.
-    record("smoke", "start", datetime.now(UTC), out_dir=probe_dir)
-    argv = ["--census", "--stages", "reform_coverage_smoke", "--batch-size", "16"]
-    argv += ["--export", str(dataset), "--out", str(probe_dir)]
-    assert probe.main(argv) == 0
-    record("smoke", "end", datetime.now(UTC), exit_code=0)
+    # The smoke, with the documented arguments: the start record names the
+    # command it would exec, and the probe's own main runs those arguments.
+    command = _smoke_command(dataset, probe_dir, 16)
+    smoke_start = record(
+        "smoke", "start", datetime.now(UTC), out_dir=probe_dir, command=command
+    )
+    assert probe.main(command[3:]) == 0
+    record(
+        "smoke",
+        "end",
+        datetime.now(UTC),
+        exit_code=0,
+        runtime_environment=smoke_start["environment"],
+    )
 
     accepted = tool.check(
         tool.Inputs(
@@ -1022,7 +1112,10 @@ def test_the_probes_own_census_run_is_accepted(
     assert report["tool_source"]["tools"][tool.BUILDER_PATH]["hashed"] == "at load"
     assert len(batches) == 3
     assert accepted.smoke_summary["probes"] == 3
-    assert accepted.smoke_summary["analysis"] == {"decomposed": 3, "other": {}}
+    assert accepted.smoke_summary["diagnostic_analysis"] == {
+        "decomposed": 3,
+        "other": {},
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -1046,6 +1139,12 @@ def _first_probe(layout) -> str:
 
 _REFUSALS = [
     # (case, file, edit(layout) -> edit(payload), expected text)
+    (
+        "a reference plan comparison",
+        "report",
+        lambda lo: _set("reference_plan_comparison", value={}),
+        "the report compared plans against a reference release",
+    ),
     (
         "gate passed",
         "gate",
@@ -1312,7 +1411,7 @@ _REFUSALS = [
         "smoke hash seed",
         "smoke-start",
         lambda lo: _set("environment", "PYTHONHASHSEED", value="424242"),
-        "PYTHONHASHSEED",
+        "the smoke's PYTHONHASHSEED",
     ),
     (
         "build exit",
@@ -1504,7 +1603,7 @@ _REFUSALS = [
         "another interpreter",
         "smoke-start",
         lambda lo: _set("python", "resolved", value="/usr/bin/python3"),
-        "smoke-start python",
+        "smoke-start interpreter",
     ),
     (
         "naive time",
@@ -1519,6 +1618,414 @@ _REFUSALS = [
             "recorded_at", value=(_TIMES["check"] + timedelta(hours=1)).isoformat()
         ),
         "smoke-end does not precede now",
+    ),
+    # Each start record's command is the stage's documented launch.
+    (
+        "build command script",
+        "build-start",
+        lambda lo: _set("command", 2, value="tools/probe_us_post_export.py"),
+        "build-start: the command must run tools/build_us_fiscal_refresh_release.py",
+    ),
+    (
+        "build command interpreter",
+        "build-start",
+        lambda lo: _set("command", 0, value="/usr/bin/python3"),
+        "build-start: the command runs '/usr/bin/python3', not the --python",
+    ),
+    (
+        "build interpreter option",
+        "build-start",
+        lambda lo: _set("command", 1, value="-X"),
+        "build-start: the command must run tools/build_us_fiscal_refresh_release.py",
+    ),
+    (
+        "smoke sample flag",
+        "smoke-start",
+        lambda lo: (
+            lambda record: record["command"].extend(
+                ["--sample-receipt", "sample_receipt.json"]
+            )
+        ),
+        "a census smoke passes only",
+    ),
+    (
+        "smoke stages",
+        "smoke-start",
+        lambda lo: _set("command", 5, value="reform_coverage_smoke,demographics"),
+        "the smoke runs --stages 'reform_coverage_smoke,demographics'",
+    ),
+    (
+        "smoke without census",
+        "smoke-start",
+        lambda lo: lambda record: record["command"].remove("--census"),
+        "the smoke must pass each of ['--census'] once",
+    ),
+    (
+        "smoke repeated flag",
+        "smoke-start",
+        lambda lo: (
+            lambda record: record["command"].extend(
+                ["--stages", "reform_coverage_smoke"]
+            )
+        ),
+        "the smoke must pass each of ['--stages'] once",
+    ),
+    (
+        "smoke batch size",
+        "smoke-start",
+        lambda lo: _set("command", 7, value="1000"),
+        "smoke-start --batch-size (the build's maximum_batch_size)",
+    ),
+    (
+        "smoke batch spelling",
+        "smoke-start",
+        lambda lo: _set("command", 7, value="2e3"),
+        "the smoke's --batch-size '2e3' is not a positive integer",
+    ),
+    (
+        "smoke export",
+        "smoke-start",
+        lambda lo: _set("command", 9, value="/elsewhere/microcosm_us_2024.h5"),
+        "not the recorded dataset",
+    ),
+    (
+        "smoke out",
+        "smoke-start",
+        lambda lo: _set("command", 11, value="/elsewhere/smoke-out"),
+        "not the recorded output directory",
+    ),
+    (
+        "start without a command",
+        "build-start",
+        lambda lo: _set("command", value=None),
+        "build-start records no command, interpreter or output directory",
+    ),
+    # A start record describes the process it became; an end record repeats
+    # the start's snapshot.
+    (
+        "start exit code",
+        "build-start",
+        lambda lo: _set("exit_code", value=0),
+        "build-start exit_code",
+    ),
+    (
+        "start measured elsewhere",
+        "build-start",
+        lambda lo: _set("runtime_environment", "PYTHONHASHSEED", value="1"),
+        "build-start runtime_environment (its own environment)",
+    ),
+    (
+        "end measured elsewhere",
+        "smoke-end",
+        lambda lo: _set("runtime_environment", "OMP_NUM_THREADS", value="9"),
+        "smoke-end runtime_environment (smoke-start's environment)",
+    ),
+    (
+        "end command",
+        "build-end",
+        lambda lo: _set("command", value=["x"]),
+        "build-end command",
+    ),
+    (
+        "end output directory",
+        "smoke-end",
+        lambda lo: _set("out_dir", value={"path": "/x", "state": "absent"}),
+        "smoke-end out_dir",
+    ),
+    (
+        "end interpreter",
+        "build-end",
+        lambda lo: _set("python", "resolved", value="/usr/bin/python3"),
+        "build-end interpreter (build-start's)",
+    ),
+    (
+        "git redirect",
+        "smoke-start",
+        lambda lo: _set("git_environment", value=["GIT_DIR"]),
+        "smoke-start git-redirecting variables",
+    ),
+    (
+        "git environment missing",
+        "build-start",
+        lambda lo: lambda record: record.pop("git_environment"),
+        "build-start lists no git environment",
+    ),
+    (
+        "status digest",
+        "build-end",
+        lambda lo: _set("repo", "status_sha256", value="0" * 64),
+        "build-end git status digest",
+    ),
+    (
+        "status entries",
+        "smoke-start",
+        lambda lo: _set("repo", "status_entries", value=1),
+        "smoke-start git status entries",
+    ),
+    (
+        "record tool",
+        "smoke-end",
+        lambda lo: _set("tool", value="tools/other.py"),
+        "smoke-end tool",
+    ),
+    (
+        "another checkout's record",
+        "build-start",
+        lambda lo: _set("repo", "toplevel", value="/elsewhere/repo"),
+        "build-start repository",
+    ),
+    (
+        "another working directory",
+        "smoke-end",
+        lambda lo: _set("cwd", value="/elsewhere/repo"),
+        "smoke-end working directory",
+    ),
+    (
+        "no uv.lock",
+        "build-start",
+        lambda lo: _set("files", "uv.lock", value=None),
+        "build-start found no uv.lock",
+    ),
+    (
+        "cpu count",
+        "build-start",
+        lambda lo: _set("cpu_count", value="18"),
+        "the smoke's thread-pool settings",
+    ),
+    (
+        "smoke runtime",
+        "smoke-start",
+        lambda lo: _set("runtime", "version", value="3.0.0"),
+        "smoke-start runtime is",
+    ),
+    (
+        "smoke dataset elsewhere",
+        "smoke-start",
+        lambda lo: _set("dataset", "path", value="/elsewhere/microcosm_us_2024.h5"),
+        "smoke-start dataset path (build-end's)",
+    ),
+    (
+        "build dataset existed",
+        "build-start",
+        lambda lo: _set("dataset", "exists", value=True),
+        "build-start dataset exists",
+    ),
+    (
+        "build dataset elsewhere",
+        "build-end",
+        lambda lo: _set("dataset", "path", value="/elsewhere/microcosm_us_2024.h5"),
+        "build-end dataset path (the release's national artifact)",
+    ),
+    (
+        "build dataset digest",
+        "build-end",
+        lambda lo: _set("dataset", "sha256", value=None),
+        "build-end recorded no dataset digest",
+    ),
+    (
+        "microcosm from the worktree's .venv",
+        "build-start",
+        lambda lo: _set(
+            "runtime",
+            "import_origins",
+            "microcosm.build",
+            value={
+                "origin": str(
+                    lo.repo
+                    / ".venv/lib/python3.14/site-packages/microcosm/build/__init__.py"
+                ),
+                "locations": [
+                    str(lo.repo / ".venv/lib/python3.14/site-packages/microcosm/build")
+                ],
+            },
+        ),
+        "microcosm.build imports from outside",
+    ),
+    # The calibration's thread record.
+    (
+        "calibration threads",
+        "build",
+        lambda lo: (
+            lambda payload: payload["calibration_runtime"].update(omp_num_threads="16")
+        ),
+        "the build's calibration_runtime.omp_num_threads",
+    ),
+    (
+        "release calibration runtime",
+        "release",
+        lambda lo: _set("build", "calibration_runtime", "torch_num_threads", value=16),
+        "release build.calibration_runtime",
+    ),
+    # Each message below fails only beside others when one field changes, so
+    # a case of its own notices the check's removal.
+    (
+        "smoke run id",
+        "smoke-start",
+        lambda lo: _set("run_id", value="r0"),
+        "smoke-start run_id",
+    ),
+    (
+        "smoke tool digest",
+        "smoke-start",
+        lambda lo: _set("tool_sha256", value="0" * 64),
+        "smoke-start tool_sha256",
+    ),
+    (
+        "smoke lockfile",
+        "smoke-start",
+        lambda lo: _set("files", "uv.lock", value="0" * 64),
+        "smoke-start files",
+    ),
+    (
+        "smoke environment",
+        "smoke-start",
+        lambda lo: _set("environment", value=None),
+        "a start record lists no environment",
+    ),
+    (
+        "build-end digest, against the smoke",
+        "build-end",
+        lambda lo: _set("dataset", "sha256", value="0" * 64),
+        "smoke-start dataset (build-end's)",
+    ),
+    (
+        "build-end digest, against the H5",
+        "build-end",
+        lambda lo: _set("dataset", "sha256", value="0" * 64),
+        "build-end dataset is",
+    ),
+    (
+        "build id",
+        "build",
+        lambda lo: _set("build_id", value="another-build"),
+        "the release directory's name",
+    ),
+    (
+        "absolute artifact path",
+        "release",
+        lambda lo: _set("artifacts", _DATASET_KEY, "path", value="/data/national.h5"),
+        "the national artifact's path is not a relative path",
+    ),
+    (
+        "build gate evidence",
+        "build",
+        lambda lo: _set("gate_evidence", "reform_coverage_smoke", value="passed"),
+        "build gate_evidence.reform_coverage_smoke",
+    ),
+    (
+        "no post-export scoring",
+        "build",
+        lambda lo: _set("post_export_scoring", value=None),
+        "the build recorded no post_export_scoring",
+    ),
+    (
+        "scoring digest",
+        "build",
+        lambda lo: _set("post_export_scoring", "dataset_sha256", value="0" * 64),
+        "build scoring dataset_sha256",
+    ),
+    (
+        "no scoring consumers",
+        "build",
+        lambda lo: _set("post_export_scoring", "consumers", value=None),
+        "build scoring lists no consumers",
+    ),
+    (
+        "scored the smoke",
+        "build",
+        lambda lo: _set(
+            "post_export_scoring", "consumers", "reform_coverage_smoke", value={}
+        ),
+        "the build scored reform_coverage_smoke, which a skipped-smoke build does not",
+    ),
+    (
+        "scored validation",
+        "build",
+        lambda lo: _set(
+            "post_export_scoring", "consumers", "reform_validation", value={}
+        ),
+        "the build scored reform_validation, which a skipped-smoke build does not",
+    ),
+    (
+        "no households",
+        "build",
+        lambda lo: _set("post_export_scoring", "n_households", value=0),
+        "build scoring n_households is not a positive integer",
+    ),
+    (
+        "scoring batch count",
+        "build",
+        lambda lo: _set("post_export_scoring", "n_batches", value=999),
+        "build scoring n_batches",
+    ),
+    (
+        "largest batch",
+        "build",
+        lambda lo: _set("post_export_scoring", "max_batch_households", value=1),
+        "build scoring max_batch_households",
+    ),
+    (
+        "one batch",
+        "build",
+        lambda lo: _set("post_export_scoring", "maximum_batch_size", value=10**9),
+        "the build scored 1 batch(es); the probe needs 3 or more",
+    ),
+    (
+        "no gate results",
+        "gate",
+        lambda lo: _set("reform_coverage_smoke", "details", "results", value=None),
+        "the gate recorded no results",
+    ),
+    (
+        "integer totals",
+        "gate",
+        lambda lo: _set(
+            "reform_coverage_smoke",
+            "details",
+            "results",
+            _first_probe(lo),
+            "baseline_total",
+            value=1,
+        ),
+        "totals are not finite floats",
+    ),
+    (
+        "no report stages",
+        "report",
+        lambda lo: _set("stages", value=None),
+        "the report has no stages",
+    ),
+    (
+        "unreadable distributions",
+        "report",
+        lambda lo: _set(
+            "tool_source", "installed_distributions", "unreadable", value=1
+        ),
+        "report installed_distributions.unreadable",
+    ),
+    (
+        "no build runtime",
+        "build",
+        lambda lo: _set("runtime", value=None),
+        "the build manifest records no runtime",
+    ),
+    (
+        "report python",
+        "report",
+        lambda lo: _set("host", "python", value="3.0.0"),
+        "report host.python",
+    ),
+    (
+        "report python, against the launch",
+        "report",
+        lambda lo: _set("host", "python", value="3.0.0"),
+        "launch python",
+    ),
+    (
+        "no run id",
+        "build-start",
+        lambda lo: _set("run_id", value=""),
+        "build-start names no run_id",
     ),
 ]
 
@@ -1560,6 +2067,69 @@ def test_non_finite_and_duplicate_json_is_refused(quick, layout) -> None:
         assert "duplicate key" in _refusal(quick, layout)
     finally:
         path.write_bytes(original)
+
+
+#: The nine inputs, by the names :meth:`Layout.file` takes.
+_INPUT_NAMES = (
+    "build",
+    "release",
+    "report",
+    "gate",
+    "passes",
+    "build-start",
+    "build-end",
+    "smoke-start",
+    "smoke-end",
+)
+
+
+@contextmanager
+def _replaced(path: Path, content: bytes | None) -> Iterator[None]:
+    """Replace the file at ``path`` (``None`` removes it); restore it afterwards."""
+    original = path.read_bytes()
+    try:
+        if content is None:
+            path.unlink()
+        else:
+            path.write_bytes(content)
+        yield
+    finally:
+        path.write_bytes(original)
+
+
+@pytest.mark.parametrize("name", _INPUT_NAMES)
+def test_a_missing_input_is_refused(quick, layout, name) -> None:
+    file = layout.file(name)
+    with _replaced(file, None):
+        message = _refusal(quick, layout)
+    assert message == f"{file} is unreadable (FileNotFoundError)"
+
+
+@pytest.mark.parametrize("content", [b'"x"', b"5", b"null", b"[]"])
+@pytest.mark.parametrize("name", _INPUT_NAMES)
+def test_an_input_that_is_not_an_object_is_refused(
+    quick, layout, name, content
+) -> None:
+    """Valid JSON of the wrong shape refuses, and never crashes the check."""
+    with _replaced(layout.file(name), content + b"\n"):
+        _refusal(quick, layout)
+
+
+def test_a_pass_log_cut_mid_line_is_refused(quick, layout) -> None:
+    file = layout.file("passes")
+    original = file.read_bytes()
+    with _replaced(file, original.removesuffix(b"\n")):
+        message = _refusal(quick, layout)
+    assert message == f"{file} ends mid-line"
+
+
+def test_a_pass_log_line_that_is_not_strict_json_is_refused(quick, layout) -> None:
+    file = layout.file("passes")
+    original = file.read_bytes()
+    with _replaced(file, original + b'{"wall_seconds": NaN}\n'):
+        message = _refusal(quick, layout)
+    number = original.count(b"\n") + 1
+    assert message.startswith(f"{file} line {number} is not strict JSON"), message
 
 
 @pytest.mark.parametrize(
@@ -1615,12 +2185,12 @@ def test_a_source_departure_refuses_the_expectation(tool, layout, monkeypatch) -
 
 
 # ---------------------------------------------------------------------------
-# Property: one changed field anywhere the check reads is refused
+# Every field: one changed value anywhere in the nine inputs is refused
 # ---------------------------------------------------------------------------
 
 
 def _leaves(value: Any, path: tuple = ()) -> list[tuple]:
-    if isinstance(value, dict):
+    if isinstance(value, dict) and value:
         return [leaf for key in value for leaf in _leaves(value[key], (*path, key))]
     if isinstance(value, list) and value:
         return [
@@ -1637,126 +2207,599 @@ def _read_leaf(payload: Any, path: tuple) -> Any:
     return payload
 
 
-_REPORT_CHECKED = (
-    ("schema_version",),
-    ("tool",),
-    ("classification",),
-    ("stages_requested",),
-    ("sample",),
-    ("source_export",),
-    ("references",),
-    ("summary",),
-    ("verdicts",),
-    ("post_export_scoring",),
-    ("scored_dataset_sha256",),
-    ("tool_source",),
-    ("packages",),
-    ("host", "python"),
-    ("export",),
-    ("stages", "identify", "status"),
-    ("stages", "identify", "sha256"),
-    ("stages", "load", "sha256"),
-    ("stages", "load", "rows", "household"),
-    ("stages", "design", "census"),
-    ("stages", "design", "problems"),
-    ("stages", "design", "verified_against_receipt"),
-    ("stages", "design", "strata"),
-    ("stages", "design", "batch_size"),
-    ("stages", "design", "n_batches"),
-    ("stages", "open_scorer", "n_households"),
-    ("stages", "open_scorer", "n_batches"),
-    ("stages", "open_scorer", "max_batch_households"),
-    ("stages", "open_scorer", "maximum_batch_size"),
-    ("stages", "reform_coverage_smoke", "status"),
-    ("stages", "reform_coverage_smoke", "passed"),
-    ("stages", "reform_coverage_smoke", "failures"),
-    ("stages", "reform_coverage_smoke", "analysis_setup_error"),
-    ("stages", "reform_coverage_smoke", "reference_error"),
-    ("stages", "reform_coverage_smoke", "baseline_keys"),
-    ("stages", "reform_coverage_smoke", "reform_passes"),
-    ("stages", "reform_coverage_smoke", "reform_systems"),
-    ("stages", "post_export_scoring_plans", "compared"),
+def _changed(value: Any) -> Any:
+    """Another value: of the same type for a scalar, never equal to it."""
+    if isinstance(value, bool):
+        return not value
+    if isinstance(value, int):
+        return value + 1
+    if isinstance(value, float):
+        return value + 0.5 * (abs(value) + 1.0)
+    if isinstance(value, str):
+        return value + "x"
+    if value is None:
+        return "x"
+    if isinstance(value, list):
+        return ["x"]
+    if isinstance(value, dict):
+        return {"x": 1}
+    raise TypeError(f"not a JSON value: {value!r}")
+
+
+#: The probe row fields that make up the per-household analysis.
+_ANALYSIS_FIELDS = (
+    "measure_entity",
+    "standard_error",
+    "decomposition",
+    "engine_weight_scale",
+    "drawn_effect_households",
+    "effective_variance_households",
+    "certainty_effect_households",
+    "noncarrier_effect",
+    "noncarrier_effect_households",
+    "pool_carrier_households",
+    "expected_sampled_carriers",
+    "take_all",
+    "sampled_carrier_households",
 )
-_ROW_CHECKED = (
-    "probe",
-    "period",
-    "budget_measure",
-    "min_abs_effect",
-    "expected_sign",
-    "passed",
-    "authority",
-    "authority_reason",
-    "baseline_total",
-    "reform_total",
-    "effect",
-    "signed_magnitude",
-    "margin_to_floor",
+_END_RECORD_UNJUDGED = (
+    (
+        ("environment", "**"),
+        "the environment of the process that recorded the end, after the stage "
+        "exited; the end measures the runtime with the start's",
+    ),
+    (
+        ("python", "requested"),
+        "the end's own spelling of the interpreter; the check compares the "
+        "resolved path",
+    ),
+    (
+        ("git_environment",),
+        "an end record's git environment moves nothing: the stage has exited",
+    ),
+    (
+        ("cpu_count",),
+        "only the build's start picks the thread defaults",
+    ),
+    (("dataset", "exists"), "the dataset's digest decides"),
+    (("dataset", "bytes"), "the dataset's digest decides"),
 )
-_PASS_CHECKED = ("stage", "label", "keys", "reform", "batches")
+#: What the check does not judge, by input, with the reason: in a pattern,
+#: ``*`` stands for any one key or index, and a final ``**`` for any rest.
+_UNJUDGED: dict[str, tuple[tuple[tuple, str], ...]] = {
+    "gate": (),
+    "report": (
+        (("host", "platform"), "the probe host's platform string"),
+        (
+            ("rules", "**"),
+            "the sample rules: a census row takes the census authority before "
+            "they apply",
+        ),
+        (
+            ("target_surface", "**"),
+            "read only by the source-coverage stage, which a smoke-only run "
+            "skips; the command passes no --target-surface",
+        ),
+        (
+            ("not_reproduced", "**"),
+            "the probe's constant list of release steps it does not run",
+        ),
+        (("process_peak_rss_gib",), "memory diagnostics"),
+        (("process_peak_rss_source",), "memory diagnostics"),
+        (("rss_source",), "memory diagnostics"),
+        (("stages", "*", "timing", "**"), "per-stage timing"),
+        (
+            ("stages", "load", "rows", "person"),
+            "another entity's row count; the household count fixes the batching",
+        ),
+        (
+            ("stages", "design", "household_weight_total"),
+            "a weighted total the census design reports and nothing reads",
+        ),
+        *(
+            (
+                ("stages", "reform_coverage_smoke", "probes", "*", field),
+                "the per-household analysis, a diagnostic",
+            )
+            for field in _ANALYSIS_FIELDS
+        ),
+    ),
+    "passes": tuple(
+        (("*", field), "pass timing and memory")
+        for field in ("wall_seconds", "cpu_seconds", "rss_before_gib", "peak_rss_gib")
+    ),
+    "build": (
+        (("build_sha",), "a display abbreviation; code.git_commit names the commit"),
+        (
+            ("staging",),
+            "where the build staged files; the check reads the release directory",
+        ),
+        (("dataset", "default"), "the calibration summary"),
+    ),
+    "release": (
+        (
+            ("schema_version",),
+            "the publisher's layout version; the check reads the fields it names",
+        ),
+        (
+            ("artifacts", "*", "repo_id"),
+            "the destination: the check only requires one and prints it in the "
+            "publish command",
+        ),
+    ),
+    "build-start": (
+        (
+            ("command", 3),
+            "the build's own arguments; its manifests record what they built",
+        ),
+        (
+            ("command", 4),
+            "the build's own arguments; its manifests record what they built",
+        ),
+        (
+            ("cpu_count",),
+            "this environment sets every thread pool, so no default applies",
+        ),
+        (("git_environment",), "a GIT_* name that points git nowhere"),
+        (("dataset", "bytes"), "the H5 did not exist yet"),
+        (("dataset", "sha256"), "the H5 did not exist yet"),
+    ),
+    "build-end": _END_RECORD_UNJUDGED,
+    "smoke-start": (
+        (("cpu_count",), "only the build's start picks the thread defaults"),
+        (("git_environment",), "a GIT_* name that points git nowhere"),
+        (("dataset", "exists"), "the dataset's digest decides"),
+        (("dataset", "bytes"), "the dataset's digest decides"),
+    ),
+    "smoke-end": _END_RECORD_UNJUDGED,
+}
 
 
-def _checked_leaves(layout) -> list[tuple[str, tuple]]:
-    report = json.loads(layout.file("report").read_text())
-    gate = json.loads(layout.file("gate").read_text())
-    passes = [
-        json.loads(line) for line in layout.file("passes").read_text().splitlines()
-    ]
-    leaves = [("gate", path) for path in _leaves(gate)]
-    for prefix in _REPORT_CHECKED:
-        leaves += [
-            ("report", path) for path in _leaves(_read_leaf(report, prefix), prefix)
-        ]
-    rows = report["stages"]["reform_coverage_smoke"]["probes"]
-    leaves += [
-        ("report", ("stages", "reform_coverage_smoke", "probes", index, field))
-        for index in range(len(rows))
-        for field in _ROW_CHECKED
-    ]
-    leaves += [
-        ("passes", (index, field))
-        for index in range(len(passes))
-        for field in _PASS_CHECKED
-    ]
-    return leaves
+def _matches(pattern: tuple, path: tuple) -> bool:
+    if pattern and pattern[-1] == "**":
+        head = pattern[:-1]
+        return len(path) >= len(head) and _matches(head, path[: len(head)])
+    return len(pattern) == len(path) and all(
+        part == "*" or part == key for part, key in zip(pattern, path, strict=True)
+    )
 
 
-_JSON_SCALARS = st.one_of(
-    st.none(),
-    st.booleans(),
-    st.integers(min_value=-3, max_value=3),
-    st.floats(allow_nan=False, allow_infinity=False, width=64),
-    st.text(max_size=4),
-    st.just([]),
-    st.just({}),
-)
+def test_the_allowlists_name_every_input() -> None:
+    assert list(_UNJUDGED) == list(_LOOSE)
+    assert sorted(_UNJUDGED) == sorted(_INPUT_NAMES)
 
 
-@settings(
-    max_examples=150,
-    deadline=None,
-    suppress_health_check=[HealthCheck.function_scoped_fixture],
-)
-@given(data=st.data())
-def test_any_changed_checked_field_is_refused(quick, layout, data) -> None:
-    leaves = _checked_leaves(layout)
-    name, path = data.draw(st.sampled_from(leaves))
+@pytest.mark.parametrize("name", list(_UNJUDGED))
+def test_every_field_the_check_judges_is_refused_when_changed(
+    quick, layout, name
+) -> None:
+    """Change each leaf of one input, one at a time, to another value: the
+    check refuses every change but those :data:`_UNJUDGED` lists, and each
+    listed pattern covers a leaf it accepted (so the list cannot rot)."""
     file = layout.file(name)
-    payload = json.loads(file.read_text()) if name != "passes" else None
-    original = (
-        _read_leaf(payload, path)
-        if payload is not None
-        else _read_leaf([json.loads(x) for x in file.read_text().splitlines()], path)
+    text = file.read_text()
+    payload = (
+        [json.loads(line) for line in text.splitlines()]
+        if file.suffix == ".jsonl"
+        else json.loads(text)
     )
-    replacement = data.draw(
-        _JSON_SCALARS.filter(lambda value: not quick.same(value, original))
+    accepted = []
+    for path in _leaves(payload):
+        replacement = _changed(_read_leaf(payload, path))
+        with _edited(file, _set(*path, value=replacement)):
+            try:
+                quick.check(layout.inputs(quick), now=lambda: _TIMES["check"])
+            except quick.RefusalError:
+                continue
+            accepted.append(path)
+    patterns = [pattern for pattern, _ in _UNJUDGED[name]]
+    assert [
+        path
+        for path in accepted
+        if not any(_matches(pattern, path) for pattern in patterns)
+    ] == []
+    assert [
+        pattern
+        for pattern in patterns
+        if not any(_matches(pattern, path) for path in accepted)
+    ] == []
+    assert _attachments(quick, layout) == []
+
+
+# ---------------------------------------------------------------------------
+# Every structure: a missing member, a wrong container or a stray member
+# ---------------------------------------------------------------------------
+
+
+def _members(value: Any, path: tuple = ()) -> list[tuple]:
+    """The path of every member below the top, containers and leaves alike."""
+    if isinstance(value, dict):
+        items = list(value.items())
+    elif isinstance(value, list):
+        items = list(enumerate(value))
+    else:
+        return []
+    return [
+        found
+        for key, item in items
+        for found in ((*path, key), *_members(item, (*path, key)))
+    ]
+
+
+def _deleted(*path: str | int) -> Callable[[Any], None]:
+    def edit(payload):
+        target = payload
+        for key in path[:-1]:
+            target = target[key]
+        del target[path[-1]]
+
+    return edit
+
+
+def _with_stray(*path: str | int) -> Callable[[Any], None]:
+    """Add a member: a new key to an object, a copy of the last item to a list."""
+
+    def edit(payload):
+        target = payload
+        for key in path:
+            target = target[key]
+        if isinstance(target, dict):
+            target["stray"] = 1
+        else:
+            target.append(copy.deepcopy(target[-1]))
+
+    return edit
+
+
+def _breaks(payload: Any) -> list[tuple[str, tuple, Callable[[Any], None]]]:
+    breaks = []
+    for path in _members(payload):
+        breaks.append(("deleted", path, _deleted(*path)))
+        if isinstance(_read_leaf(payload, path), dict | list):
+            breaks.append(("not a container", path, _set(*path, value="x")))
+    for path in ((), *_members(payload)):
+        value = _read_leaf(payload, path)
+        if isinstance(value, dict) or (isinstance(value, list) and value):
+            breaks.append(("stray member", path, _with_stray(*path)))
+    return breaks
+
+
+_STRAY = "the check reads the members it names, and a stray one changes none"
+_OPTIONAL_OPTION = (
+    "-B, an interpreter option the command may leave out: it only stops "
+    "Python writing bytecode"
+)
+_RECORD_LOOSE = tuple(
+    ("stray member", path, _STRAY)
+    for path in ((), ("dataset",), ("python",), ("repo",))
+)
+#: The breaks the check accepts outside what :data:`_UNJUDGED` lists, by
+#: input, with the reason.
+_LOOSE: dict[str, tuple[tuple[str, tuple, str], ...]] = {
+    "gate": tuple(
+        ("stray member", path, _STRAY)
+        for path in (
+            (),
+            ("reform_coverage_smoke",),
+            ("reform_coverage_smoke", "details"),
+        )
+    ),
+    "report": (
+        *(
+            ("stray member", path, _STRAY)
+            for path in (
+                (),
+                ("host",),
+                ("tool_source",),
+                ("stages", "*"),
+                ("stages", "reform_coverage_smoke", "probes", "*"),
+            )
+        ),
+        (
+            "stray member",
+            ("stages", "load", "rows"),
+            "another entity's row count; the household count fixes the batching",
+        ),
+    ),
+    "passes": (),
+    "build": tuple(
+        ("stray member", path, _STRAY) for path in ((), ("code",), ("dataset",))
+    ),
+    "release": (
+        *(
+            ("stray member", path, _STRAY)
+            for path in ((), ("artifacts", "*"), ("build",))
+        ),
+        (
+            "stray member",
+            ("default_datasets",),
+            "another default dataset; the smoke scores the national one",
+        ),
+        (
+            "stray member",
+            ("artifacts",),
+            "another artifact (a real US release lists 14); the smoke scores only "
+            "the national H5",
+        ),
+    ),
+    "build-start": (
+        *_RECORD_LOOSE,
+        ("stray member", ("out_dir",), _STRAY),
+        ("deleted", ("command", 1), _OPTIONAL_OPTION),
+        (
+            "stray member",
+            ("command",),
+            "another argument to the build, whose manifests record what it built",
+        ),
+    ),
+    "build-end": _RECORD_LOOSE,
+    "smoke-start": (
+        *_RECORD_LOOSE,
+        ("stray member", ("out_dir",), _STRAY),
+        ("deleted", ("command", 1), _OPTIONAL_OPTION),
+    ),
+    "smoke-end": _RECORD_LOOSE,
+}
+
+
+@pytest.mark.parametrize("name", list(_UNJUDGED))
+def test_every_structure_the_check_reads_is_refused_when_broken(
+    quick, layout, name
+) -> None:
+    """Delete each member of one input, replace each container with a
+    string, and add a stray member to each container, one at a time: the
+    check refuses every break but those inside a member :data:`_UNJUDGED`
+    lists and those :data:`_LOOSE` lists, and it accepts each of those."""
+    file = layout.file(name)
+    text = file.read_text()
+    payload = (
+        [json.loads(line) for line in text.splitlines()]
+        if file.suffix == ".jsonl"
+        else json.loads(text)
     )
-    with _edited(file, _set(*path, value=replacement)):
-        _refusal(quick, layout)
+    unjudged = [pattern for pattern, _ in _UNJUDGED[name]]
+    accepted = []
+    for kind, path, edit in _breaks(payload):
+        with _edited(file, edit):
+            try:
+                quick.check(layout.inputs(quick), now=lambda: _TIMES["check"])
+            except quick.RefusalError:
+                continue
+        if any(_matches(pattern, path) for pattern in unjudged):
+            continue
+        accepted.append((kind, path))
+    loose = [(kind, pattern) for kind, pattern, _ in _LOOSE[name]]
+    unexplained = [
+        (kind, path)
+        for kind, path in accepted
+        if not any(k == kind and _matches(p, path) for k, p in loose)
+    ]
+    assert unexplained == [], "accepted:\n" + "\n".join(map(repr, unexplained))
+    unused = [
+        (kind, pattern)
+        for kind, pattern in loose
+        if not any(k == kind and _matches(pattern, p) for k, p in accepted)
+    ]
+    assert unused == [], "never accepted:\n" + "\n".join(map(repr, unused))
+    assert _attachments(quick, layout) == []
+
+
+#: What the check accepts when a stage's start and end records change alike,
+#: beyond what :data:`_UNJUDGED` leaves unjudged in both, with the reason.
+_PAIR_LOOSE: dict[str, tuple[tuple[tuple, str], ...]] = {"build": (), "smoke": ()}
+
+
+@pytest.mark.parametrize("stage", ["build", "smoke"])
+def test_a_departure_both_records_of_a_stage_share_is_refused(
+    quick, layout, stage
+) -> None:
+    """Change each leaf a stage's start and end records share, the same way in
+    both, as a forger who keeps the pair consistent would: the check refuses
+    every change but those both records leave unjudged and those
+    :data:`_PAIR_LOOSE` lists, and it accepts each of those."""
+    start_file = layout.file(f"{stage}-start")
+    end_file = layout.file(f"{stage}-end")
+    start = json.loads(start_file.read_text())
+    end_leaves = set(_leaves(json.loads(end_file.read_text())))
+    unjudged = {
+        phase: [pattern for pattern, _ in _UNJUDGED[f"{stage}-{phase}"]]
+        for phase in ("start", "end")
+    }
+    accepted = []
+    for path in _leaves(start):
+        if path not in end_leaves:
+            continue
+        edit = _set(*path, value=_changed(_read_leaf(start, path)))
+        with _edited(start_file, edit), _edited(end_file, edit):
+            try:
+                quick.check(layout.inputs(quick), now=lambda: _TIMES["check"])
+            except quick.RefusalError:
+                continue
+        if all(
+            any(_matches(pattern, path) for pattern in patterns)
+            for patterns in unjudged.values()
+        ):
+            continue
+        accepted.append(path)
+    loose = [pattern for pattern, _ in _PAIR_LOOSE[stage]]
+    unexplained = [
+        path for path in accepted if not any(_matches(p, path) for p in loose)
+    ]
+    assert unexplained == [], "accepted:\n" + "\n".join(map(repr, unexplained))
+    unused = [p for p in loose if not any(_matches(p, path) for path in accepted)]
+    assert unused == [], "never accepted:\n" + "\n".join(map(repr, unused))
+    assert _attachments(quick, layout) == []
+
+
+def test_totals_under_the_floor_are_refused_whatever_the_flags_say(
+    quick, layout
+) -> None:
+    """A gate file and report that agree on totals under a probe's floor, and
+    still say it passed, fail on the floor alone."""
+    probe = layout.expectation["probes"][0]
+    baseline = 1.0e13
+    wanted = 0.5 * probe["min_abs_effect"]
+    if probe["expected_sign"] == "negative":
+        wanted = -wanted
+    if probe["effect_direction"] == "baseline_minus_reform":
+        reform = baseline - wanted
+    else:
+        reform = baseline + wanted
+    effect = quick.gate_effect(baseline, reform, probe["effect_direction"])
+    magnitude = quick.gate_signed_magnitude(effect, probe["expected_sign"])
+    assert magnitude < probe["min_abs_effect"]
+
+    def gate(payload):
+        result = payload["reform_coverage_smoke"]["details"]["results"][probe["id"]]
+        result.update(baseline_total=baseline, reform_total=reform, effect=effect)
+
+    def report(payload):
+        row = payload["stages"]["reform_coverage_smoke"]["probes"][0]
+        row.update(
+            baseline_total=baseline,
+            reform_total=reform,
+            effect=effect,
+            signed_magnitude=magnitude,
+            margin_to_floor=magnitude - probe["min_abs_effect"],
+        )
+
+    with _edited(layout.file("gate"), gate), _edited(layout.file("report"), report):
+        message = _refusal(quick, layout)
+    assert message.splitlines() == [
+        f"gate result {probe['id']}: the recorded totals give {magnitude!r}, under "
+        f"the floor {probe['min_abs_effect']!r}"
+    ]
+
+
+def test_a_smoke_with_another_pythonpath_is_refused(quick, layout) -> None:
+    """Both smoke records agree with each other on another PYTHONPATH; only
+    the comparison with the build refuses it."""
+
+    def other_path(record):
+        for block in ("environment", "runtime_environment"):
+            record[block]["PYTHONPATH"] = "/elsewhere"
+
+    with (
+        _edited(layout.file("smoke-start"), other_path),
+        _edited(
+            layout.file("smoke-end"),
+            _set("runtime_environment", "PYTHONPATH", value="/elsewhere"),
+        ),
+    ):
+        message = _refusal(quick, layout)
+    assert len(message.splitlines()) == 1
+    assert message.startswith('the smoke\'s PYTHONPATH is "/elsewhere"')
+
+
+def test_records_from_another_checkout_are_refused(quick, layout) -> None:
+    def elsewhere(record):
+        record["repo"]["toplevel"] = "/elsewhere/repo"
+        record["cwd"] = "/elsewhere/repo"
+
+    names = ("build-start", "build-end", "smoke-start", "smoke-end")
+    with ExitStack() as stack:
+        for name in names:
+            stack.enter_context(_edited(layout.file(name), elsewhere))
+        message = _refusal(quick, layout)
+    for name in names:
+        assert f"{name} repository" in message
+        assert f"{name} working directory" in message
+
+
+def test_the_real_runs_thread_settings_are_accepted(quick, layout) -> None:
+    """Route A's build sets no thread pool, so the release tool's defaults
+    apply (``min(cpu_count, 16)``); the smoke sets each pool to that value."""
+
+    def unset(record):
+        record["cpu_count"] = 18
+        for block in ("environment", "runtime_environment"):
+            record[block].update(dict.fromkeys(quick.THREAD_VARIABLES))
+
+    def build_end(record):
+        record["runtime_environment"].update(dict.fromkeys(quick.THREAD_VARIABLES))
+
+    def sixteen(record):
+        for block in ("environment", "runtime_environment"):
+            if block in record:
+                record[block].update(dict.fromkeys(quick.THREAD_VARIABLES, "16"))
+
+    def smoke_end(record):
+        record["runtime_environment"].update(
+            dict.fromkeys(quick.THREAD_VARIABLES, "16")
+        )
+
+    def calibration(threads):
+        def edit(payload):
+            block = payload["build"] if "build" in payload else payload
+            block["calibration_runtime"]["omp_num_threads"] = threads
+
+        return edit
+
+    def edits(threads):
+        return (
+            ("build-start", unset),
+            ("build-end", build_end),
+            ("smoke-start", sixteen),
+            ("smoke-end", smoke_end),
+            ("build", calibration(threads)),
+            ("release", calibration(threads)),
+        )
+
+    with ExitStack() as stack:
+        for name, edit in edits("16"):
+            stack.enter_context(_edited(layout.file(name), edit))
+        quick.check(layout.inputs(quick), now=lambda: _TIMES["check"])
+        # A host with fewer CPUs gives smaller defaults than the smoke set.
+        with _edited(layout.file("build-start"), _set("cpu_count", value=8)):
+            message = _refusal(quick, layout)
+    assert "the smoke's thread-pool settings" in message
+    assert "calibration_runtime.omp_num_threads" in message
+
+
+def test_a_changed_probe_file_refuses_the_expectation(
+    tool, layout, monkeypatch
+) -> None:
+    definitions, files = copy.deepcopy(layout.pins)
+    files[tool.PROBE_PATH] = "0" * 64
+    monkeypatch.setattr(tool, "MIRRORED_DEFINITIONS", definitions)
+    monkeypatch.setattr(tool, "PINNED_FILES", files)
+    with pytest.raises(tool.RefusalError, match="this check reads the layout of 0000"):
+        tool.build_expectation(layout.repo, layout.commit)
+
+
+def test_a_manifest_with_no_probes_refuses_the_expectation(
+    tool, tmp_path, monkeypatch
+) -> None:
+    payload = json.loads((_ROOT / tool.MANIFEST_PATH).read_text())
+    payload["reform_coverage_probes"] = []
+    repo, commit = _source_repository(
+        tool, tmp_path, manifest=(json.dumps(payload) + "\n").encode()
+    )
+    pins = _current_pins(tool)
+    monkeypatch.setattr(tool, "MIRRORED_DEFINITIONS", pins[0])
+    monkeypatch.setattr(tool, "PINNED_FILES", pins[1])
+    with pytest.raises(tool.RefusalError, match="declares no probes"):
+        tool.build_expectation(repo, commit)
 
 
 # ---------------------------------------------------------------------------
 # launch-record
 # ---------------------------------------------------------------------------
+
+
+def _commit_all(repo: Path, message: str) -> None:
+    _git(repo, "add", "-A")
+    _git(
+        repo,
+        "-c",
+        "user.name=t",
+        "-c",
+        "user.email=t@example.invalid",
+        "commit",
+        "-q",
+        "-m",
+        message,
+    )
 
 
 def _bare_repo(root: Path) -> Path:
@@ -1767,178 +2810,556 @@ def _bare_repo(root: Path) -> Path:
     subprocess.run(
         ["git", *NO_BACKGROUND_MAINTENANCE, "init", "-q", str(repo)], check=True
     )
-    _git(repo, "add", "-A")
-    _git(
-        repo,
-        "-c",
-        "user.name=t",
-        "-c",
-        "user.email=t@example.invalid",
-        "commit",
-        "-q",
-        "-m",
-        "x",
-    )
+    _commit_all(repo, "x")
     return repo.resolve()
 
 
-def _launch_args(tool, repo, launch_dir, stage, phase, **extra) -> list[str]:
-    argv = [
-        "launch-record",
-        "--stage",
-        stage,
-        "--phase",
-        phase,
-        "--run-id",
-        "r1",
-        "--launch-dir",
-        str(launch_dir),
-        "--python",
-        sys.executable,
-        "--repo",
-        str(repo),
-    ]
-    for key, value in extra.items():
-        argv += [f"--{key.replace('_', '-')}", str(value)]
-    return argv
+@dataclass
+class _Launches:
+    """``launch-record`` in a bare repository, with a stub runtime that notes
+    the environment it measures with, and an exec that notes the command (and
+    the records written by then) instead of replacing the test process."""
+
+    tool: Any
+    repo: Path
+    root: Path
+    launch_dir: Path
+    dataset: Path
+    execs: list
+    measured: list
+
+    def args(self, stage, phase, *, command=None, **options) -> list[str]:
+        argv = [
+            "launch-record",
+            "--stage",
+            stage,
+            "--phase",
+            phase,
+            "--run-id",
+            "r1",
+            "--launch-dir",
+            str(self.launch_dir),
+            "--python",
+            sys.executable,
+            "--repo",
+            str(self.repo),
+        ]
+        for key, value in options.items():
+            argv += [f"--{key.replace('_', '-')}", str(value)]
+        return argv if command is None else [*argv, "--", *command]
+
+    def build_start(self) -> list[str]:
+        out = self.root / "build-out"
+        return self.args("build", "start", out_dir=out, command=_build_command(out))
+
+    def smoke_start(self, *, batch_size=_BATCH, dataset=None) -> list[str]:
+        out = self.root / "smoke-out"
+        dataset = self.dataset if dataset is None else dataset
+        return self.args(
+            "smoke",
+            "start",
+            out_dir=out,
+            dataset=dataset,
+            command=_smoke_command(dataset, out, batch_size),
+        )
+
+    def end(self, stage, exit_code=0) -> list[str]:
+        return self.args(stage, "end", dataset=self.dataset, exit_code=exit_code)
+
+    def record(self, stage, phase) -> dict:
+        path = self.launch_dir / self.tool.LAUNCH_FILES[(stage, phase)]
+        return self.tool.strict_loads(path.read_bytes())
+
+    def written(self) -> list[str]:
+        if not self.launch_dir.exists():
+            return []
+        return sorted(path.name for path in self.launch_dir.iterdir())
+
+    def build(self) -> None:
+        """A finished build: its records, its H5 and its manifest."""
+        assert self.tool.main(self.build_start()) == 0
+        self.dataset.parent.mkdir(parents=True)
+        self.dataset.write_bytes(_DATASET_BYTES)
+        manifest = self.root / "build-out" / "releases" / "r" / "build_manifest.json"
+        manifest.parent.mkdir(parents=True)
+        manifest.write_text(
+            json.dumps({"post_export_scoring": {"maximum_batch_size": _BATCH}})
+        )
+        assert self.tool.main(self.end("build")) == 0
 
 
 @pytest.fixture
-def stub_runtime(tool, monkeypatch):
-    monkeypatch.setattr(tool, "_runtime", lambda python, tools: {"stub": True})
-    return tool
-
-
-def test_launch_records_refuse_a_wasted_start(
-    stub_runtime, tmp_path, monkeypatch, capsys
-) -> None:
-    tool = stub_runtime
+def launches(tool, tmp_path, monkeypatch) -> _Launches:
     repo = _bare_repo(tmp_path)
-    launch_dir = tmp_path / "launch"
     monkeypatch.chdir(repo)
-    (repo / "untracked.txt").write_text("x")
-    argv = _launch_args(
-        tool, repo, launch_dir, "build", "start", out_dir=tmp_path / "out"
+    # A known environment: the pools set, the other recorded variables unset.
+    for name in tool.THREAD_VARIABLES:
+        monkeypatch.setenv(name, "2")
+    for name in tool.ENVIRONMENT_VARIABLES[len(tool.THREAD_VARIABLES) :]:
+        monkeypatch.delenv(name, raising=False)
+    _clear_git_environment(monkeypatch)
+    launch_dir = tmp_path / "launch"
+    execs: list = []
+    measured: list = []
+
+    def runtime(python, tools, environment=None):
+        measured.append(dict(environment or {}))
+        return {"stub": True}
+
+    def become(path, argv):
+        written = sorted(p.name for p in launch_dir.iterdir())
+        execs.append((path, list(argv), written))
+
+    monkeypatch.setattr(tool, "_runtime", runtime)
+    monkeypatch.setattr(tool, "_exec", become)
+    return _Launches(
+        tool=tool,
+        repo=repo,
+        root=tmp_path,
+        launch_dir=launch_dir,
+        dataset=tmp_path / "build-out" / "artifacts" / _DATASET_FILE,
+        execs=execs,
+        measured=measured,
     )
-    assert tool.main(argv) == 1
-    assert "uncommitted changes" in capsys.readouterr().err
+
+
+def test_a_start_record_becomes_its_command(launches, capsys) -> None:
+    tool = launches.tool
+    argv = launches.build_start()
+    command = argv[argv.index("--") + 1 :]
+    assert tool.main(argv) == 0
+    # The record exists before the process becomes the build.
+    assert launches.execs == [(sys.executable, command, ["build-start.json"])]
+    assert "recorded" in capsys.readouterr().out
+    record = launches.record("build", "start")
+    assert record["command"] == command
+    assert record["runtime_environment"] == record["environment"]
+    assert record["git_environment"] == []
+    # The build's start may name its H5 before it exists, or not at all.
+    assert record["dataset"] is None
+    assert launches.measured == [record["environment"]]
+
+
+def test_an_end_record_measures_with_its_starts_environment(
+    launches, monkeypatch
+) -> None:
+    tool = launches.tool
+    assert tool.main(launches.build_start()) == 0
+    start = launches.record("build", "start")
+    monkeypatch.setenv("OMP_NUM_THREADS", "5")
+    monkeypatch.setenv("PYTHONPATH", "/elsewhere")
+    assert tool.main(launches.end("build")) == 0
+    end = launches.record("build", "end")
+    assert end["environment"]["OMP_NUM_THREADS"] == "5"
+    assert end["environment"]["PYTHONPATH"] == "/elsewhere"
+    assert end["runtime_environment"] == start["environment"]
+    assert launches.measured == [start["environment"], start["environment"]]
+    assert end["command"] is None and end["out_dir"] is None
+    # An end launches nothing.
+    assert len(launches.execs) == 1
+
+
+def test_the_runtime_is_measured_with_the_given_environment(tool, tmp_path) -> None:
+    """``_runtime`` sets the listed variables in the process it measures."""
+    tools = _ROOT / "tools"
+    marker = str(tmp_path / "on-the-path")
+    with_marker = tool._runtime(sys.executable, tools, {"PYTHONPATH": marker})
+    without = tool._runtime(sys.executable, tools, {"PYTHONPATH": None})
+    assert marker in with_marker["sys_path"]
+    assert marker not in without["sys_path"]
+
+
+_BAD_COMMANDS = [
+    # (case, stage, edit(command) -> command, expected)
+    ("no command", "build", lambda c: [], "give its command after --"),
+    (
+        "another spelling of the interpreter",
+        "build",
+        lambda c: [
+            os.path.join(os.path.dirname(c[0]), ".", os.path.basename(c[0])),
+            *c[1:],
+        ],
+        "not the --python interpreter",
+    ),
+    (
+        "an interpreter option",
+        "build",
+        lambda c: [c[0], "-X", "dev", *c[1:]],
+        "with no interpreter options but ['-B', '-u'] before it",
+    ),
+    (
+        "another script",
+        "build",
+        lambda c: [*c[:2], "tools/probe_us_post_export.py", *c[3:]],
+        "the command must run tools/build_us_fiscal_refresh_release.py",
+    ),
+    ("no script", "build", lambda c: c[:2], "the command must run"),
+    (
+        "a sample",
+        "smoke",
+        lambda c: [*c, "--sample-receipt", "sample_receipt.json"],
+        "a census smoke passes only",
+    ),
+    (
+        "a reference",
+        "smoke",
+        lambda c: [*c, "--reference-smoke", "reform_coverage_smoke.json"],
+        "a census smoke passes only",
+    ),
+    (
+        "no census",
+        "smoke",
+        lambda c: [token for token in c if token != "--census"],
+        "the smoke must pass each of ['--census'] once",
+    ),
+    (
+        "another stage",
+        "smoke",
+        lambda c: [*c[:5], "reform_coverage_smoke,demographics", *c[6:]],
+        "the smoke runs --stages",
+    ),
+    (
+        "a zero batch",
+        "smoke",
+        lambda c: [*c[:7], "0", *c[8:]],
+        "the smoke's --batch-size '0' is not a positive integer",
+    ),
+    (
+        "another export",
+        "smoke",
+        lambda c: [*c[:9], "/elsewhere/microcosm_us_2024.h5", *c[10:]],
+        "not the recorded dataset",
+    ),
+    (
+        "another output",
+        "smoke",
+        lambda c: [*c[:11], "/elsewhere/smoke-out"],
+        "not the recorded output directory",
+    ),
+]
+
+
+@pytest.mark.parametrize(
+    ("case", "stage", "edit", "expected"),
+    _BAD_COMMANDS,
+    ids=[case for case, *_ in _BAD_COMMANDS],
+)
+def test_a_start_refuses_a_command_that_is_not_the_stages(
+    launches, capsys, case, stage, edit, expected
+) -> None:
+    argv = launches.build_start() if stage == "build" else launches.smoke_start()
+    split = argv.index("--")
+    argv = [*argv[: split + 1], *edit(argv[split + 1 :])]
+    assert launches.tool.main(argv) == 1
+    assert expected in capsys.readouterr().err
+    assert launches.execs == []
+    assert launches.written() == []
+
+
+def test_the_smoke_arguments_take_either_spelling(tool) -> None:
+    values, unknown = tool._smoke_arguments(
+        ["--census", "--stages=reform_coverage_smoke", "--batch-size", "16", "-v"]
+    )
+    assert values == {
+        "--census": [""],
+        "--stages": ["reform_coverage_smoke"],
+        "--batch-size": ["16"],
+    }
+    assert unknown == ["-v"]
+    # A switch never takes a value, and a flag at the end has none to take.
+    assert tool._smoke_arguments(["--census=yes", "--out"]) == (
+        {},
+        ["--census=yes", "--out"],
+    )
+
+
+def test_launch_record_refuses_options_in_the_wrong_place(launches, capsys) -> None:
+    tool = launches.tool
+    out = launches.root / "build-out"
+    build = _build_command(out)
+    python_only = launches.build_start()
+    python_only[python_only.index("--python") + 1] = "python3"
+    cases = [
+        (
+            launches.args("build", "start", out_dir=out, exit_code=0, command=build),
+            "--exit-code belongs to an end record",
+        ),
+        (
+            launches.args("build", "start", command=build),
+            "a start record needs --out-dir",
+        ),
+        (
+            launches.args(
+                "build", "end", dataset=launches.dataset, exit_code=0, out_dir=out
+            ),
+            "--out-dir belongs to a start record",
+        ),
+        (
+            launches.args(
+                "build", "end", dataset=launches.dataset, exit_code=0, command=["x"]
+            ),
+            "an end record launches nothing; give no command",
+        ),
+        (
+            launches.args("build", "end", exit_code=0),
+            "this launch record needs --dataset",
+        ),
+        (
+            launches.args(
+                "smoke",
+                "start",
+                out_dir=launches.root / "smoke-out",
+                command=_smoke_command(
+                    launches.dataset, launches.root / "smoke-out", 1
+                ),
+            ),
+            "this launch record needs --dataset",
+        ),
+        (python_only, "must name the interpreter by its path"),
+        (
+            launches.args("build", "end", dataset=launches.dataset),
+            "an end record needs --exit-code",
+        ),
+    ]
+    for argv, expected in cases:
+        assert tool.main(argv) == 1, argv
+        assert expected in capsys.readouterr().err, argv
+    assert launches.written() == []
+    assert launches.execs == []
+    with pytest.raises(SystemExit):
+        tool.main(["expect", "--commit", "0" * 40, "--", "true"])
+    assert "only launch-record takes a command after --" in capsys.readouterr().err
+
+
+def test_launch_records_refuse_a_wasted_start(launches, monkeypatch, capsys) -> None:
+    tool = launches.tool
+    repo = launches.repo
+    argv = launches.build_start()
+
+    def refused(expected: str) -> None:
+        assert tool.main(argv) == 1
+        err = capsys.readouterr().err
+        assert expected in err, err
+
+    (repo / "untracked.txt").write_text("x")
+    refused("uncommitted changes, counting files that only a global excludes")
+    refused("?? untracked.txt")
     (repo / "untracked.txt").unlink()
     (repo / "release_input_coverage_manifest.json").write_text("{}")
-    _git(repo, "add", "-A")
-    _git(
-        repo,
-        "-c",
-        "user.name=t",
-        "-c",
-        "user.email=t@example.invalid",
-        "commit",
-        "-q",
-        "-m",
-        "y",
-    )
-    assert tool.main(argv) == 1
-    assert "read before the package's own" in capsys.readouterr().err
+    _commit_all(repo, "y")
+    refused("read before the package's own")
     _git(repo, "rm", "-q", "release_input_coverage_manifest.json")
-    _git(
-        repo,
-        "-c",
-        "user.name=t",
-        "-c",
-        "user.email=t@example.invalid",
-        "commit",
-        "-q",
-        "-m",
-        "z",
-    )
-    (tmp_path / "out").mkdir()
-    (tmp_path / "out" / "old").write_text("x")
-    assert tool.main(argv) == 1
-    assert "already holds files" in capsys.readouterr().err
+    _commit_all(repo, "z")
+    (launches.root / "build-out").mkdir()
+    (launches.root / "build-out" / "old").write_text("x")
+    refused("already holds files")
+    (launches.root / "build-out" / "old").unlink()
+    monkeypatch.setenv("GIT_DIR", str(repo / ".git"))
+    refused("which point git at another repository or configuration")
+    monkeypatch.delenv("GIT_DIR")
     monkeypatch.chdir(repo / "tools")
-    (tmp_path / "out" / "old").unlink()
-    assert tool.main(argv) == 1
-    assert "not the repository root" in capsys.readouterr().err
-    assert not launch_dir.exists() or not any(launch_dir.iterdir())
-
-
-def test_launch_records_follow_the_run(
-    stub_runtime, tmp_path, monkeypatch, capsys
-) -> None:
-    tool = stub_runtime
-    repo = _bare_repo(tmp_path)
-    launch_dir = tmp_path / "launch"
+    refused("not the repository root")
     monkeypatch.chdir(repo)
-    assert (
-        tool.main(_launch_args(tool, repo, launch_dir, "build", "end", exit_code=0))
-        == 1
+    missing = launches.root / "no-such-python"
+    absent = launches.args(
+        "build",
+        "start",
+        out_dir=launches.root / "build-out",
+        command=[str(missing), "-B", "tools/build_us_fiscal_refresh_release.py"],
     )
+    absent[absent.index("--python") + 1] = str(missing)
+    assert tool.main(absent) == 1
+    assert "is not an executable file" in capsys.readouterr().err
+    assert launches.written() == []
+    assert launches.execs == []
+
+
+def test_launch_records_follow_the_run(launches, capsys) -> None:
+    tool = launches.tool
+    assert tool.main(launches.end("build")) == 1
     assert "no start record" in capsys.readouterr().err
-    assert (
-        tool.main(
-            _launch_args(
-                tool, repo, launch_dir, "smoke", "start", out_dir=tmp_path / "s"
-            )
-        )
-        == 1
-    )
+    assert tool.main(launches.smoke_start()) == 1
     assert "after the build ends" in capsys.readouterr().err
-    start = _launch_args(
-        tool, repo, launch_dir, "build", "start", out_dir=tmp_path / "out"
-    )
+    start = launches.build_start()
     assert tool.main(start) == 0
     assert tool.main(start) == 1
     assert "already exists" in capsys.readouterr().err
-    assert tool.main(_launch_args(tool, repo, launch_dir, "build", "end")) == 1
-    assert "needs --exit-code" in capsys.readouterr().err
     # An end record is evidence: it is written even after the tree changed.
-    (repo / "scratch.txt").write_text("x")
-    assert (
-        tool.main(_launch_args(tool, repo, launch_dir, "build", "end", exit_code=3))
-        == 0
-    )
-    record = tool.strict_loads((launch_dir / "build-end.json").read_bytes())
+    launches.dataset.parent.mkdir(parents=True)
+    launches.dataset.write_bytes(_DATASET_BYTES)
+    (launches.repo / "scratch.txt").write_text("x")
+    assert tool.main(launches.end("build", exit_code=3)) == 0
+    record = launches.record("build", "end")
     assert record["exit_code"] == 3
     assert record["repo"]["clean"] is False
-    (repo / "scratch.txt").unlink()
-    assert (
-        tool.main(
-            _launch_args(
-                tool, repo, launch_dir, "smoke", "start", out_dir=tmp_path / "s"
-            )
-        )
-        == 1
-    )
-    assert "did not exit 0" in capsys.readouterr().err
+    (launches.repo / "scratch.txt").unlink()
+    assert tool.main(launches.smoke_start()) == 1
+    assert "the build's exit code is 3; required 0" in capsys.readouterr().err
     # An end record must close the start record's run.
-    start = _launch_args(
-        tool, repo, launch_dir, "smoke", "start", out_dir=tmp_path / "s2"
-    )
-    (launch_dir / "build-end.json").unlink()
-    assert (
-        tool.main(_launch_args(tool, repo, launch_dir, "build", "end", exit_code=0))
-        == 0
-    )
-    assert tool.main(start) == 0
-    other = _launch_args(tool, repo, launch_dir, "smoke", "end", exit_code=0)
+    (launches.launch_dir / "build-end.json").unlink()
+    assert tool.main(launches.end("build")) == 0
+    assert tool.main(launches.smoke_start()) == 0
+    other = launches.end("smoke")
     other[other.index("--run-id") + 1] = "r2"
     assert tool.main(other) == 1
     assert "names another run" in capsys.readouterr().err
+    assert [command[2] for _, command, _ in launches.execs] == [
+        "tools/build_us_fiscal_refresh_release.py",
+        "tools/probe_us_post_export.py",
+    ]
+
+
+def test_the_smoke_start_compares_its_launch_with_the_builds(
+    launches, monkeypatch, capsys
+) -> None:
+    """The smoke's start refuses, before the smoke runs, what ``check`` would
+    refuse hours later."""
+    tool = launches.tool
+    launches.build()
+
+    def refused(argv, expected):
+        assert tool.main(argv) == 1
+        err = capsys.readouterr().err
+        assert expected in err, err
+        assert launches.written() == ["build-end.json", "build-start.json"]
+
+    monkeypatch.setenv("PYTHONHASHSEED", "7")
+    refused(launches.smoke_start(), "the smoke's PYTHONHASHSEED")
+    monkeypatch.delenv("PYTHONHASHSEED")
+    monkeypatch.setenv("OMP_NUM_THREADS", "5")
+    refused(launches.smoke_start(), "the smoke's thread-pool settings")
+    monkeypatch.setenv("OMP_NUM_THREADS", "2")
+    refused(
+        launches.smoke_start(batch_size=1000),
+        "the smoke's --batch-size 1000 is not the build manifest's "
+        "maximum_batch_size 2000",
+    )
+    receipt = launches.dataset.parent / "sample_receipt.json"
+    receipt.write_text("{}")
+    refused(launches.smoke_start(), "the probe would score the sample it describes")
+    receipt.unlink()
+    other = launches.root / "other.h5"
+    other.write_bytes(_DATASET_BYTES)
+    refused(launches.smoke_start(dataset=other), "smoke-start dataset path")
+    assert len(launches.execs) == 1
+    assert tool.main(launches.smoke_start()) == 0
+    smoke_out = launches.root / "smoke-out"
+    assert launches.execs[-1][1] == _smoke_command(launches.dataset, smoke_out, _BATCH)
+
+
+_SMOKE_START_DEPARTURES = [
+    # (record, path, value, expected text)
+    ("build-start", ("run_id",), "r0", "smoke-start run_id"),
+    ("build-start", ("tool_sha256",), "0" * 64, "smoke-start tool_sha256"),
+    ("build-start", ("files", "uv.lock"), "0" * 64, "smoke-start files"),
+    ("build-start", ("repo", "head"), "0" * 40, "smoke-start HEAD"),
+    (
+        "build-start",
+        ("python", "resolved"),
+        "/elsewhere/python",
+        "smoke-start interpreter",
+    ),
+    ("build-start", ("runtime", "version"), "3.0.0", "smoke-start runtime"),
+    ("build-start", ("environment",), None, "a start record lists no environment"),
+    ("build-end", ("exit_code",), 1, "the build's exit code"),
+    ("build-end", ("dataset", "sha256"), None, "build-end recorded no dataset digest"),
+    ("build-end", ("dataset", "sha256"), "0" * 64, "smoke-start dataset (build-end's)"),
+]
+
+
+@pytest.mark.parametrize(
+    ("record", "path", "value", "expected"),
+    _SMOKE_START_DEPARTURES,
+    ids=[
+        f"{record} {'.'.join(path)} {value!r}"
+        for record, path, value, _ in _SMOKE_START_DEPARTURES
+    ],
+)
+def test_the_smoke_start_refuses_build_records_it_departs_from(
+    launches, capsys, record, path, value, expected
+) -> None:
+    tool = launches.tool
+    launches.build()
+    file = launches.launch_dir / tool.LAUNCH_FILES[tuple(record.split("-"))]
+    payload = json.loads(file.read_text())
+    _set(*path, value=value)(payload)
+    file.write_text(json.dumps(payload))
+    assert tool.main(launches.smoke_start()) == 1
+    err = capsys.readouterr().err
+    assert expected in err, err
+    assert launches.written() == ["build-end.json", "build-start.json"]
+    assert len(launches.execs) == 1
+
+
+def test_git_reads_only_the_repository_it_is_pointed_at(
+    tool, tmp_path, monkeypatch
+) -> None:
+    """Inherited ``GIT_*`` variables and the caller's configuration cannot
+    make a snapshot describe another repository or hide a file."""
+    here = _bare_repo(tmp_path / "here")
+    there = _bare_repo(tmp_path / "there")
+    (there / "other.txt").write_text("x")
+    _commit_all(there, "another commit")
+    head = _git(here, "rev-parse", "HEAD")
+    assert head != _git(there, "rev-parse", "HEAD")
+    ignore_all = tmp_path / "ignore-all"
+    ignore_all.write_text("*\n")
+    config = tmp_path / "gitconfig"
+    config.write_text(f"[core]\n\texcludesFile = {ignore_all}\n")
+    (here / "untracked.txt").write_text("x")
+    for name, value in {
+        "GIT_DIR": str(there / ".git"),
+        "GIT_WORK_TREE": str(there),
+        "GIT_INDEX_FILE": str(there / ".git" / "index"),
+        "GIT_CONFIG_COUNT": "1",
+        "GIT_CONFIG_KEY_0": "core.excludesFile",
+        "GIT_CONFIG_VALUE_0": str(ignore_all),
+        "GIT_CONFIG_GLOBAL": str(config),
+        "XDG_CONFIG_HOME": str(tmp_path),
+    }.items():
+        monkeypatch.setenv(name, value)
+    (tmp_path / "git").mkdir()
+    (tmp_path / "git" / "ignore").write_text("*\n")
+    state = tool._repo_state(here)
+    assert state["toplevel"] == str(here)
+    assert state["head"] == head
+    assert state["clean"] is False
+    assert state["status_entries"] == 1
+    env = tool._git_env()
+    assert not [
+        name
+        for name in env
+        if name.startswith("GIT_CONFIG_")
+        and name
+        not in (
+            "GIT_CONFIG_NOSYSTEM",
+            "GIT_CONFIG_GLOBAL",
+        )
+    ]
+    assert "GIT_DIR" not in env and "GIT_INDEX_FILE" not in env
+    assert env["GIT_CONFIG_NOSYSTEM"] == "1"
+    assert env["GIT_CONFIG_GLOBAL"] == os.devnull
 
 
 @pytest.mark.parametrize(
     ("environment", "cpus", "expected"),
     [
         (dict.fromkeys(_THREAD_NAMES), 18, "16"),
+        (dict.fromkeys(_THREAD_NAMES), 16, "16"),
         (dict.fromkeys(_THREAD_NAMES), 4, "4"),
-        (dict.fromkeys(_THREAD_NAMES), None, None),
+        # os.cpu_count() can return None; the release tool then uses 1.
+        (dict.fromkeys(_THREAD_NAMES), None, "1"),
+        (dict.fromkeys(_THREAD_NAMES), 0, "1"),
         (dict.fromkeys(_THREAD_NAMES, "2"), 18, "2"),
+        # setdefault keeps a variable the environment sets, even an empty one.
+        (dict.fromkeys(_THREAD_NAMES, ""), 18, ""),
     ],
 )
 def test_effective_threads_are_the_release_tools(
     tool, environment, cpus, expected
 ) -> None:
     """The release tool sets each pool with ``setdefault`` to
-    ``min(cpu_count, 16)``; an operator's value wins."""
+    ``str(min(os.cpu_count() or 1, 16))``; an operator's value wins."""
     assert _THREAD_NAMES == tool.THREAD_VARIABLES
     record = {"environment": environment, "cpu_count": cpus}
     assert tool._effective_threads(record) == dict.fromkeys(_THREAD_NAMES, expected)
@@ -1949,6 +3370,24 @@ def test_effective_threads_are_the_release_tools(
         ]
         == "7"
     )
+
+
+@pytest.mark.parametrize(
+    "record",
+    [
+        None,
+        [],
+        {"cpu_count": 18},
+        {"environment": None, "cpu_count": 18},
+        {"environment": {}},
+        {"environment": {}, "cpu_count": "18"},
+        {"environment": {}, "cpu_count": True},
+        {"environment": {}, "cpu_count": -1},
+        {"environment": {}, "cpu_count": 18.0},
+    ],
+)
+def test_effective_threads_need_a_record_the_tool_writes(tool, record) -> None:
+    assert tool._effective_threads(record) is tool.MISSING
 
 
 def test_a_launch_record_captures_the_stage(tool, layout) -> None:
@@ -1963,6 +3402,13 @@ def test_a_launch_record_captures_the_stage(tool, layout) -> None:
     }
     assert record["cwd"] == str(layout.repo)
     assert record["environment"]["OMP_NUM_THREADS"] == _THREADS
+    assert record["runtime_environment"] == record["environment"]
+    assert record["git_environment"] == []
+    assert record["command"] == _build_command(layout.out)
+    assert record["python"] == {
+        "requested": sys.executable,
+        "resolved": str(Path(sys.executable).resolve()),
+    }
     assert (
         record["files"]["uv.lock"]
         == hashlib.sha256((_ROOT / "uv.lock").read_bytes()).hexdigest()
@@ -1970,7 +3416,9 @@ def test_a_launch_record_captures_the_stage(tool, layout) -> None:
     assert runtime["sys_path"][0] == str(layout.repo / "tools")
     assert set(runtime["runtime_versions"]) == {"python", *tool.RUNTIME_PACKAGES}
     origin = runtime["import_origins"]["microcosm.build"]["origin"]
-    assert Path(origin).is_relative_to(layout.repo)
+    assert Path(origin).is_relative_to(
+        layout.repo / "packages" / "microcosm-build" / "src"
+    )
     assert record["dataset"] == {
         "path": str(layout.dataset),
         "exists": False,
@@ -1978,6 +3426,9 @@ def test_a_launch_record_captures_the_stage(tool, layout) -> None:
         "sha256": None,
     }
     assert record["out_dir"] == {"path": str(layout.out), "state": "absent"}
+    end = tool.strict_loads(layout.file("build-end").read_bytes())
+    assert end["runtime_environment"] == record["environment"]
+    assert end["command"] is None
 
 
 # ---------------------------------------------------------------------------
@@ -2324,6 +3775,11 @@ def test_the_plan_order_matches_the_release_tool(tool, builder, keys) -> None:
     n=st.integers(min_value=0, max_value=5_000),
     size=st.one_of(st.none(), st.integers(min_value=-2, max_value=6_000)),
 )
+# Exact multiples, which random sizes rarely draw.
+@example(n=4_000, size=2_000)
+@example(n=6_000, size=2_000)
+@example(n=2_000, size=2_000)
+@example(n=2_000, size=1)
 def test_batching_matches_the_release_tool(tool, builder, n, size) -> None:
     batches = list(builder._household_position_batches(n, size))
     assert tool.batching(n, size) == (
@@ -2393,6 +3849,14 @@ def test_the_mirrored_constants_match_the_release_tool(
     assert builder._THREAD_POOL_DEFAULT == str(
         min(os.cpu_count() or 1, tool.THREAD_POOL_CEILING)
     )
+    # The check's model of the pools, on this host's CPU count and an
+    # environment that sets none of them, gives the release tool's default.
+    assert tool._effective_threads(
+        {
+            "environment": dict.fromkeys(tool.THREAD_VARIABLES),
+            "cpu_count": os.cpu_count(),
+        }
+    ) == dict.fromkeys(tool.THREAD_VARIABLES, builder._THREAD_POOL_DEFAULT)
     assert probe_tool.PROBE_REPORT_SCHEMA_VERSION == tool.PROBE_SCHEMA_VERSION
     assert probe_tool.MINIMUM_BATCHES == tool.PROBE_MINIMUM_BATCHES
     assert probe_tool.REPORT_FILENAME == tool.PROBE_REPORT

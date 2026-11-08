@@ -393,30 +393,42 @@ uses only the standard library.
 
 Run every step from a clean worktree at the build commit that serves nothing
 else, with the repository root as the working directory. Keep `<out>`,
-`<probe>` and `<launch>` outside the worktree, because a start record counts
-an untracked file in the worktree as an uncommitted change.
+`<probe>` and `<launch>` outside the worktree. A start record counts every
+untracked file as an uncommitted change, and it reads only the repository's
+own ignore rules: a file that only your global excludes hide, such as
+`.claude/settings.local.json`, still counts.
+
+A start record writes itself, then becomes the stage's command
+(`os.execv`), so the build and the smoke run with the environment,
+interpreter and working directory the record describes. Give the stage's
+command after `--`, and put any launcher the stage needs (a token wrapper,
+`env -u`) in front of the whole `launch-record` call.
 
 ```bash
 # 1. Before the build, write what a faithful smoke of this commit records.
+#    The check derives it again; this step only refuses a commit early.
 python tools/check_us_census_smoke.py expect --commit <build commit> \
   --out <launch>/expectation.json
-# 2. Record the build's start. After the build exits, record
-#    --phase end --exit-code <status> with the same --run-id.
+# 2. The build, which its start record becomes; then its end record.
 python tools/check_us_census_smoke.py launch-record --stage build --phase start \
-  --run-id <run> --launch-dir <launch> --python <the build's interpreter> \
-  --dataset <out>/artifacts/<national H5> --out-dir <out>
-# 3. Record around the smoke with the same --run-id and interpreter, and set
-#    all six thread-pool variables to the values the build ran with. Run the
-#    probe with that interpreter, not through uv run.
+  --run-id <run> --launch-dir <launch> --python <python> --out-dir <out> \
+  -- <python> -B tools/build_us_fiscal_refresh_release.py --out <out> <flags>
+python tools/check_us_census_smoke.py launch-record --stage build --phase end \
+  --run-id <run> --launch-dir <launch> --python <python> \
+  --dataset <out>/artifacts/<national H5> --exit-code <the build's status>
+# 3. The smoke, with all six thread-pool variables set to the build's
+#    effective values; then its end record.
+OMP_NUM_THREADS=<n> OPENBLAS_NUM_THREADS=<n> MKL_NUM_THREADS=<n> \
+NUMEXPR_NUM_THREADS=<n> VECLIB_MAXIMUM_THREADS=<n> LOKY_MAX_CPU_COUNT=<n> \
 python tools/check_us_census_smoke.py launch-record --stage smoke --phase start \
-  --run-id <run> --launch-dir <launch> --python <the build's interpreter> \
-  --dataset <out>/artifacts/<national H5> --out-dir <probe>
-<the build's interpreter> -B tools/probe_us_post_export.py --census \
+  --run-id <run> --launch-dir <launch> --python <python> --out-dir <probe> \
+  --dataset <out>/artifacts/<national H5> \
+  -- <python> -B tools/probe_us_post_export.py --census \
   --stages reform_coverage_smoke --batch-size <the build's maximum batch size> \
   --export <out>/artifacts/<national H5> --out <probe>
 python tools/check_us_census_smoke.py launch-record --stage smoke --phase end \
-  --exit-code <status> --run-id <run> --launch-dir <launch> \
-  --python <the build's interpreter> --dataset <out>/artifacts/<national H5>
+  --run-id <run> --launch-dir <launch> --python <python> \
+  --dataset <out>/artifacts/<national H5> --exit-code <the smoke's status>
 # 4. Run the check. It writes the attachments only if it accepts.
 python tools/check_us_census_smoke.py check \
   --release-dir <out>/releases/<release id> --artifact-root <out>/artifacts \
@@ -426,33 +438,62 @@ python tools/check_us_census_smoke.py check \
   --attest-dedicated-worktree
 ```
 
-A start record refuses, and writes nothing, when the tree has uncommitted
-changes or the output directory already holds files. It also refuses when the
-working directory differs from the repository root or holds a file the release
-tool's loaders would read before the package's own. An end record always
-writes, and the
-check judges it. Leave out every `--reference-*` flag: the check accepts only a
-smoke that compared nothing.
+`<python>` names the stages' interpreter by its path, such as
+`.venv/bin/python`, spelled the same in `--python` and in the command; run
+the probe with it, not through `uv run`. The release tool sets each thread
+pool with `setdefault` to `min(cpu_count, 16)`, so the build runs each pool
+with the environment's setting, or else that default: a build that sets none
+runs with 16 on an 18-CPU host.
+
+A start record refuses, writing nothing and launching nothing, when:
+
+- the command differs from the stage's documented launch: another
+  interpreter or spelling than `--python`, an interpreter option other than
+  `-B` or `-u`, another script, or, for the smoke, any probe argument beyond
+  `--census`, `--stages reform_coverage_smoke`, a positive `--batch-size`, and
+  an `--export` and `--out` that name `--dataset` and `--out-dir`;
+- the interpreter's path names no executable file;
+- the tree has uncommitted changes, or the environment sets a variable that
+  points git at another repository, index or configuration (`GIT_DIR`,
+  `GIT_CONFIG_GLOBAL` and the others `GIT_REDIRECTING_VARIABLES` lists);
+- the working directory differs from the repository root or holds a file the
+  release tool's loaders would read before the package's own;
+- the output directory already holds files;
+- for the smoke: the build has no records, did not exit 0 or recorded no H5
+  digest; the smoke's run, commit, lockfile, tool, interpreter, runtime, H5 or
+  recorded environment differs from the build's; its batch size differs from
+  the build manifest's; or a `sample_receipt.json` sits beside the H5, which
+  would make the probe score the sample it describes.
+
+An end record needs `--exit-code` and `--dataset` and takes no command or
+`--out-dir`. It refuses without its start record or when the start names
+another run; otherwise it writes even after the tree changed, because the
+check judges it. It measures the runtime with its start's environment, so it
+sees a change to the installation rather than to the shell that records it.
 
 `expect` and `check` read the build commit's source with `git cat-file` and
 refuse a commit whose probe-manifest loader, smoke gate, scoring plan or probe
 departs from the source the check mirrors (`REVIEWED_COMMIT` in the tool).
-Review the mirror against the new source before you move that pin;
+Review the mirror against the new source before you move that pin.
 `test_us_census_smoke_check.py` holds each mirror to the code it mirrors on the
-current tree.
+current tree. Its test that the pins match the reviewed commit skips in a
+shallow clone, as in CI, where `expect` and `check` still enforce the pins.
 
 The check reports every failure it finds, not only the first, and accepts only
 when it finds none:
 
 - **The release.** The directory name, both manifests' build ids and the build
-  time agree, and the build recorded a clean tree of `PolicyEngine/microcosm`.
-  The national artifact records `microdata` as its kind, the build's dataset
-  filename as its path, the build id as its revision, and a repo id. A fresh
-  sha256 of the H5 under `--artifact-root` equals the artifact's, the build
-  dataset's and the scoring record's. Both manifests record the smoke as
-  skipped and agree on gate evidence and scoring. The build scored neither the
-  smoke nor reform validation, wrote neither file, and scored in three or more
-  batches.
+  time agree, and the build manifest names `PolicyEngine/microcosm` with
+  `git_dirty` false. The release tool writes false there unconditionally and
+  refuses a dirty worktree before it builds, so the launch records carry the
+  check's own evidence of a clean tree. The national artifact records
+  `microdata` as its kind, the build's dataset filename as its path, the build
+  id as its revision, and a repo id. A fresh sha256 of the H5 under
+  `--artifact-root` equals the artifact's, the build dataset's and the scoring
+  record's. Both manifests record the smoke as skipped and agree on gate
+  evidence, scoring and the calibration's thread record. The build scored
+  neither the smoke nor reform validation, wrote neither file, and scored in
+  three or more batches.
 - **The report.** The report records a census run of the smoke stage alone
   that compared no references and completed every stage. It lists no failure
   of any kind and an authoritative pass for every probe. Its scored digest,
@@ -467,26 +508,34 @@ when it finds none:
 - **The pass log.** The log holds one baseline pass, then one pass per probe in
   manifest order, and each pass scored as many batches as the build did.
 - **The launch records.** All four name one run, the build commit, a clean
-  tree and the repository root as the working directory, and they agree on the
-  interpreter, installed distributions, lockfile and tool. The microcosm
-  packages import from the worktree. The smoke ran with the build's effective
-  thread pools and the build's `PYTHONPATH`, `PYTHONHASHSEED`,
-  `PYTHONSAFEPATH` and `PYTHONNOUSERSITE`. Both stages started with an absent
-  or empty output directory and exited 0. The release directory and artifact
-  root sit inside the build's output directory, the smoke wrote to the probe
-  directory, and the report names the H5 path the smoke records hold. The H5
-  hashes the same at the build's
-  end, at both smoke records and at the check. The times follow the run, from
-  the build's start through the manifests, the build's end, the smoke's start
-  and the report to the smoke's end.
+  tree and the repository root as the working directory. Each start names the
+  stage's documented command, sets no git-redirecting variable, and measured
+  its runtime with its own environment; each end repeats its start's
+  interpreter, lockfile, tool and runtime, measured with the start's
+  environment. The smoke matches the build's interpreter, runtime and
+  installed distributions (by name and version, and the listed packages'
+  RECORD digests), and the microcosm packages import from the worktree's
+  `packages/*/src`. The smoke ran with the build's effective thread pools,
+  whose OMP value equals the one the build's calibration recorded, and with
+  the build's `PYTHONPATH`, `PYTHONHASHSEED`, `PYTHONSAFEPATH`,
+  `PYTHONNOUSERSITE`, `PYTHONHOME`, `PYTHONOPTIMIZE`, `PYTHONUSERBASE`,
+  `PYTHONPLATLIBDIR` and `PYTHON_CPU_COUNT`. Both stages started with an absent
+  or empty output directory and exited 0, and the smoke's batch size equals
+  the build's. The release directory and artifact root sit inside the build's
+  output directory, the smoke wrote to the probe directory, and the report
+  names the H5 path the smoke records hold. The H5 hashes the same at the
+  build's end, at both smoke records and at the check. The times follow the
+  run, from the build's start through the manifests, the build's end, the
+  smoke's start and the report to the smoke's end.
 
 On acceptance it writes five files into the release directory, the receipt
 last: the probe's report, gate file and pass log under `post_export_smoke_*`
 names, a note, and `post_export_smoke_acceptance.json`. It then prints the
 publisher's `--preflight-only` command (`--no-latest --tag-only`, with the five
-files as `--extra-file`) and, separately, the publish command. The manifests
-keep `"skipped"`. Reform validation never runs on this path, and nothing in
-these files certifies it or allows promotion to the default release.
+files as `--extra-file`) and, separately, the publish command. The publisher
+uploads these files but checks nothing in them, so only those printed flags
+keep the publish off latest: run the commands as printed. The manifests keep `"skipped"`. Reform
+validation never runs on this path, and nothing in these files certifies it.
 
 ## Measured stage times
 

@@ -16,11 +16,16 @@ this tool decides whether that smoke stands in for the build's own.
     (:data:`MIRRORED_DEFINITIONS`, :data:`PINNED_FILES`).
 
 ``launch-record``
-    Snapshots the repository, interpreter, installed distributions, import
-    origins, environment, dataset and output directory just before and just
-    after the build and the smoke. The probe's report names four package
-    versions; these records let the check compare the two processes' whole
-    runtimes.
+    Records each boundary of the build and the smoke. A start record snapshots
+    the repository, interpreter, installed distributions, import origins,
+    environment, dataset and output directory, then replaces itself with the
+    stage's command (``os.execv``), so the record describes the process that
+    runs: same environment, interpreter and working directory. The smoke's
+    start record also compares its launch with the build's and refuses before
+    the smoke runs. An end record repeats the snapshot after the stage exits,
+    measuring the runtime with the start's environment, so the check sees any
+    change to the installation. The probe's report names only four package
+    versions; these records let the check compare the two processes' runtimes.
 
 ``check``
     Reads the release directory, the probe's output and the four launch
@@ -52,8 +57,8 @@ from typing import Any
 
 TOOL = "tools/check_us_census_smoke.py"
 EXPECTATION_SCHEMA_VERSION = 1
-LAUNCH_SCHEMA_VERSION = 1
-RECEIPT_SCHEMA_VERSION = 1
+LAUNCH_SCHEMA_VERSION = 2
+RECEIPT_SCHEMA_VERSION = 2
 SCOPE = "separate-census-smoke-before-tag-publish"
 
 MANIFEST_PATH = (
@@ -304,14 +309,20 @@ PASS_FIELDS = frozenset(
     }
 )
 
-#: What a launch record captures beyond the thread pools: each changes which
-#: code or hash seed a process runs with.
+#: What a launch record captures: the thread pools, then the variables that
+#: change which code, optimization level, hash seed or CPU count a process
+#: runs with.
 ENVIRONMENT_VARIABLES = (
     *THREAD_VARIABLES,
     "PYTHONPATH",
     "PYTHONHASHSEED",
     "PYTHONSAFEPATH",
     "PYTHONNOUSERSITE",
+    "PYTHONHOME",
+    "PYTHONOPTIMIZE",
+    "PYTHONUSERBASE",
+    "PYTHONPLATLIBDIR",
+    "PYTHON_CPU_COUNT",
 )
 IMPORT_MODULES = (
     "microcosm.build",
@@ -324,13 +335,52 @@ IMPORT_MODULES = (
     "pandas",
     "torch",
 )
-MICROCOSM_MODULES = IMPORT_MODULES[:4]
+#: Where each microcosm module must import from: the worktree's own source,
+#: not an install that git ignores (such as one under ``.venv``).
+MICROCOSM_SOURCES = {
+    "microcosm.build": "packages/microcosm-build/src",
+    "microcosm.calibrate": "packages/microcosm-calibrate/src",
+    "microcosm.data": "packages/microcosm-data/src",
+    "microcosm.frame": "packages/microcosm-frame/src",
+}
 LAUNCH_FILES = {
     ("build", "start"): "build-start.json",
     ("build", "end"): "build-end.json",
     ("smoke", "start"): "smoke-start.json",
     ("smoke", "end"): "smoke-end.json",
 }
+#: The script each stage's command runs, and the interpreter options it may
+#: pass before it (Route A runs the release tool with ``-B``).
+STAGE_SCRIPTS = {"build": BUILDER_PATH, "smoke": PROBE_PATH}
+INTERPRETER_OPTIONS = frozenset({"-B", "-u"})
+#: The probe arguments a census smoke passes, and no others: a sample, a
+#: reference or another stage would change what it scores.
+SMOKE_VALUE_FLAGS = ("--stages", "--batch-size", "--export", "--out")
+SMOKE_SWITCHES = ("--census",)
+#: ``GIT_*`` variables that point git at another repository, index, object
+#: store or configuration. The build and the probe run git to record their own
+#: source, so a start refuses an environment that sets one.
+GIT_REDIRECTING_VARIABLES = frozenset(
+    {
+        "GIT_DIR",
+        "GIT_WORK_TREE",
+        "GIT_INDEX_FILE",
+        "GIT_OBJECT_DIRECTORY",
+        "GIT_ALTERNATE_OBJECT_DIRECTORIES",
+        "GIT_COMMON_DIR",
+        "GIT_NAMESPACE",
+        "GIT_CEILING_DIRECTORIES",
+        "GIT_CONFIG",
+        "GIT_CONFIG_GLOBAL",
+        "GIT_CONFIG_SYSTEM",
+        "GIT_CONFIG_PARAMETERS",
+        "GIT_CONFIG_COUNT",
+        "GIT_REPLACE_REF_BASE",
+        "GIT_NO_REPLACE_OBJECTS",
+        "GIT_SHALLOW_FILE",
+    }
+)
+EMPTY_STATUS_SHA256 = hashlib.sha256(b"").hexdigest()
 
 #: Files the check writes into the release directory, in writing order; the
 #: receipt goes last and records the others' digests.
@@ -346,17 +396,31 @@ ATTACHMENTS = {
 FORBIDDEN_RELEASE_FILES = ("reform_coverage_smoke.json", "reform_validation.json")
 
 LIMITS = (
+    "Every input is a file the operator's run writes, and none is signed, so "
+    "a set someone fabricates to agree with itself passes. The check catches "
+    "a run that departs from the build, not a forgery.",
     "Launch records capture each stage's start and end, so they miss a change "
     "that someone makes and undoes between two records; the operator attests "
     "that the worktree served only this run.",
+    "Git reads the worktree with the repository's own ignore rules, so the "
+    "records never see a git-ignored file, such as a bytecode cache; Python "
+    "trusts a cached .pyc whose recorded source size and time match.",
+    "A start record describes the process it starts, because it records the "
+    "environment and then becomes the stage's command. The check compares the "
+    "variables in ENVIRONMENT_VARIABLES and no others, such as a numeric "
+    "library's own settings.",
     "The check compares installed distributions by name and version, and the "
     "listed packages' RECORD files by digest; it never reads the installed "
     "files' bytes.",
+    "The probe exits 0 whenever it finishes, so the smoke's exit code catches "
+    "only a crash; the report's verdicts carry the result.",
     "Reform validation never ran, and nothing in this receipt certifies it.",
     "The check records the report's per-household analysis as a diagnostic and "
     "accepts on the gate's own verdict.",
-    "The check does not run the publisher; the operator runs its preflight on "
-    "these files next, before any publish.",
+    "The publisher uploads these files but checks nothing in them: only the "
+    "printed command's --no-latest --tag-only keeps this publish off latest. "
+    "The check does not run the publisher; the operator runs its preflight "
+    "next, before any publish.",
 )
 
 
@@ -409,7 +473,13 @@ def strict_dumps(value: Any) -> str:
 
 
 def same(left: Any, right: Any) -> bool:
-    """Equal values of equal JSON types (``1`` is not ``1.0`` or ``True``)."""
+    """Equal values of equal JSON types (``1`` is not ``1.0`` or ``True``).
+
+    A gap (:data:`MISSING`) equals nothing, not even another gap: two records
+    that both lack a field do not agree on it.
+    """
+    if left is MISSING or right is MISSING:
+        return False
     if type(left) is not type(right):
         return False
     if isinstance(left, dict):
@@ -784,9 +854,39 @@ def git_blob(repo: Path, commit: str, path: str) -> bytes:
 
 
 def _git_env() -> dict[str, str]:
-    # Snapshots must not refresh the index or start maintenance in a worktree
-    # a run is using.
-    return {**os.environ, "GIT_OPTIONAL_LOCKS": "0", "GIT_TERMINAL_PROMPT": "0"}
+    """The environment for this tool's own git calls.
+
+    Git reads the repository it is pointed at, with nothing from the caller:
+    the tool drops every inherited ``GIT_*`` variable (``GIT_DIR``,
+    ``GIT_INDEX_FILE`` or ``GIT_CONFIG_*`` would describe another repository
+    or state) and the system and global configuration. The calls take no
+    optional locks and never prompt, so a snapshot neither refreshes the index
+    nor starts maintenance in a worktree a run is using.
+    """
+    env = {
+        name: value for name, value in os.environ.items() if not name.startswith("GIT_")
+    }
+    env.update(
+        {
+            "GIT_OPTIONAL_LOCKS": "0",
+            "GIT_TERMINAL_PROMPT": "0",
+            "GIT_CONFIG_NOSYSTEM": "1",
+            "GIT_CONFIG_GLOBAL": os.devnull,
+        }
+    )
+    return env
+
+
+#: For git status in a snapshot: only the repository's own ignore rules (not
+#: the user's excludes file), and no monitor or cache that could answer stale.
+GIT_STATUS_CONFIG = (
+    "-c",
+    f"core.excludesFile={os.devnull}",
+    "-c",
+    "core.fsmonitor=false",
+    "-c",
+    "core.untrackedCache=false",
+)
 
 
 def resolve_commit(repo: Path, commit: str) -> str:
@@ -1010,35 +1110,58 @@ print(
 """
 
 
-def _repo_state(repo: Path) -> dict[str, Any]:
-    def git(*args: str) -> bytes:
-        completed = subprocess.run(
-            ["git", "-C", str(repo), *args],
-            capture_output=True,
-            env=_git_env(),
-            check=False,
-        )
-        if completed.returncode != 0:
-            raise RefusalError(f"git {' '.join(args)} failed in {repo}")
-        return completed.stdout
+def _git_output(repo: Path, *args: str) -> bytes:
+    completed = subprocess.run(
+        ["git", *GIT_STATUS_CONFIG, "-C", str(repo), *args],
+        capture_output=True,
+        env=_git_env(),
+        check=False,
+    )
+    if completed.returncode != 0:
+        raise RefusalError(f"git {' '.join(args)} failed in {repo}")
+    return completed.stdout
 
-    status = git(
+
+def _git_status(repo: Path) -> bytes:
+    """The worktree's status as a snapshot sees it: every untracked file, with
+    only the repository's own ignore rules."""
+    return _git_output(
+        repo,
         "status",
         "--porcelain=v1",
         "-z",
         "--untracked-files=all",
         "--ignore-submodules=none",
     )
+
+
+def _repo_state(repo: Path) -> dict[str, Any]:
+    status = _git_status(repo)
     return {
-        "toplevel": git("rev-parse", "--show-toplevel").decode().strip(),
-        "head": git("rev-parse", "HEAD").decode().strip(),
+        "toplevel": _git_output(repo, "rev-parse", "--show-toplevel").decode().strip(),
+        "head": _git_output(repo, "rev-parse", "HEAD").decode().strip(),
         "clean": status == b"",
         "status_sha256": sha256_bytes(status),
         "status_entries": status.count(b"\0"),
     }
 
 
-def _runtime(python: str, tools: Path) -> dict[str, Any]:
+def _runtime(
+    python: str,
+    tools: Path,
+    environment: Mapping[str, str | None] | None = None,
+) -> dict[str, Any]:
+    """The interpreter's runtime, reported by a fresh process.
+
+    ``environment`` sets the listed variables for that process (``None``
+    removes one), so an end record measures with its start's settings.
+    """
+    env = dict(os.environ)
+    for name, value in (environment or {}).items():
+        if value is None:
+            env.pop(name, None)
+        else:
+            env[name] = value
     completed = subprocess.run(
         [
             python,
@@ -1051,6 +1174,7 @@ def _runtime(python: str, tools: Path) -> dict[str, Any]:
         capture_output=True,
         text=True,
         timeout=300,
+        env=env,
         check=False,
     )
     if completed.returncode != 0:
@@ -1078,9 +1202,22 @@ def snapshot(
     dataset: Path | None,
     out_dir: Path | None,
     exit_code: int | None,
+    command: Sequence[str] | None = None,
+    runtime_environment: Mapping[str, str | None] | None = None,
     now: Callable[[], datetime] = _utc_now,
 ) -> dict[str, Any]:
-    """One launch record (see :func:`launch_record_main`)."""
+    """One launch record (see :func:`launch_record_main`).
+
+    ``environment`` is this process's; ``runtime_environment`` is the one the
+    runtime was measured with: the same for a start record, the start's for an
+    end record.
+    """
+    environment = {name: os.environ.get(name) for name in ENVIRONMENT_VARIABLES}
+    measured = (
+        dict(environment)
+        if runtime_environment is None
+        else {name: runtime_environment.get(name) for name in ENVIRONMENT_VARIABLES}
+    )
     cwd = Path.cwd().resolve()
     state = _repo_state(repo)
     toplevel = Path(state["toplevel"])
@@ -1111,9 +1248,14 @@ def snapshot(
         },
         "cwd": str(cwd),
         "cwd_shadows": sorted(name for name in RESOURCE_NAMES if (cwd / name).exists()),
+        "command": None if command is None else list(command),
         "python": {"requested": python, "resolved": str(Path(python).resolve())},
-        "runtime": _runtime(python, toplevel / "tools"),
-        "environment": {name: os.environ.get(name) for name in ENVIRONMENT_VARIABLES},
+        "runtime": _runtime(python, toplevel / "tools", measured),
+        "environment": environment,
+        "runtime_environment": measured,
+        "git_environment": sorted(
+            name for name in os.environ if name.startswith("GIT_")
+        ),
         "cpu_count": os.cpu_count(),
         "dataset": dataset_state,
         "out_dir": None
@@ -1132,55 +1274,322 @@ def _write_new(path: Path, data: bytes) -> None:
         os.fsync(handle.fileno())
 
 
+def _exec(path: str, argv: Sequence[str]) -> None:
+    """Become the stage's command (the tests replace this)."""
+    os.execv(path, list(argv))
+
+
+def _script_index(command: Sequence[str]) -> int:
+    """The position of the script, after the interpreter and its options."""
+    position = 1
+    while position < len(command) and command[position] in INTERPRETER_OPTIONS:
+        position += 1
+    return position
+
+
+def _smoke_arguments(
+    arguments: Sequence[str],
+) -> tuple[dict[str, list[str]], list[str]]:
+    """The probe arguments by flag (``--flag value`` or ``--flag=value``), and
+    every token that is not one of a census smoke's."""
+    values: dict[str, list[str]] = {}
+    unknown: list[str] = []
+    index = 0
+    while index < len(arguments):
+        token = arguments[index]
+        flag, equals, inline = token.partition("=")
+        if flag in SMOKE_SWITCHES and not equals:
+            values.setdefault(flag, []).append("")
+        elif flag in SMOKE_VALUE_FLAGS and equals:
+            values.setdefault(flag, []).append(inline)
+        elif flag in SMOKE_VALUE_FLAGS and index + 1 < len(arguments):
+            index += 1
+            values.setdefault(flag, []).append(arguments[index])
+        else:
+            unknown.append(token)
+        index += 1
+    return values, unknown
+
+
+def _command_problems(
+    stage: str,
+    command: Sequence[str],
+    *,
+    python: str,
+    cwd: Path,
+    dataset: Path | None,
+    out_dir: Path,
+) -> list[str]:
+    """Why ``command`` is not the stage's documented launch, if it isn't.
+
+    The command runs the ``--python`` interpreter, spelled the same, with at
+    most :data:`INTERPRETER_OPTIONS` before the stage's script. The smoke
+    passes exactly the census smoke's arguments: ``--census``, ``--stages``
+    naming only the smoke, a positive ``--batch-size``, and ``--export`` and
+    ``--out`` naming the recorded dataset and output directory. Relative paths
+    resolve against ``cwd``, the directory the command runs in.
+    """
+    if not command:
+        return [f"a start record launches the {stage}: give its command after --"]
+    problems = []
+    if command[0] != python:
+        problems.append(
+            f"the command runs {command[0]!r}, not the --python interpreter {python!r}"
+        )
+    position = _script_index(command)
+    script = STAGE_SCRIPTS[stage]
+    if (
+        position >= len(command)
+        or (cwd / command[position]).resolve() != (cwd / script).resolve()
+    ):
+        problems.append(
+            f"the command must run {script}, with no interpreter options but "
+            f"{sorted(INTERPRETER_OPTIONS)} before it; it runs "
+            f"{list(command[1 : position + 1])}"
+        )
+        return problems
+    if stage != "smoke":
+        return problems
+    values, unknown = _smoke_arguments(command[position + 1 :])
+    if unknown:
+        problems.append(
+            f"the smoke passes {unknown}; a census smoke passes only "
+            f"{[*SMOKE_SWITCHES, *SMOKE_VALUE_FLAGS]}"
+        )
+    missing = [
+        flag
+        for flag in (*SMOKE_SWITCHES, *SMOKE_VALUE_FLAGS)
+        if len(values.get(flag, ())) != 1
+    ]
+    if missing:
+        problems.append(f"the smoke must pass each of {missing} once")
+        return problems
+    (stages,) = values["--stages"]
+    if stages != SMOKE_CONSUMER:
+        problems.append(
+            f"the smoke runs --stages {stages!r}; required {SMOKE_CONSUMER!r}"
+        )
+    (batch,) = values["--batch-size"]
+    if not (batch.isascii() and batch.isdigit() and int(batch) > 0):
+        problems.append(f"the smoke's --batch-size {batch!r} is not a positive integer")
+    (export,) = values["--export"]
+    if dataset is None:
+        problems.append("the smoke's start record names no dataset for --export")
+    elif (cwd / export).resolve() != dataset.resolve():
+        problems.append(
+            f"the smoke scores --export {export}, not the recorded dataset "
+            f"{dataset.resolve()}"
+        )
+    (out,) = values["--out"]
+    if (cwd / out).resolve() != out_dir.resolve():
+        problems.append(
+            f"the smoke writes --out {out}, not the recorded output directory "
+            f"{out_dir.resolve()}"
+        )
+    return problems
+
+
+def _build_batch_size(build_start: Any) -> int | None:
+    """The build manifest's batch size, when the build's output directory holds
+    exactly one release (``None`` otherwise: the check compares later)."""
+    out = dig(build_start, "out_dir", "path")
+    if not isinstance(out, str):
+        return None
+    manifests = sorted(Path(out).glob("releases/*/build_manifest.json"))
+    if len(manifests) != 1:
+        return None
+    try:
+        manifest = strict_loads(manifests[0].read_bytes())
+    except (OSError, ValueError):
+        return None
+    value = dig(manifest, "post_export_scoring", "maximum_batch_size")
+    return value if isinstance(value, int) and not isinstance(value, bool) else None
+
+
+def _check_smoke_launch(
+    findings: Findings, smoke_start: Any, build_start: Any, build_end: Any
+) -> None:
+    """The smoke's launch against the build's: the run, commit, lockfile, tool,
+    interpreter, runtime, environment and dataset. ``launch-record`` runs this
+    before the smoke starts, so a wrong launch costs no smoke; ``check`` runs
+    it again."""
+    for field in ("run_id", "tool_sha256", "files"):
+        findings.equal(
+            dig(smoke_start, field), dig(build_start, field), f"smoke-start {field}"
+        )
+    findings.equal(
+        dig(smoke_start, "repo", "head"),
+        dig(build_start, "repo", "head"),
+        "smoke-start HEAD",
+    )
+    findings.equal(
+        dig(smoke_start, "python", "resolved"),
+        dig(build_start, "python", "resolved"),
+        "smoke-start interpreter",
+    )
+    findings.equal(
+        dig(smoke_start, "runtime"), dig(build_start, "runtime"), "smoke-start runtime"
+    )
+    findings.equal(dig(build_end, "exit_code"), 0, "the build's exit code")
+    build_dataset = dig(build_end, "dataset")
+    findings.require(
+        isinstance(dig(build_dataset, "sha256"), str),
+        "build-end recorded no dataset digest",
+    )
+    findings.equal(
+        dig(smoke_start, "dataset", "path"),
+        dig(build_dataset, "path"),
+        "smoke-start dataset path (build-end's)",
+    )
+    findings.equal(
+        dig(smoke_start, "dataset", "sha256"),
+        dig(build_dataset, "sha256"),
+        "smoke-start dataset (build-end's)",
+    )
+    smoke_environment = dig(smoke_start, "environment")
+    build_environment = dig(build_start, "environment")
+    if not findings.require(
+        isinstance(smoke_environment, dict) and isinstance(build_environment, dict),
+        "a start record lists no environment",
+    ):
+        return
+    # The smoke sets the thread pools to the build's effective values
+    # explicitly: the probe imports numpy before it loads the release tool,
+    # whose defaults would come too late.
+    findings.equal(
+        {name: smoke_environment.get(name) for name in THREAD_VARIABLES},
+        _effective_threads(build_start),
+        "the smoke's thread-pool settings (the build's effective values)",
+    )
+    for name in ENVIRONMENT_VARIABLES[len(THREAD_VARIABLES) :]:
+        findings.equal(
+            smoke_environment.get(name),
+            build_environment.get(name),
+            f"the smoke's {name}",
+        )
+
+
 def launch_record_main(args: argparse.Namespace) -> int:
     """Record one stage boundary; refuse a start that would waste a run.
 
-    A start refuses (and writes nothing) when the tree has uncommitted changes,
-    the working directory differs from the repository root or holds a resource
-    a loader would read before the package's, or the output directory already
-    holds files. An end always writes: it is evidence, and ``check`` judges it.
+    Every record names the interpreter by its path, and each boundary is
+    recorded once. Every record but the build's start needs ``--dataset``, the
+    national H5 (the build's start may name it before it exists). A start
+    record also needs ``--out-dir`` and the stage's command after ``--``. It
+    refuses, writing nothing, when:
+
+    - the command is not the stage's documented launch
+      (:func:`_command_problems`);
+    - the tree has uncommitted changes, or the environment sets a variable in
+      :data:`GIT_REDIRECTING_VARIABLES`;
+    - the working directory differs from the repository root or holds a
+      resource the release tool's loaders read before the package's own;
+    - the output directory already holds files;
+    - for the smoke: no build records exist, the smoke's launch differs from
+      the build's (:func:`_check_smoke_launch`), its batch size differs from
+      the build manifest's, or a ``sample_receipt.json`` beside the H5 would
+      make the probe score a sample.
+
+    Then it writes the record and becomes the command (:func:`_exec`). An end
+    record needs ``--exit-code`` and takes no command or ``--out-dir``. It
+    refuses when no start record exists, the start names another run, or the
+    interpreter cannot report its runtime; otherwise it writes the record even
+    if the tree changed, because it is evidence and ``check`` judges it.
     """
     launch_dir = Path(args.launch_dir)
     launch_dir.mkdir(parents=True, exist_ok=True)
     target = launch_dir / LAUNCH_FILES[(args.stage, args.phase)]
     if target.exists():
         raise RefusalError(f"{target} already exists; each boundary is recorded once")
+    if os.sep not in args.python:
+        raise RefusalError(
+            f"--python {args.python!r} must name the interpreter by its path"
+        )
+    if args.dataset is None and (args.stage, args.phase) != ("build", "start"):
+        raise RefusalError("this launch record needs --dataset, the national H5")
     repo = Path(args.repo).resolve()
+    dataset = None if args.dataset is None else Path(args.dataset)
+    command = list(args.stage_command)
+    builds: tuple[Any, Any] | None = None
+    runtime_environment = None
     if args.phase == "start":
         if args.exit_code is not None:
             raise RefusalError("--exit-code belongs to an end record")
         if args.out_dir is None:
             raise RefusalError("a start record needs --out-dir")
+        problems = _command_problems(
+            args.stage,
+            command,
+            python=args.python,
+            cwd=Path.cwd(),
+            dataset=dataset,
+            out_dir=Path(args.out_dir),
+        )
+        if not (Path(args.python).is_file() and os.access(args.python, os.X_OK)):
+            problems.append(f"{args.python} is not an executable file")
+        if problems:
+            raise RefusalError("; ".join(problems))
         if args.stage == "smoke":
-            build_end = launch_dir / LAUNCH_FILES[("build", "end")]
-            if not build_end.is_file():
+            paths = [
+                launch_dir / LAUNCH_FILES[("build", phase)]
+                for phase in ("start", "end")
+            ]
+            missing = [str(path) for path in paths if not path.is_file()]
+            if missing:
                 raise RefusalError(
-                    f"the smoke starts after the build ends; no {build_end}"
+                    f"the smoke starts after the build ends; no {missing}"
                 )
-            if dig(strict_loads(build_end.read_bytes()), "exit_code") != 0:
-                raise RefusalError("the build did not exit 0")
+            builds = (
+                strict_loads(paths[0].read_bytes()),
+                strict_loads(paths[1].read_bytes()),
+            )
     else:
+        if command:
+            raise RefusalError("an end record launches nothing; give no command")
+        if args.out_dir is not None:
+            raise RefusalError("--out-dir belongs to a start record")
         if args.exit_code is None:
             raise RefusalError("an end record needs --exit-code")
         start = launch_dir / LAUNCH_FILES[(args.stage, "start")]
         if not start.is_file():
             raise RefusalError(f"no start record {start}")
-        if dig(strict_loads(start.read_bytes()), "run_id") != args.run_id:
+        start_record = strict_loads(start.read_bytes())
+        if dig(start_record, "run_id") != args.run_id:
             raise RefusalError("the start record names another run")
+        runtime_environment = dig(start_record, "environment")
+        if not isinstance(runtime_environment, dict):
+            raise RefusalError("the start record lists no environment")
     record = snapshot(
         stage=args.stage,
         phase=args.phase,
         run_id=args.run_id,
         repo=repo,
         python=args.python,
-        dataset=None if args.dataset is None else Path(args.dataset),
+        dataset=dataset,
         out_dir=None if args.out_dir is None else Path(args.out_dir),
         exit_code=args.exit_code,
+        command=command if args.phase == "start" else None,
+        runtime_environment=runtime_environment,
     )
     if args.phase == "start":
         problems = []
         if not record["repo"]["clean"]:
-            problems.append(f"{record['repo']['toplevel']} has uncommitted changes")
+            entries = [
+                entry.decode("utf-8", "replace")
+                for entry in _git_status(repo).split(b"\0")
+                if entry
+            ]
+            problems.append(
+                f"{record['repo']['toplevel']} has uncommitted changes, counting "
+                "files that only a global excludes file ignores: "
+                f"{entries[:5]}{' ...' if len(entries) > 5 else ''}"
+            )
+        redirecting = sorted(set(record["git_environment"]) & GIT_REDIRECTING_VARIABLES)
+        if redirecting:
+            problems.append(
+                f"the environment sets {redirecting}, which point git at another "
+                "repository or configuration"
+            )
         if record["cwd"] != str(Path(record["repo"]["toplevel"]).resolve()):
             problems.append(
                 f"the working directory {record['cwd']} is not the repository root"
@@ -1192,10 +1601,31 @@ def launch_record_main(args: argparse.Namespace) -> int:
             )
         if record["out_dir"]["state"] == "nonempty":
             problems.append(f"{record['out_dir']['path']} already holds files")
+        if builds is not None:
+            findings = Findings()
+            _check_smoke_launch(findings, record, *builds)
+            problems += findings.failures
+            values, _ = _smoke_arguments(command[_script_index(command) + 1 :])
+            batch_size = _build_batch_size(builds[0])
+            if batch_size is not None and values["--batch-size"] != [str(batch_size)]:
+                problems.append(
+                    f"the smoke's --batch-size {values['--batch-size'][0]} is not "
+                    f"the build manifest's maximum_batch_size {batch_size}"
+                )
+            assert dataset is not None
+            receipt_path = dataset.resolve().parent / "sample_receipt.json"
+            if receipt_path.exists():
+                problems.append(
+                    f"{receipt_path} exists, and the probe would score the sample "
+                    "it describes"
+                )
         if problems:
             raise RefusalError("; ".join(problems))
     _write_new(target, strict_dumps(record).encode("utf-8"))
-    print(f"recorded {target}")
+    print(f"recorded {target}", flush=True)
+    if args.phase == "start":
+        sys.stderr.flush()
+        _exec(command[0], command)
     return 0
 
 
@@ -1317,6 +1747,11 @@ def check(inputs: Inputs, *, now: Callable[[], datetime] = _utc_now) -> Accepted
         dig(build, "created_at"),
         "release build.built_at (the build manifest's created_at)",
     )
+    findings.equal(
+        dig(release, "build", "calibration_runtime"),
+        dig(build, "calibration_runtime"),
+        "release build.calibration_runtime",
+    )
     commit = dig(build, "code", "git_commit")
     findings.equal(dig(build, "code", "git_dirty"), False, "build code.git_dirty")
     findings.equal(
@@ -1432,7 +1867,7 @@ def check(inputs: Inputs, *, now: Callable[[], datetime] = _utc_now) -> Accepted
             findings.fail(f"no expectation for {commit}: {error}")
     else:
         findings.fail("build code.git_commit is missing")
-    if expectation is None or dataset_sha is None:
+    if expectation is None or dataset_sha is None or not isinstance(dataset_path, Path):
         raise RefusalError("\n".join(findings.failures))
     probes = expectation["probes"]
     n_probes = len(probes)
@@ -1549,6 +1984,7 @@ def check(inputs: Inputs, *, now: Callable[[], datetime] = _utc_now) -> Accepted
         report=report,
         repo=repo,
         commit=commit,
+        dataset_path=dataset_path,
         dataset_sha=dataset_sha,
         release_dir=release_dir,
         artifact_root=inputs.artifact_root.resolve(),
@@ -1596,7 +2032,9 @@ def check(inputs: Inputs, *, now: Callable[[], datetime] = _utc_now) -> Accepted
             "reform_passes": n_probes,
             "reform_systems": n_probes,
             "created_at": dig(report, "created_at"),
-            "analysis": {
+            # The report's per-household analysis: a diagnostic the check
+            # copies without judging it.
+            "diagnostic_analysis": {
                 "decomposed": sum(
                     value == "decomposed" for value in decompositions.values()
                 ),
@@ -1650,7 +2088,7 @@ def _check_report(
         "report references",
     )
     findings.require(
-        "reference_plan_comparison" not in report,
+        not isinstance(report, dict) or "reference_plan_comparison" not in report,
         "the report compared plans against a reference release",
     )
     stages = dig(report, "stages")
@@ -1828,16 +2266,24 @@ def _check_smoke_rows(
             findings.equal(dig(row, field), expected, f"{where} {field}")
 
 
-def _effective_threads(record: Mapping[str, Any]) -> dict[str, Any]:
-    """The thread-pool sizes the release tool runs with: the environment's,
-    else its default (``min(cpu_count, 16)``)."""
-    cpus = record.get("cpu_count")
-    default = (
-        str(min(cpus or 1, THREAD_POOL_CEILING)) if isinstance(cpus, int) else None
-    )
-    environment = record.get("environment") or {}
+def _effective_threads(record: Any) -> dict[str, Any] | _Missing:
+    """The thread-pool sizes the release tool runs with.
+
+    The tool sets each of :data:`THREAD_VARIABLES` with ``setdefault`` to
+    ``str(min(os.cpu_count() or 1, 16))``, so a variable the environment sets
+    (even to an empty string) keeps its value. :data:`MISSING` when the record
+    lacks its environment or a CPU count ``os.cpu_count()`` could return.
+    """
+    environment = dig(record, "environment")
+    cpus = dig(record, "cpu_count")
+    if not isinstance(environment, dict) or not (
+        cpus is None
+        or (isinstance(cpus, int) and not isinstance(cpus, bool) and cpus >= 0)
+    ):
+        return MISSING
+    default = str(min(cpus or 1, THREAD_POOL_CEILING))
     return {
-        name: environment.get(name) if environment.get(name) is not None else default
+        name: default if environment.get(name) is None else environment[name]
         for name in THREAD_VARIABLES
     }
 
@@ -1850,6 +2296,7 @@ def _check_launches(
     report: Any,
     repo: Path,
     commit: Any,
+    dataset_path: Path,
     dataset_sha: str,
     release_dir: Path,
     artifact_root: Path,
@@ -1859,29 +2306,118 @@ def _check_launches(
     names = ("build-start", "build-end", "smoke-start", "smoke-end")
     records = [launches[name] for name in names]
     for name, record in zip(names, records, strict=True):
+        stage, phase = name.split("-")
         findings.equal(
             dig(record, "schema_version"),
             LAUNCH_SCHEMA_VERSION,
             f"{name} schema_version",
         )
-        stage, phase = name.split("-")
+        findings.equal(dig(record, "tool"), TOOL, f"{name} tool")
         findings.equal(dig(record, "stage"), stage, f"{name} stage")
         findings.equal(dig(record, "phase"), phase, f"{name} phase")
         findings.equal(dig(record, "repo", "toplevel"), str(repo), f"{name} repository")
         findings.equal(dig(record, "repo", "head"), commit, f"{name} HEAD")
         findings.equal(dig(record, "repo", "clean"), True, f"{name} clean tree")
+        findings.equal(
+            dig(record, "repo", "status_sha256"),
+            EMPTY_STATUS_SHA256,
+            f"{name} git status digest (an empty status)",
+        )
+        findings.equal(
+            dig(record, "repo", "status_entries"), 0, f"{name} git status entries"
+        )
         findings.equal(dig(record, "cwd"), str(repo), f"{name} working directory")
         findings.equal(dig(record, "cwd_shadows"), [], f"{name} shadowing resources")
-    first = records[0]
-    run_id = dig(first, "run_id")
+    build_start, build_end, smoke_start, smoke_end = records
+    run_id = dig(build_start, "run_id")
     findings.require(isinstance(run_id, str) and run_id, "build-start names no run_id")
-    for name, record in zip(names[1:], records[1:], strict=True):
-        for field in ("run_id", "tool_sha256", "files", "python", "runtime"):
-            findings.equal(dig(record, field), dig(first, field), f"{name} {field}")
+    scoring = dig(build, "post_export_scoring")
+
+    # A start record describes the process it became: its command, measured
+    # with its own environment, which sets no variable that points git away.
+    for name, record in (("build-start", build_start), ("smoke-start", smoke_start)):
+        stage = name.split("-")[0]
+        findings.equal(dig(record, "exit_code"), None, f"{name} exit_code")
+        findings.equal(
+            dig(record, "runtime_environment"),
+            dig(record, "environment"),
+            f"{name} runtime_environment (its own environment)",
+        )
+        git_names = dig(record, "git_environment")
+        if findings.require(
+            isinstance(git_names, list)
+            and all(isinstance(item, str) for item in git_names),
+            f"{name} lists no git environment",
+        ):
+            findings.equal(
+                sorted(set(git_names) & GIT_REDIRECTING_VARIABLES),
+                [],
+                f"{name} git-redirecting variables",
+            )
+        command = dig(record, "command")
+        python = dig(record, "python", "requested")
+        out = dig(record, "out_dir", "path")
+        dataset = dig(record, "dataset", "path")
+        if not findings.require(
+            isinstance(command, list)
+            and all(isinstance(item, str) for item in command)
+            and isinstance(python, str)
+            and isinstance(out, str),
+            f"{name} records no command, interpreter or output directory",
+        ):
+            continue
+        for problem in _command_problems(
+            stage,
+            command,
+            python=python,
+            cwd=repo,
+            dataset=Path(dataset) if isinstance(dataset, str) else None,
+            out_dir=Path(out),
+        ):
+            findings.fail(f"{name}: {problem}")
+        if stage == "smoke":
+            values, _ = _smoke_arguments(command[_script_index(command) + 1 :])
+            batch_size = dig(scoring, "maximum_batch_size")
+            findings.equal(
+                values.get("--batch-size"),
+                [str(batch_size)],
+                "smoke-start --batch-size (the build's maximum_batch_size)",
+            )
+
+    # An end record repeats its start's snapshot after the stage exits,
+    # measuring the runtime with the start's environment.
+    for start_name, start, end_name, end in (
+        ("build-start", build_start, "build-end", build_end),
+        ("smoke-start", smoke_start, "smoke-end", smoke_end),
+    ):
+        for field in ("run_id", "tool_sha256", "files", "runtime"):
+            findings.equal(
+                dig(end, field),
+                dig(start, field),
+                f"{end_name} {field} ({start_name}'s)",
+            )
+        findings.equal(
+            dig(end, "python", "resolved"),
+            dig(start, "python", "resolved"),
+            f"{end_name} interpreter ({start_name}'s)",
+        )
+        findings.equal(
+            dig(end, "runtime_environment"),
+            dig(start, "environment"),
+            f"{end_name} runtime_environment ({start_name}'s environment)",
+        )
+        findings.equal(dig(end, "command"), None, f"{end_name} command")
+        findings.equal(dig(end, "out_dir"), None, f"{end_name} out_dir")
+    findings.equal(dig(smoke_end, "exit_code"), 0, "the smoke's exit code")
+    # The smoke against the build: run, commit, lockfiles, tool, interpreter,
+    # runtime, environment, the build's exit code and the scored dataset.
+    _check_smoke_launch(findings, smoke_start, build_start, build_end)
+
     findings.require(
-        dig(first, "files", "uv.lock") is not None, "build-start found no uv.lock"
+        isinstance(dig(build_start, "files", "uv.lock"), str),
+        "build-start found no uv.lock",
     )
-    runtime = dig(first, "runtime")
+    runtime = dig(build_start, "runtime")
     findings.equal(
         dig(runtime, "runtime_versions"),
         dig(build, "runtime"),
@@ -1895,44 +2431,31 @@ def _check_launches(
     findings.equal(
         dig(runtime, "version"), dig(report, "host", "python"), "launch python"
     )
+    # The build records the OMP setting its calibration ran with: it must be
+    # the value build-start's environment gives the release tool.
+    findings.equal(
+        dig(build, "calibration_runtime", "omp_num_threads"),
+        dig(_effective_threads(build_start), "OMP_NUM_THREADS"),
+        "the build's calibration_runtime.omp_num_threads (build-start's effective "
+        "OMP_NUM_THREADS)",
+    )
     origins = dig(runtime, "import_origins")
-    for module in MICROCOSM_MODULES:
+    for module, source in MICROCOSM_SOURCES.items():
         where = dig(origins, module)
-        paths = [dig(where, "origin"), *(dig(where, "locations") or [])]
+        root = (repo / source).resolve()
+        locations = dig(where, "locations")
+        paths = [
+            dig(where, "origin"),
+            *(locations if isinstance(locations, list) else []),
+        ]
         paths = [path for path in paths if isinstance(path, str)]
         findings.require(
-            paths and all(Path(path).resolve().is_relative_to(repo) for path in paths),
-            f"{module} imports from outside {repo}: {_show(where)}",
+            bool(paths)
+            and all(Path(path).resolve().is_relative_to(root) for path in paths),
+            f"{module} imports from outside {root}: {_show(where)}",
         )
-    build_start, build_end, smoke_start, smoke_end = records
-    # Environment: one stage's two records agree, and the smoke runs with the
-    # thread pools the build ran with, set explicitly (the probe imports numpy
-    # before it loads the release tool's defaults).
-    findings.equal(
-        dig(build_end, "environment"),
-        dig(build_start, "environment"),
-        "build-end environment",
-    )
-    findings.equal(
-        dig(smoke_end, "environment"),
-        dig(smoke_start, "environment"),
-        "smoke-end environment",
-    )
-    if isinstance(dig(build_start, "environment"), dict) and isinstance(
-        dig(smoke_start, "environment"), dict
-    ):
-        findings.equal(
-            {name: smoke_start["environment"].get(name) for name in THREAD_VARIABLES},
-            _effective_threads(build_start),
-            "the smoke's thread-pool settings (the build's effective values)",
-        )
-        for name in ENVIRONMENT_VARIABLES[len(THREAD_VARIABLES) :]:
-            findings.equal(
-                smoke_start["environment"].get(name),
-                build_start["environment"].get(name),
-                f"the smoke's {name}",
-            )
-    # Outputs and exit codes.
+
+    # Outputs.
     build_out = dig(build_start, "out_dir", "path")
     findings.require(
         dig(build_start, "out_dir", "state") in ("absent", "empty"),
@@ -1952,10 +2475,25 @@ def _check_launches(
         dig(smoke_start, "out_dir", "state") in ("absent", "empty"),
         "the smoke did not start in a new, empty output directory",
     )
-    findings.equal(dig(build_end, "exit_code"), 0, "the build's exit code")
-    findings.equal(dig(smoke_end, "exit_code"), 0, "the smoke's exit code")
-    # The scored bytes: the build ended with them; the smoke read the same path
-    # from start to end and the report names it.
+    # The scored bytes: the build ended with the release's national H5; the
+    # smoke read the same path from start to end and the report names it.
+    build_dataset = dig(build_start, "dataset")
+    if build_dataset is not None:
+        findings.equal(
+            dig(build_dataset, "path"),
+            dig(build_end, "dataset", "path"),
+            "build-start dataset path (build-end's)",
+        )
+        findings.equal(
+            dig(build_dataset, "exists"),
+            False,
+            "build-start dataset exists (it must not before the build)",
+        )
+    findings.equal(
+        dig(build_end, "dataset", "path"),
+        str(dataset_path),
+        "build-end dataset path (the release's national artifact)",
+    )
     findings.equal(
         dig(build_end, "dataset", "sha256"), dataset_sha, "build-end dataset"
     )
@@ -2007,17 +2545,21 @@ def note_text(accepted: Accepted) -> str:
         'as `"skipped"`.\n\n'
         "Before publication, a separate full-population smoke "
         "(`tools/probe_us_post_export.py --census --stages reform_coverage_smoke`) "
-        f"scored the H5 both manifests pin (sha256 `{accepted.dataset_sha256}`) "
-        f"at the build's commit (`{accepted.commit}`), with the build's runtime. "
-        f"All {probes} probes passed. The smoke wrote the report, gate file and "
+        f"scored the H5 both manifests pin (sha256 `{accepted.dataset_sha256}`). "
+        "It ran from the build's worktree at the build's commit "
+        f"(`{accepted.commit}`), clean at each stage's start and end, with the "
+        "build's interpreter, installed distributions (by name and version) and "
+        f"thread-pool settings. All {probes} probes passed. The smoke wrote the "
+        "report, gate file and "
         f"pass log that this tag carries as `{ATTACHMENTS['report']}`, "
         f"`{ATTACHMENTS['gate']}` and `{ATTACHMENTS['passes']}`. "
         f"`{ATTACHMENTS['receipt']}` records the checks that tie them to this "
         "build. The gate file's `enforced: true` describes the separate smoke, "
         "not the build.\n\n"
         "Reform validation never ran, and none of these files certifies it. The "
-        "check accepted the smoke for this tag-only publish, not for promotion "
-        "to the default release.\n"
+        "check accepted the smoke only for a tag-only publish (`--no-latest "
+        "--tag-only`), not for promotion to the default release. The publisher "
+        "uploads this note and the receipt but checks nothing in them.\n"
     )
 
 
@@ -2070,11 +2612,13 @@ def receipt(
             "build_smoke": "skipped",
             "external_smoke": "passed-before-publish",
             "reform_validation": "not-run-not-certified",
-            "default_promotion_allowed": False,
         },
         "publication": {
-            "tag_only": True,
-            "updates_latest": False,
+            # What the check printed; the publisher uploads these files but
+            # checks nothing in them, so only the flags the operator runs keep
+            # the publish off latest.
+            "printed_flags": ["--no-latest", "--tag-only"],
+            "publisher_checks_these_files": False,
             "publisher_preflight": "the operator runs it next; this check does not",
             "extra_files": list(ATTACHMENTS.values()),
         },
@@ -2151,6 +2695,10 @@ def main(argv: Sequence[str] | None = None) -> int:
     record.add_argument("--dataset", type=Path, default=None, help="the H5")
     record.add_argument("--out-dir", type=Path, default=None)
     record.add_argument("--exit-code", type=int, default=None)
+    record.epilog = (
+        "A start record takes the stage's command after --, and becomes it once "
+        "the record is written."
+    )
 
     run = commands.add_parser("check", help="accept the smoke, or say why not")
     run.add_argument("--release-dir", type=Path, required=True)
@@ -2174,7 +2722,15 @@ def main(argv: Sequence[str] | None = None) -> int:
         action="store_true",
         help="attest that nothing but this run used the worktree",
     )
-    args = parser.parse_args(argv)
+    arguments = list(sys.argv[1:] if argv is None else argv)
+    stage_command: list[str] = []
+    if "--" in arguments:
+        split = arguments.index("--")
+        arguments, stage_command = arguments[:split], arguments[split + 1 :]
+    args = parser.parse_args(arguments)
+    if stage_command and args.command != "launch-record":
+        parser.error("only launch-record takes a command after --")
+    args.stage_command = stage_command
     try:
         if args.command == "expect":
             expectation = build_expectation(args.repo.resolve(), args.commit)
