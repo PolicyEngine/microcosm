@@ -1283,9 +1283,12 @@ def test_evidence_is_json_serialisable_with_plain_scalars():
 # household is outside every pool. The synthetic joint asks band 0 for far
 # more than its pool, so the whole pool is selected at every clone count and
 # the selection nests exactly; band 37,700 asks for nothing, so its household
-# takes the exact-total correction (on clone 0, the first heaviest), heavy
-# enough (9,000) that the correction moves it far less than the weights'
-# nesting tolerance.
+# (9,000) is the first candidate for the exact-total correction (on clone 0,
+# the first heaviest). At seven (and 13) clones its clone 0 has no
+# representable correction, so the shared fallback puts it on the last copy
+# of the 7,620 family's last clone, a few ulps off w / n and within the
+# weights' nesting tolerance and the gate's; at one, three, 11 and 15 clones
+# no correction is needed.
 
 NESTING_WEIGHTS = [
     900.0,

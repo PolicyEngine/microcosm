@@ -847,7 +847,11 @@ def _e8_support_split(
     the recompute reads it from the pre-split table the same way), exactly at
     ``K = 1`` and at ``K > 1`` to the family weights' relative tolerance of
     1e-9 (the fold re-sums ``n`` copies of a clone's share, which drifts by
-    more ulps than the count's snap absorbs), every member of a family
+    more ulps than the count's snap absorbs; the receipt's
+    ``copies_recomputed`` stays the exact recount, so at ``K > 1`` it can
+    exceed ``copies`` by one for each family at an exact multiple whose
+    re-summed weight lands above it, while the count check passes), every
+    member of a family
     carries ``w / n`` at stage time (its clone pair sum, since the clone runs
     afterwards), the copies of each root are indexed ``1..n-1`` without gaps
     and carry the root's count, no count is below one, and the stage's mass

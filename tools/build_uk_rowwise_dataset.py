@@ -217,10 +217,10 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help=(
             "Pool inputs only: derive pool_source_household_id before cloning "
             "from household_id = tier * 10**8 + base, leaving the immediate "
-            "source_household_id untouched. Spine inputs instead use sernum + "
-            "1{spi} * 10**d + 1{cgt_clone} * 10**(d+1) + 1{band_donor} * "
-            "10**(d+2) and carry authoritative explicit lineage columns, so "
-            "the modulus is refused for them. Also refused when the pool "
+            "source_household_id untouched. Spine inputs instead carry copy "
+            "ids in the copy-id table's fixed fields (microcosm#931) and "
+            "authoritative explicit lineage columns, so the modulus is "
+            "refused for them. Also refused when the pool "
             "column exists or the mapping would be an identity."
         ),
     )
