@@ -1,7 +1,9 @@
 """Tests split from packages/microcosm-build/tests/test_uk_graph.py."""
 
 # ruff: noqa: F403, F405
+import functools
 import hashlib
+from typing import NamedTuple
 
 from microcosm.graph import graph_schema, orrery_document
 from microcosm.graph.canonical import canonical_json
@@ -413,44 +415,214 @@ def test_copy_id_table_changes_invalidate_every_stage_that_reads_it(monkeypatch)
         assert registry.implementation_hash(ref) == before[ref], ref
 
 
-#: Stages whose module or bound helpers import the keyed-draw helpers
-#: (``microcosm.build.stochastic_assignment``) but need not bind them, each with
-#: its reason. None today: every stage that imports them draws through them.
-_STOCHASTIC_ASSIGNMENT_UNBOUND: dict[str, str] = {}
+_STOCHASTIC_ASSIGNMENT = "microcosm.build.stochastic_assignment"
+#: Stages that import a function drawing through the keyed-draw helpers
+#: (``microcosm.build.stochastic_assignment``) but never call it, so need not
+#: bind them: the drawing names each imports, and why it never calls them.
+_STOCHASTIC_ASSIGNMENT_UNBOUND: dict[str, tuple[frozenset[str], str]] = {
+    "spi_support_channel": (
+        frozenset(
+            {
+                "employer_pension_contributions.draw_employer_pension_contributions",
+                "spi_income.impute_uk_spi_income_support",
+            }
+        ),
+        "its module, spi_spine, also holds frs_hmrc_spine_leaves' employer "
+        "pension draw and hmrc_spi_income_spine's SPI income imputation, both "
+        "of which bind the helpers; the support channel's transform calls "
+        "neither",
+    ),
+}
+
+
+class _DrawFacts(NamedTuple):
+    """What one first-party module imports and what its definitions name."""
+
+    imports: tuple[tuple[str, str, str], ...]
+    module_aliases: dict[str, str]
+    references: dict[str, frozenset[str]]
+
+
+@functools.cache
+def _draw_facts(name: str) -> _DrawFacts | None:
+    import ast
+    import importlib.util
+
+    if not name.startswith("microcosm.") or name == _STOCHASTIC_ASSIGNMENT:
+        return None
+    try:
+        spec = importlib.util.find_spec(name)
+    except (ImportError, ValueError):
+        return None
+    if spec is None or not (spec.origin or "").endswith(".py"):
+        return None
+    package = name if spec.submodule_search_locations else name.rpartition(".")[0]
+    tree = ast.parse(Path(spec.origin).read_text(encoding="utf-8"))
+    imports: list[tuple[str, str, str]] = []
+    module_aliases: dict[str, str] = {}
+    for node in ast.walk(tree):
+        if isinstance(node, ast.ImportFrom):
+            base = package.rsplit(".", node.level - 1)[0] if node.level else ""
+            origin = (
+                ".".join(part for part in (base, node.module) if part)
+                if node.level
+                else node.module or ""
+            )
+            for alias in node.names:
+                local = alias.asname or alias.name
+                imports.append((local, origin, alias.name))
+                module_aliases[local] = f"{origin}.{alias.name}"
+        elif isinstance(node, ast.Import):
+            for alias in node.names:
+                if alias.asname:
+                    module_aliases[alias.asname] = alias.name
+    references = {}
+    for node in tree.body:
+        if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef | ast.ClassDef):
+            names = set()
+            for sub in ast.walk(node):
+                if isinstance(sub, ast.Name):
+                    names.add(sub.id)
+                elif isinstance(sub, ast.Attribute) and isinstance(sub.value, ast.Name):
+                    names.add(f"{sub.value.id}.{sub.attr}")
+            references[node.name] = frozenset(names)
+    return _DrawFacts(tuple(imports), module_aliases, references)
+
+
+def _drawing_names(roots) -> dict[str, frozenset[str]]:
+    """Each first-party module's names that draw through the keyed-draw helpers.
+
+    A definition draws when it names one of their functions or another drawing
+    name, of its own module or imported from (or reached by attribute on)
+    another; a module's drawing names include the drawing names it imports, so
+    a re-export draws too. A fixed point over every module the roots reach.
+    """
+
+    facts: dict[str, _DrawFacts] = {}
+    pending = list(roots)
+    while pending:
+        name = pending.pop()
+        if name in facts:
+            continue
+        found = _draw_facts(name)
+        if found is None:
+            continue
+        facts[name] = found
+        pending.extend(origin for _, origin, _ in found.imports)
+        pending.extend(found.module_aliases.values())
+    drawing: dict[str, set[str]] = {name: set() for name in facts}
+
+    def draws(module: str, local: str) -> bool:
+        info = facts[module]
+        if local in drawing[module]:
+            return True
+        if "." in local:
+            head, _, attribute = local.partition(".")
+            target = info.module_aliases.get(head)
+            return target == _STOCHASTIC_ASSIGNMENT or attribute in drawing.get(
+                target, ()
+            )
+        return any(
+            local == alias
+            and (
+                origin == _STOCHASTIC_ASSIGNMENT or imported in drawing.get(origin, ())
+            )
+            for alias, origin, imported in info.imports
+        )
+
+    changed = True
+    while changed:
+        changed = False
+        for module, info in facts.items():
+            for local, _, _ in info.imports:
+                if local not in drawing[module] and draws(module, local):
+                    drawing[module].add(local)
+                    changed = True
+            for definition, names in info.references.items():
+                if definition not in drawing[module] and any(
+                    draws(module, name) for name in names
+                ):
+                    drawing[module].add(definition)
+                    changed = True
+    return {module: frozenset(names) for module, names in drawing.items()}
+
+
+def _stochastic_assignment_reach() -> dict[str, frozenset[str]]:
+    """Every spine stage that draws through the keyed-draw helpers, and how.
+
+    A stage draws when its module or a bound helper imports the helpers, or
+    imports from another first-party module a function that draws through
+    them. Each such stage maps to the drawing names it imports that way, as
+    ``module.name`` (empty when it imports the helpers themselves).
+    """
+
+    from microcosm.build.uk_runtime import graph_kernels
+
+    hashed = {
+        stage: (
+            graph_kernels._stage_module(stage),
+            *graph_kernels._STAGE_HELPER_MODULES.get(stage, ()),
+        )
+        for stage in graph_kernels._STAGE_MODULES
+    }
+    drawing = _drawing_names(
+        {module.__name__ for modules in hashed.values() for module in modules}
+    )
+    reach: dict[str, frozenset[str]] = {}
+    for stage, modules in hashed.items():
+        if any(
+            "stochastic_assignment" in _imported_module_names(module)
+            for module in modules
+        ):
+            reach[stage] = frozenset()
+            continue
+        found = set()
+        for module in modules:
+            facts = _draw_facts(module.__name__)
+            if facts is None:
+                continue
+            for _, origin, imported in facts.imports:
+                if imported in drawing.get(origin, ()):
+                    found.add(f"{origin.rpartition('.')[2]}.{imported}")
+            # A drawing function reached by attribute on an imported module.
+            for names in facts.references.values():
+                for name in names:
+                    head, _, attribute = name.partition(".")
+                    target = facts.module_aliases.get(head) if attribute else None
+                    if target and attribute in drawing.get(target, ()):
+                        found.add(f"{target.rpartition('.')[2]}.{attribute}")
+        if found:
+            reach[stage] = frozenset(found)
+    return reach
 
 
 def _stages_drawing_through_stochastic_assignment() -> set[str]:
-    from microcosm.build.uk_runtime import graph_kernels
-
-    return {
-        stage
-        for stage in graph_kernels._STAGE_MODULES
-        if any(
-            "stochastic_assignment" in _imported_module_names(module)
-            for module in (
-                graph_kernels._stage_module(stage),
-                *graph_kernels._STAGE_HELPER_MODULES.get(stage, ()),
-            )
-        )
-    }
+    return set(_stochastic_assignment_reach())
 
 
 def test_every_stage_that_draws_through_stochastic_assignment_binds_it() -> None:
     """``source_hash`` does not follow imports, so every stage whose module or
-    bound helpers import the keyed-draw helpers binds them, or an edit to how a
-    uniform is keyed would replay the stage's stale output (microcosm#931),
-    save the stages ``_STOCHASTIC_ASSIGNMENT_UNBOUND`` names with a reason."""
+    bound helpers import the keyed-draw helpers, or import another module's
+    function that draws through them, binds them, or an edit to how a uniform
+    is keyed would replay the stage's stale output (microcosm#931), save the
+    stages ``_STOCHASTIC_ASSIGNMENT_UNBOUND`` names with a reason."""
     from microcosm.build import stochastic_assignment
     from microcosm.build.uk_runtime import graph_kernels
 
-    drawing = _stages_drawing_through_stochastic_assignment()
+    reach = _stochastic_assignment_reach()
     binding = {
         stage
         for stage, helpers in graph_kernels._STAGE_HELPER_MODULES.items()
         if stochastic_assignment in helpers
     }
-    assert set(_STOCHASTIC_ASSIGNMENT_UNBOUND) <= drawing
-    assert binding == drawing - set(_STOCHASTIC_ASSIGNMENT_UNBOUND)
+    assert binding == set(reach) - set(_STOCHASTIC_ASSIGNMENT_UNBOUND)
+    # The employer pension draw reaches stage 14 through spi_spine alone.
+    assert reach["frs_hmrc_spine_leaves"] >= {
+        "employer_pension_contributions.draw_employer_pension_contributions"
+    }
+    # An exempt stage imports exactly the drawing names its reason covers.
+    for stage, (names, _) in _STOCHASTIC_ASSIGNMENT_UNBOUND.items():
+        assert reach.get(stage) == names, stage
 
 
 def test_stochastic_assignment_changes_invalidate_every_stage_that_draws(
@@ -466,6 +638,8 @@ def test_stochastic_assignment_changes_invalidate_every_stage_that_draws(
         for stage, helpers in graph_kernels._STAGE_HELPER_MODULES.items()
         if stochastic_assignment in helpers
     )
+    # Stage 14 draws through the employer pension helper, which binds nothing.
+    assert "frs_hmrc_spine_leaves" in stages
     # The root stage's node is the CREATE kernel.
     affected = [
         graph.node("create_uk_frs" if stage == "frs_spine" else stage).kernel
@@ -477,7 +651,8 @@ def test_stochastic_assignment_changes_invalidate_every_stage_that_draws(
         "cgt_support_split",
         "hmrc_cgt_asset_type_spine",
     )
-    assert not set(control_stages) & _stages_drawing_through_stochastic_assignment()
+    drawing = _stages_drawing_through_stochastic_assignment()
+    assert not set(control_stages) & drawing
     controls = [graph.node(stage).kernel for stage in control_stages]
     before = {ref: registry.implementation_hash(ref) for ref in affected + controls}
     helper_path = Path(stochastic_assignment.__file__).resolve()
@@ -490,7 +665,7 @@ def test_stochastic_assignment_changes_invalidate_every_stage_that_draws(
         return content
 
     monkeypatch.setattr(Path, "read_bytes", changed_helper_bytes)
-    assert len(affected) == len(_stages_drawing_through_stochastic_assignment())
+    assert len(affected) == len(drawing - set(_STOCHASTIC_ASSIGNMENT_UNBOUND))
     for ref in affected:
         assert registry.implementation_hash(ref) != before[ref], ref
     for ref in controls:

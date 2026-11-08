@@ -170,10 +170,14 @@ _ENGINE_MODULES = (
 
 # Imported modules are not traversed by ``source_hash``. Bind relationship
 # helpers and the adapter's input-retention checks into every consuming stage.
-# Every stage whose module or bound helpers draw through the shared keyed-draw
-# helpers (``microcosm.build.stochastic_assignment``) binds them, so an edit to
-# how a uniform is keyed or a binary is placed re-keys every stage it moves
-# (microcosm#931); test_uk_graph derives the set from the imports.
+# Every stage whose module or bound helpers import the shared keyed-draw
+# helpers (``microcosm.build.stochastic_assignment``), or import another
+# module's function that draws through them, binds them, so an edit to how a
+# uniform is keyed or a binary is placed re-keys every stage it moves
+# (microcosm#931). test_uk_graph derives the set from the imports and names,
+# with its reason, each stage that imports a drawing function it never calls.
+# The intermediate modules themselves (employer_pension_contributions, say)
+# are not bound here.
 _STAGE_HELPER_MODULES = {
     # The three FRS draw stages' receipts measure their take-up flags through
     # frs_take_up's signal measurement and count support by the shared
@@ -181,7 +185,9 @@ _STAGE_HELPER_MODULES = {
     "frs_take_up": (receipt_counts, stochastic_assignment),
     "frs_person_draws": (frs_take_up, receipt_counts, stochastic_assignment),
     "frs_household_draws": (frs_take_up, receipt_counts, stochastic_assignment),
-    "frs_hmrc_spine_leaves": (frs_hmrc_source,),
+    # The leaves' employer pension contributions are drawn on keyed uniforms
+    # through employer_pension_contributions (microcosm#931).
+    "frs_hmrc_spine_leaves": (frs_hmrc_source, stochastic_assignment),
     # The annual income descriptors' receipt follows the shared disclosure rules
     # (microcosm#1164).
     "frs_annual_income_spells": (receipt_counts, stochastic_assignment),

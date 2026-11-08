@@ -744,6 +744,62 @@ def test_only_the_dense_line_names_the_retired_id_rule() -> None:
     )
 
 
+#: The modules that compute ten to an id's digit count inline, each with what
+#: it computes. A module reimplementing the retired rule without naming it
+#: (``10 ** len(str(max(ids)))``) fails the guard below.
+_INLINE_DIGIT_COUNT_MODULES = {
+    "packages/microcosm-build/src/microcosm/build/uk_runtime/rowwise_geography.py": (
+        "defines the dense clone multiplier, id_multiplier_for_values"
+    ),
+    "packages/microcosm-build/src/microcosm/build/uk_runtime/copy_id_table.py": (
+        "sizes each declared field's span from its ordinal bound"
+    ),
+    "packages/microcosm-build/src/microcosm/build/uk_runtime/national_sampling.py": (
+        "uk_source_family_units, the legacy candidate decoder, re-derives the "
+        "retired stage fence's clone multiplier; whether it learns the table "
+        "is open (microcosm#931)"
+    ),
+}
+
+
+def _computes_ten_to_a_digit_count(source: str) -> bool:
+    """Whether ``source`` raises ten to a power built from ``len(str(...))``."""
+
+    for node in ast.walk(ast.parse(source)):
+        if not (
+            isinstance(node, ast.BinOp)
+            and isinstance(node.op, ast.Pow)
+            and isinstance(node.left, ast.Constant)
+            and node.left.value == 10
+        ):
+            continue
+        for call in ast.walk(node.right):
+            if (
+                isinstance(call, ast.Call)
+                and isinstance(call.func, ast.Name)
+                and call.func.id == "len"
+                and call.args
+                and isinstance(call.args[0], ast.Call)
+                and isinstance(call.args[0].func, ast.Name)
+                and call.args[0].func.id == "str"
+            ):
+                return True
+    return False
+
+
+def test_only_the_declared_modules_compute_ten_to_an_ids_digit_count() -> None:
+    """The name guards cannot see the retired rule written out inline, as size
+    evaluation's clone-0 path was before #931; this one can."""
+
+    found = {
+        path
+        for path, source in _uk_python_sources().items()
+        if _computes_ten_to_a_digit_count(source)
+    }
+    assert found == set(_INLINE_DIGIT_COUNT_MODULES)
+    assert not set(_INLINE_DIGIT_COUNT_MODULES) & _COPY_ID_MODULES
+
+
 def test_no_module_that_mints_or_decodes_copy_ids_names_the_retired_rule() -> None:
     """Each module that mints, bounds or decodes spine copy ids reads the
     copy-id table, the identity tool among them, and none names the rule the

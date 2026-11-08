@@ -274,7 +274,9 @@ def test_income_band_refuses_a_household_without_an_adult_or_a_missing_component
             person, household_ids=household["household_id"], parameters=PARAMETERS
         )
     # The refusal counts the households and names none (microcosm#931).
-    assert str(caught.value).endswith("1 household(s) have none.")
+    assert str(caught.value) == (
+        "Every CGT household requires an adult carrier; 1 household(s) have none."
+    )
     person, _, household, _ = support_tables(weights=[1.0], wealth=[0.0], incomes=[1.0])
     with pytest.raises(ValueError, match="components missing"):
         cgt_support_income_band(

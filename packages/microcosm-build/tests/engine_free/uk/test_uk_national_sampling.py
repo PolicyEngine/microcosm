@@ -491,10 +491,50 @@ def test_spine_sampling_fractional_source_fails_closed() -> None:
 
 
 def test_spine_sampling_orphan_derivative_fails_closed() -> None:
-    with pytest.raises(ValueError, match="999"):
+    # The refusals count families and name no source household (microcosm#931).
+    with pytest.raises(ValueError) as caught:
         uk_spine_source_family_units(_spine_family_frame(orphan_source=999))
+    assert str(caught.value) == (
+        "UK spine sample: 1 source_household_id family key(s) lack a "
+        "household_id-bearing raw row."
+    )
 
 
 def test_spine_sampling_multi_region_raw_family_fails_closed() -> None:
-    with pytest.raises(ValueError, match="spans more than one raw-row region.*1"):
+    with pytest.raises(ValueError) as caught:
         uk_spine_source_family_units(_spine_family_frame(multi_region_family=True))
+    assert str(caught.value) == (
+        "UK spine sample: 1 source family(ies) span more than one raw-row region."
+    )
+
+
+def test_spine_sampling_counts_the_families_a_sample_left_incomplete(
+    monkeypatch,
+) -> None:
+    from microcosm.build.uk_runtime import national_sampling
+
+    real = national_sampling.uk_spine_source_family_units
+    calls: list[int] = []
+
+    def relabel_one_row_after_sampling(frame):
+        units, strata = real(frame)
+        calls.append(len(units))
+        if len(calls) == 2:
+            # The first sampled row, a family of one, joins the next sampled
+            # family, which then holds a row more than in the full frame.
+            units = units.copy()
+            units[0] = next(unit for unit in units if unit != units[0])
+        return units, strata
+
+    monkeypatch.setattr(
+        national_sampling,
+        "uk_spine_source_family_units",
+        relabel_one_row_after_sampling,
+    )
+    with pytest.raises(ValueError) as caught:
+        sample_uk_spine_frame(
+            _spine_family_frame(families_per_region=100), fraction=0.5, seed=19
+        )
+    assert str(caught.value) == (
+        "UK spine sample retained 1 incomplete source family(ies)."
+    )

@@ -430,6 +430,28 @@ class TestImputation:
         evidence = summary.evidence()
         assert {"rows", "age_rows", "region_rows", "age_by_band_rows"} <= set(evidence)
 
+    def test_a_person_in_a_household_with_no_weight_is_refused_by_count(
+        self, monkeypatch
+    ) -> None:
+        frame = _frame(2, gains=[1_000.0, 2_000.0], incomes=[20_000.0, 30_000.0])
+        # A frame cannot be built with a person naming no household, so the
+        # stored table is edited in place and the seam's revalidation skipped.
+        frame.table("person").loc[1, "person_household_id"] = 434_343
+        monkeypatch.setattr(
+            cgt_imputation, "validate_uk_national_frame", lambda frame: None
+        )
+        with pytest.raises(ValueError) as caught:
+            impute_uk_capital_gains_with_report(
+                frame,
+                _distribution(cell_people=10.0),
+                PARAMETERS,
+                conditioning=load_hmrc_cgt_conditioning_facts(),
+            )
+        # The refusal counts the households and names none (microcosm#931).
+        assert str(caught.value) == (
+            "Person rows reference 1 household(s) with no weight."
+        )
+
 
 class TestWealthRanking:
     """Gainers take amounts in the order of a prior and wealth rank blend (#1014)."""
