@@ -1073,8 +1073,12 @@ _SPLIT_SCENARIO = {
 #: 1,800, 4,020 and 7,620: 15, 30, 67 and 127 copies), a weight one ulp below
 #: 300 (5 copies), a light one (40, uncopied) and a non-multiple (1,234.5, id
 #: 7, 21 copies); band 0's pool is exhausted at every clone count, band
-#: 37,700 asks for nothing, so its household (9,000) takes the exact-total
-#: correction, and the zero-weight household is outside every pool.
+#: 37,700 asks for nothing, so its household (9,000) is the first candidate
+#: for the exact-total correction, and the zero-weight household is outside
+#: every pool. At 7 and 13 clones that household's clone 0 has no
+#: representable correction, so the shared fallback puts it on the last copy
+#: of the 7,620 family's last clone, a few ulps off w / n and within the
+#: 1e-12 tolerances; at 1, 3, 11 and 15 clones no correction is needed.
 _NESTING_SCENARIO = {
     "weights": [
         900.0,
@@ -1217,8 +1221,10 @@ class TestSupportSplitRecomputeAcrossGeographicClones:
     ) -> None:
         # At 11 and 13 clones the fold re-sums the 7,620 family's 127 copies
         # to a weight whose K x w / 60 sits more ulps above 127 than the
-        # count's snap absorbs, so an exact recount would count 128 in every
-        # clone; the tolerance accepts the stage's 127.
+        # count's snap absorbs, so an exact recount would count 128 in all 11
+        # clones at 11 and in 12 of the 13 at 13 (the clone whose last copy
+        # took the exact-total correction re-sums to 127); the tolerance
+        # accepts the stage's 127.
         one_split, one = _clone_first_split_then_cloned(1, _NESTING_SCENARIO)
         split, many = _clone_first_split_then_cloned(clone_count, _NESTING_SCENARIO)
 
