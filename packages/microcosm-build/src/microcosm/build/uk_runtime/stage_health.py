@@ -8,6 +8,7 @@ from collections.abc import Mapping
 import numpy as np
 
 from microcosm.build.gates import GateResult
+from microcosm.build.stochastic_assignment import binomial_share_tolerance
 from microcosm.build.uk_runtime.receipt_counts import (
     UK_BELOW_TEN_BAND,
     UK_DISCLOSURE_FLOOR,
@@ -2809,16 +2810,14 @@ LATENT_ATTRIBUTE_SIGMA = 4.0
 
 
 def latent_attribute_tolerance(*, target: float, rows: int) -> float:
-    """Binomial band for a share realized over ``rows`` identity-keyed draws."""
+    """Binomial band for a share realized over ``rows`` identity-keyed draws.
 
-    if rows <= 0:
-        return 1.0
-    return min(
-        1.0,
-        max(
-            1.0 / rows,
-            LATENT_ATTRIBUTE_SIGMA * math.sqrt(target * (1.0 - target) / rows),
-        ),
+    The shared band (:func:`~microcosm.build.stochastic_assignment.
+    binomial_share_tolerance`) at :data:`LATENT_ATTRIBUTE_SIGMA`.
+    """
+
+    return binomial_share_tolerance(
+        target=target, rows=rows, sigma=LATENT_ATTRIBUTE_SIGMA
     )
 
 
