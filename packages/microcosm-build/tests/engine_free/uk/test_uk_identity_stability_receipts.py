@@ -892,14 +892,28 @@ class TestPreSplitFold:
     def test_a_copy_without_a_root_fails_closed(self) -> None:
         tool = _load_tool()
         frame = _hand_split_frame(cloned=False)
+        refusal = (
+            "CGT support copy(ies) without a root household at the declared radix "
+            "of the copy-id table's 'cgt_support_split' field."
+        )
         household = frame.table("household").copy()
         # Flagging id 2 as a copy gives it ordinal 0 in the cgt_support_split
         # field: no root.
         household.loc[household["household_id"] == 2, HOUSEHOLD_IS_CGT_SUPPORT_COPY] = (
             True
         )
-        with pytest.raises(ValueError, match="without a root household"):
+        with pytest.raises(ValueError) as caught:
             tool._pre_split_household_weights(_rebuild(frame, household=household))
+        assert str(caught.value) == f"1 {refusal}"
+        # Flagging root 1 instead leaves its two copies' parent in the frame
+        # but outside the rows the split copied: all three are orphans.
+        household = frame.table("household").copy()
+        household.loc[household["household_id"] == 1, HOUSEHOLD_IS_CGT_SUPPORT_COPY] = (
+            True
+        )
+        with pytest.raises(ValueError) as caught:
+            tool._pre_split_household_weights(_rebuild(frame, household=household))
+        assert str(caught.value) == f"3 {refusal}"
 
     def test_the_stored_copy_index_is_read_and_held_to_the_id_scheme(self) -> None:
         """The explicit index (microcosm#1045 review) must agree with the ids."""
@@ -922,8 +936,14 @@ class TestPreSplitFold:
         tampered.loc[
             tampered["household_id"] == copy_id, CGT_SUPPORT_COPY_INDEX_COLUMN
         ] = 7
-        with pytest.raises(ValueError, match="disagrees with the id scheme"):
+        with pytest.raises(ValueError) as caught:
             tool._pre_split_household_weights(_rebuild(frame, household=tampered))
+        assert str(caught.value) == (
+            "CGT support copy index stored on 1 copy(ies) disagrees with the id "
+            "scheme (the id's ordinal in the copy-id table's 'cgt_support_split' "
+            "field)."
+        )
+        assert str(copy_id) not in str(caught.value)
 
         unflagged = household.copy()
         unflagged.loc[
@@ -1109,6 +1129,35 @@ class TestCopyIdsAtTheDeclaredTable:
         household.loc[twin, HOUSEHOLD_IS_CGT_CLONE] = False
         assert tool._copy_id_rows_off_the_declared_table(household) == 1
 
+    def test_the_gate_holds_each_stored_ordinal_to_the_ids_exactly(self) -> None:
+        # The SPI channel's ordinal (copy 1, band donor 2) and the high-value
+        # copy's are checked against the id only here; a nonzero-marker reading
+        # would pass a band donor recorded as the SPI copy.
+        from microcosm.build.uk_runtime.household_lineage import (
+            HIGH_VALUE_SUPPORT_INDEX_COLUMN,
+        )
+
+        tool = _load_tool()
+        household = _lineage_household(_chain("table").household)
+        for column, stored, tampered_to in (
+            ("household_support_clone_index", 2, 1),
+            (HIGH_VALUE_SUPPORT_INDEX_COLUMN, 2, 3),
+        ):
+            tampered = household.copy()
+            row = int(np.flatnonzero(tampered[column].to_numpy() == stored)[0])
+            tampered.loc[row, column] = tampered_to
+            assert tool._copy_id_rows_off_the_declared_table(tampered) == 1, column
+
+    def test_the_gate_expects_nothing_in_the_vintage_field(self) -> None:
+        # Nothing mints a vintage ordinal yet, so a base id moved into that
+        # field is off the table although no lineage column names the field.
+        tool = _load_tool()
+        moved = _lineage_household(_chain("table").household)
+        moved.loc[0, "household_id"] = int(
+            moved.loc[0, "household_id"]
+        ) + copy_id_table.radix("vintage")
+        assert tool._copy_id_rows_off_the_declared_table(moved) == 1
+
     def test_the_tool_refuses_a_spine_built_before_the_table(
         self, monkeypatch, tmp_path
     ) -> None:
@@ -1221,3 +1270,155 @@ class TestCopyIdsAtTheDeclaredTable:
         floated = household.assign(household_id=household["household_id"].astype(float))
         with pytest.raises(TypeError, match="integer household ids"):
             tool._support_copy_lineage(floated)
+
+
+# --- the receipts on frames the CGT stages built (microcosm#931) -----------------
+#
+# The split scenario above run through the support split (42), the incidence
+# twin (43), a redraw by hand (44: each twin's carrier takes a liable gain),
+# the anchor (45) and the residential split (46), with Table 8 totals sized to
+# the frame's liable mass. Every value is synthetic.
+
+
+def _residentially_split():
+    """The split scenario after stages 42 to 46, and the Table 8 facts it used."""
+
+    import dataclasses
+
+    from microcosm.build.uk_runtime.cgt_asset_type import (
+        CGT_STOCK_HOUSEHOLD_COLUMNS,
+        CGT_STOCK_PERSON_COLUMNS,
+        load_hmrc_cgt_asset_type_facts,
+    )
+    from microcosm.build.uk_runtime.cgt_residential_split import (
+        split_cgt_residential_households,
+    )
+    from microcosm.build.uk_runtime.cgt_structure import anchor_cgt_incidence
+    from microcosm.build.uk_runtime.national_frame import uk_household_weight_kind
+    from test_support.microcosm_build.uk_cgt_support import support_tables
+
+    person, benunit, household, weights = support_tables(
+        weights=_SPLIT_WEIGHTS, wealth=_SPLIT_WEALTH, incomes=_SPLIT_INCOMES
+    )
+    # The residential split reads the asset stocks; those the scenario does
+    # not carry are zero.
+    for column in CGT_STOCK_PERSON_COLUMNS:
+        person[column] = person.get(column, 0.0)
+    for column in CGT_STOCK_HOUSEHOLD_COLUMNS:
+        household[column] = household.get(column, 0.0)
+    split = split_cgt_support_households(
+        uk_national_frame(
+            person=person,
+            benunit=benunit,
+            household=household,
+            household_weights=weights,
+            time_period="2024",
+        ),
+        distribution=support_distribution(_SPLIT_TOP_CELLS),
+        parameters=PARAMETERS,
+    )
+    twinned = clone_cgt_incidence(
+        split.frame, distribution=load_advani_summers_distribution()
+    ).frame
+    redrawn_person = twinned.table("person").copy()
+    carrier = redrawn_person["capital_gains"].to_numpy() != 0.0
+    redrawn_person["capital_gains"] = np.where(
+        carrier, 20_000.0 + 1_000.0 * (redrawn_person["person_id"] % 7), 0.0
+    )
+    anchored = anchor_cgt_incidence(
+        uk_national_frame(
+            person=redrawn_person,
+            benunit=twinned.table("benunit"),
+            household=twinned.table("household"),
+            time_period="2024",
+            weight_kind=uk_household_weight_kind(twinned),
+            household_weights=twinned.weights_for("household").values,
+            mass_log=twinned.mass_log,
+        ),
+        distribution=load_advani_summers_distribution(),
+        parameters=PARAMETERS,
+    ).frame
+    anchored_person = anchored.table("person")
+    by_household = pd.Series(
+        anchored.weights_for("household").values,
+        index=anchored.table("household")["household_id"],
+    )
+    person_weight = anchored_person["person_household_id"].map(by_household)
+    gains = anchored_person["capital_gains"]
+    liable = gains > PARAMETERS.annual_exempt_amount
+    count = 0.3 * float(person_weight[liable].sum())
+    total = 0.3 * float((person_weight[liable] * gains[liable]).sum())
+    facts = dataclasses.replace(
+        load_hmrc_cgt_asset_type_facts(),
+        table8a_taxpayers_total=count,
+        table8a_gains_total=total,
+        table8b_individuals_taxpayers=count,
+        table8b_individuals_gains=total,
+        table8b_all_taxpayers=count,
+        table8b_all_gains=total,
+    )
+    result = split_cgt_residential_households(
+        anchored, facts=facts, parameters=PARAMETERS
+    )
+    return result.frame, facts
+
+
+class TestReceiptsOnFramesTheStagesBuilt:
+    def test_the_old_spine_gate_passes_every_layer_the_stages_minted(self) -> None:
+        tool = _load_tool()
+        _, twinned = _split_then_cloned()
+        with_arms, _ = _residentially_split()
+        for frame in (twinned, with_arms):
+            assert (
+                tool._copy_id_rows_off_the_declared_table(frame.table("household")) == 0
+            )
+
+    def test_the_arms_the_stage_built_decode_and_receipt_green(self) -> None:
+        from microcosm.build.uk_runtime.cgt_residential_split import (
+            HOUSEHOLD_IS_CGT_RESIDENTIAL_CLONE,
+        )
+
+        tool = _load_tool()
+        frame, facts = _residentially_split()
+        problems: dict[str, object] = {}
+        residential = tool._e8_residential_split(
+            frame, problems, parameters=PARAMETERS, facts=facts, permutation_seed=7
+        )
+        assert problems == {}
+        radix = copy_id_table.radix("cgt_residential_split")
+        assert residential["id_multiplier"] == radix == 10**18
+        # One arm for each of the 11 twins (six households and five copies),
+        # whose carrier alone gains.
+        assert residential["arms"] == residential["households_split"] == 11
+        # Every arm's people are its source's people shifted by the arm's
+        # index times the radix: the decode found the row the stage copied.
+        household = frame.table("household")
+        lineage = tool._residential_arm_lineage(household)
+        ids = household["household_id"].to_numpy()
+        assert int(ids[lineage.arm_positions].min()) > 2**53
+        members = (
+            frame.table("person")
+            .groupby("person_household_id")["person_id"]
+            .apply(lambda people: sorted(int(value) for value in people))
+        )
+        for arm, source, index in zip(
+            lineage.arm_positions,
+            lineage.source_positions,
+            lineage.arm_index,
+            strict=True,
+        ):
+            shifted = [value - int(index) * radix for value in members[ids[arm]]]
+            assert shifted == members[ids[source]]
+        # The layers below, with the arms folded away, receipt green too.
+        below = tool._drop_stacked_layers(frame, [HOUSEHOLD_IS_CGT_RESIDENTIAL_CLONE])
+        pairs = tool._e8_clone_pairs(below, problems, parameters=PARAMETERS)
+        support = tool._e8_support_split(
+            below,
+            problems,
+            distribution=support_distribution(_SPLIT_TOP_CELLS),
+            parameters=PARAMETERS,
+            permutation_seed=7,
+        )
+        assert problems == {}
+        assert pairs["anchored"] is True and pairs["pairs"] == 11
+        assert support["copies"] == 5 and support["families"] == 3

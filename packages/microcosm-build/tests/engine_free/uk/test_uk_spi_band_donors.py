@@ -406,6 +406,10 @@ def test_spi_copies_and_donors_take_their_base_roots_ids_plus_the_radix() -> Non
         .eq(SPI_INCOME_BAND_DONOR_CLONE_INDEX)
         .all()
     )
+    # The identity tool's old-spine gate reads both layers as on the table.
+    gate = _identity_tool()._copy_id_rows_off_the_declared_table
+    assert gate(frame.table("household")) == 0
+    assert gate(result.frame.table("household")) == 0
 
 
 def test_stack_scales_seats_then_mass_on_a_frame_too_small_for_the_plan() -> None:

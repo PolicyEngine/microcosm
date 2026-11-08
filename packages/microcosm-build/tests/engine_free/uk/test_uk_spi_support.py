@@ -789,8 +789,9 @@ def test_spi_fill_rejects_missing_source_ids() -> None:
             entity="person",
             columns=["employment_income"],
         )
-    assert "1 row(s) repeat" in str(caught.value)
-    assert "1001" not in str(caught.value)
+    assert str(caught.value) == (
+        "donor.person_id must be unique; 1 row(s) repeat an earlier row's id."
+    )
 
 
 def test_spi_support_input_refusals_count_rows_and_name_no_id() -> None:
@@ -818,7 +819,9 @@ def test_spi_support_input_refusals_count_rows_and_name_no_id() -> None:
             household=household,
             spi_household_count=None,
         )
-    assert "1 row(s) repeat" in str(caught.value)
+    assert str(caught.value) == (
+        "household.household_id must be unique; 1 row(s) repeat an earlier row's value."
+    )
 
     with pytest.raises(ValueError, match="absent from household") as caught:
         create_uk_spi_support_tables(

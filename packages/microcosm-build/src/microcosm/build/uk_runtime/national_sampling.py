@@ -215,12 +215,11 @@ def uk_spine_source_family_units(frame: Frame) -> tuple[np.ndarray, np.ndarray]:
     )
     source_rows = raw & (household_ids == units)
     source_keys = set(int(value) for value in units[source_rows])
-    missing_sources = sorted(set(int(value) for value in units) - source_keys)
+    missing_sources = len(set(int(value) for value in units) - source_keys)
     if missing_sources:
         raise ValueError(
-            "UK spine sample: source_household_id family key(s) lack a "
-            "household_id-bearing raw row: "
-            f"{missing_sources[:5]}."
+            f"UK spine sample: {missing_sources} source_household_id family "
+            "key(s) lack a household_id-bearing raw row."
         )
 
     raw_region_by_unit: dict[int, str] = {}
@@ -233,8 +232,8 @@ def uk_spine_source_family_units(frame: Frame) -> tuple[np.ndarray, np.ndarray]:
             raw_region_by_unit[unit] = next(iter(family_regions))
     if multi_region:
         raise ValueError(
-            "UK spine sample: source family spans more than one raw-row "
-            f"region for key(s) {multi_region[:5]}."
+            f"UK spine sample: {len(multi_region)} source family(ies) span more "
+            "than one raw-row region."
         )
 
     strata = np.asarray(
@@ -285,8 +284,7 @@ def sample_uk_spine_frame(
     )
     if incomplete:
         raise ValueError(
-            "UK spine sample retained incomplete source family key(s): "
-            f"{incomplete[:5]}."
+            f"UK spine sample retained {len(incomplete)} incomplete source family(ies)."
         )
     validate_uk_national_frame(normalized)
     return normalized, {
