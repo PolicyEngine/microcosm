@@ -16,10 +16,9 @@ identical copies at equal weight, ``K`` the frame's geographic clone count
 ``cgt_support_copy_index`` (0 on roots and unsplit households), the explicit
 lineage the geography identity kernel keys on. No value moves, no draw is
 made, and every household's mass and the total household mass are conserved
-exactly; the clone stage then
-gives each copy's clone its own identity-keyed prior, and the redraw's
-wealth-ranked walk places the light rows where it was already placing heavy
-ones.
+exactly; the incidence clone stage (``cgt_incidence_clone``) then gives each
+copy's clone its own identity-keyed prior, and the redraw's wealth-ranked
+walk places the light rows where it was already placing heavy ones.
 
 The support masses are read from the vendored ``hmrc_cgt_conditioning_facts.json``
 (HMRC Table 3, individuals by size of gain and taxable income) through
@@ -81,7 +80,8 @@ CGT_SUPPORT_COPIES_COLUMN = "cgt_support_copies"
 #: roots and unsplit households: the explicit lineage the geography identity
 #: kernel keys on (microcosm#932), so no consumer recovers ``k`` from ids.
 CGT_SUPPORT_COPY_INDEX_COLUMN = "cgt_support_copy_index"
-#: The clone stage halves every household and only the clone twin gains.
+#: The incidence clone stage (``cgt_incidence_clone``) halves every household
+#: and only the clone twin gains.
 CGT_SUPPORT_CLONE_SPLIT_FACTOR = 2
 #: Covers clones whose prior draws at or below zero and the quarter of the
 #: redraw's rank key the prior carries.
@@ -458,7 +458,7 @@ def geographic_clone_count(household: pd.DataFrame) -> int:
     is one clone. Refuses a non-integer index column, a household without an
     index, a negative index and indices that are not exactly 0 to ``K - 1``
     (an index below the largest that no household carries). Each refusal
-    gives a count, never an id.
+    gives a count or the column's dtype, never an id or a value.
     """
 
     column = _GEOGRAPHIC_CLONE_INDEX_COLUMN
@@ -506,9 +506,9 @@ def cgt_support_copy_counts(
     ``clone_count`` is the frame's geographic clone count ``K``
     (:func:`geographic_clone_count`; 1 on a national spine). A geographic
     clone carries ``1 / K`` of its source household's weight, so ``K x w`` is
-    its weight scaled back to the source: every clone of a household gets the
-    count its source gets at ``K = 1``, and each of its copies weighs at most
-    ``maximum_copy_weight / K`` (microcosm#931).
+    its weight scaled back to the source: a clone at exactly ``1 / K`` of its
+    source's weight gets the count its source gets at ``K = 1``, and each of
+    its copies weighs at most ``maximum_copy_weight / K`` (microcosm#931).
 
     For ``K > 1`` the quotient is snapped to the nearest integer when it lies
     within ``K`` ulps of it. A clone's weight ``W / K`` is rounded, so when
@@ -570,18 +570,23 @@ def split_cgt_support_households(
     Deterministic and mass-conserving: no draw, no seed, no salt. Each
     selected household of weight ``w`` becomes ``n = ceil(K x w / 60)``
     copies at ``w / n``, ``K`` the frame's geographic clone count
-    (``clone_count``, which the stage transform reads from the frame), so
-    ``n`` is the count the household's source gets on a one-clone spine and
-    every copy weighs at most ``60 / K`` (:func:`cgt_support_copy_counts`).
-    The selection walk still accumulates each row's own weight. The root
-    keeps its ids, copy ``k`` takes every entity id plus ``k`` times the
-    declared radix of the copy-id table's ``cgt_support_split`` field (so
-    every incoming id must sit below it, and ``n`` is at most the field's
-    bound of 10,000), records ``k`` in ``cgt_support_copy_index`` and carries
-    a full copy of the household's person and benefit-unit rows. The
-    exact-total correction lands on the heaviest unselected incumbent so
-    every copy weight stays bitwise ``w / n``. Refuses a frame the clone
-    stage has already seen or one this stage has already split.
+    (``clone_count``, which the stage transform reads from the frame), so a
+    household at exactly ``1 / K`` of its source's weight gets the ``n`` its
+    source gets on a one-clone spine, and every copy weighs at most
+    ``60 / K`` (:func:`cgt_support_copy_counts`). The selection walk still
+    accumulates each row's own weight, so selection nests only
+    approximately: the household at which a band's walk reaches its support
+    mass, and households tied on wealth, can be selected in some clones and
+    not others, lowest household id first. The root keeps its ids, copy
+    ``k`` takes every entity id plus ``k`` times the declared radix of the
+    copy-id table's ``cgt_support_split`` field (so every incoming id must
+    sit below it, and ``n`` is at most the field's bound of 10,000), records
+    ``k`` in ``cgt_support_copy_index`` and carries a full copy of the
+    household's person and benefit-unit rows. The exact-total correction
+    lands on the heaviest unselected incumbent so every copy weight stays
+    bitwise ``w / n``. Refuses a frame the incidence clone stage
+    (``cgt_incidence_clone``) has already seen or one this stage has already
+    split.
     """
 
     validate_uk_national_frame(frame)

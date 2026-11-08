@@ -1394,11 +1394,68 @@ def test_split_gives_every_geographic_clone_its_sources_copies(clone_count: int)
     assert many_frame.weights_for("household").total == pytest.approx(
         one_frame.weights_for("household").total, rel=1e-12
     )
+    # The packaged stage gate passes the receipt the transform wrote.
+    evidence = many.evidence()
+    gate = uk_stage_health_gate(
+        evidence=evidence,
+        stage="cgt_support_split",
+        check="cgt_support_split",
+        parameters=_packaged_split_gate_parameters(),
+    )
+    assert gate.passed, gate.failures
     if clone_count == 7:
         # Without the snap, the four multiples of 60 would gain a copy here.
         replicas = np.asarray(NESTING_WEIGHTS[:4]) / 7
         unsnapped = np.ceil((7 * replicas) / CGT_SUPPORT_MAXIMUM_COPY_WEIGHT)
         assert unsnapped.tolist() == [n + 1 for n in NESTING_COPIES[:4]]
+        # Seven times a rounded copy weight of 60 / 7 lands above 60, so the
+        # gate passes only on its copy check's relative tolerance of 1e-12.
+        assert (
+            7 * max(row["heaviest_copy_weight"] for row in evidence["bands"])
+            > CGT_SUPPORT_MAXIMUM_COPY_WEIGHT
+        )
+
+
+def test_the_walk_can_stop_partway_through_a_households_clones():
+    # Band 0 holds households of 900, 1,800 and 600, wealthiest first, with a
+    # support mass of 1,500 (2 x 1.25 x 600 published). At one clone the walk
+    # takes the first two, at 15 and 30 copies. At three it accumulates each
+    # clone's own weight: the first household's three clones (900 together)
+    # and then the second's clone 0 (600) reach 1,500, so the second's clones
+    # 1 and 2 stay whole. Selection nests only approximately (microcosm#931);
+    # every clone the walk selects gets its source's count.
+    def counts_by_clone(clone_count: int):
+        frame = clone_first_frame(
+            support_frame(
+                weights=[900.0, 1_800.0, 600.0],
+                wealth=[3e3, 2e3, 1e3],
+                incomes=[BAND_INCOMES[0]] * 3,
+            ),
+            clone_count,
+        )
+        transform = UKCGTSupportSplitStageTransform(
+            stage=support_stage(),
+            distribution=support_distribution({0: {250_000: 600.0}}),
+            parameters=PARAMETERS,
+        )
+        families = _families(transform(frame))
+        counts = families.groupby(["source", "clone"])["copies"].first()
+        selected = transform.last_result.households_selected
+        return {key: int(count) for key, count in counts.items()}, selected
+
+    one, one_selected = counts_by_clone(1)
+    three, three_selected = counts_by_clone(3)
+
+    assert one == {(1, 0): 15, (2, 0): 30, (3, 0): 1}
+    assert one_selected == 2
+    assert three == {
+        **{(1, clone): 15 for clone in range(3)},
+        (2, 0): 30,
+        (2, 1): 1,
+        (2, 2): 1,
+        **{(3, clone): 1 for clone in range(3)},
+    }
+    assert three_selected == 4
 
 
 def test_the_transform_refuses_a_gap_in_the_clone_indices_by_count():
