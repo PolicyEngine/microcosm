@@ -82,6 +82,88 @@ def test_legacy_population_graph_preserves_rows_weights_geography_and_replays(
     assert replay.population("uk.full.expand").mass_log == actual.mass_log
 
 
+#: A residential arm plus a twin of the copy-id table (microcosm#931): every
+#: synthetic id moved here sits above 2**53 and leaves the dense multiplier
+#: (ten to the spine's digit count) above int64.
+_TOP_FIELD_OFFSET = 10**18 + 10**17
+_ID_COLUMNS = {
+    "person": ("person_id", "person_household_id", "person_benunit_id"),
+    "benunit": ("benunit_id",),
+    "household": ("household_id",),
+}
+
+
+def _top_field_source_frame():
+    frame = source_frame()
+    tables = {entity: frame.table(entity).copy() for entity in frame.entities}
+    for entity, columns in _ID_COLUMNS.items():
+        for column in columns:
+            tables[entity][column] = (
+                tables[entity][column].astype("int64") + _TOP_FIELD_OFFSET
+            )
+    return type(frame)(
+        tables,
+        frame.schema,
+        {"household": frame.weights_for("household")},
+        frame.strata,
+        mass_log=frame.mass_log,
+        metadata=frame.metadata,
+    )
+
+
+def _run_legacy(k, path, store):
+    graph, registry = graph_and_registry(k, geography_assignment="legacy")
+    return run_graph(
+        compile_graph(graph),
+        sources={"uk_ladder": path, "fixture": path},
+        store=store,
+        kernels=registry,
+    )
+
+
+def test_one_dense_clone_of_a_spine_at_the_top_copy_fields_expands_exactly(
+    monkeypatch, toy_ladder, tmp_path
+):
+    """uk.full.expand at K=1 on ids in the copy-id table's top fields.
+
+    The multiplier is above int64 there, and the expand kernel multiplies no
+    empty column by it; every id comes through as exact int64, equal to the
+    unshifted run's plus the offset. K=2 is refused naming microcosm#931,
+    never an id (microcosm#931; dense K > 1 waits for the clone-first spine).
+    """
+    from microcosm.graph import NodeRejectedError
+    from test_support.microcosm_build import uk_full_population_graph
+
+    _, path = toy_ladder
+    plain = _run_legacy(1, path, ContentStore(tmp_path / "plain"))
+    monkeypatch.setattr(
+        uk_full_population_graph, "source_frame", _top_field_source_frame
+    )
+    moved = _run_legacy(1, path, ContentStore(tmp_path / "moved"))
+    # Every population node of the graph: the sample, its normalisation and
+    # the expand (the later nodes carry cells and artifacts).
+    for node in ("uk.full.sample", "uk.full.normalize", "uk.full.expand"):
+        before, after = plain.population(node), moved.population(node)
+        for entity, columns in _ID_COLUMNS.items():
+            for column in columns:
+                values = after.table(entity)[column]
+                assert values.dtype == np.dtype("int64"), (node, column)
+                np.testing.assert_array_equal(
+                    values.to_numpy(),
+                    before.table(entity)[column].to_numpy(dtype=np.int64)
+                    + _TOP_FIELD_OFFSET,
+                )
+    assert (
+        int(moved.population("uk.full.expand").table("person")["person_id"].min())
+        > 2**53
+    )
+    with pytest.raises(NodeRejectedError, match="clone-first spine") as caught:
+        _run_legacy(2, path, ContentStore(tmp_path / "refused"))
+    assert "microcosm#931" in str(caught.value)
+    smallest = int(_top_field_source_frame().table("household")["household_id"].min())
+    assert str(smallest) not in str(caught.value)
+
+
 def test_k_changes_expansion_but_never_sampling():
     first, _ = graph_and_registry(1)
     second, _ = graph_and_registry(3)

@@ -35,6 +35,7 @@ from microcosm.build.uk_runtime.cgt_support import (
     HOUSEHOLD_IS_CGT_SUPPORT_COPY,
     UKCGTSupportSplitStageTransform,
     _assert_cgt_support_split_stage_parameters,
+    _refuse_copies_beyond_the_copy_id_field,
     cgt_support_copy_counts,
     cgt_support_household_wealth,
     cgt_support_income_band,
@@ -43,7 +44,7 @@ from microcosm.build.uk_runtime.cgt_support import (
     select_cgt_support_households,
     split_cgt_support_households,
 )
-from microcosm.build.uk_runtime.copy_id_table import radix
+from microcosm.build.uk_runtime.copy_id_table import ordinal_bound, radix
 from microcosm.build.uk_runtime.hmrc_capital_gains import (
     HMRC_CGT_INCOME_BAND_LOWER_BOUNDS,
     load_hmrc_cgt_joint_distribution,
@@ -61,6 +62,7 @@ from test_support.microcosm_build.uk_cgt_support import (
 )
 from test_support.microcosm_build.uk_clone_first_frames import (
     assert_copy_ids_follow_lineage,
+    with_last_household_moved,
 )
 
 # --- the reference scenario -------------------------------------------------
@@ -569,6 +571,85 @@ def test_split_copies_take_their_roots_ids_plus_k_times_the_declared_radix():
     assert checked == result.copies_created == 5
 
 
+def _in_frs_id_spaces(frame):
+    """``frame`` in FRS-style id spaces, its SPI-channel rows as SPI copies.
+
+    Households keep their ids, benefit units take household x 100 + slot and
+    people household x 1000 + member, so no two id columns share values; an
+    SPI-channel household and its members and units move up 10**11, as the
+    SPI copies sit after stage 16.
+    """
+
+    person = frame.table("person").copy()
+    benunit = frame.table("benunit").copy()
+    household = frame.table("household").copy()
+    spi = household["household_support_channel"].eq("spi").to_numpy()
+    shift = pd.Series(
+        np.where(spi, radix("spi_support_channel"), 0),
+        index=household["household_id"].to_numpy(),
+    )
+    sernum = person["person_household_id"]
+    offset = sernum.map(shift)
+    member = person.groupby("person_household_id").cumcount() + 1
+    slot = (
+        person.groupby("person_household_id")["person_benunit_id"]
+        .rank(method="dense")
+        .astype("int64")
+    )
+    units = dict(
+        zip(person["person_benunit_id"], sernum * 100 + slot + offset, strict=True)
+    )
+    person["person_id"] = sernum * 1000 + member + offset
+    person["person_benunit_id"] = person["person_benunit_id"].map(units)
+    person["person_household_id"] = sernum + offset
+    benunit["benunit_id"] = benunit["benunit_id"].map(units)
+    household["household_id"] = household["household_id"] + shift.to_numpy()
+    # Group tables stay sorted by id, so the SPI copies follow the base rows.
+    order = np.argsort(household["household_id"].to_numpy(), kind="stable")
+    return uk_national_frame(
+        person=person,
+        benunit=benunit.sort_values("benunit_id", ignore_index=True),
+        household=household.iloc[order].reset_index(drop=True),
+        household_weights=np.asarray(frame.weights_for("household").values)[order],
+        weight_kind=frame.weights_for("household").kind,
+        time_period="2024",
+    )
+
+
+def test_split_copies_of_spi_rows_take_their_parents_ids_plus_k_times_the_radix():
+    # Separate id spaces, and a split household that is an SPI copy at
+    # 10**11: a stage that minted one id column from another, or from the
+    # SPI copy's root, would miss here (microcosm#931).
+    frame = _in_frs_id_spaces(
+        _scenario_frame(
+            ages=[(45,), (50, 30, 8), (45,), (45,), (45,), (60, 58), (45,)],
+            benunits=[(0,), (0, 1, 1), (0,), (0,), (0,), (0, 1), (0,)],
+        )
+    )
+    result = split_cgt_support_households(
+        frame,
+        distribution=support_distribution(SCENARIO_TOP_CELLS),
+        parameters=PARAMETERS,
+        headroom=SCENARIO_HEADROOM,
+    )
+
+    checked = assert_copy_ids_follow_lineage(
+        frame,
+        result.frame,
+        field="cgt_support_split",
+        key_columns=("council_tax",),
+        ordinal_column=CGT_SUPPORT_COPY_INDEX_COLUMN,
+    )
+    assert checked == result.copies_created == 5
+    household = result.frame.table("household")
+    copies = household.loc[household[HOUSEHOLD_IS_CGT_SUPPORT_COPY], "household_id"]
+    # Household 2, on the SPI channel, is among the split: its copies sit at
+    # 2 + 10**11 + k x 10**13.
+    assert {2 + radix("spi_support_channel") + k * COPY_RADIX for k in (1, 2)} <= set(
+        copies.tolist()
+    )
+
+
 def test_split_refuses_a_household_beyond_the_copy_id_field_with_a_fixed_message():
     # Id 2 would need 10,001 copies of at most 60, one more than the
     # cgt_support_split field's ordinals hold (microcosm#931). The refusal is
@@ -582,6 +663,40 @@ def test_split_refuses_a_household_beyond_the_copy_id_field_with_a_fixed_message
     assert str(caught.value) == CGT_SUPPORT_COPY_BOUND_REFUSAL
     assert "10001" not in str(caught.value)
     assert "10,001" not in str(caught.value)
+
+
+def test_a_household_of_exactly_the_fields_bound_in_rows_fits():
+    # A weight of exactly 60 x 10,000 divides into 10,000 rows, root
+    # included, so its largest copy ordinal is 9,999: the field holds it, and
+    # one more row does not (microcosm#931).
+    bound = ordinal_bound("cgt_support_split")
+    copies = cgt_support_copy_counts(
+        [CGT_SUPPORT_MAXIMUM_COPY_WEIGHT * bound, 1.0],
+        CGT_SUPPORT_MAXIMUM_COPY_WEIGHT,
+    )
+    assert copies.tolist() == [bound, 1]
+    _refuse_copies_beyond_the_copy_id_field(copies)
+    _refuse_copies_beyond_the_copy_id_field(np.zeros(0, dtype="int64"))
+    with pytest.raises(ValueError) as caught:
+        _refuse_copies_beyond_the_copy_id_field(copies + np.asarray([1, 0]))
+    assert str(caught.value) == CGT_SUPPORT_COPY_BOUND_REFUSAL
+
+
+def test_split_refuses_incoming_ids_at_its_copy_id_radix_by_count():
+    frame = with_last_household_moved(_scenario_frame(), radix("cgt_support_split"))
+
+    with pytest.raises(
+        ValueError,
+        match=r"^1 of the incoming person_household_id values reach the "
+        r"'cgt_support_split' copy-id field",
+    ) as caught:
+        split_cgt_support_households(
+            frame,
+            distribution=support_distribution(SCENARIO_TOP_CELLS),
+            parameters=PARAMETERS,
+            headroom=SCENARIO_HEADROOM,
+        )
+    assert str(7 + radix("cgt_support_split")) not in str(caught.value)
 
 
 def test_split_flags_only_copies_and_writes_the_family_copy_count():

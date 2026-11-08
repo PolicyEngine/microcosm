@@ -459,6 +459,68 @@ def test_driver_ladder_dry_run_matches_real_assignment(
     assert manifest["rowwise_dataset"]["source_lineage"]["explicit"] is None
 
 
+def test_driver_ladder_dry_run_refuses_dense_clones_of_a_table_minted_spine(
+    monkeypatch, toy_ladder, tmp_path
+):
+    """A plan refuses what the build would (microcosm#931).
+
+    Every synthetic id sits at a residential arm plus a twin of the copy-id
+    table, so a second dense clone has no int64 room; one clone plans.
+    """
+    pytest.importorskip("tables")
+    pytest.importorskip("h5py")
+    import sys
+
+    _, ladder_path = toy_ladder
+    builder = _load_builder_module()
+    offset = 10**18 + 10**17
+    person = _person_frame()
+    for column in ("person_id", "person_household_id", "person_benunit_id"):
+        person[column] = person[column] + offset
+    input_h5 = tmp_path / "staging.h5"
+    _write_seam_h5(
+        input_h5,
+        household=_household_frame().assign(
+            household_id=lambda table: table["household_id"] + offset
+        ),
+        person=person,
+        benunit=_benunit_frame().assign(
+            benunit_id=lambda table: table["benunit_id"] + offset
+        ),
+    )
+
+    def argv(n_clones: int, out: str) -> list[str]:
+        return [
+            "build_uk_rowwise_dataset.py",
+            "--input-h5",
+            str(input_h5),
+            "--input-sha256",
+            builder._sha256(input_h5),
+            "--ladder",
+            str(ladder_path),
+            "--ladder-sha256",
+            builder._sha256(ladder_path),
+            "--n-clones",
+            str(n_clones),
+            "--seed",
+            "7",
+            "--out",
+            str(tmp_path / out),
+            "--dry-run",
+        ]
+
+    monkeypatch.setattr(sys, "argv", argv(2, "refused"))
+    with pytest.raises(
+        ValueError, match="clone-first spine of microcosm#931"
+    ) as caught:
+        builder.main()
+    assert str(offset + 11) not in str(caught.value)
+    assert not (tmp_path / "refused" / builder.DRY_RUN_PLAN_FILENAME).exists()
+    monkeypatch.setattr(sys, "argv", argv(1, "planned"))
+    assert builder.main() == 0
+    assert (tmp_path / "planned" / builder.DRY_RUN_PLAN_FILENAME).exists()
+
+
 def test_driver_ladder_candidate_k_matches_independent_single_k_plan(
     monkeypatch, toy_ladder, tmp_path
 ) -> None:

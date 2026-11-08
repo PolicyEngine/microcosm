@@ -181,7 +181,8 @@ def require_below(ids: object, field: str, *, what: str = "ids") -> None:
     """Refuse any id at or above ``field``'s radix, printing only the count.
 
     A stage that mints ``field`` copies rows whose ids must all sit below it,
-    so that every copy's parent is recoverable from the copy's id.
+    so that every copy's parent is recoverable from the copy's id; the raw
+    FRS ids sit below the first field, ``vintage``.
     """
 
     values = _ids(ids, what=what)
@@ -189,8 +190,8 @@ def require_below(ids: object, field: str, *, what: str = "ids") -> None:
     if reached:
         raise ValueError(
             f"{reached} of the {what} reach the {field!r} copy-id field "
-            f"(radix {radix(field)}), which only a later stage may fill "
-            "(microcosm#931)."
+            f"(radix {radix(field)}): ids from that radix up are reserved for "
+            "rows minted in that field or a later one (microcosm#931)."
         )
 
 
