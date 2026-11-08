@@ -1696,13 +1696,20 @@
           "size_bytes": 17554,
           "table": "househol",
           "vintage": "synthetic-h2"
+        },
+        {
+          "format": "json",
+          "kind": "public_aggregate_reference",
+          "resource": "scotgov_band_d_liability_facts.json",
+          "role": "scotgov_band_d_liability_facts",
+          "runtime_sha256_required": true
         }
       ],
       "grain": "household",
       "nonnegative_outputs": [
         "council_tax"
       ],
-      "notes": "Re-reads raw househol.tab because spine council_tax_reported clips missing values. FRS 2024-25 CTANNUAL is the bill after discounts and council tax reduction, and the engine reads council_tax before the reduction, so a household reporting a reduction gets its CTREBAMT added back and the cells pool non-recipients only (uk-data#496/#499, microcosm#1095). Scottish water and sewerage charges are netted before cell means at the shares DWP's CTANNUAL carries (the gross charges in full for non-recipients, 65% for reduction recipients); no-donor cells impute zero. A household where someone pays council tax (CTPAID 1) with no reported reduction and a zero CTANNUAL owes a bill, so it takes its cell mean as a missing bill does (microcosm#1278). The dead ct_mean.replace(-1, ...) branch is intentionally dropped.",
+      "notes": "Re-reads raw househol.tab because spine council_tax_reported clips missing values. FRS 2024-25 CTANNUAL is the bill after discounts and council tax reduction, and the engine reads council_tax before the reduction, so a household reporting a reduction gets its CTREBAMT added back and the cells pool non-recipients only (uk-data#496/#499, microcosm#1095). Scottish water and sewerage charges are netted before cell means at the shares DWP's CTANNUAL carries (the gross charges in full for non-recipients, 65% for reduction recipients); no-donor cells impute zero. A household where someone pays council tax (CTPAID 1) with no reported reduction and a zero CTANNUAL owes a bill, so it takes its cell mean as a missing bill does (microcosm#1278). The dead ct_mean.replace(-1, ...) branch is intentionally dropped. Last, the Scottish bills are levelled with one factor to the Scottish Government's own measure of the 2024-25 liability before council tax reduction (S2(a) of the November event-data plan, microcosm#1095; for Mar\u00eda's signature): the sum over the 32 council areas of CTAXBASE 2025's Band D equivalent dwellings before council tax reduction at September 2024, the middle of 2024-25, times CTAS 2026's average Band D council tax for 2024-25, over the Scottish households' bills at the spine design weights. Band D equivalents count dwellings after discounts and exemptions, as the bills do. The bound Scottish band stock (scotgov.council_tax_stock) already gives the household mix, so the level moves the bills' amounts and no weight; obr.council_tax_scotland stays a held-out diagnostic. A frame with no Scottish bill to level keeps its bills as derived, and the stage receipt says so.",
       "operations": [
         {
           "delimiter": "\t",
@@ -1722,13 +1729,38 @@
           "kind": "impute_cell_means",
           "missing": "raw ctannual < 0 or NaN, or ctannual == 0 with ctpaid == 1 and ctreb != 1",
           "value": "council tax before council tax reduction: CTANNUAL net of the Scottish water and sewerage charges ((CWATAMT1 + CSEWAMT1) x 52, at 0.65 where CTREB is 1; CWATAMTD where CWATAMT1 is not positive), plus CTREBAMT x 52 where CTREB is 1 and CTREBAMT > 0; a CTREB 1 household without a positive CTREBAMT takes the larger of its netted CTANNUAL and its cell mean"
+        },
+        {
+          "artifact_role": "scotgov_band_d_liability_facts",
+          "fail_on_mismatch": true,
+          "feed_pin": "chronicle_feed.json",
+          "kind": "verify_vendored_fact_resource",
+          "mapped_build_period": 2024,
+          "period_mapping": "september_base_within_and_band_d_of_the_build_tax_year",
+          "record_sets": [
+            "scotgov.ctaxbase2025.band_d_equivalents.y2024",
+            "scotgov.ctas2026.band_d.fy2024"
+          ],
+          "require_before_source_read": true,
+          "resource": "scotgov_band_d_liability_facts.json",
+          "runtime_sha256_required": true,
+          "source_vintage": "CTAXBASE 2025 Band D equivalents at September 2024; CTAS 2026 average Band D for 2024-25"
+        },
+        {
+          "factor": "level / stored, one factor on every Scottish household's council_tax; a frame with no Scottish bill to level keeps its bills as derived",
+          "households": "raw gvtregno == 12 (Scotland)",
+          "kind": "level_scottish_council_tax",
+          "level": "the sum over Scotland's 32 council areas of CTAXBASE 2025's Band D equivalent dwellings before council tax reduction at September 2024 times CTAS 2026's average Band D council tax for 2024-25",
+          "output": "council_tax",
+          "stored": "the Scottish households' council_tax after impute_cell_means, at the spine design weights",
+          "weights": "spine_design_weights"
         }
       ],
       "outputs": [
         "council_tax"
       ],
       "rewrites": [],
-      "source": "Department for Work and Pensions Family Resources Survey 2024-25, UK Data Service SN 9563, DOI 10.5255/UKDA-SN-9563-1; local licensed 2024_25 tabs.",
+      "source": "Department for Work and Pensions Family Resources Survey 2024-25, UK Data Service SN 9563, DOI 10.5255/UKDA-SN-9563-1; local licensed 2024_25 tabs.; the Scottish Government's CTAXBASE 2025 Band D equivalents and CTAS 2026 average Band D council tax by council area, via the vendored facts (scotgov_band_d_liability_facts.json)",
       "stage": "frs_council_tax",
       "survey": "Family Resources Survey 2024-25"
     },
@@ -2248,7 +2280,7 @@
         {
           "assignment_unit": "person",
           "draw": "is_apprentice",
-          "eligibility": "employees (employment_status FT_EMPLOYED or PT_EMPLOYED, from frs_employment) aged 21 to 24: SSCBA 1992 s.9A already zero-rates every earner under 21 and s.9B ends the apprentice zero rate at 25, so no other age changes employer NICs, and leaving them False keeps is_in_non_advanced_education, minimum_wage, Care to Learn and the 16 to 19 Bursary Fund unchanged; the flagged keep their age-related minimum_wage too, because policyengine-uk 2.162.8 (policyengine-uk#2683) gives the apprentice rate only under 19 or with is_in_first_year_of_apprenticeship, which the build leaves at its default (False), and the stage refuses an engine without that split or the s.9B threshold",
+          "eligibility": "employees (employment_status FT_EMPLOYED or PT_EMPLOYED, from frs_employment) aged 21 to 24 who are not in full-time education (is_in_full_time_education, from frs_education; the FRS codes no apprentice as in full-time education): SSCBA 1992 s.9A already zero-rates every earner under 21 and s.9B ends the apprentice zero rate at 25, so no other age changes employer NICs, and leaving them False keeps is_in_non_advanced_education, minimum_wage, Care to Learn and the 16 to 19 Bursary Fund unchanged; the flagged keep their age-related minimum_wage too, because policyengine-uk 2.162.8 (policyengine-uk#2683) gives the apprentice rate only under 19 or with is_in_first_year_of_apprenticeship, which the build leaves at its default (False), and the stage refuses an engine without that split or the s.9B threshold",
           "kind": "assign_binary_from_rate",
           "output": "is_apprentice",
           "rate_derivation": "the contract's apprentice_stock_19_to_24 is DfE's England apprentices in learning at the start of the academic year (participation less starts) per head aged 19 to 24, a point-in-time count taken as uniform across those ages and UK-wide; the target is r times the weighted population aged 21 to 24 at the frame's household weights, and eligible employees are flagged in the order of their identity-keyed uniform until their weight is nearest it (uc_take_up's rule), or all of them when they weigh no more than it; the receipt records the target, the flagged weight, the support bands and the relief the flags imply at the installed engine's Class 1 schedule, and uk_stage_frs_person_draws_apprentices gates them, the relief at or below HMRC's NIC - NS1",
@@ -7476,48 +7508,58 @@
     "trading_allowance_receipts": {
       "artifacts": [],
       "grain": "person",
-      "nonnegative_outputs": [
-        "self_employment_gross_receipts"
-      ],
-      "notes": "The last spine stage (microcosm#1428). policyengine-uk applies the trading allowance against self_employment_gross_receipts, which neither the FRS nor the SPI tape records; without receipts a rise in the allowance relieves only profits up to the new allowance, in full, and misses its main base, the traders who already claim the GBP 1,000 allowance against larger receipts. Under current law a claimant's receipts are their profit plus GBP 1,000 exactly. Each trader with a positive profit is flagged a claimant at their profit band's rate, drawn on their own person_id: a claimant's receipts are their profit plus GBP 1,000, any other trader's their profit plus GBP 3,000 (expenses at the raised allowance, so the raise does not relieve them; the costing books switchers as behaviour), and a person with no positive profit keeps zero, which the engine reads as unknown. Every trader with a positive profit is treated as filing, as SPI Table 3.10's counts, which bind the frame's traders, are of filers, so a profit of GBP 1,000 or less is now taxed where the engine used to relieve it in full. The rates are calibrated to HMRC's policy paper until HMRC publishes claimant counts. The engine uprates receipts with profit, so a claimant's GBP 1,000 grows with the mixed income index while the allowance is nominal: the raise relieves GBP 1,932 more in 2027-28, falling to GBP 1,758 by 2031-32, 3.4% to 12.1% below GBP 2,000. The other traders' stored GBP 3,000 grows the same way, so an allowance above GBP 3,000 times that index relieves them from the stored expense, not from data: allowances above GBP 3,000 are mis-scored until policyengine-uk#2765 lets the stage store the claim status (microcosm#1439; Mar\u00eda's ruling of 2026-11-01).",
+      "nonnegative_outputs": [],
+      "notes": "The last spine stage (microcosm#1428, microcosm#1439). policyengine-uk applies the trading allowance against gross receipts, which neither the FRS nor the SPI tape records, so the stage stores each trader's trading_allowance_claim_status (policyengine-uk 2.172.0, policyengine-uk#2765) and leaves self_employment_gross_receipts at the engine's zero. Each trader with a positive profit is CLAIMANT at their profit band's rate, drawn on their own person_id: their profit is receipts less the 2024-25 allowance of GBP 1,000, so a raise to GBP 3,000 relieves min(profit, GBP 2,000) more, with no drift as profits are uprated. Every other trader with a positive profit is NON_CLAIMANT, relieved at no allowance (the costing books switchers as behaviour), and is treated as filing, as SPI Table 3.10's counts, which bind the frame's traders, are of declarers. A person with no positive profit is UNKNOWN, which the engine reads whatever is stored. Of the FRS respondents (household_is_spi_synthetic false) with a profit of GBP 1,000 or less who are not drawn claimants, a share drawn on person_id forms the full-relief group: UNKNOWN, relieved in full without an election (ITTOIA 2005 s. 783AE), as the engine's documentation asks of a person whose receipts lie within the allowance, and marked by trading_allowance_full_relief, which the release keeps, so that the bound SPI rows of self-employment, which count declarers, leave it out. The share is Mar\u00eda's ruling: the read of 6 November 2026 (M10) found the frame's small traders below SPI's declarers even before any full relief, so it is zero and the group is empty. SPI rows and their copies are never in it, since SPI counts the people HMRC holds a self-employment source for and receipts within the allowance need not be declared. The claimant rates are #1428's, calibrated on the receipts encoding to HMRC's policy paper (about 400,000 gainers by about GBP 380 at 2028-29 prices); tools/measure_uk_trading_allowance_gainers.py re-fits them to the statuses on a release before each arm (Mar\u00eda's answer of 2026-11-06), until HMRC publishes claimant counts.",
       "operations": [
         {
-          "calibration": "HMRC's policy paper on the Budget 2026 trading allowance raise: about 400,000 taxpayers with a lower bill, by about GBP 380 on average, measured on policyengine-uk for the microcosm#1428 national from 9f70c71e7 at 2028-29 prices; the rates drift with each national (microcosm#1439), until HMRC publishes claimant counts (Mar\u00eda's choices of 2026-10-31 and 2026-11-01)",
+          "calibration": "HMRC's policy paper on the Budget 2026 trading allowance raise: about 400,000 taxpayers with a lower bill, by about GBP 380 on average, measured on policyengine-uk for the microcosm#1428 national from 9f70c71e7 at 2028-29 prices on the receipts encoding; tools/measure_uk_trading_allowance_gainers.py re-fitted them to the claim statuses on control C2's release (0dff7773e, feed 8045b13; docs/evidence/uk-trading-allowance-1439/fit-ctl2-0dff7.json) before PR2's arm (microcosm#1439), until HMRC publishes claimant counts (Mar\u00eda's choices of 2026-10-31, 2026-11-01 and 2026-11-06)",
+          "carrier": "trading_allowance_full_relief",
           "claimant_bands": [
             {
-              "rate": 0.72,
+              "rate": 0.6364,
               "upper_inclusive": 4500
             },
             {
-              "rate": 0.14,
+              "rate": 0.1532,
               "upper_inclusive": 9000
             },
             {
               "rate": 0
             }
           ],
-          "claimant_expenses": 1000,
           "draw": "trading_allowance_claimant",
+          "full_relief": {
+            "draw": "trading_allowance_full_relief",
+            "population": "FRS respondents (household_is_spi_synthetic false) with a positive self_employment_income of at most profit_upper_inclusive who are not drawn claimants; SPI rows and their copies are never in it",
+            "profit_upper_inclusive": 1000,
+            "rate": 0
+          },
           "kind": "assign_trading_allowance_receipts",
-          "other_expenses": 3000,
-          "output": "self_employment_gross_receipts",
+          "output": "trading_allowance_claim_status",
           "profit": "self_employment_income",
-          "rule": "a person with a positive self_employment_income claims the allowance where their uniform falls below their profit band's rate; a claimant's receipts are their profit plus claimant_expenses, any other trader's their profit plus other_expenses, and a person with no positive profit keeps zero",
-          "seed": 0
+          "rule": "a person with a positive self_employment_income claims the allowance where their uniform falls below their profit band's rate and is CLAIMANT; of the full-relief population, those whose full-relief uniform falls below full_relief.rate are UNKNOWN and carry trading_allowance_full_relief; every other trader with a positive profit is NON_CLAIMANT, and a person with no positive profit is UNKNOWN; self_employment_gross_receipts is not written",
+          "seed": 0,
+          "statuses": {
+            "claimant": "CLAIMANT",
+            "full_relief": "UNKNOWN",
+            "no_profit": "UNKNOWN",
+            "other_trader": "NON_CLAIMANT"
+          }
         },
         {
           "declared_factor": 1,
           "entity": "household",
           "gate_coupling": "The terminal family gate requires a valid mass-conserving MassChangeRecord carrying exactly this stage-specific reason.",
           "kind": "record_mass_conservation_receipt",
-          "reason": "Self-employed gross receipts stored on the source spine: household weights pass through unchanged and total household mass is conserved."
+          "reason": "Trading allowance claim statuses stored on the source spine: household weights pass through unchanged and total household mass is conserved."
         }
       ],
       "outputs": [
-        "self_employment_gross_receipts"
+        "trading_allowance_claim_status",
+        "trading_allowance_full_relief"
       ],
       "rewrites": [],
-      "source": "self_employment_income after the SPI income stage; HMRC's published gainers of the raise to GBP 3,000, about 400,000 taxpayers with a lower bill by about GBP 380 on average",
+      "source": "self_employment_income after the SPI income stage, and household_is_spi_synthetic for the full-relief group; HMRC's published gainers of the raise to GBP 3,000, about 400,000 taxpayers with a lower bill by about GBP 380 on average",
       "stage": "trading_allowance_receipts",
       "survey": "The self-employed's own profit on the final spine, and HMRC's policy paper on the Budget 2026 trading allowance raise (calibration)"
     },

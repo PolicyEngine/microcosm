@@ -437,6 +437,8 @@
       "hmrc.salary_sacrifice.nics_relief_employer": "hmrc.salary_sacrifice_national_insurance_relief",
       "hmrc.salary_sacrifice.users_above_cap": "hmrc.salary_sacrifice_pension_users",
       "hmrc.salary_sacrifice.users_below_cap": "hmrc.salary_sacrifice_pension_users",
+      "hmrc.scottish_income_tax.nsnd_outturn": "hmrc.tax_statistics",
+      "hmrc.scottish_income_tax.nsnd_taxpayers": "hmrc.tax_statistics",
       "hmrc.spi.dividend_income.amount_by_total_income_band": "hmrc.survey_of_personal_incomes",
       "hmrc.spi.dividend_income.count_by_total_income_band": "hmrc.survey_of_personal_incomes",
       "hmrc.spi.employment_income.amount_by_total_income_band": "hmrc.survey_of_personal_incomes",
@@ -910,6 +912,8 @@
       "hmrc.salary_sacrifice.nics_relief_employer": "National Insurance contributions relief employer",
       "hmrc.salary_sacrifice.users_above_cap": "Users above cap",
       "hmrc.salary_sacrifice.users_below_cap": "Users below cap",
+      "hmrc.scottish_income_tax.nsnd_outturn": "Non-savings, non-dividend income tax of Scottish taxpayers, Scotland",
+      "hmrc.scottish_income_tax.nsnd_taxpayers": "Scottish taxpayers with non-savings, non-dividend income tax, Scotland",
       "hmrc.spi.dividend_income.amount_by_total_income_band": "Amount by total income band",
       "hmrc.spi.dividend_income.count_by_total_income_band": "Count by total income band",
       "hmrc.spi.employment_income.amount_by_total_income_band": "Amount by total income band",
@@ -5273,6 +5277,60 @@
       },
       "uprating_index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.per_capita.gdp",
       "value_operation": "sum",
+      "uprating_from_period": "2024",
+      "uprating_to_period": 2025
+    },
+    {
+      "name": "hmrc.scottish_income_tax.nsnd_outturn",
+      "ledger_selector": {
+        "source_name": "hmrc",
+        "source_concept": "hmrc.nsnd_income_tax_outturn",
+        "record_set_spec_id": "hmrc.scottish_income_tax_2024_25.table1.scottish.ty2024.v1",
+        "source_measure_id": "all",
+        "entity_name": "person",
+        "geography_id": "S92000003",
+        "period_type": "tax_year",
+        "period_value": 2024,
+        "dimension_values": {
+          "nsnd_outturn_component": "all"
+        },
+        "geography_level": "country"
+      },
+      "entity": "person",
+      "measure": "hmrc/scottish_income_tax/nsnd_outturn",
+      "family": "hmrc_scottish_income_tax",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "hmrc.scottish_income_tax.nsnd_outturn",
+        "measure_kind": "prepared_column"
+      },
+      "uprating_index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.average_earnings",
+      "value_operation": "sum",
+      "uprating_from_period": "2024",
+      "uprating_to_period": 2025
+    },
+    {
+      "name": "hmrc.scottish_income_tax.nsnd_taxpayers",
+      "ledger_selector": {
+        "source_name": "hmrc",
+        "source_concept": "hmrc.nsnd_income_taxpayers",
+        "record_set_spec_id": "hmrc.scottish_income_tax_2024_25.table2.scottish.ty2024.taxpayers.v1",
+        "source_measure_id": "taxpayers",
+        "entity_name": "person",
+        "geography_id": "S92000003",
+        "period_type": "tax_year",
+        "period_value": 2024,
+        "layout_groupby_value_id": "all",
+        "geography_level": "country"
+      },
+      "entity": "person",
+      "measure": "hmrc/scottish_income_tax/nsnd_taxpayers",
+      "family": "hmrc_scottish_income_tax",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "hmrc.scottish_income_tax.nsnd_taxpayers",
+        "measure_kind": "prepared_column"
+      },
       "uprating_from_period": "2024",
       "uprating_to_period": 2025
     },

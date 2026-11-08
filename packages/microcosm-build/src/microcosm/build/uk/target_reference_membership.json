@@ -1,11 +1,11 @@
 {
   "source_fact_feed": "chronicle-uk-8045b13-consumer-facts",
   "target_period": 2025,
-  "candidate_count": 1634,
-  "contract_target_count": 478,
-  "active_reference_count": 1597,
+  "candidate_count": 1636,
+  "contract_target_count": 480,
+  "active_reference_count": 1599,
   "status_counts": {
-    "active": 1597,
+    "active": 1599,
     "signed_excluded": 37
   },
   "geography_pins": {
@@ -186,6 +186,14 @@
       "geography_id": "S92000003"
     },
     "hmrc.pris.expenses.scotland": {
+      "geography_level": "country",
+      "geography_id": "S92000003"
+    },
+    "hmrc.scottish_income_tax.nsnd_outturn": {
+      "geography_level": "country",
+      "geography_id": "S92000003"
+    },
+    "hmrc.scottish_income_tax.nsnd_taxpayers": {
       "geography_level": "country",
       "geography_id": "S92000003"
     },
@@ -5412,6 +5420,7 @@
     "dfe.funded_childcare.working_parent_children_2_to_4",
     "dwp.workplace_pension.employer_contributions",
     "hmrc.pris.expenses.scotland",
+    "hmrc.scottish_income_tax.nsnd_outturn",
     "nithc.public_transport_support",
     "obr.beer_and_cider_duties",
     "obr.wine_duties",
@@ -6676,6 +6685,19 @@
       "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.per_capita.gdp",
       "factor": "1.04619858745326",
       "value_before_uprating": "1290000000.0"
+    },
+    {
+      "name": "hmrc.scottish_income_tax.nsnd_outturn",
+      "from": "2024",
+      "to": "2025",
+      "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.average_earnings",
+      "factor": "1.04119828372843",
+      "value_before_uprating": "18635000000.0"
+    },
+    {
+      "name": "hmrc.scottish_income_tax.nsnd_taxpayers",
+      "from": "2024",
+      "to": "2025"
     },
     {
       "name": "hmrc/private_pension_income_income_band_100_000_to_150_000",
@@ -14943,6 +14965,41 @@
             "factor": "1.04619858745326",
             "value_before_uprating": "1290000000.0"
           }
+        }
+      ]
+    },
+    "hmrc.scottish_income_tax.nsnd_outturn": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "hmrc.scottish_income_tax.nsnd_outturn",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "resolved_period": 2025,
+          "resolved_value": 19402730017.279205,
+          "resolved_fact_period": "2024",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_f04aad22c7ef0c5d5d0d6064",
+          "uprating": {
+            "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.average_earnings",
+            "factor": "1.04119828372843",
+            "value_before_uprating": "18635000000.0"
+          }
+        }
+      ]
+    },
+    "hmrc.scottish_income_tax.nsnd_taxpayers": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "hmrc.scottish_income_tax.nsnd_taxpayers",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "resolved_period": 2025,
+          "resolved_value": 3036400.0,
+          "resolved_fact_period": "2024",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_9c020e26117b7e3f02c96c8b"
         }
       ]
     },

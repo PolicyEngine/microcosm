@@ -137,7 +137,7 @@ _TEST_PATHS = paths_for("microcosm-build")
 # Scottish landlords' receipts and expenses, measured diagnostics, and ONS's
 # single years 16 to 24 by sex in place of the 16-17, 18-19 and 20-24 sex
 # bands (eighteen rows for six)
-ACTIVE_REFERENCE_COUNT = 1597
+ACTIVE_REFERENCE_COUNT = 1599
 REGION_TIER_LEVEL = {code: level for level, code in UK_REGION_TIER}
 
 
@@ -1130,6 +1130,9 @@ def test_prefix_geography_pins_carry_scotgov_and_england_scoped_slc_families() -
         assert membership["geography_pins"][target_id]["geography_id"] == "E92000001"
         assert membership["targets"][target_id]["status"] == "active"
     for target_id in DEVOLVED_SLC_REPAYMENT_IDS:
+        assert membership["targets"][target_id]["status"] == "active"
+    for target_id in sorted(declared_scotland):
+        assert membership["geography_pins"][target_id]["geography_id"] == "S92000003"
         assert membership["targets"][target_id]["status"] == "active"
     assert not [
         target_id
