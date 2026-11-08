@@ -10,6 +10,7 @@
     "monthly_window_average",
     "monthly_window_sum_average",
     "monthly_window_count_x_mean",
+    "quarterly_window_average",
     "linear_combination",
     "scaled_by_ratio",
     "calendar_year_window",
@@ -1075,6 +1076,7 @@
       "ons.occupation.male_elementary_trades_and_related": "New declaration backed by Nomis APS218 Jan 2025-Dec 2025 in Chronicle (ons-aps218-occupation-jan-dec-2025, PolicyEngine/chronicle#411); no uk-data metric holds employment by occupation and sex (microcosm#1490).",
       "ons.occupation.female_elementary_administration_and_service": "New declaration backed by Nomis APS218 Jan 2025-Dec 2025 in Chronicle (ons-aps218-occupation-jan-dec-2025, PolicyEngine/chronicle#411); no uk-data metric holds employment by occupation and sex (microcosm#1490).",
       "ons.occupation.male_elementary_administration_and_service": "New declaration backed by Nomis APS218 Jan 2025-Dec 2025 in Chronicle (ons-aps218-occupation-jan-dec-2025, PolicyEngine/chronicle#411); no uk-data metric holds employment by occupation and sex (microcosm#1490).",
+      "ons.neet.people_aged_16_to_24": "No incumbent target: uk-data binds no NEET row. ONS's NEET estimates (PolicyEngine/chronicle#420 item 1) join as a measured diagnostic (Y3 of the November event-data plan).",
       "hmrc.pris.rental_income.scotland": "No incumbent target: uk-data binds no PRIS row, and its registry used PRIS only for the x1.9 scaling of the SPI net amounts, retired in microcosm#1106. PRIS 2026's Scottish landlords' receipts (Table 9) join as a measured diagnostic for the Scottish Budget 2027-28 property rate costing.",
       "hmrc.pris.expenses.scotland": "No incumbent target: uk-data binds no PRIS row, and its registry used PRIS only for the x1.9 scaling of the SPI net amounts, retired in microcosm#1106. PRIS 2026's Scottish landlords' expenses (Table 11) join as a measured diagnostic for the Scottish Budget 2027-28 property rate costing.",
       "hmrc.scottish_income_tax.nsnd_outturn": "No incumbent target: uk-data binds no Scottish outturn row. HMRC's Scottish income tax outturn 2024-25 (Table 1, NSND revenue) joins as a measured diagnostic for the Scottish Budget 2027-28 income tax costing.",
@@ -1693,7 +1695,8 @@
       "ons.occupation.female_elementary_trades_and_related",
       "ons.occupation.male_elementary_trades_and_related",
       "ons.occupation.female_elementary_administration_and_service",
-      "ons.occupation.male_elementary_administration_and_service"
+      "ons.occupation.male_elementary_administration_and_service",
+      "ons.neet.people_aged_16_to_24"
     ]
   },
   "profile_parity": {
@@ -47738,6 +47741,128 @@
       "category_id": "ons.employment",
       "label": "Elementary administration and service occupations: men in employment",
       "selector_note": "Selects the UK estimate for one sub-major group and sex from the calendar-2025 package (ons-aps218-occupation-jan-dec-2025, PolicyEngine/chronicle#411) by its dimensions: never the confidence interval, which is its own concept, never the all-persons row, and never a major-group row, which the same record sets hold."
+    },
+    {
+      "target_id": "ons.neet.people_aged_16_to_24",
+      "family": "ons_employment",
+      "geography_levels": [
+        "country"
+      ],
+      "measurement": {
+        "entity": "person",
+        "map_to": "household",
+        "concept": "uk.person.count",
+        "filters": [
+          {
+            "concept": "uk.demographics.age",
+            "operator": ">=",
+            "value": 16
+          },
+          {
+            "concept": "uk.demographics.age",
+            "operator": "<=",
+            "value": 24
+          },
+          {
+            "concept": "uk.employment.in_employment_or_self_employment",
+            "equals": false
+          },
+          {
+            "concept": "uk.education.full_time",
+            "equals": false
+          },
+          {
+            "concept": "uk.education.approved_training",
+            "equals": false
+          }
+        ]
+      },
+      "bindings": {
+        "policyengine": {
+          "from_entity": "person",
+          "map_to": "household",
+          "metric_name": "ons/neet/people_aged_16_to_24",
+          "value_variable": "person_count",
+          "filters": [
+            {
+              "variable": "age",
+              "operator": ">=",
+              "value": 16
+            },
+            {
+              "variable": "age",
+              "operator": "<=",
+              "value": 24
+            },
+            {
+              "variable": "employment_status",
+              "operator": "!=",
+              "value": "FT_EMPLOYED"
+            },
+            {
+              "variable": "employment_status",
+              "operator": "!=",
+              "value": "PT_EMPLOYED"
+            },
+            {
+              "variable": "employment_status",
+              "operator": "!=",
+              "value": "FT_SELF_EMPLOYED"
+            },
+            {
+              "variable": "employment_status",
+              "operator": "!=",
+              "value": "PT_SELF_EMPLOYED"
+            },
+            {
+              "variable": "is_in_full_time_education",
+              "equals": false
+            },
+            {
+              "variable": "is_in_approved_training",
+              "equals": false
+            }
+          ],
+          "notes": "ONS Young people not in education, employment or training (NEET), UK: August 2026, NEET Table 1, sheet 'People - NSA' (PolicyEngine/chronicle#420 item 1): young people aged 16 to 24 who were NEET, United Kingdom, as the mean of the four Labour Force Survey quarters inside calendar 2025 (Jan-Mar to Oct-Dec, quarterly_window_average; María, 2026-11-08). Not seasonally adjusted, since the four quarters' mean carries the whole year's season. The model counts people aged 16 to 24 whose employment_status is neither employed nor self-employed and who are neither in full-time education (is_in_full_time_education, the FRS answer since Y2) nor in approved training. The FRS records no part-time study or other training, which ONS counts as education, so the proxy and ONS's count measure different things. A held-out diagnostic (Y3 of the November event-data plan)."
+        },
+        "axiom": {
+          "metric_name": "ons/neet/people_aged_16_to_24",
+          "status": "pending",
+          "value_rule": "uk.person.count"
+        }
+      },
+      "ledger_selector": {
+        "source_name": "ons",
+        "source_concept": [
+          "ons.lfs_neet_people"
+        ],
+        "source_measure_id": "neet_16_to_24",
+        "dimensions": [
+          "age_band",
+          "economic_activity",
+          "seasonal_adjustment",
+          "sex"
+        ],
+        "dimension_values": {
+          "age_band": "16_to_24",
+          "economic_activity": "all",
+          "seasonal_adjustment": "not_seasonally_adjusted",
+          "sex": "all"
+        },
+        "entity_name": "person",
+        "period_type": "quarter",
+        "period_value": [
+          "2025-Q1",
+          "2025-Q2",
+          "2025-Q3",
+          "2025-Q4"
+        ],
+        "geography_id": "K02000001"
+      },
+      "category_id": "ons.employment",
+      "label": "Young people not in education, employment or training, aged 16 to 24",
+      "value_operation": "quarterly_window_average",
+      "period_match_policy": "source_window"
     },
     {
       "target_id": "hmrc.self_employment_income.amount",

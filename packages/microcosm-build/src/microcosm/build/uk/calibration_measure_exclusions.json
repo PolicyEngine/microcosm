@@ -1413,6 +1413,15 @@
       "adjudication": "María's calls of 2026-11-08 on the plan for the November event data (PR2, item P3): England and Wales as separate rows on single breakdowns (daily living award, mobility award, age band with 75 and over merged, and the English regions by each award), on the four quarter-end points of 2025, held out of the solve (for María's signature).",
       "approved_on": "2026-11-08",
       "expires_on": "2027-02-08"
+    },
+    {
+      "name": "ons.neet.people_aged_16_to_24",
+      "reason": "Diagnostic first, as María asked: the young people work review (chronicle#420 item 1) reads the model's NEET proxy against ONS's. The FRS records no part-time study or other training, which ONS counts as education, so the proxy and ONS's count measure different things, and the row is not a weight question until the difference is explained.",
+      "tracking": "microcosm#1095",
+      "approved_by": "juaristi22",
+      "adjudication": "María's call of 2026-11-08 on the plan for the November event data (PR2, item Y3): measure ONS's NEET people aged 16 to 24 as the mean of the four quarters inside calendar 2025, a new quarterly window rule, and hold the row out of the solve (for María's signature).",
+      "approved_on": "2026-11-08",
+      "expires_on": "2027-02-08"
     }
   ]
 }

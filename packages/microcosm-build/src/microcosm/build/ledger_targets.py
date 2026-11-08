@@ -42,6 +42,12 @@ ALLOWED_PERIOD_MATCH_POLICIES = frozenset(
 MONTHLY_WINDOW_OPERATIONS = frozenset(
     ("monthly_window_average", "monthly_window_sum_average")
 )
+#: The mean of one series over an explicit, ordered list of quarters
+#: (``YYYY-Qn``), one fact per quarter: ONS's NEET estimates are Labour Force
+#: Survey quarters, and the UK diagnostic reads the four quarters inside
+#: calendar 2025 (PolicyEngine/chronicle#420 item 1; María, 2026-11-08).
+QUARTERLY_WINDOW_AVERAGE = "quarterly_window_average"
+QUARTERLY_WINDOW_OPERATIONS = frozenset((QUARTERLY_WINDOW_AVERAGE,))
 #: A monthly window whose every point is a published count times a published
 #: mean (a caseload and its mean weekly amount), scaled by the mean operand's
 #: ``period_factor`` (52 turns a weekly mean into an annual amount) and
@@ -91,6 +97,7 @@ ALLOWED_VALUE_OPERATIONS = frozenset(
         CALENDAR_YEAR_WINDOW_SCALED_BY_RATIO,
         MONTHLY_WINDOW_COUNT_X_MEAN,
         *MONTHLY_WINDOW_OPERATIONS,
+        *QUARTERLY_WINDOW_OPERATIONS,
     )
 )
 MULTI_FACT_VALUE_OPERATIONS = frozenset(
@@ -108,6 +115,7 @@ MULTI_FACT_VALUE_OPERATIONS = frozenset(
         CALENDAR_YEAR_WINDOW_SCALED_BY_RATIO,
         MONTHLY_WINDOW_COUNT_X_MEAN,
         *MONTHLY_WINDOW_OPERATIONS,
+        *QUARTERLY_WINDOW_OPERATIONS,
     )
 )
 #: Operations that compose or pin periods of their own, so a reference may
@@ -375,6 +383,7 @@ class LedgerTargetReference:
         is_window = self.value_operation in {
             *MONTHLY_WINDOW_OPERATIONS,
             MONTHLY_WINDOW_COUNT_X_MEAN,
+            *QUARTERLY_WINDOW_OPERATIONS,
         }
         if self.observation_period is not None:
             period_type = _observation_period_type(
@@ -403,7 +412,14 @@ class LedgerTargetReference:
                 raise ValueError(
                     "A monthly window requires an explicit model target period."
                 )
-            _declared_source_months(self)
+            if self.value_operation in QUARTERLY_WINDOW_OPERATIONS:
+                _declared_source_quarters(self)
+                if self.value_operands:
+                    raise ValueError(
+                        "A single-series quarterly window does not accept value_operands."
+                    )
+            else:
+                _declared_source_months(self)
             if self.value_operation in MONTHLY_WINDOW_OPERATIONS:
                 _monthly_window_operands(self)
         if self.period_match_policy == "exact" and self.period is None:
@@ -887,6 +903,8 @@ def target_spec_from_ledger_reference(
         raise ValueError(f"Ledger target reference {reference.name!r} has no facts.")
     if reference.value_operation in MONTHLY_WINDOW_OPERATIONS:
         facts = _resolve_monthly_window_reference_facts(reference, list(facts))
+    elif reference.value_operation in QUARTERLY_WINDOW_OPERATIONS:
+        facts = _resolve_quarterly_window_reference_facts(reference, list(facts))
     elif reference.value_operation == MONTHLY_WINDOW_COUNT_X_MEAN:
         facts = _resolve_monthly_window_count_x_mean_reference_facts(
             reference, list(facts)
@@ -944,6 +962,8 @@ def target_spec_from_ledger_reference(
     value_metadata: dict[str, str] = {}
     if reference.value_operation in MONTHLY_WINDOW_OPERATIONS:
         numeric_value = sum(numeric_values) / len(_declared_source_months(reference))
+    elif reference.value_operation in QUARTERLY_WINDOW_OPERATIONS:
+        numeric_value = sum(numeric_values) / len(_declared_source_quarters(reference))
     elif reference.value_operation == "calendar_year_average":
         numeric_value = sum(numeric_values) / len(numeric_values)
     elif reference.value_operation == "latest_plateau":
@@ -1048,6 +1068,7 @@ def target_spec_from_ledger_reference(
     if reference.value_operation in {
         *MONTHLY_WINDOW_OPERATIONS,
         MONTHLY_WINDOW_COUNT_X_MEAN,
+        *QUARTERLY_WINDOW_OPERATIONS,
     }:
         # The window guard has proved these identities common to every member.
         publication_metadata = {
@@ -2112,6 +2133,10 @@ def _resolve_reference_fact(
         eligible_matches = _eligible_selector_matches(reference, matches)
         if reference.value_operation in MONTHLY_WINDOW_OPERATIONS:
             return _resolve_monthly_window_reference_facts(reference, eligible_matches)
+        if reference.value_operation in QUARTERLY_WINDOW_OPERATIONS:
+            return _resolve_quarterly_window_reference_facts(
+                reference, eligible_matches
+            )
         if reference.value_operation == MONTHLY_WINDOW_COUNT_X_MEAN:
             return _resolve_monthly_window_count_x_mean_reference_facts(
                 reference, eligible_matches
@@ -3872,6 +3897,24 @@ def _declared_source_months(reference: LedgerTargetReference) -> tuple[str, ...]
     return tuple(months)
 
 
+def _declared_source_quarters(reference: LedgerTargetReference) -> tuple[str, ...]:
+    quarters = reference.ledger_selector.get("period_value")
+    if (
+        reference.ledger_selector.get("period_type") != "quarter"
+        or not isinstance(quarters, list)
+        or not quarters
+        or not all(
+            isinstance(quarter, str) and re.fullmatch(r"[0-9]{4}-Q[1-4]", quarter)
+            for quarter in quarters
+        )
+        or quarters != sorted(set(quarters))
+    ):
+        raise ValueError(
+            "A quarterly window requires period_type=quarter and explicit unique ordered YYYY-Qn period_value quarters."
+        )
+    return tuple(quarters)
+
+
 def _monthly_window_operands(
     reference: LedgerTargetReference,
 ) -> tuple[Mapping[str, object], ...]:
@@ -4039,6 +4082,72 @@ def _resolve_monthly_window_reference_facts(
             f"{prefix} requires distinct non-empty member fact identities."
         )
     return tuple(grid[key] for key in expected_grid)
+
+
+def _resolve_quarterly_window_reference_facts(
+    reference: LedgerTargetReference,
+    matches: list[object],
+) -> tuple[object, ...]:
+    """Require one fact per declared quarter, all of one series, before averaging.
+
+    Each quarter of a Labour Force Survey table is its own record set (ONS's
+    NEET Table 1 keys them ``people_nsa.2025_q1`` and so on), so the series
+    check reads record-set ids and layout values with their quarter dropped.
+    The drop applies on this path only: no other reference's series identity
+    moves.
+    """
+    quarters = _declared_source_quarters(reference)
+    prefix = f"Ledger target reference {reference.name!r}: quarterly window"
+    if reference.expected_member_count not in (None, len(quarters)):
+        raise ValueError(
+            f"{prefix} expected_member_count disagrees with its declared quarters."
+        )
+    if len(matches) != len(quarters) or any(
+        not _fact_matches_selector(fact, reference.ledger_selector) for fact in matches
+    ):
+        raise ValueError(
+            f"{prefix} requires exactly {len(quarters)} selected facts, one per declared quarter; resolved {len(matches)}."
+        )
+    by_quarter: dict[str, object] = {}
+    for fact in matches:
+        publication = _at(fact, "source_release_key")
+        raw_hash = _at(fact, "source", "source_sha256")
+        if any(
+            not isinstance(value, str) or not value.strip()
+            for value in (publication, raw_hash)
+        ):
+            raise ValueError(
+                f"{prefix} requires nonempty source_release_key and "
+                "source.source_sha256 on every member."
+            )
+        if _str_at(fact, "period", "type") != "quarter":
+            raise ValueError(f"{prefix} requires quarterly facts.")
+        quarter = _str_at(fact, "period", "value")
+        if quarter in by_quarter:
+            raise ValueError(f"{prefix} contains a duplicate quarter observation.")
+        by_quarter[quarter] = fact
+    if set(by_quarter) != set(quarters):
+        raise ValueError(f"{prefix} is missing a declared quarter.")
+    if (
+        len(
+            {
+                _selector_period_invariant_key(fact, strip_quarters=True)
+                for fact in matches
+            }
+        )
+        != 1
+    ):
+        raise ValueError(f"{prefix} matched multiple semantic series.")
+    if len({_monthly_window_source_key(fact, {}) for fact in matches}) != 1:
+        raise ValueError(
+            f"{prefix} members must share source publication, measure, entity and geography."
+        )
+    member_keys = [_fact_key(fact) or _source_record_id(fact) for fact in matches]
+    if not all(member_keys) or len(set(member_keys)) != len(member_keys):
+        raise ValueError(
+            f"{prefix} requires distinct non-empty member fact identities."
+        )
+    return tuple(by_quarter[quarter] for quarter in quarters)
 
 
 def _resolve_calendar_year_average_reference_facts(
@@ -5030,6 +5139,14 @@ def _validate_reference_period(fact: object, reference: LedgerTargetReference) -
     """
 
     if reference.period_match_policy == "source_window":
+        if reference.value_operation in QUARTERLY_WINDOW_OPERATIONS:
+            if _str_at(fact, "period", "type") != "quarter" or _str_at(
+                fact, "period", "value"
+            ) not in _declared_source_quarters(reference):
+                raise ValueError(
+                    "Resolved fact lies outside the declared quarterly window."
+                )
+            return
         if _str_at(fact, "period", "type") != "month" or _str_at(
             fact, "period", "value"
         ) not in _declared_source_months(reference):
@@ -5093,7 +5210,11 @@ def _latest_period_selector_match(
 
 
 def _selector_period_invariant_key(
-    fact: object, *, include_measure: bool = True, include_record_set: bool = True
+    fact: object,
+    *,
+    include_measure: bool = True,
+    include_record_set: bool = True,
+    strip_quarters: bool = False,
 ) -> tuple[str, ...]:
     return (
         _source_name(fact),
@@ -5108,35 +5229,52 @@ def _selector_period_invariant_key(
         _str_at(fact, "geography", "id"),
         _str_at(fact, "entity", "name"),
         _str_at(fact, "aggregation", "method"),
-        _normalized_record_set_id(_str_at(fact, "layout", "record_set_id"))
+        _normalized_record_set_id(
+            _str_at(fact, "layout", "record_set_id"), strip_quarters=strip_quarters
+        )
         if include_record_set
         else "",
         _str_at(fact, "layout", "groupby_dimension"),
-        _normalized_period_bearing_id(_str_at(fact, "layout", "groupby_value_id")),
+        _normalized_period_bearing_id(
+            _str_at(fact, "layout", "groupby_value_id"), strip_quarters=strip_quarters
+        ),
         json.dumps(_dimensions(fact), sort_keys=True, separators=(",", ":")),
         json.dumps(_constraint_rows(fact), sort_keys=True, separators=(",", ":")),
         _domain(fact),
     )
 
 
-def _normalized_record_set_id(record_set_id: str) -> str:
+def _normalized_record_set_id(
+    record_set_id: str, *, strip_quarters: bool = False
+) -> str:
     if not record_set_id:
         return ""
     return ".".join(
         normalized
         for part in record_set_id.split(".")
-        if (normalized := _normalized_record_set_part(part))
+        if (
+            normalized := _normalized_record_set_part(
+                part, strip_quarters=strip_quarters
+            )
+        )
     )
 
 
-def _normalized_record_set_part(value: str) -> str:
+#: A quarter label piece (``q1`` in ``2025_q1``), dropped only where a
+#: quarterly window reads its series (``strip_quarters``).
+_QUARTER_PIECE = re.compile(r"^q[1-4]$")
+
+
+def _normalized_record_set_part(value: str, *, strip_quarters: bool = False) -> str:
     if _is_period_token(value):
         return ""
     normalized = value.lower().replace("-", "_")
     pieces = [
         _strip_trailing_vintage_year(piece)
         for piece in normalized.split("_")
-        if piece and not _is_period_fragment(piece)
+        if piece
+        and not _is_period_fragment(piece)
+        and not (strip_quarters and _QUARTER_PIECE.match(piece))
     ]
     return "_".join(pieces)
 
@@ -5178,10 +5316,10 @@ _NUMERIC_MONTH_YEAR = re.compile(
 )
 
 
-def _normalized_period_bearing_id(value: str) -> str:
+def _normalized_period_bearing_id(value: str, *, strip_quarters: bool = False) -> str:
     if _is_period_token(value) or _NUMERIC_MONTH_YEAR.match(value.strip().lower()):
         return ""
-    return _normalized_record_set_part(value)
+    return _normalized_record_set_part(value, strip_quarters=strip_quarters)
 
 
 def _is_period_fragment(value: str) -> bool:
@@ -5457,6 +5595,13 @@ def _reference_metadata(reference: LedgerTargetReference) -> dict[str, str]:
         )
         metadata["ledger_value_formula"] = (
             "sum_of_declared_cells / declared_month_count"
+        )
+    if reference.value_operation in QUARTERLY_WINDOW_OPERATIONS:
+        quarters = _declared_source_quarters(reference)
+        metadata["ledger_source_quarters"] = json.dumps(quarters, separators=(",", ":"))
+        metadata["ledger_source_quarter_count"] = str(len(quarters))
+        metadata["ledger_value_formula"] = (
+            "sum_of_declared_quarters / declared_quarter_count"
         )
     if reference.value_operation == "difference":
         metadata["ledger_value_formula"] = "minuend - subtrahend"
