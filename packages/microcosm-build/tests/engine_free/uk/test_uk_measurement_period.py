@@ -484,6 +484,10 @@ REVIEWED_PLAIN_COLUMN_POPULATION_VARIABLES = frozenset(
         "dfe_spring_universal",
         "dfe_spring_working_parent",
         "dividend_income",
+        # HMRC's Scottish NSND rows (S4 of the November event-data plan) read
+        # this and pays_scottish_income_tax, both engine-computed at the
+        # calibration period: the frame stores neither.
+        "earned_income_tax",
         "eldest_adult_age",
         "employment_income",
         "employment_sector",
@@ -499,6 +503,13 @@ REVIEWED_PLAIN_COLUMN_POPULATION_VARIABLES = frozenset(
         "household_num_benunits",
         "housing_benefit",
         "income_tax",
+        # PR2's diagnostics (8 Nov 2026). Y4's UC people: the benefit unit's
+        # head or partner, a role no uprating moves. Y3's NEET proxy: the FRS
+        # answers for full-time education (Y2) and approved training, statuses
+        # the frame holds fixed across periods.
+        "is_claimant_or_partner",
+        "is_in_approved_training",
+        "is_in_full_time_education",
         # Engine-computed at the calibration period: the frame stores age, not
         # this flag, and the engine reads State Pension age as reached by 6
         # October of the period it is asked for (microcosm#1069).
@@ -510,8 +521,14 @@ REVIEWED_PLAIN_COLUMN_POPULATION_VARIABLES = frozenset(
         "maintenance_loan",
         "ons_household_type",
         "parents_learning_allowance",
+        "pays_scottish_income_tax",
         "pension_contributions_via_salary_sacrifice",
         "pension_credit",
+        # P3's PIP cases: the engine adds pip from the stored award categories,
+        # which the dataset stores for every projected year.
+        "pip",
+        "pip_dl_category",
+        "pip_m_category",
         "private_pension_income",
         "property_income",
         "region",
@@ -530,6 +547,9 @@ REVIEWED_PLAIN_COLUMN_POPULATION_VARIABLES = frozenset(
         "student_loan_repayments",
         "tax_band",
         "tenure_type",
+        # T1's full-relief group (microcosm#1439): a flag the
+        # trading_allowance_receipts stage stores, the same in every period.
+        "trading_allowance_full_relief",
         "total_income_after_loss_relief",
         "uc_LCWRA_element",
         "uc_benefit_cap_reduction_after_floor",
