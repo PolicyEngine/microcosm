@@ -1158,6 +1158,26 @@ _REFUSALS = [
         "gate enforced",
     ),
     (
+        "gate schema",
+        "gate",
+        lambda lo: _set("schema_version", value=2),
+        "gate schema_version",
+    ),
+    (
+        "gate failures",
+        "gate",
+        lambda lo: _set("reform_coverage_smoke", "failures", value=["a probe"]),
+        "gate failures",
+    ),
+    (
+        "gate period",
+        "gate",
+        lambda lo: _set(
+            "reform_coverage_smoke", "details", "default_period", value="2025"
+        ),
+        "gate default_period",
+    ),
+    (
         "gate count",
         "gate",
         lambda lo: _set("reform_coverage_smoke", "details", "probes", value=1),
@@ -1188,6 +1208,19 @@ _REFUSALS = [
             value=1.0,
         ),
         "min_abs_effect",
+    ),
+    (
+        "result effect",
+        "gate",
+        lambda lo: _set(
+            "reform_coverage_smoke",
+            "details",
+            "results",
+            _first_probe(lo),
+            "effect",
+            value=123456.0,
+        ),
+        "effect is 123456.0",
     ),
     (
         "result inputs",
@@ -1525,6 +1558,20 @@ _REFUSALS = [
         "release",
         lambda lo: _set("artifacts", _DATASET_KEY, "kind", value="calibration"),
         "the national artifact's kind",
+    ),
+    (
+        "artifact path",
+        "release",
+        lambda lo: _set("artifacts", _DATASET_KEY, "path", value="other.h5"),
+        "the national artifact's path",
+    ),
+    (
+        "release gate evidence",
+        "release",
+        lambda lo: _set(
+            "build", "gate_evidence", "reform_coverage_smoke", value="passed"
+        ),
+        "release build.gate_evidence",
     ),
     (
         "artifact outside the root",
@@ -2061,6 +2108,278 @@ _REFUSALS = [
         "passes",
         lambda lo: _set(0, value="x"),
         "pass 1 is not an object",
+    ),
+    (
+        "a pass with an extra field",
+        "passes",
+        lambda lo: _set(0, "note", value="x"),
+        "pass 1 fields",
+    ),
+    (
+        "a pass with other keys",
+        "passes",
+        lambda lo: _set(0, "keys", value=["another_key"]),
+        "pass 1 keys",
+    ),
+    (
+        "a pass with another batch count",
+        "passes",
+        lambda lo: _set(0, "batches", value=999),
+        "pass 1 batches",
+    ),
+    (
+        "a report schema",
+        "report",
+        lambda lo: _set("schema_version", value=99),
+        "report schema_version",
+    ),
+    (
+        "report stage set",
+        "report",
+        lambda lo: _set("stages", "demographics", value={}),
+        "report stages is",
+    ),
+    (
+        "smoke rows short",
+        "report",
+        lambda lo: (
+            lambda report: report["stages"]["reform_coverage_smoke"]["probes"].pop()
+        ),
+        "smoke stage probe rows",
+    ),
+    (
+        "smoke row probe",
+        "report",
+        lambda lo: _set(
+            "stages", "reform_coverage_smoke", "probes", 0, "probe", value="other"
+        ),
+        ' probe is "other"',
+    ),
+    (
+        "smoke row period",
+        "report",
+        lambda lo: _set(
+            "stages", "reform_coverage_smoke", "probes", 0, "period", value="2025"
+        ),
+        ' period is "2025"',
+    ),
+    (
+        "report tool",
+        "report",
+        lambda lo: _set("tool", value="tools/another_probe.py"),
+        "report tool is",
+    ),
+    (
+        "report classification",
+        "report",
+        lambda lo: _set("classification", value="another"),
+        "report classification is",
+    ),
+    (
+        "report source export",
+        "report",
+        lambda lo: _set("source_export", value="another.h5"),
+        "report source_export is",
+    ),
+    (
+        "report stage status",
+        "report",
+        lambda lo: _set("stages", "load", "status", value="failed"),
+        "report stage load status is",
+    ),
+    (
+        "identify digest",
+        "report",
+        lambda lo: _set("stages", "identify", "sha256", value="0" * 64),
+        "identify sha256 is",
+    ),
+    (
+        "load digest",
+        "report",
+        lambda lo: _set("stages", "load", "sha256", value="0" * 64),
+        "load sha256 is",
+    ),
+    (
+        "load rows",
+        "report",
+        lambda lo: _set("stages", "load", "rows", "household", value=1),
+        "load household rows is",
+    ),
+    (
+        "design problems",
+        "report",
+        lambda lo: _set("stages", "design", "problems", value=["a problem"]),
+        "design problems is",
+    ),
+    (
+        "design receipt",
+        "report",
+        lambda lo: _set("stages", "design", "verified_against_receipt", value=False),
+        "design verified_against_receipt is",
+    ),
+    (
+        "design strata",
+        "report",
+        lambda lo: _set("stages", "design", "strata", value=3),
+        "design strata is",
+    ),
+    (
+        "design batch size",
+        "report",
+        lambda lo: _set("stages", "design", "batch_size", value=7),
+        "design batch_size is",
+    ),
+    (
+        "design batch count",
+        "report",
+        lambda lo: _set("stages", "design", "n_batches", value=999),
+        "design n_batches is",
+    ),
+    (
+        "open scorer households",
+        "report",
+        lambda lo: _set("stages", "open_scorer", "n_households", value=1),
+        "open_scorer n_households is",
+    ),
+    (
+        "open scorer batch size",
+        "report",
+        lambda lo: _set("stages", "open_scorer", "maximum_batch_size", value=7),
+        "open_scorer maximum_batch_size is",
+    ),
+    (
+        "smoke stage passed",
+        "report",
+        lambda lo: _set("stages", "reform_coverage_smoke", "passed", value=False),
+        "smoke stage passed is",
+    ),
+    (
+        "smoke stage failures",
+        "report",
+        lambda lo: _set("stages", "reform_coverage_smoke", "failures", value=["a"]),
+        "smoke stage failures is",
+    ),
+    (
+        "smoke stage setup error",
+        "report",
+        lambda lo: _set(
+            "stages", "reform_coverage_smoke", "analysis_setup_error", value="boom"
+        ),
+        "smoke stage analysis_setup_error is",
+    ),
+    (
+        "smoke stage reference error",
+        "report",
+        lambda lo: _set(
+            "stages", "reform_coverage_smoke", "reference_error", value="boom"
+        ),
+        "smoke stage reference_error is",
+    ),
+    (
+        "smoke stage baseline keys",
+        "report",
+        lambda lo: _set("stages", "reform_coverage_smoke", "baseline_keys", value=1),
+        "smoke stage baseline_keys is",
+    ),
+    (
+        "smoke stage reform passes",
+        "report",
+        lambda lo: _set("stages", "reform_coverage_smoke", "reform_passes", value=1),
+        "smoke stage reform_passes is",
+    ),
+    (
+        "smoke stage reform systems",
+        "report",
+        lambda lo: _set("stages", "reform_coverage_smoke", "reform_systems", value=1),
+        "smoke stage reform_systems is",
+    ),
+    (
+        "plans compared",
+        "report",
+        lambda lo: _set("stages", "post_export_scoring_plans", "compared", value=True),
+        "post_export_scoring_plans compared is",
+    ),
+    (
+        "report tool list",
+        "report",
+        lambda lo: _set("tool_source", "tools", "tools/another.py", value={}),
+        "report tool_source.tools is",
+    ),
+    (
+        "record schema",
+        "build-start",
+        lambda lo: _set("schema_version", value=99),
+        "build-start schema_version is",
+    ),
+    (
+        "record stage",
+        "build-end",
+        lambda lo: _set("stage", value="smoke"),
+        'build-end stage is "smoke"',
+    ),
+    (
+        "record phase",
+        "build-end",
+        lambda lo: _set("phase", value="start"),
+        'build-end phase is "start"',
+    ),
+    (
+        "record head",
+        "build-end",
+        lambda lo: _set("repo", "head", value="0" * 40),
+        "build-end HEAD is",
+    ),
+    (
+        "launch runtime",
+        "build-start",
+        lambda lo: _set("runtime", "runtime_versions", value={"python": "0"}),
+        "the launch runtime (the build manifest's runtime) is",
+    ),
+    (
+        "launch inventory",
+        "build-start",
+        lambda lo: _set("runtime", "installed_distributions", value={}),
+        "the launch inventory (the report's) is",
+    ),
+    (
+        "build start dataset path",
+        "build-start",
+        lambda lo: _set("dataset", "path", value="/elsewhere/national.h5"),
+        "build-start dataset path (build-end's) is",
+    ),
+    (
+        "smoke row passed",
+        "report",
+        lambda lo: _set(
+            "stages", "reform_coverage_smoke", "probes", 0, "passed", value=False
+        ),
+        " passed is false",
+    ),
+    (
+        "smoke row reason",
+        "report",
+        lambda lo: _set(
+            "stages",
+            "reform_coverage_smoke",
+            "probes",
+            0,
+            "authority_reason",
+            value="sampled",
+        ),
+        ' authority_reason is "sampled"',
+    ),
+    (
+        "smoke row total",
+        "report",
+        lambda lo: _set(
+            "stages",
+            "reform_coverage_smoke",
+            "probes",
+            0,
+            "baseline_total",
+            value=1.0,
+        ),
+        "baseline_total is 1.0",
     ),
     (
         "a smoke start with no dataset",
