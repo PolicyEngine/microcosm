@@ -1632,7 +1632,12 @@ def _requires_microcosm_target_label(
 
 
 def _inherited_dimensions(facts: tuple[object, ...]) -> tuple[HierarchyDimension, ...]:
-    """Return dimensions constant across all facts in deterministic order."""
+    """Return dimensions constant across all facts in deterministic order.
+
+    The group-by dimension's value takes its source position as its
+    ``value_rank`` (:func:`_groupby_value_rank`); Chronicle gives the other
+    dimensions' values none.
+    """
 
     common = _common_dimensions(facts)
     dimensions: list[HierarchyDimension] = []
@@ -1652,6 +1657,7 @@ def _inherited_dimensions(facts: tuple[object, ...]) -> tuple[HierarchyDimension
                     _constant_text(facts, "layout", "groupby_value_label")
                     or _dimension_value_label(facts, groupby_id, raw_value)
                 ),
+                value_rank=_groupby_value_rank(facts),
             )
         )
     for dimension_id in sorted(common):
@@ -1665,6 +1671,29 @@ def _inherited_dimensions(facts: tuple[object, ...]) -> tuple[HierarchyDimension
             )
         )
     return tuple(dimensions)
+
+
+def _groupby_value_rank(facts: tuple[object, ...]) -> int | None:
+    """The group-by value's position in its source table's rows, from 0.
+
+    Chronicle's ``layout.groupby_ordinal`` numbers a record set's rows in
+    the order the source lists them, so it orders the values of the
+    dimension the table groups by (FSA's debt-size bands from "Less than
+    5K" to "200K+"). Every fact must give the same non-negative integer;
+    facts from tables that place the value differently give no rank. A
+    Microcosm-derived fact keeps a copy of its source row's layout but
+    describes another value, so it gives none either.
+    """
+
+    if any(_fact_key(fact).startswith("microcosm.derived_fact.") for fact in facts):
+        return None
+    ordinals = {repr(_at(fact, "layout", "groupby_ordinal")) for fact in facts}
+    if len(ordinals) != 1:
+        return None
+    ordinal = _at(facts[0], "layout", "groupby_ordinal")
+    if isinstance(ordinal, bool) or not isinstance(ordinal, int) or ordinal < 0:
+        return None
+    return ordinal
 
 
 def _common_dimensions(facts: tuple[object, ...]) -> dict[str, object]:

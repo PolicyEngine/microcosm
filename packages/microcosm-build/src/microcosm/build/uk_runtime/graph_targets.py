@@ -6,7 +6,7 @@ import hashlib
 import json
 import tempfile
 from collections.abc import Mapping
-from dataclasses import asdict, dataclass, replace
+from dataclasses import dataclass, replace
 from datetime import date
 from pathlib import Path
 from types import SimpleNamespace
@@ -145,7 +145,7 @@ def _surface_records(frame: pd.DataFrame) -> list[dict]:
         # #855: the local surface carries each spec's CalibrationHierarchy;
         # store it exactly as TargetSpec.to_dict does.
         if key == "hierarchy":
-            return None if value is None else asdict(value)
+            return None if value is None else value.to_dict()
         return native(value)
 
     # Preserve the exact binary float values; decimal-rounding table codecs

@@ -22,7 +22,6 @@ import json
 import logging
 import math
 from collections.abc import Mapping
-from dataclasses import asdict
 from pathlib import Path
 from typing import Any
 
@@ -166,7 +165,7 @@ def _target_hierarchy(target: object, spec: object | None) -> object | None:
 def _hierarchy_target_field(hierarchy: object) -> dict[str, object]:
     """Serialize a complete producer-supplied target hierarchy."""
 
-    serialized = asdict(hierarchy)
+    serialized = hierarchy.to_dict()
     serialized["dimensions"] = list(serialized["dimensions"])
     return {"hierarchy": serialized}
 

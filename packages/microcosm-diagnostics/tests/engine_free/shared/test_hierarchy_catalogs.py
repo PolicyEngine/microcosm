@@ -214,6 +214,119 @@ def test_expanding_schema_9_gives_back_the_schema_8_document() -> None:
     )
 
 
+DEBT_SIZE = "ed_fsa.borrower_debt_size"
+
+
+def _debt_band(value_id: str, value_label: str, rank: int | None) -> dict:
+    dimension = {
+        "id": DEBT_SIZE,
+        "label": "Borrower debt size",
+        "value_id": value_id,
+        "value_label": value_label,
+    }
+    if rank is not None:
+        dimension["value_rank"] = rank
+    return dimension
+
+
+def _ranked_payload(bands: list[tuple[str, str, int | None]]) -> dict:
+    """One row per (value id, label, rank); the measure varies the name."""
+
+    return _payload(
+        [
+            _target(
+                f"ed_fsa.{measure}.{value_id}",
+                geography=UNITED_STATES,
+                dimensions=[_debt_band(value_id, label, rank)],
+            )
+            for index, (value_id, label, rank) in enumerate(bands)
+            for measure in (f"m{index}",)
+        ]
+    )
+
+
+_FSA_BANDS = [
+    ("debt_200k_plus", "200K+", 8),
+    ("debt_less_than_5k", "Less than 5K", 0),
+    ("debt_100k_to_200k", "100K to 200K", 7),
+    ("debt_10k_to_20k", "10K to 20K", 2),
+]
+
+
+def test_catalog_values_carry_the_rows_value_rank() -> None:
+    model = _model(_ranked_payload([*_FSA_BANDS, ("debt_200k_plus", "200K+", 8)]))
+    catalogued = catalog_calibration_diagnostics(model)
+    document = json.loads(catalogued.model_dump_json(exclude_defaults=True))
+    (dimension,) = document["hierarchy_catalogs"]["dimensions"]
+
+    # Values stay in first-use order; each carries the rank its rows give it.
+    assert dimension["values"] == [
+        {"id": "debt_200k_plus", "label": "200K+", "rank": 8},
+        {"id": "debt_less_than_5k", "label": "Less than 5K", "rank": 0},
+        {"id": "debt_100k_to_200k", "label": "100K to 200K", "rank": 7},
+        {"id": "debt_10k_to_20k", "label": "10K to 20K", "rank": 2},
+    ]
+    assert [
+        value["label"] for value in sorted(dimension["values"], key=lambda v: v["rank"])
+    ] == ["Less than 5K", "10K to 20K", "100K to 200K", "200K+"]
+    # Rows still refer to a value by id alone.
+    assert document["targets"][0]["hierarchy"]["dimensions"] == [
+        {"id": DEBT_SIZE, "value_id": "debt_200k_plus"}
+    ]
+    assert expand_calibration_diagnostics(catalogued) == model
+
+
+def test_a_value_ranked_two_ways_leaves_its_dimension_unranked() -> None:
+    # Two source tables place 50k_to_75k at different rows, so their ranks
+    # are not comparable and no value of the dimension is ranked.
+    model = _model(
+        _ranked_payload(
+            [
+                ("under_5k", "Under 5K", 0),
+                ("50k_to_75k", "50K to 75K", 5),
+                ("50k_to_75k", "50K to 75K", 9),
+            ]
+        )
+    )
+    document = json.loads(
+        catalog_calibration_diagnostics(model).model_dump_json(exclude_defaults=True)
+    )
+    (dimension,) = document["hierarchy_catalogs"]["dimensions"]
+
+    assert dimension["values"] == [
+        {"id": "under_5k", "label": "Under 5K"},
+        {"id": "50k_to_75k", "label": "50K to 75K"},
+    ]
+
+
+def test_an_unranked_row_does_not_unrank_its_value() -> None:
+    model = _model(
+        _ranked_payload(
+            [("debt_200k_plus", "200K+", 8), ("debt_200k_plus", "200K+", None)]
+        )
+    )
+    catalogued = catalog_calibration_diagnostics(model)
+    (dimension,) = catalogued.hierarchy_catalogs.dimensions
+
+    assert [(value.id, value.rank) for value in dimension.values] == [
+        ("debt_200k_plus", 8)
+    ]
+    # Expansion gives every row its value's catalog rank.
+    assert [
+        row.hierarchy.dimensions[0].value_rank
+        for row in expand_calibration_diagnostics(catalogued).targets
+    ] == [8, 8]
+
+
+@pytest.mark.parametrize("rank", [-1, 1.5, "0", True])
+def test_a_value_rank_must_be_a_non_negative_integer(rank: object) -> None:
+    payload = _ranked_payload([("debt_200k_plus", "200K+", 8)])
+    payload["targets"][0]["hierarchy"]["dimensions"][0]["value_rank"] = rank
+
+    with pytest.raises(ValidationError):
+        _model(payload)
+
+
 def test_the_writer_writes_schema_9_and_reports_it(tmp_path: Path) -> None:
     model = _model(_us_payload())
     path = tmp_path / "calibration_diagnostics.json"

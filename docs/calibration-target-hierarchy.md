@@ -84,7 +84,14 @@ metadata, not hints for constructing display text.
   label because an individual member-fact label does not describe the compiled
   target.
 - `layout.groupby_dimension` is first when it has a value. Its categorical
-  value label comes from `layout.groupby_value_label`.
+  value label comes from `layout.groupby_value_label`, and its `value_rank`
+  from `layout.groupby_ordinal`: the value's position, from 0, among the
+  source table's rows, so a reader can list the values in the source's order
+  (FSA's debt-size bands from "Less than 5K" to "200K+") rather than by
+  label. Every selected fact must give the same ordinal; otherwise, and for a
+  Microcosm-derived fact (`microcosm.derived_fact.*`), the value has no rank.
+  Chronicle gives the remaining dimensions' values no position, so they have
+  none either.
 - Remaining Chronicle `dimensions` ids are sorted. Chronicle must supply
   exactly one non-empty `dimension_labels` entry and one non-empty
   `dimension_value_labels` entry for each selected dimension and value.
@@ -190,6 +197,15 @@ with geographies and dimensions, mirroring the authoring contract's catalogs,
 so a category cannot appear under two providers either. Each value is listed
 under its own dimension. A geography id has one label and one level. The
 target's own label stays on the row, and every other field is schema 8's.
+
+A catalog value may carry a `rank`, the `value_rank` its schema 8 rows give
+it, for example `{"id": "debt_less_than_5k", "label": "Less than 5K",
+"rank": 0}`. A rank orders values within one source table, and two tables can
+place one value differently: the IRS SOI tables list the AGI band `50k_to_75k`
+at rows 5, 9 and 10. So the writer ranks a dimension's values only when no
+value is ranked two ways, and leaves every value of any other dimension
+unranked. The rows' dimension references stay `{id, value_id}`; a reader
+sorts a dimension's values by `rank` where every value has one.
 
 Producers still assemble schema 8 (`CALIBRATION_DIAGNOSTICS_ASSEMBLY_SCHEMA_VERSION`);
 the writer publishes schema 9 (`catalog_calibration_diagnostics`). It refuses,

@@ -285,6 +285,65 @@ class TestArtifactRoundTrip:
         assert loaded.specs == registry.specs
         assert loaded.country == "us"
 
+    def test_a_registry_written_before_value_ranks_keeps_its_version(
+        self, tmp_path
+    ) -> None:
+        import hashlib
+
+        # The dataclasses.asdict encoding every format 3 file had before
+        # dimensions carried a value_rank: four keys per dimension.
+        raw_spec = json.loads(json.dumps(_spec(hierarchy=_hierarchy()).to_dict()))
+        assert raw_spec["hierarchy"]["dimensions"] == [
+            {"id": "sex", "label": "Sex", "value_id": "female", "value_label": "Female"}
+        ]
+        canonical = json.dumps(
+            {"country": "us", "specs": [raw_spec]},
+            sort_keys=True,
+            separators=(",", ":"),
+        )
+        version = hashlib.sha256(canonical.encode()).hexdigest()[:12]
+        path = tmp_path / "registry.json"
+        path.write_text(
+            json.dumps(
+                {
+                    "populace_target_registry": 3,
+                    "country": "us",
+                    "version": version,
+                    "n_specs": 1,
+                    "specs": [raw_spec],
+                }
+            )
+        )
+
+        assert TargetRegistry.from_json(path).version == version
+
+    def test_a_value_rank_round_trips_and_moves_the_version(self, tmp_path) -> None:
+        unranked = _spec(hierarchy=_hierarchy())
+        dimension = unranked.hierarchy.dimensions[0]
+        ranked = _spec(
+            hierarchy=CalibrationHierarchy(
+                provider=unranked.hierarchy.provider,
+                category=unranked.hierarchy.category,
+                geography=unranked.hierarchy.geography,
+                dimensions=(
+                    HierarchyDimension(
+                        dimension.id,
+                        dimension.label,
+                        dimension.value_id,
+                        dimension.value_label,
+                        value_rank=1,
+                    ),
+                ),
+                target=unranked.hierarchy.target,
+            )
+        )
+        registry = TargetRegistry([ranked], country="us")
+        loaded = TargetRegistry.from_json(registry.to_json(tmp_path / "r.json"))
+
+        assert loaded.specs[0].hierarchy.dimensions[0].value_rank == 1
+        assert loaded.version == registry.version
+        assert registry.version != TargetRegistry([unranked], country="us").version
+
     def test_hand_edit_is_detected(self, tmp_path) -> None:
         registry = TargetRegistry([_spec()], country="us")
         path = registry.to_json(tmp_path / "registry.json")

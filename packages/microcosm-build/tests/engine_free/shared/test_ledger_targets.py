@@ -3778,6 +3778,83 @@ def test_single_fact_hierarchy_inherits_groupby_first_and_exact_dimensions() -> 
     assert spec.hierarchy.target.label == "United States adjusted gross income"
 
 
+def _ordinal_fact(ordinal: object, *, key: str = "first", **overrides) -> dict:
+    """An AGI fact whose group-by row sits at ``ordinal`` in its table."""
+
+    fact = _consumer_fact_row(
+        aggregate_fact_key=f"ledger.aggregate_fact.v2:{key}",
+        legacy_fact_key=f"ledger.fact.v1:{key}",
+        semantic_fact_key=f"ledger.semantic_fact.v2:{key}",
+        lineage={
+            "source_record_id": f"irs_soi.ty2023.table_1_1.{key}.adjusted_gross_income",
+            "source_cell_keys": [f"ledger.source_cell.v1:{key}"],
+            "source_row_keys": [],
+        },
+        dimensions={"filing_status": "single"},
+        dimension_labels={"filing_status": "Filing status"},
+        dimension_value_labels={"filing_status": {"single": "Single return"}},
+        **overrides,
+    )
+    if ordinal is not None:
+        fact["layout"] = {**fact["layout"], "groupby_ordinal": ordinal}
+    return fact
+
+
+def test_groupby_value_takes_its_source_row_position_as_value_rank() -> None:
+    (spec,) = compile_ledger_target_references(
+        [_ordinal_fact(3)], [_exact_agi_reference()], country="us"
+    ).specs
+
+    groupby, filing_status = spec.hierarchy.dimensions
+    assert groupby.value_rank == 3
+    assert groupby.to_dict()["value_rank"] == 3
+    # Chronicle gives a non-group-by dimension's values no position.
+    assert filing_status.value_rank is None
+
+
+@pytest.mark.parametrize(
+    ("ordinals", "rank"),
+    [((4, 4), 4), ((4, 5), None), ((4, None), None), ((None, None), None)],
+)
+def test_multi_fact_value_rank_needs_one_position_on_every_fact(
+    ordinals: tuple[object, object], rank: int | None
+) -> None:
+    facts = [
+        _ordinal_fact(ordinal, key=key, value=value)
+        for ordinal, key, value in zip(
+            ordinals, ("first", "second"), (10.0, 20.0), strict=True
+        )
+    ]
+
+    (spec,) = compile_ledger_target_references(
+        facts, [_exact_agi_reference(value_operation="sum")], country="us"
+    ).specs
+
+    assert spec.hierarchy.dimensions[0].value_rank == rank
+
+
+@pytest.mark.parametrize("ordinal", [-1, True, 2.0, "2"])
+def test_a_malformed_groupby_ordinal_gives_no_value_rank(ordinal: object) -> None:
+    (spec,) = compile_ledger_target_references(
+        [_ordinal_fact(ordinal)], [_exact_agi_reference()], country="us"
+    ).specs
+
+    assert spec.hierarchy.dimensions[0].value_rank is None
+
+
+def test_a_derived_fact_gives_no_value_rank() -> None:
+    # A Microcosm-derived fact copies its source row's layout but describes
+    # another value (a translated district), so its ordinal ranks nothing.
+    derived = _ordinal_fact(3)
+    derived["aggregate_fact_key"] = "microcosm.derived_fact.example.v1:first"
+
+    (spec,) = compile_ledger_target_references(
+        [derived], [_exact_agi_reference()], country="us"
+    ).specs
+
+    assert spec.hierarchy.dimensions[0].value_rank is None
+
+
 def test_multi_fact_hierarchy_keeps_only_constant_dimensions() -> None:
     first = _consumer_fact_row(
         value=10.0,

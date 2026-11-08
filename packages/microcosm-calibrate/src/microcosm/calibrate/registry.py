@@ -218,11 +218,17 @@ class TargetSpec:
     def to_dict(self) -> dict[str, Any]:
         """The JSON-ready mapping form of the spec (``dataclasses.asdict``).
 
-        ``hierarchy`` becomes a nested mapping; :meth:`from_dict` restores it.
-        This is the one encoding every artifact that carries specs uses, so a
-        registry JSON file and a graph artifact serialize a spec identically.
+        ``hierarchy`` becomes a nested mapping
+        (:meth:`CalibrationHierarchy.to_dict`, which leaves out a dimension's
+        absent ``value_rank``, so a registry written before ranks existed
+        keeps its version); :meth:`from_dict` restores it. This is the one
+        encoding every artifact that carries specs uses, so a registry JSON
+        file and a graph artifact serialize a spec identically.
         """
-        return asdict(self)
+        raw = asdict(self)
+        if self.hierarchy is not None:
+            raw["hierarchy"] = self.hierarchy.to_dict()
+        return raw
 
     @classmethod
     def from_dict(cls, raw: Mapping[str, Any]) -> TargetSpec:

@@ -558,6 +558,131 @@ def test_compiled_fsa_targets_round_trip_through_the_materializer() -> None:
     assert total["fsa_debt_size_band_borrowers"] == 3_000.0
 
 
+_DEBT_SIZE = "ed_fsa.borrower_debt_size"
+_AGE_BAND = "ed_fsa.borrower_age_band"
+_LOCATION = "ed_fsa.borrower_location"
+#: FSA's debt-size bands in the order its table lists them.
+_FSA_DEBT_SIZE_ORDER = [
+    "Less than 5K",
+    "5K to 10K",
+    "10K to 20K",
+    "20K to 40K",
+    "40K to 60K",
+    "60K to 80K",
+    "80K to 100K",
+    "100K to 200K",
+    "200K+",
+]
+
+
+def _source_order(dimension: str) -> dict[str, int]:
+    """Each value's ``groupby_ordinal`` in the fixture's rows for ``dimension``.
+
+    Every quarter and measure of one FSA table lists its rows in one order.
+    """
+
+    ordinals: dict[str, set[int]] = {}
+    for fact in _facts():
+        layout = fact["layout"]
+        if layout["groupby_dimension"] == dimension:
+            ordinals.setdefault(layout["groupby_value_id"], set()).add(
+                layout["groupby_ordinal"]
+            )
+    assert all(len(found) == 1 for found in ordinals.values()), ordinals
+    return {value: min(found) for value, found in ordinals.items()}
+
+
+def _exported_fsa_diagnostics(tmp_path) -> dict:
+    """The schema 9 file a release writes for the FSA family, as JSON."""
+
+    from microcosm.calibrate import calibrate, write_calibration_diagnostics
+
+    registry = _registry()
+    base = _frame()
+    tables = {entity: base.table(entity) for entity in base.entities}
+    tables["household"] = tables["household"].assign(
+        **{
+            spec.measure: fsa_student_loan_household_values(base, spec.metadata)
+            for spec in registry.specs
+        }
+    )
+    frame = Frame(tables, US_SCHEMA, {"household": base.weights_for("household")})
+    result = calibrate(frame, registry.to_target_set(), epochs=2, seed=0)
+    path = tmp_path / "calibration_diagnostics.json"
+    outcome = write_calibration_diagnostics(result, path, target_registry=registry)
+    assert outcome.status == "available", outcome
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
+def test_compiled_bands_carry_fsa_row_order_as_value_rank() -> None:
+    debt = sorted(
+        (
+            spec.hierarchy.dimensions[0]
+            for spec in _by_role(_registry())["fsa_debt_size_band_balance"]
+        ),
+        key=lambda dimension: dimension.value_rank,
+    )
+
+    assert [dimension.value_label for dimension in debt] == _FSA_DEBT_SIZE_ORDER
+    assert [dimension.value_rank for dimension in debt] == list(range(9))
+    # The labels alone sort "100K to 200K" first, as the dashboard did.
+    assert sorted(_FSA_DEBT_SIZE_ORDER)[:3] == ["100K to 200K", "10K to 20K", "200K+"]
+
+
+def test_exported_diagnostics_list_fsa_values_in_source_order(tmp_path) -> None:
+    from microcosm.diagnostics import (
+        expand_calibration_diagnostics,
+        parse_calibration_diagnostics,
+    )
+
+    exported = _exported_fsa_diagnostics(tmp_path)
+    assert exported["schema_version"] == 9
+    catalog = {
+        dimension["id"]: dimension
+        for dimension in exported["hierarchy_catalogs"]["dimensions"]
+    }
+
+    def by_rank(dimension: str) -> list[dict]:
+        values = catalog[dimension]["values"]
+        assert all(isinstance(value.get("rank"), int) for value in values)
+        return sorted(values, key=lambda value: value["rank"])
+
+    assert [value["label"] for value in by_rank(_DEBT_SIZE)] == _FSA_DEBT_SIZE_ORDER
+    assert [value["label"] for value in by_rank(_AGE_BAND)] == [
+        "24 and Younger",
+        "25 to 34",
+        "35 to 49",
+        "50 to 61",
+        "62 and Older",
+    ]
+    for dimension in (_DEBT_SIZE, _AGE_BAND, _LOCATION):
+        source = _source_order(dimension)
+        ranked = by_rank(dimension)
+        assert {value["id"]: value["rank"] for value in ranked} == {
+            value["id"]: source[value["id"]] for value in ranked
+        }
+    # 50 states and DC, in FSA's order: Alabama, Alaska, Arizona, ...
+    locations = by_rank(_LOCATION)
+    assert len(locations) == 51
+    assert [value["id"] for value in locations[:3]] == ["al", "ak", "az"]
+    # The rows still refer to values by id alone, as schema 9 readers expect.
+    for row in exported["targets"]:
+        for reference in row["hierarchy"]["dimensions"]:
+            assert set(reference) == {"id", "value_id"}
+
+    # Expanding gives each schema 8 row its value's rank back.
+    expanded = expand_calibration_diagnostics(parse_calibration_diagnostics(exported))
+    debt_rows = [
+        row.hierarchy.dimensions[0]
+        for row in expanded.targets
+        if row.hierarchy.dimensions and row.hierarchy.dimensions[0].id == _DEBT_SIZE
+    ]
+    assert len(debt_rows) == 18
+    assert {(row.value_label, row.value_rank) for row in debt_rows} == {
+        (label, rank) for rank, label in enumerate(_FSA_DEBT_SIZE_ORDER)
+    }
+
+
 def _load_builder_module():
     path = _TEST_PATHS.repository / "tools" / "build_us_fiscal_refresh_release.py"
     spec = importlib.util.spec_from_file_location(

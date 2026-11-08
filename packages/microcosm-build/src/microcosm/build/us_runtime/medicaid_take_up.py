@@ -842,8 +842,15 @@ def _substituted_hierarchy(
         )
     template_value_id = template.metadata.get("ledger_layout_groupby_value_id")
     groupby_dimension = template.metadata.get("ledger_layout_groupby_dimension")
+    # The template's rank is its own state's place in the CMS table; the
+    # substituted state has no row there, so its value has no rank.
     dimensions = tuple(
-        replace(dimension, value_id=groupby_value_id, value_label=state_name)
+        replace(
+            dimension,
+            value_id=groupby_value_id,
+            value_label=state_name,
+            value_rank=None,
+        )
         if dimension.value_id == template_value_id
         and groupby_dimension in (None, "", dimension.id)
         else dimension
