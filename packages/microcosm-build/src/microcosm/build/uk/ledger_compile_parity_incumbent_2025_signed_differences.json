@@ -1,11 +1,11 @@
 {
- "compiled_count": 1599,
+ "compiled_count": 1697,
  "counts_by_kind": {
   "calibration_drift": 564,
   "fixture_only": 44,
-  "ledger_only": 1006
+  "ledger_only": 1104
  },
- "difference_count": 1614,
+ "difference_count": 1712,
  "differences": [
   {
    "fixture_value": 1608000.0,
@@ -751,6 +751,664 @@
   },
   {
    "kind": "ledger_only",
+   "ledger_value": 165128.75,
+   "name": "dwp.pip.cases_east_midlands_daily_living_enhanced",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 15460.0,
+   "name": "dwp.pip.cases_east_midlands_daily_living_nil",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 136988.75,
+   "name": "dwp.pip.cases_east_midlands_daily_living_standard",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 177650.0,
+   "name": "dwp.pip.cases_east_midlands_mobility_enhanced",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 47511.75,
+   "name": "dwp.pip.cases_east_midlands_mobility_nil",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 92414.75,
+   "name": "dwp.pip.cases_east_midlands_mobility_standard",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 170988.75,
+   "name": "dwp.pip.cases_east_of_england_daily_living_enhanced",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 14423.75,
+   "name": "dwp.pip.cases_east_of_england_daily_living_nil",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 146411.75,
+   "name": "dwp.pip.cases_east_of_england_daily_living_standard",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 166776.0,
+   "name": "dwp.pip.cases_east_of_england_mobility_enhanced",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 69254.75,
+   "name": "dwp.pip.cases_east_of_england_mobility_nil",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 95795.0,
+   "name": "dwp.pip.cases_east_of_england_mobility_standard",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 3490214.25,
+   "name": "dwp.pip.cases_england",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 181800.0,
+   "name": "dwp.pip.cases_england_aged_16_to_19",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 202349.5,
+   "name": "dwp.pip.cases_england_aged_20_to_24",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 196997.5,
+   "name": "dwp.pip.cases_england_aged_25_to_29",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 222042.25,
+   "name": "dwp.pip.cases_england_aged_30_to_34",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 248251.5,
+   "name": "dwp.pip.cases_england_aged_35_to_39",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 262599.5,
+   "name": "dwp.pip.cases_england_aged_40_to_44",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 270020.75,
+   "name": "dwp.pip.cases_england_aged_45_to_49",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 343020.75,
+   "name": "dwp.pip.cases_england_aged_50_to_54",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 425461.75,
+   "name": "dwp.pip.cases_england_aged_55_to_59",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 475625.75,
+   "name": "dwp.pip.cases_england_aged_60_to_64",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 395530.5,
+   "name": "dwp.pip.cases_england_aged_65_to_69",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 199125.0,
+   "name": "dwp.pip.cases_england_aged_70_to_74",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 67391.25,
+   "name": "dwp.pip.cases_england_aged_75_and_over",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 1823860.5,
+   "name": "dwp.pip.cases_england_daily_living_enhanced",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 144486.75,
+   "name": "dwp.pip.cases_england_daily_living_nil",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 1521596.25,
+   "name": "dwp.pip.cases_england_daily_living_standard",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 1772561.75,
+   "name": "dwp.pip.cases_england_mobility_enhanced",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 705472.25,
+   "name": "dwp.pip.cases_england_mobility_nil",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 1011906.25,
+   "name": "dwp.pip.cases_england_mobility_standard",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 240339.25,
+   "name": "dwp.pip.cases_london_daily_living_enhanced",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 15032.25,
+   "name": "dwp.pip.cases_london_daily_living_nil",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 193466.75,
+   "name": "dwp.pip.cases_london_daily_living_standard",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 222332.5,
+   "name": "dwp.pip.cases_london_mobility_enhanced",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 104702.5,
+   "name": "dwp.pip.cases_london_mobility_nil",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 121805.5,
+   "name": "dwp.pip.cases_london_mobility_standard",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 126445.25,
+   "name": "dwp.pip.cases_north_east_daily_living_enhanced",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 9630.25,
+   "name": "dwp.pip.cases_north_east_daily_living_nil",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 107983.0,
+   "name": "dwp.pip.cases_north_east_daily_living_standard",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 116531.25,
+   "name": "dwp.pip.cases_north_east_mobility_enhanced",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 54430.0,
+   "name": "dwp.pip.cases_north_east_mobility_nil",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 73099.0,
+   "name": "dwp.pip.cases_north_east_mobility_standard",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 310037.0,
+   "name": "dwp.pip.cases_north_west_daily_living_enhanced",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 22476.0,
+   "name": "dwp.pip.cases_north_west_daily_living_nil",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 265405.25,
+   "name": "dwp.pip.cases_north_west_daily_living_standard",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 291581.25,
+   "name": "dwp.pip.cases_north_west_mobility_enhanced",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 127927.75,
+   "name": "dwp.pip.cases_north_west_mobility_nil",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 178406.0,
+   "name": "dwp.pip.cases_north_west_mobility_standard",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 229595.75,
+   "name": "dwp.pip.cases_south_east_daily_living_enhanced",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 18222.75,
+   "name": "dwp.pip.cases_south_east_daily_living_nil",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 185335.0,
+   "name": "dwp.pip.cases_south_east_daily_living_standard",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 215238.75,
+   "name": "dwp.pip.cases_south_east_mobility_enhanced",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 92183.25,
+   "name": "dwp.pip.cases_south_east_mobility_nil",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 125730.0,
+   "name": "dwp.pip.cases_south_east_mobility_standard",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 171489.0,
+   "name": "dwp.pip.cases_south_west_daily_living_enhanced",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 12983.0,
+   "name": "dwp.pip.cases_south_west_daily_living_nil",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 136125.25,
+   "name": "dwp.pip.cases_south_west_daily_living_standard",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 161057.0,
+   "name": "dwp.pip.cases_south_west_mobility_enhanced",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 67894.5,
+   "name": "dwp.pip.cases_south_west_mobility_nil",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 91645.0,
+   "name": "dwp.pip.cases_south_west_mobility_standard",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 281007.75,
+   "name": "dwp.pip.cases_wales",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 10026.0,
+   "name": "dwp.pip.cases_wales_aged_16_to_19",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 13329.25,
+   "name": "dwp.pip.cases_wales_aged_20_to_24",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 14728.0,
+   "name": "dwp.pip.cases_wales_aged_25_to_29",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 17144.5,
+   "name": "dwp.pip.cases_wales_aged_30_to_34",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 19438.0,
+   "name": "dwp.pip.cases_wales_aged_35_to_39",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 20118.0,
+   "name": "dwp.pip.cases_wales_aged_40_to_44",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 20384.0,
+   "name": "dwp.pip.cases_wales_aged_45_to_49",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 26755.25,
+   "name": "dwp.pip.cases_wales_aged_50_to_54",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 34274.0,
+   "name": "dwp.pip.cases_wales_aged_55_to_59",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 40608.5,
+   "name": "dwp.pip.cases_wales_aged_60_to_64",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 35969.75,
+   "name": "dwp.pip.cases_wales_aged_65_to_69",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 20931.75,
+   "name": "dwp.pip.cases_wales_aged_70_to_74",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 7299.25,
+   "name": "dwp.pip.cases_wales_aged_75_and_over",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 147586.0,
+   "name": "dwp.pip.cases_wales_daily_living_enhanced",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 11876.75,
+   "name": "dwp.pip.cases_wales_daily_living_nil",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 121530.75,
+   "name": "dwp.pip.cases_wales_daily_living_standard",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 159375.25,
+   "name": "dwp.pip.cases_wales_mobility_enhanced",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 40469.5,
+   "name": "dwp.pip.cases_wales_mobility_nil",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 81147.75,
+   "name": "dwp.pip.cases_wales_mobility_standard",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 207791.0,
+   "name": "dwp.pip.cases_west_midlands_daily_living_enhanced",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 20030.75,
+   "name": "dwp.pip.cases_west_midlands_daily_living_nil",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 173617.75,
+   "name": "dwp.pip.cases_west_midlands_daily_living_standard",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 227121.5,
+   "name": "dwp.pip.cases_west_midlands_mobility_enhanced",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 58672.0,
+   "name": "dwp.pip.cases_west_midlands_mobility_nil",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 115644.75,
+   "name": "dwp.pip.cases_west_midlands_mobility_standard",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 202045.75,
+   "name": "dwp.pip.cases_yorkshire_daily_living_enhanced",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 16229.0,
+   "name": "dwp.pip.cases_yorkshire_daily_living_nil",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 176263.75,
+   "name": "dwp.pip.cases_yorkshire_daily_living_standard",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 194275.75,
+   "name": "dwp.pip.cases_yorkshire_mobility_enhanced",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 82894.0,
+   "name": "dwp.pip.cases_yorkshire_mobility_nil",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 117369.75,
+   "name": "dwp.pip.cases_yorkshire_mobility_standard",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
    "ledger_value": 138623908111.01526,
    "name": "dwp.state_pension.amount",
    "period": 2025,
@@ -1194,6 +1852,27 @@
    "kind": "ledger_only",
    "ledger_value": 3130000.0,
    "name": "dwp.uc.households_with_deduction",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 386617.5,
+   "name": "dwp.uc.people_aged_16_to_21",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 762585.25,
+   "name": "dwp.uc.people_aged_16_to_24",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 375967.75,
+   "name": "dwp.uc.people_aged_22_to_24",
    "period": 2025,
    "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
   },
@@ -5954,6 +6633,13 @@
    "kind": "ledger_only",
    "ledger_value": 2565000.0,
    "name": "ons.households.english_regions@E12000009",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 943415.518223629,
+   "name": "ons.neet.people_aged_16_to_24",
    "period": 2025,
    "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
   },

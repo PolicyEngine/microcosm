@@ -455,8 +455,9 @@ def test_shipped_uc_monthly_references_preserve_each_declared_window():
         for reference in references
         if reference.family == "dwp_universal_credit"
     ]
-    # microcosm#1095: less the five-or-more-children count, a diagnostic.
-    assert len(monthly) == 117
+    # microcosm#1095: less the five-or-more-children count, a diagnostic; plus
+    # Y4's three people-by-age rows (8 Nov 2026), held out of the solve.
+    assert len(monthly) == 120
     calendar_2025 = [f"2025-{month:02}" for month in range(1, 13)]
     new_paid = {
         "dwp.uc.households",
@@ -489,8 +490,22 @@ def test_shipped_uc_monthly_references_preserve_each_declared_window():
             f"2025-{month:02}" for month in range(3, 13)
         ],
     }
+    # Y4: DWP's people on UC by single year of age, every regime, on the four
+    # quarterly points of 2025, one operand per single year.
+    people_by_age = {
+        "dwp.uc.people_aged_16_to_24": 9,
+        "dwp.uc.people_aged_16_to_21": 6,
+        "dwp.uc.people_aged_22_to_24": 3,
+    }
     for reference in monthly:
-        if reference.name in new_paid or reference.name in element_windows:
+        if reference.name in people_by_age:
+            expected_months = ["2025-02", "2025-05", "2025-08", "2025-11"]
+            assert reference.ledger_selector["period_value"] == expected_months
+            assert reference.value_operation == "monthly_window_sum_average"
+            assert reference.period_match_policy == "source_window"
+            assert len(reference.value_operands) == people_by_age[reference.name]
+            assert reference.uprating_from_period is None
+        elif reference.name in new_paid or reference.name in element_windows:
             expected_months = element_windows.get(reference.name, calendar_2025)
             assert reference.ledger_selector["period_value"] == expected_months
             if reference.value_operation == "monthly_window_sum_average":
@@ -514,6 +529,7 @@ def test_shipped_uc_monthly_references_preserve_each_declared_window():
         assert json.loads(reference.metadata[EXPECTED_SOURCE_MONTHS]) == expected_months
     assert new_paid <= {reference.name for reference in monthly}
     assert set(element_windows) <= {reference.name for reference in monthly}
+    assert set(people_by_age) <= {reference.name for reference in monthly}
     # The #882 Housing Benefit caseload rows bind the Stat-Xplore client-type
     # by tenure cube on the same calendar-2025 window, and since microcosm#1069
     # c10 so do its pension-age rows.
@@ -598,6 +614,16 @@ def test_shipped_uc_monthly_references_preserve_each_declared_window():
         assert reference.value_operation == "monthly_window_average"
         assert reference.period_match_policy == "source_window"
         assert json.loads(reference.metadata[EXPECTED_SOURCE_MONTHS]) == esa_quarters
+    # P3 of the November event-data plan: DWP's PIP cases, held out of the
+    # solve, on the cube's four quarter-end points inside calendar 2025.
+    pip_months = ["2025-01", "2025-04", "2025-07", "2025-10"]
+    pip_cases = [reference for reference in references if reference.family == "dwp_pip"]
+    assert len(pip_cases) == 94
+    for reference in pip_cases:
+        assert reference.ledger_selector["period_value"] == pip_months
+        assert reference.value_operation == "monthly_window_average"
+        assert reference.period_match_policy == "source_window"
+        assert json.loads(reference.metadata[EXPECTED_SOURCE_MONTHS]) == pip_months
     assert not any(
         EXPECTED_SOURCE_MONTHS in reference.metadata
         for reference in references
@@ -609,5 +635,6 @@ def test_shipped_uc_monthly_references_preserve_each_declared_window():
             "dwp_state_pension",
             "dwp_pension_credit",
             "dwp_attendance_allowance",
+            "dwp_pip",
         }
     )

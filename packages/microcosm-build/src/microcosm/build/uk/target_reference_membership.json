@@ -1,11 +1,11 @@
 {
   "source_fact_feed": "chronicle-uk-8045b13-consumer-facts",
   "target_period": 2025,
-  "candidate_count": 1636,
-  "contract_target_count": 480,
-  "active_reference_count": 1599,
+  "candidate_count": 1734,
+  "contract_target_count": 578,
+  "active_reference_count": 1697,
   "status_counts": {
-    "active": 1599,
+    "active": 1697,
     "signed_excluded": 37
   },
   "geography_pins": {
@@ -2272,6 +2272,18 @@
       "geography_id": "K03000001"
     },
     "dwp.uc.households_with_deduction": {
+      "geography_level": "country",
+      "geography_id": "K03000001"
+    },
+    "dwp.uc.people_aged_16_to_24": {
+      "geography_level": "country",
+      "geography_id": "K03000001"
+    },
+    "dwp.uc.people_aged_16_to_21": {
+      "geography_level": "country",
+      "geography_id": "K03000001"
+    },
+    "dwp.uc.people_aged_22_to_24": {
       "geography_level": "country",
       "geography_id": "K03000001"
     },
@@ -4543,6 +4555,382 @@
       "geography_level": "country",
       "geography_id": "W92000004"
     },
+    "dwp.pip.cases_england": {
+      "geography_level": "country",
+      "geography_id": "E92000001"
+    },
+    "dwp.pip.cases_england_daily_living_standard": {
+      "geography_level": "country",
+      "geography_id": "E92000001"
+    },
+    "dwp.pip.cases_england_daily_living_enhanced": {
+      "geography_level": "country",
+      "geography_id": "E92000001"
+    },
+    "dwp.pip.cases_england_daily_living_nil": {
+      "geography_level": "country",
+      "geography_id": "E92000001"
+    },
+    "dwp.pip.cases_england_mobility_standard": {
+      "geography_level": "country",
+      "geography_id": "E92000001"
+    },
+    "dwp.pip.cases_england_mobility_enhanced": {
+      "geography_level": "country",
+      "geography_id": "E92000001"
+    },
+    "dwp.pip.cases_england_mobility_nil": {
+      "geography_level": "country",
+      "geography_id": "E92000001"
+    },
+    "dwp.pip.cases_england_aged_16_to_19": {
+      "geography_level": "country",
+      "geography_id": "E92000001"
+    },
+    "dwp.pip.cases_england_aged_20_to_24": {
+      "geography_level": "country",
+      "geography_id": "E92000001"
+    },
+    "dwp.pip.cases_england_aged_25_to_29": {
+      "geography_level": "country",
+      "geography_id": "E92000001"
+    },
+    "dwp.pip.cases_england_aged_30_to_34": {
+      "geography_level": "country",
+      "geography_id": "E92000001"
+    },
+    "dwp.pip.cases_england_aged_35_to_39": {
+      "geography_level": "country",
+      "geography_id": "E92000001"
+    },
+    "dwp.pip.cases_england_aged_40_to_44": {
+      "geography_level": "country",
+      "geography_id": "E92000001"
+    },
+    "dwp.pip.cases_england_aged_45_to_49": {
+      "geography_level": "country",
+      "geography_id": "E92000001"
+    },
+    "dwp.pip.cases_england_aged_50_to_54": {
+      "geography_level": "country",
+      "geography_id": "E92000001"
+    },
+    "dwp.pip.cases_england_aged_55_to_59": {
+      "geography_level": "country",
+      "geography_id": "E92000001"
+    },
+    "dwp.pip.cases_england_aged_60_to_64": {
+      "geography_level": "country",
+      "geography_id": "E92000001"
+    },
+    "dwp.pip.cases_england_aged_65_to_69": {
+      "geography_level": "country",
+      "geography_id": "E92000001"
+    },
+    "dwp.pip.cases_england_aged_70_to_74": {
+      "geography_level": "country",
+      "geography_id": "E92000001"
+    },
+    "dwp.pip.cases_england_aged_75_and_over": {
+      "geography_level": "country",
+      "geography_id": "E92000001"
+    },
+    "dwp.pip.cases_wales": {
+      "geography_level": "country",
+      "geography_id": "W92000004"
+    },
+    "dwp.pip.cases_wales_daily_living_standard": {
+      "geography_level": "country",
+      "geography_id": "W92000004"
+    },
+    "dwp.pip.cases_wales_daily_living_enhanced": {
+      "geography_level": "country",
+      "geography_id": "W92000004"
+    },
+    "dwp.pip.cases_wales_daily_living_nil": {
+      "geography_level": "country",
+      "geography_id": "W92000004"
+    },
+    "dwp.pip.cases_wales_mobility_standard": {
+      "geography_level": "country",
+      "geography_id": "W92000004"
+    },
+    "dwp.pip.cases_wales_mobility_enhanced": {
+      "geography_level": "country",
+      "geography_id": "W92000004"
+    },
+    "dwp.pip.cases_wales_mobility_nil": {
+      "geography_level": "country",
+      "geography_id": "W92000004"
+    },
+    "dwp.pip.cases_wales_aged_16_to_19": {
+      "geography_level": "country",
+      "geography_id": "W92000004"
+    },
+    "dwp.pip.cases_wales_aged_20_to_24": {
+      "geography_level": "country",
+      "geography_id": "W92000004"
+    },
+    "dwp.pip.cases_wales_aged_25_to_29": {
+      "geography_level": "country",
+      "geography_id": "W92000004"
+    },
+    "dwp.pip.cases_wales_aged_30_to_34": {
+      "geography_level": "country",
+      "geography_id": "W92000004"
+    },
+    "dwp.pip.cases_wales_aged_35_to_39": {
+      "geography_level": "country",
+      "geography_id": "W92000004"
+    },
+    "dwp.pip.cases_wales_aged_40_to_44": {
+      "geography_level": "country",
+      "geography_id": "W92000004"
+    },
+    "dwp.pip.cases_wales_aged_45_to_49": {
+      "geography_level": "country",
+      "geography_id": "W92000004"
+    },
+    "dwp.pip.cases_wales_aged_50_to_54": {
+      "geography_level": "country",
+      "geography_id": "W92000004"
+    },
+    "dwp.pip.cases_wales_aged_55_to_59": {
+      "geography_level": "country",
+      "geography_id": "W92000004"
+    },
+    "dwp.pip.cases_wales_aged_60_to_64": {
+      "geography_level": "country",
+      "geography_id": "W92000004"
+    },
+    "dwp.pip.cases_wales_aged_65_to_69": {
+      "geography_level": "country",
+      "geography_id": "W92000004"
+    },
+    "dwp.pip.cases_wales_aged_70_to_74": {
+      "geography_level": "country",
+      "geography_id": "W92000004"
+    },
+    "dwp.pip.cases_wales_aged_75_and_over": {
+      "geography_level": "country",
+      "geography_id": "W92000004"
+    },
+    "dwp.pip.cases_north_east_daily_living_standard": {
+      "geography_level": "region",
+      "geography_id": "E12000001"
+    },
+    "dwp.pip.cases_north_east_daily_living_enhanced": {
+      "geography_level": "region",
+      "geography_id": "E12000001"
+    },
+    "dwp.pip.cases_north_east_daily_living_nil": {
+      "geography_level": "region",
+      "geography_id": "E12000001"
+    },
+    "dwp.pip.cases_north_east_mobility_standard": {
+      "geography_level": "region",
+      "geography_id": "E12000001"
+    },
+    "dwp.pip.cases_north_east_mobility_enhanced": {
+      "geography_level": "region",
+      "geography_id": "E12000001"
+    },
+    "dwp.pip.cases_north_east_mobility_nil": {
+      "geography_level": "region",
+      "geography_id": "E12000001"
+    },
+    "dwp.pip.cases_north_west_daily_living_standard": {
+      "geography_level": "region",
+      "geography_id": "E12000002"
+    },
+    "dwp.pip.cases_north_west_daily_living_enhanced": {
+      "geography_level": "region",
+      "geography_id": "E12000002"
+    },
+    "dwp.pip.cases_north_west_daily_living_nil": {
+      "geography_level": "region",
+      "geography_id": "E12000002"
+    },
+    "dwp.pip.cases_north_west_mobility_standard": {
+      "geography_level": "region",
+      "geography_id": "E12000002"
+    },
+    "dwp.pip.cases_north_west_mobility_enhanced": {
+      "geography_level": "region",
+      "geography_id": "E12000002"
+    },
+    "dwp.pip.cases_north_west_mobility_nil": {
+      "geography_level": "region",
+      "geography_id": "E12000002"
+    },
+    "dwp.pip.cases_yorkshire_daily_living_standard": {
+      "geography_level": "region",
+      "geography_id": "E12000003"
+    },
+    "dwp.pip.cases_yorkshire_daily_living_enhanced": {
+      "geography_level": "region",
+      "geography_id": "E12000003"
+    },
+    "dwp.pip.cases_yorkshire_daily_living_nil": {
+      "geography_level": "region",
+      "geography_id": "E12000003"
+    },
+    "dwp.pip.cases_yorkshire_mobility_standard": {
+      "geography_level": "region",
+      "geography_id": "E12000003"
+    },
+    "dwp.pip.cases_yorkshire_mobility_enhanced": {
+      "geography_level": "region",
+      "geography_id": "E12000003"
+    },
+    "dwp.pip.cases_yorkshire_mobility_nil": {
+      "geography_level": "region",
+      "geography_id": "E12000003"
+    },
+    "dwp.pip.cases_east_midlands_daily_living_standard": {
+      "geography_level": "region",
+      "geography_id": "E12000004"
+    },
+    "dwp.pip.cases_east_midlands_daily_living_enhanced": {
+      "geography_level": "region",
+      "geography_id": "E12000004"
+    },
+    "dwp.pip.cases_east_midlands_daily_living_nil": {
+      "geography_level": "region",
+      "geography_id": "E12000004"
+    },
+    "dwp.pip.cases_east_midlands_mobility_standard": {
+      "geography_level": "region",
+      "geography_id": "E12000004"
+    },
+    "dwp.pip.cases_east_midlands_mobility_enhanced": {
+      "geography_level": "region",
+      "geography_id": "E12000004"
+    },
+    "dwp.pip.cases_east_midlands_mobility_nil": {
+      "geography_level": "region",
+      "geography_id": "E12000004"
+    },
+    "dwp.pip.cases_west_midlands_daily_living_standard": {
+      "geography_level": "region",
+      "geography_id": "E12000005"
+    },
+    "dwp.pip.cases_west_midlands_daily_living_enhanced": {
+      "geography_level": "region",
+      "geography_id": "E12000005"
+    },
+    "dwp.pip.cases_west_midlands_daily_living_nil": {
+      "geography_level": "region",
+      "geography_id": "E12000005"
+    },
+    "dwp.pip.cases_west_midlands_mobility_standard": {
+      "geography_level": "region",
+      "geography_id": "E12000005"
+    },
+    "dwp.pip.cases_west_midlands_mobility_enhanced": {
+      "geography_level": "region",
+      "geography_id": "E12000005"
+    },
+    "dwp.pip.cases_west_midlands_mobility_nil": {
+      "geography_level": "region",
+      "geography_id": "E12000005"
+    },
+    "dwp.pip.cases_east_of_england_daily_living_standard": {
+      "geography_level": "region",
+      "geography_id": "E12000006"
+    },
+    "dwp.pip.cases_east_of_england_daily_living_enhanced": {
+      "geography_level": "region",
+      "geography_id": "E12000006"
+    },
+    "dwp.pip.cases_east_of_england_daily_living_nil": {
+      "geography_level": "region",
+      "geography_id": "E12000006"
+    },
+    "dwp.pip.cases_east_of_england_mobility_standard": {
+      "geography_level": "region",
+      "geography_id": "E12000006"
+    },
+    "dwp.pip.cases_east_of_england_mobility_enhanced": {
+      "geography_level": "region",
+      "geography_id": "E12000006"
+    },
+    "dwp.pip.cases_east_of_england_mobility_nil": {
+      "geography_level": "region",
+      "geography_id": "E12000006"
+    },
+    "dwp.pip.cases_london_daily_living_standard": {
+      "geography_level": "region",
+      "geography_id": "E12000007"
+    },
+    "dwp.pip.cases_london_daily_living_enhanced": {
+      "geography_level": "region",
+      "geography_id": "E12000007"
+    },
+    "dwp.pip.cases_london_daily_living_nil": {
+      "geography_level": "region",
+      "geography_id": "E12000007"
+    },
+    "dwp.pip.cases_london_mobility_standard": {
+      "geography_level": "region",
+      "geography_id": "E12000007"
+    },
+    "dwp.pip.cases_london_mobility_enhanced": {
+      "geography_level": "region",
+      "geography_id": "E12000007"
+    },
+    "dwp.pip.cases_london_mobility_nil": {
+      "geography_level": "region",
+      "geography_id": "E12000007"
+    },
+    "dwp.pip.cases_south_east_daily_living_standard": {
+      "geography_level": "region",
+      "geography_id": "E12000008"
+    },
+    "dwp.pip.cases_south_east_daily_living_enhanced": {
+      "geography_level": "region",
+      "geography_id": "E12000008"
+    },
+    "dwp.pip.cases_south_east_daily_living_nil": {
+      "geography_level": "region",
+      "geography_id": "E12000008"
+    },
+    "dwp.pip.cases_south_east_mobility_standard": {
+      "geography_level": "region",
+      "geography_id": "E12000008"
+    },
+    "dwp.pip.cases_south_east_mobility_enhanced": {
+      "geography_level": "region",
+      "geography_id": "E12000008"
+    },
+    "dwp.pip.cases_south_east_mobility_nil": {
+      "geography_level": "region",
+      "geography_id": "E12000008"
+    },
+    "dwp.pip.cases_south_west_daily_living_standard": {
+      "geography_level": "region",
+      "geography_id": "E12000009"
+    },
+    "dwp.pip.cases_south_west_daily_living_enhanced": {
+      "geography_level": "region",
+      "geography_id": "E12000009"
+    },
+    "dwp.pip.cases_south_west_daily_living_nil": {
+      "geography_level": "region",
+      "geography_id": "E12000009"
+    },
+    "dwp.pip.cases_south_west_mobility_standard": {
+      "geography_level": "region",
+      "geography_id": "E12000009"
+    },
+    "dwp.pip.cases_south_west_mobility_enhanced": {
+      "geography_level": "region",
+      "geography_id": "E12000009"
+    },
+    "dwp.pip.cases_south_west_mobility_nil": {
+      "geography_level": "region",
+      "geography_id": "E12000009"
+    },
     "dwp.hb.households_pension_age": {
       "geography_level": "country",
       "geography_id": "K03000001"
@@ -5412,6 +5800,10 @@
       "geography_id": "K02000001"
     },
     "ons.occupation.male_elementary_administration_and_service": {
+      "geography_level": "country",
+      "geography_id": "K02000001"
+    },
+    "ons.neet.people_aged_16_to_24": {
       "geography_level": "country",
       "geography_id": "K02000001"
     }
@@ -22503,6 +22895,54 @@
         }
       ]
     },
+    "dwp.uc.people_aged_16_to_24": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "dwp.uc.people_aged_16_to_24",
+          "status": "active",
+          "matched_fact_count_overall": 36,
+          "matched_fact_count_at_or_before_period": 36,
+          "matched_fact_count_in_source_window": 36,
+          "resolved_period": 2025,
+          "resolved_value": 762585.25,
+          "resolved_fact_period": "2025-11",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_ea8ee2e36ab0a4b64af8b01f"
+        }
+      ]
+    },
+    "dwp.uc.people_aged_16_to_21": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "dwp.uc.people_aged_16_to_21",
+          "status": "active",
+          "matched_fact_count_overall": 24,
+          "matched_fact_count_at_or_before_period": 24,
+          "matched_fact_count_in_source_window": 24,
+          "resolved_period": 2025,
+          "resolved_value": 386617.5,
+          "resolved_fact_period": "2025-11",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_d654a4070aa6e09bbb3bdbf0"
+        }
+      ]
+    },
+    "dwp.uc.people_aged_22_to_24": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "dwp.uc.people_aged_22_to_24",
+          "status": "active",
+          "matched_fact_count_overall": 12,
+          "matched_fact_count_at_or_before_period": 12,
+          "matched_fact_count_in_source_window": 12,
+          "resolved_period": 2025,
+          "resolved_value": 375967.75,
+          "resolved_fact_period": "2025-11",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_ea8ee2e36ab0a4b64af8b01f"
+        }
+      ]
+    },
     "obr.universal_credit": {
       "status": "active",
       "candidates": [
@@ -32949,6 +33389,1510 @@
         }
       ]
     },
+    "dwp.pip.cases_england": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "dwp.pip.cases_england",
+          "status": "active",
+          "matched_fact_count_overall": 4,
+          "matched_fact_count_at_or_before_period": 4,
+          "matched_fact_count_in_source_window": 4,
+          "resolved_period": 2025,
+          "resolved_value": 3490214.25,
+          "resolved_fact_period": "2025-10",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_b4319b1aa9c60474f573ec9e"
+        }
+      ]
+    },
+    "dwp.pip.cases_england_daily_living_standard": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "dwp.pip.cases_england_daily_living_standard",
+          "status": "active",
+          "matched_fact_count_overall": 4,
+          "matched_fact_count_at_or_before_period": 4,
+          "matched_fact_count_in_source_window": 4,
+          "resolved_period": 2025,
+          "resolved_value": 1521596.25,
+          "resolved_fact_period": "2025-10",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_51d8b5d97afa067bfbf37c3e"
+        }
+      ]
+    },
+    "dwp.pip.cases_england_daily_living_enhanced": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "dwp.pip.cases_england_daily_living_enhanced",
+          "status": "active",
+          "matched_fact_count_overall": 4,
+          "matched_fact_count_at_or_before_period": 4,
+          "matched_fact_count_in_source_window": 4,
+          "resolved_period": 2025,
+          "resolved_value": 1823860.5,
+          "resolved_fact_period": "2025-10",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_46428c7e44bd30e794ea910b"
+        }
+      ]
+    },
+    "dwp.pip.cases_england_daily_living_nil": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "dwp.pip.cases_england_daily_living_nil",
+          "status": "active",
+          "matched_fact_count_overall": 4,
+          "matched_fact_count_at_or_before_period": 4,
+          "matched_fact_count_in_source_window": 4,
+          "resolved_period": 2025,
+          "resolved_value": 144486.75,
+          "resolved_fact_period": "2025-10",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_dd2614c8d86f9b0a47164973"
+        }
+      ]
+    },
+    "dwp.pip.cases_england_mobility_standard": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "dwp.pip.cases_england_mobility_standard",
+          "status": "active",
+          "matched_fact_count_overall": 4,
+          "matched_fact_count_at_or_before_period": 4,
+          "matched_fact_count_in_source_window": 4,
+          "resolved_period": 2025,
+          "resolved_value": 1011906.25,
+          "resolved_fact_period": "2025-10",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_1cca0ae67b4717f49aa260a1"
+        }
+      ]
+    },
+    "dwp.pip.cases_england_mobility_enhanced": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "dwp.pip.cases_england_mobility_enhanced",
+          "status": "active",
+          "matched_fact_count_overall": 4,
+          "matched_fact_count_at_or_before_period": 4,
+          "matched_fact_count_in_source_window": 4,
+          "resolved_period": 2025,
+          "resolved_value": 1772561.75,
+          "resolved_fact_period": "2025-10",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_069aa64198e5cf2f5d8ec97e"
+        }
+      ]
+    },
+    "dwp.pip.cases_england_mobility_nil": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "dwp.pip.cases_england_mobility_nil",
+          "status": "active",
+          "matched_fact_count_overall": 4,
+          "matched_fact_count_at_or_before_period": 4,
+          "matched_fact_count_in_source_window": 4,
+          "resolved_period": 2025,
+          "resolved_value": 705472.25,
+          "resolved_fact_period": "2025-10",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_4750c65730984218a9b98081"
+        }
+      ]
+    },
+    "dwp.pip.cases_england_aged_16_to_19": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "dwp.pip.cases_england_aged_16_to_19",
+          "status": "active",
+          "matched_fact_count_overall": 4,
+          "matched_fact_count_at_or_before_period": 4,
+          "matched_fact_count_in_source_window": 4,
+          "resolved_period": 2025,
+          "resolved_value": 181800.0,
+          "resolved_fact_period": "2025-10",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_8f6963b54d6f307354ad30b1"
+        }
+      ]
+    },
+    "dwp.pip.cases_england_aged_20_to_24": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "dwp.pip.cases_england_aged_20_to_24",
+          "status": "active",
+          "matched_fact_count_overall": 4,
+          "matched_fact_count_at_or_before_period": 4,
+          "matched_fact_count_in_source_window": 4,
+          "resolved_period": 2025,
+          "resolved_value": 202349.5,
+          "resolved_fact_period": "2025-10",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_17208aede97edb6ccb044cc1"
+        }
+      ]
+    },
+    "dwp.pip.cases_england_aged_25_to_29": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "dwp.pip.cases_england_aged_25_to_29",
+          "status": "active",
+          "matched_fact_count_overall": 4,
+          "matched_fact_count_at_or_before_period": 4,
+          "matched_fact_count_in_source_window": 4,
+          "resolved_period": 2025,
+          "resolved_value": 196997.5,
+          "resolved_fact_period": "2025-10",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_ba19a2dc92248c615c189749"
+        }
+      ]
+    },
+    "dwp.pip.cases_england_aged_30_to_34": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "dwp.pip.cases_england_aged_30_to_34",
+          "status": "active",
+          "matched_fact_count_overall": 4,
+          "matched_fact_count_at_or_before_period": 4,
+          "matched_fact_count_in_source_window": 4,
+          "resolved_period": 2025,
+          "resolved_value": 222042.25,
+          "resolved_fact_period": "2025-10",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_61c24ed989a3854af6e55958"
+        }
+      ]
+    },
+    "dwp.pip.cases_england_aged_35_to_39": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "dwp.pip.cases_england_aged_35_to_39",
+          "status": "active",
+          "matched_fact_count_overall": 4,
+          "matched_fact_count_at_or_before_period": 4,
+          "matched_fact_count_in_source_window": 4,
+          "resolved_period": 2025,
+          "resolved_value": 248251.5,
+          "resolved_fact_period": "2025-10",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_eed03962d17a84079cbfaffc"
+        }
+      ]
+    },
+    "dwp.pip.cases_england_aged_40_to_44": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "dwp.pip.cases_england_aged_40_to_44",
+          "status": "active",
+          "matched_fact_count_overall": 4,
+          "matched_fact_count_at_or_before_period": 4,
+          "matched_fact_count_in_source_window": 4,
+          "resolved_period": 2025,
+          "resolved_value": 262599.5,
+          "resolved_fact_period": "2025-10",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_96faedab545051e00b2103ce"
+        }
+      ]
+    },
+    "dwp.pip.cases_england_aged_45_to_49": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "dwp.pip.cases_england_aged_45_to_49",
+          "status": "active",
+          "matched_fact_count_overall": 4,
+          "matched_fact_count_at_or_before_period": 4,
+          "matched_fact_count_in_source_window": 4,
+          "resolved_period": 2025,
+          "resolved_value": 270020.75,
+          "resolved_fact_period": "2025-10",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_8a22a30fafd3419318b35a43"
+        }
+      ]
+    },
+    "dwp.pip.cases_england_aged_50_to_54": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "dwp.pip.cases_england_aged_50_to_54",
+          "status": "active",
+          "matched_fact_count_overall": 4,
+          "matched_fact_count_at_or_before_period": 4,
+          "matched_fact_count_in_source_window": 4,
+          "resolved_period": 2025,
+          "resolved_value": 343020.75,
+          "resolved_fact_period": "2025-10",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_a39e3a3e2cc3fce2f8f305db"
+        }
+      ]
+    },
+    "dwp.pip.cases_england_aged_55_to_59": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "dwp.pip.cases_england_aged_55_to_59",
+          "status": "active",
+          "matched_fact_count_overall": 4,
+          "matched_fact_count_at_or_before_period": 4,
+          "matched_fact_count_in_source_window": 4,
+          "resolved_period": 2025,
+          "resolved_value": 425461.75,
+          "resolved_fact_period": "2025-10",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_d6ad93959dd6c43607edf13f"
+        }
+      ]
+    },
+    "dwp.pip.cases_england_aged_60_to_64": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "dwp.pip.cases_england_aged_60_to_64",
+          "status": "active",
+          "matched_fact_count_overall": 4,
+          "matched_fact_count_at_or_before_period": 4,
+          "matched_fact_count_in_source_window": 4,
+          "resolved_period": 2025,
+          "resolved_value": 475625.75,
+          "resolved_fact_period": "2025-10",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_8da78c54f224c99c1512c2b4"
+        }
+      ]
+    },
+    "dwp.pip.cases_england_aged_65_to_69": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "dwp.pip.cases_england_aged_65_to_69",
+          "status": "active",
+          "matched_fact_count_overall": 4,
+          "matched_fact_count_at_or_before_period": 4,
+          "matched_fact_count_in_source_window": 4,
+          "resolved_period": 2025,
+          "resolved_value": 395530.5,
+          "resolved_fact_period": "2025-10",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_6315772fce4046676264f96c"
+        }
+      ]
+    },
+    "dwp.pip.cases_england_aged_70_to_74": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "dwp.pip.cases_england_aged_70_to_74",
+          "status": "active",
+          "matched_fact_count_overall": 4,
+          "matched_fact_count_at_or_before_period": 4,
+          "matched_fact_count_in_source_window": 4,
+          "resolved_period": 2025,
+          "resolved_value": 199125.0,
+          "resolved_fact_period": "2025-10",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_f070b62c1a7cbaa45a8a1aa5"
+        }
+      ]
+    },
+    "dwp.pip.cases_england_aged_75_and_over": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "dwp.pip.cases_england_aged_75_and_over",
+          "status": "active",
+          "matched_fact_count_overall": 4,
+          "matched_fact_count_at_or_before_period": 4,
+          "matched_fact_count_in_source_window": 4,
+          "resolved_period": 2025,
+          "resolved_value": 67391.25,
+          "resolved_fact_period": "2025-10",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_7f79fa0fbf04a40e949d8475"
+        }
+      ]
+    },
+    "dwp.pip.cases_wales": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "dwp.pip.cases_wales",
+          "status": "active",
+          "matched_fact_count_overall": 4,
+          "matched_fact_count_at_or_before_period": 4,
+          "matched_fact_count_in_source_window": 4,
+          "resolved_period": 2025,
+          "resolved_value": 281007.75,
+          "resolved_fact_period": "2025-10",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_34292931973e17465482da09"
+        }
+      ]
+    },
+    "dwp.pip.cases_wales_daily_living_standard": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "dwp.pip.cases_wales_daily_living_standard",
+          "status": "active",
+          "matched_fact_count_overall": 4,
+          "matched_fact_count_at_or_before_period": 4,
+          "matched_fact_count_in_source_window": 4,
+          "resolved_period": 2025,
+          "resolved_value": 121530.75,
+          "resolved_fact_period": "2025-10",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_fdd270251c9bbbc99e856f03"
+        }
+      ]
+    },
+    "dwp.pip.cases_wales_daily_living_enhanced": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "dwp.pip.cases_wales_daily_living_enhanced",
+          "status": "active",
+          "matched_fact_count_overall": 4,
+          "matched_fact_count_at_or_before_period": 4,
+          "matched_fact_count_in_source_window": 4,
+          "resolved_period": 2025,
+          "resolved_value": 147586.0,
+          "resolved_fact_period": "2025-10",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_e40cc5fbc67e6bbf4a507112"
+        }
+      ]
+    },
+    "dwp.pip.cases_wales_daily_living_nil": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "dwp.pip.cases_wales_daily_living_nil",
+          "status": "active",
+          "matched_fact_count_overall": 4,
+          "matched_fact_count_at_or_before_period": 4,
+          "matched_fact_count_in_source_window": 4,
+          "resolved_period": 2025,
+          "resolved_value": 11876.75,
+          "resolved_fact_period": "2025-10",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_923c7a505db0a21e22b2d050"
+        }
+      ]
+    },
+    "dwp.pip.cases_wales_mobility_standard": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "dwp.pip.cases_wales_mobility_standard",
+          "status": "active",
+          "matched_fact_count_overall": 4,
+          "matched_fact_count_at_or_before_period": 4,
+          "matched_fact_count_in_source_window": 4,
+          "resolved_period": 2025,
+          "resolved_value": 81147.75,
+          "resolved_fact_period": "2025-10",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_497a4ac6eaa72293e1c5b9cb"
+        }
+      ]
+    },
+    "dwp.pip.cases_wales_mobility_enhanced": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "dwp.pip.cases_wales_mobility_enhanced",
+          "status": "active",
+          "matched_fact_count_overall": 4,
+          "matched_fact_count_at_or_before_period": 4,
+          "matched_fact_count_in_source_window": 4,
+          "resolved_period": 2025,
+          "resolved_value": 159375.25,
+          "resolved_fact_period": "2025-10",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_f7ad88629834715d7dc55d95"
+        }
+      ]
+    },
+    "dwp.pip.cases_wales_mobility_nil": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "dwp.pip.cases_wales_mobility_nil",
+          "status": "active",
+          "matched_fact_count_overall": 4,
+          "matched_fact_count_at_or_before_period": 4,
+          "matched_fact_count_in_source_window": 4,
+          "resolved_period": 2025,
+          "resolved_value": 40469.5,
+          "resolved_fact_period": "2025-10",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_1c922724ad897fb608e11315"
+        }
+      ]
+    },
+    "dwp.pip.cases_wales_aged_16_to_19": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "dwp.pip.cases_wales_aged_16_to_19",
+          "status": "active",
+          "matched_fact_count_overall": 4,
+          "matched_fact_count_at_or_before_period": 4,
+          "matched_fact_count_in_source_window": 4,
+          "resolved_period": 2025,
+          "resolved_value": 10026.0,
+          "resolved_fact_period": "2025-10",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_8f0c02686691df329e44f532"
+        }
+      ]
+    },
+    "dwp.pip.cases_wales_aged_20_to_24": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "dwp.pip.cases_wales_aged_20_to_24",
+          "status": "active",
+          "matched_fact_count_overall": 4,
+          "matched_fact_count_at_or_before_period": 4,
+          "matched_fact_count_in_source_window": 4,
+          "resolved_period": 2025,
+          "resolved_value": 13329.25,
+          "resolved_fact_period": "2025-10",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_b47683a07491d2319fc85a2b"
+        }
+      ]
+    },
+    "dwp.pip.cases_wales_aged_25_to_29": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "dwp.pip.cases_wales_aged_25_to_29",
+          "status": "active",
+          "matched_fact_count_overall": 4,
+          "matched_fact_count_at_or_before_period": 4,
+          "matched_fact_count_in_source_window": 4,
+          "resolved_period": 2025,
+          "resolved_value": 14728.0,
+          "resolved_fact_period": "2025-10",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_c4f8a2489ffc0ab02af63185"
+        }
+      ]
+    },
+    "dwp.pip.cases_wales_aged_30_to_34": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "dwp.pip.cases_wales_aged_30_to_34",
+          "status": "active",
+          "matched_fact_count_overall": 4,
+          "matched_fact_count_at_or_before_period": 4,
+          "matched_fact_count_in_source_window": 4,
+          "resolved_period": 2025,
+          "resolved_value": 17144.5,
+          "resolved_fact_period": "2025-10",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_1d66ffa5973d520703644a50"
+        }
+      ]
+    },
+    "dwp.pip.cases_wales_aged_35_to_39": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "dwp.pip.cases_wales_aged_35_to_39",
+          "status": "active",
+          "matched_fact_count_overall": 4,
+          "matched_fact_count_at_or_before_period": 4,
+          "matched_fact_count_in_source_window": 4,
+          "resolved_period": 2025,
+          "resolved_value": 19438.0,
+          "resolved_fact_period": "2025-10",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_1f0e350db6e287f244f65be3"
+        }
+      ]
+    },
+    "dwp.pip.cases_wales_aged_40_to_44": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "dwp.pip.cases_wales_aged_40_to_44",
+          "status": "active",
+          "matched_fact_count_overall": 4,
+          "matched_fact_count_at_or_before_period": 4,
+          "matched_fact_count_in_source_window": 4,
+          "resolved_period": 2025,
+          "resolved_value": 20118.0,
+          "resolved_fact_period": "2025-10",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_a22cca66e30bdf47b1d8c83e"
+        }
+      ]
+    },
+    "dwp.pip.cases_wales_aged_45_to_49": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "dwp.pip.cases_wales_aged_45_to_49",
+          "status": "active",
+          "matched_fact_count_overall": 4,
+          "matched_fact_count_at_or_before_period": 4,
+          "matched_fact_count_in_source_window": 4,
+          "resolved_period": 2025,
+          "resolved_value": 20384.0,
+          "resolved_fact_period": "2025-10",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_86b791604b3f5dc1ceb122db"
+        }
+      ]
+    },
+    "dwp.pip.cases_wales_aged_50_to_54": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "dwp.pip.cases_wales_aged_50_to_54",
+          "status": "active",
+          "matched_fact_count_overall": 4,
+          "matched_fact_count_at_or_before_period": 4,
+          "matched_fact_count_in_source_window": 4,
+          "resolved_period": 2025,
+          "resolved_value": 26755.25,
+          "resolved_fact_period": "2025-10",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_1a828101f4ac89bf71790a4c"
+        }
+      ]
+    },
+    "dwp.pip.cases_wales_aged_55_to_59": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "dwp.pip.cases_wales_aged_55_to_59",
+          "status": "active",
+          "matched_fact_count_overall": 4,
+          "matched_fact_count_at_or_before_period": 4,
+          "matched_fact_count_in_source_window": 4,
+          "resolved_period": 2025,
+          "resolved_value": 34274.0,
+          "resolved_fact_period": "2025-10",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_7862ff79a2296778f50f4f06"
+        }
+      ]
+    },
+    "dwp.pip.cases_wales_aged_60_to_64": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "dwp.pip.cases_wales_aged_60_to_64",
+          "status": "active",
+          "matched_fact_count_overall": 4,
+          "matched_fact_count_at_or_before_period": 4,
+          "matched_fact_count_in_source_window": 4,
+          "resolved_period": 2025,
+          "resolved_value": 40608.5,
+          "resolved_fact_period": "2025-10",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_3b679b41789a40bfda4a1af3"
+        }
+      ]
+    },
+    "dwp.pip.cases_wales_aged_65_to_69": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "dwp.pip.cases_wales_aged_65_to_69",
+          "status": "active",
+          "matched_fact_count_overall": 4,
+          "matched_fact_count_at_or_before_period": 4,
+          "matched_fact_count_in_source_window": 4,
+          "resolved_period": 2025,
+          "resolved_value": 35969.75,
+          "resolved_fact_period": "2025-10",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_5f9eb468b18e9ecfed3c441a"
+        }
+      ]
+    },
+    "dwp.pip.cases_wales_aged_70_to_74": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "dwp.pip.cases_wales_aged_70_to_74",
+          "status": "active",
+          "matched_fact_count_overall": 4,
+          "matched_fact_count_at_or_before_period": 4,
+          "matched_fact_count_in_source_window": 4,
+          "resolved_period": 2025,
+          "resolved_value": 20931.75,
+          "resolved_fact_period": "2025-10",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_a1ee15fe25957c0e125afdc4"
+        }
+      ]
+    },
+    "dwp.pip.cases_wales_aged_75_and_over": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "dwp.pip.cases_wales_aged_75_and_over",
+          "status": "active",
+          "matched_fact_count_overall": 4,
+          "matched_fact_count_at_or_before_period": 4,
+          "matched_fact_count_in_source_window": 4,
+          "resolved_period": 2025,
+          "resolved_value": 7299.25,
+          "resolved_fact_period": "2025-10",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_7e8a0dfb36aa432cb822cbe7"
+        }
+      ]
+    },
+    "dwp.pip.cases_north_east_daily_living_standard": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "dwp.pip.cases_north_east_daily_living_standard",
+          "status": "active",
+          "matched_fact_count_overall": 4,
+          "matched_fact_count_at_or_before_period": 4,
+          "matched_fact_count_in_source_window": 4,
+          "resolved_period": 2025,
+          "resolved_value": 107983.0,
+          "resolved_fact_period": "2025-10",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_976790989ddd5a5e494df180"
+        }
+      ]
+    },
+    "dwp.pip.cases_north_east_daily_living_enhanced": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "dwp.pip.cases_north_east_daily_living_enhanced",
+          "status": "active",
+          "matched_fact_count_overall": 4,
+          "matched_fact_count_at_or_before_period": 4,
+          "matched_fact_count_in_source_window": 4,
+          "resolved_period": 2025,
+          "resolved_value": 126445.25,
+          "resolved_fact_period": "2025-10",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_9d63f7658343c499c6282648"
+        }
+      ]
+    },
+    "dwp.pip.cases_north_east_daily_living_nil": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "dwp.pip.cases_north_east_daily_living_nil",
+          "status": "active",
+          "matched_fact_count_overall": 4,
+          "matched_fact_count_at_or_before_period": 4,
+          "matched_fact_count_in_source_window": 4,
+          "resolved_period": 2025,
+          "resolved_value": 9630.25,
+          "resolved_fact_period": "2025-10",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_9019ad816a73ea16892c3832"
+        }
+      ]
+    },
+    "dwp.pip.cases_north_east_mobility_standard": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "dwp.pip.cases_north_east_mobility_standard",
+          "status": "active",
+          "matched_fact_count_overall": 4,
+          "matched_fact_count_at_or_before_period": 4,
+          "matched_fact_count_in_source_window": 4,
+          "resolved_period": 2025,
+          "resolved_value": 73099.0,
+          "resolved_fact_period": "2025-10",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_82a6894767a0a61197f3a740"
+        }
+      ]
+    },
+    "dwp.pip.cases_north_east_mobility_enhanced": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "dwp.pip.cases_north_east_mobility_enhanced",
+          "status": "active",
+          "matched_fact_count_overall": 4,
+          "matched_fact_count_at_or_before_period": 4,
+          "matched_fact_count_in_source_window": 4,
+          "resolved_period": 2025,
+          "resolved_value": 116531.25,
+          "resolved_fact_period": "2025-10",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_581d0b46022eee07edb1c5ac"
+        }
+      ]
+    },
+    "dwp.pip.cases_north_east_mobility_nil": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "dwp.pip.cases_north_east_mobility_nil",
+          "status": "active",
+          "matched_fact_count_overall": 4,
+          "matched_fact_count_at_or_before_period": 4,
+          "matched_fact_count_in_source_window": 4,
+          "resolved_period": 2025,
+          "resolved_value": 54430.0,
+          "resolved_fact_period": "2025-10",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_7ca37f504b6195fd2f344035"
+        }
+      ]
+    },
+    "dwp.pip.cases_north_west_daily_living_standard": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "dwp.pip.cases_north_west_daily_living_standard",
+          "status": "active",
+          "matched_fact_count_overall": 4,
+          "matched_fact_count_at_or_before_period": 4,
+          "matched_fact_count_in_source_window": 4,
+          "resolved_period": 2025,
+          "resolved_value": 265405.25,
+          "resolved_fact_period": "2025-10",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_1b13b2e60e5cf1787862f0ec"
+        }
+      ]
+    },
+    "dwp.pip.cases_north_west_daily_living_enhanced": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "dwp.pip.cases_north_west_daily_living_enhanced",
+          "status": "active",
+          "matched_fact_count_overall": 4,
+          "matched_fact_count_at_or_before_period": 4,
+          "matched_fact_count_in_source_window": 4,
+          "resolved_period": 2025,
+          "resolved_value": 310037.0,
+          "resolved_fact_period": "2025-10",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_d20a3703850e5e6b7a52256c"
+        }
+      ]
+    },
+    "dwp.pip.cases_north_west_daily_living_nil": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "dwp.pip.cases_north_west_daily_living_nil",
+          "status": "active",
+          "matched_fact_count_overall": 4,
+          "matched_fact_count_at_or_before_period": 4,
+          "matched_fact_count_in_source_window": 4,
+          "resolved_period": 2025,
+          "resolved_value": 22476.0,
+          "resolved_fact_period": "2025-10",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_7c283430af1f23dfbf0d1458"
+        }
+      ]
+    },
+    "dwp.pip.cases_north_west_mobility_standard": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "dwp.pip.cases_north_west_mobility_standard",
+          "status": "active",
+          "matched_fact_count_overall": 4,
+          "matched_fact_count_at_or_before_period": 4,
+          "matched_fact_count_in_source_window": 4,
+          "resolved_period": 2025,
+          "resolved_value": 178406.0,
+          "resolved_fact_period": "2025-10",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_4b61d356d1e7d4aad7367e54"
+        }
+      ]
+    },
+    "dwp.pip.cases_north_west_mobility_enhanced": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "dwp.pip.cases_north_west_mobility_enhanced",
+          "status": "active",
+          "matched_fact_count_overall": 4,
+          "matched_fact_count_at_or_before_period": 4,
+          "matched_fact_count_in_source_window": 4,
+          "resolved_period": 2025,
+          "resolved_value": 291581.25,
+          "resolved_fact_period": "2025-10",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_b120891c2848f777bfdf8937"
+        }
+      ]
+    },
+    "dwp.pip.cases_north_west_mobility_nil": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "dwp.pip.cases_north_west_mobility_nil",
+          "status": "active",
+          "matched_fact_count_overall": 4,
+          "matched_fact_count_at_or_before_period": 4,
+          "matched_fact_count_in_source_window": 4,
+          "resolved_period": 2025,
+          "resolved_value": 127927.75,
+          "resolved_fact_period": "2025-10",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_0c54f783f338aefc9bbbd5c1"
+        }
+      ]
+    },
+    "dwp.pip.cases_yorkshire_daily_living_standard": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "dwp.pip.cases_yorkshire_daily_living_standard",
+          "status": "active",
+          "matched_fact_count_overall": 4,
+          "matched_fact_count_at_or_before_period": 4,
+          "matched_fact_count_in_source_window": 4,
+          "resolved_period": 2025,
+          "resolved_value": 176263.75,
+          "resolved_fact_period": "2025-10",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_fff0b41fccede72111b056ac"
+        }
+      ]
+    },
+    "dwp.pip.cases_yorkshire_daily_living_enhanced": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "dwp.pip.cases_yorkshire_daily_living_enhanced",
+          "status": "active",
+          "matched_fact_count_overall": 4,
+          "matched_fact_count_at_or_before_period": 4,
+          "matched_fact_count_in_source_window": 4,
+          "resolved_period": 2025,
+          "resolved_value": 202045.75,
+          "resolved_fact_period": "2025-10",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_f4a15c41d68fe25758c29f5d"
+        }
+      ]
+    },
+    "dwp.pip.cases_yorkshire_daily_living_nil": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "dwp.pip.cases_yorkshire_daily_living_nil",
+          "status": "active",
+          "matched_fact_count_overall": 4,
+          "matched_fact_count_at_or_before_period": 4,
+          "matched_fact_count_in_source_window": 4,
+          "resolved_period": 2025,
+          "resolved_value": 16229.0,
+          "resolved_fact_period": "2025-10",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_80e0f253fb6c7c575d0eb660"
+        }
+      ]
+    },
+    "dwp.pip.cases_yorkshire_mobility_standard": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "dwp.pip.cases_yorkshire_mobility_standard",
+          "status": "active",
+          "matched_fact_count_overall": 4,
+          "matched_fact_count_at_or_before_period": 4,
+          "matched_fact_count_in_source_window": 4,
+          "resolved_period": 2025,
+          "resolved_value": 117369.75,
+          "resolved_fact_period": "2025-10",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_c1ab11d43575904e564a905b"
+        }
+      ]
+    },
+    "dwp.pip.cases_yorkshire_mobility_enhanced": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "dwp.pip.cases_yorkshire_mobility_enhanced",
+          "status": "active",
+          "matched_fact_count_overall": 4,
+          "matched_fact_count_at_or_before_period": 4,
+          "matched_fact_count_in_source_window": 4,
+          "resolved_period": 2025,
+          "resolved_value": 194275.75,
+          "resolved_fact_period": "2025-10",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_4b4a57e778582c1df9717dc9"
+        }
+      ]
+    },
+    "dwp.pip.cases_yorkshire_mobility_nil": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "dwp.pip.cases_yorkshire_mobility_nil",
+          "status": "active",
+          "matched_fact_count_overall": 4,
+          "matched_fact_count_at_or_before_period": 4,
+          "matched_fact_count_in_source_window": 4,
+          "resolved_period": 2025,
+          "resolved_value": 82894.0,
+          "resolved_fact_period": "2025-10",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_38b9e3d338a0d6ce382f6250"
+        }
+      ]
+    },
+    "dwp.pip.cases_east_midlands_daily_living_standard": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "dwp.pip.cases_east_midlands_daily_living_standard",
+          "status": "active",
+          "matched_fact_count_overall": 4,
+          "matched_fact_count_at_or_before_period": 4,
+          "matched_fact_count_in_source_window": 4,
+          "resolved_period": 2025,
+          "resolved_value": 136988.75,
+          "resolved_fact_period": "2025-10",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_235bc8cd29842770d79f5bca"
+        }
+      ]
+    },
+    "dwp.pip.cases_east_midlands_daily_living_enhanced": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "dwp.pip.cases_east_midlands_daily_living_enhanced",
+          "status": "active",
+          "matched_fact_count_overall": 4,
+          "matched_fact_count_at_or_before_period": 4,
+          "matched_fact_count_in_source_window": 4,
+          "resolved_period": 2025,
+          "resolved_value": 165128.75,
+          "resolved_fact_period": "2025-10",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_f82aef680e96893e57afe0d7"
+        }
+      ]
+    },
+    "dwp.pip.cases_east_midlands_daily_living_nil": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "dwp.pip.cases_east_midlands_daily_living_nil",
+          "status": "active",
+          "matched_fact_count_overall": 4,
+          "matched_fact_count_at_or_before_period": 4,
+          "matched_fact_count_in_source_window": 4,
+          "resolved_period": 2025,
+          "resolved_value": 15460.0,
+          "resolved_fact_period": "2025-10",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_75727e837d9e61b0ecdbd1fe"
+        }
+      ]
+    },
+    "dwp.pip.cases_east_midlands_mobility_standard": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "dwp.pip.cases_east_midlands_mobility_standard",
+          "status": "active",
+          "matched_fact_count_overall": 4,
+          "matched_fact_count_at_or_before_period": 4,
+          "matched_fact_count_in_source_window": 4,
+          "resolved_period": 2025,
+          "resolved_value": 92414.75,
+          "resolved_fact_period": "2025-10",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_589f0d21416e40c513d53a99"
+        }
+      ]
+    },
+    "dwp.pip.cases_east_midlands_mobility_enhanced": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "dwp.pip.cases_east_midlands_mobility_enhanced",
+          "status": "active",
+          "matched_fact_count_overall": 4,
+          "matched_fact_count_at_or_before_period": 4,
+          "matched_fact_count_in_source_window": 4,
+          "resolved_period": 2025,
+          "resolved_value": 177650.0,
+          "resolved_fact_period": "2025-10",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_bee74d1d5bd756af3b062189"
+        }
+      ]
+    },
+    "dwp.pip.cases_east_midlands_mobility_nil": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "dwp.pip.cases_east_midlands_mobility_nil",
+          "status": "active",
+          "matched_fact_count_overall": 4,
+          "matched_fact_count_at_or_before_period": 4,
+          "matched_fact_count_in_source_window": 4,
+          "resolved_period": 2025,
+          "resolved_value": 47511.75,
+          "resolved_fact_period": "2025-10",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_4e8a8656cc211676b943d8ab"
+        }
+      ]
+    },
+    "dwp.pip.cases_west_midlands_daily_living_standard": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "dwp.pip.cases_west_midlands_daily_living_standard",
+          "status": "active",
+          "matched_fact_count_overall": 4,
+          "matched_fact_count_at_or_before_period": 4,
+          "matched_fact_count_in_source_window": 4,
+          "resolved_period": 2025,
+          "resolved_value": 173617.75,
+          "resolved_fact_period": "2025-10",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_49a2c8c5a353c77954924491"
+        }
+      ]
+    },
+    "dwp.pip.cases_west_midlands_daily_living_enhanced": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "dwp.pip.cases_west_midlands_daily_living_enhanced",
+          "status": "active",
+          "matched_fact_count_overall": 4,
+          "matched_fact_count_at_or_before_period": 4,
+          "matched_fact_count_in_source_window": 4,
+          "resolved_period": 2025,
+          "resolved_value": 207791.0,
+          "resolved_fact_period": "2025-10",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_2e60767968528298d266d13d"
+        }
+      ]
+    },
+    "dwp.pip.cases_west_midlands_daily_living_nil": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "dwp.pip.cases_west_midlands_daily_living_nil",
+          "status": "active",
+          "matched_fact_count_overall": 4,
+          "matched_fact_count_at_or_before_period": 4,
+          "matched_fact_count_in_source_window": 4,
+          "resolved_period": 2025,
+          "resolved_value": 20030.75,
+          "resolved_fact_period": "2025-10",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_871312e64815a976a8a47a8a"
+        }
+      ]
+    },
+    "dwp.pip.cases_west_midlands_mobility_standard": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "dwp.pip.cases_west_midlands_mobility_standard",
+          "status": "active",
+          "matched_fact_count_overall": 4,
+          "matched_fact_count_at_or_before_period": 4,
+          "matched_fact_count_in_source_window": 4,
+          "resolved_period": 2025,
+          "resolved_value": 115644.75,
+          "resolved_fact_period": "2025-10",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_e36b3440ddcb3249ac6b05ca"
+        }
+      ]
+    },
+    "dwp.pip.cases_west_midlands_mobility_enhanced": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "dwp.pip.cases_west_midlands_mobility_enhanced",
+          "status": "active",
+          "matched_fact_count_overall": 4,
+          "matched_fact_count_at_or_before_period": 4,
+          "matched_fact_count_in_source_window": 4,
+          "resolved_period": 2025,
+          "resolved_value": 227121.5,
+          "resolved_fact_period": "2025-10",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_e3f2772e9f66276b81b51be7"
+        }
+      ]
+    },
+    "dwp.pip.cases_west_midlands_mobility_nil": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "dwp.pip.cases_west_midlands_mobility_nil",
+          "status": "active",
+          "matched_fact_count_overall": 4,
+          "matched_fact_count_at_or_before_period": 4,
+          "matched_fact_count_in_source_window": 4,
+          "resolved_period": 2025,
+          "resolved_value": 58672.0,
+          "resolved_fact_period": "2025-10",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_c37e9324b5b1ffa847c8bb72"
+        }
+      ]
+    },
+    "dwp.pip.cases_east_of_england_daily_living_standard": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "dwp.pip.cases_east_of_england_daily_living_standard",
+          "status": "active",
+          "matched_fact_count_overall": 4,
+          "matched_fact_count_at_or_before_period": 4,
+          "matched_fact_count_in_source_window": 4,
+          "resolved_period": 2025,
+          "resolved_value": 146411.75,
+          "resolved_fact_period": "2025-10",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_da8a65ea10199cf623f1979a"
+        }
+      ]
+    },
+    "dwp.pip.cases_east_of_england_daily_living_enhanced": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "dwp.pip.cases_east_of_england_daily_living_enhanced",
+          "status": "active",
+          "matched_fact_count_overall": 4,
+          "matched_fact_count_at_or_before_period": 4,
+          "matched_fact_count_in_source_window": 4,
+          "resolved_period": 2025,
+          "resolved_value": 170988.75,
+          "resolved_fact_period": "2025-10",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_5917ccc96f79f9fda042f9ac"
+        }
+      ]
+    },
+    "dwp.pip.cases_east_of_england_daily_living_nil": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "dwp.pip.cases_east_of_england_daily_living_nil",
+          "status": "active",
+          "matched_fact_count_overall": 4,
+          "matched_fact_count_at_or_before_period": 4,
+          "matched_fact_count_in_source_window": 4,
+          "resolved_period": 2025,
+          "resolved_value": 14423.75,
+          "resolved_fact_period": "2025-10",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_73b3bc73472115ab58a3fd09"
+        }
+      ]
+    },
+    "dwp.pip.cases_east_of_england_mobility_standard": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "dwp.pip.cases_east_of_england_mobility_standard",
+          "status": "active",
+          "matched_fact_count_overall": 4,
+          "matched_fact_count_at_or_before_period": 4,
+          "matched_fact_count_in_source_window": 4,
+          "resolved_period": 2025,
+          "resolved_value": 95795.0,
+          "resolved_fact_period": "2025-10",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_33c3544e2c99781a25e8122a"
+        }
+      ]
+    },
+    "dwp.pip.cases_east_of_england_mobility_enhanced": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "dwp.pip.cases_east_of_england_mobility_enhanced",
+          "status": "active",
+          "matched_fact_count_overall": 4,
+          "matched_fact_count_at_or_before_period": 4,
+          "matched_fact_count_in_source_window": 4,
+          "resolved_period": 2025,
+          "resolved_value": 166776.0,
+          "resolved_fact_period": "2025-10",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_aca79111e1ccbd110f0fde3e"
+        }
+      ]
+    },
+    "dwp.pip.cases_east_of_england_mobility_nil": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "dwp.pip.cases_east_of_england_mobility_nil",
+          "status": "active",
+          "matched_fact_count_overall": 4,
+          "matched_fact_count_at_or_before_period": 4,
+          "matched_fact_count_in_source_window": 4,
+          "resolved_period": 2025,
+          "resolved_value": 69254.75,
+          "resolved_fact_period": "2025-10",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_d9520b26f4c2646dedb88f39"
+        }
+      ]
+    },
+    "dwp.pip.cases_london_daily_living_standard": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "dwp.pip.cases_london_daily_living_standard",
+          "status": "active",
+          "matched_fact_count_overall": 4,
+          "matched_fact_count_at_or_before_period": 4,
+          "matched_fact_count_in_source_window": 4,
+          "resolved_period": 2025,
+          "resolved_value": 193466.75,
+          "resolved_fact_period": "2025-10",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_3f636a620a9e759512f7fb5c"
+        }
+      ]
+    },
+    "dwp.pip.cases_london_daily_living_enhanced": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "dwp.pip.cases_london_daily_living_enhanced",
+          "status": "active",
+          "matched_fact_count_overall": 4,
+          "matched_fact_count_at_or_before_period": 4,
+          "matched_fact_count_in_source_window": 4,
+          "resolved_period": 2025,
+          "resolved_value": 240339.25,
+          "resolved_fact_period": "2025-10",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_5aec9fb7c2d3b4f212a741fa"
+        }
+      ]
+    },
+    "dwp.pip.cases_london_daily_living_nil": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "dwp.pip.cases_london_daily_living_nil",
+          "status": "active",
+          "matched_fact_count_overall": 4,
+          "matched_fact_count_at_or_before_period": 4,
+          "matched_fact_count_in_source_window": 4,
+          "resolved_period": 2025,
+          "resolved_value": 15032.25,
+          "resolved_fact_period": "2025-10",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_d03f9e65eb268246c020be14"
+        }
+      ]
+    },
+    "dwp.pip.cases_london_mobility_standard": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "dwp.pip.cases_london_mobility_standard",
+          "status": "active",
+          "matched_fact_count_overall": 4,
+          "matched_fact_count_at_or_before_period": 4,
+          "matched_fact_count_in_source_window": 4,
+          "resolved_period": 2025,
+          "resolved_value": 121805.5,
+          "resolved_fact_period": "2025-10",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_6c944ff55a2c1db1ca8a4ae5"
+        }
+      ]
+    },
+    "dwp.pip.cases_london_mobility_enhanced": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "dwp.pip.cases_london_mobility_enhanced",
+          "status": "active",
+          "matched_fact_count_overall": 4,
+          "matched_fact_count_at_or_before_period": 4,
+          "matched_fact_count_in_source_window": 4,
+          "resolved_period": 2025,
+          "resolved_value": 222332.5,
+          "resolved_fact_period": "2025-10",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_bbd4c3f860f9126891e8200f"
+        }
+      ]
+    },
+    "dwp.pip.cases_london_mobility_nil": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "dwp.pip.cases_london_mobility_nil",
+          "status": "active",
+          "matched_fact_count_overall": 4,
+          "matched_fact_count_at_or_before_period": 4,
+          "matched_fact_count_in_source_window": 4,
+          "resolved_period": 2025,
+          "resolved_value": 104702.5,
+          "resolved_fact_period": "2025-10",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_f1615ce96858bf9a4a40ecbf"
+        }
+      ]
+    },
+    "dwp.pip.cases_south_east_daily_living_standard": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "dwp.pip.cases_south_east_daily_living_standard",
+          "status": "active",
+          "matched_fact_count_overall": 4,
+          "matched_fact_count_at_or_before_period": 4,
+          "matched_fact_count_in_source_window": 4,
+          "resolved_period": 2025,
+          "resolved_value": 185335.0,
+          "resolved_fact_period": "2025-10",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_dab00bf5d301827d66f6a23d"
+        }
+      ]
+    },
+    "dwp.pip.cases_south_east_daily_living_enhanced": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "dwp.pip.cases_south_east_daily_living_enhanced",
+          "status": "active",
+          "matched_fact_count_overall": 4,
+          "matched_fact_count_at_or_before_period": 4,
+          "matched_fact_count_in_source_window": 4,
+          "resolved_period": 2025,
+          "resolved_value": 229595.75,
+          "resolved_fact_period": "2025-10",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_4a1924821295d65a9aedc12b"
+        }
+      ]
+    },
+    "dwp.pip.cases_south_east_daily_living_nil": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "dwp.pip.cases_south_east_daily_living_nil",
+          "status": "active",
+          "matched_fact_count_overall": 4,
+          "matched_fact_count_at_or_before_period": 4,
+          "matched_fact_count_in_source_window": 4,
+          "resolved_period": 2025,
+          "resolved_value": 18222.75,
+          "resolved_fact_period": "2025-10",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_5f8c41eda76679978f808fe7"
+        }
+      ]
+    },
+    "dwp.pip.cases_south_east_mobility_standard": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "dwp.pip.cases_south_east_mobility_standard",
+          "status": "active",
+          "matched_fact_count_overall": 4,
+          "matched_fact_count_at_or_before_period": 4,
+          "matched_fact_count_in_source_window": 4,
+          "resolved_period": 2025,
+          "resolved_value": 125730.0,
+          "resolved_fact_period": "2025-10",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_ab8db96d11d193cfa8cff342"
+        }
+      ]
+    },
+    "dwp.pip.cases_south_east_mobility_enhanced": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "dwp.pip.cases_south_east_mobility_enhanced",
+          "status": "active",
+          "matched_fact_count_overall": 4,
+          "matched_fact_count_at_or_before_period": 4,
+          "matched_fact_count_in_source_window": 4,
+          "resolved_period": 2025,
+          "resolved_value": 215238.75,
+          "resolved_fact_period": "2025-10",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_5122f1fb086b8d0c5946e84b"
+        }
+      ]
+    },
+    "dwp.pip.cases_south_east_mobility_nil": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "dwp.pip.cases_south_east_mobility_nil",
+          "status": "active",
+          "matched_fact_count_overall": 4,
+          "matched_fact_count_at_or_before_period": 4,
+          "matched_fact_count_in_source_window": 4,
+          "resolved_period": 2025,
+          "resolved_value": 92183.25,
+          "resolved_fact_period": "2025-10",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_8b81e62c19728965ed26f3df"
+        }
+      ]
+    },
+    "dwp.pip.cases_south_west_daily_living_standard": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "dwp.pip.cases_south_west_daily_living_standard",
+          "status": "active",
+          "matched_fact_count_overall": 4,
+          "matched_fact_count_at_or_before_period": 4,
+          "matched_fact_count_in_source_window": 4,
+          "resolved_period": 2025,
+          "resolved_value": 136125.25,
+          "resolved_fact_period": "2025-10",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_eb472774498c8555fe9c6f9e"
+        }
+      ]
+    },
+    "dwp.pip.cases_south_west_daily_living_enhanced": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "dwp.pip.cases_south_west_daily_living_enhanced",
+          "status": "active",
+          "matched_fact_count_overall": 4,
+          "matched_fact_count_at_or_before_period": 4,
+          "matched_fact_count_in_source_window": 4,
+          "resolved_period": 2025,
+          "resolved_value": 171489.0,
+          "resolved_fact_period": "2025-10",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_025ef7892d61dd0ad9a5f621"
+        }
+      ]
+    },
+    "dwp.pip.cases_south_west_daily_living_nil": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "dwp.pip.cases_south_west_daily_living_nil",
+          "status": "active",
+          "matched_fact_count_overall": 4,
+          "matched_fact_count_at_or_before_period": 4,
+          "matched_fact_count_in_source_window": 4,
+          "resolved_period": 2025,
+          "resolved_value": 12983.0,
+          "resolved_fact_period": "2025-10",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_88269d9407528c0be7232718"
+        }
+      ]
+    },
+    "dwp.pip.cases_south_west_mobility_standard": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "dwp.pip.cases_south_west_mobility_standard",
+          "status": "active",
+          "matched_fact_count_overall": 4,
+          "matched_fact_count_at_or_before_period": 4,
+          "matched_fact_count_in_source_window": 4,
+          "resolved_period": 2025,
+          "resolved_value": 91645.0,
+          "resolved_fact_period": "2025-10",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_36c336bccc44488bda670264"
+        }
+      ]
+    },
+    "dwp.pip.cases_south_west_mobility_enhanced": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "dwp.pip.cases_south_west_mobility_enhanced",
+          "status": "active",
+          "matched_fact_count_overall": 4,
+          "matched_fact_count_at_or_before_period": 4,
+          "matched_fact_count_in_source_window": 4,
+          "resolved_period": 2025,
+          "resolved_value": 161057.0,
+          "resolved_fact_period": "2025-10",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_4dbf6141a7a1e21babcb3727"
+        }
+      ]
+    },
+    "dwp.pip.cases_south_west_mobility_nil": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "dwp.pip.cases_south_west_mobility_nil",
+          "status": "active",
+          "matched_fact_count_overall": 4,
+          "matched_fact_count_at_or_before_period": 4,
+          "matched_fact_count_in_source_window": 4,
+          "resolved_period": 2025,
+          "resolved_value": 67894.5,
+          "resolved_fact_period": "2025-10",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_3e2278ccb981acd0582e1c9d"
+        }
+      ]
+    },
     "dwp.hb.households_pension_age": {
       "status": "active",
       "candidates": [
@@ -35683,6 +37627,22 @@
           "resolved_value": 1267000.0,
           "resolved_fact_period": "2025",
           "resolved_fact_key": "ledger_aggregate_fact_v2_8665de57144d01d0e47cdeef"
+        }
+      ]
+    },
+    "ons.neet.people_aged_16_to_24": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "ons.neet.people_aged_16_to_24",
+          "status": "active",
+          "matched_fact_count_overall": 4,
+          "matched_fact_count_at_or_before_period": 0,
+          "matched_fact_count_in_source_window": 4,
+          "resolved_period": 2025,
+          "resolved_value": 943415.518223629,
+          "resolved_fact_period": "2025-Q4",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_5f4d94ba40c6e45b062995ee"
         }
       ]
     }

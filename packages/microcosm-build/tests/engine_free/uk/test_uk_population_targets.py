@@ -1387,7 +1387,8 @@ def test_uc_gb_bindings_match_the_committed_source_geography_and_finite_bands():
         if row["metadata"]["contract_target_id"].startswith("dwp.uc.")
         and row["ledger_selector"]["geography_id"] == "K03000001"
     }
-    assert len(gb_ids) == 35
+    # Y4's three people-by-age rows join the 35 benefit-unit rows.
+    assert len(gb_ids) == 38
     for target_id in gb_ids:
         binding = _target_by_id(resource, target_id)["bindings"]["policyengine"]
         geographic = [

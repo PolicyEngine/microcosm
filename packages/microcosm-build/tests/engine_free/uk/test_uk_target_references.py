@@ -136,8 +136,12 @@ _TEST_PATHS = paths_for("microcosm-build")
 # sub-major group and sex, 50 UK rows; the November event data: PRIS 2026's
 # Scottish landlords' receipts and expenses, measured diagnostics, and ONS's
 # single years 16 to 24 by sex in place of the 16-17, 18-19 and 20-24 sex
-# bands (eighteen rows for six)
-ACTIVE_REFERENCE_COUNT = 1599
+# bands (eighteen rows for six); HMRC's Scottish NSND outturn and taxpayers
+# (S4), measured diagnostics; and PR2's lane Q diagnostics: DWP's people on
+# UC aged 16 to 24, 16 to 21 and 22 to 24 (Y4), 94 DWP PIP cases rows for
+# England, Wales and the English regions (P3), and ONS's NEET people aged 16
+# to 24 on a quarterly window (Y3), all held out of the solve
+ACTIVE_REFERENCE_COUNT = 1697
 REGION_TIER_LEVEL = {code: level for level, code in UK_REGION_TIER}
 
 
@@ -389,6 +393,7 @@ def test_uk_target_references_follow_contract_derivation_rules() -> None:
         "monthly_window_average",
         "monthly_window_count_x_mean",
         "monthly_window_sum_average",
+        "quarterly_window_average",
         "rolled_forward_by_ratio",
         "scaled_by_ratio",
     ]
@@ -1198,11 +1203,18 @@ def test_prefix_geography_pins_carry_scotgov_and_england_scoped_slc_families() -
     for target_id in sorted(declared_scotland):
         assert membership["geography_pins"][target_id]["geography_id"] == "S92000003"
         assert membership["targets"][target_id]["status"] == "active"
-    assert not [
+    # P3's held-out PIP rows: every one active, on the geography its id names.
+    membership_pip = {
         target_id
         for target_id in membership["targets"]
         if target_id.startswith("dwp.pip.")
-    ]
+    }
+    assert membership_pip == pip_ids
+    for target_id in sorted(membership_pip):
+        assert membership["targets"][target_id]["status"] == "active"
+        assert membership["geography_pins"][target_id]["geography_id"] == pip_area(
+            target_id
+        )
 
 
 #: microcosm#1095 D3, María's ruling of 2026-10-29.

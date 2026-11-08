@@ -329,6 +329,100 @@
       "dwp.pension_credit.benefit_units_guarantee_only_single": "dwp.pension_credit",
       "dwp.pension_credit.benefit_units_savings_only_couple": "dwp.pension_credit",
       "dwp.pension_credit.benefit_units_savings_only_single": "dwp.pension_credit",
+      "dwp.pip.cases_east_midlands_daily_living_enhanced": "dwp.pip",
+      "dwp.pip.cases_east_midlands_daily_living_nil": "dwp.pip",
+      "dwp.pip.cases_east_midlands_daily_living_standard": "dwp.pip",
+      "dwp.pip.cases_east_midlands_mobility_enhanced": "dwp.pip",
+      "dwp.pip.cases_east_midlands_mobility_nil": "dwp.pip",
+      "dwp.pip.cases_east_midlands_mobility_standard": "dwp.pip",
+      "dwp.pip.cases_east_of_england_daily_living_enhanced": "dwp.pip",
+      "dwp.pip.cases_east_of_england_daily_living_nil": "dwp.pip",
+      "dwp.pip.cases_east_of_england_daily_living_standard": "dwp.pip",
+      "dwp.pip.cases_east_of_england_mobility_enhanced": "dwp.pip",
+      "dwp.pip.cases_east_of_england_mobility_nil": "dwp.pip",
+      "dwp.pip.cases_east_of_england_mobility_standard": "dwp.pip",
+      "dwp.pip.cases_england": "dwp.pip",
+      "dwp.pip.cases_england_aged_16_to_19": "dwp.pip",
+      "dwp.pip.cases_england_aged_20_to_24": "dwp.pip",
+      "dwp.pip.cases_england_aged_25_to_29": "dwp.pip",
+      "dwp.pip.cases_england_aged_30_to_34": "dwp.pip",
+      "dwp.pip.cases_england_aged_35_to_39": "dwp.pip",
+      "dwp.pip.cases_england_aged_40_to_44": "dwp.pip",
+      "dwp.pip.cases_england_aged_45_to_49": "dwp.pip",
+      "dwp.pip.cases_england_aged_50_to_54": "dwp.pip",
+      "dwp.pip.cases_england_aged_55_to_59": "dwp.pip",
+      "dwp.pip.cases_england_aged_60_to_64": "dwp.pip",
+      "dwp.pip.cases_england_aged_65_to_69": "dwp.pip",
+      "dwp.pip.cases_england_aged_70_to_74": "dwp.pip",
+      "dwp.pip.cases_england_aged_75_and_over": "dwp.pip",
+      "dwp.pip.cases_england_daily_living_enhanced": "dwp.pip",
+      "dwp.pip.cases_england_daily_living_nil": "dwp.pip",
+      "dwp.pip.cases_england_daily_living_standard": "dwp.pip",
+      "dwp.pip.cases_england_mobility_enhanced": "dwp.pip",
+      "dwp.pip.cases_england_mobility_nil": "dwp.pip",
+      "dwp.pip.cases_england_mobility_standard": "dwp.pip",
+      "dwp.pip.cases_london_daily_living_enhanced": "dwp.pip",
+      "dwp.pip.cases_london_daily_living_nil": "dwp.pip",
+      "dwp.pip.cases_london_daily_living_standard": "dwp.pip",
+      "dwp.pip.cases_london_mobility_enhanced": "dwp.pip",
+      "dwp.pip.cases_london_mobility_nil": "dwp.pip",
+      "dwp.pip.cases_london_mobility_standard": "dwp.pip",
+      "dwp.pip.cases_north_east_daily_living_enhanced": "dwp.pip",
+      "dwp.pip.cases_north_east_daily_living_nil": "dwp.pip",
+      "dwp.pip.cases_north_east_daily_living_standard": "dwp.pip",
+      "dwp.pip.cases_north_east_mobility_enhanced": "dwp.pip",
+      "dwp.pip.cases_north_east_mobility_nil": "dwp.pip",
+      "dwp.pip.cases_north_east_mobility_standard": "dwp.pip",
+      "dwp.pip.cases_north_west_daily_living_enhanced": "dwp.pip",
+      "dwp.pip.cases_north_west_daily_living_nil": "dwp.pip",
+      "dwp.pip.cases_north_west_daily_living_standard": "dwp.pip",
+      "dwp.pip.cases_north_west_mobility_enhanced": "dwp.pip",
+      "dwp.pip.cases_north_west_mobility_nil": "dwp.pip",
+      "dwp.pip.cases_north_west_mobility_standard": "dwp.pip",
+      "dwp.pip.cases_south_east_daily_living_enhanced": "dwp.pip",
+      "dwp.pip.cases_south_east_daily_living_nil": "dwp.pip",
+      "dwp.pip.cases_south_east_daily_living_standard": "dwp.pip",
+      "dwp.pip.cases_south_east_mobility_enhanced": "dwp.pip",
+      "dwp.pip.cases_south_east_mobility_nil": "dwp.pip",
+      "dwp.pip.cases_south_east_mobility_standard": "dwp.pip",
+      "dwp.pip.cases_south_west_daily_living_enhanced": "dwp.pip",
+      "dwp.pip.cases_south_west_daily_living_nil": "dwp.pip",
+      "dwp.pip.cases_south_west_daily_living_standard": "dwp.pip",
+      "dwp.pip.cases_south_west_mobility_enhanced": "dwp.pip",
+      "dwp.pip.cases_south_west_mobility_nil": "dwp.pip",
+      "dwp.pip.cases_south_west_mobility_standard": "dwp.pip",
+      "dwp.pip.cases_wales": "dwp.pip",
+      "dwp.pip.cases_wales_aged_16_to_19": "dwp.pip",
+      "dwp.pip.cases_wales_aged_20_to_24": "dwp.pip",
+      "dwp.pip.cases_wales_aged_25_to_29": "dwp.pip",
+      "dwp.pip.cases_wales_aged_30_to_34": "dwp.pip",
+      "dwp.pip.cases_wales_aged_35_to_39": "dwp.pip",
+      "dwp.pip.cases_wales_aged_40_to_44": "dwp.pip",
+      "dwp.pip.cases_wales_aged_45_to_49": "dwp.pip",
+      "dwp.pip.cases_wales_aged_50_to_54": "dwp.pip",
+      "dwp.pip.cases_wales_aged_55_to_59": "dwp.pip",
+      "dwp.pip.cases_wales_aged_60_to_64": "dwp.pip",
+      "dwp.pip.cases_wales_aged_65_to_69": "dwp.pip",
+      "dwp.pip.cases_wales_aged_70_to_74": "dwp.pip",
+      "dwp.pip.cases_wales_aged_75_and_over": "dwp.pip",
+      "dwp.pip.cases_wales_daily_living_enhanced": "dwp.pip",
+      "dwp.pip.cases_wales_daily_living_nil": "dwp.pip",
+      "dwp.pip.cases_wales_daily_living_standard": "dwp.pip",
+      "dwp.pip.cases_wales_mobility_enhanced": "dwp.pip",
+      "dwp.pip.cases_wales_mobility_nil": "dwp.pip",
+      "dwp.pip.cases_wales_mobility_standard": "dwp.pip",
+      "dwp.pip.cases_west_midlands_daily_living_enhanced": "dwp.pip",
+      "dwp.pip.cases_west_midlands_daily_living_nil": "dwp.pip",
+      "dwp.pip.cases_west_midlands_daily_living_standard": "dwp.pip",
+      "dwp.pip.cases_west_midlands_mobility_enhanced": "dwp.pip",
+      "dwp.pip.cases_west_midlands_mobility_nil": "dwp.pip",
+      "dwp.pip.cases_west_midlands_mobility_standard": "dwp.pip",
+      "dwp.pip.cases_yorkshire_daily_living_enhanced": "dwp.pip",
+      "dwp.pip.cases_yorkshire_daily_living_nil": "dwp.pip",
+      "dwp.pip.cases_yorkshire_daily_living_standard": "dwp.pip",
+      "dwp.pip.cases_yorkshire_mobility_enhanced": "dwp.pip",
+      "dwp.pip.cases_yorkshire_mobility_nil": "dwp.pip",
+      "dwp.pip.cases_yorkshire_mobility_standard": "dwp.pip",
       "dwp.state_pension.amount": "dwp.state_pension",
       "dwp.state_pension.recipients": "dwp.state_pension",
       "dwp.state_pension.recipients_female_66_69_new": "dwp.state_pension",
@@ -373,6 +467,9 @@
       "dwp.uc.payment_distribution_couple_with_children": "dwp.universal_credit",
       "dwp.uc.payment_distribution_lone_parent": "dwp.universal_credit",
       "dwp.uc.payment_distribution_single": "dwp.universal_credit",
+      "dwp.uc.people_aged_16_to_21": "dwp.universal_credit",
+      "dwp.uc.people_aged_16_to_24": "dwp.universal_credit",
+      "dwp.uc.people_aged_22_to_24": "dwp.universal_credit",
       "dwp.uc.scotland_households_child_under_1": "dwp.universal_credit",
       "dwp.uc.two_child_limit.children_affected": "dwp.universal_credit_two_child_limit",
       "dwp.uc.two_child_limit.children_claimant_pip": "dwp.universal_credit_two_child_limit",
@@ -552,6 +649,7 @@
       "ons.land.corporate_land_value": "ons.land",
       "ons.land.household_land_value": "ons.land",
       "ons.land.land_value": "ons.land",
+      "ons.neet.people_aged_16_to_24": "ons.employment",
       "ons.occupation.administrative_and_secretarial_by_region": "ons.employment",
       "ons.occupation.associate_professional_by_region": "ons.employment",
       "ons.occupation.caring_leisure_and_other_service_by_region": "ons.employment",
@@ -804,6 +902,100 @@
       "dwp.pension_credit.benefit_units_guarantee_only_single": "Pension Credit benefit units, Guarantee Credit only, has no partner",
       "dwp.pension_credit.benefit_units_savings_only_couple": "Pension Credit benefit units, Savings Credit only, has a partner",
       "dwp.pension_credit.benefit_units_savings_only_single": "Pension Credit benefit units, Savings Credit only, has no partner",
+      "dwp.pip.cases_east_midlands_daily_living_enhanced": "PIP cases with entitlement, East Midlands, daily living enhanced",
+      "dwp.pip.cases_east_midlands_daily_living_nil": "PIP cases with entitlement, East Midlands, daily living nil",
+      "dwp.pip.cases_east_midlands_daily_living_standard": "PIP cases with entitlement, East Midlands, daily living standard",
+      "dwp.pip.cases_east_midlands_mobility_enhanced": "PIP cases with entitlement, East Midlands, mobility enhanced",
+      "dwp.pip.cases_east_midlands_mobility_nil": "PIP cases with entitlement, East Midlands, mobility nil",
+      "dwp.pip.cases_east_midlands_mobility_standard": "PIP cases with entitlement, East Midlands, mobility standard",
+      "dwp.pip.cases_east_of_england_daily_living_enhanced": "PIP cases with entitlement, East of England, daily living enhanced",
+      "dwp.pip.cases_east_of_england_daily_living_nil": "PIP cases with entitlement, East of England, daily living nil",
+      "dwp.pip.cases_east_of_england_daily_living_standard": "PIP cases with entitlement, East of England, daily living standard",
+      "dwp.pip.cases_east_of_england_mobility_enhanced": "PIP cases with entitlement, East of England, mobility enhanced",
+      "dwp.pip.cases_east_of_england_mobility_nil": "PIP cases with entitlement, East of England, mobility nil",
+      "dwp.pip.cases_east_of_england_mobility_standard": "PIP cases with entitlement, East of England, mobility standard",
+      "dwp.pip.cases_england": "PIP cases with entitlement, England",
+      "dwp.pip.cases_england_aged_16_to_19": "PIP cases with entitlement, England, aged 16 to 19",
+      "dwp.pip.cases_england_aged_20_to_24": "PIP cases with entitlement, England, aged 20 to 24",
+      "dwp.pip.cases_england_aged_25_to_29": "PIP cases with entitlement, England, aged 25 to 29",
+      "dwp.pip.cases_england_aged_30_to_34": "PIP cases with entitlement, England, aged 30 to 34",
+      "dwp.pip.cases_england_aged_35_to_39": "PIP cases with entitlement, England, aged 35 to 39",
+      "dwp.pip.cases_england_aged_40_to_44": "PIP cases with entitlement, England, aged 40 to 44",
+      "dwp.pip.cases_england_aged_45_to_49": "PIP cases with entitlement, England, aged 45 to 49",
+      "dwp.pip.cases_england_aged_50_to_54": "PIP cases with entitlement, England, aged 50 to 54",
+      "dwp.pip.cases_england_aged_55_to_59": "PIP cases with entitlement, England, aged 55 to 59",
+      "dwp.pip.cases_england_aged_60_to_64": "PIP cases with entitlement, England, aged 60 to 64",
+      "dwp.pip.cases_england_aged_65_to_69": "PIP cases with entitlement, England, aged 65 to 69",
+      "dwp.pip.cases_england_aged_70_to_74": "PIP cases with entitlement, England, aged 70 to 74",
+      "dwp.pip.cases_england_aged_75_and_over": "PIP cases with entitlement, England, aged 75 and over",
+      "dwp.pip.cases_england_daily_living_enhanced": "PIP cases with entitlement, England, daily living enhanced",
+      "dwp.pip.cases_england_daily_living_nil": "PIP cases with entitlement, England, daily living nil",
+      "dwp.pip.cases_england_daily_living_standard": "PIP cases with entitlement, England, daily living standard",
+      "dwp.pip.cases_england_mobility_enhanced": "PIP cases with entitlement, England, mobility enhanced",
+      "dwp.pip.cases_england_mobility_nil": "PIP cases with entitlement, England, mobility nil",
+      "dwp.pip.cases_england_mobility_standard": "PIP cases with entitlement, England, mobility standard",
+      "dwp.pip.cases_london_daily_living_enhanced": "PIP cases with entitlement, London, daily living enhanced",
+      "dwp.pip.cases_london_daily_living_nil": "PIP cases with entitlement, London, daily living nil",
+      "dwp.pip.cases_london_daily_living_standard": "PIP cases with entitlement, London, daily living standard",
+      "dwp.pip.cases_london_mobility_enhanced": "PIP cases with entitlement, London, mobility enhanced",
+      "dwp.pip.cases_london_mobility_nil": "PIP cases with entitlement, London, mobility nil",
+      "dwp.pip.cases_london_mobility_standard": "PIP cases with entitlement, London, mobility standard",
+      "dwp.pip.cases_north_east_daily_living_enhanced": "PIP cases with entitlement, North East, daily living enhanced",
+      "dwp.pip.cases_north_east_daily_living_nil": "PIP cases with entitlement, North East, daily living nil",
+      "dwp.pip.cases_north_east_daily_living_standard": "PIP cases with entitlement, North East, daily living standard",
+      "dwp.pip.cases_north_east_mobility_enhanced": "PIP cases with entitlement, North East, mobility enhanced",
+      "dwp.pip.cases_north_east_mobility_nil": "PIP cases with entitlement, North East, mobility nil",
+      "dwp.pip.cases_north_east_mobility_standard": "PIP cases with entitlement, North East, mobility standard",
+      "dwp.pip.cases_north_west_daily_living_enhanced": "PIP cases with entitlement, North West, daily living enhanced",
+      "dwp.pip.cases_north_west_daily_living_nil": "PIP cases with entitlement, North West, daily living nil",
+      "dwp.pip.cases_north_west_daily_living_standard": "PIP cases with entitlement, North West, daily living standard",
+      "dwp.pip.cases_north_west_mobility_enhanced": "PIP cases with entitlement, North West, mobility enhanced",
+      "dwp.pip.cases_north_west_mobility_nil": "PIP cases with entitlement, North West, mobility nil",
+      "dwp.pip.cases_north_west_mobility_standard": "PIP cases with entitlement, North West, mobility standard",
+      "dwp.pip.cases_south_east_daily_living_enhanced": "PIP cases with entitlement, South East, daily living enhanced",
+      "dwp.pip.cases_south_east_daily_living_nil": "PIP cases with entitlement, South East, daily living nil",
+      "dwp.pip.cases_south_east_daily_living_standard": "PIP cases with entitlement, South East, daily living standard",
+      "dwp.pip.cases_south_east_mobility_enhanced": "PIP cases with entitlement, South East, mobility enhanced",
+      "dwp.pip.cases_south_east_mobility_nil": "PIP cases with entitlement, South East, mobility nil",
+      "dwp.pip.cases_south_east_mobility_standard": "PIP cases with entitlement, South East, mobility standard",
+      "dwp.pip.cases_south_west_daily_living_enhanced": "PIP cases with entitlement, South West, daily living enhanced",
+      "dwp.pip.cases_south_west_daily_living_nil": "PIP cases with entitlement, South West, daily living nil",
+      "dwp.pip.cases_south_west_daily_living_standard": "PIP cases with entitlement, South West, daily living standard",
+      "dwp.pip.cases_south_west_mobility_enhanced": "PIP cases with entitlement, South West, mobility enhanced",
+      "dwp.pip.cases_south_west_mobility_nil": "PIP cases with entitlement, South West, mobility nil",
+      "dwp.pip.cases_south_west_mobility_standard": "PIP cases with entitlement, South West, mobility standard",
+      "dwp.pip.cases_wales": "PIP cases with entitlement, Wales",
+      "dwp.pip.cases_wales_aged_16_to_19": "PIP cases with entitlement, Wales, aged 16 to 19",
+      "dwp.pip.cases_wales_aged_20_to_24": "PIP cases with entitlement, Wales, aged 20 to 24",
+      "dwp.pip.cases_wales_aged_25_to_29": "PIP cases with entitlement, Wales, aged 25 to 29",
+      "dwp.pip.cases_wales_aged_30_to_34": "PIP cases with entitlement, Wales, aged 30 to 34",
+      "dwp.pip.cases_wales_aged_35_to_39": "PIP cases with entitlement, Wales, aged 35 to 39",
+      "dwp.pip.cases_wales_aged_40_to_44": "PIP cases with entitlement, Wales, aged 40 to 44",
+      "dwp.pip.cases_wales_aged_45_to_49": "PIP cases with entitlement, Wales, aged 45 to 49",
+      "dwp.pip.cases_wales_aged_50_to_54": "PIP cases with entitlement, Wales, aged 50 to 54",
+      "dwp.pip.cases_wales_aged_55_to_59": "PIP cases with entitlement, Wales, aged 55 to 59",
+      "dwp.pip.cases_wales_aged_60_to_64": "PIP cases with entitlement, Wales, aged 60 to 64",
+      "dwp.pip.cases_wales_aged_65_to_69": "PIP cases with entitlement, Wales, aged 65 to 69",
+      "dwp.pip.cases_wales_aged_70_to_74": "PIP cases with entitlement, Wales, aged 70 to 74",
+      "dwp.pip.cases_wales_aged_75_and_over": "PIP cases with entitlement, Wales, aged 75 and over",
+      "dwp.pip.cases_wales_daily_living_enhanced": "PIP cases with entitlement, Wales, daily living enhanced",
+      "dwp.pip.cases_wales_daily_living_nil": "PIP cases with entitlement, Wales, daily living nil",
+      "dwp.pip.cases_wales_daily_living_standard": "PIP cases with entitlement, Wales, daily living standard",
+      "dwp.pip.cases_wales_mobility_enhanced": "PIP cases with entitlement, Wales, mobility enhanced",
+      "dwp.pip.cases_wales_mobility_nil": "PIP cases with entitlement, Wales, mobility nil",
+      "dwp.pip.cases_wales_mobility_standard": "PIP cases with entitlement, Wales, mobility standard",
+      "dwp.pip.cases_west_midlands_daily_living_enhanced": "PIP cases with entitlement, West Midlands, daily living enhanced",
+      "dwp.pip.cases_west_midlands_daily_living_nil": "PIP cases with entitlement, West Midlands, daily living nil",
+      "dwp.pip.cases_west_midlands_daily_living_standard": "PIP cases with entitlement, West Midlands, daily living standard",
+      "dwp.pip.cases_west_midlands_mobility_enhanced": "PIP cases with entitlement, West Midlands, mobility enhanced",
+      "dwp.pip.cases_west_midlands_mobility_nil": "PIP cases with entitlement, West Midlands, mobility nil",
+      "dwp.pip.cases_west_midlands_mobility_standard": "PIP cases with entitlement, West Midlands, mobility standard",
+      "dwp.pip.cases_yorkshire_daily_living_enhanced": "PIP cases with entitlement, Yorkshire and The Humber, daily living enhanced",
+      "dwp.pip.cases_yorkshire_daily_living_nil": "PIP cases with entitlement, Yorkshire and The Humber, daily living nil",
+      "dwp.pip.cases_yorkshire_daily_living_standard": "PIP cases with entitlement, Yorkshire and The Humber, daily living standard",
+      "dwp.pip.cases_yorkshire_mobility_enhanced": "PIP cases with entitlement, Yorkshire and The Humber, mobility enhanced",
+      "dwp.pip.cases_yorkshire_mobility_nil": "PIP cases with entitlement, Yorkshire and The Humber, mobility nil",
+      "dwp.pip.cases_yorkshire_mobility_standard": "PIP cases with entitlement, Yorkshire and The Humber, mobility standard",
       "dwp.state_pension.amount": "State Pension paid, Great Britain residents",
       "dwp.state_pension.recipients": "State Pension recipients, Great Britain residents",
       "dwp.state_pension.recipients_female_66_69_new": "State Pension recipients, female 66 to 69, New State Pension",
@@ -848,6 +1040,9 @@
       "dwp.uc.payment_distribution_couple_with_children": "Payment distribution couple with children",
       "dwp.uc.payment_distribution_lone_parent": "Payment distribution lone parent",
       "dwp.uc.payment_distribution_single": "Payment distribution single",
+      "dwp.uc.people_aged_16_to_21": "Universal Credit people aged 16 to 21",
+      "dwp.uc.people_aged_16_to_24": "Universal Credit people aged 16 to 24",
+      "dwp.uc.people_aged_22_to_24": "Universal Credit people aged 22 to 24",
       "dwp.uc.scotland_households_child_under_1": "Scotland households child under 1",
       "dwp.uc.two_child_limit.children_affected": "Children affected",
       "dwp.uc.two_child_limit.children_claimant_pip": "Children claimant Personal Independence Payment",
@@ -1027,6 +1222,7 @@
       "ons.land.corporate_land_value": "Corporate land value",
       "ons.land.household_land_value": "Household land value",
       "ons.land.land_value": "Land value",
+      "ons.neet.people_aged_16_to_24": "Young people not in education, employment or training, aged 16 to 24",
       "ons.occupation.administrative_and_secretarial_by_region": "Administrative and secretarial occupations in employment by region",
       "ons.occupation.associate_professional_by_region": "Associate professional occupations in employment by region",
       "ons.occupation.caring_leisure_and_other_service_by_region": "Caring, leisure and other service occupations in employment by region",
@@ -1225,6 +1421,7 @@
     "monthly_window_average",
     "monthly_window_count_x_mean",
     "monthly_window_sum_average",
+    "quarterly_window_average",
     "rolled_forward_by_ratio",
     "scaled_by_ratio"
   ],
@@ -27008,6 +27205,261 @@
       "value_operation": "monthly_window_average"
     },
     {
+      "name": "dwp.uc.people_aged_16_to_24",
+      "ledger_selector": {
+        "source_name": "dwp",
+        "source_concept": [
+          "dwp.people_on_universal_credit"
+        ],
+        "source_measure_id": "people",
+        "groupby_dimension": "dwp.uc_people_country_age_conditionality_regime",
+        "dimensions": [
+          "age_bands_and_single_year",
+          "conditionality_regime"
+        ],
+        "dimension_values": {
+          "age_bands_and_single_year": [
+            16,
+            17,
+            18,
+            19,
+            20,
+            21,
+            22,
+            23,
+            24
+          ],
+          "conditionality_regime": "all"
+        },
+        "entity_name": "person",
+        "period_type": "month",
+        "period_value": [
+          "2025-02",
+          "2025-05",
+          "2025-08",
+          "2025-11"
+        ],
+        "geography_level": "country",
+        "geography_id": "K03000001"
+      },
+      "entity": "person",
+      "measure": "dwp/uc/people_aged_16_to_24",
+      "family": "dwp_universal_credit",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "dwp.uc.people_aged_16_to_24",
+        "measure_kind": "prepared_column",
+        "uk_uc_expected_source_months": "[\"2025-02\",\"2025-05\",\"2025-08\",\"2025-11\"]"
+      },
+      "period_match_policy": "source_window",
+      "value_operation": "monthly_window_sum_average",
+      "value_operands": [
+        {
+          "dimension_values": {
+            "age_bands_and_single_year": 16,
+            "conditionality_regime": "all"
+          }
+        },
+        {
+          "dimension_values": {
+            "age_bands_and_single_year": 17,
+            "conditionality_regime": "all"
+          }
+        },
+        {
+          "dimension_values": {
+            "age_bands_and_single_year": 18,
+            "conditionality_regime": "all"
+          }
+        },
+        {
+          "dimension_values": {
+            "age_bands_and_single_year": 19,
+            "conditionality_regime": "all"
+          }
+        },
+        {
+          "dimension_values": {
+            "age_bands_and_single_year": 20,
+            "conditionality_regime": "all"
+          }
+        },
+        {
+          "dimension_values": {
+            "age_bands_and_single_year": 21,
+            "conditionality_regime": "all"
+          }
+        },
+        {
+          "dimension_values": {
+            "age_bands_and_single_year": 22,
+            "conditionality_regime": "all"
+          }
+        },
+        {
+          "dimension_values": {
+            "age_bands_and_single_year": 23,
+            "conditionality_regime": "all"
+          }
+        },
+        {
+          "dimension_values": {
+            "age_bands_and_single_year": 24,
+            "conditionality_regime": "all"
+          }
+        }
+      ]
+    },
+    {
+      "name": "dwp.uc.people_aged_16_to_21",
+      "ledger_selector": {
+        "source_name": "dwp",
+        "source_concept": [
+          "dwp.people_on_universal_credit"
+        ],
+        "source_measure_id": "people",
+        "groupby_dimension": "dwp.uc_people_country_age_conditionality_regime",
+        "dimensions": [
+          "age_bands_and_single_year",
+          "conditionality_regime"
+        ],
+        "dimension_values": {
+          "age_bands_and_single_year": [
+            16,
+            17,
+            18,
+            19,
+            20,
+            21
+          ],
+          "conditionality_regime": "all"
+        },
+        "entity_name": "person",
+        "period_type": "month",
+        "period_value": [
+          "2025-02",
+          "2025-05",
+          "2025-08",
+          "2025-11"
+        ],
+        "geography_level": "country",
+        "geography_id": "K03000001"
+      },
+      "entity": "person",
+      "measure": "dwp/uc/people_aged_16_to_21",
+      "family": "dwp_universal_credit",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "dwp.uc.people_aged_16_to_21",
+        "measure_kind": "prepared_column",
+        "uk_uc_expected_source_months": "[\"2025-02\",\"2025-05\",\"2025-08\",\"2025-11\"]"
+      },
+      "period_match_policy": "source_window",
+      "value_operation": "monthly_window_sum_average",
+      "value_operands": [
+        {
+          "dimension_values": {
+            "age_bands_and_single_year": 16,
+            "conditionality_regime": "all"
+          }
+        },
+        {
+          "dimension_values": {
+            "age_bands_and_single_year": 17,
+            "conditionality_regime": "all"
+          }
+        },
+        {
+          "dimension_values": {
+            "age_bands_and_single_year": 18,
+            "conditionality_regime": "all"
+          }
+        },
+        {
+          "dimension_values": {
+            "age_bands_and_single_year": 19,
+            "conditionality_regime": "all"
+          }
+        },
+        {
+          "dimension_values": {
+            "age_bands_and_single_year": 20,
+            "conditionality_regime": "all"
+          }
+        },
+        {
+          "dimension_values": {
+            "age_bands_and_single_year": 21,
+            "conditionality_regime": "all"
+          }
+        }
+      ]
+    },
+    {
+      "name": "dwp.uc.people_aged_22_to_24",
+      "ledger_selector": {
+        "source_name": "dwp",
+        "source_concept": [
+          "dwp.people_on_universal_credit"
+        ],
+        "source_measure_id": "people",
+        "groupby_dimension": "dwp.uc_people_country_age_conditionality_regime",
+        "dimensions": [
+          "age_bands_and_single_year",
+          "conditionality_regime"
+        ],
+        "dimension_values": {
+          "age_bands_and_single_year": [
+            22,
+            23,
+            24
+          ],
+          "conditionality_regime": "all"
+        },
+        "entity_name": "person",
+        "period_type": "month",
+        "period_value": [
+          "2025-02",
+          "2025-05",
+          "2025-08",
+          "2025-11"
+        ],
+        "geography_level": "country",
+        "geography_id": "K03000001"
+      },
+      "entity": "person",
+      "measure": "dwp/uc/people_aged_22_to_24",
+      "family": "dwp_universal_credit",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "dwp.uc.people_aged_22_to_24",
+        "measure_kind": "prepared_column",
+        "uk_uc_expected_source_months": "[\"2025-02\",\"2025-05\",\"2025-08\",\"2025-11\"]"
+      },
+      "period_match_policy": "source_window",
+      "value_operation": "monthly_window_sum_average",
+      "value_operands": [
+        {
+          "dimension_values": {
+            "age_bands_and_single_year": 22,
+            "conditionality_regime": "all"
+          }
+        },
+        {
+          "dimension_values": {
+            "age_bands_and_single_year": 23,
+            "conditionality_regime": "all"
+          }
+        },
+        {
+          "dimension_values": {
+            "age_bands_and_single_year": 24,
+            "conditionality_regime": "all"
+          }
+        }
+      ]
+    },
+    {
       "name": "obr.universal_credit",
       "ledger_selector": {
         "source_name": "obr",
@@ -49620,6 +50072,3846 @@
       "value_operation": "monthly_window_average"
     },
     {
+      "name": "dwp.pip.cases_england",
+      "ledger_selector": {
+        "source_name": "dwp",
+        "source_table": "PIP cases with entitlement by country, daily living award, mobility award and age band, January 2024 to July 2026",
+        "source_concept": [
+          "dwp.pip_cases_with_entitlement"
+        ],
+        "source_measure_id": "cases_with_entitlement",
+        "dimensions": [
+          "daily_living_award_status",
+          "mobility_award_status",
+          "age_bands_and_single_year"
+        ],
+        "dimension_values": {
+          "daily_living_award_status": "all",
+          "mobility_award_status": "all",
+          "age_bands_and_single_year": "all"
+        },
+        "entity_name": "person",
+        "period_type": "month",
+        "period_value": [
+          "2025-01",
+          "2025-04",
+          "2025-07",
+          "2025-10"
+        ],
+        "geography_id": "E92000001",
+        "geography_level": "country"
+      },
+      "entity": "person",
+      "measure": "dwp/pip/cases_england",
+      "family": "dwp_pip",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "dwp.pip.cases_england",
+        "measure_kind": "prepared_column",
+        "uk_uc_expected_source_months": "[\"2025-01\",\"2025-04\",\"2025-07\",\"2025-10\"]"
+      },
+      "period_match_policy": "source_window",
+      "value_operation": "monthly_window_average"
+    },
+    {
+      "name": "dwp.pip.cases_england_daily_living_standard",
+      "ledger_selector": {
+        "source_name": "dwp",
+        "source_table": "PIP cases with entitlement by country, daily living award, mobility award and age band, January 2024 to July 2026",
+        "source_concept": [
+          "dwp.pip_cases_with_entitlement"
+        ],
+        "source_measure_id": "cases_with_entitlement",
+        "dimensions": [
+          "daily_living_award_status",
+          "mobility_award_status",
+          "age_bands_and_single_year"
+        ],
+        "dimension_values": {
+          "daily_living_award_status": "Daily Living - Standard",
+          "mobility_award_status": "all",
+          "age_bands_and_single_year": "all"
+        },
+        "entity_name": "person",
+        "period_type": "month",
+        "period_value": [
+          "2025-01",
+          "2025-04",
+          "2025-07",
+          "2025-10"
+        ],
+        "geography_id": "E92000001",
+        "geography_level": "country"
+      },
+      "entity": "person",
+      "measure": "dwp/pip/cases_england_daily_living_standard",
+      "family": "dwp_pip",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "dwp.pip.cases_england_daily_living_standard",
+        "measure_kind": "prepared_column",
+        "uk_uc_expected_source_months": "[\"2025-01\",\"2025-04\",\"2025-07\",\"2025-10\"]"
+      },
+      "period_match_policy": "source_window",
+      "value_operation": "monthly_window_average"
+    },
+    {
+      "name": "dwp.pip.cases_england_daily_living_enhanced",
+      "ledger_selector": {
+        "source_name": "dwp",
+        "source_table": "PIP cases with entitlement by country, daily living award, mobility award and age band, January 2024 to July 2026",
+        "source_concept": [
+          "dwp.pip_cases_with_entitlement"
+        ],
+        "source_measure_id": "cases_with_entitlement",
+        "dimensions": [
+          "daily_living_award_status",
+          "mobility_award_status",
+          "age_bands_and_single_year"
+        ],
+        "dimension_values": {
+          "daily_living_award_status": "Daily Living - Enhanced",
+          "mobility_award_status": "all",
+          "age_bands_and_single_year": "all"
+        },
+        "entity_name": "person",
+        "period_type": "month",
+        "period_value": [
+          "2025-01",
+          "2025-04",
+          "2025-07",
+          "2025-10"
+        ],
+        "geography_id": "E92000001",
+        "geography_level": "country"
+      },
+      "entity": "person",
+      "measure": "dwp/pip/cases_england_daily_living_enhanced",
+      "family": "dwp_pip",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "dwp.pip.cases_england_daily_living_enhanced",
+        "measure_kind": "prepared_column",
+        "uk_uc_expected_source_months": "[\"2025-01\",\"2025-04\",\"2025-07\",\"2025-10\"]"
+      },
+      "period_match_policy": "source_window",
+      "value_operation": "monthly_window_average"
+    },
+    {
+      "name": "dwp.pip.cases_england_daily_living_nil",
+      "ledger_selector": {
+        "source_name": "dwp",
+        "source_table": "PIP cases with entitlement by country, daily living award, mobility award and age band, January 2024 to July 2026",
+        "source_concept": [
+          "dwp.pip_cases_with_entitlement"
+        ],
+        "source_measure_id": "cases_with_entitlement",
+        "dimensions": [
+          "daily_living_award_status",
+          "mobility_award_status",
+          "age_bands_and_single_year"
+        ],
+        "dimension_values": {
+          "daily_living_award_status": "Daily Living - Nil",
+          "mobility_award_status": "all",
+          "age_bands_and_single_year": "all"
+        },
+        "entity_name": "person",
+        "period_type": "month",
+        "period_value": [
+          "2025-01",
+          "2025-04",
+          "2025-07",
+          "2025-10"
+        ],
+        "geography_id": "E92000001",
+        "geography_level": "country"
+      },
+      "entity": "person",
+      "measure": "dwp/pip/cases_england_daily_living_nil",
+      "family": "dwp_pip",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "dwp.pip.cases_england_daily_living_nil",
+        "measure_kind": "prepared_column",
+        "uk_uc_expected_source_months": "[\"2025-01\",\"2025-04\",\"2025-07\",\"2025-10\"]"
+      },
+      "period_match_policy": "source_window",
+      "value_operation": "monthly_window_average"
+    },
+    {
+      "name": "dwp.pip.cases_england_mobility_standard",
+      "ledger_selector": {
+        "source_name": "dwp",
+        "source_table": "PIP cases with entitlement by country, daily living award, mobility award and age band, January 2024 to July 2026",
+        "source_concept": [
+          "dwp.pip_cases_with_entitlement"
+        ],
+        "source_measure_id": "cases_with_entitlement",
+        "dimensions": [
+          "daily_living_award_status",
+          "mobility_award_status",
+          "age_bands_and_single_year"
+        ],
+        "dimension_values": {
+          "daily_living_award_status": "all",
+          "mobility_award_status": "Mobility Award - Standard",
+          "age_bands_and_single_year": "all"
+        },
+        "entity_name": "person",
+        "period_type": "month",
+        "period_value": [
+          "2025-01",
+          "2025-04",
+          "2025-07",
+          "2025-10"
+        ],
+        "geography_id": "E92000001",
+        "geography_level": "country"
+      },
+      "entity": "person",
+      "measure": "dwp/pip/cases_england_mobility_standard",
+      "family": "dwp_pip",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "dwp.pip.cases_england_mobility_standard",
+        "measure_kind": "prepared_column",
+        "uk_uc_expected_source_months": "[\"2025-01\",\"2025-04\",\"2025-07\",\"2025-10\"]"
+      },
+      "period_match_policy": "source_window",
+      "value_operation": "monthly_window_average"
+    },
+    {
+      "name": "dwp.pip.cases_england_mobility_enhanced",
+      "ledger_selector": {
+        "source_name": "dwp",
+        "source_table": "PIP cases with entitlement by country, daily living award, mobility award and age band, January 2024 to July 2026",
+        "source_concept": [
+          "dwp.pip_cases_with_entitlement"
+        ],
+        "source_measure_id": "cases_with_entitlement",
+        "dimensions": [
+          "daily_living_award_status",
+          "mobility_award_status",
+          "age_bands_and_single_year"
+        ],
+        "dimension_values": {
+          "daily_living_award_status": "all",
+          "mobility_award_status": "Mobility Award - Enhanced",
+          "age_bands_and_single_year": "all"
+        },
+        "entity_name": "person",
+        "period_type": "month",
+        "period_value": [
+          "2025-01",
+          "2025-04",
+          "2025-07",
+          "2025-10"
+        ],
+        "geography_id": "E92000001",
+        "geography_level": "country"
+      },
+      "entity": "person",
+      "measure": "dwp/pip/cases_england_mobility_enhanced",
+      "family": "dwp_pip",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "dwp.pip.cases_england_mobility_enhanced",
+        "measure_kind": "prepared_column",
+        "uk_uc_expected_source_months": "[\"2025-01\",\"2025-04\",\"2025-07\",\"2025-10\"]"
+      },
+      "period_match_policy": "source_window",
+      "value_operation": "monthly_window_average"
+    },
+    {
+      "name": "dwp.pip.cases_england_mobility_nil",
+      "ledger_selector": {
+        "source_name": "dwp",
+        "source_table": "PIP cases with entitlement by country, daily living award, mobility award and age band, January 2024 to July 2026",
+        "source_concept": [
+          "dwp.pip_cases_with_entitlement"
+        ],
+        "source_measure_id": "cases_with_entitlement",
+        "dimensions": [
+          "daily_living_award_status",
+          "mobility_award_status",
+          "age_bands_and_single_year"
+        ],
+        "dimension_values": {
+          "daily_living_award_status": "all",
+          "mobility_award_status": "Mobility Award - Nil",
+          "age_bands_and_single_year": "all"
+        },
+        "entity_name": "person",
+        "period_type": "month",
+        "period_value": [
+          "2025-01",
+          "2025-04",
+          "2025-07",
+          "2025-10"
+        ],
+        "geography_id": "E92000001",
+        "geography_level": "country"
+      },
+      "entity": "person",
+      "measure": "dwp/pip/cases_england_mobility_nil",
+      "family": "dwp_pip",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "dwp.pip.cases_england_mobility_nil",
+        "measure_kind": "prepared_column",
+        "uk_uc_expected_source_months": "[\"2025-01\",\"2025-04\",\"2025-07\",\"2025-10\"]"
+      },
+      "period_match_policy": "source_window",
+      "value_operation": "monthly_window_average"
+    },
+    {
+      "name": "dwp.pip.cases_england_aged_16_to_19",
+      "ledger_selector": {
+        "source_name": "dwp",
+        "source_table": "PIP cases with entitlement by country, daily living award, mobility award and age band, January 2024 to July 2026",
+        "source_concept": [
+          "dwp.pip_cases_with_entitlement"
+        ],
+        "source_measure_id": "cases_with_entitlement",
+        "dimensions": [
+          "daily_living_award_status",
+          "mobility_award_status",
+          "age_bands_and_single_year"
+        ],
+        "dimension_values": {
+          "daily_living_award_status": "all",
+          "mobility_award_status": "all",
+          "age_bands_and_single_year": "16-19"
+        },
+        "entity_name": "person",
+        "period_type": "month",
+        "period_value": [
+          "2025-01",
+          "2025-04",
+          "2025-07",
+          "2025-10"
+        ],
+        "geography_id": "E92000001",
+        "geography_level": "country"
+      },
+      "entity": "person",
+      "measure": "dwp/pip/cases_england_aged_16_to_19",
+      "family": "dwp_pip",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "dwp.pip.cases_england_aged_16_to_19",
+        "measure_kind": "prepared_column",
+        "uk_uc_expected_source_months": "[\"2025-01\",\"2025-04\",\"2025-07\",\"2025-10\"]"
+      },
+      "period_match_policy": "source_window",
+      "value_operation": "monthly_window_average"
+    },
+    {
+      "name": "dwp.pip.cases_england_aged_20_to_24",
+      "ledger_selector": {
+        "source_name": "dwp",
+        "source_table": "PIP cases with entitlement by country, daily living award, mobility award and age band, January 2024 to July 2026",
+        "source_concept": [
+          "dwp.pip_cases_with_entitlement"
+        ],
+        "source_measure_id": "cases_with_entitlement",
+        "dimensions": [
+          "daily_living_award_status",
+          "mobility_award_status",
+          "age_bands_and_single_year"
+        ],
+        "dimension_values": {
+          "daily_living_award_status": "all",
+          "mobility_award_status": "all",
+          "age_bands_and_single_year": "20-24"
+        },
+        "entity_name": "person",
+        "period_type": "month",
+        "period_value": [
+          "2025-01",
+          "2025-04",
+          "2025-07",
+          "2025-10"
+        ],
+        "geography_id": "E92000001",
+        "geography_level": "country"
+      },
+      "entity": "person",
+      "measure": "dwp/pip/cases_england_aged_20_to_24",
+      "family": "dwp_pip",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "dwp.pip.cases_england_aged_20_to_24",
+        "measure_kind": "prepared_column",
+        "uk_uc_expected_source_months": "[\"2025-01\",\"2025-04\",\"2025-07\",\"2025-10\"]"
+      },
+      "period_match_policy": "source_window",
+      "value_operation": "monthly_window_average"
+    },
+    {
+      "name": "dwp.pip.cases_england_aged_25_to_29",
+      "ledger_selector": {
+        "source_name": "dwp",
+        "source_table": "PIP cases with entitlement by country, daily living award, mobility award and age band, January 2024 to July 2026",
+        "source_concept": [
+          "dwp.pip_cases_with_entitlement"
+        ],
+        "source_measure_id": "cases_with_entitlement",
+        "dimensions": [
+          "daily_living_award_status",
+          "mobility_award_status",
+          "age_bands_and_single_year"
+        ],
+        "dimension_values": {
+          "daily_living_award_status": "all",
+          "mobility_award_status": "all",
+          "age_bands_and_single_year": "25-29"
+        },
+        "entity_name": "person",
+        "period_type": "month",
+        "period_value": [
+          "2025-01",
+          "2025-04",
+          "2025-07",
+          "2025-10"
+        ],
+        "geography_id": "E92000001",
+        "geography_level": "country"
+      },
+      "entity": "person",
+      "measure": "dwp/pip/cases_england_aged_25_to_29",
+      "family": "dwp_pip",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "dwp.pip.cases_england_aged_25_to_29",
+        "measure_kind": "prepared_column",
+        "uk_uc_expected_source_months": "[\"2025-01\",\"2025-04\",\"2025-07\",\"2025-10\"]"
+      },
+      "period_match_policy": "source_window",
+      "value_operation": "monthly_window_average"
+    },
+    {
+      "name": "dwp.pip.cases_england_aged_30_to_34",
+      "ledger_selector": {
+        "source_name": "dwp",
+        "source_table": "PIP cases with entitlement by country, daily living award, mobility award and age band, January 2024 to July 2026",
+        "source_concept": [
+          "dwp.pip_cases_with_entitlement"
+        ],
+        "source_measure_id": "cases_with_entitlement",
+        "dimensions": [
+          "daily_living_award_status",
+          "mobility_award_status",
+          "age_bands_and_single_year"
+        ],
+        "dimension_values": {
+          "daily_living_award_status": "all",
+          "mobility_award_status": "all",
+          "age_bands_and_single_year": "30-34"
+        },
+        "entity_name": "person",
+        "period_type": "month",
+        "period_value": [
+          "2025-01",
+          "2025-04",
+          "2025-07",
+          "2025-10"
+        ],
+        "geography_id": "E92000001",
+        "geography_level": "country"
+      },
+      "entity": "person",
+      "measure": "dwp/pip/cases_england_aged_30_to_34",
+      "family": "dwp_pip",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "dwp.pip.cases_england_aged_30_to_34",
+        "measure_kind": "prepared_column",
+        "uk_uc_expected_source_months": "[\"2025-01\",\"2025-04\",\"2025-07\",\"2025-10\"]"
+      },
+      "period_match_policy": "source_window",
+      "value_operation": "monthly_window_average"
+    },
+    {
+      "name": "dwp.pip.cases_england_aged_35_to_39",
+      "ledger_selector": {
+        "source_name": "dwp",
+        "source_table": "PIP cases with entitlement by country, daily living award, mobility award and age band, January 2024 to July 2026",
+        "source_concept": [
+          "dwp.pip_cases_with_entitlement"
+        ],
+        "source_measure_id": "cases_with_entitlement",
+        "dimensions": [
+          "daily_living_award_status",
+          "mobility_award_status",
+          "age_bands_and_single_year"
+        ],
+        "dimension_values": {
+          "daily_living_award_status": "all",
+          "mobility_award_status": "all",
+          "age_bands_and_single_year": "35-39"
+        },
+        "entity_name": "person",
+        "period_type": "month",
+        "period_value": [
+          "2025-01",
+          "2025-04",
+          "2025-07",
+          "2025-10"
+        ],
+        "geography_id": "E92000001",
+        "geography_level": "country"
+      },
+      "entity": "person",
+      "measure": "dwp/pip/cases_england_aged_35_to_39",
+      "family": "dwp_pip",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "dwp.pip.cases_england_aged_35_to_39",
+        "measure_kind": "prepared_column",
+        "uk_uc_expected_source_months": "[\"2025-01\",\"2025-04\",\"2025-07\",\"2025-10\"]"
+      },
+      "period_match_policy": "source_window",
+      "value_operation": "monthly_window_average"
+    },
+    {
+      "name": "dwp.pip.cases_england_aged_40_to_44",
+      "ledger_selector": {
+        "source_name": "dwp",
+        "source_table": "PIP cases with entitlement by country, daily living award, mobility award and age band, January 2024 to July 2026",
+        "source_concept": [
+          "dwp.pip_cases_with_entitlement"
+        ],
+        "source_measure_id": "cases_with_entitlement",
+        "dimensions": [
+          "daily_living_award_status",
+          "mobility_award_status",
+          "age_bands_and_single_year"
+        ],
+        "dimension_values": {
+          "daily_living_award_status": "all",
+          "mobility_award_status": "all",
+          "age_bands_and_single_year": "40-44"
+        },
+        "entity_name": "person",
+        "period_type": "month",
+        "period_value": [
+          "2025-01",
+          "2025-04",
+          "2025-07",
+          "2025-10"
+        ],
+        "geography_id": "E92000001",
+        "geography_level": "country"
+      },
+      "entity": "person",
+      "measure": "dwp/pip/cases_england_aged_40_to_44",
+      "family": "dwp_pip",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "dwp.pip.cases_england_aged_40_to_44",
+        "measure_kind": "prepared_column",
+        "uk_uc_expected_source_months": "[\"2025-01\",\"2025-04\",\"2025-07\",\"2025-10\"]"
+      },
+      "period_match_policy": "source_window",
+      "value_operation": "monthly_window_average"
+    },
+    {
+      "name": "dwp.pip.cases_england_aged_45_to_49",
+      "ledger_selector": {
+        "source_name": "dwp",
+        "source_table": "PIP cases with entitlement by country, daily living award, mobility award and age band, January 2024 to July 2026",
+        "source_concept": [
+          "dwp.pip_cases_with_entitlement"
+        ],
+        "source_measure_id": "cases_with_entitlement",
+        "dimensions": [
+          "daily_living_award_status",
+          "mobility_award_status",
+          "age_bands_and_single_year"
+        ],
+        "dimension_values": {
+          "daily_living_award_status": "all",
+          "mobility_award_status": "all",
+          "age_bands_and_single_year": "45-49"
+        },
+        "entity_name": "person",
+        "period_type": "month",
+        "period_value": [
+          "2025-01",
+          "2025-04",
+          "2025-07",
+          "2025-10"
+        ],
+        "geography_id": "E92000001",
+        "geography_level": "country"
+      },
+      "entity": "person",
+      "measure": "dwp/pip/cases_england_aged_45_to_49",
+      "family": "dwp_pip",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "dwp.pip.cases_england_aged_45_to_49",
+        "measure_kind": "prepared_column",
+        "uk_uc_expected_source_months": "[\"2025-01\",\"2025-04\",\"2025-07\",\"2025-10\"]"
+      },
+      "period_match_policy": "source_window",
+      "value_operation": "monthly_window_average"
+    },
+    {
+      "name": "dwp.pip.cases_england_aged_50_to_54",
+      "ledger_selector": {
+        "source_name": "dwp",
+        "source_table": "PIP cases with entitlement by country, daily living award, mobility award and age band, January 2024 to July 2026",
+        "source_concept": [
+          "dwp.pip_cases_with_entitlement"
+        ],
+        "source_measure_id": "cases_with_entitlement",
+        "dimensions": [
+          "daily_living_award_status",
+          "mobility_award_status",
+          "age_bands_and_single_year"
+        ],
+        "dimension_values": {
+          "daily_living_award_status": "all",
+          "mobility_award_status": "all",
+          "age_bands_and_single_year": "50-54"
+        },
+        "entity_name": "person",
+        "period_type": "month",
+        "period_value": [
+          "2025-01",
+          "2025-04",
+          "2025-07",
+          "2025-10"
+        ],
+        "geography_id": "E92000001",
+        "geography_level": "country"
+      },
+      "entity": "person",
+      "measure": "dwp/pip/cases_england_aged_50_to_54",
+      "family": "dwp_pip",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "dwp.pip.cases_england_aged_50_to_54",
+        "measure_kind": "prepared_column",
+        "uk_uc_expected_source_months": "[\"2025-01\",\"2025-04\",\"2025-07\",\"2025-10\"]"
+      },
+      "period_match_policy": "source_window",
+      "value_operation": "monthly_window_average"
+    },
+    {
+      "name": "dwp.pip.cases_england_aged_55_to_59",
+      "ledger_selector": {
+        "source_name": "dwp",
+        "source_table": "PIP cases with entitlement by country, daily living award, mobility award and age band, January 2024 to July 2026",
+        "source_concept": [
+          "dwp.pip_cases_with_entitlement"
+        ],
+        "source_measure_id": "cases_with_entitlement",
+        "dimensions": [
+          "daily_living_award_status",
+          "mobility_award_status",
+          "age_bands_and_single_year"
+        ],
+        "dimension_values": {
+          "daily_living_award_status": "all",
+          "mobility_award_status": "all",
+          "age_bands_and_single_year": "55-59"
+        },
+        "entity_name": "person",
+        "period_type": "month",
+        "period_value": [
+          "2025-01",
+          "2025-04",
+          "2025-07",
+          "2025-10"
+        ],
+        "geography_id": "E92000001",
+        "geography_level": "country"
+      },
+      "entity": "person",
+      "measure": "dwp/pip/cases_england_aged_55_to_59",
+      "family": "dwp_pip",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "dwp.pip.cases_england_aged_55_to_59",
+        "measure_kind": "prepared_column",
+        "uk_uc_expected_source_months": "[\"2025-01\",\"2025-04\",\"2025-07\",\"2025-10\"]"
+      },
+      "period_match_policy": "source_window",
+      "value_operation": "monthly_window_average"
+    },
+    {
+      "name": "dwp.pip.cases_england_aged_60_to_64",
+      "ledger_selector": {
+        "source_name": "dwp",
+        "source_table": "PIP cases with entitlement by country, daily living award, mobility award and age band, January 2024 to July 2026",
+        "source_concept": [
+          "dwp.pip_cases_with_entitlement"
+        ],
+        "source_measure_id": "cases_with_entitlement",
+        "dimensions": [
+          "daily_living_award_status",
+          "mobility_award_status",
+          "age_bands_and_single_year"
+        ],
+        "dimension_values": {
+          "daily_living_award_status": "all",
+          "mobility_award_status": "all",
+          "age_bands_and_single_year": "60-64"
+        },
+        "entity_name": "person",
+        "period_type": "month",
+        "period_value": [
+          "2025-01",
+          "2025-04",
+          "2025-07",
+          "2025-10"
+        ],
+        "geography_id": "E92000001",
+        "geography_level": "country"
+      },
+      "entity": "person",
+      "measure": "dwp/pip/cases_england_aged_60_to_64",
+      "family": "dwp_pip",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "dwp.pip.cases_england_aged_60_to_64",
+        "measure_kind": "prepared_column",
+        "uk_uc_expected_source_months": "[\"2025-01\",\"2025-04\",\"2025-07\",\"2025-10\"]"
+      },
+      "period_match_policy": "source_window",
+      "value_operation": "monthly_window_average"
+    },
+    {
+      "name": "dwp.pip.cases_england_aged_65_to_69",
+      "ledger_selector": {
+        "source_name": "dwp",
+        "source_table": "PIP cases with entitlement by country, daily living award, mobility award and age band, January 2024 to July 2026",
+        "source_concept": [
+          "dwp.pip_cases_with_entitlement"
+        ],
+        "source_measure_id": "cases_with_entitlement",
+        "dimensions": [
+          "daily_living_award_status",
+          "mobility_award_status",
+          "age_bands_and_single_year"
+        ],
+        "dimension_values": {
+          "daily_living_award_status": "all",
+          "mobility_award_status": "all",
+          "age_bands_and_single_year": "65-69"
+        },
+        "entity_name": "person",
+        "period_type": "month",
+        "period_value": [
+          "2025-01",
+          "2025-04",
+          "2025-07",
+          "2025-10"
+        ],
+        "geography_id": "E92000001",
+        "geography_level": "country"
+      },
+      "entity": "person",
+      "measure": "dwp/pip/cases_england_aged_65_to_69",
+      "family": "dwp_pip",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "dwp.pip.cases_england_aged_65_to_69",
+        "measure_kind": "prepared_column",
+        "uk_uc_expected_source_months": "[\"2025-01\",\"2025-04\",\"2025-07\",\"2025-10\"]"
+      },
+      "period_match_policy": "source_window",
+      "value_operation": "monthly_window_average"
+    },
+    {
+      "name": "dwp.pip.cases_england_aged_70_to_74",
+      "ledger_selector": {
+        "source_name": "dwp",
+        "source_table": "PIP cases with entitlement by country, daily living award, mobility award and age band, January 2024 to July 2026",
+        "source_concept": [
+          "dwp.pip_cases_with_entitlement"
+        ],
+        "source_measure_id": "cases_with_entitlement",
+        "dimensions": [
+          "daily_living_award_status",
+          "mobility_award_status",
+          "age_bands_and_single_year"
+        ],
+        "dimension_values": {
+          "daily_living_award_status": "all",
+          "mobility_award_status": "all",
+          "age_bands_and_single_year": "70-74"
+        },
+        "entity_name": "person",
+        "period_type": "month",
+        "period_value": [
+          "2025-01",
+          "2025-04",
+          "2025-07",
+          "2025-10"
+        ],
+        "geography_id": "E92000001",
+        "geography_level": "country"
+      },
+      "entity": "person",
+      "measure": "dwp/pip/cases_england_aged_70_to_74",
+      "family": "dwp_pip",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "dwp.pip.cases_england_aged_70_to_74",
+        "measure_kind": "prepared_column",
+        "uk_uc_expected_source_months": "[\"2025-01\",\"2025-04\",\"2025-07\",\"2025-10\"]"
+      },
+      "period_match_policy": "source_window",
+      "value_operation": "monthly_window_average"
+    },
+    {
+      "name": "dwp.pip.cases_england_aged_75_and_over",
+      "ledger_selector": {
+        "source_name": "dwp",
+        "source_table": "PIP cases with entitlement by country, daily living award, mobility award and age band, January 2024 to July 2026",
+        "source_concept": [
+          "dwp.pip_cases_with_entitlement"
+        ],
+        "source_measure_id": "cases_with_entitlement",
+        "dimensions": [
+          "daily_living_award_status",
+          "mobility_award_status",
+          "age_bands_and_single_year"
+        ],
+        "dimension_values": {
+          "daily_living_award_status": "all",
+          "mobility_award_status": "all",
+          "age_bands_and_single_year": "75-79"
+        },
+        "entity_name": "person",
+        "period_type": "month",
+        "period_value": [
+          "2025-01",
+          "2025-04",
+          "2025-07",
+          "2025-10"
+        ],
+        "geography_id": "E92000001",
+        "geography_level": "country"
+      },
+      "entity": "person",
+      "measure": "dwp/pip/cases_england_aged_75_and_over",
+      "family": "dwp_pip",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "dwp.pip.cases_england_aged_75_and_over",
+        "measure_kind": "prepared_column",
+        "uk_uc_expected_source_months": "[\"2025-01\",\"2025-04\",\"2025-07\",\"2025-10\"]"
+      },
+      "period_match_policy": "source_window",
+      "value_operation": "monthly_window_average"
+    },
+    {
+      "name": "dwp.pip.cases_wales",
+      "ledger_selector": {
+        "source_name": "dwp",
+        "source_table": "PIP cases with entitlement by country, daily living award, mobility award and age band, January 2024 to July 2026",
+        "source_concept": [
+          "dwp.pip_cases_with_entitlement"
+        ],
+        "source_measure_id": "cases_with_entitlement",
+        "dimensions": [
+          "daily_living_award_status",
+          "mobility_award_status",
+          "age_bands_and_single_year"
+        ],
+        "dimension_values": {
+          "daily_living_award_status": "all",
+          "mobility_award_status": "all",
+          "age_bands_and_single_year": "all"
+        },
+        "entity_name": "person",
+        "period_type": "month",
+        "period_value": [
+          "2025-01",
+          "2025-04",
+          "2025-07",
+          "2025-10"
+        ],
+        "geography_id": "W92000004",
+        "geography_level": "country"
+      },
+      "entity": "person",
+      "measure": "dwp/pip/cases_wales",
+      "family": "dwp_pip",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "dwp.pip.cases_wales",
+        "measure_kind": "prepared_column",
+        "uk_uc_expected_source_months": "[\"2025-01\",\"2025-04\",\"2025-07\",\"2025-10\"]"
+      },
+      "period_match_policy": "source_window",
+      "value_operation": "monthly_window_average"
+    },
+    {
+      "name": "dwp.pip.cases_wales_daily_living_standard",
+      "ledger_selector": {
+        "source_name": "dwp",
+        "source_table": "PIP cases with entitlement by country, daily living award, mobility award and age band, January 2024 to July 2026",
+        "source_concept": [
+          "dwp.pip_cases_with_entitlement"
+        ],
+        "source_measure_id": "cases_with_entitlement",
+        "dimensions": [
+          "daily_living_award_status",
+          "mobility_award_status",
+          "age_bands_and_single_year"
+        ],
+        "dimension_values": {
+          "daily_living_award_status": "Daily Living - Standard",
+          "mobility_award_status": "all",
+          "age_bands_and_single_year": "all"
+        },
+        "entity_name": "person",
+        "period_type": "month",
+        "period_value": [
+          "2025-01",
+          "2025-04",
+          "2025-07",
+          "2025-10"
+        ],
+        "geography_id": "W92000004",
+        "geography_level": "country"
+      },
+      "entity": "person",
+      "measure": "dwp/pip/cases_wales_daily_living_standard",
+      "family": "dwp_pip",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "dwp.pip.cases_wales_daily_living_standard",
+        "measure_kind": "prepared_column",
+        "uk_uc_expected_source_months": "[\"2025-01\",\"2025-04\",\"2025-07\",\"2025-10\"]"
+      },
+      "period_match_policy": "source_window",
+      "value_operation": "monthly_window_average"
+    },
+    {
+      "name": "dwp.pip.cases_wales_daily_living_enhanced",
+      "ledger_selector": {
+        "source_name": "dwp",
+        "source_table": "PIP cases with entitlement by country, daily living award, mobility award and age band, January 2024 to July 2026",
+        "source_concept": [
+          "dwp.pip_cases_with_entitlement"
+        ],
+        "source_measure_id": "cases_with_entitlement",
+        "dimensions": [
+          "daily_living_award_status",
+          "mobility_award_status",
+          "age_bands_and_single_year"
+        ],
+        "dimension_values": {
+          "daily_living_award_status": "Daily Living - Enhanced",
+          "mobility_award_status": "all",
+          "age_bands_and_single_year": "all"
+        },
+        "entity_name": "person",
+        "period_type": "month",
+        "period_value": [
+          "2025-01",
+          "2025-04",
+          "2025-07",
+          "2025-10"
+        ],
+        "geography_id": "W92000004",
+        "geography_level": "country"
+      },
+      "entity": "person",
+      "measure": "dwp/pip/cases_wales_daily_living_enhanced",
+      "family": "dwp_pip",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "dwp.pip.cases_wales_daily_living_enhanced",
+        "measure_kind": "prepared_column",
+        "uk_uc_expected_source_months": "[\"2025-01\",\"2025-04\",\"2025-07\",\"2025-10\"]"
+      },
+      "period_match_policy": "source_window",
+      "value_operation": "monthly_window_average"
+    },
+    {
+      "name": "dwp.pip.cases_wales_daily_living_nil",
+      "ledger_selector": {
+        "source_name": "dwp",
+        "source_table": "PIP cases with entitlement by country, daily living award, mobility award and age band, January 2024 to July 2026",
+        "source_concept": [
+          "dwp.pip_cases_with_entitlement"
+        ],
+        "source_measure_id": "cases_with_entitlement",
+        "dimensions": [
+          "daily_living_award_status",
+          "mobility_award_status",
+          "age_bands_and_single_year"
+        ],
+        "dimension_values": {
+          "daily_living_award_status": "Daily Living - Nil",
+          "mobility_award_status": "all",
+          "age_bands_and_single_year": "all"
+        },
+        "entity_name": "person",
+        "period_type": "month",
+        "period_value": [
+          "2025-01",
+          "2025-04",
+          "2025-07",
+          "2025-10"
+        ],
+        "geography_id": "W92000004",
+        "geography_level": "country"
+      },
+      "entity": "person",
+      "measure": "dwp/pip/cases_wales_daily_living_nil",
+      "family": "dwp_pip",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "dwp.pip.cases_wales_daily_living_nil",
+        "measure_kind": "prepared_column",
+        "uk_uc_expected_source_months": "[\"2025-01\",\"2025-04\",\"2025-07\",\"2025-10\"]"
+      },
+      "period_match_policy": "source_window",
+      "value_operation": "monthly_window_average"
+    },
+    {
+      "name": "dwp.pip.cases_wales_mobility_standard",
+      "ledger_selector": {
+        "source_name": "dwp",
+        "source_table": "PIP cases with entitlement by country, daily living award, mobility award and age band, January 2024 to July 2026",
+        "source_concept": [
+          "dwp.pip_cases_with_entitlement"
+        ],
+        "source_measure_id": "cases_with_entitlement",
+        "dimensions": [
+          "daily_living_award_status",
+          "mobility_award_status",
+          "age_bands_and_single_year"
+        ],
+        "dimension_values": {
+          "daily_living_award_status": "all",
+          "mobility_award_status": "Mobility Award - Standard",
+          "age_bands_and_single_year": "all"
+        },
+        "entity_name": "person",
+        "period_type": "month",
+        "period_value": [
+          "2025-01",
+          "2025-04",
+          "2025-07",
+          "2025-10"
+        ],
+        "geography_id": "W92000004",
+        "geography_level": "country"
+      },
+      "entity": "person",
+      "measure": "dwp/pip/cases_wales_mobility_standard",
+      "family": "dwp_pip",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "dwp.pip.cases_wales_mobility_standard",
+        "measure_kind": "prepared_column",
+        "uk_uc_expected_source_months": "[\"2025-01\",\"2025-04\",\"2025-07\",\"2025-10\"]"
+      },
+      "period_match_policy": "source_window",
+      "value_operation": "monthly_window_average"
+    },
+    {
+      "name": "dwp.pip.cases_wales_mobility_enhanced",
+      "ledger_selector": {
+        "source_name": "dwp",
+        "source_table": "PIP cases with entitlement by country, daily living award, mobility award and age band, January 2024 to July 2026",
+        "source_concept": [
+          "dwp.pip_cases_with_entitlement"
+        ],
+        "source_measure_id": "cases_with_entitlement",
+        "dimensions": [
+          "daily_living_award_status",
+          "mobility_award_status",
+          "age_bands_and_single_year"
+        ],
+        "dimension_values": {
+          "daily_living_award_status": "all",
+          "mobility_award_status": "Mobility Award - Enhanced",
+          "age_bands_and_single_year": "all"
+        },
+        "entity_name": "person",
+        "period_type": "month",
+        "period_value": [
+          "2025-01",
+          "2025-04",
+          "2025-07",
+          "2025-10"
+        ],
+        "geography_id": "W92000004",
+        "geography_level": "country"
+      },
+      "entity": "person",
+      "measure": "dwp/pip/cases_wales_mobility_enhanced",
+      "family": "dwp_pip",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "dwp.pip.cases_wales_mobility_enhanced",
+        "measure_kind": "prepared_column",
+        "uk_uc_expected_source_months": "[\"2025-01\",\"2025-04\",\"2025-07\",\"2025-10\"]"
+      },
+      "period_match_policy": "source_window",
+      "value_operation": "monthly_window_average"
+    },
+    {
+      "name": "dwp.pip.cases_wales_mobility_nil",
+      "ledger_selector": {
+        "source_name": "dwp",
+        "source_table": "PIP cases with entitlement by country, daily living award, mobility award and age band, January 2024 to July 2026",
+        "source_concept": [
+          "dwp.pip_cases_with_entitlement"
+        ],
+        "source_measure_id": "cases_with_entitlement",
+        "dimensions": [
+          "daily_living_award_status",
+          "mobility_award_status",
+          "age_bands_and_single_year"
+        ],
+        "dimension_values": {
+          "daily_living_award_status": "all",
+          "mobility_award_status": "Mobility Award - Nil",
+          "age_bands_and_single_year": "all"
+        },
+        "entity_name": "person",
+        "period_type": "month",
+        "period_value": [
+          "2025-01",
+          "2025-04",
+          "2025-07",
+          "2025-10"
+        ],
+        "geography_id": "W92000004",
+        "geography_level": "country"
+      },
+      "entity": "person",
+      "measure": "dwp/pip/cases_wales_mobility_nil",
+      "family": "dwp_pip",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "dwp.pip.cases_wales_mobility_nil",
+        "measure_kind": "prepared_column",
+        "uk_uc_expected_source_months": "[\"2025-01\",\"2025-04\",\"2025-07\",\"2025-10\"]"
+      },
+      "period_match_policy": "source_window",
+      "value_operation": "monthly_window_average"
+    },
+    {
+      "name": "dwp.pip.cases_wales_aged_16_to_19",
+      "ledger_selector": {
+        "source_name": "dwp",
+        "source_table": "PIP cases with entitlement by country, daily living award, mobility award and age band, January 2024 to July 2026",
+        "source_concept": [
+          "dwp.pip_cases_with_entitlement"
+        ],
+        "source_measure_id": "cases_with_entitlement",
+        "dimensions": [
+          "daily_living_award_status",
+          "mobility_award_status",
+          "age_bands_and_single_year"
+        ],
+        "dimension_values": {
+          "daily_living_award_status": "all",
+          "mobility_award_status": "all",
+          "age_bands_and_single_year": "16-19"
+        },
+        "entity_name": "person",
+        "period_type": "month",
+        "period_value": [
+          "2025-01",
+          "2025-04",
+          "2025-07",
+          "2025-10"
+        ],
+        "geography_id": "W92000004",
+        "geography_level": "country"
+      },
+      "entity": "person",
+      "measure": "dwp/pip/cases_wales_aged_16_to_19",
+      "family": "dwp_pip",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "dwp.pip.cases_wales_aged_16_to_19",
+        "measure_kind": "prepared_column",
+        "uk_uc_expected_source_months": "[\"2025-01\",\"2025-04\",\"2025-07\",\"2025-10\"]"
+      },
+      "period_match_policy": "source_window",
+      "value_operation": "monthly_window_average"
+    },
+    {
+      "name": "dwp.pip.cases_wales_aged_20_to_24",
+      "ledger_selector": {
+        "source_name": "dwp",
+        "source_table": "PIP cases with entitlement by country, daily living award, mobility award and age band, January 2024 to July 2026",
+        "source_concept": [
+          "dwp.pip_cases_with_entitlement"
+        ],
+        "source_measure_id": "cases_with_entitlement",
+        "dimensions": [
+          "daily_living_award_status",
+          "mobility_award_status",
+          "age_bands_and_single_year"
+        ],
+        "dimension_values": {
+          "daily_living_award_status": "all",
+          "mobility_award_status": "all",
+          "age_bands_and_single_year": "20-24"
+        },
+        "entity_name": "person",
+        "period_type": "month",
+        "period_value": [
+          "2025-01",
+          "2025-04",
+          "2025-07",
+          "2025-10"
+        ],
+        "geography_id": "W92000004",
+        "geography_level": "country"
+      },
+      "entity": "person",
+      "measure": "dwp/pip/cases_wales_aged_20_to_24",
+      "family": "dwp_pip",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "dwp.pip.cases_wales_aged_20_to_24",
+        "measure_kind": "prepared_column",
+        "uk_uc_expected_source_months": "[\"2025-01\",\"2025-04\",\"2025-07\",\"2025-10\"]"
+      },
+      "period_match_policy": "source_window",
+      "value_operation": "monthly_window_average"
+    },
+    {
+      "name": "dwp.pip.cases_wales_aged_25_to_29",
+      "ledger_selector": {
+        "source_name": "dwp",
+        "source_table": "PIP cases with entitlement by country, daily living award, mobility award and age band, January 2024 to July 2026",
+        "source_concept": [
+          "dwp.pip_cases_with_entitlement"
+        ],
+        "source_measure_id": "cases_with_entitlement",
+        "dimensions": [
+          "daily_living_award_status",
+          "mobility_award_status",
+          "age_bands_and_single_year"
+        ],
+        "dimension_values": {
+          "daily_living_award_status": "all",
+          "mobility_award_status": "all",
+          "age_bands_and_single_year": "25-29"
+        },
+        "entity_name": "person",
+        "period_type": "month",
+        "period_value": [
+          "2025-01",
+          "2025-04",
+          "2025-07",
+          "2025-10"
+        ],
+        "geography_id": "W92000004",
+        "geography_level": "country"
+      },
+      "entity": "person",
+      "measure": "dwp/pip/cases_wales_aged_25_to_29",
+      "family": "dwp_pip",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "dwp.pip.cases_wales_aged_25_to_29",
+        "measure_kind": "prepared_column",
+        "uk_uc_expected_source_months": "[\"2025-01\",\"2025-04\",\"2025-07\",\"2025-10\"]"
+      },
+      "period_match_policy": "source_window",
+      "value_operation": "monthly_window_average"
+    },
+    {
+      "name": "dwp.pip.cases_wales_aged_30_to_34",
+      "ledger_selector": {
+        "source_name": "dwp",
+        "source_table": "PIP cases with entitlement by country, daily living award, mobility award and age band, January 2024 to July 2026",
+        "source_concept": [
+          "dwp.pip_cases_with_entitlement"
+        ],
+        "source_measure_id": "cases_with_entitlement",
+        "dimensions": [
+          "daily_living_award_status",
+          "mobility_award_status",
+          "age_bands_and_single_year"
+        ],
+        "dimension_values": {
+          "daily_living_award_status": "all",
+          "mobility_award_status": "all",
+          "age_bands_and_single_year": "30-34"
+        },
+        "entity_name": "person",
+        "period_type": "month",
+        "period_value": [
+          "2025-01",
+          "2025-04",
+          "2025-07",
+          "2025-10"
+        ],
+        "geography_id": "W92000004",
+        "geography_level": "country"
+      },
+      "entity": "person",
+      "measure": "dwp/pip/cases_wales_aged_30_to_34",
+      "family": "dwp_pip",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "dwp.pip.cases_wales_aged_30_to_34",
+        "measure_kind": "prepared_column",
+        "uk_uc_expected_source_months": "[\"2025-01\",\"2025-04\",\"2025-07\",\"2025-10\"]"
+      },
+      "period_match_policy": "source_window",
+      "value_operation": "monthly_window_average"
+    },
+    {
+      "name": "dwp.pip.cases_wales_aged_35_to_39",
+      "ledger_selector": {
+        "source_name": "dwp",
+        "source_table": "PIP cases with entitlement by country, daily living award, mobility award and age band, January 2024 to July 2026",
+        "source_concept": [
+          "dwp.pip_cases_with_entitlement"
+        ],
+        "source_measure_id": "cases_with_entitlement",
+        "dimensions": [
+          "daily_living_award_status",
+          "mobility_award_status",
+          "age_bands_and_single_year"
+        ],
+        "dimension_values": {
+          "daily_living_award_status": "all",
+          "mobility_award_status": "all",
+          "age_bands_and_single_year": "35-39"
+        },
+        "entity_name": "person",
+        "period_type": "month",
+        "period_value": [
+          "2025-01",
+          "2025-04",
+          "2025-07",
+          "2025-10"
+        ],
+        "geography_id": "W92000004",
+        "geography_level": "country"
+      },
+      "entity": "person",
+      "measure": "dwp/pip/cases_wales_aged_35_to_39",
+      "family": "dwp_pip",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "dwp.pip.cases_wales_aged_35_to_39",
+        "measure_kind": "prepared_column",
+        "uk_uc_expected_source_months": "[\"2025-01\",\"2025-04\",\"2025-07\",\"2025-10\"]"
+      },
+      "period_match_policy": "source_window",
+      "value_operation": "monthly_window_average"
+    },
+    {
+      "name": "dwp.pip.cases_wales_aged_40_to_44",
+      "ledger_selector": {
+        "source_name": "dwp",
+        "source_table": "PIP cases with entitlement by country, daily living award, mobility award and age band, January 2024 to July 2026",
+        "source_concept": [
+          "dwp.pip_cases_with_entitlement"
+        ],
+        "source_measure_id": "cases_with_entitlement",
+        "dimensions": [
+          "daily_living_award_status",
+          "mobility_award_status",
+          "age_bands_and_single_year"
+        ],
+        "dimension_values": {
+          "daily_living_award_status": "all",
+          "mobility_award_status": "all",
+          "age_bands_and_single_year": "40-44"
+        },
+        "entity_name": "person",
+        "period_type": "month",
+        "period_value": [
+          "2025-01",
+          "2025-04",
+          "2025-07",
+          "2025-10"
+        ],
+        "geography_id": "W92000004",
+        "geography_level": "country"
+      },
+      "entity": "person",
+      "measure": "dwp/pip/cases_wales_aged_40_to_44",
+      "family": "dwp_pip",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "dwp.pip.cases_wales_aged_40_to_44",
+        "measure_kind": "prepared_column",
+        "uk_uc_expected_source_months": "[\"2025-01\",\"2025-04\",\"2025-07\",\"2025-10\"]"
+      },
+      "period_match_policy": "source_window",
+      "value_operation": "monthly_window_average"
+    },
+    {
+      "name": "dwp.pip.cases_wales_aged_45_to_49",
+      "ledger_selector": {
+        "source_name": "dwp",
+        "source_table": "PIP cases with entitlement by country, daily living award, mobility award and age band, January 2024 to July 2026",
+        "source_concept": [
+          "dwp.pip_cases_with_entitlement"
+        ],
+        "source_measure_id": "cases_with_entitlement",
+        "dimensions": [
+          "daily_living_award_status",
+          "mobility_award_status",
+          "age_bands_and_single_year"
+        ],
+        "dimension_values": {
+          "daily_living_award_status": "all",
+          "mobility_award_status": "all",
+          "age_bands_and_single_year": "45-49"
+        },
+        "entity_name": "person",
+        "period_type": "month",
+        "period_value": [
+          "2025-01",
+          "2025-04",
+          "2025-07",
+          "2025-10"
+        ],
+        "geography_id": "W92000004",
+        "geography_level": "country"
+      },
+      "entity": "person",
+      "measure": "dwp/pip/cases_wales_aged_45_to_49",
+      "family": "dwp_pip",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "dwp.pip.cases_wales_aged_45_to_49",
+        "measure_kind": "prepared_column",
+        "uk_uc_expected_source_months": "[\"2025-01\",\"2025-04\",\"2025-07\",\"2025-10\"]"
+      },
+      "period_match_policy": "source_window",
+      "value_operation": "monthly_window_average"
+    },
+    {
+      "name": "dwp.pip.cases_wales_aged_50_to_54",
+      "ledger_selector": {
+        "source_name": "dwp",
+        "source_table": "PIP cases with entitlement by country, daily living award, mobility award and age band, January 2024 to July 2026",
+        "source_concept": [
+          "dwp.pip_cases_with_entitlement"
+        ],
+        "source_measure_id": "cases_with_entitlement",
+        "dimensions": [
+          "daily_living_award_status",
+          "mobility_award_status",
+          "age_bands_and_single_year"
+        ],
+        "dimension_values": {
+          "daily_living_award_status": "all",
+          "mobility_award_status": "all",
+          "age_bands_and_single_year": "50-54"
+        },
+        "entity_name": "person",
+        "period_type": "month",
+        "period_value": [
+          "2025-01",
+          "2025-04",
+          "2025-07",
+          "2025-10"
+        ],
+        "geography_id": "W92000004",
+        "geography_level": "country"
+      },
+      "entity": "person",
+      "measure": "dwp/pip/cases_wales_aged_50_to_54",
+      "family": "dwp_pip",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "dwp.pip.cases_wales_aged_50_to_54",
+        "measure_kind": "prepared_column",
+        "uk_uc_expected_source_months": "[\"2025-01\",\"2025-04\",\"2025-07\",\"2025-10\"]"
+      },
+      "period_match_policy": "source_window",
+      "value_operation": "monthly_window_average"
+    },
+    {
+      "name": "dwp.pip.cases_wales_aged_55_to_59",
+      "ledger_selector": {
+        "source_name": "dwp",
+        "source_table": "PIP cases with entitlement by country, daily living award, mobility award and age band, January 2024 to July 2026",
+        "source_concept": [
+          "dwp.pip_cases_with_entitlement"
+        ],
+        "source_measure_id": "cases_with_entitlement",
+        "dimensions": [
+          "daily_living_award_status",
+          "mobility_award_status",
+          "age_bands_and_single_year"
+        ],
+        "dimension_values": {
+          "daily_living_award_status": "all",
+          "mobility_award_status": "all",
+          "age_bands_and_single_year": "55-59"
+        },
+        "entity_name": "person",
+        "period_type": "month",
+        "period_value": [
+          "2025-01",
+          "2025-04",
+          "2025-07",
+          "2025-10"
+        ],
+        "geography_id": "W92000004",
+        "geography_level": "country"
+      },
+      "entity": "person",
+      "measure": "dwp/pip/cases_wales_aged_55_to_59",
+      "family": "dwp_pip",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "dwp.pip.cases_wales_aged_55_to_59",
+        "measure_kind": "prepared_column",
+        "uk_uc_expected_source_months": "[\"2025-01\",\"2025-04\",\"2025-07\",\"2025-10\"]"
+      },
+      "period_match_policy": "source_window",
+      "value_operation": "monthly_window_average"
+    },
+    {
+      "name": "dwp.pip.cases_wales_aged_60_to_64",
+      "ledger_selector": {
+        "source_name": "dwp",
+        "source_table": "PIP cases with entitlement by country, daily living award, mobility award and age band, January 2024 to July 2026",
+        "source_concept": [
+          "dwp.pip_cases_with_entitlement"
+        ],
+        "source_measure_id": "cases_with_entitlement",
+        "dimensions": [
+          "daily_living_award_status",
+          "mobility_award_status",
+          "age_bands_and_single_year"
+        ],
+        "dimension_values": {
+          "daily_living_award_status": "all",
+          "mobility_award_status": "all",
+          "age_bands_and_single_year": "60-64"
+        },
+        "entity_name": "person",
+        "period_type": "month",
+        "period_value": [
+          "2025-01",
+          "2025-04",
+          "2025-07",
+          "2025-10"
+        ],
+        "geography_id": "W92000004",
+        "geography_level": "country"
+      },
+      "entity": "person",
+      "measure": "dwp/pip/cases_wales_aged_60_to_64",
+      "family": "dwp_pip",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "dwp.pip.cases_wales_aged_60_to_64",
+        "measure_kind": "prepared_column",
+        "uk_uc_expected_source_months": "[\"2025-01\",\"2025-04\",\"2025-07\",\"2025-10\"]"
+      },
+      "period_match_policy": "source_window",
+      "value_operation": "monthly_window_average"
+    },
+    {
+      "name": "dwp.pip.cases_wales_aged_65_to_69",
+      "ledger_selector": {
+        "source_name": "dwp",
+        "source_table": "PIP cases with entitlement by country, daily living award, mobility award and age band, January 2024 to July 2026",
+        "source_concept": [
+          "dwp.pip_cases_with_entitlement"
+        ],
+        "source_measure_id": "cases_with_entitlement",
+        "dimensions": [
+          "daily_living_award_status",
+          "mobility_award_status",
+          "age_bands_and_single_year"
+        ],
+        "dimension_values": {
+          "daily_living_award_status": "all",
+          "mobility_award_status": "all",
+          "age_bands_and_single_year": "65-69"
+        },
+        "entity_name": "person",
+        "period_type": "month",
+        "period_value": [
+          "2025-01",
+          "2025-04",
+          "2025-07",
+          "2025-10"
+        ],
+        "geography_id": "W92000004",
+        "geography_level": "country"
+      },
+      "entity": "person",
+      "measure": "dwp/pip/cases_wales_aged_65_to_69",
+      "family": "dwp_pip",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "dwp.pip.cases_wales_aged_65_to_69",
+        "measure_kind": "prepared_column",
+        "uk_uc_expected_source_months": "[\"2025-01\",\"2025-04\",\"2025-07\",\"2025-10\"]"
+      },
+      "period_match_policy": "source_window",
+      "value_operation": "monthly_window_average"
+    },
+    {
+      "name": "dwp.pip.cases_wales_aged_70_to_74",
+      "ledger_selector": {
+        "source_name": "dwp",
+        "source_table": "PIP cases with entitlement by country, daily living award, mobility award and age band, January 2024 to July 2026",
+        "source_concept": [
+          "dwp.pip_cases_with_entitlement"
+        ],
+        "source_measure_id": "cases_with_entitlement",
+        "dimensions": [
+          "daily_living_award_status",
+          "mobility_award_status",
+          "age_bands_and_single_year"
+        ],
+        "dimension_values": {
+          "daily_living_award_status": "all",
+          "mobility_award_status": "all",
+          "age_bands_and_single_year": "70-74"
+        },
+        "entity_name": "person",
+        "period_type": "month",
+        "period_value": [
+          "2025-01",
+          "2025-04",
+          "2025-07",
+          "2025-10"
+        ],
+        "geography_id": "W92000004",
+        "geography_level": "country"
+      },
+      "entity": "person",
+      "measure": "dwp/pip/cases_wales_aged_70_to_74",
+      "family": "dwp_pip",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "dwp.pip.cases_wales_aged_70_to_74",
+        "measure_kind": "prepared_column",
+        "uk_uc_expected_source_months": "[\"2025-01\",\"2025-04\",\"2025-07\",\"2025-10\"]"
+      },
+      "period_match_policy": "source_window",
+      "value_operation": "monthly_window_average"
+    },
+    {
+      "name": "dwp.pip.cases_wales_aged_75_and_over",
+      "ledger_selector": {
+        "source_name": "dwp",
+        "source_table": "PIP cases with entitlement by country, daily living award, mobility award and age band, January 2024 to July 2026",
+        "source_concept": [
+          "dwp.pip_cases_with_entitlement"
+        ],
+        "source_measure_id": "cases_with_entitlement",
+        "dimensions": [
+          "daily_living_award_status",
+          "mobility_award_status",
+          "age_bands_and_single_year"
+        ],
+        "dimension_values": {
+          "daily_living_award_status": "all",
+          "mobility_award_status": "all",
+          "age_bands_and_single_year": "75-79"
+        },
+        "entity_name": "person",
+        "period_type": "month",
+        "period_value": [
+          "2025-01",
+          "2025-04",
+          "2025-07",
+          "2025-10"
+        ],
+        "geography_id": "W92000004",
+        "geography_level": "country"
+      },
+      "entity": "person",
+      "measure": "dwp/pip/cases_wales_aged_75_and_over",
+      "family": "dwp_pip",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "dwp.pip.cases_wales_aged_75_and_over",
+        "measure_kind": "prepared_column",
+        "uk_uc_expected_source_months": "[\"2025-01\",\"2025-04\",\"2025-07\",\"2025-10\"]"
+      },
+      "period_match_policy": "source_window",
+      "value_operation": "monthly_window_average"
+    },
+    {
+      "name": "dwp.pip.cases_north_east_daily_living_standard",
+      "ledger_selector": {
+        "source_name": "dwp",
+        "source_table": "PIP cases with entitlement by English region, daily living award and mobility award, January 2024 to July 2026",
+        "source_concept": [
+          "dwp.pip_cases_with_entitlement"
+        ],
+        "source_measure_id": "cases_with_entitlement",
+        "dimensions": [
+          "daily_living_award_status",
+          "mobility_award_status"
+        ],
+        "dimension_values": {
+          "daily_living_award_status": "Daily Living - Standard",
+          "mobility_award_status": "all"
+        },
+        "entity_name": "person",
+        "period_type": "month",
+        "period_value": [
+          "2025-01",
+          "2025-04",
+          "2025-07",
+          "2025-10"
+        ],
+        "geography_id": "E12000001",
+        "geography_level": "region"
+      },
+      "entity": "person",
+      "measure": "dwp/pip/cases_north_east_daily_living_standard",
+      "family": "dwp_pip",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "dwp.pip.cases_north_east_daily_living_standard",
+        "measure_kind": "prepared_column",
+        "uk_uc_expected_source_months": "[\"2025-01\",\"2025-04\",\"2025-07\",\"2025-10\"]"
+      },
+      "period_match_policy": "source_window",
+      "value_operation": "monthly_window_average"
+    },
+    {
+      "name": "dwp.pip.cases_north_east_daily_living_enhanced",
+      "ledger_selector": {
+        "source_name": "dwp",
+        "source_table": "PIP cases with entitlement by English region, daily living award and mobility award, January 2024 to July 2026",
+        "source_concept": [
+          "dwp.pip_cases_with_entitlement"
+        ],
+        "source_measure_id": "cases_with_entitlement",
+        "dimensions": [
+          "daily_living_award_status",
+          "mobility_award_status"
+        ],
+        "dimension_values": {
+          "daily_living_award_status": "Daily Living - Enhanced",
+          "mobility_award_status": "all"
+        },
+        "entity_name": "person",
+        "period_type": "month",
+        "period_value": [
+          "2025-01",
+          "2025-04",
+          "2025-07",
+          "2025-10"
+        ],
+        "geography_id": "E12000001",
+        "geography_level": "region"
+      },
+      "entity": "person",
+      "measure": "dwp/pip/cases_north_east_daily_living_enhanced",
+      "family": "dwp_pip",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "dwp.pip.cases_north_east_daily_living_enhanced",
+        "measure_kind": "prepared_column",
+        "uk_uc_expected_source_months": "[\"2025-01\",\"2025-04\",\"2025-07\",\"2025-10\"]"
+      },
+      "period_match_policy": "source_window",
+      "value_operation": "monthly_window_average"
+    },
+    {
+      "name": "dwp.pip.cases_north_east_daily_living_nil",
+      "ledger_selector": {
+        "source_name": "dwp",
+        "source_table": "PIP cases with entitlement by English region, daily living award and mobility award, January 2024 to July 2026",
+        "source_concept": [
+          "dwp.pip_cases_with_entitlement"
+        ],
+        "source_measure_id": "cases_with_entitlement",
+        "dimensions": [
+          "daily_living_award_status",
+          "mobility_award_status"
+        ],
+        "dimension_values": {
+          "daily_living_award_status": "Daily Living - Nil",
+          "mobility_award_status": "all"
+        },
+        "entity_name": "person",
+        "period_type": "month",
+        "period_value": [
+          "2025-01",
+          "2025-04",
+          "2025-07",
+          "2025-10"
+        ],
+        "geography_id": "E12000001",
+        "geography_level": "region"
+      },
+      "entity": "person",
+      "measure": "dwp/pip/cases_north_east_daily_living_nil",
+      "family": "dwp_pip",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "dwp.pip.cases_north_east_daily_living_nil",
+        "measure_kind": "prepared_column",
+        "uk_uc_expected_source_months": "[\"2025-01\",\"2025-04\",\"2025-07\",\"2025-10\"]"
+      },
+      "period_match_policy": "source_window",
+      "value_operation": "monthly_window_average"
+    },
+    {
+      "name": "dwp.pip.cases_north_east_mobility_standard",
+      "ledger_selector": {
+        "source_name": "dwp",
+        "source_table": "PIP cases with entitlement by English region, daily living award and mobility award, January 2024 to July 2026",
+        "source_concept": [
+          "dwp.pip_cases_with_entitlement"
+        ],
+        "source_measure_id": "cases_with_entitlement",
+        "dimensions": [
+          "daily_living_award_status",
+          "mobility_award_status"
+        ],
+        "dimension_values": {
+          "daily_living_award_status": "all",
+          "mobility_award_status": "Mobility Award - Standard"
+        },
+        "entity_name": "person",
+        "period_type": "month",
+        "period_value": [
+          "2025-01",
+          "2025-04",
+          "2025-07",
+          "2025-10"
+        ],
+        "geography_id": "E12000001",
+        "geography_level": "region"
+      },
+      "entity": "person",
+      "measure": "dwp/pip/cases_north_east_mobility_standard",
+      "family": "dwp_pip",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "dwp.pip.cases_north_east_mobility_standard",
+        "measure_kind": "prepared_column",
+        "uk_uc_expected_source_months": "[\"2025-01\",\"2025-04\",\"2025-07\",\"2025-10\"]"
+      },
+      "period_match_policy": "source_window",
+      "value_operation": "monthly_window_average"
+    },
+    {
+      "name": "dwp.pip.cases_north_east_mobility_enhanced",
+      "ledger_selector": {
+        "source_name": "dwp",
+        "source_table": "PIP cases with entitlement by English region, daily living award and mobility award, January 2024 to July 2026",
+        "source_concept": [
+          "dwp.pip_cases_with_entitlement"
+        ],
+        "source_measure_id": "cases_with_entitlement",
+        "dimensions": [
+          "daily_living_award_status",
+          "mobility_award_status"
+        ],
+        "dimension_values": {
+          "daily_living_award_status": "all",
+          "mobility_award_status": "Mobility Award - Enhanced"
+        },
+        "entity_name": "person",
+        "period_type": "month",
+        "period_value": [
+          "2025-01",
+          "2025-04",
+          "2025-07",
+          "2025-10"
+        ],
+        "geography_id": "E12000001",
+        "geography_level": "region"
+      },
+      "entity": "person",
+      "measure": "dwp/pip/cases_north_east_mobility_enhanced",
+      "family": "dwp_pip",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "dwp.pip.cases_north_east_mobility_enhanced",
+        "measure_kind": "prepared_column",
+        "uk_uc_expected_source_months": "[\"2025-01\",\"2025-04\",\"2025-07\",\"2025-10\"]"
+      },
+      "period_match_policy": "source_window",
+      "value_operation": "monthly_window_average"
+    },
+    {
+      "name": "dwp.pip.cases_north_east_mobility_nil",
+      "ledger_selector": {
+        "source_name": "dwp",
+        "source_table": "PIP cases with entitlement by English region, daily living award and mobility award, January 2024 to July 2026",
+        "source_concept": [
+          "dwp.pip_cases_with_entitlement"
+        ],
+        "source_measure_id": "cases_with_entitlement",
+        "dimensions": [
+          "daily_living_award_status",
+          "mobility_award_status"
+        ],
+        "dimension_values": {
+          "daily_living_award_status": "all",
+          "mobility_award_status": "Mobility Award - Nil"
+        },
+        "entity_name": "person",
+        "period_type": "month",
+        "period_value": [
+          "2025-01",
+          "2025-04",
+          "2025-07",
+          "2025-10"
+        ],
+        "geography_id": "E12000001",
+        "geography_level": "region"
+      },
+      "entity": "person",
+      "measure": "dwp/pip/cases_north_east_mobility_nil",
+      "family": "dwp_pip",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "dwp.pip.cases_north_east_mobility_nil",
+        "measure_kind": "prepared_column",
+        "uk_uc_expected_source_months": "[\"2025-01\",\"2025-04\",\"2025-07\",\"2025-10\"]"
+      },
+      "period_match_policy": "source_window",
+      "value_operation": "monthly_window_average"
+    },
+    {
+      "name": "dwp.pip.cases_north_west_daily_living_standard",
+      "ledger_selector": {
+        "source_name": "dwp",
+        "source_table": "PIP cases with entitlement by English region, daily living award and mobility award, January 2024 to July 2026",
+        "source_concept": [
+          "dwp.pip_cases_with_entitlement"
+        ],
+        "source_measure_id": "cases_with_entitlement",
+        "dimensions": [
+          "daily_living_award_status",
+          "mobility_award_status"
+        ],
+        "dimension_values": {
+          "daily_living_award_status": "Daily Living - Standard",
+          "mobility_award_status": "all"
+        },
+        "entity_name": "person",
+        "period_type": "month",
+        "period_value": [
+          "2025-01",
+          "2025-04",
+          "2025-07",
+          "2025-10"
+        ],
+        "geography_id": "E12000002",
+        "geography_level": "region"
+      },
+      "entity": "person",
+      "measure": "dwp/pip/cases_north_west_daily_living_standard",
+      "family": "dwp_pip",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "dwp.pip.cases_north_west_daily_living_standard",
+        "measure_kind": "prepared_column",
+        "uk_uc_expected_source_months": "[\"2025-01\",\"2025-04\",\"2025-07\",\"2025-10\"]"
+      },
+      "period_match_policy": "source_window",
+      "value_operation": "monthly_window_average"
+    },
+    {
+      "name": "dwp.pip.cases_north_west_daily_living_enhanced",
+      "ledger_selector": {
+        "source_name": "dwp",
+        "source_table": "PIP cases with entitlement by English region, daily living award and mobility award, January 2024 to July 2026",
+        "source_concept": [
+          "dwp.pip_cases_with_entitlement"
+        ],
+        "source_measure_id": "cases_with_entitlement",
+        "dimensions": [
+          "daily_living_award_status",
+          "mobility_award_status"
+        ],
+        "dimension_values": {
+          "daily_living_award_status": "Daily Living - Enhanced",
+          "mobility_award_status": "all"
+        },
+        "entity_name": "person",
+        "period_type": "month",
+        "period_value": [
+          "2025-01",
+          "2025-04",
+          "2025-07",
+          "2025-10"
+        ],
+        "geography_id": "E12000002",
+        "geography_level": "region"
+      },
+      "entity": "person",
+      "measure": "dwp/pip/cases_north_west_daily_living_enhanced",
+      "family": "dwp_pip",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "dwp.pip.cases_north_west_daily_living_enhanced",
+        "measure_kind": "prepared_column",
+        "uk_uc_expected_source_months": "[\"2025-01\",\"2025-04\",\"2025-07\",\"2025-10\"]"
+      },
+      "period_match_policy": "source_window",
+      "value_operation": "monthly_window_average"
+    },
+    {
+      "name": "dwp.pip.cases_north_west_daily_living_nil",
+      "ledger_selector": {
+        "source_name": "dwp",
+        "source_table": "PIP cases with entitlement by English region, daily living award and mobility award, January 2024 to July 2026",
+        "source_concept": [
+          "dwp.pip_cases_with_entitlement"
+        ],
+        "source_measure_id": "cases_with_entitlement",
+        "dimensions": [
+          "daily_living_award_status",
+          "mobility_award_status"
+        ],
+        "dimension_values": {
+          "daily_living_award_status": "Daily Living - Nil",
+          "mobility_award_status": "all"
+        },
+        "entity_name": "person",
+        "period_type": "month",
+        "period_value": [
+          "2025-01",
+          "2025-04",
+          "2025-07",
+          "2025-10"
+        ],
+        "geography_id": "E12000002",
+        "geography_level": "region"
+      },
+      "entity": "person",
+      "measure": "dwp/pip/cases_north_west_daily_living_nil",
+      "family": "dwp_pip",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "dwp.pip.cases_north_west_daily_living_nil",
+        "measure_kind": "prepared_column",
+        "uk_uc_expected_source_months": "[\"2025-01\",\"2025-04\",\"2025-07\",\"2025-10\"]"
+      },
+      "period_match_policy": "source_window",
+      "value_operation": "monthly_window_average"
+    },
+    {
+      "name": "dwp.pip.cases_north_west_mobility_standard",
+      "ledger_selector": {
+        "source_name": "dwp",
+        "source_table": "PIP cases with entitlement by English region, daily living award and mobility award, January 2024 to July 2026",
+        "source_concept": [
+          "dwp.pip_cases_with_entitlement"
+        ],
+        "source_measure_id": "cases_with_entitlement",
+        "dimensions": [
+          "daily_living_award_status",
+          "mobility_award_status"
+        ],
+        "dimension_values": {
+          "daily_living_award_status": "all",
+          "mobility_award_status": "Mobility Award - Standard"
+        },
+        "entity_name": "person",
+        "period_type": "month",
+        "period_value": [
+          "2025-01",
+          "2025-04",
+          "2025-07",
+          "2025-10"
+        ],
+        "geography_id": "E12000002",
+        "geography_level": "region"
+      },
+      "entity": "person",
+      "measure": "dwp/pip/cases_north_west_mobility_standard",
+      "family": "dwp_pip",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "dwp.pip.cases_north_west_mobility_standard",
+        "measure_kind": "prepared_column",
+        "uk_uc_expected_source_months": "[\"2025-01\",\"2025-04\",\"2025-07\",\"2025-10\"]"
+      },
+      "period_match_policy": "source_window",
+      "value_operation": "monthly_window_average"
+    },
+    {
+      "name": "dwp.pip.cases_north_west_mobility_enhanced",
+      "ledger_selector": {
+        "source_name": "dwp",
+        "source_table": "PIP cases with entitlement by English region, daily living award and mobility award, January 2024 to July 2026",
+        "source_concept": [
+          "dwp.pip_cases_with_entitlement"
+        ],
+        "source_measure_id": "cases_with_entitlement",
+        "dimensions": [
+          "daily_living_award_status",
+          "mobility_award_status"
+        ],
+        "dimension_values": {
+          "daily_living_award_status": "all",
+          "mobility_award_status": "Mobility Award - Enhanced"
+        },
+        "entity_name": "person",
+        "period_type": "month",
+        "period_value": [
+          "2025-01",
+          "2025-04",
+          "2025-07",
+          "2025-10"
+        ],
+        "geography_id": "E12000002",
+        "geography_level": "region"
+      },
+      "entity": "person",
+      "measure": "dwp/pip/cases_north_west_mobility_enhanced",
+      "family": "dwp_pip",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "dwp.pip.cases_north_west_mobility_enhanced",
+        "measure_kind": "prepared_column",
+        "uk_uc_expected_source_months": "[\"2025-01\",\"2025-04\",\"2025-07\",\"2025-10\"]"
+      },
+      "period_match_policy": "source_window",
+      "value_operation": "monthly_window_average"
+    },
+    {
+      "name": "dwp.pip.cases_north_west_mobility_nil",
+      "ledger_selector": {
+        "source_name": "dwp",
+        "source_table": "PIP cases with entitlement by English region, daily living award and mobility award, January 2024 to July 2026",
+        "source_concept": [
+          "dwp.pip_cases_with_entitlement"
+        ],
+        "source_measure_id": "cases_with_entitlement",
+        "dimensions": [
+          "daily_living_award_status",
+          "mobility_award_status"
+        ],
+        "dimension_values": {
+          "daily_living_award_status": "all",
+          "mobility_award_status": "Mobility Award - Nil"
+        },
+        "entity_name": "person",
+        "period_type": "month",
+        "period_value": [
+          "2025-01",
+          "2025-04",
+          "2025-07",
+          "2025-10"
+        ],
+        "geography_id": "E12000002",
+        "geography_level": "region"
+      },
+      "entity": "person",
+      "measure": "dwp/pip/cases_north_west_mobility_nil",
+      "family": "dwp_pip",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "dwp.pip.cases_north_west_mobility_nil",
+        "measure_kind": "prepared_column",
+        "uk_uc_expected_source_months": "[\"2025-01\",\"2025-04\",\"2025-07\",\"2025-10\"]"
+      },
+      "period_match_policy": "source_window",
+      "value_operation": "monthly_window_average"
+    },
+    {
+      "name": "dwp.pip.cases_yorkshire_daily_living_standard",
+      "ledger_selector": {
+        "source_name": "dwp",
+        "source_table": "PIP cases with entitlement by English region, daily living award and mobility award, January 2024 to July 2026",
+        "source_concept": [
+          "dwp.pip_cases_with_entitlement"
+        ],
+        "source_measure_id": "cases_with_entitlement",
+        "dimensions": [
+          "daily_living_award_status",
+          "mobility_award_status"
+        ],
+        "dimension_values": {
+          "daily_living_award_status": "Daily Living - Standard",
+          "mobility_award_status": "all"
+        },
+        "entity_name": "person",
+        "period_type": "month",
+        "period_value": [
+          "2025-01",
+          "2025-04",
+          "2025-07",
+          "2025-10"
+        ],
+        "geography_id": "E12000003",
+        "geography_level": "region"
+      },
+      "entity": "person",
+      "measure": "dwp/pip/cases_yorkshire_daily_living_standard",
+      "family": "dwp_pip",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "dwp.pip.cases_yorkshire_daily_living_standard",
+        "measure_kind": "prepared_column",
+        "uk_uc_expected_source_months": "[\"2025-01\",\"2025-04\",\"2025-07\",\"2025-10\"]"
+      },
+      "period_match_policy": "source_window",
+      "value_operation": "monthly_window_average"
+    },
+    {
+      "name": "dwp.pip.cases_yorkshire_daily_living_enhanced",
+      "ledger_selector": {
+        "source_name": "dwp",
+        "source_table": "PIP cases with entitlement by English region, daily living award and mobility award, January 2024 to July 2026",
+        "source_concept": [
+          "dwp.pip_cases_with_entitlement"
+        ],
+        "source_measure_id": "cases_with_entitlement",
+        "dimensions": [
+          "daily_living_award_status",
+          "mobility_award_status"
+        ],
+        "dimension_values": {
+          "daily_living_award_status": "Daily Living - Enhanced",
+          "mobility_award_status": "all"
+        },
+        "entity_name": "person",
+        "period_type": "month",
+        "period_value": [
+          "2025-01",
+          "2025-04",
+          "2025-07",
+          "2025-10"
+        ],
+        "geography_id": "E12000003",
+        "geography_level": "region"
+      },
+      "entity": "person",
+      "measure": "dwp/pip/cases_yorkshire_daily_living_enhanced",
+      "family": "dwp_pip",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "dwp.pip.cases_yorkshire_daily_living_enhanced",
+        "measure_kind": "prepared_column",
+        "uk_uc_expected_source_months": "[\"2025-01\",\"2025-04\",\"2025-07\",\"2025-10\"]"
+      },
+      "period_match_policy": "source_window",
+      "value_operation": "monthly_window_average"
+    },
+    {
+      "name": "dwp.pip.cases_yorkshire_daily_living_nil",
+      "ledger_selector": {
+        "source_name": "dwp",
+        "source_table": "PIP cases with entitlement by English region, daily living award and mobility award, January 2024 to July 2026",
+        "source_concept": [
+          "dwp.pip_cases_with_entitlement"
+        ],
+        "source_measure_id": "cases_with_entitlement",
+        "dimensions": [
+          "daily_living_award_status",
+          "mobility_award_status"
+        ],
+        "dimension_values": {
+          "daily_living_award_status": "Daily Living - Nil",
+          "mobility_award_status": "all"
+        },
+        "entity_name": "person",
+        "period_type": "month",
+        "period_value": [
+          "2025-01",
+          "2025-04",
+          "2025-07",
+          "2025-10"
+        ],
+        "geography_id": "E12000003",
+        "geography_level": "region"
+      },
+      "entity": "person",
+      "measure": "dwp/pip/cases_yorkshire_daily_living_nil",
+      "family": "dwp_pip",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "dwp.pip.cases_yorkshire_daily_living_nil",
+        "measure_kind": "prepared_column",
+        "uk_uc_expected_source_months": "[\"2025-01\",\"2025-04\",\"2025-07\",\"2025-10\"]"
+      },
+      "period_match_policy": "source_window",
+      "value_operation": "monthly_window_average"
+    },
+    {
+      "name": "dwp.pip.cases_yorkshire_mobility_standard",
+      "ledger_selector": {
+        "source_name": "dwp",
+        "source_table": "PIP cases with entitlement by English region, daily living award and mobility award, January 2024 to July 2026",
+        "source_concept": [
+          "dwp.pip_cases_with_entitlement"
+        ],
+        "source_measure_id": "cases_with_entitlement",
+        "dimensions": [
+          "daily_living_award_status",
+          "mobility_award_status"
+        ],
+        "dimension_values": {
+          "daily_living_award_status": "all",
+          "mobility_award_status": "Mobility Award - Standard"
+        },
+        "entity_name": "person",
+        "period_type": "month",
+        "period_value": [
+          "2025-01",
+          "2025-04",
+          "2025-07",
+          "2025-10"
+        ],
+        "geography_id": "E12000003",
+        "geography_level": "region"
+      },
+      "entity": "person",
+      "measure": "dwp/pip/cases_yorkshire_mobility_standard",
+      "family": "dwp_pip",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "dwp.pip.cases_yorkshire_mobility_standard",
+        "measure_kind": "prepared_column",
+        "uk_uc_expected_source_months": "[\"2025-01\",\"2025-04\",\"2025-07\",\"2025-10\"]"
+      },
+      "period_match_policy": "source_window",
+      "value_operation": "monthly_window_average"
+    },
+    {
+      "name": "dwp.pip.cases_yorkshire_mobility_enhanced",
+      "ledger_selector": {
+        "source_name": "dwp",
+        "source_table": "PIP cases with entitlement by English region, daily living award and mobility award, January 2024 to July 2026",
+        "source_concept": [
+          "dwp.pip_cases_with_entitlement"
+        ],
+        "source_measure_id": "cases_with_entitlement",
+        "dimensions": [
+          "daily_living_award_status",
+          "mobility_award_status"
+        ],
+        "dimension_values": {
+          "daily_living_award_status": "all",
+          "mobility_award_status": "Mobility Award - Enhanced"
+        },
+        "entity_name": "person",
+        "period_type": "month",
+        "period_value": [
+          "2025-01",
+          "2025-04",
+          "2025-07",
+          "2025-10"
+        ],
+        "geography_id": "E12000003",
+        "geography_level": "region"
+      },
+      "entity": "person",
+      "measure": "dwp/pip/cases_yorkshire_mobility_enhanced",
+      "family": "dwp_pip",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "dwp.pip.cases_yorkshire_mobility_enhanced",
+        "measure_kind": "prepared_column",
+        "uk_uc_expected_source_months": "[\"2025-01\",\"2025-04\",\"2025-07\",\"2025-10\"]"
+      },
+      "period_match_policy": "source_window",
+      "value_operation": "monthly_window_average"
+    },
+    {
+      "name": "dwp.pip.cases_yorkshire_mobility_nil",
+      "ledger_selector": {
+        "source_name": "dwp",
+        "source_table": "PIP cases with entitlement by English region, daily living award and mobility award, January 2024 to July 2026",
+        "source_concept": [
+          "dwp.pip_cases_with_entitlement"
+        ],
+        "source_measure_id": "cases_with_entitlement",
+        "dimensions": [
+          "daily_living_award_status",
+          "mobility_award_status"
+        ],
+        "dimension_values": {
+          "daily_living_award_status": "all",
+          "mobility_award_status": "Mobility Award - Nil"
+        },
+        "entity_name": "person",
+        "period_type": "month",
+        "period_value": [
+          "2025-01",
+          "2025-04",
+          "2025-07",
+          "2025-10"
+        ],
+        "geography_id": "E12000003",
+        "geography_level": "region"
+      },
+      "entity": "person",
+      "measure": "dwp/pip/cases_yorkshire_mobility_nil",
+      "family": "dwp_pip",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "dwp.pip.cases_yorkshire_mobility_nil",
+        "measure_kind": "prepared_column",
+        "uk_uc_expected_source_months": "[\"2025-01\",\"2025-04\",\"2025-07\",\"2025-10\"]"
+      },
+      "period_match_policy": "source_window",
+      "value_operation": "monthly_window_average"
+    },
+    {
+      "name": "dwp.pip.cases_east_midlands_daily_living_standard",
+      "ledger_selector": {
+        "source_name": "dwp",
+        "source_table": "PIP cases with entitlement by English region, daily living award and mobility award, January 2024 to July 2026",
+        "source_concept": [
+          "dwp.pip_cases_with_entitlement"
+        ],
+        "source_measure_id": "cases_with_entitlement",
+        "dimensions": [
+          "daily_living_award_status",
+          "mobility_award_status"
+        ],
+        "dimension_values": {
+          "daily_living_award_status": "Daily Living - Standard",
+          "mobility_award_status": "all"
+        },
+        "entity_name": "person",
+        "period_type": "month",
+        "period_value": [
+          "2025-01",
+          "2025-04",
+          "2025-07",
+          "2025-10"
+        ],
+        "geography_id": "E12000004",
+        "geography_level": "region"
+      },
+      "entity": "person",
+      "measure": "dwp/pip/cases_east_midlands_daily_living_standard",
+      "family": "dwp_pip",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "dwp.pip.cases_east_midlands_daily_living_standard",
+        "measure_kind": "prepared_column",
+        "uk_uc_expected_source_months": "[\"2025-01\",\"2025-04\",\"2025-07\",\"2025-10\"]"
+      },
+      "period_match_policy": "source_window",
+      "value_operation": "monthly_window_average"
+    },
+    {
+      "name": "dwp.pip.cases_east_midlands_daily_living_enhanced",
+      "ledger_selector": {
+        "source_name": "dwp",
+        "source_table": "PIP cases with entitlement by English region, daily living award and mobility award, January 2024 to July 2026",
+        "source_concept": [
+          "dwp.pip_cases_with_entitlement"
+        ],
+        "source_measure_id": "cases_with_entitlement",
+        "dimensions": [
+          "daily_living_award_status",
+          "mobility_award_status"
+        ],
+        "dimension_values": {
+          "daily_living_award_status": "Daily Living - Enhanced",
+          "mobility_award_status": "all"
+        },
+        "entity_name": "person",
+        "period_type": "month",
+        "period_value": [
+          "2025-01",
+          "2025-04",
+          "2025-07",
+          "2025-10"
+        ],
+        "geography_id": "E12000004",
+        "geography_level": "region"
+      },
+      "entity": "person",
+      "measure": "dwp/pip/cases_east_midlands_daily_living_enhanced",
+      "family": "dwp_pip",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "dwp.pip.cases_east_midlands_daily_living_enhanced",
+        "measure_kind": "prepared_column",
+        "uk_uc_expected_source_months": "[\"2025-01\",\"2025-04\",\"2025-07\",\"2025-10\"]"
+      },
+      "period_match_policy": "source_window",
+      "value_operation": "monthly_window_average"
+    },
+    {
+      "name": "dwp.pip.cases_east_midlands_daily_living_nil",
+      "ledger_selector": {
+        "source_name": "dwp",
+        "source_table": "PIP cases with entitlement by English region, daily living award and mobility award, January 2024 to July 2026",
+        "source_concept": [
+          "dwp.pip_cases_with_entitlement"
+        ],
+        "source_measure_id": "cases_with_entitlement",
+        "dimensions": [
+          "daily_living_award_status",
+          "mobility_award_status"
+        ],
+        "dimension_values": {
+          "daily_living_award_status": "Daily Living - Nil",
+          "mobility_award_status": "all"
+        },
+        "entity_name": "person",
+        "period_type": "month",
+        "period_value": [
+          "2025-01",
+          "2025-04",
+          "2025-07",
+          "2025-10"
+        ],
+        "geography_id": "E12000004",
+        "geography_level": "region"
+      },
+      "entity": "person",
+      "measure": "dwp/pip/cases_east_midlands_daily_living_nil",
+      "family": "dwp_pip",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "dwp.pip.cases_east_midlands_daily_living_nil",
+        "measure_kind": "prepared_column",
+        "uk_uc_expected_source_months": "[\"2025-01\",\"2025-04\",\"2025-07\",\"2025-10\"]"
+      },
+      "period_match_policy": "source_window",
+      "value_operation": "monthly_window_average"
+    },
+    {
+      "name": "dwp.pip.cases_east_midlands_mobility_standard",
+      "ledger_selector": {
+        "source_name": "dwp",
+        "source_table": "PIP cases with entitlement by English region, daily living award and mobility award, January 2024 to July 2026",
+        "source_concept": [
+          "dwp.pip_cases_with_entitlement"
+        ],
+        "source_measure_id": "cases_with_entitlement",
+        "dimensions": [
+          "daily_living_award_status",
+          "mobility_award_status"
+        ],
+        "dimension_values": {
+          "daily_living_award_status": "all",
+          "mobility_award_status": "Mobility Award - Standard"
+        },
+        "entity_name": "person",
+        "period_type": "month",
+        "period_value": [
+          "2025-01",
+          "2025-04",
+          "2025-07",
+          "2025-10"
+        ],
+        "geography_id": "E12000004",
+        "geography_level": "region"
+      },
+      "entity": "person",
+      "measure": "dwp/pip/cases_east_midlands_mobility_standard",
+      "family": "dwp_pip",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "dwp.pip.cases_east_midlands_mobility_standard",
+        "measure_kind": "prepared_column",
+        "uk_uc_expected_source_months": "[\"2025-01\",\"2025-04\",\"2025-07\",\"2025-10\"]"
+      },
+      "period_match_policy": "source_window",
+      "value_operation": "monthly_window_average"
+    },
+    {
+      "name": "dwp.pip.cases_east_midlands_mobility_enhanced",
+      "ledger_selector": {
+        "source_name": "dwp",
+        "source_table": "PIP cases with entitlement by English region, daily living award and mobility award, January 2024 to July 2026",
+        "source_concept": [
+          "dwp.pip_cases_with_entitlement"
+        ],
+        "source_measure_id": "cases_with_entitlement",
+        "dimensions": [
+          "daily_living_award_status",
+          "mobility_award_status"
+        ],
+        "dimension_values": {
+          "daily_living_award_status": "all",
+          "mobility_award_status": "Mobility Award - Enhanced"
+        },
+        "entity_name": "person",
+        "period_type": "month",
+        "period_value": [
+          "2025-01",
+          "2025-04",
+          "2025-07",
+          "2025-10"
+        ],
+        "geography_id": "E12000004",
+        "geography_level": "region"
+      },
+      "entity": "person",
+      "measure": "dwp/pip/cases_east_midlands_mobility_enhanced",
+      "family": "dwp_pip",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "dwp.pip.cases_east_midlands_mobility_enhanced",
+        "measure_kind": "prepared_column",
+        "uk_uc_expected_source_months": "[\"2025-01\",\"2025-04\",\"2025-07\",\"2025-10\"]"
+      },
+      "period_match_policy": "source_window",
+      "value_operation": "monthly_window_average"
+    },
+    {
+      "name": "dwp.pip.cases_east_midlands_mobility_nil",
+      "ledger_selector": {
+        "source_name": "dwp",
+        "source_table": "PIP cases with entitlement by English region, daily living award and mobility award, January 2024 to July 2026",
+        "source_concept": [
+          "dwp.pip_cases_with_entitlement"
+        ],
+        "source_measure_id": "cases_with_entitlement",
+        "dimensions": [
+          "daily_living_award_status",
+          "mobility_award_status"
+        ],
+        "dimension_values": {
+          "daily_living_award_status": "all",
+          "mobility_award_status": "Mobility Award - Nil"
+        },
+        "entity_name": "person",
+        "period_type": "month",
+        "period_value": [
+          "2025-01",
+          "2025-04",
+          "2025-07",
+          "2025-10"
+        ],
+        "geography_id": "E12000004",
+        "geography_level": "region"
+      },
+      "entity": "person",
+      "measure": "dwp/pip/cases_east_midlands_mobility_nil",
+      "family": "dwp_pip",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "dwp.pip.cases_east_midlands_mobility_nil",
+        "measure_kind": "prepared_column",
+        "uk_uc_expected_source_months": "[\"2025-01\",\"2025-04\",\"2025-07\",\"2025-10\"]"
+      },
+      "period_match_policy": "source_window",
+      "value_operation": "monthly_window_average"
+    },
+    {
+      "name": "dwp.pip.cases_west_midlands_daily_living_standard",
+      "ledger_selector": {
+        "source_name": "dwp",
+        "source_table": "PIP cases with entitlement by English region, daily living award and mobility award, January 2024 to July 2026",
+        "source_concept": [
+          "dwp.pip_cases_with_entitlement"
+        ],
+        "source_measure_id": "cases_with_entitlement",
+        "dimensions": [
+          "daily_living_award_status",
+          "mobility_award_status"
+        ],
+        "dimension_values": {
+          "daily_living_award_status": "Daily Living - Standard",
+          "mobility_award_status": "all"
+        },
+        "entity_name": "person",
+        "period_type": "month",
+        "period_value": [
+          "2025-01",
+          "2025-04",
+          "2025-07",
+          "2025-10"
+        ],
+        "geography_id": "E12000005",
+        "geography_level": "region"
+      },
+      "entity": "person",
+      "measure": "dwp/pip/cases_west_midlands_daily_living_standard",
+      "family": "dwp_pip",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "dwp.pip.cases_west_midlands_daily_living_standard",
+        "measure_kind": "prepared_column",
+        "uk_uc_expected_source_months": "[\"2025-01\",\"2025-04\",\"2025-07\",\"2025-10\"]"
+      },
+      "period_match_policy": "source_window",
+      "value_operation": "monthly_window_average"
+    },
+    {
+      "name": "dwp.pip.cases_west_midlands_daily_living_enhanced",
+      "ledger_selector": {
+        "source_name": "dwp",
+        "source_table": "PIP cases with entitlement by English region, daily living award and mobility award, January 2024 to July 2026",
+        "source_concept": [
+          "dwp.pip_cases_with_entitlement"
+        ],
+        "source_measure_id": "cases_with_entitlement",
+        "dimensions": [
+          "daily_living_award_status",
+          "mobility_award_status"
+        ],
+        "dimension_values": {
+          "daily_living_award_status": "Daily Living - Enhanced",
+          "mobility_award_status": "all"
+        },
+        "entity_name": "person",
+        "period_type": "month",
+        "period_value": [
+          "2025-01",
+          "2025-04",
+          "2025-07",
+          "2025-10"
+        ],
+        "geography_id": "E12000005",
+        "geography_level": "region"
+      },
+      "entity": "person",
+      "measure": "dwp/pip/cases_west_midlands_daily_living_enhanced",
+      "family": "dwp_pip",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "dwp.pip.cases_west_midlands_daily_living_enhanced",
+        "measure_kind": "prepared_column",
+        "uk_uc_expected_source_months": "[\"2025-01\",\"2025-04\",\"2025-07\",\"2025-10\"]"
+      },
+      "period_match_policy": "source_window",
+      "value_operation": "monthly_window_average"
+    },
+    {
+      "name": "dwp.pip.cases_west_midlands_daily_living_nil",
+      "ledger_selector": {
+        "source_name": "dwp",
+        "source_table": "PIP cases with entitlement by English region, daily living award and mobility award, January 2024 to July 2026",
+        "source_concept": [
+          "dwp.pip_cases_with_entitlement"
+        ],
+        "source_measure_id": "cases_with_entitlement",
+        "dimensions": [
+          "daily_living_award_status",
+          "mobility_award_status"
+        ],
+        "dimension_values": {
+          "daily_living_award_status": "Daily Living - Nil",
+          "mobility_award_status": "all"
+        },
+        "entity_name": "person",
+        "period_type": "month",
+        "period_value": [
+          "2025-01",
+          "2025-04",
+          "2025-07",
+          "2025-10"
+        ],
+        "geography_id": "E12000005",
+        "geography_level": "region"
+      },
+      "entity": "person",
+      "measure": "dwp/pip/cases_west_midlands_daily_living_nil",
+      "family": "dwp_pip",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "dwp.pip.cases_west_midlands_daily_living_nil",
+        "measure_kind": "prepared_column",
+        "uk_uc_expected_source_months": "[\"2025-01\",\"2025-04\",\"2025-07\",\"2025-10\"]"
+      },
+      "period_match_policy": "source_window",
+      "value_operation": "monthly_window_average"
+    },
+    {
+      "name": "dwp.pip.cases_west_midlands_mobility_standard",
+      "ledger_selector": {
+        "source_name": "dwp",
+        "source_table": "PIP cases with entitlement by English region, daily living award and mobility award, January 2024 to July 2026",
+        "source_concept": [
+          "dwp.pip_cases_with_entitlement"
+        ],
+        "source_measure_id": "cases_with_entitlement",
+        "dimensions": [
+          "daily_living_award_status",
+          "mobility_award_status"
+        ],
+        "dimension_values": {
+          "daily_living_award_status": "all",
+          "mobility_award_status": "Mobility Award - Standard"
+        },
+        "entity_name": "person",
+        "period_type": "month",
+        "period_value": [
+          "2025-01",
+          "2025-04",
+          "2025-07",
+          "2025-10"
+        ],
+        "geography_id": "E12000005",
+        "geography_level": "region"
+      },
+      "entity": "person",
+      "measure": "dwp/pip/cases_west_midlands_mobility_standard",
+      "family": "dwp_pip",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "dwp.pip.cases_west_midlands_mobility_standard",
+        "measure_kind": "prepared_column",
+        "uk_uc_expected_source_months": "[\"2025-01\",\"2025-04\",\"2025-07\",\"2025-10\"]"
+      },
+      "period_match_policy": "source_window",
+      "value_operation": "monthly_window_average"
+    },
+    {
+      "name": "dwp.pip.cases_west_midlands_mobility_enhanced",
+      "ledger_selector": {
+        "source_name": "dwp",
+        "source_table": "PIP cases with entitlement by English region, daily living award and mobility award, January 2024 to July 2026",
+        "source_concept": [
+          "dwp.pip_cases_with_entitlement"
+        ],
+        "source_measure_id": "cases_with_entitlement",
+        "dimensions": [
+          "daily_living_award_status",
+          "mobility_award_status"
+        ],
+        "dimension_values": {
+          "daily_living_award_status": "all",
+          "mobility_award_status": "Mobility Award - Enhanced"
+        },
+        "entity_name": "person",
+        "period_type": "month",
+        "period_value": [
+          "2025-01",
+          "2025-04",
+          "2025-07",
+          "2025-10"
+        ],
+        "geography_id": "E12000005",
+        "geography_level": "region"
+      },
+      "entity": "person",
+      "measure": "dwp/pip/cases_west_midlands_mobility_enhanced",
+      "family": "dwp_pip",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "dwp.pip.cases_west_midlands_mobility_enhanced",
+        "measure_kind": "prepared_column",
+        "uk_uc_expected_source_months": "[\"2025-01\",\"2025-04\",\"2025-07\",\"2025-10\"]"
+      },
+      "period_match_policy": "source_window",
+      "value_operation": "monthly_window_average"
+    },
+    {
+      "name": "dwp.pip.cases_west_midlands_mobility_nil",
+      "ledger_selector": {
+        "source_name": "dwp",
+        "source_table": "PIP cases with entitlement by English region, daily living award and mobility award, January 2024 to July 2026",
+        "source_concept": [
+          "dwp.pip_cases_with_entitlement"
+        ],
+        "source_measure_id": "cases_with_entitlement",
+        "dimensions": [
+          "daily_living_award_status",
+          "mobility_award_status"
+        ],
+        "dimension_values": {
+          "daily_living_award_status": "all",
+          "mobility_award_status": "Mobility Award - Nil"
+        },
+        "entity_name": "person",
+        "period_type": "month",
+        "period_value": [
+          "2025-01",
+          "2025-04",
+          "2025-07",
+          "2025-10"
+        ],
+        "geography_id": "E12000005",
+        "geography_level": "region"
+      },
+      "entity": "person",
+      "measure": "dwp/pip/cases_west_midlands_mobility_nil",
+      "family": "dwp_pip",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "dwp.pip.cases_west_midlands_mobility_nil",
+        "measure_kind": "prepared_column",
+        "uk_uc_expected_source_months": "[\"2025-01\",\"2025-04\",\"2025-07\",\"2025-10\"]"
+      },
+      "period_match_policy": "source_window",
+      "value_operation": "monthly_window_average"
+    },
+    {
+      "name": "dwp.pip.cases_east_of_england_daily_living_standard",
+      "ledger_selector": {
+        "source_name": "dwp",
+        "source_table": "PIP cases with entitlement by English region, daily living award and mobility award, January 2024 to July 2026",
+        "source_concept": [
+          "dwp.pip_cases_with_entitlement"
+        ],
+        "source_measure_id": "cases_with_entitlement",
+        "dimensions": [
+          "daily_living_award_status",
+          "mobility_award_status"
+        ],
+        "dimension_values": {
+          "daily_living_award_status": "Daily Living - Standard",
+          "mobility_award_status": "all"
+        },
+        "entity_name": "person",
+        "period_type": "month",
+        "period_value": [
+          "2025-01",
+          "2025-04",
+          "2025-07",
+          "2025-10"
+        ],
+        "geography_id": "E12000006",
+        "geography_level": "region"
+      },
+      "entity": "person",
+      "measure": "dwp/pip/cases_east_of_england_daily_living_standard",
+      "family": "dwp_pip",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "dwp.pip.cases_east_of_england_daily_living_standard",
+        "measure_kind": "prepared_column",
+        "uk_uc_expected_source_months": "[\"2025-01\",\"2025-04\",\"2025-07\",\"2025-10\"]"
+      },
+      "period_match_policy": "source_window",
+      "value_operation": "monthly_window_average"
+    },
+    {
+      "name": "dwp.pip.cases_east_of_england_daily_living_enhanced",
+      "ledger_selector": {
+        "source_name": "dwp",
+        "source_table": "PIP cases with entitlement by English region, daily living award and mobility award, January 2024 to July 2026",
+        "source_concept": [
+          "dwp.pip_cases_with_entitlement"
+        ],
+        "source_measure_id": "cases_with_entitlement",
+        "dimensions": [
+          "daily_living_award_status",
+          "mobility_award_status"
+        ],
+        "dimension_values": {
+          "daily_living_award_status": "Daily Living - Enhanced",
+          "mobility_award_status": "all"
+        },
+        "entity_name": "person",
+        "period_type": "month",
+        "period_value": [
+          "2025-01",
+          "2025-04",
+          "2025-07",
+          "2025-10"
+        ],
+        "geography_id": "E12000006",
+        "geography_level": "region"
+      },
+      "entity": "person",
+      "measure": "dwp/pip/cases_east_of_england_daily_living_enhanced",
+      "family": "dwp_pip",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "dwp.pip.cases_east_of_england_daily_living_enhanced",
+        "measure_kind": "prepared_column",
+        "uk_uc_expected_source_months": "[\"2025-01\",\"2025-04\",\"2025-07\",\"2025-10\"]"
+      },
+      "period_match_policy": "source_window",
+      "value_operation": "monthly_window_average"
+    },
+    {
+      "name": "dwp.pip.cases_east_of_england_daily_living_nil",
+      "ledger_selector": {
+        "source_name": "dwp",
+        "source_table": "PIP cases with entitlement by English region, daily living award and mobility award, January 2024 to July 2026",
+        "source_concept": [
+          "dwp.pip_cases_with_entitlement"
+        ],
+        "source_measure_id": "cases_with_entitlement",
+        "dimensions": [
+          "daily_living_award_status",
+          "mobility_award_status"
+        ],
+        "dimension_values": {
+          "daily_living_award_status": "Daily Living - Nil",
+          "mobility_award_status": "all"
+        },
+        "entity_name": "person",
+        "period_type": "month",
+        "period_value": [
+          "2025-01",
+          "2025-04",
+          "2025-07",
+          "2025-10"
+        ],
+        "geography_id": "E12000006",
+        "geography_level": "region"
+      },
+      "entity": "person",
+      "measure": "dwp/pip/cases_east_of_england_daily_living_nil",
+      "family": "dwp_pip",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "dwp.pip.cases_east_of_england_daily_living_nil",
+        "measure_kind": "prepared_column",
+        "uk_uc_expected_source_months": "[\"2025-01\",\"2025-04\",\"2025-07\",\"2025-10\"]"
+      },
+      "period_match_policy": "source_window",
+      "value_operation": "monthly_window_average"
+    },
+    {
+      "name": "dwp.pip.cases_east_of_england_mobility_standard",
+      "ledger_selector": {
+        "source_name": "dwp",
+        "source_table": "PIP cases with entitlement by English region, daily living award and mobility award, January 2024 to July 2026",
+        "source_concept": [
+          "dwp.pip_cases_with_entitlement"
+        ],
+        "source_measure_id": "cases_with_entitlement",
+        "dimensions": [
+          "daily_living_award_status",
+          "mobility_award_status"
+        ],
+        "dimension_values": {
+          "daily_living_award_status": "all",
+          "mobility_award_status": "Mobility Award - Standard"
+        },
+        "entity_name": "person",
+        "period_type": "month",
+        "period_value": [
+          "2025-01",
+          "2025-04",
+          "2025-07",
+          "2025-10"
+        ],
+        "geography_id": "E12000006",
+        "geography_level": "region"
+      },
+      "entity": "person",
+      "measure": "dwp/pip/cases_east_of_england_mobility_standard",
+      "family": "dwp_pip",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "dwp.pip.cases_east_of_england_mobility_standard",
+        "measure_kind": "prepared_column",
+        "uk_uc_expected_source_months": "[\"2025-01\",\"2025-04\",\"2025-07\",\"2025-10\"]"
+      },
+      "period_match_policy": "source_window",
+      "value_operation": "monthly_window_average"
+    },
+    {
+      "name": "dwp.pip.cases_east_of_england_mobility_enhanced",
+      "ledger_selector": {
+        "source_name": "dwp",
+        "source_table": "PIP cases with entitlement by English region, daily living award and mobility award, January 2024 to July 2026",
+        "source_concept": [
+          "dwp.pip_cases_with_entitlement"
+        ],
+        "source_measure_id": "cases_with_entitlement",
+        "dimensions": [
+          "daily_living_award_status",
+          "mobility_award_status"
+        ],
+        "dimension_values": {
+          "daily_living_award_status": "all",
+          "mobility_award_status": "Mobility Award - Enhanced"
+        },
+        "entity_name": "person",
+        "period_type": "month",
+        "period_value": [
+          "2025-01",
+          "2025-04",
+          "2025-07",
+          "2025-10"
+        ],
+        "geography_id": "E12000006",
+        "geography_level": "region"
+      },
+      "entity": "person",
+      "measure": "dwp/pip/cases_east_of_england_mobility_enhanced",
+      "family": "dwp_pip",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "dwp.pip.cases_east_of_england_mobility_enhanced",
+        "measure_kind": "prepared_column",
+        "uk_uc_expected_source_months": "[\"2025-01\",\"2025-04\",\"2025-07\",\"2025-10\"]"
+      },
+      "period_match_policy": "source_window",
+      "value_operation": "monthly_window_average"
+    },
+    {
+      "name": "dwp.pip.cases_east_of_england_mobility_nil",
+      "ledger_selector": {
+        "source_name": "dwp",
+        "source_table": "PIP cases with entitlement by English region, daily living award and mobility award, January 2024 to July 2026",
+        "source_concept": [
+          "dwp.pip_cases_with_entitlement"
+        ],
+        "source_measure_id": "cases_with_entitlement",
+        "dimensions": [
+          "daily_living_award_status",
+          "mobility_award_status"
+        ],
+        "dimension_values": {
+          "daily_living_award_status": "all",
+          "mobility_award_status": "Mobility Award - Nil"
+        },
+        "entity_name": "person",
+        "period_type": "month",
+        "period_value": [
+          "2025-01",
+          "2025-04",
+          "2025-07",
+          "2025-10"
+        ],
+        "geography_id": "E12000006",
+        "geography_level": "region"
+      },
+      "entity": "person",
+      "measure": "dwp/pip/cases_east_of_england_mobility_nil",
+      "family": "dwp_pip",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "dwp.pip.cases_east_of_england_mobility_nil",
+        "measure_kind": "prepared_column",
+        "uk_uc_expected_source_months": "[\"2025-01\",\"2025-04\",\"2025-07\",\"2025-10\"]"
+      },
+      "period_match_policy": "source_window",
+      "value_operation": "monthly_window_average"
+    },
+    {
+      "name": "dwp.pip.cases_london_daily_living_standard",
+      "ledger_selector": {
+        "source_name": "dwp",
+        "source_table": "PIP cases with entitlement by English region, daily living award and mobility award, January 2024 to July 2026",
+        "source_concept": [
+          "dwp.pip_cases_with_entitlement"
+        ],
+        "source_measure_id": "cases_with_entitlement",
+        "dimensions": [
+          "daily_living_award_status",
+          "mobility_award_status"
+        ],
+        "dimension_values": {
+          "daily_living_award_status": "Daily Living - Standard",
+          "mobility_award_status": "all"
+        },
+        "entity_name": "person",
+        "period_type": "month",
+        "period_value": [
+          "2025-01",
+          "2025-04",
+          "2025-07",
+          "2025-10"
+        ],
+        "geography_id": "E12000007",
+        "geography_level": "region"
+      },
+      "entity": "person",
+      "measure": "dwp/pip/cases_london_daily_living_standard",
+      "family": "dwp_pip",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "dwp.pip.cases_london_daily_living_standard",
+        "measure_kind": "prepared_column",
+        "uk_uc_expected_source_months": "[\"2025-01\",\"2025-04\",\"2025-07\",\"2025-10\"]"
+      },
+      "period_match_policy": "source_window",
+      "value_operation": "monthly_window_average"
+    },
+    {
+      "name": "dwp.pip.cases_london_daily_living_enhanced",
+      "ledger_selector": {
+        "source_name": "dwp",
+        "source_table": "PIP cases with entitlement by English region, daily living award and mobility award, January 2024 to July 2026",
+        "source_concept": [
+          "dwp.pip_cases_with_entitlement"
+        ],
+        "source_measure_id": "cases_with_entitlement",
+        "dimensions": [
+          "daily_living_award_status",
+          "mobility_award_status"
+        ],
+        "dimension_values": {
+          "daily_living_award_status": "Daily Living - Enhanced",
+          "mobility_award_status": "all"
+        },
+        "entity_name": "person",
+        "period_type": "month",
+        "period_value": [
+          "2025-01",
+          "2025-04",
+          "2025-07",
+          "2025-10"
+        ],
+        "geography_id": "E12000007",
+        "geography_level": "region"
+      },
+      "entity": "person",
+      "measure": "dwp/pip/cases_london_daily_living_enhanced",
+      "family": "dwp_pip",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "dwp.pip.cases_london_daily_living_enhanced",
+        "measure_kind": "prepared_column",
+        "uk_uc_expected_source_months": "[\"2025-01\",\"2025-04\",\"2025-07\",\"2025-10\"]"
+      },
+      "period_match_policy": "source_window",
+      "value_operation": "monthly_window_average"
+    },
+    {
+      "name": "dwp.pip.cases_london_daily_living_nil",
+      "ledger_selector": {
+        "source_name": "dwp",
+        "source_table": "PIP cases with entitlement by English region, daily living award and mobility award, January 2024 to July 2026",
+        "source_concept": [
+          "dwp.pip_cases_with_entitlement"
+        ],
+        "source_measure_id": "cases_with_entitlement",
+        "dimensions": [
+          "daily_living_award_status",
+          "mobility_award_status"
+        ],
+        "dimension_values": {
+          "daily_living_award_status": "Daily Living - Nil",
+          "mobility_award_status": "all"
+        },
+        "entity_name": "person",
+        "period_type": "month",
+        "period_value": [
+          "2025-01",
+          "2025-04",
+          "2025-07",
+          "2025-10"
+        ],
+        "geography_id": "E12000007",
+        "geography_level": "region"
+      },
+      "entity": "person",
+      "measure": "dwp/pip/cases_london_daily_living_nil",
+      "family": "dwp_pip",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "dwp.pip.cases_london_daily_living_nil",
+        "measure_kind": "prepared_column",
+        "uk_uc_expected_source_months": "[\"2025-01\",\"2025-04\",\"2025-07\",\"2025-10\"]"
+      },
+      "period_match_policy": "source_window",
+      "value_operation": "monthly_window_average"
+    },
+    {
+      "name": "dwp.pip.cases_london_mobility_standard",
+      "ledger_selector": {
+        "source_name": "dwp",
+        "source_table": "PIP cases with entitlement by English region, daily living award and mobility award, January 2024 to July 2026",
+        "source_concept": [
+          "dwp.pip_cases_with_entitlement"
+        ],
+        "source_measure_id": "cases_with_entitlement",
+        "dimensions": [
+          "daily_living_award_status",
+          "mobility_award_status"
+        ],
+        "dimension_values": {
+          "daily_living_award_status": "all",
+          "mobility_award_status": "Mobility Award - Standard"
+        },
+        "entity_name": "person",
+        "period_type": "month",
+        "period_value": [
+          "2025-01",
+          "2025-04",
+          "2025-07",
+          "2025-10"
+        ],
+        "geography_id": "E12000007",
+        "geography_level": "region"
+      },
+      "entity": "person",
+      "measure": "dwp/pip/cases_london_mobility_standard",
+      "family": "dwp_pip",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "dwp.pip.cases_london_mobility_standard",
+        "measure_kind": "prepared_column",
+        "uk_uc_expected_source_months": "[\"2025-01\",\"2025-04\",\"2025-07\",\"2025-10\"]"
+      },
+      "period_match_policy": "source_window",
+      "value_operation": "monthly_window_average"
+    },
+    {
+      "name": "dwp.pip.cases_london_mobility_enhanced",
+      "ledger_selector": {
+        "source_name": "dwp",
+        "source_table": "PIP cases with entitlement by English region, daily living award and mobility award, January 2024 to July 2026",
+        "source_concept": [
+          "dwp.pip_cases_with_entitlement"
+        ],
+        "source_measure_id": "cases_with_entitlement",
+        "dimensions": [
+          "daily_living_award_status",
+          "mobility_award_status"
+        ],
+        "dimension_values": {
+          "daily_living_award_status": "all",
+          "mobility_award_status": "Mobility Award - Enhanced"
+        },
+        "entity_name": "person",
+        "period_type": "month",
+        "period_value": [
+          "2025-01",
+          "2025-04",
+          "2025-07",
+          "2025-10"
+        ],
+        "geography_id": "E12000007",
+        "geography_level": "region"
+      },
+      "entity": "person",
+      "measure": "dwp/pip/cases_london_mobility_enhanced",
+      "family": "dwp_pip",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "dwp.pip.cases_london_mobility_enhanced",
+        "measure_kind": "prepared_column",
+        "uk_uc_expected_source_months": "[\"2025-01\",\"2025-04\",\"2025-07\",\"2025-10\"]"
+      },
+      "period_match_policy": "source_window",
+      "value_operation": "monthly_window_average"
+    },
+    {
+      "name": "dwp.pip.cases_london_mobility_nil",
+      "ledger_selector": {
+        "source_name": "dwp",
+        "source_table": "PIP cases with entitlement by English region, daily living award and mobility award, January 2024 to July 2026",
+        "source_concept": [
+          "dwp.pip_cases_with_entitlement"
+        ],
+        "source_measure_id": "cases_with_entitlement",
+        "dimensions": [
+          "daily_living_award_status",
+          "mobility_award_status"
+        ],
+        "dimension_values": {
+          "daily_living_award_status": "all",
+          "mobility_award_status": "Mobility Award - Nil"
+        },
+        "entity_name": "person",
+        "period_type": "month",
+        "period_value": [
+          "2025-01",
+          "2025-04",
+          "2025-07",
+          "2025-10"
+        ],
+        "geography_id": "E12000007",
+        "geography_level": "region"
+      },
+      "entity": "person",
+      "measure": "dwp/pip/cases_london_mobility_nil",
+      "family": "dwp_pip",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "dwp.pip.cases_london_mobility_nil",
+        "measure_kind": "prepared_column",
+        "uk_uc_expected_source_months": "[\"2025-01\",\"2025-04\",\"2025-07\",\"2025-10\"]"
+      },
+      "period_match_policy": "source_window",
+      "value_operation": "monthly_window_average"
+    },
+    {
+      "name": "dwp.pip.cases_south_east_daily_living_standard",
+      "ledger_selector": {
+        "source_name": "dwp",
+        "source_table": "PIP cases with entitlement by English region, daily living award and mobility award, January 2024 to July 2026",
+        "source_concept": [
+          "dwp.pip_cases_with_entitlement"
+        ],
+        "source_measure_id": "cases_with_entitlement",
+        "dimensions": [
+          "daily_living_award_status",
+          "mobility_award_status"
+        ],
+        "dimension_values": {
+          "daily_living_award_status": "Daily Living - Standard",
+          "mobility_award_status": "all"
+        },
+        "entity_name": "person",
+        "period_type": "month",
+        "period_value": [
+          "2025-01",
+          "2025-04",
+          "2025-07",
+          "2025-10"
+        ],
+        "geography_id": "E12000008",
+        "geography_level": "region"
+      },
+      "entity": "person",
+      "measure": "dwp/pip/cases_south_east_daily_living_standard",
+      "family": "dwp_pip",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "dwp.pip.cases_south_east_daily_living_standard",
+        "measure_kind": "prepared_column",
+        "uk_uc_expected_source_months": "[\"2025-01\",\"2025-04\",\"2025-07\",\"2025-10\"]"
+      },
+      "period_match_policy": "source_window",
+      "value_operation": "monthly_window_average"
+    },
+    {
+      "name": "dwp.pip.cases_south_east_daily_living_enhanced",
+      "ledger_selector": {
+        "source_name": "dwp",
+        "source_table": "PIP cases with entitlement by English region, daily living award and mobility award, January 2024 to July 2026",
+        "source_concept": [
+          "dwp.pip_cases_with_entitlement"
+        ],
+        "source_measure_id": "cases_with_entitlement",
+        "dimensions": [
+          "daily_living_award_status",
+          "mobility_award_status"
+        ],
+        "dimension_values": {
+          "daily_living_award_status": "Daily Living - Enhanced",
+          "mobility_award_status": "all"
+        },
+        "entity_name": "person",
+        "period_type": "month",
+        "period_value": [
+          "2025-01",
+          "2025-04",
+          "2025-07",
+          "2025-10"
+        ],
+        "geography_id": "E12000008",
+        "geography_level": "region"
+      },
+      "entity": "person",
+      "measure": "dwp/pip/cases_south_east_daily_living_enhanced",
+      "family": "dwp_pip",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "dwp.pip.cases_south_east_daily_living_enhanced",
+        "measure_kind": "prepared_column",
+        "uk_uc_expected_source_months": "[\"2025-01\",\"2025-04\",\"2025-07\",\"2025-10\"]"
+      },
+      "period_match_policy": "source_window",
+      "value_operation": "monthly_window_average"
+    },
+    {
+      "name": "dwp.pip.cases_south_east_daily_living_nil",
+      "ledger_selector": {
+        "source_name": "dwp",
+        "source_table": "PIP cases with entitlement by English region, daily living award and mobility award, January 2024 to July 2026",
+        "source_concept": [
+          "dwp.pip_cases_with_entitlement"
+        ],
+        "source_measure_id": "cases_with_entitlement",
+        "dimensions": [
+          "daily_living_award_status",
+          "mobility_award_status"
+        ],
+        "dimension_values": {
+          "daily_living_award_status": "Daily Living - Nil",
+          "mobility_award_status": "all"
+        },
+        "entity_name": "person",
+        "period_type": "month",
+        "period_value": [
+          "2025-01",
+          "2025-04",
+          "2025-07",
+          "2025-10"
+        ],
+        "geography_id": "E12000008",
+        "geography_level": "region"
+      },
+      "entity": "person",
+      "measure": "dwp/pip/cases_south_east_daily_living_nil",
+      "family": "dwp_pip",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "dwp.pip.cases_south_east_daily_living_nil",
+        "measure_kind": "prepared_column",
+        "uk_uc_expected_source_months": "[\"2025-01\",\"2025-04\",\"2025-07\",\"2025-10\"]"
+      },
+      "period_match_policy": "source_window",
+      "value_operation": "monthly_window_average"
+    },
+    {
+      "name": "dwp.pip.cases_south_east_mobility_standard",
+      "ledger_selector": {
+        "source_name": "dwp",
+        "source_table": "PIP cases with entitlement by English region, daily living award and mobility award, January 2024 to July 2026",
+        "source_concept": [
+          "dwp.pip_cases_with_entitlement"
+        ],
+        "source_measure_id": "cases_with_entitlement",
+        "dimensions": [
+          "daily_living_award_status",
+          "mobility_award_status"
+        ],
+        "dimension_values": {
+          "daily_living_award_status": "all",
+          "mobility_award_status": "Mobility Award - Standard"
+        },
+        "entity_name": "person",
+        "period_type": "month",
+        "period_value": [
+          "2025-01",
+          "2025-04",
+          "2025-07",
+          "2025-10"
+        ],
+        "geography_id": "E12000008",
+        "geography_level": "region"
+      },
+      "entity": "person",
+      "measure": "dwp/pip/cases_south_east_mobility_standard",
+      "family": "dwp_pip",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "dwp.pip.cases_south_east_mobility_standard",
+        "measure_kind": "prepared_column",
+        "uk_uc_expected_source_months": "[\"2025-01\",\"2025-04\",\"2025-07\",\"2025-10\"]"
+      },
+      "period_match_policy": "source_window",
+      "value_operation": "monthly_window_average"
+    },
+    {
+      "name": "dwp.pip.cases_south_east_mobility_enhanced",
+      "ledger_selector": {
+        "source_name": "dwp",
+        "source_table": "PIP cases with entitlement by English region, daily living award and mobility award, January 2024 to July 2026",
+        "source_concept": [
+          "dwp.pip_cases_with_entitlement"
+        ],
+        "source_measure_id": "cases_with_entitlement",
+        "dimensions": [
+          "daily_living_award_status",
+          "mobility_award_status"
+        ],
+        "dimension_values": {
+          "daily_living_award_status": "all",
+          "mobility_award_status": "Mobility Award - Enhanced"
+        },
+        "entity_name": "person",
+        "period_type": "month",
+        "period_value": [
+          "2025-01",
+          "2025-04",
+          "2025-07",
+          "2025-10"
+        ],
+        "geography_id": "E12000008",
+        "geography_level": "region"
+      },
+      "entity": "person",
+      "measure": "dwp/pip/cases_south_east_mobility_enhanced",
+      "family": "dwp_pip",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "dwp.pip.cases_south_east_mobility_enhanced",
+        "measure_kind": "prepared_column",
+        "uk_uc_expected_source_months": "[\"2025-01\",\"2025-04\",\"2025-07\",\"2025-10\"]"
+      },
+      "period_match_policy": "source_window",
+      "value_operation": "monthly_window_average"
+    },
+    {
+      "name": "dwp.pip.cases_south_east_mobility_nil",
+      "ledger_selector": {
+        "source_name": "dwp",
+        "source_table": "PIP cases with entitlement by English region, daily living award and mobility award, January 2024 to July 2026",
+        "source_concept": [
+          "dwp.pip_cases_with_entitlement"
+        ],
+        "source_measure_id": "cases_with_entitlement",
+        "dimensions": [
+          "daily_living_award_status",
+          "mobility_award_status"
+        ],
+        "dimension_values": {
+          "daily_living_award_status": "all",
+          "mobility_award_status": "Mobility Award - Nil"
+        },
+        "entity_name": "person",
+        "period_type": "month",
+        "period_value": [
+          "2025-01",
+          "2025-04",
+          "2025-07",
+          "2025-10"
+        ],
+        "geography_id": "E12000008",
+        "geography_level": "region"
+      },
+      "entity": "person",
+      "measure": "dwp/pip/cases_south_east_mobility_nil",
+      "family": "dwp_pip",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "dwp.pip.cases_south_east_mobility_nil",
+        "measure_kind": "prepared_column",
+        "uk_uc_expected_source_months": "[\"2025-01\",\"2025-04\",\"2025-07\",\"2025-10\"]"
+      },
+      "period_match_policy": "source_window",
+      "value_operation": "monthly_window_average"
+    },
+    {
+      "name": "dwp.pip.cases_south_west_daily_living_standard",
+      "ledger_selector": {
+        "source_name": "dwp",
+        "source_table": "PIP cases with entitlement by English region, daily living award and mobility award, January 2024 to July 2026",
+        "source_concept": [
+          "dwp.pip_cases_with_entitlement"
+        ],
+        "source_measure_id": "cases_with_entitlement",
+        "dimensions": [
+          "daily_living_award_status",
+          "mobility_award_status"
+        ],
+        "dimension_values": {
+          "daily_living_award_status": "Daily Living - Standard",
+          "mobility_award_status": "all"
+        },
+        "entity_name": "person",
+        "period_type": "month",
+        "period_value": [
+          "2025-01",
+          "2025-04",
+          "2025-07",
+          "2025-10"
+        ],
+        "geography_id": "E12000009",
+        "geography_level": "region"
+      },
+      "entity": "person",
+      "measure": "dwp/pip/cases_south_west_daily_living_standard",
+      "family": "dwp_pip",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "dwp.pip.cases_south_west_daily_living_standard",
+        "measure_kind": "prepared_column",
+        "uk_uc_expected_source_months": "[\"2025-01\",\"2025-04\",\"2025-07\",\"2025-10\"]"
+      },
+      "period_match_policy": "source_window",
+      "value_operation": "monthly_window_average"
+    },
+    {
+      "name": "dwp.pip.cases_south_west_daily_living_enhanced",
+      "ledger_selector": {
+        "source_name": "dwp",
+        "source_table": "PIP cases with entitlement by English region, daily living award and mobility award, January 2024 to July 2026",
+        "source_concept": [
+          "dwp.pip_cases_with_entitlement"
+        ],
+        "source_measure_id": "cases_with_entitlement",
+        "dimensions": [
+          "daily_living_award_status",
+          "mobility_award_status"
+        ],
+        "dimension_values": {
+          "daily_living_award_status": "Daily Living - Enhanced",
+          "mobility_award_status": "all"
+        },
+        "entity_name": "person",
+        "period_type": "month",
+        "period_value": [
+          "2025-01",
+          "2025-04",
+          "2025-07",
+          "2025-10"
+        ],
+        "geography_id": "E12000009",
+        "geography_level": "region"
+      },
+      "entity": "person",
+      "measure": "dwp/pip/cases_south_west_daily_living_enhanced",
+      "family": "dwp_pip",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "dwp.pip.cases_south_west_daily_living_enhanced",
+        "measure_kind": "prepared_column",
+        "uk_uc_expected_source_months": "[\"2025-01\",\"2025-04\",\"2025-07\",\"2025-10\"]"
+      },
+      "period_match_policy": "source_window",
+      "value_operation": "monthly_window_average"
+    },
+    {
+      "name": "dwp.pip.cases_south_west_daily_living_nil",
+      "ledger_selector": {
+        "source_name": "dwp",
+        "source_table": "PIP cases with entitlement by English region, daily living award and mobility award, January 2024 to July 2026",
+        "source_concept": [
+          "dwp.pip_cases_with_entitlement"
+        ],
+        "source_measure_id": "cases_with_entitlement",
+        "dimensions": [
+          "daily_living_award_status",
+          "mobility_award_status"
+        ],
+        "dimension_values": {
+          "daily_living_award_status": "Daily Living - Nil",
+          "mobility_award_status": "all"
+        },
+        "entity_name": "person",
+        "period_type": "month",
+        "period_value": [
+          "2025-01",
+          "2025-04",
+          "2025-07",
+          "2025-10"
+        ],
+        "geography_id": "E12000009",
+        "geography_level": "region"
+      },
+      "entity": "person",
+      "measure": "dwp/pip/cases_south_west_daily_living_nil",
+      "family": "dwp_pip",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "dwp.pip.cases_south_west_daily_living_nil",
+        "measure_kind": "prepared_column",
+        "uk_uc_expected_source_months": "[\"2025-01\",\"2025-04\",\"2025-07\",\"2025-10\"]"
+      },
+      "period_match_policy": "source_window",
+      "value_operation": "monthly_window_average"
+    },
+    {
+      "name": "dwp.pip.cases_south_west_mobility_standard",
+      "ledger_selector": {
+        "source_name": "dwp",
+        "source_table": "PIP cases with entitlement by English region, daily living award and mobility award, January 2024 to July 2026",
+        "source_concept": [
+          "dwp.pip_cases_with_entitlement"
+        ],
+        "source_measure_id": "cases_with_entitlement",
+        "dimensions": [
+          "daily_living_award_status",
+          "mobility_award_status"
+        ],
+        "dimension_values": {
+          "daily_living_award_status": "all",
+          "mobility_award_status": "Mobility Award - Standard"
+        },
+        "entity_name": "person",
+        "period_type": "month",
+        "period_value": [
+          "2025-01",
+          "2025-04",
+          "2025-07",
+          "2025-10"
+        ],
+        "geography_id": "E12000009",
+        "geography_level": "region"
+      },
+      "entity": "person",
+      "measure": "dwp/pip/cases_south_west_mobility_standard",
+      "family": "dwp_pip",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "dwp.pip.cases_south_west_mobility_standard",
+        "measure_kind": "prepared_column",
+        "uk_uc_expected_source_months": "[\"2025-01\",\"2025-04\",\"2025-07\",\"2025-10\"]"
+      },
+      "period_match_policy": "source_window",
+      "value_operation": "monthly_window_average"
+    },
+    {
+      "name": "dwp.pip.cases_south_west_mobility_enhanced",
+      "ledger_selector": {
+        "source_name": "dwp",
+        "source_table": "PIP cases with entitlement by English region, daily living award and mobility award, January 2024 to July 2026",
+        "source_concept": [
+          "dwp.pip_cases_with_entitlement"
+        ],
+        "source_measure_id": "cases_with_entitlement",
+        "dimensions": [
+          "daily_living_award_status",
+          "mobility_award_status"
+        ],
+        "dimension_values": {
+          "daily_living_award_status": "all",
+          "mobility_award_status": "Mobility Award - Enhanced"
+        },
+        "entity_name": "person",
+        "period_type": "month",
+        "period_value": [
+          "2025-01",
+          "2025-04",
+          "2025-07",
+          "2025-10"
+        ],
+        "geography_id": "E12000009",
+        "geography_level": "region"
+      },
+      "entity": "person",
+      "measure": "dwp/pip/cases_south_west_mobility_enhanced",
+      "family": "dwp_pip",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "dwp.pip.cases_south_west_mobility_enhanced",
+        "measure_kind": "prepared_column",
+        "uk_uc_expected_source_months": "[\"2025-01\",\"2025-04\",\"2025-07\",\"2025-10\"]"
+      },
+      "period_match_policy": "source_window",
+      "value_operation": "monthly_window_average"
+    },
+    {
+      "name": "dwp.pip.cases_south_west_mobility_nil",
+      "ledger_selector": {
+        "source_name": "dwp",
+        "source_table": "PIP cases with entitlement by English region, daily living award and mobility award, January 2024 to July 2026",
+        "source_concept": [
+          "dwp.pip_cases_with_entitlement"
+        ],
+        "source_measure_id": "cases_with_entitlement",
+        "dimensions": [
+          "daily_living_award_status",
+          "mobility_award_status"
+        ],
+        "dimension_values": {
+          "daily_living_award_status": "all",
+          "mobility_award_status": "Mobility Award - Nil"
+        },
+        "entity_name": "person",
+        "period_type": "month",
+        "period_value": [
+          "2025-01",
+          "2025-04",
+          "2025-07",
+          "2025-10"
+        ],
+        "geography_id": "E12000009",
+        "geography_level": "region"
+      },
+      "entity": "person",
+      "measure": "dwp/pip/cases_south_west_mobility_nil",
+      "family": "dwp_pip",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "dwp.pip.cases_south_west_mobility_nil",
+        "measure_kind": "prepared_column",
+        "uk_uc_expected_source_months": "[\"2025-01\",\"2025-04\",\"2025-07\",\"2025-10\"]"
+      },
+      "period_match_policy": "source_window",
+      "value_operation": "monthly_window_average"
+    },
+    {
       "name": "dwp.hb.households_pension_age",
       "ledger_selector": {
         "source_name": "dwp",
@@ -55286,6 +59578,48 @@
         "contract_target_id": "ons.occupation.male_elementary_administration_and_service",
         "measure_kind": "prepared_column"
       }
+    },
+    {
+      "name": "ons.neet.people_aged_16_to_24",
+      "ledger_selector": {
+        "source_name": "ons",
+        "source_concept": [
+          "ons.lfs_neet_people"
+        ],
+        "source_measure_id": "neet_16_to_24",
+        "dimensions": [
+          "age_band",
+          "economic_activity",
+          "seasonal_adjustment",
+          "sex"
+        ],
+        "dimension_values": {
+          "age_band": "16_to_24",
+          "economic_activity": "all",
+          "seasonal_adjustment": "not_seasonally_adjusted",
+          "sex": "all"
+        },
+        "entity_name": "person",
+        "period_type": "quarter",
+        "period_value": [
+          "2025-Q1",
+          "2025-Q2",
+          "2025-Q3",
+          "2025-Q4"
+        ],
+        "geography_id": "K02000001",
+        "geography_level": "country"
+      },
+      "entity": "person",
+      "measure": "ons/neet/people_aged_16_to_24",
+      "family": "ons_employment",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "ons.neet.people_aged_16_to_24",
+        "measure_kind": "prepared_column"
+      },
+      "period_match_policy": "source_window",
+      "value_operation": "quarterly_window_average"
     }
   ]
 }
