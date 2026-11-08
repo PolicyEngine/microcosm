@@ -299,7 +299,10 @@ def e5_identity_receipt(
 
     # The caller scopes the frame to the population the wealth and uprating
     # stages saw (``_frame_as_stage_saw``): the SPI support rows run before
-    # them and are imputed there, while the CGT layers are stacked later.
+    # them and are imputed there, while the high-value home copies and the
+    # CGT layers are stacked later. The same scoping takes back the regional
+    # home values' later rewrite of both property columns, so the uprating's
+    # fixed point is read off the values the uprating stage left.
     person = frame.table("person")
     benunit = frame.table("benunit")
     household = frame.table("household")
@@ -362,8 +365,9 @@ def e5_identity_receipt(
             "waterfall re-allocation; stored-column cross-check: rtol 1e-12 "
             "/ atol 1e-6 GBP for both layers (re-applying uprating to the "
             "uprated fixed point and re-summing allocations each cost one "
-            "float rounding generation); corporate_wealth fold not "
-            "reconstructible from the artifact (components consumed) - "
+            "float rounding generation, and the scoping's reversal of the "
+            "regional home values' wealth move one more); corporate_wealth "
+            "fold not reconstructible from the artifact (components consumed) - "
             "unit-tested only"
         ),
         "columns_by_entity": {
@@ -2014,10 +2018,14 @@ def main() -> int:
         )
     elif args.check == "e5":
         # E5's wealth stages run after the SPI support rows are stacked and
-        # before the CGT layers. The regional property uprating's mean is over
-        # FRS-base owners, so a frame still carrying the later CGT copies
-        # shifts that denominator and the recomputation stops matching what
-        # the stage stored. Scope to the population the stage saw.
+        # before the high-value home copies and the CGT layers. The regional
+        # property uprating's mean is over FRS-base owners, so a frame still
+        # carrying the later copies shifts that denominator and the
+        # recomputation stops matching what the stage stored. Scope to the
+        # population the stage saw. regional_home_values then rewrites both
+        # property columns, so the fixed point holds only on the values the
+        # uprating left, which the scoping restores from that stage's rank
+        # basis.
         receipt = e5_identity_receipt(
             _frame_as_stage_saw(frame, _E5_FIRST_STAGE),
             permutation_seed=args.permutation_seed,
@@ -2084,6 +2092,9 @@ def main() -> int:
 _STACKING_STAGE_BY_FLAG = {
     # #717 SPI support channel; the #1006 income band donors carry the same flag.
     "household_is_spi_synthetic": "spi_support_channel",
+    # microcosm#1240: the high-value home copies; every CGT layer copies them
+    # with this flag, so dropping this layer drops their CGT rows too.
+    "household_is_high_value_support_copy": "high_value_home_support",
     "household_is_capital_gains_clone": "cgt_incidence_clone",  # E8 clone
     "household_is_cgt_support_copy": "cgt_support_split",  # E8 support copies
     # microcosm#1063: the residential split's arms carry their source's clone
@@ -2103,10 +2114,10 @@ _E6_FIRST_STAGE = "nts_bus_travel"
 #: The weight restoration is driven by what the *artifact* actually contains
 #: rather than by the committed roster: a spine built before a stacking stage
 #: existed never had that stage's mass factor applied, and dividing it out
-#: anyway skews the comparison in the opposite direction. The CGT clone and
-#: the CGT support split are deliberately absent: neither is a uniform
-#: factor, so their mass is restored by fold instead
-#: (``_pre_split_household_weights``).
+#: anyway skews the comparison in the opposite direction. The CGT clone, the
+#: CGT support split and the high-value home split are deliberately absent:
+#: none is a uniform factor, so their mass is restored by fold instead
+#: (``_pre_split_household_weights``, ``_pre_high_value_household_weights``).
 _MASS_STAGE_BY_FLAG = {
     "household_is_spi_synthetic": "spi_support_channel",
 }
@@ -2496,6 +2507,150 @@ def _pre_split_household_weights(frame) -> np.ndarray:
     return weights
 
 
+class _HighValueCopyLineage(NamedTuple):
+    """Where every high-value home copy sits and which root it came from."""
+
+    copy_positions: np.ndarray
+    root_positions: np.ndarray
+    copy_index: np.ndarray
+
+
+def _high_value_copy_lineage(household: pd.DataFrame) -> _HighValueCopyLineage:
+    """Every high-value home copy's position, its root's and its index ``k``.
+
+    ``high_value_home_support`` (microcosm#1240) divides each owner household
+    in the top value stratum of its region into ``high_value_support_copies``
+    rows: copy ``k`` of root ``r`` carries ``r + k x R`` on every id, ``R`` the
+    declared radix of the copy-id table's ``high_value_support`` field
+    (microcosm#931), and ``k`` in ``high_value_support_copy_index`` (0 on
+    roots and unsplit households). Every CGT layer runs after it and copies
+    the flag with the row, so the copies and roots read here are the rows no
+    CGT layer created. A copy without a root, a flag that disagrees with the
+    stored index, an index that disagrees with the id, or a family whose
+    decoded size disagrees with the stored ``high_value_support_copies``
+    fails closed. The refusals print counts, never an id.
+    """
+
+    from microcosm.build.uk_runtime.cgt_residential_split import (
+        HOUSEHOLD_IS_CGT_RESIDENTIAL_CLONE,
+    )
+    from microcosm.build.uk_runtime.cgt_structure import HOUSEHOLD_IS_CGT_CLONE
+    from microcosm.build.uk_runtime.cgt_support import HOUSEHOLD_IS_CGT_SUPPORT_COPY
+    from microcosm.build.uk_runtime.high_value_home_support import (
+        HIGH_VALUE_SUPPORT_COPIES_COLUMN,
+        HIGH_VALUE_SUPPORT_COPY_ID_FIELD,
+    )
+    from microcosm.build.uk_runtime.household_lineage import (
+        HIGH_VALUE_SUPPORT_COPY_COLUMN,
+        HIGH_VALUE_SUPPORT_INDEX_COLUMN,
+    )
+
+    household_ids = _exact_household_ids(household, what="High-value home lineage")
+    if not pd.Index(household_ids).is_unique:
+        raise ValueError("High-value home lineage requires unique household ids.")
+    missing = [
+        column
+        for column in (
+            HIGH_VALUE_SUPPORT_INDEX_COLUMN,
+            HIGH_VALUE_SUPPORT_COPIES_COLUMN,
+        )
+        if column not in household.columns
+    ]
+    if missing:
+        raise ValueError(f"High-value home lineage requires {missing}.")
+    is_copy = household[HIGH_VALUE_SUPPORT_COPY_COLUMN].to_numpy(dtype=bool)
+    stored_index = (
+        pd.to_numeric(household[HIGH_VALUE_SUPPORT_INDEX_COLUMN], errors="raise")
+        .astype("int64")
+        .to_numpy()
+    )
+    family_size = (
+        pd.to_numeric(household[HIGH_VALUE_SUPPORT_COPIES_COLUMN], errors="raise")
+        .astype("int64")
+        .to_numpy()
+    )
+    flag_disagreements = int(((stored_index != 0) != is_copy).sum())
+    if flag_disagreements:
+        raise ValueError(
+            "High-value home copy flag and stored copy index disagree on "
+            f"{flag_disagreements} household(s)."
+        )
+    created_later = np.zeros(len(household), dtype=bool)
+    for flag in (
+        HOUSEHOLD_IS_CGT_SUPPORT_COPY,
+        HOUSEHOLD_IS_CGT_CLONE,
+        HOUSEHOLD_IS_CGT_RESIDENTIAL_CLONE,
+    ):
+        if flag in household.columns:
+            created_later |= household[flag].to_numpy(dtype=bool)
+    copy_positions = np.flatnonzero(is_copy & ~created_later)
+    copy_index, root_ids = _copy_ordinals_and_parents(
+        household_ids[copy_positions], HIGH_VALUE_SUPPORT_COPY_ID_FIELD
+    )
+    root_positions, orphaned = _parent_positions(
+        household_ids, copy_index, root_ids, eligible=~is_copy & ~created_later
+    )
+    if orphaned:
+        raise ValueError(
+            f"{orphaned} high-value home copy(ies) without a root household at the "
+            "declared radix of the copy-id table's "
+            f"{HIGH_VALUE_SUPPORT_COPY_ID_FIELD!r} field."
+        )
+    scheme_disagreements = int((stored_index[copy_positions] != copy_index).sum())
+    if scheme_disagreements:
+        raise ValueError(
+            f"High-value home copy index stored on {scheme_disagreements} "
+            "copy(ies) disagrees with the id scheme (the id's ordinal in the "
+            f"copy-id table's {HIGH_VALUE_SUPPORT_COPY_ID_FIELD!r} field)."
+        )
+    # Each root's family is the root and the copies decoded onto it; a copy
+    # missing from the artifact would leave its root's fold short.
+    decoded_size = np.bincount(root_positions, minlength=len(household)) + 1
+    roots = ~is_copy & ~created_later
+    family_disagreements = int(
+        (decoded_size[roots] != family_size[roots]).sum()
+        + (family_size[copy_positions] != family_size[root_positions]).sum()
+    )
+    if family_disagreements:
+        raise ValueError(
+            f"{HIGH_VALUE_SUPPORT_COPIES_COLUMN!r} stored on "
+            f"{family_disagreements} household(s) disagrees with the copies "
+            "their ids decode to."
+        )
+    return _HighValueCopyLineage(
+        copy_positions=copy_positions,
+        root_positions=root_positions,
+        copy_index=copy_index,
+    )
+
+
+def _pre_high_value_household_weights(frame) -> np.ndarray:
+    """Household weights with every high-value home copy folded onto its root.
+
+    ``high_value_home_support`` (microcosm#1240) divides each owner household
+    in the top value stratum of its region into ``n`` rows at ``w / n``, so
+    adding each copy's weight back onto its root restores ``w``: no uniform
+    divisor could, since only the stratum is divided. Every CGT layer is
+    stacked after this split, so those layers fold first
+    (``_pre_split_household_weights``), which leaves each copy the weight
+    this split gave it, and then the copies fold. An artifact without the
+    copy layer returns the CGT folds alone. Copies keep their own weights in
+    the returned vector; the scoping that calls this drops those rows.
+    """
+
+    from microcosm.build.uk_runtime.household_lineage import (
+        HIGH_VALUE_SUPPORT_COPY_COLUMN,
+    )
+
+    weights = _pre_split_household_weights(frame)
+    household = frame.table("household")
+    if HIGH_VALUE_SUPPORT_COPY_COLUMN not in household.columns:
+        return weights
+    lineage = _high_value_copy_lineage(household)
+    np.add.at(weights, lineage.root_positions, weights[lineage.copy_positions])
+    return weights
+
+
 def _roster_positions() -> dict[str, int]:
     """Stage positions in the committed source-stage roster."""
 
@@ -2583,9 +2738,10 @@ def _frs_only_frame(frame):
     On the E8 roster this leaves the 16,288 raw FRS households, which is the
     population the pre-stacking stages actually drew for. Their weights fold
     each clone back onto its original (exact before and after the #970
-    anchor) and each CGT support copy back onto its root, so every surviving
-    row carries its pre-split weight. Every pre-stacking stage precedes
-    salary_sacrifice, so the conversion's pay rewrite is reversed too.
+    anchor), and each CGT support copy and each high-value home copy back
+    onto its root, so every surviving row carries its pre-split weight.
+    Every pre-stacking stage precedes salary_sacrifice, so the conversion's
+    pay rewrite is reversed too.
     """
 
     frame = _pre_salary_sacrifice_frame(frame)
@@ -2599,12 +2755,16 @@ def _frame_as_stage_saw(frame, stage: str):
     """Scope the artifact to the rows present when ``stage`` ran.
 
     A stage before ``salary_sacrifice`` also saw every converted record's
-    pay and employee contribution before the conversion rewrote them.
+    pay and employee contribution before the conversion rewrote them, and a
+    stage before ``regional_home_values`` every owner's home value and
+    property wealth before that stage rewrote them.
     """
 
     positions = _roster_positions()
     if positions[stage] < positions[_SALARY_SACRIFICE_STAGE]:
         frame = _pre_salary_sacrifice_frame(frame)
+    if positions[stage] < positions[_REGIONAL_HOME_VALUES_STAGE]:
+        frame = _pre_regional_home_values_frame(frame)
     return _drop_stacked_layers(
         frame, _flags_stacked_after(stage, frame.table("household"))
     )
@@ -2702,12 +2862,71 @@ def _pre_salary_sacrifice_frame(frame):
     )
 
 
+#: The stage that rewrites owners' home values in place (microcosm#1112).
+_REGIONAL_HOME_VALUES_STAGE = "regional_home_values"
+
+
+def _pre_regional_home_values_frame(frame):
+    """The artifact with the regional home values' rewrite reversed.
+
+    ``regional_home_values`` gives England-and-Wales owners the value their
+    region's Land Registry distribution holds at their rank, keeps the value
+    it replaced on every household in ``main_residence_value_rank_basis``
+    (its only writer) and moves ``property_wealth`` by the value's change,
+    floored at zero. So the rewrite reverses: the value back from the rank
+    basis, exactly, and the wealth moved back by the same change, at one
+    rounding. ``was_wealth`` derives ``property_wealth`` as a sum of property
+    values that includes ``main_residence_value``, so the moved wealth is at
+    least the new value and the floor binds only where a frame broke that
+    sum; there the wealth it replaced is lost, and the reversal gives the
+    largest wealth the floor allows. The rank basis is dropped, since no
+    earlier stage had it. An artifact without it (built before the stage, or
+    a release, whose boundary drops it with ``property_wealth``) is returned
+    as it is.
+    """
+
+    from microcosm.build.uk_runtime.national_frame import (
+        uk_household_weight_kind,
+        uk_national_frame,
+    )
+    from microcosm.build.uk_runtime.regional_home_values import RANK_BASIS_COLUMN
+
+    household = frame.table("household")
+    if RANK_BASIS_COLUMN not in household.columns:
+        return frame
+    household = household.copy()
+    basis = pd.to_numeric(household[RANK_BASIS_COLUMN], errors="raise").to_numpy(
+        dtype=float
+    )
+    value = pd.to_numeric(household["main_residence_value"], errors="raise").to_numpy(
+        dtype=float
+    )
+    if "property_wealth" in household.columns:
+        wealth = pd.to_numeric(household["property_wealth"], errors="raise").to_numpy(
+            dtype=float
+        )
+        household["property_wealth"] = wealth - (value - basis)
+    household["main_residence_value"] = basis
+    return uk_national_frame(
+        person=frame.table("person"),
+        benunit=frame.table("benunit"),
+        household=household.drop(columns=[RANK_BASIS_COLUMN]),
+        time_period=uk_time_period(frame),
+        weight_kind=uk_household_weight_kind(frame),
+        household_weights=frame.weights_for("household").values,
+        mass_log=frame.mass_log,
+    )
+
+
 def _drop_stacked_layers(frame, flags: Sequence[str]):
     from microcosm.build.uk_runtime.cgt_residential_split import (
         HOUSEHOLD_IS_CGT_RESIDENTIAL_CLONE,
     )
     from microcosm.build.uk_runtime.cgt_structure import HOUSEHOLD_IS_CGT_CLONE
     from microcosm.build.uk_runtime.cgt_support import HOUSEHOLD_IS_CGT_SUPPORT_COPY
+    from microcosm.build.uk_runtime.household_lineage import (
+        HIGH_VALUE_SUPPORT_COPY_COLUMN,
+    )
     from microcosm.build.uk_runtime.national_frame import (
         uk_household_weight_kind,
         uk_national_frame,
@@ -2719,11 +2938,31 @@ def _drop_stacked_layers(frame, flags: Sequence[str]):
         return frame
     stacked = household[flags].astype(bool).any(axis=1)
     keep = ~stacked
-    # Fold created CGT rows' mass back only when their layer is the one being
+    # Fold created rows' mass back only when their layer is the one being
     # dropped: the clone by pair, the support copy by family onto its root.
     # The split runs before the clone, so dropping the split layer while the
     # artifact's clone layer stays in scope would fold clones that remain.
-    if HOUSEHOLD_IS_CGT_SUPPORT_COPY in flags:
+    # The high-value home copies also fold by family onto their roots, and
+    # every CGT layer is stacked after them, so dropping them requires
+    # dropping every CGT layer the artifact carries.
+    if HIGH_VALUE_SUPPORT_COPY_COLUMN in flags:
+        kept_later = [
+            flag
+            for flag in (
+                HOUSEHOLD_IS_CGT_SUPPORT_COPY,
+                HOUSEHOLD_IS_CGT_CLONE,
+                HOUSEHOLD_IS_CGT_RESIDENTIAL_CLONE,
+            )
+            if flag in household.columns and flag not in flags
+        ]
+        if kept_later:
+            raise ValueError(
+                "Dropping the high-value home copies requires dropping the CGT "
+                f"layers stacked after them; the artifact carries {kept_later} "
+                f"but {flags} does not name them."
+            )
+        all_weights = _pre_high_value_household_weights(frame)
+    elif HOUSEHOLD_IS_CGT_SUPPORT_COPY in flags:
         if HOUSEHOLD_IS_CGT_CLONE in household.columns and (
             HOUSEHOLD_IS_CGT_CLONE not in flags
         ):
