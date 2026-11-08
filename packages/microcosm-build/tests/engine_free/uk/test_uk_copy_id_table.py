@@ -754,11 +754,6 @@ _INLINE_DIGIT_COUNT_MODULES = {
     "packages/microcosm-build/src/microcosm/build/uk_runtime/copy_id_table.py": (
         "sizes each declared field's span from its ordinal bound"
     ),
-    "packages/microcosm-build/src/microcosm/build/uk_runtime/national_sampling.py": (
-        "uk_source_family_units, the legacy candidate decoder, re-derives the "
-        "retired stage fence's clone multiplier; whether it learns the table "
-        "is open (microcosm#931)"
-    ),
 }
 
 
