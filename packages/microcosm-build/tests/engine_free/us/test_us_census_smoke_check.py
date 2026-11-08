@@ -2027,6 +2027,47 @@ _REFUSALS = [
         lambda lo: _set("run_id", value=""),
         "build-start names no run_id",
     ),
+    # Each of these guards stops the check when it fails. Disabled, a guard
+    # lets the check run on and refuse on a later line, so a test that only
+    # expects a refusal still passes: each case asserts the guard's message.
+    (
+        "no build id",
+        "build",
+        lambda lo: _set("build_id", value=None),
+        "build_manifest.json names no build_id",
+    ),
+    (
+        "no build commit",
+        "build",
+        lambda lo: _set("code", "git_commit", value=None),
+        "build code.git_commit is missing",
+    ),
+    (
+        "no smoke rows",
+        "report",
+        lambda lo: _set("stages", "reform_coverage_smoke", "probes", value=None),
+        "the smoke stage lists no probes",
+    ),
+    (
+        "a missing gate result",
+        "gate",
+        lambda lo: _deleted(
+            "reform_coverage_smoke", "details", "results", _first_probe(lo)
+        ),
+        "is missing",
+    ),
+    (
+        "a pass that is not an object",
+        "passes",
+        lambda lo: _set(0, value="x"),
+        "pass 1 is not an object",
+    ),
+    (
+        "a smoke start with no dataset",
+        "smoke-start",
+        lambda lo: _set("dataset", "path", value=None),
+        "smoke-start: the smoke's start record names no dataset for --export",
+    ),
 ]
 
 
@@ -3207,6 +3248,24 @@ def test_launch_records_follow_the_run(launches, capsys) -> None:
         "tools/build_us_fiscal_refresh_release.py",
         "tools/probe_us_post_export.py",
     ]
+
+
+def test_an_end_record_needs_a_start_that_lists_its_environment(
+    launches, capsys
+) -> None:
+    """An end measures the runtime with its start's environment, so a start
+    record without one leaves it nothing to measure with."""
+    tool = launches.tool
+    assert tool.main(launches.build_start()) == 0
+    launches.dataset.parent.mkdir(parents=True)
+    launches.dataset.write_bytes(_DATASET_BYTES)
+    start = launches.launch_dir / "build-start.json"
+    payload = json.loads(start.read_text())
+    payload["environment"] = None
+    start.write_text(json.dumps(payload))
+    assert tool.main(launches.end("build")) == 1
+    assert "the start record lists no environment" in capsys.readouterr().err
+    assert launches.written() == ["build-start.json"]
 
 
 def test_the_smoke_start_compares_its_launch_with_the_builds(
