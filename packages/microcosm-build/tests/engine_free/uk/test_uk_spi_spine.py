@@ -213,8 +213,11 @@ def test_spine_leaves_fail_closed_on_unknown_raw_person(tmp_path: Path) -> None:
         extra_adult_rows=({"sernum": 9, "person": 1, "inearns": 1.0},),
     )
 
-    with pytest.raises(ValueError, match="absent from the raw spine"):
+    with pytest.raises(ValueError, match="absent from the raw spine") as caught:
         UKFRSHMRCSpineLeavesStageTransform(tmp_path, stage=stage)(_base_frame())
+    # The refusal counts the unknown people and names none (microcosm#931).
+    assert str(caught.value).startswith("Raw FRS retained leaves contain 1 person")
+    assert "9001" not in str(caught.value)
 
 
 def test_spine_leaves_sampled_rung_restricts_to_surviving_people(

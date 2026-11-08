@@ -664,11 +664,11 @@ def fill_support_channel_from_source(
         raise ValueError(f"donor is missing column(s): {missing_donor}.")
     if donor[donor_id_column].isna().any():
         raise ValueError(f"donor.{donor_id_column} contains missing values.")
-    if donor[donor_id_column].duplicated().any():
-        duplicates = donor.loc[donor[donor_id_column].duplicated(), donor_id_column]
+    repeated = int(donor[donor_id_column].duplicated().sum())
+    if repeated:
         raise ValueError(
-            f"donor.{donor_id_column} must be unique; duplicate value(s): "
-            f"{list(map(str, duplicates.unique()[:5]))}."
+            f"donor.{donor_id_column} must be unique; {repeated} row(s) repeat "
+            "an earlier row's id."
         )
 
     channel_column = support_channel_column(entity)
@@ -690,11 +690,11 @@ def fill_support_channel_from_source(
 
     donor_indexed = donor.set_index(donor_id_column, drop=False)
     source_ids = out.loc[mask, source_id_column]
-    missing_ids = source_ids[~source_ids.isin(donor_indexed.index)].unique()
-    if len(missing_ids):
+    unmatched = int((~source_ids.isin(donor_indexed.index)).sum())
+    if unmatched:
         raise ValueError(
             "donor is missing source ID value(s) required by the support "
-            f"channel: {list(map(str, missing_ids[:5]))}."
+            f"channel: {unmatched} channel row(s) name a source it lacks."
         )
 
     aligned = donor_indexed.loc[source_ids.to_numpy()]
@@ -824,11 +824,10 @@ def _validate_selected_household_ids(
     if len(set(selected)) != len(selected):
         raise ValueError("selected_household_ids must be unique.")
     available = set(household["household_id"])
-    missing = [value for value in selected if value not in available]
+    missing = sum(1 for value in selected if value not in available)
     if missing:
         raise ValueError(
-            "selected_household_ids contains value(s) absent from household: "
-            f"{list(map(str, missing[:5]))}."
+            f"selected_household_ids contains {missing} value(s) absent from household."
         )
     selected_set = set(selected)
     return tuple(
@@ -1191,21 +1190,16 @@ def _validate_uk_support_inputs(
     if not np.isfinite(weights).all() or (weights < 0).any():
         raise ValueError("household.household_weight must be finite and non-negative.")
 
-    household_ids = set(household["household_id"])
-    missing_households = sorted(set(person["person_household_id"]) - household_ids)
-    if missing_households:
-        raise ValueError(
-            "person.person_household_id contains value(s) absent from household: "
-            f"{missing_households[:5]}."
-        )
-
-    benunit_ids = set(benunit["benunit_id"])
-    missing_benunits = sorted(set(person["person_benunit_id"]) - benunit_ids)
-    if missing_benunits:
-        raise ValueError(
-            "person.person_benunit_id contains value(s) absent from benunit: "
-            f"{missing_benunits[:5]}."
-        )
+    for column, table, id_column, label in (
+        ("person_household_id", household, "household_id", "household"),
+        ("person_benunit_id", benunit, "benunit_id", "benunit"),
+    ):
+        unlinked = int((~person[column].isin(table[id_column])).sum())
+        if unlinked:
+            raise ValueError(
+                f"person.{column} names a {label} absent from {label} on "
+                f"{unlinked} person row(s)."
+            )
 
 
 def _validate_uk_support_outputs(
@@ -1265,11 +1259,11 @@ def _require_columns(
 def _require_unique(frame: pd.DataFrame, column: str, *, label: str) -> None:
     if frame[column].isna().any():
         raise ValueError(f"{label}.{column} contains missing values.")
-    if frame[column].duplicated().any():
-        duplicates = frame.loc[frame[column].duplicated(), column].unique()
+    repeated = int(frame[column].duplicated().sum())
+    if repeated:
         raise ValueError(
-            f"{label}.{column} must be unique; duplicate value(s): "
-            f"{list(map(str, duplicates[:5]))}."
+            f"{label}.{column} must be unique; {repeated} row(s) repeat an "
+            "earlier row's value."
         )
 
 

@@ -718,8 +718,8 @@ def _oldest_adult_indices(
     missing_households = household_ids - set(candidates.person_household_id)
     if missing_households:
         raise ValueError(
-            "Every CGT household requires an adult carrier; missing household "
-            f"id(s): {sorted(missing_households)[:5]}."
+            "Every CGT household requires an adult carrier; "
+            f"{len(missing_households)} household(s) have none."
         )
     candidates["_row"] = candidates.index
     candidates = candidates.sort_values(
