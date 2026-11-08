@@ -45,17 +45,20 @@ from microcosm.graph.population import dtype_for_token
 from microcosm.graph.randomness import keyed_uniform
 from microcosm.graph.weight_update import weight_update_receipt
 
+from .. import frame_sampling, gates
 from . import (
     atomic_area_support,
     atomic_household_identity,
     brma_area_layer,
     geography_ladder,
     local_authority_input,
+    national_frame,
     national_sampling,
     private_rent_localisation,
     property_localisation,
     rfdr_area_layer,
     rowwise_dataset,
+    rowwise_geography,
 )
 from .geography_ladder import (
     UK_GEOGRAPHY_LADDER_COLUMNS,
@@ -198,12 +201,23 @@ class _PopulationKernel(KernelBase):
     def implementation_hash(self) -> str:
         from . import graph_evidence
 
+        # The dense population nodes also compute through what these call:
+        # the sample's household draw and mass normalisation (frame_sampling),
+        # the clones' minted ids and copied tables (rowwise_geography), the
+        # national frame they rebuild, the local authority names the geography
+        # resolves, and the gate's results (microcosm#931); test_uk_graph
+        # derives the set from what the kernels name.
         return source_hash(
             type(self),
             geography_ladder,
             national_sampling,
             rowwise_dataset,
             graph_evidence,
+            frame_sampling,
+            gates,
+            local_authority_input,
+            national_frame,
+            rowwise_geography,
         )
 
 
