@@ -4,8 +4,10 @@ from __future__ import annotations
 
 import hashlib
 import json
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import replace
+from functools import cache
+from types import MappingProxyType
 
 from microcosm.graph import (
     ArtifactInput,
@@ -26,7 +28,7 @@ from microcosm.graph import (
     source_hash,
 )
 
-from .. import gate_battery, stochastic_assignment
+from .. import gate_battery
 from ..country_spec import CountrySpec, GatesManifest
 from ..gate_battery import (
     BlockingMode,
@@ -41,7 +43,7 @@ from ..stage_evidence import (
     decode_stage_evidence,
     encode_stage_evidence,
 )
-from . import battery_bindings, energy_pricing, stage_health
+from . import battery_bindings, stage_health
 from .calibration_run import UK_SPINE_GATE_SCOPE, uk_scoped_gate_manifest
 from .cgt_asset_type import CGT_ASSET_TYPE_DOMAIN
 from .frs_relationships import CHRONICLE_ONS_HOUSEHOLD_TYPE_VALUE_IDS
@@ -174,6 +176,95 @@ def uk_spine_gate_artifacts(engine: object) -> dict[str, object]:
     }
 
 
+@cache
+def uk_spine_assembled_only_code_hash() -> str:
+    """The source hash of the code only the assembled spine phase computes
+    through: the ONS household type domain its enum gate checks
+    (``frs_relationships``), which no transferred-phase gate reads.
+
+    Hashed once per process, as for the calibrated gates' own code
+    (``graph_terminal.uk_terminal_only_code_hash``).
+    """
+    from . import frs_relationships
+
+    return source_hash(frs_relationships)
+
+
+@cache
+def uk_spine_transferred_only_code_hash() -> str:
+    """The source hash of the code only the transferred spine phase computes
+    through, which the assembled gate's key leaves out.
+
+    That is what the stage-health checks only the transferred phase declares
+    compute through: the energy rake's published level and NEED margins
+    (``energy_pricing``); the bus travel, bus pricing, bus support pricing,
+    consumption basis and gambling checks' published facts and pricing
+    (``nts_bus_travel``, ``bus_use_incidence``, ``bus_fare_pricing``,
+    ``bus_support_pricing``, ``etb_services``, ``lcfs_consumption``,
+    ``donor_uprating``, ``gambling_participation``, the shared ledger's
+    calendar-year weights, and the vendored-fact reader with the chronicle
+    feed and its schema epochs); the annual income spells check
+    (``frs_annual_income``); the apprentice draw's take-up contract
+    (``take_up_contract``); and the latent-attribute checks' binomial band
+    (``stochastic_assignment``). Its
+    enum gate also checks the CGT asset type domain (``cgt_asset_type``). The
+    assembled gate, which every later spine stage waits on, therefore re-keys
+    on none of them (the re-review of microcosm#1420, E; microcosm#931 ruling
+    6). Hashed once per process, as the assembled phase's own code is.
+    """
+    from .. import chronicle_epoch, stochastic_assignment
+    from .. import ledger_targets as shared_ledger_targets
+    from . import (
+        bus_fare_pricing,
+        bus_support_pricing,
+        bus_use_incidence,
+        cgt_asset_type,
+        chronicle_feed,
+        donor_uprating,
+        energy_pricing,
+        etb_services,
+        frs_annual_income,
+        gambling_participation,
+        lcfs_consumption,
+        ledger_fact_vendoring,
+        nts_bus_travel,
+        take_up_contract,
+    )
+
+    return source_hash(
+        energy_pricing,
+        lcfs_consumption,
+        bus_fare_pricing,
+        bus_support_pricing,
+        bus_use_incidence,
+        nts_bus_travel,
+        etb_services,
+        gambling_participation,
+        donor_uprating,
+        frs_annual_income,
+        take_up_contract,
+        cgt_asset_type,
+        stochastic_assignment,
+        chronicle_feed,
+        chronicle_epoch,
+        ledger_fact_vendoring,
+        shared_ledger_targets,
+    )
+
+
+#: Each spine gate phase's own code: the hash of what only that phase's gates
+#: compute through, which its node carries as its ``<phase>_code`` parameter,
+#: so an edit there re-keys that phase alone. The code both phases compute
+#: through is the gate kernel's own hash (microcosm#931 ruling 6);
+#: test_uk_graph derives each phase's share from the gates it declares.
+UK_SPINE_GATE_PHASE_CODE: Mapping[str, Callable[[], str]] = MappingProxyType(
+    {
+        "assembled": uk_spine_assembled_only_code_hash,
+        "transferred": uk_spine_transferred_only_code_hash,
+    }
+)
+
+
 def load_spine_stage_artifacts(
     manifest, store, *, stage_names: Sequence[str]
 ) -> dict[str, dict[str, object]]:
@@ -260,6 +351,7 @@ def add_uk_spine_gate_nodes(
     for phase, population, inputs, phase_stages in checkpoints:
         if phase == "transferred" and end == len(stages):
             continue
+        code = UK_SPINE_GATE_PHASE_CODE.get(phase)
         nodes.append(
             Node(
                 id=f"spine.gates.{phase}",
@@ -294,11 +386,7 @@ def add_uk_spine_gate_nodes(
                     "phase": phase,
                     "time_period": "2024",
                     "stage_names": phase_stages,
-                    **(
-                        {"energy_pricing_code": source_hash(energy_pricing)}
-                        if phase == "transferred"
-                        else {}
-                    ),
+                    **({f"{phase}_code": code()} if code is not None else {}),
                     "gate_manifest": json.dumps(
                         gate_battery._gates_manifest_payload(gates), sort_keys=True
                     ),
@@ -350,9 +438,11 @@ class UKSpineGateKernel(KernelBase):
     the persisted verdict binds the policy it was judged under:
     ``synthetic_smoke`` mirrors ``GateBatteryRun(synthetic_smoke=...)`` — on a
     data-only fixture the population-fact gates are recorded but never block.
-    The transferred phase also carries ``energy_pricing_code``, the hash of
-    the module that sets the energy level its rake gate recomputes, so only
-    that phase re-keys when the level's code changes.
+    Each phase also carries ``<phase>_code``, the hash of the code only its
+    own gates compute through (:data:`UK_SPINE_GATE_PHASE_CODE`), so an edit
+    there re-keys that phase alone: the assembled gate, which every later
+    spine stage waits on, re-keys on none of the transferred phase's (the
+    re-review of microcosm#1420, E; microcosm#931 ruling 6).
     """
 
     ref = "uk.spine-gates@1"
@@ -369,21 +459,34 @@ class UKSpineGateKernel(KernelBase):
         self.engine_identity = engine_identity
 
     def implementation_hash(self) -> str:
+        import microcosm.calibrate.geography_constants as geography_constants
         from microcosm.graph.canonical import canonical_json
 
+        from .. import gates, stage_evidence
+        from . import (
+            council_tax_constants,
+            graph_kernels,
+            national_frame,
+            receipt_counts,
+        )
         from .solve_scope import uk_solve_fingerprint
 
         # The spine stages after a gate wait on its verdict, so its key is
         # part of theirs. No spine gate reads a gate-only register, so it keys
         # on the solve fingerprint and a sign-off between two release builds
-        # leaves an in-graph spine a cache hit (microcosm#1301). The stage
-        # checks live in stage_health, so it keys the gate too (the independent
-        # review of microcosm#1420, finding 5), with stochastic_assignment,
-        # where the binomial band of its latent-attribute checks now lives
-        # (microcosm#931). Only the transferred phase reads the energy level,
-        # through energy_pricing, so that phase alone carries its hash, as a
-        # node param: an energy change re-keys it, not the assembled gate
-        # every later spine stage waits on (the re-review, E).
+        # leaves an in-graph spine a cache hit (microcosm#1301). The code is
+        # what both phases compute through (microcosm#931 ruling 6): this
+        # kernel's run, the frame it rebuilds (graph_kernels' _minimal_frame,
+        # national_frame) and the evidence it decodes (stage_evidence); the
+        # battery and the gate registry (gate_battery, battery_bindings,
+        # gates); the stage-health checks (stage_health, the independent
+        # review of microcosm#1420, finding 5), with the receipt bands of the
+        # take-up checks both phases declare (receipt_counts); and the enum
+        # gate's nation partition (council_tax_constants, the region tier).
+        # What only one phase's gates compute through is that phase's own
+        # code, a node param (UK_SPINE_GATE_PHASE_CODE): the energy level,
+        # for one, re-keys the transferred gate, not the assembled gate every
+        # later spine stage waits on (the re-review, E).
         return hashlib.sha256(
             canonical_json(
                 {
@@ -392,7 +495,13 @@ class UKSpineGateKernel(KernelBase):
                         gate_battery,
                         battery_bindings,
                         stage_health,
-                        stochastic_assignment,
+                        gates,
+                        stage_evidence,
+                        graph_kernels,
+                        national_frame,
+                        receipt_counts,
+                        council_tax_constants,
+                        geography_constants,
                     ),
                     "country_resources": uk_solve_fingerprint(),
                 }

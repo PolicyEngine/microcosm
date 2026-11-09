@@ -337,7 +337,9 @@ def test_released_stage_results_leave_every_stored_byte_and_no_result(tmp_path):
     }
 
 
-def test_spine_inventory_is_roster_derived_and_gates_bind_checkpoint_versions():
+def test_spine_inventory_is_roster_derived_and_gates_bind_checkpoint_versions(
+    monkeypatch,
+):
     country = load_country_spec("uk")
     spine = uk_spine_graph(country)
     endpoint = uk_spine_endpoint(spine)
@@ -368,14 +370,29 @@ def test_spine_inventory_is_roster_derived_and_gates_bind_checkpoint_versions():
     assert "spine.gates.assembled" in compiled.predecessors[admitted]
     assert graph.node(admitted).params["spine_gate_phase"] == "assembled"
     assert "spine_gate_phase" not in graph.node("was_wealth").params
-    # Only the transferred phase evaluates the energy rake, so it alone keys
-    # on the module that sets the level; the assembled gate, which every later
-    # spine stage waits on, does not (the re-review of microcosm#1420, E).
-    from microcosm.build.uk_runtime import energy_pricing
-    from microcosm.graph.kernel import source_hash
+    # Each phase keys on its own code: only the transferred phase evaluates
+    # the energy rake, so it alone keys on the module that sets the level, and
+    # the assembled gate, which every later spine stage waits on, does not
+    # (the re-review of microcosm#1420, E; microcosm#931 ruling 6).
+    from microcosm.build.uk_runtime import energy_pricing, graph_evidence
 
-    assert transferred.params["energy_pricing_code"] == source_hash(energy_pricing)
-    assert "energy_pricing_code" not in assembled.params
+    codes = graph_evidence.UK_SPINE_GATE_PHASE_CODE
+    assert transferred.params["transferred_code"] == codes["transferred"]()
+    assert assembled.params["assembled_code"] == codes["assembled"]()
+    assert "transferred_code" not in assembled.params
+    assert "assembled_code" not in transferred.params
+    hashed = []
+    with monkeypatch.context() as patch:
+        patch.setattr(
+            graph_evidence,
+            "source_hash",
+            lambda *objects: hashed.append(objects) or "",
+        )
+        graph_evidence.uk_spine_transferred_only_code_hash.__wrapped__()
+        graph_evidence.uk_spine_assembled_only_code_hash.__wrapped__()
+    transferred_modules, assembled_modules = hashed
+    assert energy_pricing in transferred_modules
+    assert energy_pricing not in assembled_modules
     # The blocking posture travels with the gate and the admission it guards.
     assert assembled.params["synthetic_smoke"] is False
     assert graph.node(admitted).params["spine_gate_synthetic_smoke"] is False
@@ -560,7 +577,7 @@ def test_sample_admission_holds_under_the_default_atomic_law(synthetic_smoke):
 def test_the_spine_gate_kernel_keys_on_its_checks_not_the_energy_level(monkeypatch):
     # The re-review of microcosm#1420, E: one kernel hash serves both phases,
     # so it covers the modules both read and not energy_pricing, which only
-    # the transferred phase's node param carries.
+    # the transferred phase's node param carries (microcosm#931 ruling 6).
     from microcosm.build import stochastic_assignment
     from microcosm.build.uk_runtime import (
         battery_bindings,
@@ -584,6 +601,7 @@ def test_the_spine_gate_kernel_keys_on_its_checks_not_the_energy_level(monkeypat
     (modules,) = seen
     assert {stage_health, battery_bindings, graph_evidence.gate_battery} <= set(modules)
     # The latent-attribute checks' binomial band lives in stochastic_assignment
-    # (microcosm#931), so the gate keys on it too.
-    assert stochastic_assignment in modules
+    # (microcosm#931), and only the transferred phase declares those checks,
+    # so its own code keys on it, not the hash both phases share.
+    assert stochastic_assignment not in modules
     assert energy_pricing not in modules
