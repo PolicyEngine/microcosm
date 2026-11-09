@@ -96,16 +96,20 @@ each unit's weight evenly between two clone channels. Clone index 0, the
 native survey channel, keeps the survey values; clone index 1
 (`PUF_TAX_DETAIL_CLONE_INDEX`) receives the imputed ones.
 `actual_pool_bands.py` combines both halves at frame weight and writes
-`results/actual_pool_bands.json`. The figures are from the same fit as above
-(8 trees, proxy AGI), before calibration and before main's capital-gains tail
-stage (#567). "Old design" is the `current` variant; "#1033" is
-`demographic_midrank6_earn`, the rank + flag design that #1033 merged.
+`actual_pool_bands.json` into its input directory;
+`results/actual_pool_bands.json` holds the recorded copy. The figures come
+from the same fit as above (8 trees, proxy AGI), before calibration and before
+main's capital-gains tail stage (#567). The fit also predates #1251 (the
+donor's partnership and S-corporation income moved to Schedule E line 32) and
+#1259 (a bound on each QRF draw), and these figures reflect neither. "Old
+design" is the `current` variant; "#1033" is `demographic_midrank6_earn`, the
+rank + flag design that #1033 merged.
 
 Clone 0 carries 50.0% of the tax-unit weight (`clone0_weight_share`) and has
 no units at $5M+ proxy AGI in either variant: in both $5M+ bands,
 `clone1_returns` equals `returns`. Its proxy AGI sums the 11 of the 15 items
-that its person table carries; estate, farm, partnership and S-corporation
-income are absent (`clone0_items_used`).
+that its person table carries; the 15-item list's estate, farm, partnership
+and S-corporation columns are absent (`clone0_items_used`).
 
 | Band | Old design | #1033 | SOI Table 1.1 |
 |---|---|---|---|
@@ -124,12 +128,12 @@ reaches about half of SOI there (52% of the 79.6k returns and 54% of the $1,244B
 SOI. At $5M+ the real-pool figures are exactly half of the ×2 ones (for
 example 48,629 to 24,315 returns at $5M–10M), because only the PUF-clone half
 has units there. The bands in between ($1.5M–5M) sit at 0.59–0.84× SOI in
-returns and 0.52–0.83× in AGI, in both designs. At $1M–1.5M the survey half alone holds 284k returns, 77% of
+returns and 0.52–0.83× in AGI across the two designs. At $1M–1.5M the survey half alone holds 284k returns, 77% of
 SOI's count, in both designs. All five bands, with AGI and record counts, are
 in `results/actual_pool_bands.json`.
 
 These figures correct the ×2 level comparisons first posted on #982, #940 and
-#1033; a correction is posted on each.
+#1033; each of those threads carries a correction.
 
 ## Known limits
 
@@ -140,8 +144,9 @@ These figures correct the ×2 level comparisons first posted on #982, #940 and
   Colorado's income above $1M is $66.3B, 2.1× SOI's $31.7B, and that one
   record carries 81% of it. The ×2 scores put the total at $128.5B, about 4×
   SOI, with that record at 84% (`colorado_1m_plus`); those are not levels.
-  State top-tail totals therefore stay noisy until state × AGI-band amount
-  targets (#940) enter calibration.
+  #1102 later added state × AGI-band return and amount targets (#940) to the
+  US calibration target surface; this pre-calibration run predates them and
+  shows nothing about a build that binds them.
 - All variants ran at 8 trees because memory was constrained; production fits
   more trees. The comparison is like for like across variants.
 - The within-10% and wage-total rows are pre-calibration; calibration targets
