@@ -358,18 +358,49 @@ class UKExportPrepareKernel(KernelBase):
     )
 
     def implementation_hash(self) -> str:
+        from microcosm.frame import materialize as frame_materialize
+
+        from .. import gates
+        from . import (
+            atomic_area_support,
+            graph_population,
+            hmrc_uprating,
+            local_authority_input,
+            rowwise_dataset,
+            rowwise_geography,
+        )
+
+        # The descriptor also computes through the ladder gate's results and
+        # region codes (gates, rowwise_geography, local_authority_input), the
+        # area code frames (atomic_area_support), the engine tables
+        # (frame_materialize) and the clone index columns rowwise_dataset
+        # names, the engine's weight projection factor (hmrc_uprating's
+        # pins), the frame it rebuilds (graph_population) and the canonical
+        # encoding of the descriptor (microcosm#931). The gate report it reads
+        # only admits it (_require_full_gate_admission).
         return source_hash(
-            sys.modules[__name__], national_frame, geography_ladder, weight_year
+            sys.modules[__name__],
+            national_frame,
+            geography_ladder,
+            weight_year,
+            gates,
+            atomic_area_support,
+            graph_population,
+            hmrc_uprating,
+            local_authority_input,
+            rowwise_dataset,
+            rowwise_geography,
+            frame_materialize,
+            canonical_json,
         )
 
     def run(self, context: KernelContext) -> KernelResult:
         for value in context.artifacts.values():
             if value.type == FULL_GATE_REPORT_TYPE:
-                _, enforcement = decode_full_gate_report(value.payload)
-                if not enforcement["artifact_permitted"]:
-                    raise ValueError(
-                        "UK export preparation refused by a structural full-build gate."
-                    )
+                _require_full_gate_admission(
+                    value.payload,
+                    "UK export preparation refused by a structural full-build gate.",
+                )
         bindings = json.loads(str(context.params["bindings"]))
         bindings["artifacts"] = {
             name: value.key for name, value in context.artifacts.items()
@@ -392,7 +423,26 @@ class UKExportReadbackKernel(KernelBase):
     )
 
     def implementation_hash(self) -> str:
-        return source_hash(sys.modules[__name__], national_frame)
+        from microcosm.frame import materialize as frame_materialize
+        from microcosm.frame.adapters import policyengine_uk as uk_engine_adapter
+
+        from .. import artifact_files, trace
+
+        # The readback also computes through the file record it takes
+        # (artifact_files, trace's file digest), the H5 it reads back
+        # (frame_materialize's table reader, the engine adapter's contracts),
+        # the area code columns it checks (geography_ladder) and the
+        # canonical encoding of its report (microcosm#931).
+        return source_hash(
+            sys.modules[__name__],
+            national_frame,
+            artifact_files,
+            trace,
+            frame_materialize,
+            uk_engine_adapter,
+            geography_ladder,
+            canonical_json,
+        )
 
     def run(self, context: KernelContext) -> KernelResult:
         descriptor = json.loads(context.artifacts["export_descriptor"].payload)
@@ -408,6 +458,19 @@ class UKPackageInventoryKernel(KernelBase):
     capabilities = Capabilities(
         Determinism.DETERMINISTIC, numeric=Numeric.BITWISE, seed_source=SeedSource.NONE
     )
+
+    def implementation_hash(self) -> str:
+        from .. import artifact_files, trace
+
+        # The inventory records each evidence file through artifact_files
+        # (trace's file digest) and encodes itself canonically (microcosm#931).
+        return source_hash(
+            type(self),
+            artifact_files,
+            trace,
+            canonical_json,
+            dependencies=self.capabilities.dependencies,
+        )
 
     def run(self, context: KernelContext) -> KernelResult:
         report = json.loads(context.artifacts["export_readback"].payload)
@@ -649,6 +712,16 @@ def decode_full_gate_report(payload: bytes | Mapping):
     if enforcement != document["enforcement"]:
         raise ValueError("UK gate enforcement differs from its bound phase report.")
     return report, enforcement
+
+
+def _require_full_gate_admission(payload: bytes | Mapping, refusal: str) -> None:
+    """Refuse with ``refusal`` unless a full gate report permits the artifact.
+
+    An admission read only: its caller computes nothing from the report.
+    """
+    _, enforcement = decode_full_gate_report(payload)
+    if not enforcement["artifact_permitted"]:
+        raise ValueError(refusal)
 
 
 def _spine_gate_evidence(context: KernelContext):
@@ -1315,16 +1388,61 @@ class UKFullHoldoutKernel(KernelBase):
     )
 
     def implementation_hash(self) -> str:
+        import microcosm.calibrate.artifacts as calibrate_artifacts
+        import microcosm.calibrate.exact_k as calibrate_exact_k
+        import microcosm.calibrate.gates as calibrate_gates
+        import microcosm.calibrate.geography_constants as geography_constants
+        import microcosm.calibrate.hierarchy as calibrate_hierarchy
+        import microcosm.calibrate.initialization as calibrate_initialization
+        import microcosm.calibrate.matrix as calibrate_matrix
+        import microcosm.calibrate.monetary_binding as monetary_binding
+        import microcosm.calibrate.registry as calibrate_registry
+        import microcosm.calibrate.solve as calibrate_solve
+        import microcosm.calibrate.target as calibrate_target
+        from microcosm.frame.adapters import policyengine_uk as uk_engine_adapter
+
+        from .. import cross_grain, gate_battery, holdout, stage_evidence
         from . import (
+            council_tax_constants,
+            cross_grain_declarations,
             dataset_size,
+            full_problem,
+            graph_population,
             graph_targets,
+            high_value_homes,
+            ledger_targets,
             local_doctrine,
+            local_geography,
             local_rowwise,
+            local_target_census,
+            local_targets,
             national_doctrine,
+            off_surface_cells,
+            scotland_brma_la_overlap,
+            size_checkpoint,
+            solve_progress,
+            support_floor,
             target_weights,
+            uprating_holds,
+            weighted_integrity,
         )
         from .solve_scope import uk_solve_fingerprint
 
+        # The holdout also computes through the problem it reconstructs (the
+        # local surface: full_problem, ledger_targets, local_targets,
+        # cross_grain and its declarations, the off-surface cells, the
+        # uprating holds, the Scotland BRMA overlap, the council tax bands,
+        # high-value homes' metric names, the support floor, local_geography,
+        # geography_ladder, and the frame on national_frame's schema through
+        # graph_population), the folds and rowwise solves it runs (holdout,
+        # local_target_census, size_checkpoint, solve_progress,
+        # weighted_integrity, the engine adapter's contracts, and
+        # microcosm.calibrate's solver, matrix, gates, exact-K, initialisation,
+        # targets, registry, hierarchy, monetary checks and UK-wide geography),
+        # the problem it decodes (calibrate's artifacts), and its report's
+        # encoding (gate_battery's _json_safe, stage_evidence and the
+        # canonical encoder) (microcosm#931). The preflight report only
+        # admits it (_require_full_gate_admission).
         return hashlib.sha256(
             canonical_json(
                 {
@@ -1336,6 +1454,41 @@ class UKFullHoldoutKernel(KernelBase):
                         local_doctrine,
                         national_doctrine,
                         target_weights,
+                        full_problem,
+                        ledger_targets,
+                        local_targets,
+                        cross_grain,
+                        cross_grain_declarations,
+                        off_surface_cells,
+                        uprating_holds,
+                        scotland_brma_la_overlap,
+                        council_tax_constants,
+                        high_value_homes,
+                        support_floor,
+                        local_geography,
+                        geography_ladder,
+                        graph_population,
+                        national_frame,
+                        holdout,
+                        local_target_census,
+                        size_checkpoint,
+                        solve_progress,
+                        weighted_integrity,
+                        uk_engine_adapter,
+                        calibrate_solve,
+                        calibrate_matrix,
+                        calibrate_gates,
+                        calibrate_exact_k,
+                        calibrate_initialization,
+                        calibrate_target,
+                        calibrate_registry,
+                        calibrate_hierarchy,
+                        monetary_binding,
+                        geography_constants,
+                        calibrate_artifacts,
+                        gate_battery,
+                        stage_evidence,
+                        canonical_json,
                         dependencies=self.capabilities.dependencies,
                     ),
                     # The holdout repeats the solve: it keys on the solve
@@ -1355,11 +1508,10 @@ class UKFullHoldoutKernel(KernelBase):
         from .graph_targets import reconstruct_uk_full_problem_inputs
         from .local_rowwise import rotated_uk_local_holdout
 
-        _, preflight = decode_full_gate_report(context.artifacts["preflight"].payload)
-        if not preflight["artifact_permitted"]:
-            raise ValueError(
-                "Rotated holdout cannot run after a blocking source preflight."
-            )
+        _require_full_gate_admission(
+            context.artifacts["preflight"].payload,
+            "Rotated holdout cannot run after a blocking source preflight.",
+        )
         if context.params["skip_holdout"]:
             report = {
                 "report_only": True,

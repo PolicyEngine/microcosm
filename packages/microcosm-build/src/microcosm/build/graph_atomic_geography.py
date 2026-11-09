@@ -44,12 +44,19 @@ _DEPENDENCIES = ("numpy", "pandas")
 
 class _GeographyKernel(KernelBase):
     def implementation_hash(self) -> str:
+        from microcosm.frame import materialize as frame_materialize
+        from microcosm.graph import store as graph_store
+
+        # load_source_bytes takes a content store, whose frame encoding writes
+        # through frame_materialize (microcosm#931).
         return source_hash(
             type(self),
             geography,
             canonical_json,
             keyed_uniform,
             load_source_bytes,
+            graph_store,
+            frame_materialize,
             dependencies=_DEPENDENCIES,
         )
 

@@ -1002,9 +1002,37 @@ class UKNationalGateKernel(_NationalKernel):
     )
 
     def implementation_hash(self) -> str:
-        from .. import gate_battery
-        from . import battery_bindings, diagnostics, weighted_integrity
+        import microcosm.calibrate.artifacts as calibrate_artifacts
+        import microcosm.calibrate.hierarchy as calibrate_hierarchy
+        import microcosm.calibrate.matrix as calibrate_matrix
+        import microcosm.calibrate.monetary_binding as monetary_binding
+        import microcosm.calibrate.registry as calibrate_registry
+        import microcosm.calibrate.solve as calibrate_solve
+        import microcosm.calibrate.target as calibrate_target
 
+        from .. import gate_battery, gates
+        from . import (
+            battery_bindings,
+            cgt_projection,
+            diagnostics,
+            donor_uprating,
+            etb_services,
+            graph_population,
+            graph_targets,
+            national_frame,
+            weighted_integrity,
+        )
+
+        # Outside the gate registry's evaluators (held for a ruling; see
+        # test_uk_graph's _KERNEL_STOPS) the battery also computes through
+        # the shared gates' evaluators (gates), the solved result and
+        # registry it decodes (microcosm.calibrate's artifacts, matrix,
+        # registry, target and hierarchy, graph_targets), the frame it
+        # rebuilds (graph_population, national_frame), the manifest's
+        # effective sample size (calibrate.solve), the admin totals' derived
+        # anchors (etb_services), the CGT projection (cgt_projection,
+        # donor_uprating) and the canonical encoding of its artifacts
+        # (microcosm#931).
         return hashlib.sha256(
             canonical_json(
                 {
@@ -1017,6 +1045,21 @@ class UKNationalGateKernel(_NationalKernel):
                         weighted_integrity,
                         diagnostics,
                         support_floor_rules,
+                        gates,
+                        calibrate_artifacts,
+                        calibrate_matrix,
+                        calibrate_registry,
+                        calibrate_target,
+                        calibrate_hierarchy,
+                        monetary_binding,
+                        calibrate_solve,
+                        graph_targets,
+                        graph_population,
+                        national_frame,
+                        etb_services,
+                        cgt_projection,
+                        donor_uprating,
+                        canonical_json,
                     ),
                     "country_resources": load_country_spec("uk").fingerprint,
                 }
@@ -1121,9 +1164,40 @@ class UKNationalReadbackKernel(KernelBase):
     capabilities = Capabilities(Determinism.DETERMINISTIC, role=KernelRole.GATE)
 
     def implementation_hash(self) -> str:
-        from . import content_identity, national_frame, weight_year
+        from microcosm.frame import materialize as frame_materialize
+        from microcosm.frame.adapters import policyengine_uk as uk_engine_adapter
 
-        return source_hash(type(self), content_identity, national_frame, weight_year)
+        from .. import artifact_files, trace
+        from . import (
+            content_identity,
+            geography_ladder,
+            graph_population,
+            hmrc_uprating,
+            national_frame,
+            weight_year,
+        )
+
+        # The readback also computes through the file record it takes
+        # (artifact_files, trace's file digest), the H5 it reads back
+        # (frame_materialize, the engine adapter's contracts), the export
+        # frame's area codes (geography_ladder), the frame it rebuilds
+        # (graph_population), the engine's weight projection factor
+        # (hmrc_uprating's pins) and the canonical encoding of its report
+        # (microcosm#931).
+        return source_hash(
+            type(self),
+            content_identity,
+            national_frame,
+            weight_year,
+            artifact_files,
+            trace,
+            frame_materialize,
+            uk_engine_adapter,
+            geography_ladder,
+            graph_population,
+            hmrc_uprating,
+            canonical_json,
+        )
 
     def run(self, context: KernelContext) -> KernelResult:
         from ..artifact_files import file_artifact

@@ -3,6 +3,8 @@
 # ruff: noqa: F403, F405
 import functools
 import hashlib
+from collections.abc import Mapping
+from types import MappingProxyType
 from typing import NamedTuple
 
 from microcosm.graph import graph_schema, orrery_document
@@ -880,23 +882,21 @@ def test_engine_module_changes_invalidate_every_stage_that_calls_the_engine(
 # The rule behind the bindings above, for every helper (microcosm#931):
 # ``source_hash`` does not follow imports, so a node's hash must name every
 # module whose code can change what the node computes. The tests below
-# derive those modules from what a stage's transform, or a dense population
-# kernel, names, and follow each named definition into the module that
+# derive those modules from what a stage's transform, or a UK graph kernel's
+# own code, names, and follow each named definition into the module that
 # defines it, through re-exports and module attributes, to a fixed point.
 
 #: The packages the rule follows: every first-party package, each under the
 #: microcosm namespace (microcosm-build, -calibrate, -data, -diagnostics,
-#: -fit, -frame and -graph). It binds what the stages compute through there
-#: as in microcosm.build: microcosm.fit's QRF, model, categorical, donor and
-#: held-out modules; microcosm.frame's materialize and rules modules and the
-#: engine adapter, which national_frame stamps every frame through;
-#: microcosm.graph's keyed uniforms and their canonical encoder; and
-#: microcosm.calibrate's region tier. It stops at the core modules every node
-#: runs through (``_CORE_MODULES``). The dense population kernels stay on
-#: microcosm.build (``_DENSE_SCOPE``) until the UK's other graph kernels take
-#: the rule.
+#: -fit, -frame and -graph). It binds what the stages and kernels compute
+#: through there as in microcosm.build: microcosm.fit's QRF, model,
+#: categorical, donor and held-out modules; microcosm.frame's materialize and
+#: rules modules and the engine adapter, which national_frame stamps every
+#: frame through; microcosm.graph's keyed uniforms, canonical encoder,
+#: weight-update receipt and content store; and microcosm.calibrate's solver,
+#: targets and region tier. It stops at the core modules every node runs
+#: through (``_CORE_MODULES``).
 _HELPER_SCOPE = "microcosm."
-_DENSE_SCOPE = "microcosm.build."
 #: Where the rule stops. What a stage reads from these is its own
 #: declaration, which its node key already hashes as the stage contract: its
 #: operations, artifacts and resource pins (graph._stage_contract_sha256).
@@ -962,7 +962,9 @@ _CORE_MODULES: dict[str, str] = {
 #: Checks that read values only to decide whether to refuse, each with why it
 #: cannot change what its caller computes. The rule does not follow them, and
 #: a definition that names nothing else of value needs no binding for them;
-#: test_the_refusal_only_helpers_return_and_write_nothing checks each one.
+#: test_the_refusal_only_helpers_return_and_write_nothing checks each one. A
+#: kernel's method is named ``Class.method``; the kernel rule leaves it out of
+#: what the kernel runs.
 _REFUSAL_ONLY_HELPERS: dict[tuple[str, str], str] = {
     (
         "microcosm.build.uk_runtime.graph_evidence",
@@ -970,6 +972,20 @@ _REFUSAL_ONLY_HELPERS: dict[tuple[str, str], str] = {
     ): (
         "refuses a node unless the spine gates admitted its input; the dense "
         "sample node calls it before it computes anything"
+    ),
+    (
+        "microcosm.build.uk_runtime.graph_terminal",
+        "_require_full_gate_admission",
+    ): (
+        "decodes a full gate report and refuses, with its caller's message, "
+        "unless the report permits the artifact; the export description and "
+        "the rotated holdout call it before they compute anything"
+    ),
+    ("microcosm.build.uk_runtime.graph_calibration", "UKDenseSolveKernel._admit"): (
+        "refuses the dense solve unless its declared admission holds: the "
+        "source preflight's report permits the artifact, or the bound spine's "
+        "provenance binds its gate report; the solve calls it before it "
+        "computes anything"
     ),
     ("microcosm.build.uk_runtime.cgt_structure", "_assert_closed_world_operations"): (
         "compares a stage's declared operations with the reviewed mapping, in "
@@ -1010,15 +1026,85 @@ _STAGE_UNBOUND_NAMES: dict[tuple[str, str], str] = {
         "column, or declares neither, and counts as before (checked)"
     ),
 }
-#: The same for the dense population kernels, which run outside the spine
-#: graph.
-_DENSE_UNBOUND_NAMES: dict[tuple[str, str], str] = {
+#: The same for the UK graph kernels: names a kernel reads from a module its
+#: key does not hash, each with why.
+_KERNEL_UNBOUND_NAMES: dict[tuple[str, str], str] = {
     ("microcosm.build.uk_runtime.geography_sources", name): (
         "the LAD23 names lookup's pinned URL and digest: local_authority_input "
         "refuses an input whose declared source differs from them, and reads "
         "nothing through them"
     )
     for name in ("LAD23_NAMES_SHA256", "LAD23_NAMES_URL")
+}
+#: Where the kernel rule stops, each with why a kernel that names the
+#: definition need not hash what lies beyond it;
+#: test_the_kernel_rule_stops_only_where_its_reasons_hold checks each.
+_KERNEL_STOPS: dict[tuple[str, str], str] = {
+    ("microcosm.build.uk_runtime.graph_kernels", "_FixtureTransformResolver"): (
+        "resolves the hermetic H2 fixture's transform for the node's stage, "
+        "which _fixture_implementations builds and which is the stage's own "
+        "transform: the stage rule holds what each transform computes "
+        "through, from where graph_kernels builds it"
+    ),
+    ("microcosm.build.uk_runtime.spi_spine", "uk_spi_support_mass_change_reason"): (
+        "_minimal_frame rebuilds the SPI support allocation's mass record "
+        "through it for the hmrc_spi_income_spine stage alone, inside the "
+        "branch on that stage's name, and that stage's node hashes everything "
+        "it computes through"
+    ),
+    ("microcosm.build.uk_runtime.battery_bindings", "UK_GATE_REGISTRY"): (
+        "maps each UK gate to its evaluator. A battery evaluates only the "
+        "gates its node's manifest declares, so how the gate batteries' keys "
+        "bind what each evaluator computes through is held for a ruling with "
+        "the held kernels (microcosm#931): the national battery's evaluators "
+        "too. The bound spine builds a battery run through it only for the "
+        "checkpoint's gate digests, which read the manifest; the run reads "
+        "the registry only to refuse a parameter its binding does not declare"
+    ),
+}
+#: Kernels the rule does not yet hold, each with why, all held for a ruling
+#: (microcosm#931): two gate batteries whose phases share one key but declare
+#: different gates, and the target kernels, whose keys microcosm#1497's
+#: import record holds.
+_TARGET_RECORD_REASON = (
+    "test_uk_target_compile_modules holds this kernel's key to "
+    "microcosm#1497's import record, which lists each import of a module the "
+    "kernel hashes that it leaves unhashed and may only shrink. Binding what "
+    "this rule finds it computing through would add to the record every such "
+    "import of each module bound"
+)
+_HELD_KERNELS: dict[str, str] = {
+    "uk.spine-gates@1": (
+        "the assembled and transferred spine phases share one key, and only "
+        "the transferred phase declares the gates that check the CGT asset "
+        "type domain and most of the stage-health checks. Binding what those "
+        "compute through into the shared key would re-key the assembled gate, "
+        "which every later spine stage waits on, as the re-review of "
+        "microcosm#1420 (E) kept the energy level out of it"
+    ),
+    "uk.full-gates.preflight@1": (
+        "runs the calibrated battery's code, one class body and one code "
+        "hash, for the preflight phase only. The dense solve keys on it, so "
+        "binding the terminal phase's modules into the shared hash would "
+        "re-solve on any terminal-gate edit, which microcosm#1301 and #1306 "
+        "keyed out"
+    ),
+    "uk.full-gates@1": (
+        "shares its code hash with the preflight, and its terminal-only "
+        "publication code keys it through its terminal_code parameter "
+        "(microcosm#1306)"
+    ),
+    **{
+        ref: _TARGET_RECORD_REASON
+        for ref in (
+            "uk.full.target_compilation@1",
+            "uk.full.target_selection@1",
+            "uk.full.measures@1",
+            "uk.full.problem@1",
+            "uk.full.national_targets@1",
+            "uk.full.national_problem@1",
+        )
+    },
 }
 #: Method and function names that change their receiver or an argument in
 #: place.
@@ -1393,36 +1479,67 @@ def _helper_walk(
     modules and the listed refusal-only checks are neither followed nor
     returned."""
 
+    module, name = root
+    node = _module_definitions(module, scope).definitions[name]
+    walk, _ = _walk(
+        {root},
+        [(found, root) for found in _named(module, node, scope)],
+        scope,
+        follow_core=follow_core,
+    )
+    return walk
+
+
+def _walk(
+    roots: set[tuple[str, str]],
+    seeds: list[tuple[tuple[str, str], object]],
+    scope: str,
+    *,
+    follow_core: bool = False,
+    halts: Mapping[tuple[str, str], str] = MappingProxyType({}),
+) -> tuple[_Walk, dict[tuple[str, str], frozenset]]:
+    """The walk behind ``_helper_walk`` and ``_kernel_walk``: ``roots`` are
+    reached as given, and each ``(definition, namer)`` seed is followed as
+    ``_helper_walk`` follows what its root names. A definition in ``halts`` is
+    neither followed nor returned; the second result maps each one met to
+    what named it."""
+
     reached: dict[str, set[str]] = {}
+    for module, name in roots:
+        reached.setdefault(module, set()).add(name)
     stops: set[tuple[str, str]] = set()
     core: set[str] = set()
-    pending, seen = [root], set()
+    met: dict[tuple[str, str], set] = {}
+    pending, seen = list(seeds), set(roots)
     while pending:
-        item = pending.pop()
+        item, namer = pending.pop()
+        if item in halts:
+            met.setdefault(item, set()).add(namer)
+            continue
         if item in seen:
             continue
         seen.add(item)
         module, name = item
         if module.startswith(_DECLARATION_MODULES):
             continue
-        if item != root:
-            if module in _CORE_MODULES:
-                core.add(module)
-                if not follow_core:
-                    continue
-            kind = _helper_kind(module, name, scope)
-            if kind != "value":
-                if kind != "check":
-                    stops.add(item)
+        if module in _CORE_MODULES:
+            core.add(module)
+            if not follow_core:
                 continue
+        kind = _helper_kind(module, name, scope)
+        if kind != "value":
+            if kind != "check":
+                stops.add(item)
+            continue
         reached.setdefault(module, set()).add(name)
         node = _module_definitions(module, scope).definitions[name]
-        pending.extend(_named(module, node, scope))
-    return _Walk(
+        pending.extend((found, item) for found in _named(module, node, scope))
+    walk = _Walk(
         {module: frozenset(names) for module, names in reached.items()},
         frozenset(stops),
         frozenset(core),
     )
+    return walk, {item: frozenset(namers) for item, namers in met.items()}
 
 
 def _helper_reach(
@@ -1659,8 +1776,17 @@ def test_the_core_modules_are_on_every_nodes_path() -> None:
 
 
 def test_the_refusal_only_helpers_return_and_write_nothing() -> None:
+    import ast
+
     for module, name in _REFUSAL_ONLY_HELPERS:
-        node = _module_definitions(module, _HELPER_SCOPE).definitions[name]
+        owner, _, method = name.rpartition(".")
+        node = _module_definitions(module, _HELPER_SCOPE).definitions[owner or name]
+        if owner:
+            (node,) = [
+                item
+                for item in node.body
+                if isinstance(item, ast.FunctionDef) and item.name == method
+            ]
         assert _writes_nothing(node), (module, name)
 
 
@@ -1832,49 +1958,466 @@ def test_the_helper_rule_follows_each_way_a_stage_names_a_helper(
     assert followed.core == core
 
 
-def test_the_dense_population_kernels_hash_each_helper_they_compute_through() -> None:
-    """The same rule for the dense population kernels that share
-    ``_PopulationKernel``'s hash (sample, normalize, expand, locations,
-    geography mapping, pool and gate): every module holding code one of them
-    can run to compute a value is in the hash they share, and every name the
-    rule stops at outside it is listed in ``_DENSE_UNBOUND_NAMES`` with its
-    reason (microcosm#931). The rule starts at each kernel's class; the spine
-    gate admission check the sample kernel calls is refusal-only and is not
-    followed. It follows microcosm.build only (``_DENSE_SCOPE``) until the
-    UK's other graph kernels take the first-party rule."""
-    import inspect
+class _KernelWalk(NamedTuple):
+    """What a kernel's own code can compute through (``_kernel_walk``)."""
 
+    reach: dict[str, frozenset[str]]
+    stops: frozenset[tuple[str, str]]
+    core: frozenset[str]
+    met: dict[tuple[str, str], frozenset]
+
+
+def _kernel_classes(kernel_class: type) -> list[type]:
+    """The first-party classes a kernel's code comes from, in its method
+    resolution order, without the core modules' (``KernelBase``)."""
+
+    return [
+        cls
+        for cls in kernel_class.__mro__
+        if cls.__module__.startswith(_HELPER_SCOPE)
+        and cls.__module__ not in _CORE_MODULES
+    ]
+
+
+def _calls_super(node) -> bool:
+    import ast
+
+    return any(
+        isinstance(sub, ast.Call)
+        and isinstance(sub.func, ast.Name)
+        and sub.func.id == "super"
+        for sub in ast.walk(node)
+    )
+
+
+def _statement_names(statement) -> list[str]:
+    import ast
+
+    if isinstance(statement, ast.FunctionDef | ast.AsyncFunctionDef):
+        return [statement.name]
+    if isinstance(statement, ast.Assign | ast.AnnAssign):
+        targets = (
+            statement.targets
+            if isinstance(statement, ast.Assign)
+            else [statement.target]
+        )
+        return [
+            sub.id
+            for target in targets
+            for sub in ast.walk(target)
+            if isinstance(sub, ast.Name)
+        ]
+    return []
+
+
+def _kernel_body(kernel_class: type) -> list[tuple[type, object, str]]:
+    """What a kernel of ``kernel_class`` runs: each method or class attribute
+    with its class and name, from the first class in the method resolution
+    order that defines it, as Python resolves it, and a base's definition too
+    where the one that wins calls ``super()``. ``implementation_hash`` is left
+    out, since it computes the key: an edit to what it calls that changes what
+    it returns changes the key. So are the listed refusal-only methods."""
+
+    chosen: dict[str, object | None] = {}
+    body = []
+    for cls in _kernel_classes(kernel_class):
+        definitions = _module_definitions(cls.__module__, _HELPER_SCOPE).definitions
+        for statement in definitions[cls.__name__].body:
+            for name in _statement_names(statement):
+                if name in chosen:
+                    previous = chosen[name]
+                    if previous is not None and _calls_super(previous):
+                        chosen[name] = statement
+                        body.append((cls, statement, name))
+                    continue
+                if name == "implementation_hash" or (
+                    (cls.__module__, f"{cls.__name__}.{name}") in _REFUSAL_ONLY_HELPERS
+                ):
+                    chosen[name] = None
+                    continue
+                chosen[name] = statement
+                body.append((cls, statement, name))
+    return body
+
+
+def _kernel_walk(kernel_class: type, scope: str = _HELPER_SCOPE) -> _KernelWalk:
+    """What a kernel's own code can compute through: the rule followed from
+    what ``_kernel_body`` names, as from a stage's transform, stopping also at
+    ``_KERNEL_STOPS``. Its classes are in ``reach``; ``met`` maps each listed
+    stop it meets to what names it there (a definition, or ``Class.attribute``
+    for the kernel's own code)."""
+
+    classes = _kernel_classes(kernel_class)
+    seeds = [
+        (found, (cls.__module__, f"{cls.__name__}.{name}"))
+        for cls, statement, name in _kernel_body(kernel_class)
+        for found in _named(cls.__module__, statement, scope)
+    ]
+    walk, met = _walk(
+        {(cls.__module__, cls.__name__) for cls in classes},
+        seeds,
+        scope,
+        halts=_KERNEL_STOPS,
+    )
+    return _KernelWalk(walk.reach, walk.stops, walk.core, met)
+
+
+def _hashed_modules(kernel) -> frozenset[str]:
+    """Every module ``kernel.implementation_hash()`` hashes, recorded at each
+    ``source_hash`` it reaches, in whichever module calls it: every loaded
+    module's ``source_hash`` name stands in for the recorder during one call,
+    after a first call has imported what the hash imports."""
+
+    import inspect
+    import sys
+    from types import ModuleType
+
+    from microcosm.graph import kernel as graph_kernel
+
+    original = graph_kernel.source_hash
+    recorded: list[object] = []
+
+    def record(*objects, **dependencies):
+        recorded.extend(objects)
+        return original(*objects, **dependencies)
+
+    kernel.implementation_hash()
+    patched = [
+        module
+        for module in list(sys.modules.values())
+        if isinstance(module, ModuleType)
+        and getattr(module, "__dict__", {}).get("source_hash") is original
+    ]
+    for module in patched:
+        module.source_hash = record
+    try:
+        kernel.implementation_hash()
+    finally:
+        for module in patched:
+            module.source_hash = original
+    return frozenset(
+        (item if isinstance(item, ModuleType) else inspect.getmodule(item)).__name__
+        for item in recorded
+    )
+
+
+@functools.cache
+def _uk_graph_kernels() -> MappingProxyType:
+    """Every kernel the UK registries register, by ref: the spine's (the
+    hermetic registry, whose stage kernels the production spine also uses)
+    with its gate battery, the full build's, its gate batteries and terminal,
+    certification and inspection kernels, and the national line's."""
+
+    from microcosm.build.uk_runtime.full_certification import (
+        register_uk_full_certification_kernel,
+    )
+    from microcosm.build.uk_runtime.graph_build import register_uk_full_kernels
+    from microcosm.build.uk_runtime.graph_evidence import register_spine_gate_kernel
+    from microcosm.build.uk_runtime.graph_national import register_uk_national_kernels
+    from microcosm.build.uk_runtime.graph_terminal import (
+        register_uk_full_gate_kernels,
+        register_uk_terminal_kernels,
+    )
+    from microcosm.build.uk_runtime.inspection_export import (
+        register_uk_inspection_export_kernel,
+    )
+
+    registry = uk_registry(graph=uk_spine_graph())
+    register_spine_gate_kernel(
+        registry,
+        spec=load_country_spec("uk"),
+        engine=object(),
+        engine_identity="declaration-only",
+    )
+    register_uk_full_kernels(registry)
+    register_uk_full_gate_kernels(
+        registry, coverage_engine=object(), engine_identity="declaration-only"
+    )
+    register_uk_terminal_kernels(registry)
+    register_uk_full_certification_kernel(registry)
+    register_uk_inspection_export_kernel(registry)
+    register_uk_national_kernels(registry, resolver_factory=None)
+    return MappingProxyType({ref: registry.get(ref) for ref in registry.refs()})
+
+
+def test_the_kernel_rule_sees_every_kernel_the_uk_runtime_defines() -> None:
+    """The kernels the rule enumerates are every kernel class the UK runtime
+    and the shared atomic geography define, so a new one cannot escape it,
+    and the held kernels are among them (microcosm#931)."""
+    import ast
+    import importlib
+
+    from microcosm.build import graph_atomic_geography
+    from microcosm.build.uk_runtime import graph_kernels
+
+    files = sorted(Path(graph_kernels.__file__).parent.glob("*.py"))
+    files.append(Path(graph_atomic_geography.__file__))
+    defined = set()
+    for path in files:
+        module = (
+            graph_atomic_geography.__name__
+            if path.stem == "graph_atomic_geography"
+            else f"{graph_kernels.__package__}.{path.stem}"
+        )
+        for node in ast.parse(path.read_text(encoding="utf-8")).body:
+            if not isinstance(node, ast.ClassDef):
+                continue
+            declares_ref = any(
+                "ref" in _statement_names(statement) for statement in node.body
+            ) or any(
+                isinstance(sub, ast.Attribute)
+                and sub.attr == "ref"
+                and isinstance(sub.ctx, ast.Store)
+                for sub in ast.walk(node)
+            )
+            if declares_ref:
+                defined.add(getattr(importlib.import_module(module), node.name))
+    kernels = _uk_graph_kernels()
+    assert {type(kernel) for kernel in kernels.values()} == defined
+    assert set(_HELD_KERNELS) <= set(kernels)
+
+
+def test_every_uk_graph_kernel_hashes_each_helper_it_computes_through() -> None:
+    """The stage rule, for every other UK graph kernel (microcosm#931): each
+    module holding code a kernel's own methods can run to compute a value is
+    in what its implementation hash really hashes, recorded at the
+    ``source_hash`` calls it makes, and every name the rule stops at outside
+    that hash is listed in ``_KERNEL_UNBOUND_NAMES`` with its reason.
+
+    The rule starts at what the kernel runs (``_kernel_body``: its methods by
+    method resolution order, without the hash itself and the listed
+    refusal-only methods), not at its class, and stops at the declaration,
+    refusal-only and core-module tables as for the stages, and at
+    ``_KERNEL_STOPS``. Where a class has several kernels (the spine's stage
+    kernels, one per stage), each one's key is held to it. The held kernels
+    (``_HELD_KERNELS``) are not.
+
+    What the rule cannot see, beside what the stage rule cannot: a name a
+    package exports lazily, through its module ``__getattr__``. The one a
+    kernel calls is microcosm.graph's ``load_source``, through which the
+    create kernel loads the H2 fixture's tables when no root transform is
+    bound; the production spine always binds one."""
     from microcosm.build.uk_runtime import graph_population, rowwise_geography
 
-    kernels = [
-        member
-        for _, member in inspect.getmembers(graph_population, inspect.isclass)
-        if member.__module__ == graph_population.__name__
-        and issubclass(member, graph_population._PopulationKernel)
-        and member is not graph_population._PopulationKernel
-        and member.implementation_hash
+    kernels = _uk_graph_kernels()
+    by_class: dict[type, list[tuple[str, object]]] = {}
+    for ref, kernel in sorted(kernels.items()):
+        by_class.setdefault(type(kernel), []).append((ref, kernel))
+    unhashed: dict[str, list[str]] = {}
+    unlisted: set[tuple[str, str]] = set()
+    met: set[tuple[str, str]] = set()
+    for kernel_class, members in by_class.items():
+        held = {ref in _HELD_KERNELS for ref, _ in members}
+        assert len(held) == 1, kernel_class
+        if held == {True}:
+            continue
+        walk = _kernel_walk(kernel_class)
+        met |= set(walk.met)
+        for ref, kernel in members:
+            hashed = _hashed_modules(kernel)
+            missing = sorted(set(walk.reach) - hashed)
+            if missing:
+                unhashed[ref] = missing
+            unlisted.update(item for item in walk.stops if item[0] not in hashed)
+    assert not unhashed, unhashed
+    assert unlisted == set(_KERNEL_UNBOUND_NAMES), sorted(
+        unlisted ^ set(_KERNEL_UNBOUND_NAMES)
+    )
+    assert met == set(_KERNEL_STOPS), sorted(met ^ set(_KERNEL_STOPS))
+    # The dense population kernels that share _PopulationKernel's hash
+    # (sample, normalize, expand, locations, geography mapping, pool and
+    # gate) mint their clones through rowwise_geography's helpers.
+    shared = [
+        kernel
+        for kernel in kernels.values()
+        if type(kernel).implementation_hash
         is graph_population._PopulationKernel.implementation_hash
     ]
-    assert {kernel.ref for kernel in kernels} >= {
+    assert {kernel.ref for kernel in shared} >= {
         "uk.full.sample@1",
         "uk.full.expand@1",
         "uk.full.geography_gate@1",
     }
-    unhashed = {}
-    unlisted = set()
-    for kernel in kernels:
-        hashed = hashed_module_names(kernel.__new__(kernel), graph_population)
-        # The dense clones are minted by rowwise_geography's helpers.
-        assert rowwise_geography.__name__ in hashed
-        walk = _helper_walk((graph_population.__name__, kernel.__name__), _DENSE_SCOPE)
-        missing = sorted(set(walk.reach) - hashed)
-        if missing:
-            unhashed[kernel.ref] = missing
-        unlisted.update(item for item in walk.stops if item[0] not in hashed)
-    assert not unhashed, unhashed
-    assert unlisted == set(_DENSE_UNBOUND_NAMES), sorted(
-        unlisted ^ set(_DENSE_UNBOUND_NAMES)
+    for kernel in shared:
+        assert rowwise_geography.__name__ in _hashed_modules(kernel), kernel.ref
+
+
+def test_the_kernel_rule_stops_only_where_its_reasons_hold() -> None:
+    """Each listed kernel stop is met only where its reason says
+    (microcosm#931)."""
+    import ast
+
+    from microcosm.build.uk_runtime import (
+        battery_bindings,
+        graph_kernels,
+        release_certification,
+        spi_spine,
     )
+
+    kernels = _uk_graph_kernels()
+    namers: dict[tuple[str, str], dict[str, frozenset]] = {}
+    for ref, kernel in kernels.items():
+        if ref in _HELD_KERNELS:
+            continue
+        for stop, by in _kernel_walk(type(kernel)).met.items():
+            namers.setdefault(stop, {})[ref] = by
+
+    # The fixture resolver resolves the stage's own transform: of what holds a
+    # value, it names only the builder the stage rule starts from.
+    resolver = (graph_kernels.__name__, "_FixtureTransformResolver")
+    definitions = _module_definitions(graph_kernels.__name__, _HELPER_SCOPE).definitions
+    named = {
+        item
+        for item in _named(
+            graph_kernels.__name__, definitions[resolver[1]], _HELPER_SCOPE
+        )
+        if not item[0].startswith(_DECLARATION_MODULES)
+        and item[0] not in _CORE_MODULES
+        and _helper_kind(*item, _HELPER_SCOPE) == "value"
+    }
+    assert named == {(graph_kernels.__name__, "_fixture_implementations")}
+    assert set(namers[resolver]) == {
+        kernel.ref
+        for kernel in kernels.values()
+        if isinstance(
+            kernel, graph_kernels.UKStageKernel | graph_kernels.UKExpandStageKernel
+        )
+    }
+
+    # The SPI support allocation's mass record: _minimal_frame names it only
+    # inside its branch on the SPI income stage, whose node hashes all it
+    # computes through.
+    stage = "hmrc_spi_income_spine"
+    reason = (spi_spine.__name__, "uk_spi_support_mass_change_reason")
+    assert {namer for by in namers[reason].values() for namer in by} == {
+        (graph_kernels.__name__, "_minimal_frame")
+    }
+    minimal = definitions["_minimal_frame"]
+    guarded = set()
+    for branch in ast.walk(minimal):
+        if (
+            isinstance(branch, ast.If)
+            and ast.unparse(branch.test) == f"context.params.get('stage') == '{stage}'"
+        ):
+            guarded |= {id(sub) for item in branch.body for sub in ast.walk(item)}
+    references = [
+        sub
+        for sub in ast.walk(minimal)
+        if isinstance(sub, ast.Name | ast.Attribute)
+        and reason in _named(graph_kernels.__name__, sub, _HELPER_SCOPE)
+    ]
+    assert references and all(id(sub) in guarded for sub in references)
+    reach = _helper_walk(reason)
+    hashed = _hashed_modules(kernels[f"uk.stage.{stage}@1"])
+    assert set(reach.reach) | {module for module, _ in reach.stops} <= hashed
+
+    # The gate registry: the national battery evaluates through it (held);
+    # the bound spine derives its gate digests through it, in
+    # _manifest_digests, which returns the battery run's digests alone.
+    registry = (battery_bindings.__name__, "UK_GATE_REGISTRY")
+    assert namers[registry] == {
+        "uk.full.bound_spine@1": frozenset(
+            {(release_certification.__name__, "_manifest_digests")}
+        ),
+        "uk.full.national-gates@1": frozenset(
+            {("microcosm.build.uk_runtime.graph_national", "UKNationalGateKernel.run")}
+        ),
+    }
+    digests = _module_definitions(
+        release_certification.__name__, _HELPER_SCOPE
+    ).definitions["_manifest_digests"]
+    (returned,) = [sub for sub in ast.walk(digests) if isinstance(sub, ast.Return)]
+    assert {ast.unparse(value) for value in returned.value.values} == {
+        "run.gates_manifest_sha256",
+        "run.policy_sha256",
+        "run.spec_fingerprint",
+    }
+
+
+def test_the_kernel_rule_follows_what_a_kernel_runs(tmp_path, monkeypatch) -> None:
+    """Control: the kernel rule follows what a kernel's methods name,
+    through its bases by method resolution order (a base method it inherits,
+    and one it overrides only where it calls ``super()``), and leaves out its
+    implementation hash, a listed refusal-only method, a base method it
+    overrides without ``super()`` and what lies behind a listed kernel stop,
+    which it reports with what named it. The recorder sees each module the
+    hash passes to ``source_hash``, in whichever module calls it."""
+    import importlib
+    import uuid
+
+    scratch = f"kernel_rule_{uuid.uuid4().hex[:8]}"
+    package = tmp_path / "microcosm" / scratch
+    package.mkdir(parents=True)
+    (package / "__init__.py").write_text("")
+    monkeypatch.syspath_prepend(str(tmp_path))
+    sources = {
+        "computed": "def computed(x):\n    return x + 1\n",
+        "inherited": "def base_only(x):\n    return x * 2\n",
+        "assisted": "def kept(x):\n    return x * 3\n",
+        "overridden": "def replaced(x):\n    return x - 2\n",
+        "refused": "def check(x):\n    return x < 0\n",
+        "keyonly": "def salt():\n    return 'salt'\n",
+        "behind": "def beyond(x):\n    return x * 5\n",
+        "table": "from .behind import beyond\n\nTABLE = {'a': beyond}\n",
+        "keyed": (
+            "from microcosm.graph import source_hash\n\n"
+            "from . import computed, keyonly\n\n"
+            "def key():\n    return source_hash(computed, keyonly)\n"
+        ),
+        "base": (
+            "from .assisted import kept\n"
+            "from .inherited import base_only\n"
+            "from .overridden import replaced\n\n"
+            "class Base:\n"
+            "    def run(self, x):\n"
+            "        return base_only(x)\n\n"
+            "    def prepare(self, x):\n"
+            "        return replaced(x)\n\n"
+            "    def assist(self, x):\n"
+            "        return kept(x)\n"
+        ),
+        "kernel": (
+            "from .base import Base\n"
+            "from .computed import computed\n"
+            "from .keyed import key\n"
+            "from .keyonly import salt\n"
+            "from .refused import check\n"
+            "from .table import TABLE\n\n"
+            "class Kernel(Base):\n"
+            "    def implementation_hash(self):\n"
+            "        return salt() + key()\n\n"
+            "    def _admit(self, x):\n"
+            "        if check(x):\n"
+            "            raise ValueError('refused')\n\n"
+            "    def prepare(self, x):\n"
+            "        return x\n\n"
+            "    def run(self, x):\n"
+            "        self._admit(x)\n"
+            "        return computed(x) + super().run(x) + TABLE['a'](x)\n"
+        ),
+    }
+    for module, source in sources.items():
+        (package / f"{module}.py").write_text(source)
+    prefix = f"microcosm.{scratch}."
+    monkeypatch.setitem(
+        _REFUSAL_ONLY_HELPERS, (f"{prefix}kernel", "Kernel._admit"), "control"
+    )
+    monkeypatch.setitem(_KERNEL_STOPS, (f"{prefix}table", "TABLE"), "control")
+    kernel_class = importlib.import_module(f"{prefix}kernel").Kernel
+    walk = _kernel_walk(kernel_class, scope=prefix)
+    assert {
+        module.removeprefix(prefix): names for module, names in walk.reach.items()
+    } == {
+        "kernel": {"Kernel"},
+        "base": {"Base"},
+        "computed": {"computed"},
+        "inherited": {"base_only"},
+        "assisted": {"kept"},
+    }
+    assert walk.met == {
+        (f"{prefix}table", "TABLE"): frozenset({(f"{prefix}kernel", "Kernel.run")})
+    }
+    assert _hashed_modules(kernel_class()) == {f"{prefix}computed", f"{prefix}keyonly"}
 
 
 #: Adapters the spine build installs around a stage's own transform, each with

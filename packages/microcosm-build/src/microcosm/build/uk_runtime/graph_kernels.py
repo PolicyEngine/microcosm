@@ -1723,6 +1723,13 @@ class UKIdentityKernel(KernelBase):
     ref = "uk.identity@1"
     capabilities = _FILTER
 
+    def implementation_hash(self) -> str:
+        # The person ids it keeps are read on national_frame's schema
+        # (microcosm#931).
+        return source_hash(
+            type(self), national_frame, dependencies=self.capabilities.dependencies
+        )
+
     def run(self, context: KernelContext) -> KernelResult:
         person = context.tables[UK_NATIONAL_SCHEMA.person_entity]
         id_column = UK_NATIONAL_SCHEMA.person_id_column
@@ -1735,6 +1742,13 @@ class UKClaimKernel(KernelBase):
 
     ref = "uk.claim@1"
     capabilities = _COMPUTE
+
+    def implementation_hash(self) -> str:
+        # The claimed cells are indexed by national_frame's schema's id
+        # columns (microcosm#931).
+        return source_hash(
+            type(self), national_frame, dependencies=self.capabilities.dependencies
+        )
 
     def run(self, context: KernelContext) -> KernelResult:
         columns = {

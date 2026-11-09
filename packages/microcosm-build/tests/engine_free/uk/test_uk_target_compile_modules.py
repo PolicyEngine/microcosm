@@ -223,6 +223,29 @@ HASH_INPUTS = MappingProxyType(
                 "parameter; no kernel's run reads it"
             ),
         ),
+        # graph_national imports these only inside the national gate and
+        # readback kernels' implementation hashes, which bind them there
+        # (microcosm#931); the national target and problem kernels never run
+        # those methods.
+        **{
+            module: HashInput(
+                importers=("microcosm.build.uk_runtime.graph_national",),
+                reason=(
+                    "imported only in uk.full.national-gates@1's or "
+                    "uk.full.national-readback@1's implementation hash, to "
+                    "hash it there"
+                ),
+            )
+            for module in (
+                "microcosm.build.gates",
+                "microcosm.build.trace",
+                "microcosm.build.uk_runtime.donor_uprating",
+                "microcosm.build.uk_runtime.etb_services",
+                "microcosm.calibrate.monetary_binding",
+                "microcosm.frame.adapters.policyengine_uk",
+                "microcosm.frame.materialize",
+            )
+        },
     }
 )
 

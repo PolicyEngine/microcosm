@@ -388,8 +388,32 @@ class UKBoundSpineKernel(KernelBase):
     )
 
     def implementation_hash(self) -> str:
+        from microcosm.frame import materialize as frame_materialize
+        from microcosm.frame.adapters import policyengine_uk as uk_engine_adapter
+
+        from .. import gate_battery, gates, trace
+        from . import content_identity, graph_kernels, hmrc_uprating
+
+        # The node also computes through the H5 it loads (frame_materialize,
+        # the engine adapter's contracts), the checkpoint's content identity
+        # and pinned engine (content_identity, hmrc_uprating), the gate
+        # digests it derives through a battery run (gate_battery, gates,
+        # trace), graph_kernels' create-frame normalisation and the canonical
+        # encoding of its artifacts (microcosm#931).
         return source_hash(
-            type(self), national_frame, calibration_run, release_certification
+            type(self),
+            national_frame,
+            calibration_run,
+            release_certification,
+            frame_materialize,
+            uk_engine_adapter,
+            content_identity,
+            hmrc_uprating,
+            gate_battery,
+            gates,
+            trace,
+            graph_kernels,
+            canonical_json,
         )
 
     def run(self, context: KernelContext) -> KernelResult:
