@@ -3,12 +3,12 @@
   "target_period": 2025,
   "candidate_count": 31347,
   "contract_target_count": 62,
-  "active_reference_count": 27168,
+  "active_reference_count": 27167,
   "status_counts": {
-    "active": 27168,
+    "active": 27167,
     "no_fact_for_area": 1247,
     "signed_deferral_compile_error": 1,
-    "signed_deferred": 2931
+    "signed_deferred": 2932
   },
   "areas_by_geography_level": {
     "constituency": [
@@ -12508,6 +12508,16 @@
       "rationale": "Scotland's six raw FRS band-H households leave Shetland (S12000027) with no band-H household at the ruled K=15: the rowwise driver's support check refuses the cell (nonzero target, zero household support) while the other 31 council cells draw at least one band-H clone and bind (microcosm#929; the English authorities stay under microcosm#762 A14).",
       "area_ids": [
         "S12000027"
+      ],
+      "defer_if_compiles": true
+    },
+    {
+      "target_id": "welshgov.council_tax_stock.by_area.band_i",
+      "geography_level": "local_authority",
+      "reason_id": "council_tax_band_i_spine_support_absent",
+      "rationale": "The dense pool on the spine of microcosm#1535's merge leaves Carmarthenshire (W06000010) with no band-I household at the ruled K=15: the rowwise driver's support check refuses the cell (nonzero target, zero household support) while every other Welsh band-I cell above the dwelling floor draws at least one band-I clone and binds. The cell bound on the spine of microcosm#1491's pair (Mar\u00eda's ruling of 2026-11-07, microcosm#1095).",
+      "area_ids": [
+        "W06000010"
       ],
       "defer_if_compiles": true
     },
@@ -496633,13 +496643,12 @@
               "target_id": "welshgov.council_tax_stock.by_area.band_i",
               "geography_level": "local_authority",
               "geography_id": "W06000010",
-              "status": "active",
+              "status": "signed_deferred",
               "matched_fact_count_overall": 120,
               "matched_fact_count_at_or_before_period": 90,
-              "resolved_period": 2025,
-              "resolved_value": 72.0,
-              "resolved_fact_period": "2025",
-              "resolved_fact_key": "ledger_aggregate_fact_v2_362f4c4d54644db0f138c811"
+              "signed_reason_id": "council_tax_band_i_spine_support_absent",
+              "signed_rationale": "The dense pool on the spine of microcosm#1535's merge leaves Carmarthenshire (W06000010) with no band-I household at the ruled K=15: the rowwise driver's support check refuses the cell (nonzero target, zero household support) while every other Welsh band-I cell above the dwelling floor draws at least one band-I clone and binds. The cell bound on the spine of microcosm#1491's pair (Mar\u00eda's ruling of 2026-11-07, microcosm#1095).",
+              "deferred_value": 72.0
             },
             {
               "name": "welshgov.council_tax_stock.by_area.band_i@W06000011",

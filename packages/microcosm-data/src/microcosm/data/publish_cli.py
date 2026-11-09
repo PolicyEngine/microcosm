@@ -1,4 +1,15 @@
-"""CLI for contract-gated Microcosm release publication."""
+"""CLI for contract-checked Microcosm release publication.
+
+It publishes releases that keep the tagged layout and ``latest.json``, which
+are every US release. The UK national, dense and local-area releases publish
+each build into its own folder through the emitter
+(``microcosm-publish-release-build``), and this command refuses them. The
+other UK releases take no new builds: this command refuses any repository
+that records its builds in ``releases.json``, as the UK repository does after
+its switch, which moves the June 2023 build into a build folder of release
+``populace-uk-2023`` and leaves ``populace-uk-<year>-<tier>-k<N>`` releases
+with no publication path.
+"""
 
 from __future__ import annotations
 
@@ -238,14 +249,6 @@ def main(argv: list[str] | None = None) -> int:
         help="Optional tag name override; defaults to the release id.",
     )
     parser.add_argument(
-        "--promote-line",
-        metavar="LINE",
-        help=(
-            "Promote the release through latest-<line>.json. Requires "
-            "--tag-name and never writes latest.json."
-        ),
-    )
-    parser.add_argument(
         "--extra-file",
         action="append",
         default=[],
@@ -305,15 +308,6 @@ def main(argv: list[str] | None = None) -> int:
     )
     args = parser.parse_args(argv)
 
-    if args.promote_line is not None:
-        if args.no_latest:
-            parser.error("--promote-line cannot be combined with --no-latest.")
-        if args.tag_only:
-            parser.error("--promote-line cannot be combined with --tag-only.")
-        if args.evidence:
-            parser.error("--promote-line cannot be combined with --evidence.")
-        if not args.tag_name:
-            parser.error("--promote-line requires --tag-name.")
     if args.tag_only and not args.no_latest:
         parser.error("--tag-only requires --no-latest.")
     if args.tag_only and not args.create_tag:
@@ -338,7 +332,6 @@ def main(argv: list[str] | None = None) -> int:
         update_latest=not args.no_latest,
         tag_only=args.tag_only,
         evidence=args.evidence,
-        line=args.promote_line,
     )
     from microcosm.data.source_enrichment import (
         recorded_claim_measurement,
