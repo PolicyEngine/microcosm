@@ -96,6 +96,7 @@ from . import (
     frs_spine,
     frs_take_up,
     gambling_participation,
+    graph_frames,
     hmrc_capital_gains,
     hmrc_company_car_statistics,
     hmrc_income,
@@ -131,6 +132,7 @@ from . import (
     uc_relationships,
     was_wealth,
 )
+from .graph_frames import cast_owned, normalize_create_frame
 from .national_frame import UK_NATIONAL_SCHEMA
 
 if TYPE_CHECKING:
@@ -905,6 +907,8 @@ def _implementation_hash(kernel: object, stage: str, transform: object | None) -
     # the time period of their frames through it (microcosm#931). It stamps
     # each frame it builds with the engine adapter's ISA income contract and
     # savings income projection, so every kernel hashes the adapter with it.
+    # Every kernel casts the cells it owns, and the root normalises the frame
+    # it creates, through graph_frames.
     dependencies = getattr(transform, "graph_implementation_dependencies", None)
     return source_hash(
         type(kernel),
@@ -912,6 +916,7 @@ def _implementation_hash(kernel: object, stage: str, transform: object | None) -
         graph_evidence,
         national_frame,
         uk_engine_adapter,
+        graph_frames,
         _stage_artifacts,
         _mass_log_payload,
         _stage_module(stage),
@@ -1640,37 +1645,11 @@ def _id_index(frame: Frame, entity: str) -> pd.Index:
     return pd.Index(frame.table(entity)[id_column].to_numpy(copy=True), name=id_column)
 
 
-def _cast_owned(series: pd.Series, dtype: str) -> pd.Series:
-    target = dtype_for_token(dtype)
-    if series.dtype != target:
-        series = series.astype(target)
-    return series
-
-
 def _owned_series(frame: Frame, entity: str, column: str, dtype: str) -> pd.Series:
-    values = _cast_owned(frame.table(entity)[column].copy(deep=True), dtype)
+    values = cast_owned(frame.table(entity)[column].copy(deep=True), dtype)
     values.index = _id_index(frame, entity)
     values.name = column
     return values
-
-
-def _normalize_create_frame(frame: Frame, context: KernelContext) -> Frame:
-    tables = {entity: frame.table(entity).copy(deep=True) for entity in frame.entities}
-    for owned in context.node.outputs:
-        tables[owned.entity][owned.column] = _cast_owned(
-            tables[owned.entity][owned.column], owned.dtype
-        ).array
-    return Frame(
-        tables,
-        frame.schema,
-        {entity: frame.weights_for(entity) for entity in frame.weighted_entities},
-        frame.strata,
-        mass_log=frame.mass_log,
-        metadata={
-            **frame.metadata,
-            "time_period": str(context.params.get("time_period", "2024")),
-        },
-    )
 
 
 class UKCreateKernel(KernelBase):
@@ -1706,7 +1685,7 @@ class UKCreateKernel(KernelBase):
                 f"The UK root transform returned {type(frame).__name__}, not Frame."
             )
         return KernelResult(
-            frame=_normalize_create_frame(frame, context),
+            frame=normalize_create_frame(frame, context),
             artifacts=_stage_artifacts(
                 "frs_spine",
                 self.transform,
@@ -1745,15 +1724,18 @@ class UKClaimKernel(KernelBase):
 
     def implementation_hash(self) -> str:
         # The claimed cells are indexed by national_frame's schema's id
-        # columns (microcosm#931).
+        # columns and cast through graph_frames (microcosm#931).
         return source_hash(
-            type(self), national_frame, dependencies=self.capabilities.dependencies
+            type(self),
+            national_frame,
+            graph_frames,
+            dependencies=self.capabilities.dependencies,
         )
 
     def run(self, context: KernelContext) -> KernelResult:
         columns = {
             (owned.entity, owned.column): pd.Series(
-                _cast_owned(
+                cast_owned(
                     context.tables[owned.entity][owned.column].copy(deep=True),
                     owned.dtype,
                 ).array,

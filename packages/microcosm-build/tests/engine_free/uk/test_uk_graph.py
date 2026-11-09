@@ -909,9 +909,13 @@ _DECLARATION_MODULES = (
 _FRAME_REASON = (
     "the spine stages' transforms compute on it, every spine stage kernel "
     "builds one, and the executor holds every population version in one. No "
-    "spine key hashes it, so an edit that changes values is left to its own "
-    "tests and to H1, whose fixtures run it through run_graph against stored "
-    "bytes"
+    "spine key hashes it, and H2 cannot catch an edit to it, since the "
+    "graph's spine and the legacy stage plan both run through it. H1, whose "
+    "fixtures run four wrapped kernels through run_graph against stored "
+    "bytes, catches one only on those kernels' frames, so an edit that changes "
+    "a UK value is otherwise left to the Frame's own tests; the totals the UK "
+    "exact-total corrections target are pinned here "
+    "(test_the_frame_totals_the_uk_corrections_target_are_numpys_sums)"
 )
 #: The core modules every node runs through, which the rule neither follows
 #: nor asks a stage to bind, each with what runs through it and what catches
@@ -957,6 +961,46 @@ _CORE_MODULES: dict[str, str] = {
         "inputs and population version through the compiled graph, as the "
         "executor does, so an edit that changes how a node is declared or "
         "what it reads changes its key"
+    ),
+}
+#: The definitions of the executor's and the key modules that the UK graph
+#: kernels' own code names, each with why naming it binds nothing the kernel's
+#: key misses (test_the_core_definitions_the_kernels_name_are_listed). The
+#: Frame's definitions, which kernels build and read frames with, are the
+#: Frame's reason's; a stage's transform meets the Frame's modules alone
+#: (test_the_core_modules_are_on_every_nodes_path).
+_KERNEL_CORE_NAMES: dict[tuple[str, str], str] = {
+    ("microcosm.graph.population", "dtype_for_token"): (
+        "maps a node's declared dtype token to the dtype its owned cells are "
+        "stored at. The executor stores every node's owned cells at the dtype "
+        "it returns (patch, checked), so a kernel that casts its cells through "
+        "it first hands the executor what the executor stores anyway, and an "
+        "edit to it moves every node's stored dtypes alike: H2 catches one on "
+        "the dtypes its spine fixture carries, and graph.population's own "
+        "tests the rest"
+    ),
+    ("microcosm.graph.decl", "ArtifactType"): (
+        "a frozen record of an artifact type's name and version, which a "
+        "kernel names to declare or check its artifacts' types; node_key "
+        "hashes each node's declared artifact types as part of its normative "
+        "declaration"
+    ),
+    ("microcosm.graph.decl", "ArtifactOutput"): (
+        "a frozen record pairing an artifact's name with its type, which the "
+        "atomic geography gate names to declare and check its outputs; "
+        "node_key hashes each node's declared artifact outputs"
+    ),
+    ("microcosm.graph.decl", "StructuralDelta"): (
+        "the enum a kernel's capabilities declare its row-set change in; the "
+        "executor refuses a kernel whose declared change differs from its "
+        "node's, and node_key binds the declared value with the rest of the "
+        "kernel's capabilities"
+    ),
+    ("microcosm.graph.kernel", "KernelRole"): (
+        "the enum a kernel's capabilities declare its role in, by which the "
+        "executor holds a gate's outcome to the gate outcomes and derives a "
+        "release's tier from its gate ancestors; node_key binds the declared "
+        "value with the rest of the kernel's capabilities"
     ),
 }
 #: Checks that read values only to decide whether to refuse, each with why it
@@ -1044,7 +1088,11 @@ _KERNEL_STOPS: dict[tuple[str, str], str] = {
         "resolves the hermetic H2 fixture's transform for the node's stage, "
         "which _fixture_implementations builds and which is the stage's own "
         "transform: the stage rule holds what each transform computes "
-        "through, from where graph_kernels builds it"
+        "through, from where graph_kernels builds it. The one exception is "
+        "the PolicyEngineUKEngine it builds and injects into the engine "
+        "stages: they bind the three engine modules, but no rule follows the "
+        "adapter's own first-party imports, which is held for a ruling "
+        "(microcosm#931)"
     ),
     ("microcosm.build.uk_runtime.spi_spine", "uk_spi_support_mass_change_reason"): (
         "_minimal_frame rebuilds the SPI support allocation's mass record "
@@ -1053,19 +1101,35 @@ _KERNEL_STOPS: dict[tuple[str, str], str] = {
         "it computes through"
     ),
     ("microcosm.build.uk_runtime.battery_bindings", "UK_GATE_REGISTRY"): (
-        "maps each UK gate to its evaluator. A battery evaluates only the "
-        "gates its node's manifest declares, so how the gate batteries' keys "
-        "bind what each evaluator computes through is held for a ruling with "
-        "the held kernels (microcosm#931): the national battery's evaluators "
-        "too. The bound spine builds a battery run through it only for the "
-        "checkpoint's gate digests, which read the manifest; the run reads "
-        "the registry only to refuse a parameter its binding does not declare"
+        "maps each UK gate to its evaluator. The bound spine builds a battery "
+        "run through it only for the checkpoint's gate digests, which read the "
+        "manifest, and the run reads the registry only to refuse a parameter "
+        "its binding does not declare. A kernel that evaluates gates through "
+        "it is held (_HELD_KERNELS, _HELD_KERNEL_STOPS)"
+    ),
+}
+#: Kernels the rule holds at one listed stop only, for a ruling
+#: (microcosm#931), each with why. Past the stop the rule holds them as any
+#: other kernel. test_every_hold_still_guards_a_module_its_kernel_leaves_out
+#: checks that the walk past each stop still meets a module the kernel's hash
+#: leaves out.
+_HELD_KERNEL_STOPS: dict[tuple[str, tuple[str, str]], str] = {
+    (
+        "uk.full.national-gates@1",
+        ("microcosm.build.uk_runtime.battery_bindings", "UK_GATE_REGISTRY"),
+    ): (
+        "evaluates the gates its manifest declares through the registry, and "
+        "how a gate kernel's key binds what each evaluator computes through is "
+        "held with the gate batteries (_HELD_KERNELS)"
     ),
 }
 #: Kernels the rule does not yet hold, each with why, all held for a ruling
-#: (microcosm#931): two gate batteries whose phases share one key but declare
+#: (microcosm#931): the gate batteries, whose phases share one key but declare
 #: different gates, and the target kernels, whose keys microcosm#1497's
-#: import record holds.
+#: import record holds. Until the ruling, a held kernel can replay a stale
+#: output after an edit to a module it computes through but does not hash;
+#: test_every_hold_still_guards_a_module_its_kernel_leaves_out checks that
+#: each still does, so a hold cannot outlive its need.
 _TARGET_RECORD_REASON = (
     "test_uk_target_compile_modules holds this kernel's key to "
     "microcosm#1497's import record, which lists each import of a module the "
@@ -1481,7 +1545,7 @@ def _helper_walk(
 
     module, name = root
     node = _module_definitions(module, scope).definitions[name]
-    walk, _ = _walk(
+    walk, _, _ = _walk(
         {root},
         [(found, root) for found in _named(module, node, scope)],
         scope,
@@ -1502,13 +1566,14 @@ def _walk(
     reached as given, and each ``(definition, namer)`` seed is followed as
     ``_helper_walk`` follows what its root names. A definition in ``halts`` is
     neither followed nor returned; the second result maps each one met to
-    what named it."""
+    what named it, and the third holds every core module's definition met."""
 
     reached: dict[str, set[str]] = {}
     for module, name in roots:
         reached.setdefault(module, set()).add(name)
     stops: set[tuple[str, str]] = set()
     core: set[str] = set()
+    core_names: set[tuple[str, str]] = set()
     met: dict[tuple[str, str], set] = {}
     pending, seen = list(seeds), set(roots)
     while pending:
@@ -1524,6 +1589,7 @@ def _walk(
             continue
         if module in _CORE_MODULES:
             core.add(module)
+            core_names.add(item)
             if not follow_core:
                 continue
         kind = _helper_kind(module, name, scope)
@@ -1539,7 +1605,11 @@ def _walk(
         frozenset(stops),
         frozenset(core),
     )
-    return walk, {item: frozenset(namers) for item, namers in met.items()}
+    return (
+        walk,
+        {item: frozenset(namers) for item, namers in met.items()},
+        frozenset(core_names),
+    )
 
 
 def _helper_reach(
@@ -1772,6 +1842,13 @@ def test_the_core_modules_are_on_every_nodes_path() -> None:
     registry = uk_registry(graph=graph)
     for stage, (node_id, _, _) in walks.items():
         kernel = registry.get(graph.node(node_id).kernel)
+        # regional_home_values draws its keyed uniforms through
+        # microcosm.graph.randomness, whose contract asks a kernel drawing
+        # through it to declare SeedSource.KEYED. It declares NONE, as every
+        # spine stage kernel does through the one stage kernel class: its
+        # stream is a stage parameter, which its contract hash covers, and it
+        # reads no generator the executor seeds. Whether it should declare
+        # KEYED is held for a ruling (microcosm#931 review).
         assert kernel.capabilities.seed_source is SeedSource.NONE, stage
 
 
@@ -1965,6 +2042,7 @@ class _KernelWalk(NamedTuple):
     stops: frozenset[tuple[str, str]]
     core: frozenset[str]
     met: dict[tuple[str, str], frozenset]
+    core_names: frozenset[tuple[str, str]]
 
 
 def _kernel_classes(kernel_class: type) -> list[type]:
@@ -2040,12 +2118,18 @@ def _kernel_body(kernel_class: type) -> list[tuple[type, object, str]]:
     return body
 
 
-def _kernel_walk(kernel_class: type, scope: str = _HELPER_SCOPE) -> _KernelWalk:
+def _kernel_walk(
+    kernel_class: type,
+    scope: str = _HELPER_SCOPE,
+    *,
+    halts: Mapping[tuple[str, str], str] | None = None,
+) -> _KernelWalk:
     """What a kernel's own code can compute through: the rule followed from
     what ``_kernel_body`` names, as from a stage's transform, stopping also at
-    ``_KERNEL_STOPS``. Its classes are in ``reach``; ``met`` maps each listed
-    stop it meets to what names it there (a definition, or ``Class.attribute``
-    for the kernel's own code)."""
+    ``halts`` (``_KERNEL_STOPS`` unless given). Its classes are in ``reach``;
+    ``met`` maps each listed stop it meets to what names it there (a
+    definition, or ``Class.attribute`` for the kernel's own code), and
+    ``core_names`` holds the core modules' definitions it names."""
 
     classes = _kernel_classes(kernel_class)
     seeds = [
@@ -2053,13 +2137,13 @@ def _kernel_walk(kernel_class: type, scope: str = _HELPER_SCOPE) -> _KernelWalk:
         for cls, statement, name in _kernel_body(kernel_class)
         for found in _named(cls.__module__, statement, scope)
     ]
-    walk, met = _walk(
+    walk, met, core_names = _walk(
         {(cls.__module__, cls.__name__) for cls in classes},
         seeds,
         scope,
-        halts=_KERNEL_STOPS,
+        halts=_KERNEL_STOPS if halts is None else halts,
     )
-    return _KernelWalk(walk.reach, walk.stops, walk.core, met)
+    return _KernelWalk(walk.reach, walk.stops, walk.core, met, core_names)
 
 
 def _hashed_modules(kernel) -> frozenset[str]:
@@ -2311,18 +2395,22 @@ def test_the_kernel_rule_stops_only_where_its_reasons_hold() -> None:
     hashed = _hashed_modules(kernels[f"uk.stage.{stage}@1"])
     assert set(reach.reach) | {module for module, _ in reach.stops} <= hashed
 
-    # The gate registry: the national battery evaluates through it (held);
-    # the bound spine derives its gate digests through it, in
-    # _manifest_digests, which returns the battery run's digests alone.
+    # The gate registry: the bound spine derives its gate digests through it,
+    # in _manifest_digests, which returns the battery run's digests alone;
+    # the national battery evaluates through it and is held there.
     registry = (battery_bindings.__name__, "UK_GATE_REGISTRY")
-    assert namers[registry] == {
+    held_there = {ref for ref, stop in _HELD_KERNEL_STOPS if stop == registry}
+    assert held_there == {"uk.full.national-gates@1"}
+    assert {
+        ref: by for ref, by in namers[registry].items() if ref not in held_there
+    } == {
         "uk.full.bound_spine@1": frozenset(
             {(release_certification.__name__, "_manifest_digests")}
         ),
-        "uk.full.national-gates@1": frozenset(
-            {("microcosm.build.uk_runtime.graph_national", "UKNationalGateKernel.run")}
-        ),
     }
+    assert namers[registry]["uk.full.national-gates@1"] == frozenset(
+        {("microcosm.build.uk_runtime.graph_national", "UKNationalGateKernel.run")}
+    )
     digests = _module_definitions(
         release_certification.__name__, _HELPER_SCOPE
     ).definitions["_manifest_digests"]
@@ -2332,6 +2420,71 @@ def test_the_kernel_rule_stops_only_where_its_reasons_hold() -> None:
         "run.policy_sha256",
         "run.spec_fingerprint",
     }
+
+
+def test_every_hold_still_guards_a_module_its_kernel_leaves_out() -> None:
+    """A hold lasts only while it is needed (microcosm#931 review): each held
+    kernel's walk still meets a module its hash leaves out, and so does the
+    walk past each held stop, so a hold that guards nothing fails here and
+    leaves its table. Until the ruling, such a kernel can replay a stale
+    output after an edit to one of those modules."""
+    kernels = _uk_graph_kernels()
+    assert {ref for ref, _ in _HELD_KERNEL_STOPS} <= set(kernels)
+    assert not {ref for ref, _ in _HELD_KERNEL_STOPS} & set(_HELD_KERNELS)
+    unneeded = []
+    for ref in _HELD_KERNELS:
+        kernel = kernels[ref]
+        if not set(_kernel_walk(type(kernel)).reach) - _hashed_modules(kernel):
+            unneeded.append(ref)
+    for ref, stop in _HELD_KERNEL_STOPS:
+        assert stop in _KERNEL_STOPS, (ref, stop)
+        kernel = kernels[ref]
+        past = _kernel_walk(
+            type(kernel),
+            halts={item: why for item, why in _KERNEL_STOPS.items() if item != stop},
+        )
+        if not set(past.reach) - _hashed_modules(kernel):
+            unneeded.append((ref, stop))
+    assert not unneeded, unneeded
+
+
+def test_the_core_definitions_the_kernels_name_are_listed() -> None:
+    """The kernel version of the stage rule's core check (microcosm#931
+    review): the definitions of the core modules other than the Frame's that
+    the UK graph kernels' own code names, outside the held kernels, are
+    exactly ``_KERNEL_CORE_NAMES``, and the executor stores every node's
+    owned cells through the dtype tokens' map, as that entry's reason says."""
+    kernels = _uk_graph_kernels()
+    named: set[tuple[str, str]] = set()
+    for ref, kernel in kernels.items():
+        if ref not in _HELD_KERNELS:
+            named |= {
+                item
+                for item in _kernel_walk(type(kernel)).core_names
+                if not item[0].startswith("microcosm.frame.")
+            }
+    assert named == set(_KERNEL_CORE_NAMES), sorted(named ^ set(_KERNEL_CORE_NAMES))
+    patching = _helper_walk(("microcosm.graph.population", "patch"), follow_core=True)
+    assert "dtype_for_token" in patching.reach["microcosm.graph.population"]
+
+
+def test_the_frame_totals_the_uk_corrections_target_are_numpys_sums() -> None:
+    """H2 cannot catch an edit to the Frame, which the graph's spine and the
+    legacy stage plan both run through (``_FRAME_REASON``). The UK exact-total
+    corrections correct a vector until NumPy's sum of it equals a frame's
+    ``Weights.total``, so this pins that the total is that same sum, bit for
+    bit, on vectors whose pairwise and correctly rounded sums differ
+    (microcosm#931 review)."""
+    import math
+
+    rng = np.random.default_rng(11)
+    differing = 0
+    for size in (7, 129, 1_000, 78_188):
+        values = rng.lognormal(3.0, 2.0, size)
+        total = Weights(values, WeightKind.IMPORTANCE).total
+        assert total == float(values.sum())
+        differing += total != math.fsum(values)
+    assert differing
 
 
 def test_the_kernel_rule_follows_what_a_kernel_runs(tmp_path, monkeypatch) -> None:

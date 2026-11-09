@@ -1137,6 +1137,8 @@ def _e8_support_split(
 #: incidence clone's and the residential split's. The #970 anchor applies
 #: none. So at most this many support-family members carry a corrected
 #: weight, and a family of more members has one that carries none.
+#: test_uk_identity_stability_receipts derives both counts' premises from
+#: the spine graph and the stages' code.
 _SUPPORT_SPLIT_CORRECTED_ROWS = 3
 #: How many floats the #970 anchor and the residential arms' fold can move
 #: the pair sum of a K = 1 family member no correction touched.
@@ -1987,9 +1989,11 @@ def e8_identity_receipt(
             "support-split mass record: new_total against old_total at rtol "
             "1e-9; support-split copy counts: at K = 1, for a family of more "
             "than three members whose clone pair sums are all one weight c, "
-            "exactly the count of a weight w with fl(w / n) == c, or with "
-            "fl(w / n) within one float of c where fewer than four members "
-            "show their clone pair untouched; for every other family and at "
+            "exactly the count of a weight w with fl(w / n) == c, or, where "
+            "fewer than four members show their clone pair untouched, with "
+            "fl(w / n) within one float of c, a reach that can take in the "
+            "multiple of 60 itself and then does not report a family split "
+            "consistently into one copy more; for every other family and at "
             "K > 1, between the counts at the folded family weight times "
             "1 - 1e-9 and 1 + 1e-9, which for a family whose source-scaled "
             "weight K x w lies within a relative 1e-9 of a multiple of 60 (at "

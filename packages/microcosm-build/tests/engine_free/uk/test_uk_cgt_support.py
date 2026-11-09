@@ -1126,12 +1126,18 @@ def test_split_records_pool_exhaustion_and_empty_bands_without_refusing():
 
 @dataclass(frozen=True)
 class _CorrectionCall:
-    """What the split handed the exact-total correction, and its selection."""
+    """What the split handed the exact-total correction, and its selection.
+
+    ``reselected`` holds each rerun of the walk the correction made, one per
+    selected household left at one copy that could carry it at a weight that
+    still counts one copy.
+    """
 
     values: np.ndarray
     target: float
     whole: np.ndarray
     selected: np.ndarray
+    reselected: tuple[np.ndarray, ...] = ()
 
 
 def _recorded_correction(
@@ -1167,7 +1173,9 @@ def _recorded_correction(
     ((values, target, whole),) = calls
     # The first selection is the stage's; any later one reruns the walk for
     # a selected household left at one copy that could carry the correction.
-    return result, _CorrectionCall(values, target, whole, selections[0])
+    return result, _CorrectionCall(
+        values, target, whole, selections[0], reselected=tuple(selections[1:])
+    )
 
 
 def _moved_rows(result, call: _CorrectionCall) -> list[int]:
@@ -1290,6 +1298,144 @@ def test_a_household_the_correction_would_divide_is_passed_over(monkeypatch):
     assert weights[2] == 60.0
     assert weights[3] == pytest.approx(31.5, rel=1e-12)
     assert cgt_support_copy_counts([weights[3]], clone_count=1).tolist() == [1]
+
+
+def test_a_household_whose_correction_would_move_the_walk_is_passed_over(
+    monkeypatch,
+):
+    # Both households are selected: the walk takes the first, an ulp below
+    # its band's support mass of 40 (2 x 1.25 x 16), and crosses on the
+    # second. The first is left at one copy, the one household the split
+    # leaves whole, and the correction it could carry still counts one copy,
+    # but it lifts the household onto 40, where the walk rerun on its
+    # corrected weight stops at it and leaves the second unselected. So it is
+    # passed over (microcosm#931), and the shared fallback corrects the
+    # divided root instead.
+    below = float(np.nextafter(40.0, -np.inf))
+    frame = support_frame(
+        weights=[below, 82.4], wealth=[9.0, 8.0], incomes=[BAND_INCOMES[0]] * 2
+    )
+    result, call = _recorded_correction(monkeypatch, frame, {0: {250_000: 16.0}})
+
+    assert call.selected.tolist() == [True, True]
+    assert call.whole.tolist() == [0]
+    corrected = _exact_total_correction(
+        call.values, target=call.target, correction_index=0
+    )
+    assert corrected is not None and corrected[0] >= 40.0
+    assert cgt_support_copy_counts([corrected[0]], clone_count=1).tolist() == [1]
+    (reselected,) = call.reselected
+    assert reselected.tolist() == [True, False]
+    assert _moved_rows(result, call) == [1]
+    weights = np.asarray(result.frame.weights_for("household").values)
+    assert weights[0] == below
+    assert weights[1] == pytest.approx(41.2, rel=1e-12)
+
+
+def test_a_one_copy_household_tied_with_the_heaviest_unselected_takes_it_first(
+    monkeypatch,
+):
+    # Where the rule before's one candidate, the heaviest unselected
+    # household, carries the correction, the weights are the ones it gave,
+    # but for one case (microcosm#931): a selected household left at one
+    # copy comes first where it outweighs that household or, as here, ties
+    # it from an earlier row, which needs every unselected household to
+    # weigh at most 60. The walk takes the 145.5 household (three copies) and
+    # crosses on the first 37.87 one, left at one copy. The unselected 37.87
+    # household could carry the correction, but the one-copy household
+    # comes first and carries it, keeping the split, so the weights differ
+    # from the rule before's on those two rows, and every divided row stays
+    # bitwise w / 3.
+    frame = support_frame(
+        weights=[145.5, 37.87, 7.05, 26.65, 32.73, 37.87],
+        wealth=[9e6, 8e6, 4e3, 3e3, 2e3, 1.0],
+        incomes=[BAND_INCOMES[0]] * 6,
+    )
+    result, call = _recorded_correction(monkeypatch, frame, {0: {250_000: 65.77}})
+
+    assert call.selected.tolist() == [True, True, False, False, False, False]
+    assert call.whole.tolist() == [1, 2, 3, 4, 5]
+    assert call.values[1] == call.values[5]
+    before, carried = _correction_before(call)
+    assert carried
+    assert np.flatnonzero(before != call.values).tolist() == [5]
+    assert _moved_rows(result, call) == [1]
+    (reselected,) = call.reselected
+    assert reselected.tolist() == call.selected.tolist()
+    weights = np.asarray(result.frame.weights_for("household").values)
+    assert np.flatnonzero(weights != before).tolist() == [1, 5]
+    assert weights[1] == pytest.approx(37.87, rel=1e-12)
+    household = result.frame.table("household")
+    assert household[CGT_SUPPORT_COPIES_COLUMN].tolist() == [3, 1, 1, 1, 1, 1, 3, 3]
+    assert weights[[0, 6, 7]].tolist() == [145.5 / 3] * 3
+
+
+def test_tied_whole_households_take_the_correction_in_row_order(monkeypatch):
+    # Tied weights are tried in row order (a stable sort), as np.argmax took
+    # the first of them before (microcosm#931). At one clone the earlier of
+    # two unselected households tied at the heaviest weight carries the
+    # correction, though the later could too, and the weights are the rule
+    # before's bit for bit. At three clones a source household's clones tie,
+    # and clone 0, the first, carries it.
+    top = {0: {250_000: 1_000.0}, 37_700: {250_000: 0.0}}
+    frame = support_frame(
+        weights=[274.0, 54.34, 42.59, 54.34],
+        wealth=[9e6, 3e3, 2e3, 1e3],
+        incomes=[BAND_INCOMES[0]] + [BAND_INCOMES[37_700]] * 3,
+    )
+    result, call = _recorded_correction(monkeypatch, frame, top)
+
+    assert call.whole.tolist() == [1, 2, 3]
+    assert not call.selected[call.whole].any()
+    assert call.values[1] == call.values[3]
+    assert _carries(call, 1) and _carries(call, 3)
+    later = _exact_total_correction(call.values, target=call.target, correction_index=3)
+    before, carried = _correction_before(call)
+    assert carried and before.tobytes() != later.tobytes()
+    assert _moved_rows(result, call) == [1]
+    weights = np.asarray(result.frame.weights_for("household").values)
+    assert weights.tobytes() == before.tobytes()
+
+    cloned = clone_first_frame(
+        support_frame(
+            weights=[273.0, 82.77, 25.07],
+            wealth=[9e6, 2e3, 1e3],
+            incomes=[BAND_INCOMES[0]] + [BAND_INCOMES[37_700]] * 2,
+        ),
+        3,
+    )
+    result, call = _recorded_correction(monkeypatch, cloned, top, clone_count=3)
+
+    household = result.frame.table("household")
+    sources = household["source_household_id"].to_numpy()[: len(call.values)]
+    clones = np.flatnonzero(sources == 2)
+    assert clones.tolist() == [1, 4, 7]
+    assert all(_carries(call, row) for row in clones.tolist())
+    assert _moved_rows(result, call) == [1]
+    assert household["household_clone_index"].iloc[1] == 0
+    before, carried = _correction_before(call)
+    weights = np.asarray(result.frame.weights_for("household").values)
+    assert carried and weights.tobytes() == before.tobytes()
+
+    # At fifteen clones every source household's clones tie fifteen ways.
+    # Here forty of eighty unselected households tie, in a fixed golden-ratio
+    # scramble, more than an unstable sort keeps in row order, and the
+    # earliest tied row still carries the correction.
+    keys = ((np.arange(80) + 1) * 0.6180339887) % 1.0
+    position = np.argsort(np.argsort(keys, kind="stable"), kind="stable")
+    frame = support_frame(
+        weights=[274.0, *np.where(position < 40, 54.34, position - 38.5).tolist()],
+        wealth=[9e6, *np.arange(1_000.0, 920.0, -1.0).tolist()],
+        incomes=[BAND_INCOMES[0]] + [BAND_INCOMES[37_700]] * 80,
+    )
+    result, call = _recorded_correction(monkeypatch, frame, top)
+
+    tied = call.whole[call.values[call.whole] == call.values[call.whole].max()]
+    assert len(tied) == 40 and all(_carries(call, row) for row in tied.tolist())
+    assert _moved_rows(result, call) == [int(tied.min())] == [2]
+    before, carried = _correction_before(call)
+    weights = np.asarray(result.frame.weights_for("household").values)
+    assert carried and weights.tobytes() == before.tobytes()
 
 
 def test_split_counts_suppressed_cells_and_reports_channels_when_present():

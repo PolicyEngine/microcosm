@@ -313,6 +313,7 @@ def test_the_correction_passes_over_whole_households_that_cannot_carry_it(
         return corrected is not None
 
     assert result.households_selected == 10 and len(values) == 129
+    assert whole.tolist() == _unselected_positive_rows(result, values)
     heaviest_first = whole[np.lexsort((whole, -values[whole]))]
     assert heaviest_first[:64].tolist() == [*range(62, -1, -1), 64]
     assert float(values.sum()) != target
@@ -332,6 +333,64 @@ def test_the_correction_passes_over_whole_households_that_cannot_carry_it(
         family = weights[sources == source]
         weight = _CORRECTION_OWNERS[int(source) - 66]
         assert family.tolist() == [weight / 6] * 6
+
+
+def _unselected_positive_rows(result, values) -> list[int]:
+    """The incumbent rows the stage left whole: unselected, positive weight."""
+
+    household = result.frame.table("household")
+    copies = household[hv.HIGH_VALUE_SUPPORT_COPIES_COLUMN].to_numpy()
+    incumbent = ~household[HIGH_VALUE_SUPPORT_COPY_COLUMN].to_numpy(dtype=bool)
+    return np.flatnonzero(incumbent & (copies == 1) & (values > 0.0)).tolist()
+
+
+def test_a_selected_root_never_carries_the_correction(monkeypatch) -> None:
+    # The stage's whole households are its unselected positive ones
+    # (microcosm#931): every household it selects becomes six rows at w / 6,
+    # roots included. Here the two most valuable owners are selected, and
+    # the root of the 379.53 one, at 379.53 / 6, outweighs both unselected
+    # households and could carry the correction, but only they are tried:
+    # the heaviest, the 36.21 one, carries it, and every root and copy stays
+    # bitwise w / 6.
+    from microcosm.build.uk_runtime.spi_support import _exact_total_correction
+
+    weights_in = [29.45, 36.21, 379.53, 37.78]
+    base = _frame(len(weights_in))
+    household = base.table("household").copy()
+    household["tenure_type"] = pd.array(["OWNED_OUTRIGHT"] * 4, dtype="string")
+    household["main_residence_value"] = [100_000.0 * (i + 1) for i in range(4)]
+    frame = uk_national_frame(
+        person=base.table("person"),
+        benunit=base.table("benunit"),
+        household=household,
+        time_period="2024",
+        weight_kind=WeightKind.IMPORTANCE,
+        household_weights=np.asarray(weights_in),
+    )
+    calls = []
+    correct = hv._exact_support_weights
+
+    def recording(values, *, target, whole, **keywords):
+        calls.append((np.array(values), target, np.array(whole)))
+        return correct(values, target=target, whole=whole, **keywords)
+
+    monkeypatch.setattr(hv, "_exact_support_weights", recording)
+    result = hv.split_high_value_support_households(frame, stratum_lower=0.5, copies=6)
+    ((values, target, whole),) = calls
+
+    assert result.households_selected == 2
+    assert whole.tolist() == _unselected_positive_rows(result, values) == [0, 1]
+    assert float(values.sum()) != target
+    assert values[2] > max(values[0], values[1])
+    assert (
+        _exact_total_correction(values, target=target, correction_index=2) is not None
+    )
+    weights = np.asarray(result.frame.weights_for("household").values)
+    assert result.frame.weights_for("household").total == target
+    assert np.flatnonzero(weights != values).tolist() == [1]
+    sources = result.frame.table("household")["household_id"].to_numpy() % 10**12
+    for source, weight in ((3, 379.53), (4, 37.78)):
+        assert weights[sources == source].tolist() == [weight / 6] * 6
 
 
 def test_the_copy_rule_names_the_one_exception() -> None:
