@@ -39,7 +39,42 @@ class UKInspectionExportPrepareKernel(graph_terminal.UKExportPrepareKernel):
     ref = "uk.full-export.prepare-inspection@1"
 
     def implementation_hash(self) -> str:
-        return source_hash(sys.modules[__name__], graph_terminal)
+        from microcosm.frame import materialize as frame_materialize
+
+        from .. import gates
+        from . import (
+            atomic_area_support,
+            geography_ladder,
+            graph_population,
+            hmrc_uprating,
+            local_authority_input,
+            national_frame,
+            rowwise_dataset,
+            rowwise_geography,
+            weight_year,
+        )
+
+        # The description computes through what the export kernel's does
+        # (microcosm#931): the ladder gate's results and region codes, the
+        # area code frames, the engine tables and clone index columns, the
+        # dataset year's weights and the engine's projection factor, the
+        # frame it rebuilds, and the descriptor's canonical encoding.
+        return source_hash(
+            sys.modules[__name__],
+            graph_terminal,
+            gates,
+            atomic_area_support,
+            geography_ladder,
+            graph_population,
+            hmrc_uprating,
+            local_authority_input,
+            national_frame,
+            rowwise_dataset,
+            rowwise_geography,
+            weight_year,
+            frame_materialize,
+            canonical_json,
+        )
 
     def run(self, context: KernelContext) -> KernelResult:
         if context.params.get("inspection_export") is not True:

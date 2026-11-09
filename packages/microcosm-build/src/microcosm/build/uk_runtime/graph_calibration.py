@@ -267,6 +267,24 @@ def restore_uk_graph_result(
 
 class _CalibrationKernel(KernelBase):
     def implementation_hash(self):
+        import microcosm.calibrate.geography_constants as geography_constants
+        import microcosm.calibrate.hierarchy as calibrate_hierarchy
+        import microcosm.calibrate.monetary_binding as monetary_binding
+
+        from . import (
+            local_doctrine,
+            local_targets,
+            national_doctrine,
+            national_frame,
+            target_weights,
+        )
+
+        # Every solve kernel shares this hash. They also compute through the
+        # frame they rebuild on national_frame's schema, the targets'
+        # hierarchy and monetary checks in microcosm.calibrate, the canonical
+        # encoding of their artifacts, and the size search's and refit's
+        # target weights with the doctrine, local target areas and UK-wide
+        # geography they read (microcosm#931); test_uk_graph derives the set.
         return hashlib.sha256(
             canonical_json(
                 {
@@ -280,6 +298,15 @@ class _CalibrationKernel(KernelBase):
                         select_exact_k,
                         HardConcrete,
                         contribution_initialization,
+                        national_frame,
+                        calibrate_hierarchy,
+                        monetary_binding,
+                        canonical_json,
+                        target_weights,
+                        local_doctrine,
+                        local_targets,
+                        national_doctrine,
+                        geography_constants,
                         dependencies=self.capabilities.dependencies,
                     ),
                 }
