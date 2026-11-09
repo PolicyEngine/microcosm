@@ -265,53 +265,68 @@ def restore_uk_graph_result(
     return replace(result, frame=final_frame)
 
 
+def _size_solve_modules() -> tuple[object, ...]:
+    """What the size search and refit compute through beyond the shared hash:
+    the target weights, with the doctrine, local target areas and UK-wide
+    geography their solves read (microcosm#931)."""
+
+    import microcosm.calibrate.geography_constants as geography_constants
+
+    from . import local_doctrine, local_targets, national_doctrine, target_weights
+
+    return (
+        target_weights,
+        local_doctrine,
+        local_targets,
+        national_doctrine,
+        geography_constants,
+    )
+
+
+def _calibration_hash(kernel: KernelBase, *modules: object) -> str:
+    """The implementation hash every solve kernel shares, over ``modules`` too.
+
+    Every solve kernel computes through the frame it rebuilds on
+    national_frame's schema, the targets' hierarchy and monetary checks in
+    microcosm.calibrate and the canonical encoding of its artifacts. The size
+    search and refit add what :func:`_size_solve_modules` names, which the
+    dense solve and the other kernels sharing this hash do not compute
+    through (microcosm#931). test_uk_graph derives each kernel's set.
+    """
+
+    import microcosm.calibrate.hierarchy as calibrate_hierarchy
+    import microcosm.calibrate.monetary_binding as monetary_binding
+
+    from . import national_frame
+
+    return hashlib.sha256(
+        canonical_json(
+            {
+                "solver": CalibrateAdamKernel().implementation_hash(),
+                "adapter": source_hash(
+                    type(kernel),
+                    dataset_size,
+                    size_checkpoint,
+                    calibration_artifacts,
+                    context_frame,
+                    select_exact_k,
+                    HardConcrete,
+                    contribution_initialization,
+                    national_frame,
+                    calibrate_hierarchy,
+                    monetary_binding,
+                    canonical_json,
+                    *modules,
+                    dependencies=kernel.capabilities.dependencies,
+                ),
+            }
+        )
+    ).hexdigest()
+
+
 class _CalibrationKernel(KernelBase):
     def implementation_hash(self):
-        import microcosm.calibrate.geography_constants as geography_constants
-        import microcosm.calibrate.hierarchy as calibrate_hierarchy
-        import microcosm.calibrate.monetary_binding as monetary_binding
-
-        from . import (
-            local_doctrine,
-            local_targets,
-            national_doctrine,
-            national_frame,
-            target_weights,
-        )
-
-        # Every solve kernel shares this hash. They also compute through the
-        # frame they rebuild on national_frame's schema, the targets'
-        # hierarchy and monetary checks in microcosm.calibrate, the canonical
-        # encoding of their artifacts, and the size search's and refit's
-        # target weights with the doctrine, local target areas and UK-wide
-        # geography they read (microcosm#931); test_uk_graph derives the set.
-        return hashlib.sha256(
-            canonical_json(
-                {
-                    "solver": CalibrateAdamKernel().implementation_hash(),
-                    "adapter": source_hash(
-                        type(self),
-                        dataset_size,
-                        size_checkpoint,
-                        calibration_artifacts,
-                        context_frame,
-                        select_exact_k,
-                        HardConcrete,
-                        contribution_initialization,
-                        national_frame,
-                        calibrate_hierarchy,
-                        monetary_binding,
-                        canonical_json,
-                        target_weights,
-                        local_doctrine,
-                        local_targets,
-                        national_doctrine,
-                        geography_constants,
-                        dependencies=self.capabilities.dependencies,
-                    ),
-                }
-            )
-        ).hexdigest()
+        return _calibration_hash(self)
 
 
 class UKSizeCheckpointImportKernel(_CalibrationKernel):
@@ -591,6 +606,9 @@ class UKSizeSearchKernel(_ObservedSolveKernel):
         dependencies=_DEPENDENCIES,
     )
 
+    def implementation_hash(self):
+        return _calibration_hash(self, *_size_solve_modules())
+
     def run(self, context):
         frame, problem = _inputs(context)
         dense = _dense(context, frame, problem)
@@ -703,6 +721,9 @@ class UKSizeRefitKernel(_ObservedSolveKernel):
         seed_source=SeedSource.PARAM,
         dependencies=_DEPENDENCIES,
     )
+
+    def implementation_hash(self):
+        return _calibration_hash(self, *_size_solve_modules())
 
     def run(self, context):
         frame, problem = _inputs(context)

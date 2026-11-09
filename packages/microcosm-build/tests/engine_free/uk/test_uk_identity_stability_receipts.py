@@ -1318,9 +1318,11 @@ class TestSupportSplitRecomputeAcrossGeographicClones:
     clone a family of more than three members whose clone pair sums are all
     one weight ``c`` is held exactly: the stored ``n`` must be the count of a
     weight that divides by ``n`` to ``c``, or to within one float of it where
-    fewer than four members show their clone pair untouched. Every other
-    family, and every family at ``K > 1``, is held to the family weights'
-    relative tolerance of 1e-9. That bracket opens for a family whose
+    fewer than four members show their clone pair untouched, a reach that can
+    take in the multiple of 60 itself, where a family split consistently into
+    one copy more goes unreported. Every other family, and every family at
+    ``K > 1``, is held to the family weights' relative tolerance of 1e-9.
+    That bracket opens for a family whose
     source-scaled weight ``K x w`` lies within a relative 1e-9 of a multiple
     of 60 (at ``K = 1``, its own weight), where it cannot tell ``n`` copies
     from ``n + 1``: a stored count moved on its own is left to the flags and
@@ -1651,21 +1653,23 @@ class TestSupportSplitRecomputeAcrossGeographicClones:
         assert problems == {"support_split_copies_stored": 3}
         assert (exact, within) == (4, 2)
 
+    @pytest.mark.parametrize("member", ["root", "copy"])
     def test_at_one_clone_a_family_folded_just_above_a_multiple_is_green(
-        self,
+        self, member: str
     ) -> None:
-        # One copy of household 1 (900: 15 copies of 60) carries a rounding
-        # amount more, as where an exact-total correction falls on a member,
-        # so the family folds to just above 900, where an exact recount gives
-        # 16. Its members no longer carry one weight, so the family is held to
-        # the bracket at one clone too (microcosm#931 review), which accepts
-        # the stage's 15, and the receipt is green; its exact recount still
-        # records the extra copy.
+        # The root or one copy of household 1 (900: 15 copies of 60) carries a
+        # rounding amount more, as where an exact-total correction falls on a
+        # member, so the family folds to just above 900, where an exact
+        # recount gives 16. Its members no longer carry one weight, so the
+        # family is held to the bracket at one clone too (microcosm#931
+        # review), which accepts the stage's 15, and the receipt is green; its
+        # exact recount still records the extra copy. Held exactly on the
+        # root's weight, the moved root would report the family.
         split, frame = _clone_first_split_then_cloned(1, _NESTING_SCENARIO)
         ids = frame.table("household")["household_id"].to_numpy()
         weights = np.asarray(frame.weights_for("household").values, dtype=float).copy()
         (copy,) = copy_id_table.mint([1], "cgt_support_split", [1])
-        weights[ids == copy] *= 1.0 + 1e-12
+        weights[ids == (1 if member == "root" else copy)] *= 1.0 + 1e-12
 
         receipt, problems = _exhausting_receipt(
             _rebuild(frame, household_weights=weights), _NESTING_SCENARIO
@@ -1707,6 +1711,259 @@ class TestSupportSplitRecomputeAcrossGeographicClones:
         assert problems == {
             "support_split_selection_stored": {"missing": 0, "extra": 1}
         }
+
+    def test_a_household_the_correction_would_move_the_walk_past_keeps_it_green(
+        self, monkeypatch
+    ) -> None:
+        # The one-copy household sits an ulp below its band's support mass of
+        # 40, and the correction it could carry, which still counts one copy,
+        # lifts it onto 40, where the walk rerun stops at it
+        # (test_uk_cgt_support.py). The split's rerun of the walk passes it
+        # over, so the recompute divides the household the stage divided.
+        # With the rerun answering as the stage's walk did, it carries the
+        # correction, and the recompute misses that family.
+        from microcosm.build.uk_runtime import cgt_support
+
+        scenario = {
+            "weights": [float(np.nextafter(40.0, -np.inf)), 82.4],
+            "wealth": [9.0, 8.0],
+            "incomes": [BAND_INCOMES[0]] * 2,
+            "top_cells": {0: {250_000: 16.0}},
+        }
+        _, frame = _clone_first_split_then_cloned(1, scenario)
+        _, problems = _exhausting_receipt(frame, scenario)
+        assert problems == {}
+
+        select = cgt_support.select_cgt_support_households
+        walks: list[np.ndarray] = []
+
+        def as_the_stage_walked(*args, **kwargs):
+            selected, rows = select(*args, **kwargs)
+            walks.append(selected)
+            return walks[0], rows
+
+        monkeypatch.setattr(
+            cgt_support, "select_cgt_support_households", as_the_stage_walked
+        )
+        _, unchecked = _clone_first_split_then_cloned(1, scenario)
+        monkeypatch.undo()
+        _, problems = _exhausting_receipt(unchecked, scenario)
+        assert len(walks) == 2
+        assert problems == {
+            "support_split_selection_stored": {"missing": 1, "extra": 0}
+        }
+
+    def test_at_one_clone_three_equal_halves_do_not_vouch_for_a_family(
+        self,
+    ) -> None:
+        # Every member of the 900 family (15 at 60) folds one float above 60,
+        # as the #970 anchor's roundings can leave them, and three of them
+        # show equal halves, as three members the corrections after the split
+        # moved could. Three corrections can account for three such members,
+        # so none of them vouches for w / n, and the hold reaches one float
+        # either side of the common weight: 900 divides by 15 to 60, within
+        # reach, and the stage's 15 stands. Were three equal-halves members
+        # enough to hold the family exactly, every weight dividing by 15 to
+        # the moved weight would count 16, and the family would be reported.
+        _, frame = _clone_first_split_then_cloned(1, _NESTING_SCENARIO)
+        ids = frame.table("household")["household_id"].to_numpy()
+        weights = np.asarray(frame.weights_for("household").values, dtype=float).copy()
+        members = np.r_[
+            np.int64(1), copy_id_table.mint([1] * 14, "cgt_support_split", range(1, 15))
+        ]
+        clones = copy_id_table.mint(members, "cgt_incidence_clone", 1)
+        moved = float(np.nextafter(60.0, np.inf))
+        for position, (member, clone) in enumerate(zip(members, clones, strict=True)):
+            if position < _load_tool()._SUPPORT_SPLIT_CORRECTED_ROWS:
+                weights[ids == member] = moved / 2.0
+                weights[ids == clone] = moved / 2.0
+            else:
+                weights[ids == member] = 31.0
+                weights[ids == clone] = moved - 31.0
+        moved_frame = _rebuild(frame, household_weights=weights)
+
+        _, problems, exact, within = _held_families(moved_frame, _NESTING_SCENARIO)
+
+        assert problems == {}
+        assert (exact, within) == (5, 1)
+
+    def test_the_hold_counts_every_weight_change_after_the_split(self) -> None:
+        """The K = 1 hold's premises, read from the spine graph and the
+        stages' code (microcosm#931 review).
+
+        ``_SUPPORT_SPLIT_CORRECTED_ROWS`` counts the one-row exact-total
+        corrections that can land on a support family member between the split
+        and the tool's read, and ``_SUPPORT_SPLIT_PAIR_ROUNDING_FLOATS`` how
+        far the rest can move an uncorrected one. A spine node changes the
+        household weights only where it creates or expands rows or declares
+        weights: the executor refuses any other node's weights and frames.
+        After the split those are
+        the incidence clone, the #970 anchor and the residential split, and
+        the boundaries between them keep every row. The split, the clone and
+        the residential split each correct their total once, through
+        spi_support's helpers, which move one row; the anchor corrects none
+        and caps a clone half's factor at one, and refuses gains on a clone
+        member other than its carrier (test_uk_cgt_structure.py), so a liable
+        clone half takes one arm. Every later stage that changes no weight
+        builds its frames on its input's weights, so the legacy stage plan
+        moves none either.
+        """
+        import ast
+        import inspect
+
+        from microcosm.build.uk_runtime import (
+            cgt_residential_split,
+            cgt_structure,
+            cgt_support,
+            graph_kernels,
+            spi_support,
+        )
+        from microcosm.build.uk_runtime.cgt_structure import CGT_ANCHOR_MAXIMUM_FACTOR
+        from microcosm.build.uk_runtime.graph import uk_spine_graph
+        from microcosm.graph import StructuralDelta
+        from microcosm.graph.decl import compile_graph
+
+        tool = _load_tool()
+        graph = uk_spine_graph()
+        order = list(compile_graph(graph).order)
+        later = order[order.index("cgt_support_split") + 1 :]
+        weighing = [
+            node_id
+            for node_id in later
+            if graph.node(node_id).structural
+            in {StructuralDelta.CREATE, StructuralDelta.EXPAND}
+            or graph.node(node_id).weights is not None
+        ]
+        assert weighing == [
+            "cgt_incidence_clone",
+            "cgt_incidence_anchor",
+            "cgt_residential_split",
+        ]
+        boundaries = {
+            graph.node(node_id).kernel
+            for node_id in later
+            if graph.node(node_id).structural is StructuralDelta.FILTER
+        }
+        assert boundaries == {"uk.identity@1"}
+
+        # Each call that corrects a frame's total, by the function making it:
+        # a call to spi_support's helpers, or to a function of the stage's
+        # module that wraps them.
+        helpers = {"_exact_total_correction", "_importance_weights_with_exact_total"}
+        stages = ("cgt_support_split", *weighing)
+        modules = {graph_kernels._stage_module(stage) for stage in stages}
+        assert modules == {cgt_support, cgt_structure, cgt_residential_split}
+        corrections: dict[tuple[str, str], int] = {}
+        for module in modules:
+            tree = ast.parse(inspect.getsource(module))
+            functions = {
+                node.name: node
+                for node in tree.body
+                if isinstance(node, ast.FunctionDef)
+            }
+
+            def called(function) -> list[str]:
+                return [
+                    sub.func.id
+                    for sub in ast.walk(function)
+                    if isinstance(sub, ast.Call) and isinstance(sub.func, ast.Name)
+                ]
+
+            wrappers = {
+                name
+                for name, function in functions.items()
+                if name.startswith("_exact") and set(called(function)) & helpers
+            }
+            for name, function in functions.items():
+                if name in wrappers:
+                    continue
+                count = sum(item in helpers | wrappers for item in called(function))
+                if count:
+                    corrections[(module.__name__, name)] = count
+        assert corrections == {
+            (cgt_support.__name__, "split_cgt_support_households"): 1,
+            (cgt_structure.__name__, "clone_cgt_incidence"): 1,
+            (cgt_residential_split.__name__, "split_cgt_residential_households"): 1,
+        }
+        assert len(corrections) == tool._SUPPORT_SPLIT_CORRECTED_ROWS
+        # spi_support's helpers move one row each.
+        rng = np.random.default_rng(3)
+        for _ in range(20):
+            values = rng.lognormal(3.0, 1.0, 50)
+            target = float(values.sum()) * (1.0 + 1e-15)
+            for corrected in (
+                spi_support._exact_total_correction(
+                    values, target=target, correction_index=int(np.argmax(values))
+                ),
+                np.asarray(
+                    spi_support._importance_weights_with_exact_total(
+                        values, target
+                    ).values
+                ),
+            ):
+                if corrected is not None:
+                    assert int((corrected != values).sum()) <= 1
+        # The anchor scales a clone half by at most one.
+        assert CGT_ANCHOR_MAXIMUM_FACTOR == 1.0
+        assert tool._SUPPORT_SPLIT_PAIR_ROUNDING_FLOATS == 1
+
+        # The stages after the split that change no weight pass their input's
+        # household weights to every frame they build.
+        passed = {
+            "frame.weights_for('household').values",
+            "np.asarray(frame.weights_for('household').values, dtype=float)",
+        }
+
+        def binding(assignments, name: str, line: int):
+            """The value last bound to ``name`` before ``line``."""
+
+            found = [
+                value
+                for lineno, target, value in assignments
+                if target == name and lineno < line
+            ]
+            return found[-1] if found else None
+
+        built: dict[str, int] = {}
+        for stage in later:
+            if stage in weighing or stage not in graph_kernels._STAGE_MODULES:
+                continue
+            built[stage] = 0
+            module = graph_kernels._stage_module(stage)
+            tree = ast.parse(inspect.getsource(module))
+            for function in ast.walk(tree):
+                if not isinstance(function, ast.FunctionDef):
+                    continue
+                assignments = sorted(
+                    (
+                        (sub.lineno, sub.targets[0].id, sub.value)
+                        for sub in ast.walk(function)
+                        if isinstance(sub, ast.Assign)
+                        and len(sub.targets) == 1
+                        and isinstance(sub.targets[0], ast.Name)
+                    ),
+                    key=lambda item: item[0],
+                )
+                for sub in ast.walk(function):
+                    if not isinstance(sub, ast.Call):
+                        continue
+                    name = getattr(sub.func, "id", getattr(sub.func, "attr", None))
+                    assert name not in helpers, (stage, function.name)
+                    for keyword in sub.keywords:
+                        if keyword.arg != "household_weights":
+                            continue
+                        value = keyword.value
+                        if isinstance(value, ast.Name):
+                            value = binding(assignments, value.id, sub.lineno) or value
+                        elif isinstance(value, ast.Attribute) and isinstance(
+                            value.value, ast.Name
+                        ):
+                            base = binding(assignments, value.value.id, sub.lineno)
+                            if base is not None:
+                                value = ast.Attribute(base, value.attr, ast.Load())
+                        assert ast.unparse(value) in passed, (stage, function.name)
+                        built[stage] += 1
+        assert len(built) == 9 and all(built.values()), built
 
 
 # --- copy ids at the copy-id table's declared radices (microcosm#931) ----------
