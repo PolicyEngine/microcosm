@@ -18,14 +18,20 @@ The switch is two steps, each a separate run of this tool:
       ``release`` and ``build`` as strings, the build details (``built_at``
       and the built-with packages) at the top level, a ``role`` on each
       artifact and no ``revision``, plus ``migrated_from``, which names the
-      tag, its commit and the SHA-256 of the manifest it was rewritten from;
+      tag, its commit and the SHA-256 of the manifest it was rewritten from.
+      A release manifest that declares its own ``build_manifest.json``, as
+      the US SPM builds' do, declares the rewritten one by its new SHA-256;
     - its checksum ledger, when the build has one, with the two manifests'
       lines changed to the rewritten manifests' digests;
     - every other file the build's release manifest declares, copied from the
       tagged commit with ``CommitOperationCopy``: the Hub copies an LFS file,
       which every large file is, on its own servers, and ``huggingface_hub``
       downloads a small regular file and sends it in the commit, so nothing
-      large is downloaded. Each must match the SHA-256 the manifest records.
+      large is downloaded. Each must match the SHA-256 the manifest records;
+    - every file in the build's tagged folder that its checksum ledger
+      records but its release manifest does not declare, as each US ACS
+      local-area build has, copied the same way. Each must match the SHA-256
+      the ledger records, and stays undeclared.
 
     A folder that already holds a copy of the same tagged build is skipped,
     so the step can run again for builds published since. It writes no
@@ -43,7 +49,12 @@ The switch is two steps, each a separate run of this tool:
     publication that does not commit to ``main`` would otherwise be lost),
     and, at its first read or just before its commit, any
     ``release-staging/`` branch, which the tagged publisher keeps from
-    before it uploads a build until after it tags it.
+    before it uploads a build until after it tags it. ``--finished-branch
+    BRANCH`` accepts one that a finished publication left behind, while its
+    build is tagged and the commit it names is on ``main`` (a publication
+    still running has either no tag yet or a branch on the tagged commit,
+    which is not on ``main`` until the branch is deleted); the branch stays,
+    and must not move before the commit.
     The record lists every moved build, with the date of its tagged commit
     as ``published_at``. The build
     each pointer file names becomes its release's current build, and
@@ -175,7 +186,9 @@ class Selection:
     ``exclude`` leaves automatically selected tags out; ``current`` maps a
     release to a moved build to make current where no pointer file names
     one; ``retired_pointers`` are pointer files the switch deletes with
-    nothing in their place.
+    nothing in their place; ``finished_branches`` are staging branches that
+    finished publications left behind, which the switch accepts while each
+    one's build is tagged and its head is on ``main``.
     """
 
     include: Mapping[str, str]
@@ -183,15 +196,22 @@ class Selection:
     current: Mapping[str, str]
     default: str | None
     retired_pointers: frozenset[str]
+    finished_branches: frozenset[str] = frozenset()
 
 
 @dataclass(frozen=True)
 class CopiedFile:
-    """A file copied into a build folder from the build's tagged commit."""
+    """A file copied into a build folder from the build's tagged commit.
+
+    ``declared`` is false for a file that the build's checksum ledger records
+    but its release manifest does not declare, as each US ACS local-area
+    build has; it is copied, and stays undeclared.
+    """
 
     name: str
     source: str
     sha256: str
+    declared: bool = True
 
 
 @dataclass(frozen=True)
@@ -200,8 +220,10 @@ class BuildMove:
 
     ``written`` maps each file written with new bytes (the two manifests, and
     the checksum ledger) to those bytes; ``copied`` lists every other file;
-    ``left_behind`` names files in the tagged commit's release folder that
-    the build's manifests do not name (files an earlier build left there).
+    ``declared`` maps each file the rewritten release manifest declares to
+    its SHA-256 there; ``left_behind`` names files in the tagged commit's
+    release folder that neither the build's manifests nor its checksum
+    ledger name (files an earlier build left there).
     ``tagged_release`` is the release's name at the tag: ``release`` for a
     dated tag, and the tag itself for a release-per-build tag.
     """
@@ -215,6 +237,7 @@ class BuildMove:
     published_at: str
     written: Mapping[str, bytes]
     copied: tuple[CopiedFile, ...]
+    declared: Mapping[str, str]
     left_behind: tuple[str, ...]
 
     @property
@@ -248,6 +271,7 @@ class BuildMove:
                 {"name": item.name, "from": item.source, "sha256": item.sha256}
                 for item in self.copied
             ],
+            "undeclared": [item.name for item in self.copied if not item.declared],
             "left_behind": list(self.left_behind),
         }
 
@@ -294,9 +318,10 @@ class _Hub:
         )
         return Path(local).read_bytes()
 
-    def refs(self) -> tuple[dict[str, str], list[str]]:
-        """Each tag with the ID the Hub lists for it, and the tagged
-        publisher's staging branches, from one request.
+    def refs(self) -> tuple[dict[str, str], dict[str, str]]:
+        """Each tag with the ID the Hub lists for it, and each of the tagged
+        publisher's staging branches with the commit it names, from one
+        request.
 
         The Hub lists an annotated tag with the ID of its tag object, not of
         its commit (:meth:`resolve` gives the commit); a tag that moves gets
@@ -306,12 +331,19 @@ class _Hub:
         """
         refs = self.api.list_repo_refs(self.repository, repo_type=_DATASET)
         listed = {tag.name: str(tag.target_commit) for tag in refs.tags}
-        staging = sorted(
-            branch.name
+        staging = {
+            branch.name: str(branch.target_commit)
             for branch in refs.branches
             if branch.name.startswith(_STAGING_BRANCH_PREFIX)
-        )
+        }
         return listed, staging
+
+    def on_main(self, commit: str) -> bool:
+        """Whether ``commit`` is in ``main``'s history."""
+        history = self.api.list_repo_commits(
+            self.repository, repo_type=_DATASET, revision="main"
+        )
+        return any(item.commit_id == commit for item in history)
 
     def commit_date(self, commit: str) -> str:
         """The commit's date, in UTC to the second, as ``published_at``."""
@@ -393,6 +425,7 @@ def build_folder_release_manifest(
     build: str,
     artifact_names: Mapping[str, str],
     migrated_from: Mapping[str, str],
+    rewritten_sha256: Mapping[str, str] | None = None,
 ) -> dict[str, Any]:
     """A tagged release manifest rewritten in the build-folder layout.
 
@@ -400,7 +433,9 @@ def build_folder_release_manifest(
     other fields, ``built_at`` and the built-with packages among them, move
     to the top level; each artifact loses its ``revision``, gains its
     ``role`` and records ``artifact_names``'s bare file name as its
-    ``path``; and ``migrated_from`` records the origin.
+    ``path``; and ``migrated_from`` records the origin. An artifact in
+    ``rewritten_sha256`` (a build manifest the release manifest declares,
+    which the switch rewrites too) records its new SHA-256.
 
     A field both the ``build`` object and the top level have must be equal,
     or be two objects that do not disagree on any field: the June 2023
@@ -427,11 +462,13 @@ def build_folder_release_manifest(
             f"its build object and its top level differ on {clashes}"
         )
     details = {key: value for key, value in details.items() if key not in rest}
+    rewritten = rewritten_sha256 or {}
     artifacts = {
         key: {
             **{name: value for name, value in entry.items() if name != "revision"},
             "path": artifact_names[key],
             "role": release_artifact_role(key, entry.get("kind")),
+            **({"sha256": rewritten[key]} if key in rewritten else {}),
         }
         for key, entry in manifest["artifacts"].items()
     }
@@ -469,6 +506,22 @@ def build_folder_build_manifest(
     }
 
 
+def _ledger_entries(ledger: bytes) -> dict[str, str]:
+    """Each file a checksum ledger records, with its digest, in its order."""
+    entries: dict[str, str] = {}
+    for line in ledger.decode().splitlines():
+        if not line.strip():
+            continue
+        match = _LEDGER_LINE.fullmatch(line)
+        if match is None:
+            raise SwitchRefusedError(f"its {CHECKSUMS_FILE} has a line it cannot read")
+        if entries.setdefault(match["name"], match["digest"]) != match["digest"]:
+            raise SwitchRefusedError(
+                f"its {CHECKSUMS_FILE} records {match['name']} twice"
+            )
+    return entries
+
+
 def _rewritten_ledger(
     ledger: bytes, *, expected: Mapping[str, str], replaced: Mapping[str, str]
 ) -> bytes:
@@ -479,13 +532,7 @@ def _rewritten_ledger(
     ``replaced`` get their new digests.
     """
     lines = []
-    for line in ledger.decode().splitlines():
-        if not line.strip():
-            continue
-        match = _LEDGER_LINE.fullmatch(line)
-        if match is None:
-            raise SwitchRefusedError(f"its {CHECKSUMS_FILE} has a line it cannot read")
-        name, digest = match["name"], match["digest"]
+    for name, digest in _ledger_entries(ledger).items():
         if expected.get(name) != digest:
             raise SwitchRefusedError(
                 f"its {CHECKSUMS_FILE} records {name} with a digest that is not "
@@ -519,7 +566,9 @@ def _artifact_names(
         names[str(key)] = name
     if len(set(names.values())) != len(names):
         raise SwitchRefusedError("two of its artifacts have the same file name")
-    taken = {RELEASE_MANIFEST_NAME, _BUILD_MANIFEST_NAME, CHECKSUMS_FILE}
+    # A release manifest may declare its own build manifest, as the US SPM
+    # builds' do: the switch rewrites that file and declares the new bytes.
+    taken = {RELEASE_MANIFEST_NAME, CHECKSUMS_FILE}
     if taken & set(names.values()):
         raise SwitchRefusedError(f"an artifact is named like one of {sorted(taken)}")
     return names
@@ -566,7 +615,8 @@ def _describe(hub: _Hub, candidate: _Candidate) -> BuildMove:
         in_folder = f"{folder}/{name}"
         if in_folder in files_at_tag:
             sources[key] = in_folder
-        elif name in files_at_tag:
+        # A declared build manifest is this build's own, in its folder.
+        elif name in files_at_tag and name != _BUILD_MANIFEST_NAME:
             sources[key] = name
         else:
             raise SwitchRefusedError(f"its tagged commit has no {name}")
@@ -578,25 +628,12 @@ def _describe(hub: _Hub, candidate: _Candidate) -> BuildMove:
                 "manifest records"
             )
     original_sha256 = hashlib.sha256(manifest_bytes).hexdigest()
-    release_manifest = _serialized(
-        build_folder_release_manifest(
-            manifest,
-            release=candidate.release,
-            build=build,
-            artifact_names=names,
-            migrated_from={
-                "tag": tag,
-                "commit": commit,
-                "release_manifest_sha256": original_sha256,
-            },
-        )
-    )
-    written = {RELEASE_MANIFEST_NAME: release_manifest}
+    written: dict[str, bytes] = {}
     expected = {
         RELEASE_MANIFEST_NAME: original_sha256,
         **{names[key]: artifacts[key]["sha256"] for key in names},
     }
-    replaced = {RELEASE_MANIFEST_NAME: hashlib.sha256(release_manifest).hexdigest()}
+    replaced: dict[str, str] = {}
     build_manifest_path = f"{folder}/{_BUILD_MANIFEST_NAME}"
     if build_manifest_path in files_at_tag:
         original = hub.read(build_manifest_path, commit)
@@ -608,17 +645,91 @@ def _describe(hub: _Hub, candidate: _Candidate) -> BuildMove:
         written[_BUILD_MANIFEST_NAME] = rewritten
         expected[_BUILD_MANIFEST_NAME] = hashlib.sha256(original).hexdigest()
         replaced[_BUILD_MANIFEST_NAME] = hashlib.sha256(rewritten).hexdigest()
+    # The keys of a declared build manifest; the rewritten release manifest
+    # declares the rewritten bytes.
+    rewritten_keys = [
+        key for key, name in names.items() if name == _BUILD_MANIFEST_NAME
+    ]
+    release_manifest = _serialized(
+        build_folder_release_manifest(
+            manifest,
+            release=candidate.release,
+            build=build,
+            artifact_names=names,
+            migrated_from={
+                "tag": tag,
+                "commit": commit,
+                "release_manifest_sha256": original_sha256,
+            },
+            rewritten_sha256={
+                key: replaced[_BUILD_MANIFEST_NAME] for key in rewritten_keys
+            },
+        )
+    )
+    written[RELEASE_MANIFEST_NAME] = release_manifest
+    replaced[RELEASE_MANIFEST_NAME] = hashlib.sha256(release_manifest).hexdigest()
+    undeclared: list[CopiedFile] = []
     ledger_path = f"{folder}/{CHECKSUMS_FILE}"
     if ledger_path in files_at_tag:
+        ledger = hub.read(ledger_path, commit)
+        recorded = _ledger_entries(ledger)
+        # Files the ledger records that the release manifest doesn't declare
+        # are the build's too, as each US ACS local-area build has them: they
+        # are copied, checked against the ledger, and stay undeclared.
+        own = {RELEASE_MANIFEST_NAME, _BUILD_MANIFEST_NAME, CHECKSUMS_FILE}
+        extra = sorted(set(recorded) - own - set(names.values()))
+        absent = [name for name in extra if f"{folder}/{name}" not in files_at_tag]
+        if absent:
+            raise SwitchRefusedError(
+                f"its {CHECKSUMS_FILE} records {absent}, which its tagged commit's "
+                f"{folder}/ does not hold"
+            )
+        extra_digests = (
+            hub.sha256s([f"{folder}/{name}" for name in extra], commit) if extra else {}
+        )
+        for name in extra:
+            if extra_digests[f"{folder}/{name}"] != recorded[name]:
+                raise SwitchRefusedError(
+                    f"its {CHECKSUMS_FILE} records {name} with a digest that is not "
+                    "the tagged commit's"
+                )
+            expected[name] = recorded[name]
+            undeclared.append(
+                CopiedFile(
+                    name=name,
+                    source=f"{folder}/{name}",
+                    sha256=recorded[name],
+                    declared=False,
+                )
+            )
         written[CHECKSUMS_FILE] = _rewritten_ledger(
-            hub.read(ledger_path, commit), expected=expected, replaced=replaced
+            ledger, expected=expected, replaced=replaced
         )
     copied = tuple(
-        CopiedFile(
-            name=names[key], source=sources[key], sha256=artifacts[key]["sha256"]
+        sorted(
+            [
+                *(
+                    CopiedFile(
+                        name=names[key],
+                        source=sources[key],
+                        sha256=artifacts[key]["sha256"],
+                    )
+                    for key in names
+                    if key not in rewritten_keys
+                ),
+                *undeclared,
+            ],
+            key=lambda item: item.name,
         )
-        for key in sorted(names, key=names.__getitem__)
     )
+    declared = {
+        names[key]: (
+            replaced[_BUILD_MANIFEST_NAME]
+            if key in rewritten_keys
+            else artifacts[key]["sha256"]
+        )
+        for key in names
+    }
     kept = {*written, *(item.name for item in copied)}
     left_behind = tuple(
         sorted(
@@ -638,6 +749,7 @@ def _describe(hub: _Hub, candidate: _Candidate) -> BuildMove:
         published_at=hub.commit_date(commit),
         written=written,
         copied=copied,
+        declared=declared,
         left_behind=left_behind,
     )
 
@@ -650,8 +762,9 @@ class _Survey:
     tags: dict[str, str]
     #: Every tag the survey read, with the ID the Hub listed for it.
     listed_tags: dict[str, str]
-    #: The tagged publisher's staging branches the survey's listing showed.
-    staging_branches: list[str]
+    #: The tagged publisher's staging branches the survey's listing showed,
+    #: each with the commit it names.
+    staging_branches: dict[str, str]
     moves: list[BuildMove]
     skipped: list[dict[str, str]]
     not_moved: list[str]
@@ -720,12 +833,14 @@ def _folder_state(
 
     ``missing`` when the folder holds nothing; ``copied`` when it holds
     exactly the build's files, its release manifest names the release, the
-    build and the tagged manifest it was rewritten from, and every file the
-    manifest declares has the SHA-256 it had at the tag; ``occupied``
-    otherwise, with the reason. The rewritten manifests' bytes are not
-    compared, and the build manifest and the checksum ledger at ``head`` are
-    not read, so a folder copied by an earlier version of this tool still
-    counts as copied.
+    build and the tagged manifest it was rewritten from, every file the
+    manifest declares has the SHA-256 the manifest records, and every
+    undeclared file the checksum ledger records has the SHA-256 it had at
+    the tag; ``occupied`` otherwise, with the reason. The rewritten
+    manifests' bytes are not compared, and the checksum ledger at ``head`` is
+    not read, nor the build manifest unless the release manifest declares
+    it, so a folder copied by an earlier version of this tool still counts
+    as copied.
     """
     folder = move.folder
     present = {path for path in head_files if path.startswith(folder + "/")}
@@ -763,17 +878,23 @@ def _folder_state(
         if isinstance(artifacts, Mapping)
         else {}
     )
-    tagged = {item.name: item.sha256 for item in move.copied}
-    if declared != tagged:
+    if declared != dict(move.declared):
         return "occupied", (
             f"{manifest_path} does not declare the files and SHA-256 values of "
             f"the manifest at {move.tag}"
         )
-    digests = hub.sha256s([f"{folder}/{name}" for name in sorted(tagged)], head)
-    for name, digest in sorted(tagged.items()):
+    recorded = {
+        **move.declared,
+        **{item.name: item.sha256 for item in move.copied if not item.declared},
+    }
+    digests = hub.sha256s([f"{folder}/{name}" for name in sorted(recorded)], head)
+    for name, digest in sorted(recorded.items()):
         if digests[f"{folder}/{name}"] != digest:
+            source = (
+                "its manifest" if name in move.declared else f"its {CHECKSUMS_FILE}"
+            )
             return "occupied", (
-                f"{folder}/{name} does not match the SHA-256 its manifest records"
+                f"{folder}/{name} does not match the SHA-256 {source} records"
             )
     return "copied", None
 
@@ -1029,8 +1150,46 @@ def _publication_in_progress(branch: str) -> str:
         f"branch {branch} exists, so a tagged publication is in progress: its "
         "build would be in neither releases.json nor a build folder; run the "
         "step again once it has finished, or, if that publication failed, "
-        "delete the branch first"
+        "delete the branch first; if it finished and only its branch was left, "
+        f"name the branch with --finished-branch {branch}"
     )
+
+
+def _staging_branches(
+    hub: _Hub, survey: _Survey, selection: Selection, problems: list[str]
+) -> dict[str, str]:
+    """The staging branches the switch accepts, each with the commit it names.
+
+    A branch is accepted only when ``--finished-branch`` names it, a tag of
+    its build exists, and the commit it names is on ``main``: the tagged
+    publisher makes the branch before it uploads, tags the build, and only
+    then commits to ``main`` and deletes the branch, so a publication still
+    running never meets both. Every other staging branch is a problem.
+    """
+    accepted: dict[str, str] = {}
+    problems.extend(
+        f"--finished-branch {branch} is not a {_STAGING_BRANCH_PREFIX} branch of "
+        f"{hub.repository}"
+        for branch in sorted(selection.finished_branches - set(survey.staging_branches))
+    )
+    for branch, commit in sorted(survey.staging_branches.items()):
+        if branch not in selection.finished_branches:
+            problems.append(_publication_in_progress(branch))
+            continue
+        build = branch.removeprefix(_STAGING_BRANCH_PREFIX)
+        if build not in survey.tags:
+            problems.append(
+                f"--finished-branch {branch}: {build} has no tag, so its "
+                "publication did not finish"
+            )
+        elif not hub.on_main(commit):
+            problems.append(
+                f"--finished-branch {branch}: the commit it names, {commit}, is not "
+                "on main, so its publication may still be running"
+            )
+        else:
+            accepted[branch] = commit
+    return accepted
 
 
 def switch_repository(
@@ -1048,9 +1207,7 @@ def switch_repository(
     _refuse_switched(head_files, repository)
     survey = _survey(hub, selection)
     problems = survey.problems
-    problems.extend(
-        _publication_in_progress(branch) for branch in survey.staging_branches
-    )
+    finished_branches = _staging_branches(hub, survey, selection, problems)
     for move in survey.moves:
         state, reason = _folder_state(hub, move, head=head, head_files=head_files)
         if state == "missing":
@@ -1109,6 +1266,7 @@ def switch_repository(
         "skipped": survey.skipped,
         "not_moved": survey.not_moved,
         "pointer_files": pointers,
+        "finished_branches": sorted(finished_branches),
         "delete": pointer_files,
         "releases_json": record.to_document(),
         "commit_message": message,
@@ -1125,12 +1283,18 @@ def switch_repository(
     # build tagged after the survey; list the tags again just before the
     # commit, in one request, and compare the IDs the Hub lists. A
     # publication that has checked for releases.json but not yet tagged its
-    # build has a staging branch, so refuse that too.
+    # build has a staging branch, so refuse that too, unless it is a finished
+    # publication's branch that the survey accepted and that has not moved.
     listed_tags, staging_branches = hub.refs()
-    if staging_branches:
+    new_branches = sorted(
+        branch
+        for branch, commit in staging_branches.items()
+        if finished_branches.get(branch) != commit
+    )
+    if new_branches:
         raise SwitchRefusedError(
             "nothing was written: "
-            + "; ".join(_publication_in_progress(branch) for branch in staging_branches)
+            + "; ".join(_publication_in_progress(branch) for branch in new_branches)
         )
     if listed_tags != survey.listed_tags:
         raise SwitchRefusedError(
@@ -1217,6 +1381,17 @@ def _parser() -> argparse.ArgumentParser:
         help="Delete this pointer file with nothing in its place.",
     )
     parser.add_argument(
+        "--finished-branch",
+        action="append",
+        default=[],
+        metavar="BRANCH",
+        help=(
+            "Accept this release-staging/ branch, which a finished publication "
+            "left behind: the switch checks that its build is tagged and that "
+            "the commit it names is on main, and leaves it in place."
+        ),
+    )
+    parser.add_argument(
         "--write",
         action="store_true",
         help="Make the commits; without it the step only reads and reports.",
@@ -1248,6 +1423,7 @@ def main(argv: Sequence[str] | None = None, *, api: Any = None) -> int:
             current=_pairs(args.current, "--current"),
             default=args.default,
             retired_pointers=frozenset(args.retire_pointer),
+            finished_branches=frozenset(args.finished_branch),
         )
         step: Callable[..., dict[str, Any]] = (
             copy_builds if args.step == "copy" else switch_repository
