@@ -51,9 +51,12 @@ _COUNTRY_SPEC_LOADER = (
     "validators do not use"
 )
 _GRAPH_RUNTIME = (
-    "the graph runtime (kernel protocol, declarations and the canonical JSON "
-    "encoder node keys are computed with); no kernel in the repository "
-    "hashes a microcosm.graph module"
+    "the graph runtime the listed modules read a node's context, declare "
+    "artifact types and encode documents with: the kernel protocol, the "
+    "declarations and the canonical JSON encoder node keys are computed "
+    "with. The compile kernels hash none of the three; other kernels hash "
+    "the encoder, among them each UK graph kernel whose code computes "
+    "through it (microcosm#931)"
 )
 
 EXCLUDED_DIRECT_IMPORTS: Mapping[str, str] = MappingProxyType(
