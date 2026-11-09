@@ -205,14 +205,18 @@ def _declared_mass(before: Frame, after: Frame) -> dict:
 
 class _PopulationKernel(KernelBase):
     def implementation_hash(self) -> str:
+        from microcosm.frame.adapters import policyengine_uk as uk_engine_adapter
+
         from . import graph_evidence
 
         # The dense population nodes also compute through what these call:
         # the sample's household draw and mass normalisation (frame_sampling),
         # its strata columns (spi_support's replacement strata), the clones'
         # minted ids and copied tables (rowwise_geography), the national frame
-        # they rebuild, the local authority names the geography resolves, and
-        # the gate's results (microcosm#931); test_uk_graph derives the set
+        # they rebuild and the engine adapter's contracts it stamps on them,
+        # the local authority names the geography resolves, the gate's
+        # results, their artifacts' canonical encoding and the normalisation's
+        # weight-update receipt (microcosm#931); test_uk_graph derives the set
         # from what the kernels name.
         return source_hash(
             type(self),
@@ -226,6 +230,9 @@ class _PopulationKernel(KernelBase):
             national_frame,
             rowwise_geography,
             spi_support,
+            uk_engine_adapter,
+            canonical_json,
+            weight_update_receipt,
             # context_frame copies the kernel's inputs with copy_table.
             table_copies,
         )
@@ -440,8 +447,23 @@ class UKGeographyIdentityKernel(_PopulationKernel):
     capabilities = Capabilities(Determinism.DETERMINISTIC)
 
     def implementation_hash(self) -> str:
+        from microcosm.frame import concepts as frame_concepts
+
+        from .. import source_lineage
+        from . import household_lineage
+
+        # The clone paths are read through the lineage readers, whose default
+        # source column frame_concepts names, and the draw keys are encoded
+        # canonically (microcosm#931).
         return source_hash(
-            type(self), atomic_household_identity, atomic_area_support, rowwise_dataset
+            type(self),
+            atomic_household_identity,
+            atomic_area_support,
+            rowwise_dataset,
+            household_lineage,
+            source_lineage,
+            frame_concepts,
+            canonical_json,
         )
 
     def run(self, context: KernelContext) -> KernelResult:
@@ -496,13 +518,27 @@ class UKPropertyValueKernel(_PopulationKernel):
     )
 
     def implementation_hash(self) -> str:
-        from . import household_lineage
+        from microcosm.frame import concepts as frame_concepts
 
+        from .. import source_lineage
+        from . import household_lineage, tenure_constants
+
+        # The spine keys come through the lineage readers and the clone index
+        # column rowwise_dataset names, the owner mask through
+        # tenure_constants' tenure categories and the owner uniforms through
+        # keyed draws; the spine keys and the quantile artifact are encoded
+        # canonically (microcosm#931).
         return source_hash(
             type(self),
             property_localisation,
             household_lineage,
             atomic_household_identity,
+            source_lineage,
+            frame_concepts,
+            rowwise_dataset,
+            tenure_constants,
+            keyed_uniform,
+            canonical_json,
         )
 
     def run(self, context: KernelContext) -> KernelResult:
@@ -594,7 +630,11 @@ class UKPropertyBandKernel(_PopulationKernel):
     )
 
     def implementation_hash(self) -> str:
-        return source_hash(type(self), property_localisation)
+        from . import tenure_constants
+
+        # property_localisation's owner mask reads tenure_constants' tenure
+        # categories (microcosm#931).
+        return source_hash(type(self), property_localisation, tenure_constants)
 
     def run(self, context: KernelContext) -> KernelResult:
         household = context.tables["household"]
@@ -713,7 +753,10 @@ class UKBRMAAreaKernel(_PopulationKernel):
     )
 
     def implementation_hash(self) -> str:
-        return source_hash(type(self), brma_area_layer)
+        from . import receipt_counts
+
+        # The receipt rounds its counts in receipt_counts (microcosm#931).
+        return source_hash(type(self), brma_area_layer, receipt_counts)
 
     def run(self, context: KernelContext) -> KernelResult:
         household = context.tables["household"]
@@ -766,7 +809,10 @@ class UKRFDRAreaKernel(_PopulationKernel):
     )
 
     def implementation_hash(self) -> str:
-        return source_hash(type(self), rfdr_area_layer)
+        from . import receipt_counts
+
+        # The receipt rounds its counts in receipt_counts (microcosm#931).
+        return source_hash(type(self), rfdr_area_layer, receipt_counts)
 
     def run(self, context: KernelContext) -> KernelResult:
         household = context.tables["household"]
@@ -826,14 +872,29 @@ class UKPrivateRentKernel(_PopulationKernel):
     )
 
     def implementation_hash(self) -> str:
-        from . import household_lineage
+        from microcosm.frame import concepts as frame_concepts
 
+        from .. import source_lineage
+        from . import household_lineage, receipt_counts
+
+        # The spine keys come through the lineage readers and the clone index
+        # column rowwise_dataset names, and are encoded canonically; the
+        # tie-breaks are keyed draws; the receipt counts source households on
+        # national_frame's schema and rounds them in receipt_counts
+        # (microcosm#931).
         return source_hash(
             type(self),
             private_rent_localisation,
             property_localisation,
             household_lineage,
             atomic_household_identity,
+            source_lineage,
+            frame_concepts,
+            rowwise_dataset,
+            national_frame,
+            receipt_counts,
+            keyed_uniform,
+            canonical_json,
         )
 
     def run(self, context: KernelContext) -> KernelResult:
