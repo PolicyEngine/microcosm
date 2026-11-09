@@ -136,12 +136,29 @@ CGT_SUPPORT_MASS_CHANGE_REASON = (
 CGT_SUPPORT_CORRECTION_CANDIDATES = 64
 #: The one exception to "every copy carries weight / copies" that the
 #: ``copy_rule`` of both support splits declares, built on the cap so the
-#: declarations restate it (microcosm#931).
+#: declarations restate it (microcosm#931). The CGT split's adds
+#: :data:`CGT_SUPPORT_ONE_COPY_CHECK` after it.
 CGT_SUPPORT_EXACT_TOTAL_EXCEPTION = (
     f"except where none of the {CGT_SUPPORT_CORRECTION_CANDIDATES} heaviest "
     "households left whole can carry the exact-total correction, when the "
     "shared fallback can put it on a root or copy, off weight / copies by "
     "about one ulp of the total weight"
+)
+#: The clause the CGT split's ``copy_rule`` adds after that exception, built
+#: on the cap too. Of those candidates, a selected household left at one copy
+#: can carry the correction only where its corrected weight keeps its one
+#: copy and the walk's selection (``keeps_the_split`` in
+#: :func:`split_cgt_support_households`, kept as a reading of the
+#: whole-households-first rule). The shared fallback does not make that
+#: check, so it can still put the correction on a one-copy household the
+#: check passed over (María's rulings of 2026-11-09; microcosm#931). The
+#: high-value home support split makes no such check, so its ``copy_rule``
+#: ends at the exception.
+CGT_SUPPORT_ONE_COPY_CHECK = (
+    f"of those {CGT_SUPPORT_CORRECTION_CANDIDATES}, a selected household left "
+    "at one copy can carry the correction only where its corrected weight "
+    "keeps its one copy and the walk's selection, a check the fallback does "
+    "not make"
 )
 _HOUSEHOLD_SUPPORT_CHANNEL_COLUMN = "household_support_channel"
 #: The geographic clone index the clone-first spine gives every household
@@ -927,7 +944,8 @@ def cgt_support_split_operation_parameters() -> tuple[
                     "maximum_copy_weight), the quotient snapped to the nearest "
                     "integer within clone-count ulps when the clone count "
                     "exceeds one; every copy carries weight / copies, "
-                    f"{CGT_SUPPORT_EXACT_TOTAL_EXCEPTION}"
+                    f"{CGT_SUPPORT_EXACT_TOTAL_EXCEPTION}; "
+                    f"{CGT_SUPPORT_ONE_COPY_CHECK}"
                 ),
                 "id_remapping": (
                     "copy-id table field cgt_support_split; copy k takes every "
