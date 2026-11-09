@@ -474,8 +474,9 @@ class _NationalKernel(KernelBase):
     def implementation_hash(self) -> str:
         import microcosm.calibrate.artifacts as calibrate_artifacts
         import microcosm.calibrate.matrix as calibrate_matrix
+        from microcosm.build import chronicle_epoch
 
-        from . import weighted_integrity
+        from . import graph_targets, weighted_integrity
         from .target_compile_modules import uk_target_compile_modules
 
         implementation = source_hash(
@@ -505,6 +506,16 @@ class _NationalKernel(KernelBase):
             # directly, as the dense target kernels do.
             weighted_integrity,
             *uk_target_compile_modules(),
+            # What both kernels also compute through (microcosm#931): the
+            # Chronicle schema versions and fact-key epochs the facts are
+            # checked against (chronicle_epoch), the register codec
+            # (graph_targets) and the canonical encoding of their artifacts.
+            # What only one of them computes through, it hashes in its own
+            # implementation hash below; test_uk_graph derives each kernel's
+            # set from what its code names.
+            chronicle_epoch,
+            graph_targets,
+            canonical_json,
         )
         return hashlib.sha256(
             canonical_json(
@@ -518,6 +529,21 @@ class _NationalKernel(KernelBase):
 
 class UKNationalTargetKernel(_NationalKernel):
     ref = "uk.full.national_targets@1"
+
+    def implementation_hash(self) -> str:
+        from . import frs_relationships
+
+        # The national register is compiled through ledger_targets, which
+        # checks the household-type bindings against the ONS household type
+        # domain (frs_relationships) (microcosm#931).
+        return hashlib.sha256(
+            canonical_json(
+                {
+                    "national": super().implementation_hash(),
+                    "targets": source_hash(frs_relationships),
+                }
+            )
+        ).hexdigest()
 
     def run(self, context: KernelContext) -> KernelResult:
         inputs = load_uk_national_target_inputs(
@@ -668,6 +694,65 @@ class UKNationalProblemKernel(_NationalKernel):
 
     def __init__(self, *, resolver_factory=UKMeasureResolver) -> None:
         self.resolver_factory = resolver_factory
+
+    def implementation_hash(self) -> str:
+        import microcosm.calibrate.monetary_binding as monetary_binding
+        from microcosm.frame import materialize as frame_materialize
+        from microcosm.frame.adapters import policyengine_uk as uk_engine_adapter
+
+        from .. import gate_battery
+        from . import (
+            atomic_area_support,
+            dfe_spring_term,
+            diagnostics,
+            frs_annual_income,
+            frs_spine,
+            graph_population,
+            hmrc_income,
+            income_tax_rate_classes,
+            lcfs_consumption,
+            local_rowwise,
+            national_frame,
+            uc_target_measurements,
+        )
+
+        # The problem also computes through what the measure resolver and the
+        # engine run on the bound frame (microcosm#931), as the dense line's
+        # measures do: the frame it rebuilds on national_frame's schema
+        # (graph_population, national_frame), the engine's scratch frame
+        # (atomic_area_support, frame_materialize and the engine adapter's
+        # contracts), the resolver's inputs and measures (dfe_spring_term,
+        # frs_annual_income, frs_spine's annuity and trust column,
+        # hmrc_income, income_tax_rate_classes, lcfs_consumption and
+        # uc_target_measurements), the national rows (local_rowwise), the
+        # constraint matrix's monetary check (monetary_binding), and the
+        # target geography levels (diagnostics) and JSON-safe values
+        # (gate_battery) its payload records.
+        return hashlib.sha256(
+            canonical_json(
+                {
+                    "national": super().implementation_hash(),
+                    "problem": source_hash(
+                        atomic_area_support,
+                        dfe_spring_term,
+                        diagnostics,
+                        frs_annual_income,
+                        frs_spine,
+                        graph_population,
+                        hmrc_income,
+                        income_tax_rate_classes,
+                        lcfs_consumption,
+                        local_rowwise,
+                        national_frame,
+                        uc_target_measurements,
+                        gate_battery,
+                        monetary_binding,
+                        frame_materialize,
+                        uk_engine_adapter,
+                    ),
+                }
+            )
+        ).hexdigest()
 
     def run(self, context: KernelContext) -> KernelResult:
         frame = context_frame(context)

@@ -255,6 +255,11 @@ class _TargetKernel(KernelBase):
             # the validation checks read, which no listed module may.
             weighted_integrity,
             *uk_target_compile_modules(),
+            # The canonical encoding of the artifacts all four kernels store
+            # and read (microcosm#931). What only one of them computes
+            # through, it hashes in its own implementation hash below;
+            # test_uk_graph derives each kernel's set from what its code names.
+            canonical_json,
         )
         # The solve fingerprint: every packaged resource but the gate-only
         # registers, which no compile module reads (microcosm#1301), so a
@@ -271,6 +276,25 @@ class _TargetKernel(KernelBase):
 
 class UKFullTargetCompilationKernel(_TargetKernel):
     ref = "uk.full.target_compilation@1"
+
+    def implementation_hash(self) -> str:
+        from microcosm.build import chronicle_epoch
+
+        from . import frs_relationships
+
+        # The compilation also computes through the Chronicle schema versions
+        # and fact-key epochs ledger_artifact checks the facts against and
+        # records in their provenance (chronicle_epoch), and the ONS household
+        # type domain ledger_targets checks the household-type bindings
+        # against (frs_relationships) (microcosm#931).
+        return hashlib.sha256(
+            canonical_json(
+                {
+                    "targets": super().implementation_hash(),
+                    "compilation": source_hash(chronicle_epoch, frs_relationships),
+                }
+            )
+        ).hexdigest()
 
     def run(self, context: KernelContext) -> KernelResult:
         from .full_targets import load_uk_full_target_inputs
@@ -466,6 +490,63 @@ class UKFullTargetSelectionKernel(_TargetKernel):
 
 class UKFullMeasureKernel(_TargetKernel):
     ref = "uk.full.measures@1"
+
+    def implementation_hash(self) -> str:
+        import microcosm.calibrate.monetary_binding as monetary_binding
+        from microcosm.build import chronicle_epoch
+        from microcosm.frame import materialize as frame_materialize
+        from microcosm.frame.adapters import policyengine_uk as uk_engine_adapter
+
+        from . import (
+            atomic_area_support,
+            dfe_spring_term,
+            frs_annual_income,
+            frs_spine,
+            graph_population,
+            hmrc_income,
+            income_tax_rate_classes,
+            lcfs_consumption,
+            national_calibration,
+            national_frame,
+            uc_target_measurements,
+        )
+
+        # The measures also compute through what the measure resolver and the
+        # engine blocks run (microcosm#931): the frame they rebuild on
+        # national_frame's schema (graph_population, national_frame), the
+        # engine's scratch frame (atomic_area_support, frame_materialize and
+        # the engine adapter's contracts), the resolver's inputs and measures
+        # (dfe_spring_term, frs_annual_income, frs_spine's annuity and trust
+        # column, hmrc_income, income_tax_rate_classes, lcfs_consumption and
+        # uc_target_measurements), the vendored facts' schema checks
+        # (chronicle_epoch), the measure inputs the calibration frame adapter
+        # injects (national_calibration), the national rows (local_rowwise)
+        # and the constraint matrix's monetary check (monetary_binding).
+        return hashlib.sha256(
+            canonical_json(
+                {
+                    "targets": super().implementation_hash(),
+                    "measures": source_hash(
+                        atomic_area_support,
+                        chronicle_epoch,
+                        dfe_spring_term,
+                        frs_annual_income,
+                        frs_spine,
+                        graph_population,
+                        hmrc_income,
+                        income_tax_rate_classes,
+                        lcfs_consumption,
+                        local_rowwise,
+                        national_calibration,
+                        national_frame,
+                        uc_target_measurements,
+                        monetary_binding,
+                        frame_materialize,
+                        uk_engine_adapter,
+                    ),
+                }
+            )
+        ).hexdigest()
 
     def run(self, context: KernelContext) -> KernelResult:
         gate = json.loads(context.artifacts["geography_gate"].payload)
@@ -664,6 +745,10 @@ class UKFullProblemKernel(_TargetKernel):
     ref = "uk.full.problem@1"
 
     def implementation_hash(self) -> str:
+        import microcosm.calibrate.monetary_binding as monetary_binding
+
+        from . import graph_population, local_geography, national_frame
+
         # The loss weights the problem binds are built by
         # ``local_rowwise.prepare_uk_full_solve`` from the rules in
         # ``target_weights`` and ``national_doctrine`` (microcosm#1124), so an
@@ -673,7 +758,11 @@ class UKFullProblemKernel(_TargetKernel):
         # ``calibrate.solve.default_target_loss_scales`` (microcosm#1492). All
         # of ``calibrate.solve`` is hashed: ``calibrate.adam@1``, whose hash
         # every UK solve kernel embeds, already hashes it, so an edit there
-        # re-solves anyway and re-keys only this node besides.
+        # re-solves anyway and re-keys only this node besides. The problem
+        # also computes through the frame it rebuilds on national_frame's
+        # schema (graph_population, national_frame), the area columns of the
+        # local surface matrix local_rowwise builds (local_geography) and the
+        # constraint matrix's monetary check (monetary_binding) (microcosm#931).
         return hashlib.sha256(
             canonical_json(
                 {
@@ -684,6 +773,12 @@ class UKFullProblemKernel(_TargetKernel):
                         target_weights,
                         geography_constants,
                         calibrate_solve,
+                    ),
+                    "problem": source_hash(
+                        graph_population,
+                        national_frame,
+                        local_geography,
+                        monetary_binding,
                     ),
                 }
             )

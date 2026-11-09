@@ -1,14 +1,17 @@
 """Both UK target kernels hash every module that decides a target value.
 
-Two checks pin the closure, as for the transport compile kernels:
+Two checks pin the closure:
 
-- the shared list's own: every first-party import of a module in
-  ``UK_TARGET_COMPILE_MODULE_NAMES`` is listed, or excluded with a reason;
-- each kernel's: the walk from every module a target or problem kernel
-  hashes, its own module included, meets only modules the kernel hashes, the
-  list's exclusions, or the imports recorded in ``UNCLASSIFIED_IMPORTS`` for
-  that kernel's group, which no review has classified yet (microcosm#1497).
-  That mapping may only shrink.
+- the shared list's own, as for the transport compile kernels: every
+  first-party import of a module in ``UK_TARGET_COMPILE_MODULE_NAMES`` is
+  listed, or excluded with a reason;
+- each kernel's: the derived binding rule in test_uk_graph.py holds what each
+  target and problem kernel's hash covers to what its code computes through
+  (``test_every_uk_graph_kernel_hashes_each_helper_it_computes_through``). It
+  replaced microcosm#1497's per-kernel import record for these kernels
+  (microcosm#931 ruling 6), so this file keeps only what that rule does not
+  cover: the modules a kernel's file imports only to build its hash
+  (``HASH_INPUTS``) stay out of the hashes.
 """
 
 from __future__ import annotations
@@ -40,7 +43,6 @@ from test_support.microcosm_build.first_party_imports import (
     assert_an_edit_rekeys,
     first_party_imports,
     hashed_module_names,
-    recorded_import_mismatches,
     unlisted_imports,
 )
 
@@ -160,8 +162,9 @@ _NATIONAL_GRAPH = tuple(
 )
 
 #: Code the target kernels ran without hashing it, found by the review of
-#: microcosm#1492, and the kernels that now hash it. All four full-graph
-#: kernels share one hash, so what one of them runs re-keys all four.
+#: microcosm#1492, and the kernels that now hash it. These modules are in the
+#: hash all four full-graph kernels share, so what one of them runs re-keys
+#: all four.
 _RUN_MODULES = {
     # uk.full.target_selection@1 calls select_targets.
     "microcosm.calibrate.target_selection": _FULL_GRAPH,
@@ -179,30 +182,14 @@ _RUN_MODULES = {
     "microcosm.build.uk_runtime.ledger_surface": _FULL_GRAPH + _NATIONAL_GRAPH,
 }
 
-#: The kernels grouped by shared hash: the full graph's target, selection and
-#: measures kernels share _TargetKernel's; the problem adds its loss-weight
-#: hash; the two national kernels share _NationalKernel's.
-FULL_TARGETS = "uk.full.target_compilation@1, target_selection@1 and measures@1"
-FULL_PROBLEM = "uk.full.problem@1"
-NATIONAL = "uk.full.national_targets@1 and national_problem@1"
-KERNEL_GROUPS = MappingProxyType(
-    {
-        FULL_TARGETS: tuple(
-            _KERNELS_BY_REF[ref]
-            for ref in (
-                "uk.full.target_compilation@1",
-                "uk.full.target_selection@1",
-                "uk.full.measures@1",
-            )
-        ),
-        FULL_PROBLEM: (_KERNELS_BY_REF["uk.full.problem@1"],),
-        NATIONAL: tuple(_KERNELS_BY_REF[ref] for ref in _NATIONAL_GRAPH),
-    }
-)
-
-#: Imports a kernel's module makes only to build the hash, and the importers
-#: the reason covers. They stay unhashed on purpose, so an edit to the list
-#: re-keys only the kernels whose hashed modules it adds or removes.
+#: Imports a kernel's module makes only to build an implementation hash, and
+#: the importers the reason covers. The derived binding rule in test_uk_graph.py
+#: leaves every implementation hash out of what a kernel's code computes
+#: through, so such an import binds nothing. A target or problem kernel hashes
+#: one only where another module it hashes imports it too, and none hashes the
+#: first two, which stay unhashed on purpose: an edit to the list re-keys only
+#: the kernels whose hashed modules it adds or removes
+#: (test_a_target_kernel_hashes_a_hash_input_only_where_another_module_imports_it).
 HASH_INPUTS = MappingProxyType(
     {
         "microcosm.build.uk_runtime.target_compile_modules": HashInput(
@@ -223,10 +210,11 @@ HASH_INPUTS = MappingProxyType(
                 "parameter; no kernel's run reads it"
             ),
         ),
-        # graph_national imports these only inside the national gate and
-        # readback kernels' implementation hashes, which bind them there
-        # (microcosm#931); the national target and problem kernels never run
-        # those methods.
+        # graph_national imports these only inside implementation hashes,
+        # which bind them there (microcosm#931): the national gate and
+        # readback kernels', and for the last three the national problem's
+        # too, whose code computes through them. The national target and
+        # problem kernels never run the gate and readback kernels' methods.
         **{
             module: HashInput(
                 importers=("microcosm.build.uk_runtime.graph_national",),
@@ -241,474 +229,24 @@ HASH_INPUTS = MappingProxyType(
                 "microcosm.build.trace",
                 "microcosm.build.uk_runtime.donor_uprating",
                 "microcosm.build.uk_runtime.etb_services",
+            )
+        },
+        **{
+            module: HashInput(
+                importers=("microcosm.build.uk_runtime.graph_national",),
+                reason=(
+                    "imported only in implementation hashes, to hash it there: "
+                    "uk.full.national-gates@1's or uk.full.national-readback@1's, "
+                    "and uk.full.national_problem@1's, whose code computes "
+                    "through it"
+                ),
+            )
+            for module in (
                 "microcosm.calibrate.monetary_binding",
                 "microcosm.frame.adapters.policyengine_uk",
                 "microcosm.frame.materialize",
             )
         },
-    }
-)
-
-#: Every ``importer -> imported`` edge the walk from a kernel group's hashed
-#: modules meets that the group does not hash and no review has classified,
-#: with the groups that leave it unhashed. Recorded as found when the
-#: per-kernel check was added; microcosm#1497 classifies them. Hash an entry
-#: in the kernels that run it, move what they run into a module they hash, or
-#: record why they need not hash it, then delete it here. The check fails on
-#: an edge a group meets that is not recorded for it and on an edge recorded
-#: for a group that no longer meets it, so the mapping can only shrink, and
-#: removing a module from one group's hash fails even where another group
-#: records the same edge.
-UNCLASSIFIED_IMPORTS = MappingProxyType(
-    {
-        "microcosm.build.uk_runtime.graph_national -> microcosm.build.artifact_files": (
-            NATIONAL,
-        ),
-        "microcosm.build.uk_runtime.graph_national -> microcosm.build.country_spec": (
-            NATIONAL,
-        ),
-        "microcosm.build.uk_runtime.measure_simulation -> microcosm.build.country_spec": (
-            FULL_TARGETS,
-            FULL_PROBLEM,
-            NATIONAL,
-        ),
-        "microcosm.build.uk_runtime.graph_national -> microcosm.build.gate_battery": (
-            NATIONAL,
-        ),
-        "microcosm.build.uk_runtime.fiscal_targets -> microcosm.build.gates": (
-            FULL_TARGETS,
-            FULL_PROBLEM,
-            NATIONAL,
-        ),
-        "microcosm.build.uk_runtime.weighted_integrity -> microcosm.build.gates": (
-            FULL_TARGETS,
-            FULL_PROBLEM,
-            NATIONAL,
-        ),
-        "microcosm.build.uk_runtime.local_rowwise -> microcosm.build.holdout": (
-            FULL_PROBLEM,
-        ),
-        "microcosm.build.uk_runtime.weighted_integrity -> microcosm.build.input_mass": (
-            FULL_TARGETS,
-            FULL_PROBLEM,
-            NATIONAL,
-        ),
-        "microcosm.build.uk_runtime.graph_national -> microcosm.build.logbook_adoption": (
-            NATIONAL,
-        ),
-        "microcosm.build.country_spec -> microcosm.build.plan": (
-            FULL_TARGETS,
-            FULL_PROBLEM,
-            NATIONAL,
-        ),
-        "microcosm.build.country_spec -> microcosm.build.source_manifest": (
-            FULL_TARGETS,
-            FULL_PROBLEM,
-            NATIONAL,
-        ),
-        "microcosm.build.uk_runtime.frs_relationships -> microcosm.build.source_manifest": (
-            FULL_TARGETS,
-            FULL_PROBLEM,
-            NATIONAL,
-        ),
-        "microcosm.build.country_spec -> microcosm.build.spec_engine.canonical": (
-            FULL_TARGETS,
-            FULL_PROBLEM,
-            NATIONAL,
-        ),
-        "microcosm.build.country_spec -> microcosm.build.spec_engine.engine_abi": (
-            FULL_TARGETS,
-            FULL_PROBLEM,
-            NATIONAL,
-        ),
-        "microcosm.build.country_spec -> microcosm.build.spec_engine.loader": (
-            FULL_TARGETS,
-            FULL_PROBLEM,
-            NATIONAL,
-        ),
-        "microcosm.build.country_spec -> microcosm.build.spec_engine.model": (
-            FULL_TARGETS,
-            FULL_PROBLEM,
-            NATIONAL,
-        ),
-        "microcosm.build.country_spec -> microcosm.build.spec_engine.schemas": (
-            FULL_TARGETS,
-            FULL_PROBLEM,
-            NATIONAL,
-        ),
-        "microcosm.build.country_spec -> microcosm.build.spec_engine.take_up_semantics": (
-            FULL_TARGETS,
-            FULL_PROBLEM,
-            NATIONAL,
-        ),
-        "microcosm.build.country_spec -> microcosm.build.spec_engine.yaml12": (
-            FULL_TARGETS,
-            FULL_PROBLEM,
-            NATIONAL,
-        ),
-        "microcosm.build.uk_runtime.graph_national -> microcosm.build.staging_v2": (
-            NATIONAL,
-        ),
-        "microcosm.build.country_spec -> microcosm.build.trace": (
-            FULL_TARGETS,
-            FULL_PROBLEM,
-            NATIONAL,
-        ),
-        "microcosm.build.uk_runtime.measure_simulation -> microcosm.build.uk_runtime.atomic_area_support": (
-            FULL_TARGETS,
-            FULL_PROBLEM,
-            NATIONAL,
-        ),
-        "microcosm.build.uk_runtime.graph_national -> microcosm.build.uk_runtime.battery_bindings": (
-            NATIONAL,
-        ),
-        "microcosm.build.uk_runtime.graph_national -> microcosm.build.uk_runtime.calibration_run": (
-            NATIONAL,
-        ),
-        "microcosm.build.uk_runtime.graph_national -> microcosm.build.uk_runtime.cgt_projection": (
-            NATIONAL,
-        ),
-        "microcosm.build.uk_runtime.graph_national -> microcosm.build.uk_runtime.content_identity": (
-            NATIONAL,
-        ),
-        "microcosm.build.uk_runtime.local_rowwise -> microcosm.build.uk_runtime.dataset_size": (
-            FULL_PROBLEM,
-        ),
-        "microcosm.build.uk_runtime.measure_simulation -> microcosm.build.uk_runtime.dfe_spring_term": (
-            FULL_TARGETS,
-            FULL_PROBLEM,
-            NATIONAL,
-        ),
-        "microcosm.build.uk_runtime.graph_national -> microcosm.build.uk_runtime.diagnostics": (
-            NATIONAL,
-        ),
-        "microcosm.build.uk_runtime.measure_simulation -> microcosm.build.uk_runtime.frs_annual_income": (
-            FULL_TARGETS,
-            FULL_PROBLEM,
-            NATIONAL,
-        ),
-        "microcosm.build.uk_runtime.frs_relationships -> microcosm.build.uk_runtime.frs_spine": (
-            FULL_TARGETS,
-            FULL_PROBLEM,
-            NATIONAL,
-        ),
-        "microcosm.build.uk_runtime.measure_simulation -> microcosm.build.uk_runtime.frs_spine": (
-            FULL_TARGETS,
-            FULL_PROBLEM,
-            NATIONAL,
-        ),
-        "microcosm.build.uk_runtime.graph_national -> microcosm.build.uk_runtime.full_gates": (
-            NATIONAL,
-        ),
-        "microcosm.build.uk_runtime.local_authority_input -> microcosm.build.uk_runtime.geography_sources": (
-            FULL_TARGETS,
-            FULL_PROBLEM,
-            NATIONAL,
-        ),
-        "microcosm.build.uk_runtime.graph_national -> microcosm.build.uk_runtime.graph_build": (
-            NATIONAL,
-        ),
-        "microcosm.build.uk_runtime.graph_national -> microcosm.build.uk_runtime.graph_calibration": (
-            NATIONAL,
-        ),
-        "microcosm.build.uk_runtime.graph_national -> microcosm.build.uk_runtime.graph_population": (
-            NATIONAL,
-        ),
-        "microcosm.build.uk_runtime.graph_targets -> microcosm.build.uk_runtime.graph_population": (
-            FULL_TARGETS,
-            FULL_PROBLEM,
-        ),
-        "microcosm.build.uk_runtime.graph_national -> microcosm.build.uk_runtime.graph_targets": (
-            NATIONAL,
-        ),
-        "microcosm.build.uk_runtime.graph_national -> microcosm.build.uk_runtime.graph_terminal": (
-            NATIONAL,
-        ),
-        "microcosm.build.uk_runtime.hmrc_replay -> microcosm.build.uk_runtime.hmrc_income": (
-            FULL_TARGETS,
-            FULL_PROBLEM,
-            NATIONAL,
-        ),
-        "microcosm.build.uk_runtime.measure_simulation -> microcosm.build.uk_runtime.hmrc_income": (
-            FULL_TARGETS,
-            FULL_PROBLEM,
-            NATIONAL,
-        ),
-        "microcosm.build.uk_runtime.weighted_integrity -> microcosm.build.uk_runtime.hmrc_source_contract": (
-            FULL_TARGETS,
-            FULL_PROBLEM,
-            NATIONAL,
-        ),
-        "microcosm.build.uk_runtime.measure_simulation -> microcosm.build.uk_runtime.income_tax_rate_classes": (
-            FULL_TARGETS,
-            FULL_PROBLEM,
-            NATIONAL,
-        ),
-        "microcosm.build.uk_runtime.measure_simulation -> microcosm.build.uk_runtime.lcfs_consumption": (
-            FULL_TARGETS,
-            FULL_PROBLEM,
-            NATIONAL,
-        ),
-        "microcosm.build.uk_runtime.local_rowwise -> microcosm.build.uk_runtime.local_geography": (
-            FULL_PROBLEM,
-        ),
-        "microcosm.build.uk_runtime.full_measure -> microcosm.build.uk_runtime.local_rowwise": (
-            FULL_TARGETS,
-            NATIONAL,
-        ),
-        "microcosm.build.uk_runtime.full_problem -> microcosm.build.uk_runtime.local_rowwise": (
-            FULL_TARGETS,
-        ),
-        "microcosm.build.uk_runtime.graph_national -> microcosm.build.uk_runtime.local_rowwise": (
-            NATIONAL,
-        ),
-        "microcosm.build.uk_runtime.graph_targets -> microcosm.build.uk_runtime.local_rowwise": (
-            FULL_TARGETS,
-        ),
-        "microcosm.build.uk_runtime.full_measure -> microcosm.build.uk_runtime.national_calibration": (
-            FULL_TARGETS,
-            FULL_PROBLEM,
-        ),
-        "microcosm.build.uk_runtime.graph_targets -> microcosm.build.uk_runtime.national_doctrine": (
-            FULL_TARGETS,
-        ),
-        "microcosm.build.uk_runtime.local_doctrine -> microcosm.build.uk_runtime.national_doctrine": (
-            FULL_TARGETS,
-        ),
-        "microcosm.build.uk_runtime.frs_relationships -> microcosm.build.uk_runtime.national_frame": (
-            FULL_TARGETS,
-            FULL_PROBLEM,
-            NATIONAL,
-        ),
-        "microcosm.build.uk_runtime.full_measure -> microcosm.build.uk_runtime.national_frame": (
-            FULL_TARGETS,
-            FULL_PROBLEM,
-            NATIONAL,
-        ),
-        "microcosm.build.uk_runtime.graph_national -> microcosm.build.uk_runtime.national_frame": (
-            NATIONAL,
-        ),
-        "microcosm.build.uk_runtime.local_rowwise -> microcosm.build.uk_runtime.national_frame": (
-            FULL_PROBLEM,
-        ),
-        "microcosm.build.uk_runtime.measure_simulation -> microcosm.build.uk_runtime.national_frame": (
-            FULL_TARGETS,
-            FULL_PROBLEM,
-            NATIONAL,
-        ),
-        "microcosm.build.uk_runtime.weighted_integrity -> microcosm.build.uk_runtime.national_frame": (
-            FULL_TARGETS,
-            FULL_PROBLEM,
-            NATIONAL,
-        ),
-        "microcosm.build.uk_runtime.full_measure -> microcosm.build.uk_runtime.rowwise_dataset": (
-            FULL_TARGETS,
-            FULL_PROBLEM,
-            NATIONAL,
-        ),
-        "microcosm.build.uk_runtime.graph_national -> microcosm.build.uk_runtime.rowwise_posture": (
-            NATIONAL,
-        ),
-        "microcosm.build.uk_runtime.local_rowwise -> microcosm.build.uk_runtime.size_checkpoint": (
-            FULL_PROBLEM,
-        ),
-        "microcosm.build.uk_runtime.local_rowwise -> microcosm.build.uk_runtime.solve_progress": (
-            FULL_PROBLEM,
-        ),
-        "microcosm.build.uk_runtime.graph_targets -> microcosm.build.uk_runtime.target_weights": (
-            FULL_TARGETS,
-        ),
-        "microcosm.build.uk_runtime.measure_simulation -> microcosm.build.uk_runtime.uc_target_measurements": (
-            FULL_TARGETS,
-            FULL_PROBLEM,
-            NATIONAL,
-        ),
-        "microcosm.build.uk_runtime.graph_national -> microcosm.build.uk_runtime.weight_year": (
-            NATIONAL,
-        ),
-        "microcosm.build.gates -> microcosm.build.us_runtime.stacked_spine": (
-            FULL_TARGETS,
-            FULL_PROBLEM,
-            NATIONAL,
-        ),
-        "microcosm.calibrate.solve -> microcosm.calibrate.exact_k": (FULL_PROBLEM,),
-        "microcosm.calibrate.solve -> microcosm.calibrate.gates": (FULL_PROBLEM,),
-        "microcosm.calibrate.solve -> microcosm.calibrate.initialization": (
-            FULL_PROBLEM,
-        ),
-        "microcosm.calibrate.matrix -> microcosm.calibrate.monetary_binding": (
-            FULL_TARGETS,
-            FULL_PROBLEM,
-            NATIONAL,
-        ),
-        "microcosm.build.gates -> microcosm.calibrate.solve": (FULL_TARGETS, NATIONAL),
-        # Reviewed (round 2 of #1493): only national_calibration_manifest calls
-        # it, in uk.full.national-gates@1, which reads the solve's result.
-        "microcosm.build.uk_runtime.graph_national -> microcosm.calibrate.solve": (
-            NATIONAL,
-        ),
-        "microcosm.build.uk_runtime.graph_targets -> microcosm.calibrate.solve": (
-            FULL_TARGETS,
-        ),
-        "microcosm.calibrate.artifacts -> microcosm.calibrate.solve": (
-            FULL_TARGETS,
-            NATIONAL,
-        ),
-        "microcosm.build.uk_runtime.measure_simulation -> microcosm.frame.adapters.policyengine_uk": (
-            FULL_TARGETS,
-            FULL_PROBLEM,
-            NATIONAL,
-        ),
-        "microcosm.build.uk_runtime.national_frame -> microcosm.frame.adapters.policyengine_uk": (
-            FULL_TARGETS,
-            FULL_PROBLEM,
-            NATIONAL,
-        ),
-        "microcosm.build.country_spec -> microcosm.frame.bundle": (
-            FULL_TARGETS,
-            FULL_PROBLEM,
-            NATIONAL,
-        ),
-        "microcosm.build.uk_runtime.frs_relationships -> microcosm.frame.bundle": (
-            FULL_TARGETS,
-            FULL_PROBLEM,
-            NATIONAL,
-        ),
-        "microcosm.build.uk_runtime.full_measure -> microcosm.frame.bundle": (
-            FULL_TARGETS,
-            FULL_PROBLEM,
-            NATIONAL,
-        ),
-        "microcosm.build.uk_runtime.graph_national -> microcosm.frame.bundle": (
-            NATIONAL,
-        ),
-        "microcosm.build.uk_runtime.local_rowwise -> microcosm.frame.bundle": (
-            FULL_PROBLEM,
-        ),
-        "microcosm.build.uk_runtime.measure_simulation -> microcosm.frame.bundle": (
-            FULL_TARGETS,
-            FULL_PROBLEM,
-            NATIONAL,
-        ),
-        "microcosm.build.uk_runtime.national_calibration -> microcosm.frame.bundle": (
-            NATIONAL,
-        ),
-        "microcosm.build.uk_runtime.national_frame -> microcosm.frame.bundle": (
-            FULL_TARGETS,
-            FULL_PROBLEM,
-            NATIONAL,
-        ),
-        "microcosm.build.uk_runtime.weighted_integrity -> microcosm.frame.bundle": (
-            FULL_TARGETS,
-            FULL_PROBLEM,
-            NATIONAL,
-        ),
-        "microcosm.calibrate.artifacts -> microcosm.frame.bundle": (
-            FULL_TARGETS,
-            FULL_PROBLEM,
-            NATIONAL,
-        ),
-        "microcosm.calibrate.matrix -> microcosm.frame.bundle": (
-            FULL_TARGETS,
-            FULL_PROBLEM,
-            NATIONAL,
-        ),
-        "microcosm.calibrate.solve -> microcosm.frame.bundle": (FULL_PROBLEM,),
-        "microcosm.build.uk_runtime.national_frame -> microcosm.frame.materialize": (
-            FULL_TARGETS,
-            FULL_PROBLEM,
-            NATIONAL,
-        ),
-        "microcosm.build.uk_runtime.national_frame -> microcosm.frame.schema": (
-            FULL_TARGETS,
-            FULL_PROBLEM,
-            NATIONAL,
-        ),
-        "microcosm.frame.bundle -> microcosm.frame.schema": (
-            FULL_TARGETS,
-            FULL_PROBLEM,
-            NATIONAL,
-        ),
-        "microcosm.build.gates -> microcosm.frame.weights": (
-            FULL_TARGETS,
-            FULL_PROBLEM,
-            NATIONAL,
-        ),
-        "microcosm.build.uk_runtime.full_measure -> microcosm.frame.weights": (
-            FULL_TARGETS,
-            FULL_PROBLEM,
-            NATIONAL,
-        ),
-        "microcosm.build.uk_runtime.graph_national -> microcosm.frame.weights": (
-            NATIONAL,
-        ),
-        "microcosm.build.uk_runtime.local_rowwise -> microcosm.frame.weights": (
-            FULL_PROBLEM,
-        ),
-        "microcosm.build.uk_runtime.measure_simulation -> microcosm.frame.weights": (
-            FULL_TARGETS,
-            FULL_PROBLEM,
-            NATIONAL,
-        ),
-        "microcosm.build.uk_runtime.national_calibration -> microcosm.frame.weights": (
-            NATIONAL,
-        ),
-        "microcosm.build.uk_runtime.national_frame -> microcosm.frame.weights": (
-            FULL_TARGETS,
-            FULL_PROBLEM,
-            NATIONAL,
-        ),
-        "microcosm.calibrate.artifacts -> microcosm.frame.weights": (
-            FULL_TARGETS,
-            FULL_PROBLEM,
-            NATIONAL,
-        ),
-        "microcosm.calibrate.matrix -> microcosm.frame.weights": (
-            FULL_TARGETS,
-            FULL_PROBLEM,
-            NATIONAL,
-        ),
-        "microcosm.calibrate.solve -> microcosm.frame.weights": (FULL_PROBLEM,),
-        "microcosm.frame.bundle -> microcosm.frame.weights": (
-            FULL_TARGETS,
-            FULL_PROBLEM,
-            NATIONAL,
-        ),
-        "microcosm.build.uk_runtime.graph_national -> microcosm.graph.canonical": (
-            NATIONAL,
-        ),
-        "microcosm.build.uk_runtime.graph_targets -> microcosm.graph.canonical": (
-            FULL_TARGETS,
-            FULL_PROBLEM,
-        ),
-        "microcosm.calibrate.artifacts -> microcosm.graph.canonical": (
-            FULL_TARGETS,
-            FULL_PROBLEM,
-            NATIONAL,
-        ),
-        "microcosm.build.uk_runtime.graph_targets -> microcosm.graph.codecs": (
-            FULL_TARGETS,
-            FULL_PROBLEM,
-        ),
-        "microcosm.build.uk_runtime.graph_national -> microcosm.graph.decl": (
-            NATIONAL,
-        ),
-        "microcosm.build.uk_runtime.graph_targets -> microcosm.graph.decl": (
-            FULL_TARGETS,
-            FULL_PROBLEM,
-        ),
-        "microcosm.calibrate.artifacts -> microcosm.graph.decl": (
-            FULL_TARGETS,
-            FULL_PROBLEM,
-            NATIONAL,
-        ),
-        "microcosm.build.uk_runtime.graph_national -> microcosm.graph.kernel": (
-            NATIONAL,
-        ),
-        "microcosm.build.uk_runtime.graph_targets -> microcosm.graph.kernel": (
-            FULL_TARGETS,
-            FULL_PROBLEM,
-        ),
     }
 )
 
@@ -794,18 +332,38 @@ def test_the_national_kernels_leave_calibrate_solve_unhashed():
         assert calibrate_solve.__name__ not in hashed_module_names(kernel, module)
 
 
-def test_every_import_a_target_kernel_reaches_is_hashed_or_recorded():
-    """The walk covers each kernel's own module and every module hashed
-    beside the shared list, not only the list (microcosm#1492 review), and
-    the record is kept per group of kernels sharing one hash."""
-    assert {kernel for group in KERNEL_GROUPS.values() for kernel, _ in group} == {
-        kernel for kernel, _ in _TARGET_AND_PROBLEM_KERNELS
-    }
-    mismatches = recorded_import_mismatches(
-        KERNEL_GROUPS,
-        listed=UK_TARGET_COMPILE_MODULE_NAMES,
-        excluded=frozenset(EXCLUDED_DIRECT_IMPORTS),
-        hash_inputs=HASH_INPUTS,
-        recorded=UNCLASSIFIED_IMPORTS,
+def test_a_target_kernel_hashes_a_hash_input_only_where_another_module_imports_it():
+    """What the derived binding rule does not cover (microcosm#931 ruling 6).
+
+    The rule in test_uk_graph.py holds each target and problem kernel's hash
+    to what its code computes through, in place of microcosm#1497's per-kernel
+    import record, and leaves every implementation hash out of that code, so
+    an import made only to build a hash binds nothing. It does not check the
+    other side, that such a module stays out of the kernels' hashes. Each hash
+    input is still imported by every importer listed for it, and a target or
+    problem kernel hashes one only where a module it hashes, other than those
+    importers, imports it too, as measure_simulation, which the measures
+    compute through, imports the engine adapter. So the compile list and the
+    solve fingerprint's module stay unhashed, and an edit to a name or a
+    reason in either re-keys none of these kernels."""
+    for name, hash_input in HASH_INPUTS.items():
+        for importer in hash_input.importers:
+            assert name in first_party_imports(importer), (importer, name)
+    for kernel, module in _TARGET_AND_PROBLEM_KERNELS:
+        hashed = hashed_module_names(kernel, module)
+        for name, hash_input in HASH_INPUTS.items():
+            if name not in hashed:
+                continue
+            beside = {
+                other
+                for other in hashed - set(hash_input.importers)
+                if name in first_party_imports(other)
+            }
+            assert beside, (kernel.ref, name)
+    hashed = set().union(
+        *(hashed_module_names(*pair) for pair in _TARGET_AND_PROBLEM_KERNELS)
     )
-    assert not mismatches, mismatches
+    assert not hashed & {
+        "microcosm.build.uk_runtime.target_compile_modules",
+        "microcosm.build.uk_runtime.solve_scope",
+    }

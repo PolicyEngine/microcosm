@@ -1298,7 +1298,12 @@ _KERNEL_UNBOUND_NAMES: dict[tuple[str, str], str] = {
         "frame, so their key chains on the expand's; the national gates fold "
         "the national frame, which no ladder expands, and the fold keys on the "
         "column only where the table carries it "
-        "(diagnostics.uk_support_family_weights)"
+        "(diagnostics.uk_support_family_weights). The dense measures read it "
+        "only to split their frame into the engine blocks their engine_blocks "
+        "parameter asks for, and refuse a frame without it; their population "
+        "is the expand's, so their key chains on it too. The national problem "
+        "resolves its measures in one block, which never reads it "
+        "(full_measure._engine_block_frames; checked)"
     ),
 }
 #: Where the kernel rule stops, each with why a kernel that names the
@@ -1406,30 +1411,6 @@ _UNDECLARED_ARTIFACT_READS: dict[str, tuple[Callable, str]] = {
         "declared column names, and resolves it from the rules engine where "
         "that artifact is absent",
     ),
-}
-#: Kernels the rule does not yet hold, each with why, all held for a ruling
-#: (microcosm#931): the target kernels, whose keys microcosm#1497's import
-#: record holds. Until the ruling, a held kernel can replay a stale output
-#: after an edit to a module it computes through but does not hash;
-#: test_every_hold_still_guards_a_module_its_kernel_leaves_out checks that
-#: each still does, so a hold cannot outlive its need.
-_TARGET_RECORD_REASON = (
-    "test_uk_target_compile_modules holds this kernel's key to "
-    "microcosm#1497's import record, which lists each import of a module the "
-    "kernel hashes that it leaves unhashed and may only shrink. Binding what "
-    "this rule finds it computing through would add to the record every such "
-    "import of each module bound"
-)
-_HELD_KERNELS: dict[str, str] = {
-    ref: _TARGET_RECORD_REASON
-    for ref in (
-        "uk.full.target_compilation@1",
-        "uk.full.target_selection@1",
-        "uk.full.measures@1",
-        "uk.full.problem@1",
-        "uk.full.national_targets@1",
-        "uk.full.national_problem@1",
-    )
 }
 #: Packages that export names lazily, through a module ``__getattr__``, each
 #: with the table, of name to the submodule defining it, that ``__getattr__``
@@ -3033,7 +3014,8 @@ def _kernel_rule_walks() -> MappingProxyType:
     battery's kernel has one per phase it runs, labelled ``"<ref> <phase>"``
     (``_battery_phase_walk``), against its hash with the phase's own code. A
     class with several kernels (the spine's stage kernels) is walked once.
-    The held kernels (``_HELD_KERNELS``) are left out."""
+    Every UK graph kernel is walked, the target and problem kernels among
+    them (microcosm#931 ruling 6)."""
 
     kernels = _uk_graph_kernels()
     batteries = _gate_batteries()
@@ -3043,10 +3025,6 @@ def _kernel_rule_walks() -> MappingProxyType:
     rule = {}
     for kernel_class, members in by_class.items():
         refs = {ref for ref, _ in members}
-        held = {ref in _HELD_KERNELS for ref in refs}
-        assert len(held) == 1, kernel_class
-        if held == {True}:
-            continue
         if refs & set(_GATE_BATTERY_KERNELS):
             assert refs <= set(_GATE_BATTERY_KERNELS), kernel_class
             for ref, kernel in members:
@@ -3083,7 +3061,8 @@ def _kernel_rule_walks() -> MappingProxyType:
 def test_the_kernel_rule_sees_every_kernel_the_uk_runtime_defines() -> None:
     """The kernels the rule enumerates are every kernel class the UK runtime
     and the shared atomic geography define, so a new one cannot escape it,
-    and the held kernels are among them (microcosm#931)."""
+    and the gate batteries' and whole-registry kernels are among them, each
+    listed once (microcosm#931)."""
     import ast
     import importlib
 
@@ -3114,11 +3093,7 @@ def test_the_kernel_rule_sees_every_kernel_the_uk_runtime_defines() -> None:
                 defined.add(getattr(importlib.import_module(module), node.name))
     kernels = _uk_graph_kernels()
     assert {type(kernel) for kernel in kernels.values()} == defined
-    listed = (
-        set(_HELD_KERNELS),
-        set(_GATE_BATTERY_KERNELS),
-        set(_WHOLE_REGISTRY_KERNELS),
-    )
+    listed = (set(_GATE_BATTERY_KERNELS), set(_WHOLE_REGISTRY_KERNELS))
     for table in listed:
         assert table <= set(kernels)
     assert sum(map(len, listed)) == len(set().union(*listed))
@@ -3140,14 +3115,25 @@ def test_every_uk_graph_kernel_hashes_each_helper_it_computes_through() -> None:
     gate battery is held to it one phase at a time, each phase's key being
     the battery's hash with the phase's own code (``_battery_phase_walk``),
     and the national gates past the gate registry's stop
-    (``_WHOLE_REGISTRY_KERNELS``; microcosm#931 ruling 6). The held kernels
-    (``_HELD_KERNELS``) are not held to it. A name microcosm.graph exports
-    lazily, through its module ``__getattr__``, is followed to the runtime
-    module that defines it like any other (``_LAZY_EXPORT_TABLES``): the
-    kernels' capability and context records are listed core names, and the
-    create kernel's ``load_source``, which it calls only where no root
-    transform is bound, is a listed stop."""
-    from microcosm.build.uk_runtime import graph_population, rowwise_geography
+    (``_WHOLE_REGISTRY_KERNELS``; microcosm#931 ruling 6). The target and
+    problem kernels are held to it as every other kernel is: it replaces
+    microcosm#1497's per-kernel import record for them (microcosm#931 ruling
+    6), and test_uk_target_compile_modules keeps only what it does not cover.
+    A name microcosm.graph exports lazily, through its module ``__getattr__``,
+    is followed to the runtime module that defines it like any other
+    (``_LAZY_EXPORT_TABLES``): the kernels' capability and context records are
+    listed core names, and the create kernel's ``load_source``, which it calls
+    only where no root transform is bound, is a listed stop."""
+    import ast
+    import inspect
+
+    from microcosm.build.uk_runtime import (
+        graph_build,
+        graph_national,
+        graph_population,
+        graph_targets,
+        rowwise_geography,
+    )
 
     kernels = _uk_graph_kernels()
     unhashed: dict[str, list[str]] = {}
@@ -3165,6 +3151,48 @@ def test_every_uk_graph_kernel_hashes_each_helper_it_computes_through() -> None:
         unlisted ^ set(_KERNEL_UNBOUND_NAMES)
     )
     assert met == set(_KERNEL_STOPS), sorted(met ^ set(_KERNEL_STOPS))
+    # The clone index columns' reason for the measures. The dense measures'
+    # population is the expand's: append_uk_target_nodes defaults it, and the
+    # full build leaves the default. The national problem resolves its
+    # measures in one block, and the engine blocks return a one-block frame
+    # before they read the columns' name.
+    population = inspect.signature(graph_targets.append_uk_target_nodes).parameters
+    assert population["population"].default == "uk.full.expand"
+
+    def calls(module, name: str) -> list:
+        tree = ast.parse(Path(module.__file__).read_text(encoding="utf-8"))
+        return [
+            sub
+            for sub in ast.walk(tree)
+            if isinstance(sub, ast.Call)
+            and getattr(sub.func, "id", getattr(sub.func, "attr", None)) == name
+        ]
+
+    appending = calls(graph_build, "append_uk_target_nodes")
+    assert appending and all(
+        "population" not in {keyword.arg for keyword in call.keywords}
+        for call in appending
+    )
+    resolving = calls(graph_national, "resolve_uk_full_measures")
+    assert resolving and all(
+        [ast.unparse(item.value) for item in call.keywords if item.arg == "blocks"]
+        == ["1"]
+        for call in resolving
+    )
+    blocks = _module_definitions(
+        "microcosm.build.uk_runtime.full_measure", _HELPER_SCOPE
+    ).definitions["_engine_block_frames"]
+    statements = [ast.unparse(statement) for statement in blocks.body]
+    (one,) = [
+        index
+        for index, statement in enumerate(blocks.body)
+        if isinstance(statement, ast.If)
+        and ast.unparse(statement.test) == "blocks == 1"
+        and isinstance(statement.body[0], ast.Return)
+    ]
+    assert all(
+        "ladder_clone_index_column" not in statement for statement in statements[:one]
+    )
     # The dense population kernels that share _PopulationKernel's hash
     # (sample, normalize, expand, locations, geography mapping, pool and
     # gate) mint their clones through rowwise_geography's helpers.
@@ -3557,27 +3585,12 @@ def test_the_kernel_rule_stops_only_where_its_reasons_hold() -> None:
     }
 
 
-def test_every_hold_still_guards_a_module_its_kernel_leaves_out() -> None:
-    """A hold lasts only while it is needed (microcosm#931 review): each held
-    kernel's walk still meets a module its hash leaves out, so a hold that
-    guards nothing fails here and leaves its table. Until the ruling, such a
-    kernel can replay a stale output after an edit to one of those
-    modules."""
-    kernels = _uk_graph_kernels()
-    unneeded = []
-    for ref in _HELD_KERNELS:
-        kernel = kernels[ref]
-        if not set(_kernel_walk(type(kernel)).reach) - _hashed_modules(kernel):
-            unneeded.append(ref)
-    assert not unneeded, unneeded
-
-
 def test_the_core_definitions_the_kernels_name_are_listed() -> None:
     """The kernel version of the stage rule's core check (microcosm#931
     review): the definitions of the core modules other than the Frame's that
-    the UK graph kernels' own code names, outside the held kernels, are
-    exactly ``_KERNEL_CORE_NAMES``, and the executor stores every node's
-    owned cells through the dtype tokens' map, as that entry's reason says."""
+    the UK graph kernels' own code names are exactly ``_KERNEL_CORE_NAMES``,
+    and the executor stores every node's owned cells through the dtype
+    tokens' map, as that entry's reason says."""
     named = {
         item
         for walks in _kernel_rule_walks().values()
