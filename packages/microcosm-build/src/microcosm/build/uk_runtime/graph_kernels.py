@@ -144,6 +144,7 @@ _STAGE_MODULES = {
     "student_loans": "student_loans",
     "private_school_attendance": "private_school_attendance",
     "isa_subscriptions": "isa_subscriptions",
+    "pip_points": "pip_points",
     "trading_allowance_receipts": "trading_allowance_receipts",
     "company_cars": "company_cars",
     "childcare_copy_take_up": "childcare_copy_take_up",
@@ -247,6 +248,9 @@ _STAGE_HELPER_MODULES = {
         hmrc_isa_statistics,
         receipt_counts,
     ),
+    # The points draws are keyed on identity, read the vendored DWP tables and
+    # round their receipt's support (microcosm#1095, P1).
+    "pip_points": (receipt_counts, stochastic_assignment, ledger_fact_vendoring),
     # The claimant draw is keyed on identity and its receipt rounds its
     # support (microcosm#1428).
     "trading_allowance_receipts": (receipt_counts, stochastic_assignment),
@@ -625,6 +629,7 @@ def _fixture_implementations(source: Path) -> Mapping[str, object]:
     from .legacy_closure_take_up import UKLegacyClosureTakeUpStageTransform
     from .nts_bus_travel import UKNTSBusTravelStageTransform
     from .pension_credit_take_up import UKPensionCreditTakeUpStageTransform
+    from .pip_points import UKPIPPointsStageTransform
     from .private_school_attendance import UKPrivateSchoolAttendanceStageTransform
     from .property_components import UKPropertyComponentsStageTransform
     from .property_purchases import (
@@ -927,6 +932,7 @@ def _fixture_implementations(source: Path) -> Mapping[str, object]:
                 donor_household=was,
                 donor_person=was_person,
             ),
+            "pip_points": UKPIPPointsStageTransform(stage=stages["pip_points"]),
             "trading_allowance_receipts": UKTradingAllowanceReceiptsStageTransform(
                 stage=stages["trading_allowance_receipts"]
             ),

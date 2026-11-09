@@ -1650,6 +1650,34 @@
       ]
     },
     {
+      "resource": "dwp_pip_points_facts.json",
+      "purpose": "DWP's Pathways to Work evidence pack, chapter 2 (the data tables' file of 23 July 2025), Tables 2.9 and 2.10: the PIP caseload's daily living points by band and mobility points by total, by age group, in England and Wales at the end of January 2025, normal rules, as shares of each group's claimants with the group's volume (microcosm#1095, P1 of the November event-data plan). Consumed by the pip_points stage, which draws each recipient's points within their stored award from their age group's distribution. No value is derived here.",
+      "consumers": [
+        "uk_runtime.pip_points"
+      ],
+      "planned_consumers": [],
+      "selections": [
+        {
+          "label": "pip_daily_living_points_by_age_england_and_wales_2025_01",
+          "selector": {
+            "source_name": "dwp",
+            "record_set_id": "dwp.pathways_pip_points.jan2025.t2_9.daily_living",
+            "geography_id": "K04000001"
+          },
+          "expected_row_count": 91
+        },
+        {
+          "label": "pip_mobility_points_by_age_england_and_wales_2025_01",
+          "selector": {
+            "source_name": "dwp",
+            "record_set_id": "dwp.pathways_pip_points.jan2025.t2_10.mobility",
+            "geography_id": "K04000001"
+          },
+          "expected_row_count": 84
+        }
+      ]
+    },
+    {
       "resource": "obr_hvcts_costing_facts.json",
       "purpose": "OBR costing of the high value council tax surcharge (2 April 2026): Table 1.1 and 1.2 properties in scope by band for 2028-29 to 2030-31 (static and post-behaviour) and the paragraph 1.13 non-owner-occupied share. Consumed by the uk_high_value_homes_benchmarks diagnostic gate and the high-value home stock builder's owner-occupied control (microcosm#1240).",
       "consumers": [

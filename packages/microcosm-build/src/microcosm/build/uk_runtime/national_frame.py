@@ -740,6 +740,13 @@ UK_RELEASE_EXPORT_DROPPED_COLUMNS: Mapping[str, tuple[str, ...]] = {
         "frs_company_car_fuel_code",
         "frs_company_car_private_fuel",
         "frs_company_car_contribution",
+        # The PIP categories (microcosm#1095, P1): policyengine-uk derives them
+        # from pip_dl_points and pip_m_points, which the pip_points stage draws
+        # within the stored awards; a persisted category would override the
+        # points in every projected year. The spine keeps both, for the VED
+        # exemption and the severe disability flag.
+        "pip_dl_category",
+        "pip_m_category",
         # policyengine-uk's sum of the ISA interest parts (microcosm#1360). The
         # producer stores individual_savings_account_interest_income instead,
         # so no stage writes it; a persisted copy would override the sum and

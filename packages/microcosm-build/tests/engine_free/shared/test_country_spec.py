@@ -1083,6 +1083,8 @@ class TestUKCountryPackage:
             "dwp_uc_award_band_facts.json",
             # microcosm#1095 Y4: uc_take_up's age fit.
             "dwp_uc_people_by_age_facts.json",
+            # microcosm#1095 P1: pip_points' Pathways to Work tables.
+            "dwp_pip_points_facts.json",
             "obr_hvcts_costing_facts.json",
             "hmrc_itl_taxpayer_counts.json",
             "hmrc_uprating_engine_pins.json",
@@ -1203,8 +1205,9 @@ class TestUKCountryPackage:
         # frs_annual_income_spells after frs_hmrc_spine_leaves; microcosm#1428
         # trading_allowance_receipts last; company_cars right after
         # hmrc_spi_income_spine (PolicyEngine/uk-autumn-budget-dashboard-2026#316);
-        # microcosm#1490 spi_employment_shell after it and aps_occupation next.
-        assert len(spec.sources.stages) == 54
+        # microcosm#1490 spi_employment_shell after it and aps_occupation next;
+        # microcosm#1095 (P1) pip_points just before trading_allowance_receipts.
+        assert len(spec.sources.stages) == 55
         assert not {"frs_hmrc_retained_leaves", "hmrc_spi_income"}.intersection(
             stage.stage for stage in spec.sources.stages
         )
@@ -1257,6 +1260,8 @@ class TestExistingPackagesGeneralize:
             "dwp_uc_award_band_facts.json",
             # microcosm#1095 Y4: uc_take_up's age fit.
             "dwp_uc_people_by_age_facts.json",
+            # microcosm#1095 P1: pip_points' Pathways to Work tables.
+            "dwp_pip_points_facts.json",
             "obr_hvcts_costing_facts.json",
             "hmrc_itl_taxpayer_counts.json",
             "hmrc_uprating_engine_pins.json",

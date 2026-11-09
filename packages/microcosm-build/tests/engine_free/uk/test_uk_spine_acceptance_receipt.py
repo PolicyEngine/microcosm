@@ -188,6 +188,10 @@ def _apply_pending_roster_transformations(
     # the major group the employment shell settles.
     assert "aps_occupation" not in roster
     roster.insert(roster.index("spi_employment_shell") + 1, "aps_occupation")
+    # microcosm#1095 (P1) re-mint pending: the PIP points run just before
+    # the self-employed's gross receipts.
+    assert "pip_points" not in roster
+    roster.append("pip_points")
     # microcosm#1428 re-mint pending: the self-employed's gross receipts run
     # last.
     assert "trading_allowance_receipts" not in roster

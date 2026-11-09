@@ -6884,6 +6884,146 @@
      "additionalProperties": false,
      "required": [
       "kind",
+      "outputs",
+      "categories",
+      "age",
+      "draws",
+      "seed",
+      "not_assessed",
+      "thresholds",
+      "age_groups",
+      "daily_living_bands",
+      "mobility_totals",
+      "open_band_points",
+      "scope",
+      "age_rule",
+      "fallback",
+      "rule"
+     ],
+     "properties": {
+      "kind": {
+       "const": "assign_pip_points_by_award"
+      },
+      "outputs": {
+       "type": "object",
+       "additionalProperties": false,
+       "required": [
+        "daily_living",
+        "mobility"
+       ],
+       "properties": {
+        "daily_living": {
+         "type": "string"
+        },
+        "mobility": {
+         "type": "string"
+        }
+       }
+      },
+      "categories": {
+       "type": "object",
+       "additionalProperties": false,
+       "required": [
+        "daily_living",
+        "mobility"
+       ],
+       "properties": {
+        "daily_living": {
+         "type": "string"
+        },
+        "mobility": {
+         "type": "string"
+        }
+       }
+      },
+      "age": {
+       "type": "string"
+      },
+      "draws": {
+       "type": "object",
+       "additionalProperties": false,
+       "required": [
+        "daily_living",
+        "mobility"
+       ],
+       "properties": {
+        "daily_living": {
+         "type": "string"
+        },
+        "mobility": {
+         "type": "string"
+        }
+       }
+      },
+      "seed": {
+       "type": "integer"
+      },
+      "not_assessed": {
+       "type": "integer"
+      },
+      "thresholds": {
+       "type": "object",
+       "additionalProperties": false,
+       "required": [
+        "standard",
+        "enhanced"
+       ],
+       "properties": {
+        "standard": {
+         "type": "integer",
+         "minimum": 1
+        },
+        "enhanced": {
+         "type": "integer",
+         "minimum": 1
+        }
+       }
+      },
+      "age_groups": {
+       "type": "array",
+       "minItems": 1,
+       "items": {
+        "type": "string"
+       }
+      },
+      "daily_living_bands": {
+       "type": "array",
+       "minItems": 1,
+       "items": {
+        "type": "string"
+       }
+      },
+      "mobility_totals": {
+       "type": "array",
+       "minItems": 1,
+       "items": {
+        "type": "integer",
+        "minimum": 0
+       }
+      },
+      "open_band_points": {
+       "type": "integer",
+       "minimum": 0
+      },
+      "scope": {
+       "type": "string"
+      },
+      "age_rule": {
+       "type": "string"
+      },
+      "fallback": {
+       "type": "string"
+      },
+      "rule": {
+       "type": "string"
+      }
+     }
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "required": [
+      "kind",
       "output",
       "draw",
       "seed",

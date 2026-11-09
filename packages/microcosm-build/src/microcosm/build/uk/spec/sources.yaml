@@ -6793,6 +6793,90 @@ stages:
   - stocks_and_shares_isa_subscriptions
   - lifetime_isa_payments
   notes: 'Imputes ISA subscriptions per adult by type, and the per-person ISA balances, on the final spine (microcosm#1415). Each household''s was_wealth cash and stocks-and-shares ISA totals are split across its adults by the holding pattern of a WAS round-8 donor household with the same number of adults, so person balances sum exactly to the household totals, which are unchanged. Subscribers in 2023-24 are adults aged 18 or over in households holding the type, raked by class (cash only, stocks and shares only, both) to Table 9.7''s income bands, Table 9.8''s age and sex and Table 9.9''s regions and selected by keyed walks, the both class first. Amounts follow Table 9.7''s subscription bands within each income band and class, uniform inside a band and exactly GBP 20,000 at the top; the both class splits each person''s amount by their balance shares, shifted so the class''s stocks-and-shares total is Table 9.4''s 2023-24 stocks-and-shares amount less the stocks-and-shares-only payments. People grow to 2024-25 by Table 9.4''s account growth (an upper bound on people, as from 6 April 2024 a person may pay into several ISAs of one type), and amounts scale to Table 9.4''s 2024-25 amounts per type, holding subscribers already at the GBP 20,000 overall limit and moving combined amounts between GBP 18,000 (Table 9.7''s last band floor below the limit) and the limit on a line up to it, so a factor below one leaves no empty range under the limit (María''s rulings of 29 October 2026): Table 9.7''s cash bands sit above Table 9.4, and growing that excess by Table 9.4''s ratio against the limit pushed the subscribers below it far up. Every Lifetime ISA holder aged 18 to 47 (the ages that can hold one in 2024-25) with room under the overall limit pays in, amounts in (0, GBP 4,000] drawn to Table 9.4''s 2024-25 Lifetime ISA amount. No ISA fact is a calibration target: binding the cells the stage draws to would be circular, so the reviewed fence keeps them measured only.'
+- stage: pip_points
+  survey: DWP's Pathways to Work evidence pack, chapter 2, Tables 2.9 and 2.10 (PIP points by age group, England and Wales, end of January 2025), on the spine's stored PIP awards
+  source: pip_dl_category and pip_m_category (frs_disability, and hmrc_spi_income_spine for the SPI rows) and the stored age; dwp_pip_points_facts.json, vendored from the pinned feed
+  grain: person
+  artifacts:
+  - role: pip_points_facts
+    kind: public_aggregate_reference
+    resource: dwp_pip_points_facts.json
+    format: json
+    runtime_sha256_required: true
+  operations:
+  - kind: verify_vendored_fact_resource
+    artifact_role: pip_points_facts
+    resource: dwp_pip_points_facts.json
+    feed_pin: chronicle_feed.json
+    record_sets:
+    - dwp.pathways_pip_points.jan2025.t2_9.daily_living
+    - dwp.pathways_pip_points.jan2025.t2_10.mobility
+    source_vintage: PIP caseload at end January 2025
+    require_before_source_read: true
+    runtime_sha256_required: true
+    fail_on_mismatch: true
+  - kind: assign_pip_points_by_award
+    outputs:
+      daily_living: pip_dl_points
+      mobility: pip_m_points
+    categories:
+      daily_living: pip_dl_category
+      mobility: pip_m_category
+    age: age
+    draws:
+      daily_living: pip_dl_points
+      mobility: pip_m_points
+    seed: 0
+    not_assessed: -1
+    thresholds:
+      standard: 8
+      enhanced: 12
+    age_groups:
+    - 16_to_19
+    - 20_to_29
+    - 30_to_39
+    - 40_to_49
+    - 50_to_59
+    - 60_and_over
+    daily_living_bands:
+    - 0_to_3
+    - 4_to_7
+    - 8_to_9
+    - 10_to_11
+    - 12_to_13
+    - 14_to_15
+    - 16_to_20
+    - 21_to_25
+    - 26_to_30
+    - 31_to_35
+    - 36_to_40
+    - 41_and_over
+    mobility_totals:
+    - 0
+    - 4
+    - 8
+    - 10
+    - 12
+    - 14
+    - 16
+    - 18
+    - 20
+    - 22
+    - 24
+    open_band_points: 41
+    scope: every person with pip_dl_category or pip_m_category other than NONE; Scotland's and Northern Ireland's recipients, outside DWP's tables (England and Wales), use England and Wales's distributions
+    age_rule: the stored age; below 20 the 16_to_19 group (anyone below 16 too), from 60 the 60_and_over group, which carries pension-age claimants
+    fallback: an age group with no share in the range a stored award allows takes the all-ages row, and failing that the range's lowest points
+    rule: 'each component''s total, drawn within the stored award (NONE below 8 points for a recipient of the other component, STANDARD 8 to 11, ENHANCED 12 up) from the person''s age group''s distribution: a daily living band''s share spread evenly over its integer points, the open band at 41, the mobility totals as published; the restricted distribution is inverted by the person''s uniform on person_id; a person with neither component keeps -1, not assessed'
+  - kind: record_mass_conservation_receipt
+    entity: household
+    reason: 'PIP points stored on the source spine: household weights pass through unchanged and total household mass is conserved.'
+    declared_factor: 1.0
+    gate_coupling: The terminal family gate requires a valid mass-conserving MassChangeRecord carrying exactly this stage-specific reason.
+  outputs:
+  - pip_dl_points
+  - pip_m_points
+  notes: 'PIP assessment points for every recipient (P1 of the November event-data plan, microcosm#1095; the choices below are for María''s signature). policyengine-uk 2.174.1 decides a PIP component''s rate from pip_dl_points and pip_m_points (8 points for the standard rate, 12 for the enhanced) wherever no category is supplied for the year, and the release used to store pip_dl_category and pip_m_category, which the engine copies into every projected year, so no reform to the thresholds moved anyone. This stage draws each recipient''s points within their stored award from DWP''s Pathways to Work evidence pack, chapter 2, Tables 2.9 and 2.10 (the PIP caseload''s daily living points by band and mobility points by total, by age group, in England and Wales at the end of January 2025, normal rules; vendored as dwp_pip_points_facts.json), and the release export drops the two categories (UK_RELEASE_EXPORT_DROPPED_COLUMNS), so the engine derives them from the points. The spine keeps the categories, which nts_car_attributes (the VED exemption) and frs_disability (the severe disability flag) read. With unchanged thresholds the engine''s category from the points equals the stored one for every person: the stage asserts it, and an engine test holds it from 2024 to 2030. Choices for María''s signature: within a band the points spread evenly over its integers, and the open band sits at 41; Scotland''s and Northern Ireland''s recipients use England and Wales''s tables; pension-age recipients take the 60-and-over row, which carries them; the draws are seeded on person_id. Table 2.9''s rows as ported add to between 92 (16 to 19) and 102 (60 and over) percent; the draw uses each row''s shares only relative to one another within an award''s range, and the receipt records every row''s total.'
 - stage: trading_allowance_receipts
   survey: The self-employed's own profit on the final spine, and HMRC's policy paper on the Budget 2026 trading allowance raise (calibration)
   source: self_employment_income after the SPI income stage, and household_is_spi_synthetic for the full-relief group; HMRC's published gainers of the raise to GBP 3,000, about 400,000 taxpayers with a lower bill by about GBP 380 on average

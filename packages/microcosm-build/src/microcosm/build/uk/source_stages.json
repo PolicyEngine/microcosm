@@ -8456,6 +8456,111 @@
    "survey": "HMRC Annual savings statistics (September 2026 release); Wealth and Assets Survey round 8"
   },
   {
+   "stage": "pip_points",
+   "survey": "DWP's Pathways to Work evidence pack, chapter 2, Tables 2.9 and 2.10 (PIP points by age group, England and Wales, end of January 2025), on the spine's stored PIP awards",
+   "source": "pip_dl_category and pip_m_category (frs_disability, and hmrc_spi_income_spine for the SPI rows) and the stored age; dwp_pip_points_facts.json, vendored from the pinned feed",
+   "grain": "person",
+   "artifacts": [
+    {
+     "role": "pip_points_facts",
+     "kind": "public_aggregate_reference",
+     "resource": "dwp_pip_points_facts.json",
+     "format": "json",
+     "runtime_sha256_required": true
+    }
+   ],
+   "operations": [
+    {
+     "kind": "verify_vendored_fact_resource",
+     "artifact_role": "pip_points_facts",
+     "resource": "dwp_pip_points_facts.json",
+     "feed_pin": "chronicle_feed.json",
+     "record_sets": [
+      "dwp.pathways_pip_points.jan2025.t2_9.daily_living",
+      "dwp.pathways_pip_points.jan2025.t2_10.mobility"
+     ],
+     "source_vintage": "PIP caseload at end January 2025",
+     "require_before_source_read": true,
+     "runtime_sha256_required": true,
+     "fail_on_mismatch": true
+    },
+    {
+     "kind": "assign_pip_points_by_award",
+     "outputs": {
+      "daily_living": "pip_dl_points",
+      "mobility": "pip_m_points"
+     },
+     "categories": {
+      "daily_living": "pip_dl_category",
+      "mobility": "pip_m_category"
+     },
+     "age": "age",
+     "draws": {
+      "daily_living": "pip_dl_points",
+      "mobility": "pip_m_points"
+     },
+     "seed": 0,
+     "not_assessed": -1,
+     "thresholds": {
+      "standard": 8,
+      "enhanced": 12
+     },
+     "age_groups": [
+      "16_to_19",
+      "20_to_29",
+      "30_to_39",
+      "40_to_49",
+      "50_to_59",
+      "60_and_over"
+     ],
+     "daily_living_bands": [
+      "0_to_3",
+      "4_to_7",
+      "8_to_9",
+      "10_to_11",
+      "12_to_13",
+      "14_to_15",
+      "16_to_20",
+      "21_to_25",
+      "26_to_30",
+      "31_to_35",
+      "36_to_40",
+      "41_and_over"
+     ],
+     "mobility_totals": [
+      0,
+      4,
+      8,
+      10,
+      12,
+      14,
+      16,
+      18,
+      20,
+      22,
+      24
+     ],
+     "open_band_points": 41,
+     "scope": "every person with pip_dl_category or pip_m_category other than NONE; Scotland's and Northern Ireland's recipients, outside DWP's tables (England and Wales), use England and Wales's distributions",
+     "age_rule": "the stored age; below 20 the 16_to_19 group (anyone below 16 too), from 60 the 60_and_over group, which carries pension-age claimants",
+     "fallback": "an age group with no share in the range a stored award allows takes the all-ages row, and failing that the range's lowest points",
+     "rule": "each component's total, drawn within the stored award (NONE below 8 points for a recipient of the other component, STANDARD 8 to 11, ENHANCED 12 up) from the person's age group's distribution: a daily living band's share spread evenly over its integer points, the open band at 41, the mobility totals as published; the restricted distribution is inverted by the person's uniform on person_id; a person with neither component keeps -1, not assessed"
+    },
+    {
+     "kind": "record_mass_conservation_receipt",
+     "entity": "household",
+     "reason": "PIP points stored on the source spine: household weights pass through unchanged and total household mass is conserved.",
+     "declared_factor": 1.0,
+     "gate_coupling": "The terminal family gate requires a valid mass-conserving MassChangeRecord carrying exactly this stage-specific reason."
+    }
+   ],
+   "outputs": [
+    "pip_dl_points",
+    "pip_m_points"
+   ],
+   "notes": "PIP assessment points for every recipient (P1 of the November event-data plan, microcosm#1095; the choices below are for María's signature). policyengine-uk 2.174.1 decides a PIP component's rate from pip_dl_points and pip_m_points (8 points for the standard rate, 12 for the enhanced) wherever no category is supplied for the year, and the release used to store pip_dl_category and pip_m_category, which the engine copies into every projected year, so no reform to the thresholds moved anyone. This stage draws each recipient's points within their stored award from DWP's Pathways to Work evidence pack, chapter 2, Tables 2.9 and 2.10 (the PIP caseload's daily living points by band and mobility points by total, by age group, in England and Wales at the end of January 2025, normal rules; vendored as dwp_pip_points_facts.json), and the release export drops the two categories (UK_RELEASE_EXPORT_DROPPED_COLUMNS), so the engine derives them from the points. The spine keeps the categories, which nts_car_attributes (the VED exemption) and frs_disability (the severe disability flag) read. With unchanged thresholds the engine's category from the points equals the stored one for every person: the stage asserts it, and an engine test holds it from 2024 to 2030. Choices for María's signature: within a band the points spread evenly over its integers, and the open band sits at 41; Scotland's and Northern Ireland's recipients use England and Wales's tables; pension-age recipients take the 60-and-over row, which carries them; the draws are seeded on person_id. Table 2.9's rows as ported add to between 92 (16 to 19) and 102 (60 and over) percent; the draw uses each row's shares only relative to one another within an award's range, and the receipt records every row's total."
+  },
+  {
    "grain": "person",
    "notes": "The last spine stage (microcosm#1428, microcosm#1439). policyengine-uk applies the trading allowance against gross receipts, which neither the FRS nor the SPI tape records, so the stage stores each trader's trading_allowance_claim_status (policyengine-uk 2.172.0, policyengine-uk#2765) and leaves self_employment_gross_receipts at the engine's zero. Each trader with a positive profit is CLAIMANT at their profit band's rate, drawn on their own person_id: their profit is receipts less the 2024-25 allowance of GBP 1,000, so a raise to GBP 3,000 relieves min(profit, GBP 2,000) more, with no drift as profits are uprated. Every other trader with a positive profit is NON_CLAIMANT, relieved at no allowance (the costing books switchers as behaviour), and is treated as filing, as SPI Table 3.10's counts, which bind the frame's traders, are of declarers. A person with no positive profit is UNKNOWN, which the engine reads whatever is stored. Of the FRS respondents (household_is_spi_synthetic false) with a profit of GBP 1,000 or less who are not drawn claimants, a share drawn on person_id forms the full-relief group: UNKNOWN, relieved in full without an election (ITTOIA 2005 s. 783AE), as the engine's documentation asks of a person whose receipts lie within the allowance, and marked by trading_allowance_full_relief, which the release keeps, so that the bound SPI rows of self-employment, which count declarers, leave it out. The share is María's ruling: the read of 6 November 2026 (M10) found the frame's small traders below SPI's declarers even before any full relief, so it is zero and the group is empty. SPI rows and their copies are never in it, since SPI counts the people HMRC holds a self-employment source for and receipts within the allowance need not be declared. The claimant rates are #1428's, calibrated on the receipts encoding to HMRC's policy paper (about 400,000 gainers by about GBP 380 at 2028-29 prices); tools/measure_uk_trading_allowance_gainers.py re-fits them to the statuses on a release before each arm (María's answer of 2026-11-06), until HMRC publishes claimant counts.",
    "operations": [

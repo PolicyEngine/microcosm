@@ -169,6 +169,7 @@ from microcosm.build.uk_runtime.orrery_contract import (
 from microcosm.build.uk_runtime.pension_credit_take_up import (
     UKPensionCreditTakeUpStageTransform,
 )
+from microcosm.build.uk_runtime.pip_points import UKPIPPointsStageTransform
 from microcosm.build.uk_runtime.private_school_attendance import (
     UKPrivateSchoolAttendanceStageTransform,
 )
@@ -1978,6 +1979,10 @@ def prepare_uk_spine_execution(
         implementations["childcare_copy_take_up"] = UKChildcareCopyTakeUpStageTransform(
             contract=stochastic_contract,
             stage=stages_by_name["childcare_copy_take_up"],
+        )
+    if "pip_points" in stage_names:
+        implementations["pip_points"] = UKPIPPointsStageTransform(
+            stage=stages_by_name["pip_points"]
         )
     if "trading_allowance_receipts" in stage_names:
         implementations["trading_allowance_receipts"] = (

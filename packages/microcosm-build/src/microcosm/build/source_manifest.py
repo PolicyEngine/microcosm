@@ -56,6 +56,8 @@ ALLOWED_SOURCE_OPERATION_KINDS = frozenset(
         "assign_family_claims_by_child_age",
         "assign_opt_out_by_charge_income",
         "assign_period_constant",
+        # microcosm#1095 (P1): PIP points within the stored award, by age.
+        "assign_pip_points_by_award",
         "assign_student_loan_plan_cohorts",
         "assign_main_asset_type",
         "assign_trips_from_band_means",

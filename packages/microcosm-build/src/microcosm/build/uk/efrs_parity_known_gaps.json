@@ -643,6 +643,18 @@
    "tracking_note": "microcosm#1360: under the additive ISA income contract the producer stores ISA interest in individual_savings_account_interest_income, which policyengine-uk adds into tax_free_savings_income; savings_interest_income, now interest outside ISAs, stays required.",
    "approved_by": "juaristi22",
    "approved_on": "2026-10-28"
+  },
+  "pip_dl_category": {
+   "reason": "formula-owned in policyengine-uk and derived from persisted components; a persisted copy overrides the formula and is not uprated",
+   "tracking_note": "microcosm#1095 (P1 of the November event-data plan): policyengine-uk 2.174.1 derives pip_dl_category from pip_dl_points (8 points for the standard rate, 12 for the enhanced) where no category is supplied for the year; the pip_points stage stores the points within the stored award, and the release and calibration boundaries drop the category, which the spine keeps (for María's signature).",
+   "approved_by": "juaristi22",
+   "approved_on": "2026-11-09"
+  },
+  "pip_m_category": {
+   "reason": "formula-owned in policyengine-uk and derived from persisted components; a persisted copy overrides the formula and is not uprated",
+   "tracking_note": "microcosm#1095 (P1 of the November event-data plan): policyengine-uk 2.174.1 derives pip_m_category from pip_m_points (8 points for the standard rate, 12 for the enhanced) where no category is supplied for the year; the pip_points stage stores the points within the stored award, and the release and calibration boundaries drop the category, which the spine keeps (for María's signature).",
+   "approved_by": "juaristi22",
+   "approved_on": "2026-11-09"
   }
  },
  "exclusion_policy": {

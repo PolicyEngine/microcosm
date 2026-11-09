@@ -701,6 +701,16 @@ _STAGE_CONSUMES: Mapping[str, frozenset[tuple[str, str]] | None] = {
             ("household", "stocks_and_shares_isa"),
         }
     ),
+    # The points are drawn within each person's stored PIP awards, by their
+    # age group, and the receipt counts support by source household
+    # (microcosm#1095, P1).
+    "pip_points": frozenset(
+        {
+            ("person", "pip_dl_category"),
+            ("person", "pip_m_category"),
+            ("household", "household_source_id"),
+        }
+    ),
     # The claim statuses are drawn on each person's final self-employment
     # profit, the full-relief group leaves the SPI rows out, and the receipt
     # counts support by source household (microcosm#1428, microcosm#1439).
@@ -1357,6 +1367,10 @@ _STAGE_CELLS: Mapping[str, tuple[_Cell, ...]] = {
             "stocks_and_shares_isa_subscriptions",
             "lifetime_isa_payments",
         ),
+    ),
+    "pip_points": (
+        _Cell("person", "pip_dl_points", "int64"),
+        _Cell("person", "pip_m_points", "int64"),
     ),
     "trading_allowance_receipts": (
         _Cell("person", "trading_allowance_claim_status", "string"),

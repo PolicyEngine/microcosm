@@ -139,6 +139,7 @@ from microcosm.build.uk_runtime.occupation_constants import (
 from microcosm.build.uk_runtime.pension_credit_take_up import (
     UKPensionCreditTakeUpStageTransform,
 )
+from microcosm.build.uk_runtime.pip_points import UKPIPPointsStageTransform
 from microcosm.build.uk_runtime.private_school_attendance import (
     UKPrivateSchoolAttendanceStageTransform,
 )
@@ -219,7 +220,7 @@ _SPI_SAMPLE_FRACTION = _ROOT_HOUSEHOLDS / 10_000
 _SPI_DONOR_SAMPLE_SIZE = 64
 #: The packaged FRS spine roster the fixture exercises (manifest minus the
 #: certified-pair exclusions); moves whenever a spine stage is added.
-UK_FIXTURE_STAGE_COUNT = 54
+UK_FIXTURE_STAGE_COUNT = 55
 _QRF_ESTIMATORS = 4
 
 # These are the complete object-string surface observed in the unchanged
@@ -2335,6 +2336,7 @@ def _build_implementations(
             donor_household=was,
             donor_person=was_person,
         ),
+        "pip_points": UKPIPPointsStageTransform(stage=stages["pip_points"]),
         "trading_allowance_receipts": UKTradingAllowanceReceiptsStageTransform(
             stage=stages["trading_allowance_receipts"]
         ),

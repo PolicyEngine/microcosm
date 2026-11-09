@@ -100,6 +100,34 @@ ENGINE_DERIVED_EXCLUSIONS: dict[str, dict[str, str]] = {
         "approved_by": "juaristi22",
         "approved_on": "2026-10-28",
     },
+    "pip_dl_category": {
+        "reason": ENGINE_DERIVED_EXCLUSION_REASON,
+        "tracking_note": (
+            "microcosm#1095 (P1 of the November event-data plan): "
+            "policyengine-uk 2.174.1 derives pip_dl_category from "
+            "pip_dl_points (8 points for the standard rate, 12 for the "
+            "enhanced) where no category is supplied for the year; the "
+            "pip_points stage stores the points within the stored award, and "
+            "the release and calibration boundaries drop the category, which "
+            "the spine keeps (for María's signature)."
+        ),
+        "approved_by": "juaristi22",
+        "approved_on": "2026-11-09",
+    },
+    "pip_m_category": {
+        "reason": ENGINE_DERIVED_EXCLUSION_REASON,
+        "tracking_note": (
+            "microcosm#1095 (P1 of the November event-data plan): "
+            "policyengine-uk 2.174.1 derives pip_m_category from pip_m_points "
+            "(8 points for the standard rate, 12 for the enhanced) where no "
+            "category is supplied for the year; the pip_points stage stores "
+            "the points within the stored award, and the release and "
+            "calibration boundaries drop the category, which the spine keeps "
+            "(for María's signature)."
+        ),
+        "approved_by": "juaristi22",
+        "approved_on": "2026-11-09",
+    },
 }
 ENTITY_TABLES = ("person", "benunit", "household")
 READ_BATCH_SIZE = 12
@@ -119,6 +147,23 @@ EFFECTIVE_MASS_COVERAGE = {
 # honest (these two columns have signal only on zero-weight SPI rows there);
 # the national HMRC stage is what promotes them. This mirrors the US campaign's
 # RESTORED_REFERENCE_ECPS_REQUIRED_INPUTS anti-regression list.
+#: Engine-derived exclusions the pinned policyengine-uk derives by formula but
+#: the eFRS reference's engine (2.89.0) treated as plain inputs, so they are
+#: absent from its formula_owned_persisted_overrides_included list. Each names
+#: where the pinned engine derives it; the formula-owned check admits only
+#: these beyond the reference's own list (microcosm#1095, P1).
+ENGINE_DERIVED_SINCE_REFERENCE: dict[str, str] = {
+    "pip_dl_category": (
+        "policyengine-uk 2.174.1, variables/input/pip_dl_category.py through "
+        "utils/pip.py pip_category: from pip_dl_points where no category is "
+        "supplied for the year"
+    ),
+    "pip_m_category": (
+        "policyengine-uk 2.174.1, variables/input/pip_m_category.py through "
+        "utils/pip.py pip_category: from pip_m_points where no category is "
+        "supplied for the year"
+    ),
+}
 RESTORED_REFERENCE_EFRS_REQUIRED_INPUTS = (
     "charitable_investment_gifts",
     "gift_aid",
@@ -778,7 +823,15 @@ def _validate_known_gaps(
         if isinstance(engine, dict)
         else ()
     )
-    not_formula_owned = sorted(engine_derived - formula_owned)
+    stray = sorted(set(ENGINE_DERIVED_SINCE_REFERENCE) - engine_derived)
+    if stray:
+        raise ValueError(
+            "Inputs the pinned engine derives since the reference must be "
+            f"engine-derived exclusions: {stray}."
+        )
+    not_formula_owned = sorted(
+        engine_derived - formula_owned - set(ENGINE_DERIVED_SINCE_REFERENCE)
+    )
     if not_formula_owned:
         raise ValueError(
             "Engine-derived exclusions must be formula-owned inputs the "
@@ -930,6 +983,11 @@ def build_manifest(
             ),
             "isa_subscriptions": _source_stage_family_coverage_contract(
                 stage_name="isa_subscriptions",
+                candidate_source=candidate_source,
+            ),
+            # microcosm#1095 (P1): the PIP points, drawn within the stored awards.
+            "pip_points": _source_stage_family_coverage_contract(
+                stage_name="pip_points",
                 candidate_source=candidate_source,
             ),
             "trading_allowance_receipts": _source_stage_family_coverage_contract(

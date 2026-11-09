@@ -377,8 +377,8 @@ UK_ALLOWED_EXTRA_EXPORT_COLUMNS: tuple[str, ...] = (
     "person.owned_company_income_share",
     "person.owned_company_is_main_employment",
     "person.pension_contributions_via_salary_sacrifice",
-    "person.pip_dl_category",
-    "person.pip_m_category",
+    "person.pip_dl_points",
+    "person.pip_m_points",
     "person.property_finance_costs",
     "person.property_rental_income",
     "person.receives_benefits_in_own_right",
@@ -513,6 +513,22 @@ UK_REVIEWED_EXPORT_EXCLUSIONS: Mapping[str, str] = {
         "other_residential_property_value and non_residential_property_value; "
         "a persisted copy overrides that sum and has no uprating index, so the "
         "candidate must drop it (microcosm#1106, the uk-data#543 defect)."
+    ),
+    "person.pip_dl_category": (
+        "policyengine-uk derives pip_dl_category from pip_dl_points (8 points "
+        "for the standard rate, 12 for the enhanced) where no category is "
+        "supplied for the year; a persisted category would override the "
+        "points in every projected year, so the candidate carries the points "
+        "the pip_points stage draws within the stored award and drops the "
+        "category (microcosm#1095, P1; for María's signature)."
+    ),
+    "person.pip_m_category": (
+        "policyengine-uk derives pip_m_category from pip_m_points (8 points "
+        "for the standard rate, 12 for the enhanced) where no category is "
+        "supplied for the year; a persisted category would override the "
+        "points in every projected year, so the candidate carries the points "
+        "the pip_points stage draws within the stored award and drops the "
+        "category (microcosm#1095, P1; for María's signature)."
     ),
     "person.tax_free_savings_income": (
         "policyengine-uk derives tax_free_savings_income as the sum of the ISA "

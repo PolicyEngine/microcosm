@@ -524,8 +524,11 @@ REVIEWED_PLAIN_COLUMN_POPULATION_VARIABLES = frozenset(
         "pays_scottish_income_tax",
         "pension_contributions_via_salary_sacrifice",
         "pension_credit",
-        # P3's PIP cases: the engine adds pip from the stored award categories,
-        # which the dataset stores for every projected year.
+        # P3's PIP cases: the engine adds pip from the award categories. The
+        # spine stores them; the release and the measure frame drop them, and
+        # policyengine-uk derives them in every period from the points the
+        # pip_points stage stores, equal to the spine's with unchanged
+        # thresholds (microcosm#1095, P1).
         "pip",
         "pip_dl_category",
         "pip_m_category",

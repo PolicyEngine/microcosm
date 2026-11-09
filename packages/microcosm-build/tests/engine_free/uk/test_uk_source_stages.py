@@ -133,6 +133,9 @@ E8_STAGE_NAMES = [
     # microcosm#1415: the ISA subscriptions run on final incomes; nothing
     # reads their outputs.
     "isa_subscriptions",
+    # microcosm#1095 (P1): every PIP recipient's points, drawn within the
+    # stored awards, which the release then drops for the engine to derive.
+    "pip_points",
     # microcosm#1428: the self-employed's gross receipts run last, on final
     # profits; only the engine's trading allowance reads them.
     "trading_allowance_receipts",
@@ -333,6 +336,7 @@ class TestUKSourceStagesManifest:
                     "student_loans": _identity,
                     "private_school_attendance": _identity,
                     "isa_subscriptions": _identity,
+                    "pip_points": _identity,
                     "trading_allowance_receipts": _identity,
                     "company_cars": _identity,
                     "spi_employment_shell": _identity,
