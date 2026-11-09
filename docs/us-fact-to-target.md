@@ -218,10 +218,10 @@ borrower is a person whose federal balance is positive.
   Parent PLUS row ($117.9B, 6.8% of the loan-type dollar rows) is a lower
   bound on the stage's `federal_parent_plus_loan_balance`, which holds the
   balances the stage classifies as Parent PLUS, consolidated or not. That is
-  an inference, not FSA's statement. Every other family pins the total, so a target on
-  either side of FSA's split (Parent PLUS, or every other loan type) would
-  still constrain the split. Both rows stay diagnostic, and the receipt compares the host's
-  Parent PLUS share with FSA's.
+  an inference, not FSA's statement. Every other family pins the total, so a
+  target on either side of FSA's split (Parent PLUS, or every other loan type)
+  would still constrain the split. Both rows stay diagnostic, and the receipt
+  compares the host's Parent PLUS share with FSA's.
 - **The reference date.** The latest quarter every bound table publishes, FY2026
   Q2 (31 March 2026) in the chronicle#347 packages: the location workbook
   publishes only that date, so the age and debt-size tables bind at it too
