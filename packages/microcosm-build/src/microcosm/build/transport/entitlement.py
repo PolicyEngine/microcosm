@@ -54,6 +54,7 @@ from .compose import (
     _sequence,
     transport_resource,
 )
+from .evidence_contract import GRAPH_EVIDENCE
 from .money_kernels import MONEY_NORMALIZE_REF
 from .takeup_kernels import (
     BANDS_TYPE,
@@ -622,6 +623,10 @@ def _gate_evidence(spec, document, gaps):
                 "and phase."
             )
         name = row["name"]
+        if name == GRAPH_EVIDENCE:
+            raise ValueError(
+                f"Gate evidence may not use {name!r}, the battery's reserved alias."
+            )
         if name in names:
             raise ValueError(f"Gate evidence {name!r} is declared twice.")
         names.add(name)

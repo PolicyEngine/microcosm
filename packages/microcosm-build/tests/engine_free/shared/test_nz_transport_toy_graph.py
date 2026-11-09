@@ -918,16 +918,19 @@ def test_measurement_prefit_passes_the_toy_on_its_wired_evidence(toy):
     assert report["enforcement"]["artifact_permitted"] is True
 
 
-def _central_columns(manifest, names):
-    person = manifest.populations["nz.central"].table("person")
+def _person_columns(manifest, population, names):
+    person = manifest.populations[population].table("person")
     return person, {name: person[name] for name in names}
 
 
-def test_the_identity_receipts_recompute_from_the_central_columns(toy):
-    """G8-x1, R2C-28: the receipts are the run's own exact totals.
+def test_the_identity_receipts_recompute_from_the_terminal_columns(toy):
+    """G8-x1, R2C-29: the receipts are the run's own exact totals.
 
-    The producer checks each identity on every toy person, and its totals
-    equal income_identity_receipts recomputed from nz.central's columns.
+    The producer runs at nz.terminal, after the fit, and checks each identity
+    on every toy person. Its totals equal income_identity_receipts recomputed
+    from nz.terminal's columns, and those columns hold nz.central's values,
+    person for person in nz.central's order, so the receipts describe the
+    measure calibration read.
     """
     from microcosm.build.transport.income_evidence_kernels import (
         INCOME_IDENTITIES,
@@ -940,9 +943,12 @@ def test_the_identity_receipts_recompute_from_the_central_columns(toy):
     )
 
     fixture, run = toy
-    person, columns = _central_columns(
-        run[0], [*TOY_STANDIN_COMPONENTS, *TOY_STANDIN_OUTPUTS.values()]
-    )
+    names = [*TOY_STANDIN_COMPONENTS, *TOY_STANDIN_OUTPUTS.values()]
+    person, columns = _person_columns(run[0], "nz.terminal", names)
+    central, before = _person_columns(run[0], "nz.central", names)
+    assert person["person_id"].tolist() == central["person_id"].tolist()
+    for name in names:
+        assert columns[name].tolist() == before[name].tolist(), name
     expected = income_identity_receipts(
         toy_standin_declaration(), columns, person["person_id"].tolist()
     )
@@ -962,36 +968,83 @@ def test_the_identity_receipts_recompute_from_the_central_columns(toy):
 def test_the_omission_register_binds_its_items_to_the_pre_fit_totals(toy):
     """G8-x1: the register carries its declared items and the run's totals.
 
-    Its totals equal omission_register_totals recomputed from nz.central's
-    columns at the person weights nz.central resolves before calibration.
+    It runs at nz.terminal and reads the calibration problem's initial
+    weights, each person at their household's. Its totals equal
+    omission_register_totals recomputed from nz.terminal's columns at those
+    weights, and also from nz.central's columns at the design weights
+    nz.central resolves for its people before calibration. Its weight digests
+    equal the native band report's pre-fit digests and those of the
+    problem's own interval diagnostics, so all three read one weight vector
+    in one record order.
     """
     from microcosm.build.transport.income_evidence_kernels import (
         omission_register_totals,
     )
+    from microcosm.calibrate.artifacts import decode_problem
     from test_support.microcosm_build.transport_nz_toy import (
         TOY_OMISSION_REGISTER,
         TOY_STANDIN_COMPONENTS,
         TOY_STANDIN_OUTPUTS,
+        TOY_STANDIN_TABLE,
         toy_standin_declaration,
     )
 
     _, run = toy
-    central = run[0].populations["nz.central"]
-    _, columns = _central_columns(
-        run[0], [*TOY_STANDIN_COMPONENTS, TOY_STANDIN_OUTPUTS["measure"]]
-    )
-    weights = central.resolve_weights("person")
-    expected = omission_register_totals(
-        toy_standin_declaration(), columns, weights.values
+    manifest = run[0]
+    names = [*TOY_STANDIN_COMPONENTS, TOY_STANDIN_OUTPUTS["measure"]]
+    person, columns = _person_columns(manifest, "nz.terminal", names)
+    problem = decode_problem(_artifact(run, "nz.targets.problem", "problem"))
+    assert problem.problem.weight_entity == "household"
+    position = {value: index for index, value in enumerate(problem.entity_ids)}
+    rows = [position[value] for value in person["person_household_id"].tolist()]
+    initial = problem.problem.initial_weights
+    weights = np.asarray(initial.values, dtype=np.float64)[rows]
+    expected = json.loads(
+        canonical_json(
+            omission_register_totals(toy_standin_declaration(), columns, weights)
+        )
     )
     document = json.loads(
         _artifact(run, "nz.evidence.omission_register", "omission_register")
     )
-    assert document["included"] == json.loads(canonical_json(expected))
+    assert document["included"] == expected
+    central, before = _person_columns(manifest, "nz.central", names)
+    assert central["person_id"].tolist() == person["person_id"].tolist()
+    resolved = manifest.populations["nz.central"].resolve_weights("person")
+    assert resolved.kind is WeightKind.DESIGN
+    assert np.array_equal(np.asarray(resolved.values, dtype=np.float64), weights)
+    assert (
+        json.loads(
+            canonical_json(
+                omission_register_totals(
+                    toy_standin_declaration(), before, resolved.values
+                )
+            )
+        )
+        == expected
+    )
     assert document["register"] == TOY_OMISSION_REGISTER
-    assert document["weights"]["entity"] == "person"
-    assert document["weights"]["basis"] == "pre_fit"
-    assert weights.kind is WeightKind.DESIGN
+    block = document["weights"]
+    assert {
+        key: block[key] for key in ("entity", "weight_entity", "basis", "kind")
+    } == {
+        "entity": "person",
+        "weight_entity": "household",
+        "basis": "pre_fit",
+        "kind": initial.kind.value,
+    }
+    assert initial.kind.value == "design"
+    digests = {key: block[key] for key in ("weights_sha256", "record_order_sha256")}
+    native = json.loads(
+        _artifact(run, "nz.evidence.native_bands", "native_band_report")
+    )
+    (coarse,) = [
+        table
+        for table in problem.bindings["interval_diagnostics"]["tables"]
+        if table["table"] == TOY_STANDIN_TABLE
+    ]
+    for source in (native["mass"]["pre_fit"]["digests"], coarse["digests"]):
+        assert {key: source[key] for key in digests} == digests
 
 
 def test_the_native_band_report_rebuilds_from_the_terminal_run(toy):
@@ -1093,6 +1146,59 @@ def test_the_native_band_report_rebuilds_from_the_terminal_run(toy):
         == (resources["toy_calibration_feed_pin"]["facts_sha256"])
     )
     assert document["measurement_id"] == TOY_MEASUREMENT
+
+
+def test_the_native_rows_sum_to_the_coarse_diagnostics_the_problem_compiled(toy):
+    """G8-x1, a differential between two producers of pre-fit band measures.
+
+    The targets compile measures the stand-in on the coarse table at
+    nz.central, into the problem's interval diagnostics. The native band
+    report measures it on the native table at nz.terminal. The native cuts
+    tile the coarse ones, so each coarse band's declared weighted count,
+    weighted amount and record count equal the sums of its native members'
+    pre-fit model measures, in exact rationals. The two reports also agree
+    on the record count, the weight kind, the records below the first cut
+    and the weight and record-order digests.
+    """
+    from microcosm.calibrate.artifacts import decode_problem
+    from test_support.microcosm_build.transport_nz_toy import TOY_STANDIN_TABLE
+
+    _, run = toy
+    problem = decode_problem(_artifact(run, "nz.targets.problem", "problem"))
+    (coarse,) = [
+        table
+        for table in problem.bindings["interval_diagnostics"]["tables"]
+        if table["table"] == TOY_STANDIN_TABLE
+    ]
+    native = json.loads(
+        _artifact(run, "nz.evidence.native_bands", "native_band_report")
+    )
+    rows = {row["band"]: row for row in native["rows"]}
+
+    def exact(value):
+        return Fraction(value["numerator"], value["denominator"])
+
+    assert [band["band"] for band in coarse["bands"]] == [
+        band["band"] for band in native["coarse"]
+    ]
+    for band, owner in zip(coarse["bands"], native["coarse"], strict=True):
+        members = [rows[name]["model"]["pre_fit"] for name in owner["members"]]
+        declared = band["declared"]
+        assert declared["records"] == sum(m["records"] for m in members), band
+        for key in ("weighted_count", "weighted_amount_cents"):
+            assert exact(declared[key]) == sum(
+                (exact(m[key]) for m in members), Fraction(0)
+            ), (band["band"], key)
+    assert all(band["declared"]["records"] > 0 for band in coarse["bands"])
+    pre_fit = native["mass"]["pre_fit"]
+    for key in ("records", "included_records", "weight_kind"):
+        assert pre_fit[key] == coarse[key], key
+    assert (
+        pre_fit["below_first_cut"]["declared"]
+        == (coarse["below_first_cut"]["declared"])
+    )
+    for key in ("weights_sha256", "record_order_sha256"):
+        assert pre_fit["digests"][key] == coarse["digests"][key], key
 
 
 def test_each_toy_coarse_reference_equals_the_sum_of_its_member_references(toy):
@@ -1451,6 +1557,40 @@ def test_composition_proves_each_extension_calibration_producer(toy):
         node.id for node in graph.nodes if node.kernel.startswith("calibrate.")
     }
     assert "nz.v.V3.calibrate" in calibration - set(proof["producers"])
+    assert proof["producers"] == {"nz.calibrate": "nz.income.standin"}
+
+
+def test_only_the_standins_declare_the_toy_measurement(toy):
+    """R2C-1 on the toy, as G8-x1's income evidence readers keep it.
+
+    measurement_proofs counts every node upstream of a calibration whose
+    params declare the measurement's id, and needs exactly one. So the three
+    readers name the stand-in's id under ``measurement``, not
+    ``measurement_id``, and sit at nz.terminal, after every calibration they
+    could precede. The composed graph's declarers are its stand-ins alone.
+    """
+    from collections.abc import Mapping
+
+    from test_support.microcosm_build.transport_nz_toy import TOY_MEASUREMENT
+
+    fixture, _ = toy
+    graph = compose_transport_graph(copy.deepcopy(fixture.spec), fixture.config)
+    declarers = {
+        node.id
+        for node in graph.nodes
+        if isinstance(node.params, Mapping) and "measurement_id" in node.params
+    }
+    standins = {node.id for node in graph.nodes if node.kernel == "measure.combine@1"}
+    assert declarers == standins
+    assert {"nz.income.standin", "nz.v.V3.income.standin"} <= standins
+    by_id = {node.id: node for node in graph.nodes}
+    for name in (
+        "nz.evidence.income_identity",
+        "nz.evidence.omission_register",
+        "nz.evidence.native_bands",
+    ):
+        assert by_id[name].params["measurement"] == TOY_MEASUREMENT, name
+        assert by_id[name].population == "nz.terminal", name
 
 
 def _v3_without_declaration(rows, nodes, binding, columns):

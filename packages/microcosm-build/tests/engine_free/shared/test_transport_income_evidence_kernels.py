@@ -1,4 +1,4 @@
-"""R2C-28's income evidence kernels (G8-x1).
+"""R2C-29's income evidence kernels (G8-x1).
 
 ``transport.income_identity@1``, ``transport.omission_register@1`` and
 ``transport.native_band_report@1``. Every column, table, reference and fact
@@ -10,6 +10,7 @@ the real TY2024 IRD tables against the pinned feed.
 from __future__ import annotations
 
 import copy
+import dataclasses
 import json
 import os
 import random
@@ -29,6 +30,7 @@ from scipy import sparse
 from microcosm.build.ledger_artifact import load_ledger_consumer_artifact
 from microcosm.build.reference_intervals import (
     boundary_diagnostics,
+    interval_document_sha256,
     interval_table,
     scale_interval_table,
     source_interval_table,
@@ -37,6 +39,7 @@ from microcosm.build.transport import income_evidence_kernels
 from microcosm.build.transport.artifact_types import CALIBRATION_PREPARATION_TYPE
 from microcosm.build.transport.income_evidence_kernels import (
     IDENTITY_RECEIPTS_TYPE,
+    INCOME_EVIDENCE_KERNEL_MODULES,
     INCOME_IDENTITIES,
     INCOME_IDENTITY,
     INCOME_IDENTITY_REF,
@@ -52,6 +55,7 @@ from microcosm.build.transport.income_evidence_kernels import (
     TilingError,
     aged_native_table,
     coarse_members,
+    income_identity_receipts,
     native_band_report,
     omission_register_totals,
     register_income_evidence_kernels,
@@ -72,6 +76,7 @@ from microcosm.frame import EntitySchema, Frame, WeightKind, Weights
 from microcosm.graph import (
     ArtifactInput,
     ArtifactOutput,
+    ArtifactType,
     KernelRegistry,
     Node,
     Owned,
@@ -151,7 +156,7 @@ def _people(columns: dict[str, list]) -> pd.DataFrame:
     return person
 
 
-def _context(node: Node, frame: Frame):
+def _context(node: Node, frame: Frame, artifacts=None):
     return _project_context(
         node,
         Population.from_frame(frame, "toy.population"),
@@ -159,6 +164,42 @@ def _context(node: Node, frame: Frame):
         sources={},
         tolerances={},
         numerics={},
+        artifacts=artifacts,
+    )
+
+
+def _artifact_values(payloads):
+    """Each alias's ``(payload, type)`` as the executor hands it to a kernel."""
+
+    return {
+        alias: ArtifactValue(
+            payload,
+            kind,
+            sha256(alias.encode()).hexdigest(),
+            sha256(payload).hexdigest(),
+            NumericScope(),
+        )
+        for alias, (payload, kind) in payloads.items()
+    }
+
+
+def _encoded_problem(ids, design, *, bindings=None):
+    """A one-target household problem over ``ids`` at ``design`` weights."""
+
+    target = Target(
+        "count", "household", lambda f: np.ones(len(ids)), value=6, period=2027
+    )
+    return encode_problem(
+        CalibrationProblem(
+            sparse.csr_array([[1.0] * len(ids)]),
+            np.array([6.0]),
+            (target.row_name,),
+            Weights(np.asarray(design, dtype=np.float64), WeightKind.DESIGN),
+            "household",
+            (target,),
+        ),
+        entity_ids=tuple(ids),
+        bindings=bindings,
     )
 
 
@@ -193,7 +234,7 @@ def _measure_params(declaration):
     return {
         "measure": canonical_json(declaration).decode(),
         "measure_sha256": digest(declaration),
-        "measurement_id": "toy_measurement_v1",
+        "measurement": "toy_measurement_v1",
     }
 
 
@@ -214,7 +255,9 @@ def _identity_node(declaration, *, identities=IDENTITIES, columns=None):
     )
 
 
-def _register_node(declaration, *, register=REGISTER, columns=None):
+def _register_node(
+    declaration, *, register=REGISTER, columns=None, problem_type=PROBLEM_TYPE
+):
     names = columns or (
         *(row["column"] for row in declaration["components"]),
         OUTPUTS["measure"],
@@ -227,21 +270,63 @@ def _register_node(declaration, *, register=REGISTER, columns=None):
             "register": canonical_json(register).decode(),
             "income_measurements_sha256": "c" * 64,
             **_measure_params(declaration),
+            "weight_entity": "household",
         },
+        artifact_inputs=(
+            ArtifactInput("problem", "toy.problem", "problem", problem_type),
+        ),
         artifact_outputs=(ArtifactOutput("omission_register", OMISSION_REGISTER_TYPE),),
     )
 
 
+def _identity_context(person, declaration, weights=None, **node):
+    return _context(_identity_node(declaration, **node), _frame(person, weights))
+
+
 def _identities(person, declaration, weights=None, **node):
     result = INCOME_IDENTITY.run(
-        _context(_identity_node(declaration, **node), _frame(person, weights))
+        _identity_context(person, declaration, weights, **node)
     )
     return result.artifacts["identity_receipts"], result.receipt
 
 
-def _register(person, declaration, weights=None, **node):
+def _register_context(
+    person,
+    declaration,
+    weights=None,
+    *,
+    problem=None,
+    problem_type=PROBLEM_TYPE,
+    edit=None,
+    artifacts=None,
+    **node,
+):
+    """The register's context: ``_frame``'s households, and a problem on them.
+
+    By default the problem's pre-fit weights are the frame's own design
+    weights, one household per person, so the register's totals equal
+    ``measure.combine@1``'s at the frame's weights. ``edit`` changes the node.
+    """
+
+    frame = _frame(person, weights)
+    if problem is None:
+        problem = _encoded_problem(
+            frame.table("household")["household_id"].tolist(),
+            frame.resolve_weights("household").values,
+        )
+    built = _register_node(declaration, problem_type=problem_type, **node)
+    return _context(
+        built if edit is None else edit(built),
+        frame,
+        _artifact_values({"problem": (problem, problem_type)})
+        if artifacts is None
+        else artifacts,
+    )
+
+
+def _register(person, declaration, weights=None, **options):
     result = OMISSION_REGISTER.run(
-        _context(_register_node(declaration, **node), _frame(person, weights))
+        _register_context(person, declaration, weights, **options)
     )
     return result.artifacts["omission_register"], result.receipt
 
@@ -321,6 +406,74 @@ def test_an_unresolved_record_with_a_status_refuses() -> None:
         _identities(person, TOY)
 
 
+def test_an_unresolved_record_with_a_finite_unit_refuses() -> None:
+    # Mutant M1: the null-component branch stops checking the unit.
+    person, _ = _measured(TOY_COLUMNS, TOY)
+    assert person.loc[3, OUTPUTS["universe_status"]] == "unresolved"
+    person.loc[3, OUTPUTS["unit"]] = 0.0
+    with pytest.raises(IncomeIdentityError, match="unit_rule fails at record 3"):
+        _identities(person, TOY)
+
+
+def _unmeasured(columns, outputs):
+    """The person table with ``outputs`` written as given, not by combine."""
+
+    person = _people(columns)
+    person[OUTPUTS["measure"]] = pd.array(outputs["measure"], dtype="Int64")
+    person[OUTPUTS["unit"]] = np.asarray(outputs["unit"], dtype=np.float64)
+    person[OUTPUTS["universe_status"]] = pd.array(
+        outputs["universe_status"], dtype="string"
+    )
+    return person
+
+
+def test_a_component_sum_past_int64_refuses_as_int64_range() -> None:
+    # Mutant M2: without the bound, the record refuses as component_sum (no
+    # int64 measure can hold the sum), so only the identity's name tells.
+    declaration = _declaration([(WAGES, 1), (BUSINESS, 1)])
+    person = _unmeasured(
+        {WAGES: [2**62, 5], BUSINESS: [2**62, 0]},
+        {"measure": [0, 5], "unit": [0.0, 0.05], "universe_status": ["included"] * 2},
+    )
+    with pytest.raises(IncomeIdentityError, match="int64_range fails at record 0"):
+        _identities(person, declaration)
+
+
+def test_the_sum_at_int64_max_passes_and_one_cent_more_refuses() -> None:
+    # The bound is inclusive: 2**63 - 1 fits, 2**63 doesn't.
+    declaration = _declaration([(WAGES, 1), (BUSINESS, 1)])
+    top = 2**63 - 1
+    outputs = {
+        "measure": [top],
+        "unit": [top / 100],
+        "universe_status": ["included"],
+    }
+    person = _unmeasured({WAGES: [2**62], BUSINESS: [2**62 - 1]}, outputs)
+    document = json.loads(_identities(person, declaration)[0])
+    assert document["sum_measure"] == top
+    person = _unmeasured({WAGES: [2**62], BUSINESS: [2**62]}, outputs)
+    with pytest.raises(IncomeIdentityError, match="int64_range fails at record 0"):
+        _identities(person, declaration)
+
+
+def test_a_status_column_of_another_length_refuses() -> None:
+    person, _ = _measured(TOY_COLUMNS, TOY)
+    columns = {
+        name: person[name]
+        for name in (*(row["column"] for row in TOY["components"]), *OUTPUTS.values())
+    }
+    longer = pd.concat(
+        [columns[OUTPUTS["universe_status"]], pd.Series(["included"], dtype="string")],
+        ignore_index=True,
+    )
+    with pytest.raises(ValueError, match="columns differ in length"):
+        income_identity_receipts(
+            TOY,
+            {**columns, OUTPUTS["universe_status"]: longer},
+            person["person_id"].tolist(),
+        )
+
+
 def test_the_identities_must_be_the_kernels_own_in_order() -> None:
     person, _ = _measured(TOY_COLUMNS, TOY)
     reordered = copy.deepcopy(IDENTITIES)
@@ -337,6 +490,81 @@ def test_the_identity_inputs_are_exactly_the_components_and_outputs() -> None:
     person, _ = _measured(TOY_COLUMNS, TOY)
     with pytest.raises(ValueError, match="inputs must slice exactly"):
         _identities(person, TOY, columns=(WAGES, BUSINESS, *OUTPUTS.values()))
+
+
+MASK = "toy_mask"
+
+
+def _masked(node: Node) -> Node:
+    """``node`` with its person slices under a row mask the person table carries."""
+
+    return dataclasses.replace(
+        node,
+        inputs=tuple(
+            Slice(item.entity, (*item.columns, MASK), rows=MASK)
+            if item.entity == "person"
+            else item
+            for item in node.inputs
+        ),
+    )
+
+
+#: Each node edit every income evidence kernel refuses, and the refusal.
+NODE_REFUSALS = {
+    "params": (
+        lambda node: dataclasses.replace(node, params={**node.params, "extra": "1"}),
+        "unknown parameter",
+    ),
+    "columns": (
+        lambda node: dataclasses.replace(
+            node, outputs=(Owned("person", "toy_written", "Int64"),)
+        ),
+        "writes no columns",
+    ),
+    "artifact_name": (
+        lambda node: dataclasses.replace(
+            node,
+            artifact_outputs=(ArtifactOutput("other", node.artifact_outputs[0].type),),
+        ),
+        "declares one artifact",
+    ),
+    "artifact_type": (
+        lambda node: dataclasses.replace(
+            node,
+            artifact_outputs=(
+                ArtifactOutput(
+                    node.artifact_outputs[0].name, ArtifactType("toy.other", 1)
+                ),
+            ),
+        ),
+        "as its own type",
+    ),
+    "rows": (_masked, "requires whole-row slices"),
+}
+
+
+def _with_mask(person: pd.DataFrame) -> pd.DataFrame:
+    person = person.copy()
+    person[MASK] = np.ones(len(person), dtype=bool)
+    return person
+
+
+@pytest.mark.parametrize("edit", sorted(NODE_REFUSALS))
+def test_the_identity_kernel_refuses_each_node_edit(edit) -> None:
+    # Mutant M5: each refusal in run() before the arithmetic.
+    change, match = NODE_REFUSALS[edit]
+    person, _ = _measured(TOY_COLUMNS, TOY)
+    context = _context(change(_identity_node(TOY)), _frame(_with_mask(person)))
+    with pytest.raises(ValueError, match=match):
+        INCOME_IDENTITY.run(context)
+
+
+def test_the_identity_kernel_refuses_a_digest_off_its_declaration() -> None:
+    person, _ = _measured(TOY_COLUMNS, TOY)
+    node = _identity_node(TOY)
+    node = dataclasses.replace(node, params={**node.params, "measure_sha256": "0" * 64})
+    with pytest.raises(ValueError, match="measure_sha256 differs"):
+        INCOME_IDENTITY.run(_context(node, _frame(person)))
 
 
 def test_the_identity_artifact_moves_with_the_runs_columns() -> None:
@@ -409,15 +637,83 @@ def test_property_the_identities_hold_and_any_one_edit_refuses(case, data) -> No
 
 def test_the_register_binds_the_declared_items_verbatim() -> None:
     person, _ = _measured(TOY_COLUMNS, TOY)
-    payload, receipt = _register(person, TOY)
+    size = len(person)
+    design = np.linspace(1, 2, size)
+    problem = _encoded_problem(list(range(1, size + 1)), design)
+    payload, receipt = _register(person, TOY, problem=problem)
     document = json.loads(payload)
     assert document["kind"] == "transport_omission_register"
     assert document["register"] == REGISTER
     assert document["register_sha256"] == sha256(canonical_json(REGISTER)).hexdigest()
     assert document["income_measurements_sha256"] == "c" * 64
-    assert document["weights"]["entity"] == "person"
-    assert document["weights"]["basis"] == "pre_fit"
+    assert document["measurement_id"] == "toy_measurement_v1"
+    assert document["inputs"]["artifacts"] == {"problem": sha256(problem).hexdigest()}
+    # boundary_diagnostics' two digests, over the people in record order.
+    assert document["weights"] == {
+        "entity": "person",
+        "weight_entity": "household",
+        "basis": "pre_fit",
+        "kind": "design",
+        "weights_sha256": sha256(np.asarray(design, dtype="<f8").tobytes()).hexdigest(),
+        "record_order_sha256": interval_document_sha256(person["person_id"].tolist()),
+    }
     assert receipt == {"items": 2, "artifact_sha256": sha256(payload).hexdigest()}
+
+
+def test_the_register_reads_pre_fit_weights_from_the_problem() -> None:
+    # The frame's weights may already be calibrated where the register runs;
+    # the totals follow the problem's initial weights, not the frame's.
+    person, receipt = _measured(TOY_COLUMNS, TOY)
+    size = len(person)
+    problem = _encoded_problem(list(range(1, size + 1)), np.linspace(1, 2, size))
+    calibrated = np.linspace(3, 9, size)
+    document = json.loads(_register(person, TOY, calibrated, problem=problem)[0])
+    _included_matches_receipt(document["included"], receipt)
+
+
+@pytest.mark.parametrize("edit", sorted(NODE_REFUSALS))
+def test_the_register_refuses_each_node_edit(edit) -> None:
+    # Mutant M5: each refusal in run() before the totals.
+    change, match = NODE_REFUSALS[edit]
+    person, _ = _measured(TOY_COLUMNS, TOY)
+    with pytest.raises(ValueError, match=match):
+        OMISSION_REGISTER.run(_register_context(_with_mask(person), TOY, edit=change))
+
+
+def test_the_register_refuses_a_problem_it_cant_broadcast() -> None:
+    person, _ = _measured(TOY_COLUMNS, TOY)
+    size = len(person)
+    with pytest.raises(ValueError, match="reads exactly \\['problem'\\] artifacts"):
+        _register(
+            person,
+            TOY,
+            edit=lambda node: dataclasses.replace(node, artifact_inputs=()),
+            artifacts={},
+        )
+    with pytest.raises(
+        ValueError,
+        match="reads 'problem' as microcosm.calibrate.ordered-problem@1, not "
+        "microcosm.calibrate.ordered-solution@1",
+    ):
+        _register(person, TOY, problem_type=SOLUTION_TYPE)
+    with pytest.raises(ValueError, match="but the problem calibrates 'household'"):
+        _register(
+            person,
+            TOY,
+            edit=lambda node: dataclasses.replace(
+                node, params={**node.params, "weight_entity": "family"}
+            ),
+        )
+    short = _encoded_problem(list(range(1, size)), np.ones(size - 1))
+    with pytest.raises(ValueError, match="outside the problem's household axis"):
+        _register(person, TOY, problem=short)
+
+
+def test_the_register_refuses_a_measure_off_the_person_entity() -> None:
+    person, _ = _measured(TOY_COLUMNS, TOY)
+    declaration = {**TOY, "entity": "household"}
+    with pytest.raises(ValueError, match="registers a person measure"):
+        _register(person, declaration)
 
 
 def test_the_register_refuses_repeated_items_and_extra_inputs() -> None:
@@ -1005,14 +1301,32 @@ def _feed_facts(facts):
     return rows
 
 
-def _native_world(tmp_path, *, frame_weights=CALIBRATED_WEIGHTS, intervals_sha256=None):
+def _native_world(
+    tmp_path,
+    *,
+    calibrated=CALIBRATED_WEIGHTS,
+    frame_weights=None,
+    household_order=None,
+    intervals_sha256=None,
+    native_entity=None,
+    problem_bindings=None,
+    artifact_types=None,
+    edit=None,
+):
     """The node, a frame, a pinned feed and the three artifacts run() reads.
 
-    The solution holds ``CALIBRATED_WEIGHTS``; ``frame_weights`` and
-    ``intervals_sha256`` let a test put the frame or the preparation off it.
+    The solution holds ``calibrated`` on the problem's household order.
+    ``frame_weights`` (the solution's, by default) and ``household_order`` (a
+    permutation of the frame's household rows) let a test put the frame off
+    the problem. ``intervals_sha256`` and ``native_entity`` put the
+    preparation off; ``problem_bindings`` replaces the problem's preparation
+    digest; ``artifact_types`` retypes artifact inputs; ``edit`` changes the
+    node.
     """
 
     intervals = _intervals(NATIVE_CUTS, COARSE_CUTS, COARSE_FIRST)
+    if native_entity is not None:
+        intervals["tables"][0]["entity"] = native_entity
     targets, diagnostics, facts = _references(intervals, _toy_counts(intervals))
     path, pin = write_pinned_artifact(tmp_path / "feed", _feed_facts(facts))
     person = pd.DataFrame(
@@ -1023,18 +1337,26 @@ def _native_world(tmp_path, *, frame_weights=CALIBRATED_WEIGHTS, intervals_sha25
             ),
             INCOME: pd.array(NATIVE_PEOPLE[INCOME], dtype="Int64"),
             UNIVERSE: pd.array(NATIVE_PEOPLE[UNIVERSE], dtype="string"),
+            # Unsliced unless a test masks the person slice (_masked).
+            MASK: np.ones(len(NATIVE_PEOPLE["person_id"]), dtype=bool),
         }
     )
+    order = list(range(len(NATIVE_HOUSEHOLDS["household_id"])))
+    if household_order is not None:
+        order = list(household_order)
     households = pd.DataFrame(
         {
             "household_id": np.asarray(
                 NATIVE_HOUSEHOLDS["household_id"], dtype=np.int64
-            ),
+            )[order],
             "source_household_id": pd.array(
-                NATIVE_HOUSEHOLDS["source_household_id"], dtype="string"
+                [NATIVE_HOUSEHOLDS["source_household_id"][index] for index in order],
+                dtype="string",
             ),
         }
     )
+    if frame_weights is None:
+        frame_weights = np.asarray(calibrated, dtype=np.float64)[order]
     frame = Frame(
         {"person": person, "household": households},
         SCHEMA,
@@ -1045,20 +1367,6 @@ def _native_world(tmp_path, *, frame_weights=CALIBRATED_WEIGHTS, intervals_sha25
         },
     )
     ids = tuple(NATIVE_HOUSEHOLDS["household_id"])
-    target = Target(
-        "count", "household", lambda f: np.ones(len(ids)), value=6, period=2027
-    )
-    problem = encode_problem(
-        CalibrationProblem(
-            sparse.csr_array([[1.0] * len(ids)]),
-            np.array([6.0]),
-            (target.row_name,),
-            Weights(np.asarray(DESIGN_WEIGHTS, dtype=np.float64), WeightKind.DESIGN),
-            "household",
-            (target,),
-        ),
-        entity_ids=ids,
-    )
     preparation = canonical_json(
         {
             "effective_intervals": intervals,
@@ -1066,18 +1374,28 @@ def _native_world(tmp_path, *, frame_weights=CALIBRATED_WEIGHTS, intervals_sha25
             or sha256(canonical_json(intervals)).hexdigest(),
         }
     )
+    # The targets compile kernel binds its preparation's digest this way.
+    problem = _encoded_problem(
+        ids,
+        DESIGN_WEIGHTS,
+        bindings={"preparation_sha256": sha256(preparation).hexdigest()}
+        if problem_bindings is None
+        else problem_bindings,
+    )
     payloads = {
         "preparation": (preparation, CALIBRATION_PREPARATION_TYPE),
         "problem": (problem, PROBLEM_TYPE),
         "solution": (
             encode_solution(
-                np.asarray(CALIBRATED_WEIGHTS, dtype=np.float64),
+                np.asarray(calibrated, dtype=np.float64),
                 entity_ids=ids,
                 problem_sha256=decode_problem(problem).sha256,
             ),
             SOLUTION_TYPE,
         ),
     }
+    for alias, kind in (artifact_types or {}).items():
+        payloads[alias] = (payloads[alias][0], kind)
     node = Node(
         "toy.evidence.native_bands",
         NATIVE_BAND_REPORT_REF,
@@ -1094,7 +1412,7 @@ def _native_world(tmp_path, *, frame_weights=CALIBRATED_WEIGHTS, intervals_sha25
             "diagnostic_references_sha256": digest(diagnostics),
             "chronicle_feed_pin": canonical_json(pin).decode(),
             "weight_entity": "household",
-            "measurement_id": "toy_measurement_v1",
+            "measurement": "toy_measurement_v1",
         },
         artifact_inputs=tuple(
             ArtifactInput(alias, f"toy.{alias}", alias, kind)
@@ -1104,16 +1422,8 @@ def _native_world(tmp_path, *, frame_weights=CALIBRATED_WEIGHTS, intervals_sha25
             ArtifactOutput("native_band_report", NATIVE_BAND_REPORT_TYPE),
         ),
     )
-    artifacts = {
-        alias: ArtifactValue(
-            payload,
-            kind,
-            sha256(alias.encode()).hexdigest(),
-            sha256(payload).hexdigest(),
-            NumericScope(),
-        )
-        for alias, (payload, kind) in payloads.items()
-    }
+    if edit is not None:
+        node = edit(node)
     context = _project_context(
         node,
         Population.from_frame(frame, "toy.terminal"),
@@ -1121,7 +1431,7 @@ def _native_world(tmp_path, *, frame_weights=CALIBRATED_WEIGHTS, intervals_sha25
         sources={FEED: path},
         tolerances={},
         numerics={},
-        artifacts=artifacts,
+        artifacts=_artifact_values(payloads),
     )
     return context, intervals, (targets, diagnostics), path, pin
 
@@ -1191,6 +1501,96 @@ def test_the_kernel_refuses_a_preparation_without_authenticated_intervals(
         NATIVE_BAND_REPORT.run(context)
 
 
+def test_the_kernel_refuses_a_household_frame_off_the_problems_order(
+    tmp_path,
+) -> None:
+    # Mutant M4: households 11 and 12 swap rows in the frame. Their calibrated
+    # weights match, so the frame-weights check passes, and only the ids
+    # check refuses a frame whose rows the report reads by position.
+    context, *_ = _native_world(
+        tmp_path, calibrated=(2.5, 2.5, 4.0), household_order=(1, 0, 2)
+    )
+    with pytest.raises(ValueError, match="frame household ids differ from the problem"):
+        NATIVE_BAND_REPORT.run(context)
+
+
+def test_the_kernel_refuses_a_preparation_the_problem_didnt_compile(
+    tmp_path,
+) -> None:
+    # F8: a preparation from another branch, say a variant's own prepare
+    # node, would age the native cuts by that branch's factor.
+    for name, bindings in (("other", {"preparation_sha256": "0" * 64}), ("none", {})):
+        context, *_ = _native_world(tmp_path / name, problem_bindings=bindings)
+        with pytest.raises(
+            ValueError, match="isn't the one the calibration problem compiled"
+        ):
+            NATIVE_BAND_REPORT.run(context)
+
+
+@pytest.mark.parametrize(
+    ("alias", "kind", "expected"),
+    [
+        ("preparation", PROBLEM_TYPE, CALIBRATION_PREPARATION_TYPE),
+        ("problem", SOLUTION_TYPE, PROBLEM_TYPE),
+        ("solution", PROBLEM_TYPE, SOLUTION_TYPE),
+    ],
+)
+def test_the_kernel_refuses_an_input_of_another_type(
+    tmp_path, alias, kind, expected
+) -> None:
+    # F8: the graph carries each input's nominal type, and only the kernel
+    # checks it.
+    context, *_ = _native_world(tmp_path, artifact_types={alias: kind})
+    with pytest.raises(
+        ValueError,
+        match=f"reads '{alias}' as {expected.name}@{expected.schema_version}, "
+        f"not {kind.name}@{kind.schema_version}",
+    ):
+        NATIVE_BAND_REPORT.run(context)
+
+
+#: Each node edit only the native-band report refuses, and the refusal.
+NATIVE_REFUSALS = {
+    "edges": (
+        lambda node: dataclasses.replace(
+            node, artifact_inputs=node.artifact_inputs[:2]
+        ),
+        "reads exactly",
+    ),
+    "table": (
+        lambda node: dataclasses.replace(
+            node, params={**node.params, "native_table": "toy_missing"}
+        ),
+        "hold no table 'toy_missing'",
+    ),
+    "inputs": (
+        lambda node: dataclasses.replace(
+            node,
+            inputs=(
+                Slice("person", (INCOME,)),
+                Slice("household", ("source_household_id",)),
+            ),
+        ),
+        "inputs must slice exactly",
+    ),
+}
+
+
+@pytest.mark.parametrize("edit", sorted({**NODE_REFUSALS, **NATIVE_REFUSALS}))
+def test_the_kernel_refuses_each_node_edit(tmp_path, edit) -> None:
+    # Mutant M5: each refusal in run() before the report.
+    change, match = {**NODE_REFUSALS, **NATIVE_REFUSALS}[edit]
+    context, *_ = _native_world(tmp_path, edit=change)
+    with pytest.raises(ValueError, match=match):
+        NATIVE_BAND_REPORT.run(context)
+
+
+def test_the_kernel_refuses_a_native_table_off_the_person_entity(tmp_path) -> None:
+    context, *_ = _native_world(tmp_path, native_entity="household")
+    with pytest.raises(ValueError, match="reports a person table"):
+        NATIVE_BAND_REPORT.run(context)
+
+
 # ---------------------------------------------------------------------------
 # Each kernel hashes every module its run() executes (as the evidence kernels'
 # traced lists do)
@@ -1231,28 +1631,63 @@ def _traced(run) -> set[str]:
     }
 
 
-def test_each_kernel_hashes_every_module_its_run_executes(tmp_path) -> None:
+KERNELS = {
+    INCOME_IDENTITY_REF: INCOME_IDENTITY,
+    OMISSION_REGISTER_REF: OMISSION_REGISTER,
+    NATIVE_BAND_REPORT_REF: NATIVE_BAND_REPORT,
+}
+
+
+@pytest.fixture(scope="module")
+def kernel_traces(tmp_path_factory):
+    """Each kernel's run() alone, on a context built before the trace starts."""
+
+    person, _ = _measured(TOY_COLUMNS, TOY)
+    identity = _identity_context(person, TOY)
+    register = _register_context(person, TOY)
+    native, *_ = _native_world(tmp_path_factory.mktemp("trace"))
+    return {
+        INCOME_IDENTITY_REF: _traced(lambda: INCOME_IDENTITY.run(identity)),
+        OMISSION_REGISTER_REF: _traced(lambda: OMISSION_REGISTER.run(register)),
+        NATIVE_BAND_REPORT_REF: _traced(lambda: NATIVE_BAND_REPORT.run(native)),
+    }
+
+
+def _unlisted(ref, traced, modules=INCOME_EVIDENCE_KERNEL_MODULES) -> set[str]:
+    return traced - set(modules[ref]) - _TRACE_EXCLUSIONS
+
+
+@pytest.mark.parametrize("ref", sorted(KERNELS))
+def test_each_kernel_hashes_every_module_its_run_executes(kernel_traces, ref) -> None:
     # Under-hashing serves stale results: an edit to an unhashed module leaves
     # implementation_hash() unchanged, so a stored artifact outlives it.
-    person, _ = _measured(TOY_COLUMNS, TOY)
-    native, *_ = _native_world(tmp_path)
-    runs = {
-        INCOME_IDENTITY: lambda: _identities(person, TOY),
-        OMISSION_REGISTER: lambda: _register(person, TOY),
-        NATIVE_BAND_REPORT: lambda: NATIVE_BAND_REPORT.run(native),
+    hashed = hashed_module_names(KERNELS[ref], income_evidence_kernels)
+    assert hashed == set(INCOME_EVIDENCE_KERNEL_MODULES[ref])
+    assert income_evidence_kernels.__name__ in kernel_traces[ref]
+    assert _unlisted(ref, kernel_traces[ref]) == set()
+    assert not hashed & _TRACE_EXCLUSIONS
+
+
+def test_the_native_report_runs_the_schema_module(kernel_traces) -> None:
+    # Mutant: the native report's list loses microcosm.frame.schema, whose
+    # EntitySchema and column names its run() calls.
+    traced = kernel_traces[NATIVE_BAND_REPORT_REF]
+    assert "microcosm.frame.schema" in traced
+    shortened = dict(INCOME_EVIDENCE_KERNEL_MODULES)
+    shortened[NATIVE_BAND_REPORT_REF] = tuple(
+        name
+        for name in shortened[NATIVE_BAND_REPORT_REF]
+        if name != "microcosm.frame.schema"
+    )
+    assert _unlisted(NATIVE_BAND_REPORT_REF, traced, shortened) == {
+        "microcosm.frame.schema"
     }
-    for kernel, run in runs.items():
-        hashed = hashed_module_names(kernel, income_evidence_kernels)
-        assert income_evidence_kernels.__name__ in hashed, kernel.ref
-        traced = _traced(run)
-        assert income_evidence_kernels.__name__ in traced, kernel.ref
-        assert traced - hashed - _TRACE_EXCLUSIONS == set(), kernel.ref
-        assert not hashed & _TRACE_EXCLUSIONS, kernel.ref
 
 
 def test_the_module_stays_outside_the_batterys_binding_closure() -> None:
-    # The registry imports this module and the battery's bindings never do,
-    # so adding the kernels re-keys no gates.battery@1 node.
+    # The registry and the composer import this module, and no battery
+    # binding's identity covers it or them, so adding the kernels re-keys no
+    # gates.battery@1 node.
     from microcosm.build.transport import binding_identity
     from microcosm.build.transport.gate_bindings import TRANSPORT_GATE_REGISTRY
 
@@ -1263,8 +1698,6 @@ def test_the_module_stays_outside_the_batterys_binding_closure() -> None:
     assert "microcosm.build.transport.evidence_contract" in modules
     assert income_evidence_kernels.__name__ not in modules
     assert "microcosm.build.transport.registry" not in modules
-    # SKELETON_KERNELS names the three refs as literals, and the composer
-    # sits outside the closure too, so that edit re-keys no battery either.
     assert "microcosm.build.transport.compose" not in modules
 
 

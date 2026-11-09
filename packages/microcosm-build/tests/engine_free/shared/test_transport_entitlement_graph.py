@@ -948,6 +948,10 @@ def test_gate_evidence_without_rows_reads_no_other_resource():
             "declared twice",
         ),
         ([{"name": "x", "scenario": "V1", "phase": "release"}], "phase 'release'"),
+        (
+            [{"name": "graph_evidence", "scenario": "V1", "phase": "terminal"}],
+            "the battery's reserved alias",
+        ),
         ([{"name": "x", "scenario": "V1"}], "exactly a nonempty name"),
         ([{"name": "", "scenario": "V1", "phase": "terminal"}], "nonempty name"),
         ([{"name": "x", "scenario": 1, "phase": "terminal"}], "nonempty name"),

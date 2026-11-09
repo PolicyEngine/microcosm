@@ -611,12 +611,11 @@ def test_the_d1982_disclosure_names_the_convention_and_its_limits():
 def test_the_d1982_stock_keeps_the_release_candidate_off():
     """A release candidate reading the interim stock needs a new ruling first.
 
-    Every ``gates.battery@1`` node counts: the packaged graph's own and any
-    an extension branch adds when the graph composes. A battery that omits
-    the flag fails too, since only an explicit ``False`` keeps it off.
+    Every packaged ``gates.battery@1`` node counts. A battery that omits the
+    flag fails too, since only an explicit ``False`` keeps it off.
+    test_nz_transport_declarations.py checks the batteries an extension
+    branch adds when the graph composes.
     """
-    import importlib.util
-
     reason = _declaration()["index_family_factors"]["consumer_prices"]["reason"]
     assert "d1982" in reason
     packaged = {
@@ -625,22 +624,6 @@ def test_the_d1982_stock_keeps_the_release_candidate_off():
         if node["kernel"] == "gates.battery@1"
     }
     assert packaged == {"nz.gates.terminal": False}
-    path = (
-        paths_for("microcosm-build").tests
-        / "engine_free/shared/test_nz_transport_declarations.py"
-    )
-    module_spec = importlib.util.spec_from_file_location("_nz_decl_d1982", path)
-    module = importlib.util.module_from_spec(module_spec)
-    module_spec.loader.exec_module(module)
-    spec, config = module._nz_composition_spec_and_config()
-    graph = compose_module.compose_transport_graph(spec, config)
-    composed = {
-        node.id: node.params.get("release_candidate")
-        for node in graph.nodes
-        if node.kernel == "gates.battery@1"
-    }
-    assert packaged.keys() <= composed.keys()
-    assert composed == dict.fromkeys(composed, False)
 
 
 def test_one_run_carries_the_d1982_diagnostic_and_s1_beside_it():

@@ -109,7 +109,7 @@
     }
   },
   "identity_receipts": {
-    "description": "R2C-28: the exact identities transport.income_identity@1 checks on every record of the central measure in each run, in Python integers with its own arithmetic. It refuses at the first record where one fails and names the identity and the record.",
+    "description": "R2C-29: the exact identities transport.income_identity@1 checks on every record of the central measure in each run, in Python integers with its own arithmetic. It refuses at the first record where one fails and names the identity and the record.",
     "identities": [
       {
         "id": "component_sum",

@@ -575,10 +575,12 @@ def income_measurements_document():
         "measures": measures,
         "identity_receipts": {
             "description": (
-                "R2C-28: the exact identities transport.income_identity@1 checks "
+                "R2C-29: the exact identities transport.income_identity@1 checks "
                 "on every record of the central measure in each run, in Python "
                 "integers with its own arithmetic. It refuses at the first record "
-                "where one fails and names the identity and the record."
+                "where one fails and names the identity and the record. It also "
+                "reports each add-back column's total, which follows from "
+                "component_sum and carries no identity of its own."
             ),
             "identities": [
                 {"id": identity, "statement": statement}
@@ -591,12 +593,6 @@ def income_measurements_document():
                         "null component carries a null measure.",
                     ),
                     (
-                        "add_back",
-                        "Over the resolved records, the summed measure equals the "
-                        "summed signed components plus the summed add-backs, "
-                        "exactly, in integer cents.",
-                    ),
-                    (
                         "unit_rule",
                         "Each resolved record's unit equals max(floor, measure) / "
                         "scale as the correctly rounded float64, bit for bit. A "
@@ -606,8 +602,7 @@ def income_measurements_document():
                         "universe_partition",
                         "A record's universe status reads unresolved when any "
                         "component is null, included when the measure exceeds zero "
-                        "and excluded otherwise. The three counts sum to the "
-                        "record count.",
+                        "and excluded otherwise.",
                     ),
                     (
                         "int64_range",
@@ -704,7 +699,7 @@ def measure_components(measure="central"):
 
 
 def measure_params(measure="central"):
-    """The declaration, its digest and the measurement id, as every reader binds them."""
+    """The declaration, its digest and the measurement id, as the stand-in binds them."""
     return {
         "measure": select(
             "income_measurements", "json", "measures", measure, "declaration"
@@ -717,6 +712,21 @@ def measure_params(measure="central"):
             "declaration_sha256",
         ),
         "measurement_id": MEASUREMENT_ID,
+    }
+
+
+def reader_params(measure="central"):
+    """measure_params for a node that reads the measure, under ``measurement``.
+
+    R2C-1's proof counts every node upstream of a calibration that declares
+    ``measurement_id`` as that measurement's producer, so only the stand-in
+    declares it.
+    """
+    params = measure_params(measure)
+    return {
+        "measure": params["measure"],
+        "measure_sha256": params["measure_sha256"],
+        "measurement": params["measurement_id"],
     }
 
 
@@ -1541,17 +1551,20 @@ def add_evidence(graph):
             },
             artifact_inputs=[edge("donor_ranges", "nz.evidence.donor_ranges")],
         ),
-        # R2C-28: measurement_prefit's three income aliases, each from the
-        # node that recomputes it from this run's columns.
+        # R2C-29: measurement_prefit's three income aliases, each from the
+        # node that recomputes it from this run's columns. All three sit at
+        # nz.terminal, after the fit, so their params and kernel sources stay
+        # out of nz.calibrate's key. The stand-in's columns reach nz.terminal
+        # unchanged.
         node(
             "nz.evidence.income_identity",
             "transport.income_identity@1",
-            population="nz.central",
+            population="nz.terminal",
             inputs=[
                 slice_("person", [*measure_components(), *MEASURE_OUTPUTS.values()])
             ],
             params={
-                **measure_params(),
+                **reader_params(),
                 "identities": select(
                     "income_measurements", "json", "identity_receipts"
                 ),
@@ -1563,15 +1576,17 @@ def add_evidence(graph):
         node(
             "nz.evidence.omission_register",
             "transport.omission_register@1",
-            population="nz.central",
+            population="nz.terminal",
             inputs=[
                 slice_("person", [*measure_components(), MEASURE_OUTPUTS["measure"]])
             ],
             params={
                 "register": select("income_measurements", "json", "omission_register"),
                 "income_measurements_sha256": select("income_measurements", "sha256"),
-                **measure_params(),
+                **reader_params(),
+                "weight_entity": "household",
             },
+            artifact_inputs=[edge("problem", "nz.targets.problem")],
             artifact_outputs=[
                 artifact_output("omission_register", OMISSION_REGISTER_TYPE)
             ],
@@ -1595,7 +1610,7 @@ def add_evidence(graph):
                 **document("diagnostic_references", "income_diagnostic_references"),
                 "chronicle_feed_pin": select("chronicle_feed"),
                 "weight_entity": "household",
-                "measurement_id": MEASUREMENT_ID,
+                "measurement": MEASUREMENT_ID,
             },
             artifact_inputs=[
                 edge("preparation", "nz.targets.prepare"),

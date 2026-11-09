@@ -5,15 +5,17 @@ produces that artifact. The gate checks presence by alias, so each kernel here
 refuses, or carries the run's own content, on its own:
 
 ``transport.income_identity@1``
-    Recomputes the stand-in measure's exact identities from the run's columns,
-    in Python integers and independently of ``measure.combine@1``. The first
+    Recomputes the stand-in measure's exact identities on every record of the
+    run's columns. Its arithmetic is its own, in Python integers, over the
+    declaration that ``measure.combine@1``'s own validator parses. The first
     failing record raises by name, so the artifact exists only when every
-    identity holds.
+    checked identity holds.
 ``transport.omission_register@1``
     Binds the declared omission register to the run: its items verbatim (each
     size exactly as declared), beside the totals of what the measure does
-    include at pre-fit weights. It adds no model-side figure for an omitted
-    item, because the register's sizes mean IRD's.
+    include at the calibration problem's pre-fit weights. It adds no
+    model-side figure for an omitted item, because the register's sizes mean
+    IRD's.
 ``transport.native_band_report@1``
     Sets the model, at the run's pre-fit and post-fit weights, beside every
     native row of the publisher's table: the row's count and amount from the
@@ -24,40 +26,50 @@ refuses, or carries the run's own content, on its own:
 
 Each kernel emits one canonical JSON artifact whose header has the shape of
 :func:`~microcosm.build.transport.evidence_contract.evidence_header`. The
-producer hash is the kernel's own implementation hash: ``evidence_contract``
-hashes only the kernels it lists, and this module stays outside the gate
-battery's binding closure, so adding it re-keys no battery.
+producer hash is the kernel's own implementation hash, over the modules
+:data:`INCOME_EVIDENCE_KERNEL_MODULES` lists for it: this module and every
+first-party module its ``run()`` executes or reads a constant from.
+``evidence_contract`` hashes only the kernels it lists, and this module stays
+outside the gate battery's binding closure, so adding it re-keys no battery.
+
+No kernel here takes a ``measurement_id`` param. R2C-1's measurement proof
+counts every node upstream of a calibration that declares one as that
+measurement's producer, so these readers name the stand-in's id in a
+``measurement`` param instead.
 """
 
 from __future__ import annotations
 
 import copy
+import importlib
 import json
 import math
 from collections.abc import Mapping, Sequence
 from fractions import Fraction
+from types import MappingProxyType
 
 import numpy as np
 import pandas as pd
 
-import microcosm.build.ledger_artifact as ledger_artifact_module
-import microcosm.build.ledger_targets as ledger_targets_module
-import microcosm.build.reference_intervals as reference_intervals_module
-import microcosm.build.transport.evidence_contract as evidence_contract_module
-import microcosm.build.transport.measure_kernels as measure_kernels_module
-import microcosm.calibrate.artifacts as calibrate_artifacts_module
 from microcosm.build.ledger_artifact import LexicalFloat, load_ledger_consumer_artifact
 from microcosm.build.ledger_targets import fact_matches_selector
 from microcosm.build.reference_intervals import (
     UNIVERSE_STATES,
     boundary_diagnostics,
     classify_records,
+    interval_document_sha256,
     interval_table,
     scale_interval_table,
     source_interval_table,
     validate_interval_document,
 )
-from microcosm.calibrate.artifacts import decode_problem, decode_solution
+from microcosm.calibrate.artifacts import (
+    PROBLEM_TYPE,
+    SOLUTION_TYPE,
+    OrderedProblem,
+    decode_problem,
+    decode_solution,
+)
 from microcosm.frame import EntitySchema
 from microcosm.frame.concepts import SOURCE_HOUSEHOLD_ID_COLUMN
 from microcosm.graph import (
@@ -74,7 +86,7 @@ from microcosm.graph import (
 )
 from microcosm.graph.canonical import canonical_json
 
-from . import graph_inputs
+from .artifact_types import CALIBRATION_PREPARATION_TYPE
 from .evidence_contract import frame_column_sha256, param_sha256
 from .graph_inputs import (
     canonical_document_param,
@@ -88,6 +100,7 @@ from .measure_kernels import validate_measure_declaration
 
 __all__ = [
     "IDENTITY_RECEIPTS_TYPE",
+    "INCOME_EVIDENCE_KERNEL_MODULES",
     "INCOME_IDENTITIES",
     "INCOME_IDENTITY",
     "INCOME_IDENTITY_REF",
@@ -120,12 +133,13 @@ NATIVE_BAND_REPORT_REF = "transport.native_band_report@1"
 NATIVE_BAND_REPORT_TYPE = ArtifactType("microcosm.transport.native-band-report", 1)
 #: The weight vectors the native-band report reads, in report order.
 WEIGHT_BASES = ("pre_fit", "post_fit")
-#: Why the report gives a null, not a 0, for the model's nil row.
+#: Why the report gives a null, not a 0, for the model's nil row. The report
+#: attaches it only when the nil band holds no record at either weight basis.
 NIL_MODEL_REASON = (
-    "Null, not 0: no record in the measure's universe sits at zero, because the "
-    "universe excludes every record at or below zero (the identity receipts' "
-    "universe_partition). The model has no count comparable to the publisher's "
-    "nil row."
+    "Null, not 0: the nil band holds no record of the measure's universe at "
+    "either weight basis. measure.combine@1 includes a record only when its "
+    "measure exceeds zero, so the model has no count comparable to the "
+    "publisher's nil row."
 )
 _VALUE_KINDS = ("count", "money")
 _SCALING_KEYS = (
@@ -146,11 +160,12 @@ _SHARED_TABLE_FIELDS = (
     "positive_band_closure",
     "negative_income_policy",
 )
-#: The identities ``transport.income_identity@1`` recomputes, in order. The
-#: declaration's ``identity_receipts`` list must name exactly these.
+#: The identities ``transport.income_identity@1`` checks on every record, in
+#: order. The declaration's ``identity_receipts`` list must name exactly these.
+#: The add-back totals it reports follow from ``component_sum``, so they carry
+#: no identity of their own.
 INCOME_IDENTITIES = (
     "component_sum",
-    "add_back",
     "unit_rule",
     "universe_partition",
     "int64_range",
@@ -159,6 +174,73 @@ INCLUDED, EXCLUDED, UNRESOLVED = UNIVERSE_STATES
 _INT64_MIN = int(np.iinfo(np.int64).min)
 _INT64_MAX = int(np.iinfo(np.int64).max)
 _DEPENDENCIES = ("numpy", "pandas")
+
+_OWN = __name__
+_CANONICAL = "microcosm.graph.canonical"
+_GRAPH_INPUTS = "microcosm.build.transport.graph_inputs"
+_EVIDENCE_CONTRACT = "microcosm.build.transport.evidence_contract"
+_MEASURE_KERNELS = "microcosm.build.transport.measure_kernels"
+_REFERENCE_INTERVALS = "microcosm.build.reference_intervals"
+#: The modules that decoding a calibration problem or solution runs.
+_CALIBRATION_DECODE = (
+    "microcosm.calibrate.artifacts",
+    "microcosm.calibrate.matrix",
+    "microcosm.calibrate.target",
+    "microcosm.frame.weights",
+)
+_SCHEMA = "microcosm.frame.schema"
+#: Each kernel's source modules, in ``source_hash`` order: this module first,
+#: then every first-party module its ``run()`` executes or reads a constant
+#: from, and ``microcosm.graph.canonical`` last. An edit to any of them changes
+#: the kernel's implementation hash, and so its node's key.
+INCOME_EVIDENCE_KERNEL_MODULES: Mapping[str, tuple[str, ...]] = MappingProxyType(
+    {
+        INCOME_IDENTITY_REF: (
+            _OWN,
+            _GRAPH_INPUTS,
+            _EVIDENCE_CONTRACT,
+            _MEASURE_KERNELS,
+            _REFERENCE_INTERVALS,
+            _CANONICAL,
+        ),
+        OMISSION_REGISTER_REF: (
+            _OWN,
+            _GRAPH_INPUTS,
+            _EVIDENCE_CONTRACT,
+            _MEASURE_KERNELS,
+            _REFERENCE_INTERVALS,
+            *_CALIBRATION_DECODE,
+            _SCHEMA,
+            _CANONICAL,
+        ),
+        NATIVE_BAND_REPORT_REF: (
+            _OWN,
+            _GRAPH_INPUTS,
+            _EVIDENCE_CONTRACT,
+            _REFERENCE_INTERVALS,
+            "microcosm.build.ledger_artifact",
+            "microcosm.build.ledger_targets",
+            "microcosm.build.chronicle_epoch",
+            "microcosm.build.transport.artifact_types",
+            "microcosm.frame.concepts",
+            *_CALIBRATION_DECODE,
+            _SCHEMA,
+            _CANONICAL,
+        ),
+    }
+)
+
+
+def _implementation_hash(ref: str) -> str:
+    """``source_hash`` over ``ref``'s listed modules, in the listed order."""
+
+    return source_hash(
+        *(
+            importlib.import_module(name)
+            for name in INCOME_EVIDENCE_KERNEL_MODULES[ref]
+        ),
+        dependencies=_DEPENDENCIES,
+    )
 
 
 class IncomeIdentityError(ValueError):
@@ -282,7 +364,9 @@ def income_identity_receipts(
     units = unit_series.to_numpy(dtype=np.float64).tolist()
     statuses = _statuses(columns[outputs["universe_status"]])
     size = len(ids)
-    if any(len(column) != size for column in (*values.values(), measures, units)):
+    if any(
+        len(column) != size for column in (*values.values(), measures, units, statuses)
+    ):
         raise ValueError(f"{ref} columns differ in length.")
 
     def fail(identity: str, index: int, detail: str) -> IncomeIdentityError:
@@ -341,10 +425,6 @@ def income_identity_receipts(
             back_totals[column] += value
         counts[status] += 1
         sum_measure += total
-    if sum(counts.values()) != size:
-        raise IncomeIdentityError(f"{ref} identity universe_partition fails in total.")
-    if sum_measure != sum(signed_totals.values()) + sum(back_totals.values()):
-        raise IncomeIdentityError(f"{ref} identity add_back fails in total.")
     return {
         "entity": declaration["entity"],
         "n": size,
@@ -381,31 +461,21 @@ class IncomeIdentityKernel(KernelBase):
         dependencies=_DEPENDENCIES,
     )
 
+    _names = ("measure", "measure_sha256", "measurement", "identities")
+
     def implementation_hash(self) -> str:
-        return source_hash(
-            type(self),
-            graph_inputs,
-            measure_kernels_module,
-            evidence_contract_module,
-            dependencies=self.capabilities.dependencies,
-        )
+        return _implementation_hash(self.ref)
 
     def run(self, context: KernelContext) -> KernelResult:
         ref = self.ref
-        require_params(
-            context,
-            ref,
-            required=frozenset(
-                {"measure", "measure_sha256", "measurement_id", "identities"}
-            ),
-        )
+        require_params(context, ref, required=frozenset(self._names))
         document = canonical_document_param(context, ref, "measure")
         if sha256_param(context, ref, "measure_sha256") != sha256_text(
             context.params["measure"].encode("utf-8")
         ):
             raise ValueError(f"{ref} measure_sha256 differs from its declaration.")
         declaration = validate_measure_declaration(document)
-        measurement_id = string_param(context, ref, "measurement_id")
+        measurement_id = string_param(context, ref, "measurement")
         identities = _declared_identities(
             canonical_document_param(context, ref, "identities"), ref
         )
@@ -439,10 +509,7 @@ class IncomeIdentityKernel(KernelBase):
             {name: table[name] for name in (*names, *outputs.values())},
             table[f"{entity}_id"].tolist(),
         )
-        params = {
-            name: context.params[name]
-            for name in ("measure", "measure_sha256", "measurement_id", "identities")
-        }
+        params = {name: context.params[name] for name in self._names}
         document = {
             **_header(
                 "transport_income_identity",
@@ -497,12 +564,73 @@ def _register_items(document: Mapping[str, object], ref: str) -> dict[str, objec
     return {"description": document["description"], "items": [dict(r) for r in items]}
 
 
-def _weight_vector_sha256(ids: Sequence[object], weights: np.ndarray) -> str:
-    """SHA-256 of the weights as little-endian float64, in ascending id order."""
+def _weight_digests(ids: Sequence[object], weights: np.ndarray) -> dict[str, str]:
+    """``boundary_diagnostics``' two weight digests, by its own convention.
 
-    order = np.argsort(np.asarray(ids), kind="stable")
-    values = np.asarray(weights, dtype="<f8")[order]
-    return sha256_text(values.tobytes())
+    ``weights_sha256`` hashes the weights as little-endian float64 in record
+    order, and ``record_order_sha256`` hashes the record ids in that order. A
+    report built with ``boundary_diagnostics`` over the same records and
+    weights carries the same two digests.
+    """
+
+    order = [value if isinstance(value, str) else int(value) for value in ids]
+    if len(set(order)) != len(order):
+        raise ValueError("Weighted record ids must be unique.")
+    return {
+        "weights_sha256": sha256_text(np.asarray(weights, dtype="<f8").tobytes()),
+        "record_order_sha256": interval_document_sha256(order),
+    }
+
+
+def _typed_payloads(
+    context: KernelContext, ref: str, types: Mapping[str, ArtifactType]
+) -> dict[str, bytes]:
+    """Each artifact input's payload; refuse any other alias or another type.
+
+    The graph carries an artifact's nominal type but never checks it against
+    the consumer's expectation, so each consumer checks its own.
+    """
+
+    edges = {edge.name for edge in context.node.artifact_inputs}
+    if edges != set(types) or set(context.artifacts) != set(types):
+        raise ValueError(f"{ref} reads exactly {list(types)} artifacts.")
+    for alias, expected in types.items():
+        found = context.artifacts[alias].type
+        if found != expected:
+            raise ValueError(
+                f"{ref} reads {alias!r} as {expected.name}@{expected.schema_version}, "
+                f"not {found.name}@{found.schema_version}."
+            )
+    return {alias: context.artifacts[alias].payload for alias in types}
+
+
+def _axis_rows(
+    axis: Sequence[object],
+    members: Sequence[object],
+    *,
+    ref: str,
+    entity: str,
+    weight_entity: str,
+) -> list[int]:
+    """Each record's position on the problem's ``weight_entity`` axis."""
+
+    positions = {value: index for index, value in enumerate(axis)}
+    try:
+        return [positions[value] for value in members]
+    except KeyError as error:
+        raise ValueError(
+            f"{ref} has a {entity} outside the problem's {weight_entity} axis."
+        ) from error
+
+
+def _calibrated_problem(payload: bytes, weight_entity: str, ref: str) -> OrderedProblem:
+    problem = decode_problem(payload)
+    if problem.problem.weight_entity != weight_entity:
+        raise ValueError(
+            f"{ref} broadcasts {weight_entity!r} weights, but the problem "
+            f"calibrates {problem.problem.weight_entity!r}."
+        )
+    return problem
 
 
 def omission_register_totals(
@@ -597,25 +725,22 @@ class OmissionRegisterKernel(KernelBase):
         dependencies=_DEPENDENCIES,
     )
 
+    _names = (
+        "register",
+        "income_measurements_sha256",
+        "measure",
+        "measure_sha256",
+        "measurement",
+        "weight_entity",
+    )
+    _inputs = MappingProxyType({"problem": PROBLEM_TYPE})
+
     def implementation_hash(self) -> str:
-        return source_hash(
-            type(self),
-            graph_inputs,
-            measure_kernels_module,
-            evidence_contract_module,
-            dependencies=self.capabilities.dependencies,
-        )
+        return _implementation_hash(self.ref)
 
     def run(self, context: KernelContext) -> KernelResult:
         ref = self.ref
-        names = (
-            "register",
-            "income_measurements_sha256",
-            "measure",
-            "measure_sha256",
-            "measurement_id",
-        )
-        require_params(context, ref, required=frozenset(names))
+        require_params(context, ref, required=frozenset(self._names))
         register = _register_items(
             canonical_document_param(context, ref, "register"), ref
         )
@@ -626,8 +751,12 @@ class OmissionRegisterKernel(KernelBase):
         ):
             raise ValueError(f"{ref} measure_sha256 differs from its declaration.")
         declaration = validate_measure_declaration(document)
-        measurement_id = string_param(context, ref, "measurement_id")
+        measurement_id = string_param(context, ref, "measurement")
+        weight_entity = string_param(context, ref, "weight_entity")
+        schema = EntitySchema(group_entities=(weight_entity,))
         entity = declaration["entity"]
+        if entity != schema.person_entity:
+            raise ValueError(f"{ref} registers a {schema.person_entity} measure.")
         measure_column = declaration["outputs"]["measure"]
         if context.node.outputs:
             raise ValueError(f"{ref} writes no columns.")
@@ -635,6 +764,7 @@ class OmissionRegisterKernel(KernelBase):
             raise ValueError(f"{ref} declares one artifact, {self.artifact!r}.")
         if context.node.artifact_outputs[0].type != OMISSION_REGISTER_TYPE:
             raise ValueError(f"{ref} declares {self.artifact!r} as its own type.")
+        payloads = _typed_payloads(context, ref, self._inputs)
         if any(item.rows != ROWS_ALL for item in context.node.inputs):
             raise ValueError(f"{ref} requires whole-row slices.")
         declared = {
@@ -649,23 +779,32 @@ class OmissionRegisterKernel(KernelBase):
                 f"{ref} inputs must slice exactly the declared components and the "
                 f"measure on {entity!r}."
             )
+        problem = _calibrated_problem(payloads["problem"], weight_entity, ref)
         table = context.tables[entity]
-        if entity not in context.weights:
-            raise ValueError(f"{ref} needs the population's resolved {entity} weights.")
-        weights = context.weights[entity].values
+        rows = _axis_rows(
+            problem.entity_ids,
+            table[schema.membership_column(weight_entity)].tolist(),
+            ref=ref,
+            entity=entity,
+            weight_entity=weight_entity,
+        )
+        # The problem's initial weights are the fit's pre-fit weights, on its
+        # own entity axis; each record takes its weight unit's.
+        initial = problem.problem.initial_weights
+        weights = np.asarray(initial.values, dtype=np.float64)[rows]
         totals = omission_register_totals(
             declaration,
             {name: table[name] for name in (*component_names, measure_column)},
             weights,
         )
-        params = {name: context.params[name] for name in names}
+        params = {name: context.params[name] for name in self._names}
         body = {
             **_header(
                 "transport_omission_register",
                 kernel=ref,
                 implementation_hash=self.implementation_hash(),
                 node=context.node.id,
-                artifacts={},
+                artifacts=payloads,
                 frame=_frame_digests(context),
                 params=params,
             ),
@@ -676,10 +815,10 @@ class OmissionRegisterKernel(KernelBase):
             "register": register,
             "weights": {
                 "entity": entity,
+                "weight_entity": weight_entity,
                 "basis": "pre_fit",
-                "sha256": _weight_vector_sha256(
-                    table[f"{entity}_id"].to_numpy(), weights
-                ),
+                "kind": initial.kind.value,
+                **_weight_digests(table[schema.person_id_column].tolist(), weights),
             },
             "included": totals,
         }
@@ -1154,10 +1293,11 @@ def native_band_report(
             "pre-fit and post-fit weights. Each cut is the native table's source "
             "cut aged by the coarse table's own factor. Publisher counts and "
             "amounts are the pinned feed's source-period facts, with each amount "
-            "also shown aged by that factor and each count left unchanged. The "
-            "native rows stay diagnostic (R2C-4): measurement_prefit checks only "
-            "that the battery wires this report, no gate reads its rows, and it "
-            "carries no pass or fail."
+            "also shown aged by that factor and each count left unchanged. Each "
+            "row's source_households counts the distinct source households among "
+            "its records, unweighted. The native rows stay diagnostic (R2C-4): "
+            "measurement_prefit checks only that the battery wires this report, "
+            "no gate reads its rows, and it carries no pass or fail."
         ),
         "rows": rows,
         "coarse": coarse_report,
@@ -1183,21 +1323,18 @@ class NativeBandReportKernel(KernelBase):
         "diagnostic_references_sha256",
         "chronicle_feed_pin",
         "weight_entity",
-        "measurement_id",
+        "measurement",
     )
-    _aliases = ("preparation", "problem", "solution")
+    _inputs = MappingProxyType(
+        {
+            "preparation": CALIBRATION_PREPARATION_TYPE,
+            "problem": PROBLEM_TYPE,
+            "solution": SOLUTION_TYPE,
+        }
+    )
 
     def implementation_hash(self) -> str:
-        return source_hash(
-            type(self),
-            graph_inputs,
-            evidence_contract_module,
-            reference_intervals_module,
-            ledger_artifact_module,
-            ledger_targets_module,
-            calibrate_artifacts_module,
-            dependencies=self.capabilities.dependencies,
-        )
+        return _implementation_hash(self.ref)
 
     def run(self, context: KernelContext) -> KernelResult:
         ref = self.ref
@@ -1205,9 +1342,11 @@ class NativeBandReportKernel(KernelBase):
         native_id = string_param(context, ref, "native_table")
         coarse_id = string_param(context, ref, "coarse_table")
         weight_entity = string_param(context, ref, "weight_entity")
-        measurement_id = string_param(context, ref, "measurement_id")
+        measurement_id = string_param(context, ref, "measurement")
         references = canonical_document_param(context, ref, "references")
         diagnostics = canonical_document_param(context, ref, "diagnostic_references")
+        # Only echoed: the generator binds the resource file's digest here, and
+        # the param beside it holds canonical text, so the two can't be compared.
         diagnostics_sha256 = sha256_param(context, ref, "diagnostic_references_sha256")
         feed_pin = canonical_document_param(context, ref, "chronicle_feed_pin")
         if context.node.outputs:
@@ -1216,11 +1355,8 @@ class NativeBandReportKernel(KernelBase):
             raise ValueError(f"{ref} declares one artifact, {self.artifact!r}.")
         if context.node.artifact_outputs[0].type != NATIVE_BAND_REPORT_TYPE:
             raise ValueError(f"{ref} declares {self.artifact!r} as its own type.")
-        edges = {edge.name for edge in context.node.artifact_inputs}
-        if edges != set(self._aliases) or set(context.artifacts) != set(self._aliases):
-            raise ValueError(f"{ref} reads exactly {list(self._aliases)} artifacts.")
+        payloads = _typed_payloads(context, ref, self._inputs)
         source = single_source(context, ref)
-        payloads = {alias: context.artifacts[alias].payload for alias in self._aliases}
         preparation = json.loads(payloads["preparation"])
         intervals = (
             preparation.get("effective_intervals")
@@ -1255,17 +1391,20 @@ class NativeBandReportKernel(KernelBase):
         }
         if declared != expected:
             raise ValueError(f"{ref} inputs must slice exactly {sorted(expected)}.")
-        problem = decode_problem(payloads["problem"])
+        problem = _calibrated_problem(payloads["problem"], weight_entity, ref)
+        # The targets compile kernel binds the preparation it compiled from, so
+        # a preparation from any other branch refuses here.
+        if problem.bindings.get("preparation_sha256") != sha256_text(
+            payloads["preparation"]
+        ):
+            raise ValueError(
+                f"{ref} preparation isn't the one the calibration problem compiled."
+            )
         solution = decode_solution(
             payloads["solution"],
             problem_sha256=problem.sha256,
             entity_ids=problem.entity_ids,
         )
-        if problem.problem.weight_entity != weight_entity:
-            raise ValueError(
-                f"{ref} broadcasts {weight_entity!r} weights, but the problem "
-                f"calibrates {problem.problem.weight_entity!r}."
-            )
         person = context.tables[person_entity]
         units = context.tables[weight_entity]
         ids = units[schema.entity_id_column(weight_entity)].tolist()
@@ -1283,16 +1422,14 @@ class NativeBandReportKernel(KernelBase):
                 "solution."
             )
         design = np.asarray(problem.problem.initial_weights.values, dtype=np.float64)
-        positions = {value: index for index, value in enumerate(ids)}
-        try:
-            rows = [
-                positions[value]
-                for value in person[schema.membership_column(weight_entity)].tolist()
-            ]
-        except KeyError as error:
-            raise ValueError(
-                f"{ref} has a {person_entity} outside the problem's {weight_entity} axis."
-            ) from error
+        # The ids check above makes frame positions and problem positions agree.
+        rows = _axis_rows(
+            problem.entity_ids,
+            person[schema.membership_column(weight_entity)].tolist(),
+            ref=ref,
+            entity=person_entity,
+            weight_entity=weight_entity,
+        )
         sources = units[SOURCE_HOUSEHOLD_ID_COLUMN].tolist()
         artifact = load_ledger_consumer_artifact(
             context.sources[source], feed_pin=feed_pin, lexical_floats=True

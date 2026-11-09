@@ -666,7 +666,7 @@ def documents(nz=NZ):
             },
             "package": {"id": "nz.package", "artifact_name": "bands"},
             "checkpoints": ["nz.as.bands"],
-            # R2C-28 (G8-x1): R2C-3's VSI, VEX and VPT evidence is each variant's
+            # R2C-29 (G8-x1): R2C-3's VSI, VEX and VPT evidence is each variant's
             # own gap, which exists only when that variant's calibration and
             # entitlement branch ran.
             "gate_evidence": [

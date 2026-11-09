@@ -823,7 +823,7 @@ def _income_standin(resources, rows, facts, problem):
                 "declaration_sha256": sha256(canonical_json(declaration)).hexdigest(),
             }
         },
-        # R2C-28's two declared documents, in income_measurements.json's shape.
+        # R2C-29's two declared documents, in income_measurements.json's shape.
         "identity_receipts": {
             "description": "The identities transport.income_identity@1 checks.",
             "identities": [
@@ -1583,20 +1583,23 @@ def _income_evidence(rows):
     """measurement_prefit's three income producers, wired as N/ wires them.
 
     tools/build_nz_transport_graph.py declares the same three nodes over
-    nz.income.standin's measure; each reads the stand-in node's own measure
-    params, and the native-band report reads the coarse table the toy
-    calibrates beside the native table it passes through.
+    nz.income.standin's measure, all at nz.terminal. Each reads the stand-in
+    node's own declaration params and names its measurement under
+    ``measurement``, since only the stand-in declares ``measurement_id``. The
+    native-band report reads the coarse table the toy calibrates beside the
+    native table it passes through.
     """
     standin = next(row for row in rows if row["id"] == TOY_STANDIN_NODE)
     measure = {
-        name: standin["params"][name]
-        for name in ("measure", "measure_sha256", "measurement_id")
+        "measure": standin["params"]["measure"],
+        "measure_sha256": standin["params"]["measure_sha256"],
+        "measurement": standin["params"]["measurement_id"],
     }
     return [
         _node(
             "nz.evidence.income_identity",
             "transport.income_identity@1",
-            population="nz.central",
+            population="nz.terminal",
             inputs=[
                 _slice(
                     "person", [*TOY_STANDIN_COMPONENTS, *TOY_STANDIN_OUTPUTS.values()]
@@ -1615,7 +1618,7 @@ def _income_evidence(rows):
         _node(
             "nz.evidence.omission_register",
             "transport.omission_register@1",
-            population="nz.central",
+            population="nz.terminal",
             inputs=[
                 _slice(
                     "person",
@@ -1630,7 +1633,9 @@ def _income_evidence(rows):
                     "toy_income_measurements", "sha256"
                 ),
                 **measure,
+                "weight_entity": "household",
             },
+            artifact_inputs=[_edge("problem", "nz.targets.problem")],
             artifact_outputs=[
                 _artifact_output("omission_register", OMISSION_REGISTER_TYPE)
             ],
@@ -1659,7 +1664,7 @@ def _income_evidence(rows):
                 ),
                 "chronicle_feed_pin": _select("toy_calibration_feed_pin"),
                 "weight_entity": "household",
-                "measurement_id": TOY_MEASUREMENT,
+                "measurement": TOY_MEASUREMENT,
             },
             artifact_inputs=[
                 _edge("preparation", "nz.calibration.prepare"),
