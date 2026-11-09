@@ -543,7 +543,7 @@
     },
     {
       "name": "dwp.uc.people_aged_16_to_24",
-      "reason": "Diagnostic, not a weight question: the young people work review (chronicle#420 item 3) reads the model's UC claimants and partners by age against DWP's people on UC. With Y2's education flag the model's 16 to 24 count still runs well above DWP's: once Y2 takes full-time students off UC, the take-up redraw (uc_take_up) restores the single caseload by award band, not by age. So the rows stay held out. The 16 to 17 count never appears alone or by difference.",
+      "reason": "Diagnostic, not a weight question: the young people work review (chronicle#420 item 3) reads the model's UC claimants and partners by age against DWP's people on UC. The UC take-up redraw's age fit (uc_take_up) brings the 16 to 24 count as near DWP's as the redraw allows, but fixed claims (units that report Universal Credit, and units moved off or kept on their legacy benefits) and pools whose count needs more claims than their other drawn units can give keep young units claiming whatever the ratio, so the count can stay above DWP's. The rows stay held out as checks on the fit, on the solve and on the split between 16 to 21 and 22 to 24. The 16 to 17 count never appears alone or by difference.",
       "tracking": "microcosm#1095",
       "approved_by": "juaristi22",
       "adjudication": "María's calls of 2026-11-08 on the plan for the November event data (PR2, item Y4): measure DWP's people on Universal Credit aged 16 to 24, 16 to 21 and 22 to 24, every regime, on the four quarterly points of 2025, and hold them out of the solve (for María's signature).",
@@ -552,7 +552,7 @@
     },
     {
       "name": "dwp.uc.people_aged_16_to_21",
-      "reason": "Diagnostic, not a weight question: the young people work review (chronicle#420 item 3) reads the model's UC claimants and partners by age against DWP's people on UC. With Y2's education flag the model's 16 to 24 count still runs well above DWP's: once Y2 takes full-time students off UC, the take-up redraw (uc_take_up) restores the single caseload by award band, not by age. So the rows stay held out. The 16 to 17 count never appears alone or by difference.",
+      "reason": "Diagnostic, not a weight question: the young people work review (chronicle#420 item 3) reads the model's UC claimants and partners by age against DWP's people on UC. The UC take-up redraw's age fit (uc_take_up) brings the 16 to 24 count as near DWP's as the redraw allows, but fixed claims (units that report Universal Credit, and units moved off or kept on their legacy benefits) and pools whose count needs more claims than their other drawn units can give keep young units claiming whatever the ratio, so the count can stay above DWP's. The rows stay held out as checks on the fit, on the solve and on the split between 16 to 21 and 22 to 24. The 16 to 17 count never appears alone or by difference.",
       "tracking": "microcosm#1095",
       "approved_by": "juaristi22",
       "adjudication": "María's calls of 2026-11-08 on the plan for the November event data (PR2, item Y4): measure DWP's people on Universal Credit aged 16 to 24, 16 to 21 and 22 to 24, every regime, on the four quarterly points of 2025, and hold them out of the solve (for María's signature).",
@@ -561,7 +561,7 @@
     },
     {
       "name": "dwp.uc.people_aged_22_to_24",
-      "reason": "Diagnostic, not a weight question: the young people work review (chronicle#420 item 3) reads the model's UC claimants and partners by age against DWP's people on UC. With Y2's education flag the model's 16 to 24 count still runs well above DWP's: once Y2 takes full-time students off UC, the take-up redraw (uc_take_up) restores the single caseload by award band, not by age. So the rows stay held out. The 16 to 17 count never appears alone or by difference.",
+      "reason": "Diagnostic, not a weight question: the young people work review (chronicle#420 item 3) reads the model's UC claimants and partners by age against DWP's people on UC. The UC take-up redraw's age fit (uc_take_up) brings the 16 to 24 count as near DWP's as the redraw allows, but fixed claims (units that report Universal Credit, and units moved off or kept on their legacy benefits) and pools whose count needs more claims than their other drawn units can give keep young units claiming whatever the ratio, so the count can stay above DWP's. The rows stay held out as checks on the fit, on the solve and on the split between 16 to 21 and 22 to 24. The 16 to 17 count never appears alone or by difference.",
       "tracking": "microcosm#1095",
       "approved_by": "juaristi22",
       "adjudication": "María's calls of 2026-11-08 on the plan for the November event data (PR2, item Y4): measure DWP's people on Universal Credit aged 16 to 24, 16 to 21 and 22 to 24, every regime, on the four quarterly points of 2025, and hold them out of the solve (for María's signature).",

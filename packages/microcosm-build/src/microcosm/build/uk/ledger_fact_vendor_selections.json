@@ -1604,6 +1604,52 @@
       ]
     },
     {
+      "resource": "dwp_uc_people_by_age_facts.json",
+      "purpose": "DWP Stat-Xplore, People on Universal Credit in Great Britain by age (bands and single year), every conditionality regime, in February, May, August and November 2025: the facts the dwp.uc.people_aged_16_to_24 diagnostic averages (microcosm#1095, Y4 of the November event-data plan). Consumed by the uc_take_up stage's age fit, which takes the mean over the four months of the single years 16 to 24 as the count of young claimants and partners its odds ratio aims at on the spine's design weights (Mar\u00eda's call of 2026-11-09). No value is derived here.",
+      "consumers": [
+        "uk_runtime.uc_take_up"
+      ],
+      "planned_consumers": [],
+      "selections": [
+        {
+          "label": "uc_people_by_age_great_britain_2025_02",
+          "selector": {
+            "source_name": "dwp",
+            "record_set_id": "dwp.statx.uc_people.country_age_conditionality_regime.month2025_02.total",
+            "geography_id": "K03000001"
+          },
+          "expected_row_count": 28
+        },
+        {
+          "label": "uc_people_by_age_great_britain_2025_05",
+          "selector": {
+            "source_name": "dwp",
+            "record_set_id": "dwp.statx.uc_people.country_age_conditionality_regime.month2025_05.total",
+            "geography_id": "K03000001"
+          },
+          "expected_row_count": 28
+        },
+        {
+          "label": "uc_people_by_age_great_britain_2025_08",
+          "selector": {
+            "source_name": "dwp",
+            "record_set_id": "dwp.statx.uc_people.country_age_conditionality_regime.month2025_08.total",
+            "geography_id": "K03000001"
+          },
+          "expected_row_count": 28
+        },
+        {
+          "label": "uc_people_by_age_great_britain_2025_11",
+          "selector": {
+            "source_name": "dwp",
+            "record_set_id": "dwp.statx.uc_people.country_age_conditionality_regime.month2025_11.total",
+            "geography_id": "K03000001"
+          },
+          "expected_row_count": 28
+        }
+      ]
+    },
+    {
       "resource": "obr_hvcts_costing_facts.json",
       "purpose": "OBR costing of the high value council tax surcharge (2 April 2026): Table 1.1 and 1.2 properties in scope by band for 2028-29 to 2030-31 (static and post-behaviour) and the paragraph 1.13 non-owner-occupied share. Consumed by the uk_high_value_homes_benchmarks diagnostic gate and the high-value home stock builder's owner-occupied control (microcosm#1240).",
       "consumers": [

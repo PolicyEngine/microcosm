@@ -1081,6 +1081,8 @@ class TestUKCountryPackage:
             "scotgov_band_d_liability_facts.json",
             "dwp_move_to_uc_facts.json",
             "dwp_uc_award_band_facts.json",
+            # microcosm#1095 Y4: uc_take_up's age fit.
+            "dwp_uc_people_by_age_facts.json",
             "obr_hvcts_costing_facts.json",
             "hmrc_itl_taxpayer_counts.json",
             "hmrc_uprating_engine_pins.json",
@@ -1253,6 +1255,8 @@ class TestExistingPackagesGeneralize:
             "scotgov_band_d_liability_facts.json",
             "dwp_move_to_uc_facts.json",
             "dwp_uc_award_band_facts.json",
+            # microcosm#1095 Y4: uc_take_up's age fit.
+            "dwp_uc_people_by_age_facts.json",
             "obr_hvcts_costing_facts.json",
             "hmrc_itl_taxpayer_counts.json",
             "hmrc_uprating_engine_pins.json",

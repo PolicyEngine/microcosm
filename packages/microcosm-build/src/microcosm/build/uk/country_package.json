@@ -133,6 +133,11 @@
       "schema_id": "legacy_json"
     },
     {
+      "path": "dwp_uc_people_by_age_facts.json",
+      "kind": "legacy_json",
+      "schema_id": "legacy_json"
+    },
+    {
       "path": "obr_hvcts_costing_facts.json",
       "kind": "legacy_json",
       "schema_id": "legacy_json"

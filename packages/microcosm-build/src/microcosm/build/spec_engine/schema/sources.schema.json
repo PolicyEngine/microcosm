@@ -6972,7 +6972,10 @@
       "weight_mapping",
       "residual_rate",
       "solve_scope",
-      "not_drawn"
+      "not_drawn",
+      "young_people",
+      "age_targets",
+      "age_fit"
      ],
      "properties": {
       "kind": {
@@ -7034,6 +7037,15 @@
        ]
       },
       "not_drawn": {
+       "type": "string"
+      },
+      "young_people": {
+       "type": "string"
+      },
+      "age_targets": {
+       "type": "string"
+      },
+      "age_fit": {
        "type": "string"
       }
      }

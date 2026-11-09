@@ -51,6 +51,22 @@ age population, keeps its stored flag, the single-rate draw. The uniform is
 the ``would_claim_uc`` identity stream ``frs_take_up`` and
 ``spi_benefit_coherence`` use, so a unit whose pool's rate falls below the
 early draw's keeps its claim only if it had one.
+
+The age fit (María's call of 2026-11-09, microcosm#1095). Y2 took full-time
+students off Universal Credit, and the pools then refilled the single
+caseload from every other entitled single, so claimants and partners aged
+16 to 24 read well above DWP's count. Within every pool, the drawn units
+with a claimant or partner aged 16 to 24 claim at one odds ratio against
+the pool's other drawn units, the two rates together realizing the pool's
+count. The ratio is solved over Great Britain so that those young claimants
+and partners, in entitled units that claim, come as near DWP's People on
+Universal Credit aged 16 to 24 (February, May, August and November 2025),
+the facts the dwp.uc.people_aged_16_to_24 diagnostic reads, as the redraw
+allows. Fixed claims (a reporter, a moved unit, a unit kept on its legacy
+benefits) and a pool whose count needs more claims than its other drawn
+units can give keep young units claiming whatever the ratio, so the count
+can stay above DWP's; the ratio then holds at the end of its range and the
+receipt says so. No family type or award band count moves.
 """
 
 from __future__ import annotations
@@ -118,6 +134,8 @@ from microcosm.frame.rules import assert_rules_engine_country
 __all__ = [
     "UC_AWARD_BAND_LABELS",
     "UC_FAMILY_TYPES",
+    "UC_TAKE_UP_AGE_RECORD_SETS",
+    "UC_TAKE_UP_AGE_RESOURCE",
     "UC_TAKE_UP_ENTITLEMENT_VARIABLES",
     "UC_TAKE_UP_MINIMUM_POOL_SOURCES",
     "UC_TAKE_UP_OPERATION_KIND",
@@ -129,11 +147,13 @@ __all__ = [
     "UKUCTakeUpStageTransform",
     "assign_award_band_take_up",
     "load_uc_award_band_targets",
+    "load_uc_young_people_target",
     "redraw_uc_take_up",
     "uc_award_band_targets_from_rows",
     "uc_award_bands",
     "uc_family_types",
     "uc_take_up_operation_parameters",
+    "uc_young_people_target_from_rows",
     "working_age_housing_benefit_receipt",
 ]
 
@@ -209,6 +229,51 @@ UC_TAKE_UP_RESIDUAL_RATE = (
     "their uniform until their weight is nearest T - F, and applied at that "
     "uniform to Northern Ireland's drawn units too"
 )
+#: The age fit (María's call of 2026-11-09, Y4 of the November event-data
+#: plan, microcosm#1095). After Y2 took full-time students off Universal
+#: Credit, the award-band pools refilled the single caseload from every other
+#: entitled single, and claimants and partners aged 16 to 24 read about 1.3
+#: times DWP's count. The fit keeps every pool's count and gives the drawn units
+#: with a young claimant or partner one odds ratio against the pool's others,
+#: solved for DWP's count of people on Universal Credit aged 16 to 24.
+UC_TAKE_UP_AGE_RESOURCE = "dwp_uc_people_by_age_facts.json"
+UC_TAKE_UP_AGE_MONTHS: tuple[str, ...] = ("2025-02", "2025-05", "2025-08", "2025-11")
+UC_TAKE_UP_AGE_RECORD_SETS: tuple[str, ...] = tuple(
+    "dwp.statx.uc_people.country_age_conditionality_regime.month"
+    + month.replace("-", "_")
+    + ".total"
+    for month in UC_TAKE_UP_AGE_MONTHS
+)
+_AGE_CONCEPT = "dwp.people_on_universal_credit"
+_AGE_MEASURE = "people"
+_AGE_GEOGRAPHY = "K03000001"
+_AGE_DIMENSION = "age_bands_and_single_year"
+_AGE_REGIME_DIMENSION = "conditionality_regime"
+UC_TAKE_UP_YOUNG_AGES: tuple[int, ...] = tuple(range(16, 25))
+UC_TAKE_UP_YOUNG_ROLE = "is_claimant_or_partner"
+UC_TAKE_UP_YOUNG_PEOPLE = (
+    "claimants and partners (is_claimant_or_partner) aged 16 to 24, at the "
+    "stored age, which policyengine-uk carries unchanged to the entitlement "
+    "year; a unit counts each of them"
+)
+UC_TAKE_UP_AGE_TARGET = (
+    "DWP Stat-Xplore People on Universal Credit in Great Britain aged 16 to 24, "
+    "every conditionality regime: the single years summed in February, May, "
+    "August and November 2025 and averaged, as the dwp.uc.people_aged_16_to_24 "
+    "diagnostic reads them"
+)
+UC_TAKE_UP_AGE_FIT = (
+    "one odds ratio theta for the drawn units with a young claimant or partner: "
+    "in every pool they claim at theta times the odds of the pool's other drawn "
+    "units, the two rates together realizing the pool's count, each realized in "
+    "the order of the uniform as a pool's rate is; theta is solved so that the "
+    "young claimants and partners of Great Britain's entitled units that claim, "
+    "at the stage's household weights, are nearest DWP's count, held at the "
+    "nearer end of exp(-12) to exp(12) where no theta reaches it"
+)
+#: The odds ratio's search interval, on its log.
+_LOG_ODDS_BOUNDS = (-12.0, 12.0)
+_ODDS_ITERATIONS = 60
 
 
 def uc_award_bands(award: np.ndarray) -> np.ndarray:
@@ -315,6 +380,99 @@ def load_uc_award_band_targets() -> dict[tuple[str, int], float]:
     from microcosm.build.uk_runtime.ledger_fact_vendoring import vendored_rows
 
     return uc_award_band_targets_from_rows(vendored_rows(UC_TAKE_UP_RESOURCE))
+
+
+def uc_young_people_target_from_rows(rows: Sequence[Mapping[str, Any]]) -> float:
+    """DWP's people on Universal Credit aged 16 to 24 in Great Britain.
+
+    Every conditionality regime's single years of age, summed in each of
+    February, May, August and November 2025 and averaged: the value the
+    ``dwp.uc.people_aged_16_to_24`` diagnostic compiles from the same facts.
+    The age bands above 24 are not cells.
+    """
+
+    counts: dict[str, dict[int, float]] = {}
+    for row in rows:
+        if row.get("concept") != _AGE_CONCEPT or row.get("measure_id") != _AGE_MEASURE:
+            continue
+        if (row.get("geography") or {}).get("id") != _AGE_GEOGRAPHY:
+            continue
+        dimensions = row.get("dimensions") or {}
+        if str(dimensions.get(_AGE_REGIME_DIMENSION)) != "all":
+            continue
+        age = dimensions.get(_AGE_DIMENSION)
+        if isinstance(age, bool) or not isinstance(age, int):
+            continue
+        if age not in UC_TAKE_UP_YOUNG_AGES:
+            continue
+        month = str((row.get("period") or {}).get("value"))
+        if month not in UC_TAKE_UP_AGE_MONTHS:
+            raise ValueError(
+                f"UC people by age facts carry an unexpected month {month}."
+            )
+        cell = counts.setdefault(month, {})
+        if age in cell:
+            raise ValueError(f"UC people by age facts repeat age {age} in {month}.")
+        cell[age] = float(row["value"])
+    if set(counts) != set(UC_TAKE_UP_AGE_MONTHS) or any(
+        set(cell) != set(UC_TAKE_UP_YOUNG_AGES) for cell in counts.values()
+    ):
+        raise ValueError(
+            "UC people by age facts must give Great Britain's every-regime count "
+            "at each single age 16 to 24 in "
+            f"{', '.join(UC_TAKE_UP_AGE_MONTHS)}."
+        )
+    return float(
+        np.mean([sum(counts[month].values()) for month in UC_TAKE_UP_AGE_MONTHS])
+    )
+
+
+def load_uc_young_people_target() -> float:
+    """The age fit's count from the committed vendored resource."""
+
+    from microcosm.build.uk_runtime.ledger_fact_vendoring import vendored_rows
+
+    return uc_young_people_target_from_rows(vendored_rows(UC_TAKE_UP_AGE_RESOURCE))
+
+
+def _odds_scaled(rate: float, theta: float) -> float:
+    """The rate whose odds are ``theta`` times ``rate``'s."""
+
+    if rate <= 0.0:
+        return 0.0
+    if rate >= 1.0:
+        return 1.0
+    return theta * rate / (1.0 - rate + theta * rate)
+
+
+def _split_rates(
+    need: float, young: float, other: float, theta: float
+) -> tuple[float, float]:
+    """The young and other drawn units' rates that realize ``need`` together.
+
+    ``young`` and ``other`` are the two groups' drawn weights. The young rate's
+    odds are ``theta`` times the other's, so the weight claiming,
+    ``young * r_y + other * r_o``, rises with ``r_o``; bisection finds the pair
+    that meets ``need``, which lies strictly between nothing and every unit.
+    """
+
+    if need <= 0.0:
+        return 0.0, 0.0
+    if need >= young + other:
+        return 1.0, 1.0
+    if young <= 0.0:
+        return 0.0, need / other
+    if other <= 0.0:
+        return need / young, 0.0
+    low, high = 0.0, 1.0
+    for _ in range(100):
+        middle = 0.5 * (low + high)
+        if young * _odds_scaled(middle, theta) + other * middle < need:
+            low = middle
+        else:
+            high = middle
+    other_rate = 0.5 * (low + high)
+    return _odds_scaled(other_rate, theta), other_rate
 
 
 def _pools(
@@ -465,8 +623,17 @@ def assign_award_band_take_up(
     targets: Mapping[tuple[str, int], float],
     minimum_pool_sources: int = UC_TAKE_UP_MINIMUM_POOL_SOURCES,
     legacy_kept: np.ndarray | None = None,
+    young_people: np.ndarray | None = None,
+    young_target: float | None = None,
 ) -> tuple[np.ndarray, dict[str, object]]:
     """Reporters claim; drawn units claim at their pool's residual rate.
+
+    With ``young_people`` (each unit's claimants and partners aged 16 to 24)
+    and ``young_target`` (DWP's count of them), the age fit splits each pool's
+    rate: its drawn units with a young member claim at an odds ratio ``theta``
+    against its other drawn units, the two rates realizing the pool's count
+    together, and ``theta`` is solved for DWP's count over Great Britain
+    (``UC_TAKE_UP_AGE_FIT``). Without them every pool draws at one rate.
 
     The drawn units are the entitled, non-reporting units of the age
     population that the engine does not move off their legacy benefits and
@@ -515,6 +682,16 @@ def assign_award_band_take_up(
             raise ValueError(f"UC take-up {name} must align to the benefit units.")
     if not ((moved_claim >= 0.0) & (moved_claim <= 1.0)).all():
         raise ValueError("Expected claims at the legacy closure must lie in [0, 1].")
+    if (young_people is None) != (young_target is None):
+        raise ValueError("The age fit needs both young_people and young_target.")
+    if young_people is not None:
+        young_people = np.asarray(young_people, dtype=np.float64)
+        if young_people.shape != shape:
+            raise ValueError("UC take-up young_people must align to the benefit units.")
+        if not (np.isfinite(young_people).all() and (young_people >= 0.0).all()):
+            raise ValueError("UC take-up young_people must be finite counts.")
+        if not (np.isfinite(young_target) and young_target > 0.0):
+            raise ValueError("The age fit's count must be positive and finite.")
     unknown = sorted(set(family) - {name for name, _ in UC_FAMILY_TYPES})
     if unknown:
         raise ValueError(f"UC take-up family types are unknown: {unknown}.")
@@ -549,6 +726,9 @@ def assign_award_band_take_up(
         )
 
     pools: list[dict[str, object]] = []
+    # Each pool's drawn units (with Northern Ireland's), its Great Britain
+    # drawn units, the claims they must realize and their weight.
+    needs: list[tuple[np.ndarray, np.ndarray, float, float]] = []
     for name, _ in UC_FAMILY_TYPES:
         in_family = family == name
         family_pools = _pools(
@@ -567,13 +747,7 @@ def assign_award_band_take_up(
         ):
             in_pool = in_family & np.isin(band, bands)
             solve = in_pool & gb
-            if drawn > 0.0:
-                rates[in_pool & drawable] = _realized_rate(
-                    (count - undrawn) / drawn,
-                    need=count - undrawn,
-                    draws=draws[solve & drawable],
-                    weights=weights[solve & drawable],
-                )
+            needs.append((in_pool & drawable, solve & drawable, count - undrawn, drawn))
             # Where the undrawn claims reach DWP's count, or the count exceeds
             # every entitled unit, the pool cannot meet it alone: it is held
             # at its clip and its gap passed on.
@@ -594,7 +768,78 @@ def assign_award_band_take_up(
                     "feasible_family": feasible,
                 }
             )
-    would_claim = np.where(drawable, draws < rates, previous | reporter)
+    young_unit = (
+        np.zeros(shape, dtype=bool) if young_people is None else young_people > 0.0
+    )
+
+    def realize(theta: float | None) -> np.ndarray:
+        """Each unit's claim at the age fit's odds ratio, or at one rate."""
+
+        rates[:] = 0.0
+        for unit, solve_drawn, need, drawn in needs:
+            if drawn <= 0.0:
+                continue
+            if theta is None:
+                rates[unit] = _realized_rate(
+                    need / drawn,
+                    need=need,
+                    draws=draws[solve_drawn],
+                    weights=weights[solve_drawn],
+                )
+                continue
+            young_solve = solve_drawn & young_unit
+            other_solve = solve_drawn & ~young_unit
+            young_rate, other_rate = _split_rates(
+                need,
+                float(weights[young_solve].sum()),
+                float(weights[other_solve].sum()),
+                theta,
+            )
+            for rate, group_solve, group in (
+                (young_rate, young_solve, unit & young_unit),
+                (other_rate, other_solve, unit & ~young_unit),
+            ):
+                if group_solve.any():
+                    rates[group] = _realized_rate(
+                        rate,
+                        need=rate * float(weights[group_solve].sum()),
+                        draws=draws[group_solve],
+                        weights=weights[group_solve],
+                    )
+                else:
+                    # Only Northern Ireland's units: drawn at the group's rate.
+                    rates[group] = rate
+        return np.where(drawable, draws < rates, previous | reporter)
+
+    entitled_gb = entitled & gb
+    young_weight = weights * (young_people if young_people is not None else 0.0)
+
+    def young_claims(claims: np.ndarray) -> float:
+        expected = np.where(drawable, claims.astype(np.float64), fixed)
+        return float((young_weight * expected)[entitled_gb].sum())
+
+    theta: float | None = None
+    age_status: str | None = None
+    if young_people is not None:
+        low, high = _LOG_ODDS_BOUNDS
+        if young_target <= young_claims(realize(float(np.exp(low)))):
+            log_theta, age_status = low, "target_below_least_young_claims"
+        elif young_target >= young_claims(realize(float(np.exp(high)))):
+            log_theta, age_status = high, "target_above_most_young_claims"
+        else:
+            # Young claims rise with theta in every pool, so bisection on its
+            # log brackets DWP's count; the nearer end of the bracket is kept.
+            for _ in range(_ODDS_ITERATIONS):
+                middle = 0.5 * (low + high)
+                if young_claims(realize(float(np.exp(middle)))) < young_target:
+                    low = middle
+                else:
+                    high = middle
+            low_gap = abs(young_claims(realize(float(np.exp(low)))) - young_target)
+            high_gap = abs(young_claims(realize(float(np.exp(high)))) - young_target)
+            log_theta = low if low_gap <= high_gap else high
+        theta = float(np.exp(log_theta))
+    would_claim = realize(theta)
     expected_before = np.where(drawable, previous.astype(np.float64), fixed)
     expected_after = np.where(drawable, would_claim.astype(np.float64), fixed)
 
@@ -674,6 +919,28 @@ def assign_award_band_take_up(
         "set_true": rounded_count(int((changed & would_claim).sum())),
         "set_false": rounded_count(int((changed & ~would_claim).sum())),
     }
+    if young_people is not None:
+        carried = sources(entitled_gb & young_unit)
+        drawn_young = sources(drawable & gb & young_unit)
+        before = float((young_weight * expected_before)[entitled_gb].sum())
+        receipt["age_fit"] = {
+            "rule": UC_TAKE_UP_AGE_FIT,
+            "young_people": UC_TAKE_UP_YOUNG_PEOPLE,
+            "target": UC_TAKE_UP_AGE_TARGET,
+            "dwp_young_people": float(young_target),
+            "young_people_before": small_cell_share(before, carried),
+            "young_people_after": small_cell_share(young_claims(would_claim), carried),
+            "support": support_band(carried),
+            "drawn_support": support_band(drawn_young),
+            # A ratio solved over the drawn young units' weights, given only
+            # where three or more sources carry them (UKDS disclosure control).
+            "odds_ratio": (
+                round(float(theta), 6)
+                if drawn_young >= UK_DISCLOSURE_FLOOR
+                else UK_WITHHELD
+            ),
+            "target_unreachable": age_status,
+        }
     return would_claim.astype(bool), receipt
 
 
@@ -705,8 +972,14 @@ def redraw_uc_take_up(
     closure_rates: Mapping[str, float],
     deduction_resource: Mapping[str, Any] | None = None,
     minimum_pool_sources: int = UC_TAKE_UP_MINIMUM_POOL_SOURCES,
+    young_target: float | None = None,
 ) -> UKUCTakeUpResult:
-    """Redraw ``would_claim_uc`` by award band and family type."""
+    """Redraw ``would_claim_uc`` by award band and family type.
+
+    With ``young_target``, DWP's people on Universal Credit aged 16 to 24, the
+    age fit runs on each unit's claimants and partners of those ages
+    (``UC_TAKE_UP_YOUNG_PEOPLE``); the stage always passes it.
+    """
 
     validate_uk_national_frame(frame)
     assert_rules_engine_country(engine, "uk")
@@ -731,6 +1004,11 @@ def redraw_uc_take_up(
         missing = sorted(set(columns) - set(table.columns))
         if missing:
             raise ValueError(f"UC take-up {label} columns missing: {missing}.")
+    if young_target is not None and UC_TAKE_UP_YOUNG_ROLE not in person.columns:
+        raise ValueError(
+            f"UC take-up's age fit reads person.{UC_TAKE_UP_YOUNG_ROLE}, which "
+            "the frame does not carry."
+        )
     period = uk_time_period(frame)
     declared = resolve_uk_year_rule(UC_TAKE_UP_DATASET_YEAR_RULE)
     if int(period) != declared:
@@ -847,6 +1125,26 @@ def redraw_uc_take_up(
         seed=UC_TAKE_UP_SEED,
         salt=UK_UC_TAKE_UP_OUTPUT,
     )
+    young_people = None
+    if young_target is not None:
+        # The ages the diagnostic reads: policyengine-uk carries the stored age
+        # unchanged into every projected year, so the survey-year age is the
+        # entitlement year's.
+        age = pd.to_numeric(person[UK_UC_AGE_ELIGIBLE_SOURCE], errors="coerce")
+        role = person[UC_TAKE_UP_YOUNG_ROLE].fillna(False).to_numpy(dtype=bool)
+        young = (
+            role
+            & (age >= min(UC_TAKE_UP_YOUNG_AGES)).to_numpy()
+            & (age <= max(UC_TAKE_UP_YOUNG_AGES)).to_numpy()
+        )
+        young_people = (
+            pd.Series(young.astype(np.float64))
+            .groupby(person["person_benunit_id"].to_numpy())
+            .sum()
+            .reindex(benunit["benunit_id"].to_numpy())
+            .fillna(0.0)
+            .to_numpy()
+        )
     would_claim, receipt = assign_award_band_take_up(
         award=award,
         family=family,
@@ -862,6 +1160,8 @@ def redraw_uc_take_up(
         targets=targets,
         minimum_pool_sources=minimum_pool_sources,
         legacy_kept=(combination != "") & ~moved & ~reporter,
+        young_people=young_people,
+        young_target=young_target,
     )
     kept_off = esa_kept & stored & great_britain
     esa_kept_receipt = {
@@ -995,6 +1295,21 @@ def uc_take_up_operation_parameters() -> tuple[tuple[str, dict[str, object]], ..
             },
         ),
         (
+            "verify_vendored_fact_resource",
+            {
+                "artifact_role": "uc_people_by_age_facts",
+                "resource": UC_TAKE_UP_AGE_RESOURCE,
+                "feed_pin": "chronicle_feed.json",
+                "record_sets": list(UC_TAKE_UP_AGE_RECORD_SETS),
+                "source_vintage": "February, May, August and November 2025",
+                "mapped_build_period": 2025,
+                "period_mapping": "mean_of_four_quarterly_monthly_counts_in_2025",
+                "require_before_source_read": True,
+                "runtime_sha256_required": True,
+                "fail_on_mismatch": True,
+            },
+        ),
+        (
             "materialize_rules_engine_predictors",
             {
                 "predictors": list(UC_TAKE_UP_ENTITLEMENT_VARIABLES),
@@ -1072,6 +1387,9 @@ def uc_take_up_operation_parameters() -> tuple[tuple[str, dict[str, object]], ..
                     "keeps its stored flag, except a unit keeping income-related "
                     "ESA, which claims none"
                 ),
+                "young_people": UC_TAKE_UP_YOUNG_PEOPLE,
+                "age_targets": UC_TAKE_UP_AGE_TARGET,
+                "age_fit": UC_TAKE_UP_AGE_FIT,
             },
         ),
     )
@@ -1107,6 +1425,9 @@ class UKUCTakeUpStageTransform:
     targets: Mapping[tuple[str, int], float] | None = field(default=None, repr=False)
     closure_rates: Mapping[str, float] | None = field(default=None, repr=False)
     deduction_resource: Mapping[str, Any] | None = field(default=None, repr=False)
+    #: DWP's people on Universal Credit aged 16 to 24; read from the vendored
+    #: facts when not given.
+    young_target: float | None = field(default=None, repr=False)
     last_result: UKUCTakeUpResult | None = field(default=None, init=False)
 
     def __post_init__(self) -> None:
@@ -1132,6 +1453,11 @@ class UKUCTakeUpStageTransform:
                 else load_move_to_uc_claim_rates()
             ),
             deduction_resource=self.deduction_resource,
+            young_target=(
+                self.young_target
+                if self.young_target is not None
+                else load_uc_young_people_target()
+            ),
         )
         object.__setattr__(self, "last_result", result)
         return result.frame
