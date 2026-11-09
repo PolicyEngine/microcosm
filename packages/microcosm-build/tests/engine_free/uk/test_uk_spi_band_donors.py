@@ -1386,9 +1386,11 @@ def test_clone_zero_seats_what_one_clone_seats_and_every_clone_takes_the_seats(
 
     # Clone 0's weights, its donors' included, are the one clone's over the
     # clone count while the common mass scale is the one clone's, as here,
-    # where it is one at both. The exact-total correction moves one incumbent
-    # row by a few ulps of the total, in whichever clone it lands, so on these
-    # small frames to rtol 1e-12, not bit for bit.
+    # where it is one at both. On these small frames they nest to rtol 1e-12,
+    # not bit for bit: the exact-total correction moves one incumbent row by a
+    # few ulps of the total, in whichever clone it lands, and the 1/K split
+    # rounds when K is not a power of two, as 3 and 7 are not, so uncorrected
+    # rows also miss by about one ulp.
     weights_once = _weights_by_id(one.frame)
     clone_zero = _clone_of(many).loc[lambda clones: clones.eq(0)].index
     assert set(clone_zero) == set(weights_once.index)

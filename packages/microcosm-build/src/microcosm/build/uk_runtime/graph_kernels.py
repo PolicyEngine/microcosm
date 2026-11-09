@@ -26,10 +26,15 @@ from typing import TYPE_CHECKING
 import numpy as np
 import pandas as pd
 
+from microcosm.calibrate import geography_constants
 from microcosm.fit import categorical as fit_categorical
 from microcosm.fit import donors as fit_donors
 from microcosm.fit import held_out as fit_held_out
+from microcosm.fit import model as fit_model
+from microcosm.fit import qrf as fit_qrf
 from microcosm.frame import Frame, MassChangeRecord, WeightKind, table_copies
+from microcosm.frame import materialize as frame_materialize
+from microcosm.frame import rules as frame_rules
 from microcosm.frame.adapters import engine_population
 from microcosm.frame.adapters import policyengine_uk as uk_engine_adapter
 from microcosm.frame.adapters import (
@@ -50,6 +55,8 @@ from microcosm.graph import (
     load_source,
     source_hash,
 )
+from microcosm.graph import canonical as graph_canonical
+from microcosm.graph import randomness as graph_randomness
 from microcosm.graph.population import dtype_for_token
 
 from .. import (
@@ -208,7 +215,8 @@ _STAGE_MODULES = {
 # shared engine-block machinery with the UK declaration it judges each batch
 # against (microcosm#931). An edit to any of them moves the hash of every such
 # stage; test_uk_graph derives the stages from their engine calls and from
-# their transforms' engine parameter.
+# their transforms' engine parameter. Every stage also hashes the adapter
+# beside national_frame (_implementation_hash).
 _ENGINE_MODULES = (
     uk_engine_adapter,
     engine_population,
@@ -216,15 +224,16 @@ _ENGINE_MODULES = (
 )
 
 # Imported modules are not traversed by ``source_hash``, so each stage binds
-# every module in microcosm.build holding code its transform computes
-# through, beyond its own module (microcosm#931). test_uk_graph derives that
-# set: it follows what the transform names into the module defining it, to a
-# fixed point, and needs no binding for a listed refusal-only check. Where it
-# stops at a single string, a column-name function or a record, the module is
-# hashed by the stage or a stage upstream of it, or the name is listed with
-# its reason; a collection of strings, like a number, is a value. Modules in
-# the other workspace packages are bound by hand, and test_uk_graph names
-# the ones that are not yet.
+# every first-party module holding code its transform computes through,
+# beyond its own module (microcosm#931). test_uk_graph derives that set: it
+# follows what the transform names into the module defining it, in any
+# workspace package, to a fixed point. It needs no binding for a listed
+# refusal-only check, nor for the core modules every node runs through (the
+# Frame, the graph executor and the modules that compute node keys), which it
+# lists with their reasons. Where it stops at a single string, a column-name
+# function or a record, the module is hashed by the stage or a stage upstream
+# of it, or the name is listed with its reason; a collection of strings, like
+# a number, is a value.
 # Every stage whose module or bound helpers import the shared keyed-draw
 # helpers (``microcosm.build.stochastic_assignment``), or import another
 # module's function that draws through them, binds them as well, so an edit
@@ -237,6 +246,11 @@ _FEED_FACT_MODULES = (ledger_fact_vendoring, chronicle_feed, chronicle_epoch)
 # A pinned source tab is read through frs_spine's tab reader, which checks the
 # tab's digest through trace.
 _PINNED_TAB_MODULES = (frs_spine, trace)
+# The QRF donor stages fit and draw through microcosm.fit's regime-gated QRF,
+# which resolves its fit columns and weights through fit.model. The
+# categorical fitters resolve theirs through fit.model too, and their held-out
+# scores and folds use the QRF's gate calibration and folds (microcosm#931).
+_QRF_MODULES = (fit_qrf, fit_model)
 
 _STAGE_HELPER_MODULES = {
     # The three FRS draw stages' receipts measure their take-up flags through
@@ -282,13 +296,16 @@ _STAGE_HELPER_MODULES = {
     # vendored facts; the weekly leaves annualise on frs_spine's week count
     # (microcosm#931). Their module, spi_spine, also mints the support
     # channel's copies, so the leaves and the SPI income stage bind the copy-id
-    # table as the support channel does.
+    # table as the support channel does. Its three stages, like the band
+    # donors, copy their frames' tables through microcosm.frame's
+    # engine_tables (microcosm#931).
     "frs_hmrc_spine_leaves": (
         frs_hmrc_source,
         copy_id_table,
         employer_pension_contributions,
         *_FEED_FACT_MODULES,
         frs_spine,
+        frame_materialize,
         stochastic_assignment,
     ),
     # The annual income descriptors' receipt follows the shared disclosure rules
@@ -333,6 +350,7 @@ _STAGE_HELPER_MODULES = {
         spi_band_donors,
         spi_support,
         target_materialization,
+        frame_materialize,
         stochastic_assignment,
     ),
     # The spine's raw ids sit below the copy-id table's first field, and every
@@ -363,6 +381,7 @@ _STAGE_HELPER_MODULES = {
         frs_take_up,
         gates,
         terminal_gates,
+        frame_materialize,
         stochastic_assignment,
     ),
     # The band donors read HMRC's ITL band taxpayers as vendored facts and the
@@ -373,6 +392,7 @@ _STAGE_HELPER_MODULES = {
         *_FEED_FACT_MODULES,
         frs_take_up,
         spi_income,
+        frame_materialize,
         stochastic_assignment,
     ),
     # The exact-total correction the CGT split hands the high-value split is
@@ -395,7 +415,9 @@ _STAGE_HELPER_MODULES = {
     # correction; the support split also takes the adult age and oldest-adult
     # rule from cgt_structure, and the residential split its logistic from
     # cgt_asset_type; the incidence clone sums cgt_imputation's income proxy
-    # components into the income behind its propensity (microcosm#931).
+    # components into the income behind its propensity; the gains spine names
+    # HMRC's regional conditioning rows by microcosm.calibrate's UK region tier
+    # (microcosm#931).
     "cgt_support_split": (
         copy_id_table,
         *_FEED_FACT_MODULES,
@@ -435,6 +457,7 @@ _STAGE_HELPER_MODULES = {
     "hmrc_cgt_gains_spine": (
         *_FEED_FACT_MODULES,
         advani_summers,
+        geography_constants,
         hmrc_capital_gains,
         hmrc_income,
         target_materialization,
@@ -457,10 +480,13 @@ _STAGE_HELPER_MODULES = {
     # fit's weight kind, gate the fits and clip donor support to the donor's
     # range (microcosm#931); the WAS recipients' predictors map benefit units to
     # households, count family roles, group tenure by the shared tenure map and
-    # name the HBAI income predictor.
+    # name the HBAI income predictor. The WAS stage, and the LISA, bus, LCFS,
+    # ETB, landlord, reporter and housing stages below, fit through the QRF
+    # modules (microcosm#931).
     "was_wealth": (
         *_ENGINE_MODULES,
         *_PINNED_TAB_MODULES,
+        *_QRF_MODULES,
         frs_brma,
         gates,
         household_income,
@@ -479,6 +505,7 @@ _STAGE_HELPER_MODULES = {
         hmrc_isa_statistics,
         *_PINNED_TAB_MODULES,
         *_FEED_FACT_MODULES,
+        *_QRF_MODULES,
         frs_brma,
         gates,
         household_income,
@@ -498,17 +525,22 @@ _STAGE_HELPER_MODULES = {
         spi_income,
         spi_support,
         *_FEED_FACT_MODULES,
+        *_QRF_MODULES,
         frs_take_up,
         gates,
         hmrc_uprating,
         stochastic_assignment,
     ),
     # The regional values rank as the dense node does and read its knots
-    # (microcosm#1112), over the tenure map's owners (microcosm#931).
+    # (microcosm#1112), over the tenure map's owners; their keyed uniforms are
+    # microcosm.graph's, which encodes each draw's coordinates as canonical
+    # JSON (microcosm#931).
     "regional_home_values": (
         property_localisation,
         rowwise_geography,
         tenure_constants,
+        graph_randomness,
+        graph_canonical,
     ),
     # The purchases read the vendored HMRC Stamp Tax rows through the feed-pinned
     # reader and mark SDLT's regions from the FRS region map (microcosm#1095).
@@ -524,6 +556,7 @@ _STAGE_HELPER_MODULES = {
         bus_use_incidence,
         *_PINNED_TAB_MODULES,
         *_FEED_FACT_MODULES,
+        *_QRF_MODULES,
         gates,
         household_income,
         qrf_gates,
@@ -545,6 +578,7 @@ _STAGE_HELPER_MODULES = {
         energy_pricing,
         *_PINNED_TAB_MODULES,
         *_FEED_FACT_MODULES,
+        *_QRF_MODULES,
         bus_fare_pricing,
         donor_uprating,
         fit_donors,
@@ -563,6 +597,7 @@ _STAGE_HELPER_MODULES = {
         *_ENGINE_MODULES,
         *_PINNED_TAB_MODULES,
         *_FEED_FACT_MODULES,
+        *_QRF_MODULES,
         donor_uprating,
         gates,
         household_income,
@@ -576,6 +611,7 @@ _STAGE_HELPER_MODULES = {
         *_ENGINE_MODULES,
         *_PINNED_TAB_MODULES,
         *_FEED_FACT_MODULES,
+        *_QRF_MODULES,
         bus_fare_pricing,
         bus_support_pricing,
         donor_uprating,
@@ -593,6 +629,7 @@ _STAGE_HELPER_MODULES = {
     "uc_reporter_redraw": (
         uc_relationships,
         *_ENGINE_MODULES,
+        *_QRF_MODULES,
         qrf_gates,
         uc_capital_coherence,
         stochastic_assignment,
@@ -641,10 +678,12 @@ _STAGE_HELPER_MODULES = {
     # attributes, the take-up population and the family-type roles, and counts
     # its pools and receipt on the source lineage (microcosm#1334); the
     # attributes map benefit units to households and judge their realisation
-    # by the shared tolerance, and the year's rules come from the FRS release
-    # (microcosm#931).
+    # by the shared tolerance, and the year's rules come from the FRS release;
+    # it types its engine as the adapter's ProjectingRulesEngine, a protocol
+    # that extends microcosm.frame.rules' RulesEngine (microcosm#931).
     "uc_take_up": (
         *_ENGINE_MODULES,
+        frame_rules,
         *_FEED_FACT_MODULES,
         legacy_closure_take_up,
         uc_deduction_attributes,
@@ -666,10 +705,12 @@ _STAGE_HELPER_MODULES = {
     ),
     # The Pension Credit redraw reuses the UC stage's household-to-benefit-unit
     # weight mapping and the adapter's engine materialization; it reads the
-    # take-up contract and the year's rules (microcosm#931).
+    # take-up contract and the year's rules, and types its engine by the same
+    # protocol as the UC redraw (microcosm#931).
     "pension_credit_take_up": (
         uc_capital_coherence,
         *_ENGINE_MODULES,
+        frame_rules,
         frs_release,
         take_up_contract,
         stochastic_assignment,
@@ -697,21 +738,30 @@ _STAGE_HELPER_MODULES = {
     # The stored attendance is one engine materialization (microcosm#1095),
     # whose year's rules come from the FRS release (microcosm#931).
     "private_school_attendance": (*_ENGINE_MODULES, frs_release),
-    # The housing shell keeps council tax bands within the nation and gates
-    # its fits; the deduction attributes map benefit units to households and
+    # The housing shell keeps council tax bands within the nation, whose
+    # regions are microcosm.calibrate's UK region tier, and gates its fits;
+    # the deduction attributes map benefit units to households and
     # judge their realisation by the shared tolerance; the salary sacrifice
     # reads its bonus anchor as vendored facts and gates its fits; the
     # student loans resolve their year's rules (microcosm#931).
-    "spi_housing_shell": (council_tax_constants, qrf_gates, stochastic_assignment),
+    "spi_housing_shell": (
+        council_tax_constants,
+        geography_constants,
+        *_QRF_MODULES,
+        qrf_gates,
+        stochastic_assignment,
+    ),
     "uc_deduction_attributes": (frs_brma, stage_health, stochastic_assignment),
     "salary_sacrifice": (*_FEED_FACT_MODULES, qrf_gates, stochastic_assignment),
     "student_loans": (frs_release, stochastic_assignment),
     # The subscriptions walk the CGT bands on its income proxy (with the
     # proxy's loss relief), read HMRC's ISA tables through their typed loader
     # and round their receipts' support (microcosm#1415); the loss relief
-    # evaluates its named term, and the donor tabs are pinned (microcosm#931).
+    # evaluates its named term, the donor tabs are pinned, and the regions are
+    # microcosm.calibrate's UK region tier (microcosm#931).
     "isa_subscriptions": (
         cgt_imputation,
+        geography_constants,
         hmrc_income,
         hmrc_isa_statistics,
         receipt_counts,
@@ -773,11 +823,13 @@ _STAGE_HELPER_MODULES = {
     # The employment shell fits, scores and draws through microcosm.fit's
     # categorical classifier, held-out scores and keyed donors, reads the
     # shared occupation codes, and counts its receipt's support by the shared
-    # disclosure rules (microcosm#1490).
+    # disclosure rules (microcosm#1490); the classifier and held-out scores
+    # compute through the QRF modules (microcosm#931).
     "spi_employment_shell": (
         fit_categorical,
         fit_donors,
         fit_held_out,
+        *_QRF_MODULES,
         occupation_constants,
         receipt_counts,
         stochastic_assignment,
@@ -786,10 +838,12 @@ _STAGE_HELPER_MODULES = {
     # classifier and held-out scores, reads the shared occupation codes, and
     # counts its receipt's support by the shared disclosure rules
     # (microcosm#1490); it reads its donor tab through trace's digest and
-    # records its fit's weight kind (microcosm#931).
+    # records its fit's weight kind, and its classifier and held-out scores
+    # compute through the QRF modules (microcosm#931).
     "aps_occupation": (
         fit_categorical,
         fit_held_out,
+        *_QRF_MODULES,
         occupation_constants,
         receipt_counts,
         gates,
@@ -897,13 +951,16 @@ def _implementation_hash(kernel: object, stage: str, transform: object | None) -
     # still declare extra behavior-bearing sources through
     # ``graph_implementation_dependencies``. Every kernel rebuilds its frame
     # on national_frame's schema, and the transforms build, validate and read
-    # the time period of their frames through it (microcosm#931).
+    # the time period of their frames through it (microcosm#931). It stamps
+    # each frame it builds with the engine adapter's ISA income contract and
+    # savings income projection, so every kernel hashes the adapter with it.
     dependencies = getattr(transform, "graph_implementation_dependencies", None)
     return source_hash(
         type(kernel),
         stage_evidence,
         graph_evidence,
         national_frame,
+        uk_engine_adapter,
         # _minimal_frame copies the stage's inputs with copy_table.
         table_copies,
         _stage_artifacts,
