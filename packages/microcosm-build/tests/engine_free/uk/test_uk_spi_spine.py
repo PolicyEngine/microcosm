@@ -1173,10 +1173,11 @@ def test_clone_zero_of_a_cloned_spine_is_the_one_clone_share(clone_count: int) -
         target=0.25, rows=rows, sigma=4.0
     )
 
-    # Nested weights: K x every clone-0 row is the one-clone row. The
-    # exact-total correction moves one row by a few ulps of the total, at one
-    # clone and at K, and not always in clone 0, so on these small frames to
-    # rtol 1e-12, not bit for bit.
+    # Nested weights: K x every clone-0 row is the one-clone row, on these
+    # small frames to rtol 1e-12, not bit for bit. The exact-total correction
+    # moves one row by a few ulps of the total, at one clone and at K, and not
+    # always in clone 0, and the 1/K split rounds when K is not a power of
+    # two, as 3 and 7 are not, so uncorrected rows also miss by about one ulp.
     one_weights = pd.Series(
         np.asarray(one.weights_for("household").values),
         index=one_household["household_id"].to_numpy(),

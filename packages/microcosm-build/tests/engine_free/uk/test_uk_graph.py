@@ -777,9 +777,11 @@ def test_every_stage_that_calls_the_engine_binds_the_engine_modules() -> None:
     than one clone, is the adapter's, the shared engine-block machinery's and
     the UK declaration's (microcosm#931). ``source_hash`` does not follow
     imports, so every stage whose module calls the engine, or whose transform
-    takes one, binds all three, and no other stage binds any. The one
-    exception takes the engine only to check its country and computes
-    nothing through it."""
+    takes one, binds all three, and no other stage binds any of them in the
+    stage table. The one exception takes the engine only to check its country
+    and computes nothing through it. Every stage also hashes the adapter
+    beside national_frame, which stamps its frames with the adapter's ISA
+    income contract and savings income projection (the next test)."""
     from microcosm.build.uk_runtime import graph_kernels
 
     engine_modules = set(graph_kernels._ENGINE_MODULES)
@@ -826,11 +828,17 @@ def test_the_engine_call_scan_sees_any_receiver(tmp_path) -> None:
 
 
 @pytest.mark.parametrize(
-    "module_name",
-    ["policyengine_uk", "engine_population", "policyengine_uk_population"],
+    ("module_name", "every_stage"),
+    [
+        # national_frame stamps every frame through the adapter's ISA income
+        # contract and savings income projection, so every stage hashes it.
+        ("policyengine_uk", True),
+        ("engine_population", False),
+        ("policyengine_uk_population", False),
+    ],
 )
 def test_engine_module_changes_invalidate_every_stage_that_calls_the_engine(
-    monkeypatch, module_name
+    monkeypatch, module_name, every_stage
 ):
     import importlib
 
@@ -866,7 +874,7 @@ def test_engine_module_changes_invalidate_every_stage_that_calls_the_engine(
     for ref in affected:
         assert registry.implementation_hash(ref) != before[ref], ref
     for ref in controls:
-        assert registry.implementation_hash(ref) == before[ref], ref
+        assert (registry.implementation_hash(ref) != before[ref]) is every_stage, ref
 
 
 # The rule behind the bindings above, for every helper (microcosm#931):
@@ -876,20 +884,19 @@ def test_engine_module_changes_invalidate_every_stage_that_calls_the_engine(
 # kernel, names, and follow each named definition into the module that
 # defines it, through re-exports and module attributes, to a fixed point.
 
-#: The package the rule follows: microcosm.build holds every UK stage and its
-#: helpers. The workspace's other packages stay outside it. microcosm.graph
-#: and microcosm.frame are the executor and the Frame that every node runs
-#: on, so binding them by rule would re-key every node of every graph on any
-#: edit to them. Value-computing code out there is bound only by hand:
-#: microcosm.fit's categorical, donor and held-out fitters in
-#: spi_employment_shell and aps_occupation, and the engine adapter in the
-#: stages that call the engine. The rest is not bound yet: microcosm.fit.qrf
-#: and fit.model, which the QRF donor stages and those two fit through;
-#: microcosm.frame.rules and frame.materialize; the engine adapter's helpers
-#: in stages that call no engine; microcosm.graph.randomness, which
-#: regional_home_values draws through; and
-#: microcosm.calibrate.geography_constants.
-_HELPER_SCOPE = "microcosm.build."
+#: The packages the rule follows: every first-party package, each under the
+#: microcosm namespace (microcosm-build, -calibrate, -data, -diagnostics,
+#: -fit, -frame and -graph). It binds what the stages compute through there
+#: as in microcosm.build: microcosm.fit's QRF, model, categorical, donor and
+#: held-out modules; microcosm.frame's materialize and rules modules and the
+#: engine adapter, which national_frame stamps every frame through;
+#: microcosm.graph's keyed uniforms and their canonical encoder; and
+#: microcosm.calibrate's region tier. It stops at the core modules every node
+#: runs through (``_CORE_MODULES``). The dense population kernels stay on
+#: microcosm.build (``_DENSE_SCOPE``) until the UK's other graph kernels take
+#: the rule.
+_HELPER_SCOPE = "microcosm."
+_DENSE_SCOPE = "microcosm.build."
 #: Where the rule stops. What a stage reads from these is its own
 #: declaration, which its node key already hashes as the stage contract: its
 #: operations, artifacts and resource pins (graph._stage_contract_sha256).
@@ -898,6 +905,60 @@ _DECLARATION_MODULES = (
     "microcosm.build.source_manifest",
     "microcosm.build.spec_engine",
 )
+#: The Frame's reason, which its three modules share.
+_FRAME_REASON = (
+    "the spine stages' transforms compute on it, every spine stage kernel "
+    "builds one, and the executor holds every population version in one. No "
+    "spine key hashes it, so an edit that changes values is left to its own "
+    "tests and to H1, whose fixtures run it through run_graph against stored "
+    "bytes"
+)
+#: The core modules every node runs through, which the rule neither follows
+#: nor asks a stage to bind, each with what runs through it and what catches
+#: an edit to it that would change values. Binding one would re-key every
+#: node on any edit to it. The Frame's are the only ones a stage's transform
+#: names; the executor and the modules that compute node keys run every node
+#: from outside it. microcosm.graph.canonical also encodes every key, but
+#: regional_home_values draws through it, so that stage binds it instead.
+#: test_the_core_modules_are_on_every_nodes_path checks the table.
+_CORE_MODULES: dict[str, str] = {
+    "microcosm.frame.bundle": f"the Frame: {_FRAME_REASON}",
+    "microcosm.frame.schema": f"the Frame's entity schema: {_FRAME_REASON}",
+    "microcosm.frame.weights": (
+        f"the Frame's typed weights and mass records: {_FRAME_REASON}"
+    ),
+    "microcosm.graph.executor": (
+        "runs every node (run_graph): keys it, projects its declared inputs, "
+        "calls its kernel and applies its result. No spine key hashes it, so "
+        "an edit that changes a value on H2's fixture fails H2, which compares "
+        "every cell of the spine run through it with the legacy stage plan's, "
+        "which does not run through it"
+    ),
+    "microcosm.graph.population": (
+        "the executor applies every node's result to its population version "
+        "through it (patch); as for the executor, H2 catches an edit that "
+        "changes a value on its fixture"
+    ),
+    "microcosm.graph.kernel": (
+        "every node's inputs and outputs pass through its KernelContext and "
+        "KernelResult, where H2 catches a changed value as for the executor; "
+        "every spine stage kernel's implementation hash is computed through "
+        "its source_hash, so an edit that changes what that returns changes "
+        "every key"
+    ),
+    "microcosm.graph.keys": (
+        "computes every node's key and its artifacts' keys (node_key), so an "
+        "edit that changes what it returns changes every key; no spine stage "
+        "kernel reads the generator the executor seeds from a key (each "
+        "declares SeedSource.NONE)"
+    ),
+    "microcosm.graph.decl": (
+        "node_key hashes every node's normative declaration and resolves its "
+        "inputs and population version through the compiled graph, as the "
+        "executor does, so an edit that changes how a node is declared or "
+        "what it reads changes its key"
+    ),
+}
 #: Checks that read values only to decide whether to refuse, each with why it
 #: cannot change what its caller computes. The rule does not follow them, and
 #: a definition that names nothing else of value needs no binding for them;
@@ -919,6 +980,11 @@ _REFUSAL_ONLY_HELPERS: dict[tuple[str, str], str] = {
         "returns its argument unchanged and refuses anything but person, "
         "benunit or household; the support channel's column names call it"
     ),
+    ("microcosm.frame.rules", "assert_rules_engine_country"): (
+        "reads the engine's declared country and refuses one that declares "
+        "none or another; the stages that take an engine call it before "
+        "computing"
+    ),
 }
 #: Names a stage reads from a module that neither its node nor any node
 #: upstream of it hashes, each with why an edit to them cannot leave the
@@ -932,6 +998,16 @@ _STAGE_UNBOUND_NAMES: dict[tuple[str, str], str] = {
         "names the geographic clone index columns, which only the dense "
         "expand writes; no spine stage writes them (checked), so a spine "
         "frame never carries them and their name moves no spine value"
+    ),
+    ("microcosm.frame.concepts", "SOURCE_HOUSEHOLD_ID_COLUMN"): (
+        "names the source household column, CopyLineage's default source, "
+        "which the support channel writes by its literal name. A node is "
+        "given only its declared columns, so under a renamed constant the "
+        "lineage readers would find no source column, which they refuse "
+        "unless counting before the copies on a frame without a copy column. "
+        "A spine stage that reads it declares the column by that name, which "
+        "its key hashes, and counts before the copies only beside a copy "
+        "column, or declares neither, and counts as before (checked)"
     ),
 }
 #: The same for the dense population kernels, which run outside the spine
@@ -1293,20 +1369,33 @@ def _classify_helper(module: str, name: str, scope: str) -> str:
     return "value"
 
 
-def _helper_walk(
-    root: tuple[str, str], scope: str = _HELPER_SCOPE
-) -> tuple[dict[str, frozenset[str]], frozenset[tuple[str, str]]]:
-    """What ``root`` can compute through, and where the rule stops.
+class _Walk(NamedTuple):
+    """What a root can compute through (``_helper_walk``)."""
 
-    The first part maps every module holding a definition that can change
-    what ``root`` computes to those definitions: ``root`` itself, and each
-    ``value`` definition it names, and they name, to a fixed point. The second
+    reach: dict[str, frozenset[str]]
+    stops: frozenset[tuple[str, str]]
+    core: frozenset[str]
+
+
+def _helper_walk(
+    root: tuple[str, str], scope: str = _HELPER_SCOPE, *, follow_core: bool = False
+) -> _Walk:
+    """What ``root`` can compute through, where the rule stops, and the core
+    modules it meets.
+
+    ``reach`` maps every module holding a definition that can change what
+    ``root`` computes to those definitions: ``root`` itself, and each
+    ``value`` definition it names, and they name, to a fixed point. ``stops``
     is every ``name``, ``column name`` or ``record`` those definitions name,
-    which the rule does not follow. The declaration modules and the listed
-    refusal-only checks are neither followed nor returned."""
+    which the rule does not follow. ``core`` is every listed core module
+    (``_CORE_MODULES``) whose definitions they name, which the rule neither
+    follows nor returns in ``reach``, unless ``follow_core``. The declaration
+    modules and the listed refusal-only checks are neither followed nor
+    returned."""
 
     reached: dict[str, set[str]] = {}
     stops: set[tuple[str, str]] = set()
+    core: set[str] = set()
     pending, seen = [root], set()
     while pending:
         item = pending.pop()
@@ -1317,6 +1406,10 @@ def _helper_walk(
         if module.startswith(_DECLARATION_MODULES):
             continue
         if item != root:
+            if module in _CORE_MODULES:
+                core.add(module)
+                if not follow_core:
+                    continue
             kind = _helper_kind(module, name, scope)
             if kind != "value":
                 if kind != "check":
@@ -1325,9 +1418,10 @@ def _helper_walk(
         reached.setdefault(module, set()).add(name)
         node = _module_definitions(module, scope).definitions[name]
         pending.extend(_named(module, node, scope))
-    return (
+    return _Walk(
         {module: frozenset(names) for module, names in reached.items()},
         frozenset(stops),
+        frozenset(core),
     )
 
 
@@ -1337,7 +1431,7 @@ def _helper_reach(
     """Every module holding a definition that can change what ``root``
     computes, with those definitions (``_helper_walk``)."""
 
-    return _helper_walk(root, scope)[0]
+    return _helper_walk(root, scope).reach
 
 
 def _stage_transforms() -> dict[str, tuple[str, str]]:
@@ -1410,10 +1504,11 @@ def test_every_stage_hashes_each_helper_its_transform_computes_through() -> None
 
     The rule starts at the transform graph_kernels builds for the stage and
     follows every definition it names, annotations included (an injected
-    contract or table is called through them), into the module defining it.
-    It does not follow a listed refusal-only check or a stage declaration,
-    and stops at a single string, a column-name function or a record (see
-    ``_helper_kind``), whose module the next test accounts for. Anything
+    contract or table is called through them), into the module defining it,
+    in any first-party package. It does not follow a listed refusal-only
+    check, a stage declaration or a listed core module every node runs
+    through, and stops at a single string, a column-name function or a record
+    (see ``_helper_kind``), whose module the next test accounts for. Anything
     else is a value, a collection of strings and a number included, and
     needs its module bound. The rule starts at the transform, not at the
     kernel that runs it: the kernel's code, in graph_kernels, which every
@@ -1428,9 +1523,9 @@ def test_every_stage_hashes_each_helper_its_transform_computes_through() -> None
     walks = _stage_walks()
     assert set(walks) == set(graph_kernels._STAGE_MODULES)
     unhashed = {
-        stage: sorted(set(reach) - hashed)
-        for stage, (_, hashed, (reach, _)) in walks.items()
-        if set(reach) - hashed
+        stage: sorted(set(walk.reach) - hashed)
+        for stage, (_, hashed, walk) in walks.items()
+        if set(walk.reach) - hashed
     }
     assert not unhashed, unhashed
 
@@ -1464,11 +1559,11 @@ def test_every_name_a_stage_reads_is_hashed_with_it_upstream_or_listed() -> None
         return seen
 
     unlisted: dict[tuple[str, str], list[str]] = {}
-    for stage, (node_id, hashed, (_, stops)) in walks.items():
+    for stage, (node_id, hashed, walk) in walks.items():
         covered = set(hashed).union(
             *(hashed_by_node[item] for item in upstream(node_id))
         )
-        for module, name in stops:
+        for module, name in walk.stops:
             if module not in covered:
                 unlisted.setdefault((module, name), []).append(stage)
     assert set(unlisted) == set(_STAGE_UNBOUND_NAMES), sorted(
@@ -1483,6 +1578,84 @@ def test_every_name_a_stage_reads_is_hashed_with_it_upstream_or_listed() -> None
             entity,
             rowwise_dataset.ladder_clone_index_column(entity),
         ) not in written
+    # The source household column's reason. The support channel writes it by
+    # its literal name; a stage that reads it declares it by that name and
+    # counts before the copies only beside a copy column, or declares neither
+    # it nor a copy column.
+    from microcosm.build.uk_runtime import spi_support
+    from microcosm.build.uk_runtime.household_lineage import UK_COPY_LINEAGE
+    from microcosm.frame.concepts import SOURCE_HOUSEHOLD_ID_COLUMN
+
+    assert f'"{SOURCE_HOUSEHOLD_ID_COLUMN}"' in Path(spi_support.__file__).read_text()
+    copy_columns = set(UK_COPY_LINEAGE.copy_columns)
+    readers = unlisted[("microcosm.frame.concepts", "SOURCE_HOUSEHOLD_ID_COLUMN")]
+    counting = {stage: _counts_before_copies(walks[stage][2]) for stage in readers}
+    assert any(counting.values())
+    for stage in readers:
+        read = {
+            column
+            for slice_ in graph.node(walks[stage][0]).inputs
+            if slice_.entity == "household"
+            for column in slice_.columns
+        }
+        if SOURCE_HOUSEHOLD_ID_COLUMN not in read:
+            assert not read & copy_columns, stage
+        elif not read & copy_columns:
+            assert not counting[stage], (stage, sorted(counting[stage]))
+
+
+def _counts_before_copies(walk: _Walk) -> set[tuple[str, str]]:
+    """The definitions a walk reaches that count sources before the copies:
+    each passes ``before_copies=True`` to a lineage reader, which then counts
+    a household as its own source where the frame carries neither the source
+    column nor a copy column."""
+
+    import ast
+
+    found = set()
+    for module, names in walk.reach.items():
+        definitions = _module_definitions(module, _HELPER_SCOPE).definitions
+        for name in names:
+            if any(
+                isinstance(sub, ast.keyword)
+                and sub.arg == "before_copies"
+                and isinstance(sub.value, ast.Constant)
+                and sub.value.value is True
+                for sub in ast.walk(definitions[name])
+            ):
+                found.add((module, name))
+    return found
+
+
+def test_the_core_modules_are_on_every_nodes_path() -> None:
+    """Each listed core module is on every node's path, as its reason says,
+    and is no stage's own helper (microcosm#931). The walk from run_graph,
+    which keys, runs and patches every node, meets each. The core modules a
+    stage's transform meets are the Frame's, all three or none, so the table
+    exempts no module that only some stages compute through; no stage's
+    transform meets the executor or a key module, whose reasons rest on their
+    running every node from outside it. The key module's reason holds too:
+    every spine stage kernel declares SeedSource.NONE."""
+    from microcosm.graph import SeedSource
+
+    executor = _helper_walk(("microcosm.graph.executor", "run_graph"), follow_core=True)
+    on_path = set(executor.reach) | set(executor.core)
+    assert set(_CORE_MODULES) <= on_path, sorted(set(_CORE_MODULES) - on_path)
+    frame = {
+        module for module in _CORE_MODULES if module.startswith("microcosm.frame.")
+    }
+    walks = _stage_walks()
+    met = {stage: walk.core for stage, (_, _, walk) in walks.items()}
+    assert set().union(*met.values()) == frame
+    uneven = {
+        stage: sorted(core) for stage, core in met.items() if core and core != frame
+    }
+    assert not uneven, uneven
+    graph = uk_spine_graph()
+    registry = uk_registry(graph=graph)
+    for stage, (node_id, _, _) in walks.items():
+        kernel = registry.get(graph.node(node_id).kernel)
+        assert kernel.capabilities.seed_source is SeedSource.NONE, stage
 
 
 def test_the_refusal_only_helpers_return_and_write_nothing() -> None:
@@ -1531,8 +1704,10 @@ def test_the_helper_rule_follows_each_way_a_stage_names_a_helper(
     annotation (a record's field type included) is reached, as are a numeric
     constant, a collection of strings and a function that writes in place or
     only refuses but is not listed; a listed check, a single string, a column
-    name, a record of plain fields, and a helper the root never names are
-    not, and the walk returns the names it stopped at."""
+    name, a record of plain fields, a listed core module, what only a core
+    module names, and a helper the root never names are not. The walk returns
+    the names it stopped at and the core modules it met, and follows a core
+    module only when asked to."""
     import uuid
 
     scratch = f"helper_rule_{uuid.uuid4().hex[:8]}"
@@ -1581,12 +1756,20 @@ def test_the_helper_rule_follows_each_way_a_stage_names_a_helper(
             "    value: float\n"
         ),
         "unused": "def never(x):\n    return x - 1\n",
+        "behind": "def kept(x):\n    return x * 4\n",
+        "core": (
+            "from .behind import kept\n\n"
+            "class Container:\n"
+            "    def grow(self, x):\n"
+            "        return kept(x)\n"
+        ),
         "stage": (
             "from . import attribute\n"
             "from .alias import scale\n"
             "from .codes import CODES, OWNER\n"
             "from .collaborator import Contract\n"
             "from .computed import TABLE\n"
+            "from .core import Container\n"
             "from .direct import draw\n"
             "from .fielded import Inputs\n"
             "from .guard import guard\n"
@@ -1606,6 +1789,7 @@ def test_the_helper_rule_follows_each_way_a_stage_names_a_helper(
             "        rate = self.contract.rate(column('household'))\n"
             "        rate += self.inputs.rate.value()\n"
             "        owners = [OWNER[code] for code in CODES]\n"
+            "        rate += Container().grow(rate)\n"
             "        return attribute.share(scale(rate)) + TABLE['a'] + FLOOR, (\n"
             "            record, COLUMN, owners\n"
             "        )\n\n"
@@ -1619,7 +1803,8 @@ def test_the_helper_rule_follows_each_way_a_stage_names_a_helper(
     monkeypatch.setitem(
         _REFUSAL_ONLY_HELPERS, (f"{prefix}harmless", "check"), "control"
     )
-    reach, stops = _helper_walk((f"{prefix}stage", "Transform"), scope=prefix)
+    monkeypatch.setitem(_CORE_MODULES, f"{prefix}core", "control")
+    reach, stops, core = _helper_walk((f"{prefix}stage", "Transform"), scope=prefix)
     assert {module.removeprefix(prefix): names for module, names in reach.items()} == {
         "stage": {"Transform"},
         "direct": {"draw"},
@@ -1639,6 +1824,12 @@ def test_the_helper_rule_follows_each_way_a_stage_names_a_helper(
         ("harmless", "Record"),
         ("harmless", "column"),
     }
+    assert core == {f"{prefix}core"}
+    followed = _helper_walk(
+        (f"{prefix}stage", "Transform"), scope=prefix, follow_core=True
+    )
+    assert set(followed.reach) - set(reach) == {f"{prefix}core", f"{prefix}behind"}
+    assert followed.core == core
 
 
 def test_the_dense_population_kernels_hash_each_helper_they_compute_through() -> None:
@@ -1649,7 +1840,8 @@ def test_the_dense_population_kernels_hash_each_helper_they_compute_through() ->
     rule stops at outside it is listed in ``_DENSE_UNBOUND_NAMES`` with its
     reason (microcosm#931). The rule starts at each kernel's class; the spine
     gate admission check the sample kernel calls is refusal-only and is not
-    followed."""
+    followed. It follows microcosm.build only (``_DENSE_SCOPE``) until the
+    UK's other graph kernels take the first-party rule."""
     import inspect
 
     from microcosm.build.uk_runtime import graph_population, rowwise_geography
@@ -1674,11 +1866,11 @@ def test_the_dense_population_kernels_hash_each_helper_they_compute_through() ->
         hashed = hashed_module_names(kernel.__new__(kernel), graph_population)
         # The dense clones are minted by rowwise_geography's helpers.
         assert rowwise_geography.__name__ in hashed
-        reach, stops = _helper_walk((graph_population.__name__, kernel.__name__))
-        missing = sorted(set(reach) - hashed)
+        walk = _helper_walk((graph_population.__name__, kernel.__name__), _DENSE_SCOPE)
+        missing = sorted(set(walk.reach) - hashed)
         if missing:
             unhashed[kernel.ref] = missing
-        unlisted.update(item for item in stops if item[0] not in hashed)
+        unlisted.update(item for item in walk.stops if item[0] not in hashed)
     assert not unhashed, unhashed
     assert unlisted == set(_DENSE_UNBOUND_NAMES), sorted(
         unlisted ^ set(_DENSE_UNBOUND_NAMES)
@@ -1692,16 +1884,38 @@ _SPINE_BUILD_ADAPTERS: dict[tuple[str, str], str] = {
         "builds the stage's own transform from the node's declared sources and calls it"
     ),
     ("microcosm.build.observation", "ObservedTransform"): (
-        "times the wrapped transform's call and records its frames' sizes"
+        "times the wrapped transform's call and records its frames' sizes, and "
+        "forwards every other attribute, the declared modules included (checked)"
     ),
 }
+#: Adapters whose first argument is the stage's own transform, or builds it,
+#: and which do not hand the node what that transform declares: the source
+#: adapter builds it only when the node runs, after the node is keyed, and the
+#: rung sampler declares its own modules alone. What either wraps must live in
+#: the stage's module, which the node hashes.
+_SPINE_BUILD_WRAPPERS = frozenset(
+    {
+        ("microcosm.build.uk_runtime.spine_build", "_GraphSourceTransform"),
+        ("microcosm.build.uk_runtime.national_sampling", "UKSampledSpineRootTransform"),
+    }
+)
 
 
-def _spine_build_installs() -> list[tuple[str | None, tuple[str, str]]]:
+class _Install(NamedTuple):
+    """One class or factory the spine build installs (``_spine_build_installs``)."""
+
+    stage: str | None
+    found: tuple[str, str]
+    wrapper: tuple[str, str] | None
+
+
+def _spine_build_installs() -> list[_Install]:
     """Each class or factory the production spine build installs as a
-    stage's transform, as ``(stage, (module, name))``, seen through the
-    adapters above and the local names it assigns; ``None`` for a wrapper it
-    installs around every stage."""
+    stage's transform, seen through the adapters above, the local names it
+    assigns and the stage entries a wrapper reads back. ``stage`` is ``None``
+    for an adapter it installs around every stage; ``wrapper`` is the
+    innermost wrapping adapter (``_SPINE_BUILD_WRAPPERS``) the install sits
+    inside, or ``None``."""
 
     import ast
 
@@ -1715,29 +1929,52 @@ def _spine_build_installs() -> list[tuple[str | None, tuple[str, str]]]:
         if isinstance(node, ast.FunctionDef)
         and node.name == "prepare_uk_spine_execution"
     )
-    local: dict[str, list] = {}
-    for sub in ast.walk(function):
-        if (
-            isinstance(sub, ast.Assign)
-            and len(sub.targets) == 1
-            and isinstance(sub.targets[0], ast.Name)
-        ):
-            local.setdefault(sub.targets[0].id, []).append(sub.value)
-    installs: list[tuple[str | None, tuple[str, str]]] = []
 
-    def follow(expression, stage, seen=frozenset()) -> None:
+    def entry(target) -> str | None:
+        if (
+            isinstance(target, ast.Subscript)
+            and isinstance(target.value, ast.Name)
+            and target.value.id == "implementations"
+            and isinstance(target.slice, ast.Constant)
+        ):
+            return target.slice.value
+        return None
+
+    local: dict[str, list] = {}
+    entries: dict[str, list] = {}
+    for sub in ast.walk(function):
+        if not isinstance(sub, ast.Assign) or len(sub.targets) != 1:
+            continue
+        target = sub.targets[0]
+        if isinstance(target, ast.Name):
+            local.setdefault(target.id, []).append(sub.value)
+            if target.id == "implementations" and isinstance(sub.value, ast.Dict):
+                for key, value in zip(sub.value.keys, sub.value.values, strict=True):
+                    entries.setdefault(key.value, []).append(value)
+        elif entry(target) is not None:
+            entries.setdefault(entry(target), []).append(sub.value)
+    installs: list[_Install] = []
+
+    def follow(expression, stage, wrapper=None, seen=frozenset()) -> None:
         if isinstance(expression, ast.Lambda):
-            follow(expression.body, stage, seen)
+            follow(expression.body, stage, wrapper, seen)
         elif isinstance(expression, ast.Name) and expression.id not in seen:
             for value in local.get(expression.id, ()):
-                follow(value, stage, seen | {expression.id})
+                follow(value, stage, wrapper, seen | {expression.id})
+        elif entry(expression) is not None and ("entry", entry(expression)) not in seen:
+            # A wrapper reads back the stage's entry: what was installed there
+            # before it now sits inside it.
+            for value in entries.get(entry(expression), ()):
+                follow(value, stage, wrapper, seen | {("entry", entry(expression))})
         elif isinstance(expression, ast.Call) and isinstance(expression.func, ast.Name):
             found = _resolve(module, expression.func.id, _HELPER_SCOPE)
             if found is None:
                 return
-            installs.append((stage, found))
-            if found in _SPINE_BUILD_ADAPTERS and stage and expression.args:
-                follow(expression.args[0], stage, seen)
+            installs.append(_Install(stage, found, wrapper))
+            adapts = found in _SPINE_BUILD_ADAPTERS or found in _SPINE_BUILD_WRAPPERS
+            if adapts and stage and expression.args:
+                inner = found if found in _SPINE_BUILD_WRAPPERS else wrapper
+                follow(expression.args[0], stage, inner, seen)
 
     for sub in ast.walk(function):
         if isinstance(sub, ast.Assign) and len(sub.targets) == 1:
@@ -1750,13 +1987,8 @@ def _spine_build_installs() -> list[tuple[str | None, tuple[str, str]]]:
                         follow(value, key.value)
                 elif isinstance(sub.value, ast.DictComp):
                     follow(sub.value.value, None)
-            elif (
-                isinstance(target, ast.Subscript)
-                and isinstance(target.value, ast.Name)
-                and target.value.id == "implementations"
-                and isinstance(target.slice, ast.Constant)
-            ):
-                follow(sub.value, target.slice.value)
+            elif entry(target) is not None:
+                follow(sub.value, entry(target))
     return installs
 
 
@@ -1767,49 +1999,84 @@ def test_every_transform_the_spine_build_installs_is_hashed_with_its_stage() -> 
     installs for a stage is defined in the stage's module, declares the
     modules it computes through (``graph_implementation_dependencies``, which
     the stage's node hashes), or is an adapter listed with why it computes no
-    value (microcosm#931)."""
+    value. Inside a wrapping adapter, which hands the node nothing the wrapped
+    transform declares, only the stage's own module's classes and the listed
+    adapters may be installed (microcosm#931)."""
     import importlib
 
-    from microcosm.build.uk_runtime import graph_kernels
+    from microcosm.build.observation import ObservedTransform
+    from microcosm.build.uk_runtime import graph_kernels, national_sampling
 
     installs = _spine_build_installs()
-    assert {stage for stage, _ in installs if stage} == set(
+    assert {install.stage for install in installs if install.stage} == set(
         graph_kernels._STAGE_MODULES
     )
-    assert {found for stage, found in installs if stage is None} == {
+    assert {install.found for install in installs if install.stage is None} == {
         ("microcosm.build.observation", "ObservedTransform")
     }
+    # Both wrappers wrap something: every source adapter wraps its stage's
+    # transform, and the rung sampler wraps the root's source adapter.
+    assert {install.wrapper for install in installs} - {None} == _SPINE_BUILD_WRAPPERS
     unhashed = []
-    for stage, (module, name) in installs:
-        if (module, name) in _SPINE_BUILD_ADAPTERS or (
-            stage and module == graph_kernels._stage_module(stage).__name__
-        ):
+    for stage, (module, name), wrapper in installs:
+        own = bool(stage) and module == graph_kernels._stage_module(stage).__name__
+        if own or (module, name) in _SPINE_BUILD_ADAPTERS:
             continue
         declared = getattr(
             getattr(importlib.import_module(module), name),
             "graph_implementation_dependencies",
             None,
         )
-        if not callable(declared):
-            unhashed.append((stage, f"{module}.{name}"))
+        if wrapper is not None or not callable(declared):
+            unhashed.append((stage, f"{module}.{name}", wrapper))
     assert not unhashed, unhashed
+    # The observation adapter hands the node the declared modules of what it
+    # wraps, the rung sampler's among them.
+    sampler = national_sampling.UKSampledSpineRootTransform(None, fraction=0.1, seed=1)
+    observed = ObservedTransform(
+        sampler, stage_id="frs_spine", produced_column_count=0, observer=None
+    )
+    assert hashed_module_names(
+        graph_kernels.UKCreateKernel(observed), graph_kernels
+    ) == hashed_module_names(graph_kernels.UKCreateKernel(sampler), graph_kernels)
 
 
-def test_the_sampled_spine_root_hashes_what_it_samples_through() -> None:
-    """The spine build wraps the root's transform in the rung sampler, which
-    samples the root below f100 and whose code lives in national_sampling and
-    the shared core; the root node then hashes every module the rule finds
-    the sampler computing through (microcosm#931)."""
+def test_the_sampled_spine_root_hashes_what_it_samples_through(monkeypatch) -> None:
+    """The spine build wraps the root's transform in the rung sampler, whose
+    code lives in national_sampling and the shared core. The root node hashes
+    national_sampling at every rung, since the sampler resets the root's
+    indexes at f100 too, and the shared core only below f100, where
+    sample_uk_spine_root calls it; there it hashes every module the rule
+    finds the sampler computing through (microcosm#931)."""
     from microcosm.build import frame_sampling
     from microcosm.build.uk_runtime import graph_kernels, national_sampling
 
-    sampler = national_sampling.UKSampledSpineRootTransform(None, fraction=0.1, seed=1)
     plain = hashed_module_names(graph_kernels.UKCreateKernel(), graph_kernels)
-    hashed = hashed_module_names(graph_kernels.UKCreateKernel(sampler), graph_kernels)
-    assert hashed - plain == {national_sampling.__name__, frame_sampling.__name__}
-    reach = _helper_reach((national_sampling.__name__, type(sampler).__name__))
+    hashed = {}
+    for fraction in (1.0, 0.1):
+        sampler = national_sampling.UKSampledSpineRootTransform(
+            None, fraction=fraction, seed=1
+        )
+        hashed[fraction] = hashed_module_names(
+            graph_kernels.UKCreateKernel(sampler), graph_kernels
+        )
+    assert hashed[1.0] - plain == {national_sampling.__name__}
+    assert hashed[0.1] - plain == {national_sampling.__name__, frame_sampling.__name__}
+    reach = _helper_reach((national_sampling.__name__, "UKSampledSpineRootTransform"))
     assert {national_sampling.__name__, frame_sampling.__name__} <= set(reach)
-    assert set(reach) <= hashed, sorted(set(reach) - hashed)
+    assert set(reach) <= hashed[0.1], sorted(set(reach) - hashed[0.1])
+
+    # At f100 the root returns before the shared core samples anything.
+    def refuse(*args, **kwargs):
+        raise AssertionError("f100 must not sample")
+
+    for name in ("sample_frame_households", "normalize_sampled_household_mass"):
+        monkeypatch.setattr(national_sampling, name, refuse)
+    frame = object()
+    assert national_sampling.sample_uk_spine_root(frame, fraction=1.0, seed=1) == (
+        frame,
+        None,
+    )
 
 
 def test_uk_graph_json_round_trip_is_canonical() -> None:
