@@ -2201,6 +2201,23 @@ def _check_structural_columns(spec: Mapping[str, object]) -> None:
         )
 
 
+def _check_view_bindings_have_a_closure(spec: Mapping[str, object]) -> None:
+    """Every binding that declares views needs the spec's input closure."""
+
+    if _has_resource(spec, _CLOSURE_RESOURCE):
+        return
+    named = sorted(
+        binding
+        for binding, row in _binding_modules(spec).items()
+        if binding_view_entities(row)
+    )
+    if named:
+        raise ValueError(
+            f"Rules bindings {named} declare views, but the spec has no "
+            f"{_CLOSURE_RESOURCE!r} resource to close their inputs."
+        )
+
+
 def _check_structural_rows_written(spec: Mapping[str, object], graph: Graph) -> None:
     """Every declared ``structural_columns`` row names a column the graph writes.
 
@@ -4573,6 +4590,7 @@ def compose_transport_graph(
     validate_transport_activation(spec)
     _check_unreached_requests(spec, config.engine_refs)
     _check_structural_columns(spec)
+    _check_view_bindings_have_a_closure(spec)
     from .entitlement import transport_extensions
 
     config = replace(config, extensions=transport_extensions(spec, config.extensions))
