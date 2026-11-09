@@ -586,6 +586,46 @@ def _artifact_names(
     return names
 
 
+def _undeclared_ledger_files(
+    hub: _Hub,
+    *,
+    recorded: Mapping[str, str],
+    declared_names: set[str],
+    folder: str,
+    commit: str,
+    files_at_tag: set[str],
+) -> list[CopiedFile]:
+    """The files a build's checksum ledger records that its release manifest
+    doesn't declare, each checked against the ledger at the tagged commit.
+
+    They are the build's too, as each US ACS local-area build has them: the
+    copy step copies them from the tagged folder, and they stay undeclared.
+    """
+    own = {RELEASE_MANIFEST_NAME, _BUILD_MANIFEST_NAME, CHECKSUMS_FILE}
+    extra = sorted(set(recorded) - own - declared_names)
+    absent = [name for name in extra if f"{folder}/{name}" not in files_at_tag]
+    if absent:
+        raise SwitchRefusedError(
+            f"its {CHECKSUMS_FILE} records {absent}, which its tagged commit's "
+            f"{folder}/ does not hold"
+        )
+    if not extra:
+        return []
+    digests = hub.sha256s([f"{folder}/{name}" for name in extra], commit)
+    for name in extra:
+        if digests[f"{folder}/{name}"] != recorded[name]:
+            raise SwitchRefusedError(
+                f"its {CHECKSUMS_FILE} records {name} with a digest that is not "
+                "the tagged commit's"
+            )
+    return [
+        CopiedFile(
+            name=name, source=f"{folder}/{name}", sha256=recorded[name], declared=False
+        )
+        for name in extra
+    ]
+
+
 def _describe(hub: _Hub, candidate: _Candidate) -> BuildMove:
     """Read one tagged build and work out its folder; refuse if it cannot move."""
     tag, commit, folder = candidate.tag, candidate.commit, candidate.source_folder
@@ -684,36 +724,15 @@ def _describe(hub: _Hub, candidate: _Candidate) -> BuildMove:
     ledger_path = f"{folder}/{CHECKSUMS_FILE}"
     if ledger_path in files_at_tag:
         ledger = hub.read(ledger_path, commit)
-        recorded = _ledger_entries(ledger)
-        # Files the ledger records that the release manifest doesn't declare
-        # are the build's too, as each US ACS local-area build has them: they
-        # are copied, checked against the ledger, and stay undeclared.
-        own = {RELEASE_MANIFEST_NAME, _BUILD_MANIFEST_NAME, CHECKSUMS_FILE}
-        extra = sorted(set(recorded) - own - set(names.values()))
-        absent = [name for name in extra if f"{folder}/{name}" not in files_at_tag]
-        if absent:
-            raise SwitchRefusedError(
-                f"its {CHECKSUMS_FILE} records {absent}, which its tagged commit's "
-                f"{folder}/ does not hold"
-            )
-        extra_digests = (
-            hub.sha256s([f"{folder}/{name}" for name in extra], commit) if extra else {}
+        undeclared = _undeclared_ledger_files(
+            hub,
+            recorded=_ledger_entries(ledger),
+            declared_names=set(names.values()),
+            folder=folder,
+            commit=commit,
+            files_at_tag=files_at_tag,
         )
-        for name in extra:
-            if extra_digests[f"{folder}/{name}"] != recorded[name]:
-                raise SwitchRefusedError(
-                    f"its {CHECKSUMS_FILE} records {name} with a digest that is not "
-                    "the tagged commit's"
-                )
-            expected[name] = recorded[name]
-            undeclared.append(
-                CopiedFile(
-                    name=name,
-                    source=f"{folder}/{name}",
-                    sha256=recorded[name],
-                    declared=False,
-                )
-            )
+        expected.update({item.name: item.sha256 for item in undeclared})
         written[CHECKSUMS_FILE] = _rewritten_ledger(
             ledger, expected=expected, replaced=replaced
         )
