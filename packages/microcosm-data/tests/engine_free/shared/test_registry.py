@@ -167,20 +167,25 @@ def test_uk_2025_national_line_is_the_default_variant_after_promotion():
 def test_uk_2025_national_release_is_the_default_variant():
     """The national release is the default UK 2025 load: its current build in
     releases.json, not a pointer file; the June 2023 release stays
-    addressable at its year through latest.json."""
+    addressable at its year, as release populace-uk-2023 once the UK switch
+    has moved its build, and through latest.json until then."""
     spec = REGISTRY[("uk", 2025, DEFAULT_VARIANT)]
     assert spec.release == "microcosm-uk-2024-25-national"
     assert spec.filename == "microcosm_uk_2024_25.h5"
     assert ("uk", 2025, "national") not in REGISTRY
     june = REGISTRY[("uk", 2023, DEFAULT_VARIANT)]
     assert june.filename == "populace_uk_2023.h5"
-    assert (june.release, june.pointer_path) == (None, LATEST_POINTER_PATH)
+    assert (june.release, june.pointer_path) == (
+        "populace-uk-2023",
+        LATEST_POINTER_PATH,
+    )
 
 
 def test_only_the_uk_registry_entries_name_a_release():
     """Every US entry keeps latest.json until the US stable releases are
     agreed with the US data builder."""
     assert {spec.key: spec.release for spec in REGISTRY.values() if spec.release} == {
+        ("uk", 2023, DEFAULT_VARIANT): "populace-uk-2023",
         ("uk", 2025, DEFAULT_VARIANT): "microcosm-uk-2024-25-national",
         ("uk", 2025, "dense"): "microcosm-uk-2024-25-dense",
     }
