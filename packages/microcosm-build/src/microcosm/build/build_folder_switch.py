@@ -42,8 +42,11 @@ The switch is two steps, each a separate run of this tool:
     One commit writes ``releases.json`` and deletes every ``latest*.json``
     pointer file. It refuses unless each moving build's folder holds a copy
     of it: exactly its files, a release manifest naming the release, the
-    build and the tagged manifest it was rewritten from, and every declared
-    file with the SHA-256 it had at the tag. It also refuses a build folder
+    build and the tagged manifest it was rewritten from, every declared file
+    with the SHA-256 the rewritten manifest records (the bytes it had at the
+    tag, or a declared build manifest's new bytes), and every undeclared
+    file its checksum ledger records with the SHA-256 it had at the tag. It
+    also refuses a build folder
     on ``main`` that the record would not list, a change to the
     repository's tags between its first read and its commit (a tagged
     publication that does not commit to ``main`` would otherwise be lost),
@@ -51,10 +54,12 @@ The switch is two steps, each a separate run of this tool:
     ``release-staging/`` branch, which the tagged publisher keeps from
     before it uploads a build until after it tags it. ``--finished-branch
     BRANCH`` accepts one that a finished publication left behind, while its
-    build is tagged and the commit it names is on ``main`` (a publication
-    still running has either no tag yet or a branch on the tagged commit,
-    which is not on ``main`` until the branch is deleted); the branch stays,
-    and must not move before the commit. A retry of the same build's
+    build is tagged and the commit it names is on ``main``: a first
+    publication still running either has no tag yet, or has its branch on
+    the tagged commit, which the publisher never puts on ``main`` (its commit
+    to ``main`` is a new one, made after it deletes the branch). The branch
+    stays, and must neither move nor disappear before the commit. A retry of
+    the same build's
     publication that has just made its branch from ``main``, and not yet
     committed to it, meets both conditions too, so name a branch only while
     nobody publishes.
@@ -1164,10 +1169,15 @@ def _staging_branches(
     """The staging branches the switch accepts, each with the commit it names.
 
     A branch is accepted only when ``--finished-branch`` names it, a tag of
-    its build exists, and the commit it names is on ``main``: the tagged
-    publisher makes the branch before it uploads, tags the build, and only
-    then commits to ``main`` and deletes the branch, so a publication still
-    running never meets both. Every other staging branch is a problem.
+    its build exists, and the commit it names is on ``main``. The tagged
+    publisher makes the branch from ``main``, commits the build to it, tags
+    that commit, deletes the branch, and then, unless the publication is
+    tag-only, commits the build to ``main`` in a new commit; so while a first
+    publication runs, either its build has no tag or its branch names the
+    tagged commit, which is not on ``main``. A retry of an already tagged
+    build whose branch has just been made from ``main`` meets both, which is
+    why the module docstring says to name a branch only while nobody
+    publishes. Every other staging branch is a problem.
     """
     accepted: dict[str, str] = {}
     problems.extend(
@@ -1286,19 +1296,32 @@ def switch_repository(
     # build tagged after the survey; list the tags again just before the
     # commit, in one request, and compare the IDs the Hub lists. A
     # publication that has checked for releases.json but not yet tagged its
-    # build has a staging branch, so refuse that too, unless it is a finished
-    # publication's branch that the survey accepted and that has not moved.
+    # build has a staging branch, so refuse that too. The staging branches
+    # must be exactly the finished ones the survey accepted, each naming the
+    # same commit: a retry of a build can make its branch only once the
+    # leftover one is gone, so one that moved or disappeared is refused too.
     listed_tags, staging_branches = hub.refs()
-    new_branches = sorted(
-        branch
-        for branch, commit in staging_branches.items()
-        if finished_branches.get(branch) != commit
-    )
-    if new_branches:
-        raise SwitchRefusedError(
-            "nothing was written: "
-            + "; ".join(_publication_in_progress(branch) for branch in new_branches)
-        )
+    changed = []
+    for branch in sorted({*staging_branches, *finished_branches}):
+        accepted, now = finished_branches.get(branch), staging_branches.get(branch)
+        if accepted == now:
+            continue
+        if accepted is None:
+            changed.append(_publication_in_progress(branch))
+        elif now is None:
+            changed.append(
+                f"branch {branch}, which --finished-branch named, was deleted while "
+                "the switch read the repository, so a publication of its build may "
+                "be starting; run the step again once nobody is publishing"
+            )
+        else:
+            changed.append(
+                f"branch {branch}, which --finished-branch named, moved from "
+                f"{accepted} to {now} while the switch read the repository, so a "
+                "publication is using it; run the step again once it has finished"
+            )
+    if changed:
+        raise SwitchRefusedError("nothing was written: " + "; ".join(changed))
     if listed_tags != survey.listed_tags:
         raise SwitchRefusedError(
             "nothing was written: the repository's tags changed while the switch "
