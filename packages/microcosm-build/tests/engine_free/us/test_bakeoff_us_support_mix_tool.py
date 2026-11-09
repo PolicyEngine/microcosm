@@ -6,14 +6,20 @@ Invariants:
   member the pinned engine counts as an adult, and the rule refuses a person
   table without household-role columns rather than falling back to age;
 - staleness: an arm's receipt depends only on the inputs and options its arm
-  reads, the concept digest moves with part contents (not just sizes), a
-  concept part is reusable only if built from the current shards' source h5,
-  concept specs and null-fill summary, and saved weights are re-scored only
-  for the same rows and inputs;
+  reads, the concept digest moves with part contents (not just sizes) and
+  with the concept specs and measure list, a concept part is reusable only if
+  built from the current shards' source h5, concept specs and null-fill
+  summary, and saved weights are re-scored only for the same rows and inputs;
+- partcheck: a column fails when either side holds a nonfinite value or its
+  scaled difference exceeds the tolerance, and a check refuses an unknown or
+  empty part selection, a sample under one household and a negative or
+  nonfinite tolerance;
 - grid: ACS-only arms carry no years, so a grid on newer CPS years keeps them;
 - reporting: a report reads only current receipts of its own grid,
-  replicate tables cover only groups with more than one draw, and a report
-  with missing or stale receipts is refused unless asked for.
+  replicate tables cover only groups with more than one draw, a report
+  with missing or stale receipts is refused unless asked for, and
+  ``--allow-stale`` alone leaves stale receipts out without counting them as
+  missing.
 """
 
 from __future__ import annotations
@@ -158,6 +164,29 @@ def test_concept_digest_moves_with_contents_of_the_same_size(tool, tmp_path) -> 
     assert tool._concept_digest(tmp_path, "acs") != second
 
 
+def test_concept_digest_moves_with_what_the_columns_mean(tool, tmp_path) -> None:
+    """A recompile that leaves the parts in place (new report specs, say)
+    still makes a receipt from before it stale (review r5b, finding 1)."""
+    args = _report_work(tmp_path)
+    directory = tmp_path / "concepts" / "acs"
+    _write_part(directory, "shard_000", [[1.0, 0.0]], rows=[0])
+    specs, measures = tmp_path / "concept_specs.pkl", directory / "measures.json"
+    specs.write_bytes(pickle.dumps([SimpleNamespace(measure="bakeoff_concept_00000")]))
+    measures.write_text(json.dumps(["bakeoff_concept_00000", "state_income_tax"]))
+    arm = tool.parse_arm("b300k.cps0.acs100.s0")
+
+    def inputs():
+        return tool.arm_inputs(tool.input_digests(tmp_path, args.truth, args.epochs), arm)
+
+    solved = inputs()
+    assert tool.inputs_current(solved, inputs())
+    specs.write_bytes(pickle.dumps([SimpleNamespace(measure="bakeoff_concept_00000", age_limit=17)]))
+    after_specs = inputs()
+    assert not tool.inputs_current(solved, after_specs)
+    measures.write_text(json.dumps(["state_income_tax", "bakeoff_concept_00000"]))
+    assert not tool.inputs_current(after_specs, inputs())
+
+
 def test_stale_parts_are_those_not_built_from_the_current_provenance(tool, tmp_path) -> None:
     directory = tmp_path / "parts"
     current = {"source_h5_sha256": "new", "concept_specs_sha256": "specs", "summary_sha256": None}
@@ -210,6 +239,55 @@ def test_a_recompile_makes_every_part_stale(tool, tmp_path) -> None:
         tool.do_materialize(_materialize_args(tmp_path, replace_stale=False))
 
 
+def test_partcheck_fails_nonfinite_and_out_of_tolerance_columns(tool) -> None:
+    fresh = np.array([[1.0, 2.0, np.nan, np.inf, 1.0, 3.0],
+                      [1.0, 2.0, 1.0, np.inf, 1.0, 3.0]])
+    stored = np.array([[1.0, 2.0, np.nan, np.inf, 1.5, 3.0],
+                       [1.0, 2.0 + 1e-9, 1.0, np.inf, 1.0, np.nan]])
+    scaled, bad = tool.partcheck_columns(fresh, stored, 1e-5)
+    assert bad.tolist() == [2, 3, 4, 5]
+    assert scaled[0] == 0.0
+    assert scaled[1] == pytest.approx(5e-10)
+    assert scaled[4] == pytest.approx(0.5)
+
+
+def test_a_nonfinite_value_fails_its_column_at_any_tolerance(tool) -> None:
+    """Exhaustive over a 2 x 3 sample: one nonfinite value on either side
+    fails exactly its own column, whatever the tolerance."""
+    base = np.arange(6.0).reshape(2, 3)
+    assert tool.partcheck_columns(base, base.copy(), 0.0)[1].size == 0
+    for side in ("fresh", "stored"):
+        for row in range(2):
+            for col in range(3):
+                for value in (np.nan, np.inf, -np.inf):
+                    for tolerance in (0.0, 1e-5, 1e300):
+                        fresh, stored = base.copy(), base.copy()
+                        (fresh if side == "fresh" else stored)[row, col] = value
+                        assert tool.partcheck_columns(fresh, stored, tolerance)[1].tolist() == [col]
+
+
+def test_partcheck_refuses_unknown_and_empty_part_selections(tool, tmp_path) -> None:
+    parts = [tmp_path / "shard_000.npz", tmp_path / "shard_001.npz"]
+    assert tool.select_parts(parts, None) == parts
+    assert tool.select_parts(parts, " shard_001 ,") == parts[1:]
+    with pytest.raises(SystemExit, match="shard_007"):
+        tool.select_parts(parts, "shard_000,shard_007")
+    with pytest.raises(SystemExit, match="no stored parts"):
+        tool.select_parts(parts, ",")
+    with pytest.raises(SystemExit, match="no stored parts"):
+        tool.select_parts([], None)
+
+
+@pytest.mark.parametrize(("per_part", "tolerance"), [
+    (0, 1e-5), (200, -1e-5), (200, float("nan")), (200, float("inf")),
+])
+def test_partcheck_refuses_a_bad_sample_size_or_tolerance(tool, tmp_path, per_part, tolerance) -> None:
+    args = argparse.Namespace(work=tmp_path, source="cps", shards=None, parts=None, per_part=per_part,
+                              tolerance=tolerance, summary=None, batch=5_000, min_available_gb=0.0)
+    with pytest.raises(SystemExit, match="per-part|tolerance"):
+        tool.do_partcheck(args)
+
+
 def test_replicate_tables_cover_only_groups_with_several_draws(tool) -> None:
     table = pd.DataFrame({
         "product": ["national"] * 5,
@@ -249,3 +327,19 @@ def test_report_skips_other_grids_and_refuses_stale_receipts(tool, tmp_path) -> 
         {"arm": "b300k.cps0.acs100.s0", "product": "national", "inputs": {"targets": "old"}}))
     with pytest.raises(SystemExit, match="1 receipts are stale"):
         tool.do_report(args)
+
+
+def test_report_with_allow_stale_alone_leaves_stale_receipts_out(tool, tmp_path) -> None:
+    """Review r5b, finding 4: ``--allow-stale`` must not also need
+    ``--allow-missing`` for receipts that exist but are stale."""
+    args = _report_work(tmp_path)
+    (tmp_path / "arms" / "local").mkdir()
+    for product in ("national", "local"):
+        for arm in tool.arm_grid(True, 2024):
+            (tmp_path / "arms" / product / f"{arm.label}.json").write_text(json.dumps(
+                {"arm": arm.label, "product": product, "inputs": {"targets": "old"}}))
+    with pytest.raises(SystemExit, match="60 receipts are stale"):
+        tool.do_report(args)
+    args.allow_stale = True
+    tool.do_report(args)
+    assert (args.out / "arms.csv").exists()

@@ -805,8 +805,16 @@ def rescore_refusal(previous: dict, inputs: dict, rows_digest: str) -> str | Non
 
 
 def _concept_digest(work: Path, source: str) -> str:
-    """Content digest of a source's materialized parts (values and row maps)."""
+    """Content digest of a source's materialized parts (values and row maps)
+    and of what their columns mean: the compiled concept specs and the
+    source's ``measures.json``. A recompile that leaves the parts in place,
+    such as one that changes only the report specs, still moves the digest,
+    so no receipt reads as current against columns that changed meaning.
+    """
     digest = hashlib.sha256()
+    for meaning in (work / "concept_specs.pkl", work / "concepts" / source / "measures.json"):
+        digest.update(meaning.name.encode())
+        digest.update((sha256_file(meaning) if meaning.exists() else "absent").encode())
     for path in sorted((work / "concepts" / source).glob("shard_*.npz")):
         if path.name.endswith(".tmp.npz"):
             continue
@@ -960,6 +968,37 @@ def do_materialize(args) -> None:
     write_json(out_dir / "measures.json", measures)
 
 
+def select_parts(parts: list[Path], wanted: str | None) -> list[Path]:
+    """The stored parts ``--parts`` names, or every part when it names none.
+
+    Refuses a stem that matches no stored part and an empty selection: either
+    would otherwise write a passing receipt that checked nothing.
+    """
+    if wanted:
+        stems = {x.strip() for x in wanted.split(",") if x.strip()}
+        unknown = sorted(stems - {p.stem for p in parts})
+        if unknown:
+            raise SystemExit(f"--parts names no stored part: {', '.join(unknown)}")
+        parts = [p for p in parts if p.stem in stems]
+    if not parts:
+        raise SystemExit("partcheck has no stored parts to check")
+    return parts
+
+
+def partcheck_columns(fresh: np.ndarray, stored: np.ndarray, tolerance: float) -> tuple[np.ndarray, np.ndarray]:
+    """Each column's largest difference between fresh and stored values,
+    scaled by the column's largest fresh magnitude (at least 1), and the
+    columns that fail: those over ``tolerance``, and those with a nonfinite
+    value on either side, which a tolerance test alone would pass (a NaN
+    difference compares false with every tolerance).
+    """
+    with np.errstate(invalid="ignore", over="ignore"):
+        scaled = np.abs(fresh - stored).max(axis=0) / np.maximum(1.0, np.abs(fresh).max(axis=0))
+        over = scaled > tolerance
+    finite = np.isfinite(fresh).all(axis=0) & np.isfinite(stored).all(axis=0) & np.isfinite(scaled)
+    return scaled, np.flatnonzero(~finite | over)
+
+
 def do_partcheck(args) -> None:
     """Differential: re-materialize a sample of each stored part's households
     with the current concept specs and compare with the stored values.
@@ -970,6 +1009,10 @@ def do_partcheck(args) -> None:
     the work directory's own were removed.
     """
     started = time.time()
+    if not (math.isfinite(args.tolerance) and args.tolerance >= 0):
+        raise SystemExit(f"--tolerance must be a finite, nonnegative number, got {args.tolerance}")
+    if args.per_part < 1:
+        raise SystemExit(f"--per-part must be at least 1, got {args.per_part}")
     with open(args.work / "concept_specs.pkl", "rb") as handle:
         concept_specs = pickle.load(handle)
     measures = compiled_measures(args.work)
@@ -978,11 +1021,9 @@ def do_partcheck(args) -> None:
     if shard_sha != shard_source_sha(args.work, args.source):
         raise SystemExit(f"{shards_dir} was cut from another h5 than the work directory's {args.source} shards")
     rows = pd.read_parquet(args.work / f"rows_{args.source}.parquet", columns=["household_id", "shard"])
-    parts = sorted(p for p in (args.work / "concepts" / args.source).glob("shard_*.npz")
-                   if not p.name.endswith(".tmp.npz"))
-    if args.parts:
-        wanted = {x.strip() for x in args.parts.split(",") if x.strip()}
-        parts = [p for p in parts if p.stem in wanted]
+    stored_parts = sorted(p for p in (args.work / "concepts" / args.source).glob("shard_*.npz")
+                          if not p.name.endswith(".tmp.npz"))
+    parts = select_parts(stored_parts, args.parts)
     rng = np.random.default_rng(20260930)
     results = {}
     for path in parts:
@@ -1007,14 +1048,17 @@ def do_partcheck(args) -> None:
             for m in measures
         ])[order.to_numpy().astype(np.int64)]
         old = stored[pick].toarray().astype(np.float64)
-        scaled = np.abs(fresh - old).max(axis=0) / np.maximum(1.0, np.abs(fresh).max(axis=0))
-        bad = np.flatnonzero(scaled > args.tolerance)
+        scaled, bad = partcheck_columns(fresh, old, args.tolerance)
+        finite = np.isfinite(scaled)
+        largest = float(scaled[finite].max()) if finite.any() else None
         results[path.name] = {
-            "households": int(len(pick)), "max_scaled_abs_diff": float(scaled.max()),
+            "households": int(len(pick)), "max_scaled_abs_diff": largest,
+            "n_nonfinite_columns": int((~finite).sum()),
             "columns_over_tolerance": [measures[j] for j in bad[:20]], "n_columns_over_tolerance": int(len(bad)),
         }
-        log(f"partcheck {args.source} {path.name}: {len(pick)} hh, max scaled diff {scaled.max():.2e}, "
-            f"{len(bad)} columns over {args.tolerance:g}")
+        shown = "none finite" if largest is None else f"{largest:.2e}"
+        log(f"partcheck {args.source} {path.name}: {len(pick)} hh, max scaled diff {shown}, "
+            f"{len(bad)} columns failing ({int((~finite).sum())} nonfinite, tolerance {args.tolerance:g})")
         del frame, household
         gc.collect()
     receipt = {
@@ -1022,7 +1066,8 @@ def do_partcheck(args) -> None:
         "concept_specs_sha256": sha256_file(args.work / "concept_specs.pkl"),
         "summary_sha256": sha256_file(args.summary) if args.summary else None,
         "tolerance": args.tolerance, "per_part": args.per_part, "parts": results,
-        "max_scaled_abs_diff": max((r["max_scaled_abs_diff"] for r in results.values()), default=0.0),
+        "max_scaled_abs_diff": max((r["max_scaled_abs_diff"] for r in results.values()
+                                    if r["max_scaled_abs_diff"] is not None), default=None),
         "wall_s": round(time.time() - started, 1), "peak_rss_gb": round(peak_rss_gb(), 2),
     }
     write_json(args.work / f"partcheck_{args.source}.json", receipt)
@@ -1673,7 +1718,7 @@ def do_report(args) -> None:
     records, acs_records, summary = [], [], []
     expected = {(product, arm.label) for product in ("national", "local") for arm in arm_grid(True, args.newest_year)}
     digests = input_digests(args.work, args.truth, args.epochs)
-    stale = []
+    stale, stale_keys = [], set()
     for path in sorted((args.work / "arms").glob("*/*.json")):
         receipt = json.loads(path.read_text())
         if (receipt["product"], receipt["arm"]) not in expected:
@@ -1682,6 +1727,7 @@ def do_report(args) -> None:
         arm = parse_arm(receipt["arm"])
         if not inputs_current(receipt.get("inputs"), arm_inputs(digests, arm)):
             stale.append(f"{receipt['product']} {receipt['arm']}")
+            stale_keys.add((receipt["product"], receipt["arm"]))
             continue
         base = {"arm": receipt["arm"], "product": receipt["product"]}
         base.update({"budget": arm.budget or 0, "cps_years": len(arm.cps_income_years),
@@ -1704,7 +1750,11 @@ def do_report(args) -> None:
     if stale and not args.allow_stale:
         raise SystemExit(f"{len(stale)} receipts are stale against the current inputs (e.g. {stale[:3]}); "
                          "re-solve them or pass --allow-stale to leave them out")
-    missing = sorted(expected - {(r["product"], r["arm"]) for r in summary})
+    if stale:
+        log(f"report: leaving out {len(stale)} stale receipts (e.g. {stale[:3]})")
+    # A stale receipt that --allow-stale leaves out still exists, so it does
+    # not count as missing.
+    missing = sorted(expected - {(r["product"], r["arm"]) for r in summary} - stale_keys)
     if missing and not args.allow_missing:
         raise SystemExit(f"{len(missing)} expected receipts missing (e.g. {missing[:3]}); "
                          "pass --allow-missing for a partial report")

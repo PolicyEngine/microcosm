@@ -2,8 +2,8 @@
 
 Outputs of `tools/bakeoff_us_support_mix.py report` over the 60 arm receipts
 (30 arms × national and local products), plus the compile and differential
-receipts. The design, verdict and caveats are in
-[`docs/us-support-mix-bakeoff.md`](../../docs/us-support-mix-bakeoff.md).
+receipts. [`docs/us-support-mix-bakeoff.md`](../../docs/us-support-mix-bakeoff.md)
+gives the design, verdict and caveats.
 
 | File | What |
 |---|---|
@@ -19,11 +19,14 @@ receipts. The design, verdict and caveats are in
 | `compile.json` | Registry compile: 32,842 specs, 419 concepts, split roles by level |
 | `diffcheck.json` | Production per-target columns vs concept × mask on 4,000 households per source: max scaled difference 0.0 |
 | `acs_truth.json` | ACS 2024 1-year summary-file cells and their SHA-256 |
-| `partcheck_cps.json`, `partcheck_acs.json` | Stored concept parts re-materialized on 200 sampled households each with the final concept specs: max scaled difference 5.8e-8 |
-| `spm_flags.json` | ACS group-quarters share and the SPM zero-adult records excluded from the support (`spm-flags`) |
+| `partcheck_cps.json`, `partcheck_acs.json` | Stored concept parts against a fresh materialization, under the final concept specs, of 200 sampled households per part: max scaled difference 5.8e-8 |
+| `spm_flags.json` | ACS group-quarters share and the SPM zero-adult records the support leaves out (`spm-flags`) |
 | `materialize/` | Per-part engine-pass receipts (households, wall time, peak RSS) and the measure list |
 | `asec_quality.py`, `asec_quality.json` | CPS year response-quality check (script and its output) |
 | `memo_tables.py` | Builds the memo's results tables from these files |
 
-Per-arm receipts (with every held-out target's estimate) and saved weights
-stay in the run's work directory; they are 10–15 MB each.
+The folder holds no per-arm receipts (10–15 MB each, with every held-out
+target's estimate) and no saved weights. Both stayed in the run's work
+directory, which no longer exists. The `materialize/` receipts predate the
+source-h5, concept-spec and null-fill-summary digests the memo describes; on
+2026-09-30 their numerical fields matched the work copies'.

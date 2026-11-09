@@ -1,8 +1,8 @@
 # US support mix: CPS years vs ACS rows at a fixed household budget
 
-Status: bake-off run 2026-09-28 to 2026-09-30 on main `bda72cb02`,
-policyengine-us 2.2.1, pinned Chronicle feed `b8543739` (32,842 targets); 30
-arms × 2 products, all scored. Receipts:
+Status: the bake-off ran from 2026-09-28 to 2026-09-30 on main `bda72cb02`,
+policyengine-us 2.2.1 and the pinned Chronicle feed `b8543739` (32,842
+targets), and scored all 60 calibrations (30 arms × 2 products). Receipts:
 [`experiments/us-support-mix-bakeoff-20260930/`](../experiments/us-support-mix-bakeoff-20260930/).
 Tool: [`tools/bakeoff_us_support_mix.py`](../tools/bakeoff_us_support_mix.py);
 primitives and invariants:
@@ -29,7 +29,7 @@ trade-offs.
 - **National compact file: the newest three CPS years plus ACS to 300,000
   source households.** With 2022–2024 that is 168,852 CPS households plus
   131,148 ACS households, 484,080 physical rows (+37% over the three-year CPS
-  file's 352,932). Against the CPS-only file, averaged over three ACS draws:
+  file's 352,932). Against the CPS-only file, as means over three ACS draws:
   - held-out state CPS-native error falls from 0.119 to 0.113 (draw SD
     0.0003) and district error from 0.353 to 0.291;
   - state income components improve (0.250 to 0.224), state tax items get
@@ -54,8 +54,8 @@ trade-offs.
   alternative. If state tax items and serving cost outweigh everything else,
   the three-year CPS-only file remains the choice.
 
-- **CD and county local file: the newest three CPS years plus ACS households,
-  not CPS location clones, to 1.2M source households.** That is 1,384,080
+- **CD and county local file: the newest three CPS years plus ACS households
+  to 1.2M source households, with no CPS location clones.** That is 1,384,080
   physical rows, 13% fewer than today's 1,588,854-row ACS local file. At
   1.2M:
   - held-out district CPS-native error ties the clones (0.169 against 0.170)
@@ -88,8 +88,8 @@ trade-offs.
   Within a budget, each CPS year displaces ACS households. In the national
   file at 300k, one year against three (three draws each): state income 0.249
   against 0.224 and tax items 0.130 against 0.113, both well beyond draw
-  noise; program receipt 0.241 against 0.198 is within the one-year arms'
-  draw noise (SD 0.041), and so is the loss-weighted state error (0.117
+  noise; program receipt 0.241 against 0.198 falls within the one-year arms'
+  draw noise (SD 0.041), and so does the loss-weighted state error (0.117
   against 0.113, SD 0.002). ACS-native error rises (state 0.086 to 0.110,
   district 0.166 to 0.188; county level at 0.255 and 0.259). The local file at
   300k shows the same trade more strongly: tax items (0.137 to 0.103) and
@@ -97,7 +97,7 @@ trade-offs.
   ACS-native error rises by a third or more (state 0.080 to 0.110, district
   0.153 to 0.204). At 1.2M the displacement is small (see above). Income
   years 2020 and 2021 pass the response-quality check, so a five-year pool is
-  the next arm to run; it was not run here (see Follow-ups).
+  the next arm to run; this bake-off did not run it (see Follow-ups).
 
 - **Clones add geography and little else.** In the national file they leave
   every state measure where the CPS-only file had it. In both files they
@@ -110,25 +110,26 @@ trade-offs.
 This matches the design note's reasoning. ACS rows carry real variation in
 what the ACS observes, so income components (the ACS records wages,
 self-employment, Social Security, retirement and interest, dividend and rental
-income), housing and local geography improve as ACS rows enter. Program
-receipt on ACS rows is imputed from CPS donors: beside three CPS years it
-holds level at 131k ACS households, is clearly worse by 1.2M (0.239), and ACS
-alone at 300k scores 0.303.
+income), housing and local geography improve as ACS rows enter. ACS rows
+draw program receipt from CPS donors: beside three CPS years, state program
+receipt error holds level at 131k ACS households, turns clearly worse by 1.2M
+(0.239), and reaches 0.303 for ACS alone at 300k.
 
 ## Results
 
-All errors are capped relative error on held-out targets, `min(|est − target|
-/ max(|target|, 1), 1)`; lower is better. "CPS-native" columns are
-loss-weighted over all held-out CPS-native targets at the level; the
-per-dimension columns are plain means. "ACS-native" averages households,
-owner and renter households, contract rent, real-estate taxes and household
-population against the ACS 2024 1-year tables (age bands, which count
-group-quarters people only the ACS rows have, are in
-`acs_native_by_level_measure.csv`). Rows are physical household rows (a CPS
-household carries its PUF tax-detail clone rows); ESS is Kish over distinct
-households (an ASEC housing unit counted once across rotation years, PUF rows
-and clones). Rows marked "3 draws" average three disjoint ACS draws; the rest
-are one draw. Tables are generated from the receipts by `memo_tables.py`.
+Every column reports capped relative error on held-out targets, `min(|est −
+target| / max(|target|, 1), 1)`; lower is better. The "CPS-native" columns
+take the loss-weighted mean over every held-out CPS-native target at the
+level; the per-dimension columns take plain means. "ACS-native" averages
+households, owner and renter households, contract rent, real-estate taxes and
+household population against the ACS 2024 1-year tables;
+`acs_native_by_level_measure.csv` adds age bands, which count group-quarters
+people only the ACS rows have. The Rows column counts physical household rows
+(a CPS household carries its PUF tax-detail clone rows); ESS is Kish over
+distinct households (each ASEC housing unit counts once across rotation
+years, PUF rows and clones). The "3 draws" rows average three disjoint ACS
+draws; each other row comes from one draw. `memo_tables.py` builds the tables
+from `dimensions_by_arm.csv`.
 
 ### National product (4,828 train-role national and state targets)
 
@@ -159,27 +160,27 @@ are one draw. Tables are generated from the receipts by `memo_tables.py`.
 | ACS only, 1.2M | 1,200,000 | 272,607 | 0.120 | 0.170 | 0.206 | 0.127 | 0.318 | 0.193 | 0.084 / 0.146 / 0.180 |
 | SD across 3 draws (300k, 2022–24) | | | 0.001 | 0.002 | 0.007 | 0.002 | 0.006 | 0.002 | 0.000 / 0.002 / 0.000 |
 
-Differences under about twice the draw SD are noise. The one-year arms are
-noisier than the three-year arms (program receipt SD 0.041 national and
-0.024 local at 300k; `replicate_spread.csv`). National-level held-out
-targets (36) are too few to rank arms and are left out of the tables; they
-are in the receipts.
+Differences under about twice the draw SD are noise. The one-year arms vary
+more across draws than the three-year arms (program receipt SD 0.041
+national and 0.024 local at 300k; `replicate_spread.csv`). The 36
+national-level held-out targets are too few to rank arms, so the tables leave
+them out; `holdout_by_dimension_level.csv` has them.
 
 **Calibration worsens held-out state age cells, in every arm.** The mean
 capped error on held-out Census PEP state age bands is 0.066 at the starting
 weights and 0.168 after calibration, across all 60 calibrations (0.131 to
 0.193). The design weights already carry Census age controls, and the solve
-trades them away for its training targets. The age column is reported, not
-ranked on: it does separate arms (national 0.159 to 0.176, draw SD 0.005), but
-every arm pays the trade, and its size is a finding about the calibration
-objective, filed as a follow-up.
+trades them away for its training targets. The tables report the age column
+but rank no arm on it: it does separate arms (national 0.159 to 0.176, draw
+SD 0.005), but every arm pays the trade, and its size says more about the
+calibration objective than about the support (see Follow-ups).
 
-**Report only: SPM poverty** (never calibrated or gated). In the national
-product the SPM rate is 12.8% for the three-year CPS file, 12.2% for the
-recommended 300k mix (seed 0) and 12.3% for ACS only; child SPM poverty is
-14.7%, 13.6% and 12.3%. These rates include the ACS group-quarters persons
+**Report only: SPM poverty** (no arm calibrates to it or gates on it). In the
+national product the SPM rate is 12.8% for the three-year CPS file, 12.2% for
+the recommended 300k mix (seed 0) and 12.3% for ACS only; child SPM poverty
+is 14.7%, 13.6% and 12.3%. These rates include the ACS group-quarters persons
 still in the support, whom Census places outside the SPM universe; the tool
-now excludes them, and these receipts predate that fix. ACS rows' SPM
+now leaves them out, but these rates predate that fix. ACS rows' SPM
 resources rest on imputed CPS-only inputs, so the differences reflect the
 imputation as much as the support.
 
@@ -194,17 +195,20 @@ imputation as much as the support.
 | Calibration, local clones to 1.2M (2.51M rows) | 55 to 210 min, 18 to 28 GB peak |
 | Serving | proportional to physical rows: 484k national (+37% over CPS only), 1.38M local (−13% against today's local file) |
 
-Wall times were measured with the host at load 10 to 400 and compare only
+We measured wall times with the host at load 10 to 400, so they compare only
 within this run. Training loss still fell a median 5.2% of its epoch-1,000
 value between epochs 1,000 and 1,500 (`arms.csv` has `loss_1000` and
-`loss_final`); every arm had the same 1,500-epoch budget. For 22 arms first
-scored before scoring covered every level, the receipts carry the solve peak
-restored from the grid log and no solve wall time. Every receipt's `inputs`
-digests were added after its solve, once the tool recorded them, from the
-files then in place (`inputs_note` says so in each receipt). Each concept
-part's receipt likewise had its source-h5, concept-spec and null-fill-summary
-digests added afterwards, from `shard.json`, `concept_specs.pkl` and the
-`partcheck` below (`*_note` fields).
+`loss_final`); every arm had the same 1,500-epoch budget. The tool first
+scored 22 arms before scoring covered every level; for those, `arms.csv`
+carries the solve peak from the grid log and no wall time (`runtime_restored`
+names the log line). We added each arm receipt's `inputs` digests after its
+solve, once the tool recorded them, from the files then in place, and each
+receipt's `inputs_note` said so. We likewise added source-h5, concept-spec
+and null-fill-summary digests afterwards to the work copies of the
+concept-part receipts, from `shard.json`, `concept_specs.pkl` and the
+`partcheck` below (`*_note` fields). The copies under `materialize/` predate
+those digests; on 2026-09-30 their numerical fields matched the work
+copies'.
 
 ## Design
 
@@ -214,7 +218,7 @@ A **source household** is one survey household record: one ASEC
 household-year or one ACS household. Budgets count source households, as in
 the design note, so the 2022–2024 ASEC pool is 168,852. A CPS source
 household keeps its PUF tax-detail clone rows from the Route A pipeline, so
-it spans two or three physical rows. The receipts report physical rows
+it spans two or three physical rows. The tables report physical rows
 separately, and physical rows drive engine and serving cost.
 
 Each arm keeps every household of its CPS income years and fills the rest of
@@ -225,10 +229,10 @@ the budget with:
   larger arm's;
 - **CPS location clones** (`acs000`): copies of the arm's own CPS households,
   each physical row drawing a new (district, county) within its state in
-  proportion to ACS household weight (group-quarters rows excluded), the way
-  Route A draws rows independently. A clone keeps its source row's engine
+  proportion to ACS household weight (leaving out group-quarters rows), the
+  way Route A draws rows independently. A clone keeps its source row's engine
   values, so anything that varies by county within a state (ACA benchmark
-  premiums by rating area) is carried from the origin county;
+  premiums by rating area) comes from the origin county;
 - a 50/50 mix (`acs050`, at 600k only).
 
 | Budget | CPS years | Fills |
@@ -239,38 +243,40 @@ the budget with:
 | 600k | 2024; 2022–24 | 50/50 |
 | 300k | 2024; 2022–24 | ACS, replicates 1 and 2 |
 
-That is 30 arms. Each is calibrated twice, once per product:
+That is 30 arms. Each arm gets two calibrations, one per product:
 
 - **national compact**: the release's `national_state` surface (5,683
   usable national and state targets, 4,828 of them train-role after the
-  split), with loss weights computed on that surface as the release does;
+  split), with loss weights the tool computes on that surface as the release
+  does;
 - **local**: the full surface, which adds 27,148 targets the release
   classifies as district targets (24,340 district-level, plus 2,808 state
   and national totals from the SOI district file), plus district household
   population (ACS B25008). The ACS local release trains district population
-  from its PUMA ladder instead; household population is used here so that
-  group-quarters rows, which only the ACS has, neither count toward nor are
-  pushed by the district total.
+  from its PUMA ladder instead; this bake-off uses household population so
+  that the district total neither counts nor moves group-quarters rows, which
+  only the ACS has.
 
 Replicate arms take the next disjoint blocks of the one fixed ACS order, so
-they are independent draws; seed-0 arms are nested across budgets.
-Group-quarters households (11.96% of ACS records) stay in the ACS side, as in
-the ACS local release; the CPS has none. The 5,246 ACS records (0.34%, all
-group quarters) whose SPM unit has no member the pinned engine counts as an
-adult are excluded: policyengine-us 2.2.1 refuses them, and Census puts ACS
-group quarters outside the SPM universe (`us_runtime/spm_universe_source.py`).
+they are independent draws; seed-0 arms nest across budgets. Group-quarters
+households (11.96% of ACS records) stay in the ACS side, as in the ACS local
+release; the CPS has none. The bake-off drops the 5,246 ACS records (0.34%,
+all group quarters) whose SPM unit has no member the pinned engine counts as
+an adult: policyengine-us 2.2.1 refuses them, and Census puts ACS group
+quarters outside the SPM universe (`us_runtime/spm_universe_source.py`).
 `shard` and `spm-flags` compute the flag with the engine's rule
 (`spm_flags.json`).
 
-**Five CPS years were not run.** Income years 2020 and 2021 pass the
+**This bake-off ran no five-year arm.** Income years 2020 and 2021 pass the
 response-quality check below, but main pinned ASEC role and person sources
 only for 2022–2024 when this ran, and the base and release stages that would
-enrich two more years peaked at 72–80 GB in recorded runs, above this task's
-60 GB ceiling, while a Route A release held the machine. The tool takes more
-years as more rows, so a five-year arm is a rerun once a Route A export with
-those years exists (see Follow-ups). The same holds for the newest three
-years (2023–2025): the 2025 ASEC was pinned on 2026-09-29
-(PolicyEngine/microcosm#1044), after these CPS rows were built.
+enrich two more years peaked at 72–80 GB in recorded runs, beyond this
+task's 60 GB ceiling, while a Route A release held the machine. The tool
+takes more years as more rows, so a five-year arm is a rerun once a Route A
+export with those years exists (see Follow-ups). The same holds for the
+newest three years (2023–2025): main pinned the 2025 ASEC on 2026-09-29
+(PolicyEngine/microcosm#1044), after the Route A export these CPS rows come
+from.
 
 ### Superpool: one engine pass, many arms
 
@@ -282,82 +288,85 @@ reweights subsets:
   income years 2022–2024, PUF clones, all enrichment stages), with design
   weights from its base. The run failed only its post-export smoke gate.
 - **ACS rows**: the 2026-09-23 ACS local staging (1,531,614 ACS 2024 1-year
-  households with CPS-only inputs transferred from the 57,240-household
-  receipt-qualified donor spine). The staging's own 57,240 donor rows are not
-  used. The staging carries `is_spm_independent_minor_role` as all-null on
-  ACS rows; the column is dropped so the engine derives the role from its
-  formula (`is_household_head | is_household_spouse`), as the production ACS
-  local build did.
+  households, whose CPS-only inputs the staging transferred from the
+  57,240-household receipt-qualified donor spine). The bake-off leaves out
+  the staging's own 57,240 donor rows. The staging carries
+  `is_spm_independent_minor_role` as all-null on ACS rows; the tool drops the
+  column so the engine derives the role from its formula
+  (`is_household_head | is_household_spouse`), as the production ACS local
+  build did.
 
 Both carry the same PolicyEngine input schema (141 and 140 person inputs).
-Imputations are fixed across arms: an ACS row's CPS-only variables come from
-the same donor spine whatever CPS years the arm pools. The bake-off
-therefore measures the support effect with donor quality held constant; in a
-real rebuild, a one-year arm would also have a thinner donor pool.
+Imputations stay the same across arms: an ACS row's CPS-only variables come
+from the same donor spine whatever CPS years the arm pools. The bake-off
+therefore measures the support effect while holding donor quality constant;
+in a real rebuild, a one-year arm would also have a thinner donor pool.
 
 **Concepts.** The release materializer builds each state or district
 target's household column as a geography-free value times an indicator of
 the household's own state or district
 (`_base_simulation_household_columns`). `compile` groups the 32,842 targets
 into 419 such concepts, and `materialize` runs the release tool's own
-`_materialize_target_frame` on them in household shards. Every arm's target
-matrix is then concept value × geography mask, assembled sparse. `diffcheck`
-verifies the identity on real rows (see Evidence). The 11 JCT
-tax-expenditure targets need reform simulations and are excluded from every
-arm.
+`_materialize_target_frame` on them in household shards. The tool then
+assembles every arm's target matrix, sparse, as concept value × geography
+mask. `diffcheck` verifies the identity on real rows (see Evidence). The 11
+JCT tax-expenditure targets need reform simulations, so every arm leaves them
+out.
 
 ### Holdout
 
-The US holdout ("Port the UK holdout to US release targets") has not merged.
-The bake-off mirrors its pending spec: SHA-256 of `salt + "\x1f" + key`,
-sealed if below 0.05 on the sealed salt, otherwise held out if below 0.10 on
-the holdout salt. The hash is tested against draws from the port branch's own
-implementation (`PORT_BRANCH_FIXTURES`); the group-key and role rules follow
-the port session's written spec, since its module had not been written.
-District children take their state parent's key, so a held-out state total is
-held out with all its districts; national and state targets are drawn
-independently, so a held-out national total can still be pinned by trained
-state targets. Vintage tokens are dropped from keys. The spec's pins, which
-force some groups to train, are not mirrored, so this split differs from the
-eventual release split for pinned groups. Sealed targets are neither trained
-nor scored.
+The US holdout ("Port the UK holdout to US release targets") had not merged
+when this ran. The bake-off mirrors its pending spec: it hashes
+`salt + "\x1f" + key` with SHA-256, seals a group whose hash on the sealed
+salt falls below 0.05, and otherwise holds the group out if its hash on the
+holdout salt falls below 0.10. Tests check the hash against draws from the
+port branch's own implementation (`PORT_BRANCH_FIXTURES`); the group-key and
+role rules follow the port session's written spec, since that session had
+not yet written its module. District children take their state parent's
+key, so holding out a state total holds out all its districts; the split
+draws national and state targets independently, so trained state targets
+can still pin a held-out national total. Keys drop vintage tokens. The
+bake-off does not mirror the spec's pins, which force some groups to train,
+so this split differs from the eventual release split for pinned groups. No
+arm trains on or scores a sealed target.
 
 On the pinned feed: 27,711 train, 3,470 holdout (36 national, 787 state,
 2,647 district), 1,661 sealed.
 
 **ACS-native truth.** The registry has no housing targets and no county
-targets. ACS-native dimensions are scored against the ACS 2024 1-year
-table-based summary file (B25003 tenure, B25060 and B25065 aggregate rent,
-B25090 aggregate real-estate taxes, B25008 and B01003 population, B01001 age
-and sex) at national, state, district (119th Congress) and county (the 850
-counties the 1-year file covers). None are calibrated, except district
-household population (B25008) in the local product. These tables come from
-the same ACS year as the ACS rows; the PUMS is a subsample of the published
-sample and district and county are drawn from PUMA, so ACS rows do not
-reproduce them by construction, but they share its sampling error. Treat
-ACS-native scores as consistency with the published ACS.
+targets. The bake-off scores ACS-native dimensions against the ACS 2024
+1-year table-based summary file (B25003 tenure, B25060 and B25065 aggregate
+rent, B25090 aggregate real-estate taxes, B25008 and B01003 population,
+B01001 age and sex) at national, state, district (119th Congress) and county
+(the 850 counties the 1-year file covers). No arm calibrates to them, except
+to district household population (B25008) in the local product. These
+tables come from the same ACS year as the ACS rows; the PUMS subsamples the
+published sample, and ACS rows take district and county as draws within
+their PUMA, so ACS rows do not reproduce the tables by construction, but
+they share the published sample's sampling error. ACS-native scores
+therefore measure consistency with the published ACS.
 
 ### Calibration
 
 Every arm uses the production optimizer, `microcosm.calibrate.solve._optimize`,
 with the fiscal release's optimizer settings: Adam on log-weights, learning
-rate 0.02, capped relative error (cap 1.0), mass conserved, max weight ratio 5,
-the release's concept-budget loss weights computed once per surface (the
-national_state surface for the national product, the full registry for the
-local one) before the split, so train and holdout keep fixed weights; district
-household-population rows weigh 1 each; no L0 pruning, so the row budget
-stays fixed. A sparse operator with a precomputed transpose replaces the torch
-sparse-CSR backward pass, which was the bottleneck; the objective and
-projections are unchanged.
+rate 0.02, capped relative error (cap 1.0), conserved mass, max weight ratio
+5, and the release's concept-budget loss weights, which the tool computes
+once per surface (the national_state surface for the national product, the
+full registry for the local one) before the split, so train and holdout keep
+fixed weights; district household-population rows weigh 1 each; no L0
+pruning, so the row budget stays fixed. A sparse operator with a precomputed
+transpose replaces the torch sparse-CSR backward pass, which was the
+bottleneck; the objective and projections stay the same.
 
 Starting weights: each CPS income year gets an equal share of the CPS mass;
 a household with *k* location copies splits its weight over 1 + *k* rows;
 CPS and ACS sides share mass in proportion to source households; then the
 release's population mass repair rescales to its 334.2M-person benchmark.
 
-**Invariants** (property-tested in `test_us_support_mix.py`): an arm's CPS,
-ACS and clone households sum to its budget; ACS selections are nested and
-independent of input order; clone copies differ by at most one; starting
+**Invariants** (`test_us_support_mix.py` tests each as a property): an arm's
+CPS, ACS and clone households sum to its budget; ACS selections nest and do
+not depend on input order; clone copies differ by at most one; starting
 weights are positive, sum to the requested mass, give each CPS year an equal
 share and split CPS and ACS in proportion to households; distinct-household
 ESS never exceeds row ESS or the distinct-unit count; the holdout role is a
@@ -370,17 +379,18 @@ per-target materialization with concept × mask on real rows.
 
 - **Registry holdout**: capped relative error by dimension (CPS-native:
   income components, tax items, program receipt; ACS-native: PEP
-  demographics) and level, as a mean and loss-weighted. A target no row in the
-  arm can move scores as a miss (error 1), so every arm is averaged over the
-  same held-out set; a common-support table is reported too. Two held-out
-  targets are unsupported in every arm, and 22 in the one-year CPS-only arm.
+  demographics) and level, as a plain and a loss-weighted mean. A target no
+  row in the arm can move scores as a miss (error 1), so every arm's average
+  covers the same held-out set; a common-support table covers only targets
+  every arm supports. Two held-out targets lack support in every arm, and 22
+  in the one-year CPS-only arm.
 - **ACS-native**: households, tenure, aggregate rent (the model's
-  `pre_subsidy_rent`, scored against both contract rent B25060 and gross rent
+  `pre_subsidy_rent`, against both contract rent B25060 and gross rent
   B25065) and real-estate taxes, household population (B25008), and total
   population, age and sex (B01003, B01001), by level including county.
   Household measures exclude group-quarters rows.
-- **ESS** over distinct households: weights summed within each household unit,
-  then Kish; also the median across districts.
+- **ESS** over distinct households: Kish on each household unit's total
+  weight; also the median across districts.
 - **Cost**: calibration wall time and peak RSS per arm; engine seconds per
   household from the materialization receipts; physical rows as the serving
   cost driver.
@@ -388,9 +398,10 @@ per-target materialization with concept × mask on real rows.
 
 ## CPS year response quality
 
-`census_cps_YYYY.h5` is keyed by income year (ASEC collected in YYYY+1).
-`asec_quality.py` computes the table from the processed files and the Census
-public-use archives; the response rates are Census's own.
+In `census_cps_YYYY.h5`, YYYY is the income year; Census collects that
+year's ASEC in YYYY+1. `asec_quality.py` computes the table from the
+processed files and the Census public-use archives; the response rates are
+Census's own.
 
 | Income year (ASEC) | Households | Combined response rate | Earners, whole record imputed | Earners, items allocated | Homeownership | UC recipients |
 |---|---|---|---|---|---|---|
@@ -403,18 +414,18 @@ public-use archives; the response rates are Census's own.
 | 2024 (2025) | 55,762 | 60.1% | 19.3% | 21.5% | 65.1% | 1,400 |
 
 Combined response is basic-CPS times ASEC household response, from each
-year's CPS ASEC Source and Accuracy statement. Imputation shares are
-`A_FNLWGT`-weighted among wage earners (`I_ERNVAL` 9 is a whole imputed
-record; 1–8 an allocated item). Household weights have a coefficient of
+year's CPS ASEC Source and Accuracy statement. Imputation shares weight wage
+earners by `A_FNLWGT` (`I_ERNVAL` 9 marks a whole imputed record; 1–8 an
+allocated item). Household weights have a coefficient of
 variation of 0.598 to 0.610 and a Kish share of 0.729 to 0.737 in every year.
 The public-use archives give whole-supplement imputation (`FL_665`) of 20.5%,
 19.9%, 19.2%, 17.8% and 16.7% for income years 2021 to 2025.
 
-Income years 2020 and 2021 **pass**: their response rates are above the
-pinned years'; their whole-record imputation shares sit between the
-pre-pandemic years' and the pinned years'; their item-allocation shares are
-the highest of the seven years (22.6% and 21.8%) but within 1.6 points of
-every other year; and homeownership and weight dispersion show no break.
+Income years 2020 and 2021 **pass**: their response rates exceed the pinned
+years'; their whole-record imputation shares sit between the pre-pandemic
+years' and the pinned years'; their item-allocation shares, the highest of
+the seven years (22.6% and 21.8%), stay within 1.6 points of every other
+year; and homeownership and weight dispersion show no break.
 Three caveats:
 
 - Census asks users to take care comparing data years 2019, 2020 and 2021
@@ -427,7 +438,7 @@ Three caveats:
 - About a third of each file's households repeat in the neighbouring year
   (32.5% to 37.8%).
 
-Income year 2019 (ASEC 2020, collected as COVID hit) is the file that fails:
+Income year 2019 (ASEC 2020, which Census collected as COVID hit) fails:
 homeownership jumps 1.9 points (64.5% to 66.4%) and falls back the next year,
 and the sample has 11.5% fewer households than the year before (60,460
 against 68,345).
@@ -438,40 +449,42 @@ Rotation overlap: a housing unit appears in at most two adjacent files, so
 
 ## Caveats
 
-- **CPS rows are income years 2022–2024**, the Route A export available when
-  this ran. The recommendation is stated for "the newest three years"; the
-  2023–2025 export is the rerun.
-- **Imputations are held fixed.** ACS rows' CPS-only inputs come from one
-  57,240-household donor spine in every arm. A production one-year build
+- **The CPS rows cover income years 2022–2024**, from the Route A export
+  available when this ran. The recommendation names "the newest three
+  years"; a rerun would use the 2023–2025 export.
+- **Imputations stay the same across arms.** ACS rows' CPS-only inputs come
+  from one 57,240-household donor spine in every arm. A production one-year build
   would also impute from a thinner donor pool.
 - **Clones keep their origin row's engine values**, including anything that
   varies by county within a state.
-- **The holdout mirrors the unmerged US split without its pins.** Scores are
-  comparable across arms, not with the eventual release split.
+- **The holdout mirrors the unmerged US split without its pins.** Scores
+  compare across arms, but the eventual release split would give different
+  ones.
 - **ACS-native truth is the published ACS 2024 1-year**, the same survey year
-  as the ACS rows. Read it as consistency with the published ACS.
-- **Older CPS years are not uprated**, as in Route A; calibration absorbs the
+  as the ACS rows, so it measures consistency with the published ACS.
+- **Nothing uprates older CPS years**, as in Route A; calibration absorbs the
   2022–2024 nominal income gap.
-- **5,246 group-quarters records with no SPM adult are out of the ACS
-  support**, pending the engine's SPM-universe input (policyengine-us#9462).
-- **JCT tax-expenditure targets are excluded**; they need reform simulations.
+- **The ACS support leaves out 5,246 group-quarters records with no SPM
+  adult**, pending the engine's SPM-universe input (policyengine-us#9462).
+- **Every arm leaves out the JCT tax-expenditure targets**, which need reform
+  simulations.
 
 ## Follow-ups
 
-- Rerun on the newest three CPS years (2023–2025) once a Route A export on main
-  at or after `5187fce25` exists: `shard --source cps` on it, `materialize
-  --source cps --replace-stale`, `diffcheck --sources cps`, `partcheck
-  --source cps`, then `run-grid --newest-year 2025` and `report --newest-year
-  2025 --truth <acs_truth>`. `materialize` refuses concept parts built from
-  another source h5, other concept specs or another null-fill summary unless
-  told to replace them, and each receipt carries digests of only the inputs
-  its arm reads, so the ACS-only arms are kept and every arm with CPS rows is
-  solved fresh.
+- Rerun on the newest three CPS years (2023–2025) from a Route A export of
+  main at or after `5187fce25`. The run's work directory no longer exists, so
+  a rerun takes every step under Reproduce below, with `--newest-year 2025` on
+  `run-grid` and `report`. Within a rerun, `materialize` refuses a concept
+  part whose receipt is missing or names another source h5, other concept
+  specs or another null-fill summary, unless run with `--replace-stale`, and
+  an arm's receipt counts as current only while every input the arm reads
+  stays the same: the targets, truth and epoch count, and, for each source it
+  draws on, the row index, the concept parts, the concept specs and the
+  measure list.
 - Add five-year arms (2020–2024 or 2021–2025) once those years have Route A
   enrichment.
 - When `microcosm.build.us_runtime.target_split` merges, swap it in and
-  **re-solve**: a new split changes the training set, so saved weights cannot
-  simply be re-scored.
+  **re-solve** every arm: a new split changes the training set.
 - Find out why calibration worsens held-out state age cells 2.5-fold.
 
 ## Evidence
@@ -479,25 +492,32 @@ Rotation overlap: a housing unit appears in at most two adjacent files, so
 - Differential: production per-target materialization against concept ×
   mask, 4,000 households from each source, 349 state and district targets
   across nine family-level groups: maximum scaled difference 0.0 for both
-  (`diffcheck.json`). The ACS half was written by the tool on 2026-09-29; the
-  CPS half is the tool's own log line from 2026-09-28, copied into the file
-  after the CPS shard files were removed to free disk.
+  (`diffcheck.json`). The tool wrote the ACS half on 2026-09-29; the CPS half
+  is the tool's own log line from 2026-09-28, which we copied into the file
+  after removing the CPS shard files to free disk.
 - Stored parts against the final concept specs: `partcheck` re-materialized
   200 households from each of the 8 CPS parts and 8 of the 62 ACS parts
   (both rank ranges) with the final specs and the branch's code, and compared
   every column with the stored values: maximum scaled difference 5.8e-8,
   float32 rounding (`partcheck_cps.json`, `partcheck_acs.json`). Three CPS
-  parts were built before the last `compile`, which added loss weights only;
-  this confirms their columns. The CPS shards were rebuilt from the same h5
-  for the check, and their row index equals the one the arms used.
-- Re-running `report` on the 60 receipts reproduces every committed table
-  byte for byte.
+  parts predate the last `compile`, which added loss weights only; this check
+  confirms their columns. For the check we rebuilt the CPS shards from the
+  same h5, and their row index equals the one the arms used.
+- On 2026-09-30, rerunning `report` on the 60 arm receipts reproduced every
+  committed table byte for byte. Those receipts (10–15 MB each, with every
+  held-out target's estimate) and the saved weights stayed in the run's work
+  directory, which no longer exists, so the committed tables now carry the
+  record.
 - Tests: `test_us_support_mix.py`, 22 tests (properties, the dense
   differential and the port-branch hash fixtures), and
-  `test_bakeoff_us_support_mix_tool.py`, 15 tests of the driver's SPM flag,
-  staleness guards, grid and report.
-- Independent review (Opus 5.5, Subfleet), four rounds; every finding is
-  fixed or stated here.
+  `test_bakeoff_us_support_mix_tool.py`, 24 tests of the driver's SPM flag,
+  staleness guards, `partcheck` rules, grid and report.
+- After the run, the tool gained four guards a final review asked for:
+  receipt digests also cover the concept specs and the measure list,
+  `partcheck` fails a column with any nonfinite value and refuses an unknown
+  or empty part selection, and `--allow-stale` alone now writes a report.
+  The recorded checks had finite differences and matched every part they
+  named, so no committed number moves.
 - Receipts in `experiments/us-support-mix-bakeoff-20260930/`: the report
   tables, `compile.json`, `diffcheck.json`, `partcheck_*.json`,
   `spm_flags.json`, `asec_quality.json` (with its script), `acs_truth.json`,
