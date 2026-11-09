@@ -52,9 +52,18 @@ def test_uk_spine_graph_contains_every_manifest_stage() -> None:
     # pension_credit_take_up and the microcosm#1063 child_benefit_take_up; the
     # frs_hmrc_retained_leaves / hmrc_spi_income certified-pair alternatives
     # are retired (#901), so the manifest roster is the graph roster.
-    # microcosm#1063 also adds cgt_residential_split after the anchor, and
-    # microcosm#1095 the spi_benefit_coherence pass after uc_reporter_redraw.
-    assert len(expected) == 39
+    # microcosm#1063 also adds cgt_residential_split after the anchor,
+    # microcosm#1095 the spi_benefit_coherence pass after uc_reporter_redraw,
+    # microcosm#1106 property_components after the regional uprating, and
+    # microcosm#1240 high_value_home_support between those two; microcosm#1095
+    # adds property_purchases and uc_legacy_closure_take_up, microcosm#1112
+    # regional_home_values, microcosm#1319 carers_allowance_take_up, the
+    # copies' childcare re-draw childcare_copy_take_up, and microcosm#1334
+    # uc_take_up and frs_annual_income_spells; microcosm#1428 the last stage,
+    # trading_allowance_receipts; and company_cars after hmrc_spi_income_spine
+    # (PolicyEngine/uk-autumn-budget-dashboard-2026#316); and microcosm#1490
+    # spi_employment_shell after company_cars, then aps_occupation.
+    assert len(expected) == 54
     assert {"frs_hmrc_retained_leaves", "hmrc_spi_income"}.isdisjoint(expected)
     assert set(expected) <= ids
     assert {"frs_hmrc_retained_leaves", "hmrc_spi_income"}.isdisjoint(ids)
@@ -93,7 +102,11 @@ def test_uk_spine_compile_order_is_derived_from_declared_inputs() -> None:
     assert compile_graph(reversed_declaration).order == compiled.order
     assert "frs_employment" in compiled.predecessors["frs_legacy_proxies"]
     assert "was_wealth" in compiled.predecessors["regional_property_uprating.boundary"]
-    assert "regional_property_uprating" in compiled.predecessors["lcfs_consumption"]
+    assert (
+        "regional_property_uprating" in compiled.predecessors["high_value_home_support"]
+    )
+    assert "high_value_home_support" in compiled.predecessors["property_components"]
+    assert "property_components" in compiled.predecessors["lcfs_consumption"]
     assert "spi_support_channel" in compiled.predecessors["spi_income_band_donors"]
     assert "spi_income_band_donors" in compiled.predecessors["hmrc_spi_income_spine"]
 
@@ -114,17 +127,24 @@ def test_uk_production_graph_binds_split_donor_sources_and_runtime_config() -> N
         "nts_trip",
         "nts_stage",
         "nts_ticket",
+        "nts_vehicle",
         "lcfs_household",
         "lcfs_person",
         "etb",
+        "aps",
         "spi",
         "hmrc_income",
     }
+    # The NTS household and vehicle tabs feed the zero-emission share by income
+    # fifth and the household-paid road-fuel mix (microcosm#1095 B3).
     assert graph.node("lcfs_consumption").sources == (
         "lcfs_household",
         "lcfs_person",
+        "nts_household",
+        "nts_vehicle",
     )
     assert graph.node("was_lisa").sources == ("was", "was_person")
+    assert graph.node("aps_occupation").sources == ("aps",)
     assert graph.node("hmrc_spi_income_spine").sources == (
         "spi",
         "hmrc_income",
@@ -179,6 +199,63 @@ def test_uc_relationship_helper_changes_affected_kernel_hashes(monkeypatch) -> N
     for ref in affected_refs:
         assert registry.implementation_hash(ref) != before[ref]
     assert registry.implementation_hash(control_ref) == before[control_ref]
+
+
+def test_spi_income_source_changes_invalidate_the_stages_that_run_it(monkeypatch):
+    # The SPI income stage's module only imports the imputation, the band-donor
+    # resample and its receipt from spi_income, so spi_income is bound as the
+    # stage's helper; the landlords' stage already binds it (microcosm#1278).
+    from microcosm.build.uk_runtime import spi_income
+
+    graph = uk_spine_graph()
+    registry = uk_registry(graph=graph)
+    affected = [
+        graph.node(stage).kernel
+        for stage in ("hmrc_spi_income_spine", "property_components")
+    ]
+    control = graph.node("frs_council_tax").kernel
+    before = {ref: registry.implementation_hash(ref) for ref in (*affected, control)}
+    helper_path = Path(spi_income.__file__).resolve()
+    original = Path.read_bytes
+
+    def changed_helper_bytes(path: Path) -> bytes:
+        content = original(path)
+        if path.resolve() == helper_path:
+            return content + b"\n# A helper-only source change.\n"
+        return content
+
+    monkeypatch.setattr(Path, "read_bytes", changed_helper_bytes)
+    for ref in affected:
+        assert registry.implementation_hash(ref) != before[ref]
+    assert registry.implementation_hash(control) == before[control]
+
+
+def test_isa_statistics_source_changes_invalidate_the_stages_that_read_them(
+    monkeypatch,
+):
+    # The ISA subscriptions and the Lifetime ISA anchor read HMRC's ISA tables
+    # through the typed loader, so it is bound as both stages' helper
+    # (microcosm#1415).
+    from microcosm.build.uk_runtime import hmrc_isa_statistics
+
+    graph = uk_spine_graph()
+    registry = uk_registry(graph=graph)
+    affected = [graph.node(stage).kernel for stage in ("isa_subscriptions", "was_lisa")]
+    control = graph.node("frs_council_tax").kernel
+    before = {ref: registry.implementation_hash(ref) for ref in (*affected, control)}
+    helper_path = Path(hmrc_isa_statistics.__file__).resolve()
+    original = Path.read_bytes
+
+    def changed_helper_bytes(path: Path) -> bytes:
+        content = original(path)
+        if path.resolve() == helper_path:
+            return content + b"\n# A helper-only source change.\n"
+        return content
+
+    monkeypatch.setattr(Path, "read_bytes", changed_helper_bytes)
+    for ref in affected:
+        assert registry.implementation_hash(ref) != before[ref]
+    assert registry.implementation_hash(control) == before[control]
 
 
 def test_uk_adapter_source_changes_invalidate_all_consuming_stages(monkeypatch):
@@ -374,3 +451,46 @@ def test_zero_row_expand_still_refuses_a_shift_across_household_sizes() -> None:
             _zero_row_expand_node(),
             _zero_row_expand_result([0.5, 2.5], total=3.0),
         )
+
+
+def test_property_components_reads_cover_the_stage_inputs() -> None:
+    """A node receives its declared cells alone, so the declaration must name
+    every person column the landlord stage requires (the recipient flag joined
+    them with microcosm#840; the 13 October twin build failed at the node
+    before the declaration followed)."""
+    from microcosm.build.uk_runtime.graph import _STAGE_CONSUMES
+    from microcosm.build.uk_runtime.property_components import (
+        PROPERTY_COMPONENTS_PERSON_INPUTS,
+    )
+
+    declared = _STAGE_CONSUMES["property_components"]
+    assert declared is not None
+    required = {("person", column) for column in PROPERTY_COMPONENTS_PERSON_INPUTS}
+    assert required <= declared, sorted(required - declared)
+
+
+def test_spi_benefit_coherence_reads_cover_its_work_tests() -> None:
+    """The contributory awards' work tests read the copy's earnings and its
+    twin's hours, and the receipt reads its pension payments and counts by
+    source household: the node gets only its declared cells (the 4 November
+    b5j spine failed at the node before the hours followed)."""
+    from microcosm.build.uk_runtime.graph import _STAGE_CONSUMES
+    from microcosm.build.uk_runtime.spi_benefit_coherence import (
+        SPI_PENSION_PAYMENTS_COLUMN,
+        SPI_WITHIN_LIMIT_EARNINGS_COLUMNS,
+        SPI_WITHIN_LIMIT_HOURS_COLUMN,
+        SPI_WITHIN_LIMIT_REPORT_COLUMNS,
+    )
+
+    declared = _STAGE_CONSUMES["spi_benefit_coherence"]
+    assert declared is not None
+    required = {
+        ("person", column)
+        for column in (
+            *SPI_WITHIN_LIMIT_REPORT_COLUMNS,
+            *SPI_WITHIN_LIMIT_EARNINGS_COLUMNS,
+            SPI_WITHIN_LIMIT_HOURS_COLUMN,
+            SPI_PENSION_PAYMENTS_COLUMN,
+        )
+    } | {("household", "household_source_id")}
+    assert required <= declared, sorted(required - declared)

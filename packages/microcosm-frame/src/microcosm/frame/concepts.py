@@ -89,6 +89,7 @@ __all__ = [
     "PERSON_ID_COLUMN",
     "RENTED_TENURES",
     "SEX_DOMAIN",
+    "SOURCE_HOUSEHOLD_ID_COLUMN",
     "TENURE_DOMAIN",
     "AlignmentRelation",
     "CanonicalConceptKind",
@@ -117,7 +118,7 @@ __all__ = [
 #: concept is added, removed or changes any declared field, so artifacts that
 #: pin :func:`concept_schema_sha256` can say which schema they were written
 #: against.
-CONCEPT_SCHEMA_VERSION = 2
+CONCEPT_SCHEMA_VERSION = 3
 
 #: The two entities concept content lives on. Engine group entities (tax
 #: units, benefit units, SPM units, families) are engine constructs built
@@ -133,6 +134,8 @@ CONCEPT_FRAME_SCHEMA = EntitySchema(group_entities=("household",))
 PERSON_ID_COLUMN = CONCEPT_FRAME_SCHEMA.person_id_column
 PERSON_HOUSEHOLD_ID_COLUMN = CONCEPT_FRAME_SCHEMA.membership_column("household")
 HOUSEHOLD_ID_COLUMN = CONCEPT_FRAME_SCHEMA.id_column("household")
+#: Original donor household identity; support clones carry the same key.
+SOURCE_HOUSEHOLD_ID_COLUMN = "source_household_id"
 _PERSON_ID = PERSON_ID_COLUMN
 _HOUSEHOLD_ID = HOUSEHOLD_ID_COLUMN
 _PERSON_HOUSEHOLD_ID = PERSON_HOUSEHOLD_ID_COLUMN
@@ -164,6 +167,7 @@ class Unit(StrEnum):
     CATEGORY = "category"
     BOOLEAN = "boolean"
     PERSON_ID = "person_id"
+    SOURCE_ID = "source_id"
     UNIT_INTERVAL = "unit_interval"
 
 
@@ -660,6 +664,8 @@ class Concept:
             raise ValueError(
                 f"Pointer concept {self.id!r} must be an int named *_person_id."
             )
+        if self.unit is Unit.SOURCE_ID and self.dtype != "str":
+            raise ValueError(f"Source identity concept {self.id!r} must be str.")
 
     def _validate_bounds(self) -> None:
         numeric = self.dtype in ("float", "int")
@@ -1246,6 +1252,24 @@ CONCEPTS: tuple[Concept, ...] = (
         ),
         index_family=IndexFamily.OWNER_HOUSING_COSTS,
         entity="household",
+    ),
+    # --- Source lineage ---------------------------------------------------
+    Concept(
+        id=f"fact:household.{SOURCE_HOUSEHOLD_ID_COLUMN}",
+        label="Original source household identity",
+        definition=(
+            "Exact identity of the original sampled source household, scoped "
+            "by source vintage when source household identifiers are "
+            "vintage-local. All support clones retain the same identity. "
+            "Derived only from explicit source lineage, never from row order "
+            "or the support row's household id."
+        ),
+        dtype="str",
+        unit=Unit.SOURCE_ID,
+        period="point",
+        temporal_basis=TemporalBasis.PERSISTENT,
+        provenance=ProvenanceClass.DERIVED,
+        transport=TransportRule.CARRY,
     ),
 )
 

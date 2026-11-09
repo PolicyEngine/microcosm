@@ -1,0 +1,95 @@
+{
+ "base_h5": "base_populace_us_2024_puf_support.h5",
+ "base_h5_sha256": "0fb05b674899114e66dc01c2df0ff5349de88bbc8fed440755f4b19f287cedd2",
+ "period": 2024,
+ "persons": 907863,
+ "persons_missing_in_base": 0,
+ "policyengine_core": "3.32.5",
+ "policyengine_us": "2.2.1",
+ "release_h5": "populace_us_2024.h5",
+ "release_h5_sha256": "417d23aed4d044de2e657a7b5d856136975d25739dbdb4ddd72866f841de1559",
+ "variables": {
+  "irs_employment_income": {
+   "by_channel": {
+    "asec/clone0": {
+     "persons_changed": 0,
+     "weighted_stored_minus_base_leaves": 0.0,
+     "weighted_total_as_stored": 4407150094426.305,
+     "weighted_total_with_base_leaves": 4407150094426.305
+    },
+    "puf_tax_detail/clone1": {
+     "persons_changed": 25721,
+     "weighted_stored_minus_base_leaves": -3571790539.97331,
+     "weighted_total_as_stored": 6005769300482.047,
+     "weighted_total_with_base_leaves": 6009341091022.02
+    },
+    "puf_tax_detail/clone2": {
+     "persons_changed": 4714,
+     "weighted_stored_minus_base_leaves": -5305526.339616814,
+     "weighted_total_as_stored": 10749533245.66386,
+     "weighted_total_with_base_leaves": 10754838772.003479
+    }
+   },
+   "persons_changed": 30435,
+   "persons_changed_by_more_than_1_dollar": 30216,
+   "weighted_stored_minus_base_leaves": -3577096066.3129272,
+   "weighted_total_as_stored": 10423668928154.016,
+   "weighted_total_with_base_leaves": 10427246024220.328
+  },
+  "pre_tax_contributions": {
+   "by_channel": {
+    "asec/clone0": {
+     "persons_changed": 0,
+     "weighted_stored_minus_base_leaves": 0.0,
+     "weighted_total_as_stored": 139342041958.17407,
+     "weighted_total_with_base_leaves": 139342041958.17407
+    },
+    "puf_tax_detail/clone1": {
+     "persons_changed": 25743,
+     "weighted_stored_minus_base_leaves": 3554233905.452278,
+     "weighted_total_as_stored": 171946384242.18115,
+     "weighted_total_with_base_leaves": 168392150336.72885
+    },
+    "puf_tax_detail/clone2": {
+     "persons_changed": 4714,
+     "weighted_stored_minus_base_leaves": 5302937.265203003,
+     "weighted_total_as_stored": 297376731.053928,
+     "weighted_total_with_base_leaves": 292073793.78872496
+    }
+   },
+   "persons_changed": 30457,
+   "persons_changed_by_more_than_1_dollar": 30222,
+   "weighted_stored_minus_base_leaves": 3559536842.717481,
+   "weighted_total_as_stored": 311585802931.4092,
+   "weighted_total_with_base_leaves": 308026266088.69165
+  },
+  "traditional_401k_contributions": {
+   "by_channel": {
+    "asec/clone0": {
+     "persons_changed": 0,
+     "weighted_stored_minus_base_leaves": 0.0,
+     "weighted_total_as_stored": 139342041958.17407,
+     "weighted_total_with_base_leaves": 139342041958.17407
+    },
+    "puf_tax_detail/clone1": {
+     "persons_changed": 25743,
+     "weighted_stored_minus_base_leaves": 3554233905.452278,
+     "weighted_total_as_stored": 171946384242.18115,
+     "weighted_total_with_base_leaves": 168392150336.72885
+    },
+    "puf_tax_detail/clone2": {
+     "persons_changed": 4714,
+     "weighted_stored_minus_base_leaves": 5302937.265203003,
+     "weighted_total_as_stored": 297376731.053928,
+     "weighted_total_with_base_leaves": 292073793.78872496
+    }
+   },
+   "persons_changed": 30457,
+   "persons_changed_by_more_than_1_dollar": 30222,
+   "weighted_stored_minus_base_leaves": 3559536842.717481,
+   "weighted_total_as_stored": 311585802931.4092,
+   "weighted_total_with_base_leaves": 308026266088.69165
+  }
+ },
+ "weights": "the release's stored weights in both runs"
+}

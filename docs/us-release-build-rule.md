@@ -368,7 +368,10 @@ channel-by-year sample; the worst missed in 58%. The weighted totals are
 dominated by a few records, so a sample that misses them underestimates both
 the total and its standard error. [The evidence
 folder](evidence/us-export-subsample-design/README.md) has the experiment,
-the per-probe results for five designs, and the limits of the guard.
+the per-probe results for five designs, and the limits of the guard. [Its
+first real run](evidence/us-export-subsample-design/route-a-p005/README.md),
+at p = 0.05 on the published Route A export, found no authoritative failure;
+all 8 authoritative smoke verdicts agree with the full-size build.
 
 `--reference-release-dir` points at a full-size build's `releases/<id>/`. It
 supplies the build's target surface, QRF register and calibration fit (so

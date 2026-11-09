@@ -8,10 +8,16 @@ Two postures, both fail-closed and both printing every failure by name:
 ``--candidate-dir``  after the run: the manifest and the signed gate report
            say what a publishable release candidate must say — release
            posture attested, shippable, every release-blocking gate passed,
-           single-block engine, doctrine values, the A15 census household
+           an exact engine population (one block, or one block per clone
+           whose identical copies are scaled to the pool), doctrine values
+           (and, for a sized run, the size doctrine: 150,000 households under
+           the doctrine's draw, floor and refit penalty, selected by a size
+           search in the doctrine's L0 bracket), the A15 census household
            uprating and A17 tenure application and the
-           measure exclusions receipted, holdout measured, Logbook row
-           present, artifact digest recorded and matching.
+           measure exclusions receipted, the rotated holdout either not
+           requested (an opt-in diagnostic, microcosm#1301) or measured
+           with 5 folds, Logbook row present, artifact digest recorded and
+           matching.
 
 Exit 0 only when nothing failed. This is the check that stops a 3-hour run
 from ending in a manifest that cannot be released for a missing key or flag.
@@ -94,23 +100,140 @@ def check_env(
     try:
         from microcosm.build.uk_runtime.local_doctrine import (
             UK_LOCAL_CLONE_COUNT,
+            UK_LOCAL_DATASET_HOUSEHOLDS,
+            UK_LOCAL_L0_SEARCH_FLOOR,
             UK_LOCAL_MAX_WEIGHT_RATIO,
             UK_LOCAL_SOLVE_DOCTRINE,
             UK_LOCAL_SOLVE_EPOCHS,
         )
 
-        ruled = (10.0, "grain_equal", 15, 1500)
+        ruled = (
+            10.0,
+            "nation_grain_family_equal_sqrt_count",
+            15,
+            2000,
+            SIZE_DOCTRINE["dataset_households"],
+            SIZE_SEARCH_BRACKET["lower"],
+        )
         found = (
             float(UK_LOCAL_MAX_WEIGHT_RATIO),
             UK_LOCAL_SOLVE_DOCTRINE.target_weight_rule,
             int(UK_LOCAL_CLONE_COUNT),
             int(UK_LOCAL_SOLVE_EPOCHS),
+            int(UK_LOCAL_DATASET_HOUSEHOLDS),
+            float(UK_LOCAL_L0_SEARCH_FLOOR),
         )
         if found != ruled:
             failures.append(f"doctrine constants {found} are not the ruled {ruled}.")
     except ImportError as error:
         failures.append(f"doctrine module not importable: {error}")
     return failures
+
+
+#: The local size doctrine (microcosm#1124, ruling of 2026-10-13, as amended
+#: for microcosm#1301): a sized release candidate ships this many households,
+#: drawn and refit under these settings, with no selection L2 penalty
+#: (refused for every run above), selected by a size search over this L0
+#: bracket. Restated here, like the solve doctrine, so the pre-flight checks
+#: the run against the ruling rather than against the code that ran it.
+SIZE_DOCTRINE = {
+    "dataset_households": 150_000,
+    "selection_pi_hi": 0.5,
+    "baseline_pi_floor": 0.5,
+}
+REFIT_L2_DOCTRINE = {
+    "lambda": 0.0215748772773509,
+    "anchor": "uniform",
+    "basis": "chi_square",
+}
+SIZE_SEARCH_BRACKET = {"lower": 1e-10, "upper": 10.0}
+
+
+def _size_failures(manifest: dict, parameters: dict) -> list[str]:
+    """A sized run must carry the size doctrine; an unsized one, no refit L2."""
+
+    requested = parameters.get("dataset_households")
+    if requested is None:
+        if parameters.get("refit_l2") is not None:
+            return ["a refit L2 penalty was applied without a size request."]
+        return []
+    failures = [
+        f"parameters.{key} = {parameters.get(key)!r}, expected the size "
+        f"doctrine's {value!r}."
+        for key, value in SIZE_DOCTRINE.items()
+        if parameters.get(key) != value
+    ]
+    if parameters.get("refit_l2") != REFIT_L2_DOCTRINE:
+        failures.append(
+            f"parameters.refit_l2 = {parameters.get('refit_l2')!r}, expected the "
+            f"size doctrine's {REFIT_L2_DOCTRINE!r}."
+        )
+    if parameters.get("resume_size_checkpoint") is not None:
+        failures.append(
+            "the selection was resumed from a size checkpoint; a release draws its own."
+        )
+    size = manifest.get("solve", {}).get("dataset_size")
+    if not isinstance(size, dict):
+        failures.append("solve.dataset_size is missing from a sized run.")
+    elif not (
+        size.get("requested_households") == size.get("realized_households") == requested
+    ):
+        failures.append(
+            "solve.dataset_size requested "
+            f"{size.get('requested_households')!r} / realized "
+            f"{size.get('realized_households')!r}, expected {requested!r}."
+        )
+    if isinstance(size, dict) and (
+        size.get("selection_search_bracket") != SIZE_SEARCH_BRACKET
+    ):
+        failures.append(
+            "solve.dataset_size.selection_search_bracket = "
+            f"{size.get('selection_search_bracket')!r}, expected the size "
+            f"doctrine's {SIZE_SEARCH_BRACKET!r}."
+        )
+    if manifest.get("release_posture", {}).get("size_doctrine") is not True:
+        failures.append("release_posture.size_doctrine is not true.")
+    return failures
+
+
+def _holdout_failures(manifest: dict, parameters: dict) -> list[str]:
+    """The rotated holdout is an opt-in diagnostic (microcosm#1301).
+
+    A run that did not request it records the skip marker and claims no
+    out-of-sample fit; a run that did must carry the five measured folds and
+    a finite mean. The record must agree with the request either way.
+    """
+
+    holdout = (manifest.get("fit") or {}).get("rotated_holdout")
+    if not isinstance(holdout, dict):
+        return ["fit.rotated_holdout is missing: neither measured nor skipped."]
+    requested_skip = parameters.get("skip_holdout")
+    if requested_skip not in (True, False):
+        return [
+            f"parameters.skip_holdout = {requested_skip!r}; the run must record "
+            "whether the holdout was requested."
+        ]
+    if holdout.get("skipped") is True:
+        if requested_skip is not True:
+            return [
+                "the rotated holdout was requested (--rotated-holdout) but the "
+                "run recorded it as skipped."
+            ]
+        return []
+    if requested_skip is True:
+        return [
+            "the rotated holdout was not requested but the run recorded a "
+            "measured holdout."
+        ]
+    mean = holdout.get("mean_holdout_loss")
+    if (
+        holdout.get("n_folds") != 5
+        or isinstance(mean, bool)
+        or not isinstance(mean, (int, float))
+        or not math.isfinite(mean)
+    ):
+        return ["rotated holdout is not measured with 5 folds and a finite mean."]
+    return []
 
 
 def check_candidate_dir(candidate_dir: Path, *, today: date | None = None) -> list[str]:
@@ -138,8 +261,8 @@ def check_candidate_dir(candidate_dir: Path, *, today: date | None = None) -> li
     doctrine = parameters.get("doctrine", {})
     expected = {
         "max_weight_ratio": 10.0,
-        "target_weight_rule": "grain_equal",
-        "solve_epochs": 1500,
+        "target_weight_rule": "nation_grain_family_equal_sqrt_count",
+        "solve_epochs": 2000,
         "clone_count": 15,
     }
     for key, value in expected.items():
@@ -147,27 +270,37 @@ def check_candidate_dir(candidate_dir: Path, *, today: date | None = None) -> li
             failures.append(
                 f"doctrine.{key} = {doctrine.get(key)!r}, expected {value!r}."
             )
-    if parameters.get("epochs") != 1500 or parameters.get("n_clones") != 15:
+    if parameters.get("epochs") != 2000 or parameters.get("n_clones") != 15:
         failures.append(
-            f"run parameters epochs={parameters.get('epochs')} n_clones={parameters.get('n_clones')} are not the doctrine's 1500 / 15."
+            f"run parameters epochs={parameters.get('epochs')} n_clones={parameters.get('n_clones')} are not the doctrine's 2000 / 15."
         )
-    if parameters.get("skip_holdout"):
-        failures.append("holdout was skipped.")
+    if parameters.get("selection_l2") is not None:
+        failures.append("a selection L2 penalty was applied (candidate-only).")
+    failures.extend(_size_failures(manifest, parameters))
     solve = manifest.get("solve", {})
     resolution = solve.get("measure_resolution", {})
-    if resolution.get("blocks") != 1:
+    blocks = resolution.get("blocks")
+    representation = resolution.get("engine_population_representation") or {}
+    # One block per clone measures the pool exactly when the blocks are
+    # identical copies scaled to the pool (rowwise_cli.release_verdict); the
+    # build records that check, and nothing else stands in for it.
+    per_clone_exact = (
+        type(blocks) is int
+        and blocks > 1
+        and blocks == parameters.get("n_clones")
+        and representation.get("blocks") == blocks
+        and representation.get("mode") == "block_weights_scaled_to_pool"
+        and representation.get("exact") is True
+    )
+    if blocks != 1 and not per_clone_exact:
         failures.append(
-            f"engine resolved in {resolution.get('blocks')} blocks; release posture is 1."
+            f"engine resolved in {blocks} blocks without an exact pool "
+            "representation; release posture is one block, or one block per "
+            "clone recorded exact."
         )
     if solve.get("target_weight_rule_override"):
         failures.append("a target-weight-rule override was applied.")
-    holdout = manifest.get("fit", {}).get("rotated_holdout", {})
-    if (
-        holdout.get("skipped")
-        or holdout.get("n_folds") != 5
-        or holdout.get("mean_holdout_loss") is None
-    ):
-        failures.append("rotated holdout is not measured with 5 folds.")
+    failures.extend(_holdout_failures(manifest, parameters))
     uprating = manifest.get("census_household_uprating", {})
     if uprating.get("applied") is not True:
         failures.append("A15 census household uprating not applied.")
@@ -316,15 +449,27 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--skip-digests", action="store_true")
     parser.add_argument("--candidate-dir", type=Path, help="check a finished run")
     parser.add_argument(
+        "--incumbent-manifest",
+        type=Path,
+        help=(
+            "with --candidate-dir, the incumbent extraction manifest assembly "
+            "will attach"
+        ),
+    )
+    parser.add_argument(
         "--release-dir", type=Path, help="validate an assembled release directory"
     )
     args = parser.parse_args(argv)
+    if args.incumbent_manifest is not None and args.candidate_dir is None:
+        parser.error("--incumbent-manifest needs --candidate-dir")
     failures: list[str] = []
+    # The contract's warnings are printed but never fail the pre-flight.
+    warnings: list[str] = []
     if args.release_dir is not None:
         from microcosm.data.contract import ReleaseContractError, validate_release_dir
 
         try:
-            validate_release_dir(args.release_dir)
+            warnings += validate_release_dir(args.release_dir)
         except ReleaseContractError as error:
             failures += [str(line) for line in getattr(error, "failures", [str(error)])]
     if args.env:
@@ -349,14 +494,23 @@ def main(argv: list[str] | None = None) -> int:
         )
     if args.candidate_dir is not None:
         failures += check_candidate_dir(args.candidate_dir)
+        if (
+            args.incumbent_manifest is not None
+            and not args.incumbent_manifest.is_file()
+        ):
+            failures.append(f"incumbent manifest missing: {args.incumbent_manifest}")
     if not args.env and args.candidate_dir is None and args.release_dir is None:
         parser.error(
             "nothing to check: pass --env, --candidate-dir and/or --release-dir"
         )
+    for warning in warnings:
+        print(f"WARN {warning}", file=sys.stderr)
     for failure in failures:
         print(f"FAIL {failure}", file=sys.stderr)
     print(
-        "preflight: " + ("OK" if not failures else f"{len(failures)} failure(s)"),
+        "preflight: "
+        + ("OK" if not failures else f"{len(failures)} failure(s)")
+        + (f", {len(warnings)} warning(s)" if warnings else ""),
         file=sys.stderr,
     )
     return 0 if not failures else 1

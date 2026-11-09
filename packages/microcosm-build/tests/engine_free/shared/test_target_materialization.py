@@ -9,7 +9,10 @@ from microcosm.build.target_materialization import (
     MeasureResolutionError,
     assert_calibration_input_finite,
     counterfactual_column,
+    evaluate_named_term,
+    expression_names,
     materialize_target_bindings,
+    named_term_leaves,
     resolve_target_measures,
 )
 from microcosm.calibrate import TargetRegistry, TargetSpec
@@ -500,6 +503,179 @@ def test_count_aliases_and_in_predicates_materialize_prepared_columns():
         0.0,
         1.0,
     ]
+
+
+def _single_spec_registry(entity: str = "person") -> TargetRegistry:
+    return TargetRegistry(
+        [
+            TargetSpec(
+                name="row",
+                entity=entity,
+                measure="row_measure",
+                value=1.0,
+                source="test",
+                metadata={"contract_target_id": "row"},
+            )
+        ],
+        country="uk",
+    )
+
+
+def _materialized(binding, entity="person"):
+    adapter = StubAdapter()
+    result = materialize_target_bindings(
+        adapter,
+        _single_spec_registry(entity),
+        {"row": {"bindings": {"policyengine": binding}}},
+        period=2025,
+    )
+    assert result.skipped == ()
+    return adapter.tables[entity]["row_measure"].tolist()
+
+
+def test_a_range_predicate_takes_the_lower_bound_and_leaves_the_upper():
+    # The local age bands: [lower, upper).
+    binding = {
+        "value_variable": "person_count",
+        "filters": [{"variable": "age", "lower": 16, "upper": 40}],
+    }
+    assert _materialized(binding) == [1.0, 1.0, 0.0]
+    open_top = {
+        "value_variable": "person_count",
+        "filters": [{"variable": "age", "lower": 30}],
+    }
+    assert _materialized(open_top) == [0.0, 1.0, 1.0]
+
+
+def test_an_in_list_predicate_matches_any_of_its_values():
+    binding = {
+        "value_variable": "household_count",
+        "filters": [{"variable": "children", "in": [2.0, 4.0]}],
+    }
+    assert _materialized(binding, "household") == [0.0, 1.0, 1.0]
+
+
+def test_a_value_expression_subtracts_as_well_as_adds():
+    binding = {"value_expression": "income - baseline_tax + income"}
+    assert _materialized(binding) == [19.0, 38.0, 57.0]
+    adapter = StubAdapter()
+    result = materialize_target_bindings(
+        adapter,
+        _single_spec_registry(),
+        {"row": {"bindings": {"policyengine": {"value_expression": "income * 2"}}}},
+        period=2025,
+    )
+    assert "unsupported value_expression" in result.skipped[0].reason
+
+
+def test_a_value_expression_scales_a_name_by_a_positive_constant():
+    # A rate applied to the base it taxes (microcosm#1418).
+    binding = {"value_expression": "0.45 * income + 2 * baseline_tax"}
+    assert _materialized(binding) == pytest.approx([6.5, 13.0, 19.5])
+    assert expression_names("0.45 * income - age") == ("income", "age")
+    for unsupported in (
+        "income * 2",
+        "0 * income",
+        "0.0 * income",
+        "2 *",
+        "2 * 3",
+        "2 * max(income, 0)",
+        "2 * income * 3",
+        "-2 * income",
+    ):
+        adapter = StubAdapter()
+        result = materialize_target_bindings(
+            adapter,
+            _single_spec_registry(),
+            {"row": {"bindings": {"policyengine": {"value_expression": unsupported}}}},
+            period=2025,
+        )
+        assert "unsupported value_expression" in result.skipped[0].reason, unsupported
+
+
+def test_a_value_expression_floors_a_sum_at_zero():
+    # The one function the grammar admits (microcosm#1095).
+    binding = {"value_expression": "max(baseline_tax - income + 15, 0)"}
+    adapter = StubAdapter()
+    result = materialize_target_bindings(
+        adapter,
+        _single_spec_registry(),
+        {"row": {"bindings": {"policyengine": binding}}},
+        period=2025,
+    )
+    assert "unsupported value_expression" in result.skipped[0].reason
+    floored = {"value_expression": "income + max(baseline_tax - income, 0)"}
+    assert _materialized(floored) == [10.0, 20.0, 30.0]
+    assert _materialized({"value_expression": "max(income - age, 0)"}) == [
+        0.0,
+        0.0,
+        0.0,
+    ]
+    for unsupported in (
+        "max(income, 1)",
+        "max(income - age)",
+        "max + income",
+        "-income",
+        "income -",
+        "min(income, 0)",
+    ):
+        adapter = StubAdapter()
+        result = materialize_target_bindings(
+            adapter,
+            _single_spec_registry(),
+            {"row": {"bindings": {"policyengine": {"value_expression": unsupported}}}},
+            period=2025,
+        )
+        assert "unsupported value_expression" in result.skipped[0].reason, unsupported
+    assert expression_names("income - max(age - income, 0) + income") == (
+        "income",
+        "age",
+    )
+
+
+def test_a_named_term_reads_its_leaves_and_its_nested_terms():
+    terms = {
+        "profit_after": "max(profit - relief, 0)",
+        "total_after": "total - profit + profit_after",
+    }
+    columns = {
+        "profit": np.array([10_700.37, 2_140.11, 0.0]),
+        "relief": np.array([3_000.29, 5_000.0, 0.0]),
+        "total": np.array([31_235.39, 9_247.12, 400.0]),
+    }
+    after = evaluate_named_term("profit_after", terms, columns.__getitem__)
+    total = evaluate_named_term("total_after", terms, columns.__getitem__)
+
+    # The same floats as the sums written out.
+    former = np.maximum(columns["profit"] - columns["relief"], 0.0)
+    assert np.array_equal(after, former)
+    assert np.array_equal(total, columns["total"] - columns["profit"] + former)
+    assert named_term_leaves("total_after", terms) == ("total", "profit", "relief")
+    with pytest.raises(ValueError, match="refers to itself"):
+        named_term_leaves("loop", {"loop": "income + loop"})
+
+
+def test_a_predicate_with_a_period_or_price_basis_it_cannot_honour_refuses():
+    binding = {
+        "value_variable": "person_count",
+        "filters": [
+            {
+                "variable": "income",
+                "operator": ">",
+                "value": 15,
+                "input_period": "dataset",
+            }
+        ],
+    }
+    adapter = StubAdapter()
+    result = materialize_target_bindings(
+        adapter,
+        _single_spec_registry(),
+        {"row": {"bindings": {"policyengine": binding}}},
+        period=2025,
+    )
+    assert [skip.name for skip in result.skipped] == ["row"]
+    assert "does not honour" in result.skipped[0].reason
 
 
 def _banded_registry(*, count_measure: bool = True) -> TargetRegistry:
@@ -1401,3 +1577,151 @@ def test_counterfactual_skips_refuse_without_a_provider_route():
             NoRouteProvider(),
             period=2025,
         )
+
+
+def _whole_pence_award_bands(binding_extra=None, *, top_band=True):
+    labels = {
+        "award_low": "£0.01 to £100.00",
+        "award_mid": "£100.01 to £200.00",
+    }
+    if top_band:
+        labels["award_top"] = "£200.01 or over"
+    registry = TargetRegistry(
+        [
+            TargetSpec(
+                name=name,
+                entity="person",
+                measure=name,
+                value=1.0,
+                source="test",
+                family="dwp_universal_credit",
+                metadata={
+                    "contract_target_id": "uc.award_bands",
+                    "ledger_filter_monthly_award_amount_bands": label,
+                },
+            )
+            for name, label in labels.items()
+        ],
+        country="uk",
+    )
+    contract = {
+        "uc.award_bands": {
+            "bindings": {
+                "policyengine": {
+                    "value_variable": "person_count",
+                    "groupby_variable": "income",
+                    "from_entity": "person",
+                    "band_period_factor": 12,
+                    **(binding_extra or {}),
+                }
+            }
+        }
+    }
+    adapter = StubAdapter()
+    # Annual awards: none; a penny a month, exact and with float noise;
+    # GBP 100.00 a month; a sub-penny GBP 100.005 a month; GBP 100.01;
+    # GBP 200.00; GBP 200.01; a large award.
+    adapter.tables["person"] = {
+        "income": np.array(
+            [
+                0.0,
+                0.12,
+                0.12 - 1e-9,
+                1_200.0,
+                1_200.06,
+                1_200.12,
+                2_400.0,
+                2_400.12,
+                1e6,
+            ]
+        )
+    }
+    return adapter, registry, contract
+
+
+def test_whole_pence_bands_close_at_the_next_band_less_a_penny():
+    """microcosm#1095: DWP's award bands read as (lower - £0.01, next lower -
+    £0.01] in whole pence, so a penny a month lands in the bottom band."""
+
+    adapter, registry, contract = _whole_pence_award_bands(
+        {"band_semantics": "whole_pence_upper_closed"}
+    )
+
+    result = materialize_target_bindings(adapter, registry, contract, period=2025)
+
+    assert result.skipped == ()
+    person = adapter.tables["person"]
+    assert list(person["award_low"]) == [0, 1, 1, 1, 0, 0, 0, 0, 0]
+    assert list(person["award_mid"]) == [0, 0, 0, 0, 1, 1, 1, 0, 0]
+    assert list(person["award_top"]) == [0, 0, 0, 0, 0, 0, 0, 1, 1]
+
+
+def test_undeclared_bands_keep_their_half_open_reading():
+    """Without band_semantics the same bands stay half-open [lower, upper),
+    the reading every other banded binding keeps. It is float-fragile on
+    pence edges: the penny-a-month award with float noise falls below the
+    bottom band, and GBP 100.01 a month (1,200.12 a year) stays in the bottom
+    band because 100.01 x 12 rounds just above 1,200.12."""
+
+    adapter, registry, contract = _whole_pence_award_bands()
+
+    result = materialize_target_bindings(adapter, registry, contract, period=2025)
+
+    assert result.skipped == ()
+    person = adapter.tables["person"]
+    assert list(person["award_low"]) == [0, 1, 0, 1, 1, 1, 0, 0, 0]
+    assert list(person["award_mid"]) == [0, 0, 0, 0, 0, 0, 1, 0, 0]
+    assert list(person["award_top"]) == [0, 0, 0, 0, 0, 0, 0, 1, 1]
+
+
+@pytest.mark.parametrize(
+    "extra, message",
+    [
+        ({"band_semantics": "whole_pounds"}, "unknown band_semantics"),
+        (
+            {
+                "band_semantics": "whole_pence_upper_closed",
+                "band_upper_bound": 200,
+                "band_upper_bound_inclusive": True,
+            },
+            "declare no band_upper_bound_inclusive",
+        ),
+    ],
+)
+def test_whole_pence_bands_refuse_undeclared_readings(extra, message):
+    adapter, registry, contract = _whole_pence_award_bands(extra)
+
+    result = materialize_target_bindings(adapter, registry, contract, period=2025)
+
+    assert len(result.skipped) == 3
+    assert all(message in skip.reason for skip in result.skipped)
+
+
+def test_whole_pence_bands_close_the_last_bound_band_at_its_declared_top():
+    """Where the top-coded category is not bound, band_upper_bound closes the
+    last bound band, so it does not absorb the awards above it."""
+
+    semantics = {"band_semantics": "whole_pence_upper_closed"}
+    adapter, registry, contract = _whole_pence_award_bands(
+        {**semantics, "band_upper_bound": 200}, top_band=False
+    )
+
+    result = materialize_target_bindings(adapter, registry, contract, period=2025)
+
+    assert result.skipped == ()
+    person = adapter.tables["person"]
+    assert list(person["award_low"]) == [0, 1, 1, 1, 0, 0, 0, 0, 0]
+    # GBP 200.00 a month is the last award in the band.
+    assert list(person["award_mid"]) == [0, 0, 0, 0, 1, 1, 1, 0, 0]
+
+    # Without the bound, the last band runs on and takes the top awards.
+    adapter, registry, contract = _whole_pence_award_bands(semantics, top_band=False)
+    materialize_target_bindings(adapter, registry, contract, period=2025)
+    assert list(adapter.tables["person"]["award_mid"]) == [0, 0, 0, 0, 1, 1, 1, 1, 1]
+
+    # A bound at or below a band's lower edge is refused.
+    adapter, registry, contract = _whole_pence_award_bands(
+        {**semantics, "band_upper_bound": 100}, top_band=False
+    )
+    result = materialize_target_bindings(adapter, registry, contract, period=2025)
+    assert [skip.reason for skip in result.skipped if "band_upper_bound" in skip.reason]

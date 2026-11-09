@@ -96,6 +96,73 @@ does not accept an `aging_index` parameter. If pre-calibration quantile maps are
 aged too, those variants must branch from CREATE. V3 declares its receipt
 override before its independent problem and calibration.
 
+Reporting classifiers are available as three declarative kernels:
+`reporting.income_decile@1`, `reporting.carry_income_decile@1`, and
+`reporting.receipt_group@1`. Their `classifier` parameter is canonical JSON,
+with a resource `classifier_sha256` and a `scenario` label. Income kernels
+also declare `entities`, person first, including the reporting entity and
+the stored weight entity. They reconstruct the Frame and resolve the unit's
+inherited weights; the declared weight kind is checked. Every kernel owns
+exactly one all-row classifier column: `income_decile` as `int64`, or
+`receipt_group` as `string`.
+
+The baseline income kernel runs only for `boundary_scenario`. Declared market
+and benefit components must be before tax. Benefit components multiply the
+engine payment by assigned boolean receipt and their annualisation factor;
+missing flags, net components and explicitly excluded outcome columns refuse.
+Member amounts sum in stable person-ID order. Income ties sort by the declared
+unique tie key. The provisional `weighted_midpoint` convention assigns a unit
+at cumulative weight before it plus half its own weight; an exact boundary
+enters the higher decile. Zero-weight units have deterministic labels and no
+weighted mass. A single positive-weight unit enters decile 6 with ten bins;
+an all-zero population refuses. Each receipt reports all decile weighted shares.
+Each finite float64 weight is represented as an exact dyadic rational. The
+classifier converts these to integer weights at a common power-of-two
+denominator and uses exact integer prefix sums and division to decide labels.
+There is no boundary tolerance: a midpoint below a boundary stays below it.
+Multiplying every weight by a power of two preserves all labels when the
+scaling remains finite and exact (without underflow). Other floating-point
+scalings can round individual weights and change their relative mass; labels
+then follow the exact represented inputs. Published shares still use the
+existing floating-point share calculation.
+
+The baseline node declares `baseline_cells` with nominal type
+`microcosm.reporting.income-cells`, version 1. Variant nodes consume it through
+an ordinary typed artifact edge naming the baseline producer, for example:
+
+```json
+{"name": "baseline_cells", "producer": "baseline.income", "artifact": "baseline_cells"}
+```
+
+Typed artifact edges already support different populations. The carry kernel
+checks the baseline scenario, classifier digest, entity, ID column, bin count,
+and exact unit-ID set, then joins the saved labels by ID. It reads no income
+amounts and reports weighted shares under the variant's weights. This preserves
+baseline cells when calibration or assigned receipt changes. Wiring these
+kernels into the production graph is the separate G8-w package.
+
+Receipt predicates name assigned person flag columns and an any-member
+reduction. All flags must be nonmissing booleans. The declared priority selects
+the first matching group; the default handles unmatched units. Scenario receipts
+include `mixed_units`, predicate counts and group counts. A mixed unit matches
+more than one predicate, regardless of which member receives each programme.
+
+`nz/reporting_classifiers.json` records A1/A2 parameters and provenance in the
+[reporting method](nz-reporting-classifiers-method.md).
+Its superannuitant predicate is also referenced by MC11 in `as_rate_bridge.json`.
+The cell-support gate entry explicitly lists the S0–S4 superannuitant structural
+zeros in its notes, and the classifier resource records them as data. The gate
+continues to identify actual structural zeros from the measured amounts.
+The income declaration deliberately refuses unresolved before-tax main-benefit
+and Veterans Pension payment columns. The current bindings request net weekly
+main-benefit payments and a separate gross Jobseeker rate; the bindings do not
+declare a verified before-tax paid amount. The assigned Veterans Pension flag is also
+unsupported in the current closure and must be supplied before classification.
+Family IDs used for ties are deterministic head-person IDs for the same pinned
+donor and unit rule; source-household keys shared by clones do not replace them.
+Clones remain distinct reporting units and may occupy different cells, including
+when their incomes and weights are equal.
+
 Engine components and masks can declare an NZS/VP alternative; an explicit
 exclusion input and counted excluded-unit reference can declare the fallback.
 The toy tests exercise these declaration and grouping shapes with invented
@@ -110,16 +177,36 @@ comparing it with the hold-out reference. The toy graph
 does this with its invented family-credit engine. It supplies no real WFF
 inputs or statutory claim.
 
-The committed `build/nz/as_rate_bridge.json` sole-parent declaration rules out
-a `solve_zero` recipe for golden-08: no engine input combination reproduces
-the harness's single-with-children gross rate paired with the Income Test 3
-slope. It instead declares three evaluations, `gross_rate`,
-`reduction_at_anchor` and `reduction_after_step`, whose outputs recover the
-slope and lower threshold before assembling the cutout. The resource declares
-the overrides, anchor, step, composition and refusal conditions. The driver
-executes declared kernel calls but does not assemble this nonlinear
-composition. The approved executable golden-08 case and evaluation assembly
-therefore remain unresolved; no golden-08 result is claimed.
+`build/nz/as_rate_bridge.json` declares both NZ bridge outputs as kernel
+calls, with no new kernel. A `calibration.prepare@1` node writes the family
+masks the equality-only bridge masks compare, a `simulate.counterfactual@1`
+node writes the reg 18(3)(b) sole-parent Jobseeker Support rate, and a
+`simulate.solve_zero@1` node writes the reg 18 cutout: the zero of each
+unit's Jobseeker Support residual over weekly income on [0, 5000]. A sole
+parent's residual is the sole-parent rate minus the Income Test 3 reduction;
+every other unit's residual is its own net payment. The shared `nz.as.bridge`
+population, a FILTER branch of `nz.as`, runs these three nodes once for S0,
+S1, S2, S3 and S5, and each variant repeats them on its own housing
+population. A node on `nz.as` itself would re-key the skeleton's
+`nz.terminal`, which composition refuses. The resource keeps the harness
+expressions as the statement of equivalence. Each branch runs its own
+reg 17 base-rate counterfactual: zero-income Jobseeker Support once for a
+single unit and twice for a partnered one, plus the eldest-child family tax
+credit over 52 for a unit with a dependent child. The tests in
+`test_nz_as_bridge.py` reproduce golden-08's base rate and cutout with a
+labelled fixture engine; no real-engine result is claimed.
+
+rulespec-nz's rounded Accommodation Supplement payment never reads the
+module's non-rate entitlement judgment, so the NZ graph gates the payment in
+the host. Each branch's `positive_payment` node (`calibration.prepare@1`)
+holds where the payment exceeds zero and the judgment reads "holds" (code 1;
+undetermined fails), and, in every branch but S5, where the unit's receipt
+group is not superannuitant (MC11's exclude-and-count). A
+`simulate.counterfactual@1` node then writes
+`accommodation_supplement_entitled_weekly_payment`, the rounded payment
+masked on that indicator, which the dollar comparator, the reporting cells
+and the gates read. S5 instead pays superannuitant units from a reg 17 base
+rate that takes NZ Superannuation before tax.
 
 The hub can compare approved small cases and sampled-unit outputs without donor
 H5 I/O using the declared case format in

@@ -23,6 +23,7 @@ def test_current_us_providers_have_labels() -> None:
         "cms_medicaid",
         "cms_medicare",
         "cms_nhe",
+        "ed_fsa",
         "federal_reserve",
         "federal_reserve_z1",
         "hhs_acf_liheap",

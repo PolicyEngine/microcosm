@@ -83,7 +83,7 @@ CHRONICLE_FEED = (
 
 #: Pinned schema digest. A change to any concept's declared contract moves it:
 #: bump CONCEPT_SCHEMA_VERSION when the change is deliberate, then re-pin.
-SCHEMA_SHA256 = "d824f5e97d58292d62f65ffae60bc8654408711344b638d4e3caa95d6c2e8d1e"
+SCHEMA_SHA256 = "5a55669d0447a686692911a6327ae298f19741dde29559f2654a75807878a141"
 
 
 class TestDeclaredSchema:
@@ -214,7 +214,7 @@ class TestDeclaredSchema:
             concepts_for_entity("tax_unit")
 
     def test_schema_digest_is_pinned(self) -> None:
-        assert CONCEPT_SCHEMA_VERSION == 2
+        assert CONCEPT_SCHEMA_VERSION == 3
         assert concept_schema_sha256() == SCHEMA_SHA256
 
     def test_schema_digest_ignores_alignments(self) -> None:

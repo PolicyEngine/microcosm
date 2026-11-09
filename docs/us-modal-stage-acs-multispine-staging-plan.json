@@ -1,0 +1,48 @@
+{
+  "schema": "microcosm-modal-us-stage-plan/1",
+  "tool": "us-acs-multispine-staging",
+  "stage": "all",
+  "run_id": "acs-multispine-staging-74f5e6123",
+  "source": {
+    "commit": "74f5e61237423f745c0fee994a54cd164a6777f2",
+    "branch": "main"
+  },
+  "inputs": {
+    "base_h5": {
+      "uri": "volume://cas/sha256/0000000000000000000000000000000000000000000000000000000000000000/national_donor.h5",
+      "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+    },
+    "donor_release_manifest": {
+      "uri": "volume://cas/sha256/1111111111111111111111111111111111111111111111111111111111111111/release_manifest.json",
+      "sha256": "1111111111111111111111111111111111111111111111111111111111111111"
+    },
+    "acs_household_zip": {
+      "uri": "volume://cas/sha256/8281008e53de98f0ef81e7a2ee5a8725991dda1ecfd2713ead73246425e515d0/csv_hus.zip",
+      "sha256": "8281008e53de98f0ef81e7a2ee5a8725991dda1ecfd2713ead73246425e515d0"
+    },
+    "acs_person_zip": {
+      "uri": "volume://cas/sha256/afdc6d90c6e2f0bab365ed32d95ba4c4d8ac651162f46ac7861295b2dc469894/csv_pus.zip",
+      "sha256": "afdc6d90c6e2f0bab365ed32d95ba4c4d8ac651162f46ac7861295b2dc469894"
+    },
+    "puma_ladder": {
+      "uri": "volume://cas/sha256/39a2ab2abeab07a88362af7ab2940e0e1d50a297c919e4bbc6fb65bab51147d8/us_puma_ladder_2020.npz",
+      "sha256": "39a2ab2abeab07a88362af7ab2940e0e1d50a297c919e4bbc6fb65bab51147d8"
+    }
+  },
+  "options": {
+    "acs_share": 0.5,
+    "n_estimators": 32,
+    "max_targets_per_fit": 8,
+    "seed": 0,
+    "geography_seed": 0,
+    "chunksize": 100000,
+    "donor_channel": "auto",
+    "hours_under15_policy": "us_hours_under15_zero_completion_v1",
+    "period": 2024
+  },
+  "env": {
+    "PYTHONUNBUFFERED": "1"
+  },
+  "max_wall_seconds": 57600,
+  "nonpreemptible": true
+}

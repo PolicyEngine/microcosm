@@ -3,13 +3,18 @@
 Epic #956 acceleration item E: heavy US stages should not have to queue on
 the one 128 GiB build machine. This runbook covers the smallest working path:
 a registered tool run on Modal from a pinned commit, with inputs fetched by
-digest and outputs listed with sha256 receipts. Three tools are registered
+digest and outputs listed with sha256 receipts. Five tools are registered
 (`TOOLS` in the plan module): `tools/build_us_acs_local_release.py` (tool
 `us-acs-local-release`, stages `materialize`, `calibrate`, `qa`,
 `finalize`, `package`, or `all`), Route A's PUF-support base,
 `tools/build_us_puf_support_base.py` (tool `us-puf-support-base`, stage
-`all`; see "Route A's base stage"), and `runner-smoke` (stage `smoke`), an
-inline script that proves the run path on any pushed commit (see
+`all`; see "Route A's base stage"), its current-main rerun registration
+`us-puf-support-base-rerun` (same script and stage, with the reviewed current
+district crosswalk; see [the 18 October rerun](us-route-a-rerun-20261018.md)),
+the ACS multispine staging builder,
+`tools/build_us_acs_multispine_base.py` (tool `us-acs-multispine-staging`,
+stage `all`; see "ACS multispine staging"), and `runner-smoke` (stage
+`smoke`), an inline script that proves the run path on any pushed commit (see
 "Commands").
 
 Two files do the work:
@@ -22,6 +27,8 @@ Two files do the work:
   `packages/microcosm-build/tests/engine_free/us/test_us_modal_stage_plan_tool.py`
   and, for the base,
   `packages/microcosm-build/tests/engine_free/us/test_us_modal_stage_puf_support_base.py`.
+  Staging tests are in
+  `packages/microcosm-build/tests/engine_free/us/test_us_modal_stage_acs_multispine_staging.py`.
 
 Nothing here uploads to the Hugging Face Hub, touches `latest.json` or
 notifies anyone. The furthest a stage goes is `package`, which writes a
@@ -43,7 +50,18 @@ release directory onto the runs volume. Publication stays the human step in
    looks like a credential (`KEY`, `TOKEN`, `SECRET`, `PASSW`, `SIGNING`,
    `CREDENTIAL`) is refused even under an allowed prefix. `PYTHONHASHSEED`
    is outside the allowlist, so no plan can set it (see "Route A's base
-   stage", Environment). The runner sets the flags for input paths,
+   stage", Environment). A plan may set `MICROCOSM_TELEMETRY_REQUIRED` only
+   to `0` (see item 6), an opt-out that exists only for people outside
+   PolicyEngine who run Microcosm without access to the collector;
+   PolicyEngine's own plans keep telemetry required. A plan may set none
+   of the collector-token variables
+   (`MICROCOSM_COLLECTOR_TOKEN`, `MICROCOSM_COLLECTOR_TOKEN_EXPIRES_AT`,
+   `MICROCOSM_COLLECTOR_ORIGIN`) or the runner's own names for them
+   (`MICROCOSM_MODAL_TELEMETRY_*`). Nor may it set
+   `MICROCOSM_EMITTER_COMMAND`: the build always starts the image's emitter,
+   whose version and collector origin the check and the run verify. Nor may
+   it set `MICROCOSM_TELEMETRY_RUN_ID` or `MICROCOSM_TELEMETRY_PARENT_PID`,
+   which name the stage's telemetry run (item 6). The runner sets the flags for input paths,
    checkpoints and outputs, and a plan cannot pass them. It also cannot pass
    `--allow-dirty`: every run builds from a clean clone. A registered
    option's flag must be a plain long flag with no `=` in it that is neither
@@ -55,11 +73,50 @@ release directory onto the runs volume. Publication stays the human step in
    three times the list price (see "Preemption and restarts").
 2. **The image is the commit.** It starts from `debian_slim` with Python
    3.14, the minor version the local US builds record (`runtime.python`
-   3.14.4 in the #974 build manifest; Modal served 3.14.2). It adds git and uv 0.11.7, makes a shallow
+   3.14.4 in the #974 build manifest; Modal served 3.14.2). It adds git,
+   upgrades `ca-certificates` to Debian's current release, replaces the
+   base's pip 25.3 with pip 26.2.2 pinned by its wheel's sha256, and
+   installs uv 0.13.4 and, for the runner, `huggingface_hub` with certifi
+   2026.10.19 or later: the first releases whose CA lists drop the
+   compromised eMudhra roots (https://emudhra.we-have-a-problem.com).
+   pip 25.3's bundled certifi still trusts emSign ECC Root CA - G3, and
+   `--cert` or `PIP_CERT` would only add to that trust. It then makes a shallow
    clone of the plan's commit from GitHub, checks out the plan's branch name,
    and asserts `HEAD` equals the commit. It then runs
    `uv sync --all-packages --extra us --frozen` against that tree's own
-   `uv.lock` into `/opt/venv` and asserts `git status --porcelain` is empty.
+   `uv.lock` into `/opt/venv`, installs the newest `microcosm-emitter`
+   release (0.13.0 or later, the oldest a build starts) on its own with
+   `uv tool install` into `/usr/local/bin`, checks that
+   `microcosm-emitter version` runs, and asserts `git status --porcelain` is
+   empty. Emitter releases from 0.10.0 on send telemetry to the collector's
+   hostname by default, which stays the same when the collector moves to
+   another Google Cloud project. The image sets
+   `MICROCOSM_EMITTER_COMMAND` to that command, so a build that starts its
+   emitter finds it; the check reports the version and the receipt's runner
+   identity records it. An image built for a commit keeps the emitter it was
+   built with. The release is written once, in microcosm-build's package
+   data (`packages/microcosm-build/src/microcosm/build/minimum_emitter_version.json`):
+   the build adapter reads it as `MINIMUM_EMITTER_VERSION`, and the runner
+   reads the same file by its path in the checkout. The container has no
+   checkout around the plan module's copy (`/root/modal_us_stage_plan.py`),
+   so the image adds the launching checkout's file beside it
+   (`/root/minimum_emitter_version.json`), and the copy reads that one: the
+   check, which runs there, reports the install step the image was built
+   with. The install step and its
+   `>=0.13.0` floor come from the checkout that launches the app
+   (`image_build_commands`, `image_emitter_requirement`), while the minimum
+   the build enforces comes from the commit the plan pins, so a launch can
+   combine an older checkout's floor with a newer commit's minimum, or the
+   reverse. Neither floor has an upper bound, so an image built now installs
+   the newest release, which every commit's minimum so far accepts. A test
+   checks that both read the one file in one checkout. The
+   tool's environment withholds credentials and sets
+   `HF_HUB_OFFLINE=1`, so an emitter started there keeps its Hub
+   hand-overs local; it sends telemetry with the collector token the launch
+   passes (item 6).
+   A build that sees `HF_HUB_OFFLINE` hands no staged dataset bundle to its
+   emitter at all: it records the bundle as local, and the bundle is staged
+   from the workstation once the outputs are copied back.
    A commit that is not on GitHub fails the build. `checkout -B` would put
    any branch name on any commit, so each container also proves the name
    before it runs anything: it fetches the plan's branch from the remote
@@ -136,8 +193,184 @@ release directory onto the runs volume. Publication stays the human step in
      (`outputs_not_mirrored`, empty unless the stage's rest is resume
      state).
 
+   - `runner.telemetry`: whether the build had to send telemetry, the
+     collector token's expiry and origin (never its value), the collector
+     origin the image's emitter reported, and the time the token had to
+     last until (`token_needed_until`), and `undelivered_events`: what the
+     image emitter's read-only `microcosm-emitter status` (0.13.0 and
+     later) reported after the tool. The runner runs it once the tool has
+     exited and its output has ended, which happens only after the
+     emitter the build started has delivered what it could and stopped. It
+     runs without `--event-queue-file`, in the tool's environment without
+     credentials or the token, so it reads the file the build's emitter
+     kept, and gets at most 60 s (`EMITTER_STATUS_TIMEOUT_SECONDS`). The
+     runner never reads the emitter's event queue file itself.
+     - `{"runs": [...], "problem": null}`: `runs` is `status`'s list as it
+       printed it, one entry per run and producer, with `upload_state`,
+       `reason` (the run's `local_only_reason`, or `null`) and
+       `undelivered_events`, the events the file still holds. The emitter
+       also prunes undelivered events older than 7 days or beyond 100 MiB,
+       so 0 means none are held, not that every event was delivered.
+     - `{"runs": [], "problem": null}`: no event queue file (exit 8), so no
+       emitter kept one in the container, for example a tool that failed
+       before it started one.
+     - `{"runs": null, "problem": "<one line>"}`: any other exit code, with
+       the last line `status` wrote on standard error (exit 2 is an emitter
+       without `status`, older than 0.13.0); a timeout; a command that
+       could not run; output that is not its list of runs; or runs with a
+       field nested more than 32 levels deep
+       (`EMITTER_STATUS_MAX_FIELD_NESTING`; `status` prints flat fields,
+       and the receipt's indented JSON needs memory that grows with the
+       square of the depth). The line has at most 300 characters.
+
+     A `status` failure is recorded only: it never changes the stage's
+     status or outcome. The plan's summary and the check have
+     `undelivered_events: null`, since no tool has run. A receipt written
+     before this change has `null` too.
+
    A failed stage still mirrors its state, so `calibrate` can resume from
    `weights_latest.npz`, and its receipt says `FAILED`.
+6. **Telemetry uses a token made at launch.** The build on Modal has no
+   Hugging Face credential, so it cannot exchange one for a collector
+   session. Instead, the launch command passes it a collector token that
+   only writes telemetry. Nothing is run by hand for it.
+   - **At launch, with `--run`.** Before it spawns or calls the stage,
+     `tools/modal_us_stage.py` runs this machine's emitter:
+     `microcosm-emitter telemetry-token --lifetime-seconds <class timeout + 3600>`.
+     It finds the command through `MICROCOSM_EMITTER_COMMAND`, then `PATH`,
+     so the launching machine needs `microcosm-emitter` 0.11.0 or later
+     (`uv tool install microcosm-emitter`) and a Hugging Face login
+     (`HF_TOKEN`, `HUGGINGFACE_TOKEN`, or `hf auth login`) that the
+     collector accepts. The launch refuses, launching nothing, when the
+     command is missing, exits nonzero (the emitter prints why: no or
+     unreadable login, a refused login, an unreachable collector, a
+     collector that does not accept a lifetime, or a release without the
+     command), prints an unusable answer, or grants a shorter lifetime than
+     asked for. The longest class, acs-staging, asks for 18 hours; the
+     collector caps a token at 24.
+   - **To the container.** The token, its expiry and its origin go into a
+     Modal secret made for this launch (`modal.Secret.from_dict`), under
+     the runner's own names `MICROCOSM_MODAL_TELEMETRY_TOKEN`,
+     `MICROCOSM_MODAL_TELEMETRY_TOKEN_EXPIRES_AT` and
+     `MICROCOSM_MODAL_TELEMETRY_ORIGIN`. It is attached with
+     `with_options(secrets=…)`, which replaces the function's secrets, so
+     the Hub secret named by `MICROCOSM_MODAL_HF_SECRET` goes with it. That
+     behaviour, and that `with_options` keeps the function's volumes,
+     timeout and placement and that the secret is created as owned by the
+     app, were read from the Modal client's source at 1.6.2 and 1.6.3, which
+     agree. Microcosm pins no Modal client: the launch uses the operator's
+     `modal`. The
+     token is never in the plan, so the plan digest and its attempt budget
+     stay the same and no receipt copies it. The launch prints the token's
+     expiry and origin, never its value.
+   - **To the build.** The tool's environment gets the three values as
+     `MICROCOSM_COLLECTOR_TOKEN`, `MICROCOSM_COLLECTOR_TOKEN_EXPIRES_AT` and
+     `MICROCOSM_COLLECTOR_ORIGIN` only from that secret, all three or none.
+     The same names from anywhere else, such as the Hub secret, are removed
+     and listed in `runner.tool_env_removed`. It also gets
+     `MICROCOSM_TELEMETRY_REQUIRED=1`, so a build that starts its emitter
+     stops at once when the emitter cannot be used. The emitter the build
+     starts inherits the token and sends telemetry only to the collector it
+     was obtained from.
+   - **The registered programs start the emitter.** `us-acs-local-release`,
+     `us-puf-support-base` (and its rerun) and `us-acs-multispine-staging`
+     start it right after parsing their arguments
+     (`microcosm.build.program_telemetry`), so a stage whose emitter cannot
+     be used exits nonzero within seconds, before it reads an input. They
+     record a stage change before each stage (the ACS release's stages, the
+     base's outer stages, the staging builder's main phases) and then
+     completion, or failure with the error; a validation refusal is
+     recorded as a failure. A SIGTERM, such as the runner's stop at the
+     budget, is recorded as a termination in the stage that was running,
+     and the program then exits 143, as the UK builds do. In the base, only the `--stage all` parent
+     starts the emitter: it records each child interpreter's stage and,
+     from the child's exit code, its outcome, and the children start none.
+     `runner-smoke`, an inline script, starts no emitter. A plan pinned to a
+     commit from before these programs started the emitter (#1502) runs
+     tool code that starts none, so its stage sends nothing, though the
+     runner still passes the token.
+   - **After the build exits.** The emitter runs in its own session and
+     holds the tool's output (it inherits the tool's standard error) while
+     it delivers its last events, for up to about 15 s. The runner reads
+     that output to its end before it hashes and mirrors the state, so the
+     container waits for that delivery. A tool that exited before its budget
+     and left nothing in its process group is not stopped or recorded as
+     stopped at the budget while the emitter still holds the output; a
+     process the tool left in its group still is.
+   - **The telemetry run.** The tool's environment gets
+     `MICROCOSM_TELEMETRY_RUN_ID=<plan run_id>.<stage>`, also when the plan
+     opts out, so each stage is its own telemetry run. The program names the
+     plan's `run_id` as the run's candidate ID, which the collector stores
+     with the run. A later attempt of the same stage, after a preemption
+     restart or a relaunch, reports under the same run, which the collector
+     shows as a restart of it. The collector accepts that only from the same
+     Hugging Face account: a stage relaunched by another operator's login
+     is refused by the collector, and its build continues without sending.
+     Give each plan `run_id` to one tool only: the ID does not name the
+     tool, so another tool's plan with the same `run_id` and stage name
+     registers the same telemetry run with another pipeline, the collector
+     refuses it (409), and that stage's telemetry stays in its container.
+     Started by hand, without the variable, a program makes its own attempt
+     ID, `<pipeline>-<UTC time>-<8 hex digits>`, as the US fiscal refresh
+     does.
+   - **Before staging.** The container refuses the attempt (`refused`,
+     finished, nothing charged) when the token is missing or incomplete,
+     when the image's emitter does not answer `microcosm-emitter version` or
+     reports no collector origin (which needs emitter 0.11.0 or later in the
+     image), when the token's origin is not that collector origin, or when
+     the token expires before the emitter may stop sending it. That moment
+     (`token_needed_until`) is counted from the start of the stage function
+     (`_run_stage`): the class timeout less the stage's runner reserve, when
+     the runner sends the tool SIGTERM; 60 s more (`STOP_GRACE_SECONDS`),
+     when it sends SIGKILL; then the emitter's 0.5 s to notice the build
+     exited, its 15 s of delivery, and the 30 s before expiry at which it
+     stops sending the token. A build that closes its emitter in the grace
+     after SIGTERM starts the 15 s only then. So a container whose stage
+     function starts more than about an hour plus the stage's runner reserve
+     (15 or 30 minutes), less about 106 s, after the token was obtained,
+     after a queue or a preemption restart, is refused; launch again for a
+     new token. Every refusal, at launch and here, names the
+     `MICROCOSM_TELEMETRY_REQUIRED=0` opt-out and says it is only for people
+     outside PolicyEngine without access to the collector; a refusal here
+     names it right after its first clause, so the attempt record's note,
+     which keeps the first 500 characters, always holds it.
+   - **An image emitter without a collector origin.** The image installs
+     the newest emitter release when Modal builds its install step, and
+     Modal reuses that step for a commit while the step's command is the
+     same. Since #1455 (merged 2026-11-03), the command asks for at least
+     0.11.9, and since #1522 for `microcosm-emitter>=0.13.0`, so every image
+     this runner builds has an emitter that reports a collector origin and
+     has `status`. An image whose install step an
+     older checkout built (with `>=0.7.0`, possibly before 0.11.0) is not
+     reused: the changed command rebuilds that step, for each commit, at its
+     first launch from a checkout with this runner. The refusal stays for an
+     image emitter that still reports no origin; its message says to set
+     `MODAL_FORCE_BUILD=1` for one launch only
+     (`MODAL_FORCE_BUILD=1 MICROCOSM_MODAL_PLAN=plan.json modal run …`), not
+     exported. That rebuilds every layer, including the layers every
+     commit's image shares, so each other commit's image rebuilds once at
+     its next launch too; left set, it rebuilds every layer at every launch.
+   - **The check** (without `--run`) asks for no token. It reports the
+     collector origin the image's emitter would send to, and the lifetime a
+     launch would ask for. It fails when the image's emitter reports no
+     origin; an emitter that does not run is reported once, as "does not
+     run".
+   - **Opting out.** A plan whose `env` sets `MICROCOSM_TELEMETRY_REQUIRED`
+     to `0` asks for no token, and its build runs without telemetry: the
+     build still starts its emitter when it can, but with no token and no
+     Hugging Face credential the emitter keeps its events in the container,
+     and they are lost with it. The plan, and so the setting, is copied into every
+     receipt. The setting exists only for people outside PolicyEngine who
+     run Microcosm without access to the collector. PolicyEngine's own
+     builds keep telemetry required, so PolicyEngine's plans do not set it.
+   - **Events left undelivered.** Events the emitter has not sent when the
+     build ends are lost with the container. The receipt records how many
+     each run left, from the image emitter's `status` (see
+     `runner.telemetry` above); nothing delivers them later.
+   - **On Modal:** a paid smoke run on 3 November 2026 verified the launch,
+     the per-launch secret and the check before staging (see "Verified on
+     Modal, 3 November 2026: the telemetry token"); it did not cover a
+     container reaching the collector.
 
 ## Resources and cost
 
@@ -159,21 +392,25 @@ local wall times in this table understate Modal's wall and cost.
 | package | 21.8 GB, 79 s | light | 2 cores, 48 GiB | about $0.01 |
 | check | n/a | check | 2 cores, 8 GiB, 30 min timeout | cents |
 | PUF-support base (`all`) | 72.5 GB, 2,788 s wall, 6,238 CPU-s | base | 4 cores (limit 4), 112 GiB, 4 h 35 min timeout | about $0.84 ($2.52 non-preemptible) |
+| ACS multispine staging (`all`) | 42.4 GB, 7,218 s wall, 103,105 CPU-s | acs-staging | 16 cores (limit 16), 80 GiB, 17 h timeout | about $2.79 ($8.38 non-preemptible) |
 
 The prices are Modal's list prices for standard compute, read from
-modal.com/pricing on 22 September 2026 and unchanged on 29 September:
+[modal.com/pricing](https://modal.com/pricing) on 22 September 2026 and
+unchanged on 29 September and 13 October:
 $0.0000131 per core-second and $0.00000222 per GiB-second. Modal bills the
 higher of the request and actual use (modal.com/docs/guide/resources). The
 heavy class costs about $1.21 an hour at its request, so an 8-hour timeout
 costs about $9.70 at the request; CPU or memory used above the request
 bills above that. With `"nonpreemptible": true` every figure is three times
-higher: about $3.63 an hour for the heavy class. Only the base class sets
-a CPU limit (equal to its request); the others are request-only for CPU,
+higher: about $3.63 an hour for the heavy class. The base and acs-staging
+classes set CPU limits equal to their requests; the others are request-only
+for CPU,
 and every class is request-only for memory, so a stage that used more cores
 or more memory than its request would be billed for them. The engine pass in
 materialize is single-threaded (CPU seconds roughly equal wall seconds), so
 extra cores would not speed it up. The table leaves out volume storage and
-image builds. The base class is sized in "Route A's base stage" below.
+image builds. The base class is sized in "Route A's base stage" below;
+the acs-staging class is sized in "ACS multispine staging".
 
 ## Commands
 
@@ -212,8 +449,13 @@ python3 tools/modal_us_stage_plan.py validate plan.json
 #    attempt of the run that may still be running.
 MICROCOSM_MODAL_PLAN=plan.json modal run tools/modal_us_stage.py
 
-# 4. Run the stage. --detach keeps it running if this terminal goes away;
-#    the receipt lands on the runs volume either way. Set "max_wall_seconds"
+# 4. Run the stage. --spawn returns once the stage is spawned, and under
+#    --detach a probe on 2026-10-19 saw the spawned call finish after its
+#    client exited (client sleep was not tested). Without --spawn the client waits on the call, and
+#    on 2026-10-19 a waiting call was cancelled 99 s after its Mac went to
+#    sleep. Read the outcome from the runs volume: a receipt under
+#    runs/<run_id>/receipts/, or an attempt record whose outcome is refused or
+#    error (see modal_us_stage.main). Set "max_wall_seconds"
 #    in the plan to cap the cost below the class's hard timeout: the runner
 #    stops the tool then (SIGTERM to the tool's process group, which the
 #    tool runs in alone, so a stage child it spawned stops too; SIGKILL to
@@ -229,7 +471,13 @@ MICROCOSM_MODAL_PLAN=plan.json modal run tools/modal_us_stage.py
 #    comes off it (see "Preemption and restarts" below). A stop at the
 #    budget writes a receipt, so launching the same plan again gets the
 #    whole budget again.
-MICROCOSM_MODAL_PLAN=plan.json modal run --detach tools/modal_us_stage.py --run
+#    --run first asks this machine's microcosm-emitter (0.11.0 or later, with
+#    a Hugging Face login) for the build's telemetry-only collector token,
+#    and refuses to launch without one. A plan that sets
+#    MICROCOSM_TELEMETRY_REQUIRED=0 skips that; the setting is only for
+#    people outside PolicyEngine without access to the collector, and
+#    PolicyEngine's own plans never set it (item 6 of "How a run works").
+MICROCOSM_MODAL_PLAN=plan.json modal run --detach tools/modal_us_stage.py --run --spawn
 
 # 5. Fetch the state and verify it against the receipt. A receipt whose
 #    status is not COMPLETED, or that says stopped_at_budget, does not
@@ -241,6 +489,17 @@ python3 tools/modal_us_stage_plan.py verify-receipt \
   ./modal-runs/<run_id>/receipts/<stage>-<utc>.json \
   --state-root ./modal-runs/<run_id>/state
 ```
+
+No program registered here writes a staged-dataset bundle yet; see "What
+this does not cover yet". A UK rowwise build's run directory, whose
+`rowwise_candidate_manifest.json` registers one, would be staged from the
+workstation after step 5, with the operator's own emitter and Hub credential:
+`tools/stage_uk_rowwise_candidate.py --modal-receipt` checks the outputs the
+build manifest registers against the receipt, and the manifest itself until
+its record says a hand-over happened, then hands the bundle over as for a
+local build. It reads that record from the manifest itself, so an edit that
+says a hand-over happened is not caught; the outputs are still compared (see
+[Staged datasets](uk-staging-operations.md#staged-datasets)).
 
 To prove the run path on a new commit or workspace for well under a cent,
 run `docs/us-modal-stage-smoke-plan.json` (tool `runner-smoke`). It is an
@@ -262,7 +521,10 @@ runner uses the token, to download inputs. The tool always runs with
 `HF_HUB_OFFLINE=1` (huggingface_hub then refuses every request) and without
 any variable whose name looks like a credential (`KEY`, `TOKEN`, `SECRET`,
 `PASSW`, `SIGNING`, `CREDENTIAL`); the receipt lists the names removed,
-never their values. A plan cannot set such a variable either. The tool
+never their values. A plan cannot set such a variable either. The one
+exception is the telemetry-only collector token the launch makes for the
+build (item 6 of "How a run works"), which reaches the tool only from that
+launch's own secret. The tool
 also never gets the container's `PYTHONHASHSEED`: the runner removes it
 (and lists its name with the others), and refuses before pulling or
 staging anything if the tool's environment would still carry a value
@@ -331,8 +593,51 @@ python3 tools/modal_us_stage_plan.py digest <that dir>/acs_multispine_staging.h5
 # expect f335f573…; then run the printed `modal volume put …` line
 MICROCOSM_MODAL_PLAN=docs/us-modal-stage-example-plan.json modal run tools/modal_us_stage.py
 MICROCOSM_MODAL_PLAN=docs/us-modal-stage-example-plan.json \
-  modal run --detach tools/modal_us_stage.py --run
+  modal run --detach tools/modal_us_stage.py --run --spawn
 ```
+
+## Verified on Modal, 3 November 2026: the telemetry token
+
+One paid smoke run of the telemetry token (item 6 of "How a run works"),
+approved by Anthony, from #1473 at `2f12bc0aa`. The main checkout and the
+Hub were not touched.
+
+- **The plan.** A copy of `docs/us-modal-stage-smoke-plan.json` with its
+  `run_id` set to `runner-smoke-telemetry-20261103`.
+- **The launching machine.** `MICROCOSM_EMITTER_COMMAND` named
+  microcosm-emitter 0.11.11, installed in a scratch tool folder, and the
+  operator's Hugging Face login was the one `hf auth login` saved.
+- **The check (without `--run`)** reported OK. Modal built the image with
+  the launching checkout's install step, which installed emitter 0.11.11,
+  and its `version` reported a collector origin. The check reported the
+  build as required to send telemetry and a 5,400 s token lifetime: the
+  check class's 30-minute timeout plus 3,600 s.
+- **The launch** (`modal run --detach tools/modal_us_stage.py --run
+  --spawn`). `telemetry-token` returned a token, and the launch printed only
+  its expiry and origin. The stage was spawned with the per-launch secret,
+  and the spawned call finished after the client had exited under
+  `--detach`.
+- **The attempt** finished with outcome `receipt` in 25.9 s. Fetched from
+  the runs volume, its receipt passed `verify-receipt --strict`: verified,
+  `COMPLETED`, 2 outputs, 0 problems.
+- **The receipt's `runner.telemetry`:**
+  - `required` was true;
+  - it recorded the token's expiry and origin, and the origin matched
+    `image_emitter_collector_origin` (the collector's hostname);
+  - `token_needed_until` was 17 minutes after the launch, well before the
+    expiry;
+  - `undelivered_events` was `null`.
+
+  So the per-launch secret reached the container, the runner read the token
+  from it, and the check before staging accepted it.
+- **No leaks.** No token-like string appears in the receipt or the stage
+  log.
+- **Not covered: a container reaching the collector.** `runner-smoke` does
+  not start the emitter, so nothing sent telemetry. That waits until the
+  registered US programs start the emitter (the design's PR 6). The receipt
+  did not record the undelivered-event count then; since #1522 (on
+  2026-11-05) a receipt records it from the emitter's `status` command (see
+  `runner.telemetry`).
 
 ## Acceptance attempt: 23 September materialize on the state surface
 
@@ -435,6 +740,14 @@ across containers would let preemption lose one chunk instead of the run.
 
 ## Route A's base stage
 
+For Max's d1386 rerun on **18 October 2026**, use
+[the rerun preparation and launch sequence](us-route-a-rerun-20261018.md) and
+`us-modal-stage-route-a-rerun-base-plan.json`. Its commit is intentionally
+unresolved. That procedure separates the historical base feed from main's
+new release feed, pins the current in-tree crosswalk with a scoped registration,
+and requires fresh local 000/001 evidence for the selected commit and CT ladder.
+The historical plan/reference below cannot qualify that rerun.
+
 On 29 September 2026 Max ruled to run only Route A's base stage on Modal:
 non-preemptible, capped at 4 hours of wall, about $15. The release, its
 preflight and certification stay on the build machine.
@@ -519,7 +832,7 @@ Two kinds of test hold the command:
   command with its paths tokenized
   (`packages/microcosm-build/tests/fixtures/modal_us_stage/route_a_base_command_4b57d15a287c.json`),
   and the registration's owned flags equal the flags of this tree's tool.
-- Only in a clone that has commit `4b57d15a2`, four tests in
+- Only in a clone that has commit `4b57d15a2`, five tests in
   `test_us_modal_stage_puf_support_base.py` that read that commit with
   `git show` and skip without it:
   - `test_the_tool_s_own_parser_reads_the_same_build_from_both_commands`:
@@ -535,10 +848,13 @@ Two kinds of test hold the command:
     its `_stage_run_config` locks, from the Modal argv, the run config the
     local run locked (paths by file name), including `PYTHONHASHSEED` `0`
     when the runner's tool environment removed a container's value, and a
-    forced `12345` is what compare-lineage refuses.
+    forced `12345` is what compare-lineage refuses;
+  - `test_rerun_crosswalk_refuses_the_historical_tree`: the rerun registration
+    refuses that commit's historical crosswalk bytes while retaining its
+    separately reviewed current-main pin.
 
 CI checks out only the commit under test (`actions/checkout` fetches one
-commit by default), so there those four tests report a skip rather than
+commit by default), so there those five tests report a skip rather than
 pass. Run them in a full clone before a paid run (step 2 below).
 
 The plan is `docs/us-modal-stage-route-a-base-plan.json` (run
@@ -693,9 +1009,15 @@ The plan is `docs/us-modal-stage-route-a-base-plan.json` (run
   the tool at whichever comes first: the plan's budget, or 14,700 seconds
   after the function started (the timeout less the reserve). A slow pull
   or staging therefore shortens the tool's time, never the reserve. The
-  reserve covers stopping the tool (up to 60 s), then hashing and mirroring
-  the state, then the runner's identity, the receipt and the attempt's
-  final commit (`RECEIPT_RESERVE_SECONDS`, 120 s, an allowance). After a
+  reserve covers stopping the tool (up to 60 s), the image emitter's
+  `status` (up to 60 s, `EMITTER_STATUS_TIMEOUT_SECONDS`), then hashing and
+  mirroring the state, then the runner's identity, the receipt and the
+  attempt's final commit (`RECEIPT_RESERVE_SECONDS`, 120 s, an allowance).
+  The check's write probe reports each of these figures. Not counted: the
+  emitter the build started keeps the tool's output open while it finishes,
+  up to about 15.5 s after the tool exits (`EMITTER_EXIT_NOTICE_SECONDS` and
+  `EMITTER_DRAIN_SECONDS`), also after a stop; the runner waits for it before
+  `status`. After a
   stop or a failure the push copies the whole state, about 50 GiB
   (`BASE_MIRRORED_STATE_GIB`): the local run's 44 GB of checkpoints and
   2.35 GB H5, plus the final checkpoint's hard-linked alias
@@ -704,9 +1026,9 @@ The plan is `docs/us-modal-stage-route-a-base-plan.json` (run
 - *The write probe.* No container-to-volume write rate has been measured,
   so the check measures one. It copies 1 GiB to the runs volume, commits
   it, deletes it, and reports `runs_volume_write_probe`. The check fails
-  when 50 GiB at that rate would not fit in the 1,620 s the reserve leaves
-  for the mirror (1,800 s less the stop's 60 s and the receipt's 120 s),
-  which means below about 33 MB/s. The only measured volume rate here is
+  when 50 GiB at that rate would not fit in the 1,560 s the reserve leaves
+  for the mirror (1,800 s less the stop's 60 s, `status`'s 60 s and the
+  receipt's 120 s), which means below about 34 MB/s. The only measured volume rate here is
   reads of at least 58 MB/s (the acceptance attempt above). Modal describes
   volume bandwidth as up to 2.5 GB/s and not guaranteed
   (modal.com/docs/guide/volumes, read 29 September 2026). One small probe
@@ -817,7 +1139,7 @@ python3 tools/modal_us_stage_plan.py upload-commands --shell \
 # 2. Validate locally: the argv, class base (cpu_limit 4.0), the $14.63
 #    estimate and the $14.90 ceiling at the request
 #    (estimated_usd_at_timeout). Then run the base's tests, and confirm the
-#    four pinned-commit tests passed rather than skipped (-rs lists skips).
+#    five pinned-commit tests passed rather than skipped (-rs lists skips).
 python3 tools/modal_us_stage_plan.py validate docs/us-modal-stage-route-a-base-plan.json
 uv run pytest -rs packages/microcosm-build/tests/engine_free/us/test_us_modal_stage_puf_support_base.py
 
@@ -841,7 +1163,7 @@ MICROCOSM_MODAL_PLAN=docs/us-modal-stage-route-a-base-plan.json \
 #    throttles CPU use above the limit (the request), and memory above
 #    112 GiB would bill above that.
 MICROCOSM_MODAL_PLAN=docs/us-modal-stage-route-a-base-plan.json \
-  modal run --detach tools/modal_us_stage.py --run
+  modal run --detach tools/modal_us_stage.py --run --spawn
 
 # 5. Fetch the receipts and base-out only, not the 44 GB of checkpoints,
 #    and verify base-out against the receipt. verify-receipt refuses a
@@ -1020,6 +1342,257 @@ can also hold older checkpoints. The run's state already differs from its
 receipt by the checkpoints that were never copied, so a later stage of the
 same `run_id` would refuse either way; none is planned.
 
+## ACS multispine staging
+
+`us-acs-multispine-staging` runs the existing staging builder unchanged,
+through its public shim `tools/build_us_acs_multispine_base.py` and the
+legacy implementation's `_parse_args`. Its only stage is `all`. It writes
+`state/acs_multispine_staging.h5` and
+`state/acs_multispine_staging.summary.json`; the runner mirrors both files
+and `state/logs/` to the runs volume and hashes the complete state into its
+receipt. A later `us-acs-local-release` plan uses the verified files as its
+`staging_h5` and `staging_summary` inputs, after they are copied to the
+inputs volume's CAS. Use a new `run_id` for that release plan.
+
+**Inputs.** All five roles are required:
+
+| Plan role | Builder argument | File |
+| --- | --- | --- |
+| `base_h5` | `--base-h5` | Certified national release donor H5 |
+| `donor_release_manifest` | `--donor-release-manifest` | That donor's `release_manifest.json` |
+| `acs_household_zip` | through `--inputs-dir` | Census ACS 2024 1-year `csv_hus.zip` |
+| `acs_person_zip` | through `--inputs-dir` | Census ACS 2024 1-year `csv_pus.zip` |
+| `puma_ladder` | `--puma-ladder` | Validated `us_puma_ladder_2020.npz` |
+
+Choose the certified donor and its matching manifest before making the
+plan. The builder requires exactly one microdata artifact in the donor
+manifest and checks that its sha256 matches `--base-h5`; the staging
+summary then records the donor release identity. The manifest and the
+Modal receipt carry provenance, not a new certification decision.
+
+**Network audit and pins.** The reachable acquisition path in
+`acs_sources.fetch_acs_pums_sources` has two Census downloads:
+
+| Source URL | Required sha256 | Bytes |
+| --- | --- | --- |
+| `https://www2.census.gov/programs-surveys/acs/data/pums/2024/1-Year/csv_hus.zip` | `8281008e53de98f0ef81e7a2ee5a8725991dda1ecfd2713ead73246425e515d0` | 251,500,587 |
+| `https://www2.census.gov/programs-surveys/acs/data/pums/2024/1-Year/csv_pus.zip` | `afdc6d90c6e2f0bab365ed32d95ba4c4d8ac651162f46ac7861295b2dc469894` | 602,847,146 |
+
+Both archives must be staged volume inputs; put them at
+`volume://cas/sha256/<digest>/<filename>` with the commands below. This
+tool refuses a Hub URI or a different archive digest. The uploaded basename
+may differ: the runner's links use the manifest's archive filenames.
+`packages/microcosm-build/src/microcosm/build/us_runtime/acs_2024_1yr_sources.json`
+is a registered `TreeFile`, pinned at
+`41701024bf2b6461cb264878243adb4c4b4d1b8ebcf4ae8953fb22872f0debd5`.
+The runner passes its checked path in the pinned clone as
+`--source-manifest`. A commit with a changed manifest refuses check mode.
+
+Each input still stages in its own `/work/inputs/<role>/` directory. The
+runner builds `/work/acs-pums/<digest>/<filename>` as links to the two
+verified archives, and passes `--inputs-dir /work/acs-pums`. It checks each
+archive's manifest size before linking. `fetch_acs_pums_sources` hashes
+those cached bytes again and returns them without calling its URL opener.
+`acs_pums` streams CSV members from the ZIP files; nothing extracts the
+archives into a second cache. The receipt records the link assembly under
+`runner.input_links` as well as the original verified inputs.
+
+The traced path through `acs_multispine`, `acs_local_hours`,
+`hours_worked`, `acs_transfer`, the PUMA ladder loader, the frame adapter
+and the QRF implementation has no other active network acquisition:
+
+- The hours fallback runs the generic source-stage executor with the
+  donor's supplied person tables and packaged `source_stages.json`
+  read-table/derive-hours operations; it does not fetch ASEC microdata.
+- The capital-gains transfer helper reads packaged SOCA distribution
+  shares (`capital_gain_distributions.py`); the PUMA ladder uses local
+  `np.load`.
+- The engine-default and null audits construct `PolicyEngineUSEngine`,
+  using the installed engine's local definitions and parameters. They do
+  not create a `Microsimulation` or acquire a default dataset.
+- Imported ASEC, education, ORG, SCF and unemployment-weeks fetchers are
+  not called by this builder's path or package initialization.
+- The SIPP 2023 fetcher is. The ACS SSI disability-criteria stage
+  (microcosm#1022) reads the pinned full public-use file (`pu2023.csv`,
+  3.73 GB) from the canonical SIPP cache, and downloads it there when it
+  is missing, because the runner does not pass `--sipp-donor`.
+
+No `HomeSeed` is registered for this tool yet, so a fresh container makes
+that one SIPP download. Staging the file as a pinned input that seeds the
+cache (a `HomeSeed`) is a follow-up. The runner's image clone and
+dependency installation, branch proof and input preparation retain their
+existing network use; the tool runs with `HF_HUB_OFFLINE=1`, without
+credential-name environment values, and consumes the staged files.
+
+The runner owns `--base-h5`, `--donor-release-manifest`, `--source-manifest`,
+`--inputs-dir`, `--puma-ladder`, `--out-h5`, `--summary` and `--sipp-donor`,
+which it never passes. Plans may set
+only the builder's tuning flags: `--acs-share`, `--n-estimators`,
+`--max-targets-per-fit`, `--seed`, `--geography-seed`, `--chunksize`,
+`--donor-channel`, `--hours-under15-policy`, `--max-households` and
+`--period`. Plan option names use underscores in place of hyphens. The
+check mode runs the pinned parser on these arguments. The example uses
+`us_hours_under15_zero_completion_v1`, the builder's sole accepted modeled
+completion policy for unresolved ACS hours below age 15. Omit
+`max_households` for a full build; it is the builder's deterministic cap
+for a smoke. Changing `period` does not change the pinned 2024 ACS source
+archives.
+
+**Resources.** Class `acs-staging` requests 16 cores with a 16-core limit,
+80 GiB of memory, and a 61,200-second (17-hour) timeout.
+
+- *CPU.* `full-staging-a3` in
+  `experiments/us-acs-local-hours-rebuild-20260922/run-resources-and-staging-excerpt.json`
+  measured 103,104.6 CPU-s over 7,218.1 s of wall, 14.3 cores on average.
+  The QRF forest uses `n_jobs=-1` when `POPULACE_FIT_N_JOBS` is unset, and
+  prediction sizes its pool from `os.cpu_count()` when
+  `POPULACE_FIT_PREDICT_WORKERS` is unset (`microcosm.fit.qrf`). Sixteen
+  cores accommodate the observed average with 1.7 cores of headroom; the
+  limit throttles use above sixteen. Neither the average nor the request
+  establishes the container's visible CPU count. The receipt records
+  `runner.os_cpu_count` and `cpu_affinity`.
+- *Memory.* The recorded peak is 42,370,498,560 bytes (39.5 GiB). Adding
+  the largest 24 GB (22.4 GiB) RSS excess observed on Modal for the release
+  tool's materialize stage gives 61.8 GiB; 80 GiB leaves 18.2 GiB over
+  that. This is an estimate transferred from another stage. Memory is a
+  request, so use above 80 GiB bills above the estimate.
+- *Time.* Applying the measured materialize slowdown range of 3.3 to 7.6
+  to 7,218.1 s gives 6.62 to 15.24 hours. No Modal staging build has
+  measured that range for this builder. The example budgets 57,600 s
+  (16 hours) for tool work. The class adds 1,800 s for input staging and
+  1,800 s of runner reserve: 61,200 s total. The runner stops the tool at
+  the plan budget or the class timeout less the reserve, whichever comes
+  first; staging time comes out of that latter deadline.
+- *Disk and mirroring.* The 40 GiB free-space admission floor is the
+  recorded local run's configured `disk_admission_bytes` (42,949,672,960 bytes).
+  The 12 GiB mirrored-state allowance covers the approximately 10.7 GB
+  H5 (10 GiB), summary and logs, with about 2 GiB of headroom. These are
+  planning allowances, not output limits. The check measures the runs
+  volume's write rate and refuses if 12 GiB would not mirror in the
+  reserve's 1,560 s after the stop, `status` and receipt allowances. Both output
+  files and logs are mirrored after clean exits and failures; the staging
+  builder has no registered checkpoint resume.
+
+Use `"nonpreemptible": true` for this long build. The resource request
+lists at $1.39392/hour preemptible, or $4.18176/hour non-preemptible,
+using [Modal's standard CPU and memory prices](https://modal.com/pricing)
+and its [threefold non-preemptible multiplier](https://modal.com/docs/guide/preemption),
+checked 13 October 2026. At the measured local wall that is $2.79 or
+$8.38. The slowdown range estimates $27.67 to $63.72 non-preemptible for
+tool work, plus $2.09 for a full 30-minute reserve. `validate` estimates
+$69.00 for the example's 16-hour budget plus reserve and $71.09 at the
+17-hour class timeout. Staging time, checks, image builds, volume storage,
+repeated attempts and memory used above the request can add cost; these
+figures are request-price estimates, not billed totals. A check at its
+30-minute timeout lists at about $0.08.
+
+**One build, from local files to a verified hand-off.**
+`docs/us-modal-stage-acs-multispine-staging-plan.json` is a template. Its
+all-zero donor H5 digest and all-one donor manifest digest are placeholders,
+not known artifact identities. The ACS archive pins and ladder digest are
+real pins. The template pins commit
+`74f5e61237423f745c0fee994a54cd164a6777f2` on `main`, which contains the
+existing builder; the runner code comes from this checkout. Select a
+reviewed donor and replace its placeholders by hashing actual files before
+running. The following commands generate a concrete plan and preserve the
+packaged archive requirements. Run the block in Bash; its fail-fast settings
+stop before uploads or hand-off if any verification fails. Skip the two
+one-time volume creation commands when the volumes already exist.
+
+```bash
+# Run from this checkout; choose actual local paths to the five inputs.
+set -euo pipefail
+B=/path/to/certified/national_donor.h5
+D=/path/to/certified/release_manifest.json
+H=/path/to/acs/csv_hus.zip
+P=/path/to/acs/csv_pus.zip
+L=/path/to/us_puma_ladder_2020.npz
+PLAN=acs-multispine-staging-plan.json
+
+# Hash streamed bytes into CAS refs; this does not copy the large files.
+python3 - "$B" "$D" "$H" "$P" "$L" "$PLAN" <<'PY'
+import hashlib
+import json
+import sys
+from datetime import datetime, timezone
+from pathlib import Path
+
+plan = json.loads(Path("docs/us-modal-stage-acs-multispine-staging-plan.json").read_text())
+plan["run_id"] = "acs-multispine-staging-" + datetime.now(timezone.utc).strftime("%Y%m%dt%H%M%Sz")
+roles = ("base_h5", "donor_release_manifest", "acs_household_zip", "acs_person_zip", "puma_ladder")
+for role, filename in zip(roles, sys.argv[1:6], strict=True):
+    path = Path(filename)
+    with path.open("rb") as stream:
+        digest = hashlib.file_digest(stream, "sha256").hexdigest()
+    if role.startswith("acs_") and digest != plan["inputs"][role]["sha256"]:
+        raise SystemExit(f"REFUSED: {role} differs from the packaged ACS pin")
+    plan["inputs"][role] = {
+        "uri": f"volume://cas/sha256/{digest}/{path.name}",
+        "sha256": digest,
+    }
+Path(sys.argv[6]).write_text(json.dumps(plan, indent=2) + "\n")
+PY
+python3 tools/modal_us_stage_plan.py validate "$PLAN"
+
+# Once per Modal workspace; the app also creates these on first use.
+modal volume create microcosm-us-stage-inputs
+modal volume create microcosm-us-stage-runs
+# Verify every supplied file against the concrete plan and emit the uploads.
+python3 tools/modal_us_stage_plan.py upload-commands "$PLAN" \
+  "base_h5=$B" "donor_release_manifest=$D" "acs_household_zip=$H" \
+  "acs_person_zip=$P" "puma_ladder=$L" --shell > staging-inputs.sh
+bash staging-inputs.sh
+
+# Check: clone/branch proof, manifest pin, pinned _parse_args, every input,
+# disk admission, write probe, PYTHONHASHSEED, ledger and receipt state.
+MICROCOSM_MODAL_PLAN="$PLAN" modal run tools/modal_us_stage.py
+# Run: the plan requests non-preemptible placement and a 16-hour budget.
+MICROCOSM_MODAL_PLAN="$PLAN" modal run --detach tools/modal_us_stage.py --run --spawn
+
+# After completion, fetch the entire state (including logs) and receipts.
+R=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["run_id"])' "$PLAN")
+mkdir -p modal-runs
+modal volume get microcosm-us-stage-runs "runs/$R" ./modal-runs/
+# Inspect the downloaded layout: --state-root must hold the H5, summary,
+# and logs/. Select the latest all-stage receipt; verification refuses failure.
+RECEIPT=$(python3 - "$R" <<'PY'
+import sys
+from pathlib import Path
+receipts = sorted((Path("modal-runs") / sys.argv[1] / "receipts").glob("all-*.json"))
+if not receipts:
+    raise SystemExit("No all-stage receipt was downloaded")
+print(receipts[-1])
+PY
+)
+python3 tools/modal_us_stage_plan.py verify-receipt "$RECEIPT" \
+  --state-root "./modal-runs/$R/state" --strict
+
+# Only after verification: put the two outputs into the inputs volume CAS.
+S=./modal-runs/$R/state/acs_multispine_staging.h5
+J=./modal-runs/$R/state/acs_multispine_staging.summary.json
+python3 tools/modal_us_stage_plan.py digest "$S" "$J"
+# Upload to the same CAS destinations that digest printed.
+for OUTPUT in "$S" "$J"; do
+  SHA=$(python3 - "$OUTPUT" <<'PY'
+import hashlib
+import sys
+with open(sys.argv[1], "rb") as stream:
+    print(hashlib.file_digest(stream, "sha256").hexdigest())
+PY
+)
+  modal volume put microcosm-us-stage-inputs "$OUTPUT" \
+    "cas/sha256/$SHA/$(basename "$OUTPUT")"
+done
+# Put the printed {uri, sha256} refs in the later release plan's
+# staging_h5 and staging_summary roles, with a fresh release run_id.
+```
+
+`verify-receipt --strict` requires a completed receipt, checks both outputs
+and every log against their recorded bytes and sha256, and refuses extra
+state files. It does not accept a budget stop as a successful staging build.
+A receipt verifies artifact bytes; the later release's existing gates and
+certification still determine whether the release is accepted.
+
 ## Preemption and restarts
 
 Functions run on Modal's preemptible placement unless the plan sets
@@ -1135,10 +1708,6 @@ hold digests, sizes and paths, never file contents.
   bytes of the first two outer stages only. The local run left no output
   for the other 22, so whether Modal reproduces the Mac there is not known
   and cannot be checked against this reference.
-- **The staging stage (`tools/build_us_acs_multispine_base.py`)** is not
-  registered either. It takes a directory input (`--inputs-dir`, the ACS
-  PUMS archive cache), which the plan format does not support. Supporting it
-  would take an archive digest plus extraction.
 - **Work lost to preemption, and memory kills.** A preempted attempt's
   tool work is lost: the state is mirrored only when the tool exits, and
   materialize has no resume point inside its chunk loop. (The base resumes
@@ -1147,6 +1716,14 @@ hold digests, sizes and paths, never file contents.
   placement avoids preemption (see "Preemption and restarts"). The heavy
   class sets a memory request but no hard limit. What Modal does with a
   container killed for memory has not been observed here.
+- **Staging a US build's datasets.** Only UK builds write a staged-dataset
+  bundle (their manifest's `outputs`, staged under `staged/<run_id>/` on a
+  private repository), and the copied-back staging command reads only their
+  manifest. The `package` stage writes a release directory with its own
+  `release_manifest.json` (an `artifacts` mapping) and `sha256sums.txt`, which is
+  also the name of the bundle's checksum file. A US bundle needs a private
+  repository, a manifest that registers its outputs, and a command that reads
+  it; none exists yet.
 - **Certification.** A receipt proves which bytes a stage produced. It does
   not certify a release. Preflight (`tools/preflight_us_release_gates.py`)
   and certification still run on the output as before.

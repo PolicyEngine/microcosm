@@ -95,6 +95,7 @@ US_SOURCE_COVERAGE: tuple[SourceCoverageEntry, ...] = (
             "soi-state-2022",
             "soi-historic-table-2",
             "soi-historic-table-2-state-agi-2022",
+            "soi-historic-table-2-state-agi-2023",
             "soi-historic-table-2-state-broad-2022",
             "soi-historic-table-2-state-eitc-2022",
             "soi-congressional-district-2022",

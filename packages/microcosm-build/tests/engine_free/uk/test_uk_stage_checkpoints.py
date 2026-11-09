@@ -9,6 +9,7 @@ whose content identity matches what was checkpointed.
 from __future__ import annotations
 
 import hashlib
+import json
 from pathlib import Path
 
 import pandas as pd
@@ -26,6 +27,10 @@ from microcosm.build.uk_runtime.stage_checkpoints import (
     load_uk_stage_checkpoint,
     load_uk_stage_predecessor,
     uk_stage_metadata,
+)
+from microcosm.frame.adapters.policyengine_uk import (
+    UK_ISA_INCOME_CONTRACT,
+    UK_ISA_INCOME_CONTRACT_ATTR,
 )
 
 _PIPELINE = StagePipeline(
@@ -115,7 +120,14 @@ def test_stage_metadata_refuses_reserved_key_collisions() -> None:
     frame = _frame()
 
     metadata = uk_stage_metadata(frame, extra={"seed": 42})
-    assert metadata[UK_FRAME_METADATA_KEY] == {"time_period": "2023"}
+    # The frame metadata carries the ISA income contract beside the period
+    # (microcosm#1360).
+    assert metadata[UK_FRAME_METADATA_KEY] == {
+        "time_period": "2023",
+        UK_ISA_INCOME_CONTRACT_ATTR: json.dumps(
+            dict(UK_ISA_INCOME_CONTRACT), sort_keys=True
+        ),
+    }
     assert metadata["seed"] == 42
 
     with pytest.raises(ValueError, match="reserved"):

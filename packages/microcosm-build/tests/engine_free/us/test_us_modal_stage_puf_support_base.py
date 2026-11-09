@@ -671,6 +671,22 @@ def test_loose_base_plans_are_refused(mutate, message: str) -> None:
         plan_lib.parse_plan(data)
 
 
+def test_rerun_template_refuses_validation_until_the_commit_is_selected(capsys) -> None:
+    path = ROOT / "docs" / "us-modal-stage-route-a-rerun-base-plan.json"
+    data = json.loads(path.read_text())
+    assert data["source"]["commit"] == "PICK_MAIN_COMMIT_ON_2026_10_18"
+    assert plan_lib.main(["validate", str(path)]) == 2
+    assert (
+        "source.commit must be a full 40-hex lowercase sha" in capsys.readouterr().err
+    )
+    data["source"]["commit"] = _committed_plan().commit
+    plan = plan_lib.parse_plan(data)
+    assert plan.tool is plan_lib.US_PUF_SUPPORT_BASE_RERUN
+    assert plan.inputs["block_ladder_npz"].sha256 == (
+        "6840b990acdfa2003d7723da5595e3cfff7205a4fa3d8d6206ed835c85c3f233"
+    )
+
+
 def test_the_budget_ceiling_is_the_timeout_less_the_base_s_overhead() -> None:
     ceiling = plan_lib.BASE.timeout_s - plan_lib.BASE_RUNNER_OVERHEAD_SECONDS
     assert ceiling == 14_700
@@ -1187,6 +1203,61 @@ def test_the_seed_stops_the_tool_s_census_download(tmp_path: Path, monkeypatch) 
 # --------------------------------------------------------------------------- #
 # The pinned tree file and the disk guard                                     #
 # --------------------------------------------------------------------------- #
+
+
+def test_rerun_registration_preserves_the_historical_base_contract() -> None:
+    rerun = plan_lib.US_PUF_SUPPORT_BASE_RERUN
+    assert plan_lib.TOOLS[rerun.name] is rerun
+    assert (
+        dataclasses.replace(rerun, name=BASE.name, tree_files=BASE.tree_files) == BASE
+    )
+    assert BASE.tree_files["cd_vintage_crosswalk"] is plan_lib.CD_VINTAGE_CROSSWALK
+    assert plan_lib.CD_VINTAGE_CROSSWALK.sha256 == (
+        "c7cb040b1f57ca2ea2adcbfe60cc2b250ca23acbc4b640cd421e766fa54c1aec"
+    )
+    historical = _committed_plan()
+    data = base_plan_data(tool=rerun.name)
+    plan = plan_lib.parse_plan(data)
+    assert plan_lib.planned_argv(plan) == plan_lib.planned_argv(historical)
+    assert plan.tool.stages["all"].resources is plan_lib.BASE
+    assert plan.inputs == historical.inputs
+    assert plan.max_wall_seconds == historical.max_wall_seconds == 14_400
+    assert plan_lib.estimated_usd_at_timeout(plan) == 14.90
+    assert plan_lib.estimated_usd_at_timeout(plan) <= plan_lib.BASE_COST_CAP_USD
+
+
+def test_rerun_crosswalk_pin_verifies_the_current_tree() -> None:
+    (row,) = plan_lib.tree_file_rows(plan_lib.US_PUF_SUPPORT_BASE_RERUN, ROOT)
+    assert "problem" not in row
+    assert row["sha256"] == (
+        "a347303fff3fea145f758488c43cb94355df5a8cb5e512552b2ee3791d2aa233"
+    )
+    assert row["bytes"] == 78_202
+
+
+def test_rerun_crosswalk_refuses_the_historical_tree(
+    pinned_source: str, tmp_path: Path
+) -> None:
+    crosswalk = plan_lib.CD_VINTAGE_CROSSWALK_RERUN
+    historical = subprocess.run(
+        [
+            "git",
+            "-C",
+            str(ROOT),
+            "show",
+            f"{_committed_plan().commit}:{crosswalk.path}",
+        ],
+        capture_output=True,
+        check=True,
+    ).stdout
+    assert hashlib.sha256(historical).hexdigest() == (
+        plan_lib.CD_VINTAGE_CROSSWALK.sha256
+    )
+    path = tmp_path / crosswalk.path
+    path.parent.mkdir(parents=True)
+    path.write_bytes(historical)
+    (row,) = plan_lib.tree_file_rows(plan_lib.US_PUF_SUPPORT_BASE_RERUN, tmp_path)
+    assert "another version" in row["problem"]
 
 
 def test_tree_file_rows_verify_the_clone(tmp_path: Path) -> None:
@@ -2220,22 +2291,35 @@ def test_a_finished_base_pushes_only_its_output_and_evidence(tmp_path: Path) -> 
 def test_write_probe_verdict_sizes_the_mirror_against_the_reserve() -> None:
     stage = BASE.stages["all"]
     gib = 1024**3
-    # The reserve less the stop's grace and the time kept after the mirror
+    # The reserve less the stop's grace, the 60 s the image emitter's
+    # `status` may take after the tool, and the time kept after the mirror
     # for the runner identity, the receipt and the final commit.
     reserve = (
         plan_lib.BASE_RUNNER_OVERHEAD_SECONDS
         - plan_lib.STOP_GRACE_SECONDS
+        - 60
         - plan_lib.RECEIPT_RESERVE_SECONDS
     )
-    # The slowest rate that still mirrors 50 GiB inside that (about 33 MB/s).
+    # The slowest rate that still mirrors 50 GiB inside that (about 34 MB/s).
     floor = 50 * gib / reserve
-    assert floor / 1e6 == pytest.approx(33.1, abs=0.1)
+    assert floor / 1e6 == pytest.approx(34.4, abs=0.1)
     fast = plan_lib.write_probe_verdict(stage, gib, gib / (floor * 1.01))
     assert "problem" not in fast
-    assert fast["mirror_reserve_seconds"] == reserve == 1620
+    assert fast["mirror_reserve_seconds"] == reserve == 1560
     assert fast["receipt_reserve_seconds"] == 120
+    # The 60 s kept for the image emitter's `status` is reported too, with
+    # the stop's grace, and the four figures add up to the reserve.
+    assert fast.get("emitter_status_reserve_seconds") == 60
+    assert fast.get("stop_grace_seconds") == 60
+    assert (
+        fast["mirror_reserve_seconds"]
+        + fast["stop_grace_seconds"]
+        + fast["emitter_status_reserve_seconds"]
+        + fast["receipt_reserve_seconds"]
+        == plan_lib.BASE_RUNNER_OVERHEAD_SECONDS
+    )
     slow = plan_lib.write_probe_verdict(stage, gib, gib / (floor * 0.99))
-    assert "more than the 1620s the runner keeps for the mirror" in slow["problem"]
+    assert "more than the 1560s the runner keeps for the mirror" in slow["problem"]
     # The runbook's one measured volume rate (reads, at least 58 MB/s) fits.
     assert "problem" not in plan_lib.write_probe_verdict(stage, 58_000_000, 1.0)
     acs = plan_lib.US_ACS_LOCAL_RELEASE.stages["materialize"]
@@ -2428,8 +2512,8 @@ def test_the_hand_off_never_overwrites_a_base(tmp_path: Path) -> None:
 def test_the_runbook_names_every_registered_tool() -> None:
     text = RUNBOOK.read_text()
     intro = text[: text.index("Two files do the work")]
-    assert len(plan_lib.TOOLS) == 3
-    assert "Three tools are registered" in intro
+    assert len(plan_lib.TOOLS) == 5
+    assert "Five tools are registered" in intro
     for name, tool in plan_lib.TOOLS.items():
         assert f"`{name}`" in intro, name
         if tool.script is not None:
@@ -2443,6 +2527,7 @@ PINNED_COMMIT_TESTS = (
     "test_the_owned_flags_are_the_pinned_tool_s_flags",
     "test_the_registered_crosswalk_digest_is_4b57d15a2_s",
     "test_the_pinned_tool_locks_the_reference_s_run_config_from_the_modal_argv",
+    "test_rerun_crosswalk_refuses_the_historical_tree",
 )
 
 
@@ -2463,4 +2548,4 @@ def test_the_runbook_names_every_pinned_commit_test() -> None:
     text = RUNBOOK.read_text()
     for name in PINNED_COMMIT_TESTS:
         assert f"`{name}`" in text, name
-    assert "four tests in\n  `test_us_modal_stage_puf_support_base.py`" in text
+    assert "five tests in\n  `test_us_modal_stage_puf_support_base.py`" in text

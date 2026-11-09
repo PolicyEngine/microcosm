@@ -20,6 +20,7 @@ import pandas as pd
 from microcosm.frame.concept_mapping import (
     AllocateToReferencePerson,
     ConceptMapping,
+    CoresidentAdult,
     CoresidentChildCount,
     Fraction,
     Identity,
@@ -33,6 +34,7 @@ from microcosm.frame.concept_mapping import (
     Scale,
     ScaledSum,
     Share,
+    SignedPart,
     Sum,
     TakeUpThreshold,
 )
@@ -53,22 +55,28 @@ def reference_values(
 
     persons = tables["person"].to_dict("records")
     households = {
-        row["household_id"]: row for row in tables["household"].to_dict("records")
+        row["household_id"]: row
+        for row in tables["household"].to_dict("records")
+        if _present(row["household_id"])
     }
     by_id = {row["person_id"]: row for row in persons}
     transform = binding.transform
+
+    def household_of(row: dict) -> dict | None:
+        # A null or unknown household id names no household.
+        key = row["person_household_id"]
+        return households.get(key) if _present(key) else None
 
     def value(row: dict, concept_id: str) -> object:
         item = CONCEPT_BY_ID[concept_id]
         if item.entity == "person":
             return row[item.name]
-        household = (
-            row if "person_id" not in row else households[row["person_household_id"]]
-        )
-        return household[item.name]
+        household = row if "person_id" not in row else household_of(row)
+        return np.nan if household is None else household[item.name]
 
     def reference_of(row: dict) -> object:
-        return households[row["person_household_id"]]["reference_person_id"]
+        household = household_of(row)
+        return None if household is None else household["reference_person_id"]
 
     def is_parent_of(row: dict, child: dict, max_age: int | None) -> bool:
         if max_age is not None and child["age"] > max_age:
@@ -105,14 +113,16 @@ def reference_values(
         elif isinstance(transform, ScaledSum):
             total = sum(float(value(row, concept_id)) for concept_id in concepts)
             out.append(total * transform.factor)
+        elif isinstance(transform, SignedPart):
+            total = sum(float(value(row, concept_id)) for concept_id in concepts)
+            out.append(max(total if transform.sign == "positive" else -total, 0.0))
         elif isinstance(transform, Product):
             first, second = (float(value(row, concept_id)) for concept_id in concepts)
             out.append(first * second)
         elif isinstance(transform, AllocateToReferencePerson):
-            household = households[row["person_household_id"]]
             name = CONCEPT_BY_ID[concepts[0]].name
-            mine = row["person_id"] == household["reference_person_id"]
-            out.append(float(household[name]) if mine else 0.0)
+            mine = row["person_id"] == reference_of(row)
+            out.append(float(household_of(row)[name]) if mine else 0.0)
         elif isinstance(transform, Predicate):
             out.append(
                 all(
@@ -150,6 +160,18 @@ def reference_values(
                     if _present(child[column])
                     and child[column] == row["person_id"]
                     and (transform.max_age is None or child["age"] <= transform.max_age)
+                )
+            )
+        elif isinstance(transform, CoresidentAdult):
+            home = row["person_household_id"]
+            out.append(
+                _present(home)
+                and any(
+                    other is not row
+                    and other["person_household_id"] == home
+                    and _present(other["age"])
+                    and other["age"] >= transform.min_age
+                    for other in persons
                 )
             )
         elif isinstance(transform, TakeUpThreshold):

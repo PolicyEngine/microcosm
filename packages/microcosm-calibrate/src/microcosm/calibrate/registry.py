@@ -9,7 +9,7 @@ scorers read the same registry — the registry depends on neither, which is the
 dependency direction the architecture review demanded (no more harness-extracted
 ``.npz`` files as the de-facto target store).
 
-Two properties are structural, not stylistic:
+Three properties are structural, not stylistic:
 
 - **Versioning is content-addressed.** :attr:`TargetRegistry.version` is a hash
   of the canonical JSON of the specs, so two registries with the same facts have
@@ -20,6 +20,11 @@ Two properties are structural, not stylistic:
   ``signed=True``. The net-STCG incident — a positive-only target surface that
   let calibration push short-term capital gains to −$3.9T unnoticed — is the
   motivating case: sign expectations belong in the fact's declaration.
+- **A geography has one label.** A US registry refuses a geography id that two
+  specs label differently, and other countries' registries report it
+  (:data:`GEOGRAPHY_LABEL_REFUSING_COUNTRIES`). A US release once labelled
+  Maine "Maine" on 84 targets and "ME" on its population target, and every
+  other state the same way (microcosm#1335).
 
 Specs are fully declarative (column names, never callables) so the registry
 serializes; a build that needs a computed measure defines the column on its
@@ -31,6 +36,7 @@ from __future__ import annotations
 import hashlib
 import json
 import math
+import warnings
 from collections.abc import Callable, Iterable, Iterator, Mapping
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
@@ -39,12 +45,40 @@ from typing import Any
 from microcosm.calibrate.hierarchy import CalibrationHierarchy
 from microcosm.calibrate.target import Target, TargetSet
 
-__all__ = ["TargetSpec", "TargetRegistry", "specs_from_pe_surface"]
+__all__ = [
+    "GEOGRAPHY_LABEL_REFUSING_COUNTRIES",
+    "GeographyLabelConflictError",
+    "GeographyLabelConflictWarning",
+    "TargetSpec",
+    "TargetRegistry",
+    "geography_label_conflicts",
+    "specs_from_pe_surface",
+]
 
 #: Format marker + revision for the JSON artifact.
 _FORMAT_KEY = "populace_target_registry"
 _FORMAT_VERSION = 3
 _READABLE_FORMAT_VERSIONS = frozenset((2, 3))
+
+#: Countries whose target registries refuse a geography id that carries more
+#: than one label (microcosm#1335). Every US target source labels a state with
+#: its Census name and a congressional district with the Census Bureau's
+#: district name, so a second label for a US id is a defect. UK publishers name
+#: one region, nation or local authority differently ("Yorkshire and The
+#: Humber" and "Yorkshire and the Humber", "St Helens" and "St. Helens"), and
+#: choosing one label per UK code is separate work, so every other country's
+#: registry reports a conflict as a :class:`GeographyLabelConflictWarning`.
+GEOGRAPHY_LABEL_REFUSING_COUNTRIES: frozenset[str] = frozenset({"us"})
+#: How many conflicting geography ids a refusal or report names in full.
+_GEOGRAPHY_LABEL_CONFLICTS_NAMED = 5
+
+
+class GeographyLabelConflictError(ValueError):
+    """A target registry gives one geography id more than one label."""
+
+
+class GeographyLabelConflictWarning(UserWarning):
+    """A registry outside the refusing countries gives one id two labels."""
 
 
 @dataclass(frozen=True)
@@ -224,6 +258,14 @@ class TargetSpec:
 class TargetRegistry:
     """An ordered, content-addressed collection of :class:`TargetSpec` facts.
 
+    Every spec whose hierarchy names a geography must give that geography id
+    the same label as every other spec in the registry, so a calibration
+    diagnostics file names each geography once. A registry for a country in
+    :data:`GEOGRAPHY_LABEL_REFUSING_COUNTRIES` refuses a second label; any
+    other country's registry reports it as a
+    :class:`GeographyLabelConflictWarning`. Builds assemble their registry
+    before calibration, so a conflict stops a build before its solve.
+
     Args:
         specs: The facts, in order. Duplicate ``(name, period)`` keys are
             rejected.
@@ -232,6 +274,8 @@ class TargetRegistry:
     Raises:
         TypeError: If an entry is not a :class:`TargetSpec`.
         ValueError: On duplicate ``(name, period)`` keys or an empty country.
+        GeographyLabelConflictError: If a refusing country's registry gives
+            one geography id more than one label.
     """
 
     def __init__(self, specs: Iterable[TargetSpec], *, country: str) -> None:
@@ -251,6 +295,7 @@ class TargetRegistry:
                     "pair may be declared only once."
                 )
             seen.add(spec.key)
+        _check_geography_labels(materialized, country=country)
         self._specs = materialized
         self._country = country
 
@@ -378,6 +423,66 @@ class TargetRegistry:
                 "editing it by hand."
             )
         return registry
+
+
+def geography_label_conflicts(
+    specs: Iterable[TargetSpec],
+) -> dict[str, dict[str, str]]:
+    """Each geography id that the specs' hierarchies give more than one label.
+
+    Returns ``{geography id: {label: name of the first spec with it}}`` for
+    every such id, ids and labels in the order they first appear. A spec
+    without a hierarchy labels no geography.
+    """
+
+    first_spec_by_label: dict[str, dict[str, str]] = {}
+    for spec in specs:
+        if spec.hierarchy is None:
+            continue
+        geography = spec.hierarchy.geography
+        first_spec_by_label.setdefault(geography.id, {}).setdefault(
+            geography.label, spec.name
+        )
+    return {
+        geography_id: labels
+        for geography_id, labels in first_spec_by_label.items()
+        if len(labels) > 1
+    }
+
+
+def _check_geography_labels(specs: Iterable[TargetSpec], *, country: str) -> None:
+    conflicts = geography_label_conflicts(specs)
+    if not conflicts:
+        return
+    message = _geography_label_conflict_message(conflicts, country=country)
+    if country.lower() in GEOGRAPHY_LABEL_REFUSING_COUNTRIES:
+        raise GeographyLabelConflictError(message)
+    # Three frames up is the code that constructed the registry.
+    warnings.warn(message, GeographyLabelConflictWarning, stacklevel=3)
+
+
+def _geography_label_conflict_message(
+    conflicts: Mapping[str, Mapping[str, str]], *, country: str
+) -> str:
+    named = list(conflicts.items())[:_GEOGRAPHY_LABEL_CONFLICTS_NAMED]
+    described = "; ".join(
+        f"{geography_id!r} is "
+        + " and ".join(
+            f"{label!r} (first on target {spec_name!r})"
+            for label, spec_name in labels.items()
+        )
+        for geography_id, labels in named
+    )
+    unnamed = len(conflicts) - len(named)
+    if unnamed:
+        described += f"; and {unnamed} more geography id(s)"
+    return (
+        f"Target registry for {country!r} gives {len(conflicts)} geography "
+        f"id(s) more than one label: {described}. One geography id must have "
+        "exactly one label across a registry, so its calibration diagnostics "
+        "name each geography once; label every source's target for an id the "
+        "same way (microcosm#1335)."
+    )
 
 
 def specs_from_pe_surface(

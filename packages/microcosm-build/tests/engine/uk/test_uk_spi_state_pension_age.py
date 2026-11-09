@@ -46,7 +46,13 @@ def test_spi_imputation_leaves_no_pension_age_reports_below_the_engine_spa(
     )
 
     unguarded = impute_uk_spi_income_support(
-        support, donor_path, seed=9, n_estimators=3, donor_sample_size=None
+        support,
+        donor_path,
+        seed=9,
+        n_estimators=3,
+        donor_sample_size=None,
+        state_pension_age=66,
+        allow_in_sample_reference=True,
     )
     guarded = impute_uk_spi_income_support(
         support,
@@ -56,6 +62,7 @@ def test_spi_imputation_leaves_no_pension_age_reports_below_the_engine_spa(
         donor_sample_size=None,
         donor_age_model=model,
         state_pension_age_guard=guard,
+        allow_in_sample_reference=True,
     )
 
     channel = support_channel_column("person")

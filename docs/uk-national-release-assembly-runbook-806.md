@@ -104,6 +104,26 @@ With the default paths, this writes
 `microcosm_uk_2024_25.release_certification.json` next to the candidate. Continue
 only when the certification says `shippable: true`.
 
+**Interim check until microcosm#1276 lands.** microcosm#1281 removed the QRF
+tail-concentration gate, and nothing release-blocking yet checks the SPI
+stage-1 columns (`hmrc_spi_*` and the other stage-1 outputs). Before assembly,
+measure the candidate and the currently promoted cut together:
+
+```bash
+uv run --no-sync python tools/measure_uk_weighted_integrity_baselines.py \
+  --h5 candidate=<candidate-dir>/microcosm_uk_2024_25.h5 \
+  --h5 previous=<promoted-cut-h5> \
+  --output <candidate-dir>/stage1_comparison.json
+```
+
+Compare each stage-1 column's weighted total (`input_mass_totals`) and carrier
+count (`qrf_tail`) between the two, and explain any column that moves by more
+than half in either direction before continuing. microcosm#1256 cut
+`hmrc_spi_incapacity_benefit_income` by about six-sevenths, and only this kind
+of comparison would have shown it. The file is licensed output: keep it
+local, out of the release directory and out of any public text. The tool
+suppresses carrier counts below 10.
+
 ## 3. Assemble the release directory
 
 Assembly verifies the complete hash join before writing, mints the calibration
@@ -202,13 +222,11 @@ in §4. The promotion moves only `latest-national.json`, recording `national` as
 the line and the reviewed cut tag as its `revision`. It never moves the
 repository-global `latest.json`, which remains on the June 2023 release.
 
-The 2025 national entry is registered off the default variant until this
-first promotion: `microcosm.data.load("uk", 2025, variant="national")` follows
-`latest-national.json` as soon as the pointer exists, while
-`microcosm.data.resolve("uk")` stays on the June 2023 line. The default moves
-in a one-line follow-up PR after promotion (the registry entry's `variant`
-becomes the default), with its test; sequencing it this way means a default
-load never chases a pointer that does not exist yet. An explicit
+The 2025 national entry was registered off the default variant until the
+first promotion, so that a default load never chased a pointer that did not
+exist yet. The first certified cut was promoted on 2026-10-26, and the entry
+is now the default variant (microcosm#823): `microcosm.data.load("uk")` and
+`microcosm.data.load("uk", 2025)` follow `latest-national.json`. An explicit
 `microcosm.data.load("uk", 2023)` continues to follow `latest.json`.
 
 With `SLACK_WEBHOOK_POPULACE_UK` configured, successful promotion sends an

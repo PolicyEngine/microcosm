@@ -1,5 +1,12 @@
 """Publish a release and move its approved repository pointer.
 
+It also checks a build of a release that can publish into its own
+folder, ``releases/<release>/<build>/``, and lists its files with their
+roles (:func:`prepare_build_folder_release`), for
+``microcosm-publish-release-build``, which hands it to the emitter. UK
+releases still publish here, with tags and pointer files, until their
+repository switches to ``releases.json``.
+
 The Hub repo publishes builds under ``releases/<build_id>/``, but nothing
 identified which release is *current*: a consumer had to list the tree and
 guess, and because build ids end in a date (``populace-us-2024-9f1260b-
@@ -47,19 +54,28 @@ from pathlib import Path
 from typing import Any
 
 from microcosm.data.contract import (
+    BUILD_MANIFEST_FILE_ROLE,
+    CHECKSUMS_FILE,
+    CHECKSUMS_FILE_ROLE,
     EVIDENCE_RELEASE_ID_SEGMENT,
     NATIONAL_DEFAULT_DATASET_ROLE,
+    RELEASE_MANIFEST_FILE_ROLE,
+    RELEASE_ROLES,
     _uk_line_cut_tag_re,
     dataset_role_for_line,
     line_for_release_id,
+    publishes_to_build_folder,
     release_dataset_role,
     required_release_files,
     validate_evidence_release_dir,
     validate_release_dir,
 )
+from microcosm.data.releases_record import RELEASES_RECORD_PATH
 from microcosm.data.slack import notify_release
 
 __all__ = [
+    "BuildFolderFile",
+    "BuildFolderRelease",
     "LATEST_EVIDENCE_POINTER_PATH",
     "LATEST_POINTER_PATH",
     "LATEST_POINTER_SCHEMA_VERSION",
@@ -68,11 +84,14 @@ __all__ = [
     "RELEASE_TIER_EVIDENCE",
     "LatestPointer",
     "PreparedRelease",
+    "build_folder_identity",
+    "prepare_build_folder_release",
     "prepare_release",
     "latest_evidence_pointer_payload",
     "latest_line_release",
     "latest_pointer_payload",
     "line_pointer_path",
+    "missing_on_hub",
     "line_pointer_payload",
     "publish_release",
     "latest_release",
@@ -259,7 +278,11 @@ def _hf_api():
 
 @dataclass(frozen=True)
 class PreparedRelease:
-    """Validated local paths and upload destinations, prepared without Hub activity."""
+    """Validated local paths and upload destinations, prepared without Hub activity.
+
+    ``contract_warnings`` are the release contract's warnings, which never
+    refuse a release; each names a file and paths in it, never a value.
+    """
 
     release_dir: Path
     artifact_root: Path | None
@@ -270,6 +293,172 @@ class PreparedRelease:
     line: str | None
     pointer_path: str
     calibration_diagnostics_available: bool
+    contract_warnings: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True)
+class BuildFolderFile:
+    """One file of a build folder: its bare name, role, local path and digest."""
+
+    name: str
+    role: str
+    path: Path
+    sha256: str
+    bytes: int
+
+
+@dataclass(frozen=True)
+class BuildFolderRelease:
+    """A checked build of a build-folder release, ready to hand to the emitter.
+
+    ``release_role`` is the release's role in ``releases.json``
+    (:data:`~microcosm.data.contract.RELEASE_ROLES`). ``files`` lists the
+    release manifest, the build manifest, every artifact the release manifest
+    declares and the checksum ledger when there is one, each once.
+    ``contract_warnings`` are the release contract's warnings, which never
+    refuse a build.
+    """
+
+    release_dir: Path
+    repository: str
+    release: str
+    build: str
+    release_role: str
+    files: tuple[BuildFolderFile, ...]
+    calibration_diagnostics_available: bool
+    contract_warnings: tuple[str, ...] = ()
+
+
+def build_folder_identity(release_dir: Path | str) -> tuple[str, str, str]:
+    """``(repository, release, build)`` named by a build folder's release manifest.
+
+    Reads only the manifest, so a published build can be promoted from its
+    local directory without checking it again; raises ``ValueError`` if the
+    directory is not a build-folder release or its manifest does not name
+    the release, the build and one repository.
+    """
+    release_dir = Path(release_dir)
+    if not publishes_to_build_folder(release_dir.name):
+        raise ValueError(
+            f"release {release_dir.name!r} does not publish into build folders; "
+            "it publishes with tags and latest.json (tools/publish_release.sh)."
+        )
+    manifest = json.loads((release_dir / "release_manifest.json").read_text())
+    if not isinstance(manifest, Mapping):
+        raise ValueError(f"{release_dir}/release_manifest.json is not an object.")
+    release, build = manifest.get("release"), manifest.get("build")
+    if release != release_dir.name or not isinstance(build, str) or not build:
+        raise ValueError(
+            f"{release_dir}/release_manifest.json does not name release "
+            f"{release_dir.name!r} and a build."
+        )
+    artifacts = manifest.get("artifacts")
+    repositories = sorted(
+        {
+            str(entry.get("repo_id"))
+            for entry in (artifacts.values() if isinstance(artifacts, Mapping) else ())
+            if isinstance(entry, Mapping)
+        }
+    )
+    if len(repositories) != 1:
+        raise ValueError(
+            f"release {release!r} declares artifacts in more than one repository "
+            f"({repositories}); a build is published into one repository."
+        )
+    return repositories[0], release, build
+
+
+def prepare_build_folder_release(
+    release_dir: Path | str,
+    *,
+    artifact_root: Path | str | None = None,
+    repository: str | None = None,
+) -> BuildFolderRelease:
+    """Check a build-folder release's build and list the files it publishes.
+
+    The release contract runs first. Each artifact is read from the release
+    directory, or else from ``artifact_root`` (the H5 and the calibration
+    weights live beside the candidate), and must match the SHA-256 its
+    manifest records. ``repository``, when given, must be the one the
+    artifacts name. Nothing on the Hub is read or written.
+
+    Raises:
+        ReleaseContractError: If the build breaks its release contract.
+        ValueError: If the directory is not a build-folder release, names more
+            than one repository, or a file's bytes differ from the manifest.
+        FileNotFoundError: If an artifact is in neither directory.
+    """
+    release_dir = Path(release_dir)
+    named_repository, release, build = build_folder_identity(release_dir)
+    contract_warnings = validate_release_dir(release_dir, artifact_root=artifact_root)
+    for contract_warning in contract_warnings:
+        warnings.warn(f"release contract: {contract_warning}", stacklevel=2)
+    if repository is not None and repository != named_repository:
+        raise ValueError(
+            f"release {release!r} names {named_repository} in its artifacts, not "
+            f"{repository}."
+        )
+    manifest = json.loads((release_dir / "release_manifest.json").read_text())
+    dataset_role = manifest.get("dataset_role", NATIONAL_DEFAULT_DATASET_ROLE)
+    release_role = RELEASE_ROLES.get(dataset_role)
+    if release_role is None:
+        raise ValueError(
+            f"release {release!r} declares dataset_role {dataset_role!r}, which "
+            "has no role in releases.json."
+        )
+    root = Path(artifact_root) if artifact_root is not None else None
+    sources: list[tuple[str, str, Path, str | None]] = [
+        ("release_manifest.json", RELEASE_MANIFEST_FILE_ROLE, release_dir, None),
+        ("build_manifest.json", BUILD_MANIFEST_FILE_ROLE, release_dir, None),
+    ]
+    if (release_dir / CHECKSUMS_FILE).is_file():
+        sources.append((CHECKSUMS_FILE, CHECKSUMS_FILE_ROLE, release_dir, None))
+    for entry in manifest["artifacts"].values():
+        name = entry["path"]
+        directory = release_dir
+        if not (release_dir / name).is_file() and root is not None:
+            directory = root
+        sources.append((name, entry["role"], directory, entry["sha256"]))
+    files: list[BuildFolderFile] = []
+    for name, role, directory, expected_sha256 in sources:
+        local = directory / name
+        if not local.is_file():
+            raise FileNotFoundError(
+                f"{name} of release {release!r} is in neither {release_dir} nor "
+                f"the artifact root {root}."
+            )
+        digest = _sha256(local)
+        if expected_sha256 is not None and digest != expected_sha256:
+            raise ValueError(
+                f"{name} has sha256 {digest}, but release_manifest.json records "
+                f"{expected_sha256}."
+            )
+        files.append(BuildFolderFile(name, role, local, digest, local.stat().st_size))
+    names = [item.name for item in files]
+    if len(set(names)) != len(names):
+        raise ValueError(f"release {release!r} names a file twice: {sorted(names)}.")
+    diagnostics_declaration = manifest.get("calibration_diagnostics")
+    diagnostics_available = not (
+        isinstance(diagnostics_declaration, Mapping)
+        and diagnostics_declaration.get("status") == "failed"
+    )
+    if not diagnostics_available:
+        warnings.warn(
+            "Publishing a dataset whose calibration diagnostics generation failed: "
+            f"{diagnostics_declaration.get('error_code')}: "
+            f"{diagnostics_declaration.get('message')}",
+            stacklevel=2,
+        )
+    return BuildFolderRelease(
+        release_dir=release_dir,
+        repository=named_repository,
+        release=release,
+        build=build,
+        release_role=release_role,
+        files=tuple(files),
+        calibration_diagnostics_available=diagnostics_available,
+        contract_warnings=tuple(contract_warnings),
+    )
 
 
 def prepare_release(
@@ -296,30 +485,45 @@ def prepare_release(
     """
     release_dir = Path(release_dir)
     if parent_h5 is not None or compatibility_wheels:
+        from microcosm.data.compatibility_recertification import (
+            RECERTIFICATION_RELEASE_TYPE,
+        )
         from microcosm.data.source_enrichment import SOURCE_ENRICHMENT_RELEASE_TYPE
 
         manifest_path = release_dir / "release_manifest.json"
         manifest = (
             json.loads(manifest_path.read_text()) if manifest_path.is_file() else {}
         )
-        if (
-            not isinstance(manifest, Mapping)
-            or manifest.get("release_type") != SOURCE_ENRICHMENT_RELEASE_TYPE
+        release_type = (
+            manifest.get("release_type") if isinstance(manifest, Mapping) else None
+        )
+        # A recertification replays its loader under its tested wheels too,
+        # but its H5 is its parent's, so it takes no parent_h5.
+        if not (
+            release_type == SOURCE_ENRICHMENT_RELEASE_TYPE
+            or (release_type == RECERTIFICATION_RELEASE_TYPE and parent_h5 is None)
         ):
             raise ValueError(
-                "parent_h5 and compatibility_wheels require a source_enrichment release."
+                "parent_h5 and compatibility_wheels require a source_enrichment "
+                "release; compatibility_wheels alone also serve a "
+                "compatibility_recertification release."
             )
+    contract_warnings: list[str] = []
     if evidence:
         validate_evidence_release_dir(release_dir)
     elif parent_h5 is not None or compatibility_wheels:
-        validate_release_dir(
+        contract_warnings = validate_release_dir(
             release_dir,
             parent_h5=parent_h5,
             artifact_root=artifact_root,
             compatibility_wheels=compatibility_wheels,
         )
     else:
-        validate_release_dir(release_dir, artifact_root=artifact_root)
+        contract_warnings = validate_release_dir(
+            release_dir, artifact_root=artifact_root
+        )
+    for contract_warning in contract_warnings:
+        warnings.warn(f"release contract: {contract_warning}", stacklevel=2)
     release_id = release_dir.name
     role = release_dataset_role(release_dir)
     if line is not None:
@@ -367,6 +571,18 @@ def prepare_release(
                 "enrichment: a published donor, never the national default "
                 "pointer. Pass update_latest=False (publish CLI: --no-latest, "
                 "with --tag-only to leave main untouched)."
+            )
+        from microcosm.data.compatibility_recertification import is_recertification
+
+        if is_recertification(release_dir):
+            # A recertification republishes its parent's data under a wider
+            # compatibility claim, so it never moves the default pointer as a
+            # side effect; consumers reach it by its release id.
+            raise ValueError(
+                f"release {release_id!r} is a compatibility recertification of "
+                "a published release, never the national default pointer. "
+                "Pass update_latest=False (publish CLI: --no-latest, with "
+                "--tag-only to leave main untouched)."
             )
     if tag_only and update_latest:
         raise ValueError(
@@ -522,6 +738,7 @@ def prepare_release(
         line=line,
         pointer_path=pointer_path,
         calibration_diagnostics_available=calibration_diagnostics_available,
+        contract_warnings=tuple(contract_warnings),
     )
 
 
@@ -619,7 +836,11 @@ def publish_release(
     Returns:
         The release's pointer payload (``latest.json`` shape, plus ``tier`` at
         the evidence tier or ``line`` and ``revision`` for a line promotion).
-        It is uploaded only when ``update_latest=True``.
+        It is uploaded only when ``update_latest=True``. When the release
+        contract warned, the returned payload also lists the warnings under
+        ``contract_warnings``; the uploaded pointer never carries them, and
+        the message of the tag this call creates records only how many there
+        were (microcosm#1301).
 
     Raises:
         ReleaseContractError: If the release directory violates its tier's
@@ -643,6 +864,21 @@ def publish_release(
 
     if api is None:
         api = _hf_api()
+    from microcosm.data.compatibility_recertification import (
+        is_recertification,
+        require_parent_publication,
+    )
+
+    if is_recertification(prepared.release_dir):
+        # The offline gates proved the child against the parent manifest it
+        # carries; only the Hub can say that manifest is the published one.
+        # Checked before any branch, commit or upload.
+        require_parent_publication(
+            api,
+            prepared.release_dir,
+            repo_id=repo_id,
+            artifact_root=prepared.artifact_root,
+        )
     if evidence:
         payload = latest_evidence_pointer_payload(
             release_id,
@@ -683,6 +919,17 @@ def publish_release(
             "create_commit, create_tag, and delete_branch support so release "
             "publication is immutable-first and atomic."
         )
+    # The tag records that the release was published past the contract's
+    # warnings, and how many, but not the warnings themselves, which name
+    # paths in the shipped files (microcosm#1301).
+    warned = len(prepared.contract_warnings)
+    tag_message = (
+        f"Release {release_id}, published past {warned} release contract "
+        "warning(s) (microcosm#1301). The publisher printed them; none is "
+        "recorded here."
+        if warned
+        else None
+    )
     _publish_atomic(
         api,
         release_dir=prepared.release_dir,
@@ -698,6 +945,7 @@ def publish_release(
         tag_only=tag_only,
         pointer_path=prepared.pointer_path,
         pointer_label=pointer_label,
+        tag_message=tag_message,
     )
     # The pointer is live: announce it. Best-effort and coupled to the promotion
     # so every publish path alerts; warn (don't fail) if the webhook is unset.
@@ -711,6 +959,8 @@ def publish_release(
             notify_kwargs["line"] = prepared.line
             notify_kwargs["revision"] = prepared.tag
         notify_release(repo_id, release_id, payload.get("updated_at"), **notify_kwargs)
+    if prepared.contract_warnings:
+        return {**payload, "contract_warnings": list(prepared.contract_warnings)}
     return payload
 
 
@@ -776,6 +1026,55 @@ def _repo_revision(api: object, *, repo_id: str) -> str | None:
     return str(value) if value else None
 
 
+def missing_on_hub(error: BaseException) -> bool:
+    """Whether a download failed because the Hub answered that the file is absent.
+
+    Only that answer counts: ``EntryNotFoundError`` for the Hub's 404
+    (``RemoteEntryNotFoundError`` in huggingface_hub 1.x). huggingface_hub
+    also raises ``LocalEntryNotFoundError``, a subclass of it and of
+    ``FileNotFoundError``, when it could not ask the Hub (a 5xx that outlasted
+    its retries, a 403, offline mode) and nothing is cached; that says
+    nothing about the file, so it, like every other error, does not count.
+    """
+    try:
+        from huggingface_hub.utils import EntryNotFoundError, LocalEntryNotFoundError
+    except ImportError:  # pragma: no cover - declared dependency
+        return False
+    return isinstance(error, EntryNotFoundError) and not isinstance(
+        error, LocalEntryNotFoundError
+    )
+
+
+def _refuse_releases_record(api: object, *, repo_id: str, revision: str | None) -> None:
+    """Refuse a repository that records its builds in ``releases.json``.
+
+    Such a repository publishes each build into its own folder through the
+    emitter, and ``releases.json`` is the only record of which build is
+    current; a tag or ``latest*.json`` pointer file written beside it would
+    disagree with the record. Only the Hub's answer that the file is absent
+    (:func:`missing_on_hub`) lets the publication go on; any other failure
+    to read it, a server error included, propagates before anything is
+    written.
+    """
+    try:
+        api.hf_hub_download(
+            repo_id=repo_id,
+            filename=RELEASES_RECORD_PATH,
+            repo_type="dataset",
+            revision=revision,
+        )
+    except Exception as exc:
+        if missing_on_hub(exc):
+            return
+        raise
+    raise ValueError(
+        f"{repo_id} records its builds in {RELEASES_RECORD_PATH}, so this "
+        "publisher, which tags each build and writes latest*.json pointer "
+        "files, refuses it; publish its builds with "
+        "`microcosm-publish-release-build`."
+    )
+
+
 def _publish_atomic(
     api: object,
     *,
@@ -792,9 +1091,13 @@ def _publish_atomic(
     tag_only: bool = False,
     pointer_path: str,
     pointer_label: str,
+    tag_message: str | None = None,
 ) -> None:
     staging_branch = f"release-staging/{release_id}"
     main_revision = _repo_revision(api, repo_id=repo_id)
+    # The main commit below is made on main_revision, so a releases.json
+    # added after this check makes it fail rather than land beside it.
+    _refuse_releases_record(api, repo_id=repo_id, revision=main_revision)
     existing_revision = (
         _tag_revision(api, repo_id=repo_id, tag=tag) if create_tag else None
     )
@@ -844,6 +1147,7 @@ def _publish_atomic(
                 repo_id=repo_id,
                 tag=tag,
                 revision=immutable_revision,
+                message=tag_message,
             )
         api.delete_branch(
             repo_id=repo_id,
@@ -1097,7 +1401,14 @@ def _require_tag_describes_release(
         )
 
 
-def _create_release_tag(api: object, *, repo_id: str, tag: str, revision: str | None):
+def _create_release_tag(
+    api: object,
+    *,
+    repo_id: str,
+    tag: str,
+    revision: str | None,
+    message: str | None = None,
+):
     kwargs = {
         "repo_id": repo_id,
         "tag": tag,
@@ -1105,6 +1416,8 @@ def _create_release_tag(api: object, *, repo_id: str, tag: str, revision: str | 
     }
     if revision is not None:
         kwargs["revision"] = revision
+    if message is not None:
+        kwargs["tag_message"] = message
     create_tag = getattr(api, "create_tag", None)
     if create_tag is None:
         raise TypeError(

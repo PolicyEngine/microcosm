@@ -29,11 +29,16 @@ per-row schema ids the rows themselves declare are all recorded in
 :meth:`LedgerConsumerArtifact.provenance`, so a release manifest witnesses
 which era it actually consumed rather than which era it assumed.
 
-Acceptance widened here; nothing narrowed. Only the *manifest* schema id is
-gated, and only against the declared ids. Row-level ids and fact keys are
-carried as published — real feeds mint rows in namespaces that belong to
-neither era, and a consumer that rejected them would fail closed on data that
-has always loaded.
+Acceptance widened here; a reviewed pin narrows it. A load checks the
+*manifest* schema id against the declared ids. Row-level ids and fact keys are
+carried as published, because this loader also serves feeds loaded by path
+for diagnostics and experiments, and bare feeds with no manifest, some minted
+in namespaces that belong to neither era. A feed held to a reviewed pin is
+narrower: :func:`validate_chronicle_feed_pin` requires every row contract the
+full pin and its rows name to be declared, and
+:func:`validate_pinned_row_contracts` does the same for the UK and US builds,
+which hold their feeds to committed pins by digest. So a re-pin onto a new
+Chronicle row contract has to declare it first.
 """
 
 from __future__ import annotations
@@ -41,6 +46,7 @@ from __future__ import annotations
 import hashlib
 import json
 from argparse import ArgumentParser, Namespace
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -53,6 +59,7 @@ from microcosm.build.chronicle_epoch import (
     feed_fact_key_epochs,
     feed_undeclared_fact_key_domains,
     is_accepted_consumer_artifact_schema_version,
+    require_accepted_consumer_fact_schema_versions,
 )
 
 __all__ = [
@@ -60,10 +67,17 @@ __all__ = [
     "ALLOWED_LEDGER_ASSERTIONS",
     "CONSUMER_ARTIFACT_SCHEMA_VERSION",
     "DEFAULT_LEDGER_ASSERTION",
+    "CHRONICLE_FEED_RESOURCE",
+    "ChronicleFeedPinMismatchError",
     "LedgerConsumerArtifact",
+    "LexicalFloat",
     "add_ledger_artifact_args",
+    "chronicle_feed_identity",
+    "consumer_fact_schema_versions_of",
     "load_ledger_consumer_artifact",
     "resolve_ledger_artifact",
+    "validate_chronicle_feed_pin",
+    "validate_pinned_row_contracts",
 ]
 
 #: The id Microcosm's own minted artifacts still declare. Frozen at v1 by
@@ -73,6 +87,71 @@ __all__ = [
 CONSUMER_ARTIFACT_SCHEMA_VERSION = MICROCOSM_CONSUMER_ARTIFACT_SCHEMA_VERSION
 ALLOWED_LEDGER_ASSERTIONS = frozenset(("observation", "source_projection"))
 DEFAULT_LEDGER_ASSERTION = "observation"
+CHRONICLE_FEED_RESOURCE = "chronicle_feed.json"
+_FEED_IDENTITY_FIELDS = (
+    "source_commit",
+    "facts_sha256",
+    "manifest_sha256",
+    "artifact_schema_version",
+    "consumer_fact_schema_versions",
+    "consumer_fact_schema_sha256",
+    "fact_row_count",
+)
+
+
+def chronicle_feed_identity(feed_pin: Mapping[str, Any]) -> dict[str, Any]:
+    """Select reviewed source commit and loader-verified fields, excluding prose.
+
+    The source commit is a caller declaration unless the authenticated manifest
+    also carries it; the artifact loader verifies the remaining six fields. An
+    identity naming a row contract :mod:`microcosm.build.chronicle_epoch` does
+    not declare is refused.
+    """
+    missing = sorted(set(_FEED_IDENTITY_FIELDS) - feed_pin.keys())
+    if missing:
+        raise ValueError(
+            f"Chronicle factor feed identity is missing fields: {missing}."
+        )
+    if not isinstance(feed_pin["source_commit"], str) or not feed_pin["source_commit"]:
+        raise ValueError("Chronicle factor feed identity requires a source commit.")
+    require_accepted_consumer_fact_schema_versions(
+        feed_pin["consumer_fact_schema_versions"],
+        subject="Chronicle feed identity",
+    )
+    return {field: feed_pin[field] for field in _FEED_IDENTITY_FIELDS}
+
+
+class LexicalFloat(float):
+    """An opt-in float retaining its authenticated JSON numeric token.
+
+    Request ``lexical_floats=True`` when loading operands for exact arithmetic.
+    The default loader returns plain floats, avoiding the instance and token
+    overhead and preserving compatibility with serializers requiring exact
+    float types. Standard JSON serialization retains the same numeric bytes.
+    """
+
+    __slots__ = ("lexical_token",)
+
+    def __new__(cls, token: str):
+        instance = super().__new__(cls, token)
+        instance.lexical_token = token
+        return instance
+
+    def __reduce__(self):
+        return type(self), (self.lexical_token,)
+
+
+class ChronicleFeedPinMismatchError(ValueError):
+    """A loaded artifact differs from a reviewed feed pin on one field."""
+
+    def __init__(self, field: str, *, expected: Any, actual: Any) -> None:
+        self.field = field
+        self.expected = expected
+        self.actual = actual
+        super().__init__(
+            f"Chronicle feed pin mismatch for {field}: "
+            f"expected {expected!r}, loaded {actual!r}."
+        )
 
 
 @dataclass(frozen=True)
@@ -142,16 +221,13 @@ class LedgerConsumerArtifact:
     def fact_schema_versions(self) -> tuple[str, ...]:
         """Distinct per-row ``schema_version`` values in the feed, sorted.
 
-        Reported verbatim and never gated on — see :func:`_load_fact_rows`.
-        Empty when no row declares one; more than one entry when a feed mixes
-        producers, which the pinned US fiscal-refresh feed already does.
+        Reported verbatim; the loader does not check them (see
+        :func:`_load_fact_rows`). :func:`validate_chronicle_feed_pin` and the
+        UK and US builds' checks (:func:`validate_pinned_row_contracts`) hold
+        them to a reviewed pin and the declared row contracts. Empty when no
+        row declares one; more than one entry when a feed mixes producers.
         """
-        observed = {
-            str(row["schema_version"])
-            for row in self.facts
-            if isinstance(row, dict) and row.get("schema_version") is not None
-        }
-        return tuple(sorted(observed))
+        return consumer_fact_schema_versions_of(self.facts)
 
     def provenance(self) -> dict[str, Any]:
         """Chronicle-artifact identity block for build and release manifests.
@@ -189,18 +265,121 @@ class LedgerConsumerArtifact:
         return payload
 
 
+def validate_chronicle_feed_pin(
+    artifact: LedgerConsumerArtifact, feed_pin: Mapping[str, Any]
+) -> None:
+    """Check all reviewed artifact identities, including observed row metadata.
+
+    The schema digest is the publisher's manifest declaration; the manifest's
+    byte digest authenticates that declaration. Row counts and schema versions
+    must agree with both the loaded rows and the manifest, rather than trusting
+    manifest metadata alone. A full artifact pin cannot authenticate a bare
+    facts file's missing manifest metadata.
+
+    Once the pin, the rows and the manifest agree, every row contract they
+    name must be one :mod:`microcosm.build.chronicle_epoch` declares, so a
+    feed on a newer Chronicle row contract is refused until it is declared.
+    The exact comparison runs first, so a pin that differs from its artifact
+    reports the differing field.
+    """
+
+    if not isinstance(feed_pin, Mapping):
+        raise ValueError("Chronicle feed pin must be an object.")
+    manifest = artifact.manifest or {}
+    observed = {
+        "facts_sha256": artifact.facts_sha256,
+        "manifest_sha256": artifact.manifest_sha256,
+        "artifact_schema_version": artifact.schema_version,
+        "consumer_fact_schema_versions": list(artifact.fact_schema_versions),
+        "consumer_fact_schema_sha256": manifest.get("consumer_fact_schema_sha256"),
+        "fact_row_count": artifact.fact_row_count,
+    }
+    missing = sorted(observed.keys() - feed_pin.keys())
+    if missing:
+        raise ValueError(f"Chronicle feed pin is missing required field(s): {missing}.")
+    for field, actual in observed.items():
+        expected = feed_pin[field]
+        if actual is None or type(actual) is not type(expected) or actual != expected:
+            raise ChronicleFeedPinMismatchError(field, expected=expected, actual=actual)
+    for field in ("consumer_fact_schema_versions", "fact_row_count"):
+        actual = manifest.get(field)
+        expected = feed_pin[field]
+        if type(actual) is not type(expected) or actual != expected:
+            raise ChronicleFeedPinMismatchError(field, expected=expected, actual=actual)
+    require_accepted_consumer_fact_schema_versions(
+        feed_pin["consumer_fact_schema_versions"],
+        subject="Chronicle feed pin and its artifact's rows",
+    )
+
+
+def consumer_fact_schema_versions_of(rows: Iterable[Any]) -> tuple[str, ...]:
+    """Distinct per-row ``schema_version`` values of ``rows``, sorted.
+
+    The same reading as :attr:`LedgerConsumerArtifact.fact_schema_versions`,
+    for tools that parse a feed's rows themselves.
+    """
+    observed = {
+        str(row["schema_version"])
+        for row in rows
+        if isinstance(row, Mapping) and row.get("schema_version") is not None
+    }
+    return tuple(sorted(observed))
+
+
+def validate_pinned_row_contracts(
+    fact_schema_versions: Iterable[str],
+    *,
+    pinned: Sequence[str] | None,
+    subject: str,
+    subset: bool = False,
+) -> None:
+    """Hold the row contracts a consumer's rows carry to the declared set and a pin.
+
+    For builds that hold a feed to its committed pin by digest, where
+    :func:`validate_chronicle_feed_pin` cannot run (the US pin describes a
+    bare feed) or is not used. Every row contract the rows carry must be
+    declared in :mod:`microcosm.build.chronicle_epoch`. With ``pinned``, the
+    rows must also carry exactly the pin's ``consumer_fact_schema_versions``,
+    which a re-pin types by hand; with ``subset``, only row contracts the pin
+    lists, for a reader of part of the pinned feed. ``pinned=None`` is for a
+    feed that is not the pinned one, whose rows are held to the declared row
+    contracts only: a reviewed ``--allow-unpinned-feed`` run, or the UK
+    release certifier given another feed than the committed one (it holds
+    the feed to the operator's digests, not the pin's).
+    """
+    observed = list(fact_schema_versions)
+    require_accepted_consumer_fact_schema_versions(observed, subject=f"{subject} rows")
+    if pinned is None:
+        return
+    expected = list(pinned)
+    if subset:
+        matches = set(observed) <= set(expected)
+    else:
+        matches = set(observed) == set(expected)
+    if not matches:
+        raise ChronicleFeedPinMismatchError(
+            "consumer_fact_schema_versions", expected=expected, actual=observed
+        )
+
+
 def load_ledger_consumer_artifact(
     path: str | Path,
     *,
     expected_facts_sha256: str | None = None,
     expected_manifest_sha256: str | None = None,
+    feed_pin: Mapping[str, Any] | None = None,
+    lexical_floats: bool = False,
 ) -> LedgerConsumerArtifact:
     """Load a Ledger consumer artifact directory or bare consumer-facts file.
 
     Artifact directories are verified against their own manifest: the fact
     file's SHA-256 must match ``manifest.facts_sha256``. The optional
     ``expected_*`` pins let a build config assert the exact artifact it was
-    reviewed against; any mismatch raises before facts are used.
+    reviewed against; any mismatch raises before facts are used. ``feed_pin``
+    additionally checks all six reviewed artifact fields, without replacing
+    the manifest integrity checks or either optional hash check.
+    ``lexical_floats=True`` retains numeric tokens for factor verification;
+    otherwise JSON decimals load as plain ``float`` instances.
     """
     artifact_path = Path(path)
     if not artifact_path.exists():
@@ -250,6 +429,18 @@ def load_ledger_consumer_artifact(
                 "Ledger consumer artifact fact rows do not match the "
                 f"manifest hash: {facts_sha256} != {declared}."
             )
+    # Full-feed-pin refusals keep precedence over the optional legacy hashes.
+    # Without a full pin, reject known digest mismatches before parsing rows.
+    artifact = None
+    if feed_pin is not None:
+        artifact = LedgerConsumerArtifact(
+            path=artifact_path,
+            facts=_load_fact_rows(facts_path, lexical_floats=lexical_floats),
+            facts_sha256=facts_sha256,
+            manifest=manifest,
+            manifest_sha256=manifest_sha256,
+        )
+        validate_chronicle_feed_pin(artifact, feed_pin)
     if expected_facts_sha256 is not None and expected_facts_sha256 != facts_sha256:
         raise ValueError(
             "Ledger consumer facts do not match the pinned hash: "
@@ -267,13 +458,15 @@ def load_ledger_consumer_artifact(
                 f"hash: {manifest_sha256} != {expected_manifest_sha256}."
             )
 
-    return LedgerConsumerArtifact(
-        path=artifact_path,
-        facts=_load_fact_rows(facts_path),
-        facts_sha256=facts_sha256,
-        manifest=manifest,
-        manifest_sha256=manifest_sha256,
-    )
+    if artifact is None:
+        artifact = LedgerConsumerArtifact(
+            path=artifact_path,
+            facts=_load_fact_rows(facts_path, lexical_floats=lexical_floats),
+            facts_sha256=facts_sha256,
+            manifest=manifest,
+            manifest_sha256=manifest_sha256,
+        )
+    return artifact
 
 
 def add_ledger_artifact_args(parser: ArgumentParser) -> None:
@@ -317,7 +510,9 @@ def resolve_ledger_artifact(args: Namespace) -> LedgerConsumerArtifact | None:
     )
 
 
-def _load_fact_rows(path: Path) -> tuple[dict[str, Any], ...]:
+def _load_fact_rows(
+    path: Path, *, lexical_floats: bool = False
+) -> tuple[dict[str, Any], ...]:
     rows: list[dict[str, Any]] = []
     with path.open() as file:
         for line_number, line in enumerate(file, start=1):
@@ -325,7 +520,9 @@ def _load_fact_rows(path: Path) -> tuple[dict[str, Any], ...]:
             if not stripped:
                 continue
             try:
-                row = json.loads(stripped)
+                row = json.loads(
+                    stripped, parse_float=LexicalFloat if lexical_floats else float
+                )
             except json.JSONDecodeError as exc:
                 raise ValueError(
                     f"Invalid Ledger facts JSONL row {line_number}: {exc.msg}"
@@ -335,14 +532,18 @@ def _load_fact_rows(path: Path) -> tuple[dict[str, Any], ...]:
                     f"Invalid Chronicle facts JSONL row {line_number}: expected "
                     f"object, got {type(row).__name__}."
                 )
-            # A per-row ``schema_version`` is carried, never gated on. Real
-            # feeds stamp ids from namespaces that are neither era: the pinned
-            # US fiscal-refresh feed (consumer_facts_buildn_v9_4.jsonl) mixes
-            # 'arch.consumer_fact.v1' with 'ledger.consumer_fact.v1'. Rejecting
-            # an unrecognized id would fail the build closed on its own pinned
-            # input, and rejecting is not what dual acceptance asks for. The
+            # A per-row ``schema_version`` is carried here, not checked. This
+            # loader also serves feeds loaded by path for diagnostics and
+            # experiments, and bare feeds with no manifest, some stamped from
+            # namespaces that are neither era (the July 2026 US fiscal-refresh
+            # feed, consumer_facts_buildn_v9_4.jsonl, mixes
+            # 'arch.consumer_fact.v1' with 'ledger.consumer_fact.v1'). The
             # observed ids are reported through
-            # :attr:`LedgerConsumerArtifact.fact_schema_versions` instead.
+            # :attr:`LedgerConsumerArtifact.fact_schema_versions`; the checks
+            # that hold a reviewed feed to its pin refuse an undeclared one:
+            # :func:`validate_chronicle_feed_pin` for a full pin, and
+            # :func:`validate_pinned_row_contracts` in the UK and US builds,
+            # which hold their feeds to committed pins by digest.
             assertion = row.get("assertion", DEFAULT_LEDGER_ASSERTION)
             if assertion not in ALLOWED_LEDGER_ASSERTIONS:
                 raise ValueError(

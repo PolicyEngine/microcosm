@@ -18,18 +18,23 @@ import pytest
 from hypothesis import HealthCheck, Phase, example, given, settings
 from hypothesis import strategies as st
 
+from microcosm.build.ledger_artifact import ChronicleFeedPinMismatchError
 from microcosm.build.transport.takeup_kernels import (
     BANDS_TYPE,
+    CELL_DIAGNOSTICS_TYPE,
     GAP_TYPE,
     TAKEUP_BANDS,
+    TAKEUP_CELL_DIAGNOSTICS,
     TAKEUP_GAP,
     decode_bands,
+    decode_cell_diagnostics,
     decode_gap,
     register_takeup_kernels,
+    reporting_cell_declarations,
 )
 from microcosm.build.transport.target_kernels import compile_target_surface
 from microcosm.calibrate.matrix import build_constraint_matrix
-from microcosm.frame import Frame
+from microcosm.frame import Frame, WeightKind, Weights
 from microcosm.graph import (
     ArtifactOutput,
     ArtifactType,
@@ -43,6 +48,7 @@ from microcosm.graph import (
 )
 from microcosm.graph import kernel as graph_kernel
 from microcosm.graph.canonical import canonical_json
+from test_support.microcosm_build.chronicle_feed import write_pinned_artifact
 from test_support.microcosm_build.transport_graph import (
     COUNTRY,
     ENTITIES,
@@ -59,6 +65,17 @@ _KEY = "a" * 64
 _FACT_NAMES = ("annual_support", "recipient_units")
 _FACTOR = 52
 _PHASES = tuple(phase for phase in Phase if phase != Phase.explain)
+
+
+def test_gap_enforces_full_feed_pin(tmp_path):
+    rows = [json.loads(line) for line in _facts(tmp_path).read_text().splitlines()]
+    facts, pin = write_pinned_artifact(tmp_path / "artifact", rows)
+    node = _gap_node(chronicle_feed_pin=canonical_text(pin))
+    TAKEUP_GAP.run(_context(node, frame=_frame(), facts=facts))
+    manifest_path = facts / "manifest.json"
+    manifest_path.write_bytes(manifest_path.read_bytes() + b"\n")
+    with pytest.raises(ChronicleFeedPinMismatchError, match="manifest_sha256"):
+        TAKEUP_GAP.run(_context(node, frame=_frame(), facts=facts))
 
 
 def _frame(values=None, weights=None) -> Frame:
@@ -137,12 +154,15 @@ def _gap_node(*, scenario="S0", factors=None, references=None, **params) -> Node
 
 
 def _context(node, *, frame=None, facts=None, artifacts=None) -> KernelContext:
+    weight_entity = node.params.get("weight_entity", "family")
     return KernelContext(
         node=node,
         tables={}
         if frame is None
         else {entity: frame.table(entity).copy() for entity in ENTITIES},
-        weights={} if frame is None else {"family": frame.resolve_weights("family")},
+        weights={}
+        if frame is None
+        else {weight_entity: frame.resolve_weights(weight_entity)},
         strata=pd.Series([], dtype=object, name="stratum")
         if frame is None
         else frame.strata.copy(),
@@ -591,3 +611,190 @@ def test_annualisation_resource_digest_must_be_sha256(tmp_path) -> None:
                 facts=_facts(tmp_path),
             )
         )
+
+
+_SUPPORT_THRESHOLDS = {
+    "minimum_cell_ess": 1,
+    "maximum_contribution_cv": 2,
+    "maximum_single_donor_dollar_share": 1,
+    "target_minimum_cell_ess": 4,
+    "target_maximum_single_donor_dollar_share": 0.5,
+}
+_REPORTING_GRID = {
+    "entity": "family",
+    "measure": "family_support",
+    "period": 2026,
+    "annualisation_factor": 52,
+    "tables": [
+        {
+            "name": "toy_entitlement",
+            "axes": [{"column": "income_decile", "values": [1, 2]}],
+        }
+    ],
+}
+
+
+def _diagnostic_frame(*, lineage=True) -> Frame:
+    original = _frame(values=[1] * 8, weights=[1] * 6)
+    tables = {entity: original.table(entity).copy(deep=True) for entity in ENTITIES}
+    if lineage:
+        tables["household"]["source_household_id"] = pd.array(
+            ["A", "A", "B", "B", "C", "C"], dtype="string"
+        )
+    tables["family"]["income_decile"] = [1, 1, 1, 1, 2, 2, 2, 2]
+    return Frame(
+        tables,
+        original.schema,
+        {"household": Weights(np.ones(6), WeightKind.CALIBRATED)},
+        original.strata.copy(),
+    )
+
+
+def _diagnostic_node(*, scenario="S0", thresholds=None, reporting=True) -> Node:
+    node = _gap_node(
+        scenario=scenario,
+        weight_entity="household",
+        source_household_column="source_household_id",
+        expected_weight_kind="calibrated",
+        cell_support=canonical_text(
+            _SUPPORT_THRESHOLDS if thresholds is None else thresholds
+        ),
+        **({"reporting_cells": canonical_text(_REPORTING_GRID)} if reporting else {}),
+    )
+    return replace(
+        node,
+        artifact_outputs=(
+            ArtifactOutput("gap", GAP_TYPE),
+            ArtifactOutput("cell_diagnostics", CELL_DIAGNOSTICS_TYPE),
+        ),
+    )
+
+
+def _diagnostic_result(tmp_path, *, scenario="S0", thresholds=None, reporting=True):
+    return TAKEUP_GAP.run(
+        _context(
+            _diagnostic_node(
+                scenario=scenario, thresholds=thresholds, reporting=reporting
+            ),
+            frame=_diagnostic_frame(),
+            facts=_facts(tmp_path),
+        )
+    )
+
+
+def test_cell_diagnostics_merge_clones_and_do_not_duplicate_household_unit_support(
+    tmp_path,
+) -> None:
+    result = _diagnostic_result(tmp_path, reporting=False)
+    document = decode_cell_diagnostics(result.artifacts["cell_diagnostics"])
+    cells = document["scenarios"][0]["cells"]
+    assert document["weight_kind"] == "calibrated"
+    assert cells[1]["source_household_ess"] == 3
+    assert cells[1]["positive_contributors"] == 3
+    assert cells[1]["dollar_contribution_ess"] <= 3
+    assert all(not cell["meets_tracked_target"] for cell in cells)
+
+
+def test_failing_cells_are_suppressed_in_gap_and_never_enter_scenario_bands(
+    tmp_path,
+) -> None:
+    thresholds = {**_SUPPORT_THRESHOLDS, "minimum_cell_ess": 100}
+    result = _diagnostic_result(tmp_path, thresholds=thresholds)
+    rows = decode_gap(result.artifacts["gap"])["gaps"]
+    assert all(row["suppressed"] for row in rows)
+    assert all(row[metric] is None for row in rows for metric in ("E", "A", "gap"))
+    cells = decode_cell_diagnostics(result.artifacts["cell_diagnostics"])["scenarios"][
+        0
+    ]["cells"]
+    assert all(cell["suppressed"] for cell in cells)
+    assert decode_bands(_bands([result.artifacts["gap"]]))["bands"] == []
+
+
+def test_entitlement_grid_has_complete_cells_without_invented_subgroup_comparators(
+    tmp_path,
+) -> None:
+    result = _diagnostic_result(tmp_path)
+    rows = [
+        row
+        for row in decode_gap(result.artifacts["gap"])["gaps"]
+        if row.get("reporting_kind") == "entitlement"
+    ]
+    assert {row["name"] for row in rows} == {
+        row["name"] for row in reporting_cell_declarations(_REPORTING_GRID)
+    }
+    assert all(
+        row["A"] is None and row["gap"] is None and row["reference"] is None
+        for row in rows
+    )
+    assert all(row["E"] is not None and not row["suppressed"] for row in rows)
+    bands = decode_bands(_bands([result.artifacts["gap"]]))["bands"]
+    assert {
+        row["metric"] for row in bands if row["name"].startswith("toy_entitlement/")
+    } == {"E"}
+
+
+def test_cell_diagnostics_require_explicit_lineage_and_calibrated_weights(
+    tmp_path,
+) -> None:
+    with pytest.raises(ValueError, match="Missing source-household lineage"):
+        TAKEUP_GAP.run(
+            _context(
+                _diagnostic_node(),
+                frame=_diagnostic_frame(lineage=False),
+                facts=_facts(tmp_path),
+            )
+        )
+    frame = _diagnostic_frame()
+    uncalibrated = Frame(
+        {entity: frame.table(entity) for entity in ENTITIES},
+        frame.schema,
+        {"household": Weights(np.ones(6), WeightKind.DESIGN)},
+        frame.strata,
+    )
+    with pytest.raises(ValueError, match="require.*calibrated"):
+        TAKEUP_GAP.run(
+            _context(_diagnostic_node(), frame=uncalibrated, facts=_facts(tmp_path))
+        )
+
+
+@pytest.mark.parametrize("value", [None, 3])
+def test_reporting_grid_refuses_unclassified_units_instead_of_omitting_them(
+    tmp_path, value
+) -> None:
+    original = _diagnostic_frame()
+    tables = {entity: original.table(entity).copy(deep=True) for entity in ENTITIES}
+    tables["family"].loc[0, "income_decile"] = value
+    frame = Frame(
+        tables,
+        original.schema,
+        {"household": original.weights_for("household")},
+        original.strata,
+    )
+    with pytest.raises(ValueError, match="axis 'income_decile'.*undeclared values"):
+        TAKEUP_GAP.run(
+            _context(_diagnostic_node(), frame=frame, facts=_facts(tmp_path))
+        )
+
+
+def test_cell_diagnostics_collector_requires_every_declared_scenario(tmp_path) -> None:
+    results = [_diagnostic_result(tmp_path, scenario=label) for label in ("S0", "S1")]
+    node = Node(
+        "diagnostics",
+        TAKEUP_CELL_DIAGNOSTICS.ref,
+        population="open",
+        params={
+            "artifact_scenarios": canonical_text({"central": "S0", "alternate": "S1"})
+        },
+        artifact_outputs=(ArtifactOutput("cell_diagnostics", CELL_DIAGNOSTICS_TYPE),),
+    )
+    artifacts = {
+        name: _value(result.artifacts["cell_diagnostics"], CELL_DIAGNOSTICS_TYPE)
+        for name, result in zip(("central", "alternate"), results, strict=True)
+    }
+    with pytest.raises(ValueError, match="missing a declared scenario"):
+        TAKEUP_CELL_DIAGNOSTICS.run(
+            _context(node, artifacts={"central": artifacts["central"]})
+        )
+    result = TAKEUP_CELL_DIAGNOSTICS.run(_context(node, artifacts=artifacts))
+    document = decode_cell_diagnostics(result.artifacts["cell_diagnostics"])
+    assert [row["scenario"] for row in document["scenarios"]] == ["S0", "S1"]

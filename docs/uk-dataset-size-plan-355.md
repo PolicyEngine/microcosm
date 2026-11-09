@@ -8,6 +8,11 @@ on [#870](https://github.com/PolicyEngine/microcosm/pull/870)'s branch. The PR i
 
 ## Decisions retained
 
+(2026-10-13: microcosm#1124 moved the local doctrine to 2,000 epochs and
+`nation_grain_family_equal_sqrt_count`, kept K=15, and gave sized builds the
+defaults π_hi 0.5, refit floor 0.5 and a uniform refit L2 penalty; see
+`uk_runtime/local_doctrine.py`. The values below are this plan's, as decided.)
+
 - Pool generation keeps clone count **K=15**. Requested output households is a
   different parameter, applied after cloning and materialization.
 - The joint surface retains national, constituency and local-authority rows,
@@ -175,15 +180,26 @@ Three should-fix items and two questions changed the machinery:
 - **Zero-valued targets are counted.** `zero_target_rows` in the size receipt says how many compiled rows
   carry a zero target, the case where the contribution prior uses a unit denominator.
 
-## Certification and publication still required
+## Certification and publication
 
-The implementation produces **candidates**, not a new certified UK default.
-A size request refuses `--release-candidate`, and its manifest records
-`releasable=false` even if the diagnostic gate run passes. The dense assembler
-must not interpret a compact candidate as the already reviewed dense line.
-The existing registry, production pointers and pe.py default are unchanged.
+**Ruling of 2026-10-13 (microcosm#1124), as amended for microcosm#1301:** the
+local release ships the 150,000-household selection, searched in the size
+search's own L0 bracket (`local_doctrine.UK_LOCAL_L0_SEARCH_FLOOR`, 1e-10, up
+to 10; out-of-bracket warm starts refused), under the dense line's
+publication requirements
+(every release-blocking gate and the pre-flight; since microcosm#1301 the
+rotated holdout and the incumbent-surface evaluation are opt-in diagnostics,
+and the release records the limitations it does not claim). The whole
+pool is too large for one engine and for the consumers who load the file. A
+release candidate may request exactly that size with the size doctrine
+(`local_doctrine.uk_local_size_doctrine`); the pre-flight checks the size
+receipt, and the assembler takes the sized candidate on the same contract. The
+matched-size scorecard and promotion protocol below are no longer required for
+that size; they stay the route for any other size, which remains candidate-only
+with `releasable=false`. The existing registry, production pointers and pe.py
+default are unchanged.
 
-Before any size can be promoted:
+Before any other size can be promoted:
 
 1. Run the licensed full-input build, retain all gate failures and measure
    local ESS and fit. A nominal 50k size is not guaranteed to clear the floors

@@ -40,10 +40,14 @@ def test_formula_owned_aggregates_are_never_targets() -> None:
     }
 
 
-def test_every_concept_but_liquid_assets_reaches_the_us_engine() -> None:
+def test_every_concept_but_liquid_assets_and_lineage_reaches_the_us_engine() -> None:
     # The engine splits liquid financial assets across three person inputs,
-    # and no transform splits one amount three ways.
-    assert set(MAPPING.unmapped) == {"fact:person.liquid_financial_assets"}
+    # and no transform splits one amount three ways. Original donor lineage
+    # stays build provenance rather than becoming a policy input.
+    assert set(MAPPING.unmapped) == {
+        "fact:person.liquid_financial_assets",
+        "fact:household.source_household_id",
+    }
     reason = MAPPING.unmapped["fact:person.liquid_financial_assets"]
     for name in ("bank_account_assets", "stock_assets", "bond_assets"):
         assert name in reason

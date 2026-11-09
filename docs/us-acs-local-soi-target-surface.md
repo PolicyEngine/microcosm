@@ -66,6 +66,21 @@ Chronicle `b571381` consumer artifact gives the same counts.
 | `irs_soi` | 3,819 | 607 | 30,913 |
 | **Admin specs** | **3,972** | **760** | **31,066** |
 
+**Re-measured 2026-10-04 on `consumer_facts_us_51aa40f.jsonl`** (sha256
+`965a29ac…`, the #940 re-pin: the c5e5bf8 feed plus the TY2023 Historic
+Table 2 state AGI-band facts). The 408 state AGI-band rows (51 states x the
+four bands from $100k up x returns and AGI; `docs/us-fact-to-target.md`,
+"State AGI bands bind as shares of the state total") join `state` and `full`;
+their role is `soi_fiscal_distribution`, so `totals` is unchanged:
+
+| Family | `state` | `totals` | `full` |
+|---|---:|---:|---:|
+| `irs_soi` | 4,227 | 607 | 31,321 |
+| **Admin specs** | **4,380** | **760** | **31,474** |
+
+With the 487 population marginals `state` now calibrates to 4,867 targets.
+The rest of this section describes the 2026-09-22 measurement.
+
 The 487 population marginals (51 states and 436 congressional districts) are
 added on top in every mode, so `state` calibrates to 4,459 targets: Build P's
 set, and Build O's 4,461 minus the Vermont under-$1 taxable-interest pair the
@@ -80,7 +95,7 @@ Historic Table 2 state tables:
 | Record set spec | Specs | Content |
 |---|---:|---|
 | `irs_soi.historic_table_2.state_broad_totals.v1` | 2,397 | 47 all-income-range measures x 51 states, including AGI, income tax, and ACA premium tax credit returns and amounts |
-| `irs_soi.historic_table_2.state_agi_counts_and_amounts.v1` | 912 | taxable interest by AGI band |
+| `irs_soi.historic_table_2.state_agi_counts_and_amounts.v1` | 912 | taxable interest by AGI band (1,320 on the #940 feed: plus 408 TY2023 return-count and AGI bands) |
 | `irs_soi.historic_table_2.state_eitc.v1` | 510 | EITC returns and amounts by number of qualifying children |
 
 It holds no congressional-district SOI row and no row from the TY2023
@@ -307,15 +322,17 @@ change forces the same review.
 |---|---:|
 | `usda_snap` | 102 |
 | `cms_medicaid` (enrollment) | 51 |
-| `irs_soi` state, Historic Table 2 | 3,819 |
+| `irs_soi` state, Historic Table 2 | 4,227 |
 | `irs_soi` state, district file (district-file-only measures) | 302 |
 | `irs_soi` district (427 districts x 51 measures, less 34 banded) | 21,743 |
-| **Admin specs** | **26,017** |
+| **Admin specs** | **26,425** |
 
 Of the 21,743 district rows, 19,181 are rebased to a Historic Table 2 parent
 and 2,562 keep a district-file parent. The 2,189 (state, concept) district
 blocks each sum to their parent within 1e-9. Adding the 487 population
-marginals gives 26,504 targets, before the holdout. The feed-gated test
+marginals gives 26,912 targets, before the holdout. The Historic Table 2
+state count includes the 408 state AGI-band rows of #940 (3,819 and 26,017
+admin specs before the 2026-10-04 re-pin). The feed-gated test
 `test_pinned_feed_state_cd_surface_matches_its_contract` pins these counts
 and the reconciliation.
 

@@ -1,6 +1,9 @@
 """Tests split from packages/microcosm-data/tests/test_release.py."""
 
 # ruff: noqa: F403, F405
+from huggingface_hub.errors import LocalEntryNotFoundError
+
+from test_support.microcosm_data.hub_errors import hub_unreachable
 from test_support.microcosm_data.release import *
 
 
@@ -18,6 +21,7 @@ def test_annual_cut_passes_real_release_contract(
         prepared.filenames
     )
     assert {"annual_2025.h5", "populace_us_2024.h5"}.issubset(prepared.root_artifacts)
+
 
 def test_annual_cut_uploads_exact_artifacts_without_latest(
     hub, release_dir, artifact_root, annual_release
@@ -50,6 +54,7 @@ def test_annual_cut_uploads_exact_artifacts_without_latest(
     assert LATEST_POINTER_PATH not in uploads
     assert LATEST_EVIDENCE_POINTER_PATH not in uploads
 
+
 @pytest.mark.parametrize(
     "option", ["latest", "wrong_tag", "absent_annual", "invalid_base"]
 )
@@ -71,6 +76,7 @@ def test_annual_cut_preserves_publisher_and_base_guards(
             update_latest=option == "latest",
         )
 
+
 def test_pointer_payload_names_every_contract_file() -> None:
     payload = latest_pointer_payload(RELEASE_ID, updated_at="2026-06-11T13:53:15+00:00")
     assert payload["schema_version"] == LATEST_POINTER_SCHEMA_VERSION
@@ -86,6 +92,7 @@ def test_pointer_payload_names_every_contract_file() -> None:
         payload["paths"]["us_source_coverage"]
         == f"releases/{RELEASE_ID}/{US_SOURCE_COVERAGE_DIAGNOSTICS_FILE}"
     )
+
 
 @pytest.mark.parametrize(
     ("release_id", "line", "revision"),
@@ -115,6 +122,7 @@ def test_line_pointer_payload_round_trips_for_each_line_path(
     assert payload["schema_version"] == LATEST_POINTER_SCHEMA_VERSION
     assert pointer_path == f"latest-{line}.json"
 
+
 @pytest.mark.parametrize(
     "line",
     ["", "National", "local-k0", "local-k01", "national/other"],
@@ -122,6 +130,7 @@ def test_line_pointer_payload_round_trips_for_each_line_path(
 def test_line_pointer_path_refuses_invalid_lines(line: str) -> None:
     with pytest.raises(ValueError, match="invalid release line"):
         line_pointer_path(line)
+
 
 @pytest.mark.parametrize(
     "revision",
@@ -142,6 +151,7 @@ def test_line_pointer_payload_refuses_revisions_outside_the_cut_family(
             revision=revision,
         )
 
+
 def test_line_pointer_payload_refuses_a_line_id_mismatch() -> None:
     with pytest.raises(ValueError, match="belongs to line 'national'"):
         line_pointer_payload(
@@ -149,6 +159,7 @@ def test_line_pointer_payload_refuses_a_line_id_mismatch() -> None:
             line="local-k55000",
             revision=UK_NATIONAL_CUT_TAG,
         )
+
 
 @pytest.mark.parametrize(
     ("options", "message"),
@@ -162,7 +173,7 @@ def test_prepare_release_refuses_incompatible_line_modes(
     release_dir: Path, monkeypatch, options: dict, message: str
 ) -> None:
     monkeypatch.setattr(
-        release_module, "validate_release_dir", lambda _path, **_kwargs: None
+        release_module, "validate_release_dir", lambda _path, **_kwargs: []
     )
     monkeypatch.setattr(
         release_module,
@@ -173,22 +184,24 @@ def test_prepare_release_refuses_incompatible_line_modes(
     with pytest.raises(ValueError, match=message):
         release_module.prepare_release(release_dir, line="national", **options)
 
+
 def test_prepare_release_refuses_a_line_id_mismatch(
     release_dir: Path, monkeypatch
 ) -> None:
     monkeypatch.setattr(
-        release_module, "validate_release_dir", lambda _path, **_kwargs: None
+        release_module, "validate_release_dir", lambda _path, **_kwargs: []
     )
 
     with pytest.raises(ValueError, match="belongs to line None"):
         release_module.prepare_release(release_dir, line="national")
+
 
 def test_national_cut_promotes_only_its_line_pointer(
     release_dir: Path, artifact_root: Path, tmp_path: Path, monkeypatch
 ) -> None:
     national = _as_uk_national_line_release(release_dir)
     monkeypatch.setattr(
-        release_module, "validate_release_dir", lambda _path, **_kwargs: None
+        release_module, "validate_release_dir", lambda _path, **_kwargs: []
     )
     alerts: list = []
     monkeypatch.setattr(
@@ -248,6 +261,7 @@ def test_national_cut_promotes_only_its_line_pointer(
         )
     ]
 
+
 def test_local_k_role_moves_only_its_own_line_pointer(tmp_path: Path) -> None:
     from .test_local_area_contract import _write_local_bundle
 
@@ -271,6 +285,244 @@ def test_local_k_role_moves_only_its_own_line_pointer(tmp_path: Path) -> None:
     assert all(path != LATEST_POINTER_PATH for path, _ in uk_hub.uploads)
     assert all(path != LATEST_EVIDENCE_POINTER_PATH for path, _ in uk_hub.uploads)
 
+
+#: A releases.json that the switch to build folders writes; its contents do
+#: not matter to the tagged publisher, which refuses once it exists.
+_RELEASES_RECORD = json.dumps(
+    {"schema_version": 1, "default": None, "releases": {}}
+).encode()
+
+
+@pytest.mark.parametrize(
+    "options",
+    [{}, {"update_latest": False}, {"update_latest": False, "tag_only": True}],
+    ids=["latest", "no-latest", "tag-only"],
+)
+def test_the_tagged_publisher_refuses_a_repository_with_releases_json(
+    hub: FakeHub, release_dir: Path, artifact_root: Path, monkeypatch, options: dict
+) -> None:
+    """Once a repository records its builds in releases.json, the emitter
+    publishes there; a tag or pointer file written beside it would disagree
+    with the record, so the publisher refuses before it writes anything."""
+    monkeypatch.setattr(release_module, "notify_release", lambda *a, **k: None)
+    hub.seed_main_file("releases.json", _RELEASES_RECORD)
+
+    with pytest.raises(ValueError, match="releases.json") as refusal:
+        publish_release(
+            release_dir,
+            "policyengine/populace-us",
+            api=hub,
+            artifact_root=artifact_root,
+            **options,
+        )
+
+    assert "microcosm-publish-release-build" in str(refusal.value)
+    assert hub.tags == []
+    assert hub.uploads == []
+    assert [event for event, _ in hub.events] == []
+
+
+@pytest.mark.parametrize(
+    "status_code", [None, 503, 403], ids=["no-answer", "server-error", "forbidden"]
+)
+def test_the_tagged_publisher_refuses_when_it_cannot_read_releases_json(
+    hub: FakeHub,
+    release_dir: Path,
+    artifact_root: Path,
+    monkeypatch,
+    status_code: int | None,
+) -> None:
+    """Only the Hub's 404 for releases.json lets a publication go on.
+
+    huggingface_hub raises LocalEntryNotFoundError, which is also an
+    EntryNotFoundError and a FileNotFoundError, when it could not ask the
+    Hub: after a 5xx outlasted its retries, or on a 403. A publication that
+    went on could write a tag and a pointer file beside a releases.json.
+    """
+    monkeypatch.setattr(release_module, "notify_release", lambda *a, **k: None)
+    download = hub.hf_hub_download
+
+    def unreachable(*, repo_id, filename, repo_type, revision=None):
+        if filename == "releases.json":
+            raise hub_unreachable(repo_id, filename, revision, status_code=status_code)
+        return download(
+            repo_id=repo_id, filename=filename, repo_type=repo_type, revision=revision
+        )
+
+    monkeypatch.setattr(hub, "hf_hub_download", unreachable)
+
+    with pytest.raises(LocalEntryNotFoundError):
+        publish_release(
+            release_dir,
+            "policyengine/populace-us",
+            api=hub,
+            artifact_root=artifact_root,
+        )
+
+    assert hub.tags == []
+    assert hub.uploads == []
+    assert [event for event, _ in hub.events] == []
+
+
+def test_the_tagged_publisher_refuses_a_uk_build_folder_release(
+    release_dir: Path, artifact_root: Path, tmp_path: Path, monkeypatch
+) -> None:
+    """A build in the build-folder layout pins no revision, so the tagged
+    publisher, which publishes a revision per build, refuses it before any
+    Hub request."""
+    national = _as_uk_national_build_folder_release(release_dir)
+    monkeypatch.setattr(
+        release_module, "validate_release_dir", lambda _path, **_kwargs: []
+    )
+    hub = _uk_hub(tmp_path)
+    events_before = list(hub.events)
+
+    with pytest.raises(ValueError):
+        release_module.prepare_release(national, artifact_root=artifact_root)
+    with pytest.raises(ValueError):
+        publish_release(
+            national,
+            "policyengine/populace-uk-private",
+            api=hub,
+            artifact_root=artifact_root,
+            update_latest=False,
+        )
+
+    assert hub.events == events_before
+    assert hub.tags == []
+    assert hub.uploads == []
+
+
+def test_the_tagged_publisher_refuses_a_uk_promotion_once_releases_json_exists(
+    release_dir: Path, artifact_root: Path, tmp_path: Path, monkeypatch
+) -> None:
+    national = _as_uk_national_line_release(release_dir)
+    monkeypatch.setattr(
+        release_module, "validate_release_dir", lambda _path, **_kwargs: []
+    )
+    monkeypatch.setattr(release_module, "notify_release", lambda *a, **k: None)
+    hub = _uk_hub(tmp_path)
+    hub.seed_main_file("releases.json", _RELEASES_RECORD)
+
+    with pytest.raises(ValueError, match="releases.json"):
+        publish_release(
+            national,
+            "policyengine/populace-uk-private",
+            api=hub,
+            artifact_root=artifact_root,
+            tag_name=UK_NATIONAL_CUT_TAG,
+            line="national",
+        )
+
+    assert hub.tags == []
+    assert line_pointer_path("national") not in hub._commits[hub._refs["main"]]
+
+
+def test_prepare_build_folder_release_lists_each_file_with_its_role(
+    release_dir: Path, artifact_root: Path, monkeypatch
+) -> None:
+    national = _as_uk_national_build_folder_release(release_dir)
+    monkeypatch.setattr(
+        release_module, "validate_release_dir", lambda _path, **_kwargs: []
+    )
+
+    prepared = release_module.prepare_build_folder_release(
+        national, artifact_root=artifact_root
+    )
+
+    assert prepared.repository == "policyengine/populace-uk-private"
+    assert (prepared.release, prepared.build) == (
+        UK_NATIONAL_RELEASE_ID,
+        UK_NATIONAL_BUILD,
+    )
+    assert prepared.release_role == "national"
+    files = {item.name: item for item in prepared.files}
+    assert {name: item.role for name, item in files.items()} == {
+        "release_manifest.json": "release_manifest",
+        "build_manifest.json": "build_manifest",
+        "populace_us_2024.h5": "dataset",
+        "populace_us_2024_calibration.npz": "calibration_weights",
+        "calibration_diagnostics.json": "calibration_diagnostics",
+        "us_source_coverage.json": "us_source_coverage",
+        "release_certification.json": "release_certification",
+        **{name: key for key, name in GATE_EVIDENCE_FILES.items()},
+        US_STORED_INPUTS_EVIDENCE_FILE: US_STORED_INPUTS_EVIDENCE_KEY,
+    }
+    assert files["populace_us_2024.h5"].path == artifact_root / "populace_us_2024.h5"
+    assert files["build_manifest.json"].path == national / "build_manifest.json"
+    for item in prepared.files:
+        assert item.sha256 == _sha256(item.path)
+        assert item.bytes == item.path.stat().st_size
+
+
+def test_prepare_build_folder_release_publishes_the_checksum_ledger(
+    tmp_path: Path,
+) -> None:
+    from .test_local_area_contract import _write_local_bundle
+
+    release_dir = _write_local_bundle(
+        tmp_path, release_id=UK_LOCAL_RELEASE_ID, build_folder=True
+    )
+
+    prepared = release_module.prepare_build_folder_release(
+        release_dir, artifact_root=tmp_path
+    )
+
+    roles = {item.name: item.role for item in prepared.files}
+    assert roles["sha256sums.txt"] == "checksums"
+    assert roles["populace_us_2024_acs_local.h5"] == "dataset"
+    assert prepared.release_role == "local_area"
+
+
+def test_prepare_build_folder_release_refuses_a_tagged_release(
+    release_dir: Path, artifact_root: Path
+) -> None:
+    with pytest.raises(ValueError, match="does not publish into build folders"):
+        release_module.prepare_build_folder_release(
+            release_dir, artifact_root=artifact_root
+        )
+
+
+def test_prepare_build_folder_release_refuses_changed_or_missing_files(
+    release_dir: Path, artifact_root: Path, monkeypatch
+) -> None:
+    national = _as_uk_national_build_folder_release(release_dir)
+    monkeypatch.setattr(
+        release_module, "validate_release_dir", lambda _path, **_kwargs: []
+    )
+    (artifact_root / "populace_us_2024.h5").write_bytes(b"other bytes")
+    with pytest.raises(ValueError, match="populace_us_2024.h5 has sha256"):
+        release_module.prepare_build_folder_release(
+            national, artifact_root=artifact_root
+        )
+    (artifact_root / "populace_us_2024.h5").unlink()
+    with pytest.raises(FileNotFoundError, match="populace_us_2024.h5"):
+        release_module.prepare_build_folder_release(
+            national, artifact_root=artifact_root
+        )
+
+
+def test_prepare_build_folder_release_publishes_to_one_repository(
+    release_dir: Path, artifact_root: Path, monkeypatch
+) -> None:
+    national = _as_uk_national_build_folder_release(release_dir)
+    monkeypatch.setattr(
+        release_module, "validate_release_dir", lambda _path, **_kwargs: []
+    )
+    with pytest.raises(ValueError, match="names policyengine/populace-uk-private"):
+        release_module.prepare_build_folder_release(
+            national, artifact_root=artifact_root, repository="policyengine/other"
+        )
+    manifest_path = national / "release_manifest.json"
+    manifest = json.loads(manifest_path.read_text())
+    manifest["artifacts"]["calibration_diagnostics"]["repo_id"] = "policyengine/other"
+    manifest_path.write_text(json.dumps(manifest))
+    with pytest.raises(ValueError, match="more than one repository"):
+        release_module.prepare_build_folder_release(
+            national, artifact_root=artifact_root
+        )
+
+
 def test_line_promotion_alert_names_the_line_and_revision() -> None:
     from microcosm.data.slack import notify_release
 
@@ -287,6 +539,7 @@ def test_line_promotion_alert_names_the_line_and_revision() -> None:
     assert "line promoted" in headline
     assert "national" in headline
     assert UK_NATIONAL_CUT_TAG in headline
+
 
 def test_publish_release_announces_after_pointer(
     hub: FakeHub, release_dir: Path, artifact_root: Path, monkeypatch
@@ -316,6 +569,7 @@ def test_publish_release_announces_after_pointer(
         )
     ]
 
+
 def test_publish_release_notify_false_skips_alert(
     hub: FakeHub, release_dir: Path, artifact_root: Path, monkeypatch
 ) -> None:
@@ -331,6 +585,7 @@ def test_publish_release_notify_false_skips_alert(
         notify=False,
     )
     assert calls == []
+
 
 def test_publish_uploads_pointer_last(
     hub: FakeHub, release_dir: Path, artifact_root: Path
@@ -348,6 +603,7 @@ def test_publish_uploads_pointer_last(
     assert final_commit["paths"][-1] == LATEST_POINTER_PATH
     for filename in required_release_files(RELEASE_ID):
         assert f"releases/{RELEASE_ID}/{filename}" in final_commit["paths"][:-1]
+
 
 def test_publish_no_latest_never_touches_pointer(
     hub: FakeHub, release_dir: Path, artifact_root: Path
@@ -378,6 +634,7 @@ def test_publish_no_latest_never_touches_pointer(
         "populace_us_2024.h5",
         "populace_us_2024_calibration.npz",
     }.issubset(final_commit["paths"])
+
 
 def test_exact_k_tag_only_publish_never_mutates_main(
     hub: FakeHub, release_dir: Path, artifact_root: Path
@@ -454,6 +711,7 @@ def test_exact_k_tag_only_publish_never_mutates_main(
             repo_type="dataset",
         )
 
+
 @pytest.mark.parametrize("tag_only", [True, False], ids=["tag-only", "no-latest"])
 def test_us_default_flip_after_a_non_default_publish_reuses_the_release_tag(
     hub: FakeHub, release_dir: Path, artifact_root: Path, tag_only: bool, monkeypatch
@@ -503,6 +761,7 @@ def test_us_default_flip_after_a_non_default_publish_reuses_the_release_tag(
     pointer = latest_release("policyengine/populace-us", api=hub)
     assert pointer.release_id == RELEASE_ID
 
+
 def test_us_default_flip_refuses_a_release_tag_that_describes_another_cut(
     hub: FakeHub, release_dir: Path, artifact_root: Path, monkeypatch
 ) -> None:
@@ -539,6 +798,7 @@ def test_us_default_flip_refuses_a_release_tag_that_describes_another_cut(
     assert hub.events[events_after_cut:] == []
     assert hub._refs["main"] == main_before_flip
 
+
 @pytest.mark.parametrize(
     ("publish_options", "message"),
     [
@@ -569,6 +829,7 @@ def test_tag_only_rejects_unsafe_modes_before_remote_mutation(
     assert hub.events == []
     assert hub.uploads == []
 
+
 def test_publish_commits_immutable_release_before_root_and_pointer(
     hub: FakeHub, release_dir: Path, artifact_root: Path
 ) -> None:
@@ -598,10 +859,11 @@ def test_publish_commits_immutable_release_before_root_and_pointer(
             for filename in required_release_files(RELEASE_ID)
         },
         # The gate verdicts are manifest artifacts, so the immutable release
-        # commit carries them without --extra-file.
+        # commit carries them without --extra-file, the stored-input verdict
+        # the contract requires (microcosm#1034) among them.
         *{
             f"releases/{RELEASE_ID}/{filename}"
-            for filename in GATE_EVIDENCE_FILES.values()
+            for filename in (*GATE_EVIDENCE_FILES.values(), "stored_inputs.json")
         },
     }
     assert LATEST_POINTER_PATH not in immutable["paths"]
@@ -619,6 +881,7 @@ def test_publish_commits_immutable_release_before_root_and_pointer(
         LATEST_POINTER_PATH,
     ]
     assert hub.tags == [{"tag": RELEASE_ID, "revision": immutable["commit"]}]
+
 
 def test_failed_main_commit_leaves_root_and_pointer_unchanged(
     hub: FakeHub, release_dir: Path, artifact_root: Path
@@ -643,6 +906,7 @@ def test_failed_main_commit_leaves_root_and_pointer_unchanged(
     assert hub.tags == [{"tag": RELEASE_ID, "revision": "commit-1"}]
     assert hub.events[-1][0] == "create_commit_failed"
 
+
 def test_non_atomic_backend_is_refused_before_remote_mutation(
     hub: FakeHub, release_dir: Path, artifact_root: Path
 ) -> None:
@@ -656,6 +920,7 @@ def test_non_atomic_backend_is_refused_before_remote_mutation(
 
     assert hub.events == []
     assert hub.uploads == []
+
 
 def test_publish_uploads_manifest_release_diagnostics_from_release_dir(
     hub: FakeHub, release_dir: Path, artifact_root: Path
@@ -687,6 +952,7 @@ def test_publish_uploads_manifest_release_diagnostics_from_release_dir(
     assert uploaded_paths.index(release_path) < uploaded_paths.index(
         LATEST_POINTER_PATH
     )
+
 
 def test_publish_uploads_ssi_take_up_diagnostics_without_extra_files(
     hub: FakeHub, release_dir: Path, artifact_root: Path
@@ -720,6 +986,7 @@ def test_publish_uploads_ssi_take_up_diagnostics_without_extra_files(
         LATEST_POINTER_PATH
     )
 
+
 def test_publish_requires_artifact_root_for_root_artifacts(
     hub: FakeHub, release_dir: Path
 ) -> None:
@@ -730,6 +997,7 @@ def test_publish_requires_artifact_root_for_root_artifacts(
             api=hub,
         )
     assert hub.uploads == []
+
 
 def test_missing_root_artifact_uploads_nothing(
     hub: FakeHub, release_dir: Path, artifact_root: Path
@@ -744,6 +1012,7 @@ def test_missing_root_artifact_uploads_nothing(
         )
     assert hub.uploads == []
 
+
 def test_root_artifact_hash_mismatch_uploads_nothing(
     hub: FakeHub, release_dir: Path, artifact_root: Path
 ) -> None:
@@ -756,6 +1025,7 @@ def test_root_artifact_hash_mismatch_uploads_nothing(
             artifact_root=artifact_root,
         )
     assert hub.uploads == []
+
 
 def test_release_tag_is_created_before_pointer(
     hub: FakeHub, release_dir: Path, artifact_root: Path
@@ -776,6 +1046,7 @@ def test_release_tag_is_created_before_pointer(
     ]
     assert hub.uploads[-1][0] == LATEST_POINTER_PATH
 
+
 def test_release_id_artifact_revision_requires_release_tag(
     hub: FakeHub, release_dir: Path, artifact_root: Path
 ) -> None:
@@ -789,6 +1060,7 @@ def test_release_id_artifact_revision_requires_release_tag(
         )
     assert hub.uploads == []
     assert hub.tags == []
+
 
 def test_release_id_artifact_revision_rejects_tag_name_override(
     hub: FakeHub, release_dir: Path, artifact_root: Path
@@ -804,6 +1076,7 @@ def test_release_id_artifact_revision_rejects_tag_name_override(
     assert hub.uploads == []
     assert hub.tags == []
 
+
 def test_per_cut_artifact_revision_publishes_matching_tag_without_latest(
     hub: FakeHub,
     release_dir: Path,
@@ -817,7 +1090,7 @@ def test_per_cut_artifact_revision_publishes_matching_tag_without_latest(
         artifact["revision"] = cut_tag
     manifest_path.write_text(json.dumps(manifest))
     monkeypatch.setattr(
-        release_module, "validate_release_dir", lambda _path, **_kwargs: None
+        release_module, "validate_release_dir", lambda _path, **_kwargs: []
     )
 
     publish_release(
@@ -832,6 +1105,7 @@ def test_per_cut_artifact_revision_publishes_matching_tag_without_latest(
     assert hub.tags == [{"tag": cut_tag, "revision": "commit-1"}]
     assert all(path != LATEST_POINTER_PATH for path, _payload in hub.uploads)
 
+
 def test_per_cut_artifact_revision_refuses_dangling_default_tag(
     hub: FakeHub,
     release_dir: Path,
@@ -845,7 +1119,7 @@ def test_per_cut_artifact_revision_refuses_dangling_default_tag(
         artifact["revision"] = cut_tag
     manifest_path.write_text(json.dumps(manifest))
     monkeypatch.setattr(
-        release_module, "validate_release_dir", lambda _path, **_kwargs: None
+        release_module, "validate_release_dir", lambda _path, **_kwargs: []
     )
 
     with pytest.raises(ValueError, match="uniform per-cut artifact revision"):
@@ -857,6 +1131,7 @@ def test_per_cut_artifact_revision_refuses_dangling_default_tag(
         )
     assert hub.uploads == []
     assert hub.tags == []
+
 
 def test_unreadable_artifact_revisions_refuse_instead_of_vanishing(
     hub: FakeHub,
@@ -873,7 +1148,7 @@ def test_unreadable_artifact_revisions_refuse_instead_of_vanishing(
         artifact["revision"] = 123
     manifest_path.write_text(json.dumps(manifest))
     monkeypatch.setattr(
-        release_module, "validate_release_dir", lambda _path, **_kwargs: None
+        release_module, "validate_release_dir", lambda _path, **_kwargs: []
     )
 
     with pytest.raises(ValueError, match="missing or non-string revisions"):
@@ -886,6 +1161,7 @@ def test_unreadable_artifact_revisions_refuse_instead_of_vanishing(
     assert hub.uploads == []
     assert hub.tags == []
 
+
 def test_empty_artifact_revisions_refuse_publication(
     hub: FakeHub,
     release_dir: Path,
@@ -897,7 +1173,7 @@ def test_empty_artifact_revisions_refuse_publication(
     manifest["artifacts"] = {}
     manifest_path.write_text(json.dumps(manifest))
     monkeypatch.setattr(
-        release_module, "validate_release_dir", lambda _path, **_kwargs: None
+        release_module, "validate_release_dir", lambda _path, **_kwargs: []
     )
 
     with pytest.raises(ValueError, match="declares no artifact revisions"):
@@ -909,6 +1185,7 @@ def test_empty_artifact_revisions_refuse_publication(
         )
     assert hub.uploads == []
     assert hub.tags == []
+
 
 def test_per_cut_tag_refuses_latest_promotion(
     hub: FakeHub,
@@ -926,7 +1203,7 @@ def test_per_cut_tag_refuses_latest_promotion(
         artifact["revision"] = cut_tag
     manifest_path.write_text(json.dumps(manifest))
     monkeypatch.setattr(
-        release_module, "validate_release_dir", lambda _path, **_kwargs: None
+        release_module, "validate_release_dir", lambda _path, **_kwargs: []
     )
 
     with pytest.raises(ValueError, match="inspect-only"):
@@ -941,11 +1218,13 @@ def test_per_cut_tag_refuses_latest_promotion(
     assert hub.tags == []
     assert hub.events == []
 
+
 def test_invalid_release_uploads_nothing(hub: FakeHub, release_dir: Path) -> None:
     (release_dir / "build_manifest.json").unlink()
     with pytest.raises(ReleaseContractError):
         publish_release(release_dir, "policyengine/populace-us", api=hub)
     assert hub.uploads == []
+
 
 def test_invalid_calibration_diagnostics_uploads_nothing(
     hub: FakeHub, release_dir: Path
@@ -954,6 +1233,7 @@ def test_invalid_calibration_diagnostics_uploads_nothing(
     with pytest.raises(ReleaseContractError, match="calibration_diagnostics"):
         publish_release(release_dir, "policyengine/populace-us", api=hub)
     assert hub.uploads == []
+
 
 def test_failed_diagnostics_publish_dataset_and_omit_diagnostics_path(
     hub: FakeHub,
@@ -1001,6 +1281,7 @@ def test_nonstandard_nan_calibration_diagnostics_uploads_nothing(
         publish_release(release_dir, "policyengine/populace-us", api=hub)
     assert hub.uploads == []
 
+
 def test_extra_files_ride_along_before_the_pointer(
     hub: FakeHub, release_dir: Path, artifact_root: Path
 ) -> None:
@@ -1016,6 +1297,7 @@ def test_extra_files_ride_along_before_the_pointer(
     assert extra in uploaded_paths
     assert uploaded_paths.index(extra) < uploaded_paths.index(LATEST_POINTER_PATH)
 
+
 def test_missing_extra_file_fails_loudly(hub: FakeHub, release_dir: Path) -> None:
     with pytest.raises(FileNotFoundError, match="support_audit"):
         publish_release(
@@ -1025,6 +1307,7 @@ def test_missing_extra_file_fails_loudly(hub: FakeHub, release_dir: Path) -> Non
             extra_files=("support_audit.json",),
         )
     assert hub.uploads == []
+
 
 def test_publish_then_resolve_round_trips(
     hub: FakeHub, release_dir: Path, artifact_root: Path
@@ -1043,6 +1326,7 @@ def test_publish_then_resolve_round_trips(
     assert pointer.updated_at == "2026-06-11T13:53:15+00:00"
     assert pointer.paths == published["paths"]
 
+
 @pytest.mark.parametrize("field", ["line", "revision"])
 def test_latest_release_refuses_line_pointer_fields(hub: FakeHub, field: str) -> None:
     payload = latest_pointer_payload(RELEASE_ID)
@@ -1051,6 +1335,7 @@ def test_latest_release_refuses_line_pointer_fields(hub: FakeHub, field: str) ->
 
     with pytest.raises(ValueError, match=field):
         latest_release("policyengine/populace-us", api=hub)
+
 
 @pytest.mark.parametrize(
     ("field", "value", "message"),
@@ -1076,6 +1361,7 @@ def test_latest_line_release_refuses_foreign_pointer_fields(
     with pytest.raises(ValueError, match=message):
         latest_line_release("policyengine/populace-us", line="national", api=hub)
 
+
 def test_latest_line_release_refuses_a_release_from_another_line(
     hub: FakeHub,
 ) -> None:
@@ -1086,6 +1372,7 @@ def test_latest_line_release_refuses_a_release_from_another_line(
     with pytest.raises(ValueError, match="belongs to line 'local-k55000'"):
         latest_line_release("policyengine/populace-us", line="national", api=hub)
 
+
 def test_future_pointer_schema_is_refused(hub: FakeHub) -> None:
     hub.seed_main_file(
         LATEST_POINTER_PATH,
@@ -1094,6 +1381,7 @@ def test_future_pointer_schema_is_refused(hub: FakeHub) -> None:
     with pytest.raises(ValueError, match="Upgrade microcosm-data"):
         latest_release("policyengine/populace-us", api=hub)
 
+
 def test_pointer_without_release_id_is_refused(hub: FakeHub) -> None:
     hub.seed_main_file(
         LATEST_POINTER_PATH,
@@ -1101,6 +1389,7 @@ def test_pointer_without_release_id_is_refused(hub: FakeHub) -> None:
     )
     with pytest.raises(ValueError, match="release_id"):
         latest_release("policyengine/populace-us", api=hub)
+
 
 def test_pointer_without_contract_paths_is_refused(hub: FakeHub) -> None:
     hub.seed_main_file(
@@ -1116,6 +1405,7 @@ def test_pointer_without_contract_paths_is_refused(hub: FakeHub) -> None:
     with pytest.raises(ValueError, match="paths"):
         latest_release("policyengine/populace-us", api=hub)
 
+
 def test_pointer_with_swapped_contract_path_is_refused(hub: FakeHub) -> None:
     payload = latest_pointer_payload(RELEASE_ID)
     payload["paths"]["build_manifest"] = (
@@ -1126,6 +1416,7 @@ def test_pointer_with_swapped_contract_path_is_refused(hub: FakeHub) -> None:
     with pytest.raises(ValueError, match="malformed=\\['build_manifest'\\]"):
         latest_release("policyengine/populace-us", api=hub)
 
+
 def test_evidence_pointer_payload_mirrors_the_certified_payload() -> None:
     updated_at = "2026-07-22T13:53:15+00:00"
     certified_shape = latest_pointer_payload(EVIDENCE_RELEASE_ID, updated_at=updated_at)
@@ -1133,6 +1424,7 @@ def test_evidence_pointer_payload_mirrors_the_certified_payload() -> None:
         EVIDENCE_RELEASE_ID, updated_at=updated_at
     )
     assert payload == {**certified_shape, "tier": "evidence"}
+
 
 def test_publish_evidence_release_never_touches_the_certified_pointer(
     hub: FakeHub, evidence_release_dir: Path, artifact_root: Path
@@ -1159,6 +1451,7 @@ def test_publish_evidence_release_never_touches_the_certified_pointer(
     assert published["tier"] == "evidence"
     assert published["release_id"] == EVIDENCE_RELEASE_ID
 
+
 def test_publish_evidence_release_refuses_a_certified_release_dir(
     hub: FakeHub, release_dir: Path, artifact_root: Path
 ) -> None:
@@ -1174,6 +1467,7 @@ def test_publish_evidence_release_refuses_a_certified_release_dir(
         )
     assert hub.uploads == []
 
+
 def test_certified_publish_refuses_an_evidence_release_dir(
     hub: FakeHub, evidence_release_dir: Path, artifact_root: Path
 ) -> None:
@@ -1185,6 +1479,7 @@ def test_certified_publish_refuses_an_evidence_release_dir(
             artifact_root=artifact_root,
         )
     assert hub.uploads == []
+
 
 def test_publish_evidence_no_latest_skips_the_evidence_pointer(
     hub: FakeHub, evidence_release_dir: Path, artifact_root: Path
@@ -1205,6 +1500,7 @@ def test_publish_evidence_no_latest_skips_the_evidence_pointer(
         final_commit["message"]
         == f"Publish non-default evidence release {EVIDENCE_RELEASE_ID}"
     )
+
 
 def test_publish_evidence_release_announces_the_tier(
     hub: FakeHub, evidence_release_dir: Path, artifact_root: Path, monkeypatch
@@ -1233,6 +1529,7 @@ def test_publish_evidence_release_announces_the_tier(
         )
     ]
 
+
 def test_publish_then_latest_evidence_release_round_trips(
     hub: FakeHub, evidence_release_dir: Path, artifact_root: Path
 ) -> None:
@@ -1255,6 +1552,7 @@ def test_publish_then_latest_evidence_release_round_trips(
         == f"releases/{EVIDENCE_RELEASE_ID}/build_manifest.json"
     )
 
+
 def test_latest_release_refuses_an_evidence_tier_pointer(hub: FakeHub) -> None:
     """Tier defense on the certified consumer: if an evidence payload ever
     lands in latest.json, readers refuse it rather than certify it."""
@@ -1264,6 +1562,7 @@ def test_latest_release_refuses_an_evidence_tier_pointer(hub: FakeHub) -> None:
     with pytest.raises(ValueError, match="tier"):
         latest_release("policyengine/populace-us", api=hub)
 
+
 def test_latest_evidence_release_requires_the_evidence_tier(hub: FakeHub) -> None:
     payload = latest_pointer_payload(EVIDENCE_RELEASE_ID)
     hub.seed_main_file(LATEST_EVIDENCE_POINTER_PATH, json.dumps(payload).encode())
@@ -1271,12 +1570,14 @@ def test_latest_evidence_release_requires_the_evidence_tier(hub: FakeHub) -> Non
     with pytest.raises(ValueError, match="tier"):
         latest_evidence_release("policyengine/populace-us", api=hub)
 
+
 def test_latest_evidence_release_requires_the_id_segment(hub: FakeHub) -> None:
     payload = latest_evidence_pointer_payload(RELEASE_ID)
     hub.seed_main_file(LATEST_EVIDENCE_POINTER_PATH, json.dumps(payload).encode())
 
     with pytest.raises(ValueError, match="-evidence-"):
         latest_evidence_release("policyengine/populace-us", api=hub)
+
 
 def test_certified_latest_pointer_keeps_its_certified_shape(hub: FakeHub) -> None:
     """The certified pointer payload gains no tier field — its bytes are the
@@ -1286,6 +1587,7 @@ def test_certified_latest_pointer_keeps_its_certified_shape(hub: FakeHub) -> Non
     hub.seed_main_file(LATEST_POINTER_PATH, json.dumps(payload).encode())
     pointer = latest_release("policyengine/populace-us", api=hub)
     assert pointer.tier == "certified"
+
 
 def test_certified_publish_never_touches_the_evidence_pointer(
     hub: FakeHub, release_dir: Path, artifact_root: Path
@@ -1302,6 +1604,7 @@ def test_certified_publish_never_touches_the_evidence_pointer(
     assert any(path == LATEST_POINTER_PATH for path, _ in hub.uploads)
     assert all(path != LATEST_EVIDENCE_POINTER_PATH for path, _ in hub.uploads)
 
+
 def test_latest_release_refuses_any_tier_field(hub: FakeHub) -> None:
     """No certified producer writes a tier field; even 'certified' or null is
     foreign and refused rather than consumed as the default."""
@@ -1311,6 +1614,7 @@ def test_latest_release_refuses_any_tier_field(hub: FakeHub) -> None:
         hub.seed_main_file(LATEST_POINTER_PATH, json.dumps(payload).encode())
         with pytest.raises(ValueError, match="tier"):
             latest_release("policyengine/populace-us", api=hub)
+
 
 def test_publish_refuses_root_artifacts_at_pointer_paths(
     hub: FakeHub, release_dir: Path, evidence_release_dir: Path, artifact_root: Path
@@ -1343,6 +1647,7 @@ def test_publish_refuses_root_artifacts_at_pointer_paths(
         )
     assert hub.uploads == []
 
+
 @pytest.mark.parametrize(
     "pointer_path",
     [
@@ -1369,6 +1674,7 @@ def test_publish_refuses_root_artifacts_at_every_reserved_line_pointer_path(
 
     assert hub.uploads == []
 
+
 def test_publish_refuses_unclean_root_artifact_paths(
     hub: FakeHub, evidence_release_dir: Path, artifact_root: Path
 ) -> None:
@@ -1388,6 +1694,7 @@ def test_publish_refuses_unclean_root_artifact_paths(
         )
     assert hub.uploads == []
 
+
 def test_publish_refuses_path_components_in_extra_files(
     hub: FakeHub, release_dir: Path, artifact_root: Path
 ) -> None:
@@ -1404,6 +1711,7 @@ def test_publish_refuses_path_components_in_extra_files(
             extra_files=("../escape.json",),
         )
     assert hub.uploads == []
+
 
 @pytest.mark.parametrize(
     ("condition", "error_type", "message"),
@@ -1496,6 +1804,7 @@ def test_cli_preflight_matches_publisher_guards_before_hub_activity(
     assert hub.uploads == []
     assert hub.tags == []
 
+
 def test_cli_valid_preflight_performs_no_publication_or_notification(
     release_dir: Path, artifact_root: Path, monkeypatch, capsys
 ) -> None:
@@ -1519,6 +1828,7 @@ def test_cli_valid_preflight_performs_no_publication_or_notification(
     )
     assert json.loads(capsys.readouterr().out) == {"valid": True, "published": False}
 
+
 def test_preflight_prepares_the_bound_gate_evidence_for_upload(
     release_dir: Path, artifact_root: Path
 ) -> None:
@@ -1530,6 +1840,143 @@ def test_preflight_prepares_the_bound_gate_evidence_for_upload(
 
     assert set(GATE_EVIDENCE_FILES.values()) <= set(prepared.filenames)
     assert not set(GATE_EVIDENCE_FILES.values()) & set(prepared.root_artifacts)
+
+
+def test_publication_repeats_the_contract_warnings_and_proceeds(
+    release_dir: Path, artifact_root: Path, monkeypatch
+) -> None:
+    """A contract warning is repeated, not refused."""
+    monkeypatch.setattr(
+        release_module,
+        "validate_release_dir",
+        lambda _path, **_kwargs: ["synthetic.json carries a synthetic finding"],
+    )
+
+    with pytest.warns(UserWarning, match="release contract: synthetic.json carries"):
+        prepared = release_module.prepare_release(
+            release_dir, artifact_root=artifact_root
+        )
+
+    assert prepared.release_id == release_dir.name
+    assert prepared.contract_warnings == ("synthetic.json carries a synthetic finding",)
+
+
+#: Synthetic contract warnings, worded as the dense line's disclosure walk
+#: worded them until María's ruling of 2026-10-26 dropped it: a file and the
+#: paths in it, never a value (microcosm#1301).
+_CONTRACT_WARNINGS = [
+    "synthetic.json carries 1 per-area support figure(s) (rows, ESS or distinct "
+    "sources), which a dense release should withhold (microcosm#1301); first "
+    "at ['areas[0].rows'].",
+    "other.json cannot be read and walked as JSON, so the disclosure walk "
+    "cannot rule out a per-area support figure in it (microcosm#1301).",
+]
+
+
+class _TagMessageHub(FakeHub):
+    """The fake Hub, keeping each tag's message as the Hub's annotated tags do."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.tag_messages: dict[str, str | None] = {}
+
+    def create_tag(self, *, tag_message=None, **kwargs) -> None:
+        super().create_tag(**kwargs)
+        self.tag_messages[kwargs["tag"]] = tag_message
+
+
+def test_preflight_verdict_lists_the_contract_warnings(
+    release_dir: Path, artifact_root: Path, monkeypatch, capsys
+) -> None:
+    """--preflight-only puts the contract's warnings in its JSON verdict, not
+    only on stderr, and still passes: the walk warns, never refuses (review
+    of microcosm#1307)."""
+    monkeypatch.setattr(
+        release_module,
+        "validate_release_dir",
+        lambda _path, **_kwargs: _CONTRACT_WARNINGS,
+    )
+    monkeypatch.setattr(release_module, "_hf_api", lambda: pytest.fail("Hub client"))
+
+    with pytest.warns(UserWarning, match="release contract: synthetic.json carries"):
+        status = publish_cli.main(
+            [
+                str(release_dir),
+                "--artifact-root",
+                str(artifact_root),
+                "--preflight-only",
+            ]
+        )
+
+    assert status == 0
+    assert json.loads(capsys.readouterr().out) == {
+        "valid": True,
+        "published": False,
+        "contract_warnings": _CONTRACT_WARNINGS,
+    }
+
+
+def test_publication_reports_the_contract_warnings_and_counts_them_on_the_tag(
+    release_dir: Path, artifact_root: Path, tmp_path: Path, monkeypatch, capsys
+) -> None:
+    """A publication past the contract's warnings lists them in its printed
+    verdict, and its tag records how many there were but none of them; no
+    uploaded file carries them (review of microcosm#1307)."""
+    monkeypatch.setattr(
+        release_module,
+        "validate_release_dir",
+        lambda _path, **_kwargs: _CONTRACT_WARNINGS,
+    )
+    hub = _TagMessageHub()
+    hub._download_dir = tmp_path / "hub-cache"
+    monkeypatch.setattr(release_module, "_hf_api", lambda: hub)
+
+    with pytest.warns(UserWarning, match="release contract: other.json cannot"):
+        status = publish_cli.main(
+            [
+                str(release_dir),
+                "--artifact-root",
+                str(artifact_root),
+                "--no-latest",
+                "--tag-only",
+            ]
+        )
+
+    assert status == 0
+    verdict = json.loads(capsys.readouterr().out)
+    assert verdict["release_id"] == RELEASE_ID
+    assert verdict["contract_warnings"] == _CONTRACT_WARNINGS
+    message = hub.tag_messages[RELEASE_ID]
+    assert message is not None
+    assert "published past 2 release contract warning(s)" in message
+    for warning in _CONTRACT_WARNINGS:
+        assert warning.split(" ")[0] not in message
+    assert "areas[0]" not in message
+    assert not any(b"contract_warnings" in content for _, content in hub.uploads)
+    assert not any(b"areas[0].rows" in content for _, content in hub.uploads)
+
+
+def test_publication_without_warnings_leaves_the_tag_and_verdict_unchanged(
+    hub: FakeHub, release_dir: Path, artifact_root: Path, monkeypatch
+) -> None:
+    monkeypatch.setattr(
+        release_module, "validate_release_dir", lambda _path, **_kwargs: []
+    )
+    tagged = _TagMessageHub()
+    tagged._download_dir = hub._download_dir
+
+    pointer = publish_release(
+        release_dir,
+        "policyengine/populace-us",
+        api=tagged,
+        artifact_root=artifact_root,
+        update_latest=False,
+        tag_only=True,
+    )
+
+    assert "contract_warnings" not in pointer
+    assert tagged.tag_messages == {RELEASE_ID: None}
+
 
 @pytest.mark.parametrize("evidence", [False, True])
 @pytest.mark.parametrize("release_type", [None, "calibration"])
@@ -1573,6 +2020,7 @@ def test_non_enrichment_publisher_refuses_enrichment_only_arguments(
     assert hub.events == []
     assert hub.uploads == []
 
+
 def test_inspect_then_promote_reuses_the_immutable_tag(
     release_dir: Path, artifact_root: Path, tmp_path: Path, monkeypatch
 ) -> None:
@@ -1582,7 +2030,7 @@ def test_inspect_then_promote_reuses_the_immutable_tag(
     and only the main commit carrying the pointer (review of #966)."""
     national = _as_uk_national_line_release(release_dir)
     monkeypatch.setattr(
-        release_module, "validate_release_dir", lambda _path, **_kwargs: None
+        release_module, "validate_release_dir", lambda _path, **_kwargs: []
     )
     monkeypatch.setattr(release_module, "notify_release", lambda *a, **k: None)
     hub = _uk_hub(tmp_path)
@@ -1625,6 +2073,7 @@ def test_inspect_then_promote_reuses_the_immutable_tag(
         == UK_NATIONAL_CUT_TAG
     )
 
+
 def test_retry_after_a_failed_pointer_commit_reuses_the_tag(
     release_dir: Path, artifact_root: Path, tmp_path: Path, monkeypatch
 ) -> None:
@@ -1632,7 +2081,7 @@ def test_retry_after_a_failed_pointer_commit_reuses_the_tag(
     the retry stands on it instead of dying on create_tag."""
     national = _as_uk_national_line_release(release_dir)
     monkeypatch.setattr(
-        release_module, "validate_release_dir", lambda _path, **_kwargs: None
+        release_module, "validate_release_dir", lambda _path, **_kwargs: []
     )
     monkeypatch.setattr(release_module, "notify_release", lambda *a, **k: None)
     hub = _uk_hub(tmp_path)
@@ -1662,12 +2111,13 @@ def test_retry_after_a_failed_pointer_commit_reuses_the_tag(
     assert hub.tags == [{"tag": UK_NATIONAL_CUT_TAG, "revision": "commit-1"}]
     assert line_pointer_path("national") in hub._commits[hub._refs["main"]]
 
+
 def test_promotion_refuses_a_tag_that_describes_another_release(
     release_dir: Path, artifact_root: Path, tmp_path: Path, monkeypatch
 ) -> None:
     national = _as_uk_national_line_release(release_dir)
     monkeypatch.setattr(
-        release_module, "validate_release_dir", lambda _path, **_kwargs: None
+        release_module, "validate_release_dir", lambda _path, **_kwargs: []
     )
     monkeypatch.setattr(release_module, "notify_release", lambda *a, **k: None)
     hub = _uk_hub(tmp_path)
@@ -1698,9 +2148,11 @@ def test_promotion_refuses_a_tag_that_describes_another_release(
         )
     assert line_pointer_path("national") not in hub._commits[hub._refs["main"]]
 
+
 def test_line_pointer_path_refuses_the_evidence_line() -> None:
     with pytest.raises(ValueError, match="collides with the evidence-tier pointer"):
         line_pointer_path("evidence")
+
 
 def test_line_promotion_refuses_a_release_whose_role_is_not_the_lines(
     release_dir: Path, artifact_root: Path, monkeypatch
@@ -1713,7 +2165,7 @@ def test_line_promotion_refuses_a_release_whose_role_is_not_the_lines(
     manifest["dataset_role"] = "non_default_local_area"
     manifest_path.write_text(json.dumps(manifest))
     monkeypatch.setattr(
-        release_module, "validate_release_dir", lambda _path, **_kwargs: None
+        release_module, "validate_release_dir", lambda _path, **_kwargs: []
     )
     with pytest.raises(ValueError, match="publishes only 'national_default'"):
         release_module.prepare_release(
@@ -1723,6 +2175,7 @@ def test_line_promotion_refuses_a_release_whose_role_is_not_the_lines(
             line="national",
         )
 
+
 def test_transient_errors_while_checking_an_existing_tag_propagate(
     release_dir: Path, artifact_root: Path, tmp_path: Path, monkeypatch
 ) -> None:
@@ -1731,7 +2184,7 @@ def test_transient_errors_while_checking_an_existing_tag_propagate(
     and the create path is never re-entered with the tag in place."""
     national = _as_uk_national_line_release(release_dir)
     monkeypatch.setattr(
-        release_module, "validate_release_dir", lambda _path, **_kwargs: None
+        release_module, "validate_release_dir", lambda _path, **_kwargs: []
     )
     monkeypatch.setattr(release_module, "notify_release", lambda *a, **k: None)
     hub = _uk_hub(tmp_path)
