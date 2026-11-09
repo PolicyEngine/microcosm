@@ -33,7 +33,10 @@ import pandas as pd
 from microcosm.build.source_manifest import SourceStageSpec
 from microcosm.build.uk_runtime import copy_id_table
 from microcosm.build.uk_runtime.cgt_structure import _assert_closed_world_operations
-from microcosm.build.uk_runtime.cgt_support import _exact_support_weights
+from microcosm.build.uk_runtime.cgt_support import (
+    CGT_SUPPORT_EXACT_TOTAL_EXCEPTION,
+    _exact_support_weights,
+)
 from microcosm.build.uk_runtime.household_lineage import (
     HIGH_VALUE_SUPPORT_COPY_COLUMN,
     HIGH_VALUE_SUPPORT_INDEX_COLUMN,
@@ -146,7 +149,10 @@ def high_value_support_operation_parameters() -> tuple[
                     "(cumulative weight before it plus half its own, over the "
                     "region's owner weight) is at or above stratum_lower is selected"
                 ),
-                "copy_rule": "every selected household becomes copies rows at weight / copies",
+                "copy_rule": (
+                    "every selected household becomes copies rows at weight / "
+                    f"copies, {CGT_SUPPORT_EXACT_TOTAL_EXCEPTION}"
+                ),
                 "id_remapping": (
                     "copy-id table field high_value_support; copy k takes every "
                     "entity id + k x the field's radix (10**12)"
@@ -243,9 +249,11 @@ def split_high_value_support_households(
     ``high_value_support`` field (so every incoming id must sit below it),
     records ``k`` in ``high_value_support_copy_index`` and carries a full copy
     of its person and benefit-unit rows. The exact-total correction lands on
-    the heaviest unselected incumbent so every copy weight stays bitwise
-    ``w / copies``, unless that household cannot carry it: then spi_support's
-    shared fallback places it, and that row can be a root or copy
+    an unselected household, the first of the 64 heaviest that can carry it
+    (:data:`microcosm.build.uk_runtime.cgt_support.CGT_SUPPORT_CORRECTION_CANDIDATES`),
+    so every root and copy weighs bitwise ``w / copies``. Only where none of
+    them can does spi_support's shared fallback place it, and that row can be
+    a root or copy, then off ``w / copies`` by about one ulp of the total
     (:func:`microcosm.build.uk_runtime.cgt_support._exact_support_weights`).
     Refuses a frame this stage has already split.
     """
@@ -336,7 +344,7 @@ def split_high_value_support_households(
     exact = _exact_support_weights(
         final_weights,
         target=old_total,
-        unselected=np.flatnonzero(~selected & (incumbent_weights > 0.0)),
+        whole=np.flatnonzero(~selected & (incumbent_weights > 0.0)),
     )
     receipt = MassChangeRecord(
         entity="household",

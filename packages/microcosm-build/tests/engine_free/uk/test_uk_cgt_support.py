@@ -4,7 +4,8 @@ from __future__ import annotations
 
 import json
 import math
-from dataclasses import replace
+from dataclasses import dataclass, replace
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
@@ -12,6 +13,7 @@ import pytest
 
 from microcosm.build.country_spec import load_country_spec
 from microcosm.build.source_manifest import SourceOperationSpec
+from microcosm.build.uk_runtime import cgt_support
 from microcosm.build.uk_runtime.cgt_imputation import (
     UK_CGT_INVESTABLE_WEALTH_COLUMNS,
     UK_CGT_TAXABLE_INCOME_PROXY_COMPONENTS,
@@ -23,6 +25,8 @@ from microcosm.build.uk_runtime.cgt_support import (
     CGT_SUPPORT_COPIES_COLUMN,
     CGT_SUPPORT_COPY_BOUND_REFUSAL,
     CGT_SUPPORT_COPY_INDEX_COLUMN,
+    CGT_SUPPORT_CORRECTION_CANDIDATES,
+    CGT_SUPPORT_EXACT_TOTAL_EXCEPTION,
     CGT_SUPPORT_EXPECTED_MASS,
     CGT_SUPPORT_HEADROOM,
     CGT_SUPPORT_INCOME_BAND_LOWER_BOUNDS,
@@ -51,6 +55,10 @@ from microcosm.build.uk_runtime.hmrc_capital_gains import (
     load_hmrc_cgt_joint_distribution,
 )
 from microcosm.build.uk_runtime.national_frame import uk_national_frame
+from microcosm.build.uk_runtime.spi_support import (
+    _exact_total_correction,
+    _importance_weights_with_exact_total,
+)
 from microcosm.build.uk_runtime.stage_health import uk_stage_health_gate
 from microcosm.frame import WeightKind
 from test_support.microcosm_build.uk_cgt_support import (
@@ -1107,15 +1115,104 @@ def test_split_records_pool_exhaustion_and_empty_bands_without_refusing():
     assert result.frame.weights_for("household").total == 502.0
 
 
-def test_split_falls_back_when_every_incumbent_is_selected():
+# --- where the exact-total correction lands (microcosm#931) ---------------------
+#
+# The split leaves whole every positive-weight household it does not divide:
+# the unselected ones and the selected ones left at one copy. The correction
+# is tried on the 64 heaviest of them, heaviest first, and spi_support's
+# shared fallback, whose row can be a root or copy, runs only where none of
+# them can carry it.
+
+
+@dataclass(frozen=True)
+class _CorrectionCall:
+    """What the split handed the exact-total correction, and its selection."""
+
+    values: np.ndarray
+    target: float
+    whole: np.ndarray
+    selected: np.ndarray
+
+
+def _recorded_correction(
+    monkeypatch, frame, top_cells, *, clone_count: int = 1, headroom=None
+):
+    """The split on ``frame``, with what it handed the correction recorded."""
+
+    calls: list[tuple[np.ndarray, float, np.ndarray]] = []
+    selections: list[np.ndarray] = []
+    correct = cgt_support._exact_support_weights
+    select = cgt_support.select_cgt_support_households
+
+    def recording_correct(values, *, target, whole, **keywords):
+        calls.append((np.array(values), target, np.array(whole)))
+        return correct(values, target=target, whole=whole, **keywords)
+
+    def recording_select(*args, **kwargs):
+        selected, rows = select(*args, **kwargs)
+        selections.append(np.array(selected))
+        return selected, rows
+
+    keywords = {} if headroom is None else {"headroom": headroom}
+    with monkeypatch.context() as patch:
+        patch.setattr(cgt_support, "_exact_support_weights", recording_correct)
+        patch.setattr(cgt_support, "select_cgt_support_households", recording_select)
+        result = split_cgt_support_households(
+            frame,
+            distribution=support_distribution(top_cells),
+            parameters=PARAMETERS,
+            clone_count=clone_count,
+            **keywords,
+        )
+    ((values, target, whole),) = calls
+    # The first selection is the stage's; any later one reruns the walk for
+    # a selected household left at one copy that could carry the correction.
+    return result, _CorrectionCall(values, target, whole, selections[0])
+
+
+def _moved_rows(result, call: _CorrectionCall) -> list[int]:
+    """The rows whose weight the correction moved, as positions."""
+
+    weights = np.asarray(result.frame.weights_for("household").values)
+    assert result.frame.weights_for("household").total == call.target
+    return np.flatnonzero(weights != call.values).tolist()
+
+
+def _correction_before(call: _CorrectionCall) -> tuple[np.ndarray, bool]:
+    """The correction before microcosm#931's rule, and whether its one
+    candidate carried it: the heaviest unselected household (the first of
+    tied weights), else spi_support's shared fallback."""
+
+    unselected = call.whole[~call.selected[call.whole]]
+    if unselected.size:
+        heaviest = int(unselected[np.argmax(call.values[unselected])])
+        corrected = _exact_total_correction(
+            call.values, target=call.target, correction_index=heaviest
+        )
+        if corrected is not None:
+            return corrected, True
+    fallback = _importance_weights_with_exact_total(call.values, call.target)
+    return np.asarray(fallback.values), False
+
+
+def _carries(call: _CorrectionCall, row: int) -> bool:
+    return (
+        _exact_total_correction(call.values, target=call.target, correction_index=row)
+        is not None
+    )
+
+
+def test_split_falls_back_when_it_leaves_no_household_whole(monkeypatch):
+    # Both households are divided, so no household is left whole to carry
+    # the exact-total correction, and spi_support's shared fallback places
+    # it: on the first root here, off w / n by a rounding amount.
     frame = support_frame(
         weights=[130.0, 121.0], wealth=[5.0, 6.0], incomes=[BAND_INCOMES[0]] * 2
     )
-    result = split_cgt_support_households(
+    result, call = _recorded_correction(
+        monkeypatch,
         frame,
-        distribution=support_distribution({0: {250_000: 1_000.0}}),
-        parameters=PARAMETERS,
-        clone_count=1,
+        {0: {250_000: 1_000.0}},
         headroom=SCENARIO_HEADROOM,
     )
 
@@ -1123,6 +1220,76 @@ def test_split_falls_back_when_every_incumbent_is_selected():
     assert result.copies_created == 4
     assert result.frame.weights_for("household").total == 251.0
     assert result.band_rows[0]["pool_exhausted"] is True
+    assert call.whole.size == 0
+    assert float(call.values.sum()) != call.target
+    assert _moved_rows(result, call) == [0]
+
+
+def test_a_selected_household_left_at_one_copy_can_carry_the_correction(
+    monkeypatch,
+):
+    # All three are selected and the 40 household is left at one copy, the
+    # one household the split leaves whole, so it carries the correction. The
+    # rule before tried unselected households only, so the shared fallback
+    # corrected the first root, off w / n.
+    frame = support_frame(
+        weights=[187.9, 91.8, 40.0],
+        wealth=[5.0, 6.0, 7.0],
+        incomes=[BAND_INCOMES[0]] * 3,
+    )
+    result, call = _recorded_correction(
+        monkeypatch,
+        frame,
+        {0: {250_000: 1_000.0}},
+        headroom=SCENARIO_HEADROOM,
+    )
+
+    household = result.frame.table("household")
+    assert call.selected.tolist() == [True, True, True]
+    assert household[CGT_SUPPORT_COPIES_COLUMN].tolist()[:3] == [4, 2, 1]
+    assert call.whole.tolist() == [2]
+    assert float(call.values.sum()) != call.target
+    before, carried = _correction_before(call)
+    assert not carried
+    assert np.flatnonzero(before != call.values).tolist() == [0]
+    assert _moved_rows(result, call) == [2]
+    weights = _household_weights(result.frame)
+    assert weights.loc[3] == pytest.approx(40.0, rel=1e-12)
+    for household_id, weight, copies in ((1, 187.9, 4), (2, 91.8, 2)):
+        family = [household_id + k * COPY_RADIX for k in range(copies)]
+        assert weights.loc[family].tolist() == [weight / copies] * copies
+
+
+def test_a_household_the_correction_would_divide_is_passed_over(monkeypatch):
+    # All four are selected. The 60 household is left at one copy, the
+    # heaviest the split leaves whole, but the correction it could carry
+    # lifts it above 60, where the rule counts two copies, so the rule rerun
+    # on the output (as the identity tool reruns it) would divide it. It is
+    # passed over, and the 31.5 household, also at one copy, carries it.
+    frame = support_frame(
+        weights=[400.0, 268.7, 60.0, 31.5],
+        wealth=[5.0, 6.0, 7.0, 8.0],
+        incomes=[BAND_INCOMES[0]] * 4,
+    )
+    result, call = _recorded_correction(
+        monkeypatch,
+        frame,
+        {0: {250_000: 1_000.0}},
+        headroom=SCENARIO_HEADROOM,
+    )
+
+    assert call.selected.all()
+    assert call.whole.tolist() == [2, 3]
+    corrected = _exact_total_correction(
+        call.values, target=call.target, correction_index=2
+    )
+    assert corrected is not None
+    assert cgt_support_copy_counts([corrected[2]], clone_count=1).tolist() == [2]
+    assert _moved_rows(result, call) == [3]
+    weights = np.asarray(result.frame.weights_for("household").values)
+    assert weights[2] == 60.0
+    assert weights[3] == pytest.approx(31.5, rel=1e-12)
+    assert cgt_support_copy_counts([weights[3]], clone_count=1).tolist() == [1]
 
 
 def test_split_counts_suppressed_cells_and_reports_channels_when_present():
@@ -1284,12 +1451,16 @@ def test_evidence_is_json_serialisable_with_plain_scalars():
 # more than its pool, so the whole pool is selected at every clone count and
 # the selection nests exactly; band 37,700 asks for nothing, so its household
 # (9,000) is the first candidate for the exact-total correction (on clone 0,
-# the first heaviest). At seven (and 13) clones its clone 0 has no
-# representable correction, so the shared fallback puts it on the last copy
-# of the 7,620 family's last clone. That copy is then off w / n by about an
-# ulp of the frame's total weight (thousands of ulps of its own, a relative
-# error below 1e-12), within the weights' nesting tolerance and the gate's;
-# at one, three, 11 and 15 clones no correction is needed.
+# the first heaviest), and the light one, selected at one copy, is the other
+# household the split leaves whole. At seven (and 13) clones none of their 14
+# (26) clones can carry the correction: all sit in the half of NumPy's
+# pairwise sum whose other half carries exactly half an ulp of the total, so
+# no change to one of their weights rounds the total onto the target. The
+# shared fallback then puts it on the last copy of the 7,620 family's last
+# clone, the one exception copy_rule names. That copy is then off w / n by
+# about an ulp of the frame's total weight (thousands of ulps of its own, a
+# relative error below 1e-12), within the weights' nesting tolerance and the
+# gate's; at one, three, 11 and 15 clones no correction is needed.
 
 NESTING_WEIGHTS = [
     900.0,
@@ -1539,6 +1710,170 @@ def test_the_stage_gate_reads_the_receipts_clone_count():
     assert frame.weights_for("household").total == pytest.approx(460.0, rel=1e-12)
 
 
+# --- whole households past the first candidate (microcosm#931) ------------------
+#
+# The cap frames put the households the split leaves whole where NumPy's
+# pairwise sum decides whether they can carry the correction. Heavy households
+# sit in band 37,700, which asks for no support, so the split leaves them
+# whole, and so is the light one after them; the last household, in the
+# exhausting band 0, is divided into 67 rows (4,004.74 / 60 = 66.7). The
+# 132-row vector the split corrects is summed as two halves split at row 64:
+# every heavy household sits in the first, the light one, the divided root
+# and its copies in the second. The first half sums inside the total's binade
+# and the second carries exactly half an ulp of the total, so round half to
+# even keeps every change to a heavy household's weight off the target, while
+# the light household and the copies can carry it. Each test asserts that
+# premise before the rule.
+
+_CAP_HEAVY = [1_100.0 + index for index in range(64)]
+_CAP_LIGHT = 1_000.0
+_CAP_DIVIDED = 4_004.74
+_CAP_COPIES = 67
+
+
+def _cap_frame(heavy):
+    """``heavy`` whole households, the light one, then the divided one."""
+
+    weights = [*heavy, _CAP_LIGHT, _CAP_DIVIDED]
+    return support_frame(
+        weights=weights,
+        wealth=[1.0] * (len(weights) - 1) + [1e6],
+        incomes=[BAND_INCOMES[37_700]] * (len(weights) - 1) + [BAND_INCOMES[0]],
+    )
+
+
+def test_where_the_first_candidate_carries_it_the_weights_are_as_before(
+    monkeypatch,
+):
+    # The first candidate is the heaviest unselected household, the one the
+    # rule before corrected, wherever no selected household left at one copy
+    # outweighs it (such a household weighs at most 60 / K). So wherever it
+    # can carry the correction, the weights are the ones the rule before
+    # gave, bit for bit: on the reference scenario (id 5) and on random
+    # one-clone frames that ask each band for about 30% of its mass.
+    rng = np.random.default_rng(7)
+    frames = [(_scenario_frame(), SCENARIO_TOP_CELLS, SCENARIO_HEADROOM)]
+    for _ in range(12):
+        weights = rng.lognormal(4.5, 1.0, 120)
+        wealth = rng.lognormal(11.0, 1.5, 120)
+        bands = rng.choice([0, 37_700], size=120)
+        top = {
+            int(band): {
+                250_000: float(np.round(0.3 * weights[bands == band].sum() / 2.5, 1))
+            }
+            for band in (0, 37_700)
+        }
+        frame = support_frame(
+            weights=weights.tolist(),
+            wealth=wealth.tolist(),
+            incomes=[BAND_INCOMES[int(band)] for band in bands],
+        )
+        frames.append((frame, top, None))
+    carried = 0
+    for frame, top, headroom in frames:
+        result, call = _recorded_correction(monkeypatch, frame, top, headroom=headroom)
+        before, first_carried = _correction_before(call)
+        weights = np.asarray(result.frame.weights_for("household").values)
+        assert result.frame.weights_for("household").total == call.target
+        if not first_carried or float(call.values.sum()) == call.target:
+            continue
+        carried += 1
+        unselected = call.whole[~call.selected[call.whole]]
+        first = call.whole[np.lexsort((call.whole, -call.values[call.whole]))][0]
+        assert first == unselected[np.argmax(call.values[unselected])]
+        assert weights.tobytes() == before.tobytes()
+    assert carried >= 3
+
+
+def test_the_correction_passes_over_whole_households_that_cannot_carry_it(
+    monkeypatch,
+):
+    # 63 heavy households and a zero-weight one fill the first half, so the
+    # light household is the 64th and last whole one the rule tries. The rule
+    # before tried the heaviest unselected household only, and the shared
+    # fallback then corrected the last copy; now the light one carries it and
+    # every row of the divided household stays bitwise w / n.
+    result, call = _recorded_correction(
+        monkeypatch, _cap_frame([*_CAP_HEAVY[1:], 0.0]), NESTING_TOP_CELLS
+    )
+
+    assert call.whole.tolist() == [*range(63), 64]
+    assert not call.selected[call.whole].any()
+    assert float(call.values.sum()) != call.target
+    assert not any(_carries(call, row) for row in range(63))
+    assert _carries(call, 64)
+    before, carried = _correction_before(call)
+    assert not carried
+    assert np.flatnonzero(before != call.values).tolist() == [len(call.values) - 1]
+
+    assert _moved_rows(result, call) == [64]
+    weights = np.asarray(result.frame.weights_for("household").values)
+    assert weights[64] == pytest.approx(_CAP_LIGHT, rel=1e-12)
+    assert weights[65:].tolist() == [_CAP_DIVIDED / _CAP_COPIES] * _CAP_COPIES
+
+
+def test_the_correction_tries_only_the_64_heaviest_whole_households(monkeypatch):
+    # With all 64 heavy households before it, the light one is the 65th
+    # whole household, past the cap: none of the 64 can carry the
+    # correction, so the shared fallback places it, on the last copy, though
+    # the 65th could have. One candidate more and the 65th carries it.
+    assert CGT_SUPPORT_CORRECTION_CANDIDATES == 64
+    result, call = _recorded_correction(
+        monkeypatch, _cap_frame(_CAP_HEAVY), NESTING_TOP_CELLS
+    )
+
+    assert call.whole.tolist() == list(range(65))
+    assert float(call.values.sum()) != call.target
+    assert not any(_carries(call, row) for row in range(64))
+    assert _carries(call, 64)
+    assert _moved_rows(result, call) == [len(call.values) - 1]
+    fallback = _importance_weights_with_exact_total(call.values, call.target)
+    weights = np.asarray(result.frame.weights_for("household").values)
+    assert weights.tobytes() == np.asarray(fallback.values).tobytes()
+    assert weights[-1] == pytest.approx(_CAP_DIVIDED / _CAP_COPIES, rel=1e-12)
+
+    monkeypatch.setattr(cgt_support, "CGT_SUPPORT_CORRECTION_CANDIDATES", 65)
+    wider, wider_call = _recorded_correction(
+        monkeypatch, _cap_frame(_CAP_HEAVY), NESTING_TOP_CELLS
+    )
+    assert _moved_rows(wider, wider_call) == [64]
+    wider_weights = np.asarray(wider.frame.weights_for("household").values)
+    assert wider_weights[65:].tolist() == [_CAP_DIVIDED / _CAP_COPIES] * _CAP_COPIES
+
+
+@pytest.mark.parametrize("clone_count", [1, 3, 7, 11, 13, 15])
+def test_the_nesting_scenario_corrects_a_copy_only_where_no_whole_household_can(
+    monkeypatch, clone_count: int
+):
+    # The split leaves two households of each clone whole: the 9,000 one and
+    # the light 40 one, selected at one copy. At 7 and 13 clones none of them
+    # can carry the correction, so the shared fallback still puts it on the
+    # last row, the last copy of the 7,620 family's last clone, and the total
+    # stays bitwise on target. At 1, 3, 11 and 15 none is needed.
+    frame = clone_first_frame(
+        support_frame(
+            weights=NESTING_WEIGHTS, wealth=NESTING_WEALTH, incomes=NESTING_INCOMES
+        ),
+        clone_count,
+    )
+    result, call = _recorded_correction(
+        monkeypatch, frame, NESTING_TOP_CELLS, clone_count=clone_count
+    )
+
+    assert call.whole.size == 2 * clone_count
+    moved = _moved_rows(result, call)
+    if clone_count not in (7, 13):
+        assert float(call.values.sum()) == call.target
+        assert moved == []
+        return
+    assert not any(_carries(call, row) for row in call.whole.tolist())
+    assert moved == [len(call.values) - 1]
+    last = result.frame.table("household").iloc[-1]
+    assert last["source_household_id"] == 4
+    assert last["household_clone_index"] == clone_count - 1
+    assert last[CGT_SUPPORT_COPY_INDEX_COLUMN] == 126
+
+
 # --- the closed-world dictionary and the transform ------------------------------
 
 
@@ -1580,7 +1915,10 @@ def test_operation_dictionary_restates_the_reviewed_design():
         "copies = ceil(geographic clone count x household weight / "
         "maximum_copy_weight), the quotient snapped to the nearest integer "
         "within clone-count ulps when the clone count exceeds one; every copy "
-        "carries weight / copies"
+        "carries weight / copies, except where none of the 64 heaviest "
+        "households left whole can carry the exact-total correction, when the "
+        "shared fallback can put it on a root or copy, off weight / copies by "
+        "about one ulp of the total weight"
     )
     assert payload["flag_column"] == HOUSEHOLD_IS_CGT_SUPPORT_COPY
     assert payload["copies_column"] == CGT_SUPPORT_COPIES_COLUMN
@@ -1773,3 +2111,19 @@ def test_packaged_manifest_declares_the_stage() -> None:
         "cgt_incidence_clone"
     )
     assert "cgt_band_donors" not in names
+
+
+def test_the_packaged_declarations_restate_the_copy_rule() -> None:
+    # The copy rule names its one exception identically in the code
+    # dictionary, sources.yaml and source_stages.json (microcosm#931).
+    ((_, payload),) = cgt_support_split_operation_parameters()
+    stage = load_country_spec("uk").sources.stage_map()[CGT_SUPPORT_SPLIT_STAGE_NAME]
+    (operation,) = stage.operations
+    assert operation.parameters["copy_rule"] == payload["copy_rule"]
+    mirror = Path(cgt_support.__file__).parents[1] / "uk" / "source_stages.json"
+    packaged = json.loads(mirror.read_text())
+    (entry,) = [row for row in packaged["stages"] if row["stage"] == stage.stage]
+    assert entry["operations"][0]["copy_rule"] == payload["copy_rule"]
+    assert payload["copy_rule"].endswith(
+        "; every copy carries weight / copies, " + CGT_SUPPORT_EXACT_TOTAL_EXCEPTION
+    )
