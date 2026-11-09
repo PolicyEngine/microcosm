@@ -87,6 +87,7 @@ from microcosm.graph import (
     Slice,
 )
 from microcosm.graph.canonical import canonical_json
+from test_support.microcosm_build.money_normalization import graph_declaration
 from test_support.microcosm_build.transport_composed import make_composed_fixture
 from test_support.paths import paths_for
 
@@ -2981,6 +2982,83 @@ class TestExternalSources:
             "source.rulespec_nz (uncovered)" in line
             for line in outcome.result.failures
         ), outcome.result.failures
+
+
+def _money_battery_spec(*inputs, nodes=()):
+    """CREATE and a battery over the toy graph's money routes; no node maps money."""
+
+    return {
+        "country": "xx",
+        "resources": {
+            "money_normalization": graph_declaration(),
+            "transport_graph": {
+                "schema_version": 1,
+                "country": "xx",
+                "sources": [],
+                "nodes": [
+                    {
+                        "id": "x.open",
+                        "kernel": "transport.create@1",
+                        "structural": "create",
+                    },
+                    *nodes,
+                    {
+                        "id": "x.gates",
+                        "kernel": "gates.battery@1",
+                        "inputs": [
+                            {"entity": entity, "columns": [column]}
+                            for entity, column in inputs
+                        ],
+                    },
+                ],
+            },
+        },
+    }
+
+
+class TestMoneyAwaitingItsProducer:
+    @pytest.mark.parametrize(
+        ("entity", "column", "reason"),
+        (
+            ("person", "interest_income", "awaits its declared producer"),
+            ("household", "rent", "awaits toy rent bands"),
+            ("person", "dividend_income", "awaits a donor that carries it"),
+        ),
+        ids=("normalized", "quantile_mapped", "pending"),
+    )
+    def test_a_money_column_no_node_produces_is_pending(
+        self, entity, column, reason
+    ) -> None:
+        # With no owner after CREATE, the money route decides the class.
+        # Without it, a money concept would read as copied from the donor.
+        spec = _money_battery_spec((entity, column))
+        (row,) = compose._support_roster(spec)["columns"]
+        assert row["class"] == "pending"
+        assert row["reason"] == reason
+
+    def test_a_donor_concept_without_a_money_route_is_copied(self) -> None:
+        spec = _money_battery_spec(("person", "age"))
+        (row,) = compose._support_roster(spec)["columns"]
+        assert row["class"] == "copied"
+
+    def test_a_derived_row_names_the_pending_source_it_reads(self) -> None:
+        # The support gate fails a derived row on any source outside
+        # SUPPORT_COVERED, so the roster must report the pending source.
+        derive = {
+            "id": "x.derive",
+            "kernel": "toy.derive@1",
+            "inputs": [{"entity": "household", "columns": ["rent"]}],
+            "outputs": [
+                {"entity": "person", "column": "rent_share", "dtype": "float64"}
+            ],
+        }
+        spec = _money_battery_spec(("person", "rent_share"), nodes=(derive,))
+        (row,) = compose._support_roster(spec)["columns"]
+        assert row["class"] == "derived"
+        (source,) = row["sources"]
+        assert (source["entity"], source["column"]) == ("household", "rent")
+        assert source["class"] == "pending"
+        assert source["class"] not in compose.SUPPORT_COVERED
 
 
 class TestDeclaredStructuralRows:
