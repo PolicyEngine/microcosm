@@ -604,7 +604,7 @@ def test_an_annotated_tag_moves_from_the_commit_it_names(hub, capsys):
 
 def test_copy_reports_a_release_name_the_interface_refuses_without_writing(hub, capsys):
     exit_code, report, _ = run(
-        hub, capsys, "copy", "--include", f"{JUNE_2023_TAG}=populace uk 2023"
+        hub, capsys, "copy", "--include", f"{JUNE_2023_TAG}=microcosm uk 2023"
     )
 
     assert exit_code == 1
