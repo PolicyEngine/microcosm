@@ -5,14 +5,17 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import os
 import sys
 import time
+import uuid
 from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from importlib import metadata
 from pathlib import Path
 
+from microcosm.build.artifact_files import file_artifact
 from microcosm.build.country_spec import (
     GatesManifest,
     load_country_spec,
@@ -49,38 +52,62 @@ from microcosm.build.observation import (
     StageObserver,
 )
 from microcosm.build.plan import StageRecord
+from microcosm.build.run_outcome import classify_failure
 from microcosm.build.staging_cli import (
     add_staging_arguments,
     validate_staging_arguments,
 )
 from microcosm.build.staging_v2 import (
-    StagingTelemetryV2,
+    StagingRunBundleWriterV2,
     disabled_staging_delivery,
 )
+from microcosm.build.telemetry_emitter import (
+    LocalTelemetryEmitter,
+    start_local_telemetry_emitter_service,
+)
+from microcosm.build.termination import BuildTerminatedError, raise_on_sigterm
 from microcosm.build.uk_runtime.age_tail import UKAgeTailStageTransform
+from microcosm.build.uk_runtime.aps_occupation import UKAPSOccupationStageTransform
 from microcosm.build.uk_runtime.battery_bindings import UK_GATE_REGISTRY
 from microcosm.build.uk_runtime.calibration_run import (
     UK_SPINE_GATE_SCOPE,
     uk_scoped_gate_manifest,
 )
+from microcosm.build.uk_runtime.carers_allowance_take_up import (
+    UKCarersAllowanceTakeUpStageTransform,
+)
 from microcosm.build.uk_runtime.cgt_asset_type import (
     uk_cgt_asset_type_stage_transform,
 )
 from microcosm.build.uk_runtime.cgt_imputation import uk_cgt_spine_stage_transform
+from microcosm.build.uk_runtime.cgt_residential_split import (
+    UKCGTResidentialSplitStageTransform,
+)
 from microcosm.build.uk_runtime.cgt_structure import (
     UKCGTIncidenceAnchorStageTransform,
     UKCGTIncidenceCloneStageTransform,
 )
 from microcosm.build.uk_runtime.cgt_support import UKCGTSupportSplitStageTransform
+from microcosm.build.uk_runtime.child_benefit_take_up import (
+    UKChildBenefitTakeUpStageTransform,
+)
+from microcosm.build.uk_runtime.childcare_copy_take_up import (
+    UKChildcareCopyTakeUpStageTransform,
+)
+from microcosm.build.uk_runtime.company_cars import (
+    UKCompanyCarsStageTransform,
+)
 from microcosm.build.uk_runtime.content_identity import uk_frame_content_identity
 from microcosm.build.uk_runtime.etb_services import UKETBServicesStageTransform
 from microcosm.build.uk_runtime.etb_vat import UKETBVATStageTransform
+from microcosm.build.uk_runtime.frs_annual_income import (
+    UKFRSAnnualIncomeStageTransform,
+)
 from microcosm.build.uk_runtime.frs_brma import UKFRSBRMAStageTransform
 from microcosm.build.uk_runtime.frs_council_tax import UKFRSCouncilTaxStageTransform
 from microcosm.build.uk_runtime.frs_disability import UKFRSDisabilityStageTransform
 from microcosm.build.uk_runtime.frs_education import UKFRSEducationStageTransform
 from microcosm.build.uk_runtime.frs_education_grants import (
-    FRS_EDUCATION_GRANT_REWRITES,
     UKFRSEducationGrantSplitStageTransform,
 )
 from microcosm.build.uk_runtime.frs_employment import UKFRSEmploymentStageTransform
@@ -101,6 +128,7 @@ from microcosm.build.uk_runtime.frs_spine import (
 )
 from microcosm.build.uk_runtime.frs_take_up import UKFRSTakeUpStageTransform
 from microcosm.build.uk_runtime.graph import (
+    UK_SPINE_ASSEMBLED_FINAL_STAGE,
     uk_registry,
     uk_spine_graph,
     uk_spine_operation_inventory,
@@ -113,8 +141,17 @@ from microcosm.build.uk_runtime.graph_evidence import (
     register_spine_gate_kernel,
     spine_sidecar_evidence,
 )
+from microcosm.build.uk_runtime.high_value_home_support import (
+    UKHighValueHomeSupportStageTransform,
+)
+from microcosm.build.uk_runtime.isa_subscriptions import (
+    UKISASubscriptionsStageTransform,
+)
 from microcosm.build.uk_runtime.lcfs_consumption import (
     UKLCFSConsumptionStageTransform,
+)
+from microcosm.build.uk_runtime.legacy_closure_take_up import (
+    UKLegacyClosureTakeUpStageTransform,
 )
 from microcosm.build.uk_runtime.national_frame import (
     uk_household_weight_kind,
@@ -125,12 +162,42 @@ from microcosm.build.uk_runtime.national_sampling import (
     UK_SAMPLE_SEED_DEFAULT,
 )
 from microcosm.build.uk_runtime.nts_bus_travel import UKNTSBusTravelStageTransform
+from microcosm.build.uk_runtime.orrery_contract import (
+    UK_SUMMARY_PROVIDERS,
+    save_uk_graph_schema,
+)
+from microcosm.build.uk_runtime.pension_credit_take_up import (
+    UKPensionCreditTakeUpStageTransform,
+)
+from microcosm.build.uk_runtime.private_school_attendance import (
+    UKPrivateSchoolAttendanceStageTransform,
+)
+from microcosm.build.uk_runtime.property_components import (
+    UKPropertyComponentsStageTransform,
+)
+from microcosm.build.uk_runtime.property_purchases import (
+    UKPropertyPurchasesStageTransform,
+)
+from microcosm.build.uk_runtime.regional_home_values import (
+    UKRegionalHomeValuesStageTransform,
+)
 from microcosm.build.uk_runtime.regional_uprating import (
     UKRegionalPropertyUpratingStageTransform,
 )
+from microcosm.build.uk_runtime.rowwise_staging import close_run_blocked
 from microcosm.build.uk_runtime.salary_sacrifice import UKSalarySacrificeStageTransform
 from microcosm.build.uk_runtime.spi_band_donors import (
     UKSPIIncomeBandDonorStageTransform,
+)
+from microcosm.build.uk_runtime.spi_benefit_coherence import (
+    UKSPIBenefitCoherenceStageTransform,
+)
+from microcosm.build.uk_runtime.spi_dependency import (
+    UK_SPI_PUBLIC_USE_TAPE_KEY,
+    uk_spi_public_use_tape_marker,
+)
+from microcosm.build.uk_runtime.spi_employment_shell import (
+    UKSPIEmploymentShellStageTransform,
 )
 from microcosm.build.uk_runtime.spi_housing_shell import (
     UKSPIHousingShellStageTransform,
@@ -143,6 +210,9 @@ from microcosm.build.uk_runtime.spi_spine import (
 from microcosm.build.uk_runtime.staging import UK_STAGING_REPOSITORY
 from microcosm.build.uk_runtime.student_loans import UKStudentLoansStageTransform
 from microcosm.build.uk_runtime.take_up_contract import load_uk_take_up_contract
+from microcosm.build.uk_runtime.trading_allowance_receipts import (
+    UKTradingAllowanceReceiptsStageTransform,
+)
 from microcosm.build.uk_runtime.uc_capital_coherence import (
     UKUCCapitalCoherenceStageTransform,
 )
@@ -152,12 +222,20 @@ from microcosm.build.uk_runtime.uc_deduction_attributes import (
 from microcosm.build.uk_runtime.uc_reporter_redraw import (
     UKUCReporterRedrawStageTransform,
 )
+from microcosm.build.uk_runtime.uc_take_up import UKUCTakeUpStageTransform
+from microcosm.build.uk_runtime.was_lisa import UKWASLISAStageTransform
 from microcosm.build.uk_runtime.was_wealth import UKWASWealthStageTransform
 from microcosm.frame import Frame
 from microcosm.frame.adapters.policyengine_uk import PolicyEngineUKEngine
-from microcosm.graph import ContentStore, compile_graph, run_graph
+from microcosm.graph import (
+    ContentStore,
+    compile_graph,
+    run_graph,
+    save_run_evidence,
+)
 
 _PIPELINE = "uk-frs-spine"
+_ACTIVE_EMITTER: LocalTelemetryEmitter | None = None
 _REPOSITORY = next(
     (
         parent
@@ -168,11 +246,6 @@ _REPOSITORY = next(
 )
 _RUNG_NAMED_EDGE_SIGNATURE = "The least populated classes in y have only 1 member"
 _RUNG_ABORT_EXIT_CODE = 3
-#: The last stage of the assembled checkpoint: everything through the base
-#: FRS mapping and the stochastic draws. A name, not an index — a position
-#: standing in for a key is correct only while two independently-maintained
-#: orderings happen to agree (the uk-data#468 class).
-UK_SPINE_ASSEMBLED_FINAL_STAGE = "frs_brma"
 
 
 def _uk_spine_stage_names(spec) -> tuple[str, ...]:
@@ -290,6 +363,14 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="Caller-supplied private WAS round-8 household tab for was_wealth.",
     )
     parser.add_argument(
+        "--was-person-tab",
+        type=Path,
+        help=(
+            "Caller-supplied private WAS round-8 person tab for was_lisa, "
+            "isa_subscriptions and company_cars (with --was-tab)."
+        ),
+    )
+    parser.add_argument(
         "--nts-household-tab",
         type=Path,
         help="Caller-supplied private NTS household tab for nts_bus_travel.",
@@ -315,19 +396,35 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="Caller-supplied private NTS ticket tab for nts_bus_travel.",
     )
     parser.add_argument(
+        "--nts-vehicle-tab",
+        type=Path,
+        help=(
+            "Caller-supplied private NTS vehicle tab for lcfs_consumption's "
+            "zero-emission share by income fifth and household-paid road-fuel mix."
+        ),
+    )
+    parser.add_argument(
         "--lcfs-hh-tab",
         type=Path,
-        help="Caller-supplied private LCFS 2023-24 household tab for lcfs_consumption.",
+        help="Caller-supplied private LCFS 2024-25 household tab for lcfs_consumption.",
     )
     parser.add_argument(
         "--lcfs-person-tab",
         type=Path,
-        help="Caller-supplied private LCFS 2023-24 person tab for lcfs_consumption.",
+        help="Caller-supplied private LCFS 2024-25 person tab for lcfs_consumption.",
     )
     parser.add_argument(
         "--etb-tab",
         type=Path,
         help="Caller-supplied private ETB 1977-2024 household tab for ETB stages.",
+    )
+    parser.add_argument(
+        "--aps-tab",
+        type=Path,
+        help=(
+            "Caller-supplied private APS April 2024-March 2025 person tab for "
+            "aps_occupation."
+        ),
     )
     parser.add_argument(
         "--emit-nonzero-shares",
@@ -367,14 +464,17 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
             flag
             for flag, value in (
                 ("--was-tab", args.was_tab),
+                ("--was-person-tab", args.was_person_tab),
                 ("--nts-household-tab", args.nts_household_tab),
                 ("--nts-individual-tab", args.nts_individual_tab),
                 ("--nts-trip-tab", args.nts_trip_tab),
                 ("--nts-stage-tab", args.nts_stage_tab),
                 ("--nts-ticket-tab", args.nts_ticket_tab),
+                ("--nts-vehicle-tab", args.nts_vehicle_tab),
                 ("--lcfs-hh-tab", args.lcfs_hh_tab),
                 ("--lcfs-person-tab", args.lcfs_person_tab),
                 ("--etb-tab", args.etb_tab),
+                ("--aps-tab", args.aps_tab),
             )
             if value is not None
         )
@@ -474,14 +574,17 @@ def _synthetic_graph_sources(source: Path) -> dict[str, Path]:
         raise ValueError("Synthetic fixture inputs must be an object.")
     names = {
         "was": "was",
+        "was_person": "was_person",
         "nts_household": "nts_household",
         "nts_individual": "nts_individual",
         "nts_trip": "nts_trip",
         "nts_stage": "nts_stage",
         "nts_ticket": "nts_ticket",
+        "nts_vehicle": "nts_vehicle",
         "lcfs_household": "lcfs_household",
         "lcfs_person": "lcfs_person",
         "etb": "etb",
+        "aps": "aps",
         "spi": "spi_donor",
         "hmrc_income": "hmrc_income_targets",
     }
@@ -642,15 +745,76 @@ def _rules_engine() -> PolicyEngineUKEngine:
             "build_uk_frs_spine requires the microcosm-build 'uk' extra "
             "(policyengine-uk). Run: uv sync --all-packages --extra uk"
         ) from exc
+    from microcosm.build.uk_runtime.hmrc_uprating import (
+        assert_installed_engine_is_pinned,
+    )
+
+    assert_installed_engine_is_pinned()
     return PolicyEngineUKEngine()
 
 
-def _rules_engine_provenance() -> dict[str, str]:
+def _rules_engine_provenance() -> dict[str, object]:
     try:
         version = metadata.version("policyengine-uk")
     except metadata.PackageNotFoundError:
         return {"package": "policyengine-uk", "version": "unavailable"}
-    return {"package": "policyengine-uk", "version": version}
+    provenance: dict[str, object] = {"package": "policyengine-uk", "version": version}
+    direct_install = _direct_install("policyengine-uk")
+    if direct_install is not None:
+        # A release installed from an index writes no direct_url.json
+        # (PEP 610), so its provenance, and the engine identity hashed from
+        # it, stay as they were.
+        provenance["direct_install"] = direct_install
+    return provenance
+
+
+def _direct_install(package: str) -> dict[str, object] | None:
+    """What PEP 610's ``direct_url.json`` records of a URL install, or None.
+
+    A git install of an engine pull request carries a release's version
+    string, so only this tells the two apart: it names the commit. An archive
+    is named by every hash its record holds, whatever the algorithm, and one
+    that records no hash is refused, since nothing would tell it from another
+    archive. URLs are left out, so no local path reaches a build or release
+    record.
+    """
+    try:
+        text = metadata.distribution(package).read_text("direct_url.json")
+    except metadata.PackageNotFoundError:
+        return None
+    if not text:
+        return None
+    record = json.loads(text)
+    vcs = record.get("vcs_info")
+    if isinstance(vcs, Mapping):
+        return {
+            "kind": "vcs",
+            "vcs": str(vcs.get("vcs", "")),
+            "commit_id": str(vcs.get("commit_id", "")),
+        }
+    archive = record.get("archive_info")
+    if isinstance(archive, Mapping):
+        listed = archive.get("hashes")
+        hashes = (
+            {str(name): str(value) for name, value in listed.items()}
+            if isinstance(listed, Mapping)
+            else {}
+        )
+        legacy = archive.get("hash")
+        if isinstance(legacy, str) and "=" in legacy:
+            name, value = legacy.split("=", 1)
+            hashes.setdefault(name, value)
+        if not hashes:
+            raise ValueError(
+                f"{package} was installed from an archive whose direct_url.json "
+                "records no hash, so no engine identity can tell it from another "
+                "archive: install a release, or an archive with a recorded hash."
+            )
+        return {"kind": "archive", "hashes": dict(sorted(hashes.items()))}
+    directory = record.get("dir_info")
+    if isinstance(directory, Mapping):
+        return {"kind": "dir", "editable": bool(directory.get("editable", False))}
+    return {"kind": "unrecognised"}
 
 
 def _declared_seeds(stages) -> dict[str, dict[str, int]]:
@@ -687,25 +851,42 @@ def _declared_seeds(stages) -> dict[str, dict[str, int]]:
                     stage_seeds[stage.stage] = seed
                 elif operation.kind == "draw_capital_gains_prior_from_banded_quantiles":
                     stage_seeds[str(operation.parameters["salt"])] = seed
-                elif operation.kind == "stack_income_band_donor_households":
-                    stage_seeds["stack_income_band_donor_households"] = seed
-                elif operation.kind == "resample_band_donor_leaves":
-                    stage_seeds["band_donor_resample"] = seed
-                elif operation.kind == "impute_spi_housing_shell":
+                elif operation.kind in (
+                    "stack_income_band_donor_households",
+                    "resample_band_donor_leaves",
+                ):
+                    # Identity-keyed draws: the seed is declared under the
+                    # salt it is hashed with (microcosm#1063).
+                    stage_seeds[str(operation.parameters["salt"])] = seed
+                elif operation.kind in (
+                    "impute_spi_employment_shell",
+                    "impute_spi_housing_shell",
+                ):
                     stage_seeds[stage.stage] = seed
                 elif operation.kind == "price_domestic_energy":
                     stage_seeds["gas_disconnection"] = seed
                 elif operation.kind == "within_band_draws":
                     stage_seeds["within_band_draws"] = seed
-                elif operation.kind in (
-                    "assign_residential_property_flag",
-                    "assign_badr_qualifying_gains",
-                    "assign_main_asset_type",
-                ):
+                elif operation.kind == "assign_badr_qualifying_gains":
                     stage_seeds[operation.kind] = seed
-                elif operation.kind == "convert_donors_to_target_stock":
+                elif operation.kind in (
+                    "convert_donors_to_target_stock",
+                    "convert_bonuses_to_bonus_sacrifice",
+                ):
                     stage_seeds[str(operation.parameters["salt"])] = seed
                 elif operation.kind == "top_up_to_stock":
+                    stage_seeds[str(operation.parameters["salt"])] = seed
+                elif operation.kind in (
+                    "split_household_isa_balances",
+                    "allocate_isa_subscribers",
+                    "draw_isa_subscription_amounts",
+                    "draw_lifetime_isa_payments",
+                    "assign_company_car_fuel_types",
+                    "draw_company_car_list_prices",
+                    "draw_company_car_co2_emissions",
+                ):
+                    # Identity-keyed draws: the seed is declared under the salt
+                    # it is hashed with (microcosm#1415).
                     stage_seeds[str(operation.parameters["salt"])] = seed
         if stage_seeds:
             declared[stage.stage] = stage_seeds
@@ -751,6 +932,7 @@ def _build_sidecar(
             {
                 "stage": record.stage,
                 "produced": list(record.produced),
+                "rewrote": list(record.rewrote),
                 "nonzero_share": dict(record.nonzero_share),
                 "seconds": record.seconds,
             }
@@ -772,6 +954,9 @@ def _build_sidecar(
         "spine_gate_report": spine_gate_report,
         "stochastic_contract_sha256": stochastic_contract_sha256,
         "rules_engine": _rules_engine_provenance(),
+        # Which stages read the SPI Public Use Tape, whose Special Conditions
+        # reach every output built on them (microcosm#1095).
+        UK_SPI_PUBLIC_USE_TAPE_KEY: uk_spi_public_use_tape_marker(stages),
     }
 
 
@@ -834,7 +1019,9 @@ def _graph_stage_records(
         )
         output_receipt = manifest.nodes[output_node]
         shares: dict[str, float] = {}
-        for column in stage.outputs:
+        # A declared rewrite is an owned cell of its node, as an output is, so
+        # its share reads the node's artifact too (microcosm#721).
+        for column in (*stage.outputs, *stage.rewrites):
             matches = [
                 (coordinate, key)
                 for coordinate, key in output_receipt.artifacts.items()
@@ -846,7 +1033,8 @@ def _graph_stage_records(
             if len(matches) != 1:
                 raise RuntimeError(
                     f"graph stage {stage.stage!r} exposes {len(matches)} artifacts "
-                    f"for declared output {column!r}."
+                    f"for declared {'rewrite' if column in stage.rewrites else 'output'} "
+                    f"{column!r}."
                 )
             shares[column] = _series_nonzero_share(store.load_column(matches[0][1]))
         execution_node = "create_uk_frs" if stage.stage == "frs_spine" else stage.stage
@@ -854,6 +1042,7 @@ def _graph_stage_records(
             StageRecord(
                 stage=stage.stage,
                 produced=stage.outputs,
+                rewrote=stage.rewrites,
                 donor_survey=stage.survey,
                 nonzero_share=shares,
                 seconds=manifest.nodes[execution_node].wall_time,
@@ -871,8 +1060,53 @@ def _structural_columns(frame) -> frozenset[str]:
     return frozenset(columns)
 
 
+def _write_sha256_file(path: Path, sha256: str) -> Path:
+    """Write ``<path>.sha256`` in the ``sha256sum`` format, atomically."""
+    target = path.with_name(path.name + ".sha256")
+    temporary = target.with_name(target.name + ".tmp")
+    temporary.write_text(f"{sha256}  {path.name}\n", encoding="utf-8")
+    temporary.replace(target)
+    return target
+
+
 def _new_build_id(timestamp: datetime) -> str:
     return f"uk-frs-spine-{timestamp.strftime('%Y%m%dT%H%M%SZ')}"
+
+
+def _close_failed_telemetry(
+    staging_bundle: StagingRunBundleWriterV2 | None,
+    emitter: LocalTelemetryEmitter | None,
+    error: BaseException,
+    *,
+    rung_abort: bool = False,
+) -> None:
+    """Close both telemetry destinations for a spine build that raised.
+
+    A spine gate refusal closes the run as ``blocked`` at its gate phase; a rung
+    abort and every other error close it ``failed`` with a classified code.
+    """
+    classified = classify_failure(error)
+    if classified.block is not None and not rung_abort:
+        close_run_blocked(staging_bundle, emitter, classified.block)
+        return
+    error_code, failure_class = (
+        ("RUNG_ABORTED", "aborted")
+        if rung_abort
+        else (
+            classified.error_code or "BUILD_FAILED",
+            classified.failure_class or "error",
+        )
+    )
+    if staging_bundle is not None and staging_bundle.status == "running":
+        try:
+            staging_bundle.fail(
+                error, error_code=error_code, failure_class=failure_class
+            )
+            staging_bundle.validate_local_bundle()
+        except Exception:
+            pass
+    if emitter is not None and emitter.available:
+        emitter.fail(error, failure_class=failure_class, error_code=error_code)
 
 
 def _record_attempt(
@@ -997,17 +1231,65 @@ class _SampledGraphRootTransform:
         return dict(hook())
 
 
-def _staging_stage_observer(telemetry: StagingTelemetryV2) -> StageObserver:
-    """Translate a shared stage observation into staging telemetry."""
+def _stage_observer(
+    staging_bundle: StagingRunBundleWriterV2 | None,
+    emitter: LocalTelemetryEmitter | None,
+) -> StageObserver:
+    """Report a stage independently to the emitter and staging bundle."""
 
     def observe(observation: StageObservation) -> None:
-        telemetry.stage(
+        _record_stage(
+            staging_bundle,
+            emitter,
             observation.stage_id,
-            event_status=observation.status,
+            observation.status,
             elapsed_seconds=observation.elapsed_seconds,
             entity_row_counts=dict(observation.entity_row_counts),
             produced_column_count=observation.produced_column_count,
         )
+
+    return observe
+
+
+def _record_stage(
+    staging_bundle: StagingRunBundleWriterV2 | None,
+    emitter: LocalTelemetryEmitter | None,
+    stage_id: str,
+    status: str,
+    **details: object,
+) -> None:
+    """Send one stage update to two independent destinations."""
+
+    if emitter is not None:
+        emitter.transition_stage(stage_id, status=status, **details)
+    if staging_bundle is not None:
+        staging_bundle.stage(stage_id, event_status=status, **details)
+
+
+def _graph_progress_observer(emitter: LocalTelemetryEmitter | None, *, total: int):
+    """Report graph-node completion without copying the observed population."""
+
+    completed = 0
+    previous = time.monotonic()
+
+    def observe(node_id, _population) -> None:
+        nonlocal completed, previous
+        if emitter is None:
+            return
+        now = time.monotonic()
+        completed += 1
+        emitter.emit(
+            event_type="progress",
+            stage_id=node_id,
+            status="completed",
+            details={
+                "done": completed,
+                "total": total,
+                "unit": "graph_nodes",
+                "elapsed_seconds": now - previous,
+            },
+        )
+        previous = now
 
     return observe
 
@@ -1188,15 +1470,18 @@ def _exception_chain_contains(error: BaseException, text: str) -> bool:
     return False
 
 
-def _create_staging_telemetry(
-    args: argparse.Namespace, *, state: AttemptState
-) -> StagingTelemetryV2 | None:
+def _create_staging_run_bundle(
+    args: argparse.Namespace,
+    *,
+    state: AttemptState,
+) -> StagingRunBundleWriterV2 | None:
+    run_id = args.staging_run_id or state.build_id
     if args.no_staging:
         return None
     local_dir = args.staging_dir or args.spine_h5.parent / "staging"
     local_only = args.staging_local_only
-    return StagingTelemetryV2(
-        run_id=args.staging_run_id or state.build_id,
+    return StagingRunBundleWriterV2(
+        run_id=run_id,
         country_code="GB",
         operation_id="uk_frs_spine",
         pipeline_id=_PIPELINE,
@@ -1207,7 +1492,34 @@ def _create_staging_telemetry(
         delivery_mode="local_only" if local_only else "local_and_remote",
         repo_id=None if local_only else args.staging_repo_id,
         upload_interval_seconds=args.staging_upload_interval_seconds,
+        # The build's emitter commits the run files with its own credential.
+        emitter_client=(
+            None if local_only or _ACTIVE_EMITTER is None else _ACTIVE_EMITTER.client
+        ),
     )
+
+
+def _start_telemetry_emitter(
+    args: argparse.Namespace, *, state: AttemptState
+) -> LocalTelemetryEmitter:
+    global _ACTIVE_EMITTER
+    run_id = args.staging_run_id or state.build_id
+    if (
+        _ACTIVE_EMITTER is not None
+        and _ACTIVE_EMITTER.available
+        and _ACTIVE_EMITTER.run.run_id == run_id
+    ):
+        return _ACTIVE_EMITTER
+    if _ACTIVE_EMITTER is not None and _ACTIVE_EMITTER.available:
+        _ACTIVE_EMITTER.close()
+    _ACTIVE_EMITTER = start_local_telemetry_emitter_service(
+        run_id=run_id,
+        country_code="GB",
+        pipeline=_PIPELINE,
+        candidate_id=args.staging_candidate_id or state.build_id,
+        run_kind="smoke" if args.smoke else "spine",
+    )
+    return _ACTIVE_EMITTER
 
 
 def _telemetry_sample(
@@ -1219,11 +1531,11 @@ def _telemetry_sample(
 
 
 def _staging_delivery(
-    args: argparse.Namespace, telemetry: StagingTelemetryV2 | None
+    args: argparse.Namespace, staging_bundle: StagingRunBundleWriterV2 | None
 ) -> dict[str, object]:
-    if telemetry is None:
+    if staging_bundle is None:
         return disabled_staging_delivery("--no-staging")
-    return telemetry.delivery_summary
+    return staging_bundle.delivery_summary
 
 
 @dataclass(frozen=True)
@@ -1261,7 +1573,7 @@ def prepare_uk_spine_execution(
     roster, the private-input checks, the stage implementations (licensed or
     synthetic fixture), the sampling root, the optional observation wrap, the
     declared graph sources, and the gate nodes bound to the rules engine.
-    ``observer`` is the staging telemetry's stage observer when telemetry is
+    ``observer`` is the staging run bundle's stage observer when that bundle is
     enabled; ``main`` supplies it, and a caller without telemetry passes none.
     """
 
@@ -1286,6 +1598,25 @@ def prepare_uk_spine_execution(
         raise ValueError(
             "--was-tab is required when the was_wealth stage is scheduled."
         )
+    for was_person_stage in ("was_lisa", "isa_subscriptions", "company_cars"):
+        if (
+            args.synthetic_fixture_dir is not None
+            or was_person_stage not in stage_names
+        ):
+            continue
+        missing_was = [
+            flag
+            for flag, value in (
+                ("--was-tab", args.was_tab),
+                ("--was-person-tab", args.was_person_tab),
+            )
+            if value is None
+        ]
+        if missing_was:
+            raise ValueError(
+                f"{was_person_stage} requires caller-supplied private inputs: "
+                f"{', '.join(missing_was)}."
+            )
     if args.synthetic_fixture_dir is None and "nts_bus_travel" in stage_names:
         missing_nts = [
             flag
@@ -1309,6 +1640,8 @@ def prepare_uk_spine_execution(
             for flag, value in (
                 ("--lcfs-hh-tab", args.lcfs_hh_tab),
                 ("--lcfs-person-tab", args.lcfs_person_tab),
+                ("--nts-household-tab", args.nts_household_tab),
+                ("--nts-vehicle-tab", args.nts_vehicle_tab),
             )
             if value is None
         ]
@@ -1325,6 +1658,12 @@ def prepare_uk_spine_execution(
         raise ValueError(
             "--etb-tab is required when etb_vat or etb_services is scheduled."
         )
+    if (
+        args.synthetic_fixture_dir is None
+        and "aps_occupation" in stage_names
+        and args.aps_tab is None
+    ):
+        raise ValueError("--aps-tab is required when aps_occupation is scheduled.")
     stages = [stages_by_name[name] for name in stage_names]
     synthetic_fixture = _synthetic_fixture_evidence(args.synthetic_fixture_dir)
     engine = _rules_engine()
@@ -1410,6 +1749,32 @@ def prepare_uk_spine_execution(
                 was_tab_path=sources["was"],
             )
         )
+    if "was_lisa" in stage_names:
+        implementations["was_lisa"] = _GraphSourceTransform(
+            lambda sources: UKWASLISAStageTransform(
+                stage=stages_by_name["was_lisa"],
+                engine=engine,
+                was_tab_path=sources["was"],
+                was_person_tab_path=sources["was_person"],
+            )
+        )
+    if "isa_subscriptions" in stage_names:
+        implementations["isa_subscriptions"] = _GraphSourceTransform(
+            lambda sources: UKISASubscriptionsStageTransform(
+                stage=stages_by_name["isa_subscriptions"],
+                engine=engine,
+                was_tab_path=sources["was"],
+                was_person_tab_path=sources["was_person"],
+            )
+        )
+    if "company_cars" in stage_names:
+        implementations["company_cars"] = _GraphSourceTransform(
+            lambda sources: UKCompanyCarsStageTransform(
+                stage=stages_by_name["company_cars"],
+                engine=engine,
+                was_person_tab_path=sources["was_person"],
+            )
+        )
     if "nts_bus_travel" in stage_names:
         implementations["nts_bus_travel"] = _GraphSourceTransform(
             lambda sources: UKNTSBusTravelStageTransform(
@@ -1428,6 +1793,21 @@ def prepare_uk_spine_execution(
                 stage=stages_by_name["regional_property_uprating"],
             )
         )
+    if "property_components" in stage_names:
+        implementations["property_components"] = _GraphSourceTransform(
+            lambda sources: UKPropertyComponentsStageTransform(
+                stage=stages_by_name["property_components"],
+                spi_tab_path=sources["spi"],
+            )
+        )
+    if "regional_home_values" in stage_names:
+        implementations["regional_home_values"] = UKRegionalHomeValuesStageTransform(
+            stage=stages_by_name["regional_home_values"],
+        )
+    if "property_purchases" in stage_names:
+        implementations["property_purchases"] = UKPropertyPurchasesStageTransform(
+            stage=stages_by_name["property_purchases"],
+        )
     if "lcfs_consumption" in stage_names:
         implementations["lcfs_consumption"] = _GraphSourceTransform(
             lambda sources: UKLCFSConsumptionStageTransform(
@@ -1435,6 +1815,8 @@ def prepare_uk_spine_execution(
                 engine=engine,
                 lcfs_hh_tab_path=sources["lcfs_household"],
                 lcfs_person_tab_path=sources["lcfs_person"],
+                nts_household_tab_path=sources["nts_household"],
+                nts_vehicle_tab_path=sources["nts_vehicle"],
             )
         )
     if "etb_vat" in stage_names:
@@ -1460,6 +1842,13 @@ def prepare_uk_spine_execution(
             sampled_rung=_is_sampled(args),
         )
     )
+    if "frs_annual_income_spells" in stage_names:
+        implementations["frs_annual_income_spells"] = _GraphSourceTransform(
+            lambda sources: UKFRSAnnualIncomeStageTransform(
+                sources["frs"],
+                stage=stages_by_name["frs_annual_income_spells"],
+            )
+        )
     implementations["spi_support_channel"] = UKSPISupportChannelStageTransform(
         stage=stages_by_name["spi_support_channel"],
         sample_fraction=args.sample_fraction,
@@ -1473,6 +1862,17 @@ def prepare_uk_spine_execution(
             )
         )
     implementations["hmrc_spi_income_spine"] = hmrc_spine_transform
+    if "spi_employment_shell" in stage_names:
+        implementations["spi_employment_shell"] = UKSPIEmploymentShellStageTransform(
+            stage=stages_by_name["spi_employment_shell"]
+        )
+    if "aps_occupation" in stage_names:
+        implementations["aps_occupation"] = _GraphSourceTransform(
+            lambda sources: UKAPSOccupationStageTransform(
+                stage=stages_by_name["aps_occupation"],
+                aps_tab_path=sources["aps"],
+            )
+        )
     if "spi_housing_shell" in stage_names:
         implementations["spi_housing_shell"] = UKSPIHousingShellStageTransform(
             stage=stages_by_name["spi_housing_shell"]
@@ -1482,14 +1882,53 @@ def prepare_uk_spine_execution(
             stage=stages_by_name["uc_reporter_redraw"],
             engine=engine,
         )
+    if "spi_benefit_coherence" in stage_names:
+        implementations["spi_benefit_coherence"] = UKSPIBenefitCoherenceStageTransform(
+            stage=stages_by_name["spi_benefit_coherence"]
+        )
     if "uc_capital_coherence" in stage_names:
         implementations["uc_capital_coherence"] = UKUCCapitalCoherenceStageTransform(
             stage=stages_by_name["uc_capital_coherence"]
+        )
+    if "uc_take_up" in stage_names:
+        implementations["uc_take_up"] = UKUCTakeUpStageTransform(
+            stage=stages_by_name["uc_take_up"],
+            engine=engine,
+        )
+    if "uc_legacy_closure_take_up" in stage_names:
+        implementations["uc_legacy_closure_take_up"] = (
+            UKLegacyClosureTakeUpStageTransform(
+                stage=stages_by_name["uc_legacy_closure_take_up"]
+            )
+        )
+    if "pension_credit_take_up" in stage_names:
+        implementations["pension_credit_take_up"] = UKPensionCreditTakeUpStageTransform(
+            stage=stages_by_name["pension_credit_take_up"],
+            engine=engine,
+        )
+    if "child_benefit_take_up" in stage_names:
+        implementations["child_benefit_take_up"] = UKChildBenefitTakeUpStageTransform(
+            stage=stages_by_name["child_benefit_take_up"],
+            engine=engine,
+        )
+    if "carers_allowance_take_up" in stage_names:
+        implementations["carers_allowance_take_up"] = (
+            UKCarersAllowanceTakeUpStageTransform(
+                stage=stages_by_name["carers_allowance_take_up"],
+                engine=engine,
+                contract=stochastic_contract,
+            )
         )
     if "uc_deduction_attributes" in stage_names:
         implementations["uc_deduction_attributes"] = (
             UKUCDeductionAttributesStageTransform(
                 stage=stages_by_name["uc_deduction_attributes"]
+            )
+        )
+    if "high_value_home_support" in stage_names:
+        implementations["high_value_home_support"] = (
+            UKHighValueHomeSupportStageTransform(
+                stage=stages_by_name["high_value_home_support"]
             )
         )
     if "cgt_support_split" in stage_names:
@@ -1510,6 +1949,10 @@ def prepare_uk_spine_execution(
                 stages_by_name["hmrc_cgt_asset_type_spine"]
             )
         )
+    if "cgt_residential_split" in stage_names:
+        implementations["cgt_residential_split"] = UKCGTResidentialSplitStageTransform(
+            stage=stages_by_name["cgt_residential_split"]
+        )
     if "cgt_incidence_anchor" in stage_names:
         implementations["cgt_incidence_anchor"] = UKCGTIncidenceAnchorStageTransform(
             stage=stages_by_name["cgt_incidence_anchor"]
@@ -1522,6 +1965,25 @@ def prepare_uk_spine_execution(
         implementations["student_loans"] = UKStudentLoansStageTransform(
             stage=stages_by_name["student_loans"],
             calibration_year=frs_release.calibration_year,
+        )
+    if "private_school_attendance" in stage_names:
+        implementations["private_school_attendance"] = (
+            UKPrivateSchoolAttendanceStageTransform(
+                stage=stages_by_name["private_school_attendance"],
+                engine=engine,
+                calibration_year=frs_release.calibration_year,
+            )
+        )
+    if "childcare_copy_take_up" in stage_names:
+        implementations["childcare_copy_take_up"] = UKChildcareCopyTakeUpStageTransform(
+            contract=stochastic_contract,
+            stage=stages_by_name["childcare_copy_take_up"],
+        )
+    if "trading_allowance_receipts" in stage_names:
+        implementations["trading_allowance_receipts"] = (
+            UKTradingAllowanceReceiptsStageTransform(
+                stage=stages_by_name["trading_allowance_receipts"]
+            )
         )
     if "age_tail" in stage_names:
         implementations["age_tail"] = UKAgeTailStageTransform(
@@ -1569,8 +2031,15 @@ def prepare_uk_spine_execution(
         graph_sources = _synthetic_graph_sources(args.synthetic_fixture_dir)
     else:
         graph_sources = {"frs": args.frs_raw_dir}
-        if "was_wealth" in stage_names:
+        was_person_stages = {
+            "was_lisa",
+            "isa_subscriptions",
+            "company_cars",
+        } & set(stage_names)
+        if "was_wealth" in stage_names or was_person_stages:
             graph_sources["was"] = args.was_tab
+        if was_person_stages:
+            graph_sources["was_person"] = args.was_person_tab
         if "nts_bus_travel" in stage_names:
             graph_sources["nts_household"] = args.nts_household_tab
             graph_sources["nts_individual"] = args.nts_individual_tab
@@ -1580,9 +2049,15 @@ def prepare_uk_spine_execution(
         if "lcfs_consumption" in stage_names:
             graph_sources["lcfs_household"] = args.lcfs_hh_tab
             graph_sources["lcfs_person"] = args.lcfs_person_tab
+            graph_sources["nts_household"] = args.nts_household_tab
+            graph_sources["nts_vehicle"] = args.nts_vehicle_tab
         if "etb_vat" in stage_names or "etb_services" in stage_names:
             graph_sources["etb"] = args.etb_tab
+        if "aps_occupation" in stage_names:
+            graph_sources["aps"] = args.aps_tab
         if "spi_income_band_donors" in stage_names:
+            graph_sources["spi"] = args.spi_tab
+        if "property_components" in stage_names:
             graph_sources["spi"] = args.spi_tab
         if "hmrc_spi_income_spine" in stage_names:
             graph_sources["spi"] = args.spi_tab
@@ -1618,16 +2093,24 @@ def prepare_uk_spine_execution(
 
 
 def main(argv: list[str] | None = None) -> int:
+    """Build the spine; a SIGTERM is recorded like Ctrl-C, then exits 143."""
+    with raise_on_sigterm():
+        try:
+            return _main(argv)
+        except BuildTerminatedError as terminated:
+            raise SystemExit(terminated.exit_code) from terminated
+
+
+def _main(argv: list[str] | None = None) -> int:
     args = _parse_args(argv)
     rung = UK_SAMPLE_RUNG_TOKENS[args.sample_fraction]
     started_at = time.perf_counter()
     started_ts = datetime.now(UTC)
-    predecessor = resolve_predecessor(args.logbook_prev_row_digest)
-    digest = preflight_digest(_PIPELINE)
+    predecessor = None
     state = AttemptState(
         build_id=_new_build_id(started_ts),
-        identity_digest=digest,
-        input_pins_digest=digest,
+        identity_digest="unresolved-preflight-digest",
+        input_pins_digest="unresolved-preflight-digest",
         phases_reached=["attempt_started"],
         gate_verdicts={
             "pipeline": {
@@ -1638,9 +2121,14 @@ def main(argv: list[str] | None = None) -> int:
     )
     code_pin = "unresolved-local-git-code-pin"
     spool_dir = args.spine_h5.parent / "logbook-spool"
-    telemetry: StagingTelemetryV2 | None = None
+    staging_bundle: StagingRunBundleWriterV2 | None = None
     spine_battery: GateBatteryRun | None = None
+    emitter = _start_telemetry_emitter(args, state=state)
     try:
+        predecessor = resolve_predecessor(args.logbook_prev_row_digest)
+        digest = preflight_digest(_PIPELINE)
+        state.identity_digest = digest
+        state.input_pins_digest = digest
         _validate_args(args)
         # A crash between the H5 write and the sidecar writes must never
         # leave a stale sidecar beside a fresh H5 (adversarial-review
@@ -1658,24 +2146,24 @@ def main(argv: list[str] | None = None) -> int:
             stale_outputs.append(args.emit_nonzero_shares)
         for stale in stale_outputs:
             stale.unlink(missing_ok=True)
-        telemetry = _create_staging_telemetry(args, state=state)
-        if telemetry is not None:
+        staging_bundle = _create_staging_run_bundle(args, state=state)
+        if staging_bundle is not None:
             initial_sample = _telemetry_sample(args, None)
             if initial_sample is not None:
-                telemetry.set_sample(initial_sample)
-            telemetry.stage(
-                "configuration",
-                event_status="completed",
-                smoke=args.smoke,
-                sample_mode=("fraction" if args.sample_fraction != 1.0 else "full"),
-            )
+                staging_bundle.set_sample(initial_sample)
+        _record_stage(
+            staging_bundle,
+            emitter,
+            "configuration",
+            "completed",
+            smoke=args.smoke,
+            sample_mode=("fraction" if args.sample_fraction != 1.0 else "full"),
+        )
         code_pin = git_code_pin(_REPOSITORY)
         append_phase(state, "configured")
         prepared = prepare_uk_spine_execution(
             args,
-            observer=(
-                _staging_stage_observer(telemetry) if telemetry is not None else None
-            ),
+            observer=_stage_observer(staging_bundle, emitter),
         )
         spec = prepared.spec
         graph = prepared.graph
@@ -1705,13 +2193,14 @@ def main(argv: list[str] | None = None) -> int:
             canonical_json_bytes(run_config)
         ).hexdigest()
         append_phase(state, "inputs_pinned")
-        if telemetry is not None:
-            telemetry.stage(
-                "input_verification",
-                event_status="completed",
-                stage_count=len(stage_names),
-                input_artifact_count=len(artifact_pins) + len(input_artifact_pins),
-            )
+        _record_stage(
+            staging_bundle,
+            emitter,
+            "input_verification",
+            "completed",
+            stage_count=len(stage_names),
+            input_artifact_count=len(artifact_pins) + len(input_artifact_pins),
+        )
         stochastic_contract = prepared.stochastic_contract
         frs_release = prepared.frs_release
         spine_gate_path = _spine_gate_report_path(args.spine_h5)
@@ -1742,8 +2231,54 @@ def main(argv: list[str] | None = None) -> int:
             kernels=prepared.kernels,
             resume="auto",
             decisions=(),
+            _population_observer=_graph_progress_observer(
+                _ACTIVE_EMITTER, total=len(compiled_graph.order)
+            ),
+            _population_observer_detach=False,
         )
         graph_manifest.save(checkpoint_root / "spine.graph.json")
+        save_uk_graph_schema(graph, checkpoint_root, scope="raw_spine", spec=spec)
+        import resource
+
+        capture_started = time.perf_counter()
+        capture_rss_before = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
+        graph_evidence_path = save_run_evidence(
+            compiled_graph,
+            graph_manifest,
+            store=graph_store,
+            directory=checkpoint_root
+            / "graph-evidence"
+            / (graph_attempt_id := uuid.uuid4().hex),
+            attempt_id=graph_attempt_id,
+            phase="spine",
+            artifact_summaries=UK_SUMMARY_PROVIDERS,
+        )
+        capture_record = {
+            "phase": "spine",
+            "wall_s": round(time.perf_counter() - capture_started, 3),
+            "maxrss_before_bytes": capture_rss_before,
+            "maxrss_after_bytes": resource.getrusage(resource.RUSAGE_SELF).ru_maxrss,
+        }
+        with (checkpoint_root / "evidence-capture-timing.jsonl").open(
+            "a", encoding="utf-8"
+        ) as sink:
+            sink.write(json.dumps(capture_record, sort_keys=True) + "\n")
+        print(
+            f"evidence capture spine: {capture_record['wall_s']:.1f}s, peak RSS "
+            f"{capture_record['maxrss_after_bytes'] / 2**30:.2f} GiB",
+            file=sys.stderr,
+            flush=True,
+        )
+        graph_run_reference = json.loads(graph_evidence_path.read_text())["runs"][-1]
+        graph_declaration_path = (
+            graph_evidence_path.parent / graph_run_reference["graph"]["path"]
+        )
+        graph_manifest_path = (
+            graph_evidence_path.parent / graph_run_reference["manifest"]["path"]
+        )
+        graph_schema_path = save_uk_graph_schema(
+            graph, graph_evidence_path.parent, scope="raw_spine", spec=spec
+        )
         final_version = compiled_graph.versions[stage_names[-1]]
         frame = graph_manifest.population(final_version)
         records = _graph_stage_records(
@@ -1757,23 +2292,24 @@ def main(argv: list[str] | None = None) -> int:
         )
         stored_evidence = spine_sidecar_evidence(stored_stages)
         sampling = stored_evidence["sampling"]
-        if telemetry is not None:
-            sample = _telemetry_sample(args, sampling)
-            if sample is not None:
-                telemetry.set_sample(sample)
-            telemetry.stage(
-                "sampling",
-                event_status="completed",
-                realized_household_rows=(
-                    len(frame.table("household"))
-                    if sampling is None
-                    else sampling.get(
-                        "realized_household_rows",
-                        sampling.get("post_household_count"),
-                    )
-                ),
-            )
-            telemetry.stage("validation", event_status="started")
+        sample = _telemetry_sample(args, sampling)
+        if staging_bundle is not None and sample is not None:
+            staging_bundle.set_sample(sample)
+        _record_stage(
+            staging_bundle,
+            emitter,
+            "sampling",
+            "completed",
+            realized_household_rows=(
+                len(frame.table("household"))
+                if sampling is None
+                else sampling.get(
+                    "realized_household_rows",
+                    sampling.get("post_household_count"),
+                )
+            ),
+        )
+        _record_stage(staging_bundle, emitter, "validation", "started")
         if spine_battery is not None:
             materialize_spine_gate_reports(
                 graph_manifest,
@@ -1783,24 +2319,32 @@ def main(argv: list[str] | None = None) -> int:
             )
         if spine_battery is not None:
             append_phase(state, "spine_gates_evaluated")
-        if telemetry is not None:
-            telemetry.stage(
-                "validation",
-                event_status="completed",
-                entity_row_counts=_entity_row_counts(frame),
-            )
+        _record_stage(
+            staging_bundle,
+            emitter,
+            "validation",
+            "completed",
+            entity_row_counts=_entity_row_counts(frame),
+        )
         append_phase(state, "spine_built")
-        if telemetry is not None:
-            telemetry.stage("spine_h5_creation", event_status="started")
+        _record_stage(staging_bundle, emitter, "spine_h5_creation", "started")
         output = write_uk_national_frame(frame, args.spine_h5)
         if args.smoke:
             _mark_non_release_h5(output, build_id=state.build_id)
-        if telemetry is not None:
-            telemetry.stage(
-                "spine_h5_creation",
-                event_status="completed",
-                size_bytes=output.stat().st_size,
-            )
+        # The output's file digest, measured once its last byte is written
+        # (smoke marking included). The sidecar, the stage event, a
+        # ``<h5>.sha256`` file and the Logbook pipeline verdict carry it, so a
+        # downstream build pins exactly this file.
+        output_file = file_artifact(output)
+        _write_sha256_file(output, str(output_file["sha256"]))
+        _record_stage(
+            staging_bundle,
+            emitter,
+            "spine_h5_creation",
+            "completed",
+            size_bytes=int(output_file["size_bytes"]),
+            sha256=output_file["sha256"],
+        )
         append_phase(state, "spine_written")
         if args.checkpoint_dir is not None:
             args.checkpoint_dir.mkdir(parents=True, exist_ok=True)
@@ -1822,8 +2366,7 @@ def main(argv: list[str] | None = None) -> int:
             "report_kind": str(json.loads(replay_bytes).get("report_kind", "")),
             "sha256": hashlib.sha256(replay_bytes).hexdigest(),
         }
-        if telemetry is not None:
-            telemetry.stage("sidecar_creation", event_status="started")
+        _record_stage(staging_bundle, emitter, "sidecar_creation", "started")
         sidecar = _build_sidecar(
             frame=frame,
             stages=stages,
@@ -1844,7 +2387,7 @@ def main(argv: list[str] | None = None) -> int:
                 else "development"
             ),
             synthetic_fixture=synthetic_fixture,
-            staging_delivery=_staging_delivery(args, telemetry),
+            staging_delivery=_staging_delivery(args, staging_bundle),
             spine_gate_report=(
                 {
                     "path": str(spine_gate_path),
@@ -1855,10 +2398,32 @@ def main(argv: list[str] | None = None) -> int:
             ),
         )
         sidecar["operation_inventory"] = list(uk_spine_operation_inventory(graph, spec))
+
+        # Relative to the sidecar, so a checkpoint moved with its evidence
+        # directory keeps resolvable links and records no machine-local paths.
+        def _checkpoint_link(path: Path) -> str:
+            return Path(
+                os.path.relpath(path.resolve(), sidecar_path.parent.resolve())
+            ).as_posix()
+
         sidecar["graph_manifest"] = {
-            "path": str(checkpoint_root / "spine.graph.json"),
+            "path": _checkpoint_link(graph_manifest_path),
             "key": graph_manifest.key,
+            "sha256": hashlib.sha256(graph_manifest_path.read_bytes()).hexdigest(),
         }
+        sidecar["graph_declaration"] = {
+            "path": _checkpoint_link(graph_declaration_path),
+            "sha256": hashlib.sha256(graph_declaration_path.read_bytes()).hexdigest(),
+        }
+        sidecar["graph_schema"] = {
+            "path": _checkpoint_link(graph_schema_path),
+            "sha256": hashlib.sha256(graph_schema_path.read_bytes()).hexdigest(),
+        }
+        sidecar["graph_execution_evidence"] = {
+            "path": _checkpoint_link(graph_evidence_path),
+            "sha256": hashlib.sha256(graph_evidence_path.read_bytes()).hexdigest(),
+        }
+        sidecar["output"] = dict(output_file)
         stage_evidence = stored_evidence["stage_evidence"]
         if stage_evidence:
             sidecar["stage_evidence"] = stage_evidence
@@ -1866,18 +2431,20 @@ def main(argv: list[str] | None = None) -> int:
         if fit_weight_records:
             sidecar["fit_weight_records"] = fit_weight_records
         atomic_write_json(sidecar_path, sidecar)
-        if telemetry is not None:
-            telemetry.stage(
-                "sidecar_creation",
-                event_status="completed",
-                size_bytes=sidecar_path.stat().st_size,
-            )
+        _record_stage(
+            staging_bundle,
+            emitter,
+            "sidecar_creation",
+            "completed",
+            size_bytes=sidecar_path.stat().st_size,
+        )
         append_phase(state, "build_sidecar_written")
         if args.emit_nonzero_shares is not None:
             final_columns = list(
                 dict.fromkeys(
-                    [column for record in records for column in record.produced]
-                    + list(FRS_EDUCATION_GRANT_REWRITES)
+                    column
+                    for record in records
+                    for column in (*record.produced, *record.rewrote)
                 )
             )
             atomic_write_json(
@@ -1890,8 +2457,8 @@ def main(argv: list[str] | None = None) -> int:
                 },
             )
             append_phase(state, "nonzero_shares_written")
-        if telemetry is not None:
-            telemetry.complete(
+        if staging_bundle is not None:
+            staging_bundle.complete(
                 message=(
                     "Non-release smoke verification completed."
                     if args.smoke
@@ -1899,9 +2466,9 @@ def main(argv: list[str] | None = None) -> int:
                 )
             )
             if args.staging_read_back:
-                telemetry.verify_remote()
-            telemetry.validate_local_bundle()
-            sidecar["staging_delivery"] = telemetry.delivery_summary
+                staging_bundle.verify_remote()
+            staging_bundle.validate_local_bundle()
+            sidecar["staging_delivery"] = staging_bundle.delivery_summary
             atomic_write_json(sidecar_path, sidecar)
         state.artifact_location = local_artifact_reference(
             output,
@@ -1913,6 +2480,7 @@ def main(argv: list[str] | None = None) -> int:
                 "receipt": local_artifact_reference(
                     sidecar_path, repository_hint=_REPOSITORY
                 ),
+                "artifact_sha256": output_file["sha256"],
             }
         }
         if spine_gate_path.is_file():
@@ -1937,7 +2505,35 @@ def main(argv: list[str] | None = None) -> int:
         )
         print(f"Wrote FRS spine H5: {output}", file=sys.stderr)
         print(f"Wrote Logbook row: {spool_path}", file=sys.stderr)
-        return 0
+    except KeyboardInterrupt as interrupt:
+        # An operator's Ctrl-C or a SIGTERM (BuildTerminatedError) discards the
+        # attempt: the telemetry closes failed (INTERRUPTED or TERMINATED), the
+        # row is recorded, and the interrupt propagates.
+        _close_failed_telemetry(staging_bundle, emitter, interrupt)
+        try:
+            receipt_path = write_error_receipt(
+                error_receipt_path(args.spine_h5.parent, build_id=state.build_id),
+                state=state,
+                pipeline=_PIPELINE,
+                error=interrupt,
+            )
+            apply_error_verdict(
+                state,
+                local_artifact_reference(receipt_path, repository_hint=_REPOSITORY),
+            )
+            _record_attempt(
+                state=state,
+                started_at=started_at,
+                started_ts=started_ts,
+                code_pin=code_pin,
+                disposition=classify_failure(interrupt).disposition,
+                predecessor=predecessor,
+                rung=rung,
+                spool_dir=spool_dir,
+            )
+        except Exception:
+            pass
+        raise
     except Exception as error:
         if spine_battery is not None:
             # A run the assembled gate blocked never returned a manifest for
@@ -1949,15 +2545,11 @@ def main(argv: list[str] | None = None) -> int:
                 materialize_blocked_spine_gate_report(error, battery=spine_battery)
             except GateBatteryBlockedError as blocked:
                 error = blocked
-        if telemetry is not None and telemetry.status == "running":
-            try:
-                telemetry.fail(error)
-                telemetry.validate_local_bundle()
-            except Exception:
-                pass
-        if _is_sampled(args) and _exception_chain_contains(
+        rung_abort = _is_sampled(args) and _exception_chain_contains(
             error, _RUNG_NAMED_EDGE_SIGNATURE
-        ):
+        )
+        _close_failed_telemetry(staging_bundle, emitter, error, rung_abort=rung_abort)
+        if rung_abort:
             rung_abort_path = args.spine_h5.with_suffix(".rung_abort.json")
             receipt = _rung_abort_receipt(args, error=error)
             atomic_write_json(rung_abort_path, receipt)
@@ -2008,6 +2600,17 @@ def main(argv: list[str] | None = None) -> int:
             pass
         print(f"UK FRS spine build failed: {error}", file=sys.stderr)
         return 1
+    except BaseException as error:
+        # Preserve operator interrupts and system exits after recording failure.
+        if emitter.available:
+            emitter.fail(error)
+        raise
+    else:
+        if emitter.available:
+            emitter.complete()
+        return 0
+    finally:
+        emitter.close()
 
 
 if __name__ == "__main__":

@@ -26,6 +26,9 @@ from typing import TYPE_CHECKING
 import numpy as np
 import pandas as pd
 
+from microcosm.fit import categorical as fit_categorical
+from microcosm.fit import donors as fit_donors
+from microcosm.fit import held_out as fit_held_out
 from microcosm.frame import Frame, MassChangeRecord, WeightKind
 from microcosm.frame.adapters import policyengine_uk as uk_engine_adapter
 from microcosm.graph import (
@@ -44,8 +47,35 @@ from microcosm.graph import (
 )
 from microcosm.graph.population import dtype_for_token
 
-from .. import stage_evidence
-from . import bus_use_incidence, frs_hmrc_source, uc_relationships
+from .. import stage_evidence, stochastic_assignment
+from . import (
+    bus_use_incidence,
+    cgt_imputation,
+    energy_pricing,
+    frs_disability,
+    frs_education,
+    frs_hmrc_source,
+    frs_spine,
+    frs_take_up,
+    hmrc_company_car_statistics,
+    hmrc_income,
+    hmrc_isa_statistics,
+    hmrc_property_rental,
+    hmrc_uprating,
+    household_lineage,
+    ledger_fact_vendoring,
+    legacy_closure_take_up,
+    occupation_constants,
+    property_localisation,
+    receipt_counts,
+    rowwise_geography,
+    spi_income,
+    spi_support,
+    uc_capital_coherence,
+    uc_deduction_attributes,
+    uc_relationships,
+    was_wealth,
+)
 from .national_frame import UK_NATIONAL_SCHEMA
 from .rowwise_geography import id_multiplier_for_values
 
@@ -77,44 +107,192 @@ _STAGE_MODULES = {
     "frs_household_draws": "frs_household_draws",
     "frs_brma": "frs_brma",
     "was_wealth": "was_wealth",
+    "was_lisa": "was_lisa",
     "nts_bus_travel": "nts_bus_travel",
     "regional_property_uprating": "regional_uprating",
+    "property_components": "property_components",
+    "property_purchases": "property_purchases",
     "lcfs_consumption": "lcfs_consumption",
     "etb_vat": "etb_vat",
     "etb_services": "etb_services",
     "frs_hmrc_spine_leaves": "spi_spine",
+    "frs_annual_income_spells": "frs_annual_income",
     "spi_support_channel": "spi_spine",
     "spi_income_band_donors": "spi_band_donors",
     "hmrc_spi_income_spine": "spi_spine",
+    "spi_employment_shell": "spi_employment_shell",
+    "aps_occupation": "aps_occupation",
     "spi_housing_shell": "spi_housing_shell",
     "uc_reporter_redraw": "uc_reporter_redraw",
+    "spi_benefit_coherence": "spi_benefit_coherence",
     "uc_capital_coherence": "uc_capital_coherence",
+    "uc_take_up": "uc_take_up",
+    "uc_legacy_closure_take_up": "legacy_closure_take_up",
+    "pension_credit_take_up": "pension_credit_take_up",
+    "child_benefit_take_up": "child_benefit_take_up",
+    "carers_allowance_take_up": "carers_allowance_take_up",
     "uc_deduction_attributes": "uc_deduction_attributes",
+    "high_value_home_support": "high_value_home_support",
+    "regional_home_values": "regional_home_values",
     "cgt_support_split": "cgt_support",
     "cgt_incidence_clone": "cgt_structure",
     "cgt_incidence_anchor": "cgt_structure",
     "hmrc_cgt_gains_spine": "cgt_imputation",
+    "cgt_residential_split": "cgt_residential_split",
     "hmrc_cgt_asset_type_spine": "cgt_asset_type",
     "salary_sacrifice": "salary_sacrifice",
     "student_loans": "student_loans",
+    "private_school_attendance": "private_school_attendance",
+    "isa_subscriptions": "isa_subscriptions",
+    "trading_allowance_receipts": "trading_allowance_receipts",
+    "company_cars": "company_cars",
+    "childcare_copy_take_up": "childcare_copy_take_up",
     "age_tail": "age_tail",
 }
 
 # Imported modules are not traversed by ``source_hash``. Bind relationship
 # helpers and the adapter's input-retention checks into every consuming stage.
 _STAGE_HELPER_MODULES = {
+    # The three FRS draw stages' receipts measure their take-up flags through
+    # frs_take_up's signal measurement and count support by the shared
+    # disclosure rules (microcosm#1095).
+    "frs_take_up": (receipt_counts,),
+    "frs_person_draws": (frs_take_up, receipt_counts),
+    "frs_household_draws": (frs_take_up, receipt_counts),
     "frs_hmrc_spine_leaves": (frs_hmrc_source,),
+    # The annual income descriptors' receipt follows the shared disclosure rules
+    # (microcosm#1164).
+    "frs_annual_income_spells": (receipt_counts,),
+    # The SPI income stage's imputation, band-donor resample and receipt live
+    # in spi_income, so an edit there moves the stage's hash (microcosm#1278).
+    "hmrc_spi_income_spine": (spi_income,),
     "frs_spine": (uc_relationships,),
     "frs_legacy_proxies": (uk_engine_adapter,),
     "frs_education_grant_split": (uk_engine_adapter,),
     "frs_brma": (uk_engine_adapter,),
     "was_wealth": (uk_engine_adapter,),
+    # The LISA stage reads its household donor through the WAS cleaning and its
+    # household predictors through the WAS recipient surface; the anchor counts
+    # HMRC's payers through the typed ISA facts (microcosm#1415).
+    "was_lisa": (uk_engine_adapter, was_wealth, hmrc_isa_statistics),
+    # Landlords' receipts read the vendored PRIS rows through their typed
+    # loader, the tape through the income stage's preparation and uprating,
+    # and the support channel's names (microcosm#1106).
+    "property_components": (hmrc_property_rental, spi_income, spi_support),
+    # The regional values rank as the dense node does and read its knots
+    # (microcosm#1112).
+    "regional_home_values": (property_localisation, rowwise_geography),
+    # The purchases read the vendored HMRC Stamp Tax rows through the feed-pinned
+    # reader and mark SDLT's regions from the FRS region map (microcosm#1095).
+    "property_purchases": (ledger_fact_vendoring, rowwise_geography),
     "nts_bus_travel": (uk_engine_adapter, bus_use_incidence),
-    "lcfs_consumption": (uk_engine_adapter,),
+    # The energy level and prices are energy_pricing's (microcosm#1418): a
+    # code-only change to them must re-key the stage (the independent review
+    # of microcosm#1420, finding 5).
+    "lcfs_consumption": (uk_engine_adapter, energy_pricing),
     "etb_vat": (uk_engine_adapter,),
     "etb_services": (uk_engine_adapter,),
     "uc_reporter_redraw": (uc_relationships, uk_engine_adapter),
+    # The SPI benefit pass restores from the FRS twin through the support
+    # channel's lineage, re-derives the disability flags and the own-right
+    # rule, draws over the take-up population and maps household weights to
+    # benefit units as the UC capital stage does (microcosm#1095).
+    "spi_benefit_coherence": (
+        spi_support,
+        frs_disability,
+        frs_education,
+        frs_take_up,
+        uc_capital_coherence,
+    ),
     "uc_capital_coherence": (uc_relationships,),
+    # The Universal Credit redraw reads the award through the adapter, the
+    # vendored DWP counts, the closure stage's rule and rates, the deduction
+    # attributes, the take-up population and the family-type roles, and counts
+    # its pools and receipt on the source lineage (microcosm#1334).
+    "uc_take_up": (
+        uk_engine_adapter,
+        ledger_fact_vendoring,
+        legacy_closure_take_up,
+        uc_deduction_attributes,
+        frs_take_up,
+        uc_relationships,
+        uc_capital_coherence,
+        receipt_counts,
+    ),
+    # The Move to UC claim draw reuses the UC stage's household-to-benefit-unit
+    # weight mapping and reads the vendored DWP rows (microcosm#1095).
+    "uc_legacy_closure_take_up": (uc_capital_coherence, ledger_fact_vendoring),
+    # The Pension Credit redraw reuses the UC stage's household-to-benefit-unit
+    # weight mapping and the adapter's engine materialization.
+    "pension_credit_take_up": (uc_capital_coherence, uk_engine_adapter),
+    # The Child Benefit redraw shares the weight mapping and the adapter.
+    "child_benefit_take_up": (uc_capital_coherence, uk_engine_adapter),
+    # The Carer's Allowance draw reads the earnings test through the adapter's
+    # engine materialization and counts its receipt's support on the source
+    # lineage (microcosm#1319), and balances its draws through the shared
+    # placement helper (microcosm#1418).
+    "carers_allowance_take_up": (
+        uk_engine_adapter,
+        receipt_counts,
+        stochastic_assignment,
+    ),
+    # The stored attendance is one engine materialization (microcosm#1095).
+    "private_school_attendance": (uk_engine_adapter,),
+    # The subscriptions walk the CGT bands on its income proxy (with the
+    # proxy's loss relief), read HMRC's ISA tables through their typed loader
+    # and round their receipts' support (microcosm#1415).
+    "isa_subscriptions": (
+        cgt_imputation,
+        hmrc_income,
+        hmrc_isa_statistics,
+        receipt_counts,
+    ),
+    # The claimant draw is keyed on identity and its receipt rounds its
+    # support (microcosm#1428).
+    "trading_allowance_receipts": (receipt_counts, stochastic_assignment),
+    # The company cars read their carriers' names and codes from frs_spine,
+    # HMRC's company car tables through their typed loader, the engine's CPI
+    # index and contribution cap, the SPI channel's EPB and tape-row flag, and
+    # price the cars twice through the engine adapter; their draws are keyed on
+    # identity, and their receipts' support is rounded
+    # (PolicyEngine/uk-autumn-budget-dashboard-2026#316).
+    "company_cars": (
+        frs_spine,
+        hmrc_company_car_statistics,
+        hmrc_uprating,
+        receipt_counts,
+        spi_income,
+        spi_support,
+        stochastic_assignment,
+        uk_engine_adapter,
+    ),
+    # The copies' childcare re-draw draws through frs_take_up's childcare
+    # helper, reads each household's clone path, and measures its flags for
+    # the stage-time signal gate by the shared disclosure rules (microcosm#1095).
+    "childcare_copy_take_up": (frs_take_up, household_lineage, receipt_counts),
+    # The employment shell fits, scores and draws through microcosm.fit's
+    # categorical classifier, held-out scores and keyed donors, reads the
+    # shared occupation codes, and counts its receipt's support by the shared
+    # disclosure rules (microcosm#1490).
+    "spi_employment_shell": (
+        fit_categorical,
+        fit_donors,
+        fit_held_out,
+        occupation_constants,
+        receipt_counts,
+        stochastic_assignment,
+    ),
+    # The sub-major draw fits and scores through microcosm.fit's categorical
+    # classifier and held-out scores, reads the shared occupation codes, and
+    # counts its receipt's support by the shared disclosure rules
+    # (microcosm#1490).
+    "aps_occupation": (
+        fit_categorical,
+        fit_held_out,
+        occupation_constants,
+        receipt_counts,
+        stochastic_assignment,
+    ),
 }
 
 _COMPUTE = Capabilities(
@@ -331,6 +509,22 @@ def _fixture_cgt_distribution(path: Path):
     )
 
 
+def _fixture_property_rental_facts(path: Path):
+    from .hmrc_property_rental import HMRCPropertyRentalBand, HMRCPropertyRentalFacts
+
+    payload = dict(_json_mapping(path, label="PRIS property rental facts"))
+    raw_bands = payload.pop("receipts_bands")
+    if not isinstance(raw_bands, list):
+        raise ValueError("UK parity fixture PRIS receipts_bands must be a list.")
+    return HMRCPropertyRentalFacts(
+        **payload,
+        receipts_bands=tuple(
+            HMRCPropertyRentalBand(**dict(_mapping(row, label="Table 13 band")))
+            for row in raw_bands
+        ),
+    )
+
+
 def _fixture_asset_type_facts(path: Path):
     from .cgt_asset_type import (
         HMRCCGTAssetTypeFacts,
@@ -362,7 +556,7 @@ def _fixture_asset_type_facts(path: Path):
 def _fixture_descriptor(
     source: Path,
 ) -> tuple[Mapping[str, object], dict[str, SourceStageSpec]]:
-    """Parse the H2 bundle's descriptor and its 27 stage specs, keyed by name."""
+    """Parse the H2 bundle's descriptor and its stage specs, keyed by name."""
 
     from microcosm.build.source_manifest import SourceStageSpec
 
@@ -386,7 +580,7 @@ def _fixture_descriptor(
         missing = sorted(set(_STAGE_MODULES) - set(stages))
         extra = sorted(set(stages) - set(_STAGE_MODULES))
         raise ValueError(
-            "UK parity fixture must describe the current 34-stage spine "
+            "UK parity fixture must describe the current 39-stage spine "
             f"(missing={missing}, extra={extra})."
         )
     return descriptor, stages
@@ -398,15 +592,22 @@ def _fixture_implementations(source: Path) -> Mapping[str, object]:
     from microcosm.frame.adapters.policyengine_uk import PolicyEngineUKEngine
 
     from .age_tail import UKAgeTailStageTransform
+    from .aps_occupation import UKAPSOccupationStageTransform
+    from .carers_allowance_take_up import UKCarersAllowanceTakeUpStageTransform
     from .cgt_asset_type import UKCGTAssetTypeStageTransform, UKCGTBADRParameters
     from .cgt_imputation import UKCGTPolicyParameters, uk_cgt_spine_stage_transform
+    from .cgt_residential_split import UKCGTResidentialSplitStageTransform
     from .cgt_structure import (
         UKCGTIncidenceAnchorStageTransform,
         UKCGTIncidenceCloneStageTransform,
     )
     from .cgt_support import UKCGTSupportSplitStageTransform
+    from .child_benefit_take_up import UKChildBenefitTakeUpStageTransform
+    from .childcare_copy_take_up import UKChildcareCopyTakeUpStageTransform
+    from .company_cars import UKCompanyCarsStageTransform
     from .etb_services import UKETBServicesStageTransform
     from .etb_vat import UKETBVATStageTransform
+    from .frs_annual_income import UKFRSAnnualIncomeStageTransform
     from .frs_brma import UKFRSBRMAStageTransform
     from .frs_council_tax import UKFRSCouncilTaxStageTransform
     from .frs_disability import UKFRSDisabilityStageTransform
@@ -418,11 +619,24 @@ def _fixture_implementations(source: Path) -> Mapping[str, object]:
     from .frs_person_draws import UKFRSPersonDrawsStageTransform
     from .frs_relationships import UKFRSRelationshipsStageTransform
     from .frs_take_up import UKFRSTakeUpStageTransform
+    from .high_value_home_support import UKHighValueHomeSupportStageTransform
+    from .isa_subscriptions import UKISASubscriptionsStageTransform
     from .lcfs_consumption import UKLCFSConsumptionStageTransform
+    from .legacy_closure_take_up import UKLegacyClosureTakeUpStageTransform
     from .nts_bus_travel import UKNTSBusTravelStageTransform
+    from .pension_credit_take_up import UKPensionCreditTakeUpStageTransform
+    from .private_school_attendance import UKPrivateSchoolAttendanceStageTransform
+    from .property_components import UKPropertyComponentsStageTransform
+    from .property_purchases import (
+        UKPropertyPurchasesStageTransform,
+        UKPropertyPurchaseTargets,
+    )
+    from .regional_home_values import UKRegionalHomeValuesStageTransform
     from .regional_uprating import UKRegionalPropertyUpratingStageTransform
     from .salary_sacrifice import UKSalarySacrificeStageTransform
     from .spi_band_donors import UKSPIIncomeBandDonorStageTransform
+    from .spi_benefit_coherence import UKSPIBenefitCoherenceStageTransform
+    from .spi_employment_shell import UKSPIEmploymentShellStageTransform
     from .spi_housing_shell import UKSPIHousingShellStageTransform
     from .spi_spine import (
         UKFRSHMRCSpineLeavesStageTransform,
@@ -431,9 +645,12 @@ def _fixture_implementations(source: Path) -> Mapping[str, object]:
     )
     from .student_loans import UKStudentLoansStageTransform
     from .take_up_contract import load_uk_take_up_contract
+    from .trading_allowance_receipts import UKTradingAllowanceReceiptsStageTransform
     from .uc_capital_coherence import UKUCCapitalCoherenceStageTransform
     from .uc_deduction_attributes import UKUCDeductionAttributesStageTransform
     from .uc_reporter_redraw import UKUCReporterRedrawStageTransform
+    from .uc_take_up import UKUCTakeUpStageTransform
+    from .was_lisa import UKWASLISAStageTransform
     from .was_wealth import UKWASWealthStageTransform
 
     descriptor, stages = _fixture_descriptor(source)
@@ -443,6 +660,9 @@ def _fixture_implementations(source: Path) -> Mapping[str, object]:
     raw_dir = _fixture_input(source, inputs, "frs_raw")
     was = pd.read_csv(
         _fixture_input(source, inputs, "was"), float_precision="round_trip"
+    )
+    was_person = pd.read_csv(
+        _fixture_input(source, inputs, "was_person"), float_precision="round_trip"
     )
     lcfs_household = pd.read_csv(
         _fixture_input(source, inputs, "lcfs_household"),
@@ -454,6 +674,9 @@ def _fixture_implementations(source: Path) -> Mapping[str, object]:
     )
     etb = pd.read_csv(
         _fixture_input(source, inputs, "etb"), float_precision="round_trip"
+    )
+    aps = pd.read_csv(
+        _fixture_input(source, inputs, "aps"), float_precision="round_trip"
     )
     nts_household = pd.read_csv(
         _fixture_input(source, inputs, "nts_household"), float_precision="round_trip"
@@ -467,6 +690,9 @@ def _fixture_implementations(source: Path) -> Mapping[str, object]:
     nts_stage = pd.read_csv(
         _fixture_input(source, inputs, "nts_stage"), float_precision="round_trip"
     )
+    nts_vehicle = pd.read_csv(
+        _fixture_input(source, inputs, "nts_vehicle"), float_precision="round_trip"
+    )
     nts_ticket = pd.read_csv(
         _fixture_input(source, inputs, "nts_ticket"), float_precision="round_trip"
     )
@@ -479,6 +705,15 @@ def _fixture_implementations(source: Path) -> Mapping[str, object]:
     )
     cgt_asset_type_facts = _fixture_asset_type_facts(
         _fixture_input(source, inputs, "cgt_asset_type_facts")
+    )
+    property_rental_facts = _fixture_property_rental_facts(
+        _fixture_input(source, inputs, "property_rental_facts")
+    )
+    property_purchase_targets = UKPropertyPurchaseTargets.from_payload(
+        _json_mapping(
+            _fixture_input(source, inputs, "property_purchase_targets"),
+            label="property purchase targets",
+        )
     )
     cgt_parameters = UKCGTPolicyParameters(
         **dict(_mapping(descriptor.get("cgt_parameters"), label="CGT parameters"))
@@ -535,6 +770,12 @@ def _fixture_implementations(source: Path) -> Mapping[str, object]:
             "was_wealth": UKWASWealthStageTransform(
                 stage=stages["was_wealth"], engine=engine, donor=was
             ),
+            "was_lisa": UKWASLISAStageTransform(
+                stage=stages["was_lisa"],
+                engine=engine,
+                donor_household=was,
+                donor_person=was_person,
+            ),
             "nts_bus_travel": UKNTSBusTravelStageTransform(
                 stage=stages["nts_bus_travel"],
                 engine=engine,
@@ -547,11 +788,26 @@ def _fixture_implementations(source: Path) -> Mapping[str, object]:
             "regional_property_uprating": UKRegionalPropertyUpratingStageTransform(
                 stage=stages["regional_property_uprating"]
             ),
+            "property_components": UKPropertyComponentsStageTransform(
+                stage=stages["property_components"],
+                spi_tab_path=spi_path,
+                donor_table=spi_donor,
+                facts=property_rental_facts,
+            ),
+            "property_purchases": UKPropertyPurchasesStageTransform(
+                stage=stages["property_purchases"],
+                targets=property_purchase_targets,
+            ),
+            "regional_home_values": UKRegionalHomeValuesStageTransform(
+                stage=stages["regional_home_values"]
+            ),
             "lcfs_consumption": UKLCFSConsumptionStageTransform(
                 stage=stages["lcfs_consumption"],
                 engine=engine,
                 lcfs_household=lcfs_household,
                 lcfs_person=lcfs_person,
+                nts_household=nts_household,
+                nts_vehicle=nts_vehicle,
             ),
             "etb_vat": UKETBVATStageTransform(
                 stage=stages["etb_vat"], engine=engine, donor=etb
@@ -561,6 +817,9 @@ def _fixture_implementations(source: Path) -> Mapping[str, object]:
             ),
             "frs_hmrc_spine_leaves": UKFRSHMRCSpineLeavesStageTransform(
                 raw_dir, stage=stages["frs_hmrc_spine_leaves"]
+            ),
+            "frs_annual_income_spells": UKFRSAnnualIncomeStageTransform(
+                raw_dir, stage=stages["frs_annual_income_spells"]
             ),
             "spi_support_channel": UKSPISupportChannelStageTransform(
                 stage=stages["spi_support_channel"],
@@ -582,17 +841,46 @@ def _fixture_implementations(source: Path) -> Mapping[str, object]:
                 donor_table=spi_donor,
                 source_targets=income_targets,
             ),
+            "spi_employment_shell": UKSPIEmploymentShellStageTransform(
+                stage=stages["spi_employment_shell"], boosted_max_iter=qrf_estimators
+            ),
+            "aps_occupation": UKAPSOccupationStageTransform(
+                stage=stages["aps_occupation"],
+                donor=aps,
+                boosted_max_iter=qrf_estimators,
+            ),
             "spi_housing_shell": UKSPIHousingShellStageTransform(
                 stage=stages["spi_housing_shell"], n_estimators=qrf_estimators
             ),
             "uc_reporter_redraw": UKUCReporterRedrawStageTransform(
                 stage=stages["uc_reporter_redraw"], engine=engine
             ),
+            "spi_benefit_coherence": UKSPIBenefitCoherenceStageTransform(
+                stage=stages["spi_benefit_coherence"], contract=contract
+            ),
             "uc_capital_coherence": UKUCCapitalCoherenceStageTransform(
                 stage=stages["uc_capital_coherence"]
             ),
+            "uc_take_up": UKUCTakeUpStageTransform(
+                stage=stages["uc_take_up"], engine=engine
+            ),
+            "uc_legacy_closure_take_up": UKLegacyClosureTakeUpStageTransform(
+                stage=stages["uc_legacy_closure_take_up"]
+            ),
+            "pension_credit_take_up": UKPensionCreditTakeUpStageTransform(
+                stage=stages["pension_credit_take_up"], engine=engine
+            ),
+            "child_benefit_take_up": UKChildBenefitTakeUpStageTransform(
+                stage=stages["child_benefit_take_up"], engine=engine
+            ),
+            "carers_allowance_take_up": UKCarersAllowanceTakeUpStageTransform(
+                stage=stages["carers_allowance_take_up"], engine=engine
+            ),
             "uc_deduction_attributes": UKUCDeductionAttributesStageTransform(
                 stage=stages["uc_deduction_attributes"]
+            ),
+            "high_value_home_support": UKHighValueHomeSupportStageTransform(
+                stage=stages["high_value_home_support"]
             ),
             "cgt_support_split": UKCGTSupportSplitStageTransform(
                 stage=stages["cgt_support_split"],
@@ -617,11 +905,38 @@ def _fixture_implementations(source: Path) -> Mapping[str, object]:
                 stage=stages["cgt_incidence_anchor"],
                 parameters=cgt_parameters,
             ),
+            "cgt_residential_split": UKCGTResidentialSplitStageTransform(
+                stage=stages["cgt_residential_split"],
+                facts=cgt_asset_type_facts,
+                parameters=cgt_parameters,
+            ),
             "salary_sacrifice": UKSalarySacrificeStageTransform(
                 stage=stages["salary_sacrifice"]
             ),
             "student_loans": UKStudentLoansStageTransform(
                 stage=stages["student_loans"], calibration_year=calibration_year
+            ),
+            "private_school_attendance": UKPrivateSchoolAttendanceStageTransform(
+                stage=stages["private_school_attendance"],
+                engine=engine,
+                calibration_year=calibration_year,
+            ),
+            "isa_subscriptions": UKISASubscriptionsStageTransform(
+                stage=stages["isa_subscriptions"],
+                engine=engine,
+                donor_household=was,
+                donor_person=was_person,
+            ),
+            "trading_allowance_receipts": UKTradingAllowanceReceiptsStageTransform(
+                stage=stages["trading_allowance_receipts"]
+            ),
+            "company_cars": UKCompanyCarsStageTransform(
+                stage=stages["company_cars"],
+                engine=engine,
+                donor_person=was_person,
+            ),
+            "childcare_copy_take_up": UKChildcareCopyTakeUpStageTransform(
+                contract=contract, stage=stages["childcare_copy_take_up"]
             ),
             "age_tail": UKAgeTailStageTransform(stage=stages["age_tail"]),
         }
@@ -706,9 +1021,18 @@ def _minimal_frame(context: KernelContext) -> Frame:
         # KernelContext deliberately has no legacy Frame.mass_log channel.  The
         # SPI income transform consumes only the immediately preceding support
         # allocation reason, whose exact current-spine record is reconstructible
-        # from the conserved household total and reviewed public reason.
-        from .spi_support import SPI_PRIOR_MASS_CHANGE_REASON
+        # from the conserved household total and reviewed public reason, the
+        # declared allocation's own sentence (microcosm#1069 c6).
+        from microcosm.build.country_spec import load_country_spec
 
+        from .spi_spine import uk_spi_support_mass_change_reason
+
+        sources = load_country_spec("uk").sources
+        if sources is None:
+            raise ValueError("The committed UK country spec declares no sources.")
+        reason = uk_spi_support_mass_change_reason(
+            sources.stage_map()["spi_support_channel"]
+        )
         total = context.weights["household"].total
         mass_log = (
             MassChangeRecord(
@@ -716,7 +1040,7 @@ def _minimal_frame(context: KernelContext) -> Frame:
                 old_total=total,
                 new_total=total,
                 declared_factor=1.0,
-                reason=SPI_PRIOR_MASS_CHANGE_REASON,
+                reason=reason,
             ),
         )
     return Frame(
@@ -1008,7 +1332,12 @@ class UKExpandStageKernel(KernelBase):
             )
         cells = _expand_cells(context)
         id_offset = None
-        if self.stage in {"cgt_support_split", "cgt_incidence_clone"}:
+        if self.stage in {
+            "high_value_home_support",
+            "cgt_support_split",
+            "cgt_incidence_clone",
+            "cgt_residential_split",
+        }:
             id_offset = id_multiplier_for_values(
                 *(
                     before.table(entity)[before.schema.entity_id_column(entity)]
@@ -1132,9 +1461,11 @@ def build_uk_registry(
         if stage in {
             "spi_support_channel",
             "spi_income_band_donors",
+            "high_value_home_support",
             "cgt_support_split",
             "cgt_incidence_clone",
             "cgt_incidence_anchor",
+            "cgt_residential_split",
         }:
             registry.register(UKExpandStageKernel(stage, transform, fixture_resolver))
         else:

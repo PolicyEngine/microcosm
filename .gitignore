@@ -8,13 +8,22 @@ dist/
 build/
 out/
 *.h5
+# Licensed run outputs: pool tables and audit directories (UKDS CD137 cl. 8).
+*.npz
+audit-*/
 !packages/*/build/
 # microcosm.build is a real namespace package, not a build-artifact dir
 !packages/microcosm-build/src/microcosm/build/
 
 # Release alert webhooks (real file is machine-local; .example is tracked)
 tools/release.env
+tools/route_a/route_a.env
 /inputs/
 
 # Finder metadata — never payload
 .DS_Store
+
+# Dense sign-off drafts (tools/draft_uk_dense_signoff.py): the private review
+# file holds licensed-data review values and is never committed
+PRIVATE_review.csv
+signoff-draft/

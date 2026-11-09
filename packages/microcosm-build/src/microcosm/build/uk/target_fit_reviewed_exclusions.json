@@ -1,13 +1,136 @@
 {
-  "schema_version": 2,
-  "description": "Reviewed target-fit exclusions for the UK terminal battery (schema 2 per #610). Each entry defers one calibration target whose |relative error| breaches the 25% release bound, with the defect diagnosed, tracked, and owned elsewhere; the receipt records the reasoning, approver, adjudication reference, approval date, and expiry. The gate keeps the target BOUND in calibration (exclusion applies to the release fence only, never the solve), reports dormant entries, FAILS stale ones (targets back inside the bound), and FAILS expired ones until the adjudication is renewed, so this register cannot rot.",
-  "exclusions": {
-    "hmrc/state_pension_income_band_50_000_to_70_000@2025": {
-      "reason": "Calibration-competition residual, not a data defect: the SPI state-pension amount band for total income GBP 50,000 to 70,000 (2023-24 Table 3.7, uprated by the new State Pension rate the engine pays) fitted at +23.4% on v21 and +27.6% on v21b (target GBP 5.26bn); the state-pension family sums 6.9% over its target because the engine pays every recipient the 2025-26 rate while the taxpayer counts by band fit within 1%, and this band carries the residual after the reserved income band donors moved the surrounding bands. Deferred four weeks while the state-pension amount anchor is scoped (PolicyEngine/chronicle#280 lane).",
-      "approved_by": "juaristi22",
-      "adjudication": "PolicyEngine/microcosm#1006 (issue comment 5812206367, the register rulings María gave in session: ruling D6 of 2026-09-23; income-anchor lane, PolicyEngine/chronicle#280)",
-      "approved_on": "2026-09-23",
-      "expires_on": "2026-10-21"
-    }
+ "schema_version": 2,
+ "description": "Reviewed target-fit exclusions for the UK terminal battery (schema 2 per #610). Each entry defers one calibration target whose |relative error| breaches the 25% release bound, with the defect diagnosed, tracked, and owned elsewhere; the receipt records the reasoning, approver, adjudication reference, approval date, and expiry. The gate keeps the target BOUND in calibration (exclusion applies to the release fence only, never the solve), reports dormant entries, FAILS stale ones (targets back inside the bound), and FAILS expired ones until the adjudication is renewed, so this register cannot rot.",
+ "exclusions": {
+  "hmrc/dividend_income_income_band_20_000_to_30_000@2025": {
+   "reason": "Gate-only sign-off of the national target row hmrc/dividend_income_income_band_20_000_to_30_000@2025 on the local line (microcosm#1301). On dense build-1 attempt uk-local-candidate-f100-s42-20261018T161007Z-35fb4c89 (full gate report sha256 46d42e6abf5fa8eaf08e3301a982703f113838c41cb7869340a3a41bafc6407f) it breached the target-fit release bound (max_abs_relative_error 0.25). It stays bound in the solve: this entry suppresses only the release fence on the local line, and a build in which it is back inside the bound fails the entry as stale.",
+   "approved_by": "juaristi22",
+   "adjudication": "Gate-only sign-off of the local release's measured build, drafted from its run (microcosm#1301, microcosm#1310).",
+   "approved_on": "2026-10-19",
+   "expires_on": "2026-11-16",
+   "release_lines": [
+    "local"
+   ]
+  },
+  "hmrc/dividend_income_income_band_30_000_to_40_000@2025": {
+   "reason": "Gate-only sign-off of the national target row hmrc/dividend_income_income_band_30_000_to_40_000@2025 on the local line (microcosm#1301). On dense build-1 attempt uk-local-candidate-f100-s42-20261018T161007Z-35fb4c89 (full gate report sha256 46d42e6abf5fa8eaf08e3301a982703f113838c41cb7869340a3a41bafc6407f) it breached the target-fit release bound (max_abs_relative_error 0.25). It stays bound in the solve: this entry suppresses only the release fence on the local line, and a build in which it is back inside the bound fails the entry as stale.",
+   "approved_by": "juaristi22",
+   "adjudication": "Gate-only sign-off of the local release's measured build, drafted from its run (microcosm#1301, microcosm#1310).",
+   "approved_on": "2026-10-19",
+   "expires_on": "2026-11-16",
+   "release_lines": [
+    "local"
+   ]
+  },
+  "hmrc/dividend_income_income_band_40_000_to_50_000@2025": {
+   "reason": "Gate-only sign-off of the national target row hmrc/dividend_income_income_band_40_000_to_50_000@2025 on the local line (microcosm#1301). On dense build-1 attempt uk-local-candidate-f100-s42-20261018T161007Z-35fb4c89 (full gate report sha256 46d42e6abf5fa8eaf08e3301a982703f113838c41cb7869340a3a41bafc6407f) it breached the target-fit release bound (max_abs_relative_error 0.25). It stays bound in the solve: this entry suppresses only the release fence on the local line, and a build in which it is back inside the bound fails the entry as stale.",
+   "approved_by": "juaristi22",
+   "adjudication": "Gate-only sign-off of the local release's measured build, drafted from its run (microcosm#1301, microcosm#1310).",
+   "approved_on": "2026-10-19",
+   "expires_on": "2026-11-16",
+   "release_lines": [
+    "local"
+   ]
+  },
+  "hmrc/private_pension_income_income_band_12_570_to_15_000@2025": {
+   "reason": "Gate-only sign-off of the national target row hmrc/private_pension_income_income_band_12_570_to_15_000@2025 on the local line (microcosm#1301). On dense build-1 attempt uk-local-candidate-f100-s42-20261018T161007Z-35fb4c89 (full gate report sha256 46d42e6abf5fa8eaf08e3301a982703f113838c41cb7869340a3a41bafc6407f) it breached the target-fit release bound (max_abs_relative_error 0.25). It stays bound in the solve: this entry suppresses only the release fence on the local line, and a build in which it is back inside the bound fails the entry as stale.",
+   "approved_by": "juaristi22",
+   "adjudication": "Gate-only sign-off of the local release's measured build, drafted from its run (microcosm#1301, microcosm#1310).",
+   "approved_on": "2026-10-19",
+   "expires_on": "2026-11-16",
+   "release_lines": [
+    "local"
+   ]
+  },
+  "hmrc.spi.savings_interest_income.amount_by_total_income_band.band_15000@2025": {
+   "reason": "Gate-only sign-off of the national target row hmrc.spi.savings_interest_income.amount_by_total_income_band.band_15000@2025 on the local line (microcosm#1301). On dense build-1 attempt uk-local-candidate-f100-s42-20261027T022836Z-d5f72865 (full gate report sha256 a859f46bd70604adac1b7d6cd419c6a3aae87828a0943d318b3722022e6b2e00) it breached the target-fit release bound (max_abs_relative_error 0.25). It stays bound in the solve: this entry suppresses only the release fence on the local line, and a build in which it is back inside the bound fails the entry as stale.",
+   "approved_by": "juaristi22",
+   "adjudication": "microcosm#1301 route, drafted from the first dense build of the pair on microcosm#1411 (sign-off 2026-10-27)",
+   "approved_on": "2026-10-27",
+   "expires_on": "2026-11-24",
+   "release_lines": [
+    "local"
+   ]
+  },
+  "hmrc.spi.employment_income.count_by_self_employment_income_band.band_1000_2000@2025": {
+   "reason": "Gate-only sign-off of the national target row hmrc.spi.employment_income.count_by_self_employment_income_band.band_1000_2000@2025 on the local line (microcosm#1301). On dense build-1 attempt uk-local-candidate-f100-s42-20261102T182958Z-78667c3a (full gate report sha256 7f7d66cc44ab2370a126d344cba66a923be871291f0397ef4e8496bf060f57f8) it breached the target-fit release bound (max_abs_relative_error 0.25). It stays bound in the solve: this entry suppresses only the release fence on the local line, and a build in which it is back inside the bound fails the entry as stale.",
+   "approved_by": "juaristi22",
+   "adjudication": "microcosm#1301 route for the local cut built with microcosm#1428 (sign-off 2026-11-03)",
+   "approved_on": "2026-11-03",
+   "expires_on": "2026-12-01",
+   "release_lines": [
+    "local"
+   ]
+  },
+  "hmrc/dividend_income_income_band_50_000_to_70_000@2025": {
+   "reason": "Gate-only sign-off of the national target row hmrc/dividend_income_income_band_50_000_to_70_000@2025 on the local line (microcosm#1301). On dense build-1 attempt uk-local-candidate-f100-s42-20261104T000247Z-3a5b4051 (full gate report sha256 365f2878c6e3c8ca333486e9255632c5362c5b01a93d3fb699eca1ee22aa0795) it breached the target-fit release bound (max_abs_relative_error 0.25). It stays bound in the solve: this entry suppresses only the release fence on the local line, and a build in which it is back inside the bound fails the entry as stale.",
+   "approved_by": "juaristi22",
+   "adjudication": "microcosm#1301 route for the local cut built with microcosm#1491 (sign-off 2026-11-04)",
+   "approved_on": "2026-11-04",
+   "expires_on": "2026-12-02",
+   "release_lines": [
+    "local"
+   ]
+  },
+  "hmrc/property_income_income_band_15_000_to_20_000@2025": {
+   "reason": "Gate-only sign-off of the national target row hmrc/property_income_income_band_15_000_to_20_000@2025 on the local line (microcosm#1301). On dense build-1 attempt uk-local-candidate-f100-s42-20261104T000247Z-3a5b4051 (full gate report sha256 365f2878c6e3c8ca333486e9255632c5362c5b01a93d3fb699eca1ee22aa0795) it breached the target-fit release bound (max_abs_relative_error 0.25). It stays bound in the solve: this entry suppresses only the release fence on the local line, and a build in which it is back inside the bound fails the entry as stale.",
+   "approved_by": "juaristi22",
+   "adjudication": "microcosm#1301 route for the local cut built with microcosm#1491 (sign-off 2026-11-04)",
+   "approved_on": "2026-11-04",
+   "expires_on": "2026-12-02",
+   "release_lines": [
+    "local"
+   ]
+  },
+  "hmrc.spi.savings_interest_income.amount_by_total_income_band.band_20000@2025": {
+   "reason": "Gate-only sign-off of the national target row hmrc.spi.savings_interest_income.amount_by_total_income_band.band_20000@2025 on the local line (microcosm#1301). On dense build-1 attempt uk-local-candidate-f100-s42-20261107T102622Z-f52640d9 (full gate report sha256 4080fda251017f8ddf8ce72df29a16653d0d1db236820b6d3787e329bff71d53) it breached the target-fit release bound (max_abs_relative_error 0.25). It stays bound in the solve: this entry suppresses only the release fence on the local line, and a build in which it is back inside the bound fails the entry as stale.",
+   "approved_by": "juaristi22",
+   "adjudication": "María's approval of the gate-only sign-off for the pair built from PolicyEngine/microcosm#1535 (microcosm#1301)",
+   "approved_on": "2026-11-07",
+   "expires_on": "2026-12-05",
+   "release_lines": [
+    "local"
+   ]
+  },
+  "hmrc.spi_region.taxpayers_by_region_200000_plus@S92000003@2025": {
+   "reason": "Gate-only sign-off of the national target row hmrc.spi_region.taxpayers_by_region_200000_plus@S92000003@2025 on the local line (microcosm#1301). On dense build-1 attempt uk-local-candidate-f100-s42-20261107T102622Z-f52640d9 (full gate report sha256 4080fda251017f8ddf8ce72df29a16653d0d1db236820b6d3787e329bff71d53) it breached the target-fit release bound (max_abs_relative_error 0.25). It stays bound in the solve: this entry suppresses only the release fence on the local line, and a build in which it is back inside the bound fails the entry as stale.",
+   "approved_by": "juaristi22",
+   "adjudication": "María's approval of the gate-only sign-off for the pair built from PolicyEngine/microcosm#1535 (microcosm#1301)",
+   "approved_on": "2026-11-07",
+   "expires_on": "2026-12-05",
+   "release_lines": [
+    "local"
+   ]
+  },
+  "hmrc/dividend_income_income_band_70_000_to_100_000@2025": {
+   "reason": "Gate-only sign-off of the national target row hmrc/dividend_income_income_band_70_000_to_100_000@2025 on the local line (microcosm#1301). On dense build-1 attempt uk-local-candidate-f100-s42-20261107T102622Z-f52640d9 (full gate report sha256 4080fda251017f8ddf8ce72df29a16653d0d1db236820b6d3787e329bff71d53) it breached the target-fit release bound (max_abs_relative_error 0.25). It stays bound in the solve: this entry suppresses only the release fence on the local line, and a build in which it is back inside the bound fails the entry as stale.",
+   "approved_by": "juaristi22",
+   "adjudication": "María's approval of the gate-only sign-off for the pair built from PolicyEngine/microcosm#1535 (microcosm#1301)",
+   "approved_on": "2026-11-07",
+   "expires_on": "2026-12-05",
+   "release_lines": [
+    "local"
+   ]
+  },
+  "hmrc/property_income_income_band_12_570_to_15_000@2025": {
+   "reason": "Gate-only sign-off of the national target row hmrc/property_income_income_band_12_570_to_15_000@2025 on the local line (microcosm#1301). On dense build-1 attempt uk-local-candidate-f100-s42-20261107T102622Z-f52640d9 (full gate report sha256 4080fda251017f8ddf8ce72df29a16653d0d1db236820b6d3787e329bff71d53) it breached the target-fit release bound (max_abs_relative_error 0.25). It stays bound in the solve: this entry suppresses only the release fence on the local line, and a build in which it is back inside the bound fails the entry as stale.",
+   "approved_by": "juaristi22",
+   "adjudication": "María's approval of the gate-only sign-off for the pair built from PolicyEngine/microcosm#1535 (microcosm#1301)",
+   "approved_on": "2026-11-07",
+   "expires_on": "2026-12-05",
+   "release_lines": [
+    "local"
+   ]
+  },
+  "ons.population.female_19@2025": {
+   "reason": "Gate-only sign-off of the national target row ons.population.female_19@2025 on the local line (microcosm#1301). On dense build-1 attempt uk-local-candidate-f100-s42-20261107T102622Z-f52640d9 (full gate report sha256 4080fda251017f8ddf8ce72df29a16653d0d1db236820b6d3787e329bff71d53) it breached the target-fit release bound (max_abs_relative_error 0.25). It stays bound in the solve: this entry suppresses only the release fence on the local line, and a build in which it is back inside the bound fails the entry as stale.",
+   "approved_by": "juaristi22",
+   "adjudication": "María's approval of the gate-only sign-off for the pair built from PolicyEngine/microcosm#1535 (microcosm#1301)",
+   "approved_on": "2026-11-07",
+   "expires_on": "2026-12-05",
+   "release_lines": [
+    "local"
+   ]
   }
+ }
 }

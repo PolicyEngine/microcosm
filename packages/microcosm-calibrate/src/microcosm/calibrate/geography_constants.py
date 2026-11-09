@@ -15,6 +15,8 @@ __all__ = [
     "UK_LADDER_NATION_REGION_CODES",
     "UK_REGION_TIER",
     "UK_REGION_TIER_ENUM",
+    "UK_WIDE_GEOGRAPHY_IDS",
+    "US_STATE_FIPS_TO_NAME",
     "US_STATE_FIPS_TO_POSTAL",
     "US_STATE_NUMERIC_FIPS_TO_POSTAL",
     "US_STATE_POSTAL_TO_NUMERIC_FIPS",
@@ -25,6 +27,9 @@ UK_GEOGRAPHY_ID_TO_LABEL: Mapping[str, str] = MappingProxyType(
     {
         "K02000001": "United Kingdom",
         "K03000001": "Great Britain",
+        # DWP's Winter Fuel Payment statistics from winter 2024-25 (Scotland
+        # pays its own Pension Age Winter Heating Payment).
+        "K04000001": "England and Wales",
         "E92000001": "England",
         "W92000004": "Wales",
         "S92000003": "Scotland",
@@ -43,6 +48,14 @@ UK_GEOGRAPHY_ID_TO_LABEL: Mapping[str, str] = MappingProxyType(
     }
 )
 
+
+#: The UK-wide aggregates among ``UK_GEOGRAPHY_ID_TO_LABEL`` (the K-prefixed
+#: GSS codes: the United Kingdom, Great Britain, England and Wales). Every
+#: other national reference names a nation or an English region; the nation
+#: grain of the UK target-weight rules splits on this set (microcosm#1124).
+UK_WIDE_GEOGRAPHY_IDS: frozenset[str] = frozenset(
+    code for code in UK_GEOGRAPHY_ID_TO_LABEL if code.startswith("K")
+)
 
 #: The twelve-area region tier of the national calibration surface, in the
 #: order the FRS ``gvtregno`` coding and the incumbent's regional rows use:
@@ -153,6 +166,70 @@ US_STATE_FIPS_TO_POSTAL: Mapping[str, str] = MappingProxyType(
         "54": "WV",
         "55": "WI",
         "56": "WY",
+    }
+)
+
+
+#: Two-character Census state FIPS code -> the state's Census name, for the
+#: same 51 codes as ``US_STATE_FIPS_TO_POSTAL``. These are the names the US
+#: targets' source facts carry for state geographies: the Chronicle source
+#: packages of the pinned US feed declare exactly these, and the ledger
+#: targets of the release ``populace-us-2024-buildo-acs-local-766b7c7`` carry
+#: exactly these. A target Microcosm labels itself uses them, so each state
+#: has one label across target sources (microcosm#1335).
+US_STATE_FIPS_TO_NAME: Mapping[str, str] = MappingProxyType(
+    {
+        "01": "Alabama",
+        "02": "Alaska",
+        "04": "Arizona",
+        "05": "Arkansas",
+        "06": "California",
+        "08": "Colorado",
+        "09": "Connecticut",
+        "10": "Delaware",
+        "11": "District of Columbia",
+        "12": "Florida",
+        "13": "Georgia",
+        "15": "Hawaii",
+        "16": "Idaho",
+        "17": "Illinois",
+        "18": "Indiana",
+        "19": "Iowa",
+        "20": "Kansas",
+        "21": "Kentucky",
+        "22": "Louisiana",
+        "23": "Maine",
+        "24": "Maryland",
+        "25": "Massachusetts",
+        "26": "Michigan",
+        "27": "Minnesota",
+        "28": "Mississippi",
+        "29": "Missouri",
+        "30": "Montana",
+        "31": "Nebraska",
+        "32": "Nevada",
+        "33": "New Hampshire",
+        "34": "New Jersey",
+        "35": "New Mexico",
+        "36": "New York",
+        "37": "North Carolina",
+        "38": "North Dakota",
+        "39": "Ohio",
+        "40": "Oklahoma",
+        "41": "Oregon",
+        "42": "Pennsylvania",
+        "44": "Rhode Island",
+        "45": "South Carolina",
+        "46": "South Dakota",
+        "47": "Tennessee",
+        "48": "Texas",
+        "49": "Utah",
+        "50": "Vermont",
+        "51": "Virginia",
+        "53": "Washington",
+        "54": "West Virginia",
+        "55": "Wisconsin",
+        "56": "Wyoming",
     }
 )
 

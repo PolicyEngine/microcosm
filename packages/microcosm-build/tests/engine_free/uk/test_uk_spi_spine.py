@@ -23,10 +23,13 @@ from microcosm.build.uk_runtime.spi_income import (
     FRS_ONLY_SPI_FILL_PERSON_COLUMNS,
     SPI_DONOR_REQUIRED_COLUMNS,
     SPI_INCOME_QRF_OUTPUT_COLUMNS,
+    SPIDonorAgeModel,
+    SPIEmploymentPayFloor,
     impute_uk_spi_income_support,
 )
 from microcosm.build.uk_runtime.spi_spine import (
     EMPLOYER_PENSION_CONTRIBUTIONS_COLUMN,
+    SPI_SPINE_PENSION_AGE_PRIOR_MASS_SHARE,
     UKFRSHMRCSpineLeavesStageTransform,
     UKSPIIncomeSpineStageTransform,
     UKSPISupportChannelStageTransform,
@@ -35,6 +38,7 @@ from microcosm.build.uk_runtime.spi_spine import (
 )
 from microcosm.build.uk_runtime.spi_support import (
     HOUSEHOLD_IS_SPI_SYNTHETIC_COLUMN,
+    SPI_LOSS_DRAW_COLUMNS,
     SPI_SYNTHETIC_SUPPORT_CHANNEL,
     UKSPISupportResult,
     build_uk_spi_support_channel,
@@ -52,12 +56,15 @@ def _base_frame(*, time_period: str = "2023") -> object:
             "person_benunit_id": [201, 101],
             "age": [44, 40],
             "gender": ["FEMALE", "MALE"],
+            "is_uc_claimant": [True, True],
             "employment_income": [20.0, 10.0],
             "self_employment_income": [0.0, 0.0],
             "savings_interest_income": [2.0, 1.0],
             "dividend_income": [20.0, 10.0],
             "private_pension_income": [0.0, 0.0],
             "property_income": [0.0, 0.0],
+            # The twin's other income locates the copy's draw (microcosm#1428).
+            "other_investment_income": [0.0, 0.0],
             "employee_pension_contributions": [3.0, 2.0],
             "employer_pension_contributions": [9.0, 6.0],
             "hmrc_spi_pay": [0.0, 0.0],
@@ -65,6 +72,10 @@ def _base_frame(*, time_period: str = "2023") -> object:
             "hmrc_spi_incapacity_benefit_income": [0.0, 0.0],
             "ossben_identifiable_subset": [0.0, 0.0],
             "srp_regular_code5": [0.0, 0.0],
+            "employment_status": ["FT_EMPLOYED", "FT_EMPLOYED"],
+            # Annual usual hours, as frs_spine writes them.
+            "hours_worked": [30 * 365.25 / 7, 0.0],
+            "miscellaneous_income": [0.0, 0.0],
             **{
                 column: [0.0, 0.0]
                 for column in FRS_ONLY_SPI_FILL_PERSON_COLUMNS
@@ -114,10 +125,18 @@ def _leaves_stage(
             "var2": [0, 0, 0],
         }
     )
+    # Person 1001 (sernum 1) is in a public-sector occupational scheme; person
+    # 2001 (sernum 2) has only a personal pension, no employer scheme.
+    penprov = pd.DataFrame({"sernum": [1, 2], "person": [1, 1], "stemppen": [2, 5]})
+    job = pd.DataFrame({"sernum": [1, 2], "person": [1, 1], "jobsect": [2, 1]})
     adult_path = tmp_path / "adult.tab"
     benefits_path = tmp_path / "benefits.tab"
+    penprov_path = tmp_path / "penprov.tab"
+    job_path = tmp_path / "job.tab"
     adult.to_csv(adult_path, sep="\t", index=False)
     benefits.to_csv(benefits_path, sep="\t", index=False)
+    penprov.to_csv(penprov_path, sep="\t", index=False)
+    job.to_csv(job_path, sep="\t", index=False)
 
     def artifact(path: Path, table: str) -> dict[str, object]:
         import hashlib
@@ -142,11 +161,13 @@ def _leaves_stage(
             "artifacts": [
                 artifact(adult_path, "adult"),
                 artifact(benefits_path, "benefits"),
+                artifact(penprov_path, "penprov"),
+                artifact(job_path, "job"),
             ],
             "operations": [
                 {"kind": "retain_adjudicated_frs_hmrc_leaves"},
                 {
-                    "kind": "derive",
+                    "kind": "draw_employer_pension_contributions_from_rate_bands",
                     "output": EMPLOYER_PENSION_CONTRIBUTIONS_COLUMN,
                 },
             ],
@@ -172,13 +193,18 @@ def test_spine_leaves_align_by_raw_person_id_not_position(tmp_path: Path) -> Non
     person = result.table("person")
 
     assert person["person_id"].tolist() == [2001, 1001]
-    assert person["hmrc_spi_pay"].tolist() == pytest.approx(
-        [5.0 * 365.25 / 7.0, 4.0 * 365.25 / 7.0]
-    )
+    assert person["hmrc_spi_pay"].tolist() == pytest.approx([5.0 * 52.0, 4.0 * 52.0])
     assert person["hmrc_spi_incapacity_benefit_income"].tolist() == pytest.approx(
-        [2.0 * 365.25 / 7.0, 0.0]
+        [2.0 * 52.0, 0.0]
     )
-    assert person[EMPLOYER_PENSION_CONTRIBUTIONS_COLUMN].tolist() == [9.0, 6.0]
+    # Employer contributions come from an ASHE rate draw on pay (microcosm#1069
+    # c9): person 2001 has no employer scheme; person 1001's public-sector
+    # occupational scheme pays between 0% and 30% of their 10 of pay.
+    employer = person[EMPLOYER_PENSION_CONTRIBUTIONS_COLUMN].tolist()
+    assert employer[0] == 0.0
+    assert 0.0 <= employer[1] <= 3.0
+    evidence = transform.last_result.evidence()["employer_pension_contributions"]
+    assert evidence["members_with_earnings"] == 1
 
 
 def test_spine_leaves_fail_closed_on_unknown_raw_person(tmp_path: Path) -> None:
@@ -208,9 +234,7 @@ def test_spine_leaves_sampled_rung_restricts_to_surviving_people(
     person = result.table("person")
 
     assert person["person_id"].tolist() == [2001, 1001]
-    assert person["hmrc_spi_pay"].tolist() == pytest.approx(
-        [5.0 * 365.25 / 7.0, 4.0 * 365.25 / 7.0]
-    )
+    assert person["hmrc_spi_pay"].tolist() == pytest.approx([5.0 * 52.0, 4.0 * 52.0])
 
 
 def _support_stage() -> SourceStageSpec:
@@ -297,15 +321,24 @@ def test_preclone_support_gate_passes_at_limit_and_fails_above() -> None:
 class _FakeQRF:
     events: list[tuple[str, tuple[str, ...], list[float]]] = []
 
-    def __init__(self, n_estimators: int, seed: int) -> None:
+    def __init__(
+        self, n_estimators: int, seed: int, gate_calibration: str = "in_sample"
+    ) -> None:
         self.seed = seed
+        self.gate_calibration = gate_calibration
         self.targets: tuple[str, ...] = ()
         self.weight_kind = "unknown"
 
-    def fit(self, frame, predictors, targets, weights):
+    def fit(self, frame, predictors, targets, weights, groups=None):
         self.targets = tuple(targets)
         self.weight_kind = weights
-        label = "stage1" if "hmrc_spi_pay" in self.targets else "stage2"
+        label = (
+            "stage1"
+            if "gift_aid" in self.targets
+            else "reference"
+            if "hmrc_spi_pay" in self.targets
+            else "stage2"
+        )
         dividend = (
             frame.table("person")["dividend_income"].tolist()
             if "dividend_income" in frame.table("person")
@@ -313,6 +346,29 @@ class _FakeQRF:
         )
         self.events.append((label, tuple(targets), dividend))
         return self
+
+    def regimes(self):
+        return dict.fromkeys(self.targets, "zero_inflated_positive")
+
+    def gate_outcomes(self):
+        outcome = None if self.gate_calibration == "in_sample" else "cross_fitted"
+        return dict.fromkeys(self.targets, outcome)
+
+    def sign_classes(self, target):
+        return (0, 1)
+
+    def conditional_uniforms(self, frame, *, sign_placement, quantile_placement):
+        from microcosm.fit import ConditionalUniforms
+
+        return ConditionalUniforms(
+            quantiles={t: np.asarray(quantile_placement[t]) for t in self.targets},
+            sign_uniforms={t: np.asarray(sign_placement[t]) for t in self.targets},
+            degenerate=(),
+            ungated=(),
+        )
+
+    def predict_from_uniforms(self, predictors, *, quantiles, sign_uniforms):
+        return self.predict(predictors)
 
     def predict(self, predictors):
         rows = len(predictors)
@@ -343,6 +399,11 @@ def _donor_file(tmp_path: Path) -> Path:
             "PAY": 10.0,
             "TEI": 10.0,
             "TI": 10.0,
+            # Annex A bridge codes consistent with the leaves: pay is the main
+            # source, no trade pages, below State Pension age.
+            "MAINSRCE": 1,
+            "SEINC_NUM": 0,
+            "SPA": 0,
         }
     )
     pd.DataFrame([row]).to_csv(path, sep="\t", index=False)
@@ -388,7 +449,7 @@ def _synthetic_hmrc_targets(path: Path) -> HMRCIncomeTargetSet:
     )
 
 
-def test_spi_income_zero_initializes_frs_charity_and_redraws_dividends_after_stage2(
+def test_spi_income_zero_initializes_frs_charity_and_keeps_frs_dividends(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -429,11 +490,12 @@ def test_spi_income_zero_initializes_frs_charity_and_redraws_dividends_after_sta
         support,
         _donor_file(tmp_path),
         donor_sample_size=None,
+        state_pension_age=66,
         initialize_frs_channel_columns={
             "gift_aid": 0.0,
             "charitable_investment_gifts": 0.0,
         },
-        stage1_base_redraw_columns=("dividend_income",),
+        allow_in_sample_reference=True,
     )
     person = result.person
     base = person[support_channel_column("person")] != SPI_SYNTHETIC_SUPPORT_CHANNEL
@@ -445,11 +507,31 @@ def test_spi_income_zero_initializes_frs_charity_and_redraws_dividends_after_sta
     # stage-time zero — the explicit initialization above and this fill are
     # now the same semantics, and the artifact ships no NaN.
     assert person.loc[base, "hmrc_spi_employment_benefits"].eq(0.0).all()
-    assert person.loc[base, "dividend_income"].tolist() == [100.0, 101.0]
+    # FRS rows keep their reported dividends (uk-data#498, microcosm#1095).
+    reported = support.person[support_channel_column("person")] != (
+        SPI_SYNTHETIC_SUPPORT_CHANNEL
+    )
+    assert (
+        person.loc[base, "dividend_income"].tolist()
+        == support.person.loc[reported, "dividend_income"].tolist()
+    )
     assert person.loc[spi, "dividend_income"].tolist() == [100.0, 101.0]
-    assert _FakeQRF.events[1][0] == "stage2"
-    assert _FakeQRF.events[1][2] == [20.0, 10.0]
-    assert set(SPI_INCOME_QRF_OUTPUT_COLUMNS) <= set(person.columns)
+    # The tape forest, then one FRS reference forest per cross-fit fold
+    # (microcosm#840), then the FRS-only fill; every FRS fit sees reported
+    # dividends only.
+    labels = [event[0] for event in _FakeQRF.events]
+    assert labels[0] == "stage1" and labels[-1] == "stage2"
+    assert labels[1:-1] and set(labels[1:-1]) == {"reference"}
+    assert len(labels) - 2 == len(result.stage1_transport["fold_receipts"])
+    for event in _FakeQRF.events[1:-1]:
+        assert set(event[2]) <= {20.0, 10.0} and event[2]
+    assert _FakeQRF.events[-1][2] == [20.0, 10.0]
+    # Every stage-1 output stays, except the two loss draws the stage moves into
+    # loss_relief and drops (microcosm#1095).
+    assert set(SPI_INCOME_QRF_OUTPUT_COLUMNS) - set(SPI_LOSS_DRAW_COLUMNS) <= set(
+        person.columns
+    )
+    assert not set(SPI_LOSS_DRAW_COLUMNS) & set(person.columns)
 
 
 def test_reviewed_absent_incapacity_signal_raises(tmp_path: Path) -> None:
@@ -495,6 +577,8 @@ def test_reviewed_absent_incapacity_signal_raises(tmp_path: Path) -> None:
                 support,
                 _donor_file(tmp_path),
                 donor_sample_size=None,
+                state_pension_age=66,
+                allow_in_sample_reference=True,
             )
         finally:
             monkeypatch.undo()
@@ -537,16 +621,45 @@ def test_spi_spine_parsed_inputs_match_the_path_resolution(
 
     # This test checks parsed/path source resolution, independently of the engine.
     # Real index coverage lives in test_uk_spi_income.py.
-    def uprating_factors(year):
+    def uprating_factors(year, *, rebased_columns=None):
         return (
             {column: 1.25 for column in SPI_INCOME_QRF_OUTPUT_COLUMNS},
             {"from_period": 2022, "to_period": year, "basis": "synthetic_test"},
         )
 
     monkeypatch.setattr(spi_income, "_spi_income_uprating_factors", uprating_factors)
+    # State Pension age is an engine read; the engine lane covers the real
+    # model (tests/engine/uk/test_uk_spi_state_pension_age.py).
+    monkeypatch.setattr(
+        spi_spine,
+        "load_spi_donor_age_model",
+        lambda _build_period: SPIDonorAgeModel(
+            populations={
+                (sex, age): 1.0 for sex in ("MALE", "FEMALE") for age in range(0, 91)
+            },
+            state_pension_age=66,
+            source="engine-free fixture",
+        ),
+    )
+    # The minimum wage is an engine read too; tests/engine/uk/
+    # test_uk_spi_income.py reads the real parameter.
+    monkeypatch.setattr(
+        spi_spine,
+        "load_spi_employment_pay_floor",
+        lambda _build_period: SPIEmploymentPayFloor(
+            age_thresholds=(0.0, 18.0, 21.0),
+            hourly_rates=(6.40, 8.60, 11.44),
+            weeks_in_year=52.0,
+            instant="2024-04-30",
+            source="engine-free fixture",
+        ),
+    )
     support_frame = UKSPISupportChannelStageTransform(
         stage=_committed_stage("spi_support_channel"),
         sample_fraction=0.0002,
+        # The pension-age allocation stratum (microcosm#1069 c6) reads State
+        # Pension age from the engine unless the test passes it.
+        state_pension_age=66,
     )(_base_frame(time_period=HMRC_SPI_BUILD_PERIOD))
     income_stage = _with_mutated_operation(
         _committed_stage("hmrc_spi_income_spine"),
@@ -629,6 +742,9 @@ def test_spi_spine_parsed_inputs_match_the_path_resolution(
 
     assert uk_frame_content_identity(from_path) == uk_frame_content_identity(from_seam)
     assert path_transform.checkpoint_metadata() == seam_transform.checkpoint_metadata()
+    pay_floor = path_transform.checkpoint_metadata()["evidence"]["employment_pay_floor"]
+    assert pay_floor["step"] == "spi_employment_pay_floor_before_stage2"
+    assert pay_floor["source"] == "engine-free fixture"
 
 
 def test_income_stage_parameters_accept_the_committed_manifest() -> None:
@@ -640,13 +756,53 @@ def test_income_stage_parameters_accept_the_committed_manifest() -> None:
     )
 
 
-def test_income_stage_parameters_refuse_redraw_column_drift() -> None:
-    stage = _with_mutated_operation(
-        _committed_stage("hmrc_spi_income_spine"),
-        "redraw_columns_from_fitted_qrf",
-        columns=["savings_interest_income"],
+def test_income_stage_parameters_refuse_a_base_channel_redraw() -> None:
+    stage = _committed_stage("hmrc_spi_income_spine")
+    operations = [
+        {"kind": operation.kind, **dict(operation.parameters)}
+        for operation in stage.operations
+    ]
+    operations.append(
+        {
+            "kind": "redraw_columns_from_fitted_qrf",
+            "fit": "stage1",
+            "columns": ["dividend_income"],
+            "rows": "base_support_channel",
+        }
     )
-    with pytest.raises(ValueError, match="base redraw columns drifted"):
+    stage = SourceStageSpec.from_mapping({**stage.__dict__, "operations": operations})
+    with pytest.raises(ValueError, match="must not redraw FRS-channel incomes"):
+        _assert_income_stage_parameters(
+            stage, seed=42, qrf_estimators=100, donor_sample_size=100_000
+        )
+
+
+@pytest.mark.parametrize(
+    ("kind", "parameter", "value", "message"),
+    [
+        ("fit_weighted_qrf_stage1", "recipient_role_column", None, "recipient role"),
+        ("fit_weighted_qrf_stage1", "recipient_role_column", "is_adult", "role"),
+        (
+            "fit_weighted_qrf_stage2",
+            "target_population",
+            "spi_synthetic_support_channel",
+            "target population",
+        ),
+        (
+            "floor_spi_employment_pay_at_minimum_wage",
+            "weeks_in_year",
+            365.25 / 7,
+            "floor_spi_employment_pay_at_minimum_wage declaration drifted",
+        ),
+    ],
+)
+def test_income_stage_parameters_refuse_a_recipient_domain_drift(
+    kind, parameter, value, message
+) -> None:
+    stage = _with_mutated_operation(
+        _committed_stage("hmrc_spi_income_spine"), kind, **{parameter: value}
+    )
+    with pytest.raises(ValueError, match=message):
         _assert_income_stage_parameters(
             stage, seed=42, qrf_estimators=100, donor_sample_size=100_000
         )
@@ -686,13 +842,48 @@ def test_income_stage_parameters_refuse_stage2_output_drift() -> None:
 
 
 def test_support_stage_parameters_accept_the_committed_manifest() -> None:
-    count, share, strata, declarations = _support_stage_parameters(
+    count, share, strata, declarations, pension_age_share = _support_stage_parameters(
         _committed_stage("spi_support_channel"), seed=42
     )
     assert count == 10000
     assert share == 0.5
     assert strata == ("region",)
     assert len(declarations) == 1
+    assert pension_age_share == SPI_SPINE_PENSION_AGE_PRIOR_MASS_SHARE
+
+
+@pytest.mark.parametrize(
+    ("changes", "message"),
+    [
+        ({"pension_age_share": 0.31}, "pension-age prior-mass share drifted"),
+        (
+            {"pension_age_stratum": "household_head_at_state_pension_age"},
+            "stratum must",
+        ),
+        (
+            {"pension_age_share": None},
+            "pension-age stratum declared without a share",
+        ),
+    ],
+)
+def test_support_stage_parameters_refuse_pension_age_drift(
+    changes: dict, message: str
+) -> None:
+    committed = _committed_stage("spi_support_channel")
+    operations = []
+    for operation in committed.operations:
+        payload = {"kind": operation.kind, **dict(operation.parameters)}
+        if operation.kind == "allocate_zero_weight_prior_mass":
+            payload.update(changes)
+            payload = {
+                key: value for key, value in payload.items() if value is not None
+            }
+        operations.append(payload)
+    stage = SourceStageSpec.from_mapping(
+        {**committed.__dict__, "operations": operations}
+    )
+    with pytest.raises(ValueError, match=message):
+        _support_stage_parameters(stage, seed=42)
 
 
 def test_support_transform_refuses_missing_builder_weight_kind(monkeypatch) -> None:
@@ -713,7 +904,7 @@ def test_support_transform_refuses_missing_builder_weight_kind(monkeypatch) -> N
         _stub_builder,
     )
     transform = UKSPISupportChannelStageTransform(
-        stage=_committed_stage("spi_support_channel")
+        stage=_committed_stage("spi_support_channel"), state_pension_age=66
     )
 
     with pytest.raises(ValueError, match="importance household weights"):
@@ -734,3 +925,30 @@ def test_support_stage_parameters_refuse_gate_declaration_drift() -> None:
     )
     with pytest.raises(ValueError, match="gate declaration drifted"):
         _support_stage_parameters(stage, seed=42)
+
+
+def test_readers_of_the_support_record_take_the_declared_allocation_reason() -> None:
+    """microcosm#1069 c6: the stratified sentence, not the 50% constant."""
+
+    from microcosm.build.country_spec import load_country_spec
+    from microcosm.build.uk_runtime.release_input_coverage import (
+        load_uk_release_input_coverage_manifest,
+    )
+    from microcosm.build.uk_runtime.spi_spine import (
+        uk_spi_support_mass_change_reason,
+    )
+    from microcosm.build.uk_runtime.spi_support import (
+        SPI_PRIOR_MASS_CHANGE_REASON,
+        _spi_prior_mass_change_reason,
+    )
+
+    stage = load_country_spec("uk").sources.stage_map()["spi_support_channel"]
+    reason = uk_spi_support_mass_change_reason(stage)
+
+    # The record the support stage writes for the declared shares.
+    assert reason == _spi_prior_mass_change_reason(0.5, pension_age_share=0.2)
+    assert reason != SPI_PRIOR_MASS_CHANGE_REASON
+    # The release-cut coverage gate requires that record on the final dataset.
+    manifest = load_uk_release_input_coverage_manifest()
+    family = manifest.family_coverage["hmrc_spi_income"]
+    assert family["required_mass_change_reason"] == reason

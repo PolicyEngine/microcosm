@@ -35,6 +35,9 @@ from microcosm.build.uk_runtime.graph_national import (
     register_uk_national_kernels,
     uk_national_graph,
 )
+from microcosm.build.uk_runtime.measure_simulation import (
+    load_uk_calibration_measure_exclusions,
+)
 from microcosm.build.uk_runtime.national_calibration import (
     CalibrationFrameAdapter,
     national_calibration_mass_reason,
@@ -45,6 +48,16 @@ from microcosm.build.uk_runtime.national_doctrine import (
     uk_national_target_loss_weights,
 )
 from microcosm.build.uk_runtime.national_frame import write_uk_national_frame
+from microcosm.build.uk_runtime.support_floor import (
+    load_uk_support_floor_declaration,
+)
+from microcosm.build.uk_runtime.terminal_gates import (
+    uk_default_degenerate_reviewed_exclusions,
+    uk_default_target_fit_reviewed_exclusions,
+)
+from microcosm.build.uk_runtime.weighted_integrity import (
+    uk_default_input_mass_reviewed_exclusions,
+)
 from microcosm.calibrate import calibrate
 from microcosm.calibrate.artifacts import decode_problem
 from microcosm.frame import WeightKind
@@ -71,6 +84,7 @@ def _patch_target_inputs(monkeypatch, registry):
         facts=None,
         facts_sha256="1" * 64,
         manifest_sha256="2" * 64,
+        fact_schema_versions=("chronicle.consumer_fact.v4",),
         provenance=lambda: {
             "facts_sha256": "1" * 64,
             "manifest_sha256": "2" * 64,
@@ -84,7 +98,9 @@ def _patch_target_inputs(monkeypatch, registry):
         full_targets,
         "require_committed_uk_chronicle_feed_pin",
         lambda facts_sha256, **kwargs: SimpleNamespace(
-            to_dict=lambda: {"facts_sha256": "1" * 64, "manifest_sha256": "2" * 64}
+            facts_sha256="1" * 64,
+            consumer_fact_schema_versions=("chronicle.consumer_fact.v4",),
+            to_dict=lambda: {"facts_sha256": "1" * 64, "manifest_sha256": "2" * 64},
         ),
     )
     monkeypatch.setattr(
@@ -99,6 +115,16 @@ def _patch_target_inputs(monkeypatch, registry):
         full_targets,
         "apply_uk_calibration_measure_exclusions",
         lambda reg, exclusions, now=None: (reg, {}),
+    )
+    # The stand-in register carries no geography; the national
+    # reconciliation (#1123) has its own tests and passes it through here.
+    monkeypatch.setattr(
+        full_targets, "reconcile_uk_national_registry", lambda reg: (reg, {})
+    )
+    monkeypatch.setattr(
+        full_targets,
+        "assert_uk_uprating_holds_declared",
+        lambda reg, **kwargs: {"scope": kwargs["scope"]},
     )
     monkeypatch.setattr(
         full_targets, "_ledger_provenance", lambda artifact: {"artifact_id": "fixture"}
@@ -140,6 +166,54 @@ def _registry_for_run():
     return kernels
 
 
+def _review_date() -> str:
+    """The latest approval across the committed exclusion registers.
+
+    The seam battery evaluates the real registers on the graph's review
+    date, and a reviewed entry approved after that date is refused as not
+    yet in force (the South East target-fit deferral, approved 2026-10-02,
+    failed a review at 2026-09-29; microcosm#1063). Reviewing at the latest
+    approval keeps every entry in force without pinning a calendar date
+    that the next approval would break; an expired entry still fails, as
+    the real build's review would, which is the register's discipline.
+    """
+
+    def records(value):
+        if hasattr(value, "approved_on"):
+            yield value
+        elif isinstance(value, dict) and "approved_on" in value:
+            yield value
+        elif hasattr(value, "values"):
+            for item in value.values():
+                yield from records(item)
+        elif isinstance(value, (list, tuple)):
+            for item in value:
+                yield from records(item)
+
+    def field(record, name):
+        return record[name] if isinstance(record, dict) else getattr(record, name)
+
+    entries = [
+        record
+        for register in (
+            uk_default_target_fit_reviewed_exclusions(),
+            uk_default_degenerate_reviewed_exclusions(),
+            uk_default_input_mass_reviewed_exclusions(),
+            load_uk_calibration_measure_exclusions(),
+            # The sparse-band support floor's signature (microcosm#1095 U3).
+            [load_uk_support_floor_declaration() or {}],
+        )
+        for record in records(register)
+    ]
+    latest_approval = max(str(field(record, "approved_on")) for record in entries)
+    earliest_expiry = min(str(field(record, "expires_on")) for record in entries)
+    assert latest_approval < earliest_expiry, (latest_approval, earliest_expiry)
+    return latest_approval
+
+
+REVIEW_DATE = _review_date()
+
+
 def _run(tmp_path, monkeypatch, config=None, *, endpoint=None):
     pytest.importorskip("tables")
     frame = seam._frame()
@@ -150,7 +224,7 @@ def _run(tmp_path, monkeypatch, config=None, *, endpoint=None):
         config or _config(),
         spine=bound_spine_graph(frame),
         spine_population="uk.full.spine_checkpoint",
-        review_date="2026-09-29",
+        review_date=REVIEW_DATE,
     )
     graph = national.graph
     if endpoint is not None:
@@ -186,7 +260,7 @@ def test_national_graph_composes_the_bound_checkpoint_line():
         _config(),
         spine=bound_spine_graph(frame),
         spine_population="uk.full.spine_checkpoint",
-        review_date="2026-09-29",
+        review_date=REVIEW_DATE,
     )
     compiled = compile_graph(national.graph)
     assert list(compiled.order) == [
@@ -243,7 +317,7 @@ def test_national_graph_refuses_a_population_without_bound_provenance():
             _config(),
             spine=unbound,
             spine_population="uk.full.spine_checkpoint",
-            review_date="2026-09-29",
+            review_date=REVIEW_DATE,
         )
 
 
@@ -353,6 +427,43 @@ def test_national_solve_is_the_seam_solve(tmp_path, monkeypatch):
     assert calibrated.mass_log[:-1] == frame.mass_log
 
 
+def test_national_orrery_uses_shared_codec_provider(tmp_path, monkeypatch):
+    from microcosm.calibrate.graph_evidence import CALIBRATION_SUMMARY_PROVIDERS
+    from microcosm.graph import (
+        collect_execution_evidence,
+        graph_schema,
+        record_run_binding,
+    )
+
+    national, manifest, store, frame, registry = _run(
+        tmp_path, monkeypatch, endpoint="uk.full.calibrated"
+    )
+    from dataclasses import replace
+
+    phase_graph = replace(
+        national.graph,
+        nodes=tuple(node for node in national.graph.nodes if node.id in manifest.nodes),
+    )
+    run = record_run_binding(
+        compile_graph(phase_graph), manifest, attempt_id="national", phase="numerical"
+    )
+    evidence = collect_execution_evidence(
+        graph_schema(compile_graph(national.graph)),
+        runs=[run],
+        store=store,
+        artifact_summaries=CALIBRATION_SUMMARY_PROVIDERS,
+    )
+    result = next(
+        summary["data"]
+        for summary in evidence["summaries"]
+        if summary["artifact"] == "result"
+    )
+    assert result["overview"]["target_count"] == len(registry.specs)
+    assert result["overview"]["final_weights"]["total"] == float(
+        manifest.population("uk.full.calibrated").weights_for("household").values.sum()
+    )
+
+
 def test_national_gates_evaluate_the_seam_scope_and_record_the_evidence(
     tmp_path, monkeypatch
 ):
@@ -402,6 +513,30 @@ def test_national_gates_evaluate_the_seam_scope_and_record_the_evidence(
     }
 
 
+def test_national_gates_judge_a_thin_row_with_its_figures(tmp_path, monkeypatch):
+    """María's ruling of 2026-10-26 on the seam: the fixture's one row rests
+    on two source households, and it keeps its figures and is judged; the
+    manifest's losses are the solve's own."""
+
+    national, manifest, store, frame, registry = _run(tmp_path, monkeypatch)
+    row_name = registry.specs[0].to_target().row_name
+    evidence = json.loads(
+        _payload(manifest, store, NATIONAL_GATES_NODE, "calibration_evidence")
+    )
+    (row,) = evidence["diagnostics"]
+    assert row["name"] == row_name and "model_figures_withheld" not in row
+    assert np.isfinite(row["estimate"]) and np.isfinite(row["relative_error"])
+    calibration = evidence["calibration"]
+    assert "totals_basis" not in calibration
+    assert "model_figures_withheld" not in calibration
+    report = json.loads(_payload(manifest, store, NATIONAL_GATES_NODE, "gate_report"))
+    outcomes = {outcome["id"]: outcome for outcome in report["report"]["outcomes"]}
+    fit = outcomes["uk_target_fit"]
+    assert fit["status"] == "passed"
+    assert fit["details"]["targets_checked"] == 1
+    assert "withheld_targets" not in fit["details"]
+
+
 def test_national_problem_refuses_an_empty_register(tmp_path, monkeypatch):
     from microcosm.calibrate import TargetRegistry
 
@@ -413,7 +548,7 @@ def test_national_problem_refuses_an_empty_register(tmp_path, monkeypatch):
         _config(),
         spine=bound_spine_graph(frame),
         spine_population="uk.full.spine_checkpoint",
-        review_date="2026-09-29",
+        review_date=REVIEW_DATE,
     )
     with pytest.raises(Exception, match="selects no target"):
         run_graph(
@@ -477,7 +612,7 @@ def test_national_gate_node_reads_its_scope_from_the_posture():
         _config(),
         spine=bound_spine_graph(seam._frame()),
         spine_population="uk.full.spine_checkpoint",
-        review_date="2026-09-29",
+        review_date=REVIEW_DATE,
     )
     node = national.graph.node(NATIONAL_GATES_NODE)
     assert json.loads(node.params["gate_scope"]) == list(

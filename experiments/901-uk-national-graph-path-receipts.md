@@ -102,7 +102,8 @@ The one remaining difference, deliberate: `build.measure_resolution.provider.mod
 graph (the problem node exports the bound frame it holds to a scratch H5 for the engine), with the
 matching `source_path`. Both statements are true of what each did; the measures they produced are the
 same matrix. The comparison is committed as `docs/evidence/uk-901-national-ab/compare_a_vs_b2.json`
-(aggregates and field-level differences only, machine paths omitted). Since the round-1 fix the
+(aggregates and field-level differences only, machine paths omitted), and the script that wrote it
+beside it as `scripts/compare_national_ab.py` (review round 2, item 10, folded into microcosm#1059). Since the round-1 fix the
 graph records that `source_path` relative to its scratch root, so a re-run would show the mode
 difference alone. The two shape differences the first run showed (target descriptors read as compiled-row
 callables on the household entity; `measure_resolution` carried the engine receipt instead of the

@@ -1,5 +1,5 @@
 {
-  "purpose": "R5 of experiments/901-uk-national-graph-path-receipts.md: the licensed seam-vs-graph national A/B on the 10 % smoke spine of the #901 pre-merge run (53,806 households, 1,062 targets), compared field by field by data/ukds/acceptance/901-national-ab/compare_national_ab.py. Aggregates and field-level differences only; no unit records.",
+  "purpose": "R5 of experiments/901-uk-national-graph-path-receipts.md: the licensed seam-vs-graph national A/B on the 10 % smoke spine of the #901 pre-merge run (53,806 households, 1,062 targets), compared field by field by docs/evidence/uk-901-national-ab/scripts/compare_national_ab.py (run in the licensed lane as data/ukds/acceptance/901-national-ab/compare_national_ab.py; committed by microcosm#1059 on review round 2 of #1057, item 10). Aggregates and field-level differences only; no unit records.",
   "date": "2026-09-29",
   "a": "a-seam (main at the #901 merge, 6a70cd4ee, run_uk_calibration)",
   "b": "b-graph-2 (uk-national-graph-path at 218226898, microcosm-build-uk --release-role national)",

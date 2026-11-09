@@ -40,7 +40,12 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from microcosm.calibrate.solve import FREE_MASS, CalibrationResult, calibrate
+from microcosm.calibrate.solve import (
+    FREE_MASS,
+    L2_BASIS_RECORD,
+    CalibrationResult,
+    calibrate,
+)
 from microcosm.calibrate.target import Target, TargetSet
 from microcosm.frame import (
     Frame,
@@ -297,6 +302,7 @@ def static_aging(
     learning_rate: float = 0.02,
     max_weight_ratio: float | None = 5.0,
     l2_lambda: float = 0.0,
+    l2_basis: str = L2_BASIS_RECORD,
     seed: int = 0,
 ) -> StaticAgingResult:
     """Project ``frame`` from ``base_year`` to each of ``years``.
@@ -319,9 +325,12 @@ def static_aging(
             cell, so the base-year calibration is kept and only projected
             change is applied. ``"projection"`` targets the projection's
             absolute counts.
-        epochs, learning_rate, max_weight_ratio, l2_lambda, seed: Passed to
-            :func:`~microcosm.calibrate.calibrate`. ``max_weight_ratio`` bounds
-            how far any record's weight may move from its base-year value.
+        epochs, learning_rate, max_weight_ratio, l2_lambda, l2_basis, seed:
+            Passed to :func:`~microcosm.calibrate.calibrate`.
+            ``max_weight_ratio`` bounds how far any record's weight may move
+            from its base-year value. Aging runs at free mass, where the
+            ``"record"`` basis also pulls the total down; ``"chi_square"``
+            instead penalizes distance from the base-year weights.
 
     Returns:
         A :class:`StaticAgingResult` with one :class:`YearProjection` per year.
@@ -413,6 +422,7 @@ def static_aging(
             mass_reason=f"static aging: {year} population by {', '.join(demographics.cells)}",
             max_weight_ratio=max_weight_ratio,
             l2_lambda=l2_lambda,
+            l2_basis=l2_basis,
             seed=seed,
         )
         year_person_weights = result.frame.resolve_weights("person").values

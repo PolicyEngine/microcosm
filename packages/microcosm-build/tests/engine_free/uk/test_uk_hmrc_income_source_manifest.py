@@ -126,7 +126,6 @@ def test_official_hmrc_sources_and_sampling_weights_remain_bound():
         (INCOME, "fit_weighted_qrf_stage1", "source_columns", {}, "source_columns"),
         (INCOME, "fit_weighted_qrf_stage1", "seed", 43, "seed drifted"),
         (INCOME, "fit_weighted_qrf_stage2", "predictors", ["age"], "stage2.predictors"),
-        (INCOME, "redraw_columns_from_fitted_qrf", "rows", "all", "base redraw"),
         (
             INCOME,
             "materialize_hmrc_income_bands_fail_closed",

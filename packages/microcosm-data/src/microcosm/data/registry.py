@@ -47,7 +47,16 @@ class DatasetSpec:
             ``"policyengine-us"`` — named in the install extra and in the
             ImportError when the engine is absent.
         pointer_path: The repository-root release pointer followed by the
-            certified loader.
+            certified loader while the repository has no ``releases.json``.
+        release: The release the loader reads through ``releases.json``,
+            whose builds are in ``releases/<release>/<build>/``: one whose
+            builds publish into their own folders, or ``populace-uk-2023``,
+            whose one build the switch moved into a folder. Where the
+            repository has ``releases.json``, the loader reads the release's
+            current build there and loads ``filename`` from that build's
+            folder; until the repository switches to it, the loader follows
+            ``pointer_path``. ``None`` for a release that keeps the tagged
+            layout.
     """
 
     country: str
@@ -59,6 +68,7 @@ class DatasetSpec:
     engine_package: str
     variant: str = DEFAULT_VARIANT
     pointer_path: str = "latest.json"
+    release: str | None = None
 
     @property
     def key(self) -> tuple[str, int, str]:
@@ -100,6 +110,12 @@ def register(spec: DatasetSpec) -> DatasetSpec:
 
 register(
     DatasetSpec(
+        # The June 2023 build, populace-uk-2023-dd68c73-4aa4b14-20260619T023711Z.
+        # Until its repository switches to releases.json, the loader follows
+        # latest.json, which names it. The switch moves it into its own folder
+        # as the only and current build of release populace-uk-2023, under its
+        # old release ID, and deletes latest.json; the loader then reads it
+        # there. No new builds publish to this release.
         country="uk",
         year=2023,
         variant=DEFAULT_VARIANT,
@@ -108,35 +124,43 @@ register(
         engine_module="policyengine_uk.data",
         engine_class="UKSingleYearDataset",
         engine_package="policyengine-uk",
+        release="populace-uk-2023",
     )
 )
 
 register(
     DatasetSpec(
         # microcosm#823: the UK 2024-25 national line, followed through its
-        # own pointer. Registered OFF the default variant until the first
-        # promoted cut exists on the Hub: resolve("uk") picks the latest
-        # default-variant year at import time, so a default entry here would
-        # send every default load to a pointer that does not exist yet. The
-        # flip to DEFAULT_VARIANT is a one-line follow-up after promotion
-        # (review of #966; Max's #823 ruling keys the line as a variant).
+        # own pointer, is the default UK load. It stayed off the default
+        # variant until its first certified cut was promoted (review of #966;
+        # Max's #823 ruling), and latest-national.json has named
+        # microcosm-uk-2024-25-national-20261025T091414Z-a6299504 since
+        # 2026-10-26. resolve("uk") picks the latest default-variant year, so
+        # it loads this line; the June 2023 artifact stays at ("uk", 2023).
+        # Once the repository switches to releases.json, the loader reads the
+        # release's current build there instead.
         country="uk",
         year=2025,
-        variant="national",
+        variant=DEFAULT_VARIANT,
         hf_repo="policyengine/populace-uk-private",
         filename="microcosm_uk_2024_25.h5",
         engine_module="policyengine_uk.data",
         engine_class="UKSingleYearDataset",
         engine_package="policyengine-uk",
         pointer_path="latest-national.json",
+        release="microcosm-uk-2024-25-national",
     )
 )
 
 register(
     DatasetSpec(
-        # microcosm#762 A18: the dense joint national + local UK build is
-        # tag-only; no pointer. It carries every constituency and local
-        # authority at K=15 clones per spine household.
+        # microcosm#762 A18: the dense joint national + local UK build. Before
+        # the switch its builds were tags only, with no pointer file. It
+        # carries every constituency and local authority at K=15 clones per
+        # spine household. Once the repository
+        # switches to releases.json, a new dense build becomes current when it
+        # is promoted, or published with --make-current, through
+        # microcosm-publish-release-build, and the loader reads it there.
         country="uk",
         year=2025,
         variant="dense",
@@ -145,12 +169,15 @@ register(
         engine_module="policyengine_uk.data",
         engine_class="UKSingleYearDataset",
         engine_package="policyengine-uk",
+        release="microcosm-uk-2024-25-dense",
     )
 )
 
 # microcosm#898 reserves the local-area line as variant "local", with pointer
-# latest-local-k<N>.json and artifact microcosm_uk_2024_25_local_k<N>.h5. Add
-# its registry entry only once a certified artifact exists.
+# latest-local-k<N>.json and artifact microcosm_uk_2024_25_local_k<N>.h5, and
+# the release microcosm-uk-2024-25-local-k<N> once its repository records
+# builds in releases.json. Add its registry entry only once a certified
+# artifact exists.
 
 register(
     DatasetSpec(
