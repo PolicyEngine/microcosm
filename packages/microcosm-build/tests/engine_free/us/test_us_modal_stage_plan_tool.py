@@ -2616,6 +2616,40 @@ def test_a_plan_may_not_choose_the_stage_s_telemetry_run(key: str) -> None:
         plan_lib.tool_environment({}, {key: "chosen-by-the-plan"})
 
 
+def test_a_plan_may_not_name_its_container_s_resource_request() -> None:
+    with pytest.raises(plan_lib.PlanError, match="resource class") as refused:
+        plan_lib.parse_plan(_plan_data(env={"MICROCOSM_MODAL_RESOURCES": "{}"}))
+    assert "MICROCOSM_MODAL_RESOURCES" in str(refused.value)
+
+
+def test_the_check_probes_the_tool_with_its_resource_request(
+    fake_runner, monkeypatch
+) -> None:
+    app = fake_runner(_seed_tool())
+    clone = app._git_state(None)
+    monkeypatch.setattr(app, "_git_state", lambda plan: {**clone, "tree_files": []})
+    real = plan_lib.tool_environment
+    seen: list[str | None] = []
+
+    def spy(base, plan_env, **options):
+        env, removed = real(base, plan_env, **options)
+        seen.append(env.get("MICROCOSM_MODAL_RESOURCES"))
+        return env, removed
+
+    monkeypatch.setattr(plan_lib, "tool_environment", spy)
+    data = _fake_plan()
+    app.check_stage(data)
+    resources = plan_lib.parse_plan(data).resources
+    request = {
+        "class": resources.name,
+        "cpu": resources.cpu,
+        "cpu_limit": resources.cpu_limit,
+        "memory_mib": resources.memory_mib,
+    }
+    assert seen
+    assert [json.loads(value or "null") for value in seen] == [request] * len(seen)
+
+
 def test_the_image_emitter_s_version_runs_without_credentials_or_the_token(
     monkeypatch, tmp_path: Path
 ) -> None:
