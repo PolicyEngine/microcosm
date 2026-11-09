@@ -54,7 +54,10 @@ The switch is two steps, each a separate run of this tool:
     build is tagged and the commit it names is on ``main`` (a publication
     still running has either no tag yet or a branch on the tagged commit,
     which is not on ``main`` until the branch is deleted); the branch stays,
-    and must not move before the commit.
+    and must not move before the commit. A retry of the same build's
+    publication that has just made its branch from ``main``, and not yet
+    committed to it, meets both conditions too, so name a branch only while
+    nobody publishes.
     The record lists every moved build, with the date of its tagged commit
     as ``published_at``. The build
     each pointer file names becomes its release's current build, and

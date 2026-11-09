@@ -559,7 +559,9 @@ not change while it read them, no `release-staging/` branch shows a tagged
 publication in progress, and the emitter interface's checks pass. A
 `release-staging/` branch that a finished publication left behind is
 accepted when `--finished-branch` names it, its build is tagged and the commit
-it names is on `main`; the branch stays where it is. Each build keeps the date of its
+it names is on `main`; the branch stays where it is. A retry of the same
+build's publication that has just made its branch looks the same, so name a
+branch only while nobody publishes. Each build keeps the date of its
 tagged commit as `published_at`, and each pointer file's build becomes its
 release's current build. The module's docstring describes both steps in full.
 
