@@ -38,8 +38,10 @@ from hypothesis import strategies as st
 from microcosm.build.country_spec import load_country_spec
 from microcosm.build.ledger_targets import (
     CALENDAR_YEAR_WINDOW_WEIGHTS,
+    _fact_key,
     _ledger_metadata,
     _reference_metadata,
+    _value_representative_fact,
 )
 from microcosm.build.target_materialization import (
     WHOLE_PENCE_UPPER_CLOSED,
@@ -1052,9 +1054,11 @@ def _contract():
     }
 
 
-#: The keys of a ``policyengine`` binding that change no count: ``notes``
-#: documents the row, and ``metric_name`` names a counterfactual binding's
-#: column, which these plain bindings do not have.
+#: The keys of a ``policyengine`` binding that change no count. ``notes``
+#: documents the row. ``metric_name`` names it for three readers: the UK
+#: local metric map keys the row's target by it, reference authoring copies
+#: it into a reference's measure, and a counterfactual binding names its
+#: delta column with it. None of those reads changes whom these rows count.
 _INERT_KEYS = frozenset({"metric_name", "notes"})
 
 
@@ -1071,7 +1075,8 @@ def test_the_check_reads_what_the_contract_binds() -> None:
     changes any other key fails here. That covers the keys whose effect the
     differential below cannot see on these rows: ``band_filter_dimension``
     beside a single band-like filter, ``measurement_period`` on a frame
-    without period metadata, and ``require_matching_fact_period``."""
+    without period metadata, and ``require_matching_fact_period``, since
+    each spec's fact period, 2025, matches the year the build reads it at."""
 
     taxpayer = {"variable": TAX, "operator": ">", "value": 0}
     counted = {
@@ -1170,12 +1175,13 @@ def _window_facts(rows, reference):
 
 def _bound_registry():
     """The compiled spec of each bound reference, stamped as the Ledger
-    compile stamps it: the compile's Ledger metadata of a fact the reference
-    selects (the fact's dimensions give the band's edges, as
-    ``ledger_filter_total_income_lower_bound``), under the compile's
-    metadata of the reference (its contract target and geography predicate
-    among it). The window's facts carry the same dimensions, so either one
-    stamps the spec."""
+    compile stamps it: the compile's Ledger metadata of the fact it picks to
+    stand for the reference's window (``_value_representative_fact``: the
+    latest, so the spec's ``ledger_fact_period`` is the reference's period,
+    2025), under the compile's metadata of the reference (its contract
+    target and geography predicate among it). The window's facts share their
+    dimensions, which give the band's edges as
+    ``ledger_filter_total_income_lower_bound``, but not their period."""
 
     rows = load_vendored_resource("hmrc_itl_taxpayer_counts.json")["rows"]
     specs = []
@@ -1187,10 +1193,14 @@ def _bound_registry():
         assert all(fact["dimensions"] == facts[0]["dimensions"] for fact in facts), (
             reference.name
         )
+        fact = _value_representative_fact(
+            tuple(facts), operation=reference.value_operation
+        )
         metadata = {
-            **_ledger_metadata(facts[0], fact_key=facts[0]["source_record_id"]),
+            **_ledger_metadata(fact, fact_key=_fact_key(fact)),
             **_reference_metadata(reference),
         }
+        assert metadata["ledger_fact_period"] == str(reference.period), reference.name
         specs.append(
             TargetSpec(
                 name=reference.name,
@@ -1256,7 +1266,8 @@ _TOP_BAND = f"{_BAND_TARGET}.{itl_band_key(ITL_BANDS[-1])}"
 
 #: Edits a later change could make to a binding, by name: the binding's
 #: target, the edit, and the references it turns red (None: every reference
-#: of the target).
+#: of the target; an empty set: none, for an edit the differential cannot
+#: see on these rows, which the structural test holds instead).
 _BINDING_EDITS = {
     "taxpayers-from-zero": (
         _BAND_TARGET,
@@ -1337,6 +1348,21 @@ _BINDING_EDITS = {
         ),
         None,
     ),
+    "latent-a-fact-period-guard": (
+        _BAND_TARGET,
+        lambda binding: binding.update(require_matching_fact_period=True),
+        set(),
+    ),
+    "latent-a-declared-measurement-period": (
+        _STATE_PENSION_AGE_TARGET,
+        lambda binding: binding.update(measurement_period=2024),
+        set(),
+    ),
+    "latent-another-band-dimension": (
+        _BAND_TARGET,
+        lambda binding: binding.update(band_filter_dimension="age"),
+        set(),
+    ),
 }
 
 
@@ -1347,7 +1373,12 @@ def test_an_edited_binding_turns_its_cells_red(edit) -> None:
     upper bound or a period factor) or the binding's kind makes exactly the
     cells it moves read differently from the check, or the build skip them.
     That is every cell of the binding's family, except for an upper bound
-    above the top band's lower edge, which moves the top band alone."""
+    above the top band's lower edge, which moves the top band alone. Three
+    latent edits move no cell on these rows, so every cell stays green and
+    the structural test holds them: a fact-period guard (each spec's fact
+    period, 2025, matches the year the build reads it at), a declared
+    measurement period (the frame carries no period metadata), and a band
+    dimension beside the bands' single band-like filter."""
 
     target, change, red = _BINDING_EDITS[edit]
     contract = copy.deepcopy(_contract())
