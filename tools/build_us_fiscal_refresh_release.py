@@ -8034,7 +8034,8 @@ US_EXPORT_INPUT_MASS_REVIEWED_EXCLUSIONS: dict[str, str] = {
         "(PolicyEngine/microcosm#299 Build H). That math holds only for the "
         "$98.434B reference. The build applies this entry for any reference, "
         "so re-adjudicate it if --export-input-mass-reference-h5 names a file "
-        "with a different level."
+        "with a different level, or if the flag is absent and the raw base "
+        "becomes the reference."
     ),
     "non_sch_d_capital_gains": (
         "Identified by SOI Table 1.4 capital gain distributions reported on "

@@ -47,18 +47,36 @@ from typing import Any
 import numpy as np
 
 from microcosm.build.ledger_targets import CALENDAR_YEAR_WINDOW_WEIGHTS
-from microcosm.build.uk_runtime.hmrc_uprating import ITL_BANDS
+from microcosm.build.uk_runtime.hmrc_uprating import (
+    ITL_BANDS,
+    UK_HMRC_ITL_UK_GEOGRAPHY_ID,
+)
 from microcosm.calibrate.geography_constants import UK_REGION_TIER
 
+#: The engine variables a cell reads, as the contract's ``policyengine``
+#: bindings of the ``BOUND_BY`` targets name them: every cell counts people
+#: whose ``TAX`` is above zero, a band reads ``TOTAL_INCOME``, the counts of
+#: and below State Pension age read ``IS_SP_AGE`` and the count aged 65 and
+#: over reads ``AGE``. ``resolved_people`` reads them; a test holds them, and
+#: the cells' masks, to the bindings.
 TAX = "income_tax_before_winter_fuel_payment_charge_annual"
 TOTAL_INCOME = "total_income_after_loss_relief_annual"
+IS_SP_AGE = "is_SP_age"
+AGE = "age"
 
-#: Largest relative miss a cell may show: national cells are sums over
-#: millions of weighted taxpayers, a region's over a twelfth of them.
+#: Largest relative miss a cell may show: ``REGIONAL_TOLERANCE`` for each
+#: Table 2.2 area, ``NATIONAL_TOLERANCE`` for every other cell (Table 2.5's
+#: bands and all-band count, Table 2.1's United Kingdom counts, the count
+#: below State Pension age and the residents' sums). Geography, not size,
+#: decides which: at the calendar-2025 window of the vendored rows, five of
+#: the eleven bands hold under 400,000 taxpayers (342,750 at £150,000 to
+#: £200,000, 372,500 at £200,000 to £500,000, 65,500 at £500,000 to £1m,
+#: 20,750 at £1m to £2m and 10,750 at £2m and over), and the top three hold
+#: fewer than the smallest area cell (Northern Ireland's State Pension age
+#: count, 198,750).
 NATIONAL_TOLERANCE = 0.05
 REGIONAL_TOLERANCE = 0.10
 
-UNITED_KINGDOM = "K02000001"
 #: The ``key`` of the sum over the twelve region-tier areas.
 RESIDENTS = "residents"
 AGE_MEASURES = ("state_pension_age", "age_65_and_over")
@@ -102,7 +120,7 @@ class ITLCell:
         if self.band is not None:
             lower, upper = self.band
             return f"{lower}+" if upper is None else f"{lower}-{upper}"
-        return self.area or UNITED_KINGDOM
+        return self.area or UK_HMRC_ITL_UK_GEOGRAPHY_ID
 
     @property
     def sort_key(self) -> tuple[Any, ...]:
@@ -178,9 +196,9 @@ def _read_by_cells(row: Mapping[str, Any]) -> bool:
     measure = str(row.get("measure_id"))
     geography = str((row.get("geography") or {}).get("id"))
     if table == "2.5":
-        return measure == _TABLE_2_5_COUNT and geography == UNITED_KINGDOM
+        return measure == _TABLE_2_5_COUNT and geography == UK_HMRC_ITL_UK_GEOGRAPHY_ID
     if table == "2.1":
-        return measure in AGE_MEASURES and geography == UNITED_KINGDOM
+        return measure in AGE_MEASURES and geography == UK_HMRC_ITL_UK_GEOGRAPHY_ID
     return (
         table == "2.2" and measure in AGE_MEASURES and geography in _REGION_TIER_CODES
     )
@@ -333,16 +351,16 @@ def expected_cells(
         cell(
             "2.5",
             BAND_COUNT,
-            need(("2.5", _TABLE_2_5_COUNT, UNITED_KINGDOM, band)),
+            need(("2.5", _TABLE_2_5_COUNT, UK_HMRC_ITL_UK_GEOGRAPHY_ID, band)),
             band=band,
         )
         for band in ITL_BANDS
     ]
-    all_taxpayers = need(("2.5", _TABLE_2_5_COUNT, UNITED_KINGDOM, None))
+    all_taxpayers = need(("2.5", _TABLE_2_5_COUNT, UK_HMRC_ITL_UK_GEOGRAPHY_ID, None))
     all_cell = _summed(cell("2.5", ALL_TAXPAYERS, all_taxpayers), cells)
     cells.append(all_cell)
     for measure in AGE_MEASURES:
-        national = window.get(("2.1", measure, UNITED_KINGDOM, None))
+        national = window.get(("2.1", measure, UK_HMRC_ITL_UK_GEOGRAPHY_ID, None))
         areas = [
             window.get(("2.2", measure, code, None)) for _level, code in UK_REGION_TIER
         ]
@@ -577,7 +595,7 @@ def resolved_people(resolver: Any) -> ITLPeople:
         weight=_person(resolver, "household_weight").astype(float),
         taxpayer=_person(resolver, TAX).astype(float) > 0,
         total_income=_person(resolver, TOTAL_INCOME).astype(float),
-        state_pension_age=_person(resolver, "is_SP_age").astype(bool),
-        age=_person(resolver, "age").astype(float),
+        state_pension_age=_person(resolver, IS_SP_AGE).astype(bool),
+        age=_person(resolver, AGE).astype(float),
         area=np.array([by_name.get(name, "") for name in region]),
     )

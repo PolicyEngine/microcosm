@@ -8,37 +8,52 @@ is in sample only when its in-sample parts fix its model count; a cell is
 within tolerance exactly when its relative miss is no larger than the
 tolerance fixed before any file is read. The in-sample flags read the
 targets by the names the contract's references and a run's diagnostics give
-them, so Table 2.2's areas, bound since microcosm#1069, are in sample.
+them, so Table 2.2's areas, bound since microcosm#1069, are in sample. Each
+bound cell counts exactly the people the build's own reading of its contract
+binding counts (its filters and its band), so an edit to a binding's filter
+or band variable fails these tests until the check follows it.
 """
 
 from __future__ import annotations
 
+import copy
 import importlib.util
+import itertools
 import json
 import math
 from fractions import Fraction
 from importlib.resources import files
+from types import SimpleNamespace
 
 import numpy as np
 import pytest
 from hypothesis import given, settings
 from hypothesis import strategies as st
 
-from microcosm.build.uk_runtime.hmrc_uprating import ITL_BANDS
+from microcosm.build.target_materialization import (
+    WHOLE_PENCE_UPPER_CLOSED,
+    _prepared_column_values,
+)
+from microcosm.build.uk_runtime.hmrc_uprating import (
+    ITL_BANDS,
+    UK_HMRC_ITL_UK_GEOGRAPHY_ID,
+)
 from microcosm.build.uk_runtime.itl_differential import (
+    AGE,
     AGE_MEASURES,
     ALL_TAXPAYERS,
     BAND_COUNT,
     BELOW_STATE_PENSION_AGE,
     BOUND_BY,
+    IS_SP_AGE,
     NATIONAL_TOLERANCE,
     REGIONAL_TOLERANCE,
     RESIDENTS,
     TAX,
     TOTAL_INCOME,
-    UNITED_KINGDOM,
     ITLPeople,
     calendar_window,
+    cell_mask,
     differential,
     expected_cells,
     itl_band_key,
@@ -48,7 +63,10 @@ from microcosm.build.uk_runtime.itl_differential import (
     table_of,
 )
 from microcosm.build.uk_runtime.ledger_fact_vendoring import load_vendored_resource
-from microcosm.calibrate.geography_constants import UK_REGION_TIER
+from microcosm.calibrate.geography_constants import (
+    UK_REGION_TIER,
+    UK_REGION_TIER_ENUM,
+)
 from test_support.paths import paths_for
 
 AREAS = tuple(code for _level, code in UK_REGION_TIER)
@@ -80,7 +98,11 @@ def _rows(*, ages=True, value=1_000.0):
         scale = 1.0 + (year - 2023) / 10
         rows.append(
             _row(
-                "2.5", "total_taxpayer_count", UNITED_KINGDOM, year, 40 * value * scale
+                "2.5",
+                "total_taxpayer_count",
+                UK_HMRC_ITL_UK_GEOGRAPHY_ID,
+                year,
+                40 * value * scale,
             )
         )
         for index, band in enumerate(ITL_BANDS):
@@ -88,7 +110,7 @@ def _rows(*, ages=True, value=1_000.0):
                 _row(
                     "2.5",
                     "total_taxpayer_count",
-                    UNITED_KINGDOM,
+                    UK_HMRC_ITL_UK_GEOGRAPHY_ID,
                     year,
                     (index + 1) * value * scale,
                     band,
@@ -97,7 +119,13 @@ def _rows(*, ages=True, value=1_000.0):
         if ages:
             for measure in ("state_pension_age", "age_65_and_over"):
                 rows.append(
-                    _row("2.1", measure, UNITED_KINGDOM, year, 13 * value * scale)
+                    _row(
+                        "2.1",
+                        measure,
+                        UK_HMRC_ITL_UK_GEOGRAPHY_ID,
+                        year,
+                        13 * value * scale,
+                    )
                 )
                 for index, area in enumerate(AREAS):
                     rows.append(
@@ -111,8 +139,8 @@ def _rows(*, ages=True, value=1_000.0):
 @given(then=_counts, now=_counts)
 def test_the_window_weights_the_two_tax_years(then, now) -> None:
     rows = [
-        _row("2.1", "state_pension_age", UNITED_KINGDOM, 2024, then),
-        _row("2.1", "state_pension_age", UNITED_KINGDOM, 2025, now),
+        _row("2.1", "state_pension_age", UK_HMRC_ITL_UK_GEOGRAPHY_ID, 2024, then),
+        _row("2.1", "state_pension_age", UK_HMRC_ITL_UK_GEOGRAPHY_ID, 2025, now),
     ]
     ((value, sources),) = calendar_window(rows, year=2025).values()
     assert value == math.fsum((0.25 * then, 0.75 * now))
@@ -132,7 +160,7 @@ def test_a_duplicate_or_half_window_is_refused() -> None:
     rows = _rows()
     with pytest.raises(ValueError, match="two rows"):
         calendar_window([*rows, rows[0]], year=2024)
-    lonely = _row("2.1", "males", UNITED_KINGDOM, 2025, 1.0)
+    lonely = _row("2.1", "males", UK_HMRC_ITL_UK_GEOGRAPHY_ID, 2025, 1.0)
     with pytest.raises(ValueError, match="window at 2025 needs"):
         calendar_window([*rows, lonely], year=2025)
 
@@ -180,10 +208,12 @@ def test_the_derived_cells_are_their_components() -> None:
         (cell.table, cell.measure, cell.key): cell
         for cell in expected_cells(_rows(), year=2025)
     }
-    all_taxpayers = cells[("2.5", ALL_TAXPAYERS, UNITED_KINGDOM)].expected
-    state_pension_age = cells[("2.1", "state_pension_age", UNITED_KINGDOM)].expected
+    all_taxpayers = cells[("2.5", ALL_TAXPAYERS, UK_HMRC_ITL_UK_GEOGRAPHY_ID)].expected
+    state_pension_age = cells[
+        ("2.1", "state_pension_age", UK_HMRC_ITL_UK_GEOGRAPHY_ID)
+    ].expected
     assert (
-        cells[("2.1", BELOW_STATE_PENSION_AGE, UNITED_KINGDOM)].expected
+        cells[("2.1", BELOW_STATE_PENSION_AGE, UK_HMRC_ITL_UK_GEOGRAPHY_ID)].expected
         == all_taxpayers - state_pension_age
     )
     for measure in ("state_pension_age", "age_65_and_over"):
@@ -240,10 +270,10 @@ def test_a_family_is_in_sample_cell_by_cell() -> None:
         assert flags[key] is (band != left_out_band)
     for area in AREAS:
         assert flags[("2.2", "state_pension_age", area)] is (area != left_out_area)
-    assert not flags[("2.5", ALL_TAXPAYERS, UNITED_KINGDOM)]
+    assert not flags[("2.5", ALL_TAXPAYERS, UK_HMRC_ITL_UK_GEOGRAPHY_ID)]
     assert not flags[("2.2", "state_pension_age", RESIDENTS)]
-    assert not flags[("2.1", "state_pension_age", UNITED_KINGDOM)]
-    assert not flags[("2.1", BELOW_STATE_PENSION_AGE, UNITED_KINGDOM)]
+    assert not flags[("2.1", "state_pension_age", UK_HMRC_ITL_UK_GEOGRAPHY_ID)]
+    assert not flags[("2.1", BELOW_STATE_PENSION_AGE, UK_HMRC_ITL_UK_GEOGRAPHY_ID)]
 
     every = {
         *(f"{band_family}.{itl_band_key(b)}" for b in ITL_BANDS),
@@ -286,10 +316,10 @@ def test_a_sum_is_in_sample_only_when_its_parts_count_everyone_it_counts() -> No
     everyone_in_a_part = ITLPeople(**_person())
     flags = _flags(differential(cells, everyone_in_a_part))
     for key in (
-        ("2.5", ALL_TAXPAYERS, UNITED_KINGDOM),
+        ("2.5", ALL_TAXPAYERS, UK_HMRC_ITL_UK_GEOGRAPHY_ID),
         ("2.2", "state_pension_age", RESIDENTS),
-        ("2.1", "state_pension_age", UNITED_KINGDOM),
-        ("2.1", BELOW_STATE_PENSION_AGE, UNITED_KINGDOM),
+        ("2.1", "state_pension_age", UK_HMRC_ITL_UK_GEOGRAPHY_ID),
+        ("2.1", BELOW_STATE_PENSION_AGE, UK_HMRC_ITL_UK_GEOGRAPHY_ID),
     ):
         assert flags[key]["in_sample"], key
         assert flags[key]["outside_parts"] == 0.0, key
@@ -306,19 +336,33 @@ def test_a_sum_is_in_sample_only_when_its_parts_count_everyone_it_counts() -> No
         _person(), _person(total_income=[10_000.0], weight=[2.5])
     )
     flags = _flags(differential(cells, below_the_first_edge))
-    assert not flags[("2.5", ALL_TAXPAYERS, UNITED_KINGDOM)]["in_sample"]
-    assert flags[("2.5", ALL_TAXPAYERS, UNITED_KINGDOM)]["outside_parts"] == 2.5
-    assert not flags[("2.1", BELOW_STATE_PENSION_AGE, UNITED_KINGDOM)]["in_sample"]
-    assert flags[("2.1", "state_pension_age", UNITED_KINGDOM)]["in_sample"]
+    assert not flags[("2.5", ALL_TAXPAYERS, UK_HMRC_ITL_UK_GEOGRAPHY_ID)]["in_sample"]
+    assert (
+        flags[("2.5", ALL_TAXPAYERS, UK_HMRC_ITL_UK_GEOGRAPHY_ID)]["outside_parts"]
+        == 2.5
+    )
+    assert not flags[("2.1", BELOW_STATE_PENSION_AGE, UK_HMRC_ITL_UK_GEOGRAPHY_ID)][
+        "in_sample"
+    ]
+    assert flags[("2.1", "state_pension_age", UK_HMRC_ITL_UK_GEOGRAPHY_ID)]["in_sample"]
 
     in_no_area = merged(_person(), _person(area=[""], weight=[4.0]))
     flags = _flags(differential(cells, in_no_area))
-    assert not flags[("2.1", "state_pension_age", UNITED_KINGDOM)]["in_sample"]
-    assert flags[("2.1", "state_pension_age", UNITED_KINGDOM)]["outside_parts"] == 4.0
-    assert not flags[("2.1", BELOW_STATE_PENSION_AGE, UNITED_KINGDOM)]["in_sample"]
+    assert not flags[("2.1", "state_pension_age", UK_HMRC_ITL_UK_GEOGRAPHY_ID)][
+        "in_sample"
+    ]
+    assert (
+        flags[("2.1", "state_pension_age", UK_HMRC_ITL_UK_GEOGRAPHY_ID)][
+            "outside_parts"
+        ]
+        == 4.0
+    )
+    assert not flags[("2.1", BELOW_STATE_PENSION_AGE, UK_HMRC_ITL_UK_GEOGRAPHY_ID)][
+        "in_sample"
+    ]
     # The residents' count is exactly its areas', whoever else the file holds.
     assert flags[("2.2", "state_pension_age", RESIDENTS)]["in_sample"]
-    assert flags[("2.5", ALL_TAXPAYERS, UNITED_KINGDOM)]["in_sample"]
+    assert flags[("2.5", ALL_TAXPAYERS, UK_HMRC_ITL_UK_GEOGRAPHY_ID)]["in_sample"]
 
 
 def test_a_family_is_in_sample_only_when_every_cell_is() -> None:
@@ -358,7 +402,7 @@ def test_rows_of_another_geography_are_not_read() -> None:
         _row("2.5", "total_taxpayer_count", AREAS[0], 2025, 1.0),
         _row("2.5", "total_taxpayer_count", AREAS[0], 2025, 1.0, (15_000, 17_500)),
         _row("2.1", "state_pension_age", AREAS[0], 2025, 1.0),
-        _row("2.2", "state_pension_age", UNITED_KINGDOM, 2025, 1.0),
+        _row("2.2", "state_pension_age", UK_HMRC_ITL_UK_GEOGRAPHY_ID, 2025, 1.0),
         _row("2.2", "age_65_and_over", "E06000001", 2025, 1.0),
     ]
     assert expected_cells([*_rows(), *elsewhere], year=2025) == expected_cells(
@@ -367,9 +411,9 @@ def test_rows_of_another_geography_are_not_read() -> None:
 
 
 def test_table_of_names_the_table_or_none() -> None:
-    assert table_of(_row("2.5", "total_taxpayer_count", UNITED_KINGDOM, 2025, 1)) == (
-        "2.5"
-    )
+    assert table_of(
+        _row("2.5", "total_taxpayer_count", UK_HMRC_ITL_UK_GEOGRAPHY_ID, 2025, 1)
+    ) == ("2.5")
     assert table_of(_row("2.2", "males", AREAS[0], 2025, 1)) == "2.2"
     assert table_of({"layout": {"record_set_id": "hmrc.spi.table_3_6"}}) == "3.6"
     assert table_of({"layout": {"record_set_id": "ons.mid_year_2025"}}) is None
@@ -379,7 +423,14 @@ def test_table_of_names_the_table_or_none() -> None:
 def test_a_band_outside_itl_bands_is_refused() -> None:
     rows = _rows(ages=False)
     rows += [
-        _row("2.5", "total_taxpayer_count", UNITED_KINGDOM, year, 1.0, (15_000, 17_500))
+        _row(
+            "2.5",
+            "total_taxpayer_count",
+            UK_HMRC_ITL_UK_GEOGRAPHY_ID,
+            year,
+            1.0,
+            (15_000, 17_500),
+        )
         for year in (2024, 2025)
     ]
     with pytest.raises(ValueError, match=r"bands \['\(15000, 17500\)'\]"):
@@ -390,8 +441,8 @@ def test_rows_no_cell_reads_do_not_refuse_the_window() -> None:
     """A measure the check does not read may carry one tax year only."""
 
     lonely = [
-        _row("2.1", "males", UNITED_KINGDOM, 2025, 1.0),
-        _row("2.5", "total_income_amount", UNITED_KINGDOM, 2025, 1.0),
+        _row("2.1", "males", UK_HMRC_ITL_UK_GEOGRAPHY_ID, 2025, 1.0),
+        _row("2.5", "total_income_amount", UK_HMRC_ITL_UK_GEOGRAPHY_ID, 2025, 1.0),
     ]
     assert expected_cells([*_rows(), *lonely], year=2025) == expected_cells(
         _rows(), year=2025
@@ -471,7 +522,9 @@ def test_the_bands_and_the_areas_partition_their_totals(people) -> None:
     bands = [
         model_count(cell, people) for key, cell in cells.items() if key[1] == BAND_COUNT
     ]
-    total = model_count(cells[("2.5", ALL_TAXPAYERS, UNITED_KINGDOM)], people)
+    total = model_count(
+        cells[("2.5", ALL_TAXPAYERS, UK_HMRC_ITL_UK_GEOGRAPHY_ID)], people
+    )
     assert math.fsum([*bands, below_first_edge]) == pytest.approx(
         total, rel=1e-12, abs=1e-9
     )
@@ -479,8 +532,12 @@ def test_the_bands_and_the_areas_partition_their_totals(people) -> None:
         areas = [model_count(cells[("2.2", measure, area)], people) for area in AREAS]
         residents = model_count(cells[("2.2", measure, RESIDENTS)], people)
         assert math.fsum(areas) == pytest.approx(residents, rel=1e-12, abs=1e-9)
-    spa = model_count(cells[("2.1", "state_pension_age", UNITED_KINGDOM)], people)
-    below = model_count(cells[("2.1", BELOW_STATE_PENSION_AGE, UNITED_KINGDOM)], people)
+    spa = model_count(
+        cells[("2.1", "state_pension_age", UK_HMRC_ITL_UK_GEOGRAPHY_ID)], people
+    )
+    below = model_count(
+        cells[("2.1", BELOW_STATE_PENSION_AGE, UK_HMRC_ITL_UK_GEOGRAPHY_ID)], people
+    )
     assert math.fsum([spa, below]) == pytest.approx(total, rel=1e-12, abs=1e-9)
 
 
@@ -500,18 +557,18 @@ def test_a_sum_in_sample_is_fixed_by_bound_parts(people, every_band) -> None:
     )
     rows = _flags(report)
     model = {key: row["model"] for key, row in rows.items()}
-    total = rows[("2.5", ALL_TAXPAYERS, UNITED_KINGDOM)]
+    total = rows[("2.5", ALL_TAXPAYERS, UK_HMRC_ITL_UK_GEOGRAPHY_ID)]
     if total["in_sample"]:
         assert every_band
         band_models = [m for (t, ms, _k), m in model.items() if ms == BAND_COUNT]
         assert math.fsum(band_models) == pytest.approx(
             total["model"], rel=1e-12, abs=1e-9
         )
-    spa = rows[("2.1", "state_pension_age", UNITED_KINGDOM)]
+    spa = rows[("2.1", "state_pension_age", UK_HMRC_ITL_UK_GEOGRAPHY_ID)]
     if spa["in_sample"]:
         areas = [model[("2.2", "state_pension_age", area)] for area in AREAS]
         assert math.fsum(areas) == pytest.approx(spa["model"], rel=1e-12, abs=1e-9)
-    below = rows[("2.1", BELOW_STATE_PENSION_AGE, UNITED_KINGDOM)]
+    below = rows[("2.1", BELOW_STATE_PENSION_AGE, UK_HMRC_ITL_UK_GEOGRAPHY_ID)]
     if below["in_sample"]:
         assert total["in_sample"] and spa["in_sample"]
     families: dict[str, list] = {}
@@ -548,7 +605,7 @@ def test_the_verdict_is_the_tolerance(model, expected) -> None:
         _row(
             "2.5",
             "total_taxpayer_count",
-            UNITED_KINGDOM,
+            UK_HMRC_ITL_UK_GEOGRAPHY_ID,
             year,
             expected,
             (20_000, 30_000),
@@ -588,10 +645,45 @@ def test_the_vendored_table_2_5_rows_give_every_band_at_calendar_2025() -> None:
         (cell.table, cell.measure, cell.key): cell
         for cell in expected_cells(rows, year=2025)
     }
-    total = cells[("2.5", ALL_TAXPAYERS, UNITED_KINGDOM)]
+    total = cells[("2.5", ALL_TAXPAYERS, UK_HMRC_ITL_UK_GEOGRAPHY_ID)]
     # Table 2.5's all-band count: 38.6m in 2024-25 and 39.8m in 2025-26.
     assert total.expected == pytest.approx(0.25 * 38_600_000 + 0.75 * 39_800_000)
     assert sum(1 for key in cells if key[1] == BAND_COUNT) == len(ITL_BANDS)
+
+
+def test_the_tolerance_note_cites_the_vendored_counts() -> None:
+    """The counts the note on ``NATIONAL_TOLERANCE`` cites, from the vendored
+    rows at the calendar-2025 window: five of the eleven bands hold under
+    400,000 taxpayers, and the top three hold fewer than the smallest area
+    cell, Northern Ireland's State Pension age count. Every band takes the
+    national tolerance all the same: geography, not size, decides."""
+
+    rows = load_vendored_resource("hmrc_itl_taxpayer_counts.json")["rows"]
+    cells = expected_cells(rows, year=2025)
+    bands = [cell for cell in cells if cell.measure == BAND_COUNT]
+    assert len(bands) == len(ITL_BANDS)
+    assert {cell.key: cell.expected for cell in bands if cell.expected < 400_000} == {
+        "150000-200000": 342_750.0,
+        "200000-500000": 372_500.0,
+        "500000-1000000": 65_500.0,
+        "1000000-2000000": 20_750.0,
+        "2000000+": 10_750.0,
+    }
+    smallest = min(
+        (cell for cell in cells if cell.tolerance == REGIONAL_TOLERANCE),
+        key=lambda cell: cell.expected,
+    )
+    assert (smallest.measure, smallest.key, smallest.expected) == (
+        "state_pension_age",
+        "N92000002",
+        198_750.0,
+    )
+    assert [cell.key for cell in bands if cell.expected < smallest.expected] == [
+        "500000-1000000",
+        "1000000-2000000",
+        "2000000+",
+    ]
+    assert {cell.tolerance for cell in bands} == {NATIONAL_TOLERANCE}
 
 
 # The tool ------------------------------------------------------------------
@@ -693,14 +785,18 @@ def _consistent_rows():
                 _row(
                     "2.5",
                     "total_taxpayer_count",
-                    UNITED_KINGDOM,
+                    UK_HMRC_ITL_UK_GEOGRAPHY_ID,
                     year,
                     (index + 1) * 1_000.0,
                     band,
                 )
             )
         total = math.fsum((index + 1) * 1_000.0 for index in range(len(ITL_BANDS)))
-        rows.append(_row("2.5", "total_taxpayer_count", UNITED_KINGDOM, year, total))
+        rows.append(
+            _row(
+                "2.5", "total_taxpayer_count", UK_HMRC_ITL_UK_GEOGRAPHY_ID, year, total
+            )
+        )
     return rows
 
 
@@ -714,8 +810,8 @@ def _band_people(weight):
             "household_weight": weight,
             TAX: np.ones(size),
             TOTAL_INCOME: edges,
-            "is_SP_age": np.zeros(size, dtype=bool),
-            "age": np.full(size, 40.0),
+            IS_SP_AGE: np.zeros(size, dtype=bool),
+            AGE: np.full(size, 40.0),
             "region": np.array(["LONDON"] * size),
         }
     )
@@ -889,6 +985,236 @@ def test_the_bound_cells_expect_what_the_build_compiles() -> None:
     )
 
 
+# Whom the contract's bindings count -------------------------------------------
+
+
+def _contract():
+    """The contract's targets by id."""
+
+    return {
+        row["target_id"]: row
+        for row in _resource("uk_population_targets.json")["targets"]
+    }
+
+
+#: The keys of a ``policyengine`` binding that decide whom its rows count and
+#: what each person counts for.
+_COUNTING_KEYS = (
+    "kind",
+    "value_variable",
+    "value_expression",
+    "value_reduction",
+    "from_entity",
+    "map_to",
+    "filters",
+    "household_conditions",
+    "groupby_variable",
+    "band_semantics",
+)
+
+
+def test_the_check_reads_what_the_contract_binds() -> None:
+    """The three families ``BOUND_BY`` reads count as the check counts. Each
+    counts ``person_count`` at person grain, mapped to the household (the
+    check gives each person its household's weight), and only people whose
+    ``TAX`` is above zero. The bands group on ``TOTAL_INCOME`` and read
+    ``[lower, upper)``: no ``band_semantics``. The age families add
+    ``IS_SP_AGE`` true and ``AGE`` at least 65, and band nothing. A binding
+    that changes any of these, or gains a provider ``kind``, a value
+    expression or reduction, or a household condition, fails here."""
+
+    taxpayer = {"variable": TAX, "operator": ">", "value": 0}
+    counted = {
+        "value_variable": "person_count",
+        "from_entity": "person",
+        "map_to": "household",
+    }
+    expected = {
+        ("2.5", BAND_COUNT): {
+            **counted,
+            "filters": [taxpayer],
+            "groupby_variable": TOTAL_INCOME,
+        },
+        ("2.2", "state_pension_age"): {
+            **counted,
+            "filters": [taxpayer, {"variable": IS_SP_AGE, "equals": True}],
+        },
+        ("2.2", "age_65_and_over"): {
+            **counted,
+            "filters": [taxpayer, {"variable": AGE, "operator": ">=", "value": 65}],
+        },
+    }
+    assert set(expected) == set(BOUND_BY)
+    contract = _contract()
+    for family, target in BOUND_BY.items():
+        binding = contract[target]["bindings"]["policyengine"]
+        read = {key: binding[key] for key in _COUNTING_KEYS if key in binding}
+        assert read == expected[family], target
+
+
+def _edge_people():
+    """Engine columns for people at every edge the bindings read, and each
+    person's household region: tax either side of zero, total income either
+    side of each band edge, either State Pension age flag and ages either
+    side of 65, in each of the twelve region-tier areas and in none."""
+
+    edges = [float(lower) for lower, _upper in ITL_BANDS]
+    incomes = sorted(
+        {
+            0.0,
+            5_000_000.0,
+            *(edge + step for edge in edges for step in (-0.01, 0.0, 0.01)),
+        }
+    )
+    grid = itertools.product(
+        (*UK_REGION_TIER_ENUM.values(), "UNKNOWN"),
+        (-1.0, 0.0, 0.01, 1.0),
+        incomes,
+        (False, True),
+        (64.0, 64.99, 65.0, 65.01, 90.0),
+    )
+    region, tax, income, sp_age, age = (
+        np.array(column) for column in zip(*grid, strict=True)
+    )
+    return {TAX: tax, TOTAL_INCOME: income, IS_SP_AGE: sp_age, AGE: age}, region
+
+
+def _readings(contract):
+    """Each bound cell (a Table 2.5 band or a Table 2.2 area) on
+    ``_edge_people``, with what each person counts for in it: the check's
+    reading, and the build's reading of the cell's binding in ``contract``
+    through the plain-column interpreter that materializes these
+    prepared-column targets (None when it cannot read the binding from the
+    check's columns, or bands what the check does not). The reference's
+    geography predicate is not part of the binding, so the check's own area
+    stands in for it on both sides."""
+
+    engine, region = _edge_people()
+    size = len(region)
+    people = resolved_people(
+        _Resolver({**engine, "household_weight": np.ones(size), "region": region})
+    )
+    adapter = SimpleNamespace(
+        tables={"person": {**engine, "person_count": np.ones(size)}}
+    )
+    for cell in expected_cells(_rows(), year=2025):
+        if cell.reference is None:
+            continue
+        target = BOUND_BY[(cell.table, cell.measure)]
+        binding = contract[target]["bindings"]["policyengine"]
+        build = None
+        if bool(binding.get("groupby_variable")) == (cell.band is not None):
+            band = None
+            if cell.band is not None:
+                lower, upper = cell.band
+                band = (float(lower), math.inf if upper is None else float(upper))
+            try:
+                counted = _prepared_column_values(adapter, "person", binding, band=band)
+            except (KeyError, TypeError, ValueError):
+                pass
+            else:
+                build = np.asarray(counted, dtype=float)
+                if cell.area is not None:
+                    build = np.where(people.area == cell.area, build, 0.0)
+        yield cell, cell_mask(cell, people).astype(float), build
+
+
+def test_each_bound_cell_counts_whom_its_binding_counts() -> None:
+    """Two readings of each bound family agree: on people at every edge, each
+    Table 2.5 band and Table 2.2 area counts, person by person, what the
+    build's interpreter counts for the cell's contract binding, and each
+    counts someone and leaves someone out."""
+
+    readings = list(_readings(_contract()))
+    assert len(readings) == len(ITL_BANDS) + len(AGE_MEASURES) * len(AREAS)
+    for cell, check, build in readings:
+        assert build is not None, cell.reference
+        assert np.array_equal(check, build), cell.reference
+        assert 0 < check.sum() < len(check), cell.reference
+
+
+_BAND_TARGET = BOUND_BY[("2.5", BAND_COUNT)]
+_STATE_PENSION_AGE_TARGET = BOUND_BY[("2.2", "state_pension_age")]
+_AGED_65_AND_OVER_TARGET = BOUND_BY[("2.2", "age_65_and_over")]
+
+#: Edits a later change could make to a binding, by name: the binding's
+#: target and the edit.
+_BINDING_EDITS = {
+    "taxpayers-from-zero": (
+        _BAND_TARGET,
+        lambda binding: binding["filters"][0].update(operator=">="),
+    ),
+    "another-tax-variable": (
+        _STATE_PENSION_AGE_TARGET,
+        lambda binding: binding["filters"][0].update(variable="income_tax"),
+    ),
+    "bands-on-tax": (
+        _BAND_TARGET,
+        lambda binding: binding.update(groupby_variable=TAX),
+    ),
+    "bands-on-another-variable": (
+        _BAND_TARGET,
+        lambda binding: binding.update(groupby_variable="total_income"),
+    ),
+    "no-band-variable": (
+        _BAND_TARGET,
+        lambda binding: binding.pop("groupby_variable"),
+    ),
+    "bands-in-whole-pence": (
+        _BAND_TARGET,
+        lambda binding: binding.update(band_semantics=WHOLE_PENCE_UPPER_CLOSED),
+    ),
+    "below-state-pension-age": (
+        _STATE_PENSION_AGE_TARGET,
+        lambda binding: binding["filters"][1].update(equals=False),
+    ),
+    "another-state-pension-age-flag": (
+        _STATE_PENSION_AGE_TARGET,
+        lambda binding: binding["filters"][1].update(variable="is_female"),
+    ),
+    "aged-66-and-over": (
+        _AGED_65_AND_OVER_TARGET,
+        lambda binding: binding["filters"][1].update(value=66),
+    ),
+    "aged-over-65": (
+        _AGED_65_AND_OVER_TARGET,
+        lambda binding: binding["filters"][1].update(operator=">"),
+    ),
+    "any-age": (
+        _AGED_65_AND_OVER_TARGET,
+        lambda binding: binding["filters"].pop(),
+    ),
+    "an-added-filter": (
+        _STATE_PENSION_AGE_TARGET,
+        lambda binding: binding["filters"].append(
+            {"variable": AGE, "operator": ">=", "value": 70}
+        ),
+    ),
+}
+
+
+@pytest.mark.parametrize("edit", sorted(_BINDING_EDITS))
+def test_an_edited_binding_turns_its_family_red(edit) -> None:
+    """The differential reads the bindings themselves, not a copy of them:
+    an edit to a filter, the band variable or the band reading makes every
+    cell of that binding's family, and no other cell, read differently from
+    the check."""
+
+    target, change = _BINDING_EDITS[edit]
+    contract = copy.deepcopy(_contract())
+    change(contract[target]["bindings"]["policyengine"])
+    red = {
+        cell.reference
+        for cell, check, build in _readings(contract)
+        if build is None or not np.array_equal(check, build)
+    }
+    assert red == {
+        cell.reference
+        for cell in expected_cells(_rows(), year=2025)
+        if cell.reference is not None and BOUND_BY[(cell.table, cell.measure)] == target
+    }
+
+
 def _diagnostics(tmp_path, *, left_out=frozenset()):
     """A run's calibration_diagnostics.json as a UK build writes its target
     rows: each bound reference at 2025, a reference in ``left_out`` with no
@@ -962,11 +1288,15 @@ def test_a_run_that_binds_table_2_2_marks_its_cells_in_sample(tool, tmp_path) ->
     abroad = _person(area=[""], total_income=[20_000.0], weight=[3.0])
     flags = _flags(report(_area_people(abroad)))
     for measure in AGE_MEASURES:
-        assert not flags[("2.1", measure, UNITED_KINGDOM)]["in_sample"]
-        assert flags[("2.1", measure, UNITED_KINGDOM)]["outside_parts"] == 3.0
+        assert not flags[("2.1", measure, UK_HMRC_ITL_UK_GEOGRAPHY_ID)]["in_sample"]
+        assert (
+            flags[("2.1", measure, UK_HMRC_ITL_UK_GEOGRAPHY_ID)]["outside_parts"] == 3.0
+        )
         assert flags[("2.2", measure, RESIDENTS)]["in_sample"]
-    assert not flags[("2.1", BELOW_STATE_PENSION_AGE, UNITED_KINGDOM)]["in_sample"]
-    assert flags[("2.5", ALL_TAXPAYERS, UNITED_KINGDOM)]["in_sample"]
+    assert not flags[("2.1", BELOW_STATE_PENSION_AGE, UK_HMRC_ITL_UK_GEOGRAPHY_ID)][
+        "in_sample"
+    ]
+    assert flags[("2.5", ALL_TAXPAYERS, UK_HMRC_ITL_UK_GEOGRAPHY_ID)]["in_sample"]
 
     area = AREAS[6]
     target = BOUND_BY[("2.2", "state_pension_age")]
@@ -974,8 +1304,12 @@ def test_a_run_that_binds_table_2_2_marks_its_cells_in_sample(tool, tmp_path) ->
     flags = _flags(left)
     assert not flags[("2.2", "state_pension_age", area)]["in_sample"]
     assert not flags[("2.2", "state_pension_age", RESIDENTS)]["in_sample"]
-    assert not flags[("2.1", "state_pension_age", UNITED_KINGDOM)]["in_sample"]
-    assert not flags[("2.1", BELOW_STATE_PENSION_AGE, UNITED_KINGDOM)]["in_sample"]
+    assert not flags[("2.1", "state_pension_age", UK_HMRC_ITL_UK_GEOGRAPHY_ID)][
+        "in_sample"
+    ]
+    assert not flags[("2.1", BELOW_STATE_PENSION_AGE, UK_HMRC_ITL_UK_GEOGRAPHY_ID)][
+        "in_sample"
+    ]
     assert all(
         flags[("2.2", "state_pension_age", other)]["in_sample"]
         for other in AREAS
@@ -983,7 +1317,7 @@ def test_a_run_that_binds_table_2_2_marks_its_cells_in_sample(tool, tmp_path) ->
     )
     assert left["families"]["2.2:age_65_and_over"]["in_sample"]
     assert not left["families"]["2.2:state_pension_age"]["in_sample"]
-    assert flags[("2.1", "age_65_and_over", UNITED_KINGDOM)]["in_sample"]
+    assert flags[("2.1", "age_65_and_over", UK_HMRC_ITL_UK_GEOGRAPHY_ID)]["in_sample"]
 
 
 def test_resolved_people_reads_the_area_from_the_household_region() -> None:
@@ -996,8 +1330,8 @@ def test_resolved_people_reads_the_area_from_the_household_region() -> None:
                 "household_weight": np.array([1.0, 2.0, 3.0]),
                 TAX: np.array([1.0, 0.0, 5.0]),
                 TOTAL_INCOME: np.array([20_000.0, 5_000.0, 60_000.0]),
-                "is_SP_age": np.array([True, False, False]),
-                "age": np.array([70.0, 30.0, 50.0]),
+                IS_SP_AGE: np.array([True, False, False]),
+                AGE: np.array([70.0, 30.0, 50.0]),
                 "region": np.array(["Region.LONDON", "WALES", "UNKNOWN"]),
             }
         )
@@ -1020,13 +1354,17 @@ def test_without_table_2_2_the_united_kingdom_counts_have_no_parts() -> None:
     cells = expected_cells(rows, year=2025, bound_targets=set(BOUND_BY.values()))
     by_key = {(cell.table, cell.measure, cell.key): cell for cell in cells}
     for measure in AGE_MEASURES:
-        national = by_key[("2.1", measure, UNITED_KINGDOM)]
+        national = by_key[("2.1", measure, UK_HMRC_ITL_UK_GEOGRAPHY_ID)]
         assert national.parts == ()
         assert not national.in_sample
-    assert not by_key[("2.1", BELOW_STATE_PENSION_AGE, UNITED_KINGDOM)].in_sample
-    assert by_key[("2.5", ALL_TAXPAYERS, UNITED_KINGDOM)].in_sample
+    assert not by_key[
+        ("2.1", BELOW_STATE_PENSION_AGE, UK_HMRC_ITL_UK_GEOGRAPHY_ID)
+    ].in_sample
+    assert by_key[("2.5", ALL_TAXPAYERS, UK_HMRC_ITL_UK_GEOGRAPHY_ID)].in_sample
     flags = _flags(differential(cells, ITLPeople(**_person())))
-    assert not flags[("2.1", "state_pension_age", UNITED_KINGDOM)]["in_sample"]
+    assert not flags[("2.1", "state_pension_age", UK_HMRC_ITL_UK_GEOGRAPHY_ID)][
+        "in_sample"
+    ]
 
 
 def test_a_sum_given_without_one_of_its_parts_is_out_of_sample() -> None:
@@ -1039,19 +1377,23 @@ def test_a_sum_given_without_one_of_its_parts_is_out_of_sample() -> None:
     }
     cells = expected_cells(_rows(), year=2025, bound_targets=bound)
     people = ITLPeople(**_person())
-    total = ("2.5", ALL_TAXPAYERS, UNITED_KINGDOM)
+    total = ("2.5", ALL_TAXPAYERS, UK_HMRC_ITL_UK_GEOGRAPHY_ID)
     assert _flags(differential(cells, people))[total]["in_sample"]
     without = [cell for cell in cells if cell.band != ITL_BANDS[3]]
     flags = _flags(differential(without, people))
     assert not flags[total]["in_sample"]
-    assert not flags[("2.1", BELOW_STATE_PENSION_AGE, UNITED_KINGDOM)]["in_sample"]
+    assert not flags[("2.1", BELOW_STATE_PENSION_AGE, UK_HMRC_ITL_UK_GEOGRAPHY_ID)][
+        "in_sample"
+    ]
 
 
 def test_the_cells_read_the_bindings_at_their_edges() -> None:
-    """Each mask is its binding at the edges: a band holds its lower edge and
-    not its upper; 65 is in the count aged 65 and over and 64.9 is not; only
-    taxpayers count; State Pension age is the engine's flag, not an age; the
-    residents are the twelve areas and no other code."""
+    """Each mask is its binding at the edges, pinned by hand: a band holds its
+    lower edge and not its upper; 65 is in the count aged 65 and over and
+    64.9 is not; only taxpayers count; State Pension age is the engine's
+    flag, not an age; the residents are the twelve areas and no other code.
+    ``test_each_bound_cell_counts_whom_its_binding_counts`` reads the
+    bindings themselves."""
 
     people = ITLPeople(
         weight=np.array([1.0, 2.0, 4.0, 8.0, 16.0, 32.0, 64.0]),
@@ -1076,10 +1418,13 @@ def test_the_cells_read_the_bindings_at_their_edges() -> None:
     assert count("2.5", BAND_COUNT, "12570-15000") == 1.0
     assert count("2.5", BAND_COUNT, "15000-20000") == 2.0
     assert count("2.5", BAND_COUNT, "20000-30000") == 8.0 + 32.0 + 64.0
-    assert count("2.5", ALL_TAXPAYERS, UNITED_KINGDOM) == 111.0
-    assert count("2.1", "age_65_and_over", UNITED_KINGDOM) == 1.0 + 4.0 + 32.0 + 64.0
-    assert count("2.1", "state_pension_age", UNITED_KINGDOM) == 8.0 + 64.0
-    assert count("2.1", BELOW_STATE_PENSION_AGE, UNITED_KINGDOM) == 39.0
+    assert count("2.5", ALL_TAXPAYERS, UK_HMRC_ITL_UK_GEOGRAPHY_ID) == 111.0
+    assert (
+        count("2.1", "age_65_and_over", UK_HMRC_ITL_UK_GEOGRAPHY_ID)
+        == 1.0 + 4.0 + 32.0 + 64.0
+    )
+    assert count("2.1", "state_pension_age", UK_HMRC_ITL_UK_GEOGRAPHY_ID) == 8.0 + 64.0
+    assert count("2.1", BELOW_STATE_PENSION_AGE, UK_HMRC_ITL_UK_GEOGRAPHY_ID) == 39.0
     assert count("2.2", "age_65_and_over", AREAS[0]) == 1.0 + 4.0
     assert count("2.2", "state_pension_age", AREAS[1]) == 8.0
     assert count("2.2", "state_pension_age", RESIDENTS) == 8.0
@@ -1284,3 +1629,53 @@ def test_the_basis_reports_rows_bound_without_a_weight(
     assert receipt["in_sample_basis"] == f"target references {references} at 2025"
     assert not any(cell["in_sample"] for cell in receipt["cells"])
     assert "run_estimates" not in receipt
+
+
+def test_the_current_income_route_needs_a_basis(
+    tool, tmp_path, monkeypatch, capsys
+) -> None:
+    """``--current-income-for-annual-measures`` reads a file built before the
+    annual income descriptors, whose calibration this tree's references do
+    not describe: on their basis every band would read in sample. Without
+    ``--diagnostics`` or ``--references`` the tool refuses the option before
+    it reads anything; with either it passes the reason on. Without the
+    option, this tree's references stay the default basis."""
+
+    reasons = []
+    weight = np.array([(index + 1) * 1_000.0 for index in range(len(ITL_BANDS))])
+
+    def resolver(*args, reason=None, **kwargs):
+        reasons.append(reason)
+        return _band_people(weight)
+
+    monkeypatch.setattr(tool, "measure_resolver", resolver)
+    h5 = tmp_path / "incumbent.h5"
+    h5.write_bytes(b"not read")
+    rows = tmp_path / "rows.json"
+    rows.write_text(json.dumps({"rows": _consistent_rows()}))
+    out = tmp_path / "report.json"
+    argv = ["--h5", str(h5), "--out", str(out), "--itl-rows", str(rows)]
+    incumbent = [*argv, "--current-income-for-annual-measures", "incumbent"]
+
+    with pytest.raises(SystemExit) as refused:
+        tool.main(incumbent)
+    assert refused.value.code == 2
+    assert "needs --diagnostics or --references" in capsys.readouterr().err
+    assert reasons == [] and not out.exists()
+
+    assert tool.main(argv) == 0
+    receipt = json.loads(out.read_text())
+    assert receipt["in_sample_basis"] == "target references of this tree at 2025"
+    assert all(cell["in_sample"] for cell in receipt["cells"])
+
+    references = tmp_path / "target_references.json"
+    references.write_text(json.dumps({"target_references": []}))
+    assert tool.main([*incumbent, "--references", str(references)]) == 0
+    receipt = json.loads(out.read_text())
+    assert receipt["in_sample_basis"] == f"target references {references} at 2025"
+    assert not any(cell["in_sample"] for cell in receipt["cells"])
+    diagnostics = tmp_path / "calibration_diagnostics.json"
+    diagnostics.write_text(json.dumps({"targets": []}))
+    assert tool.main([*incumbent, "--diagnostics", str(diagnostics)]) == 0
+    assert not any(cell["in_sample"] for cell in json.loads(out.read_text())["cells"])
+    assert reasons == [None, "incumbent", "incumbent"]

@@ -716,8 +716,8 @@ def materialize_target_bindings(
     A provider binding reads its columns as the frame holds them, so a
     period it declares must be one its value reads hold. A declared period
     that any one read misses refuses the run: for a provider row on any
-    frame with a period model, for a plain row on a frame with period
-    metadata.
+    frame with a period model, and for a plain row that declares any period
+    but the calibration period, on a frame with period metadata.
     """
 
     provider_registry = {**default_provider_registry(), **(providers or {})}
