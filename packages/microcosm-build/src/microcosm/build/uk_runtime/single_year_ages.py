@@ -7,8 +7,10 @@ for each sex and each single year of age (0 to 89, and 90 and over), the
 file's weighted persons beside ONS's mid-2025 UK estimate (MYE2, vendored in
 ``ons_mid2025_single_year_age_by_sex.json``) and their ratio, and the same for
 uk-data#600's tail bands (80 to 84, 85 to 89, 90 and over) and for 80 and
-over. The estimates are report-only: no stage reads them and no target binds
-them.
+over. The vendored estimates are report-only: no stage reads them and no
+target binds them. The national contract binds the same ONS series from the
+feed at some single years (all persons at 0 to 6, and each sex at 15 to 24,
+microcosm#1095), so the report shows the fit there.
 
 ONS counts usual residents, communal establishments included; the frame holds
 private households, so the file runs below ONS where many people live in care
@@ -16,9 +18,9 @@ homes or halls of residence. The FRS's own ages stop at 80 (AGE80): the
 age_tail stage draws each such person's band from ONS's 80 to 84, 85 to 89
 and 90 and over, with a uniform age within the band, so the single years above
 80 show that draw. Every cell names its carriers as
-distinct source households and reads "<10" in place of its figures when fewer
-than 10 carry it. When any single year of a sex is withheld, every cell of that
-sex reads "<10", its bands too, so no difference from the sex's persons, which
+distinct source households and reads "<3" in place of its figures when fewer
+than 3 carry it. When any single year of a sex is withheld, every cell of that
+sex reads "<3", its bands too, so no difference from the sex's persons, which
 other reports give, gives a withheld age back (UKDS disclosure control).
 """
 

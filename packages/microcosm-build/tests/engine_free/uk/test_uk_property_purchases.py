@@ -53,6 +53,9 @@ def _rows() -> list[dict]:
         rows.append(_row(_HRAD, "hmrc.sdlt.hrad_property_value", band, value * 1e6))
     rows.append(_row(_HRAD, "hmrc.sdlt.hrad_transactions", "all_price_bands", 1_800.0))
     rows.append(_row(_HRAD, "hmrc.sdlt.hrad_property_value", "all_price_bands", 625e6))
+    # Gross HRAD receipts: GBP 6,000 a transaction and 4p a pound in the nil band.
+    rows.append(_row(_HRAD, "hmrc.sdlt.hrad_receipts_gross", "gbp_250k_or_less", 6e6))
+    rows.append(_row(_HRAD, "hmrc.sdlt.hrad_receipts_gross", "all_price_bands", 25e6))
     for record_set, count, value in (
         (_RES_IND, 9_000.0, 3_000e6),
         (_RES_OTHER, 1_000.0, 1_000e6),
@@ -63,6 +66,11 @@ def _rows() -> list[dict]:
         rows.append(
             _row(record_set, "hmrc.sdlt.property_value", "all_price_bands", value)
         )
+    # Other buyers' nil-band receipts, GBP 1.2m, are 200 HRAD transactions and
+    # GBP 30m at the band's gross receipts per transaction and per pound.
+    rows.append(_row(_RES_OTHER, "hmrc.sdlt.transactions", "gbp_250k_or_less", 400.0))
+    rows.append(_row(_RES_OTHER, "hmrc.sdlt.receipts", "gbp_250k_or_less", 1.2e6))
+    rows.append(_row(_RES_OTHER, "hmrc.sdlt.receipts", "all_price_bands", 5e6))
     for band, (count, value) in _NONRES_BANDS.items():
         rows.append(_row(_NONRES_IND, "hmrc.sdlt.transactions", band, count))
         rows.append(_row(_NONRES_IND, "hmrc.sdlt.property_value", band, value * 1e6))
@@ -71,16 +79,39 @@ def _rows() -> list[dict]:
     return rows
 
 
-def test_targets_allocate_hrad_by_individuals_shares_and_combine_top_bands() -> None:
+def test_targets_allocate_the_nil_rate_band_from_receipts_and_combine_top_bands() -> (
+    None
+):
     targets = pp.property_purchase_targets_from_rows(_rows())
     additional = targets.additional_residential
-    # uk-data#573: Table 6b's all-buyer HRAD times individuals' Table 8a shares.
-    assert additional.transactions == pytest.approx(1_800.0 * 9_000 / 10_000)
-    assert additional.value == pytest.approx(625e6 * 3_000 / 4_000)
+    # At or below GBP 250,000 households take Table 6b's band less the 200
+    # transactions and GBP 30m other buyers' receipts imply; above it,
+    # individuals' Table 8a shares of Table 6b (uk-data#573).
+    assert additional.transactions == pytest.approx(
+        (1_800.0 - 1_000.0) * 9_000 / 10_000 + 1_000.0 - 200.0
+    )
+    assert additional.value == pytest.approx(
+        (625e6 - 150e6) * 3_000 / 4_000 + 150e6 - 30e6
+    )
     assert additional.band_ids == pp.PROPERTY_PURCHASE_BAND_IDS
+    assert additional.band_transactions[0] == pytest.approx(800.0)
+    assert additional.band_values[0] == pytest.approx(120e6)
+    assert additional.band_transactions[1] == pytest.approx(500.0 * 0.9)
     # The five bands above GBP 2m become one: 8+4+2+2+1 transactions.
-    assert additional.band_transactions[-1] == 17.0
-    assert additional.band_values[-1] == pytest.approx(72e6)
+    assert additional.band_transactions[-1] == pytest.approx(17.0 * 0.9)
+    assert additional.band_values[-1] == pytest.approx(72e6 * 0.75)
+    assert targets.derivation["nil_band_other_buyers_hrad_transactions"] == (
+        pytest.approx(200.0)
+    )
+    assert targets.derivation["nil_band_other_buyers_hrad_value"] == (
+        pytest.approx(30e6)
+    )
+    assert targets.derivation["nil_band_other_buyers_hrad_transaction_share"] == (
+        pytest.approx(0.5)
+    )
+    assert targets.derivation["nil_band_households_hrad_transaction_share"] == (
+        pytest.approx(0.8)
+    )
     assert additional.minimum_price == pp.HMRC_SDLT_MINIMUM_CONSIDERATION
     non_residential = targets.non_residential
     assert non_residential.transactions == 400.0
@@ -90,6 +121,20 @@ def test_targets_allocate_hrad_by_individuals_shares_and_combine_top_bands() -> 
     )
     assert targets.derivation["residential_individuals_transaction_share"] == 0.9
     assert targets.derivation["residential_individuals_value_share"] == 0.75
+
+
+def test_targets_refuse_nil_band_receipts_beyond_other_buyers_transactions() -> None:
+    rows = [
+        _row(_RES_OTHER, "hmrc.sdlt.receipts", "gbp_250k_or_less", 3e6)
+        if row["layout"]["record_set_id"] == _RES_OTHER
+        and row["concept"] == "hmrc.sdlt.receipts"
+        and row["layout"]["groupby_value_id"] == "gbp_250k_or_less"
+        else row
+        for row in _rows()
+    ]
+    # GBP 3m implies 500 HRAD transactions, more than other buyers' 400.
+    with pytest.raises(ValueError, match="imply HRAD outside"):
+        pp.property_purchase_targets_from_rows(rows)
 
 
 def test_targets_round_trip_through_the_payload() -> None:
@@ -167,7 +212,7 @@ def test_prices_fit_the_count_and_value_within_the_floor_and_the_stock() -> None
     assert np.all(prices <= inputs["stock"] + 1e-6)
     assert not bought[:6].any()  # below the floor, or at zero weight
     assert result.receipt["fitted_value"] == pytest.approx(target.value, rel=1e-8)
-    assert result.receipt["purchaser_support"] in {"<10", "10-29", "30+"}
+    assert result.receipt["purchaser_support"] in {"<3", "3-9", "10-29", "30+"}
 
 
 def test_the_threshold_applies_outside_the_fit_regions() -> None:
@@ -178,29 +223,34 @@ def test_the_threshold_applies_outside_the_fit_regions() -> None:
     outside = result.prices[-50:] > 0
     # Scotland and Wales buy at the same hazard and threshold, unfitted.
     assert outside.any()
-    assert result.receipt["outside_sdlt_regions_support"] in {"<10", "10-29", "30+"}
+    assert result.receipt["outside_sdlt_regions_support"] in {
+        "<3",
+        "3-9",
+        "10-29",
+        "30+",
+    }
 
 
-def test_receipt_cells_on_fewer_than_ten_sources_are_banded() -> None:
-    # UKDS disclosure control: a weighted figure one to nine source
-    # households carry is "<10", and so is anything derived from it.
+def test_receipt_cells_on_fewer_than_three_sources_are_banded() -> None:
+    # UKDS disclosure control: a weighted figure one or two source
+    # households carry is "<3", and so is anything derived from it.
     inputs = _inputs()
     inputs["sdlt_mask"] = np.ones_like(inputs["sdlt_mask"])
     inputs["sdlt_mask"][-50:] = False
     n = len(inputs["stock"])
-    # Every row outside the fit regions belongs to one of three households.
+    # Every row outside the fit regions belongs to one of two households.
     sources = np.arange(n)
-    sources[-50:] = 10_000 + np.arange(50) % 3
+    sources[-50:] = 10_000 + np.arange(50) % 2
     result = pp.impute_property_purchase_prices(
         **{**inputs, "source_ids": sources}, target=_target()
     )
     receipt = result.receipt
     assert (result.prices[-50:] > 0).any()
-    assert receipt["outside_sdlt_regions_support"] == "<10"
-    assert receipt["purchases_outside_sdlt_regions_weight"] == "<10"
+    assert receipt["outside_sdlt_regions_support"] == "<3"
+    assert receipt["purchases_outside_sdlt_regions_weight"] == "<3"
     assert receipt["fitted_value"] == pytest.approx(9e6, rel=1e-8)
-    # Every fit-region row belongs to one of five households.
-    few = np.arange(n) % 5
+    # Every fit-region row belongs to one of two households.
+    few = np.arange(n) % 2
     result = pp.impute_property_purchase_prices(
         **{**inputs, "source_ids": few}, target=_target()
     )
@@ -212,8 +262,8 @@ def test_receipt_cells_on_fewer_than_ten_sources_are_banded() -> None:
         "event_rate",
         "price_scale",
     ):
-        assert result.receipt[field] == "<10", field
-    assert result.receipt["purchaser_support"] == "<10"
+        assert result.receipt[field] == "<3", field
+    assert result.receipt["purchaser_support"] == "<3"
 
 
 def _capped_inputs(capped: int, uncapped: int) -> dict[str, np.ndarray]:
@@ -246,37 +296,37 @@ def _capped_receipt(capped: int, uncapped: int, sources: np.ndarray) -> dict:
 
 
 def test_the_stock_cap_share_counts_each_side_on_its_sources() -> None:
-    # Twelve capped rows past ten, but on two sources: the share is withheld,
-    # though counting rows would give it.
+    # Twelve capped rows past three, but on two sources: the share is
+    # withheld, though counting rows would give it.
     receipt = _capped_receipt(12, 28, np.r_[np.arange(12) % 2, 100 + np.arange(28)])
-    assert receipt["stock_cap_support"] == "<10"
-    assert receipt["weighted_share_at_stock_cap"] == "<10"
-    # Three uncapped rows that copy capped sources: the uncapped side rests on
-    # three sources, so the share, which would give its weight back, is
+    assert receipt["stock_cap_support"] == "<3"
+    assert receipt["weighted_share_at_stock_cap"] == "<3"
+    # Three uncapped rows that copy two capped sources: the uncapped side rests
+    # on two sources, so the share, which would give its weight back, is
     # withheld too.
-    receipt = _capped_receipt(37, 3, np.r_[np.arange(37), np.arange(3)])
+    receipt = _capped_receipt(37, 3, np.r_[np.arange(37), np.array([0, 1, 1])])
     assert receipt["stock_cap_support"] == "10-49"
-    assert receipt["weighted_share_at_stock_cap"] == "<10"
-    # Both sides on ten or more sources: the share is given.
+    assert receipt["weighted_share_at_stock_cap"] == "<3"
+    # Both sides on three or more sources: the share is given.
     receipt = _capped_receipt(12, 28, np.arange(40))
     assert receipt["weighted_share_at_stock_cap"] == pytest.approx(12 / 40)
 
 
-def test_a_fit_on_fewer_than_ten_sources_withholds_the_share_at_the_cap() -> None:
+def test_a_fit_on_fewer_than_three_sources_withholds_the_share_at_the_cap() -> None:
     # At the stock cap every purchaser buys at its stock, so a share of 1.0
-    # beside a "<10" fit would still say so: it is withheld.
+    # beside a "<3" fit would still say so: it is withheld.
     result = pp.impute_property_purchase_prices(
         **_capped_inputs(12, 0),
         target=_target(transactions=12.0, value=12 * 40_000.0 / 0.9),
-        source_ids=np.arange(12) % 5,
+        source_ids=np.arange(12) % 2,
     )
     assert result.receipt["value_fit"] == "stock_cap"
-    assert result.receipt["purchaser_support"] == "<10"
-    assert result.receipt["weighted_share_at_stock_cap"] == "<10"
+    assert result.receipt["purchaser_support"] == "<3"
+    assert result.receipt["weighted_share_at_stock_cap"] == "<3"
 
 
 def test_an_empty_cell_reads_zero() -> None:
-    # No purchase outside the fit regions: 0 beside a zero weight, not "<10".
+    # No purchase outside the fit regions: 0 beside a zero weight, not "<3".
     receipt = _capped_receipt(12, 28, np.arange(40))
     assert receipt["purchases_outside_sdlt_regions_weight"] == 0.0
     assert receipt["outside_sdlt_regions_support"] == 0
@@ -305,8 +355,8 @@ def test_the_eligible_weight_hides_a_small_side_that_does_not_buy() -> None:
     # source's weight back, and so would the event rate: both are withheld.
     receipt = _non_buyer_receipt(38, 2, np.r_[np.arange(38), 100, 100])
     assert receipt["fitted_transactions"] == pytest.approx(38.0)
-    assert receipt["eligible_owner_weight"] == "<10"
-    assert receipt["event_rate"] == "<10"
+    assert receipt["eligible_owner_weight"] == "<3"
+    assert receipt["event_rate"] == "<3"
     # Twenty-two others on their own sources: both are given.
     receipt = _non_buyer_receipt(38, 22, np.arange(60))
     assert receipt["eligible_owner_weight"] == pytest.approx(60.0)
@@ -479,12 +529,25 @@ def test_the_stage_fits_one_kind_at_its_stock_beside_one_it_scales() -> None:
     )
 
 
-def test_the_packaged_targets_reproduce_uk_data_573() -> None:
-    # The vendored HMRC Stamp Tax rows give uk-data#573's household figures.
+def test_the_packaged_targets_allocate_the_nil_rate_band_from_receipts() -> None:
+    # The vendored HMRC Stamp Tax rows (2024-25, corrected): Table 6b's
+    # 211,700 HRAD transactions and GBP 77.97bn, 113,500 and GBP 16.635bn of
+    # them at or below GBP 250,000 with GBP 625m gross receipts; Table 8a's
+    # individuals' shares 925,100 / 1,049,600 and GBP 335.515bn / 380.205bn; and
+    # other buyers' GBP 265m of receipts in that band.
     targets = pp.load_property_purchase_targets()
     additional = targets.additional_residential
-    assert additional.transactions == pytest.approx(186_588.8624, rel=1e-9)
-    assert additional.value == pytest.approx(68_805_261_766.68, rel=1e-9)
+    other_count = 265e6 * 113_500 / 625e6
+    other_value = 265e6 * 16.635e9 / 625e6
+    assert additional.transactions == pytest.approx(
+        (211_700 - 113_500) * 925_100 / 1_049_600 + 113_500 - other_count, rel=1e-9
+    )
+    assert additional.value == pytest.approx(
+        (77.97e9 - 16.635e9) * 335.515e9 / 380.205e9 + 16.635e9 - other_value,
+        rel=1e-9,
+    )
+    # Both stay above uk-data#573's household lower bounds.
+    assert additional.transactions > 87_200 and additional.value > 33.28e9
     non_residential = targets.non_residential
     assert non_residential.transactions == pytest.approx(25_000.0)
     assert non_residential.value == pytest.approx(7.64e9)
@@ -546,7 +609,7 @@ def test_the_stage_refuses_a_stored_output_or_a_missing_lineage() -> None:
 
 
 def _copies_frame():
-    """Twelve London households, support copies of three sources, each with
+    """Twelve London households, support copies of two sources, each with
     other residential stock to buy with."""
 
     n = 12
@@ -554,7 +617,7 @@ def _copies_frame():
     household = pd.DataFrame(
         {
             "household_id": ids,
-            "household_source_id": np.arange(n, dtype="int64") % 3,
+            "household_source_id": np.arange(n, dtype="int64") % 2,
             "region": pd.array(["LONDON"] * n, dtype="string"),
             "other_residential_property_value": np.full(n, 200_000.0),
             "non_residential_property_value": np.zeros(n),
@@ -618,16 +681,16 @@ def _graph_evidence(frame) -> dict:
 
 
 def test_support_copies_band_on_their_sources_in_the_stage_and_the_node() -> None:
-    # UKDS disclosure control: twelve purchasers past ten rows, but three
-    # sources, so the support reads "<10", in a direct call and through the
+    # UKDS disclosure control: twelve purchasers past three rows, but two
+    # sources, so the support reads "<3", in a direct call and through the
     # production node as a graph build runs it (it declares the lineage).
     frame = _copies_frame()
     direct = pp.impute_property_purchases(frame, targets=_copies_targets())
     for evidence in (direct.evidence(), _graph_evidence(frame)):
         kind = evidence["kinds"][0]
         assert kind["property_type"] == "additional_residential"
-        assert kind["purchaser_support"] == "<10"
-        assert kind["fitted_transactions"] == "<10"
+        assert kind["purchaser_support"] == "<3"
+        assert kind["fitted_transactions"] == "<3"
 
 
 @pytest.mark.parametrize("period", ["2023", "2030", "2024-25"])

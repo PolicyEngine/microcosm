@@ -4,7 +4,8 @@ Production releases are contract artifacts: they are only published after the
 build completes and validates. Staging telemetry is intentionally weaker and
 more incremental: it lets dashboards monitor a candidate build before it is a
 release by writing small JSON artifacts under ``runs/<run_id>/`` and,
-optionally, uploading them to a staging Hugging Face dataset repo.
+optionally, handing them to the build's local emitter, which commits them to a
+staging Hugging Face dataset repo with the build's own credential.
 """
 
 from __future__ import annotations
@@ -21,8 +22,9 @@ from pathlib import Path
 from typing import Any
 
 from microcosm.build.staging_storage import (
-    BestEffortUploadSession,
-    HuggingFaceDatasetStorage,
+    RunFileEmitter,
+    RunFileHandOver,
+    warn_hand_over_failure,
 )
 
 STAGING_SCHEMA_VERSION = 1
@@ -59,18 +61,21 @@ def _write_json(path: Path, payload: dict[str, Any]) -> None:
 
 @dataclass
 class StagingRunBundleWriter:
-    """Write and optionally upload a build's staging run bundle.
+    """Write a build's staging run bundle and hand it to the build's emitter.
 
     Args:
         run_id: Stable id for this build attempt.
         candidate_release_id: Release id this run is expected to produce.
         run_dir: Local directory where staging artifacts are written.
-        repo_id: Optional Hugging Face dataset repo for staging uploads.
+        repo_id: Optional Hugging Face dataset repo for staging files.
         path_prefix: Prefix inside the repo. Defaults to ``"runs"`` so files
             live under ``runs/<run_id>/``.
-        api: Optional ``huggingface_hub.HfApi``-shaped object for tests.
+        emitter_client: The build's local emitter (the interface's
+            ``EmitterClient``), which commits the handed-over files. Without
+            one, a configured repository receives nothing.
         upload_interval_seconds: Minimum interval between best-effort progress
-            uploads. Final states always upload.
+            hand-overs, and the emitter's interval between its commits of
+            them. Final states are always handed over.
     """
 
     run_id: str
@@ -78,7 +83,7 @@ class StagingRunBundleWriter:
     run_dir: Path | str
     repo_id: str | None = None
     path_prefix: str = DEFAULT_STAGING_PREFIX
-    api: Any = None
+    emitter_client: RunFileEmitter | None = None
     upload_interval_seconds: float = 30.0
     started_at: str = field(default_factory=_now)
 
@@ -93,15 +98,16 @@ class StagingRunBundleWriter:
         if not self.path_prefix:
             self.path_prefix = DEFAULT_STAGING_PREFIX
         self._last_upload_at = 0.0
-        self._upload_failures = 0
-        self._upload_successes = 0
-        self._storage = (
-            HuggingFaceDatasetStorage(self.repo_id, api=self.api)
+        self._hand_over = (
+            RunFileHandOver(
+                self.emitter_client,
+                repository=self.repo_id.strip(),
+                run_id=self.run_id,
+                prefix=self.path_prefix,
+                commit_interval_seconds=self.upload_interval_seconds,
+            )
             if self.repo_id
             else None
-        )
-        self._upload_session = (
-            BestEffortUploadSession(self._storage) if self._storage else None
         )
         self._calibration_events: list[dict[str, Any]] = []
         self._artifacts: dict[str, dict[str, Any]] = {}
@@ -128,36 +134,49 @@ class StagingRunBundleWriter:
     def uploads_succeeded(self) -> int:
         """How many files actually reached the staging repo.
 
-        Zero on a run that was configured to upload but never managed to --
-        no write token, revoked access, a Hub outage. Uploads are best-effort
-        and never fail the build, so this is the only signal separating a run
-        that staged from one that merely intended to.
+        The count the build's emitter last reported committing for this run.
+        Zero on a run that was configured to stage but never managed to: no
+        emitter, no write token, revoked access, a Hub outage. Staging is
+        best-effort and never fails the build, so this is the only signal
+        separating a run that staged from one that merely intended to.
         """
 
-        return self._upload_successes
+        if self._hand_over is None:
+            return 0
+        self._hand_over.receipt()
+        return self._hand_over.files_committed
 
-    def _upload_file(self, local: Path, path_in_repo: str) -> None:
-        if self._upload_session is None or not self.repo_id:
+    def _hand_over_files(
+        self,
+        files: list[tuple[str, Path]],
+        *,
+        latest_pointer: Path | None = None,
+        run_index_entry: dict[str, Any] | None = None,
+        flush: bool,
+    ) -> None:
+        if self._hand_over is None or not self.repo_id:
             return
         # Best-effort: staging telemetry must never fail (or stall) a build.
-        # After three consecutive failures — e.g. no write token — stop trying
-        # for the rest of the run; local staging artifacts are still written.
-        result = self._upload_session.upload(local, path_in_repo)
-        self._upload_failures = self._upload_session.consecutive_failures
-        self._upload_successes = self._upload_session.successes
-        if not result.succeeded:
+        # After three hand-overs in a row the emitter does not accept (no
+        # emitter, or one that does not answer), stop for the rest of the run;
+        # local staging artifacts are still written.
+        result = self._hand_over.hand_over(
+            files,
+            latest_pointer=latest_pointer,
+            run_index_entry=run_index_entry,
+            flush=flush,
+        )
+        if result.accepted:
+            return
+        warn_hand_over_failure(self._hand_over.repository, result)
+        if result.became_paused:
             print(
-                f"warning: staging upload of {path_in_repo} failed: {result.error}",
+                "warning: disabling staging hand-overs for this run after "
+                "three in a row failed; local staging artifacts are still "
+                "written.",
                 file=sys.stderr,
             )
-            if result.became_disabled:
-                print(
-                    "warning: disabling staging uploads for this run after "
-                    "three consecutive failures; local staging artifacts are "
-                    "still written.",
-                    file=sys.stderr,
-                )
-                self.repo_id = None
+            self.repo_id = None
 
     def _maybe_upload(self, *, force: bool = False) -> None:
         if not self.repo_id:
@@ -166,19 +185,28 @@ class StagingRunBundleWriter:
         if not force and now - self._last_upload_at < self.upload_interval_seconds:
             return
         self._last_upload_at = now
-        for filename in (
-            "run_manifest.json",
-            "progress.json",
-            "calibration_progress.json",
-            "events.ndjson",
-        ):
-            local = self.run_dir / filename
-            if local.exists():
-                self._upload_file(local, f"{self.repo_run_prefix}/{filename}")
-        self._upload_latest_pointer()
-        self._upload_runs_index()
+        files = [
+            (filename, self.run_dir / filename)
+            for filename in (
+                "run_manifest.json",
+                "progress.json",
+                "calibration_progress.json",
+                "events.ndjson",
+            )
+            if (self.run_dir / filename).exists()
+        ]
+        pointer = self._write_latest_pointer()
+        self._write_runs_index()
+        # The emitter merges this run's entry into the repository's runs.json
+        # when it commits, keeping every other run.
+        self._hand_over_files(
+            files,
+            latest_pointer=pointer,
+            run_index_entry=self.run_summary(),
+            flush=force,
+        )
 
-    def _upload_latest_pointer(self) -> None:
+    def _write_latest_pointer(self) -> Path:
         payload = {
             "schema_version": STAGING_SCHEMA_VERSION,
             "run_id": self.run_id,
@@ -195,46 +223,18 @@ class StagingRunBundleWriter:
         }
         local = self.run_dir / LATEST_STAGING_POINTER
         _write_json(local, payload)
-        self._upload_file(local, LATEST_STAGING_POINTER)
+        return local
 
-    def _existing_runs(self) -> list[dict[str, Any]]:
-        """Best-effort fetch of the runs index already in the repo."""
-        if self._storage is None or not self.repo_id:
-            return []
-        try:
-            data = json.loads(self._storage.download(RUNS_INDEX))
-        except Exception:
-            # Index missing (first run) or unreadable; start from scratch.
-            return []
-        runs = data.get("runs") if isinstance(data, dict) else None
-        if not isinstance(runs, list):
-            return []
-        return [run for run in runs if isinstance(run, dict) and run.get("run_id")]
-
-    def _upload_runs_index(self) -> None:
-        # Upsert this run into the existing index rather than overwriting it, so
-        # the index keeps every run instead of only the last one to upload.
-        current = self.run_summary()
-        runs = [
-            run for run in self._existing_runs() if run.get("run_id") != self.run_id
-        ]
-        runs.append(current)
-        runs.sort(
-            key=lambda run: str(
-                run.get("updated_at") or run.get("started_at") or run.get("run_id")
-            ),
-            reverse=True,
-        )
-        local = self.run_dir / RUNS_INDEX
+    def _write_runs_index(self) -> None:
+        """This run's local index: the repository's copy is the emitter's merge."""
         _write_json(
-            local,
+            self.run_dir / RUNS_INDEX,
             {
                 "schema_version": STAGING_SCHEMA_VERSION,
                 "updated_at": _now(),
-                "runs": runs,
+                "runs": [self.run_summary()],
             },
         )
-        self._upload_file(local, RUNS_INDEX)
 
     def run_summary(self) -> dict[str, Any]:
         return {
@@ -359,7 +359,7 @@ class StagingRunBundleWriter:
         }
         self._write_run_manifest()
         if local.exists():
-            self._upload_file(local, f"{self.repo_run_prefix}/{source.name}")
+            self._hand_over_files([(source.name, local)], flush=force_upload)
         self._maybe_upload(force=force_upload)
 
     def fail(self, error: BaseException) -> None:

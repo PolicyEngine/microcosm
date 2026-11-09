@@ -45,18 +45,24 @@ class _Fitted:
             assert uniforms.shape == (len(predictors),)
         return pd.DataFrame({SALSAC_OUTPUT: self.value}, index=predictors.index)
 
+    def gate_outcomes(self) -> dict[str, str]:
+        return {SALSAC_OUTPUT: "cross_fitted"}
+
 
 class _FakeQRF:
     training_frames: list[pd.DataFrame] = []
 
-    def __init__(self, *, n_estimators: int, seed: int) -> None:
+    def __init__(self, *, n_estimators: int, seed: int, gate_calibration: str) -> None:
         assert n_estimators == 100
         assert seed == 42
+        assert gate_calibration == "cross_fitted"
 
-    def fit(self, frame, predictors, targets, *, weights):
+    def fit(self, frame, predictors, targets, *, weights, groups):
         assert predictors == ["age", "employment_income"]
         assert targets == [SALSAC_OUTPUT]
         assert weights == "_fit_weight"
+        # One household key per training person, for the gate's folds.
+        assert len(groups) == len(frame)
         self.training_frames.append(frame.copy())
         return _Fitted()
 
@@ -490,8 +496,8 @@ def test_draws_move_only_for_the_people_whose_inputs_move(
             return pd.DataFrame({SALSAC_OUTPUT: 0.0}, index=predictors.index)
 
     class _KeyedQRF(_FakeQRF):
-        def fit(self, frame, predictors, targets, *, weights):
-            super().fit(frame, predictors, targets, weights=weights)
+        def fit(self, frame, predictors, targets, *, weights, groups):
+            super().fit(frame, predictors, targets, weights=weights, groups=groups)
             return _Keyed()
 
     monkeypatch.setattr(salary_sacrifice, "QRF", _KeyedQRF)
@@ -867,9 +873,10 @@ def test_the_stage_adds_bonus_sacrifice_beside_pay(
     assert receipt["pay"] == "unchanged: a sacrificed bonus is never received"
     assert receipt["spi_drawn_support"] == 0
     assert receipt["target_base"] == 90_000.0
-    # Five sources: the base and the band are withheld under ten.
-    assert receipt["participant_support"] == "<10"
-    assert receipt["projected_base"] == "<10"
+    # Five sources: above the floor of three, so the band reads "3-9" and the
+    # base is given: five bonuses of 18,000 above the threshold.
+    assert receipt["participant_support"] == "3-9"
+    assert receipt["projected_base"] == pytest.approx(90_000.0)
     assert receipt["candidate_support"] == "10-29"
     assert BONUS_SACRIFICE_OUTPUT in UKSalarySacrificeStageTransform.output_columns()
 

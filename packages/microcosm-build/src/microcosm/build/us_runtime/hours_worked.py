@@ -87,6 +87,14 @@ US_HOURS_WORKED_OUTPUT_COLUMNS: tuple[str, ...] = (
 
 #: Formula-owned outputs retained only for the legacy fiscal path. The pool
 #: wrapper removes these after running the shared derivation kernel.
+#:
+#: TODO(policyengine-us#9660): ``weeks_worked`` is formula-owned only because
+#: the pinned policyengine-us gives it a ``formula_2025``. Part A1 of #9660
+#: deletes that formula so SNAP can average usual hours over weeks worked.
+#: Once it lands and the pin/ABI lock are bumped, drop the exclusion here so
+#: donor rows keep their WKSWORK weeks; the ACS local lane already carries
+#: native WKWN weeks on its staging ACS spine (microcosm#1021) and the release
+#: tool's consumer export will then ship them.
 US_HOURS_WORKED_POOL_EXCLUDED_COLUMNS = frozenset({"weeks_worked"})
 
 #: The two input leaves the multispine pool persists and transfers.
@@ -319,9 +327,7 @@ def us_hours_worked_signal_gate(
 
     person = frame.table("person")
     failures: list[str] = []
-    missing = [
-        column for column in required_columns if column not in person.columns
-    ]
+    missing = [column for column in required_columns if column not in person.columns]
     if missing:
         return GateResult(
             name="hours_worked_signal",

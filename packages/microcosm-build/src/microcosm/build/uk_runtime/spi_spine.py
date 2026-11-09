@@ -29,6 +29,7 @@ from microcosm.build.uk_runtime.frs_hmrc_source import (
     _raw_source_person_ids,
     _read_raw_frs_table,
 )
+from microcosm.build.uk_runtime.frs_spine import ANNUITY_AND_TRUST_INCOME_COLUMN
 from microcosm.build.uk_runtime.frs_take_up import uk_take_up_population_policy
 from microcosm.build.uk_runtime.hmrc_income import (
     HMRCIncomeTargetSet,
@@ -48,6 +49,10 @@ from microcosm.build.uk_runtime.national_frame import (
     uk_time_period,
     validate_uk_national_frame,
 )
+from microcosm.build.uk_runtime.qrf_gates import (
+    UK_GATE_OUTCOMES_EVIDENCE,
+    declared_gate_calibration,
+)
 from microcosm.build.uk_runtime.release_input_coverage import (
     DEFAULT_MINIMUM_NONDEFAULT_MASS_SHARE,
 )
@@ -62,6 +67,10 @@ from microcosm.build.uk_runtime.spi_income import (
     SPI_DONOR_AGE_POPULATION_PERIOD,
     SPI_DONOR_AGE_POPULATION_RESOURCE,
     SPI_DONOR_INCOME_YEAR,
+    SPI_EMPLOYMENT_PAY_FLOOR_ANNUAL_RULE,
+    SPI_EMPLOYMENT_PAY_FLOOR_EMPLOYEE_STATUSES,
+    SPI_EMPLOYMENT_PAY_FLOOR_PARAMETER,
+    SPI_EMPLOYMENT_PAY_FLOOR_WEEKS,
     SPI_INCOME_BAND_CARRIER_KEY_COLUMN,
     SPI_INCOME_BAND_DONOR_LEAF_DRAW_SALT,
     SPI_INCOME_RECIPIENT_COLUMN,
@@ -78,6 +87,7 @@ from microcosm.build.uk_runtime.spi_income import (
     assert_frs_hmrc_auxiliary_crosswalk_available,
     impute_uk_spi_income_support,
     load_spi_donor_age_model,
+    load_spi_employment_pay_floor,
     verify_spi_donor_identity,
 )
 from microcosm.build.uk_runtime.spi_rank_transport import (
@@ -162,6 +172,55 @@ SPI_SPINE_STATE_PENSION_AGE_GUARD: Mapping[str, object] = {
     "state_pension_age": SPI_SPINE_STATE_PENSION_AGE_SOURCE,
     "receipt": "rows, weighted people and amounts removed per column and step",
 }
+#: Reviewed declaration of the employment pay floor (spi_income's
+#: SPI_EMPLOYMENT_PAY_FLOOR_* notes give the reasons).
+SPI_SPINE_EMPLOYMENT_PAY_FLOOR: Mapping[str, object] = {
+    "column": "hmrc_spi_pay",
+    "hours_column": "hours_worked",
+    "hours_basis": (
+        "annual usual hours: the FRS adult's usual weekly hours in all jobs "
+        "(TOTHOURS) times 52, read back to weekly hours"
+    ),
+    "weeks_in_year": SPI_EMPLOYMENT_PAY_FLOOR_WEEKS,
+    "hourly_rate": (
+        f"the lower of policyengine-uk {SPI_EMPLOYMENT_PAY_FLOOR_PARAMETER} by the "
+        "twin's age, read as the engine reads the build year (30 April), and the "
+        "twin's own hourly pay (its employment income before the draw over its "
+        "annual hours)"
+    ),
+    "employee_statuses": list(SPI_EMPLOYMENT_PAY_FLOOR_EMPLOYEE_STATUSES),
+    "rows": (
+        "drawn recipients other than reserved band carriers, whose twin has no "
+        "trade (has_trade 0), an employee main job and usual hours above zero, "
+        "and whose drawn PAY is positive; FRS rows, undrawn copies and every "
+        "other leaf keep their values"
+    ),
+    "pay_basis": (
+        "tape PAY is taxable pay, net of net-pay pension contributions and "
+        "salary sacrifice; the minimum wage binds gross pay, and the engine "
+        "reads employment_income (PAY + EPB + TAXTERM) as gross pay, so PAY "
+        "alone is compared with the gross minimum and a twin at the minimum "
+        "wage who pays net-pay contributions can be lifted by up to them"
+    ),
+    "reason": (
+        "stage 1 draws annual tape pay without hours and the tape holds "
+        "part-year workers, so a twin reporting usual employee hours could "
+        "draw a year's pay below what those hours earn at the minimum wage "
+        "(uk-data#629)"
+    ),
+    "annual_income": SPI_EMPLOYMENT_PAY_FLOOR_ANNUAL_RULE,
+    "receipt": (
+        "eligible and floored source households (rounded), weighted people, "
+        "the weighted share floored, the weighted mean uplift and the amount "
+        "added; figures on one or two source households are <3, and the "
+        "floored weight, share and amount are given only where neither the "
+        "floored nor the unfloored side rests on one or two; the hourly-pay "
+        "check gives the weighted shares of the drawn employees below the "
+        "minimum wage for their age before and after the floor, beside the FRS "
+        "employees' share, each withheld beside a side on one or two, and the "
+        "eligible rows still below their floor (banded, zero exact)"
+    ),
+}
 
 UK_FRS_HMRC_SPINE_LEAF_OUTPUT_COLUMNS = (
     *FRS_HMRC_RETAINED_LEAF_COLUMNS,
@@ -183,7 +242,6 @@ UK_SPI_SUPPORT_CHANNEL_OUTPUT_COLUMNS = (
     "source_household_key",
 )
 UK_SPI_INCOME_SPINE_OUTPUT_COLUMNS = (
-    "other_investment_income",
     "gift_aid",
     "charitable_investment_gifts",
     # Restricted residential finance costs: the SPI channel's tape draw; the
@@ -216,13 +274,16 @@ UK_SPI_INCOME_SPINE_REWRITE_COLUMNS = (
     "self_employment_income",
     "savings_interest_income",
     "dividend_income",
+    # The tape's OTHERINV on SPI rows; FRS rows carry their own gilt interest
+    # from frs_spine (microcosm#1418), NS&I being interest (microcosm#1428).
+    "other_investment_income",
     "private_pension_income",
     "property_income",
     "employee_pension_contributions",
     EMPLOYER_PENSION_CONTRIBUTIONS_COLUMN,
     "personal_pension_contributions",
     "pension_contributions_via_salary_sacrifice",
-    "tax_free_savings_income",
+    "individual_savings_account_interest_income",
     "universal_credit_reported",
     "pension_credit_reported",
     "child_benefit_reported",
@@ -268,6 +329,10 @@ UK_SPI_INCOME_SPINE_REWRITE_COLUMNS = (
     # tape's income is the tax year's, so each share is 1, and the twin's
     # other spells stay only where the tape drew none of that income.
     *FRS_ANNUAL_INCOME_OUTPUT_COLUMNS,
+    # A drawn row's private pension is the tape's, which books annuity and
+    # trust payments as other income, so its descriptor of them is zero
+    # (microcosm#1428).
+    ANNUITY_AND_TRUST_INCOME_COLUMN,
 )
 
 # Reviewed constants for every load-bearing manifest parameter the spine
@@ -277,8 +342,8 @@ UK_SPI_INCOME_SPINE_REWRITE_COLUMNS = (
 # applies to every declared parameter: it needs (1) a drift assert and (2) an
 # executed-effect receipt, or an explicit absence statement. Seeded draws use
 # twin-build determinism as their executed-effect receipt.
-#: Age, gender and region, then the four bridge predictors the tape and the
-#: twin derive from their own leaves (microcosm#840).
+#: The SPI age band (uk-data#628), gender and region, then the four bridge
+#: predictors the tape and the twin derive from their own leaves (microcosm#840).
 SPI_SPINE_STAGE1_PREDICTORS = SPI_STAGE1_PREDICTOR_COLUMNS
 SPI_SPINE_STAGE1_CATEGORICAL_PREDICTORS = SPI_STAGE1_CATEGORICAL_PREDICTORS
 #: The stage-1 draw: each drawn recipient's twin is located on the FRS
@@ -308,9 +373,12 @@ SPI_SPINE_STAGE2_OUTPUT_COLUMNS = tuple(
         # Written from the stage-1 loss draws, not drawn by stage 2.
         "loss_relief",
         "ni_class_4_losses_brought_forward",
+        # A stage-1 tape draw, not drawn by stage 2 (microcosm#1418).
+        "other_investment_income",
     )
     # Held to the drawn incomes by rule, not drawn by stage 2.
     and column not in FRS_ANNUAL_INCOME_OUTPUT_COLUMNS
+    and column != ANNUITY_AND_TRUST_INCOME_COLUMN
 )
 #: Both forests are queried over every SPI-channel person aged 16 and over,
 #: and the dependants' rows are discarded (uk-data#504, microcosm#1095).
@@ -367,7 +435,7 @@ class UKSPIIncomeSpineResult:
     post_draw_identity_rows: int
 
     def evidence(self) -> dict[str, object]:
-        return {
+        evidence: dict[str, object] = {
             "stage": UK_HMRC_SPI_INCOME_SPINE_STAGE_NAME,
             "source_vintages": {
                 "spi_donor": "2022-23",
@@ -401,7 +469,9 @@ class UKSPIIncomeSpineResult:
                 self.imputation.gainful_self_employment_refresh
             ),
             "pension_coherence": self.imputation.pension_coherence,
+            "gift_anchor": self.imputation.gift_anchor,
             "state_pension_age_guard": list(self.imputation.state_pension_age_guard),
+            "employment_pay_floor": self.imputation.employment_pay_floor,
             "targets": {
                 "count": len(self.source_targets.targets),
                 "classification": dict(self.replay_report.summary),
@@ -418,6 +488,9 @@ class UKSPIIncomeSpineResult:
                 "exact": True,
             },
         }
+        if self.imputation.gate_outcomes:
+            evidence[UK_GATE_OUTCOMES_EVIDENCE] = dict(self.imputation.gate_outcomes)
+        return evidence
 
 
 @dataclass(frozen=True)
@@ -771,6 +844,14 @@ class UKSPIIncomeSpineStageTransform:
             if age_op is not None or guard_op is not None
             else None
         )
+        floor_op = _optional_operation(
+            self.stage, "floor_spi_employment_pay_at_minimum_wage"
+        )
+        employment_pay_floor = (
+            None
+            if floor_op is None
+            else load_spi_employment_pay_floor(uk_time_period(frame))
+        )
         state_pension_age_guard = (
             None
             if guard_op is None or donor_age_model is None
@@ -809,6 +890,13 @@ class UKSPIIncomeSpineStageTransform:
             state_pension_age_guard=state_pension_age_guard,
             state_pension_age=(
                 None if donor_age_model is None else donor_age_model.state_pension_age
+            ),
+            employment_pay_floor=employment_pay_floor,
+            stage1_gate_calibration=declared_gate_calibration(
+                self.stage, "fit_weighted_qrf_stage1"
+            ),
+            stage2_gate_calibration=declared_gate_calibration(
+                self.stage, "fit_weighted_qrf_stage2"
             ),
         )
         result_frame = uk_national_frame(
@@ -1325,6 +1413,10 @@ def _assert_income_stage_parameters(
         (
             "zero_pension_age_reports_below_state_pension_age",
             SPI_SPINE_STATE_PENSION_AGE_GUARD,
+        ),
+        (
+            "floor_spi_employment_pay_at_minimum_wage",
+            SPI_SPINE_EMPLOYMENT_PAY_FLOOR,
         ),
     ):
         operation = _optional_operation(stage, kind)

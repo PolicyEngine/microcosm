@@ -25,17 +25,20 @@ import numpy as np
 import pandas as pd
 from pydantic import ValidationError
 
+from microcosm.build.uk_runtime.receipt_counts import UK_DISCLOSURE_FLOOR
 from microcosm.calibrate import (
     TargetRegistry,
     diagnostics_payload,
     effective_sample_size,
 )
+from microcosm.calibrate.hierarchy_labels import UK_HIERARCHY_LABEL_CHOICES
 from microcosm.calibrate.solve import CalibrationResult
 from microcosm.diagnostics import (
     UK_DIAGNOSTICS_SCHEMA_VERSION,
     UK_TARGET_GEOGRAPHY_LEVELS,
     CalibrationDiagnosticsV8,
     DiagnosticsWriteOutcome,
+    HierarchyLabelChoices,
     failed_diagnostics_outcome,
 )
 from microcosm.diagnostics import (
@@ -43,10 +46,13 @@ from microcosm.diagnostics import (
 )
 from microcosm.frame import Frame
 
+from .local_authority_input import load_uk_local_authority_names_resource
+
 __all__ = [
     "UK_DIAGNOSTICS_SCHEMA_VERSION",
     "UK_TARGET_GEOGRAPHY_LEVELS",
     "uk_calibration_diagnostics_payload",
+    "uk_hierarchy_label_choices",
     "uk_consumption_drift",
     "uk_consumption_drift_flags",
     "uk_consumption_drift_warnings",
@@ -68,11 +74,12 @@ _UK_DEFAULT_ZERO_WEIGHT_STRATUM_COLUMNS: tuple[str, ...] = (
 _TARGET_PASS_RELATIVE_ERROR = 0.10
 _AREA_FIT_LIMIT = 15
 #: The fewest distinct source households a published cell may rest on (UKDS
-#: CD137 clause 8). The build no longer withholds model figures (María's
-#: ruling of 2026-10-26), but the report tools that publish their own tables,
-#: such as the single years of age and the council tax liability comparison,
-#: still suppress the cells below it.
-UK_DIAGNOSTIC_MIN_SOURCE_HOUSEHOLDS = 10
+#: CD137 clause 8; the build's floor, ``receipt_counts.UK_DISCLOSURE_FLOOR``,
+#: three since María's ruling of 2026-10-29). The build no longer withholds
+#: model figures (her ruling of 2026-10-26), but the report tools that publish
+#: their own tables, such as the single years of age and the council tax
+#: liability comparison, still suppress the cells below it.
+UK_DIAGNOSTIC_MIN_SOURCE_HOUSEHOLDS = UK_DISCLOSURE_FLOOR
 
 _COUNTRY_BY_AREA_PREFIX = {
     "E": "England",
@@ -652,8 +659,9 @@ def _stratum_columns(columns: Sequence[str]) -> tuple[str, ...]:
     return materialized
 
 
-#: Columns whose level the lcfs_consumption stage sets (energy at DESNZ volume
-#: and QEP prices, road fuel at ONS 07.2.2) and calibration should leave alone.
+#: Columns whose level the lcfs_consumption stage sets (gas at DESNZ volume,
+#: electricity at the kWh ONS 04.5.1 household spending buys, both at QEP
+#: prices; road fuel at ONS 07.2.2) and calibration should leave alone.
 _UK_DRIFT_TOTAL_COLUMNS: tuple[str, ...] = (
     "electricity_consumption",
     "gas_consumption",
@@ -1208,6 +1216,25 @@ def uk_calibration_diagnostics_payload(
     )
 
 
+def uk_hierarchy_label_choices() -> HierarchyLabelChoices:
+    """The UK's label choices, with the ONS April 2023 local-authority names.
+
+    UK publishers name one area several ways, and Chronicle's local facts
+    carry the area as a ``geography`` dimension value (HMRC "Hartlepool UA",
+    ONS "Hartlepool"). Diagnostics schema 9 holds one label per area: the
+    payload's own geography label for that code, else Microcosm's catalogs,
+    ``UK_GEOGRAPHY_ID_TO_LABEL`` and ``local_authority_names.json``
+    (:mod:`microcosm.calibrate.hierarchy_labels`).
+    """
+
+    areas = load_uk_local_authority_names_resource()["areas"]
+    return UK_HIERARCHY_LABEL_CHOICES.merged(
+        HierarchyLabelChoices(
+            geographies={code: str(entry["name"]) for code, entry in areas.items()}
+        )
+    )
+
+
 def write_uk_calibration_diagnostics(
     result: CalibrationResult,
     path: Path | str,
@@ -1243,4 +1270,6 @@ def write_uk_calibration_diagnostics(
         )
     except Exception as error:  # diagnostics must not escape without validation
         return failed_diagnostics_outcome(error, path=output)
-    return write_typed_calibration_diagnostics(diagnostics, output)
+    return write_typed_calibration_diagnostics(
+        diagnostics, output, label_choices=uk_hierarchy_label_choices()
+    )

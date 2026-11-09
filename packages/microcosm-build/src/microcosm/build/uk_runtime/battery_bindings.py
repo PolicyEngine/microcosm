@@ -2089,6 +2089,7 @@ UK_GATE_REGISTRY: Mapping[str, GateBinding] = {
                 "minimum_entitled_units",
                 # microcosm#1334 uc_take_up stage-health check.
                 "maximum_caseload_deviation",
+                "maximum_reachable_pool_deviation",
                 # frs_annual_income_spells stage-health check.
                 "pay_concept_ratio_bounds",
                 "annual_over_current_earners_bounds",
@@ -2096,12 +2097,18 @@ UK_GATE_REGISTRY: Mapping[str, GateBinding] = {
                 # microcosm#1095 spi_benefit_coherence stage-health check.
                 "zeroed_columns",
                 "restored_columns",
+                "restored_within_earnings_limit_columns",
                 # microcosm#1063 child_benefit_take_up stage-health check.
                 "maximum_claim_rate_deviation",
                 "maximum_age_claim_rate_deviation",
                 "minimum_age_child_rows",
                 "maximum_opt_out_share_deviation",
                 "minimum_eligible_family_units",
+                # microcosm#1095 take_up_signal stage-health check (María's
+                # ruling of 2026-10-29: the flags at their drawing stages).
+                "maximum_share_deviation",
+                "under_two_usage_maximum_share_deviation",
+                "outputs",
                 "absolute_tolerance",
                 "household_weight_kind",
                 "minimum_spi_households",
@@ -2152,6 +2159,11 @@ UK_GATE_REGISTRY: Mapping[str, GateBinding] = {
                 "maximum_connected_share_deviation",
                 "convergence_window_sweeps",
                 "maximum_residual_change_over_window",
+                # #1418: the bounds on an ONS-spend level over Energy Trends',
+                # which catch a wrong input row the recomputation shares, and
+                # the QEP payment method the stage must price at.
+                "ons_level_to_energy_trends_ratio",
+                "qep_payment_method",
                 # #930 bus_travel_facts check: NTS0313 incidence and NTS0303
                 # trip rates recomputed from the vendored rows.
                 "trip_rates_period_value",
@@ -2173,6 +2185,28 @@ UK_GATE_REGISTRY: Mapping[str, GateBinding] = {
                 # bounds on the scale that anchors the added stakes.
                 "maximum_stratum_shortfall",
                 "amount_scale_bounds",
+                # #1415 isa_subscriptions check: how far a total may sit from
+                # its target, and how far person balances may miss the
+                # household draws they split.
+                "maximum_relative_total_deviation",
+                "maximum_household_sum_error_gbp",
+                # The company_cars check (dashboard #316): how far SPI-channel
+                # pay plus its carved benefits may miss the tape's total.
+                "maximum_pay_identity_error_gbp",
+                # The occupation_redraw check (microcosm#1490): the held-out
+                # log-loss gain over the constant, the calibration slope's
+                # bounds, the occupation-share gaps within pay bands and status
+                # groups, and the blend's allowance over its better learner.
+                "minimum_log_loss_gain",
+                "calibration_slope_bounds",
+                "maximum_pay_band_share_gap",
+                "maximum_status_group_share_gap",
+                "maximum_blend_log_loss_excess",
+                # The sub_major_draw check (microcosm#1490) shares those and adds
+                # the sub-major share gap within regions and the FRS rows' gap
+                # from the APS donors within a major group.
+                "maximum_region_share_gap",
+                "maximum_frame_share_gap",
                 # #1113 road_fuel_incidence check: the ceiling on the chain's
                 # zero share among flagged fuel-car households.
                 "maximum_flagged_zero_share",
@@ -2202,6 +2236,9 @@ UK_GATE_REGISTRY: Mapping[str, GateBinding] = {
                 "rate_key",
                 "maximum_relative_realization_deviation",
                 "maximum_implied_relief",
+                # uk-data#629 spi_hourly_pay check: the drawn employees' share
+                # below the minimum wage may exceed the FRS rows' by this much.
+                "maximum_share_above_frs",
             }
         ),
         artifact_keys=frozenset({"stage_evidence"}),

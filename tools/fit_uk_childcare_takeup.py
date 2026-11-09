@@ -16,8 +16,8 @@ from scipy.optimize import minimize
 from microcosm.build.country_spec import load_country_spec
 from microcosm.build.ledger_artifact import load_ledger_consumer_artifact
 from microcosm.build.ledger_targets import (
-    LedgerTargetReference,
     compile_ledger_target_references,
+    restamp_reference_period,
 )
 from microcosm.build.stochastic_assignment import (
     clipped_normal_from_uniforms,
@@ -187,7 +187,7 @@ def compile_childcare_targets(
     for target_id in declared:
         reference = references[target_id]
         period = vintage_overrides.get(target_id, target_period)
-        restamped = LedgerTargetReference(**{**reference.__dict__, "period": period})
+        restamped = restamp_reference_period(reference, period)
         compiled = compile_ledger_target_references(
             _candidate_facts_for_reference(facts, restamped), [restamped], country="uk"
         )

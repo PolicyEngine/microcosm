@@ -133,6 +133,11 @@ def _imputed_frame(monkeypatch: pytest.MonkeyPatch) -> Frame:
         person_outputs=US_FARM_BUSINESS_INCOME_OUTPUT_COLUMNS,
         tax_unit_outputs=(),
         seed=11,
+        # The fake draws (hundreds) lie far outside this donor's support (at
+        # most 30), which the recipient-share bound would cap. These tests
+        # isolate placement and the signed-mass calibration; the bound with
+        # that calibration is covered in test_us_puf_recipient_share_bound.py.
+        recipient_share_bound_outputs=(),
     )
 
 

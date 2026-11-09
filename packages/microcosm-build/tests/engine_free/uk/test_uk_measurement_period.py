@@ -11,6 +11,7 @@ its value reads holds.
 
 from __future__ import annotations
 
+import copy
 import json
 import sys
 from importlib import resources as importlib_resources
@@ -258,6 +259,8 @@ def test_a_cgt_measure_dated_by_its_name_holds_its_own_year():
     assert adapter.value_period("person", "employment_income") == "2024"
     assert adapter.value_period("person", "cgt_2024_tax") == "2024"
     assert adapter.value_period("person", "cgt_2025_gains") == "2025"
+    assert adapter.value_period("person", "company_car_benefit_2024") == "2024"
+    assert adapter.value_period("person", "company_car_benefit") is None
     assert adapter.value_period("person", "income_tax") is None
 
     # The guard lets the dated measure through: the provider computes it at
@@ -819,6 +822,9 @@ REVIEWED_PLAIN_COLUMN_POPULATION_VARIABLES = frozenset(
         "attends_private_school",
         "benefit_cap_reduction",
         "benunit_tenure_type",
+        # Engine-computed at the calibration period: the High Income Child
+        # Benefit Charge, which the HICBC count reads (microcosm#1426).
+        "CB_HITC",
         # Engine-computed at the calibration period: the Child Benefit paid and
         # the children it is paid for (microcosm#1095).
         "child_benefit",
@@ -826,6 +832,11 @@ REVIEWED_PLAIN_COLUMN_POPULATION_VARIABLES = frozenset(
         "council_tax_band",
         # Engine-computed from the household's adults (pe-uk#1864; microcosm#953).
         "council_tax_discount_rate",
+        # The company car rows (microcosm#1418): the stored list price as a sign
+        # filter, which keeps its sign at any period, and the stored fuel type,
+        # which nothing uprates.
+        "company_car_fuel_type",
+        "company_car_list_price",
         "country",
         "dfe_age_at_31_december",
         "dfe_spring_early_learning_2",
@@ -835,6 +846,9 @@ REVIEWED_PLAIN_COLUMN_POPULATION_VARIABLES = frozenset(
         "eldest_adult_age",
         "employment_income",
         "employment_sector",
+        # Stored inputs the occupation rows filter on (microcosm#1490): who is
+        # in work and the SOC 2020 major group, which nothing uprates.
+        "employment_status",
         "esa",
         "esa_contrib",
         "esa_income",
@@ -867,6 +881,8 @@ REVIEWED_PLAIN_COLUMN_POPULATION_VARIABLES = frozenset(
         # (microcosm#1095).
         "savings_interest_income_outside_isas",
         "self_employment_income_after_loss_relief",
+        "soc2020_major_group",
+        "soc2020_sub_major_group",
         "state_pension",
         "state_pension_type",
         "student_loan_plan",
@@ -920,3 +936,265 @@ def test_plain_column_population_variables_are_reviewed():
         "does not change between the frame's period and the calibration period "
         "(microcosm#1324), then add it here."
     )
+
+
+def _bound_rows_refused_at_their_declared_period(
+    exclusions=None, membership=None, floor_targets=None, targets=None
+) -> list[str]:
+    """The national rows the solve would refuse to measure, or would lose.
+
+    The rows are the ones the national compiles (``graph_national``): the
+    targets on the national line, less the rows signed out of a fan-out and
+    the rows a per-row exclusion holds, except held rows in the support
+    floor's scope, which are compiled as probes to measure their support
+    (``floor_targets`` stands in for the floor's targets). On them it runs
+    the solve's two checks in its order (``target_materialization``): on
+    every binding kind, a row that requires its fact at the measurement
+    period resolves to that period; then ``_refuse_ignored_measurement_period``
+    over each plain-column target that declares a period, with the spine's
+    stored columns and the release's frame period standing in for the frame:
+    a value is held at the frame's period only as a stored column or a CGT
+    dated measure (``UKFrameTargetAdapter.value_period``). The plain-column
+    check also covers the national-geography targets on the local line only,
+    which the dense build compiles through the same check (the eighth
+    re-review of microcosm#1420).
+
+    One check is this test's own: no build step refuses a required row that a
+    re-pin defers, or drops from the membership. The national compiles
+    ``uk/target_references.json``, the active references only, so the row
+    leaves it silently. This is the check tied to the period requirement (the
+    seventh and eighth re-reviews); ``test_uk_cgt_targets.py`` also pins the
+    CGT rows' active status.
+    """
+
+    from microcosm.build.target_materialization import (
+        MeasurementPeriodError,
+        _refuse_ignored_measurement_period,
+    )
+    from microcosm.build.uk_runtime.frs_release import load_uk_frs_release
+    from microcosm.build.uk_runtime.graph import uk_spine_endpoint, uk_spine_graph
+    from microcosm.build.uk_runtime.ledger_targets import (
+        UK_NATIONAL_TARGET_GEOGRAPHY_LEVELS,
+        uk_contract_target_calibration_lines,
+    )
+    from microcosm.build.uk_runtime.measure_simulation import (
+        load_uk_calibration_measure_exclusions,
+    )
+    from microcosm.build.uk_runtime.support_floor import (
+        load_uk_support_floor_declaration,
+        uk_support_floor_from_payload,
+    )
+
+    stored: dict[str, set[str]] = {}
+    for cells in uk_spine_endpoint(uk_spine_graph()).inputs:
+        stored.setdefault(str(cells.entity), set()).update(map(str, cells.columns))
+    release = load_uk_frs_release()
+    frame = SimpleNamespace(
+        stored_columns={entity: frozenset(names) for entity, names in stored.items()},
+        frame_period=str(release.time_period),
+    )
+    adapter = SimpleNamespace(
+        frame_period=frame.frame_period,
+        value_period=lambda entity, variable: UKFrameTargetAdapter.value_period(
+            frame, entity, variable
+        ),
+    )
+
+    def resource(name: str):
+        return json.loads(
+            importlib_resources.files("microcosm.build.uk").joinpath(name).read_text()
+        )
+
+    held = {
+        entry["name"]
+        for entry in (
+            load_uk_calibration_measure_exclusions()
+            if exclusions is None
+            else exclusions
+        )
+    }
+    signed = {
+        entry["target_id"]
+        for entry in resource("target_reference_signed_exclusions.json")["exclusions"]
+        if "row" not in entry
+    }
+    if membership is None:
+        membership = resource("target_reference_membership.json")["targets"]
+    if floor_targets is None:
+        declaration = load_uk_support_floor_declaration()
+        floor_targets = (
+            frozenset()
+            if declaration is None
+            else uk_support_floor_from_payload(declaration).contract_target_ids
+        )
+    if targets is None:
+        targets = resource("uk_population_targets.json")["targets"]
+    refused = []
+    for target in targets:
+        target_id = target["target_id"]
+        # National geography, as ``_uk_contract_targets(national_only=True)``.
+        national = (
+            set(target.get("geography_levels") or ())
+            <= UK_NATIONAL_TARGET_GEOGRAPHY_LEVELS
+        )
+        if not national or target_id in signed:
+            continue
+        on_national_line = "national" in uk_contract_target_calibration_lines(target)
+        binding = (target.get("bindings") or {}).get("policyengine") or {}
+        candidates = list(membership.get(target_id, {}).get("candidates", ()))
+        rows = [
+            candidate
+            for candidate in candidates
+            if candidate.get("status") != "signed_excluded"
+            and (candidate.get("name") not in held or target_id in floor_targets)
+        ]
+        if candidates and not rows:
+            continue
+        # The fact-period check runs before the solve branches on kind, so it
+        # covers the CGT provider rows too (the fifth and sixth re-reviews of
+        # microcosm#1420, 4 and 2).
+        if on_national_line and binding.get("require_matching_fact_period"):
+            expected = str(binding.get("measurement_period", release.calibration_year))
+            if not rows or any(
+                row.get("status") != "active"
+                or str(row.get("resolved_fact_period")) != expected
+                for row in rows
+            ):
+                refused.append(target_id)
+                continue
+        if binding.get("kind") or binding.get("measurement_period") is None:
+            continue
+        spec = SimpleNamespace(name=target_id, entity=target["measurement"]["entity"])
+        try:
+            _refuse_ignored_measurement_period(
+                spec, binding, adapter, release.calibration_year
+            )
+        except MeasurementPeriodError:
+            refused.append(target_id)
+    return refused
+
+
+def test_every_bound_row_with_a_declared_period_can_be_measured_there():
+    """The fourth re-review of microcosm#1420, 1: the solve refuses a bound
+    row whose declared period the frame does not hold, and stops the whole
+    run at the national problem, after the spine and engine stages. Binding
+    the betting and gaming row passed CI and refused on the first national;
+    this runs the same check over the packaged contract."""
+
+    assert _bound_rows_refused_at_their_declared_period() == []
+    # Unheld, the row bound by commit 16 is the one the build refused.
+    exclusions = [
+        entry
+        for entry in measure_simulation.load_uk_calibration_measure_exclusions()
+        if entry["name"] != "obr.betting_and_gaming_duties"
+    ]
+    assert _bound_rows_refused_at_their_declared_period(exclusions) == [
+        "obr.betting_and_gaming_duties"
+    ]
+
+
+def _committed_membership() -> dict:
+    return json.loads(
+        importlib_resources.files("microcosm.build.uk")
+        .joinpath("target_reference_membership.json")
+        .read_text()
+    )["targets"]
+
+
+def _first_active(membership: dict, target_id: str) -> dict:
+    (candidate, *_) = [
+        candidate
+        for candidate in membership[target_id]["candidates"]
+        if candidate.get("status") == "active"
+    ]
+    return candidate
+
+
+def test_the_fact_period_check_covers_every_binding_kind():
+    """The sixth re-review of microcosm#1420, 2: the solve checks a row's fact
+    period before it branches on kind, so a re-pin that resolves a CGT
+    provider row to a later fact stops the national after the spine. One that
+    defers a required row, or drops it from the membership, removes the row
+    from the national without a refusal (the seventh re-review, 3): no build
+    step refuses it, and this is the check tied to the period requirement.
+    All three fail here."""
+
+    membership = _committed_membership()
+    later = copy.deepcopy(membership)
+    _first_active(later, "hmrc.cgt.gains_by_region")["resolved_fact_period"] = "2025"
+    assert _bound_rows_refused_at_their_declared_period(membership=later) == [
+        "hmrc.cgt.gains_by_region"
+    ]
+    deferred = copy.deepcopy(membership)
+    _first_active(deferred, "hmrc.cgt.gains_by_age_band")["status"] = (
+        "no_fact_at_or_before_period"
+    )
+    assert _bound_rows_refused_at_their_declared_period(membership=deferred) == [
+        "hmrc.cgt.gains_by_age_band"
+    ]
+    missing = {
+        name: entry
+        for name, entry in membership.items()
+        if name != "hmrc.cgt.residential_property_gains"
+    }
+    assert _bound_rows_refused_at_their_declared_period(membership=missing) == [
+        "hmrc.cgt.residential_property_gains"
+    ]
+
+
+def test_the_period_checks_read_the_rows_the_national_compiles():
+    """The seventh re-review of microcosm#1420, 2: the national drops a row a
+    per-row exclusion holds, unless the support floor's scope compiles it as
+    a probe, and never compiles a row signed out of a fan-out."""
+
+    membership = _committed_membership()
+    later = copy.deepcopy(membership)
+    moved = _first_active(later, "hmrc.cgt.gains_by_region")
+    moved["resolved_fact_period"] = "2025"
+    exclusions = [
+        *measure_simulation.load_uk_calibration_measure_exclusions(),
+        {"name": moved["name"]},
+    ]
+    # Held on its own, the moved row leaves the national: nothing to refuse.
+    assert (
+        _bound_rows_refused_at_their_declared_period(exclusions, membership=later) == []
+    )
+    # In the floor's scope the held row is compiled as a probe, and checked.
+    assert _bound_rows_refused_at_their_declared_period(
+        exclusions,
+        membership=later,
+        floor_targets=frozenset({"hmrc.cgt.gains_by_region"}),
+    ) == ["hmrc.cgt.gains_by_region"]
+    # Signed out row by row, the whole fan-out compiles nothing.
+    for candidate in later["hmrc.cgt.gains_by_region"]["candidates"]:
+        candidate["status"] = "signed_excluded"
+    assert _bound_rows_refused_at_their_declared_period(membership=later) == []
+
+
+def test_the_plain_column_check_covers_the_local_line_national_targets():
+    """The eighth re-review of microcosm#1420: the dense build compiles the
+    national-geography targets on the local line only through the same
+    plain-column check, so a period declared on one of them is checked too."""
+
+    from microcosm.build.uk_runtime.ledger_targets import (
+        uk_contract_target_calibration_lines,
+    )
+
+    targets = copy.deepcopy(
+        json.loads(
+            importlib_resources.files("microcosm.build.uk")
+            .joinpath("uk_population_targets.json")
+            .read_text()
+        )["targets"]
+    )
+    (local,) = [
+        target
+        for target in targets
+        if target["target_id"] == "microcosm.high_value_homes.over_1m_by_region"
+    ]
+    assert uk_contract_target_calibration_lines(local) == {"local"}
+    assert _bound_rows_refused_at_their_declared_period(targets=targets) == []
+    local["bindings"]["policyengine"]["measurement_period"] = 2023
+    assert _bound_rows_refused_at_their_declared_period(targets=targets) == [
+        "microcosm.high_value_homes.over_1m_by_region"
+    ]

@@ -26,6 +26,19 @@ Run the stage (paid; sized per stage in the plan module)::
 ``--spawn`` returns once the stage is spawned; ``--run`` alone waits on it
 (see ``main``).
 
+With ``--run``, the launch first runs this machine's ``microcosm-emitter
+telemetry-token``, which exchanges the operator's Hugging Face login for a
+collector token that only writes telemetry and lasts the stage's class
+timeout plus an hour. It reaches the container in a Modal secret made for
+this launch, never in the plan, and the stage's build gets it so that its
+emitter can send telemetry; no Hugging Face credential reaches the build.
+The launch refuses, launching nothing, when the token cannot be obtained or
+is shorter than asked for. A plan with ``MICROCOSM_TELEMETRY_REQUIRED=0``
+in its env asks for none, and its build runs without telemetry. That
+opt-out exists only for people outside PolicyEngine who run Microcosm
+without access to the collector; PolicyEngine's own plans keep telemetry
+required.
+
 Set ``MICROCOSM_MODAL_HF_SECRET=<modal secret name>`` only when an input
 lives in a gated or private Hugging Face repo; public releases need no
 token, and no secret is attached otherwise. Nothing here uploads to the Hub
@@ -47,7 +60,7 @@ import tempfile
 import threading
 import time
 from datetime import UTC, datetime
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 import modal
 
@@ -61,6 +74,13 @@ PLAN_ENV = "MICROCOSM_MODAL_PLAN"
 HF_SECRET_ENV = "MICROCOSM_MODAL_HF_SECRET"
 APP_NAME = "microcosm-us-stage"
 PLAN_MODULE_REMOTE = "/root/modal_us_stage_plan.py"
+#: Beside the plan module's copy, where that copy looks for it first
+#: (``plan_lib.minimum_emitter_version_file``).
+MINIMUM_EMITTER_VERSION_REMOTE = str(
+    PurePosixPath(PLAN_MODULE_REMOTE).with_name(
+        plan_lib.MINIMUM_EMITTER_VERSION_FILENAME
+    )
+)
 
 
 def _local_plan() -> tuple[dict, plan_lib.Plan] | None:
@@ -85,28 +105,38 @@ _LOADED = _local_plan()
 def _image() -> modal.Image:
     image = (
         modal.Image.debian_slim(python_version=plan_lib.IMAGE_PYTHON_VERSION)
-        .apt_install("git", "build-essential")
+        # Naming ca-certificates upgrades the base image's copy to the
+        # distribution's current release, which drops the compromised
+        # eMudhra roots; git's GitHub fetch and the stdlib's ssl module
+        # verify against that system CA store.
+        .apt_install("git", "build-essential", "ca-certificates")
+        # The cached base's pip 25.3 still trusts emSign ECC Root CA - G3
+        # through its own certifi, whatever the system CA store holds
+        # (plan_lib.IMAGE_PIP_VERSION). Replace it with the hash-pinned pip
+        # 26.2.2 before pip downloads anything else.
+        .run_commands(plan_lib.image_pip_bootstrap_command())
         # The runner itself (not the build) runs on the image's interpreter;
         # it needs the Hub client to stage hf:// inputs. The build runs in
         # IMAGE_VENV, synced from the pinned tree's own lock.
         .pip_install(
             f"uv=={plan_lib.IMAGE_UV_VERSION}",
             f"huggingface_hub=={plan_lib.RUNNER_HF_HUB_VERSION}",
+            f"certifi>={plan_lib.RUNNER_CERTIFI_MINIMUM_VERSION}",
         )
-        .env(
-            {
-                "UV_PROJECT_ENVIRONMENT": plan_lib.IMAGE_VENV,
-                "UV_PYTHON_DOWNLOADS": "never",
-                "UV_LINK_MODE": "copy",
-                "PYTHONDONTWRITEBYTECODE": "1",
-            }
-        )
+        .env(dict(plan_lib.IMAGE_ENVIRONMENT))
     )
     if _LOADED is not None:
         _, plan = _LOADED
         image = image.run_commands(*plan_lib.image_build_commands(plan))
         image = image.add_local_file(
             str(_HERE / "modal_us_stage_plan.py"), PLAN_MODULE_REMOTE
+        )
+        # The launching checkout's emitter floor, beside the plan module's
+        # copy, which has no checkout around it: the check, which runs in the
+        # container, reports the install step from it.
+        image = image.add_local_file(
+            str(plan_lib.minimum_emitter_version_file()),
+            MINIMUM_EMITTER_VERSION_REMOTE,
         )
     return image
 
@@ -227,9 +257,70 @@ def _cpu_visibility() -> dict[str, object]:
     }
 
 
+def _emitter_version() -> plan_lib.EmitterVersionAnswer | None:
+    """The installed emitter's ``version`` answer, or None if it does not run.
+
+    It runs without the runner's credentials or the collector token, which
+    ``version`` does not need.
+    """
+
+    try:
+        answer = subprocess.run(
+            [plan_lib.IMAGE_EMITTER_COMMAND, "version"],
+            capture_output=True,
+            text=True,
+            timeout=60,
+            env=plan_lib.emitter_query_environment(os.environ),
+        )
+        version = json.loads(answer.stdout) if answer.returncode == 0 else None
+    except (OSError, subprocess.SubprocessError, ValueError):
+        return None
+    return version if isinstance(version, dict) else None
+
+
+def _emitter_status(env: dict[str, str]) -> plan_lib.UndeliveredEventsRecord:
+    """What the image emitter's ``status`` reports, as the receipt records it.
+
+    The runner calls this once the tool has exited and its output has ended:
+    the emitter the build started holds that output until it has delivered
+    what it could and stopped, so by then its event queue file is final.
+    ``status`` reads that file read-only and prints each run in it; the
+    runner never reads the file itself. It runs without
+    ``--event-queue-file``, in the tool's environment ``env`` without
+    credentials or the collector token, so the emitter's default path is the
+    one the build computed. A failure is recorded as a problem line and
+    never raises.
+    """
+
+    try:
+        answer = subprocess.run(
+            [plan_lib.IMAGE_EMITTER_COMMAND, "status"],
+            capture_output=True,
+            text=True,
+            errors="replace",
+            timeout=plan_lib.EMITTER_STATUS_TIMEOUT_SECONDS,
+            env=plan_lib.emitter_query_environment(env),
+        )
+    except subprocess.TimeoutExpired:
+        return plan_lib.undelivered_events_problem(
+            "`microcosm-emitter status` did not answer within "
+            f"{plan_lib.EMITTER_STATUS_TIMEOUT_SECONDS} s"
+        )
+    except (OSError, subprocess.SubprocessError) as error:
+        return plan_lib.undelivered_events_problem(
+            f"`microcosm-emitter status` could not run ({type(error).__name__})"
+        )
+    return plan_lib.undelivered_events_from_status(
+        answer.returncode, answer.stdout, answer.stderr
+    )
+
+
 def _runner_identity() -> dict[str, object]:
     identity: dict[str, object] = {
         "python": sys.version.split()[0],
+        # The separately installed emitter the build starts for telemetry and
+        # staging hand-overs; the image installs the newest release.
+        "microcosm_emitter": _emitter_version(),
         # Platform and CPU visibility, for comparing a Modal run with a local
         # one: BLAS, OpenMP and the base's QRF pool size their thread pools
         # from what they see.
@@ -424,6 +515,13 @@ class _BudgetWatch(threading.Thread):
     The tool runs in its own process group (``process_group=0``), and the
     whole group is stopped: a tool that runs stages as child interpreters
     must not leave one running behind the hashing and mirroring.
+
+    The runner reads the tool's output to its end before it sets ``done``,
+    and the emitter a build starts (in its own session, so outside the
+    group) holds that output while it delivers its last events, for up to
+    about EMITTER_DRAIN_SECONDS after the build exits. A tool that has
+    exited and left nothing in its group finished before its budget: the
+    watch stops nothing and does not mark the stage stopped at the budget.
     """
 
     def __init__(
@@ -441,6 +539,12 @@ class _BudgetWatch(threading.Thread):
 
     def run(self) -> None:
         if self.max_wall_seconds is None or self.done.wait(self.max_wall_seconds):
+            return
+        # poll() reaps the tool first, so the group check below does not
+        # count the tool itself.
+        if self.proc.poll() is not None and not plan_lib.process_group_alive(
+            self.proc.pid
+        ):
             return
         self.fired = True
         print(f"BUDGET: stopping the tool after {self.max_wall_seconds}s", flush=True)
@@ -640,7 +744,9 @@ def check_stage(plan_data: dict) -> dict:
         problems.append(str(probe["problem"]))
 
     # The probe and the parser run in the environment the stage would get.
-    tool_env, env_removed = plan_lib.tool_environment(os.environ, plan.env)
+    tool_env, env_removed = plan_lib.tool_environment(
+        os.environ, plan.env, telemetry_run_id=plan_lib.telemetry_run_id(plan)
+    )
     report["tool_env_removed"] = env_removed
     report["python_hash_seed"] = plan_lib.hash_seed_record(
         plan.tool, os.environ, tool_env
@@ -669,6 +775,18 @@ def check_stage(plan_data: dict) -> dict:
     )
     if env_probe.returncode != 0:
         problems.append("the synced environment does not import microcosm.build")
+    report["emitter"] = _emitter_version()
+    if report["emitter"] is None:
+        problems.append(
+            f"the emitter command {plan_lib.IMAGE_EMITTER_COMMAND} does not run"
+        )
+    # A check asks for no collector token; whether the image's emitter could
+    # take one, which the paid run refuses without.
+    report["telemetry"], telemetry_problem = plan_lib.telemetry_check_report(
+        plan, report["emitter"]
+    )
+    if telemetry_problem:
+        problems.append(telemetry_problem)
 
     argv = plan_lib.planned_argv(plan)
     parse = (
@@ -729,7 +847,11 @@ def check_stage(plan_data: dict) -> dict:
 
 
 class _Refusal(plan_lib.PlanError):
-    """The lock or the budget stopped an attempt before it staged anything."""
+    """A check stopped an attempt before it staged anything.
+
+    The run's lock, its budget, the work disk, the hash seed, or the
+    collector token. The attempt record is finished, so nothing is charged.
+    """
 
 
 def _run_stage(plan_data: dict) -> dict:
@@ -761,7 +883,7 @@ def _run_stage(plan_data: dict) -> dict:
     #    lock wait, staging, the tool, hashing and mirroring are all charged
     #    if preemption cuts the attempt short. Any exception from here on
     #    leaves the attempt unfinished (charged) with outcome "error"; only a
-    #    receipt or a refusal by the lock or the budget finishes it.
+    #    receipt or a refusal before staging (_Refusal) finishes it.
     plan_sha256 = plan_lib.plan_digest(plan_data)
     attempt = _Attempt(plan, plan_sha256, container_started)
     attempt.write()
@@ -769,14 +891,20 @@ def _run_stage(plan_data: dict) -> dict:
     try:
         return _attempt_stage(plan, plan_data, plan_sha256, attempt, git)
     except _Refusal as refusal:
-        attempt.end(plan_lib.OUTCOME_REFUSED, finished=True, note=str(refusal)[:500])
+        attempt.end(
+            plan_lib.OUTCOME_REFUSED,
+            finished=True,
+            note=str(refusal)[: plan_lib.ATTEMPT_NOTE_MAX_CHARS],
+        )
         raise
     except BaseException as error:
         try:
             attempt.end(
                 plan_lib.OUTCOME_ERROR,
                 finished=False,
-                note=f"{type(error).__name__}: {error}"[:500],
+                note=f"{type(error).__name__}: {error}"[
+                    : plan_lib.ATTEMPT_NOTE_MAX_CHARS
+                ],
             )
         except Exception as record_error:  # noqa: BLE001 - keep the first error
             print(f"attempt record failed: {record_error}", flush=True)
@@ -843,14 +971,31 @@ def _attempt_stage(
 
     # 4c. The tool's environment, fixed before anything is pulled or staged:
     #     credentials and the container's PYTHONHASHSEED withheld, the Hub
-    #     offline, the plan's overrides last. An environment that would give
-    #     the tool a hash seed other than none or "0" (what Route A's local
-    #     base recorded) is refused here, cheaply.
-    env, env_removed = plan_lib.tool_environment(os.environ, plan.env)
+    #     offline, the plan's overrides last, and the stage's telemetry run
+    #     (<plan run_id>.<stage>). An environment that would give the tool a
+    #     hash seed other than none or "0" (what Route A's local base
+    #     recorded) is refused here, cheaply.
+    env, env_removed = plan_lib.tool_environment(
+        os.environ, plan.env, telemetry_run_id=plan_lib.telemetry_run_id(plan)
+    )
     hash_seed = plan_lib.hash_seed_record(plan.tool, os.environ, env)
     seed_problem = plan_lib.hash_seed_problem(env)
     if seed_problem:
         raise _Refusal(seed_problem)
+
+    # 4d. Telemetry, before anything is pulled or staged: unless the plan
+    #     sets MICROCOSM_TELEMETRY_REQUIRED=0, the collector token from the
+    #     launch's secret must be complete, come from the collector the
+    #     image's emitter sends to, and stay usable as long as the emitter may
+    #     send it: past the budget's SIGKILL of the tool (its SIGTERM plus
+    #     STOP_GRACE_SECONDS) and the emitter's drain (token_needed_until). A
+    #     preemption restart too long after the launch is refused here too;
+    #     the operator launches again.
+    telemetry, telemetry_problem = plan_lib.telemetry_check(
+        plan, os.environ, _emitter_version(), container_started=attempt.started
+    )
+    if telemetry_problem:
+        raise _Refusal(telemetry_problem)
 
     # 5. This run's prior state (checkpoints, calibrated H5) onto local disk,
     #    hashed as it is copied and verified against the run's latest receipt
@@ -943,6 +1088,10 @@ def _attempt_stage(
     wall = time.time() - started
     peak_kib = resource.getrusage(resource.RUSAGE_CHILDREN).ru_maxrss
     finished_at = _now()
+    # The output has ended, so the emitter the build started has stopped:
+    # what its event queue file still holds is final. Its own `status`
+    # reports each run's undelivered events; a failure is only recorded.
+    telemetry = {**telemetry, "undelivered_events": _emitter_status(env)}
 
     # 7. Outputs: mirror the state tree to the volume, hashing each file as it
     #    is copied (a file pulled and left untouched keeps its verified
@@ -986,6 +1135,9 @@ def _attempt_stage(
             "home_seeds": home_seeds,
             "input_links": input_links,
             "tool_budget": tool_budget,
+            # The token's expiry and origin, never its value, and what the
+            # image emitter's `status` reported after the tool.
+            "telemetry": telemetry,
         },
         prior_receipts=prior,
         stopped_at_budget=budget.fired,
@@ -1180,6 +1332,15 @@ def main(run: bool = False, spawn: bool = False) -> None:
     a rejected plan, a refusal or an exception, which ``_run_stage``
     re-raises. Every attempt of a run shares its run_id, so match the attempt
     record by ``modal.function_call_id`` and the receipt by ``attempt_id``.
+
+    Before either, ``--run`` obtains the stage's collector token from this
+    machine's emitter (``plan_lib.request_telemetry_token``) and attaches it
+    in a Modal secret made for this launch, unless the plan sets
+    ``MICROCOSM_TELEMETRY_REQUIRED=0``. It refuses to launch, launching
+    nothing, when the token cannot be obtained. The plan sent to the stage is
+    unchanged, so its digest and the attempt budget keyed on it stay the
+    same, and no receipt copies the token. The output shows the token's
+    expiry and origin, never its value.
     """
 
     assert _LOADED is not None
@@ -1194,6 +1355,25 @@ def main(run: bool = False, spawn: bool = False) -> None:
         print("CHECK OK")
         return
     runner = RUNNERS[(plan.resources.name, plan.nonpreemptible)]
+    try:
+        token = plan_lib.request_telemetry_token(plan, os.environ)
+    except plan_lib.PlanError as error:
+        raise SystemExit(f"REFUSED to launch: {error}") from None
+    if token is None:
+        print(
+            f"TELEMETRY: the plan sets {plan_lib.TELEMETRY_REQUIRED_ENV}=0, so no "
+            "collector token was requested and the stage runs without telemetry "
+            "(an opt-out only for people outside PolicyEngine without access to "
+            "the collector)",
+            file=sys.stderr,
+        )
+    else:
+        # with_options replaces the function's secrets, so the Hub secret,
+        # if one is named, goes again with the token's.
+        runner = runner.with_options(
+            secrets=[*_secrets(), modal.Secret.from_dict(token.secret_values())]
+        )
+    collector_token = None if token is None else token.record()
     if spawn:
         call = runner.spawn(plan_data)
         print(
@@ -1202,6 +1382,7 @@ def main(run: bool = False, spawn: bool = False) -> None:
                     "run_id": plan.run_id,
                     "stage": plan.stage,
                     "function_call_id": call.object_id,
+                    "collector_token": collector_token,
                 },
                 indent=2,
             )
@@ -1229,6 +1410,7 @@ def main(run: bool = False, spawn: bool = False) -> None:
     ):
         brief[key] = receipt.get(key)
     brief["outputs"] = len(receipt["outputs"])
+    brief["collector_token"] = collector_token
     print(json.dumps(brief, indent=2))
     # FAILED covers a nonzero exit and a stop at the max_wall_seconds budget,
     # which a tool that handles the stop signal can still end with exit 0.

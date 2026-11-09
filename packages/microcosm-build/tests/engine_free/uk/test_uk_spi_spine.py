@@ -24,6 +24,7 @@ from microcosm.build.uk_runtime.spi_income import (
     SPI_DONOR_REQUIRED_COLUMNS,
     SPI_INCOME_QRF_OUTPUT_COLUMNS,
     SPIDonorAgeModel,
+    SPIEmploymentPayFloor,
     impute_uk_spi_income_support,
 )
 from microcosm.build.uk_runtime.spi_spine import (
@@ -62,6 +63,8 @@ def _base_frame(*, time_period: str = "2023") -> object:
             "dividend_income": [20.0, 10.0],
             "private_pension_income": [0.0, 0.0],
             "property_income": [0.0, 0.0],
+            # The twin's other income locates the copy's draw (microcosm#1428).
+            "other_investment_income": [0.0, 0.0],
             "employee_pension_contributions": [3.0, 2.0],
             "employer_pension_contributions": [9.0, 6.0],
             "hmrc_spi_pay": [0.0, 0.0],
@@ -70,6 +73,8 @@ def _base_frame(*, time_period: str = "2023") -> object:
             "ossben_identifiable_subset": [0.0, 0.0],
             "srp_regular_code5": [0.0, 0.0],
             "employment_status": ["FT_EMPLOYED", "FT_EMPLOYED"],
+            # Annual usual hours, as frs_spine writes them.
+            "hours_worked": [30 * 365.25 / 7, 0.0],
             "miscellaneous_income": [0.0, 0.0],
             **{
                 column: [0.0, 0.0]
@@ -316,12 +321,15 @@ def test_preclone_support_gate_passes_at_limit_and_fails_above() -> None:
 class _FakeQRF:
     events: list[tuple[str, tuple[str, ...], list[float]]] = []
 
-    def __init__(self, n_estimators: int, seed: int) -> None:
+    def __init__(
+        self, n_estimators: int, seed: int, gate_calibration: str = "in_sample"
+    ) -> None:
         self.seed = seed
+        self.gate_calibration = gate_calibration
         self.targets: tuple[str, ...] = ()
         self.weight_kind = "unknown"
 
-    def fit(self, frame, predictors, targets, weights):
+    def fit(self, frame, predictors, targets, weights, groups=None):
         self.targets = tuple(targets)
         self.weight_kind = weights
         label = (
@@ -341,6 +349,10 @@ class _FakeQRF:
 
     def regimes(self):
         return dict.fromkeys(self.targets, "zero_inflated_positive")
+
+    def gate_outcomes(self):
+        outcome = None if self.gate_calibration == "in_sample" else "cross_fitted"
+        return dict.fromkeys(self.targets, outcome)
 
     def sign_classes(self, target):
         return (0, 1)
@@ -609,7 +621,7 @@ def test_spi_spine_parsed_inputs_match_the_path_resolution(
 
     # This test checks parsed/path source resolution, independently of the engine.
     # Real index coverage lives in test_uk_spi_income.py.
-    def uprating_factors(year):
+    def uprating_factors(year, *, rebased_columns=None):
         return (
             {column: 1.25 for column in SPI_INCOME_QRF_OUTPUT_COLUMNS},
             {"from_period": 2022, "to_period": year, "basis": "synthetic_test"},
@@ -626,6 +638,19 @@ def test_spi_spine_parsed_inputs_match_the_path_resolution(
                 (sex, age): 1.0 for sex in ("MALE", "FEMALE") for age in range(0, 91)
             },
             state_pension_age=66,
+            source="engine-free fixture",
+        ),
+    )
+    # The minimum wage is an engine read too; tests/engine/uk/
+    # test_uk_spi_income.py reads the real parameter.
+    monkeypatch.setattr(
+        spi_spine,
+        "load_spi_employment_pay_floor",
+        lambda _build_period: SPIEmploymentPayFloor(
+            age_thresholds=(0.0, 18.0, 21.0),
+            hourly_rates=(6.40, 8.60, 11.44),
+            weeks_in_year=52.0,
+            instant="2024-04-30",
             source="engine-free fixture",
         ),
     )
@@ -717,6 +742,9 @@ def test_spi_spine_parsed_inputs_match_the_path_resolution(
 
     assert uk_frame_content_identity(from_path) == uk_frame_content_identity(from_seam)
     assert path_transform.checkpoint_metadata() == seam_transform.checkpoint_metadata()
+    pay_floor = path_transform.checkpoint_metadata()["evidence"]["employment_pay_floor"]
+    assert pay_floor["step"] == "spi_employment_pay_floor_before_stage2"
+    assert pay_floor["source"] == "engine-free fixture"
 
 
 def test_income_stage_parameters_accept_the_committed_manifest() -> None:
@@ -759,6 +787,12 @@ def test_income_stage_parameters_refuse_a_base_channel_redraw() -> None:
             "target_population",
             "spi_synthetic_support_channel",
             "target population",
+        ),
+        (
+            "floor_spi_employment_pay_at_minimum_wage",
+            "weeks_in_year",
+            365.25 / 7,
+            "floor_spi_employment_pay_at_minimum_wage declaration drifted",
         ),
     ],
 )

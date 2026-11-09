@@ -36,7 +36,7 @@ class _Contract:
         return self.rates[key]
 
 
-def _tables(units: int = 30, high_pay: int = 3):
+def _tables(units: int = 30, high_pay: int = 2):
     ids = np.arange(1, units + 1)
     # One adult and one child per unit; the child is under 2 in every unit.
     person = pd.DataFrame(
@@ -85,9 +85,9 @@ def test_realised_take_up_reports_shares_beside_the_contract_rates() -> None:
     assert cell["weighted_share"] == pytest.approx(0.75)
     universal = receipt["flags"]["would_claim_universal_childcare"]
     assert universal["contract_rate"] == pytest.approx(0.5 + 0.5 * 0.2)
-    # Three high-pay units: under the floor, so no share is written.
+    # Two high-pay units: under the floor of three, so no share is written.
     assert universal["cells"]["units_with_a_child_under_5_and_pay_over_100k"] == {
-        "source_households": "<10"
+        "source_households": "<3"
     }
     usage = receipt["flags"]["max_free_entitlement_hours_used.age_1"]
     assert usage["contract_key"] == "extended_childcare_age_1_usage"

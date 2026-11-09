@@ -23,6 +23,9 @@ from microcosm.build.ledger_targets import (  # pyright: ignore[reportPrivateUsa
     _not_after_target_period,
     _period_key,
     _period_key_from_value,
+    _period_year,
+    _selection_period,
+    _shift_observation_period,
     compile_ledger_target_references,
     reference_fact_selectors,
 )
@@ -122,6 +125,35 @@ class TargetReferenceAuthoringConfig:
     binding_vocabulary: frozenset[str] = frozenset()
     source_fact_feed: str = ""
     uprating_appliers: Mapping[str, UpratingApplier] = field(default_factory=dict)
+    #: The target period the contract's observation periods are written for:
+    #: a row authored at another period moves its observation period by the
+    #: same number of years, as ``restamp_reference_period`` does (the
+    #: re-review of microcosm#1422). ``None`` copies them unchanged.
+    observation_period_base: int | str | None = None
+
+
+def _authored_observation_period(
+    target: Mapping[str, Any],
+    selector: Mapping[str, Any],
+    config: TargetReferenceAuthoringConfig | AreaTargetReferenceAuthoringConfig,
+) -> int | str | None:
+    """The contract's observation period, moved to the authored target period
+    and read as the row's match policy reads it, as ``restamp_reference_period``
+    reads it."""
+
+    observation_period = target.get("observation_period")
+    if observation_period is None or config.observation_period_base is None:
+        return observation_period
+    return _shift_observation_period(
+        observation_period,
+        _period_year(config.target_period)
+        - _period_year(config.observation_period_base),
+        # A row without a policy takes the reference's default.
+        period_match_policy=str(
+            target.get("period_match_policy") or "latest_not_after"
+        ),
+        ledger_selector=selector,
+    )
 
 
 @dataclass(frozen=True)
@@ -208,6 +240,8 @@ class AreaTargetReferenceAuthoringConfig:
     #: uprated at authoring exactly as the runtime compile uprates it, so the
     #: committed reference and the run manifest carry one value (#1123).
     uprating_appliers: Mapping[str, Callable[..., Any]] = field(default_factory=dict)
+    #: As ``TargetReferenceAuthoringConfig.observation_period_base``.
+    observation_period_base: int | str | None = None
 
     def normalized_areas(self) -> dict[str, tuple[str, ...]]:
         """Return area rosters with duplicate ids removed in declared order."""
@@ -1108,7 +1142,15 @@ def _target_selector(
     config: TargetReferenceAuthoringConfig,
 ) -> dict[str, Any]:
     target_id = str(target["target_id"])
-    selector = {**dict(target["ledger_selector"]), **dict(geography_pin)}
+    declared = dict(target["ledger_selector"])
+    for key, value in dict(geography_pin).items():
+        if key in declared and declared[key] != value:
+            raise ValueError(
+                f"target {target_id!r} declares {key}={declared[key]!r} in its "
+                f"selector, but its geography pin says {value!r}: a declared "
+                "geography wins, so the pin must follow it."
+            )
+    selector = {**declared, **dict(geography_pin)}
     pins = config.selector_pins_by_target_id.get(target_id, {})
     for key, value in pins.items():
         if key == "dimension_values" and isinstance(value, Mapping):
@@ -1190,6 +1232,9 @@ def _area_reference_row(
     period_match_policy = target.get("period_match_policy")
     if period_match_policy is not None:
         row["period_match_policy"] = period_match_policy
+    observation_period = _authored_observation_period(target, selector, config)
+    if observation_period is not None:
+        row["observation_period"] = observation_period
     uprating_index = target.get("uprating_index")
     if uprating_index is not None:
         row["uprating_index"] = str(uprating_index)
@@ -1414,6 +1459,9 @@ def _reference_row(
     period_match_policy = target.get("period_match_policy")
     if period_match_policy is not None:
         row["period_match_policy"] = period_match_policy
+    observation_period = _authored_observation_period(target, selector, config)
+    if observation_period is not None:
+        row["observation_period"] = observation_period
     uprating_index = target.get("uprating_index")
     if uprating_index is not None:
         row["uprating_index"] = str(uprating_index)
@@ -1456,7 +1504,7 @@ def _compact_compile_error(status: str) -> str:
 def _eligible_fact(reference: LedgerTargetReference, fact: Mapping[str, Any]) -> bool:
     return _not_after_target_period(
         _period_key(fact),
-        _period_key_from_value(reference.period),
+        _period_key_from_value(_selection_period(reference)),
     ) and _assertion_allowed(reference, fact)
 
 

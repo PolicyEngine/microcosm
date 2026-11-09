@@ -57,9 +57,19 @@ _PINNED_SPI_DONOR_PATH = _REPO_ROOT / "inputs" / "spi" / "put2223uk.tab"
 
 
 class _FakeFittedQRF:
-    def __init__(self, targets: tuple[str, ...], weight_kind: str) -> None:
+    def __init__(
+        self,
+        targets: tuple[str, ...],
+        weight_kind: str,
+        gate_calibration: str = "in_sample",
+    ) -> None:
         self.targets = targets
         self.weight_kind = weight_kind
+        self.gate_calibration = gate_calibration
+
+    def gate_outcomes(self) -> dict[str, str | None]:
+        outcome = None if self.gate_calibration == "in_sample" else "cross_fitted"
+        return dict.fromkeys(self.targets, outcome)
 
     def regimes(self) -> dict[str, str]:
         return dict.fromkeys(self.targets, "zero_inflated_positive")
@@ -121,7 +131,7 @@ class _FakeFittedQRF:
                 value = 10.0
             elif target == "charitable_investment_gifts":
                 value = 2.0
-            elif target == "tax_free_savings_income":
+            elif target == "individual_savings_account_interest_income":
                 value = 5.0
             elif target == SPI_HMRC_MISCELLANEOUS_EMPLOYMENT_INCOME_COLUMN:
                 value = -3.0
@@ -132,10 +142,15 @@ class _FakeFittedQRF:
 class _FakeQRF:
     fit_weight_kinds: list[str] = []
     fit_weight_values: list[np.ndarray] = []
+    #: Each fit's weight kind, gate calibration and fold groups, in fit order.
+    fit_gates: list[tuple[str, str, np.ndarray | None]] = []
 
-    def __init__(self, *, n_estimators: int, seed: int) -> None:
+    def __init__(
+        self, *, n_estimators: int, seed: int, gate_calibration: str = "in_sample"
+    ) -> None:
         assert n_estimators > 0
         assert seed >= 0
+        self.gate_calibration = gate_calibration
 
     def fit(
         self,
@@ -144,14 +159,19 @@ class _FakeQRF:
         targets: list[str],
         *,
         weights: str,
+        groups: np.ndarray | None = None,
     ) -> _FakeFittedQRF:
         assert predictors
         resolved = frame.resolve_weights("person")
         assert resolved.kind.value == weights
         assert (resolved.values > 0).all()
+        assert groups is None or len(groups) == len(resolved.values)
         self.fit_weight_kinds.append(resolved.kind.value)
         self.fit_weight_values.append(resolved.values.copy())
-        return _FakeFittedQRF(tuple(targets), resolved.kind.value)
+        self.fit_gates.append((resolved.kind.value, self.gate_calibration, groups))
+        return _FakeFittedQRF(
+            tuple(targets), resolved.kind.value, self.gate_calibration
+        )
 
 
 def _dead_support(
@@ -220,7 +240,9 @@ def _dead_support(
     }.items():
         if column in person_columns:
             person_columns[column] = values
-    person_columns["tax_free_savings_income"] = np.zeros(4, dtype=float)
+    person_columns["individual_savings_account_interest_income"] = np.zeros(
+        4, dtype=float
+    )
     person = pd.DataFrame(person_columns)
     benunit = pd.DataFrame({"benunit_id": np.arange(201, 205, dtype="int64")})
     dead = create_uk_spi_support_tables(

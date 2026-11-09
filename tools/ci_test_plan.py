@@ -72,6 +72,14 @@ TEST_GROUPS = {
         engine_module="policyengine_uk",
         integration=True,
     ),
+    # Tests that start the separately installed microcosm-emitter. Their
+    # runner installs each release they cover and passes --run-integration.
+    "installed-emitter-shared": TestGroup(
+        ("installed_emitter", "shared"),
+        "installed-emitter",
+        "shared",
+        integration=True,
+    ),
 }
 GROUP_BY_DIRECTORY = {spec.directory: name for name, spec in TEST_GROUPS.items()}
 JOBS = tuple(dict.fromkeys(spec.job for spec in TEST_GROUPS.values()))

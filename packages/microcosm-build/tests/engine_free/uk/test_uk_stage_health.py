@@ -1561,12 +1561,15 @@ def test_bus_pricing_gate_recomputes_every_price_from_the_vendored_rows() -> Non
 def test_road_fuel_level_gate_recomputes_the_level_from_the_vendored_row() -> None:
     """The lcfs road_fuel_level receipt is fact-checked at stage time (microcosm#1113)."""
 
+    import copy
+
     import pandas as pd
 
     from microcosm.build.country_spec import load_country_spec
     from microcosm.build.uk_runtime.calibration_run import UK_SPINE_GATE_SCOPE
     from microcosm.build.uk_runtime.lcfs_consumption import (
         level_road_fuel,
+        road_fuel_household_mix,
         road_fuel_level,
         road_fuel_level_operation,
     )
@@ -1575,17 +1578,40 @@ def test_road_fuel_level_gate_recomputes_the_level_from_the_vendored_row() -> No
     assert gate_id in UK_SPINE_GATE_SCOPE
     parameters = _gate_parameters(gate_id)
     assert parameters["check"] == "road_fuel_level"
-    declared = road_fuel_level_operation(
-        load_country_spec("uk").sources.stage_map()["lcfs_consumption"]
-    )
+    stage = load_country_spec("uk").sources.stage_map()["lcfs_consumption"]
+    declared = road_fuel_level_operation(stage)
     draws = pd.DataFrame(
         {"petrol_spending": [900.0, 0.0, 400.0], "diesel_spending": [0.0, 700.0, 0.0]}
     )
+    # The declaration levels each fuel to its household-paid share
+    # (microcosm#1095 B3, K): the receipt carries the NTS shares it used.
+    paid = {"petrol_spending": 0.94, "diesel_spending": 0.89}
+    mix, mix_receipt = road_fuel_household_mix(stage, paid)
     _, receipt = level_road_fuel(
         draws,
         level=road_fuel_level(declared, other_fuels_share=0.004),
         weights=np.array([1.0e7, 1.5e7, 2.0e7]),
+        mix=mix,
+        mix_receipt={
+            **mix_receipt,
+            "nts": {
+                "fuels": {
+                    column: {"household_paid_share": share}
+                    for column, share in paid.items()
+                }
+            },
+        },
     )
+
+    def with_mix(**changes):
+        tampered = copy.deepcopy(receipt)
+        for path, value in changes.items():
+            node = tampered["mix"]
+            *parents, leaf = path.split("__")
+            for key in parents:
+                node = node[key]
+            node[leaf] = value
+        return tampered
 
     def run(ev):
         return uk_stage_health_gate(
@@ -1613,6 +1639,22 @@ def test_road_fuel_level_gate_recomputes_the_level_from_the_vendored_row() -> No
     failing({**receipt, "factor": receipt["factor"] * 1.01}, "does not reproduce")
     failing({**receipt, "source_record_id": "elsewhere"}, "declared row")
     failing({**receipt, "other_fuels_share": 0.2}, "other-fuels share")
+    assert passed.details["household_mix"] == pytest.approx(mix)
+    petrol_after = receipt["mix"]["frame_after"]["petrol_spending"]
+    failing(
+        with_mix(frame_after__petrol_spending=petrol_after * 1.01),
+        "levelled petrol_spending total",
+    )
+    failing(
+        with_mix(fuels__diesel_spending__mix=mix["diesel_spending"] * 1.01),
+        "recomputed",
+    )
+    failing(
+        with_mix(nts__fuels__petrol_spending__household_paid_share=1.2),
+        "outside (0, 1]",
+    )
+    with pytest.raises(ValueError, match="mix must be an object"):
+        run({key: value for key, value in receipt.items() if key != "mix"})
     with pytest.raises(ValueError, match="road_fuel_level must be an object"):
         run(None)
 
@@ -1705,7 +1747,7 @@ def test_consumption_basis_gate_holds_every_spend_level_to_calendar_2024() -> No
     )
     failing(
         lambda e: e["energy_pricing"]["level"].update(period_type="fiscal_year"),
-        "DESNZ energy level",
+        "energy level",
     )
     failing(lambda e: e["bus_pricing"].update(price_year=None), "bus fares")
     failing(lambda e: e["road_fuel_level"].update(period_value=2025), "road-fuel level")
@@ -2322,13 +2364,20 @@ def test_uc_take_up_gate_holds_each_family_type_to_dwp() -> None:
             "reachable_pools_caseload_after": realized,
         }
 
+    # 0.05 until microcosm#1418, and 0.055 after it: the savings follow-up
+    # (microcosm#1428) joins unmet pools instead of widening it. The caseload's
+    # was 0.12 for the SPI pay floor (uk-data#629) from María's ruling of
+    # 2026-10-29 until the pool joining brought every family type closer to
+    # DWP's count (her ruling of 2026-11-02). The reachable pools have a
+    # tolerance of their own (Vahid's review of #1426).
     parameters = {
         "stage": "uc_take_up",
         "check": "uc_take_up",
-        "maximum_caseload_deviation": 0.05,
+        "maximum_caseload_deviation": 0.055,
+        "maximum_reachable_pool_deviation": 0.055,
     }
 
-    def gate(families, **counts):
+    def gate(families, parameters=parameters, **counts):
         return uk_stage_health_gate(
             evidence={
                 "stage": "uc_take_up",
@@ -2349,18 +2398,32 @@ def test_uc_take_up_gate_holds_each_family_type_to_dwp() -> None:
     assert _passed(gate(good))
     # A reporter not claiming, or a unit outside the draw changed, fails.
     assert not gate(good, reporters=1).passed
-    assert not gate(good, outside="<10").passed
+    assert not gate(good, outside="<3").passed
     # The reachable pools miss DWP's count by more than the tolerance.
     assert not gate(
-        {**good, "SINGLE": family(3_000.0, 3_300.0, 3_020.0, 2_500.0, 2_700.0)}
+        {**good, "SINGLE": family(3_000.0, 3_300.0, 3_020.0, 2_500.0, 2_900.0)}
+    ).passed
+    # The pools keep their own tolerance: 8% off fails even where the caseload's
+    # allows more.
+    assert not gate(
+        {**good, "SINGLE": family(3_000.0, 3_300.0, 3_020.0, 2_500.0, 2_700.0)},
+        parameters={**parameters, "maximum_caseload_deviation": 0.12},
     ).passed
     # The family type moves further from DWP than before.
     assert not gate(
         {**good, "LONE_PARENT": family(2_100.0, 1_400.0, 1_100.0, 0.0, 0.0)}
     ).passed
-    # A caseload resting on fewer than ten sources cannot be checked: it is
+    # A caseload at DWP's before the redraw may end up to 0.055 of DWP's count
+    # from it after, not 0.1.
+    assert _passed(
+        gate({**good, "SINGLE": family(3_000.0, 3_000.0, 2_850.0, 2_500.0, 2_510.0)})
+    )
+    assert not gate(
+        {**good, "SINGLE": family(3_000.0, 3_000.0, 2_700.0, 2_500.0, 2_510.0)}
+    ).passed
+    # A caseload resting on fewer than three sources cannot be checked: it is
     # flagged, never failed (María's ruling of 2026-10-26); one missing fails.
-    thin = gate({**good, "SINGLE": family(3_000.0, "<10", 1.0, 0.0, 0.0)})
+    thin = gate({**good, "SINGLE": family(3_000.0, "<3", 1.0, 0.0, 0.0)})
     assert thin.passed, thin.failures
     assert thin.details["family_types_unchecked_small_cells"] == ["SINGLE"]
     assert gate(good).details["family_types_unchecked_small_cells"] == []
@@ -2394,6 +2457,10 @@ def test_spi_benefit_coherence_gate_holds_the_structural_zeros() -> None:
                 column: {"rows_differing_from_twin_after": 0}
                 for column in parameters["restored_columns"]
             },
+            "restored_within_earnings_limit": {
+                column: {"rows_breaking_rule_after": 0}
+                for column in parameters["restored_within_earnings_limit_columns"]
+            },
             "benefits_in_own_right": {"mismatches_after": 0, "spi_rows_changed": 2},
             "universal_credit_take_up": {
                 "reporters_not_claiming": 0,
@@ -2422,6 +2489,14 @@ def test_spi_benefit_coherence_gate_holds_the_structural_zeros() -> None:
     broken.append(payload)
     payload = evidence()
     payload["restored"]["iidb_reported"]["rows_differing_from_twin_after"] = 2
+    broken.append(payload)
+    payload = evidence()
+    payload["restored_within_earnings_limit"]["esa_contrib_reported"][
+        "rows_breaking_rule_after"
+    ] = 1
+    broken.append(payload)
+    payload = evidence()
+    del payload["restored_within_earnings_limit"]["jsa_contrib_reported"]
     broken.append(payload)
     payload = evidence()
     payload["benefits_in_own_right"]["mismatches_after"] = 1
@@ -2763,13 +2838,13 @@ def test_property_purchases_gate_holds_each_kind_to_hmrc_within_the_contract() -
     )
 
 
-def test_property_purchases_gate_flags_a_kind_on_fewer_than_ten_buyers() -> None:
-    """A kind whose buyers rest on fewer than ten sources prints "<10": it is
+def test_property_purchases_gate_flags_a_kind_on_fewer_than_three_buyers() -> None:
+    """A kind whose buyers rest on fewer than three sources prints "<3": it is
     flagged unchecked, never failed (María's ruling of 2026-10-26)."""
     thin = _purchases_receipt()
     name = thin["kinds"][0]["property_type"]
     thin["kinds"][0].update(
-        fitted_transactions="<10", fitted_value="<10", value_shortfall_share="<10"
+        fitted_transactions="<3", fitted_value="<3", value_shortfall_share="<3"
     )
     result = _gate("uk_stage_property_purchases_fit", thin)
     assert result.passed, result.failures
@@ -2778,12 +2853,57 @@ def test_property_purchases_gate_flags_a_kind_on_fewer_than_ten_buyers() -> None
     assert clean.details["kinds_unchecked_small_cells"] == []
 
 
+def _hourly_pay_receipt(after=0.10, frs=0.15, below_floor=0) -> dict:
+    return {
+        "stage": "hmrc_spi_income_spine",
+        "employment_pay_floor": {
+            "hourly_pay_check": {
+                "spi_drawn_employees": {
+                    "source_households": "30+",
+                    "below_minimum_wage_share_before": 0.37,
+                    "below_minimum_wage_share_after": after,
+                },
+                "frs_employees": {
+                    "source_households": "30+",
+                    "below_minimum_wage_share": frs,
+                },
+                "eligible_rows_below_their_floor_after": below_floor,
+            }
+        },
+    }
+
+
+def test_spi_hourly_pay_gate_holds_drawn_employees_to_their_floor() -> None:
+    gate_id = "uk_stage_hmrc_spi_income_spine_hourly_pay"
+    passed = _gate(gate_id, _hourly_pay_receipt())
+    assert _passed(passed)
+    # The details give the verdicts, never the shares.
+    assert passed.details == {
+        "stage": "hmrc_spi_income_spine",
+        "check": "spi_hourly_pay",
+        "eligible_rows_below_their_floor_after": 0,
+        "share_judged": True,
+        "share_within_margin": True,
+    }
+    assert _passed(_gate(gate_id, _hourly_pay_receipt(after=0.17, frs=0.15)))
+    above = _gate(gate_id, _hourly_pay_receipt(after=0.18, frs=0.15))
+    assert "more often than FRS employees" in above.failures[0]
+    below_floor = _gate(gate_id, _hourly_pay_receipt(below_floor="<3"))
+    assert "below their pay floor" in below_floor.failures[0]
+    # A withheld share is not judged; the floor invariant still is.
+    withheld = _gate(gate_id, _hourly_pay_receipt(after="<3"))
+    assert _passed(withheld) and withheld.details["share_judged"] is False
+    missing = _gate(gate_id, {"stage": "hmrc_spi_income_spine"})
+    assert "no employment pay floor" in missing.failures[0]
+
+
 def _home_values_receipt() -> dict:
     regions = [f"E1200000{index}" for index in range(1, 10)] + ["W92000004"]
     return {
         "stage": "regional_home_values",
         "rows": 100,
-        "rows_rewritten_by_region": {region: 5 for region in regions},
+        # Counts as the receipt prints them (receipt_counts.rounded_count).
+        "rows_rewritten_by_region": {region: 10 for region in regions},
         "sources_at_cap": 0,
         "knots_basis_year": 2024,
         "ranking": {"rank_basis": "weighted_midpoint_within_frs_region"},
@@ -2797,10 +2917,10 @@ def _home_values_receipt() -> dict:
     [
         (lambda r: r["rows_rewritten_by_region"].pop("W92000004"), "rewrites regions"),
         (lambda r: r["rows_rewritten_by_region"].update(E12000007=0), "no row"),
-        (lambda r: r.update(rows=40), "more rows"),
+        (lambda r: r.update(rows=90), "more rows"),
         (lambda r: r.update(sources_at_cap=1), "value cap"),
         # A band past the limit fails as plainly as the count it stands for.
-        (lambda r: r.update(sources_at_cap="<10"), "value cap"),
+        (lambda r: r.update(sources_at_cap="<3"), "value cap"),
         (lambda r: r.update(knots_basis_year=2023), "basis year"),
         (lambda r: r["ranking"].update(rank_basis="national"), "ranking basis"),
         (lambda r: r.update(weighted_value_after=0.0), "not positive"),
@@ -2817,15 +2937,74 @@ def test_regional_home_values_gate_holds_the_ranking_contract(mutate, fragment) 
     assert any(fragment in failure for failure in result.failures), result.failures
 
 
-def test_regional_home_values_gate_flags_a_region_of_fewer_than_ten_rows() -> None:
-    """A region the receipt prints "<10" rewrote one to nine rows: not empty,
+def test_regional_home_values_gate_flags_a_region_of_fewer_than_three_rows() -> None:
+    """A region the receipt prints "<3" rewrote one or two rows: not empty,
     and flagged rather than failed (María's ruling of 2026-10-26)."""
     receipt = _home_values_receipt()
-    receipt["rows_rewritten_by_region"]["W92000004"] = "<10"
+    receipt["rows_rewritten_by_region"]["W92000004"] = "<3"
     result = _gate("uk_stage_regional_home_values_ranking", receipt)
     assert result.passed, result.failures
-    assert result.details["regions_rewritten_under_ten"] == ["W92000004"]
+    assert result.details["regions_rewritten_under_floor"] == ["W92000004"]
     assert result.details["sources_at_cap_unchecked"] is False
+
+
+def test_a_printed_count_stands_for_exactly_the_counts_that_print_as_it() -> None:
+    """Up to 20,000, the bounds the gates read a printed count at are the
+    lowest and highest counts that print as it, so an edge one count too wide
+    or too narrow fails: 10 stands for 10 to 14, and 1,000 for 995 to 1,049
+    (the fourth review of microcosm#1422)."""
+    from microcosm.build.uk_runtime.receipt_counts import rounded_count
+    from microcosm.build.uk_runtime.stage_health import _count_bounds
+
+    stands_for: dict[int | str, list[int]] = {}
+    # Past 20,000 so the last printed count's counts are all in.
+    for count in range(20_050):
+        stands_for.setdefault(rounded_count(count), []).append(count)
+    wrong = {
+        printed: (_count_bounds(printed), (min(counts), max(counts)))
+        for printed, counts in stands_for.items()
+        if not (isinstance(printed, int) and printed > 20_000)
+        and _count_bounds(printed) != (min(counts), max(counts))
+    }
+    assert wrong == {}
+    assert _count_bounds(10) == (10, 14)
+    assert _count_bounds(1000) == (995, 1049)
+
+
+def test_regional_home_values_gate_reads_a_banded_count_at_its_bounds() -> None:
+    """A region the receipt prints "3-9" rewrote three to nine rows: not empty,
+    above the floor, so not flagged, and read at three in the sum check. A
+    rounded count is read at the lowest count that rounds to it, and the
+    stage's own row count at the highest."""
+    gate_id = "uk_stage_regional_home_values_ranking"
+    receipt = _home_values_receipt()
+    receipt["rows_rewritten_by_region"]["W92000004"] = "3-9"
+    result = _gate(gate_id, receipt)
+    assert result.passed, result.failures
+    assert result.details["regions_rewritten_under_floor"] == []
+    # Nine regions printed 10 (ten rows at the least, as five to nine print
+    # "3-9") and one of at least three: 93 rows at the least, more than a stage
+    # printed 80 (84 at the most) carries, and no more than one printed 90.
+    receipt["rows"] = 80
+    assert "more rows" in _gate(gate_id, receipt).failures[0]
+    receipt["rows"] = 90
+    assert _gate(gate_id, receipt).passed
+    # Ten regions of 15 rows print 20 each; a stage of 150 rows is not short.
+    rounded = _home_values_receipt()
+    rounded["rows_rewritten_by_region"] = {
+        region: 20 for region in rounded["rows_rewritten_by_region"]
+    }
+    rounded["rows"] = 150
+    assert _gate(gate_id, rounded).passed
+    # A stage whose own count is banded is read at the band's top.
+    small = _home_values_receipt()
+    small["rows_rewritten_by_region"] = {
+        region: "<3" for region in small["rows_rewritten_by_region"]
+    }
+    small["rows"] = 20
+    assert _gate(gate_id, small).passed
+    small["rows"] = "3-9"
+    assert "more rows" in _gate(gate_id, small).failures[0]
 
 
 def _legacy_closure_receipt() -> dict:
@@ -2843,8 +3022,8 @@ def _legacy_closure_receipt() -> dict:
             "jsa_income": {
                 "rate": 0.6,
                 "rate_source": "all_households",
-                "rate_unreachable": "<10",
-                "support": "<10",
+                "rate_unreachable": "<3",
+                "support": "<3",
             },
         },
     }
@@ -2855,7 +3034,7 @@ def test_legacy_closure_gate_reads_what_the_receipt_prints() -> None:
     assert _passed(_gate(gate_id, _legacy_closure_receipt()))
     # A thin drawn cohort prints its share withheld.
     withheld = _legacy_closure_receipt()
-    withheld["great_britain_weighted_share_claiming_at_closure"] = "<10"
+    withheld["great_britain_weighted_share_claiming_at_closure"] = "<3"
     flagged = _gate(gate_id, withheld)
     assert _passed(flagged)
     # What it could not read is flagged (María's ruling of 2026-10-26).
@@ -3045,7 +3224,7 @@ def test_excise_quantities_gate_recomputes_every_level_from_the_vendored_rows(
         "volume weights",
     )
     failing(
-        lambda e, s: s[tobacco]["frame"].update(draws_outside_unit_interval="<10"),
+        lambda e, s: s[tobacco]["frame"].update(draws_outside_unit_interval="<3"),
         "left [0, 1]",
     )
     failing(
@@ -3056,9 +3235,9 @@ def test_excise_quantities_gate_recomputes_every_level_from_the_vendored_rows(
         lambda e, s: s[tobacco]["donor"].update(total_beside_lines=0.02),
         "beside",
     )
-    # A residual withheld for resting on under ten donors is under the ceiling.
+    # A residual withheld for resting on under three donors is under the ceiling.
     withheld = copy.deepcopy(shares)
-    withheld[tobacco]["donor"]["total_beside_lines"] = "<10"
+    withheld[tobacco]["donor"]["total_beside_lines"] = "<3"
     flagged = run(receipt, withheld)
     assert flagged.passed
     assert flagged.details["residuals_unchecked_small_cells"] == [tobacco]
@@ -3168,7 +3347,7 @@ def test_gambling_participation_gate_recomputes_the_rates_and_checks_the_shares(
     # A stake draw far off the seen households' mean, which the anchoring
     # would otherwise hide.
     failing(lambda r, e: lottery(r, e).update(amount_scale=3.0), "amount scale")
-    failing(lambda r, e: lottery(r, e).update(added_without_stake="<10"), "no stake")
+    failing(lambda r, e: lottery(r, e).update(added_without_stake="<3"), "no stake")
     failing(
         lambda r, e: lottery(r, e)["propensity"].update(positive_support="10-29"),
         "rest on",
@@ -3264,16 +3443,16 @@ def test_apprentice_gate_holds_the_draw_to_the_contract_rate() -> None:
 
 
 def test_apprentice_gate_flags_its_small_cells_without_failing() -> None:
-    """A "<10" figure is named unchecked, never failed (María's ruling, 10-26)."""
+    """A "<3" figure is named unchecked, never failed (María's ruling, 10-26)."""
 
     gate_id = "uk_stage_frs_person_draws_apprentices"
     thin_flags = _gate(
         gate_id,
         _apprentice_receipt(
-            flagged_support="<10",
-            realized_mass="<10",
-            realization_deviation="<10",
-            implied_relief="<10",
+            flagged_support="<3",
+            realized_mass="<3",
+            realization_deviation="<3",
+            implied_relief="<3",
         ),
     )
     assert _passed(thin_flags)
@@ -3285,10 +3464,10 @@ def test_apprentice_gate_flags_its_small_cells_without_failing() -> None:
     thin_population = _gate(
         gate_id,
         _apprentice_receipt(
-            population_support="<10",
-            population_mass="<10",
-            target="<10",
-            realization_deviation="<10",
+            population_support="<3",
+            population_mass="<3",
+            target="<3",
+            realization_deviation="<3",
         ),
     )
     assert _passed(thin_population)
@@ -3304,7 +3483,7 @@ def test_apprentice_gate_flags_its_small_cells_without_failing() -> None:
     # What the receipt still prints is checked beside a withheld figure.
     off_rate = _gate(
         gate_id,
-        _apprentice_receipt(eligible_support="<10", eligible_mass="<10", rate=0.05992),
+        _apprentice_receipt(eligible_support="<3", eligible_mass="<3", rate=0.05992),
     )
     assert not off_rate.passed
     assert any("not the contract's" in failure for failure in off_rate.failures)
@@ -3345,3 +3524,25 @@ def test_apprentice_gate_is_a_population_fact_check() -> None:
     assert entry["population_fact_check"] is True
     assert entry["criticality"] == "release_blocking"
     assert entry["evidence_absent_blocks"] is True
+
+
+def test_assembled_stage_gates_read_only_stages_run_by_the_assembled_boundary() -> None:
+    """An assembled-phase stage gate reads only a stage that has run by the
+    assembled boundary; a later stage's gate belongs to the transferred phase,
+    or the boundary offers no receipt for it and the gate fails closed (the
+    re-review of microcosm#1422)."""
+    from microcosm.build import load_country_spec
+    from microcosm.build.uk_runtime.graph import UK_SPINE_ASSEMBLED_FINAL_STAGE
+
+    spec = load_country_spec("uk")
+    order = [stage.stage for stage in spec.sources.stages]
+    boundary = order.index(UK_SPINE_ASSEMBLED_FINAL_STAGE)
+    stage_gates = [entry for entry in spec.gates.gates if entry.gate == "stage_health"]
+    assert {str(entry.parameters["stage"]) for entry in stage_gates} <= set(order)
+    late = sorted(
+        entry.id
+        for entry in stage_gates
+        if entry.phase == "assembled"
+        and order.index(str(entry.parameters["stage"])) > boundary
+    )
+    assert late == []

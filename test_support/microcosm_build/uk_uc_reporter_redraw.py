@@ -76,6 +76,9 @@ class _StubFittedQRF:
     def __init__(self, record: dict[str, object]) -> None:
         self.record = record
 
+    def gate_outcomes(self) -> dict[str, str]:
+        return {"universal_credit_reported_amount": "cross_fitted"}
+
     def predict_from_uniforms(
         self, table: pd.DataFrame, *, quantiles, sign_uniforms
     ) -> pd.DataFrame:
@@ -91,11 +94,15 @@ class _StubFittedQRF:
 
 
 class _StubQRF:
-    def __init__(self, record: dict[str, object], *, seed: int) -> None:
+    def __init__(
+        self, record: dict[str, object], *, seed: int, gate_calibration: str
+    ) -> None:
         record["seed"] = seed
+        record["gate_calibration"] = gate_calibration
         self.record = record
 
-    def fit(self, table, predictors, targets, *, weights):
+    def fit(self, table, predictors, targets, *, weights, groups):
+        self.record["fit_groups"] = np.asarray(groups).copy()
         self.record["fit_table"] = table.copy()
         self.record["fit_index"] = table.index.tolist()
         self.record["fit_predictors"] = list(predictors)
@@ -108,8 +115,8 @@ class _StubQRFFactory:
     def __init__(self) -> None:
         self.record: dict[str, object] = {}
 
-    def __call__(self, *, seed: int):
-        return _StubQRF(self.record, seed=seed)
+    def __call__(self, *, seed: int, gate_calibration: str):
+        return _StubQRF(self.record, seed=seed, gate_calibration=gate_calibration)
 
 
 def _frame(*, child_only: bool = False):
@@ -171,6 +178,8 @@ def _frame(*, child_only: bool = False):
                     "employment_income": 10_000.0 + benunit_id + member,
                     "self_employment_income": 100.0 * member,
                     "savings_interest_income": 10.0,
+                    # ISA interest apart (microcosm#1360): gross is the sum.
+                    "individual_savings_account_interest_income": 0.0,
                     "dividend_income": 20.0,
                     "property_income": 30.0,
                     "other_investment_income": 40.0,
@@ -192,6 +201,7 @@ def _frame(*, child_only: bool = False):
                     "employment_income": 0.0,
                     "self_employment_income": 0.0,
                     "savings_interest_income": 0.0,
+                    "individual_savings_account_interest_income": 0.0,
                     "dividend_income": 0.0,
                     "property_income": 0.0,
                     "other_investment_income": 0.0,

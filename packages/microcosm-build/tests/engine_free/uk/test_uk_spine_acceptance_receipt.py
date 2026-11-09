@@ -103,9 +103,7 @@ def _apply_pending_roster_transformations(
     # read from the raw FRS tabs right after the HMRC leaves, before the SPI
     # channel clones the rows that carry them.
     assert "frs_annual_income_spells" not in roster
-    roster.insert(
-        roster.index("frs_hmrc_spine_leaves") + 1, "frs_annual_income_spells"
-    )
+    roster.insert(roster.index("frs_hmrc_spine_leaves") + 1, "frs_annual_income_spells")
     # SPI housing shell re-mint pending: the SPI households' housing is imputed
     # from their own incomes right after the SPI income chain.
     assert "spi_housing_shell" not in roster
@@ -139,9 +137,7 @@ def _apply_pending_roster_transformations(
     # microcosm#1095 re-mint pending: the Move to UC claim draw reads the final
     # legacy and UC receipts, after UC capital coherence (uk-data#534).
     assert "uc_legacy_closure_take_up" not in roster
-    roster.insert(
-        roster.index("uc_capital_coherence") + 1, "uc_legacy_closure_take_up"
-    )
+    roster.insert(roster.index("uc_capital_coherence") + 1, "uc_legacy_closure_take_up")
     # microcosm#1334 re-mint pending: the Universal Credit redraw reads the
     # post-SPI awards right after UC capital coherence, before the Move to UC
     # claim draw reads would_claim_uc.
@@ -152,9 +148,10 @@ def _apply_pending_roster_transformations(
     assert "child_benefit_take_up" not in roster
     roster.insert(roster.index("pension_credit_take_up") + 1, "child_benefit_take_up")
     # microcosm#1319 re-mint pending: the Carer's Allowance draw reads the
-    # post-SPI earnings, right after the Child Benefit redraw.
+    # post-SPI earnings, right after salary_sacrifice, whose converted pay
+    # its earnings test reads (microcosm#1095 B5).
     assert "carers_allowance_take_up" not in roster
-    roster.insert(roster.index("child_benefit_take_up") + 1, "carers_allowance_take_up")
+    roster.insert(roster.index("salary_sacrifice") + 1, "carers_allowance_take_up")
     # microcosm#1095 re-mint pending: the SPI benefit pass runs after the last
     # UC report writer and before every UC, PC and CB consumer.
     assert "spi_benefit_coherence" not in roster
@@ -172,10 +169,29 @@ def _apply_pending_roster_transformations(
     # stage, before the private-school attendance.
     assert "childcare_copy_take_up" not in roster
     roster.append("childcare_copy_take_up")
-    # microcosm#1095 re-mint pending: the stored private-school attendance is
-    # the last stage of the spine.
+    # microcosm#1095 re-mint pending: the stored private-school attendance
+    # follows the copies' childcare re-draw.
     assert "private_school_attendance" not in roster
     roster.append("private_school_attendance")
+    # microcosm#1415 re-mint pending: the ISA subscriptions follow it.
+    assert "isa_subscriptions" not in roster
+    roster.append("isa_subscriptions")
+    # PolicyEngine/uk-autumn-budget-dashboard-2026#316 re-mint pending: the
+    # company cars follow the SPI income stage, whose pay they carve.
+    assert "company_cars" not in roster
+    roster.insert(roster.index("hmrc_spi_income_spine") + 1, "company_cars")
+    # microcosm#1490 re-mint pending: the employment shell redraws the drawn
+    # rows' occupation from the pay the company cars carve.
+    assert "spi_employment_shell" not in roster
+    roster.insert(roster.index("company_cars") + 1, "spi_employment_shell")
+    # microcosm#1490 re-mint pending: the APS sub-major group is drawn within
+    # the major group the employment shell settles.
+    assert "aps_occupation" not in roster
+    roster.insert(roster.index("spi_employment_shell") + 1, "aps_occupation")
+    # microcosm#1428 re-mint pending: the self-employed's gross receipts run
+    # last.
+    assert "trading_allowance_receipts" not in roster
+    roster.append("trading_allowance_receipts")
     return tuple(roster)
 
 
