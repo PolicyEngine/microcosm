@@ -33,6 +33,7 @@ from microcosm.build.uk_runtime.cgt_support import (
     CGT_SUPPORT_MASS_CHANGE_REASON,
     CGT_SUPPORT_MAXIMUM_COPY_WEIGHT,
     CGT_SUPPORT_MINIMUM_GAIN_BAND_LOWER,
+    CGT_SUPPORT_ONE_COPY_CHECK,
     CGT_SUPPORT_PUBLISHED_TOP_BAND_TAXPAYERS,
     CGT_SUPPORT_SPLIT_OPERATION_KIND,
     CGT_SUPPORT_SPLIT_STAGE_NAME,
@@ -1121,7 +1122,8 @@ def test_split_records_pool_exhaustion_and_empty_bands_without_refusing():
 # the unselected ones and the selected ones left at one copy. The correction
 # is tried on the 64 heaviest of them, heaviest first, and spi_support's
 # shared fallback, whose row can be a root or copy, runs only where none of
-# them can carry it.
+# them can carry it. The fallback does not make the one-copy check, so its
+# row can also be a one-copy household the check passed over.
 
 
 @dataclass(frozen=True)
@@ -1330,6 +1332,80 @@ def test_a_household_whose_correction_would_move_the_walk_is_passed_over(
     weights = np.asarray(result.frame.weights_for("household").values)
     assert weights[0] == below
     assert weights[1] == pytest.approx(41.2, rel=1e-12)
+
+
+def test_the_fallback_does_not_make_the_one_copy_check(monkeypatch):
+    # copy_rule names the one-copy check and that the shared fallback does
+    # not make it (microcosm#931). In both frames the one household the split
+    # leaves whole is selected at one copy and is the heaviest row, so where
+    # the check passes it over, the fallback's first candidate is that same
+    # household, and it gets the very weight the check refused. The weights
+    # are the rule before's bit for bit, since no household is unselected,
+    # and the rule rerun on the output divides a different set.
+    #
+    # The walk: the first household sits an ulp below its band's support
+    # mass of 40 (2 x 1.25 x 16) and the second, divided into two copies of
+    # 32.075, crosses. The corrected weight still counts one copy but reaches
+    # 40, where the walk rerun stops at it, so the rerun on the output misses
+    # the second's family.
+    below = float(np.nextafter(40.0, -np.inf))
+    frame = support_frame(
+        weights=[below, 64.15], wealth=[9.0, 8.0], incomes=[BAND_INCOMES[0]] * 2
+    )
+    result, call = _recorded_correction(monkeypatch, frame, {0: {250_000: 16.0}})
+
+    assert call.selected.tolist() == [True, True]
+    assert call.whole.tolist() == [0]
+    assert int(np.argmax(call.values)) == 0
+    corrected = _exact_total_correction(
+        call.values, target=call.target, correction_index=0
+    )
+    assert corrected is not None and corrected[0] >= 40.0
+    assert cgt_support_copy_counts([corrected[0]], clone_count=1).tolist() == [1]
+    (reselected,) = call.reselected
+    assert reselected.tolist() == [True, False]
+    assert _moved_rows(result, call) == [0]
+    weights = np.asarray(result.frame.weights_for("household").values)
+    assert weights[0] == corrected[0]
+    assert weights[1:].tolist() == [64.15 / 2] * 2
+    before, carried = _correction_before(call)
+    assert not carried
+    assert weights.tolist() == before.tolist()
+
+    # The count: all three are selected, and the 60 household, left at one
+    # copy, outweighs every copy of the other two. Its corrected weight lifts
+    # it above 60, where the rule counts two copies, so the check passes it
+    # over without a rerun of the walk, and the rerun on the output divides
+    # it, a family the stage never made.
+    frame = support_frame(
+        weights=[400.0, 268.7, 60.0],
+        wealth=[5.0, 6.0, 7.0],
+        incomes=[BAND_INCOMES[0]] * 3,
+    )
+    result, call = _recorded_correction(
+        monkeypatch,
+        frame,
+        {0: {250_000: 1_000.0}},
+        headroom=SCENARIO_HEADROOM,
+    )
+
+    assert call.selected.all()
+    assert call.whole.tolist() == [2]
+    assert int(np.argmax(call.values)) == 2
+    corrected = _exact_total_correction(
+        call.values, target=call.target, correction_index=2
+    )
+    assert corrected is not None
+    assert cgt_support_copy_counts([corrected[2]], clone_count=1).tolist() == [2]
+    assert call.reselected == ()
+    assert _moved_rows(result, call) == [2]
+    weights = np.asarray(result.frame.weights_for("household").values)
+    assert weights[2] == corrected[2]
+    household = result.frame.table("household")
+    assert household[CGT_SUPPORT_COPIES_COLUMN].tolist()[:3] == [7, 5, 1]
+    before, carried = _correction_before(call)
+    assert not carried
+    assert weights.tolist() == before.tolist()
 
 
 def test_a_one_copy_household_tied_with_the_heaviest_unselected_takes_it_first(
@@ -2064,7 +2140,10 @@ def test_operation_dictionary_restates_the_reviewed_design():
         "carries weight / copies, except where none of the 64 heaviest "
         "households left whole can carry the exact-total correction, when the "
         "shared fallback can put it on a root or copy, off weight / copies by "
-        "about one ulp of the total weight"
+        "about one ulp of the total weight; of those 64, a selected household "
+        "left at one copy can carry the correction only where its corrected "
+        "weight keeps its one copy and the walk's selection, a check the "
+        "fallback does not make"
     )
     assert payload["flag_column"] == HOUSEHOLD_IS_CGT_SUPPORT_COPY
     assert payload["copies_column"] == CGT_SUPPORT_COPIES_COLUMN
@@ -2260,8 +2339,10 @@ def test_packaged_manifest_declares_the_stage() -> None:
 
 
 def test_the_packaged_declarations_restate_the_copy_rule() -> None:
-    # The copy rule names its one exception identically in the code
-    # dictionary, sources.yaml and source_stages.json (microcosm#931).
+    # The copy rule names its one exception, and then the one-copy check and
+    # that the fallback does not make it, identically in the code
+    # dictionary, sources.yaml and source_stages.json, both clauses built on
+    # the cap (microcosm#931).
     ((_, payload),) = cgt_support_split_operation_parameters()
     stage = load_country_spec("uk").sources.stage_map()[CGT_SUPPORT_SPLIT_STAGE_NAME]
     (operation,) = stage.operations
@@ -2271,5 +2352,11 @@ def test_the_packaged_declarations_restate_the_copy_rule() -> None:
     (entry,) = [row for row in packaged["stages"] if row["stage"] == stage.stage]
     assert entry["operations"][0]["copy_rule"] == payload["copy_rule"]
     assert payload["copy_rule"].endswith(
-        "; every copy carries weight / copies, " + CGT_SUPPORT_EXACT_TOTAL_EXCEPTION
+        "; every copy carries weight / copies, "
+        + CGT_SUPPORT_EXACT_TOTAL_EXCEPTION
+        + "; "
+        + CGT_SUPPORT_ONE_COPY_CHECK
+    )
+    assert CGT_SUPPORT_ONE_COPY_CHECK.startswith(
+        f"of those {CGT_SUPPORT_CORRECTION_CANDIDATES}, "
     )
