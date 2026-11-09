@@ -446,6 +446,33 @@ def earnings_nodes(population, prefix, profile="central", tail="central"):
     ]
 
 
+def rent_nodes(population, prefix):
+    """The regional Census 2023 rent map (G8-x0 B), upstream of every rent reader.
+
+    Ranks run within each household region, so Auckland's rents take
+    Auckland's bands. The kernel keeps zero rent at zero and ranks positive
+    rents only, so owners stay at zero.
+    """
+    return [
+        node(
+            f"{prefix}.rent.map",
+            "transport.quantile_map@1",
+            population=population,
+            inputs=[slice_("household", ["rent", "household_region_code"])],
+            outputs=[owned("household", "rent", "float64", rewrite=True)],
+            params={
+                "entity": "household",
+                "column": "rent",
+                "component_column": "household_region_code",
+                "bands": select("rent_bands", "json", "map_bands"),
+                "bands_sha256": select("rent_bands", "sha256"),
+                "interpolation": select("rent_bands", "json", "interpolation"),
+            },
+            artifact_inputs=[edge("surface", "nz.facts.precal")],
+        ),
+    ]
+
+
 MEASUREMENT_ID = "ird_taxable_income_ty2027_v1"
 MEASURE_OUTPUTS = {
     "measure": "ird_taxable_income_proxy_cents",
@@ -679,6 +706,7 @@ def calibration_nodes(
             },
         ),
         *earnings_nodes(population, prefix, earnings_profile, earnings_tail),
+        *rent_nodes(population, prefix),
         node(
             f"{prefix}.encode.person",
             "concepts.encode@1",
@@ -894,12 +922,16 @@ def documents():
     hold["status"] = (
         "The VHF scenario selects this sibling declaration in its own normalization node."
     )
+    # A family already at identity keeps its own reason: d1982's liquid-asset
+    # disclosure reads the same in the hold-fixed sibling.
     hold["index_family_factors"] = {
-        name: {
+        name: entry
+        if entry.get("identity") is True
+        else {
             "identity": True,
             "reason": "The declared hold-fixed sensitivity holds this donor index family at factor one.",
         }
-        for name in normal["index_family_factors"]
+        for name, entry in normal["index_family_factors"].items()
     }
     support_definition = copy.deepcopy(read("atomic_geography_support"))
     modal = {
@@ -1249,7 +1281,7 @@ def documents():
     graph = {
         "schema_version": 1,
         "country": "nz",
-        "description": "The NZ transport declaration retains named pending money producers. The graph makes no estimate or publication claim.",
+        "description": "The NZ transport declaration names its pending outputs. The graph makes no estimate or publication claim.",
         "export_contract": "export_contract",
         "sources": [
             {"name": name, "codec": codec}
@@ -1269,7 +1301,10 @@ def documents():
         },
         "pending_outputs": [
             "G8-x income reconciliation evidence: the native-band report, omission-register and identity-receipt artifacts and the VSI, VEX and VPT run evidence that measurement_prefit requires (R2C-18)",
-            "Census rent and liquid-assets quantile producers",
+            # G8-x0: both money producers exist; these two gaps remain, and
+            # the CLI copies this list into every build status.
+            "An all-household New Zealand liquid-asset distribution (C2): S0's asset test reads d1982's frozen donor stock, so it stays an unpublishable diagnostic beside S1",
+            "The C1 rent ageing ruling: the Census 2023 rent bands hold 2023 levels",
         ],
     }
     add_evidence(graph)

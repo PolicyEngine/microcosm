@@ -12,15 +12,19 @@ import json
 import re
 from collections.abc import Mapping
 from datetime import date
-from decimal import Decimal, InvalidOperation
+from decimal import ROUND_HALF_EVEN, Decimal, InvalidOperation
 from fractions import Fraction
 
+import pandas as pd
 import pytest
+from hypothesis import given, settings
+from hypothesis import strategies as st
 
 from microcosm.build.money_normalization import (
     check_money_factor,
     money_column_rosters,
     money_concept_columns,
+    normalize_money_tables,
     normalized_column_families,
     resolve_money_rate,
     selected_money_factors,
@@ -190,6 +194,7 @@ def test_normalized_routes_follow_the_design_table_and_the_concept_schema():
         ("person", "rental_income"): "capital_income",
         ("person", "realized_capital_gains"): "capital_income",
         ("person", "private_pension_income"): "pensions",
+        ("person", "liquid_financial_assets"): "consumer_prices",
         ("household", "mortgage_interest"): "owner_housing_costs",
         ("household", "mortgage_principal"): "owner_housing_costs",
         ("household", "property_tax"): "owner_housing_costs",
@@ -198,16 +203,12 @@ def test_normalized_routes_follow_the_design_table_and_the_concept_schema():
     assert {key for key, (route, _) in rosters.items() if route != "normalized"} == {
         ("person", "employment_income"),
         ("household", "rent"),
-        ("person", "liquid_financial_assets"),
     }
     assert {route for route, _ in rosters.values()} == {"normalized", "quantile_mapped"}
     assert declaration["pending"] == {}
     assert rosters["person", "employment_income"][1][0].startswith("P1:")
     assert rosters["household", "rent"][1][0].startswith("C1:")
-    assert [item[:3] for item in rosters["person", "liquid_financial_assets"][1]] == [
-        "P3:",
-        "C2:",
-    ]
+    assert rosters["person", "liquid_financial_assets"] == ("normalized", ())
 
 
 def test_every_money_concept_surviving_create_is_routed_and_drop_is_not():
@@ -238,7 +239,14 @@ def test_every_family_uses_the_donor_factor_for_its_profile_with_a_disclosure():
         "profiles": ["low", "central", "high"],
         "central_profile": "central",
     }
-    for family, entry in declaration["index_family_factors"].items():
+    # consumer_prices is d1982's identity family; it carries no donor factor.
+    aged = {
+        family: entry
+        for family, entry in declaration["index_family_factors"].items()
+        if family != "consumer_prices"
+    }
+    assert len(aged) == 4
+    for family, entry in aged.items():
         assert entry["factors"] == {
             profile: f"donor_cy2024_to_ty2027_{profile}"
             for profile in ("low", "central", "high")
@@ -339,6 +347,7 @@ def test_scenario_knobs_select_their_own_donor_factor():
         profile, factors = selected_money_factors(declaration, scenario["knobs"])
         expected = {"V1": "low", "V2": "high"}.get(scenario["id"], "central")
         assert profile == expected, scenario["id"]
+        assert factors.pop("consumer_prices") is None, scenario["id"]
         assert set(factors.values()) == {f"donor_cy2024_to_ty2027_{expected}"}
 
 
@@ -503,11 +512,126 @@ def test_a_tax_year_factor_is_refused_on_donor_money(profile):
         check_money_factor(relabelled, _declaration())
 
 
-def test_preflight_names_exactly_the_two_pending_quantile_maps():
-    """G8-r2c E maps P1 wages; only the rent and liquid-asset maps remain."""
+def test_every_money_column_has_a_producer():
+    """G8-x0 maps rent and converts liquid assets, so no money column waits."""
     spec = compose_module.load_transport_spec("nz")
-    gaps = compose_module._money_producer_gaps(spec)
-    assert [gap.split(" <- ")[0] for gap in gaps] == [
-        f"money column {name} awaits quantile map"
-        for name in ("household.rent", "person.liquid_financial_assets")
+    assert compose_module._money_producer_gaps(spec) == []
+
+
+_LIQUID = ("person", "liquid_financial_assets")
+_LIQUID_CENTS = ("person", "liquid_financial_assets_cents")
+#: Stored donor stocks: nonnegative, and small enough for int64 minor units.
+_STOCK = st.floats(min_value=0.0, max_value=1e12, allow_nan=False, allow_infinity=False)
+_STOCK_PROPERTY = settings(max_examples=200, deadline=None, database=None)
+
+
+def _converted_stock(values, declaration):
+    """``money.normalize``'s arithmetic on the liquid-asset column alone."""
+    rate, evidence = resolve_money_rate(declaration)
+    entry = declaration["index_family_factors"]["consumer_prices"]
+    assert entry["identity"] is True
+    return normalize_money_tables(
+        {"person": pd.DataFrame({"liquid_financial_assets": values}, dtype="float64")},
+        {**declaration, "columns": {"person": ["liquid_financial_assets"]}},
+        rate=rate,
+        rate_text=evidence["text"],
+        factors={"consumer_prices": {"identity": True, "reason": entry["reason"]}},
+    )
+
+
+@_STOCK_PROPERTY
+@given(values=st.lists(_STOCK, min_size=1, max_size=20))
+def test_property_the_d1982_stock_converts_once_and_rounds_half_even_to_cents(values):
+    arrays, (receipt,) = _converted_stock(values, _declaration())
+    expected = [
+        int(
+            (Decimal(repr(value)) * Decimal("1.654") * 100).to_integral_value(
+                rounding=ROUND_HALF_EVEN
+            )
+        )
+        for value in values
     ]
+    assert arrays[_LIQUID_CENTS].tolist() == expected
+    assert arrays[_LIQUID].tolist() == [
+        float(Fraction(cents, 100)) for cents in expected
+    ]
+    assert min(expected) >= 0
+    assert receipt["factor"]["identity"] is True
+    # The identity factor adds no second rounding after the conversion.
+    assert receipt["sum_after"] == receipt["sum_after_fx"]
+    assert receipt["factor_rounding_residual_minor_units"] == {
+        "numerator": 0,
+        "denominator": 1,
+    }
+
+
+def test_a_zero_stock_stays_exactly_zero():
+    arrays, _ = _converted_stock([0.0], _declaration())
+    assert arrays[_LIQUID_CENTS].tolist() == [0]
+    assert arrays[_LIQUID].tolist() == [0.0]
+
+
+@pytest.mark.parametrize("profile", ["low", "central", "high"])
+def test_the_d1982_stock_carries_no_factor_under_any_aging_profile(profile):
+    _, factors = selected_money_factors(_declaration(), {"aging_index": profile})
+    assert factors["consumer_prices"] is None
+
+
+@_STOCK_PROPERTY
+@given(values=st.lists(_STOCK, min_size=1, max_size=20))
+def test_property_the_hold_fixed_sibling_converts_the_stock_identically(values):
+    central = _declaration()
+    hold = validate_money_normalization(_load("money_normalization_hold_fixed.json"))
+    assert (
+        hold["index_family_factors"]["consumer_prices"]
+        == central["index_family_factors"]["consumer_prices"]
+    )
+    first, _ = _converted_stock(values, central)
+    second, _ = _converted_stock(values, hold)
+    assert first[_LIQUID_CENTS].tolist() == second[_LIQUID_CENTS].tolist()
+
+
+def test_the_d1982_disclosure_names_the_convention_and_its_limits():
+    entry = _declaration()["index_family_factors"]["consumer_prices"]
+    assert set(entry) == {"identity", "reason"}
+    for phrase in (
+        "d1982 option A (2026-10-26)",
+        "bank, stock and bond assets",
+        "this declaration's rate",
+        "factor one and no ageing",
+        "1 April 2026 snapshot as a convention",
+        "claims no valuation date or authenticated donor lineage",
+        "S1 turns the test off and runs beside it",
+        "claims no New Zealand calibration",
+        "unpublishable diagnostic under the D2 publication block",
+    ):
+        assert phrase in entry["reason"], phrase
+
+
+def test_the_d1982_stock_keeps_the_release_candidate_off():
+    """A release candidate reading the interim stock needs a new ruling first."""
+    reason = _declaration()["index_family_factors"]["consumer_prices"]["reason"]
+    assert "d1982" in reason
+    (terminal,) = [
+        node
+        for node in _load("transport_graph.json")["nodes"]
+        if node["id"] == "nz.gates.terminal"
+    ]
+    assert terminal["params"]["release_candidate"] is False
+
+
+def test_one_run_carries_the_d1982_diagnostic_and_s1_beside_it():
+    scenarios = _load("scenarios.json")
+    assert scenarios["central_knobs"]["asset_test"] == "on"
+    (s1,) = [row for row in scenarios["scenarios"] if row["id"] == "S1"]
+    assert s1["knobs"] == {"asset_test": "off"}
+
+
+def test_every_run_records_what_the_stock_and_the_bands_leave_open():
+    pending = _load("transport_graph.json")["pending_outputs"]
+    assert any(
+        item.startswith("An all-household New Zealand liquid-asset distribution (C2)")
+        and "unpublishable diagnostic beside S1" in item
+        for item in pending
+    )
+    assert any(item.startswith("The C1 rent ageing ruling") for item in pending)
