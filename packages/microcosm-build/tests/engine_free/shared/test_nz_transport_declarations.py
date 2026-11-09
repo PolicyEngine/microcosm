@@ -1175,7 +1175,12 @@ def test_the_rent_map_reads_the_region_and_precedes_the_encoder_on_every_branch(
             {"entity": "household", "columns": ["rent", "household_region_code"]}
         ]
         assert mapper["outputs"] == [
-            {"entity": "household", "column": "rent", "dtype": "float64", "rewrite": True}
+            {
+                "entity": "household",
+                "column": "rent",
+                "dtype": "float64",
+                "rewrite": True,
+            }
         ]
         assert mapper["artifact_inputs"] == [
             {"name": "surface", "producer": "nz.facts.precal", "artifact": "surface"}

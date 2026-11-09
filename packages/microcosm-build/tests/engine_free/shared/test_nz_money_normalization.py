@@ -552,7 +552,9 @@ def test_property_the_d1982_stock_converts_once_and_rounds_half_even_to_cents(va
         for value in values
     ]
     assert arrays[_LIQUID_CENTS].tolist() == expected
-    assert arrays[_LIQUID].tolist() == [float(Fraction(cents, 100)) for cents in expected]
+    assert arrays[_LIQUID].tolist() == [
+        float(Fraction(cents, 100)) for cents in expected
+    ]
     assert min(expected) >= 0
     assert receipt["factor"]["identity"] is True
     # The identity factor adds no second rounding after the conversion.

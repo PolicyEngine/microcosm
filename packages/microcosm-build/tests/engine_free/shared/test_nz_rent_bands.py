@@ -9,6 +9,8 @@ Invariants of ``rent_bands.json`` and of ``transport.quantile_map@1`` reading it
 * on any population the map keeps zero rent at zero, preserves order within a
   region, meets each band's share within the tied-block bound, changes nothing
   on a rerun, and equals ``quantile_map`` run region by region (Hypothesis);
+* the terminal support gate reads each region's bands from the map's own
+  declaration, and its node slices the component column;
 * the published counts compile from the pinned feed to the same shares, and the
   national Pareto alpha re-derives from the national counts.
 
@@ -34,7 +36,9 @@ from hypothesis import strategies as st
 from microcosm.build.ledger_artifact import load_ledger_consumer_artifact
 from microcosm.build.ledger_targets import compile_ledger_target_references
 from microcosm.build.tail_estimators import grouped_pareto_mle
+from microcosm.build.transport import compose
 from microcosm.build.transport.artifact_types import TARGET_SURFACE_TYPE
+from microcosm.build.transport.evidence_contract import quantile_support
 from microcosm.build.transport.population_kernels import (
     TRANSPORT_QUANTILE_MAP,
     _surface_bands,
@@ -217,7 +221,9 @@ def test_the_declared_regions_are_the_geography_supports_regions():
 
 def test_each_band_reference_is_a_distinct_active_household_count_row():
     rows = {row["name"]: row for row in _rent_rows()}
-    references = [band["reference"] for region in ALL_REGIONS for band in _component(region)]
+    references = [
+        band["reference"] for region in ALL_REGIONS for band in _component(region)
+    ]
     assert len(references) == len(set(references)) == 133
     assert set(references) == set(rows)
     for row in rows.values():
@@ -233,9 +239,21 @@ def test_each_band_reference_is_a_distinct_active_household_count_row():
 def test_the_zero_count_merges_are_the_three_published_empty_bands():
     document = _document()
     assert document["zero_count_merges"] == [
-        {"region": "12", "zero_count_reference": _name("12", 7), "kept": _name("12", 6)},
-        {"region": "99", "zero_count_reference": _name("99", 7), "kept": _name("99", 6)},
-        {"region": "99", "zero_count_reference": _name("99", 8), "kept": _name("99", 6)},
+        {
+            "region": "12",
+            "zero_count_reference": _name("12", 7),
+            "kept": _name("12", 6),
+        },
+        {
+            "region": "99",
+            "zero_count_reference": _name("99", 7),
+            "kept": _name("99", 6),
+        },
+        {
+            "region": "99",
+            "zero_count_reference": _name("99", 8),
+            "kept": _name("99", 6),
+        },
     ]
     assert [(band["lower"], band["upper"]) for band in _component("12")[-2:]] == [
         (31200.0, 41600.0),
@@ -286,7 +304,10 @@ def surface(tmp_path_factory):
     """A compiled target surface holding the published counts under the real names."""
     names = [band["reference"] for region in ALL_REGIONS for band in _component(region)]
     document = reference_document(
-        [reference_row(name, entity="household", measure="households") for name in names]
+        [
+            reference_row(name, entity="household", measure="households")
+            for name in names
+        ]
     )
     facts = write_facts(
         tmp_path_factory.mktemp("rent-facts") / "facts.jsonl",
@@ -320,7 +341,11 @@ def _frame(rents, regions, weights):
             ),
         },
         _SCHEMA,
-        {"household": Weights(np.asarray(weights, dtype=np.float64), WeightKind.DESIGN)},
+        {
+            "household": Weights(
+                np.asarray(weights, dtype=np.float64), WeightKind.DESIGN
+            )
+        },
     )
 
 
@@ -416,7 +441,9 @@ def test_property_rerunning_the_map_changes_nothing(surface, population):
 
 @_PROPERTY
 @given(population=populations())
-def test_property_the_kernel_equals_quantile_map_run_region_by_region(surface, population):
+def test_property_the_kernel_equals_quantile_map_run_region_by_region(
+    surface, population
+):
     rents, regions, weights = population
     expected = np.empty(len(rents), dtype=np.float64)
     interpolation = _document()["interpolation"]
@@ -429,6 +456,32 @@ def test_property_the_kernel_equals_quantile_map_run_region_by_region(surface, p
             interpolation=interpolation,
         )
     assert _mapped(rents, regions, weights, surface).tobytes() == expected.tobytes()
+
+
+def test_the_support_gate_reads_each_regions_bands_from_the_map():
+    """The terminal support gate checks a rent against its own region's bands."""
+    spec = compose.load_transport_spec("nz")
+    (row,) = [
+        row
+        for row in compose._support_roster(spec)["columns"]
+        if (row["entity"], row["column"]) == ("household", "rent")
+    ]
+    params = row["producer_params"]
+    assert params["component_column"] == "household_region_code"
+    support = quantile_support(params["bands"], params["interpolation"])
+    assert set(support.components) == set(ALL_REGIONS)
+    for region in ALL_REGIONS:
+        expected = tuple((band["lower"], band["upper"]) for band in _component(region))
+        assert support.intervals(region) == (expected, expected)
+    assert support.intervals("not a region") is None
+    # The kernel refuses a component column the support node doesn't slice.
+    (node,) = [
+        node
+        for node in _document("transport_graph.json")["nodes"]
+        if node["id"] == "nz.evidence.support"
+    ]
+    (household,) = [item for item in node["inputs"] if item["entity"] == "household"]
+    assert {"rent", "household_region_code"} <= set(household["columns"])
 
 
 def test_one_renter_in_a_region_takes_that_regions_median_band(surface):
@@ -489,7 +542,9 @@ def test_the_compiled_surface_gives_each_region_its_published_shares(artifact):
     references = parse_reference_document(
         {"country": "nz", "target_references": _rent_rows()}, country="nz"
     )
-    registry = compile_ledger_target_references(artifact.facts, references, country="nz")
+    registry = compile_ledger_target_references(
+        artifact.facts, references, country="nz"
+    )
     bands = _surface_bands(
         _document()["map_bands"], SimpleNamespace(registry=registry), unit="household"
     )
