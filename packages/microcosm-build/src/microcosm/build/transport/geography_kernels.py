@@ -281,6 +281,8 @@ class GeographySupportFromFactsKernel(KernelBase):
             sys.modules[__name__],
             atomic_geography_module,
             target_kernels,
+            target_kernels.reference_profiles_module,
+            target_kernels.reference_selection_module,
             graph_inputs,
             registry_module,
             hierarchy_module,

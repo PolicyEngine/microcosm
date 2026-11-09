@@ -54,6 +54,7 @@ from . import (
     national_sampling,
     private_rent_localisation,
     property_localisation,
+    rfdr_area_layer,
     rowwise_dataset,
 )
 from .geography_ladder import (
@@ -104,6 +105,9 @@ _BRMA_AREA_COLUMNS = ("atomic_area_system", "brma", "lsoa_code", "oa_code", "reg
 PRIVATE_RENT_LOCALISATION_MODES = (
     private_rent_localisation.PRIVATE_RENT_LOCALISATION_MODES
 )
+RFDR_LOCALISATION_MODES = rfdr_area_layer.RFDR_LOCALISATION_MODES
+#: Household columns the post-geography RFDR node reads (microcosm#1418).
+_RFDR_AREA_COLUMNS = ("atomic_area_code", "atomic_area_system")
 #: Household columns the post-geography private-rent node reads (microcosm#1262).
 _PRIVATE_RENT_COLUMNS = (
     "brma",
@@ -579,6 +583,11 @@ class UKPropertyBandKernel(_PopulationKernel):
         mix = property_localisation.load_band_mix(
             Path(context.sources[property_localisation.BAND_MIX_SOURCE]).read_bytes()
         )
+        scotland_mix = property_localisation.load_scotland_band_mix(
+            Path(
+                context.sources[property_localisation.SCOTLAND_BAND_MIX_SOURCE]
+            ).read_bytes()
+        )
         band_dtype = household["council_tax_band"].dtype
         tenure = household["tenure_type"].to_numpy()
         new_band, receipt = property_localisation.localise_bands(
@@ -587,13 +596,22 @@ class UKPropertyBandKernel(_PopulationKernel):
             band=household["council_tax_band"].to_numpy(),
             tenure_type=tenure,
             mix=mix,
+            scotland_mix=scotland_mix,
+            local_authority_code=household["local_authority_code"].to_numpy(),
         )
         lsoa = household["lsoa_code"].to_numpy().astype(str)
-        rewritten = (
-            np.char.startswith(lsoa, "E") | np.char.startswith(lsoa, "W")
-        ) & property_localisation.owner_mask(tenure)
+        area = household["local_authority_code"].to_numpy().astype(str)
+        owner = property_localisation.owner_mask(tenure)
+        england_wales = np.char.startswith(lsoa, "E") | np.char.startswith(lsoa, "W")
+        scotland = np.char.startswith(area, "S12") & ~england_wales
+        # Each mix is monotone within its area: an LSOA in England and Wales,
+        # a council area in Scotland.
         violations = property_localisation.monotone_violations(
-            u[rewritten], new_band[rewritten], lsoa[rewritten]
+            u[england_wales & owner],
+            new_band[england_wales & owner],
+            lsoa[england_wales & owner],
+        ) + property_localisation.monotone_violations(
+            u[scotland & owner], new_band[scotland & owner], area[scotland & owner]
         )
         if violations:
             raise ValueError("Property band draws are not monotone in the uniform.")
@@ -608,6 +626,7 @@ class UKPropertyBandKernel(_PopulationKernel):
                 **receipt,
                 "monotone_violations": violations,
                 "band_mix_sha256": mix.source_sha256,
+                "scotland_band_mix_facts_sha256": scotland_mix.source_sha256,
             },
         )
 
@@ -695,6 +714,58 @@ class UKBRMAAreaKernel(_PopulationKernel):
                     if grain != "changed"
                 },
                 "rows_changed": rounded_count(counts["changed"]),
+                "layer_sha256": hashlib.sha256(payload).hexdigest(),
+                "method": layer.method,
+            },
+        )
+
+
+class UKRFDRAreaKernel(_PopulationKernel):
+    """Set each placed household's Rural Fuel Duty Relief flag off its output area.
+
+    microcosm#1418: policyengine-uk relieves a household's petrol and diesel
+    duty when ``in_rural_fuel_duty_relief_area`` is true. The committed layer
+    lists the Great Britain output areas in the scheme (HMRC Notice 2001's
+    islands, post town and postcode districts, by the ONS postcode lookup), so
+    a clone in one of them carries the flag. Northern Ireland has no area in
+    the scheme.
+    """
+
+    ref = "uk.full.geography.rfdr@1"
+    capabilities = Capabilities(
+        determinism=Determinism.DETERMINISTIC, numeric=Numeric.PLATFORM_BITWISE
+    )
+
+    def implementation_hash(self) -> str:
+        return source_hash(type(self), rfdr_area_layer)
+
+    def run(self, context: KernelContext) -> KernelResult:
+        household = context.tables["household"]
+        payload = Path(
+            context.sources[rfdr_area_layer.RFDR_AREA_LAYER_SOURCE]
+        ).read_bytes()
+        layer = rfdr_area_layer.load_rfdr_area_layer(payload)
+        strict = bool(context.params.get("strict_flags", True))
+        flags, counts = rfdr_area_layer.area_flags(
+            layer=layer,
+            area_system=household["atomic_area_system"].to_numpy(),
+            area_code=household["atomic_area_code"].to_numpy(),
+            require_flagged=strict,
+        )
+        index = pd.Index(household["household_id"], name="household_id")
+        column = rfdr_area_layer.RFDR_COLUMN
+        return KernelResult(
+            columns={
+                ("household", column): pd.Series(flags, index=index, name=column),
+            },
+            receipt={
+                "rows_by_system": {
+                    system: rounded_count(count)
+                    for system, count in sorted(counts.items())
+                    if system != "flagged"
+                },
+                "rows_flagged": rounded_count(counts["flagged"]),
+                "zero_flag_refusal": strict,
                 "layer_sha256": hashlib.sha256(payload).hexdigest(),
                 "method": layer.method,
             },
@@ -937,6 +1008,7 @@ def append_uk_population_nodes(
     property_localisation_mode: str = "none",
     brma_localisation_mode: str = "none",
     private_rent_localisation_mode: str = "none",
+    rfdr_localisation_mode: str = "none",
     full_scale: bool = True,
 ) -> Graph:
     """Compose sampling → replication → identity → assignment → derivation → gate.
@@ -987,6 +1059,10 @@ def append_uk_population_nodes(
         )
     if private_rent_localisation_mode != "none" and brma_localisation_mode != "area":
         raise ValueError("Private rents from the lists need the area BRMAs.")
+    if rfdr_localisation_mode not in RFDR_LOCALISATION_MODES:
+        raise ValueError(f"RFDR localisation must be one of {RFDR_LOCALISATION_MODES}.")
+    if rfdr_localisation_mode != "none" and geography_assignment != "atomic":
+        raise ValueError("Area RFDR flags need the atomic geography assignment.")
     national_sampling.validate_sample_fraction(sample_fraction, label="UK full build")
     national_sampling.validate_sample_seed(sample_seed, label="UK full build")
     common = {"time_period": str(time_period)}
@@ -1118,6 +1194,7 @@ def append_uk_population_nodes(
             property_localisation_mode=property_localisation_mode,
             brma_localisation_mode=brma_localisation_mode,
             private_rent_localisation_mode=private_rent_localisation_mode,
+            rfdr_localisation_mode=rfdr_localisation_mode,
             full_scale=full_scale,
         )
     nodes.extend(geography_nodes)
@@ -1190,6 +1267,7 @@ def _atomic_geography_nodes(
     property_localisation_mode: str = "none",
     brma_localisation_mode: str = "none",
     private_rent_localisation_mode: str = "none",
+    rfdr_localisation_mode: str = "none",
     full_scale: bool = True,
 ) -> tuple[tuple[Node, ...], tuple[SourceRef, ...]]:
     """Identity-keyed assignment on the shared operators (release path order)."""
@@ -1265,6 +1343,12 @@ def _atomic_geography_nodes(
         )
         brma_nodes = (*brma_nodes, *rent_nodes)
         brma_sources = (*brma_sources, *rent_sources)
+    rfdr_nodes: tuple[Node, ...] = ()
+    rfdr_sources: tuple[SourceRef, ...] = ()
+    if rfdr_localisation_mode == "area":
+        rfdr_nodes, rfdr_sources = _rfdr_area_nodes(
+            cells, common=common, strict=full_scale
+        )
     property_nodes: tuple[Node, ...] = ()
     property_sources: tuple[SourceRef, ...] = ()
     if property_localisation_mode == "price_paid":
@@ -1304,12 +1388,14 @@ def _atomic_geography_nodes(
         ),
         *property_sources,
         *brma_sources,
+        *rfdr_sources,
     )
     return (
         identity,
         *shared[:-1],
         local_authority,
         *brma_nodes,
+        *rfdr_nodes,
         *property_nodes,
         shared[-1],
         gate,
@@ -1331,7 +1417,7 @@ def _property_localisation_nodes(
             raise ValueError(
                 f"Property localisation needs the household column {column!r} on the pool."
             )
-    for column in ("constituency_code", "lsoa_code"):
+    for column in ("constituency_code", "lsoa_code", "local_authority_code"):
         if ("household", column) not in cells:
             raise ValueError(
                 f"Property localisation runs after geography derives {column!r}."
@@ -1404,7 +1490,16 @@ def _property_localisation_nodes(
         inputs=(
             Slice(
                 "household",
-                tuple(sorted({*_PROPERTY_BAND_COLUMNS, "lsoa_code", "tenure_type"})),
+                tuple(
+                    sorted(
+                        {
+                            *_PROPERTY_BAND_COLUMNS,
+                            "local_authority_code",
+                            "lsoa_code",
+                            "tenure_type",
+                        }
+                    )
+                ),
             ),
         ),
         outputs=(
@@ -1415,12 +1510,19 @@ def _property_localisation_nodes(
                 rewrite=True,
             ),
         ),
-        sources=(property_localisation.BAND_MIX_SOURCE,),
+        sources=(
+            property_localisation.BAND_MIX_SOURCE,
+            property_localisation.SCOTLAND_BAND_MIX_SOURCE,
+        ),
         params={**common, "method": property_localisation.METHOD_VERSION},
         artifact_inputs=(
             ArtifactInput("quantiles", value.id, "quantiles", PROPERTY_QUANTILE_TYPE),
         ),
-        description="Draw each England-and-Wales clone's council-tax band from its LSOA's VOA mix at the same uniform.",
+        description=(
+            "Draw each England-and-Wales owner clone's council-tax band from its "
+            "LSOA's VOA mix, and each Scottish owner clone's from its council "
+            "area's CTAXBASE mix, at the same uniform."
+        ),
     )
     sources = (
         SourceRef(
@@ -1432,6 +1534,12 @@ def _property_localisation_nodes(
             property_localisation.BAND_MIX_SOURCE,
             "raw-bytes-v1",
             "Per-LSOA cumulative VOA council-tax band shares.",
+        ),
+        SourceRef(
+            property_localisation.SCOTLAND_BAND_MIX_SOURCE,
+            "raw-bytes-v1",
+            "Per-council-area chargeable dwellings by council-tax band "
+            "(Scottish Government CTAXBASE), vendored from Chronicle.",
         ),
     )
     return (value, band), sources
@@ -1463,6 +1571,45 @@ def _brma_area_nodes(
         brma_area_layer.BRMA_AREA_LAYER_SOURCE,
         "raw-bytes-v1",
         "BRMA of every England-and-Wales LSOA and Scottish output area.",
+    )
+    return (node,), (source,)
+
+
+def _rfdr_area_nodes(
+    cells: dict, *, common: Mapping, strict: bool = True
+) -> tuple[tuple[Node, ...], tuple[SourceRef, ...]]:
+    """The microcosm#1418 area RFDR node, after the local-authority resolve.
+
+    ``strict`` (the build's full scale) keeps the refusal of a support system
+    none of whose households is flagged, as the private-rent node keeps its
+    strict cells; malformed codes refuse at every scale.
+    """
+
+    for column in _RFDR_AREA_COLUMNS:
+        if ("household", column) not in cells:
+            raise ValueError(
+                f"The area RFDR node needs the household column {column!r} on the pool."
+            )
+    column = rfdr_area_layer.RFDR_COLUMN
+    node = Node(
+        id="uk.full.geography.rfdr",
+        kernel=UKRFDRAreaKernel.ref,
+        population="uk.full.expand",
+        inputs=(Slice("household", _RFDR_AREA_COLUMNS),),
+        outputs=(Owned("household", column, "bool"),),
+        sources=(rfdr_area_layer.RFDR_AREA_LAYER_SOURCE,),
+        params={
+            **common,
+            "method": rfdr_area_layer.METHOD_VERSION,
+            "strict_flags": bool(strict),
+        },
+        description="Set each placed household's Rural Fuel Duty Relief flag off its area.",
+    )
+    cells[("household", column)] = "bool"
+    source = SourceRef(
+        rfdr_area_layer.RFDR_AREA_LAYER_SOURCE,
+        "raw-bytes-v1",
+        "Great Britain output areas in the Rural Fuel Duty Relief scheme.",
     )
     return (node,), (source,)
 
@@ -1553,6 +1700,7 @@ def register_uk_population_kernels(registry: KernelRegistry) -> None:
         UKPropertyBandKernel(),
         UKLocalAuthorityResolveKernel(),
         UKBRMAAreaKernel(),
+        UKRFDRAreaKernel(),
         UKPrivateRentKernel(),
         UKLocationDrawKernel(),
         UKGeographyMappingKernel(),

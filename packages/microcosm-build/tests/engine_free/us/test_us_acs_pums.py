@@ -158,6 +158,316 @@ def test_acs_loader_preserves_hours_and_allocation_without_filling_blanks(tmp_pa
     assert "weekly_hours_worked_before_lsr" not in tables["person"]
 
 
+_IMMIGRATION_SOURCES = {
+    "CIT": 5,
+    "YOEP": 2015,
+    "POBP": 303,
+    "HINS3": 2,
+    "HINS4": 1,
+    "HINS5": 2,
+    "HINS6": 2,
+    "HINS7": 2,
+    "COW": 5,
+    "SCHG": 15,
+    "ESR": 4,
+    "MIL": 2,
+}
+
+
+def _immigration_source(tmp_path: Path) -> AcsPumsSource:
+    household_zip = tmp_path / "immigration-hh.zip"
+    person_zip = tmp_path / "immigration-person.zip"
+    _write_csv_zip(household_zip, {"psam_husa.csv": [_household("imm", NP=2)]})
+    _write_csv_zip(
+        person_zip,
+        {
+            "psam_pusa.csv": [
+                _person("imm", 1, 20, **_IMMIGRATION_SOURCES),
+                # A US-born child: Census blanks for entry year, class of
+                # worker, school, employment and military service.
+                _person(
+                    "imm",
+                    2,
+                    25,
+                    AGEP=10,
+                    MAR=5,
+                    WAGP=None,
+                    **{
+                        **_IMMIGRATION_SOURCES,
+                        "CIT": 1,
+                        "YOEP": None,
+                        "POBP": 6,
+                        "HINS4": 2,
+                        "COW": None,
+                        "SCHG": None,
+                        "ESR": None,
+                        "MIL": None,
+                    },
+                ),
+            ]
+        },
+    )
+    return AcsPumsSource(household_zip, person_zip)
+
+
+def test_acs_loader_keeps_immigration_sources_and_renames_military_service(
+    tmp_path: Path,
+) -> None:
+    """microcosm#1020: ACS MIL (military service) must not land in the CPS
+    ``MIL`` (military health coverage) column the ASEC stage reads."""
+
+    tables, _ = load_acs_pums_tables(_immigration_source(tmp_path))
+    person = tables["person"]
+    assert "MIL" not in person
+    assert person["ACS_MIL"].iloc[0] == 2
+    for column, value in _IMMIGRATION_SOURCES.items():
+        assert person["ACS_MIL" if column == "MIL" else column].iloc[0] == value
+    # Census blanks stay missing; they are never read as a code or a zero.
+    for column in ("YOEP", "COW", "SCHG", "ESR", "ACS_MIL"):
+        assert pd.isna(person[column].iloc[1])
+    assert person["CIT"].tolist() == [5, 1]
+
+
+def test_acs_loader_leaves_absent_immigration_sources_absent(tmp_path: Path) -> None:
+    tables, _ = load_acs_pums_tables(_source(tmp_path))
+    # ESR is also a required work-experience column, so it is always loaded.
+    optional = [column for column in _IMMIGRATION_SOURCES if column != "ESR"]
+    assert "ESR" in tables["person"]
+    for column in (*optional, "ACS_MIL"):
+        assert column not in tables["person"]
+
+
+_WORK_DISABILITY_SOURCES = {
+    "WKWN": 26,
+    "DDRS": 2,
+    "DEAR": 1,
+    "DEYE": 2,
+    "DOUT": 2,
+    "DPHY": 2,
+    "DREM": 2,
+}
+
+
+def _work_disability_source(tmp_path: Path) -> AcsPumsSource:
+    household_zip = tmp_path / "work-disability-hh.zip"
+    person_zip = tmp_path / "work-disability-person.zip"
+    _write_csv_zip(household_zip, {"psam_husa.csv": [_household("wd", NP=2)]})
+    _write_csv_zip(
+        person_zip,
+        {
+            "psam_pusa.csv": [
+                _person(
+                    "wd", 1, 20, WKHP=20, WKL=1, FWKHP=0, **_WORK_DISABILITY_SOURCES
+                ),
+                # A 3-year-old: Census blanks for weeks worked and for the
+                # items asked from age 5 (DREM/DPHY/DDRS) and 15 (DOUT).
+                _person(
+                    "wd",
+                    2,
+                    25,
+                    AGEP=3,
+                    MAR=5,
+                    WAGP=None,
+                    **{
+                        **_WORK_DISABILITY_SOURCES,
+                        "WKWN": None,
+                        "DEAR": 2,
+                        "DREM": None,
+                        "DPHY": None,
+                        "DDRS": None,
+                        "DOUT": None,
+                    },
+                ),
+            ]
+        },
+    )
+    return AcsPumsSource(household_zip, person_zip)
+
+
+def test_acs_loader_keeps_weeks_worked_and_disability_items(tmp_path: Path) -> None:
+    """microcosm#1021: the local lane maps these natively; blanks stay blank."""
+
+    tables, _ = load_acs_pums_tables(_work_disability_source(tmp_path))
+    person = tables["person"]
+    for column, value in _WORK_DISABILITY_SOURCES.items():
+        assert person[column].iloc[0] == value
+    for column in ("WKWN", "DREM", "DPHY", "DDRS", "DOUT"):
+        assert pd.isna(person[column].iloc[1])
+    assert person["DEAR"].tolist() == [1, 2]
+    for column in ("weeks_worked", "is_disabled", "is_blind"):
+        assert column not in person
+
+
+def test_acs_loader_leaves_absent_work_disability_sources_absent(
+    tmp_path: Path,
+) -> None:
+    tables, _ = load_acs_pums_tables(_source(tmp_path))
+    # WKWN is also a required work-experience column, so it is always loaded.
+    optional = [column for column in _WORK_DISABILITY_SOURCES if column != "WKWN"]
+    assert "WKWN" in tables["person"]
+    for column in optional:
+        assert column not in tables["person"]
+
+
+def _receipt_source(tmp_path: Path) -> AcsPumsSource:
+    household_zip = tmp_path / "receipt-hh.zip"
+    person_zip = tmp_path / "receipt-person.zip"
+    _write_csv_zip(
+        household_zip,
+        {
+            "psam_husa.csv": [
+                _household("rcpt1", NP=2, FS=1),
+                # Group quarters: FS is a housing-unit item, blank here.
+                _household("rcpt2", NP=1, WGTP=0, TYPEHUGQ=3, TEN=None, FS=None),
+            ]
+        },
+    )
+    _write_csv_zip(
+        person_zip,
+        {
+            "psam_pusa.csv": [
+                _person("rcpt1", 1, 20, MAR=5, PAP=2_400),
+                # Under 15: PAP is a Census blank.
+                _person("rcpt1", 2, 25, AGEP=9, MAR=5, WAGP=None, PAP=None),
+                _person("rcpt2", 1, 38, MAR=5, PAP=0),
+            ]
+        },
+    )
+    return AcsPumsSource(household_zip, person_zip)
+
+
+def test_acs_loader_keeps_snap_recipiency_and_public_assistance(
+    tmp_path: Path,
+) -> None:
+    """microcosm#1022: the local lane anchors receives_snap on household FS and
+    records person PAP; blanks stay blank."""
+
+    tables, _ = load_acs_pums_tables(_receipt_source(tmp_path))
+    household = tables["household"]
+    assert household["FS"].iloc[0] == 1
+    assert pd.isna(household["FS"].iloc[1])
+    person = tables["person"]
+    assert person["PAP"].iloc[0] == 2_400
+    assert pd.isna(person["PAP"].iloc[1])
+    assert person["PAP"].iloc[2] == 0
+    for column in ("receives_snap", "receives_tanf"):
+        assert column not in household
+        assert column not in person
+
+
+def test_built_acs_frame_carries_fs_on_the_household_table(tmp_path: Path) -> None:
+    pytest.importorskip("microunit")  # sanctioned tax-unit constructor (us extra)
+    frame, _metadata = build_acs_pums_unit_frame(_receipt_source(tmp_path))
+    household = frame.table("household")
+    assert household["FS"].iloc[0] == 1
+    assert pd.isna(household["FS"].iloc[1])
+    assert "FS" not in frame.table("person")
+    assert "receives_snap" not in frame.table("spm_unit")
+
+
+def test_acs_loader_leaves_absent_receipt_sources_absent(tmp_path: Path) -> None:
+    tables, _ = load_acs_pums_tables(_source(tmp_path))
+    assert "FS" not in tables["household"]
+    assert "PAP" not in tables["person"]
+
+
+def _vehicle_source(tmp_path: Path) -> AcsPumsSource:
+    household_zip = tmp_path / "vehicle-hh.zip"
+    person_zip = tmp_path / "vehicle-person.zip"
+    _write_csv_zip(
+        household_zip,
+        {
+            "psam_husa.csv": [
+                _household("veh1", NP=1, VEH=6),
+                _household("veh2", NP=1, VEH=0),
+                # Group quarters: VEH is a housing-unit item, blank here.
+                _household("veh3", NP=1, WGTP=0, TYPEHUGQ=3, TEN=None, VEH=None),
+            ]
+        },
+    )
+    _write_csv_zip(
+        person_zip,
+        {
+            "psam_pusa.csv": [
+                _person("veh1", 1, 20, MAR=5),
+                _person("veh2", 1, 20, MAR=5),
+                _person("veh3", 1, 38, MAR=5),
+            ]
+        },
+    )
+    return AcsPumsSource(household_zip, person_zip)
+
+
+def test_acs_loader_keeps_vehicles_available(tmp_path: Path) -> None:
+    """microcosm#1022: the local lane records VEH as vehicle availability,
+    never as the owned count; the top code and the group-quarters blank are
+    kept as read."""
+
+    tables, _ = load_acs_pums_tables(_vehicle_source(tmp_path))
+    household = tables["household"].set_index("SERIALNO")
+    assert household.loc["veh1", "VEH"] == 6
+    assert household.loc["veh2", "VEH"] == 0
+    assert pd.isna(household.loc["veh3", "VEH"])
+    assert "household_vehicles_owned" not in household
+    assert "VEH" not in load_acs_pums_tables(_source(tmp_path))[0]["household"]
+
+
+def test_built_acs_frame_carries_veh_on_the_household_table(tmp_path: Path) -> None:
+    pytest.importorskip("microunit")  # sanctioned tax-unit constructor (us extra)
+    frame, _metadata = build_acs_pums_unit_frame(_vehicle_source(tmp_path))
+    household = frame.table("household").set_index("SERIALNO")
+    assert household.loc["veh1", "VEH"] == 6
+    assert pd.isna(household.loc["veh3", "VEH"])
+    assert "VEH" not in frame.table("person")
+    assert "household_vehicles_owned" not in household
+
+
+def _other_income_source(tmp_path: Path) -> AcsPumsSource:
+    household_zip = tmp_path / "other-income-hh.zip"
+    person_zip = tmp_path / "other-income-person.zip"
+    _write_csv_zip(household_zip, {"psam_husa.csv": [_household("oi", NP=2)]})
+    _write_csv_zip(
+        person_zip,
+        {
+            "psam_pusa.csv": [
+                _person("oi", 1, 20, OIP=4_800),
+                # A 10-year-old: Census blanks for the income items.
+                _person("oi", 2, 25, AGEP=10, MAR=5, WAGP=None, OIP=None),
+            ]
+        },
+    )
+    return AcsPumsSource(household_zip, person_zip)
+
+
+def test_acs_loader_keeps_other_income(tmp_path: Path) -> None:
+    """microcosm#1022: OIP is the local income pass's child-support predictor;
+    the loader keeps it raw and a Census blank stays blank."""
+
+    tables, _ = load_acs_pums_tables(_other_income_source(tmp_path))
+    person = tables["person"]
+    assert person["OIP"].iloc[0] == 4_800
+    assert pd.isna(person["OIP"].iloc[1])
+    assert "acs_other_income" not in person
+
+
+def test_acs_loader_leaves_an_absent_other_income_source_absent(
+    tmp_path: Path,
+) -> None:
+    tables, _ = load_acs_pums_tables(_source(tmp_path))
+    assert "OIP" not in tables["person"]
+
+
+def test_built_acs_frame_carries_the_immigration_sources(tmp_path: Path) -> None:
+    pytest.importorskip("microunit")  # sanctioned tax-unit constructor (us extra)
+    frame, _metadata = build_acs_pums_unit_frame(_immigration_source(tmp_path))
+    person = frame.table("person").sort_values("source_row_id")
+    assert "MIL" not in person
+    assert person["ACS_MIL"].iloc[0] == 2
+    assert person["CIT"].tolist() == [5, 1]
+    assert person["SPORDER"].tolist() == [1, 2]
+    assert frame.table("household")["SERIALNO"].tolist() == ["imm"]
+
+
 def test_acs_archive_to_native_inputs_carries_work_experience_on_every_row(tmp_path):
     household_zip = tmp_path / "work-hh.zip"
     person_zip = tmp_path / "work-person.zip"
@@ -169,9 +479,7 @@ def test_acs_archive_to_native_inputs_carries_work_experience_on_every_row(tmp_p
                 _person("work", 1, 20, WKWN=13),
                 # ACS retains the most recent job for up to five years.
                 _person("work", 2, 21, ESR=6, WKWN=None),
-                _person(
-                    "work", 3, 28, AGEP=16, ESR=6, OCCP=None, INDP=None, WKWN=None
-                ),
+                _person("work", 3, 28, AGEP=16, ESR=6, OCCP=None, INDP=None, WKWN=None),
                 _person("work", 4, 25, AGEP=15, MAR=5),
             ]
         },

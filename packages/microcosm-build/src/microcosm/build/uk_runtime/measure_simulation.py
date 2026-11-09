@@ -8,6 +8,7 @@ from collections.abc import Mapping
 from datetime import date
 from importlib import resources as importlib_resources
 from pathlib import Path
+from types import MappingProxyType
 from typing import Any
 
 import numpy as np
@@ -40,9 +41,13 @@ from microcosm.build.uk_runtime.frs_annual_income import (
     SELF_EMPLOYMENT_INCOME_ANNUAL_SHARE,
     SELF_EMPLOYMENT_INCOME_OTHER_SPELLS,
 )
+from microcosm.build.uk_runtime.frs_spine import ANNUITY_AND_TRUST_INCOME_COLUMN
 from microcosm.build.uk_runtime.high_value_homes import (
     high_value_home_mask,
     uk_high_value_home_thresholds,
+)
+from microcosm.build.uk_runtime.hmrc_company_car_statistics import (
+    company_car_dated_benefit_year,
 )
 from microcosm.build.uk_runtime.hmrc_income import UK_LOSS_RELIEF_TERMS
 from microcosm.build.uk_runtime.income_tax_rate_classes import (
@@ -80,7 +85,10 @@ from microcosm.build.uk_runtime.weighted_integrity import (
 )
 from microcosm.calibrate import TargetRegistry
 from microcosm.frame import Frame, MassChangeRecord, Weights
-from microcosm.frame.adapters.policyengine_uk import validate_uc_claimant_input
+from microcosm.frame.adapters.policyengine_uk import (
+    frame_isa_income_contract,
+    validate_uc_claimant_input,
+)
 
 _ENTITY_LINK = {"benunit": "person_benunit_id", "household": "person_household_id"}
 _ENTITY_ID = {
@@ -102,6 +110,9 @@ _CHILD_BENEFIT_CHILD = "is_child_or_qualifying_young_person_for_child_benefit"
 # Reserved, transient measurement names: using the model's input name here
 # would let a persisted base-period column bypass requested-year calculation.
 # Both the taxpayer mask and amount must use the same engine-year net gains.
+#: The engine variable a dated company car benefit reads
+#: (``company_car_benefit_2024``).
+_COMPANY_CAR_BENEFIT = "company_car_benefit"
 _CGT_CALIBRATION_VARIABLES = {
     "cgt_calibration_gains": "capital_gains",
     "cgt_calibration_tax": "capital_gains_tax",
@@ -250,17 +261,22 @@ def household_high_value_home(frame: Any, variable: str) -> np.ndarray:
     ).astype(float)
 
 
-#: Savings interest outside ISAs, from the frame's stored columns: the frame
-#: stores savings_interest_income gross, ISA interest included, with the ISA
-#: part in tax_free_savings_income. SPI Table 3.7 counts the recipients of
-#: taxable interest, so its count rows filter on this, read at the frame as a
-#: filter's stored columns are (microcosm#1095). A reserved name: a persisted
-#: column would bypass the difference.
+#: Savings interest outside ISAs, from the frame's stored columns. SPI Table
+#: 3.7 counts the recipients of taxable interest, so its count rows filter on
+#: this, read at the frame as a filter's stored columns are (microcosm#1095).
+#: The producer's additive layout stores it as savings_interest_income; a
+#: legacy gross frame (the enhanced FRS reference) stores gross interest with
+#: the ISA part in tax_free_savings_income (microcosm#1360). A reserved name: a
+#: persisted column would bypass the frame's contract.
 UK_SAVINGS_INTEREST_OUTSIDE_ISAS = "savings_interest_income_outside_isas"
 
 
+def _legacy_gross_savings(frame: Any) -> bool:
+    return frame_isa_income_contract(frame)["representation"] == "legacy_gross"
+
+
 def savings_interest_outside_isas(frame: Any) -> np.ndarray:
-    """Each person's stored gross savings interest less its ISA part, not below zero."""
+    """Each person's stored savings interest outside ISAs, not below zero."""
 
     person = frame.table("person")
     if "savings_interest_income" not in person:
@@ -268,13 +284,37 @@ def savings_interest_outside_isas(frame: Any) -> np.ndarray:
             f"{UK_SAVINGS_INTEREST_OUTSIDE_ISAS} needs the stored person column "
             "savings_interest_income."
         )
-    gross = person["savings_interest_income"].to_numpy(dtype=float)
-    tax_free = (
-        person["tax_free_savings_income"].to_numpy(dtype=float)
-        if "tax_free_savings_income" in person
-        else np.zeros(len(person))
-    )
-    return np.maximum(gross - tax_free, 0.0)
+    interest = person["savings_interest_income"].to_numpy(dtype=float)
+    if _legacy_gross_savings(frame) and "tax_free_savings_income" in person:
+        interest = interest - person["tax_free_savings_income"].to_numpy(dtype=float)
+    return np.maximum(interest, 0.0)
+
+
+#: SPI Table 3.7's other income (note 6): the engine's other_investment_income
+#: plus the purchased-annuity and trust payments that FRS rows keep in
+#: private_pension_income, where the engine's means tests, household income
+#: and tax read them (microcosm#1428). The frame stores each person's annuity
+#: and trust payments at the dataset's year
+#: (frs_spine.ANNUITY_AND_TRUST_INCOME_COLUMN), and their share of the stored
+#: private pension carries them to the measurement year on the engine's own
+#: private pension path. A frame without the column (the enhanced FRS
+#: reference) reads the engine's other income alone. A reserved name.
+UK_SPI_OTHER_INVESTMENT_INCOME = "other_investment_income_spi_concept"
+
+
+def annuity_and_trust_share(frame: Any) -> np.ndarray:
+    """Each person's annuity and trust share of their stored private pension."""
+
+    person = frame.table("person")
+    if (
+        ANNUITY_AND_TRUST_INCOME_COLUMN not in person
+        or "private_pension_income" not in person
+    ):
+        return np.zeros(len(person))
+    part = person[ANNUITY_AND_TRUST_INCOME_COLUMN].to_numpy(dtype=float)
+    pension = person["private_pension_income"].to_numpy(dtype=float)
+    share = np.divide(part, pension, out=np.zeros(len(person)), where=pension > 0)
+    return np.clip(share, 0.0, 1.0)
 
 
 #: The named terms the resolver computes: measures declared once as
@@ -284,8 +324,21 @@ def savings_interest_outside_isas(frame: Any) -> np.ndarray:
 #: count the year's profit after losses brought forward, which policyengine-uk
 #: keeps apart in loss_relief: the self-employment rows read that profit, and
 #: every row on HMRC's total income (its bands, its amounts, its regional
-#: filters) reads total income with that profit (microcosm#1095).
-UK_NAMED_TERMS: Mapping[str, str] = UK_LOSS_RELIEF_TERMS
+#: filters) reads total income with that profit (microcosm#1095). HMRC's
+#: employment income counts taxable benefits in kind, which policyengine-uk
+#: 2.165.0 keeps out of employment_income: the rows on it read pay plus
+#: benefits_in_kind, the company car and car fuel benefits, whose SPI-channel
+#: part the company_cars stage carves out of the tape's pay
+#: (PolicyEngine/uk-autumn-budget-dashboard-2026#316).
+UK_EMPLOYMENT_INCOME_WITH_BENEFITS_IN_KIND = "employment_income_with_benefits_in_kind"
+UK_NAMED_TERMS: Mapping[str, str] = MappingProxyType(
+    {
+        **UK_LOSS_RELIEF_TERMS,
+        UK_EMPLOYMENT_INCOME_WITH_BENEFITS_IN_KIND: (
+            "employment_income + benefits_in_kind"
+        ),
+    }
+)
 UK_SELF_EMPLOYMENT_INCOME_AFTER_LOSS_RELIEF = "self_employment_income_after_loss_relief"
 UK_TOTAL_INCOME_AFTER_LOSS_RELIEF = "total_income_after_loss_relief"
 
@@ -315,11 +368,19 @@ UK_HOUSEHOLD_ENERGY_MEASURES: Mapping[str, str] = {
 #: benefits and the engine's published tax keep reading current income.
 UK_ANNUAL_INCOME_MEASURES: Mapping[str, str] = {
     "employment_income_annual": "employment_income",
+    # Pay plus the company car and car fuel benefits, which HMRC's employment
+    # income counts (PolicyEngine/uk-autumn-budget-dashboard-2026#316).
+    "employment_income_with_benefits_in_kind_annual": (
+        UK_EMPLOYMENT_INCOME_WITH_BENEFITS_IN_KIND
+    ),
     "self_employment_income_after_loss_relief_annual": (
         UK_SELF_EMPLOYMENT_INCOME_AFTER_LOSS_RELIEF
     ),
     "private_pension_income_annual": "private_pension_income",
     "state_pension_annual": "state_pension",
+    # Private and State Pension together, the SPI area tables' pension income
+    # (microcosm#1418): the engine's sum of the two annual inputs.
+    "total_pension_income_annual": "total_pension_income",
     "total_income_after_loss_relief_annual": UK_TOTAL_INCOME_AFTER_LOSS_RELIEF,
     "income_tax_annual": "income_tax",
     # The HMRC and OBR income tax rows read the tax before the Winter Fuel
@@ -331,6 +392,11 @@ UK_ANNUAL_INCOME_MEASURES: Mapping[str, str] = {
         "income_tax_before_winter_fuel_payment_charge"
     ),
     "tax_band_annual": "tax_band",
+    # The savings income each rate charges, which HMRC's Table 2.6 taxes
+    # (microcosm#1418).
+    "basic_rate_savings_income_annual": "basic_rate_savings_income",
+    "higher_rate_savings_income_annual": "higher_rate_savings_income",
+    "add_rate_savings_income_annual": "add_rate_savings_income",
 }
 #: The inputs the annual simulation replaces at the measurement year: the
 #: engine's current amount times its annual share, plus its other spells,
@@ -359,6 +425,12 @@ _ANNUAL_INCOME_HELD_VARIABLES = (
     "carer_support_payment",
     "scottish_carer_supplement",
 )
+#: The engine prorates the company car and car fuel benefits by the share of
+#: the tax year the car is available (ITEPA 2003 ss. 143 and 152), so the
+#: annual simulation makes a car available for the share of the year the
+#: person's pay covers, as it takes that share of the pay
+#: (PolicyEngine/uk-autumn-budget-dashboard-2026#316).
+_COMPANY_CAR_AVAILABILITY = "company_car_availability"
 #: ``months_since_state_pension_age`` counts to the middle of the fiscal year
 #: (6 October), so someone attaining State Pension age within the year was
 #: paid for that many months plus six of it.
@@ -492,6 +564,15 @@ def compute_uk_measure_input(
         )
         return values, f"engine_period:{measure_year}:{model_variable}:{route}"
 
+    benefit_year = company_car_dated_benefit_year(variable)
+    if benefit_year is not None:
+        if entity != "person":
+            raise KeyError(f"the dated company car benefit is person-only: {entity}")
+        values, route = compute_uk_measure_input(
+            frame, simulation, entity, _COMPANY_CAR_BENEFIT, benefit_year
+        )
+        return values, f"engine_period:{benefit_year}:{_COMPANY_CAR_BENEFIT}:{route}"
+
     if variable == _CGT_TAXABLE_INCOME:
         if entity != "person":
             raise KeyError(f"CGT taxable income is person-only: {entity}")
@@ -525,7 +606,24 @@ def compute_uk_measure_input(
             raise KeyError(f"{variable} is person-only: {entity}")
         return (
             savings_interest_outside_isas(frame),
-            "frame_columns:savings_interest_income_less_tax_free_savings_income",
+            "frame_columns:savings_interest_income_less_tax_free_savings_income"
+            if _legacy_gross_savings(frame)
+            else "frame_columns:savings_interest_income",
+        )
+
+    if variable == UK_SPI_OTHER_INVESTMENT_INCOME:
+        if entity != "person":
+            raise KeyError(f"{variable} is person-only: {entity}")
+        other, route = compute_uk_measure_input(
+            frame, simulation, "person", "other_investment_income", year
+        )
+        pension, _ = compute_uk_measure_input(
+            frame, simulation, "person", "private_pension_income", year
+        )
+        return (
+            other + annuity_and_trust_share(frame) * pension,
+            "engine_components:other_investment_income"
+            f"+annuity_and_trust_share*private_pension_income:{route}",
         )
 
     if variable in DFE_SPRING_TERM_MEASURES:
@@ -1025,11 +1123,12 @@ class UKMeasureResolver:
                 "High-value home measures must not be persisted as source inputs: "
                 f"{persisted_high_value}"
             )
-        if UK_SAVINGS_INTEREST_OUTSIDE_ISAS in set(map(str, frame.table("person"))):
-            raise ValueError(
-                f"{UK_SAVINGS_INTEREST_OUTSIDE_ISAS} must not be persisted as a "
-                "source input."
-            )
+        for reserved in (
+            UK_SAVINGS_INTEREST_OUTSIDE_ISAS,
+            UK_SPI_OTHER_INVESTMENT_INCOME,
+        ):
+            if reserved in set(map(str, frame.table("person"))):
+                raise ValueError(f"{reserved} must not be persisted as a source input.")
         persisted_spring_term = sorted(
             set(DFE_SPRING_TERM_MEASURES) & set(map(str, frame.table("person")))
         )
@@ -1045,6 +1144,15 @@ class UKMeasureResolver:
         for target_id, target in self.contract_targets.items():
             binding = target["bindings"]["policyengine"]
             for name in _binding_variable_names(binding):
+                # A company car benefit dated by its name is priced in that
+                # year, so it must be measured there, as a CGT measure is.
+                benefit_year = company_car_dated_benefit_year(name)
+                if benefit_year is not None and (
+                    int(binding.get("measurement_period", self.year)) != benefit_year
+                ):
+                    raise ValueError(
+                        f"company car benefit year/period mismatch: {target_id}"
+                    )
                 cgt_measure = _cgt_model_measure(name, self.year)
                 if cgt_measure is None:
                     continue
@@ -1153,6 +1261,12 @@ class UKMeasureResolver:
             return entity == "person" and "savings_interest_income" in set(
                 map(str, self.frame.table("person"))
             )
+        if variable == UK_SPI_OTHER_INVESTMENT_INCOME:
+            return (
+                entity == "person"
+                and self.knows("person", "other_investment_income")
+                and self.knows("person", "private_pension_income")
+            )
         if variable in DFE_SPRING_TERM_MEASURES:
             return entity == "person" and all(
                 self.knows("person", name) for name in DFE_SPRING_TERM_ENGINE_INPUTS
@@ -1160,6 +1274,8 @@ class UKMeasureResolver:
         cgt_measure = _cgt_model_measure(variable, self.year)
         if cgt_measure is not None:
             return entity == "person" and self.knows(entity, cgt_measure[0])
+        if company_car_dated_benefit_year(variable) is not None:
+            return entity == "person" and self.knows(entity, _COMPANY_CAR_BENEFIT)
         if variable == _CGT_TAXABLE_INCOME:
             return entity == "person" and all(
                 self.knows("person", name) for name in _CGT_TAXABLE_INCOME_COMPONENTS
@@ -1197,9 +1313,14 @@ class UKMeasureResolver:
             return "household"
         if variable == UK_CHILD_BENEFIT_CHILD_COUNT:
             return "benunit"
-        if variable == UK_SAVINGS_INTEREST_OUTSIDE_ISAS:
+        if variable in (
+            UK_SAVINGS_INTEREST_OUTSIDE_ISAS,
+            UK_SPI_OTHER_INVESTMENT_INCOME,
+        ):
             return "person"
         if _cgt_model_measure(variable, self.year) is not None:
+            return "person"
+        if company_car_dated_benefit_year(variable) is not None:
             return "person"
         if variable in UK_NAMED_TERMS or variable in DFE_SPRING_TERM_MEASURES:
             return "person"
@@ -1518,6 +1639,7 @@ class UKMeasureResolver:
         amount times its annual share, plus the other spells carried from the
         dataset's year by the factor the engine carries the current amount by.
         The State Pension is set to the share of it paid in the fiscal year,
+        a company car is available for the share of the year the pay covers,
         and the earnings-tested carer benefits to their baseline values.
         Pension contributions and salary sacrifice keep their current values:
         for a part-year entrant they can be large against the year's pay,
@@ -1555,6 +1677,13 @@ class UKMeasureResolver:
         annual_pension = pension.astype(float) * state_pension_annual_share(months)
         simulation.set_input("state_pension", self.year, annual_pension)
         annual_inputs["state_pension"] = annual_pension
+        availability = _values(
+            self.simulation.calculate(_COMPANY_CAR_AVAILABILITY, self.year)
+        ).astype(float) * np.clip(
+            person[EMPLOYMENT_INCOME_ANNUAL_SHARE].to_numpy(dtype=float), 0.0, 1.0
+        )
+        simulation.set_input(_COMPANY_CAR_AVAILABILITY, self.year, availability)
+        annual_inputs[_COMPANY_CAR_AVAILABILITY] = availability
         for name in _ANNUAL_INCOME_HELD_VARIABLES:
             held = _values(self.simulation.calculate(name, self.year)).astype(float)
             simulation.set_input(name, self.year, held)
@@ -1738,6 +1867,10 @@ class UKMeasureResolver:
                 "state_pension at the measurement year times the share of the "
                 "fiscal year paid: (months_since_state_pension_age + 6) / 12 "
                 "within six months of the year's middle, else 1"
+            ),
+            "company_car_availability": (
+                "company_car_availability at the measurement year times "
+                f"{EMPLOYMENT_INCOME_ANNUAL_SHARE}, at most 1"
             ),
             "held_at_baseline": list(_ANNUAL_INCOME_HELD_VARIABLES),
         }

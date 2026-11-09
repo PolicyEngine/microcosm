@@ -141,6 +141,48 @@ def _reform_validation_skipped(release_dir: Path) -> bool:
     return payload.get("out_of_sample_simulated") is False
 
 
+def publication_refusal(
+    release_dir: Path,
+    *,
+    allow_incomplete_reform_validation: bool = False,
+    allow_missing_staging: bool = False,
+) -> str | None:
+    """Why a release must not be published, read from its local files, or None.
+
+    The checks every publication path shares: non-release smoke output, a
+    reform validation built with out-of-sample reforms skipped, and staging
+    telemetry that never arrived. Each override flag lifts one check.
+    """
+    if _non_release_artifact(release_dir):
+        return (
+            "refusing to publish: build_manifest.json identifies this as "
+            "non-release smoke output."
+        )
+    if not allow_incomplete_reform_validation and _reform_validation_skipped(
+        release_dir
+    ):
+        return (
+            "refusing to publish: reform_validation.json has "
+            "out_of_sample_simulated=false (built with "
+            "--skip-out-of-sample-reforms), so the dashboard would show blank "
+            "out-of-sample reforms. Rebuild without skipping, or pass "
+            "--allow-incomplete-reform-validation to publish anyway."
+        )
+    if not allow_missing_staging and _staging_undelivered(release_dir):
+        return (
+            "refusing to publish: this release's build_manifest records no "
+            "delivered staging telemetry, so the build never appeared on the "
+            "staging dashboard and there is no pre-publication review of it. "
+            "Either the staging destination was lost mid-build (uploads "
+            "self-disable after repeated failures — check the build machine's "
+            "Hugging Face write token), or the manifest predates staging "
+            "provenance. Rebuild with staging reaching its repo, or pass "
+            "--allow-missing-staging to publish anyway. A build that declared "
+            "--no-staging publishes without the flag."
+        )
+    return None
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("release_dir", help="Local releases/<release_id> directory.")
@@ -277,40 +319,13 @@ def main(argv: list[str] | None = None) -> int:
     if args.tag_only and not args.create_tag:
         parser.error("--tag-only requires tag creation; remove --no-create-tag.")
 
-    if _non_release_artifact(Path(args.release_dir)):
-        print(
-            "refusing to publish: build_manifest.json identifies this as "
-            "non-release smoke output.",
-            file=sys.stderr,
-        )
-        return 1
-
-    if not args.allow_incomplete_reform_validation and _reform_validation_skipped(
-        Path(args.release_dir)
-    ):
-        print(
-            "refusing to publish: reform_validation.json has "
-            "out_of_sample_simulated=false (built with "
-            "--skip-out-of-sample-reforms), so the dashboard would show blank "
-            "out-of-sample reforms. Rebuild without skipping, or pass "
-            "--allow-incomplete-reform-validation to publish anyway.",
-            file=sys.stderr,
-        )
-        return 1
-
-    if not args.allow_missing_staging and _staging_undelivered(Path(args.release_dir)):
-        print(
-            "refusing to publish: this release's build_manifest records no "
-            "delivered staging telemetry, so the build never appeared on the "
-            "staging dashboard and there is no pre-publication review of it. "
-            "Either the staging destination was lost mid-build (uploads "
-            "self-disable after repeated failures — check the build machine's "
-            "Hugging Face write token), or the manifest predates staging "
-            "provenance. Rebuild with staging reaching its repo, or pass "
-            "--allow-missing-staging to publish anyway. A build that declared "
-            "--no-staging publishes without the flag.",
-            file=sys.stderr,
-        )
+    refusal = publication_refusal(
+        Path(args.release_dir),
+        allow_incomplete_reform_validation=args.allow_incomplete_reform_validation,
+        allow_missing_staging=args.allow_missing_staging,
+    )
+    if refusal is not None:
+        print(refusal, file=sys.stderr)
         return 1
 
     preparation_options = dict(

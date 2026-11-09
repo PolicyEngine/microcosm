@@ -9,10 +9,22 @@ where ``linear_combination`` and the period rules live) nor the HMRC uprating
 appliers, so an edit there could reuse a cached surface computed by the old
 code.
 
-``EXCLUDED_DIRECT_IMPORTS`` names every ``microcosm.build`` module a listed
-module imports but the tuple leaves out, with the reason. A test pins that
-the two together cover every direct import of every listed module, so the
-coverage holds transitively: a new import must be listed or excluded.
+``EXCLUDED_DIRECT_IMPORTS`` names every first-party (``microcosm.*``) module
+a listed module imports but the tuple leaves out, with the reason. A test
+pins that the two together cover every direct import of every listed module,
+so the coverage holds transitively: a new import must be listed or excluded.
+Until microcosm#1492 that test read only ``microcosm.build`` imports, so it
+never saw ``microcosm.calibrate.geography_constants``, the geography labels
+of the target hierarchies, nor the ``microcosm.calibrate`` registry and
+hierarchy classes the compiled surface is built from (with
+``microcosm.calibrate.target``, which the registry imports). The transport
+compile modules already hashed those three.
+
+The exclusions cover only the listed modules' own imports. A second test
+walks every module each target and problem kernel hashes, its own module and
+the modules hashed beside this tuple included, and records the imports no
+review has classified yet (microcosm#1497). This module is not hashed, so an
+edit to a reason re-keys nothing; an edit to the tuple re-keys the kernels.
 """
 
 from __future__ import annotations
@@ -23,6 +35,7 @@ from types import MappingProxyType, ModuleType
 
 UK_TARGET_COMPILE_MODULE_NAMES: tuple[str, ...] = (
     "microcosm.build.cross_grain",
+    "microcosm.build.ledger_artifact",
     "microcosm.build.ledger_targets",
     "microcosm.build.target_materialization",
     "microcosm.build.target_reference_authoring",
@@ -38,8 +51,10 @@ UK_TARGET_COMPILE_MODULE_NAMES: tuple[str, ...] = (
     "microcosm.build.uk_runtime.frs_release",
     "microcosm.build.uk_runtime.geography_ladder",
     "microcosm.build.uk_runtime.high_value_homes",
+    "microcosm.build.uk_runtime.hmrc_company_car_statistics",
     "microcosm.build.uk_runtime.hmrc_uprating",
     "microcosm.build.uk_runtime.ledger_fact_vendoring",
+    "microcosm.build.uk_runtime.ledger_surface",
     "microcosm.build.uk_runtime.ledger_targets",
     "microcosm.build.uk_runtime.local_target_census",
     "microcosm.build.uk_runtime.local_targets",
@@ -51,6 +66,10 @@ UK_TARGET_COMPILE_MODULE_NAMES: tuple[str, ...] = (
     "microcosm.build.uk_runtime.uc_source_periods",
     "microcosm.build.uk_runtime.tenure_drift",
     "microcosm.build.uk_runtime.uprating_holds",
+    "microcosm.calibrate.geography_constants",
+    "microcosm.calibrate.hierarchy",
+    "microcosm.calibrate.registry",
+    "microcosm.calibrate.target",
 )
 
 EXCLUDED_DIRECT_IMPORTS: Mapping[str, str] = MappingProxyType(
@@ -66,8 +85,10 @@ EXCLUDED_DIRECT_IMPORTS: Mapping[str, str] = MappingProxyType(
             "refuses an undeclared condition and never moves a value"
         ),
         "microcosm.build.chronicle_epoch": (
-            "the feed-pin epoch arithmetic chronicle_feed checks; the pinned "
-            "facts themselves are node inputs hashed by content"
+            "the feed-pin epoch arithmetic chronicle_feed checks, and the "
+            "consumer schema gate and epoch labels ledger_artifact applies; "
+            "none moves a fact value, and the pinned facts themselves are node "
+            "inputs hashed by content"
         ),
         "microcosm.build.gates": (
             "imported for the GateResult and TargetCoverageRequirement types only"
@@ -107,6 +128,23 @@ EXCLUDED_DIRECT_IMPORTS: Mapping[str, str] = MappingProxyType(
         "microcosm.build.stochastic_assignment": (
             "energy_pricing imports the identity-keyed uniforms for the "
             "spine's gas connection walk, which no target value reads"
+        ),
+        "microcosm.frame.bundle": (
+            "the population container: cgt_calibration builds the spine-side "
+            "CGT calibration frame with it, ledger_targets' UKFrameTargetAdapter "
+            "reads and rebuilds the national calibration's population with it, "
+            "and calibrate.target measures a target on one; no target value "
+            "comes from it"
+        ),
+        "microcosm.frame.schema": (
+            "cgt_calibration imports EntitySchema for the spine-side CGT "
+            "calibration frame; the compile uses only uk_cgt_annual_exempt_amount "
+            "and uk_cgt_dated_measure_year"
+        ),
+        "microcosm.frame.weights": (
+            "cgt_calibration imports Weights for the spine-side CGT calibration "
+            "frame; the compile uses only uk_cgt_annual_exempt_amount and "
+            "uk_cgt_dated_measure_year"
         ),
     }
 )

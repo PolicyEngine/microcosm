@@ -28,6 +28,7 @@ import pandas as pd
 from microcosm.build.country_spec import country_stage_plan, load_country_spec
 from microcosm.build.source_manifest import SourceManifest, SourceStageSpec
 from microcosm.build.uk_runtime.age_tail import UKAgeTailStageTransform
+from microcosm.build.uk_runtime.aps_occupation import UKAPSOccupationStageTransform
 from microcosm.build.uk_runtime.carers_allowance_take_up import (
     UKCarersAllowanceTakeUpStageTransform,
 )
@@ -63,6 +64,7 @@ from microcosm.build.uk_runtime.child_benefit_take_up import (
 from microcosm.build.uk_runtime.childcare_copy_take_up import (
     UKChildcareCopyTakeUpStageTransform,
 )
+from microcosm.build.uk_runtime.company_cars import UKCompanyCarsStageTransform
 from microcosm.build.uk_runtime.content_identity import uk_frame_content_identity
 from microcosm.build.uk_runtime.etb_services import UKETBServicesStageTransform
 from microcosm.build.uk_runtime.etb_vat import UKETBVATStageTransform
@@ -120,6 +122,9 @@ from microcosm.build.uk_runtime.hmrc_property_rental import (
     HMRCPropertyRentalBand,
     HMRCPropertyRentalFacts,
 )
+from microcosm.build.uk_runtime.isa_subscriptions import (
+    UKISASubscriptionsStageTransform,
+)
 from microcosm.build.uk_runtime.lcfs_consumption import (
     BUS_FARE_LCFS_CODES,
     UKLCFSConsumptionStageTransform,
@@ -128,6 +133,9 @@ from microcosm.build.uk_runtime.legacy_closure_take_up import (
     UKLegacyClosureTakeUpStageTransform,
 )
 from microcosm.build.uk_runtime.nts_bus_travel import UKNTSBusTravelStageTransform
+from microcosm.build.uk_runtime.occupation_constants import (
+    UK_SOC2020_SUB_MAJOR_GROUPS,
+)
 from microcosm.build.uk_runtime.pension_credit_take_up import (
     UKPensionCreditTakeUpStageTransform,
 )
@@ -162,6 +170,9 @@ from microcosm.build.uk_runtime.spi_band_donors import (
 from microcosm.build.uk_runtime.spi_benefit_coherence import (
     UKSPIBenefitCoherenceStageTransform,
 )
+from microcosm.build.uk_runtime.spi_employment_shell import (
+    UKSPIEmploymentShellStageTransform,
+)
 from microcosm.build.uk_runtime.spi_housing_shell import (
     UKSPIHousingShellStageTransform,
 )
@@ -173,6 +184,9 @@ from microcosm.build.uk_runtime.spi_spine import (
 )
 from microcosm.build.uk_runtime.student_loans import UKStudentLoansStageTransform
 from microcosm.build.uk_runtime.take_up_contract import load_uk_take_up_contract
+from microcosm.build.uk_runtime.trading_allowance_receipts import (
+    UKTradingAllowanceReceiptsStageTransform,
+)
 from microcosm.build.uk_runtime.uc_capital_coherence import (
     UKUCCapitalCoherenceStageTransform,
 )
@@ -205,7 +219,7 @@ _SPI_SAMPLE_FRACTION = _ROOT_HOUSEHOLDS / 10_000
 _SPI_DONOR_SAMPLE_SIZE = 64
 #: The packaged FRS spine roster the fixture exercises (manifest minus the
 #: certified-pair exclusions); moves whenever a spine stage is added.
-UK_FIXTURE_STAGE_COUNT = 49
+UK_FIXTURE_STAGE_COUNT = 54
 _QRF_ESTIMATORS = 4
 
 # These are the complete object-string surface observed in the unchanged
@@ -216,6 +230,10 @@ _NORMALIZED_STRING_COLUMNS: Mapping[str, tuple[str, ...]] = {
         "marital_status",
         "employment_status",
         "employment_sector",
+        # The SOC 2020 major group of the main or last job, and the sub-major
+        # group drawn within it (microcosm#1490).
+        "soc2020_major_group",
+        "soc2020_sub_major_group",
         "aa_category",
         "dla_sc_category",
         "dla_m_category",
@@ -228,6 +246,11 @@ _NORMALIZED_STRING_COLUMNS: Mapping[str, tuple[str, ...]] = {
         "relationship_to_head",
         "ons_family_role",
         "capital_gains_asset_type",
+        "company_car_fuel_type",
+        # The vehicle excise duty inputs' fuel and ISO registration date
+        # (microcosm#1095 B3).
+        "car_fuel_type",
+        "car_first_registration_date",
     ),
     "benunit": ("benunit_support_channel", "uc_deduction_combination"),
     "household": (
@@ -482,6 +505,8 @@ def _frs_tables() -> dict[str, pd.DataFrame]:
             "RETIRE1": 1 + household_id % 12 if household_id % 13 == 0 else "",
             "MJOBSECT": 1 + household_id % 2,
             "SIC": 10 + household_id % 80,
+            # SOC 2020 major groups 1-9 as the FRS codes them, 1000-9000.
+            "SOC2020": 1000 * (1 + household_id % 9),
             "FTED": 2,
             "TYPEED2": 0,
             "EDUCQUAL": 1 + household_id % 18,
@@ -665,6 +690,28 @@ def _frs_tables() -> dict[str, pd.DataFrame]:
                 "NATURE": 4,
                 "DIRPERC": 2 if household_id % 10 == 0 else -1,
                 "DIVIDEND": 1000.0 if household_id % 10 == 0 else 0.0,
+                # Two employee jobs come with a company car (EXPBEN01 1;
+                # PolicyEngine/uk-autumn-budget-dashboard-2026#316): household
+                # 7's a diesel (FUELTYP 2) listed at GBP 30,001 to 40,000
+                # (CARVAL 8), with fuel for private use (EXPBEN03 1) and a
+                # contribution to its cost (CARCON 1, CARAMT); household 17's
+                # of unknown price band and fuel (CARVAL 10, FUELTYP 6, "Don't
+                # know"). Other employee jobs answer no; self-employed jobs are
+                # not asked.
+                "EXPBEN01": (
+                    ""
+                    if household_id % 8 in (2, 3)
+                    else 1
+                    if household_id in (7, 17)
+                    else 2
+                ),
+                "EXPBEN03": (
+                    "" if household_id % 8 in (2, 3) else 1 if household_id == 7 else 2
+                ),
+                "CARVAL": {7: 8, 17: 10}.get(household_id, ""),
+                "FUELTYP": {7: 2, 17: 6}.get(household_id, ""),
+                "CARCON": {7: 1, 17: 2}.get(household_id, ""),
+                "CARAMT": 1500.0 if household_id == 7 else "",
                 # Every fifth job pays one bonus, given before or after tax by
                 # turn (#1340).
                 **{
@@ -727,6 +774,10 @@ def _frs_tables() -> dict[str, pd.DataFrame]:
                 "SERNUM": household_id,
                 "BENUNIT": 1,
                 "PERSON": 1,
+                # Every fifth household's payment is trust income (PENTYPE 5),
+                # which stays private pension with its part stored as the
+                # annuity and trust descriptor (microcosm#1428).
+                "PENTYPE": 5 if household_id % 5 == 0 else 1,
                 "PENPAY": 10.0,
                 "PTAMT": 2.0,
                 "PTINC": 2,
@@ -834,13 +885,33 @@ def _was_person_donor() -> pd.DataFrame:
     financial wealth, which WAS counts them in), one banded value, one
     ONS-imputed holder, one ONS-imputed non-holder, one self-employment
     sentinel and one holder in an age band the product rules exclude (recoded
-    by the stage's credibility rule).
+    by the stage's credibility rule). The household tab's cash and
+    stocks-and-shares ISA totals are split across its adults in a few patterns
+    (one holder, an even split, a lead holder), summing exactly to the
+    aggregates, for the ISA subscriptions stage (microcosm#1415). Every third
+    household's first adult has a company vehicle (COMPVEHR8 1): a car with
+    its fuel and list price, prices on both sides of GBP 40,000, except a van
+    in household 9 and a car without a price in household 15, for the
+    company cars stage (PolicyEngine/uk-autumn-budget-dashboard-2026#316).
+    The person tab carries its household's weight, as the deposit's does.
     """
 
     rows: list[dict[str, float]] = []
     for household in range(_DONOR_ROWS):
         adults = 1 + household % 3
         children = household % 3
+        cash_total = 7.0 + household
+        stocks_total = 5.0 + household
+        cash_shares = {
+            1: (1.0,),
+            2: (0.5, 0.5) if household % 2 == 0 else (1.0, 0.0),
+            3: (0.5, 0.25, 0.25) if household % 4 == 0 else (1.0, 0.0, 0.0),
+        }[adults]
+        stocks_shares = {
+            1: (1.0,),
+            2: (0.0, 1.0) if household % 2 == 0 else (0.5, 0.5),
+            3: (0.25, 0.75, 0.0) if household % 4 == 0 else (0.0, 0.0, 1.0),
+        }[adults]
         for person in range(adults + children):
             adult = person < adults
             band = (
@@ -850,6 +921,7 @@ def _was_person_donor() -> pd.DataFrame:
             )
             holder = adult and person == 0 and household % 2 == 0 and 4 <= band <= 9
             impossible = adult and person == 0 and household == 5
+            company_vehicle = adult and person == 0 and household % 3 == 0
             if impossible:
                 band = 13
             value = float(5 + household % 20) if (holder or impossible) else 0.0
@@ -881,6 +953,32 @@ def _was_person_donor() -> pd.DataFrame:
                     "FLISABR8": 1.0 if banded else -9.0,
                     "flisabr8_iflag": 0.0,
                     "DVFLISAvR8": value,
+                    "DVCISAvR8": cash_total * cash_shares[person] if adult else 0.0,
+                    "DVIISAvR8": (
+                        stocks_total * stocks_shares[person] if adult else 0.0
+                    ),
+                    "R8xshhwgt": 1.0 + household % 7 / 10.0,
+                    "COMPVEHR8": (1.0 if company_vehicle else (2.0 if adult else -9.0)),
+                    "CARVAN1R8": (
+                        (2.0 if household == 9 else 1.0) if company_vehicle else -9.0
+                    ),
+                    "PETROL1R8": (
+                        float(1 + household % 4) if company_vehicle else -9.0
+                    ),
+                    "LISTPR1R8": (
+                        (
+                            -8.0
+                            if household == 15
+                            else 18_000.0 + 4_000.0 * (household % 12)
+                        )
+                        if company_vehicle
+                        else -9.0
+                    ),
+                    **{
+                        f"{stem}{index}R8": -9.0
+                        for stem in ("CARVAN", "PETROL", "LISTPR")
+                        for index in (2, 3)
+                    },
                 }
             )
     return pd.DataFrame(rows)
@@ -1143,6 +1241,10 @@ def _nts_donors() -> tuple[
             "NumCarVan": rows % 4,
             "HHoldNumPeople": 1 + rows % 4,
             "W2": 1.0 + (rows % 7) / 10.0,
+            # The interview weight and income fifth the zero-emission share
+            # and the household-paid road-fuel mix read (microcosm#1095 B3).
+            "W3": 1.0 + (rows % 5) / 10.0,
+            "HHIncQISEngTS_B01ID": 1 + rows % 5,
         }
     )
     person_rows = []
@@ -1249,6 +1351,71 @@ def _nts_donors() -> tuple[
     return household, individual, trip, stage, ticket
 
 
+def _nts_vehicles(household: pd.DataFrame) -> pd.DataFrame:
+    """Synthetic NTS Vehicle table for the households of ``_nts_donors``.
+
+    Three cars a household (a four-by-four in every tenth), each fuel by its
+    number (petrol, diesel, then another propulsion), and every eighth
+    household a motorcycle the car filter drops. The third car is
+    zero-emission (CO2 band 1), and so is the second in the top two income
+    fifths, so every fifth holds enough zero-emission cars and the risks
+    rise with income; every seventh household's first car has no linked
+    band, and every fourth household's second car is a company car. A
+    household nobody in which works (every fifth) has no commuting or
+    business miles (-9); private miles are the rest of the year's.
+    """
+
+    rows = []
+    for index, household_row in household.reset_index(drop=True).iterrows():
+        fifth = int(household_row["HHIncQISEngTS_B01ID"])
+        household_id = int(household_row["HouseholdID"])
+        for car in range(4 if index % 8 == 0 else 3):
+            motorcycle = car == 3
+            zero_emission = car == 2 or (car == 1 and fifth >= 4)
+            annual = 4000 + 1000 * (index % 9) + 500 * car
+            works = index % 5 != 0
+            commuting = 1000 * (index % 3) if works else -9
+            business = 200 * (car + 1) if works else -9
+            private = annual - max(commuting, 0) - max(business, 0)
+            rows.append(
+                {
+                    "VehicleID": household_id * 10 + car,
+                    "HouseholdID": household_id,
+                    "VehType_B03ID": 2 if motorcycle else (3 if index % 10 == 3 else 1),
+                    "CarOwn_B01ID": 2 if car == 1 and index % 4 == 0 else 1,
+                    "VehPropTypeTS_B01ID": min(car, 2) + 1,
+                    "VehCO2Bands_B01ID": (
+                        1
+                        if zero_emission
+                        else (
+                            -8
+                            if car == 0 and index % 7 == 0
+                            else 2 + (index + car) % 12
+                        )
+                    ),
+                    "VehAnMileage": annual,
+                    "VehComMile": commuting,
+                    "VehBusMile": business,
+                    "VehPriMile": private,
+                    "SurveyYear": int(household_row["SurveyYear"]),
+                    # The vehicle excise duty inputs' Table A-M band (A for a
+                    # zero-emission car), engine size and age band.
+                    "VehCO2Tax2008_B01ID": (
+                        1
+                        if zero_emission
+                        else (
+                            -8
+                            if car == 0 and index % 7 == 0
+                            else 1 + (index + car) % 13
+                        )
+                    ),
+                    "EngineCap": 0 if zero_emission else 1200 + 100 * (index % 10),
+                    "VehAge_B01ID": 1 + (index + 2 * car) % 14,
+                }
+            )
+    return pd.DataFrame(rows)
+
+
 def _etb_donor() -> pd.DataFrame:
     rows = np.arange(_DONOR_ROWS, dtype=float)
     return pd.DataFrame(
@@ -1271,6 +1438,42 @@ def _etb_donor() -> pd.DataFrame:
             "pips": rows % 5,
         }
     )
+
+
+def _aps_donor() -> pd.DataFrame:
+    """APS person rows under the codebook's names: three per sub-major group.
+
+    Each sub-major group has an employee with pay, a self-employed worker and a
+    retired adult coded by the last job, so every major group has donors; an
+    under-16 and an employee without pay are there for the cleaning to drop.
+    """
+
+    rows: list[dict[str, float]] = []
+    for index, code in enumerate(UK_SOC2020_SUB_MAJOR_GROUPS):
+        minor = code * 10 + 1
+        for kind in range(3):
+            row = 3 * index + kind
+            employed = kind < 2
+            rows.append(
+                {
+                    "AGE": 20 + row % 60,
+                    "SEX": 1 + row % 2,
+                    "GOVTOF": 1 + row % 13,
+                    "ILODEFR": 1 if employed else 3,
+                    "INECAC05": (1, 2, 16)[kind],
+                    "SC20MMN": minor if employed else -9,
+                    "SC20LMN": -9 if employed else minor,
+                    "GRSSWK": 300.0 + 25.0 * row if kind == 0 else -9.0,
+                    "PWTA22": 500.0 + row,
+                    "PIWTA22": 900.0 + row if kind == 0 else -9.0,
+                    "INDS07M": 1 + row % 20 if employed else -9,
+                    "INDS07L": -9 if employed else 1 + row % 20,
+                }
+            )
+    dropped = dict(rows[0])
+    rows.append({**dropped, "AGE": 15, "INECAC05": 26})
+    rows.append({**dropped, "GRSSWK": -8.0, "PIWTA22": -9.0})
+    return pd.DataFrame(rows)
 
 
 def _spi_donor() -> pd.DataFrame:
@@ -1908,10 +2111,11 @@ def _fixture_stages(
 
 
 def _normalization_markdown() -> str:
+    count = sum(len(columns) for columns in _NORMALIZED_STRING_COLUMNS.values())
     lines = [
         "# UK spine parity string normalization",
         "",
-        "The unchanged legacy transforms retain these 26 textual table columns as",
+        f"The unchanged legacy transforms retain these {count} textual table columns as",
         "pandas `object`. The frozen graph dtype token `string` is specified by",
         'interface-freeze amendment 10 as pandas `StringDtype(storage="python")`.',
         "Before computing the legacy oracle's `uk_frame_content_identity` (live,",
@@ -1967,8 +2171,8 @@ def _normalize_legacy_strings(frame: Frame) -> Frame:
         for entity, columns in _NORMALIZED_STRING_COLUMNS.items()
         for column in columns
     ]
-    if observed != expected_order or len(observed) != 26:
-        raise RuntimeError("The legacy normalization audit is not exactly 26 cells.")
+    if observed != expected_order or len(observed) != 31:
+        raise RuntimeError("The legacy normalization audit is not exactly 31 cells.")
     return Frame(
         tables,
         frame.schema,
@@ -2045,9 +2249,11 @@ def _build_implementations(
     nts_trip: pd.DataFrame,
     nts_stage: pd.DataFrame,
     nts_ticket: pd.DataFrame,
+    nts_vehicle: pd.DataFrame,
     lcfs_household: pd.DataFrame,
     lcfs_person: pd.DataFrame,
     etb: pd.DataFrame,
+    aps: pd.DataFrame,
     spi_donor: pd.DataFrame,
     income_targets: HMRCIncomeTargetSet,
     cgt_distribution: HMRCCapitalGainsJointDistribution,
@@ -2121,6 +2327,20 @@ def _build_implementations(
             donor_household=was,
             donor_person=was_person,
         ),
+        "isa_subscriptions": UKISASubscriptionsStageTransform(
+            stage=stages["isa_subscriptions"],
+            engine=engine,
+            donor_household=was,
+            donor_person=was_person,
+        ),
+        "trading_allowance_receipts": UKTradingAllowanceReceiptsStageTransform(
+            stage=stages["trading_allowance_receipts"]
+        ),
+        "company_cars": UKCompanyCarsStageTransform(
+            stage=stages["company_cars"],
+            engine=engine,
+            donor_person=was_person,
+        ),
         "nts_bus_travel": UKNTSBusTravelStageTransform(
             stage=stages["nts_bus_travel"],
             engine=engine,
@@ -2151,6 +2371,8 @@ def _build_implementations(
             engine=engine,
             lcfs_household=lcfs_household,
             lcfs_person=lcfs_person,
+            nts_household=nts_household,
+            nts_vehicle=nts_vehicle,
         ),
         "etb_vat": UKETBVATStageTransform(
             stage=stages["etb_vat"], engine=engine, donor=etb
@@ -2183,6 +2405,14 @@ def _build_implementations(
             sampled_rung=True,
             donor_table=spi_donor,
             source_targets=income_targets,
+        ),
+        "spi_employment_shell": UKSPIEmploymentShellStageTransform(
+            stage=stages["spi_employment_shell"], boosted_max_iter=_QRF_ESTIMATORS
+        ),
+        "aps_occupation": UKAPSOccupationStageTransform(
+            stage=stages["aps_occupation"],
+            donor=aps,
+            boosted_max_iter=_QRF_ESTIMATORS,
         ),
         "spi_housing_shell": UKSPIHousingShellStageTransform(
             stage=stages["spi_housing_shell"], n_estimators=_QRF_ESTIMATORS
@@ -2341,8 +2571,10 @@ def generate(output: Path) -> None:
     was = _was_donor()
     was_person = _was_person_donor()
     nts_household, nts_individual, nts_trip, nts_stage, nts_ticket = _nts_donors()
+    nts_vehicle = _nts_vehicles(nts_household)
     lcfs_household, lcfs_person = _lcfs_donors()
     etb = _etb_donor()
+    aps = _aps_donor()
     spi_donor = _spi_donor()
     _write_csv(sources / "was.csv", was)
     _write_csv(sources / "was_person.csv", was_person)
@@ -2351,9 +2583,11 @@ def generate(output: Path) -> None:
     _write_csv(sources / "nts_trip.csv", nts_trip)
     _write_csv(sources / "nts_stage.csv", nts_stage)
     _write_csv(sources / "nts_ticket.csv", nts_ticket)
+    _write_csv(sources / "nts_vehicle.csv", nts_vehicle)
     _write_csv(sources / "lcfs_household.csv", lcfs_household)
     _write_csv(sources / "lcfs_person.csv", lcfs_person)
     _write_csv(sources / "etb.csv", etb)
+    _write_csv(sources / "aps.csv", aps)
     _write_csv(sources / "spi_donor.csv", spi_donor)
 
     income_targets = _hmrc_income_targets(Path("synthetic-hmrc.ods"))
@@ -2378,9 +2612,11 @@ def generate(output: Path) -> None:
         nts_trip=nts_trip,
         nts_stage=nts_stage,
         nts_ticket=nts_ticket,
+        nts_vehicle=nts_vehicle,
         lcfs_household=lcfs_household,
         lcfs_person=lcfs_person,
         etb=etb,
+        aps=aps,
         spi_donor=spi_donor,
         income_targets=income_targets,
         cgt_distribution=cgt_distribution,
@@ -2465,9 +2701,11 @@ def generate(output: Path) -> None:
             "nts_trip": "nts_trip.csv",
             "nts_stage": "nts_stage.csv",
             "nts_ticket": "nts_ticket.csv",
+            "nts_vehicle": "nts_vehicle.csv",
             "lcfs_household": "lcfs_household.csv",
             "lcfs_person": "lcfs_person.csv",
             "etb": "etb.csv",
+            "aps": "aps.csv",
             "spi_donor": "spi_donor.csv",
             "hmrc_income_targets": "hmrc_income_targets.json",
             "cgt_distribution": "cgt_distribution.json",

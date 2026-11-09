@@ -24,7 +24,26 @@ restate it: `tests/engine_free/uk/test_uk_chronicle_feed.py` (the pin and the
 consumer-fact schema digest) and `tests/engine_free/uk/test_uk_full_targets.py`
 (`test_current_national_and_local_pins_share_one_reviewed_identity`). A schema
 digest moves for every country whose feed is built after the Chronicle change,
-so the NZ pin (`nz/chronicle_feed.json`) moves at its own next re-pin. Then
+so the NZ pin (`nz/chronicle_feed.json`) moves at its own next re-pin. Set the
+pin's `consumer_fact_schema_versions` from the manifest, not by hand from the
+last pin. A feed whose rows carry a newer per-row `schema_version` needs that
+row contract declared in `microcosm.build.chronicle_epoch` first
+(microcosm#1509):
+
+- the UK pin loader, and `chronicle_feed_identity` and
+  `validate_chronicle_feed_pin` where the factor and transport code use them,
+  refuse a pin naming an undeclared row contract;
+- the UK code that reads the feed's rows refuses rows on an undeclared row
+  contract, or rows whose contracts differ from the pin's list: the full and
+  national builds and the vendoring tool on the committed artifact (exactly
+  the pin's list), the release certifier likewise when it is given the
+  committed feed (it holds the feed to the operator's digests), and the
+  reference generators, the compile-parity tool and the DESNZ constituency
+  builder on a subset or on the rows they parse (each a contract the pin
+  lists).
+
+Microcosm declares `ledger.consumer_fact.v1` and `chronicle.consumer_fact.v2`
+to `v5`; the v5 schema's digest is `acd33a09…`. Then
 regenerate. Vendor
 the per-concern fact resources (step 5) before the national generator: the
 generator refuses to compile against a vendored resource whose feed identity
@@ -322,3 +341,113 @@ national and local reference files are byte-identical, the membership moves only
 and both compile-parity receipts are unchanged. Both surfaces were regenerated from the national
 and local cuts, as for `200bf6d`. No reference moves, so the national register version does not
 either. The high-value home stock still names `735820c`: the addition touches none of its inputs.
+
+The `53815b2` re-pin (microcosm#1418 PR C, the merge of PolicyEngine/chronicle#394, on top of the
+`0b721a4` merge of PolicyEngine/chronicle#392) brought SPI 2023-24 Table 3.10 and the OBR's October
+2026 EFO beside March's, with #392's HMRC ISA statistics (1,511,063 rows; the schema digest is
+unchanged). The merge commit's tree is the pull request head's (`2ba21f3`), merged onto an unmoved
+base, so the artifact was built from that head's bundle and carries the merge commit's identity.
+
+A new vendored resource, `obr_savings_income_growth_facts.json`, carries the eight October 2026 EFO
+Table 4.5 savings income growth rates the SPI Table 3.7 interest and other-income rows now grow by.
+The other vendored resources, and the constituency energy resource rebuilt beside them, carry the
+same rows under the new feed identity. On the national surface only the intended values move: the
+13 interest rows (up 13.4%), 13 other-income rows and 16 Table 3.10 rows, whose zero band and bands
+from £10,000 are signed out row by row. October's edition starts the OBR lines at FY2025-26, so the
+targets that window FY2024-25 and FY2025-26 into calendar 2025 still resolve to March's facts;
+`obr.winter_fuel_allowance`, which reads FY2025-26 alone, matched both editions and is pinned to
+March's expenditure table (`source_table`). On the local surface the statuses and the reference
+file are unchanged, and the membership moves its feed label and the DESNZ gas cells, which return
+to the Energy Trends level in the same PR.
+
+The national register version moves with the new references, so the uk-candidate-eval scoring
+register is re-frozen before the next national solve. The high-value home stock still names
+`735820c`: its inputs are the same on `53815b2` (the feed-gated fingerprint check passes), so it
+was not rebuilt.
+
+The ISA subscriptions (microcosm#1415, PolicyEngine/microcosm#1421) then vendored a new resource
+from the same `53815b2` artifact: `hmrc_isa_statistics_facts.json`, the 1,074 rows of #392's ISA
+statistics the ISA subscriptions stage and the Lifetime ISA anchor read. None is a calibration
+target, so no reference moves for it. That pull request first pinned #392's head (`e56af9a`) and
+then its merge (`0b721a4`), and took `53815b2` when PR C merged first.
+
+The `08962f1` re-pin (PolicyEngine/microcosm#1430, the merge of PolicyEngine/chronicle#399 on top
+of the `7d5d627` merge of PolicyEngine/chronicle#396) brought HMRC's benefits in kind statistics of
+July 2026 (544 facts) and the UK facts of PolicyEngine/chronicle#395 (1,076). It also carries
+PolicyEngine/chronicle#397, María's rule of 30 October that of two EFO editions' numbers for one
+line and year Chronicle keeps the later, so the March 2026 edition drops the 427 record sets the
+October 2026 edition also publishes (1,512,256 rows; the schema digest is unchanged). The merge
+commit's tree is the pull request head's (`ac9d7bb`), so the artifact was built from that head's
+bundle and carries the merge commit's identity.
+
+A new vendored resource, `hmrc_benefits_in_kind_facts.json`, carries the 96 2024-25 rows the
+company cars stage reads. The other vendored resources, and the constituency energy resource
+rebuilt beside them, carry the same rows under the new feed identity.
+
+After #397 no EFO edition carries both years of a calendar-2025 window: March keeps each line's
+FY2024-25 outturn and October carries FY2025-26 on. The 19 OBR rows that window the two years
+declare `source_table_by_opening_year`, which takes each year from the table that carries it
+(María's ruling of 2026-10-31; `docs/uk-income-anchors-280.md`), as do the three council tax nation
+rows of PolicyEngine/microcosm#1422 and the fuel duties row, which is signed out of the references:
+23 in all. The 19's values move with October's outturns: fifteen by under 1%, with domestic rates +3.2%, Pension Credit +2.3%, Jobseeker's
+Allowance −2.5% and SDLT −1.2%. `obr.winter_fuel_allowance` drops its pin to March's expenditure
+table and reads October's FY2025-26 outturn (+0.02%). Three report-only diagnostics pinned March's
+FY2025-26 forecasts by fact key: `obr.capital_gains_tax`, `obr.state_pension` and the `obr.ni`
+total. They now pin October's outturns (`required_assertion: observation`). The test feed
+fixture's three captured March FY2025-26 rows (income tax, incapacity benefits and capital gains
+tax) give way to October's.
+
+The national membership also catches up with policyengine-uk 2.164.1's October-EFO economic
+assumptions. PolicyEngine/microcosm#1421 locked them after PolicyEngine/microcosm#1420 had
+generated the membership, so the 21 SPI rows grown by an OBR per-head index still carried the
+old factors there: the eight Table 3.10 self-employment bands move −0.55% (mixed income per
+head), and the thirteen dividend bands by under 0.001% (GDP per head). The national compile-parity
+receipt already carried their new values. No other national value moves. The receipt moves the 19
+windowed values and gains two drift rows, domestic rates and Winter Fuel, which had equalled the
+frozen incumbent. The OBR rationales of the parity tool name the two editions, and Winter Fuel has
+a rationale of its own.
+
+On the local surface the reference file and the compile-parity receipt are byte-identical. The
+membership moves only its feed label and the 1,263 DESNZ keys, and the census restates the pin.
+Both surfaces were regenerated from cuts of the pinned artifact, as for `200bf6d` (national
+940,989 rows, local 885,543).
+
+The national register version moves with the OBR values (the SPI rows already compiled at their
+new values), so the uk-candidate-eval scoring register is re-frozen before the next national
+solve. The 23 maps name
+EFO editions, so a later EFO moves them: once Chronicle keeps a newer edition's FY2025-26,
+October's number leaves the feed and the windows refuse until their maps name the new table. The
+high-value home stock still names `735820c`: its inputs are the same on `08962f1` (the feed-gated
+fingerprint check passes), so it was not rebuilt.
+
+The `6475380` re-pin (PolicyEngine/microcosm#1490's occupation targets, the merge of
+PolicyEngine/chronicle#411 on top of `08962f1`) brought the UK facts of
+PolicyEngine/chronicle#407 (73,039 rows): the ONS Annual Population Survey's people in employment
+by SOC 2020 major and sub-major group (Nomis APS218, for April 2024 to March 2025, January to
+December 2025 and April 2025 to March 2026) and ASHE Table 2's gross weekly and annual pay by
+occupation (the 2024 and 2025 revised editions and the 2026 provisional one). It also moved the
+rows to `chronicle.consumer_fact.v5` (PolicyEngine/chronicle#377, one label per dimension value):
+where Chronicle's register of dimension value labels carries a value, `dimension_value_labels`
+and `layout.groupby_value_label` carry the register's label, and the source package's own wording
+moves to an optional `package_dimension_value_labels`. Microcosm declares the v5 row contract
+beside v1 to v4; the per-row id is carried, never gated on, and labels never enter a fact key
+(1,585,295 rows; the schema digest moves to `acd33a09…`). A row-by-row diff of the two artifacts
+finds no row dropped and no value moved: 183,848 rows change display labels only, mostly the sex
+(155,088) and property type (27,697) labels. The merge commit's tree differs from the pull request
+head's, so the artifact was built from the merge commit itself.
+
+No compiled value moves on either surface. The national and local reference files and both
+compile-parity receipts are byte-identical. The national membership moves only its feed label,
+and the local membership its feed label and the 1,263 DESNZ constituency keys, whose derived fact
+keys hash the feed identity. The vendored resources carry the same rows under the new feed
+identity, as does the DESNZ constituency resource (the same 2,526 rows and values, matched on
+their source record ids); the census restates the pin, and the charter-H2 fixture moves the
+parameters of the 19 stages that bind vendored resources. Both surfaces were regenerated from cuts
+of the pinned artifact, as for `200bf6d` (national 1,014,028 rows, local 885,543).
+
+The national register version was not recompiled for this entry: it hashes each spec's metadata
+and hierarchy, so the v5 labels may move it on display metadata alone, and the occupation
+targets that follow this pin move it in any case. The uk-candidate-eval scoring register is
+therefore re-frozen before the next national solve. The high-value home stock still names
+`735820c`: its inputs are the same on `6475380` (the feed-gated fingerprint check passes), so it
+was not rebuilt.

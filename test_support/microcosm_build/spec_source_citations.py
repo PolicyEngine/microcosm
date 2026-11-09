@@ -1309,9 +1309,16 @@ def resolve_dotted_symbol(dotted: str) -> object:
         try:
             target: object = importlib.import_module(name)
         except ModuleNotFoundError as error:
-            if error.name != name:
+            # ``pkg.mod.Class.method`` fails one level up: importing it first
+            # imports ``pkg.mod.Class``, which is not a module. A missing
+            # dependency of a module that does exist still raises.
+            if error.name is None or not (
+                name == error.name or name.startswith(error.name + ".")
+            ):
                 raise
             continue
+        if cut == 1:
+            raise ModuleNotFoundError(dotted, name=dotted)
         for attribute in parts[cut:]:
             target = getattr(target, attribute)
         return target

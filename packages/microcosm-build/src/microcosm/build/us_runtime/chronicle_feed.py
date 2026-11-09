@@ -20,18 +20,22 @@ from __future__ import annotations
 import hashlib
 import json
 import re
+from collections.abc import Iterable
 from dataclasses import asdict, dataclass
 from importlib.resources import files
 
 from microcosm.build.chronicle_epoch import (
     is_accepted_consumer_artifact_schema_version,
+    require_accepted_consumer_fact_schema_versions,
 )
+from microcosm.build.ledger_artifact import validate_pinned_row_contracts
 
 __all__ = [
     "US_CHRONICLE_FEED_RESOURCE",
     "US_CHRONICLE_FEED_SCOPE_RESOURCE",
     "USChronicleFeed",
     "load_us_chronicle_feed",
+    "require_us_chronicle_feed_row_contracts",
     "us_chronicle_feed_scope_sha256",
 ]
 
@@ -72,6 +76,36 @@ class USChronicleFeed:
             self.consumer_fact_schema_versions
         )
         return result
+
+
+def require_us_chronicle_feed_row_contracts(
+    fact_schema_versions: Iterable[str],
+    *,
+    facts_sha256: str,
+    pin: USChronicleFeed | None = None,
+) -> USChronicleFeed:
+    """Hold the row contracts a loaded US feed's rows carry to the US pin.
+
+    The US pin describes a bare feed, so the full feed-pin check cannot run
+    on it; the code that holds the feed to the pin by digest calls this
+    instead. Rows of the committed feed (``facts_sha256`` is the pin's) must
+    carry exactly the pin's ``consumer_fact_schema_versions``, which a re-pin
+    types by hand. Rows of any other feed (a reviewed
+    ``--allow-unpinned-feed`` run of the release tool) must carry declared
+    row contracts only. Returns the pin they were checked against.
+    """
+
+    pin = pin or load_us_chronicle_feed()
+    validate_pinned_row_contracts(
+        fact_schema_versions,
+        pinned=(
+            pin.consumer_fact_schema_versions
+            if facts_sha256 == pin.facts_sha256
+            else None
+        ),
+        subject="US Chronicle feed",
+    )
+    return pin
 
 
 def _feed_path():
@@ -141,6 +175,9 @@ def load_us_chronicle_feed() -> USChronicleFeed:
         or len(set(versions)) != len(versions)
     ):
         raise ValueError("US Chronicle feed consumer_fact_schema_versions is invalid.")
+    require_accepted_consumer_fact_schema_versions(
+        versions, subject="US Chronicle feed"
+    )
     expected_scope_sha256 = us_chronicle_feed_scope_sha256()
     if raw["scope_sha256"] != expected_scope_sha256:
         raise ValueError(

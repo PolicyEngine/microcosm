@@ -77,6 +77,9 @@ def _fake_donor(monkeypatch, tmp_path, tables):
         def __getitem__(self, key):
             return tables[key].copy(deep=True)
 
+        def keys(self):
+            return [f"/{name}" for name in tables]
+
         def get_storer(self, _):
             return SimpleNamespace(attrs=SimpleNamespace())
 
@@ -132,6 +135,7 @@ def test_synthetic_donor_matches_decode_and_exact_fixture(tmp_path, monkeypatch)
     assert donor.donor_country == "us"
     assert donor.currency == "USD"
     assert donor.dropped_parent_cycle_edges == 0
+    assert donor.time_period is None
     assert validate_concept_tables(donor.tables) == ()
     assert "A_LINENO" not in person and "bank_account_assets" not in person
     assert "household_weight" not in donor.tables["household"]
@@ -195,6 +199,36 @@ def test_synthetic_donor_transport_and_mapping_round_trip(tmp_path):
     for entity, table in before.items():
         pd.testing.assert_frame_equal(donor.tables[entity], table)
     np.testing.assert_array_equal(donor.weights, original_weights)
+
+
+@pytest.mark.parametrize("year", [2024, 2023])
+def test_reader_returns_the_exporters_time_period(tmp_path, year):
+    # The US exporter writes a one-row table-format integer series under
+    # ``/_time_period`` (adapters/policyengine_us.py); the reader returns it.
+    path = tmp_path / "dated.h5"
+    _write_h5(path, _tables())
+    with pd.HDFStore(path, mode="a") as store:
+        store.put("_time_period", pd.Series([year]), format="table")
+    donor = read_populace_us_donor(path, **_pin(path))
+    assert donor.time_period == year and type(donor.time_period) is int
+
+
+@pytest.mark.parametrize(
+    "series",
+    [
+        pd.Series([2024, 2025]),
+        pd.Series(["2024"]),
+        pd.Series([2024.5]),
+        pd.Series([True]),
+    ],
+)
+def test_reader_refuses_a_malformed_time_period(tmp_path, series):
+    path = tmp_path / "malformed.h5"
+    _write_h5(path, _tables())
+    with pd.HDFStore(path, mode="a") as store:
+        store.put("_time_period", series, format="table")
+    with pytest.raises(ValueError, match="_time_period"):
+        read_populace_us_donor(path, **_pin(path))
 
 
 @pytest.mark.parametrize("mismatch", ["size", "sha256"])

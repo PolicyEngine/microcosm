@@ -52,7 +52,8 @@ def _cell(report: dict, code: str, band: str) -> dict:
 def test_a_supported_cell_gives_means_and_ratios_and_a_thin_one_is_withheld() -> None:
     table = pd.DataFrame(
         _households("E07000110", "D", list(range(100, 112)))
-        + _households("E07000110", "H", [200, 201, 202], simulated=4_800.0)
+        # Two source households: under the floor of three.
+        + _households("E07000110", "H", [200, 201], simulated=4_800.0)
     )
 
     report = summarise(table)
@@ -77,12 +78,13 @@ def test_a_supported_cell_gives_means_and_ratios_and_a_thin_one_is_withheld() ->
         "council_tax_band": "H",
         "withheld": True,
     }
-    assert report["great_britain"]["source_households"] == 15
-    assert report["great_britain"]["totals"]["council_tax"] == 15 * 10.0 * 2_000.0
+    assert report["great_britain"]["source_households"] == 14
+    assert report["great_britain"]["totals"]["council_tax"] == 14 * 10.0 * 2_000.0
 
 
 def test_clones_of_one_source_household_count_once() -> None:
-    sources = [300, 300, 300, 301, 301, 302, 303, 304, 305, 306, 307, 308]
+    # Five rows, but two source households: under the floor of three.
+    sources = [300, 300, 300, 301, 301]
     table = pd.DataFrame(_households("E09000033", "C", sources, region="LONDON"))
 
     report = summarise(table)
@@ -97,7 +99,7 @@ def test_northern_ireland_is_left_out_and_a_thin_region_is_withheld() -> None:
         + _households(
             "W06000015",
             "B",
-            [500, 501, 502, 503],
+            [500, 501],
             region="WALES",
             country="WALES",
         )
@@ -122,7 +124,7 @@ def test_northern_ireland_is_left_out_and_a_thin_region_is_withheld() -> None:
     assert "NORTHERN_IRELAND" not in report["by_country"]
     assert report["by_country"]["WALES"] == {"withheld": True}
     assert report["by_region"]["SOUTH_EAST"]["source_households"] == 12
-    assert report["great_britain"]["source_households"] == 16
+    assert report["great_britain"]["source_households"] == 14
 
 
 def test_an_authority_the_engine_charges_nothing_is_named() -> None:

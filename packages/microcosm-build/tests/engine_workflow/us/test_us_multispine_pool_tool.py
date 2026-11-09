@@ -106,7 +106,7 @@ def test_stacked_tool_entrypoint_fixture_e2e_emits_one_logbook_row_at_every_term
         assert published_transfer["completion"] == {
             "status": "complete",
             "group_count": 19,
-            "target_count": 70,
+            "target_count": 72,
             "residual_null_rows": 0,
         }
         calibrated = [
@@ -347,7 +347,13 @@ def test_constants_adapter_equals_live_constants_and_stays_out_of_identities(
             # microcosm#1376's puma_county_vintage draw module,
             # microcosm#1380's self-employment post-transfer contract, and
             # the source-stage citation rewrites that pin us-data at a commit.
-            "spec_sha256": "b5c87a41b665901bdbd08a9cefd816b9c93b26c1928e841f99435ee895f24278",
+            # microcosm#1251's passive partnership/S-corp leaf in puf_support moves it.
+            # microcosm#1259's recipient-share bound in puf_support moves it again.
+            # microcosm#1261's entity split of line 32 moves it too.
+            # The opt-in cross-fitted gate calibration in microcosm.fit.qrf moves it.
+            # microcosm#1073's scf_wealth education-debt declaration moves it
+            # through the bundle's source stages.
+            "spec_sha256": "4ccbd01720871e59ad8e3c00e1c1296231facef91e83c561076ee499e0a138b2",
         },
     }
 

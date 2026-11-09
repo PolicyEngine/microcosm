@@ -549,12 +549,12 @@ def test_resample_gives_carriers_band_conditional_leaves_and_receipts() -> None:
     rows = {row["lower_bound"]: row for row in receipt["bands"]}
     assert rows[2_000_000]["pool_composite_records"] > 0
     # No drawn record's own value, such as a band's lowest or highest, is in
-    # the receipt, and a band whose carriers drew fewer than ten records
+    # the receipt, and a band whose carriers drew fewer than three records
     # withholds its mean (UKDS disclosure control).
     for row in receipt["bands"]:
         assert "realized_min_total_income" not in row
         assert "realized_max_total_income" not in row
-        assert row["realized_mean_total_income"] == "<10"
+        assert row["realized_mean_total_income"] == "<3"
     assert all(row["carriers"] == 1 for row in receipt["bands"])
 
     # A carrier matches its region only where that regional band pool holds
