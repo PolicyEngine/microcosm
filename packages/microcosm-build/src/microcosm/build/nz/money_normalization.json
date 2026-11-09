@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
-  "description": "Exact normalization of the donor's money columns to New Zealand dollars at the tax year 2026-27 money level (MC4, MC5). Each normalized column is converted once at the declared rate and then aged once by its index family's donor factor, both rounded half-even to cents. Earnings, rent and liquid assets are quantile-mapped onto New Zealand distributions instead (MC4) and are never converted at the rate.",
-  "status": "Declared, not active: no New Zealand transport graph reads it yet (G8-w3).",
+  "description": "Exact normalization of the donor's money columns to New Zealand dollars at the tax year 2026-27 money level (MC4, MC5). Each normalized column is converted once at the declared rate and then aged once by its index family's donor factor, both rounded half-even to cents. MC4 quantile-maps earnings and rent onto New Zealand distributions instead and never converts them at the rate. Under d1982 this declaration converts the donor's liquid assets once at the rate with an identity factor, for an unpublishable diagnostic beside S1.",
+  "status": "nz.money.normalize and the calibration variants' normalization nodes read this declaration; VHF reads the hold-fixed sibling.",
   "from_currency": "USD",
   "to_currency": "NZD",
   "rate": {
@@ -44,7 +44,8 @@
       "dividend_income",
       "rental_income",
       "realized_capital_gains",
-      "private_pension_income"
+      "private_pension_income",
+      "liquid_financial_assets"
     ],
     "household": [
       "mortgage_interest",
@@ -86,6 +87,10 @@
       },
       "disclosure": "Private pension income ages by AWE growth. Max's ruling d1981 (2026-10-26) adopts this as an interim convention and pre-declares a hold-fixed sensitivity (factor 1), which no profile here carries yet (G8-w3)."
     },
+    "consumer_prices": {
+      "identity": true,
+      "reason": "Interim convention under d1982 option A (2026-10-26). The donor's stored person-level bank, stock and bond assets convert once at 1.654 NZD per USD and round half-even to cents, with factor one and no ageing. The build declares a 1 April 2026 snapshot as a convention and claims no valuation date or authenticated donor lineage. S0's asset test reads this stock, S1 turns the test off and runs beside it, and the result claims no New Zealand calibration. It stays an unpublishable diagnostic under the D2 publication block."
+    },
     "owner_housing_costs": {
       "factors": {
         "low": "donor_cy2024_to_ty2027_low",
@@ -103,21 +108,14 @@
           "P1: precal_references ird_wage_salary_people_by_band rows 7 to 241, mapped by transport.quantile_map@2 on earnings_bands.json"
         ],
         "reason": "MC4 quantile-maps earnings onto IRD wage bands (d1952 option A, earnings first). G8-r2c activates P1: nz.earnings.map runs transport.quantile_map@2 on the TY2026 wage cuts scaled by the P1 TY2026-to-TY2027 factor, with a grouped Pareto open top, and nz.earnings.cents writes employment_income_cents half-even. No FX rate or donor factor touches wages."
-      },
-      "liquid_financial_assets": {
-        "awaits": [
-          "P3: precal_references stats_nz_household_financial_net_worth_distribution",
-          "C2: an all-household liquid-asset distribution"
-        ],
-        "reason": "MC4 quantile-maps liquid assets; no all-household distribution exists yet (C2), and any interim producer is Max's call (M1)."
       }
     },
     "household": {
       "rent": {
         "awaits": [
-          "C1: Census 2023 household weekly rent bands (G8-d1)"
+          "C1: precal_references stats_nz_census_households_by_weekly_rent_region, mapped by transport.quantile_map@1 on rent_bands.json"
         ],
-        "reason": "MC4 quantile-maps rent onto the Census 2023 weekly-rent bands for renting households (C1); the MBIE bond reference P2 is parked."
+        "reason": "MC4 quantile-maps rent onto the Census 2023 weekly-rent bands (C1). nz.rent.map runs transport.quantile_map@1 within each household region, on annual edges at 52 times each weekly cut. The bands hold Census 2023 levels; the C1 rent ageing ruling remains open. The MBIE bond reference P2 stays parked."
       }
     }
   },

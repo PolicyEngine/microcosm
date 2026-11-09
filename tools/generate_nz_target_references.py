@@ -19,6 +19,7 @@ from fractions import Fraction
 from pathlib import Path
 
 from microcosm.build.ledger_artifact import load_ledger_consumer_artifact
+from microcosm.build.tail_estimators import grouped_pareto_mle
 from microcosm.frame.concepts import TENURE_DOMAIN
 
 SPEC = (
@@ -162,6 +163,36 @@ WAGE_DISCLOSURE = (
     "cuts for earnings_bands.json, which scales every cut by the P1 TY2026 to "
     "TY2027 factor for the transport.quantile_map@2 producer; it carries no "
     "companions and no fit rows."
+)
+RENT_CONTRACT = "stats_nz_census_households_by_weekly_rent_region"
+RENT_DIMENSION = "nz_census_2023.weekly_rent_source_label"
+#: Census code, published label, and weekly cuts in dollars. The labels use
+#: whole dollars, so "$200 - $299" reads as the contiguous band [200, 300).
+RENT_BANDS = (
+    (1, "Under $200", 0, 200),
+    (2, "$200 - $299", 200, 300),
+    (3, "$300 - $399", 300, 400),
+    (4, "$400 - $499", 400, 500),
+    (5, "$500 - $599", 500, 600),
+    (6, "$600 - $699", 600, 700),
+    (7, "$700 - $799", 700, 800),
+    (8, "$800 and over", 800, None),
+)
+RENT_WEEKS_PER_YEAR = 52
+#: The national bands the open top's Pareto alpha is fitted to, and the
+#: bracket and bisection count the wage tail declares (R2C-9).
+RENT_TAIL_CODES = (6, 7, 8)
+RENT_TAIL_BRACKET = ("1.00000095367431640625", "64")
+RENT_TAIL_ITERATIONS = 64
+RENT_DISCLOSURE = (
+    "Each edge is a Census 2023 weekly-rent cut times 52, in NZD per year, "
+    "because the rent concept is annual and the Accommodation Supplement's "
+    "weekly-rent input divides it by 52. The counts hold Census 2023 levels, "
+    "and the C1 rent ageing ruling remains open. The publisher's product does "
+    "not state the table's population; its label reads weekly rent paid by "
+    "household. The map keeps zero rent at zero and ranks positive rents, so "
+    "these bands set shares among rent-paying households and the map does not "
+    "change how many households pay rent."
 )
 VP_REASON = "G8-w3b must refuse Veterans Pension as unsupported under H4. Activation needs veteran facts and a reviewed receipt producer; G8-y owns the closing step."
 
@@ -508,6 +539,160 @@ def calibration_bindings():
     }
 
 
+def merge_zero_count_bands(bands):
+    """Hand each zero-count band's width to the nearest lower band with households.
+
+    ``bands`` holds ordered, contiguous rows with ``lower``, ``upper``,
+    ``reference`` and ``count``. ``transport.quantile_map`` refuses a zero
+    share, so a zero-count band cannot stay in the list. The band below it
+    takes its upper edge and keeps its own reference, because the merged count
+    equals that band's count. Returns the kept rows and one record per merge.
+    A list whose lowest band is empty has no band to absorb it, and is refused.
+    """
+    kept, merges = [], []
+    for band in bands:
+        if band["count"] > 0:
+            kept.append(dict(band))
+            continue
+        if not kept:
+            raise ValueError(
+                f"Rent band {band['reference']} holds no households and has no "
+                "lower band to merge into."
+            )
+        kept[-1]["upper"] = band["upper"]
+        merges.append(
+            {"zero_count_reference": band["reference"], "kept": kept[-1]["reference"]}
+        )
+    return kept, merges
+
+
+def _rent_annual(weekly):
+    return None if weekly is None else float(weekly * RENT_WEEKS_PER_YEAR)
+
+
+def _rent_fact(inventory, place, code, label):
+    scope = "nz" if place == "NZ" else f"rc_{place}"
+    fact = inventory.one(
+        f"stats_nz.census_2023.{scope}.weekly_rent",
+        measure="count",
+        dimensions={RENT_DIMENSION: code},
+    )
+    published = fact["dimension_value_labels"][RENT_DIMENSION][str(code)]
+    if published != label:
+        raise ValueError(f"Rent code {code} reads {published!r}, not {label!r}")
+    return fact
+
+
+def rent_bands_and_references(inventory):
+    """Regional rent bands for ``transport.quantile_map@1`` and their selectors.
+
+    Returns the precal rows (one per band with households) and the
+    ``rent_bands.json`` document. Every region takes one Pareto alpha, fitted
+    to the national counts at $600 a week and above, for its open top band.
+    """
+    references, components, merges = [], [], []
+    for region in (*REGIONS, "99"):
+        bands, facts = [], {}
+        for code, label, lower, upper in RENT_BANDS:
+            name = f"{RENT_CONTRACT}__r{region}__b{code}"
+            facts[name] = (_rent_fact(inventory, region, code, label), label)
+            bands.append(
+                {
+                    "lower": _rent_annual(lower),
+                    "upper": _rent_annual(upper),
+                    "reference": name,
+                    "count": _integer_fact(facts[name][0]),
+                }
+            )
+        kept, region_merges = merge_zero_count_bands(bands)
+        for band in kept:
+            fact, label = facts[band["reference"]]
+            row = _reference(
+                fact,
+                name=band["reference"],
+                contract=RENT_CONTRACT,
+                entity="household",
+                measure="households",
+                family="housing_costs",
+                reference_set="precal",
+                method_card="MC4",
+                label=f"{fact['geography']['name']} 2023 Census households paying {label} weekly rent",
+            )
+            row["metadata"].update(
+                {
+                    "precal_use": "rent_quantile_band",
+                    "quantile_producer": "transport.quantile_map@1",
+                    "band_edges_resource": "rent_bands.json",
+                }
+            )
+            references.append(row)
+        components.append(
+            {
+                "value": region,
+                "bands": [
+                    {key: band[key] for key in ("lower", "upper", "reference")}
+                    for band in kept
+                ],
+            }
+        )
+        merges.extend({"region": region, **merge} for merge in region_merges)
+    anchors = [
+        (
+            f"national_weekly_rent_band_{code}",
+            _rent_annual(lower),
+            _rent_annual(upper),
+            float(_integer_fact(_rent_fact(inventory, "NZ", code, label))),
+        )
+        for code, label, lower, upper in RENT_BANDS
+        if code in RENT_TAIL_CODES
+    ]
+    fit = grouped_pareto_mle(
+        anchors,
+        bracket=tuple(Fraction(text) for text in RENT_TAIL_BRACKET),
+        iterations=RENT_TAIL_ITERATIONS,
+    )
+    receipt = fit.receipt()
+    document = {
+        "schema_version": 1,
+        "country": "nz",
+        "generator": "tools/generate_nz_target_references.py",
+        "description": (
+            "Annual rent band edges in NZD for transport.quantile_map@1, one band "
+            "list per code in household_region_code. Each reference names one "
+            "2023 Census count of households by weekly rent, so every region's "
+            "shares come from its own published counts."
+        ),
+        "weeks_per_year": RENT_WEEKS_PER_YEAR,
+        "component_column": "household_region_code",
+        "map_bands": {"components": components},
+        "interpolation": {"method": "pareto", "alpha": fit.alpha_float},
+        # Decimal text only: the bisection's own floats can differ in the last
+        # bit across platforms, and generator --check compares bytes.
+        "tail_fit": {
+            key: receipt[key]
+            for key in (
+                "estimator",
+                "anchors",
+                "bracket",
+                "iterations",
+                "alpha_decimal",
+                "top_band_lower",
+                "top_band_mean_decimal",
+            )
+        },
+        "zero_count_merges": merges,
+        "disclosure": RENT_DISCLOSURE,
+        "zero_count_disclosure": (
+            "transport.quantile_map refuses a zero share. Where a published band "
+            "holds no households, the band below it takes its upper edge and "
+            "keeps its own reference. A region whose open top band holds no "
+            "households takes its Pareto top from the lower edge of the nearest "
+            "band with households."
+        ),
+    }
+    return references, document
+
+
 def build_reference_documents(artifact, *, package_dir=SPEC):
     """Return generated file-name/document pairs; verify the full feed identity first."""
     from microcosm.build.ledger_artifact import validate_chronicle_feed_pin
@@ -741,6 +926,8 @@ def build_reference_documents(artifact, *, package_dir=SPEC):
                 "interval_table_id": WAGE_TABLE,
             }
         )
+    rent_references, rent_bands = rent_bands_and_references(inventory)
+    precal.extend(rent_references)
     precal_templates = json.loads(PRECAL_TEMPLATES.read_text())
     for contract, status, reason in (
         (
@@ -907,6 +1094,7 @@ def build_reference_documents(artifact, *, package_dir=SPEC):
         ),
         "diagnostic_references": native_income,
     }
+    documents["rent_bands.json"] = rent_bands
     documents["holdout_references.json"] = _holdout_references(inventory)
     documents["reference_selection.json"] = _reference_selection(documents)
     documents["calibration_bindings.json"] = calibration_bindings()
