@@ -1,4 +1,4 @@
-"""Both UK target kernels hash every module that decides a target value.
+"""The UK target and problem kernels hash every module that decides a target.
 
 Two checks pin the closure:
 
@@ -6,12 +6,17 @@ Two checks pin the closure:
   first-party import of a module in ``UK_TARGET_COMPILE_MODULE_NAMES`` is
   listed, or excluded with a reason;
 - each kernel's: the derived binding rule in test_uk_graph.py holds what each
-  target and problem kernel's hash covers to what its code computes through
+  of the six target and problem kernels' hashes covers to what its code
+  computes through
   (``test_every_uk_graph_kernel_hashes_each_helper_it_computes_through``). It
   replaced microcosm#1497's per-kernel import record for these kernels
-  (microcosm#931 ruling 6), so this file keeps only what that rule does not
-  cover: the modules a kernel's file imports only to build its hash
-  (``HASH_INPUTS``) stay out of the hashes.
+  (microcosm#931 ruling 6).
+
+Beside pins of what the kernels hash, this file keeps what that rule does
+not cover. Each module a kernel's file imports only to build a hash
+(``HASH_INPUTS``) is still imported where listed, and a kernel hashes one
+only where another module it hashes imports it too. No kernel hashes the
+compile list or ``solve_scope``.
 """
 
 from __future__ import annotations
@@ -292,8 +297,9 @@ def test_an_edit_to_calibration_run_leaves_the_kernels_keys(
 ):
     """The target kernels run only the two functions now in ledger_surface.
     An edit elsewhere in calibration_run, the national calibration runner,
-    re-runs no target compilation and, in builds that construct the spine in
-    the graph, no solve (microcosm#1492)."""
+    re-runs no target compilation (microcosm#1492) and, in builds that
+    construct the spine in the graph, no solve: the preflight the solve keys
+    on leaves the runner out too (the test below)."""
     from microcosm.build.uk_runtime import calibration_run
 
     before = kernel.implementation_hash()
@@ -302,6 +308,44 @@ def test_an_edit_to_calibration_run_leaves_the_kernels_keys(
     edited.write_bytes(source.read_bytes() + b"\n# an edited line\n")
     monkeypatch.setattr(calibration_run, "__file__", str(edited))
     assert kernel.implementation_hash() == before
+
+
+def test_an_edit_to_calibration_run_leaves_the_preflight_and_the_solve(
+    tmp_path, monkeypatch
+):
+    """The full gates' preflight computes through the spine and local gate
+    scopes and the scoped gate manifest, which moved unchanged from
+    calibration_run into gate_scopes, so its key, and with it the dense
+    solve's, hashes the small module and not the runner (microcosm#931), as
+    the target kernels hash ledger_surface. Neither full gate kernel's own
+    hash nor the preflight's own code moves on an edit to the runner. The
+    calibrated gates' own code binds it, for the admin totals and the CGT
+    projection artifact their gate context is built with, so of the two
+    phases only the calibrated gates re-key."""
+    from microcosm.build.uk_runtime import calibration_run, gate_scopes, graph_terminal
+
+    kernels = [
+        kind(coverage_engine=object(), engine_identity="test")
+        for kind in (
+            graph_terminal.UKFullPreflightGateKernel,
+            graph_terminal.UKFullGateKernel,
+        )
+    ]
+    preflight_code = graph_terminal.uk_preflight_only_code_hash.__wrapped__
+    terminal_code = graph_terminal.uk_terminal_only_code_hash.__wrapped__
+    for kernel in kernels:
+        hashed = hashed_module_names(kernel, graph_terminal)
+        assert gate_scopes.__name__ in hashed, kernel.ref
+        assert calibration_run.__name__ not in hashed, kernel.ref
+    before = [kernel.implementation_hash() for kernel in kernels]
+    codes = (preflight_code(), terminal_code())
+    source = Path(calibration_run.__file__)
+    edited = tmp_path / source.name
+    edited.write_bytes(source.read_bytes() + b"\n# an edited line\n")
+    monkeypatch.setattr(calibration_run, "__file__", str(edited))
+    assert [kernel.implementation_hash() for kernel in kernels] == before
+    assert preflight_code() == codes[0]
+    assert terminal_code() != codes[1]
 
 
 def test_full_problem_loss_weights_hash_what_target_weights_reads(monkeypatch):

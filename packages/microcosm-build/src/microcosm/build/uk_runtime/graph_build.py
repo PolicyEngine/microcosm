@@ -393,20 +393,22 @@ class UKBoundSpineKernel(KernelBase):
         from microcosm.frame.adapters import policyengine_uk as uk_engine_adapter
 
         from .. import gate_battery, gates, trace
-        from . import content_identity, graph_frames, hmrc_uprating
+        from . import content_identity, gate_scopes, graph_frames, hmrc_uprating
 
         # The node also computes through the H5 it loads (frame_materialize,
         # the engine adapter's contracts), the checkpoint's content identity
         # and pinned engine (content_identity, hmrc_uprating), the gate
         # digests it derives through a battery run (gate_battery, gates,
-        # trace), the create-frame normalisation it shares with the spine's
-        # root (graph_frames, not the spine's kernel module, so an edit there
-        # does not re-key the national line) and the canonical encoding of its
-        # artifacts (microcosm#931).
+        # trace) over the spine gate scope and its scoped manifest
+        # (gate_scopes), the create-frame normalisation it shares with the
+        # spine's root (graph_frames, not the spine's kernel module, so an
+        # edit there does not re-key the national line) and the canonical
+        # encoding of its artifacts (microcosm#931).
         return source_hash(
             type(self),
             national_frame,
             calibration_run,
+            gate_scopes,
             release_certification,
             frame_materialize,
             uk_engine_adapter,
