@@ -218,18 +218,29 @@ _ENGINE_MODULES = (
     engine_population,
     uk_engine_population_declaration,
 )
+# What else the injected engine computes through when those stages call it:
+# the adapter builds each simulation's dataset through frame.materialize's
+# engine_tables. test_uk_graph derives the group from a second walk, rooted at
+# the PolicyEngineUKEngine the builds inject and followed from the methods the
+# engine stages call on it (microcosm#931). It is kept apart from
+# _ENGINE_MODULES, which no other stage binds, because the SPI spine's three
+# stages and the band donors bind frame.materialize for their own tables.
+_ENGINE_COMPUTE_MODULES = (frame_materialize,)
+# What every stage that calls the engine binds.
+_ENGINE_STAGE_MODULES = (*_ENGINE_MODULES, *_ENGINE_COMPUTE_MODULES)
 
 # Imported modules are not traversed by ``source_hash``, so each stage binds
 # every first-party module holding code its transform computes through,
 # beyond its own module (microcosm#931). test_uk_graph derives that set: it
 # follows what the transform names into the module defining it, in any
-# workspace package, to a fixed point. It needs no binding for a listed
-# refusal-only check, nor for the core modules every node runs through (the
-# Frame, the graph executor and the modules that compute node keys), which it
-# lists with their reasons. Where it stops at a single string, a column-name
-# function or a record, the module is hashed by the stage or a stage upstream
-# of it, or the name is listed with its reason; a collection of strings, like
-# a number, is a value.
+# workspace package, to a fixed point, and for a stage that calls the engine,
+# what the methods the stage calls on the injected engine name. It needs no
+# binding for a listed refusal-only check, nor for the core modules every node
+# runs through (the Frame, the graph executor and the modules that compute
+# node keys), which it lists with their reasons. Where it stops at a single
+# string, a column-name function or a record, the module is hashed by the
+# stage or a stage upstream of it, or the name is listed with its reason; a
+# collection of strings, like a number, is a value.
 # Every stage whose module or bound helpers import the shared keyed-draw
 # helpers (``microcosm.build.stochastic_assignment``), or import another
 # module's function that draws through them, binds them as well, so an edit
@@ -466,12 +477,12 @@ _STAGE_HELPER_MODULES = {
     # The legacy proxies read raw tabs, and the grant split resolves its
     # year's rules from the FRS release (microcosm#931).
     "frs_legacy_proxies": (
-        *_ENGINE_MODULES,
+        *_ENGINE_STAGE_MODULES,
         *_PINNED_TAB_MODULES,
         stochastic_assignment,
     ),
-    "frs_education_grant_split": (*_ENGINE_MODULES, frs_release),
-    "frs_brma": (*_ENGINE_MODULES, stochastic_assignment),
+    "frs_education_grant_split": (*_ENGINE_STAGE_MODULES, frs_release),
+    "frs_brma": (*_ENGINE_STAGE_MODULES, stochastic_assignment),
     # The donor stages read their donor tabs through frs_spine, record each
     # fit's weight kind, gate the fits and clip donor support to the donor's
     # range (microcosm#931); the WAS recipients' predictors map benefit units to
@@ -480,7 +491,7 @@ _STAGE_HELPER_MODULES = {
     # ETB, landlord, reporter and housing stages below, fit through the QRF
     # modules (microcosm#931).
     "was_wealth": (
-        *_ENGINE_MODULES,
+        *_ENGINE_STAGE_MODULES,
         *_PINNED_TAB_MODULES,
         *_QRF_MODULES,
         frs_brma,
@@ -496,7 +507,7 @@ _STAGE_HELPER_MODULES = {
     # household predictors through the WAS recipient surface; the anchor counts
     # HMRC's payers through the typed ISA facts (microcosm#1415).
     "was_lisa": (
-        *_ENGINE_MODULES,
+        *_ENGINE_STAGE_MODULES,
         was_wealth,
         hmrc_isa_statistics,
         *_PINNED_TAB_MODULES,
@@ -548,7 +559,7 @@ _STAGE_HELPER_MODULES = {
     # The bus travel donors also read published car availability as vendored
     # facts, and the recipients' HBAI gross income (microcosm#931).
     "nts_bus_travel": (
-        *_ENGINE_MODULES,
+        *_ENGINE_STAGE_MODULES,
         bus_use_incidence,
         *_PINNED_TAB_MODULES,
         *_FEED_FACT_MODULES,
@@ -568,7 +579,7 @@ _STAGE_HELPER_MODULES = {
     # assigns car attributes, tops up gambling and reads the DfT boardings of
     # each recipient's region through the FRS region map (microcosm#931).
     "lcfs_consumption": (
-        *_ENGINE_MODULES,
+        *_ENGINE_STAGE_MODULES,
         energy_pricing,
         *_PINNED_TAB_MODULES,
         *_FEED_FACT_MODULES,
@@ -587,7 +598,7 @@ _STAGE_HELPER_MODULES = {
         stochastic_assignment,
     ),
     "etb_vat": (
-        *_ENGINE_MODULES,
+        *_ENGINE_STAGE_MODULES,
         *_PINNED_TAB_MODULES,
         *_FEED_FACT_MODULES,
         *_QRF_MODULES,
@@ -601,7 +612,7 @@ _STAGE_HELPER_MODULES = {
     # The services stage counts its recipients' family roles as the VAT stage
     # does, from etb_vat's role table (microcosm#931).
     "etb_services": (
-        *_ENGINE_MODULES,
+        *_ENGINE_STAGE_MODULES,
         *_PINNED_TAB_MODULES,
         *_FEED_FACT_MODULES,
         *_QRF_MODULES,
@@ -621,7 +632,7 @@ _STAGE_HELPER_MODULES = {
     # units as the UC capital stage does (microcosm#931).
     "uc_reporter_redraw": (
         uc_relationships,
-        *_ENGINE_MODULES,
+        *_ENGINE_STAGE_MODULES,
         *_QRF_MODULES,
         qrf_gates,
         uc_capital_coherence,
@@ -655,7 +666,7 @@ _STAGE_HELPER_MODULES = {
     # it types its engine as the adapter's ProjectingRulesEngine, a protocol
     # that extends microcosm.frame.rules' RulesEngine (microcosm#931).
     "uc_take_up": (
-        *_ENGINE_MODULES,
+        *_ENGINE_STAGE_MODULES,
         frame_rules,
         *_FEED_FACT_MODULES,
         legacy_closure_take_up,
@@ -682,7 +693,7 @@ _STAGE_HELPER_MODULES = {
     # protocol as the UC redraw (microcosm#931).
     "pension_credit_take_up": (
         uc_capital_coherence,
-        *_ENGINE_MODULES,
+        *_ENGINE_STAGE_MODULES,
         frame_rules,
         frs_release,
         take_up_contract,
@@ -692,7 +703,7 @@ _STAGE_HELPER_MODULES = {
     # reads the vendored Child Benefit statistics (microcosm#931).
     "child_benefit_take_up": (
         uc_capital_coherence,
-        *_ENGINE_MODULES,
+        *_ENGINE_STAGE_MODULES,
         *_FEED_FACT_MODULES,
         stochastic_assignment,
     ),
@@ -702,7 +713,7 @@ _STAGE_HELPER_MODULES = {
     # placement helper (microcosm#1418); it reads the take-up contract and the
     # year's rules (microcosm#931).
     "carers_allowance_take_up": (
-        *_ENGINE_MODULES,
+        *_ENGINE_STAGE_MODULES,
         receipt_counts,
         frs_release,
         take_up_contract,
@@ -710,7 +721,7 @@ _STAGE_HELPER_MODULES = {
     ),
     # The stored attendance is one engine materialization (microcosm#1095),
     # whose year's rules come from the FRS release (microcosm#931).
-    "private_school_attendance": (*_ENGINE_MODULES, frs_release),
+    "private_school_attendance": (*_ENGINE_STAGE_MODULES, frs_release),
     # The housing shell keeps council tax bands within the nation, whose
     # regions are microcosm.calibrate's UK region tier, and gates its fits;
     # the deduction attributes map benefit units to households and
@@ -763,7 +774,7 @@ _STAGE_HELPER_MODULES = {
         trace,
         *_FEED_FACT_MODULES,
         stochastic_assignment,
-        *_ENGINE_MODULES,
+        *_ENGINE_STAGE_MODULES,
     ),
     # The copies' childcare re-draw draws through frs_take_up's childcare
     # helper, reads each household's clone path, and measures its flags for

@@ -774,25 +774,53 @@ def _takes_an_engine(module) -> bool:
     return False
 
 
+@functools.cache
+def _engine_use() -> tuple[frozenset[str], frozenset[str]]:
+    """The stages whose module calls the engine, and those whose transform
+    takes one."""
+    from microcosm.build.uk_runtime import graph_kernels
+
+    modules = {
+        stage: graph_kernels._stage_module(stage)
+        for stage in graph_kernels._STAGE_MODULES
+    }
+    return (
+        frozenset(
+            stage for stage, module in modules.items() if _calls_the_engine(module)
+        ),
+        frozenset(
+            stage for stage, module in modules.items() if _takes_an_engine(module)
+        ),
+    )
+
+
+def _engine_stages() -> frozenset[str]:
+    """The stages that compute through the engine: those that call it or take
+    one, less those that take it for its country only."""
+
+    calling, taking = _engine_use()
+    return calling | (taking - _ENGINE_TAKEN_FOR_ITS_COUNTRY_ONLY)
+
+
 def test_every_stage_that_calls_the_engine_binds_the_engine_modules() -> None:
     """How an engine call runs, and clone by clone once a frame carries more
     than one clone, is the adapter's, the shared engine-block machinery's and
     the UK declaration's (microcosm#931). ``source_hash`` does not follow
     imports, so every stage whose module calls the engine, or whose transform
     takes one, binds all three, and no other stage binds any of them in the
-    stage table. The one exception takes the engine only to check its country
-    and computes nothing through it. Every stage also hashes the adapter
-    beside national_frame, which stamps its frames with the adapter's ISA
-    income contract and savings income projection (the next test)."""
+    stage table. Each such stage also binds what else the injected engine
+    computes through for it (``_ENGINE_COMPUTE_MODULES``, which the next test
+    derives); another stage binds a module of that group only where its own
+    transform computes through it. The one exception takes the engine only to
+    check its country and computes nothing through it. Every stage also
+    hashes the adapter beside national_frame, which stamps its frames with
+    the adapter's ISA income contract and savings income projection
+    (test_engine_module_changes_invalidate_every_stage_that_calls_the_engine)."""
     from microcosm.build.uk_runtime import graph_kernels
 
     engine_modules = set(graph_kernels._ENGINE_MODULES)
-    modules = {
-        stage: graph_kernels._stage_module(stage)
-        for stage in graph_kernels._STAGE_MODULES
-    }
-    calling = {stage for stage, module in modules.items() if _calls_the_engine(module)}
-    taking = {stage for stage, module in modules.items() if _takes_an_engine(module)}
+    compute_modules = set(graph_kernels._ENGINE_COMPUTE_MODULES)
+    calling, taking = _engine_use()
     assert {
         "frs_legacy_proxies",
         "frs_brma",
@@ -803,13 +831,148 @@ def test_every_stage_that_calls_the_engine_binds_the_engine_modules() -> None:
     } <= calling
     # The exception is still one: it takes the engine and never calls it.
     assert _ENGINE_TAKEN_FOR_ITS_COUNTRY_ONLY <= taking - calling
-    computing = calling | (taking - _ENGINE_TAKEN_FOR_ITS_COUNTRY_ONLY)
+    computing = _engine_stages()
+    transform_walks = _transform_walks()
     for stage in graph_kernels._STAGE_MODULES:
         bound = set(graph_kernels._STAGE_HELPER_MODULES.get(stage, ()))
         if stage in computing:
-            assert engine_modules <= bound, stage
+            assert engine_modules | compute_modules <= bound, stage
         else:
             assert not engine_modules & bound, stage
+            own = {
+                module
+                for module in compute_modules
+                if module.__name__ in transform_walks[stage].reach
+            }
+            assert bound & compute_modules == own, stage
+    # The SPI spine's three stages and the band donors bind frame.materialize
+    # for their own tables.
+    assert {
+        stage
+        for stage in set(graph_kernels._STAGE_MODULES) - computing
+        if compute_modules & set(graph_kernels._STAGE_HELPER_MODULES.get(stage, ()))
+    } == {
+        "frs_hmrc_spine_leaves",
+        "spi_support_channel",
+        "hmrc_spi_income_spine",
+        "spi_income_band_donors",
+    }
+
+
+def test_the_engine_stages_bind_what_the_injected_engine_computes_through() -> None:
+    """Every stage that calls the engine computes through the
+    PolicyEngineUKEngine the builds inject, whose code the walk from the
+    stage's transform does not follow (microcosm#931 ruling 5). A second walk
+    is rooted at that class (``_ENGINE_CLASS``): it follows the methods the
+    stage's code names on it, by attribute or through ``getattr``, with the
+    constructor and every method they call on ``self``, at the first-party
+    scope with the stage rule's tables (``_engine_walk``). ``_stage_walks``
+    adds it to the walk from the transform, so the rule's tests hold what it
+    reaches like any other module the stage computes through. Every engine
+    stage names ``materialize``, the RulesEngine protocol's call. Together the
+    walks reach exactly the three engine modules and
+    ``_ENGINE_COMPUTE_MODULES``: a module an engine method newly computes
+    through fails here until it joins the group, which every engine stage
+    binds (the test above), and so does one that leaves the group."""
+    from microcosm.build.uk_runtime import graph_kernels
+
+    roots = _engine_root_walks()
+    assert set(roots) == _engine_stages()
+    engine_class = _engine_class()
+    transform_walks = _transform_walks()
+    for stage in roots:
+        methods = _engine_methods(engine_class, transform_walks[stage])
+        assert "materialize" in methods, stage
+    engine_modules = {module.__name__ for module in graph_kernels._ENGINE_MODULES}
+    compute_modules = {
+        module.__name__ for module in graph_kernels._ENGINE_COMPUTE_MODULES
+    }
+    assert not engine_modules & compute_modules
+    reached = set().union(*(set(walk.reach) for walk in roots.values()))
+    assert reached == engine_modules | compute_modules, sorted(
+        reached ^ (engine_modules | compute_modules)
+    )
+
+
+def test_the_engine_root_is_the_engine_the_builds_inject() -> None:
+    """The second root is the class of the engine both builders construct
+    and hand the engine stages: graph_kernels' hermetic H2 builder and the
+    spine build's rules engine (microcosm#931 ruling 5)."""
+    import ast
+
+    from microcosm.build.uk_runtime import graph_kernels, spine_build
+
+    for module, function in (
+        (graph_kernels.__name__, "_fixture_implementations"),
+        (spine_build.__name__, "_rules_engine"),
+    ):
+        node = _module_definitions(module, _HELPER_SCOPE).definitions[function]
+        built = {
+            _resolve(module, sub.func.id, _HELPER_SCOPE)
+            for sub in ast.walk(node)
+            if isinstance(sub, ast.Call) and isinstance(sub.func, ast.Name)
+        }
+        assert _ENGINE_CLASS in built, (module, function)
+
+
+def test_the_engine_root_follows_the_methods_a_stage_calls(
+    tmp_path, monkeypatch
+) -> None:
+    """Control for the second root: the methods a stage names on an engine,
+    by attribute on any receiver or through ``getattr``, are followed, with
+    the constructor and the methods they call on ``self``; a method no stage
+    names is not, nor what only it computes through."""
+    import importlib
+    import uuid
+
+    scratch = f"engine_root_{uuid.uuid4().hex[:8]}"
+    package = tmp_path / "microcosm" / scratch
+    package.mkdir(parents=True)
+    (package / "__init__.py").write_text("")
+    monkeypatch.syspath_prepend(str(tmp_path))
+    sources = {
+        "tables": "def tables(frame):\n    return frame\n",
+        "tree": "def tree(year):\n    return year\n",
+        "vocabulary": "def vocabulary():\n    return {'a': 1}\n",
+        "count": "def count(x):\n    return int(x)\n",
+        "engine": (
+            "from .count import count\n"
+            "from .tables import tables\n"
+            "from .tree import tree\n"
+            "from .vocabulary import vocabulary\n\n"
+            "class Engine:\n"
+            "    def __init__(self, clones=1):\n"
+            "        self._clones = count(clones)\n\n"
+            "    def materialize(self, frame, names, period):\n"
+            "        return self._dataset(frame)\n\n"
+            "    def _dataset(self, frame):\n"
+            "        return tables(frame)\n\n"
+            "    def parameters(self, period):\n"
+            "        return tree(period)\n\n"
+            "    def concept_mapping(self):\n"
+            "        return vocabulary()\n"
+        ),
+        "stage": (
+            "class Transform:\n"
+            "    def __call__(self, frame, model):\n"
+            "        reader = getattr(model, 'parameters', None)\n"
+            "        return model.materialize(frame, ['x'], 2024), reader\n"
+        ),
+    }
+    for module, source in sources.items():
+        (package / f"{module}.py").write_text(source)
+    prefix = f"microcosm.{scratch}."
+    engine_class = importlib.import_module(f"{prefix}engine").Engine
+    walk = _helper_walk((f"{prefix}stage", "Transform"), scope=prefix)
+    methods = _engine_methods(engine_class, walk)
+    assert methods == {"materialize", "parameters"}
+    reach = _engine_walk(engine_class, methods, scope=prefix).reach
+    assert {module.removeprefix(prefix): names for module, names in reach.items()} == {
+        "engine": {"Engine"},
+        "count": {"count"},
+        "tables": {"tables"},
+        "tree": {"tree"},
+    }
 
 
 def test_the_engine_call_scan_sees_any_receiver(tmp_path) -> None:
@@ -834,9 +997,11 @@ def test_the_engine_call_scan_sees_any_receiver(tmp_path) -> None:
     [
         # national_frame stamps every frame through the adapter's ISA income
         # contract and savings income projection, so every stage hashes it.
-        ("policyengine_uk", True),
-        ("engine_population", False),
-        ("policyengine_uk_population", False),
+        ("microcosm.frame.adapters.policyengine_uk", True),
+        ("microcosm.frame.adapters.engine_population", False),
+        ("microcosm.frame.adapters.policyengine_uk_population", False),
+        # The adapter builds each simulation's dataset through it.
+        ("microcosm.frame.materialize", False),
     ],
 )
 def test_engine_module_changes_invalidate_every_stage_that_calls_the_engine(
@@ -846,7 +1011,7 @@ def test_engine_module_changes_invalidate_every_stage_that_calls_the_engine(
 
     from microcosm.build.uk_runtime import graph_kernels
 
-    module = importlib.import_module(f"microcosm.frame.adapters.{module_name}")
+    module = importlib.import_module(module_name)
     graph = uk_spine_graph()
     registry = uk_registry(graph=graph)
     stages = sorted(
@@ -1002,6 +1167,42 @@ _KERNEL_CORE_NAMES: dict[tuple[str, str], str] = {
         "release's tier from its gate ancestors; node_key binds the declared "
         "value with the rest of the kernel's capabilities"
     ),
+    # The kernels name the entries below through microcosm.graph's lazy
+    # exports, which the walk follows since microcosm#931 ruling 8.
+    ("microcosm.graph.kernel", "Capabilities"): (
+        "the frozen record of a kernel's declared contract, which a kernel "
+        "names to declare its capabilities; it only checks the types and "
+        "consistency of its fields, and node_key binds every field it holds "
+        "(keys._capabilities_projection)"
+    ),
+    ("microcosm.graph.kernel", "Determinism"): (
+        "the enum a kernel's capabilities declare its determinism in, whether "
+        "its output is a function of its inputs and seed; node_key binds the "
+        "declared value with the rest of the kernel's capabilities"
+    ),
+    ("microcosm.graph.kernel", "Numeric"): (
+        "the enum a kernel's capabilities declare its numbers' "
+        "reproducibility in, from which the executor resolves the numeric "
+        "scope of each column a reader is given; node_key binds the declared "
+        "value with the rest of the kernel's capabilities"
+    ),
+    ("microcosm.graph.kernel", "SeedSource"): (
+        "the enum a kernel's capabilities declare its seed source in, where a "
+        "seeded kernel takes its randomness from; node_key binds the declared "
+        "value with the rest of the kernel's capabilities"
+    ),
+    ("microcosm.graph.kernel", "KernelContext"): (
+        "the frozen record of what the executor hands a kernel to read, which "
+        "a kernel names to annotate it; it only checks and freezes the fields "
+        "the executor fills, and every node's inputs pass through it, where "
+        "H2 catches a changed value (graph.kernel's core reason)"
+    ),
+    ("microcosm.graph.kernel", "KernelResult"): (
+        "the frozen record a kernel returns its outputs in, which holds what "
+        "the kernel puts in it and computes nothing; the executor validates "
+        "every field and applies it through graph.population's patch, where "
+        "H2 catches a changed value as for the executor"
+    ),
 }
 #: Checks that read values only to decide whether to refuse, each with why it
 #: cannot change what its caller computes. The rule does not follow them, and
@@ -1088,11 +1289,22 @@ _KERNEL_STOPS: dict[tuple[str, str], str] = {
         "resolves the hermetic H2 fixture's transform for the node's stage, "
         "which _fixture_implementations builds and which is the stage's own "
         "transform: the stage rule holds what each transform computes "
-        "through, from where graph_kernels builds it. The one exception is "
-        "the PolicyEngineUKEngine it builds and injects into the engine "
-        "stages: they bind the three engine modules, but no rule follows the "
-        "adapter's own first-party imports, which is held for a ruling "
-        "(microcosm#931)"
+        "through, from where graph_kernels builds it, and what the "
+        "PolicyEngineUKEngine it builds and injects into the engine stages "
+        "computes through for them, from the methods they call on it (its "
+        "second root, _ENGINE_CLASS; microcosm#931 ruling 5)"
+    ),
+    ("microcosm.graph.codecs", "load_source"): (
+        "decodes a declared source into a frame. The create kernel calls it "
+        "only where no root transform is bound, the hermetic registry's "
+        "data-only path, which loads the captured root tables of the H2 "
+        "fixture. The spine build installs the root's transform, and H2 "
+        "parity binds it too (fixture_stage_plan_inputs), so neither takes "
+        "that path (checked). Hashing microcosm.graph.codecs, and the content "
+        "store it names, would re-key the spine root, and with it every spine "
+        "node and every node downstream of the spine, on edits to code no "
+        "build runs; microcosm-graph's codec tests hold what it decodes "
+        "(microcosm#931 ruling 8)"
     ),
     ("microcosm.build.uk_runtime.spi_spine", "uk_spi_support_mass_change_reason"): (
         "_minimal_frame rebuilds the SPI support allocation's mass record "
@@ -1169,6 +1381,22 @@ _HELD_KERNELS: dict[str, str] = {
             "uk.full.national_problem@1",
         )
     },
+}
+#: Packages that export names lazily, through a module ``__getattr__``, each
+#: with the table, of name to the submodule defining it, that ``__getattr__``
+#: reads. The walk resolves such a name to the module that defines it and
+#: follows it like any other (microcosm#931 ruling 8). microcosm.graph imports
+#: its runtime modules, which need numpy, pandas and microcosm-frame, only on
+#: first access. test_every_lazy_export_resolves_to_the_object_python_returns
+#: checks the table.
+_LAZY_EXPORT_TABLES: dict[str, str] = {"microcosm.graph": "_RUNTIME_EXPORTS"}
+#: First-party modules that define a module ``__getattr__`` but export
+#: nothing through it, each with why.
+_NO_LAZY_EXPORTS: dict[str, str] = {
+    "microcosm.build.us_runtime.sources": (
+        "its __getattr__ raises for every name: it only words the error for "
+        "the names it removed"
+    ),
 }
 #: Method and function names that change their receiver or an argument in
 #: place.
@@ -1283,6 +1511,8 @@ def _module_definitions(name: str, scope: str) -> _ModuleDefinitions | None:
     for node in tree.body:
         if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef | ast.ClassDef):
             definitions[node.name] = node
+        elif isinstance(node, ast.TypeAlias):
+            definitions[node.name.id] = node
         elif isinstance(node, ast.Assign | ast.AnnAssign):
             targets = node.targets if isinstance(node, ast.Assign) else [node.target]
             for target in targets:
@@ -1292,9 +1522,26 @@ def _module_definitions(name: str, scope: str) -> _ModuleDefinitions | None:
     return _ModuleDefinitions(imports, modules, tuple(stars), definitions)
 
 
+@functools.cache
+def _lazy_exports(module: str) -> Mapping[str, str]:
+    """Each name ``module`` exports lazily, to the module defining it, read
+    from the table its ``__getattr__`` reads (``_LAZY_EXPORT_TABLES``)."""
+
+    import importlib
+
+    table = _LAZY_EXPORT_TABLES.get(module)
+    if table is None:
+        return MappingProxyType({})
+    exports = getattr(importlib.import_module(module), table)
+    return MappingProxyType(
+        {name: f"{module}.{submodule}" for name, submodule in exports.items()}
+    )
+
+
 def _resolve(module: str, name: str, scope: str) -> tuple[str, str] | None:
     """The top-level definition ``name`` refers to in ``module``, through
-    re-exports; None for a module or anything outside ``scope``."""
+    re-exports and lazy exports (``_LAZY_EXPORT_TABLES``); None for a module
+    or anything outside ``scope``."""
 
     pending, seen = [(module, name)], set()
     while pending:
@@ -1310,8 +1557,13 @@ def _resolve(module: str, name: str, scope: str) -> tuple[str, str] | None:
             return item
         if name in facts.imports:
             pending.append(facts.imports[name])
-        else:
-            pending.extend((star, name) for star in facts.stars)
+            continue
+        # As in Python, the module's __getattr__ supplies a name only where
+        # none of its own attributes, its star imports' included, is one.
+        lazy = _lazy_exports(module).get(name)
+        if lazy is not None:
+            pending.append((lazy, name))
+        pending.extend((star, name) for star in facts.stars)
     return None
 
 
@@ -1473,7 +1725,9 @@ def _classify_helper(module: str, name: str, scope: str) -> str:
     import ast
 
     node = _module_definitions(module, scope).definitions[name]
-    if isinstance(node, ast.Assign | ast.AnnAssign):
+    # A type alias statement (``type X = ...``) reads as an assignment of its
+    # value.
+    if isinstance(node, ast.Assign | ast.AnnAssign | ast.TypeAlias):
         if node.value is None or (
             (
                 isinstance(node.value, ast.Name | ast.Attribute)
@@ -1621,6 +1875,104 @@ def _helper_reach(
     return _helper_walk(root, scope).reach
 
 
+#: The class of the engine the builds inject into the stages that compute
+#: through the engine, the second root of their walk (microcosm#931 ruling 5):
+#: graph_kernels' hermetic H2 builder and the spine build both construct it
+#: (test_the_engine_root_is_the_engine_the_builds_inject).
+_ENGINE_CLASS = ("microcosm.frame.adapters.policyengine_uk", "PolicyEngineUKEngine")
+
+
+def _engine_class() -> type:
+    import importlib
+
+    module, name = _ENGINE_CLASS
+    return getattr(importlib.import_module(module), name)
+
+
+def _class_attributes(cls: type) -> dict[str, list[tuple[type, object]]]:
+    """Each attribute ``cls`` defines, with the class and statement that
+    define it, as ``_kernel_body`` chooses them by method resolution order."""
+
+    body: dict[str, list[tuple[type, object]]] = {}
+    for owner, statement, name in _kernel_body(cls):
+        body.setdefault(name, []).append((owner, statement))
+    return body
+
+
+def _engine_methods(engine_class: type, walk: _Walk) -> frozenset[str]:
+    """The attributes of ``engine_class`` that the code ``walk`` reaches
+    names: read by attribute, on any receiver, or through ``getattr`` or
+    ``hasattr`` with a constant name. It matches by name alone, as
+    ``_calls_the_engine`` matches its calls, so it sees the engine under any
+    name a stage holds it by, and can only over-count."""
+
+    import ast
+
+    found: set[object] = set()
+    for module, names in walk.reach.items():
+        definitions = _module_definitions(module, _HELPER_SCOPE).definitions
+        for name in names:
+            for sub in ast.walk(definitions[name]):
+                if isinstance(sub, ast.Attribute):
+                    found.add(sub.attr)
+                elif (
+                    isinstance(sub, ast.Call)
+                    and isinstance(sub.func, ast.Name)
+                    and sub.func.id in {"getattr", "hasattr"}
+                    and len(sub.args) > 1
+                    and isinstance(sub.args[1], ast.Constant)
+                ):
+                    found.add(sub.args[1].value)
+    return frozenset(found & set(_class_attributes(engine_class)))
+
+
+def _engine_walk(
+    engine_class: type, methods: frozenset[str], scope: str = _HELPER_SCOPE
+) -> _Walk:
+    """What an engine of ``engine_class`` computes through for a stage that
+    calls ``methods`` on it: the stage rule's walk, at ``scope`` with the
+    same tables, from those methods, the constructor the builds call, and
+    every method they call on ``self``, to a fixed point."""
+
+    import ast
+
+    body = _class_attributes(engine_class)
+    pending, chosen = sorted({"__init__", *methods} & set(body)), set()
+    while pending:
+        name = pending.pop()
+        if name in chosen:
+            continue
+        chosen.add(name)
+        for _, statement in body[name]:
+            pending.extend(
+                sub.attr
+                for sub in ast.walk(statement)
+                if isinstance(sub, ast.Attribute)
+                and isinstance(sub.value, ast.Name)
+                and sub.value.id in {"self", "cls"}
+                and sub.attr in body
+            )
+    seeds = [
+        (found, (owner.__module__, f"{owner.__name__}.{name}"))
+        for name in sorted(chosen)
+        for owner, statement in body[name]
+        for found in _named(owner.__module__, statement, scope)
+    ]
+    walk, _, _ = _walk(
+        {(cls.__module__, cls.__name__) for cls in _kernel_classes(engine_class)},
+        seeds,
+        scope,
+    )
+    return walk
+
+
+def _merged(first: _Walk, second: _Walk) -> _Walk:
+    reach = dict(first.reach)
+    for module, names in second.reach.items():
+        reach[module] = reach.get(module, frozenset()) | names
+    return _Walk(reach, first.stops | second.stops, first.core | second.core)
+
+
 def _stage_transforms() -> dict[str, tuple[str, str]]:
     """Each spine stage's transform, as graph_kernels builds it for the
     hermetic registry and the legacy plan: ``(module, name)``."""
@@ -1664,23 +2016,57 @@ def _stage_transforms() -> dict[str, tuple[str, str]]:
 
 
 @functools.cache
+def _transform_walks() -> MappingProxyType:
+    """The walk from each spine stage's transform (``_helper_walk``)."""
+
+    from microcosm.build.uk_runtime import graph_kernels
+
+    walks = {}
+    for stage, transform in sorted(_stage_transforms().items()):
+        assert transform[0] == graph_kernels._stage_module(stage).__name__, stage
+        walks[stage] = _helper_walk(transform)
+    return MappingProxyType(walks)
+
+
+@functools.cache
+def _engine_root_walks() -> MappingProxyType:
+    """Each engine stage's second walk (``_engine_walk``): from the methods
+    of the injected engine its transform's walk names."""
+
+    engine_class = _engine_class()
+    walks = _transform_walks()
+    return MappingProxyType(
+        {
+            stage: _engine_walk(
+                engine_class, _engine_methods(engine_class, walks[stage])
+            )
+            for stage in sorted(_engine_stages())
+        }
+    )
+
+
+@functools.cache
 def _stage_walks() -> dict[str, tuple[str, frozenset[str], tuple]]:
-    """Each spine stage's node id, the modules its node hashes, and the
-    walk from its transform (``_helper_walk``)."""
+    """Each spine stage's node id, the modules its node hashes, and what it
+    computes through: the walk from its transform and, for a stage that
+    calls the engine, the walk from the engine methods it calls
+    (``_engine_root_walks``)."""
 
     from microcosm.build.uk_runtime import graph_kernels
 
     graph = uk_spine_graph()
     registry = uk_registry(graph=graph)
+    roots = _engine_root_walks()
     walks = {}
-    for stage, transform in sorted(_stage_transforms().items()):
-        assert transform[0] == graph_kernels._stage_module(stage).__name__, stage
+    for stage, walk in _transform_walks().items():
         # The root stage's node is the CREATE kernel.
         node = graph.node("create_uk_frs" if stage == "frs_spine" else stage)
         hashed = frozenset(
             hashed_module_names(registry.get(node.kernel), graph_kernels)
         )
-        walks[stage] = (node.id, hashed, _helper_walk(transform))
+        if stage in roots:
+            walk = _merged(walk, roots[stage])
+        walks[stage] = (node.id, hashed, walk)
     return walks
 
 
@@ -1700,10 +2086,13 @@ def test_every_stage_hashes_each_helper_its_transform_computes_through() -> None
     needs its module bound. The rule starts at the transform, not at the
     kernel that runs it: the kernel's code, in graph_kernels, which every
     stage hashes, builds every stage's transform for the hermetic registry,
-    so following it would bind every helper into every stage.
+    so following it would bind every helper into every stage. For a stage
+    that calls the engine it also starts at the methods the stage calls on
+    the engine the builds inject (``_engine_root_walks``).
 
-    What the rule cannot see: a call through an object whose class the code
-    never names, a name looked up by string, and data files read by path.
+    What the rule cannot see: a call through any other object whose class
+    the code never names, a name looked up by a computed string, and data
+    files read by path.
     """
     from microcosm.build.uk_runtime import graph_kernels
 
@@ -1844,11 +2233,11 @@ def test_the_core_modules_are_on_every_nodes_path() -> None:
         kernel = registry.get(graph.node(node_id).kernel)
         # regional_home_values draws its keyed uniforms through
         # microcosm.graph.randomness, whose contract asks a kernel drawing
-        # through it to declare SeedSource.KEYED. It declares NONE, as every
-        # spine stage kernel does through the one stage kernel class: its
-        # stream is a stage parameter, which its contract hash covers, and it
-        # reads no generator the executor seeds. Whether it should declare
-        # KEYED is held for a ruling (microcosm#931 review).
+        # through it to declare SeedSource.KEYED. Every spine stage kernel,
+        # its own included, declares NONE through the one stage kernel class,
+        # as María ruled on 9 Nov (microcosm#931 ruling 7): its stream is a
+        # stage parameter, which its contract hash covers, and it reads no
+        # generator the executor seeds.
         assert kernel.capabilities.seed_source is SeedSource.NONE, stage
 
 
@@ -1902,21 +2291,35 @@ def test_the_refusal_check_sees_each_way_a_function_writes() -> None:
 def test_the_helper_rule_follows_each_way_a_stage_names_a_helper(
     tmp_path, monkeypatch
 ) -> None:
-    """Control: a helper called by name, through a re-export, by attribute on
-    its module, through an alias or a computed constant, or held only in an
-    annotation (a record's field type included) is reached, as are a numeric
-    constant, a collection of strings and a function that writes in place or
-    only refuses but is not listed; a listed check, a single string, a column
-    name, a record of plain fields, a listed core module, what only a core
-    module names, and a helper the root never names are not. The walk returns
-    the names it stopped at and the core modules it met, and follows a core
-    module only when asked to."""
+    """Control: a helper called by name, through a re-export, a lazy export,
+    by attribute on its module, through an alias or a computed constant, or
+    held only in an annotation (a record's field type included) is reached,
+    as are a numeric constant, a collection of strings and a function that
+    writes in place or only refuses but is not listed; a listed check, a
+    single string, a column name, a record of plain fields, a listed core
+    module, what only a core module names, and a helper the root never names
+    are not. The walk returns the names it stopped at and the core modules it
+    met, and follows a core module only when asked to."""
     import uuid
 
     scratch = f"helper_rule_{uuid.uuid4().hex[:8]}"
     package = tmp_path / "microcosm" / scratch
     package.mkdir(parents=True)
     (package / "__init__.py").write_text("")
+    # A package exporting its runtime module's names lazily, as
+    # microcosm.graph does.
+    (package / "lazily").mkdir()
+    (package / "lazily" / "__init__.py").write_text(
+        "from importlib import import_module\n\n"
+        "_EXPORTS = {'deferred': 'runtime', 'idle': 'runtime'}\n\n"
+        "def __getattr__(name):\n"
+        "    if name not in _EXPORTS:\n"
+        "        raise AttributeError(name)\n"
+        "    return getattr(import_module(f'{__name__}.{_EXPORTS[name]}'), name)\n"
+    )
+    (package / "lazily" / "runtime.py").write_text(
+        "def deferred(x):\n    return x * 6\n\ndef idle(x):\n    return x * 7\n"
+    )
     monkeypatch.syspath_prepend(str(tmp_path))
     sources = {
         "direct": "def draw(x):\n    return x + 1\n",
@@ -1978,6 +2381,7 @@ def test_the_helper_rule_follows_each_way_a_stage_names_a_helper(
             "from .guard import guard\n"
             "from .harmless import COLUMN, Record, check, column\n"
             "from .inplace import fold\n"
+            "from .lazily import deferred\n"
             "from .numeric import FLOOR\n"
             "from .reexport import total\n"
             "from .unused import never\n\n"
@@ -1988,7 +2392,7 @@ def test_the_helper_rule_follows_each_way_a_stage_names_a_helper(
             "        check(frame)\n"
             "        guard(frame)\n"
             "        fold(frame, [0], [1])\n"
-            "        record = Record(value=draw(1) + total([1]))\n"
+            "        record = Record(value=draw(1) + total([1]) + deferred(1))\n"
             "        rate = self.contract.rate(column('household'))\n"
             "        rate += self.inputs.rate.value()\n"
             "        owners = [OWNER[code] for code in CODES]\n"
@@ -2007,11 +2411,13 @@ def test_the_helper_rule_follows_each_way_a_stage_names_a_helper(
         _REFUSAL_ONLY_HELPERS, (f"{prefix}harmless", "check"), "control"
     )
     monkeypatch.setitem(_CORE_MODULES, f"{prefix}core", "control")
+    monkeypatch.setitem(_LAZY_EXPORT_TABLES, f"{prefix}lazily", "_EXPORTS")
     reach, stops, core = _helper_walk((f"{prefix}stage", "Transform"), scope=prefix)
     assert {module.removeprefix(prefix): names for module, names in reach.items()} == {
         "stage": {"Transform"},
         "direct": {"draw"},
         "origin": {"total"},
+        "lazily.runtime": {"deferred"},
         "attribute": {"share"},
         "alias": {"scale", "_scale"},
         "computed": {"TABLE", "_build"},
@@ -2274,13 +2680,12 @@ def test_every_uk_graph_kernel_hashes_each_helper_it_computes_through() -> None:
     refusal-only and core-module tables as for the stages, and at
     ``_KERNEL_STOPS``. Where a class has several kernels (the spine's stage
     kernels, one per stage), each one's key is held to it. The held kernels
-    (``_HELD_KERNELS``) are not.
-
-    What the rule cannot see, beside what the stage rule cannot: a name a
-    package exports lazily, through its module ``__getattr__``. The one a
-    kernel calls is microcosm.graph's ``load_source``, through which the
-    create kernel loads the H2 fixture's tables when no root transform is
-    bound; the production spine always binds one."""
+    (``_HELD_KERNELS``) are not. A name microcosm.graph exports lazily,
+    through its module ``__getattr__``, is followed to the runtime module
+    that defines it like any other (``_LAZY_EXPORT_TABLES``): the kernels'
+    capability and context records are listed core names, and the create
+    kernel's ``load_source``, which it calls only where no root transform is
+    bound, is a listed stop."""
     from microcosm.build.uk_runtime import graph_population, rowwise_geography
 
     kernels = _uk_graph_kernels()
@@ -2395,6 +2800,41 @@ def test_the_kernel_rule_stops_only_where_its_reasons_hold() -> None:
     hashed = _hashed_modules(kernels[f"uk.stage.{stage}@1"])
     assert set(reach.reach) | {module for module, _ in reach.stops} <= hashed
 
+    # The source codecs: only the create kernel's run loads a source through
+    # them, and only inside its branch for an unbound root transform. The
+    # spine build installs the root's transform, and fixture_stage_plan_inputs,
+    # which H2 parity builds its registry from, adds it.
+    loading = ("microcosm.graph.codecs", "load_source")
+    assert namers[loading] == {
+        "uk.create@1": frozenset({(graph_kernels.__name__, "UKCreateKernel.run")})
+    }
+    (run,) = [
+        item
+        for item in definitions["UKCreateKernel"].body
+        if isinstance(item, ast.FunctionDef) and item.name == "run"
+    ]
+    unbound = set()
+    for branch in ast.walk(run):
+        if (
+            isinstance(branch, ast.If)
+            and ast.unparse(branch.test) == "self.transform is None"
+        ):
+            unbound |= {id(sub) for item in branch.body for sub in ast.walk(item)}
+    references = [
+        sub
+        for sub in ast.walk(run)
+        if isinstance(sub, ast.Name | ast.Attribute)
+        and loading in _named(graph_kernels.__name__, sub, _HELPER_SCOPE)
+    ]
+    assert references and all(id(sub) in unbound for sub in references)
+    assert "frs_spine" in {install.stage for install in _spine_build_installs()}
+    plan = definitions["fixture_stage_plan_inputs"]
+    assert any(
+        isinstance(sub, ast.Assign)
+        and ast.unparse(sub.targets[0]) == "implementations['frs_spine']"
+        for sub in ast.walk(plan)
+    )
+
     # The gate registry: the bound spine derives its gate digests through it,
     # in _manifest_digests, which returns the battery run's digests alone;
     # the national battery evaluates through it and is held there.
@@ -2466,6 +2906,89 @@ def test_the_core_definitions_the_kernels_name_are_listed() -> None:
     assert named == set(_KERNEL_CORE_NAMES), sorted(named ^ set(_KERNEL_CORE_NAMES))
     patching = _helper_walk(("microcosm.graph.population", "patch"), follow_core=True)
     assert "dtype_for_token" in patching.reach["microcosm.graph.population"]
+
+
+def test_every_lazy_export_resolves_to_the_object_python_returns() -> None:
+    """The walk follows a name a package exports lazily, through its module
+    ``__getattr__``, to the module that defines it, as Python imports it
+    (microcosm#931 ruling 8). Every name microcosm.graph exports that way
+    resolves to a definition holding the very object the package returns,
+    the table the walk reads is the one the package's ``__getattr__`` reads,
+    and a name the package imports eagerly resolves as before. Every
+    first-party module that defines a module ``__getattr__`` is listed, as a
+    lazy exporter or as one that exports nothing through it, so a new one
+    cannot hide names from the walk."""
+    import ast
+    import importlib
+
+    import microcosm
+    from microcosm import graph
+
+    for module, table in _LAZY_EXPORT_TABLES.items():
+        getter = _module_definitions(module, _HELPER_SCOPE).definitions["__getattr__"]
+        assert table in {
+            sub.id for sub in ast.walk(getter) if isinstance(sub, ast.Name)
+        }, module
+    exports = getattr(graph, _LAZY_EXPORT_TABLES[graph.__name__])
+    assert {"load_source", "KernelContext", "keyed_uniform"} <= set(exports)
+    for name in exports:
+        found = _resolve(graph.__name__, name, _HELPER_SCOPE)
+        assert found is not None, name
+        module, defined = found
+        assert getattr(importlib.import_module(module), defined) is getattr(
+            graph, name
+        ), name
+    assert _resolve(graph.__name__, "compile_graph", _HELPER_SCOPE) == (
+        "microcosm.graph.decl",
+        "compile_graph",
+    )
+    getters = set()
+    for root in map(Path, microcosm.__path__):
+        for path in sorted(root.rglob("*.py")):
+            text = path.read_text(encoding="utf-8")
+            if "def __getattr__" not in text or not any(
+                isinstance(node, ast.FunctionDef) and node.name == "__getattr__"
+                for node in ast.parse(text).body
+            ):
+                continue
+            parts = path.relative_to(root.parent).with_suffix("").parts
+            getters.add(".".join(parts[:-1] if parts[-1] == "__init__" else parts))
+    listed = set(_LAZY_EXPORT_TABLES) | set(_NO_LAZY_EXPORTS)
+    assert getters == listed, sorted(getters ^ listed)
+    # The modules that export nothing that way only raise from __getattr__.
+    for module in _NO_LAZY_EXPORTS:
+        getter = _module_definitions(module, _HELPER_SCOPE).definitions["__getattr__"]
+        assert not any(isinstance(sub, ast.Return) for sub in ast.walk(getter))
+
+
+def test_no_spine_or_national_line_kernel_hashes_the_source_codecs() -> None:
+    """The create kernel's ``load_source`` stop keeps the spine's keys off
+    microcosm.graph.codecs (microcosm#931 ruling 8): no spine kernel hashes
+    it, so an edit to it re-keys no spine node, nor any node downstream of
+    the spine through it, and no kernel of the national line, whose root is
+    the bound spine checkpoint, hashes it either. The atomic geography
+    kernels, which read their sources' bytes through it, do."""
+    from microcosm.build.uk_runtime import (
+        graph_build,
+        graph_calibration,
+        graph_national,
+    )
+    from microcosm.graph import codecs
+
+    spine = uk_registry(graph=uk_spine_graph())
+    for ref in spine.refs():
+        assert codecs.__name__ not in _hashed_modules(spine.get(ref)), ref
+    kernels = _uk_graph_kernels()
+    for ref in (
+        graph_build.UKBoundSpineKernel.ref,
+        graph_national.UKNationalTargetKernel.ref,
+        graph_national.UKNationalProblemKernel.ref,
+        graph_calibration.UKDenseSolveKernel.ref,
+        graph_national.UKNationalGateKernel.ref,
+        graph_national.UKNationalReadbackKernel.ref,
+    ):
+        assert codecs.__name__ not in _hashed_modules(kernels[ref]), ref
+    assert codecs.__name__ in _hashed_modules(kernels["geography.support_import@1"])
 
 
 def test_the_frame_totals_the_uk_corrections_target_are_numpys_sums() -> None:
