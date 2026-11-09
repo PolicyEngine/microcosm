@@ -6,4 +6,4 @@ DWP's PIP cases with entitlement (Stat-Xplore PIP_Monthly_new, PolicyEngine/chro
 
 The nine English regions follow by each award of each component (`dwp.pip.cases_<region>_<component>_<award>`). Every row takes the mean of the four quarter-end points inside calendar 2025 (January, April, July, October) under the new `dwp_pip` monthly family. The model counts people with `pip` above zero by their reported `pip_dl_category` and `pip_m_category`.
 
-The breakdowns are single, María's call of 8 November 2026: the award-by-age cross would rest on fewer than three survey households in many Welsh and some English cells. Ninety-four signed exclusions hold the rows out of the solve; their `approved_on` is drafted for María's signature. The committed references come with the integration's regeneration.
+The breakdowns are single, María's call of 8 November 2026: the award-by-age cross would rest on fewer than three survey households in many Welsh and some English cells. Ninety-four signed exclusions hold the rows out of the solve; María signed them on 9 November 2026. The committed references come with the integration's regeneration.

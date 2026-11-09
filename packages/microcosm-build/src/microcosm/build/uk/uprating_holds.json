@@ -494,12 +494,12 @@
       "target_ids": [
         "hmrc.scottish_income_tax.nsnd_taxpayers"
       ],
-      "reason": "HMRC's Scottish Income Tax Outturn Statistics 2024-25 (9 July 2026), Table 2: the Scottish taxpayers with non-savings, non-dividend income tax in 2024-25 (All rates, rounded to the nearest hundred), the latest outturn, measured at 2025 with no index. No pinned index counts taxpayers; the NSND revenue row beside it moves by the engine's OBR average earnings index. Held flat, the count probably understates 2025-26: the personal allowance stayed frozen while earnings grew, so the measure at 2025 carries a year of new taxpayers that the 2024-25 figure does not, and the row's gap reads high by about that growth. A held-out diagnostic (calibration_measure_exclusions.json; S4 of the November event-data plan), not a target. Renew when HMRC's next outturn release brings 2025-26 (for María's signature).",
+      "reason": "HMRC's Scottish Income Tax Outturn Statistics 2024-25 (9 July 2026), Table 2: the Scottish taxpayers with non-savings, non-dividend income tax in 2024-25 (All rates, rounded to the nearest hundred), the latest outturn, measured at 2025 with no index. No pinned index counts taxpayers; the NSND revenue row beside it moves by the engine's OBR average earnings index. Held flat, the count probably understates 2025-26: the personal allowance stayed frozen while earnings grew, so the measure at 2025 carries a year of new taxpayers that the 2024-25 figure does not, and the row's gap reads high by about that growth. A held-out diagnostic (calibration_measure_exclusions.json; S4 of the November event-data plan), not a target. Renew when HMRC's next outturn release brings 2025-26.",
       "tracking": "microcosm#1095",
       "approved_by": "juaristi22",
-      "approved_on": "2026-11-07",
+      "approved_on": "2026-11-09",
       "status": "approved",
-      "expires_on": "2027-01-07"
+      "expires_on": "2027-01-09"
     }
   ]
 }

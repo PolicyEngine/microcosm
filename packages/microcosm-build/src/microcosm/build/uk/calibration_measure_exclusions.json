@@ -528,900 +528,900 @@
       "reason": "Diagnostic first, not yet a weight question: the bound SPI rows hold Scotland's tax on all income, and the NSND revenue shows how the build splits it. Vahid's runs put NSND at -4.9 percent and +3.1 percent of the outturn on two recent builds while the bound SPI total moved about 2 percent. Bind only if the measured gap exceeds about 3 percent and a calibrate-only solve with the row bound keeps uk_weight_ratio at or below 1,151.25 and the Scottish SPI rows within 10 percent; the row nests inside the SPI all-income tax rows, which would need a cross-grain declaration.",
       "tracking": "microcosm#1095",
       "approved_by": "juaristi22",
-      "adjudication": "María's approval of 2026-11-06 of the plan for the November event data (PR2, item S4): measure HMRC's Scottish NSND outturn and taxpayers on every build and hold both out of the solve; they bind only if the measured gap exceeds about 3 percent and a calibrate-only solve passes (for María's signature).",
-      "approved_on": "2026-11-07",
-      "expires_on": "2027-02-07"
+      "adjudication": "María's approval of 2026-11-06 of the plan for the November event data (PR2, item S4): measure HMRC's Scottish NSND outturn and taxpayers on every build and hold both out of the solve; they bind only if the measured gap exceeds about 3 percent and a calibrate-only solve passes.",
+      "approved_on": "2026-11-09",
+      "expires_on": "2027-02-09"
     },
     {
       "name": "hmrc.scottish_income_tax.nsnd_taxpayers",
       "reason": "Diagnostic, not a weight question: the count of Scottish NSND taxpayers measured beside the revenue row, read at 2025 without uprating, and missing taxpayers with tax on property income alone. Bind only with the revenue row, after the same calibrate-only solve.",
       "tracking": "microcosm#1095",
       "approved_by": "juaristi22",
-      "adjudication": "María's approval of 2026-11-06 of the plan for the November event data (PR2, item S4): measure HMRC's Scottish NSND outturn and taxpayers on every build and hold both out of the solve; they bind only if the measured gap exceeds about 3 percent and a calibrate-only solve passes (for María's signature).",
-      "approved_on": "2026-11-07",
-      "expires_on": "2027-02-07"
+      "adjudication": "María's approval of 2026-11-06 of the plan for the November event data (PR2, item S4): measure HMRC's Scottish NSND outturn and taxpayers on every build and hold both out of the solve; they bind only if the measured gap exceeds about 3 percent and a calibrate-only solve passes.",
+      "approved_on": "2026-11-09",
+      "expires_on": "2027-02-09"
     },
     {
       "name": "dwp.uc.people_aged_16_to_24",
       "reason": "Diagnostic, not a weight question: the young people work review (chronicle#420 item 3) reads the model's UC claimants and partners by age against DWP's people on UC. The UC take-up redraw's age fit (uc_take_up) brings the 16 to 24 count as near DWP's as the redraw allows, but fixed claims (units that report Universal Credit, and units moved off or kept on their legacy benefits) and pools whose count needs more claims than their other drawn units can give keep young units claiming whatever the ratio, so the count can stay above DWP's. The rows stay held out as checks on the fit, on the solve and on the split between 16 to 21 and 22 to 24. The 16 to 17 count never appears alone or by difference.",
       "tracking": "microcosm#1095",
       "approved_by": "juaristi22",
-      "adjudication": "María's calls of 2026-11-08 on the plan for the November event data (PR2, item Y4): measure DWP's people on Universal Credit aged 16 to 24, 16 to 21 and 22 to 24, every regime, on the four quarterly points of 2025, and hold them out of the solve (for María's signature).",
-      "approved_on": "2026-11-08",
-      "expires_on": "2027-02-08"
+      "adjudication": "María's calls of 2026-11-08 on the plan for the November event data (PR2, item Y4): measure DWP's people on Universal Credit aged 16 to 24, 16 to 21 and 22 to 24, every regime, on the four quarterly points of 2025, and hold them out of the solve.",
+      "approved_on": "2026-11-09",
+      "expires_on": "2027-02-09"
     },
     {
       "name": "dwp.uc.people_aged_16_to_21",
       "reason": "Diagnostic, not a weight question: the young people work review (chronicle#420 item 3) reads the model's UC claimants and partners by age against DWP's people on UC. The UC take-up redraw's age fit (uc_take_up) brings the 16 to 24 count as near DWP's as the redraw allows, but fixed claims (units that report Universal Credit, and units moved off or kept on their legacy benefits) and pools whose count needs more claims than their other drawn units can give keep young units claiming whatever the ratio, so the count can stay above DWP's. The rows stay held out as checks on the fit, on the solve and on the split between 16 to 21 and 22 to 24. The 16 to 17 count never appears alone or by difference.",
       "tracking": "microcosm#1095",
       "approved_by": "juaristi22",
-      "adjudication": "María's calls of 2026-11-08 on the plan for the November event data (PR2, item Y4): measure DWP's people on Universal Credit aged 16 to 24, 16 to 21 and 22 to 24, every regime, on the four quarterly points of 2025, and hold them out of the solve (for María's signature).",
-      "approved_on": "2026-11-08",
-      "expires_on": "2027-02-08"
+      "adjudication": "María's calls of 2026-11-08 on the plan for the November event data (PR2, item Y4): measure DWP's people on Universal Credit aged 16 to 24, 16 to 21 and 22 to 24, every regime, on the four quarterly points of 2025, and hold them out of the solve.",
+      "approved_on": "2026-11-09",
+      "expires_on": "2027-02-09"
     },
     {
       "name": "dwp.uc.people_aged_22_to_24",
       "reason": "Diagnostic, not a weight question: the young people work review (chronicle#420 item 3) reads the model's UC claimants and partners by age against DWP's people on UC. The UC take-up redraw's age fit (uc_take_up) brings the 16 to 24 count as near DWP's as the redraw allows, but fixed claims (units that report Universal Credit, and units moved off or kept on their legacy benefits) and pools whose count needs more claims than their other drawn units can give keep young units claiming whatever the ratio, so the count can stay above DWP's. The rows stay held out as checks on the fit, on the solve and on the split between 16 to 21 and 22 to 24. The 16 to 17 count never appears alone or by difference.",
       "tracking": "microcosm#1095",
       "approved_by": "juaristi22",
-      "adjudication": "María's calls of 2026-11-08 on the plan for the November event data (PR2, item Y4): measure DWP's people on Universal Credit aged 16 to 24, 16 to 21 and 22 to 24, every regime, on the four quarterly points of 2025, and hold them out of the solve (for María's signature).",
-      "approved_on": "2026-11-08",
-      "expires_on": "2027-02-08"
+      "adjudication": "María's calls of 2026-11-08 on the plan for the November event data (PR2, item Y4): measure DWP's people on Universal Credit aged 16 to 24, 16 to 21 and 22 to 24, every regime, on the four quarterly points of 2025, and hold them out of the solve.",
+      "approved_on": "2026-11-09",
+      "expires_on": "2027-02-09"
     },
     {
       "name": "dwp.pip.cases_england",
       "reason": "Diagnostic, not a weight question: DWP's PIP cases with entitlement by award, age and region (chronicle#420 item 6), the source of P2's award-mix check, against the model's reported award categories. Single breakdowns only: the award-by-age cross rests on fewer than three survey households in many Welsh and some English cells.",
       "tracking": "microcosm#1095",
       "approved_by": "juaristi22",
-      "adjudication": "María's calls of 2026-11-08 on the plan for the November event data (PR2, item P3): England and Wales as separate rows on single breakdowns (daily living award, mobility award, age band with 75 and over merged, and the English regions by each award), on the four quarter-end points of 2025, held out of the solve (for María's signature).",
-      "approved_on": "2026-11-08",
-      "expires_on": "2027-02-08"
+      "adjudication": "María's calls of 2026-11-08 on the plan for the November event data (PR2, item P3): England and Wales as separate rows on single breakdowns (daily living award, mobility award, age band with 75 and over merged, and the English regions by each award), on the four quarter-end points of 2025, held out of the solve.",
+      "approved_on": "2026-11-09",
+      "expires_on": "2027-02-09"
     },
     {
       "name": "dwp.pip.cases_england_daily_living_standard",
       "reason": "Diagnostic, not a weight question: DWP's PIP cases with entitlement by award, age and region (chronicle#420 item 6), the source of P2's award-mix check, against the model's reported award categories. Single breakdowns only: the award-by-age cross rests on fewer than three survey households in many Welsh and some English cells.",
       "tracking": "microcosm#1095",
       "approved_by": "juaristi22",
-      "adjudication": "María's calls of 2026-11-08 on the plan for the November event data (PR2, item P3): England and Wales as separate rows on single breakdowns (daily living award, mobility award, age band with 75 and over merged, and the English regions by each award), on the four quarter-end points of 2025, held out of the solve (for María's signature).",
-      "approved_on": "2026-11-08",
-      "expires_on": "2027-02-08"
+      "adjudication": "María's calls of 2026-11-08 on the plan for the November event data (PR2, item P3): England and Wales as separate rows on single breakdowns (daily living award, mobility award, age band with 75 and over merged, and the English regions by each award), on the four quarter-end points of 2025, held out of the solve.",
+      "approved_on": "2026-11-09",
+      "expires_on": "2027-02-09"
     },
     {
       "name": "dwp.pip.cases_england_daily_living_enhanced",
       "reason": "Diagnostic, not a weight question: DWP's PIP cases with entitlement by award, age and region (chronicle#420 item 6), the source of P2's award-mix check, against the model's reported award categories. Single breakdowns only: the award-by-age cross rests on fewer than three survey households in many Welsh and some English cells.",
       "tracking": "microcosm#1095",
       "approved_by": "juaristi22",
-      "adjudication": "María's calls of 2026-11-08 on the plan for the November event data (PR2, item P3): England and Wales as separate rows on single breakdowns (daily living award, mobility award, age band with 75 and over merged, and the English regions by each award), on the four quarter-end points of 2025, held out of the solve (for María's signature).",
-      "approved_on": "2026-11-08",
-      "expires_on": "2027-02-08"
+      "adjudication": "María's calls of 2026-11-08 on the plan for the November event data (PR2, item P3): England and Wales as separate rows on single breakdowns (daily living award, mobility award, age band with 75 and over merged, and the English regions by each award), on the four quarter-end points of 2025, held out of the solve.",
+      "approved_on": "2026-11-09",
+      "expires_on": "2027-02-09"
     },
     {
       "name": "dwp.pip.cases_england_daily_living_nil",
       "reason": "Diagnostic, not a weight question: DWP's PIP cases with entitlement by award, age and region (chronicle#420 item 6), the source of P2's award-mix check, against the model's reported award categories. Single breakdowns only: the award-by-age cross rests on fewer than three survey households in many Welsh and some English cells.",
       "tracking": "microcosm#1095",
       "approved_by": "juaristi22",
-      "adjudication": "María's calls of 2026-11-08 on the plan for the November event data (PR2, item P3): England and Wales as separate rows on single breakdowns (daily living award, mobility award, age band with 75 and over merged, and the English regions by each award), on the four quarter-end points of 2025, held out of the solve (for María's signature).",
-      "approved_on": "2026-11-08",
-      "expires_on": "2027-02-08"
+      "adjudication": "María's calls of 2026-11-08 on the plan for the November event data (PR2, item P3): England and Wales as separate rows on single breakdowns (daily living award, mobility award, age band with 75 and over merged, and the English regions by each award), on the four quarter-end points of 2025, held out of the solve.",
+      "approved_on": "2026-11-09",
+      "expires_on": "2027-02-09"
     },
     {
       "name": "dwp.pip.cases_england_mobility_standard",
       "reason": "Diagnostic, not a weight question: DWP's PIP cases with entitlement by award, age and region (chronicle#420 item 6), the source of P2's award-mix check, against the model's reported award categories. Single breakdowns only: the award-by-age cross rests on fewer than three survey households in many Welsh and some English cells.",
       "tracking": "microcosm#1095",
       "approved_by": "juaristi22",
-      "adjudication": "María's calls of 2026-11-08 on the plan for the November event data (PR2, item P3): England and Wales as separate rows on single breakdowns (daily living award, mobility award, age band with 75 and over merged, and the English regions by each award), on the four quarter-end points of 2025, held out of the solve (for María's signature).",
-      "approved_on": "2026-11-08",
-      "expires_on": "2027-02-08"
+      "adjudication": "María's calls of 2026-11-08 on the plan for the November event data (PR2, item P3): England and Wales as separate rows on single breakdowns (daily living award, mobility award, age band with 75 and over merged, and the English regions by each award), on the four quarter-end points of 2025, held out of the solve.",
+      "approved_on": "2026-11-09",
+      "expires_on": "2027-02-09"
     },
     {
       "name": "dwp.pip.cases_england_mobility_enhanced",
       "reason": "Diagnostic, not a weight question: DWP's PIP cases with entitlement by award, age and region (chronicle#420 item 6), the source of P2's award-mix check, against the model's reported award categories. Single breakdowns only: the award-by-age cross rests on fewer than three survey households in many Welsh and some English cells.",
       "tracking": "microcosm#1095",
       "approved_by": "juaristi22",
-      "adjudication": "María's calls of 2026-11-08 on the plan for the November event data (PR2, item P3): England and Wales as separate rows on single breakdowns (daily living award, mobility award, age band with 75 and over merged, and the English regions by each award), on the four quarter-end points of 2025, held out of the solve (for María's signature).",
-      "approved_on": "2026-11-08",
-      "expires_on": "2027-02-08"
+      "adjudication": "María's calls of 2026-11-08 on the plan for the November event data (PR2, item P3): England and Wales as separate rows on single breakdowns (daily living award, mobility award, age band with 75 and over merged, and the English regions by each award), on the four quarter-end points of 2025, held out of the solve.",
+      "approved_on": "2026-11-09",
+      "expires_on": "2027-02-09"
     },
     {
       "name": "dwp.pip.cases_england_mobility_nil",
       "reason": "Diagnostic, not a weight question: DWP's PIP cases with entitlement by award, age and region (chronicle#420 item 6), the source of P2's award-mix check, against the model's reported award categories. Single breakdowns only: the award-by-age cross rests on fewer than three survey households in many Welsh and some English cells.",
       "tracking": "microcosm#1095",
       "approved_by": "juaristi22",
-      "adjudication": "María's calls of 2026-11-08 on the plan for the November event data (PR2, item P3): England and Wales as separate rows on single breakdowns (daily living award, mobility award, age band with 75 and over merged, and the English regions by each award), on the four quarter-end points of 2025, held out of the solve (for María's signature).",
-      "approved_on": "2026-11-08",
-      "expires_on": "2027-02-08"
+      "adjudication": "María's calls of 2026-11-08 on the plan for the November event data (PR2, item P3): England and Wales as separate rows on single breakdowns (daily living award, mobility award, age band with 75 and over merged, and the English regions by each award), on the four quarter-end points of 2025, held out of the solve.",
+      "approved_on": "2026-11-09",
+      "expires_on": "2027-02-09"
     },
     {
       "name": "dwp.pip.cases_england_aged_16_to_19",
       "reason": "Diagnostic, not a weight question: DWP's PIP cases with entitlement by award, age and region (chronicle#420 item 6), the source of P2's award-mix check, against the model's reported award categories. Single breakdowns only: the award-by-age cross rests on fewer than three survey households in many Welsh and some English cells.",
       "tracking": "microcosm#1095",
       "approved_by": "juaristi22",
-      "adjudication": "María's calls of 2026-11-08 on the plan for the November event data (PR2, item P3): England and Wales as separate rows on single breakdowns (daily living award, mobility award, age band with 75 and over merged, and the English regions by each award), on the four quarter-end points of 2025, held out of the solve (for María's signature).",
-      "approved_on": "2026-11-08",
-      "expires_on": "2027-02-08"
+      "adjudication": "María's calls of 2026-11-08 on the plan for the November event data (PR2, item P3): England and Wales as separate rows on single breakdowns (daily living award, mobility award, age band with 75 and over merged, and the English regions by each award), on the four quarter-end points of 2025, held out of the solve.",
+      "approved_on": "2026-11-09",
+      "expires_on": "2027-02-09"
     },
     {
       "name": "dwp.pip.cases_england_aged_20_to_24",
       "reason": "Diagnostic, not a weight question: DWP's PIP cases with entitlement by award, age and region (chronicle#420 item 6), the source of P2's award-mix check, against the model's reported award categories. Single breakdowns only: the award-by-age cross rests on fewer than three survey households in many Welsh and some English cells.",
       "tracking": "microcosm#1095",
       "approved_by": "juaristi22",
-      "adjudication": "María's calls of 2026-11-08 on the plan for the November event data (PR2, item P3): England and Wales as separate rows on single breakdowns (daily living award, mobility award, age band with 75 and over merged, and the English regions by each award), on the four quarter-end points of 2025, held out of the solve (for María's signature).",
-      "approved_on": "2026-11-08",
-      "expires_on": "2027-02-08"
+      "adjudication": "María's calls of 2026-11-08 on the plan for the November event data (PR2, item P3): England and Wales as separate rows on single breakdowns (daily living award, mobility award, age band with 75 and over merged, and the English regions by each award), on the four quarter-end points of 2025, held out of the solve.",
+      "approved_on": "2026-11-09",
+      "expires_on": "2027-02-09"
     },
     {
       "name": "dwp.pip.cases_england_aged_25_to_29",
       "reason": "Diagnostic, not a weight question: DWP's PIP cases with entitlement by award, age and region (chronicle#420 item 6), the source of P2's award-mix check, against the model's reported award categories. Single breakdowns only: the award-by-age cross rests on fewer than three survey households in many Welsh and some English cells.",
       "tracking": "microcosm#1095",
       "approved_by": "juaristi22",
-      "adjudication": "María's calls of 2026-11-08 on the plan for the November event data (PR2, item P3): England and Wales as separate rows on single breakdowns (daily living award, mobility award, age band with 75 and over merged, and the English regions by each award), on the four quarter-end points of 2025, held out of the solve (for María's signature).",
-      "approved_on": "2026-11-08",
-      "expires_on": "2027-02-08"
+      "adjudication": "María's calls of 2026-11-08 on the plan for the November event data (PR2, item P3): England and Wales as separate rows on single breakdowns (daily living award, mobility award, age band with 75 and over merged, and the English regions by each award), on the four quarter-end points of 2025, held out of the solve.",
+      "approved_on": "2026-11-09",
+      "expires_on": "2027-02-09"
     },
     {
       "name": "dwp.pip.cases_england_aged_30_to_34",
       "reason": "Diagnostic, not a weight question: DWP's PIP cases with entitlement by award, age and region (chronicle#420 item 6), the source of P2's award-mix check, against the model's reported award categories. Single breakdowns only: the award-by-age cross rests on fewer than three survey households in many Welsh and some English cells.",
       "tracking": "microcosm#1095",
       "approved_by": "juaristi22",
-      "adjudication": "María's calls of 2026-11-08 on the plan for the November event data (PR2, item P3): England and Wales as separate rows on single breakdowns (daily living award, mobility award, age band with 75 and over merged, and the English regions by each award), on the four quarter-end points of 2025, held out of the solve (for María's signature).",
-      "approved_on": "2026-11-08",
-      "expires_on": "2027-02-08"
+      "adjudication": "María's calls of 2026-11-08 on the plan for the November event data (PR2, item P3): England and Wales as separate rows on single breakdowns (daily living award, mobility award, age band with 75 and over merged, and the English regions by each award), on the four quarter-end points of 2025, held out of the solve.",
+      "approved_on": "2026-11-09",
+      "expires_on": "2027-02-09"
     },
     {
       "name": "dwp.pip.cases_england_aged_35_to_39",
       "reason": "Diagnostic, not a weight question: DWP's PIP cases with entitlement by award, age and region (chronicle#420 item 6), the source of P2's award-mix check, against the model's reported award categories. Single breakdowns only: the award-by-age cross rests on fewer than three survey households in many Welsh and some English cells.",
       "tracking": "microcosm#1095",
       "approved_by": "juaristi22",
-      "adjudication": "María's calls of 2026-11-08 on the plan for the November event data (PR2, item P3): England and Wales as separate rows on single breakdowns (daily living award, mobility award, age band with 75 and over merged, and the English regions by each award), on the four quarter-end points of 2025, held out of the solve (for María's signature).",
-      "approved_on": "2026-11-08",
-      "expires_on": "2027-02-08"
+      "adjudication": "María's calls of 2026-11-08 on the plan for the November event data (PR2, item P3): England and Wales as separate rows on single breakdowns (daily living award, mobility award, age band with 75 and over merged, and the English regions by each award), on the four quarter-end points of 2025, held out of the solve.",
+      "approved_on": "2026-11-09",
+      "expires_on": "2027-02-09"
     },
     {
       "name": "dwp.pip.cases_england_aged_40_to_44",
       "reason": "Diagnostic, not a weight question: DWP's PIP cases with entitlement by award, age and region (chronicle#420 item 6), the source of P2's award-mix check, against the model's reported award categories. Single breakdowns only: the award-by-age cross rests on fewer than three survey households in many Welsh and some English cells.",
       "tracking": "microcosm#1095",
       "approved_by": "juaristi22",
-      "adjudication": "María's calls of 2026-11-08 on the plan for the November event data (PR2, item P3): England and Wales as separate rows on single breakdowns (daily living award, mobility award, age band with 75 and over merged, and the English regions by each award), on the four quarter-end points of 2025, held out of the solve (for María's signature).",
-      "approved_on": "2026-11-08",
-      "expires_on": "2027-02-08"
+      "adjudication": "María's calls of 2026-11-08 on the plan for the November event data (PR2, item P3): England and Wales as separate rows on single breakdowns (daily living award, mobility award, age band with 75 and over merged, and the English regions by each award), on the four quarter-end points of 2025, held out of the solve.",
+      "approved_on": "2026-11-09",
+      "expires_on": "2027-02-09"
     },
     {
       "name": "dwp.pip.cases_england_aged_45_to_49",
       "reason": "Diagnostic, not a weight question: DWP's PIP cases with entitlement by award, age and region (chronicle#420 item 6), the source of P2's award-mix check, against the model's reported award categories. Single breakdowns only: the award-by-age cross rests on fewer than three survey households in many Welsh and some English cells.",
       "tracking": "microcosm#1095",
       "approved_by": "juaristi22",
-      "adjudication": "María's calls of 2026-11-08 on the plan for the November event data (PR2, item P3): England and Wales as separate rows on single breakdowns (daily living award, mobility award, age band with 75 and over merged, and the English regions by each award), on the four quarter-end points of 2025, held out of the solve (for María's signature).",
-      "approved_on": "2026-11-08",
-      "expires_on": "2027-02-08"
+      "adjudication": "María's calls of 2026-11-08 on the plan for the November event data (PR2, item P3): England and Wales as separate rows on single breakdowns (daily living award, mobility award, age band with 75 and over merged, and the English regions by each award), on the four quarter-end points of 2025, held out of the solve.",
+      "approved_on": "2026-11-09",
+      "expires_on": "2027-02-09"
     },
     {
       "name": "dwp.pip.cases_england_aged_50_to_54",
       "reason": "Diagnostic, not a weight question: DWP's PIP cases with entitlement by award, age and region (chronicle#420 item 6), the source of P2's award-mix check, against the model's reported award categories. Single breakdowns only: the award-by-age cross rests on fewer than three survey households in many Welsh and some English cells.",
       "tracking": "microcosm#1095",
       "approved_by": "juaristi22",
-      "adjudication": "María's calls of 2026-11-08 on the plan for the November event data (PR2, item P3): England and Wales as separate rows on single breakdowns (daily living award, mobility award, age band with 75 and over merged, and the English regions by each award), on the four quarter-end points of 2025, held out of the solve (for María's signature).",
-      "approved_on": "2026-11-08",
-      "expires_on": "2027-02-08"
+      "adjudication": "María's calls of 2026-11-08 on the plan for the November event data (PR2, item P3): England and Wales as separate rows on single breakdowns (daily living award, mobility award, age band with 75 and over merged, and the English regions by each award), on the four quarter-end points of 2025, held out of the solve.",
+      "approved_on": "2026-11-09",
+      "expires_on": "2027-02-09"
     },
     {
       "name": "dwp.pip.cases_england_aged_55_to_59",
       "reason": "Diagnostic, not a weight question: DWP's PIP cases with entitlement by award, age and region (chronicle#420 item 6), the source of P2's award-mix check, against the model's reported award categories. Single breakdowns only: the award-by-age cross rests on fewer than three survey households in many Welsh and some English cells.",
       "tracking": "microcosm#1095",
       "approved_by": "juaristi22",
-      "adjudication": "María's calls of 2026-11-08 on the plan for the November event data (PR2, item P3): England and Wales as separate rows on single breakdowns (daily living award, mobility award, age band with 75 and over merged, and the English regions by each award), on the four quarter-end points of 2025, held out of the solve (for María's signature).",
-      "approved_on": "2026-11-08",
-      "expires_on": "2027-02-08"
+      "adjudication": "María's calls of 2026-11-08 on the plan for the November event data (PR2, item P3): England and Wales as separate rows on single breakdowns (daily living award, mobility award, age band with 75 and over merged, and the English regions by each award), on the four quarter-end points of 2025, held out of the solve.",
+      "approved_on": "2026-11-09",
+      "expires_on": "2027-02-09"
     },
     {
       "name": "dwp.pip.cases_england_aged_60_to_64",
       "reason": "Diagnostic, not a weight question: DWP's PIP cases with entitlement by award, age and region (chronicle#420 item 6), the source of P2's award-mix check, against the model's reported award categories. Single breakdowns only: the award-by-age cross rests on fewer than three survey households in many Welsh and some English cells.",
       "tracking": "microcosm#1095",
       "approved_by": "juaristi22",
-      "adjudication": "María's calls of 2026-11-08 on the plan for the November event data (PR2, item P3): England and Wales as separate rows on single breakdowns (daily living award, mobility award, age band with 75 and over merged, and the English regions by each award), on the four quarter-end points of 2025, held out of the solve (for María's signature).",
-      "approved_on": "2026-11-08",
-      "expires_on": "2027-02-08"
+      "adjudication": "María's calls of 2026-11-08 on the plan for the November event data (PR2, item P3): England and Wales as separate rows on single breakdowns (daily living award, mobility award, age band with 75 and over merged, and the English regions by each award), on the four quarter-end points of 2025, held out of the solve.",
+      "approved_on": "2026-11-09",
+      "expires_on": "2027-02-09"
     },
     {
       "name": "dwp.pip.cases_england_aged_65_to_69",
       "reason": "Diagnostic, not a weight question: DWP's PIP cases with entitlement by award, age and region (chronicle#420 item 6), the source of P2's award-mix check, against the model's reported award categories. Single breakdowns only: the award-by-age cross rests on fewer than three survey households in many Welsh and some English cells.",
       "tracking": "microcosm#1095",
       "approved_by": "juaristi22",
-      "adjudication": "María's calls of 2026-11-08 on the plan for the November event data (PR2, item P3): England and Wales as separate rows on single breakdowns (daily living award, mobility award, age band with 75 and over merged, and the English regions by each award), on the four quarter-end points of 2025, held out of the solve (for María's signature).",
-      "approved_on": "2026-11-08",
-      "expires_on": "2027-02-08"
+      "adjudication": "María's calls of 2026-11-08 on the plan for the November event data (PR2, item P3): England and Wales as separate rows on single breakdowns (daily living award, mobility award, age band with 75 and over merged, and the English regions by each award), on the four quarter-end points of 2025, held out of the solve.",
+      "approved_on": "2026-11-09",
+      "expires_on": "2027-02-09"
     },
     {
       "name": "dwp.pip.cases_england_aged_70_to_74",
       "reason": "Diagnostic, not a weight question: DWP's PIP cases with entitlement by award, age and region (chronicle#420 item 6), the source of P2's award-mix check, against the model's reported award categories. Single breakdowns only: the award-by-age cross rests on fewer than three survey households in many Welsh and some English cells.",
       "tracking": "microcosm#1095",
       "approved_by": "juaristi22",
-      "adjudication": "María's calls of 2026-11-08 on the plan for the November event data (PR2, item P3): England and Wales as separate rows on single breakdowns (daily living award, mobility award, age band with 75 and over merged, and the English regions by each award), on the four quarter-end points of 2025, held out of the solve (for María's signature).",
-      "approved_on": "2026-11-08",
-      "expires_on": "2027-02-08"
+      "adjudication": "María's calls of 2026-11-08 on the plan for the November event data (PR2, item P3): England and Wales as separate rows on single breakdowns (daily living award, mobility award, age band with 75 and over merged, and the English regions by each award), on the four quarter-end points of 2025, held out of the solve.",
+      "approved_on": "2026-11-09",
+      "expires_on": "2027-02-09"
     },
     {
       "name": "dwp.pip.cases_england_aged_75_and_over",
       "reason": "Diagnostic, not a weight question: DWP's PIP cases with entitlement by award, age and region (chronicle#420 item 6), the source of P2's award-mix check, against the model's reported award categories. Single breakdowns only: the award-by-age cross rests on fewer than three survey households in many Welsh and some English cells.",
       "tracking": "microcosm#1095",
       "approved_by": "juaristi22",
-      "adjudication": "María's calls of 2026-11-08 on the plan for the November event data (PR2, item P3): England and Wales as separate rows on single breakdowns (daily living award, mobility award, age band with 75 and over merged, and the English regions by each award), on the four quarter-end points of 2025, held out of the solve (for María's signature).",
-      "approved_on": "2026-11-08",
-      "expires_on": "2027-02-08"
+      "adjudication": "María's calls of 2026-11-08 on the plan for the November event data (PR2, item P3): England and Wales as separate rows on single breakdowns (daily living award, mobility award, age band with 75 and over merged, and the English regions by each award), on the four quarter-end points of 2025, held out of the solve.",
+      "approved_on": "2026-11-09",
+      "expires_on": "2027-02-09"
     },
     {
       "name": "dwp.pip.cases_wales",
       "reason": "Diagnostic, not a weight question: DWP's PIP cases with entitlement by award, age and region (chronicle#420 item 6), the source of P2's award-mix check, against the model's reported award categories. Single breakdowns only: the award-by-age cross rests on fewer than three survey households in many Welsh and some English cells.",
       "tracking": "microcosm#1095",
       "approved_by": "juaristi22",
-      "adjudication": "María's calls of 2026-11-08 on the plan for the November event data (PR2, item P3): England and Wales as separate rows on single breakdowns (daily living award, mobility award, age band with 75 and over merged, and the English regions by each award), on the four quarter-end points of 2025, held out of the solve (for María's signature).",
-      "approved_on": "2026-11-08",
-      "expires_on": "2027-02-08"
+      "adjudication": "María's calls of 2026-11-08 on the plan for the November event data (PR2, item P3): England and Wales as separate rows on single breakdowns (daily living award, mobility award, age band with 75 and over merged, and the English regions by each award), on the four quarter-end points of 2025, held out of the solve.",
+      "approved_on": "2026-11-09",
+      "expires_on": "2027-02-09"
     },
     {
       "name": "dwp.pip.cases_wales_daily_living_standard",
       "reason": "Diagnostic, not a weight question: DWP's PIP cases with entitlement by award, age and region (chronicle#420 item 6), the source of P2's award-mix check, against the model's reported award categories. Single breakdowns only: the award-by-age cross rests on fewer than three survey households in many Welsh and some English cells.",
       "tracking": "microcosm#1095",
       "approved_by": "juaristi22",
-      "adjudication": "María's calls of 2026-11-08 on the plan for the November event data (PR2, item P3): England and Wales as separate rows on single breakdowns (daily living award, mobility award, age band with 75 and over merged, and the English regions by each award), on the four quarter-end points of 2025, held out of the solve (for María's signature).",
-      "approved_on": "2026-11-08",
-      "expires_on": "2027-02-08"
+      "adjudication": "María's calls of 2026-11-08 on the plan for the November event data (PR2, item P3): England and Wales as separate rows on single breakdowns (daily living award, mobility award, age band with 75 and over merged, and the English regions by each award), on the four quarter-end points of 2025, held out of the solve.",
+      "approved_on": "2026-11-09",
+      "expires_on": "2027-02-09"
     },
     {
       "name": "dwp.pip.cases_wales_daily_living_enhanced",
       "reason": "Diagnostic, not a weight question: DWP's PIP cases with entitlement by award, age and region (chronicle#420 item 6), the source of P2's award-mix check, against the model's reported award categories. Single breakdowns only: the award-by-age cross rests on fewer than three survey households in many Welsh and some English cells.",
       "tracking": "microcosm#1095",
       "approved_by": "juaristi22",
-      "adjudication": "María's calls of 2026-11-08 on the plan for the November event data (PR2, item P3): England and Wales as separate rows on single breakdowns (daily living award, mobility award, age band with 75 and over merged, and the English regions by each award), on the four quarter-end points of 2025, held out of the solve (for María's signature).",
-      "approved_on": "2026-11-08",
-      "expires_on": "2027-02-08"
+      "adjudication": "María's calls of 2026-11-08 on the plan for the November event data (PR2, item P3): England and Wales as separate rows on single breakdowns (daily living award, mobility award, age band with 75 and over merged, and the English regions by each award), on the four quarter-end points of 2025, held out of the solve.",
+      "approved_on": "2026-11-09",
+      "expires_on": "2027-02-09"
     },
     {
       "name": "dwp.pip.cases_wales_daily_living_nil",
       "reason": "Diagnostic, not a weight question: DWP's PIP cases with entitlement by award, age and region (chronicle#420 item 6), the source of P2's award-mix check, against the model's reported award categories. Single breakdowns only: the award-by-age cross rests on fewer than three survey households in many Welsh and some English cells.",
       "tracking": "microcosm#1095",
       "approved_by": "juaristi22",
-      "adjudication": "María's calls of 2026-11-08 on the plan for the November event data (PR2, item P3): England and Wales as separate rows on single breakdowns (daily living award, mobility award, age band with 75 and over merged, and the English regions by each award), on the four quarter-end points of 2025, held out of the solve (for María's signature).",
-      "approved_on": "2026-11-08",
-      "expires_on": "2027-02-08"
+      "adjudication": "María's calls of 2026-11-08 on the plan for the November event data (PR2, item P3): England and Wales as separate rows on single breakdowns (daily living award, mobility award, age band with 75 and over merged, and the English regions by each award), on the four quarter-end points of 2025, held out of the solve.",
+      "approved_on": "2026-11-09",
+      "expires_on": "2027-02-09"
     },
     {
       "name": "dwp.pip.cases_wales_mobility_standard",
       "reason": "Diagnostic, not a weight question: DWP's PIP cases with entitlement by award, age and region (chronicle#420 item 6), the source of P2's award-mix check, against the model's reported award categories. Single breakdowns only: the award-by-age cross rests on fewer than three survey households in many Welsh and some English cells.",
       "tracking": "microcosm#1095",
       "approved_by": "juaristi22",
-      "adjudication": "María's calls of 2026-11-08 on the plan for the November event data (PR2, item P3): England and Wales as separate rows on single breakdowns (daily living award, mobility award, age band with 75 and over merged, and the English regions by each award), on the four quarter-end points of 2025, held out of the solve (for María's signature).",
-      "approved_on": "2026-11-08",
-      "expires_on": "2027-02-08"
+      "adjudication": "María's calls of 2026-11-08 on the plan for the November event data (PR2, item P3): England and Wales as separate rows on single breakdowns (daily living award, mobility award, age band with 75 and over merged, and the English regions by each award), on the four quarter-end points of 2025, held out of the solve.",
+      "approved_on": "2026-11-09",
+      "expires_on": "2027-02-09"
     },
     {
       "name": "dwp.pip.cases_wales_mobility_enhanced",
       "reason": "Diagnostic, not a weight question: DWP's PIP cases with entitlement by award, age and region (chronicle#420 item 6), the source of P2's award-mix check, against the model's reported award categories. Single breakdowns only: the award-by-age cross rests on fewer than three survey households in many Welsh and some English cells.",
       "tracking": "microcosm#1095",
       "approved_by": "juaristi22",
-      "adjudication": "María's calls of 2026-11-08 on the plan for the November event data (PR2, item P3): England and Wales as separate rows on single breakdowns (daily living award, mobility award, age band with 75 and over merged, and the English regions by each award), on the four quarter-end points of 2025, held out of the solve (for María's signature).",
-      "approved_on": "2026-11-08",
-      "expires_on": "2027-02-08"
+      "adjudication": "María's calls of 2026-11-08 on the plan for the November event data (PR2, item P3): England and Wales as separate rows on single breakdowns (daily living award, mobility award, age band with 75 and over merged, and the English regions by each award), on the four quarter-end points of 2025, held out of the solve.",
+      "approved_on": "2026-11-09",
+      "expires_on": "2027-02-09"
     },
     {
       "name": "dwp.pip.cases_wales_mobility_nil",
       "reason": "Diagnostic, not a weight question: DWP's PIP cases with entitlement by award, age and region (chronicle#420 item 6), the source of P2's award-mix check, against the model's reported award categories. Single breakdowns only: the award-by-age cross rests on fewer than three survey households in many Welsh and some English cells.",
       "tracking": "microcosm#1095",
       "approved_by": "juaristi22",
-      "adjudication": "María's calls of 2026-11-08 on the plan for the November event data (PR2, item P3): England and Wales as separate rows on single breakdowns (daily living award, mobility award, age band with 75 and over merged, and the English regions by each award), on the four quarter-end points of 2025, held out of the solve (for María's signature).",
-      "approved_on": "2026-11-08",
-      "expires_on": "2027-02-08"
+      "adjudication": "María's calls of 2026-11-08 on the plan for the November event data (PR2, item P3): England and Wales as separate rows on single breakdowns (daily living award, mobility award, age band with 75 and over merged, and the English regions by each award), on the four quarter-end points of 2025, held out of the solve.",
+      "approved_on": "2026-11-09",
+      "expires_on": "2027-02-09"
     },
     {
       "name": "dwp.pip.cases_wales_aged_16_to_19",
       "reason": "Diagnostic, not a weight question: DWP's PIP cases with entitlement by award, age and region (chronicle#420 item 6), the source of P2's award-mix check, against the model's reported award categories. Single breakdowns only: the award-by-age cross rests on fewer than three survey households in many Welsh and some English cells.",
       "tracking": "microcosm#1095",
       "approved_by": "juaristi22",
-      "adjudication": "María's calls of 2026-11-08 on the plan for the November event data (PR2, item P3): England and Wales as separate rows on single breakdowns (daily living award, mobility award, age band with 75 and over merged, and the English regions by each award), on the four quarter-end points of 2025, held out of the solve (for María's signature).",
-      "approved_on": "2026-11-08",
-      "expires_on": "2027-02-08"
+      "adjudication": "María's calls of 2026-11-08 on the plan for the November event data (PR2, item P3): England and Wales as separate rows on single breakdowns (daily living award, mobility award, age band with 75 and over merged, and the English regions by each award), on the four quarter-end points of 2025, held out of the solve.",
+      "approved_on": "2026-11-09",
+      "expires_on": "2027-02-09"
     },
     {
       "name": "dwp.pip.cases_wales_aged_20_to_24",
       "reason": "Diagnostic, not a weight question: DWP's PIP cases with entitlement by award, age and region (chronicle#420 item 6), the source of P2's award-mix check, against the model's reported award categories. Single breakdowns only: the award-by-age cross rests on fewer than three survey households in many Welsh and some English cells.",
       "tracking": "microcosm#1095",
       "approved_by": "juaristi22",
-      "adjudication": "María's calls of 2026-11-08 on the plan for the November event data (PR2, item P3): England and Wales as separate rows on single breakdowns (daily living award, mobility award, age band with 75 and over merged, and the English regions by each award), on the four quarter-end points of 2025, held out of the solve (for María's signature).",
-      "approved_on": "2026-11-08",
-      "expires_on": "2027-02-08"
+      "adjudication": "María's calls of 2026-11-08 on the plan for the November event data (PR2, item P3): England and Wales as separate rows on single breakdowns (daily living award, mobility award, age band with 75 and over merged, and the English regions by each award), on the four quarter-end points of 2025, held out of the solve.",
+      "approved_on": "2026-11-09",
+      "expires_on": "2027-02-09"
     },
     {
       "name": "dwp.pip.cases_wales_aged_25_to_29",
       "reason": "Diagnostic, not a weight question: DWP's PIP cases with entitlement by award, age and region (chronicle#420 item 6), the source of P2's award-mix check, against the model's reported award categories. Single breakdowns only: the award-by-age cross rests on fewer than three survey households in many Welsh and some English cells.",
       "tracking": "microcosm#1095",
       "approved_by": "juaristi22",
-      "adjudication": "María's calls of 2026-11-08 on the plan for the November event data (PR2, item P3): England and Wales as separate rows on single breakdowns (daily living award, mobility award, age band with 75 and over merged, and the English regions by each award), on the four quarter-end points of 2025, held out of the solve (for María's signature).",
-      "approved_on": "2026-11-08",
-      "expires_on": "2027-02-08"
+      "adjudication": "María's calls of 2026-11-08 on the plan for the November event data (PR2, item P3): England and Wales as separate rows on single breakdowns (daily living award, mobility award, age band with 75 and over merged, and the English regions by each award), on the four quarter-end points of 2025, held out of the solve.",
+      "approved_on": "2026-11-09",
+      "expires_on": "2027-02-09"
     },
     {
       "name": "dwp.pip.cases_wales_aged_30_to_34",
       "reason": "Diagnostic, not a weight question: DWP's PIP cases with entitlement by award, age and region (chronicle#420 item 6), the source of P2's award-mix check, against the model's reported award categories. Single breakdowns only: the award-by-age cross rests on fewer than three survey households in many Welsh and some English cells.",
       "tracking": "microcosm#1095",
       "approved_by": "juaristi22",
-      "adjudication": "María's calls of 2026-11-08 on the plan for the November event data (PR2, item P3): England and Wales as separate rows on single breakdowns (daily living award, mobility award, age band with 75 and over merged, and the English regions by each award), on the four quarter-end points of 2025, held out of the solve (for María's signature).",
-      "approved_on": "2026-11-08",
-      "expires_on": "2027-02-08"
+      "adjudication": "María's calls of 2026-11-08 on the plan for the November event data (PR2, item P3): England and Wales as separate rows on single breakdowns (daily living award, mobility award, age band with 75 and over merged, and the English regions by each award), on the four quarter-end points of 2025, held out of the solve.",
+      "approved_on": "2026-11-09",
+      "expires_on": "2027-02-09"
     },
     {
       "name": "dwp.pip.cases_wales_aged_35_to_39",
       "reason": "Diagnostic, not a weight question: DWP's PIP cases with entitlement by award, age and region (chronicle#420 item 6), the source of P2's award-mix check, against the model's reported award categories. Single breakdowns only: the award-by-age cross rests on fewer than three survey households in many Welsh and some English cells.",
       "tracking": "microcosm#1095",
       "approved_by": "juaristi22",
-      "adjudication": "María's calls of 2026-11-08 on the plan for the November event data (PR2, item P3): England and Wales as separate rows on single breakdowns (daily living award, mobility award, age band with 75 and over merged, and the English regions by each award), on the four quarter-end points of 2025, held out of the solve (for María's signature).",
-      "approved_on": "2026-11-08",
-      "expires_on": "2027-02-08"
+      "adjudication": "María's calls of 2026-11-08 on the plan for the November event data (PR2, item P3): England and Wales as separate rows on single breakdowns (daily living award, mobility award, age band with 75 and over merged, and the English regions by each award), on the four quarter-end points of 2025, held out of the solve.",
+      "approved_on": "2026-11-09",
+      "expires_on": "2027-02-09"
     },
     {
       "name": "dwp.pip.cases_wales_aged_40_to_44",
       "reason": "Diagnostic, not a weight question: DWP's PIP cases with entitlement by award, age and region (chronicle#420 item 6), the source of P2's award-mix check, against the model's reported award categories. Single breakdowns only: the award-by-age cross rests on fewer than three survey households in many Welsh and some English cells.",
       "tracking": "microcosm#1095",
       "approved_by": "juaristi22",
-      "adjudication": "María's calls of 2026-11-08 on the plan for the November event data (PR2, item P3): England and Wales as separate rows on single breakdowns (daily living award, mobility award, age band with 75 and over merged, and the English regions by each award), on the four quarter-end points of 2025, held out of the solve (for María's signature).",
-      "approved_on": "2026-11-08",
-      "expires_on": "2027-02-08"
+      "adjudication": "María's calls of 2026-11-08 on the plan for the November event data (PR2, item P3): England and Wales as separate rows on single breakdowns (daily living award, mobility award, age band with 75 and over merged, and the English regions by each award), on the four quarter-end points of 2025, held out of the solve.",
+      "approved_on": "2026-11-09",
+      "expires_on": "2027-02-09"
     },
     {
       "name": "dwp.pip.cases_wales_aged_45_to_49",
       "reason": "Diagnostic, not a weight question: DWP's PIP cases with entitlement by award, age and region (chronicle#420 item 6), the source of P2's award-mix check, against the model's reported award categories. Single breakdowns only: the award-by-age cross rests on fewer than three survey households in many Welsh and some English cells.",
       "tracking": "microcosm#1095",
       "approved_by": "juaristi22",
-      "adjudication": "María's calls of 2026-11-08 on the plan for the November event data (PR2, item P3): England and Wales as separate rows on single breakdowns (daily living award, mobility award, age band with 75 and over merged, and the English regions by each award), on the four quarter-end points of 2025, held out of the solve (for María's signature).",
-      "approved_on": "2026-11-08",
-      "expires_on": "2027-02-08"
+      "adjudication": "María's calls of 2026-11-08 on the plan for the November event data (PR2, item P3): England and Wales as separate rows on single breakdowns (daily living award, mobility award, age band with 75 and over merged, and the English regions by each award), on the four quarter-end points of 2025, held out of the solve.",
+      "approved_on": "2026-11-09",
+      "expires_on": "2027-02-09"
     },
     {
       "name": "dwp.pip.cases_wales_aged_50_to_54",
       "reason": "Diagnostic, not a weight question: DWP's PIP cases with entitlement by award, age and region (chronicle#420 item 6), the source of P2's award-mix check, against the model's reported award categories. Single breakdowns only: the award-by-age cross rests on fewer than three survey households in many Welsh and some English cells.",
       "tracking": "microcosm#1095",
       "approved_by": "juaristi22",
-      "adjudication": "María's calls of 2026-11-08 on the plan for the November event data (PR2, item P3): England and Wales as separate rows on single breakdowns (daily living award, mobility award, age band with 75 and over merged, and the English regions by each award), on the four quarter-end points of 2025, held out of the solve (for María's signature).",
-      "approved_on": "2026-11-08",
-      "expires_on": "2027-02-08"
+      "adjudication": "María's calls of 2026-11-08 on the plan for the November event data (PR2, item P3): England and Wales as separate rows on single breakdowns (daily living award, mobility award, age band with 75 and over merged, and the English regions by each award), on the four quarter-end points of 2025, held out of the solve.",
+      "approved_on": "2026-11-09",
+      "expires_on": "2027-02-09"
     },
     {
       "name": "dwp.pip.cases_wales_aged_55_to_59",
       "reason": "Diagnostic, not a weight question: DWP's PIP cases with entitlement by award, age and region (chronicle#420 item 6), the source of P2's award-mix check, against the model's reported award categories. Single breakdowns only: the award-by-age cross rests on fewer than three survey households in many Welsh and some English cells.",
       "tracking": "microcosm#1095",
       "approved_by": "juaristi22",
-      "adjudication": "María's calls of 2026-11-08 on the plan for the November event data (PR2, item P3): England and Wales as separate rows on single breakdowns (daily living award, mobility award, age band with 75 and over merged, and the English regions by each award), on the four quarter-end points of 2025, held out of the solve (for María's signature).",
-      "approved_on": "2026-11-08",
-      "expires_on": "2027-02-08"
+      "adjudication": "María's calls of 2026-11-08 on the plan for the November event data (PR2, item P3): England and Wales as separate rows on single breakdowns (daily living award, mobility award, age band with 75 and over merged, and the English regions by each award), on the four quarter-end points of 2025, held out of the solve.",
+      "approved_on": "2026-11-09",
+      "expires_on": "2027-02-09"
     },
     {
       "name": "dwp.pip.cases_wales_aged_60_to_64",
       "reason": "Diagnostic, not a weight question: DWP's PIP cases with entitlement by award, age and region (chronicle#420 item 6), the source of P2's award-mix check, against the model's reported award categories. Single breakdowns only: the award-by-age cross rests on fewer than three survey households in many Welsh and some English cells.",
       "tracking": "microcosm#1095",
       "approved_by": "juaristi22",
-      "adjudication": "María's calls of 2026-11-08 on the plan for the November event data (PR2, item P3): England and Wales as separate rows on single breakdowns (daily living award, mobility award, age band with 75 and over merged, and the English regions by each award), on the four quarter-end points of 2025, held out of the solve (for María's signature).",
-      "approved_on": "2026-11-08",
-      "expires_on": "2027-02-08"
+      "adjudication": "María's calls of 2026-11-08 on the plan for the November event data (PR2, item P3): England and Wales as separate rows on single breakdowns (daily living award, mobility award, age band with 75 and over merged, and the English regions by each award), on the four quarter-end points of 2025, held out of the solve.",
+      "approved_on": "2026-11-09",
+      "expires_on": "2027-02-09"
     },
     {
       "name": "dwp.pip.cases_wales_aged_65_to_69",
       "reason": "Diagnostic, not a weight question: DWP's PIP cases with entitlement by award, age and region (chronicle#420 item 6), the source of P2's award-mix check, against the model's reported award categories. Single breakdowns only: the award-by-age cross rests on fewer than three survey households in many Welsh and some English cells.",
       "tracking": "microcosm#1095",
       "approved_by": "juaristi22",
-      "adjudication": "María's calls of 2026-11-08 on the plan for the November event data (PR2, item P3): England and Wales as separate rows on single breakdowns (daily living award, mobility award, age band with 75 and over merged, and the English regions by each award), on the four quarter-end points of 2025, held out of the solve (for María's signature).",
-      "approved_on": "2026-11-08",
-      "expires_on": "2027-02-08"
+      "adjudication": "María's calls of 2026-11-08 on the plan for the November event data (PR2, item P3): England and Wales as separate rows on single breakdowns (daily living award, mobility award, age band with 75 and over merged, and the English regions by each award), on the four quarter-end points of 2025, held out of the solve.",
+      "approved_on": "2026-11-09",
+      "expires_on": "2027-02-09"
     },
     {
       "name": "dwp.pip.cases_wales_aged_70_to_74",
       "reason": "Diagnostic, not a weight question: DWP's PIP cases with entitlement by award, age and region (chronicle#420 item 6), the source of P2's award-mix check, against the model's reported award categories. Single breakdowns only: the award-by-age cross rests on fewer than three survey households in many Welsh and some English cells.",
       "tracking": "microcosm#1095",
       "approved_by": "juaristi22",
-      "adjudication": "María's calls of 2026-11-08 on the plan for the November event data (PR2, item P3): England and Wales as separate rows on single breakdowns (daily living award, mobility award, age band with 75 and over merged, and the English regions by each award), on the four quarter-end points of 2025, held out of the solve (for María's signature).",
-      "approved_on": "2026-11-08",
-      "expires_on": "2027-02-08"
+      "adjudication": "María's calls of 2026-11-08 on the plan for the November event data (PR2, item P3): England and Wales as separate rows on single breakdowns (daily living award, mobility award, age band with 75 and over merged, and the English regions by each award), on the four quarter-end points of 2025, held out of the solve.",
+      "approved_on": "2026-11-09",
+      "expires_on": "2027-02-09"
     },
     {
       "name": "dwp.pip.cases_wales_aged_75_and_over",
       "reason": "Diagnostic, not a weight question: DWP's PIP cases with entitlement by award, age and region (chronicle#420 item 6), the source of P2's award-mix check, against the model's reported award categories. Single breakdowns only: the award-by-age cross rests on fewer than three survey households in many Welsh and some English cells.",
       "tracking": "microcosm#1095",
       "approved_by": "juaristi22",
-      "adjudication": "María's calls of 2026-11-08 on the plan for the November event data (PR2, item P3): England and Wales as separate rows on single breakdowns (daily living award, mobility award, age band with 75 and over merged, and the English regions by each award), on the four quarter-end points of 2025, held out of the solve (for María's signature).",
-      "approved_on": "2026-11-08",
-      "expires_on": "2027-02-08"
+      "adjudication": "María's calls of 2026-11-08 on the plan for the November event data (PR2, item P3): England and Wales as separate rows on single breakdowns (daily living award, mobility award, age band with 75 and over merged, and the English regions by each award), on the four quarter-end points of 2025, held out of the solve.",
+      "approved_on": "2026-11-09",
+      "expires_on": "2027-02-09"
     },
     {
       "name": "dwp.pip.cases_north_east_daily_living_standard",
       "reason": "Diagnostic, not a weight question: DWP's PIP cases with entitlement by award, age and region (chronicle#420 item 6), the source of P2's award-mix check, against the model's reported award categories. Single breakdowns only: the award-by-age cross rests on fewer than three survey households in many Welsh and some English cells.",
       "tracking": "microcosm#1095",
       "approved_by": "juaristi22",
-      "adjudication": "María's calls of 2026-11-08 on the plan for the November event data (PR2, item P3): England and Wales as separate rows on single breakdowns (daily living award, mobility award, age band with 75 and over merged, and the English regions by each award), on the four quarter-end points of 2025, held out of the solve (for María's signature).",
-      "approved_on": "2026-11-08",
-      "expires_on": "2027-02-08"
+      "adjudication": "María's calls of 2026-11-08 on the plan for the November event data (PR2, item P3): England and Wales as separate rows on single breakdowns (daily living award, mobility award, age band with 75 and over merged, and the English regions by each award), on the four quarter-end points of 2025, held out of the solve.",
+      "approved_on": "2026-11-09",
+      "expires_on": "2027-02-09"
     },
     {
       "name": "dwp.pip.cases_north_east_daily_living_enhanced",
       "reason": "Diagnostic, not a weight question: DWP's PIP cases with entitlement by award, age and region (chronicle#420 item 6), the source of P2's award-mix check, against the model's reported award categories. Single breakdowns only: the award-by-age cross rests on fewer than three survey households in many Welsh and some English cells.",
       "tracking": "microcosm#1095",
       "approved_by": "juaristi22",
-      "adjudication": "María's calls of 2026-11-08 on the plan for the November event data (PR2, item P3): England and Wales as separate rows on single breakdowns (daily living award, mobility award, age band with 75 and over merged, and the English regions by each award), on the four quarter-end points of 2025, held out of the solve (for María's signature).",
-      "approved_on": "2026-11-08",
-      "expires_on": "2027-02-08"
+      "adjudication": "María's calls of 2026-11-08 on the plan for the November event data (PR2, item P3): England and Wales as separate rows on single breakdowns (daily living award, mobility award, age band with 75 and over merged, and the English regions by each award), on the four quarter-end points of 2025, held out of the solve.",
+      "approved_on": "2026-11-09",
+      "expires_on": "2027-02-09"
     },
     {
       "name": "dwp.pip.cases_north_east_daily_living_nil",
       "reason": "Diagnostic, not a weight question: DWP's PIP cases with entitlement by award, age and region (chronicle#420 item 6), the source of P2's award-mix check, against the model's reported award categories. Single breakdowns only: the award-by-age cross rests on fewer than three survey households in many Welsh and some English cells.",
       "tracking": "microcosm#1095",
       "approved_by": "juaristi22",
-      "adjudication": "María's calls of 2026-11-08 on the plan for the November event data (PR2, item P3): England and Wales as separate rows on single breakdowns (daily living award, mobility award, age band with 75 and over merged, and the English regions by each award), on the four quarter-end points of 2025, held out of the solve (for María's signature).",
-      "approved_on": "2026-11-08",
-      "expires_on": "2027-02-08"
+      "adjudication": "María's calls of 2026-11-08 on the plan for the November event data (PR2, item P3): England and Wales as separate rows on single breakdowns (daily living award, mobility award, age band with 75 and over merged, and the English regions by each award), on the four quarter-end points of 2025, held out of the solve.",
+      "approved_on": "2026-11-09",
+      "expires_on": "2027-02-09"
     },
     {
       "name": "dwp.pip.cases_north_east_mobility_standard",
       "reason": "Diagnostic, not a weight question: DWP's PIP cases with entitlement by award, age and region (chronicle#420 item 6), the source of P2's award-mix check, against the model's reported award categories. Single breakdowns only: the award-by-age cross rests on fewer than three survey households in many Welsh and some English cells.",
       "tracking": "microcosm#1095",
       "approved_by": "juaristi22",
-      "adjudication": "María's calls of 2026-11-08 on the plan for the November event data (PR2, item P3): England and Wales as separate rows on single breakdowns (daily living award, mobility award, age band with 75 and over merged, and the English regions by each award), on the four quarter-end points of 2025, held out of the solve (for María's signature).",
-      "approved_on": "2026-11-08",
-      "expires_on": "2027-02-08"
+      "adjudication": "María's calls of 2026-11-08 on the plan for the November event data (PR2, item P3): England and Wales as separate rows on single breakdowns (daily living award, mobility award, age band with 75 and over merged, and the English regions by each award), on the four quarter-end points of 2025, held out of the solve.",
+      "approved_on": "2026-11-09",
+      "expires_on": "2027-02-09"
     },
     {
       "name": "dwp.pip.cases_north_east_mobility_enhanced",
       "reason": "Diagnostic, not a weight question: DWP's PIP cases with entitlement by award, age and region (chronicle#420 item 6), the source of P2's award-mix check, against the model's reported award categories. Single breakdowns only: the award-by-age cross rests on fewer than three survey households in many Welsh and some English cells.",
       "tracking": "microcosm#1095",
       "approved_by": "juaristi22",
-      "adjudication": "María's calls of 2026-11-08 on the plan for the November event data (PR2, item P3): England and Wales as separate rows on single breakdowns (daily living award, mobility award, age band with 75 and over merged, and the English regions by each award), on the four quarter-end points of 2025, held out of the solve (for María's signature).",
-      "approved_on": "2026-11-08",
-      "expires_on": "2027-02-08"
+      "adjudication": "María's calls of 2026-11-08 on the plan for the November event data (PR2, item P3): England and Wales as separate rows on single breakdowns (daily living award, mobility award, age band with 75 and over merged, and the English regions by each award), on the four quarter-end points of 2025, held out of the solve.",
+      "approved_on": "2026-11-09",
+      "expires_on": "2027-02-09"
     },
     {
       "name": "dwp.pip.cases_north_east_mobility_nil",
       "reason": "Diagnostic, not a weight question: DWP's PIP cases with entitlement by award, age and region (chronicle#420 item 6), the source of P2's award-mix check, against the model's reported award categories. Single breakdowns only: the award-by-age cross rests on fewer than three survey households in many Welsh and some English cells.",
       "tracking": "microcosm#1095",
       "approved_by": "juaristi22",
-      "adjudication": "María's calls of 2026-11-08 on the plan for the November event data (PR2, item P3): England and Wales as separate rows on single breakdowns (daily living award, mobility award, age band with 75 and over merged, and the English regions by each award), on the four quarter-end points of 2025, held out of the solve (for María's signature).",
-      "approved_on": "2026-11-08",
-      "expires_on": "2027-02-08"
+      "adjudication": "María's calls of 2026-11-08 on the plan for the November event data (PR2, item P3): England and Wales as separate rows on single breakdowns (daily living award, mobility award, age band with 75 and over merged, and the English regions by each award), on the four quarter-end points of 2025, held out of the solve.",
+      "approved_on": "2026-11-09",
+      "expires_on": "2027-02-09"
     },
     {
       "name": "dwp.pip.cases_north_west_daily_living_standard",
       "reason": "Diagnostic, not a weight question: DWP's PIP cases with entitlement by award, age and region (chronicle#420 item 6), the source of P2's award-mix check, against the model's reported award categories. Single breakdowns only: the award-by-age cross rests on fewer than three survey households in many Welsh and some English cells.",
       "tracking": "microcosm#1095",
       "approved_by": "juaristi22",
-      "adjudication": "María's calls of 2026-11-08 on the plan for the November event data (PR2, item P3): England and Wales as separate rows on single breakdowns (daily living award, mobility award, age band with 75 and over merged, and the English regions by each award), on the four quarter-end points of 2025, held out of the solve (for María's signature).",
-      "approved_on": "2026-11-08",
-      "expires_on": "2027-02-08"
+      "adjudication": "María's calls of 2026-11-08 on the plan for the November event data (PR2, item P3): England and Wales as separate rows on single breakdowns (daily living award, mobility award, age band with 75 and over merged, and the English regions by each award), on the four quarter-end points of 2025, held out of the solve.",
+      "approved_on": "2026-11-09",
+      "expires_on": "2027-02-09"
     },
     {
       "name": "dwp.pip.cases_north_west_daily_living_enhanced",
       "reason": "Diagnostic, not a weight question: DWP's PIP cases with entitlement by award, age and region (chronicle#420 item 6), the source of P2's award-mix check, against the model's reported award categories. Single breakdowns only: the award-by-age cross rests on fewer than three survey households in many Welsh and some English cells.",
       "tracking": "microcosm#1095",
       "approved_by": "juaristi22",
-      "adjudication": "María's calls of 2026-11-08 on the plan for the November event data (PR2, item P3): England and Wales as separate rows on single breakdowns (daily living award, mobility award, age band with 75 and over merged, and the English regions by each award), on the four quarter-end points of 2025, held out of the solve (for María's signature).",
-      "approved_on": "2026-11-08",
-      "expires_on": "2027-02-08"
+      "adjudication": "María's calls of 2026-11-08 on the plan for the November event data (PR2, item P3): England and Wales as separate rows on single breakdowns (daily living award, mobility award, age band with 75 and over merged, and the English regions by each award), on the four quarter-end points of 2025, held out of the solve.",
+      "approved_on": "2026-11-09",
+      "expires_on": "2027-02-09"
     },
     {
       "name": "dwp.pip.cases_north_west_daily_living_nil",
       "reason": "Diagnostic, not a weight question: DWP's PIP cases with entitlement by award, age and region (chronicle#420 item 6), the source of P2's award-mix check, against the model's reported award categories. Single breakdowns only: the award-by-age cross rests on fewer than three survey households in many Welsh and some English cells.",
       "tracking": "microcosm#1095",
       "approved_by": "juaristi22",
-      "adjudication": "María's calls of 2026-11-08 on the plan for the November event data (PR2, item P3): England and Wales as separate rows on single breakdowns (daily living award, mobility award, age band with 75 and over merged, and the English regions by each award), on the four quarter-end points of 2025, held out of the solve (for María's signature).",
-      "approved_on": "2026-11-08",
-      "expires_on": "2027-02-08"
+      "adjudication": "María's calls of 2026-11-08 on the plan for the November event data (PR2, item P3): England and Wales as separate rows on single breakdowns (daily living award, mobility award, age band with 75 and over merged, and the English regions by each award), on the four quarter-end points of 2025, held out of the solve.",
+      "approved_on": "2026-11-09",
+      "expires_on": "2027-02-09"
     },
     {
       "name": "dwp.pip.cases_north_west_mobility_standard",
       "reason": "Diagnostic, not a weight question: DWP's PIP cases with entitlement by award, age and region (chronicle#420 item 6), the source of P2's award-mix check, against the model's reported award categories. Single breakdowns only: the award-by-age cross rests on fewer than three survey households in many Welsh and some English cells.",
       "tracking": "microcosm#1095",
       "approved_by": "juaristi22",
-      "adjudication": "María's calls of 2026-11-08 on the plan for the November event data (PR2, item P3): England and Wales as separate rows on single breakdowns (daily living award, mobility award, age band with 75 and over merged, and the English regions by each award), on the four quarter-end points of 2025, held out of the solve (for María's signature).",
-      "approved_on": "2026-11-08",
-      "expires_on": "2027-02-08"
+      "adjudication": "María's calls of 2026-11-08 on the plan for the November event data (PR2, item P3): England and Wales as separate rows on single breakdowns (daily living award, mobility award, age band with 75 and over merged, and the English regions by each award), on the four quarter-end points of 2025, held out of the solve.",
+      "approved_on": "2026-11-09",
+      "expires_on": "2027-02-09"
     },
     {
       "name": "dwp.pip.cases_north_west_mobility_enhanced",
       "reason": "Diagnostic, not a weight question: DWP's PIP cases with entitlement by award, age and region (chronicle#420 item 6), the source of P2's award-mix check, against the model's reported award categories. Single breakdowns only: the award-by-age cross rests on fewer than three survey households in many Welsh and some English cells.",
       "tracking": "microcosm#1095",
       "approved_by": "juaristi22",
-      "adjudication": "María's calls of 2026-11-08 on the plan for the November event data (PR2, item P3): England and Wales as separate rows on single breakdowns (daily living award, mobility award, age band with 75 and over merged, and the English regions by each award), on the four quarter-end points of 2025, held out of the solve (for María's signature).",
-      "approved_on": "2026-11-08",
-      "expires_on": "2027-02-08"
+      "adjudication": "María's calls of 2026-11-08 on the plan for the November event data (PR2, item P3): England and Wales as separate rows on single breakdowns (daily living award, mobility award, age band with 75 and over merged, and the English regions by each award), on the four quarter-end points of 2025, held out of the solve.",
+      "approved_on": "2026-11-09",
+      "expires_on": "2027-02-09"
     },
     {
       "name": "dwp.pip.cases_north_west_mobility_nil",
       "reason": "Diagnostic, not a weight question: DWP's PIP cases with entitlement by award, age and region (chronicle#420 item 6), the source of P2's award-mix check, against the model's reported award categories. Single breakdowns only: the award-by-age cross rests on fewer than three survey households in many Welsh and some English cells.",
       "tracking": "microcosm#1095",
       "approved_by": "juaristi22",
-      "adjudication": "María's calls of 2026-11-08 on the plan for the November event data (PR2, item P3): England and Wales as separate rows on single breakdowns (daily living award, mobility award, age band with 75 and over merged, and the English regions by each award), on the four quarter-end points of 2025, held out of the solve (for María's signature).",
-      "approved_on": "2026-11-08",
-      "expires_on": "2027-02-08"
+      "adjudication": "María's calls of 2026-11-08 on the plan for the November event data (PR2, item P3): England and Wales as separate rows on single breakdowns (daily living award, mobility award, age band with 75 and over merged, and the English regions by each award), on the four quarter-end points of 2025, held out of the solve.",
+      "approved_on": "2026-11-09",
+      "expires_on": "2027-02-09"
     },
     {
       "name": "dwp.pip.cases_yorkshire_daily_living_standard",
       "reason": "Diagnostic, not a weight question: DWP's PIP cases with entitlement by award, age and region (chronicle#420 item 6), the source of P2's award-mix check, against the model's reported award categories. Single breakdowns only: the award-by-age cross rests on fewer than three survey households in many Welsh and some English cells.",
       "tracking": "microcosm#1095",
       "approved_by": "juaristi22",
-      "adjudication": "María's calls of 2026-11-08 on the plan for the November event data (PR2, item P3): England and Wales as separate rows on single breakdowns (daily living award, mobility award, age band with 75 and over merged, and the English regions by each award), on the four quarter-end points of 2025, held out of the solve (for María's signature).",
-      "approved_on": "2026-11-08",
-      "expires_on": "2027-02-08"
+      "adjudication": "María's calls of 2026-11-08 on the plan for the November event data (PR2, item P3): England and Wales as separate rows on single breakdowns (daily living award, mobility award, age band with 75 and over merged, and the English regions by each award), on the four quarter-end points of 2025, held out of the solve.",
+      "approved_on": "2026-11-09",
+      "expires_on": "2027-02-09"
     },
     {
       "name": "dwp.pip.cases_yorkshire_daily_living_enhanced",
       "reason": "Diagnostic, not a weight question: DWP's PIP cases with entitlement by award, age and region (chronicle#420 item 6), the source of P2's award-mix check, against the model's reported award categories. Single breakdowns only: the award-by-age cross rests on fewer than three survey households in many Welsh and some English cells.",
       "tracking": "microcosm#1095",
       "approved_by": "juaristi22",
-      "adjudication": "María's calls of 2026-11-08 on the plan for the November event data (PR2, item P3): England and Wales as separate rows on single breakdowns (daily living award, mobility award, age band with 75 and over merged, and the English regions by each award), on the four quarter-end points of 2025, held out of the solve (for María's signature).",
-      "approved_on": "2026-11-08",
-      "expires_on": "2027-02-08"
+      "adjudication": "María's calls of 2026-11-08 on the plan for the November event data (PR2, item P3): England and Wales as separate rows on single breakdowns (daily living award, mobility award, age band with 75 and over merged, and the English regions by each award), on the four quarter-end points of 2025, held out of the solve.",
+      "approved_on": "2026-11-09",
+      "expires_on": "2027-02-09"
     },
     {
       "name": "dwp.pip.cases_yorkshire_daily_living_nil",
       "reason": "Diagnostic, not a weight question: DWP's PIP cases with entitlement by award, age and region (chronicle#420 item 6), the source of P2's award-mix check, against the model's reported award categories. Single breakdowns only: the award-by-age cross rests on fewer than three survey households in many Welsh and some English cells.",
       "tracking": "microcosm#1095",
       "approved_by": "juaristi22",
-      "adjudication": "María's calls of 2026-11-08 on the plan for the November event data (PR2, item P3): England and Wales as separate rows on single breakdowns (daily living award, mobility award, age band with 75 and over merged, and the English regions by each award), on the four quarter-end points of 2025, held out of the solve (for María's signature).",
-      "approved_on": "2026-11-08",
-      "expires_on": "2027-02-08"
+      "adjudication": "María's calls of 2026-11-08 on the plan for the November event data (PR2, item P3): England and Wales as separate rows on single breakdowns (daily living award, mobility award, age band with 75 and over merged, and the English regions by each award), on the four quarter-end points of 2025, held out of the solve.",
+      "approved_on": "2026-11-09",
+      "expires_on": "2027-02-09"
     },
     {
       "name": "dwp.pip.cases_yorkshire_mobility_standard",
       "reason": "Diagnostic, not a weight question: DWP's PIP cases with entitlement by award, age and region (chronicle#420 item 6), the source of P2's award-mix check, against the model's reported award categories. Single breakdowns only: the award-by-age cross rests on fewer than three survey households in many Welsh and some English cells.",
       "tracking": "microcosm#1095",
       "approved_by": "juaristi22",
-      "adjudication": "María's calls of 2026-11-08 on the plan for the November event data (PR2, item P3): England and Wales as separate rows on single breakdowns (daily living award, mobility award, age band with 75 and over merged, and the English regions by each award), on the four quarter-end points of 2025, held out of the solve (for María's signature).",
-      "approved_on": "2026-11-08",
-      "expires_on": "2027-02-08"
+      "adjudication": "María's calls of 2026-11-08 on the plan for the November event data (PR2, item P3): England and Wales as separate rows on single breakdowns (daily living award, mobility award, age band with 75 and over merged, and the English regions by each award), on the four quarter-end points of 2025, held out of the solve.",
+      "approved_on": "2026-11-09",
+      "expires_on": "2027-02-09"
     },
     {
       "name": "dwp.pip.cases_yorkshire_mobility_enhanced",
       "reason": "Diagnostic, not a weight question: DWP's PIP cases with entitlement by award, age and region (chronicle#420 item 6), the source of P2's award-mix check, against the model's reported award categories. Single breakdowns only: the award-by-age cross rests on fewer than three survey households in many Welsh and some English cells.",
       "tracking": "microcosm#1095",
       "approved_by": "juaristi22",
-      "adjudication": "María's calls of 2026-11-08 on the plan for the November event data (PR2, item P3): England and Wales as separate rows on single breakdowns (daily living award, mobility award, age band with 75 and over merged, and the English regions by each award), on the four quarter-end points of 2025, held out of the solve (for María's signature).",
-      "approved_on": "2026-11-08",
-      "expires_on": "2027-02-08"
+      "adjudication": "María's calls of 2026-11-08 on the plan for the November event data (PR2, item P3): England and Wales as separate rows on single breakdowns (daily living award, mobility award, age band with 75 and over merged, and the English regions by each award), on the four quarter-end points of 2025, held out of the solve.",
+      "approved_on": "2026-11-09",
+      "expires_on": "2027-02-09"
     },
     {
       "name": "dwp.pip.cases_yorkshire_mobility_nil",
       "reason": "Diagnostic, not a weight question: DWP's PIP cases with entitlement by award, age and region (chronicle#420 item 6), the source of P2's award-mix check, against the model's reported award categories. Single breakdowns only: the award-by-age cross rests on fewer than three survey households in many Welsh and some English cells.",
       "tracking": "microcosm#1095",
       "approved_by": "juaristi22",
-      "adjudication": "María's calls of 2026-11-08 on the plan for the November event data (PR2, item P3): England and Wales as separate rows on single breakdowns (daily living award, mobility award, age band with 75 and over merged, and the English regions by each award), on the four quarter-end points of 2025, held out of the solve (for María's signature).",
-      "approved_on": "2026-11-08",
-      "expires_on": "2027-02-08"
+      "adjudication": "María's calls of 2026-11-08 on the plan for the November event data (PR2, item P3): England and Wales as separate rows on single breakdowns (daily living award, mobility award, age band with 75 and over merged, and the English regions by each award), on the four quarter-end points of 2025, held out of the solve.",
+      "approved_on": "2026-11-09",
+      "expires_on": "2027-02-09"
     },
     {
       "name": "dwp.pip.cases_east_midlands_daily_living_standard",
       "reason": "Diagnostic, not a weight question: DWP's PIP cases with entitlement by award, age and region (chronicle#420 item 6), the source of P2's award-mix check, against the model's reported award categories. Single breakdowns only: the award-by-age cross rests on fewer than three survey households in many Welsh and some English cells.",
       "tracking": "microcosm#1095",
       "approved_by": "juaristi22",
-      "adjudication": "María's calls of 2026-11-08 on the plan for the November event data (PR2, item P3): England and Wales as separate rows on single breakdowns (daily living award, mobility award, age band with 75 and over merged, and the English regions by each award), on the four quarter-end points of 2025, held out of the solve (for María's signature).",
-      "approved_on": "2026-11-08",
-      "expires_on": "2027-02-08"
+      "adjudication": "María's calls of 2026-11-08 on the plan for the November event data (PR2, item P3): England and Wales as separate rows on single breakdowns (daily living award, mobility award, age band with 75 and over merged, and the English regions by each award), on the four quarter-end points of 2025, held out of the solve.",
+      "approved_on": "2026-11-09",
+      "expires_on": "2027-02-09"
     },
     {
       "name": "dwp.pip.cases_east_midlands_daily_living_enhanced",
       "reason": "Diagnostic, not a weight question: DWP's PIP cases with entitlement by award, age and region (chronicle#420 item 6), the source of P2's award-mix check, against the model's reported award categories. Single breakdowns only: the award-by-age cross rests on fewer than three survey households in many Welsh and some English cells.",
       "tracking": "microcosm#1095",
       "approved_by": "juaristi22",
-      "adjudication": "María's calls of 2026-11-08 on the plan for the November event data (PR2, item P3): England and Wales as separate rows on single breakdowns (daily living award, mobility award, age band with 75 and over merged, and the English regions by each award), on the four quarter-end points of 2025, held out of the solve (for María's signature).",
-      "approved_on": "2026-11-08",
-      "expires_on": "2027-02-08"
+      "adjudication": "María's calls of 2026-11-08 on the plan for the November event data (PR2, item P3): England and Wales as separate rows on single breakdowns (daily living award, mobility award, age band with 75 and over merged, and the English regions by each award), on the four quarter-end points of 2025, held out of the solve.",
+      "approved_on": "2026-11-09",
+      "expires_on": "2027-02-09"
     },
     {
       "name": "dwp.pip.cases_east_midlands_daily_living_nil",
       "reason": "Diagnostic, not a weight question: DWP's PIP cases with entitlement by award, age and region (chronicle#420 item 6), the source of P2's award-mix check, against the model's reported award categories. Single breakdowns only: the award-by-age cross rests on fewer than three survey households in many Welsh and some English cells.",
       "tracking": "microcosm#1095",
       "approved_by": "juaristi22",
-      "adjudication": "María's calls of 2026-11-08 on the plan for the November event data (PR2, item P3): England and Wales as separate rows on single breakdowns (daily living award, mobility award, age band with 75 and over merged, and the English regions by each award), on the four quarter-end points of 2025, held out of the solve (for María's signature).",
-      "approved_on": "2026-11-08",
-      "expires_on": "2027-02-08"
+      "adjudication": "María's calls of 2026-11-08 on the plan for the November event data (PR2, item P3): England and Wales as separate rows on single breakdowns (daily living award, mobility award, age band with 75 and over merged, and the English regions by each award), on the four quarter-end points of 2025, held out of the solve.",
+      "approved_on": "2026-11-09",
+      "expires_on": "2027-02-09"
     },
     {
       "name": "dwp.pip.cases_east_midlands_mobility_standard",
       "reason": "Diagnostic, not a weight question: DWP's PIP cases with entitlement by award, age and region (chronicle#420 item 6), the source of P2's award-mix check, against the model's reported award categories. Single breakdowns only: the award-by-age cross rests on fewer than three survey households in many Welsh and some English cells.",
       "tracking": "microcosm#1095",
       "approved_by": "juaristi22",
-      "adjudication": "María's calls of 2026-11-08 on the plan for the November event data (PR2, item P3): England and Wales as separate rows on single breakdowns (daily living award, mobility award, age band with 75 and over merged, and the English regions by each award), on the four quarter-end points of 2025, held out of the solve (for María's signature).",
-      "approved_on": "2026-11-08",
-      "expires_on": "2027-02-08"
+      "adjudication": "María's calls of 2026-11-08 on the plan for the November event data (PR2, item P3): England and Wales as separate rows on single breakdowns (daily living award, mobility award, age band with 75 and over merged, and the English regions by each award), on the four quarter-end points of 2025, held out of the solve.",
+      "approved_on": "2026-11-09",
+      "expires_on": "2027-02-09"
     },
     {
       "name": "dwp.pip.cases_east_midlands_mobility_enhanced",
       "reason": "Diagnostic, not a weight question: DWP's PIP cases with entitlement by award, age and region (chronicle#420 item 6), the source of P2's award-mix check, against the model's reported award categories. Single breakdowns only: the award-by-age cross rests on fewer than three survey households in many Welsh and some English cells.",
       "tracking": "microcosm#1095",
       "approved_by": "juaristi22",
-      "adjudication": "María's calls of 2026-11-08 on the plan for the November event data (PR2, item P3): England and Wales as separate rows on single breakdowns (daily living award, mobility award, age band with 75 and over merged, and the English regions by each award), on the four quarter-end points of 2025, held out of the solve (for María's signature).",
-      "approved_on": "2026-11-08",
-      "expires_on": "2027-02-08"
+      "adjudication": "María's calls of 2026-11-08 on the plan for the November event data (PR2, item P3): England and Wales as separate rows on single breakdowns (daily living award, mobility award, age band with 75 and over merged, and the English regions by each award), on the four quarter-end points of 2025, held out of the solve.",
+      "approved_on": "2026-11-09",
+      "expires_on": "2027-02-09"
     },
     {
       "name": "dwp.pip.cases_east_midlands_mobility_nil",
       "reason": "Diagnostic, not a weight question: DWP's PIP cases with entitlement by award, age and region (chronicle#420 item 6), the source of P2's award-mix check, against the model's reported award categories. Single breakdowns only: the award-by-age cross rests on fewer than three survey households in many Welsh and some English cells.",
       "tracking": "microcosm#1095",
       "approved_by": "juaristi22",
-      "adjudication": "María's calls of 2026-11-08 on the plan for the November event data (PR2, item P3): England and Wales as separate rows on single breakdowns (daily living award, mobility award, age band with 75 and over merged, and the English regions by each award), on the four quarter-end points of 2025, held out of the solve (for María's signature).",
-      "approved_on": "2026-11-08",
-      "expires_on": "2027-02-08"
+      "adjudication": "María's calls of 2026-11-08 on the plan for the November event data (PR2, item P3): England and Wales as separate rows on single breakdowns (daily living award, mobility award, age band with 75 and over merged, and the English regions by each award), on the four quarter-end points of 2025, held out of the solve.",
+      "approved_on": "2026-11-09",
+      "expires_on": "2027-02-09"
     },
     {
       "name": "dwp.pip.cases_west_midlands_daily_living_standard",
       "reason": "Diagnostic, not a weight question: DWP's PIP cases with entitlement by award, age and region (chronicle#420 item 6), the source of P2's award-mix check, against the model's reported award categories. Single breakdowns only: the award-by-age cross rests on fewer than three survey households in many Welsh and some English cells.",
       "tracking": "microcosm#1095",
       "approved_by": "juaristi22",
-      "adjudication": "María's calls of 2026-11-08 on the plan for the November event data (PR2, item P3): England and Wales as separate rows on single breakdowns (daily living award, mobility award, age band with 75 and over merged, and the English regions by each award), on the four quarter-end points of 2025, held out of the solve (for María's signature).",
-      "approved_on": "2026-11-08",
-      "expires_on": "2027-02-08"
+      "adjudication": "María's calls of 2026-11-08 on the plan for the November event data (PR2, item P3): England and Wales as separate rows on single breakdowns (daily living award, mobility award, age band with 75 and over merged, and the English regions by each award), on the four quarter-end points of 2025, held out of the solve.",
+      "approved_on": "2026-11-09",
+      "expires_on": "2027-02-09"
     },
     {
       "name": "dwp.pip.cases_west_midlands_daily_living_enhanced",
       "reason": "Diagnostic, not a weight question: DWP's PIP cases with entitlement by award, age and region (chronicle#420 item 6), the source of P2's award-mix check, against the model's reported award categories. Single breakdowns only: the award-by-age cross rests on fewer than three survey households in many Welsh and some English cells.",
       "tracking": "microcosm#1095",
       "approved_by": "juaristi22",
-      "adjudication": "María's calls of 2026-11-08 on the plan for the November event data (PR2, item P3): England and Wales as separate rows on single breakdowns (daily living award, mobility award, age band with 75 and over merged, and the English regions by each award), on the four quarter-end points of 2025, held out of the solve (for María's signature).",
-      "approved_on": "2026-11-08",
-      "expires_on": "2027-02-08"
+      "adjudication": "María's calls of 2026-11-08 on the plan for the November event data (PR2, item P3): England and Wales as separate rows on single breakdowns (daily living award, mobility award, age band with 75 and over merged, and the English regions by each award), on the four quarter-end points of 2025, held out of the solve.",
+      "approved_on": "2026-11-09",
+      "expires_on": "2027-02-09"
     },
     {
       "name": "dwp.pip.cases_west_midlands_daily_living_nil",
       "reason": "Diagnostic, not a weight question: DWP's PIP cases with entitlement by award, age and region (chronicle#420 item 6), the source of P2's award-mix check, against the model's reported award categories. Single breakdowns only: the award-by-age cross rests on fewer than three survey households in many Welsh and some English cells.",
       "tracking": "microcosm#1095",
       "approved_by": "juaristi22",
-      "adjudication": "María's calls of 2026-11-08 on the plan for the November event data (PR2, item P3): England and Wales as separate rows on single breakdowns (daily living award, mobility award, age band with 75 and over merged, and the English regions by each award), on the four quarter-end points of 2025, held out of the solve (for María's signature).",
-      "approved_on": "2026-11-08",
-      "expires_on": "2027-02-08"
+      "adjudication": "María's calls of 2026-11-08 on the plan for the November event data (PR2, item P3): England and Wales as separate rows on single breakdowns (daily living award, mobility award, age band with 75 and over merged, and the English regions by each award), on the four quarter-end points of 2025, held out of the solve.",
+      "approved_on": "2026-11-09",
+      "expires_on": "2027-02-09"
     },
     {
       "name": "dwp.pip.cases_west_midlands_mobility_standard",
       "reason": "Diagnostic, not a weight question: DWP's PIP cases with entitlement by award, age and region (chronicle#420 item 6), the source of P2's award-mix check, against the model's reported award categories. Single breakdowns only: the award-by-age cross rests on fewer than three survey households in many Welsh and some English cells.",
       "tracking": "microcosm#1095",
       "approved_by": "juaristi22",
-      "adjudication": "María's calls of 2026-11-08 on the plan for the November event data (PR2, item P3): England and Wales as separate rows on single breakdowns (daily living award, mobility award, age band with 75 and over merged, and the English regions by each award), on the four quarter-end points of 2025, held out of the solve (for María's signature).",
-      "approved_on": "2026-11-08",
-      "expires_on": "2027-02-08"
+      "adjudication": "María's calls of 2026-11-08 on the plan for the November event data (PR2, item P3): England and Wales as separate rows on single breakdowns (daily living award, mobility award, age band with 75 and over merged, and the English regions by each award), on the four quarter-end points of 2025, held out of the solve.",
+      "approved_on": "2026-11-09",
+      "expires_on": "2027-02-09"
     },
     {
       "name": "dwp.pip.cases_west_midlands_mobility_enhanced",
       "reason": "Diagnostic, not a weight question: DWP's PIP cases with entitlement by award, age and region (chronicle#420 item 6), the source of P2's award-mix check, against the model's reported award categories. Single breakdowns only: the award-by-age cross rests on fewer than three survey households in many Welsh and some English cells.",
       "tracking": "microcosm#1095",
       "approved_by": "juaristi22",
-      "adjudication": "María's calls of 2026-11-08 on the plan for the November event data (PR2, item P3): England and Wales as separate rows on single breakdowns (daily living award, mobility award, age band with 75 and over merged, and the English regions by each award), on the four quarter-end points of 2025, held out of the solve (for María's signature).",
-      "approved_on": "2026-11-08",
-      "expires_on": "2027-02-08"
+      "adjudication": "María's calls of 2026-11-08 on the plan for the November event data (PR2, item P3): England and Wales as separate rows on single breakdowns (daily living award, mobility award, age band with 75 and over merged, and the English regions by each award), on the four quarter-end points of 2025, held out of the solve.",
+      "approved_on": "2026-11-09",
+      "expires_on": "2027-02-09"
     },
     {
       "name": "dwp.pip.cases_west_midlands_mobility_nil",
       "reason": "Diagnostic, not a weight question: DWP's PIP cases with entitlement by award, age and region (chronicle#420 item 6), the source of P2's award-mix check, against the model's reported award categories. Single breakdowns only: the award-by-age cross rests on fewer than three survey households in many Welsh and some English cells.",
       "tracking": "microcosm#1095",
       "approved_by": "juaristi22",
-      "adjudication": "María's calls of 2026-11-08 on the plan for the November event data (PR2, item P3): England and Wales as separate rows on single breakdowns (daily living award, mobility award, age band with 75 and over merged, and the English regions by each award), on the four quarter-end points of 2025, held out of the solve (for María's signature).",
-      "approved_on": "2026-11-08",
-      "expires_on": "2027-02-08"
+      "adjudication": "María's calls of 2026-11-08 on the plan for the November event data (PR2, item P3): England and Wales as separate rows on single breakdowns (daily living award, mobility award, age band with 75 and over merged, and the English regions by each award), on the four quarter-end points of 2025, held out of the solve.",
+      "approved_on": "2026-11-09",
+      "expires_on": "2027-02-09"
     },
     {
       "name": "dwp.pip.cases_east_of_england_daily_living_standard",
       "reason": "Diagnostic, not a weight question: DWP's PIP cases with entitlement by award, age and region (chronicle#420 item 6), the source of P2's award-mix check, against the model's reported award categories. Single breakdowns only: the award-by-age cross rests on fewer than three survey households in many Welsh and some English cells.",
       "tracking": "microcosm#1095",
       "approved_by": "juaristi22",
-      "adjudication": "María's calls of 2026-11-08 on the plan for the November event data (PR2, item P3): England and Wales as separate rows on single breakdowns (daily living award, mobility award, age band with 75 and over merged, and the English regions by each award), on the four quarter-end points of 2025, held out of the solve (for María's signature).",
-      "approved_on": "2026-11-08",
-      "expires_on": "2027-02-08"
+      "adjudication": "María's calls of 2026-11-08 on the plan for the November event data (PR2, item P3): England and Wales as separate rows on single breakdowns (daily living award, mobility award, age band with 75 and over merged, and the English regions by each award), on the four quarter-end points of 2025, held out of the solve.",
+      "approved_on": "2026-11-09",
+      "expires_on": "2027-02-09"
     },
     {
       "name": "dwp.pip.cases_east_of_england_daily_living_enhanced",
       "reason": "Diagnostic, not a weight question: DWP's PIP cases with entitlement by award, age and region (chronicle#420 item 6), the source of P2's award-mix check, against the model's reported award categories. Single breakdowns only: the award-by-age cross rests on fewer than three survey households in many Welsh and some English cells.",
       "tracking": "microcosm#1095",
       "approved_by": "juaristi22",
-      "adjudication": "María's calls of 2026-11-08 on the plan for the November event data (PR2, item P3): England and Wales as separate rows on single breakdowns (daily living award, mobility award, age band with 75 and over merged, and the English regions by each award), on the four quarter-end points of 2025, held out of the solve (for María's signature).",
-      "approved_on": "2026-11-08",
-      "expires_on": "2027-02-08"
+      "adjudication": "María's calls of 2026-11-08 on the plan for the November event data (PR2, item P3): England and Wales as separate rows on single breakdowns (daily living award, mobility award, age band with 75 and over merged, and the English regions by each award), on the four quarter-end points of 2025, held out of the solve.",
+      "approved_on": "2026-11-09",
+      "expires_on": "2027-02-09"
     },
     {
       "name": "dwp.pip.cases_east_of_england_daily_living_nil",
       "reason": "Diagnostic, not a weight question: DWP's PIP cases with entitlement by award, age and region (chronicle#420 item 6), the source of P2's award-mix check, against the model's reported award categories. Single breakdowns only: the award-by-age cross rests on fewer than three survey households in many Welsh and some English cells.",
       "tracking": "microcosm#1095",
       "approved_by": "juaristi22",
-      "adjudication": "María's calls of 2026-11-08 on the plan for the November event data (PR2, item P3): England and Wales as separate rows on single breakdowns (daily living award, mobility award, age band with 75 and over merged, and the English regions by each award), on the four quarter-end points of 2025, held out of the solve (for María's signature).",
-      "approved_on": "2026-11-08",
-      "expires_on": "2027-02-08"
+      "adjudication": "María's calls of 2026-11-08 on the plan for the November event data (PR2, item P3): England and Wales as separate rows on single breakdowns (daily living award, mobility award, age band with 75 and over merged, and the English regions by each award), on the four quarter-end points of 2025, held out of the solve.",
+      "approved_on": "2026-11-09",
+      "expires_on": "2027-02-09"
     },
     {
       "name": "dwp.pip.cases_east_of_england_mobility_standard",
       "reason": "Diagnostic, not a weight question: DWP's PIP cases with entitlement by award, age and region (chronicle#420 item 6), the source of P2's award-mix check, against the model's reported award categories. Single breakdowns only: the award-by-age cross rests on fewer than three survey households in many Welsh and some English cells.",
       "tracking": "microcosm#1095",
       "approved_by": "juaristi22",
-      "adjudication": "María's calls of 2026-11-08 on the plan for the November event data (PR2, item P3): England and Wales as separate rows on single breakdowns (daily living award, mobility award, age band with 75 and over merged, and the English regions by each award), on the four quarter-end points of 2025, held out of the solve (for María's signature).",
-      "approved_on": "2026-11-08",
-      "expires_on": "2027-02-08"
+      "adjudication": "María's calls of 2026-11-08 on the plan for the November event data (PR2, item P3): England and Wales as separate rows on single breakdowns (daily living award, mobility award, age band with 75 and over merged, and the English regions by each award), on the four quarter-end points of 2025, held out of the solve.",
+      "approved_on": "2026-11-09",
+      "expires_on": "2027-02-09"
     },
     {
       "name": "dwp.pip.cases_east_of_england_mobility_enhanced",
       "reason": "Diagnostic, not a weight question: DWP's PIP cases with entitlement by award, age and region (chronicle#420 item 6), the source of P2's award-mix check, against the model's reported award categories. Single breakdowns only: the award-by-age cross rests on fewer than three survey households in many Welsh and some English cells.",
       "tracking": "microcosm#1095",
       "approved_by": "juaristi22",
-      "adjudication": "María's calls of 2026-11-08 on the plan for the November event data (PR2, item P3): England and Wales as separate rows on single breakdowns (daily living award, mobility award, age band with 75 and over merged, and the English regions by each award), on the four quarter-end points of 2025, held out of the solve (for María's signature).",
-      "approved_on": "2026-11-08",
-      "expires_on": "2027-02-08"
+      "adjudication": "María's calls of 2026-11-08 on the plan for the November event data (PR2, item P3): England and Wales as separate rows on single breakdowns (daily living award, mobility award, age band with 75 and over merged, and the English regions by each award), on the four quarter-end points of 2025, held out of the solve.",
+      "approved_on": "2026-11-09",
+      "expires_on": "2027-02-09"
     },
     {
       "name": "dwp.pip.cases_east_of_england_mobility_nil",
       "reason": "Diagnostic, not a weight question: DWP's PIP cases with entitlement by award, age and region (chronicle#420 item 6), the source of P2's award-mix check, against the model's reported award categories. Single breakdowns only: the award-by-age cross rests on fewer than three survey households in many Welsh and some English cells.",
       "tracking": "microcosm#1095",
       "approved_by": "juaristi22",
-      "adjudication": "María's calls of 2026-11-08 on the plan for the November event data (PR2, item P3): England and Wales as separate rows on single breakdowns (daily living award, mobility award, age band with 75 and over merged, and the English regions by each award), on the four quarter-end points of 2025, held out of the solve (for María's signature).",
-      "approved_on": "2026-11-08",
-      "expires_on": "2027-02-08"
+      "adjudication": "María's calls of 2026-11-08 on the plan for the November event data (PR2, item P3): England and Wales as separate rows on single breakdowns (daily living award, mobility award, age band with 75 and over merged, and the English regions by each award), on the four quarter-end points of 2025, held out of the solve.",
+      "approved_on": "2026-11-09",
+      "expires_on": "2027-02-09"
     },
     {
       "name": "dwp.pip.cases_london_daily_living_standard",
       "reason": "Diagnostic, not a weight question: DWP's PIP cases with entitlement by award, age and region (chronicle#420 item 6), the source of P2's award-mix check, against the model's reported award categories. Single breakdowns only: the award-by-age cross rests on fewer than three survey households in many Welsh and some English cells.",
       "tracking": "microcosm#1095",
       "approved_by": "juaristi22",
-      "adjudication": "María's calls of 2026-11-08 on the plan for the November event data (PR2, item P3): England and Wales as separate rows on single breakdowns (daily living award, mobility award, age band with 75 and over merged, and the English regions by each award), on the four quarter-end points of 2025, held out of the solve (for María's signature).",
-      "approved_on": "2026-11-08",
-      "expires_on": "2027-02-08"
+      "adjudication": "María's calls of 2026-11-08 on the plan for the November event data (PR2, item P3): England and Wales as separate rows on single breakdowns (daily living award, mobility award, age band with 75 and over merged, and the English regions by each award), on the four quarter-end points of 2025, held out of the solve.",
+      "approved_on": "2026-11-09",
+      "expires_on": "2027-02-09"
     },
     {
       "name": "dwp.pip.cases_london_daily_living_enhanced",
       "reason": "Diagnostic, not a weight question: DWP's PIP cases with entitlement by award, age and region (chronicle#420 item 6), the source of P2's award-mix check, against the model's reported award categories. Single breakdowns only: the award-by-age cross rests on fewer than three survey households in many Welsh and some English cells.",
       "tracking": "microcosm#1095",
       "approved_by": "juaristi22",
-      "adjudication": "María's calls of 2026-11-08 on the plan for the November event data (PR2, item P3): England and Wales as separate rows on single breakdowns (daily living award, mobility award, age band with 75 and over merged, and the English regions by each award), on the four quarter-end points of 2025, held out of the solve (for María's signature).",
-      "approved_on": "2026-11-08",
-      "expires_on": "2027-02-08"
+      "adjudication": "María's calls of 2026-11-08 on the plan for the November event data (PR2, item P3): England and Wales as separate rows on single breakdowns (daily living award, mobility award, age band with 75 and over merged, and the English regions by each award), on the four quarter-end points of 2025, held out of the solve.",
+      "approved_on": "2026-11-09",
+      "expires_on": "2027-02-09"
     },
     {
       "name": "dwp.pip.cases_london_daily_living_nil",
       "reason": "Diagnostic, not a weight question: DWP's PIP cases with entitlement by award, age and region (chronicle#420 item 6), the source of P2's award-mix check, against the model's reported award categories. Single breakdowns only: the award-by-age cross rests on fewer than three survey households in many Welsh and some English cells.",
       "tracking": "microcosm#1095",
       "approved_by": "juaristi22",
-      "adjudication": "María's calls of 2026-11-08 on the plan for the November event data (PR2, item P3): England and Wales as separate rows on single breakdowns (daily living award, mobility award, age band with 75 and over merged, and the English regions by each award), on the four quarter-end points of 2025, held out of the solve (for María's signature).",
-      "approved_on": "2026-11-08",
-      "expires_on": "2027-02-08"
+      "adjudication": "María's calls of 2026-11-08 on the plan for the November event data (PR2, item P3): England and Wales as separate rows on single breakdowns (daily living award, mobility award, age band with 75 and over merged, and the English regions by each award), on the four quarter-end points of 2025, held out of the solve.",
+      "approved_on": "2026-11-09",
+      "expires_on": "2027-02-09"
     },
     {
       "name": "dwp.pip.cases_london_mobility_standard",
       "reason": "Diagnostic, not a weight question: DWP's PIP cases with entitlement by award, age and region (chronicle#420 item 6), the source of P2's award-mix check, against the model's reported award categories. Single breakdowns only: the award-by-age cross rests on fewer than three survey households in many Welsh and some English cells.",
       "tracking": "microcosm#1095",
       "approved_by": "juaristi22",
-      "adjudication": "María's calls of 2026-11-08 on the plan for the November event data (PR2, item P3): England and Wales as separate rows on single breakdowns (daily living award, mobility award, age band with 75 and over merged, and the English regions by each award), on the four quarter-end points of 2025, held out of the solve (for María's signature).",
-      "approved_on": "2026-11-08",
-      "expires_on": "2027-02-08"
+      "adjudication": "María's calls of 2026-11-08 on the plan for the November event data (PR2, item P3): England and Wales as separate rows on single breakdowns (daily living award, mobility award, age band with 75 and over merged, and the English regions by each award), on the four quarter-end points of 2025, held out of the solve.",
+      "approved_on": "2026-11-09",
+      "expires_on": "2027-02-09"
     },
     {
       "name": "dwp.pip.cases_london_mobility_enhanced",
       "reason": "Diagnostic, not a weight question: DWP's PIP cases with entitlement by award, age and region (chronicle#420 item 6), the source of P2's award-mix check, against the model's reported award categories. Single breakdowns only: the award-by-age cross rests on fewer than three survey households in many Welsh and some English cells.",
       "tracking": "microcosm#1095",
       "approved_by": "juaristi22",
-      "adjudication": "María's calls of 2026-11-08 on the plan for the November event data (PR2, item P3): England and Wales as separate rows on single breakdowns (daily living award, mobility award, age band with 75 and over merged, and the English regions by each award), on the four quarter-end points of 2025, held out of the solve (for María's signature).",
-      "approved_on": "2026-11-08",
-      "expires_on": "2027-02-08"
+      "adjudication": "María's calls of 2026-11-08 on the plan for the November event data (PR2, item P3): England and Wales as separate rows on single breakdowns (daily living award, mobility award, age band with 75 and over merged, and the English regions by each award), on the four quarter-end points of 2025, held out of the solve.",
+      "approved_on": "2026-11-09",
+      "expires_on": "2027-02-09"
     },
     {
       "name": "dwp.pip.cases_london_mobility_nil",
       "reason": "Diagnostic, not a weight question: DWP's PIP cases with entitlement by award, age and region (chronicle#420 item 6), the source of P2's award-mix check, against the model's reported award categories. Single breakdowns only: the award-by-age cross rests on fewer than three survey households in many Welsh and some English cells.",
       "tracking": "microcosm#1095",
       "approved_by": "juaristi22",
-      "adjudication": "María's calls of 2026-11-08 on the plan for the November event data (PR2, item P3): England and Wales as separate rows on single breakdowns (daily living award, mobility award, age band with 75 and over merged, and the English regions by each award), on the four quarter-end points of 2025, held out of the solve (for María's signature).",
-      "approved_on": "2026-11-08",
-      "expires_on": "2027-02-08"
+      "adjudication": "María's calls of 2026-11-08 on the plan for the November event data (PR2, item P3): England and Wales as separate rows on single breakdowns (daily living award, mobility award, age band with 75 and over merged, and the English regions by each award), on the four quarter-end points of 2025, held out of the solve.",
+      "approved_on": "2026-11-09",
+      "expires_on": "2027-02-09"
     },
     {
       "name": "dwp.pip.cases_south_east_daily_living_standard",
       "reason": "Diagnostic, not a weight question: DWP's PIP cases with entitlement by award, age and region (chronicle#420 item 6), the source of P2's award-mix check, against the model's reported award categories. Single breakdowns only: the award-by-age cross rests on fewer than three survey households in many Welsh and some English cells.",
       "tracking": "microcosm#1095",
       "approved_by": "juaristi22",
-      "adjudication": "María's calls of 2026-11-08 on the plan for the November event data (PR2, item P3): England and Wales as separate rows on single breakdowns (daily living award, mobility award, age band with 75 and over merged, and the English regions by each award), on the four quarter-end points of 2025, held out of the solve (for María's signature).",
-      "approved_on": "2026-11-08",
-      "expires_on": "2027-02-08"
+      "adjudication": "María's calls of 2026-11-08 on the plan for the November event data (PR2, item P3): England and Wales as separate rows on single breakdowns (daily living award, mobility award, age band with 75 and over merged, and the English regions by each award), on the four quarter-end points of 2025, held out of the solve.",
+      "approved_on": "2026-11-09",
+      "expires_on": "2027-02-09"
     },
     {
       "name": "dwp.pip.cases_south_east_daily_living_enhanced",
       "reason": "Diagnostic, not a weight question: DWP's PIP cases with entitlement by award, age and region (chronicle#420 item 6), the source of P2's award-mix check, against the model's reported award categories. Single breakdowns only: the award-by-age cross rests on fewer than three survey households in many Welsh and some English cells.",
       "tracking": "microcosm#1095",
       "approved_by": "juaristi22",
-      "adjudication": "María's calls of 2026-11-08 on the plan for the November event data (PR2, item P3): England and Wales as separate rows on single breakdowns (daily living award, mobility award, age band with 75 and over merged, and the English regions by each award), on the four quarter-end points of 2025, held out of the solve (for María's signature).",
-      "approved_on": "2026-11-08",
-      "expires_on": "2027-02-08"
+      "adjudication": "María's calls of 2026-11-08 on the plan for the November event data (PR2, item P3): England and Wales as separate rows on single breakdowns (daily living award, mobility award, age band with 75 and over merged, and the English regions by each award), on the four quarter-end points of 2025, held out of the solve.",
+      "approved_on": "2026-11-09",
+      "expires_on": "2027-02-09"
     },
     {
       "name": "dwp.pip.cases_south_east_daily_living_nil",
       "reason": "Diagnostic, not a weight question: DWP's PIP cases with entitlement by award, age and region (chronicle#420 item 6), the source of P2's award-mix check, against the model's reported award categories. Single breakdowns only: the award-by-age cross rests on fewer than three survey households in many Welsh and some English cells.",
       "tracking": "microcosm#1095",
       "approved_by": "juaristi22",
-      "adjudication": "María's calls of 2026-11-08 on the plan for the November event data (PR2, item P3): England and Wales as separate rows on single breakdowns (daily living award, mobility award, age band with 75 and over merged, and the English regions by each award), on the four quarter-end points of 2025, held out of the solve (for María's signature).",
-      "approved_on": "2026-11-08",
-      "expires_on": "2027-02-08"
+      "adjudication": "María's calls of 2026-11-08 on the plan for the November event data (PR2, item P3): England and Wales as separate rows on single breakdowns (daily living award, mobility award, age band with 75 and over merged, and the English regions by each award), on the four quarter-end points of 2025, held out of the solve.",
+      "approved_on": "2026-11-09",
+      "expires_on": "2027-02-09"
     },
     {
       "name": "dwp.pip.cases_south_east_mobility_standard",
       "reason": "Diagnostic, not a weight question: DWP's PIP cases with entitlement by award, age and region (chronicle#420 item 6), the source of P2's award-mix check, against the model's reported award categories. Single breakdowns only: the award-by-age cross rests on fewer than three survey households in many Welsh and some English cells.",
       "tracking": "microcosm#1095",
       "approved_by": "juaristi22",
-      "adjudication": "María's calls of 2026-11-08 on the plan for the November event data (PR2, item P3): England and Wales as separate rows on single breakdowns (daily living award, mobility award, age band with 75 and over merged, and the English regions by each award), on the four quarter-end points of 2025, held out of the solve (for María's signature).",
-      "approved_on": "2026-11-08",
-      "expires_on": "2027-02-08"
+      "adjudication": "María's calls of 2026-11-08 on the plan for the November event data (PR2, item P3): England and Wales as separate rows on single breakdowns (daily living award, mobility award, age band with 75 and over merged, and the English regions by each award), on the four quarter-end points of 2025, held out of the solve.",
+      "approved_on": "2026-11-09",
+      "expires_on": "2027-02-09"
     },
     {
       "name": "dwp.pip.cases_south_east_mobility_enhanced",
       "reason": "Diagnostic, not a weight question: DWP's PIP cases with entitlement by award, age and region (chronicle#420 item 6), the source of P2's award-mix check, against the model's reported award categories. Single breakdowns only: the award-by-age cross rests on fewer than three survey households in many Welsh and some English cells.",
       "tracking": "microcosm#1095",
       "approved_by": "juaristi22",
-      "adjudication": "María's calls of 2026-11-08 on the plan for the November event data (PR2, item P3): England and Wales as separate rows on single breakdowns (daily living award, mobility award, age band with 75 and over merged, and the English regions by each award), on the four quarter-end points of 2025, held out of the solve (for María's signature).",
-      "approved_on": "2026-11-08",
-      "expires_on": "2027-02-08"
+      "adjudication": "María's calls of 2026-11-08 on the plan for the November event data (PR2, item P3): England and Wales as separate rows on single breakdowns (daily living award, mobility award, age band with 75 and over merged, and the English regions by each award), on the four quarter-end points of 2025, held out of the solve.",
+      "approved_on": "2026-11-09",
+      "expires_on": "2027-02-09"
     },
     {
       "name": "dwp.pip.cases_south_east_mobility_nil",
       "reason": "Diagnostic, not a weight question: DWP's PIP cases with entitlement by award, age and region (chronicle#420 item 6), the source of P2's award-mix check, against the model's reported award categories. Single breakdowns only: the award-by-age cross rests on fewer than three survey households in many Welsh and some English cells.",
       "tracking": "microcosm#1095",
       "approved_by": "juaristi22",
-      "adjudication": "María's calls of 2026-11-08 on the plan for the November event data (PR2, item P3): England and Wales as separate rows on single breakdowns (daily living award, mobility award, age band with 75 and over merged, and the English regions by each award), on the four quarter-end points of 2025, held out of the solve (for María's signature).",
-      "approved_on": "2026-11-08",
-      "expires_on": "2027-02-08"
+      "adjudication": "María's calls of 2026-11-08 on the plan for the November event data (PR2, item P3): England and Wales as separate rows on single breakdowns (daily living award, mobility award, age band with 75 and over merged, and the English regions by each award), on the four quarter-end points of 2025, held out of the solve.",
+      "approved_on": "2026-11-09",
+      "expires_on": "2027-02-09"
     },
     {
       "name": "dwp.pip.cases_south_west_daily_living_standard",
       "reason": "Diagnostic, not a weight question: DWP's PIP cases with entitlement by award, age and region (chronicle#420 item 6), the source of P2's award-mix check, against the model's reported award categories. Single breakdowns only: the award-by-age cross rests on fewer than three survey households in many Welsh and some English cells.",
       "tracking": "microcosm#1095",
       "approved_by": "juaristi22",
-      "adjudication": "María's calls of 2026-11-08 on the plan for the November event data (PR2, item P3): England and Wales as separate rows on single breakdowns (daily living award, mobility award, age band with 75 and over merged, and the English regions by each award), on the four quarter-end points of 2025, held out of the solve (for María's signature).",
-      "approved_on": "2026-11-08",
-      "expires_on": "2027-02-08"
+      "adjudication": "María's calls of 2026-11-08 on the plan for the November event data (PR2, item P3): England and Wales as separate rows on single breakdowns (daily living award, mobility award, age band with 75 and over merged, and the English regions by each award), on the four quarter-end points of 2025, held out of the solve.",
+      "approved_on": "2026-11-09",
+      "expires_on": "2027-02-09"
     },
     {
       "name": "dwp.pip.cases_south_west_daily_living_enhanced",
       "reason": "Diagnostic, not a weight question: DWP's PIP cases with entitlement by award, age and region (chronicle#420 item 6), the source of P2's award-mix check, against the model's reported award categories. Single breakdowns only: the award-by-age cross rests on fewer than three survey households in many Welsh and some English cells.",
       "tracking": "microcosm#1095",
       "approved_by": "juaristi22",
-      "adjudication": "María's calls of 2026-11-08 on the plan for the November event data (PR2, item P3): England and Wales as separate rows on single breakdowns (daily living award, mobility award, age band with 75 and over merged, and the English regions by each award), on the four quarter-end points of 2025, held out of the solve (for María's signature).",
-      "approved_on": "2026-11-08",
-      "expires_on": "2027-02-08"
+      "adjudication": "María's calls of 2026-11-08 on the plan for the November event data (PR2, item P3): England and Wales as separate rows on single breakdowns (daily living award, mobility award, age band with 75 and over merged, and the English regions by each award), on the four quarter-end points of 2025, held out of the solve.",
+      "approved_on": "2026-11-09",
+      "expires_on": "2027-02-09"
     },
     {
       "name": "dwp.pip.cases_south_west_daily_living_nil",
       "reason": "Diagnostic, not a weight question: DWP's PIP cases with entitlement by award, age and region (chronicle#420 item 6), the source of P2's award-mix check, against the model's reported award categories. Single breakdowns only: the award-by-age cross rests on fewer than three survey households in many Welsh and some English cells.",
       "tracking": "microcosm#1095",
       "approved_by": "juaristi22",
-      "adjudication": "María's calls of 2026-11-08 on the plan for the November event data (PR2, item P3): England and Wales as separate rows on single breakdowns (daily living award, mobility award, age band with 75 and over merged, and the English regions by each award), on the four quarter-end points of 2025, held out of the solve (for María's signature).",
-      "approved_on": "2026-11-08",
-      "expires_on": "2027-02-08"
+      "adjudication": "María's calls of 2026-11-08 on the plan for the November event data (PR2, item P3): England and Wales as separate rows on single breakdowns (daily living award, mobility award, age band with 75 and over merged, and the English regions by each award), on the four quarter-end points of 2025, held out of the solve.",
+      "approved_on": "2026-11-09",
+      "expires_on": "2027-02-09"
     },
     {
       "name": "dwp.pip.cases_south_west_mobility_standard",
       "reason": "Diagnostic, not a weight question: DWP's PIP cases with entitlement by award, age and region (chronicle#420 item 6), the source of P2's award-mix check, against the model's reported award categories. Single breakdowns only: the award-by-age cross rests on fewer than three survey households in many Welsh and some English cells.",
       "tracking": "microcosm#1095",
       "approved_by": "juaristi22",
-      "adjudication": "María's calls of 2026-11-08 on the plan for the November event data (PR2, item P3): England and Wales as separate rows on single breakdowns (daily living award, mobility award, age band with 75 and over merged, and the English regions by each award), on the four quarter-end points of 2025, held out of the solve (for María's signature).",
-      "approved_on": "2026-11-08",
-      "expires_on": "2027-02-08"
+      "adjudication": "María's calls of 2026-11-08 on the plan for the November event data (PR2, item P3): England and Wales as separate rows on single breakdowns (daily living award, mobility award, age band with 75 and over merged, and the English regions by each award), on the four quarter-end points of 2025, held out of the solve.",
+      "approved_on": "2026-11-09",
+      "expires_on": "2027-02-09"
     },
     {
       "name": "dwp.pip.cases_south_west_mobility_enhanced",
       "reason": "Diagnostic, not a weight question: DWP's PIP cases with entitlement by award, age and region (chronicle#420 item 6), the source of P2's award-mix check, against the model's reported award categories. Single breakdowns only: the award-by-age cross rests on fewer than three survey households in many Welsh and some English cells.",
       "tracking": "microcosm#1095",
       "approved_by": "juaristi22",
-      "adjudication": "María's calls of 2026-11-08 on the plan for the November event data (PR2, item P3): England and Wales as separate rows on single breakdowns (daily living award, mobility award, age band with 75 and over merged, and the English regions by each award), on the four quarter-end points of 2025, held out of the solve (for María's signature).",
-      "approved_on": "2026-11-08",
-      "expires_on": "2027-02-08"
+      "adjudication": "María's calls of 2026-11-08 on the plan for the November event data (PR2, item P3): England and Wales as separate rows on single breakdowns (daily living award, mobility award, age band with 75 and over merged, and the English regions by each award), on the four quarter-end points of 2025, held out of the solve.",
+      "approved_on": "2026-11-09",
+      "expires_on": "2027-02-09"
     },
     {
       "name": "dwp.pip.cases_south_west_mobility_nil",
       "reason": "Diagnostic, not a weight question: DWP's PIP cases with entitlement by award, age and region (chronicle#420 item 6), the source of P2's award-mix check, against the model's reported award categories. Single breakdowns only: the award-by-age cross rests on fewer than three survey households in many Welsh and some English cells.",
       "tracking": "microcosm#1095",
       "approved_by": "juaristi22",
-      "adjudication": "María's calls of 2026-11-08 on the plan for the November event data (PR2, item P3): England and Wales as separate rows on single breakdowns (daily living award, mobility award, age band with 75 and over merged, and the English regions by each award), on the four quarter-end points of 2025, held out of the solve (for María's signature).",
-      "approved_on": "2026-11-08",
-      "expires_on": "2027-02-08"
+      "adjudication": "María's calls of 2026-11-08 on the plan for the November event data (PR2, item P3): England and Wales as separate rows on single breakdowns (daily living award, mobility award, age band with 75 and over merged, and the English regions by each award), on the four quarter-end points of 2025, held out of the solve.",
+      "approved_on": "2026-11-09",
+      "expires_on": "2027-02-09"
     },
     {
       "name": "ons.neet.people_aged_16_to_24",
       "reason": "Diagnostic first, as María asked: the young people work review (chronicle#420 item 1) reads the model's NEET proxy against ONS's. The FRS records no part-time study or other training, which ONS counts as education, so the proxy and ONS's count measure different things, and the row is not a weight question until the difference is explained.",
       "tracking": "microcosm#1095",
       "approved_by": "juaristi22",
-      "adjudication": "María's call of 2026-11-08 on the plan for the November event data (PR2, item Y3): measure ONS's NEET people aged 16 to 24 as the mean of the four quarters inside calendar 2025, a new quarterly window rule, and hold the row out of the solve (for María's signature).",
-      "approved_on": "2026-11-08",
-      "expires_on": "2027-02-08"
+      "adjudication": "María's call of 2026-11-08 on the plan for the November event data (PR2, item Y3): measure ONS's NEET people aged 16 to 24 as the mean of the four quarters inside calendar 2025, a new quarterly window rule, and hold the row out of the solve.",
+      "approved_on": "2026-11-09",
+      "expires_on": "2027-02-09"
     }
   ]
 }
