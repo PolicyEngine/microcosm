@@ -209,7 +209,11 @@ def test_the_table_3_10_employment_counts_read_pay_with_benefits_by_profit_band(
             "variable": "employment_income_with_benefits_in_kind_annual",
             "operator": "!=",
             "value": 0,
-        }
+        },
+        # SPI counts declarers, so its rows leave out the trading allowance's
+        # full-relief group, whose receipts need not be declared
+        # (microcosm#1439).
+        {"variable": "trading_allowance_full_relief", "equals": False},
     ]
     assert binding["band_upper_bound"] == 10_000
     assert binding["band_upper_bound_inclusive"] is False
