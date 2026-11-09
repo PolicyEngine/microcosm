@@ -140,11 +140,11 @@ def test_inventory_has_exact_contract_counts_and_named_parking_reasons():
         "msd_nz_super_recipients": 1,
         "msd_veterans_pension_recipients": 1,
     }
-    assert len(_rows("precal_references.json")) == 318
+    assert len(_rows("precal_references.json")) == 451
     for filename, active in (
         ("target_references.json", 77),
-        # G8-r2c E activates the 235 P1 wage rows.
-        ("precal_references.json", 315),
+        # G8-r2c E activates the 235 P1 wage rows and G8-x0 adds 133 rent rows.
+        ("precal_references.json", 448),
     ):
         rows = _rows(filename)
         assert (

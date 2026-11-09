@@ -77,7 +77,7 @@
     },
     "consumer_prices": {
       "identity": true,
-      "reason": "Interim convention under d1982 option A (2026-10-26). The donor's stored person-level bank, stock and bond assets convert once at 1.654 NZD per USD and round half-even to cents, with factor one and no ageing. The build declares a 1 April 2026 snapshot as a convention and claims no valuation date or authenticated donor lineage. S0's asset test reads this stock, S1 turns the test off and runs beside it, and the result claims no New Zealand calibration. It stays an unpublishable diagnostic under the D2 publication block."
+      "reason": "Interim convention under d1982 option A (2026-10-26). The donor's stored person-level bank, stock and bond assets convert once at this declaration's rate and round half-even to cents, with factor one and no ageing. The build declares a 1 April 2026 snapshot as a convention and claims no valuation date or authenticated donor lineage. S0's asset test reads this stock, S1 turns the test off and runs beside it, and the result claims no New Zealand calibration. It stays an unpublishable diagnostic under the D2 publication block."
     },
     "owner_housing_costs": {
       "identity": true,
