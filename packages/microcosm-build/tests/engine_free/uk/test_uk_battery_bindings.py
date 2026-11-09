@@ -1812,12 +1812,14 @@ class TestPreflightBindings:
         # taxpayers with it by constituency and authority: 2,022 cells, 2,016
         # of them compiled, less the 40 the rounded-thousand floor defers
         # (microcosm#1420: the 20 count cells HMRC publishes at 5,000 or fewer
-        # and their amounts).
-        assert result.details["candidate_targets"] == 27_168
+        # and their amounts). The pair built on microcosm#1535's merge defers
+        # Carmarthenshire's band-I cell, which the support check refused.
+        assert result.details["candidate_targets"] == 27_167
         assert result.details["reference_targets"] == 31_347
-        # Only the 4,179 signed area deferrals and absences remain (2,100
+        # Only the 4,180 signed area deferrals and absences remain (2,100
         # before microcosm#929 bound the Welsh and Scottish council-tax cells;
-        # Shetland band H is the one Scottish support deferral; microcosm#1123
+        # Shetland band H is the one Scottish support deferral and
+        # Carmarthenshire band I the one Welsh; microcosm#1123
         # adds the three higher rate taxpayer gaps; microcosm#1240 the six
         # high-value homes cells above; microcosm#1278 signs the two
         # small-cell rules, which defer 16 council-tax band cells and 192
@@ -1829,7 +1831,7 @@ class TestPreflightBindings:
         # London, and the 40 under the rounded-thousand floor); the 1,011
         # household rows are ordinary Chronicle-compiled references.
         exclusions = result.details["reviewed_exclusions"]
-        assert len(exclusions) == 4_179
+        assert len(exclusions) == 4_180
         households = [
             name for name in exclusions if str(name).startswith("households@")
         ]

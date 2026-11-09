@@ -2152,6 +2152,87 @@ def _finite_or_none(value: float) -> float | None:
     return value if math.isfinite(value) else None
 
 
+def _scf_wealth_gate_record(
+    gate: GateResult, household_ids: Iterable[object]
+) -> dict[str, object]:
+    """The SCF-wealth gate's verdict and summary, as release evidence.
+
+    The summary carries the SIPP/SCF blend audit (``financial_asset_blend``:
+    seed, period, per-source household counts, bank-asset medians and
+    low-tail shares). The stage keeps that audit in ``DataFrame.attrs``,
+    which the H5 writer drops, so without this record no release artifact
+    says whether the SIPP half ran (microcosm#1216).
+
+    Every count and share describes the frame at the blend stage, before
+    calibration and before any subset export. ``financial_asset_source_is_scf``
+    draws one uniform per household in sorted order of the blend-stage
+    household ids, so a household's draw depends on that whole id set. The
+    record pins the set: its count and the SHA-256 of the sorted unique
+    household ids, as little-endian int64 when every id is integral (every
+    release so far) and as float64 otherwise. ``encoding`` names which, and
+    the two encodings share one digest space, so a verifier compares
+    ``encoding`` as well as ``sha256``. Every household has one head, so this
+    is the set the draw sorts: when a published H5's household ids give the
+    same encoding and digest, the seed and period reproduce each household's
+    source. A subset release (L0, exact-k) exports part of the set and cannot
+    be audited that way from the file alone. Ids that are neither integers
+    nor floats, and unsigned ids beyond int64, are refused.
+
+    Unlike the sibling gate records, this one is scrubbed: its details carry
+    floats that are NaN on a degenerate frame, and both artifacts serialize
+    strict JSON, so NumPy scalars become Python values and non-finite floats
+    become null.
+    """
+
+    def finite(value: object) -> object:
+        if isinstance(value, Mapping):
+            return {str(key): finite(nested) for key, nested in value.items()}
+        if isinstance(value, (list, tuple)):
+            return [finite(nested) for nested in value]
+        if isinstance(value, (bool, np.bool_)):
+            return bool(value)
+        if isinstance(value, (int, np.integer)):
+            return int(value)
+        if isinstance(value, (float, np.floating)):
+            return _finite_or_none(value)
+        return value
+
+    values = pd.to_numeric(pd.Series(list(household_ids)), errors="raise").to_numpy()
+    if values.size == 0:
+        values = values.astype(np.int64)
+    # Neither encoding holds booleans, complex values or unsigned ids beyond
+    # int64 without collisions, so those are refused rather than recorded.
+    if values.dtype.kind not in "iuf":
+        raise TypeError(
+            f"blend-stage household ids must be integers or floats, not {values.dtype}"
+        )
+    ids = np.unique(values)
+    if ids.dtype.kind == "u" and ids.size and int(ids.max()) > np.iinfo(np.int64).max:
+        raise ValueError("a blend-stage household id exceeds the int64 range")
+    # Integral ids (every release so far) hash as int64; anything else keeps
+    # its float64 value, so distinct ids never collapse into one digest.
+    integral = ids.dtype.kind in "iu" or bool(
+        np.isfinite(ids).all()
+        and (ids == np.round(ids)).all()
+        and ((ids >= -(2**63)) & (ids < 2**63)).all()
+    )
+    id_bytes = (ids.astype("<i8") if integral else ids.astype("<f8")).tobytes()
+    return {
+        "passed": bool(gate.passed),
+        "failures": list(gate.failures),
+        "scope": "blend_stage_frame",
+        "blend_household_ids": {
+            "count": int(ids.size),
+            "sha256": hashlib.sha256(id_bytes).hexdigest(),
+            "encoding": (
+                "sorted unique household_id, little-endian "
+                + ("int64" if integral else "float64")
+            ),
+        },
+        "details": finite(dict(gate.details)),
+    }
+
+
 def _sha256(path: Path) -> str:
     digest = hashlib.sha256()
     with path.open("rb") as stream:
@@ -8029,9 +8110,22 @@ US_EXPORT_INPUT_MASS_REVIEWED_EXCLUSIONS: dict[str, str] = {
         "ABOVE the true SOI level: a correctly calibrated column cannot pass "
         "this parity check. The reference value is an incidental artifact of "
         "the incumbent weight solve (nothing pinned this column before Build "
-        "H). estate_income does not feed AGI in PolicyEngine-US (loss-cap "
-        "input only), so pinning it identifies the export dimension without "
-        "moving revenue (PolicyEngine/microcosm#299 Build H)."
+        "H). Pinning it can move revenue, because estate_income feeds "
+        "federal income tax. In policyengine-us 2.2.1 it "
+        "is not a gross-income source, but loss_ald deducts its negative "
+        "part above the line under the section 461(l) limit, whose ceiling "
+        "its positive part raises, and it counts toward qualified business "
+        "income while estate_income_would_be_qualified is true. From "
+        "policyengine-us 2.23.2 (PolicyEngine/policyengine-us#9633) a "
+        "non-dependent's positive estate_income is also gross income and "
+        "AGI, and a non-dependent's signed estate_income plus the Schedule "
+        "K-1 (Form 1041) box 14 code H adjustment input is net investment "
+        "income for the NIIT (estate_net_investment_income). The exclusion "
+        "rests on the band math above, not on revenue neutrality "
+        "(PolicyEngine/microcosm#299 Build H). That math holds only for the "
+        "$98.434B reference. The build applies this entry for any reference, "
+        "so re-adjudicate it if --export-input-mass-reference-h5 names a file "
+        "with a different level."
     ),
     "non_sch_d_capital_gains": (
         "Identified by SOI Table 1.4 capital gain distributions reported on "
@@ -9892,6 +9986,7 @@ def _write_release_calibration_diagnostics(
     degenerate_input_gate: GateResult | None = None,
     ecps_parity_gate: GateResult | None = None,
     validation_input_coverage_gate: GateResult | None = None,
+    scf_wealth_signal: Mapping[str, object] | None = None,
     target_loss_family_multipliers: Mapping[str, float] | None = None,
     target_loss_basis: Mapping[str, object] | None = None,
     exact_k_ladder: Mapping[str, object] | None = None,
@@ -10056,6 +10151,9 @@ def _write_release_calibration_diagnostics(
                 }
                 if validation_input_coverage_gate is not None
                 else None
+            ),
+            "scf_wealth_signal": (
+                dict(scf_wealth_signal) if scf_wealth_signal is not None else None
             ),
             "support_value_repairs": support_value_repairs,
             "warm_start_calibration": (
@@ -10659,6 +10757,7 @@ def _build_manifests(
     scored_dataset_sha256: str | None = None,
     post_export_scoring: Mapping[str, object] | None = None,
     diagnostics_outcome: DiagnosticsWriteOutcome | None = None,
+    scf_wealth_signal: Mapping[str, object] | None = None,
     scf_education_debt: bool = False,
 ) -> None:
     dataset_path = artifact_root / dataset_filename
@@ -10857,6 +10956,13 @@ def _build_manifests(
                 else {}
             ),
             "target_compilation": dropped,
+            # The SIPP/SCF blend audit (microcosm#1216): written with the
+            # manifest a release cannot ship without, beside the diagnostics.
+            **(
+                {"scf_wealth_signal": dict(scf_wealth_signal)}
+                if scf_wealth_signal is not None
+                else {}
+            ),
             "target_profile_coverage": {
                 "passed": target_profile_gate.passed,
                 "failures": list(target_profile_gate.failures),
@@ -14327,6 +14433,9 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
                 for failure in scf_wealth_gate.failures
             )
         )
+    scf_wealth_signal = _scf_wealth_gate_record(
+        scf_wealth_gate, base_frame.table("household")["household_id"]
+    )
     sipp_vehicle_donor_path = sipp_full_donor_path
     if telemetry is not None:
         telemetry.stage(
@@ -15839,6 +15948,7 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
         degenerate_input_gate=degenerate_input_gate,
         ecps_parity_gate=ecps_parity_gate,
         validation_input_coverage_gate=validation_input_coverage_gate,
+        scf_wealth_signal=scf_wealth_signal,
         target_loss_family_multipliers=args.target_family_loss_multipliers,
         target_loss_basis=target_loss_basis,
         exact_k_ladder=exact_k_ladder_provenance,
@@ -16696,6 +16806,7 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
         scored_dataset_sha256=scored_dataset_sha256,
         post_export_scoring=post_export_scoring,
         diagnostics_outcome=diagnostics_outcome,
+        scf_wealth_signal=scf_wealth_signal,
         scf_education_debt=args.scf_education_debt,
     )
     if telemetry is not None:
