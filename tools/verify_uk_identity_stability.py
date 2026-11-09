@@ -1310,10 +1310,12 @@ def _e8_band_donors(
 
     The donors are a funded support channel: each band's donors carry equal
     weights and their mass left the incumbent households of each donor's
-    region in proportion. Folding the CGT layers stacked afterwards gives the
-    frame the stage wrote; scaling each region's incumbents back to the
-    region's whole mass gives the weights it read. The stored layer must
-    agree with itself (one carrier per donor, each source household copied
+    region in proportion; where the frame carries geographic clones, the
+    region within the donor's clone, and each clone seats its own donors
+    (microcosm#931). Folding the CGT layers stacked afterwards gives the
+    frame the stage wrote; scaling each funding stratum's incumbents back to
+    the stratum's whole mass gives the weights it read. The stored layer must
+    agree with itself (one carrier per donor, each parent household copied
     once, equal weights within a band, the mass record conserving the total)
     and, when the tape's band propensities are supplied (they need the
     licensed SPI tape), with the stage's own function rerun on the
@@ -1443,9 +1445,10 @@ def _e8_band_donors(
         problems["band_donor_layer"] = layer
     receipt["bands"] = band_rows
 
-    # The weights the stage read: every region's incumbents gave up the
-    # region's donor mass in proportion, so scaling them back to the region's
-    # whole mass restores them.
+    # The weights the stage read: every funding stratum's incumbents (a
+    # region, within its geographic clone where the frame carries clones)
+    # gave up the stratum's donor mass in proportion, so scaling them back to
+    # the stratum's whole mass restores them.
     strata = _funding_strata(household).to_numpy()
     region_mass = pd.Series(weights).groupby(strata).sum()
     incumbent_mass = pd.Series(weights[~is_donor]).groupby(strata[~is_donor]).sum()

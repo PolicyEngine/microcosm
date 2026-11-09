@@ -1732,11 +1732,11 @@
      "minimum_donors_per_band": 120,
      "maximum_donor_weight": 250.0,
      "count_rule": "max(minimum_donors_per_band, ceil(published band taxpayers / maximum_donor_weight))",
-     "weight_rule": "published band taxpayers / band donor count, equal within a band",
+     "weight_rule": "published band taxpayers / (geographic clone count x band donor count), equal within a band",
      "expected_band_count": 4,
      "candidate_population": "raw FRS base channel claimants and partners (is_uc_claimant) aged 16 and over",
      "candidate_order": "person_id ascending breaks equal draw keys",
-     "draw": "weighted_without_replacement_identity_keyed: Efraimidis-Spirakis keys log(u) / (household weight x propensity) on stable_identity_uniforms(person_id, seed, salt:band); the largest keys are seated, one carrier per household, the highest band first",
+     "draw": "weighted_without_replacement_identity_keyed within each geographic clone (one before uk.full.expand): Efraimidis-Spirakis keys log(u) / (household weight x propensity) on stable_identity_uniforms(person_id, seed, salt:band); the largest keys are seated, one carrier per household, the highest band first",
      "propensity": "SPI 2022-23 FACT-weighted band share by region, sex and age band",
      "tape_preparation": "as hmrc_spi_income_spine prepares the tape: its stage-1 seed and draw_spi_donor_ages_by_population",
      "tape_preparation_seed": 42,
@@ -1747,14 +1747,14 @@
      "flag_column": "household_is_spi_income_band_donor",
      "band_column": "spi_income_band_donor_lower_bound",
      "carrier_column": "person_is_spi_income_band_carrier",
-     "funding": "stratum reallocation: every incumbent household of the stratum a donor's source household belongs to is scaled by 1 - donor mass / stratum mass",
+     "funding": "stratum reallocation per geographic clone: every incumbent household of the stratum a donor's source household belongs to, in the donor's clone, is scaled by 1 - donor mass / stratum mass",
      "funding_strata": [
       "region"
      ],
      "maximum_reallocation_share": 0.5,
      "maximum_donor_household_share": 0.15,
-     "seating_scale": "min(1, maximum_donor_household_share x eligible base households / expected donor count); band counts floored, at least one per band",
-     "mass_scale": "min(1, min over funding strata of maximum_reallocation_share x stratum mass / seated donor mass); every band's weight scaled alike",
+     "seating_scale": "min(1, maximum_donor_household_share x eligible base source households / expected donor count of one geographic clone); band counts floored, at least one per band",
+     "mass_scale": "min(1, min over the funding strata of every geographic clone of maximum_reallocation_share x stratum mass / seated donor mass); one scale for every band and clone",
      "never_zero_weight": true,
      "weight_kind_out": "importance",
      "conservation": "exact_total",
@@ -1782,7 +1782,7 @@
    "nonnegative_outputs": [
     "spi_income_band_donor_lower_bound"
    ],
-   "notes": "Reserves SPI-channel households for every Table 2.5 band from GBP 200,000 so the top of the income distribution has support before calibration. A band seats enough donors that none starts above the maximum weight and never fewer than the minimum, at equal weights of the build tax year's published taxpayers over the band's count. Carriers are FRS adults seated by identity-keyed draws on household weight times the tape's own band propensity given region, sex and age band; their households are copied whole at clone index 2 with the synthetic flag. The mass the donors carry is taken in proportion from the households of each donor's region, so the national total and every region's mass are unchanged (microcosm#1063). The income stage gives every carrier a band-conditional draw from the tape (resample_band_donor_leaves)."
+   "notes": "Reserves SPI-channel households for every Table 2.5 band from GBP 200,000 so the top of the income distribution has support before calibration. A band seats enough donors that none starts above the maximum weight and never fewer than the minimum, at equal weights of the build tax year's published taxpayers over the band's count. Carriers are FRS adults seated by identity-keyed draws on household weight times the tape's own band propensity given region, sex and age band; their households are copied whole at clone index 2 with the synthetic flag. The mass the donors carry is taken in proportion from the households of each donor's region, so the national total and every region's mass are unchanged (microcosm#1063). On a clone-first spine each geographic clone seats its own donors by the same walk, with the seats counted in distinct source households, each donor weighs its band's weight over the clone count, and each clone's regions fund their own donors at one mass scale for every clone; a spine without household_clone_index is one clone (microcosm#931). The income stage gives every carrier a band-conditional draw from the tape (resample_band_donor_leaves)."
   },
   {
    "stage": "hmrc_spi_income_spine",

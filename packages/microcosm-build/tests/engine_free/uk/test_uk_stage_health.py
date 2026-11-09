@@ -2191,7 +2191,8 @@ def _spi_income_band_donor_evidence() -> dict[str, object]:
         "stage": "spi_income_band_donors",
         "minimum_donors_per_band": 120,
         "maximum_donor_weight": 250.0,
-        "seating_scale": 1.0,
+        "clone_count": 1,
+        "seating_scale": "full",
         "mass_scale": 1.0,
         "sample_fraction": 1.0,
         "donor_count": 1_920,
@@ -2325,7 +2326,7 @@ def test_spi_income_band_donor_support_gate_scales_only_off_the_full_sample() ->
     donor_mass = sum(row["donor_weight"] * 2 for row in rows)
     scaled = {
         **evidence,
-        "seating_scale": 8 / 1_920,
+        "seating_scale": "capped",
         "mass_scale": scale,
         "sample_fraction": 0.01,
         "donor_count": 8,
@@ -2346,8 +2347,100 @@ def test_spi_income_band_donor_support_gate_scales_only_off_the_full_sample() ->
     # funds the donors at full scale.
     result = _spi_income_band_donor_gate({**scaled, "sample_fraction": 1.0})
     assert not result.passed and "at full scale" in " ".join(result.failures)
+    assert (
+        "spi_income_band_donors: a full-sample build must seat and fund the donors "
+        "at full scale, got seating_scale capped and mass_scale 0.5."
+    ) in result.failures
     result = _spi_income_band_donor_gate({**scaled, "mass_scale": 0.0})
     assert not result.passed and "outside (0, 1]" in " ".join(result.failures)
+    # The receipt records the seating scale as full or capped, never as the
+    # exact scale, which gives back the eligible household count.
+    result = _spi_income_band_donor_gate({**scaled, "seating_scale": 8 / 1_920})
+    assert not result.passed
+    assert (
+        "spi_income_band_donors: seating_scale 0.004166666666666667 is neither "
+        "'full' nor 'capped'."
+    ) in result.failures
+
+
+def _three_clone_band_donor_evidence() -> dict[str, object]:
+    """The full-scale receipt seated in each of three geographic clones.
+
+    Every clone seats each band's plan at the band's weight over three, so
+    the bands carry the same published mass as on one clone (microcosm#931).
+    """
+
+    evidence = _spi_income_band_donor_evidence()
+    rows = [
+        {
+            **row,
+            "expected_donor_households": 3 * row["expected_donor_households"],
+            "donor_households": 3 * row["donor_households"],
+            "carriers": 3 * row["carriers"],
+            "planned_donor_weight": row["planned_donor_weight"] / 3,
+            "donor_weight": row["donor_weight"] / 3,
+        }
+        for row in evidence["bands"]
+    ]
+    return {**evidence, "clone_count": 3, "donor_count": 3 * 1_920, "bands": rows}
+
+
+def test_spi_income_band_donor_support_gate_scales_its_checks_by_the_clone_count() -> (
+    None
+):
+    evidence = _three_clone_band_donor_evidence()
+    result = _spi_income_band_donor_gate(evidence)
+    assert _passed(result), result.failures
+    assert result.details["clone_count"] == 3
+    assert result.details["heaviest_donor_weight"] == pytest.approx(250.0 / 3)
+
+    # A donor whose weight times the clone count exceeds the maximum fails.
+    heavy = [dict(row) for row in evidence["bands"]]
+    heavy[0]["donor_weight"] = 100.0
+    assert (
+        "spi_income_band_donors: band from 200000 donor weight 100.0 exceeds the "
+        "maximum 250.0 divided by the geographic clone count 3."
+    ) in _spi_income_band_donor_gate({**evidence, "bands": heavy}).failures
+    # A band whose donors do not split evenly across the clones fails, as does
+    # one seated below three clones' minimum at full scale.
+    uneven = [dict(row) for row in evidence["bands"]]
+    uneven[1].update(donor_households=733, carriers=733)
+    failures = _spi_income_band_donor_gate({**evidence, "bands": uneven}).failures
+    assert (
+        "spi_income_band_donors: band from 500000 seats 733 donors, which do not "
+        "split evenly across the 3 geographic clones."
+    ) in failures
+    short = [dict(row) for row in evidence["bands"]]
+    short[3].update(expected_donor_households=357, donor_households=357, carriers=357)
+    assert (
+        "spi_income_band_donors: band from 2000000 seats 357 donors at full scale; "
+        "the plan seats 357 and the minimum is 360 (120 in each of the 3 "
+        "geographic clones)."
+    ) in _spi_income_band_donor_gate({**evidence, "bands": short}).failures
+    # The same rows read as one clone's: no row is checked against three
+    # clones, and the one-clone messages are as they were.
+    one = _spi_income_band_donor_evidence()
+    heavy = [dict(row) for row in one["bands"]]
+    heavy[0].update(donor_households=718, carriers=718, donor_weight=500.0)
+    failures = _spi_income_band_donor_gate({**one, "bands": heavy}).failures
+    assert (
+        "spi_income_band_donors: band from 200000 donor weight 500.0 exceeds the "
+        "maximum 250.0."
+    ) in failures
+    assert (
+        "spi_income_band_donors: band from 200000 seats 718 donors at full scale; "
+        "the plan seats 1436 and the minimum is 120."
+    ) in failures
+
+    # The clone count must be a positive integer the receipt states.
+    for value in (None, 0, -1, 1.0, True, "3"):
+        broken = dict(evidence)
+        if value is None:
+            del broken["clone_count"]
+        else:
+            broken["clone_count"] = value
+        with pytest.raises(ValueError, match="clone_count must be a positive integer"):
+            _spi_income_band_donor_gate(broken)
 
 
 def test_spi_support_channel_checks_the_declared_pension_age_share() -> None:

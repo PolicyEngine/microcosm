@@ -1986,6 +1986,11 @@ def _cgt_support_split_gate(
     )
 
 
+#: The two forms the band donor receipt records its seating scale in:
+#: ``spi_band_donors.SPI_INCOME_BAND_FULL_SEATING`` and ``..._CAPPED_SEATING``.
+_BAND_DONOR_SEATINGS = ("full", "capped")
+
+
 def _spi_income_band_donor_support_gate(
     stage: str,
     evidence: Mapping[str, object],
@@ -1996,9 +2001,16 @@ def _spi_income_band_donor_support_gate(
     The donors are a mass-conserving support channel (microcosm#1063): total
     household mass is unchanged, no incumbent stratum gives up more than the
     declared share, and no donor starts above the declared weight. On a full
-    frame (both scales one) each band seats its planned count, never fewer
-    than the minimum, and carries its published taxpayers; a build declaring
-    the full survey sample must be at full scale.
+    frame (full seating and a mass scale of one) each band seats its planned
+    count, never fewer than the minimum, and carries its published taxpayers;
+    a build declaring the full survey sample must be at full scale.
+
+    On a frame of ``K`` geographic clones (the receipt's ``clone_count``,
+    microcosm#931) every clone seats each band's seats at the band's weight
+    over ``K``: a donor's weight times ``K`` must stay within the maximum, a
+    band's donors split evenly across the clones, and at full seating the
+    plan and the minimum are ``K`` times one clone's. The band's published
+    mass is checked as on one clone.
     """
 
     check = "spi_income_band_donor_support"
@@ -2029,21 +2041,43 @@ def _spi_income_band_donor_support_gate(
             failures.append(
                 f"{stage}: receipt {key} {value} differs from the gate's {expected}."
             )
-    scales: dict[str, float] = {}
-    for key in ("seating_scale", "mass_scale"):
-        scales[key] = _finite_number(evidence.get(key), label=f"{stage}.{key}")
-        if not 0.0 < scales[key] <= 1.0:
-            failures.append(f"{stage}: {key} {scales[key]} is outside (0, 1].")
-    full_seating = scales["seating_scale"] == 1.0
-    full_scale = full_seating and scales["mass_scale"] == 1.0
+    clone_count = evidence.get("clone_count")
+    if (
+        not isinstance(clone_count, int)
+        or isinstance(clone_count, bool)
+        or clone_count < 1
+    ):
+        raise ValueError(f"{stage}.clone_count must be a positive integer.")
+    over_clones = (
+        ""
+        if clone_count == 1
+        else f" divided by the geographic clone count {clone_count}"
+    )
+    minimum_seated = minimum_donors * clone_count
+    per_clone_minimum = (
+        ""
+        if clone_count == 1
+        else f" ({minimum_donors} in each of the {clone_count} geographic clones)"
+    )
+    # The receipt records the seating scale as full or capped: an exact scale
+    # below one gives back the eligible household count.
+    seating = evidence.get("seating_scale")
+    if seating not in _BAND_DONOR_SEATINGS:
+        failures.append(
+            f"{stage}: seating_scale {seating!r} is neither 'full' nor 'capped'."
+        )
+    mass_scale = _finite_number(evidence.get("mass_scale"), label=f"{stage}.mass_scale")
+    if not 0.0 < mass_scale <= 1.0:
+        failures.append(f"{stage}: mass_scale {mass_scale} is outside (0, 1].")
+    full_seating = seating == "full"
+    full_scale = full_seating and mass_scale == 1.0
     sample_fraction = _finite_number(
         evidence.get("sample_fraction"), label=f"{stage}.sample_fraction"
     )
     if sample_fraction == 1.0 and not full_scale:
         failures.append(
             f"{stage}: a full-sample build must seat and fund the donors at full "
-            f"scale, got seating_scale {scales['seating_scale']} and mass_scale "
-            f"{scales['mass_scale']}."
+            f"scale, got seating_scale {seating} and mass_scale {mass_scale}."
         )
 
     mass = _mapping(evidence.get("mass"), label=f"{stage}.mass")
@@ -2104,16 +2138,23 @@ def _spi_income_band_donor_support_gate(
             failures.append(
                 f"{stage}: band from {lower} donor weight {weight} is not positive."
             )
-        if weight > maximum_donor_weight * (1.0 + _FLOAT_RELATIVE_TOLERANCE):
+        if clone_count * weight > maximum_donor_weight * (
+            1.0 + _FLOAT_RELATIVE_TOLERANCE
+        ):
             failures.append(
                 f"{stage}: band from {lower} donor weight {weight} exceeds the "
-                f"maximum {maximum_donor_weight}."
+                f"maximum {maximum_donor_weight}{over_clones}."
             )
-        if full_seating and (donors != expected_donors or donors < minimum_donors):
+        if donors % clone_count:
+            failures.append(
+                f"{stage}: band from {lower} seats {donors} donors, which do not "
+                f"split evenly across the {clone_count} geographic clones."
+            )
+        if full_seating and (donors != expected_donors or donors < minimum_seated):
             failures.append(
                 f"{stage}: band from {lower} seats {donors} donors at full scale; "
                 f"the plan seats {expected_donors} and the minimum is "
-                f"{minimum_donors}."
+                f"{minimum_seated}{per_clone_minimum}."
             )
         # A scaled frame seats fewer donors or lighter ones, so its bands fall
         # short of the published mass by construction; the receipt shows it.
@@ -2168,8 +2209,9 @@ def _spi_income_band_donor_support_gate(
     details = {
         "bands_checked": len(bands),
         "donor_count": donor_count,
-        "seating_scale": scales["seating_scale"],
-        "mass_scale": scales["mass_scale"],
+        "clone_count": clone_count,
+        "seating_scale": seating,
+        "mass_scale": mass_scale,
         "reallocated_mass": reallocated,
         "relative_mass_deviation": deviation,
         "heaviest_donor_weight": heaviest_donor,
