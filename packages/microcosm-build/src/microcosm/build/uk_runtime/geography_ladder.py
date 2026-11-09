@@ -84,6 +84,7 @@ import re
 from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
+from types import MappingProxyType
 from typing import Any
 
 import numpy as np
@@ -91,6 +92,8 @@ import pandas as pd
 
 from microcosm.build.gates import GateResult
 from microcosm.build.uk_runtime.local_authority_input import (
+    UK_LOCAL_AUTHORITY_LADDER_VINTAGE,
+    UK_LOCAL_AUTHORITY_LADDER_VINTAGES,
     UK_LOCAL_AUTHORITY_VINTAGE,
     local_authority_consistency_failures,
     resolve_local_authority_engine_keys,
@@ -119,7 +122,8 @@ UK_OA_LADDER_DERIVED_LAYERS = (
 #: name is either a policyengine-uk household input (``local_authority``, the
 #: enum member name resolved from ``local_authority_code``; ``region`` is
 #: pre-assigned, so it is not rewritten) or a plain ``*_code`` data column
-#: carrying an ONS GSS code.
+#: carrying an ONS GSS code. Three of them leave every single-year artifact
+#: under the consumers' names (:data:`UK_EXPORT_AREA_CODE_COLUMNS`).
 UK_GEOGRAPHY_LADDER_COLUMNS = (
     "oa_code",
     "lsoa_code",
@@ -133,6 +137,54 @@ UK_GEOGRAPHY_LADDER_COLUMNS = (
     "itl2_code",
     "itl1_code",
 )
+
+#: The three area codes consumers read under uk-data's names (microcosm#1114):
+#: policyengine.py's constituency and local-authority filters and impact
+#: outputs, the simulation API's geographic reports and the enhanced FRS all
+#: carry ``constituency_code_oa``, ``la_code_oa`` and ``region_code_oa``. The
+#: graph keeps the ladder names above everywhere in memory (gates, diagnostics,
+#: target compilation, the engine's scratch dataset); the single-year export
+#: boundary (``graph_terminal._tables`` and ``uk_release_export_frame``)
+#: renames these three and only these three, so every artifact carries one
+#: name per code and no alias. The suffix is accurate here: every code derives
+#: from the assigned output area or data zone.
+UK_EXPORT_AREA_CODE_COLUMNS: Mapping[str, str] = MappingProxyType(
+    {
+        "constituency_code": "constituency_code_oa",
+        "local_authority_code": "la_code_oa",
+        "region_code": "region_code_oa",
+    }
+)
+
+
+def export_area_code_columns(household: pd.DataFrame) -> pd.DataFrame:
+    """Rename the three area codes to their consumer names at the export boundary.
+
+    Renames only the ladder columns present, so a table without geography (the
+    national line) passes unchanged, and refuses a table that already carries
+    a consumer name: a stale ``*_oa`` column riding through would shadow the
+    ladder's own code.
+    """
+
+    stale = [
+        export
+        for export in UK_EXPORT_AREA_CODE_COLUMNS.values()
+        if export in household.columns
+    ]
+    if stale:
+        raise ValueError(
+            "household table already carries consumer area-code column(s) "
+            f"{stale!r}; the export boundary writes them from the ladder columns."
+        )
+    present = {
+        ladder: export
+        for ladder, export in UK_EXPORT_AREA_CODE_COLUMNS.items()
+        if ladder in household.columns
+    }
+    if not present:
+        return household
+    return household.rename(columns=present)
+
 
 #: The nine English regions carry real ``E12`` GSS codes; Wales rides the
 #: ``W92000004`` country code in ONS lookups but the FRS-calibrated region
@@ -405,27 +457,19 @@ def load_uk_oa_ladder(path: str | Path) -> UkOaLadder:
     )
 
 
-def assign_uk_geography_ladder(
+def draw_uk_ladder_locations(
     household: pd.DataFrame,
     ladder: UkOaLadder,
     *,
     seed: int = 0,
     expected_constituency_vintage: str | None = None,
     region_column: str = "region",
-) -> pd.DataFrame:
-    """Assign each household one OA and the derived ladder columns.
+) -> np.ndarray:
+    """Draw the atomic locations using the existing sequential two-stage RNG.
 
-    Two seeded draws under the build's seed discipline: a 2024 constituency is
-    sampled within the household's calibrated region proportional to
-    constituency household counts, then an OA is sampled within that
-    constituency proportional to 2021 Census OA population. Every finer and
-    coarser layer then derives from the OA, so the calibrated region marginal
-    is preserved exactly while every grain becomes filterable.
-
-    Requires region assignment to have run first (the FRS carries it). A
-    household region absent from the ladder is an error, never a silent partial
-    join — for an England-&-Wales ladder that is exactly how a Scottish or
-    Northern Irish household is refused until those rungs are pinned.
+    Carries the vintage refusals (constituency on request, local authority
+    always; microcosm#953) so a graph node that draws locations refuses before
+    any derived column is written.
     """
 
     if region_column not in household.columns:
@@ -445,10 +489,11 @@ def assign_uk_geography_ladder(
     # ladder rebuilt on another local authority frame refuses by vintage here
     # rather than surfacing later as off-roster codes (microcosm#953).
     local_authority_vintage = ladder.layer_vintages["local_authority"]
-    if local_authority_vintage != UK_LOCAL_AUTHORITY_VINTAGE:
+    if local_authority_vintage not in UK_LOCAL_AUTHORITY_LADDER_VINTAGES:
         raise ValueError(
             f"UK OA ladder local authority vintage {local_authority_vintage!r} "
-            f"is not {UK_LOCAL_AUTHORITY_VINTAGE!r}, the vintage of the names "
+            f"is not {UK_LOCAL_AUTHORITY_VINTAGE!r} (or the full-UK composite "
+            f"{UK_LOCAL_AUTHORITY_LADDER_VINTAGE!r}), the vintage of the names "
             "resource that resolves local_authority; regenerate "
             "local_authority_names.json for the new roster first."
         )
@@ -459,12 +504,35 @@ def assign_uk_geography_ladder(
         region_column=region_column,
     )
 
-    assigned_index = _sample_oa_indices(
+    return _sample_oa_indices(
         region_codes.to_numpy(),
         ladder=ladder,
         seed=seed,
     )
 
+
+def derive_uk_ladder_locations(
+    household: pd.DataFrame,
+    ladder: UkOaLadder,
+    assigned_index: np.ndarray,
+    *,
+    region_column: str = "region",
+) -> pd.DataFrame:
+    """Derive every geography from a validated, already drawn atomic location."""
+
+    assigned_index = np.asarray(assigned_index)
+    if (
+        assigned_index.shape != (len(household),)
+        or assigned_index.dtype.kind not in "iu"
+        or (assigned_index < 0).any()
+        or (assigned_index >= len(ladder)).any()
+    ):
+        raise ValueError("location indices must align with households and the ladder.")
+    region_codes = _validated_household_ladder_region_codes(
+        household,
+        ladder,
+        region_column=region_column,
+    )
     assigned_region = ladder.region_code[assigned_index]
     mismatched = assigned_region != region_codes.to_numpy()
     if mismatched.any():
@@ -504,6 +572,44 @@ def assign_uk_geography_ladder(
     assigned["itl2_code"] = _itl_prefix(itl3, width=4)
     assigned["itl1_code"] = _itl_prefix(itl3, width=3)
     return assigned
+
+
+def assign_uk_geography_ladder(
+    household: pd.DataFrame,
+    ladder: UkOaLadder,
+    *,
+    seed: int = 0,
+    expected_constituency_vintage: str | None = None,
+    region_column: str = "region",
+) -> pd.DataFrame:
+    """Assign each household one OA and the derived ladder columns.
+
+    Two seeded draws under the build's seed discipline: a 2024 constituency is
+    sampled within the household's calibrated region proportional to
+    constituency household counts, then an OA is sampled within that
+    constituency proportional to 2021 Census OA population. Every finer and
+    coarser layer then derives from the OA, so the calibrated region marginal
+    is preserved exactly while every grain becomes filterable.
+
+    Requires region assignment to have run first (the FRS carries it). A
+    household region absent from the ladder is an error, never a silent partial
+    join — for an England-&-Wales ladder that is exactly how a Scottish or
+    Northern Irish household is refused until those rungs are pinned.
+    """
+
+    assigned_index = draw_uk_ladder_locations(
+        household,
+        ladder,
+        seed=seed,
+        expected_constituency_vintage=expected_constituency_vintage,
+        region_column=region_column,
+    )
+    return derive_uk_ladder_locations(
+        household,
+        ladder,
+        assigned_index,
+        region_column=region_column,
+    )
 
 
 def expected_uk_ladder_area_support(
@@ -1153,6 +1259,7 @@ __all__ = [
     "GEOGRAPHY_LADDER_ARTIFACT_SHA256_ATTR",
     "GEOGRAPHY_LADDER_VINTAGES_ATTR",
     "UK_ENGLAND_WALES_REGION_CODES",
+    "UK_EXPORT_AREA_CODE_COLUMNS",
     "UK_GEOGRAPHY_LADDER_COLUMNS",
     "UK_LONDON_REGION_CODE",
     "UK_OA_LADDER_DERIVED_LAYERS",
@@ -1165,4 +1272,5 @@ __all__ = [
     "uk_region_mix",
     "uk_geography_ladder_assignment_summary",
     "uk_geography_ladder_gate",
+    "export_area_code_columns",
 ]

@@ -1,4 +1,4 @@
-"""Country-neutral command-line options for staging telemetry."""
+"""Country-neutral command-line options for staging run bundles."""
 
 from __future__ import annotations
 
@@ -27,9 +27,9 @@ def add_staging_arguments(
 
     ``default_upload_interval_seconds`` lets a long-running command choose a
     slower best-effort upload cadence: the Hub allows about 128 commits per
-    hour per repository and every telemetry cycle is up to eight single-file
-    commits, so a multi-hour solve at the 30-second default exhausts the
-    budget and loses uploads (the UK rowwise driver runs at 300).
+    hour per repository and each run-bundle upload cycle performs up to eight
+    single-file commits, so a multi-hour solve at the 30-second default
+    exhausts the budget and loses uploads (the UK rowwise driver runs at 300).
     """
 
     parser.add_argument(
@@ -42,7 +42,7 @@ def add_staging_arguments(
         default=repository.repo_id(os.environ),
         help=(
             "Access-controlled Hugging Face dataset repository for best-effort "
-            "telemetry delivery."
+            "staging run-bundle delivery."
         ),
     )
     parser.add_argument(
@@ -68,7 +68,10 @@ def add_staging_arguments(
     mode.add_argument(
         "--no-staging",
         action="store_true",
-        help="Deliberately disable staging telemetry for this build.",
+        help=(
+            "Disable the staging run bundle for this build; hosted telemetry "
+            "remains active."
+        ),
     )
     parser.add_argument(
         "--staging-read-back",
@@ -107,8 +110,8 @@ def add_staged_dataset_arguments(
     The finished bundle follows the staging mode switch: ``--no-staging``
     keeps nothing, ``--staging-local-only`` keeps the bundle and its sidecars
     on disk, and the default uploads it to ``repository`` under
-    ``staged/<run_id>/``. ``--no-staged-dataset`` runs telemetry alone: the
-    bundle is neither inventoried nor uploaded.
+    ``staged/<run_id>/``. ``--no-staged-dataset`` retains only the staging run
+    files: the dataset bundle is neither inventoried nor uploaded.
     """
 
     parser.add_argument(
@@ -125,7 +128,7 @@ def add_staged_dataset_arguments(
         "--no-staged-dataset",
         action="store_true",
         help=(
-            "Run staging telemetry alone: the finished bundle is neither "
+            "Keep only the staging run files: the finished bundle is neither "
             "inventoried nor uploaded (--no-staging already disables both)."
         ),
     )

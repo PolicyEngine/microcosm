@@ -1,0 +1,113 @@
+{
+ "base": {
+  "builder_dependency_versions": {
+   "h5py": "3.16.0",
+   "numpy": "2.4.6",
+   "pandas": "3.0.3",
+   "policyengine-us": "2.2.1",
+   "quantile-forest": "1.4.2",
+   "scikit-learn": "1.8.0"
+  },
+  "builder_python": "3.14.2 (main, Dec  8 2025, 23:38:13) [GCC 12.2.0]",
+  "output_sha256": "0fb05b674899114e66dc01c2df0ff5349de88bbc8fed440755f4b19f287cedd2",
+  "runner_platform": "Linux-4.19.0-gvisor-x86_64-with-glibc2.36",
+  "runner_python": "3.14.2",
+  "runner_uv_lock_sha256": "52e3d128869efa029f9a7557abf44d6b18861c01237abce082fdb0a72489603a",
+  "sources": [
+   {
+    "file": "base-sup/modal-receipt.json",
+    "sha256": "6ac6d3994f39ab35cedb7f57f57b3d0d79e59219bb705f449b7688d70418ec7f"
+   },
+   {
+    "file": "base-sup/modal-stage_run_context.json",
+    "sha256": "6a7aaf7893cee8d30f2f87bf94c712f07d9cdacb22e354280cba1371e3ee0b76"
+   }
+  ],
+  "thread_environment": {
+   "BLIS_NUM_THREADS": "4",
+   "MKL_NUM_THREADS": "4",
+   "NUMEXPR_NUM_THREADS": null,
+   "OMP_NUM_THREADS": "4",
+   "OPENBLAS_NUM_THREADS": "4",
+   "POPULACE_FIT_N_JOBS": null,
+   "POPULACE_FIT_PREDICT_WORKERS": null,
+   "PYTHONHASHSEED": "0",
+   "VECLIB_MAXIMUM_THREADS": null
+  }
+ },
+ "read_at": "2026-10-13T09:20:33Z",
+ "release": {
+  "build_time": {
+   "command_interpreter": "microcosm-route-a-4b57d15a287c/.venv/bin/python",
+   "manifest_code": {
+    "git_commit": "4b57d15a287c4a1729bad362a2f6d57c4de9059e",
+    "git_dirty": false,
+    "repository": "PolicyEngine/microcosm"
+   },
+   "manifest_runtime": {
+    "microcosm-build": "0.1.0",
+    "microcosm-calibrate": "0.1.0",
+    "microcosm-data": "0.1.0",
+    "microcosm-frame": "0.1.0",
+    "numpy": "2.4.6",
+    "pandas": "3.0.3",
+    "policyengine-core": "3.32.5",
+    "policyengine-us": "2.2.1",
+    "python": "3.14.7",
+    "torch": "2.12.0"
+   },
+   "run_log_first_line": "<frozen importlib._bootstrap>:491: RuntimeWarning: The global interpreter lock (GIL) has been enabled to load module 'quantile_forest._quantile_forest_fast', which has not declared that it can run safely without the GIL. To override this behavior and keep the GIL disabled (at your own risk), run with PYTHON_GIL=0 or -Xgil=0."
+  },
+  "observed_later": {
+   "installed_packages": {
+    "numpy": {
+     "metadata_sha256": "b082c52ccbe3b880bae177c35171b52ed6c947f3ad71e3762f2723f60a411de0",
+     "name": "numpy",
+     "version": "2.4.6"
+    },
+    "pandas": {
+     "metadata_sha256": "52942cad9bd7e6625ad46f983a55bef6cdd99da3822ddb19393d6d6972d1c40a",
+     "name": "pandas",
+     "version": "3.0.3"
+    },
+    "quantile_forest": {
+     "metadata_sha256": "cee47d5f69d39b42d644c40787216a410336495d07b0f65afcbc84689415c120",
+     "name": "quantile-forest",
+     "version": "1.4.2"
+    },
+    "scikit_learn": {
+     "metadata_sha256": "95a8f42f4170fc940a71fedfed4fd9353723eb44126130a971a072fe5305d967",
+     "name": "scikit-learn",
+     "version": "1.8.0"
+    },
+    "scipy": {
+     "metadata_sha256": "b1cd2c784f6e003c6c71af4c5ee57f6370ee467d17b656250d9fd38cf579d7d0",
+     "name": "scipy",
+     "version": "1.17.1"
+    }
+   },
+   "note": "Read from the venv the release command names, when this record was made; the venv may have changed since the build.",
+   "pyvenv_cfg": {
+    "home": "cpython-3.14+freethreaded-macos-aarch64-none",
+    "implementation": "CPython",
+    "sha256": "ec7562e41b2443b5d4959507095eebc470944e706a5a1f5188e449381298c639",
+    "version_info": "3.14.7"
+   }
+  },
+  "output_sha256": "417d23aed4d044de2e657a7b5d856136975d25739dbdb4ddd72866f841de1559",
+  "sources": [
+   {
+    "file": "release-out/populace-us-2024-0fb05b6-4b57d15a287c-20260930T150401Z/releases/populace-us-2024-0fb05b6-4b57d15a287c-20260930T150401Z/build_manifest.json",
+    "sha256": "87280115d57ad39dc5a236f9a02e022785c260d446463bb09b5974dd53731305"
+   },
+   {
+    "file": "release-config.json",
+    "sha256": "404277c05b1acbdacf4ff9924153b092a3fab1454887cb082a9cdfcab11bf5cd"
+   },
+   {
+    "file": "release-sup/run.log",
+    "sha256": "a72908432e02348791bd28f1c0c70f8bb6efb4ace1fd13e08e4b5f8970d91cb4"
+   }
+  ]
+ }
+}

@@ -26,22 +26,37 @@ from dataclasses import asdict
 from pathlib import Path
 from typing import Any
 
+from pydantic import ValidationError
+
 from microcosm.calibrate._target_loss_attribution import (
     TARGET_LOSS_ATTRIBUTION_WARNING_CODES,
     TargetLossAttributionError,
     assemble_target_loss_attribution,
 )
+from microcosm.calibrate.hierarchy_labels import hierarchy_label_choices
 from microcosm.calibrate.solve import CalibrationResult
+from microcosm.diagnostics import (
+    CALIBRATION_DIAGNOSTICS_ASSEMBLY_SCHEMA_VERSION,
+    CALIBRATION_DIAGNOSTICS_SCHEMA_VERSION,
+    CalibrationDiagnosticsV8,
+    DiagnosticsWriteOutcome,
+    HierarchyLabelChoices,
+    failed_diagnostics_outcome,
+)
+from microcosm.diagnostics import (
+    write_calibration_diagnostics as write_typed_calibration_diagnostics,
+)
 
 __all__ = [
+    "CALIBRATION_DIAGNOSTICS_ASSEMBLY_SCHEMA_VERSION",
     "CALIBRATION_DIAGNOSTICS_SCHEMA_VERSION",
     "diagnostics_payload",
     "past_cap_census",
+    "target_surface_payload",
     "write_calibration_diagnostics",
 ]
 
-#: Version of the diagnostics payload. Consumers (dashboards, scorers) key
-#: their readers on it; bump it with any shape change.
+#: Consumers (dashboards, scorers) key their readers on this shared version.
 #: v4 added the weight-concentration scalars (``effective_sample_size``,
 #: ``realized_max_weight_ratio``, ``top_1pct_weight_share``).
 #: v5 added the ``past_cap_census`` block (rows past the loss cap at
@@ -57,7 +72,9 @@ __all__ = [
 #: v8 replaces those parallel inferred fields with one complete, ordered
 #: hierarchy carried by each registry target: provider, category, geography,
 #: zero or more dimensions, and target.
-CALIBRATION_DIAGNOSTICS_SCHEMA_VERSION = 8
+#: v9 declares the provider, category, geography and dimension labels once,
+#: in ``hierarchy_catalogs``, and the rows refer to them by ID. Payloads here
+#: are still assembled as v8; the writer publishes v9.
 _HIERARCHY_FREE_DIAGNOSTICS_SCHEMA_VERSION = 6
 
 _LOGGER = logging.getLogger(__name__)
@@ -177,7 +194,7 @@ def _target_identity_rows(result: CalibrationResult) -> list[dict[str, object]]:
     return rows
 
 
-def _target_surface_payload(result: CalibrationResult) -> dict[str, object]:
+def target_surface_payload(result: CalibrationResult) -> dict[str, object]:
     """Content-address the exact target surface the calibration solved."""
     rows = _target_identity_rows(result)
     names = [row["row_name"] for row in rows]
@@ -345,6 +362,7 @@ def diagnostics_payload(
     *,
     target_registry: object | None = None,
     build: dict[str, Any] | None = None,
+    target_surface: Mapping[str, object] | None = None,
 ) -> dict:
     """Render a calibration result as a JSON-stable diagnostics payload.
 
@@ -361,6 +379,8 @@ def diagnostics_payload(
             Without a registry, a result whose targets all carry hierarchies uses
             schema 8; a hierarchy-free generic result retains schema 6.
         build: Optional build-specific evidence block.
+        target_surface: Optional precomputed identity for the exact target matrix.
+            Release builders can supply one value to both diagnostics and manifests.
 
     Returns:
         A dict that round-trips through ``json`` unchanged (non-finite
@@ -403,8 +423,10 @@ def diagnostics_payload(
             "A diagnostics payload cannot mix targets with and without calibration "
             f"hierarchies; missing {missing_hierarchy_names[:5]!r}."
         )
+    # The in-memory document is schema 8, labels on every row; the writer
+    # publishes it as schema 9 with the labels in catalogs.
     schema_version = (
-        CALIBRATION_DIAGNOSTICS_SCHEMA_VERSION
+        CALIBRATION_DIAGNOSTICS_ASSEMBLY_SCHEMA_VERSION
         if target_registry is not None or hierarchy_count
         else _HIERARCHY_FREE_DIAGNOSTICS_SCHEMA_VERSION
     )
@@ -412,7 +434,11 @@ def diagnostics_payload(
         "schema_version": schema_version,
         "weight_entity": result.weight_entity,
         "options": {key: _jsonable(value) for key, value in result.options.items()},
-        "target_surface": _target_surface_payload(result),
+        "target_surface": (
+            dict(target_surface)
+            if target_surface is not None
+            else target_surface_payload(result)
+        ),
         "l0_lambda": _finite(result.l0_lambda),
         "n_nonzero": int(result.n_nonzero),
         "n_records": int(result.weights.shape[0]),
@@ -480,8 +506,10 @@ def write_calibration_diagnostics(
     *,
     target_registry: object | None = None,
     build: dict[str, Any] | None = None,
-) -> Path:
-    """Write the diagnostics payload to ``path`` as JSON.
+    target_surface: Mapping[str, object] | None = None,
+    label_choices: HierarchyLabelChoices | None = None,
+) -> DiagnosticsWriteOutcome:
+    """Construct, validate, and atomically write schema-9 diagnostics.
 
     The conventional filename is ``calibration_diagnostics.json`` inside a
     release directory, alongside ``build_manifest.json``.
@@ -489,22 +517,37 @@ def write_calibration_diagnostics(
     Args:
         result: The :func:`~microcosm.calibrate.solve.calibrate` output.
         path: Destination file path; parent directories must exist.
+        label_choices: Labels for identifiers the rows spell more than one
+            way; defaults to the registry country's
+            (:func:`~microcosm.calibrate.hierarchy_labels.hierarchy_label_choices`).
 
-    Returns:
-        The path written.
+    A diagnostics failure is recorded in the returned outcome and logged, but
+    does not raise through the dataset build. Current release artifacts require
+    a target registry and complete hierarchy on every target; hierarchy-free
+    schema-6 payloads remain readable for historical consumers but are no
+    longer written by this function.
     """
     path = Path(path)
-    # allow_nan=False is the guard: a non-finite value that escaped the
-    # scrub is a bug here, not something to smuggle out as invalid JSON.
-    path.write_text(
-        json.dumps(
-            diagnostics_payload(
-                result,
-                target_registry=target_registry,
-                build=build,
-            ),
-            indent=1,
-            allow_nan=False,
+    try:
+        payload = diagnostics_payload(
+            result,
+            target_registry=target_registry,
+            build=build,
+            target_surface=target_surface,
         )
+        diagnostics = CalibrationDiagnosticsV8.model_validate(payload)
+    except ValidationError as error:
+        return failed_diagnostics_outcome(
+            error,
+            error_code="validation_error",
+            path=path,
+        )
+    except Exception as error:  # diagnostics must never abort the dataset build
+        return failed_diagnostics_outcome(error, path=path)
+    if label_choices is None:
+        label_choices = hierarchy_label_choices(
+            getattr(target_registry, "country", None)
+        )
+    return write_typed_calibration_diagnostics(
+        diagnostics, path, label_choices=label_choices
     )
-    return path

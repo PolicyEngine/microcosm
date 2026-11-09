@@ -1,0 +1,1 @@
+Re-derive the three SNAP source-exclusion smoke probes and the alimony-expense ALD probe from PolicyEngine-US 2.2.1 (they re-added TANF per member and untaxed alimony receipts), pin every list-valued probe to the engine's baseline list minus one item, and say when a wrong-signed smoke effect binds instead of calling its inputs absent.

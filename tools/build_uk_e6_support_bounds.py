@@ -1,4 +1,9 @@
-"""Build disclosure-safe E6 UK support bounds from pinned donor tabs."""
+"""Build disclosure-safe E6 UK support bounds from pinned donor tabs.
+
+A bound is derived once per donor tab: while a file's tab digests are
+unchanged, writing refuses a re-derivation that moves a rounded bound
+(``refuse_rerounding``), since two roundings of one donor extreme narrow it.
+"""
 
 from __future__ import annotations
 
@@ -18,12 +23,17 @@ from microcosm.build.uk_runtime.etb_services import (
 from microcosm.build.uk_runtime.etb_services import (
     donor_realized_ranges as etb_services_ranges,
 )
-from microcosm.build.uk_runtime.etb_vat import clean_etb_vat_table
+from microcosm.build.uk_runtime.etb_vat import (
+    clean_etb_vat_table,
+    etb_vat_configuration,
+)
 from microcosm.build.uk_runtime.etb_vat import (
     donor_realized_ranges as etb_vat_ranges,
 )
 from microcosm.build.uk_runtime.lcfs_consumption import (
     clean_lcfs_consumption_table,
+    donor_consumption_floor,
+    floor_negative_donor_consumption,
     lcfs_donor_uprating,
     lcfs_energy_pricing,
 )
@@ -62,10 +72,15 @@ def build_lcfs_support_bounds(
         uprating=uprating,
         energy=lcfs_energy_pricing(stage),
     )
+    # The stage floors the donor before it reads clip ranges, so the bounds
+    # start where the stage's support does.
+    donor, _floor_receipt = floor_negative_donor_consumption(
+        donor, floor=donor_consumption_floor(stage)
+    )
+    study = _lcfs_study(stage)
     return _payload(
         source={
-            "ukds_study_number": 9468,
-            "doi": "10.5255/UKDA-SN-9468-3",
+            **study,
             "household_tab_sha256": hh_sha,
             "person_tab_sha256": person_sha,
         },
@@ -74,17 +89,51 @@ def build_lcfs_support_bounds(
     )
 
 
+def _lcfs_study(stage) -> dict[str, object]:
+    """The LCFS study number and DOI the committed stage pins on both tabs."""
+
+    studies = {
+        (artifact.get("ukds_study_number"), artifact.get("doi"))
+        for artifact in stage.artifacts
+        if artifact.get("role") in ("lcfs_household_tab", "lcfs_person_tab")
+    }
+    if len(studies) != 1 or None in next(iter(studies)):
+        raise SystemExit(
+            "The LCFS stage must pin one ukds_study_number and doi on both tabs."
+        )
+    number, doi = next(iter(studies))
+    return {"ukds_study_number": int(number), "doi": str(doi)}
+
+
 def build_etb_vat_support_bounds(etb_tab: Path) -> dict[str, object]:
+    """The declared [0, 1] share range, checked against the donor (uk-data#572).
+
+    The rate is a share of expenditure after VAT and the stage declares its
+    bounds, so the committed bound is that range, not a rounded donor extreme.
+    """
+
     sha = _sha256(etb_tab)
-    donor = clean_etb_vat_table(pd.read_csv(etb_tab, sep="\t", low_memory=False))
+    lower, upper = etb_vat_configuration(_committed_stage("etb_vat"))["rate_bounds"]
+    donor = clean_etb_vat_table(
+        pd.read_csv(etb_tab, sep="\t", low_memory=False), rate_bounds=(lower, upper)
+    )
+    for column, (low, high) in etb_vat_ranges(donor).items():
+        if low < lower or high > upper:
+            raise SystemExit(
+                f"ETB VAT donor {column} leaves the declared range {[lower, upper]}."
+            )
     return _payload(
         source={
             "ukds_study_number": 8856,
             "doi": "10.5255/UKDA-SN-8856-4",
             "tab_sha256": sha,
         },
-        bounds=etb_vat_ranges(donor),
+        bounds={column: (lower, upper) for column in etb_vat_ranges(donor)},
         label="ETB VAT",
+        sdc_treatment=(
+            "The bounds are the stage's declared [0, 1] share range, which the "
+            "donor is checked to lie within; no donor value is committed."
+        ),
     )
 
 
@@ -205,8 +254,52 @@ def main(argv: list[str] | None = None) -> int:
             if path.read_text(encoding="utf-8") != rendered:
                 raise SystemExit(f"{path} is stale.")
         else:
+            refuse_rerounding(path, payload)
             path.write_text(rendered, encoding="utf-8")
     return 0
+
+
+def refuse_rerounding(path: Path, payload: dict[str, object]) -> None:
+    """Refuse to move a committed rounded bound while its donor tabs are unchanged.
+
+    Each committed bound is the donor's extreme rounded outward. Re-derived
+    from the same tabs after a change in the declared uprating, the cleaning
+    or the floor, a bound that rounds to a different value tells the reader,
+    with the first, that the extreme lies between the two thresholds, each
+    divided by its own factor: a narrow interval around a unit record (UKDS
+    EUL disclosure control; microcosm#1164). A lower bound may move to zero,
+    the floor, which reads no donor value; any other move needs new donor tabs
+    or a bound that reads no donor value either.
+    """
+
+    if not path.exists():
+        return
+    committed = json.loads(path.read_text(encoding="utf-8"))
+
+    def digests(source: object) -> dict[str, object]:
+        if not isinstance(source, dict):
+            return {}
+        return {k: v for k, v in source.items() if str(k).endswith("sha256")}
+
+    if not digests(committed.get("source")) or digests(
+        committed.get("source")
+    ) != digests(payload.get("source")):
+        return
+    old = committed.get("bounds") or {}
+    new = payload.get("bounds") or {}
+    moved = sorted(
+        column
+        for column in set(old) & set(new)
+        if list(old[column]) != list(new[column])
+        and not (list(old[column])[1] == list(new[column])[1] and new[column][0] == 0)
+    )
+    if moved:
+        raise SystemExit(
+            f"{path.name}: the donor tabs are unchanged but the rounded bounds of "
+            f"{moved} would move. Committing a second rounding of the same donor "
+            "extremes narrows them (UKDS disclosure control); keep the committed "
+            "bounds or replace them with ones that read no donor value."
+        )
 
 
 def _payload(
@@ -214,6 +307,7 @@ def _payload(
     source: dict[str, object],
     bounds: dict[str, tuple[float, float]],
     label: str,
+    sdc_treatment: str | None = None,
 ) -> dict[str, object]:
     return {
         "version": 1,
@@ -225,7 +319,8 @@ def _payload(
         ),
         "source": {
             **source,
-            "sdc_treatment": (
+            "sdc_treatment": sdc_treatment
+            or (
                 "Exact donor min/max values are rounded outward to one "
                 "significant figure before commit."
             ),

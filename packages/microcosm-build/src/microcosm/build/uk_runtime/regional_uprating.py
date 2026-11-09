@@ -19,9 +19,25 @@ from microcosm.build.uk_runtime.national_frame import (
     uk_time_period,
     validate_uk_national_frame,
 )
+from microcosm.build.uk_runtime.spi_support import (
+    BASE_FRS_SUPPORT_CHANNEL,
+    support_channel_column,
+)
 from microcosm.frame import Frame
 
-UK_REGIONAL_PROPERTY_REWRITES = ("main_residence_value", "property_wealth")
+#: The property total and the components of it the frame carries. The factor
+#: is read off the main residence and applied to the total, so it is applied to
+#: every component too: the total stays the sum of its parts (microcosm#1063).
+UK_REGIONAL_PROPERTY_COMPONENT_REWRITES = (
+    "owned_land",
+    "other_residential_property_value",
+    "non_residential_property_value",
+)
+UK_REGIONAL_PROPERTY_REWRITES = (
+    "main_residence_value",
+    "property_wealth",
+    *UK_REGIONAL_PROPERTY_COMPONENT_REWRITES,
+)
 
 
 #: The household-mass receipt this stage records (the manifest's
@@ -79,7 +95,15 @@ def uprate_household_property_by_region(
     household: pd.DataFrame,
     resource: Mapping[str, Any],
 ) -> pd.DataFrame:
-    """Scale owner property values to region-level public house-price means."""
+    """Scale owner property values to region-level public house-price means.
+
+    The factor for a region is its public mean house price over the unweighted
+    mean ``main_residence_value`` of FRS-base owners. When the frame carries
+    SPI support rows, which are imputed from higher incomes, they are uprated
+    by the same factor but do not enter the mean. The factor scales the
+    property total and every component of it the table carries, so an owner's
+    ``property_wealth`` stays the sum of its components after the uprating.
+    """
 
     required = {"region", "main_residence_value", "property_wealth"}
     missing = sorted(required - set(household.columns))
@@ -96,23 +120,31 @@ def uprate_household_property_by_region(
         if isinstance(entry, Mapping)
     }
     result = household.copy()
+    channel = support_channel_column("household")
+    base_rows = (
+        result[channel] == BASE_FRS_SUPPORT_CHANNEL
+        if channel in result.columns
+        else pd.Series(True, index=result.index)
+    )
     for region, hpi_price in hpi_prices.items():
         region_mask = result["region"].astype(str) == region
         owners_mask = region_mask & (
             pd.to_numeric(result["main_residence_value"], errors="coerce") > 0
         )
-        if not owners_mask.any():
+        base_owners = owners_mask & base_rows
+        if not base_owners.any():
             continue
         # Sort before summing so the unweighted mean is independent of row
         # order: the stage is receipted bitwise under row permutation, and
         # float addition is not associative.
         owner_values = np.sort(
-            result.loc[owners_mask, "main_residence_value"].to_numpy(dtype=float)
+            result.loc[base_owners, "main_residence_value"].to_numpy(dtype=float)
         )
         imputed_mean = float(owner_values.sum() / len(owner_values))
         if imputed_mean <= 0:
             continue
         factor = hpi_price / imputed_mean
-        result.loc[owners_mask, "main_residence_value"] *= factor
-        result.loc[owners_mask, "property_wealth"] *= factor
+        for column in UK_REGIONAL_PROPERTY_REWRITES:
+            if column in result.columns:
+                result.loc[owners_mask, column] *= factor
     return result

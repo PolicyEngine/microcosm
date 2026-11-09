@@ -48,6 +48,7 @@ import pandas as pd
 from microcosm.build.us_runtime.release_gate_preflight import check_spm_composition
 from microcosm.build.us_runtime.spm_role_source import (
     ASEC_SPM_ROLE_SOURCES,
+    BUILDP_SPM_ROLE_INCOME_YEARS,
     NATIVE_SPM_ROLE,
     derive_spm_role_source,
 )
@@ -120,7 +121,12 @@ def _check(frame: Frame) -> dict:
 
 
 def _source_paths(cache: Path) -> dict[int, Path]:
-    return {year: cache / pin.member for year, pin in ASEC_SPM_ROLE_SOURCES.items()}
+    # The phase-2 base and Build P pooled income years 2022-2024; the registry
+    # also pins later years for new builds.
+    return {
+        year: cache / ASEC_SPM_ROLE_SOURCES[year].member
+        for year in BUILDP_SPM_ROLE_INCOME_YEARS
+    }
 
 
 def _environment() -> dict:

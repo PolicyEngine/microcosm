@@ -16,7 +16,7 @@ DEFAULT_OUTPUT = (
     REPO_ROOT
     / "packages/microcosm-build/src/microcosm/build/uk/regional_land_values.json"
 )
-EXPECTED_SHA256 = "088b777d73e71c07890ac9e1add9b683aa962da69ca79c25dd0b54d7e325cfb6"
+EXPECTED_SHA256 = "6dffc75c0bde2906b6a2482c5c6e8cf62284da996e60bcef7eebf427e0cf01f0"
 EXPECTED_ROWS = 11
 
 
@@ -46,17 +46,28 @@ def build_resource(csv_path: Path) -> dict[str, object]:
             "provenance": (
                 "Incumbent public regional_land_values.csv re-homed as a JSON "
                 "country-package resource for Microcosm. Values combine MHCLG "
-                "dwellings and ONS UK House Price Index average prices for "
-                "December 2025."
+                "dwellings and the UK House Price Index average price by region, "
+                "averaged over the twelve months of calendar 2024 from the July "
+                "2026 full file (HM Land Registry, registered raw-only in "
+                "Chronicle as hmlr-uk-hpi-full-file-july-2026, sha256 "
+                "654a541934ba7b393a741e23bc0c6fb668690f562feb8a7b4fff62d653fd6607)."
+            ),
+            "valuation_basis": (
+                "calendar-2024 average prices: the stored main_residence_value sits "
+                "at the dataset period's price level, so the engine's annual "
+                "uprating from 2024 projects it once (microcosm#1240 fix 5; the "
+                "December 2025 level this resource carried before was projected "
+                "from 2024 a second time)"
             ),
             "citation_urls": [
                 "https://www.gov.uk/government/collections/dwelling-stock-including-vacants",
-                "https://www.ons.gov.uk/economy/inflationandpriceindices/bulletins/housepriceindex/december2025",
+                "https://www.gov.uk/government/statistical-data-sets/uk-house-price-index-data-downloads-july-2026",
             ],
         },
         "values": values,
         "chronicle": [
-            "2026-08-18: added for microcosm#681 E5 WAS wealth and regional property uprating."
+            "2026-08-18: added for microcosm#681 E5 WAS wealth and regional property uprating.",
+            "2026-10-13: regional prices moved from the December 2025 level to the calendar-2024 average (microcosm#1240 fix 5, valuation-date contract).",
         ],
     }
 

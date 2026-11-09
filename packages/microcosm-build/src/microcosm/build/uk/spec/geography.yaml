@@ -2,7 +2,11 @@ phase: legacy
 status: >-
   Walking-skeleton declaration of the existing UK OA ladder kernels. The
   realized ladder artifact remains a run-time content-pinned input and is not
-  present in this checkout.
+  present in this checkout. The three UK atomic-area supports (sources.yaml,
+  role uk_atomic_area_support; uk_atomic_area_supports.provenance.json) back
+  the identity-keyed single-stage assignment the full build runs by default;
+  this declaration still attests the legacy ladder draw and moves to phase f3
+  in the next PR under the geography-first umbrella issue.
 assignment:
   anchor: oa
   order: before_gap_fill

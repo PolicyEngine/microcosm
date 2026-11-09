@@ -15,10 +15,13 @@ import math
 import re
 from collections.abc import Iterable, Mapping
 from dataclasses import asdict, dataclass, field, replace
+from fractions import Fraction
+from itertools import product
 from pathlib import Path
 from types import MappingProxyType
 from typing import Any
 
+from microcosm.build.ledger_artifact import LexicalFloat
 from microcosm.calibrate import (
     CalibrationHierarchy,
     CalibrationHierarchySeed,
@@ -39,6 +42,39 @@ ALLOWED_PERIOD_MATCH_POLICIES = frozenset(
 MONTHLY_WINDOW_OPERATIONS = frozenset(
     ("monthly_window_average", "monthly_window_sum_average")
 )
+#: A monthly window whose every point is a published count times a published
+#: mean (a caseload and its mean weekly amount), scaled by the mean operand's
+#: ``period_factor`` (52 turns a weekly mean into an annual amount) and
+#: averaged over the declared months. The two operands name the count and mean
+#: concepts, because publishers name the measures after the benefit
+#: (``recipients``, ``mean_weekly_amount``) rather than ``*_count``/``*_mean``.
+#: It is not one of ``MONTHLY_WINDOW_OPERATIONS``: those average a single
+#: series, and this one pairs two.
+MONTHLY_WINDOW_COUNT_X_MEAN = "monthly_window_count_x_mean"
+#: ``rolled_forward_by_ratio``: an official estimate for an earlier period
+#: (the base: one cell, or the sum of the cells the selector resolves at its
+#: latest period) carried to the target period by the growth of a newer
+#: official series: ``base * numerator / denominator``, where the numerator
+#: is pinned to the target period and the denominator to the base's own
+#: period (Wales's mid-2024 household estimate by its mid-2025/mid-2024
+#: population, microcosm#1123). Unlike ``scaled_by_ratio`` the ratio may
+#: exceed one; it is bounded to ``ROLLED_FORWARD_RATIO_BOUNDS`` so a
+#: mis-pinned operand cannot pass for growth.
+ROLLED_FORWARD_BY_RATIO = "rolled_forward_by_ratio"
+ALLOCATED_RESIDUAL_BY_RATIO = "allocated_residual_by_ratio"
+#: ``calendar_year_window_scaled_by_ratio``: the ``calendar_year_window`` of
+#: the reference's own series, translated by the quotient of two facts that
+#: each pin their own period and may come from another publisher: a subset's
+#: share of the published universe, read where it is published (the
+#: individuals' share of HMRC's SDLT receipts by property type restating the
+#: OBR's SDLT lines for households, microcosm#1095). The quotient lies in
+#: ``(0, 1]`` as for ``scaled_by_ratio``; the operands translate the window,
+#: they do not join it.
+CALENDAR_YEAR_WINDOW_SCALED_BY_RATIO = "calendar_year_window_scaled_by_ratio"
+ROLLED_FORWARD_OPERAND_ROLES = ("base", "numerator", "denominator")
+ROLLED_FORWARD_RATIO_BOUNDS = (0.5, 2.0)
+#: Ordered operand roles of ``monthly_window_count_x_mean``.
+COUNT_X_MEAN_OPERAND_ROLES = ("count", "mean")
 ALLOWED_VALUE_OPERATIONS = frozenset(
     (
         "identity",
@@ -50,6 +86,10 @@ ALLOWED_VALUE_OPERATIONS = frozenset(
         "latest_plateau",
         "count_x_mean",
         "scaled_by_ratio",
+        ROLLED_FORWARD_BY_RATIO,
+        ALLOCATED_RESIDUAL_BY_RATIO,
+        CALENDAR_YEAR_WINDOW_SCALED_BY_RATIO,
+        MONTHLY_WINDOW_COUNT_X_MEAN,
         *MONTHLY_WINDOW_OPERATIONS,
     )
 )
@@ -63,7 +103,23 @@ MULTI_FACT_VALUE_OPERATIONS = frozenset(
         "latest_plateau",
         "count_x_mean",
         "scaled_by_ratio",
+        ROLLED_FORWARD_BY_RATIO,
+        ALLOCATED_RESIDUAL_BY_RATIO,
+        CALENDAR_YEAR_WINDOW_SCALED_BY_RATIO,
+        MONTHLY_WINDOW_COUNT_X_MEAN,
         *MONTHLY_WINDOW_OPERATIONS,
+    )
+)
+#: Operations that compose or pin periods of their own, so a reference may
+#: not move its fact selection with ``observation_period``.
+PERIOD_COMPOSING_OPERATIONS = frozenset(
+    (
+        "calendar_year_average",
+        "calendar_year_window",
+        "latest_plateau",
+        "scaled_by_ratio",
+        ROLLED_FORWARD_BY_RATIO,
+        CALENDAR_YEAR_WINDOW_SCALED_BY_RATIO,
     )
 )
 EXACT_PERIOD_VALUE_OPERATIONS = frozenset(
@@ -74,6 +130,7 @@ EXACT_PERIOD_VALUE_OPERATIONS = frozenset(
         "linear_combination",
         "count_x_mean",
         "scaled_by_ratio",
+        ALLOCATED_RESIDUAL_BY_RATIO,
     )
 )
 
@@ -87,6 +144,20 @@ CALENDAR_YEAR_WINDOW_WEIGHTS: Mapping[int, float] = MappingProxyType(
     {-1: 3 / 12, 0: 9 / 12}
 )
 CALENDAR_YEAR_WINDOW_PERIOD_TYPES = frozenset(("fiscal_year", "tax_year"))
+#: A ``calendar_year_window`` selector key for publishers who give each year
+#: its own measure (DWP's benefit expenditure tables: ``expenditure_2024``,
+#: ``expenditure_2025``). It maps each overlapping year, by its opening year,
+#: to the measure that carries it: a fact matches only the measure its own
+#: year declares, and the window reads the declared measures as one series.
+SOURCE_MEASURE_ID_BY_OPENING_YEAR = "source_measure_id_by_opening_year"
+#: The same for a series whose years sit in different editions of one
+#: publication. OBR's EFO keeps one number per line and year, the latest
+#: edition's (PolicyEngine/chronicle#397), so FY2024-25 sits in March 2026's
+#: tables and FY2025-26 in October 2026's. The key maps each overlapping year,
+#: by its opening year, to the source table that carries it: a fact matches
+#: only the table its own year declares, and the window reads the declared
+#: tables as one series.
+SOURCE_TABLE_BY_OPENING_YEAR = "source_table_by_opening_year"
 #: Ordered operand roles of ``scaled_by_ratio``: the published cell the
 #: reference selects, then the two national facts whose quotient translates
 #: it (a subset share of the publisher's universe, so the ratio lies in
@@ -102,6 +173,17 @@ DEFAULT_HIERARCHY_MATCH_SPEC_FIELDS = ("entity", "period", "family", "filter")
 
 class LedgerHierarchyMetadataError(ValueError):
     """A selected Chronicle fact cannot populate the required hierarchy."""
+
+
+#: The optional ``chronicle.consumer_fact.v5`` field (chronicle#376, PR #377)
+#: that keeps a source package's own wording of a dimension value where it
+#: differs from the label the row exports. It is keyed like
+#: ``dimension_value_labels`` (dimension id, then value id, then text).
+#: Microcosm never takes a label from it: ``dimension_value_labels`` and
+#: ``layout.groupby_value_label`` carry the one label Chronicle gives each
+#: value, so the hierarchy check validates only this field's shape.
+PACKAGE_DIMENSION_VALUE_LABELS_FIELD = "package_dimension_value_labels"
+_ABSENT = object()
 
 
 def hierarchy_seed_from_catalog(
@@ -205,6 +287,11 @@ class LedgerTargetReference:
     hierarchy: CalibrationHierarchySeed | None = None
     assertion_policy: str = "observed_only"
     period_match_policy: str = "latest_not_after"
+    #: The period the reference's facts are selected at, where it differs
+    #: from the target period the model is measured at: DfE's January census
+    #: for model year Y is January Y + 1, the spring term of the year's
+    #: entitlements (microcosm#1095 D5). ``None`` selects at the target period.
+    observation_period: int | str | None = None
     uprating_index: str | None = None
     uprating_from_period: int | str | None = None
     uprating_to_period: int | str | None = None
@@ -252,8 +339,28 @@ class LedgerTargetReference:
             _validate_linear_combination_operands(self.name, self.value_operands)
         if self.value_operation == "scaled_by_ratio":
             _validate_scaled_by_ratio_operands(self.name, self.value_operands)
+        if self.value_operation == ROLLED_FORWARD_BY_RATIO:
+            _validate_rolled_forward_operands(self.name, self.value_operands)
+            _rolled_forward_grouped_member_roster(self)
+        if self.value_operation == ALLOCATED_RESIDUAL_BY_RATIO:
+            _validate_allocation_reference(self)
         if self.value_operation == "calendar_year_window":
             _validate_calendar_year_window_reference(self)
+        elif self.value_operation == CALENDAR_YEAR_WINDOW_SCALED_BY_RATIO:
+            _validate_calendar_year_window_scaled_by_ratio_reference(self)
+        else:
+            for key in (
+                SOURCE_MEASURE_ID_BY_OPENING_YEAR,
+                SOURCE_TABLE_BY_OPENING_YEAR,
+            ):
+                if key in self.ledger_selector:
+                    raise ValueError(
+                        f"LedgerTargetReference {self.name!r}: {key!r} composes "
+                        "the years of a calendar_year_window; it is refused under "
+                        f"value_operation {self.value_operation!r}."
+                    )
+        if self.value_operation == MONTHLY_WINDOW_COUNT_X_MEAN:
+            _validate_count_x_mean_operands(self.name, self.value_operands)
         if self.assertion_policy not in ALLOWED_ASSERTION_POLICIES:
             raise ValueError(
                 f"LedgerTargetReference {self.name!r}: unsupported "
@@ -265,7 +372,28 @@ class LedgerTargetReference:
                 f"period_match_policy {self.period_match_policy!r}; expected "
                 f"one of {sorted(ALLOWED_PERIOD_MATCH_POLICIES)!r}."
             )
-        is_window = self.value_operation in MONTHLY_WINDOW_OPERATIONS
+        is_window = self.value_operation in {
+            *MONTHLY_WINDOW_OPERATIONS,
+            MONTHLY_WINDOW_COUNT_X_MEAN,
+        }
+        if self.observation_period is not None:
+            period_type = _observation_period_type(
+                self.period_match_policy, self.ledger_selector
+            )
+            if not _normalize_period_value(
+                self.observation_period, declared_type=period_type
+            )[0][0]:
+                under = f" under period_type {period_type!r}" if period_type else ""
+                raise ValueError(
+                    f"LedgerTargetReference {self.name!r}: observation_period "
+                    f"{self.observation_period!r} is not a parseable period{under}."
+                )
+            if is_window or self.value_operation in PERIOD_COMPOSING_OPERATIONS:
+                raise ValueError(
+                    f"LedgerTargetReference {self.name!r}: observation_period "
+                    "selects facts at one period, but value_operation "
+                    f"{self.value_operation!r} composes periods of its own."
+                )
         if is_window != (self.period_match_policy == "source_window"):
             raise ValueError(
                 "A monthly window operation requires the paired source_window period policy."
@@ -276,7 +404,8 @@ class LedgerTargetReference:
                     "A monthly window requires an explicit model target period."
                 )
             _declared_source_months(self)
-            _monthly_window_operands(self)
+            if self.value_operation in MONTHLY_WINDOW_OPERATIONS:
+                _monthly_window_operands(self)
         if self.period_match_policy == "exact" and self.period is None:
             raise ValueError(
                 f"LedgerTargetReference {self.name!r}: period_match_policy="
@@ -510,6 +639,7 @@ class LedgerTargetHierarchyRule:
 class _LedgerFactIndex:
     facts: tuple[object, ...]
     by_identifier: Mapping[str, tuple[object, ...]]
+    by_aggregate_fact_key: Mapping[str, tuple[object, ...]]
 
     def lookup(self, identifier: str) -> tuple[object, ...]:
         return self.by_identifier.get(identifier, ())
@@ -589,6 +719,15 @@ def _require_executable_reference(reference: LedgerTargetReference) -> None:
     evidence, but they are not executable selectors: in particular, resolving a
     multi-cell table through ``identity`` would either depend on accidental
     singleton input or become ambiguous as soon as the next cell arrived.
+    Rows requiring a reference profile also carry the resolver's selection
+    identity before an active status permits compilation.
+
+    Those resolution markers are trusted declarations at this layer: this
+    check sees that they are present, not that they match a resolution
+    receipt. ``reference_profiles.validate_reference_resolution`` and the
+    transport's effective-document binding authenticate a resolved document;
+    callers compiling resolved references outside transport must run that
+    validation first.
     """
 
     activation_status = reference.metadata.get("activation_status", "")
@@ -598,6 +737,14 @@ def _require_executable_reference(reference: LedgerTargetReference) -> None:
             f"placeholder with activation_status={activation_status!r}. Replace "
             "it with harvested, cell-pinned references (or a reviewed scalar "
             "fact reference) before compilation."
+        )
+
+    if reference.metadata.get("required_reference_profile") and (
+        reference.metadata.get("reference_profiles_resolved") != "1"
+        or not reference.metadata.get("reference_selection_sha256")
+    ):
+        raise ValueError(
+            f"Ledger target reference {reference.name!r} requires reference profile resolution before compilation."
         )
 
 
@@ -740,6 +887,14 @@ def target_spec_from_ledger_reference(
         raise ValueError(f"Ledger target reference {reference.name!r} has no facts.")
     if reference.value_operation in MONTHLY_WINDOW_OPERATIONS:
         facts = _resolve_monthly_window_reference_facts(reference, list(facts))
+    elif reference.value_operation == MONTHLY_WINDOW_COUNT_X_MEAN:
+        facts = _resolve_monthly_window_count_x_mean_reference_facts(
+            reference, list(facts)
+        )
+    elif reference.value_operation == ALLOCATED_RESIDUAL_BY_RATIO:
+        # Direct callers receive the same exact selector, universe and roster
+        # checks as catalog callers; a pre-resolved tuple is never trusted.
+        facts = _resolve_allocation_reference_facts(reference, facts)
     if len(facts) > 1 and reference.value_operation not in MULTI_FACT_VALUE_OPERATIONS:
         raise ValueError(
             f"Ledger target reference {reference.name!r}: multiple Ledger facts "
@@ -747,9 +902,43 @@ def target_spec_from_ledger_reference(
             f"{reference.value_operation!r}."
         )
     numeric_values = []
-    for member in facts:
-        _validate_resolved_reference_fact(member, reference)
-        numeric_values.append(_numeric_fact_value(member, reference))
+    operand_facts = (
+        sum(_window_ratio_operand_counts(reference))
+        if reference.value_operation == CALENDAR_YEAR_WINDOW_SCALED_BY_RATIO
+        else 0
+    )
+    for index, member in enumerate(facts):
+        if reference.value_operation == ALLOCATED_RESIDUAL_BY_RATIO:
+            _validate_window_ratio_operand_fact(member, reference)
+        elif (
+            reference.value_operation == ROLLED_FORWARD_BY_RATIO
+            and index >= len(facts) - 2
+        ):
+            # Growth operands may measure people while the base measures
+            # households, and each pins its own geography vintage.
+            selector = _rolled_forward_operand_selectors(reference)[
+                index - len(facts) + 2
+            ]
+            if not _fact_matches_selector(member, selector):
+                raise ValueError(
+                    f"Ledger target reference {reference.name!r}: "
+                    f"{ROLLED_FORWARD_BY_RATIO} resolved operand disagrees "
+                    "with its declared selector."
+                )
+            _validate_window_ratio_operand_fact(member, reference)
+        elif operand_facts and index >= len(facts) - operand_facts:
+            # A ratio operand pins its own source, period and entity: the
+            # reference's consumer pins describe the window, not the operand.
+            _validate_window_ratio_operand_fact(member, reference)
+        else:
+            _validate_resolved_reference_fact(member, reference)
+        if (
+            reference.value_operation == ALLOCATED_RESIDUAL_BY_RATIO
+            and "discrepancy_policy" in reference.value_operands[2]
+        ):
+            numeric_values.append(_exact_count_fact_value(member, reference))
+        else:
+            numeric_values.append(_numeric_fact_value(member, reference))
         _validate_fact_aggregation(member, reference)
 
     value_metadata: dict[str, str] = {}
@@ -761,6 +950,10 @@ def target_spec_from_ledger_reference(
         numeric_value = numeric_values[-1]
     elif reference.value_operation == "count_x_mean":
         numeric_value = numeric_values[0] * numeric_values[1]
+    elif reference.value_operation == MONTHLY_WINDOW_COUNT_X_MEAN:
+        numeric_value, value_metadata = _monthly_window_count_x_mean_value(
+            reference, facts, numeric_values
+        )
     elif reference.value_operation == "sum":
         numeric_value = sum(numeric_values)
     elif reference.value_operation == "difference":
@@ -774,6 +967,12 @@ def target_spec_from_ledger_reference(
         numeric_value, value_metadata = _scaled_by_ratio_value(
             reference, numeric_values
         )
+    elif reference.value_operation == ROLLED_FORWARD_BY_RATIO:
+        numeric_value, value_metadata = _rolled_forward_by_ratio_value(
+            reference, facts, numeric_values
+        )
+    elif reference.value_operation == ALLOCATED_RESIDUAL_BY_RATIO:
+        numeric_value, value_metadata = _allocated_residual_value(reference, facts)
     elif reference.value_operation == "linear_combination":
         weights = _linear_combination_weights(reference, facts)
         numeric_value = sum(
@@ -792,10 +991,39 @@ def target_spec_from_ledger_reference(
             for weight, value in zip(weights, numeric_values, strict=True)
         )
         value_metadata = _calendar_year_window_metadata(reference, facts)
+    elif reference.value_operation == CALENDAR_YEAR_WINDOW_SCALED_BY_RATIO:
+        numerators, denominators = _window_ratio_operand_counts(reference)
+        cut = len(facts) - numerators - denominators
+        window = facts[:cut]
+        weights = _calendar_year_window_weights(reference, window)
+        base = math.fsum(
+            weight * value
+            for weight, value in zip(weights, numeric_values[:cut], strict=True)
+        )
+        numerator = math.fsum(numeric_values[cut : cut + numerators])
+        denominator = math.fsum(numeric_values[cut + numerators :])
+        complement = _window_ratio_numerator_is_complement(reference)
+        if complement:
+            numerator = denominator - numerator
+        numeric_value, ratio_metadata = _scaled_by_ratio_value(
+            reference, [base, numerator, denominator]
+        )
+        if complement:
+            # The recorded numerator is the complement itself, so the formula
+            # reads numerator / denominator (the review of microcosm#1422).
+            ratio_metadata["ledger_value_numerator_rule"] = (
+                "the denominator less the listed numerator cells"
+            )
+        value_metadata = {
+            **_calendar_year_window_metadata(reference, window),
+            **ratio_metadata,
+        }
     else:
         numeric_value = numeric_values[0]
     representative_fact = _value_representative_fact(
-        facts,
+        _window_ratio_window_facts(reference, facts)
+        if reference.value_operation == CALENDAR_YEAR_WINDOW_SCALED_BY_RATIO
+        else facts,
         operation=reference.value_operation,
     )
     # A ratio-scaled cell keeps the base cell's identity: the national
@@ -804,22 +1032,38 @@ def target_spec_from_ledger_reference(
     identity_facts = (
         (representative_fact,)
         if reference.value_operation == "scaled_by_ratio"
+        else tuple(
+            member
+            for member in facts
+            if _fact_matches_selector(member, reference.ledger_selector)
+        )
+        if reference.value_operation == ALLOCATED_RESIDUAL_BY_RATIO
+        else facts[:-2]
+        if reference.value_operation == ROLLED_FORWARD_BY_RATIO
+        else _window_ratio_window_facts(reference, facts)
+        if reference.value_operation == CALENDAR_YEAR_WINDOW_SCALED_BY_RATIO
         else facts
     )
     publication_metadata = dict(value_metadata)
-    if reference.value_operation in MONTHLY_WINDOW_OPERATIONS:
+    if reference.value_operation in {
+        *MONTHLY_WINDOW_OPERATIONS,
+        MONTHLY_WINDOW_COUNT_X_MEAN,
+    }:
         # The window guard has proved these identities common to every member.
         publication_metadata = {
-            key: value
-            for key, value in {
-                "ledger_source_release_key": _str_at(
-                    representative_fact, "source_release_key"
-                ),
-                "ledger_source_sha256": _str_at(
-                    representative_fact, "source", "source_sha256"
-                ),
-            }.items()
-            if value
+            **value_metadata,
+            **{
+                key: value
+                for key, value in {
+                    "ledger_source_release_key": _str_at(
+                        representative_fact, "source_release_key"
+                    ),
+                    "ledger_source_sha256": _str_at(
+                        representative_fact, "source", "source_sha256"
+                    ),
+                }.items()
+                if value
+            },
         }
 
     if not reference.measure:
@@ -909,6 +1153,93 @@ def _scaled_by_ratio_value(
     }
 
 
+def _rolled_forward_by_ratio_value(
+    reference: LedgerTargetReference,
+    facts: tuple[object, ...],
+    numeric_values: list[float],
+) -> tuple[float, dict[str, str]]:
+    """Carry the base to the target period by the pinned operands' growth."""
+
+    _assert_rolled_forward_base_cells(reference, list(facts[:-2]))
+    *base_values, numerator, denominator = numeric_values
+    base = math.fsum(base_values)
+    ratio = _validated_growth_ratio(reference, facts[0], facts[-2], facts[-1])
+    value = base * ratio
+    if not math.isfinite(value) or value < 0:
+        raise ValueError(
+            f"Ledger target reference {reference.name!r}: "
+            f"{ROLLED_FORWARD_BY_RATIO} produced invalid value {value!r}."
+        )
+    geography: dict[str, str] = {}
+    if _rolled_forward_base_overlay(reference):
+        # The base sits below the reference's geography; the cell is the
+        # reference's own area, so it keeps the pinned geography.
+        geography = {
+            key: str(reference.ledger_selector[key])
+            for key in ("geography_level", "geography_id")
+            if key in reference.ledger_selector
+        }
+    return value, {
+        **geography,
+        "ledger_value_base": repr(float(base)),
+        "ledger_value_base_cells": str(len(base_values)),
+        "ledger_value_base_fact_keys": json.dumps(
+            [_fact_key(fact) or _source_record_id(fact) for fact in facts[:-2]],
+            separators=(",", ":"),
+        ),
+        "ledger_value_numerator": repr(float(numerator)),
+        "ledger_value_denominator": repr(float(denominator)),
+        "ledger_value_ratio": repr(float(ratio)),
+        "ledger_value_rolled_from_period": str(_comparable_period_value(facts[0])),
+        "ledger_value_rolled_to_period": str(_comparable_period_value(facts[-2])),
+    }
+
+
+def _validated_growth_ratio(
+    reference: LedgerTargetReference,
+    base: object,
+    numerator_fact: object,
+    denominator_fact: object,
+    *,
+    exact: bool = False,
+) -> float | Fraction:
+    """Validate one series at the source and target periods, then its growth."""
+
+    prefix = f"Ledger target reference {reference.name!r}: {reference.value_operation}"
+    if _rolled_forward_series_key(numerator_fact) != _rolled_forward_series_key(
+        denominator_fact
+    ):
+        raise ValueError(
+            f"{prefix} numerator and denominator are not one series at two periods."
+        )
+    if _period_key(denominator_fact) != _period_key(base):
+        raise ValueError(f"{prefix} denominator does not resolve at the base's period.")
+    if _period_key(numerator_fact) != _period_key_from_value(reference.period):
+        raise ValueError(f"{prefix} numerator does not resolve at the target period.")
+    read_value = _exact_count_fact_value if exact else _numeric_fact_value
+    numerator = read_value(numerator_fact, reference)
+    denominator = read_value(denominator_fact, reference)
+    if denominator <= 0 or (not exact and not math.isfinite(denominator)):
+        raise ValueError(
+            f"Ledger target reference {reference.name!r}: "
+            f"{reference.value_operation} denominator {denominator!r} must be a "
+            "finite positive value."
+        )
+    ratio = numerator / denominator
+    low, high = ROLLED_FORWARD_RATIO_BOUNDS
+    if exact:
+        low, high = Fraction(str(low)), Fraction(str(high))
+    if (not exact and not math.isfinite(ratio)) or not low < ratio <= high:
+        raise ValueError(
+            f"Ledger target reference {reference.name!r}: "
+            f"{reference.value_operation} produced ratio {ratio!r} from numerator "
+            f"{numerator!r} and denominator {denominator!r}, outside "
+            f"({low}, {high}]: a growth factor this large means an operand is "
+            "pinned to the wrong period or series."
+        )
+    return ratio
+
+
 def _value_representative_fact(
     facts: tuple[object, ...],
     *,
@@ -916,7 +1247,11 @@ def _value_representative_fact(
 ) -> object:
     if len(facts) == 1 or operation not in MULTI_FACT_VALUE_OPERATIONS:
         return facts[0]
-    if operation == "scaled_by_ratio":
+    if operation in {
+        "scaled_by_ratio",
+        ROLLED_FORWARD_BY_RATIO,
+        ALLOCATED_RESIDUAL_BY_RATIO,
+    }:
         return facts[0]
     return max(enumerate(facts), key=lambda item: (_period_key(item[1]), item[0]))[1]
 
@@ -938,6 +1273,24 @@ def _numeric_fact_value(fact: object, reference: LedgerTargetReference) -> float
     return numeric_value
 
 
+def _exact_count_fact_value(fact: object, reference: LedgerTargetReference) -> Fraction:
+    """Read an integer count without introducing binary floating point arithmetic."""
+    raw = _at(fact, "value")
+    try:
+        if isinstance(raw, bool) or raw is None:
+            raise ValueError("not a count")
+        value = Fraction(
+            raw.lexical_token if isinstance(raw, LexicalFloat) else str(raw)
+        )
+        if value.denominator != 1 or value < 0:
+            raise ValueError("not a nonnegative integer")
+    except (TypeError, ValueError, ZeroDivisionError) as error:
+        raise ValueError(
+            f"Ledger fact for {reference.name!r} requires an exact nonnegative integer count; got {raw!r}."
+        ) from error
+    return value
+
+
 def _validate_fact_aggregation(
     fact: object,
     reference: LedgerTargetReference,
@@ -947,10 +1300,15 @@ def _validate_fact_aggregation(
         reference.metadata.get("fact_aggregation") == "time_mean"
         and aggregation == "mean"
     )
-    accepts_count_x_mean = (
-        reference.value_operation == "count_x_mean"
-        and aggregation == "mean"
-        and _count_mean_fact_role(fact) == "mean"
+    accepts_count_x_mean = aggregation == "mean" and (
+        (
+            reference.value_operation == "count_x_mean"
+            and _count_mean_fact_role(fact) == "mean"
+        )
+        or (
+            reference.value_operation == MONTHLY_WINDOW_COUNT_X_MEAN
+            and _count_x_mean_operand_role(reference, fact) == "mean"
+        )
     )
     if (
         aggregation not in SUPPORTED_LEDGER_AGGREGATIONS
@@ -1134,6 +1492,9 @@ def _validate_chronicle_hierarchy_labels(
                 f"Ledger target reference {reference_name!r}: every selected "
                 f"Chronicle fact requires a non-empty label; missing for {fact_id!r}."
             )
+        _validate_package_dimension_value_labels(
+            fact, fact_id=fact_id, reference_name=reference_name
+        )
 
         raw_dimensions = _dimensions(fact)
         dimensions = {str(key): value for key, value in raw_dimensions.items()}
@@ -1205,6 +1566,48 @@ def _validate_chronicle_hierarchy_labels(
                 f"{dimension_id!r} value {value_id!r} has conflicting labels "
                 f"{sorted(labels)!r}."
             )
+
+
+def _validate_package_dimension_value_labels(
+    fact: object, *, fact_id: str, reference_name: str
+) -> None:
+    """Refuse a malformed v5 package-wording map; never read it as a label.
+
+    The field is optional. When present it must have the shape the v5 schema
+    gives it and ``dimension_value_labels`` alike: an object mapping each
+    dimension id to an object of value id to non-empty text. This check is
+    stricter than Microcosm's check of ``dimension_value_labels`` above, which
+    reads only the entries a target selects and takes any non-null value as
+    text: nothing reads this field at any one entry, so every entry is checked.
+    """
+
+    if isinstance(fact, Mapping):
+        package_labels = fact.get(PACKAGE_DIMENSION_VALUE_LABELS_FIELD, _ABSENT)
+    else:
+        package_labels = getattr(fact, PACKAGE_DIMENSION_VALUE_LABELS_FIELD, _ABSENT)
+    if package_labels is _ABSENT:
+        return
+    prefix = (
+        f"Ledger target reference {reference_name!r}: Chronicle fact {fact_id!r} "
+        f"{PACKAGE_DIMENSION_VALUE_LABELS_FIELD}"
+    )
+    if not isinstance(package_labels, Mapping):
+        raise LedgerHierarchyMetadataError(
+            f"{prefix} must be an object keyed by dimension id, got "
+            f"{type(package_labels).__name__}."
+        )
+    for dimension_id, value_labels in package_labels.items():
+        if not isinstance(value_labels, Mapping):
+            raise LedgerHierarchyMetadataError(
+                f"{prefix} dimension {dimension_id!r} must be an object keyed by "
+                f"value id, got {type(value_labels).__name__}."
+            )
+        for value_id, label in value_labels.items():
+            if not isinstance(label, str) or not label.strip():
+                raise LedgerHierarchyMetadataError(
+                    f"{prefix} dimension {dimension_id!r} value {value_id!r} "
+                    f"requires non-empty text, got {label!r}."
+                )
 
 
 def _requires_microcosm_target_label(
@@ -1630,9 +2033,14 @@ def _unsupported(reason: str, fact: object) -> _UnsupportedFactError:
 def _ledger_fact_index(facts: Iterable[object]) -> _LedgerFactIndex:
     materialized_facts = tuple(facts)
     buckets: dict[str, list[object]] = {}
+    aggregate_buckets: dict[str, list[object]] = {}
     for fact in materialized_facts:
+        aggregate_key = _str_at(fact, "aggregate_fact_key")
+        if aggregate_key:
+            # Keep every source occurrence, including repeated Python objects.
+            aggregate_buckets.setdefault(aggregate_key, []).append(fact)
         keys = (
-            _str_at(fact, "aggregate_fact_key"),
+            aggregate_key,
             _str_at(fact, "semantic_fact_key"),
             _str_at(fact, "fact_key"),
             _str_at(fact, "legacy_fact_key"),
@@ -1645,6 +2053,9 @@ def _ledger_fact_index(facts: Iterable[object]) -> _LedgerFactIndex:
     return _LedgerFactIndex(
         facts=materialized_facts,
         by_identifier={key: tuple(value) for key, value in buckets.items()},
+        by_aggregate_fact_key={
+            key: tuple(value) for key, value in aggregate_buckets.items()
+        },
     )
 
 
@@ -1701,6 +2112,10 @@ def _resolve_reference_fact(
         eligible_matches = _eligible_selector_matches(reference, matches)
         if reference.value_operation in MONTHLY_WINDOW_OPERATIONS:
             return _resolve_monthly_window_reference_facts(reference, eligible_matches)
+        if reference.value_operation == MONTHLY_WINDOW_COUNT_X_MEAN:
+            return _resolve_monthly_window_count_x_mean_reference_facts(
+                reference, eligible_matches
+            )
         if reference.value_operation == "sum" and eligible_matches:
             return _resolve_sum_reference_facts(reference, eligible_matches)
         if reference.value_operation == "difference" and eligible_matches:
@@ -1708,6 +2123,17 @@ def _resolve_reference_fact(
         if reference.value_operation == "scaled_by_ratio" and eligible_matches:
             return _resolve_scaled_by_ratio_reference_facts(
                 reference, eligible_matches, fact_index.facts
+            )
+        if reference.value_operation == ROLLED_FORWARD_BY_RATIO:
+            return _resolve_rolled_forward_reference_facts(
+                reference, eligible_matches, fact_index.facts
+            )
+        if reference.value_operation == ALLOCATED_RESIDUAL_BY_RATIO:
+            return _resolve_allocation_reference_facts(
+                reference,
+                fact_index.facts,
+                fact_index=fact_index,
+                base_matches=matches,
             )
         if reference.value_operation == "linear_combination" and eligible_matches:
             return _resolve_linear_combination_reference_facts(
@@ -1720,6 +2146,13 @@ def _resolve_reference_fact(
         if reference.value_operation == "calendar_year_window" and eligible_matches:
             return _resolve_calendar_year_window_reference_facts(
                 reference, eligible_matches
+            )
+        if (
+            reference.value_operation == CALENDAR_YEAR_WINDOW_SCALED_BY_RATIO
+            and eligible_matches
+        ):
+            return _resolve_calendar_year_window_scaled_by_ratio_reference_facts(
+                reference, eligible_matches, fact_index.facts
             )
         if reference.value_operation == "latest_plateau" and eligible_matches:
             return _resolve_latest_plateau_reference_facts(reference, eligible_matches)
@@ -1748,7 +2181,7 @@ def _resolve_reference_fact(
             raise ValueError(
                 f"Ledger target reference {reference.name!r} did not match a "
                 f"Ledger fact {period_requirement} "
-                f"{reference.period!r} for selector: "
+                f"{_selection_period(reference)!r} for selector: "
                 f"{dict(reference.ledger_selector)!r}."
             )
         identifiers = [
@@ -1894,6 +2327,976 @@ def _validate_scaled_by_ratio_operands(
             )
 
 
+def _validate_rolled_forward_operands(
+    name: str, operands: tuple[Mapping[str, object], ...]
+) -> None:
+    roles = [
+        str(operand.get("role")) if isinstance(operand, Mapping) else ""
+        for operand in operands
+    ]
+    prefix = f"LedgerTargetReference {name!r}: {ROLLED_FORWARD_BY_RATIO}"
+    if roles != list(ROLLED_FORWARD_OPERAND_ROLES):
+        raise ValueError(
+            f"{prefix} requires exactly ordered "
+            f"{'/'.join(ROLLED_FORWARD_OPERAND_ROLES)} operands, got {roles!r}."
+        )
+    count = operands[0].get("expected_member_count")
+    if count is not None and (
+        isinstance(count, bool) or not isinstance(count, int) or count <= 0
+    ):
+        raise ValueError(
+            f"{prefix}: base expected_member_count must be a positive integer."
+        )
+    base_overlay = {
+        key for key in operands[0] if key not in {"role", "expected_member_count"}
+    }
+    if base_overlay - {"geography_level", "geography_id"}:
+        raise ValueError(
+            f"{prefix}: the base operand is the reference's own selector; it may "
+            "only move the base below the reference's geography "
+            f"(geography_level, geography_id), got {sorted(base_overlay)!r}."
+        )
+    for operand in operands[1:]:
+        if "expected_member_count" in operand:
+            raise ValueError(
+                f"{prefix}: expected_member_count applies to base facts only."
+            )
+        if "period_type" not in operand or "period_value" not in operand:
+            raise ValueError(
+                f"{prefix}: operand {operand.get('role')!r} must pin its own "
+                "period_type and period_value; a roll-forward reads each "
+                "operand at a declared period, never at the latest one."
+            )
+        if not {key for key in operand} - {"role", "period_type", "period_value"}:
+            raise ValueError(
+                f"{prefix}: operand {operand.get('role')!r} needs at least one "
+                "selector field besides its period."
+            )
+
+
+def _validate_count_x_mean_operands(
+    name: str, operands: tuple[Mapping[str, object], ...]
+) -> None:
+    prefix = f"LedgerTargetReference {name!r}: {MONTHLY_WINDOW_COUNT_X_MEAN}"
+    roles = [
+        str(operand.get("role")) if isinstance(operand, Mapping) else ""
+        for operand in operands
+    ]
+    if roles != list(COUNT_X_MEAN_OPERAND_ROLES):
+        raise ValueError(
+            f"{prefix} requires exactly ordered "
+            f"{'/'.join(COUNT_X_MEAN_OPERAND_ROLES)} operands, got {roles!r}."
+        )
+    concepts = []
+    for operand, allowed in zip(
+        operands,
+        ({"role", "concept"}, {"role", "concept", "period_factor"}),
+        strict=True,
+    ):
+        unsupported = set(operand) - allowed
+        if unsupported:
+            raise ValueError(
+                f"{prefix} operand {operand['role']!r} takes only "
+                f"{sorted(allowed)!r}, got {sorted(unsupported)!r}."
+            )
+        concept = operand.get("concept")
+        if not isinstance(concept, str) or not concept.strip():
+            raise ValueError(
+                f"{prefix} operand {operand['role']!r} must name its concept."
+            )
+        concepts.append(concept)
+    if concepts[0] == concepts[1]:
+        raise ValueError(f"{prefix} count and mean must name different concepts.")
+    factor = operands[1].get("period_factor", 1)
+    if (
+        isinstance(factor, bool)
+        or not isinstance(factor, (int, float))
+        or not math.isfinite(float(factor))
+        or float(factor) <= 0
+    ):
+        raise ValueError(
+            f"{prefix} period_factor must be a finite positive number, got {factor!r}."
+        )
+
+
+def _count_x_mean_operand_role(reference: LedgerTargetReference, fact: object) -> str:
+    """The operand role whose concept the fact carries, or ``""``."""
+
+    concepts = {_source_measure_concept(fact), _primary_measure_concept(fact)} - {""}
+    roles = [
+        str(operand["role"])
+        for operand in reference.value_operands
+        if str(operand["concept"]) in concepts
+    ]
+    return roles[0] if len(roles) == 1 else ""
+
+
+def _count_x_mean_period_factor(reference: LedgerTargetReference) -> float:
+    return float(reference.value_operands[1].get("period_factor", 1))
+
+
+def _count_x_mean_cell_key(fact: object) -> tuple[str, ...]:
+    """The published cell a count and its mean must share.
+
+    Publishers file the two measures in sibling record sets
+    (``...age_gender_type.month2025_05`` and ``...age_gender_type.mean.month2025_05``),
+    so the record set is not part of the cell: its period, geography, entity,
+    group value, dimensions and universe are.
+    """
+
+    return (
+        _source_name(fact),
+        _str_at(fact, "period", "type"),
+        _str_at(fact, "period", "value"),
+        _str_at(fact, "geography", "level"),
+        _str_at(fact, "geography", "id"),
+        _str_at(fact, "entity", "name"),
+        _str_at(fact, "layout", "groupby_value_id"),
+        json.dumps(_dimensions(fact), sort_keys=True, separators=(",", ":")),
+        json.dumps(_constraint_rows(fact), sort_keys=True, separators=(",", ":")),
+        _domain(fact),
+    )
+
+
+def _resolve_monthly_window_count_x_mean_reference_facts(
+    reference: LedgerTargetReference,
+    matches: list[object],
+) -> tuple[object, ...]:
+    """One count and one mean fact per declared month, on one published cell.
+
+    Returns them month by month, count before mean. Like the single-series
+    windows, the guard also runs after direct-key resolution.
+    """
+
+    months = _declared_source_months(reference)
+    prefix = (
+        f"Ledger target reference {reference.name!r}: {MONTHLY_WINDOW_COUNT_X_MEAN}"
+    )
+    expected_count = len(COUNT_X_MEAN_OPERAND_ROLES) * len(months)
+    if reference.expected_member_count not in (None, expected_count):
+        raise ValueError(
+            f"{prefix} expected_member_count disagrees with its "
+            f"{len(months)} declared months."
+        )
+    grid: dict[tuple[str, str], object] = {}
+    series: dict[str, set[tuple[str, ...]]] = {}
+    for fact in matches:
+        if not _fact_matches_selector(fact, reference.ledger_selector):
+            raise ValueError(f"{prefix} resolved a fact outside its selector.")
+        role = _count_x_mean_operand_role(reference, fact)
+        if not role:
+            raise ValueError(
+                f"{prefix} selected a fact whose concept is neither operand's: "
+                f"{_primary_measure_concept(fact)!r}."
+            )
+        month = _str_at(fact, "period", "value")
+        if _str_at(fact, "period", "type") != "month" or month not in months:
+            raise ValueError(
+                f"{prefix} selected a fact outside the declared months: {month!r}."
+            )
+        if (month, role) in grid:
+            raise ValueError(
+                f"{prefix} matched more than one {role} fact for {month}; the "
+                "selector must pin one published cell."
+            )
+        grid[(month, role)] = fact
+        series.setdefault(role, set()).add(_selector_period_invariant_key(fact))
+    missing = [
+        f"{month} {role}"
+        for month in months
+        for role in COUNT_X_MEAN_OPERAND_ROLES
+        if (month, role) not in grid
+    ]
+    if missing:
+        raise ValueError(
+            f"{prefix} requires one count and one mean fact for every declared "
+            f"month; missing {missing!r}."
+        )
+    if any(len(keys) != 1 for keys in series.values()):
+        raise ValueError(f"{prefix} matched more than one series for a role.")
+    for month in months:
+        if _count_x_mean_cell_key(grid[(month, "count")]) != _count_x_mean_cell_key(
+            grid[(month, "mean")]
+        ):
+            raise ValueError(
+                f"{prefix} pairs a count and a mean from different published "
+                f"cells in {month}."
+            )
+    publications = {
+        (_str_at(fact, "source_release_key"), _str_at(fact, "source", "source_sha256"))
+        for fact in grid.values()
+    }
+    if len(publications) != 1 or not all(next(iter(publications))):
+        raise ValueError(
+            f"{prefix} requires every member to come from one publication with a "
+            "nonempty source_release_key and source.source_sha256."
+        )
+    return tuple(
+        grid[(month, role)] for month in months for role in COUNT_X_MEAN_OPERAND_ROLES
+    )
+
+
+def _monthly_window_count_x_mean_value(
+    reference: LedgerTargetReference,
+    facts: tuple[object, ...],
+    numeric_values: list[float],
+) -> tuple[float, dict[str, str]]:
+    """Average over months of count x mean x period_factor, with every member."""
+
+    factor = _count_x_mean_period_factor(reference)
+    members = []
+    products = []
+    for index in range(0, len(facts), len(COUNT_X_MEAN_OPERAND_ROLES)):
+        count_fact, mean_fact = facts[index], facts[index + 1]
+        count, mean = numeric_values[index], numeric_values[index + 1]
+        if count < 0 or mean < 0:
+            raise ValueError(
+                f"Ledger target reference {reference.name!r}: "
+                f"{MONTHLY_WINDOW_COUNT_X_MEAN} needs a non-negative count and "
+                f"mean; got {count!r} and {mean!r} in "
+                f"{_str_at(count_fact, 'period', 'value')}."
+            )
+        products.append(count * mean * factor)
+        members.append(
+            {
+                "month": _str_at(count_fact, "period", "value"),
+                "count": f"{count:.15g}",
+                "mean": f"{mean:.15g}",
+                "count_fact_key": _fact_key(count_fact)
+                or _source_record_id(count_fact),
+                "mean_fact_key": _fact_key(mean_fact) or _source_record_id(mean_fact),
+            }
+        )
+    mean_unit = _str_at(facts[1], "observed_measure", "unit")
+    return sum(products) / len(products), {
+        "ledger_window_count_x_mean_count_concept": str(
+            reference.value_operands[0]["concept"]
+        ),
+        "ledger_window_count_x_mean_mean_concept": str(
+            reference.value_operands[1]["concept"]
+        ),
+        "ledger_window_count_x_mean_period_factor": f"{factor:.15g}",
+        "ledger_window_count_x_mean_members": json.dumps(
+            members, sort_keys=True, separators=(",", ":")
+        ),
+        # The value is count x mean x factor, not the mean fact's own unit.
+        "ledger_measure_unit": f"{mean_unit} x {factor:.15g}"
+        if mean_unit
+        else f"x {factor:.15g}",
+    }
+
+
+_ALLOCATION_FIXED_PINS = (
+    "source_name",
+    "source_measure_id",
+    "source_concept",
+    "entity_name",
+    "record_set_id",
+    "period_type",
+    "period_value",
+    "geography_level",
+    "geography_id",
+    "geography_vintage",
+)
+
+
+def _validate_allocation_selector(
+    selector: Mapping[str, object], *, prefix: str, grouped: bool = False
+) -> None:
+    missing = [
+        key
+        for key in _ALLOCATION_FIXED_PINS
+        if selector.get(key) in (None, "")
+        or isinstance(selector.get(key), (Mapping, list, tuple))
+    ]
+    dimensions = selector.get("dimensions")
+    pins = selector.get("dimension_values", {})
+    if (
+        missing
+        or not isinstance(dimensions, list)
+        or len(set(dimensions)) != len(dimensions)
+        or not isinstance(pins, Mapping)
+        or set(dimensions) != set(pins)
+    ):
+        raise ValueError(
+            f"{prefix} requires complete scalar source/geography/period and dimension pins; missing {missing!r}."
+        )
+    for value in pins.values():
+        members = value if grouped and isinstance(value, list) else [value]
+        if (
+            not members
+            or any(isinstance(member, (Mapping, list, tuple)) for member in members)
+            or any(
+                _strict_scalar_equal(member, previous)
+                for index, member in enumerate(members)
+                for previous in members[:index]
+            )
+        ):
+            raise ValueError(
+                f"{prefix} requires unique typed scalar dimension members."
+            )
+
+
+def _allocation_operand_selector(operand: Mapping[str, object]) -> dict[str, object]:
+    return {str(key): value for key, value in operand.items() if key != "role"}
+
+
+def validate_signed_discrepancy_policy(policy: object) -> dict[str, object]:
+    """Validate the explicit, closed declaration permitting signed discrepancies."""
+    keys = {"kind", "max_abs", "max_relative", "combine", "ruling", "disclosure"}
+    if not isinstance(policy, Mapping) or set(policy) != keys:
+        raise ValueError(
+            "Signed discrepancy policy requires exactly its declared keys."
+        )
+    if policy["kind"] != "signed_proportional_reconciliation":
+        raise ValueError("Unknown signed discrepancy policy kind.")
+    if type(policy["max_abs"]) is not int or policy["max_abs"] < 0:
+        raise ValueError("Signed discrepancy max_abs must be a nonnegative integer.")
+    decimal = policy["max_relative"]
+    if (
+        not isinstance(decimal, str)
+        or re.fullmatch(r"(?:0|[1-9][0-9]*)(?:\.[0-9]+)?", decimal) is None
+    ):
+        raise ValueError(
+            "Signed discrepancy max_relative must be an exact decimal string."
+        )
+    if Fraction(decimal) > 1:
+        raise ValueError("Signed discrepancy max_relative must be at most 1.")
+    if policy["combine"] != "either":
+        raise ValueError("Signed discrepancy bounds must combine as 'either'.")
+    if any(
+        not isinstance(policy[key], str) or not policy[key].strip()
+        for key in ("ruling", "disclosure")
+    ):
+        raise ValueError("Signed discrepancy policy needs its ruling and disclosure.")
+    return dict(policy)
+
+
+def reconcile_signed_partition(
+    partition: Mapping[str, Fraction],
+    total: Fraction,
+    policy: Mapping[str, object],
+    *,
+    region: str,
+    positive_recipient_keys: tuple[str, ...] | None = None,
+) -> tuple[dict[str, Fraction], dict[str, Fraction], tuple[str, ...]]:
+    """Reconcile exact counts, optionally assigning a positive gap to one atom.
+
+    The central allocation preserves every share, including for negative gaps.
+    A positive-only recipient changes only the positive-gap allocation; zero
+    and negative gaps continue to use central proportional reconciliation.
+    """
+    checked = validate_signed_discrepancy_policy(policy)
+    if (
+        not partition
+        or any(not isinstance(key, str) or not key for key in partition)
+        or not isinstance(total, Fraction)
+        or any(not isinstance(value, Fraction) for value in partition.values())
+        or total < 0
+        or any(value < 0 for value in partition.values())
+    ):
+        raise ValueError(
+            "Signed reconciliation requires nonnegative exact Fraction counts."
+        )
+    if positive_recipient_keys is not None and (
+        len(positive_recipient_keys) != 1 or positive_recipient_keys[0] not in partition
+    ):
+        raise ValueError(
+            "Positive discrepancy needs exactly one declared partition recipient."
+        )
+    leaves = sum(partition.values(), Fraction())
+    residual = total - leaves
+    if not leaves and total:
+        raise ValueError(
+            f"Signed reconciliation region {region}: R={residual}, L={leaves}; "
+            "L=0 with a nonzero published total is refused."
+        )
+    bounds = tuple(
+        name
+        for name, passed in (
+            ("absolute", abs(residual) <= checked["max_abs"]),
+            (
+                "relative",
+                bool(leaves)
+                and abs(residual) / leaves <= Fraction(checked["max_relative"]),
+            ),
+        )
+        if passed
+    )
+    if not bounds:
+        raise ValueError(
+            f"Signed reconciliation region {region}: R={residual}, L={leaves} "
+            f"exceeds either bound: max_abs={checked['max_abs']}, "
+            f"max_relative={checked['max_relative']}."
+        )
+    if residual > 0 and positive_recipient_keys is not None:
+        increments = {
+            key: residual if key in positive_recipient_keys else Fraction()
+            for key in sorted(partition)
+        }
+    else:
+        increments = {
+            key: value * residual / leaves if leaves else Fraction()
+            for key, value in sorted(partition.items())
+        }
+    reconciled = {key: partition[key] + increments[key] for key in increments}
+    if (
+        any(value < 0 for value in reconciled.values())
+        or sum(reconciled.values(), Fraction()) != total
+    ):
+        raise ValueError(f"Signed reconciliation region {region} failed exact closure.")
+    return reconciled, increments, bounds
+
+
+def _validate_allocation_reference(reference: LedgerTargetReference) -> None:
+    prefix = f"LedgerTargetReference {reference.name!r}: {ALLOCATED_RESIDUAL_BY_RATIO}"
+    operands = reference.value_operands
+    roles = [
+        operand.get("role") if isinstance(operand, Mapping) else None
+        for operand in operands
+    ]
+    if roles not in (
+        ["base", "total", "partition"],
+        ["base", "total", "partition", "numerator", "denominator"],
+    ):
+        raise ValueError(
+            f"{prefix} requires ordered base/total/partition and optional paired numerator/denominator operands."
+        )
+    base = operands[0]
+    count = base.get("expected_member_count")
+    if (
+        set(base) != {"role", "expected_member_count"}
+        or isinstance(count, bool)
+        or not isinstance(count, int)
+        or count <= 0
+        or reference.expected_member_count not in (None, count)
+    ):
+        raise ValueError(
+            f"{prefix} base requires a positive expected_member_count and inherits the reference selector without overrides."
+        )
+    _validate_allocation_selector(
+        reference.ledger_selector, prefix=prefix, grouped=True
+    )
+    members = operands[2].get("member_selectors")
+    recipients = operands[2].get("allocation_member_keys")
+    partition_keys = {"role", "member_selectors", "allocation_member_keys"}
+    signed = "discrepancy_policy" in operands[2]
+    if signed:
+        partition_keys.add("discrepancy_policy")
+        validate_signed_discrepancy_policy(operands[2]["discrepancy_policy"])
+        if "positive_allocation_member_keys" in operands[2]:
+            partition_keys.add("positive_allocation_member_keys")
+    if (
+        set(operands[2]) != partition_keys
+        or not isinstance(members, (list, tuple))
+        or not members
+    ):
+        raise ValueError(
+            f"{prefix} partition requires explicit member_selectors and allocation_member_keys."
+        )
+    selectors = [_allocation_operand_selector(operands[1]), *members]
+    for selector in selectors:
+        if not isinstance(selector, Mapping):
+            raise ValueError(f"{prefix} member selectors must be mappings.")
+        _validate_allocation_selector(selector, prefix=prefix)
+        if (
+            not isinstance(selector.get("aggregate_fact_key"), str)
+            or not selector["aggregate_fact_key"]
+        ):
+            raise ValueError(
+                f"{prefix} total and partition selectors require aggregate_fact_key pins."
+            )
+    keys = [selector["aggregate_fact_key"] for selector in members]
+    if len(set(keys)) != len(keys) or selectors[0]["aggregate_fact_key"] in keys:
+        raise ValueError(
+            f"{prefix} partition members must be unique and exclude the total."
+        )
+    if (
+        not isinstance(recipients, (list, tuple))
+        or not recipients
+        or any(not isinstance(key, str) for key in recipients)
+        or len(set(recipients)) != len(recipients)
+        or not set(recipients) <= set(keys)
+    ):
+        raise ValueError(
+            f"{prefix} allocation_member_keys must be a nonempty unique subset of the partition."
+        )
+    if signed:
+        if set(recipients) != set(keys):
+            raise ValueError(
+                f"{prefix} signed central recipients must be the full partition."
+            )
+        # Present means one recipient: an explicit null is not an absent key.
+        positive = operands[2].get("positive_allocation_member_keys")
+        if "positive_allocation_member_keys" in operands[2] and (
+            not isinstance(positive, (list, tuple))
+            or len(positive) != 1
+            or not isinstance(positive[0], str)
+            or positive[0] not in keys
+        ):
+            raise ValueError(
+                f"{prefix} positive discrepancy needs exactly one partition recipient."
+            )
+    # Scalar dimensions identify the atoms independently of their fact keys.
+    atomic_cells = [
+        json.dumps(selector.get("dimension_values", {}), sort_keys=True)
+        for selector in members
+    ]
+    if len(set(atomic_cells)) != len(atomic_cells):
+        raise ValueError(f"{prefix} partition has duplicate atomic cells.")
+    total = selectors[0]
+    common = set(_ALLOCATION_FIXED_PINS) - {"record_set_id"}
+    for selector in members:
+        if any(selector[key] != total[key] for key in common):
+            raise ValueError(
+                f"{prefix} total and partition must share one source count universe, geography, vintage and period."
+            )
+        total_dimensions = set(total["dimensions"])
+        atom_dimensions = set(selector["dimensions"])
+        if not total_dimensions < atom_dimensions:
+            raise ValueError(
+                f"{prefix} total must be outside the atomic partition dimensions."
+            )
+        if atom_dimensions != set(members[0]["dimensions"]) or any(
+            not _strict_scalar_equal(
+                selector["dimension_values"][dimension],
+                total["dimension_values"][dimension],
+            )
+            for dimension in total_dimensions
+        ):
+            raise ValueError(
+                f"{prefix} partition dimensions and shared total dimension values must agree."
+            )
+    for operand in operands[3:]:
+        _validate_allocation_selector(
+            _allocation_operand_selector(operand), prefix=prefix
+        )
+    _validate_allocation_base_group(reference, members)
+
+
+def _validate_allocation_base_group(
+    reference: LedgerTargetReference, members: list[Mapping[str, object]]
+) -> None:
+    """Every typed cell requested by the base must belong to the partition."""
+    selector = reference.ledger_selector
+    pins = selector.get("dimension_values", {})
+    dimensions = tuple(sorted(pins))
+    rosters = tuple(
+        pins[name] if isinstance(pins[name], list) else [pins[name]]
+        for name in dimensions
+    )
+    cell_count = math.prod(len(roster) for roster in rosters)
+    prefix = f"LedgerTargetReference {reference.name!r}: {ALLOCATED_RESIDUAL_BY_RATIO}"
+    if reference.value_operands[0]["expected_member_count"] != cell_count:
+        raise ValueError(
+            f"{prefix} base expected_member_count must equal its explicit typed roster length."
+        )
+    if cell_count > len(members):
+        raise ValueError(
+            f"{prefix} base typed roster must be an exact subset of the atomic partition."
+        )
+    for cell in product(*rosters):
+        matches = [
+            member
+            for member in members
+            if all(member[key] == selector[key] for key in _ALLOCATION_FIXED_PINS)
+            and set(member["dimensions"]) == set(dimensions)
+            and all(
+                _strict_scalar_equal(member["dimension_values"][name], value)
+                for name, value in zip(dimensions, cell, strict=True)
+            )
+        ]
+        if len(matches) != 1:
+            raise ValueError(
+                f"{prefix} base typed roster must be an exact subset of the atomic partition."
+            )
+
+
+def _allocation_auxiliary_selectors(
+    reference: LedgerTargetReference,
+) -> tuple[Mapping[str, object], ...]:
+    return (
+        _allocation_operand_selector(reference.value_operands[1]),
+        *reference.value_operands[2]["member_selectors"],
+        *(
+            _allocation_operand_selector(operand)
+            for operand in reference.value_operands[3:]
+        ),
+    )
+
+
+def _allocation_universe_key(
+    fact: object, partition_dimensions: set[str]
+) -> tuple[object, ...]:
+    # Category filters define the partition atoms, while all other filters
+    # define the count universe and must agree with the published total.
+    dimensions = _dimensions(fact)
+    constraints = [
+        row
+        for row in _constraint_rows(fact)
+        if not (
+            isinstance(row, Mapping)
+            and row.get("variable") in partition_dimensions
+            and row.get("variable") in dimensions
+            and row.get("operator") == "=="
+            and row.get("role", "filter") == "filter"
+            and _strict_scalar_equal(row.get("value"), dimensions[row["variable"]])
+        )
+    ]
+    return (
+        _domain(fact),
+        json.dumps(constraints, sort_keys=True, separators=(",", ":")),
+        _str_at(fact, "entity", "role"),
+        _str_at(fact, "source_release_key"),
+        _str_at(fact, "source", "source_sha256"),
+        _str_at(fact, "source", "vintage"),
+        json.dumps(_at(fact, "period_coverage"), sort_keys=True, separators=(",", ":")),
+    )
+
+
+def _resolve_allocation_reference_facts(
+    reference: LedgerTargetReference,
+    facts: tuple[object, ...],
+    *,
+    fact_index: _LedgerFactIndex | None = None,
+    base_matches: list[object] | None = None,
+) -> tuple[object, ...]:
+    prefix = (
+        f"Ledger target reference {reference.name!r}: {ALLOCATED_RESIDUAL_BY_RATIO}"
+    )
+    _validate_allocation_reference(reference)
+    selected = []
+    for selector in _allocation_auxiliary_selectors(reference):
+        aggregate_key = selector.get("aggregate_fact_key")
+        candidates = (
+            fact_index.by_aggregate_fact_key.get(aggregate_key, ())
+            if fact_index is not None
+            and isinstance(aggregate_key, str)
+            and aggregate_key
+            else facts
+        )
+        matches = [
+            fact for fact in candidates if _fact_matches_selector(fact, selector)
+        ]
+        if len(matches) != 1:
+            raise ValueError(
+                f"{prefix} each declared selector must resolve exactly once, got {len(matches)}."
+            )
+        selected.append(matches[0])
+    total = selected[0]
+    atoms = selected[1 : 1 + len(reference.value_operands[2]["member_selectors"])]
+    base = (
+        base_matches
+        if base_matches is not None
+        else [
+            fact
+            for fact in facts
+            if _fact_matches_selector(fact, reference.ledger_selector)
+        ]
+    )
+    keys = {_fact_key(fact) for fact in atoms}
+    if len(base) != reference.value_operands[0]["expected_member_count"] or any(
+        _fact_key(fact) not in keys for fact in base
+    ):
+        raise ValueError(
+            f"{prefix} base must be its exact declared subset of the partition."
+        )
+    dimensions = set().union(*(set(_dimensions(fact)) for fact in atoms))
+    universe = _allocation_universe_key(total, dimensions)
+    if not _str_at(total, "source_release_key") or not _str_at(
+        total, "source", "source_sha256"
+    ):
+        raise ValueError(
+            f"{prefix} requires a pinned source snapshot (source_release_key and source_sha256)."
+        )
+    if any(_allocation_universe_key(fact, dimensions) != universe for fact in atoms):
+        raise ValueError(
+            f"{prefix} total and partition disagree on their count universe or source snapshot."
+        )
+    growth = selected[1 + len(atoms) :]
+    if growth:
+        base_geography = tuple(
+            _str_at(total, "geography", key) for key in ("level", "id")
+        )
+        growth_geography = tuple(
+            _str_at(growth[0], "geography", key) for key in ("level", "id")
+        )
+        if base_geography != growth_geography and not reference.metadata.get(
+            "growth_geography_proxy"
+        ):
+            raise ValueError(
+                f"{prefix} cross-geography growth requires a declared growth_geography_proxy."
+            )
+        _validated_growth_ratio(
+            reference,
+            total,
+            *growth,
+            exact="discrepancy_policy" in reference.value_operands[2],
+        )
+    for index, fact in enumerate(selected):
+        if index <= len(atoms):
+            _validate_resolved_reference_fact(fact, reference)
+        else:
+            _validate_window_ratio_operand_fact(fact, reference)
+        read_value = (
+            _exact_count_fact_value
+            if "discrepancy_policy" in reference.value_operands[2]
+            else _numeric_fact_value
+        )
+        if read_value(fact, reference) < 0:
+            raise ValueError(f"{prefix} requires finite nonnegative counts.")
+        _validate_fact_aggregation(fact, reference)
+    labelled_facts = (
+        *sorted(base, key=_fact_key),
+        *sorted(atoms, key=_fact_key),
+        total,
+        *growth,
+    )
+    # A published cell may serve more than one operand role. Preserve each
+    # fact once after checking every input selector's exact cardinality, but
+    # never let a different fact that reuses a key replace a validated one:
+    # every base, atom, total and growth fact enters this comparison.
+    by_key: dict[str, object] = {}
+    for fact in labelled_facts:
+        key = _fact_key(fact)
+        kept = by_key.setdefault(key, fact)
+        if kept is not fact and kept != fact:
+            raise ValueError(
+                f"{prefix} distinct facts share aggregate_fact_key {key!r}."
+            )
+    return tuple(by_key.values())
+
+
+def _signed_allocated_residual_value(
+    reference: LedgerTargetReference, facts: tuple[object, ...]
+) -> tuple[float, dict[str, str]]:
+    """Compute signed allocation and its exact receipt before the float API boundary."""
+    partition = reference.value_operands[2]
+    facts_by_key = {_fact_key(fact): fact for fact in facts}
+    atom_keys = sorted(
+        selector["aggregate_fact_key"] for selector in partition["member_selectors"]
+    )
+    atoms = {key: facts_by_key[key] for key in atom_keys}
+    total = facts_by_key[reference.value_operands[1]["aggregate_fact_key"]]
+    region = _str_at(total, "geography", "id")
+    counts = {
+        key: _exact_count_fact_value(fact, reference) for key, fact in atoms.items()
+    }
+    total_value = _exact_count_fact_value(total, reference)
+    positive_keys = partition.get("positive_allocation_member_keys")
+    adjusted, increments, bounds = reconcile_signed_partition(
+        counts,
+        total_value,
+        partition["discrepancy_policy"],
+        region=region,
+        positive_recipient_keys=None if positive_keys is None else tuple(positive_keys),
+    )
+    stated = sum(counts.values(), Fraction())
+    residual = total_value - stated
+    recipients = sorted(
+        positive_keys
+        if residual > 0 and positive_keys is not None
+        else partition["allocation_member_keys"]
+    )
+    base_keys = sorted(
+        key
+        for key, fact in atoms.items()
+        if _fact_matches_selector(fact, reference.ledger_selector)
+    )
+    growth = tuple(
+        next(
+            fact
+            for fact in facts
+            if _fact_matches_selector(fact, _allocation_operand_selector(operand))
+        )
+        for operand in reference.value_operands[3:]
+    )
+    ratio = (
+        _validated_growth_ratio(reference, total, *growth, exact=True)
+        if growth
+        else Fraction(1)
+    )
+    final_targets = {key: value * ratio for key, value in adjusted.items()}
+    value = sum((final_targets[key] for key in base_keys), Fraction())
+
+    def rational(number: Fraction) -> dict[str, int]:
+        return {"numerator": number.numerator, "denominator": number.denominator}
+
+    labelled_keys = {
+        "base": base_keys,
+        "partition": atom_keys,
+        "recipients": recipients,
+        "total": _fact_key(total),
+        **(
+            {"numerator": _fact_key(growth[0]), "denominator": _fact_key(growth[1])}
+            if growth
+            else {}
+        ),
+    }
+    policy = dict(partition["discrepancy_policy"])
+    receipt = {
+        "operation": ALLOCATED_RESIDUAL_BY_RATIO,
+        "version": 2,
+        "ruling": policy["ruling"],
+        "policy": policy,
+        "region": region,
+        "selected_profile": reference.metadata.get(
+            "family_discrepancy",
+            reference.metadata.get("residual_allocation_profile", ""),
+        ),
+        "bounds_passed": list(bounds),
+        "fact_keys": labelled_keys,
+        "source_snapshot": {
+            "source_release_key": _str_at(total, "source_release_key"),
+            "source_sha256": _str_at(total, "source", "source_sha256"),
+            "source_vintage": _str_at(total, "source", "vintage"),
+        },
+        "growth_geography_proxy": reference.metadata.get("growth_geography_proxy", ""),
+        "x": {key: rational(number) for key, number in counts.items()},
+        "F": rational(total_value),
+        "L": rational(stated),
+        "R": rational(residual),
+        "increments": {key: rational(number) for key, number in increments.items()},
+        "reconciled": {key: rational(number) for key, number in adjusted.items()},
+        "growth_operands": {
+            role: {
+                "fact_key": _fact_key(fact),
+                "value": rational(_exact_count_fact_value(fact, reference)),
+            }
+            for role, fact in zip(
+                ("numerator", "denominator"), growth, strict=bool(growth)
+            )
+        },
+        "Q": rational(ratio),
+        "final_targets": {
+            key: rational(number) for key, number in final_targets.items()
+        },
+        "source_period": _comparable_period_value(total),
+        "target_period": reference.period,
+        "final_target": rational(value),
+    }
+    return float(value), {
+        "ledger_allocation_receipt": json.dumps(
+            receipt, sort_keys=True, separators=(",", ":"), allow_nan=False
+        ),
+        "ledger_value_base": str(sum((counts[key] for key in base_keys), Fraction())),
+        "ledger_value_ratio": str(ratio),
+    }
+
+
+def _allocated_residual_value(
+    reference: LedgerTargetReference, facts: tuple[object, ...]
+) -> tuple[float, dict[str, str]]:
+    partition = reference.value_operands[2]
+    if "discrepancy_policy" in partition:
+        return _signed_allocated_residual_value(reference, facts)
+    facts_by_key = {_fact_key(fact): fact for fact in facts}
+    atoms = tuple(
+        facts_by_key[key]
+        for key in sorted(
+            selector["aggregate_fact_key"] for selector in partition["member_selectors"]
+        )
+    )
+    total = facts_by_key[reference.value_operands[1]["aggregate_fact_key"]]
+    base = [
+        fact
+        for fact in atoms
+        if _fact_matches_selector(fact, reference.ledger_selector)
+    ]
+    recipients = set(partition["allocation_member_keys"])
+    total_value = _numeric_fact_value(total, reference)
+    stated = math.fsum(_numeric_fact_value(fact, reference) for fact in atoms)
+    base_value = math.fsum(_numeric_fact_value(fact, reference) for fact in base)
+    recipient_mass = math.fsum(
+        _numeric_fact_value(fact, reference)
+        for fact in atoms
+        if _fact_key(fact) in recipients
+    )
+    recipient_base = math.fsum(
+        _numeric_fact_value(fact, reference)
+        for fact in base
+        if _fact_key(fact) in recipients
+    )
+    residual = total_value - stated
+    if not math.isfinite(residual) or residual < 0:
+        raise ValueError(
+            f"Ledger target reference {reference.name!r}: negative or nonfinite residual {residual!r} is refused."
+        )
+    if residual and not recipient_mass > 0:
+        raise ValueError(
+            f"Ledger target reference {reference.name!r}: positive residual requires positive recipient mass."
+        )
+    increment = residual * (recipient_base / recipient_mass) if residual else 0.0
+    growth = tuple(
+        next(
+            fact
+            for fact in facts
+            if _fact_matches_selector(fact, _allocation_operand_selector(operand))
+        )
+        for operand in reference.value_operands[3:]
+    )
+    ratio = _validated_growth_ratio(reference, total, *growth) if growth else 1.0
+    value = (base_value + increment) * ratio
+    if not math.isfinite(value):
+        raise ValueError(
+            f"Ledger target reference {reference.name!r}: allocation produced nonfinite value."
+        )
+    labelled_keys = {
+        "base": sorted(_fact_key(fact) for fact in base),
+        "partition": sorted(_fact_key(fact) for fact in atoms),
+        "recipients": sorted(recipients),
+        "total": _fact_key(total),
+        **(
+            {"numerator": _fact_key(growth[0]), "denominator": _fact_key(growth[1])}
+            if growth
+            else {}
+        ),
+    }
+    receipt = {
+        "operation": ALLOCATED_RESIDUAL_BY_RATIO,
+        "version": 1,
+        "ruling": reference.metadata.get("allocation_ruling", ""),
+        "selected_profile": reference.metadata.get(
+            "census_residual_allocation",
+            reference.metadata.get("residual_allocation_profile", ""),
+        ),
+        "fact_keys": labelled_keys,
+        "source_snapshot": {
+            "source_release_key": _str_at(total, "source_release_key"),
+            "source_sha256": _str_at(total, "source", "source_sha256"),
+            "source_vintage": _str_at(total, "source", "vintage"),
+        },
+        "growth_geography_proxy": reference.metadata.get("growth_geography_proxy", ""),
+        "member_digests": {
+            role: hashlib.sha256(
+                json.dumps(labelled_keys[role], separators=(",", ":")).encode()
+            ).hexdigest()
+            for role in ("base", "partition", "recipients")
+        },
+        "T": total_value,
+        "L": stated,
+        "R": residual,
+        "B": base_value,
+        "A": recipient_mass,
+        "W": recipient_base,
+        "allocated_increment": increment,
+        "N": _numeric_fact_value(growth[0], reference) if growth else None,
+        "D": _numeric_fact_value(growth[1], reference) if growth else None,
+        "Q": ratio,
+        "zero_residual": residual == 0,
+        "source_period": _comparable_period_value(total),
+        "target_period": reference.period,
+        "final_target": value,
+    }
+    return value, {
+        "ledger_allocation_receipt": json.dumps(
+            receipt, sort_keys=True, separators=(",", ":"), allow_nan=False
+        ),
+        "ledger_value_base": repr(base_value),
+        "ledger_value_ratio": repr(ratio),
+    }
+
+
 def _scaled_by_ratio_operand_selectors(
     reference: LedgerTargetReference,
 ) -> tuple[Mapping[str, object], ...]:
@@ -1910,6 +3313,249 @@ def _scaled_by_ratio_operand_selectors(
             **{str(key): value for key, value in operand.items() if key != "role"},
         }
         for operand in reference.value_operands[1:]
+    )
+
+
+def _rolled_forward_operand_selectors(
+    reference: LedgerTargetReference,
+) -> tuple[Mapping[str, object], ...]:
+    """The numerator and denominator selectors, each with its own period pin."""
+
+    inherited = {
+        key: reference.ledger_selector[key]
+        for key in ("source_name", "assertion")
+        if key in reference.ledger_selector
+    }
+    return tuple(
+        {
+            **inherited,
+            **{str(key): value for key, value in operand.items() if key != "role"},
+        }
+        for operand in reference.value_operands[1:]
+    )
+
+
+def _rolled_forward_base_overlay(reference: LedgerTargetReference) -> dict[str, object]:
+    return {
+        str(key): value
+        for key, value in reference.value_operands[0].items()
+        if key not in {"role", "expected_member_count"}
+    }
+
+
+def _rolled_forward_base_selector(
+    reference: LedgerTargetReference,
+) -> Mapping[str, object]:
+    return {
+        **dict(reference.ledger_selector),
+        **_rolled_forward_base_overlay(reference),
+    }
+
+
+def _resolve_rolled_forward_reference_facts(
+    reference: LedgerTargetReference,
+    eligible_matches: list[object],
+    facts: tuple[object, ...],
+) -> tuple[object, ...]:
+    """The base cells at their latest period, then the two pinned operands.
+
+    The base is every eligible cell at the latest period the selector reaches
+    (one cell, or a set the operation sums); a base operand that moves the
+    geography (a nation's estimate built from its districts' census cells)
+    selects below the reference's own geography, which the spec keeps. The
+    numerator must resolve at the target period and the denominator at the
+    base's own period, each exactly once, so the ratio is the growth between
+    the two.
+    """
+
+    if _rolled_forward_base_overlay(reference):
+        base_selector = _rolled_forward_base_selector(reference)
+        eligible_matches = _eligible_selector_matches(
+            reference,
+            [fact for fact in facts if _fact_matches_selector(fact, base_selector)],
+        )
+    if not eligible_matches:
+        raise ValueError(
+            f"Ledger target reference {reference.name!r}: "
+            f"{ROLLED_FORWARD_BY_RATIO} base matched no eligible fact."
+        )
+    latest = max(_period_key(fact) for fact in eligible_matches)
+    base = [fact for fact in eligible_matches if _period_key(fact) == latest]
+    _assert_rolled_forward_base_cells(reference, base)
+    resolved: list[object] = list(base)
+    for operand, selector in zip(
+        reference.value_operands[1:],
+        _rolled_forward_operand_selectors(reference),
+        strict=True,
+    ):
+        matches = [
+            fact
+            for fact in facts
+            if _fact_matches_selector(fact, selector)
+            and _assertion_allowed(reference, fact)
+        ]
+        if len(matches) != 1:
+            raise ValueError(
+                f"Ledger target reference {reference.name!r}: "
+                f"{ROLLED_FORWARD_BY_RATIO} operand {operand.get('role')!r} "
+                f"must resolve exactly once, got {len(matches)} matches."
+            )
+        resolved.append(matches[0])
+    _validated_growth_ratio(reference, base[0], resolved[-2], resolved[-1])
+    return tuple(resolved)
+
+
+def _assert_rolled_forward_base_cells(
+    reference: LedgerTargetReference, base: list[object]
+) -> None:
+    """Require an exact scalar, geography roster, or typed dimension roster.
+
+    Summing whatever matches at the latest period would count a duplicate
+    fact twice and pass a missing district silently.
+    """
+
+    # An explicit null on the base operand falls back to the reference's own
+    # count, as the roster validator does; it never switches the check off.
+    count = reference.value_operands[0].get("expected_member_count")
+    if count is None:
+        count = reference.expected_member_count
+    if count is not None and len(base) != count:
+        raise ValueError(
+            f"Ledger target reference {reference.name!r}: "
+            f"{ROLLED_FORWARD_BY_RATIO} expected {count} base facts, got {len(base)}."
+        )
+    roster = _rolled_forward_grouped_member_roster(reference)
+    if roster:
+        selector = _rolled_forward_base_selector(reference)
+        dimension, members = roster
+        found = [_dimensions(fact).get(dimension) for fact in base]
+        if any(not _fact_matches_selector(fact, selector) for fact in base) or any(
+            sum(_strict_scalar_equal(value, member) for value in found) != 1
+            for member in members
+        ):
+            raise ValueError(
+                f"Ledger target reference {reference.name!r}: "
+                f"{ROLLED_FORWARD_BY_RATIO} base must resolve exactly one fact "
+                f"for each declared typed member of {dimension!r}: {members!r}; "
+                f"got {found!r}."
+            )
+        return
+    declared = None
+    if _rolled_forward_base_overlay(reference):
+        declared = _rolled_forward_base_selector(reference).get("geography_id")
+    if isinstance(declared, (list, tuple)):
+        expected = sorted(str(value) for value in declared)
+        found = sorted(_str_at(fact, "geography", "id") for fact in base)
+        if found != expected:
+            missing = sorted(set(expected) - set(found))
+            repeated = sorted({area for area in found if found.count(area) > 1})
+            raise ValueError(
+                f"Ledger target reference {reference.name!r}: "
+                f"{ROLLED_FORWARD_BY_RATIO} base must resolve exactly one cell "
+                f"for each of its {len(expected)} geographies at its latest "
+                f"period; missing {missing}, repeated {repeated}."
+            )
+        return
+    if len(base) != 1:
+        raise ValueError(
+            f"Ledger target reference {reference.name!r}: "
+            f"{ROLLED_FORWARD_BY_RATIO} base must resolve exactly one cell at "
+            f"its latest period, got {len(base)}."
+        )
+
+
+def _rolled_forward_grouped_member_roster(
+    reference: LedgerTargetReference,
+) -> tuple[str, list[object]] | None:
+    """Validate the narrow, one-geography dimension-member sum contract."""
+
+    prefix = f"LedgerTargetReference {reference.name!r}: {ROLLED_FORWARD_BY_RATIO}"
+    operand_count = reference.value_operands[0].get("expected_member_count")
+    if operand_count is not None and reference.expected_member_count not in (
+        None,
+        operand_count,
+    ):
+        raise ValueError(f"{prefix}: base expected_member_count declarations disagree.")
+    selector = _rolled_forward_base_selector(reference)
+    pins = selector.get("dimension_values")
+    if not isinstance(pins, Mapping):
+        return None
+    rosters = [
+        (str(key), value) for key, value in pins.items() if isinstance(value, list)
+    ]
+    if not rosters:
+        return None
+    if len(rosters) != 1:
+        raise ValueError(f"{prefix}: grouped base requires one typed member roster.")
+    dimension, members = rosters[0]
+    count = (
+        operand_count if operand_count is not None else reference.expected_member_count
+    )
+    if not members or count != len(members):
+        raise ValueError(
+            f"{prefix}: grouped base expected_member_count must equal its explicit "
+            "typed member roster length (base facts only)."
+        )
+    if any(isinstance(member, (Mapping, list, tuple)) for member in members) or any(
+        _strict_scalar_equal(member, previous)
+        for index, member in enumerate(members)
+        for previous in members[:index]
+    ):
+        raise ValueError(
+            f"{prefix}: grouped base typed member roster must be unique scalars."
+        )
+    fixed = (
+        "source_name",
+        "source_measure_id",
+        "source_concept",
+        "entity_name",
+        "record_set_id",
+        "period_type",
+        "period_value",
+        "geography_level",
+        "geography_id",
+        "geography_vintage",
+    )
+    missing = [
+        key
+        for key in fixed
+        if selector.get(key) in (None, "")
+        or isinstance(selector.get(key), (Mapping, list, tuple))
+    ]
+    dimensions = selector.get("dimensions")
+    if (
+        missing
+        or not isinstance(dimensions, list)
+        or len(dimensions) != len(set(dimensions))
+        or set(dimensions) != set(pins)
+    ):
+        raise ValueError(
+            f"{prefix}: grouped base must fix one source, entity, geography, "
+            "record set and source period, and its complete dimension-name set; "
+            f"missing or non-scalar pins {missing!r}."
+        )
+    return dimension, members
+
+
+def _rolled_forward_series_key(fact: object) -> tuple[str, ...]:
+    """What makes two facts one series at two periods.
+
+    Narrower than the selector's period-invariant key on purpose: a publisher
+    issues a period's estimate and the revision of the period before it as
+    separate tables of one release (ONS mid-2025 beside revised mid-2024), so
+    the record set and measure id may differ while the series is the same.
+    """
+
+    return (
+        _source_name(fact),
+        _source_measure_concept(fact),
+        _str_at(fact, "geography", "level"),
+        _str_at(fact, "geography", "id"),
+        _str_at(fact, "entity", "name"),
+        _str_at(fact, "aggregation", "method"),
+        json.dumps(_dimensions(fact), sort_keys=True, separators=(",", ":")),
+        json.dumps(_constraint_rows(fact), sort_keys=True, separators=(",", ":")),
+        _domain(fact),
     )
 
 
@@ -1930,6 +3576,14 @@ def reference_fact_selectors(
         selectors.append(dict(reference.ledger_selector))
     if reference.value_operation == "scaled_by_ratio":
         selectors.extend(_scaled_by_ratio_operand_selectors(reference))
+    if reference.value_operation == CALENDAR_YEAR_WINDOW_SCALED_BY_RATIO:
+        selectors.extend(_window_ratio_operand_selectors(reference))
+    if reference.value_operation == ROLLED_FORWARD_BY_RATIO:
+        if _rolled_forward_base_overlay(reference):
+            selectors.append(_rolled_forward_base_selector(reference))
+        selectors.extend(_rolled_forward_operand_selectors(reference))
+    if reference.value_operation == ALLOCATED_RESIDUAL_BY_RATIO:
+        selectors.extend(_allocation_auxiliary_selectors(reference))
     return tuple(selectors)
 
 
@@ -2279,8 +3933,12 @@ def _monthly_window_source_key(
         _str_at(fact, "observed_measure", "unit"),
         json.dumps(_at(fact, "entity"), sort_keys=True),
         json.dumps(_at(fact, "geography"), sort_keys=True),
-        _normalized_record_set_id(_str_at(fact, "layout", "record_set_id")),
-        _normalized_record_set_id(_str_at(fact, "layout", "record_set_spec_id")),
+        # Neither the record set nor its selector spec id: a publisher can
+        # keep an established spec id on one month (DWP's May 2025 UC cells,
+        # PolicyEngine/chronicle#314) and publish each summed cell as its own
+        # record set (the UC child counts) while the release, raw file and
+        # table above are one. The per-cell series check still pins each
+        # cell to one record set across its months.
         _str_at(fact, "layout", "groupby_dimension"),
         _str_at(fact, "aggregation", "method"),
         _domain(fact),
@@ -2289,10 +3947,19 @@ def _monthly_window_source_key(
                 constraint
                 for constraint in _constraint_rows(fact)
                 if _str_at(constraint, "variable") not in dimensions
+                and _str_at(constraint, "operator") not in _BAND_EDGE_OPERATORS
             ],
             sort_keys=True,
         ),
     )
+
+
+#: A summed cell may be a published band whose edges the publisher also states
+#: as numeric bounds (a single year of age 66 carries ``age >= 66`` and
+#: ``age < 67``). Those edges belong to the cell, like its dimension value, so
+#: they differ between cells; each cell's own months are still compared on
+#: every constraint by the one-series check (microcosm#1069).
+_BAND_EDGE_OPERATORS = frozenset(("<", "<=", ">", ">="))
 
 
 def _resolve_monthly_window_reference_facts(
@@ -2417,6 +4084,56 @@ def _validate_calendar_year_window_reference(
             f"LedgerTargetReference {reference.name!r}: calendar_year_window "
             "requires an explicit calendar-year target period."
         )
+    measure_map = reference.ledger_selector.get(SOURCE_MEASURE_ID_BY_OPENING_YEAR)
+    if SOURCE_TABLE_BY_OPENING_YEAR in reference.ledger_selector:
+        if measure_map is not None:
+            raise ValueError(
+                f"LedgerTargetReference {reference.name!r}: calendar_year_window "
+                f"declares both {SOURCE_MEASURE_ID_BY_OPENING_YEAR!r} and "
+                f"{SOURCE_TABLE_BY_OPENING_YEAR!r}; it maps its years by measure "
+                "or by table, not both."
+            )
+        _validate_table_by_opening_year(reference, "calendar_year_window")
+    if measure_map is None:
+        return
+    for key in ("source_measure_id", "layout_measure_id"):
+        if reference.ledger_selector.get(key) not in (None, ""):
+            raise ValueError(
+                f"LedgerTargetReference {reference.name!r}: calendar_year_window "
+                f"declares both {key!r} and {SOURCE_MEASURE_ID_BY_OPENING_YEAR!r}; "
+                "the map names each year's measure itself."
+            )
+    if _calendar_year_window_series_count(reference) != 1:
+        raise ValueError(
+            f"LedgerTargetReference {reference.name!r}: calendar_year_window "
+            f"reads {SOURCE_MEASURE_ID_BY_OPENING_YEAR!r} as one series; it "
+            "cannot be combined with a list-valued series key or several "
+            "pinned dimension values."
+        )
+    # The map's years are checked against the window when it resolves, not
+    # here: a compile may restamp the reference to another period, and a map
+    # without that period's years then defers like any reference without facts.
+    _measure_id_by_opening_year(measure_map)
+
+
+def _validate_table_by_opening_year(
+    reference: LedgerTargetReference, operation: str
+) -> None:
+    """A window that maps its years to tables names no other table.
+
+    A list-valued ``source_concept`` or ``source_measure_id`` still names
+    several series (OBR's two universal credit cells), each read across the
+    mapped tables. As for the measure map, the years are checked when the
+    window resolves.
+    """
+
+    if reference.ledger_selector.get("source_table") not in (None, ""):
+        raise ValueError(
+            f"LedgerTargetReference {reference.name!r}: {operation} declares both "
+            f"'source_table' and {SOURCE_TABLE_BY_OPENING_YEAR!r}; the map names "
+            "each year's table itself."
+        )
+    _table_by_opening_year(reference.ledger_selector[SOURCE_TABLE_BY_OPENING_YEAR])
 
 
 def _calendar_year_window_opening_year(
@@ -2437,6 +4154,212 @@ def _calendar_year_window_opening_year(
     return period_key[1] // 100
 
 
+def _validate_calendar_year_window_scaled_by_ratio_reference(
+    reference: LedgerTargetReference,
+) -> None:
+    """A window of the reference's own series, then two pinned ratio operands."""
+
+    prefix = (
+        f"LedgerTargetReference {reference.name!r}: "
+        f"{CALENDAR_YEAR_WINDOW_SCALED_BY_RATIO}"
+    )
+    roles = [
+        str(operand.get("role")) if isinstance(operand, Mapping) else ""
+        for operand in reference.value_operands
+    ]
+    if roles != list(SCALED_BY_RATIO_OPERAND_ROLES):
+        raise ValueError(
+            f"{prefix} requires exactly ordered "
+            f"{'/'.join(SCALED_BY_RATIO_OPERAND_ROLES)} operands, got {roles!r}."
+        )
+    if {key for key in reference.value_operands[0] if key != "role"}:
+        raise ValueError(
+            f"{prefix}: the base operand is the reference's own windowed series "
+            "and takes no overrides."
+        )
+    for operand in reference.value_operands[1:]:
+        if "period_type" not in operand or "period_value" not in operand:
+            raise ValueError(
+                f"{prefix}: operand {operand.get('role')!r} must pin its own "
+                "period_type and period_value; the window's years are the "
+                "base's, not the ratio's."
+            )
+        count = operand.get("expected_member_count", 1)
+        if isinstance(count, bool) or not isinstance(count, int) or count <= 0:
+            raise ValueError(
+                f"{prefix}: operand {operand.get('role')!r} "
+                "expected_member_count must be a positive integer."
+            )
+        if not {key for key in operand} - {
+            "period_type",
+            "period_value",
+            *_WINDOW_RATIO_OPERAND_METADATA_KEYS,
+        }:
+            raise ValueError(
+                f"{prefix}: operand {operand.get('role')!r} needs at least one "
+                "selector field besides its period."
+            )
+        members = _window_ratio_member_keys(operand)
+        if (count > 1 or members) and (
+            len(members) != 1
+            or len({str(value) for value in operand[members[0]]}) != count
+            or len(operand[members[0]]) != count
+        ):
+            raise ValueError(
+                f"{prefix}: operand {operand.get('role')!r} sums {count} "
+                "cell(s), so it names them in exactly one list-valued selector "
+                f"field of {count} distinct member(s), got {members!r}."
+            )
+    for operand in reference.value_operands[1:]:
+        if "complement" in operand and (
+            operand.get("role") != "numerator" or operand["complement"] is not True
+        ):
+            raise ValueError(
+                f"{prefix}: only the numerator may declare complement, and only "
+                "as true."
+            )
+    if SOURCE_MEASURE_ID_BY_OPENING_YEAR in reference.ledger_selector:
+        raise ValueError(
+            f"{prefix} reads one series; {SOURCE_MEASURE_ID_BY_OPENING_YEAR!r} is "
+            "refused."
+        )
+    if SOURCE_TABLE_BY_OPENING_YEAR in reference.ledger_selector:
+        _validate_table_by_opening_year(reference, CALENDAR_YEAR_WINDOW_SCALED_BY_RATIO)
+    if reference.period_match_policy != "latest_not_after":
+        raise ValueError(
+            f"{prefix} resolves the two years overlapping the target calendar "
+            "year itself; declare period_match_policy 'latest_not_after' (the "
+            "default)."
+        )
+    period_key = _period_key_from_value(reference.period)
+    if reference.period is None or not period_key[0] or period_key[1] % 100 != 99:
+        raise ValueError(f"{prefix} requires an explicit calendar-year target period.")
+
+
+#: Keys of a window-ratio operand that are not selector fields. A numerator
+#: may declare ``complement``: its cells are taken off the denominator, so
+#: the share is the rest of the published universe (England's chargeable
+#: dwellings less second homes and empty dwellings, microcosm#1095 D14f).
+_WINDOW_RATIO_OPERAND_METADATA_KEYS = frozenset(
+    ("role", "expected_member_count", "label", "complement")
+)
+
+
+def _window_ratio_member_keys(operand: Mapping[str, object]) -> list[str]:
+    """The operand's list-valued selector fields, which name its members."""
+
+    return sorted(
+        str(key)
+        for key, value in operand.items()
+        if key not in _WINDOW_RATIO_OPERAND_METADATA_KEYS
+        and key not in {"dimensions", "dimension_values"}
+        and isinstance(value, (list, tuple))
+    )
+
+
+def _window_ratio_operand_selectors(
+    reference: LedgerTargetReference,
+) -> tuple[Mapping[str, object], ...]:
+    """The numerator and denominator selectors, complete as declared."""
+
+    return tuple(
+        {
+            str(key): value
+            for key, value in operand.items()
+            if key not in _WINDOW_RATIO_OPERAND_METADATA_KEYS
+        }
+        for operand in reference.value_operands[1:]
+    )
+
+
+def _window_ratio_numerator_is_complement(reference: LedgerTargetReference) -> bool:
+    """Whether the numerator's cells are taken off the denominator."""
+
+    return reference.value_operands[1].get("complement") is True
+
+
+def _window_ratio_operand_counts(reference: LedgerTargetReference) -> tuple[int, int]:
+    """How many facts the numerator and the denominator each sum."""
+
+    numerator, denominator = (
+        int(operand.get("expected_member_count", 1))
+        for operand in reference.value_operands[1:]
+    )
+    return numerator, denominator
+
+
+def _window_ratio_window_facts(
+    reference: LedgerTargetReference, facts: tuple[object, ...]
+) -> tuple[object, ...]:
+    """The window's own facts, without the operands that translate it."""
+
+    return facts[: len(facts) - sum(_window_ratio_operand_counts(reference))]
+
+
+def _validate_window_ratio_operand_fact(
+    fact: object, reference: LedgerTargetReference
+) -> None:
+    """A ratio operand is checked against the reference's assertion policy."""
+
+    if not _assertion_allowed(reference, fact):
+        raise ValueError(
+            f"Ledger target reference {reference.name!r} assertion_policy="
+            f"{reference.assertion_policy!r} does not allow ratio operand "
+            f"assertion {_fact_assertion(fact)!r}."
+        )
+
+
+def _resolve_calendar_year_window_scaled_by_ratio_reference_facts(
+    reference: LedgerTargetReference,
+    eligible_matches: list[object],
+    facts: tuple[object, ...],
+) -> tuple[object, ...]:
+    """Resolve the window from the selector and each operand exactly once.
+
+    The window's two years come from the reference's own series, as for
+    ``calendar_year_window``. The numerator and denominator are complete
+    selectors over every fact the compile was given, each pinned at its own
+    period, and each must match exactly its declared number of facts (one
+    unless ``expected_member_count`` says otherwise), which it sums.
+    """
+
+    resolved = list(
+        _resolve_calendar_year_window_reference_facts(reference, eligible_matches)
+    )
+    for operand, selector in zip(
+        reference.value_operands[1:],
+        _window_ratio_operand_selectors(reference),
+        strict=True,
+    ):
+        matches = [fact for fact in facts if _fact_matches_selector(fact, selector)]
+        expected = int(operand.get("expected_member_count", 1))
+        if len(matches) != expected:
+            raise ValueError(
+                f"Ledger target reference {reference.name!r}: "
+                f"{CALENDAR_YEAR_WINDOW_SCALED_BY_RATIO} operand "
+                f"{operand.get('role')!r} matched {len(matches)} facts; expected "
+                f"exactly {expected}."
+            )
+        # Each named member matches exactly once: two facts for one member
+        # and none for another would pass the total alone.
+        for key in _window_ratio_member_keys(operand):
+            for member in operand[key]:
+                hits = sum(
+                    1
+                    for fact in matches
+                    if str(member) in {str(v) for v in _selector_candidates(fact, key)}
+                )
+                if hits != 1:
+                    raise ValueError(
+                        f"Ledger target reference {reference.name!r}: "
+                        f"{CALENDAR_YEAR_WINDOW_SCALED_BY_RATIO} operand "
+                        f"{operand.get('role')!r} member {member!r} of {key!r} "
+                        f"matched {hits} facts; expected exactly one."
+                    )
+        resolved.extend(sorted(matches, key=lambda fact: str(_fact_key(fact))))
+    return tuple(resolved)
+
+
 def _resolve_calendar_year_window_reference_facts(
     reference: LedgerTargetReference,
     eligible_matches: list[object],
@@ -2447,8 +4370,14 @@ def _resolve_calendar_year_window_reference_facts(
     months of the year opening in Y-1 and nine of the year opening in Y. The
     resolver takes both facts from one series identity (one publication, one
     measure, one cell) and refuses a window with either year absent, so a
-    partial window never lands as a value. A selector that names several
-    series (a list-valued ``source_concept``, ``source_measure_id`` or
+    partial window never lands as a value. A selector that maps each year to
+    its own measure (``source_measure_id_by_opening_year``) has matched every
+    fact to the measure its year declares, so those measures form the one
+    series and the measure drops out of its identity. A selector that maps
+    each year to its own table (``source_table_by_opening_year``) does the
+    same for two editions of one publication: the record set, which belongs
+    to its table, drops out of the identity. A selector that names
+    several series (a list-valued ``source_concept``, ``source_measure_id`` or
     ``source_table``) resolves both years of every one of them, so the window
     of a sum of series is the sum of the windowed series; a series short of a
     year refuses the whole window.
@@ -2456,15 +4385,36 @@ def _resolve_calendar_year_window_reference_facts(
 
     target_year = _calendar_year_from_reference(reference)
     wanted = {target_year + offset for offset in CALENDAR_YEAR_WINDOW_WEIGHTS}
+    for map_key, parse_map in (
+        (SOURCE_MEASURE_ID_BY_OPENING_YEAR, _measure_id_by_opening_year),
+        (SOURCE_TABLE_BY_OPENING_YEAR, _table_by_opening_year),
+    ):
+        year_map = reference.ledger_selector.get(map_key)
+        if year_map is None:
+            continue
+        declared = sorted(parse_map(year_map))
+        if declared != sorted(wanted):
+            raise ValueError(
+                f"Ledger target reference {reference.name!r}: calendar_year_window "
+                f"of calendar year {target_year} reads the years opening in "
+                f"{sorted(wanted)}; {map_key!r} maps {declared}."
+            )
     expected_series = _calendar_year_window_series_count(reference)
     partitions: dict[tuple[str, ...], dict[int, list[object]]] = {}
     for fact in eligible_matches:
         opening_year = _calendar_year_window_opening_year(fact, reference)
         if opening_year not in wanted:
             continue
-        partitions.setdefault(_selector_period_invariant_key(fact), {}).setdefault(
-            opening_year, []
-        ).append(fact)
+        series_key = _selector_period_invariant_key(
+            fact,
+            include_measure=(
+                SOURCE_MEASURE_ID_BY_OPENING_YEAR not in reference.ledger_selector
+            ),
+            include_record_set=(
+                SOURCE_TABLE_BY_OPENING_YEAR not in reference.ledger_selector
+            ),
+        )
+        partitions.setdefault(series_key, {}).setdefault(opening_year, []).append(fact)
     complete = {key: years for key, years in partitions.items() if set(years) == wanted}
     if not complete or len(complete) != expected_series:
         present = sorted({year for years in partitions.values() for year in years})
@@ -2490,6 +4440,28 @@ def _resolve_calendar_year_window_reference_facts(
             f"needs both years opening in {sorted(wanted)} from {series_phrase}; "
             f"{len(complete)} of {len(partitions)} matched series carry both."
         )
+    if expected_series > 1:
+        # Each declared member carries exactly one series: two series of one
+        # member and none of another would pass the count alone (the review
+        # of microcosm#1422), as the ratio operands' members are checked.
+        members: dict[tuple[str, ...], int] = {}
+        for years in complete.values():
+            member = _calendar_year_window_member(
+                next(iter(years.values()))[0], reference
+            )
+            members[member] = members.get(member, 0) + 1
+        if len(members) != expected_series or any(
+            count != 1 for count in members.values()
+        ):
+            found = ", ".join(
+                f"{'/'.join(member)} x{count}"
+                for member, count in sorted(members.items())
+            )
+            raise ValueError(
+                f"Ledger target reference {reference.name!r}: calendar_year_window "
+                f"needs one series per declared selector member ({expected_series}); "
+                f"the complete series stand for {found}."
+            )
     resolved: list[object] = []
     for key in sorted(complete):
         years = complete[key]
@@ -2513,22 +4485,74 @@ _CALENDAR_YEAR_WINDOW_SERIES_KEYS = (
 
 
 def _calendar_year_window_series_count(reference: LedgerTargetReference) -> int:
-    """How many series the window composes: one per declared selector member."""
+    """How many series the window composes: one per declared selector member.
 
+    A dimension the selector pins to several values names one series per value,
+    as a list-valued source concept, measure or table does (DfI's Translink
+    receipts by service).
+    """
+
+    selector = reference.ledger_selector or {}
     count = 1
     for key in _CALENDAR_YEAR_WINDOW_SERIES_KEYS:
-        value = (reference.ledger_selector or {}).get(key)
+        value = selector.get(key)
         if isinstance(value, (list, tuple)):
             count *= len(value)
+    for name in _calendar_year_window_listed_dimensions(reference):
+        count *= len(selector["dimension_values"][name])
     return count
 
 
-def _calendar_year_window_series_label(fact: object) -> str:
-    return (
+def _calendar_year_window_member(
+    fact: object, reference: LedgerTargetReference
+) -> tuple[str, ...]:
+    """The declared selector member a series stands for: its value of each
+    list-valued source key and of each dimension pinned to several values."""
+
+    selector = reference.ledger_selector or {}
+    member: list[str] = []
+    for key in _CALENDAR_YEAR_WINDOW_SERIES_KEYS:
+        declared = selector.get(key)
+        if isinstance(declared, (list, tuple)):
+            candidates = {str(value) for value in _selector_candidates(fact, key)}
+            member.append(
+                ",".join(sorted(str(v) for v in declared if str(v) in candidates))
+            )
+    dimensions = _dimensions(fact)
+    for name in _calendar_year_window_listed_dimensions(reference):
+        member.append(f"{name}={dimensions.get(name, '')}")
+    return tuple(member)
+
+
+def _calendar_year_window_listed_dimensions(
+    reference: LedgerTargetReference,
+) -> tuple[str, ...]:
+    """The dimensions the selector pins to several values, in name order."""
+
+    pins = (reference.ledger_selector or {}).get("dimension_values") or {}
+    return tuple(
+        sorted(
+            str(name)
+            for name, value in pins.items()
+            if isinstance(value, (list, tuple)) and len(value) > 1
+        )
+    )
+
+
+def _calendar_year_window_series_label(
+    fact: object, reference: LedgerTargetReference
+) -> str:
+    label = (
         _str_at(fact, "observed_measure", "source_measure_id")
         or _str_at(fact, "layout", "measure_id")
         or _source_measure_concept(fact)
     )
+    listed = _calendar_year_window_listed_dimensions(reference)
+    if not listed:
+        return label
+    dimensions = _dimensions(fact)
+    members = ",".join(f"{name}={dimensions.get(name, '')}" for name in listed)
+    return f"{label}[{members}]"
 
 
 def _calendar_year_window_weights(
@@ -2554,7 +4578,7 @@ def _calendar_year_window_metadata(
         member_key = (
             str(opening_year)
             if series_count == 1
-            else f"{_calendar_year_window_series_label(fact)}@{opening_year}"
+            else f"{_calendar_year_window_series_label(fact, reference)}@{opening_year}"
         )
         members[member_key] = {
             "weight": f"{CALENDAR_YEAR_WINDOW_WEIGHTS[opening_year - target_year]:.15g}",
@@ -2755,11 +4779,177 @@ def _count_mean_fact_role(fact: object) -> str:
     return ""
 
 
+def restamp_reference_period(
+    reference: LedgerTargetReference, period: int | str
+) -> LedgerTargetReference:
+    """The reference measured at another target period.
+
+    A declared ``observation_period`` keeps its offset from the target period:
+    a row that reads DfE's January census after its model year reads the
+    census after the new one. Restamping only ``period`` left every such row
+    on the census it was written for (the review of microcosm#1422). The
+    observation period is read as the reference's match policy reads it
+    (``_shift_observation_period``).
+    """
+
+    if reference.observation_period is None:
+        return replace(reference, period=period)
+    if reference.period is None:
+        raise ValueError(
+            f"LedgerTargetReference {reference.name!r}: an observation_period "
+            "needs a target period to keep its offset from."
+        )
+    shift = _period_year(period) - _period_year(reference.period)
+    return replace(
+        reference,
+        period=period,
+        observation_period=_shift_observation_period(
+            reference.observation_period,
+            shift,
+            period_match_policy=reference.period_match_policy,
+            ledger_selector=reference.ledger_selector,
+        ),
+    )
+
+
+def _observation_period_type(
+    period_match_policy: str, ledger_selector: Mapping[str, Any]
+) -> str:
+    """The period type a match policy reads an observation period under.
+
+    The exact-match path reads it under the selector's ``period_type``. The
+    ``latest_not_after`` cutoff reads it untyped (``_period_key_from_value``),
+    so under a fiscal-year selector "2026-01" is the January 2026 cutoff, not
+    a malformed fiscal year (the fifth review of microcosm#1422).
+    """
+
+    if period_match_policy == "exact":
+        return str(ledger_selector.get("period_type", ""))
+    return ""
+
+
+def _shift_observation_period(
+    observation_period: int | str,
+    years: int,
+    *,
+    period_match_policy: str,
+    ledger_selector: Mapping[str, Any],
+) -> int | str:
+    """``observation_period`` moved ``years``, read as its match policy reads it
+    (``_observation_period_type``).
+
+    A spelling read two ways has no one spelling a year later, so it refuses
+    (the fifth review of microcosm#1422):
+
+    - an exact match without a selector ``period_type`` reads the period under
+      each fact's own type, so "2011-12" is December 2011 to a month fact and
+      2011-12 to a fiscal-year one;
+    - the ``latest_not_after`` cutoff reads it untyped, as December 2011, and
+      compares facts' own spellings untyped. Under a fiscal-year selector it
+      must move to "2012-13" to keep selecting the year's own fact, and under
+      a calendar-year one to "2012-12".
+
+    A spelling the selector's type cannot read ("2026-01" under a fiscal
+    year) is the cutoff's alone.
+    """
+
+    period_type = _observation_period_type(period_match_policy, ledger_selector)
+    if period_match_policy == "exact":
+        readings = () if period_type else ("month", "fiscal_year")
+        why = (
+            "an exact match without a selector period_type reads it as a "
+            "month or as an annual range, by each fact's own type"
+        )
+    else:
+        selector_type = str(ledger_selector.get("period_type", ""))
+        readings = ("", selector_type) if selector_type else ()
+        why = (
+            f"the {period_match_policy} cutoff reads it untyped and the "
+            f"selector's period_type {selector_type!r} reads it otherwise"
+        )
+    parsed = {
+        (key[1], range_end)
+        for (key, _, range_end, _) in (
+            _normalize_period_value(observation_period, declared_type=reading)
+            for reading in readings
+        )
+        if key[0]
+    }
+    if years and len(parsed) > 1:
+        raise ValueError(
+            f"cannot move the period {observation_period!r} by {years} year(s): "
+            f"{why}. A prefixed or four-digit spelling reads one way."
+        )
+    return _shift_period_years(observation_period, years, declared_type=period_type)
+
+
+def _period_year(period: int | str) -> int:
+    parsed, ordinal, _ = _period_key_from_value(period)
+    year = ordinal // 100
+    # The parser reads "FY25" as the year 25, which would move an observation
+    # period by two millennia (the fourth review of microcosm#1422).
+    if not parsed or not 1000 <= year <= 9999:
+        raise ValueError(f"cannot read a four-digit year from the period {period!r}.")
+    return year
+
+
+def _shift_period_years(
+    period: int | str, years: int, *, declared_type: str = ""
+) -> int | str:
+    """The period ``years`` later, in its own spelling.
+
+    The spelling is classified as the ledger's period parser reads it under
+    ``declared_type`` (``_normalize_period_value``; untyped when empty). An
+    annual range (``"2024-25"``, ``"2024-2025"``, ``"fy2024_25"``, and
+    ``"2011-12"`` under an annual type) moves both ends, and a year
+    (``2026``, ``"FY2026"``) or a month (``"2026-01"``, ``"2026-1"``, and
+    ``"2011-12"`` untyped or under ``month``) moves its year. A spelling or
+    year the parser does not read under that type refuses, unless it does
+    not move (the third, fourth and fifth reviews of microcosm#1422).
+    """
+
+    if years == 0:
+        return period
+    text = str(period).strip()
+    (parsed, _, _), _, range_end, _ = _normalize_period_value(
+        text, declared_type=declared_type
+    )
+    if parsed and isinstance(period, int):
+        return period + years
+    if parsed and range_end is not None:
+        ranged = re.fullmatch(r"(\D*)(\d{4})([-_])(\d{2}|\d{4})", text)
+        if ranged:
+            start = int(ranged.group(2)) + years
+            end = start + 1 if len(ranged.group(4)) == 4 else (start + 1) % 100
+            width = len(ranged.group(4))
+            return f"{ranged.group(1)}{start}{ranged.group(3)}{end:0{width}d}"
+    elif parsed:
+        dated = re.fullmatch(r"(\D*)(\d{4})((?:[-_]\d{1,2})?)", text)
+        if dated:
+            return f"{dated.group(1)}{int(dated.group(2)) + years}{dated.group(3)}"
+    raise ValueError(f"cannot move the period {period!r} by {years} year(s).")
+
+
+def _selection_period(reference: LedgerTargetReference) -> int | str | None:
+    """The period a reference selects its facts at: its observation period if
+    it declares one, else its target period."""
+
+    if reference.observation_period is not None:
+        return reference.observation_period
+    return reference.period
+
+
+def _selection_period_label(reference: LedgerTargetReference) -> str:
+    if reference.observation_period is not None:
+        return "observation period"
+    return "target period"
+
+
 def _eligible_selector_matches(
     reference: LedgerTargetReference,
     matches: list[object],
 ) -> list[object]:
-    target_period_key = _period_key_from_value(reference.period)
+    target_period_key = _period_key_from_value(_selection_period(reference))
     if reference.period_match_policy == "source_window":
         return [
             fact
@@ -2847,18 +5037,19 @@ def _validate_reference_period(fact: object, reference: LedgerTargetReference) -
         return
     if reference.period_match_policy != "exact":
         if not _not_after_target_period(
-            _period_key(fact), _period_key_from_value(reference.period)
+            _period_key(fact), _period_key_from_value(_selection_period(reference))
         ):
             raise ValueError(
                 f"Ledger target reference {reference.name!r} requires a fact "
-                f"at or before target period {reference.period!r}, but resolved "
+                f"at or before {_selection_period_label(reference)} "
+                f"{_selection_period(reference)!r}, but resolved "
                 f"fact period {_at(fact, 'period', 'value')!r}."
             )
         return
     if not _exact_period_matches(fact, reference):
         raise ValueError(
             f"Ledger target reference {reference.name!r} requires exact period "
-            f"{reference.period!r}, but resolved fact period "
+            f"{_selection_period(reference)!r}, but resolved fact period "
             f"{_at(fact, 'period', 'type')!r}:"
             f"{_at(fact, 'period', 'value')!r}. A period mismatch must resolve "
             "through a Ledger source_projection at the target period, never "
@@ -2882,7 +5073,7 @@ def _latest_period_selector_match(
     if len(semantic_keys) != 1:
         return None
 
-    target_period_key = _period_key_from_value(reference.period)
+    target_period_key = _period_key_from_value(_selection_period(reference))
     best: tuple[int, int, str] | None = None
     best_matches: list[object] = []
     for fact in matches:
@@ -2901,17 +5092,25 @@ def _latest_period_selector_match(
     return None
 
 
-def _selector_period_invariant_key(fact: object) -> tuple[str, ...]:
+def _selector_period_invariant_key(
+    fact: object, *, include_measure: bool = True, include_record_set: bool = True
+) -> tuple[str, ...]:
     return (
         _source_name(fact),
-        _str_at(fact, "observed_measure", "source_measure_id")
-        or _str_at(fact, "layout", "measure_id"),
+        (
+            _str_at(fact, "observed_measure", "source_measure_id")
+            or _str_at(fact, "layout", "measure_id")
+        )
+        if include_measure
+        else "",
         _source_measure_concept(fact),
         _str_at(fact, "geography", "level"),
         _str_at(fact, "geography", "id"),
         _str_at(fact, "entity", "name"),
         _str_at(fact, "aggregation", "method"),
-        _normalized_record_set_id(_str_at(fact, "layout", "record_set_id")),
+        _normalized_record_set_id(_str_at(fact, "layout", "record_set_id"))
+        if include_record_set
+        else "",
         _str_at(fact, "layout", "groupby_dimension"),
         _normalized_period_bearing_id(_str_at(fact, "layout", "groupby_value_id")),
         json.dumps(_dimensions(fact), sort_keys=True, separators=(",", ":")),
@@ -2971,8 +5170,16 @@ def _strip_trailing_vintage_year(piece: str) -> str:
     return match.group(1) if match else piece
 
 
+#: A numeric month beside its year (``03_2025``, ``2025-03``) in a layout value:
+#: ONS's June 2026 public sector employment edition keys its quarter rows so,
+#: where the March 2026 edition wrote ``dec2024`` (microcosm#1123).
+_NUMERIC_MONTH_YEAR = re.compile(
+    r"^(?:(?:0[1-9]|1[0-2])[_-]?(?:19|20)[0-9]{2}|(?:19|20)[0-9]{2}[_-]?(?:0[1-9]|1[0-2]))$"
+)
+
+
 def _normalized_period_bearing_id(value: str) -> str:
-    if _is_period_token(value):
+    if _is_period_token(value) or _NUMERIC_MONTH_YEAR.match(value.strip().lower()):
         return ""
     return _normalized_record_set_part(value)
 
@@ -3054,7 +5261,7 @@ def _period_key(fact: object) -> tuple[int, int, str]:
 def _exact_period_matches(fact: object, reference: LedgerTargetReference) -> bool:
     """Match exact periods by semantic value while retaining period-kind pins."""
 
-    expected_value = reference.period
+    expected_value = _selection_period(reference)
     actual_value = _comparable_period_value(fact)
     actual_type = _str_at(fact, "period", "type")
     selector_type = str(reference.ledger_selector.get("period_type", ""))
@@ -3239,6 +5446,8 @@ def _reference_metadata(reference: LedgerTargetReference) -> dict[str, str]:
     metadata["ledger_value_operation"] = reference.value_operation
     metadata["ledger_assertion_policy"] = reference.assertion_policy
     metadata["ledger_period_match_policy"] = reference.period_match_policy
+    if reference.observation_period is not None:
+        metadata["ledger_observation_period"] = str(reference.observation_period)
     if reference.value_operation in MONTHLY_WINDOW_OPERATIONS:
         months = _declared_source_months(reference)
         metadata["ledger_source_months"] = json.dumps(months, separators=(",", ":"))
@@ -3253,6 +5462,16 @@ def _reference_metadata(reference: LedgerTargetReference) -> dict[str, str]:
         metadata["ledger_value_formula"] = "minuend - subtrahend"
     if reference.value_operation == "scaled_by_ratio":
         metadata["ledger_value_formula"] = "base * numerator / denominator"
+    if reference.value_operation == ALLOCATED_RESIDUAL_BY_RATIO:
+        metadata["ledger_value_formula"] = (
+            "(base + (total - partition) * recipient_base / recipients) * growth"
+        )
+    if reference.value_operation == CALENDAR_YEAR_WINDOW_SCALED_BY_RATIO:
+        target_year = _calendar_year_from_reference(reference)
+        metadata["ledger_value_formula"] = (
+            f"(3/12 * FY{target_year - 1} + 9/12 * FY{target_year}) "
+            "* numerator / denominator"
+        )
     if reference.value_operation == "linear_combination":
         metadata["ledger_value_formula"] = _linear_combination_formula(reference)
     if reference.value_operation == "calendar_year_window":
@@ -3355,6 +5574,14 @@ def _fact_matches_selector(fact: object, selector: Mapping[str, object]) -> bool
             if not _dimension_values_match(fact, expected):
                 return False
             continue
+        if key == SOURCE_MEASURE_ID_BY_OPENING_YEAR:
+            if not _measure_by_opening_year_matches(fact, expected):
+                return False
+            continue
+        if key == SOURCE_TABLE_BY_OPENING_YEAR:
+            if not _table_by_opening_year_matches(fact, expected):
+                return False
+            continue
         if expected is None or expected == "":
             continue
         candidates = _selector_candidates(fact, str(key))
@@ -3382,7 +5609,12 @@ def fact_matches_selector(fact: object, selector: Mapping[str, object]) -> bool:
 def selector_field_is_supported(key: str) -> bool:
     """Whether ``key`` is in the closed selector vocabulary."""
 
-    if key in {"dimensions", "dimension_values"}:
+    if key in {
+        "dimensions",
+        "dimension_values",
+        SOURCE_MEASURE_ID_BY_OPENING_YEAR,
+        SOURCE_TABLE_BY_OPENING_YEAR,
+    }:
         return True
     try:
         _selector_candidates({}, key)
@@ -3446,6 +5678,69 @@ def _selector_candidates(fact: object, key: str) -> tuple[str, ...]:
     raise ValueError(f"Unsupported Ledger fact selector field {key!r}.")
 
 
+def _measure_id_by_opening_year(expected: object) -> dict[int, str]:
+    """Parse a year-to-measure map: four-digit opening years to measure ids."""
+
+    return _by_opening_year(SOURCE_MEASURE_ID_BY_OPENING_YEAR, expected, "measure id")
+
+
+def _table_by_opening_year(expected: object) -> dict[int, str]:
+    """Parse a year-to-table map: four-digit opening years to source tables."""
+
+    return _by_opening_year(SOURCE_TABLE_BY_OPENING_YEAR, expected, "source table")
+
+
+def _by_opening_year(field: str, expected: object, noun: str) -> dict[int, str]:
+    if not isinstance(expected, Mapping) or not expected:
+        raise ValueError(
+            f"Ledger fact selector field {field!r} must be a non-empty mapping "
+            f"of opening year to {noun}."
+        )
+    by_year: dict[int, str] = {}
+    for year, value in expected.items():
+        year_text = str(year)
+        if (
+            isinstance(year, bool)
+            or len(year_text) != 4
+            or not year_text.isdigit()
+            or not isinstance(value, str)
+            or not value
+        ):
+            raise ValueError(
+                f"Ledger fact selector field {field!r} maps {year!r} to "
+                f"{value!r}; expected a four-digit opening year and a non-blank "
+                f"{noun}."
+            )
+        by_year[int(year_text)] = value
+    return by_year
+
+
+def _measure_by_opening_year_matches(fact: object, expected: object) -> bool:
+    """Match an annual fact only to the measure its own opening year declares."""
+
+    return _matches_its_opening_year(
+        fact, _measure_id_by_opening_year(expected), "source_measure_id"
+    )
+
+
+def _table_by_opening_year_matches(fact: object, expected: object) -> bool:
+    """Match an annual fact only to the table its own opening year declares."""
+
+    return _matches_its_opening_year(
+        fact, _table_by_opening_year(expected), "source_table"
+    )
+
+
+def _matches_its_opening_year(
+    fact: object, by_year: Mapping[int, str], field: str
+) -> bool:
+    period_key = _period_key(fact)
+    if not period_key[0] or period_key[1] % 100 != 99:
+        return False
+    declared = by_year.get(period_key[1] // 100)
+    return declared is not None and declared in _selector_candidates(fact, field)
+
+
 def _dimensions_match(fact: object, expected: object) -> bool:
     if isinstance(expected, list):
         expected_names = {str(name) for name in expected}
@@ -3501,7 +5796,9 @@ def _dimension_values_match(fact: object, expected: object) -> bool:
 
 
 def _strict_scalar_equal(actual: object, expected: object) -> bool:
-    return type(actual) is type(expected) and actual == expected
+    actual_type = float if type(actual) is LexicalFloat else type(actual)
+    expected_type = float if type(expected) is LexicalFloat else type(expected)
+    return actual_type is expected_type and actual == expected
 
 
 def _measure_concepts(fact: object) -> tuple[str, ...]:

@@ -1,0 +1,316 @@
+{
+ "purpose": "Which archived CensusCPS loader revision reproduces the pinned census_cps_2024.h5? Each rebuilt asecpub25csv.zip (downloaded live, sha256 318845a2...) and was compared table by table (pandas assert_frame_equal, check_exact=True) with the pinned file.",
+ "controls": [
+  {
+   "loader": "42ed5d45 (archived head)",
+   "run": {
+    "income_year": 2024,
+    "output": "<scratch>/build/control_2024/census_cps_2024.h5",
+    "output_sha256": "f748f03f0e76df622fb27df7ac4df1133e294087f5e22a0e09bd34eb032df903",
+    "output_bytes": 331953991,
+    "download": {
+     "url": "https://www2.census.gov/programs-surveys/cps/datasets/2025/march/asecpub25csv.zip",
+     "sha256": "318845a2b5e0034eb2973898de1738f4df0025727de38499e7669cb9c0deef0b",
+     "bytes": 147271429,
+     "last_modified": "Tue, 09 Sep 2025 13:26:40 GMT",
+     "etag": null
+    },
+    "loader_commit": "42ed5d45c56df80d754fbe24cce21cfeb8d05cbe",
+    "loader_dirty": "",
+    "python": "3.14.7",
+    "pandas": "2.3.3",
+    "tables": "3.11.1",
+    "numpy": "2.4.3",
+    "policyengine_core": null
+   },
+   "pinned_file": "census_cps_2024.h5 (sha256 ec36604c...)",
+   "tables_vs_pinned": {
+    "/family": {
+     "frame_equal_exact": true,
+     "shape": [
+      [
+       62479,
+       85
+      ],
+      [
+       62479,
+       85
+      ]
+     ],
+     "only_rebuilt": [],
+     "only_pinned": []
+    },
+    "/household": {
+     "frame_equal_exact": true,
+     "shape": [
+      [
+       55762,
+       157
+      ],
+      [
+       55762,
+       157
+      ]
+     ],
+     "only_rebuilt": [],
+     "only_pinned": []
+    },
+    "/person": {
+     "frame_equal_exact": false,
+     "shape": [
+      [
+       142125,
+       162
+      ],
+      [
+       142125,
+       169
+      ]
+     ],
+     "only_rebuilt": [
+      "ED_VAL",
+      "FIN_VAL",
+      "NOW_GRPFTYP",
+      "NOW_HIPAID",
+      "NOW_OWNGRP",
+      "PERRP",
+      "SRVS_VAL"
+     ],
+     "only_pinned": []
+    },
+    "/spm_unit": {
+     "frame_equal_exact": true,
+     "shape": [
+      [
+       58147,
+       39
+      ],
+      [
+       58147,
+       39
+      ]
+     ],
+     "only_rebuilt": [],
+     "only_pinned": []
+    },
+    "/tax_unit": {
+     "frame_equal_exact": true,
+     "shape": [
+      [
+       74697,
+       1
+      ],
+      [
+       74697,
+       1
+      ]
+     ],
+     "only_rebuilt": [],
+     "only_pinned": []
+    }
+   }
+  },
+  {
+   "loader": "40314a75 (#824)",
+   "run": {
+    "income_year": 2024,
+    "output": "<scratch>/build/loader_40314a75/census_cps_2024.h5",
+    "output_sha256": "7c96fc77c06222522a83e1ba178c4a4bc62b775ddadc870ad8e4ed4dafb0ad3d",
+    "output_bytes": 323994739,
+    "download": {
+     "url": "https://www2.census.gov/programs-surveys/cps/datasets/2025/march/asecpub25csv.zip",
+     "sha256": "318845a2b5e0034eb2973898de1738f4df0025727de38499e7669cb9c0deef0b",
+     "bytes": 147271429,
+     "last_modified": "Tue, 09 Sep 2025 13:26:40 GMT",
+     "etag": null
+    },
+    "loader_commit": "40314a759aafa9cf71b2073eab532e1059b5034f",
+    "loader_dirty": "",
+    "python": "3.14.7",
+    "pandas": "2.3.3",
+    "tables": "3.11.1",
+    "numpy": "2.4.3",
+    "policyengine_core": null
+   },
+   "pinned_file": "census_cps_2024.h5 (sha256 ec36604c...)",
+   "tables_vs_pinned": {
+    "/family": {
+     "frame_equal_exact": true,
+     "shape": [
+      [
+       62479,
+       85
+      ],
+      [
+       62479,
+       85
+      ]
+     ],
+     "only_rebuilt": [],
+     "only_pinned": []
+    },
+    "/household": {
+     "frame_equal_exact": true,
+     "shape": [
+      [
+       55762,
+       157
+      ],
+      [
+       55762,
+       157
+      ]
+     ],
+     "only_rebuilt": [],
+     "only_pinned": []
+    },
+    "/person": {
+     "frame_equal_exact": true,
+     "shape": [
+      [
+       142125,
+       162
+      ],
+      [
+       142125,
+       162
+      ]
+     ],
+     "only_rebuilt": [],
+     "only_pinned": []
+    },
+    "/spm_unit": {
+     "frame_equal_exact": true,
+     "shape": [
+      [
+       58147,
+       39
+      ],
+      [
+       58147,
+       39
+      ]
+     ],
+     "only_rebuilt": [],
+     "only_pinned": []
+    },
+    "/tax_unit": {
+     "frame_equal_exact": true,
+     "shape": [
+      [
+       74697,
+       1
+      ],
+      [
+       74697,
+       1
+      ]
+     ],
+     "only_rebuilt": [],
+     "only_pinned": []
+    }
+   }
+  },
+  {
+   "loader": "cabe62d2",
+   "run": {
+    "income_year": 2024,
+    "output": "<scratch>/build/loader_cabe62d2/census_cps_2024.h5",
+    "output_sha256": "32b8c958468bd27054428377403d191c90d6c01f3eacdfc682b2f245ac491ced",
+    "output_bytes": 323994739,
+    "download": {
+     "url": "https://www2.census.gov/programs-surveys/cps/datasets/2025/march/asecpub25csv.zip",
+     "sha256": "318845a2b5e0034eb2973898de1738f4df0025727de38499e7669cb9c0deef0b",
+     "bytes": 147271429,
+     "last_modified": "Tue, 09 Sep 2025 13:26:40 GMT",
+     "etag": null
+    },
+    "loader_commit": "cabe62d255a02091cfb8f2dd43cac9a975065f1d",
+    "loader_dirty": "",
+    "python": "3.14.7",
+    "pandas": "2.3.3",
+    "tables": "3.11.1",
+    "numpy": "2.4.3",
+    "policyengine_core": null
+   },
+   "pinned_file": "census_cps_2024.h5 (sha256 ec36604c...)",
+   "tables_vs_pinned": {
+    "/family": {
+     "frame_equal_exact": true,
+     "shape": [
+      [
+       62479,
+       85
+      ],
+      [
+       62479,
+       85
+      ]
+     ],
+     "only_rebuilt": [],
+     "only_pinned": []
+    },
+    "/household": {
+     "frame_equal_exact": true,
+     "shape": [
+      [
+       55762,
+       157
+      ],
+      [
+       55762,
+       157
+      ]
+     ],
+     "only_rebuilt": [],
+     "only_pinned": []
+    },
+    "/person": {
+     "frame_equal_exact": true,
+     "shape": [
+      [
+       142125,
+       162
+      ],
+      [
+       142125,
+       162
+      ]
+     ],
+     "only_rebuilt": [],
+     "only_pinned": []
+    },
+    "/spm_unit": {
+     "frame_equal_exact": true,
+     "shape": [
+      [
+       58147,
+       39
+      ],
+      [
+       58147,
+       39
+      ]
+     ],
+     "only_rebuilt": [],
+     "only_pinned": []
+    },
+    "/tax_unit": {
+     "frame_equal_exact": true,
+     "shape": [
+      [
+       74697,
+       1
+      ],
+      [
+       74697,
+       1
+      ]
+     ],
+     "only_rebuilt": [],
+     "only_pinned": []
+    }
+   }
+  }
+ ]
+}

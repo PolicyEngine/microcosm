@@ -1,0 +1,1 @@
+The `dwp.uc.households_housing_element` measure exclusion is renewed for one month, to 2026-11-14 (microcosm#882; renewed by juaristi22 on 2026-10-14 for the microcosm#1124 local release): the model still has no other/unknown tenure, so DWP's any-tenure housing-element count stays structurally above the bound social and private tenure rows.

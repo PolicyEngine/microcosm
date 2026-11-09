@@ -1,0 +1,1 @@
+Install microcosm-emitter 0.2.1 from PyPI instead of an unreleased Git commit. The release includes the bounded service startup and telemetry and graph-publication concurrency fixes that the previous pin lacked.

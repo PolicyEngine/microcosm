@@ -13,14 +13,31 @@ is listed with its sha256 in a receipt written next to it.
 Check (cheap, the default; builds the image, verifies the clone and that
 the plan's branch contains its commit, the environment, the tool's own
 argument parser on the built argv, every input digest, the run's prior
-state against its latest receipt, its attempts and budget, without running
-the stage)::
+state against its latest receipt, its attempts and budget, and, for a stage
+that declares how much state it mirrors, the runs volume's write rate,
+without running the stage)::
 
     MICROCOSM_MODAL_PLAN=plan.json modal run tools/modal_us_stage.py
 
 Run the stage (paid; sized per stage in the plan module)::
 
-    MICROCOSM_MODAL_PLAN=plan.json modal run --detach tools/modal_us_stage.py --run
+    MICROCOSM_MODAL_PLAN=plan.json modal run --detach tools/modal_us_stage.py --run --spawn
+
+``--spawn`` returns once the stage is spawned; ``--run`` alone waits on it
+(see ``main``).
+
+With ``--run``, the launch first runs this machine's ``microcosm-emitter
+telemetry-token``, which exchanges the operator's Hugging Face login for a
+collector token that only writes telemetry and lasts the stage's class
+timeout plus an hour. It reaches the container in a Modal secret made for
+this launch, never in the plan, and the stage's build gets it so that its
+emitter can send telemetry; no Hugging Face credential reaches the build.
+The launch refuses, launching nothing, when the token cannot be obtained or
+is shorter than asked for. A plan with ``MICROCOSM_TELEMETRY_REQUIRED=0``
+in its env asks for none, and its build runs without telemetry. That
+opt-out exists only for people outside PolicyEngine who run Microcosm
+without access to the collector; PolicyEngine's own plans keep telemetry
+required.
 
 Set ``MICROCOSM_MODAL_HF_SECRET=<modal secret name>`` only when an input
 lives in a gated or private Hugging Face repo; public releases need no
@@ -43,7 +60,7 @@ import tempfile
 import threading
 import time
 from datetime import UTC, datetime
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 import modal
 
@@ -57,6 +74,13 @@ PLAN_ENV = "MICROCOSM_MODAL_PLAN"
 HF_SECRET_ENV = "MICROCOSM_MODAL_HF_SECRET"
 APP_NAME = "microcosm-us-stage"
 PLAN_MODULE_REMOTE = "/root/modal_us_stage_plan.py"
+#: Beside the plan module's copy, where that copy looks for it first
+#: (``plan_lib.minimum_emitter_version_file``).
+MINIMUM_EMITTER_VERSION_REMOTE = str(
+    PurePosixPath(PLAN_MODULE_REMOTE).with_name(
+        plan_lib.MINIMUM_EMITTER_VERSION_FILENAME
+    )
+)
 
 
 def _local_plan() -> tuple[dict, plan_lib.Plan] | None:
@@ -81,28 +105,38 @@ _LOADED = _local_plan()
 def _image() -> modal.Image:
     image = (
         modal.Image.debian_slim(python_version=plan_lib.IMAGE_PYTHON_VERSION)
-        .apt_install("git", "build-essential")
+        # Naming ca-certificates upgrades the base image's copy to the
+        # distribution's current release, which drops the compromised
+        # eMudhra roots; git's GitHub fetch and the stdlib's ssl module
+        # verify against that system CA store.
+        .apt_install("git", "build-essential", "ca-certificates")
+        # The cached base's pip 25.3 still trusts emSign ECC Root CA - G3
+        # through its own certifi, whatever the system CA store holds
+        # (plan_lib.IMAGE_PIP_VERSION). Replace it with the hash-pinned pip
+        # 26.2.2 before pip downloads anything else.
+        .run_commands(plan_lib.image_pip_bootstrap_command())
         # The runner itself (not the build) runs on the image's interpreter;
         # it needs the Hub client to stage hf:// inputs. The build runs in
         # IMAGE_VENV, synced from the pinned tree's own lock.
         .pip_install(
             f"uv=={plan_lib.IMAGE_UV_VERSION}",
             f"huggingface_hub=={plan_lib.RUNNER_HF_HUB_VERSION}",
+            f"certifi>={plan_lib.RUNNER_CERTIFI_MINIMUM_VERSION}",
         )
-        .env(
-            {
-                "UV_PROJECT_ENVIRONMENT": plan_lib.IMAGE_VENV,
-                "UV_PYTHON_DOWNLOADS": "never",
-                "UV_LINK_MODE": "copy",
-                "PYTHONDONTWRITEBYTECODE": "1",
-            }
-        )
+        .env(dict(plan_lib.IMAGE_ENVIRONMENT))
     )
     if _LOADED is not None:
         _, plan = _LOADED
         image = image.run_commands(*plan_lib.image_build_commands(plan))
         image = image.add_local_file(
             str(_HERE / "modal_us_stage_plan.py"), PLAN_MODULE_REMOTE
+        )
+        # The launching checkout's emitter floor, beside the plan module's
+        # copy, which has no checkout around it: the check, which runs in the
+        # container, reports the install step from it.
+        image = image.add_local_file(
+            str(plan_lib.minimum_emitter_version_file()),
+            MINIMUM_EMITTER_VERSION_REMOTE,
         )
     return image
 
@@ -137,6 +171,9 @@ def _git(*parts: str) -> str:
 def _git_state(plan: plan_lib.Plan) -> dict[str, object]:
     head = _git("rev-parse", "HEAD")
     clean = _git("status", "--porcelain") == ""
+    # Files of the pinned tree the tool reads by path (the base's district
+    # crosswalk), hashed against the registration.
+    tree_files = plan_lib.tree_file_rows(plan.tool, plan_lib.IMAGE_REPO_ROOT)
     return {
         "head": head,
         "head_matches_plan": head == plan.commit,
@@ -145,6 +182,8 @@ def _git_state(plan: plan_lib.Plan) -> dict[str, object]:
         **_verify_branch(plan),
         "tool_present": plan.tool.script is None
         or (Path(plan_lib.IMAGE_REPO_ROOT) / plan.tool.script).is_file(),
+        "tree_files": tree_files,
+        "tree_files_verified": not any("problem" in row for row in tree_files),
     }
 
 
@@ -195,13 +234,17 @@ def _verify_branch(plan: plan_lib.Plan) -> dict[str, object]:
         shutil.rmtree(scratch, ignore_errors=True)
 
 
-def _runner_identity() -> dict[str, object]:
-    identity: dict[str, object] = {
-        "python": sys.version.split()[0],
-        # Platform and CPU visibility, for comparing a Modal run with a local
-        # one: BLAS and OpenMP size their thread pools from what they see.
-        "platform": platform.platform(),
-        "machine": platform.machine(),
+def _cpu_visibility() -> dict[str, object]:
+    """What this container shows a tool that sizes its pools from the CPUs.
+
+    The base's pinned tool sizes its primary-QRF predict pool from
+    ``os.cpu_count()`` when POPULACE_FIT_PREDICT_WORKERS is unset (4b57d15a2
+    microcosm-fit qrf.py ``_predict_workers``), and BLAS and OpenMP read the
+    ``*_NUM_THREADS`` variables. ``nproc`` is no measure of the first: GNU
+    nproc takes OMP_NUM_THREADS as its minimum.
+    """
+
+    return {
         "os_cpu_count": os.cpu_count(),
         "cpu_affinity": len(os.sched_getaffinity(0))
         if hasattr(os, "sched_getaffinity")
@@ -211,6 +254,79 @@ def _runner_identity() -> dict[str, object]:
             for key, value in sorted(os.environ.items())
             if key.endswith("_NUM_THREADS")
         },
+    }
+
+
+def _emitter_version() -> plan_lib.EmitterVersionAnswer | None:
+    """The installed emitter's ``version`` answer, or None if it does not run.
+
+    It runs without the runner's credentials or the collector token, which
+    ``version`` does not need.
+    """
+
+    try:
+        answer = subprocess.run(
+            [plan_lib.IMAGE_EMITTER_COMMAND, "version"],
+            capture_output=True,
+            text=True,
+            timeout=60,
+            env=plan_lib.emitter_query_environment(os.environ),
+        )
+        version = json.loads(answer.stdout) if answer.returncode == 0 else None
+    except (OSError, subprocess.SubprocessError, ValueError):
+        return None
+    return version if isinstance(version, dict) else None
+
+
+def _emitter_status(env: dict[str, str]) -> plan_lib.UndeliveredEventsRecord:
+    """What the image emitter's ``status`` reports, as the receipt records it.
+
+    The runner calls this once the tool has exited and its output has ended:
+    the emitter the build started holds that output until it has delivered
+    what it could and stopped, so by then its event queue file is final.
+    ``status`` reads that file read-only and prints each run in it; the
+    runner never reads the file itself. It runs without
+    ``--event-queue-file``, in the tool's environment ``env`` without
+    credentials or the collector token, so the emitter's default path is the
+    one the build computed. A failure is recorded as a problem line and
+    never raises.
+    """
+
+    try:
+        answer = subprocess.run(
+            [plan_lib.IMAGE_EMITTER_COMMAND, "status"],
+            capture_output=True,
+            text=True,
+            errors="replace",
+            timeout=plan_lib.EMITTER_STATUS_TIMEOUT_SECONDS,
+            env=plan_lib.emitter_query_environment(env),
+        )
+    except subprocess.TimeoutExpired:
+        return plan_lib.undelivered_events_problem(
+            "`microcosm-emitter status` did not answer within "
+            f"{plan_lib.EMITTER_STATUS_TIMEOUT_SECONDS} s"
+        )
+    except (OSError, subprocess.SubprocessError) as error:
+        return plan_lib.undelivered_events_problem(
+            f"`microcosm-emitter status` could not run ({type(error).__name__})"
+        )
+    return plan_lib.undelivered_events_from_status(
+        answer.returncode, answer.stdout, answer.stderr
+    )
+
+
+def _runner_identity() -> dict[str, object]:
+    identity: dict[str, object] = {
+        "python": sys.version.split()[0],
+        # The separately installed emitter the build starts for telemetry and
+        # staging hand-overs; the image installs the newest release.
+        "microcosm_emitter": _emitter_version(),
+        # Platform and CPU visibility, for comparing a Modal run with a local
+        # one: BLAS, OpenMP and the base's QRF pool size their thread pools
+        # from what they see.
+        "platform": platform.platform(),
+        "machine": platform.machine(),
+        **_cpu_visibility(),
     }
     for name, path in {
         "modal_us_stage_plan.py": PLAN_MODULE_REMOTE,
@@ -314,7 +430,10 @@ import importlib.util, json, sys
 spec = importlib.util.spec_from_file_location("stage_tool", sys.argv[1])
 module = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(module)
-args = getattr(module, sys.argv[2])(sys.argv[3:])
+parser = module
+for name in sys.argv[2].split("."):
+    parser = getattr(parser, name)
+args = parser(sys.argv[3:])
 print(json.dumps({"stages": list(getattr(args, "stages", [])) or None}))
 """
 
@@ -347,26 +466,89 @@ def _parse_check(
     }
 
 
-class _BudgetWatch(threading.Thread):
-    """Stop the tool once the plan's max_wall_seconds has passed."""
+def _write_probe(plan: plan_lib.Plan) -> dict[str, object]:
+    """Time a copy of WRITE_PROBE_BYTES to the runs volume, and its commit.
 
-    def __init__(self, proc: subprocess.Popen, max_wall_seconds: int | None) -> None:
+    Only for a stage that declares ``mirrored_state_gib`` (the base). The
+    copy is the one the runner's push makes (``plan_lib.copy_hashed`` to a
+    temporary name, then a rename) followed by ``runs_volume.commit()``; the
+    probe file is deleted afterwards, outside every run's directory.
+    """
+
+    stage = plan.stage_spec
+    if stage.mirrored_state_gib is None:
+        return plan_lib.write_probe_verdict(stage, 0, 0.0)
+    local = Path(plan_lib.WORK_ROOT) / "write-probe" / "probe.bin"
+    local.parent.mkdir(parents=True, exist_ok=True)
+    chunk = 8 * 1024 * 1024
+    with open(local, "wb") as handle:
+        for _ in range(max(1, plan_lib.WRITE_PROBE_BYTES // chunk)):
+            handle.write(os.urandom(chunk))
+    probe_dir = Path(plan_lib.RUNS_MOUNT) / "write-probes"
+    target = (
+        probe_dir / f"{_modal_ids().get('input_id') or 'local'}-{time.time_ns()}.bin"
+    )
+    tmp = target.with_name(f".{target.name}{plan_lib.MIRROR_PARTIAL_SUFFIX}")
+    try:
+        probe_dir.mkdir(parents=True, exist_ok=True)
+        started = time.monotonic()
+        _, size = plan_lib.copy_hashed(local, tmp)
+        os.replace(tmp, target)
+        runs_volume.commit()
+        seconds = time.monotonic() - started
+        verdict = plan_lib.write_probe_verdict(stage, size, seconds)
+    except Exception as error:  # noqa: BLE001 - reported as a check problem
+        verdict = {"problem": f"write probe failed: {type(error).__name__}: {error}"}
+    finally:
+        for path in (tmp, target, local):
+            path.unlink(missing_ok=True)
+        try:
+            runs_volume.commit()
+        except Exception as error:  # noqa: BLE001 - the probe's result stands
+            print(f"write probe cleanup commit failed: {error}", flush=True)
+    return verdict
+
+
+class _BudgetWatch(threading.Thread):
+    """Stop the tool once the plan's max_wall_seconds has passed.
+
+    The tool runs in its own process group (``process_group=0``), and the
+    whole group is stopped: a tool that runs stages as child interpreters
+    must not leave one running behind the hashing and mirroring.
+
+    The runner reads the tool's output to its end before it sets ``done``,
+    and the emitter a build starts (in its own session, so outside the
+    group) holds that output while it delivers its last events, for up to
+    about EMITTER_DRAIN_SECONDS after the build exits. A tool that has
+    exited and left nothing in its group finished before its budget: the
+    watch stops nothing and does not mark the stage stopped at the budget.
+    """
+
+    def __init__(
+        self,
+        proc: subprocess.Popen,
+        max_wall_seconds: int | None,
+        grace_seconds: float = plan_lib.STOP_GRACE_SECONDS,
+    ) -> None:
         super().__init__(daemon=True)
         self.proc = proc
         self.max_wall_seconds = max_wall_seconds
+        self.grace_seconds = grace_seconds
         self.done = threading.Event()
         self.fired = False
 
     def run(self) -> None:
         if self.max_wall_seconds is None or self.done.wait(self.max_wall_seconds):
             return
+        # poll() reaps the tool first, so the group check below does not
+        # count the tool itself.
+        if self.proc.poll() is not None and not plan_lib.process_group_alive(
+            self.proc.pid
+        ):
+            return
         self.fired = True
         print(f"BUDGET: stopping the tool after {self.max_wall_seconds}s", flush=True)
-        self.proc.terminate()
-        try:
-            self.proc.wait(timeout=60)
-        except subprocess.TimeoutExpired:
-            self.proc.kill()
+        plan_lib.stop_process_group(self.proc, grace_seconds=self.grace_seconds)
 
 
 def _modal_ids() -> dict[str, str | None]:
@@ -503,7 +685,7 @@ def _load_json(path: Path) -> dict | None:
     image=image,
     volumes=VOLUMES,
     secrets=_secrets(),
-    cpu=plan_lib.CHECK.cpu,
+    cpu=plan_lib.CHECK.modal_cpu,
     memory=plan_lib.CHECK.memory_mib,
     timeout=plan_lib.CHECK.timeout_s,
     retries=0,
@@ -526,10 +708,52 @@ def check_stage(plan_data: dict) -> dict:
         problems.append(f"branch not verified: {git['branch_check']}")
     if not git["tool_present"]:
         problems.append(f"{plan.tool.script} is not in commit {plan.commit}")
+    problems += [
+        f"tree file {row['name']} ({row['path']}): {row['problem']}"
+        for row in git["tree_files"]
+        if "problem" in row
+    ]
+    # What this (check-class) container shows a tool of its CPUs. The stage
+    # runs in its own class, whose receipt records the same fields
+    # (runner.os_cpu_count, cpu_affinity, thread_env); this is an early hint.
+    report["check_container_cpu"] = _cpu_visibility()
+    # What this (check-class) container's work disk reports. The stage's own
+    # container checks its own disk before staging; this is an early hint,
+    # but one the check fails on: it must not say OK for a stage whose run
+    # would refuse on a disk like this one.
+    work.mkdir(parents=True, exist_ok=True)
+    disk = shutil.disk_usage(work)
+    would_refuse = plan_lib.work_disk_problem(plan.stage_spec, disk.free)
+    report["work_disk"] = {
+        "total_bytes": disk.total,
+        "free_bytes": disk.free,
+        "stage_needs_gib": plan.stage_spec.min_free_disk_gib,
+        "would_refuse": would_refuse,
+    }
+    if would_refuse:
+        problems.append(
+            f"work disk: {would_refuse} (measured in the check container; the "
+            "stage's own container measures its disk before staging and refuses "
+            "below the same floor)"
+        )
+    # Whether the stage's state could be mirrored inside the runner's reserve
+    # after the tool, at the write rate this container sees on the runs volume.
+    probe = _write_probe(plan)
+    report["runs_volume_write_probe"] = probe
+    if "problem" in probe:
+        problems.append(str(probe["problem"]))
 
     # The probe and the parser run in the environment the stage would get.
-    tool_env, env_removed = plan_lib.tool_environment(os.environ, plan.env)
+    tool_env, env_removed = plan_lib.tool_environment(
+        os.environ, plan.env, telemetry_run_id=plan_lib.telemetry_run_id(plan)
+    )
     report["tool_env_removed"] = env_removed
+    report["python_hash_seed"] = plan_lib.hash_seed_record(
+        plan.tool, os.environ, tool_env
+    )
+    seed_problem = plan_lib.hash_seed_problem(tool_env)
+    if seed_problem:
+        problems.append(seed_problem)
     env_probe = subprocess.run(
         [
             f"{plan_lib.IMAGE_VENV}/bin/python",
@@ -551,6 +775,18 @@ def check_stage(plan_data: dict) -> dict:
     )
     if env_probe.returncode != 0:
         problems.append("the synced environment does not import microcosm.build")
+    report["emitter"] = _emitter_version()
+    if report["emitter"] is None:
+        problems.append(
+            f"the emitter command {plan_lib.IMAGE_EMITTER_COMMAND} does not run"
+        )
+    # A check asks for no collector token; whether the image's emitter could
+    # take one, which the paid run refuses without.
+    report["telemetry"], telemetry_problem = plan_lib.telemetry_check_report(
+        plan, report["emitter"]
+    )
+    if telemetry_problem:
+        problems.append(telemetry_problem)
 
     argv = plan_lib.planned_argv(plan)
     parse = (
@@ -567,6 +803,9 @@ def check_stage(plan_data: dict) -> dict:
     problems += [
         f"input {row['name']}: {row['problem']}" for row in inputs if "problem" in row
     ]
+    # The ACS fetcher treats either a size or digest mismatch as a cache
+    # miss and downloads. Refuse it here as well as before creating links.
+    problems += plan_lib.input_link_problems(plan, inputs)
 
     runs_volume.reload()
     identity = _load_json(
@@ -608,7 +847,11 @@ def check_stage(plan_data: dict) -> dict:
 
 
 class _Refusal(plan_lib.PlanError):
-    """The lock or the budget stopped an attempt before it staged anything."""
+    """A check stopped an attempt before it staged anything.
+
+    The run's lock, its budget, the work disk, the hash seed, or the
+    collector token. The attempt record is finished, so nothing is charged.
+    """
 
 
 def _run_stage(plan_data: dict) -> dict:
@@ -622,6 +865,7 @@ def _run_stage(plan_data: dict) -> dict:
             "tree_clean",
             "branch_verified",
             "tool_present",
+            "tree_files_verified",
         )
     ):
         raise plan_lib.PlanError(f"image clone does not match the plan: {git}")
@@ -639,7 +883,7 @@ def _run_stage(plan_data: dict) -> dict:
     #    lock wait, staging, the tool, hashing and mirroring are all charged
     #    if preemption cuts the attempt short. Any exception from here on
     #    leaves the attempt unfinished (charged) with outcome "error"; only a
-    #    receipt or a refusal by the lock or the budget finishes it.
+    #    receipt or a refusal before staging (_Refusal) finishes it.
     plan_sha256 = plan_lib.plan_digest(plan_data)
     attempt = _Attempt(plan, plan_sha256, container_started)
     attempt.write()
@@ -647,14 +891,20 @@ def _run_stage(plan_data: dict) -> dict:
     try:
         return _attempt_stage(plan, plan_data, plan_sha256, attempt, git)
     except _Refusal as refusal:
-        attempt.end(plan_lib.OUTCOME_REFUSED, finished=True, note=str(refusal)[:500])
+        attempt.end(
+            plan_lib.OUTCOME_REFUSED,
+            finished=True,
+            note=str(refusal)[: plan_lib.ATTEMPT_NOTE_MAX_CHARS],
+        )
         raise
     except BaseException as error:
         try:
             attempt.end(
                 plan_lib.OUTCOME_ERROR,
                 finished=False,
-                note=f"{type(error).__name__}: {error}"[:500],
+                note=f"{type(error).__name__}: {error}"[
+                    : plan_lib.ATTEMPT_NOTE_MAX_CHARS
+                ],
             )
         except Exception as record_error:  # noqa: BLE001 - keep the first error
             print(f"attempt record failed: {record_error}", flush=True)
@@ -710,30 +960,111 @@ def _attempt_stage(
             flush=True,
         )
 
+    # 4b. A stage that declares its scratch need refuses a container whose
+    #     work disk is smaller, before paying to stage anything.
+    work.mkdir(parents=True, exist_ok=True)
+    disk = shutil.disk_usage(work)
+    work_disk = {"total_bytes": disk.total, "free_bytes_before_staging": disk.free}
+    disk_problem = plan_lib.work_disk_problem(plan.stage_spec, disk.free)
+    if disk_problem:
+        raise _Refusal(disk_problem)
+
+    # 4c. The tool's environment, fixed before anything is pulled or staged:
+    #     credentials and the container's PYTHONHASHSEED withheld, the Hub
+    #     offline, the plan's overrides last, and the stage's telemetry run
+    #     (<plan run_id>.<stage>). An environment that would give the tool a
+    #     hash seed other than none or "0" (what Route A's local base
+    #     recorded) is refused here, cheaply.
+    env, env_removed = plan_lib.tool_environment(
+        os.environ, plan.env, telemetry_run_id=plan_lib.telemetry_run_id(plan)
+    )
+    hash_seed = plan_lib.hash_seed_record(plan.tool, os.environ, env)
+    seed_problem = plan_lib.hash_seed_problem(env)
+    if seed_problem:
+        raise _Refusal(seed_problem)
+
+    # 4d. Telemetry, before anything is pulled or staged: unless the plan
+    #     sets MICROCOSM_TELEMETRY_REQUIRED=0, the collector token from the
+    #     launch's secret must be complete, come from the collector the
+    #     image's emitter sends to, and stay usable as long as the emitter may
+    #     send it: past the budget's SIGKILL of the tool (its SIGTERM plus
+    #     STOP_GRACE_SECONDS) and the emitter's drain (token_needed_until). A
+    #     preemption restart too long after the launch is refused here too;
+    #     the operator launches again.
+    telemetry, telemetry_problem = plan_lib.telemetry_check(
+        plan, os.environ, _emitter_version(), container_started=attempt.started
+    )
+    if telemetry_problem:
+        raise _Refusal(telemetry_problem)
+
     # 5. This run's prior state (checkpoints, calibrated H5) onto local disk,
-    #    verified against the run's latest receipt before anything uses it;
-    #    then the inputs to stable local paths, each digest verified.
-    pulled = plan_lib.mirror_tree(run_dir / "state", state)
+    #    hashed as it is copied and verified against the run's latest receipt
+    #    before anything uses it (one read of each file); then the inputs to
+    #    stable local paths, each digest verified.
+    pulled_outputs, pulled = plan_lib.mirror_tree_hashed(run_dir / "state", state)
     receipts = _receipts(run_dir)
     latest = plan_lib.latest_receipt(
         [(name, data) for name, data, _ in receipts], plan.run_id
     )
-    problems = plan_lib.pulled_state_problems(state, latest)
+    problems = plan_lib.pulled_outputs_problems(pulled_outputs, latest)
     if problems:
+        why = (
+            "because that receipt kept outputs off the volume "
+            "(outputs_not_mirrored: a finished stage with nothing to resume)"
+            if latest and latest[1].get("outputs_not_mirrored")
+            else "so a stage was cut short after changing it"
+        )
         raise plan_lib.PlanError(
             f"run {plan.run_id!r}: its state on {plan_lib.RUNS_VOLUME} is not what "
-            "its latest receipt lists, so a stage was cut short after changing it; "
-            "use a new run_id. " + "; ".join(problems[:10])
+            f"its latest receipt lists, {why}; use a new run_id. "
+            + "; ".join(problems[:10])
         )
+    # The pulled files' digests, so the push does not read them again when
+    # the tool leaves them untouched.
+    known = plan_lib.known_hashes(state, pulled_outputs)
     prior = [{"file": name, "sha256": sha} for name, _, sha in receipts]
     inputs_verified = [_stage_input(ref, work) for ref in plan.inputs.values()]
+    link_problems = plan_lib.input_link_problems(plan, inputs_verified)
+    if link_problems:
+        raise plan_lib.PlanError("; ".join(link_problems))
+    input_paths = {
+        name: plan_lib.input_local_path(str(work), ref)
+        for name, ref in plan.inputs.items()
+    }
+    input_links = plan_lib.link_staged_inputs(plan, input_paths, work)
+    # Files the tool would otherwise fetch into its home cache, copied from
+    # the staged inputs and verified (the base's 2023 ASEC archive).
+    home_seeds = plan_lib.seed_home_cache(
+        plan,
+        input_paths,
+        env.get("HOME") or Path.home(),
+    )
 
     # 6. The stage itself, in the pinned tree, logged to the state directory.
+    #    Its own process group, so the budget stops every process it spawns.
+    #    Its budget is the plan's remaining max_wall_seconds, cut to what the
+    #    container has left before the class timeout less the runner's
+    #    reserve: time spent above (pulling state, staging) comes out of the
+    #    tool, so hashing, mirroring and the receipt always fit.
+    tool_budget = plan_lib.tool_budget(
+        plan, budget_seconds, time.time() - attempt.started
+    )
+    if int(tool_budget["seconds"]) < plan_lib.MIN_ATTEMPT_SECONDS:
+        raise plan_lib.PlanError(
+            f"only {tool_budget['seconds']}s of tool time is left before the "
+            f"class timeout ({tool_budget}); pulling and staging took the "
+            "container's time"
+        )
+    if tool_budget["limited_by"] != "max_wall_seconds":
+        print(
+            f"BUDGET: the tool may run {tool_budget['seconds']}s "
+            f"(limited by {tool_budget['limited_by']})",
+            flush=True,
+        )
     argv = plan_lib.planned_argv(plan)
     started_at, started = _now(), time.time()
     log_path = state / "logs" / f"{plan.stage}-{started_at.replace(':', '')}.log"
     log_path.parent.mkdir(parents=True, exist_ok=True)
-    env, env_removed = plan_lib.tool_environment(os.environ, plan.env)
     print(f"$ {' '.join(argv)}", flush=True)
     with open(log_path, "w") as log:
         proc = subprocess.Popen(
@@ -741,10 +1072,12 @@ def _attempt_stage(
             cwd=plan_lib.IMAGE_REPO_ROOT,
             env=env,
             text=True,
+            stdin=subprocess.DEVNULL,  # a background group must not read a tty
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
+            process_group=0,
         )
-        budget = _BudgetWatch(proc, budget_seconds)
+        budget = _BudgetWatch(proc, int(tool_budget["seconds"]))
         budget.start()
         assert proc.stdout is not None
         for line in proc.stdout:
@@ -755,11 +1088,30 @@ def _attempt_stage(
     wall = time.time() - started
     peak_kib = resource.getrusage(resource.RUSAGE_CHILDREN).ru_maxrss
     finished_at = _now()
+    # The output has ended, so the emitter the build started has stopped:
+    # what its event queue file still holds is final. Its own `status`
+    # reports each run's undelivered events; a failure is only recorded.
+    telemetry = {**telemetry, "undelivered_events": _emitter_status(env)}
 
-    # 7. Outputs: hash the whole state tree, mirror it to the volume, receipt.
-    #    The heartbeat keeps running, so this is charged too.
-    outputs = plan_lib.hash_tree(state)
-    pushed = plan_lib.mirror_tree(state, run_dir / "state")
+    # 7. Outputs: mirror the state tree to the volume, hashing each file as it
+    #    is copied (a file pulled and left untouched keeps its verified
+    #    digest), then the receipt. The stage's mirror_first paths (the base's
+    #    output and the evidence for it) go first, so a push the class
+    #    timeout cuts short has written them. After a clean exit a stage
+    #    whose other state only serves a resume copies just those paths and
+    #    hashes the rest (push_copy_only). The heartbeat keeps running, so
+    #    this is charged too.
+    copy_only = plan_lib.push_copy_only(
+        plan.stage_spec, returncode=returncode, stopped_at_budget=budget.fired
+    )
+    outputs, pushed, not_mirrored = plan_lib.push_state(
+        state,
+        run_dir / "state",
+        known=known,
+        first=plan.stage_spec.mirror_first,
+        copy_only=copy_only,
+    )
+    print(f"PUSH: {pushed}", flush=True)
     receipt = plan_lib.build_receipt(
         plan,
         plan_data,
@@ -777,7 +1129,15 @@ def _attempt_stage(
             "state_pulled": pulled,
             "state_pushed": pushed,
             "tool_env_removed": env_removed,
+            "python_hash_seed": hash_seed,
             "modal": attempt.modal,
+            "work_disk": work_disk,
+            "home_seeds": home_seeds,
+            "input_links": input_links,
+            "tool_budget": tool_budget,
+            # The token's expiry and origin, never its value, and what the
+            # image emitter's `status` reported after the tool.
+            "telemetry": telemetry,
         },
         prior_receipts=prior,
         stopped_at_budget=budget.fired,
@@ -786,6 +1146,7 @@ def _attempt_stage(
         budget_seconds=budget_seconds,
         attempt_id=attempt.attempt_id,
         prior_state_verified_against=latest[0] if latest else None,
+        outputs_not_mirrored=not_mirrored,
     )
     receipts_dir = run_dir / "receipts"
     receipts_dir.mkdir(parents=True, exist_ok=True)
@@ -803,7 +1164,7 @@ def _attempt_stage(
     image=image,
     volumes=VOLUMES,
     secrets=_secrets(),
-    cpu=plan_lib.HEAVY.cpu,
+    cpu=plan_lib.HEAVY.modal_cpu,
     memory=plan_lib.HEAVY.memory_mib,
     timeout=plan_lib.HEAVY.timeout_s,
     retries=0,
@@ -816,7 +1177,7 @@ def run_stage_heavy(plan_data: dict) -> dict:
     image=image,
     volumes=VOLUMES,
     secrets=_secrets(),
-    cpu=plan_lib.HEAVY.cpu,
+    cpu=plan_lib.HEAVY.modal_cpu,
     memory=plan_lib.HEAVY.memory_mib,
     timeout=plan_lib.HEAVY.timeout_s,
     retries=0,
@@ -830,7 +1191,7 @@ def run_stage_heavy_nonpreemptible(plan_data: dict) -> dict:
     image=image,
     volumes=VOLUMES,
     secrets=_secrets(),
-    cpu=plan_lib.LIGHT.cpu,
+    cpu=plan_lib.LIGHT.modal_cpu,
     memory=plan_lib.LIGHT.memory_mib,
     timeout=plan_lib.LIGHT.timeout_s,
     retries=0,
@@ -843,7 +1204,7 @@ def run_stage_light(plan_data: dict) -> dict:
     image=image,
     volumes=VOLUMES,
     secrets=_secrets(),
-    cpu=plan_lib.LIGHT.cpu,
+    cpu=plan_lib.LIGHT.modal_cpu,
     memory=plan_lib.LIGHT.memory_mib,
     timeout=plan_lib.LIGHT.timeout_s,
     retries=0,
@@ -857,12 +1218,76 @@ def run_stage_light_nonpreemptible(plan_data: dict) -> dict:
     image=image,
     volumes=VOLUMES,
     secrets=_secrets(),
-    cpu=plan_lib.CHECK.cpu,
+    cpu=plan_lib.CHECK.modal_cpu,
     memory=plan_lib.CHECK.memory_mib,
     timeout=plan_lib.CHECK.timeout_s,
     retries=0,
 )
 def run_stage_small(plan_data: dict) -> dict:
+    return _run_stage(plan_data)
+
+
+# The PUF-support base's class. Its CPU limit equals its request
+# (plan_lib.BASE.modal_cpu is (4.0, 4.0)), and Modal throttles CPU use above
+# the limit: without it Modal's default soft limit is 16 cores above the
+# request and use above the request is billed (modal.com/docs/guide/resources),
+# and the pinned tool sizes its QRF pools from the CPUs it sees. Memory stays
+# request-only (see plan_lib.BASE). No ephemeral_disk: the default
+# per-container quota (512 GiB, same page) holds its ~50 GB, and the stage
+# checks its free space before staging (StageSpec.min_free_disk_gib).
+@app.function(
+    image=image,
+    volumes=VOLUMES,
+    secrets=_secrets(),
+    cpu=plan_lib.BASE.modal_cpu,
+    memory=plan_lib.BASE.memory_mib,
+    timeout=plan_lib.BASE.timeout_s,
+    retries=0,
+)
+def run_stage_base(plan_data: dict) -> dict:
+    return _run_stage(plan_data)
+
+
+@app.function(
+    image=image,
+    volumes=VOLUMES,
+    secrets=_secrets(),
+    cpu=plan_lib.BASE.modal_cpu,
+    memory=plan_lib.BASE.memory_mib,
+    timeout=plan_lib.BASE.timeout_s,
+    retries=0,
+    nonpreemptible=True,
+)
+def run_stage_base_nonpreemptible(plan_data: dict) -> dict:
+    return _run_stage(plan_data)
+
+
+# ACS staging fits QRFs across cores (16 requested and limited), with the
+# memory and timeout allowances from full-staging-a3; see plan_lib.ACS_STAGING.
+@app.function(
+    image=image,
+    volumes=VOLUMES,
+    secrets=_secrets(),
+    cpu=plan_lib.ACS_STAGING.modal_cpu,
+    memory=plan_lib.ACS_STAGING.memory_mib,
+    timeout=plan_lib.ACS_STAGING.timeout_s,
+    retries=0,
+)
+def run_stage_acs_staging(plan_data: dict) -> dict:
+    return _run_stage(plan_data)
+
+
+@app.function(
+    image=image,
+    volumes=VOLUMES,
+    secrets=_secrets(),
+    cpu=plan_lib.ACS_STAGING.modal_cpu,
+    memory=plan_lib.ACS_STAGING.memory_mib,
+    timeout=plan_lib.ACS_STAGING.timeout_s,
+    retries=0,
+    nonpreemptible=True,
+)
+def run_stage_acs_staging_nonpreemptible(plan_data: dict) -> dict:
     return _run_stage(plan_data)
 
 
@@ -872,15 +1297,56 @@ RUNNERS = {
     ("light", False): run_stage_light,
     ("light", True): run_stage_light_nonpreemptible,
     ("check", False): run_stage_small,
+    ("base", False): run_stage_base,
+    ("base", True): run_stage_base_nonpreemptible,
+    ("acs-staging", False): run_stage_acs_staging,
+    ("acs-staging", True): run_stage_acs_staging_nonpreemptible,
 }
 
 
 @app.local_entrypoint()
-def main(run: bool = False) -> None:
-    """Check the plan (default) or, with --run, execute the stage."""
+def main(run: bool = False, spawn: bool = False) -> None:
+    """Check the plan (default) or, with --run, execute the stage.
+
+    ``--run`` waits for the stage, prints a summary of its receipt and exits
+    nonzero unless the stage COMPLETED. A waited-on call can be lost with its
+    client: on 2026-10-19 the Route A rerun base's first attempt was
+    cancelled 99 s after the launching Mac went to sleep (attributed to the
+    sleep from its timing).
+
+    ``--run --spawn`` spawns the stage, prints its function call id and
+    returns at once. Run it under ``modal run --detach``. A probe that day
+    showed a call spawned under ``--detach`` finishing after its client had
+    exited; client sleep, and a spawn without ``--detach``, were not tested.
+
+    A spawned stage's outcome is read from the runs volume, not this
+    client's exit code. A COMPLETED or FAILED stage writes a receipt under
+    ``runs/<run_id>/receipts/``. A refusal or an exception writes only an
+    attempt record under ``runs/<run_id>/attempts/``, with ``outcome``
+    ``refused`` or ``error``. A plan rejected before its attempt record
+    (``_run_stage``) writes nothing. A killed container leaves an attempt
+    record whose ``last_seen_epoch`` stops advancing.
+    ``modal.FunctionCall.from_id(<id>).get()``, run with the modal tool's
+    interpreter, blocks until the call ends. It returns the receipt
+    (COMPLETED or FAILED), or re-raises the error of an attempt that raised:
+    a rejected plan, a refusal or an exception, which ``_run_stage``
+    re-raises. Every attempt of a run shares its run_id, so match the attempt
+    record by ``modal.function_call_id`` and the receipt by ``attempt_id``.
+
+    Before either, ``--run`` obtains the stage's collector token from this
+    machine's emitter (``plan_lib.request_telemetry_token``) and attaches it
+    in a Modal secret made for this launch, unless the plan sets
+    ``MICROCOSM_TELEMETRY_REQUIRED=0``. It refuses to launch, launching
+    nothing, when the token cannot be obtained. The plan sent to the stage is
+    unchanged, so its digest and the attempt budget keyed on it stay the
+    same, and no receipt copies the token. The output shows the token's
+    expiry and origin, never its value.
+    """
 
     assert _LOADED is not None
     plan_data, plan = _LOADED
+    if spawn and not run:
+        raise SystemExit("--spawn needs --run (and modal run --detach)")
     if not run:
         report = check_stage.remote(plan_data)
         print(json.dumps(report, indent=2))
@@ -889,6 +1355,39 @@ def main(run: bool = False) -> None:
         print("CHECK OK")
         return
     runner = RUNNERS[(plan.resources.name, plan.nonpreemptible)]
+    try:
+        token = plan_lib.request_telemetry_token(plan, os.environ)
+    except plan_lib.PlanError as error:
+        raise SystemExit(f"REFUSED to launch: {error}") from None
+    if token is None:
+        print(
+            f"TELEMETRY: the plan sets {plan_lib.TELEMETRY_REQUIRED_ENV}=0, so no "
+            "collector token was requested and the stage runs without telemetry "
+            "(an opt-out only for people outside PolicyEngine without access to "
+            "the collector)",
+            file=sys.stderr,
+        )
+    else:
+        # with_options replaces the function's secrets, so the Hub secret,
+        # if one is named, goes again with the token's.
+        runner = runner.with_options(
+            secrets=[*_secrets(), modal.Secret.from_dict(token.secret_values())]
+        )
+    collector_token = None if token is None else token.record()
+    if spawn:
+        call = runner.spawn(plan_data)
+        print(
+            json.dumps(
+                {
+                    "run_id": plan.run_id,
+                    "stage": plan.stage,
+                    "function_call_id": call.object_id,
+                    "collector_token": collector_token,
+                },
+                indent=2,
+            )
+        )
+        return
     receipt = runner.remote(plan_data)
     brief = {
         key: receipt[key]
@@ -911,6 +1410,7 @@ def main(run: bool = False) -> None:
     ):
         brief[key] = receipt.get(key)
     brief["outputs"] = len(receipt["outputs"])
+    brief["collector_token"] = collector_token
     print(json.dumps(brief, indent=2))
     # FAILED covers a nonzero exit and a stop at the max_wall_seconds budget,
     # which a tool that handles the stop signal can still end with exit 0.

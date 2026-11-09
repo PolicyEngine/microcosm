@@ -58,13 +58,18 @@ ASEC_SPM_ROLE_SOURCES: dict[int, AsecSpmRoleSource] = {
         csv_sha256=pin.member_sha256,
         csv_size_bytes=pin.member_size_bytes,
         persons=pin.rows,
-        units={2022: 59_181, 2023: 58_711, 2024: 58_147}[year],
+        units={2022: 59_181, 2023: 58_711, 2024: 58_147, 2025: 55_401}[year],
         official_archive_url=pin.zip_url,
         archive_sha256=pin.zip_sha256,
         member=pin.member,
     )
     for year, pin in ASEC_EDUCATION_ASSISTANCE_ARCHIVES.items()
 }
+
+#: The income years the certified BuildP parent pooled. They are the default
+#: pins of :func:`derive_spm_role_source`, whose lineage is that parent; the
+#: registry above also pins later years for new builds.
+BUILDP_SPM_ROLE_INCOME_YEARS: tuple[int, ...] = (2022, 2023, 2024)
 
 
 @dataclass(frozen=True)
@@ -319,7 +324,11 @@ def derive_spm_role_source(
     """
     path = Path(parent_h5)
     _require(_sha256(path) == expected_parent_sha256, "Parent H5 SHA-256 mismatch.")
-    pins = ASEC_SPM_ROLE_SOURCES if source_pins is None else source_pins
+    pins = (
+        {year: ASEC_SPM_ROLE_SOURCES[year] for year in BUILDP_SPM_ROLE_INCOME_YEARS}
+        if source_pins is None
+        else source_pins
+    )
     parent = pd.read_hdf(path, "person")
     spm = pd.read_hdf(path, "spm_unit")
     required = (

@@ -1,0 +1,2413 @@
+"""Tests split from packages/microcosm-build/tests/test_us_puf_support.py."""
+
+# ruff: noqa: F403, F405
+from hypothesis import given, settings
+from hypothesis import strategies as st
+
+from microcosm.build.us_runtime.puf_support import (
+    _zero_passive_partnership_s_corp_without_line_32,
+)
+from test_support.microcosm_build.us_puf_support import *
+
+
+def test_snap_to_observed_values_is_bit_identical_to_legacy_matrix() -> None:
+    rng = np.random.default_rng(20260712)
+    values = np.concatenate(
+        [
+            rng.normal(loc=500.0, scale=1_000.0, size=2_000),
+            np.asarray([-np.inf, np.inf, np.nan, 0.5, 1.5, 2.5]),
+        ]
+    )
+    observed = np.concatenate(
+        [
+            rng.normal(loc=250.0, scale=750.0, size=400),
+            np.asarray([np.nan, -np.inf, np.inf, 0.0, 1.0, 2.0, 3.0]),
+        ]
+    )
+
+    expected = _legacy_snap_to_observed_values(values, observed)
+    actual = puf_support_module._snap_to_observed_values(values, observed)
+
+    np.testing.assert_array_equal(actual, expected)
+    np.testing.assert_array_equal(actual.view(np.uint64), expected.view(np.uint64))
+
+
+def test_snap_to_observed_values_handles_large_surfaces_without_pairwise_matrix(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    observed = np.arange(100_000, dtype=np.float64)
+    values = np.linspace(-1.0, 100_001.0, 20_000, dtype=np.float64)
+
+    original_abs = puf_support_module.np.abs
+
+    def reject_pairwise_matrix(array: np.ndarray) -> np.ndarray:
+        assert array.ndim <= 1, "snap allocated the recipient-by-donor matrix"
+        return original_abs(array)
+
+    monkeypatch.setattr(puf_support_module.np, "abs", reject_pairwise_matrix)
+    actual = puf_support_module._snap_to_observed_values(values, observed)
+
+    assert actual.shape == values.shape
+    assert actual[0] == 0.0
+    assert actual[-1] == 99_999.0
+
+
+def test_puf_support_channel_doubles_rows_without_doubling_mass() -> None:
+    frame = _minimal_us_frame()
+
+    expanded = clone_us_frame_for_puf_support(frame)
+
+    for entity in frame.entities:
+        assert expanded.n(entity) == 2 * frame.n(entity)
+    assert expanded.weights_for("household").kind == WeightKind.DESIGN
+    assert (
+        expanded.weights_for("household").total == frame.weights_for("household").total
+    )
+    assert expanded.weights_for("household").values.tolist() == [
+        50.0,
+        150.0,
+        50.0,
+        150.0,
+    ]
+    assert expanded.strata.tolist() == frame.strata.tolist() + frame.strata.tolist()
+
+
+def test_puf_support_channel_preserves_provenance_and_remaps_linked_ids() -> None:
+    expanded = clone_us_frame_for_puf_support(_minimal_us_frame())
+
+    person = expanded.table("person")
+    tax_unit = expanded.table("tax_unit")
+    puf_people = person[
+        person[support_channel_column("person")] == PUF_TAX_DETAIL_SUPPORT_CHANNEL
+    ]
+    puf_tax_units = tax_unit[
+        tax_unit[support_channel_column("tax_unit")] == PUF_TAX_DETAIL_SUPPORT_CHANNEL
+    ]
+
+    assert person[support_channel_column("person")].tolist() == [
+        BASE_ASEC_SUPPORT_CHANNEL,
+        BASE_ASEC_SUPPORT_CHANNEL,
+        BASE_ASEC_SUPPORT_CHANNEL,
+        PUF_TAX_DETAIL_SUPPORT_CHANNEL,
+        PUF_TAX_DETAIL_SUPPORT_CHANNEL,
+        PUF_TAX_DETAIL_SUPPORT_CHANNEL,
+    ]
+    assert person[support_clone_index_column("person")].tolist() == [0, 0, 0, 1, 1, 1]
+    assert person[support_source_id_column("person")].tolist() == [1, 2, 3, 1, 2, 3]
+    assert set(puf_people["person_tax_unit_id"]).issubset(
+        set(puf_tax_units["tax_unit_id"])
+    )
+    assert set(puf_people["person_tax_unit_id"]).isdisjoint(
+        set(
+            tax_unit.loc[
+                tax_unit[support_channel_column("tax_unit")] == "asec", "tax_unit_id"
+            ]
+        )
+    )
+    assert puf_people["employment_income_before_lsr"].tolist() == [
+        50_000.0,
+        20_000.0,
+        125_000.0,
+    ]
+    assert puf_tax_units[support_source_id_column("tax_unit")].tolist() == [10, 20]
+
+
+def test_puf_support_channel_refuses_duplicate_or_missing_puf_channel() -> None:
+    frame = _minimal_us_frame()
+
+    with pytest.raises(ValueError, match="must be unique"):
+        clone_us_frame_for_puf_support(frame, channels=("asec", "asec"))
+
+    with pytest.raises(ValueError, match="must start with 'asec'"):
+        clone_us_frame_for_puf_support(frame, channels=("puf_tax_detail", "tail"))
+
+    with pytest.raises(ValueError, match="must include 'puf_tax_detail'"):
+        clone_us_frame_for_puf_support(frame, channels=("asec", "tail"))
+
+    with pytest.raises(ValueError, match="canonical ASEC/PUF roles"):
+        clone_us_frame_for_puf_support(
+            frame,
+            channels=("asec", "puf_tax_detail", "tail"),
+        )
+
+
+def test_puf_support_channel_rejects_fractional_ids_without_truncation() -> None:
+    frame = _minimal_us_frame()
+    frame.table("person")["person_id"] = frame.table("person")["person_id"].astype(
+        np.float64
+    )
+    frame.table("person").loc[0, "person_id"] = 1.5
+
+    with pytest.raises(ValueError, match="integral"):
+        clone_us_frame_for_puf_support(frame)
+
+
+def test_puf_support_channel_refuses_to_run_twice() -> None:
+    expanded = clone_us_frame_for_puf_support(_minimal_us_frame())
+
+    with pytest.raises(ValueError, match="should run exactly once"):
+        clone_us_frame_for_puf_support(expanded)
+
+
+def test_puf_tax_unit_donor_from_arrays_aggregates_person_values() -> None:
+    donor = puf_tax_unit_donor_from_arrays(
+        {
+            "tax_unit_id": [10, 20],
+            "household_weight": [100.0, 200.0],
+            "filing_status": [b"SINGLE", b"JOINT"],
+            "person_tax_unit_id": [10, 10, 20],
+            "employment_income": [5.0, 7.0, 11.0],
+            "non_qualified_dividend_income": [1.0, 2.0, 3.0],
+            "qualified_dividend_income": [4.0, 5.0, 6.0],
+            "home_mortgage_interest": [10.0, 20.0, 30.0],
+            "educator_expense": [100.0, 200.0, 300.0],
+            "social_security": [100.0, 200.0, 300.0],
+            "taxable_unemployment_compensation": [13.0, 17.0, 19.0],
+            "state_and_local_sales_or_income_tax": [40.0, 50.0],
+        },
+        adjusted_gross_income=[0.0, 0.0],
+        person_outputs=(
+            "employment_income_before_lsr",
+            "qualified_dividend_income",
+            "non_qualified_dividend_income",
+            "home_mortgage_interest",
+            "educator_expense",
+            "social_security_retirement",
+            "social_security_disability",
+            "social_security_dependents",
+            "social_security_survivors",
+            "unemployment_compensation",
+        ),
+        tax_unit_outputs=(),
+    )
+
+    assert donor["employment_income_before_lsr"].tolist() == [12.0, 11.0]
+    assert "employment_income" not in donor
+    assert donor["qualified_dividend_income"].tolist() == [9.0, 6.0]
+    assert donor["non_qualified_dividend_income"].tolist() == [3.0, 3.0]
+    # The donor's own income outputs are never copied into predictor columns:
+    # a donor predictor equal to a donor output is a self-prediction
+    # (microcosm#982).
+    assert "puf_predictor_dividend_income" not in donor
+    assert "puf_predictor_employment_income" not in donor
+    assert donor["social_security_retirement"].tolist() == [300.0, 300.0]
+    assert donor["social_security_disability"].tolist() == [0.0, 0.0]
+    assert donor["social_security_dependents"].tolist() == [0.0, 0.0]
+    assert donor["social_security_survivors"].tolist() == [0.0, 0.0]
+    assert "social_security" not in donor
+    assert donor["unemployment_compensation"].tolist() == [30.0, 19.0]
+    np.testing.assert_allclose(
+        donor["home_mortgage_interest"].to_numpy(),
+        split_us_puf_e19200_by_agi_band(
+            np.asarray([30.0, 30.0]),
+            np.asarray([0.0, 0.0]),
+        )[0],
+    )
+    assert donor["educator_expense"].tolist() == [300.0, 300.0]
+    assert "interest_deduction" not in donor
+    assert "state_withheld_income_tax" not in donor
+    assert donor["puf_predictor_filing_status_code"].tolist() == [1.0, 2.0]
+    assert donor[
+        puf_support_module.PUF_DONOR_SOURCE_ADJUSTED_GROSS_INCOME_COLUMN
+    ].tolist() == [0.0, 0.0]
+
+
+def test_puf_tax_unit_donor_quarantines_only_mortgage_fields() -> None:
+    assert US_PUF_DONOR_MORTGAGE_OUTLIER_CEILING == 10_000_000.0
+    carved_below_ceiling = split_us_puf_e19200_by_agi_band(
+        np.asarray([10_500_000.0]),
+        np.asarray([10_000_000.0]),
+    )[0][0]
+    assert carved_below_ceiling < US_PUF_DONOR_MORTGAGE_OUTLIER_CEILING
+
+    summary: dict[str, object] = {}
+    donor = puf_tax_unit_donor_from_arrays(
+        {
+            "tax_unit_id": [10, 20, 30],
+            "household_weight": [101.0, 202.0, 303.0],
+            "filing_status": [b"JOINT", b"SINGLE", b"HEAD_OF_HOUSEHOLD"],
+            "person_tax_unit_id": [10, 10, 20, 30],
+            # Unit 10 reaches the ceiling only after person grouping. Unit 30
+            # proves the raw-before-carve ordering because its carved value is
+            # below the same literal ceiling.
+            "home_mortgage_interest": [
+                6_000_000.0,
+                4_000_000.0,
+                5_000_000.0,
+                10_500_000.0,
+            ],
+            "investment_interest_expense": [0.0, 0.0, 0.0, 0.0],
+            "short_term_capital_gains": [-100.0, 150.0, 40.0, 300.0],
+            "long_term_capital_gains": [1_000.0, 2_000.0, 3_000.0, 4_000.0],
+            # Conspicuous unrelated values prove field locality.
+            "employment_income": [
+                600_000_000.0,
+                400_000_000.0,
+                50_000.0,
+                800_000_000.0,
+            ],
+            "domestic_production_ald": [900_000_000.0, 700.0, 800_000_000.0],
+            "first_home_mortgage_interest": [
+                8_000_000.0,
+                4_000_000.0,
+                7_000_000.0,
+            ],
+            "second_home_mortgage_interest": [
+                2_000_000.0,
+                1_000_000.0,
+                3_500_000.0,
+            ],
+        },
+        adjusted_gross_income=[0.0, 0.0, 10_000_000.0],
+        person_outputs=(
+            "home_mortgage_interest",
+            "investment_interest_expense",
+            "employment_income_before_lsr",
+            "short_term_capital_gains",
+            "long_term_capital_gains_before_response",
+        ),
+        tax_unit_outputs=(
+            "domestic_production_ald",
+            "first_home_mortgage_interest",
+            "second_home_mortgage_interest",
+        ),
+        donor_build_summary=summary,
+    )
+
+    assert len(donor) == 3
+    assert donor.index.tolist() == [0, 1, 2]
+    assert donor["tax_unit_id"].tolist() == [10, 20, 30]
+    assert donor["weight"].tolist() == [101.0, 202.0, 303.0]
+    assert donor["employment_income_before_lsr"].tolist() == [
+        1_000_000_000.0,
+        50_000.0,
+        800_000_000.0,
+    ]
+    assert donor["domestic_production_ald"].tolist() == [
+        900_000_000.0,
+        700.0,
+        800_000_000.0,
+    ]
+    assert donor["short_term_capital_gains"].tolist() == [50.0, 40.0, 300.0]
+    assert donor["long_term_capital_gains_before_response"].tolist() == [
+        3_000.0,
+        3_000.0,
+        4_000.0,
+    ]
+
+    raw_total = np.asarray([10_000_000.0, 5_000_000.0, 10_500_000.0])
+    mortgage, investment = split_us_puf_e19200_by_agi_band(
+        raw_total,
+        np.asarray([0.0, 0.0, 10_000_000.0]),
+    )
+    share = mortgage / raw_total
+    expected_before_quarantine = {
+        "home_mortgage_interest": mortgage,
+        "investment_interest_expense": investment,
+        "first_home_mortgage_interest": (
+            np.asarray([8_000_000.0, 4_000_000.0, 7_000_000.0]) * share
+        ),
+        "second_home_mortgage_interest": (
+            np.asarray([2_000_000.0, 1_000_000.0, 3_500_000.0]) * share
+        ),
+    }
+    for column, expected in expected_before_quarantine.items():
+        np.testing.assert_allclose(
+            donor[column].to_numpy(),
+            np.asarray([0.0, expected[1], 0.0]),
+        )
+
+    quarantine = summary["mortgage_field_quarantine"]
+    assert quarantine["method"] == "field_local_zero"
+    assert quarantine["source_field"] == "grouped_raw_home_mortgage_interest"
+    assert quarantine["comparison"] == "greater_than_or_equal"
+    assert quarantine["ceiling"] == 10_000_000.0
+    assert quarantine["screened_record_count"] == 2
+    assert quarantine["screened_weight"] == 404.0
+    assert set(quarantine["fields"]) == set(expected_before_quarantine)
+    preserved = quarantine["capital_gains_preserved"]
+    assert preserved["columns"] == [
+        "short_term_capital_gains",
+        "long_term_capital_gains_before_response",
+    ]
+    assert preserved["before"] == {
+        "record_count": 2,
+        "total_weight": 404.0,
+        "positive_carrier_count": 2,
+        "positive_carrier_weight": 404.0,
+        "weighted_signed_mass": 1_610_950.0,
+        "weighted_positive_mass": 1_610_950.0,
+    }
+    assert preserved["after"] == preserved["before"]
+    assert set(preserved["difference"].values()) == {0}
+    before_screen = summary["capital_gains_before_mortgage_screen"]
+    assert before_screen["status"] == "observed_upstream_replacement"
+    assert before_screen["all"]["weighted_positive_mass"] == pytest.approx(
+        np.dot(
+            np.asarray([3_050.0, 3_040.0, 4_300.0]),
+            np.asarray([101.0, 202.0, 303.0]),
+        )
+    )
+    screened_weights = np.asarray([101.0, 303.0])
+    for column, expected in expected_before_quarantine.items():
+        field = quarantine["fields"][column]
+        screened = expected[[0, 2]]
+        assert field["screened_record_count"] == 2
+        assert field["screened_nonzero_record_count"] == 2
+        assert field["screened_weight"] == 404.0
+        assert field["screened_unweighted_signed_mass"] == pytest.approx(screened.sum())
+        assert field["screened_weighted_signed_mass"] == pytest.approx(
+            np.dot(screened, screened_weights)
+        )
+        assert field["screened_weighted_absolute_mass"] == pytest.approx(
+            np.dot(np.abs(screened), screened_weights)
+        )
+        assert field["screened_weighted_positive_mass"] == pytest.approx(
+            np.dot(screened, screened_weights)
+        )
+        assert field["screened_weighted_negative_mass"] == 0.0
+
+    assert puf_support_module.US_PUF_DONOR_MORTGAGE_QUARANTINE_FIELDS == (
+        "home_mortgage_interest",
+        "investment_interest_expense",
+        "first_home_mortgage_interest",
+        "second_home_mortgage_interest",
+        "interest_deduction",
+    )
+    np.testing.assert_allclose(
+        donor.loc[1, "home_mortgage_interest"],
+        mortgage[1],
+    )
+
+
+def test_puf_tax_unit_donor_rejects_reserved_screen_column_output() -> None:
+    # microcosm#516: the raw-mortgage helper name is reserved -- requesting it
+    # as an output would let the screen threshold and then delete a caller's
+    # column, silently violating the requested-output contract.
+    with pytest.raises(ValueError, match="reserved for donor"):
+        puf_tax_unit_donor_from_arrays(
+            {
+                "tax_unit_id": [10],
+                "household_weight": [100.0],
+                "filing_status": [b"SINGLE"],
+                "person_tax_unit_id": [10],
+                "_raw_home_mortgage_interest_for_outlier_screen": [5.0],
+            },
+            person_outputs=("_raw_home_mortgage_interest_for_outlier_screen",),
+            tax_unit_outputs=(),
+        )
+
+
+def test_puf_e19200_split_scales_only_lineage_and_populates_residual() -> None:
+    # Pin the lineage tuple by exact membership: an accidental addition (the
+    # sol round-1 failure mode was appending investment_interest_expense,
+    # invisible behind a zero sentinel) must fail here, not silently carve a
+    # future nonzero column.
+    assert puf_support_module._US_PUF_E19200_LINEAGE_DONOR_COLUMNS == (
+        "home_mortgage_interest",
+        "first_home_mortgage_interest",
+        "second_home_mortgage_interest",
+        "interest_deduction",
+    )
+    grouped_person = (
+        pd.DataFrame(
+            {
+                "tax_unit_id": [10, 10, 20],
+                "home_mortgage_interest": [40.0, 60.0, 200.0],
+            }
+        )
+        .groupby("tax_unit_id", sort=False)
+        .sum()
+    )
+    interest_deduction = puf_support_module._tax_unit_source_values(
+        {},
+        np.asarray([10, 20]),
+        "interest_deduction",
+        grouped_person,
+    )
+    assert interest_deduction is not None
+    donor = pd.DataFrame(
+        {
+            "home_mortgage_interest": [100.0, 200.0],
+            "first_home_mortgage_interest": [75.0, 150.0],
+            "second_home_mortgage_interest": [25.0, 50.0],
+            "interest_deduction": interest_deduction,
+            "real_estate_taxes": [8.0, 16.0],
+            "first_home_mortgage_balance": [250_000.0, 500_000.0],
+            "second_home_mortgage_balance": [0.0, 125_000.0],
+            "first_home_mortgage_origination_year": [2018.0, 2016.0],
+            "second_home_mortgage_origination_year": [0.0, 2020.0],
+            "investment_interest_expense": [0.0, 0.0],
+            puf_support_module._MORTGAGE_OUTLIER_SCREEN_COLUMN: [100.0, 200.0],
+            puf_support_module._E19200_AGI_BAND_COLUMN: [0.0, 10_000_000.0],
+        }
+    )
+    original = donor.copy(deep=True)
+
+    puf_support_module._split_us_puf_e19200_components(donor)
+
+    mortgage, non_mortgage = split_us_puf_e19200_by_agi_band(
+        np.asarray([100.0, 200.0]),
+        np.asarray([0.0, 10_000_000.0]),
+    )
+    shares = mortgage / np.asarray([100.0, 200.0])
+    for column in puf_support_module._US_PUF_E19200_LINEAGE_DONOR_COLUMNS:
+        np.testing.assert_allclose(
+            donor[column].to_numpy(),
+            original[column].to_numpy() * shares,
+        )
+    np.testing.assert_allclose(donor["investment_interest_expense"], non_mortgage)
+    for column in (
+        "real_estate_taxes",
+        "first_home_mortgage_balance",
+        "second_home_mortgage_balance",
+        "first_home_mortgage_origination_year",
+        "second_home_mortgage_origination_year",
+    ):
+        np.testing.assert_array_equal(donor[column], original[column])
+    assert puf_support_module._MORTGAGE_OUTLIER_SCREEN_COLUMN not in donor
+    assert puf_support_module._E19200_AGI_BAND_COLUMN not in donor
+
+
+def test_puf_tax_detail_default_person_outputs_are_engine_leaves() -> None:
+    assert "qualified_dividend_income" in PUF_TAX_DETAIL_DEFAULT_PERSON_OUTPUTS
+    assert "non_qualified_dividend_income" in PUF_TAX_DETAIL_DEFAULT_PERSON_OUTPUTS
+    assert "dividend_income" not in PUF_TAX_DETAIL_DEFAULT_PERSON_OUTPUTS
+    assert "ordinary_dividend_income" not in PUF_TAX_DETAIL_DEFAULT_PERSON_OUTPUTS
+    assert "social_security_retirement" in PUF_TAX_DETAIL_DEFAULT_PERSON_OUTPUTS
+    assert "social_security_disability" in PUF_TAX_DETAIL_DEFAULT_PERSON_OUTPUTS
+    assert "social_security_dependents" in PUF_TAX_DETAIL_DEFAULT_PERSON_OUTPUTS
+    assert "social_security_survivors" in PUF_TAX_DETAIL_DEFAULT_PERSON_OUTPUTS
+    assert "social_security" not in PUF_TAX_DETAIL_DEFAULT_PERSON_OUTPUTS
+    assert "employment_income_before_lsr" in PUF_TAX_DETAIL_DEFAULT_PERSON_OUTPUTS
+    assert "employment_income" not in PUF_TAX_DETAIL_DEFAULT_PERSON_OUTPUTS
+    assert "self_employment_income_before_lsr" in PUF_TAX_DETAIL_DEFAULT_PERSON_OUTPUTS
+    assert "self_employment_income" not in PUF_TAX_DETAIL_DEFAULT_PERSON_OUTPUTS
+    assert "tax_exempt_interest_income" in PUF_TAX_DETAIL_DEFAULT_PERSON_OUTPUTS
+    assert "investment_interest_expense" in PUF_TAX_DETAIL_DEFAULT_PERSON_OUTPUTS
+    assert (
+        "investment_interest_expense"
+        in puf_support_module._PUF_TAX_DETAIL_NONNEGATIVE_OUTPUTS
+    )
+    assert "investment_interest_expense" not in PUF_TAX_DETAIL_DEFAULT_TAX_UNIT_OUTPUTS
+    assert "investment_interest_expense" not in PUF_TAX_DETAIL_FORMULA_OWNED_OUTPUTS
+    assert "unemployment_compensation" not in PUF_TAX_DETAIL_DEFAULT_PERSON_OUTPUTS
+    assert (
+        "long_term_capital_gains_before_response"
+        in PUF_TAX_DETAIL_DEFAULT_PERSON_OUTPUTS
+    )
+    assert "long_term_capital_gains" not in PUF_TAX_DETAIL_DEFAULT_PERSON_OUTPUTS
+    assert "taxable_private_pension_income" in PUF_TAX_DETAIL_DEFAULT_PERSON_OUTPUTS
+    assert "taxable_pension_income" not in PUF_TAX_DETAIL_DEFAULT_PERSON_OUTPUTS
+    assert "qualified_tuition_expenses" in PUF_TAX_DETAIL_DEFAULT_PERSON_OUTPUTS
+    assert "educator_expense" in PUF_TAX_DETAIL_DEFAULT_PERSON_OUTPUTS
+    assert "casualty_loss" in PUF_TAX_DETAIL_DEFAULT_PERSON_OUTPUTS
+    assert (
+        "unreimbursed_business_employee_expenses"
+        in PUF_TAX_DETAIL_DEFAULT_PERSON_OUTPUTS
+    )
+    assert "medical_expense_deduction" not in PUF_TAX_DETAIL_DEFAULT_PERSON_OUTPUTS
+    assert "interest_deduction" not in PUF_TAX_DETAIL_DEFAULT_TAX_UNIT_OUTPUTS
+    assert "domestic_production_ald" in PUF_TAX_DETAIL_DEFAULT_TAX_UNIT_OUTPUTS
+    assert "first_home_mortgage_interest" in PUF_TAX_DETAIL_DEFAULT_TAX_UNIT_OUTPUTS
+    assert "second_home_mortgage_interest" in PUF_TAX_DETAIL_DEFAULT_TAX_UNIT_OUTPUTS
+    assert "first_home_mortgage_balance" in PUF_TAX_DETAIL_DEFAULT_TAX_UNIT_OUTPUTS
+    assert "second_home_mortgage_balance" in PUF_TAX_DETAIL_DEFAULT_TAX_UNIT_OUTPUTS
+    assert (
+        "first_home_mortgage_origination_year"
+        in PUF_TAX_DETAIL_DEFAULT_TAX_UNIT_OUTPUTS
+    )
+    assert (
+        "second_home_mortgage_origination_year"
+        in PUF_TAX_DETAIL_DEFAULT_TAX_UNIT_OUTPUTS
+    )
+    # Issue #278: the deduction bases the sparse release zeroed must ride the
+    # donor as engine input leaves (the desired-contribution inputs), never
+    # as the formula-owned realized amounts or ALD aggregates.
+    assert (
+        "traditional_ira_contributions_desired" in PUF_TAX_DETAIL_DEFAULT_PERSON_OUTPUTS
+    )
+    assert "traditional_ira_contributions" not in PUF_TAX_DETAIL_DEFAULT_PERSON_OUTPUTS
+    assert (
+        "self_employed_pension_contributions_desired"
+        in PUF_TAX_DETAIL_DEFAULT_PERSON_OUTPUTS
+    )
+    assert (
+        "self_employed_pension_contributions"
+        not in PUF_TAX_DETAIL_DEFAULT_PERSON_OUTPUTS
+    )
+    assert (
+        "self_employed_pension_contribution_ald"
+        not in PUF_TAX_DETAIL_DEFAULT_PERSON_OUTPUTS
+    )
+    assert (
+        "self_employed_pension_contribution_ald"
+        not in PUF_TAX_DETAIL_DEFAULT_TAX_UNIT_OUTPUTS
+    )
+    assert "health_savings_account_ald" in PUF_TAX_DETAIL_DEFAULT_TAX_UNIT_OUTPUTS
+
+
+def test_puf_tax_unit_donor_derives_qualified_tuition_from_raw_fields() -> None:
+    donor = puf_tax_unit_donor_from_arrays(
+        {
+            "tax_unit_id": [10, 20],
+            "household_weight": [100.0, 200.0],
+            "filing_status": [b"SINGLE", b"JOINT"],
+            "person_tax_unit_id": [10, 10, 20],
+            "E03230": [500.0, 2_000.0, -10.0],
+            "E87530": [1_000.0, 1_500.0, 4_000.0],
+        },
+        person_outputs=("qualified_tuition_expenses",),
+        tax_unit_outputs=(),
+    )
+
+    assert donor["qualified_tuition_expenses"].tolist() == [3_000.0, 4_000.0]
+
+
+def test_puf_tax_unit_donor_carries_person_educator_expense() -> None:
+    donor = puf_tax_unit_donor_from_arrays(
+        {
+            "tax_unit_id": [10, 20],
+            "household_weight": [100.0, 200.0],
+            "filing_status": [b"SINGLE", b"JOINT"],
+            "person_tax_unit_id": [10, 10, 20],
+            "educator_expense": [250.0, 50.0, 0.0],
+        },
+        person_outputs=("educator_expense",),
+        tax_unit_outputs=(),
+    )
+
+    assert donor["educator_expense"].tolist() == [300.0, 0.0]
+
+
+def test_puf_tax_unit_donor_carries_person_casualty_losses() -> None:
+    donor = puf_tax_unit_donor_from_arrays(
+        {
+            "tax_unit_id": [10, 20],
+            "household_weight": [100.0, 200.0],
+            "filing_status": [b"SINGLE", b"JOINT"],
+            "person_tax_unit_id": [10, 10, 20],
+            "casualty_loss": [1_000.0, 2_000.0, 4_000.0],
+        },
+        person_outputs=("casualty_loss",),
+        tax_unit_outputs=(),
+    )
+
+    assert donor["casualty_loss"].tolist() == [3_000.0, 4_000.0]
+
+
+def test_puf_tax_unit_donor_carries_both_person_alimony_leaves() -> None:
+    donor = puf_tax_unit_donor_from_arrays(
+        {
+            "tax_unit_id": [10, 20],
+            "household_weight": [100.0, 200.0],
+            "filing_status": [b"SINGLE", b"JOINT"],
+            "person_tax_unit_id": [10, 10, 20],
+            "alimony_income": [1_000.0, 2_000.0, 4_000.0],
+            "alimony_expense": [500.0, 700.0, 3_000.0],
+        },
+        person_outputs=("alimony_income", "alimony_expense"),
+        tax_unit_outputs=(),
+    )
+
+    assert donor["alimony_income"].tolist() == [3_000.0, 4_000.0]
+    assert donor["alimony_expense"].tolist() == [1_200.0, 3_000.0]
+
+
+def test_puf_tax_unit_donor_carries_person_misc_itemized_expenses() -> None:
+    output = "unreimbursed_business_employee_expenses"
+    donor = puf_tax_unit_donor_from_arrays(
+        {
+            "tax_unit_id": [10, 20],
+            "household_weight": [100.0, 200.0],
+            "filing_status": [b"SINGLE", b"JOINT"],
+            "person_tax_unit_id": [10, 10, 20],
+            output: [1_000.0, 2_000.0, 4_000.0],
+        },
+        person_outputs=(output,),
+        tax_unit_outputs=(),
+    )
+
+    assert donor[output].tolist() == [3_000.0, 4_000.0]
+
+
+def test_puf_tax_unit_donor_carries_ald_contribution_leaves() -> None:
+    donor = puf_tax_unit_donor_from_arrays(
+        {
+            "tax_unit_id": [10, 20],
+            "household_weight": [100.0, 200.0],
+            "filing_status": [b"SINGLE", b"JOINT"],
+            "person_tax_unit_id": [10, 10, 20],
+            "traditional_ira_contributions": [1_000.0, 2_000.0, 3_000.0],
+            "self_employed_pension_contribution_ald": [4_000.0, 5_000.0],
+            "health_savings_account_ald": [600.0, 700.0],
+        },
+        person_outputs=(
+            "traditional_ira_contributions_desired",
+            "self_employed_pension_contributions_desired",
+        ),
+        tax_unit_outputs=("health_savings_account_ald",),
+    )
+
+    assert donor["traditional_ira_contributions_desired"].tolist() == [
+        3_000.0,
+        3_000.0,
+    ]
+    assert donor["self_employed_pension_contributions_desired"].tolist() == [
+        4_000.0,
+        5_000.0,
+    ]
+    assert donor["health_savings_account_ald"].tolist() == [600.0, 700.0]
+
+
+def test_puf_tax_detail_refuses_self_employed_ald_aggregates_as_outputs() -> None:
+    arrays = {
+        "tax_unit_id": [10],
+        "household_weight": [100.0],
+        "filing_status": [b"SINGLE"],
+        "person_tax_unit_id": [10],
+        "self_employed_pension_contribution_ald": [4_000.0],
+    }
+
+    with pytest.raises(ValueError, match="formula-owned aggregate outputs"):
+        puf_tax_unit_donor_from_arrays(
+            arrays,
+            person_outputs=("self_employed_pension_contribution_ald",),
+            tax_unit_outputs=(),
+        )
+
+
+def test_puf_tax_detail_refuses_formula_owned_outputs() -> None:
+    arrays = {
+        "tax_unit_id": [10],
+        "household_weight": [100.0],
+        "filing_status": [b"SINGLE"],
+        "person_tax_unit_id": [10],
+        "home_mortgage_interest": [10.0],
+    }
+
+    with pytest.raises(ValueError, match="formula-owned aggregate outputs"):
+        puf_tax_unit_donor_from_arrays(
+            arrays,
+            person_outputs=(),
+            tax_unit_outputs=("interest_deduction",),
+        )
+
+    expanded = clone_us_frame_for_puf_support(_minimal_us_frame())
+    donor = pd.DataFrame(
+        {
+            "puf_predictor_filing_status_code": [1.0, 2.0, 4.0, 1.0],
+            "puf_predictor_tax_unit_person_count": [1.0, 2.0, 1.0, 2.0],
+            "interest_deduction": [100.0, 100.0, 100.0, 100.0],
+            "weight": [1.0, 1.0, 1.0, 1.0],
+        }
+    )
+    with pytest.raises(ValueError, match="formula-owned aggregate outputs"):
+        impute_us_puf_tax_detail_support(
+            expanded,
+            donor,
+            predictors=(
+                "puf_predictor_filing_status_code",
+                "puf_predictor_tax_unit_person_count",
+            ),
+            person_outputs=(),
+            tax_unit_outputs=("interest_deduction",),
+            n_estimators=4,
+            seed=0,
+            tail_bound_diagnostics=[],
+        )
+
+
+def test_resolve_formula_owned_outputs_unions_static_seed_with_engine() -> None:
+    # #301: a name the engine reports as formula-owned is rejected even though
+    # it is absent from the static seed set — the derived source keeps the guard
+    # current as PolicyEngine-US adds variables, with no edit to the seed set.
+    assert "income_tax" not in PUF_TAX_DETAIL_FORMULA_OWNED_OUTPUTS
+    engine = _FakeFormulaOwnedEngine({"income_tax"})
+    requested = {
+        "income_tax",  # engine-only (not in static seed)
+        "interest_deduction",  # static seed only (engine below does not flag it)
+        "employment_income_before_lsr",  # legitimate leaf input
+    }
+
+    rejected = resolve_formula_owned_outputs(requested, engine=engine)
+
+    assert rejected == {"income_tax", "interest_deduction"}
+
+
+def test_resolve_formula_owned_outputs_always_applies_static_seed() -> None:
+    # Even when the engine flags nothing, the static seed is always enforced, so
+    # the guard still rejects known formula-owned aggregates when metadata is
+    # unavailable.
+    empty_engine = _FakeFormulaOwnedEngine(set())
+    requested = {"interest_deduction", "employment_income_before_lsr"}
+
+    assert resolve_formula_owned_outputs(requested, engine=empty_engine) == {
+        "interest_deduction",
+    }
+
+
+def test_assert_formula_owned_blocklist_current_passes_when_engine_agrees() -> None:
+    # Reverse-direction check: every static-seed entry the engine still reports
+    # as formula-owned is fine — no drift, no error.
+    agreeing_engine = _FakeFormulaOwnedEngine(set(PUF_TAX_DETAIL_FORMULA_OWNED_OUTPUTS))
+    assert_formula_owned_blocklist_current(agreeing_engine)
+
+
+def test_assert_formula_owned_blocklist_current_flags_stale_entries() -> None:
+    # A static-seed entry the engine no longer treats as formula-owned is stale
+    # (e.g. the engine turned it into a plain input or renamed it away) and must
+    # be surfaced by name so it cannot silently linger and wrongly reject a
+    # legitimate leaf.
+    stale = next(iter(PUF_TAX_DETAIL_FORMULA_OWNED_OUTPUTS))
+    still_owned = set(PUF_TAX_DETAIL_FORMULA_OWNED_OUTPUTS) - {stale}
+    drifted_engine = _FakeFormulaOwnedEngine(still_owned)
+
+    with pytest.raises(ValueError, match=stale):
+        assert_formula_owned_blocklist_current(drifted_engine)
+
+
+def test_resolve_formula_owned_outputs_engine_none_falls_back_to_static() -> None:
+    # With no engine passed and metadata unavailable, resolution falls back to
+    # the static seed. The fallback is exercised by monkeypatching the lazy
+    # engine resolver to report no engine, so the test is deterministic even
+    # where policyengine_us is installed.
+    puf_support_module._formula_owned_engine = lambda: None
+    try:
+        requested = {"interest_deduction", "employment_income_before_lsr"}
+        assert resolve_formula_owned_outputs(requested) == {"interest_deduction"}
+    finally:
+        importlib.reload(puf_support_module)
+
+
+def test_resolve_formula_owned_outputs_degrades_on_engine_import_error() -> None:
+    # The adapter module ships with microcosm-frame, so construction succeeds
+    # even without policyengine_us installed; the missing [us] extra surfaces
+    # as an ImportError at call time (the CI environment). That must degrade
+    # to the static seed exactly like having no engine, not abort the build.
+    requested = {"interest_deduction", "employment_income_before_lsr"}
+
+    rejected = resolve_formula_owned_outputs(requested, engine=_ImportErrorEngine())
+
+    assert rejected == {"interest_deduction"}
+
+
+def test_blocklist_current_check_noops_on_engine_import_error() -> None:
+    # Same degradation for the reverse-direction check: a call-time
+    # ImportError means no metadata is available, so the check is a no-op
+    # rather than a build failure.
+    assert_formula_owned_blocklist_current(_ImportErrorEngine())
+
+
+def test_resolve_formula_owned_outputs_catches_index_output_off_static_list() -> None:
+    # #301, against the installed source index: a genuinely formula-owned output
+    # that is NOT on the static seed set (income_tax) is still rejected, and every
+    # legitimate leaf input passes through. This is the failure a stale
+    # hand-written blocklist would silently allow.
+    _installed_variable_metadata_index()
+
+    requested = {
+        "income_tax",  # formula-owned, deliberately not in the static seed
+        "employment_income_before_lsr",  # leaf input
+        "qualified_dividend_income",  # leaf input
+    }
+    assert "income_tax" not in PUF_TAX_DETAIL_FORMULA_OWNED_OUTPUTS
+
+    rejected = resolve_formula_owned_outputs(requested)
+
+    assert "income_tax" in rejected
+    assert "employment_income_before_lsr" not in rejected
+    assert "qualified_dividend_income" not in rejected
+
+
+def test_static_seed_is_subset_of_index_derived_formula_owned_set() -> None:
+    # #301: the static seed set is a SUBSET of the installed-source
+    # formula-owned set, so it never diverges into rejecting a name the engine
+    # declares as an input. Equivalently, the drift check passes against the
+    # pinned package metadata.
+    engine = _installed_variable_metadata_index()
+    engine_derived = engine.formula_owned_outputs(PUF_TAX_DETAIL_FORMULA_OWNED_OUTPUTS)
+
+    assert PUF_TAX_DETAIL_FORMULA_OWNED_OUTPUTS <= set(engine_derived)
+    # And the guard's own consistency check agrees.
+    assert_formula_owned_blocklist_current(engine)
+
+
+def test_cps_carried_derivations_create_leaf_inputs_not_aggregates() -> None:
+    frame = derive_us_cps_carried_inputs(_raw_asec_predictor_frame())
+
+    person = frame.table("person")
+    assert not CPS_CARRIED_FORMULA_OWNED_COLUMNS.intersection(person.columns)
+    assert person["age"].tolist() == [65.0, 40.0, 61.0]
+    assert person["is_female"].tolist() == [False, True, True]
+    assert person["employment_income_before_lsr"].tolist() == [100.0, 200.0, 0.0]
+    assert person["self_employment_income_before_lsr"].tolist() == [10.0, 0.0, 30.0]
+    assert person["taxable_interest_income"].tolist() == [680.0, 0.0, 136.0]
+    assert "tax_exempt_interest_income" not in person
+    np.testing.assert_allclose(
+        person["qualified_dividend_income"].to_numpy(),
+        [44.8, 0.0, 22.4],
+    )
+    np.testing.assert_allclose(
+        person["non_qualified_dividend_income"].to_numpy(),
+        [55.2, 0.0, 27.6],
+    )
+    np.testing.assert_allclose(
+        person["long_term_capital_gains_before_response"].to_numpy(),
+        [44.0, 0.0, 22.0],
+    )
+    np.testing.assert_allclose(
+        person["short_term_capital_gains"].to_numpy(),
+        [6.0, 0.0, 3.0],
+    )
+    assert person["social_security_retirement"].tolist() == [1_000.0, 0.0, 0.0]
+    assert person["social_security_disability"].tolist() == [0.0, 900.0, 800.0]
+    assert person["taxable_private_pension_income"].tolist() == [649.0, 0.0, 0.0]
+    assert person["taxable_ira_distributions"].tolist() == [500.0, 0.0, 0.0]
+    assert person["rental_income"].tolist() == [20.0, 0.0, 0.0]
+    assert person["farm_operations_income"].tolist() == [5.0, 0.0, 0.0]
+    assert "farm_income" not in person
+    assert person["unemployment_compensation"].tolist() == [0.0, 70.0, 0.0]
+    assert person["alimony_income"].tolist() == [0.0, 0.0, 0.0]
+    assert person["strike_benefits"].tolist() == [0.0, 0.0, 0.0]
+    assert person["miscellaneous_income"].tolist() == [3.0, 0.0, 0.0]
+    assert person["health_insurance_premiums_without_medicare_part_b"].tolist() == [
+        400.0,
+        0.0,
+        50.0,
+    ]
+    assert person["PEMCPREM"].tolist() == [100.0, 0.0, 25.0]
+    assert "medicare_part_b_premiums_reported" not in person
+    assert person["other_medical_expenses"].tolist() == [200.0, 0.0, 40.0]
+    assert person["over_the_counter_health_expenses"].tolist() == [30.0, 0.0, 10.0]
+    assert person["has_marketplace_health_coverage_at_interview"].tolist() == [
+        True,
+        False,
+        True,
+    ]
+    assert "has_marketplace_health_coverage" not in person
+    assert person[
+        "has_non_marketplace_direct_purchase_health_coverage_at_interview"
+    ].tolist() == [
+        False,
+        True,
+        False,
+    ]
+    assert person["has_medicaid_health_coverage_at_interview"].tolist() == [
+        True,
+        False,
+        False,
+    ]
+    assert person["has_esi"].tolist() == [False, True, True]
+    assert person["has_champva_health_coverage_at_interview"].tolist() == [
+        False,
+        False,
+        True,
+    ]
+    assert person["has_tricare_health_coverage_at_interview"].tolist() == [
+        True,
+        False,
+        False,
+    ]
+    assert person["has_va_health_coverage_at_interview"].tolist() == [
+        False,
+        True,
+        False,
+    ]
+    assert person["has_other_means_tested_health_coverage_at_interview"].tolist() == [
+        False,
+        True,
+        False,
+    ]
+    assert person["has_indian_health_service_coverage_at_interview"].tolist() == [
+        True,
+        False,
+        False,
+    ]
+    assert "receives_wic" in CPS_CARRIED_PERSON_INPUTS
+    assert person["receives_wic"].tolist() == [False, True, False]
+    assert pd.api.types.is_bool_dtype(person["receives_wic"])
+
+
+def test_cps_carried_derives_reported_enrollment_by_spm_unit() -> None:
+    derived = derive_us_cps_carried_inputs(_raw_asec_predictor_frame())
+    spm_unit = derived.table("spm_unit")
+
+    assert {"receives_tanf", "receives_snap"} <= CPS_CARRIED_SPM_UNIT_INPUTS
+    assert spm_unit["spm_unit_id"].tolist() == [100, 200]
+    # Unit 200 reports positive PAW_VAL with PAW_TYP 2 (other cash welfare)
+    # and must stay out of the TANF-specific enrollment leaf.
+    assert spm_unit["receives_tanf"].tolist() == [True, False]
+    assert spm_unit["receives_snap"].tolist() == [False, True]
+    assert pd.api.types.is_bool_dtype(spm_unit["receives_tanf"])
+    assert pd.api.types.is_bool_dtype(spm_unit["receives_snap"])
+
+
+def test_reported_tanf_enrollment_gates_on_reported_tanf_type() -> None:
+    from microcosm.build.us_runtime.cps_carried import (
+        reported_tanf_enrollment_by_spm_unit,
+    )
+
+    enrollment = reported_tanf_enrollment_by_spm_unit(
+        _tanf_gate_person(
+            amounts=[500.0, 500.0, 500.0, 500.0, 0.0],
+            types=[1, 2, 3, 0, 1],
+        )
+    )
+
+    # PAW_TYP 1 (TANF/AFDC) and 3 (both) gate in; 2 (other cash welfare)
+    # and 0 (type unreported) gate out; a TANF type without a positive
+    # amount reports no receipt.
+    assert enrollment.index.tolist() == [100, 101, 102, 103, 104]
+    assert enrollment.tolist() == [True, False, True, False, False]
+
+
+def test_reported_tanf_enrollment_requires_paw_typ_for_positive_amounts() -> None:
+    from microcosm.build.us_runtime.cps_carried import (
+        reported_tanf_enrollment_by_spm_unit,
+    )
+
+    with pytest.raises(ValueError, match="requires PAW_TYP"):
+        reported_tanf_enrollment_by_spm_unit(
+            _tanf_gate_person(amounts=[0.0, 125.0], types=None)
+        )
+
+    enrollment = reported_tanf_enrollment_by_spm_unit(
+        _tanf_gate_person(amounts=[0.0, 0.0], types=None)
+    )
+    assert enrollment.tolist() == [False, False]
+
+
+def test_reported_tanf_enrollment_joins_sidecar_without_mutating_person() -> None:
+    from microcosm.build.us_runtime.cps_carried import (
+        reported_tanf_enrollment_by_spm_unit,
+    )
+
+    person = pd.DataFrame(
+        {
+            "person_spm_unit_id": np.asarray([100, 100, 200], dtype=np.int64),
+            "source_year": np.asarray([2022, 2022, 2022], dtype=np.int64),
+            "PERIDNUM": [f"{value:022d}" for value in (1, 2, 3)],
+            "P_SEQ": np.asarray([1, 2, 1], dtype=np.int64),
+            "A_LINENO": np.asarray([1, 2, 1], dtype=np.int64),
+            "PAW_VAL": [0.0, 125.0, 80.0],
+        }
+    )
+    sidecar = pd.DataFrame(
+        {
+            "source_year": np.asarray([2022, 2022, 2022], dtype=np.int64),
+            "PH_SEQ": np.asarray([101, 101, 202], dtype=np.int64),
+            "P_SEQ": np.asarray([1, 2, 1], dtype=np.int64),
+            "A_LINENO": np.asarray([1, 2, 1], dtype=np.int64),
+            "PERIDNUM": [f"{value:022d}" for value in (1, 2, 3)],
+            "PAW_VAL": [0.0, 125.0, 80.0],
+            "PAW_TYP": np.asarray([0, 1, 2], dtype=np.int64),
+        }
+    )
+    before = person.copy(deep=True)
+
+    enrollment = reported_tanf_enrollment_by_spm_unit(person, sidecar)
+
+    assert enrollment.index.tolist() == [100, 200]
+    assert enrollment.tolist() == [True, False]
+    pd.testing.assert_frame_equal(person, before)
+
+
+def test_cps_carried_reported_enrollment_is_shared_by_support_clones() -> None:
+    expanded = clone_us_frame_for_puf_support(
+        derive_us_cps_carried_inputs(_raw_asec_predictor_frame())
+    )
+    spm_unit = expanded.table("spm_unit")
+    source_id = support_source_id_column("spm_unit")
+    clone_index = support_clone_index_column("spm_unit")
+
+    assert spm_unit.groupby(source_id)[clone_index].nunique().eq(2).all()
+    expected = {
+        "receives_tanf": {100: True, 200: False},
+        "receives_snap": {100: False, 200: True},
+    }
+    for column, expected_by_source in expected.items():
+        by_source = spm_unit.groupby(source_id)[column]
+        assert by_source.nunique(dropna=False).eq(1).all()
+        assert by_source.first().to_dict() == expected_by_source
+
+    person = expanded.table("person")
+    person_source_id = support_source_id_column("person")
+    by_source = person.groupby(person_source_id)["receives_wic"]
+    assert by_source.nunique(dropna=False).eq(1).all()
+    assert by_source.first().to_dict() == {1: False, 2: True, 3: False}
+
+
+def test_cps_carried_derivations_reject_formula_owned_input_columns() -> None:
+    frame = _raw_asec_predictor_frame()
+    tables = {entity: frame.table(entity).copy() for entity in frame.entities}
+    tables["person"]["dividend_income"] = [1.0, 2.0, 3.0]
+    bad = Frame(tables, frame.schema, {"household": frame.weights_for("household")})
+
+    with pytest.raises(ValueError, match="formula-owned aggregate columns"):
+        derive_us_cps_carried_inputs(bad)
+
+
+def test_cps_carried_derives_spm_unit_childcare_from_replicated_asec_column() -> None:
+    frame = _raw_asec_predictor_frame()
+    frame.table("person")["SPM_CHILDCAREXPNS"] = [800.0, 800.0, 0.0]
+
+    derived = derive_us_cps_carried_inputs(frame)
+
+    assert derived.table("spm_unit")[
+        "spm_unit_pre_subsidy_childcare_expenses"
+    ].tolist() == [800.0, 0.0]
+
+
+def test_cps_carried_preserves_existing_spm_unit_childcare_values() -> None:
+    frame = _raw_asec_predictor_frame()
+    frame.table("person")["SPM_CHILDCAREXPNS"] = [800.0, 800.0, 0.0]
+    frame.table("spm_unit")["spm_unit_pre_subsidy_childcare_expenses"] = [
+        111.0,
+        222.0,
+    ]
+
+    derived = derive_us_cps_carried_inputs(frame)
+
+    assert derived.table("spm_unit")[
+        "spm_unit_pre_subsidy_childcare_expenses"
+    ].tolist() == [111.0, 222.0]
+
+
+def test_cps_carried_derivations_unblock_default_puf_predictors() -> None:
+    expanded = clone_us_frame_for_puf_support(
+        derive_us_cps_carried_inputs(
+            _raw_asec_predictor_frame(with_tax_unit_roles=True)
+        )
+    )
+    donor = pd.DataFrame(
+        {
+            "puf_predictor_filing_status_code": [1.0, 2.0, 4.0, 1.0],
+            "puf_predictor_tax_unit_person_count": [1.0, 2.0, 1.0, 2.0],
+            "puf_predictor_head_age": [30.0, 45.0, 60.0, 75.0],
+            "puf_predictor_spouse_age": [0.0, 43.0, 0.0, 70.0],
+            "puf_predictor_head_is_female": [0.0, 1.0, 0.0, 1.0],
+            "puf_predictor_dependent_count": [0.0, 1.0, 0.0, 0.0],
+            "puf_predictor_income_rank_share": [0.875, 0.625, 0.375, 0.125],
+            "puf_predictor_has_earnings": [1.0, 1.0, 0.0, 1.0],
+            "taxable_interest_income": [100.0, 200.0, 300.0, 400.0],
+            "qualified_dividend_income": [10.0, 20.0, 30.0, 40.0],
+            "non_qualified_dividend_income": [50.0, 60.0, 70.0, 80.0],
+            "weight": [1.0, 1.0, 1.0, 1.0],
+        }
+    )
+
+    imputed = impute_us_puf_tax_detail_support(
+        expanded,
+        donor,
+        person_outputs=(
+            "taxable_interest_income",
+            "qualified_dividend_income",
+            "non_qualified_dividend_income",
+        ),
+        tax_unit_outputs=(),
+        n_estimators=4,
+        seed=0,
+        tail_bound_diagnostics=[],
+    )
+
+    puf_people = imputed.table("person")[
+        imputed.table("person")[support_channel_column("person")]
+        == PUF_TAX_DETAIL_SUPPORT_CHANNEL
+    ]
+    assert {"taxable_interest_income", "qualified_dividend_income"}.issubset(
+        puf_people.columns
+    )
+
+
+def test_puf_tax_detail_snaps_sparse_taxable_interest_to_observed_zero(
+    monkeypatch,
+) -> None:
+    class TinyPositiveQRF:
+        def __init__(self, *, n_estimators: int, seed: int) -> None:
+            pass
+
+        def fit(
+            self,
+            frame,
+            predictors,
+            outputs,
+            *,
+            weights,
+        ) -> "TinyPositiveQRF":
+            return self
+
+        def predict(
+            self,
+            features: pd.DataFrame,
+            *,
+            release_models: bool = False,
+        ) -> pd.DataFrame:
+            return pd.DataFrame(
+                {
+                    "taxable_interest_income": [0.25, 9.6],
+                    "qualified_dividend_income": [0.25, 9.6],
+                },
+                index=features.index,
+            )
+
+    monkeypatch.setattr(puf_support_module, "QRF", TinyPositiveQRF)
+    expanded = clone_us_frame_for_puf_support(
+        derive_us_cps_carried_inputs(_raw_asec_predictor_frame())
+    )
+    donor = pd.DataFrame(
+        {
+            "puf_predictor_filing_status_code": [1.0, 2.0],
+            "puf_predictor_tax_unit_person_count": [1.0, 1.0],
+            "taxable_interest_income": [0.0, 10.0],
+            "qualified_dividend_income": [0.0, 10.0],
+            "weight": [1.0, 1.0],
+        }
+    )
+
+    imputed = impute_us_puf_tax_detail_support(
+        expanded,
+        donor,
+        predictors=(
+            "puf_predictor_filing_status_code",
+            "puf_predictor_tax_unit_person_count",
+        ),
+        person_outputs=(
+            "taxable_interest_income",
+            "qualified_dividend_income",
+        ),
+        tax_unit_outputs=(),
+        n_estimators=4,
+        seed=0,
+        tail_bound_diagnostics=[],
+        # The snapped column keeps the recipient-share bound, which must not
+        # zero its carrier. The dividends column is this test's untouched
+        # passthrough control, and on a two-unit frame the bound would cap it.
+        recipient_share_bound_outputs=("taxable_interest_income",),
+    )
+
+    puf_people = imputed.table("person")[
+        imputed.table("person")[support_channel_column("person")]
+        == PUF_TAX_DETAIL_SUPPORT_CHANNEL
+    ]
+    assert puf_people["taxable_interest_income"].tolist() == [0.0, 0.0, 10.0]
+    qualified_dividends = puf_people["qualified_dividend_income"].to_numpy(
+        dtype=np.float64
+    )
+    expected_qualified_dividends = np.asarray([0.25, 0.0, 9.6], dtype=np.float64)
+    np.testing.assert_array_equal(
+        qualified_dividends.view(np.uint64),
+        expected_qualified_dividends.view(np.uint64),
+    )
+
+
+def test_puf_tax_detail_preserves_sparse_educator_rate_and_earnings_allocation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class EducatorExpenseQRF:
+        def __init__(self, *, n_estimators: int, seed: int) -> None:
+            pass
+
+        def fit(
+            self,
+            frame,
+            predictors,
+            outputs,
+            *,
+            weights,
+        ) -> "EducatorExpenseQRF":
+            assert outputs == ["educator_expense"]
+            assert weights == "design"
+            return self
+
+        def predict(
+            self,
+            features: pd.DataFrame,
+            *,
+            release_models: bool = False,
+        ) -> pd.DataFrame:
+            return pd.DataFrame(
+                {"educator_expense": [300.0, 200.0]},
+                index=features.index,
+            )
+
+    monkeypatch.setattr(puf_support_module, "QRF", EducatorExpenseQRF)
+    expanded = clone_us_frame_for_puf_support(_minimal_us_frame())
+    donor = pd.DataFrame(
+        {
+            "puf_predictor_filing_status_code": [1.0, 2.0, 4.0],
+            "puf_predictor_tax_unit_person_count": [1.0, 2.0, 1.0],
+            "educator_expense": [300.0, 200.0, 0.0],
+            # Weighted donor positive rate = (0.5 + 0.5) / 4 = 25%.
+            "weight": [0.5, 0.5, 3.0],
+        }
+    )
+
+    imputed = impute_us_puf_tax_detail_support(
+        expanded,
+        donor,
+        predictors=(
+            "puf_predictor_filing_status_code",
+            "puf_predictor_tax_unit_person_count",
+        ),
+        person_outputs=("educator_expense",),
+        tax_unit_outputs=(),
+        n_estimators=4,
+        seed=0,
+        # Isolates the donor-rate sparsification and the earnings allocation on
+        # a two-unit frame, where a unit standing for a quarter of the
+        # population would have its 300 draw bounded to 200. The bound and
+        # the sparsification together are covered in
+        # test_us_puf_recipient_share_bound.py.
+        recipient_share_bound_outputs=(),
+    )
+
+    person = imputed.table("person")
+    asec_people = person[
+        person[support_channel_column("person")] == BASE_ASEC_SUPPORT_CHANNEL
+    ]
+    puf_people = person[
+        person[support_channel_column("person")] == PUF_TAX_DETAIL_SUPPORT_CHANNEL
+    ].sort_values(support_source_id_column("person"))
+    assert asec_people["educator_expense"].tolist() == [0.0, 0.0, 0.0]
+
+    puf_totals = puf_people.groupby("person_tax_unit_id", sort=False)[
+        "educator_expense"
+    ].sum()
+    np.testing.assert_allclose(puf_totals.to_numpy(), [900.0, 0.0])
+    np.testing.assert_allclose(
+        puf_people.iloc[:2]["educator_expense"].to_numpy(),
+        [900.0 * 50_000.0 / 70_000.0, 900.0 * 20_000.0 / 70_000.0],
+    )
+
+    household = imputed.table("household")
+    puf_household_mask = (
+        household[support_channel_column("household")] == PUF_TAX_DETAIL_SUPPORT_CHANNEL
+    )
+    puf_household_weights = pd.Series(
+        imputed.weights_for("household").values[puf_household_mask],
+        index=household.loc[puf_household_mask, "household_id"],
+    )
+    tax_unit_household = puf_people.groupby("person_tax_unit_id", sort=False)[
+        "person_household_id"
+    ].first()
+    tax_unit_weights = tax_unit_household.map(puf_household_weights)
+    puf_positive_rate = float(
+        tax_unit_weights[puf_totals > 0.0].sum() / tax_unit_weights.sum()
+    )
+    donor_positive_rate = float(
+        donor.loc[donor["educator_expense"] > 0.0, "weight"].sum()
+        / donor["weight"].sum()
+    )
+    assert donor_positive_rate == pytest.approx(0.25)
+    assert puf_positive_rate == pytest.approx(donor_positive_rate)
+
+
+def test_puf_tax_unit_donor_derives_partnership_and_s_corp_split_from_raw_fields() -> (
+    None
+):
+    """Raw Schedule E Part II fields derive each entity's share of line 32.
+
+    Partnership: (g) E25940 + (j) E25980 - (f) E25920 - (h) E25960 - (i) E26110.
+    S corporation: E26170 + E26190 - E26160 - E26180 - E26100. The passive
+    subset is (g) - (f) of both (microcosm#1239).
+    """
+
+    donor = puf_tax_unit_donor_from_arrays(
+        {
+            "tax_unit_id": [10, 20],
+            "household_weight": [100.0, 200.0],
+            "filing_status": [b"SINGLE", b"JOINT"],
+            "person_tax_unit_id": [10, 20],
+            "E25940": [30.0, 0.0],
+            "E25920": [0.0, 15.0],
+            "E25980": [50.0, 70.0],
+            "E25960": [5.0, 10.0],
+            "E26110": [1.0, 0.0],
+            "E26170": [0.0, 25.0],
+            "E26160": [4.0, 0.0],
+            "E26190": [80.0, 110.0],
+            "E26180": [20.0, 30.0],
+            "E26100": [0.0, 2.0],
+            "E30400": [923.5, 0.0],
+            "E30500": [0.0, 1_847.0],
+            "E00900": [300.0, 500.0],
+            "E02100": [100.0, -200.0],
+            "E17500": [1_000.0, 2_000.0],
+        },
+        person_outputs=(
+            "partnership_income",
+            "s_corp_income",
+            "passive_partnership_s_corp_income",
+            "partnership_self_employment_net_earnings",
+            "health_insurance_premiums_without_medicare_part_b",
+            "other_medical_expenses",
+            "over_the_counter_health_expenses",
+        ),
+        tax_unit_outputs=(),
+    )
+
+    assert donor["partnership_income"].tolist() == [74.0, 45.0]
+    assert donor["s_corp_income"].tolist() == [56.0, 103.0]
+    assert donor["passive_partnership_s_corp_income"].tolist() == [26.0, 10.0]
+    # (E30400 + E30500) / 0.9235 - (E00900 + E02100): 1,000 - 400 and
+    # 2,000 - 300. The S corporation columns do not enter.
+    np.testing.assert_allclose(
+        donor["partnership_self_employment_net_earnings"].to_numpy(),
+        [600.0, 1_700.0],
+        rtol=0.0,
+        atol=1e-9,
+    )
+    assert donor["health_insurance_premiums_without_medicare_part_b"].tolist() == [
+        453.0,
+        906.0,
+    ]
+    assert "medicare_part_b_premiums_reported" not in donor
+    assert (
+        "medicare_part_b_premiums_reported"
+        not in puf_support_module._PUF_MEDICAL_EXPENSE_CATEGORY_BREAKDOWNS
+    )
+    assert donor["other_medical_expenses"].tolist() == [325.0, 650.0]
+    assert donor["over_the_counter_health_expenses"].tolist() == [85.0, 170.0]
+    assert "tax_unit_partnership_s_corp_income" not in donor
+
+
+def test_puf_tax_unit_donor_carries_structural_mortgage_leaves() -> None:
+    donor = puf_tax_unit_donor_from_arrays(
+        {
+            "tax_unit_id": [10, 20],
+            "household_weight": [100.0, 200.0],
+            "filing_status": [b"SINGLE", b"JOINT"],
+            "person_tax_unit_id": [10, 20],
+            "home_mortgage_interest": [10_000.0, 25_000.0],
+            "first_home_mortgage_balance": [250_000.0, 500_000.0],
+            "second_home_mortgage_balance": [0.0, 125_000.0],
+            "first_home_mortgage_interest": [10_000.0, 20_000.0],
+            "second_home_mortgage_interest": [0.0, 5_000.0],
+            "first_home_mortgage_origination_year": [2018, 2016],
+            "second_home_mortgage_origination_year": [0, 2020],
+            "health_savings_account_ald": [1_500.0, 0.0],
+            "domestic_production_ald": [7_500.0, 0.0],
+            "unrecaptured_section_1250_gain": [500.0, 0.0],
+        },
+        adjusted_gross_income=[0.0, 10_000_000.0],
+        person_outputs=(),
+        tax_unit_outputs=PUF_TAX_DETAIL_DEFAULT_TAX_UNIT_OUTPUTS,
+    )
+
+    assert donor["health_savings_account_ald"].tolist() == [1_500.0, 0.0]
+    assert donor["domestic_production_ald"].tolist() == [7_500.0, 0.0]
+    assert donor["unrecaptured_section_1250_gain"].tolist() == [500.0, 0.0]
+    assert donor["first_home_mortgage_balance"].tolist() == [250_000.0, 500_000.0]
+    assert donor["second_home_mortgage_balance"].tolist() == [0.0, 125_000.0]
+    np.testing.assert_allclose(
+        donor["first_home_mortgage_interest"].to_numpy(),
+        np.asarray([10_000.0, 20_000.0])
+        * (
+            split_us_puf_e19200_by_agi_band(
+                np.asarray([10_000.0, 25_000.0]),
+                np.asarray([0.0, 10_000_000.0]),
+            )[0]
+            / np.asarray([10_000.0, 25_000.0])
+        ),
+    )
+    np.testing.assert_allclose(
+        donor["second_home_mortgage_interest"].to_numpy(),
+        np.asarray([0.0, 5_000.0])
+        * (
+            split_us_puf_e19200_by_agi_band(
+                np.asarray([10_000.0, 25_000.0]),
+                np.asarray([0.0, 10_000_000.0]),
+            )[0]
+            / np.asarray([10_000.0, 25_000.0])
+        ),
+    )
+    assert donor["first_home_mortgage_origination_year"].tolist() == [
+        2018.0,
+        2016.0,
+    ]
+    assert donor["second_home_mortgage_origination_year"].tolist() == [0.0, 2020.0]
+    assert "interest_deduction" not in donor
+
+
+_PROCESSED_PARTNERSHIP_ARRAYS = {
+    "tax_unit_id": [10, 20],
+    "household_weight": [100.0, 200.0],
+    "filing_status": [b"SINGLE", b"JOINT"],
+    "person_tax_unit_id": [10, 20],
+    # The archived nonpassive-only sum; it is not Schedule E line 32.
+    "partnership_s_corp_income": [1_000.0, 2_000.0],
+    "partnership_se_income": [100.0, 200.0],
+}
+_PARTNERSHIP_OUTPUTS = (
+    "partnership_income",
+    "s_corp_income",
+    "passive_partnership_s_corp_income",
+    "partnership_self_employment_net_earnings",
+)
+
+
+_SCHEDULE_E_SUPPLEMENT = {
+    "partnership_income": [1_250.0, -300.0],
+    "s_corp_income": [-75.0, 4_100.0],
+    "passive_partnership_s_corp_income": [400.0, 0.0],
+}
+
+
+def test_puf_tax_unit_donor_carries_source_year_line_32_on_processed_arrays() -> None:
+    donor = puf_tax_unit_donor_from_arrays(
+        _PROCESSED_PARTNERSHIP_ARRAYS,
+        schedule_e_partnership_s_corp=_SCHEDULE_E_SUPPLEMENT,
+        person_outputs=_PARTNERSHIP_OUTPUTS,
+        tax_unit_outputs=(),
+    )
+
+    # microcosm#1258: each entity's share is its own leaf; S corp is no longer
+    # an exact-zero alias of the processed column.
+    assert donor["partnership_income"].tolist() == [1_250.0, -300.0]
+    assert donor["s_corp_income"].tolist() == [-75.0, 4_100.0]
+    assert donor["passive_partnership_s_corp_income"].tolist() == [400.0, 0.0]
+    assert donor["partnership_self_employment_net_earnings"].tolist() == [100.0, 200.0]
+    assert "tax_unit_partnership_s_corp_income" not in donor
+
+
+@pytest.mark.parametrize(
+    "outputs",
+    [
+        _PARTNERSHIP_OUTPUTS,
+        ("partnership_income",),
+        ("s_corp_income",),
+        ("passive_partnership_s_corp_income",),
+    ],
+)
+def test_processed_nonpassive_column_never_stands_for_line_32(
+    outputs: tuple[str, ...],
+) -> None:
+    """Without the source-year supplement the processed donor fails closed.
+
+    The processed column is the archived nonpassive sum of both entities, so
+    it stands for neither entity share (microcosm#1239, #1258): before #1258
+    it silently made ``s_corp_income`` an exact zero.
+    """
+
+    with pytest.raises(ValueError, match="cannot derive requested output"):
+        puf_tax_unit_donor_from_arrays(
+            _PROCESSED_PARTNERSHIP_ARRAYS,
+            person_outputs=outputs,
+            tax_unit_outputs=(),
+        )
+
+
+@pytest.mark.parametrize(
+    ("supplement", "message"),
+    [
+        ({"partnership_income": [1.0, 2.0]}, "must carry exactly"),
+        (
+            # The pre-#1258 two-leaf supplement no longer satisfies the donor.
+            {
+                "partnership_income": [1.0, 2.0],
+                "passive_partnership_s_corp_income": [0.0, 0.0],
+            },
+            "must carry exactly",
+        ),
+        (
+            {
+                "partnership_income": [1.0, 2.0],
+                "s_corp_income": [0.0, 0.0],
+                "passive_partnership_s_corp_income": [0.0, 0.0],
+                "rental_income": [0.0, 0.0],
+            },
+            "must carry exactly",
+        ),
+        (
+            {
+                "partnership_income": [1.0, 2.0],
+                "s_corp_income": [3.0],
+                "passive_partnership_s_corp_income": [0.0, 0.0],
+            },
+            "align one-for-one",
+        ),
+        (
+            {
+                "partnership_income": [1.0, 2.0],
+                "s_corp_income": [3.0, np.inf],
+                "passive_partnership_s_corp_income": [0.0, 0.0],
+            },
+            "must be finite",
+        ),
+    ],
+)
+def test_schedule_e_supplement_is_validated(
+    supplement: dict[str, list[float]], message: str
+) -> None:
+    with pytest.raises(ValueError, match=message):
+        puf_tax_unit_donor_from_arrays(
+            _PROCESSED_PARTNERSHIP_ARRAYS,
+            schedule_e_partnership_s_corp=supplement,
+            person_outputs=_PARTNERSHIP_OUTPUTS,
+            tax_unit_outputs=(),
+        )
+
+
+@pytest.mark.parametrize("stored", ["partnership_income", "s_corp_income"])
+def test_schedule_e_supplement_refuses_a_second_source(stored: str) -> None:
+    arrays = {
+        **_PROCESSED_PARTNERSHIP_ARRAYS,
+        stored: [5.0, 6.0],
+    }
+    with pytest.raises(ValueError, match="second source"):
+        puf_tax_unit_donor_from_arrays(
+            arrays,
+            schedule_e_partnership_s_corp=_SCHEDULE_E_SUPPLEMENT,
+            person_outputs=_PARTNERSHIP_OUTPUTS,
+            tax_unit_outputs=(),
+        )
+
+
+@settings(max_examples=200, deadline=None)
+@given(
+    st.lists(
+        st.tuples(
+            st.sampled_from([0.0, 0.0, 0.0, -5_000.0, 120.0, 5_000.0]),
+            st.sampled_from([0.0, 0.0, 0.0, -5_000.0, 75.0, 5_000.0]),
+            st.floats(-1e6, 1e6, allow_nan=False),
+        ),
+        min_size=1,
+        max_size=40,
+    )
+)
+def test_passive_draw_is_zero_wherever_the_unit_drew_no_line_32(
+    draws: list[tuple[float, float, float]],
+) -> None:
+    """Coherence on the frame: no passive amount without line-32 activity.
+
+    Line 32 is the sum of both entity leaves (microcosm#1258), so a unit whose
+    partnership and S-corporation draws cancel has none. Units with a nonzero
+    total keep their passive draw in full, whatever its sign or size relative
+    to the total, and whichever entity carries it.
+    """
+
+    predictions = pd.DataFrame(
+        {
+            "partnership_income": [partnership for partnership, _, _ in draws],
+            "s_corp_income": [s_corp for _, s_corp, _ in draws],
+            "passive_partnership_s_corp_income": [passive for _, _, passive in draws],
+        }
+    )
+    before = predictions["passive_partnership_s_corp_income"].copy()
+
+    _zero_passive_partnership_s_corp_without_line_32(predictions)
+
+    total = predictions["partnership_income"] + predictions["s_corp_income"]
+    after = predictions["passive_partnership_s_corp_income"]
+    assert (after[total == 0.0] == 0.0).all()
+    pd.testing.assert_series_equal(after[total != 0.0], before[total != 0.0])
+
+
+@pytest.mark.parametrize(
+    "present",
+    [(), ("partnership_income",), ("s_corp_income",)],
+)
+def test_passive_draw_coherence_requires_the_line_32_total(
+    present: tuple[str, ...],
+) -> None:
+    """Both entity shares make up line 32; one alone is refused (#1258)."""
+
+    predictions = pd.DataFrame(
+        {
+            "passive_partnership_s_corp_income": [1.0],
+            **{column: [0.0] for column in present},
+        }
+    )
+
+    with pytest.raises(ValueError, match="line-32 total"):
+        _zero_passive_partnership_s_corp_without_line_32(predictions)
+
+
+@pytest.mark.parametrize("line_32", [6_000.0, -6_000.0])
+@pytest.mark.parametrize("s_corp_share", [0.0, 0.25, 1.0])
+def test_finalize_places_passive_with_its_line_32_total(
+    monkeypatch: pytest.MonkeyPatch,
+    line_32: float,
+    s_corp_share: float,
+) -> None:
+    """The passive subset lands on the people who carry the line-32 total.
+
+    A line-32 loss is placed the same way: the passive amount follows the
+    magnitudes of the people's own totals rather than falling to the unit's
+    first person. Line 32 is split across both entity leaves in any proportion
+    (microcosm#1258), including wholly S corporation.
+    """
+
+    draws = pd.DataFrame(
+        {
+            "partnership_income": [line_32 * (1.0 - s_corp_share), 0.0],
+            "s_corp_income": [line_32 * s_corp_share, 0.0],
+            "passive_partnership_s_corp_income": [1_500.0, 800.0],
+        }
+    )
+
+    class FixedQRF:
+        def __init__(self, *, n_estimators: int, seed: int) -> None:
+            pass
+
+        def fit(self, frame, predictors, outputs, *, weights) -> "FixedQRF":
+            assert outputs == list(draws.columns)
+            return self
+
+        @property
+        def weight_kind(self) -> str:
+            return "design"
+
+        def predict(
+            self, features: pd.DataFrame, *, release_models: bool = False
+        ) -> pd.DataFrame:
+            return draws.set_axis(features.index)
+
+    monkeypatch.setattr(puf_support_module, "QRF", FixedQRF)
+    expanded = clone_us_frame_for_puf_support(_minimal_us_frame())
+    donor = pd.DataFrame(
+        {
+            "filing_status_code": [1.0, 2.0],
+            "partnership_income": [line_32 * (1.0 - s_corp_share), 0.0],
+            "s_corp_income": [line_32 * s_corp_share, 0.0],
+            "passive_partnership_s_corp_income": [1_500.0, 0.0],
+            "weight": [1.0, 1.0],
+        }
+    )
+
+    imputed = impute_us_puf_tax_detail_support(
+        expanded,
+        donor,
+        predictors=("puf_predictor_filing_status_code",),
+        person_outputs=tuple(draws.columns),
+        tax_unit_outputs=(),
+        n_estimators=4,
+        seed=0,
+        tail_bound_diagnostics=[],
+    )
+
+    person = imputed.table("person")
+    puf = person[
+        person[support_channel_column("person")] == PUF_TAX_DETAIL_SUPPORT_CHANNEL
+    ]
+    puf = puf.assign(line_32=puf["partnership_income"] + puf["s_corp_income"])
+    by_unit = puf.groupby("person_tax_unit_id", sort=True)
+    totals = by_unit["line_32"].sum()
+    passive = by_unit["passive_partnership_s_corp_income"].sum()
+    # The zero-total unit keeps no passive amount.
+    assert passive.iloc[1] == 0.0
+    assert totals.iloc[1] == 0.0
+    # Each entity keeps its drawn unit total.
+    np.testing.assert_allclose(
+        by_unit["s_corp_income"].sum().iloc[0], line_32 * s_corp_share
+    )
+    # Within the two-person unit the passive amount follows the line-32 shares.
+    first_unit = puf[puf["person_tax_unit_id"] == totals.index[0]]
+    share_total = first_unit["line_32"] / totals.iloc[0]
+    share_passive = first_unit["passive_partnership_s_corp_income"] / passive.iloc[0]
+    np.testing.assert_allclose(share_passive.to_numpy(), share_total.to_numpy())
+    assert passive.iloc[0] > 0.0
+
+
+def _place_passive(person: pd.DataFrame, totals: dict[int, float]) -> pd.Series:
+    person = person.copy()
+    person["passive_partnership_s_corp_income"] = 0.0
+    puf_support_module._write_person_tax_unit_totals(
+        person,
+        mask=pd.Series(True, index=person.index),
+        column="passive_partnership_s_corp_income",
+        totals=pd.Series(totals),
+        nonnegative=False,
+        fallback_basis_columns=("partnership_income", "s_corp_income"),
+        fallback_basis_is_signed_superset=True,
+    )
+    return person["passive_partnership_s_corp_income"]
+
+
+def test_passive_placement_follows_signed_line_32_magnitudes() -> None:
+    """A loss carrier takes the passive amount; a person with no line 32 none.
+
+    Clipping the basis at zero (the placement every other fallback output
+    uses) would put unit 1's passive amount on its first person, who has no
+    pass-through activity (review of microcosm#1251).
+    """
+
+    person = pd.DataFrame(
+        {
+            "person_tax_unit_id": [1, 1, 2, 2, 3, 3],
+            "partnership_income": [0.0, -100.0, 50.0, -100.0, 100.0, 0.0],
+            "s_corp_income": [0.0, 0.0, 0.0, 0.0, -100.0, 0.0],
+        }
+    )
+
+    placed = _place_passive(person, {1: 30.0, 2: 30.0, 3: 30.0})
+
+    # Unit 1: only the loss carrier has line 32.
+    np.testing.assert_allclose(placed.iloc[0:2], [0.0, 30.0])
+    # Unit 2: mixed signs split by magnitude, 50 : 100.
+    np.testing.assert_allclose(placed.iloc[2:4], [10.0, 20.0])
+    # Unit 3: the one carrier's legs cancel, so no one carries line 32 and the
+    # subset is zero rather than parked on the first person.
+    np.testing.assert_allclose(placed.iloc[4:6], [0.0, 0.0])
+
+
+def test_passive_placement_ignores_values_the_column_already_holds() -> None:
+    """A stale passive column never steers the split away from line 32."""
+
+    person = pd.DataFrame(
+        {
+            "person_tax_unit_id": [1, 1],
+            "partnership_income": [0.0, -100.0],
+            "s_corp_income": [0.0, 0.0],
+            "passive_partnership_s_corp_income": [500.0, -200.0],
+        }
+    )
+    puf_support_module._write_person_tax_unit_totals(
+        person,
+        mask=pd.Series(True, index=person.index),
+        column="passive_partnership_s_corp_income",
+        totals=pd.Series({1: 30.0}),
+        nonnegative=False,
+        fallback_basis_columns=("partnership_income", "s_corp_income"),
+        fallback_basis_is_signed_superset=True,
+    )
+
+    np.testing.assert_allclose(person["passive_partnership_s_corp_income"], [0.0, 30.0])
+
+
+@pytest.mark.parametrize(
+    ("person_outputs", "message"),
+    [
+        (
+            (
+                "partnership_income",
+                "passive_partnership_s_corp_income",
+                "s_corp_income",
+            ),
+            "must come before it",
+        ),
+        (("passive_partnership_s_corp_income",), "same pass"),
+        # microcosm#1258: half a line-32 basis is a stale basis too. Without
+        # s_corp_income an S-corporation-only unit would look line-32-free.
+        (
+            ("partnership_income", "passive_partnership_s_corp_income"),
+            r"same pass \(missing \['s_corp_income'\]\)",
+        ),
+        (
+            ("s_corp_income", "passive_partnership_s_corp_income"),
+            r"same pass \(missing \['partnership_income'\]\)",
+        ),
+    ],
+)
+def test_passive_placement_refuses_a_stale_line_32_basis(
+    person_outputs: tuple[str, ...], message: str
+) -> None:
+    with pytest.raises(ValueError, match=message):
+        puf_support_module._require_signed_subset_outputs_after_their_basis(
+            person_outputs
+        )
+
+    # The production order passes.
+    puf_support_module._require_signed_subset_outputs_after_their_basis(
+        PUF_TAX_DETAIL_DEFAULT_PERSON_OUTPUTS
+    )
+
+
+@pytest.mark.parametrize(
+    "columns",
+    [
+        ("partnership_income", "passive_partnership_s_corp_income", "s_corp_income"),
+        ("partnership_income", "passive_partnership_s_corp_income"),
+    ],
+)
+def test_entry_points_refuse_a_stale_line_32_basis_before_any_other_work(
+    monkeypatch: pytest.MonkeyPatch,
+    columns: tuple[str, ...],
+) -> None:
+    """A misordered or partial line-32 basis is refused first, before any fit.
+
+    The fit raises if it is ever reached, and the donor deliberately lacks
+    every requested output: were the basis check to drift below donor
+    validation, the missing-donor-column error would surface instead.
+    """
+
+    draws = pd.DataFrame(
+        {
+            "partnership_income": [6_000.0, 0.0],
+            "passive_partnership_s_corp_income": [1_500.0, 0.0],
+            "s_corp_income": [0.0, 0.0],
+        }
+    ).loc[:, list(columns)]
+
+    class FixedQRF:
+        def __init__(self, *, n_estimators: int, seed: int) -> None:
+            pass
+
+        def fit(self, frame, predictors, outputs, *, weights) -> "FixedQRF":
+            raise AssertionError("the basis check must run before any fit")
+
+        @property
+        def weight_kind(self) -> str:
+            return "design"
+
+        def predict(
+            self, features: pd.DataFrame, *, release_models: bool = False
+        ) -> pd.DataFrame:
+            return draws.set_axis(features.index)
+
+    monkeypatch.setattr(puf_support_module, "QRF", FixedQRF)
+    donor = pd.DataFrame({"filing_status_code": [1.0, 2.0], "weight": [1.0, 1.0]})
+
+    with pytest.raises(ValueError, match="must come before it|same pass"):
+        impute_us_puf_tax_detail_support(
+            clone_us_frame_for_puf_support(_minimal_us_frame()),
+            donor,
+            predictors=("puf_predictor_filing_status_code",),
+            person_outputs=tuple(draws.columns),
+            tax_unit_outputs=(),
+            n_estimators=4,
+            seed=0,
+            tail_bound_diagnostics=[],
+        )
+    with pytest.raises(ValueError, match="must come before it|same pass"):
+        puf_support_module.prepare_us_puf_tax_detail_chain_inputs(
+            clone_us_frame_for_puf_support(_minimal_us_frame()),
+            donor,
+            predictors=("puf_predictor_filing_status_code",),
+            person_outputs=tuple(draws.columns),
+            tax_unit_outputs=(),
+        )
+
+
+def test_passive_placement_refuses_without_any_line_32_column() -> None:
+    person = pd.DataFrame({"person_tax_unit_id": [1, 1]})
+
+    with pytest.raises(ValueError, match="none of which is on the person table"):
+        _place_passive(person, {1: 30.0})
+
+
+@settings(max_examples=300, deadline=None)
+@given(
+    st.lists(
+        st.tuples(
+            st.integers(0, 5),
+            st.sampled_from([0.0, 0.0, -2_500.0, -40.0, 75.0, 12_000.0]),
+            st.sampled_from([0.0, 0.0, 0.0, -300.0, 900.0]),
+        ),
+        min_size=1,
+        max_size=30,
+    ),
+    st.lists(st.floats(-1e6, 1e6, allow_nan=False), min_size=6, max_size=6),
+)
+def test_passive_placement_property(
+    people: list[tuple[int, float, float]],
+    unit_passive: list[float],
+) -> None:
+    """For any signed line-32 layout and any passive totals:
+
+    - a person whose own line 32 is zero carries no passive amount;
+    - every share has the unit total's sign (shares are nonnegative);
+    - a unit's people sum to its passive total when anyone carries line 32,
+      and to zero when no one does.
+    """
+
+    person = pd.DataFrame(
+        people, columns=["person_tax_unit_id", "partnership_income", "s_corp_income"]
+    )
+    totals = dict(enumerate(unit_passive))
+
+    placed = _place_passive(person, totals)
+
+    own_line_32 = person["partnership_income"] + person["s_corp_income"]
+    assert (placed[own_line_32 == 0.0] == 0.0).all()
+    target = person["person_tax_unit_id"].map(totals)
+    assert (placed * target >= 0.0).all()
+    by_unit = placed.groupby(person["person_tax_unit_id"]).sum()
+    carried = (own_line_32 != 0.0).groupby(person["person_tax_unit_id"]).any()
+    for unit, sum_placed in by_unit.items():
+        expected = totals[unit] if carried[unit] else 0.0
+        assert sum_placed == pytest.approx(expected, rel=1e-12, abs=1e-6)
+
+
+def test_puf_tax_detail_imputation_writes_only_puf_channel() -> None:
+    expanded = clone_us_frame_for_puf_support(_minimal_us_frame())
+    donor = pd.DataFrame(
+        {
+            "filing_status_code": [1.0, 2.0, 4.0, 1.0],
+            "tax_unit_person_count": [1.0, 2.0, 1.0, 2.0],
+            "employment_income_before_lsr": [1_000.0, 1_000.0, 1_000.0, 1_000.0],
+            "weight": [1.0, 1.0, 1.0, 1.0],
+        }
+    )
+
+    imputed = impute_us_puf_tax_detail_support(
+        expanded,
+        donor,
+        predictors=(
+            "puf_predictor_filing_status_code",
+            "puf_predictor_tax_unit_person_count",
+        ),
+        person_outputs=("employment_income_before_lsr",),
+        tax_unit_outputs=(),
+        n_estimators=4,
+        seed=0,
+        tail_bound_diagnostics=[],
+    )
+
+    person = imputed.table("person")
+    asec_people = person[
+        person[support_channel_column("person")] == BASE_ASEC_SUPPORT_CHANNEL
+    ]
+    puf_people = person[
+        person[support_channel_column("person")] == PUF_TAX_DETAIL_SUPPORT_CHANNEL
+    ]
+
+    assert asec_people["employment_income_before_lsr"].tolist() == [
+        50_000.0,
+        20_000.0,
+        125_000.0,
+    ]
+    np.testing.assert_allclose(
+        puf_people.groupby("person_tax_unit_id")["employment_income_before_lsr"]
+        .sum()
+        .to_numpy(),
+        [1_000.0, 1_000.0],
+    )
+    assert "tax_unit_partnership_s_corp_income" not in imputed.table("tax_unit")
+
+
+def test_puf_tax_detail_imputation_distributes_contributions_by_earnings() -> None:
+    frame = _minimal_us_frame()
+    frame.table("person")["self_employment_income_before_lsr"] = [
+        0.0,
+        40_000.0,
+        10_000.0,
+    ]
+    expanded = clone_us_frame_for_puf_support(frame)
+    donor = pd.DataFrame(
+        {
+            "filing_status_code": [1.0, 2.0, 4.0, 1.0],
+            "tax_unit_person_count": [1.0, 2.0, 1.0, 2.0],
+            "traditional_ira_contributions_desired": [900.0, 900.0, 900.0, 900.0],
+            "self_employed_pension_contributions_desired": [
+                500.0,
+                500.0,
+                500.0,
+                500.0,
+            ],
+            "weight": [1.0, 1.0, 1.0, 1.0],
+        }
+    )
+
+    imputed = impute_us_puf_tax_detail_support(
+        expanded,
+        donor,
+        predictors=(
+            "puf_predictor_filing_status_code",
+            "puf_predictor_tax_unit_person_count",
+        ),
+        person_outputs=(
+            "traditional_ira_contributions_desired",
+            "self_employed_pension_contributions_desired",
+        ),
+        tax_unit_outputs=(),
+        n_estimators=4,
+        seed=0,
+        tail_bound_diagnostics=[],
+    )
+
+    person = imputed.table("person")
+    puf_people = person[
+        person[support_channel_column("person")] == PUF_TAX_DETAIL_SUPPORT_CHANNEL
+    ].sort_values("person_id")
+    joint_unit = puf_people.iloc[:2]
+    # The cloned ASEC channel carries no contribution values, so the unit
+    # total must follow the earnings basis: pension contributions follow
+    # self-employment earnings (all on the second person), IRA contributions
+    # follow total earnings (50k vs 20k + 40k).
+    np.testing.assert_allclose(
+        joint_unit["self_employed_pension_contributions_desired"].to_numpy(),
+        [0.0, 500.0],
+    )
+    np.testing.assert_allclose(
+        joint_unit["traditional_ira_contributions_desired"].to_numpy(),
+        [900.0 * 50_000.0 / 110_000.0, 900.0 * 60_000.0 / 110_000.0],
+    )
+    asec_people = person[
+        person[support_channel_column("person")] == BASE_ASEC_SUPPORT_CHANNEL
+    ]
+    assert asec_people["traditional_ira_contributions_desired"].tolist() == [
+        0.0,
+        0.0,
+        0.0,
+    ]
+
+
+def test_puf_tax_detail_imputation_reconciles_social_security_components(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class TotalSocialSecurityQRF:
+        def __init__(self, **_: object) -> None:
+            pass
+
+        def fit(
+            self,
+            *_: object,
+            **__: object,
+        ) -> "TotalSocialSecurityQRF":
+            return self
+
+        def predict(
+            self,
+            features: pd.DataFrame,
+            *,
+            release_models: bool = False,
+        ) -> pd.DataFrame:
+            return pd.DataFrame(
+                {
+                    "social_security_retirement": [400.0, 800.0],
+                    "social_security_disability": [0.0, 0.0],
+                    "social_security_dependents": [0.0, 0.0],
+                    "social_security_survivors": [0.0, 0.0],
+                },
+                index=features.index,
+            )
+
+    monkeypatch.setattr(puf_support_module, "QRF", TotalSocialSecurityQRF)
+
+    base = _minimal_us_frame()
+    person = base.table("person")
+    person["social_security_retirement"] = [100.0, 0.0, 0.0]
+    person["social_security_disability"] = [0.0, 100.0, 0.0]
+    person["social_security_dependents"] = [0.0, 0.0, 0.0]
+    person["social_security_survivors"] = [0.0, 0.0, 0.0]
+    expanded = clone_us_frame_for_puf_support(base)
+    donor = pd.DataFrame(
+        {
+            "filing_status_code": [1.0, 2.0],
+            "tax_unit_person_count": [1.0, 2.0],
+            "social_security_retirement": [1_000.0, 2_000.0],
+            "social_security_disability": [0.0, 0.0],
+            "social_security_dependents": [0.0, 0.0],
+            "social_security_survivors": [0.0, 0.0],
+            "weight": [1.0, 1.0],
+        }
+    )
+
+    imputed = impute_us_puf_tax_detail_support(
+        expanded,
+        donor,
+        predictors=(
+            "puf_predictor_filing_status_code",
+            "puf_predictor_tax_unit_person_count",
+        ),
+        person_outputs=(
+            "social_security_retirement",
+            "social_security_disability",
+            "social_security_dependents",
+            "social_security_survivors",
+        ),
+        tax_unit_outputs=(),
+        n_estimators=4,
+        seed=0,
+        tail_bound_diagnostics=[],
+    )
+
+    person = imputed.table("person")
+    puf_people = person[
+        person[support_channel_column("person")] == PUF_TAX_DETAIL_SUPPORT_CHANNEL
+    ]
+    puf_totals = puf_people.groupby("person_tax_unit_id")[
+        [
+            "social_security_retirement",
+            "social_security_disability",
+            "social_security_dependents",
+            "social_security_survivors",
+        ]
+    ].sum()
+    np.testing.assert_allclose(
+        puf_totals.to_numpy(),
+        [
+            [200.0, 200.0, 0.0, 0.0],
+            [200.0, 200.0, 200.0, 200.0],
+        ],
+    )
+    assert "social_security" not in person.columns
+
+
+def test_puf_tax_detail_imputation_snaps_origination_years_to_donor_values(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class FractionalYearQRF:
+        def __init__(self, **_: object) -> None:
+            pass
+
+        def fit(
+            self,
+            *_: object,
+            **__: object,
+        ) -> "FractionalYearQRF":
+            return self
+
+        def predict(
+            self,
+            features: pd.DataFrame,
+            *,
+            release_models: bool = False,
+        ) -> pd.DataFrame:
+            return pd.DataFrame(
+                {
+                    "first_home_mortgage_origination_year": [2008.4, 2017.6],
+                    "second_home_mortgage_origination_year": [0.2, 2019.5],
+                },
+                index=features.index,
+            )
+
+    monkeypatch.setattr(puf_support_module, "QRF", FractionalYearQRF)
+    expanded = clone_us_frame_for_puf_support(_minimal_us_frame())
+    donor = pd.DataFrame(
+        {
+            "filing_status_code": [1.0, 2.0, 4.0],
+            "tax_unit_person_count": [1.0, 2.0, 1.0],
+            "first_home_mortgage_origination_year": [0.0, 2008.0, 2018.0],
+            "second_home_mortgage_origination_year": [0.0, 2020.0, 2020.0],
+            "weight": [1.0, 1.0, 1.0],
+        }
+    )
+
+    imputed = impute_us_puf_tax_detail_support(
+        expanded,
+        donor,
+        predictors=(
+            "puf_predictor_filing_status_code",
+            "puf_predictor_tax_unit_person_count",
+        ),
+        person_outputs=(),
+        tax_unit_outputs=(
+            "first_home_mortgage_origination_year",
+            "second_home_mortgage_origination_year",
+        ),
+        n_estimators=4,
+        seed=0,
+        tail_bound_diagnostics=[],
+    )
+
+    puf_tax_units = imputed.table("tax_unit")[
+        imputed.table("tax_unit")[support_channel_column("tax_unit")]
+        == PUF_TAX_DETAIL_SUPPORT_CHANNEL
+    ]
+    assert puf_tax_units["first_home_mortgage_origination_year"].tolist() == [
+        2008.0,
+        2018.0,
+    ]
+    assert puf_tax_units["second_home_mortgage_origination_year"].tolist() == [
+        0.0,
+        2020.0,
+    ]
+
+
+def test_passive_partnership_s_corp_income_is_signed_mass_calibrated() -> None:
+    """A sparse two-signed leaf, pinned to the donor's legs like its peers."""
+
+    assert (
+        "passive_partnership_s_corp_income"
+        in _PUF_TAX_DETAIL_SIGNED_MASS_CALIBRATED_PERSON_OUTPUTS
+    )
+
+
+@pytest.mark.parametrize(
+    "column",
+    [
+        "farm_operations_income",
+        "partnership_self_employment_net_earnings",
+    ],
+)
+def test_finalize_pins_signed_person_leg_masses_to_loss_heavy_donor(
+    monkeypatch: pytest.MonkeyPatch, column: str
+) -> None:
+    """A sign-flipped QRF draw is recalibrated to the donor's signed leg masses.
+
+    Both columns run through the one signed-mass-calibration code path, so a
+    single fix restores the net sign for the farm defect and #432 alike.
+    """
+
+    assert column in _PUF_TAX_DETAIL_SIGNED_MASS_CALIBRATED_PERSON_OUTPUTS
+
+    # The fake QRF returns a sign-flipped draw (net positive, both legs) for the
+    # six PUF recipients, reproducing the regime-gated QRF's regression toward a
+    # positive balance point even though the source instrument is loss-heavy.
+    raw_prediction = np.asarray([600.0, 600.0, 600.0, 600.0, -50.0, -50.0])
+
+    class FlippedQRF:
+        def __init__(self, *, n_estimators: int, seed: int) -> None:
+            pass
+
+        def fit(self, frame, predictors, outputs, *, weights) -> "FlippedQRF":
+            assert outputs == [column]
+            assert weights == "design"
+            return self
+
+        @property
+        def weight_kind(self) -> str:
+            return "design"
+
+        def predict(
+            self, features: pd.DataFrame, *, release_models: bool = False
+        ) -> pd.DataFrame:
+            return pd.DataFrame({column: raw_prediction}, index=features.index)
+
+    monkeypatch.setattr(puf_support_module, "QRF", FlippedQRF)
+
+    frame = clone_us_frame_for_puf_support(
+        _puf_recipient_frame(
+            employment_income=[50_000.0] * 6,
+            self_employment_income=[0.0] * 6,
+            household_weights=[1.0, 1.0, 1.0, 3.0, 3.0, 3.0],
+        )
+    )
+    # Loss-heavy donor: small positive per-unit-weight mass, large negative.
+    donor = pd.DataFrame(
+        {
+            "employment_income": [50_000.0] * 6,
+            column: [200.0, 0.0, -400.0, -400.0, 0.0, 0.0],
+            "weight": [1.0, 1.0, 2.0, 2.0, 1.0, 1.0],
+        }
+    )
+    donor_pos, donor_neg = _per_weight_legs(
+        donor[column].to_numpy(), donor["weight"].to_numpy()
+    )
+    assert donor_pos + donor_neg < 0.0  # the source instrument is loss-heavy
+
+    raw_pos, raw_neg = _per_weight_legs(raw_prediction, [0.5, 0.5, 0.5, 1.5, 1.5, 1.5])
+    assert raw_pos + raw_neg > 0.0  # the raw QRF draw flips the net sign
+
+    imputed = impute_us_puf_tax_detail_support(
+        frame,
+        donor,
+        predictors=("puf_predictor_employment_income",),
+        person_outputs=(column,),
+        tax_unit_outputs=(),
+        n_estimators=4,
+        seed=0,
+        tail_bound_diagnostics=[],
+    )
+
+    final_pos, final_neg = _puf_channel_person_legs(imputed, column)
+    # Each leg's per-unit-weight mass now equals the donor's, so the net sign
+    # tracks the loss-heavy source instead of the QRF's flipped draw.
+    assert final_pos == pytest.approx(donor_pos)
+    assert final_neg == pytest.approx(donor_neg)
+    assert final_pos + final_neg == pytest.approx(donor_pos + donor_neg)
+    assert final_pos + final_neg < 0.0
+
+
+def test_regime_gated_qrf_farm_net_flips_and_calibration_restores_the_source_sign() -> (
+    None
+):
+    """End-to-end: fit the chain's real QRF on a faithful loss-heavy Schedule-F
+    donor, show the raw draw flips the national net sign, and confirm the
+    signed-mass calibration restores the source's net-negative mass."""
+
+    column = "farm_operations_income"
+    seed = 7
+
+    def _features(rng: np.random.Generator, n: int) -> tuple[np.ndarray, np.ndarray]:
+        return (
+            np.abs(rng.normal(50_000, 40_000, n)),
+            np.abs(rng.normal(8_000, 30_000, n)),
+        )
+
+    recipient_rng = np.random.default_rng(seed)
+    wage, self_emp = _features(recipient_rng, 2_500)
+    frame = clone_us_frame_for_puf_support(
+        _puf_recipient_frame(
+            employment_income=wage,
+            self_employment_income=self_emp,
+            household_weights=np.clip(
+                np.exp(recipient_rng.normal(4.0, 1.5, 2_500)), 1.0, 30_000.0
+            ),
+        )
+    )
+
+    donor_rng = np.random.default_rng(seed)
+    donor_wage, donor_self_emp = _features(donor_rng, 8_000)
+    donor_weight = np.clip(np.exp(donor_rng.normal(4.0, 1.5, 8_000)), 1.0, 30_000.0)
+    # Sparse (~3%) signed Schedule-F: 40% gains, 60% heavier losses -> the
+    # weighted national mass is net-negative, like SOI sole-proprietor farm
+    # income.
+    nonzero = donor_rng.random(8_000) < 0.03
+    indices = np.flatnonzero(nonzero)
+    draws = donor_rng.random(len(indices))
+    gains = indices[draws < 0.40]
+    losses = indices[draws >= 0.40]
+    farm = np.zeros(8_000)
+    farm[gains] = donor_rng.lognormal(9.7, 1.0, len(gains))
+    farm[losses] = -donor_rng.lognormal(10.0, 1.0, len(losses))
+    donor = pd.DataFrame(
+        {
+            "employment_income": donor_wage,
+            "self_employment_income": donor_self_emp,
+            column: farm,
+            "weight": donor_weight,
+        }
+    )
+    donor_pos, donor_neg = _per_weight_legs(farm, donor_weight)
+    donor_net = donor_pos + donor_neg
+    assert donor_net < 0.0  # loss-heavy source instrument
+
+    raw_holder: dict[str, np.ndarray] = {}
+    imputed = impute_us_puf_tax_detail_support(
+        frame,
+        donor,
+        predictors=(
+            "puf_predictor_employment_income",
+            "puf_predictor_self_employment_income",
+        ),
+        person_outputs=(column,),
+        tax_unit_outputs=(),
+        n_estimators=60,
+        seed=0,
+        raw_predictions_callback=lambda predictions: raw_holder.__setitem__(
+            "raw", predictions[column].to_numpy().copy()
+        ),
+        tail_bound_diagnostics=[],
+    )
+
+    # Recover the recipient tax-unit weights to score the raw draw's national net.
+    person = imputed.table("person")
+    tax_unit = imputed.table("tax_unit")
+    household_weight = pd.Series(
+        imputed.weights_for("household").values,
+        index=imputed.table("household")["household_id"],
+    )
+    tax_unit_household = person.groupby("person_tax_unit_id", sort=False)[
+        "person_household_id"
+    ].first()
+    tax_unit_weight = (
+        tax_unit["tax_unit_id"].map(tax_unit_household).map(household_weight).to_numpy()
+    )
+    puf_tax_unit = (
+        tax_unit[support_channel_column("tax_unit")] == PUF_TAX_DETAIL_SUPPORT_CHANNEL
+    ).to_numpy()
+    raw_pos, raw_neg = _per_weight_legs(
+        raw_holder["raw"], tax_unit_weight[puf_tax_unit]
+    )
+    raw_net = raw_pos + raw_neg
+    # The defect: the raw QRF draw regresses the net toward a balance point far
+    # from the loss-heavy source. The dominant loss leg collapses and the
+    # positive leg inflates, so the imputed net badly mis-tracks the donor --
+    # it flips outright on base-m, and here it lands near or past zero. These
+    # are mechanism properties (robust across solver builds); the exact draw is
+    # not, which is why the fix pins the mass rather than trusting the draw.
+    assert raw_neg > donor_neg  # the loss leg collapses (less negative)
+    assert raw_pos > donor_pos  # the positive leg inflates
+    assert abs(raw_net) < 0.5 * abs(donor_net)  # net regresses toward balance
+
+    final_pos, final_neg = _puf_channel_person_legs(imputed, column)
+    # The fix: each PUF-channel leg is pinned to the donor's per-unit-weight
+    # mass, so the imputed national net tracks the source's net-negative sign.
+    assert final_pos == pytest.approx(donor_pos, rel=1e-6)
+    assert final_neg == pytest.approx(donor_neg, rel=1e-6)
+    assert final_pos + final_neg == pytest.approx(donor_net, rel=1e-6)
+    assert final_pos + final_neg < 0.0

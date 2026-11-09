@@ -1,0 +1,1005 @@
+{
+  "schema_version": 1,
+  "resources": {
+    "target_references": {
+      "exempt": [
+        {
+          "name": "stats_nz_census_households_by_size_region__r01__n1",
+          "activation_status": "requires_household_structure_release_evidence",
+          "reason": "G8-w4 must provide Census household-structure support and release-input coverage evidence, or obtain a reviewed diagnostic posture; d1886 residual resolution alone does not release these size rows."
+        },
+        {
+          "name": "stats_nz_census_households_by_size_region__r01__n2",
+          "activation_status": "requires_household_structure_release_evidence",
+          "reason": "G8-w4 must provide Census household-structure support and release-input coverage evidence, or obtain a reviewed diagnostic posture; d1886 residual resolution alone does not release these size rows."
+        },
+        {
+          "name": "stats_nz_census_households_by_size_region__r01__n3",
+          "activation_status": "requires_household_structure_release_evidence",
+          "reason": "G8-w4 must provide Census household-structure support and release-input coverage evidence, or obtain a reviewed diagnostic posture; d1886 residual resolution alone does not release these size rows."
+        },
+        {
+          "name": "stats_nz_census_households_by_size_region__r01__n4",
+          "activation_status": "requires_household_structure_release_evidence",
+          "reason": "G8-w4 must provide Census household-structure support and release-input coverage evidence, or obtain a reviewed diagnostic posture; d1886 residual resolution alone does not release these size rows."
+        },
+        {
+          "name": "stats_nz_census_households_by_size_region__r01__n5",
+          "activation_status": "requires_household_structure_release_evidence",
+          "reason": "G8-w4 must provide Census household-structure support and release-input coverage evidence, or obtain a reviewed diagnostic posture; d1886 residual resolution alone does not release these size rows."
+        },
+        {
+          "name": "stats_nz_census_households_by_size_region__r01__n6",
+          "activation_status": "requires_household_structure_release_evidence",
+          "reason": "G8-w4 must provide Census household-structure support and release-input coverage evidence, or obtain a reviewed diagnostic posture; d1886 residual resolution alone does not release these size rows."
+        },
+        {
+          "name": "stats_nz_census_households_by_size_region__r01__n7",
+          "activation_status": "requires_household_structure_release_evidence",
+          "reason": "G8-w4 must provide Census household-structure support and release-input coverage evidence, or obtain a reviewed diagnostic posture; d1886 residual resolution alone does not release these size rows."
+        },
+        {
+          "name": "stats_nz_census_households_by_size_region__r01__n8",
+          "activation_status": "requires_household_structure_release_evidence",
+          "reason": "G8-w4 must provide Census household-structure support and release-input coverage evidence, or obtain a reviewed diagnostic posture; d1886 residual resolution alone does not release these size rows."
+        },
+        {
+          "name": "stats_nz_census_households_by_size_region__r02__n1",
+          "activation_status": "requires_household_structure_release_evidence",
+          "reason": "G8-w4 must provide Census household-structure support and release-input coverage evidence, or obtain a reviewed diagnostic posture; d1886 residual resolution alone does not release these size rows."
+        },
+        {
+          "name": "stats_nz_census_households_by_size_region__r02__n2",
+          "activation_status": "requires_household_structure_release_evidence",
+          "reason": "G8-w4 must provide Census household-structure support and release-input coverage evidence, or obtain a reviewed diagnostic posture; d1886 residual resolution alone does not release these size rows."
+        },
+        {
+          "name": "stats_nz_census_households_by_size_region__r02__n3",
+          "activation_status": "requires_household_structure_release_evidence",
+          "reason": "G8-w4 must provide Census household-structure support and release-input coverage evidence, or obtain a reviewed diagnostic posture; d1886 residual resolution alone does not release these size rows."
+        },
+        {
+          "name": "stats_nz_census_households_by_size_region__r02__n4",
+          "activation_status": "requires_household_structure_release_evidence",
+          "reason": "G8-w4 must provide Census household-structure support and release-input coverage evidence, or obtain a reviewed diagnostic posture; d1886 residual resolution alone does not release these size rows."
+        },
+        {
+          "name": "stats_nz_census_households_by_size_region__r02__n5",
+          "activation_status": "requires_household_structure_release_evidence",
+          "reason": "G8-w4 must provide Census household-structure support and release-input coverage evidence, or obtain a reviewed diagnostic posture; d1886 residual resolution alone does not release these size rows."
+        },
+        {
+          "name": "stats_nz_census_households_by_size_region__r02__n6",
+          "activation_status": "requires_household_structure_release_evidence",
+          "reason": "G8-w4 must provide Census household-structure support and release-input coverage evidence, or obtain a reviewed diagnostic posture; d1886 residual resolution alone does not release these size rows."
+        },
+        {
+          "name": "stats_nz_census_households_by_size_region__r02__n7",
+          "activation_status": "requires_household_structure_release_evidence",
+          "reason": "G8-w4 must provide Census household-structure support and release-input coverage evidence, or obtain a reviewed diagnostic posture; d1886 residual resolution alone does not release these size rows."
+        },
+        {
+          "name": "stats_nz_census_households_by_size_region__r02__n8",
+          "activation_status": "requires_household_structure_release_evidence",
+          "reason": "G8-w4 must provide Census household-structure support and release-input coverage evidence, or obtain a reviewed diagnostic posture; d1886 residual resolution alone does not release these size rows."
+        },
+        {
+          "name": "stats_nz_census_households_by_size_region__r03__n1",
+          "activation_status": "requires_household_structure_release_evidence",
+          "reason": "G8-w4 must provide Census household-structure support and release-input coverage evidence, or obtain a reviewed diagnostic posture; d1886 residual resolution alone does not release these size rows."
+        },
+        {
+          "name": "stats_nz_census_households_by_size_region__r03__n2",
+          "activation_status": "requires_household_structure_release_evidence",
+          "reason": "G8-w4 must provide Census household-structure support and release-input coverage evidence, or obtain a reviewed diagnostic posture; d1886 residual resolution alone does not release these size rows."
+        },
+        {
+          "name": "stats_nz_census_households_by_size_region__r03__n3",
+          "activation_status": "requires_household_structure_release_evidence",
+          "reason": "G8-w4 must provide Census household-structure support and release-input coverage evidence, or obtain a reviewed diagnostic posture; d1886 residual resolution alone does not release these size rows."
+        },
+        {
+          "name": "stats_nz_census_households_by_size_region__r03__n4",
+          "activation_status": "requires_household_structure_release_evidence",
+          "reason": "G8-w4 must provide Census household-structure support and release-input coverage evidence, or obtain a reviewed diagnostic posture; d1886 residual resolution alone does not release these size rows."
+        },
+        {
+          "name": "stats_nz_census_households_by_size_region__r03__n5",
+          "activation_status": "requires_household_structure_release_evidence",
+          "reason": "G8-w4 must provide Census household-structure support and release-input coverage evidence, or obtain a reviewed diagnostic posture; d1886 residual resolution alone does not release these size rows."
+        },
+        {
+          "name": "stats_nz_census_households_by_size_region__r03__n6",
+          "activation_status": "requires_household_structure_release_evidence",
+          "reason": "G8-w4 must provide Census household-structure support and release-input coverage evidence, or obtain a reviewed diagnostic posture; d1886 residual resolution alone does not release these size rows."
+        },
+        {
+          "name": "stats_nz_census_households_by_size_region__r03__n7",
+          "activation_status": "requires_household_structure_release_evidence",
+          "reason": "G8-w4 must provide Census household-structure support and release-input coverage evidence, or obtain a reviewed diagnostic posture; d1886 residual resolution alone does not release these size rows."
+        },
+        {
+          "name": "stats_nz_census_households_by_size_region__r03__n8",
+          "activation_status": "requires_household_structure_release_evidence",
+          "reason": "G8-w4 must provide Census household-structure support and release-input coverage evidence, or obtain a reviewed diagnostic posture; d1886 residual resolution alone does not release these size rows."
+        },
+        {
+          "name": "stats_nz_census_households_by_size_region__r04__n1",
+          "activation_status": "requires_household_structure_release_evidence",
+          "reason": "G8-w4 must provide Census household-structure support and release-input coverage evidence, or obtain a reviewed diagnostic posture; d1886 residual resolution alone does not release these size rows."
+        },
+        {
+          "name": "stats_nz_census_households_by_size_region__r04__n2",
+          "activation_status": "requires_household_structure_release_evidence",
+          "reason": "G8-w4 must provide Census household-structure support and release-input coverage evidence, or obtain a reviewed diagnostic posture; d1886 residual resolution alone does not release these size rows."
+        },
+        {
+          "name": "stats_nz_census_households_by_size_region__r04__n3",
+          "activation_status": "requires_household_structure_release_evidence",
+          "reason": "G8-w4 must provide Census household-structure support and release-input coverage evidence, or obtain a reviewed diagnostic posture; d1886 residual resolution alone does not release these size rows."
+        },
+        {
+          "name": "stats_nz_census_households_by_size_region__r04__n4",
+          "activation_status": "requires_household_structure_release_evidence",
+          "reason": "G8-w4 must provide Census household-structure support and release-input coverage evidence, or obtain a reviewed diagnostic posture; d1886 residual resolution alone does not release these size rows."
+        },
+        {
+          "name": "stats_nz_census_households_by_size_region__r04__n5",
+          "activation_status": "requires_household_structure_release_evidence",
+          "reason": "G8-w4 must provide Census household-structure support and release-input coverage evidence, or obtain a reviewed diagnostic posture; d1886 residual resolution alone does not release these size rows."
+        },
+        {
+          "name": "stats_nz_census_households_by_size_region__r04__n6",
+          "activation_status": "requires_household_structure_release_evidence",
+          "reason": "G8-w4 must provide Census household-structure support and release-input coverage evidence, or obtain a reviewed diagnostic posture; d1886 residual resolution alone does not release these size rows."
+        },
+        {
+          "name": "stats_nz_census_households_by_size_region__r04__n7",
+          "activation_status": "requires_household_structure_release_evidence",
+          "reason": "G8-w4 must provide Census household-structure support and release-input coverage evidence, or obtain a reviewed diagnostic posture; d1886 residual resolution alone does not release these size rows."
+        },
+        {
+          "name": "stats_nz_census_households_by_size_region__r04__n8",
+          "activation_status": "requires_household_structure_release_evidence",
+          "reason": "G8-w4 must provide Census household-structure support and release-input coverage evidence, or obtain a reviewed diagnostic posture; d1886 residual resolution alone does not release these size rows."
+        },
+        {
+          "name": "stats_nz_census_households_by_size_region__r05__n1",
+          "activation_status": "requires_household_structure_release_evidence",
+          "reason": "G8-w4 must provide Census household-structure support and release-input coverage evidence, or obtain a reviewed diagnostic posture; d1886 residual resolution alone does not release these size rows."
+        },
+        {
+          "name": "stats_nz_census_households_by_size_region__r05__n2",
+          "activation_status": "requires_household_structure_release_evidence",
+          "reason": "G8-w4 must provide Census household-structure support and release-input coverage evidence, or obtain a reviewed diagnostic posture; d1886 residual resolution alone does not release these size rows."
+        },
+        {
+          "name": "stats_nz_census_households_by_size_region__r05__n3",
+          "activation_status": "requires_household_structure_release_evidence",
+          "reason": "G8-w4 must provide Census household-structure support and release-input coverage evidence, or obtain a reviewed diagnostic posture; d1886 residual resolution alone does not release these size rows."
+        },
+        {
+          "name": "stats_nz_census_households_by_size_region__r05__n4",
+          "activation_status": "requires_household_structure_release_evidence",
+          "reason": "G8-w4 must provide Census household-structure support and release-input coverage evidence, or obtain a reviewed diagnostic posture; d1886 residual resolution alone does not release these size rows."
+        },
+        {
+          "name": "stats_nz_census_households_by_size_region__r05__n5",
+          "activation_status": "requires_household_structure_release_evidence",
+          "reason": "G8-w4 must provide Census household-structure support and release-input coverage evidence, or obtain a reviewed diagnostic posture; d1886 residual resolution alone does not release these size rows."
+        },
+        {
+          "name": "stats_nz_census_households_by_size_region__r05__n6",
+          "activation_status": "requires_household_structure_release_evidence",
+          "reason": "G8-w4 must provide Census household-structure support and release-input coverage evidence, or obtain a reviewed diagnostic posture; d1886 residual resolution alone does not release these size rows."
+        },
+        {
+          "name": "stats_nz_census_households_by_size_region__r05__n7",
+          "activation_status": "requires_household_structure_release_evidence",
+          "reason": "G8-w4 must provide Census household-structure support and release-input coverage evidence, or obtain a reviewed diagnostic posture; d1886 residual resolution alone does not release these size rows."
+        },
+        {
+          "name": "stats_nz_census_households_by_size_region__r05__n8",
+          "activation_status": "requires_household_structure_release_evidence",
+          "reason": "G8-w4 must provide Census household-structure support and release-input coverage evidence, or obtain a reviewed diagnostic posture; d1886 residual resolution alone does not release these size rows."
+        },
+        {
+          "name": "stats_nz_census_households_by_size_region__r06__n1",
+          "activation_status": "requires_household_structure_release_evidence",
+          "reason": "G8-w4 must provide Census household-structure support and release-input coverage evidence, or obtain a reviewed diagnostic posture; d1886 residual resolution alone does not release these size rows."
+        },
+        {
+          "name": "stats_nz_census_households_by_size_region__r06__n2",
+          "activation_status": "requires_household_structure_release_evidence",
+          "reason": "G8-w4 must provide Census household-structure support and release-input coverage evidence, or obtain a reviewed diagnostic posture; d1886 residual resolution alone does not release these size rows."
+        },
+        {
+          "name": "stats_nz_census_households_by_size_region__r06__n3",
+          "activation_status": "requires_household_structure_release_evidence",
+          "reason": "G8-w4 must provide Census household-structure support and release-input coverage evidence, or obtain a reviewed diagnostic posture; d1886 residual resolution alone does not release these size rows."
+        },
+        {
+          "name": "stats_nz_census_households_by_size_region__r06__n4",
+          "activation_status": "requires_household_structure_release_evidence",
+          "reason": "G8-w4 must provide Census household-structure support and release-input coverage evidence, or obtain a reviewed diagnostic posture; d1886 residual resolution alone does not release these size rows."
+        },
+        {
+          "name": "stats_nz_census_households_by_size_region__r06__n5",
+          "activation_status": "requires_household_structure_release_evidence",
+          "reason": "G8-w4 must provide Census household-structure support and release-input coverage evidence, or obtain a reviewed diagnostic posture; d1886 residual resolution alone does not release these size rows."
+        },
+        {
+          "name": "stats_nz_census_households_by_size_region__r06__n6",
+          "activation_status": "requires_household_structure_release_evidence",
+          "reason": "G8-w4 must provide Census household-structure support and release-input coverage evidence, or obtain a reviewed diagnostic posture; d1886 residual resolution alone does not release these size rows."
+        },
+        {
+          "name": "stats_nz_census_households_by_size_region__r06__n7",
+          "activation_status": "requires_household_structure_release_evidence",
+          "reason": "G8-w4 must provide Census household-structure support and release-input coverage evidence, or obtain a reviewed diagnostic posture; d1886 residual resolution alone does not release these size rows."
+        },
+        {
+          "name": "stats_nz_census_households_by_size_region__r06__n8",
+          "activation_status": "requires_household_structure_release_evidence",
+          "reason": "G8-w4 must provide Census household-structure support and release-input coverage evidence, or obtain a reviewed diagnostic posture; d1886 residual resolution alone does not release these size rows."
+        },
+        {
+          "name": "stats_nz_census_households_by_size_region__r07__n1",
+          "activation_status": "requires_household_structure_release_evidence",
+          "reason": "G8-w4 must provide Census household-structure support and release-input coverage evidence, or obtain a reviewed diagnostic posture; d1886 residual resolution alone does not release these size rows."
+        },
+        {
+          "name": "stats_nz_census_households_by_size_region__r07__n2",
+          "activation_status": "requires_household_structure_release_evidence",
+          "reason": "G8-w4 must provide Census household-structure support and release-input coverage evidence, or obtain a reviewed diagnostic posture; d1886 residual resolution alone does not release these size rows."
+        },
+        {
+          "name": "stats_nz_census_households_by_size_region__r07__n3",
+          "activation_status": "requires_household_structure_release_evidence",
+          "reason": "G8-w4 must provide Census household-structure support and release-input coverage evidence, or obtain a reviewed diagnostic posture; d1886 residual resolution alone does not release these size rows."
+        },
+        {
+          "name": "stats_nz_census_households_by_size_region__r07__n4",
+          "activation_status": "requires_household_structure_release_evidence",
+          "reason": "G8-w4 must provide Census household-structure support and release-input coverage evidence, or obtain a reviewed diagnostic posture; d1886 residual resolution alone does not release these size rows."
+        },
+        {
+          "name": "stats_nz_census_households_by_size_region__r07__n5",
+          "activation_status": "requires_household_structure_release_evidence",
+          "reason": "G8-w4 must provide Census household-structure support and release-input coverage evidence, or obtain a reviewed diagnostic posture; d1886 residual resolution alone does not release these size rows."
+        },
+        {
+          "name": "stats_nz_census_households_by_size_region__r07__n6",
+          "activation_status": "requires_household_structure_release_evidence",
+          "reason": "G8-w4 must provide Census household-structure support and release-input coverage evidence, or obtain a reviewed diagnostic posture; d1886 residual resolution alone does not release these size rows."
+        },
+        {
+          "name": "stats_nz_census_households_by_size_region__r07__n7",
+          "activation_status": "requires_household_structure_release_evidence",
+          "reason": "G8-w4 must provide Census household-structure support and release-input coverage evidence, or obtain a reviewed diagnostic posture; d1886 residual resolution alone does not release these size rows."
+        },
+        {
+          "name": "stats_nz_census_households_by_size_region__r07__n8",
+          "activation_status": "requires_household_structure_release_evidence",
+          "reason": "G8-w4 must provide Census household-structure support and release-input coverage evidence, or obtain a reviewed diagnostic posture; d1886 residual resolution alone does not release these size rows."
+        },
+        {
+          "name": "stats_nz_census_households_by_size_region__r08__n1",
+          "activation_status": "requires_household_structure_release_evidence",
+          "reason": "G8-w4 must provide Census household-structure support and release-input coverage evidence, or obtain a reviewed diagnostic posture; d1886 residual resolution alone does not release these size rows."
+        },
+        {
+          "name": "stats_nz_census_households_by_size_region__r08__n2",
+          "activation_status": "requires_household_structure_release_evidence",
+          "reason": "G8-w4 must provide Census household-structure support and release-input coverage evidence, or obtain a reviewed diagnostic posture; d1886 residual resolution alone does not release these size rows."
+        },
+        {
+          "name": "stats_nz_census_households_by_size_region__r08__n3",
+          "activation_status": "requires_household_structure_release_evidence",
+          "reason": "G8-w4 must provide Census household-structure support and release-input coverage evidence, or obtain a reviewed diagnostic posture; d1886 residual resolution alone does not release these size rows."
+        },
+        {
+          "name": "stats_nz_census_households_by_size_region__r08__n4",
+          "activation_status": "requires_household_structure_release_evidence",
+          "reason": "G8-w4 must provide Census household-structure support and release-input coverage evidence, or obtain a reviewed diagnostic posture; d1886 residual resolution alone does not release these size rows."
+        },
+        {
+          "name": "stats_nz_census_households_by_size_region__r08__n5",
+          "activation_status": "requires_household_structure_release_evidence",
+          "reason": "G8-w4 must provide Census household-structure support and release-input coverage evidence, or obtain a reviewed diagnostic posture; d1886 residual resolution alone does not release these size rows."
+        },
+        {
+          "name": "stats_nz_census_households_by_size_region__r08__n6",
+          "activation_status": "requires_household_structure_release_evidence",
+          "reason": "G8-w4 must provide Census household-structure support and release-input coverage evidence, or obtain a reviewed diagnostic posture; d1886 residual resolution alone does not release these size rows."
+        },
+        {
+          "name": "stats_nz_census_households_by_size_region__r08__n7",
+          "activation_status": "requires_household_structure_release_evidence",
+          "reason": "G8-w4 must provide Census household-structure support and release-input coverage evidence, or obtain a reviewed diagnostic posture; d1886 residual resolution alone does not release these size rows."
+        },
+        {
+          "name": "stats_nz_census_households_by_size_region__r08__n8",
+          "activation_status": "requires_household_structure_release_evidence",
+          "reason": "G8-w4 must provide Census household-structure support and release-input coverage evidence, or obtain a reviewed diagnostic posture; d1886 residual resolution alone does not release these size rows."
+        },
+        {
+          "name": "stats_nz_census_households_by_size_region__r09__n1",
+          "activation_status": "requires_household_structure_release_evidence",
+          "reason": "G8-w4 must provide Census household-structure support and release-input coverage evidence, or obtain a reviewed diagnostic posture; d1886 residual resolution alone does not release these size rows."
+        },
+        {
+          "name": "stats_nz_census_households_by_size_region__r09__n2",
+          "activation_status": "requires_household_structure_release_evidence",
+          "reason": "G8-w4 must provide Census household-structure support and release-input coverage evidence, or obtain a reviewed diagnostic posture; d1886 residual resolution alone does not release these size rows."
+        },
+        {
+          "name": "stats_nz_census_households_by_size_region__r09__n3",
+          "activation_status": "requires_household_structure_release_evidence",
+          "reason": "G8-w4 must provide Census household-structure support and release-input coverage evidence, or obtain a reviewed diagnostic posture; d1886 residual resolution alone does not release these size rows."
+        },
+        {
+          "name": "stats_nz_census_households_by_size_region__r09__n4",
+          "activation_status": "requires_household_structure_release_evidence",
+          "reason": "G8-w4 must provide Census household-structure support and release-input coverage evidence, or obtain a reviewed diagnostic posture; d1886 residual resolution alone does not release these size rows."
+        },
+        {
+          "name": "stats_nz_census_households_by_size_region__r09__n5",
+          "activation_status": "requires_household_structure_release_evidence",
+          "reason": "G8-w4 must provide Census household-structure support and release-input coverage evidence, or obtain a reviewed diagnostic posture; d1886 residual resolution alone does not release these size rows."
+        },
+        {
+          "name": "stats_nz_census_households_by_size_region__r09__n6",
+          "activation_status": "requires_household_structure_release_evidence",
+          "reason": "G8-w4 must provide Census household-structure support and release-input coverage evidence, or obtain a reviewed diagnostic posture; d1886 residual resolution alone does not release these size rows."
+        },
+        {
+          "name": "stats_nz_census_households_by_size_region__r09__n7",
+          "activation_status": "requires_household_structure_release_evidence",
+          "reason": "G8-w4 must provide Census household-structure support and release-input coverage evidence, or obtain a reviewed diagnostic posture; d1886 residual resolution alone does not release these size rows."
+        },
+        {
+          "name": "stats_nz_census_households_by_size_region__r09__n8",
+          "activation_status": "requires_household_structure_release_evidence",
+          "reason": "G8-w4 must provide Census household-structure support and release-input coverage evidence, or obtain a reviewed diagnostic posture; d1886 residual resolution alone does not release these size rows."
+        },
+        {
+          "name": "stats_nz_census_households_by_size_region__r12__n1",
+          "activation_status": "requires_household_structure_release_evidence",
+          "reason": "G8-w4 must provide Census household-structure support and release-input coverage evidence, or obtain a reviewed diagnostic posture; d1886 residual resolution alone does not release these size rows."
+        },
+        {
+          "name": "stats_nz_census_households_by_size_region__r12__n2",
+          "activation_status": "requires_household_structure_release_evidence",
+          "reason": "G8-w4 must provide Census household-structure support and release-input coverage evidence, or obtain a reviewed diagnostic posture; d1886 residual resolution alone does not release these size rows."
+        },
+        {
+          "name": "stats_nz_census_households_by_size_region__r12__n3",
+          "activation_status": "requires_household_structure_release_evidence",
+          "reason": "G8-w4 must provide Census household-structure support and release-input coverage evidence, or obtain a reviewed diagnostic posture; d1886 residual resolution alone does not release these size rows."
+        },
+        {
+          "name": "stats_nz_census_households_by_size_region__r12__n4",
+          "activation_status": "requires_household_structure_release_evidence",
+          "reason": "G8-w4 must provide Census household-structure support and release-input coverage evidence, or obtain a reviewed diagnostic posture; d1886 residual resolution alone does not release these size rows."
+        },
+        {
+          "name": "stats_nz_census_households_by_size_region__r12__n5",
+          "activation_status": "requires_household_structure_release_evidence",
+          "reason": "G8-w4 must provide Census household-structure support and release-input coverage evidence, or obtain a reviewed diagnostic posture; d1886 residual resolution alone does not release these size rows."
+        },
+        {
+          "name": "stats_nz_census_households_by_size_region__r12__n6",
+          "activation_status": "requires_household_structure_release_evidence",
+          "reason": "G8-w4 must provide Census household-structure support and release-input coverage evidence, or obtain a reviewed diagnostic posture; d1886 residual resolution alone does not release these size rows."
+        },
+        {
+          "name": "stats_nz_census_households_by_size_region__r12__n7",
+          "activation_status": "requires_household_structure_release_evidence",
+          "reason": "G8-w4 must provide Census household-structure support and release-input coverage evidence, or obtain a reviewed diagnostic posture; d1886 residual resolution alone does not release these size rows."
+        },
+        {
+          "name": "stats_nz_census_households_by_size_region__r12__n8",
+          "activation_status": "requires_household_structure_release_evidence",
+          "reason": "G8-w4 must provide Census household-structure support and release-input coverage evidence, or obtain a reviewed diagnostic posture; d1886 residual resolution alone does not release these size rows."
+        },
+        {
+          "name": "stats_nz_census_households_by_size_region__r13__n1",
+          "activation_status": "requires_household_structure_release_evidence",
+          "reason": "G8-w4 must provide Census household-structure support and release-input coverage evidence, or obtain a reviewed diagnostic posture; d1886 residual resolution alone does not release these size rows."
+        },
+        {
+          "name": "stats_nz_census_households_by_size_region__r13__n2",
+          "activation_status": "requires_household_structure_release_evidence",
+          "reason": "G8-w4 must provide Census household-structure support and release-input coverage evidence, or obtain a reviewed diagnostic posture; d1886 residual resolution alone does not release these size rows."
+        },
+        {
+          "name": "stats_nz_census_households_by_size_region__r13__n3",
+          "activation_status": "requires_household_structure_release_evidence",
+          "reason": "G8-w4 must provide Census household-structure support and release-input coverage evidence, or obtain a reviewed diagnostic posture; d1886 residual resolution alone does not release these size rows."
+        },
+        {
+          "name": "stats_nz_census_households_by_size_region__r13__n4",
+          "activation_status": "requires_household_structure_release_evidence",
+          "reason": "G8-w4 must provide Census household-structure support and release-input coverage evidence, or obtain a reviewed diagnostic posture; d1886 residual resolution alone does not release these size rows."
+        },
+        {
+          "name": "stats_nz_census_households_by_size_region__r13__n5",
+          "activation_status": "requires_household_structure_release_evidence",
+          "reason": "G8-w4 must provide Census household-structure support and release-input coverage evidence, or obtain a reviewed diagnostic posture; d1886 residual resolution alone does not release these size rows."
+        },
+        {
+          "name": "stats_nz_census_households_by_size_region__r13__n6",
+          "activation_status": "requires_household_structure_release_evidence",
+          "reason": "G8-w4 must provide Census household-structure support and release-input coverage evidence, or obtain a reviewed diagnostic posture; d1886 residual resolution alone does not release these size rows."
+        },
+        {
+          "name": "stats_nz_census_households_by_size_region__r13__n7",
+          "activation_status": "requires_household_structure_release_evidence",
+          "reason": "G8-w4 must provide Census household-structure support and release-input coverage evidence, or obtain a reviewed diagnostic posture; d1886 residual resolution alone does not release these size rows."
+        },
+        {
+          "name": "stats_nz_census_households_by_size_region__r13__n8",
+          "activation_status": "requires_household_structure_release_evidence",
+          "reason": "G8-w4 must provide Census household-structure support and release-input coverage evidence, or obtain a reviewed diagnostic posture; d1886 residual resolution alone does not release these size rows."
+        },
+        {
+          "name": "stats_nz_census_households_by_size_region__r14__n1",
+          "activation_status": "requires_household_structure_release_evidence",
+          "reason": "G8-w4 must provide Census household-structure support and release-input coverage evidence, or obtain a reviewed diagnostic posture; d1886 residual resolution alone does not release these size rows."
+        },
+        {
+          "name": "stats_nz_census_households_by_size_region__r14__n2",
+          "activation_status": "requires_household_structure_release_evidence",
+          "reason": "G8-w4 must provide Census household-structure support and release-input coverage evidence, or obtain a reviewed diagnostic posture; d1886 residual resolution alone does not release these size rows."
+        },
+        {
+          "name": "stats_nz_census_households_by_size_region__r14__n3",
+          "activation_status": "requires_household_structure_release_evidence",
+          "reason": "G8-w4 must provide Census household-structure support and release-input coverage evidence, or obtain a reviewed diagnostic posture; d1886 residual resolution alone does not release these size rows."
+        },
+        {
+          "name": "stats_nz_census_households_by_size_region__r14__n4",
+          "activation_status": "requires_household_structure_release_evidence",
+          "reason": "G8-w4 must provide Census household-structure support and release-input coverage evidence, or obtain a reviewed diagnostic posture; d1886 residual resolution alone does not release these size rows."
+        },
+        {
+          "name": "stats_nz_census_households_by_size_region__r14__n5",
+          "activation_status": "requires_household_structure_release_evidence",
+          "reason": "G8-w4 must provide Census household-structure support and release-input coverage evidence, or obtain a reviewed diagnostic posture; d1886 residual resolution alone does not release these size rows."
+        },
+        {
+          "name": "stats_nz_census_households_by_size_region__r14__n6",
+          "activation_status": "requires_household_structure_release_evidence",
+          "reason": "G8-w4 must provide Census household-structure support and release-input coverage evidence, or obtain a reviewed diagnostic posture; d1886 residual resolution alone does not release these size rows."
+        },
+        {
+          "name": "stats_nz_census_households_by_size_region__r14__n7",
+          "activation_status": "requires_household_structure_release_evidence",
+          "reason": "G8-w4 must provide Census household-structure support and release-input coverage evidence, or obtain a reviewed diagnostic posture; d1886 residual resolution alone does not release these size rows."
+        },
+        {
+          "name": "stats_nz_census_households_by_size_region__r14__n8",
+          "activation_status": "requires_household_structure_release_evidence",
+          "reason": "G8-w4 must provide Census household-structure support and release-input coverage evidence, or obtain a reviewed diagnostic posture; d1886 residual resolution alone does not release these size rows."
+        },
+        {
+          "name": "stats_nz_census_households_by_size_region__r15__n1",
+          "activation_status": "requires_household_structure_release_evidence",
+          "reason": "G8-w4 must provide Census household-structure support and release-input coverage evidence, or obtain a reviewed diagnostic posture; d1886 residual resolution alone does not release these size rows."
+        },
+        {
+          "name": "stats_nz_census_households_by_size_region__r15__n2",
+          "activation_status": "requires_household_structure_release_evidence",
+          "reason": "G8-w4 must provide Census household-structure support and release-input coverage evidence, or obtain a reviewed diagnostic posture; d1886 residual resolution alone does not release these size rows."
+        },
+        {
+          "name": "stats_nz_census_households_by_size_region__r15__n3",
+          "activation_status": "requires_household_structure_release_evidence",
+          "reason": "G8-w4 must provide Census household-structure support and release-input coverage evidence, or obtain a reviewed diagnostic posture; d1886 residual resolution alone does not release these size rows."
+        },
+        {
+          "name": "stats_nz_census_households_by_size_region__r15__n4",
+          "activation_status": "requires_household_structure_release_evidence",
+          "reason": "G8-w4 must provide Census household-structure support and release-input coverage evidence, or obtain a reviewed diagnostic posture; d1886 residual resolution alone does not release these size rows."
+        },
+        {
+          "name": "stats_nz_census_households_by_size_region__r15__n5",
+          "activation_status": "requires_household_structure_release_evidence",
+          "reason": "G8-w4 must provide Census household-structure support and release-input coverage evidence, or obtain a reviewed diagnostic posture; d1886 residual resolution alone does not release these size rows."
+        },
+        {
+          "name": "stats_nz_census_households_by_size_region__r15__n6",
+          "activation_status": "requires_household_structure_release_evidence",
+          "reason": "G8-w4 must provide Census household-structure support and release-input coverage evidence, or obtain a reviewed diagnostic posture; d1886 residual resolution alone does not release these size rows."
+        },
+        {
+          "name": "stats_nz_census_households_by_size_region__r15__n7",
+          "activation_status": "requires_household_structure_release_evidence",
+          "reason": "G8-w4 must provide Census household-structure support and release-input coverage evidence, or obtain a reviewed diagnostic posture; d1886 residual resolution alone does not release these size rows."
+        },
+        {
+          "name": "stats_nz_census_households_by_size_region__r15__n8",
+          "activation_status": "requires_household_structure_release_evidence",
+          "reason": "G8-w4 must provide Census household-structure support and release-input coverage evidence, or obtain a reviewed diagnostic posture; d1886 residual resolution alone does not release these size rows."
+        },
+        {
+          "name": "stats_nz_census_households_by_size_region__r16__n1",
+          "activation_status": "requires_household_structure_release_evidence",
+          "reason": "G8-w4 must provide Census household-structure support and release-input coverage evidence, or obtain a reviewed diagnostic posture; d1886 residual resolution alone does not release these size rows."
+        },
+        {
+          "name": "stats_nz_census_households_by_size_region__r16__n2",
+          "activation_status": "requires_household_structure_release_evidence",
+          "reason": "G8-w4 must provide Census household-structure support and release-input coverage evidence, or obtain a reviewed diagnostic posture; d1886 residual resolution alone does not release these size rows."
+        },
+        {
+          "name": "stats_nz_census_households_by_size_region__r16__n3",
+          "activation_status": "requires_household_structure_release_evidence",
+          "reason": "G8-w4 must provide Census household-structure support and release-input coverage evidence, or obtain a reviewed diagnostic posture; d1886 residual resolution alone does not release these size rows."
+        },
+        {
+          "name": "stats_nz_census_households_by_size_region__r16__n4",
+          "activation_status": "requires_household_structure_release_evidence",
+          "reason": "G8-w4 must provide Census household-structure support and release-input coverage evidence, or obtain a reviewed diagnostic posture; d1886 residual resolution alone does not release these size rows."
+        },
+        {
+          "name": "stats_nz_census_households_by_size_region__r16__n5",
+          "activation_status": "requires_household_structure_release_evidence",
+          "reason": "G8-w4 must provide Census household-structure support and release-input coverage evidence, or obtain a reviewed diagnostic posture; d1886 residual resolution alone does not release these size rows."
+        },
+        {
+          "name": "stats_nz_census_households_by_size_region__r16__n6",
+          "activation_status": "requires_household_structure_release_evidence",
+          "reason": "G8-w4 must provide Census household-structure support and release-input coverage evidence, or obtain a reviewed diagnostic posture; d1886 residual resolution alone does not release these size rows."
+        },
+        {
+          "name": "stats_nz_census_households_by_size_region__r16__n7",
+          "activation_status": "requires_household_structure_release_evidence",
+          "reason": "G8-w4 must provide Census household-structure support and release-input coverage evidence, or obtain a reviewed diagnostic posture; d1886 residual resolution alone does not release these size rows."
+        },
+        {
+          "name": "stats_nz_census_households_by_size_region__r16__n8",
+          "activation_status": "requires_household_structure_release_evidence",
+          "reason": "G8-w4 must provide Census household-structure support and release-input coverage evidence, or obtain a reviewed diagnostic posture; d1886 residual resolution alone does not release these size rows."
+        },
+        {
+          "name": "stats_nz_census_households_by_size_region__r17__n1",
+          "activation_status": "requires_household_structure_release_evidence",
+          "reason": "G8-w4 must provide Census household-structure support and release-input coverage evidence, or obtain a reviewed diagnostic posture; d1886 residual resolution alone does not release these size rows."
+        },
+        {
+          "name": "stats_nz_census_households_by_size_region__r17__n2",
+          "activation_status": "requires_household_structure_release_evidence",
+          "reason": "G8-w4 must provide Census household-structure support and release-input coverage evidence, or obtain a reviewed diagnostic posture; d1886 residual resolution alone does not release these size rows."
+        },
+        {
+          "name": "stats_nz_census_households_by_size_region__r17__n3",
+          "activation_status": "requires_household_structure_release_evidence",
+          "reason": "G8-w4 must provide Census household-structure support and release-input coverage evidence, or obtain a reviewed diagnostic posture; d1886 residual resolution alone does not release these size rows."
+        },
+        {
+          "name": "stats_nz_census_households_by_size_region__r17__n4",
+          "activation_status": "requires_household_structure_release_evidence",
+          "reason": "G8-w4 must provide Census household-structure support and release-input coverage evidence, or obtain a reviewed diagnostic posture; d1886 residual resolution alone does not release these size rows."
+        },
+        {
+          "name": "stats_nz_census_households_by_size_region__r17__n5",
+          "activation_status": "requires_household_structure_release_evidence",
+          "reason": "G8-w4 must provide Census household-structure support and release-input coverage evidence, or obtain a reviewed diagnostic posture; d1886 residual resolution alone does not release these size rows."
+        },
+        {
+          "name": "stats_nz_census_households_by_size_region__r17__n6",
+          "activation_status": "requires_household_structure_release_evidence",
+          "reason": "G8-w4 must provide Census household-structure support and release-input coverage evidence, or obtain a reviewed diagnostic posture; d1886 residual resolution alone does not release these size rows."
+        },
+        {
+          "name": "stats_nz_census_households_by_size_region__r17__n7",
+          "activation_status": "requires_household_structure_release_evidence",
+          "reason": "G8-w4 must provide Census household-structure support and release-input coverage evidence, or obtain a reviewed diagnostic posture; d1886 residual resolution alone does not release these size rows."
+        },
+        {
+          "name": "stats_nz_census_households_by_size_region__r17__n8",
+          "activation_status": "requires_household_structure_release_evidence",
+          "reason": "G8-w4 must provide Census household-structure support and release-input coverage evidence, or obtain a reviewed diagnostic posture; d1886 residual resolution alone does not release these size rows."
+        },
+        {
+          "name": "stats_nz_census_households_by_size_region__r18__n1",
+          "activation_status": "requires_household_structure_release_evidence",
+          "reason": "G8-w4 must provide Census household-structure support and release-input coverage evidence, or obtain a reviewed diagnostic posture; d1886 residual resolution alone does not release these size rows."
+        },
+        {
+          "name": "stats_nz_census_households_by_size_region__r18__n2",
+          "activation_status": "requires_household_structure_release_evidence",
+          "reason": "G8-w4 must provide Census household-structure support and release-input coverage evidence, or obtain a reviewed diagnostic posture; d1886 residual resolution alone does not release these size rows."
+        },
+        {
+          "name": "stats_nz_census_households_by_size_region__r18__n3",
+          "activation_status": "requires_household_structure_release_evidence",
+          "reason": "G8-w4 must provide Census household-structure support and release-input coverage evidence, or obtain a reviewed diagnostic posture; d1886 residual resolution alone does not release these size rows."
+        },
+        {
+          "name": "stats_nz_census_households_by_size_region__r18__n4",
+          "activation_status": "requires_household_structure_release_evidence",
+          "reason": "G8-w4 must provide Census household-structure support and release-input coverage evidence, or obtain a reviewed diagnostic posture; d1886 residual resolution alone does not release these size rows."
+        },
+        {
+          "name": "stats_nz_census_households_by_size_region__r18__n5",
+          "activation_status": "requires_household_structure_release_evidence",
+          "reason": "G8-w4 must provide Census household-structure support and release-input coverage evidence, or obtain a reviewed diagnostic posture; d1886 residual resolution alone does not release these size rows."
+        },
+        {
+          "name": "stats_nz_census_households_by_size_region__r18__n6",
+          "activation_status": "requires_household_structure_release_evidence",
+          "reason": "G8-w4 must provide Census household-structure support and release-input coverage evidence, or obtain a reviewed diagnostic posture; d1886 residual resolution alone does not release these size rows."
+        },
+        {
+          "name": "stats_nz_census_households_by_size_region__r18__n7",
+          "activation_status": "requires_household_structure_release_evidence",
+          "reason": "G8-w4 must provide Census household-structure support and release-input coverage evidence, or obtain a reviewed diagnostic posture; d1886 residual resolution alone does not release these size rows."
+        },
+        {
+          "name": "stats_nz_census_households_by_size_region__r18__n8",
+          "activation_status": "requires_household_structure_release_evidence",
+          "reason": "G8-w4 must provide Census household-structure support and release-input coverage evidence, or obtain a reviewed diagnostic posture; d1886 residual resolution alone does not release these size rows."
+        },
+        {
+          "name": "stats_nz_census_households_by_size_region__r99__n1",
+          "activation_status": "requires_household_structure_release_evidence",
+          "reason": "G8-w4 must provide Census household-structure support and release-input coverage evidence, or obtain a reviewed diagnostic posture; d1886 residual resolution alone does not release these size rows."
+        },
+        {
+          "name": "stats_nz_census_households_by_size_region__r99__n2",
+          "activation_status": "requires_household_structure_release_evidence",
+          "reason": "G8-w4 must provide Census household-structure support and release-input coverage evidence, or obtain a reviewed diagnostic posture; d1886 residual resolution alone does not release these size rows."
+        },
+        {
+          "name": "stats_nz_census_households_by_size_region__r99__n3",
+          "activation_status": "requires_household_structure_release_evidence",
+          "reason": "G8-w4 must provide Census household-structure support and release-input coverage evidence, or obtain a reviewed diagnostic posture; d1886 residual resolution alone does not release these size rows."
+        },
+        {
+          "name": "stats_nz_census_households_by_size_region__r99__n4",
+          "activation_status": "requires_household_structure_release_evidence",
+          "reason": "G8-w4 must provide Census household-structure support and release-input coverage evidence, or obtain a reviewed diagnostic posture; d1886 residual resolution alone does not release these size rows."
+        },
+        {
+          "name": "stats_nz_census_households_by_size_region__r99__n5",
+          "activation_status": "requires_household_structure_release_evidence",
+          "reason": "G8-w4 must provide Census household-structure support and release-input coverage evidence, or obtain a reviewed diagnostic posture; d1886 residual resolution alone does not release these size rows."
+        },
+        {
+          "name": "stats_nz_census_households_by_size_region__r99__n6",
+          "activation_status": "requires_household_structure_release_evidence",
+          "reason": "G8-w4 must provide Census household-structure support and release-input coverage evidence, or obtain a reviewed diagnostic posture; d1886 residual resolution alone does not release these size rows."
+        },
+        {
+          "name": "stats_nz_census_households_by_size_region__r99__n7",
+          "activation_status": "requires_household_structure_release_evidence",
+          "reason": "G8-w4 must provide Census household-structure support and release-input coverage evidence, or obtain a reviewed diagnostic posture; d1886 residual resolution alone does not release these size rows."
+        },
+        {
+          "name": "stats_nz_census_households_by_size_region__r99__n8",
+          "activation_status": "requires_household_structure_release_evidence",
+          "reason": "G8-w4 must provide Census household-structure support and release-input coverage evidence, or obtain a reviewed diagnostic posture; d1886 residual resolution alone does not release these size rows."
+        },
+        {
+          "name": "stats_nz_census_families_by_type_region__r01__t1",
+          "activation_status": "requires_census_family_nucleus_standard",
+          "reason": "G8-r3b must implement Census-family multiplicity classification before activation. The hub records the signed d1932 reconciliation; MC7 benefit units and family labels cannot substitute for Census multiplicities."
+        },
+        {
+          "name": "stats_nz_census_families_by_type_region__r01__t2",
+          "activation_status": "requires_census_family_nucleus_standard",
+          "reason": "G8-r3b must implement Census-family multiplicity classification before activation. The hub records the signed d1932 reconciliation; MC7 benefit units and family labels cannot substitute for Census multiplicities."
+        },
+        {
+          "name": "stats_nz_census_families_by_type_region__r01__t3",
+          "activation_status": "requires_census_family_nucleus_standard",
+          "reason": "G8-r3b must implement Census-family multiplicity classification before activation. The hub records the signed d1932 reconciliation; MC7 benefit units and family labels cannot substitute for Census multiplicities."
+        },
+        {
+          "name": "stats_nz_census_families_by_type_region__r02__t1",
+          "activation_status": "requires_census_family_nucleus_standard",
+          "reason": "G8-r3b must implement Census-family multiplicity classification before activation. The hub records the signed d1932 reconciliation; MC7 benefit units and family labels cannot substitute for Census multiplicities."
+        },
+        {
+          "name": "stats_nz_census_families_by_type_region__r02__t2",
+          "activation_status": "requires_census_family_nucleus_standard",
+          "reason": "G8-r3b must implement Census-family multiplicity classification before activation. The hub records the signed d1932 reconciliation; MC7 benefit units and family labels cannot substitute for Census multiplicities."
+        },
+        {
+          "name": "stats_nz_census_families_by_type_region__r02__t3",
+          "activation_status": "requires_census_family_nucleus_standard",
+          "reason": "G8-r3b must implement Census-family multiplicity classification before activation. The hub records the signed d1932 reconciliation; MC7 benefit units and family labels cannot substitute for Census multiplicities."
+        },
+        {
+          "name": "stats_nz_census_families_by_type_region__r03__t1",
+          "activation_status": "requires_census_family_nucleus_standard",
+          "reason": "G8-r3b must implement Census-family multiplicity classification before activation. The hub records the signed d1932 reconciliation; MC7 benefit units and family labels cannot substitute for Census multiplicities."
+        },
+        {
+          "name": "stats_nz_census_families_by_type_region__r03__t2",
+          "activation_status": "requires_census_family_nucleus_standard",
+          "reason": "G8-r3b must implement Census-family multiplicity classification before activation. The hub records the signed d1932 reconciliation; MC7 benefit units and family labels cannot substitute for Census multiplicities."
+        },
+        {
+          "name": "stats_nz_census_families_by_type_region__r03__t3",
+          "activation_status": "requires_census_family_nucleus_standard",
+          "reason": "G8-r3b must implement Census-family multiplicity classification before activation. The hub records the signed d1932 reconciliation; MC7 benefit units and family labels cannot substitute for Census multiplicities."
+        },
+        {
+          "name": "stats_nz_census_families_by_type_region__r04__t1",
+          "activation_status": "requires_census_family_nucleus_standard",
+          "reason": "G8-r3b must implement Census-family multiplicity classification before activation. The hub records the signed d1932 reconciliation; MC7 benefit units and family labels cannot substitute for Census multiplicities."
+        },
+        {
+          "name": "stats_nz_census_families_by_type_region__r04__t2",
+          "activation_status": "requires_census_family_nucleus_standard",
+          "reason": "G8-r3b must implement Census-family multiplicity classification before activation. The hub records the signed d1932 reconciliation; MC7 benefit units and family labels cannot substitute for Census multiplicities."
+        },
+        {
+          "name": "stats_nz_census_families_by_type_region__r04__t3",
+          "activation_status": "requires_census_family_nucleus_standard",
+          "reason": "G8-r3b must implement Census-family multiplicity classification before activation. The hub records the signed d1932 reconciliation; MC7 benefit units and family labels cannot substitute for Census multiplicities."
+        },
+        {
+          "name": "stats_nz_census_families_by_type_region__r05__t1",
+          "activation_status": "requires_census_family_nucleus_standard",
+          "reason": "G8-r3b must implement Census-family multiplicity classification before activation. The hub records the signed d1932 reconciliation; MC7 benefit units and family labels cannot substitute for Census multiplicities."
+        },
+        {
+          "name": "stats_nz_census_families_by_type_region__r05__t2",
+          "activation_status": "requires_census_family_nucleus_standard",
+          "reason": "G8-r3b must implement Census-family multiplicity classification before activation. The hub records the signed d1932 reconciliation; MC7 benefit units and family labels cannot substitute for Census multiplicities."
+        },
+        {
+          "name": "stats_nz_census_families_by_type_region__r05__t3",
+          "activation_status": "requires_census_family_nucleus_standard",
+          "reason": "G8-r3b must implement Census-family multiplicity classification before activation. The hub records the signed d1932 reconciliation; MC7 benefit units and family labels cannot substitute for Census multiplicities."
+        },
+        {
+          "name": "stats_nz_census_families_by_type_region__r06__t1",
+          "activation_status": "requires_census_family_nucleus_standard",
+          "reason": "G8-r3b must implement Census-family multiplicity classification before activation. The hub records the signed d1932 reconciliation; MC7 benefit units and family labels cannot substitute for Census multiplicities."
+        },
+        {
+          "name": "stats_nz_census_families_by_type_region__r06__t2",
+          "activation_status": "requires_census_family_nucleus_standard",
+          "reason": "G8-r3b must implement Census-family multiplicity classification before activation. The hub records the signed d1932 reconciliation; MC7 benefit units and family labels cannot substitute for Census multiplicities."
+        },
+        {
+          "name": "stats_nz_census_families_by_type_region__r06__t3",
+          "activation_status": "requires_census_family_nucleus_standard",
+          "reason": "G8-r3b must implement Census-family multiplicity classification before activation. The hub records the signed d1932 reconciliation; MC7 benefit units and family labels cannot substitute for Census multiplicities."
+        },
+        {
+          "name": "stats_nz_census_families_by_type_region__r07__t1",
+          "activation_status": "requires_census_family_nucleus_standard",
+          "reason": "G8-r3b must implement Census-family multiplicity classification before activation. The hub records the signed d1932 reconciliation; MC7 benefit units and family labels cannot substitute for Census multiplicities."
+        },
+        {
+          "name": "stats_nz_census_families_by_type_region__r07__t2",
+          "activation_status": "requires_census_family_nucleus_standard",
+          "reason": "G8-r3b must implement Census-family multiplicity classification before activation. The hub records the signed d1932 reconciliation; MC7 benefit units and family labels cannot substitute for Census multiplicities."
+        },
+        {
+          "name": "stats_nz_census_families_by_type_region__r07__t3",
+          "activation_status": "requires_census_family_nucleus_standard",
+          "reason": "G8-r3b must implement Census-family multiplicity classification before activation. The hub records the signed d1932 reconciliation; MC7 benefit units and family labels cannot substitute for Census multiplicities."
+        },
+        {
+          "name": "stats_nz_census_families_by_type_region__r08__t1",
+          "activation_status": "requires_census_family_nucleus_standard",
+          "reason": "G8-r3b must implement Census-family multiplicity classification before activation. The hub records the signed d1932 reconciliation; MC7 benefit units and family labels cannot substitute for Census multiplicities."
+        },
+        {
+          "name": "stats_nz_census_families_by_type_region__r08__t2",
+          "activation_status": "requires_census_family_nucleus_standard",
+          "reason": "G8-r3b must implement Census-family multiplicity classification before activation. The hub records the signed d1932 reconciliation; MC7 benefit units and family labels cannot substitute for Census multiplicities."
+        },
+        {
+          "name": "stats_nz_census_families_by_type_region__r08__t3",
+          "activation_status": "requires_census_family_nucleus_standard",
+          "reason": "G8-r3b must implement Census-family multiplicity classification before activation. The hub records the signed d1932 reconciliation; MC7 benefit units and family labels cannot substitute for Census multiplicities."
+        },
+        {
+          "name": "stats_nz_census_families_by_type_region__r09__t1",
+          "activation_status": "requires_census_family_nucleus_standard",
+          "reason": "G8-r3b must implement Census-family multiplicity classification before activation. The hub records the signed d1932 reconciliation; MC7 benefit units and family labels cannot substitute for Census multiplicities."
+        },
+        {
+          "name": "stats_nz_census_families_by_type_region__r09__t2",
+          "activation_status": "requires_census_family_nucleus_standard",
+          "reason": "G8-r3b must implement Census-family multiplicity classification before activation. The hub records the signed d1932 reconciliation; MC7 benefit units and family labels cannot substitute for Census multiplicities."
+        },
+        {
+          "name": "stats_nz_census_families_by_type_region__r09__t3",
+          "activation_status": "requires_census_family_nucleus_standard",
+          "reason": "G8-r3b must implement Census-family multiplicity classification before activation. The hub records the signed d1932 reconciliation; MC7 benefit units and family labels cannot substitute for Census multiplicities."
+        },
+        {
+          "name": "stats_nz_census_families_by_type_region__r12__t1",
+          "activation_status": "requires_census_family_nucleus_standard",
+          "reason": "G8-r3b must implement Census-family multiplicity classification before activation. The hub records the signed d1932 reconciliation; MC7 benefit units and family labels cannot substitute for Census multiplicities."
+        },
+        {
+          "name": "stats_nz_census_families_by_type_region__r12__t2",
+          "activation_status": "requires_census_family_nucleus_standard",
+          "reason": "G8-r3b must implement Census-family multiplicity classification before activation. The hub records the signed d1932 reconciliation; MC7 benefit units and family labels cannot substitute for Census multiplicities."
+        },
+        {
+          "name": "stats_nz_census_families_by_type_region__r12__t3",
+          "activation_status": "requires_census_family_nucleus_standard",
+          "reason": "G8-r3b must implement Census-family multiplicity classification before activation. The hub records the signed d1932 reconciliation; MC7 benefit units and family labels cannot substitute for Census multiplicities."
+        },
+        {
+          "name": "stats_nz_census_families_by_type_region__r13__t1",
+          "activation_status": "requires_census_family_nucleus_standard",
+          "reason": "G8-r3b must implement Census-family multiplicity classification before activation. The hub records the signed d1932 reconciliation; MC7 benefit units and family labels cannot substitute for Census multiplicities."
+        },
+        {
+          "name": "stats_nz_census_families_by_type_region__r13__t2",
+          "activation_status": "requires_census_family_nucleus_standard",
+          "reason": "G8-r3b must implement Census-family multiplicity classification before activation. The hub records the signed d1932 reconciliation; MC7 benefit units and family labels cannot substitute for Census multiplicities."
+        },
+        {
+          "name": "stats_nz_census_families_by_type_region__r13__t3",
+          "activation_status": "requires_census_family_nucleus_standard",
+          "reason": "G8-r3b must implement Census-family multiplicity classification before activation. The hub records the signed d1932 reconciliation; MC7 benefit units and family labels cannot substitute for Census multiplicities."
+        },
+        {
+          "name": "stats_nz_census_families_by_type_region__r14__t1",
+          "activation_status": "requires_census_family_nucleus_standard",
+          "reason": "G8-r3b must implement Census-family multiplicity classification before activation. The hub records the signed d1932 reconciliation; MC7 benefit units and family labels cannot substitute for Census multiplicities."
+        },
+        {
+          "name": "stats_nz_census_families_by_type_region__r14__t2",
+          "activation_status": "requires_census_family_nucleus_standard",
+          "reason": "G8-r3b must implement Census-family multiplicity classification before activation. The hub records the signed d1932 reconciliation; MC7 benefit units and family labels cannot substitute for Census multiplicities."
+        },
+        {
+          "name": "stats_nz_census_families_by_type_region__r14__t3",
+          "activation_status": "requires_census_family_nucleus_standard",
+          "reason": "G8-r3b must implement Census-family multiplicity classification before activation. The hub records the signed d1932 reconciliation; MC7 benefit units and family labels cannot substitute for Census multiplicities."
+        },
+        {
+          "name": "stats_nz_census_families_by_type_region__r15__t1",
+          "activation_status": "requires_census_family_nucleus_standard",
+          "reason": "G8-r3b must implement Census-family multiplicity classification before activation. The hub records the signed d1932 reconciliation; MC7 benefit units and family labels cannot substitute for Census multiplicities."
+        },
+        {
+          "name": "stats_nz_census_families_by_type_region__r15__t2",
+          "activation_status": "requires_census_family_nucleus_standard",
+          "reason": "G8-r3b must implement Census-family multiplicity classification before activation. The hub records the signed d1932 reconciliation; MC7 benefit units and family labels cannot substitute for Census multiplicities."
+        },
+        {
+          "name": "stats_nz_census_families_by_type_region__r15__t3",
+          "activation_status": "requires_census_family_nucleus_standard",
+          "reason": "G8-r3b must implement Census-family multiplicity classification before activation. The hub records the signed d1932 reconciliation; MC7 benefit units and family labels cannot substitute for Census multiplicities."
+        },
+        {
+          "name": "stats_nz_census_families_by_type_region__r16__t1",
+          "activation_status": "requires_census_family_nucleus_standard",
+          "reason": "G8-r3b must implement Census-family multiplicity classification before activation. The hub records the signed d1932 reconciliation; MC7 benefit units and family labels cannot substitute for Census multiplicities."
+        },
+        {
+          "name": "stats_nz_census_families_by_type_region__r16__t2",
+          "activation_status": "requires_census_family_nucleus_standard",
+          "reason": "G8-r3b must implement Census-family multiplicity classification before activation. The hub records the signed d1932 reconciliation; MC7 benefit units and family labels cannot substitute for Census multiplicities."
+        },
+        {
+          "name": "stats_nz_census_families_by_type_region__r16__t3",
+          "activation_status": "requires_census_family_nucleus_standard",
+          "reason": "G8-r3b must implement Census-family multiplicity classification before activation. The hub records the signed d1932 reconciliation; MC7 benefit units and family labels cannot substitute for Census multiplicities."
+        },
+        {
+          "name": "stats_nz_census_families_by_type_region__r17__t1",
+          "activation_status": "requires_census_family_nucleus_standard",
+          "reason": "G8-r3b must implement Census-family multiplicity classification before activation. The hub records the signed d1932 reconciliation; MC7 benefit units and family labels cannot substitute for Census multiplicities."
+        },
+        {
+          "name": "stats_nz_census_families_by_type_region__r17__t2",
+          "activation_status": "requires_census_family_nucleus_standard",
+          "reason": "G8-r3b must implement Census-family multiplicity classification before activation. The hub records the signed d1932 reconciliation; MC7 benefit units and family labels cannot substitute for Census multiplicities."
+        },
+        {
+          "name": "stats_nz_census_families_by_type_region__r17__t3",
+          "activation_status": "requires_census_family_nucleus_standard",
+          "reason": "G8-r3b must implement Census-family multiplicity classification before activation. The hub records the signed d1932 reconciliation; MC7 benefit units and family labels cannot substitute for Census multiplicities."
+        },
+        {
+          "name": "stats_nz_census_families_by_type_region__r18__t1",
+          "activation_status": "requires_census_family_nucleus_standard",
+          "reason": "G8-r3b must implement Census-family multiplicity classification before activation. The hub records the signed d1932 reconciliation; MC7 benefit units and family labels cannot substitute for Census multiplicities."
+        },
+        {
+          "name": "stats_nz_census_families_by_type_region__r18__t2",
+          "activation_status": "requires_census_family_nucleus_standard",
+          "reason": "G8-r3b must implement Census-family multiplicity classification before activation. The hub records the signed d1932 reconciliation; MC7 benefit units and family labels cannot substitute for Census multiplicities."
+        },
+        {
+          "name": "stats_nz_census_families_by_type_region__r18__t3",
+          "activation_status": "requires_census_family_nucleus_standard",
+          "reason": "G8-r3b must implement Census-family multiplicity classification before activation. The hub records the signed d1932 reconciliation; MC7 benefit units and family labels cannot substitute for Census multiplicities."
+        },
+        {
+          "name": "stats_nz_census_families_by_type_region__r99__t1",
+          "activation_status": "requires_census_family_nucleus_standard",
+          "reason": "G8-r3b must implement Census-family multiplicity classification before activation. The hub records the signed d1932 reconciliation; MC7 benefit units and family labels cannot substitute for Census multiplicities."
+        },
+        {
+          "name": "stats_nz_census_families_by_type_region__r99__t2",
+          "activation_status": "requires_census_family_nucleus_standard",
+          "reason": "G8-r3b must implement Census-family multiplicity classification before activation. The hub records the signed d1932 reconciliation; MC7 benefit units and family labels cannot substitute for Census multiplicities."
+        },
+        {
+          "name": "stats_nz_census_families_by_type_region__r99__t3",
+          "activation_status": "requires_census_family_nucleus_standard",
+          "reason": "G8-r3b must implement Census-family multiplicity classification before activation. The hub records the signed d1932 reconciliation; MC7 benefit units and family labels cannot substitute for Census multiplicities."
+        },
+        {
+          "name": "stats_nz_census_households_by_tenure_region__r99__owned",
+          "activation_status": "requires_region_99_release_evidence",
+          "reason": "G8-w4 must provide support and release-input coverage evidence for the separate region-99 national-growth proxy; G8-m2 supplies joint geography but no regional ERP series."
+        },
+        {
+          "name": "stats_nz_census_households_by_tenure_region__r99__not_owned",
+          "activation_status": "requires_region_99_release_evidence",
+          "reason": "G8-w4 must provide support and release-input coverage evidence for the separate region-99 national-growth proxy; G8-m2 supplies joint geography but no regional ERP series."
+        },
+        {
+          "name": "msd_veterans_pension_recipients",
+          "activation_status": "requires_unsupported_veterans_pension",
+          "reason": "G8-w3b must refuse Veterans Pension as unsupported under H4. Activation needs veteran facts and a reviewed receipt producer; G8-y owns the closing step."
+        }
+      ]
+    },
+    "precal_references": {
+      "exempt": [
+        {
+          "name": "mbie_bond_rents_by_territorial_authority",
+          "activation_status": "requires_rent_band_frequencies",
+          "reason": "G8-d1 supplies a Census rent-band replacement and must resolve C1 rent ageing; that replacement does not activate this MBIE P2 row. MBIE activation needs rent-band frequencies that medians, quartiles and bond counts cannot supply; G8-y owns the closing step."
+        },
+        {
+          "name": "stats_nz_household_financial_net_worth_distribution",
+          "activation_status": "requires_all_household_liquid_asset_histogram",
+          "reason": "P3 activation needs an all-household liquid-financial-asset histogram; nonzero-holder summaries cannot supply it. G8-x may run d1982's separate diagnostic donor-stock exception without claiming NZ calibration; that exception does not activate P3. G8-y owns the closing step."
+        },
+        {
+          "name": "msd_veterans_pension_recipients",
+          "activation_status": "requires_unsupported_veterans_pension",
+          "reason": "G8-w3b must refuse Veterans Pension as unsupported under H4. Activation needs veteran facts and a reviewed receipt producer; G8-y owns the closing step."
+        }
+      ]
+    },
+    "holdout_references": {
+      "exempt": [
+        {
+          "name": "treasury_an24_01_accommodation_supplement_fiscal_total",
+          "activation_status": "requires_harvested_fact_reference",
+          "reason": "G8-w3b keeps H3 outside its comparison requests. Activation needs a pinned fact and reviewed scope for the existing Treasury row; G8-y owns the closing step."
+        },
+        {
+          "name": "ird_wff_recipient_families",
+          "activation_status": "requires_receipt_assignment_wff_bindings_and_2026_basis",
+          "reason": "WFF activation needs module bindings, receipt and claim state, and a tax-year-to-model-period bridge. G8-w3b keeps these tripwires exempt; G8-y owns the closing step."
+        },
+        {
+          "name": "ird_iwtc_recipient_families",
+          "activation_status": "requires_receipt_assignment_wff_bindings_and_2026_basis",
+          "reason": "WFF activation needs module bindings, receipt and claim state, and a tax-year-to-model-period bridge. G8-w3b keeps these tripwires exempt; G8-y owns the closing step."
+        },
+        {
+          "name": "ird_wff_recipient_families_by_family_income_band",
+          "activation_status": "requires_harvested_cell_references_wff_bindings_and_2026_basis",
+          "reason": "The income-band comparator needs harvested and pinned cell references. WFF activation needs module bindings, receipt and claim state, and a tax-year-to-model-period bridge. G8-w3b keeps these tripwires exempt; G8-y owns the closing step."
+        }
+      ]
+    },
+    "mass_references": {
+      "exempt": []
+    }
+  }
+}

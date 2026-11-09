@@ -12,7 +12,7 @@ engine-backed requested package-wide scope all pass.
 
 ## Done
 
-- Read the repository `AGENTS.md` and `CLAUDE.md` operating rules.
+- Read the repository's canonical agent guide.
 - Confirmed that the branch starts from `origin/main` with no existing `am/`
   package changes.
 - Read the complete Belgium spec-only package, the country-spec schema and
@@ -53,7 +53,7 @@ engine-backed requested package-wide scope all pass.
   engine-backed offline run using cached lock-required
   `policyengine-us==1.819.0`: **6,556 passed, 45 skipped, 2,351 warnings** in
   3,671.74 seconds. No test failed.
-- Passed full-repository Ruff, `tools/ci_test_groups.py --verify`, and
+- Passed full-repository Ruff, the test-plan verifier, and
   `git diff --check`; the repository-root `PROGRESS.md` remains untouched.
 - Completed a final independent contract audit and corrected four issues before
   handoff: unsupported selector fields, implicit multi-cell-table collapse,

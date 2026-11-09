@@ -18,6 +18,7 @@ from pathlib import Path
 from microcosm.build.us_runtime import education_assistance_source
 from microcosm.build.us_runtime.spm_role_source import (
     ASEC_SPM_ROLE_SOURCES,
+    BUILDP_SPM_ROLE_INCOME_YEARS,
     derive_spm_role_source,
 )
 from microcosm.data.contract import ReleaseContractError
@@ -295,8 +296,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             parent_h5=args.parent_h5,
             parent_release_dir=args.parent_release_dir,
             source_paths={
-                year: args.source_cache / pin.member
-                for year, pin in ASEC_SPM_ROLE_SOURCES.items()
+                year: args.source_cache / ASEC_SPM_ROLE_SOURCES[year].member
+                for year in BUILDP_SPM_ROLE_INCOME_YEARS
             },
             output_dir=args.output_dir,
             release_id=args.release_id,

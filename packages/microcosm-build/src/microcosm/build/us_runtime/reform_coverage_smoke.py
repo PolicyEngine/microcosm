@@ -142,15 +142,31 @@ def us_reform_coverage_smoke_gate(
                 if probe.expected_sign == "either"
                 else f"a {probe.expected_sign} effect"
             )
-            failures.append(
+            scored = (
                 f"{probe.id}: '{probe.name}' scores {effect:+,.0f} on "
                 f"{probe.budget_measure} for {probe_period}; expected "
                 f"{expectation} with magnitude at least "
-                f"${probe.min_abs_effect:,.0f}. The reform did not bind as "
-                "declared, so its input leaves "
-                f"{list(probe.binding_inputs)} are absent or degenerate on the "
-                f"export. {probe.reason} Restore them ({probe.issue})."
+                f"${probe.min_abs_effect:,.0f}."
             )
+            # A wrong-signed effect that clears the floor proves the reform
+            # binds, so the inputs are carried; what disagrees is the probe's
+            # definition and the installed engine (the 2026-09-28 Route A
+            # failure: parameter lists pinned before a PolicyEngine-US change).
+            if abs(effect) >= probe.min_abs_effect:
+                failures.append(
+                    f"{scored} The reform binds, but in the opposite "
+                    "direction, so the probe's definition disagrees with the "
+                    "installed engine: check its parameter change against "
+                    "the engine's current baseline value before suspecting "
+                    f"the export. {probe.reason} ({probe.issue})"
+                )
+            else:
+                failures.append(
+                    f"{scored} The reform did not bind as declared, so its "
+                    f"input leaves {list(probe.binding_inputs)} are absent or "
+                    f"degenerate on the export. {probe.reason} Restore them "
+                    f"({probe.issue})."
+                )
 
     return GateResult(
         name=name,

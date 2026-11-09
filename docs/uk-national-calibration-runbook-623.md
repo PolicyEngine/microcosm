@@ -17,22 +17,30 @@ is the release-cut producer's job, not calibration's.
 
 ## Command shape
 
-Calibration runs through the rowwise driver's national release role,
-`tools/build_uk_rowwise_candidate.py --release-role national` (microcosm#823;
-it replaced the retired `tools/calibrate_uk_national_dataset.py`). The role
-delegates the build to the calibration seam library
-(`uk_runtime.calibration_run.run_uk_calibration`): it is the only path that
-builds the measure resolver from the input file and applies the committed
-measure-exclusion register, and 187 of the activated references bind model
-outputs that no frame carries — so it is the only path on which this target
-surface materializes. No cloning, no ladder, national targets only. The June
-builder (`tools/build_uk_national_dataset.py`) constructs the calibration
-stage without either and aborts on the first unmaterializable reference; it
-also rebuilds SPI income onto its input, which a spine artifact already
-carries.
+Calibration runs through the UK build driver's national release role,
+`microcosm-build-uk --release-role national` (`tools/build_uk_full.py`;
+`tools/build_uk_rowwise_candidate.py` is a stub over the same driver). The
+role arrived with microcosm#823, which retired
+`tools/calibrate_uk_national_dataset.py`, moved into the graph driver with
+microcosm#901 and onto the graph itself with the change that followed it.
+The driver validates the request with its posture-aware validator and
+composes the national graph (`uk_runtime.graph_national`): the bound
+checkpoint, the national register compiled from the pinned Chronicle
+artifact with the committed measure-exclusion register applied, the engine
+measures resolved on the bound frame (187 of the activated references bind
+model outputs that no frame carries, so the resolver is built from the input
+frame, never skipped), the one ordered national problem, the shared solve
+nodes under the national doctrine and the calibration-seam gate scope. The
+seam-shaped evidence (the build record, the signed gate report, the seam
+diagnostics, the registries, the manifest) is materialised from the stored
+graph artifacts. No cloning, no ladder, national targets only; the role
+builds from a bound `--input-h5` and refuses a `--spine-request`. The
+retired June builder constructed the calibration stage without either and
+aborted on the first unmaterializable reference; it also rebuilt SPI income
+onto its input, which a spine artifact already carries.
 
 ```bash
-uv run --no-sync python tools/build_uk_rowwise_candidate.py --release-role national \
+uv run --no-sync python tools/build_uk_full.py --release-role national \
   --input-h5 data/ukds/acceptance/623-first-calibrated-candidate/input-spine.h5 \
   --input-sha256 <sha256-of-input-spine-h5> \
   --ledger-facts <ledger-consumer-artifact> \
@@ -40,6 +48,19 @@ uv run --no-sync python tools/build_uk_rowwise_candidate.py --release-role natio
   --ledger-manifest-sha256 <sha256> \
   --out data/ukds/acceptance/623-first-calibrated-candidate
 ```
+
+`--out` must not already hold a candidate: the role refuses an occupied
+output directory with the other argument refusals, before the attempt opens
+(a `FileExistsError`; nothing is written into the directory, no Logbook row,
+no staging run), so a rebuild goes into a fresh directory rather than over
+the bytes an earlier row names. An
+operator interrupt (Ctrl-C) records a `discarded` row and closes the staging
+run as failed. `--review-date` (default today) dates the measure-exclusion
+windows and the target-fit deferral register on this line, as it does on
+the dense line; the retired seam used the run clock, so a back-dated value
+keeps expired exclusions and deferrals in force and is only for replaying a
+dated review. The date is a parameter of the `uk.full.national_targets` and
+`uk.full.gates.calibrated` nodes (`build.graph.json`).
 
 The role names every output after the pinned FRS release vintage:
 `microcosm_uk_2024_25.h5`, `calibration_diagnostics.json`,
@@ -50,9 +71,9 @@ prints the plan without solving. Staging telemetry and the staged bundle
 follow the dense role's switches (`--staging-local-only`, `--no-staging`,
 `--staging-read-back`, `--no-staged-dataset`); the run id is the attempt id.
 
-The diagnostics digest is measured, not declared: the seam writes the
-diagnostics file, hashes its actual bytes, and only then constructs and signs
-the terminal gate evidence. There is no `--calibration-diagnostics-sha256` to
+The diagnostics digest is measured, not declared: the driver writes the
+diagnostics file through the seam writer, hashes its actual bytes, and only
+then replays and signs the terminal gate evidence. There is no `--calibration-diagnostics-sha256` to
 supply, and no way for the receipt to claim an identity the file does not have.
 
 Solve parameters are per-run overrides of the declared doctrine. Since the
@@ -100,7 +121,7 @@ side too. The receipt's `evaluation` block decides rule 1 (#578) on that
 surface: `verdict` is `passed` when the candidate's full loss is below the
 incumbent's, `failed` otherwise, and the release-cut certifier refuses any
 receipt whose verdict is not `passed` or whose surface does not close, so
-publication never runs on an unpassed evaluation. The rowwise driver's
+publication never runs on an unpassed evaluation. The build driver's
 national role runs this evaluation at the end of every build it is given an
 incumbent for (microcosm#965) and writes the same receipt as
 `score_vs_incumbent.json`.
