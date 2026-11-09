@@ -96,6 +96,7 @@ _FIELDS = frozenset(
         "checkpoints",
         "bands",
         "package",
+        "gate_evidence",
     }
 )
 
@@ -592,10 +593,54 @@ class _EntitlementFactory:
         return tuple(nodes)
 
 
+def _gate_evidence(spec, document, gaps):
+    """Each declared scenario's ``gap``, under its alias, at its phase's batteries.
+
+    A scenario's ``gap`` exists only when that scenario's own branch ran (a
+    variant's own calibration included), so the gap is the run's evidence
+    for it, and nothing else reaches a battery under these aliases. A row
+    names an alias, a scenario this graph runs and a battery phase.
+    """
+    batteries: dict[object, list[str]] = {}
+    for row in transport_resource(spec, "transport_graph")["nodes"]:
+        if row["kernel"] == "gates.battery@1":
+            phase = row.get("params", {}).get("phase")
+            batteries.setdefault(phase, []).append(row["id"])
+    edges = []
+    names = set()
+    for row in _sequence(document.get("gate_evidence", []), "gate_evidence"):
+        row = _mapping(row, "gate evidence")
+        if set(row) != {"name", "scenario", "phase"} or not all(
+            isinstance(value, str) and value for value in row.values()
+        ):
+            raise ValueError(
+                "Gate evidence rows declare exactly a nonempty name, scenario "
+                "and phase."
+            )
+        name = row["name"]
+        if name in names:
+            raise ValueError(f"Gate evidence {name!r} is declared twice.")
+        names.add(name)
+        if row["scenario"] not in gaps:
+            raise ValueError(
+                f"Gate evidence {name!r} names scenario {row['scenario']!r}, "
+                "which this entitlement graph doesn't run."
+            )
+        targets = batteries.get(row["phase"])
+        if not targets:
+            raise ValueError(
+                f"Gate evidence {name!r} needs a declared gate-battery node of "
+                f"phase {row['phase']!r}."
+            )
+        edge = ArtifactInput(name, gaps[row["scenario"]], "gap", GAP_TYPE)
+        edges.extend((battery, edge) for battery in targets)
+    return edges
+
+
 def entitlement_extension(spec: Mapping) -> TransportExtension:
     """The optional entitlement declarations as an ordered transport extension."""
     document = _document(spec)
-    rows, _ = _rows(spec)
+    rows, gaps = _rows(spec)
     bands = _mapping(document["bands"], "entitlement bands")
     package = _mapping(document["package"], "entitlement package")
     cell_contract = _cell_contract(spec)
@@ -644,6 +689,7 @@ def entitlement_extension(spec: Mapping) -> TransportExtension:
             raise ValueError(
                 "Cell diagnostics need a matching declared gate-battery node."
             )
+    gate_inputs.extend(_gate_evidence(spec, document, gaps))
     return TransportExtension(
         factory=_EntitlementFactory(),
         sources=tuple(SourceRef(**row) for row in document.get("sources", ())),

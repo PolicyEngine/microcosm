@@ -21,6 +21,7 @@ from microcosm.build.transport.compose import (
     compose_transport_graph,
     validate_transport_activation,
 )
+from microcosm.build.transport.entitlement import entitlement_extension
 from microcosm.build.transport.takeup_kernels import (
     decode_bands,
     decode_cell_diagnostics,
@@ -869,6 +870,101 @@ def test_automatic_extension_installation_and_package_edge_restrictions(tmp_path
     rows.append(consumer)
     with pytest.raises(ValueError, match="terminal skeleton package node"):
         compose_transport_graph(spec, fixture.config)
+
+
+def _with_gate_evidence(fixture, rows):
+    spec = copy.deepcopy(fixture.spec)
+    spec["resources"]["entitlement_graph"]["gate_evidence"] = rows
+    return fixture.reprepare(spec)
+
+
+def _batteries(graph, phase):
+    return {
+        node.id
+        for node in graph.nodes
+        if node.kernel == "gates.battery@1" and node.params.get("phase") == phase
+    }
+
+
+def test_gate_evidence_wires_each_named_gap_to_its_phase_batteries_only(tmp_path):
+    fixture = make_entitlement_fixture(tmp_path / "fixture")
+    before = {node.id: node for node in fixture.graph().nodes}
+    graph = _with_gate_evidence(
+        fixture,
+        [
+            {"name": "scenario_v1", "scenario": "V1", "phase": "terminal"},
+            {"name": "scenario_s0", "scenario": "S0", "phase": "terminal"},
+        ],
+    ).graph()
+    after = {node.id: node for node in graph.nodes}
+    terminal = _batteries(graph, "terminal")
+    assert terminal
+    assert set(after) == set(before)
+    # Only the terminal batteries change, and each keeps its own edges first.
+    assert {name for name in before if before[name] != after[name]} == terminal
+    for name in terminal:
+        inputs = after[name].artifact_inputs
+        kept = len(before[name].artifact_inputs)
+        assert inputs[:kept] == before[name].artifact_inputs
+        assert [
+            (edge.name, edge.producer, edge.artifact) for edge in inputs[kept:]
+        ] == [
+            ("scenario_v1", "nz.v.V1.gap", "gap"),
+            ("scenario_s0", "nz.scn.S0.gap", "gap"),
+        ]
+    compile_graph(graph)
+
+
+def test_no_gate_evidence_leaves_the_graph_unchanged(tmp_path):
+    fixture = make_entitlement_fixture(tmp_path / "fixture", variants=False)
+    assert "gate_evidence" not in fixture.spec["resources"]["entitlement_graph"]
+    empty = _with_gate_evidence(fixture, [])
+    assert graph_to_json(empty.graph()) == graph_to_json(fixture.graph())
+
+
+@pytest.mark.parametrize(
+    ("rows", "match"),
+    [
+        ([{"name": "x", "scenario": "V9", "phase": "terminal"}], "doesn't run"),
+        (
+            [{"name": "x", "scenario": "V1", "phase": "terminal"}] * 2,
+            "declared twice",
+        ),
+        (
+            [
+                {"name": "x", "scenario": "V1", "phase": "terminal"},
+                {"name": "x", "scenario": "V2", "phase": "terminal"},
+            ],
+            "declared twice",
+        ),
+        ([{"name": "x", "scenario": "V1", "phase": "release"}], "phase 'release'"),
+        ([{"name": "x", "scenario": "V1"}], "exactly a nonempty name"),
+        ([{"name": "", "scenario": "V1", "phase": "terminal"}], "nonempty name"),
+        ([{"name": "x", "scenario": 1, "phase": "terminal"}], "nonempty name"),
+        (
+            [{"name": "x", "scenario": "V1", "phase": "terminal", "artifact": "gap"}],
+            "exactly a nonempty name",
+        ),
+    ],
+)
+def test_gate_evidence_rows_refuse_by_name(tmp_path, rows, match):
+    fixture = make_entitlement_fixture(tmp_path / "fixture")
+    spec = copy.deepcopy(fixture.spec)
+    spec["resources"]["entitlement_graph"]["gate_evidence"] = rows
+    with pytest.raises(ValueError, match=match):
+        entitlement_extension(spec)
+
+
+def test_gate_evidence_may_not_reuse_a_battery_alias(tmp_path):
+    fixture = make_entitlement_fixture(tmp_path / "fixture")
+    graph = fixture.graph()
+    (battery, *_) = sorted(_batteries(graph, "terminal"))
+    taken = graph.node(battery).artifact_inputs[0].name
+    changed = _with_gate_evidence(
+        fixture, [{"name": taken, "scenario": "V1", "phase": "terminal"}]
+    )
+    with pytest.raises(ValueError, match="new and distinct"):
+        changed.graph()
 
 
 @pytest.mark.parametrize("template", ["scenario_nodes", "variant_nodes"])

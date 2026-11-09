@@ -1575,16 +1575,123 @@ def test_the_prefit_table_has_12_bands_each_with_both_companions():
     assert table["diagnostics"]["support_household_entity"] == "household"
 
 
-def test_r2c18_wires_no_placeholder_evidence_into_the_terminal_battery():
+_INCOME_EVIDENCE = {
+    "identity_receipts": ("nz.evidence.income_identity", "nz.central"),
+    "omission_register": ("nz.evidence.omission_register", "nz.central"),
+    "native_band_report": ("nz.evidence.native_bands", "nz.terminal"),
+}
+
+
+def test_r2c18_wires_each_income_alias_from_its_real_producer():
+    """R2C-28: every measurement_prefit alias reaches the battery from its producer.
+
+    The three income aliases come from the packaged graph's own evidence nodes,
+    each under its producer's artifact name. The three variant aliases come
+    from the entitlement extension's gap nodes, so only the composed graph
+    holds them.
+    """
+    from microcosm.graph import compile_graph
+
     rows = {row["id"]: row for row in _spec()["resources"]["transport_graph"]["nodes"]}
-    names = {edge["name"] for edge in rows["nz.gates.terminal"]["artifact_inputs"]}
-    assert not names & {
-        "native_band_report",
-        "omission_register",
-        "scenario_vsi",
-        "scenario_vex",
-        "scenario_vpt",
-        "identity_receipts",
+    edges = {
+        edge["name"]: (edge["producer"], edge["artifact"])
+        for edge in rows["nz.gates.terminal"]["artifact_inputs"]
+    }
+    for alias, (producer, population) in _INCOME_EVIDENCE.items():
+        assert edges[alias] == (producer, alias)
+        assert rows[producer]["population"] == population
+        assert [output["name"] for output in rows[producer]["artifact_outputs"]] == [
+            alias
+        ]
+    assert not edges.keys() & {"scenario_vsi", "scenario_vex", "scenario_vpt"}
+    spec, config = _nz_composition_spec_and_config()
+    graph = compose.compose_transport_graph(spec, config)
+    composed = {
+        edge.name: (edge.producer, edge.artifact)
+        for edge in graph.node("nz.gates.terminal").artifact_inputs
+    }
+    for scenario in ("VSI", "VEX", "VPT"):
+        assert composed[f"scenario_{scenario.lower()}"] == (
+            f"nz.v.{scenario}.gap",
+            "gap",
+        )
+    gates = {row["id"]: row for row in spec["resources"]["gates"]["gates"]}
+    required = gates["measurement_prefit"]["parameters"]["required_evidence"]
+    assert len(required) == 6
+    assert set(required) <= set(composed)
+    compile_graph(graph)
+
+
+def test_the_identity_receipts_name_the_kernels_identities_in_order():
+    from microcosm.build.transport.income_evidence_kernels import INCOME_IDENTITIES
+
+    spec = _spec()
+    document = spec["resources"]["income_measurements"]["identity_receipts"]
+    assert set(document) == {"description", "identities"}
+    assert [row["id"] for row in document["identities"]] == list(INCOME_IDENTITIES)
+    assert all(row["statement"] for row in document["identities"])
+    pending = " ".join(spec["resources"]["transport_graph"]["pending_outputs"])
+    assert "R2C-18" not in pending
+    assert "measurement_prefit" not in pending
+
+
+def test_the_native_band_node_reads_both_ird_tables_on_the_standin_columns():
+    spec = _spec()
+    rows = {row["id"]: row for row in spec["resources"]["transport_graph"]["nodes"]}
+    node = rows["nz.evidence.native_bands"]
+    tables = {
+        row["id"]: row for row in spec["resources"]["reference_intervals"]["tables"]
+    }
+    native = tables[node["params"]["native_table"]]
+    coarse = tables[node["params"]["coarse_table"]]
+    assert native["id"] != coarse["id"]
+    assert len(native["bands"]) == 237
+    assert len(coarse["bands"]) == 12
+    for field in ("income_column", "universe_column", "source_period", "currency"):
+        assert native[field] == coarse[field]
+    sliced = {
+        (item["entity"], column)
+        for item in node["inputs"]
+        for column in item["columns"]
+    }
+    assert sliced == {
+        ("person", native["income_column"]),
+        ("person", native["universe_column"]),
+        ("household", "source_household_id"),
+    }
+    assert node["sources"] == ["nz_chronicle_facts"]
+    assert [edge["producer"] for edge in node["artifact_inputs"]] == [
+        "nz.targets.prepare",
+        "nz.targets.problem",
+        "nz.calibrate",
+    ]
+
+
+def test_the_composed_preparation_carries_both_ird_tables_for_the_native_report():
+    """run() reads both tables from the preparation's effective intervals.
+
+    The composer hands nz.targets.prepare the effective interval document,
+    which keeps every declared table and scales the ones a profile names. The
+    native kernel ages the national table by the stand-in table's own factor,
+    so the national table must arrive unscaled and the stand-in scaled.
+    """
+    spec, config = _nz_composition_spec_and_config()
+    node = _spec()["resources"]["transport_graph"]["nodes"]
+    (native_node,) = [row for row in node if row["id"] == "nz.evidence.native_bands"]
+    graph = compose.compose_transport_graph(spec, config)
+    intervals = json.loads(graph.node("nz.targets.prepare").params["intervals"])
+    effective = {table["id"]: table for table in intervals["tables"]}
+    native = effective[native_node["params"]["native_table"]]
+    coarse = effective[native_node["params"]["coarse_table"]]
+    assert "scaling" not in native
+    assert "scaling" in coarse
+    # A binding column reads the stand-in table's bands, so the preparation
+    # embeds the effective intervals the report reads.
+    bindings = spec["resources"]["calibration_bindings"]
+    assert coarse["id"] in {
+        row["interval"]["table"]
+        for row in bindings["columns"]
+        if isinstance(row.get("interval"), dict)
     }
 
 

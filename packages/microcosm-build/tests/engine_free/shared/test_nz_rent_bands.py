@@ -5,7 +5,9 @@ Invariants of ``rent_bands.json`` and of ``transport.quantile_map@1`` reading it
 * merging zero-count bands conserves households, keeps bands contiguous and
   leaves no empty band (Hypothesis); an empty lowest band refuses;
 * every region's bands tile zero to an open top on annual edges at 52 times a
-  published weekly cut, and each reference names a distinct household count;
+  published weekly cut, and each reference names a distinct household count in
+  its own region's table for its own Census code;
+* the published counts bear out the zero-count disclosure's rounding grounds;
 * on any population the map keeps zero rent at zero, preserves order within a
   region, meets each band's share within the tied-block bound, changes nothing
   on a rerun, and equals ``quantile_map`` run region by region (Hypothesis);
@@ -212,6 +214,50 @@ def test_every_region_tiles_zero_to_an_open_top_on_published_weekly_cuts():
             assert left["upper"] == right["lower"] > left["lower"]
         assert {band["lower"] / 52 for band in bands} <= published
         assert all(set(band) == {"lower", "upper", "reference"} for band in bands)
+    # Each band binds its own region's row for its own Census code, and its
+    # lower edge is that code's published weekly cut: swapping two regions'
+    # lists, or two codes' references, fails here even after a regeneration.
+    weekly_lower = {1: 0, 2: 200, 3: 300, 4: 400, 5: 500, 6: 600, 7: 700, 8: 800}
+    rows = {row["name"]: row for row in _rent_rows()}
+    for component in components:
+        region = component["value"]
+        prefix = f"{RENT_CONTRACT}__r{region}__b"
+        codes = []
+        for band in component["bands"]:
+            assert band["reference"].startswith(prefix), (region, band["reference"])
+            code = int(band["reference"].removeprefix(prefix))
+            assert band["reference"] == _name(region, code)
+            assert band["lower"] == 52 * weekly_lower[code]
+            selector = rows[band["reference"]]["ledger_selector"]
+            assert selector["geography_id"] == region
+            assert (
+                selector["record_set_id"]
+                == f"stats_nz.census_2023.rc_{region}.weekly_rent"
+            )
+            assert selector["dimension_values"] == {RENT_DIMENSION: code}
+            codes.append(code)
+        assert codes[0] == 1
+        assert codes == sorted(set(codes))
+
+
+def test_the_published_counts_bear_out_the_zero_count_disclosure():
+    """The disclosure's grounds for saying a published 0 can hide households."""
+    assert all(count % 3 == 0 for counts in CENSUS.values() for count in counts)
+    differences = [
+        sum(CENSUS[region][band] for region in ALL_REGIONS) - CENSUS["NZ"][band]
+        for band in range(8)
+    ]
+    assert max(map(abs, differences)) == 6
+    assert sum(differences) == 0
+    disclosure = _document()["zero_count_disclosure"]
+    for phrase in (
+        "publishes 0",
+        "spreads its households",
+        "multiple of 3",
+        "within 6 per band",
+    ):
+        assert phrase in disclosure, phrase
+    assert "no households, the band" not in disclosure
 
 
 def test_the_declared_regions_are_the_geography_supports_regions():

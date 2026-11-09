@@ -2,7 +2,11 @@
 """Generate NZ transport declarations without reading donor records.
 
 The graph maps P1 wages with ``transport.quantile_map@2`` on scaled band
-edges and names the two remaining money quantile producers as pending. It declares the executable wiring the shared kernels support.
+edges and rent with ``transport.quantile_map@1`` on each region's Census
+bands, and converts the d1982 liquid-asset stock with ``money.normalize@1``.
+It wires the income-measurement evidence the terminal battery reads, names the
+remaining gaps in ``pending_outputs`` and declares the executable wiring the
+shared kernels support.
 """
 
 from __future__ import annotations
@@ -106,6 +110,10 @@ def edge(name, producer, artifact=None):
 
 def node(id, kernel, **kwargs):
     return {"id": id, "kernel": kernel, **kwargs}
+
+
+def artifact_output(name, type_name):
+    return {"name": name, "type": {"name": type_name, "schema_version": 1}}
 
 
 def mapping_document():
@@ -474,6 +482,10 @@ def rent_nodes(population, prefix):
 
 
 MEASUREMENT_ID = "ird_taxable_income_ty2027_v1"
+#: The IRD taxable-income tables nz.evidence.native_bands reports against: the
+#: 237 published native bands, and the 12 coarse bands the fit targets.
+NATIVE_INCOME_TABLE = "ird_taxable_income_national_ty2024"
+COARSE_INCOME_TABLE = "ird_taxable_income_standin_ty2024"
 MEASURE_OUTPUTS = {
     "measure": "ird_taxable_income_proxy_cents",
     "unit": "ird_taxable_income_proxy_nzd",
@@ -552,6 +564,50 @@ def income_measurements_document():
             "unit column is max(0, x)/100 (R2C-10)."
         ),
         "measures": measures,
+        "identity_receipts": {
+            "description": (
+                "R2C-28: the exact identities transport.income_identity@1 checks "
+                "on every record of the central measure in each run, in Python "
+                "integers with its own arithmetic. It refuses at the first record "
+                "where one fails and names the identity and the record."
+            ),
+            "identities": [
+                {"id": identity, "statement": statement}
+                for identity, statement in (
+                    (
+                        "component_sum",
+                        "On each record with every component present, the measure "
+                        "equals the sum of each component times its sign plus each "
+                        "add-back column's max(0, -signed value). A record with any "
+                        "null component carries a null measure.",
+                    ),
+                    (
+                        "add_back",
+                        "Over the resolved records, the summed measure equals the "
+                        "summed signed components plus the summed add-backs, "
+                        "exactly, in integer cents.",
+                    ),
+                    (
+                        "unit_rule",
+                        "Each resolved record's unit equals max(floor, measure) / "
+                        "scale as the correctly rounded float64, bit for bit. A "
+                        "record with any null component carries a NaN unit.",
+                    ),
+                    (
+                        "universe_partition",
+                        "A record's universe status reads unresolved when any "
+                        "component is null, included when the measure exceeds zero "
+                        "and excluded otherwise. The three counts sum to the "
+                        "record count.",
+                    ),
+                    (
+                        "int64_range",
+                        "Each resolved record's exact component sum fits in a "
+                        "signed 64-bit integer.",
+                    ),
+                )
+            ],
+        },
         "omission_register": {
             "description": (
                 "Items IRD taxable income contains that the stand-in omits. A size "
@@ -628,37 +684,46 @@ def income_measurements_document():
     }
 
 
-def standin_node(population, prefix, measure="central"):
-    """nz.income.standin: C's measure.combine@1, the measurement's only producer."""
-    components = [
+def measure_components(measure="central"):
+    """The declared measure's component columns, in declaration order."""
+    return [
         row["column"]
         for row in income_measurements_document()["measures"][measure]["declaration"][
             "components"
         ]
     ]
+
+
+def measure_params(measure="central"):
+    """The declaration, its digest and the measurement id, as every reader binds them."""
+    return {
+        "measure": select(
+            "income_measurements", "json", "measures", measure, "declaration"
+        ),
+        "measure_sha256": select(
+            "income_measurements",
+            "value",
+            "measures",
+            measure,
+            "declaration_sha256",
+        ),
+        "measurement_id": MEASUREMENT_ID,
+    }
+
+
+def standin_node(population, prefix, measure="central"):
+    """nz.income.standin: C's measure.combine@1, the measurement's only producer."""
     return node(
         f"{prefix}.income.standin",
         "measure.combine@1",
         population=population,
-        inputs=[slice_("person", components)],
+        inputs=[slice_("person", measure_components(measure))],
         outputs=[
             owned("person", MEASURE_OUTPUTS["measure"], "Int64"),
             owned("person", MEASURE_OUTPUTS["unit"], "float64"),
             owned("person", MEASURE_OUTPUTS["universe_status"], "string"),
         ],
-        params={
-            "measure": select(
-                "income_measurements", "json", "measures", measure, "declaration"
-            ),
-            "measure_sha256": select(
-                "income_measurements",
-                "value",
-                "measures",
-                measure,
-                "declaration_sha256",
-            ),
-            "measurement_id": MEASUREMENT_ID,
-        },
+        params=measure_params(measure),
     )
 
 
@@ -917,7 +982,7 @@ def documents():
     normal = read("money_normalization")
     hold = copy.deepcopy(normal)
     hold["description"] = (
-        "The hold-fixed sensitivity converts the same donor columns to NZD and holds all four index families fixed at factor one. It uses the central reference-aging profile."
+        "The hold-fixed sensitivity converts the same donor columns to NZD and holds every index family fixed at factor one. It uses the central reference-aging profile."
     )
     hold["status"] = (
         "The VHF scenario selects this sibling declaration in its own normalization node."
@@ -1300,7 +1365,6 @@ def documents():
             "terminal": ["nz.export.prepare", "nz.package"],
         },
         "pending_outputs": [
-            "G8-x income reconciliation evidence: the native-band report, omission-register and identity-receipt artifacts and the VSI, VEX and VPT run evidence that measurement_prefit requires (R2C-18)",
             # G8-x0: both money producers exist; these two gaps remain, and
             # the CLI copies this list into every build status.
             "An all-household New Zealand liquid-asset distribution (C2): S0's asset test reads d1982's frozen donor stock, so it stays an unpublishable diagnostic beside S1",
@@ -1366,7 +1430,7 @@ def closure_slices():
 
 
 def add_evidence(graph):
-    """Declare the five release-evidence producers and the battery's edges.
+    """Declare the eight release-evidence producers and the battery's edges.
 
     The support producers slice the columns the composed roster names, read
     from this graph with the packaged resources.
@@ -1468,6 +1532,71 @@ def add_evidence(graph):
             },
             artifact_inputs=[edge("donor_ranges", "nz.evidence.donor_ranges")],
         ),
+        # R2C-28: measurement_prefit's three income aliases, each from the
+        # node that recomputes it from this run's columns.
+        node(
+            "nz.evidence.income_identity",
+            "transport.income_identity@1",
+            population="nz.central",
+            inputs=[
+                slice_("person", [*measure_components(), *MEASURE_OUTPUTS.values()])
+            ],
+            params={
+                **measure_params(),
+                "identities": select(
+                    "income_measurements", "json", "identity_receipts"
+                ),
+            },
+            artifact_outputs=[
+                artifact_output("identity_receipts", "transport_income_identity")
+            ],
+        ),
+        node(
+            "nz.evidence.omission_register",
+            "transport.omission_register@1",
+            population="nz.central",
+            inputs=[
+                slice_("person", [*measure_components(), MEASURE_OUTPUTS["measure"]])
+            ],
+            params={
+                "register": select("income_measurements", "json", "omission_register"),
+                "income_measurements_sha256": select("income_measurements", "sha256"),
+                **measure_params(),
+            },
+            artifact_outputs=[
+                artifact_output("omission_register", "transport_omission_register")
+            ],
+        ),
+        node(
+            "nz.evidence.native_bands",
+            "transport.native_band_report@1",
+            population="nz.terminal",
+            sources=["nz_chronicle_facts"],
+            inputs=[
+                slice_(
+                    "person",
+                    [MEASURE_OUTPUTS["measure"], MEASURE_OUTPUTS["universe_status"]],
+                ),
+                slice_("household", [SOURCE_HOUSEHOLD_ID_COLUMN]),
+            ],
+            params={
+                "native_table": NATIVE_INCOME_TABLE,
+                "coarse_table": COARSE_INCOME_TABLE,
+                "references": select("target_references"),
+                **document("diagnostic_references", "income_diagnostic_references"),
+                "chronicle_feed_pin": select("chronicle_feed"),
+                "weight_entity": "household",
+                "measurement_id": MEASUREMENT_ID,
+            },
+            artifact_inputs=[
+                edge("preparation", "nz.targets.prepare"),
+                edge("problem", "nz.targets.problem"),
+                edge("solution", "nz.calibrate"),
+            ],
+            artifact_outputs=[
+                artifact_output("native_band_report", "transport_native_band_report")
+            ],
+        ),
     ]
     battery = next(row for row in rows if row["id"] == "nz.gates.terminal")
     rows[rows.index(battery) : rows.index(battery)] = evidence
@@ -1478,6 +1607,9 @@ def add_evidence(graph):
         edge("donor_ranges", "nz.evidence.donor_ranges"),
         edge("donor_support_bounds", "nz.evidence.support"),
         edge("fit_weight_records", "nz.evidence.weights"),
+        edge("identity_receipts", "nz.evidence.income_identity"),
+        edge("omission_register", "nz.evidence.omission_register"),
+        edge("native_band_report", "nz.evidence.native_bands"),
     ]
 
 
