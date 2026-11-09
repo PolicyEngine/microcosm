@@ -576,6 +576,32 @@ def test_compose_leaves_graph_node_inputs_to_the_node_that_writes_them(
     )
 
 
+def test_compose_refuses_a_view_binding_in_a_spec_without_a_closure(
+    tmp_path, monkeypatch
+):
+    registry, _, document, _ = _prepared(tmp_path, monkeypatch)
+    spec = _spec(document)
+    del spec["resources"]["axiom_input_closure"]
+    with pytest.raises(ValueError, match="no 'axiom_input_closure' resource"):
+        compose_module.transport_rules_node(
+            spec, _config(registry), "child_benefit", _rules_node()
+        )
+
+
+@pytest.mark.parametrize(
+    "relations", ({}, {"relations": []}), ids=("plain", "relations-only")
+)
+def test_a_binding_without_views_needs_no_closure_at_compose(
+    tmp_path, monkeypatch, relations
+):
+    _, _, document, _ = _prepared(tmp_path, monkeypatch)
+    document["bindings"][0].pop("views")
+    document["bindings"][0].update(relations)
+    spec = _spec(document)
+    del spec["resources"]["axiom_input_closure"]
+    compose_module._require_relation_inputs(spec, "child_benefit", _rules_node().inputs)
+
+
 def _closure_node(person_columns):
     return Node(
         "closure",
