@@ -2355,11 +2355,26 @@ def test_spi_income_band_donor_support_gate_scales_only_off_the_full_sample() ->
     assert not result.passed and "outside (0, 1]" in " ".join(result.failures)
     # The receipt records the seating scale as full or capped, never as the
     # exact scale, which gives back the eligible household count.
-    result = _spi_income_band_donor_gate({**scaled, "seating_scale": 8 / 1_920})
+    # A value in neither form is named by its type alone, so a replayed old
+    # receipt's exact scale does not reach the gate's verdict.
+    result = _spi_income_band_donor_gate(
+        {**scaled, "seating_scale": 8 / 1_920, "sample_fraction": 1.0}
+    )
     assert not result.passed
     assert (
-        "spi_income_band_donors: seating_scale 0.004166666666666667 is neither "
-        "'full' nor 'capped'."
+        "spi_income_band_donors: seating_scale is a float, neither 'full' nor 'capped'."
+    ) in result.failures
+    assert (
+        "spi_income_band_donors: a full-sample build must seat and fund the donors "
+        "at full scale, got seating_scale a float and mass_scale 0.5."
+    ) in result.failures
+    assert result.details["seating_scale"] == "a float"
+    assert not any("0.0041" in failure for failure in result.failures)
+    result = _spi_income_band_donor_gate(
+        {key: value for key, value in scaled.items() if key != "seating_scale"}
+    )
+    assert (
+        "spi_income_band_donors: seating_scale is missing, neither 'full' nor 'capped'."
     ) in result.failures
 
 

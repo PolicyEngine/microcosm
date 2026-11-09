@@ -2060,11 +2060,13 @@ def _spi_income_band_donor_support_gate(
         else f" ({minimum_donors} in each of the {clone_count} geographic clones)"
     )
     # The receipt records the seating scale as full or capped: an exact scale
-    # below one gives back the eligible household count.
+    # below one gives back the eligible household count, so the gate names
+    # any other value by its type alone.
     seating = evidence.get("seating_scale")
     if seating not in _BAND_DONOR_SEATINGS:
+        seating = "missing" if seating is None else f"a {type(seating).__name__}"
         failures.append(
-            f"{stage}: seating_scale {seating!r} is neither 'full' nor 'capped'."
+            f"{stage}: seating_scale is {seating}, neither 'full' nor 'capped'."
         )
     mass_scale = _finite_number(evidence.get("mass_scale"), label=f"{stage}.mass_scale")
     if not 0.0 < mass_scale <= 1.0:
