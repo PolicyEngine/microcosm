@@ -1334,22 +1334,22 @@ class TestSupportSplitRecomputeAcrossGeographicClones:
     The fold re-sums the copies, so neither the count check nor the family
     test recounts it. At any clone count a family of more than three members
     is held exactly where at least four of its members show their two clone
-    halves at equal weights and share one pair sum ``c``, whatever the others
-    carry: the stored ``n`` must be the count of a weight that divides by
-    ``n`` to ``c``. Where every member shares ``c`` but fewer show equal
-    halves, the weight may divide to within one float of ``c``, or two where
-    ``c`` sits that close to a power of two, a reach that at one clone can
-    take in the multiple of 60 itself, where a family split consistently into
-    one copy more goes unreported. Every other family, and whether each
-    household is a family at all, is held to the family weights' relative
-    tolerance of 1e-9, the counts at the folded weight times ``1 - 1e-9`` and
-    ``1 + 1e-9``, unless the hold decides. That bracket opens for a household
-    whose source-scaled weight ``K x w`` lies within a relative 1e-9 of a
-    multiple of 60 (at ``K = 1``, its own weight), where it cannot tell ``n``
-    copies from ``n + 1``, or a family of two from a whole household: a
-    stored count moved on its own is left to the flags and the family
-    weights, and a household split consistently into one copy more goes
-    unreported.
+    halves at equal weights and every member that does shares one pair sum
+    ``c``, whatever the others carry: the stored ``n`` must be the count of a
+    weight that divides by ``n`` to ``c``. Where every member shares ``c`` but
+    fewer show equal halves, the weight may divide to within one float of
+    ``c``, or two where ``c`` sits that close to a power of two, a reach that
+    at one clone can take in the multiple of 60 itself, where a family split
+    consistently into one copy more goes unreported. Every other family, and
+    whether each household is a family at all, is held to the family weights'
+    relative tolerance of 1e-9, the counts at the folded weight times
+    ``1 - 1e-9`` and ``1 + 1e-9``, unless the hold decides. That bracket opens
+    for a household whose source-scaled weight ``K x w`` lies within a
+    relative 1e-9 of a multiple of 60 (at ``K = 1``, its own weight), where it
+    cannot tell ``n`` copies from ``n + 1``, or a family of two from a whole
+    household: a stored count moved on its own is left to the flags and the
+    family weights, and a household split consistently into one copy more
+    goes unreported.
     """
 
     def test_at_one_clone_the_receipt_is_the_rule_before_the_clone_count(
@@ -1644,6 +1644,47 @@ class TestSupportSplitRecomputeAcrossGeographicClones:
         )
         assert held_exactly == exact
         assert within == 0
+
+    def test_at_one_clone_the_exact_tier_takes_its_weight_from_the_equal_halves(
+        self,
+    ) -> None:
+        # The correct stage splits a household a float above 900 into 16,
+        # every member at w / 16. One member's halves are re-split unevenly
+        # with its pair sum one float below that weight, so the least pair sum
+        # over the family's members lies a float below w / 16. The other 15
+        # show equal halves sharing w / 16, so the hold takes the family
+        # exactly on their weight and accepts the stage's 16. Taking the least
+        # pair sum over every member instead would divide to the float below,
+        # whose weight 900 counts 15 copies, and report the correct stage.
+        scenario = {
+            "weights": [_ulps_above(900.0, 1), 9_000.0],
+            "wealth": [7e3, 1.0],
+            "incomes": [BAND_INCOMES[0], BAND_INCOMES[37_700]],
+            "top_cells": {0: {250_000: 1_000_000.0}},
+        }
+        split, frame = _clone_first_split_then_cloned(1, scenario)
+        count = 16
+        assert split.copies_created == count - 1
+        ids = frame.table("household")["household_id"].to_numpy()
+        weights = np.asarray(frame.weights_for("household").values, dtype=float).copy()
+        members = np.r_[
+            np.int64(1),
+            copy_id_table.mint([1] * (count - 1), "cgt_support_split", range(1, count)),
+        ]
+        clones = copy_id_table.mint(members, "cgt_incidence_clone", 1)
+        member, clone = members[-1], clones[-1]
+        shared = weights[ids == member][0] + weights[ids == clone][0]
+        below = float(np.nextafter(shared, 0.0))
+        weights[ids == clone] = 16.0
+        weights[ids == member] = below - 16.0
+        assert weights[ids == member][0] + weights[ids == clone][0] == below
+
+        _, problems, reaches = _hold_reaches(
+            _rebuild(frame, household_weights=weights), scenario
+        )
+
+        assert problems == {}
+        assert reaches == {0: 1}
 
     @pytest.mark.parametrize("clone_count", [1, 3])
     def test_a_family_of_three_or_fewer_is_left_to_the_bracket(
@@ -2142,12 +2183,15 @@ class TestSupportSplitRecomputeAcrossGeographicClones:
         }
         assert boundaries == {"uk.identity@1"}
 
-        # Each call that corrects a frame's total, by the function or method
-        # making it: a call to spi_support's helpers, or to a function of the
-        # stage's module that wraps them, by bare name or as an attribute
-        # (spi_support._importance_weights_with_exact_total(...)). Every
-        # function, method and nested function counts its own calls, not
-        # those of the functions it nests.
+        # Each reference that can correct a frame's total, by the function or
+        # method making it: to spi_support's helpers, or to a function of any
+        # of the three stages' modules that wraps them (one named _exact...
+        # that refers to a helper or another wrapper), by bare name or as an
+        # attribute (spi_support._importance_weights_with_exact_total(...),
+        # cgt_support._exact_support_weights(...)), called or not, so an
+        # alias or a partial of one counts too. Every function, method and
+        # nested function counts its own references, not those of the
+        # functions it nests.
         helpers = {"_exact_total_correction", "_importance_weights_with_exact_total"}
         stages = ("cgt_support_split", *weighing)
         modules = {graph_kernels._stage_module(stage) for stage in stages}
@@ -2167,8 +2211,9 @@ class TestSupportSplitRecomputeAcrossGeographicClones:
                 else:
                     collect(child, prefix, into)
 
-        def called(function) -> list[str]:
-            """The names ``function`` calls outside the functions it nests."""
+        def referred(function) -> list[str]:
+            """The names ``function`` refers to outside the functions it nests:
+            each bare name and each attribute read, a call's included."""
 
             names: list[str] = []
             pending = list(ast.iter_child_nodes(function))
@@ -2176,14 +2221,14 @@ class TestSupportSplitRecomputeAcrossGeographicClones:
                 node = pending.pop()
                 if isinstance(node, nests):
                     continue
-                if isinstance(node, ast.Call):
-                    name = getattr(node.func, "id", getattr(node.func, "attr", None))
-                    if name is not None:
-                        names.append(name)
+                if isinstance(node, ast.Name):
+                    names.append(node.id)
+                elif isinstance(node, ast.Attribute):
+                    names.append(node.attr)
                 pending.extend(ast.iter_child_nodes(node))
             return names
 
-        corrections: dict[tuple[str, str], int] = {}
+        every: dict[str, dict[str, ast.AST]] = {}
         for module in modules:
             tree = ast.parse(inspect.getsource(module))
             functions: dict[str, ast.AST] = {}
@@ -2191,18 +2236,29 @@ class TestSupportSplitRecomputeAcrossGeographicClones:
             assert {
                 node.name for node in ast.walk(tree) if isinstance(node, defined)
             } == {function.name for function in functions.values()}
-            wrappers = {
+            every[module.__name__] = functions
+        # The wrappers of all three modules, to a fixed point, so a wrapper
+        # one module defines counts where another module calls it.
+        wrappers: set[str] = set()
+        while True:
+            more = {
                 function.name
+                for functions in every.values()
                 for function in functions.values()
                 if function.name.startswith("_exact")
-                and set(called(function)) & helpers
+                and set(referred(function)) & (helpers | wrappers)
             }
+            if more == wrappers:
+                break
+            wrappers = more
+        corrections: dict[tuple[str, str], int] = {}
+        for module_name, functions in every.items():
             for name, function in functions.items():
                 if function.name in wrappers:
                     continue
-                count = sum(item in helpers | wrappers for item in called(function))
+                count = sum(item in helpers | wrappers for item in referred(function))
                 if count:
-                    corrections[(module.__name__, name)] = count
+                    corrections[(module_name, name)] = count
         assert corrections == {
             (cgt_support.__name__, "split_cgt_support_households"): 1,
             (cgt_structure.__name__, "clone_cgt_incidence"): 1,
