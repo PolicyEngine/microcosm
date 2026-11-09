@@ -423,8 +423,9 @@ _STAGE_HELPER_MODULES = {
     # rule from cgt_structure, and the residential split its logistic from
     # cgt_asset_type; the incidence clone sums cgt_imputation's income proxy
     # components into the income behind its propensity; the gains spine names
-    # HMRC's regional conditioning rows by microcosm.calibrate's UK region tier
-    # (microcosm#931).
+    # HMRC's regional conditioning rows by microcosm.calibrate's UK region tier,
+    # and it and the asset types key each walk's offset on its label through
+    # the shared keyed draws (microcosm#931).
     "cgt_support_split": (
         copy_id_table,
         *_FEED_FACT_MODULES,
@@ -468,11 +469,13 @@ _STAGE_HELPER_MODULES = {
         hmrc_capital_gains,
         hmrc_income,
         target_materialization,
+        stochastic_assignment,
     ),
     "hmrc_cgt_asset_type_spine": (
         *_FEED_FACT_MODULES,
         cgt_imputation,
         hmrc_capital_gains,
+        stochastic_assignment,
     ),
     # The legacy proxies read raw tabs, and the grant split resolves its
     # year's rules from the FRS release (microcosm#931).

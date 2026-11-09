@@ -425,6 +425,38 @@ def test_reordering_the_rows_moves_no_draw(statistics):
     )
 
 
+def test_the_walk_offsets_and_jitters_are_the_uniforms_they_were(spec):
+    """The keyed offset moved to the shared scalar and the redraw's adapter
+    (microcosm#931); every walk offset and band jitter is the uniform the
+    stage keyed before the move, bit for bit."""
+
+    from microcosm.build import stochastic_assignment
+    from microcosm.build.uk_runtime import cgt_imputation
+
+    assert stage._KeyedOffset is cgt_imputation._KeyedOffset
+    assert (
+        stage.stable_identity_uniform is stochastic_assignment.stable_identity_uniform
+    )
+    before = stochastic_assignment.stable_identity_uniforms
+    for isa_type in stage.CLASS_ORDER:
+        # The selection's cell walks, then the amounts' walk and band jitter,
+        # salted as the stage salts them.
+        select = f"{spec.select_salt}:{isa_type}"
+        amount = f"{spec.amount_salt}:{isa_type}"
+        for seed, salt, key in (
+            (spec.select_seed, f"{select}:cell", "income_3|age_2|female|london"),
+            (spec.amount_seed, f"{amount}:walk", "income_3"),
+        ):
+            offset = stage._keyed_offset(seed, salt, key)
+            assert isinstance(offset, cgt_imputation._KeyedOffset)
+            assert offset.random() == before([key], seed=seed, salt=salt)[0]
+        salt = f"{amount}:jitter"
+        jitter = stage.stable_identity_uniform(
+            "income_3:2", seed=spec.amount_seed, salt=salt
+        )
+        assert jitter == before(["income_3:2"], seed=spec.amount_seed, salt=salt)[0]
+
+
 def test_the_both_split_reports_saturation():
     combined = np.full(10, 10_000.0)
     weights = np.ones(10)

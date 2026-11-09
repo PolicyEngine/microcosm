@@ -56,9 +56,10 @@ Three declared mechanisms, in order:
    like the residential flag: a logistic in centred log gains whose
    intercept matches the band's published claimant count and whose slope
    matches its published qualifying gains, realised by the same weighted
-   systematic walk with one seeded offset per band. Each band's logistic
-   carries the same stock shift for a gainer who shows business stock
-   (household corporate wealth, or self-employment income). The open top
+   systematic walk with one identity-keyed offset per band, keyed on its
+   bounds. Each band's logistic carries the same stock shift for a gainer
+   who shows business stock (household corporate wealth, or
+   self-employment income). The open top
    band holds claimants at the lifetime limit: its probability is flat in
    gains and varies only with the stock shift, its intercept matches the
    count, the count is the published gains over the limit (the published
@@ -105,6 +106,7 @@ import numpy as np
 import pandas as pd
 
 from microcosm.build.source_manifest import SourceStageSpec
+from microcosm.build.stochastic_assignment import stable_identity_uniform
 from microcosm.build.uk_runtime.cgt_imputation import (
     UKCGTPolicyParameters,
     uk_cgt_policy_parameters,
@@ -256,7 +258,7 @@ CGT_ASSET_TYPE_LOG_SIGMA = 1.5
 
 #: The BADR seed is combined with the build period, as the amounts stage
 #: does; distinct from the amounts stage's 552 so the two stages never share
-#: a stream. The residential flag draws nothing since microcosm#1063: the
+#: a draw. The residential flag draws nothing since microcosm#1063: the
 #: ``cgt_residential_split`` stage carries its probability as weight.
 CGT_BADR_FLAG_SEED = 555
 
@@ -997,6 +999,22 @@ def _json_number(value: float) -> float | None:
     return float(value) if np.isfinite(value) else None
 
 
+def _badr_band_offset(band: HMRCCGTBADRBand, *, seed: int, time_period: int) -> float:
+    """A Table 4.1 band's walk offset: an identity-keyed uniform on its bounds.
+
+    Keyed on the band's lower and upper edges, salted with the build period,
+    not on its position in the roster, so a facts revision that adds or
+    drops a band leaves every other band's offset alone (microcosm#931).
+    """
+
+    upper = "open" if band.upper_bound is None else band.upper_bound
+    return stable_identity_uniform(
+        f"{band.lower_bound}|{upper}",
+        seed=seed,
+        salt=f"assign_badr_qualifying_gains:offset:{int(time_period)}",
+    )
+
+
 def _assign_badr_claims(
     *,
     gains: np.ndarray,
@@ -1013,9 +1031,9 @@ def _assign_badr_claims(
     """Draw each Table 4.1 band's claimants and their qualifying gains.
 
     Returns the qualifying gain of every person (0 where not a claimant) and
-    one receipt row per band. One seeded offset per declared band is drawn
-    in band order whether or not the band is skipped, so the stream does
-    not depend on which bands carry a target.
+    one receipt row per band. Each band's walk offset is an identity-keyed
+    uniform on its bounds (``_badr_band_offset``), so it depends neither on
+    which bands carry a target nor on which other bands the facts declare.
     """
 
     qualifying = np.zeros(gains.shape)
@@ -1023,11 +1041,9 @@ def _assign_badr_claims(
     if not limit > 0.0:
         raise ValueError(f"BADR lifetime limit must be positive, got {limit}.")
     bands = facts.table4_bands
-    rng = np.random.default_rng((seed, int(time_period)))
-    offsets = rng.random(len(bands))
     pool_gains = gains[pool_index]
     receipts: list[dict[str, object]] = []
-    for position, band in enumerate(bands):
+    for band in bands:
         label = f"BADR band {band.label}"
         open_top = band.upper_bound is None
         if open_top:
@@ -1103,7 +1119,10 @@ def _assign_badr_claims(
             amounts = band_gains
         order = np.lexsort((person_id[rows], band_gains))
         flags = _weighted_systematic_flags(
-            probabilities, band_weights, order, float(offsets[position])
+            probabilities,
+            band_weights,
+            order,
+            _badr_band_offset(band, seed=seed, time_period=time_period),
         )
         claimants = rows[flags]
         qualifying[claimants] = amounts[flags]
@@ -1923,8 +1942,12 @@ def cgt_asset_type_operation_parameters() -> dict[str, dict[str, Any]]:
             ),
             "realization": (
                 "weighted systematic sampling within each band in ascending "
-                "(gain, person_id) order with one seeded offset per band, drawn "
-                "in band order whether or not the band carries a target"
+                "(gain, person_id) order with one identity-keyed offset per "
+                "band, keyed on its bounds (<lower bound>|<exclusive upper "
+                "bound>, open for the top band) and salted "
+                "assign_badr_qualifying_gains:offset:<period>, with no stream "
+                "order, so a band's offset depends neither on which bands carry "
+                "a target nor on which other bands the facts declare"
             ),
             "seed": CGT_BADR_FLAG_SEED,
             "seed_mixing": "seed combined with the build period",

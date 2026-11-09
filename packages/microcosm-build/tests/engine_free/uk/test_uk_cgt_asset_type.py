@@ -10,6 +10,7 @@ import pandas as pd
 import pytest
 
 from microcosm.build.country_spec import load_country_spec
+from microcosm.build.stochastic_assignment import stable_identity_uniform
 from microcosm.build.uk_runtime import cgt_asset_type
 from microcosm.build.uk_runtime.cgt_asset_type import (
     CGT_ASSET_TYPE_COLUMN,
@@ -620,6 +621,77 @@ class TestBADRClaims:
         assert first[CGT_RESIDENTIAL_GAINS_COLUMN].equals(
             other[CGT_RESIDENTIAL_GAINS_COLUMN]
         )
+
+    def test_an_inserted_band_moves_no_other_bands_offset_or_claims(self) -> None:
+        """Each band's walk offset is an identity-keyed uniform on its bounds
+        (microcosm#931), where it was the band's position in one draw of every
+        band's offset, so a facts revision that adds a band moved the offset
+        of every band after it."""
+
+        gains = _synthetic_gains()
+        weights = np.full(gains.size, 60.0)
+        pool = np.flatnonzero(gains > PARAMETERS.annual_exempt_amount)
+        facts = _synthetic_facts(gains, weights)
+        # The GBP 50,000 to 99,999 band split in two, each half claiming a
+        # tenth of its pool's mass at the pool's mean gain, as the rest do.
+        halves = []
+        for lower, upper in ((50_000, 75_000), (75_000, 100_000)):
+            in_band = (gains[pool] >= lower) & (gains[pool] < upper)
+            mass = float(weights[pool][in_band].sum())
+            mean = float((weights * gains)[pool][in_band].sum()) / mass
+            halves.append(
+                HMRCCGTBADRBand(lower, upper, 0.1 * mass, 0.1 * mass * mean, None)
+            )
+        split = dataclasses.replace(
+            facts,
+            table4_bands=tuple(
+                band
+                for original in facts.table4_bands
+                for band in (halves if original.lower_bound == 50_000 else [original])
+            ),
+        )
+
+        def claims(facts) -> tuple[np.ndarray, dict[tuple, float]]:
+            offsets: list[float] = []
+            walk = cgt_asset_type._weighted_systematic_flags
+
+            def recording(probabilities, band_weights, order, offset):
+                offsets.append(offset)
+                return walk(probabilities, band_weights, order, offset)
+
+            with pytest.MonkeyPatch.context() as patch:
+                patch.setattr(cgt_asset_type, "_weighted_systematic_flags", recording)
+                qualifying, receipts = cgt_asset_type._assign_badr_claims(
+                    gains=gains,
+                    person_weight=weights,
+                    person_id=np.arange(gains.size),
+                    pool_index=pool,
+                    facts=facts,
+                    badr_parameters=BADR_PARAMETERS,
+                    annual_exempt_amount=PARAMETERS.annual_exempt_amount,
+                    time_period=2024,
+                    seed=555,
+                )
+            walked = [receipt for receipt in receipts if not receipt["skipped"]]
+            assert len(walked) == len(offsets) == len(facts.table4_bands)
+            bounds = [(row["lower_bound"], row["upper_bound"]) for row in walked]
+            return qualifying, dict(zip(bounds, offsets, strict=True))
+
+        before, offsets = claims(facts)
+        after, split_offsets = claims(split)
+
+        kept = set(offsets) - {(50_000, 100_000)}
+        assert set(split_offsets) == kept | {(50_000, 75_000), (75_000, 100_000)}
+        for bounds in kept:
+            assert split_offsets[bounds] == offsets[bounds], bounds
+        for (lower, upper), offset in split_offsets.items():
+            key = f"{lower}|{'open' if upper is None else upper}"
+            salt = "assign_badr_qualifying_gains:offset:2024"
+            assert offset == stable_identity_uniform(key, seed=555, salt=salt)
+        # The other bands' claimants and qualifying gains are as they were.
+        outside = (gains < 50_000) | (gains >= 100_000)
+        np.testing.assert_array_equal(after[outside], before[outside])
+        assert (before[outside] > 0.0).any()
 
     def test_refuses_claims_the_eligible_types_cannot_hold(self) -> None:
         tiny = tuple(

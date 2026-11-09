@@ -3120,7 +3120,7 @@
           ],
           "population": "liable gainers whose arm is not residential (capital_gains_residential_property == 0, cgt_residential_split)",
           "qualifying_amount": "below the lifetime limit a claimant's whole net gain qualifies; in the open top band the qualifying gain is the lifetime limit",
-          "realization": "weighted systematic sampling within each band in ascending (gain, person_id) order with one seeded offset per band, drawn in band order whether or not the band carries a target",
+          "realization": "weighted systematic sampling within each band in ascending (gain, person_id) order with one identity-keyed offset per band, keyed on its bounds (<lower bound>|<exclusive upper bound>, open for the top band) and salted assign_badr_qualifying_gains:offset:<period>, with no stream order, so a band's offset depends neither on which bands carry a target nor on which other bands the facts declare",
           "reported_not_fitted": "tax at the relief rate, with the annual exempt amount set against the main-rate gains first as the engine allocates it, against Table 4.1's tax column",
           "seed": 555,
           "seed_mixing": "seed combined with the build period",
@@ -3353,14 +3353,14 @@
           "open_band_realization": "each open-band person takes the conditional mean of their weight-proportional quantile stratum, which averages back to the published mean exactly under the household weights; an iid draw from a Pareto with infinite variance sits well below it on a few dozen carriers, and equal strata on unequal weights put the tail's mass on whichever rows happen to be light",
           "quantile_scheme": "stratified by weight: the persons a (gain band, income band) plan receives across every cell and the pooled walk take the quantile strata that partition (0, 1) in proportion to their household weights, in ascending rank-key order with one seeded jitter per plan, so the plan's weighted realised mean sits on its published mean rather than carrying n independent draws or the weight-rank mix of equal strata",
           "seed_base": 552,
-          "seed_mixing": "seed combined with the build period; each walk draws its rounding offset in cell order then pooled-fallback order, then each plan draws its quantile jitter, income bands ascending and gain bands highest first"
+          "seed_mixing": "seed combined with the build period, which salts every draw; each walk's rounding offset and each plan's quantile jitter is an identity-keyed uniform on its own label, with no stream order, so none depends on which other walks run or skip: a cell walk keys on cell:<income band>:<age group>:<region group> and an income band's pooled walk on pool:<income band>, salted hmrc_cgt_gains_spine:offset:<period>, and a plan on plan:<gain band>:<income band>, salted hmrc_cgt_gains_spine:jitter:<period>, bands and age groups by their lower bounds and region groups by their labels"
         },
         {
           "banding": "Advani-Summers total-income bands at the person's component-sum income without allowance subtraction, the banding the prior draw uses",
           "deterministic": true,
           "extrapolation": "ext=0",
           "kind": "sub_aea_remainder",
-          "mapping": "remainder gainers take the midpoints of the weight-proportional quantile strata that partition the range, evaluated on the band's spline; zero-weight persons take a nominal stratum of the band's smallest positive weight and carry no mass; no seeded draw is consumed, so the walk and plan draw order is unchanged",
+          "mapping": "remainder gainers take the midpoints of the weight-proportional quantile strata that partition the range, evaluated on the band's spline; zero-weight persons take a nominal stratum of the band's smallest positive weight and carry no mass; the mapping draws nothing",
           "ordering": "existing gains ascending, person_id descending on ties (the prior-gain ranking reversed; the allocation and the within-band draws rank on the wealth-blended key)",
           "policy": "gainers beyond the published taxpayer mass take amounts from the Advani-Summers within-band gains distribution restricted to (0, annual exempt amount], rank-preserving within each Advani-Summers total-income band",
           "quantile_points": [

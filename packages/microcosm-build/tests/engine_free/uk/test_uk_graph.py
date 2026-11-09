@@ -665,6 +665,9 @@ def test_stochastic_assignment_changes_invalidate_every_stage_that_draws(
     )
     # Stage 14 draws through the employer pension helper, which it binds too.
     assert "frs_hmrc_spine_leaves" in stages
+    # The CGT redraw and the asset types key their walk offsets on labels
+    # through the helpers (microcosm#931).
+    assert {"hmrc_cgt_gains_spine", "hmrc_cgt_asset_type_spine"} <= set(stages)
     # The root stage's node is the CREATE kernel.
     affected = [
         graph.node("create_uk_frs" if stage == "frs_spine" else stage).kernel
@@ -673,8 +676,8 @@ def test_stochastic_assignment_changes_invalidate_every_stage_that_draws(
     # Three stages that draw through nothing of it.
     control_stages = (
         "regional_home_values",
-        "hmrc_cgt_gains_spine",
-        "hmrc_cgt_asset_type_spine",
+        "regional_property_uprating",
+        "private_school_attendance",
     )
     drawing = _stages_drawing_through_stochastic_assignment()
     assert not set(control_stages) & drawing
