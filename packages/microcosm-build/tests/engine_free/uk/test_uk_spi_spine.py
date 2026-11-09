@@ -1114,6 +1114,20 @@ def test_the_stage_draws_the_declared_count_times_the_sample_fraction() -> None:
     assert rounded["source_households"] == 400
     assert rounded["inclusion_probability"] == 0.25
 
+    # Where 10,000 x f is no whole number, the expected count keeps its
+    # fraction: it is the share's numerator, never rounded to a copy count.
+    fraction = 0.012345
+    transform = UKSPISupportChannelStageTransform(
+        stage=_committed_stage("spi_support_channel"),
+        sample_fraction=fraction,
+        state_pension_age=66,
+    )
+    transform(_share_frame())
+    fractional = transform.checkpoint_metadata()["evidence"]
+    assert fractional["expected_spi_households"] == 10_000 * fraction
+    assert not float(fractional["expected_spi_households"]).is_integer()
+    assert transform.last_result.spi_inclusion_probability == 10_000 * fraction / 400
+
 
 def test_an_expected_count_at_the_source_count_copies_every_household() -> None:
     # As in the H2 fixture: 10,000 x (135 / 10,000) is 135.0 in float, so the
@@ -1160,8 +1174,9 @@ def test_clone_zero_of_a_cloned_spine_is_the_one_clone_share(clone_count: int) -
     )
 
     # Nested weights: K x every clone-0 row is the one-clone row. The
-    # exact-total correction lands on clone 0's rows, so to rtol 1e-12, not
-    # bit for bit.
+    # exact-total correction moves one row by a few ulps of the total, at one
+    # clone and at K, and not always in clone 0, so on these small frames to
+    # rtol 1e-12, not bit for bit.
     one_weights = pd.Series(
         np.asarray(one.weights_for("household").values),
         index=one_household["household_id"].to_numpy(),

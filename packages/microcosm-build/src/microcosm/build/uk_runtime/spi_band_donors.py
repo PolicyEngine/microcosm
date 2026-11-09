@@ -26,11 +26,16 @@ so the draw can be reconstructed from the ids.
 On a clone-first spine every household carries its geographic clone
 (``household_clone_index``, microcosm#931). Each clone then seats its own
 donors by the same walk over its own candidates, with the same seats per band,
-counted in distinct source households, so clone 0 seats exactly what a
-one-clone spine seats. Every donor weighs its band's weight over the clone
-count, and each clone's regions fund their own donors at one mass scale common
-to every clone. A spine without the column is one clone, as every spine is
-today: ``uk.full.expand`` writes the index after the spine.
+sized on the eligible households counted in distinct source households, so
+clone 0 seats exactly what a one-clone spine seats, at any clone count. Every
+donor weighs its band's weight over the clone count, and each clone's regions
+fund their own donors at one mass scale common to every clone, the smallest
+any clone's region allows. Clone 0's weights and funding factors are a
+one-clone spine's (its weights over the clone count) only while that scale is
+the one a one-clone spine takes: one at both, or bound by a region of clone 0.
+Where another clone's region binds, every clone's donors, clone 0's included,
+take the lower scale. A spine without the column is one clone, as every spine
+is today: ``uk.full.expand`` writes the index after the spine.
 """
 
 from __future__ import annotations
@@ -213,9 +218,15 @@ class UKSPIIncomeBandDonorResult:
     """Frame with the reserved band rows and the receipt the gate reads.
 
     ``seating_scale`` is the exact scale the seats were cut at; the receipt
-    records it as full or capped. ``eligible_households`` and the counts in
-    the band, funding and carrier rows are already in their receipt forms:
-    distinct source households, rounded (UKDS disclosure control).
+    records it as full or capped. These counts are already in their receipt
+    forms, counted in distinct source households and rounded (UKDS disclosure
+    control): ``eligible_households``, each band row's ``eligible_households``
+    (clone 0's, which a one-clone spine counts alike), the funding rows'
+    ``donor_households`` and ``carrier_region_counts``. A band row's
+    ``carrier_mean_age`` is withheld below three carrier source households or
+    three seats per clone. The band rows' ``donor_households``, ``carriers``
+    and ``carrier_regions`` and ``donor_count`` stay exact row counts, which
+    the stage gate reads exactly; ``expected_donor_count`` is the plan's.
     """
 
     frame: Frame
@@ -694,7 +705,14 @@ def stack_spi_income_band_donors(
                 f"each of the {clone_count} geographic clones; {len(short)} "
                 f"clone(s) found fewer, the fewest {min(short)}."
             )
-        band_eligible[band] = distinct_count(candidate_sources, eligible)
+        # The receipt's count for the band is clone 0's, in distinct source
+        # households: clone 0 walks exactly what one clone walks, so the count
+        # does not depend on the clone count. The refusal above reads every
+        # clone's.
+        first_clone = clone_positions[0]
+        band_eligible[band] = distinct_count(
+            candidate_sources[first_clone], eligible[first_clone]
+        )
         uniforms = stable_identity_uniforms(
             candidate_ids,
             seed=seed,
@@ -855,10 +873,13 @@ def stack_spi_income_band_donors(
     )
     validate_uk_national_frame(result)
 
-    # The receipt counts donors and carriers in distinct source households
-    # and rounds them, withholding a mean resting on fewer than three (UKDS
-    # disclosure control, receipt_counts): a clone's copy of a household is
-    # the same survey household.
+    # The receipt rounds its counts of survey households, counted in distinct
+    # source households, since a clone's copy of a household is the same
+    # survey household (UKDS disclosure control, receipt_counts): the eligible
+    # counts, the funding rows' donors and the carriers per region. A band's
+    # mean age is withheld below three carrier source households or three
+    # seats per clone. The band rows' donor and carrier counts stay exact row
+    # counts, because the stage gate reads them exactly.
     donor_sources = source_household_ids(
         donor_household, stage=UK_SPI_INCOME_BAND_DONORS_STAGE_NAME
     )
@@ -895,6 +916,7 @@ def stack_spi_income_band_donors(
                 "carrier_mean_age": (
                     float(carrier_ages[carriers].mean())
                     if carrier_support >= UK_DISCLOSURE_FLOOR
+                    and seats[band] >= UK_DISCLOSURE_FLOOR
                     else UK_WITHHELD
                 ),
                 "carrier_regions": int(carrier_region[carriers].nunique()),

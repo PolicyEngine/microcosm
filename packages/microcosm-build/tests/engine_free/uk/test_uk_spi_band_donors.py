@@ -10,6 +10,7 @@ import pytest
 
 from microcosm.build.country_spec import load_country_spec
 from microcosm.build.source_manifest import SourceStageSpec
+from microcosm.build.uk_runtime import spi_band_donors
 from microcosm.build.uk_runtime.content_identity import uk_frame_content_identity
 from microcosm.build.uk_runtime.national_frame import uk_national_frame
 from microcosm.build.uk_runtime.receipt_counts import UK_WITHHELD, rounded_count
@@ -1384,7 +1385,10 @@ def test_clone_zero_seats_what_one_clone_seats_and_every_clone_takes_the_seats(
         assert set(seated[clone]) != set(seated[0])
 
     # Clone 0's weights, its donors' included, are the one clone's over the
-    # clone count, to the exact-total corrections clone 0 absorbs.
+    # clone count while the common mass scale is the one clone's, as here,
+    # where it is one at both. The exact-total correction moves one incumbent
+    # row by a few ulps of the total, in whichever clone it lands, so on these
+    # small frames to rtol 1e-12, not bit for bit.
     weights_once = _weights_by_id(one.frame)
     clone_zero = _clone_of(many).loc[lambda clones: clones.eq(0)].index
     assert set(clone_zero) == set(weights_once.index)
@@ -1699,10 +1703,12 @@ def test_the_receipt_counts_source_households_at_the_disclosure_floor() -> None:
     assert sum(row["carriers"] < 3 for row in capped["bands"]) == 3
 
 
-def test_a_mean_age_resting_on_fewer_than_three_source_households_is_withheld() -> None:
-    # Given one claimant alone the tape lets carry the top band, copied into
-    # each of three clones,
-    person, benunit, household = _raw_support_tables(200)
+def _one_top_band_candidate(person, household) -> pd.DataFrame:
+    """Household 1's claimant aged 70, alone in the one cell the top band opens.
+
+    Changes ``person`` in place and returns the propensity table.
+    """
+
     elder = person["person_household_id"].eq(1) & person["is_uc_claimant"]
     person.loc[elder, "age"] = 70
     cell = (
@@ -1711,7 +1717,7 @@ def test_a_mean_age_resting_on_fewer_than_three_source_households_is_withheld() 
         int(age_band_lower_bound(np.asarray([70.0]))[0]),
     )
     propensity = _propensity()
-    propensity = pd.concat(
+    return pd.concat(
         [
             propensity.loc[propensity["band"] != 2_000_000],
             pd.DataFrame(
@@ -1730,6 +1736,29 @@ def test_a_mean_age_resting_on_fewer_than_three_source_households_is_withheld() 
         ],
         ignore_index=True,
     )
+
+
+def test_a_band_short_of_candidates_on_one_clone_is_refused_by_count() -> None:
+    # Given one claimant alone the tape lets carry the top band, on a spine
+    # without the clone index, and three seats for the band,
+    person, benunit, household = _raw_support_tables(200)
+    propensity = _one_top_band_candidate(person, household)
+    frame = _spi_support_frame(person, benunit, household, expected_spi_households=10)
+
+    # then the stage refuses with one clone's message: the seats and the count.
+    with pytest.raises(ValueError) as caught:
+        _stack_small(frame, propensity=propensity)
+    assert str(caught.value) == (
+        "SPI income band donors need 3 candidate households with positive weight "
+        "and propensity for the band from 2000000; found 1."
+    )
+
+
+def test_a_mean_age_resting_on_fewer_than_three_source_households_is_withheld() -> None:
+    # Given one claimant alone the tape lets carry the top band, copied into
+    # each of three clones,
+    person, benunit, household = _raw_support_tables(200)
+    propensity = _one_top_band_candidate(person, household)
     frame = _clone_first_support_frame(200, 3, tables=(person, benunit, household))
     result = _stack_small(frame, propensity=propensity, minimum_donors=1)
 
@@ -1743,6 +1772,119 @@ def test_a_mean_age_resting_on_fewer_than_three_source_households_is_withheld() 
     assert top["carrier_mean_age"] == UK_WITHHELD
     first = {row["lower_bound"]: row for row in result.band_rows}[200_000]
     assert first["carriers"] == 12 and isinstance(first["carrier_mean_age"], float)
+
+
+def test_a_band_seating_fewer_than_three_per_clone_withholds_its_mean_age() -> None:
+    # Given the published plan on 60 households, which seats one household in
+    # three of the bands, in each of three and of four clones,
+    propensity = _propensity()
+    for n_clones in (3, 4):
+        result = stack_spi_income_band_donors(
+            _clone_first_support_frame(60, n_clones),
+            propensity=propensity,
+            **_PUBLISHED,
+        )
+        out = result.frame.table("household").set_index("household_id")
+        person = result.frame.table("person")
+        carriers = out.loc[
+            person.loc[person[PERSON_IS_SPI_INCOME_BAND_CARRIER], "person_household_id"]
+        ]
+        sources = carriers.groupby(SPI_INCOME_BAND_DONOR_LOWER_BOUND_COLUMN)[
+            "source_household_id"
+        ].nunique()
+
+        # then a band seating fewer than three households in each clone
+        # withholds its carriers' mean age, even where they come from three
+        # source households or more; the band seating six keeps its mean.
+        one_seat = [
+            row for row in result.band_rows if row["donor_households"] < 3 * n_clones
+        ]
+        assert [row["donor_households"] for row in one_seat] == [n_clones] * 3
+        assert all(row["carrier_mean_age"] == UK_WITHHELD for row in one_seat)
+        assert any(sources[row["lower_bound"]] >= 3 for row in one_seat)
+        (seated,) = [row for row in result.band_rows if row not in one_seat]
+        assert seated["donor_households"] == 6 * n_clones
+        assert isinstance(seated["carrier_mean_age"], float)
+
+
+def test_the_receipt_counts_source_households_at_any_clone_count(monkeypatch) -> None:
+    # Given the published plan on 60 households, as one clone and as three,
+    propensity = _propensity()
+    one = stack_spi_income_band_donors(
+        _support_frame(), propensity=propensity, **_PUBLISHED
+    )
+    many = stack_spi_income_band_donors(
+        _clone_first_support_frame(60, 3), propensity=propensity, **_PUBLISHED
+    )
+    evidence = many.evidence()
+
+    # then the carriers per region are counted in source households over
+    # every clone: SOUTH_EAST's carrier rows rest on fewer than three.
+    out = many.frame.table("household").set_index("household_id")
+    person = many.frame.table("person")
+    carriers = out.loc[
+        person.loc[person[PERSON_IS_SPI_INCOME_BAND_CARRIER], "person_household_id"]
+    ]
+    by_region = carriers.groupby("region")["source_household_id"].nunique()
+    assert evidence["carrier_region_counts"] == {
+        str(region): rounded_count(int(count)) for region, count in by_region.items()
+    }
+    assert int(carriers["region"].eq("SOUTH_EAST").sum()) >= 3
+    assert evidence["carrier_region_counts"]["SOUTH_EAST"] == UK_WITHHELD
+    # Each band's eligible households are clone 0's, which one clone counts
+    # alike, so the per-band counts are the same at every clone count.
+    assert [row["eligible_households"] for row in evidence["bands"]] == [
+        row["eligible_households"] for row in one.evidence()["bands"]
+    ]
+
+    # Before rounding, each band's count is the source households clone 0's
+    # own walk leaves eligible, recounted here from the cells the tape opens;
+    # pooled over the clones, the lower bands would count more.
+    monkeypatch.setattr(spi_band_donors, "rounded_count", int)
+    exact = stack_spi_income_band_donors(
+        _clone_first_support_frame(60, 3), propensity=propensity, **_PUBLISHED
+    )
+    raw_person, _, raw_household = _raw_support_tables(60)
+    claimants = raw_person.loc[raw_person["is_uc_claimant"] & raw_person["age"].ge(16)]
+    region_of = raw_household.set_index("household_id")["region"]
+    cells = {
+        int(row.person_household_id): (
+            region_of[row.person_household_id],
+            str(row.gender),
+            int(age_band_lower_bound(np.asarray([float(row.age)]))[0]),
+        )
+        for row in claimants.itertuples()
+    }
+    seated = _seating(exact)
+    taken: dict[int, set[int]] = {clone: set() for clone in seated}
+    rows = {row["lower_bound"]: row for row in exact.band_rows}
+    pooled_more = False
+    for band in sorted(BANDS, reverse=True):
+        positive = propensity.loc[
+            (propensity["band"] == band) & (propensity["propensity"] > 0.0)
+        ]
+        open_cells = set(
+            zip(
+                positive["region"],
+                positive["gender"],
+                positive["age_band"],
+                strict=True,
+            )
+        )
+        eligible = {
+            clone: {
+                source
+                for source, cell in cells.items()
+                if cell in open_cells and source not in taken[clone]
+            }
+            for clone in seated
+        }
+        assert rows[band]["eligible_households"] == len(eligible[0])
+        pooled_more |= len(set().union(*eligible.values())) > len(eligible[0])
+        for clone, seats in seated.items():
+            taken[clone] |= {source for source, seat in seats.items() if seat == band}
+    assert pooled_more
+    assert exact.eligible_households == 60
 
 
 def test_the_stage_gate_reads_a_receipt_by_its_clone_count() -> None:

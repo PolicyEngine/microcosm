@@ -1173,6 +1173,12 @@ def test_the_share_gate_resolves_to_the_share_plus_its_binomial_band() -> None:
         )
         == n
     )
+    # The band is the declared sigma's: two standard errors resolve lower.
+    two_sigma = spi_support.spi_share_gate_maximum(
+        {**_SHARE_RULE, "sigma": 2}, inclusion_probability=share, household_rows=n
+    )
+    assert two_sigma == math.ceil(n * (share + 2.0 * math.sqrt(share * 0.7 / n)))
+    assert two_sigma < maximum
     # The unchanged gate passes the resolved maximum and refuses one more.
     for zero_rows, passed in ((maximum, True), (maximum + 1, False)):
         synthetic = np.arange(n) < zero_rows
@@ -1214,6 +1220,17 @@ def test_the_share_gate_resolves_to_the_share_plus_its_binomial_band() -> None:
             },
             0.3,
             "sigma must be positive",
+        ),
+        *(
+            (
+                {
+                    **_SHARE_GATE,
+                    "maximum_zero_weight_rows_rule": {**_SHARE_RULE, "sigma": sigma},
+                },
+                0.3,
+                "sigma must be positive",
+            )
+            for sigma in (float("nan"), float("inf"))
         ),
         (
             {**_SHARE_GATE, "maximum_zero_weight_rows": 10},

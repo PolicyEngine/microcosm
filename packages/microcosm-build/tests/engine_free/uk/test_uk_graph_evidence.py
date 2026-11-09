@@ -561,6 +561,7 @@ def test_the_spine_gate_kernel_keys_on_its_checks_not_the_energy_level(monkeypat
     # The re-review of microcosm#1420, E: one kernel hash serves both phases,
     # so it covers the modules both read and not energy_pricing, which only
     # the transferred phase's node param carries.
+    from microcosm.build import stochastic_assignment
     from microcosm.build.uk_runtime import (
         battery_bindings,
         energy_pricing,
@@ -582,4 +583,7 @@ def test_the_spine_gate_kernel_keys_on_its_checks_not_the_energy_level(monkeypat
     kernel.implementation_hash()
     (modules,) = seen
     assert {stage_health, battery_bindings, graph_evidence.gate_battery} <= set(modules)
+    # The latent-attribute checks' binomial band lives in stochastic_assignment
+    # (microcosm#931), so the gate keys on it too.
+    assert stochastic_assignment in modules
     assert energy_pricing not in modules

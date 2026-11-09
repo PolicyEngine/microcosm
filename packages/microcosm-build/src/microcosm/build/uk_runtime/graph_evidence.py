@@ -26,7 +26,7 @@ from microcosm.graph import (
     source_hash,
 )
 
-from .. import gate_battery
+from .. import gate_battery, stochastic_assignment
 from ..country_spec import CountrySpec, GatesManifest
 from ..gate_battery import (
     BlockingMode,
@@ -378,15 +378,21 @@ class UKSpineGateKernel(KernelBase):
         # on the solve fingerprint and a sign-off between two release builds
         # leaves an in-graph spine a cache hit (microcosm#1301). The stage
         # checks live in stage_health, so it keys the gate too (the independent
-        # review of microcosm#1420, finding 5). Only the transferred phase reads
-        # the energy level, through energy_pricing, so that phase alone carries
-        # its hash, as a node param: an energy change re-keys it, not the
-        # assembled gate every later spine stage waits on (the re-review, E).
+        # review of microcosm#1420, finding 5), with stochastic_assignment,
+        # where the binomial band of its latent-attribute checks now lives
+        # (microcosm#931). Only the transferred phase reads the energy level,
+        # through energy_pricing, so that phase alone carries its hash, as a
+        # node param: an energy change re-keys it, not the assembled gate
+        # every later spine stage waits on (the re-review, E).
         return hashlib.sha256(
             canonical_json(
                 {
                     "code": source_hash(
-                        type(self), gate_battery, battery_bindings, stage_health
+                        type(self),
+                        gate_battery,
+                        battery_bindings,
+                        stage_health,
+                        stochastic_assignment,
                     ),
                     "country_resources": uk_solve_fingerprint(),
                 }
