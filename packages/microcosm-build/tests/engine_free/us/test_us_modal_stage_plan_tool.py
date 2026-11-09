@@ -634,11 +634,8 @@ def test_the_app_never_runs_an_emitter_installed_where_the_image_puts_it(
     # Path.exists() raises PermissionError, so point it at an empty folder.
     monkeypatch.setattr(plan_lib, "IMAGE_REPO_ROOT", str(tmp_path / "repo"))
 
-    recorded = {
-        "emitter_version": "0.13.0",
-        "protocol_versions": [1],
-        "collector_origin": "https://collector.invalid",
-    }
+    # What the stand-in for the image emitter's `version` answers.
+    recorded = RECORDED_EMITTER_VERSION
     assert app._emitter_version() == recorded
     assert app._runner_identity()["microcosm_emitter"] == recorded
     assert app._emitter_status(dict(os.environ)) == RECORDED_EMITTER_STATUS
