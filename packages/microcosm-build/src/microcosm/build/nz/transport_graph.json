@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "country": "nz",
-  "description": "The NZ transport declaration retains named pending money producers. The graph makes no estimate or publication claim.",
+  "description": "The NZ transport declaration names its pending outputs. The graph makes no estimate or publication claim.",
   "export_contract": "export_contract",
   "sources": [
     {
@@ -436,7 +436,8 @@
             "dividend_income",
             "rental_income",
             "realized_capital_gains",
-            "private_pension_income"
+            "private_pension_income",
+            "liquid_financial_assets"
           ]
         },
         {
@@ -492,6 +493,12 @@
           "rewrite": true
         },
         {
+          "entity": "person",
+          "column": "liquid_financial_assets",
+          "dtype": "float64",
+          "rewrite": true
+        },
+        {
           "entity": "household",
           "column": "mortgage_interest",
           "dtype": "float64",
@@ -542,6 +549,11 @@
         {
           "entity": "person",
           "column": "private_pension_income_cents",
+          "dtype": "int64"
+        },
+        {
+          "entity": "person",
+          "column": "liquid_financial_assets_cents",
           "dtype": "int64"
         },
         {
@@ -660,6 +672,59 @@
       "params": {
         "declaration": "{\"columns\":[{\"output_column\":\"employment_income_cents\",\"quantum\":\"0.01\",\"rounding\":\"half_even\",\"source_column\":\"employment_income\"}],\"entity\":\"person\"}"
       }
+    },
+    {
+      "id": "nz.rent.map",
+      "kernel": "transport.quantile_map@1",
+      "population": "nz.central",
+      "inputs": [
+        {
+          "entity": "household",
+          "columns": [
+            "rent",
+            "household_region_code"
+          ]
+        }
+      ],
+      "outputs": [
+        {
+          "entity": "household",
+          "column": "rent",
+          "dtype": "float64",
+          "rewrite": true
+        }
+      ],
+      "params": {
+        "entity": "household",
+        "column": "rent",
+        "component_column": "household_region_code",
+        "bands": {
+          "resource": "rent_bands",
+          "path": [
+            "map_bands"
+          ],
+          "encoding": "json"
+        },
+        "bands_sha256": {
+          "resource": "rent_bands",
+          "path": [],
+          "encoding": "sha256"
+        },
+        "interpolation": {
+          "resource": "rent_bands",
+          "path": [
+            "interpolation"
+          ],
+          "encoding": "json"
+        }
+      },
+      "artifact_inputs": [
+        {
+          "name": "surface",
+          "producer": "nz.facts.precal",
+          "artifact": "surface"
+        }
+      ]
     },
     {
       "id": "nz.encode.person",
@@ -4133,6 +4198,7 @@
             "dividend_income",
             "farm_self_employment_income",
             "interest_income",
+            "liquid_financial_assets",
             "nonfarm_self_employment_income",
             "private_pension_income",
             "realized_capital_gains",
@@ -4396,9 +4462,11 @@
         {
           "entity": "household",
           "columns": [
+            "household_region_code",
             "mortgage_interest",
             "mortgage_principal",
             "property_tax",
+            "rent",
             "tenure"
           ]
         },
@@ -4410,6 +4478,7 @@
             "employment_income",
             "farm_self_employment_income",
             "interest_income",
+            "liquid_financial_assets",
             "nonfarm_self_employment_income",
             "private_pension_income",
             "realized_capital_gains",
@@ -4492,6 +4561,7 @@
             "jobseeker_unemployed_or_on_leave_for_employment_related_training",
             "jobseeker_willing_and_able_to_undertake_full_time_employment",
             "jobseeker_would_satisfy_available_for_work_but_for_work_test_exemption_circumstances",
+            "liquid_financial_assets",
             "main_benefit_income_test_assessable_income",
             "main_benefit_receiving_another_main_benefit",
             "main_benefit_receiving_new_zealand_superannuation",
@@ -4749,6 +4819,7 @@
             "jobseeker_unemployed_or_on_leave_for_employment_related_training",
             "jobseeker_willing_and_able_to_undertake_full_time_employment",
             "jobseeker_would_satisfy_available_for_work_but_for_work_test_exemption_circumstances",
+            "liquid_financial_assets",
             "main_benefit_income_test_assessable_income",
             "main_benefit_receiving_another_main_benefit",
             "main_benefit_receiving_new_zealand_superannuation",
@@ -4979,6 +5050,7 @@
   },
   "pending_outputs": [
     "G8-x income reconciliation evidence: the native-band report, omission-register and identity-receipt artifacts and the VSI, VEX and VPT run evidence that measurement_prefit requires (R2C-18)",
-    "Census rent and liquid-assets quantile producers"
+    "An all-household New Zealand liquid-asset distribution (C2): S0's asset test reads d1982's frozen donor stock, so it stays an unpublishable diagnostic beside S1",
+    "The C1 rent ageing ruling: the Census 2023 rent bands hold 2023 levels"
   ]
 }

@@ -2811,24 +2811,22 @@ class TestSupportRoster:
         assert counts == {
             "closure_default": 92,
             "derived": 323,
-            "normalized": 10,
+            "normalized": 11,
             "copied": 3,
-            "pending": 1,
-            "quantile_mapped": 1,
+            "quantile_mapped": 2,
             "structural": 6,
         }
+        classes = {(row["entity"], row["column"]): row["class"] for row in roster}
+        assert classes["household", "rent"] == "quantile_mapped"
+        assert classes["person", "liquid_financial_assets"] == "normalized"
         derived = [row for row in roster if row["class"] == "derived"]
-        pending = {
-            "household.rent",
-            "person.liquid_financial_assets",
-        }
         for row in derived:
             missing = {
                 f"{s['entity']}.{s['column']}"
                 for s in row["sources"]
                 if s["class"] not in compose.SUPPORT_COVERED
             }
-            assert missing == pending, row["column"]
+            assert not missing, row["column"]
             assert "walked per node" in row["reason"]
 
     def test_a_closure_default_is_classed_closure_default(self, nz_spec) -> None:
